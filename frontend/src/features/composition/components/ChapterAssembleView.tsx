@@ -9,6 +9,7 @@ import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useCorrection } from '../hooks/useAutoGenerate';
 import { useGenerateChapter, useSetAssemblyMode, useStitchChapter } from '../hooks/useChapterAssembly';
+import { useCriticStateOptional } from '../context/CriticStateContext';
 import { CanonGatePanel } from './CanonGatePanel';
 import type { AssemblyMode, ChapterGeneration, CorrectionBody } from '../types';
 
@@ -34,6 +35,9 @@ export function ChapterAssembleView({
   const stitch = useStitchChapter(token);
   const setMode = useSetAssemblyMode(bookId, token);
   const correction = useCorrection(token);
+  // WS-B1 — share the chapter's canon-gate verdict so the standing `critic` panel
+  // surfaces it (chapter assembly has no per-dimension critique → critic: null).
+  const criticState = useCriticStateOptional();
 
   const [result, setResult] = useState<ChapterGeneration | null>(null);
   const [edited, setEdited] = useState('');
@@ -41,7 +45,11 @@ export function ChapterAssembleView({
 
   const busy = gen.isPending || stitch.isPending;
   const params = { projectId, chapterId, modelRef, modelKind, modelName };
-  const onResult = (r: ChapterGeneration) => { setResult(r); setEdited(r.text); };
+  const onResult = (r: ChapterGeneration) => {
+    setResult(r);
+    setEdited(r.text);
+    if (r.canon) criticState?.setVerdict({ critic: null, canon: r.canon, jobId: r.job_id });
+  };
 
   const runChapter = () => { setLast('chapter'); gen.mutate(params, { onSuccess: onResult }); };
   const runStitch = () => { setLast('stitch'); stitch.mutate(params, { onSuccess: onResult }); };

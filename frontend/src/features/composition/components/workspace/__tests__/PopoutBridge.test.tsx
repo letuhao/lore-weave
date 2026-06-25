@@ -62,9 +62,12 @@ describe('PopoutBridge (T5.4 M4)', () => {
     const win = fakeWindow();
     vi.spyOn(window, 'open').mockReturnValue(win);
     const onClosed = vi.fn();
-    render(<PopoutBridge id="cast" bookId="b1" chapterId="c1" onClosed={onClosed} />);
+    // FILE+TEST-UNIQUE channel id — BroadcastChannel is shared across vitest worker
+    // threads (and a posted message can deliver late into a sibling test on the same
+    // channel name), so a generic 'b1' cross-talks. Posting tests get distinct ids.
+    render(<PopoutBridge id="cast" bookId="PBRIDGE_dock" chapterId="c1" onClosed={onClosed} />);
     // a popout posts dock-back for THIS panel (the popout's "Dock" button)
-    const popout = openPopoutChannel('b1', 'c1');
+    const popout = openPopoutChannel('PBRIDGE_dock', 'c1');
     popout.post({ kind: 'dock-back', panel: 'cast' });
     await new Promise((r) => setTimeout(r, 0));
     expect(onClosed).toHaveBeenCalledTimes(1);   // re-docked without waiting for the poll
@@ -76,8 +79,8 @@ describe('PopoutBridge (T5.4 M4)', () => {
     const win = fakeWindow();
     vi.spyOn(window, 'open').mockReturnValue(win);
     const onClosed = vi.fn();
-    render(<PopoutBridge id="cast" bookId="b1" chapterId="c1" onClosed={onClosed} />);
-    const popout = openPopoutChannel('b1', 'c1');
+    render(<PopoutBridge id="cast" bookId="PBRIDGE_other" chapterId="c1" onClosed={onClosed} />);
+    const popout = openPopoutChannel('PBRIDGE_other', 'c1');
     popout.post({ kind: 'dock-back', panel: 'grounding' });   // not this bridge's panel
     await new Promise((r) => setTimeout(r, 0));
     expect(onClosed).not.toHaveBeenCalled();

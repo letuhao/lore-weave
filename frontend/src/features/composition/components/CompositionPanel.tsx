@@ -41,6 +41,7 @@ import { DerivativeBanner } from './DerivativeBanner';
 import { DerivativeGroundingLayers } from './DerivativeGroundingLayers';
 import { useDerivativeContext } from '../hooks/useDerivativeContext';
 import { CanonRulesPanel } from './CanonRulesPanel';
+import { CriticPanel } from './CriticPanel';
 import { ThreadsPanel } from './ThreadsPanel';
 import { QualityPanel } from './QualityPanel';
 import { ProgressPanel } from './ProgressPanel';
@@ -68,7 +69,7 @@ type Props = {
   soloPanel?: WorkspacePanelId;
 };
 
-type SubTab = 'compose' | 'cowriter' | 'assemble' | 'planner' | 'beats' | 'graph' | 'cast' | 'relmap' | 'timeline' | 'arc' | 'worldmap' | 'grounding' | 'references' | 'style' | 'canon' | 'threads' | 'progress' | 'quality' | 'flywheel' | 'settings';
+type SubTab = 'compose' | 'cowriter' | 'assemble' | 'planner' | 'beats' | 'graph' | 'cast' | 'relmap' | 'timeline' | 'arc' | 'worldmap' | 'grounding' | 'references' | 'style' | 'canon' | 'critic' | 'threads' | 'progress' | 'quality' | 'flywheel' | 'settings';
 
 export function CompositionPanel({ bookId, chapterId, token, onAccept, sceneId: sceneIdProp, onSceneChange, heatmapEnabled, onToggleHeatmap, soloPanel }: Props) {
   const solo = soloPanel != null;
@@ -621,7 +622,7 @@ export function CompositionPanel({ bookId, chapterId, token, onAccept, sceneId: 
           testid="composition-subtabs"
           className="flex gap-1 overflow-x-auto border-b border-neutral-200 px-2 pt-1 text-sm dark:border-neutral-700"
         >
-          {(['compose', 'cowriter', 'assemble', 'planner', 'beats', 'graph', 'cast', 'relmap', 'timeline', 'arc', 'worldmap', 'grounding', 'references', 'style', 'canon', ...(threadsEnabled ? ['threads' as const] : []), 'progress', 'quality', 'flywheel', 'settings'] as SubTab[]).map((tb) => (
+          {(['compose', 'cowriter', 'assemble', 'planner', 'beats', 'graph', 'cast', 'relmap', 'timeline', 'arc', 'worldmap', 'grounding', 'references', 'style', 'canon', 'critic', ...(threadsEnabled ? ['threads' as const] : []), 'progress', 'quality', 'flywheel', 'settings'] as SubTab[]).map((tb) => (
             <button
               key={tb}
               data-testid={`composition-subtab-${tb}`}
@@ -760,6 +761,9 @@ export function CompositionPanel({ bookId, chapterId, token, onAccept, sceneId: 
         </DockSlot>
         <DockSlot {...slot('canon')}>
           <CanonRulesPanel projectId={work.project_id} bookId={bookId} token={token} />
+        </DockSlot>
+        <DockSlot {...slot('critic')}>
+          <CriticPanel token={token} />
         </DockSlot>
         {threadsEnabled && (
           <DockSlot {...slot('threads')}>

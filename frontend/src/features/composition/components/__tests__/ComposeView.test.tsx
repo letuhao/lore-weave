@@ -60,7 +60,11 @@ describe('ComposeView (ghost / accept — §13 SC4)', () => {
     render(<ComposeView {...baseProps} onAccept={onAccept} />);
     fireEvent.click(screen.getByText('accept'));
     expect(onAccept).toHaveBeenCalledWith('drafted prose');
-    expect(mockCritique.critique.mutate).toHaveBeenCalledWith({ jobId: 'job-1', passage: 'drafted prose' });
+    // WS-B1: accept also wires an onSuccess that lifts the verdict to the shared store.
+    expect(mockCritique.critique.mutate).toHaveBeenCalledWith(
+      { jobId: 'job-1', passage: 'drafted prose' },
+      expect.objectContaining({ onSuccess: expect.any(Function) }),
+    );
     expect(mockStream.clearGhost).toHaveBeenCalled();
   });
 

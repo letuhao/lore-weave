@@ -52,3 +52,11 @@ export function useLiveStream(): ReturnType<typeof useCompositionStream> {
   }
   return ctx.stream;
 }
+
+/** Optional, non-throwing read for a consumer that only OBSERVES the stream (e.g.
+ *  the standing CriticPanel needs the current jobId, but never starts a stream).
+ *  Returns null outside a provider so such a panel can render bare (tests / a
+ *  degenerate mount) without the strict-guard crash. */
+export function useLiveStreamOptional(): ReturnType<typeof useCompositionStream> | null {
+  return useContext(LiveStateCtx)?.stream ?? null;
+}

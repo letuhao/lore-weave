@@ -46,10 +46,13 @@ describe('PopoutHost (T5.4 M4)', () => {
   });
 
   it('relays accepted prose to the opener over the per-book channel', async () => {
-    const opener = openPopoutChannel('b1', 'c1');
+    // FILE-UNIQUE book id: BroadcastChannel is shared across vitest worker threads,
+    // so a generic 'b1'/'c1' cross-talks with PopoutBridge.test's same-named channel
+    // and flakes this assertion (see popoutChannel.test's PCHAN_ note).
+    const opener = openPopoutChannel('PHOST_b1', 'c1');
     const got: PopoutMessage[] = [];
     opener.subscribe((m) => got.push(m));
-    renderAt('?book=b1&chapter=c1&panel=compose');
+    renderAt('?book=PHOST_b1&chapter=c1&panel=compose');
     fireEvent.click(screen.getByTestId('emit-accept'));
     await new Promise((r) => setTimeout(r, 0));
     expect(got).toContainEqual({ kind: 'insert-prose', text: 'drafted', model: 'qwen' });
@@ -58,10 +61,10 @@ describe('PopoutHost (T5.4 M4)', () => {
 
   it('dock-back posts dock-back + closes the window', async () => {
     const close = vi.spyOn(window, 'close').mockImplementation(() => {});
-    const opener = openPopoutChannel('b9', 'c1');
+    const opener = openPopoutChannel('PHOST_b9', 'c1');
     const got: PopoutMessage[] = [];
     opener.subscribe((m) => got.push(m));
-    renderAt('?book=b9&chapter=c1&panel=grounding');
+    renderAt('?book=PHOST_b9&chapter=c1&panel=grounding');
     fireEvent.click(screen.getByTestId('popout-dock-back'));
     await new Promise((r) => setTimeout(r, 0));
     expect(got).toContainEqual({ kind: 'dock-back', panel: 'grounding' });

@@ -12,7 +12,7 @@ import { WorkspaceLayoutProvider } from '../../context/WorkspaceLayoutContext';
 // edit state survives. We mock each sub-panel to (a) drop a stable testid and
 // (b) bump a per-panel MOUNT counter on mount; a remount (the bug) would bump it.
 
-const mounts = vi.hoisted(() => ({ compose: 0, cowriter: 0, assemble: 0, planner: 0, beats: 0, graph: 0, cast: 0, relmap: 0, timeline: 0, arc: 0, worldmap: 0, grounding: 0, references: 0, style: 0, canon: 0, progress: 0, quality: 0, flywheel: 0, settings: 0 }));
+const mounts = vi.hoisted(() => ({ compose: 0, cowriter: 0, assemble: 0, planner: 0, beats: 0, graph: 0, cast: 0, relmap: 0, timeline: 0, arc: 0, worldmap: 0, grounding: 0, references: 0, style: 0, canon: 0, critic: 0, progress: 0, quality: 0, flywheel: 0, settings: 0 }));
 
 function mockPanel(name: keyof typeof mounts) {
   return function Mock() {
@@ -38,6 +38,7 @@ vi.mock('../GroundingPanel', () => ({ GroundingPanel: mockPanel('grounding') }))
 vi.mock('../ReferencesPanel', () => ({ ReferencesPanel: mockPanel('references') }));
 vi.mock('../StyleVoicePanel', () => ({ StyleVoicePanel: mockPanel('style') }));
 vi.mock('../CanonRulesPanel', () => ({ CanonRulesPanel: mockPanel('canon') }));
+vi.mock('../CriticPanel', () => ({ CriticPanel: mockPanel('critic') }));
 vi.mock('../ProgressPanel', () => ({ ProgressPanel: mockPanel('progress') }));
 vi.mock('../QualityPanel', () => ({ QualityPanel: mockPanel('quality') }));
 vi.mock('../FlywheelPanel', () => ({ FlywheelPanel: mockPanel('flywheel') }));
@@ -63,7 +64,7 @@ vi.mock('../../../ai-models/api', () => ({
 beforeEach(() => {
   localStorage.clear();   // T5.4 — the dock flag/layout must not leak across tests
   wr.loading = false;     // default resolved; the cold-cache test flips this
-  mounts.compose = mounts.cowriter = mounts.assemble = mounts.planner = mounts.beats = mounts.graph = mounts.cast = mounts.relmap = mounts.timeline = mounts.arc = mounts.worldmap = mounts.grounding = mounts.references = mounts.style = mounts.canon = mounts.progress = mounts.quality = mounts.flywheel = mounts.settings = 0;
+  mounts.compose = mounts.cowriter = mounts.assemble = mounts.planner = mounts.beats = mounts.graph = mounts.cast = mounts.relmap = mounts.timeline = mounts.arc = mounts.worldmap = mounts.grounding = mounts.references = mounts.style = mounts.canon = mounts.critic = mounts.progress = mounts.quality = mounts.flywheel = mounts.settings = 0;
 });
 
 function renderPanel(initialEntries: string[] = ['/books/b']) {

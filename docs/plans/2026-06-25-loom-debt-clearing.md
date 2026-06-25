@@ -144,7 +144,24 @@ B2c = ghost-generate (no auto-insert) · B3 = its own feature spec · editor-mul
 **B2 spec durability = persist to `work.settings`** (survives reload) · **B1 critic = popout-capable**
 (re-fetch verdict) · **chat-hoist = its own scheduled task**.*
 
-## WS-B1 — Continuity Critic standing panel · **M**
+## WS-B1 — Continuity Critic standing panel · **M** — ✅ **SHIPPED 2026-06-25**
+**Built as designed.** New `CriticStateContext` (mounted by WorkspaceShell, inside the book-keyed
+`LiveStateProvider`) holds `{critic, canon, jobId}`; ComposeView `accept()`/`acceptText()` +
+ChapterAssembleView `onResult` write it via explicit `onSuccess` handlers (no useEffect). Inline
+`CriticFlags` extracted to `components/CriticFlags.tsx` (handlers optional). New `components/CriticPanel.tsx`
+reads the shared verdict (dock/float) OR re-fetches `getJob(jobId).critic` (popout — jobId from the
+SharedWorker-backed `useLiveStreamOptional()`, no URL plumbing) + a "re-check current draft" action.
+`CanonGatePanel.onRevise` made optional (view-only in the panel). Registered `critic` in
+`workspace/types.ts` (union+PANEL_IDS+DOCK_ORDER) + `CompositionPanel` (SubTab+strip+DockSlot) + i18n ×4.
+**VERIFY:** tsc clean; **495 composition tests green ×3** (new `CriticPanel.test` 4 cases; ComposeView
+accept-onSuccess updated). **Fixed a surfaced pre-existing flake:** PopoutHost/PopoutBridge BroadcastChannel
+tests used generic `'b1'/'c1'` channel names → cross-talk across vitest workers; gave them file-unique ids
+(the `popoutChannel.test` `PCHAN_` precedent). Decision deviation (verified vs plan): the shared verdict's
+`critic` is **nullable** so the chapter-assemble path (which yields a canon-gate result but no per-dimension
+critique) can contribute its canon verdict.
+
+<details><summary>original design</summary>
+
 **Crux:** the verdict lives **only in ComposeView's local `useCritique` state** (`ComposeView.tsx:49,111`)
 — a sibling dock panel can't read it. The work is **lifting the verdict**, not the panel.
 - **Shared store:** add a `CriticStateContext` (or extend `LiveStateContext`) mounted by `WorkspaceShell`
@@ -167,6 +184,8 @@ B2c = ghost-generate (no auto-insert) · B3 = its own feature spec · editor-mul
   floated, AND popped-out — not just the in-memory-context dock/float case.
 - **Tests:** verdict-survives-tab-switch (shared store); CriticPanel renders the shared verdict; ComposeView's
   override-gate still blocks accept (regression). **Size: M.**
+
+</details>
 
 ## WS-B2 — Doujin / derivative completeness · **M**
 **Crux:** the derivative spec/overrides are **write-only** (`POST /derive`, never read back; only a session
