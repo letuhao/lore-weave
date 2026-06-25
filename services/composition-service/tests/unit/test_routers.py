@@ -113,6 +113,9 @@ class StubDerivatives:
     def __init__(self):
         self.specs = []
         self.overrides = []
+        # WS-B2 read seams — what the derivative-context endpoint reads back.
+        self.spec_for_work = None
+        self.overrides_for_work = []
 
     async def create_spec(self, spec, *, conn=None):
         self.specs.append(spec)
@@ -121,6 +124,12 @@ class StubDerivatives:
     async def create_override(self, override, *, conn=None):
         self.overrides.append(override)
         return override
+
+    async def get_spec_for_work(self, user_id, work_id):
+        return self.spec_for_work
+
+    async def list_overrides_for_work(self, user_id, work_id):
+        return self.overrides_for_work
 
 
 class _FakeTxn:
@@ -622,6 +631,66 @@ def test_derive_rejects_on_contract_error(ctx):
     r = c.post(f"/v1/composition/works/{PROJECT}/derive", json=_derive_body())
     assert r.status_code == 502
     assert r.json()["detail"]["code"] == "PROJECT_CREATE_FAILED"
+
+
+# ── WS-B2: GET /works/{project_id}/derivative-context (durable read-back) ──
+
+def test_get_derivative_context_returns_persisted_spec(ctx):
+    """A derivative Work surfaces its DURABLE divergence spec + overrides — the FE
+    no longer relies on the ephemeral derive-time react-query cache. source_project_id
+    is resolved by looking the SOURCE up (build_derivative_context), not the raw
+    source_work_id (the two id-spaces diverge)."""
+    from app.db.models import DivergenceSpec, EntityOverride
+    c, works, _, _, derivatives = ctx
+    source_id = uuid.uuid4()
+    source_project = uuid.uuid4()
+    deriv_work = _work(project_id=PROJECT)
+    deriv_work.source_work_id = source_id
+    deriv_work.branch_point = 3
+    works.work = deriv_work                                   # works.get → the derivative
+    works.by_id_result = _work(project_id=source_project, id=source_id)  # source lookup
+    target = uuid.uuid4()
+    pov = uuid.uuid4()
+    derivatives.spec_for_work = DivergenceSpec(
+        user_id=USER, project_id=PROJECT, work_id=deriv_work.id,
+        taxonomy="pov_shift", pov_anchor=pov, canon_rule=["The hero dies"],
+    )
+    derivatives.overrides_for_work = [
+        EntityOverride(user_id=USER, project_id=PROJECT, work_id=deriv_work.id,
+                       target_entity_id=target, overridden_fields={"description": "now a woman"}),
+    ]
+    r = c.get(f"/v1/composition/works/{PROJECT}/derivative-context")
+    assert r.status_code == 200, r.text
+    body = r.json()
+    assert body["is_derivative"] is True
+    assert body["source_work_id"] == str(source_id)
+    assert body["source_project_id"] == str(source_project)   # resolved, not source_work_id
+    assert body["branch_point"] == 3
+    assert body["taxonomy"] == "pov_shift"
+    assert body["pov_anchor"] == str(pov)
+    assert body["canon_rules"] == ["The hero dies"]
+    assert body["overrides"] == [
+        {"target_entity_id": str(target), "overridden_fields": {"description": "now a woman"}},
+    ]
+
+
+def test_get_derivative_context_empty_for_greenfield(ctx):
+    """A non-derivative (greenfield) Work → is_derivative False, no spec read."""
+    c, works, _, _, derivatives = ctx
+    works.work = _work(project_id=PROJECT)  # no source_work_id
+    r = c.get(f"/v1/composition/works/{PROJECT}/derivative-context")
+    assert r.status_code == 200, r.text
+    body = r.json()
+    assert body["is_derivative"] is False
+    assert body["overrides"] == [] and body["canon_rules"] == []
+    assert body["source_project_id"] is None
+
+
+def test_get_derivative_context_404_when_work_absent(ctx):
+    c, works, _, _, _ = ctx
+    works.work = None
+    r = c.get(f"/v1/composition/works/{PROJECT}/derivative-context")
+    assert r.status_code == 404
 
 
 def test_derive_source_not_found_404(ctx):

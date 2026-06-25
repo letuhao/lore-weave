@@ -475,7 +475,22 @@
     "noCanonEntities": "Chưa có thực thể chính truyện để kế thừa.",
     "referenceSpine": "Trục tham khảo (chỉ đọc)",
     "referenceSpineHint": "Các chương gốc tới điểm rẽ nhánh — phỏng tác thủ công. Chúng không được chèn vào bản nháp.",
-    "openReference": "Mở"
+    "openReference": "Mở",
+    "deltaNow": "nay",
+    "taxonomy": {
+      "pov_shift": "Đổi ngôi kể",
+      "character_transform": "Biến đổi nhân vật",
+      "au": "Vũ trụ thay thế (AU)"
+    },
+    "chipPov": "Ngôi kể · {{id}}",
+    "chipOverrides": "{{n}} ghi đè",
+    "specPopover": "Đặc tả rẽ nhánh",
+    "specBranch": "Rẽ nhánh",
+    "specBranchStart": "từ đầu",
+    "specTaxonomy": "Loại",
+    "specPov": "Mỏ neo ngôi kể",
+    "specOverrides": "Ghi đè",
+    "specCanonRules": "Luật chính sử"
   },
   "promote": {
     "ephemeral": "Giả định (đang thử)",

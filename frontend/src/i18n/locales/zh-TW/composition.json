@@ -475,7 +475,22 @@
     "noCanonEntities": "尚無可繼承的正史實體。",
     "referenceSpine": "參考骨幹（唯讀）",
     "referenceSpineHint": "至分支點為止的原始章節 — 請手動改編。它們不會插入你的草稿。",
-    "openReference": "開啟"
+    "openReference": "開啟",
+    "deltaNow": "現為",
+    "taxonomy": {
+      "pov_shift": "視角轉換",
+      "character_transform": "角色轉變",
+      "au": "平行世界（AU）"
+    },
+    "chipPov": "視角 · {{id}}",
+    "chipOverrides": "{{n}} 項覆寫",
+    "specPopover": "分歧規格",
+    "specBranch": "分支",
+    "specBranchStart": "從開頭",
+    "specTaxonomy": "類型",
+    "specPov": "視角錨點",
+    "specOverrides": "覆寫",
+    "specCanonRules": "正史規則"
   },
   "promote": {
     "ephemeral": "假設（探索中）",

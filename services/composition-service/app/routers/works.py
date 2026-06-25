@@ -37,7 +37,7 @@ from app.deps import (
 from app.grant_client import GrantClient, GrantLevel
 from app.grant_deps import InsufficientGrant, authorize_book
 from app.middleware.jwt_auth import get_bearer_token, get_current_user
-from app.packer.pack import OwnershipError
+from app.packer.pack import OwnershipError, build_derivative_context
 from app.work_resolution import WorkResolution, resolve_work
 
 router = APIRouter(prefix="/v1/composition")
@@ -383,6 +383,66 @@ async def get_work(
     # require VIEW on its book so a revoked collaborator can't read stale work.
     await _gate_book(grant, work.book_id, user_id, GrantLevel.VIEW)
     return work.model_dump(mode="json")
+
+
+class DerivativeContextResponse(BaseModel):
+    """WS-B2: the FE read-projection of a derivative Work's DURABLE divergence
+    spec. The spec/overrides are already persisted (divergence_spec +
+    entity_override) and consumed server-side by `build_derivative_context`; this
+    surfaces the SAME persisted state to the studio so the banner chips, POV/spec
+    popover, and was→now deltas survive a reload (no longer session-cache-only).
+    `is_derivative=False` (everything else empty) for a greenfield Work."""
+
+    is_derivative: bool
+    source_work_id: UUID | None = None
+    source_project_id: UUID | None = None
+    branch_point: int | None = None
+    taxonomy: DivergenceTaxonomy | None = None
+    pov_anchor: UUID | None = None
+    canon_rules: list[str] = []
+    overrides: list[dict[str, Any]] = []
+
+
+@router.get("/works/{project_id}/derivative-context")
+async def get_derivative_context(
+    project_id: UUID,
+    user_id: UUID = Depends(get_current_user),
+    works: WorksRepo = Depends(get_works_repo),
+    derivatives: DerivativesRepo = Depends(get_derivatives_repo),
+    grant: GrantClient = Depends(get_grant_client_dep),
+) -> dict[str, Any]:
+    """WS-B2: read the DURABLE divergence spec + entity_override[] for the FE
+    derivative studio. Reuses `build_derivative_context` (source project resolution
+    + fresh override read) and `get_spec_for_work` (taxonomy/pov/canon_rule) — the
+    SAME persisted substrate the packer applies — so the studio reflects real state,
+    not the ephemeral derive-time react-query cache. VIEW grant on the Work's book
+    (a revoked collaborator can't read a stale derivative)."""
+    work = await works.get(user_id, project_id)
+    if work is None:
+        raise HTTPException(status_code=404, detail="work not found")
+    await _gate_book(grant, work.book_id, user_id, GrantLevel.VIEW)
+    if work.source_work_id is None:
+        return DerivativeContextResponse(is_derivative=False).model_dump(mode="json")
+    deriv = await build_derivative_context(
+        work, user_id=user_id, works_repo=works, derivatives_repo=derivatives,
+    )
+    spec = await derivatives.get_spec_for_work(user_id, work.id) if work.id else None
+    return DerivativeContextResponse(
+        is_derivative=True,
+        source_work_id=work.source_work_id,
+        source_project_id=deriv.source_project_id,
+        branch_point=deriv.branch_point,
+        taxonomy=spec.taxonomy if spec else None,
+        pov_anchor=spec.pov_anchor if spec else None,
+        canon_rules=list(spec.canon_rule) if spec else [],
+        overrides=[
+            {
+                "target_entity_id": str(o.target_entity_id),
+                "overridden_fields": o.overridden_fields,
+            }
+            for o in deriv.overrides
+        ],
+    ).model_dump(mode="json")
 
 
 # ── D-C16: id-addressable + self-healing backfill for a pending null-project ──

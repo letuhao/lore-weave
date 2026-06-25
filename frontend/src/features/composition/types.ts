@@ -44,6 +44,22 @@ export type DeriveBody = {
   entity_overrides: EntityOverride[];
 };
 
+// WS-B2 — the DURABLE read-projection of a derivative Work's divergence spec
+// (composition-service DerivativeContextResponse). Read back on Work resolution
+// from the persisted divergence_spec + entity_override (NOT the ephemeral
+// derive-time react-query cache), so the studio banner/chips/popover + the
+// was→now grounding deltas survive a reload. `is_derivative=false` ⇒ greenfield.
+export type DerivativeContextResponse = {
+  is_derivative: boolean;
+  source_work_id: string | null;
+  source_project_id: string | null;
+  branch_point: number | null;
+  taxonomy: DivergenceTaxonomy | null;
+  pov_anchor: string | null;
+  canon_rules: string[];
+  overrides: EntityOverride[];
+};
+
 export type WorkResolution = {
   status: 'found' | 'candidates' | 'unmarked_single' | 'unmarked_candidates' | 'none' | 'unavailable';
   work: Work | null;

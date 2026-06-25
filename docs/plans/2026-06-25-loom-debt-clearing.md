@@ -130,7 +130,21 @@ Batch the LOWs: `D-T3.1-SCENE-HINT`/`GUIDE-APPEND`, `D-T3.3-SLASH-CONTINUE`/`CHA
   `D-T4.1-LIVE-SMOKE-FULL-CHAIN`, `D-T5.4-POPOUT-SHARED-SSE-BROWSER-SMOKE`) PASS on the running stack;
   **no code bug surfaced** (the flywheel "+0 entities" was a concurrent-manual-job test artifact, not a
   defect). `D-T5.4-POPOUT-WORKER-HEALTHCHECK` rolls into WS-D.
-- **~29 open**, mapped above. **Next: WS-B1 (Critic panel) + WS-B2 (doujin completeness).**
+- ✅ **WS-B1 SHIPPED** (`b4eaef5a`) — Continuity Critic standing panel (popout-capable via re-fetch).
+- ✅ **WS-B2 SHIPPED 2026-06-26** — doujin/derivative completeness. **Durability via a READ ENDPOINT**
+  (`GET /works/{project_id}/derivative-context`), NOT `work.settings` (PO-approved deviation: the spec is
+  ALREADY durably stored in `divergence_spec`/`entity_override` + read server-side by
+  `build_derivative_context`; duplicating into settings = a 2nd SSOT). `useDerivativeContext` now reads the
+  durable endpoint (survives reload). B2a banner chips+popover; **B2b fixed a latent id-space bug** (badges
+  classified by knowledge node `e.id` while overrides key on `glossary_entity_id` → every row read INHERITED)
+  + durable `now:` delta. 498 FE + 42 BE-works tests green.
+- **B2c (adapt-with-overrides) DEFERRED → `D-DERIVATIVE-ADAPT-FROM-SOURCE`** (gate reason 2 — needs a real
+  design): `generate_chapter` requires a scene plan in the DERIVATIVE project, but the inherited spine
+  chapters have none (COW, no clone), so a naive generate call mostly 400s `NO_CHAPTER_PLAN`; and re-generating
+  *inherited* (read-only, pre-branch) chapters is semantically muddy. A true "adapt from source" feature must
+  generate FROM the source chapter's content + overrides (or gate to chapters with a derivative plan) — its
+  own task, not a generate-call.
+- **~27 open**, mapped above. **Next: WS-E (a11y batch) → WS-C (PM position-remap) → WS-B3 → WS-D.**
 - **⚠ Audit correction (from detailed-design research):** **`D-T5.4-CHAT-HOIST` is NOT resolved** — the
   co-writer chat SSE still runs its own `fetch`/`ReadableStream` in `useChatMessages` *below* the windowing
   layer; it survives a float but is **killed by a pop-out**. Re-opened (see WS-D detailed design).

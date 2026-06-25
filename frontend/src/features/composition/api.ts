@@ -4,7 +4,7 @@
 import { apiBase, apiJson } from '../../api';
 import type {
   AutoGeneration, CanonRule, ChapterGeneration, CommitDecomposePayload, CorrectionBody, CorrectionStats,
-  DecomposePreview, DeriveBody, GenerationJob, Grounding, GroundingItemType, NarrativeThread, OutlineNode, PinAction, ProgressStats, PublishGate, ReferenceList, ReferenceSearch, ReferenceSource, SceneLink, SceneLinkKind, StructureTemplate, StyleProfile, StyleScope, VoiceProfile, Work, WorkResolution,
+  DecomposePreview, DeriveBody, DerivativeContextResponse, GenerationJob, Grounding, GroundingItemType, NarrativeThread, OutlineNode, PinAction, ProgressStats, PublishGate, ReferenceList, ReferenceSearch, ReferenceSource, SceneLink, SceneLinkKind, StructureTemplate, StyleProfile, StyleScope, VoiceProfile, Work, WorkResolution,
 } from './types';
 
 // A3 decompose preview request (cycle 13).
@@ -123,6 +123,14 @@ export const compositionApi = {
     return apiJson<Work>(`${BASE}/works/${sourceProjectId}/derive`, {
       method: 'POST', body: JSON.stringify(body), token,
     });
+  },
+  // WS-B2 — the DURABLE derivative-context read-back. Surfaces the persisted
+  // divergence_spec + entity_override[] (the SAME substrate the packer applies)
+  // for a derivative Work, so the studio banner/chips/popover + was→now grounding
+  // deltas survive a reload (no longer derive-time-cache-only). is_derivative=false
+  // for a greenfield Work (everything else empty).
+  getDerivativeContext(projectId: string, token: string): Promise<DerivativeContextResponse> {
+    return apiJson<DerivativeContextResponse>(`${BASE}/works/${projectId}/derivative-context`, { token });
   },
   getOutline(projectId: string, token: string, includeArchived = false): Promise<{ nodes: OutlineNode[]; scene_links: SceneLink[] }> {
     const qs = includeArchived ? '?include_archived=true' : '';

@@ -144,7 +144,7 @@ export function CompositionPanel({ bookId, chapterId, token, onAccept, sceneId: 
   // C24 (dị bản M0) — derivative-context controller. Surfaces the dị bản banner +
   // the 2-layer (INHERITED/OVERRIDDEN) grounding badges when the open Work is a
   // derivative (source_work_id set). No-ops for a greenfield Work.
-  const derivativeCtx = useDerivativeContext(work);
+  const derivativeCtx = useDerivativeContext(work, token);
   // EXPLICIT handler from the wizard's onDerived (NOT a useEffect-for-events): switch
   // the studio to the new derivative + refresh the resolution cache so a later
   // re-resolve also sees it.

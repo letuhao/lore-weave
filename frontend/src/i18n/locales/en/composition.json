@@ -478,7 +478,22 @@
     "noCanonEntities": "No canon entities to inherit yet.",
     "referenceSpine": "Reference spine (read-only)",
     "referenceSpineHint": "Original chapters up to your branch point — adapt them manually. They are not inserted into your draft.",
-    "openReference": "Open"
+    "openReference": "Open",
+    "deltaNow": "now",
+    "taxonomy": {
+      "pov_shift": "POV shift",
+      "character_transform": "Character transform",
+      "au": "Alternate universe"
+    },
+    "chipPov": "POV · {{id}}",
+    "chipOverrides": "{{n}} override(s)",
+    "specPopover": "Divergence spec",
+    "specBranch": "Branch",
+    "specBranchStart": "from start",
+    "specTaxonomy": "Taxonomy",
+    "specPov": "POV anchor",
+    "specOverrides": "Overrides",
+    "specCanonRules": "Canon rules"
   },
   "promote": {
     "ephemeral": "What-if (exploring)",
