@@ -98,16 +98,23 @@ func (s *Server) putDefaultModel(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "DEFAULT_MODELS_VALIDATION", "invalid user_model_id")
 		return
 	}
-	// The model must be the caller's, active, and carry the capability. Match BOTH
-	// capability_flags schemas (canonical {"cap":true} + legacy {"_capability":"cap"})
-	// so a model the FE picker offered isn't rejected here.
-	capJSON := fmt.Sprintf(`{"%s":true}`, capability)
+	// The model must be the caller's, active, and carry the capability. `planner` is a
+	// ROLE, not a model capability flag — no model is tagged {"planner":true}; any chat
+	// (ideally tool-calling) model can plan. So validate the 'planner' default against the
+	// 'chat' flag instead (D-PLAN-PLANNER-DEFAULT-FE), matching the FE picker which offers
+	// the user's chat models. Match BOTH capability_flags schemas (canonical {"cap":true}
+	// + legacy {"_capability":"cap"}) so a model the picker offered isn't rejected here.
+	validateCap := capability
+	if capability == "planner" {
+		validateCap = "chat"
+	}
+	capJSON := fmt.Sprintf(`{"%s":true}`, validateCap)
 	var exists int
 	err = s.pool.QueryRow(r.Context(), `
 SELECT 1 FROM user_models
 WHERE user_model_id=$1 AND owner_user_id=$2 AND is_active=true
   AND (capability_flags @> $3::jsonb OR capability_flags->>'_capability' = $4)`,
-		modelID, userID, capJSON, capability).Scan(&exists)
+		modelID, userID, capJSON, validateCap).Scan(&exists)
 	if err == pgx.ErrNoRows {
 		writeError(w, http.StatusBadRequest, "DEFAULT_MODELS_MODEL_INVALID", "model not found, inactive, or lacks the capability")
 		return

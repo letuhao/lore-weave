@@ -4,7 +4,7 @@ import { toast } from 'sonner';
 import { useAuth } from '@/auth';
 import { aiModelsApi, type UserModel } from '@/features/ai-models/api';
 import { AddModelCta } from '@/components/shared/AddModelCta';
-import { defaultModelsApi, RERANK_CAPABILITY } from './api';
+import { defaultModelsApi, RERANK_CAPABILITY, PLANNER_CAPABILITY, CHAT_CAPABILITY } from './api';
 
 /**
  * Per-user DEFAULT model per capability (rerank/embedding). Restores the
@@ -16,6 +16,10 @@ import { defaultModelsApi, RERANK_CAPABILITY } from './api';
 
 interface RowProps {
   capability: string;
+  /** Capability used to LIST candidate models — defaults to `capability`. Differs only
+   *  for `planner`, a role with no model flag: it lists chat models but saves under
+   *  `planner`. */
+  listCapability?: string;
   label: string;
   hint: string;
   value: string | null;
@@ -23,10 +27,11 @@ interface RowProps {
   disabled?: boolean;
 }
 
-function DefaultModelRow({ capability, label, hint, value, onChange, disabled }: RowProps) {
+function DefaultModelRow({ capability, listCapability, label, hint, value, onChange, disabled }: RowProps) {
   const { t } = useTranslation('settings');
   const { accessToken } = useAuth();
   const [models, setModels] = useState<UserModel[] | null>(null);
+  const fetchCapability = listCapability ?? capability;
 
   useEffect(() => {
     if (!accessToken) {
@@ -35,7 +40,7 @@ function DefaultModelRow({ capability, label, hint, value, onChange, disabled }:
     }
     let cancelled = false;
     aiModelsApi
-      .listUserModels(accessToken, { capability, include_inactive: false })
+      .listUserModels(accessToken, { capability: fetchCapability, include_inactive: false })
       .then((r) => {
         if (!cancelled) setModels(r.items);
       })
@@ -45,7 +50,7 @@ function DefaultModelRow({ capability, label, hint, value, onChange, disabled }:
     return () => {
       cancelled = true;
     };
-  }, [accessToken, capability]);
+  }, [accessToken, fetchCapability]);
 
   const loading = models === null;
   // Show the saved value even if it's no longer in the registry, so the user sees
@@ -81,7 +86,7 @@ function DefaultModelRow({ capability, label, hint, value, onChange, disabled }:
       {!loading && (models?.length ?? 0) === 0 && (
         <span className="flex flex-col gap-1 text-[11px] text-muted-foreground">
           {t('defaultModels.empty', { defaultValue: 'No capable models configured.' })}
-          <AddModelCta capability={capability} variant="link" />
+          <AddModelCta capability={fetchCapability} variant="link" />
         </span>
       )}
       <span className="text-[11px] text-muted-foreground">{hint}</span>
@@ -141,7 +146,7 @@ export function DefaultModelsCard() {
         </h3>
         <p className="text-xs text-muted-foreground">
           {t('defaultModels.subtitle', {
-            defaultValue: 'Used by raw search when no per-project model is set (BYOK — your own models).',
+            defaultValue: 'Your per-user fallback models (BYOK — your own). Used when no per-scope model is set.',
           })}
         </p>
       </div>
@@ -160,6 +165,22 @@ export function DefaultModelsCard() {
           onChange={(id) => void save(RERANK_CAPABILITY, id)}
           disabled={saving}
         />
+        {/* Planner default (D-PLAN-PLANNER-DEFAULT-FE): the model the glossary AI plans
+            with. Lists chat models (planner is a role, not a model flag); pin a STRONG
+            one so the planner isn't stuck on an arbitrary/weak fallback. */}
+        <div className="mt-4">
+          <DefaultModelRow
+            capability={PLANNER_CAPABILITY}
+            listCapability={CHAT_CAPABILITY}
+            label={t('defaultModels.planner', { defaultValue: 'Default planner' })}
+            hint={t('defaultModels.plannerHint', {
+              defaultValue: 'The chat model the glossary assistant uses to build multi-step plans. Pick a strong, tool-capable model — otherwise planning falls back to an arbitrary chat model and often fails.',
+            })}
+            value={defaults[PLANNER_CAPABILITY] ?? null}
+            onChange={(id) => void save(PLANNER_CAPABILITY, id)}
+            disabled={saving}
+          />
+        </div>
       </div>
     </div>
   );

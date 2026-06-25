@@ -93,6 +93,10 @@ export type InventoryModel = {
 // filters on exactly this token).
 export const RERANK_CAPABILITY = 'rerank' as const;
 export const EMBEDDING_CAPABILITY = 'embedding' as const;
+// `planner` is a per-user default ROLE (the model glossary_plan plans with), not a model
+// capability flag — so the picker LISTS the user's chat models but SAVES under 'planner'.
+export const PLANNER_CAPABILITY = 'planner' as const;
+export const CHAT_CAPABILITY = 'chat' as const;
 
 // Per-user DEFAULT model per capability (rerank/embedding). The default is the
 // user's own BYOK user_model, resolved server-side by provider-registry — it
