@@ -24,6 +24,7 @@ import Superscript from '@tiptap/extension-superscript';
 import GlobalDragHandle from 'tiptap-extension-global-drag-handle';
 import { GrammarExtension, setGrammarEnabled } from './GrammarPlugin';
 import { GlossaryExtension, setGlossaryEntities, setGlossaryEnabled, getGlossaryCount } from './GlossaryPlugin';
+import { HeatmapExtension, setHeatmapTerms, setHeatmapEnabled, type HeatTerm } from './HeatmapPlugin';
 import { CitationMark } from './CitationMark';
 import { FocusLineExtension } from './FocusLineExtension';
 
@@ -40,6 +41,10 @@ export interface TiptapEditorHandle {
   setGlossaryEnabled: (enabled: boolean) => void;
   /** Get current glossary match count */
   getGlossaryCount: () => number;
+  /** T5.2 — set the mention-heatmap terms (entity name + density band) for tinting */
+  setHeatmapTerms: (terms: HeatTerm[]) => void;
+  /** T5.2 — toggle the in-prose mention heatmap tinting */
+  setHeatmapEnabled: (enabled: boolean) => void;
   /** ARCH-1 C6 — current selection (ProseMirror positions + selected text),
    *  or null if the editor isn't ready. `empty` = a caret with no selection. */
   getSelection: () => { from: number; to: number; empty: boolean; text: string } | null;
@@ -125,6 +130,7 @@ export const TiptapEditor = forwardRef<TiptapEditorHandle, TiptapEditorProps>(
         GlossaryExtension,
         SlashMenuExtension,
         FocusLineExtension, // T5.1 — marks the caret's block `.focusline` (PM decoration)
+        HeatmapExtension, // T5.2 — tints entity names by mention-density band (inert until enabled)
       ],
       content: initialContent.current,
       editable,
@@ -231,6 +237,12 @@ export const TiptapEditor = forwardRef<TiptapEditorHandle, TiptapEditorProps>(
       getGlossaryCount: () => {
         if (editor) return getGlossaryCount(editor);
         return 0;
+      },
+      setHeatmapTerms: (terms: HeatTerm[]) => {
+        if (editor) setHeatmapTerms(editor, terms);
+      },
+      setHeatmapEnabled: (enabled: boolean) => {
+        if (editor) setHeatmapEnabled(editor, enabled);
       },
       // ARCH-1 C6 — editor write-back for AG-UI frontend tools. These mutate
       // through editor.chain() (NOT setContent), so onUpdate fires and the doc

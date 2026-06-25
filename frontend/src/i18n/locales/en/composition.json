@@ -228,6 +228,7 @@
     "addTag": "+ tag",
     "remove": "Remove"
   },
+  "heatmap": { "title": "Mention heatmap", "inProse": "In prose" },
   "progressPanel": {
     "loading": "Loading progress…",
     "error": "Couldn't load progress.",

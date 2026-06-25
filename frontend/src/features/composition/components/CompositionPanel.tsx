@@ -47,11 +47,15 @@ type Props = {
    *  Selection Tools ground on it. Controlled-or-internal — omitted → own state. */
   sceneId?: string;
   onSceneChange?: (id: string) => void;
+  /** T5.2: the in-prose mention-heatmap toggle, owned by ChapterEditorPage (it drives
+   *  the editor decoration); the GroundingPanel renders the toggle control. */
+  heatmapEnabled?: boolean;
+  onToggleHeatmap?: () => void;
 };
 
 type SubTab = 'compose' | 'cowriter' | 'assemble' | 'planner' | 'beats' | 'graph' | 'cast' | 'relmap' | 'timeline' | 'arc' | 'worldmap' | 'grounding' | 'style' | 'canon' | 'threads' | 'progress' | 'quality' | 'settings';
 
-export function CompositionPanel({ bookId, chapterId, token, onAccept, sceneId: sceneIdProp, onSceneChange }: Props) {
+export function CompositionPanel({ bookId, chapterId, token, onAccept, sceneId: sceneIdProp, onSceneChange, heatmapEnabled, onToggleHeatmap }: Props) {
   const { t } = useTranslation('composition');
   const qc = useQueryClient();
   const resolution = useWorkResolution(bookId, token);
@@ -551,7 +555,13 @@ export function CompositionPanel({ bookId, chapterId, token, onAccept, sceneId: 
               token={token}
             />
           )}
-          <GroundingPanel projectId={work.project_id} sceneId={effectiveScene} token={token} />
+          <GroundingPanel
+            projectId={work.project_id}
+            sceneId={effectiveScene}
+            token={token}
+            heatmapEnabled={heatmapEnabled}
+            onToggleHeatmap={onToggleHeatmap}
+          />
         </div>
         <div className={tab === 'style' ? '' : 'hidden'}>
           <StyleVoicePanel

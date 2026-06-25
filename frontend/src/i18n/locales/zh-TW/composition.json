@@ -228,6 +228,7 @@
     "addTag": "+ 標籤",
     "remove": "移除"
   },
+  "heatmap": { "title": "提及熱度圖", "inProse": "正文中" },
   "progressPanel": {
     "loading": "載入進度中…",
     "error": "無法載入進度。",

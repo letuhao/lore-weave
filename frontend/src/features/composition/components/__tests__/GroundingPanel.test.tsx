@@ -3,12 +3,16 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { GroundingPanel } from '../GroundingPanel';
 import type { Grounding, GroundingItem } from '../../types';
 
-const { mockGrounding, setAction } = vi.hoisted(() => ({
+const { mockGrounding, setAction, mockHeat } = vi.hoisted(() => ({
   mockGrounding: { isLoading: false, data: undefined as unknown },
   setAction: vi.fn(),
+  mockHeat: { data: [] as Array<{ id: string; name: string; mention_count: number; band: number }> },
 }));
 vi.mock('../../hooks/useWork', () => ({ useGrounding: () => mockGrounding }));
 vi.mock('../../hooks/useGroundingPins', () => ({ useGroundingPins: () => ({ setAction, isPending: false }) }));
+// T5.2 — the panel now reads the mention heatmap; default empty (section hidden) so
+// the T3.4 pin/exclude assertions are unaffected.
+vi.mock('../../hooks/useMentionHeatmap', () => ({ useMentionHeatmap: () => mockHeat }));
 
 function grounding(over: Partial<Grounding> = {}): Grounding {
   return {
@@ -22,7 +26,7 @@ const item = (over: Partial<GroundingItem> & Pick<GroundingItem, 'type' | 'id'>)
   label: 'x', pinned: false, excluded: false, ...over,
 });
 
-beforeEach(() => { setAction.mockReset(); mockGrounding.isLoading = false; mockGrounding.data = undefined; });
+beforeEach(() => { setAction.mockReset(); mockGrounding.isLoading = false; mockGrounding.data = undefined; mockHeat.data = []; });
 
 describe('GroundingPanel pin/exclude (T3.4)', () => {
   it('renders addressable items as rows; non-addressable blocks stay opaque, addressable ones are not duplicated', () => {
@@ -82,5 +86,28 @@ describe('GroundingPanel pin/exclude (T3.4)', () => {
     expect(screen.getByTestId('composition-grounding-block-present')).toBeTruthy();
     expect(screen.getByTestId('composition-grounding-block-canon')).toBeTruthy();
     expect(screen.queryByTestId('grounding-items-present')).toBeNull();
+  });
+});
+
+describe('GroundingPanel mention heatmap (T5.2)', () => {
+  it('renders heatmap rows when data is present, hidden when empty', () => {
+    mockGrounding.data = grounding();
+    const { rerender } = render(<GroundingPanel projectId="p" sceneId="s" token="t" />);
+    expect(screen.queryByTestId('composition-heatmap')).toBeNull(); // empty → hidden
+    mockHeat.data = [{ id: 'a', name: 'Kael', mention_count: 100, band: 4 }];
+    rerender(<GroundingPanel projectId="p" sceneId="s" token="t" />);
+    expect(screen.getByTestId('composition-heatmap')).toBeTruthy();
+    expect(screen.getByTestId('heatmap-row-a')).toBeTruthy();
+  });
+
+  it('the in-prose toggle is shown only when onToggleHeatmap is provided and fires it', () => {
+    mockGrounding.data = grounding();
+    mockHeat.data = [{ id: 'a', name: 'Kael', mention_count: 50, band: 3 }];
+    const onToggle = vi.fn();
+    const { rerender } = render(<GroundingPanel projectId="p" sceneId="s" token="t" />);
+    expect(screen.queryByTestId('heatmap-prose-toggle')).toBeNull(); // no handler → no toggle
+    rerender(<GroundingPanel projectId="p" sceneId="s" token="t" heatmapEnabled={false} onToggleHeatmap={onToggle} />);
+    fireEvent.click(screen.getByTestId('heatmap-prose-toggle'));
+    expect(onToggle).toHaveBeenCalled();
   });
 });

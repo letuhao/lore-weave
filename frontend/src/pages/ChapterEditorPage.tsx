@@ -37,6 +37,7 @@ import { SelectionToolbar } from '@/features/composition/components/SelectionToo
 import { InlineAiLayer } from '@/features/composition/components/InlineAiLayer';
 import { useWorkResolution, useChapterScenes } from '@/features/composition/hooks/useWork';
 import { useReportProgress, useEnsureBaseline } from '@/features/composition/hooks/useProgress';
+import { useMentionHeatmap } from '@/features/composition/hooks/useMentionHeatmap';
 import { useFocusMode } from '@/features/composition/hooks/useFocusMode';
 import { aiModelsApi } from '@/features/ai-models/api';
 import { useQuery } from '@tanstack/react-query';
@@ -229,6 +230,7 @@ export function ChapterEditorPage() {
   // Glossary integration
   const [glossaryEntities, setGlossaryEntities] = useState<EntityNameEntry[]>([]);
   const [glossaryEnabled, setGlossaryEnabledState] = useState(true);
+  const [heatmapEnabled, setHeatmapEnabled] = useState(false); // T5.2 — in-prose mention tint (off by default)
   const editorElRef = useRef<HTMLElement | null>(null);
 
   // Left sidebar
@@ -374,6 +376,22 @@ export function ChapterEditorPage() {
   useEffect(() => {
     tiptapEditorRef.current?.setGlossaryEnabled(glossaryEnabled);
   }, [glossaryEnabled]);
+
+  // T5.2 — mention heatmap: push the top-cast density terms + the toggle into the
+  // editor so the in-prose tinting tracks both the data and the on/off state. The
+  // GroundingPanel shares this same query (cache) for its bar list.
+  const heatmap = useMentionHeatmap(composeProjectId ?? undefined, accessToken);
+  useEffect(() => {
+    // tint the canonical name AND every alias (mention_count counts all surface
+    // forms; canonical-only would miss most occurrences in alias-heavy CJK prose)
+    const terms = (heatmap.data ?? []).flatMap((h) =>
+      [h.name, ...h.aliases].map((name) => ({ name, band: h.band })),
+    );
+    tiptapEditorRef.current?.setHeatmapTerms(terms);
+  }, [heatmap.data]);
+  useEffect(() => {
+    tiptapEditorRef.current?.setHeatmapEnabled(heatmapEnabled);
+  }, [heatmapEnabled]);
 
   // Capture editor DOM element for autocomplete positioning (after editor mounts)
   useEffect(() => {
@@ -1120,6 +1138,8 @@ export function ChapterEditorPage() {
                   onAccept={(text) => tiptapEditorRef.current?.insertAtCursor(text)}
                   sceneId={activeSceneId}
                   onSceneChange={setActiveSceneId}
+                  heatmapEnabled={heatmapEnabled}
+                  onToggleHeatmap={() => setHeatmapEnabled((v) => !v)}
                 />
               )}
             </div>

@@ -6,6 +6,7 @@ import { useTranslation } from 'react-i18next';
 import type { TFunction } from 'i18next';
 import { useGrounding } from '../hooks/useWork';
 import { useGroundingPins } from '../hooks/useGroundingPins';
+import { useMentionHeatmap } from '../hooks/useMentionHeatmap';
 import type { GroundingItem, GroundingItemType } from '../types';
 
 const BLOCK_ORDER = ['canon', 'present', 'threads', 'beat', 'recent', 'memory', 'lore', 'guide'];
@@ -15,10 +16,14 @@ const GROUP_LABEL: Record<GroundingItemType, string> = {
   present: 'Cast in scene', canon: 'Canon rules', lore: 'Lore',
 };
 
-export function GroundingPanel({ projectId, sceneId, token }: { projectId: string; sceneId: string; token: string | null }) {
+export function GroundingPanel({ projectId, sceneId, token, heatmapEnabled, onToggleHeatmap }: {
+  projectId: string; sceneId: string; token: string | null;
+  heatmapEnabled?: boolean; onToggleHeatmap?: () => void;
+}) {
   const { t } = useTranslation('composition');
   const grounding = useGrounding(projectId, sceneId, '', token, !!sceneId);
   const pins = useGroundingPins(projectId, sceneId, token);
+  const heatmap = useMentionHeatmap(projectId, token);
 
   if (!sceneId) return <div className="p-3 text-sm text-neutral-500">{t('needScene', { defaultValue: 'Pick a scene' })}</div>;
   if (grounding.isLoading) return <div className="p-3 text-sm text-neutral-500">{t('loadingGrounding', { defaultValue: 'Loading grounding…' })}</div>;
@@ -48,6 +53,41 @@ export function GroundingPanel({ projectId, sceneId, token }: { projectId: strin
       )}
       {nonC3aWarnings.length > 0 && (
         <div data-testid="composition-grounding-warning" className="rounded bg-amber-50 p-1.5 text-xs text-amber-800 dark:bg-amber-950 dark:text-amber-300">{nonC3aWarnings.join(' · ')}</div>
+      )}
+
+      {/* T5.2 — mention heatmap: top cast by mention frequency + an in-prose tint toggle. */}
+      {(heatmap.data?.length ?? 0) > 0 && (
+        <div data-testid="composition-heatmap">
+          <div className="flex items-center justify-between px-1 py-0.5">
+            <span className="text-xs font-medium uppercase tracking-wide text-neutral-500">
+              {t('heatmap.title', { defaultValue: 'Mention heatmap' })}
+            </span>
+            {onToggleHeatmap && (
+              <button
+                type="button" data-testid="heatmap-prose-toggle" aria-pressed={!!heatmapEnabled}
+                onClick={onToggleHeatmap}
+                className={`rounded px-2 py-0.5 text-[11px] ${heatmapEnabled ? 'bg-primary text-primary-foreground' : 'text-neutral-500 hover:text-neutral-700'}`}
+              >
+                {t('heatmap.inProse', { defaultValue: 'In prose' })}
+              </button>
+            )}
+          </div>
+          <ul className="flex flex-col gap-0.5">
+            {heatmap.data!.map((h) => {
+              const max = heatmap.data![0]?.mention_count || 1;
+              const pct = Math.max(4, Math.round((h.mention_count / max) * 100));
+              return (
+                <li key={h.id} data-testid={`heatmap-row-${h.id}`} className="flex items-center gap-2 px-1 text-xs">
+                  <span className="w-24 shrink-0 truncate" title={h.name}>{h.name}</span>
+                  <span className="h-2 flex-1 overflow-hidden rounded-full bg-neutral-100 dark:bg-neutral-800">
+                    <span className={`block h-full rounded-full heat-band-${h.band}`} style={{ width: `${pct}%` }} />
+                  </span>
+                  <span className="w-8 shrink-0 text-right tabular-nums text-neutral-500">{h.mention_count}</span>
+                </li>
+              );
+            })}
+          </ul>
+        </div>
       )}
 
       {/* T3.4 — addressable items, grouped by type, each pin/exclude-able. */}

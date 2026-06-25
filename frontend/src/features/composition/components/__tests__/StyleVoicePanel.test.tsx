@@ -70,7 +70,8 @@ describe('StyleVoicePanel (T3.5)', () => {
   });
 
   it('adds a new character voice from the cast search', () => {
-    h.castData = [{ entity_id: 'e2', canonical_name: 'Mira' }];
+    // knowledge entity-list items key on `id` (the producer schema), not `entity_id`
+    h.castData = [{ id: 'e2', canonical_name: 'Mira' }];
     renderPanel();
     fireEvent.change(screen.getByTestId('voice-search'), { target: { value: 'Mi' } });
     fireEvent.click(screen.getByTestId('voice-add-e2'));

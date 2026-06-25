@@ -267,6 +267,16 @@
   opacity: 1;
 }
 
+/* T5.2 — in-prose mention heatmap: tint an entity's name by its density band
+   (0 = rarely mentioned → 4 = dominant). Inert unless the heatmap extension is
+   enabled (no `.heat-band` decorations are emitted otherwise). */
+.heat-band { border-radius: 2px; padding: 0 1px; }
+.heat-band-0 { background: rgba(59, 130, 246, 0.10); }   /* low — faint blue */
+.heat-band-1 { background: rgba(132, 204, 22, 0.16); }
+.heat-band-2 { background: rgba(234, 179, 8, 0.20); }
+.heat-band-3 { background: rgba(249, 115, 22, 0.24); }
+.heat-band-4 { background: rgba(239, 68, 68, 0.28); }    /* high — red */
+
 .tiptap-content p {
   margin-bottom: 0.75em;
 }

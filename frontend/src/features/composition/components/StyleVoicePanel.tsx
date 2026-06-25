@@ -108,7 +108,9 @@ export function StyleVoicePanel({ projectId, token, chapterId, sceneId }: Props)
 
   const voices = voiceQ.data ?? [];
   const haveVoice = new Set(voices.map((v) => v.entity_id));
-  const matches = (cast.entities.data ?? []).filter((e: any) => !haveVoice.has(e.entity_id)).slice(0, 6);
+  // knowledge entity-list items key on `id` (NOT `entity_id` — that's EntityNameEntry);
+  // the same id the cast/voice profiles use.
+  const matches = (cast.entities.data ?? []).filter((e: any) => !haveVoice.has(e.id)).slice(0, 6);
 
   return (
     <div data-testid="style-voice-panel" className="flex flex-col gap-4 p-3">
@@ -151,10 +153,10 @@ export function StyleVoicePanel({ projectId, token, chapterId, sceneId }: Props)
           <div className="flex flex-wrap gap-1">
             {matches.map((e: any) => (
               <button
-                key={e.entity_id}
-                data-testid={`voice-add-${e.entity_id}`}
+                key={e.id}
+                data-testid={`voice-add-${e.id}`}
                 onClick={() => {
-                  setVoice.mutate({ entity_id: e.entity_id, entity_name: e.canonical_name || e.name || '?', tags: [] });
+                  setVoice.mutate({ entity_id: e.id, entity_name: e.canonical_name || e.name || '?', tags: [] });
                   setSearch('');
                 }}
                 className="rounded-full border px-2 py-0.5 text-[11px] hover:bg-muted"

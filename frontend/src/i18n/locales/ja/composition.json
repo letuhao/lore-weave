@@ -228,6 +228,7 @@
     "addTag": "+ タグ",
     "remove": "削除"
   },
+  "heatmap": { "title": "言及ヒートマップ", "inProse": "本文中" },
   "progressPanel": {
     "loading": "進捗を読み込み中…",
     "error": "進捗を読み込めませんでした。",
