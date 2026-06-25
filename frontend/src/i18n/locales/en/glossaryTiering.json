@@ -145,6 +145,50 @@
     "entity_kind": "kind",
     "entity_attribute": "attribute"
   },
+  "research": {
+    "heading": "Web research",
+    "launch": "Research entities",
+    "none": "No research job for this kind yet.",
+    "status": {
+      "pending": "Queued",
+      "running": "Researching…",
+      "paused_user": "Paused",
+      "complete": "Complete",
+      "failed": "Failed",
+      "cancelled": "Cancelled"
+    },
+    "progress": "{{done}}/{{total}} entities",
+    "searches": "{{count}} searches",
+    "sources": "{{count}} sources",
+    "est_cost": "~${{cost}}",
+    "complete_summary": "Done — {{sources}} sources across {{entities}} entities",
+    "failed_prefix": "Failed",
+    "action": { "pause": "Pause", "resume": "Resume", "retry": "Retry", "cancel": "Cancel" },
+    "modal": {
+      "title": "Research all {{kind}} entities",
+      "subtitle": "Each entity gets one web search; top sources attach as draft evidence.",
+      "query_label": "Query",
+      "query_placeholder": "e.g. biography and history of {name}",
+      "query_hint": "{name} is replaced with each entity's name.",
+      "query_required": "A query is required",
+      "max_entities": "Max entities",
+      "max_results": "Sources each",
+      "entities": "{{planned}} of {{total}} entities",
+      "cost": "Est. cost ~${{cost}}",
+      "indicative": "indicative",
+      "estimating": "Estimating…",
+      "starting": "Starting…",
+      "submit": "Start research",
+      "cancel": "Cancel"
+    },
+    "toast": {
+      "started": "Research started",
+      "paused": "Research paused",
+      "resumed": "Research resumed",
+      "cancelled": "Research cancelled",
+      "failed": "Action failed"
+    }
+  },
   "del": {
     "genre_title": "Delete \"{{name}}\"?",
     "genre_body": "Removes this genre from the book and deprecates its attributes and kind links. Existing entities keep their data; you can re-adopt the genre later.",

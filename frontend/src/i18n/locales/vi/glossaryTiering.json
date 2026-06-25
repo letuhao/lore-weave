@@ -145,6 +145,50 @@
     "entity_kind": "loại",
     "entity_attribute": "thuộc tính"
   },
+  "research": {
+    "heading": "Nghiên cứu web",
+    "launch": "Nghiên cứu thực thể",
+    "none": "Chưa có tác vụ nghiên cứu cho loại này.",
+    "status": {
+      "pending": "Đang chờ",
+      "running": "Đang nghiên cứu…",
+      "paused_user": "Tạm dừng",
+      "complete": "Hoàn tất",
+      "failed": "Thất bại",
+      "cancelled": "Đã hủy"
+    },
+    "progress": "{{done}}/{{total}} thực thể",
+    "searches": "{{count}} lượt tìm",
+    "sources": "{{count}} nguồn",
+    "est_cost": "~${{cost}}",
+    "complete_summary": "Xong — {{sources}} nguồn trên {{entities}} thực thể",
+    "failed_prefix": "Thất bại",
+    "action": { "pause": "Tạm dừng", "resume": "Tiếp tục", "retry": "Thử lại", "cancel": "Hủy" },
+    "modal": {
+      "title": "Nghiên cứu tất cả thực thể {{kind}}",
+      "subtitle": "Mỗi thực thể được tìm web một lần; các nguồn hàng đầu được đính kèm làm bằng chứng nháp.",
+      "query_label": "Truy vấn",
+      "query_placeholder": "vd: tiểu sử và lịch sử của {name}",
+      "query_hint": "{name} được thay bằng tên của từng thực thể.",
+      "query_required": "Cần một truy vấn",
+      "max_entities": "Số thực thể tối đa",
+      "max_results": "Số nguồn mỗi thực thể",
+      "entities": "{{planned}} trên {{total}} thực thể",
+      "cost": "Chi phí ước tính ~${{cost}}",
+      "indicative": "tham khảo",
+      "estimating": "Đang ước tính…",
+      "starting": "Đang bắt đầu…",
+      "submit": "Bắt đầu nghiên cứu",
+      "cancel": "Hủy"
+    },
+    "toast": {
+      "started": "Đã bắt đầu nghiên cứu",
+      "paused": "Đã tạm dừng nghiên cứu",
+      "resumed": "Đã tiếp tục nghiên cứu",
+      "cancelled": "Đã hủy nghiên cứu",
+      "failed": "Thao tác thất bại"
+    }
+  },
   "del": {
     "genre_title": "Xóa \"{{name}}\"?",
     "genre_body": "Gỡ thể loại này khỏi cuốn sách và ngừng dùng các thuộc tính cùng liên kết loại của nó. Các thực thể hiện có vẫn giữ dữ liệu; bạn có thể áp dụng lại thể loại sau.",

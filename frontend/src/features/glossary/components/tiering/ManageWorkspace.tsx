@@ -11,6 +11,7 @@ import { AttributeEditorPanel } from './AttributeEditorPanel';
 import { AdoptPicklistModal } from './AdoptPicklistModal';
 import { QuickCreateModal } from './QuickCreateModal';
 import { ConfirmDialog } from '@/components/shared';
+import { KindResearchPanel } from './KindResearchPanel';
 
 /** 01-manage: the book ontology Manage workspace. Genre → kind → attribute drilldown
  *  over the book-local ontology, with adopt copy-down + book-tier attribute editing.
@@ -210,6 +211,15 @@ export function ManageWorkspace({ bookId }: { bookId: string }) {
         }
         onRevert={(id) => guard(() => ont.revertAttribute(id), t('toast.reverted'), 'toast.revert_failed')}
       />
+
+      {/* D-BATCH-RESEARCH-JOB — batch web-research over all entities of the selected kind. */}
+      {kindId && (
+        <KindResearchPanel
+          bookId={bookId}
+          kindId={kindId}
+          kindName={kinds.find((k) => k.book_kind_id === kindId)?.name ?? ''}
+        />
+      )}
 
       {showAdopt && (
         <AdoptPicklistModal

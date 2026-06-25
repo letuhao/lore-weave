@@ -145,6 +145,50 @@
     "entity_kind": "種類",
     "entity_attribute": "屬性"
   },
+  "research": {
+    "heading": "網路研究",
+    "launch": "研究實體",
+    "none": "此種類尚無研究工作。",
+    "status": {
+      "pending": "排隊中",
+      "running": "研究中…",
+      "paused_user": "已暫停",
+      "complete": "完成",
+      "failed": "失敗",
+      "cancelled": "已取消"
+    },
+    "progress": "{{done}}/{{total}} 個實體",
+    "searches": "{{count}} 次搜尋",
+    "sources": "{{count}} 個來源",
+    "est_cost": "~${{cost}}",
+    "complete_summary": "完成 — 在 {{entities}} 個實體上取得 {{sources}} 個來源",
+    "failed_prefix": "失敗",
+    "action": { "pause": "暫停", "resume": "繼續", "retry": "重試", "cancel": "取消" },
+    "modal": {
+      "title": "研究所有 {{kind}} 實體",
+      "subtitle": "每個實體進行一次網路搜尋；前幾個來源會附加為草稿證據。",
+      "query_label": "查詢",
+      "query_placeholder": "例如：{name} 的生平與歷史",
+      "query_hint": "{name} 會替換為每個實體的名稱。",
+      "query_required": "需要一個查詢",
+      "max_entities": "最多實體數",
+      "max_results": "每個的來源數",
+      "entities": "{{total}} 個實體中的 {{planned}} 個",
+      "cost": "預估成本 ~${{cost}}",
+      "indicative": "概估",
+      "estimating": "估算中…",
+      "starting": "啟動中…",
+      "submit": "開始研究",
+      "cancel": "取消"
+    },
+    "toast": {
+      "started": "已開始研究",
+      "paused": "已暫停研究",
+      "resumed": "已繼續研究",
+      "cancelled": "已取消研究",
+      "failed": "操作失敗"
+    }
+  },
   "del": {
     "genre_title": "刪除「{{name}}」？",
     "genre_body": "從這本書移除此類型，並停用其屬性與種類連結。既有實體仍保留資料；你之後可重新採用此類型。",

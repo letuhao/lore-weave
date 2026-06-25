@@ -145,6 +145,50 @@
     "entity_kind": "種別",
     "entity_attribute": "属性"
   },
+  "research": {
+    "heading": "ウェブ調査",
+    "launch": "エンティティを調査",
+    "none": "この種別の調査ジョブはまだありません。",
+    "status": {
+      "pending": "待機中",
+      "running": "調査中…",
+      "paused_user": "一時停止",
+      "complete": "完了",
+      "failed": "失敗",
+      "cancelled": "キャンセル"
+    },
+    "progress": "{{done}}/{{total}} 件",
+    "searches": "{{count}} 回検索",
+    "sources": "{{count}} 件のソース",
+    "est_cost": "~${{cost}}",
+    "complete_summary": "完了 — {{entities}} 件のエンティティから {{sources}} 件のソース",
+    "failed_prefix": "失敗",
+    "action": { "pause": "一時停止", "resume": "再開", "retry": "再試行", "cancel": "キャンセル" },
+    "modal": {
+      "title": "{{kind}} の全エンティティを調査",
+      "subtitle": "各エンティティに1回のウェブ検索を行い、上位ソースを下書き証拠として添付します。",
+      "query_label": "クエリ",
+      "query_placeholder": "例: {name} の経歴と歴史",
+      "query_hint": "{name} は各エンティティの名前に置き換えられます。",
+      "query_required": "クエリは必須です",
+      "max_entities": "最大エンティティ数",
+      "max_results": "各ソース数",
+      "entities": "{{total}} 件中 {{planned}} 件",
+      "cost": "推定コスト ~${{cost}}",
+      "indicative": "目安",
+      "estimating": "見積もり中…",
+      "starting": "開始中…",
+      "submit": "調査を開始",
+      "cancel": "キャンセル"
+    },
+    "toast": {
+      "started": "調査を開始しました",
+      "paused": "調査を一時停止しました",
+      "resumed": "調査を再開しました",
+      "cancelled": "調査をキャンセルしました",
+      "failed": "操作に失敗しました"
+    }
+  },
   "del": {
     "genre_title": "「{{name}}」を削除しますか？",
     "genre_body": "このジャンルを書籍から削除し、その属性と種別リンクを廃止します。既存のエンティティのデータは保持され、後でジャンルを再導入できます。",
