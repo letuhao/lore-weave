@@ -139,6 +139,10 @@ export function BuildGraphDialog({
   const [wizardStep, setWizardStep] = useState<WizardStep>(1);
   const [targets, setTargets] = useState<ExtractionTarget[]>([]);
   const [concurrency, setConcurrency] = useState<string>('');
+  // Reasoning enable/disable for the extraction LLM. Default OFF — extraction is a
+  // JSON pipeline and hidden thinking burns the output budget / can corrupt the
+  // array (see D-LLM-FAILURE-RATE). Enable only for hard content on a reasoning model.
+  const [reasoningEnabled, setReasoningEnabled] = useState(false);
   // C13 — glossary pinning controller (owns the pinned-set + stats query).
   // Stats fetch is gated on the dialog being open AND a linked book existing
   // (the BE 422s no_book otherwise; pinning has no meaning without a book).
@@ -173,6 +177,7 @@ export function BuildGraphDialog({
     setWizardStep(1);
     setTargets([]);
     setConcurrency('');
+    setReasoningEnabled(false);
     // C13 — clear the pinned-set + filters per open.
     pinning.reset();
     setDebounced({ scope: openScope, llm: openLlm });
@@ -425,6 +430,8 @@ export function BuildGraphDialog({
         ...(concurrency.trim() !== ''
           ? { concurrency_level: Number(concurrency) }
           : {}),
+        // Reasoning enable/disable — only send when ON (BE default is 'none').
+        ...(reasoningEnabled ? { reasoning_effort: 'medium' as const } : {}),
         // C13 — pinned glossary entity ids (force-injected into every window's
         // known_entities). Only send when the user pinned at least one.
         ...(pinning.pinnedIdList.length > 0
@@ -701,6 +708,30 @@ export function BuildGraphDialog({
           />
           <span className="text-[11px] text-muted-foreground">
             {t('projects.buildDialog.concurrency.hint')}
+          </span>
+        </label>
+
+        {/* Reasoning enable/disable — default OFF (extraction is a JSON pipeline). */}
+        <label className="flex items-start gap-2">
+          <input
+            type="checkbox"
+            checked={reasoningEnabled}
+            onChange={(e) => setReasoningEnabled(e.target.checked)}
+            className="mt-0.5"
+            data-testid="build-reasoning-toggle"
+          />
+          <span className="flex flex-col gap-0.5">
+            <span className="text-xs font-medium">
+              {t('projects.buildDialog.reasoning.label', {
+                defaultValue: 'Enable model reasoning (thinking)',
+              })}
+            </span>
+            <span className="text-[11px] text-muted-foreground">
+              {t('projects.buildDialog.reasoning.hint', {
+                defaultValue:
+                  'Off by default — extraction returns JSON, and hidden thinking can burn the output budget. Enable only for hard content on a reasoning model.',
+              })}
+            </span>
           </span>
         </label>
         </div>

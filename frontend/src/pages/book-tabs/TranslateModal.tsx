@@ -376,7 +376,26 @@ export function TranslateModal({ open, onClose, bookId, onJobCreated, preselecte
                       {t('translate.translate_needed', { count: neededIds.length })}
                     </button>
                   ) : (
-                    <p className="text-[11px] text-emerald-500">{t('translate.needs_none')}</p>
+                    // Everything is already translated — the primary "translate needed"
+                    // CTA is gone, which left re-translation a dead-end (buried behind
+                    // Advanced → Force). Offer a direct force-retranslate of the SELECTED
+                    // chapters (the per-chapter page preselects this chapter) so making a
+                    // fresh translation is always one click, not a hunt.
+                    <div className="space-y-1.5">
+                      <p className="text-[11px] text-emerald-500">{t('translate.needs_none')}</p>
+                      <button
+                        onClick={() => void submitJob([...selectedChapters], true)}
+                        disabled={!configReady || selectedChapters.size === 0 || submitting}
+                        className="inline-flex w-full items-center justify-center gap-1.5 rounded-md border border-primary/40 bg-primary/5 px-4 py-2 text-xs font-medium text-primary hover:bg-primary/10 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                        data-testid="translate-retranslate-selected"
+                      >
+                        {submitting && <Loader2 className="h-3.5 w-3.5 animate-spin" />}
+                        {t('translate.retranslate_selected', {
+                          count: selectedChapters.size,
+                          defaultValue: 'Re-translate selected ({{count}})',
+                        })}
+                      </button>
+                    </div>
                   )}
                 </div>
               )}

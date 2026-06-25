@@ -166,6 +166,11 @@ export interface ExtractionStartPayload {
   targets?: ExtractionTarget[];
   // C12 — passthrough cap on parallel LLM calls. Omitted ⇒ unbounded.
   concurrency_level?: number;
+  // Reasoning enable/disable for the extraction LLM. 'none' (default) disables
+  // hidden thinking — best for the JSON extraction pipeline (thinking can burn the
+  // output budget / corrupt the array). 'medium' enables it for hard content. The
+  // BE clamps to the caller's grant. Omitted ⇒ BE default ('none').
+  reasoning_effort?: 'none' | 'low' | 'medium' | 'high';
   // C13 — glossary entity ids to pin (force-inject into every extraction
   // window's known_entities). Omitted / empty ⇒ no pins (back-compat).
   pinned_glossary_entity_ids?: string[];
