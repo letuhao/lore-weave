@@ -232,6 +232,7 @@
   "provenance": { "title": "AI 來源", "unreviewedCount": "{{n}} 項未審閱", "show": "顯示", "hide": "隱藏", "markAllReviewed": "全部標記為已審閱", "ai": "AI", "reviewed": "已審閱", "unreviewed": "未審閱", "clickToReview": "（點擊以審閱）" },
   "flywheel": "飛輪",
   "flywheelPanel": { "loading": "載入中…", "empty": "發佈章節以擴充你的正典 — 新的實體、關係與事件將顯示於此。", "subtitle": "最近一次發佈擴充了正典:", "entities": "實體", "relations": "關係", "events": "事件", "highlights": "新亮點", "kind": { "entity": "實體", "event": "事件", "relation": "關係" } },
+  "view": { "power_view": "全景檢視", "back_to_editor": "返回編輯器" },
   "progressPanel": {
     "loading": "載入進度中…",
     "error": "無法載入進度。",

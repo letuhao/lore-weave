@@ -112,6 +112,16 @@ describe('CompositionPanel sub-tab CSS-hidden (visibility-transition)', () => {
     expect(mounts.compose).toBe(1);
     expect(mounts.assemble).toBe(1);
   });
+
+  it('the Power-view button opens the full-screen overlay and Back-to-editor closes it (T5.5)', () => {
+    renderPanel();
+    expect(screen.queryByTestId('power-view-overlay')).toBeNull(); // closed by default
+    fireEvent.click(screen.getByTestId('composition-power-view-btn'));
+    // overlay portals to document.body; screen queries the whole document
+    expect(screen.getByTestId('power-view-overlay')).toBeInTheDocument();
+    fireEvent.click(screen.getByTestId('power-view-close'));
+    expect(screen.queryByTestId('power-view-overlay')).toBeNull(); // unmounted (fresh-each-open)
+  });
 });
 
 // Overflow-containment regression: in a narrow (resizable) right panel the 16-tab

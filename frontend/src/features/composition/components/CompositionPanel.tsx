@@ -23,6 +23,7 @@ import { SceneGraphCanvas } from './SceneGraphCanvas';
 import { CastCodexPanel } from './CastCodexPanel';
 import { RelationshipMap } from './RelationshipMap';
 import { FlywheelPanel } from './FlywheelPanel';
+import { PowerViewOverlay } from './PowerViewOverlay';
 import { TimelineView } from './TimelineView';
 import { CharacterArcView } from './CharacterArcView';
 import { WorldMap } from './WorldMap';
@@ -84,6 +85,8 @@ export function CompositionPanel({ bookId, chapterId, token, onAccept, sceneId: 
   // T2.5: the Cast search is lifted here so the World Map can "open a place in the
   // codex" by prefilling its name + switching to the cast tab.
   const [castSearch, setCastSearch] = useState('');
+  // T5.5 — the Story Map Power-view overlay (mount-on-open, fresh each time).
+  const [powerViewOpen, setPowerViewOpen] = useState(false);
   // T3.1: the compose guide is lifted here so the co-writer chat's "Use as guide"
   // can pre-fill it (then switch to the compose tab).
   const [composeGuide, setComposeGuide] = useState('');
@@ -464,6 +467,16 @@ export function CompositionPanel({ bookId, chapterId, token, onAccept, sceneId: 
             {t(tb, { defaultValue: tb })}
           </button>
         ))}
+        {/* T5.5 — open the story-map views full-screen */}
+        <button
+          type="button"
+          data-testid="composition-power-view-btn"
+          className="ml-auto shrink-0 self-center whitespace-nowrap rounded px-2 py-0.5 text-xs text-neutral-500 hover:bg-neutral-100 hover:text-neutral-700 dark:hover:bg-neutral-800"
+          onClick={() => setPowerViewOpen(true)}
+          title={t('view.power_view', { defaultValue: 'Power view' })}
+        >
+          ⛶ {t('view.power_view', { defaultValue: 'Power view' })}
+        </button>
       </TabScrollStrip>
 
       <div data-testid="composition-content" className="min-h-0 min-w-0 flex-1 overflow-auto [overflow-wrap:anywhere]">
@@ -614,6 +627,17 @@ export function CompositionPanel({ bookId, chapterId, token, onAccept, sceneId: 
           />
         </div>
       </div>
+      {/* T5.5 — Story Map Power-view overlay (mount-on-open, fresh each open) */}
+      {powerViewOpen && (
+        <PowerViewOverlay
+          work={work}
+          bookId={bookId}
+          chapterId={chapterId}
+          token={token}
+          onClose={() => setPowerViewOpen(false)}
+          onViewCast={(name) => { setCastSearch(name); setTab('cast'); setPowerViewOpen(false); }}
+        />
+      )}
     </div>
   );
 }
