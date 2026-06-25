@@ -254,6 +254,14 @@ func (s *Server) ontologyStateSummary(ctx context.Context, bookID uuid.UUID) (st
 	if len(genres) > 0 {
 		summary += "\nExisting genres (a delete_genre may target one of these): " + strings.Join(genres, ", ")
 	}
+	// Pending merge candidates (detected duplicate clusters) so the planner can
+	// orchestrate the merge action over them via merge_candidate — copying a stable
+	// candidate_id, never inventing entity references (slice 2). Best-effort: this is
+	// ADDITIVE context, so a candidate-query hiccup degrades to "no candidates shown"
+	// rather than failing an ontology plan that never needed them.
+	if cands, cerr := s.loadMergeCandidates(ctx, bookID, "proposed"); cerr == nil && len(cands) > 0 {
+		summary += "\n\n" + mergeCandidatesSummary(cands)
+	}
 	return summary, nil
 }
 
@@ -268,6 +276,43 @@ func planPreviewRows(plan plankit.Plan) []previewRow {
 		rows = append(rows, previewRow{Label: "note", Value: n})
 	}
 	return rows
+}
+
+// mergeCandidatesSummary renders pending duplicate clusters for the planner: each with
+// its stable candidate_id (to copy into a merge_candidate op), member names + entity-ids
+// + link counts, the detector's suggested winner, and the rationale. Capped so a large
+// backlog can't blow the prompt — the planner works the top clusters by score.
+func mergeCandidatesSummary(cands []mergeCandidateView) string {
+	const maxShown = 25
+	var b strings.Builder
+	b.WriteString("Pending merge candidates — detected duplicate clusters you MAY resolve with merge_candidate (copy the candidate_id verbatim):")
+	n := len(cands)
+	if n > maxShown {
+		n = maxShown
+	}
+	for i := 0; i < n; i++ {
+		c := cands[i]
+		b.WriteString(fmt.Sprintf("\n- candidate_id=%s [%s] score=%.2f", c.CandidateID, c.KindCode, c.Score))
+		parts := make([]string, 0, len(c.Members))
+		for _, m := range c.Members {
+			name := m.Name
+			if strings.TrimSpace(name) == "" {
+				name = "(unnamed)"
+			}
+			parts = append(parts, fmt.Sprintf("%q(id=%s, %d links)", name, m.EntityID, m.ChapterLinks))
+		}
+		b.WriteString("\n    members: " + strings.Join(parts, ", "))
+		if c.SuggestedWinner != "" {
+			b.WriteString("\n    suggested winner id: " + c.SuggestedWinner)
+		}
+		if r := strings.TrimSpace(c.Rationale); r != "" {
+			b.WriteString("\n    why: " + r)
+		}
+	}
+	if len(cands) > maxShown {
+		b.WriteString(fmt.Sprintf("\n(+%d more not shown — resolve the top ones first)", len(cands)-maxShown))
+	}
+	return b.String()
 }
 
 // plannerSystemPrompt is the planner's instruction. It fixes the output format, the
@@ -288,6 +333,7 @@ OP TYPES (the ONLY allowed types) and their params:
 - "add_attributes": {"kind_code":"<existing slug>","attributes":[{...same attribute shape...}]} — add attributes to an ALREADY-EXISTING kind ONLY.
 - "delete_genre": {"genre_code":"<existing slug>"} — REMOVE a genre listed under "Existing genres" (cascades: deprecates its attributes + kind links). DESTRUCTIVE.
 - "delete_kind": {"kind_code":"<existing slug>"} — REMOVE a kind listed under "Existing kinds" (cascades: deprecates its attributes). DESTRUCTIVE.
+- "merge_candidate": {"candidate_id":"<uuid from Pending merge candidates>","winner_id":"<optional uuid>"} — RESOLVE one detected duplicate cluster by merging its members into one. Copy candidate_id VERBATIM from the "Pending merge candidates" block; emit ONE merge_candidate op per cluster you want merged. winner_id is OPTIONAL — omit it to keep the detector's suggested winner; supply a member's id only to override. DESTRUCTIVE (the losers are soft-deleted; reversible).
 
 (EDITING an attribute, and DELETING an individual attribute, are NOT available in a plan yet — the current-state summary lists kinds + genres but not individual attributes, so a plan cannot reliably target one. If the goal needs an attribute edit/delete, describe it in "notes" rather than emitting an op.)
 
@@ -296,7 +342,7 @@ HARD RULES:
 - EVERY attribute MUST have a clear, specific "description" — it is the extraction instruction. Never emit an attribute without one.
 - A NEW kind's attributes go INSIDE its create_kinds entry. Do NOT also emit add_attributes for a kind you create in this same plan.
 - Give each kind 3-6 defining attributes.
-- DESTRUCTIVE ops (delete_*) — emit one ONLY when the user EXPLICITLY asks to remove/delete/drop something that already exists in CURRENT BOOK STATE. Never delete to "clean up", "replace", or "reorganize" unless the user asked for the removal in those words. Reference only codes present in CURRENT BOOK STATE. The user confirms each delete individually before it runs.
+- DESTRUCTIVE ops (delete_*, merge_candidate) — emit one ONLY when the user EXPLICITLY asks to remove/delete/drop or to dedup/merge duplicates. Never delete or merge to "clean up", "replace", or "reorganize" unless the user asked for it in those words. Reference only codes/candidate_ids present in CURRENT BOOK STATE. The user confirms each destructive op individually before it runs.
 - Use ONLY the op types above. If the goal needs something else, put a sentence in "notes" — NEVER invent an op type.
 
 CURRENT BOOK STATE:

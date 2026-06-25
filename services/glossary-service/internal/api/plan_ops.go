@@ -92,6 +92,17 @@ type deleteAttributeParams struct {
 	Code      string `json:"code"`
 }
 
+// mergeCandidateParams orchestrates the EXISTING merge action over a DETECTED duplicate
+// cluster (slice 2 — "planner orchestrates existing actions"). The planner copies a
+// `candidate_id` from the "Pending merge candidates" context block (one stable PK per
+// cluster — never an ambiguous entity name or a transcribed member UUID). The handler
+// resolves the candidate's CURRENT members at execute time; winner_id is an optional
+// override of the detector's suggested winner.
+type mergeCandidateParams struct {
+	CandidateID string `json:"candidate_id"`
+	WinnerID    string `json:"winner_id,omitempty"`
+}
+
 // planRegistry builds the glossary Phase-1 op registry consumed by the kit's
 // executor. Each Handler is self-transactional (delegates to a core that owns its
 // own tx) and maps core errors to the kit sentinels.
@@ -306,7 +317,116 @@ func (s *Server) planRegistry() mcp.Registry {
 				return map[string]any{"deleted": "attribute", "code": p.KindCode + "/" + p.Code}, nil
 			},
 		},
+
+		// tier 5 — merge_candidate (orchestrates the EXISTING merge action over a
+		// DETECTED duplicate cluster; Destructive — journaled + reversible). One op per
+		// candidate so each gets its own enable toggle (slice 2).
+		mcp.OpSpec{
+			Type:        "merge_candidate",
+			Tier:        5,
+			Destructive: true,
+			Idempotent:  true,
+			IdentityKey: mergeCandidateIdentity,
+			Validate:    validateMergeCandidate,
+			Handler: func(ctx context.Context, bookID, userID uuid.UUID, params json.RawMessage, _ string) (any, error) {
+				var p mergeCandidateParams
+				if err := json.Unmarshal(params, &p); err != nil {
+					return nil, fmt.Errorf("%w: %v", mcp.ErrBadParams, err)
+				}
+				candID, perr := uuid.Parse(strings.TrimSpace(p.CandidateID))
+				if perr != nil {
+					return nil, fmt.Errorf("%w: candidate_id %q is not a uuid", mcp.ErrBadParams, p.CandidateID)
+				}
+				members, suggested, status, found, lerr := s.loadCandidateForMerge(ctx, bookID, candID)
+				if lerr != nil {
+					return nil, lerr // → ReasonInternal (abort)
+				}
+				if !found {
+					return nil, fmt.Errorf("%w: merge candidate %s not found in this book", mcp.ErrNotFound, candID)
+				}
+				if status != "proposed" {
+					return nil, fmt.Errorf("%w: merge candidate %s is already %s", mcp.ErrAlreadyDone, candID, status)
+				}
+				winner, werr := resolveMergeWinner(members, suggested, strings.TrimSpace(p.WinnerID))
+				if werr != nil {
+					return nil, werr
+				}
+				losers := make([]string, 0, len(members)-1)
+				for _, m := range members {
+					if m != winner {
+						losers = append(losers, m.String())
+					}
+				}
+				if len(losers) == 0 {
+					return nil, fmt.Errorf("%w: merge candidate %s has no losers (need ≥2 members)", mcp.ErrBadParams, candID)
+				}
+				results, merr := s.mergeEntitiesCore(ctx, bookID, winner, losers, userID)
+				if errors.Is(merr, errMergeBadWinner) {
+					return nil, fmt.Errorf("%w: the winner entity is no longer live", mcp.ErrNotFound)
+				}
+				if merr != nil {
+					return nil, merr // → ReasonInternal (abort)
+				}
+				// Idempotency that does NOT depend on the candidate's status flip (which is
+				// markCandidatesMerged's best-effort, possibly-lagging post-commit effect):
+				// if NO loser was actually merged — every one was already merged away — the
+				// re-run is a no-op → already_done.
+				merged := 0
+				for _, r := range results {
+					if r.Status == "merged" {
+						merged++
+					}
+				}
+				if merged == 0 {
+					return nil, fmt.Errorf("%w: every member of candidate %s was already merged", mcp.ErrAlreadyDone, candID)
+				}
+				return map[string]any{"candidate_id": candID.String(), "winner_id": winner.String(), "merged": merged, "results": results}, nil
+			},
+		},
 	)
+}
+
+// resolveMergeWinner picks the winner for a merge_candidate op: an explicit winner_id
+// (when it is a member of the cluster) overrides; otherwise the detector's suggested
+// winner (when it is a member); otherwise ErrBadParams — the plan must name a winner.
+func resolveMergeWinner(members []uuid.UUID, suggested *uuid.UUID, winnerID string) (uuid.UUID, error) {
+	isMember := func(id uuid.UUID) bool {
+		for _, m := range members {
+			if m == id {
+				return true
+			}
+		}
+		return false
+	}
+	if winnerID != "" {
+		w, err := uuid.Parse(winnerID)
+		if err != nil {
+			return uuid.Nil, fmt.Errorf("%w: winner_id %q is not a uuid", mcp.ErrBadParams, winnerID)
+		}
+		if !isMember(w) {
+			return uuid.Nil, fmt.Errorf("%w: winner_id is not a member of this candidate", mcp.ErrBadParams)
+		}
+		return w, nil
+	}
+	if suggested != nil && isMember(*suggested) {
+		return *suggested, nil
+	}
+	return uuid.Nil, fmt.Errorf("%w: candidate has no suggested winner — the plan must supply winner_id", mcp.ErrBadParams)
+}
+
+// loadCandidateForMerge reads one merge candidate's CURRENT members + suggested winner +
+// status, book-scoped (found=false when the id is unknown / belongs to another book).
+func (s *Server) loadCandidateForMerge(ctx context.Context, bookID, candidateID uuid.UUID) (members []uuid.UUID, suggested *uuid.UUID, status string, found bool, err error) {
+	row := s.pool.QueryRow(ctx, `
+		SELECT member_entity_ids, suggested_winner_entity_id, status
+		FROM merge_candidates WHERE book_id = $1 AND candidate_id = $2`, bookID, candidateID)
+	if err := row.Scan(&members, &suggested, &status); err != nil {
+		if isNoRows(err) {
+			return nil, nil, "", false, nil
+		}
+		return nil, nil, "", false, err
+	}
+	return members, suggested, status, true, nil
 }
 
 // ── deprecation-aware delete resolvers (idempotency, §5) ──────────────────────
@@ -481,6 +601,14 @@ func deleteAttributeIdentity(params json.RawMessage) (string, error) {
 	return strings.TrimSpace(p.KindCode) + "/" + strings.TrimSpace(p.GenreCode) + "/" + strings.TrimSpace(p.Code), nil
 }
 
+func mergeCandidateIdentity(params json.RawMessage) (string, error) {
+	var p mergeCandidateParams
+	if err := json.Unmarshal(params, &p); err != nil {
+		return "", err
+	}
+	return strings.TrimSpace(p.CandidateID), nil // one merge per candidate (dedupe)
+}
+
 // ── Validate (S4 — slug code + mandatory description) ─────────────────────────
 
 func validateCreateKinds(params json.RawMessage) error {
@@ -567,6 +695,25 @@ func validateDeleteAttribute(params json.RawMessage) error {
 	}
 	if !slugPattern.MatchString(strings.TrimSpace(p.Code)) {
 		return fmt.Errorf("delete_attribute: code %q must match ^[a-z0-9_]+$", p.Code)
+	}
+	return nil
+}
+
+// validateMergeCandidate checks the candidate_id (and optional winner_id) are UUIDs.
+// The candidate need not exist at validate time — a stale id surfaces at execute as
+// target_gone (§5), the same shape as the delete ops.
+func validateMergeCandidate(params json.RawMessage) error {
+	var p mergeCandidateParams
+	if err := json.Unmarshal(params, &p); err != nil {
+		return err
+	}
+	if _, err := uuid.Parse(strings.TrimSpace(p.CandidateID)); err != nil {
+		return fmt.Errorf("merge_candidate: candidate_id %q must be a uuid (copy it from the Pending merge candidates block)", p.CandidateID)
+	}
+	if w := strings.TrimSpace(p.WinnerID); w != "" {
+		if _, err := uuid.Parse(w); err != nil {
+			return fmt.Errorf("merge_candidate: winner_id %q must be a uuid", p.WinnerID)
+		}
 	}
 	return nil
 }

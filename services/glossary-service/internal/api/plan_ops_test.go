@@ -20,7 +20,7 @@ func TestPlanRegistry_BuildsWithoutPanic(t *testing.T) {
 	reg := s.planRegistry()
 	// Phase 1 additive ops + Phase 2 slice-1 destructive deletes.
 	wantAdditive := []string{"adopt_genres", "create_kinds", "add_attributes", "edit_attribute"}
-	wantDestructive := []string{"delete_genre", "delete_kind", "delete_attribute"}
+	wantDestructive := []string{"delete_genre", "delete_kind", "delete_attribute", "merge_candidate"}
 	for _, typ := range append(append([]string{}, wantAdditive...), wantDestructive...) {
 		if _, ok := reg[typ]; !ok {
 			t.Fatalf("registry missing op %q", typ)

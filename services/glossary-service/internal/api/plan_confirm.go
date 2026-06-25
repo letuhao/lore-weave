@@ -182,8 +182,50 @@ func (s *Server) previewPlanOp(ctx context.Context, bookID uuid.UUID, op mcp.Op,
 			return previewRow{Label: "delete attribute", Value: "?", Note: "unreadable op"}
 		}
 		return previewRow{Label: "delete attribute", Value: p.KindCode + "/" + p.Code, Note: "deprecates this attribute"}
+	case "merge_candidate":
+		return s.previewMergeCandidateOp(ctx, bookID, op)
 	default:
 		return previewRow{Label: op.Type, Value: op.ID}
+	}
+}
+
+// previewMergeCandidateOp resolves a merge_candidate op to its winner-kept + losers-
+// merged-away names so the human verifies the destructive merge before enabling it.
+func (s *Server) previewMergeCandidateOp(ctx context.Context, bookID uuid.UUID, op mcp.Op) previewRow {
+	var p mergeCandidateParams
+	if err := json.Unmarshal(op.Params, &p); err != nil {
+		return previewRow{Label: "merge", Value: "?", Note: "unreadable op"}
+	}
+	candID, perr := uuid.Parse(strings.TrimSpace(p.CandidateID))
+	if perr != nil {
+		return previewRow{Label: "merge", Value: p.CandidateID, Note: "invalid candidate id"}
+	}
+	members, suggested, status, found, _ := s.loadCandidateForMerge(ctx, bookID, candID)
+	if !found || status != "proposed" {
+		return previewRow{Label: "merge", Value: p.CandidateID, Note: "already resolved — will be skipped"}
+	}
+	winner, werr := resolveMergeWinner(members, suggested, strings.TrimSpace(p.WinnerID))
+	if werr != nil {
+		return previewRow{Label: "merge", Value: p.CandidateID, Note: "no winner — will fail unless winner_id is supplied"}
+	}
+	winnerName, _ := entityNameAndAliases(ctx, s.pool, winner)
+	if winnerName == "" {
+		winnerName = winner.String()
+	}
+	losers := make([]string, 0, len(members)-1)
+	for _, m := range members {
+		if m != winner {
+			n, _ := entityNameAndAliases(ctx, s.pool, m)
+			if n == "" {
+				n = m.String()
+			}
+			losers = append(losers, n)
+		}
+	}
+	return previewRow{
+		Label: "merge → keep " + winnerName,
+		Value: "merge away: " + strings.Join(losers, ", "),
+		Note:  "soft-deletes the losers (names folded into the winner); reversible/journaled",
 	}
 }
 
