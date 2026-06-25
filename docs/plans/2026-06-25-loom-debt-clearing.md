@@ -166,7 +166,15 @@ Batch the LOWs: `D-T3.1-SCENE-HINT`/`GUIDE-APPEND`, `D-T3.3-SLASH-CONTINUE`/`CHA
   - **⚠ Pre-existing (out of scope, NOT mine):** the full FE suite has **9 `world i18n` parity failures**
     (`world` / MMO-track namespace — e.g. `graph.loadFailed`, `populate.addFailed` missing in non-en locales).
     Untouched by this work; a separate track's i18n debt. Track there, not here.
-- **~25 open**, mapped above. **Next: WS-B3 (scene-graph what-if spec) → WS-D (multi-window hardening).**
+- ✅ **WS-B3 SPEC AUTHORED 2026-06-26 (no build, as locked)** — code-grounded feature spec
+  [2026-06-26-scene-graph-whatif.md](../specs/2026-06-26-scene-graph-whatif.md): the on-canvas what-if is an
+  **ephemeral branch preview that PROMOTES into the existing derivative flow** (`useWhatIfPromotion` →
+  `deriveWork`), NOT a second persistence path — which resolves the wizard-overlap question. Dashed branch +
+  per-node judge badge (reuse WS-B1 critic/canon-gate) + generate-take ghosts + promote/discard (zero residue
+  before promote). Mostly FE + orchestration; the only net-new BE is seeding outline nodes in the derivative
+  project at promote (prefer reusing `createNode`, no new endpoint). **§8 carries the one open product call**
+  (build it as its own L/XL cycle vs. record on-canvas as conscious won't-build with the wizard canonical).
+- **~24 open**, mapped above. **Next: WS-D (multi-window hardening) — the final workstream.**
 - **⚠ Audit correction (from detailed-design research):** **`D-T5.4-CHAT-HOIST` is NOT resolved** — the
   co-writer chat SSE still runs its own `fetch`/`ReadableStream` in `useChatMessages` *below* the windowing
   layer; it survives a float but is **killed by a pop-out**. Re-opened (see WS-D detailed design).
