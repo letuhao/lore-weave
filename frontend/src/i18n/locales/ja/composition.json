@@ -136,7 +136,12 @@
     "pacing": "テンポ",
     "model": "テイクのモデル",
     "noModel": "モデルなし",
-    "closePreview": "閉じる"
+    "closePreview": "閉じる",
+    "promote": "昇格",
+    "promoting": "昇格中…",
+    "promoted": "もしもの異版に昇格しました。",
+    "promotedPartial": "昇格しましたが、{{n}} 件のテイクを追加できませんでした。",
+    "promoteHint": "昇格するにはテイクを1つ以上生成してください"
   },
   "cast": "登場人物",
   "codex": {

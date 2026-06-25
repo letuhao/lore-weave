@@ -136,7 +136,12 @@
     "pacing": "Nhịp độ",
     "model": "Mô hình tạo bản",
     "noModel": "Không có mô hình",
-    "closePreview": "Đóng"
+    "closePreview": "Đóng",
+    "promote": "Thăng cấp",
+    "promoting": "Đang thăng cấp…",
+    "promoted": "Đã thăng cấp thành dị bản giả định.",
+    "promotedPartial": "Đã thăng cấp, nhưng {{n}} bản không thể thêm được.",
+    "promoteHint": "Tạo ít nhất một bản để thăng cấp"
   },
   "cast": "Nhân vật",
   "codex": {

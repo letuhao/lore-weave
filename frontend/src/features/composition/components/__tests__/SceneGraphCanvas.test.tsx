@@ -20,7 +20,7 @@ vi.mock('../../hooks/useOutline', () => ({
 }));
 vi.mock('../../hooks/useWork', () => ({ useSetWorkSettings: () => setSettings }));
 vi.mock('react-router-dom', () => ({ useNavigate: () => navigateFn }));
-vi.mock('sonner', () => ({ toast: { error: vi.fn() } }));
+vi.mock('sonner', () => ({ toast: { error: vi.fn(), success: vi.fn() } }));
 // M2 — self-contained model picker query + the take-generation orchestration. Mock the
 // models API (so the picker has a model) and useWhatIfTakes (so Generate is a spy — the
 // hook itself is unit-tested in useWhatIfTakes.test).
@@ -33,7 +33,35 @@ vi.mock('../../../ai-models/api', () => ({
 }));
 const { generateTakeSpy } = vi.hoisted(() => ({ generateTakeSpy: vi.fn() }));
 vi.mock('../../hooks/useWhatIfTakes', () => ({
-  useWhatIfTakes: () => ({ generateTake: generateTakeSpy, generating: false }),
+  // generateTake also flips the alt to 'ready' (the real hook does this async) so the
+  // Promote button can enable in tests.
+  useWhatIfTakes: (opts: { updateAlt: (id: string, p: unknown) => void }) => ({
+    generateTake: (altId: string, anchor: string, model: unknown) => {
+      generateTakeSpy(altId, anchor, model);
+      opts.updateAlt(altId, { status: 'ready', take: { ghost: 'g', jobId: 'j', judge: null } });
+    },
+    generating: false,
+  }),
+}));
+// M3 — mock the promote bridge (fires its onPromoted with a fake derivative) + the
+// node-seeding api so the canvas promote flow is testable without the real cross-service path.
+const { promoteSpy, onPromotedSpy, createNodeSpy } = vi.hoisted(() => ({
+  promoteSpy: vi.fn(), onPromotedSpy: vi.fn(), createNodeSpy: vi.fn().mockResolvedValue({}),
+}));
+vi.mock('../../hooks/useWhatIfPromotion', () => ({
+  useWhatIfPromotion: (args: { onPromoted: (d: unknown) => void }) => ({
+    promote: () => { promoteSpy(); args.onPromoted({ project_id: 'deriv-p', book_id: 'b' }); },
+    isPromoting: false, canPromote: true, buildDeriveBody: vi.fn(), error: null,
+  }),
+}));
+vi.mock('../../api', () => ({ compositionApi: { createNode: (...a: unknown[]) => createNodeSpy(...a) } }));
+// M3 — the chapters lookup (branch_point = the anchor scene's CHAPTER sort_order).
+vi.mock('../../../books/api', () => ({
+  booksApi: {
+    listChapters: vi.fn().mockResolvedValue({
+      items: [{ chapter_id: 'C1', sort_order: 0, title: 'Ch1' }, { chapter_id: 'C2', sort_order: 1, title: 'Ch2' }],
+    }),
+  },
 }));
 
 function node(over: Partial<OutlineNode>): OutlineNode {
@@ -51,6 +79,7 @@ const Graph = () => (
       work={work}
       bookId="b"
       token="t"
+      onPromoted={onPromotedSpy}
     />
   </QueryClientProvider>
 );
@@ -93,7 +122,8 @@ describe('SceneGraphCanvas (T1.3)', () => {
 
   beforeEach(() => {
     createSceneLink.mutate.mockReset(); deleteSceneLink.mutate.mockReset();
-    setSettings.mutate.mockReset(); navigateFn.mockReset(); generateTakeSpy.mockReset(); (toast.error as ReturnType<typeof vi.fn>).mockReset();
+    setSettings.mutate.mockReset(); navigateFn.mockReset(); generateTakeSpy.mockReset();
+    promoteSpy.mockReset(); onPromotedSpy.mockReset(); createNodeSpy.mockClear(); (toast.error as ReturnType<typeof vi.fn>).mockReset();
     outlineHook.mockReturnValue({ data: scenes });
     linksHook.mockReturnValue({ data: links });
   });
@@ -200,6 +230,28 @@ describe('SceneGraphCanvas (T1.3)', () => {
     const altId = screen.getByTestId('whatif-alt-node').getAttribute('data-alt')!;
     fireEvent.click(screen.getByTestId(`whatif-alt-generate-${altId}`));
     expect(generateTakeSpy).toHaveBeenCalledWith(altId, 's1', expect.objectContaining({ modelRef: 'm1' }));
+  });
+
+  it('Promote: disabled until a take is ready; then derives + seeds the take as a node + switches (M3)', async () => {
+    render(<Graph />);
+    clickNode('s1');
+    fireEvent.click(screen.getByTestId('scenegraph-whatif-start'));
+    await waitFor(() => expect((screen.getByTestId('scenegraph-whatif-model') as HTMLSelectElement).value).toBe('m1'));
+    // before any take is ready, Promote is disabled
+    expect((screen.getByTestId('scenegraph-whatif-promote') as HTMLButtonElement).disabled).toBe(true);
+    const altId = screen.getByTestId('whatif-alt-node').getAttribute('data-alt')!;
+    fireEvent.click(screen.getByTestId(`whatif-alt-generate-${altId}`)); // mock flips alt → ready
+    // Promote enables only once a take is ready AND the chapters query has loaded
+    // (branch_point = the anchor's chapter sort_order).
+    const promoteBtn = () => screen.getByTestId('scenegraph-whatif-promote') as HTMLButtonElement;
+    await waitFor(() => expect(promoteBtn().disabled).toBe(false));
+    fireEvent.click(promoteBtn());
+    expect(promoteSpy).toHaveBeenCalled();
+    // seeded the ready take as a scene node in the DERIVATIVE project...
+    await waitFor(() => expect(createNodeSpy).toHaveBeenCalledWith('deriv-p', expect.objectContaining({ kind: 'scene' }), 't'));
+    // ...then switched the studio (AFTER seeding settles) + discarded the branch
+    await waitFor(() => expect(onPromotedSpy).toHaveBeenCalledWith(expect.objectContaining({ project_id: 'deriv-p' })));
+    expect(screen.queryByTestId('whatif-alt-node')).toBeNull();
   });
 
   it('auto-discards the branch if its anchor scene is deleted (no orphan + no stale branch_point)', () => {

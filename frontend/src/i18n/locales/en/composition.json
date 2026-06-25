@@ -136,7 +136,12 @@
     "pacing": "Pacing",
     "model": "Take model",
     "noModel": "No model",
-    "closePreview": "Close"
+    "closePreview": "Close",
+    "promote": "Promote",
+    "promoting": "Promoting…",
+    "promoted": "Promoted to a what-if derivative.",
+    "promotedPartial": "Promoted, but {{n}} take(s) couldn’t be added.",
+    "promoteHint": "Generate at least one take to promote"
   },
   "cast": "Cast",
   "codex": {

@@ -136,7 +136,12 @@
     "pacing": "節奏",
     "model": "版本模型",
     "noModel": "無模型",
-    "closePreview": "關閉"
+    "closePreview": "關閉",
+    "promote": "提升",
+    "promoting": "提升中…",
+    "promoted": "已提升為假設異本。",
+    "promotedPartial": "已提升，但有 {{n}} 個版本無法加入。",
+    "promoteHint": "請先生成至少一個版本才能提升"
   },
   "cast": "角色",
   "codex": {

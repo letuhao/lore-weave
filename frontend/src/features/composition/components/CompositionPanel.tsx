@@ -687,7 +687,7 @@ export function CompositionPanel({ bookId, chapterId, token, onAccept, sceneId: 
           <BeatSheetView bookId={bookId} projectId={work.project_id} token={token} />
         </DockSlot>
         <DockSlot {...slot('graph')}>
-          <SceneGraphCanvas work={work} bookId={bookId} token={token} />
+          <SceneGraphCanvas work={work} bookId={bookId} token={token} onPromoted={onDerivedWork} />
         </DockSlot>
         <DockSlot {...slot('cast')}>
           <CastCodexPanel
@@ -804,6 +804,7 @@ export function CompositionPanel({ bookId, chapterId, token, onAccept, sceneId: 
           token={token}
           onClose={() => setPowerViewOpen(false)}
           onViewCast={(name) => { setCastSearch(name); selectTab('cast'); setPowerViewOpen(false); }}
+          onPromoted={(d) => { onDerivedWork(d); setPowerViewOpen(false); }}
         />
       )}
     </div>

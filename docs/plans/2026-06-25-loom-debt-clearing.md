@@ -166,6 +166,15 @@ Batch the LOWs: `D-T3.1-SCENE-HINT`/`GUIDE-APPEND`, `D-T3.3-SLASH-CONTINUE`/`CHA
   - **⚠ Pre-existing (out of scope, NOT mine):** the full FE suite has **9 `world i18n` parity failures**
     (`world` / MMO-track namespace — e.g. `graph.loadFailed`, `populate.addFailed` missing in non-en locales).
     Untouched by this work; a separate track's i18n debt. Track there, not here.
+- ✅ **WS-B3 BUILD COMPLETE 2026-06-26 — M1 + M2 + M3.** **M3 (promote → derivative):** a Promote button
+  (enabled once ≥1 take is ready) runs `useWhatIfPromotion` → `deriveWork` (branch_point = the anchor scene's
+  **chapter** sort_order, taxonomy:'au', no overrides) and seeds each ready take as a scene node in the
+  derivative (`createNode`, prose-persist deferred), then switches the studio (`onPromoted` wired through
+  CompositionPanel's graph slot + PowerViewOverlay) and discards the branch. **Self-review caught + fixed** a
+  branch_point bug (was the scene `story_order`; corrected to the anchor's chapter `sort_order`, matching the
+  wizard contract). 4-locale i18n; +1 canvas promote test; composition + parity green, tsc clean. **The
+  on-canvas what-if feature (spec V1) is now functionally complete** (prose-persist-on-promote + a true
+  vs-canon judge delta remain as explicit deferrals in the spec).
 - 🟡 **WS-B3 BUILD — M1 + M2 BUILT 2026-06-26.** **M2 (generate-take + judge badge):** `useWhatIfTakes`
   orchestrates per-alt generation via the existing auto (diverge→converge) path on the **canon** project
   (`operation:'diverge'`, non-persisting) → ghost → the existing critic dims as the judge badge (vs-canon delta

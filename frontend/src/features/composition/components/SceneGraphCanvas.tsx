@@ -11,10 +11,13 @@ import { useNavigate } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import { aiModelsApi } from '../../ai-models/api';
+import { booksApi } from '../../books/api';
 import { useOutline, useOutlineMutations, useSceneLinks } from '../hooks/useOutline';
 import { useSetWorkSettings } from '../hooks/useWork';
 import { useSceneWhatIf, whatIfAltPositions, whatIfAltEdges, type WhatIfEdge } from '../hooks/useSceneWhatIf';
 import { useWhatIfTakes } from '../hooks/useWhatIfTakes';
+import { useWhatIfPromotion } from '../hooks/useWhatIfPromotion';
+import { compositionApi } from '../api';
 import type { OutlineNode, SceneLink, SceneLinkKind, Work } from '../types';
 import { SceneNode } from './SceneNode';
 import { SceneEdge } from './SceneEdge';
@@ -25,7 +28,12 @@ import { autoLayout, NODE_H, NODE_W, PAD, type Pos } from './sceneGraphLayout';
 type GraphEdge = SceneLink | WhatIfEdge;
 const isWhatIfEdge = (e: GraphEdge): e is WhatIfEdge => 'wi' in e;
 
-export function SceneGraphCanvas({ work, bookId, token }: { work: Work; bookId: string; token: string | null }) {
+export function SceneGraphCanvas({ work, bookId, token, onPromoted }: {
+  work: Work; bookId: string; token: string | null;
+  /** WS-B3 M3 — called with the freshly-materialized derivative Work after a what-if
+   *  is promoted, so the studio can switch to it. Optional (no-op if not wired). */
+  onPromoted?: (derivative: Work) => void;
+}) {
   const { t } = useTranslation('composition');
   const navigate = useNavigate();
   const projectId = work.project_id;
@@ -70,6 +78,65 @@ export function SceneGraphCanvas({ work, bookId, token }: { work: Work; bookId: 
   const selectedWhatIfModel = whatIfModelList.find((mm) => mm.user_model_id === effectiveWhatIfModel);
   const takes = useWhatIfTakes({ projectId, token, updateAlt: whatIf.updateAlt });
   const [previewAltId, setPreviewAltId] = useState<string | null>(null);
+
+  // M3 — promote the ephemeral branch into a persistent derivative Work (the SAME
+  // path the Divergence Wizard uses), then seed each generated take as a scene node
+  // in the derivative (defer persisting take-prose-as-draft, per the M3 contract).
+  const wb = whatIf.branch;
+  const anchorScene = wb ? scenes.find((s) => s.id === wb.anchorSceneId) : undefined;
+  // branch_point is a CHAPTER sort_order (the Divergence Wizard picks a chapter), NOT a
+  // scene story_order — so map the anchor scene's chapter → its sort_order. (/review-impl)
+  const chaptersQ = useQuery({
+    queryKey: ['composition', 'whatif-chapters', bookId],
+    queryFn: () => booksApi.listChapters(token!, bookId, { lifecycle_state: 'active', limit: 500, offset: 0 }),
+    enabled: !!bookId && !!token && whatIf.active,
+    select: (d) => d.items,
+  });
+  const anchorChapterSort = anchorScene && chaptersQ.data
+    ? (chaptersQ.data.find((c) => c.chapter_id === anchorScene.chapter_id)?.sort_order ?? null)
+    : null;
+  const whatIfDraft = useMemo(() => ({
+    branchPoint: anchorChapterSort,
+    taxonomy: 'au' as const,
+    povAnchor: null,
+    canonRules: [] as string[],
+    overrides: {} as Record<string, Record<string, unknown>>,
+    name: anchorScene ? `What-if from "${anchorScene.title || 'scene'}"` : 'What-if',
+  }), [anchorScene, anchorChapterSort]);
+  const promotion = useWhatIfPromotion({
+    sourceWork: work,
+    draft: whatIfDraft,
+    token,
+    onPromoted: (derivative) => {
+      // Seed the READY takes as scene nodes in the derivative project (prose-persist
+      // deferred), THEN switch the studio — so the derivative's outline already has the
+      // seeded scenes when it mounts (switching first would open an empty outline).
+      const ready = whatIf.branch?.alts.filter((a) => a.status === 'ready') ?? [];
+      const finish = () => {
+        // local cleanup BEFORE the (possibly unmounting) studio switch.
+        whatIf.discard();
+        setPreviewAltId(null);
+        onPromoted?.(derivative);
+      };
+      if (derivative.project_id && token && ready.length) {
+        const proj = derivative.project_id;
+        void Promise.allSettled(
+          ready.map((a) => compositionApi.createNode(proj, { kind: 'scene', title: a.title }, token)),
+        ).then((results) => {
+          const failed = results.filter((r) => r.status === 'rejected').length;
+          if (failed) toast.error(t('whatif.promotedPartial', { defaultValue: 'Promoted, but {{n}} take(s) couldn’t be added.', n: failed }));
+          else toast.success(t('whatif.promoted', { defaultValue: 'Promoted to a what-if derivative.' }));
+          finish();
+        });
+      } else {
+        toast.success(t('whatif.promoted', { defaultValue: 'Promoted to a what-if derivative.' }));
+        finish();
+      }
+    },
+  });
+  // Gate Promote on the chapters query having loaded too, so branch_point (the anchor's
+  // CHAPTER sort_order) is resolved — a fast click before it loads would branch at null.
+  const canPromote = !!wb && wb.alts.some((a) => a.status === 'ready') && !promotion.isPromoting && !!chaptersQ.data;
   const generateTake = (altId: string) => {
     if (!whatIf.branch) return;
     takes.generateTake(altId, whatIf.branch.anchorSceneId, {
@@ -200,6 +267,15 @@ export function SceneGraphCanvas({ work, bookId, token }: { work: Work; bookId: 
               onClick={whatIf.addAlt}
             >
               + {t('whatif.addAlt', { defaultValue: 'alternate' })}
+            </button>
+            <button
+              type="button" data-testid="scenegraph-whatif-promote"
+              className="rounded bg-purple-600 px-2 py-0.5 text-white disabled:opacity-50"
+              disabled={!canPromote}
+              title={canPromote ? undefined : t('whatif.promoteHint', { defaultValue: 'Generate at least one take to promote' })}
+              onClick={() => promotion.promote()}
+            >
+              {promotion.isPromoting ? t('whatif.promoting', { defaultValue: 'Promoting…' }) : t('whatif.promote', { defaultValue: 'Promote' })}
             </button>
             <button
               type="button" data-testid="scenegraph-whatif-discard"

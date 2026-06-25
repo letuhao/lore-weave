@@ -26,9 +26,11 @@ type Props = {
   onClose: () => void;
   /** open the Cast tab focused on a character (from WorldMap); exits the overlay first */
   onViewCast?: (name: string) => void;
+  /** WS-B3 M3 — a what-if promoted to a derivative; switch the studio + exit the overlay. */
+  onPromoted?: (derivative: Work) => void;
 };
 
-export function PowerViewOverlay({ work, bookId, chapterId, token, onClose, onViewCast }: Props) {
+export function PowerViewOverlay({ work, bookId, chapterId, token, onClose, onViewCast, onPromoted }: Props) {
   const { t } = useTranslation('composition');
   const [view, setView] = useState<PowerView>('graph');
   const dialogRef = useRef<HTMLDivElement>(null);
@@ -78,7 +80,7 @@ export function PowerViewOverlay({ work, bookId, chapterId, token, onClose, onVi
       {/* All views stay MOUNTED; only the active one is shown (no remount on switch). */}
       <div className="min-h-0 flex-1 overflow-auto">
         <div className={view === 'graph' ? 'h-full' : 'hidden'}>
-          <SceneGraphCanvas work={work} bookId={bookId} token={token} />
+          <SceneGraphCanvas work={work} bookId={bookId} token={token} onPromoted={onPromoted} />
         </div>
         <div className={view === 'timeline' ? 'h-full' : 'hidden'}>
           <TimelineView bookId={bookId} chapterId={chapterId} token={token} />
