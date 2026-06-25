@@ -39,6 +39,9 @@ import { useWorkResolution, useChapterScenes } from '@/features/composition/hook
 import { useReportProgress, useEnsureBaseline } from '@/features/composition/hooks/useProgress';
 import { useMentionHeatmap } from '@/features/composition/hooks/useMentionHeatmap';
 import { useFocusMode } from '@/features/composition/hooks/useFocusMode';
+import { useProvenance } from '@/features/composition/hooks/useProvenance';
+import { ProvenanceToolbar } from '@/features/composition/components/ProvenanceToolbar';
+import { ProvenanceTag } from '@/features/composition/components/ProvenanceTag';
 import { aiModelsApi } from '@/features/ai-models/api';
 import { useQuery } from '@tanstack/react-query';
 import { OutlineTree } from '@/features/composition/components/OutlineTree';
@@ -392,6 +395,10 @@ export function ChapterEditorPage() {
   useEffect(() => {
     tiptapEditorRef.current?.setHeatmapEnabled(heatmapEnabled);
   }, [heatmapEnabled]);
+
+  // T5.3 — AI-provenance: derive the unreviewed-span badge + underlay visibility
+  // from the live doc (tiptapJson changes on insert / review-click / mark-all).
+  const provenance = useProvenance(tiptapEditorRef, tiptapJson);
 
   // Capture editor DOM element for autocomplete positioning (after editor mounts)
   useEffect(() => {
@@ -978,6 +985,18 @@ export function ChapterEditorPage() {
             </div>
           </div>
 
+          {/* T5.3 — AI-provenance toolbar (self-hides when there's nothing to review) */}
+          {composeProjectId && !versionHistory && (
+            <div className="px-3 pt-1">
+              <ProvenanceToolbar
+                visible={provenance.visible}
+                unreviewedCount={provenance.unreviewedCount}
+                onToggleVisible={provenance.toggleVisible}
+                onMarkAllReviewed={provenance.markAllReviewed}
+              />
+            </div>
+          )}
+
           {/* Tiptap editor or version history panel */}
           {versionHistory ? (
             <VersionHistoryPanel
@@ -1135,7 +1154,12 @@ export function ChapterEditorPage() {
                   bookId={bookId}
                   chapterId={chapterId}
                   token={accessToken}
-                  onAccept={(text) => tiptapEditorRef.current?.insertAtCursor(text)}
+                  onAccept={(text, meta) =>
+                    tiptapEditorRef.current?.insertAtCursor(text, {
+                      source: 'ai', status: 'unreviewed', model: meta?.model ?? null,
+                      ts: new Date().toISOString(),
+                    })
+                  }
                   sceneId={activeSceneId}
                   onSceneChange={setActiveSceneId}
                   heatmapEnabled={heatmapEnabled}
@@ -1196,6 +1220,9 @@ export function ChapterEditorPage() {
 
       {/* Glossary hover tooltip */}
       {glossaryEnabled && <GlossaryTooltip bookId={bookId} />}
+
+      {/* T5.3 — AI-provenance hover tag (reads the span's data-* attrs) */}
+      {composeProjectId && <ProvenanceTag />}
 
       {/* Glossary [[ autocomplete */}
       {glossaryEnabled && (

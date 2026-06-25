@@ -229,6 +229,7 @@
     "remove": "Xóa"
   },
   "heatmap": { "title": "Bản đồ nhiệt nhắc đến", "inProse": "Trong văn bản" },
+  "provenance": { "title": "Nguồn gốc AI", "unreviewedCount": "{{n}} chưa duyệt", "show": "Hiện", "hide": "Ẩn", "markAllReviewed": "Đánh dấu tất cả đã duyệt", "ai": "AI", "reviewed": "đã duyệt", "unreviewed": "chưa duyệt", "clickToReview": "(nhấp để duyệt)" },
   "progressPanel": {
     "loading": "Đang tải tiến độ…",
     "error": "Không tải được tiến độ.",

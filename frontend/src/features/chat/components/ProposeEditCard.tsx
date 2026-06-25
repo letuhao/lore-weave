@@ -49,15 +49,18 @@ export function ProposeEditCard({ record, chapterId }: Props) {
       toast.error(t('propose.wrong_chapter', { defaultValue: 'This suggestion was for a different chapter.' }));
       return;
     }
+    // T5.3 — chat-proposed edits are AI prose; tag them so they carry the
+    // unreviewed-AI provenance mark like co-writer insertions.
+    const prov = { source: 'ai', status: 'unreviewed' as const, ts: new Date().toISOString() };
     let ok = false;
     if (operation === 'replace_selection') {
-      ok = target.handle.replaceSelection(text);
+      ok = target.handle.replaceSelection(text, prov);
       if (!ok) {
         toast.error(t('propose.no_selection', { defaultValue: 'Select the text to replace, then Apply.' }));
         return;
       }
     } else {
-      ok = target.handle.insertAtCursor(text);
+      ok = target.handle.insertAtCursor(text, prov);
       if (!ok) {
         toast.error(t('propose.apply_failed', { defaultValue: 'Could not apply the edit.' }));
         return;

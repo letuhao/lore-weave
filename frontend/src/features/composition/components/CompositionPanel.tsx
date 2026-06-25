@@ -3,7 +3,7 @@
 // Resolves/creates the Work for the book, lets the author target a scene + a
 // drafter model, then switches between Compose / Grounding / Canon sub-views.
 // Render-only: all logic lives in the hooks.
-import { useState } from 'react';
+import { useCallback, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
@@ -42,7 +42,9 @@ type Props = {
   bookId: string;
   chapterId: string;
   token: string | null;
-  onAccept: (text: string) => void; // insert accepted prose into the editor
+  // insert accepted prose into the editor; `meta.model` attributes the AI
+  // provenance mark (T5.3) with the model that wrote it.
+  onAccept: (text: string, meta?: { model?: string }) => void;
   /** T3.2: the active scene can be lifted to ChapterEditorPage so the editor's
    *  Selection Tools ground on it. Controlled-or-internal — omitted → own state. */
   sceneId?: string;
@@ -251,6 +253,13 @@ export function CompositionPanel({ bookId, chapterId, token, onAccept, sceneId: 
   // The selected model's metadata — hints for the server's auto-reasoning
   // strategy (adaptive pass-through vs our rule-based scorer).
   const selectedModel = models.data?.find((m) => m.user_model_id === effectiveModelRef);
+  // T5.3 — attribute accepted AI prose with the selected model's name so the
+  // provenance hover tag can show it. Stable so the no-unmount child views don't
+  // churn on every render.
+  const acceptProse = useCallback(
+    (text: string) => onAccept(text, { model: selectedModel?.provider_model_name }),
+    [onAccept, selectedModel?.provider_model_name],
+  );
   // T0.1 — the plot-thread debt panel is opt-in: only surface its sub-tab when
   // the book has narrative-thread tracking on (same gate as the producer).
   const threadsEnabled = work.settings?.narrative_thread_enabled === true;
@@ -474,7 +483,7 @@ export function CompositionPanel({ bookId, chapterId, token, onAccept, sceneId: 
             modelKind={selectedModel?.provider_kind}
             modelName={selectedModel?.provider_model_name}
             token={token}
-            onAccept={onAccept}
+            onAccept={acceptProse}
             guide={composeGuide}
             onGuideChange={setComposeGuide}
           />
@@ -482,7 +491,7 @@ export function CompositionPanel({ bookId, chapterId, token, onAccept, sceneId: 
         <div className={tab === 'cowriter' ? '' : 'hidden'}>
           <CoWriterChat
             bookId={bookId}
-            onAccept={onAccept}
+            onAccept={acceptProse}
             onUseAsGuide={(text) => { setComposeGuide(text); setTab('compose'); }}
           />
         </div>
@@ -497,7 +506,7 @@ export function CompositionPanel({ bookId, chapterId, token, onAccept, sceneId: 
             settings={work.settings}
             scenesAllDone={scenesAllDone}
             token={token}
-            onAccept={onAccept}
+            onAccept={acceptProse}
           />
         </div>
         <div className={tab === 'planner' ? '' : 'hidden'}>

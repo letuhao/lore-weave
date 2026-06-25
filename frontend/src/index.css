@@ -277,6 +277,19 @@
 .heat-band-3 { background: rgba(249, 115, 22, 0.24); }
 .heat-band-4 { background: rgba(239, 68, 68, 0.28); }    /* high — red */
 
+/* T5.3 — AI-provenance underlay. Unreviewed AI prose carries a faint dotted
+   underline (always-on by default); clicking a span flips it to reviewed, which
+   removes the underlay (the mark stays in the JSON for the audit trail). The
+   toolbar eye toggle adds `.provenance-underlay-off` on the editor root to hide
+   all underlays without touching the marks. */
+.provenance-mark { cursor: pointer; }
+.provenance-unreviewed {
+  background: rgba(139, 92, 246, 0.08);                  /* faint violet wash */
+  border-bottom: 1px dotted rgba(139, 92, 246, 0.55);
+}
+.provenance-reviewed { background: none; border-bottom: none; }
+.provenance-underlay-off .provenance-unreviewed { background: none; border-bottom: none; }
+
 .tiptap-content p {
   margin-bottom: 0.75em;
 }

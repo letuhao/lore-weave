@@ -229,6 +229,7 @@
     "remove": "Remove"
   },
   "heatmap": { "title": "Mention heatmap", "inProse": "In prose" },
+  "provenance": { "title": "AI provenance", "unreviewedCount": "{{n}} unreviewed", "show": "Show", "hide": "Hide", "markAllReviewed": "Mark all reviewed", "ai": "AI", "reviewed": "reviewed", "unreviewed": "unreviewed", "clickToReview": "(click to review)" },
   "progressPanel": {
     "loading": "Loading progress…",
     "error": "Couldn't load progress.",

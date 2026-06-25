@@ -25,6 +25,14 @@ import GlobalDragHandle from 'tiptap-extension-global-drag-handle';
 import { GrammarExtension, setGrammarEnabled } from './GrammarPlugin';
 import { GlossaryExtension, setGlossaryEntities, setGlossaryEnabled, getGlossaryCount } from './GlossaryPlugin';
 import { HeatmapExtension, setHeatmapTerms, setHeatmapEnabled, type HeatTerm } from './HeatmapPlugin';
+import {
+  ProvenanceMark,
+  applyProvenanceOver,
+  markAllProvenanceReviewed,
+  countUnreviewedProvenance,
+  setProvenanceVisible,
+  type ProvenanceAttrs,
+} from './ProvenanceMark';
 import { CitationMark } from './CitationMark';
 import { FocusLineExtension } from './FocusLineExtension';
 
@@ -49,11 +57,19 @@ export interface TiptapEditorHandle {
    *  or null if the editor isn't ready. `empty` = a caret with no selection. */
   getSelection: () => { from: number; to: number; empty: boolean; text: string } | null;
   /** ARCH-1 C6 — insert plain text at the cursor. Returns false if no editor.
-   *  Flows through onUpdate (NOT setContent) so it dirties + autosaves. */
-  insertAtCursor: (text: string) => boolean;
+   *  Flows through onUpdate (NOT setContent) so it dirties + autosaves.
+   *  T5.3 — pass `provenance` to tag the inserted span as AI-written. */
+  insertAtCursor: (text: string, provenance?: ProvenanceAttrs) => boolean;
   /** ARCH-1 C6 — replace the current selection with text. Returns false if
-   *  there is no (non-empty) selection. One chained transaction = one undo. */
-  replaceSelection: (text: string) => boolean;
+   *  there is no (non-empty) selection. One chained transaction = one undo.
+   *  T5.3 — pass `provenance` to tag the replacement as AI-written. */
+  replaceSelection: (text: string, provenance?: ProvenanceAttrs) => boolean;
+  /** T5.3 — flip every unreviewed AI span to reviewed; returns the count. */
+  markAllProvenanceReviewed: () => number;
+  /** T5.3 — show/hide the unreviewed-AI underlay (default visible). */
+  setProvenanceVisible: (visible: boolean) => void;
+  /** T5.3 — number of unreviewed AI spans currently in the doc. */
+  getUnreviewedProvenanceCount: () => number;
 }
 
 interface TiptapEditorProps {
@@ -131,6 +147,7 @@ export const TiptapEditor = forwardRef<TiptapEditorHandle, TiptapEditorProps>(
         SlashMenuExtension,
         FocusLineExtension, // T5.1 — marks the caret's block `.focusline` (PM decoration)
         HeatmapExtension, // T5.2 — tints entity names by mention-density band (inert until enabled)
+        ProvenanceMark, // T5.3 — AI-provenance mark (click-to-review; rides in body_json)
       ],
       content: initialContent.current,
       editable,
@@ -253,18 +270,27 @@ export const TiptapEditor = forwardRef<TiptapEditorHandle, TiptapEditorProps>(
         const { from, to, empty } = editor.state.selection;
         return { from, to, empty, text: editor.state.doc.textBetween(from, to, ' ') };
       },
-      insertAtCursor: (text: string) => {
+      insertAtCursor: (text: string, provenance?: ProvenanceAttrs) => {
         if (!editor || !text) return false;
-        editor.chain().focus().insertContentAt(editor.state.selection.from, text).run();
+        const from = editor.state.selection.from;
+        editor.chain().focus().insertContentAt(from, text).run();
+        // T5.3 — tag the just-inserted range (cursor is now at its end).
+        if (provenance) applyProvenanceOver(editor, from, editor.state.selection.from, provenance);
         return true;
       },
-      replaceSelection: (text: string) => {
+      replaceSelection: (text: string, provenance?: ProvenanceAttrs) => {
         if (!editor) return false;
         const { from, to, empty } = editor.state.selection;
         if (empty) return false;  // nothing selected — caller falls back / toasts
         editor.chain().focus().deleteRange({ from, to }).insertContentAt(from, text).run();
+        if (provenance) applyProvenanceOver(editor, from, editor.state.selection.from, provenance);
         return true;
       },
+      markAllProvenanceReviewed: () => (editor ? markAllProvenanceReviewed(editor) : 0),
+      setProvenanceVisible: (visible: boolean) => {
+        if (editor) setProvenanceVisible(editor, visible);
+      },
+      getUnreviewedProvenanceCount: () => (editor ? countUnreviewedProvenance(editor) : 0),
     }), [setContentHandler, editor]);
 
     if (!editor) return null;

@@ -229,6 +229,7 @@
     "remove": "移除"
   },
   "heatmap": { "title": "提及熱度圖", "inProse": "正文中" },
+  "provenance": { "title": "AI 來源", "unreviewedCount": "{{n}} 項未審閱", "show": "顯示", "hide": "隱藏", "markAllReviewed": "全部標記為已審閱", "ai": "AI", "reviewed": "已審閱", "unreviewed": "未審閱", "clickToReview": "（點擊以審閱）" },
   "progressPanel": {
     "loading": "載入進度中…",
     "error": "無法載入進度。",

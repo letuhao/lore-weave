@@ -16,6 +16,11 @@ function fakeHandle(): TiptapEditorHandle {
     getSelection: () => ({ from: 0, to: 0, empty: true, text: '' }),
     insertAtCursor: () => true,
     replaceSelection: () => false,
+    setHeatmapTerms: () => {},
+    setHeatmapEnabled: () => {},
+    markAllProvenanceReviewed: () => 0,
+    setProvenanceVisible: () => {},
+    getUnreviewedProvenanceCount: () => 0,
   };
 }
 

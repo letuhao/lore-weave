@@ -229,6 +229,7 @@
     "remove": "削除"
   },
   "heatmap": { "title": "言及ヒートマップ", "inProse": "本文中" },
+  "provenance": { "title": "AI来歴", "unreviewedCount": "未確認 {{n}} 件", "show": "表示", "hide": "非表示", "markAllReviewed": "すべて確認済みにする", "ai": "AI", "reviewed": "確認済み", "unreviewed": "未確認", "clickToReview": "（クリックで確認）" },
   "progressPanel": {
     "loading": "進捗を読み込み中…",
     "error": "進捗を読み込めませんでした。",
