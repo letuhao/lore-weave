@@ -56,7 +56,7 @@ export function PopoutHost() {
         </button>
       </div>
       <div className="min-h-0 flex-1 overflow-hidden">
-        <LiveStateProvider token={accessToken}>
+        <LiveStateProvider token={accessToken} forceShared>
           <CompositionPanel
             bookId={bookId}
             chapterId={chapterId}

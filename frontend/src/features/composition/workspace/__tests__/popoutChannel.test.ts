@@ -11,8 +11,11 @@ describe('popoutChannel (T5.4 M4)', () => {
 
   it('delivers a posted message to a subscriber on the SAME book+chapter channel', async () => {
     // jsdom/Node provides BroadcastChannel; two instances on the same name talk.
-    const opener = openPopoutChannel('b1', 'c1');
-    const popout = openPopoutChannel('b1', 'c1');
+    // NOTE: ids are file-unique (PCHAN_*) — Node shares BroadcastChannel across vitest
+    // worker threads, so a generic 'b1'/'c1' would cross-talk with the other popout
+    // test files (which post dock-back on the same name) and break this strict toEqual.
+    const opener = openPopoutChannel('PCHAN_b1', 'c1');
+    const popout = openPopoutChannel('PCHAN_b1', 'c1');
     const got: PopoutMessage[] = [];
     opener.subscribe((m) => got.push(m));
     popout.post({ kind: 'insert-prose', text: 'hello', model: 'gpt' });
@@ -23,8 +26,8 @@ describe('popoutChannel (T5.4 M4)', () => {
   });
 
   it('does NOT deliver across different book channels', async () => {
-    const a = openPopoutChannel('bookA', 'c1');
-    const b = openPopoutChannel('bookB', 'c1');
+    const a = openPopoutChannel('PCHAN_bookA', 'c1');
+    const b = openPopoutChannel('PCHAN_bookB', 'c1');
     const got: PopoutMessage[] = [];
     a.subscribe((m) => got.push(m));
     b.post({ kind: 'dock-back', panel: 'cast' });
@@ -35,8 +38,8 @@ describe('popoutChannel (T5.4 M4)', () => {
   });
 
   it('does NOT deliver across different CHAPTERS of the same book (/review-impl MED)', async () => {
-    const ch1 = openPopoutChannel('bk', 'c1');
-    const ch2 = openPopoutChannel('bk', 'c2');
+    const ch1 = openPopoutChannel('PCHAN_bk', 'c1');
+    const ch2 = openPopoutChannel('PCHAN_bk', 'c2');
     const got: PopoutMessage[] = [];
     ch1.subscribe((m) => got.push(m));
     ch2.post({ kind: 'insert-prose', text: 'for chapter 2', model: undefined });
@@ -47,8 +50,8 @@ describe('popoutChannel (T5.4 M4)', () => {
   });
 
   it('unsubscribe stops delivery', async () => {
-    const opener = openPopoutChannel('b2', 'c1');
-    const popout = openPopoutChannel('b2', 'c1');
+    const opener = openPopoutChannel('PCHAN_b2', 'c1');
+    const popout = openPopoutChannel('PCHAN_b2', 'c1');
     const handler = vi.fn();
     const unsub = opener.subscribe(handler);
     unsub();
