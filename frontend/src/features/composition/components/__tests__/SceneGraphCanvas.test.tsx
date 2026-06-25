@@ -1,4 +1,5 @@
-import { render, screen, fireEvent, within } from '@testing-library/react';
+import { render, screen, fireEvent, waitFor, within } from '@testing-library/react';
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { toast } from 'sonner';
 import { SceneGraphCanvas } from '../SceneGraphCanvas';
@@ -20,6 +21,20 @@ vi.mock('../../hooks/useOutline', () => ({
 vi.mock('../../hooks/useWork', () => ({ useSetWorkSettings: () => setSettings }));
 vi.mock('react-router-dom', () => ({ useNavigate: () => navigateFn }));
 vi.mock('sonner', () => ({ toast: { error: vi.fn() } }));
+// M2 — self-contained model picker query + the take-generation orchestration. Mock the
+// models API (so the picker has a model) and useWhatIfTakes (so Generate is a spy — the
+// hook itself is unit-tested in useWhatIfTakes.test).
+vi.mock('../../../ai-models/api', () => ({
+  aiModelsApi: {
+    listUserModels: vi.fn().mockResolvedValue({
+      items: [{ user_model_id: 'm1', is_active: true, alias: 'M1', provider_kind: 'openai', provider_model_name: 'gpt' }],
+    }),
+  },
+}));
+const { generateTakeSpy } = vi.hoisted(() => ({ generateTakeSpy: vi.fn() }));
+vi.mock('../../hooks/useWhatIfTakes', () => ({
+  useWhatIfTakes: () => ({ generateTake: generateTakeSpy, generating: false }),
+}));
 
 function node(over: Partial<OutlineNode>): OutlineNode {
   return {
@@ -28,6 +43,17 @@ function node(over: Partial<OutlineNode>): OutlineNode {
   };
 }
 const work = { project_id: 'p', book_id: 'b', settings: {} } as unknown as Work;
+// M2 needs a QueryClient (the self-contained model picker query). One wrapper for all.
+const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+const Graph = () => (
+  <QueryClientProvider client={qc}>
+    <SceneGraphCanvas
+      work={work}
+      bookId="b"
+      token="t"
+    />
+  </QueryClientProvider>
+);
 
 describe('autoLayout (T1.3 pure)', () => {
   it('lays scenes in columns by story_order, rows within a column, nulls trailing', () => {
@@ -67,13 +93,13 @@ describe('SceneGraphCanvas (T1.3)', () => {
 
   beforeEach(() => {
     createSceneLink.mutate.mockReset(); deleteSceneLink.mutate.mockReset();
-    setSettings.mutate.mockReset(); navigateFn.mockReset(); (toast.error as ReturnType<typeof vi.fn>).mockReset();
+    setSettings.mutate.mockReset(); navigateFn.mockReset(); generateTakeSpy.mockReset(); (toast.error as ReturnType<typeof vi.fn>).mockReset();
     outlineHook.mockReturnValue({ data: scenes });
     linksHook.mockReturnValue({ data: links });
   });
 
   it('renders scenes as nodes and a typed edge (setup_payoff = solid)', () => {
-    render(<SceneGraphCanvas work={work} bookId="b" token="t" />);
+    render(<Graph />);
     expect(screen.getAllByTestId('scene-node')).toHaveLength(2);
     const edge = screen.getByTestId('scene-edge');
     expect(edge.getAttribute('data-kind')).toBe('setup_payoff');
@@ -81,12 +107,12 @@ describe('SceneGraphCanvas (T1.3)', () => {
 
   it('empty state when there are no scenes', () => {
     outlineHook.mockReturnValue({ data: [] });
-    render(<SceneGraphCanvas work={work} bookId="b" token="t" />);
+    render(<Graph />);
     expect(screen.getByTestId('scenegraph-empty')).toBeInTheDocument();
   });
 
   it('pick-two-nodes + button creates a link (from, to, kind, label)', () => {
-    render(<SceneGraphCanvas work={work} bookId="b" token="t" />);
+    render(<Graph />);
     clickNode('s1');
     clickNode('s2');
     expect(screen.getByTestId('scenegraph-linkbar')).toBeInTheDocument();
@@ -100,7 +126,7 @@ describe('SceneGraphCanvas (T1.3)', () => {
   });
 
   it('nodes are keyboard-selectable (Enter) so pick-two works without a pointer', () => {
-    render(<SceneGraphCanvas work={work} bookId="b" token="t" />);
+    render(<Graph />);
     fireEvent.keyDown(body('s1'), { key: 'Enter' });
     fireEvent.keyDown(body('s2'), { key: 'Enter' });
     expect(screen.getByTestId('scenegraph-linkbar')).toBeInTheDocument();
@@ -109,7 +135,7 @@ describe('SceneGraphCanvas (T1.3)', () => {
 
   it('a duplicate link (409) toasts and adds no edge', () => {
     createSceneLink.mutate.mockImplementation((_v: unknown, opts: { onError?: (e: unknown) => void }) => opts.onError?.({ status: 409 }));
-    render(<SceneGraphCanvas work={work} bookId="b" token="t" />);
+    render(<Graph />);
     clickNode('s1'); clickNode('s2');
     fireEvent.click(screen.getByTestId('scenegraph-add'));
     expect(toast.error).toHaveBeenCalledTimes(1);
@@ -117,7 +143,7 @@ describe('SceneGraphCanvas (T1.3)', () => {
   });
 
   it('selecting an edge reveals ✕ and deletes it', () => {
-    render(<SceneGraphCanvas work={work} bookId="b" token="t" />);
+    render(<Graph />);
     const hitLine = screen.getByTestId('scene-edge').querySelector('line')!;
     fireEvent.pointerDown(hitLine);
     fireEvent.click(screen.getByTestId('scene-edge-delete'));
@@ -125,14 +151,14 @@ describe('SceneGraphCanvas (T1.3)', () => {
   });
 
   it('the open (↗) button jumps to the scene’s chapter', () => {
-    render(<SceneGraphCanvas work={work} bookId="b" token="t" />);
+    render(<Graph />);
     fireEvent.click(within(document.querySelector('[data-node="s2"]')!).getByTestId('scene-node-open'));
     expect(navigateFn).toHaveBeenCalledWith('/books/b/chapters/C2/edit');
   });
 
   // ── WS-B3 M1 — on-canvas what-if (ephemeral, zero residue) ──
   it('selecting ONE scene reveals "What-if from here"; starting it draws a dashed alt node + edge', () => {
-    render(<SceneGraphCanvas work={work} bookId="b" token="t" />);
+    render(<Graph />);
     clickNode('s1');                                   // exactly one scene selected
     fireEvent.click(screen.getByTestId('scenegraph-whatif-start'));
     // a dashed alternate + branch edge appear; canon nodes are unchanged
@@ -143,7 +169,7 @@ describe('SceneGraphCanvas (T1.3)', () => {
   });
 
   it('"+ alternate" adds another alt; "Discard" removes the whole branch (zero residue)', () => {
-    render(<SceneGraphCanvas work={work} bookId="b" token="t" />);
+    render(<Graph />);
     clickNode('s1');
     fireEvent.click(screen.getByTestId('scenegraph-whatif-start'));
     fireEvent.click(screen.getByTestId('scenegraph-whatif-add'));
@@ -155,7 +181,7 @@ describe('SceneGraphCanvas (T1.3)', () => {
   });
 
   it('the ✕ on an alt node removes it (last alt → branch closes)', () => {
-    render(<SceneGraphCanvas work={work} bookId="b" token="t" />);
+    render(<Graph />);
     clickNode('s1');
     fireEvent.click(screen.getByTestId('scenegraph-whatif-start'));
     const altId = (screen.getByTestId('whatif-alt-node').getAttribute('data-alt'))!;
@@ -165,19 +191,30 @@ describe('SceneGraphCanvas (T1.3)', () => {
     expect(screen.queryByTestId('scenegraph-whatif-bar')).toBeNull();
   });
 
+  it('Generate on an alt calls generateTake with the anchor scene + the picked model (M2)', async () => {
+    render(<Graph />);
+    clickNode('s1');
+    fireEvent.click(screen.getByTestId('scenegraph-whatif-start'));
+    // the self-contained model picker populates from the (mocked) models API
+    await waitFor(() => expect((screen.getByTestId('scenegraph-whatif-model') as HTMLSelectElement).value).toBe('m1'));
+    const altId = screen.getByTestId('whatif-alt-node').getAttribute('data-alt')!;
+    fireEvent.click(screen.getByTestId(`whatif-alt-generate-${altId}`));
+    expect(generateTakeSpy).toHaveBeenCalledWith(altId, 's1', expect.objectContaining({ modelRef: 'm1' }));
+  });
+
   it('auto-discards the branch if its anchor scene is deleted (no orphan + no stale branch_point)', () => {
-    const { rerender } = render(<SceneGraphCanvas work={work} bookId="b" token="t" />);
+    const { rerender } = render(<Graph />);
     clickNode('s1');
     fireEvent.click(screen.getByTestId('scenegraph-whatif-start'));
     expect(screen.getByTestId('whatif-alt-node')).toBeInTheDocument();
     // s1 (the anchor) is deleted out from under the open what-if
     outlineHook.mockReturnValue({ data: [node({ id: 's2', story_order: 1, title: 'Payoff', chapter_id: 'C2' })] });
-    rerender(<SceneGraphCanvas work={work} bookId="b" token="t" />);
+    rerender(<Graph />);
     expect(screen.queryByTestId('whatif-alt-node')).toBeNull();   // branch auto-discarded
   });
 
   it('dragging a node past the threshold persists positions to work.settings', () => {
-    render(<SceneGraphCanvas work={work} bookId="b" token="t" />);
+    render(<Graph />);
     fireEvent.pointerDown(body('s1'), { clientX: 0, clientY: 0 });
     fireEvent.pointerMove(screen.getByTestId('scenegraph-svg'), { clientX: 60, clientY: 10 });
     fireEvent.pointerUp(screen.getByTestId('scenegraph-svg'));

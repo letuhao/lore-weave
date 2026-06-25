@@ -8,10 +8,13 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useNavigate } from 'react-router-dom';
+import { useQuery } from '@tanstack/react-query';
 import { toast } from 'sonner';
+import { aiModelsApi } from '../../ai-models/api';
 import { useOutline, useOutlineMutations, useSceneLinks } from '../hooks/useOutline';
 import { useSetWorkSettings } from '../hooks/useWork';
 import { useSceneWhatIf, whatIfAltPositions, whatIfAltEdges, type WhatIfEdge } from '../hooks/useSceneWhatIf';
+import { useWhatIfTakes } from '../hooks/useWhatIfTakes';
 import type { OutlineNode, SceneLink, SceneLinkKind, Work } from '../types';
 import { SceneNode } from './SceneNode';
 import { SceneEdge } from './SceneEdge';
@@ -53,6 +56,28 @@ export function SceneGraphCanvas({ work, bookId, token }: { work: Work; bookId: 
   // WS-B3 M1 — the ephemeral on-canvas what-if branch (dashed, beside canon; nothing
   // persisted until a future Promote step). Discard leaves zero residue.
   const whatIf = useSceneWhatIf();
+  // M2 — self-contained model picker for take generation (SelectionToolbar precedent;
+  // SceneGraphCanvas has no shared model ref). + the generate/judge orchestration.
+  const [whatIfModelRef, setWhatIfModelRef] = useState('');
+  const whatIfModels = useQuery({
+    queryKey: ['composition', 'chat-models'],
+    queryFn: () => aiModelsApi.listUserModels(token!, { capability: 'chat' }),
+    enabled: !!token && whatIf.active,
+    select: (d) => d.items.filter((mm) => mm.is_active),
+  });
+  const whatIfModelList = whatIfModels.data ?? [];
+  const effectiveWhatIfModel = whatIfModelRef || whatIfModelList[0]?.user_model_id || '';
+  const selectedWhatIfModel = whatIfModelList.find((mm) => mm.user_model_id === effectiveWhatIfModel);
+  const takes = useWhatIfTakes({ projectId, token, updateAlt: whatIf.updateAlt });
+  const [previewAltId, setPreviewAltId] = useState<string | null>(null);
+  const generateTake = (altId: string) => {
+    if (!whatIf.branch) return;
+    takes.generateTake(altId, whatIf.branch.anchorSceneId, {
+      modelRef: effectiveWhatIfModel,
+      modelKind: selectedWhatIfModel?.provider_kind,
+      modelName: selectedWhatIfModel?.provider_model_name,
+    });
+  };
 
   const persist = (positions: Record<string, Pos>) => {
     const sg = (work.settings.scene_graph as Record<string, unknown> | undefined) ?? {};
@@ -107,6 +132,7 @@ export function SceneGraphCanvas({ work, bookId, token }: { work: Work; bookId: 
   const allPositions: Record<string, Pos> = { ...positions, ...altPositions };
   const allNodeIds = [...scenes.map((s) => s.id), ...(branch?.alts ?? []).map((a) => a.id)];
   const allEdges: GraphEdge[] = branch ? [...links, ...whatIfAltEdges(branch)] : links;
+  const previewAlt = branch?.alts.find((a) => a.id === previewAltId) ?? null;
 
   return (
     <div className="flex h-full flex-col" data-testid="composition-graph">
@@ -158,6 +184,16 @@ export function SceneGraphCanvas({ work, bookId, token }: { work: Work; bookId: 
         {whatIf.active && (
           <div className="ml-auto flex items-center gap-1" data-testid="scenegraph-whatif-bar">
             <span className="text-purple-700/80 dark:text-purple-300/80">{t('whatif.active', { defaultValue: 'What-if branch (unsaved)' })}</span>
+            <select
+              data-testid="scenegraph-whatif-model"
+              aria-label={t('whatif.model', { defaultValue: 'Take model' })}
+              className="rounded border bg-background px-1 py-0.5"
+              value={effectiveWhatIfModel}
+              onChange={(e) => setWhatIfModelRef(e.target.value)}
+            >
+              {whatIfModelList.length === 0 && <option value="">{t('whatif.noModel', { defaultValue: 'No model' })}</option>}
+              {whatIfModelList.map((mm) => <option key={mm.user_model_id} value={mm.user_model_id}>{mm.alias || mm.provider_model_name}</option>)}
+            </select>
             <button
               type="button" data-testid="scenegraph-whatif-add"
               className="rounded border border-purple-300 px-2 py-0.5 text-purple-700 hover:bg-purple-50 dark:border-purple-700 dark:text-purple-300 dark:hover:bg-purple-950/30"
@@ -218,7 +254,14 @@ export function SceneGraphCanvas({ work, bookId, token }: { work: Work; bookId: 
           renderNode={(id, h) => {
             const alt = altById.get(id);
             if (alt) {
-              return <WhatIfAltNode alt={alt} pos={allPositions[id]} onRemove={() => whatIf.removeAlt(id)} />;
+              return (
+                <WhatIfAltNode
+                  alt={alt} pos={allPositions[id]}
+                  onRemove={() => { whatIf.removeAlt(id); if (previewAltId === id) setPreviewAltId(null); }}
+                  onGenerate={() => generateTake(id)}
+                  onView={() => setPreviewAltId(id)}
+                />
+              );
             }
             const n = byId.get(id)!;
             return (
@@ -229,6 +272,29 @@ export function SceneGraphCanvas({ work, bookId, token }: { work: Work; bookId: 
             );
           }}
         />
+      )}
+
+      {/* M2 — the take preview strip: the selected alternate's ghost prose + full judge
+          dims. Read-only preview (no auto-insert); accept-into-draft / promote is M3. */}
+      {previewAlt?.take && (
+        <div data-testid="whatif-preview" className="flex max-h-48 shrink-0 flex-col gap-1 border-t border-purple-200 bg-purple-50/40 p-2 text-[11px] dark:border-purple-800 dark:bg-purple-950/30">
+          <div className="flex items-center gap-2">
+            <span className="font-medium text-purple-800 dark:text-purple-200">⑂ {previewAlt.title}</span>
+            {previewAlt.take.judge && (
+              <span className="font-mono text-[10px] text-purple-700/80 dark:text-purple-300/80">
+                C{previewAlt.take.judge.coherence ?? '–'} · V{previewAlt.take.judge.voice_match ?? '–'} · P{previewAlt.take.judge.pacing ?? '–'} · K{previewAlt.take.judge.canon_consistency ?? '–'}
+              </span>
+            )}
+            <button
+              type="button" data-testid="whatif-preview-close"
+              className="ml-auto rounded px-1 text-muted-foreground hover:text-foreground"
+              onClick={() => setPreviewAltId(null)}
+            >
+              {t('whatif.closePreview', { defaultValue: 'Close' })}
+            </button>
+          </div>
+          <p className="overflow-y-auto whitespace-pre-wrap text-purple-900/90 dark:text-purple-100/90">{previewAlt.take.ghost}</p>
+        </div>
       )}
     </div>
   );

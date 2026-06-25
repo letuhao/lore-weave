@@ -7,11 +7,22 @@
 // M1 owns only the branch shape + entry/add/remove/discard + a pure layout helper;
 // generation (M2) and promote (M3) build on this.
 import { useCallback, useState } from 'react';
+import type { Critic } from '../types';
 import { NODE_H, NODE_W, type Pos } from '../components/sceneGraphLayout';
 
+/** M2 — a generated alternate take (ghost prose + the job it came from + the critic
+ *  judge dims). `ghost`/`jobId` set on generate; `judge` set after critique. */
+export type WhatIfTake = { ghost: string; jobId: string; judge: Critic | null };
+
 /** One ephemeral alternate scene in the branch. `id` is a CLIENT id (never an
- *  OutlineNode id) — these are not persisted until Promote. */
-export type WhatIfAlt = { id: string; title: string };
+ *  OutlineNode id) — these are not persisted until Promote. M2 adds the per-alt
+ *  generation lifecycle (`status`) + the generated `take`. */
+export type WhatIfAlt = {
+  id: string;
+  title: string;
+  status: 'idle' | 'generating' | 'ready' | 'error';
+  take?: WhatIfTake;
+};
 
 /** The ephemeral branch: anchored at a canon scene (its `story_order` becomes the
  *  derivative branch_point at Promote), holding ≥1 alternate takes drawn beside canon. */
@@ -31,6 +42,9 @@ export type UseSceneWhatIf = {
   addAlt: () => void;
   /** Remove one alternate; discards the whole branch if it was the last. */
   removeAlt: (id: string) => void;
+  /** M2 — patch one alternate's generation state (status / take / judge). No-op for
+   *  an unknown id. */
+  updateAlt: (id: string, patch: Partial<WhatIfAlt>) => void;
   /** Drop the branch entirely (zero residue). */
   discard: () => void;
 };
@@ -39,11 +53,11 @@ export function useSceneWhatIf(): UseSceneWhatIf {
   const [branch, setBranch] = useState<WhatIfBranch | null>(null);
 
   const start = useCallback((anchorSceneId: string) => {
-    setBranch({ anchorSceneId, alts: [{ id: nextAltId(), title: 'Alternate 1' }] });
+    setBranch({ anchorSceneId, alts: [{ id: nextAltId(), title: 'Alternate 1', status: 'idle' }] });
   }, []);
 
   const addAlt = useCallback(() => {
-    setBranch((b) => (b ? { ...b, alts: [...b.alts, { id: nextAltId(), title: `Alternate ${b.alts.length + 1}` }] } : b));
+    setBranch((b) => (b ? { ...b, alts: [...b.alts, { id: nextAltId(), title: `Alternate ${b.alts.length + 1}`, status: 'idle' }] } : b));
   }, []);
 
   const removeAlt = useCallback((id: string) => {
@@ -54,9 +68,13 @@ export function useSceneWhatIf(): UseSceneWhatIf {
     });
   }, []);
 
+  const updateAlt = useCallback((id: string, patch: Partial<WhatIfAlt>) => {
+    setBranch((b) => (b ? { ...b, alts: b.alts.map((a) => (a.id === id ? { ...a, ...patch } : a)) } : b));
+  }, []);
+
   const discard = useCallback(() => setBranch(null), []);
 
-  return { branch, active: branch !== null, start, addAlt, removeAlt, discard };
+  return { branch, active: branch !== null, start, addAlt, removeAlt, updateAlt, discard };
 }
 
 /** Pure layout: stack the branch's alternates in a lane to the RIGHT of the anchor so

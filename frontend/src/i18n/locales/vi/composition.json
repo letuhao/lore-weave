@@ -125,7 +125,18 @@
     "addAlt": "phương án",
     "discard": "Bỏ giả định",
     "removeAlt": "Xóa phương án",
-    "altHint": "Phác thảo một phương án (xem trước) — chưa lưu cho đến khi bạn thăng cấp."
+    "altHint": "Phác thảo một phương án (xem trước) — chưa lưu cho đến khi bạn thăng cấp.",
+    "generate": "Tạo bản",
+    "generating": "Đang tạo…",
+    "retry": "Thất bại — thử lại",
+    "view": "Xem",
+    "judging": "đang chấm…",
+    "coherence": "Mạch lạc",
+    "voice": "Giọng văn",
+    "pacing": "Nhịp độ",
+    "model": "Mô hình tạo bản",
+    "noModel": "Không có mô hình",
+    "closePreview": "Đóng"
   },
   "cast": "Nhân vật",
   "codex": {

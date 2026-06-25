@@ -166,6 +166,13 @@ Batch the LOWs: `D-T3.1-SCENE-HINT`/`GUIDE-APPEND`, `D-T3.3-SLASH-CONTINUE`/`CHA
   - **⚠ Pre-existing (out of scope, NOT mine):** the full FE suite has **9 `world i18n` parity failures**
     (`world` / MMO-track namespace — e.g. `graph.loadFailed`, `populate.addFailed` missing in non-en locales).
     Untouched by this work; a separate track's i18n debt. Track there, not here.
+- 🟡 **WS-B3 BUILD — M1 + M2 BUILT 2026-06-26.** **M2 (generate-take + judge badge):** `useWhatIfTakes`
+  orchestrates per-alt generation via the existing auto (diverge→converge) path on the **canon** project
+  (`operation:'diverge'`, non-persisting) → ghost → the existing critic dims as the judge badge (vs-canon delta
+  deferred, per the locked M2 contract spec §2b). `WhatIfAltNode` gained the lifecycle (✦ Generate → generating
+  → judge badge C/V/P + View); SceneGraphCanvas got a self-contained model picker + a read-only take preview
+  strip (ghost + full dims). 4-locale i18n. +20 tests (hook orchestration, node states, canvas generate-flow);
+  composition + parity green, tsc clean. **M3 (promote → derivative bridge) remains.**
 - 🟡 **WS-B3 BUILD STARTED 2026-06-26 — M1 (on-canvas scaffold) BUILT** (§8 resolved: build). The ephemeral
   what-if branch on the Scene Graph: `useSceneWhatIf` (branch model — start/addAlt/removeAlt/discard, **zero
   residue**, nothing persisted), `WhatIfAltNode` (dashed/tinted alt beside canon), and `SceneGraphCanvas`

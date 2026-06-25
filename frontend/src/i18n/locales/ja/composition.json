@@ -125,7 +125,18 @@
     "addAlt": "代替案",
     "discard": "もしもを破棄",
     "removeAlt": "代替案を削除",
-    "altHint": "代替案を下書き（プレビュー）— 昇格するまで保存されません。"
+    "altHint": "代替案を下書き（プレビュー）— 昇格するまで保存されません。",
+    "generate": "テイクを生成",
+    "generating": "生成中…",
+    "retry": "失敗 — 再試行",
+    "view": "表示",
+    "judging": "評価中…",
+    "coherence": "一貫性",
+    "voice": "語り口",
+    "pacing": "テンポ",
+    "model": "テイクのモデル",
+    "noModel": "モデルなし",
+    "closePreview": "閉じる"
   },
   "cast": "登場人物",
   "codex": {

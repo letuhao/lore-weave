@@ -42,6 +42,22 @@ preview* that **promotes into the SAME derivative flow** the wizard already uses
 This keeps the wizard and the canvas as two *entry points* to one persistence model —
 the canvas adds a visual, iterative, judged front-end; it does not fork the data model.
 
+## 2b. M2 contract — DECIDED 2026-06-26 (the generate/judge questions)
+
+Building M2 surfaced three underspecified points (the same class as the deferred
+`D-DERIVATIVE-ADAPT-FROM-SOURCE`). **Locked by the owner:**
+1. **Generate = scene-level alternate on the ANCHOR scene** via the existing auto
+   (diverge→converge) path (`compositionApi.generateAuto` on the anchor's outline node,
+   non-persisting) — an alternate take of the anchored scene, NOT a chapter. The
+   divergence is the auto path's **K candidates**; the op is the real `'draft_scene'`
+   (beat/goal/POV/synopsis brief) — `/review-impl` caught that a made-up `'diverge'`
+   op is unrecognised and falls back to a weaker generic instruction.
+2. **Grounded on CANON** (pre-promote): the take generates against the canon project
+   (`work.project_id`); the derivative project doesn't exist until Promote (M3).
+3. **Judge = the existing critic dims** on the take (`useCritique` → coherence / voice /
+   pacing / canon_consistency). A true *vs-canon delta* (tension/pacing relative to the
+   canon scene) is **deferred** — M2 shows the take's own critic dims as the badge.
+
 ## 3. Scope
 
 ### V1 (this feature, when built)

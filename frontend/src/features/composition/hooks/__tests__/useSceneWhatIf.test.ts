@@ -40,6 +40,18 @@ describe('useSceneWhatIf (WS-B3 M1 — ephemeral branch)', () => {
     act(() => result.current.discard());
     expect(result.current.branch).toBeNull();
   });
+
+  it('alternates start idle; updateAlt() patches one alt (status/take); unknown id is a no-op', () => {
+    const { result } = renderHook(() => useSceneWhatIf());
+    act(() => result.current.start('scene-1'));
+    const id = result.current.branch!.alts[0].id;
+    expect(result.current.branch!.alts[0].status).toBe('idle');
+    act(() => result.current.updateAlt(id, { status: 'ready', take: { ghost: 'g', jobId: 'j', judge: null } }));
+    expect(result.current.branch!.alts[0].status).toBe('ready');
+    expect(result.current.branch!.alts[0].take?.ghost).toBe('g');
+    act(() => result.current.updateAlt('nope', { status: 'error' }));   // unknown id → no change
+    expect(result.current.branch!.alts[0].status).toBe('ready');
+  });
 });
 
 describe('whatIf layout helpers (pure)', () => {

@@ -125,7 +125,18 @@
     "addAlt": "替代方案",
     "discard": "捨棄假設",
     "removeAlt": "移除替代方案",
-    "altHint": "草擬一個替代方案（預覽）— 提升前不會儲存。"
+    "altHint": "草擬一個替代方案（預覽）— 提升前不會儲存。",
+    "generate": "生成版本",
+    "generating": "生成中…",
+    "retry": "失敗 — 重試",
+    "view": "檢視",
+    "judging": "評分中…",
+    "coherence": "連貫性",
+    "voice": "語氣",
+    "pacing": "節奏",
+    "model": "版本模型",
+    "noModel": "無模型",
+    "closePreview": "關閉"
   },
   "cast": "角色",
   "codex": {

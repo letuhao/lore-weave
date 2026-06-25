@@ -125,7 +125,18 @@
     "addAlt": "alternate",
     "discard": "Discard what-if",
     "removeAlt": "Remove alternate",
-    "altHint": "Draft an alternate (preview) — not saved until you promote."
+    "altHint": "Draft an alternate (preview) — not saved until you promote.",
+    "generate": "Generate take",
+    "generating": "Generating…",
+    "retry": "Failed — retry",
+    "view": "View",
+    "judging": "judging…",
+    "coherence": "Coherence",
+    "voice": "Voice",
+    "pacing": "Pacing",
+    "model": "Take model",
+    "noModel": "No model",
+    "closePreview": "Close"
   },
   "cast": "Cast",
   "codex": {
