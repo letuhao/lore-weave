@@ -232,6 +232,13 @@ func extractJSONObject(s string) string {
 // can still delete_attribute any of the shown triples; the cap only limits visibility.
 const maxAttrsInSummary = 100
 
+// maxMergeCandidatesForPlan caps how many proposed duplicate clusters the planner's
+// state summary loads + lists. Bounds BOTH the prompt and the DB load (member detail
+// is resolved per loaded candidate) so a large `proposed` backlog can't make every
+// plan call expensive — even the non-merge ones (D-PLAN-MERGE-CONTEXT-COST). The
+// highest-score clusters survive the cap (the load orders by score before LIMIT).
+const maxMergeCandidatesForPlan = 25
+
 // ontologyStateSummary is the compact current-state the planner reads so the plan
 // is a DELTA against reality (no duplicate kinds). Kept small — the executor's
 // skip-on-conflict is the real idempotency guarantee, not the planner's care. It
@@ -279,8 +286,16 @@ func (s *Server) ontologyStateSummary(ctx context.Context, bookID uuid.UUID) (st
 	// candidate_id, never inventing entity references (slice 2). Best-effort: this is
 	// ADDITIVE context, so a candidate-query hiccup degrades to "no candidates shown"
 	// rather than failing an ontology plan that never needed them.
-	if cands, cerr := s.loadMergeCandidates(ctx, bookID, "proposed"); cerr == nil && len(cands) > 0 {
-		summary += "\n\n" + mergeCandidatesSummary(cands)
+	//
+	// Load is CAPPED at maxMergeCandidatesForPlan(+1 to detect overflow) so a large
+	// `proposed` backlog can't make every plan call load every cluster + every member's
+	// detail — the cap bounds both the prompt AND the DB work (D-PLAN-MERGE-CONTEXT-COST).
+	if cands, cerr := s.loadMergeCandidates(ctx, bookID, "proposed", maxMergeCandidatesForPlan+1); cerr == nil && len(cands) > 0 {
+		more := len(cands) > maxMergeCandidatesForPlan
+		if more {
+			cands = cands[:maxMergeCandidatesForPlan]
+		}
+		summary += "\n\n" + mergeCandidatesSummary(cands, more)
 	}
 	return summary, nil
 }
@@ -338,18 +353,13 @@ func bookAttributesSummary(triples []bookAttrTriple, more bool) string {
 
 // mergeCandidatesSummary renders pending duplicate clusters for the planner: each with
 // its stable candidate_id (to copy into a merge_candidate op), member names + entity-ids
-// + link counts, the detector's suggested winner, and the rationale. Capped so a large
-// backlog can't blow the prompt — the planner works the top clusters by score.
-func mergeCandidatesSummary(cands []mergeCandidateView) string {
-	const maxShown = 25
+// + link counts, the detector's suggested winner, and the rationale. `cands` is already
+// bounded by the caller (the load itself is capped — D-PLAN-MERGE-CONTEXT-COST); `more`
+// signals the cap elided lower-score clusters so the planner resolves the top ones first.
+func mergeCandidatesSummary(cands []mergeCandidateView, more bool) string {
 	var b strings.Builder
 	b.WriteString("Pending merge candidates — detected duplicate clusters you MAY resolve with merge_candidate (merge them) or dismiss_candidate (reject as not-duplicates). Copy the candidate_id verbatim:")
-	n := len(cands)
-	if n > maxShown {
-		n = maxShown
-	}
-	for i := 0; i < n; i++ {
-		c := cands[i]
+	for _, c := range cands {
 		b.WriteString(fmt.Sprintf("\n- candidate_id=%s [%s] score=%.2f", c.CandidateID, c.KindCode, c.Score))
 		parts := make([]string, 0, len(c.Members))
 		for _, m := range c.Members {
@@ -367,8 +377,8 @@ func mergeCandidatesSummary(cands []mergeCandidateView) string {
 			b.WriteString("\n    why: " + r)
 		}
 	}
-	if len(cands) > maxShown {
-		b.WriteString(fmt.Sprintf("\n(+%d more not shown — resolve the top ones first)", len(cands)-maxShown))
+	if more {
+		b.WriteString("\n(more candidates exist than shown — resolve these top-scored ones first)")
 	}
 	return b.String()
 }

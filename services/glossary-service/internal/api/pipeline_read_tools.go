@@ -173,7 +173,7 @@ func (s *Server) toolListMergeCandidates(ctx context.Context, _ *mcp.CallToolReq
 	if status != "proposed" && status != "dismissed" && status != "merged" {
 		return nil, mergeCandidatesOut{}, errors.New("status must be proposed, dismissed, or merged")
 	}
-	cands, err := s.loadMergeCandidates(ctx, bookID, status)
+	cands, err := s.loadMergeCandidates(ctx, bookID, status, 0) // tool: full set (truncates after, signals it)
 	if err != nil {
 		return nil, mergeCandidatesOut{}, errors.New("failed to load merge candidates")
 	}
