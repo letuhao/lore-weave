@@ -16,7 +16,7 @@ import asyncpg
 import httpx
 from fastapi import APIRouter, Depends, HTTPException
 from loreweave_jobs import emit_job_event
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 from ..broker import publish, publish_event
 from ..config import settings as app_settings
@@ -61,6 +61,11 @@ class CreateExtractionJobPayload(BaseModel):
     # honors low/high (not just medium-or-none). `thinking_enabled` stays as the
     # back-compat bool alias (True ⇒ medium) when reasoning_effort is omitted.
     reasoning_effort: str | None = None
+    # D-EXTRACTION-BATCH-CONCURRENCY: cap on CONCURRENT LLM calls per chapter (the
+    # window×batch fan-out). Omitted/None ⇒ 1 (sequential, the prior behavior). The
+    # worker clamps to a hard ceiling; chapters still run sequentially (entity
+    # accumulation is per-chapter) — only the batches within a chapter fan out.
+    concurrency_level: int | None = Field(default=None, ge=1, le=64)
 
 
 class CancelJobResponse(BaseModel):
@@ -268,6 +273,8 @@ async def _create_extraction_job_core(
         "max_entities_per_kind": payload.max_entities_per_kind,
         "thinking_enabled": payload.thinking_enabled,
         "reasoning_effort": reasoning_effort,
+        # D-EXTRACTION-BATCH-CONCURRENCY: per-chapter LLM-call fan-out cap (None ⇒ 1).
+        "concurrency": payload.concurrency_level,
     })
 
     return {

@@ -9,6 +9,7 @@ Design reference: GLOSSARY_EXTRACTION_PIPELINE.md §6.6, §7
 """
 from __future__ import annotations
 
+import asyncio
 import hashlib
 import json
 import logging
@@ -90,6 +91,11 @@ from .extraction_model import get_model_context_window as _get_model_context_win
 _EXTRACTION_OUTPUT_CEILING = 8000  # per-window output cap (entities JSON is small)
 _EXTRACTION_OUTPUT_FLOOR = 1024
 _CONTEXT_SAFETY_RATIO = 0.15  # mirror the gateway's context-fit safety margin
+
+# D-EXTRACTION-BATCH-CONCURRENCY: hard ceiling on the per-chapter LLM-call fan-out
+# regardless of the caller's requested concurrency (protects the provider/GPU + the
+# glossary per-book advisory lock from a runaway request). 1 ⇒ sequential.
+_EXTRACTION_MAX_CONCURRENCY = 16
 
 # D-LLM-FAILURE-RATE #1 — structured-output enforcement. Default ON; set
 # EXTRACTION_STRUCTURED_OUTPUT=0 to disable fleet-wide. The per-call
@@ -264,8 +270,11 @@ async def _run_extraction_job(msg: dict, job_id: UUID, user_id: str, pool, publi
     # D-RE-WORKER-GRADED-EFFORT: the clamped graded effort (none|low|medium|high). Absent on a
     # message minted before this field (back-compat) → fall back to the thinking_enabled bool.
     reasoning_effort = msg.get("reasoning_effort") or ("medium" if thinking_enabled else "none")
+    # D-EXTRACTION-BATCH-CONCURRENCY: per-chapter LLM-call fan-out cap. Absent/None on a
+    # pre-field message ⇒ 1 (sequential, prior behavior). Clamped to a hard ceiling.
+    concurrency = max(1, min(_EXTRACTION_MAX_CONCURRENCY, int(msg.get("concurrency") or 1)))
 
-    log.info("extraction_worker: job %s — %d chapters", job_id, len(chapter_ids))
+    log.info("extraction_worker: job %s — %d chapters (concurrency=%d)", job_id, len(chapter_ids), concurrency)
 
     # Cancel-safe claim: only start a job that is NOT already cancelled/terminal.
     # The cancel endpoint sets status='cancelling'; an unconditional "SET status='running'"
@@ -418,6 +427,7 @@ async def _run_extraction_job(msg: dict, job_id: UUID, user_id: str, pool, publi
                 max_entities_per_kind=max_entities_per_kind,
                 thinking_enabled=thinking_enabled,
                 reasoning_effort=reasoning_effort,
+                concurrency=concurrency,
                 pool=pool,
                 llm_client=llm_client,
             )
@@ -586,6 +596,7 @@ async def _process_extraction_chapter(
     pool,
     llm_client: LLMClient,
     reasoning_effort: str = "none",
+    concurrency: int = 1,
 ) -> dict:
     """Extract entities from a single chapter via LLM."""
     import time as _time
@@ -758,9 +769,14 @@ async def _process_extraction_chapter(
     # CACHE key uses `chunk_idx`=window_idx + the real `batch_idx` so each window's parse caches
     # independently. `window_text` replaces the whole-chapter text in the prompt.
     total_calls = len(windows) * len(batches)
-    for call_idx, (window_idx, window_text, batch_idx, batch) in enumerate(
-        (wi, w, bi, b) for wi, w in enumerate(windows) for bi, b in enumerate(batches)
-    ):
+
+    # D-EXTRACTION-BATCH-CONCURRENCY — the per-(window,batch) unit body, extracted into a
+    # coroutine so the units can run CONCURRENTLY under a semaphore (see the driver below).
+    # asyncio is single-threaded, so the shared collectors mutate safely between awaits;
+    # only the token sums are reassigned (nonlocal). Each unit owns a stable `call_idx`,
+    # so OBS event_ids never collide. `continue` (loop control) → `return` (unit exit).
+    async def _run_unit(call_idx, window_idx, window_text, batch_idx, batch):
+        nonlocal total_input_tokens, total_output_tokens
         # Part 2 gate: a unit the planner refused as UNPLANNABLE (an oversized block that can't
         # fit even alone) — record the outcome + SKIP its LLM call. The chapter then derives
         # `completed_with_errors` (INV-F15), so the un-fittable batch is VISIBLE instead of
@@ -770,7 +786,7 @@ async def _process_extraction_chapter(
             log.warning("extraction: chapter %s call %d/%d (win %d batch %d) — UNPLANNABLE, "
                         "skipped LLM (block exceeds context)",
                         chapter_id, call_idx + 1, total_calls, window_idx, batch_idx)
-            continue
+            return
 
         # CACHE/M6 — LLM-skip gate (the EXECUTE ledger). If this exact (tenant, chapter
         # content, effort band, window, batch) was already extracted, reuse the cached parse
@@ -808,7 +824,7 @@ async def _process_extraction_chapter(
             log.info("extraction: chapter %s call %d/%d (win %d) — CACHE HIT (%d entities, 0 tokens, effort=%s)",
                      chapter_id, call_idx + 1, total_calls, window_idx, len(entities), _effort_band)
             _accept(entities)
-            continue
+            return
 
         # 4. Build prompt
         _block_hints = settings.extraction_evidence_block_hints
@@ -891,14 +907,14 @@ async def _process_extraction_chapter(
             # OBS — the batch failed at the LLM; record it so the chapter can't read as
             # clean (was: a bare `continue` that silently dropped the batch).
             _record_outcome(call_idx, batch, LLM_ERROR, error_code=exc.__class__.__name__)
-            continue
+            return
         except (LLMTransientRetryNeededError, LLMError) as exc:
             log.error(
                 "extraction: transient SDK error for chapter %s batch %d/%d: %s",
                 chapter_id, batch_idx + 1, len(batches), exc,
             )
             _record_outcome(call_idx, batch, LLM_ERROR, error_code=exc.__class__.__name__)
-            continue
+            return
 
         if sdk_job.status != "completed":
             err_code = sdk_job.error.code if sdk_job.error else "unknown"
@@ -907,7 +923,7 @@ async def _process_extraction_chapter(
                 sdk_job.status, err_code, chapter_id, batch_idx + 1, len(batches), batch,
             )
             _record_outcome(call_idx, batch, LLM_ERROR, error_code=err_code)
-            continue
+            return
 
         # chatAggregator output: {"messages": [{"role":"assistant","content":...}], "usage": {...}}
         result = sdk_job.result or {}
@@ -990,6 +1006,29 @@ async def _process_extraction_chapter(
             )
 
         _accept(entities)
+
+    # D-EXTRACTION-BATCH-CONCURRENCY — drive the per-(window,batch) units. Build the flat
+    # unit list (call_idx = stable per-chapter index → OBS event_id), then run them under an
+    # asyncio.Semaphore(concurrency). concurrency<=1 keeps the EXACT prior sequential path
+    # (no gather/semaphore overhead — back-compat for tests + single-call models). Chapters
+    # stay sequential (the caller loops chapters to accumulate known-entities); only THIS
+    # chapter's batches fan out, up to `concurrency` concurrent LLM calls.
+    _units = list(enumerate(
+        (wi, w, bi, b) for wi, w in enumerate(windows) for bi, b in enumerate(batches)
+    ))
+    if concurrency <= 1:
+        for _ci, (_wi, _w, _bi, _b) in _units:
+            await _run_unit(_ci, _wi, _w, _bi, _b)
+    else:
+        _sem = asyncio.Semaphore(concurrency)
+
+        async def _bounded(_ci, _wi, _w, _bi, _b):
+            async with _sem:
+                await _run_unit(_ci, _wi, _w, _bi, _b)
+
+        await asyncio.gather(*[
+            _bounded(_ci, _wi, _w, _bi, _b) for _ci, (_wi, _w, _bi, _b) in _units
+        ])
 
     _ch_elapsed = _time.monotonic() - _ch_start
 
