@@ -11,6 +11,11 @@ RUN apk add --no-cache git
 # go.mod (=> ../../sdks/go/grantclient) must resolve inside the container.
 COPY sdks/go/observability /src/sdks/go/observability
 COPY sdks/go/grantclient /src/sdks/go/grantclient
+# Plan/Action kit + LLM-gateway SDK — their go.mod replaces
+# (=> ../../sdks/go/loreweave_mcp, ../../sdks/go/loreweave_llm) must resolve
+# inside the container, so copy the modules into the build context.
+COPY sdks/go/loreweave_mcp /src/sdks/go/loreweave_mcp
+COPY sdks/go/loreweave_llm /src/sdks/go/loreweave_llm
 # contracts/adminjwt (D-GKA-SYSTEM-TIER-ADMIN) — verifies admin RS256 JWTs; its
 # replace (=> ../../contracts/adminjwt) must resolve inside the container.
 COPY contracts/adminjwt /src/contracts/adminjwt
