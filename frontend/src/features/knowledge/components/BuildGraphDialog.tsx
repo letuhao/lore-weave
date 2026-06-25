@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import { useTranslation } from 'react-i18next';
 import { FormDialog } from '@/components/shared';
@@ -89,6 +89,7 @@ export function BuildGraphDialog({
 }: Props) {
   const { t } = useTranslation('knowledge');
   const { accessToken } = useAuth();
+  const queryClient = useQueryClient();
 
   // Default scope: `chapters` if the project is linked to a book, else
   // `all`. Users can still switch freely.
@@ -115,6 +116,17 @@ export function BuildGraphDialog({
   const [llmModel, setLlmModel] = useState<string>(openLlm);
   const [embeddingModel, setEmbeddingModel] = useState<string | null>(openEmbedding);
   const [maxSpend, setMaxSpend] = useState<string>(openMaxSpend);
+  // KG-EMB-PERSIST — the embedding model the project ACTUALLY has persisted.
+  // The benchmark-run + extract gates read the project's STORED model (not the
+  // dropdown's local value), so a model the user merely picks here is inert
+  // until it's written through. We track the committed model separately so we
+  // can (a) persist a FIRST-time selection immediately (non-destructive: no
+  // graph yet) and (b) refuse to silently switch an already-set model here
+  // (that wipes the graph — it stays in ChangeModelDialog's confirmed flow).
+  const [committedModel, setCommittedModel] = useState<string | null>(
+    project.embedding_model ?? null,
+  );
+  const [persistingEmbedding, setPersistingEmbedding] = useState(false);
   // C12a (D-K19a.5-04) — chapter-range picker. Shown only when
   // scope=='chapters'. Both inputs required together; BE 422s on
   // partial range. Empty inputs → no range filter (full scope).
@@ -153,7 +165,6 @@ export function BuildGraphDialog({
     if (!open) return;
     setScope(openScope);
     setLlmModel(openLlm);
-    setEmbeddingModel(openEmbedding);
     setMaxSpend(openMaxSpend);
     setChapterRangeFrom('');
     setChapterRangeTo('');
@@ -165,11 +176,27 @@ export function BuildGraphDialog({
     // C13 — clear the pinned-set + filters per open.
     pinning.reset();
     setDebounced({ scope: openScope, llm: openLlm });
-    // `openScope` / `openLlm` / `openEmbedding` / `openMaxSpend` already
-    // fold in both `project` + `initialValues` — listing them directly
-    // keeps the effect's dependency graph tight without introducing
-    // stale-closure risk on `initialValues` swaps mid-mount.
-  }, [open, openScope, openLlm, openEmbedding, openMaxSpend]);
+    // `openScope` / `openLlm` / `openMaxSpend` already fold in both `project`
+    // + `initialValues` — listing them directly keeps the effect's dependency
+    // graph tight without introducing stale-closure risk on `initialValues`
+    // swaps mid-mount. KG-EMB-PERSIST: `openEmbedding` is intentionally NOT a
+    // dep here — persisting a first-time embedding selection updates
+    // `project.embedding_model`, which would otherwise re-run this whole reset
+    // and clobber the LLM/scope the user already chose. The embedding value is
+    // reset by its own effect below.
+  }, [open, openScope, openLlm, openMaxSpend]);
+
+  // KG-EMB-PERSIST — reset/sync the embedding selection independently of the
+  // form reset above, so a persisted-model refetch doesn't wipe the LLM/scope.
+  useEffect(() => {
+    if (open) setEmbeddingModel(openEmbedding);
+  }, [open, openEmbedding]);
+
+  // Keep `committedModel` in lockstep with the project's stored model — on open
+  // and after a persist+refetch lands a fresh `project.embedding_model`.
+  useEffect(() => {
+    if (open) setCommittedModel(project.embedding_model ?? null);
+  }, [open, project.embedding_model]);
 
   // Debounce scope/llm changes into `debounced`.
   useEffect(() => {
@@ -314,6 +341,59 @@ export function BuildGraphDialog({
     if (!concurrencyValid) return t('projects.buildDialog.disabled.fixConcurrency', { defaultValue: 'Parallel calls must be 1–64.' });
     return null;
   })();
+
+  // KG-EMB-PERSIST — persist a FIRST-time embedding selection to the project the
+  // moment it's chosen, so the benchmark-run + extract gates (which read the
+  // project's STORED model, never this dropdown's local value) line up. Without
+  // this, picking a model here was inert: Run-benchmark 409'd `no_embedding_model`
+  // and the extract gate never cleared (bugs 2.1 + 2.2). A model SWAP on an
+  // already-configured project is destructive (wipes the graph) and is refused
+  // here — it belongs in ChangeModelDialog's confirmed flow.
+  const handleEmbeddingChange = async (v: string | null) => {
+    setEmbeddingModel(v); // keep the dropdown responsive regardless
+    if (!accessToken) return;
+    if (!v || v === committedModel) return; // cleared or unchanged → nothing to persist
+    if (committedModel) {
+      // A different model is already persisted. Switching it deletes the graph,
+      // so don't do it silently — bounce back and point at the safe path.
+      setEmbeddingModel(committedModel);
+      toast.error(
+        t('projects.buildDialog.embedding.changeViaDialog', {
+          defaultValue:
+            'This project already has an embedding model. Use “Change model” to switch it — that rebuilds the graph.',
+        }),
+      );
+      return;
+    }
+    // First-time set on a project with no model yet → non-destructive (empty graph).
+    setPersistingEmbedding(true);
+    try {
+      await knowledgeApi.updateEmbeddingModel(project.project_id, v, accessToken, {
+        confirm: true,
+      });
+      setCommittedModel(v);
+      await queryClient.invalidateQueries({ queryKey: ['knowledge-projects'] });
+      await queryClient.invalidateQueries({
+        queryKey: ['knowledge', 'benchmark-status', project.project_id],
+      });
+      toast.success(
+        t('projects.buildDialog.embedding.saved', {
+          defaultValue:
+            'Embedding model saved — run the benchmark below to enable extraction.',
+        }),
+      );
+    } catch (err) {
+      setEmbeddingModel(committedModel); // revert local pick on failure
+      toast.error(
+        t('projects.buildDialog.embedding.saveFailed', {
+          defaultValue: 'Could not save the embedding model: {{error}}',
+          error: readBackendError(err),
+        }),
+      );
+    } finally {
+      setPersistingEmbedding(false);
+    }
+  };
 
   const handleConfirm = async () => {
     if (!accessToken || !embeddingModel) return;
@@ -589,10 +669,13 @@ export function BuildGraphDialog({
           )}
         </label>
 
-        {/* Embedding model (reuse K12.4 picker) */}
+        {/* Embedding model (reuse K12.4 picker). KG-EMB-PERSIST: persist a
+            first-time selection through `handleEmbeddingChange` so benchmark +
+            extract (which read the project's stored model) actually see it. */}
         <EmbeddingModelPicker
           value={embeddingModel}
-          onChange={setEmbeddingModel}
+          onChange={(v) => void handleEmbeddingChange(v)}
+          disabled={persistingEmbedding}
           projectId={project.project_id}
         />
 

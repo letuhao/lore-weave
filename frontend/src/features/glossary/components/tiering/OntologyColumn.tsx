@@ -1,4 +1,4 @@
-import { Plus, Trash2 } from 'lucide-react';
+import { Pencil, Plus, Trash2 } from 'lucide-react';
 import type { Tier } from '../../tieringTypes';
 import { TierChip } from './TierChip';
 
@@ -24,6 +24,10 @@ type Props = {
    *  Omit to hide it (attributes delete via their editor panel instead). */
   onDelete?: (row: ColumnRow) => void;
   deleteLabel?: string;
+  /** When set, each row gets an edit (pencil) button — opens the settings
+   *  modal (name/icon/color). Omit to hide it (e.g. attributes edit inline). */
+  onEdit?: (row: ColumnRow) => void;
+  editLabel?: string;
 };
 
 /** One column of the Manage workspace drilldown (genres / kinds / attributes).
@@ -39,6 +43,8 @@ export function OntologyColumn({
   disabled,
   onDelete,
   deleteLabel,
+  onEdit,
+  editLabel,
 }: Props) {
   return (
     <div className="flex min-h-[420px] flex-col rounded-lg border bg-card">
@@ -83,6 +89,20 @@ export function OntologyColumn({
                       {r.meta && <span className="font-mono text-[10px] text-muted-foreground">{r.meta}</span>}
                       {r.tier && <TierChip tier={r.tier} />}
                     </button>
+                    {/* Edit (settings) — always visible muted, primary on hover/focus.
+                        Same always-visible rationale as the trash button below. */}
+                    {onEdit && (
+                      <button
+                        type="button"
+                        onClick={() => onEdit(r)}
+                        title={editLabel}
+                        aria-label={editLabel}
+                        data-testid={`ontology-edit-${r.id}`}
+                        className="mr-0.5 rounded p-1 text-muted-foreground/60 transition-colors hover:bg-primary/10 hover:text-primary focus:text-primary"
+                      >
+                        <Pencil className="h-3 w-3" />
+                      </button>
+                    )}
                     {/* Trash is always visible (muted), red on hover/focus — NOT hover-revealed:
                         a touch device has no hover, so an opacity-0 trash would be unreachable
                         on mobile/tablet. Mirrors the always-visible standards StandardRow. */}

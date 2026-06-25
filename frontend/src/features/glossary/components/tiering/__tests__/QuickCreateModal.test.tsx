@@ -4,7 +4,7 @@ import { render, screen, fireEvent } from '@testing-library/react';
 import { QuickCreateModal } from '../QuickCreateModal';
 
 describe('QuickCreateModal', () => {
-  it('Create calls onCreate with just the name when optionals are blank', async () => {
+  it('Create calls onCreate with name + default color when optionals are blank', async () => {
     const onCreate = vi.fn().mockResolvedValue(undefined);
     const onClose = vi.fn();
     render(<QuickCreateModal kind="genre" onCreate={onCreate} onClose={onClose} />);
@@ -14,10 +14,14 @@ describe('QuickCreateModal', () => {
     });
     fireEvent.click(screen.getByText('quickcreate.create'));
 
-    await vi.waitFor(() => expect(onCreate).toHaveBeenCalledWith({ name: 'Cultivation' }));
+    // color always rides along (defaulting to the BE default) so the new
+    // color picker actually persists — even when untouched.
+    await vi.waitFor(() =>
+      expect(onCreate).toHaveBeenCalledWith({ name: 'Cultivation', color: '#6366f1' }),
+    );
   });
 
-  it('passes optional icon and code through, trimmed', async () => {
+  it('passes optional icon and code through, trimmed, with the chosen color', async () => {
     const onCreate = vi.fn().mockResolvedValue(undefined);
     render(<QuickCreateModal kind="kind" onCreate={onCreate} onClose={vi.fn()} />);
 
@@ -25,10 +29,42 @@ describe('QuickCreateModal', () => {
     fireEvent.change(inputs[0], { target: { value: 'Sect' } });
     fireEvent.change(inputs[1], { target: { value: ' ⚔️ ' } });
     fireEvent.change(inputs[2], { target: { value: ' sect ' } });
+    fireEvent.change(screen.getByTestId('quickcreate-color'), { target: { value: '#ff0000' } });
     fireEvent.click(screen.getByText('quickcreate.create'));
 
     await vi.waitFor(() =>
-      expect(onCreate).toHaveBeenCalledWith({ name: 'Sect', icon: '⚔️', code: 'sect' }),
+      expect(onCreate).toHaveBeenCalledWith({
+        name: 'Sect',
+        icon: '⚔️',
+        code: 'sect',
+        color: '#ff0000',
+      }),
+    );
+  });
+
+  it('edit mode prefills, hides the code field, and patches name/icon/color (no code)', async () => {
+    const onCreate = vi.fn().mockResolvedValue(undefined);
+    render(
+      <QuickCreateModal
+        kind="kind"
+        mode="edit"
+        initial={{ name: 'Character', icon: '🧑', color: '#0ea5e9', code: 'character' }}
+        onCreate={onCreate}
+        onClose={vi.fn()}
+      />,
+    );
+
+    // Prefilled name + swatch; code field is omitted in edit mode.
+    expect((screen.getByPlaceholderText('quickcreate.name_placeholder') as HTMLInputElement).value).toBe('Character');
+    expect((screen.getByTestId('quickcreate-color') as HTMLInputElement).value).toBe('#0ea5e9');
+    // code is the stable key — hidden in edit mode.
+    expect(screen.queryByText('quickcreate.code')).toBeNull();
+
+    fireEvent.change(screen.getByTestId('quickcreate-color'), { target: { value: '#10b981' } });
+    fireEvent.click(screen.getByText('quickcreate.save'));
+
+    await vi.waitFor(() =>
+      expect(onCreate).toHaveBeenCalledWith({ name: 'Character', icon: '🧑', color: '#10b981' }),
     );
   });
 
