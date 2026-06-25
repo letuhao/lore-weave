@@ -15,18 +15,40 @@ prioritize by *(user value × cheapness)* and unblock-ability.
 
 ## Workstreams
 
-### WS-A — Live-smoke sweep · **P0** (cheapest, highest confidence-gain)
-The dev stack + browser harness work now (proven 2026-06-25). These rows are *blocked-on-harness*,
-not code — clear them by running the smoke against the running stack and recording evidence.
-- `D-T3.6-LIVE-SMOKE` — references embed → per-scene semantic search round-trip.
-- `D-T4.1-LIVE-SMOKE-FULL-CHAIN` — publish → extract → merge → stamp → flywheel-delta.
-- `D-T5.4-POPOUT-SHARED-SSE-BROWSER-SMOKE` — cross-**window** SharedWorker fan-out + survive-opener-close
-  + late-join replay. (Playwright tab-reload severs the `window.open` handle, so use a 2-window manual
-  harness or `browser_tabs` without reloading the popout.)
-- `D-T5.4-POPOUT-WORKER-HEALTHCHECK` — observe worker behaviour live (partial; full degrade is WS-D).
+### WS-A — Live-smoke sweep · **P0** — ✅ **CLEARED 2026-06-25** (all 3 smokes PASS, no bug surfaced)
+The dev stack + browser harness work now (proven 2026-06-25). These rows were *blocked-on-harness*,
+not code — cleared by running the smoke against the running stack and recording evidence.
+- ✅ `D-T3.6-LIVE-SMOKE` — **CLEARED.** Via gateway as the test account on Work `019ef35e-d08f-…`
+  (book Dracula `019ef35c-…`, scene "The road to the Borgo Pass"): POST a reference → real
+  provider-registry embed (bge-m3, **dim 1024**) stored + first-add write-through set
+  `work.settings.reference_embed_model`; per-scene `GET …/scenes/{id}/references` returned the hit
+  (**score 0.65**, scene auto-query); a focused in-container one-shot ran the LIVE
+  `gather_references → build_segments → render` path and the passage landed inside the rendered
+  **`<references>`** block with `[title — author]` attribution. End-to-end embed→retrieve→pack proven.
+- ✅ `D-T4.1-LIVE-SMOKE-FULL-CHAIN` — **CLEARED (real production path).** Published Chapter II of the
+  test book with novel prose (new entities Magda Petrescu / Cursed Spring of Saint Wenceslas) →
+  **worker-ai auto-enqueued a `chapters_pending` drain ~20s later** (the real publish→extract trigger,
+  CM3b coalescing drainer) → Pass-2 extraction → Neo4j merge with `created_job_id` stamped → the
+  FlywheelPanel endpoint (`GET /v1/knowledge/projects/{pid}/flywheel`) returned a **non-empty delta**:
+  `entities_added=2, relations_added=2, events_added=2` with correctly-named `new_items`.
+  **Note (not a bug):** the flywheel attributes the delta to the *latest complete* job — a manual
+  `extraction/start` run concurrently with the auto-drain split the stamps across two jobs (showed
+  "+0 entities" until the clean single-job path was run). The baseline glossary-sync job's 0-delta is
+  correct-by-design (non-Pass-2 path, NULL `created_job_id`). Stamping verified working on the deployed image.
+- ✅ `D-T5.4-POPOUT-SHARED-SSE-BROWSER-SMOKE` — **CLEARED (Playwright, 2-window).** Editor → Compose →
+  Pop out: popout opens as its own OS window/root and renders Compose correctly (**no blank-window
+  crash — the `32de0628` HIGH fix holds**); URL carries `book/chapter/panel/scene` but **no token**.
+  Generated a real Gothic draft via the SharedWorker (the SSE fetch runs in the worker, NOT the page —
+  `performance.getEntries` in the popout shows no generate request). **Survive-close:** regenerated,
+  closed the opener tab mid-run → the popout independently completed a fresh draft. **Late-join:** opened
+  a 2nd popout (direct nav, NOT a reload) → it inherited the shared ghost draft from the worker on
+  connect without generating → also demonstrates **fan-out** (two windows, one worker stream, identical
+  state). Did not reload the popout (preserves the `window.open` handle, per the harness caveat).
+- 🟡 `D-T5.4-POPOUT-WORKER-HEALTHCHECK` — still WS-D (the worker `onerror` surface ships; the full
+  ack-timeout degrade is the WS-D task). Live behaviour observed OK (worker loaded + acked).
 
-**Design:** a per-item smoke checklist against the stack; expect some to surface bugs (today's did →
-fix-now). **Size:** 4 × S (execution). **Already cleared today:** dock/float/popout open+render, no-token-in-URL.
+**Size:** 4 × S (execution) — done in one continuous pass. **Already cleared earlier:** dock/float/popout
+open+render, no-token-in-URL.
 
 ### WS-B — Drift feature gaps (drafted but not built as designed) · **P1**
 The substantive "real" debt — features the mockups promised that diverged in the build.
@@ -104,8 +126,11 @@ Batch the LOWs: `D-T3.1-SCENE-HINT`/`GUIDE-APPEND`, `D-T3.3-SLASH-CONTINUE`/`CHA
 ## Status
 - **4 deferrals resolved** (D-C16-NULL-WORK-ROUTE explicit; THREADS-GATE / POPOUT-SHARED-SSE /
   POPOUT-SURVIVE-CLOSE within the T5.4 chain).
-- **~32 open**, mapped above. The windowing browser-smoke gap is the cheapest cluster and is *partially
-  cleared* already (2026-06-25 live smoke).
+- ✅ **WS-A live-smoke sweep CLEARED 2026-06-25** — all 3 smokes (`D-T3.6-LIVE-SMOKE`,
+  `D-T4.1-LIVE-SMOKE-FULL-CHAIN`, `D-T5.4-POPOUT-SHARED-SSE-BROWSER-SMOKE`) PASS on the running stack;
+  **no code bug surfaced** (the flywheel "+0 entities" was a concurrent-manual-job test artifact, not a
+  defect). `D-T5.4-POPOUT-WORKER-HEALTHCHECK` rolls into WS-D.
+- **~29 open**, mapped above. **Next: WS-B1 (Critic panel) + WS-B2 (doujin completeness).**
 - **⚠ Audit correction (from detailed-design research):** **`D-T5.4-CHAT-HOIST` is NOT resolved** — the
   co-writer chat SSE still runs its own `fetch`/`ReadableStream` in `useChatMessages` *below* the windowing
   layer; it survives a float but is **killed by a pop-out**. Re-opened (see WS-D detailed design).
