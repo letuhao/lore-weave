@@ -1,6 +1,6 @@
 # Glossary-Assistant — Plan-and-Execute Architecture
 
-**Status:** DESIGN draft · 2026-06-25 · owner: glossary-service + chat-service + frontend
+**Status:** DESIGN draft · 2026-06-25 · owner: `sdks/*/loreweave_mcp` (plan/action kit) + glossary-service (first consumer) + chat-service + frontend
 **Decision (this session):** plan-and-execute, scope = whole glossary-assistant (not just ontology).
 **Why now:** the single ReAct agent loop has a high error rate building anything multi-step
 (ontologies, bulk edits). Patching individual tools (batch, skill nudges, auto-scaffold) treats
@@ -117,10 +117,13 @@ direct tools.
 ## 5. Phasing (XL+ → incremental, each shippable)
 
 - **Phase 0 — DONE:** `glossary_propose_kinds` batch (one confirm → N kinds). Proves batch + auto-scaffold.
-- **Phase 1 — MVP planner (ontology ops):** `glossary_plan` emitting `{adopt_genres, create_kinds,
-  add_attributes, edit_attribute, delete}`; `execute_plan` descriptor + `effectExecutePlan`; reuse
-  ConfirmCard to render the plan; skill routes the agent into plan→review→execute. **Validates the whole
-  architecture on the highest-pain workflow.**
+- **Phase 1 — MVP planner (ontology ops):** two layers (see §10). (a) **Kit:** add the plan/action layer to
+  `loreweave_mcp` (Plan envelope + propose helper + confirm-dispatch + executor skeleton + planner contract),
+  Go first with the Python kit kept aligned. (b) **Glossary consumer:** register the ontology op-set
+  `{adopt_genres, create_kinds, add_attributes, edit_attribute, delete}` + handlers onto the kit, exposed via
+  `glossary_plan`; `execute_plan` descriptor dispatched by the kit's confirm; reuse ConfirmCard to render the
+  plan; skill routes the agent into plan→review→execute. **Validates both the kit and the architecture on the
+  highest-pain workflow.**
 - **Phase 2 — entities + research + sync:** add `create_entity / edit_entity / research / sync` ops.
 - **Phase 3 — richer UX + recovery:** an editable plan panel (toggle/edit ops before approve); re-plan loop
   on partial failure; planner sees prior failures.
@@ -197,10 +200,48 @@ It is also cheap given our deterministic executor: feeding `failed[]` back into 
 skill-level loop, which is the second reason a planning *framework* (LangGraph/CrewAI/LlamaIndex) buys us
 little here.
 
-**Why no framework.** Those frameworks earn their keep as a stateful multi-step orchestration *runtime*
-(graph executor, executor-LLM per node, checkpointing). Our planner is ONE structured-output call and our
-executor is a deterministic Go loop over existing core funcs — there is no graph runtime to host. A
-framework would also fight three invariants: glossary-service is **Go** (the frameworks are Python), the
+**Why no third-party framework (but YES our own kit).** Third-party frameworks (LangGraph/CrewAI/
+LlamaIndex) earn their keep as a stateful multi-step orchestration *runtime* (graph executor, executor-LLM
+per node, checkpointing). Our planner is ONE structured-output call and our executor is a deterministic loop
+over existing core funcs — there is no graph runtime to host. A third-party framework would also fight three
+invariants: the consuming services are **Go and Python** (most frameworks are Python-only), the
 **provider-gateway invariant** forbids the direct provider-SDK calls they make, and the **MCP-first
 invariant** already places the planner behind an MCP tool rather than a bespoke agent loop. We take the
-pattern and the evidence; we do not take the runtime.
+pattern and the evidence; we do not take the third-party runtime. **This does NOT mean "build it ad-hoc in
+glossary"** — the reusable mechanism belongs in our own first-party kit; see §10.
+
+## 10. Where this lives — the `loreweave_mcp` plan/action kit (NOT glossary-local)
+
+**Correction (2026-06-25):** an earlier draft of §9 concluded "no SDK, build it in glossary, extract later
+(rule of three)." That is wrong for this codebase. LoreWeave already ships a **polyglot first-party SDK
+layer** (`sdks/go`, `sdks/python`, `sdks/rust`), and **`loreweave_mcp` already exists in Go and Python** —
+it centralizes the MCP transport (`handler.go`), identity middleware (SEC-1), guards, and crucially the
+**confirm-token spine** (`confirm_token.go` / `.py`: HMAC, descriptor confused-deputy guard, single-use
+hook), with the two language kits kept **aligned at the API/claim level** (the "COMPOSE-A reconciliation"
+note — minted+verified inside one service, parallel code rather than shared bytes). The project is going
+agent-heavy; the established convention is to ship a shared capability as an **aligned per-language kit up
+front**, not to extract it after three copies.
+
+So the plan/execute mechanism is **the next layer of `loreweave_mcp`, built on the confirm-token spine that
+is already there** — not a glossary-local one-off. What gets promoted into the kit (Go + Python, aligned;
+Rust when a Rust agentic service needs it):
+
+| Kit piece (in `loreweave_mcp`) | Responsibility | Today (to be promoted) |
+|---|---|---|
+| **Plan envelope** | typed ordered op-list (`{type, params, rationale, destructive}`) + preview rows + validation | none — new, generic |
+| **Propose helper** | mint a plan-confirm token (`descriptor="execute_plan"`) off the existing confirm-token spine + build preview rows | glossary `action_propose_tools.go` (bespoke) |
+| **Confirm-dispatch** | verify token → match descriptor → enforce single-use → dispatch to the registered effect (the INV-9 write path) | glossary `action_confirm.go` / `pipeline_confirm.go` (bespoke) |
+| **Executor skeleton** | dep-ordered, idempotent loop over a domain-registered `op→handler` map → `{applied, skipped, failed}` | none — new, generic |
+| **Planner contract** | structured-output Plan schema + a `Planner` that resolves a *capable* model via `loreweave_llm` (provider-gateway-safe) | none — new, generic |
+
+**What stays domain-specific (in glossary-service):** the concrete op-set (`adopt_genres`, `create_kinds`,
+`add_attributes`, `edit_attribute`, `delete`, …), each op's handler → core func, and the dependency tiers.
+The service *registers* these with the kit; it does not re-implement propose/confirm/execute glue.
+
+**Glossary Phase 1 is the kit's reference consumer.** The Phase-1 build therefore has two layers: (a) add the
+plan/action layer to `loreweave_mcp` (Go first, Python kept aligned per the COMPOSE-A rule), and (b) wire
+glossary's op-set + handlers onto it, replacing the bespoke propose/confirm glue. Every future agentic
+service (knowledge, roleplay, world, …) then registers its own op-set and gets planner + envelope + confirm
++ executor for free, in its own language — exactly how `confirm_token` is shared today. The kit's own design
+(envelope schema, the four APIs, the Go↔Python alignment rule) is specified separately in
+`docs/specs/2026-06-25-plan-action-kit.md`.
