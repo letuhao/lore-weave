@@ -1,4 +1,32 @@
-# ▶▶ NEXT SESSION STARTS HERE — **Multilingual KG epic COMPLETE (M1–M7)** · branch `feat/kg-multilingual` · 2026-06-24
+# ▶▶ NEXT SESSION STARTS HERE — **Glossary plan-and-execute (Phase 1) SHIPPED** · branch `feat/composition-service` · HEAD `658a0caa` · 2026-06-25
+
+> **WHAT SHIPPED:** the glossary assistant can now do **multi-step ontology goals in ONE confirm** — the agent calls `glossary_plan(book_id, goal)`, a capable model emits a **typed plan**, and a **deterministic executor** applies it (no ReAct loop). Validated against the literature (typed-plan ≫ ReAct; control-flow-integrity against prompt injection). Built as **reusable SDK kits**, not ad-hoc — see [[project_agentic_sdk_lives_in_loreweave_mcp_kit]]: this project will run many agents, so the pattern lives in `sdks/`.
+>
+> **Specs/plan:** architecture [2026-06-25-glossary-assistant-planner.md](../specs/2026-06-25-glossary-assistant-planner.md) · kit mechanism [2026-06-25-plan-action-kit.md](../specs/2026-06-25-plan-action-kit.md) (Part I envelope/executor/error-classes, Part II concrete Go types + glossary op-set + caps + resolved-questions ledger) · multi-agent execution plan [2026-06-25-plan-action-kit-phase1.md](../plans/2026-06-25-plan-action-kit-phase1.md).
+>
+> **The two new SDK kits (`sdks/go/`):**
+> - **`loreweave_mcp`** gained the **plan-action kit** — `plan.go` (frozen K0 contract: `Plan`/`Op`/`OpOutcome`/`Summary`, sentinel errors, `OpSpec`/`Registry`, `NewRegistry` panics on non-idempotent ops, `ValidatePlan` does dedupe + duplicate-conflict + frozen op-N ids + `MaxPlanOps=50` cap + reject-empty) and `execute.go` (`Execute(ctx,userID,plan,enabledOps,reg) Summary` — tier-stable-sort, per-op `errors.Is`→outcome mapping, destructive-skip via `enabledOps`, internal-error abort). Constants: `PlanVersion=1`, `DescriptorExecutePlan="execute_plan"`, `PlanTokenTTL=30m`.
+> - **`loreweave_llm` — NEW Go LLM SDK (the missing piece; user-chosen this session).** Sync streaming client over the provider-registry LLM gateway. `client.go` (`Complete()` accumulates SSE token deltas; reasoning kept separate; internal `/internal/llm/stream?user_id=`+X-Internal-Token OR jwt `/v1/llm/stream`+Bearer), `models.go` (`StreamRequest`, `ReasoningEffort` incl. `none` to disable hidden thinking, `Result{Text,Reasoning,Usage,FinishReason}`), `errors.go` (code-matched sentinels), `sse.go` (8MB-buffer scanner). Zero deps.
+>
+> **Glossary wiring:** `planRegistry()` ([plan_ops.go](../../services/glossary-service/internal/api/plan_ops.go)) registers **4 additive ops** — adopt_genres(t0), create_kinds(t1), add_attributes(t2), edit_attribute(t4); `glossary_plan` MCP tool ([action_plan_tools.go](../../services/glossary-service/internal/api/action_plan_tools.go)) resolves model→reads ontology→runs planner (120s + 1 repair round, loose-emit→validate→repair)→mints a confirm card; confirm/execute path ([plan_confirm.go](../../services/glossary-service/internal/api/plan_confirm.go) `effectExecutePlan` re-validates then `mcp.Execute`). chat-service `glossary_skill.py` routes multi-step goals to `glossary_plan` (K=2 stop).
+>
+> **MED-6 (planner auto-resolve) DONE + live-smoked:** provider-registry `GET /internal/planner-model?user_id=` ([default_models_handler.go](../../services/provider-registry-service/internal/api/default_models_handler.go) `internalResolvePlannerModel`) → explicit `planner` default → else best active chat model preferring `tool_calling` → 404 `PLANNER_MODEL_NONE`. Glossary `resolvePlannerModel` calls it; `glossary_plan` works with **zero manual model_ref**. Smoke: endpoint returned `019ebb72…` (Gemma-4 26B, tool_calling) via `source:chat_fallback`.
+>
+> **VERIFY/smokes:** all 3 Go modules `build`+`vet` green; kit + SDK unit tests pass; provider-gate OK. **✅ SDK live-smoke** (loreweave_llm → real provider-registry → LM Studio Qwen2.5-7B → valid plan JSON, `in=74 out=48 finish=stop`). **✅ MED-6 endpoint live-smoke** (real PG). **/review-impl** ran: HIGH-1 (edit_attribute base_version guard dead → dropped from planner vocab + fail-closed) + MED-6 fixed.
+> - **⚠️ NOT yet smoked: the full chat-UI flow** (open book → "design an ontology" → plan card → confirm → kinds created in real DB). The executor-against-real-DB layer is the one unproven leg — `D-PLAN-EXEC-LIVE-SMOKE`. The stack is up + code deployed, so this is a user-run browser smoke away.
+>
+> **Commits (all pushed to `origin/feat/composition-service`):** `4a8f3123` foundation · `ae9f755b` recovery (a concurrent history-rewrite dropped the loreweave_llm SDK + G2 edits; recovered + pushed to protect) · `820d572e` review fixes · `c225f75a` Dockerfile SDK COPY · `658a0caa` MED-6.
+>
+> **⚠️ Shared-tree hazard (still live):** another developer commits LOOM `composition/*` work into this same branch concurrently — one of their commits swept my files in, and a history-rewrite dropped them. **Always stage only the exact files you changed (never `git add -A`); verify the COMMITTED file list, not just staged** ([[feedback_verify_committed_file_list_not_just_staged]]). NEVER commit `composition/*` files.
+>
+> **▶ Deferred (plan-action):**
+> - `D-PLAN-EXEC-LIVE-SMOKE` — **NATURALLY-NEXT (gate 3):** full chat-UI flow exercising the executor against the real glossary DB. Stack is up; user-run browser smoke.
+> - `D-PLAN-PLANNER-DEFAULT-FE` — **OUT OF SCOPE (gate 1):** Settings picker to *pin* a planner default + relax `putDefaultModel` to accept a chat model for the `planner` capability. The chat-fallback resolver makes this a power-user nicety, not a blocker.
+> - **Phase 2 (when picked up):** entity/research/sync ops (web-search-backed), destructive-op toggle UI (the `enabledOps` gate already exists in `Execute`), edit ops once the planner can supply `base_version`.
+>
+> ---
+>
+> # ▶▶ (prior epic) **Multilingual KG epic COMPLETE (M1–M7)** · branch `feat/kg-multilingual` · 2026-06-24 — ready to PR
 
 > **EPIC: canonical-source + derived-localization multilingual KG.** Design fully clarified + red-teamed + gate-validated. Spec [2026-06-23-kg-multilingual.md](../specs/2026-06-23-kg-multilingual.md) · detailed design [2026-06-23-kg-multilingual-detailed-design.md](../specs/2026-06-23-kg-multilingual-detailed-design.md) · plan (7 milestones) [2026-06-23-kg-multilingual.md](../plans/2026-06-23-kg-multilingual.md). Design commit `1a448661`.
 >
