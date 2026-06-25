@@ -152,6 +152,7 @@
     "batch_count": "{{count}} 項",
     "warning": "此變更影響重大 — 請確認。",
     "warning_destructive": "此操作具破壞性且會連帶影響 — 請確認。",
+    "destructive_skipped": "{{count}} 個破壞性操作將被略過，除非你在上方啟用它們。",
     "confirm": "確認",
     "confirm_all": "全部確認",
     "cancel": "取消",

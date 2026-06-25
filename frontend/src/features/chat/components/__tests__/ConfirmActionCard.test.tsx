@@ -129,6 +129,54 @@ describe('ConfirmActionCard', () => {
     await waitFor(() => expect(submitToolResult).toHaveBeenCalledWith('r1', 'c1', 'action_done'));
   });
 
+  // Phase 2 — destructive plan ops: each renders an OPT-IN checkbox (default OFF).
+  // Confirming with none checked sends NO enabled_ops (the executor skips them);
+  // checking one sends its op_id in enabled_ops.
+  const planArgs = { confirm_token: 'plantok', descriptor: 'execute_plan', title: 'Execute plan', domain: 'glossary' };
+  function planPreview() {
+    return {
+      descriptor: 'execute_plan', title: 'Execute plan — 2 operation(s)', destructive: true,
+      preview_rows: [
+        { label: 'create kinds', value: '1 new', op_id: 'op-1', destructive: false },
+        { label: 'delete kind', value: 'deity', note: 'deprecates the kind + 4 attribute(s)', op_id: 'op-2', destructive: true },
+      ],
+    };
+  }
+
+  it('a destructive plan op renders an opt-in checkbox and a skipped-unless-enabled hint', async () => {
+    previewAction.mockResolvedValue(planPreview());
+    render(<ConfirmActionCard record={record(planArgs)} />);
+    // the destructive row has a checkbox keyed by op_id, UNCHECKED by default
+    const box = await screen.findByTestId('enable-op');
+    expect(box).toHaveAttribute('data-op-id', 'op-2');
+    expect(box).not.toBeChecked();
+    // and the "will be skipped" hint counts the one un-enabled destructive op
+    expect(screen.getByTestId('pending-destructive')).toBeInTheDocument();
+  });
+
+  it('confirm with nothing checked sends NO enabled_ops (destructive op is skipped)', async () => {
+    previewAction.mockResolvedValue(planPreview());
+    confirmAction.mockResolvedValue({ applied: [], skipped: [{ reason: 'not_confirmed' }], failed: [] });
+    render(<ConfirmActionCard record={record(planArgs)} />);
+    await screen.findByTestId('enable-op');
+    fireEvent.click(screen.getByText('actionConfirm.confirm'));
+    // 3-arg call — no enabled_ops appended
+    await waitFor(() => expect(confirmAction).toHaveBeenCalledWith('glossary', 'plantok', 'tok'));
+  });
+
+  it('checking a destructive op sends its op_id in enabled_ops on confirm', async () => {
+    previewAction.mockResolvedValue(planPreview());
+    confirmAction.mockResolvedValue({ applied: [{ reason: '' }], skipped: [], failed: [] });
+    render(<ConfirmActionCard record={record(planArgs)} />);
+    const box = await screen.findByTestId('enable-op');
+    fireEvent.click(box); // enable op-2
+    expect(box).toBeChecked();
+    // hint clears once the only destructive op is enabled
+    expect(screen.queryByTestId('pending-destructive')).toBeNull();
+    fireEvent.click(screen.getByText('actionConfirm.confirm'));
+    await waitFor(() => expect(confirmAction).toHaveBeenCalledWith('glossary', 'plantok', 'tok', ['op-2']));
+  });
+
   it('resumes action_error on a non-422 failure', async () => {
     confirmAction.mockRejectedValue(Object.assign(new Error('boom'), { status: 500 }));
     render(<ConfirmActionCard record={record(baseArgs)} />);

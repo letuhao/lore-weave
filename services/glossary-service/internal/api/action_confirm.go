@@ -55,26 +55,29 @@ func (s *Server) consumeToken(ctx context.Context, jti, descriptor string, exp t
 	return tag.RowsAffected() > 0, nil
 }
 
-// decodeConfirmToken reads {confirm_token} and verifies it; writes the 4xx itself
-// on a missing/expired/invalid token and returns ok=false.
-func (s *Server) decodeConfirmToken(w http.ResponseWriter, r *http.Request) (actionClaims, bool) {
+// decodeConfirmToken reads {confirm_token, enabled_ops?} and verifies the token;
+// writes the 4xx itself on a missing/expired/invalid token and returns ok=false.
+// enabled_ops is the per-op destructive opt-in for an execute_plan confirm (§4 G1);
+// nil/absent for every other action (and ignored by the read-only preview path).
+func (s *Server) decodeConfirmToken(w http.ResponseWriter, r *http.Request) (actionClaims, []string, bool) {
 	var body struct {
-		ConfirmToken string `json:"confirm_token"`
+		ConfirmToken string   `json:"confirm_token"`
+		EnabledOps   []string `json:"enabled_ops"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&body); err != nil || strings.TrimSpace(body.ConfirmToken) == "" {
 		writeError(w, http.StatusBadRequest, "GLOSS_VALIDATION", "confirm_token is required")
-		return actionClaims{}, false
+		return actionClaims{}, nil, false
 	}
 	claims, err := verifyActionToken(s.cfg.JWTSecret, body.ConfirmToken, time.Now())
 	if errors.Is(err, ErrActionTokenExpired) {
 		writeError(w, http.StatusUnprocessableEntity, "GLOSS_ACTION_TOKEN", "confirmation expired — propose again")
-		return actionClaims{}, false
+		return actionClaims{}, nil, false
 	}
 	if err != nil {
 		writeError(w, http.StatusUnprocessableEntity, "GLOSS_ACTION_TOKEN", "invalid confirmation")
-		return actionClaims{}, false
+		return actionClaims{}, nil, false
 	}
-	return claims, true
+	return claims, body.EnabledOps, true
 }
 
 // authorizeAction re-checks authority at confirm/preview time (C3 + defense in
@@ -110,7 +113,7 @@ func (s *Server) confirmAction(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusUnauthorized, "GLOSS_UNAUTHORIZED", "valid Bearer token required")
 		return
 	}
-	claims, ok := s.decodeConfirmToken(w, r)
+	claims, enabledOps, ok := s.decodeConfirmToken(w, r)
 	if !ok {
 		return
 	}
@@ -155,7 +158,7 @@ func (s *Server) confirmAction(w http.ResponseWriter, r *http.Request) {
 	case descDeepResearch:
 		s.effectDeepResearch(w, r.Context(), claims)
 	case descExecutePlan:
-		s.effectExecutePlan(w, r.Context(), claims)
+		s.effectExecutePlan(w, r.Context(), claims, enabledOps)
 	default:
 		writeError(w, http.StatusUnprocessableEntity, "GLOSS_ACTION_TOKEN", "unknown action")
 	}
@@ -418,7 +421,7 @@ func (s *Server) previewAction(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusUnauthorized, "GLOSS_UNAUTHORIZED", "valid Bearer token required")
 		return
 	}
-	claims, ok := s.decodeConfirmToken(w, r)
+	claims, _, ok := s.decodeConfirmToken(w, r)
 	if !ok {
 		return
 	}

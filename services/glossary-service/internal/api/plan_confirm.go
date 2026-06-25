@@ -8,9 +8,10 @@ package api
 // BEFORE dispatch here, so this effect is the one-shot write; a partial failure is
 // reported in the summary, not retried (the human re-proposes).
 //
-// Phase 1 is additive-only (§18): the op-set has no destructive ops, so enabledOps
-// is nil — there is no per-op confirm toggle yet (that arrives with delete/merge in
-// Phase 2). The FE ConfirmCard renders the preview rows unchanged.
+// Phase 2 slice 1 adds destructive deletes (delete_genre/kind/attribute): the confirm
+// body now carries enabled_ops, and effectExecutePlan threads that set into Execute so
+// a destructive op runs ONLY when the human enabled its op-id (G1). Additive ops are
+// unaffected (they ignore enabled_ops).
 
 import (
 	"context"
@@ -31,7 +32,7 @@ import (
 // rejects an unknown op, dedupes, and freezes ids — idempotent on an already-valid
 // plan. The plan is bound to the token's resource (claims.BookID) so it can never
 // execute against a different book than the one the token authorized.
-func (s *Server) effectExecutePlan(w http.ResponseWriter, ctx context.Context, claims actionClaims) {
+func (s *Server) effectExecutePlan(w http.ResponseWriter, ctx context.Context, claims actionClaims, enabledOps []string) {
 	var plan mcp.Plan
 	if err := json.Unmarshal(claims.Params, &plan); err != nil {
 		writeError(w, http.StatusInternalServerError, "GLOSS_INTERNAL", "bad plan payload")
@@ -43,8 +44,23 @@ func (s *Server) effectExecutePlan(w http.ResponseWriter, ctx context.Context, c
 		writeError(w, http.StatusUnprocessableEntity, "GLOSS_ACTION_TOKEN", "the plan is no longer valid — propose again")
 		return
 	}
-	// Additive-only Phase 1 → no enabled destructive ops (§18).
-	summary := mcp.Execute(ctx, claims.UserID, plan, nil, reg)
+	// Per-op destructive opt-in (§4 G1): each enabled id must name an op IN this plan
+	// (an unknown id is a stale/garbage toggle → 422, re-propose). Enabling a
+	// non-destructive op is harmless (Execute only consults the set for destructive
+	// ops), so we reject only unknown ids, not non-destructive ones.
+	planOps := make(map[string]bool, len(plan.Ops))
+	for _, op := range plan.Ops {
+		planOps[op.ID] = true
+	}
+	enabled := make(map[string]bool, len(enabledOps))
+	for _, id := range enabledOps {
+		if !planOps[id] {
+			writeError(w, http.StatusUnprocessableEntity, "GLOSS_ACTION_TOKEN", "bad_enabled_op: "+id+" is not in this plan — propose again")
+			return
+		}
+		enabled[id] = true
+	}
+	summary := mcp.Execute(ctx, claims.UserID, plan, enabled, reg)
 	// 200 even on partial failure / abort: the human confirmed and the executor ran;
 	// per-op results (incl. failed/aborted) are in the body for the agent to surface.
 	writeJSON(w, http.StatusOK, summary)
@@ -70,12 +86,19 @@ func (s *Server) previewExecutePlan(w http.ResponseWriter, ctx context.Context, 
 	// an empty map (the preview degrades to "all new" rather than failing the card).
 	existingKinds, _ := s.loadKindMap(ctx, plan.BookID)
 	rows := make([]previewRow, 0, len(plan.Ops))
+	anyDestructive := false
 	for _, op := range plan.Ops {
-		rows = append(rows, s.previewPlanOp(ctx, plan.BookID, op, existingKinds))
+		row := s.previewPlanOp(ctx, plan.BookID, op, existingKinds)
+		// op.Destructive is authoritative here — ValidatePlan above re-stamped it from
+		// the registry (a hallucinated `destructive:false` on a delete cannot survive).
+		row.OpID = op.ID
+		row.Destructive = op.Destructive
+		anyDestructive = anyDestructive || op.Destructive
+		rows = append(rows, row)
 	}
 	writeJSON(w, http.StatusOK, actionPreview{
 		Descriptor:  descExecutePlan,
-		Destructive: false,
+		Destructive: anyDestructive,
 		Title:       fmt.Sprintf("Execute plan — %d operation(s)", len(plan.Ops)),
 		PreviewRows: rows,
 	})
@@ -131,7 +154,69 @@ func (s *Server) previewPlanOp(ctx context.Context, bookID uuid.UUID, op mcp.Op,
 			return previewRow{Label: "edit attribute", Value: "?", Note: "unreadable op"}
 		}
 		return previewRow{Label: "edit attribute", Value: p.KindCode + "/" + p.Code, Note: "update fields"}
+	case "delete_genre":
+		var p deleteGenreParams
+		if err := json.Unmarshal(op.Params, &p); err != nil {
+			return previewRow{Label: "delete genre", Value: "?", Note: "unreadable op"}
+		}
+		attrs, links, ok := s.genreCascadeCounts(ctx, bookID, strings.TrimSpace(p.GenreCode))
+		if !ok {
+			return previewRow{Label: "delete genre", Value: p.GenreCode, Note: "not found — this op will be skipped"}
+		}
+		return previewRow{Label: "delete genre", Value: p.GenreCode,
+			Note: fmt.Sprintf("deprecates the genre + %d attribute(s), %d kind link(s) (cascade)", attrs, links)}
+	case "delete_kind":
+		var p deleteKindParams
+		if err := json.Unmarshal(op.Params, &p); err != nil {
+			return previewRow{Label: "delete kind", Value: "?", Note: "unreadable op"}
+		}
+		attrs, ok := s.kindCascadeCounts(ctx, bookID, strings.TrimSpace(p.KindCode))
+		if !ok {
+			return previewRow{Label: "delete kind", Value: p.KindCode, Note: "not found — this op will be skipped"}
+		}
+		return previewRow{Label: "delete kind", Value: p.KindCode,
+			Note: fmt.Sprintf("deprecates the kind + %d attribute(s) (cascade)", attrs)}
+	case "delete_attribute":
+		var p deleteAttributeParams
+		if err := json.Unmarshal(op.Params, &p); err != nil {
+			return previewRow{Label: "delete attribute", Value: "?", Note: "unreadable op"}
+		}
+		return previewRow{Label: "delete attribute", Value: p.KindCode + "/" + p.Code, Note: "deprecates this attribute"}
 	default:
 		return previewRow{Label: op.Type, Value: op.ID}
 	}
+}
+
+// genreCascadeCounts returns the live attribute + kind-link counts a delete_genre would
+// deprecate/drop, for the preview blast-radius note. ok=false when the genre code does
+// not resolve to a LIVE genre (the op would be a no-op skip). Best-effort: a query
+// error degrades to (0,0,true) rather than failing the card.
+func (s *Server) genreCascadeCounts(ctx context.Context, bookID uuid.UUID, code string) (attrs, links int, ok bool) {
+	var genreID uuid.UUID
+	if err := s.pool.QueryRow(ctx,
+		`SELECT genre_id FROM book_genres WHERE book_id=$1 AND code=$2 AND deprecated_at IS NULL`,
+		bookID, code).Scan(&genreID); err != nil {
+		return 0, 0, false
+	}
+	_ = s.pool.QueryRow(ctx,
+		`SELECT count(*) FROM book_attributes WHERE book_id=$1 AND genre_id=$2 AND deprecated_at IS NULL`,
+		bookID, genreID).Scan(&attrs)
+	_ = s.pool.QueryRow(ctx,
+		`SELECT count(*) FROM book_kind_genres WHERE book_id=$1 AND genre_id=$2`, bookID, genreID).Scan(&links)
+	return attrs, links, true
+}
+
+// kindCascadeCounts returns the live attribute count a delete_kind would deprecate.
+// ok=false when the kind code does not resolve to a LIVE kind.
+func (s *Server) kindCascadeCounts(ctx context.Context, bookID uuid.UUID, code string) (attrs int, ok bool) {
+	var kindID uuid.UUID
+	if err := s.pool.QueryRow(ctx,
+		`SELECT book_kind_id FROM book_kinds WHERE book_id=$1 AND code=$2 AND deprecated_at IS NULL`,
+		bookID, code).Scan(&kindID); err != nil {
+		return 0, false
+	}
+	_ = s.pool.QueryRow(ctx,
+		`SELECT count(*) FROM book_attributes WHERE book_id=$1 AND kind_id=$2 AND deprecated_at IS NULL`,
+		bookID, kindID).Scan(&attrs)
+	return attrs, true
 }

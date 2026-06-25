@@ -60,8 +60,8 @@ const (
 	descDeepResearch = "deep_research"
 
 	// Plan/Action kit — execute a typed multi-op plan on ONE confirm (loreweave_mcp).
-	// Phase 1 op-set is additive-only (no destructive ops). MUST equal
-	// loreweave_mcp.DescriptorExecutePlan.
+	// The op-set spans additive ops + Phase-2 destructive deletes (gated per-op by
+	// enabled_ops at confirm). MUST equal loreweave_mcp.DescriptorExecutePlan.
 	descExecutePlan = "execute_plan"
 
 	// T4 — System-tier admin writes (authorityAdmin only; confirmed via the

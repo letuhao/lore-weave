@@ -18,18 +18,26 @@ import (
 func TestPlanRegistry_BuildsWithoutPanic(t *testing.T) {
 	s := &Server{}
 	reg := s.planRegistry()
-	for _, typ := range []string{"adopt_genres", "create_kinds", "add_attributes", "edit_attribute"} {
+	// Phase 1 additive ops + Phase 2 slice-1 destructive deletes.
+	wantAdditive := []string{"adopt_genres", "create_kinds", "add_attributes", "edit_attribute"}
+	wantDestructive := []string{"delete_genre", "delete_kind", "delete_attribute"}
+	for _, typ := range append(append([]string{}, wantAdditive...), wantDestructive...) {
 		if _, ok := reg[typ]; !ok {
 			t.Fatalf("registry missing op %q", typ)
 		}
 	}
-	if len(reg) != 4 {
-		t.Fatalf("expected 4 ops, got %d", len(reg))
+	if len(reg) != len(wantAdditive)+len(wantDestructive) {
+		t.Fatalf("expected %d ops, got %d", len(wantAdditive)+len(wantDestructive), len(reg))
 	}
-	// Phase 1 is additive-only: no op may be destructive, all must be idempotent.
+	// G1: Destructive is authoritative per registration — exactly the delete_* ops
+	// are destructive; the additive ops are not. G3: every op must be idempotent.
+	destructive := map[string]bool{}
+	for _, typ := range wantDestructive {
+		destructive[typ] = true
+	}
 	for typ, spec := range reg {
-		if spec.Destructive {
-			t.Errorf("op %q is destructive; Phase 1 is additive-only", typ)
+		if spec.Destructive != destructive[typ] {
+			t.Errorf("op %q Destructive=%v, want %v", typ, spec.Destructive, destructive[typ])
 		}
 		if !spec.Idempotent {
 			t.Errorf("op %q is not idempotent (NewRegistry should have panicked)", typ)

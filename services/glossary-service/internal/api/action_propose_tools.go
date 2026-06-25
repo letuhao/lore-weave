@@ -25,6 +25,12 @@ type previewRow struct {
 	Label string `json:"label"`
 	Value string `json:"value"`
 	Note  string `json:"note,omitempty"`
+	// OpID + Destructive are set for execute_plan previews (one row per plan op): the
+	// FE renders an opt-in enable toggle, keyed by OpID, on each Destructive row and
+	// sends the checked ids back as enabled_ops at confirm (§4 G1). Empty/false for
+	// non-plan single-action previews (unchanged).
+	OpID        string `json:"op_id,omitempty"`
+	Destructive bool   `json:"destructive,omitempty"`
 }
 
 // confirmCardOut is the propose result fed to the LLM and rendered by the FE

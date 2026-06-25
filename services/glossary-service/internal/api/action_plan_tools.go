@@ -227,7 +227,12 @@ func extractJSONObject(s string) string {
 
 // ontologyStateSummary is the compact current-state the planner reads so the plan
 // is a DELTA against reality (no duplicate kinds). Kept small — the executor's
-// skip-on-conflict is the real idempotency guarantee, not the planner's care.
+// skip-on-conflict is the real idempotency guarantee, not the planner's care. It
+// lists BOTH kinds and genres by code: kinds anchor create/add (no duplicates), and
+// both anchor the destructive ops — a delete_kind/delete_genre may ONLY reference a
+// code shown here (the planner is otherwise blind to current state and would emit a
+// code that resolves to target_gone). Attributes are intentionally NOT listed (they
+// would bloat every plan call; delete_attribute is therefore not in the planner vocab).
 func (s *Server) ontologyStateSummary(ctx context.Context, bookID uuid.UUID) (string, error) {
 	kinds, err := s.loadKindMap(ctx, bookID)
 	if err != nil {
@@ -241,7 +246,15 @@ func (s *Server) ontologyStateSummary(ctx context.Context, bookID uuid.UUID) (st
 		codes = append(codes, c)
 	}
 	sort.Strings(codes)
-	return "Existing kinds (do NOT re-create these): " + strings.Join(codes, ", "), nil
+	summary := "Existing kinds (do NOT re-create these; a delete_kind may target one of these): " + strings.Join(codes, ", ")
+	genres, gerr := s.loadBookGenreCodes(ctx, bookID)
+	if gerr != nil {
+		return "", gerr
+	}
+	if len(genres) > 0 {
+		summary += "\nExisting genres (a delete_genre may target one of these): " + strings.Join(genres, ", ")
+	}
+	return summary, nil
 }
 
 // planPreviewRows renders the minted plan as confirm-card rows (one per op + any
@@ -273,14 +286,17 @@ OP TYPES (the ONLY allowed types) and their params:
 - "adopt_genres": {"genres":["<genre_code>"],"kinds":["<kind_code>"]} — adopt System-standard genres/kinds to scaffold the book. Use at most ONE adopt op, and put it FIRST.
 - "create_kinds": {"kinds":[{"code":"<slug>","name":"<Name>","description":"<desc>","attributes":[{"code":"<slug>","name":"<Name>","description":"<what this attribute captures>","field_type":"text|textarea|select|number|date|tags|url|boolean"}]}]} — create NEW kinds, each WITH its defining attributes. Use ONE create_kinds op holding ALL new kinds.
 - "add_attributes": {"kind_code":"<existing slug>","attributes":[{...same attribute shape...}]} — add attributes to an ALREADY-EXISTING kind ONLY.
+- "delete_genre": {"genre_code":"<existing slug>"} — REMOVE a genre listed under "Existing genres" (cascades: deprecates its attributes + kind links). DESTRUCTIVE.
+- "delete_kind": {"kind_code":"<existing slug>"} — REMOVE a kind listed under "Existing kinds" (cascades: deprecates its attributes). DESTRUCTIVE.
 
-(EDITING an existing attribute is NOT available in a plan yet — if the goal needs an edit to an existing attribute, describe it in "notes" rather than emitting an op.)
+(EDITING an attribute, and DELETING an individual attribute, are NOT available in a plan yet — the current-state summary lists kinds + genres but not individual attributes, so a plan cannot reliably target one. If the goal needs an attribute edit/delete, describe it in "notes" rather than emitting an op.)
 
 HARD RULES:
 - Every "code" is a lowercase ASCII slug matching ^[a-z0-9_]+$. Transliterate non-Latin names to slugs; keep display "name" in the original language.
 - EVERY attribute MUST have a clear, specific "description" — it is the extraction instruction. Never emit an attribute without one.
 - A NEW kind's attributes go INSIDE its create_kinds entry. Do NOT also emit add_attributes for a kind you create in this same plan.
 - Give each kind 3-6 defining attributes.
+- DESTRUCTIVE ops (delete_*) — emit one ONLY when the user EXPLICITLY asks to remove/delete/drop something that already exists in CURRENT BOOK STATE. Never delete to "clean up", "replace", or "reorganize" unless the user asked for the removal in those words. Reference only codes present in CURRENT BOOK STATE. The user confirms each delete individually before it runs.
 - Use ONLY the op types above. If the goal needs something else, put a sentence in "notes" — NEVER invent an op type.
 
 CURRENT BOOK STATE:

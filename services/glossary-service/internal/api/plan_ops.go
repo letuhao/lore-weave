@@ -1,18 +1,20 @@
 package api
 
-// Plan/Action kit — glossary Phase-1 op-set registration (spec
-// docs/specs/2026-06-25-plan-action-kit.md §14). This file wires the four
-// additive-only ops the planner may emit into the shared `loreweave_mcp`
-// Registry: each OpSpec maps a typed params blob to one of the EXISTING write
-// cores (createKindFromParams / createAttrDefFromParams / adoptBookOntologyCore /
-// the book_patch core), and translates the core's Postgres/sentinel errors to the
-// kit's outcome sentinels (ErrUniqueViolation / ErrNotFound / ErrStaleVersion /
-// ErrBadParams). No new write logic lives here — the kit owns execution control
-// flow (execute.go), this file owns only the domain registration (§13/§14).
+// Plan/Action kit — glossary op-set registration (spec
+// docs/specs/2026-06-25-plan-action-kit.md §14). This file wires the ops the planner
+// may emit into the shared `loreweave_mcp` Registry: each OpSpec maps a typed params
+// blob to one of the EXISTING write cores (createKindFromParams /
+// createAttrDefFromParams / adoptBookOntologyCore / the book_patch core / the
+// cascade-delete primitives), and translates the core's Postgres/sentinel errors to
+// the kit's outcome sentinels (ErrUniqueViolation / ErrNotFound / ErrStaleVersion /
+// ErrBadParams / ErrAlreadyDone). No new write logic lives here — the kit owns
+// execution control flow (execute.go), this file owns only the domain registration.
 //
-// Phase 1 is additive-only: every op is Destructive:false and Idempotent:true
-// (NewRegistry panics on a non-idempotent op, G3). `edit_attribute` is the only
-// op carrying base_version (§17 — edit ops only).
+// Phase 1 ops (tiers 0–4) are additive (Destructive:false). Phase 2 slice 1 adds the
+// tier-5 destructive deletes (delete_genre/kind/attribute, Destructive:true) — the
+// executor skips each unless its op-id is in enabled_ops (G1). Every op is Idempotent
+// (NewRegistry panics otherwise, G3). `edit_attribute` is the only base_version op
+// (§17 — edit ops only).
 
 import (
 	"context"
@@ -65,6 +67,29 @@ type editAttributeParams struct {
 	GenreCode string              `json:"genre_code"`
 	Code      string              `json:"code"`
 	Fields    editAttributeFields `json:"fields"`
+}
+
+// ── destructive op param shapes (Phase 2 slice 1, §18) ────────────────────────
+// All three address a LIVE book-tier ontology row by its code and soft-deprecate it
+// (the existing cascade primitives). They are Destructive — the executor skips them
+// unless their op id is in enabled_ops (G1), so a hallucinated/injected delete never
+// runs on a bare "approve".
+
+type deleteGenreParams struct {
+	GenreCode string `json:"genre_code"`
+}
+
+type deleteKindParams struct {
+	KindCode string `json:"kind_code"`
+}
+
+// deleteAttributeParams is code-addressed by (kind_code, genre_code, code) — an
+// attribute is keyed by (kind × genre × code), so the genre is required to disambiguate
+// (same identity as edit_attribute).
+type deleteAttributeParams struct {
+	KindCode  string `json:"kind_code"`
+	GenreCode string `json:"genre_code"`
+	Code      string `json:"code"`
 }
 
 // planRegistry builds the glossary Phase-1 op registry consumed by the kit's
@@ -198,7 +223,168 @@ func (s *Server) planRegistry() mcp.Registry {
 				return detail, nil
 			},
 		},
+
+		// tier 5 — destructive deletes (run AFTER every create/edit; skipped unless the
+		// op's id is in enabled_ops, G1). Each resolves the code deprecation-aware so a
+		// re-run is already_done (idempotent), an absent code is target_gone (§5).
+		mcp.OpSpec{
+			Type:        "delete_genre",
+			Tier:        5,
+			Destructive: true,
+			Idempotent:  true,
+			IdentityKey: deleteGenreIdentity,
+			Validate:    validateDeleteGenre,
+			Handler: func(ctx context.Context, bookID, _ uuid.UUID, params json.RawMessage, _ string) (any, error) {
+				var p deleteGenreParams
+				if err := json.Unmarshal(params, &p); err != nil {
+					return nil, fmt.Errorf("%w: %v", mcp.ErrBadParams, err)
+				}
+				id, err := s.resolveBookGenreForDelete(ctx, bookID, strings.TrimSpace(p.GenreCode))
+				if err != nil {
+					return nil, err // already a kit sentinel (ErrAlreadyDone / ErrNotFound)
+				}
+				found, derr := s.cascadeDeleteBookGenre(ctx, bookID, id)
+				if derr != nil {
+					return nil, mapCoreErr(derr)
+				}
+				if !found {
+					return nil, mcp.ErrAlreadyDone // raced: deprecated between resolve and delete
+				}
+				return map[string]any{"deleted": "genre", "code": p.GenreCode}, nil
+			},
+		},
+		mcp.OpSpec{
+			Type:        "delete_kind",
+			Tier:        5,
+			Destructive: true,
+			Idempotent:  true,
+			IdentityKey: deleteKindIdentity,
+			Validate:    validateDeleteKind,
+			Handler: func(ctx context.Context, bookID, _ uuid.UUID, params json.RawMessage, _ string) (any, error) {
+				var p deleteKindParams
+				if err := json.Unmarshal(params, &p); err != nil {
+					return nil, fmt.Errorf("%w: %v", mcp.ErrBadParams, err)
+				}
+				id, err := s.resolveBookKindForDelete(ctx, bookID, strings.TrimSpace(p.KindCode))
+				if err != nil {
+					return nil, err
+				}
+				found, derr := s.cascadeDeleteBookKind(ctx, bookID, id)
+				if derr != nil {
+					return nil, mapCoreErr(derr)
+				}
+				if !found {
+					return nil, mcp.ErrAlreadyDone
+				}
+				return map[string]any{"deleted": "kind", "code": p.KindCode}, nil
+			},
+		},
+		mcp.OpSpec{
+			Type:        "delete_attribute",
+			Tier:        5,
+			Destructive: true,
+			Idempotent:  true,
+			IdentityKey: deleteAttributeIdentity,
+			Validate:    validateDeleteAttribute,
+			Handler: func(ctx context.Context, bookID, _ uuid.UUID, params json.RawMessage, _ string) (any, error) {
+				var p deleteAttributeParams
+				if err := json.Unmarshal(params, &p); err != nil {
+					return nil, fmt.Errorf("%w: %v", mcp.ErrBadParams, err)
+				}
+				id, err := s.resolveBookAttrForDelete(ctx, bookID,
+					strings.TrimSpace(p.KindCode), strings.TrimSpace(p.GenreCode), strings.TrimSpace(p.Code))
+				if err != nil {
+					return nil, err
+				}
+				found, derr := s.softDeleteBookAttribute(ctx, bookID, id)
+				if derr != nil {
+					return nil, mapCoreErr(derr)
+				}
+				if !found {
+					return nil, mcp.ErrAlreadyDone
+				}
+				return map[string]any{"deleted": "attribute", "code": p.KindCode + "/" + p.Code}, nil
+			},
+		},
 	)
+}
+
+// ── deprecation-aware delete resolvers (idempotency, §5) ──────────────────────
+// The plain resolveBook*ID helpers filter deprecated_at IS NULL, so they conflate
+// "never existed" with "already deprecated". A delete op needs them split: a re-run
+// (already deprecated) is an idempotent skip (ErrAlreadyDone), an absent code is
+// target_gone (ErrNotFound). These look up the row IGNORING its own deprecated_at and
+// return the kit sentinel directly.
+
+func (s *Server) resolveBookGenreForDelete(ctx context.Context, bookID uuid.UUID, code string) (uuid.UUID, error) {
+	var id uuid.UUID
+	var deprecated bool
+	err := s.pool.QueryRow(ctx,
+		`SELECT genre_id, deprecated_at IS NOT NULL FROM book_genres WHERE book_id=$1 AND code=$2`,
+		bookID, code).Scan(&id, &deprecated)
+	return resolveDeleteResult(id, deprecated, err, "genre", code)
+}
+
+func (s *Server) resolveBookKindForDelete(ctx context.Context, bookID uuid.UUID, code string) (uuid.UUID, error) {
+	var id uuid.UUID
+	var deprecated bool
+	err := s.pool.QueryRow(ctx,
+		`SELECT book_kind_id, deprecated_at IS NOT NULL FROM book_kinds WHERE book_id=$1 AND code=$2`,
+		bookID, code).Scan(&id, &deprecated)
+	return resolveDeleteResult(id, deprecated, err, "kind", code)
+}
+
+// resolveBookAttrForDelete keys by (kind × genre × code) on LIVE parent kind+genre
+// (a deprecated parent already cascade-deprecated this attribute → target_gone, which
+// is the honest outcome). The attribute's OWN deprecated_at is what splits
+// already_done from a live delete.
+func (s *Server) resolveBookAttrForDelete(ctx context.Context, bookID uuid.UUID, kindCode, genreCode, attrCode string) (uuid.UUID, error) {
+	var id uuid.UUID
+	var deprecated bool
+	err := s.pool.QueryRow(ctx, `
+		SELECT a.attr_id, a.deprecated_at IS NOT NULL
+		  FROM book_attributes a
+		  JOIN book_kinds  k ON k.book_kind_id = a.kind_id  AND k.deprecated_at IS NULL
+		  JOIN book_genres g ON g.genre_id     = a.genre_id AND g.deprecated_at IS NULL
+		 WHERE a.book_id = $1 AND k.code = $2 AND g.code = $3 AND a.code = $4`,
+		bookID, kindCode, genreCode, attrCode).Scan(&id, &deprecated)
+	return resolveDeleteResult(id, deprecated, err, "attribute", kindCode+"/"+attrCode)
+}
+
+// loadBookGenreCodes returns the live book genre codes (sorted) for the planner's
+// state summary — the planner can only delete_genre a code it is shown here.
+func (s *Server) loadBookGenreCodes(ctx context.Context, bookID uuid.UUID) ([]string, error) {
+	rows, err := s.pool.Query(ctx,
+		`SELECT code FROM book_genres WHERE book_id=$1 AND deprecated_at IS NULL ORDER BY code`, bookID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	codes := make([]string, 0)
+	for rows.Next() {
+		var c string
+		if err := rows.Scan(&c); err != nil {
+			return nil, err
+		}
+		codes = append(codes, c)
+	}
+	return codes, rows.Err()
+}
+
+// resolveDeleteResult folds a delete-target lookup into the kit's outcome sentinels:
+// no row → ErrNotFound (target_gone); already deprecated → ErrAlreadyDone (idempotent
+// skip); live → (id, nil).
+func resolveDeleteResult(id uuid.UUID, deprecated bool, err error, kind, code string) (uuid.UUID, error) {
+	if isNoRows(err) {
+		return uuid.Nil, fmt.Errorf("%w: %s %q not found in book ontology", mcp.ErrNotFound, kind, code)
+	}
+	if err != nil {
+		return uuid.Nil, err // → ReasonInternal (abort)
+	}
+	if deprecated {
+		return uuid.Nil, fmt.Errorf("%w: %s %q already deleted", mcp.ErrAlreadyDone, kind, code)
+	}
+	return id, nil
 }
 
 // editAttributeCore is the book_patch CORE for an attribute edit, composed from the
@@ -271,6 +457,30 @@ func editAttributeIdentity(params json.RawMessage) (string, error) {
 	return strings.TrimSpace(p.KindCode) + "/" + strings.TrimSpace(p.GenreCode) + "/" + strings.TrimSpace(p.Code), nil
 }
 
+func deleteGenreIdentity(params json.RawMessage) (string, error) {
+	var p deleteGenreParams
+	if err := json.Unmarshal(params, &p); err != nil {
+		return "", err
+	}
+	return strings.TrimSpace(p.GenreCode), nil
+}
+
+func deleteKindIdentity(params json.RawMessage) (string, error) {
+	var p deleteKindParams
+	if err := json.Unmarshal(params, &p); err != nil {
+		return "", err
+	}
+	return strings.TrimSpace(p.KindCode), nil
+}
+
+func deleteAttributeIdentity(params json.RawMessage) (string, error) {
+	var p deleteAttributeParams
+	if err := json.Unmarshal(params, &p); err != nil {
+		return "", err
+	}
+	return strings.TrimSpace(p.KindCode) + "/" + strings.TrimSpace(p.GenreCode) + "/" + strings.TrimSpace(p.Code), nil
+}
+
 // ── Validate (S4 — slug code + mandatory description) ─────────────────────────
 
 func validateCreateKinds(params json.RawMessage) error {
@@ -315,6 +525,48 @@ func validateAddAttributes(params json.RawMessage) error {
 		if err := validateAttrSpec("add_attributes", a); err != nil {
 			return err
 		}
+	}
+	return nil
+}
+
+// ── destructive op Validate (slug codes; the target need not exist at validate
+// time — a missing target surfaces at execute as target_gone, §5) ─────────────
+
+func validateDeleteGenre(params json.RawMessage) error {
+	var p deleteGenreParams
+	if err := json.Unmarshal(params, &p); err != nil {
+		return err
+	}
+	if !slugPattern.MatchString(strings.TrimSpace(p.GenreCode)) {
+		return fmt.Errorf("delete_genre: genre_code %q must match ^[a-z0-9_]+$", p.GenreCode)
+	}
+	return nil
+}
+
+func validateDeleteKind(params json.RawMessage) error {
+	var p deleteKindParams
+	if err := json.Unmarshal(params, &p); err != nil {
+		return err
+	}
+	if !slugPattern.MatchString(strings.TrimSpace(p.KindCode)) {
+		return fmt.Errorf("delete_kind: kind_code %q must match ^[a-z0-9_]+$", p.KindCode)
+	}
+	return nil
+}
+
+func validateDeleteAttribute(params json.RawMessage) error {
+	var p deleteAttributeParams
+	if err := json.Unmarshal(params, &p); err != nil {
+		return err
+	}
+	if !slugPattern.MatchString(strings.TrimSpace(p.KindCode)) {
+		return fmt.Errorf("delete_attribute: kind_code %q must match ^[a-z0-9_]+$", p.KindCode)
+	}
+	if !slugPattern.MatchString(strings.TrimSpace(p.GenreCode)) {
+		return fmt.Errorf("delete_attribute: genre_code %q must match ^[a-z0-9_]+$ (an attribute is keyed by kind × genre × code)", p.GenreCode)
+	}
+	if !slugPattern.MatchString(strings.TrimSpace(p.Code)) {
+		return fmt.Errorf("delete_attribute: code %q must match ^[a-z0-9_]+$", p.Code)
 	}
 	return nil
 }

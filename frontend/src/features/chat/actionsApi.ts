@@ -14,6 +14,11 @@ export interface ActionPreviewRow {
   label: string;
   value: string;
   note?: string;
+  /** Set for execute_plan previews (one row per plan op). A row with `destructive`
+   *  renders an opt-in enable toggle keyed by `op_id`; the checked ids are sent as
+   *  `enabled_ops` at confirm (the executor skips a destructive op unless enabled). */
+  op_id?: string;
+  destructive?: boolean;
 }
 
 export interface ActionPreview {
@@ -51,11 +56,15 @@ export const actionsApi = {
   },
 
   /** C-CONFIRM commit: the ONLY write path — POST the token; the bound payload
-   *  executes server-side. Single-use; an expired/forged token is refused. */
-  confirmAction(domain: string, confirmToken: string, token: string): Promise<unknown> {
+   *  executes server-side. Single-use; an expired/forged token is refused.
+   *  `enabledOps` (execute_plan only) names the destructive plan ops the human
+   *  opted into; omitted/empty for every non-plan action. */
+  confirmAction(domain: string, confirmToken: string, token: string, enabledOps?: string[]): Promise<unknown> {
+    const body: Record<string, unknown> = { confirm_token: confirmToken };
+    if (enabledOps && enabledOps.length > 0) body.enabled_ops = enabledOps;
     return apiJson<unknown>(`${actionsBase(domain)}/confirm`, {
       method: 'POST',
-      body: JSON.stringify({ confirm_token: confirmToken }),
+      body: JSON.stringify(body),
       token,
     });
   },

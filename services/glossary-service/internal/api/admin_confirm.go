@@ -78,7 +78,7 @@ func (s *Server) confirmAdminAction(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	claims, ok := s.decodeConfirmToken(w, r)
+	claims, _, ok := s.decodeConfirmToken(w, r)
 	if !ok {
 		return
 	}
@@ -122,7 +122,7 @@ func (s *Server) previewAdminAction(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	claims, ok := s.decodeConfirmToken(w, r)
+	claims, _, ok := s.decodeConfirmToken(w, r)
 	if !ok {
 		return
 	}
