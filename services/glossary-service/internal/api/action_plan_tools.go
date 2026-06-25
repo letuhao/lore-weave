@@ -67,16 +67,16 @@ func (s *Server) toolPlan(ctx context.Context, _ *mcpsdk.CallToolRequest, in pla
 		return nil, confirmCardOut{}, uniformOwnershipError(err)
 	}
 
-	// Resolve the planner model: an explicit model_ref wins; otherwise the user's
-	// default 'planner' model (D-1). A clear, actionable error when neither exists.
+	// Resolve the planner model: an explicit model_ref wins; otherwise provider-registry
+	// resolves one (the user's 'planner' default, or their best chat model — MED-6).
 	modelRef := strings.TrimSpace(in.ModelRef)
 	if modelRef == "" {
-		mr, found, rerr := s.resolveDefaultModel(ctx, userID, "planner")
+		mr, found, rerr := s.resolvePlannerModel(ctx, userID)
 		if rerr != nil {
 			return nil, confirmCardOut{}, errors.New("could not resolve a planner model")
 		}
 		if !found {
-			return nil, confirmCardOut{}, errors.New("no planner model set — choose a default 'planner' model in Settings, or pass model_ref")
+			return nil, confirmCardOut{}, errors.New("no chat model available to plan with — add a model in Settings, or pass an explicit model_ref")
 		}
 		modelRef = mr
 	}

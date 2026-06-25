@@ -83,19 +83,19 @@ func (s *Server) webSearch(ctx context.Context, userID uuid.UUID, query string, 
 	return out.Results, out.Answer, nil
 }
 
-// resolveDefaultModel asks provider-registry for the user's default model for a
-// capability (e.g. "planner"), via GET /internal/default-models/{capability}. It
-// is the BYOK way to pick a model without holding a credential — the same
-// internal-token, user_id-scoped pattern as webSearch. ok=false when the user has
-// set no default (404); the caller surfaces a clear "set a default / pass
-// model_ref" message rather than a 500.
-func (s *Server) resolveDefaultModel(ctx context.Context, userID uuid.UUID, capability string) (string, bool, error) {
+// resolvePlannerModel asks provider-registry which model the planner should use,
+// via GET /internal/planner-model. provider-registry applies the fallback (an
+// explicit 'planner' default → else the user's best chat model), so glossary_plan
+// works without the user manually pinning anything (MED-6). Same internal-token,
+// user_id-scoped pattern as webSearch. ok=false (404) ONLY when the user has no
+// active chat model at all — the caller then asks them to add one or pass model_ref.
+func (s *Server) resolvePlannerModel(ctx context.Context, userID uuid.UUID) (string, bool, error) {
 	base := strings.TrimRight(s.cfg.ProviderRegistryURL, "/")
 	if base == "" {
 		return "", false, errWebSearchNotConfigured
 	}
-	endpoint := fmt.Sprintf("%s/internal/default-models/%s?user_id=%s",
-		base, url.PathEscape(capability), url.QueryEscape(userID.String()))
+	endpoint := fmt.Sprintf("%s/internal/planner-model?user_id=%s",
+		base, url.QueryEscape(userID.String()))
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, endpoint, nil)
 	if err != nil {
 		return "", false, err

@@ -160,3 +160,54 @@ WHERE d.owner_user_id = $1 AND d.capability = $2`, userID, capability).Scan(&mod
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"user_model_id": modelID.String(), "model_source": "user_model"})
 }
+
+// internalResolvePlannerModel — GET /internal/planner-model?user_id= (X-Internal-Token).
+// Resolves the model the glossary plan-and-execute planner should use, WITH a
+// sensible fallback so the feature works out of the box (MED-6): the user's explicit
+// 'planner' default if they set one (D-1, a strong pinned model), else their best
+// active CHAT model (preferring tool_calling, deterministic). 404 only when the user
+// has no active chat model at all. The picking lives here because provider-registry
+// owns user_models — glossary never queries this DB.
+func (s *Server) internalResolvePlannerModel(w http.ResponseWriter, r *http.Request) {
+	userID, err := uuid.Parse(r.URL.Query().Get("user_id"))
+	if err != nil {
+		writeError(w, http.StatusBadRequest, "DEFAULT_MODELS_VALIDATION", "invalid user_id")
+		return
+	}
+	// 1. Explicit 'planner' default (a power user pinned a strong model).
+	var modelID uuid.UUID
+	err = s.pool.QueryRow(r.Context(), `
+SELECT d.user_model_id
+FROM user_default_models d
+JOIN user_models um ON um.user_model_id = d.user_model_id AND um.is_active = true
+WHERE d.owner_user_id = $1 AND d.capability = 'planner'`, userID).Scan(&modelID)
+	if err == nil {
+		writeJSON(w, http.StatusOK, map[string]any{
+			"user_model_id": modelID.String(), "model_source": "user_model", "source": "planner_default"})
+		return
+	}
+	if err != pgx.ErrNoRows {
+		writeError(w, http.StatusInternalServerError, "DEFAULT_MODELS_QUERY_FAILED", "failed to resolve planner default")
+		return
+	}
+	// 2. Fallback: the user's best active chat model. Prefer tool_calling (better at
+	// structured planning); break ties deterministically by id. Both capability_flags
+	// schemas are honored ({"chat":true} canonical + legacy {"_capability":"chat"}).
+	err = s.pool.QueryRow(r.Context(), `
+SELECT user_model_id
+FROM user_models
+WHERE owner_user_id = $1 AND is_active = true
+  AND (capability_flags @> '{"chat":true}'::jsonb OR capability_flags->>'_capability' = 'chat')
+ORDER BY (capability_flags @> '{"tool_calling":true}'::jsonb) DESC, user_model_id
+LIMIT 1`, userID).Scan(&modelID)
+	if err == pgx.ErrNoRows {
+		writeError(w, http.StatusNotFound, "PLANNER_MODEL_NONE", "no active chat model for this user — add one in Settings")
+		return
+	}
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "DEFAULT_MODELS_QUERY_FAILED", "failed to resolve a chat model")
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{
+		"user_model_id": modelID.String(), "model_source": "user_model", "source": "chat_fallback"})
+}
