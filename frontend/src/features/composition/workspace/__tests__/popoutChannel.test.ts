@@ -14,13 +14,14 @@ describe('popoutChannel (T5.4 M4)', () => {
     // NOTE: ids are file-unique (PCHAN_*) — Node shares BroadcastChannel across vitest
     // worker threads, so a generic 'b1'/'c1' would cross-talk with the other popout
     // test files (which post dock-back on the same name) and break this strict toEqual.
+    // AWAIT actual delivery (resolve in the subscriber) rather than a fixed setTimeout(0)
+    // — BroadcastChannel delivery timing varies under parallel load (an intermittent
+    // [] flake), so a bounded sleep races the delivery; awaiting the message can't.
     const opener = openPopoutChannel('PCHAN_b1', 'c1');
     const popout = openPopoutChannel('PCHAN_b1', 'c1');
-    const got: PopoutMessage[] = [];
-    opener.subscribe((m) => got.push(m));
+    const received = new Promise<PopoutMessage>((resolve) => opener.subscribe(resolve));
     popout.post({ kind: 'insert-prose', text: 'hello', model: 'gpt' });
-    await new Promise((r) => setTimeout(r, 0));   // BroadcastChannel delivers async
-    expect(got).toEqual([{ kind: 'insert-prose', text: 'hello', model: 'gpt' }]);
+    await expect(received).resolves.toEqual({ kind: 'insert-prose', text: 'hello', model: 'gpt' });
     opener.close();
     popout.close();
   });

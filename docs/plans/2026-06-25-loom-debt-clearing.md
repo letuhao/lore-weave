@@ -144,7 +144,17 @@ Batch the LOWs: `D-T3.1-SCENE-HINT`/`GUIDE-APPEND`, `D-T3.3-SLASH-CONTINUE`/`CHA
   *inherited* (read-only, pre-branch) chapters is semantically muddy. A true "adapt from source" feature must
   generate FROM the source chapter's content + overrides (or gate to chapters with a derivative plan) — its
   own task, not a generate-call.
-- **~27 open**, mapped above. **Next: WS-E (a11y batch) → WS-C (PM position-remap) → WS-B3 → WS-D.**
+- ✅ **WS-E (a11y pair) SHIPPED 2026-06-26** — the substantive items were `D-T5.5-FOCUS-TRAP` (new
+  `useModalFocusTrap` hook: focus the switcher on open, trap Tab/Shift+Tab, restore to the trigger on close)
+  and `D-T5.5-ESC-PROPAGATION` (Escape now `stopPropagation`s on the dialog element, so a sibling
+  window-level Esc consumer can't double-fire), both wired into `PowerViewOverlay` (the modal; `FloatingWindow`
+  is non-modal → trap N/A). Also fixed an intermittent BroadcastChannel timing flake in `popoutChannel.test`
+  (await delivery, not `setTimeout(0)`). +4 tests; 499 FE green ×3, tsc clean.
+  - **The rest of the named WS-E LOWs stay deferred (correctly):** `D-T3.1/3.3/3.4-*`, `D-T5.1-*`,
+    `D-T5.3-COUNT-SEMANTICS`/`VISIBILITY-DOM-CLASS` are all **gate-5 conscious-won't-fix-until-trigger** or
+    by-design ("add X *if* Y appears", "*if* a flash is observed", feature flags) — implementing them now would
+    be speculative work for triggers that don't exist. Not silently skipped; they earn their rows.
+- **~25 open**, mapped above. **Next: WS-C (PM position-remap) → WS-B3 (scene-graph what-if spec) → WS-D.**
 - **⚠ Audit correction (from detailed-design research):** **`D-T5.4-CHAT-HOIST` is NOT resolved** — the
   co-writer chat SSE still runs its own `fetch`/`ReadableStream` in `useChatMessages` *below* the windowing
   layer; it survives a float but is **killed by a pop-out**. Re-opened (see WS-D detailed design).

@@ -4,9 +4,10 @@
 // switching views is CSS show/hide — NOT a remount — so each view keeps its
 // pan/zoom/selection. Esc or "Back to editor" exits. Independent instances from
 // the side-panel subtabs (CLARIFY T5.5).
-import { useEffect, useState } from 'react';
+import { useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { useTranslation } from 'react-i18next';
+import { useModalFocusTrap } from '../hooks/useModalFocusTrap';
 import type { Work } from '../types';
 import { SceneGraphCanvas } from './SceneGraphCanvas';
 import { TimelineView } from './TimelineView';
@@ -30,23 +31,25 @@ type Props = {
 export function PowerViewOverlay({ work, bookId, chapterId, token, onClose, onViewCast }: Props) {
   const { t } = useTranslation('composition');
   const [view, setView] = useState<PowerView>('graph');
+  const dialogRef = useRef<HTMLDivElement>(null);
 
-  // Esc exits. Bound for the overlay's lifetime (mount-on-open → no stale listener).
-  useEffect(() => {
-    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose(); };
-    window.addEventListener('keydown', onKey);
-    return () => window.removeEventListener('keydown', onKey);
-  }, [onClose]);
+  // a11y (WS-E): trap Tab within the modal + move focus to the switcher on open +
+  // restore to the trigger on close; Escape exits (stopPropagation so a sibling
+  // window-level Esc consumer can't also fire). Replaces the prior window-level
+  // Esc-only listener — the trap is bound on the dialog element.
+  useModalFocusTrap(dialogRef, onClose);
 
   // Portal to <body> so `fixed inset-0` is viewport-relative even though the
   // overlay is mounted deep inside the resizable-panel tree (a transformed
   // ancestor would otherwise clip it — the panels already use translate-x).
   return createPortal(
     <div
+      ref={dialogRef}
       data-testid="power-view-overlay"
       role="dialog"
       aria-modal="true"
-      className="fixed inset-0 z-50 flex flex-col bg-white dark:bg-neutral-950"
+      tabIndex={-1}
+      className="fixed inset-0 z-50 flex flex-col bg-white dark:bg-neutral-950 outline-none"
     >
       <div className="flex flex-shrink-0 items-center gap-1 border-b px-2 py-1.5">
         {VIEWS.map((v) => (

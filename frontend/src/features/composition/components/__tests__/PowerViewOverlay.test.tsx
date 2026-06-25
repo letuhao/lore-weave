@@ -68,9 +68,48 @@ describe('PowerViewOverlay (T5.5)', () => {
     expect(onClose).toHaveBeenCalled();
   });
 
-  it('Escape exits', () => {
-    const { onClose } = renderOverlay();
-    fireEvent.keyDown(window, { key: 'Escape' });
-    expect(onClose).toHaveBeenCalled();
+  it('Escape exits — and stopPropagation prevents a sibling window-level Esc consumer from also firing', () => {
+    const siblingEsc = vi.fn();
+    const onWin = (e: KeyboardEvent) => { if (e.key === 'Escape') siblingEsc(); };
+    window.addEventListener('keydown', onWin);
+    try {
+      const { onClose } = renderOverlay();
+      fireEvent.keyDown(screen.getByTestId('power-view-overlay'), { key: 'Escape' });
+      expect(onClose).toHaveBeenCalled();
+      // ESC-PROPAGATION: the dialog's handler stopPropagation'd → the window listener never saw it
+      expect(siblingEsc).not.toHaveBeenCalled();
+    } finally {
+      window.removeEventListener('keydown', onWin);
+    }
+  });
+
+  it('FOCUS-TRAP: focus moves into the dialog on open and Tab wraps within it', () => {
+    renderOverlay();
+    // focus moved off <body> into the overlay (the first tab) on open
+    const overlay = screen.getByTestId('power-view-overlay');
+    expect(overlay.contains(document.activeElement)).toBe(true);
+    // Tab from the last focusable wraps back to the first (never escapes to the editor)
+    const close = screen.getByTestId('power-view-close');
+    close.focus();
+    fireEvent.keyDown(overlay, { key: 'Tab' });
+    expect(overlay.contains(document.activeElement)).toBe(true);
+  });
+
+  it('FOCUS-TRAP: restores focus to the trigger on unmount', () => {
+    const trigger = document.createElement('button');
+    document.body.appendChild(trigger);
+    trigger.focus();
+    expect(document.activeElement).toBe(trigger);
+    const { unmount } = render(
+      <QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}>
+        <MemoryRouter>
+          <PowerViewOverlay work={work as never} bookId="b" chapterId="c" token="t" onClose={vi.fn()} onViewCast={vi.fn()} />
+        </MemoryRouter>
+      </QueryClientProvider>,
+    );
+    expect(document.activeElement).not.toBe(trigger);   // focus was pulled into the dialog
+    unmount();
+    expect(document.activeElement).toBe(trigger);        // restored on close
+    trigger.remove();
   });
 });
