@@ -47,6 +47,9 @@ export type ExtractionJobRequest = {
   context_filters?: ContextFilters;
   /** When true, enable model reasoning/thinking (LM Studio enable_thinking). Default off for JSON output. */
   thinking_enabled?: boolean;
+  /** Parallel LLM calls per chapter (the window×batch fan-out). Omitted/1 ⇒ sequential.
+   *  The worker clamps to a hard ceiling (16). */
+  concurrency_level?: number;
 };
 
 // ── Extraction Job Response (from POST 202 + GET /v1/extraction/jobs/{jobId}) ──

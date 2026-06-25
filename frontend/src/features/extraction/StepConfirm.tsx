@@ -42,6 +42,10 @@ export function StepConfirm({
   const { t } = useTranslation('extraction');
   const { accessToken } = useAuth();
   const [submitting, setSubmitting] = useState(false);
+  // D-EXTRACTION-BATCH-CONCURRENCY: how many of a chapter's batch LLM calls run at
+  // once. 1 = sequential (default). Raise it if your model/GPU serves multiple
+  // concurrent requests (e.g. a 200K-context local model can comfortably do 4).
+  const [concurrency, setConcurrency] = useState(1);
 
   const enabledKinds = Object.keys(profile);
   const enabledKindsMeta = kinds.filter((k) => enabledKinds.includes(k.code));
@@ -68,6 +72,7 @@ export function StepConfirm({
           max_entities_per_kind: maxEntitiesPerKind,
           context_filters: contextFilters,
           thinking_enabled: thinkingEnabled,
+          ...(concurrency > 1 ? { concurrency_level: concurrency } : {}),
         },
         accessToken,
       );
@@ -107,6 +112,28 @@ export function StepConfirm({
       <p className="text-[11px] text-muted-foreground text-center">
         {thinkingEnabled ? t('confirm.thinkingOn') : t('confirm.thinkingOff')}
       </p>
+
+      {/* D-EXTRACTION-BATCH-CONCURRENCY — parallel LLM calls per chapter. */}
+      <div className="flex items-center justify-center gap-2">
+        <label htmlFor="extraction-concurrency" className="text-[11px] font-medium">
+          {t('confirm.concurrency', { defaultValue: 'Parallel LLM calls' })}
+        </label>
+        <input
+          id="extraction-concurrency"
+          type="number"
+          min={1}
+          max={16}
+          value={concurrency}
+          onChange={(e) => setConcurrency(Math.min(16, Math.max(1, Number(e.target.value) || 1)))}
+          className="w-16 rounded-md border bg-background px-2 py-1 text-center text-xs"
+          data-testid="extraction-concurrency"
+        />
+        <span className="text-[10px] text-muted-foreground">
+          {t('confirm.concurrencyHint', {
+            defaultValue: '1 = sequential. Raise it if your model serves concurrent requests.',
+          })}
+        </span>
+      </div>
 
       {/* Profile summary */}
       <div className="rounded-lg border p-3">
