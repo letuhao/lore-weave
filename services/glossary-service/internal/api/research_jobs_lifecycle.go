@@ -87,6 +87,12 @@ func (s *Server) transitionResearchJob(ctx context.Context, bookID, jobID uuid.U
 	tag, err := s.pool.Exec(ctx,
 		`UPDATE entity_research_jobs SET `+set+` WHERE book_id=$1 AND job_id=$2 AND status = ANY($4::text[])`,
 		bookID, jobID, to, from)
+	if isUniqueViolation(err) {
+		// Resuming a failed job (failed→pending) while another live job already exists for
+		// this (book, kind) trips the one-live partial unique index. Surface it as a clean
+		// 409 (found-but-not-changed) rather than a 500 — cancel the other job first.
+		return true, false, nil
+	}
 	if err != nil {
 		return false, false, err
 	}

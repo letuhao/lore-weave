@@ -16,7 +16,15 @@ export function ResearchJobCard({
   onCancel: () => void;
 }) {
   const { t } = useTranslation('glossaryTiering');
-  const pct = job.items_total > 0 ? Math.round((job.items_processed / job.items_total) * 100) : 0;
+  // Progress tracks PAID searches against the planned cap (items_total). items_processed
+  // counts visits incl. free skips and can exceed the cap on a skip-heavy re-run, so it's
+  // the wrong numerator; a complete job pins 100% even if skips left searches_run < cap.
+  const pct =
+    job.status === 'complete'
+      ? 100
+      : job.items_total > 0
+        ? Math.min(100, Math.round((job.searches_run / job.items_total) * 100))
+        : 0;
 
   const btn = 'rounded border px-2 py-1 text-xs font-medium hover:bg-secondary disabled:opacity-40';
   return (
@@ -37,8 +45,7 @@ export function ResearchJobCard({
             <div className="h-full bg-primary transition-all" style={{ width: `${pct}%` }} />
           </div>
           <p className="text-xs text-muted-foreground">
-            {t('research.progress', { done: job.items_processed, total: job.items_total })} ·{' '}
-            {t('research.searches', { count: job.searches_run })} ·{' '}
+            {t('research.progress', { done: job.searches_run, total: job.items_total })} ·{' '}
             {t('research.sources', { count: job.sources_attached })}
           </p>
         </>

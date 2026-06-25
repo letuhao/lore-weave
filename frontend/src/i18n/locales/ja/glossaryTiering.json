@@ -157,7 +157,7 @@
       "failed": "失敗",
       "cancelled": "キャンセル"
     },
-    "progress": "{{done}}/{{total}} 件",
+    "progress": "{{done}}/{{total}} 回検索",
     "searches": "{{count}} 回検索",
     "sources": "{{count}} 件のソース",
     "est_cost": "~${{cost}}",

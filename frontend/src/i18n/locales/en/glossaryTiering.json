@@ -157,7 +157,7 @@
       "failed": "Failed",
       "cancelled": "Cancelled"
     },
-    "progress": "{{done}}/{{total}} entities",
+    "progress": "{{done}}/{{total}} searches",
     "searches": "{{count}} searches",
     "sources": "{{count}} sources",
     "est_cost": "~${{cost}}",

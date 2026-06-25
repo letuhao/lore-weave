@@ -157,7 +157,7 @@
       "failed": "Thất bại",
       "cancelled": "Đã hủy"
     },
-    "progress": "{{done}}/{{total}} thực thể",
+    "progress": "{{done}}/{{total}} lượt tìm",
     "searches": "{{count}} lượt tìm",
     "sources": "{{count}} nguồn",
     "est_cost": "~${{cost}}",

@@ -157,7 +157,7 @@
       "failed": "失敗",
       "cancelled": "已取消"
     },
-    "progress": "{{done}}/{{total}} 個實體",
+    "progress": "{{done}}/{{total}} 次搜尋",
     "searches": "{{count}} 次搜尋",
     "sources": "{{count}} 個來源",
     "est_cost": "~${{cost}}",

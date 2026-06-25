@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { X } from 'lucide-react';
 import type { CreateResearchJobReq, ResearchEstimate } from '../../researchApi';
@@ -22,7 +22,14 @@ export function ResearchLaunchModal({ kindName, fetchEstimate, onCreate, onClose
   const [submitting, setSubmitting] = useState(false);
   const close = () => { if (!submitting) onClose(); };
 
+  // Fetch the estimate ONCE on mount. The guard is load-bearing: fetchEstimate is a fresh
+  // closure each parent render, so a [fetchEstimate] dep would re-run the effect and reset
+  // maxEntities back to the default — clobbering the user's edits. The modal mounts fresh
+  // each open, so mount-once is correct.
+  const fetched = useRef(false);
   useEffect(() => {
+    if (fetched.current) return;
+    fetched.current = true;
     let alive = true;
     fetchEstimate()
       .then((e) => {
