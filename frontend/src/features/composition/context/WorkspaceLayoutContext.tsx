@@ -67,7 +67,13 @@ function loadLayout(): WorkspaceLayout {
     const raw = localStorage.getItem(LAYOUT_KEY);
     if (!raw) return defaultLayout();
     const parsed = JSON.parse(raw);
-    return isValidLayout(parsed) ? parsed : defaultLayout();
+    if (!isValidLayout(parsed)) return defaultLayout();
+    // Forward-compat (/review-impl MED): a layout saved BEFORE a panel existed (e.g.
+    // pre-T3.6 'references') won't list it — merge over the default so every CURRENT
+    // panel always has a dock entry (else new panels are unreachable for returning
+    // users). The persisted entries win for panels they cover.
+    const def = defaultLayout();
+    return { ...def, ...parsed, panels: { ...def.panels, ...parsed.panels } };
   } catch {
     return defaultLayout();   // corrupt / unparseable → default (never crash)
   }
@@ -113,4 +119,12 @@ export function useWorkspaceLayout(): WorkspaceCtx {
   const ctx = useContext(Ctx);
   if (ctx === null) throw new Error('useWorkspaceLayout must be used within a WorkspaceLayoutProvider');
   return ctx;
+}
+
+/** Non-throwing accessor — returns null when there is no provider. CompositionPanel
+ *  uses this so it still renders (the fixed-strip fallback) when mounted WITHOUT a
+ *  WorkspaceShell (e.g. in unit tests / the flag-OFF path where the windowing host
+ *  isn't required). The dock components use the throwing `useWorkspaceLayout`. */
+export function useWorkspaceLayoutOptional(): WorkspaceCtx | null {
+  return useContext(Ctx);
 }

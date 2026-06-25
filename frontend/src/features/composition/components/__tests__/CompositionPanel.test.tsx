@@ -4,6 +4,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { MemoryRouter } from 'react-router-dom';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { CompositionPanel } from '../CompositionPanel';
+import { WorkspaceLayoutProvider } from '../../context/WorkspaceLayoutContext';
 
 // Visibility-transition regression (CLAUDE.md "never conditionally unmount
 // stateful components"): the sub-panels must stay MOUNTED across a tab switch —
@@ -56,6 +57,7 @@ vi.mock('../../../ai-models/api', () => ({
 }));
 
 beforeEach(() => {
+  localStorage.clear();   // T5.4 — the dock flag/layout must not leak across tests
   mounts.compose = mounts.cowriter = mounts.assemble = mounts.planner = mounts.beats = mounts.graph = mounts.cast = mounts.relmap = mounts.timeline = mounts.arc = mounts.worldmap = mounts.grounding = mounts.references = mounts.style = mounts.canon = mounts.progress = mounts.quality = mounts.flywheel = mounts.settings = 0;
 });
 
@@ -65,6 +67,23 @@ function renderPanel(initialEntries: string[] = ['/books/b']) {
     <QueryClientProvider client={qc}>
       <MemoryRouter initialEntries={initialEntries}>
         <CompositionPanel bookId="b" chapterId="c" token="tok" onAccept={vi.fn()} />
+      </MemoryRouter>
+    </QueryClientProvider>,
+  );
+}
+
+// T5.4 M2 — render with the windowing flag ON (a WorkspaceLayoutProvider + the
+// localStorage flag set), so CompositionPanel shows the DockRail instead of the
+// fixed strip. ComposeView etc. are mocked above, so no LiveStateProvider is needed.
+function renderDockPanel() {
+  localStorage.setItem('loom.workspace.enabled', 'true');
+  const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+  return render(
+    <QueryClientProvider client={qc}>
+      <MemoryRouter initialEntries={['/books/b']}>
+        <WorkspaceLayoutProvider>
+          <CompositionPanel bookId="b" chapterId="c" token="tok" onAccept={vi.fn()} />
+        </WorkspaceLayoutProvider>
       </MemoryRouter>
     </QueryClientProvider>,
   );
@@ -146,5 +165,66 @@ describe('CompositionPanel overflow containment (narrow right panel)', () => {
     expect(content).toHaveClass('min-w-0');
     expect(content).toHaveClass('overflow-auto');
     expect(content.className).toContain('[overflow-wrap:anywhere]');
+  });
+});
+
+// T5.4 M2 — with the windowing flag ON, the fixed strip is replaced by the DockRail
+// but every panel stays MOUNTED (the no-remount invariant must survive the swap), and
+// the active panel is driven by the per-device layout.
+describe('CompositionPanel dock mode (T5.4 M2)', () => {
+  it('renders the DockRail instead of the fixed strip, with all panels still mounted', () => {
+    renderDockPanel();
+    expect(screen.getByTestId('composition-dock-rail')).toBeInTheDocument();
+    expect(screen.queryByTestId('composition-subtabs')).toBeNull();   // fixed strip replaced
+    // every sub-panel is still mounted (CSS-hidden), exactly like the fixed-strip mode
+    for (const name of ['compose', 'cast', 'grounding', 'references', 'settings']) {
+      expect(screen.getByTestId(`mock-${name}`)).toBeInTheDocument();
+    }
+    expect(wrapperOf('compose')).not.toHaveClass('hidden');   // layout default active = compose
+  });
+
+  it('clicking a dock tab changes the active panel WITHOUT remounting (state survives)', () => {
+    renderDockPanel();
+    expect(mounts.cast).toBe(1);
+    fireEvent.click(screen.getByTestId('dock-select-cast'));
+    expect(wrapperOf('cast')).not.toHaveClass('hidden');
+    expect(wrapperOf('compose')).toHaveClass('hidden');
+    fireEvent.click(screen.getByTestId('dock-select-compose'));
+    expect(wrapperOf('compose')).not.toHaveClass('hidden');
+    expect(mounts.cast).toBe(1);            // never remounted across the switch
+    expect(mounts.compose).toBe(1);
+  });
+
+  it('clamps a persisted active that is gated-out (threads disabled) so the pane is never blank (/review-impl MED)', () => {
+    // a layout that was saved with active='threads' while it was enabled; the test
+    // Work has no narrative_thread_enabled → threads is gated out of the dock now.
+    localStorage.setItem('loom.workspace.enabled', 'true');
+    localStorage.setItem('loom.workspace.layout', JSON.stringify({
+      version: 1, active: 'threads',
+      panels: { compose: { placement: 'dock', order: 0 }, threads: { placement: 'dock', order: 15 } },
+    }));
+    const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    render(
+      <QueryClientProvider client={qc}>
+        <MemoryRouter initialEntries={['/books/b']}>
+          <WorkspaceLayoutProvider>
+            <CompositionPanel bookId="b" chapterId="c" token="tok" onAccept={vi.fn()} />
+          </WorkspaceLayoutProvider>
+        </MemoryRouter>
+      </QueryClientProvider>,
+    );
+    // active clamps to the first VISIBLE panel (compose) — the content pane shows it,
+    // not a blank (the threads div is gated off, so active='threads' would render nothing)
+    expect(wrapperOf('compose')).not.toHaveClass('hidden');
+    expect(screen.queryByTestId('dock-tab-threads')).toBeNull();
+  });
+
+  it('hiding the active panel drops its tab and refocuses another (content never blank)', () => {
+    renderDockPanel();
+    fireEvent.click(screen.getByTestId('dock-hide-compose'));   // hide the active panel
+    expect(screen.queryByTestId('dock-tab-compose')).toBeNull(); // gone from the rail
+    expect(screen.getByTestId('mock-compose')).toBeInTheDocument(); // but still MOUNTED
+    // another panel became active (the content pane isn't blank)
+    expect(wrapperOf('compose')).toHaveClass('hidden');
   });
 });

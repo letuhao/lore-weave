@@ -51,6 +51,20 @@ describe('WorkspaceLayoutContext (T5.4 M1)', () => {
     expect(result.current.layout.version).toBe(1);
   });
 
+  it('merges a stale saved layout over the default so NEW panels stay reachable (/review-impl MED)', () => {
+    // a layout saved before 'references' existed — only lists a couple of panels
+    localStorage.setItem(LAYOUT_KEY, JSON.stringify({
+      version: 1, active: 'compose',
+      panels: { compose: { placement: 'dock', order: 0 }, cast: { placement: 'dock', order: 1 } },
+    }));
+    const { result } = renderHook(() => useWorkspaceLayout(), { wrapper });
+    // the saved entries are kept...
+    expect(result.current.layout.panels.compose?.order).toBe(0);
+    // ...AND every current panel that was missing gets a default dock entry
+    expect(result.current.layout.panels.references?.placement).toBe('dock');
+    expect(result.current.layout.panels.settings?.placement).toBe('dock');
+  });
+
   it('a placement dispatch mutates the layout and persists it', () => {
     const { result } = renderHook(() => useWorkspaceLayout(), { wrapper });
     act(() => result.current.dispatch({ type: 'set-placement', id: 'cast', placement: 'float', rect: { x: 10, y: 20, w: 300, h: 400 } }));

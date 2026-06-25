@@ -233,6 +233,7 @@
   "flywheel": "Bánh đà",
   "flywheelPanel": { "loading": "Đang tải…", "empty": "Xuất bản một chương để mở rộng kho tri thức — thực thể, quan hệ và sự kiện mới sẽ hiện ở đây.", "subtitle": "Lần xuất bản gần nhất đã mở rộng kho tri thức:", "entities": "thực thể", "relations": "quan hệ", "events": "sự kiện", "highlights": "Điểm nổi bật mới", "kind": { "entity": "Thực thể", "event": "Sự kiện", "relation": "Quan hệ" } },
   "view": { "power_view": "Chế độ toàn cảnh", "back_to_editor": "Quay lại trình soạn thảo" },
+  "dock": { "addPanel": "Thêm bảng" },
   "references": "Tài liệu tham khảo",
   "referencesPanel": { "title": "Tiêu đề", "author": "Tác giả", "contentPlaceholder": "Dán một đoạn tham khảo / nguồn ảnh hưởng…", "pickEmbedModel": "Mô hình embedding (đặt một lần cho tác phẩm này)", "noEmbedModel": "Thêm một mô hình embedding (vd: bge-m3) trong cài đặt AI để bật truy xuất tham khảo.", "add": "Thêm tham khảo", "adding": "Đang thêm…", "relevant": "Cho cảnh này", "searchPlaceholder": "Tìm…", "unavailable": "Truy xuất không khả dụng (nhà cung cấp embedding ngừng hoạt động).", "noHits": "Chưa có tài liệu tham khảo phù hợp.", "library": "Thư viện", "delete": "Xóa", "empty": "Chưa có tài liệu tham khảo — thêm nguồn ảnh hưởng ở trên." },
   "progressPanel": {

@@ -233,6 +233,7 @@
   "flywheel": "フライホイール",
   "flywheelPanel": { "loading": "読み込み中…", "empty": "章を公開すると正典が育ちます — 新しいエンティティ・関係・イベントがここに表示されます。", "subtitle": "最新の公開で正典が成長しました:", "entities": "エンティティ", "relations": "関係", "events": "イベント", "highlights": "新しいハイライト", "kind": { "entity": "エンティティ", "event": "イベント", "relation": "関係" } },
   "view": { "power_view": "パワービュー", "back_to_editor": "エディターに戻る" },
+  "dock": { "addPanel": "パネルを追加" },
   "references": "参考資料",
   "referencesPanel": { "title": "タイトル", "author": "著者", "contentPlaceholder": "参考になる一節・影響元を貼り付け…", "pickEmbedModel": "埋め込みモデル（この作品で一度だけ設定）", "noEmbedModel": "参考資料の検索を有効にするには、AI設定で埋め込みモデル（例：bge-m3）を追加してください。", "add": "参考資料を追加", "adding": "追加中…", "relevant": "このシーン向け", "searchPlaceholder": "検索…", "unavailable": "検索を利用できません（埋め込みプロバイダー停止中）。", "noHits": "一致する参考資料はまだありません。", "library": "ライブラリ", "delete": "削除", "empty": "参考資料がまだありません — 上から影響元を追加してください。" },
   "progressPanel": {

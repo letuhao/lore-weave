@@ -29,6 +29,10 @@ import { CharacterArcView } from './CharacterArcView';
 import { WorldMap } from './WorldMap';
 import { GroundingPanel } from './GroundingPanel';
 import { ReferencesPanel } from './ReferencesPanel';
+import { DockRail } from './workspace/DockRail';
+import { useWorkspaceLayoutOptional } from '../context/WorkspaceLayoutContext';
+import { visibleDockIds, hiddenDockIds, nextActiveAfterHide } from '../workspace/dock';
+import type { WorkspacePanelId } from '../workspace/types';
 import { DivergenceWizardButton } from './DivergenceWizardButton';
 import { PromoteWhatIfButton } from './PromoteWhatIfButton';
 import { DerivativeBanner } from './DerivativeBanner';
@@ -277,6 +281,53 @@ export function CompositionPanel({ bookId, chapterId, token, onAccept, sceneId: 
   const hasChatModel = !!models.data?.length;
   const noChatModel = !models.isLoading && !hasChatModel;
 
+  // T5.4 M2 — dock windowing. When the WorkspaceShell flag is ON, the fixed strip is
+  // replaced by a reorderable DockRail and the active panel is driven by the (per-
+  // device) layout; OFF (or no provider — unit tests) keeps the local `tab` state +
+  // fixed strip UNCHANGED. The 19 content divs stay MOUNTED either way (no remount).
+  const ws = useWorkspaceLayoutOptional();
+  const dockOn = !!ws?.enabled;
+  const dockVisible = dockOn ? visibleDockIds(ws!.layout, threadsEnabled) : [];
+  // CLAMP the active panel to a VISIBLE one (/review-impl MED): a persisted active
+  // that is now hidden or gated-out (e.g. 'threads' saved while enabled, now disabled)
+  // would otherwise blank the content pane — no matching div renders + no rail tab.
+  const activeTab: SubTab = dockOn
+    ? ((dockVisible as string[]).includes(ws!.layout.active)
+        ? (ws!.layout.active as SubTab)
+        : ((dockVisible[0] as SubTab) ?? 'compose'))
+    : tab;
+  const selectTab = (id: SubTab) => {
+    if (dockOn && ws) {
+      // a deep-link to a hidden panel un-hides it so it shows in the rail (not just
+      // active-but-tabless). /review-impl LOW.
+      if (ws.layout.panels[id as WorkspacePanelId]?.hidden) {
+        ws.dispatch({ type: 'toggle-hidden', id: id as WorkspacePanelId });
+      }
+      ws.dispatch({ type: 'set-active', id: id as WorkspacePanelId });
+    } else setTab(id);
+  };
+  const hideDockPanel = (id: WorkspacePanelId) => {
+    if (!ws) return;
+    if (activeTab === id) {
+      const next = nextActiveAfterHide(dockVisible, id);
+      if (next) ws.dispatch({ type: 'set-active', id: next });
+    }
+    ws.dispatch({ type: 'toggle-hidden', id });
+  };
+  // T5.5 — open the story-map views full-screen. Shared by both the dock rail and the
+  // fixed strip (the DockRail rightSlot), so the affordance survives flag ON.
+  const powerViewBtn = (
+    <button
+      type="button"
+      data-testid="composition-power-view-btn"
+      className="ml-auto shrink-0 self-center whitespace-nowrap rounded px-2 py-0.5 text-xs text-neutral-500 hover:bg-neutral-100 hover:text-neutral-700 dark:hover:bg-neutral-800"
+      onClick={() => setPowerViewOpen(true)}
+      title={t('view.power_view', { defaultValue: 'Power view' })}
+    >
+      ⛶ {t('view.power_view', { defaultValue: 'Power view' })}
+    </button>
+  );
+
   return (
     <div className="flex h-full min-w-0 flex-col overflow-hidden">
       {/* C24 (dị bản M0) — persistent derivative-context banner (no-ops unless this
@@ -450,35 +501,38 @@ export function CompositionPanel({ bookId, chapterId, token, onAccept, sceneId: 
         </div>
       )}
 
-      {/* sub-tabs — 16 tabs in a resizable (narrow-able) panel: the strip scrolls
-          horizontally rather than overflowing the panel. Tabs don't shrink (labels
-          stay readable) and the row never forces the panel wider than its width.
-          D-080: TabScrollStrip adds the scroll-aware edge fade affordance. */}
-      <TabScrollStrip
-        testid="composition-subtabs"
-        className="flex gap-1 overflow-x-auto border-b border-neutral-200 px-2 pt-1 text-sm dark:border-neutral-700"
-      >
-        {(['compose', 'cowriter', 'assemble', 'planner', 'beats', 'graph', 'cast', 'relmap', 'timeline', 'arc', 'worldmap', 'grounding', 'references', 'style', 'canon', ...(threadsEnabled ? ['threads' as const] : []), 'progress', 'quality', 'flywheel', 'settings'] as SubTab[]).map((tb) => (
-          <button
-            key={tb}
-            data-testid={`composition-subtab-${tb}`}
-            className={`shrink-0 whitespace-nowrap rounded-t px-2 py-1 ${tab === tb ? 'bg-neutral-100 font-medium dark:bg-neutral-800' : 'text-neutral-500'}`}
-            onClick={() => setTab(tb)}
-          >
-            {t(tb, { defaultValue: tb })}
-          </button>
-        ))}
-        {/* T5.5 — open the story-map views full-screen */}
-        <button
-          type="button"
-          data-testid="composition-power-view-btn"
-          className="ml-auto shrink-0 self-center whitespace-nowrap rounded px-2 py-0.5 text-xs text-neutral-500 hover:bg-neutral-100 hover:text-neutral-700 dark:hover:bg-neutral-800"
-          onClick={() => setPowerViewOpen(true)}
-          title={t('view.power_view', { defaultValue: 'Power view' })}
+      {/* sub-tabs strip — DockRail (reorderable) when the windowing flag is ON, else
+          the fixed TabScrollStrip. Both keep the Power-view trigger (shared rightSlot)
+          and the 19 content divs below stay MOUNTED either way (no remount). */}
+      {dockOn && ws ? (
+        <DockRail
+          visibleIds={dockVisible}
+          hiddenIds={hiddenDockIds(ws.layout, threadsEnabled)}
+          active={activeTab as WorkspacePanelId}
+          onSelect={(id) => selectTab(id as SubTab)}
+          onReorder={(ids) => ws.dispatch({ type: 'reorder', ids })}
+          onHide={hideDockPanel}
+          onShow={(id) => ws.dispatch({ type: 'toggle-hidden', id })}
+          rightSlot={powerViewBtn}
+        />
+      ) : (
+        <TabScrollStrip
+          testid="composition-subtabs"
+          className="flex gap-1 overflow-x-auto border-b border-neutral-200 px-2 pt-1 text-sm dark:border-neutral-700"
         >
-          ⛶ {t('view.power_view', { defaultValue: 'Power view' })}
-        </button>
-      </TabScrollStrip>
+          {(['compose', 'cowriter', 'assemble', 'planner', 'beats', 'graph', 'cast', 'relmap', 'timeline', 'arc', 'worldmap', 'grounding', 'references', 'style', 'canon', ...(threadsEnabled ? ['threads' as const] : []), 'progress', 'quality', 'flywheel', 'settings'] as SubTab[]).map((tb) => (
+            <button
+              key={tb}
+              data-testid={`composition-subtab-${tb}`}
+              className={`shrink-0 whitespace-nowrap rounded-t px-2 py-1 ${tab === tb ? 'bg-neutral-100 font-medium dark:bg-neutral-800' : 'text-neutral-500'}`}
+              onClick={() => setTab(tb)}
+            >
+              {t(tb, { defaultValue: tb })}
+            </button>
+          ))}
+          {powerViewBtn}
+        </TabScrollStrip>
+      )}
 
       <div data-testid="composition-content" className="min-h-0 min-w-0 flex-1 overflow-auto [overflow-wrap:anywhere]">
         {/* All sub-panels stay MOUNTED, toggled with CSS `hidden`, so in-progress
@@ -490,7 +544,7 @@ export function CompositionPanel({ bookId, chapterId, token, onAccept, sceneId: 
             never opened — QualityPanel (correction-stats) + CanonRulesPanel (list).
             Both are bounded + react-query-cached; GroundingPanel self-guards on an
             empty sceneId (no eager query). Accepted for uniform state-preservation. */}
-        <div className={tab === 'compose' ? '' : 'hidden'}>
+        <div className={activeTab === 'compose' ? '' : 'hidden'}>
           <ComposeView
             projectId={work.project_id}
             sceneId={effectiveScene}
@@ -503,14 +557,14 @@ export function CompositionPanel({ bookId, chapterId, token, onAccept, sceneId: 
             onGuideChange={setComposeGuide}
           />
         </div>
-        <div className={tab === 'cowriter' ? '' : 'hidden'}>
+        <div className={activeTab === 'cowriter' ? '' : 'hidden'}>
           <CoWriterChat
             bookId={bookId}
             onAccept={acceptProse}
-            onUseAsGuide={(text) => { setComposeGuide(text); setTab('compose'); }}
+            onUseAsGuide={(text) => { setComposeGuide(text); selectTab('compose'); }}
           />
         </div>
-        <div className={tab === 'assemble' ? '' : 'hidden'}>
+        <div className={activeTab === 'assemble' ? '' : 'hidden'}>
           <ChapterAssembleView
             projectId={work.project_id}
             bookId={bookId}
@@ -524,32 +578,32 @@ export function CompositionPanel({ bookId, chapterId, token, onAccept, sceneId: 
             onAccept={acceptProse}
           />
         </div>
-        <div className={tab === 'planner' ? '' : 'hidden'}>
+        <div className={activeTab === 'planner' ? '' : 'hidden'}>
           <PlannerView projectId={work.project_id} bookId={bookId} modelRef={effectiveModelRef} modelSource="user_model" models={models.data ?? []} token={token} />
         </div>
-        <div className={tab === 'beats' ? '' : 'hidden'}>
+        <div className={activeTab === 'beats' ? '' : 'hidden'}>
           <BeatSheetView bookId={bookId} projectId={work.project_id} token={token} />
         </div>
-        <div className={tab === 'graph' ? '' : 'hidden'}>
+        <div className={activeTab === 'graph' ? '' : 'hidden'}>
           <SceneGraphCanvas work={work} bookId={bookId} token={token} />
         </div>
-        <div className={tab === 'cast' ? '' : 'hidden'}>
+        <div className={activeTab === 'cast' ? '' : 'hidden'}>
           <CastCodexPanel
             bookId={bookId}
             chapterId={chapterId}
             token={token}
-            onViewArc={(id) => { setArcEntityId(id); setTab('arc'); }}
+            onViewArc={(id) => { setArcEntityId(id); selectTab('arc'); }}
             search={castSearch}
             onSearchChange={setCastSearch}
           />
         </div>
-        <div className={tab === 'relmap' ? '' : 'hidden'}>
+        <div className={activeTab === 'relmap' ? '' : 'hidden'}>
           <RelationshipMap bookId={bookId} token={token} />
         </div>
-        <div className={tab === 'timeline' ? '' : 'hidden'}>
+        <div className={activeTab === 'timeline' ? '' : 'hidden'}>
           <TimelineView bookId={bookId} chapterId={chapterId} token={token} />
         </div>
-        <div className={tab === 'arc' ? '' : 'hidden'}>
+        <div className={activeTab === 'arc' ? '' : 'hidden'}>
           <CharacterArcView
             bookId={bookId}
             chapterId={chapterId}
@@ -558,16 +612,16 @@ export function CompositionPanel({ bookId, chapterId, token, onAccept, sceneId: 
             onEntityChange={setArcEntityId}
           />
         </div>
-        <div className={tab === 'worldmap' ? '' : 'hidden'}>
+        <div className={activeTab === 'worldmap' ? '' : 'hidden'}>
           <WorldMap
             work={work}
             bookId={bookId}
             chapterId={chapterId}
             token={token}
-            onViewCast={(name) => { setCastSearch(name); setTab('cast'); }}
+            onViewCast={(name) => { setCastSearch(name); selectTab('cast'); }}
           />
         </div>
-        <div className={tab === 'grounding' ? '' : 'hidden'}>
+        <div className={activeTab === 'grounding' ? '' : 'hidden'}>
           {/* C24 (dị bản M0) — on a derivative Work, decorate the grounding tab with
               the 2-layer (INHERITED/OVERRIDDEN) canon view + read-only reference
               spine. No-ops on a greenfield Work. */}
@@ -587,7 +641,7 @@ export function CompositionPanel({ bookId, chapterId, token, onAccept, sceneId: 
             onToggleHeatmap={onToggleHeatmap}
           />
         </div>
-        <div className={tab === 'references' ? '' : 'hidden'}>
+        <div className={activeTab === 'references' ? '' : 'hidden'}>
           <ReferencesPanel
             projectId={work.project_id}
             sceneId={effectiveScene}
@@ -595,7 +649,7 @@ export function CompositionPanel({ bookId, chapterId, token, onAccept, sceneId: 
             models={models.data ?? []}
           />
         </div>
-        <div className={tab === 'style' ? '' : 'hidden'}>
+        <div className={activeTab === 'style' ? '' : 'hidden'}>
           <StyleVoicePanel
             projectId={work.project_id}
             chapterId={chapterId}
@@ -603,30 +657,30 @@ export function CompositionPanel({ bookId, chapterId, token, onAccept, sceneId: 
             token={token}
           />
         </div>
-        <div className={tab === 'canon' ? '' : 'hidden'}>
+        <div className={activeTab === 'canon' ? '' : 'hidden'}>
           <CanonRulesPanel projectId={work.project_id} bookId={bookId} token={token} />
         </div>
         {threadsEnabled && (
-          <div className={tab === 'threads' ? '' : 'hidden'}>
+          <div className={activeTab === 'threads' ? '' : 'hidden'}>
             <ThreadsPanel projectId={work.project_id} token={token} enabled={threadsEnabled} />
           </div>
         )}
-        <div className={tab === 'progress' ? '' : 'hidden'}>
+        <div className={activeTab === 'progress' ? '' : 'hidden'}>
           <ProgressPanel projectId={work.project_id} bookId={bookId} settings={work.settings} token={token} />
         </div>
-        <div className={tab === 'quality' ? '' : 'hidden'}>
+        <div className={activeTab === 'quality' ? '' : 'hidden'}>
           <QualityPanel projectId={work.project_id} token={token} />
         </div>
-        <div className={tab === 'flywheel' ? '' : 'hidden'}>
+        <div className={activeTab === 'flywheel' ? '' : 'hidden'}>
           <FlywheelPanel
             projectId={work.project_id}
             token={token}
-            onOpenCast={(name) => { if (name) setCastSearch(name); setTab('cast'); }}
-            onOpenTimeline={() => setTab('timeline')}
-            onOpenRelations={() => setTab('relmap')}
+            onOpenCast={(name) => { if (name) setCastSearch(name); selectTab('cast'); }}
+            onOpenTimeline={() => selectTab('timeline')}
+            onOpenRelations={() => selectTab('relmap')}
           />
         </div>
-        <div className={tab === 'settings' ? '' : 'hidden'}>
+        <div className={activeTab === 'settings' ? '' : 'hidden'}>
           <CompositionSettingsView
             projectId={work.project_id}
             bookId={bookId}
@@ -644,7 +698,7 @@ export function CompositionPanel({ bookId, chapterId, token, onAccept, sceneId: 
           chapterId={chapterId}
           token={token}
           onClose={() => setPowerViewOpen(false)}
-          onViewCast={(name) => { setCastSearch(name); setTab('cast'); setPowerViewOpen(false); }}
+          onViewCast={(name) => { setCastSearch(name); selectTab('cast'); setPowerViewOpen(false); }}
         />
       )}
     </div>
