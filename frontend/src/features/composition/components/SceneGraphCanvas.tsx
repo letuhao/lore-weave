@@ -133,8 +133,13 @@ export function SceneGraphCanvas({ work, bookId, token, onPromoted }: {
         const chapterId = anchorScene?.chapter_id ?? null;
         let proseFailed = 0;
         void Promise.allSettled(
-          ready.map(async (a) => {
-            const node = await compositionApi.createNode(proj, { kind: 'scene', title: a.title, chapter_id: chapterId }, token);
+          ready.map(async (a, idx) => {
+            // story_order is REQUIRED for the prose to be read back: prior_scene_drafts /
+            // chapter_scene_drafts / gather_recent's fallback all filter `story_order IS
+            // NOT NULL` (/review-impl HIGH — without it the persisted prose is write-only).
+            // The derivative outline is created EMPTY (create_derivative copies no nodes),
+            // so a dense 0..n-1 index by ready-order is collision-free + reading-ordered.
+            const node = await compositionApi.createNode(proj, { kind: 'scene', title: a.title, chapter_id: chapterId, story_order: idx }, token);
             // M3 — best-effort persist the take's ghost prose into the new derivative
             // scene (synthetic-job store; server-side source-clobber guard). A blank
             // ghost is skipped (BE would 422 EMPTY_SCENE_PROSE). A persist failure does

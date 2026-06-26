@@ -254,7 +254,9 @@ describe('SceneGraphCanvas (T1.3)', () => {
     expect(promoteSpy).toHaveBeenCalled();
     // seeded the ready take as a scene node in the DERIVATIVE project...
     // seeded with the anchor scene's chapter_id (a scene REQUIRES a chapter — live-smoke fix)
-    await waitFor(() => expect(createNodeSpy).toHaveBeenCalledWith('deriv-p', expect.objectContaining({ kind: 'scene', chapter_id: 'C1' }), 't'));
+    // seeded WITH a story_order (review-impl HIGH: the read-back queries filter
+    // `story_order IS NOT NULL`, so a NULL-order seed makes the promoted prose invisible).
+    await waitFor(() => expect(createNodeSpy).toHaveBeenCalledWith('deriv-p', expect.objectContaining({ kind: 'scene', chapter_id: 'C1', story_order: 0 }), 't'));
     // M3 — and persisted the take's ghost prose into the NEW derivative scene node
     // (scene-scoped synthetic-job store; never the shared book draft).
     await waitFor(() => expect(persistProseSpy).toHaveBeenCalledWith('deriv-p', 'newnode', 'g', 't'));
