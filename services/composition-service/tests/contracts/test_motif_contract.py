@@ -62,15 +62,33 @@ def test_motif_retriever_signature_frozen():
         assert kw in params, f"retrieve missing kw '{kw}'"
 
 
-async def test_retriever_is_a_stub_in_f0():
-    """W3 implements retrieval; F0 ships the frozen signature + a NotImplementedError
-    body so W2 can import + mock it."""
-    retr = MotifRetriever(pool=None)  # type: ignore[arg-type]
-    with pytest.raises(NotImplementedError):
-        await retr.retrieve(
-            uuid.uuid4(), book_id=uuid.uuid4(), project_id=uuid.uuid4(),
-            genre_tags=["xianxia"], language="en", beat_role="hook", tension=3,
-        )
+async def test_retriever_is_implemented_w3():
+    """W3 replaced F0's NotImplementedError stub with the real impl. retrieve() over an
+    empty pre-filter returns [] (no candidates) — NOT a NotImplementedError. The deep
+    behavior (pre-filter bound, cosine rank, degrade, NULL-skip) is covered in
+    tests/unit/test_motif_retrieve.py + tests/integration/db/test_motif_retrieve_db.py."""
+
+    class _EmptyConn:
+        async def fetch(self, _sql, *_args):
+            return []
+
+    class _Acquire:
+        async def __aenter__(self):
+            return _EmptyConn()
+
+        async def __aexit__(self, *_exc):
+            return False
+
+    class _Pool:
+        def acquire(self):
+            return _Acquire()
+
+    retr = MotifRetriever(_Pool())  # type: ignore[arg-type]
+    out = await retr.retrieve(
+        uuid.uuid4(), book_id=uuid.uuid4(), project_id=uuid.uuid4(),
+        genre_tags=["xianxia"], language="en", beat_role="hook", tension=3,
+    )
+    assert out == []
 
 
 # ── ForbidExtra write guard (audit S2) ─────────────────────────────────────────
