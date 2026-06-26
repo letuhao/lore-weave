@@ -837,7 +837,7 @@ func (s *Server) bulkExtractEntities(w http.ResponseWriter, r *http.Request) {
 					// DO UPDATE the PROVENANCE columns only — latest-validated-wins — so the
 					// stored offset/trust tracks the current text instead of going stale on
 					// the first-writer's coordinates. original_text is the conflict key (so
-					// it's identical); chapter-level fields are stable; only the validated
+					// it's identical); the chapter pointer (M5 backfill of the firstChapterID bug) + the validated
 					// offsets can legitimately differ, so only they refresh.
 					if _, err := tx.Exec(ctx, `
 						INSERT INTO evidences (attr_value_id, chapter_id, chapter_title, chapter_index,
@@ -846,6 +846,9 @@ func (s *Server) bulkExtractEntities(w http.ResponseWriter, r *http.Request) {
 						VALUES ($1, $2, $3, $4, $5, $6, $7, $8,
 						        'extraction_quote', $9, $10, 'auto-extracted by glossary extraction pipeline')
 						ON CONFLICT (attr_value_id, evidence_type, md5(original_text)) DO UPDATE SET
+							chapter_id        = EXCLUDED.chapter_id,
+							chapter_title     = EXCLUDED.chapter_title,
+							chapter_index     = EXCLUDED.chapter_index,
 							block_or_line     = EXCLUDED.block_or_line,
 							char_start        = EXCLUDED.char_start,
 							char_end          = EXCLUDED.char_end,
