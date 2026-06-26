@@ -78,6 +78,14 @@
     "none_selected": "選擇一個屬性以編輯。",
     "name": "名稱",
     "field_type": "欄位類型",
+    "merge_strategy": "重新擷取時的合併",
+    "merge_strategy_hint": "閱讀後續章節時，新的擷取如何合併此屬性。",
+    "merge": {
+      "append": "附加（累積）",
+      "overwrite": "覆寫（最新）",
+      "fill_if_empty": "空白才填（只寫一次）",
+      "manual": "手動（審查）"
+    },
     "required": "必填",
     "description": "說明",
     "options": "選項（每行一個）",

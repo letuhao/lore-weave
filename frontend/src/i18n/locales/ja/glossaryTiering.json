@@ -78,6 +78,14 @@
     "none_selected": "編集する属性を選択してください。",
     "name": "名前",
     "field_type": "フィールド型",
+    "merge_strategy": "再抽出時のマージ",
+    "merge_strategy_hint": "章を読み進めるとき、新しい抽出がこの属性をどうマージするか。",
+    "merge": {
+      "append": "追加（蓄積）",
+      "overwrite": "上書き（最新）",
+      "fill_if_empty": "空なら補完（一度だけ）",
+      "manual": "手動（レビュー）"
+    },
     "required": "必須",
     "description": "説明",
     "options": "選択肢（1行に1つ）",

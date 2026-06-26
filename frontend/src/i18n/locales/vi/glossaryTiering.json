@@ -78,6 +78,14 @@
     "none_selected": "Chọn một thuộc tính để chỉnh sửa.",
     "name": "Tên",
     "field_type": "Kiểu trường",
+    "merge_strategy": "Hợp nhất khi trích xuất lại",
+    "merge_strategy_hint": "Cách một lần trích xuất mới hợp nhất thuộc tính này khi đọc qua các chương.",
+    "merge": {
+      "append": "Bổ sung (tích lũy)",
+      "overwrite": "Ghi đè (mới nhất)",
+      "fill_if_empty": "Điền nếu trống (ghi một lần)",
+      "manual": "Thủ công (xem xét)"
+    },
     "required": "Bắt buộc",
     "description": "Mô tả",
     "options": "Tùy chọn (mỗi dòng một tùy chọn)",

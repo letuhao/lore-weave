@@ -161,5 +161,8 @@ func scanBookAttrFields(w http.ResponseWriter, r *http.Request) ([]updateField, 
 		{json: "options", col: "options", kind: fkOptions},
 		{json: "auto_fill_prompt", col: "auto_fill_prompt", kind: fkStringPtr},
 		{json: "translation_hint", col: "translation_hint", kind: fkStringPtr},
+		// D-EXTRACT-ATTR-MERGE-DEFAULTS — let an author override the seeded heuristic
+		// (fill_if_empty / append / overwrite / replace / manual) per attribute.
+		{json: "merge_strategy", col: "merge_strategy", kind: fkString},
 	})
 }

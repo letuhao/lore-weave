@@ -78,6 +78,14 @@
     "none_selected": "Select an attribute to edit it.",
     "name": "Name",
     "field_type": "Field type",
+    "merge_strategy": "Re-extraction merge",
+    "merge_strategy_hint": "How a new extraction merges this attribute as chapters advance.",
+    "merge": {
+      "append": "Append (accumulate)",
+      "overwrite": "Overwrite (latest)",
+      "fill_if_empty": "Fill if empty (write once)",
+      "manual": "Manual (review)"
+    },
     "required": "Required",
     "description": "Description",
     "options": "Options (one per line)",
