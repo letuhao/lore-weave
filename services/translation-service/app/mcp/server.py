@@ -725,8 +725,10 @@ async def translation_start_extraction(
     # auto-selected attribute (the same default the FE builds) so the cost estimate AND
     # the job aren't empty — without this the worker plans 0 batches → 0 entities.
     if not profile:
+        # "default" → defer to each attribute's authored merge_strategy
+        # (D-EXTRACT-ATTR-MERGE-DEFAULTS); "fill" used to freeze attributes on re-extraction.
         profile = {
-            k["code"]: {a["code"]: "fill" for a in k.get("attributes", [])}
+            k["code"]: {a["code"]: "default" for a in k.get("attributes", [])}
             for k in kinds_metadata
             if k.get("auto_selected", True) and k.get("attributes")
         }

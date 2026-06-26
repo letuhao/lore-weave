@@ -1338,7 +1338,11 @@ func (s *Server) mergeExtractedEntity(
 			skipped = append(skipped, attrSkip{code, "no_action"})
 			continue
 		}
-		if !specified || action == "" {
+		// "default" is the explicit "defer to the authored merge_strategy" sentinel
+		// (D-EXTRACT-ATTR-MERGE-DEFAULTS) — the worker/FE send it instead of forcing
+		// "fill", so the seeded heuristic (append/overwrite/fill) governs. Treated
+		// identically to an omitted/empty action.
+		if !specified || action == "" || action == "default" {
 			strat := strategyMap[kindID.String()+":"+code]
 			if strat == "manual" {
 				skipped = append(skipped, attrSkip{code, "manual"})

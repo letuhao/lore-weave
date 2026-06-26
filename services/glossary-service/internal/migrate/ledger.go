@@ -86,6 +86,9 @@ var chain = []Step{
 	{"0037_kind_name_i18n", UpKindNameI18n},
 	// D-BATCH-RESEARCH-JOB M1 — async batch entity-research job table.
 	{"0038_entity_research_jobs", UpEntityResearchJobs},
+	// D-EXTRACT-ATTR-MERGE-DEFAULTS M1 — re-seed merge_strategy by type heuristic
+	// (tags→append, state→overwrite, identity→fill) so re-extraction accumulates.
+	{"0039_merge_strategy_heuristic", UpMergeStrategyHeuristic},
 }
 
 // EnsureLedger creates the schema_migrations bookkeeping table. Idempotent; must run

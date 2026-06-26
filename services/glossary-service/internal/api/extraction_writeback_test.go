@@ -1195,6 +1195,59 @@ func TestMergeStrategy_FromOntology(t *testing.T) {
 	}
 }
 
+// TestMergeStrategy_DefaultSentinel — D-EXTRACT-ATTR-MERGE-DEFAULTS M2. The worker/FE now
+// send an explicit "default" action (instead of forcing "fill", which froze every
+// already-filled attribute on re-extraction) so the attribute's authored merge_strategy
+// governs. This proves the "default" sentinel routes to the authored strategy identically to
+// an omitted action — for BOTH append (accumulate) and overwrite (advance state).
+func TestMergeStrategy_DefaultSentinel(t *testing.T) {
+	pool := openTestDB(t)
+	runK2aMigrations(t, pool)
+	bookID := "00000000-0000-0000-0001-0000000a1025"
+	adoptTestBook(t, pool, uuid.MustParse(bookID))
+	t.Cleanup(func() { cleanupExtractBook(pool, bookID) })
+	srv, token := newEntitiesListServer(t)
+	srv.pool = pool
+	links := []map[string]any{{"chapter_id": uuid.NewString(), "chapter_index": 1}}
+	// Every post sends the explicit "default" sentinel for appearance.
+	defaultAction := map[string]any{"character": map[string]any{"appearance": "default"}}
+
+	post := func(val string) {
+		postExtract(t, srv, token, bookID, map[string]any{
+			"source_language":   "zh",
+			"attribute_actions": defaultAction,
+			"entities": []map[string]any{
+				{"kind_code": "character", "name": "默認者",
+					"attributes": map[string]any{"appearance": val}, "chapter_links": links},
+			},
+		})
+	}
+
+	// Seed a clean scalar baseline under fill_if_empty.
+	setMergeStrategy(t, pool, bookID, "appearance", "fill_if_empty")
+	post("tall")
+	if v := appearanceValue(t, pool, bookID); v != "tall" {
+		t.Fatalf("baseline (default→fill on empty): want \"tall\", got %q", v)
+	}
+
+	// strategy=append + action="default" → ACCUMULATE (the core fix).
+	setMergeStrategy(t, pool, bookID, "appearance", "append")
+	post("short")
+	if v := appearanceValue(t, pool, bookID); v != `["tall","short"]` {
+		t.Errorf("default→append: want [\"tall\",\"short\"], got %q", v)
+	}
+
+	// strategy=overwrite + action="default" → ADVANCE to the latest value, REPLACING the
+	// accumulated list (not appending). The attr is in multi-row mode after the append step,
+	// so the replaced single value serializes as a one-element list — the point is that
+	// "tall"/"short" are gone and only "medium" remains.
+	setMergeStrategy(t, pool, bookID, "appearance", "overwrite")
+	post("medium")
+	if v := appearanceValue(t, pool, bookID); v != `["medium"]` {
+		t.Errorf("default→overwrite: want [\"medium\"] (replaced, not appended), got %q", v)
+	}
+}
+
 // TestEntityDedup_UniqueIndexBackstop proves the constraint backstop (INV-C2): two
 // LIVE entities of the same book+kind cannot share a normalized name. Driven through
 // the real EAV name-write path (the trig_eav_snapshot trigger maintains cached_name,

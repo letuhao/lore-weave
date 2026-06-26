@@ -156,8 +156,12 @@ async def _create_extraction_job_core(
     # entities (the MCP extraction path silently no-ops).
     extraction_profile = payload.extraction_profile
     if not extraction_profile:
+        # "default" defers to each attribute's authored merge_strategy
+        # (D-EXTRACT-ATTR-MERGE-DEFAULTS) — NOT "fill", which froze every already-filled
+        # attribute on re-extraction. The seeded heuristic (append/overwrite/fill) then
+        # governs so a recurring entity accumulates new knowledge across chapters.
         extraction_profile = {
-            k["code"]: {a["code"]: "fill" for a in k.get("attributes", [])}
+            k["code"]: {a["code"]: "default" for a in k.get("attributes", [])}
             for k in kinds_metadata
             if k.get("auto_selected", True) and k.get("attributes")
         }

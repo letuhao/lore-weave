@@ -61,7 +61,9 @@ export function StepProfile({
             if (!kind.auto_selected) continue;
             const attrs: Record<string, AttributeAction> = {};
             for (const attr of kind.attributes) {
-              attrs[attr.code] = attr.auto_selected ? 'fill' : 'skip';
+              // Auto-selected attrs defer to the authored merge_strategy ('default') so
+              // re-extraction accumulates; the required identity key stays 'fill'.
+              attrs[attr.code] = attr.auto_selected ? (attr.is_required ? 'fill' : 'default') : 'skip';
             }
             initial[kind.code] = attrs;
           }
@@ -88,7 +90,7 @@ export function StepProfile({
     } else {
       const attrs: Record<string, AttributeAction> = {};
       for (const attr of kind.attributes) {
-        attrs[attr.code] = 'fill';
+        attrs[attr.code] = attr.is_required ? 'fill' : 'default';
       }
       next[kindCode] = attrs;
     }
@@ -127,7 +129,7 @@ export function StepProfile({
   const buildKindProfile = (kind: ExtractionProfileKind): Record<string, AttributeAction> => {
     const attrs: Record<string, AttributeAction> = {};
     for (const attr of kind.attributes) {
-      attrs[attr.code] = 'fill';
+      attrs[attr.code] = attr.is_required ? 'fill' : 'default';
     }
     return attrs;
   };
@@ -264,6 +266,18 @@ export function StepProfile({
                   {isEnabled && (
                     <>
                       <button
+                        onClick={() => bulkAction(kind.code, 'default')}
+                        className="text-[10px] px-1.5 py-0.5 rounded bg-secondary text-muted-foreground hover:text-foreground transition-colors"
+                      >
+                        {t('profile.allDefault')}
+                      </button>
+                      <button
+                        onClick={() => bulkAction(kind.code, 'append')}
+                        className="text-[10px] px-1.5 py-0.5 rounded bg-secondary text-muted-foreground hover:text-foreground transition-colors"
+                      >
+                        {t('profile.allAppend')}
+                      </button>
+                      <button
                         onClick={() => bulkAction(kind.code, 'fill')}
                         className="text-[10px] px-1.5 py-0.5 rounded bg-secondary text-muted-foreground hover:text-foreground transition-colors"
                       >
@@ -325,6 +339,8 @@ export function StepProfile({
                             attr.is_required && 'opacity-50 cursor-not-allowed',
                           )}
                         >
+                          <option value="default">{t('profile.actionDefault')}</option>
+                          <option value="append">{t('profile.actionAppend')}</option>
                           <option value="fill">{t('profile.actionFill')}</option>
                           <option value="overwrite">{t('profile.actionOverwrite')}</option>
                           <option value="skip">{t('profile.actionSkip')}</option>
