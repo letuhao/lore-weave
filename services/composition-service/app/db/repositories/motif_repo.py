@@ -274,6 +274,259 @@ class MotifRepo:
             )
         return _row_to_motif(row)
 
+    # ────────────────────────────────────────────────────────────────────────
+    # W1 EXTENSIONS (adopt/publish/catalog/quotas) — added post-F0-freeze. These
+    # build ON the F0 primitives above WITHOUT re-keying the CRUD/clone signatures.
+    # ────────────────────────────────────────────────────────────────────────
+
+    # The PUBLIC catalog projection (B-3): an EXPLICIT allow-list, NEVER SELECT *
+    # / model_dump — the three never-leak fields (embedding, examples, raw
+    # source_ref) are structurally excluded so even a future careless refactor on
+    # the public path cannot ship them. Mirrors catalog-service's catalogItem
+    # struct. The full meso content (roles/beats/preconditions/effects) is also
+    # excluded from the LIGHT catalog list (MD-1(a)) — it is one get_visible away.
+    _CATALOG_COLS = (
+        "id", "code", "language", "kind", "category", "name", "summary",
+        "genre_tags", "tension_target", "emotion_target", "source",
+        "abstraction_confidence", "judge_score", "version", "updated_at",
+    )
+
+    async def adopt(
+        self, caller_id: UUID, src_motif_id: UUID,
+        *, retag_genres: list[str] | None = None,
+    ) -> tuple[Motif, bool]:
+        """The HTTP/MCP adopt op = clone into the caller's OWN tier with a
+        deterministic code-suffix on collision (F0's clone() raises on a code
+        collision and leaves the rename policy to the caller — F0 §6-F). Returns
+        (motif, created).
+
+        Serialized per-OWNER (NOT a global lock / hash(NULL)) by a
+        pg_advisory_xact_lock keyed on the caller id, so two users adopting the
+        same source never block each other while one user double-submitting is
+        ordered (the uniqueness it protects — uq_motif_user on
+        (owner_user_id, code, language) — is per-owner, so the lock is too; H-7).
+
+        `created` is True for a fresh adopt and False when an identical adopt of
+        the SAME source already exists in the caller's tier (matched by the
+        lineage source_ref → re-read, no duplicate; idempotent re-adopt, MD-6(a)).
+        Raises LookupError if the source isn't visible to the caller."""
+        async with self._pool.acquire() as c, c.transaction():
+            await c.execute(
+                "SELECT pg_advisory_xact_lock(hashtext($1))",
+                f"motif-adopt:{caller_id}",
+            )
+            src = await c.fetchrow(
+                f"SELECT code, language FROM motif WHERE id = $2 AND {_VISIBLE_PREDICATE}",
+                caller_id, src_motif_id,
+            )
+            if src is None:
+                raise LookupError("source motif not found or not accessible")
+            base_code = src["code"]
+            lineage = f"lineage:{src_motif_id}"
+            # Idempotency (MD-6(a)): an existing adopt of the SAME source in the
+            # caller's tier (same lineage source_ref) → return it, no duplicate.
+            existing = await c.fetchrow(
+                f"SELECT {_SELECT_COLS} FROM motif "
+                "WHERE owner_user_id = $1 AND source = 'adopted' AND source_ref = $2 "
+                "ORDER BY created_at LIMIT 1",
+                caller_id, lineage,
+            )
+            if existing is not None:
+                return _row_to_motif(existing), False
+            # Fresh adopt: try the source code, suffix deterministically on a
+            # per-(owner, code, language) collision. Bounded retry — a degenerate
+            # tier saturated on every suffix raises out (router maps to 409).
+            for attempt in range(0, 50):
+                code = base_code if attempt == 0 else f"{base_code}-{attempt + 1}"
+                row = await self._clone_with_code(
+                    c, caller_id, src_motif_id, code, retag_genres,
+                )
+                if row is not None:
+                    return _row_to_motif(row), True
+            raise asyncpg.UniqueViolationError(
+                "no free code suffix for adopt within 50 attempts",
+            )
+
+    async def _clone_with_code(
+        self, c: asyncpg.Connection, caller_id: UUID, src_motif_id: UUID,
+        code: str, retag_genres: list[str] | None,
+    ) -> asyncpg.Record | None:
+        """One adopt INSERT...SELECT under an already-open connection/txn (the
+        advisory lock is held by the caller). Column-enumerated copy (glossary
+        adoptBookOntology precedent), single-target (user tier only — book tier
+        dropped, H-7), the read predicate inlined so you may only adopt what you
+        can see. Returns the new row, or None if the (owner, code, language)
+        collides on uq_motif_user (caller retries with the next suffix). Any other
+        UniqueViolationError propagates. Raises LookupError if the source vanished."""
+        src = await c.fetchrow(
+            f"SELECT {_SELECT_COLS}, embedding, embedded_summary_hash FROM motif "
+            f"WHERE id = $2 AND {_VISIBLE_PREDICATE}",
+            caller_id, src_motif_id,
+        )
+        if src is None:
+            raise LookupError("source motif not found or not accessible")
+        s = dict(src)
+        genres = retag_genres if retag_genres is not None else list(s["genre_tags"])
+        tainted = s["source"] == "imported" or bool(s["imported_derived"])
+        try:
+            # SAVEPOINT (nested c.transaction()) around the INSERT: a code
+            # collision aborts only THIS attempt, not the outer adopt txn — so the
+            # suffix-retry loop can issue the next INSERT instead of dying on
+            # InFailedSQLTransactionError (asyncpg poisons the whole txn on error).
+            async with c.transaction():
+                return await c.fetchrow(
+                    f"""
+                    INSERT INTO motif
+                      (owner_user_id, code, language, visibility, kind, category, name,
+                       summary, genre_tags, roles, beats, preconditions, effects,
+                       info_asymmetry, annotations, tension_target, emotion_target,
+                       examples, abstraction_confidence, source, imported_derived,
+                       source_ref, source_version,
+                       embedding, embedding_model, embedding_dim, embedded_summary_hash)
+                    VALUES ($1,$2,$3,'private',$4,$5,$6,$7,$8,
+                            $9::jsonb,$10::jsonb,$11::jsonb,$12::jsonb,$13::jsonb,$14::jsonb,
+                            $15,$16,$17::jsonb,$18,'adopted',$25,$19,$20,
+                            $21,$22,$23,$24)
+                    RETURNING {_SELECT_COLS}
+                    """,
+                    caller_id, code, s["language"], s["kind"], s["category"],
+                    s["name"], s["summary"], genres,
+                    _passthru_jsonb(s["roles"]), _passthru_jsonb(s["beats"]),
+                    _passthru_jsonb(s["preconditions"]), _passthru_jsonb(s["effects"]),
+                    _passthru_jsonb(s["info_asymmetry"]), _passthru_jsonb(s["annotations"]),
+                    s["tension_target"], s["emotion_target"], _passthru_jsonb(s["examples"]),
+                    s["abstraction_confidence"], f"lineage:{src_motif_id}", s["version"],
+                    s["embedding"], s["embedding_model"], s["embedding_dim"],
+                    s["embedded_summary_hash"], tainted,
+                )
+        except asyncpg.UniqueViolationError as exc:
+            # Only the per-owner code partial is a "retry with a suffix" condition.
+            if getattr(exc, "constraint_name", "") == "uq_motif_user":
+                return None
+            raise
+
+    async def adopt_pattern_members(
+        self, caller_id: UUID, src_motif_id: UUID, cloned_root_id: UUID,
+    ) -> int:
+        """MD-2(b): when a `pattern` is adopted, adopt its DIRECT `composed_of`
+        members the caller doesn't already own, then re-point the composed_of
+        edges at the caller's OWN copies (H-3 — a user edge may never touch a
+        system/foreign motif; the F0 motif_link_guard enforces same-tier). One
+        level deep (deep nesting is W10). Idempotent: a member already adopted (by
+        lineage) is reused, and an edge that exists is skipped. Returns the count
+        of member edges (re)created on the caller's copies."""
+        async with self._pool.acquire() as c, c.transaction():
+            await c.execute(
+                "SELECT pg_advisory_xact_lock(hashtext($1))",
+                f"motif-adopt:{caller_id}",
+            )
+            members = await c.fetch(
+                "SELECT to_motif_id, ord FROM motif_link "
+                "WHERE from_motif_id = $1 AND kind = 'composed_of' ORDER BY ord",
+                src_motif_id,
+            )
+            edges = 0
+            for m in members:
+                member_id = m["to_motif_id"]
+                lineage = f"lineage:{member_id}"
+                existing = await c.fetchrow(
+                    "SELECT id FROM motif WHERE owner_user_id = $1 "
+                    "AND source = 'adopted' AND source_ref = $2 LIMIT 1",
+                    caller_id, lineage,
+                )
+                if existing is not None:
+                    my_member_id = existing["id"]
+                else:
+                    src_code = await c.fetchval(
+                        "SELECT code FROM motif WHERE id = $1", member_id,
+                    )
+                    if src_code is None:
+                        continue
+                    my_member_id = None
+                    for attempt in range(0, 50):
+                        code = src_code if attempt == 0 else f"{src_code}-{attempt + 1}"
+                        row = await self._clone_with_code(
+                            c, caller_id, member_id, code, None,
+                        )
+                        if row is not None:
+                            my_member_id = row["id"]
+                            break
+                    if my_member_id is None:
+                        continue
+                # re-point the composed_of edge at the caller's OWN copies.
+                await c.execute(
+                    "INSERT INTO motif_link (from_motif_id, to_motif_id, kind, ord) "
+                    "VALUES ($1,$2,'composed_of',$3) "
+                    "ON CONFLICT (from_motif_id, to_motif_id, kind) DO NOTHING",
+                    cloned_root_id, my_member_id, m["ord"],
+                )
+                edges += 1
+            return edges
+
+    async def list_public(
+        self, *, genre: str | None = None, kind: str | None = None,
+        q: str | None = None, language: str | None = None,
+        sort: str = "recent", limit: int = 50, offset: int = 0,
+    ) -> tuple[list[dict[str, Any]], int]:
+        """The PUBLIC catalog (B-3). visibility='public' AND status='active' ONLY
+        — `unlisted` is link-only (MD-3(a)), `private`/system/archived excluded.
+        Returns (rows, total) where each row is the _CATALOG_COLS allow-list
+        (NEVER the full motif), so embedding/examples/raw source_ref never reach a
+        non-owner. Any authed caller may read it (no grant)."""
+        where = ["visibility = 'public'", "status = 'active'"]
+        params: list[Any] = []
+        if genre is not None:
+            params.append(genre)
+            where.append(f"${len(params)} = ANY(genre_tags)")
+        if kind is not None:
+            params.append(kind)
+            where.append(f"kind = ${len(params)}")
+        if language is not None:
+            params.append(language)
+            where.append(f"language = ${len(params)}")
+        if q:
+            params.append(f"%{q}%")
+            where.append(f"(name ILIKE ${len(params)} OR summary ILIKE ${len(params)})")
+        where_sql = " AND ".join(where)
+        order = "name" if sort == "name" else "updated_at DESC"
+        cols = ", ".join(self._CATALOG_COLS)
+        # count over the SAME filters (before limit/offset params are appended).
+        count_q = f"SELECT count(*) FROM motif WHERE {where_sql}"
+        count_params = list(params)
+        params.append(max(0, min(limit, 100)))
+        limit_pos = len(params)
+        params.append(max(0, offset))
+        offset_pos = len(params)
+        list_q = (
+            f"SELECT {cols} FROM motif WHERE {where_sql} "
+            f"ORDER BY {order} LIMIT ${limit_pos} OFFSET ${offset_pos}"
+        )
+        async with self._pool.acquire() as c:
+            rows = await c.fetch(list_q, *params)
+            total = await c.fetchval(count_q, *count_params)
+        return [dict(r) for r in rows], int(total or 0)
+
+    async def count_shared_by_owner(self, owner_id: UUID) -> int:
+        """The publish-ceiling input (B-4): motifs the user holds at a SHAREABLE
+        visibility (public|unlisted), archived excluded (MD-4(a) — archiving frees
+        quota). Shares the predicate the catalog 'mine published' view uses."""
+        async with self._pool.acquire() as c:
+            return int(await c.fetchval(
+                "SELECT count(*) FROM motif WHERE owner_user_id = $1 "
+                "AND visibility IN ('public','unlisted') AND status <> 'archived'",
+                owner_id,
+            ) or 0)
+
+    async def count_adopted_by_owner(self, owner_id: UUID) -> int:
+        """The adopt-ceiling input (B-4): ADOPTED motifs the user holds, archived
+        excluded (MD-4(a))."""
+        async with self._pool.acquire() as c:
+            return int(await c.fetchval(
+                "SELECT count(*) FROM motif WHERE owner_user_id = $1 "
+                "AND source = 'adopted' AND status <> 'archived'",
+                owner_id,
+            ) or 0)
+
 
 def _passthru_jsonb(value: Any) -> str | None:
     """A value read from a JSONB column is either a json string (asyncpg) or already
