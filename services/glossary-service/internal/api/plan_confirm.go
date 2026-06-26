@@ -85,10 +85,13 @@ func (s *Server) previewExecutePlan(w http.ResponseWriter, ctx context.Context, 
 	// Best-effort live kind map for the new-vs-existing signal; on error fall back to
 	// an empty map (the preview degrades to "all new" rather than failing the card).
 	existingKinds, _ := s.loadKindMap(ctx, plan.BookID)
+	// create_kinds inserts by LITERAL book_kind code (alias-folded existingKinds
+	// would over-count "already exist" → the count wouldn't match execute_plan).
+	bookKindCodes, _ := s.loadBookKindCodes(ctx, plan.BookID)
 	rows := make([]previewRow, 0, len(plan.Ops))
 	anyDestructive := false
 	for _, op := range plan.Ops {
-		row := s.previewPlanOp(ctx, plan.BookID, op, existingKinds)
+		row := s.previewPlanOp(ctx, plan.BookID, op, existingKinds, bookKindCodes)
 		// op.Destructive is authoritative here — ValidatePlan above re-stamped it from
 		// the registry (a hallucinated `destructive:false` on a delete cannot survive).
 		row.OpID = op.ID
@@ -112,7 +115,7 @@ func (s *Server) previewExecutePlan(w http.ResponseWriter, ctx context.Context, 
 
 // previewPlanOp renders one plan op as a preview row, decoding its typed params and
 // adding a live current-state note where it is cheap to compute.
-func (s *Server) previewPlanOp(ctx context.Context, bookID uuid.UUID, op mcp.Op, existingKinds map[string]uuid.UUID) previewRow {
+func (s *Server) previewPlanOp(ctx context.Context, bookID uuid.UUID, op mcp.Op, existingKinds map[string]uuid.UUID, bookKindCodes map[string]struct{}) previewRow {
 	switch op.Type {
 	case "adopt_genres":
 		var p adoptParams
@@ -132,9 +135,12 @@ func (s *Server) previewPlanOp(ctx context.Context, bookID uuid.UUID, op mcp.Op,
 		if err := json.Unmarshal(op.Params, &p); err != nil {
 			return previewRow{Label: "create kinds", Value: "?", Note: "unreadable op"}
 		}
+		// Count against LITERAL book_kind codes (what create_kinds inserts), NOT the
+		// alias-folded existingKinds — else an alias of an adopted kind reads as
+		// "already exist" while execute_plan actually creates it (count drift).
 		newN, existN := 0, 0
 		for _, k := range p.Kinds {
-			if _, ok := existingKinds[strings.TrimSpace(k.Code)]; ok {
+			if _, ok := bookKindCodes[strings.TrimSpace(k.Code)]; ok {
 				existN++
 			} else {
 				newN++

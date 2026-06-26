@@ -1036,6 +1036,32 @@ func (s *Server) loadKindMap(ctx context.Context, bookID uuid.UUID) (map[string]
 	return m, arows.Err()
 }
 
+// loadBookKindCodes returns the set of LITERAL book_kind codes for a book (active
+// only) — NO alias folding, unlike loadKindMap. This is the executor's existence
+// domain: create_kinds inserts a book_kind by literal code and skips only on a
+// unique violation against this set. The plan-card preview uses it so its
+// "N new — M already exist" count matches what execute_plan will actually do; the
+// alias-folded loadKindMap over-counts "exist" (an alias of an adopted kind, e.g.
+// "faction"→organization, is NOT a book_kind, so create_kinds still creates it) —
+// the drift D-PLAN-PREVIEW-COUNT-DRIFT fixes.
+func (s *Server) loadBookKindCodes(ctx context.Context, bookID uuid.UUID) (map[string]struct{}, error) {
+	rows, err := s.pool.Query(ctx,
+		`SELECT code FROM book_kinds WHERE book_id = $1 AND deprecated_at IS NULL`, bookID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	codes := make(map[string]struct{})
+	for rows.Next() {
+		var code string
+		if err := rows.Scan(&code); err != nil {
+			return nil, err
+		}
+		codes[code] = struct{}{}
+	}
+	return codes, rows.Err()
+}
+
 // loadAttrDefMap returns a map of "book_kind_id:code" → attr_id for the given book
 // (G4: book_attributes). Keyed by the UNIVERSAL-genre row — the seed lifts every
 // kind's attrs into (kind, universal) and adopt copies them there, so extraction /
