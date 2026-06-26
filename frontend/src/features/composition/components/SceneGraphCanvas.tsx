@@ -17,11 +17,13 @@ import { useSetWorkSettings } from '../hooks/useWork';
 import { useSceneWhatIf, whatIfAltPositions, whatIfAltEdges, type WhatIfEdge } from '../hooks/useSceneWhatIf';
 import { useWhatIfTakes } from '../hooks/useWhatIfTakes';
 import { useWhatIfPromotion } from '../hooks/useWhatIfPromotion';
+import { useVsCanonDelta } from '../hooks/useVsCanonDelta';
 import { compositionApi } from '../api';
 import type { OutlineNode, SceneLink, SceneLinkKind, Work } from '../types';
 import { SceneNode } from './SceneNode';
 import { SceneEdge } from './SceneEdge';
 import { WhatIfAltNode } from './WhatIfAltNode';
+import { WhatIfJudgeBadge } from './WhatIfJudgeBadge';
 import { GraphCanvas } from './GraphCanvas';
 import { autoLayout, NODE_H, NODE_W, PAD, type Pos } from './sceneGraphLayout';
 
@@ -205,6 +207,17 @@ export function SceneGraphCanvas({ work, bookId, token, onPromoted }: {
   const allEdges: GraphEdge[] = branch ? [...links, ...whatIfAltEdges(branch)] : links;
   const previewAlt = branch?.alts.find((a) => a.id === previewAltId) ?? null;
 
+  // M4 — judge the canon baseline (the anchor scene's chapter draft) so the preview
+  // badge can show each dim RELATIVE to canon, not just the take's own score. Only
+  // fires while a take with a judge is previewed; memoized by (chapter_id, version).
+  const vsCanon = useVsCanonDelta({
+    bookId,
+    token,
+    chapterId: anchorScene?.chapter_id ?? null,
+    jobId: previewAlt?.take?.jobId ?? null,
+    enabled: !!previewAlt?.take?.judge,
+  });
+
   return (
     <div className="flex h-full flex-col" data-testid="composition-graph">
       <div className="flex flex-shrink-0 flex-wrap items-center gap-2 border-b px-3 py-2 text-[11px]">
@@ -361,9 +374,12 @@ export function SceneGraphCanvas({ work, bookId, token, onPromoted }: {
           <div className="flex items-center gap-2">
             <span className="font-medium text-purple-800 dark:text-purple-200">⑂ {previewAlt.title}</span>
             {previewAlt.take.judge && (
-              <span className="font-mono text-[10px] text-purple-700/80 dark:text-purple-300/80">
-                C{previewAlt.take.judge.coherence ?? '–'} · V{previewAlt.take.judge.voice_match ?? '–'} · P{previewAlt.take.judge.pacing ?? '–'} · K{previewAlt.take.judge.canon_consistency ?? '–'}
-              </span>
+              <WhatIfJudgeBadge
+                judge={previewAlt.take.judge}
+                canon={vsCanon.canon}
+                baselineAvailable={vsCanon.baselineAvailable}
+                judging={vsCanon.judging}
+              />
             )}
             <button
               type="button" data-testid="whatif-preview-close"
