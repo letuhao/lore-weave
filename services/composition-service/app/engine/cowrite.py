@@ -36,6 +36,15 @@ _OPERATION_INSTRUCTIONS = {
     "expand": "Expand the current passage with more sensory and interior detail.",
     "rewrite": "Rewrite the current passage, keeping its events but improving the prose.",
     "describe": "Write a vivid description for the current moment.",
+    # M1 (D-DERIVATIVE-ADAPT-FROM-SOURCE) — per-scene "adapt from source" for a
+    # derivative Work. The packer's <source_scene> block carries the inherited
+    # SOURCE scene's prose (gathered ONLY for this op, spoiler-bounded ≤ the branch);
+    # the model rewrites it through the divergence + entity overrides. Plan-free
+    # (like continue/rewrite): it does NOT require a derivative scene node/plan.
+    "adapt_scene": "Adapt the SOURCE scene's prose (in the <source_scene> block) to "
+                   "this branch: keep its structural function, but rewrite it to "
+                   "honour the divergence and entity overrides. Do not copy the "
+                   "source verbatim.",
 }
 
 

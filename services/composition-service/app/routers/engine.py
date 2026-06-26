@@ -337,6 +337,9 @@ async def generate(
             PackRequest(user_id=user_id, project_id=project_id, book_id=work.book_id,
                         node=node.model_dump(mode="python"), bearer=bearer, guide=body.guide,
                         settings=work.settings,
+                        # M1 — make the pack op-aware: `adapt_scene` (on a derivative)
+                        # fires gather_source_scene; every other op is byte-unchanged.
+                        operation=body.operation,
                         source_project_id=deriv.source_project_id,
                         branch_point=deriv.branch_point, overrides=deriv.overrides),
             book=book, glossary=glossary, knowledge=knowledge, canon_repo=canon,

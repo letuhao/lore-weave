@@ -31,6 +31,7 @@ from app.db.repositories.scene_links import SceneLinksRepo
 logger = logging.getLogger(__name__)
 
 _RECENT_PARAGRAPHS = 6  # L3 chapter-tail size
+_SOURCE_SCENE_PARAGRAPHS = 12  # M1 adapt-from-source window (a fuller scene than the L3 tail)
 
 
 @dataclass
@@ -60,6 +61,11 @@ class LensBundle:
     # influences) for this scene. Each {id, title, author, source_url, content,
     # score}. composition-owned; pinned ones are protected in the budget.
     references: list[dict[str, Any]] = field(default_factory=list)
+    # M1 (D-DERIVATIVE-ADAPT-FROM-SOURCE) — the inherited SOURCE scene's prose
+    # paragraphs for the `adapt_scene` op (gathered by gather_source_scene ONLY for
+    # that op, spoiler-bounded ≤ the branch). Renders as the <source_scene> block
+    # the adapt instruction points the model at. Empty for every other op / Work.
+    source_scene: list[str] = field(default_factory=list)
 
 
 def _applies_at(rule: CanonRule, story_order: int | None) -> bool:
@@ -265,6 +271,49 @@ async def gather_recent(
             return []
         return [p.strip() for t in prior for p in t.split("\n") if p.strip()]
     return []
+
+
+async def gather_source_scene(
+    book: BookClient, book_id: UUID, source_chapter_id: UUID, bearer: str, *,
+    branch_point: int | None = None, chapter_sort_order: int | None = None,
+    k: int = _SOURCE_SCENE_PARAGRAPHS,
+) -> list[str]:
+    """M1 (D-DERIVATIVE-ADAPT-FROM-SOURCE) — the inherited SOURCE scene's prose for
+    the `adapt_scene` op. A derivative Work is COW: it shares the SOURCE `book_id`
+    and chapter spine (works.py:315), so the source prose lives in the SAME chapter
+    DRAFT the derivative scene maps to — read it on the shared `book_id`.
+
+    Mirrors `gather_recent` (reads `book.get_draft`, returns the last K paragraphs
+    under a paragraph budget so a long source chapter can't blow context), BUT
+    spoiler-bounded on the chapter reading-order axis (`chapter_sort_order` is the
+    source chapter's `sort_order`, the SAME axis `branch_point` lives on):
+
+      **At/after the branch only.** A chapter STRICTLY BEFORE `branch_point` is
+      inherited CANON, not adaptable — its prose must not seed an "adapt" ghost
+      (the FE gates the action too; this is the server belt). chapter_sort_order
+      < branch_point → [] (the "pre-branch scene = read-only" edge case). This is
+      also the ≤-scene-position bound: for an inherited spine the adapted chapter
+      IS the scene's own chapter, so reading at/after the branch never pulls prose
+      past where the scene sits.
+
+    The bound only fires when the position is PLACEABLE — a None on either side
+    (sort-order outage / unplaceable) skips it rather than fail-empty, so a
+    transient book-service hiccup doesn't kill a legitimate adapt the FE already
+    offer-gated. Empty/absent source draft → [] (the caller surfaces "nothing to
+    adapt"; the FE falls back to draft_scene). Best-effort: a book-service error
+    degrades to []."""
+    if (branch_point is not None and chapter_sort_order is not None
+            and chapter_sort_order < branch_point):
+        return []
+    try:
+        draft = await book.get_draft(book_id, source_chapter_id, bearer)
+        text = draft.get("text_content") or ""
+    except BookClientError:
+        return []
+    paras = [p.strip() for p in text.split("\n") if p.strip()]
+    if not paras:
+        return []
+    return paras[-k:]  # last K paragraphs — the budgeted source-prose adapt window
 
 
 async def gather_lore(
