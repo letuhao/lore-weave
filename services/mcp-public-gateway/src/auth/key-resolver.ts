@@ -32,6 +32,10 @@ interface CacheEntry {
  * identity WITHOUT calling auth-service, so the stack can be smoked before/without
  * a populated credential store. Empty in real deployments.
  */
+// Cap the resolve cache so a flood of DISTINCT (bad) keys can't grow it without
+// bound (memory DoS). Oldest entries are evicted FIFO past this size.
+const RESOLVE_CACHE_MAX = 10000;
+
 export class KeyResolver {
   private readonly cfg = loadConfig();
   private readonly log = new Logger(KeyResolver.name);
@@ -57,23 +61,47 @@ export class KeyResolver {
     const cached = this.cache.get(bearer);
     if (cached && now < cached.expiresAt) return cached.value;
 
-    const resolved = await this.callAuthResolve(bearer);
-    this.cache.set(bearer, { value: resolved, expiresAt: now + this.cfg.resolveCacheTtlMs });
-    return resolved;
+    const { value, cacheable } = await this.callAuthResolve(bearer);
+    // Only cache a DEFINITIVE answer (a real identity, or a real 401/404 deny).
+    // A transient failure (auth 429/5xx, network blip) must NOT be cached, or a
+    // brief outage would deny a valid key for the whole TTL (HIGH — availability).
+    if (cacheable) {
+      if (this.cache.size >= RESOLVE_CACHE_MAX) {
+        const oldest = this.cache.keys().next().value;
+        if (oldest !== undefined) this.cache.delete(oldest);
+      }
+      this.cache.set(bearer, { value, expiresAt: now + this.cfg.resolveCacheTtlMs });
+    }
+    return value;
   }
 
-  private async callAuthResolve(bearer: string): Promise<ResolvedKey | null> {
+  // callAuthResolve returns the resolved identity (or null) AND whether the answer
+  // is definitive enough to cache. 200 → {identity, cacheable}. 401/404 → {null,
+  // cacheable} (a real deny). 429/5xx/network → {null, NOT cacheable} (transient).
+  private async callAuthResolve(bearer: string): Promise<{ value: ResolvedKey | null; cacheable: boolean }> {
     if (!this.cfg.internalToken) {
       this.log.error('cannot resolve key: INTERNAL_SERVICE_TOKEN unset');
-      return null;
+      return { value: null, cacheable: false };
     }
+    let res: Response;
     try {
-      const res = await fetch(`${this.cfg.authServiceUrl}/internal/mcp-keys/resolve`, {
+      res = await fetch(`${this.cfg.authServiceUrl}/internal/mcp-keys/resolve`, {
         method: 'POST',
         headers: { 'content-type': 'application/json', 'x-internal-token': this.cfg.internalToken },
         body: JSON.stringify({ key: bearer }),
       });
-      if (res.status !== 200) return null; // 401/404/429 → unresolved (uniform deny upstream)
+    } catch (e) {
+      this.log.warn(`auth resolve failed (transient): ${e}`);
+      return { value: null, cacheable: false }; // network error — don't cache
+    }
+    if (res.status === 401 || res.status === 404) {
+      return { value: null, cacheable: true }; // definitive deny — safe to cache
+    }
+    if (res.status !== 200) {
+      this.log.warn(`auth resolve non-OK (transient): ${res.status}`);
+      return { value: null, cacheable: false }; // 429/5xx — don't cache
+    }
+    try {
       const body = (await res.json()) as {
         user_id?: string;
         key_id?: string;
@@ -82,18 +110,21 @@ export class KeyResolver {
         spend_cap_usd?: number | null;
         rate_limit_rpm?: number;
       };
-      if (!body.user_id || !body.key_id) return null;
+      if (!body.user_id || !body.key_id) return { value: null, cacheable: true };
       return {
-        userId: body.user_id,
-        keyId: body.key_id,
-        scopes: body.scopes ?? [],
-        allowSelfConfirm: body.allow_self_confirm ?? false,
-        spendCapUsd: body.spend_cap_usd ?? null,
-        rateLimitRpm: body.rate_limit_rpm ?? 60,
+        value: {
+          userId: body.user_id,
+          keyId: body.key_id,
+          scopes: body.scopes ?? [],
+          allowSelfConfirm: body.allow_self_confirm ?? false,
+          spendCapUsd: body.spend_cap_usd ?? null,
+          rateLimitRpm: body.rate_limit_rpm ?? 60,
+        },
+        cacheable: true,
       };
     } catch (e) {
-      this.log.warn(`auth resolve failed: ${e}`);
-      return null;
+      this.log.warn(`auth resolve body parse failed: ${e}`);
+      return { value: null, cacheable: false }; // malformed 200 — treat as transient
     }
   }
 }

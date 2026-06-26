@@ -42,6 +42,10 @@ const (
 	mcpResolveWindow       = time.Minute
 )
 
+// maxMcpKeysPerUser caps active keys per user so a runaway/abusive account can't
+// mint unbounded credentials (mirrors book-service's maxBooksPerUser ceiling).
+const maxMcpKeysPerUser = 50
+
 type mcpKeyCreateReq struct {
 	Name             string   `json:"name"`
 	Scopes           []string `json:"scopes"`
@@ -127,6 +131,10 @@ func (s *Server) createMcpKey(w http.ResponseWriter, r *http.Request) {
 		}
 		rpm = *req.RateLimitRPM
 	}
+	if req.SpendCapUSD != nil && *req.SpendCapUSD < 0 {
+		writeErr(w, http.StatusBadRequest, "AUTH_VALIDATION_ERROR", "spend_cap_usd must be >= 0")
+		return
+	}
 	var expiresAt *time.Time
 	if req.ExpiresAt != nil && strings.TrimSpace(*req.ExpiresAt) != "" {
 		t, perr := time.Parse(time.RFC3339, *req.ExpiresAt)
@@ -139,6 +147,19 @@ func (s *Server) createMcpKey(w http.ResponseWriter, r *http.Request) {
 	scopes := req.Scopes
 	if scopes == nil {
 		scopes = []string{}
+	}
+
+	// Per-user active-key ceiling (anti-runaway).
+	var active int
+	if err := s.pool.QueryRow(r.Context(),
+		`SELECT count(*) FROM mcp_api_keys WHERE owner_user_id = $1 AND status = 'active'`, uid,
+	).Scan(&active); err != nil {
+		writeErr(w, http.StatusInternalServerError, "AUTH_INTERNAL", "create failed")
+		return
+	}
+	if active >= maxMcpKeysPerUser {
+		writeErr(w, http.StatusConflict, "AUTH_MCP_KEY_LIMIT", "active key limit reached; revoke an unused key first")
+		return
 	}
 
 	full, prefix, err := generateMcpAPIKey()
@@ -277,6 +298,10 @@ func (s *Server) patchMcpKey(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, http.StatusBadRequest, "AUTH_VALIDATION_ERROR", "rate_limit_rpm must be 1-6000")
 		return
 	}
+	if body.SpendCapUSD != nil && *body.SpendCapUSD < 0 {
+		writeErr(w, http.StatusBadRequest, "AUTH_VALIDATION_ERROR", "spend_cap_usd must be >= 0")
+		return
+	}
 	// COALESCE-style partial update; scopes only replaced when provided (non-nil).
 	var scopes any
 	if body.Scopes != nil {
@@ -334,7 +359,10 @@ func (s *Server) internalResolveMcpKey(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, http.StatusBadRequest, "AUTH_VALIDATION_ERROR", "invalid json")
 		return
 	}
-	prefix := mcpKeyPrefixOf(strings.TrimSpace(req.Key))
+	// Trim once and use the SAME value for both the prefix lookup and the hash
+	// verify (consistency — never look up by one form and verify another).
+	key := strings.TrimSpace(req.Key)
+	prefix := mcpKeyPrefixOf(key)
 	if prefix == "" {
 		writeErr(w, http.StatusUnauthorized, "AUTH_MCP_KEY_INVALID", "invalid key")
 		return
@@ -371,7 +399,7 @@ func (s *Server) internalResolveMcpKey(w http.ResponseWriter, r *http.Request) {
 		if expiresAt != nil && now.After(*expiresAt) {
 			continue
 		}
-		ok, _ := authpwd.Verify(req.Key, keyHash)
+		ok, _ := authpwd.Verify(key, keyHash)
 		if !ok {
 			continue
 		}

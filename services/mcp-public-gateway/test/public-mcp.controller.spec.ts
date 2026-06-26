@@ -180,6 +180,42 @@ describe('PublicMcpController', () => {
     expect(relayCall![1].headers['x-internal-token']).toBe(INTERNAL);
   });
 
+  it('does NOT cache a transient auth failure (HIGH — a blip must not deny a valid key)', async () => {
+    setEnv();
+    // First resolve → 500 (transient); second → 200. With correct behavior the
+    // 500 is NOT cached, so the second call re-hits auth and succeeds.
+    let calls = 0;
+    (global as unknown as { fetch: jest.Mock }).fetch = jest.fn().mockImplementation((url: string) => {
+      if (String(url).includes('/internal/mcp-keys/resolve')) {
+        calls++;
+        if (calls === 1) return Promise.resolve({ status: 500, json: async () => ({}), headers: { get: () => null } });
+        return Promise.resolve({
+          status: 200,
+          json: async () => ({ user_id: 'u', key_id: 'k', scopes: [] }),
+          headers: { get: () => 'application/json' },
+        });
+      }
+      return Promise.resolve({ status: 200, text: async () => '{}', headers: { get: () => 'application/json' } });
+    });
+    const ctrl = new PublicMcpController();
+    const r1 = mockRes();
+    await ctrl.handle(mockReq({ headers: { authorization: 'Bearer lw_pk_flaky' }, body: {} }), r1.res);
+    expect(r1.statusCode).toBe(401); // transient failure denied (not authenticated)
+    const r2 = mockRes();
+    await ctrl.handle(mockReq({ headers: { authorization: 'Bearer lw_pk_flaky' }, body: {} }), r2.res);
+    expect(r2.statusCode).toBe(200); // recovered — the 500 was NOT cached
+  });
+
+  it('DOES cache a positive resolve (second call serves from cache, one auth hit)', async () => {
+    setEnv();
+    const ctrl = new PublicMcpController();
+    const key = { headers: { authorization: 'Bearer lw_pk_realkeyfromstore123' }, body: {} };
+    await ctrl.handle(mockReq(key), mockRes().res);
+    await ctrl.handle(mockReq(key), mockRes().res);
+    const authCalls = fetchMock.mock.calls.filter((c) => String(c[0]).includes('/internal/mcp-keys/resolve'));
+    expect(authCalls.length).toBe(1); // second resolve came from cache
+  });
+
   it('STRIPS inbound x-* and never forwards smuggled identity/admin headers (PUB-9 / H-A)', async () => {
     setEnv();
     const r = mockRes();

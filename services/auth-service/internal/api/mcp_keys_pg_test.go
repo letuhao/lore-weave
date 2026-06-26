@@ -175,6 +175,43 @@ func TestMcpKeys_DeletedAccountInvalidatesKey_PG(t *testing.T) {
 	}
 }
 
+func TestMcpKeys_NegativeSpendCapRejected_PG(t *testing.T) {
+	s, pool := mcpKeysServer(t, true)
+	uid := mkUser(t, pool)
+	tok := bearer(t, uid)
+	rr := doJSON(s, http.MethodPost, "/v1/account/mcp-keys", tok,
+		map[string]any{"name": "k", "spend_cap_usd": -1})
+	if rr.Code != http.StatusBadRequest {
+		t.Fatalf("negative spend_cap: got %d, want 400", rr.Code)
+	}
+}
+
+func TestMcpKeys_ResolveRateLimited_PG(t *testing.T) {
+	// H-H end-to-end: hammering one prefix with a wrong secret hits 429 BEFORE the
+	// per-attempt Argon2 verify can run unbounded — proving the cap is wired at the
+	// endpoint (not just the limiter primitive).
+	s, pool := mcpKeysServer(t, true)
+	uid := mkUser(t, pool)
+	tok := bearer(t, uid)
+	rr := doJSON(s, http.MethodPost, "/v1/account/mcp-keys", tok, map[string]any{"name": "k"})
+	var created struct {
+		Key string `json:"key"`
+	}
+	_ = json.Unmarshal(rr.Body.Bytes(), &created)
+	// Same 12-char prefix, wrong body → forces a verify attempt each time.
+	bad := created.Key[:len(created.Key)-4] + "ZZZZ"
+	saw429 := false
+	for range 40 {
+		if resolve(s, bad).Code == http.StatusTooManyRequests {
+			saw429 = true
+			break
+		}
+	}
+	if !saw429 {
+		t.Fatal("expected a 429 after repeated wrong-secret attempts on one prefix (H-H)")
+	}
+}
+
 func TestMcpKeys_FlagOffBlocksCreate_PG(t *testing.T) {
 	s, pool := mcpKeysServer(t, false)
 	uid := mkUser(t, pool)
