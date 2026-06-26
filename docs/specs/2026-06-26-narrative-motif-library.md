@@ -100,6 +100,36 @@ CREATE INDEX idx_motif_application_node       ON motif_application(outline_node_
 
 ---
 
+## §R2 — Open-question resolutions (2026-06-26 deep-dive) — clears R1.7 + 3 unclear concerns
+
+> Each below is now DECIDED. Only a small PO effort remains (R2.1 labeling).
+
+### R2.1 — Conformance calibration: binary-first + bootstrap gold set (resolves F-3)
+P1 ships **`motif_conformance` binary** (`beat_realized` y/n + `tension_band_match` y/n) as **advisory** (never a hard commit gate). Calibrate via: (a) a **small PO seed** — ~25-30 scenes the PO labels (they already hand-read the POC scenes); (b) a **strong-model-as-gold bootstrap** — a frontier BYOK model labels a larger set; the *local* judge is validated against it through the **existing binary `calibrate_judge`** (kappa ≥ 0.4, balanced-acc ≥ 0.75). The signal stays "unverified self-report" until calibration passes (and the UI says so — honest, per AI-quality R1). `plot_density` (graded) needs **ordinal** calibration (QWK) → deferred to **P1.5**. **Actuator against flag-and-ignore (AI-quality R3):** surface conformance *in the author's work/trace view*, make **"regenerate to beat" one-click** (the §11 scene-regenerate delta), and **instrument the act-on-flag rate** so we know if it's used. → **P1** (binary advisory + seed calibration). *Residual: PO labels ~25 scenes, OR we ship pure-advisory + uncalibrated and label later.*
+
+### R2.2 — Genre = bounded filter; cross-genre = clone-and-retag (resolves N-2)
+Genre stays a **bounded SQL filter** for *default* retrieval — fast, correct for the common case, and it **avoids the unbounded cross-tier cosine scan** (audit data-R1). The POC's cross-genre transfer is reproduced as a **deliberate clone-and-retag**: the author clones a motif and the clone's `genre_tags` are remapped to the target genre (then it matches as same-genre). This **uses the locked clone primitive** (R1.1.1) instead of a soft-prior-over-everything (which would reintroduce the scale problem). A "show cross-genre matches" toggle can surface candidates to clone. → **P1** (filter) + the cross-genre clone rides the adopt path (**P2**). *Better than the earlier "soft prior" recommendation — it bounds the candidate set AND reuses clone.*
+
+### R2.3 — Mining: scalar-order + `motif_beat`, drop the causal graph (resolves F-1)
+**Option B.** PrefixSpan runs over the **ordered beat-label sequence per book** — the NEW `motif_beat` extractor emits per-scene `{beat, thread, tension, roles}`; **`event_order` (which exists) supplies the order**. A frequent beat-subsequence across books **is** a motif — **no causal graph needed**. "Frequent-subgraph mining" is **dropped** (it required `:CAUSES` edges that don't exist). The `motif_beat` extractor is a **knowledge-service `loreweave_extraction` change** (cross-service; its own extractor-version/cache concerns — track it there, NOT as a composition deliverable). Causal-edge (`:CAUSES`) extraction is a **future knowledge-service track**, needed only if cross-thread/branching motif mining (§15.3, already deferred) is ever wanted. → **P3** (the `motif_beat` extractor lands first, in knowledge-service).
+
+### R2.4 — Derivative inheritance: templates auto-inherited; applications forked at derive-time (resolves N-3)
+The 2-tier decision (R1.1.1) **already solves template inheritance** — templates are **user-owned**, so a dị bản Work of the same user sees the *same library* (no project-scoping). What isn't inherited is the **applications** (project-scoped). Add an **optional "fork applications" derive-time step**: clone the source's `motif_application` rows into the derivative's project, applying the existing `entity_override` remap to `role_bindings` (parallel to how `entity_override` re-skins entities). **No `motif_override` is needed.** → **P4** (with the dị bản track); the cloneable-application schema doesn't block it.
+
+### R2.5 — B≠C arc reconciliation algorithm (clears H-1)
+Apply an arc_template to a target chapter count via **proportional placement-rescale**: map each placement's `[span_start, span_end]` from `[0, chapter_span]` → `[0, target]`, then resolve collisions — multiple placements in one chapter → keep as a **multi-scene chapter** or **merge adjacent same-thread placements**; `target < span` → merge/drop **lowest-priority** placements; `target > span` → spread. **Every drop/merge is surfaced in the preview** → the conformance loop can distinguish **"reconciled-away" from "drifted"** (clears edge-B6 false-drift). → **P4** (arc apply); not a P1 blocker (P1 is single motifs).
+
+### R2.6 — Swap-motif-after-generation lifecycle (clears H-4 / MCP-R2)
+Swapping a chapter's motif after scenes have prose **archives (never deletes)** the affected scene nodes + their `generation_job` links (reuse the existing `archive_node`/`restore_node`), instantiates the new motif's scenes, and **flags the orphaned `narrative_thread` promises for author review** (never auto-closes). **Undo = restore the archived nodes** — so the Tier-A `composition_motif_bind` undo is now *honored* (clears the MCP-R2 unhonored-undo finding). → **P1/P2**.
+
+### R2.7 — §17 STITCH is a delta on the shipping pass (clears F-2 scope)
+Enhance `engine/stitch.py`: (a) feed the **4-gram/cosine cross-scene repetition signal** (POC 5) into the stitch prompt; (b) **respect §16 style/voice dials** (no voice-homogenization); (c) fix the **≤2-scene no-op** (short chapters get a lighter single-pass polish, not skipped); (d) fix **middle-elision** — replace the head+tail char cap with **overlapping-window stitching** for long chapters so the middle is actually seen. Add the missing **eval-gate**: repetition-reduction + voice-preservation (embedding distance vs the per-scene voice profile) + **no-canon-regression** (the gone-character re-introduction the code already warns about). → **S/M, P2**.
+
+### R2.8 — Remaining MCP fixes (folds audit H-6, no further PO input)
+`_motif_adopt` → **Tier-W confirm-card** (matches the glossary precedent); `_motif_mine`/`_arc_import_analyze` → **enqueue a 202+poll worker job** (not in-process) + a **consumed-token ledger** (no replay double-spend); `_motif_create` → **closed `target: Literal['book'(n/a now)|'user']` enum + `ForbidExtra`**, owner stamped from the envelope (never an arg); every by-id tool replicates the **project-scope IDOR assertion**; `_meta.scope='user'` + `require_user_scope` for user-tier tools; add `status?` to `_motif_search` (surface drafts) + `composition_conformance_run` to the §13 catalog.
+
+---
+
 ## §0 Goal (one line)
 
 Add the **meso layer** the planner is missing: a queryable, multi-tenant, self-enriching **motif library** so the planner's chapter→scene step becomes **"retrieve a motif chain + bind its roles to this book's cast"** instead of **"invent scenes from a blank beat"** — making even a weak self-host model produce structurally sound plans, and letting the system **mine its own corpus to grow the library**.
