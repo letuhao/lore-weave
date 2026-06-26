@@ -840,6 +840,92 @@ async def test_generation_job_status_update_coalesces(pool):
     assert await repo.list_active_for_node(user, project, node_id) == []
 
 
+# ── M3 (WS-B3): promoted scene-prose synthetic-job store ──
+
+async def test_promoted_scene_prose_persists_and_reads_back(pool):
+    # A promoted scene's prose is written as a synthetic completed job and READS
+    # BACK through chapter_scene_drafts / prior_scene_drafts (the existing readers),
+    # with NO new table — the M3 contract's core requirement.
+    gjr = GenerationJobsRepo(pool)
+    olr = OutlineRepo(pool)
+    user, project, _ = _ids()
+    chapter = uuid.uuid4()
+    arc = await olr.create_node(user, project, kind="arc", title="arc")
+    chap = await olr.create_node(user, project, kind="chapter", parent_id=arc.id, chapter_id=chapter)
+    s1 = await olr.create_node(user, project, kind="scene", parent_id=chap.id,
+                               chapter_id=chapter, story_order=1, title="s1")
+    s2 = await olr.create_node(user, project, kind="scene", parent_id=chap.id,
+                               chapter_id=chapter, story_order=2, title="s2")
+    job1, v1 = await gjr.upsert_promoted_scene_prose(user, project, s1.id, "scene one prose")
+    job2, v2 = await gjr.upsert_promoted_scene_prose(user, project, s2.id, "scene two prose")
+    assert v1 == 1 and v2 == 1
+    assert job1.status == "completed" and job1.result == {"text": "scene one prose"}
+    assert job1.input.get("kind") == "promoted_scene_prose"
+    # chapter_scene_drafts reads EVERY scene's promoted prose in story_order
+    drafts = await gjr.chapter_scene_drafts(user, project, chapter)
+    assert drafts == ["scene one prose", "scene two prose"]
+    # prior_scene_drafts is position-bounded (strictly before story_order=2 → only s1)
+    prior = await gjr.prior_scene_drafts(user, project, chapter, 2)
+    assert prior == ["scene one prose"]
+
+
+async def test_promoted_scene_prose_idempotent_overwrite_never_duplicates(pool):
+    # A re-promote / double-submit OVERWRITES the same scene's prose (one row), never
+    # duplicates; the version increments and the read-back reflects the latest text.
+    gjr = GenerationJobsRepo(pool)
+    olr = OutlineRepo(pool)
+    user, project, _ = _ids()
+    chapter = uuid.uuid4()
+    arc = await olr.create_node(user, project, kind="arc", title="arc")
+    chap = await olr.create_node(user, project, kind="chapter", parent_id=arc.id, chapter_id=chapter)
+    scene = await olr.create_node(user, project, kind="scene", parent_id=chap.id,
+                                  chapter_id=chapter, story_order=1, title="s1")
+    _, v1 = await gjr.upsert_promoted_scene_prose(user, project, scene.id, "first take")
+    _, v2 = await gjr.upsert_promoted_scene_prose(user, project, scene.id, "second take")
+    assert v1 == 1 and v2 == 2
+    # exactly ONE promoted-prose row for the node (overwrite, not duplicate)
+    async with pool.acquire() as c:
+        n = await c.fetchval(
+            "SELECT count(*) FROM generation_job "
+            "WHERE outline_node_id=$1 AND input->>'kind'='promoted_scene_prose'", scene.id)
+    assert n == 1
+    # read-back is the latest take
+    drafts = await gjr.chapter_scene_drafts(user, project, chapter)
+    assert drafts == ["second take"]
+
+
+async def test_promoted_scene_prose_rejects_foreign_or_non_scene_node(pool):
+    # Defense-in-depth: the node must be the caller's SCENE in this project.
+    gjr = GenerationJobsRepo(pool)
+    olr = OutlineRepo(pool)
+    user, project, _ = _ids()
+    other_user, other_proj, _ = _ids()
+    # foreign scene (another user/project)
+    foreign = await olr.create_node(other_user, other_proj, kind="scene", chapter_id=uuid.uuid4())
+    with pytest.raises(ReferenceViolationError):
+        await gjr.upsert_promoted_scene_prose(user, project, foreign.id, "x")
+    # a non-scene node (a chapter) in this project is rejected too
+    chap = await olr.create_node(user, project, kind="chapter", chapter_id=uuid.uuid4())
+    with pytest.raises(ReferenceViolationError):
+        await gjr.upsert_promoted_scene_prose(user, project, chap.id, "x")
+
+
+async def test_promoted_scene_prose_scoped_per_project(pool):
+    # Two derivatives (distinct project_ids) promoting the SAME node id keep separate
+    # rows — the dedup unit is (project, node), so they never clobber each other.
+    gjr = GenerationJobsRepo(pool)
+    olr = OutlineRepo(pool)
+    user, projA, _ = _ids()
+    _, projB, _ = _ids()
+    chapter = uuid.uuid4()
+    sA = await olr.create_node(user, projA, kind="scene", chapter_id=chapter, story_order=1)
+    sB = await olr.create_node(user, projB, kind="scene", chapter_id=chapter, story_order=1)
+    await gjr.upsert_promoted_scene_prose(user, projA, sA.id, "A prose")
+    await gjr.upsert_promoted_scene_prose(user, projB, sB.id, "B prose")
+    assert await gjr.chapter_scene_drafts(user, projA, chapter) == ["A prose"]
+    assert await gjr.chapter_scene_drafts(user, projB, chapter) == ["B prose"]
+
+
 async def _insert_stale_job(pool, user, project, *, chapter_id=None) -> uuid.UUID:
     """Insert a `running` job created 1h ago (a crash-orphan). Optional chapter_id
     in input makes it a chapter-level node-less job for the opportunistic-reap test."""
