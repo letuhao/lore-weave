@@ -17,6 +17,8 @@ from __future__ import annotations
 import hashlib
 import re
 
+from .name_normalize import normalize_entity_name as _normalize
+
 __all__ = [
     "HONORIFICS",
     "canonicalize_entity_name",
@@ -87,10 +89,17 @@ def canonicalize_entity_name(name: str) -> str:
     The original display name is preserved by the caller in
     `Entity.name`; this canonical form is only used for ID hashing
     and for the `canonical_name` index property.
+
+    D-KG-TL-SIMPLIFIED-TRADITIONAL-DUP: step 1 is now a multi-language
+    EQUIVALENCE fold (NFKC + Unicode casefold + CJK traditional→simplified,
+    see `name_normalize.normalize_entity_name`) replacing the old
+    `strip().lower()`. So 張若塵 / 张若尘, full-width `Ｋａｉ` / `Kai`, and
+    composed/decomposed accents collapse to ONE canonical_id instead of
+    spawning duplicate entities. Diacritics are PRESERVED (vi `má`≠`ma`).
     """
     if not isinstance(name, str):
         raise TypeError(f"name must be str, got {type(name).__name__}")
-    normalized = name.strip().lower()
+    normalized = _normalize(name).strip()
 
     for h in HONORIFICS:
         if normalized.startswith(h):
@@ -119,7 +128,10 @@ def canonicalize_text(text: str) -> str:
     """
     if not isinstance(text, str):
         raise TypeError(f"text must be str, got {type(text).__name__}")
-    normalized = text.strip().lower()
+    # Same multi-language equivalence fold as canonicalize_entity_name (NFKC +
+    # casefold + CJK simplified), minus the honorific pass, so an event/fact
+    # re-described with simplified vs traditional script collapses to one node.
+    normalized = _normalize(text).strip()
     normalized = _WHITESPACE_RE.sub(" ", normalized)
     normalized = _PUNCTUATION_RE.sub("", normalized)
     return normalized.strip()

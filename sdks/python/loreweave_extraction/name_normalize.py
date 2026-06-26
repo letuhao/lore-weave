@@ -1,8 +1,10 @@
 """Multi-language entity-name normalization (D-KG-TL-SIMPLIFIED-TRADITIONAL-DUP).
 
-Phase 1 — PURE functions, no I/O, fully deterministic. NOT yet wired into the live
-``canonicalize_entity_name`` id derivation (that cutover lands WITH the dedup
-migration, Phase 2 — see docs/specs/2026-06-26-multilang-entity-normalization-dedup.md).
+PURE functions, no I/O, fully deterministic. ``canonicalize_entity_name`` /
+``canonicalize_text`` (in ``canonical.py``) now build on ``normalize_entity_name``
+as their first step. The existing KG was disposable test data, so the dedup ships
+as wire-then-wipe-and-re-extract (no merge migration) — see
+docs/specs/2026-06-26-multilang-entity-normalization-dedup.md.
 
 Folds *equivalence* (same identity, different encoding/script) so variant spellings
 of one entity dedup to a single canonical form, WITHOUT folding *similarity*
