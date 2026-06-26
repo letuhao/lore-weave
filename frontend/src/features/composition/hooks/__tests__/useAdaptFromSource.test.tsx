@@ -77,6 +77,20 @@ describe('useAdaptFromSource (M1 gate)', () => {
     expect(result.current.canAdapt).toBe(false);
   });
 
+  it('a "diverge from start" derivative (branch_point null) adapts ANY chapter with prose — no sort fetch', async () => {
+    // /review-impl HIGH: branch_point === null = no inherited canon → every source
+    // scene is post-branch and adaptable. The BE mirrors this (its exclusion only fires
+    // when branch_point is not None). The FE must not hide adapt for from-start branches.
+    getDraft.mockResolvedValue(draft('Inherited prose from chapter zero.'));
+    const { result } = renderHook(
+      () => useAdaptFromSource('b', 'c1', ctx({ isDerivative: true, branchPoint: null }), 'tok'),
+      { wrapper: wrapper() },
+    );
+    await waitFor(() => expect(result.current.canAdapt).toBe(true));
+    expect(listChapters).not.toHaveBeenCalled(); // no reading-order comparison needed
+    expect(getDraft).toHaveBeenCalledWith('tok', 'b', 'c1');
+  });
+
   it('a 404 / errored source draft also reads as sourceEmpty (not a silent canAdapt)', async () => {
     listChapters.mockResolvedValue(chapters([{ chapter_id: 'c1', sort_order: 5 }]));
     getDraft.mockRejectedValue(new Error('404'));

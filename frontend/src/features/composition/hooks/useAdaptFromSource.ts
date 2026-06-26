@@ -31,18 +31,26 @@ export function useAdaptFromSource(
   token: string | null,
 ): Adaptability {
   const on = derivative.isDerivative && !!token && !!chapterId;
+  // branch_point === null means "diverge from the very start (no inherited canon)" —
+  // EVERY chapter is post-branch, so every source scene is adaptable. Only a numeric
+  // branch_point needs the per-chapter reading-order comparison (the BE mirrors this:
+  // its gather_source_scene exclusion only fires when branch_point is not None).
+  const fromStart = derivative.branchPoint == null;
+  const needsSort = on && !fromStart;
 
   // The active chapter's reading-order position (the SAME axis `branch_point` lives
-  // on). Reused/cached across scenes in the same book.
+  // on). Reused/cached across scenes in the same book. Skipped for a from-start branch
+  // (no comparison needed → no fetch).
   const chaptersQ = useQuery({
     queryKey: ['composition', 'adapt-chapters', bookId],
     queryFn: () => booksApi.listChapters(token!, bookId, { lifecycle_state: 'active', limit: 500, offset: 0 }),
-    enabled: on,
+    enabled: needsSort,
     select: (d) => d.items,
   });
   const sortOrder = chaptersQ.data?.find((c) => c.chapter_id === chapterId)?.sort_order ?? null;
-  const atOrAfterBranch =
-    derivative.branchPoint != null && sortOrder != null && sortOrder >= derivative.branchPoint;
+  const atOrAfterBranch = on && (
+    fromStart || (sortOrder != null && sortOrder >= derivative.branchPoint!)
+  );
 
   // Only read the source draft once the chapter is known to be at/after the branch —
   // a pre-branch chapter is never adaptable, so don't fetch its prose.
@@ -57,8 +65,8 @@ export function useAdaptFromSource(
   const draftSettled = draftQ.isSuccess || draftQ.isError;
 
   return {
-    canAdapt: on && atOrAfterBranch && hasSourceProse,
-    sourceEmpty: on && atOrAfterBranch && draftSettled && !hasSourceProse,
-    isLoading: on && (chaptersQ.isLoading || (atOrAfterBranch && draftQ.isLoading)),
+    canAdapt: atOrAfterBranch && hasSourceProse,
+    sourceEmpty: atOrAfterBranch && draftSettled && !hasSourceProse,
+    isLoading: on && ((needsSort && chaptersQ.isLoading) || (atOrAfterBranch && draftQ.isLoading)),
   };
 }
