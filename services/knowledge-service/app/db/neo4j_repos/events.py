@@ -30,7 +30,7 @@ import logging
 from datetime import datetime
 from typing import Any
 
-from pydantic import BaseModel, Field, computed_field
+from pydantic import BaseModel, Field, computed_field, model_serializer
 
 from app.db.neo4j_helpers import CypherSession, run_read, run_write
 from app.db.neo4j_repos.canonical import canonicalize_text
@@ -164,6 +164,29 @@ class Event(BaseModel):
     created_at: datetime | None = None
     updated_at: datetime | None = None
 
+    # ── KG-TL (timeline localization) — DERIVED, response-only Layer-2 fields ──
+    # NEVER stored on the :Event node (AC-T6): the source `title`/`summary`/
+    # `time_cue`/`participants` above stay canonical source-language. These are
+    # populated ONLY when a reader language resolves on the read path; absent a
+    # reader language they stay None (the no-op / back-compat path, AC-T5).
+    #
+    # M2 — participant names localized via the glossary entity-name join. Same
+    # length + order as `participants`; each slot is the reader-language name when
+    # the glossary had a translation, else the source name. `*_translated` is the
+    # per-slot signal (True ⇒ localized; False ⇒ source-fallback, FE marks it).
+    participants_localized: list[str] | None = None
+    participants_translated: list[bool] | None = None
+    # M3 — free-text fields localized via the on-demand event_text_translations
+    # cache. `*_localized` = COALESCE(cache, source); `*_translated` = cache hit?
+    # On a cache MISS the localized value IS the source text and the flag is False
+    # (AC-T4: source + "translation pending" marker, never a blocking inline LLM).
+    summary_localized: str | None = None
+    summary_translated: bool | None = None
+    time_cue_localized: str | None = None
+    time_cue_translated: bool | None = None
+    title_localized: str | None = None
+    title_translated: bool | None = None
+
     # C14 (C14-importance-major-pivotal LOCKED) — DERIVED importance,
     # never a stored column and never an extraction pass. The :Event
     # node already carries the salience signals (mention_count,
@@ -204,6 +227,35 @@ class Event(BaseModel):
         ) or self.mention_count >= 3:
             return "major"
         return None
+
+    # KG-TL — keep the canonical (no-reader-language) response BYTE-IDENTICAL
+    # (AC-T5). The 8 derived localization fields above stay None on the canonical
+    # path; rather than emit 8 new `null` keys (which would change the wire shape
+    # for every existing consumer), drop them from the serialized output WHEN they
+    # are all None. When a reader language resolves and the router populates them,
+    # they serialize normally. This is surgical — only the KG-TL fields are
+    # affected; every other nullable field (summary, time_cue, …) is untouched.
+    _KG_TL_FIELDS = (
+        "participants_localized",
+        "participants_translated",
+        "summary_localized",
+        "summary_translated",
+        "time_cue_localized",
+        "time_cue_translated",
+        "title_localized",
+        "title_translated",
+    )
+
+    @model_serializer(mode="wrap")
+    def _serialize(self, handler):  # type: ignore[no-untyped-def]
+        data = handler(self)
+        # Only when localization didn't run (every KG-TL field is None) do we omit
+        # the keys — preserving today's exact wire shape. If ANY is set, keep all
+        # so the FE sees the full parallel arrays/flags.
+        if all(getattr(self, f) is None for f in self._KG_TL_FIELDS):
+            for f in self._KG_TL_FIELDS:
+                data.pop(f, None)
+        return data
 
 
 # C14 — closed set of derivable importances, exposed so the router /

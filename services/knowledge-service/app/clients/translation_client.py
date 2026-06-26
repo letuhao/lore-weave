@@ -65,6 +65,54 @@ class TranslationClient:
             logger.warning("translation-service unavailable: %s, trace_id=%s", exc, tid)
             return None
 
+    async def translate_text(
+        self,
+        *,
+        user_id: UUID,
+        text: str,
+        target_language: str,
+        source_language: str = "auto",
+    ) -> str | None:
+        """KG-TL M3 — translate one free-text string ON BEHALF OF ``user_id``.
+
+        Calls ``POST /internal/translation/translate-text`` (internal-token +
+        asserted user_id) which resolves the user's saved translation model via
+        provider-registry (BYOK) and returns the translated text. knowledge
+        never imports a provider SDK nor hardcodes a model (AC-T8). Best-effort:
+        returns None on empty input / any failure (no model configured, provider
+        down, timeout) so the lazy cache-fill silently no-ops — the reader keeps
+        seeing the source text + "translation pending" marker until a later read
+        succeeds (AC-T4)."""
+        if not text or not text.strip() or not target_language:
+            return None
+        url = f"{self._base_url}/internal/translation/translate-text"
+        tid = trace_id_var.get()
+        try:
+            resp = await self._http.post(
+                url,
+                json={
+                    "user_id": str(user_id),
+                    "text": text,
+                    "source_language": source_language,
+                    "target_language": target_language,
+                },
+                headers={"X-Trace-Id": tid} if tid else None,
+            )
+            if resp.status_code != 200:
+                logger.warning(
+                    "translation-service translate-text %d, trace_id=%s",
+                    resp.status_code, tid,
+                )
+                return None
+            out = resp.json().get("translated_text")
+            return out if isinstance(out, str) and out.strip() else None
+        except (httpx.HTTPError, ValueError, KeyError) as exc:
+            logger.warning(
+                "translation-service translate-text unavailable: %s, trace_id=%s",
+                exc, tid,
+            )
+            return None
+
 
 def init_translation_client() -> "TranslationClient":
     global _client

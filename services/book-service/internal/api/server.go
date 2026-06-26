@@ -2489,6 +2489,14 @@ func (s *Server) postInternalChapterTitles(w http.ResponseWriter, r *http.Reques
 	const maxIDs = 200
 	var body struct {
 		ChapterIDs []uuid.UUID `json:"chapter_ids"`
+		// KG-TL M1 — optional reader-language. When set, each requested
+		// chapter resolves to its SIBLING-language heading (the chapter at
+		// the same (book_id, sort_order) whose original_language folds to
+		// this primary subtag); absent a sibling, the requested chapter's
+		// own (source-language) heading is returned. Malformed/blank is
+		// treated as absent (source heading) — never an error, so the mix
+		// is removed even when no translated chapter exists.
+		Language string `json:"language"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
 		writeError(w, http.StatusBadRequest, "BOOK_VALIDATION_ERROR", "invalid JSON body")
@@ -2505,11 +2513,40 @@ func (s *Server) postInternalChapterTitles(w http.ResponseWriter, r *http.Reques
 		)
 		return
 	}
-	rows, err := s.pool.Query(r.Context(), `
+	// KG-TL M1 — primary subtag fold ("vi-VN" → "vi"); blank/malformed → "".
+	readerLang := primaryLangSubtag(body.Language)
+	var rows pgx.Rows
+	var err error
+	if readerLang != "" {
+		// Resolve the sibling-language heading: for each requested chapter,
+		// find the chapter at the SAME (book_id, sort_order) whose
+		// original_language folds to the reader subtag. LEFT JOIN so a
+		// chapter WITHOUT a sibling translation falls back to its own
+		// (source-language) heading — never drops a row. The key returned
+		// is the REQUESTED chapter id so the caller maps it back 1:1. A tie
+		// (two active siblings in the same subtag) is broken by id so the
+		// result is deterministic.
+		rows, err = s.pool.Query(r.Context(), `
+SELECT DISTINCT ON (req.id)
+       req.id,
+       COALESCE(sib.sort_order, req.sort_order) AS sort_order,
+       COALESCE(sib.title, req.title)           AS title
+FROM chapters req
+LEFT JOIN chapters sib
+  ON sib.book_id = req.book_id
+ AND sib.sort_order = req.sort_order
+ AND sib.lifecycle_state = 'active'
+ AND lower(split_part(sib.original_language, '-', 1)) = $2
+WHERE req.id = ANY($1::uuid[]) AND req.lifecycle_state = 'active'
+ORDER BY req.id, sib.id
+`, body.ChapterIDs, readerLang)
+	} else {
+		rows, err = s.pool.Query(r.Context(), `
 SELECT id, sort_order, title
 FROM chapters
 WHERE id = ANY($1::uuid[]) AND lifecycle_state = 'active'
 `, body.ChapterIDs)
+	}
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "BOOK_CONFLICT", "failed to query chapter titles")
 		return

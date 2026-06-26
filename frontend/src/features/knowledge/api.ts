@@ -641,6 +641,31 @@ export interface TimelineEvent {
    *  (the common case — the long tail is NOT mislabeled). The rail badges
    *  only the non-null `major`/`pivotal` events. */
   importance: EventImportance | null;
+
+  // ── KG-TL (timeline localization) — DERIVED, response-only Layer-2 fields ──
+  // Populated ONLY when a reader language resolves on the read path; null/absent
+  // on the canonical (no-language) response. Source `title`/`summary`/`time_cue`/
+  // `participants` above stay source-language (Layer-1 untouched). The row
+  // renders the `*_localized` value and an explicit "source" marker whenever the
+  // matching `*_translated` flag is false (AC-T1 — never a silent mix).
+  /** M2 — participant names in the reader language; same length+order as
+   *  `participants`. Each slot is the translated name when the glossary had it,
+   *  else the source name. Null when no reader language resolved. */
+  participants_localized?: string[] | null;
+  /** M2 — per-slot translated flag (parallel to `participants_localized`).
+   *  false ⇒ that chip is showing the source name + gets a marker. */
+  participants_translated?: boolean[] | null;
+  /** M3 — summary in the reader language (COALESCE(cache, source)). */
+  summary_localized?: string | null;
+  /** M3 — true ⇒ `summary_localized` is a real translation; false ⇒ it is the
+   *  source text awaiting the on-demand cache fill (render a "pending" marker). */
+  summary_translated?: boolean | null;
+  /** M3 — time_cue in the reader language (COALESCE(cache, source)). */
+  time_cue_localized?: string | null;
+  time_cue_translated?: boolean | null;
+  /** M3 — title in the reader language (COALESCE(cache, source)). */
+  title_localized?: string | null;
+  title_translated?: boolean | null;
 }
 
 // C14 — closed importance enum mirroring the BE EVENT_IMPORTANCE tuple
@@ -706,6 +731,11 @@ export interface TimelineListParams {
    *  on `event_date_iso`. Events with NULL date are excluded when either is set. */
   event_date_from?: string;
   event_date_to?: string;
+  /** KG-TL — reader language for localizing the timeline (chapter heading +
+   *  participant names + summary/time_cue/title). Sourced from the active UI
+   *  language; the BE folds it to the primary subtag and resolves the stored
+   *  reader-language pref when omitted. Omit ⇒ canonical source-language list. */
+  language?: string;
   limit?: number;
   offset?: number;
 }
@@ -1786,6 +1816,7 @@ export const knowledgeApi = {
       qs.set('event_date_from', params.event_date_from);
     if (params.event_date_to != null)
       qs.set('event_date_to', params.event_date_to);
+    if (params.language) qs.set('language', params.language);
     if (params.limit != null) qs.set('limit', String(params.limit));
     if (params.offset != null) qs.set('offset', String(params.offset));
     const q = qs.toString();

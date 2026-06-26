@@ -291,6 +291,9 @@
       "prev": "前へ",
       "next": "次へ",
       "backToFirst": "最初のページへ"
+    },
+    "localization": {
+      "sourceMarker": "原語で表示 — 翻訳待ち"
     }
   },
   "entities": {

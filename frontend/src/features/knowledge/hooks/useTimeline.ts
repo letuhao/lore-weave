@@ -57,6 +57,10 @@ export function useTimeline(
       params.sort_dir ?? 'asc',
       params.event_date_from ?? null,
       params.event_date_to ?? null,
+      // KG-TL — reader language is part of the cache key so switching the UI
+      // language refetches the localized timeline instead of serving the
+      // previous language's cached page.
+      params.language ?? null,
       params.limit ?? 50,
       params.offset ?? 0,
     ] as const,

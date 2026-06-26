@@ -1199,6 +1199,46 @@ CREATE TABLE IF NOT EXISTS session_working_memory (
   created_at  TIMESTAMPTZ NOT NULL DEFAULT now(),
   updated_at  TIMESTAMPTZ NOT NULL DEFAULT now()
 );
+
+-- ═══════════════════════════════════════════════════════════════
+-- event_text_translations — KG-TL M3 (docs/specs/2026-06-26-kg-timeline-
+-- localization.md §5d). On-demand + CACHED Layer-2 translation of free-text
+-- :Event fields (summary / time_cue / title) for the Timeline tab. Structurally
+-- identical to glossary's `attribute_translations` cache: the read coalesces to
+-- source with a `translated` flag, the lazy write upserts a MACHINE translation
+-- and NEVER clobbers a `verified` one.
+--
+-- Layer-1 invariant (AC-T6): the :Event node fields stay source-language; this
+-- table is the ONLY place a localized event-text value lives. The :Event node is
+-- in Neo4j, so there's no cross-store FK — `event_id` is the Neo4j node id and
+-- `user_id` + `project_id` carry the tenant/purge scope (AC-T7): deleting a
+-- book/project's events deletes these rows via the same purge sweep that clears
+-- the graph partition (a project purge filters by project_id; a book purge maps
+-- book → project_id). `source_hash` invalidates a stale translation when the
+-- source field is edited (re-translate on hash change — mirrors glossary's
+-- confidence<>'verified' upsert guard, applied to the source text).
+-- ═══════════════════════════════════════════════════════════════
+CREATE TABLE IF NOT EXISTS event_text_translations (
+  event_id       TEXT NOT NULL,                 -- Neo4j :Event node id (no cross-store FK)
+  field          TEXT NOT NULL
+    CHECK (field IN ('summary','time_cue','title')),
+  language_code  TEXT NOT NULL,                 -- primary subtag (e.g. 'vi')
+  value          TEXT NOT NULL,
+  source_hash    TEXT NOT NULL,                 -- sha256 of the source text this row translates
+  confidence     TEXT NOT NULL DEFAULT 'machine'
+    CHECK (confidence IN ('machine','verified')),
+  translator     TEXT NOT NULL DEFAULT 'knowledge-timeline',
+  user_id        UUID NOT NULL,                 -- tenant scope (no cross-DB FK)
+  project_id     UUID,                          -- purge scope; NULL = global-scope event
+  created_at     TIMESTAMPTZ NOT NULL DEFAULT now(),
+  updated_at     TIMESTAMPTZ NOT NULL DEFAULT now(),
+  PRIMARY KEY (event_id, field, language_code)
+);
+-- Purge-cascade lookups: a project/book delete sweeps its cache rows by project.
+CREATE INDEX IF NOT EXISTS idx_event_text_translations_project
+  ON event_text_translations(project_id);
+CREATE INDEX IF NOT EXISTS idx_event_text_translations_user
+  ON event_text_translations(user_id);
 """
 
 

@@ -24,7 +24,8 @@ from ..config import settings as app_settings
 from ..deps import get_db
 from ..grant_deps import GrantLevel, authorize_book
 from ..grant_client import get_grant_client
-from ..models import CreateJobPayload
+from ..llm_client import LLMClient, get_llm_client
+from ..models import CreateJobPayload, TranslateTextRequest, TranslateTextResponse
 from ..workers.extraction_blobstore import get_blob_store
 from ..workers.extraction_cache import offload_raw_responses, purge_stale_raw_outputs
 from ..workers.extraction_outcomes import reconcile_from_rows
@@ -707,3 +708,45 @@ async def _retry_job_core(db: asyncpg.Pool, job_id: UUID, owner_user_id: UUID) -
     )
     return {"job_id": str(new_job.job_id), "status": new_job.status,
             "retried_from": str(job_id)}
+
+
+# ── KG-TL M3 — internal text translate (on-demand event-text cache fill) ──────
+class InternalTranslateTextPayload(BaseModel):
+    """Service-asserted translate-text request. The internal token authenticates
+    the SERVICE; ``user_id`` is the VERIFIED user whose translation prefs/model
+    (BYOK, provider-registry) resolve the actual MT call. No book scope — event
+    summaries are book-agnostic free text (mirrors the public /translate-text)."""
+
+    user_id: UUID
+    text: str
+    source_language: str = "auto"
+    target_language: str | None = None
+
+
+@router.post(
+    "/translate-text",
+    response_model=TranslateTextResponse,
+    dependencies=[Depends(require_internal_token)],
+)
+async def internal_translate_text(
+    payload: InternalTranslateTextPayload,
+    db: asyncpg.Pool = Depends(get_db),
+    llm_client: LLMClient = Depends(get_llm_client),
+) -> TranslateTextResponse:
+    """Translate a single free-text string ON BEHALF OF ``user_id``.
+
+    knowledge-service's Timeline on-demand cache fill calls this to translate an
+    :Event ``summary`` / ``time_cue`` / ``title`` lazily. It reuses the public
+    route's exact core (``translate_text_core``) so the user's saved translation
+    model resolves via provider-registry — knowledge-service never imports a
+    provider SDK nor hardcodes a model (provider-gateway invariant, AC-T8)."""
+    from .translate import translate_text_core
+
+    body = TranslateTextRequest(
+        text=payload.text,
+        source_language=payload.source_language,
+        target_language=payload.target_language,
+    )
+    return await translate_text_core(
+        body, user_id=str(payload.user_id), db=db, llm_client=llm_client
+    )

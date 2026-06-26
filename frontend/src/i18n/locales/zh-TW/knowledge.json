@@ -291,6 +291,9 @@
       "prev": "上一頁",
       "next": "下一頁",
       "backToFirst": "回到第一頁"
+    },
+    "localization": {
+      "sourceMarker": "以原始語言顯示 — 翻譯處理中"
     }
   },
   "entities": {

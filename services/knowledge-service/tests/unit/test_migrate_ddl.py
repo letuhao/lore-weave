@@ -506,3 +506,28 @@ def test_pending_facts_user_list_index():
     serves both the all-sessions and per-session variants."""
     assert "idx_knowledge_pending_facts_user" in DDL
     assert "ON knowledge_pending_facts(user_id, created_at)" in DDL
+
+
+def test_event_text_translations_table_present():
+    """KG-TL M3 — the on-demand event-text translation cache. Glossary-shaped:
+    (event_id, field, language_code) PK, machine|verified confidence, source_hash
+    guard, no cross-DB FK (event_id is a Neo4j node id)."""
+    assert "CREATE TABLE IF NOT EXISTS event_text_translations" in DDL
+    assert "PRIMARY KEY (event_id, field, language_code)" in DDL
+    assert "CHECK (field IN ('summary','time_cue','title'))" in DDL
+    assert "CHECK (confidence IN ('machine','verified'))" in DDL
+
+
+def test_event_text_translations_no_cross_db_fk_and_purge_index():
+    import re
+    m = re.search(
+        r"CREATE TABLE IF NOT EXISTS event_text_translations\s*\((.*?)\);",
+        DDL, re.DOTALL,
+    )
+    assert m is not None
+    body = m.group(1)
+    # event_id is a Neo4j node id; user_id/project_id are cross-DB → no FK.
+    assert "REFERENCES" not in body
+    assert "source_hash" in body
+    # AC-T7 purge-cascade lookup by project.
+    assert "idx_event_text_translations_project" in DDL

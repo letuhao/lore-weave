@@ -291,6 +291,9 @@
       "prev": "Trang trước",
       "next": "Trang sau",
       "backToFirst": "Về trang đầu"
+    },
+    "localization": {
+      "sourceMarker": "Hiển thị bằng ngôn ngữ gốc — đang chờ dịch"
     }
   },
   "entities": {

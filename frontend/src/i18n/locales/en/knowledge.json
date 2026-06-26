@@ -292,6 +292,9 @@
       "prev": "Previous",
       "next": "Next",
       "backToFirst": "Back to first page"
+    },
+    "localization": {
+      "sourceMarker": "Shown in source language — translation pending"
     }
   },
   "entities": {

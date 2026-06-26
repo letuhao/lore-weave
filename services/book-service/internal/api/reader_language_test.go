@@ -37,6 +37,29 @@ func TestReaderLang_TagRegex(t *testing.T) {
 	}
 }
 
+// KG-TL M1 — primary subtag fold for the sibling-language chapter-title lookup.
+func TestPrimaryLangSubtag(t *testing.T) {
+	t.Parallel()
+	cases := map[string]string{
+		"vi":         "vi",
+		"vi-VN":      "vi",
+		"zh-Hant":    "zh",
+		"ZH-hant":    "zh",
+		"pt-BR":      "pt",
+		"pt_BR":      "", // underscore isn't a valid BCP-47 sep (langTagRe) → empty
+		"  en  ":     "en",
+		"":           "",
+		"english":    "", // not a valid tag → empty (treated as no language)
+		"vi;DROP":    "", // injection-ish → empty
+		"1234":       "",
+	}
+	for in, want := range cases {
+		if got := primaryLangSubtag(in); got != want {
+			t.Errorf("primaryLangSubtag(%q) = %q, want %q", in, got, want)
+		}
+	}
+}
+
 // ── auth / tenancy (nil pool) ────────────────────────────────────────────────
 
 func TestReaderLang_GetRequiresAuth(t *testing.T) {

@@ -38,7 +38,9 @@ from app.db.models import (
 from app.db.neo4j import neo4j_session
 from app.db.neo4j_helpers import purge_project
 from app.db.neo4j_repos.passages import SUPPORTED_PASSAGE_DIMS
+from app.db.pool import get_knowledge_pool
 from app.db.repositories import VersionMismatchError
+from app.db.repositories.event_text_translations import EventTextTranslationsRepo
 from app.db.repositories.projects import (
     _PROJECT_SORT_COLUMNS,
     _PROJECT_STATUS_FILTERS,
@@ -715,5 +717,21 @@ async def delete_project(
     except Exception:  # noqa: BLE001 — best-effort; the Postgres delete is authoritative
         logger.warning(
             "neo4j purge for deleted project %s failed — graph orphaned, re-sweep owed",
+            project_id, exc_info=True,
+        )
+    # KG-TL M3 (AC-T7) — purge the project's on-demand event-text translation
+    # cache so it leaves no orphans after the graph partition is deleted. Same
+    # best-effort posture: a failure must not fail the authoritative delete.
+    try:
+        cache_repo = EventTextTranslationsRepo(get_knowledge_pool())
+        removed = await cache_repo.delete_for_project(project_id=project_id)
+        if removed:
+            logger.info(
+                "purged %s event-text translation rows for deleted project %s",
+                removed, project_id,
+            )
+    except Exception:  # noqa: BLE001 — best-effort cache cleanup
+        logger.warning(
+            "event-text translation cache purge for project %s failed — orphans owed",
             project_id, exc_info=True,
         )
