@@ -13,10 +13,15 @@ export interface AppConfig {
   aiGatewayUrl: string;
   /** Q-GATE kill-switch — public MCP refuses all traffic unless explicitly enabled */
   featureEnabled: boolean;
+  /** auth-service base URL; the edge resolves real keys via `${authServiceUrl}/internal/mcp-keys/resolve` (P1) */
+  authServiceUrl: string;
+  /** resolve-cache TTL (ms) so the hot path isn't a DB round-trip per call; bounds revocation lag */
+  resolveCacheTtlMs: number;
   /**
-   * P0-ONLY static test credential (replaced at P1 by the auth-service mcp_api_keys store).
-   * When both are set AND the feature is enabled, `Bearer <testKey>` resolves to `testUserId`.
-   * Leaving either empty disables the test credential entirely.
+   * DEV/SMOKE static test credential (kept from P0 as a convenience). When both are
+   * set AND the feature is enabled, `Bearer <testKey>` resolves to `testUserId`
+   * WITHOUT calling auth-service. Leave empty in real deployments — real keys go
+   * through the auth-service credential store.
    */
   testKey: string;
   testUserId: string;
@@ -31,6 +36,8 @@ export function loadConfig(): AppConfig {
     internalToken: process.env.INTERNAL_SERVICE_TOKEN ?? '',
     aiGatewayUrl: (process.env.AI_GATEWAY_URL ?? 'http://ai-gateway:8210').replace(/\/$/, ''),
     featureEnabled: (process.env.PUBLIC_MCP_ENABLED ?? 'false').toLowerCase() === 'true',
+    authServiceUrl: (process.env.AUTH_SERVICE_URL ?? 'http://auth-service:8081').replace(/\/$/, ''),
+    resolveCacheTtlMs: parseInt(process.env.MCP_RESOLVE_CACHE_TTL_MS ?? '45000', 10),
     testKey: process.env.MCP_PUBLIC_TEST_KEY ?? '',
     testUserId: process.env.MCP_PUBLIC_TEST_USER_ID ?? '',
   };

@@ -1,4 +1,4 @@
-# ▶▶ NEXT SESSION STARTS HERE — **Public MCP Gateway P0 SHIPPED** · branch `feat/public-mcp-gateway` · 2026-06-26
+# ▶▶ NEXT SESSION STARTS HERE — **Public MCP Gateway P0 + P1-backend SHIPPED** · branch `feat/public-mcp-gateway` · 2026-06-26
 
 > **TRACK:** expose MCP to external/third-party agents over the internet with a NEW security model. Full doc set: [docs/specs/2026-06-26-public-mcp/](../specs/2026-06-26-public-mcp/) (README + 01 feature-catalog · 02 interface-matrix · 03 security-design+edge-cases+spikes · 04 plan · 05 tool-scope-map).
 >
@@ -6,15 +6,22 @@
 > - **Wired:** BFF `/mcp` proxy ([gateway-setup.ts](../../services/api-gateway-bff/src/gateway-setup.ts) — unversioned, matched before /v1; optional+defaulted url so existing callers/tests unchanged) · docker-compose service `mcp-public-gateway` (:8219→8211, depends ai-gateway healthy) · `language-rule.yaml` row (typescript) · ai-gateway `X-Internal-Token` compare made **constant-time** ([util/auth.ts](../../services/ai-gateway/src/util/auth.ts), both /mcp + /mcp/admin).
 > - **VERIFY:** mcp-public-gateway `nest build` clean + **8/8 unit tests** (auth gate, Q-GATE flag-off, H-R query-reject, PUB-9 strip/admin-isolation, 502 on upstream down, helpers); ai-gateway **55/55**; api-gateway-bff **115/115** (also fixed 2 PRE-EXISTING broken test fixtures missing learningUrl/compositionUrl). **⏳ NOT yet live-smoked** end-to-end on a stack-up (external client→BFF→edge→ai-gateway→provider) — `D-PMCP-P0-LIVE-SMOKE`.
 >
+> **WHAT SHIPPED (P1 BACKEND — credential subsystem, run via /loom, size L):** the "new security setting" exists end-to-end on the BE.
+> - **auth-service:** `mcp_api_keys` table (migration in [migrate.go](../../services/auth-service/internal/migrate/migrate.go) — Argon2id `key_hash`, `key_prefix` lookup, scopes, spend_cap, rate_limit_rpm, `allow_self_confirm`, status, expiry; CASCADE on user delete + active-prefix index). [mcp_keys.go](../../services/auth-service/internal/api/mcp_keys.go): `GET/POST/PATCH/DELETE /v1/account/mcp-keys` (JWT owner-only; **secret shown once** on create; creation Q-GATE-flag-gated → 403 when off) + `POST /internal/mcp-keys/resolve` (X-Internal-Token; prefix lookup → constant-time Argon2id verify → **account_status='active' check (H-L)** → returns {user_id,key_id,scopes,allow_self_confirm,caps}; uniform 401 anti-oracle; **per-prefix attempt cap before Argon2 (H-H)**). Reuses `authpwd.Hash/Verify` (Argon2id).
+> - **mcp-public-gateway edge:** `KeyResolver` swapped from the static key to a real `POST ${AUTH_SERVICE_URL}/internal/mcp-keys/resolve` call with a ~45s in-mem TTL cache (bounds the hot path + revocation lag); identity is auth-derived, never client-supplied. Dev static key retained as an optional smoke convenience.
+> - **Wired:** compose — edge gets `AUTH_SERVICE_URL` + `depends_on auth-service healthy`; auth-service gets `PUBLIC_MCP_ENABLED` passthrough.
+> - **VERIFY:** auth-service api suite green incl **3 real-PG tests** (create→resolve→tampered-reject→list-no-secret→revoke; H-L deleted-account→401; flag-off→403) against infra postgres:5555; edge **10/10** (incl real-key auth-resolve + PUB-9 strip); provider-gate OK; go build+vet clean. **live smoke: real-PG resolve flow.** ⏳ full external→edge→auth→ai-gateway stack-up deferred → `D-PMCP-P1-LIVE-SMOKE`.
+> - **REMAINING P1 slice:** **FE Settings → MCP access tab** (create/copy-once/list/revoke, hidden when flag off) — separable UI glue, not yet built.
+>
 > **PO decisions LOCKED (2026-06-26):** dedicated edge service · v1 FULL incl. priced jobs · API keys first (OAuth P5) · owned-books-only (OD-8) · key-creation behind a feature flag (Q-GATE) · **BYOK-only spend, no free-tier draw (PUB-12)** · **headless Tier-W = human-approve by default (OD-2)**, `allow_self_confirm` opt-in.
 >
 > **▶ NEXT (per [04-implementation-plan.md](../specs/2026-06-26-public-mcp/04-implementation-plan.md)):**
-> - **P1 (serial, /amaw):** real credential store — `mcp_api_keys` in auth-service (Argon2id hash, scopes, caps, `allow_self_confirm`) + `/v1/account/mcp-keys` CRUD + `/internal/mcp-keys/resolve` + edge resolves real keys (Redis cache) + FE Settings→MCP access tab. Swap the P0 static `KeyResolver`.
+> - **P1 FE slice:** Settings → MCP access tab (the only remaining P1 piece). Then `/review-impl` the credential core (auth/credential — load-bearing).
 > - **Kit pre-step (serial, before P2 fanout):** shared MCP kits lift `X-Mcp-Key-Id`→ctx + owner-only resolver variant (OD-8) + `require_project_owner` helper; ai-gateway forward `X-Mcp-Key-Id`; provider-registry submit merges it into `job_meta`.
 > - **P2 (fanout, 1 agent/provider per [05 §4](../specs/2026-06-26-public-mcp/05-tool-scope-map.md)):** scope filter + 🔴 **H-U (add require_project_owner to the 5 `memory_*` tools)** + idempotency keys + project_id-as-arg.
 > - **P3:** rate-limit + per-key BYOK-only spend (H-C/PUB-12) + audit. **P4:** human-approval write queue + priced tools.
 >
-> **▶ Deferred (public-mcp):** `D-PMCP-P0-LIVE-SMOKE` (P0 stack-up smoke) · `D-PMCP-MEMORY-PROJECT-OWNER` (H-U, gates knowledge public — also a latent internal tenancy gap) · `D-PMCP-PAID-READ-GATE` (H-B: `glossary_web_search`/`lore_enrichment_auto_enrich` spend without confirm) · `D-PMCP-SPEND-ATTRIBUTION` (H-C: `X-Mcp-Key-Id` carrier, gates priced public).
+> **▶ Deferred (public-mcp):** `D-PMCP-P1-LIVE-SMOKE` (full external→edge→auth→ai-gateway stack-up smoke with a real key) · `D-PMCP-P0-LIVE-SMOKE` (P0 stack-up smoke) · `D-PMCP-MEMORY-PROJECT-OWNER` (H-U, gates knowledge public — also a latent internal tenancy gap) · `D-PMCP-PAID-READ-GATE` (H-B: `glossary_web_search`/`lore_enrichment_auto_enrich` spend without confirm) · `D-PMCP-SPEND-ATTRIBUTION` (H-C: `X-Mcp-Key-Id` carrier, gates priced public).
 >
 ---
 

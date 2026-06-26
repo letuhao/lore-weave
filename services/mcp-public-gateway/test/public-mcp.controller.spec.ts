@@ -72,10 +72,25 @@ describe('PublicMcpController', () => {
   let fetchMock: jest.Mock;
 
   beforeEach(() => {
-    fetchMock = jest.fn().mockResolvedValue({
-      status: 200,
-      text: async () => '{"jsonrpc":"2.0","result":{"tools":[]},"id":1}',
-      headers: { get: (h: string) => (h.toLowerCase() === 'content-type' ? 'application/json' : null) },
+    // URL-aware mock: the auth-service resolve endpoint vs the ai-gateway relay.
+    fetchMock = jest.fn().mockImplementation((url: string, init?: { body?: string }) => {
+      if (typeof url === 'string' && url.includes('/internal/mcp-keys/resolve')) {
+        // Mimic auth-service: 200 only for the one known real key, else 401.
+        const key = init?.body ? (JSON.parse(init.body) as { key?: string }).key : undefined;
+        if (key === 'lw_pk_realkeyfromstore123') {
+          return Promise.resolve({
+            status: 200,
+            json: async () => ({ user_id: 'real-user-from-auth', key_id: 'key-123', scopes: ['read'], allow_self_confirm: false, rate_limit_rpm: 60 }),
+            headers: { get: () => 'application/json' },
+          });
+        }
+        return Promise.resolve({ status: 401, json: async () => ({}), headers: { get: () => 'application/json' } });
+      }
+      return Promise.resolve({
+        status: 200,
+        text: async () => '{"jsonrpc":"2.0","result":{"tools":[]},"id":1}',
+        headers: { get: (h: string) => (h.toLowerCase() === 'content-type' ? 'application/json' : null) },
+      });
     });
     (global as unknown as { fetch: jest.Mock }).fetch = fetchMock;
   });
@@ -93,19 +108,24 @@ describe('PublicMcpController', () => {
     expect(fetchMock).not.toHaveBeenCalled();
   });
 
-  it('denies a missing or invalid bearer', async () => {
+  it('denies a missing bearer without any upstream call', async () => {
     setEnv();
     const r1 = mockRes();
     await new PublicMcpController().handle(mockReq({}), r1.res);
     expect(r1.statusCode).toBe(401);
+    expect(fetchMock).not.toHaveBeenCalled(); // no bearer → rejected before any fetch
+  });
 
+  it('denies an invalid key that auth-service rejects (no relay)', async () => {
+    setEnv();
     const r2 = mockRes();
     await new PublicMcpController().handle(
-      mockReq({ headers: { authorization: 'Bearer wrong-key' } }),
+      mockReq({ headers: { authorization: 'Bearer lw_pk_unknownkey999' } }),
       r2.res,
     );
     expect(r2.statusCode).toBe(401);
-    expect(fetchMock).not.toHaveBeenCalled();
+    // The auth resolve was attempted, but nothing was relayed to ai-gateway.
+    expect(fetchMock.mock.calls.some((c) => String(c[0]).endsWith('/mcp'))).toBe(false);
   });
 
   it('refuses a credential in the query string (H-R)', async () => {
@@ -135,8 +155,29 @@ describe('PublicMcpController', () => {
     expect(url).toBe('http://ai-gateway:8210/mcp'); // never /mcp/admin
     expect(init.headers['x-internal-token']).toBe(INTERNAL);
     expect(init.headers['x-user-id']).toBe(TEST_USER);
-    expect(init.headers['x-mcp-key-id']).toBe('p0-test-key');
+    expect(init.headers['x-mcp-key-id']).toBe('dev-test-key');
     expect(init.headers['x-trace-id']).toMatch(/[0-9a-f-]{36}/);
+  });
+
+  it('resolves a REAL key via auth-service and relays with the resolved identity (P1)', async () => {
+    setEnv();
+    const r = mockRes();
+    await new PublicMcpController().handle(
+      mockReq({
+        headers: { authorization: 'Bearer lw_pk_realkeyfromstore123' }, // NOT the dev test key
+        body: { jsonrpc: '2.0', method: 'tools/list', id: 1 },
+      }),
+      r.res,
+    );
+    expect(r.statusCode).toBe(200);
+    // Two fetches: one to auth resolve, one relayed to ai-gateway.
+    const authCall = fetchMock.mock.calls.find((c) => String(c[0]).includes('/internal/mcp-keys/resolve'));
+    const relayCall = fetchMock.mock.calls.find((c) => String(c[0]).endsWith('/mcp'));
+    expect(authCall).toBeDefined();
+    expect(relayCall).toBeDefined();
+    // The relay carries the identity auth-service resolved — not anything client-supplied.
+    expect(relayCall![1].headers['x-user-id']).toBe('real-user-from-auth');
+    expect(relayCall![1].headers['x-internal-token']).toBe(INTERNAL);
   });
 
   it('STRIPS inbound x-* and never forwards smuggled identity/admin headers (PUB-9 / H-A)', async () => {

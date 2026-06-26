@@ -30,6 +30,10 @@ type Config struct {
 	NotificationServiceInternalURL string
 	InternalServiceToken           string
 
+	// Q-GATE (public MCP): key creation is gated by this platform feature flag — any
+	// user may mint a public MCP key when ON, fast kill-switch when OFF. Default OFF.
+	PublicMcpEnabled bool
+
 	// Admin-JWT issuance (074/075). Feature is ENABLED iff KMSAdminSigningKeyID
 	// is set; when enabled the other admin fields are required (fail-closed).
 	AdminIssuanceEnabled   bool
@@ -64,6 +68,7 @@ func Load() (*Config, error) {
 		PublicAppURL:                   getEnv("PUBLIC_APP_URL", ""),
 		NotificationServiceInternalURL: getEnv("NOTIFICATION_SERVICE_INTERNAL_URL", ""),
 		InternalServiceToken:           os.Getenv("INTERNAL_SERVICE_TOKEN"),
+		PublicMcpEnabled:               getBool("PUBLIC_MCP_ENABLED", false),
 		KMSAdminSigningKeyID:           os.Getenv("KMS_ADMIN_SIGNING_KEY_ID"),
 		KMSEndpoint:                    os.Getenv("KMS_ENDPOINT"),
 		AWSRegion:                      getEnv("AWS_REGION", "us-east-1"),

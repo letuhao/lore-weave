@@ -142,6 +142,33 @@ EXCEPTION
     WHEN undefined_object THEN
         RAISE NOTICE 'role app_service_role does not exist (dev stack); skipping REVOKE';
 END $$;
+
+-- Public MCP credential store (P1, docs/specs/2026-06-26-public-mcp/03 §5). An
+-- external agent presents an API key (lw_pk_<random>) in the Authorization header;
+-- the mcp-public-gateway edge resolves it here. The raw secret is NEVER stored —
+-- only an Argon2id hash (same primitive as password_hash). Lookup is by key_prefix
+-- (the leading, non-secret slice) then a constant-time hash verify of the candidates.
+-- ON DELETE CASCADE: deleting a user invalidates their keys (the resolve path also
+-- re-checks users.account_status='active', H-L).
+CREATE TABLE IF NOT EXISTS mcp_api_keys (
+  key_id             UUID PRIMARY KEY DEFAULT uuidv7(),
+  owner_user_id      UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  name               TEXT NOT NULL,
+  key_prefix         TEXT NOT NULL,                       -- e.g. 'lw_pk_AbC1' (shown in UI; O(1) lookup)
+  key_hash           TEXT NOT NULL,                       -- argon2id$… of the full secret (never the raw key)
+  scopes             TEXT[] NOT NULL DEFAULT '{}',        -- tier∩domain scopes (P2 fills; P0/P1 may be empty)
+  spend_cap_usd      NUMERIC(16,8) NULL,                  -- per-key monthly USD sub-cap (NULL = inherit guardrail only, P3)
+  rate_limit_rpm     INT NOT NULL DEFAULT 60,             -- edge per-key rate limit (P3)
+  allow_self_confirm BOOLEAN NOT NULL DEFAULT FALSE,      -- OD-2: headless Tier-W self-confirm opt-in (default human-approve)
+  status             TEXT NOT NULL DEFAULT 'active' CHECK (status IN ('active','revoked')),
+  last_used_at       TIMESTAMPTZ NULL,
+  expires_at         TIMESTAMPTZ NULL,                    -- optional rotation/expiry
+  created_at         TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+-- Resolve hot-path: prefix lookup scoped to live keys.
+CREATE INDEX IF NOT EXISTS idx_mcp_api_keys_prefix ON mcp_api_keys (key_prefix) WHERE status = 'active';
+CREATE INDEX IF NOT EXISTS idx_mcp_api_keys_owner ON mcp_api_keys (owner_user_id);
 `
 
 func Up(ctx context.Context, pool *pgxpool.Pool) error {

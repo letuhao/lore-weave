@@ -38,7 +38,7 @@ export class PublicMcpController {
     }
 
     const bearer = parseBearer(req.header('authorization'));
-    const resolved = this.resolver.resolve(bearer);
+    const resolved = await this.resolver.resolve(bearer);
     if (!resolved) {
       // Uniform 401 — no oracle about which check failed (flag off / bad key / no store).
       return this.deny(res, -32001, 'unauthorized');

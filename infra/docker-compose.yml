@@ -101,6 +101,8 @@ services:
       PUBLIC_APP_URL: ${PUBLIC_APP_URL:-http://localhost:5296}
       NOTIFICATION_SERVICE_INTERNAL_URL: http://notification-service:8091
       INTERNAL_SERVICE_TOKEN: ${INTERNAL_SERVICE_TOKEN:-dev_internal_token}
+      # Q-GATE (public MCP): gate mcp_api_keys creation behind this flag (kill-switch).
+      PUBLIC_MCP_ENABLED: ${PUBLIC_MCP_ENABLED:-false}
       # Phase 6c — OpenTelemetry trace export (see provider-registry-service).
       OTEL_EXPORTER_OTLP_ENDPOINT: ${OTEL_EXPORTER_OTLP_ENDPOINT:-}
       # Admin-JWT issuance (admin CMS / D-GKA-SYSTEM-TIER-ADMIN). Disabled unless a
@@ -900,13 +902,17 @@ services:
       MCP_PUBLIC_GATEWAY_PORT: "8211"
       INTERNAL_SERVICE_TOKEN: ${INTERNAL_SERVICE_TOKEN:-dev_internal_token}
       AI_GATEWAY_URL: http://ai-gateway:8210
+      # P1: resolve real keys via auth-service credential store.
+      AUTH_SERVICE_URL: http://auth-service:8081
       PUBLIC_MCP_ENABLED: ${PUBLIC_MCP_ENABLED:-false}
-      # P0-only static test credential (removed at P1). Empty = test key disabled.
+      # DEV/SMOKE static credential (optional). Empty = disabled (real keys via auth).
       MCP_PUBLIC_TEST_KEY: ${MCP_PUBLIC_TEST_KEY:-}
       MCP_PUBLIC_TEST_USER_ID: ${MCP_PUBLIC_TEST_USER_ID:-}
       OTEL_EXPORTER_OTLP_ENDPOINT: ${OTEL_EXPORTER_OTLP_ENDPOINT:-}
     depends_on:
       ai-gateway:
+        condition: service_healthy
+      auth-service:
         condition: service_healthy
     ports:
       - "8219:8211"

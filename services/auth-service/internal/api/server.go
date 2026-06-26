@@ -14,19 +14,21 @@ import (
 )
 
 type Server struct {
-	pool   *pgxpool.Pool
-	cfg    *config.Config
-	secret []byte
-	rl     *ratelimit.Limiter
-	admin  *adminDeps // nil => admin-JWT issuance (074/075) disabled
+	pool         *pgxpool.Pool
+	cfg          *config.Config
+	secret       []byte
+	rl           *ratelimit.Limiter
+	mcpResolveRL *ratelimit.Limiter // per-prefix Argon2-DoS guard for /internal/mcp-keys/resolve (H-H)
+	admin        *adminDeps         // nil => admin-JWT issuance (074/075) disabled
 }
 
 func NewServer(pool *pgxpool.Pool, cfg *config.Config) *Server {
 	return &Server{
-		pool:   pool,
-		cfg:    cfg,
-		secret: []byte(cfg.JWTSecret),
-		rl:     ratelimit.New(cfg.RateLimitWindow, cfg.RateLimitMax),
+		pool:         pool,
+		cfg:          cfg,
+		secret:       []byte(cfg.JWTSecret),
+		rl:           ratelimit.New(cfg.RateLimitWindow, cfg.RateLimitMax),
+		mcpResolveRL: newMcpResolveLimiter(),
 	}
 }
 
@@ -76,6 +78,9 @@ func (s *Server) Router() http.Handler {
 			r.Use(s.requireInternalServiceToken)
 			r.Get("/users/{user_id}/full-profile", http.HandlerFunc(s.internalGetFullProfile))
 			r.Patch("/users/{user_id}/full-profile", http.HandlerFunc(s.internalUpdateFullProfile))
+			// Public MCP credential resolve — the mcp-public-gateway edge turns an
+			// external agent's API key into {user_id, scopes, policy} here (P1).
+			r.Post("/mcp-keys/resolve", http.HandlerFunc(s.internalResolveMcpKey))
 		})
 
 		// Admin-JWT issuance (074/075) — mounted only when enabled. Gated by the
@@ -130,6 +135,13 @@ func (s *Server) Router() http.Handler {
 		r.Get("/me/preferences", http.HandlerFunc(s.getPreferences))
 		r.Patch("/me/preferences", http.HandlerFunc(s.patchPreferences))
 		r.Delete("/account", http.HandlerFunc(s.deleteAccount))
+
+		// Public MCP API keys (the "new security setting") — owner-only; handlers
+		// parse the JWT themselves. Creation is additionally Q-GATE-flag-gated.
+		r.Get("/account/mcp-keys", http.HandlerFunc(s.listMcpKeys))
+		r.Post("/account/mcp-keys", http.HandlerFunc(s.createMcpKey))
+		r.Patch("/account/mcp-keys/{key_id}", http.HandlerFunc(s.patchMcpKey))
+		r.Delete("/account/mcp-keys/{key_id}", http.HandlerFunc(s.revokeMcpKey))
 
 		// Public user profiles + follow system
 		r.Route("/users/{user_id}", func(r chi.Router) {
