@@ -16,6 +16,11 @@ COPY sdks/go/grantclient /src/sdks/go/grantclient
 # inside the container, so copy the modules into the build context.
 COPY sdks/go/loreweave_mcp /src/sdks/go/loreweave_mcp
 COPY sdks/go/loreweave_llm /src/sdks/go/loreweave_llm
+# loreweave_extraction (D-GLOSSARY-ST-DEDUP) — shared multi-language entity-name
+# normalizer; its replace (=> ../../sdks/go/loreweave_extraction) must resolve in
+# the container. The data/ TSV it generates from is vendored into the module, so
+# no extra context is needed beyond the module dir.
+COPY sdks/go/loreweave_extraction /src/sdks/go/loreweave_extraction
 # contracts/adminjwt (D-GKA-SYSTEM-TIER-ADMIN) — verifies admin RS256 JWTs; its
 # replace (=> ../../contracts/adminjwt) must resolve inside the container.
 COPY contracts/adminjwt /src/contracts/adminjwt

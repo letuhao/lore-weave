@@ -1346,9 +1346,11 @@ func TestMergeStrategy_DefaultSentinel(t *testing.T) {
 }
 
 // TestEntityDedup_UniqueIndexBackstop proves the constraint backstop (INV-C2): two
-// LIVE entities of the same book+kind cannot share a normalized name. Driven through
-// the real EAV name-write path (the trig_eav_snapshot trigger maintains cached_name,
-// from which normalized_name is generated and the unique index is checked).
+// LIVE entities of the same book+kind cannot share a normalized name. Post
+// D-GLOSSARY-ST-DEDUP M3a, normalized_name is APP-MAINTAINED (no longer a GENERATED
+// expression), so the backstop is keyed when the app stamps the dedup key via
+// refreshEntityDedupKey — NOT on a raw EAV insert that bypasses the app. This test
+// drives that app path: the second entity's key stamp must violate uq_entity_dedup.
 func TestEntityDedup_UniqueIndexBackstop(t *testing.T) {
 	pool := openTestDB(t)
 	ctx := context.Background()
@@ -1362,7 +1364,7 @@ func TestEntityDedup_UniqueIndexBackstop(t *testing.T) {
 	kindID := bookKindID(t, pool, bid, "character")
 	nameAttr := bookAttrID(t, pool, bid, kindID, "name")
 
-	// Entity 1 named 独一 — lands fine.
+	// Entity 1 named 独一 — name lands, app stamps the dedup key: fine.
 	var e1, e2 uuid.UUID
 	if err := pool.QueryRow(ctx,
 		`INSERT INTO glossary_entities(book_id,kind_id,status) VALUES($1,$2,'draft') RETURNING entity_id`,
@@ -1374,8 +1376,12 @@ func TestEntityDedup_UniqueIndexBackstop(t *testing.T) {
 		 VALUES($1,$2,'zh','独一')`, e1, nameAttr); err != nil {
 		t.Fatalf("name e1: %v", err)
 	}
+	if err := refreshEntityDedupKey(ctx, pool, e1); err != nil {
+		t.Fatalf("stamp dedup key e1: %v", err)
+	}
 
-	// Entity 2 with the SAME normalized name — its name write must violate uq_entity_dedup.
+	// Entity 2 with the SAME normalized name — the raw name insert succeeds (plain
+	// column), but the app's key stamp must violate uq_entity_dedup.
 	if err := pool.QueryRow(ctx,
 		`INSERT INTO glossary_entities(book_id,kind_id,status) VALUES($1,$2,'draft') RETURNING entity_id`,
 		bid, kindID).Scan(&e2); err != nil {
@@ -1383,7 +1389,10 @@ func TestEntityDedup_UniqueIndexBackstop(t *testing.T) {
 	}
 	if _, err := pool.Exec(ctx,
 		`INSERT INTO entity_attribute_values(entity_id,attr_def_id,original_language,original_value)
-		 VALUES($1,$2,'zh','独一')`, e2, nameAttr); err == nil {
+		 VALUES($1,$2,'zh','独一')`, e2, nameAttr); err != nil {
+		t.Fatalf("name e2: %v", err)
+	}
+	if err := refreshEntityDedupKey(ctx, pool, e2); err == nil {
 		t.Errorf("uq_entity_dedup did not reject a second live entity with the same normalized name")
 	}
 }

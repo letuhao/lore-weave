@@ -99,22 +99,10 @@ func (s *Server) internalDedupNameVariants(w http.ResponseWriter, r *http.Reques
 
 	resp := dedupVariantResponse{DryRun: !apply, TotalEntities: total}
 
-	// Re-stamp normalized_name for every live entity (the M3a app-maintained column)
-	// so the backstop matches the new fold — only on apply (dry-run writes nothing).
-	if apply {
-		for k := range groups {
-			for _, e := range groups[k] {
-				if _, err := s.pool.Exec(ctx,
-					`UPDATE glossary_entities SET normalized_name = $1 WHERE entity_id = $2`,
-					k.norm, e.id); err != nil {
-					writeError(w, http.StatusInternalServerError, "GLOSS_INTERNAL", "restamp normalized_name")
-					return
-				}
-				resp.NormalizedReStamped++
-			}
-		}
-	}
-
+	// Merge duplicate groups FIRST. Each merge soft-deletes the loser, removing it
+	// from the partial uq_entity_dedup index — which is what makes the subsequent
+	// re-stamp (both members → the same folded key) collision-free. Re-stamping
+	// before merging would violate the unique index on the second live member.
 	for k, members := range groups {
 		if len(members) < 2 {
 			continue
@@ -155,6 +143,34 @@ func (s *Server) internalDedupNameVariants(w http.ResponseWriter, r *http.Reques
 			}
 		}
 		resp.Groups = append(resp.Groups, g)
+	}
+
+	// Re-stamp normalized_name to the new fold for every entity (the M3a
+	// app-maintained backstop column). Runs AFTER the merges, so a resolved group
+	// has just one live member → no collision. A stray unique-violation means a
+	// group did NOT fully merge (a merge skip/failure left ≥2 live members sharing
+	// the key); skip that row (its old key is harmless — the resolver is the primary
+	// dedup) so one bad group can't 500 the whole remediation. Idempotent re-run
+	// heals it once the duplication is resolved.
+	if apply {
+		for k := range groups {
+			for _, e := range groups[k] {
+				tag, err := s.pool.Exec(ctx,
+					`UPDATE glossary_entities SET normalized_name = $1
+					 WHERE entity_id = $2 AND normalized_name IS DISTINCT FROM $1`,
+					k.norm, e.id)
+				if err != nil {
+					if isUniqueViolation(err) {
+						continue
+					}
+					writeError(w, http.StatusInternalServerError, "GLOSS_INTERNAL", "restamp normalized_name")
+					return
+				}
+				if tag.RowsAffected() > 0 {
+					resp.NormalizedReStamped++
+				}
+			}
+		}
 	}
 
 	writeJSON(w, http.StatusOK, resp)
