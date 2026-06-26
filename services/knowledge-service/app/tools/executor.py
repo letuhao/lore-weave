@@ -207,6 +207,28 @@ def _truncate(text: str | None, limit: int = _SNIPPET_CHARS) -> str:
     return text if len(text) <= limit else text[:limit] + "…"
 
 
+async def _require_project_owner_memory(ctx: ToolContext) -> None:
+    """Memory is per-user: a project's memory belongs to its OWNER alone — never to
+    book collaborators (unlike the grant-aware kg_* tools). When a project is in
+    scope, require the caller owns it BEFORE any project-scoped read/write (H-U).
+
+    Each memory query is already scoped by ``user_id``, so a non-owner's query
+    merely returned nothing — cross-tenant safe, but only *implicitly*. This makes
+    the guarantee EXPLICIT (robust to a future query dropping the user_id filter)
+    and enforces the owned-only default for a public MCP key (OD-8): whether or not
+    ``mcp_key_id`` is set, memory never resolves a project the caller doesn't own.
+    A no-project call (global personal memory) is inherently self-owned → no check.
+
+    Anti-oracle (H13): a non-owned project and a missing one raise the SAME error,
+    so a caller can't probe which project_ids exist.
+    """
+    if ctx.project_id is None:
+        return
+    meta = await ctx.projects_repo.project_meta(ctx.project_id)
+    if meta is None or meta[0] != ctx.user_id:
+        raise ToolExecutionError("project not found")
+
+
 # ── handlers ──────────────────────────────────────────────────────────
 
 
@@ -220,10 +242,14 @@ async def _handle_memory_search(ctx: ToolContext, args: MemorySearchArgs) -> dic
         return {"hits": [], "count": 0,
                 "note": "no knowledge project is linked to this chat — link one in session "
                         "settings to enable memory search"}
+    # H-U: projects_repo.get is OWNER-keyed (user_id + project_id), so this IS the
+    # owner check for memory_search — a project the caller doesn't own returns None
+    # → "project not found" (anti-oracle), same as the explicit
+    # _require_project_owner_memory used by the other memory tools.
     project = await ctx.projects_repo.get(ctx.user_id, ctx.project_id)
     if project is None:
-        # A project_id WAS supplied but doesn't resolve (deleted / wrong) — a genuine
-        # error worth surfacing, distinct from "no project linked at all" above.
+        # A project_id WAS supplied but doesn't resolve (deleted / wrong / not owned)
+        # — a genuine error worth surfacing, distinct from "no project linked" above.
         raise ToolExecutionError("project not found")
     if project.embedding_model is None or project.embedding_dimension is None:
         return {"hits": [], "count": 0,
@@ -277,6 +303,7 @@ async def _handle_memory_search(ctx: ToolContext, args: MemorySearchArgs) -> dic
 async def _handle_memory_recall_entity(
     ctx: ToolContext, args: MemoryRecallEntityArgs
 ) -> dict:
+    await _require_project_owner_memory(ctx)  # H-U: owner-only project gate
     project_id = str(ctx.project_id) if ctx.project_id else None
     async with neo4j_session() as session:
         matches = await find_entities_by_name(
@@ -319,6 +346,7 @@ async def _handle_memory_recall_entity(
 async def _handle_memory_timeline(
     ctx: ToolContext, args: MemoryTimelineArgs
 ) -> dict:
+    await _require_project_owner_memory(ctx)  # H-U: owner-only project gate
     project_id = str(ctx.project_id) if ctx.project_id else None
     async with neo4j_session() as session:
         participant_candidates: list[str] | None = None
@@ -380,6 +408,10 @@ async def _handle_memory_remember(
             f"({settings.tool_remember_limit_per_session}) for this "
             "chat session"
         )
+    # H-U: a write must target a project the caller OWNS — gate before the
+    # queue-vs-write branch so the direct-write path (which would otherwise merge a
+    # fact tagged with someone else's project_id) can't bypass it.
+    await _require_project_owner_memory(ctx)
     project_id = str(ctx.project_id) if ctx.project_id else None
     # /review-impl MED#2 — neutralize injection patterns in the
     # LLM-supplied text, matching the extraction write path
@@ -438,6 +470,10 @@ async def _handle_memory_remember(
 async def _handle_memory_forget(
     ctx: ToolContext, args: MemoryForgetArgs
 ) -> dict:
+    # H-U: no project gate needed — forget operates on a single fact addressed by
+    # id and invalidate_fact is OWNER-keyed (user_id scoped), so a fact belonging to
+    # another user simply doesn't match (→ "no matching fact"). The owner boundary
+    # here is the user_id, not a project.
     async with neo4j_session() as session:
         fact = await invalidate_fact(
             session, user_id=str(ctx.user_id), fact_id=args.fact_id

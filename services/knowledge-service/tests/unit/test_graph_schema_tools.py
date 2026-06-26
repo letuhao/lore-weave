@@ -21,13 +21,15 @@ import pytest
 from pydantic import ValidationError
 
 from app.tools.definitions import ARG_MODELS, TOOL_DEFINITIONS, TOOL_NAMES
-from app.tools.executor import ToolContext, execute_tool
+from app.tools.executor import ToolContext, ToolExecutionError, execute_tool
 from app.tools.graph_schema_tools import (
     GRAPH_SCHEMA_ARG_MODELS,
     GRAPH_SCHEMA_TOOL_DEFINITIONS,
     KgGraphQueryArgs,
     KgProposeEdgeArgs,
     KgTriageResolveArgs,
+    _resolve_project_owner,
+    _resolve_project_owner_and_level,
 )
 
 try:
@@ -259,6 +261,67 @@ async def test_project_tool_404s_for_non_grantee():
     res = await execute_tool(ctx, "kg_view_read", {})
     assert not res.success
     assert "not found" in res.error.lower()
+
+
+@pytest.mark.asyncio
+async def test_public_key_call_is_owned_only_no_grants():
+    """OD-8 — a public MCP-key call (mcp_key_id set) gets owned-only access: a
+    project owned by someone ELSE is rejected BEFORE the grant client is consulted,
+    even when the caller would otherwise hold an EDIT grant on the book. A
+    third-party agent must never inherit the owner's share-grants."""
+    grant = AsyncMock()
+    grant.resolve_grant = AsyncMock(return_value=GrantLevel.EDIT)  # would pass IF consulted
+    projects_repo = AsyncMock()
+    projects_repo.project_meta = AsyncMock(return_value=(_OWNER, _BOOK))  # owner != caller
+    ctx = _ctx(user_id=_USER, projects_repo=projects_repo, grant_client=grant,
+               mcp_key_id="lw_pk_publickey")
+    res = await execute_tool(ctx, "kg_view_read", {})
+    assert not res.success
+    assert "not found" in res.error.lower()
+    grant.resolve_grant.assert_not_awaited()  # OD-8 short-circuits before grants
+
+
+@pytest.mark.asyncio
+async def test_resolve_project_owner_public_key_owner_still_allowed():
+    """OD-8 only drops GRANT-derived access — a public key acting as the project
+    OWNER resolves normally (both resolver variants)."""
+    grant = AsyncMock()
+    projects_repo = AsyncMock()
+    projects_repo.project_meta = AsyncMock(return_value=(_USER, _BOOK))  # caller IS owner
+    ctx = _ctx(user_id=_USER, projects_repo=projects_repo, grant_client=grant,
+               mcp_key_id="lw_pk_publickey")
+    assert await _resolve_project_owner(ctx, GrantLevel.EDIT) == _USER
+    owner, lvl = await _resolve_project_owner_and_level(ctx, GrantLevel.EDIT)
+    assert owner == _USER and lvl == GrantLevel.OWNER
+    grant.resolve_grant.assert_not_awaited()  # owner path never consults grants
+
+
+@pytest.mark.asyncio
+async def test_resolve_project_owner_and_level_public_key_denied_before_grants():
+    """Symmetry: the _and_level variant also short-circuits a non-owner public-key
+    call before the grant client (would otherwise return a grant level)."""
+    grant = AsyncMock()
+    grant.resolve_grant = AsyncMock(return_value=GrantLevel.OWNER)  # would pass IF consulted
+    projects_repo = AsyncMock()
+    projects_repo.project_meta = AsyncMock(return_value=(_OWNER, _BOOK))  # owner != caller
+    ctx = _ctx(user_id=_USER, projects_repo=projects_repo, grant_client=grant,
+               mcp_key_id="lw_pk_publickey")
+    with pytest.raises(ToolExecutionError, match="not found"):
+        await _resolve_project_owner_and_level(ctx, GrantLevel.VIEW)
+    grant.resolve_grant.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_first_party_grantee_path_unchanged_by_od8():
+    """Regression: a FIRST-PARTY call (mcp_key_id is None) keeps the grant-aware
+    path — a book grantee still resolves to the owner via the grant client."""
+    grant = AsyncMock()
+    grant.resolve_grant = AsyncMock(return_value=GrantLevel.EDIT)
+    projects_repo = AsyncMock()
+    projects_repo.project_meta = AsyncMock(return_value=(_OWNER, _BOOK))  # owner != caller
+    ctx = _ctx(user_id=_USER, projects_repo=projects_repo, grant_client=grant)  # no mcp_key_id
+    assert await _resolve_project_owner(ctx, GrantLevel.EDIT) == _OWNER
+    grant.resolve_grant.assert_awaited_once()  # grant path WAS consulted
 
 
 @pytest.mark.asyncio

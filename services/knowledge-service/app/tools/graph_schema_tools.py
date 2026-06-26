@@ -795,6 +795,13 @@ async def _resolve_project_owner(ctx: "ToolContext", need: GrantLevel) -> UUID:
     owner, book_id = meta
     if ctx.user_id == owner:
         return owner
+    # OD-8: a public MCP-key call resolves to OWNED projects only — it must NOT
+    # inherit the owner's E0 share-grants to other people's books (the agent's
+    # principal never consented to a third-party agent reaching shared content).
+    # Reject before consulting grants. First-party calls (mcp_key_id is None) keep
+    # the grant-aware path below unchanged.
+    if ctx.mcp_key_id is not None:
+        raise ToolExecutionError("project not found")  # owned-only, no oracle
     if book_id is None:
         raise ToolExecutionError("project not found")  # book-less → owner-only
     lvl = await ctx.grant_client.resolve_grant(book_id, ctx.user_id)
@@ -822,6 +829,10 @@ async def _resolve_project_owner_and_level(
     owner, book_id = meta
     if ctx.user_id == owner:
         return owner, GrantLevel.OWNER
+    # OD-8: a public MCP-key call gets owned-only access — never grant-derived
+    # (see _resolve_project_owner). First-party calls keep the grant path below.
+    if ctx.mcp_key_id is not None:
+        raise ToolExecutionError("project not found")  # owned-only, no oracle
     if book_id is None:
         raise ToolExecutionError("project not found")  # book-less → owner-only
     lvl = await ctx.grant_client.resolve_grant(book_id, ctx.user_id)
