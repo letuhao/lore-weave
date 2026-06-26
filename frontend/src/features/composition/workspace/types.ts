@@ -8,12 +8,12 @@
 // conditional 'threads' which is gated separately).
 export type WorkspacePanelId =
   | 'compose' | 'cowriter' | 'assemble' | 'planner' | 'beats' | 'graph' | 'cast'
-  | 'relmap' | 'timeline' | 'arc' | 'worldmap' | 'grounding' | 'references'
+  | 'relmap' | 'timeline' | 'arc' | 'worldmap' | 'grounding' | 'canonview' | 'references'
   | 'style' | 'canon' | 'critic' | 'threads' | 'progress' | 'quality' | 'flywheel' | 'settings';
 
 const PANEL_IDS: WorkspacePanelId[] = [
   'compose', 'cowriter', 'assemble', 'planner', 'beats', 'graph', 'cast', 'relmap',
-  'timeline', 'arc', 'worldmap', 'grounding', 'references', 'style', 'canon', 'critic',
+  'timeline', 'arc', 'worldmap', 'grounding', 'canonview', 'references', 'style', 'canon', 'critic',
   'threads', 'progress', 'quality', 'flywheel', 'settings',
 ];
 
@@ -43,7 +43,7 @@ export type WorkspaceLayout = {
 // canonical studio order so flag-ON without saved state matches the fixed strip.
 const DOCK_ORDER: WorkspacePanelId[] = [
   'compose', 'cowriter', 'assemble', 'planner', 'beats', 'graph', 'cast', 'relmap',
-  'timeline', 'arc', 'worldmap', 'grounding', 'references', 'style', 'canon', 'critic',
+  'timeline', 'arc', 'worldmap', 'grounding', 'canonview', 'references', 'style', 'canon', 'critic',
   'threads', 'progress', 'quality', 'flywheel', 'settings',
 ];
 

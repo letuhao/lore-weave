@@ -24,6 +24,7 @@ import { SceneNode } from './SceneNode';
 import { SceneEdge } from './SceneEdge';
 import { WhatIfAltNode } from './WhatIfAltNode';
 import { WhatIfJudgeBadge } from './WhatIfJudgeBadge';
+import { CanonAtChapterPanel } from './CanonAtChapterPanel';
 import { GraphCanvas } from './GraphCanvas';
 import { autoLayout, NODE_H, NODE_W, PAD, type Pos } from './sceneGraphLayout';
 
@@ -80,6 +81,9 @@ export function SceneGraphCanvas({ work, bookId, token, onPromoted }: {
   const selectedWhatIfModel = whatIfModelList.find((mm) => mm.user_model_id === effectiveWhatIfModel);
   const takes = useWhatIfTakes({ projectId, token, updateAlt: whatIf.updateAlt });
   const [previewAltId, setPreviewAltId] = useState<string | null>(null);
+  // M6 — the canon-at-branch-point inspector (what canon knows right before the
+  // divergence). Toggled from the what-if bar; the headline use of CanonAtChapterPanel.
+  const [showBranchCanon, setShowBranchCanon] = useState(false);
 
   // M3 — promote the ephemeral branch into a persistent derivative Work (the SAME
   // path the Divergence Wizard uses), then seed each generated take as a scene node
@@ -295,6 +299,14 @@ export function SceneGraphCanvas({ work, bookId, token, onPromoted }: {
               {promotion.isPromoting ? t('whatif.promoting', { defaultValue: 'Promoting…' }) : t('whatif.promote', { defaultValue: 'Promote' })}
             </button>
             <button
+              type="button" data-testid="scenegraph-whatif-canon"
+              className={`rounded border px-2 py-0.5 ${showBranchCanon ? 'border-indigo-400 bg-indigo-50 text-indigo-700 dark:border-indigo-600 dark:bg-indigo-950/30 dark:text-indigo-300' : 'border-transparent text-muted-foreground hover:text-foreground'}`}
+              title={t('canonview.branchHint', { defaultValue: 'What canon knows right before this branch' })}
+              onClick={() => setShowBranchCanon((v) => !v)}
+            >
+              ⊙ {t('canonview.branchToggle', { defaultValue: 'Canon at branch' })}
+            </button>
+            <button
               type="button" data-testid="scenegraph-whatif-discard"
               className="rounded px-2 py-0.5 text-muted-foreground hover:text-foreground"
               onClick={whatIf.discard}
@@ -304,6 +316,23 @@ export function SceneGraphCanvas({ work, bookId, token, onPromoted }: {
           </div>
         )}
       </div>
+
+      {/* M6 — canon-at-branch-point inspector: what canon establishes/knows right
+          before the divergence chapter. Windowed to the anchor scene's chapter (with
+          its sort_order → established-by-N). Source = the canon project (pre-promote). */}
+      {whatIf.active && showBranchCanon && anchorScene?.chapter_id && (
+        <div data-testid="scenegraph-branch-canon" className="max-h-64 shrink-0 overflow-y-auto border-b border-indigo-200 bg-indigo-50/30 dark:border-indigo-900 dark:bg-indigo-950/20">
+          <CanonAtChapterPanel
+            bookId={bookId}
+            projectId={projectId}
+            chapterId={anchorScene.chapter_id}
+            chapterIndex={anchorChapterSort}
+            chapterLabel={anchorChapterSort != null ? t('canonview.chapterN', { defaultValue: 'chapter {{n}}', n: anchorChapterSort + 1 }) : undefined}
+            token={token}
+            enabled={showBranchCanon}
+          />
+        </div>
+      )}
 
       {scenes.length === 0 ? (
         <div data-testid="scenegraph-empty" className="p-3 text-xs text-muted-foreground">

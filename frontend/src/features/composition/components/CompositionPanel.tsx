@@ -28,6 +28,7 @@ import { TimelineView } from './TimelineView';
 import { CharacterArcView } from './CharacterArcView';
 import { WorldMap } from './WorldMap';
 import { GroundingPanel } from './GroundingPanel';
+import { CanonAtChapterPanel } from './CanonAtChapterPanel';
 import { ReferencesPanel } from './ReferencesPanel';
 import { DockRail } from './workspace/DockRail';
 import { DockSlot } from './workspace/DockSlot';
@@ -69,7 +70,7 @@ type Props = {
   soloPanel?: WorkspacePanelId;
 };
 
-type SubTab = 'compose' | 'cowriter' | 'assemble' | 'planner' | 'beats' | 'graph' | 'cast' | 'relmap' | 'timeline' | 'arc' | 'worldmap' | 'grounding' | 'references' | 'style' | 'canon' | 'critic' | 'threads' | 'progress' | 'quality' | 'flywheel' | 'settings';
+type SubTab = 'compose' | 'cowriter' | 'assemble' | 'planner' | 'beats' | 'graph' | 'cast' | 'relmap' | 'timeline' | 'arc' | 'worldmap' | 'grounding' | 'canonview' | 'references' | 'style' | 'canon' | 'critic' | 'threads' | 'progress' | 'quality' | 'flywheel' | 'settings';
 
 export function CompositionPanel({ bookId, chapterId, token, onAccept, sceneId: sceneIdProp, onSceneChange, heatmapEnabled, onToggleHeatmap, soloPanel }: Props) {
   const solo = soloPanel != null;
@@ -622,7 +623,7 @@ export function CompositionPanel({ bookId, chapterId, token, onAccept, sceneId: 
           testid="composition-subtabs"
           className="flex gap-1 overflow-x-auto border-b border-neutral-200 px-2 pt-1 text-sm dark:border-neutral-700"
         >
-          {(['compose', 'cowriter', 'assemble', 'planner', 'beats', 'graph', 'cast', 'relmap', 'timeline', 'arc', 'worldmap', 'grounding', 'references', 'style', 'canon', 'critic', ...(threadsEnabled ? ['threads' as const] : []), 'progress', 'quality', 'flywheel', 'settings'] as SubTab[]).map((tb) => (
+          {(['compose', 'cowriter', 'assemble', 'planner', 'beats', 'graph', 'cast', 'relmap', 'timeline', 'arc', 'worldmap', 'grounding', 'canonview', 'references', 'style', 'canon', 'critic', ...(threadsEnabled ? ['threads' as const] : []), 'progress', 'quality', 'flywheel', 'settings'] as SubTab[]).map((tb) => (
             <button
               key={tb}
               data-testid={`composition-subtab-${tb}`}
@@ -741,6 +742,19 @@ export function CompositionPanel({ bookId, chapterId, token, onAccept, sceneId: 
             token={token}
             heatmapEnabled={heatmapEnabled}
             onToggleHeatmap={onToggleHeatmap}
+          />
+        </DockSlot>
+        <DockSlot {...slot('canonview')}>
+          {/* M6 — "Canon as of chapter N" for the active scene's chapter. On a
+              derivative, window against the SOURCE project (the derivative's own is
+              empty pre-promote). Fetches only when this tab is active (4 windowed
+              cross-service reads). */}
+          <CanonAtChapterPanel
+            bookId={bookId}
+            projectId={derivativeCtx.isDerivative && derivativeCtx.sourceProjectId ? derivativeCtx.sourceProjectId : work.project_id}
+            chapterId={selectedScene?.chapter_id ?? chapterId}
+            token={token}
+            enabled={activeTab === 'canonview'}
           />
         </DockSlot>
         <DockSlot {...slot('references')}>
