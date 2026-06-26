@@ -43,10 +43,10 @@ from app.clients.embedding_client import EmbeddingClient
 from app.deps import (
     get_book_client_dep, get_canon_rules_repo, get_derivatives_repo,
     get_embedding_client_dep, get_generation_corrections_repo, get_generation_jobs_repo,
-    get_glossary_client_dep, get_grounding_pins_repo, get_knowledge_client_dep,
-    get_llm_client_dep, get_narrative_thread_repo, get_outline_repo,
-    get_references_repo, get_scene_links_repo, get_style_profile_repo,
-    get_voice_profile_repo, get_works_repo,
+    get_glossary_client_dep, get_grant_client_dep, get_grounding_pins_repo,
+    get_knowledge_client_dep, get_llm_client_dep, get_narrative_thread_repo,
+    get_outline_repo, get_references_repo, get_scene_links_repo,
+    get_style_profile_repo, get_voice_profile_repo, get_works_repo,
 )
 from app.db.repositories.derivatives import DerivativesRepo
 from app.db.models import CorrectionKind
@@ -71,8 +71,8 @@ from app.reasoning import ReasoningSignals, score_effort
 from loreweave_llm import infer_reasoning_control, resolve_reasoning
 from app.middleware.jwt_auth import get_bearer_token, get_current_user
 from app.packer import budget as B
-from app.grant_client import GrantLevel
-from app.grant_deps import InsufficientGrant
+from app.grant_client import GrantClient, GrantLevel
+from app.grant_deps import InsufficientGrant, authorize_book
 from app.packer.pack import OwnershipError, PackRequest, build_derivative_context, pack
 from app.packer.profile import from_settings
 
@@ -167,6 +167,18 @@ class PersistJobBody(BaseModel):
     # M4 Option A accept-step. Optional override for the book-draft commit message;
     # defaults to an "AI chapter draft (<mode>, accepted)" label.
     commit_message: Annotated[str, StringConstraints(max_length=500)] | None = None
+
+
+class ScenePromoteProseBody(BaseModel):
+    # M3 (WS-B3 prose-persist-on-promote): the chosen take's ghost PLAIN TEXT for a
+    # promoted derivative scene. Persisted scene-scoped in the DERIVATIVE project's
+    # synthetic-job store (never the shared book draft). `text` is bounded so an
+    # oversized body 422s at the boundary; empty/whitespace is rejected in-handler
+    # with EMPTY_SCENE_PROSE (a structurally-present but blank scene is skipped, not
+    # written). `idempotency_key` is optional (the persist is already idempotent on
+    # node_id; the key is trace-only).
+    text: Annotated[str, StringConstraints(max_length=200_000)]
+    idempotency_key: Annotated[str, StringConstraints(max_length=200)] | None = None
 
 
 class CritiqueBody(BaseModel):
@@ -337,6 +349,9 @@ async def generate(
             PackRequest(user_id=user_id, project_id=project_id, book_id=work.book_id,
                         node=node.model_dump(mode="python"), bearer=bearer, guide=body.guide,
                         settings=work.settings,
+                        # M1 — make the pack op-aware: `adapt_scene` (on a derivative)
+                        # fires gather_source_scene; every other op is byte-unchanged.
+                        operation=body.operation,
                         source_project_id=deriv.source_project_id,
                         branch_point=deriv.branch_point, overrides=deriv.overrides),
             book=book, glossary=glossary, knowledge=knowledge, canon_repo=canon,
@@ -1389,6 +1404,79 @@ async def persist_job(
             result={**result, "persisted": True, "draft_version": draft_version})
     return {"job_id": str(job.id), "persisted": persisted,
             "draft_version": draft_version, "persist_error": persist_error}
+
+
+@router.post("/works/{project_id}/scenes/{node_id}/prose")
+async def persist_scene_prose(
+    project_id: UUID,
+    node_id: UUID,
+    body: ScenePromoteProseBody,
+    user_id: UUID = Depends(get_current_user),
+    works: WorksRepo = Depends(get_works_repo),
+    jobs: GenerationJobsRepo = Depends(get_generation_jobs_repo),
+    grant: GrantClient = Depends(get_grant_client_dep),
+) -> dict[str, Any]:
+    """M3 (WS-B3 prose-persist-on-promote) — persist a promoted derivative scene's
+    take PROSE, scene-scoped, in the DERIVATIVE project's synthetic-job store.
+
+    The take ghost was generated on the canon project pre-promote and exists only
+    client-side; the existing `POST /jobs/{id}/persist` is CHAPTER-only (422s a
+    per-scene result), so it can't be reused. This writes a synthetic completed
+    generation_job keyed by `node_id` (result={text}, input marker
+    `{kind: promoted_scene_prose}`) so `prior_scene_drafts` / `chapter_scene_drafts`
+    read it back — NO new table.
+
+    SOURCE-CLOBBER GUARD (critical, CLAUDE.md COW/tenancy): the derivative SHARES the
+    source book_id, so writing prose into book-service's chapter draft would clobber
+    the shared SOURCE chapter. This endpoint writes ONLY composition's own DB — it
+    never calls book.patch_draft / book.get_draft(shared_book_id, …).
+
+    Auth/scope: EDIT grant on the book; `project_id` MUST be a DERIVATIVE owned by
+    the caller (works.get is user-scoped → wrong-owner / missing = 404; a
+    non-derivative is 409 — a canon project has no source to promote a take from).
+    Empty/whitespace text → 422 EMPTY_SCENE_PROSE. Idempotent on `node_id`: a
+    re-promote / double-submit overwrites the same scene's prose, never duplicates.
+
+    Returns `{node_id, persisted: true, version}` (version = the per-node promote
+    count, +1 each re-promote)."""
+    # Empty/whitespace text is a no-write (the caller skips that scene) — 422 BEFORE
+    # any auth round-trip side effect, mirroring the engine's request-validation posture.
+    if not body.text.strip():
+        raise HTTPException(status_code=422, detail={
+            "code": "EMPTY_SCENE_PROSE",
+            "detail": "scene prose is empty/whitespace — nothing to persist"})
+
+    work = await works.get(user_id, project_id)
+    if work is None:
+        raise HTTPException(status_code=404, detail="work not found")
+    # Persisting a promoted take into the derivative is an authoring write → EDIT.
+    try:
+        await authorize_book(grant, work.book_id, user_id, GrantLevel.EDIT)
+    except OwnershipError:
+        raise HTTPException(status_code=404, detail="book not found")
+    except InsufficientGrant:
+        raise HTTPException(status_code=403, detail="insufficient access")
+
+    # DERIVATIVE-only: a take is promoted FROM the canon what-if INTO the derivative.
+    # A non-derivative (canon/greenfield) project has no promote surface — reject so
+    # this can never be mis-aimed at a canon project's scene store.
+    if work.source_work_id is None:
+        raise HTTPException(status_code=409, detail={
+            "code": "NOT_A_DERIVATIVE",
+            "detail": "scene-prose promote applies only to a derivative work"})
+
+    # Write ONLY the synthetic-job store in the DERIVATIVE project (never the shared
+    # book draft). Idempotent on node_id (delete-existing-promoted-then-insert under
+    # a per-node lock). A node that is not the caller's scene in this project →
+    # ReferenceViolationError → 404 (no existence oracle).
+    try:
+        _job, version = await jobs.upsert_promoted_scene_prose(
+            user_id, project_id, node_id, body.text,
+            idempotency_key=body.idempotency_key)
+    except ReferenceViolationError:
+        raise HTTPException(status_code=404, detail="scene not found")
+
+    return {"node_id": str(node_id), "persisted": True, "version": version}
 
 
 @router.post("/jobs/{job_id}/critique")

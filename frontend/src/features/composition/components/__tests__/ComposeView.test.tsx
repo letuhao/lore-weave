@@ -180,6 +180,40 @@ describe('ComposeView (controlled-auto diverge gate — slice 3)', () => {
   });
 });
 
+describe('ComposeView (M1 — adapt from source)', () => {
+  it('does NOT offer the adapt action by default (non-derivative / not adaptable)', () => {
+    render(<ComposeView {...baseProps} onAccept={vi.fn()} />);
+    expect(screen.queryByTestId('compose-adapt')).toBeNull();
+  });
+
+  it('offers "Adapt from source" when canAdapt; with diverge OFF it streams the adapt_scene op', () => {
+    render(<ComposeView {...baseProps} onAccept={vi.fn()} canAdapt />);
+    fireEvent.click(screen.getByTestId('compose-adapt'));
+    expect(mockStream.start).toHaveBeenCalledWith(expect.objectContaining({ operation: 'adapt_scene', outlineNodeId: 's' }));
+    expect(mockAuto.mutate).not.toHaveBeenCalled();
+  });
+
+  it('with diverge ON, adapt runs auto-mode (K cards) with the adapt_scene op', () => {
+    render(<ComposeView {...baseProps} onAccept={vi.fn()} canAdapt />);
+    fireEvent.click(screen.getByRole('checkbox')); // diverge on
+    fireEvent.click(screen.getByTestId('compose-adapt'));
+    expect(mockAuto.mutate).toHaveBeenCalledWith(expect.objectContaining({ operation: 'adapt_scene' }));
+    expect(mockStream.start).not.toHaveBeenCalled();
+  });
+
+  it('the adapt action is hidden mid-stream (the Stop button owns that state)', () => {
+    mockStream.streaming = true;
+    render(<ComposeView {...baseProps} onAccept={vi.fn()} canAdapt />);
+    expect(screen.queryByTestId('compose-adapt')).toBeNull();
+  });
+
+  it('shows a "nothing to adapt" hint when the source chapter is empty (no action offered)', () => {
+    render(<ComposeView {...baseProps} onAccept={vi.fn()} adaptSourceEmpty />);
+    expect(screen.queryByTestId('compose-adapt')).toBeNull();
+    expect(screen.getByTestId('compose-adapt-empty')).toBeTruthy();
+  });
+});
+
 describe('ComposeView (A2-S4a — canon gate panel + Revise)', () => {
   const withCanon = (over: Record<string, unknown> = {}) => ({
     job_id: 'j1', mode: 'auto', status: 'completed', text: 'B', winner_index: 0, k: 1, candidates: ['B'],

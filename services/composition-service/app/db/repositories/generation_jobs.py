@@ -54,6 +54,14 @@ _ACTIVE_STATUSES = ("pending", "running")
 # contend on a shared hashtext slot. Paired with hashtext("{project}:{chapter}").
 _CHAPTER_JOB_LOCK_NS = 0x10B0
 
+# M3 (WS-B3 prose-persist-on-promote): the input marker that tags a SYNTHETIC
+# completed generation_job carrying a promoted scene's prose (no LLM ran). The
+# scene-prose persist endpoint writes one of these per promoted derivative scene so
+# `prior_scene_drafts` / `chapter_scene_drafts` (and gather_recent's fallback) read
+# the take prose back — with NO new table. Idempotent on (project_id,
+# outline_node_id): a re-promote overwrites the prior promoted row, never duplicates.
+_PROMOTED_SCENE_PROSE_KIND = "promoted_scene_prose"
+
 
 def _jsonb(value: dict[str, Any] | None) -> str | None:
     return None if value is None else json.dumps(value)
@@ -425,6 +433,95 @@ class GenerationJobsRepo:
         async with self._pool.acquire() as c:
             rows = await c.fetch(query, user_id, project_id, chapter_id)
         return [r["text"] for r in rows]
+
+    async def upsert_promoted_scene_prose(
+        self, user_id: UUID, project_id: UUID, outline_node_id: UUID, text: str,
+        *, idempotency_key: str | None = None,
+    ) -> tuple[GenerationJob, int]:
+        """M3 (WS-B3) — persist a promoted scene's PROSE into the synthetic-job store,
+        keyed by `outline_node_id`, IDEMPOTENTLY on (project, node). Returns
+        ``(job, version)`` where ``version`` is the per-node promote count (1 on the
+        first promote, +1 on each re-promote / overwrite).
+
+        Mechanism (NO new table): write a SYNTHETIC ``completed`` generation_job in
+        the DERIVATIVE project with ``result = {text}`` + an input marker
+        ``{kind: 'promoted_scene_prose', version}`` so `prior_scene_drafts` /
+        `chapter_scene_drafts` (and gather_recent's fallback) read it back as the
+        scene's draft. SOURCE-CLOBBER SAFE: this writes ONLY composition's own DB —
+        it never touches book-service's shared chapter draft (the COW/tenancy belt).
+
+        IDEMPOTENT on the node: under a per-(project, node) advisory xact lock,
+        delete any EXISTING promoted-prose rows for this node, then insert the new
+        one — so a re-promote / double-submit OVERWRITES, never duplicates. The
+        version carries over (prior + 1) so the response reflects the promote count.
+
+        Defense-in-depth (mirrors `create`): the node must be the caller's scene in
+        THIS project (the FK only proves existence) → ReferenceViolationError else.
+        Emits the lifecycle event in the same tx (a synthetic but real completed job
+        the unified control plane should still mirror)."""
+        async with self._pool.acquire() as c:
+            async with c.transaction():
+                # Serialize concurrent promotes of the SAME node so the
+                # delete-then-insert can't race a second submit into a duplicate
+                # (a plain DELETE+INSERT under READ COMMITTED would let two
+                # concurrent submits both delete-nothing then both insert).
+                await c.execute(
+                    "SELECT pg_advisory_xact_lock($1, hashtext($2))",
+                    _CHAPTER_JOB_LOCK_NS, f"{project_id}:promoted:{outline_node_id}",
+                )
+                owned = await c.fetchval(
+                    "SELECT 1 FROM outline_node "
+                    "WHERE user_id = $1 AND project_id = $2 AND id = $3 AND kind = 'scene'",
+                    user_id, project_id, outline_node_id,
+                )
+                if owned is None:
+                    raise ReferenceViolationError(
+                        f"outline_node {outline_node_id} is not the caller's scene in this project"
+                    )
+                # Idempotent overwrite: drop prior promoted rows for this node, but
+                # carry the version forward so the count reflects every promote.
+                prior_version = await c.fetchval(
+                    """
+                    SELECT max((input->>'version')::int) FROM generation_job
+                    WHERE user_id = $1 AND project_id = $2 AND outline_node_id = $3
+                      AND input->>'kind' = $4
+                    """,
+                    user_id, project_id, outline_node_id, _PROMOTED_SCENE_PROSE_KIND,
+                )
+                version = (prior_version or 0) + 1
+                await c.execute(
+                    """
+                    DELETE FROM generation_job
+                    WHERE user_id = $1 AND project_id = $2 AND outline_node_id = $3
+                      AND input->>'kind' = $4
+                    """,
+                    user_id, project_id, outline_node_id, _PROMOTED_SCENE_PROSE_KIND,
+                )
+                # The natural dedup key is (project, node) — enforced by the
+                # lock+delete above — so the optional request `idempotency_key` is
+                # NOT written to the unique `idempotency_key` column (that would let a
+                # key reused across DIFFERENT nodes 23505-collide, and it's redundant
+                # with node-scoped idempotency). It's stashed in `input` for trace only.
+                _input = {"kind": _PROMOTED_SCENE_PROSE_KIND, "version": version}
+                if idempotency_key:
+                    _input["idempotency_key"] = idempotency_key
+                row = await c.fetchrow(
+                    f"""
+                    INSERT INTO generation_job
+                      (user_id, project_id, outline_node_id, operation, mode, status,
+                       input, result)
+                    VALUES ($1,$2,$3,$4,'cowrite','completed',$5::jsonb,$6::jsonb)
+                    RETURNING {_SELECT_COLS}
+                    """,
+                    user_id, project_id, outline_node_id, _PROMOTED_SCENE_PROSE_KIND,
+                    json.dumps(_input), json.dumps({"text": text}),
+                )
+                job = _row_to_job(row)
+                await emit_job_event(
+                    c, service=_JOB_SERVICE, job_id=str(job.id),
+                    owner_user_id=str(job.user_id), kind=job.operation, status=job.status,
+                )
+                return job, version
 
     async def update_status(
         self,

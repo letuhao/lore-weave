@@ -1,5 +1,6 @@
 import { useState } from 'react';
-import { ChatSessionProvider, ChatStreamProvider, useChatSession } from './providers';
+import { useAuth } from '@/auth';
+import { ChatSessionProvider, ChatStreamProvider, ChatLiveStateProvider, useChatSession } from './providers';
 import { ChatView } from './components/ChatView';
 import { NewChatDialog } from './components/NewChatDialog';
 import { ChatEmptyState } from './components/ChatEmptyState';
@@ -20,6 +21,13 @@ interface ChatProps {
    *  The co-writer panel passes its Insert/Use-as-guide bar + starters here so it
    *  can read the live chat stream via useChatStream/useChatSession. */
   actionBar?: React.ReactNode;
+  /** M2 (D-T5.4-CHAT-HOIST): opener — chat windowing is on, so the turn must run in
+   *  the SharedWorker (a panel float/pop-out would otherwise kill it). The composition
+   *  host sets this from its windowing flag; off everywhere else → in-process, unchanged. */
+  windowingEnabled?: boolean;
+  /** M2 (D-T5.4-CHAT-HOIST): pop-out — force the worker path (a pop-out window has no
+   *  windowing host of its own, but must share the opener's in-flight turn). */
+  forceShared?: boolean;
   className?: string;
 }
 
@@ -32,7 +40,7 @@ interface ChatProps {
  * hook owns which session is active and binds it to the book's knowledge
  * project so the assistant has the book's lore/memory.
  */
-export function Chat({ bookId, editorContext, composeMode, actionBar, className }: ChatProps) {
+export function Chat({ bookId, editorContext, composeMode, actionBar, windowingEnabled, forceShared, className }: ChatProps) {
   // Glossary-assistant P3: any book-scoped chat (incl. the editor) advertises the
   // glossary edit-existing tool. The editor also passes editorContext (chapter
   // prose tool); a glossary-page/reader chat passes only bookContext.
@@ -40,16 +48,24 @@ export function Chat({ bookId, editorContext, composeMode, actionBar, className 
   // S6: the user's per-book display language (set only when viewing a translation).
   // Forwarded so knowledge composes entity aliases in it for the chat context.
   const { apiDisplayLanguage } = useGlossaryDisplayLanguage(bookId ?? '');
+  const { accessToken } = useAuth();
   return (
     <ChatSessionProvider embedded>
-      <ChatStreamProvider
-        editorContext={editorContext}
-        composeMode={composeMode}
-        bookContext={bookContext}
-        displayLanguage={apiDisplayLanguage}
-      >
-        <EmbeddedChat bookId={bookId} actionBar={actionBar} className={className} />
-      </ChatStreamProvider>
+      {/* M2 (D-T5.4-CHAT-HOIST): mount ABOVE ChatStreamProvider — the future chat
+          windowing host sits between them. windowingEnabled defaults false, so
+          this is an inert pass-through today (useChatMessages owns the in-process
+          stream, byte-identical to pre-M2). When a host flips windowing on, the
+          turn moves into the SharedWorker and survives pop-out. */}
+      <ChatLiveStateProvider token={accessToken ?? null} windowingEnabled={windowingEnabled} forceShared={forceShared}>
+        <ChatStreamProvider
+          editorContext={editorContext}
+          composeMode={composeMode}
+          bookContext={bookContext}
+          displayLanguage={apiDisplayLanguage}
+        >
+          <EmbeddedChat bookId={bookId} actionBar={actionBar} className={className} />
+        </ChatStreamProvider>
+      </ChatLiveStateProvider>
     </ChatSessionProvider>
   );
 }

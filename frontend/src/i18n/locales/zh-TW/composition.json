@@ -1,4 +1,9 @@
 {
+  "mobile": {
+    "switchPanel": "切換面板",
+    "panels": "面板",
+    "close": "關閉"
+  },
   "groundingPins": {
     "present": "場景中的角色",
     "canon": "正典規則",
@@ -141,6 +146,7 @@
     "promoting": "提升中…",
     "promoted": "已提升為假設異本。",
     "promotedPartial": "已提升，但有 {{n}} 個版本無法加入。",
+    "promotedProsePartial": "已提升，但有 {{n}} 個版本的內文無法儲存——請重新提升以重試。",
     "promoteHint": "請先生成至少一個版本才能提升"
   },
   "cast": "角色",
@@ -456,6 +462,12 @@
     "noSynopsis": "尚無概要"
   },
   "derive": {
+    "adapt": {
+      "action": "從原作改寫",
+      "hint": "將繼承的原作場景改寫以符合此分支（一份你檢視後再接受的草稿）。",
+      "empty": "沒有可改寫的內容",
+      "emptyHint": "原作章節沒有可改寫的內文——請改為生成全新草稿。"
+    },
     "launch": "衍生異版",
     "launchHint": "從此正史分支衍生一個假設異版",
     "title": "衍生異版（衍生作）",

@@ -1,4 +1,9 @@
 {
+  "mobile": {
+    "switchPanel": "Đổi bảng",
+    "panels": "Bảng",
+    "close": "Đóng"
+  },
   "groundingPins": {
     "present": "Nhân vật trong cảnh",
     "canon": "Luật canon",
@@ -141,6 +146,7 @@
     "promoting": "Đang thăng cấp…",
     "promoted": "Đã thăng cấp thành dị bản giả định.",
     "promotedPartial": "Đã thăng cấp, nhưng {{n}} bản không thể thêm được.",
+    "promotedProsePartial": "Đã thăng cấp, nhưng không lưu được nội dung của {{n}} bản — thăng cấp lại để thử lại.",
     "promoteHint": "Tạo ít nhất một bản để thăng cấp"
   },
   "cast": "Nhân vật",
@@ -456,6 +462,12 @@
     "noSynopsis": "Chưa có tóm tắt"
   },
   "derive": {
+    "adapt": {
+      "action": "Phỏng theo bản gốc",
+      "hint": "Viết lại cảnh gốc thừa hưởng để phù hợp với nhánh này (một bản nháp bạn xem lại và chấp nhận).",
+      "empty": "Không có gì để phỏng theo",
+      "emptyHint": "Chương gốc không có nội dung để phỏng theo — hãy tạo bản nháp mới thay thế."
+    },
     "launch": "Tạo dị bản",
     "launchHint": "Tạo một dị bản giả định rẽ nhánh từ chính truyện",
     "title": "Tạo dị bản (bản phái sinh)",

@@ -19,7 +19,10 @@ from app.packer.sanitize import sanitize_guide, sanitize_lore
 
 # Canonical block order for rendering (§2.4). T3.6 — <references> (author influences)
 # renders after <lore> and before the author <guide>.
-_BLOCK_ORDER = ["canon", "present", "threads", "beat", "open_promises", "recent", "memory", "lore", "references", "guide"]
+# M1 — <source_scene> (the inherited prose the adapt op rewrites) renders right
+# after the immediate <recent> prose and before <memory>/<lore>, so the model sees
+# the material to adapt next to the scene's own recent context.
+_BLOCK_ORDER = ["canon", "present", "threads", "beat", "open_promises", "recent", "source_scene", "memory", "lore", "references", "guide"]
 
 
 def assert_project_scoped(project_id: UUID | None) -> None:
@@ -126,6 +129,16 @@ def build_segments(
             B.PRIO_RECENT_IMMEDIATE if is_last else B.PRIO_RECENT_OLDER,
             protected=is_last,
         ))
+
+    # M1 — the inherited SOURCE scene's prose for the adapt op. PROTECTED (it is the
+    # material the model rewrites; dropping it would defeat the op), and emitted
+    # per-paragraph in order so the budget keeps as much as fits. Sanitised: source
+    # prose is author/book content (untrusted, SEC3) so it's neutralised for
+    # delimiter safety like <recent>/<lore>. Empty for every non-adapt pack → no block.
+    for para in bundle.source_scene:
+        txt = sanitize_lore(para)
+        if txt:
+            segs.append(Segment("source_scene", txt, B.PRIO_RECENT_IMMEDIATE, protected=True))
 
     for e in bundle.timeline:
         line = f'{e.get("title", "")}: {e.get("summary", "")}'.strip(": ").strip()
