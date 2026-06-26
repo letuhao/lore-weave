@@ -133,6 +133,10 @@ class ToolContext:
     pending_facts_repo: PendingFactsRepo
     embedding_client: EmbeddingClient
     redis: aioredis.Redis | None
+    # Public MCP API key id (X-Mcp-Key-Id) when the call came via the public edge;
+    # None for first-party traffic. Carrier for per-key spend attribution (H-C) and
+    # the owned-resources-only default (OD-8 — see loreweave_mcp.is_owner_only).
+    mcp_key_id: str | None = None
     # ── lane LF (KG ontology MCP tools) — optional deps ───────────────
     grant_client: "GrantClient | None" = None
     graph_views_repo: "GraphViewsRepo | None" = None

@@ -25,6 +25,7 @@ from loreweave_mcp import (
     NotAccessibleError,
     ToolContext,
     build_tool_context,
+    is_owner_only,
     make_stateless_fastmcp,
     mint_confirm_token,
     require_book_owner,
@@ -113,6 +114,33 @@ def test_build_tool_context_optional_headers_absent():
     tc = build_tool_context(_ctx(), SECRET)
     assert tc.project_id is None
     assert tc.trace_id is None
+    assert tc.mcp_key_id is None  # first-party call carries no public-key id
+
+
+def test_build_tool_context_lifts_mcp_key_id():
+    # A public-edge call carries X-Mcp-Key-Id → it lands on the ctx (H-C carrier)
+    # and flips owner-only ON (OD-8).
+    tc = build_tool_context(_ctx(**{"x-mcp-key-id": "key-xyz"}), SECRET)
+    assert tc.mcp_key_id == "key-xyz"
+    assert is_owner_only(tc) is True
+
+
+def test_is_owner_only_false_for_first_party():
+    tc = build_tool_context(_ctx(), SECRET)
+    assert is_owner_only(tc) is False
+
+
+def test_is_owner_only_duck_typed_on_foreign_ctx():
+    # Works on any object exposing mcp_key_id (e.g. knowledge-service's richer
+    # ToolContext, which composes its own dataclass).
+    class _Foreign:
+        mcp_key_id = "k1"
+
+    class _Bare:
+        pass
+
+    assert is_owner_only(_Foreign()) is True
+    assert is_owner_only(_Bare()) is False
 
 
 def test_build_tool_context_missing_token_rejected():

@@ -161,6 +161,7 @@ def _build_tool_context(ctx: MCPContext) -> ToolContext:
             )
 
     session_id = _require_header(ctx, "x-session-id")
+    mcp_key_id = _optional_header(ctx, "x-mcp-key-id")
 
     pool = get_knowledge_pool()
     projects_repo = ProjectsRepo(pool)
@@ -168,6 +169,7 @@ def _build_tool_context(ctx: MCPContext) -> ToolContext:
         user_id=user_id,
         project_id=project_id,
         session_id=session_id,
+        mcp_key_id=mcp_key_id,
         projects_repo=projects_repo,
         pending_facts_repo=PendingFactsRepo(pool),
         embedding_client=get_embedding_client(),

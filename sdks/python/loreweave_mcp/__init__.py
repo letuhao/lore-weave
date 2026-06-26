@@ -38,6 +38,7 @@ from .confirm_token import (
 from .context import (
     ToolContext,
     build_tool_context,
+    is_owner_only,
     make_stateless_fastmcp,
 )
 from .errors import (
@@ -65,6 +66,7 @@ __all__ = [
     "make_stateless_fastmcp",
     "build_tool_context",
     "ToolContext",
+    "is_owner_only",
     # arg models + uniform error (H13)
     "ForbidExtra",
     "uniform_not_accessible",

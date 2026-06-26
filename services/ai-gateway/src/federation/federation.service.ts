@@ -17,6 +17,13 @@ export interface Envelope {
    */
   projectId?: string;
   /**
+   * Public MCP API key id (X-Mcp-Key-Id) — set ONLY for traffic that entered via
+   * the public edge (mcp-public-gateway). Lifted off the request headers (SEC-1)
+   * and forwarded downstream so providers can attribute per-key spend (H-C) and
+   * apply the owned-resources-only default (OD-8). Absent on first-party calls.
+   */
+  mcpKeyId?: string;
+  /**
    * Admin authority (INV-T2) — the RS256 `admin:write` token, forwarded ONLY on
    * the admin federation path as `X-Admin-Token`. It is a bearer credential and
    * MUST NEVER be logged or serialized (spec §6.7, §11 #7). The normal `/mcp`
@@ -24,6 +31,25 @@ export interface Envelope {
    * for the user/book surface.
    */
   adminToken?: string;
+}
+
+/**
+ * Build the downstream header set for a federated `/mcp` tool call: the synthesized
+ * X-Internal-Token (SO-1) plus each envelope identity field, forwarded ONLY when
+ * present (so an absent field is never sent as an empty string). Identity is always
+ * from the envelope, never the LLM (SEC-1). `X-Mcp-Key-Id` rides only this
+ * public-reachable surface — the admin path (adminHeaders) never carries it, since
+ * the public edge has no route to /mcp/admin (H-A). Extracted as a pure function so
+ * the forwarding contract is unit-testable without a live transport.
+ */
+export function buildEnvelopeHeaders(internalToken: string, env: Envelope): Record<string, string> {
+  const headers: Record<string, string> = { 'X-Internal-Token': internalToken };
+  if (env.userId) headers['X-User-Id'] = env.userId;
+  if (env.sessionId) headers['X-Session-Id'] = env.sessionId;
+  if (env.traceId) headers['X-Trace-Id'] = env.traceId;
+  if (env.projectId) headers['X-Project-Id'] = env.projectId;
+  if (env.mcpKeyId) headers['X-Mcp-Key-Id'] = env.mcpKeyId;
+  return headers;
 }
 
 const EMPTY: Catalog = {
@@ -136,11 +162,7 @@ export class FederationService implements OnModuleInit, OnModuleDestroy {
     if (!p) {
       throw new Error(`unknown tool '${tool}'`);
     }
-    const headers: Record<string, string> = { 'X-Internal-Token': this.cfg.internalToken };
-    if (env.userId) headers['X-User-Id'] = env.userId;
-    if (env.sessionId) headers['X-Session-Id'] = env.sessionId;
-    if (env.traceId) headers['X-Trace-Id'] = env.traceId;
-    if (env.projectId) headers['X-Project-Id'] = env.projectId;
+    const headers = buildEnvelopeHeaders(this.cfg.internalToken, env);
 
     const client = new Client({ name: 'ai-gateway', version: '0.1.0' });
     const transport = new StreamableHTTPClientTransport(new URL(p.mcpUrl), {

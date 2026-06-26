@@ -21,7 +21,12 @@ from mcp.server.fastmcp import Context as MCPContext
 from mcp.server.fastmcp import FastMCP
 from mcp.server.transport_security import TransportSecuritySettings
 
-__all__ = ["ToolContext", "build_tool_context", "make_stateless_fastmcp"]
+__all__ = [
+    "ToolContext",
+    "build_tool_context",
+    "make_stateless_fastmcp",
+    "is_owner_only",
+]
 
 
 @dataclass(frozen=True)
@@ -36,6 +41,10 @@ class ToolContext:
     session_id: str
     project_id: UUID | None = None
     trace_id: str | None = None
+    # The public MCP API key id (X-Mcp-Key-Id) when the call originated at the
+    # public edge (mcp-public-gateway); None for first-party traffic. Carrier for
+    # per-key spend attribution (H-C) and the owned-resources-only default (OD-8).
+    mcp_key_id: str | None = None
     internal_token: str = ""
 
 
@@ -109,11 +118,29 @@ def build_tool_context(ctx: MCPContext, internal_token: str) -> ToolContext:
 
     session_id = _require_header(ctx, "x-session-id")
     trace_id = _optional_header(ctx, "x-trace-id")
+    mcp_key_id = _optional_header(ctx, "x-mcp-key-id")
 
     return ToolContext(
         user_id=user_id,
         session_id=session_id,
         project_id=project_id,
         trace_id=trace_id,
+        mcp_key_id=mcp_key_id,
         internal_token=raw_token,
     )
+
+
+def is_owner_only(ctx: object) -> bool:
+    """Whether ownership must resolve to OWNED resources only — dropping
+    grant-derived (shared-with-me) access (OD-8).
+
+    True exactly for public MCP-key traffic (``mcp_key_id`` set): a third-party
+    agent acting as user U must not reach books merely shared with U, whose true
+    owner never consented to a third-party agent. First-party calls return False
+    (grant-aware resolution unchanged).
+
+    Duck-typed on a ``mcp_key_id`` attribute so it works for both this kit's
+    ``ToolContext`` and a consuming service's richer context (e.g.
+    knowledge-service composes its own).
+    """
+    return getattr(ctx, "mcp_key_id", None) is not None
