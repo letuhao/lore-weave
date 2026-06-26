@@ -1,4 +1,24 @@
-# ▶▶ NEXT SESSION STARTS HERE — **Glossary plan-and-execute (Phase 1) SHIPPED** · branch `feat/composition-service` · HEAD `b2439fcf` · 2026-06-26
+# ▶▶ NEXT SESSION STARTS HERE — **Public MCP Gateway P0 SHIPPED** · branch `feat/public-mcp-gateway` · 2026-06-26
+
+> **TRACK:** expose MCP to external/third-party agents over the internet with a NEW security model. Full doc set: [docs/specs/2026-06-26-public-mcp/](../specs/2026-06-26-public-mcp/) (README + 01 feature-catalog · 02 interface-matrix · 03 security-design+edge-cases+spikes · 04 plan · 05 tool-scope-map).
+>
+> **WHAT SHIPPED (P0 — the serial keystone):** new **`services/mcp-public-gateway`** (TS/NestJS) — the PUBLIC security edge. An external agent connects (via api-gateway-bff `/mcp`) with its OWN bearer credential; the edge authenticates it, **strips the entire inbound `x-*` namespace + mints a fresh envelope** (PUB-9 — a smuggled `X-Admin-Token`/`X-Internal-Token`/`X-User-Id` is discarded), and relays to **`ai-gateway/mcp` ONLY** (no `/mcp/admin` route, holds no admin token). Refuses a key in the query string (H-R). OFF unless `PUBLIC_MCP_ENABLED=true` (Q-GATE kill-switch). P0 uses a static test credential (`MCP_PUBLIC_TEST_KEY`→`MCP_PUBLIC_TEST_USER_ID`); read tools only, nothing priced/written.
+> - **Wired:** BFF `/mcp` proxy ([gateway-setup.ts](../../services/api-gateway-bff/src/gateway-setup.ts) — unversioned, matched before /v1; optional+defaulted url so existing callers/tests unchanged) · docker-compose service `mcp-public-gateway` (:8219→8211, depends ai-gateway healthy) · `language-rule.yaml` row (typescript) · ai-gateway `X-Internal-Token` compare made **constant-time** ([util/auth.ts](../../services/ai-gateway/src/util/auth.ts), both /mcp + /mcp/admin).
+> - **VERIFY:** mcp-public-gateway `nest build` clean + **8/8 unit tests** (auth gate, Q-GATE flag-off, H-R query-reject, PUB-9 strip/admin-isolation, 502 on upstream down, helpers); ai-gateway **55/55**; api-gateway-bff **115/115** (also fixed 2 PRE-EXISTING broken test fixtures missing learningUrl/compositionUrl). **⏳ NOT yet live-smoked** end-to-end on a stack-up (external client→BFF→edge→ai-gateway→provider) — `D-PMCP-P0-LIVE-SMOKE`.
+>
+> **PO decisions LOCKED (2026-06-26):** dedicated edge service · v1 FULL incl. priced jobs · API keys first (OAuth P5) · owned-books-only (OD-8) · key-creation behind a feature flag (Q-GATE) · **BYOK-only spend, no free-tier draw (PUB-12)** · **headless Tier-W = human-approve by default (OD-2)**, `allow_self_confirm` opt-in.
+>
+> **▶ NEXT (per [04-implementation-plan.md](../specs/2026-06-26-public-mcp/04-implementation-plan.md)):**
+> - **P1 (serial, /amaw):** real credential store — `mcp_api_keys` in auth-service (Argon2id hash, scopes, caps, `allow_self_confirm`) + `/v1/account/mcp-keys` CRUD + `/internal/mcp-keys/resolve` + edge resolves real keys (Redis cache) + FE Settings→MCP access tab. Swap the P0 static `KeyResolver`.
+> - **Kit pre-step (serial, before P2 fanout):** shared MCP kits lift `X-Mcp-Key-Id`→ctx + owner-only resolver variant (OD-8) + `require_project_owner` helper; ai-gateway forward `X-Mcp-Key-Id`; provider-registry submit merges it into `job_meta`.
+> - **P2 (fanout, 1 agent/provider per [05 §4](../specs/2026-06-26-public-mcp/05-tool-scope-map.md)):** scope filter + 🔴 **H-U (add require_project_owner to the 5 `memory_*` tools)** + idempotency keys + project_id-as-arg.
+> - **P3:** rate-limit + per-key BYOK-only spend (H-C/PUB-12) + audit. **P4:** human-approval write queue + priced tools.
+>
+> **▶ Deferred (public-mcp):** `D-PMCP-P0-LIVE-SMOKE` (P0 stack-up smoke) · `D-PMCP-MEMORY-PROJECT-OWNER` (H-U, gates knowledge public — also a latent internal tenancy gap) · `D-PMCP-PAID-READ-GATE` (H-B: `glossary_web_search`/`lore_enrichment_auto_enrich` spend without confirm) · `D-PMCP-SPEND-ATTRIBUTION` (H-C: `X-Mcp-Key-Id` carrier, gates priced public).
+>
+---
+
+# (composition branch — historical handoff below) — **Glossary plan-and-execute (Phase 1) SHIPPED** · branch `feat/composition-service` · HEAD `b2439fcf` · 2026-06-26
 
 > **WHAT SHIPPED:** the glossary assistant can now do **multi-step ontology goals in ONE confirm** — the agent calls `glossary_plan(book_id, goal)`, a capable model emits a **typed plan**, and a **deterministic executor** applies it (no ReAct loop). Validated against the literature (typed-plan ≫ ReAct; control-flow-integrity against prompt injection). Built as **reusable SDK kits**, not ad-hoc — see [[project_agentic_sdk_lives_in_loreweave_mcp_kit]]: this project will run many agents, so the pattern lives in `sdks/`.
 >

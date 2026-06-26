@@ -99,7 +99,10 @@ describe('Gateway proxy routing', () => {
       // S1 — not asserted by these routing tests; a valid URL to satisfy the type.
       campaignUrl: urlOf(knowledgeServer),
       loreEnrichmentUrl: urlOf(loreEnrichmentServer),
+      learningUrl: urlOf(knowledgeServer),
+      compositionUrl: urlOf(knowledgeServer),
       jobsUrl: urlOf(knowledgeServer),
+      mcpPublicGatewayUrl: urlOf(knowledgeServer),
     });
     await app.init();
   });
