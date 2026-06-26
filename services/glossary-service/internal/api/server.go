@@ -128,6 +128,10 @@ func (s *Server) Router() http.Handler {
 		r.Post("/books/{book_id}/select-for-context", s.internalSelectForContext)
 		r.Get("/books/{book_id}/known-entities", s.getKnownEntities)
 		r.Post("/books/{book_id}/extract-entities", s.bulkExtractEntities)
+		// M7 backfill — deterministic per-chapter mention_count recount (no LLM). The
+		// producer computes counts (it holds chapter text + matcher) and POSTs a targeted,
+		// idempotent UPDATE batch here.
+		r.Post("/books/{book_id}/recount-mention-counts", s.internalRecountMentionCounts)
 		r.Get("/books/{book_id}/translation-candidates", s.internalTranslationCandidates)
 		r.Post("/books/{book_id}/apply-translations", s.internalApplyTranslations)
 		r.Get("/books/{book_id}/entity-count", s.internalEntityCount)
@@ -414,6 +418,12 @@ func (s *Server) Router() http.Handler {
 			r.Post("/research-jobs/{job_id}/pause", s.pauseResearchJob)
 			r.Post("/research-jobs/{job_id}/resume", s.resumeResearchJob)
 			r.Post("/research-jobs/{job_id}/cancel", s.cancelResearchJob)
+			// M6 — "Canon at chapter N" public read surface (composition inspector).
+			// Both View-grant gated, bare-array responses. known-entities is a public
+			// mirror of the internal getKnownEntities (+ first/last/coverage); chapter-
+			// entities is the new chapter→entities direction (idx_cel_chapter).
+			r.Get("/known-entities", s.publicKnownEntities)
+			r.Get("/chapter-entities", s.publicChapterEntities)
 			r.Route("/entities", func(r chi.Router) {
 				r.Get("/", s.listEntities)
 				r.Post("/", s.createEntity)

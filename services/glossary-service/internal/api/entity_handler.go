@@ -35,6 +35,9 @@ type chapterLinkResp struct {
 	Relevance    string    `json:"relevance"`
 	Note         *string   `json:"note"`
 	AddedAt      time.Time `json:"added_at"`
+	// MentionCount (M7) — per-chapter mention frequency, surfaced so the FE heatmap
+	// reads per-chapter counts instead of a whole-book scalar. 0 for un-recounted rows.
+	MentionCount int `json:"mention_count"`
 }
 
 type attrDefResp struct {
@@ -182,7 +185,7 @@ func (s *Server) loadEntityDetail(ctx context.Context, bookID, entityID uuid.UUI
 
 	// Query 2: chapter links
 	clRows, err := s.pool.Query(ctx, `
-		SELECT link_id, entity_id, chapter_id, chapter_title, chapter_index, relevance, note, added_at
+		SELECT link_id, entity_id, chapter_id, chapter_title, chapter_index, relevance, note, added_at, mention_count
 		FROM chapter_entity_links
 		WHERE entity_id = $1
 		ORDER BY chapter_index NULLS LAST, added_at`, entityID)
@@ -196,7 +199,7 @@ func (s *Server) loadEntityDetail(ctx context.Context, bookID, entityID uuid.UUI
 		var cl chapterLinkResp
 		if err := clRows.Scan(
 			&cl.LinkID, &cl.EntityID, &cl.ChapterID,
-			&cl.ChapterTitle, &cl.ChapterIndex, &cl.Relevance, &cl.Note, &cl.AddedAt,
+			&cl.ChapterTitle, &cl.ChapterIndex, &cl.Relevance, &cl.Note, &cl.AddedAt, &cl.MentionCount,
 		); err != nil {
 			return nil, err
 		}
