@@ -12,7 +12,8 @@ import type {
   PatchEvidencePayload,
 } from '@/features/glossary/types';
 
-const PAGE_SIZE = 20;
+const PAGE_SIZE_DEFAULT = 20;
+export const PAGE_SIZE_OPTIONS = [20, 50, 100] as const;
 
 export function useEvidenceList(
   bookId: string,
@@ -45,6 +46,7 @@ export function useEvidenceList(
   const [sortBy, setSortBy] = useState<EvidenceListParams['sort_by']>('created_at');
   const [sortDir, setSortDir] = useState<EvidenceListParams['sort_dir']>('desc');
   const [offset, setOffset] = useState(0);
+  const [pageSize, setPageSize] = useState<number>(PAGE_SIZE_DEFAULT);
 
   // Track whether we've loaded filter options (only on first page)
   const filterOptionsLoaded = useRef(false);
@@ -54,7 +56,7 @@ export function useEvidenceList(
     setLoading(true);
     try {
       const params: EvidenceListParams = {
-        limit: PAGE_SIZE,
+        limit: pageSize,
         offset,
         sort_by: sortBy,
         sort_dir: sortDir,
@@ -78,14 +80,21 @@ export function useEvidenceList(
       toast.error((e as Error).message);
     }
     setLoading(false);
-  }, [accessToken, bookId, entityId, offset, sortBy, sortDir, typeFilter, attrFilter, chapterFilter, language]);
+  }, [accessToken, bookId, entityId, offset, pageSize, sortBy, sortDir, typeFilter, attrFilter, chapterFilter, language]);
 
   // Single effect for fetching — offset changes are the ONLY trigger for pagination.
   // Filter changes reset offset to 0 via the handler functions, which triggers a re-fetch.
   useEffect(() => { void fetchList(); }, [fetchList]);
 
-  const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE));
-  const currentPage = Math.floor(offset / PAGE_SIZE) + 1;
+  const totalPages = Math.max(1, Math.ceil(total / pageSize));
+  const currentPage = Math.floor(offset / pageSize) + 1;
+  // Jump to an arbitrary page (clamped). Offset-based so it works on the existing API; a
+  // keyset/seek cursor to avoid slow deep OFFSET on >10k rows is a profiling-gated follow-up.
+  const goToPage = useCallback((page: number) => {
+    const clamped = Math.min(Math.max(1, Math.floor(page) || 1), totalPages);
+    setOffset((clamped - 1) * pageSize);
+  }, [totalPages, pageSize]);
+  const changePageSize = useCallback((n: number) => { setPageSize(n); setOffset(0); }, []);
 
   // Filter change handlers that reset offset (preventing double fetch)
   const changeTypeFilter = useCallback((v: EvidenceType | '') => { setTypeFilter(v); setOffset(0); }, []);
@@ -174,7 +183,7 @@ export function useEvidenceList(
     changeTypeFilter, changeAttrFilter, changeChapterFilter, changeLanguage,
     changeSortBy, changeSortDir, clearFilters,
     // Pagination
-    totalPages, currentPage, setOffset, PAGE_SIZE,
+    totalPages, currentPage, setOffset, pageSize, goToPage, changePageSize,
     // Edit
     editingId, editForm, setEditForm, editSaving, startEdit, cancelEdit, saveEdit,
     // Delete

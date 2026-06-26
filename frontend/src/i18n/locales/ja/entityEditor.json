@@ -129,6 +129,11 @@
       "clear_filters": "フィルターをクリア",
       "prev_page": "前のページ",
       "next_page": "次のページ",
+      "first_page": "最初のページ",
+      "last_page": "最後のページ",
+      "jump_to_page": "ページへ移動",
+      "page_size": "1ページの行数",
+      "per_page": "{{n}} / ページ",
       "delete_title": "根拠を削除しますか？",
       "delete_desc": "\"{{attr}}\" の根拠は完全に削除されます。",
       "delete_confirm": "削除"

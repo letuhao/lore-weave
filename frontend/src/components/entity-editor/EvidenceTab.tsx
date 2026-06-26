@@ -1,9 +1,9 @@
 import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { ChevronLeft, ChevronRight, FileText, Loader2 } from 'lucide-react';
+import { ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight, FileText, Loader2 } from 'lucide-react';
 import { ConfirmDialog } from '@/components/shared';
 import type { EvidenceListItem } from '@/features/glossary/types';
-import { useEvidenceList } from './useEvidenceList';
+import { useEvidenceList, PAGE_SIZE_OPTIONS } from './useEvidenceList';
 import { EvidenceFilterBar } from './EvidenceFilterBar';
 import { EvidenceCreateForm } from './EvidenceCreateForm';
 import { EvidenceCard } from './EvidenceCard';
@@ -109,33 +109,51 @@ export function EvidenceTab({ bookId, entityId, bookOriginalLanguage, defaultDis
         </div>
       )}
 
-      {/* Pagination */}
-      {ev.total > ev.PAGE_SIZE && (
-        <div className="flex items-center justify-between pt-2">
-          <span className="text-[10px] text-muted-foreground">
-            {ev.offset + 1}&ndash;{Math.min(ev.offset + ev.PAGE_SIZE, ev.total)} of {ev.total}
-          </span>
-          <div className="flex items-center gap-1">
-            <button
-              type="button"
-              onClick={() => ev.setOffset(Math.max(0, ev.offset - ev.PAGE_SIZE))}
-              disabled={ev.offset === 0}
-              className="rounded p-1 text-muted-foreground hover:bg-secondary disabled:opacity-30 transition-colors"
-              title={t('evidence.tab.prev_page')}
+      {/* Pagination — first/prev/jump/next/last + page-size, so hundreds of pages (a major
+          entity has >10k evidence rows) are navigable instead of one-step prev/next. */}
+      {ev.total > ev.pageSize && (
+        <div className="flex flex-wrap items-center justify-between gap-2 pt-2">
+          <div className="flex items-center gap-2 text-[10px] text-muted-foreground">
+            <span>{ev.offset + 1}&ndash;{Math.min(ev.offset + ev.pageSize, ev.total)} of {ev.total}</span>
+            <select
+              value={ev.pageSize}
+              onChange={(e) => ev.changePageSize(Number(e.target.value))}
+              className="rounded border bg-background px-1 py-0.5 focus:outline-none"
+              aria-label={t('evidence.tab.page_size')}
             >
+              {PAGE_SIZE_OPTIONS.map((n) => (
+                <option key={n} value={n}>{t('evidence.tab.per_page', { n })}</option>
+              ))}
+            </select>
+          </div>
+          <div className="flex items-center gap-1">
+            <button type="button" onClick={() => ev.goToPage(1)} disabled={ev.currentPage === 1}
+              className="rounded p-1 text-muted-foreground hover:bg-secondary disabled:opacity-30 transition-colors" title={t('evidence.tab.first_page')}>
+              <ChevronsLeft className="h-4 w-4" />
+            </button>
+            <button type="button" onClick={() => ev.setOffset(Math.max(0, ev.offset - ev.pageSize))} disabled={ev.offset === 0}
+              className="rounded p-1 text-muted-foreground hover:bg-secondary disabled:opacity-30 transition-colors" title={t('evidence.tab.prev_page')}>
               <ChevronLeft className="h-4 w-4" />
             </button>
-            <span className="text-[10px] text-muted-foreground px-2">
-              {ev.currentPage} / {ev.totalPages}
+            <span className="flex items-center gap-1 px-1 text-[10px] text-muted-foreground">
+              <input
+                type="number"
+                min={1}
+                max={ev.totalPages}
+                value={ev.currentPage}
+                onChange={(e) => ev.goToPage(Number(e.target.value))}
+                className="w-10 rounded border bg-background px-1 py-0.5 text-center focus:outline-none"
+                aria-label={t('evidence.tab.jump_to_page')}
+              />
+              / {ev.totalPages}
             </span>
-            <button
-              type="button"
-              onClick={() => ev.setOffset(ev.offset + ev.PAGE_SIZE)}
-              disabled={ev.offset + ev.PAGE_SIZE >= ev.total}
-              className="rounded p-1 text-muted-foreground hover:bg-secondary disabled:opacity-30 transition-colors"
-              title={t('evidence.tab.next_page')}
-            >
+            <button type="button" onClick={() => ev.setOffset(ev.offset + ev.pageSize)} disabled={ev.offset + ev.pageSize >= ev.total}
+              className="rounded p-1 text-muted-foreground hover:bg-secondary disabled:opacity-30 transition-colors" title={t('evidence.tab.next_page')}>
               <ChevronRight className="h-4 w-4" />
+            </button>
+            <button type="button" onClick={() => ev.goToPage(ev.totalPages)} disabled={ev.currentPage === ev.totalPages}
+              className="rounded p-1 text-muted-foreground hover:bg-secondary disabled:opacity-30 transition-colors" title={t('evidence.tab.last_page')}>
+              <ChevronsRight className="h-4 w-4" />
             </button>
           </div>
         </div>

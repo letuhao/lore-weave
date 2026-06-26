@@ -129,6 +129,11 @@
       "clear_filters": "Clear filters",
       "prev_page": "Previous page",
       "next_page": "Next page",
+      "first_page": "First page",
+      "last_page": "Last page",
+      "jump_to_page": "Jump to page",
+      "page_size": "Rows per page",
+      "per_page": "{{n}} / page",
       "delete_title": "Delete evidence?",
       "delete_desc": "This evidence from \"{{attr}}\" will be permanently deleted.",
       "delete_confirm": "Delete"

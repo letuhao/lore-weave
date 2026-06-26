@@ -129,6 +129,11 @@
       "clear_filters": "清除篩選",
       "prev_page": "上一頁",
       "next_page": "下一頁",
+      "first_page": "第一頁",
+      "last_page": "最後一頁",
+      "jump_to_page": "跳至頁面",
+      "page_size": "每頁列數",
+      "per_page": "{{n}} / 頁",
       "delete_title": "刪除佐證？",
       "delete_desc": "來自「{{attr}}」的佐證將被永久刪除。",
       "delete_confirm": "刪除"

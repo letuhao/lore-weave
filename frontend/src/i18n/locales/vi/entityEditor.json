@@ -129,6 +129,11 @@
       "clear_filters": "Xóa bộ lọc",
       "prev_page": "Trang trước",
       "next_page": "Trang sau",
+      "first_page": "Trang đầu",
+      "last_page": "Trang cuối",
+      "jump_to_page": "Tới trang",
+      "page_size": "Số dòng mỗi trang",
+      "per_page": "{{n}} / trang",
       "delete_title": "Xóa dẫn chứng?",
       "delete_desc": "Dẫn chứng từ \"{{attr}}\" sẽ bị xóa vĩnh viễn.",
       "delete_confirm": "Xóa"
