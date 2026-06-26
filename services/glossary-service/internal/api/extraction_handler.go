@@ -1093,6 +1093,26 @@ func (s *Server) loadAttrStrategyMap(ctx context.Context, bookID uuid.UUID) (map
 	return m, rows.Err()
 }
 
+// seedMergeStrategy is the runtime twin of migration 0039's CASE (merge_strategy_heuristic.go):
+// the default authored merge_strategy for a NEWLY-created ontology attribute, by type. It MUST
+// stay in sync with that migration — identity (name/term, or a required text key)→fill_if_empty;
+// tags→append; everything else→overwrite. Without it, an attribute created at runtime (book
+// adoption clones a NEW source, custom kind/attr) lands on the column DEFAULT 'fill_if_empty' and
+// silently re-freezes on re-extraction, even though the migration healed the rows that existed at
+// migration time (D-EXTRACT-ATTR-MERGE-DEFAULTS — the one-time migration can't cover future rows).
+func seedMergeStrategy(code, fieldType string, isRequired bool) string {
+	switch {
+	case code == "name" || code == "term":
+		return "fill_if_empty"
+	case isRequired && fieldType == "text":
+		return "fill_if_empty"
+	case fieldType == "tags":
+		return "append"
+	default:
+		return "overwrite"
+	}
+}
+
 // strategyToAction maps an authored merge_strategy to the runtime merge action the
 // extraction writeback understands. 'manual' returns "" (the caller skips it with a
 // 'manual' reason — queue for human review, never auto-write). Unknown/empty → the safe

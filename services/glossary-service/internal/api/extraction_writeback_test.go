@@ -1195,6 +1195,72 @@ func TestMergeStrategy_FromOntology(t *testing.T) {
 	}
 }
 
+// TestAdoptClone_PropagatesMergeStrategy — D-EXTRACT-ATTR-MERGE-DEFAULTS review-impl HIGH fix.
+// The migration (0039) is a ONE-TIME re-seed; the book_attributes column DEFAULT is still
+// fill_if_empty, so a book adopted/cloned LATER must inherit the (healed) source's merge_strategy
+// or it re-freezes. This proves the adoption clone COPIES merge_strategy from the System source.
+func TestAdoptClone_PropagatesMergeStrategy(t *testing.T) {
+	pool := openTestDB(t)
+	runK2aMigrations(t, pool)
+	ctx := context.Background()
+	// Heal a System attribute to a non-default strategy (what 0039 does in prod). system_attributes
+	// is SHARED across tests on this DB, so capture the original + RESTORE in cleanup — otherwise the
+	// (now strategy-copying) adopt helper would leak this value into other tests' cloned books.
+	const where = `code='appearance' AND kind_id IN (SELECT kind_id FROM system_kinds WHERE code='character')`
+	var orig string
+	if err := pool.QueryRow(ctx, `SELECT merge_strategy FROM system_attributes WHERE `+where).Scan(&orig); err != nil {
+		t.Fatalf("read original system strategy: %v", err)
+	}
+	if _, err := pool.Exec(ctx, `UPDATE system_attributes SET merge_strategy='append' WHERE `+where); err != nil {
+		t.Fatalf("seed system strategy: %v", err)
+	}
+	t.Cleanup(func() {
+		_, _ = pool.Exec(context.Background(), `UPDATE system_attributes SET merge_strategy=$1 WHERE `+where, orig)
+	})
+	bookID := uuid.MustParse("00000000-0000-0000-0001-0000000a1026")
+	adoptTestBook(t, pool, bookID)
+	t.Cleanup(func() { cleanupExtractBook(pool, bookID.String()) })
+
+	kindID := bookKindID(t, pool, bookID, "character")
+	attrID := bookAttrID(t, pool, bookID, kindID, "appearance")
+	var strat string
+	if err := pool.QueryRow(ctx,
+		`SELECT merge_strategy FROM book_attributes WHERE attr_id=$1`, attrID).Scan(&strat); err != nil {
+		t.Fatalf("read cloned strategy: %v", err)
+	}
+	if strat != "append" {
+		t.Errorf("adoption clone must inherit the System source's merge_strategy; got %q want append "+
+			"(a new book would re-freeze on fill_if_empty)", strat)
+	}
+}
+
+// TestSeedMergeStrategy — D-EXTRACT-ATTR-MERGE-DEFAULTS review fix. The runtime heuristic for
+// a NEWLY-created ontology attribute (book adoption clone of a fresh source, custom kind/attr,
+// user-tier attr) MUST match migration 0039's CASE so new books/attrs don't re-freeze on the
+// column's fill_if_empty default. This locks the mapping (the migration itself has no Go test).
+func TestSeedMergeStrategy(t *testing.T) {
+	cases := []struct {
+		code, fieldType string
+		required        bool
+		want            string
+	}{
+		{"name", "text", true, "fill_if_empty"},   // identity key
+		{"term", "text", false, "fill_if_empty"},  // identity key (glossary term)
+		{"slug", "text", true, "fill_if_empty"},   // any required text key
+		{"aliases", "tags", false, "append"},      // list → accumulate
+		{"abilities", "tags", true, "append"},     // required tags still append
+		{"location", "text", false, "overwrite"},  // non-required state text → advance
+		{"biography", "textarea", false, "overwrite"},
+		{"power_level", "number", false, "overwrite"},
+		{"affiliation", "select", false, "overwrite"},
+	}
+	for _, c := range cases {
+		if got := seedMergeStrategy(c.code, c.fieldType, c.required); got != c.want {
+			t.Errorf("seedMergeStrategy(%q,%q,%v)=%q want %q", c.code, c.fieldType, c.required, got, c.want)
+		}
+	}
+}
+
 // TestMergeStrategy_DefaultSentinel — D-EXTRACT-ATTR-MERGE-DEFAULTS M2. The worker/FE now
 // send an explicit "default" action (instead of forcing "fill", which froze every
 // already-filled attribute on re-extraction) so the attribute's authored merge_strategy

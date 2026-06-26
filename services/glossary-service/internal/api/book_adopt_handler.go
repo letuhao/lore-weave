@@ -219,10 +219,10 @@ func (s *Server) adoptBookOntologyCore(ctx context.Context, bookID, userID uuid.
 	if _, err := tx.Exec(ctx, `
 		INSERT INTO book_attributes
 		  (book_id, kind_id, genre_id, code, name, description, field_type, is_required,
-		   sort_order, options, auto_fill_prompt, translation_hint, source_ref, source_hash)
+		   sort_order, options, auto_fill_prompt, translation_hint, source_ref, source_hash, merge_strategy)
 		SELECT $1, bk.book_kind_id, bg.genre_id, ua.code, ua.name, ua.description, ua.field_type, ua.is_required,
 		       ua.sort_order, ua.options, ua.auto_fill_prompt, ua.translation_hint,
-		       'user:'||ua.attr_id::text, ua.content_hash
+		       'user:'||ua.attr_id::text, ua.content_hash, ua.merge_strategy
 		FROM user_attributes ua
 		JOIN user_kinds  uk ON uk.user_kind_id = ua.kind_id  AND uk.owner_user_id = $4
 		JOIN user_genres ug ON ug.genre_id      = ua.genre_id AND ug.owner_user_id = $4
@@ -238,10 +238,10 @@ func (s *Server) adoptBookOntologyCore(ctx context.Context, bookID, userID uuid.
 	if _, err := tx.Exec(ctx, `
 		INSERT INTO book_attributes
 		  (book_id, kind_id, genre_id, code, name, description, field_type, is_required,
-		   sort_order, options, auto_fill_prompt, translation_hint, source_ref, source_hash)
+		   sort_order, options, auto_fill_prompt, translation_hint, source_ref, source_hash, merge_strategy)
 		SELECT $1, bk.book_kind_id, bg.genre_id, sa.code, sa.name, sa.description, sa.field_type, sa.is_required,
 		       sa.sort_order, sa.options, sa.auto_fill_prompt, sa.translation_hint,
-		       'system:'||sa.attr_id::text, sa.content_hash
+		       'system:'||sa.attr_id::text, sa.content_hash, sa.merge_strategy
 		FROM system_attributes sa
 		JOIN system_kinds  sk ON sk.kind_id  = sa.kind_id
 		JOIN system_genres sg ON sg.genre_id = sa.genre_id
