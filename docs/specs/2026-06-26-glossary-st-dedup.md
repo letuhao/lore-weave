@@ -1,6 +1,6 @@
 # Spec — D-GLOSSARY-ST-DEDUP: multi-language entity-name dedup in glossary-service
 
-**Date:** 2026-06-26 · **Status:** DESIGN (build-through approved) · **Size:** XL (files≈14, logic≈11, side-effects≈4: DB migration + schema + new SDK module + cross-language table)
+**Date:** 2026-06-26 · **Status:** ✅ SHIPPED + LIVE-APPLIED (M1–M4; 63 S/T dup groups merged on 万古神帝, cross-service KG sync verified) · **Size:** XL (files≈14, logic≈11, side-effects≈4: DB migration + schema + new SDK module + cross-language table)
 
 > Sibling of the shipped **D-KG-TL-SIMPLIFIED-TRADITIONAL-DUP** (knowledge-service / Neo4j). That fix folded entity names in the **Python** SDK (`loreweave_extraction.name_normalize`) and wiped the disposable KG. This applies the **same equivalence fold** to **glossary-service** (Go / Postgres), which holds **real user-authored data** — so NO wipe; a journaled dedup-merge migration instead.
 
