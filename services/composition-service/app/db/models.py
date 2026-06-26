@@ -314,3 +314,210 @@ class OutboxEvent(BaseModel):
     published_at: datetime | None = None
     retry_count: int = 0
     last_error: str | None = None
+
+
+# ════════════════════════════════════════════════════════════════════════════
+# NARRATIVE MOTIF LIBRARY (F0 — spec §R1.4 + 00-RECONCILE §1). 2-tier tenancy
+# (system = owner NULL | user = owner set). Row models are the read shape (the
+# `embedding` vector is NEVER projected — it stays server-side, reference_source
+# precedent); the *Args models are the write shape and forbid extra keys (audit
+# S2 — the LLM/router cannot smuggle owner_user_id or an embedding-model choice).
+# ════════════════════════════════════════════════════════════════════════════
+
+# ── enums (type aliases)
+MotifKind = Literal["sequence", "situation", "hook", "emotion_arc", "trope", "pattern", "scheme"]
+MotifSource = Literal["authored", "mined", "adopted", "imported"]
+MotifVisibility = Literal["private", "unlisted", "public"]
+MotifStatus = Literal["draft", "active", "archived"]
+MotifLinkKind = Literal["composed_of", "precedes", "variant_of"]
+Actant = Literal["subject", "object", "sender", "receiver", "helper", "opponent"]
+ArcSource = Literal["authored", "mined", "imported"]
+_Code = Annotated[str, StringConstraints(max_length=200)]
+_Lang = Annotated[str, StringConstraints(max_length=20)]
+_Key = Annotated[str, StringConstraints(max_length=100)]
+
+
+class _ForbidExtra(BaseModel):
+    """Base for write-arg models — extra='forbid' is the S2 guard so a caller (the
+    LLM/router/MCP tool) cannot smuggle `owner_user_id` or an embedding-model choice
+    onto a write. Mirrors loreweave_mcp.ForbidExtra; a local alias so non-MCP
+    callers/routers share it."""
+
+    model_config = {"extra": "forbid"}
+
+
+# ── sub-shapes (validated JSONB members on write)
+class MotifRole(BaseModel):
+    key: _Key
+    actant: Actant
+    label: _Title = ""
+    constraints: list[_Short] = Field(default_factory=list)
+
+
+class MotifBeat(BaseModel):
+    key: _Key
+    label: _Title = ""
+    intent: _Short = ""
+    tension_target: int | None = None             # 1..5
+    order: int = 0
+    reversal: dict[str, Any] | None = None         # §15.2 {thread, from, to}
+    alliance_shift: dict[str, Any] | None = None   # §15.2 {a, b, from, to}
+
+
+class InfoAsymmetry(BaseModel):
+    knows: list[str] = Field(default_factory=list)
+    deceived: list[str] = Field(default_factory=list)
+    gap: _Long = ""
+
+
+# ── row models (the repo return shape; embedding is NEVER projected)
+class Motif(BaseModel):
+    id: UUID
+    owner_user_id: UUID | None = None              # NULL = system tier
+    code: _Code
+    language: _Lang = "en"
+    visibility: MotifVisibility = "private"
+    kind: MotifKind = "sequence"
+    category: _Code | None = None
+    name: _Title
+    summary: _Long = ""
+    genre_tags: list[_Key] = Field(default_factory=list)
+    roles: list[dict[str, Any]] = Field(default_factory=list)         # validated via MotifRole on write
+    beats: list[dict[str, Any]] = Field(default_factory=list)         # validated via MotifBeat on write
+    preconditions: list[dict[str, Any]] = Field(default_factory=list)
+    effects: list[dict[str, Any]] = Field(default_factory=list)
+    info_asymmetry: dict[str, Any] | None = None
+    annotations: dict[str, Any] = Field(default_factory=dict)         # RECONCILE D1 — template-level scheme props
+    tension_target: int | None = None
+    emotion_target: Annotated[str, StringConstraints(max_length=100)] | None = None
+    examples: list[dict[str, Any]] = Field(default_factory=list)
+    abstraction_confidence: Literal["high", "med", "low"] | None = None
+    source: MotifSource = "authored"
+    imported_derived: bool = False                 # B-3 lineage taint (clone propagates; trigger reads)
+    source_ref: _Short | None = None
+    source_version: int | None = None
+    embedding_model: _Title = ""                   # the vector itself is omitted from the projection
+    embedding_dim: int | None = None
+    judge_score: Decimal | None = None
+    mining_support: int | None = None
+    status: MotifStatus = "active"
+    version: int = 1
+    created_at: datetime | None = None
+    updated_at: datetime | None = None
+
+
+class MotifLink(BaseModel):
+    id: UUID
+    from_motif_id: UUID
+    to_motif_id: UUID
+    kind: MotifLinkKind
+    ord: int | None = None
+    created_at: datetime | None = None
+
+
+class MotifApplication(BaseModel):
+    id: UUID
+    user_id: UUID
+    project_id: UUID
+    book_id: UUID
+    motif_id: UUID | None = None                   # SET NULL if the motif is archived
+    motif_version: int | None = None
+    outline_node_id: UUID | None = None
+    role_bindings: dict[str, Any] = Field(default_factory=dict)
+    annotations: dict[str, Any] = Field(default_factory=dict)
+    created_at: datetime | None = None
+
+
+class ArcPlacement(BaseModel):                     # one layout[] entry
+    motif_code: _Code
+    motif_id: UUID | None = None                   # resolved id (R1.4)
+    thread: _Key
+    span_start: int
+    span_end: int
+    ord: int = 0
+    role_hints: dict[str, Any] = Field(default_factory=dict)
+    triggers: list[str] = Field(default_factory=list)   # §15.3 other-placement ids
+
+
+class ArcTemplate(BaseModel):
+    id: UUID
+    owner_user_id: UUID | None = None
+    code: _Code
+    language: _Lang = "en"
+    visibility: MotifVisibility = "private"
+    name: _Title
+    summary: _Long = ""
+    genre_tags: list[_Key] = Field(default_factory=list)
+    chapter_span: int | None = None
+    threads: list[dict[str, Any]] = Field(default_factory=list)
+    layout: list[dict[str, Any]] = Field(default_factory=list)
+    pacing: list[dict[str, Any]] = Field(default_factory=list)
+    arc_roster: list[dict[str, Any]] = Field(default_factory=list)
+    source: ArcSource = "authored"
+    source_ref: _Short | None = None
+    source_version: int | None = None
+    embedding_model: _Title = ""
+    embedding_dim: int | None = None
+    status: MotifStatus = "active"
+    version: int = 1
+    created_at: datetime | None = None
+    updated_at: datetime | None = None
+
+
+class ImportSource(BaseModel):
+    id: UUID
+    owner_user_id: UUID
+    project_id: UUID | None = None
+    title: _Title = ""
+    content: _Long
+    created_at: datetime | None = None
+
+
+# ── retrieval result (the FROZEN contract W3 produces / W2 + the MCP suggest consume)
+class MotifCandidate(BaseModel):
+    motif: Motif
+    score: float
+    match_reason: dict[str, Any] = Field(default_factory=dict)   # {tension, genre, precond, cosine}
+
+
+# ── WRITE-ARG models (ForbidExtra — owner is NEVER an arg; the repo stamps it; there
+# is NO embedding-model arg — the model is platform config, never a write choice, B-1)
+class MotifCreateArgs(_ForbidExtra):
+    code: _Code
+    name: _Title
+    language: _Lang = "en"
+    kind: MotifKind = "sequence"
+    category: _Code | None = None
+    summary: _Long = ""
+    genre_tags: list[_Key] = Field(default_factory=list)
+    roles: list[MotifRole] = Field(default_factory=list)
+    beats: list[MotifBeat] = Field(default_factory=list)
+    preconditions: list[dict[str, Any]] = Field(default_factory=list)
+    effects: list[dict[str, Any]] = Field(default_factory=list)
+    info_asymmetry: InfoAsymmetry | None = None
+    annotations: dict[str, Any] = Field(default_factory=dict)   # RECONCILE D1
+    tension_target: Annotated[int, Field(ge=1, le=5)] | None = None
+    emotion_target: Annotated[str, StringConstraints(max_length=100)] | None = None
+    examples: list[dict[str, Any]] = Field(default_factory=list)
+    visibility: MotifVisibility = "private"            # public/unlisted allowed at create; system is migrate-only
+
+
+class MotifPatchArgs(_ForbidExtra):
+    # every field optional (PATCH semantics); owner/code/language/source are NOT
+    # patchable here (identity/lineage are immutable post-create — clone to re-key).
+    name: _Title | None = None
+    kind: MotifKind | None = None
+    category: _Code | None = None
+    summary: _Long | None = None
+    genre_tags: list[_Key] | None = None
+    roles: list[MotifRole] | None = None
+    beats: list[MotifBeat] | None = None
+    preconditions: list[dict[str, Any]] | None = None
+    effects: list[dict[str, Any]] | None = None
+    info_asymmetry: InfoAsymmetry | None = None
+    annotations: dict[str, Any] | None = None          # RECONCILE D1
+    tension_target: Annotated[int, Field(ge=1, le=5)] | None = None
+    emotion_target: Annotated[str, StringConstraints(max_length=100)] | None = None
+    examples: list[dict[str, Any]] | None = None
+    visibility: MotifVisibility | None = None
+    status: MotifStatus | None = None

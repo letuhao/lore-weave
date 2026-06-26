@@ -22,6 +22,8 @@ from app.db.repositories.derivatives import DerivativesRepo
 from app.db.repositories.generation_corrections import GenerationCorrectionsRepo
 from app.db.repositories.generation_jobs import GenerationJobsRepo
 from app.db.repositories.grounding_pins import GroundingPinsRepo
+from app.db.repositories.motif_repo import MotifRepo
+from app.db.repositories.motif_retrieve import MotifRetriever
 from app.db.repositories.narrative_thread import NarrativeThreadRepo
 from app.db.repositories.outline import OutlineRepo
 from app.db.repositories.references import ReferencesRepo
@@ -93,6 +95,19 @@ async def get_generation_corrections_repo() -> GenerationCorrectionsRepo:
 
 async def get_structure_templates_repo() -> StructureTemplatesRepo:
     return StructureTemplatesRepo(get_pool())
+
+
+async def get_motif_repo() -> MotifRepo:
+    """F0 — the narrative motif library CRUD + clone primitive. W1 extends it with
+    the HTTP surface (adopt/publish/catalog); the engine (W2)/MCP (W4) consume the
+    same instance through this factory."""
+    return MotifRepo(get_pool())
+
+
+async def get_motif_retriever() -> MotifRetriever:
+    """F0 frozen signature; W3 implements. The planner (W2) and the MCP
+    _suggest_for_chapter (W4) both resolve candidates through this one core."""
+    return MotifRetriever(get_pool())
 
 
 async def get_references_repo() -> ReferencesRepo:

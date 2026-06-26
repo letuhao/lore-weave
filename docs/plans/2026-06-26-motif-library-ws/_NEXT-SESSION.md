@@ -1,5 +1,43 @@
 # ▶ NEXT SESSION — Narrative Motif Library BUILD (handoff)
 
+## STATUS (2026-06-26) — F0 BUILD COMPLETE + FROZEN · Wave 1 is next
+
+**F0 is built, verified, and committed.** The shared contract is frozen. Wave 1
+(W1–W7) may now fan out in worktrees (disjoint per `00-RECONCILE §4`).
+
+**F0 delivered** (`services/composition-service`): `db/migrate.py` (5 tables —
+`motif`/`motif_link`/`motif_application`/`arc_template`/`import_source` — + `consumed_tokens`,
+2×2 tenancy partials, the `motif_user_owned` CHECK, and 3 triggers: cycle/same-tier,
+cross-project scope, publish-strip); `db/models.py` (row + `ForbidExtra` arg models);
+`db/repositories/motif_repo.py` (CRUD + the real `clone`); `db/repositories/motif_retrieve.py`
+(frozen stub, W3 impls); `config.py` + `deps.py`; `tests/contracts/` + `tests/integration/db/test_motif_migrate.py` + `test_motif_repo.py`.
+
+**6 reconcile deltas folded:** D1 `motif.annotations`; D2 `motif_embed_owner_id` +
+`motif_candidate_ceiling`; D3 `consumed_tokens` + `usage_billing_service_url`; D4 seeds
+embed NULL (retriever tolerates NULL); D5 no-extension lineage (`'lineage:'||id`); D6
+system seeds `unlisted`.
+
+**`/review-impl` ran on F0 — 4 findings, all fixed in-commit (none deferred):**
+- #1 no write-method behavior tests → added `test_motif_repo.py` (create/patch/archive/clone).
+- #2 `clone` NULLed `embedded_summary_hash`, forcing W3 to redundantly re-embed → now copies it.
+- #3 **B-3 bypass**: publish-strip keyed on `source='imported'` only, so an *adopted* clone
+  of an imported motif would leak source passages on publish — matched W1 §1's documented
+  expectation of `('imported','adopted'-from-imported)`. **Fixed** with an `imported_derived`
+  lineage-taint column that `clone()` propagates and the trigger checks (adopted-from-AUTHORED
+  stays false, so the strip is not over-broad). **W1's publish test should assert this path.**
+- #4 foreign-`unlisted` IDOR not covered → added to the behavior test.
+
+**Frozen-contract note for Wave 1:** the `Motif` model + `motif` table now carry
+`imported_derived BOOLEAN` (B-3 taint) and `annotations JSONB` (D1) — additive; consume them,
+do not re-add. `MotifRepo.patch` returns `Motif | None` (None = not-found/not-owned) and raises
+`VersionMismatchError` on stale version (house convention).
+
+**VERIFY:** `27 passed` on a throwaway DB (`infra-postgres-1`, PG18) — existing migrate (3, no
+regression) + motif migrate risk-guards (6) + motif repo behavior (10) + contracts (8). Guards
+green: B-1/B-2/B-3/H-2/H-5/N-1 + `get_visible` IDOR.
+
+---
+
 Paste the block below into the new session. Design+plan phase is COMPLETE + committed; next is BUILD (F0 first).
 
 ---

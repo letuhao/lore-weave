@@ -125,5 +125,35 @@ class Settings(BaseSettings):
     # compress's OWN prompt. Keep the most-recent chars (continuity-relevant).
     compress_max_input_chars: int = 24000
 
+    # ── Narrative motif library (F0 + 00-RECONCILE §1). ONE platform embedding model
+    # for ALL motif vectors (R1.1.2/B-1) — NOT the user's BYOK model — so cross-tier
+    # cosine is correct and a clone can copy the vector. Resolved via provider-registry
+    # /internal/embed (the embedding_client) as a (source, ref) pair, PLATFORM-fixed.
+    # The owner_id is the reserved platform-owner identity whose BYOK credential holds
+    # the platform embedding model (the local-rerank-as-platform precedent — D2). W3
+    # fails closed if model_ref/owner are unset before its embed pipeline runs.
+    motif_embed_model_source: str = "platform_model"
+    motif_embed_model_ref: str = ""              # platform embedding model id; W3 asserts non-empty
+    motif_embed_owner_id: str = ""               # RECONCILE D2 — reserved platform-owner row
+    # Retrieval (W3/W2): the SQL pre-filter ceiling (rows loaded for the cosine pass),
+    # the top-K returned, and the minimum cosine for a planner-bindable match.
+    motif_candidate_ceiling: int = 500           # RECONCILE D2 (W3) — pre-filter cap
+    motif_retrieve_top_k: int = 10
+    motif_min_score: float = 0.30
+    # Anti-repetition (W2): max times one motif may be applied within a single book
+    # before the planner/UX warns (the cowrite craft-nudge made structural — §11).
+    motif_max_reapply: int = 3
+    # Mining gate (P3/W8): mined drafts below this judge score are shown, never
+    # silently added (no silent drop — §11).
+    motif_mine_min_judge: float = 0.60
+    # Per-user quotas (B-4 — mirror D-MCP-BOOK-CREATE-QUOTA). The publish/adopt
+    # ceilings the W1 router + W4 MCP pre-check; 0 = unlimited (dev default off).
+    motif_max_public: int = 0
+    motif_max_adopt: int = 0
+    # RECONCILE D3 — the Tier-W usage-billing precheck endpoint (W4's mine/import
+    # ops; composition-service has no billing client → net-new in W4). Reuses
+    # internal_service_token for the internal call.
+    usage_billing_service_url: str = "http://usage-billing-service:8086"
+
 
 settings = Settings()  # type: ignore[call-arg]
