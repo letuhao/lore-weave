@@ -28,6 +28,10 @@ export function EditServiceModal({ provider, model, onClose, onUpdated }: Props)
   const [endpoint, setEndpoint] = useState(provider.endpoint_base_url ?? '');
   const [secret, setSecret] = useState('');
   const [alias, setAlias] = useState(model?.alias ?? '');
+  // '' = unlimited (request-as-demand). Only a positive integer caps concurrency.
+  const [concurrency, setConcurrency] = useState(
+    provider.max_concurrency != null ? String(provider.max_concurrency) : '',
+  );
   const [saving, setSaving] = useState(false);
 
   const canSubmit = !!endpoint.trim() && !saving;
@@ -38,10 +42,16 @@ export function EditServiceModal({ provider, model, onClose, onUpdated }: Props)
     try {
       // Endpoint + key on the credential. Send the secret only when the user typed
       // a new one (empty field keeps the existing secret — never blanks it).
-      const credPatch: { endpoint_base_url?: string; secret?: string } = {};
+      const credPatch: { endpoint_base_url?: string; secret?: string; max_concurrency?: number | null } = {};
       if (endpoint.trim() !== (provider.endpoint_base_url ?? '')) credPatch.endpoint_base_url = endpoint.trim();
       if (secret) credPatch.secret = secret;
-      if (credPatch.endpoint_base_url !== undefined || credPatch.secret !== undefined) {
+      // Only send max_concurrency when it changed. '' → null clears to unlimited;
+      // a positive integer sets the cap. (BE PATCH is present-aware, so omitting
+      // the key leaves the existing value untouched.)
+      const nextConc = concurrency.trim() === '' ? null : Math.max(0, parseInt(concurrency, 10) || 0) || null;
+      const prevConc = provider.max_concurrency ?? null;
+      if (nextConc !== prevConc) credPatch.max_concurrency = nextConc;
+      if (Object.keys(credPatch).length > 0) {
         await providerApi.patchProvider(accessToken, provider.provider_credential_id, credPatch);
       }
       // Alias on the user_model.
@@ -104,7 +114,7 @@ export function EditServiceModal({ provider, model, onClose, onUpdated }: Props)
         </div>
 
         {/* Alias */}
-        <div className="mb-4">
+        <div className="mb-3">
           <label className="mb-1 block text-xs font-medium">{t('services.add_dialog.alias')}</label>
           <input
             type="text"
@@ -114,6 +124,21 @@ export function EditServiceModal({ provider, model, onClose, onUpdated }: Props)
             disabled={!model}
             className="h-9 w-full rounded-md border bg-background px-3 text-[13px] focus:border-ring focus:outline-none focus:ring-1 focus:ring-ring/30 disabled:opacity-50"
           />
+        </div>
+
+        {/* Max concurrent requests */}
+        <div className="mb-4">
+          <label className="mb-1 block text-xs font-medium">{t('services.edit_dialog.max_concurrency')}</label>
+          <input
+            type="number"
+            min={0}
+            step={1}
+            value={concurrency}
+            onChange={(e) => setConcurrency(e.target.value)}
+            placeholder={t('services.edit_dialog.max_concurrency_ph')}
+            className="h-9 w-full rounded-md border bg-background px-3 text-[13px] focus:border-ring focus:outline-none focus:ring-1 focus:ring-ring/30"
+          />
+          <p className="mt-1 text-[10px] text-muted-foreground">{t('services.edit_dialog.max_concurrency_hint')}</p>
         </div>
 
         <div className="flex justify-end gap-2">

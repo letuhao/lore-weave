@@ -123,7 +123,6 @@ func NewServer(pool *pgxpool.Pool, cfg *config.Config, notifier jobs.Notifier, a
 			if opts, err := redis.ParseURL(cfg.RedisURL); err == nil {
 				rdb := redis.NewClient(opts)
 				gov := ratelimit.NewGovernor(rdb, ratelimit.GovernorConfig{
-					CloudMax:       cfg.GovernorCloudMax,
 					Lease:          time.Duration(cfg.GovernorLeaseMs) * time.Millisecond,
 					AcquireTimeout: time.Duration(cfg.GovernorAcquireTimeoutMs) * time.Millisecond,
 				})
@@ -185,21 +184,32 @@ func NewServer(pool *pgxpool.Pool, cfg *config.Config, notifier jobs.Notifier, a
 		// semaphore (= governor.MaxFor), so a slow local job DELAYS the queue
 		// instead of failing everyone behind it on acquire (the incident class).
 		if cfg.LLMJobQueueEnabled && cfg.RabbitMQURL != "" {
-			if jq, qerr := jobs.NewJobQueue(cfg.RabbitMQURL, cfg.GovernorCloudMax, slog.Default()); qerr != nil {
+			if jq, qerr := jobs.NewJobQueue(cfg.RabbitMQURL, slog.Default()); qerr != nil {
 				slog.Warn("LLM job queue: init failed — direct dispatch", "err", qerr)
 			} else {
 				s.jobQueue = jq
-				// resolve: job_id → provider kind (the semaphore class).
-				resolve := func(ctx context.Context, jobID uuid.UUID) (string, bool) {
+				// resolve: job_id → (credential concurrency class, its cap). The
+				// cap is per-credential (NULL → unlimited); see ResolveConcurrency.
+				// FAIL-OPEN on a transient lookup error (run ungoverned) rather than
+				// fail-closed: returning ok=false makes handleDelivery ACK+DROP the
+				// message, stranding a pending job forever (the truth-sweeper only
+				// recovers stuck `running`, never `pending`). Only a genuinely-gone
+				// model (ok=false, no error) is dropped. Mirrors Process's fail-open.
+				resolve := func(ctx context.Context, jobID uuid.UUID) (string, int, bool) {
 					d, lerr := s.jobsRepo.LoadForProcess(ctx, jobID)
 					if lerr != nil {
-						return "", false
+						// Row truly gone → ErrNoRows; Process re-checks status anyway.
+						// Run ungoverned so a transient load blip can't strand the job.
+						return "ungoverned:" + jobID.String(), 0, true
 					}
-					kind, ok, rerr := s.jobsRepo.ResolveKind(ctx, d.ModelSource, d.OwnerUserID, d.ModelRef)
-					if rerr != nil || !ok {
-						return "", false
+					key, limit, ok, rerr := s.jobsRepo.ResolveConcurrency(ctx, d.ModelSource, d.OwnerUserID, d.ModelRef)
+					if rerr != nil {
+						return "ungoverned:" + jobID.String(), 0, true // transient → fail open
 					}
-					return kind, true
+					if !ok {
+						return "", 0, false // model genuinely gone → drop
+					}
+					return key, limit, true
 				}
 				// run: Phase-0 cancellable ctx + jobID→cancel registration, SYNC
 				// (the consumer acks only after the job is terminal). DELETE still
@@ -1035,7 +1045,8 @@ func (s *Server) createProviderCredential(w http.ResponseWriter, r *http.Request
 		Secret          string `json:"secret"`
 		EndpointBaseURL string `json:"endpoint_base_url"`
 		Active          *bool  `json:"active"`
-		APIStandard     string `json:"api_standard"` // openai_compatible, anthropic, ollama, lm_studio
+		APIStandard     string `json:"api_standard"`    // openai_compatible, anthropic, ollama, lm_studio
+		MaxConcurrency  *int   `json:"max_concurrency"` // nil/≤0 → unlimited (request-as-demand)
 	}
 	if err := json.NewDecoder(r.Body).Decode(&in); err != nil {
 		writeError(w, http.StatusBadRequest, "M03_VALIDATION_ERROR", "invalid payload")
@@ -1080,13 +1091,14 @@ func (s *Server) createProviderCredential(w http.ResponseWriter, r *http.Request
 		Status               string    `json:"status"`
 		CreatedAt            time.Time `json:"created_at"`
 		UpdatedAt            time.Time `json:"updated_at"`
+		MaxConcurrency       *int      `json:"max_concurrency"`
 	}
 	err = s.pool.QueryRow(r.Context(), `
-INSERT INTO provider_credentials(owner_user_id, provider_kind, display_name, endpoint_base_url, secret_ciphertext, secret_key_ref, status, api_standard)
-VALUES ($1,$2,$3,$4,$5,$6,$7,$8)
-RETURNING provider_credential_id, provider_kind, display_name, endpoint_base_url, status, created_at, updated_at
-`, userID, in.ProviderKind, in.DisplayName, nullableString(in.EndpointBaseURL), encryptedSecret, keyRef, status, apiStandard).
-		Scan(&out.ProviderCredentialID, &out.ProviderKind, &out.DisplayName, &out.EndpointBaseURL, &out.Status, &out.CreatedAt, &out.UpdatedAt)
+INSERT INTO provider_credentials(owner_user_id, provider_kind, display_name, endpoint_base_url, secret_ciphertext, secret_key_ref, status, api_standard, max_concurrency)
+VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)
+RETURNING provider_credential_id, provider_kind, display_name, endpoint_base_url, status, created_at, updated_at, max_concurrency
+`, userID, in.ProviderKind, in.DisplayName, nullableString(in.EndpointBaseURL), encryptedSecret, keyRef, status, apiStandard, nullableConcurrency(in.MaxConcurrency)).
+		Scan(&out.ProviderCredentialID, &out.ProviderKind, &out.DisplayName, &out.EndpointBaseURL, &out.Status, &out.CreatedAt, &out.UpdatedAt, &out.MaxConcurrency)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "M03_PROVIDER_SAVE_FAILED", "failed to create provider credential")
 		return
@@ -1101,6 +1113,38 @@ func nullableString(v string) any {
 	return v
 }
 
+// nullableConcurrency normalizes a max_concurrency input: nil or ≤0 → NULL
+// (unlimited; the DB column's "no cap" sentinel), a positive value → that cap.
+func nullableConcurrency(v *int) any {
+	if v == nil || *v <= 0 {
+		return nil
+	}
+	return *v
+}
+
+// optionalInt distinguishes "field absent from the JSON body" (Present=false →
+// leave the column untouched on PATCH) from "field present, possibly null"
+// (Present=true, Value=nil → clear to unlimited). A plain *int can't tell these
+// apart — both decode to nil — which would make clearing-to-unlimited impossible.
+type optionalInt struct {
+	Present bool
+	Value   *int
+}
+
+func (o *optionalInt) UnmarshalJSON(b []byte) error {
+	o.Present = true
+	if string(b) == "null" {
+		o.Value = nil
+		return nil
+	}
+	var v int
+	if err := json.Unmarshal(b, &v); err != nil {
+		return err
+	}
+	o.Value = &v
+	return nil
+}
+
 func (s *Server) listProviderCredentials(w http.ResponseWriter, r *http.Request) {
 	userID, _, ok := s.auth(r)
 	if !ok {
@@ -1109,7 +1153,7 @@ func (s *Server) listProviderCredentials(w http.ResponseWriter, r *http.Request)
 	}
 	rows, err := s.pool.Query(r.Context(), `
 SELECT provider_credential_id, provider_kind, display_name, endpoint_base_url, status, created_at, updated_at,
-       (secret_ciphertext IS NOT NULL AND secret_ciphertext <> '') AS has_secret, api_standard
+       (secret_ciphertext IS NOT NULL AND secret_ciphertext <> '') AS has_secret, api_standard, max_concurrency
 FROM provider_credentials
 WHERE owner_user_id=$1 AND status <> 'archived'
 ORDER BY created_at DESC
@@ -1129,11 +1173,12 @@ ORDER BY created_at DESC
 		UpdatedAt            time.Time `json:"updated_at"`
 		HasSecret            bool      `json:"has_secret"`
 		APIStandard          string    `json:"api_standard"`
+		MaxConcurrency       *int      `json:"max_concurrency"`
 	}
 	items := make([]row, 0)
 	for rows.Next() {
 		var item row
-		if err := rows.Scan(&item.ProviderCredentialID, &item.ProviderKind, &item.DisplayName, &item.EndpointBaseURL, &item.Status, &item.CreatedAt, &item.UpdatedAt, &item.HasSecret, &item.APIStandard); err != nil {
+		if err := rows.Scan(&item.ProviderCredentialID, &item.ProviderKind, &item.DisplayName, &item.EndpointBaseURL, &item.Status, &item.CreatedAt, &item.UpdatedAt, &item.HasSecret, &item.APIStandard, &item.MaxConcurrency); err != nil {
 			writeError(w, http.StatusInternalServerError, "M03_PROVIDER_QUERY_FAILED", "failed to parse provider row")
 			return
 		}
@@ -1153,11 +1198,12 @@ func (s *Server) patchProviderCredential(w http.ResponseWriter, r *http.Request)
 		return
 	}
 	var in struct {
-		DisplayName     *string `json:"display_name"`
-		Secret          *string `json:"secret"`
-		EndpointBaseURL *string `json:"endpoint_base_url"`
-		Active          *bool   `json:"active"`
-		APIStandard     *string `json:"api_standard"`
+		DisplayName     *string     `json:"display_name"`
+		Secret          *string     `json:"secret"`
+		EndpointBaseURL *string     `json:"endpoint_base_url"`
+		Active          *bool       `json:"active"`
+		APIStandard     *string     `json:"api_standard"`
+		MaxConcurrency  optionalInt `json:"max_concurrency"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&in); err != nil {
 		writeError(w, http.StatusBadRequest, "M03_VALIDATION_ERROR", "invalid payload")
@@ -1191,9 +1237,12 @@ SET
   secret_key_ref = COALESCE($6, secret_key_ref),
   status = COALESCE($7, status),
   api_standard = COALESCE($8, api_standard),
+  -- present-aware: $9 true → set $10 (nil clears to unlimited); false → keep
+  max_concurrency = CASE WHEN $9::bool THEN $10 ELSE max_concurrency END,
   updated_at = now()
 WHERE provider_credential_id = $1 AND owner_user_id = $2 AND status <> 'archived'
-`, id, userID, in.DisplayName, in.EndpointBaseURL, encryptedSecret, keyRef, statusPatch, in.APIStandard)
+`, id, userID, in.DisplayName, in.EndpointBaseURL, encryptedSecret, keyRef, statusPatch, in.APIStandard,
+		in.MaxConcurrency.Present, nullableConcurrency(in.MaxConcurrency.Value))
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "M03_PROVIDER_UPDATE_FAILED", "failed to update provider credential")
 		return
@@ -1216,13 +1265,14 @@ func (s *Server) getProviderCredentialByID(w http.ResponseWriter, r *http.Reques
 		UpdatedAt            time.Time `json:"updated_at"`
 		HasSecret            bool      `json:"has_secret"`
 		APIStandard          string    `json:"api_standard"`
+		MaxConcurrency       *int      `json:"max_concurrency"`
 	}
 	err := s.pool.QueryRow(r.Context(), `
 SELECT provider_credential_id, provider_kind, display_name, endpoint_base_url, status, created_at, updated_at,
-       (secret_ciphertext IS NOT NULL AND secret_ciphertext <> '') AS has_secret, api_standard
+       (secret_ciphertext IS NOT NULL AND secret_ciphertext <> '') AS has_secret, api_standard, max_concurrency
 FROM provider_credentials
 WHERE provider_credential_id=$1 AND owner_user_id=$2
-`, id, userID).Scan(&out.ProviderCredentialID, &out.ProviderKind, &out.DisplayName, &out.EndpointBaseURL, &out.Status, &out.CreatedAt, &out.UpdatedAt, &out.HasSecret, &out.APIStandard)
+`, id, userID).Scan(&out.ProviderCredentialID, &out.ProviderKind, &out.DisplayName, &out.EndpointBaseURL, &out.Status, &out.CreatedAt, &out.UpdatedAt, &out.HasSecret, &out.APIStandard, &out.MaxConcurrency)
 	if err == pgx.ErrNoRows {
 		writeError(w, http.StatusNotFound, "M03_PROVIDER_NOT_FOUND", "provider credential not found")
 		return

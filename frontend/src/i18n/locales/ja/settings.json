@@ -124,6 +124,9 @@
       "api_key_ph_keep": "••••••••  （現在のキーを保持する場合は空欄）",
       "api_key_ph": "sk-...",
       "api_key_keep_hint": "既存のキーを保持する場合は空欄にしてください。",
+      "max_concurrency": "最大同時リクエスト数",
+      "max_concurrency_ph": "無制限",
+      "max_concurrency_hint": "このプロバイダーが同時に実行するリクエスト数。空欄で無制限（インフラ側が判断）。バックエンドに既知の上限がある場合（例：ローカルGPU）のみ数値を設定してください。",
       "cancel": "キャンセル",
       "saving": "保存中...",
       "submit": "変更を保存"
@@ -296,6 +299,9 @@
       "key": "APIキー",
       "key_ph_keep": "現在のキーを保持するには空のまま",
       "key_keep_hint": "空のままにすると既存のキーを保持します。",
+      "max_concurrency": "最大同時リクエスト数",
+      "max_concurrency_ph": "無制限",
+      "max_concurrency_hint": "このサービスが同時に実行するリクエスト数。空欄で無制限（インフラ側が判断）。バックエンドに既知の上限がある場合のみ数値を設定してください。",
       "cancel": "キャンセル",
       "submit": "保存",
       "saving": "保存中…"

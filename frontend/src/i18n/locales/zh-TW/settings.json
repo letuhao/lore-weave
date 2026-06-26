@@ -124,6 +124,9 @@
       "api_key_ph_keep": "••••••••  （留空以保留目前金鑰）",
       "api_key_ph": "sk-...",
       "api_key_keep_hint": "留空以保留現有金鑰。",
+      "max_concurrency": "最大並行請求數",
+      "max_concurrency_ph": "無限制",
+      "max_concurrency_hint": "此供應商同時執行的請求數。留空表示無限制（由基礎設施決定）。僅在您的後端有已知上限時（例如本機 GPU）才設定數字。",
       "cancel": "取消",
       "saving": "儲存中...",
       "submit": "儲存變更"
@@ -296,6 +299,9 @@
       "key": "API 金鑰",
       "key_ph_keep": "留空以保留目前的金鑰",
       "key_keep_hint": "留空則保留現有金鑰。",
+      "max_concurrency": "最大並行請求數",
+      "max_concurrency_ph": "無限制",
+      "max_concurrency_hint": "此服務同時執行的請求數。留空表示無限制（由基礎設施決定）。僅在您的後端有已知上限時才設定數字。",
       "cancel": "取消",
       "submit": "儲存",
       "saving": "儲存中…"

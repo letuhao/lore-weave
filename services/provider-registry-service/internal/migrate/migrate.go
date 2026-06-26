@@ -61,6 +61,13 @@ ALTER TABLE platform_models DROP CONSTRAINT IF EXISTS platform_models_provider_k
 -- api_standard: which API protocol this provider speaks (openai_compatible, anthropic, ollama, lm_studio)
 ALTER TABLE provider_credentials ADD COLUMN IF NOT EXISTS api_standard TEXT NOT NULL DEFAULT 'openai_compatible';
 
+-- D-PROVIDER-CONCURRENCY-CONFIG: per-credential concurrency cap. NULL = unlimited
+-- (request-as-demand; the infra is the limiter). The user sets this ONLY when they
+-- know their own backend's limit (e.g. a local GPU that can run N calls at once).
+-- Replaces the old hardcoded per-kind cap (local→1, cloud→GOVERNOR_CLOUD_MAX): a
+-- provider's capacity is a property of THAT credential's backend, not its kind.
+ALTER TABLE provider_credentials ADD COLUMN IF NOT EXISTS max_concurrency INT;
+
 CREATE TABLE IF NOT EXISTS user_model_tags (
   user_model_tag_id UUID PRIMARY KEY DEFAULT uuidv7(),
   user_model_id UUID NOT NULL REFERENCES user_models(user_model_id) ON DELETE CASCADE,

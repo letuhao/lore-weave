@@ -208,31 +208,41 @@ FROM llm_jobs WHERE job_id = $1
 	return d, nil
 }
 
-// ResolveKind reads a model's provider_kind (the queue routing key + governor
-// concurrency class). found=false → model gone (caller 404s). Mirrors
-// EstimateModelInfo's lookup, kind-only (no pricing decode).
-func (r *Repo) ResolveKind(ctx context.Context, modelSource string, ownerUserID, modelRef uuid.UUID) (string, bool, error) {
-	var kind string
-	var err error
+// ResolveConcurrency resolves a job's concurrency CLASS — the key the governor +
+// queue serialize on — and that class's per-credential cap. The key is the
+// provider_credential_id (so all jobs sharing one BYOK credential share its
+// limit, regardless of provider kind). limit ≤ 0 means UNLIMITED (NULL
+// max_concurrency → request-as-demand; the backend infra is the only limiter).
+// found=false → model gone (caller acks+drops). Platform models have no
+// per-user credential → keyed by platform_model_id, always unlimited.
+func (r *Repo) ResolveConcurrency(ctx context.Context, modelSource string, ownerUserID, modelRef uuid.UUID) (key string, limit int, ok bool, err error) {
+	var credID uuid.UUID
+	var maxConc *int
 	switch modelSource {
 	case "user_model":
-		err = r.pool.QueryRow(ctx,
-			`SELECT provider_kind FROM user_models WHERE user_model_id=$1 AND owner_user_id=$2`,
-			modelRef, ownerUserID).Scan(&kind)
+		err = r.pool.QueryRow(ctx, `
+SELECT pc.provider_credential_id, pc.max_concurrency
+FROM user_models um
+JOIN provider_credentials pc ON pc.provider_credential_id = um.provider_credential_id
+WHERE um.user_model_id=$1 AND um.owner_user_id=$2`,
+			modelRef, ownerUserID).Scan(&credID, &maxConc)
 	case "platform_model":
-		err = r.pool.QueryRow(ctx,
-			`SELECT provider_kind FROM platform_models WHERE platform_model_id=$1`,
-			modelRef).Scan(&kind)
+		// Platform models are shared/cloud — no per-user credential, no cap.
+		// Key by the model id so the (unlimited) class is still distinct.
+		return "platform:" + modelRef.String(), 0, true, nil
 	default:
-		return "", false, fmt.Errorf("unknown model_source %q", modelSource)
+		return "", 0, false, fmt.Errorf("unknown model_source %q", modelSource)
 	}
 	if errors.Is(err, pgx.ErrNoRows) {
-		return "", false, nil
+		return "", 0, false, nil
 	}
 	if err != nil {
-		return "", false, fmt.Errorf("resolve kind: %w", err)
+		return "", 0, false, fmt.Errorf("resolve concurrency: %w", err)
 	}
-	return kind, true, nil
+	if maxConc != nil && *maxConc > 0 {
+		limit = *maxConc
+	}
+	return credID.String(), limit, true, nil
 }
 
 // MarkRunning transitions a pending job to running and stamps started_at.
