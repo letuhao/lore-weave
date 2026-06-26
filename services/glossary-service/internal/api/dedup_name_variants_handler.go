@@ -64,6 +64,33 @@ func (s *Server) internalDedupNameVariants(w http.ResponseWriter, r *http.Reques
 	apply := r.URL.Query().Get("apply") == "true"
 	ctx := r.Context()
 
+	// On apply, take the per-book advisory lock (the SAME key the extraction
+	// writeback uses, INV-C1) so this multi-tx remediation can't interleave with a
+	// concurrent extraction's create/merge on the book. Try-lock: if extraction
+	// holds it, tell the caller to retry when quiet rather than block. Held on a
+	// dedicated connection for the whole remediation; dry-run is read-only → no lock.
+	if apply {
+		lockConn, err := s.pool.Acquire(ctx)
+		if err != nil {
+			writeError(w, http.StatusInternalServerError, "GLOSS_INTERNAL", "acquire lock conn")
+			return
+		}
+		defer lockConn.Release()
+		var locked bool
+		if err := lockConn.QueryRow(ctx, `SELECT pg_try_advisory_lock($1, hashtext($2))`,
+			extractionWritebackLockNS, bookID.String()).Scan(&locked); err != nil {
+			writeError(w, http.StatusInternalServerError, "GLOSS_INTERNAL", "take book lock")
+			return
+		}
+		if !locked {
+			writeError(w, http.StatusConflict, "GLOSS_BOOK_BUSY",
+				"the book is busy (extraction in progress) — retry when quiet")
+			return
+		}
+		defer lockConn.Exec(ctx, `SELECT pg_advisory_unlock($1, hashtext($2))`, //nolint:errcheck
+			extractionWritebackLockNS, bookID.String())
+	}
+
 	// Load all live, named entities for the book with their richness counters.
 	rows, err := s.pool.Query(ctx, `
 		SELECT entity_id, kind_id, COALESCE(cached_name, ''),

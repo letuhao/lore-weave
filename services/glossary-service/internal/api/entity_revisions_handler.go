@@ -139,6 +139,10 @@ func (s *Server) restoreEntityRevision(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusUnprocessableEntity, "GLOSS_INCOMPLETE_REVISION",
 			"revision snapshot is incomplete (no attributes) — cannot restore")
 		return
+	case errors.Is(err, errDuplicateName):
+		writeError(w, http.StatusConflict, "GLOSS_DUPLICATE_NAME",
+			"restoring this revision's name would duplicate another entity in this book")
+		return
 	case err != nil:
 		slog.Error("restoreEntityRevision", "entity", entityID, "error", err)
 		writeError(w, http.StatusInternalServerError, "GLOSS_INTERNAL", "restore failed")

@@ -253,6 +253,11 @@ func (s *Server) patchAttributeValue(w http.ResponseWriter, r *http.Request) {
 		// dedup key with it (cached_name was just recomputed by the EAV trigger).
 		if attrCode == "name" || attrCode == "term" {
 			if err := refreshEntityDedupKey(ctx, tx, entityID); err != nil {
+				if errors.Is(err, errDuplicateName) {
+					writeError(w, http.StatusConflict, "GLOSS_DUPLICATE_NAME",
+						"an entity with this name already exists in this book")
+					return
+				}
 				writeError(w, http.StatusInternalServerError, "GLOSS_INTERNAL", "dedup key refresh failed")
 				return
 			}

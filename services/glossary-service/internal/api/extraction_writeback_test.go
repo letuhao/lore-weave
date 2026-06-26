@@ -11,6 +11,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"slices"
@@ -1392,7 +1393,11 @@ func TestEntityDedup_UniqueIndexBackstop(t *testing.T) {
 		 VALUES($1,$2,'zh','独一')`, e2, nameAttr); err != nil {
 		t.Fatalf("name e2: %v", err)
 	}
-	if err := refreshEntityDedupKey(ctx, pool, e2); err == nil {
-		t.Errorf("uq_entity_dedup did not reject a second live entity with the same normalized name")
+	err := refreshEntityDedupKey(ctx, pool, e2)
+	if err == nil {
+		t.Fatalf("uq_entity_dedup did not reject a second live entity with the same normalized name")
+	}
+	if !errors.Is(err, errDuplicateName) {
+		t.Errorf("want errDuplicateName (→ 409), got %v", err)
 	}
 }

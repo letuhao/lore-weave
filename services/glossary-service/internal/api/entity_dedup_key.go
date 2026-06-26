@@ -2,11 +2,20 @@ package api
 
 import (
 	"context"
+	"errors"
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 	"github.com/loreweave/glossary-service/internal/textnorm"
 )
+
+// errDuplicateName — a name write would give this entity the same folded dedup key
+// as another LIVE entity of the same book+kind (the uq_entity_dedup backstop fired).
+// User-facing name-write handlers map it to a 409 GLOSS_DUPLICATE_NAME instead of a
+// generic 500 (D-GLOSSARY-ST-RENAME-409). Now that the key folds CJK simplified/
+// traditional + full-width + case, a rename to any fold-equivalent of an existing
+// name collides — which is correct (it would create a duplicate), just clearer as a 409.
+var errDuplicateName = errors.New("an entity with this name already exists in this book")
 
 // refreshEntityDedupKey recomputes glossary_entities.normalized_name for one
 // entity from its current cached_name, using the shared multi-language fold
@@ -41,5 +50,8 @@ func refreshEntityDedupKey(ctx context.Context, q pgxRWQuerier, entityID uuid.UU
 		`UPDATE glossary_entities SET normalized_name = $1
 		 WHERE entity_id = $2 AND normalized_name IS DISTINCT FROM $1`,
 		textnorm.Normalize(cached), entityID)
+	if err != nil && isUniqueViolation(err) {
+		return errDuplicateName
+	}
 	return err
 }

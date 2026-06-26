@@ -210,6 +210,11 @@ func (s *Server) applyEntityEdit(w http.ResponseWriter, r *http.Request) {
 	// D-GLOSSARY-ST-DEDUP M3a: a multi-attr apply may have changed name/term; keep
 	// the app-maintained dedup key in sync (idempotent — no-op when unchanged).
 	if err := refreshEntityDedupKey(ctx, tx, entityID); err != nil {
+		if errors.Is(err, errDuplicateName) {
+			writeError(w, http.StatusConflict, "GLOSS_DUPLICATE_NAME",
+				"an entity with this name already exists in this book")
+			return
+		}
 		writeError(w, http.StatusInternalServerError, "GLOSS_INTERNAL", "dedup key refresh failed")
 		return
 	}
