@@ -1413,47 +1413,22 @@ async def composition_motif_bind(ctx: MCPContext, args: _MotifBindArgs) -> dict:
     motif = await repo.get_visible(tc.user_id, UUID(args.motif_id))
     if motif is None:
         raise uniform_not_accessible()
-    # The bind/swap/undo ENGINE is owned by W2 (engine/motif_select.py) — W4 imports
-    # it, never re-implements (the one-engine-two-entries seam, RECONCILE §2). It
-    # writes the motif_application row (book_id pinned, motif_version pinned per
-    # edge-F3) and, on a swap, ARCHIVES (not deletes) the prior scenes so the undo is
-    # a verified reverse op (R2.6 / MCP-R2). Until W2 lands, this import fails — the
-    # tool is registered (find_tools/wire-tested) and returns a clean "not yet
-    # available" rather than a 500.
-    try:
-        from app.engine.motif_select import bind_motif  # type: ignore
-    except ImportError:
-        return {
-            "success": False,
-            "error": "motif binding engine not yet available",
-            "reason": "pending_w2",
-        }
-    result = await bind_motif(
-        tc.user_id, project_id=pid, book_id=work.book_id, node_id=node_id,
-        motif=motif, role_bindings=args.role_bindings, derive_scenes=args.derive_scenes,
-    )
-    application = result.get("application")
-    prior = result.get("prior")  # the prior binding the engine archived, if any
-    derived_scene_ids = result.get("derived_scene_ids", [])
-    # Honest verified undo (MCP-R2): a re-bind restores the PRIOR motif + its archived
-    # scenes; a FIRST bind has no prior, so the reverse op is _unbind.
-    if prior:
-        undo = _undo(
-            "composition_motif_bind",
-            project_id=args.project_id, node_id=args.node_id,
-            motif_id=str(prior.get("motif_id")),
-            role_bindings=prior.get("role_bindings", {}),
-        )
-    else:
-        undo = _undo(
-            "composition_motif_unbind",
-            project_id=args.project_id, node_id=args.node_id,
-            application_id=str(application.get("id")) if application else None,
-        )
+    # The bind/swap/undo ENGINE is owned by W2 (engine/motif_select.py) — the
+    # one-engine-two-entries seam (RECONCILE §2). At the Wave-1 reconcile node the W2
+    # engine landed exposing apply_motif_swap()/undo_motif_swap() (token-based undo),
+    # whereas this MCP tool was authored against a bind_motif(...)→dict / application_id
+    # undo contract. Reconciling the two — the response shape AND the undo model
+    # (token vs application_id) plus the ~30 mocked tests here — is a focused cross-WS
+    # contract task tracked as D-MOTIF-MCP-BIND-WIRING (see SESSION handoff). Until that
+    # lands, this tool VALIDATES (work/gate/IDOR above) then degrades cleanly rather
+    # than mis-calling the engine; the JWT-gated HTTP twin
+    # (PATCH /works/{p}/outline/{n}/motif) is the working bind entry for P1, and the
+    # planner auto-binds during decompose.
     return {
-        "application": application,
-        "derived_scene_ids": [str(s) for s in derived_scene_ids],
-        "_meta": {"undo_hint": undo},
+        "success": False,
+        "error": "motif binding via MCP is pending engine-contract reconciliation",
+        "reason": "pending_bind_wiring",
+        "use_instead": "PATCH /v1/composition/works/{project_id}/outline/{node_id}/motif",
     }
 
 
@@ -1481,13 +1456,18 @@ async def composition_motif_unbind(
     pid = UUID(project_id)
     work = await _work_or_deny(works, tc, pid)
     await _gate(tc, work.book_id, GrantLevel.EDIT)
+    # Same seam as composition_motif_bind: W2's engine offers apply_motif_swap(clear
+    # mode)/undo_motif_swap (token-based), not the unbind_motif(application_id) contract
+    # this tool was authored against. Degrades cleanly pending D-MOTIF-MCP-BIND-WIRING;
+    # the HTTP twin (PATCH …/motif with motif_id=null = clear) is the working entry.
     try:
         from app.engine.motif_select import unbind_motif  # type: ignore
     except ImportError:
         return {
             "success": False,
-            "error": "motif binding engine not yet available",
-            "reason": "pending_w2",
+            "error": "motif unbinding via MCP is pending engine-contract reconciliation",
+            "reason": "pending_bind_wiring",
+            "use_instead": "PATCH /v1/composition/works/{project_id}/outline/{node_id}/motif (motif_id=null)",
         }
     # The engine's unbind asserts the application's project_id == pid AND book_id ==
     # work.book_id (the per-tool IDOR for the application target) before archiving.

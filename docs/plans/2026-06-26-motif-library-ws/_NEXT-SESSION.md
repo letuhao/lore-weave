@@ -1,6 +1,57 @@
 # ▶ NEXT SESSION — Narrative Motif Library BUILD (handoff)
 
-## STATUS (2026-06-26) — F0 BUILD COMPLETE + FROZEN · Wave 1 is next
+## STATUS (2026-06-27) — WAVE 1 BUILT + MERGED + RECONCILED · Wave 2 is next
+
+**All 7 Wave-1 workstreams (W1–W7) built in parallel worktrees, merged into
+`feat/narrative-pattern-library`, and reconciled.** Merge was clean (only `main.py`
+touched by 2 branches — W1+W5 router includes, union-resolved). Merged-branch VERIFY:
+**843 unit + 130 DB-integration + contracts green**; the 26 MCP-loopback errors are the
+pre-existing `StreamableHTTPSessionManager` test-infra flake (69 pass in isolation),
+tracked as `D-W2-MCP-SESSION-ISOLATION`. Provider-gate clean.
+
+**Per-WS commits (pre-merge):** W1 `420b82a0` · W2 `6a7e456d` · W3 `402ade85` ·
+W4 `c8b06df4` · W5 `73674b49` · W6 `5d66136d` · W7 `210f4305`. Merged via 7 merge
+commits + the reconcile commit on `feat/narrative-pattern-library`.
+
+**Reconcile actions taken:**
+- F0 additive follow-ups applied (deps/config were frozen during the wave): `deps.py`
+  `get_motif_application_repo()` (W2/W5 need it); `config.py` `motif_connective_floor_margin=0.08` (W2 MD-3).
+- W2↔W5 seams verified CLEAN: W2 writes `beat_key` into `motif_application.annotations`
+  (W5 reads `annotations->>'beat_key'`); W2 never touches `generation_job.critic` (no clobber).
+- W1↔W3 seam CLEAN: adopt copies the vector + `embedded_summary_hash` (no re-embed).
+- W1↔W6 library CRUD paths MATCH (`/v1/composition/motifs*`); W6 adopt/conformance use the
+  Tier-W `/actions/{op}/estimate|confirm` flow (adopt=Tier-W per RECONCILE §3).
+
+**Deferred — Wave-1 reconcile seams (NEW; fix in a focused follow-up or Wave 2):**
+- **`D-MOTIF-MCP-BIND-WIRING`** (gate #2 structural): W4's MCP `composition_motif_bind`/
+  `_unbind` were authored against a `bind_motif(...)→dict` / application_id-undo contract;
+  W2's engine landed exposing `apply_motif_swap`/`undo_motif_swap` (token-based undo). The
+  tools now VALIDATE (work/gate/IDOR) then degrade cleanly (`reason: pending_bind_wiring`)
+  pointing at the working HTTP twin. Reconcile the response-shape + undo model (token vs
+  application_id) + rewrite the 2 bind tests. **HTTP bind/swap + planner auto-bind work now.**
+- **`D-MOTIF-CONFORMANCE-ENGINE-WIRING`** (gate #3 naturally-next): W5's `judge_motif_conformance`
+  functions exist + are unit-tested; the `engine.py` producer call-site is unwired. Conformance
+  is advisory + OFF by default + uncalibrated, so it's intentionally dormant — wire when it
+  graduates (needs `D-MOTIF-CONFORMANCE-GOLD-SET` first). The trace READ endpoint works.
+- **`D-MOTIF-FE-PLANNERVIEW-WIRING`** (gate #3): W6 ships `useMotifBinding`+`MotifBindingCard`;
+  the 1-line `selectTab`/`setSceneId` wiring in `PlannerView.tsx` (W2's FE seam) is unwired.
+  The W6 dock panel provides the motif UI; this is the inline-in-planner enhancement (H-8 path).
+
+**Deferred — WS-reported (carried; many target R-NODE-P1):** `D-MOTIF-RETRIEVE-LIVE-SMOKE`,
+`D-MOTIF-PGVECTOR-TRIGGER` (perf, ceiling=500), `D-W4-MINE-WORKER-LIVE-SMOKE` (Wave-2 compute),
+`D-MOTIF-CONFORMANCE-GOLD-SET` (PO ~25-scene labeling), `D-MOTIF-CONFORMANCE-LIVE-SMOKE`,
+`D-MOTIF-FE-LIVE-SMOKE`, `D-W7-VI-PACK` (vi seed packs — additive data), `D-W7-PO-REVIEW`
+(genre-faithfulness sign-off), plus W5's P2/P4 scope-fenced dims (arc-diff, fine-anchor,
+plot-density, act-rate).
+
+**▶ NEXT:** R-NODE-P1 assembled-stack live-smoke (needs composition + provider-registry +
+a platform embed model configured + seeded DB), then Wave 2 (W8 mine · W9 import · W10 arc ·
+W-STITCH · W11 sync). Worktrees under `.claude/worktrees/agent-*` can be pruned
+(`git worktree remove`) — the `ws/w*` branches are merged.
+
+---
+
+## (historical) STATUS (2026-06-26) — F0 BUILD COMPLETE + FROZEN · Wave 1 is next
 
 **F0 is built, verified, and committed.** The shared contract is frozen. Wave 1
 (W1–W7) may now fan out in worktrees (disjoint per `00-RECONCILE §4`).

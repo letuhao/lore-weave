@@ -143,6 +143,10 @@ class Settings(BaseSettings):
     # Anti-repetition (W2): max times one motif may be applied within a single book
     # before the planner/UX warns (the cowrite craft-nudge made structural — §11).
     motif_max_reapply: int = 3
+    # Planner connective-tissue floor (W2 MD-3): min match-margin a candidate must
+    # clear over the next-best before the planner auto-binds without a connective hint
+    # (below it, the splice adds a bridging beat). Surfaced as config per W2's request.
+    motif_connective_floor_margin: float = 0.08
     # Mining gate (P3/W8): mined drafts below this judge score are shown, never
     # silently added (no silent drop — §11).
     motif_mine_min_judge: float = 0.60

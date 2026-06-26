@@ -22,6 +22,7 @@ from app.db.repositories.derivatives import DerivativesRepo
 from app.db.repositories.generation_corrections import GenerationCorrectionsRepo
 from app.db.repositories.generation_jobs import GenerationJobsRepo
 from app.db.repositories.grounding_pins import GroundingPinsRepo
+from app.db.repositories.motif_application import MotifApplicationRepo
 from app.db.repositories.motif_repo import MotifRepo
 from app.db.repositories.motif_retrieve import MotifRetriever
 from app.db.repositories.narrative_thread import NarrativeThreadRepo
@@ -108,6 +109,13 @@ async def get_motif_retriever() -> MotifRetriever:
     """F0 frozen signature; W3 implements. The planner (W2) and the MCP
     _suggest_for_chapter (W4) both resolve candidates through this one core."""
     return MotifRetriever(get_pool())
+
+
+async def get_motif_application_repo() -> MotifApplicationRepo:
+    """W2 — the motif_application binding ledger (W2 is the sole writer; W5's
+    conformance trace + the planner read it). Added at the Wave-1 reconcile node as
+    the F0 follow-up W2/W5 both requested (deps was F0-frozen during the wave)."""
+    return MotifApplicationRepo(get_pool())
 
 
 async def get_references_repo() -> ReferencesRepo:

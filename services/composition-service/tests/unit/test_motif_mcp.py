@@ -292,9 +292,13 @@ async def test_archive_user_scope_foreign_rejected():
     repo.archive.assert_not_awaited()
 
 
-async def test_bind_first_bind_undo_is_unbind():
-    """MCP-R2: a first bind (no prior) returns an undo pointing at the verified
-    reverse op composition_motif_unbind."""
+async def test_bind_validates_then_degrades_pending_wiring():
+    """Wave-1 reconcile (D-MOTIF-MCP-BIND-WIRING): the W2 engine landed exposing
+    apply_motif_swap/undo_motif_swap (token-based undo), not the bind_motif(...)→dict /
+    application_id-undo contract this tool was authored against. Until the contract is
+    reconciled, composition_motif_bind VALIDATES (work/gate + the two IDOR checks) then
+    degrades cleanly (no engine mis-call); the HTTP twin is the working bind for P1.
+    REPLACE this test with the real undo assertions when the wiring lands."""
     import app.mcp.server as srv
     from app.db.models import OutlineNode
 
@@ -304,53 +308,39 @@ async def test_bind_first_bind_undo_is_unbind():
     outline.get_node = AsyncMock(return_value=node)
     repo = AsyncMock()
     repo.get_visible = AsyncMock(return_value=_motif())
-    app_id = uuid.uuid4()
-    fake_engine = MagicMock()
-    fake_engine.bind_motif = AsyncMock(return_value={
-        "application": {"id": str(app_id)}, "prior": None, "derived_scene_ids": [uuid.uuid4()],
-    })
     async with _patched(OutlineRepo=outline, MotifRepo=repo):
-        with patch.dict("sys.modules", {"app.engine.motif_select": fake_engine}):
-            res = await srv.composition_motif_bind(
-                _Ctx(), srv._MotifBindArgs(
-                    project_id=str(PROJECT), node_id=str(NODE), motif_id=str(uuid.uuid4()),
-                ),
-            )
-    undo = res["_meta"]["undo_hint"]
-    assert undo["tool"] == "composition_motif_unbind"
-    assert undo["args"]["application_id"] == str(app_id)
+        res = await srv.composition_motif_bind(
+            _Ctx(), srv._MotifBindArgs(
+                project_id=str(PROJECT), node_id=str(NODE), motif_id=str(uuid.uuid4()),
+            ),
+        )
+    assert res["success"] is False
+    assert res["reason"] == "pending_bind_wiring"
+    assert "outline" in res["use_instead"]  # points the agent at the working HTTP twin
+    # the IDOR validation still ran (you can only bind a motif you can see).
+    repo.get_visible.assert_awaited_once()
 
 
-async def test_bind_rebind_undo_restores_prior():
-    """MCP-R2 / H-4: a re-bind (prior exists) returns an undo that re-binds the PRIOR
-    motif — the engine archives (not deletes) the prior scenes, so it's reversible."""
+async def test_bind_idor_foreign_motif_still_rejected():
+    """The degrade does NOT relax the IDOR guard: a motif the caller can't see is
+    rejected (uniform not-accessible) BEFORE the pending response."""
     import app.mcp.server as srv
     from app.db.models import OutlineNode
+    from loreweave_mcp import NotAccessibleError
 
     node = OutlineNode(id=NODE, user_id=TEST_USER, project_id=PROJECT,
                        kind="chapter", rank="a0", title="C", status="empty", version=1)
     outline = AsyncMock()
     outline.get_node = AsyncMock(return_value=node)
     repo = AsyncMock()
-    repo.get_visible = AsyncMock(return_value=_motif())
-    prior_motif = uuid.uuid4()
-    fake_engine = MagicMock()
-    fake_engine.bind_motif = AsyncMock(return_value={
-        "application": {"id": str(uuid.uuid4())},
-        "prior": {"motif_id": str(prior_motif), "role_bindings": {"hero": "ent-1"}},
-        "derived_scene_ids": [],
-    })
+    repo.get_visible = AsyncMock(return_value=None)  # foreign/missing motif
     async with _patched(OutlineRepo=outline, MotifRepo=repo):
-        with patch.dict("sys.modules", {"app.engine.motif_select": fake_engine}):
-            res = await srv.composition_motif_bind(
+        with pytest.raises(NotAccessibleError):
+            await srv.composition_motif_bind(
                 _Ctx(), srv._MotifBindArgs(
                     project_id=str(PROJECT), node_id=str(NODE), motif_id=str(uuid.uuid4()),
                 ),
             )
-    undo = res["_meta"]["undo_hint"]
-    assert undo["tool"] == "composition_motif_bind"
-    assert undo["args"]["motif_id"] == str(prior_motif)
-    assert undo["args"]["role_bindings"] == {"hero": "ent-1"}
 
 
 async def test_adopt_propose_mints_token_no_clone():
