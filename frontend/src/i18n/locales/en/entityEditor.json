@@ -18,7 +18,8 @@
     },
     "tab": {
       "attributes": "Attributes",
-      "evidences": "Evidences"
+      "evidences": "Evidences",
+      "history": "History"
     },
     "viewing_in_language": "Viewing in {{lang}}",
     "viewing_original": "Original ({{lang}})",

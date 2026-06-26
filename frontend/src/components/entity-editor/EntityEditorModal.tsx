@@ -1,6 +1,6 @@
 import { useEffect, useState, useMemo, useCallback, type ReactNode } from 'react';
 import { useTranslation } from 'react-i18next';
-import { X, Save, Loader2, Link2, Languages, FileText, Tag, Trash2 } from 'lucide-react';
+import { X, Save, Loader2, Link2, Languages, FileText, Tag, Trash2, History } from 'lucide-react';
 import { toast } from 'sonner';
 import { useAuth } from '@/auth';
 import { glossaryApi } from '@/features/glossary/api';
@@ -12,8 +12,9 @@ import { AttrCard } from './AttrCard';
 import { AttrTranslationRow } from './AttrTranslationRow';
 import { getCardComponent, SHORT_TYPES } from './cardRegistry';
 import { EvidenceTab } from './EvidenceTab';
+import { EntityHistoryPanel } from '@/features/glossary/components/EntityHistoryPanel';
 
-type EditorTab = 'attributes' | 'evidences';
+type EditorTab = 'attributes' | 'evidences' | 'history';
 
 interface EntityEditorModalProps {
   bookId: string;
@@ -296,6 +297,18 @@ export function EntityEditorModal({ bookId, entityId, bookGenreTags = [], kindGe
                 </span>
               )}
             </button>
+            <button
+              type="button"
+              onClick={() => setActiveTab('history')}
+              className={`inline-flex items-center gap-1 px-3 py-2 text-xs font-medium border-b-2 transition-colors ${
+                activeTab === 'history'
+                  ? 'border-primary text-primary'
+                  : 'border-transparent text-muted-foreground hover:text-foreground'
+              }`}
+            >
+              <History className="h-3 w-3" />
+              {t('modal.tab.history')}
+            </button>
             {/* Language selector — only visible on attributes tab */}
             {activeTab === 'attributes' && !viewTranslationMode && (
               <>
@@ -396,6 +409,20 @@ export function EntityEditorModal({ bookId, entityId, bookGenreTags = [], kindGe
                 onCountChange={(delta) => {
                   if (!entity) return;
                   setEntity({ ...entity, evidence_count: entity.evidence_count + delta });
+                  onSaved();
+                }}
+              />
+            )}
+
+            {activeTab === 'history' && (
+              <EntityHistoryPanel
+                bookId={bookId}
+                entityId={entityId}
+                embedded
+                onRestored={() => {
+                  // Restore reconciled the live entity server-side → re-fetch it,
+                  // and notify the list so its row reflects the rolled-back state.
+                  void load();
                   onSaved();
                 }}
               />

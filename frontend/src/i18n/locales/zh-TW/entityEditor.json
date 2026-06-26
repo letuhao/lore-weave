@@ -18,7 +18,8 @@
     },
     "tab": {
       "attributes": "屬性",
-      "evidences": "佐證"
+      "evidences": "佐證",
+      "history": "歷史"
     },
     "viewing_in_language": "以 {{lang}} 檢視",
     "viewing_original": "原文（{{lang}}）",

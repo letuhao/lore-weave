@@ -94,6 +94,15 @@ describe('EntityHistoryPanel', () => {
     expect(screen.getByText(/active/)).toBeTruthy();
   });
 
+  it('embedded mode drops the overlay header/close (tab-content variant) but still lists revisions', () => {
+    hookMocks.revisions = [rev(2)];
+    // No onClose passed — it is optional when embedded (host modal owns chrome).
+    render(<EntityHistoryPanel bookId="b1" entityId="e1" embedded onRestored={vi.fn()} />);
+    expect(screen.getByText('#2')).toBeTruthy(); // list still renders
+    expect(screen.queryByText('history.title')).toBeNull(); // no overlay title
+    expect(screen.queryByLabelText('history.close')).toBeNull(); // no overlay close button
+  });
+
   it('restore requires confirm, then calls restore + onRestored', async () => {
     hookMocks.revisions = [rev(1)];
     const { onRestored } = renderPanel();

@@ -18,7 +18,8 @@
     },
     "tab": {
       "attributes": "属性",
-      "evidences": "根拠"
+      "evidences": "根拠",
+      "history": "履歴"
     },
     "viewing_in_language": "{{lang}}で表示中",
     "viewing_original": "原文（{{lang}}）",

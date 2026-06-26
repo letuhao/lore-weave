@@ -18,7 +18,8 @@
     },
     "tab": {
       "attributes": "Thuộc tính",
-      "evidences": "Dẫn chứng"
+      "evidences": "Dẫn chứng",
+      "history": "Lịch sử"
     },
     "viewing_in_language": "Đang xem bằng {{lang}}",
     "viewing_original": "Gốc ({{lang}})",
