@@ -98,6 +98,29 @@ func (s *Server) mcpHandler() http.Handler {
 	}, s.toolProposeNewKind)
 
 	mcp.AddTool(srv, &mcp.Tool{
+		Name: "glossary_propose_kinds",
+		Description: "Propose MANY entity kinds AT ONCE — the whole ontology in ONE confirm. PREFER this over " +
+			"calling glossary_propose_new_kind repeatedly: the user wants to create an ONTOLOGY, not one kind at a " +
+			"time, so batch every kind you intend to add into a single `kinds` list (each kind carries its own " +
+			"defining `attributes`, each with a clear `description` — extraction uses it as the per-attribute " +
+			"instruction). Returns ONE confirm_token + a preview listing all kinds; the human confirms once via " +
+			"glossary_confirm_action and they are all created (idempotent — an existing kind is skipped). High-impact; " +
+			"creates nothing until confirmed.",
+	}, s.toolProposeKinds)
+
+	mcp.AddTool(srv, &mcp.Tool{
+		Name: "glossary_plan",
+		Description: "PLAN a multi-step ontology goal in ONE shot. Given a natural-language `goal` (e.g. " +
+			"'design an ontology for this xianxia novel'), a capable PLANNER model reads the book's current " +
+			"ontology and produces ONE typed plan (adopt genres, create kinds with their attributes, add/edit " +
+			"attributes) — returned as a SINGLE confirm_token + a per-operation preview. The human confirms once " +
+			"via glossary_confirm_action and a deterministic executor applies the whole plan (idempotent; existing " +
+			"rows are skipped). PREFER this for any goal needing more than one or two writes — do NOT loop the " +
+			"individual propose tools. Optional `model_ref` overrides the user's default 'planner' model. Creates " +
+			"nothing until confirmed.",
+	}, s.toolPlan)
+
+	mcp.AddTool(srv, &mcp.Tool{
 		Name: "glossary_propose_new_attribute",
 		Description: "Propose a NEW attribute on an existing kind (e.g. add 'cultivation_realm' to the " +
 			"character kind). Schema-level and high-impact — it does NOT write; it returns a confirm_token + " +

@@ -152,6 +152,7 @@
     "batch_count": "{{count}}件",
     "warning": "影響の大きい変更です。確認してください。",
     "warning_destructive": "破壊的で連鎖する操作です。確認してください。",
+    "destructive_skipped": "{{count}} 件の破壊的な操作は、上で有効にしない限りスキップされます。",
     "confirm": "確認",
     "confirm_all": "すべて確認",
     "cancel": "キャンセル",

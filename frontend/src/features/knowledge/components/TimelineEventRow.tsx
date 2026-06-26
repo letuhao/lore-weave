@@ -62,6 +62,23 @@ function formatConfidence(c: number): string {
   return `${Math.max(0, Math.min(100, pct))}%`;
 }
 
+// KG-TL — a subtle, accessible "shown in source language" marker. Rendered next
+// to any fragment whose `*_translated` flag is false so a reader who picked a
+// translation knows the text is source-language (translation pending / absent),
+// never a silent mix (AC-T1). Both a sighted badge AND a screen-reader label.
+function SourceMarker({ label }: { label: string }) {
+  return (
+    <sup
+      className="ml-0.5 cursor-help select-none text-[8px] font-medium uppercase tracking-wide text-muted-foreground/70"
+      title={label}
+      aria-label={label}
+      data-testid="timeline-source-marker"
+    >
+      src
+    </sup>
+  );
+}
+
 function chapterShort(chapterId: string | null): string {
   if (!chapterId) return '';
   // Short suffix of the chapter UUID so the user has *something* to
@@ -95,11 +112,40 @@ export function TimelineEventRow({
     }
   };
 
-  const visibleParticipants = event.participants.slice(0, VISIBLE_PARTICIPANTS);
+  // KG-TL — localized participants: prefer the reader-language name list when
+  // the BE provided one, else the source list. Each slot carries a per-slot
+  // translated flag (false ⇒ source-fallback ⇒ mark it). When the BE didn't
+  // localize (no reader language), the flags default to all-true so nothing is
+  // marked (canonical view, AC-T5). Length+order match `participants`.
+  const participantNames =
+    event.participants_localized ?? event.participants;
+  const participantFlags =
+    event.participants_translated ??
+    event.participants.map(() => true);
+  const participantPairs = participantNames.map((name, i) => ({
+    name,
+    // A pair is "source" when the BE marked it untranslated. Guard the index
+    // in case the flags array drifts in length (defensive — treat as translated).
+    translated: participantFlags[i] !== false,
+    // Stable key: source name + index (localized names can collide).
+    key: `${event.participants[i] ?? name}-${i}`,
+  }));
+  const visibleParticipants = participantPairs.slice(0, VISIBLE_PARTICIPANTS);
   const hiddenCount = Math.max(
     0,
-    event.participants.length - VISIBLE_PARTICIPANTS,
+    participantPairs.length - VISIBLE_PARTICIPANTS,
   );
+
+  // KG-TL — localized free-text fields (COALESCE(cache, source) from the BE).
+  // `*_translated === false` ⇒ the value is source text awaiting the on-demand
+  // cache fill, so we mark it. Undefined flags (no reader language) ⇒ no marker.
+  const titleText = event.title_localized ?? event.title;
+  const titleIsSource = event.title_translated === false;
+  const summaryText = event.summary_localized ?? event.summary;
+  const summaryIsSource = event.summary_translated === false;
+
+  const sourceMarkerLabel = t('timeline.localization.sourceMarker');
+
   // C6 (D-K19e-β-01) — prefer the BE-resolved chapter title over the
   // UUID-suffix fallback. Either both are empty (no chapter on this
   // event) or we render exactly one.
@@ -142,9 +188,10 @@ export function TimelineEventRow({
             )}
             <span
               className="block min-w-0 truncate font-medium"
-              title={event.title}
+              title={titleText}
             >
-              {event.title}
+              {titleText}
+              {titleIsSource && <SourceMarker label={sourceMarkerLabel} />}
             </span>
           </span>
           <span className="mt-1 flex flex-wrap items-center gap-1.5 text-[11px] text-muted-foreground">
@@ -177,10 +224,11 @@ export function TimelineEventRow({
             )}
             {visibleParticipants.map((p) => (
               <span
-                key={p}
+                key={p.key}
                 className="inline-flex items-center rounded-full bg-muted px-1.5 py-[1px] text-[10px]"
               >
-                {p}
+                {p.name}
+                {!p.translated && <SourceMarker label={sourceMarkerLabel} />}
               </span>
             ))}
             {hiddenCount > 0 && (
@@ -208,21 +256,25 @@ export function TimelineEventRow({
               {t('timeline.detail.summary')}
             </span>
             <p className="whitespace-pre-wrap text-foreground">
-              {event.summary ?? t('timeline.detail.noSummary')}
+              {summaryText ?? t('timeline.detail.noSummary')}
+              {summaryText && summaryIsSource && (
+                <SourceMarker label={sourceMarkerLabel} />
+              )}
             </p>
           </div>
-          {event.participants.length > 0 && (
+          {participantPairs.length > 0 && (
             <div className="mb-2">
               <span className="mb-1 block text-[11px] uppercase tracking-wide text-muted-foreground">
                 {t('timeline.detail.participants')}
               </span>
               <div className="flex flex-wrap gap-1.5">
-                {event.participants.map((p) => (
+                {participantPairs.map((p) => (
                   <span
-                    key={p}
+                    key={p.key}
                     className="inline-flex items-center rounded-full bg-muted px-2 py-[1px] text-[11px]"
                   >
-                    {p}
+                    {p.name}
+                    {!p.translated && <SourceMarker label={sourceMarkerLabel} />}
                   </span>
                 ))}
               </div>

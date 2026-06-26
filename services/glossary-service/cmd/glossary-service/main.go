@@ -124,6 +124,14 @@ func main() {
 
 	srv := api.NewServer(pool, cfg)
 
+	// D-BATCH-RESEARCH-JOB M2 — the in-process batch entity-research worker. Drains
+	// `pending` jobs (one paid web search per entity, reusing the deep-research core),
+	// resuming from each job's cursor across restarts. Honours ctx for shutdown. Gated on
+	// a web-search provider URL being configured (without it every job would just fail).
+	if cfg.ProviderRegistryURL != "" {
+		go srv.RunResearchWorker(ctx)
+	}
+
 	// D-GRANT-INSTANT-REVOKE — tail book-service grant revokes (Redis) → drop the
 	// matching cached grant from this process's grant client at once (vs the TTL).
 	if cfg.RedisURL != "" {

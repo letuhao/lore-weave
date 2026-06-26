@@ -247,6 +247,69 @@ func TestProposeNewKind_RoundTripToConfirm(t *testing.T) {
 	}
 }
 
+// An UNADOPTED book auto-scaffolds the baseline ontology on the first kind-create,
+// instead of 422'ing "not adopted" AFTER the human confirmed (and the single-use
+// token burned). The agent no longer has to sequence adopt→kind by hand.
+func TestProposeNewKind_AutoScaffoldsUnadoptedBook(t *testing.T) {
+	pool := openTestDB(t)
+	f := newActionFixtureNoAdopt(t, pool)
+	_, out, err := f.srv.toolProposeNewKind(ctxWithUser(f.ownerID), nil,
+		proposeKindToolIn{BookID: f.bookID.String(), Code: "qa_scaffold_kind", Name: "Power System"})
+	if err != nil {
+		t.Fatalf("propose: %v", err)
+	}
+	if w := f.confirm(t, out.ConfirmToken); w.Code != http.StatusCreated {
+		t.Fatalf("confirm create-kind on an UNADOPTED book: want 201 (auto-scaffold), got %d (%s)", w.Code, w.Body.String())
+	}
+	// The baseline universal genre must now exist — proof the scaffold ran.
+	var hasUniversal bool
+	if err := pool.QueryRow(context.Background(),
+		`SELECT EXISTS(SELECT 1 FROM book_genres WHERE book_id=$1 AND code='universal' AND deprecated_at IS NULL)`,
+		f.bookID).Scan(&hasUniversal); err != nil {
+		t.Fatalf("check universal genre: %v", err)
+	}
+	if !hasUniversal {
+		t.Error("auto-scaffold did not create the baseline universal genre")
+	}
+}
+
+// glossary_propose_kinds mints ONE confirm card for MANY kinds; a single confirm
+// creates them all (auto-scaffolding the unadopted book) — the batch UX the user
+// wanted instead of one click per kind.
+func TestProposeKinds_BatchRoundTripToConfirm(t *testing.T) {
+	pool := openTestDB(t)
+	f := newActionFixtureNoAdopt(t, pool)
+	_, out, err := f.srv.toolProposeKinds(ctxWithUser(f.ownerID), nil, proposeKindsToolIn{
+		BookID: f.bookID.String(),
+		Kinds: []proposeKindItemIn{
+			{Code: "qa_concept", Name: "Concept", Attributes: []proposeKindAttrIn{{Code: "category", Name: "Category", FieldType: "text"}}},
+			{Code: "qa_realm", Name: "Realm", Attributes: []proposeKindAttrIn{{Code: "rank_order", Name: "Order", FieldType: "number"}}},
+		},
+	})
+	if err != nil {
+		t.Fatalf("propose batch: %v", err)
+	}
+	if out.ConfirmToken == "" || out.Descriptor != descSchemaCreateKinds {
+		t.Fatalf("bad batch output: %+v", out)
+	}
+	if len(out.PreviewRows) != 2 {
+		t.Errorf("want 2 preview rows (one per kind), got %d", len(out.PreviewRows))
+	}
+	if w := f.confirm(t, out.ConfirmToken); w.Code != http.StatusCreated {
+		t.Fatalf("confirm batch (1 click → N kinds): want 201, got %d (%s)", w.Code, w.Body.String())
+	}
+	for _, code := range []string{"qa_concept", "qa_realm"} {
+		var exists bool
+		if err := pool.QueryRow(context.Background(),
+			`SELECT EXISTS(SELECT 1 FROM book_kinds WHERE book_id=$1 AND code=$2)`, f.bookID, code).Scan(&exists); err != nil {
+			t.Fatalf("check kind %s: %v", code, err)
+		}
+		if !exists {
+			t.Errorf("kind %s was not created by the batch confirm", code)
+		}
+	}
+}
+
 // The kind is deleted between propose and confirm → clean 422 (re-validate at confirm).
 func TestConfirmAction_DeletedKindIsCleanError(t *testing.T) {
 	pool := openTestDB(t)

@@ -4,6 +4,7 @@ import { toast } from 'sonner';
 import { ShieldAlert, Check, X } from 'lucide-react';
 import { useAuth } from '@/auth';
 import { actionsApi, type ActionPreview } from '../actionsApi';
+import { PlannerPlanView } from './PlannerPlanView';
 import { useChatStream } from '../providers';
 import type { FrontendToolOutcome } from '../hooks/useChatMessages';
 import type { ToolCallRecord } from '../types';
@@ -90,6 +91,11 @@ export function ConfirmActionCard({ record }: Props) {
   // /review-impl FIX 1: track whether the server preview resolved (vs failed/
   // pending) so a batch can gate its Confirm button on a loaded preview.
   const [previewLoaded, setPreviewLoaded] = useState(false);
+  // Per-op destructive opt-in (execute_plan): the set of plan op-ids the human
+  // enabled. Destructive ops default OFF — the executor skips any not in this set.
+  const [enabledOps, setEnabledOps] = useState<Set<string>>(new Set());
+  // The BE's actionable reason for a 422, surfaced instead of a blanket "Expired".
+  const [detail, setDetail] = useState('');
 
   const args = (record.args ?? {}) as ConfirmArgs;
   const token = args.confirm_token ?? '';
@@ -125,6 +131,9 @@ export function ConfirmActionCard({ record }: Props) {
   const title = preview?.title || argTitle;
   const rows = preview?.preview_rows ?? [];
   const destructive = preview?.destructive ?? false;
+  // execute_plan cards (the glossary planner) get the richer step-by-step PlannerPlanView
+  // instead of the terse label:value rows.
+  const isPlan = (preview?.descriptor ?? args.descriptor) === 'execute_plan';
 
   async function resume(outcome: FrontendToolOutcome) {
     if (record.runId && record.toolCallId) {
@@ -140,16 +149,26 @@ export function ConfirmActionCard({ record }: Props) {
     setBusy(true);
     let outcome: FrontendToolOutcome;
     try {
-      await actionsApi.confirmAction(domain, token, accessToken);
+      // Only send enabled_ops when the human opted into at least one destructive op —
+      // a non-plan action (and a plan with nothing enabled) confirms with no extra arg.
+      const ops = Array.from(enabledOps);
+      await (ops.length > 0
+        ? actionsApi.confirmAction(domain, token, accessToken, ops)
+        : actionsApi.confirmAction(domain, token, accessToken));
       outcome = 'action_done';
       setState('done');
     } catch (err) {
       const status = (err as { status?: number }).status;
       if (status === 422) {
-        // expired, already-confirmed (single-use), or drift — all re-proposable.
+        // expired, already-confirmed (single-use), or a precondition drift — all
+        // re-proposable. Surface the BE's actionable reason instead of a blanket
+        // "expired" (which used to hide WHY the 422 happened).
         outcome = 'token_expired';
         setState('expired');
-        toast.error(t('actionConfirm.expired', { defaultValue: 'This confirmation is no longer valid — ask again to propose it afresh.' }));
+        const msg = (err as Error).message;
+        const meaningful = !!msg && msg !== 'Unprocessable Entity';
+        setDetail(meaningful ? msg : '');
+        toast.error(meaningful ? msg : t('actionConfirm.expired', { defaultValue: 'This confirmation is no longer valid — ask again to propose it afresh.' }));
       } else {
         outcome = 'action_error';
         setState('error');
@@ -171,6 +190,19 @@ export function ConfirmActionCard({ record }: Props) {
       setBusy(false);
     }
   }
+
+  function toggleOp(opId: string) {
+    setEnabledOps((prev) => {
+      const next = new Set(prev);
+      if (next.has(opId)) next.delete(opId);
+      else next.add(opId);
+      return next;
+    });
+  }
+
+  // Destructive plan ops the human has NOT yet enabled — they will be skipped on
+  // confirm. Drives the "N will be skipped unless enabled" hint.
+  const pendingDestructive = rows.filter((r) => r.destructive && r.op_id && !enabledOps.has(r.op_id)).length;
 
   const accent = destructive ? 'red' : 'amber';
   const isBatch = items.length > 0;
@@ -232,16 +264,50 @@ export function ConfirmActionCard({ record }: Props) {
         </>
       )}
 
-      {/* Non-batch single-action preview rows (token-scoped). */}
-      {!isBatch && rows.length > 0 && (
+      {/* execute_plan → the richer planner view (numbered steps + rationale + per-op
+          destructive opt-in). Other actions keep the terse label:value rows. A destructive
+          plan op (op_id + destructive) renders an OPT-IN checkbox — default OFF (G1). */}
+      {!isBatch && rows.length > 0 && isPlan && (
+        <PlannerPlanView
+          rows={rows}
+          enabledOps={enabledOps}
+          onToggleOp={toggleOp}
+          disabled={busy || state !== null}
+        />
+      )}
+      {!isBatch && rows.length > 0 && !isPlan && (
         <ul className="mb-1 space-y-0.5 text-[10px] text-foreground/90">
           {rows.map((r, i) => (
-            <li key={i} className="flex justify-between gap-2">
-              <span className="text-muted-foreground">{r.label}</span>
-              <span>{r.value}{r.note ? ` — ${r.note}` : ''}</span>
-            </li>
+            r.destructive && r.op_id ? (
+              <li key={i} className="flex items-center gap-1.5 rounded bg-red-500/5 px-1 py-0.5">
+                <input
+                  type="checkbox"
+                  data-testid="enable-op"
+                  data-op-id={r.op_id}
+                  checked={enabledOps.has(r.op_id)}
+                  onChange={() => toggleOp(r.op_id!)}
+                  disabled={busy || state !== null}
+                  className="h-3 w-3 accent-red-500"
+                />
+                <span className="text-red-500">{r.label}</span>
+                <span className="truncate text-foreground/90">{r.value}{r.note ? ` — ${r.note}` : ''}</span>
+              </li>
+            ) : (
+              <li key={i} className="flex justify-between gap-2">
+                <span className="text-muted-foreground">{r.label}</span>
+                <span>{r.value}{r.note ? ` — ${r.note}` : ''}</span>
+              </li>
+            )
           ))}
         </ul>
+      )}
+      {pendingDestructive > 0 && (
+        <p data-testid="pending-destructive" className="mb-1 text-[10px] text-red-500/90">
+          {t('actionConfirm.destructive_skipped', {
+            defaultValue: '{{count}} destructive op(s) will be SKIPPED unless you enable them above.',
+            count: pendingDestructive,
+          })}
+        </p>
       )}
       <p className="mb-1 text-[10px] text-muted-foreground">
         {destructive
@@ -276,7 +342,7 @@ export function ConfirmActionCard({ record }: Props) {
       ) : (
         <div className="mt-1.5 text-[10px] text-muted-foreground">
           {state === 'done' && t('actionConfirm.done', { defaultValue: 'Done ✓' })}
-          {state === 'expired' && t('actionConfirm.expired_short', { defaultValue: 'Expired — re-ask' })}
+          {state === 'expired' && (detail || t('actionConfirm.expired_short', { defaultValue: 'Expired — re-ask' }))}
           {state === 'error' && t('actionConfirm.error_short', { defaultValue: 'Failed' })}
           {state === 'cancelled' && t('actionConfirm.cancelled', { defaultValue: 'Cancelled' })}
         </div>

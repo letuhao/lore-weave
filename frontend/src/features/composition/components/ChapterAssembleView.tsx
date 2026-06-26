@@ -9,6 +9,8 @@ import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useCorrection } from '../hooks/useAutoGenerate';
 import { useGenerateChapter, useSetAssemblyMode, useStitchChapter } from '../hooks/useChapterAssembly';
+import { useCriticStateOptional } from '../context/CriticStateContext';
+import { useAssembleStateOptional } from '../context/AssembleStateContext';
 import { CanonGatePanel } from './CanonGatePanel';
 import type { AssemblyMode, ChapterGeneration, CorrectionBody } from '../types';
 
@@ -34,14 +36,31 @@ export function ChapterAssembleView({
   const stitch = useStitchChapter(token);
   const setMode = useSetAssemblyMode(bookId, token);
   const correction = useCorrection(token);
+  // WS-B1 — share the chapter's canon-gate verdict so the standing `critic` panel
+  // surfaces it (chapter assembly has no per-dimension critique → critic: null).
+  const criticState = useCriticStateOptional();
 
-  const [result, setResult] = useState<ChapterGeneration | null>(null);
-  const [edited, setEdited] = useState('');
-  const [last, setLast] = useState<'chapter' | 'stitch'>('chapter');
+  // WS-D — the draft {result, edited, last} is owned by the cross-window
+  // AssembleStateProvider when present (so a pop-out keeps an un-accepted draft);
+  // falls back to local state in a bare mount (unit tests / no windowing host).
+  const shared = useAssembleStateOptional();
+  const [localResult, setLocalResult] = useState<ChapterGeneration | null>(null);
+  const [localEdited, setLocalEdited] = useState('');
+  const [localLast, setLocalLast] = useState<'chapter' | 'stitch'>('chapter');
+  const result = shared ? shared.result : localResult;
+  const edited = shared ? shared.edited : localEdited;
+  const last = shared ? shared.last : localLast;
+  const setResult = shared ? shared.setResult : setLocalResult;
+  const setEdited = shared ? shared.setEdited : setLocalEdited;
+  const setLast = shared ? shared.setLast : setLocalLast;
 
   const busy = gen.isPending || stitch.isPending;
   const params = { projectId, chapterId, modelRef, modelKind, modelName };
-  const onResult = (r: ChapterGeneration) => { setResult(r); setEdited(r.text); };
+  const onResult = (r: ChapterGeneration) => {
+    setResult(r);
+    setEdited(r.text);
+    if (r.canon) criticState?.setVerdict({ critic: null, canon: r.canon, jobId: r.job_id });
+  };
 
   const runChapter = () => { setLast('chapter'); gen.mutate(params, { onSuccess: onResult }); };
   const runStitch = () => { setLast('stitch'); stitch.mutate(params, { onSuccess: onResult }); };

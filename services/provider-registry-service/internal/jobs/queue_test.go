@@ -15,47 +15,70 @@ import (
 	"github.com/pashagolub/pgxmock/v4"
 )
 
-func TestSemFor_PerKindSizing(t *testing.T) {
-	q := &JobQueue{cloudMax: 8, sems: map[string]chan struct{}{}, logger: slog.Default()}
+func TestSemFor_PerCredentialSizing(t *testing.T) {
+	q := &JobQueue{sems: map[string]chan struct{}{}, logger: slog.Default()}
 
-	// Local kinds serialize to 1 (the single GPU).
-	if got := cap(q.semFor("lm_studio")); got != 1 {
-		t.Fatalf("lm_studio sem cap=%d want 1", got)
+	// A credential with a cap → a semaphore of exactly that cap.
+	if got := cap(q.semFor("cred-A", 4)); got != 4 {
+		t.Fatalf("cred-A sem cap=%d want 4", got)
 	}
-	if got := cap(q.semFor("ollama")); got != 1 {
-		t.Fatalf("ollama sem cap=%d want 1", got)
+	// Unlimited (≤0) → nil semaphore (no gate; the caller runs straight through).
+	if s := q.semFor("cred-B", 0); s != nil {
+		t.Fatalf("limit 0 must yield a nil (unlimited) semaphore; got cap=%d", cap(s))
 	}
-	// Cloud kinds get cloudMax.
-	if got := cap(q.semFor("openai")); got != 8 {
-		t.Fatalf("openai sem cap=%d want 8", got)
+	if s := q.semFor("cred-B", -1); s != nil {
+		t.Fatalf("negative limit must yield a nil semaphore; got cap=%d", cap(s))
 	}
-	// Same kind → same semaphore instance (stable bound, not a fresh one each call).
-	a := q.semFor("lm_studio")
-	b := q.semFor("lm_studio")
+	// Same credential → same semaphore instance (stable bound, cached on the cap
+	// seen first — a later cap change is ignored until process restart).
+	a := q.semFor("cred-A", 4)
+	b := q.semFor("cred-A", 9)
 	if a != b {
-		t.Fatalf("semFor returned a different semaphore for the same kind")
+		t.Fatalf("semFor returned a different semaphore for the same credential")
+	}
+	if cap(b) != 4 {
+		t.Fatalf("cached sem cap must stay 4 (first-seen wins); got %d", cap(b))
 	}
 }
 
-func TestResolveKind_UserModelAndNotFound(t *testing.T) {
+func TestResolveConcurrency_UserModelCapAndUnlimited(t *testing.T) {
 	mock, _ := pgxmock.NewPool()
 	defer mock.Close()
 	repo := &Repo{pool: mock}
 
-	mock.ExpectQuery("SELECT provider_kind FROM user_models").WithArgs(anyArgs(2)...).
-		WillReturnRows(pgxmock.NewRows([]string{"provider_kind"}).AddRow("lm_studio"))
-	kind, ok, err := repo.ResolveKind(context.Background(), "user_model", uuid.New(), uuid.New())
-	if err != nil || !ok || kind != "lm_studio" {
-		t.Fatalf("got kind=%q ok=%v err=%v want lm_studio,true,nil", kind, ok, err)
+	cred := uuid.New()
+	cap4 := 4
+	// A credential with max_concurrency=4 → key=credential id, limit=4.
+	mock.ExpectQuery("FROM user_models").WithArgs(anyArgs(2)...).
+		WillReturnRows(pgxmock.NewRows([]string{"provider_credential_id", "max_concurrency"}).AddRow(cred, &cap4))
+	key, limit, ok, err := repo.ResolveConcurrency(context.Background(), "user_model", uuid.New(), uuid.New())
+	if err != nil || !ok || key != cred.String() || limit != 4 {
+		t.Fatalf("got key=%q limit=%d ok=%v err=%v want %s,4,true,nil", key, limit, ok, err, cred)
 	}
 
-	// Not found → ok=false, no error (caller 404s).
-	mock.ExpectQuery("SELECT provider_kind FROM user_models").WithArgs(anyArgs(2)...).
-		WillReturnRows(pgxmock.NewRows([]string{"provider_kind"})) // empty → ErrNoRows
-	_, ok2, err2 := repo.ResolveKind(context.Background(), "user_model", uuid.New(), uuid.New())
-	if ok2 || err2 != nil {
-		t.Fatalf("not-found: ok=%v err=%v want false,nil", ok2, err2)
+	// NULL max_concurrency → limit 0 (unlimited).
+	mock.ExpectQuery("FROM user_models").WithArgs(anyArgs(2)...).
+		WillReturnRows(pgxmock.NewRows([]string{"provider_credential_id", "max_concurrency"}).AddRow(cred, (*int)(nil)))
+	_, limit2, ok2, err2 := repo.ResolveConcurrency(context.Background(), "user_model", uuid.New(), uuid.New())
+	if err2 != nil || !ok2 || limit2 != 0 {
+		t.Fatalf("null cap: limit=%d ok=%v err=%v want 0,true,nil", limit2, ok2, err2)
 	}
+
+	// Gone model → ok=false, no error (consumer acks+drops).
+	mock.ExpectQuery("FROM user_models").WithArgs(anyArgs(2)...).
+		WillReturnRows(pgxmock.NewRows([]string{"provider_credential_id", "max_concurrency"})) // ErrNoRows
+	_, _, ok3, err3 := repo.ResolveConcurrency(context.Background(), "user_model", uuid.New(), uuid.New())
+	if ok3 || err3 != nil {
+		t.Fatalf("not-found: ok=%v err=%v want false,nil", ok3, err3)
+	}
+
+	// Platform models are unlimited without a DB hit.
+	pmRef := uuid.New()
+	pKey, pLimit, pOK, pErr := repo.ResolveConcurrency(context.Background(), "platform_model", uuid.New(), pmRef)
+	if pErr != nil || !pOK || pLimit != 0 || pKey != "platform:"+pmRef.String() {
+		t.Fatalf("platform: key=%q limit=%d ok=%v err=%v", pKey, pLimit, pOK, pErr)
+	}
+
 	if err := mock.ExpectationsWereMet(); err != nil {
 		t.Fatalf("expectations: %v", err)
 	}

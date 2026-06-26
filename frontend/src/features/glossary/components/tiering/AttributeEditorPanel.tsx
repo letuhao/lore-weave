@@ -6,6 +6,9 @@ import { tierFromSourceRef } from '../../lib/tiering';
 import { TierChip } from './TierChip';
 
 const FIELD_TYPES: FieldType[] = ['text', 'textarea', 'select', 'number', 'date', 'tags', 'url', 'boolean'];
+// How re-extraction merges this attribute (D-EXTRACT-ATTR-MERGE-DEFAULTS). Default is seeded by
+// type, but an author can override per attribute here.
+const MERGE_STRATEGIES = ['append', 'overwrite', 'fill_if_empty', 'manual'] as const;
 
 type Props = {
   attribute: BookAttribute | null;
@@ -26,6 +29,7 @@ export function AttributeEditorPanel({ attribute, onSave, onDelete, onRevert }: 
   const [options, setOptions] = useState('');
   const [autoFillPrompt, setAutoFillPrompt] = useState('');
   const [translationHint, setTranslationHint] = useState('');
+  const [mergeStrategy, setMergeStrategy] = useState('overwrite');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
 
@@ -38,6 +42,7 @@ export function AttributeEditorPanel({ attribute, onSave, onDelete, onRevert }: 
     setOptions((attribute.options ?? []).join('\n'));
     setAutoFillPrompt(attribute.auto_fill_prompt ?? '');
     setTranslationHint(attribute.translation_hint ?? '');
+    setMergeStrategy(attribute.merge_strategy ?? 'overwrite');
     setError('');
   }, [attribute]);
 
@@ -69,6 +74,7 @@ export function AttributeEditorPanel({ attribute, onSave, onDelete, onRevert }: 
         options: fieldType === 'select' ? options.split('\n').map((o) => o.trim()).filter(Boolean) : [],
         auto_fill_prompt: autoFillPrompt.trim() || null,
         translation_hint: translationHint.trim() || null,
+        merge_strategy: mergeStrategy,
       });
     } catch (e) {
       setError((e as Error).message || t('toast.save_failed'));
@@ -128,6 +134,19 @@ export function AttributeEditorPanel({ attribute, onSave, onDelete, onRevert }: 
             />
           </label>
         )}
+        <label className="block">
+          <span className="mb-1 block text-xs font-medium">{t('attr.merge_strategy')}</span>
+          <select
+            value={mergeStrategy}
+            onChange={(e) => setMergeStrategy(e.target.value)}
+            className="w-full rounded-md border bg-background px-2.5 py-1.5 text-sm focus:outline-none focus:ring-1 focus:ring-ring/40"
+          >
+            {MERGE_STRATEGIES.map((ms) => (
+              <option key={ms} value={ms}>{t(`attr.merge.${ms}`)}</option>
+            ))}
+          </select>
+          <span className="mt-1 block text-[10px] text-muted-foreground">{t('attr.merge_strategy_hint')}</span>
+        </label>
         <label className="flex items-center gap-2 text-xs font-medium">
           <input type="checkbox" checked={isRequired} onChange={(e) => setIsRequired(e.target.checked)} />
           {t('attr.required')}

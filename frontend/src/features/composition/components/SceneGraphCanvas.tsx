@@ -5,19 +5,35 @@
 // A then B (both ring), choose kind/label, "+ link" → POST (409 dup → toast). An
 // edge click selects it → ✕ delete. The open (↗) button jumps to the scene.
 // View; all data logic in useOutline/useSceneLinks + useSetWorkSettings.
-import { useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useNavigate } from 'react-router-dom';
+import { useQuery } from '@tanstack/react-query';
 import { toast } from 'sonner';
+import { aiModelsApi } from '../../ai-models/api';
+import { booksApi } from '../../books/api';
 import { useOutline, useOutlineMutations, useSceneLinks } from '../hooks/useOutline';
 import { useSetWorkSettings } from '../hooks/useWork';
+import { useSceneWhatIf, whatIfAltPositions, whatIfAltEdges, type WhatIfEdge } from '../hooks/useSceneWhatIf';
+import { useWhatIfTakes } from '../hooks/useWhatIfTakes';
+import { useWhatIfPromotion } from '../hooks/useWhatIfPromotion';
+import { compositionApi } from '../api';
 import type { OutlineNode, SceneLink, SceneLinkKind, Work } from '../types';
 import { SceneNode } from './SceneNode';
 import { SceneEdge } from './SceneEdge';
+import { WhatIfAltNode } from './WhatIfAltNode';
 import { GraphCanvas } from './GraphCanvas';
 import { autoLayout, NODE_H, NODE_W, PAD, type Pos } from './sceneGraphLayout';
 
-export function SceneGraphCanvas({ work, bookId, token }: { work: Work; bookId: string; token: string | null }) {
+type GraphEdge = SceneLink | WhatIfEdge;
+const isWhatIfEdge = (e: GraphEdge): e is WhatIfEdge => 'wi' in e;
+
+export function SceneGraphCanvas({ work, bookId, token, onPromoted }: {
+  work: Work; bookId: string; token: string | null;
+  /** WS-B3 M3 — called with the freshly-materialized derivative Work after a what-if
+   *  is promoted, so the studio can switch to it. Optional (no-op if not wired). */
+  onPromoted?: (derivative: Work) => void;
+}) {
   const { t } = useTranslation('composition');
   const navigate = useNavigate();
   const projectId = work.project_id;
@@ -45,6 +61,94 @@ export function SceneGraphCanvas({ work, bookId, token }: { work: Work; bookId: 
   const [selectedEdge, setSelectedEdge] = useState<string | null>(null);
   const [kind, setKind] = useState<SceneLinkKind>('setup_payoff');
   const [label, setLabel] = useState('');
+  // WS-B3 M1 — the ephemeral on-canvas what-if branch (dashed, beside canon; nothing
+  // persisted until a future Promote step). Discard leaves zero residue.
+  const whatIf = useSceneWhatIf();
+  // M2 — self-contained model picker for take generation (SelectionToolbar precedent;
+  // SceneGraphCanvas has no shared model ref). + the generate/judge orchestration.
+  const [whatIfModelRef, setWhatIfModelRef] = useState('');
+  const whatIfModels = useQuery({
+    queryKey: ['composition', 'chat-models'],
+    queryFn: () => aiModelsApi.listUserModels(token!, { capability: 'chat' }),
+    enabled: !!token && whatIf.active,
+    select: (d) => d.items.filter((mm) => mm.is_active),
+  });
+  const whatIfModelList = whatIfModels.data ?? [];
+  const effectiveWhatIfModel = whatIfModelRef || whatIfModelList[0]?.user_model_id || '';
+  const selectedWhatIfModel = whatIfModelList.find((mm) => mm.user_model_id === effectiveWhatIfModel);
+  const takes = useWhatIfTakes({ projectId, token, updateAlt: whatIf.updateAlt });
+  const [previewAltId, setPreviewAltId] = useState<string | null>(null);
+
+  // M3 — promote the ephemeral branch into a persistent derivative Work (the SAME
+  // path the Divergence Wizard uses), then seed each generated take as a scene node
+  // in the derivative (defer persisting take-prose-as-draft, per the M3 contract).
+  const wb = whatIf.branch;
+  const anchorScene = wb ? scenes.find((s) => s.id === wb.anchorSceneId) : undefined;
+  // branch_point is a CHAPTER sort_order (the Divergence Wizard picks a chapter), NOT a
+  // scene story_order — so map the anchor scene's chapter → its sort_order. (/review-impl)
+  const chaptersQ = useQuery({
+    queryKey: ['composition', 'whatif-chapters', bookId],
+    queryFn: () => booksApi.listChapters(token!, bookId, { lifecycle_state: 'active', limit: 500, offset: 0 }),
+    enabled: !!bookId && !!token && whatIf.active,
+    select: (d) => d.items,
+  });
+  const anchorChapterSort = anchorScene && chaptersQ.data
+    ? (chaptersQ.data.find((c) => c.chapter_id === anchorScene.chapter_id)?.sort_order ?? null)
+    : null;
+  const whatIfDraft = useMemo(() => ({
+    branchPoint: anchorChapterSort,
+    taxonomy: 'au' as const,
+    povAnchor: null,
+    canonRules: [] as string[],
+    overrides: {} as Record<string, Record<string, unknown>>,
+    name: anchorScene ? `What-if from "${anchorScene.title || 'scene'}"` : 'What-if',
+  }), [anchorScene, anchorChapterSort]);
+  const promotion = useWhatIfPromotion({
+    sourceWork: work,
+    draft: whatIfDraft,
+    token,
+    onPromoted: (derivative) => {
+      // Seed the READY takes as scene nodes in the derivative project (prose-persist
+      // deferred), THEN switch the studio — so the derivative's outline already has the
+      // seeded scenes when it mounts (switching first would open an empty outline).
+      const ready = whatIf.branch?.alts.filter((a) => a.status === 'ready') ?? [];
+      const finish = () => {
+        // local cleanup BEFORE the (possibly unmounting) studio switch.
+        whatIf.discard();
+        setPreviewAltId(null);
+        onPromoted?.(derivative);
+      };
+      if (derivative.project_id && token && ready.length) {
+        const proj = derivative.project_id;
+        // A scene REQUIRES a chapter (DB CHECK `outline_chapter_required` — caught by a
+        // live smoke). The take is an alternate of the anchor scene, so it belongs to the
+        // anchor's chapter (a book chapter, shared by the COW derivative).
+        const chapterId = anchorScene?.chapter_id ?? null;
+        void Promise.allSettled(
+          ready.map((a) => compositionApi.createNode(proj, { kind: 'scene', title: a.title, chapter_id: chapterId }, token)),
+        ).then((results) => {
+          const failed = results.filter((r) => r.status === 'rejected').length;
+          if (failed) toast.error(t('whatif.promotedPartial', { defaultValue: 'Promoted, but {{n}} take(s) couldn’t be added.', n: failed }));
+          else toast.success(t('whatif.promoted', { defaultValue: 'Promoted to a what-if derivative.' }));
+          finish();
+        });
+      } else {
+        toast.success(t('whatif.promoted', { defaultValue: 'Promoted to a what-if derivative.' }));
+        finish();
+      }
+    },
+  });
+  // Gate Promote on the chapters query having loaded too, so branch_point (the anchor's
+  // CHAPTER sort_order) is resolved — a fast click before it loads would branch at null.
+  const canPromote = !!wb && wb.alts.some((a) => a.status === 'ready') && !promotion.isPromoting && !!chaptersQ.data;
+  const generateTake = (altId: string) => {
+    if (!whatIf.branch) return;
+    takes.generateTake(altId, whatIf.branch.anchorSceneId, {
+      modelRef: effectiveWhatIfModel,
+      modelKind: selectedWhatIfModel?.provider_kind,
+      modelName: selectedWhatIfModel?.provider_model_name,
+    });
+  };
 
   const persist = (positions: Record<string, Pos>) => {
     const sg = (work.settings.scene_graph as Record<string, unknown> | undefined) ?? {};
@@ -85,6 +189,22 @@ export function SceneGraphCanvas({ work, bookId, token }: { work: Work; bookId: 
   const byId = useMemo(() => new Map(scenes.map((s) => [s.id, s])), [scenes]);
   const positions: Record<string, Pos> = Object.fromEntries(scenes.map((s) => [s.id, posOf(s.id)]));
 
+  // WS-B3 M1 — merge the ephemeral what-if branch (dashed alt nodes + edges) into the
+  // graph passed to GraphCanvas. Empty when no branch is open (canon graph unchanged).
+  const branch = whatIf.branch;
+  // Auto-discard the branch if its anchor scene is deleted out from under it (a legit
+  // synchronization effect): a what-if is meaningless without its anchor, and a stale
+  // anchorSceneId would later derive a branch_point from a non-existent scene (M3).
+  useEffect(() => {
+    if (branch && !scenes.some((s) => s.id === branch.anchorSceneId)) whatIf.discard();
+  }, [branch, scenes, whatIf.discard]);
+  const altById = useMemo(() => new Map((branch?.alts ?? []).map((a) => [a.id, a])), [branch]);
+  const altPositions = branch ? whatIfAltPositions(branch, posOf(branch.anchorSceneId)) : {};
+  const allPositions: Record<string, Pos> = { ...positions, ...altPositions };
+  const allNodeIds = [...scenes.map((s) => s.id), ...(branch?.alts ?? []).map((a) => a.id)];
+  const allEdges: GraphEdge[] = branch ? [...links, ...whatIfAltEdges(branch)] : links;
+  const previewAlt = branch?.alts.find((a) => a.id === previewAltId) ?? null;
+
   return (
     <div className="flex h-full flex-col" data-testid="composition-graph">
       <div className="flex flex-shrink-0 flex-wrap items-center gap-2 border-b px-3 py-2 text-[11px]">
@@ -120,6 +240,56 @@ export function SceneGraphCanvas({ work, bookId, token }: { work: Work; bookId: 
             </button>
           </div>
         )}
+
+        {/* WS-B3 M1 — what-if controls. Entry: exactly one scene selected + no branch
+            yet → branch from it. Active: add another alternate / discard (zero residue). */}
+        {!whatIf.active && selected.length === 1 && (
+          <button
+            type="button" data-testid="scenegraph-whatif-start"
+            className="ml-auto rounded border border-purple-300 px-2 py-0.5 text-purple-700 hover:bg-purple-50 dark:border-purple-700 dark:text-purple-300 dark:hover:bg-purple-950/30"
+            onClick={() => { whatIf.start(selected[0]); setSelected([]); }}
+          >
+            ⑂ {t('whatif.start', { defaultValue: 'What-if from here' })}
+          </button>
+        )}
+        {whatIf.active && (
+          <div className="ml-auto flex items-center gap-1" data-testid="scenegraph-whatif-bar">
+            <span className="text-purple-700/80 dark:text-purple-300/80">{t('whatif.active', { defaultValue: 'What-if branch (unsaved)' })}</span>
+            <select
+              data-testid="scenegraph-whatif-model"
+              aria-label={t('whatif.model', { defaultValue: 'Take model' })}
+              className="rounded border bg-background px-1 py-0.5"
+              value={effectiveWhatIfModel}
+              onChange={(e) => setWhatIfModelRef(e.target.value)}
+            >
+              {whatIfModelList.length === 0 && <option value="">{t('whatif.noModel', { defaultValue: 'No model' })}</option>}
+              {whatIfModelList.map((mm) => <option key={mm.user_model_id} value={mm.user_model_id}>{mm.alias || mm.provider_model_name}</option>)}
+            </select>
+            <button
+              type="button" data-testid="scenegraph-whatif-add"
+              className="rounded border border-purple-300 px-2 py-0.5 text-purple-700 hover:bg-purple-50 dark:border-purple-700 dark:text-purple-300 dark:hover:bg-purple-950/30"
+              onClick={whatIf.addAlt}
+            >
+              + {t('whatif.addAlt', { defaultValue: 'alternate' })}
+            </button>
+            <button
+              type="button" data-testid="scenegraph-whatif-promote"
+              className="rounded bg-purple-600 px-2 py-0.5 text-white disabled:opacity-50"
+              disabled={!canPromote}
+              title={canPromote ? undefined : t('whatif.promoteHint', { defaultValue: 'Generate at least one take to promote' })}
+              onClick={() => promotion.promote()}
+            >
+              {promotion.isPromoting ? t('whatif.promoting', { defaultValue: 'Promoting…' }) : t('whatif.promote', { defaultValue: 'Promote' })}
+            </button>
+            <button
+              type="button" data-testid="scenegraph-whatif-discard"
+              className="rounded px-2 py-0.5 text-muted-foreground hover:text-foreground"
+              onClick={whatIf.discard}
+            >
+              {t('whatif.discard', { defaultValue: 'Discard what-if' })}
+            </button>
+          </div>
+        )}
       </div>
 
       {scenes.length === 0 ? (
@@ -127,15 +297,15 @@ export function SceneGraphCanvas({ work, bookId, token }: { work: Work; bookId: 
           {t('scenegraph.empty', { defaultValue: 'No scenes yet — plan some scenes in the outline to see the graph.' })}
         </div>
       ) : (
-        <GraphCanvas<SceneLink>
+        <GraphCanvas<GraphEdge>
           testid="scenegraph-svg"
-          positions={positions}
-          nodeIds={scenes.map((s) => s.id)}
-          edges={links}
+          positions={allPositions}
+          nodeIds={allNodeIds}
+          edges={allEdges}
           edgeEndpoints={(l) => ({ from: l.from_node_id, to: l.to_node_id })}
           edgeKey={(l) => l.id}
           nodeSize={{ w: NODE_W, h: NODE_H }}
-          onNodeClick={toggleSelect}
+          onNodeClick={(id) => { if (!altById.has(id)) toggleSelect(id); }}
           onNodeDrag={(id, pos) => applyLocal({ ...localRef.current, [id]: pos })}
           onNodeDragEnd={() => persist(localRef.current)}
           onBackgroundClick={clearSelection}
@@ -144,24 +314,67 @@ export function SceneGraphCanvas({ work, bookId, token }: { work: Work; bookId: 
               <path d="M0,0 L10,5 L0,10 z" fill="#94a3b8" />
             </marker>
           )}
-          renderEdge={(l, from, to) => (
-            <SceneEdge
-              link={l} from={from} to={to}
-              selected={selectedEdge === l.id}
-              onSelect={() => { setSelected([]); setSelectedEdge(l.id); }}
-              onDelete={() => deleteEdge(l.id)}
-            />
-          )}
+          renderEdge={(l, from, to) =>
+            isWhatIfEdge(l) ? (
+              // dashed branch edge anchor → alternate (purple, no arrow/selection)
+              <line
+                key={l.id} data-testid={`whatif-edge-${l.id}`}
+                x1={from.x + NODE_W} y1={from.y + NODE_H / 2} x2={to.x} y2={to.y + NODE_H / 2}
+                stroke="#a855f7" strokeWidth={1.5} strokeDasharray="4 3"
+              />
+            ) : (
+              <SceneEdge
+                link={l} from={from} to={to}
+                selected={selectedEdge === l.id}
+                onSelect={() => { setSelected([]); setSelectedEdge(l.id); }}
+                onDelete={() => deleteEdge(l.id)}
+              />
+            )
+          }
           renderNode={(id, h) => {
+            const alt = altById.get(id);
+            if (alt) {
+              return (
+                <WhatIfAltNode
+                  alt={alt} pos={allPositions[id]}
+                  onRemove={() => { whatIf.removeAlt(id); if (previewAltId === id) setPreviewAltId(null); }}
+                  onGenerate={() => generateTake(id)}
+                  onView={() => setPreviewAltId(id)}
+                />
+              );
+            }
             const n = byId.get(id)!;
             return (
               <SceneNode
-                node={n} pos={positions[id]} selected={selected.includes(id)}
+                node={n} pos={allPositions[id]} selected={selected.includes(id)}
                 onPointerDown={h.onPointerDown} onSelect={() => toggleSelect(id)} onOpen={() => openScene(n)}
               />
             );
           }}
         />
+      )}
+
+      {/* M2 — the take preview strip: the selected alternate's ghost prose + full judge
+          dims. Read-only preview (no auto-insert); accept-into-draft / promote is M3. */}
+      {previewAlt?.take && (
+        <div data-testid="whatif-preview" className="flex max-h-48 shrink-0 flex-col gap-1 border-t border-purple-200 bg-purple-50/40 p-2 text-[11px] dark:border-purple-800 dark:bg-purple-950/30">
+          <div className="flex items-center gap-2">
+            <span className="font-medium text-purple-800 dark:text-purple-200">⑂ {previewAlt.title}</span>
+            {previewAlt.take.judge && (
+              <span className="font-mono text-[10px] text-purple-700/80 dark:text-purple-300/80">
+                C{previewAlt.take.judge.coherence ?? '–'} · V{previewAlt.take.judge.voice_match ?? '–'} · P{previewAlt.take.judge.pacing ?? '–'} · K{previewAlt.take.judge.canon_consistency ?? '–'}
+              </span>
+            )}
+            <button
+              type="button" data-testid="whatif-preview-close"
+              className="ml-auto rounded px-1 text-muted-foreground hover:text-foreground"
+              onClick={() => setPreviewAltId(null)}
+            >
+              {t('whatif.closePreview', { defaultValue: 'Close' })}
+            </button>
+          </div>
+          <p className="overflow-y-auto whitespace-pre-wrap text-purple-900/90 dark:text-purple-100/90">{previewAlt.take.ghost}</p>
+        </div>
       )}
     </div>
   );

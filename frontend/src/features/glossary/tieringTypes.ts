@@ -140,6 +140,9 @@ export interface BookAttribute {
   auto_fill_prompt?: string | null;
   translation_hint?: string | null;
   source_ref?: string | null;
+  // How re-extraction merges this attribute (D-EXTRACT-ATTR-MERGE-DEFAULTS): append (accumulate),
+  // overwrite (advance to latest), fill_if_empty (write-once), manual (queue for review).
+  merge_strategy?: string;
 }
 
 /** `GET/POST /v1/glossary/books/{id}/ontology|adopt` — the book-local, single-tier read. */

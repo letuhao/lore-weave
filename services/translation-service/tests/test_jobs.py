@@ -209,14 +209,32 @@ def test_create_job_qa_config_overrides_flow_to_broker(client, fake_pool):
     # Also guard the INSERT positional args — a column/value swap would persist wrong
     # data yet still pass the message assertion above (built from eff). Trailing order:
     # …, qa_depth, max_qa_rounds, verifier_source, verifier_ref, cold_start_mode,
-    # campaign_id, eval_judge_source, eval_judge_ref, block_index_filter, seed_version_id
-    # (S4a + S5b-eval + T2-M2). So the qa/verifier/cold tuple is [-10:-5], campaign_id
-    # is [-5], the eval-judge pair is [-4:-2], and the T2-M2 pair is the trailing [-2:].
+    # campaign_id, eval_judge_source, eval_judge_ref, block_index_filter, seed_version_id,
+    # thinking_enabled (S4a + S5b-eval + T2-M2 + D-TRANSLATE-REASONING-TOGGLE — the new
+    # trailing arg shifts every index one more negative). qa/verifier/cold tuple [-11:-6],
+    # campaign_id [-6], eval-judge pair [-5:-3], T2-M2 pair [-3:-1], thinking_enabled [-1].
     insert_args = fake_pool.fetchrow.call_args_list[1].args  # [0]=resolve, [1]=INSERT
-    assert insert_args[-10:-5] == ("thorough", 4, "platform_model", UUID(verifier_ref), "single_pass")
-    assert insert_args[-5] is None  # campaign_id — public job is not campaign-owned
-    assert insert_args[-4:-2] == (None, None)  # eval_judge source/ref — none for a public job
-    assert insert_args[-2:] == (None, None)  # block_index_filter / seed_version_id — whole-chapter job
+    assert insert_args[-11:-6] == ("thorough", 4, "platform_model", UUID(verifier_ref), "single_pass")
+    assert insert_args[-6] is None  # campaign_id — public job is not campaign-owned
+    assert insert_args[-5:-3] == (None, None)  # eval_judge source/ref — none for a public job
+    assert insert_args[-3:-1] == (None, None)  # block_index_filter / seed_version_id — whole-chapter job
+    assert insert_args[-1] is False  # thinking_enabled default OFF
+
+
+def test_create_job_thinking_enabled_flows_to_broker(client, fake_pool):
+    """D-TRANSLATE-REASONING-TOGGLE: a per-job thinking_enabled=true is PERSISTED on the
+    job row (last INSERT positional, so resume rebuilds it from the row) AND carried in
+    the broker message so the worker enables the model's hidden thinking."""
+    fake_pool.fetchrow.side_effect = [_BOOK_SETTINGS_ROW, FakeRecord({**_JOB_ROW})]
+    with patch("app.routers.jobs.publish", new_callable=AsyncMock) as mock_publish, \
+         patch("app.routers.jobs.publish_event", new_callable=AsyncMock):
+        resp = client.post(
+            f"/v1/translation/books/{BOOK_ID}/jobs",
+            json={"chapter_ids": [CHAPTER_ID], "thinking_enabled": True},
+        )
+    assert resp.status_code == 201
+    assert mock_publish.call_args.args[1]["thinking_enabled"] is True
+    assert fake_pool.fetchrow.call_args_list[1].args[-1] is True  # persisted (last positional)
 
 
 def test_create_job_defaults_qa_config_when_unset(client, fake_pool):
@@ -250,9 +268,9 @@ async def test_resolve_and_create_job_threads_campaign_id(fake_pool):
             CreateJobPayload(chapter_ids=[UUID(CHAPTER_ID)]),
             USER_ID, campaign_id=camp,
         )
-    # persisted (campaign_id is [-5]: trailing eval-judge pair + T2-M2 block-filter pair)
-    # + published on the "translation.job" message
-    assert fake_pool.fetchrow.call_args_list[1].args[-5] == camp
+    # persisted (campaign_id is [-6]: trailing eval-judge pair + T2-M2 block-filter pair
+    # + thinking_enabled) + published on the "translation.job" message
+    assert fake_pool.fetchrow.call_args_list[1].args[-6] == camp
     assert mock_publish.call_args.args[1]["campaign_id"] == str(camp)
 
 
@@ -314,7 +332,7 @@ def test_public_create_job_ignores_campaign_id_in_body(client, fake_pool):
         )
     assert resp.status_code == 201
     assert mock_publish.call_args.args[1]["campaign_id"] is None  # not honoured
-    assert fake_pool.fetchrow.call_args_list[1].args[-5] is None  # campaign_id NULL persisted ([-5] post S5b-eval + T2-M2)
+    assert fake_pool.fetchrow.call_args_list[1].args[-6] is None  # campaign_id NULL persisted ([-6] post S5b-eval + T2-M2 + thinking_enabled)
 
 
 def test_create_job_cold_start_mode_override_flows_to_broker(client, fake_pool):
@@ -328,11 +346,12 @@ def test_create_job_cold_start_mode_override_flows_to_broker(client, fake_pool):
     assert resp.status_code == 201
     assert mock_publish.call_args.args[1]["cold_start_mode"] == "two_pass"
     insert_args = fake_pool.fetchrow.call_args_list[1].args
-    # Trailing INSERT positionals: …, cold_start_mode[-6], campaign_id[-5],
-    # eval_judge_model_source[-4], eval_judge_model_ref[-3],
-    # block_index_filter[-2], seed_version_id[-1] (S4a + S5b-eval + T2-M2).
-    assert insert_args[-6] == "two_pass"  # cold_start_mode
-    assert insert_args[-5] is None  # campaign_id — public job is not campaign-owned
+    # Trailing INSERT positionals: …, cold_start_mode[-7], campaign_id[-6],
+    # eval_judge_model_source[-5], eval_judge_model_ref[-4], block_index_filter[-3],
+    # seed_version_id[-2], thinking_enabled[-1] (S4a + S5b-eval + T2-M2 +
+    # D-TRANSLATE-REASONING-TOGGLE shifts each one more negative).
+    assert insert_args[-7] == "two_pass"  # cold_start_mode
+    assert insert_args[-6] is None  # campaign_id — public job is not campaign-owned
 
 
 def test_create_job_rejects_invalid_cold_start_mode(client):

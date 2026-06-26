@@ -3,7 +3,7 @@
 // Resolves/creates the Work for the book, lets the author target a scene + a
 // drafter model, then switches between Compose / Grounding / Canon sub-views.
 // Render-only: all logic lives in the hooks.
-import { useState } from 'react';
+import { useCallback, useRef, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
@@ -22,34 +22,57 @@ import { BeatSheetView } from './BeatSheetView';
 import { SceneGraphCanvas } from './SceneGraphCanvas';
 import { CastCodexPanel } from './CastCodexPanel';
 import { RelationshipMap } from './RelationshipMap';
+import { FlywheelPanel } from './FlywheelPanel';
+import { PowerViewOverlay } from './PowerViewOverlay';
 import { TimelineView } from './TimelineView';
 import { CharacterArcView } from './CharacterArcView';
 import { WorldMap } from './WorldMap';
 import { GroundingPanel } from './GroundingPanel';
+import { ReferencesPanel } from './ReferencesPanel';
+import { DockRail } from './workspace/DockRail';
+import { DockSlot } from './workspace/DockSlot';
+import { PopoutBridge } from './workspace/PopoutBridge';
+import { useWorkspaceLayoutOptional } from '../context/WorkspaceLayoutContext';
+import { visibleDockIds, hiddenDockIds, floatingDockIds, popoutDockIds, nextActiveAfterHide, defaultFloatRect } from '../workspace/dock';
+import type { Rect, WorkspacePanelId } from '../workspace/types';
 import { DivergenceWizardButton } from './DivergenceWizardButton';
 import { PromoteWhatIfButton } from './PromoteWhatIfButton';
 import { DerivativeBanner } from './DerivativeBanner';
 import { DerivativeGroundingLayers } from './DerivativeGroundingLayers';
 import { useDerivativeContext } from '../hooks/useDerivativeContext';
 import { CanonRulesPanel } from './CanonRulesPanel';
+import { CriticPanel } from './CriticPanel';
 import { ThreadsPanel } from './ThreadsPanel';
 import { QualityPanel } from './QualityPanel';
+import { ProgressPanel } from './ProgressPanel';
+import { StyleVoicePanel } from './StyleVoicePanel';
 import { CompositionSettingsView } from './CompositionSettingsView';
 
 type Props = {
   bookId: string;
   chapterId: string;
   token: string | null;
-  onAccept: (text: string) => void; // insert accepted prose into the editor
+  // insert accepted prose into the editor; `meta.model` attributes the AI
+  // provenance mark (T5.3) with the model that wrote it.
+  onAccept: (text: string, meta?: { model?: string }) => void;
   /** T3.2: the active scene can be lifted to ChapterEditorPage so the editor's
    *  Selection Tools ground on it. Controlled-or-internal — omitted → own state. */
   sceneId?: string;
   onSceneChange?: (id: string) => void;
+  /** T5.2: the in-prose mention-heatmap toggle, owned by ChapterEditorPage (it drives
+   *  the editor decoration); the GroundingPanel renders the toggle control. */
+  heatmapEnabled?: boolean;
+  onToggleHeatmap?: () => void;
+  /** T5.4 M4 — popout/solo mode: when set, render ONLY this panel (no dock rail, no
+   *  windowing chrome) — used by the /composition/popout route so a popped-out panel
+   *  shows just itself in its own OS window. Omitted ⇒ the full studio (default). */
+  soloPanel?: WorkspacePanelId;
 };
 
-type SubTab = 'compose' | 'cowriter' | 'assemble' | 'planner' | 'beats' | 'graph' | 'cast' | 'relmap' | 'timeline' | 'arc' | 'worldmap' | 'grounding' | 'canon' | 'threads' | 'quality' | 'settings';
+type SubTab = 'compose' | 'cowriter' | 'assemble' | 'planner' | 'beats' | 'graph' | 'cast' | 'relmap' | 'timeline' | 'arc' | 'worldmap' | 'grounding' | 'references' | 'style' | 'canon' | 'critic' | 'threads' | 'progress' | 'quality' | 'flywheel' | 'settings';
 
-export function CompositionPanel({ bookId, chapterId, token, onAccept, sceneId: sceneIdProp, onSceneChange }: Props) {
+export function CompositionPanel({ bookId, chapterId, token, onAccept, sceneId: sceneIdProp, onSceneChange, heatmapEnabled, onToggleHeatmap, soloPanel }: Props) {
+  const solo = soloPanel != null;
   const { t } = useTranslation('composition');
   const qc = useQueryClient();
   const resolution = useWorkResolution(bookId, token);
@@ -75,9 +98,15 @@ export function CompositionPanel({ bookId, chapterId, token, onAccept, sceneId: 
   // T2.5: the Cast search is lifted here so the World Map can "open a place in the
   // codex" by prefilling its name + switching to the cast tab.
   const [castSearch, setCastSearch] = useState('');
+  // T5.5 — the Story Map Power-view overlay (mount-on-open, fresh each time).
+  const [powerViewOpen, setPowerViewOpen] = useState(false);
   // T3.1: the compose guide is lifted here so the co-writer chat's "Use as guide"
   // can pre-fill it (then switch to the compose tab).
   const [composeGuide, setComposeGuide] = useState('');
+  // T5.4 M3 — floating-window z-order (focus stack, most-recent last). Ephemeral
+  // per-device-session UI state (NOT persisted — z-order across reload is immaterial);
+  // a window click moves it to the top. The placement + geometry ARE persisted (layout).
+  const [floatFocus, setFloatFocus] = useState<WorkspacePanelId[]>([]);
 
   // C24 (dị bản M0) — when the wizard spawns a derivative, the studio switches to
   // edit THAT Work so the writer lands in the dị bản (banner + 2-layer badges). The
@@ -115,7 +144,7 @@ export function CompositionPanel({ bookId, chapterId, token, onAccept, sceneId: 
   // C24 (dị bản M0) — derivative-context controller. Surfaces the dị bản banner +
   // the 2-layer (INHERITED/OVERRIDDEN) grounding badges when the open Work is a
   // derivative (source_work_id set). No-ops for a greenfield Work.
-  const derivativeCtx = useDerivativeContext(work);
+  const derivativeCtx = useDerivativeContext(work, token);
   // EXPLICIT handler from the wizard's onDerived (NOT a useEffect-for-events): switch
   // the studio to the new derivative + refresh the resolution cache so a later
   // re-resolve also sees it.
@@ -150,6 +179,24 @@ export function CompositionPanel({ bookId, chapterId, token, onAccept, sceneId: 
     chapterId,
     newSceneTitle: guidedSceneTitle,
   });
+
+  // T5.3 — attribute accepted AI prose with the selected model's name (for the
+  // provenance hover tag). HOISTED above the early returns (rules-of-hooks): a hook
+  // below the `if (resolution.isLoading) return` was masked in the opener (its query
+  // cache is pre-warmed by ChapterEditorPage) but CRASHED the pop-out, whose separate
+  // React root has a COLD query cache → first render early-returns with fewer hooks,
+  // then the resolved render runs this one → "rendered more hooks". The model name is
+  // read via a ref (assigned below, after the Work resolves) so the deps stay stable.
+  const modelNameRef = useRef<string | undefined>(undefined);
+  const acceptProse = useCallback(
+    (text: string) => onAccept(text, { model: modelNameRef.current }),
+    [onAccept],
+  );
+  // T5.4 — the windowing layout/flag (null without a provider, e.g. unit tests / the
+  // flag-OFF path). HOISTED above the early returns for the same rules-of-hooks reason
+  // as acceptProse: a cold-cache first render (the pop-out's separate root) early-returns
+  // before this line, then the resolved render reaches it → "rendered more hooks".
+  const ws = useWorkspaceLayoutOptional();
 
   if (resolution.isLoading) return <Hint>{t('loading', { defaultValue: 'Loading co-writer…' })}</Hint>;
   if (res?.status === 'unavailable')
@@ -245,6 +292,9 @@ export function CompositionPanel({ bookId, chapterId, token, onAccept, sceneId: 
   // The selected model's metadata — hints for the server's auto-reasoning
   // strategy (adaptive pass-through vs our rule-based scorer).
   const selectedModel = models.data?.find((m) => m.user_model_id === effectiveModelRef);
+  // Feed the hoisted acceptProse the current model name via its ref (plain assignment,
+  // not a hook — safe after the early returns).
+  modelNameRef.current = selectedModel?.provider_model_name;
   // T0.1 — the plot-thread debt panel is opt-in: only surface its sub-tab when
   // the book has narrative-thread tracking on (same gate as the producer).
   const threadsEnabled = work.settings?.narrative_thread_enabled === true;
@@ -256,6 +306,113 @@ export function CompositionPanel({ bookId, chapterId, token, onAccept, sceneId: 
   // knowledge as optional, never a precondition wall.
   const hasChatModel = !!models.data?.length;
   const noChatModel = !models.isLoading && !hasChatModel;
+
+  // T5.4 M2 — dock windowing. When the WorkspaceShell flag is ON, the fixed strip is
+  // replaced by a reorderable DockRail and the active panel is driven by the (per-
+  // device) layout; OFF (or no provider — unit tests) keeps the local `tab` state +
+  // fixed strip UNCHANGED. The 19 content divs stay MOUNTED either way (no remount).
+  // `ws` is the hoisted hook value (read above the early returns); the derivations below
+  // use it only after the Work resolves.
+  const dockOn = !!ws?.enabled;
+  const dockVisible = dockOn ? visibleDockIds(ws!.layout, threadsEnabled) : [];
+  // CLAMP the active panel to a VISIBLE one (/review-impl MED): a persisted active
+  // that is now hidden or gated-out (e.g. 'threads' saved while enabled, now disabled)
+  // would otherwise blank the content pane — no matching div renders + no rail tab.
+  const activeTab: SubTab = dockOn
+    ? ((dockVisible as string[]).includes(ws!.layout.active)
+        ? (ws!.layout.active as SubTab)
+        : ((dockVisible[0] as SubTab) ?? 'compose'))
+    : tab;
+  const selectTab = (id: SubTab) => {
+    if (dockOn && ws) {
+      // a deep-link to a hidden panel un-hides it so it shows in the rail (not just
+      // active-but-tabless). /review-impl LOW.
+      if (ws.layout.panels[id as WorkspacePanelId]?.hidden) {
+        ws.dispatch({ type: 'toggle-hidden', id: id as WorkspacePanelId });
+      }
+      ws.dispatch({ type: 'set-active', id: id as WorkspacePanelId });
+    } else setTab(id);
+  };
+  const hideDockPanel = (id: WorkspacePanelId) => {
+    if (!ws) return;
+    if (activeTab === id) {
+      const next = nextActiveAfterHide(dockVisible, id);
+      if (next) ws.dispatch({ type: 'set-active', id: next });
+    }
+    ws.dispatch({ type: 'toggle-hidden', id });
+  };
+  // T5.4 M3 — in-app floating windows. A floated panel leaves the rail (placement
+  // filters exclude it) and renders as a FloatingWindow via DockSlot; its content is
+  // the SAME element (re-parented, not duplicated) so the M1-hoisted co-writer stream
+  // survives the move. dock↔float reuses the persisted rect so a window reopens where
+  // it last sat.
+  const dockFloating = dockOn ? floatingDockIds(ws!.layout, threadsEnabled) : [];
+  const focusFloat = (id: WorkspacePanelId) =>
+    setFloatFocus((prev) => [...prev.filter((x) => x !== id), id]);
+  // zIndex stays below the Power-view overlay (z-50): base 40 + focus position, capped.
+  const floatZ = (id: WorkspacePanelId) => 40 + Math.min(Math.max(floatFocus.indexOf(id), 0), 9);
+  const floatPanel = (id: WorkspacePanelId) => {
+    if (!ws) return;
+    const rect = ws.layout.panels[id]?.rect ?? defaultFloatRect(dockFloating.length);
+    ws.dispatch({ type: 'set-placement', id, placement: 'float', rect });
+    focusFloat(id);
+    // if the panel being floated was the active dock tab, advance focus so the dock
+    // content pane doesn't go blank (the rail no longer lists it).
+    if (activeTab === id) {
+      const next = nextActiveAfterHide(dockVisible, id);
+      if (next) ws.dispatch({ type: 'set-active', id: next });
+    }
+  };
+  const dockPanel = (id: WorkspacePanelId) => {
+    if (!ws) return;
+    ws.dispatch({ type: 'set-placement', id, placement: 'dock' }); // rect preserved for re-float
+    setFloatFocus((prev) => prev.filter((x) => x !== id));
+  };
+  // T5.4 M4 — OS pop-out. A popped panel leaves the rail AND the opener content area
+  // (it runs in its OWN window via PopoutBridge → the /composition/popout route); only
+  // its bridge stays mounted here, owning that window's lifecycle. Closing the window
+  // (or its Dock button) re-docks it (dockPanel, via the bridge's close-poll).
+  const dockPopped = dockOn ? popoutDockIds(ws!.layout, threadsEnabled) : [];
+  const popoutPanel = (id: WorkspacePanelId) => {
+    if (!ws) return;
+    ws.dispatch({ type: 'set-placement', id, placement: 'popout' });
+    if (activeTab === id) {
+      const next = nextActiveAfterHide(dockVisible, id);
+      if (next) ws.dispatch({ type: 'set-active', id: next });
+    }
+  };
+  // Per-panel placement-aware host props (shared by every DockSlot). When the flag is
+  // OFF / there's no provider, `floated` is always false ⇒ DockSlot renders the M2
+  // visible/hidden div, byte-identical to before. In SOLO mode (the popout shell) only
+  // `soloPanel` is mounted, forced visible, never floated/popped (it IS the window).
+  const slot = (id: WorkspacePanelId) => ({
+    id,
+    active: solo ? id === soloPanel : activeTab === id,
+    floated: !solo && dockOn && ws?.layout.panels[id]?.placement === 'float',
+    // Not mounted here when: a non-solo panel in the popout shell, OR (in the opener)
+    // a panel that's popped out to its own window.
+    mounted: solo ? id === soloPanel : ws?.layout.panels[id]?.placement !== 'popout',
+    rect: ws?.layout.panels[id]?.rect ?? defaultFloatRect(0),
+    title: t(id, { defaultValue: id }),
+    zIndex: floatZ(id),
+    onMove: (rect: Rect) => ws?.dispatch({ type: 'set-rect', id, rect }),
+    onResize: (rect: Rect) => ws?.dispatch({ type: 'set-rect', id, rect }),
+    onDock: () => dockPanel(id),
+    onFocus: () => focusFloat(id),
+  });
+  // T5.5 — open the story-map views full-screen. Shared by both the dock rail and the
+  // fixed strip (the DockRail rightSlot), so the affordance survives flag ON.
+  const powerViewBtn = (
+    <button
+      type="button"
+      data-testid="composition-power-view-btn"
+      className="ml-auto shrink-0 self-center whitespace-nowrap rounded px-2 py-0.5 text-xs text-neutral-500 hover:bg-neutral-100 hover:text-neutral-700 dark:hover:bg-neutral-800"
+      onClick={() => setPowerViewOpen(true)}
+      title={t('view.power_view', { defaultValue: 'Power view' })}
+    >
+      ⛶ {t('view.power_view', { defaultValue: 'Power view' })}
+    </button>
+  );
 
   return (
     <div className="flex h-full min-w-0 flex-col overflow-hidden">
@@ -430,25 +587,54 @@ export function CompositionPanel({ bookId, chapterId, token, onAccept, sceneId: 
         </div>
       )}
 
-      {/* sub-tabs — 16 tabs in a resizable (narrow-able) panel: the strip scrolls
-          horizontally rather than overflowing the panel. Tabs don't shrink (labels
-          stay readable) and the row never forces the panel wider than its width.
-          D-080: TabScrollStrip adds the scroll-aware edge fade affordance. */}
-      <TabScrollStrip
-        testid="composition-subtabs"
-        className="flex gap-1 overflow-x-auto border-b border-neutral-200 px-2 pt-1 text-sm dark:border-neutral-700"
-      >
-        {(['compose', 'cowriter', 'assemble', 'planner', 'beats', 'graph', 'cast', 'relmap', 'timeline', 'arc', 'worldmap', 'grounding', 'canon', ...(threadsEnabled ? ['threads' as const] : []), 'quality', 'settings'] as SubTab[]).map((tb) => (
-          <button
-            key={tb}
-            data-testid={`composition-subtab-${tb}`}
-            className={`shrink-0 whitespace-nowrap rounded-t px-2 py-1 ${tab === tb ? 'bg-neutral-100 font-medium dark:bg-neutral-800' : 'text-neutral-500'}`}
-            onClick={() => setTab(tb)}
-          >
-            {t(tb, { defaultValue: tb })}
-          </button>
-        ))}
-      </TabScrollStrip>
+      {/* T5.4 M4 — opener-side OS pop-out bridges (render nothing; own each popped
+          panel's window). Never in SOLO mode (the popout shell IS a window). */}
+      {!solo && dockPopped.map((id) => (
+        <PopoutBridge
+          key={id}
+          id={id}
+          bookId={bookId}
+          chapterId={chapterId}
+          sceneId={effectiveScene}
+          onClosed={() => dockPanel(id)}
+        />
+      ))}
+
+      {/* sub-tabs strip — DockRail (reorderable) when the windowing flag is ON, else
+          the fixed TabScrollStrip. Both keep the Power-view trigger (shared rightSlot)
+          and the 19 content divs below stay MOUNTED either way (no remount). SOLO mode
+          (the popout shell) shows no strip — the window IS the single panel. */}
+      {solo ? null : dockOn && ws ? (
+        <DockRail
+          visibleIds={dockVisible}
+          hiddenIds={hiddenDockIds(ws.layout, threadsEnabled)}
+          active={activeTab as WorkspacePanelId}
+          onSelect={(id) => selectTab(id as SubTab)}
+          onReorder={(ids) => ws.dispatch({ type: 'reorder', ids })}
+          onHide={hideDockPanel}
+          onShow={(id) => ws.dispatch({ type: 'toggle-hidden', id })}
+          onFloat={floatPanel}
+          onPopout={popoutPanel}
+          rightSlot={powerViewBtn}
+        />
+      ) : (
+        <TabScrollStrip
+          testid="composition-subtabs"
+          className="flex gap-1 overflow-x-auto border-b border-neutral-200 px-2 pt-1 text-sm dark:border-neutral-700"
+        >
+          {(['compose', 'cowriter', 'assemble', 'planner', 'beats', 'graph', 'cast', 'relmap', 'timeline', 'arc', 'worldmap', 'grounding', 'references', 'style', 'canon', 'critic', ...(threadsEnabled ? ['threads' as const] : []), 'progress', 'quality', 'flywheel', 'settings'] as SubTab[]).map((tb) => (
+            <button
+              key={tb}
+              data-testid={`composition-subtab-${tb}`}
+              className={`shrink-0 whitespace-nowrap rounded-t px-2 py-1 ${tab === tb ? 'bg-neutral-100 font-medium dark:bg-neutral-800' : 'text-neutral-500'}`}
+              onClick={() => setTab(tb)}
+            >
+              {t(tb, { defaultValue: tb })}
+            </button>
+          ))}
+          {powerViewBtn}
+        </TabScrollStrip>
+      )}
 
       <div data-testid="composition-content" className="min-h-0 min-w-0 flex-1 overflow-auto [overflow-wrap:anywhere]">
         {/* All sub-panels stay MOUNTED, toggled with CSS `hidden`, so in-progress
@@ -460,7 +646,7 @@ export function CompositionPanel({ bookId, chapterId, token, onAccept, sceneId: 
             never opened — QualityPanel (correction-stats) + CanonRulesPanel (list).
             Both are bounded + react-query-cached; GroundingPanel self-guards on an
             empty sceneId (no eager query). Accepted for uniform state-preservation. */}
-        <div className={tab === 'compose' ? '' : 'hidden'}>
+        <DockSlot {...slot('compose')}>
           <ComposeView
             projectId={work.project_id}
             sceneId={effectiveScene}
@@ -468,19 +654,19 @@ export function CompositionPanel({ bookId, chapterId, token, onAccept, sceneId: 
             modelKind={selectedModel?.provider_kind}
             modelName={selectedModel?.provider_model_name}
             token={token}
-            onAccept={onAccept}
+            onAccept={acceptProse}
             guide={composeGuide}
             onGuideChange={setComposeGuide}
           />
-        </div>
-        <div className={tab === 'cowriter' ? '' : 'hidden'}>
+        </DockSlot>
+        <DockSlot {...slot('cowriter')}>
           <CoWriterChat
             bookId={bookId}
-            onAccept={onAccept}
-            onUseAsGuide={(text) => { setComposeGuide(text); setTab('compose'); }}
+            onAccept={acceptProse}
+            onUseAsGuide={(text) => { setComposeGuide(text); selectTab('compose'); }}
           />
-        </div>
-        <div className={tab === 'assemble' ? '' : 'hidden'}>
+        </DockSlot>
+        <DockSlot {...slot('assemble')}>
           <ChapterAssembleView
             projectId={work.project_id}
             bookId={bookId}
@@ -491,35 +677,35 @@ export function CompositionPanel({ bookId, chapterId, token, onAccept, sceneId: 
             settings={work.settings}
             scenesAllDone={scenesAllDone}
             token={token}
-            onAccept={onAccept}
+            onAccept={acceptProse}
           />
-        </div>
-        <div className={tab === 'planner' ? '' : 'hidden'}>
+        </DockSlot>
+        <DockSlot {...slot('planner')}>
           <PlannerView projectId={work.project_id} bookId={bookId} modelRef={effectiveModelRef} modelSource="user_model" models={models.data ?? []} token={token} />
-        </div>
-        <div className={tab === 'beats' ? '' : 'hidden'}>
+        </DockSlot>
+        <DockSlot {...slot('beats')}>
           <BeatSheetView bookId={bookId} projectId={work.project_id} token={token} />
-        </div>
-        <div className={tab === 'graph' ? '' : 'hidden'}>
-          <SceneGraphCanvas work={work} bookId={bookId} token={token} />
-        </div>
-        <div className={tab === 'cast' ? '' : 'hidden'}>
+        </DockSlot>
+        <DockSlot {...slot('graph')}>
+          <SceneGraphCanvas work={work} bookId={bookId} token={token} onPromoted={onDerivedWork} />
+        </DockSlot>
+        <DockSlot {...slot('cast')}>
           <CastCodexPanel
             bookId={bookId}
             chapterId={chapterId}
             token={token}
-            onViewArc={(id) => { setArcEntityId(id); setTab('arc'); }}
+            onViewArc={(id) => { setArcEntityId(id); selectTab('arc'); }}
             search={castSearch}
             onSearchChange={setCastSearch}
           />
-        </div>
-        <div className={tab === 'relmap' ? '' : 'hidden'}>
+        </DockSlot>
+        <DockSlot {...slot('relmap')}>
           <RelationshipMap bookId={bookId} token={token} />
-        </div>
-        <div className={tab === 'timeline' ? '' : 'hidden'}>
+        </DockSlot>
+        <DockSlot {...slot('timeline')}>
           <TimelineView bookId={bookId} chapterId={chapterId} token={token} />
-        </div>
-        <div className={tab === 'arc' ? '' : 'hidden'}>
+        </DockSlot>
+        <DockSlot {...slot('arc')}>
           <CharacterArcView
             bookId={bookId}
             chapterId={chapterId}
@@ -527,17 +713,17 @@ export function CompositionPanel({ bookId, chapterId, token, onAccept, sceneId: 
             entityId={arcEntityId}
             onEntityChange={setArcEntityId}
           />
-        </div>
-        <div className={tab === 'worldmap' ? '' : 'hidden'}>
+        </DockSlot>
+        <DockSlot {...slot('worldmap')}>
           <WorldMap
             work={work}
             bookId={bookId}
             chapterId={chapterId}
             token={token}
-            onViewCast={(name) => { setCastSearch(name); setTab('cast'); }}
+            onViewCast={(name) => { setCastSearch(name); selectTab('cast'); }}
           />
-        </div>
-        <div className={tab === 'grounding' ? '' : 'hidden'}>
+        </DockSlot>
+        <DockSlot {...slot('grounding')}>
           {/* C24 (dị bản M0) — on a derivative Work, decorate the grounding tab with
               the 2-layer (INHERITED/OVERRIDDEN) canon view + read-only reference
               spine. No-ops on a greenfield Work. */}
@@ -549,20 +735,57 @@ export function CompositionPanel({ bookId, chapterId, token, onAccept, sceneId: 
               token={token}
             />
           )}
-          <GroundingPanel projectId={work.project_id} sceneId={effectiveScene} token={token} />
-        </div>
-        <div className={tab === 'canon' ? '' : 'hidden'}>
+          <GroundingPanel
+            projectId={work.project_id}
+            sceneId={effectiveScene}
+            token={token}
+            heatmapEnabled={heatmapEnabled}
+            onToggleHeatmap={onToggleHeatmap}
+          />
+        </DockSlot>
+        <DockSlot {...slot('references')}>
+          <ReferencesPanel
+            projectId={work.project_id}
+            sceneId={effectiveScene}
+            token={token}
+            models={models.data ?? []}
+          />
+        </DockSlot>
+        <DockSlot {...slot('style')}>
+          <StyleVoicePanel
+            projectId={work.project_id}
+            chapterId={chapterId}
+            sceneId={effectiveScene}
+            token={token}
+          />
+        </DockSlot>
+        <DockSlot {...slot('canon')}>
           <CanonRulesPanel projectId={work.project_id} bookId={bookId} token={token} />
-        </div>
+        </DockSlot>
+        <DockSlot {...slot('critic')}>
+          <CriticPanel token={token} />
+        </DockSlot>
         {threadsEnabled && (
-          <div className={tab === 'threads' ? '' : 'hidden'}>
+          <DockSlot {...slot('threads')}>
             <ThreadsPanel projectId={work.project_id} token={token} enabled={threadsEnabled} />
-          </div>
+          </DockSlot>
         )}
-        <div className={tab === 'quality' ? '' : 'hidden'}>
+        <DockSlot {...slot('progress')}>
+          <ProgressPanel projectId={work.project_id} bookId={bookId} settings={work.settings} token={token} />
+        </DockSlot>
+        <DockSlot {...slot('quality')}>
           <QualityPanel projectId={work.project_id} token={token} />
-        </div>
-        <div className={tab === 'settings' ? '' : 'hidden'}>
+        </DockSlot>
+        <DockSlot {...slot('flywheel')}>
+          <FlywheelPanel
+            projectId={work.project_id}
+            token={token}
+            onOpenCast={(name) => { if (name) setCastSearch(name); selectTab('cast'); }}
+            onOpenTimeline={() => selectTab('timeline')}
+            onOpenRelations={() => selectTab('relmap')}
+          />
+        </DockSlot>
+        <DockSlot {...slot('settings')}>
           <CompositionSettingsView
             projectId={work.project_id}
             bookId={bookId}
@@ -570,8 +793,20 @@ export function CompositionPanel({ bookId, chapterId, token, onAccept, sceneId: 
             models={models.data ?? []}
             token={token}
           />
-        </div>
+        </DockSlot>
       </div>
+      {/* T5.5 — Story Map Power-view overlay (mount-on-open, fresh each open) */}
+      {powerViewOpen && (
+        <PowerViewOverlay
+          work={work}
+          bookId={bookId}
+          chapterId={chapterId}
+          token={token}
+          onClose={() => setPowerViewOpen(false)}
+          onViewCast={(name) => { setCastSearch(name); selectTab('cast'); setPowerViewOpen(false); }}
+          onPromoted={(d) => { onDerivedWork(d); setPowerViewOpen(false); }}
+        />
+      )}
     </div>
   );
 }

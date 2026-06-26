@@ -381,10 +381,10 @@ func (s *Server) createUserAttrTool(ctx context.Context, userID uuid.UUID, code,
 	var id uuid.UUID
 	err := s.pool.QueryRow(ctx, `
 		INSERT INTO user_attributes
-		  (owner_user_id, kind_id, genre_id, code, name, description, field_type, is_required, sort_order, options, auto_fill_prompt, translation_hint, content_hash)
-		VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)
+		  (owner_user_id, kind_id, genre_id, code, name, description, field_type, is_required, sort_order, options, auto_fill_prompt, translation_hint, content_hash, merge_strategy)
+		VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14)
 		RETURNING attr_id`,
-		userID, kindID, genreID, code, name, desc, fieldType, in.IsRequired, in.SortOrder, in.Options, optStr(in.AutoFillPrompt), optStr(in.TranslationHint), hash).Scan(&id)
+		userID, kindID, genreID, code, name, desc, fieldType, in.IsRequired, in.SortOrder, in.Options, optStr(in.AutoFillPrompt), optStr(in.TranslationHint), hash, seedMergeStrategy(code, fieldType, in.IsRequired)).Scan(&id)
 	if err != nil {
 		if isUniqueViolation(err) {
 			return nil, userWriteOut{}, errors.New("an attribute with this code already exists on this kind×genre")

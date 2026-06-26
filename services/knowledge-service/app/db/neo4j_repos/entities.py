@@ -263,6 +263,11 @@ ON CREATE SET
   e.version = 1,
   e.auto_created = $auto_created,
   e.created_at = datetime(),
+  // T4.1 flywheel — the extraction job that first minted this node (net-new
+  // attribution). Set ONLY on create, so it permanently credits the creating
+  // job; a later match by another job never changes it. NULL for non-job writes
+  // and pre-T4.1 nodes.
+  e.created_job_id = $job_id,
   e.updated_at = datetime()
 ON MATCH SET
   e.aliases = CASE
@@ -309,6 +314,7 @@ async def merge_entity(
     canonical_version: int = 1,
     auto_created: bool = False,
     provenance: str = "human_authored",
+    job_id: str | None = None,
 ) -> Entity:
     """Idempotent upsert. Re-running with the same (user_id, project_id,
     name, kind) tuple returns the same node — no duplicates.
@@ -354,6 +360,7 @@ async def merge_entity(
         confidence=confidence,
         auto_created=auto_created,
         provenance=provenance,
+        job_id=job_id,
     )
     record = await result.single()
     if record is None:
@@ -783,6 +790,41 @@ async def find_entities_by_name(
         canonical_name=canonical_name,
     )
     return [_node_to_entity(record["e"]) async for record in result]
+
+
+async def resolve_participant_anchors(
+    session: CypherSession,
+    *,
+    user_id: str,
+    project_id: str | None,
+    names: list[str],
+) -> dict[str, str]:
+    """KG-TL Option A (D-KG-TL-PARTICIPANT-ANCHOR) — resolve participant NAME →
+    glossary ``entity_id`` (the durable anchor stored on
+    ``:Event.participant_entity_ids``).
+
+    Identical resolution to the read-time timeline localizer: for each DISTINCT
+    name take the best :func:`find_entities_by_name` match that carries a glossary
+    anchor (the helper ranks anchored entities first). A name with no anchored
+    match is OMITTED from the result — the caller maps it to the ``""`` sentinel
+    (Neo4j lists can't hold nulls) → source fallback + marker (AC-T3, never a
+    silent mix). Best-effort: a per-name resolution error is logged and skipped,
+    never raised into the write/backfill path. One session for the whole batch.
+    """
+    out: dict[str, str] = {}
+    for name in {n for n in names if n and n.strip()}:
+        try:
+            matches = await find_entities_by_name(
+                session, user_id=user_id, project_id=project_id, name=name,
+            )
+        except Exception as exc:  # best-effort — a miss never breaks the write
+            logger.warning("participant anchor resolution failed for %r: %s", name, exc)
+            continue
+        for ent in matches:
+            if ent.glossary_entity_id:
+                out[name] = ent.glossary_entity_id
+                break
+    return out
 
 
 # ── archive / restore ─────────────────────────────────────────────────

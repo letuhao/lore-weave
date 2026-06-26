@@ -56,6 +56,10 @@ class LensBundle:
     # (the M0 "added canon rule" override scope). Rendered in the <canon> block
     # alongside inherited canon. Empty for a non-derivative pack.
     extra_canon: list[str] = field(default_factory=list)
+    # T3.6 — the author's semantically-retrieved reference passages (external
+    # influences) for this scene. Each {id, title, author, source_url, content,
+    # score}. composition-owned; pinned ones are protected in the budget.
+    references: list[dict[str, Any]] = field(default_factory=list)
 
 
 def _applies_at(rule: CanonRule, story_order: int | None) -> bool:
@@ -277,4 +281,30 @@ async def gather_lore(
     hits = await knowledge.search_drawers(
         bearer, project_id=project_id, query=query, language=language
     )
+    return hits, bool(hits)
+
+
+async def gather_references(
+    refs_repo, embedder, *, user_id: UUID, project_id: UUID, query: str,
+    model: tuple[str, str] | None, limit: int = 6,
+) -> tuple[list[dict[str, Any]], bool]:
+    """T3.6 — the author's reference shelf, semantically retrieved for this scene.
+    Embeds the scene query via provider-registry and cosine-ranks the Work's
+    references (composition-owned, brute-force top-K). Returns (hits, seen).
+
+    Fully degrade-safe (the packer `_safe_*` posture): an unwired repo/embedder, an
+    unset Work embed model, an empty query, an embed/provider failure, or a repo
+    error all yield ([], False) — references THIN the pack, never fail it."""
+    if refs_repo is None or embedder is None or model is None or not query.strip():
+        return [], False
+    model_source, model_ref = model
+    try:
+        result = await embedder.embed(
+            user_id=user_id, model_source=model_source, model_ref=model_ref, texts=[query])
+        if not result.embeddings or not result.embeddings[0]:
+            return [], False
+        hits = await refs_repo.search(user_id, project_id, result.embeddings[0], limit=limit)
+    except Exception:  # noqa: BLE001 — references are advisory; never fail a pack
+        logger.warning("gather_references failed", exc_info=True)
+        return [], False
     return hits, bool(hits)

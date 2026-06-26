@@ -18,7 +18,8 @@
     },
     "tab": {
       "attributes": "Attributes",
-      "evidences": "Evidences"
+      "evidences": "Evidences",
+      "history": "History"
     },
     "viewing_in_language": "Viewing in {{lang}}",
     "viewing_original": "Original ({{lang}})",
@@ -68,6 +69,14 @@
       "summary": "Summary",
       "reference": "Reference"
     },
+    "provenance": {
+      "ambiguous": "Unverified match",
+      "ambiguous_hint": "This quote matched the source text in more than one place — the exact location is uncertain.",
+      "unmatched": "Not found in source",
+      "unmatched_hint": "This quote could not be located in the chapter text — it may be paraphrased or hallucinated. Verify before trusting it.",
+      "unverified": "Unverified",
+      "unverified_hint": "This quote has not been validated against the source text."
+    },
     "filter": {
       "all": "All",
       "attr_aria": "Filter by attribute",
@@ -111,6 +120,7 @@
       "cancel": "Cancel",
       "save": "Save",
       "edit_title": "Edit",
+      "open_source": "Open the source chapter",
       "delete_title": "Delete",
       "translated": "Translated ({{lang}})",
       "note_label": "Note: {{note}}"
@@ -120,6 +130,11 @@
       "clear_filters": "Clear filters",
       "prev_page": "Previous page",
       "next_page": "Next page",
+      "first_page": "First page",
+      "last_page": "Last page",
+      "jump_to_page": "Jump to page",
+      "page_size": "Rows per page",
+      "per_page": "{{n}} / page",
       "delete_title": "Delete evidence?",
       "delete_desc": "This evidence from \"{{attr}}\" will be permanently deleted.",
       "delete_confirm": "Delete"

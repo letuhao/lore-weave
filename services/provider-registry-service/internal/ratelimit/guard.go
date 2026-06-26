@@ -20,7 +20,7 @@ type CircuitBreaker interface {
 }
 
 type ConcurrencyGovernor interface {
-	Acquire(ctx context.Context, kind string) (func(), error)
+	Acquire(ctx context.Context, concClass string, limit int) (func(), error)
 }
 
 // Guard wraps a single provider call with the circuit-breaker + concurrency
@@ -36,18 +36,19 @@ func Guard(
 	ctx context.Context,
 	gov ConcurrencyGovernor,
 	brk CircuitBreaker,
-	kind string,
+	concClass string,
+	limit int,
 	isTransient func(error) bool,
 	call func() error,
 ) error {
 	if brk != nil {
-		allowed, _ := brk.Allow(ctx, kind)
+		allowed, _ := brk.Allow(ctx, concClass)
 		if !allowed {
 			return ErrCircuitOpen
 		}
 	}
 	if gov != nil {
-		release, err := gov.Acquire(ctx, kind)
+		release, err := gov.Acquire(ctx, concClass, limit)
 		if err != nil {
 			return err // governor timeout / ctx cancel — treated as transient by caller
 		}
@@ -58,9 +59,9 @@ func Guard(
 
 	if brk != nil {
 		if err == nil {
-			brk.Record(ctx, kind, true) // healthy → reset/close
+			brk.Record(ctx, concClass, true) // healthy → reset/close
 		} else if isTransient(err) {
-			brk.Record(ctx, kind, false) // provider-health failure → count toward open
+			brk.Record(ctx, concClass, false) // provider-health failure → count toward open
 		}
 		// permanent (non-transient) error → leave the breaker untouched
 	}

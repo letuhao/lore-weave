@@ -18,7 +18,8 @@
     },
     "tab": {
       "attributes": "Thuộc tính",
-      "evidences": "Dẫn chứng"
+      "evidences": "Dẫn chứng",
+      "history": "Lịch sử"
     },
     "viewing_in_language": "Đang xem bằng {{lang}}",
     "viewing_original": "Gốc ({{lang}})",
@@ -68,6 +69,14 @@
       "summary": "Tóm tắt",
       "reference": "Tham chiếu"
     },
+    "provenance": {
+      "ambiguous": "Khớp chưa chắc",
+      "ambiguous_hint": "Trích dẫn này khớp với văn bản nguồn ở nhiều vị trí — không chắc vị trí chính xác.",
+      "unmatched": "Không thấy trong nguồn",
+      "unmatched_hint": "Không tìm thấy trích dẫn này trong nội dung chương — có thể bị diễn giải lại hoặc bịa ra. Hãy kiểm chứng trước khi tin.",
+      "unverified": "Chưa kiểm chứng",
+      "unverified_hint": "Trích dẫn này chưa được đối chiếu với văn bản nguồn."
+    },
     "filter": {
       "all": "Tất cả",
       "attr_aria": "Lọc theo thuộc tính",
@@ -111,6 +120,7 @@
       "cancel": "Hủy",
       "save": "Lưu",
       "edit_title": "Sửa",
+      "open_source": "Mở chương nguồn",
       "delete_title": "Xóa",
       "translated": "Đã dịch ({{lang}})",
       "note_label": "Ghi chú: {{note}}"
@@ -120,6 +130,11 @@
       "clear_filters": "Xóa bộ lọc",
       "prev_page": "Trang trước",
       "next_page": "Trang sau",
+      "first_page": "Trang đầu",
+      "last_page": "Trang cuối",
+      "jump_to_page": "Tới trang",
+      "page_size": "Số dòng mỗi trang",
+      "per_page": "{{n}} / trang",
       "delete_title": "Xóa dẫn chứng?",
       "delete_desc": "Dẫn chứng từ \"{{attr}}\" sẽ bị xóa vĩnh viễn.",
       "delete_confirm": "Xóa"

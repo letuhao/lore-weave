@@ -27,6 +27,10 @@ LinkKind = Literal["setup_payoff", "custom"]
 RuleScope = Literal["world", "entity", "reveal_gate"]
 JobMode = Literal["cowrite", "auto"]
 JobStatus = Literal["pending", "running", "completed", "failed", "cancelled"]
+# T3.4 — the addressable grounding item types (those with stable source ids)
+# + the per-scene steering action. T3.6 added 'reference' (id = reference_source.id).
+GroundingItemType = Literal["present", "canon", "lore", "reference"]
+PinAction = Literal["pin", "exclude"]
 # Only genuine-author-choice actions are corrections (§2). accept-as-is is NOT
 # here — mining the reranker's own winner = self-reinforcement (review H2).
 CorrectionKind = Literal["edit", "pick_different", "regenerate", "reject"]
@@ -170,6 +174,69 @@ class CanonRule(BaseModel):
     version: int = 1
     is_archived: bool = False
     created_at: datetime | None = None
+    updated_at: datetime | None = None
+
+
+class SceneGroundingPin(BaseModel):
+    """T3.4 — a per-scene author steering row over one addressable grounding item.
+    `item_id` is a STABLE canonical id (glossary anchor / canon_rule uuid / lore
+    source_id), never a localized label, so the pin survives a reader-language
+    switch or a derivative override."""
+    id: UUID
+    user_id: UUID
+    project_id: UUID
+    outline_node_id: UUID
+    item_type: GroundingItemType
+    item_id: Annotated[str, StringConstraints(max_length=200)]
+    action: PinAction
+    created_at: datetime | None = None
+
+
+class ReferenceSource(BaseModel):
+    """T3.6 — one author-curated reference passage (an external influence) for a
+    Work. composition-owned: `content` is embedded via provider-registry and the
+    vector is stored in `embedding` (a plain float list — brute-force cosine top-K
+    at search time). All of a Work's references share ONE embedding model. The
+    `embedding` is omitted from the list/search projection (the vector stays on the
+    server); a row with a null embedding is never a search hit."""
+    id: UUID
+    user_id: UUID
+    project_id: UUID
+    title: _Title = ""
+    author: _Title = ""
+    source_url: _Title = ""
+    content: _Long
+    embedding_model: _Title = ""
+    embedding_dim: int | None = None
+    created_at: datetime | None = None
+
+
+StyleScope = Literal["work", "chapter", "scene"]
+
+
+class StyleProfile(BaseModel):
+    """T3.5 — per-scope prose-style steering. `scope_id` is the project_id (work),
+    chapter_id (chapter) or outline node_id (scene). Density/Pace are 0-100; the
+    packer resolves the most-specific row for a scene and maps them to prose-style
+    directives in the draft prompts."""
+    user_id: UUID
+    project_id: UUID
+    scope_type: StyleScope
+    scope_id: UUID
+    density: Annotated[int, Field(ge=0, le=100)]
+    pace: Annotated[int, Field(ge=0, le=100)]
+    updated_at: datetime | None = None
+
+
+class VoiceProfile(BaseModel):
+    """T3.5 — per-character voice tags. Keyed by `entity_id`; `entity_name` is
+    denormalized for prompt rendering. Injected only when the entity is present in
+    the scene."""
+    user_id: UUID
+    project_id: UUID
+    entity_id: UUID
+    entity_name: str
+    tags: list[str] = []
     updated_at: datetime | None = None
 
 

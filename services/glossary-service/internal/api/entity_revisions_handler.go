@@ -139,6 +139,10 @@ func (s *Server) restoreEntityRevision(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusUnprocessableEntity, "GLOSS_INCOMPLETE_REVISION",
 			"revision snapshot is incomplete (no attributes) — cannot restore")
 		return
+	case errors.Is(err, errDuplicateName):
+		writeError(w, http.StatusConflict, "GLOSS_DUPLICATE_NAME",
+			"restoring this revision's name would duplicate another entity in this book")
+		return
 	case err != nil:
 		slog.Error("restoreEntityRevision", "entity", entityID, "error", err)
 		writeError(w, http.StatusInternalServerError, "GLOSS_INTERNAL", "restore failed")
@@ -326,6 +330,11 @@ func reconcileEntityFromSnapshot(ctx context.Context, tx pgx.Tx, entityID uuid.U
 	// values (verified — a restore is human curation). The upserted EAVs' items were stale;
 	// orphan items of pruned EAVs are gone via the FK ON DELETE CASCADE.
 	if err := resyncEntityListItems(ctx, tx, entityID, "verified"); err != nil {
+		return err
+	}
+	// D-GLOSSARY-ST-DEDUP M3a: a restore can change the name/term to a prior value;
+	// re-stamp the app-maintained dedup key (idempotent — no-op when unchanged).
+	if err := refreshEntityDedupKey(ctx, tx, entityID); err != nil {
 		return err
 	}
 	return nil

@@ -46,6 +46,22 @@ func TestBuildChatStreamInput_ForwardsReasoningControls(t *testing.T) {
 	}
 }
 
+// Structured-output: a StreamRequest carrying response_format MUST thread it into
+// the adapter input so forwardOptionalChatFields forwards it to the provider
+// (LM Studio/vLLM json_object|json_schema enforcement → no malformed-array
+// completed_with_errors). Shape-agnostic: the gateway passes `any` through.
+func TestBuildChatStreamInput_ForwardsResponseFormat(t *testing.T) {
+	in := streamRequest{
+		Messages:       []map[string]any{{"role": "user", "content": "hi"}},
+		ResponseFormat: map[string]any{"type": "json_object"},
+	}
+	got := buildChatStreamInput(in)
+	rf, ok := got["response_format"].(map[string]any)
+	if !ok || rf["type"] != "json_object" {
+		t.Fatalf("response_format not threaded: %v", got["response_format"])
+	}
+}
+
 // TestBuildChatStreamInput_OmitsUnsetReasoning — the controls must stay ABSENT
 // when unset (so OpenAI, which 400s on unknown/empty fields, isn't sent them).
 func TestBuildChatStreamInput_OmitsUnsetReasoning(t *testing.T) {
@@ -56,6 +72,9 @@ func TestBuildChatStreamInput_OmitsUnsetReasoning(t *testing.T) {
 	}
 	if _, ok := got["chat_template_kwargs"]; ok {
 		t.Fatal("chat_template_kwargs must be absent when unset")
+	}
+	if _, ok := got["response_format"]; ok {
+		t.Fatal("response_format must be absent when unset")
 	}
 }
 

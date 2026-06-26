@@ -1,4 +1,4 @@
-import { Plus } from 'lucide-react';
+import { Pencil, Plus, Trash2 } from 'lucide-react';
 import type { Tier } from '../../tieringTypes';
 import { TierChip } from './TierChip';
 
@@ -20,6 +20,14 @@ type Props = {
   newLabel?: string;
   emptyText: string;
   disabled?: boolean; // e.g. column not yet selectable (no parent chosen)
+  /** When set, each row gets a hover/focus-revealed delete button (genres/kinds).
+   *  Omit to hide it (attributes delete via their editor panel instead). */
+  onDelete?: (row: ColumnRow) => void;
+  deleteLabel?: string;
+  /** When set, each row gets an edit (pencil) button — opens the settings
+   *  modal (name/icon/color). Omit to hide it (e.g. attributes edit inline). */
+  onEdit?: (row: ColumnRow) => void;
+  editLabel?: string;
 };
 
 /** One column of the Manage workspace drilldown (genres / kinds / attributes).
@@ -33,6 +41,10 @@ export function OntologyColumn({
   newLabel,
   emptyText,
   disabled,
+  onDelete,
+  deleteLabel,
+  onEdit,
+  editLabel,
 }: Props) {
   return (
     <div className="flex min-h-[420px] flex-col rounded-lg border bg-card">
@@ -59,21 +71,54 @@ export function OntologyColumn({
               const active = r.id === selectedId;
               return (
                 <li key={r.id}>
-                  <button
-                    type="button"
-                    onClick={() => onSelect(r.id)}
-                    data-testid={`ontology-row-${r.id}`}
-                    className={`flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-sm transition-colors ${
+                  <div
+                    className={`group flex items-center rounded-md transition-colors ${
                       active ? 'border-l-2 border-primary bg-primary/10' : 'hover:bg-secondary'
                     } ${r.conflict ? 'bg-amber-50 dark:bg-amber-950/30' : ''}`}
                   >
-                    <span className="flex-1 truncate">
-                      {r.icon ? `${r.icon} ` : ''}
-                      {r.label}
-                    </span>
-                    {r.meta && <span className="font-mono text-[10px] text-muted-foreground">{r.meta}</span>}
-                    {r.tier && <TierChip tier={r.tier} />}
-                  </button>
+                    <button
+                      type="button"
+                      onClick={() => onSelect(r.id)}
+                      data-testid={`ontology-row-${r.id}`}
+                      className="flex min-w-0 flex-1 items-center gap-2 px-2 py-1.5 text-left text-sm"
+                    >
+                      <span className="flex-1 truncate">
+                        {r.icon ? `${r.icon} ` : ''}
+                        {r.label}
+                      </span>
+                      {r.meta && <span className="font-mono text-[10px] text-muted-foreground">{r.meta}</span>}
+                      {r.tier && <TierChip tier={r.tier} />}
+                    </button>
+                    {/* Edit (settings) — always visible muted, primary on hover/focus.
+                        Same always-visible rationale as the trash button below. */}
+                    {onEdit && (
+                      <button
+                        type="button"
+                        onClick={() => onEdit(r)}
+                        title={editLabel}
+                        aria-label={editLabel}
+                        data-testid={`ontology-edit-${r.id}`}
+                        className="mr-0.5 rounded p-1 text-muted-foreground/60 transition-colors hover:bg-primary/10 hover:text-primary focus:text-primary"
+                      >
+                        <Pencil className="h-3 w-3" />
+                      </button>
+                    )}
+                    {/* Trash is always visible (muted), red on hover/focus — NOT hover-revealed:
+                        a touch device has no hover, so an opacity-0 trash would be unreachable
+                        on mobile/tablet. Mirrors the always-visible standards StandardRow. */}
+                    {onDelete && (
+                      <button
+                        type="button"
+                        onClick={() => onDelete(r)}
+                        title={deleteLabel}
+                        aria-label={deleteLabel}
+                        data-testid={`ontology-delete-${r.id}`}
+                        className="mr-1 rounded p-1 text-muted-foreground/60 transition-colors hover:bg-destructive/10 hover:text-destructive focus:text-destructive"
+                      >
+                        <Trash2 className="h-3 w-3" />
+                      </button>
+                    )}
+                  </div>
                 </li>
               );
             })}

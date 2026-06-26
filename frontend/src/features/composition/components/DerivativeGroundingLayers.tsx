@@ -1,4 +1,4 @@
-// C24 (dị bản M0) — the 2-layer grounding decoration for a DERIVATIVE Work's
+// C24 (dị bản) — the 2-layer grounding decoration for a DERIVATIVE Work's
 // grounding tab (view). Lists the canon entities (from the SOURCE project) each
 // tagged INHERITED (base) or OVERRIDDEN (delta) via the REAL override set, with a
 // legend, plus the read-only reference-spine surfacing.
@@ -9,6 +9,11 @@
 //    affordance here; the writer adapts manually.
 //  • Badges reflect REAL override state (ctx.classify over the submitted set) — an
 //    OVERRIDDEN entity is never shown INHERITED.
+//
+// WS-B2 adds the durable "now" delta on OVERRIDDEN rows. (B2c "Adapt with overrides"
+// ghost-generate is NOT here — see D-DERIVATIVE-ADAPT-FROM-SOURCE: generate_chapter
+// needs a scene plan in the derivative project, which the inherited spine chapters
+// lack, so it needs a real "adapt-from-source-content" design, not a generate call.)
 import { useTranslation } from 'react-i18next';
 import { useQuery } from '@tanstack/react-query';
 import { knowledgeApi } from '../../knowledge/api';
@@ -23,6 +28,13 @@ type Props = {
   bookId: string;
   token: string | null;
 };
+
+/** Render an override field value (the "now" of the delta). Override fields are
+ *  authored as strings in practice, but `overridden_fields` is `dict[str, Any]` —
+ *  stringify non-strings readably instead of rendering "[object Object]". */
+function renderOverrideValue(value: unknown): string {
+  return typeof value === 'string' ? value : JSON.stringify(value);
+}
 
 export function DerivativeGroundingLayers({ ctx, sourceProjectId, bookId, token }: Props) {
   const { t } = useTranslation('composition');
@@ -54,12 +66,36 @@ export function DerivativeGroundingLayers({ ctx, sourceProjectId, bookId, token 
         <GroundingLayerLegend />
       </div>
       <ul className="flex flex-col gap-1" data-testid="derivative-layer-list">
-        {(entities.data ?? []).map((e) => (
-          <li key={e.id} data-testid={`derivative-layer-entity-${e.id}`} className="flex items-center justify-between gap-2 rounded border border-neutral-100 px-2 py-1 dark:border-neutral-800">
-            <span className="truncate">{e.name} <span className="text-xs text-neutral-400">({e.kind})</span></span>
-            <GroundingLayerBadge layer={ctx.classify(e.id)} />
-          </li>
-        ))}
+        {(entities.data ?? []).map((e) => {
+          // ID-SPACE (WS-B2 fix): the override set is keyed by the GLOSSARY anchor
+          // (`glossary_entity_id`), NOT the knowledge node id (`e.id`) — classifying
+          // by `e.id` made EVERY row read INHERITED (the override never matched). An
+          // UNANCHORED entity has no anchor, so it can never be overridden (inherited).
+          const anchorId = e.glossary_entity_id;
+          const layer = anchorId ? ctx.classify(anchorId) : 'inherited';
+          // B2b — the durable per-entity field delta (the "now" of was→now). The
+          // source field ("was") is not in the list payload, so we surface the
+          // authored override value truthfully rather than fabricate an old value.
+          const delta = anchorId ? ctx.overrides[anchorId] : undefined;
+          return (
+            <li key={e.id} data-testid={`derivative-layer-entity-${e.id}`} className="flex flex-col gap-0.5 rounded border border-neutral-100 px-2 py-1 dark:border-neutral-800">
+              <div className="flex items-center justify-between gap-2">
+                <span className="truncate">{e.name} <span className="text-xs text-neutral-400">({e.kind})</span></span>
+                <GroundingLayerBadge layer={layer} />
+              </div>
+              {layer === 'overridden' && delta && (
+                <div data-testid={`derivative-layer-delta-${e.id}`} className="flex flex-col gap-0.5 pl-1 text-xs">
+                  {Object.entries(delta).map(([field, value]) => (
+                    <span key={field} className="text-amber-700 dark:text-amber-300">
+                      <span className="text-neutral-400">{field}: </span>
+                      {t('derive.deltaNow', { defaultValue: 'now' })} → {renderOverrideValue(value)}
+                    </span>
+                  ))}
+                </div>
+              )}
+            </li>
+          );
+        })}
         {entities.data?.length === 0 && (
           <li className="px-2 py-2 text-xs text-neutral-500">{t('derive.noCanonEntities', { defaultValue: 'No canon entities to inherit yet.' })}</li>
         )}

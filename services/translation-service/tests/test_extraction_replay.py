@@ -196,3 +196,55 @@ async def test_replay_tenant_isolation(patched_io):
         assert res["status"] == "no_cache"
         assert "writeback" not in patched_io
     await _with_pg(body)
+
+
+# ── M3 heal orchestration (DB-free: per-chapter replay monkeypatched) ──────────
+
+
+@pytest.mark.asyncio
+async def test_rerun_merge_book_aggregates_and_heals(monkeypatch):
+    """rerun_merge_book heals every chapter with use_authored_strategy=True, aggregates the
+    per-chapter statuses into bounded counts + total writes, and caps the problem sample. No
+    DB/network — the per-chapter replay primitive is monkeypatched."""
+    calls = []
+
+    async def fake_replay(pool, *, caller_user_id, book_id, chapter_id, confirm, use_authored_strategy):
+        calls.append((chapter_id, confirm, use_authored_strategy))
+        idx = int(chapter_id.split("-")[0])
+        if idx % 3 == 0:
+            return {"status": "no_cache", "reason": "no_parse_for_current_text"}
+        return {"status": "replayed", "created": 2}
+
+    monkeypatch.setattr(R, "replay_chapter_from_cache", fake_replay)
+
+    chapter_ids = [f"{i}-cid" for i in range(6)]
+    res = await R.rerun_merge_book(
+        object(), caller_user_id="u", book_id="b", confirm=True, chapter_ids=chapter_ids)
+
+    # Every chapter healed under the AUTHORED strategy (the whole point of heal mode).
+    assert calls and all(c[2] is True for c in calls)
+    assert res["mode"] == "heal"
+    assert res["chapters_scanned"] == 6
+    # idx 0,3 → no_cache (2); 1,2,4,5 → replayed (4).
+    assert res["status_counts"]["replayed"] == 4
+    assert res["status_counts"]["no_cache"] == 2
+    assert res["total_writes"] == 8  # 4 replayed × created=2
+    # Only non-replayed/preview/empty chapters surface in the (capped) problem sample.
+    assert {p["status"] for p in res["problem_sample"]} == {"no_cache"}
+    assert len(res["problem_sample"]) == 2
+
+
+@pytest.mark.asyncio
+async def test_rerun_merge_book_problem_sample_capped(monkeypatch):
+    """A book where every chapter fails to heal must not return an unbounded detail list —
+    the problem sample is capped at PROBLEM_CAP (50)."""
+    async def fake_replay(pool, *, caller_user_id, book_id, chapter_id, confirm, use_authored_strategy):
+        return {"status": "profile_unavailable", "reason": "profile_drifted"}
+
+    monkeypatch.setattr(R, "replay_chapter_from_cache", fake_replay)
+
+    chapter_ids = [f"{i}-cid" for i in range(120)]
+    res = await R.rerun_merge_book(
+        object(), caller_user_id="u", book_id="b", confirm=False, chapter_ids=chapter_ids)
+    assert res["status_counts"]["profile_unavailable"] == 120
+    assert len(res["problem_sample"]) == 50  # capped, not 120

@@ -900,6 +900,46 @@ class TestK21BToolCallingIntegration:
         assert loop_mock.call_args.kwargs["max_iterations"] == 10  # H11
 
     @pytest.mark.asyncio
+    async def test_editor_context_surfaces_book_and_chapter_ids(self):
+        """The book/chapter ids must be SURFACED to the model (not just used to
+        gate tool advertising) so book-scoped tools (glossary ontology adopt /
+        propose, deep-research) fill book_id without inventing a placeholder — the
+        bug where glossary_adopt_standards received "YOUR_BOOK_ID_HERE"."""
+        pool, conn = _make_pool_with_conn()
+        pool.fetch.return_value = []
+        conn.fetchval.return_value = 1
+        kc = _patched_knowledge(
+            stable="", volatile="", mode="static",
+            tool_defs=[{"type": "function", "function": {"name": "memory_search"}}],
+        )
+
+        async def fake_tool_loop(**kwargs):
+            yield {"content": "ok", "reasoning_content": "", "finish_reason": "stop", "usage": _Usage(1, 1)}
+
+        with patch("app.services.stream_service.get_knowledge_client", return_value=kc), \
+             patch("app.services.stream_service._stream_with_tools", side_effect=fake_tool_loop) as loop_mock, \
+             patch("app.services.stream_service._stream_via_gateway"):
+            async for _ in stream_response(
+                session_id=TEST_SESSION_ID, user_message_content="set up the ontology",
+                user_id=TEST_USER_ID, model_source="user_model",
+                model_ref=TEST_MODEL_REF, creds=_make_creds(),
+                pool=pool, billing=AsyncMock(),
+                stream_format="agui",
+                editor_context={"book_id": "b1", "chapter_id": "c1"},
+            ):
+                pass
+
+        msgs = loop_mock.call_args.kwargs["messages"]
+        joined = " ".join(
+            (m["content"] if isinstance(m["content"], str)
+             else " ".join(p["text"] for p in m["content"]))
+            for m in msgs if m["role"] == "system"
+        )
+        assert "book_id=b1" in joined
+        assert "chapter_id=c1" in joined
+        assert "never pass a placeholder" in joined
+
+    @pytest.mark.asyncio
     async def test_global_chat_universal_surface_discovery_and_cap(self):
         """MCP-fanout C-FT/H9: the agui /chat surface WITHOUT a book/editor
         context is the UNIVERSAL "do anything" surface — it switches on two-stage

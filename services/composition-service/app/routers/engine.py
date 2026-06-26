@@ -32,16 +32,21 @@ from app.db.repositories.generation_corrections import (
 )
 from app.clients.model_name import resolve_model_name
 from app.db.repositories.generation_jobs import GenerationJobsRepo
+from app.db.repositories.grounding_pins import GroundingPinsRepo
+from app.db.repositories.style_voice import StyleProfileRepo, VoiceProfileRepo
 from app.db.repositories.narrative_thread import NarrativeThreadRepo
 from app.db.repositories.outline import OutlineRepo
+from app.db.repositories.references import ReferencesRepo
 from app.db.repositories.scene_links import SceneLinksRepo
 from app.db.repositories.works import WorksRepo
+from app.clients.embedding_client import EmbeddingClient
 from app.deps import (
     get_book_client_dep, get_canon_rules_repo, get_derivatives_repo,
-    get_generation_corrections_repo, get_generation_jobs_repo,
-    get_glossary_client_dep, get_knowledge_client_dep, get_llm_client_dep,
-    get_narrative_thread_repo, get_outline_repo, get_scene_links_repo,
-    get_works_repo,
+    get_embedding_client_dep, get_generation_corrections_repo, get_generation_jobs_repo,
+    get_glossary_client_dep, get_grounding_pins_repo, get_knowledge_client_dep,
+    get_llm_client_dep, get_narrative_thread_repo, get_outline_repo,
+    get_references_repo, get_scene_links_repo, get_style_profile_repo,
+    get_voice_profile_repo, get_works_repo,
 )
 from app.db.repositories.derivatives import DerivativesRepo
 from app.db.models import CorrectionKind
@@ -289,6 +294,11 @@ async def generate(
     knowledge: KnowledgeClient = Depends(get_knowledge_client_dep),
     llm: LLMClient = Depends(get_llm_client_dep),
     narrative_threads: NarrativeThreadRepo = Depends(get_narrative_thread_repo),
+    grounding_pins: GroundingPinsRepo = Depends(get_grounding_pins_repo),
+    style_profiles: StyleProfileRepo = Depends(get_style_profile_repo),
+    voice_profiles: VoiceProfileRepo = Depends(get_voice_profile_repo),
+    references: ReferencesRepo = Depends(get_references_repo),
+    embedder: EmbeddingClient = Depends(get_embedding_client_dep),
     derivatives: DerivativesRepo = Depends(get_derivatives_repo),
 ) -> Any:  # StreamingResponse (cowrite) | JSONResponse (auto)
     work, node = await _load_work_node(works, outline, user_id, project_id, body.outline_node_id)
@@ -335,6 +345,11 @@ async def generate(
             jobs_repo=jobs,  # S1 state-reinjection fallback source (prior generated scenes)
             compress_fn=_compress_fn,  # S2 long-chapter state compression
             narrative_threads_repo=narrative_threads,  # FD-1 S3 open-promise re-injection
+            grounding_pins_repo=grounding_pins,  # T3.4 — generation honors per-scene pins
+            style_profile_repo=style_profiles,  # T3.5 — density/pace
+            voice_profile_repo=voice_profiles,  # T3.5 — present-character voices
+            references_repo=references,  # T3.6 — author reference shelf
+            embedding_client=embedder,  # T3.6 — provider-registry embed
             need=GrantLevel.EDIT,  # E0-4c: prose-gen is a write/spend → EDIT tier
         )
     except OwnershipError:
@@ -628,6 +643,11 @@ async def selection_edit(
     knowledge: KnowledgeClient = Depends(get_knowledge_client_dep),
     llm: LLMClient = Depends(get_llm_client_dep),
     narrative_threads: NarrativeThreadRepo = Depends(get_narrative_thread_repo),
+    grounding_pins: GroundingPinsRepo = Depends(get_grounding_pins_repo),
+    style_profiles: StyleProfileRepo = Depends(get_style_profile_repo),
+    voice_profiles: VoiceProfileRepo = Depends(get_voice_profile_repo),
+    references: ReferencesRepo = Depends(get_references_repo),
+    embedder: EmbeddingClient = Depends(get_embedding_client_dep),
     derivatives: DerivativesRepo = Depends(get_derivatives_repo),
 ) -> Any:
     """T3.2 — selection-scoped edit (rewrite/expand/describe) over the author's
@@ -642,6 +662,11 @@ async def selection_edit(
         raise HTTPException(status_code=404, detail="work not found")
     profile = from_settings(work.settings)
     _src_lang = profile.source_language
+    # T3.5 — the EFFECTIVE profile the prompt is built from. Upgraded to the packer's
+    # STYLED profile (density/pace + present-character voices) when a scene_context is
+    # supplied and the pack succeeds; stays the settings profile (neutral style) for a
+    # context-less edit or a degraded pack.
+    eff_profile = profile
 
     grounding = ""
     node = None
@@ -670,8 +695,14 @@ async def selection_edit(
                     book=book, glossary=glossary, knowledge=knowledge, canon_repo=canon,
                     outline_repo=outline, scene_links_repo=scene_links,
                     budget_tokens=settings.pack_token_budget, jobs_repo=jobs,
-                    compress_fn=_compress_fn, narrative_threads_repo=narrative_threads)
+                    compress_fn=_compress_fn, narrative_threads_repo=narrative_threads,
+                    grounding_pins_repo=grounding_pins,  # T3.4 — honor per-scene pins
+                    style_profile_repo=style_profiles,  # T3.5 — density/pace
+                    voice_profile_repo=voice_profiles,  # T3.5 — present-character voices
+                    references_repo=references,  # T3.6 — author reference shelf
+                    embedding_client=embedder)  # T3.6 — provider-registry embed
                 grounding = pc.prompt
+                eff_profile = pc.profile  # T3.5 — selection edit honors style & voice
             except Exception:  # noqa: BLE001 — grounding is best-effort: a pack
                 # failure of ANY kind degrades to voice-only, never 500s the edit
                 # (the docstring's "never fails on the grounding source").
@@ -681,7 +712,7 @@ async def selection_edit(
     # build_selection_messages RAISES on an unregistered op; the Literal field above
     # already 422s a bad value, so this is the defense-in-depth backstop (LOOM-39).
     messages = build_selection_messages(
-        body.selection, profile, body.operation, body.guide, grounding)
+        body.selection, eff_profile, body.operation, body.guide, grounding)
     prompt_estimate = estimate_prompt_tokens(messages, B.default_counter())
     prompt_ceiling = settings.pack_token_budget * 2
     if prompt_estimate > prompt_ceiling:
@@ -791,6 +822,11 @@ async def generate_chapter(
     knowledge: KnowledgeClient = Depends(get_knowledge_client_dep),
     llm: LLMClient = Depends(get_llm_client_dep),
     narrative_threads: NarrativeThreadRepo = Depends(get_narrative_thread_repo),
+    grounding_pins: GroundingPinsRepo = Depends(get_grounding_pins_repo),
+    style_profiles: StyleProfileRepo = Depends(get_style_profile_repo),
+    voice_profiles: VoiceProfileRepo = Depends(get_voice_profile_repo),
+    references: ReferencesRepo = Depends(get_references_repo),
+    embedder: EmbeddingClient = Depends(get_embedding_client_dep),
     derivatives: DerivativesRepo = Depends(get_derivatives_repo),
 ) -> Any:
     """B2 chapter single-pass (assembly_mode='chapter'): generate a WHOLE chapter
@@ -848,6 +884,11 @@ async def generate_chapter(
             budget_tokens=settings.pack_token_budget, jobs_repo=jobs,
             compress_fn=_compress_fn,
             narrative_threads_repo=narrative_threads,  # FD-1 S3 open-promise re-injection
+            grounding_pins_repo=grounding_pins,  # T3.4 — generation honors per-scene pins
+            style_profile_repo=style_profiles,  # T3.5 — density/pace
+            voice_profile_repo=voice_profiles,  # T3.5 — present-character voices
+            references_repo=references,  # T3.6 — author reference shelf
+            embedding_client=embedder,  # T3.6 — provider-registry embed
             need=GrantLevel.EDIT)  # E0-4c: prose-gen is a write/spend → EDIT tier
     except OwnershipError:
         raise HTTPException(status_code=404, detail="book not found")

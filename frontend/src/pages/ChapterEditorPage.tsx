@@ -4,7 +4,7 @@ import { useTranslation } from 'react-i18next';
 import { toast } from 'sonner';
 import {
   Save, PanelLeft, PanelRight, Clock, ChevronRight, ChevronLeft, ChevronRight as ChevronRightNav, SpellCheck,
-  BookOpen, FileText, BookMarked, ListTree, Pen, Sparkles, Languages, AlertTriangle, Eye,
+  BookOpen, FileText, BookMarked, ListTree, Pen, Sparkles, Languages, AlertTriangle, Eye, Focus,
 } from 'lucide-react';
 import { useAuth } from '@/auth';
 import { apiBase } from '@/api';
@@ -32,10 +32,18 @@ import { Chat } from '@/features/chat/Chat';
 import { fireSendToChat } from '@/features/chat/context/sendToChat';
 import { registerEditorTarget } from '@/features/chat/context/editorBridge';
 import { CompositionPanel } from '@/features/composition/components/CompositionPanel';
+import { WorkspaceShell } from '@/features/composition/components/workspace/WorkspaceShell';
 import { CowriteBridgeButton } from '@/features/composition/components/CowriteBridgeButton';
 import { SelectionToolbar } from '@/features/composition/components/SelectionToolbar';
 import { InlineAiLayer } from '@/features/composition/components/InlineAiLayer';
 import { useWorkResolution, useChapterScenes } from '@/features/composition/hooks/useWork';
+import { useReportProgress, useEnsureBaseline } from '@/features/composition/hooks/useProgress';
+import { useMentionHeatmap } from '@/features/composition/hooks/useMentionHeatmap';
+import { useFocusMode } from '@/features/composition/hooks/useFocusMode';
+import { usePopoutInsertRelay } from '@/features/composition/hooks/usePopoutInsertRelay';
+import { useProvenance } from '@/features/composition/hooks/useProvenance';
+import { ProvenanceToolbar } from '@/features/composition/components/ProvenanceToolbar';
+import { ProvenanceTag } from '@/features/composition/components/ProvenanceTag';
 import { aiModelsApi } from '@/features/ai-models/api';
 import { useQuery } from '@tanstack/react-query';
 import { OutlineTree } from '@/features/composition/components/OutlineTree';
@@ -50,6 +58,7 @@ export function ChapterEditorPage() {
   const { bookId = '', chapterId = '' } = useParams();
   const { accessToken } = useAuth();
   const panels = useEditorPanels();
+  const { focusMode, toggle: toggleFocus } = useFocusMode();  // T5.1 focus/typewriter
 
   // Resizable right panel — drag the left edge. Width is per-device UI state
   // (persisted in useEditorPanels → localStorage per CLAUDE.md). During the
@@ -139,6 +148,16 @@ export function ChapterEditorPage() {
   const [textContent, setTextContent] = useState('');
   const tiptapEditorRef = useRef<TiptapEditorHandle>(null);
 
+  // T5.4 M4 — prose accepted in a popped-out Compose/co-writer window has no editor of
+  // its own; it relays over the per-book channel and lands here at the cursor (same as
+  // the in-app onAccept path below), so popping a panel to monitor 2 still writes to the
+  // manuscript on monitor 1.
+  usePopoutInsertRelay(bookId, chapterId, (text, model) =>
+    tiptapEditorRef.current?.insertAtCursor(text, {
+      source: 'ai', status: 'unreviewed', model: model ?? null, ts: new Date().toISOString(),
+    }),
+  );
+
   // Editor mode + grammar
   const [editorMode, setEditorMode] = useEditorMode();
   const [grammarEnabled, setGrammarEnabled] = useGrammarEnabled();
@@ -156,6 +175,16 @@ export function ChapterEditorPage() {
       : workResolution.data?.status === 'candidates' ? (workResolution.data.candidates[0] ?? null)
         : null;
   const composeProjectId = composeWork?.project_id ?? null;
+  // T4.2 — report the chapter's word count to the progress SSOT on save (best-effort,
+  // accrues regardless of which sub-tab is open). `wcRef` keeps the live count fresh
+  // for the save callback (which doesn't depend on the per-render `wc`).
+  const reportProgress = useReportProgress(composeProjectId ?? undefined, accessToken);
+  const ensureBaseline = useEnsureBaseline(composeProjectId ?? undefined, accessToken);
+  const wcRef = useRef(0);
+  // T4.2 — the chapter's ON-DISK word count at load (NOT the live `wc`, which moves as
+  // you type). The baseline is captured from this so pre-existing content is the
+  // reference point, not a mid-session count.
+  const [loadedWordCount, setLoadedWordCount] = useState<number | null>(null);
   // C17 (WG-5) — "Continue from cursor" needs a model. Prefer the persisted per-Work
   // default; otherwise fall back to the SOLE registered chat model (same auto-pick
   // rule as the guided first-run — only when exactly one exists, never 0/≥2, and read
@@ -216,6 +245,7 @@ export function ChapterEditorPage() {
   // Glossary integration
   const [glossaryEntities, setGlossaryEntities] = useState<EntityNameEntry[]>([]);
   const [glossaryEnabled, setGlossaryEnabledState] = useState(true);
+  const [heatmapEnabled, setHeatmapEnabled] = useState(false); // T5.2 — in-prose mention tint (off by default)
   const editorElRef = useRef<HTMLElement | null>(null);
 
   // Left sidebar
@@ -298,13 +328,16 @@ export function ChapterEditorPage() {
 
   const load = useCallback(async () => {
     if (!accessToken) return;
+    setLoadedWordCount(null); // clear the prior chapter's baseline count while loading
     try {
       const [draft, chapter] = await Promise.all([
         booksApi.getDraft(accessToken, bookId, chapterId),
         booksApi.getChapter(accessToken, bookId, chapterId),
       ]);
       setSavedBody(draft.body);
-      setTextContent(draft.text_content ?? '');
+      const loadedText = draft.text_content ?? '';
+      setTextContent(loadedText);
+      setLoadedWordCount(wordCount(loadedText)); // T4.2 — pre-existing count for the baseline
       setTiptapJson(null);
       setVersion(draft.draft_version);
       const chTitle = chapter.title ?? '';
@@ -358,6 +391,26 @@ export function ChapterEditorPage() {
   useEffect(() => {
     tiptapEditorRef.current?.setGlossaryEnabled(glossaryEnabled);
   }, [glossaryEnabled]);
+
+  // T5.2 — mention heatmap: push the top-cast density terms + the toggle into the
+  // editor so the in-prose tinting tracks both the data and the on/off state. The
+  // GroundingPanel shares this same query (cache) for its bar list.
+  const heatmap = useMentionHeatmap(composeProjectId ?? undefined, accessToken);
+  useEffect(() => {
+    // tint the canonical name AND every alias (mention_count counts all surface
+    // forms; canonical-only would miss most occurrences in alias-heavy CJK prose)
+    const terms = (heatmap.data ?? []).flatMap((h) =>
+      [h.name, ...h.aliases].map((name) => ({ name, band: h.band })),
+    );
+    tiptapEditorRef.current?.setHeatmapTerms(terms);
+  }, [heatmap.data]);
+  useEffect(() => {
+    tiptapEditorRef.current?.setHeatmapEnabled(heatmapEnabled);
+  }, [heatmapEnabled]);
+
+  // T5.3 — AI-provenance: derive the unreviewed-span badge + underlay visibility
+  // from the live doc (tiptapJson changes on insert / review-click / mark-all).
+  const provenance = useProvenance(tiptapEditorRef, tiptapJson);
 
   // Capture editor DOM element for autocomplete positioning (after editor mounts)
   useEffect(() => {
@@ -425,13 +478,25 @@ export function ChapterEditorPage() {
       setSaveNote('');
       toast.success(t('saved'));
       setRevKey((k) => k + 1);
+      // T4.2 — snapshot the chapter's word count for today's progress (fire-and-forget
+      // inside the hook; a failure never reaches here / never disrupts the save).
+      reportProgress(chapterId, wcRef.current);
       await load();
     } catch (e) { toast.error((e as Error).message); }
     setSaving(false);
-  }, [accessToken, bookId, chapterId, tiptapJson, savedBody, saveNote, version, title, savedTitle, load]);
+  }, [accessToken, bookId, chapterId, tiptapJson, savedBody, saveNote, version, title, savedTitle, load, reportProgress]);
 
   // Keep ref current so auto-save always calls the latest version
   useEffect(() => { saveRef.current = save; }, [save]);
+
+  // T4.2 — seed the chapter's progress baseline once the Work is resolved and the
+  // chapter's on-disk content has loaded. SYNCHRONIZATION (server baseline ↔ loaded
+  // resource), not a user-action reaction. Server-side insert-once, so re-firing
+  // (e.g. when composeProjectId resolves after load) is a harmless no-op.
+  useEffect(() => {
+    if (!composeProjectId || loadedWordCount == null) return;
+    ensureBaseline(chapterId, loadedWordCount);
+  }, [composeProjectId, chapterId, loadedWordCount, ensureBaseline]);
 
   // ── Auto-save (5 minutes after last change) ─────────────────────────────
 
@@ -515,6 +580,7 @@ export function ChapterEditorPage() {
   // ── Stats ─────────────────────────────────────────────────────────────────
 
   const wc = wordCount(textContent);
+  wcRef.current = wc; // T4.2 — keep the live count fresh for the save-time progress report
   const charCount = textContent.length;
   const paraCount = textContent ? textContent.split(/\n\n+/).filter(Boolean).length : 0;
   const chapterLang = allChapters.find((c) => c.chapter_id === chapterId)?.original_language;
@@ -523,6 +589,17 @@ export function ChapterEditorPage() {
 
   return (
     <div className="flex h-full flex-col overflow-hidden">
+      {/* T5.1 — focus-mode continuity pill (static ambient affordance; the live
+          continuity signal lives in the co-writer Critic/Grounding tabs). */}
+      {focusMode && (
+        <div
+          data-testid="editor-focus-pill"
+          className="fixed right-6 top-14 z-30 inline-flex items-center gap-2 rounded-full border bg-card px-3 py-1.5 text-[11px] shadow-lg"
+        >
+          <span className="font-semibold text-success">🛡 {t('focus.continuity', { defaultValue: 'Continuity ✓' })}</span>
+          <span className="text-muted-foreground">{t('focus.hint', { defaultValue: '✦ tap a line for grounding' })}</span>
+        </div>
+      )}
       {/* ── Toolbar ──────────────────────────────────────────────────────── */}
       <div className="flex h-[42px] flex-shrink-0 items-center justify-between border-b bg-card px-4">
 
@@ -661,6 +738,16 @@ export function ChapterEditorPage() {
           >
             <PanelRight className="h-3.5 w-3.5" />
           </button>
+          {/* T5.1 — focus/typewriter mode: hides both side panels + dims non-current prose */}
+          <button
+            data-testid="editor-focus-toggle"
+            onClick={toggleFocus}
+            aria-pressed={focusMode}
+            className={cn('rounded p-1.5 transition-colors', focusMode ? 'bg-primary/15 text-primary' : 'text-muted-foreground hover:bg-secondary')}
+            title={t('focus.toggle', { defaultValue: 'Focus mode' })}
+          >
+            <Focus className="h-3.5 w-3.5" />
+          </button>
           <div className="mx-1 h-4 w-px bg-border" />
 
           {/* Save status */}
@@ -734,7 +821,7 @@ export function ChapterEditorPage() {
 
         {/* Left panel */}
         {panels.left && (
-          <div className="relative flex flex-shrink-0 flex-col border-r bg-card" style={{ width: leftWidth }}>
+          <div className={cn('relative flex flex-shrink-0 flex-col border-r bg-card', focusMode && 'hidden')} style={{ width: leftWidth }}>
             {/* Drag handle — resize by dragging the right edge. */}
             <div
               onMouseDown={startLeftResize}
@@ -910,6 +997,18 @@ export function ChapterEditorPage() {
             </div>
           </div>
 
+          {/* T5.3 — AI-provenance toolbar (self-hides when there's nothing to review) */}
+          {composeProjectId && !versionHistory && (
+            <div className="px-3 pt-1">
+              <ProvenanceToolbar
+                visible={provenance.visible}
+                unreviewedCount={provenance.unreviewedCount}
+                onToggleVisible={provenance.toggleVisible}
+                onMarkAllReviewed={provenance.markAllReviewed}
+              />
+            </div>
+          )}
+
           {/* Tiptap editor or version history panel */}
           {versionHistory ? (
             <VersionHistoryPanel
@@ -936,6 +1035,7 @@ export function ChapterEditorPage() {
               onUpdate={(json, text) => { setTiptapJson(json); setTextContent(text); }}
               grammarEnabled={grammarEnabled}
               editorMode={editorMode}
+              focusMode={focusMode}
               className="flex-1 overflow-y-auto"
               // T3.2: AI Selection Tools — only when a co-writer Work exists.
               selectionMenu={composeProjectId
@@ -965,8 +1065,8 @@ export function ChapterEditorPage() {
             />
           )}
 
-          {/* Save note */}
-          <div className="flex-shrink-0 border-t px-4 py-2">
+          {/* Save note — dimmed in focus mode (mockup .savenote) */}
+          <div className={cn('flex-shrink-0 border-t px-4 py-2', focusMode && 'pointer-events-none opacity-0')}>
             <input
               value={saveNote}
               onChange={(e) => setSaveNote(e.target.value)}
@@ -978,7 +1078,7 @@ export function ChapterEditorPage() {
 
         {/* Right panel */}
         {panels.right && (
-          <div className="relative flex flex-shrink-0 flex-col border-l bg-card" style={{ width: rightWidth }}>
+          <div className={cn('relative flex flex-shrink-0 flex-col border-l bg-card', focusMode && 'hidden')} style={{ width: rightWidth }}>
             {/* Drag handle — resize the panel by dragging its left edge. */}
             <div
               onMouseDown={startRightResize}
@@ -1061,15 +1161,27 @@ export function ChapterEditorPage() {
                   inserts at the cursor via insertAtCursor (which dirties + autosaves
                   the EDITOR doc); the streaming ghost stays FE-local until then. */}
               {rightTab === 'compose' && (
-                <CompositionPanel
-                  key={bookId}
-                  bookId={bookId}
-                  chapterId={chapterId}
-                  token={accessToken}
-                  onAccept={(text) => tiptapEditorRef.current?.insertAtCursor(text)}
-                  sceneId={activeSceneId}
-                  onSceneChange={setActiveSceneId}
-                />
+                // T5.4 — WorkspaceShell hoists the live co-writer stream (+ owns the
+                // windowing layout) ABOVE the studio panels so a docked/floated/popped
+                // panel survives a move. M1: renders CompositionPanel unchanged.
+                <WorkspaceShell token={accessToken} bookId={bookId} chapterId={chapterId}>
+                  <CompositionPanel
+                    key={bookId}
+                    bookId={bookId}
+                    chapterId={chapterId}
+                    token={accessToken}
+                    onAccept={(text, meta) =>
+                      tiptapEditorRef.current?.insertAtCursor(text, {
+                        source: 'ai', status: 'unreviewed', model: meta?.model ?? null,
+                        ts: new Date().toISOString(),
+                      })
+                    }
+                    sceneId={activeSceneId}
+                    onSceneChange={setActiveSceneId}
+                    heatmapEnabled={heatmapEnabled}
+                    onToggleHeatmap={() => setHeatmapEnabled((v) => !v)}
+                  />
+                </WorkspaceShell>
               )}
             </div>
           </div>
@@ -1125,6 +1237,9 @@ export function ChapterEditorPage() {
 
       {/* Glossary hover tooltip */}
       {glossaryEnabled && <GlossaryTooltip bookId={bookId} />}
+
+      {/* T5.3 — AI-provenance hover tag (reads the span's data-* attrs) */}
+      {composeProjectId && <ProvenanceTag />}
 
       {/* Glossary [[ autocomplete */}
       {glossaryEnabled && (

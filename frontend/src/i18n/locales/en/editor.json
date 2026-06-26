@@ -1,4 +1,9 @@
 {
+  "focus": {
+    "toggle": "Focus mode",
+    "continuity": "Continuity ✓",
+    "hint": "✦ tap a line for grounding"
+  },
   "saved": "Chapter saved",
   "no_content": "No content to translate",
   "translation_failed": "Translation failed",

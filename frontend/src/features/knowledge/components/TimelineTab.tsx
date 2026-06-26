@@ -33,7 +33,7 @@ interface TimelineTabProps {
 }
 
 export function TimelineTab({ scopedProjectId }: TimelineTabProps = {}) {
-  const { t } = useTranslation('knowledge');
+  const { t, i18n } = useTranslation('knowledge');
   const [projectFilter, setProjectFilter] = useState<string>(
     scopedProjectId ?? '',
   );
@@ -76,6 +76,12 @@ export function TimelineTab({ scopedProjectId }: TimelineTabProps = {}) {
       before_chronological: beforeChronological ?? undefined,
       event_date_from: eventDateFrom ?? undefined,
       event_date_to: eventDateTo ?? undefined,
+      // KG-TL — forward the active UI language as the reader language so the
+      // timeline localizes (chapter heading + participants + summary/time_cue/
+      // title). The BE folds it to the primary subtag (zh-TW → zh) and resolves
+      // the stored reader-language pref for the scoped project's book; an
+      // unscoped browse falls back to this explicit value for chapter titles.
+      language: i18n.language || undefined,
       sort_by: sortBy,
       sort_dir: sortDir,
       limit: PAGE_SIZE,

@@ -262,6 +262,9 @@ def chap_ctx(monkeypatch):
 
     async def fake_pack(req, **kw):
         state["pack_req"] = req  # capture so tests can assert the chapter_sort_hint wiring
+        # T3.4 — record the grounding-pins repo so a test can LOCK that generate_chapter
+        # threads it into pack (even though a synthetic chapter node id no-ops it).
+        state["pack_grounding_pins_repo"] = kw.get("grounding_pins_repo", "__missing__")
         return PackedContext(blocks={}, prompt="GROUNDING", profile=NEUTRAL, token_count=5,
                              dropped_count=0, l4_dropped_no_position=0, grounding_available=True,
                              over_budget=False, warnings=[], scene_sort_order=3)
@@ -286,9 +289,11 @@ def chap_ctx(monkeypatch):
 
     from app.deps import (get_book_client_dep, get_canon_rules_repo,
                           get_derivatives_repo, get_generation_jobs_repo,
-                          get_glossary_client_dep, get_knowledge_client_dep,
-                          get_llm_client_dep, get_narrative_thread_repo,
-                          get_outline_repo, get_scene_links_repo, get_works_repo)
+                          get_glossary_client_dep, get_grounding_pins_repo,
+                          get_embedding_client_dep, get_knowledge_client_dep,
+                          get_llm_client_dep, get_narrative_thread_repo, get_outline_repo,
+                          get_references_repo, get_scene_links_repo, get_style_profile_repo,
+                          get_voice_profile_repo, get_works_repo)
     from app.main import app
     from app.middleware.jwt_auth import get_bearer_token, get_current_user
 
@@ -302,6 +307,11 @@ def chap_ctx(monkeypatch):
     app.dependency_overrides[get_generation_jobs_repo] = lambda: jobs
     app.dependency_overrides[get_scene_links_repo] = lambda: object()
     app.dependency_overrides[get_narrative_thread_repo] = lambda: object()  # FD-1 (off in tests)
+    app.dependency_overrides[get_grounding_pins_repo] = lambda: object()  # T3.4 (pack stubbed)
+    app.dependency_overrides[get_style_profile_repo] = lambda: object()  # T3.5 (pack stubbed)
+    app.dependency_overrides[get_voice_profile_repo] = lambda: object()  # T3.5 (pack stubbed)
+    app.dependency_overrides[get_references_repo] = lambda: object()  # T3.6 (pack stubbed)
+    app.dependency_overrides[get_embedding_client_dep] = lambda: object()  # T3.6 (pack stubbed)
     # C25 — derivatives repo (non-derivative works in these tests → never read).
     app.dependency_overrides[get_derivatives_repo] = lambda: SimpleNamespace(
         list_overrides_for_work=lambda *a, **k: [])
@@ -495,7 +505,7 @@ def test_chapter_generate_surfaces_truncated(chap_ctx, monkeypatch):
     # path's None finish_reason yields truncated=False).
     from app.engine.cowrite import DraftMetering
     from app.engine.select import Candidate
-    c, _, _, _, _, _ = chap_ctx
+    c, _, _, _, _, state = chap_ctx
 
     async def truncated_diverge(llm, **kw):
         return [Candidate("CHAPTER DRAFT", DraftMetering(40, 10, True, finish_reason="length"))]
@@ -505,6 +515,9 @@ def test_chapter_generate_surfaces_truncated(chap_ctx, monkeypatch):
     assert r.status_code == 200
     body = r.json()
     assert body["truncated"] is True and body["finish_reason"] == "length"
+    # T3.4 lock — generate_chapter must thread grounding_pins_repo into pack (the
+    # synthetic chapter node id no-ops it inside pack, but the wiring stays guarded).
+    assert state["pack_grounding_pins_repo"] not in (None, "__missing__")
 
 
 # ── stitch endpoint (B3) ──

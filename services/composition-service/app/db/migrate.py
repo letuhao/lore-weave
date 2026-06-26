@@ -365,6 +365,148 @@ CREATE TABLE IF NOT EXISTS decompose_commit (
   created_at      TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 CREATE UNIQUE INDEX IF NOT EXISTS idx_decompose_commit_idem ON decompose_commit(user_id, project_id, idempotency_key);
+
+-- ── scene_grounding_pins: LOOM T3.4 — per-scene author steering of the injected
+-- grounding context. One row per addressed item (present-entity / canon-rule /
+-- lore-source): action='pin' force-keeps it through the budget trim, action=
+-- 'exclude' drops it from the pack. Honored by BOTH the grounding preview and the
+-- engine generation (same pack() chokepoint) so preview == what the model sees.
+-- item_id is a STABLE canonical id (glossary anchor / canon_rule uuid / lore
+-- source_id) — NOT a localized label — so a pin survives a reader-language switch
+-- or a derivative override. UNIQUE(project, scene, type, id) ⇒ pin⇄exclude flips
+-- in place (upsert); a CASCADE drop with the scene leaves no orphan.
+CREATE TABLE IF NOT EXISTS scene_grounding_pins (
+  id              UUID PRIMARY KEY DEFAULT uuidv7(),
+  user_id         UUID NOT NULL,
+  project_id      UUID NOT NULL,
+  outline_node_id UUID NOT NULL REFERENCES outline_node(id) ON DELETE CASCADE,
+  item_type       TEXT NOT NULL CHECK (item_type IN ('present','canon','lore')),
+  item_id         TEXT NOT NULL,
+  action          TEXT NOT NULL CHECK (action IN ('pin','exclude')),
+  created_at      TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_scene_grounding_pins_item
+  ON scene_grounding_pins(project_id, outline_node_id, item_type, item_id);
+CREATE INDEX IF NOT EXISTS idx_scene_grounding_pins_scene
+  ON scene_grounding_pins(user_id, project_id, outline_node_id);
+
+-- ── composition_daily_progress: LOOM T4.2 — server-SSOT writing progress stats.
+-- One row per (work, chapter, local-date): `words` is the chapter's TOTAL word
+-- count as last reported on that local date (a SNAPSHOT, NOT a delta) — the client
+-- reports the active chapter's current word count on save, keyed to its LOCAL date
+-- (PO 2026-06-24: snapshot/server-differenced for multi-device correctness). The
+-- per-day authored count is then DERIVED server-side by differencing successive
+-- snapshots; the per-chapter book total = the sum of each chapter's latest snapshot.
+-- PK(user,project,chapter,date) ⇒ the report upsert is IDEMPOTENT per local date
+-- (a re-save the same day overwrites that day's snapshot, last-write-wins). `words`
+-- is the user's OWN studio stat (per-user predicate everywhere) — no cross-tenant read.
+CREATE TABLE IF NOT EXISTS composition_daily_progress (
+  user_id        UUID NOT NULL,
+  project_id     UUID NOT NULL,
+  chapter_id     UUID NOT NULL,
+  snapshot_date  DATE NOT NULL,
+  words          INT  NOT NULL CHECK (words >= 0),
+  updated_at     TIMESTAMPTZ NOT NULL DEFAULT now(),
+  PRIMARY KEY (user_id, project_id, chapter_id, snapshot_date)
+);
+-- the windowed read (day-words diff + book total) scans by (work, date) across chapters
+CREATE INDEX IF NOT EXISTS idx_comp_daily_progress_work_date
+  ON composition_daily_progress(user_id, project_id, snapshot_date);
+
+-- ── composition_progress_baseline: LOOM T4.2 — the per-chapter PRE-EXISTING word
+-- count captured the FIRST time a chapter is opened after progress tracking starts.
+-- It is the reference point the chapter's first daily snapshot diffs against, so a
+-- chapter's pre-existing content is NOT counted as "written today" (no enablement
+-- spike) while a brand-new chapter (opened at ~0 words) baselines at ~0 and so its
+-- writing counts fully from word one. Captured ONCE per chapter (the report upsert is
+-- ON CONFLICT DO NOTHING — re-opening a chapter must NOT reset the baseline to its now
+-- larger count, which would erase recorded progress). Per-user (own studio stat).
+CREATE TABLE IF NOT EXISTS composition_progress_baseline (
+  user_id     UUID NOT NULL,
+  project_id  UUID NOT NULL,
+  chapter_id  UUID NOT NULL,
+  words       INT  NOT NULL CHECK (words >= 0),
+  created_at  TIMESTAMPTZ NOT NULL DEFAULT now(),
+  PRIMARY KEY (user_id, project_id, chapter_id)
+);
+
+-- ── style_profile: LOOM T3.5 — per-scope prose-style steering (Density + Pace,
+-- 0-100). Scoped work | chapter | scene so a scene can override its chapter which
+-- overrides the book default; the packer resolves the MOST SPECIFIC row for the
+-- target scene (scene > chapter > work) and threads density/pace into the draft
+-- prompts. `scope_id` is the project_id (work), chapter_id (chapter) or outline
+-- node_id (scene) — never null, so the PK is clean. Per-user (own authoring config).
+CREATE TABLE IF NOT EXISTS style_profile (
+  user_id     UUID NOT NULL,
+  project_id  UUID NOT NULL,
+  scope_type  TEXT NOT NULL CHECK (scope_type IN ('work','chapter','scene')),
+  scope_id    UUID NOT NULL,
+  density     INT  NOT NULL CHECK (density BETWEEN 0 AND 100),
+  pace        INT  NOT NULL CHECK (pace BETWEEN 0 AND 100),
+  updated_at  TIMESTAMPTZ NOT NULL DEFAULT now(),
+  PRIMARY KEY (user_id, project_id, scope_type, scope_id)
+);
+
+-- ── voice_profile: LOOM T3.5 — per-character voice tags (e.g. terse, understatement,
+-- no purple prose). Keyed by entity_id (the glossary/knowledge entity); `entity_name`
+-- is denormalized so the packer renders the directive without a name lookup. The
+-- packer injects a character's tags ONLY when that entity is PRESENT in the scene.
+-- `tags` is a JSON array of short strings. Per-user (own authoring config).
+CREATE TABLE IF NOT EXISTS voice_profile (
+  user_id      UUID NOT NULL,
+  project_id   UUID NOT NULL,
+  entity_id    UUID NOT NULL,
+  entity_name  TEXT NOT NULL,
+  tags         JSONB NOT NULL DEFAULT '[]'::jsonb,
+  updated_at   TIMESTAMPTZ NOT NULL DEFAULT now(),
+  PRIMARY KEY (user_id, project_id, entity_id)
+);
+
+-- ── reference_source: LOOM T3.6 — the author's per-Work reference shelf (external
+-- influences / passages, with source attribution). composition-OWNED authoring data
+-- (NOT knowledge-graph content): the content is embedded via provider-registry
+-- /internal/embed and the vector is stored HERE as a plain `real[]` (a reference
+-- shelf is small — dozens to low-hundreds of rows — so retrieval is brute-force
+-- cosine top-K in app code; no pgvector extension / ivfflat index / fixed-dimension
+-- column needed). All rows of a Work share ONE embedding model (work.settings.
+-- reference_embed_model_ref, set write-through on first add) so the vectors live in
+-- one space. `embedding` is NULL only transiently if an embed failed at insert (the
+-- router rejects that path; a null-vector row is simply never a search hit). Per-user
+-- + per-book tier — every query filters user_id + project_id (tenancy).
+CREATE TABLE IF NOT EXISTS reference_source (
+  id              UUID PRIMARY KEY DEFAULT uuidv7(),
+  user_id         UUID NOT NULL,
+  project_id      UUID NOT NULL,
+  title           TEXT NOT NULL DEFAULT '',
+  author          TEXT NOT NULL DEFAULT '',
+  source_url      TEXT NOT NULL DEFAULT '',
+  content         TEXT NOT NULL,
+  embedding       REAL[],
+  embedding_model TEXT NOT NULL DEFAULT '',
+  embedding_dim   INT,
+  created_at      TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS idx_reference_source_project
+  ON reference_source(user_id, project_id, created_at DESC);
+
+-- T3.6 — let a scene pin/exclude a reference too. Extend the T3.4 item_type CHECK
+-- from ('present','canon','lore') to include 'reference'. Idempotent: the DO-block
+-- DROPs + re-ADDs the named constraint only when 'reference' isn't yet allowed (a
+-- probe INSERT into the catalog check would be fragile, so we test the constraint
+-- definition text). The UNIQUE/scene indexes are unaffected.
+DO $$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_constraint
+    WHERE conname = 'scene_grounding_pins_item_type_check'
+      AND conrelid = 'scene_grounding_pins'::regclass
+      AND pg_get_constraintdef(oid) LIKE '%reference%'
+  ) THEN
+    ALTER TABLE scene_grounding_pins DROP CONSTRAINT IF EXISTS scene_grounding_pins_item_type_check;
+    ALTER TABLE scene_grounding_pins ADD CONSTRAINT scene_grounding_pins_item_type_check
+      CHECK (item_type IN ('present','canon','lore','reference'));
+  END IF;
+END $$;
 """
 
 # C23 down-migration (round-trip proof only — the live schema is idempotent-forward

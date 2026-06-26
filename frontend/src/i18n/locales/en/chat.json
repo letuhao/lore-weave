@@ -152,6 +152,7 @@
     "batch_count": "{{count}} items",
     "warning": "This change is high-impact — please confirm.",
     "warning_destructive": "This is destructive and cascades — please confirm.",
+    "destructive_skipped": "{{count}} destructive op(s) will be SKIPPED unless you enable them above.",
     "confirm": "Confirm",
     "confirm_all": "Confirm all",
     "cancel": "Cancel",

@@ -84,6 +84,15 @@ var chain = []Step{
 	{"0036_system_attr_descriptions", UpSystemAttrDescriptions},
 	// KG-ML M5 (C4 / DD4) — name_i18n on the kind tiers + System vi seed.
 	{"0037_kind_name_i18n", UpKindNameI18n},
+	// D-BATCH-RESEARCH-JOB M1 — async batch entity-research job table.
+	{"0038_entity_research_jobs", UpEntityResearchJobs},
+	// D-EXTRACT-ATTR-MERGE-DEFAULTS M1 — re-seed merge_strategy by type heuristic
+	// (tags→append, state→overwrite, identity→fill) so re-extraction accumulates.
+	{"0039_merge_strategy_heuristic", UpMergeStrategyHeuristic},
+	// D-GLOSSARY-ST-DEDUP M3a — normalized_name GENERATED→app-maintained so the
+	// dedup-key backstop folds CJK simplified/traditional + full-width + casefold
+	// via the shared loreweave_extraction SDK (the same fold the resolver uses).
+	{"0040_st_dedup_app_maintained", UpStDedupAppMaintained},
 }
 
 // EnsureLedger creates the schema_migrations bookkeeping table. Idempotent; must run

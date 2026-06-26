@@ -4,10 +4,11 @@
 // position-fixed overlay at the caret. Accept commits it (+ advisory critique),
 // Edit inserts it editable, Discard drops it, Regenerate re-streams. Reuses
 // useCompositionStream (abort-on-restart) + useCritique. No new BE.
-import { useCallback, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { toast } from 'sonner';
 import type { Editor } from '@tiptap/react';
+import { trackPosition, type PositionHandle } from '../../../components/editor/TrackedPositions';
 import { useCompositionStream } from './useCompositionStream';
 import { useCritique } from './useCritique';
 
@@ -28,6 +29,10 @@ export function useInlineGhost(
   const stream = useCompositionStream(opts.token);
   const { critique } = useCritique(opts.token);
   const [anchor, setAnchor] = useState<GhostAnchor | null>(null);
+  // WS-C: the insert caret is a TRACKED position — PM remaps it through any edit the
+  // author makes while the ghost streams, so commit inserts at the RIGHT spot (and
+  // detects a true deletion) instead of the crude `pos > doc.size` bounds check.
+  const posHandle = useRef<PositionHandle | null>(null);
 
   const canContinue = !!editor && !!opts.projectId && !!opts.sceneId && !!opts.modelRef;
 
@@ -39,7 +44,13 @@ export function useInlineGhost(
   }, [editor]);
 
   const reposition = useCallback(() => {
-    setAnchor((a) => (a ? { ...a, coords: coordsAt(a.pos) } : a));
+    // Follow the tracked position (if it moved under a concurrent edit) when
+    // recomputing the overlay coords; fall back to the stored pos.
+    setAnchor((a) => {
+      if (!a) return a;
+      const pos = posHandle.current?.current() ?? a.pos;
+      return { pos, coords: coordsAt(pos) };
+    });
   }, [coordsAt]);
 
   const startAt = useCallback((pos: number) => {
@@ -57,26 +68,34 @@ export function useInlineGhost(
   const continueDraft = useCallback(() => {
     if (!canContinue || !editor) return;
     const pos = editor.state.selection.from;
+    posHandle.current?.release();
+    posHandle.current = trackPosition(editor, pos);
     setAnchor({ pos, coords: coordsAt(pos) });
     startAt(pos);
   }, [canContinue, editor, coordsAt, startAt]);
 
-  const close = useCallback(() => { stream.clearGhost(); setAnchor(null); }, [stream]);
+  const close = useCallback(() => {
+    stream.clearGhost();
+    posHandle.current?.release();
+    posHandle.current = null;
+    setAnchor(null);
+  }, [stream]);
   const discard = useCallback(() => { stream.stop(); close(); }, [stream, close]);
 
   // runCritique=false is the "Edit" path: the prose lands in the doc (editable) but
   // we skip the advisory critique (it's a one-shot judge of an accepted passage).
   const commit = useCallback((runCritique: boolean) => {
     if (!editor || !anchor || !stream.ghost) return;
-    // The editor stays editable during the ghost; if the doc shrank the saved pos
-    // can go stale → bounds-check before inserting (D-T3.3-GHOST-POS-MAP for full
-    // position mapping).
-    if (anchor.pos > editor.state.doc.content.size) {
+    // WS-C: the editor stays editable during the ghost; the TRACKED position is
+    // remapped through any edit, so we insert at its live spot. .current() is null
+    // only if the caret's location was actually deleted → precise stale signal.
+    const pos = posHandle.current?.current() ?? anchor.pos;
+    if (pos == null || pos > editor.state.doc.content.size) {
       toast.error(t('inline.stale', { defaultValue: 'The cursor moved — try again.' }));
       close();
       return;
     }
-    editor.chain().focus().insertContentAt(anchor.pos, stream.ghost).run();
+    editor.chain().focus().insertContentAt(pos, stream.ghost).run();
     if (runCritique && stream.jobId) critique.mutate({ jobId: stream.jobId, passage: stream.ghost });
     close();
   }, [editor, anchor, stream.ghost, stream.jobId, critique, close, t]);
@@ -84,8 +103,12 @@ export function useInlineGhost(
   const regenerate = useCallback(() => {
     if (!anchor) return;
     stream.clearGhost();
-    startAt(anchor.pos);
+    startAt(posHandle.current?.current() ?? anchor.pos);
   }, [anchor, stream, startAt]);
+
+  // Release the tracked caret if the hook unmounts mid-ghost (without a commit/
+  // discard) so a stale entry doesn't linger in the shared editor's plugin state.
+  useEffect(() => () => { posHandle.current?.release(); posHandle.current = null; }, []);
 
   return {
     anchor,

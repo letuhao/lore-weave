@@ -37,6 +37,23 @@ async def translate_text(
     db: asyncpg.Pool = Depends(get_db),
     llm_client: LLMClient = Depends(get_llm_client),
 ) -> TranslateTextResponse:
+    return await translate_text_core(body, user_id=user_id, db=db, llm_client=llm_client)
+
+
+async def translate_text_core(
+    body: TranslateTextRequest,
+    *,
+    user_id: str,
+    db: asyncpg.Pool,
+    llm_client: LLMClient,
+) -> TranslateTextResponse:
+    """Shared text/block translate core (KG-TL M3).
+
+    Hoisted out of the public route handler so the internal token route
+    (``/internal/translation/translate-text``) can drive the SAME translation
+    for a service-asserted ``user_id`` — resolving that user's translation model
+    via their saved prefs (BYOK, provider-registry) without minting a user JWT.
+    Behavior is byte-identical to the public route for a given user."""
     # Load user preferences for model config
     prefs = await db.fetchrow(
         "SELECT * FROM user_translation_preferences WHERE user_id = $1",

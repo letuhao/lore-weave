@@ -118,6 +118,11 @@ class CreateJobPayload(BaseModel):
     # "ensure translated"). Set force_retranslate=true to re-translate regardless
     # (explicit user request — the 3rd valid re-translate trigger).
     force_retranslate: bool = False
+    # D-TRANSLATE-REASONING-TOGGLE: enable model reasoning (hidden thinking) for the
+    # translation LLM. Default OFF — thinking can burn the output budget on local
+    # models. Persisted on the job row so it survives resume; the worker maps it to
+    # chat_template_kwargs.enable_thinking via thinking_llm_fields.
+    thinking_enabled: bool = False
     # T2-M2 dirty-only re-translate: when set, the worker translates ONLY these
     # block positions (chapter_blocks.block_index = position in the body content
     # array) and copies every other block from `seed_version_id`, finalizing a

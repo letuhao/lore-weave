@@ -124,6 +124,9 @@
       "api_key_ph_keep": "••••••••  （現在のキーを保持する場合は空欄）",
       "api_key_ph": "sk-...",
       "api_key_keep_hint": "既存のキーを保持する場合は空欄にしてください。",
+      "max_concurrency": "最大同時リクエスト数",
+      "max_concurrency_ph": "無制限",
+      "max_concurrency_hint": "このプロバイダーが同時に実行するリクエスト数。空欄で無制限（インフラ側が判断）。バックエンドに既知の上限がある場合（例：ローカルGPU）のみ数値を設定してください。",
       "cancel": "キャンセル",
       "saving": "保存中...",
       "submit": "変更を保存"
@@ -249,6 +252,71 @@
       "embedding": "埋め込み",
       "rerank": "リランク",
       "moderation": "モデレーション"
+    }
+  },
+  "services": {
+    "heading": "外部サービス",
+    "subtitle": "モデル以外の持ち込み（BYOK）AIサービス — 例: ウェブ検索。モデルと同様に provider-registry 経由で接続します。",
+    "add": "サービスを追加",
+    "empty": "外部サービスがまだありません。ディープリサーチを有効にするには追加してください（例: ウェブ検索）。",
+    "keyless": "キー不要",
+    "no_endpoint": "エンドポイントなし",
+    "no_model": "モデルなし",
+    "test": "テスト",
+    "activate_aria": "サービスを有効化",
+    "deactivate_aria": "サービスを無効化",
+    "delete_aria": "{{name}} を削除",
+    "edit_aria": "{{name}} を編集",
+    "type": {
+      "web_search": {
+        "label": "ウェブ検索",
+        "desc": "ディープリサーチの根拠をウェブから検索（例: SearXNG、Tavily）。"
+      }
+    },
+    "add_dialog": {
+      "aria": "外部サービスを追加",
+      "title": "外部サービスを追加",
+      "type": "サービス",
+      "endpoint": "エンドポイントURL",
+      "endpoint_hint": "サービスのベースURL — provider-registry がサーバー側で呼び出します。ホストマシン上のサービスには localhost ではなく host.docker.internal を使用してください（コンテナ内では localhost はコンテナ自身を指します）。",
+      "key": "APIキー",
+      "key_ph": "ベアラートークン",
+      "key_ph_keyless": "キー不要のローカルサービスは空のまま",
+      "key_hint": "サービスのベアラーシークレット。",
+      "key_hint_keyless": "任意 — キー不要のローカルバックエンド（例: SearXNG）は空のまま。",
+      "label": "ラベル",
+      "label_ph": "例: searxng-default",
+      "alias": "エイリアス",
+      "alias_ph": "表示名（任意）",
+      "cancel": "キャンセル",
+      "submit": "サービスを追加",
+      "adding": "追加中…"
+    },
+    "edit_dialog": {
+      "aria": "外部サービスを編集",
+      "title": "{{name}} を編集",
+      "endpoint": "エンドポイントURL",
+      "key": "APIキー",
+      "key_ph_keep": "現在のキーを保持するには空のまま",
+      "key_keep_hint": "空のままにすると既存のキーを保持します。",
+      "max_concurrency": "最大同時リクエスト数",
+      "max_concurrency_ph": "無制限",
+      "max_concurrency_hint": "このサービスが同時に実行するリクエスト数。空欄で無制限（インフラ側が判断）。バックエンドに既知の上限がある場合のみ数値を設定してください。",
+      "cancel": "キャンセル",
+      "submit": "保存",
+      "saving": "保存中…"
+    },
+    "toast": {
+      "added": "{{name}} を追加しました",
+      "add_failed": "サービスの追加に失敗しました",
+      "updated": "サービスを更新しました",
+      "update_failed": "サービスの更新に失敗しました",
+      "removed": "サービスを削除しました",
+      "remove_failed": "サービスの削除に失敗しました",
+      "toggle_failed": "サービスの切り替えに失敗しました",
+      "verify_ok": "サービスに到達できました（{{ms}}ms）",
+      "verify_failed": "検証に失敗しました: {{error}}",
+      "unknown_error": "不明なエラー"
     }
   },
   "tags": {

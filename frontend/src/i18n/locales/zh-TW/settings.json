@@ -124,6 +124,9 @@
       "api_key_ph_keep": "••••••••  （留空以保留目前金鑰）",
       "api_key_ph": "sk-...",
       "api_key_keep_hint": "留空以保留現有金鑰。",
+      "max_concurrency": "最大並行請求數",
+      "max_concurrency_ph": "無限制",
+      "max_concurrency_hint": "此供應商同時執行的請求數。留空表示無限制（由基礎設施決定）。僅在您的後端有已知上限時（例如本機 GPU）才設定數字。",
       "cancel": "取消",
       "saving": "儲存中...",
       "submit": "儲存變更"
@@ -249,6 +252,71 @@
       "embedding": "嵌入",
       "rerank": "重新排序",
       "moderation": "內容審核"
+    }
+  },
+  "services": {
+    "heading": "外部服務",
+    "subtitle": "你自備（BYOK）的非模型 AI 服務 — 例如網路搜尋。與模型一樣透過 provider-registry 連接。",
+    "add": "新增服務",
+    "empty": "尚無外部服務。新增一個（例如網路搜尋）以啟用深度研究。",
+    "keyless": "免金鑰",
+    "no_endpoint": "無端點",
+    "no_model": "無模型",
+    "test": "測試",
+    "activate_aria": "啟用服務",
+    "deactivate_aria": "停用服務",
+    "delete_aria": "刪除 {{name}}",
+    "edit_aria": "編輯 {{name}}",
+    "type": {
+      "web_search": {
+        "label": "網路搜尋",
+        "desc": "從網路搜尋深度研究的佐證來源（例如 SearXNG、Tavily）。"
+      }
+    },
+    "add_dialog": {
+      "aria": "新增外部服務",
+      "title": "新增外部服務",
+      "type": "服務",
+      "endpoint": "端點 URL",
+      "endpoint_hint": "服務的基底 URL — provider-registry 會在伺服器端呼叫。若服務在主機上執行，請用 host.docker.internal，不要用 localhost（容器內的 localhost 指容器自己）。",
+      "key": "API 金鑰",
+      "key_ph": "Bearer token",
+      "key_ph_keyless": "免金鑰的本地服務請留空",
+      "key_hint": "服務的 Bearer 密鑰。",
+      "key_hint_keyless": "選填 — 免金鑰的本地後端（例如 SearXNG）請留空。",
+      "label": "標籤",
+      "label_ph": "例如 searxng-default",
+      "alias": "別名",
+      "alias_ph": "顯示名稱（選填）",
+      "cancel": "取消",
+      "submit": "新增服務",
+      "adding": "新增中…"
+    },
+    "edit_dialog": {
+      "aria": "編輯外部服務",
+      "title": "編輯 {{name}}",
+      "endpoint": "端點 URL",
+      "key": "API 金鑰",
+      "key_ph_keep": "留空以保留目前的金鑰",
+      "key_keep_hint": "留空則保留現有金鑰。",
+      "max_concurrency": "最大並行請求數",
+      "max_concurrency_ph": "無限制",
+      "max_concurrency_hint": "此服務同時執行的請求數。留空表示無限制（由基礎設施決定）。僅在您的後端有已知上限時才設定數字。",
+      "cancel": "取消",
+      "submit": "儲存",
+      "saving": "儲存中…"
+    },
+    "toast": {
+      "added": "已新增 {{name}}",
+      "add_failed": "新增服務失敗",
+      "updated": "已更新服務",
+      "update_failed": "更新服務失敗",
+      "removed": "已移除服務",
+      "remove_failed": "移除服務失敗",
+      "toggle_failed": "切換服務失敗",
+      "verify_ok": "服務可連線（{{ms}}ms）",
+      "verify_failed": "驗證失敗：{{error}}",
+      "unknown_error": "未知錯誤"
     }
   },
   "tags": {

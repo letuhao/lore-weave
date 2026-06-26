@@ -817,13 +817,9 @@ func (s *Server) bulkExtractEntities(w http.ResponseWriter, r *http.Request) {
 					// safe DEFAULT 'unverified' until the translation-side offset map +
 					// validation populate them (INV-7: model offsets are validated, never
 					// trusted — that's the model-offset-trust step, deliberately not here).
-					var evChapterTitle string
-					var evChapterIndex *int
-					if len(ent.ChapterLinks) > 0 {
-						evChapterTitle = ent.ChapterLinks[0].ChapterTitle
-						ci := ent.ChapterLinks[0].ChapterIndex
-						evChapterIndex = &ci
-					}
+					// M2 — the quote's chapter is the chapter THIS writeback processed
+					// (req.ChapterID), not the entity's first-ever appearance.
+					evChapterID, evChapterTitle, evChapterIndex := evidenceChapterFor(req.ChapterID, ent.ChapterLinks)
 					// PROV/M3 — VALIDATED offset + trust status (INV-7). The worker already
 					// located the quote in the real text; glossary trusts no raw number —
 					// evidenceProvenanceFields clamps + enum-gates, degrading anything
@@ -841,7 +837,7 @@ func (s *Server) bulkExtractEntities(w http.ResponseWriter, r *http.Request) {
 					// DO UPDATE the PROVENANCE columns only — latest-validated-wins — so the
 					// stored offset/trust tracks the current text instead of going stale on
 					// the first-writer's coordinates. original_text is the conflict key (so
-					// it's identical); chapter-level fields are stable; only the validated
+					// it's identical); the chapter pointer (M5 backfill of the firstChapterID bug) + the validated
 					// offsets can legitimately differ, so only they refresh.
 					if _, err := tx.Exec(ctx, `
 						INSERT INTO evidences (attr_value_id, chapter_id, chapter_title, chapter_index,
@@ -850,11 +846,14 @@ func (s *Server) bulkExtractEntities(w http.ResponseWriter, r *http.Request) {
 						VALUES ($1, $2, $3, $4, $5, $6, $7, $8,
 						        'extraction_quote', $9, $10, 'auto-extracted by glossary extraction pipeline')
 						ON CONFLICT (attr_value_id, evidence_type, md5(original_text)) DO UPDATE SET
+							chapter_id        = EXCLUDED.chapter_id,
+							chapter_title     = EXCLUDED.chapter_title,
+							chapter_index     = EXCLUDED.chapter_index,
 							block_or_line     = EXCLUDED.block_or_line,
 							char_start        = EXCLUDED.char_start,
 							char_end          = EXCLUDED.char_end,
 							provenance_status = EXCLUDED.provenance_status
-					`, nameAVID, s.firstChapterID(ent.ChapterLinks), evChapterTitle, evChapterIndex,
+					`, nameAVID, evChapterID, evChapterTitle, evChapterIndex,
 						provBlk, provCS, provCE, provStatus,
 						req.SourceLanguage, ent.Evidence); err != nil {
 						BulkExtractTotal.WithLabelValues(OutcomeQueryFailed).Inc()
@@ -1037,6 +1036,32 @@ func (s *Server) loadKindMap(ctx context.Context, bookID uuid.UUID) (map[string]
 	return m, arows.Err()
 }
 
+// loadBookKindCodes returns the set of LITERAL book_kind codes for a book (active
+// only) — NO alias folding, unlike loadKindMap. This is the executor's existence
+// domain: create_kinds inserts a book_kind by literal code and skips only on a
+// unique violation against this set. The plan-card preview uses it so its
+// "N new — M already exist" count matches what execute_plan will actually do; the
+// alias-folded loadKindMap over-counts "exist" (an alias of an adopted kind, e.g.
+// "faction"→organization, is NOT a book_kind, so create_kinds still creates it) —
+// the drift D-PLAN-PREVIEW-COUNT-DRIFT fixes.
+func (s *Server) loadBookKindCodes(ctx context.Context, bookID uuid.UUID) (map[string]struct{}, error) {
+	rows, err := s.pool.Query(ctx,
+		`SELECT code FROM book_kinds WHERE book_id = $1 AND deprecated_at IS NULL`, bookID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	codes := make(map[string]struct{})
+	for rows.Next() {
+		var code string
+		if err := rows.Scan(&code); err != nil {
+			return nil, err
+		}
+		codes[code] = struct{}{}
+	}
+	return codes, rows.Err()
+}
+
 // loadAttrDefMap returns a map of "book_kind_id:code" → attr_id for the given book
 // (G4: book_attributes). Keyed by the UNIVERSAL-genre row — the seed lifts every
 // kind's attrs into (kind, universal) and adopt copies them there, so extraction /
@@ -1091,6 +1116,26 @@ func (s *Server) loadAttrStrategyMap(ctx context.Context, bookID uuid.UUID) (map
 		m[kindID.String()+":"+code] = strategy
 	}
 	return m, rows.Err()
+}
+
+// seedMergeStrategy is the runtime twin of migration 0039's CASE (merge_strategy_heuristic.go):
+// the default authored merge_strategy for a NEWLY-created ontology attribute, by type. It MUST
+// stay in sync with that migration — identity (name/term, or a required text key)→fill_if_empty;
+// tags→append; everything else→overwrite. Without it, an attribute created at runtime (book
+// adoption clones a NEW source, custom kind/attr) lands on the column DEFAULT 'fill_if_empty' and
+// silently re-freezes on re-extraction, even though the migration healed the rows that existed at
+// migration time (D-EXTRACT-ATTR-MERGE-DEFAULTS — the one-time migration can't cover future rows).
+func seedMergeStrategy(code, fieldType string, isRequired bool) string {
+	switch {
+	case code == "name" || code == "term":
+		return "fill_if_empty"
+	case isRequired && fieldType == "text":
+		return "fill_if_empty"
+	case fieldType == "tags":
+		return "append"
+	default:
+		return "overwrite"
+	}
 }
 
 // strategyToAction maps an authored merge_strategy to the runtime merge action the
@@ -1307,6 +1352,12 @@ func (s *Server) createExtractedEntity(
 		}
 	}
 
+	// D-GLOSSARY-ST-DEDUP M3a: stamp the app-maintained dedup key from the
+	// just-landed name (cached_name is set by the snapshot trigger on the name EAV).
+	if err := refreshEntityDedupKey(ctx, q, entityID); err != nil {
+		return uuid.Nil, fmt.Errorf("refresh dedup key: %w", err)
+	}
+
 	return entityID, nil
 }
 
@@ -1338,7 +1389,11 @@ func (s *Server) mergeExtractedEntity(
 			skipped = append(skipped, attrSkip{code, "no_action"})
 			continue
 		}
-		if !specified || action == "" {
+		// "default" is the explicit "defer to the authored merge_strategy" sentinel
+		// (D-EXTRACT-ATTR-MERGE-DEFAULTS) — the worker/FE send it instead of forcing
+		// "fill", so the seeded heuristic (append/overwrite/fill) governs. Treated
+		// identically to an omitted/empty action.
+		if !specified || action == "" || action == "default" {
 			strat := strategyMap[kindID.String()+":"+code]
 			if strat == "manual" {
 				skipped = append(skipped, attrSkip{code, "manual"})
@@ -1495,6 +1550,11 @@ func (s *Server) mergeExtractedEntity(
 		if _, err := q.Exec(ctx, `UPDATE glossary_entities SET updated_at = now() WHERE entity_id = $1`, entityID); err != nil {
 			return nil, nil, fmt.Errorf("touch updated_at: %w", err)
 		}
+		// D-GLOSSARY-ST-DEDUP M3a: if the name/term was among the written attrs the
+		// dedup key must follow it. Idempotent (no-op when cached_name is unchanged).
+		if err := refreshEntityDedupKey(ctx, q, entityID); err != nil {
+			return nil, nil, fmt.Errorf("refresh dedup key: %w", err)
+		}
 	}
 
 	if written == nil {
@@ -1506,16 +1566,33 @@ func (s *Server) mergeExtractedEntity(
 	return written, skipped, nil
 }
 
-// firstChapterID extracts the first chapter UUID from chapter links input.
-func (s *Server) firstChapterID(links []chapterLinkIn) *uuid.UUID {
-	if len(links) == 0 {
-		return nil
+// evidenceChapterFor resolves the chapter an extracted quote belongs to: the chapter THIS
+// writeback processed (reqChapterID — where the quote was extracted), with title/index from the
+// matching ChapterLink. Falls back to the entity's FIRST link only when reqChapterID is unset
+// (the legacy single-entity / MCP path). Fixes the firstChapterID bug (D-EVIDENCE-PROVENANCE-
+// OVERHAUL M2) that stamped every quote with the entity's first-ever appearance — so a
+// chapter-50 quote on a recurring character was labeled chapter 1, making evidence un-traceable.
+func evidenceChapterFor(reqChapterID string, links []chapterLinkIn) (*uuid.UUID, string, *int) {
+	if reqChapterID != "" {
+		if id, err := uuid.Parse(reqChapterID); err == nil {
+			for _, cl := range links {
+				if cl.ChapterID == reqChapterID {
+					ci := cl.ChapterIndex
+					return &id, cl.ChapterTitle, &ci
+				}
+			}
+			// Valid scope chapter but the worker didn't include a matching link → still stamp
+			// the correct chapter id; title/index are then filled by the chapter-title backfill.
+			return &id, "", nil
+		}
 	}
-	id, err := uuid.Parse(links[0].ChapterID)
-	if err != nil {
-		return nil
+	if len(links) > 0 {
+		if id, err := uuid.Parse(links[0].ChapterID); err == nil {
+			ci := links[0].ChapterIndex
+			return &id, links[0].ChapterTitle, &ci
+		}
 	}
-	return &id
+	return nil, "", nil
 }
 
 // firstChapterIDFromLinks extracts the first chapter UUID (nullable) from chapter links.

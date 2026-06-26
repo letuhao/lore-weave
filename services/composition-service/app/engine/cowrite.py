@@ -21,7 +21,7 @@ from typing import Any, AsyncIterator, Callable
 from loreweave_llm.errors import LLMError
 from loreweave_llm.models import DoneEvent, ReasoningEvent, StreamRequest, TokenEvent, UsageEvent
 
-from app.packer.profile import BookProfile
+from app.packer.profile import BookProfile, style_directive
 
 logger = logging.getLogger(__name__)
 
@@ -70,6 +70,7 @@ def build_messages(
         f" Write the prose in the language with code '{profile.source_language}'."
     )
     voice = f" Match this voice: {profile.voice}." if profile.voice else ""
+    style = style_directive(profile)  # T3.5 — density/pace + present-character voices
     system = (
         "You are a co-writer continuing a novel. Use the provided canon, present "
         "characters, threads, beat, recent prose, and lore as grounding; never "
@@ -86,7 +87,7 @@ def build_messages(
         "sentence-opening you have already used in this work (e.g. a recurring "
         "weather or colour motif, or a repeated opening line) — each passage should "
         "read freshly with its own sensory language."
-        + lang + voice
+        + lang + voice + style
     )
     instruction = _OPERATION_INSTRUCTIONS.get(operation, "Write the next passage of the scene.")
     # FD-1 S3 — only fires when open promises were re-injected (the <open_promises>
@@ -137,11 +138,12 @@ def build_selection_messages(
         f" Write the prose in the language with code '{profile.source_language}'."
     )
     voice = f" Match this voice: {profile.voice}." if profile.voice else ""
+    style = style_directive(profile)  # T3.5
     system = (
         "You are a co-writer editing a specific passage of a novel. Use any provided "
         "canon, characters, and lore as grounding; never contradict the canon and "
         "never introduce facts beyond what is given. Output ONLY the revised passage "
-        "— no preamble, no quotation marks, no commentary." + lang + voice
+        "— no preamble, no quotation marks, no commentary." + lang + voice + style
     )
     parts: list[str] = []
     if grounding:
@@ -164,13 +166,14 @@ def build_revise_messages(
         f" Write the prose in the language with code '{profile.source_language}'."
     )
     voice = f" Match this voice: {profile.voice}." if profile.voice else ""
+    style = style_directive(profile)  # T3.5
     system = (
         "You are a co-writer revising a passage to fix continuity errors. The "
         "listed characters are GONE (dead, destroyed, departed, or lost) before "
         "this passage and MUST NOT be portrayed as an active presence — not "
         "acting, speaking, perceiving, or bodily present. Rewrite the passage to "
         "remove these contradictions while preserving its events, intent, voice, "
-        "and length. Output ONLY the revised prose." + lang + voice
+        "and length. Output ONLY the revised prose." + lang + voice + style
     )
     listed = "\n".join(
         f'- {getattr(v, "name", None) or getattr(v, "entity_id", "?")}'

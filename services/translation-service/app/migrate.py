@@ -91,6 +91,13 @@ ALTER TABLE translation_jobs
   ADD COLUMN IF NOT EXISTS chunk_size_tokens     INT  NOT NULL DEFAULT 2000,
   ADD COLUMN IF NOT EXISTS invoke_timeout_secs   INT  NOT NULL DEFAULT 300;
 
+-- D-TRANSLATE-REASONING-TOGGLE — per-job "enable model reasoning (thinking)".
+-- Default OFF (translation output is sensitive to hidden thinking burning the
+-- budget). On the job ROW so it survives job-resume (the message is rebuilt from
+-- the row in _job_message_from_row), not just the create-time message.
+ALTER TABLE translation_jobs
+  ADD COLUMN IF NOT EXISTS thinking_enabled BOOLEAN NOT NULL DEFAULT false;
+
 -- Per-chapter chunk rows (observability; recovery restarts chapter from scratch)
 CREATE TABLE IF NOT EXISTS chapter_translation_chunks (
   id                      UUID PRIMARY KEY DEFAULT uuidv7(),

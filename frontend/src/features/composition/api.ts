@@ -4,7 +4,7 @@
 import { apiBase, apiJson } from '../../api';
 import type {
   AutoGeneration, CanonRule, ChapterGeneration, CommitDecomposePayload, CorrectionBody, CorrectionStats,
-  DecomposePreview, DeriveBody, GenerationJob, Grounding, NarrativeThread, OutlineNode, PublishGate, SceneLink, SceneLinkKind, StructureTemplate, Work, WorkResolution,
+  DecomposePreview, DeriveBody, DerivativeContextResponse, GenerationJob, Grounding, GroundingItemType, NarrativeThread, OutlineNode, PinAction, ProgressStats, PublishGate, ReferenceList, ReferenceSearch, ReferenceSource, SceneLink, SceneLinkKind, StructureTemplate, StyleProfile, StyleScope, VoiceProfile, Work, WorkResolution,
 } from './types';
 
 // A3 decompose preview request (cycle 13).
@@ -124,6 +124,14 @@ export const compositionApi = {
       method: 'POST', body: JSON.stringify(body), token,
     });
   },
+  // WS-B2 — the DURABLE derivative-context read-back. Surfaces the persisted
+  // divergence_spec + entity_override[] (the SAME substrate the packer applies)
+  // for a derivative Work, so the studio banner/chips/popover + was→now grounding
+  // deltas survive a reload (no longer derive-time-cache-only). is_derivative=false
+  // for a greenfield Work (everything else empty).
+  getDerivativeContext(projectId: string, token: string): Promise<DerivativeContextResponse> {
+    return apiJson<DerivativeContextResponse>(`${BASE}/works/${projectId}/derivative-context`, { token });
+  },
   getOutline(projectId: string, token: string, includeArchived = false): Promise<{ nodes: OutlineNode[]; scene_links: SceneLink[] }> {
     const qs = includeArchived ? '?include_archived=true' : '';
     return apiJson(`${BASE}/works/${projectId}/outline${qs}`, { token });
@@ -216,6 +224,93 @@ export const compositionApi = {
   getGrounding(projectId: string, nodeId: string, guide: string, token: string): Promise<Grounding> {
     const qs = guide ? `?guide=${encodeURIComponent(guide)}` : '';
     return apiJson(`${BASE}/works/${projectId}/scenes/${nodeId}/grounding${qs}`, { token });
+  },
+  // T4.2 — server-SSOT writing progress. `today` is the client's LOCAL date
+  // (YYYY-MM-DD) so streaks honor the writer's midnight, not UTC.
+  getProgress(projectId: string, today: string, token: string): Promise<ProgressStats> {
+    return apiJson(`${BASE}/works/${projectId}/progress?today=${encodeURIComponent(today)}`, { token });
+  },
+  // T4.2 — report the active chapter's current total word count (a snapshot keyed
+  // to the local date). Idempotent per (chapter, date). Fired best-effort on save.
+  reportProgress(
+    projectId: string, body: { chapter_id: string; words: number; date: string }, token: string,
+  ): Promise<{ ok: boolean; date: string; words: number }> {
+    return apiJson(`${BASE}/works/${projectId}/progress/report`, {
+      method: 'POST', body: JSON.stringify(body), token,
+    });
+  },
+  // T4.2 — capture a chapter's PRE-EXISTING word count the first time it's opened
+  // (insert-once server-side) so its first daily snapshot counts only NEW words.
+  baselineProgress(
+    projectId: string, body: { chapter_id: string; words: number }, token: string,
+  ): Promise<{ ok: boolean }> {
+    return apiJson(`${BASE}/works/${projectId}/progress/baseline`, {
+      method: 'POST', body: JSON.stringify(body), token,
+    });
+  },
+  // T3.5 — style profiles (per-scope density/pace) + voice profiles (per-character tags).
+  getStyleProfiles(projectId: string, token: string): Promise<{ items: StyleProfile[] }> {
+    return apiJson(`${BASE}/works/${projectId}/style-profiles`, { token });
+  },
+  putStyleProfile(projectId: string, body: StyleProfile, token: string): Promise<StyleProfile> {
+    return apiJson(`${BASE}/works/${projectId}/style-profile`, {
+      method: 'PUT', body: JSON.stringify(body), token,
+    });
+  },
+  deleteStyleProfile(
+    projectId: string, scopeType: StyleScope, scopeId: string, token: string,
+  ): Promise<{ removed: boolean }> {
+    const qs = `?scope_type=${scopeType}&scope_id=${encodeURIComponent(scopeId)}`;
+    return apiJson(`${BASE}/works/${projectId}/style-profile${qs}`, { method: 'DELETE', token });
+  },
+  getVoiceProfiles(projectId: string, token: string): Promise<{ items: VoiceProfile[] }> {
+    return apiJson(`${BASE}/works/${projectId}/voice-profiles`, { token });
+  },
+  putVoiceProfile(projectId: string, body: VoiceProfile, token: string): Promise<VoiceProfile> {
+    return apiJson(`${BASE}/works/${projectId}/voice-profiles`, {
+      method: 'PUT', body: JSON.stringify(body), token,
+    });
+  },
+  deleteVoiceProfile(
+    projectId: string, entityId: string, token: string,
+  ): Promise<{ removed: boolean }> {
+    return apiJson(`${BASE}/works/${projectId}/voice-profiles/${entityId}`, { method: 'DELETE', token });
+  },
+  // T3.4 — pin / exclude / clear ('none') one addressable grounding item for a scene.
+  setGroundingPin(
+    projectId: string, nodeId: string,
+    body: { item_type: GroundingItemType; item_id: string; action: PinAction },
+    token: string,
+  ): Promise<{ item_type: string; item_id: string; action: string }> {
+    return apiJson(`${BASE}/works/${projectId}/scenes/${nodeId}/grounding-pins`, {
+      method: 'PUT', body: JSON.stringify(body), token,
+    });
+  },
+  // T3.6 — the author's reference shelf (per-Work, embedded via provider-registry).
+  listReferences(projectId: string, token: string): Promise<ReferenceList> {
+    return apiJson(`${BASE}/works/${projectId}/references`, { token });
+  },
+  // `modelRef`/`modelSource` set the Work's embedding model on the FIRST add
+  // (write-through); ignored once the Work already has one.
+  addReference(
+    projectId: string,
+    body: { content: string; title?: string; author?: string; source_url?: string;
+            model_ref?: string; model_source?: string },
+    token: string,
+  ): Promise<ReferenceSource> {
+    return apiJson(`${BASE}/works/${projectId}/references`, {
+      method: 'POST', body: JSON.stringify(body), token,
+    });
+  },
+  deleteReference(referenceId: string, token: string): Promise<{ id: string; deleted: boolean }> {
+    return apiJson(`${BASE}/references/${referenceId}`, { method: 'DELETE', token });
+  },
+  // Per-scene semantic retrieval. `q` overrides the auto query (scene synopsis/beat).
+  searchReferences(
+    projectId: string, nodeId: string, token: string, q?: string,
+  ): Promise<ReferenceSearch> {
+    const qs = q ? `?q=${encodeURIComponent(q)}` : '';
+    return apiJson(`${BASE}/works/${projectId}/scenes/${nodeId}/references${qs}`, { token });
   },
   // The full URL for the SSE generate POST (used by useCompositionStream's fetch).
   generateUrl(projectId: string): string {

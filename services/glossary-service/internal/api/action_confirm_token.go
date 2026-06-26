@@ -39,12 +39,13 @@ const (
 	// action descriptors LIVE in Foundation (§13.1). Reserved descriptors
 	// (adopt, sync_apply, book_set_*, system_*) are intentionally NOT accepted
 	// yet — verify fails closed on them until their phase wires the effect.
-	descBookDelete       = "book_delete"
-	descSchemaCreateKind = "schema_create_kind"
-	descSchemaCreateAttr = "schema_create_attribute"
-	descAdopt            = "adopt"       // T1 — scaffold a book by copy-down from standards
-	descSyncApply        = "sync_apply"  // T2 — apply a proposed per-row sync choice set
-	descBookRevert       = "book_revert" // G-U1 — revert a book override back to its parent tier
+	descBookDelete        = "book_delete"
+	descSchemaCreateKind  = "schema_create_kind"
+	descSchemaCreateKinds = "schema_create_kinds" // BATCH: many kinds (+ their attrs) on ONE confirm
+	descSchemaCreateAttr  = "schema_create_attribute"
+	descAdopt             = "adopt"       // T1 — scaffold a book by copy-down from standards
+	descSyncApply         = "sync_apply"  // T2 — apply a proposed per-row sync choice set
+	descBookRevert        = "book_revert" // G-U1 — revert a book override back to its parent tier
 
 	// Pipeline M2 — high-impact / destructive entity-curation writes (authorityGrant,
 	// Manage-gated at confirm). Each effect re-validates against current state (§13.5).
@@ -57,6 +58,11 @@ const (
 	// a PAID outward call (S21 cost gate); the effect runs the search + attaches sources as
 	// draft evidence. Additive (not destructive).
 	descDeepResearch = "deep_research"
+
+	// Plan/Action kit — execute a typed multi-op plan on ONE confirm (loreweave_mcp).
+	// The op-set spans additive ops + Phase-2 destructive deletes (gated per-op by
+	// enabled_ops at confirm). MUST equal loreweave_mcp.DescriptorExecutePlan.
+	descExecutePlan = "execute_plan"
 
 	// T4 — System-tier admin writes (authorityAdmin only; confirmed via the
 	// RS256-gated /v1/glossary/actions/admin/confirm, never the user path). Verb is
@@ -77,8 +83,8 @@ var (
 // can never carry intent the confirm path doesn't fully validate.
 func liveDescriptor(d string) bool {
 	switch d {
-	case descBookDelete, descSchemaCreateKind, descSchemaCreateAttr, descAdopt, descSyncApply, descBookRevert,
-		descStatusChange, descRestoreRevision, descReassignKind, descMerge, descDeepResearch,
+	case descBookDelete, descSchemaCreateKind, descSchemaCreateKinds, descSchemaCreateAttr, descAdopt, descSyncApply, descBookRevert,
+		descStatusChange, descRestoreRevision, descReassignKind, descMerge, descDeepResearch, descExecutePlan,
 		descSystemCreate, descSystemPatch, descSystemDelete, descSystemRestore:
 		return true
 	default:

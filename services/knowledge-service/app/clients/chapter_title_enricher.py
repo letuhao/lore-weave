@@ -53,9 +53,15 @@ def _safe_uuid(raw: object) -> UUID | None:
 async def enrich_events_with_chapter_titles(
     events: list[Event],
     book_client: BookClient,
+    language: str | None = None,
 ) -> None:
     """Attach ``chapter_title`` to each event whose ``chapter_id``
     resolves via book-service. In-place mutation — returns ``None``.
+
+    KG-TL M1 — ``language`` (optional reader-language subtag) threads to
+    ``book_client.get_chapter_titles`` so the joined heading matches the
+    reader's language (sibling-language chapter) rather than the book's
+    arbitrary display language. None → legacy own-language heading.
     """
     if not events:
         return
@@ -69,7 +75,7 @@ async def enrich_events_with_chapter_titles(
     # Dedup (events can share a chapter_id) — fewer bytes over the
     # wire without semantic change.
     unique_ids = list({i: None for i in ids}.keys())
-    titles = await book_client.get_chapter_titles(unique_ids)
+    titles = await book_client.get_chapter_titles(unique_ids, language=language)
     if not titles:
         return
     for e in events:

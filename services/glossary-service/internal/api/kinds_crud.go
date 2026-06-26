@@ -156,10 +156,10 @@ func (s *Server) createKindFromParams(ctx context.Context, bookID uuid.UUID, in 
 		}
 		var attrID string
 		if err := tx.QueryRow(ctx, `
-			INSERT INTO book_attributes(book_id, kind_id, genre_id, code, name, description, field_type, is_required, sort_order, options, auto_fill_prompt)
-			VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)
+			INSERT INTO book_attributes(book_id, kind_id, genre_id, code, name, description, field_type, is_required, sort_order, options, auto_fill_prompt, merge_strategy)
+			VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)
 			RETURNING attr_id`,
-			bookID, kindID, universalGenreID, code, name, a.Description, ft, a.IsRequired, sortOrder, a.Options, a.AutoFillPrompt,
+			bookID, kindID, universalGenreID, code, name, a.Description, ft, a.IsRequired, sortOrder, a.Options, a.AutoFillPrompt, seedMergeStrategy(code, ft, a.IsRequired),
 		).Scan(&attrID); err != nil {
 			return domain.EntityKind{}, err
 		}
@@ -228,14 +228,14 @@ func (s *Server) createAttrDefFromParams(ctx context.Context, bookID uuid.UUID, 
 	// adopted book (no universal row) yields a NULL → NOT NULL violation surfaced as
 	// 23503-shaped via isForeignKeyViolation upstream. kind_id must belong to bookID.
 	err := s.pool.QueryRow(ctx, `
-		INSERT INTO book_attributes(book_id, kind_id, genre_id, code, name, description, field_type, is_required, sort_order, options, auto_fill_prompt, translation_hint)
+		INSERT INTO book_attributes(book_id, kind_id, genre_id, code, name, description, field_type, is_required, sort_order, options, auto_fill_prompt, translation_hint, merge_strategy)
 		SELECT $1, bk.book_kind_id,
 		       (SELECT genre_id FROM book_genres WHERE book_id=$1 AND code='universal' AND deprecated_at IS NULL),
-		       $3,$4,$5,$6,$7,$8,$9,$10,$11
+		       $3,$4,$5,$6,$7,$8,$9,$10,$11,$12
 		FROM book_kinds bk
 		WHERE bk.book_id=$1 AND bk.book_kind_id=$2 AND bk.deprecated_at IS NULL
 		RETURNING attr_id`,
-		bookID, in.KindID, in.Code, in.Name, in.Description, in.FieldType, in.IsRequired, in.SortOrder, in.Options, in.AutoFillPrompt, in.TranslationHint,
+		bookID, in.KindID, in.Code, in.Name, in.Description, in.FieldType, in.IsRequired, in.SortOrder, in.Options, in.AutoFillPrompt, in.TranslationHint, seedMergeStrategy(in.Code, in.FieldType, in.IsRequired),
 	).Scan(&attrDefID)
 	if err != nil {
 		// pgx.ErrNoRows = the kind_id doesn't match a live book kind for this book

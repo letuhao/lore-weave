@@ -82,3 +82,49 @@ func (s *Server) webSearch(ctx context.Context, userID uuid.UUID, query string, 
 	}
 	return out.Results, out.Answer, nil
 }
+
+// resolvePlannerModel asks provider-registry which model the planner should use,
+// via GET /internal/planner-model. provider-registry applies the fallback (an
+// explicit 'planner' default → else the user's best chat model), so glossary_plan
+// works without the user manually pinning anything (MED-6). Same internal-token,
+// user_id-scoped pattern as webSearch. ok=false (404) ONLY when the user has no
+// active chat model at all — the caller then asks them to add one or pass model_ref.
+func (s *Server) resolvePlannerModel(ctx context.Context, userID uuid.UUID) (string, bool, error) {
+	base := strings.TrimRight(s.cfg.ProviderRegistryURL, "/")
+	if base == "" {
+		return "", false, errWebSearchNotConfigured
+	}
+	endpoint := fmt.Sprintf("%s/internal/planner-model?user_id=%s",
+		base, url.QueryEscape(userID.String()))
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, endpoint, nil)
+	if err != nil {
+		return "", false, err
+	}
+	if s.cfg.InternalServiceToken != "" {
+		req.Header.Set("X-Internal-Token", s.cfg.InternalServiceToken)
+	}
+	if tid := TraceIDFromContext(ctx); tid != "" {
+		req.Header.Set(traceIDHeader, tid)
+	}
+	res, err := providerRegistryHTTPClient.Do(req)
+	if err != nil {
+		return "", false, fmt.Errorf("provider-registry unreachable: %w", err)
+	}
+	defer res.Body.Close()
+	if res.StatusCode == http.StatusNotFound {
+		return "", false, nil // no default set for this capability
+	}
+	if res.StatusCode != http.StatusOK {
+		return "", false, fmt.Errorf("default-model resolve error (status %d)", res.StatusCode)
+	}
+	var out struct {
+		UserModelID string `json:"user_model_id"`
+	}
+	if err := json.NewDecoder(res.Body).Decode(&out); err != nil {
+		return "", false, err
+	}
+	if strings.TrimSpace(out.UserModelID) == "" {
+		return "", false, nil
+	}
+	return out.UserModelID, true, nil
+}

@@ -10,6 +10,8 @@ import { providerApi, type ProviderCredential, type UserModel, type APIStandard 
 import { AddModelModal } from './AddModelModal';
 import { EditModelModal } from './EditModelModal';
 import { DefaultModelsCard } from './DefaultModelsCard';
+import { ExternalServicesCard } from './ExternalServicesCard';
+import { isServiceProvider } from './serviceCatalog';
 
 // ── Constants ────────────────────────────────────────────────────────────────
 
@@ -63,6 +65,7 @@ export function ProvidersTab() {
   const [editDisplayName, setEditDisplayName] = useState('');
   const [editEndpoint, setEditEndpoint] = useState('');
   const [editApiStandard, setEditApiStandard] = useState<APIStandard>('openai_compatible');
+  const [editConcurrency, setEditConcurrency] = useState(''); // '' = unlimited
 
   const [deleteTarget, setDeleteTarget] = useState<ProviderCredential | null>(null);
   const [deleting, setDeleting] = useState(false);
@@ -95,6 +98,10 @@ export function ProvidersTab() {
   useEffect(() => { void refresh(); }, [refresh]);
 
   const configuredKinds = new Set(providers.map((p) => p.provider_kind));
+  // Split out external (non-model) services (web_search, …) — they render in their
+  // own section, not the LLM/model provider list. (See serviceCatalog.)
+  const serviceProviders = providers.filter((p) => isServiceProvider(p.provider_kind));
+  const llmProviders = providers.filter((p) => !isServiceProvider(p.provider_kind));
   // (unconfigured presets computed inline in render)
 
   // ── Handlers ─────────────────────────────────────────────────────────────
@@ -144,6 +151,10 @@ export function ProvidersTab() {
       if (editEndpoint !== (editProvider.endpoint_base_url ?? '')) payload.endpoint_base_url = editEndpoint || null;
       if (editSecret) payload.secret = editSecret;
       if (editApiStandard !== (editProvider.api_standard ?? 'openai_compatible')) payload.api_standard = editApiStandard;
+      // '' → null clears to unlimited; a positive integer sets the cap. BE PATCH
+      // is present-aware, so we send the key only when it actually changed.
+      const nextConc = editConcurrency.trim() === '' ? null : Math.max(0, parseInt(editConcurrency, 10) || 0) || null;
+      if (nextConc !== (editProvider.max_concurrency ?? null)) payload.max_concurrency = nextConc;
       await providerApi.patchProvider(accessToken, editProvider.provider_credential_id, payload as any);
       toast.success(t('providers.toast.updated'));
       setEditProvider(null);
@@ -259,9 +270,12 @@ export function ProvidersTab() {
           UX (BYOK) consumed by raw search. */}
       <DefaultModelsCard />
 
+      {/* External (non-model) BYOK services — web search & future siblings. */}
+      <ExternalServicesCard providers={serviceProviders} models={models} onChanged={refresh} />
+
       <div className="space-y-3">
         {/* Configured providers */}
-        {providers.map((prov) => {
+        {llmProviders.map((prov) => {
           const meta = getProviderMeta(prov.provider_kind);
           const provModels = models.filter((m) => m.provider_credential_id === prov.provider_credential_id);
           return (
@@ -293,7 +307,7 @@ export function ProvidersTab() {
                 </div>
                 <div className="flex items-center gap-1.5">
                   <button
-                    onClick={() => { setEditProvider(prov); setEditSecret(''); setEditDisplayName(prov.display_name); setEditEndpoint(prov.endpoint_base_url ?? ''); setEditApiStandard((prov.api_standard as APIStandard) ?? 'openai_compatible'); }}
+                    onClick={() => { setEditProvider(prov); setEditSecret(''); setEditDisplayName(prov.display_name); setEditEndpoint(prov.endpoint_base_url ?? ''); setEditApiStandard((prov.api_standard as APIStandard) ?? 'openai_compatible'); setEditConcurrency(prov.max_concurrency != null ? String(prov.max_concurrency) : ''); }}
                     className="rounded-md border px-2.5 py-1 text-[11px] font-medium transition-colors hover:bg-secondary"
                   >
                     <Pencil className="mr-1 inline h-2.5 w-2.5" />
@@ -559,6 +573,20 @@ export function ProvidersTab() {
                 className="h-9 w-full rounded-md border bg-background px-3 font-mono text-[13px] tracking-wider focus:border-ring focus:outline-none focus:ring-1 focus:ring-ring/30"
               />
               <p className="mt-1 text-[10px] text-muted-foreground">{t('providers.edit_dialog.api_key_keep_hint')}</p>
+            </div>
+
+            <div className="mb-4">
+              <label className="mb-1 block text-xs font-medium">{t('providers.edit_dialog.max_concurrency')}</label>
+              <input
+                type="number"
+                min={0}
+                step={1}
+                value={editConcurrency}
+                onChange={(e) => setEditConcurrency(e.target.value)}
+                placeholder={t('providers.edit_dialog.max_concurrency_ph')}
+                className="h-9 w-full rounded-md border bg-background px-3 text-[13px] focus:border-ring focus:outline-none focus:ring-1 focus:ring-ring/30"
+              />
+              <p className="mt-1 text-[10px] text-muted-foreground">{t('providers.edit_dialog.max_concurrency_hint')}</p>
             </div>
 
             <div className="flex justify-end gap-2">

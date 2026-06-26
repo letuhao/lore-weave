@@ -59,6 +59,10 @@ export type ProviderCredential = {
   status: 'active' | 'invalid' | 'disabled' | 'archived';
   has_secret: boolean;
   api_standard?: APIStandard;
+  // Per-credential concurrency cap. null/absent = unlimited (request-as-demand;
+  // the backend infra is the limiter). Set only when the user knows their own
+  // backend's limit (e.g. a local GPU that runs N calls at once).
+  max_concurrency?: number | null;
   created_at: string;
   updated_at: string;
 };
@@ -93,6 +97,10 @@ export type InventoryModel = {
 // filters on exactly this token).
 export const RERANK_CAPABILITY = 'rerank' as const;
 export const EMBEDDING_CAPABILITY = 'embedding' as const;
+// `planner` is a per-user default ROLE (the model glossary_plan plans with), not a model
+// capability flag — so the picker LISTS the user's chat models but SAVES under 'planner'.
+export const PLANNER_CAPABILITY = 'planner' as const;
+export const CHAT_CAPABILITY = 'chat' as const;
 
 // Per-user DEFAULT model per capability (rerank/embedding). The default is the
 // user's own BYOK user_model, resolved server-side by provider-registry — it
@@ -126,13 +134,13 @@ export const providerApi = {
     return apiJson<{ items: ProviderCredential[] }>('/v1/model-registry/providers', { token });
   },
 
-  createProvider(token: string, payload: { provider_kind: string; display_name: string; secret?: string; endpoint_base_url?: string; api_standard?: APIStandard }) {
+  createProvider(token: string, payload: { provider_kind: string; display_name: string; secret?: string; endpoint_base_url?: string; api_standard?: APIStandard; max_concurrency?: number | null }) {
     return apiJson<ProviderCredential>('/v1/model-registry/providers', {
       method: 'POST', token, body: JSON.stringify(payload),
     });
   },
 
-  patchProvider(token: string, id: string, payload: { display_name?: string; secret?: string; endpoint_base_url?: string; active?: boolean; api_standard?: APIStandard }) {
+  patchProvider(token: string, id: string, payload: { display_name?: string; secret?: string; endpoint_base_url?: string; active?: boolean; api_standard?: APIStandard; max_concurrency?: number | null }) {
     return apiJson<ProviderCredential>(`/v1/model-registry/providers/${id}`, {
       method: 'PATCH', token, body: JSON.stringify(payload),
     });

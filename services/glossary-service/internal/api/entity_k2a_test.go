@@ -106,6 +106,12 @@ func runK2aMigrations(t *testing.T, pool *pgxpool.Pool) {
 	if err := migrate.UpMultirowAttrValues(ctx, pool); err != nil {
 		t.Fatalf("migrate.UpMultirowAttrValues: %v", err)
 	}
+	// 0040 — D-GLOSSARY-ST-DEDUP: convert normalized_name GENERATED→app-maintained.
+	// Required so the wired name-write paths' refreshEntityDedupKey UPDATE doesn't
+	// hit "column can only be updated to DEFAULT" against a still-generated column.
+	if err := migrate.UpStDedupAppMaintained(ctx, pool); err != nil {
+		t.Fatalf("migrate.UpStDedupAppMaintained: %v", err)
+	}
 }
 
 // ── schema shape tests ──────────────────────────────────────────────────────

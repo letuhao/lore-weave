@@ -9,9 +9,11 @@ Design reference: GLOSSARY_EXTRACTION_PIPELINE.md §6.6, §7
 """
 from __future__ import annotations
 
+import asyncio
 import hashlib
 import json
 import logging
+import os
 from uuid import UUID
 
 import httpx
@@ -89,6 +91,48 @@ from .extraction_model import get_model_context_window as _get_model_context_win
 _EXTRACTION_OUTPUT_CEILING = 8000  # per-window output cap (entities JSON is small)
 _EXTRACTION_OUTPUT_FLOOR = 1024
 _CONTEXT_SAFETY_RATIO = 0.15  # mirror the gateway's context-fit safety margin
+
+# D-EXTRACTION-BATCH-CONCURRENCY: hard ceiling on the per-chapter LLM-call fan-out
+# regardless of the caller's requested concurrency (protects the provider/GPU + the
+# glossary per-book advisory lock from a runaway request). 1 ⇒ sequential.
+_EXTRACTION_MAX_CONCURRENCY = 16
+
+# D-LLM-FAILURE-RATE #1 — structured-output enforcement. Default ON; set
+# EXTRACTION_STRUCTURED_OUTPUT=0 to disable fleet-wide. The per-call
+# LLMInvalidRequest fallback already degrades a single unsupported model safely,
+# so the flag is only an emergency global off-switch.
+_STRUCTURED_OUTPUT_ENABLED = os.getenv(
+    "EXTRACTION_STRUCTURED_OUTPUT", "1"
+).strip().lower() not in ("0", "false", "no", "off")
+
+
+def _entity_response_format(kinds: list[str]) -> dict:
+    """A LOOSE json_schema for the extraction output: a top-level array whose
+    items require ``kind`` (restricted to THIS batch's kinds) + ``name``, with
+    attributes left FREE (``additionalProperties``). It forces syntactically-valid
+    JSON AND a valid kind — the two clean-finish failure modes behind the residual
+    ``completed_with_errors`` (malformed array / wrong-kind rejection) — without
+    constraining the per-kind profile fields the model fills in. Passed as
+    ``response_format`` to the gateway, which forwards it to LM Studio/vLLM; a model
+    that rejects the shape is retried once WITHOUT it (caller fallback)."""
+    return {
+        "type": "json_schema",
+        "json_schema": {
+            "name": "extracted_entities",
+            "schema": {
+                "type": "array",
+                "items": {
+                    "type": "object",
+                    "properties": {
+                        "kind": {"type": "string", "enum": list(kinds)},
+                        "name": {"type": "string"},
+                    },
+                    "required": ["kind", "name"],
+                    "additionalProperties": True,
+                },
+            },
+        },
+    }
 
 
 def _plan_chapter_windows(chapter: dict, chapter_text: str, context_window: int, source_language: str) -> list[str]:
@@ -226,8 +270,11 @@ async def _run_extraction_job(msg: dict, job_id: UUID, user_id: str, pool, publi
     # D-RE-WORKER-GRADED-EFFORT: the clamped graded effort (none|low|medium|high). Absent on a
     # message minted before this field (back-compat) → fall back to the thinking_enabled bool.
     reasoning_effort = msg.get("reasoning_effort") or ("medium" if thinking_enabled else "none")
+    # D-EXTRACTION-BATCH-CONCURRENCY: per-chapter LLM-call fan-out cap. Absent/None on a
+    # pre-field message ⇒ 1 (sequential, prior behavior). Clamped to a hard ceiling.
+    concurrency = max(1, min(_EXTRACTION_MAX_CONCURRENCY, int(msg.get("concurrency") or 1)))
 
-    log.info("extraction_worker: job %s — %d chapters", job_id, len(chapter_ids))
+    log.info("extraction_worker: job %s — %d chapters (concurrency=%d)", job_id, len(chapter_ids), concurrency)
 
     # Cancel-safe claim: only start a job that is NOT already cancelled/terminal.
     # The cancel endpoint sets status='cancelling'; an unconditional "SET status='running'"
@@ -380,6 +427,7 @@ async def _run_extraction_job(msg: dict, job_id: UUID, user_id: str, pool, publi
                 max_entities_per_kind=max_entities_per_kind,
                 thinking_enabled=thinking_enabled,
                 reasoning_effort=reasoning_effort,
+                concurrency=concurrency,
                 pool=pool,
                 llm_client=llm_client,
             )
@@ -548,6 +596,7 @@ async def _process_extraction_chapter(
     pool,
     llm_client: LLMClient,
     reasoning_effort: str = "none",
+    concurrency: int = 1,
 ) -> dict:
     """Extract entities from a single chapter via LLM."""
     import time as _time
@@ -720,9 +769,14 @@ async def _process_extraction_chapter(
     # CACHE key uses `chunk_idx`=window_idx + the real `batch_idx` so each window's parse caches
     # independently. `window_text` replaces the whole-chapter text in the prompt.
     total_calls = len(windows) * len(batches)
-    for call_idx, (window_idx, window_text, batch_idx, batch) in enumerate(
-        (wi, w, bi, b) for wi, w in enumerate(windows) for bi, b in enumerate(batches)
-    ):
+
+    # D-EXTRACTION-BATCH-CONCURRENCY — the per-(window,batch) unit body, extracted into a
+    # coroutine so the units can run CONCURRENTLY under a semaphore (see the driver below).
+    # asyncio is single-threaded, so the shared collectors mutate safely between awaits;
+    # only the token sums are reassigned (nonlocal). Each unit owns a stable `call_idx`,
+    # so OBS event_ids never collide. `continue` (loop control) → `return` (unit exit).
+    async def _run_unit(call_idx, window_idx, window_text, batch_idx, batch):
+        nonlocal total_input_tokens, total_output_tokens
         # Part 2 gate: a unit the planner refused as UNPLANNABLE (an oversized block that can't
         # fit even alone) — record the outcome + SKIP its LLM call. The chapter then derives
         # `completed_with_errors` (INV-F15), so the un-fittable batch is VISIBLE instead of
@@ -732,7 +786,7 @@ async def _process_extraction_chapter(
             log.warning("extraction: chapter %s call %d/%d (win %d batch %d) — UNPLANNABLE, "
                         "skipped LLM (block exceeds context)",
                         chapter_id, call_idx + 1, total_calls, window_idx, batch_idx)
-            continue
+            return
 
         # CACHE/M6 — LLM-skip gate (the EXECUTE ledger). If this exact (tenant, chapter
         # content, effort band, window, batch) was already extracted, reuse the cached parse
@@ -770,7 +824,7 @@ async def _process_extraction_chapter(
             log.info("extraction: chapter %s call %d/%d (win %d) — CACHE HIT (%d entities, 0 tokens, effort=%s)",
                      chapter_id, call_idx + 1, total_calls, window_idx, len(entities), _effort_band)
             _accept(entities)
-            continue
+            return
 
         # 4. Build prompt
         _block_hints = settings.extraction_evidence_block_hints
@@ -787,37 +841,38 @@ async def _process_extraction_chapter(
         # Phase 4c-γ: HIGH#1 lesson from cycle 11 applied — catch
         # permanent SDK subclasses BEFORE generic LLMError so a
         # misconfigured BYOK doesn't poison the whole batch loop.
-        try:
-            sdk_job = await llm_client.submit_and_wait(
+        call_input: dict = {
+            "messages": [
+                {"role": "system", "content": system_prompt},
+                {"role": "user", "content": user_prompt},
+            ],
+            "temperature": 0.1,
+            # Output ceiling — generous headroom so an entity-dense chapter completes
+            # instead of truncating at finish_reason=length; if a batch still
+            # truncates, the parser repairs the partial array.
+            "max_tokens": out_budget,
+            # D-RE-WORKER-GRADED-EFFORT: graded reasoning effort (none disables hidden
+            # thinking so reasoning_tokens don't burn the output budget).
+            **reasoning_fields(ReasoningDirective(
+                effort=reasoning_effort, passthrough=False, source="user")),
+        }
+        # D-LLM-FAILURE-RATE #1 — force a valid JSON array of valid-kind entities
+        # (kills the clean-finish malformed/wrong-kind residual). Gateway forwards it
+        # to LM Studio/vLLM; a model/server that rejects the shape raises
+        # LLMInvalidRequest and is retried ONCE without it (below), so structured
+        # output never breaks a working model in a heterogeneous local fleet.
+        if _STRUCTURED_OUTPUT_ENABLED:
+            call_input["response_format"] = _entity_response_format(batch)
+
+        async def _submit(_inp: dict):
+            return await llm_client.submit_and_wait(
                 user_id=str(owner_user_id),
-                # /review-impl MED#1 — operation="chat" routes to the
-                # SAME chatAggregator as "translation" but accurately
-                # labels glossary entity extraction in gateway telemetry/
-                # billing dashboards. "translation" would mislabel.
+                # operation="chat" routes to the chatAggregator but labels glossary
+                # extraction accurately in gateway telemetry/billing.
                 operation="chat",
                 model_source=model_source,
                 model_ref=str(model_ref),
-                input={
-                    "messages": [
-                        {"role": "system", "content": system_prompt},
-                        {"role": "user", "content": user_prompt},
-                    ],
-                    "temperature": 0.1,
-                    # Output ceiling. A batch is capped at MAX_KINDS_PER_BATCH kinds
-                    # (extraction_prompt) so its output stays well under this; the
-                    # headroom is generous on purpose (typical model context is tens
-                    # of thousands of tokens and the extraction input is only ~4–5k),
-                    # so an entity-dense chapter completes instead of truncating at
-                    # finish_reason=length. If a batch still truncates, the parser
-                    # repairs the partial array rather than dropping every entity.
-                    "max_tokens": out_budget,
-                    # D-RE-WORKER-GRADED-EFFORT: graded reasoning effort (low/medium/high/none),
-                    # not the old bool→medium. The worker doesn't resolve model-capability dispatch
-                    # (a later improvement), so a direct user-source directive — same wire shape as
-                    # the prior thinking_llm_fields, but graded.
-                    **reasoning_fields(ReasoningDirective(
-                        effort=reasoning_effort, passthrough=False, source="user")),
-                },
+                input=_inp,
                 chunking=None,
                 job_meta={
                     "extractor": "glossary",
@@ -827,6 +882,22 @@ async def _process_extraction_chapter(
                 },
                 transient_retry_budget=1,
             )
+
+        try:
+            try:
+                sdk_job = await _submit(call_input)
+            except LLMInvalidRequest:
+                # Most likely the model/server rejected response_format — degrade to
+                # the prior (unstructured) behavior for this call rather than failing
+                # the batch. A second 4xx propagates as a real permanent error below.
+                if "response_format" not in call_input:
+                    raise
+                log.warning(
+                    "extraction: response_format rejected for chapter %s batch %d/%d — retrying without structured output",
+                    chapter_id, batch_idx + 1, len(batches),
+                )
+                call_input.pop("response_format", None)
+                sdk_job = await _submit(call_input)
         except (LLMQuotaExceeded, LLMModelNotFound, LLMAuthFailed,
                 LLMInvalidRequest, LLMDecodeError, LLMStreamNotSupported) as exc:
             log.error(
@@ -836,14 +907,14 @@ async def _process_extraction_chapter(
             # OBS — the batch failed at the LLM; record it so the chapter can't read as
             # clean (was: a bare `continue` that silently dropped the batch).
             _record_outcome(call_idx, batch, LLM_ERROR, error_code=exc.__class__.__name__)
-            continue
+            return
         except (LLMTransientRetryNeededError, LLMError) as exc:
             log.error(
                 "extraction: transient SDK error for chapter %s batch %d/%d: %s",
                 chapter_id, batch_idx + 1, len(batches), exc,
             )
             _record_outcome(call_idx, batch, LLM_ERROR, error_code=exc.__class__.__name__)
-            continue
+            return
 
         if sdk_job.status != "completed":
             err_code = sdk_job.error.code if sdk_job.error else "unknown"
@@ -852,7 +923,7 @@ async def _process_extraction_chapter(
                 sdk_job.status, err_code, chapter_id, batch_idx + 1, len(batches), batch,
             )
             _record_outcome(call_idx, batch, LLM_ERROR, error_code=err_code)
-            continue
+            return
 
         # chatAggregator output: {"messages": [{"role":"assistant","content":...}], "usage": {...}}
         result = sdk_job.result or {}
@@ -935,6 +1006,29 @@ async def _process_extraction_chapter(
             )
 
         _accept(entities)
+
+    # D-EXTRACTION-BATCH-CONCURRENCY — drive the per-(window,batch) units. Build the flat
+    # unit list (call_idx = stable per-chapter index → OBS event_id), then run them under an
+    # asyncio.Semaphore(concurrency). concurrency<=1 keeps the EXACT prior sequential path
+    # (no gather/semaphore overhead — back-compat for tests + single-call models). Chapters
+    # stay sequential (the caller loops chapters to accumulate known-entities); only THIS
+    # chapter's batches fan out, up to `concurrency` concurrent LLM calls.
+    _units = list(enumerate(
+        (wi, w, bi, b) for wi, w in enumerate(windows) for bi, b in enumerate(batches)
+    ))
+    if concurrency <= 1:
+        for _ci, (_wi, _w, _bi, _b) in _units:
+            await _run_unit(_ci, _wi, _w, _bi, _b)
+    else:
+        _sem = asyncio.Semaphore(concurrency)
+
+        async def _bounded(_ci, _wi, _w, _bi, _b):
+            async with _sem:
+                await _run_unit(_ci, _wi, _w, _bi, _b)
+
+        await asyncio.gather(*[
+            _bounded(_ci, _wi, _w, _bi, _b) for _ci, (_wi, _w, _bi, _b) in _units
+        ])
 
     _ch_elapsed = _time.monotonic() - _ch_start
 

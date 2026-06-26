@@ -49,6 +49,8 @@ def _passing_run(*, model: str = "bge-m3", run_id: str = "run-2026-01") -> Bench
 
 def test_benchmark_status_returns_has_run_true_when_row_exists():
     repo = AsyncMock()
+    # D-JOURNEY-KG-BENCHMARK-UX — a supplied model now uses the MODEL-scoped lookup.
+    repo.get_latest_for_model = AsyncMock(return_value=_passing_run())
     repo.get_latest = AsyncMock(return_value=_passing_run())
     app.dependency_overrides[get_benchmark_runs_repo] = lambda: repo
 
@@ -120,6 +122,7 @@ def test_benchmark_status_returns_has_run_false_when_empty():
     """No-run-yet is a valid 200 response (not a 404) — the FE
     renders a 'Run benchmark' CTA for this state."""
     repo = AsyncMock()
+    repo.get_latest_for_model = AsyncMock(return_value=None)
     repo.get_latest = AsyncMock(return_value=None)
     app.dependency_overrides[get_benchmark_runs_repo] = lambda: repo
 

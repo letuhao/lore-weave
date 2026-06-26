@@ -203,7 +203,7 @@ def _failed_row(**over):
         "verifier_model_source": None, "verifier_model_ref": None,
         "eval_judge_model_source": None, "eval_judge_model_ref": None,
         "cold_start_mode": "single_pass", "block_index_filter": None, "seed_version_id": None,
-        "campaign_id": None,
+        "campaign_id": None, "thinking_enabled": False,
     }
     base.update(over)
     return FakeRecord(base)
@@ -280,7 +280,7 @@ def _resume_row(**over):
         "verifier_model_source": None, "verifier_model_ref": None,
         "eval_judge_model_source": None, "eval_judge_model_ref": None,
         "cold_start_mode": "single_pass", "campaign_id": None,
-        "block_index_filter": None, "seed_version_id": None,
+        "block_index_filter": None, "seed_version_id": None, "thinking_enabled": False,
     }
     base.update(over)
     return FakeRecord(base)

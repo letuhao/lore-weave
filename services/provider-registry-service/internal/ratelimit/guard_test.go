@@ -6,21 +6,22 @@ import (
 	"testing"
 )
 
-// ── maxFor (pure) ──────────────────────────────────────────────────────────
+// ── Governor: unlimited short-circuit ──────────────────────────────────────
 
-func TestMaxFor_LocalSerializedToOne(t *testing.T) {
-	for _, k := range []string{"ollama", "lm_studio"} {
-		if got := maxFor(k, 8); got != 1 {
-			t.Fatalf("local kind %s must serialize to 1; got %d", k, got)
+// limit ≤ 0 (a credential with NULL max_concurrency) must pass through WITHOUT
+// touching Redis — so an unlimited class is never gated and a nil/unconfigured
+// rdb can't panic on the hot path.
+func TestGovernor_UnlimitedPassesThroughWithoutRedis(t *testing.T) {
+	g := &Governor{} // rdb nil on purpose — unlimited must not dereference it
+	for _, lim := range []int{0, -1} {
+		release, err := g.Acquire(context.Background(), "cred-abc", lim)
+		if err != nil {
+			t.Fatalf("unlimited (limit=%d) must not error; got %v", lim, err)
 		}
-	}
-}
-
-func TestMaxFor_CloudUsesCloudMax(t *testing.T) {
-	for _, k := range []string{"openai", "anthropic", "cohere", "unknown"} {
-		if got := maxFor(k, 8); got != 8 {
-			t.Fatalf("cloud kind %s must use cloudMax; got %d", k, got)
+		if release == nil {
+			t.Fatalf("release must be non-nil")
 		}
+		release() // must be safe to call
 	}
 }
 
@@ -41,7 +42,7 @@ func (f *fakeBreaker) Record(ctx context.Context, kind string, success bool) {
 
 type fakeGov struct{ acquired, released int }
 
-func (g *fakeGov) Acquire(ctx context.Context, kind string) (func(), error) {
+func (g *fakeGov) Acquire(ctx context.Context, concClass string, limit int) (func(), error) {
 	g.acquired++
 	return func() { g.released++ }, nil
 }
@@ -50,7 +51,7 @@ func transient(err error) bool { return err != nil && err.Error() == "429" }
 
 func TestGuard_NilLayersPassThrough(t *testing.T) {
 	called := false
-	err := Guard(context.Background(), nil, nil, "openai", transient, func() error {
+	err := Guard(context.Background(), nil, nil, "openai", 8, transient, func() error {
 		called = true
 		return nil
 	})
@@ -63,7 +64,7 @@ func TestGuard_OpenBreakerRejectsWithoutCalling(t *testing.T) {
 	brk := &fakeBreaker{allow: false}
 	gov := &fakeGov{}
 	called := false
-	err := Guard(context.Background(), gov, brk, "openai", transient, func() error {
+	err := Guard(context.Background(), gov, brk, "openai", 8, transient, func() error {
 		called = true
 		return nil
 	})
@@ -81,7 +82,7 @@ func TestGuard_OpenBreakerRejectsWithoutCalling(t *testing.T) {
 func TestGuard_SuccessRecordsHealthyAndReleases(t *testing.T) {
 	brk := &fakeBreaker{allow: true}
 	gov := &fakeGov{}
-	err := Guard(context.Background(), gov, brk, "openai", transient, func() error { return nil })
+	err := Guard(context.Background(), gov, brk, "openai", 8, transient, func() error { return nil })
 	if err != nil {
 		t.Fatalf("unexpected err %v", err)
 	}
@@ -96,7 +97,7 @@ func TestGuard_SuccessRecordsHealthyAndReleases(t *testing.T) {
 func TestGuard_TransientFailureCountsAgainstBreaker(t *testing.T) {
 	brk := &fakeBreaker{allow: true}
 	gov := &fakeGov{}
-	err := Guard(context.Background(), gov, brk, "openai", transient, func() error {
+	err := Guard(context.Background(), gov, brk, "openai", 8, transient, func() error {
 		return errors.New("429")
 	})
 	if err == nil {
@@ -113,7 +114,7 @@ func TestGuard_TransientFailureCountsAgainstBreaker(t *testing.T) {
 func TestGuard_PermanentErrorLeavesBreakerUntouched(t *testing.T) {
 	brk := &fakeBreaker{allow: true}
 	gov := &fakeGov{}
-	err := Guard(context.Background(), gov, brk, "openai", transient, func() error {
+	err := Guard(context.Background(), gov, brk, "openai", 8, transient, func() error {
 		return errors.New("400") // not transient
 	})
 	if err == nil {

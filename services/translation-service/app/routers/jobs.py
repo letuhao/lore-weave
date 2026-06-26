@@ -277,9 +277,9 @@ async def _resolve_and_create_job(
                    qa_depth, max_qa_rounds, verifier_model_source, verifier_model_ref,
                    cold_start_mode, campaign_id,
                    eval_judge_model_source, eval_judge_model_ref,
-                   block_index_filter, seed_version_id)
+                   block_index_filter, seed_version_id, thinking_enabled)
                 VALUES ($1,$2,'pending',$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,
-                        $17,$18,$19,$20,$21,$22,$23,$24,$25,$26)
+                        $17,$18,$19,$20,$21,$22,$23,$24,$25,$26,$27)
                 RETURNING *
                 """,
                 book_id, uid,
@@ -295,6 +295,7 @@ async def _resolve_and_create_job(
                 eff.get("cold_start_mode", "single_pass"), campaign_id,
                 eff.get("eval_judge_model_source"), eff.get("eval_judge_model_ref"),
                 payload.block_index_filter, payload.seed_version_id,
+                payload.thinking_enabled,
             )
 
             job_id = job_row["job_id"]
@@ -390,6 +391,8 @@ async def _resolve_and_create_job(
             "eval_judge_model_source": eff.get("eval_judge_model_source"),
             "eval_judge_model_ref":    str(eff["eval_judge_model_ref"]) if eff.get("eval_judge_model_ref") else None,
             "cold_start_mode":         eff.get("cold_start_mode", "single_pass"),
+            # D-TRANSLATE-REASONING-TOGGLE: ride the per-job thinking flag to the worker.
+            "thinking_enabled":        payload.thinking_enabled,
             # S4a: ride campaign_id through the message chain (job → chapter → job_meta).
             "campaign_id":             str(campaign_id) if campaign_id else None,
             # T2-M2: dirty-only re-translate scope (None for whole-chapter jobs).
@@ -587,6 +590,8 @@ def _job_message_from_row(row, chapter_ids: list) -> dict:
         "eval_judge_model_source": row["eval_judge_model_source"],
         "eval_judge_model_ref":    str(row["eval_judge_model_ref"]) if row["eval_judge_model_ref"] else None,
         "cold_start_mode":         row["cold_start_mode"],
+        # D-TRANSLATE-REASONING-TOGGLE: rebuilt from the row so resume keeps the setting.
+        "thinking_enabled":        row["thinking_enabled"],
         "campaign_id":             str(row["campaign_id"]) if row["campaign_id"] else None,
         "block_index_filter":      row["block_index_filter"],
         "seed_version_id":         str(row["seed_version_id"]) if row["seed_version_id"] else None,

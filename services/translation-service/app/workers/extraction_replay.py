@@ -62,6 +62,7 @@ async def replay_chapter_from_cache(
     book_id: str,
     chapter_id: str,
     confirm: bool = False,
+    use_authored_strategy: bool = False,
 ) -> dict:
     """Re-apply a chapter's cached parse to glossary at $0 LLM (caller-owns-cache, INV-9).
 
@@ -158,10 +159,15 @@ async def replay_chapter_from_cache(
 
     # Same whole-chapter idempotency key the worker computes (book, chapter, content, kinds,
     # profile) — so a replay of an already-applied clean chapter dedups at the writeback log.
-    writeback_key = hashlib.sha256(
-        "|".join([book_id, chapter_id, content_hash, ",".join(sorted(all_kinds)), profile_hash])
-        .encode("utf-8")
-    ).hexdigest()
+    # HEAL mode (use_authored_strategy, D-EXTRACT-ATTR-MERGE-DEFAULTS M3) adds a "heal"
+    # discriminator: a chapter already written under the OLD frozen `fill` actions has a
+    # writeback_key the faithful replay would dedup against — so healing must key distinctly to
+    # actually re-merge under the authored append/overwrite strategies. Re-running heal is still
+    # idempotent (this distinct key dedups the 2nd heal; the append merge dedups per-item anyway).
+    key_parts = [book_id, chapter_id, content_hash, ",".join(sorted(all_kinds)), profile_hash]
+    if use_authored_strategy:
+        key_parts.append("heal")
+    writeback_key = hashlib.sha256("|".join(key_parts).encode("utf-8")).hexdigest()
 
     generation = {
         "content_hash": content_hash,
@@ -171,15 +177,19 @@ async def replay_chapter_from_cache(
         "entity_count": len(entities),
     }
 
+    mode = "heal" if use_authored_strategy else "faithful"
     if not confirm:
         # Dry-run: surface what a confirmed replay WOULD write; make NO glossary call.
-        return {"status": "preview", "generation": generation,
+        return {"status": "preview", "mode": mode, "generation": generation,
                 "would_write": len(entities), "source_language": source_language}
 
+    # HEAL mode sends EMPTY attribute_actions so the glossary resolver defers every attribute to
+    # its authored merge_strategy (append/overwrite/fill) instead of the source job's frozen
+    # actions — that's what unfreezes attributes extracted under the old `fill` default.
     upsert = await post_extracted_entities(
         book_id=book_id,
         source_language=source_language,
-        attribute_actions=extraction_profile,
+        attribute_actions={} if use_authored_strategy else extraction_profile,
         entities=entities,
         chapter_id=chapter_id,
         content_hash=content_hash,
@@ -189,7 +199,61 @@ async def replay_chapter_from_cache(
     if upsert is None:
         # The cache WAS found + reconstructed; only the glossary write failed. A distinct
         # status (not "no_cache") so a retry/cron knows the write was attempted, not absent.
-        return {"status": "writeback_failed", "generation": generation}
-    return {"status": "replayed", "generation": generation,
+        return {"status": "writeback_failed", "mode": mode, "generation": generation}
+    return {"status": "replayed", "mode": mode, "generation": generation,
             "created": upsert.get("created", 0), "updated": upsert.get("updated", 0),
             "skipped": upsert.get("skipped", 0), "source_language": source_language}
+
+
+async def rerun_merge_book(
+    pool,
+    *,
+    caller_user_id: str,
+    book_id: str,
+    confirm: bool = False,
+    chapter_ids: list[str] | None = None,
+) -> dict:
+    """Heal a whole book (D-EXTRACT-ATTR-MERGE-DEFAULTS M3): re-merge every chapter that has a
+    faithful cached parse under the attributes' AUTHORED merge_strategy — unfreezing attributes
+    that were extracted under the old `fill` default — at $0 LLM. Reuses replay_chapter_from_cache
+    (use_authored_strategy=True) per chapter, so faithful-by-construction + tenancy/INV-9 hold.
+
+    `confirm=False` is a dry-run (per-chapter preview counts, no glossary write). `chapter_ids`
+    optionally narrows the heal to a subset (else every chapter with a cached parse for this
+    book+owner). The response is BOUNDED: aggregate status counts + total would-write/created,
+    plus a capped sample of non-replayed chapters for diagnostics (a 4000-chapter book must not
+    return 4000 detail rows)."""
+    if chapter_ids is None:
+        async with pool.acquire() as db:
+            rows = await db.fetch(
+                """SELECT DISTINCT chapter_id FROM extraction_raw_outputs
+                   WHERE owner_user_id=$1 AND book_id=$2""",
+                caller_user_id, book_id,
+            )
+        chapter_ids = [str(r["chapter_id"]) for r in rows]
+
+    status_counts: dict[str, int] = {}
+    total_writes = 0
+    problems: list[dict] = []
+    PROBLEM_CAP = 50
+    for cid in chapter_ids:
+        r = await replay_chapter_from_cache(
+            pool, caller_user_id=caller_user_id, book_id=book_id,
+            chapter_id=cid, confirm=confirm, use_authored_strategy=True,
+        )
+        st = r.get("status", "unknown")
+        status_counts[st] = status_counts.get(st, 0) + 1
+        # created+updated on a confirm heal (entities usually already exist → the heal
+        # APPENDS/OVERWRITES, so updated is where the action is); would_write on a dry-run.
+        total_writes += int(r.get("created", 0)) + int(r.get("updated", 0)) + int(r.get("would_write", 0))
+        if st not in ("replayed", "preview", "empty") and len(problems) < PROBLEM_CAP:
+            problems.append({"chapter_id": cid, "status": st, "reason": r.get("reason")})
+    return {
+        "book_id": book_id,
+        "confirm": confirm,
+        "mode": "heal",
+        "chapters_scanned": len(chapter_ids),
+        "status_counts": status_counts,
+        "total_writes": total_writes,
+        "problem_sample": problems,
+    }

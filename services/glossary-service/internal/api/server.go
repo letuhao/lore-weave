@@ -142,6 +142,10 @@ func (s *Server) Router() http.Handler {
 		r.Get("/books/{book_id}/entities/stats", s.internalEntityStats)
 		// mui #1c G-cand — knowledge's coref detector proposes merge clusters here.
 		r.Post("/books/{book_id}/merge-candidates", s.internalProposeMergeCandidates)
+		// D-GLOSSARY-ST-DEDUP M3b — remediate pre-existing CJK simplified/traditional
+		// (+ full-width/case) entity name-variant duplicates: group by the folded key
+		// and merge each group into one winner. DRY-RUN unless ?apply=true.
+		r.Post("/books/{book_id}/dedup-name-variants", s.internalDedupNameVariants)
 		// Set canonical content (short_description) on an existing entity.
 		// Used by lore-enrichment promote to write enriched canon THROUGH the
 		// glossary SSOT (Q2) — extract-entities can't set this column.
@@ -400,6 +404,16 @@ func (s *Server) Router() http.Handler {
 			// Confirm == the existing entities/{id}/merge endpoint.
 			r.Get("/merge-candidates", s.listMergeCandidates)
 			r.Post("/merge-candidates/{candidate_id}/dismiss", s.dismissMergeCandidate)
+			// D-BATCH-RESEARCH-JOB — async batch entity-research over a kind. create +
+			// estimate are kind-scoped (Manage/View); list + status are book-scoped (View).
+			// Lifecycle actions (pause/resume/cancel) arrive with the M2 worker.
+			r.Post("/kinds/{kind_id}/research-jobs", s.createResearchJob)
+			r.Get("/kinds/{kind_id}/research-estimate", s.researchEstimate)
+			r.Get("/research-jobs", s.listResearchJobs)
+			r.Get("/research-jobs/{job_id}", s.getResearchJob)
+			r.Post("/research-jobs/{job_id}/pause", s.pauseResearchJob)
+			r.Post("/research-jobs/{job_id}/resume", s.resumeResearchJob)
+			r.Post("/research-jobs/{job_id}/cancel", s.cancelResearchJob)
 			r.Route("/entities", func(r chi.Router) {
 				r.Get("/", s.listEntities)
 				r.Post("/", s.createEntity)

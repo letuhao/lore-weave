@@ -44,6 +44,22 @@ export type DeriveBody = {
   entity_overrides: EntityOverride[];
 };
 
+// WS-B2 — the DURABLE read-projection of a derivative Work's divergence spec
+// (composition-service DerivativeContextResponse). Read back on Work resolution
+// from the persisted divergence_spec + entity_override (NOT the ephemeral
+// derive-time react-query cache), so the studio banner/chips/popover + the
+// was→now grounding deltas survive a reload. `is_derivative=false` ⇒ greenfield.
+export type DerivativeContextResponse = {
+  is_derivative: boolean;
+  source_work_id: string | null;
+  source_project_id: string | null;
+  branch_point: number | null;
+  taxonomy: DivergenceTaxonomy | null;
+  pov_anchor: string | null;
+  canon_rules: string[];
+  overrides: EntityOverride[];
+};
+
 export type WorkResolution = {
   status: 'found' | 'candidates' | 'unmarked_single' | 'unmarked_candidates' | 'none' | 'unavailable';
   work: Work | null;
@@ -160,6 +176,71 @@ export type PublishGate = {
   can_publish: boolean;
 };
 
+// T4.2 — server-SSOT writing progress for a Work. `sparkline` is a dense
+// 30-day [today-29 .. today] series (zero-filled); the panel slices 7/30.
+// `daily_goal` is null until the user sets one (read from work.settings).
+export type ProgressPoint = { date: string; words: number };
+export type ProgressStats = {
+  today: string;
+  today_words: number;
+  book_total: number;
+  daily_goal: number | null;
+  current_streak: number;
+  sparkline: ProgressPoint[];
+};
+
+// T3.5 — prose-style steering. style_profile is per-scope (work|chapter|scene);
+// the packer resolves the most-specific for a scene. voice_profile is per-character.
+export type StyleScope = 'work' | 'chapter' | 'scene';
+export type StyleProfile = {
+  scope_type: StyleScope;
+  scope_id: string;
+  density: number; // 0-100, lean ↔ lush
+  pace: number;    // 0-100, slow ↔ fast
+};
+export type VoiceProfile = {
+  entity_id: string;
+  entity_name: string;
+  tags: string[];
+};
+
+// T3.4 — one addressable grounding item (present-entity / canon-rule / lore-source)
+// with its per-scene pin/exclude state. `id` is a stable canonical id (not a label).
+export type GroundingItemType = 'present' | 'canon' | 'lore' | 'reference';
+export type GroundingItem = {
+  type: GroundingItemType;
+  id: string;
+  label: string;
+  pinned: boolean;
+  excluded: boolean;
+};
+export type PinAction = 'pin' | 'exclude' | 'none';
+
+// T3.6 — the author's reference shelf.
+export type ReferenceSource = {
+  id: string;
+  title: string;
+  author: string;
+  source_url: string;
+  content: string;
+  embedding_model: string;
+  embedding_dim: number | null;
+  created_at: string | null;
+};
+export type ReferenceList = { references: ReferenceSource[]; embed_model_set: boolean };
+// A per-scene retrieval hit: attribution + cosine score + the scene's pin state.
+export type ReferenceHit = ReferenceSource & {
+  score: number;
+  pinned: boolean;
+  excluded: boolean;
+};
+export type ReferenceSearch = {
+  hits: ReferenceHit[];
+  embed_model_set: boolean;
+  query: string;
+  unavailable?: boolean;
+};
+
 export type Grounding = {
   blocks: Record<string, string>;
   prompt: string;
@@ -168,6 +249,8 @@ export type Grounding = {
   grounding_available: boolean;
   l4_dropped_no_position: number;
   warnings: string[];
+  // T3.4 — addressable items (may be empty for legacy/derivative paths).
+  grounding_items?: GroundingItem[];
 };
 
 export type CanonRule = {

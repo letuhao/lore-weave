@@ -159,10 +159,10 @@ func (s *Server) createBookAttributeCore(ctx context.Context, bookID uuid.UUID, 
 	if err := s.pool.QueryRow(ctx, `
 		INSERT INTO book_attributes
 		  (book_id, kind_id, genre_id, code, name, description, field_type, is_required,
-		   sort_order, options, auto_fill_prompt, translation_hint)
-		VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12) RETURNING attr_id`,
+		   sort_order, options, auto_fill_prompt, translation_hint, merge_strategy)
+		VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13) RETURNING attr_id`,
 		bookID, p.KindID, p.GenreID, p.Code, p.Name, p.Description, p.FieldType, p.IsRequired,
-		p.SortOrder, p.Options, p.AutoFillPrompt, p.TranslationHint,
+		p.SortOrder, p.Options, p.AutoFillPrompt, p.TranslationHint, seedMergeStrategy(p.Code, p.FieldType, p.IsRequired),
 	).Scan(&attrID); err != nil {
 		if isUniqueViolation(err) {
 			return nil, errDuplicateBookCode

@@ -24,7 +24,18 @@ import Superscript from '@tiptap/extension-superscript';
 import GlobalDragHandle from 'tiptap-extension-global-drag-handle';
 import { GrammarExtension, setGrammarEnabled } from './GrammarPlugin';
 import { GlossaryExtension, setGlossaryEntities, setGlossaryEnabled, getGlossaryCount } from './GlossaryPlugin';
+import { HeatmapExtension, setHeatmapTerms, setHeatmapEnabled, type HeatTerm } from './HeatmapPlugin';
+import {
+  ProvenanceMark,
+  applyProvenanceOver,
+  markAllProvenanceReviewed,
+  countUnreviewedProvenance,
+  setProvenanceVisible,
+  type ProvenanceAttrs,
+} from './ProvenanceMark';
 import { CitationMark } from './CitationMark';
+import { FocusLineExtension } from './FocusLineExtension';
+import { TrackedPositionsExtension } from './TrackedPositions';
 
 export interface TiptapEditorHandle {
   /** Reset editor content from Tiptap JSON (e.g. revision restore, discard) */
@@ -39,15 +50,27 @@ export interface TiptapEditorHandle {
   setGlossaryEnabled: (enabled: boolean) => void;
   /** Get current glossary match count */
   getGlossaryCount: () => number;
+  /** T5.2 — set the mention-heatmap terms (entity name + density band) for tinting */
+  setHeatmapTerms: (terms: HeatTerm[]) => void;
+  /** T5.2 — toggle the in-prose mention heatmap tinting */
+  setHeatmapEnabled: (enabled: boolean) => void;
   /** ARCH-1 C6 — current selection (ProseMirror positions + selected text),
    *  or null if the editor isn't ready. `empty` = a caret with no selection. */
   getSelection: () => { from: number; to: number; empty: boolean; text: string } | null;
   /** ARCH-1 C6 — insert plain text at the cursor. Returns false if no editor.
-   *  Flows through onUpdate (NOT setContent) so it dirties + autosaves. */
-  insertAtCursor: (text: string) => boolean;
+   *  Flows through onUpdate (NOT setContent) so it dirties + autosaves.
+   *  T5.3 — pass `provenance` to tag the inserted span as AI-written. */
+  insertAtCursor: (text: string, provenance?: ProvenanceAttrs) => boolean;
   /** ARCH-1 C6 — replace the current selection with text. Returns false if
-   *  there is no (non-empty) selection. One chained transaction = one undo. */
-  replaceSelection: (text: string) => boolean;
+   *  there is no (non-empty) selection. One chained transaction = one undo.
+   *  T5.3 — pass `provenance` to tag the replacement as AI-written. */
+  replaceSelection: (text: string, provenance?: ProvenanceAttrs) => boolean;
+  /** T5.3 — flip every unreviewed AI span to reviewed; returns the count. */
+  markAllProvenanceReviewed: () => number;
+  /** T5.3 — show/hide the unreviewed-AI underlay (default visible). */
+  setProvenanceVisible: (visible: boolean) => void;
+  /** T5.3 — number of unreviewed AI spans currently in the doc. */
+  getUnreviewedProvenanceCount: () => number;
 }
 
 interface TiptapEditorProps {
@@ -68,6 +91,11 @@ interface TiptapEditorProps {
    *  to the live editor. Rendered inside (editable) so it can position at the caret
    *  and commit via editor commands. Default: nothing. */
   aiLayer?: (editor: Editor) => React.ReactNode;
+  /** T5.1: focus/typewriter mode. When true, the wrapper gets `lw-focus` (the CSS
+   *  dims non-current paragraphs) and the paragraph at the caret is marked
+   *  `.focusline` + scrolled to center on every selection/text change (typewriter).
+   *  Default off → other TiptapEditor consumers are unaffected. */
+  focusMode?: boolean;
 }
 
 import { extractText, addTextSnapshots } from '@/lib/tiptap-utils';
@@ -76,7 +104,7 @@ export { extractText, addTextSnapshots };
 export { setGlossaryEntities, setGlossaryEnabled, getGlossaryCount };
 
 export const TiptapEditor = forwardRef<TiptapEditorHandle, TiptapEditorProps>(
-  function TiptapEditor({ content, onUpdate, editable = true, grammarEnabled = true, editorMode = 'classic', className, selectionMenu, aiLayer }, ref) {
+  function TiptapEditor({ content, onUpdate, editable = true, grammarEnabled = true, editorMode = 'classic', className, selectionMenu, aiLayer, focusMode = false }, ref) {
     const initialContent = useRef(content);
     const prevContent = useRef(content);
     const isExternalUpdate = useRef(false);
@@ -118,6 +146,10 @@ export const TiptapEditor = forwardRef<TiptapEditorHandle, TiptapEditorProps>(
         GrammarExtension,
         GlossaryExtension,
         SlashMenuExtension,
+        FocusLineExtension, // T5.1 — marks the caret's block `.focusline` (PM decoration)
+        HeatmapExtension, // T5.2 — tints entity names by mention-density band (inert until enabled)
+        ProvenanceMark, // T5.3 — AI-provenance mark (click-to-review; rides in body_json)
+        TrackedPositionsExtension, // WS-C — remaps saved insert points/ranges through edits (inert when empty)
       ],
       content: initialContent.current,
       editable,
@@ -173,6 +205,35 @@ export const TiptapEditor = forwardRef<TiptapEditorHandle, TiptapEditorProps>(
       }
     }, [editor, editorMode]);
 
+    // T5.1 — typewriter scroll: keep the caret's `.focusline` block (marked by
+    // FocusLineExtension) centered on every selection/text change. Active only in
+    // focusMode; rAF-coalesced to avoid layout thrash while typing. The `.focusline`
+    // CLASS is owned by the PM decoration (FocusLineExtension) — this effect only
+    // scrolls, it does not touch the DOM class.
+    useEffect(() => {
+      if (!editor || !focusMode) return;
+      const root = editor.view.dom as HTMLElement;
+      let raf = 0;
+      const scrollToLine = () => {
+        cancelAnimationFrame(raf);
+        raf = requestAnimationFrame(() => {
+          const el = root.querySelector('.focusline') as HTMLElement | null;
+          // guarded: scrollIntoView is absent in jsdom / very old browsers
+          if (el && typeof el.scrollIntoView === 'function') {
+            el.scrollIntoView({ block: 'center', behavior: 'auto' });
+          }
+        });
+      };
+      editor.on('selectionUpdate', scrollToLine);
+      editor.on('update', scrollToLine);
+      scrollToLine();
+      return () => {
+        cancelAnimationFrame(raf);
+        editor.off('selectionUpdate', scrollToLine);
+        editor.off('update', scrollToLine);
+      };
+    }, [editor, focusMode]);
+
     const setContentHandler = useCallback((newContent: any) => {
       if (!editor) return;
       isExternalUpdate.current = true;
@@ -196,6 +257,12 @@ export const TiptapEditor = forwardRef<TiptapEditorHandle, TiptapEditorProps>(
         if (editor) return getGlossaryCount(editor);
         return 0;
       },
+      setHeatmapTerms: (terms: HeatTerm[]) => {
+        if (editor) setHeatmapTerms(editor, terms);
+      },
+      setHeatmapEnabled: (enabled: boolean) => {
+        if (editor) setHeatmapEnabled(editor, enabled);
+      },
       // ARCH-1 C6 — editor write-back for AG-UI frontend tools. These mutate
       // through editor.chain() (NOT setContent), so onUpdate fires and the doc
       // dirties/autosaves exactly like typing. We deliberately do NOT set
@@ -205,24 +272,33 @@ export const TiptapEditor = forwardRef<TiptapEditorHandle, TiptapEditorProps>(
         const { from, to, empty } = editor.state.selection;
         return { from, to, empty, text: editor.state.doc.textBetween(from, to, ' ') };
       },
-      insertAtCursor: (text: string) => {
+      insertAtCursor: (text: string, provenance?: ProvenanceAttrs) => {
         if (!editor || !text) return false;
-        editor.chain().focus().insertContentAt(editor.state.selection.from, text).run();
+        const from = editor.state.selection.from;
+        editor.chain().focus().insertContentAt(from, text).run();
+        // T5.3 — tag the just-inserted range (cursor is now at its end).
+        if (provenance) applyProvenanceOver(editor, from, editor.state.selection.from, provenance);
         return true;
       },
-      replaceSelection: (text: string) => {
+      replaceSelection: (text: string, provenance?: ProvenanceAttrs) => {
         if (!editor) return false;
         const { from, to, empty } = editor.state.selection;
         if (empty) return false;  // nothing selected — caller falls back / toasts
         editor.chain().focus().deleteRange({ from, to }).insertContentAt(from, text).run();
+        if (provenance) applyProvenanceOver(editor, from, editor.state.selection.from, provenance);
         return true;
       },
+      markAllProvenanceReviewed: () => (editor ? markAllProvenanceReviewed(editor) : 0),
+      setProvenanceVisible: (visible: boolean) => {
+        if (editor) setProvenanceVisible(editor, visible);
+      },
+      getUnreviewedProvenanceCount: () => (editor ? countUnreviewedProvenance(editor) : 0),
     }), [setContentHandler, editor]);
 
     if (!editor) return null;
 
     return (
-      <div className={`${className ?? ''} tiptap-editor-wrapper relative`}>
+      <div className={`${className ?? ''} tiptap-editor-wrapper relative${focusMode ? ' lw-focus' : ''}`}>
         {editable && <FormatToolbar editor={editor} mode={editorMode} />}
         {showSource ? (
           <SourceView json={editor.getJSON()} />

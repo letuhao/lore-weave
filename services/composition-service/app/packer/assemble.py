@@ -17,8 +17,9 @@ from app.packer.budget import Segment
 from app.packer.lenses import LensBundle
 from app.packer.sanitize import sanitize_guide, sanitize_lore
 
-# Canonical block order for rendering (§2.4).
-_BLOCK_ORDER = ["canon", "present", "threads", "beat", "open_promises", "recent", "memory", "lore", "guide"]
+# Canonical block order for rendering (§2.4). T3.6 — <references> (author influences)
+# renders after <lore> and before the author <guide>.
+_BLOCK_ORDER = ["canon", "present", "threads", "beat", "open_promises", "recent", "memory", "lore", "references", "guide"]
 
 
 def assert_project_scoped(project_id: UUID | None) -> None:
@@ -42,10 +43,20 @@ def assert_derivative_scoped(project_id: UUID | None, source_project_id: UUID | 
         )
 
 
-def build_segments(bundle: LensBundle, *, guide: str = "") -> list[Segment]:
+def build_segments(
+    bundle: LensBundle, *, guide: str = "", pinned_lore_ids: set[str] | None = None,
+    pinned_reference_ids: set[str] | None = None,
+) -> list[Segment]:
     """Flatten a LensBundle (+ author guide) into prioritised, sanitised
-    Segments for the budget pass."""
+    Segments for the budget pass.
+
+    T3.4: a lore hit whose `source_id` is in `pinned_lore_ids` is emitted
+    `protected=True` so the budget keeps it even under a tight trim (present/canon
+    are already protected, so a pin there needs no change here).
+    T3.6: a reference whose `id` is in `pinned_reference_ids` is likewise protected."""
     segs: list[Segment] = []
+    _pinned_lore = pinned_lore_ids or set()
+    _pinned_refs = pinned_reference_ids or set()
 
     for r in bundle.canon:
         segs.append(Segment("canon", r.text, B.PRIO_CANON, protected=True))
@@ -124,7 +135,30 @@ def build_segments(bundle: LensBundle, *, guide: str = "") -> list[Segment]:
     for h in bundle.lore:
         txt = sanitize_lore(h.get("text", ""))
         if txt:
-            segs.append(Segment("lore", txt, B.PRIO_LORE))
+            # T3.4 — a pinned lore source is protected so a tight budget keeps it.
+            pinned = str(h.get("source_id")) in _pinned_lore
+            segs.append(Segment("lore", txt, B.PRIO_LORE, protected=pinned))
+
+    # T3.6 — author reference passages. The content is author-supplied (untrusted
+    # like <lore>/<guide>) so it's neutralised via sanitize_lore. A short attribution
+    # prefix (title — author) precedes the passage when present. A PINNED reference is
+    # protected so a tight budget keeps it; otherwise it's the softest, first-trimmed tier.
+    for h in bundle.references:
+        raw = (h.get("content") or "").strip()
+        if not raw:  # whitespace-only / empty reference → no block
+            continue
+        body = sanitize_lore(raw)
+        if not body:
+            continue
+        # SEC3 — title/author are author-supplied (untrusted), so they're neutralised
+        # too: an un-sanitised attribution could forge a </references>/<guide> delimiter
+        # or inject. Each part is escaped before composing the line (not just `body`).
+        attribution = " — ".join(
+            x for x in [sanitize_lore(str(h.get("title") or "").strip()),
+                        sanitize_lore(str(h.get("author") or "").strip())] if x)
+        line = f"[{attribution}] {body}" if attribution else body
+        pinned = str(h.get("id")) in _pinned_refs
+        segs.append(Segment("references", line, B.PRIO_REFERENCES, protected=pinned))
 
     if guide:
         segs.append(Segment("guide", sanitize_guide(guide), B.PRIO_CANON, protected=True))

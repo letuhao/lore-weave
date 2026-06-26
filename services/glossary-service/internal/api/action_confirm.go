@@ -55,26 +55,29 @@ func (s *Server) consumeToken(ctx context.Context, jti, descriptor string, exp t
 	return tag.RowsAffected() > 0, nil
 }
 
-// decodeConfirmToken reads {confirm_token} and verifies it; writes the 4xx itself
-// on a missing/expired/invalid token and returns ok=false.
-func (s *Server) decodeConfirmToken(w http.ResponseWriter, r *http.Request) (actionClaims, bool) {
+// decodeConfirmToken reads {confirm_token, enabled_ops?} and verifies the token;
+// writes the 4xx itself on a missing/expired/invalid token and returns ok=false.
+// enabled_ops is the per-op destructive opt-in for an execute_plan confirm (§4 G1);
+// nil/absent for every other action (and ignored by the read-only preview path).
+func (s *Server) decodeConfirmToken(w http.ResponseWriter, r *http.Request) (actionClaims, []string, bool) {
 	var body struct {
-		ConfirmToken string `json:"confirm_token"`
+		ConfirmToken string   `json:"confirm_token"`
+		EnabledOps   []string `json:"enabled_ops"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&body); err != nil || strings.TrimSpace(body.ConfirmToken) == "" {
 		writeError(w, http.StatusBadRequest, "GLOSS_VALIDATION", "confirm_token is required")
-		return actionClaims{}, false
+		return actionClaims{}, nil, false
 	}
 	claims, err := verifyActionToken(s.cfg.JWTSecret, body.ConfirmToken, time.Now())
 	if errors.Is(err, ErrActionTokenExpired) {
 		writeError(w, http.StatusUnprocessableEntity, "GLOSS_ACTION_TOKEN", "confirmation expired — propose again")
-		return actionClaims{}, false
+		return actionClaims{}, nil, false
 	}
 	if err != nil {
 		writeError(w, http.StatusUnprocessableEntity, "GLOSS_ACTION_TOKEN", "invalid confirmation")
-		return actionClaims{}, false
+		return actionClaims{}, nil, false
 	}
-	return claims, true
+	return claims, body.EnabledOps, true
 }
 
 // authorizeAction re-checks authority at confirm/preview time (C3 + defense in
@@ -110,7 +113,7 @@ func (s *Server) confirmAction(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusUnauthorized, "GLOSS_UNAUTHORIZED", "valid Bearer token required")
 		return
 	}
-	claims, ok := s.decodeConfirmToken(w, r)
+	claims, enabledOps, ok := s.decodeConfirmToken(w, r)
 	if !ok {
 		return
 	}
@@ -134,6 +137,8 @@ func (s *Server) confirmAction(w http.ResponseWriter, r *http.Request) {
 		s.effectBookDelete(w, r.Context(), claims)
 	case descSchemaCreateKind:
 		s.effectSchemaCreateKind(w, r.Context(), claims)
+	case descSchemaCreateKinds:
+		s.effectSchemaCreateKinds(w, r.Context(), claims)
 	case descSchemaCreateAttr:
 		s.effectSchemaCreateAttr(w, r.Context(), claims)
 	case descAdopt:
@@ -152,6 +157,8 @@ func (s *Server) confirmAction(w http.ResponseWriter, r *http.Request) {
 		s.effectMerge(w, r.Context(), claims)
 	case descDeepResearch:
 		s.effectDeepResearch(w, r.Context(), claims)
+	case descExecutePlan:
+		s.effectExecutePlan(w, r.Context(), claims, enabledOps)
 	default:
 		writeError(w, http.StatusUnprocessableEntity, "GLOSS_ACTION_TOKEN", "unknown action")
 	}
@@ -245,10 +252,41 @@ func (s *Server) effectBookDelete(w http.ResponseWriter, ctx context.Context, cl
 	w.WriteHeader(http.StatusNoContent)
 }
 
+// ensureBookScaffolded guarantees the book has the baseline `universal` genre (and
+// `unknown` kind) that custom kinds anchor to. Idempotent — a no-op once the book is
+// scaffolded. This lets glossary_propose_new_kind "just work" without a MANDATORY
+// prior glossary_adopt_standards: the universal genre is infrastructure, not a content
+// choice (adopt ALWAYS seeds it regardless of picked genres), so a user/agent never
+// has to know the adopt→kind ordering. Genre-specific standards (fantasy, …) can still
+// be adopted later to import their seeded kinds.
+func (s *Server) ensureBookScaffolded(ctx context.Context, bookID, userID uuid.UUID) error {
+	var exists bool
+	if err := s.pool.QueryRow(ctx,
+		`SELECT EXISTS(SELECT 1 FROM book_genres WHERE book_id=$1 AND code='universal' AND deprecated_at IS NULL)`,
+		bookID).Scan(&exists); err != nil {
+		return err
+	}
+	if exists {
+		return nil
+	}
+	// nil genres/kinds → adoptBookOntologyCore still seeds the baseline `universal`
+	// genre + `unknown` kind (it dedup-appends them), and is itself idempotent
+	// (advisory lock + ON CONFLICT DO NOTHING).
+	return s.adoptBookOntologyCore(ctx, bookID, userID, nil, nil)
+}
+
 func (s *Server) effectSchemaCreateKind(w http.ResponseWriter, ctx context.Context, claims actionClaims) {
 	var p kindCreateParams
 	if err := json.Unmarshal(claims.Params, &p); err != nil {
 		writeError(w, http.StatusInternalServerError, "GLOSS_INTERNAL", "bad proposal payload")
+		return
+	}
+	// Auto-scaffold the baseline ontology if the book hasn't been adopted yet, so
+	// creating the first custom kind succeeds instead of 422'ing "not adopted" AFTER
+	// the human already confirmed (and the single-use token burned). The agent no
+	// longer has to sequence adopt→kind by hand.
+	if err := s.ensureBookScaffolded(ctx, claims.BookID, claims.UserID); err != nil {
+		writeError(w, http.StatusInternalServerError, "GLOSS_INTERNAL", "failed to scaffold book ontology")
 		return
 	}
 	k, err := s.createKindFromParams(ctx, claims.BookID, p)
@@ -265,6 +303,68 @@ func (s *Server) effectSchemaCreateKind(w http.ResponseWriter, ctx context.Conte
 		return
 	}
 	writeJSON(w, http.StatusCreated, k)
+}
+
+// kindsBatchParams is the captured intent of a glossary_propose_kinds proposal: the
+// full list of kinds (each with its attributes) the user confirms in one click.
+type kindsBatchParams struct {
+	Kinds []kindCreateParams `json:"kinds"`
+}
+
+// effectSchemaCreateKinds creates every kind (+ its attributes) in the batch on one
+// confirm. Idempotent: a kind whose code already exists is SKIPPED (unique-violation),
+// so a re-confirm after a partial batch fills only the missing kinds instead of
+// failing the whole package. Auto-scaffolds the baseline ontology once up front.
+func (s *Server) effectSchemaCreateKinds(w http.ResponseWriter, ctx context.Context, claims actionClaims) {
+	var p kindsBatchParams
+	if err := json.Unmarshal(claims.Params, &p); err != nil {
+		writeError(w, http.StatusInternalServerError, "GLOSS_INTERNAL", "bad proposal payload")
+		return
+	}
+	if len(p.Kinds) == 0 {
+		writeError(w, http.StatusUnprocessableEntity, "GLOSS_ACTION_TOKEN", "no kinds in this proposal — propose again")
+		return
+	}
+	if err := s.ensureBookScaffolded(ctx, claims.BookID, claims.UserID); err != nil {
+		writeError(w, http.StatusInternalServerError, "GLOSS_INTERNAL", "failed to scaffold book ontology")
+		return
+	}
+	created := make([]string, 0, len(p.Kinds))
+	skipped := make([]string, 0)
+	for _, kp := range p.Kinds {
+		switch _, err := s.createKindFromParams(ctx, claims.BookID, kp); {
+		case err == nil:
+			created = append(created, kp.Code)
+		case isUniqueViolation(err):
+			skipped = append(skipped, kp.Code) // already exists — idempotent re-confirm
+		default:
+			writeError(w, http.StatusInternalServerError, "GLOSS_INTERNAL", "failed to create kind "+kp.Code)
+			return
+		}
+	}
+	writeJSON(w, http.StatusCreated, map[string]any{
+		"created":       created,
+		"skipped":       skipped,
+		"created_count": len(created),
+		"skipped_count": len(skipped),
+	})
+}
+
+func (s *Server) previewSchemaCreateKinds(w http.ResponseWriter, claims actionClaims) {
+	var p kindsBatchParams
+	if err := json.Unmarshal(claims.Params, &p); err != nil {
+		writeError(w, http.StatusInternalServerError, "GLOSS_INTERNAL", "bad proposal payload")
+		return
+	}
+	rows := make([]previewRow, 0, len(p.Kinds))
+	for _, kp := range p.Kinds {
+		rows = append(rows, previewRow{Label: "kind", Value: kp.Code, Note: fmt.Sprintf("%s · %d attribute(s)", kp.Name, len(kp.Attributes))})
+	}
+	writeJSON(w, http.StatusOK, actionPreview{
+		Descriptor: descSchemaCreateKinds, Destructive: false,
+		Title:       fmt.Sprintf("Create %d kind(s) with their attributes", len(p.Kinds)),
+		PreviewRows: rows,
+	})
 }
 
 func (s *Server) effectSchemaCreateAttr(w http.ResponseWriter, ctx context.Context, claims actionClaims) {
@@ -321,7 +421,7 @@ func (s *Server) previewAction(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusUnauthorized, "GLOSS_UNAUTHORIZED", "valid Bearer token required")
 		return
 	}
-	claims, ok := s.decodeConfirmToken(w, r)
+	claims, _, ok := s.decodeConfirmToken(w, r)
 	if !ok {
 		return
 	}
@@ -333,6 +433,8 @@ func (s *Server) previewAction(w http.ResponseWriter, r *http.Request) {
 		s.previewBookDelete(w, r.Context(), claims)
 	case descSchemaCreateKind, descSchemaCreateAttr:
 		s.previewSchemaCreate(w, claims)
+	case descSchemaCreateKinds:
+		s.previewSchemaCreateKinds(w, claims)
 	case descAdopt:
 		s.previewAdopt(w, r.Context(), claims)
 	case descSyncApply:
@@ -349,6 +451,8 @@ func (s *Server) previewAction(w http.ResponseWriter, r *http.Request) {
 		s.previewMerge(w, r.Context(), claims)
 	case descDeepResearch:
 		s.previewDeepResearch(w, r.Context(), claims)
+	case descExecutePlan:
+		s.previewExecutePlan(w, r.Context(), claims)
 	default:
 		writeError(w, http.StatusUnprocessableEntity, "GLOSS_ACTION_TOKEN", "unknown action")
 	}

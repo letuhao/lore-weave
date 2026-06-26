@@ -298,7 +298,7 @@ class BookClient:
             return None
 
     async def get_chapter_titles(
-        self, chapter_ids: list[UUID],
+        self, chapter_ids: list[UUID], language: str | None = None,
     ) -> dict[UUID, str]:
         """C6 (D-K19b.3-01 + D-K19e-β-01) — batch-resolve chapter titles.
 
@@ -307,6 +307,15 @@ class BookClient:
         knowledge-service Timeline + Jobs responses to denormalize
         chapter titles inline so the FE can render
         "Chapter 12 — The Bridge Duel" instead of ``…last8chars``.
+
+        KG-TL M1 — ``language`` (optional reader-language subtag) forwards
+        to book-service so the heading resolves to the SIBLING-language
+        chapter when one exists, else the source heading. Omit / None →
+        legacy behavior (the requested chapter's own-language heading).
+        This is what removes the Timeline's "vi heading beside zh event"
+        mix: with a reader language the heading either matches the reader
+        OR honestly shows source — never the book's arbitrary display
+        language out of a language-blind join.
 
         Graceful on every failure path: returns ``{}`` so callers
         render the UUID-suffix fallback via the existing
@@ -317,10 +326,15 @@ class BookClient:
             return {}
         url = f"{self._base_url}/internal/chapters/titles"
         tid = trace_id_var.get()
+        payload: dict[str, object] = {
+            "chapter_ids": [str(cid) for cid in chapter_ids]
+        }
+        if language:
+            payload["language"] = language
         try:
             resp = await self._http.post(
                 url,
-                json={"chapter_ids": [str(cid) for cid in chapter_ids]},
+                json=payload,
                 headers={"X-Trace-Id": tid} if tid else None,
             )
             if resp.status_code != 200:

@@ -280,6 +280,12 @@ export type EvidenceListItem = {
   display_text: string;
   display_language: string;
   note: string | null;
+  // Provenance (D-EVIDENCE-PROVENANCE-OVERHAUL M1): trust of the quote↔source match.
+  // char_* are null when not offset-matched. status: exact/resolved (verified) |
+  // ambiguous | unmatched (likely hallucinated) | unverified (no validation run).
+  char_start: number | null;
+  char_end: number | null;
+  provenance_status: 'exact' | 'resolved' | 'ambiguous' | 'unmatched' | 'unverified';
   created_at: string;
 };
 

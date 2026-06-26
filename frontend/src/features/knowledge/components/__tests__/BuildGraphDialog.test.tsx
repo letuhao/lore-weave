@@ -18,6 +18,10 @@ vi.mock('../../../ai-models/api', () => ({
 const estimateMock = vi.fn();
 const startMock = vi.fn();
 const benchmarkMock = vi.fn();
+// KG-EMB-PERSIST — picking a first-time embedding model now persists it to the
+// project (so benchmark-run + extract, which read the STORED model, line up).
+// Stub it to resolve so the picker's onChange doesn't throw + revert the value.
+const updateEmbeddingModelMock = vi.fn().mockResolvedValue({ status: 'changed' });
 vi.mock('../../api', async () => {
   const actual = await vi.importActual<Record<string, unknown>>('../../api');
   return {
@@ -26,6 +30,7 @@ vi.mock('../../api', async () => {
       estimateExtraction: (...args: unknown[]) => estimateMock(...args),
       startExtraction: (...args: unknown[]) => startMock(...args),
       getBenchmarkStatus: (...args: unknown[]) => benchmarkMock(...args),
+      updateEmbeddingModel: (...args: unknown[]) => updateEmbeddingModelMock(...args),
       // C13 — usePinning fetches auto-pin stats; stub to an empty payload so the
       // existing target/budget tests don't hit a real call.
       getGlossaryEntityStats: () =>

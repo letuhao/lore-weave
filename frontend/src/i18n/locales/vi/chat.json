@@ -152,6 +152,7 @@
     "batch_count": "{{count}} mục",
     "warning": "Thay đổi này có tác động lớn — vui lòng xác nhận.",
     "warning_destructive": "Hành động này có tính phá hủy và lan truyền — vui lòng xác nhận.",
+    "destructive_skipped": "{{count}} thao tác phá hủy sẽ bị BỎ QUA trừ khi bạn bật chúng ở trên.",
     "confirm": "Xác nhận",
     "confirm_all": "Xác nhận tất cả",
     "cancel": "Hủy",

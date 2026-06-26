@@ -124,6 +124,9 @@
       "api_key_ph_keep": "••••••••  (leave empty to keep current)",
       "api_key_ph": "sk-...",
       "api_key_keep_hint": "Leave empty to keep the existing key.",
+      "max_concurrency": "Max concurrent requests",
+      "max_concurrency_ph": "Unlimited",
+      "max_concurrency_hint": "How many requests this provider runs at once. Leave empty for unlimited (the backend decides). Set a number only if your backend has a known limit (e.g. a local GPU).",
       "cancel": "Cancel",
       "saving": "Saving...",
       "submit": "Save Changes"
@@ -249,6 +252,71 @@
       "embedding": "Embedding",
       "rerank": "Rerank",
       "moderation": "Moderation"
+    }
+  },
+  "services": {
+    "heading": "External Services",
+    "subtitle": "Non-model AI services you bring (BYOK) — e.g. web search. Reached through provider-registry like your models.",
+    "add": "Add Service",
+    "empty": "No external services yet. Add one (e.g. web search) to enable deep research.",
+    "keyless": "keyless",
+    "no_endpoint": "no endpoint",
+    "no_model": "no model",
+    "test": "Test",
+    "activate_aria": "Activate service",
+    "deactivate_aria": "Deactivate service",
+    "delete_aria": "Delete {{name}}",
+    "edit_aria": "Edit {{name}}",
+    "type": {
+      "web_search": {
+        "label": "Web Search",
+        "desc": "Search the web for deep-research evidence (e.g. SearXNG, Tavily)."
+      }
+    },
+    "add_dialog": {
+      "aria": "Add external service",
+      "title": "Add External Service",
+      "type": "Service",
+      "endpoint": "Endpoint URL",
+      "endpoint_hint": "The service base URL — provider-registry calls it server-side. For a service on the host machine use host.docker.internal, NOT localhost (inside the container, localhost is the container itself).",
+      "key": "API Key",
+      "key_ph": "Bearer token",
+      "key_ph_keyless": "Leave empty for a keyless local service",
+      "key_hint": "Bearer secret for the service.",
+      "key_hint_keyless": "Optional — leave empty for a keyless local backend (e.g. SearXNG).",
+      "label": "Label",
+      "label_ph": "e.g. searxng-default",
+      "alias": "Alias",
+      "alias_ph": "Optional display name",
+      "cancel": "Cancel",
+      "submit": "Add Service",
+      "adding": "Adding…"
+    },
+    "edit_dialog": {
+      "aria": "Edit external service",
+      "title": "Edit {{name}}",
+      "endpoint": "Endpoint URL",
+      "key": "API Key",
+      "key_ph_keep": "Leave empty to keep the current key",
+      "key_keep_hint": "Leave empty to keep the existing key.",
+      "max_concurrency": "Max concurrent requests",
+      "max_concurrency_ph": "Unlimited",
+      "max_concurrency_hint": "How many requests this service runs at once. Leave empty for unlimited (the backend decides). Set a number only if your backend has a known limit.",
+      "cancel": "Cancel",
+      "submit": "Save",
+      "saving": "Saving…"
+    },
+    "toast": {
+      "added": "{{name}} added",
+      "add_failed": "Failed to add service",
+      "updated": "Service updated",
+      "update_failed": "Failed to update service",
+      "removed": "Service removed",
+      "remove_failed": "Failed to remove service",
+      "toggle_failed": "Failed to toggle service",
+      "verify_ok": "Service reachable ({{ms}}ms)",
+      "verify_failed": "Verify failed: {{error}}",
+      "unknown_error": "unknown error"
     }
   },
   "tags": {

@@ -26,6 +26,8 @@ from app.clients.book_client import (
     WorldNotFound,
 )
 from app.clients.chapter_title_enricher import enrich_events_with_chapter_titles
+from app.clients.glossary_client import GlossaryClient
+from app.clients.translation_client import TranslationClient
 from app.db.neo4j import neo4j_session
 from app.db.neo4j_repos.entities import get_entity
 from app.db.neo4j_repos.events import (
@@ -33,8 +35,20 @@ from app.db.neo4j_repos.events import (
     Event,
     list_events_filtered,
 )
+from app.db.repositories.event_text_translations import EventTextTranslationsRepo
 from app.db.repositories.projects import ProjectsRepo
-from app.deps import get_book_client, get_projects_repo
+from app.deps import (
+    get_book_client,
+    get_event_text_translations_repo,
+    get_glossary_client,
+    get_projects_repo,
+    get_translation_client,
+)
+from app.labels.reader_lang import clean_lang_param, primary_subtag
+from app.labels.timeline_localizer import (
+    localize_event_text,
+    localize_participants,
+)
 from app.middleware.jwt_auth import get_current_user
 from app.spoiler_window import resolve_before_order
 from app.world_rollup import resolve_world_project_ids
@@ -167,10 +181,29 @@ async def list_timeline_events(
             "directions."
         ),
     ),
+    language: str | None = Query(
+        default=None,
+        max_length=35,
+        description=(
+            "KG-TL — reader language for localizing the timeline (chapter "
+            "heading + participant names + summary/time_cue/title). BCP-47-ish; "
+            "malformed is ignored. Omit to resolve the caller's stored "
+            "reader-language preference for the scoped project's book. When NO "
+            "reader language resolves (no value + no stored pref, or an "
+            "unscoped cross-project browse), the canonical source-language "
+            "response is returned unchanged."
+        ),
+    ),
     limit: int = Query(50, ge=1, le=EVENTS_MAX_LIMIT),
     offset: int = Query(0, ge=0),
     user_id: UUID = Depends(get_current_user),
     book_client: BookClient = Depends(get_book_client),
+    projects_repo: ProjectsRepo = Depends(get_projects_repo),
+    glossary: GlossaryClient = Depends(get_glossary_client),
+    translation: TranslationClient = Depends(get_translation_client),
+    event_text_repo: EventTextTranslationsRepo = Depends(
+        get_event_text_translations_repo
+    ),
 ) -> TimelineResponse:
     """K19e.2 + C10 — timeline list for the caller.
 
@@ -277,12 +310,55 @@ async def list_timeline_events(
             limit=limit,
             offset=offset,
         )
-    # C6 (D-K19e-β-01) — batch-resolve chapter titles before serving
-    # so the FE renders "Chapter 12 — The Bridge Duel" instead of
-    # ``…last8chars``. In-place mutation; on any book-service failure
-    # events keep ``chapter_title=None`` and the FE falls back to
-    # the UUID short.
-    await enrich_events_with_chapter_titles(rows, book_client)
+    # KG-TL — resolve the reader language (mirrors graph_views.read_graph
+    # 657-666): explicit ?language= (validated) → the caller's stored
+    # reader-language preference for the SCOPED project's book → None
+    # (canonical, unchanged). Folded to the primary subtag so chapter /
+    # entity-name / event-text axes all resolve on the same key.
+    #
+    # book_id source: reader-language is per-(user,book), so it only resolves
+    # when the browse is scoped to ONE project (project_id set). An unscoped /
+    # cross-project browse can't pick a single book pref → explicit ?language=
+    # only, else canonical (documented limitation; the FE scopes the tab to one
+    # project in the localized case — the common path).
+    reader_lang = clean_lang_param(language)
+    book_id: UUID | None = None
+    if project_id is not None:
+        try:
+            meta = await projects_repo.project_meta(project_id)
+            book_id = meta[1] if meta else None
+        except (ValueError, AttributeError):
+            book_id = None
+        if reader_lang is None and book_id is not None:
+            reader_lang = await book_client.get_reader_language(book_id, user_id)
+    reader_lang = primary_subtag(reader_lang)
+
+    # M1 — batch-resolve chapter titles. With a reader language the heading
+    # resolves to the sibling-language chapter (kills the visible mix); without
+    # one it's the legacy own-language heading. On any book-service failure events
+    # keep ``chapter_title=None`` and the FE falls back to the UUID short.
+    await enrich_events_with_chapter_titles(rows, book_client, language=reader_lang)
+
+    if reader_lang:
+        # M2 — participant-name localization via the glossary entity-name join.
+        await localize_participants(
+            rows,
+            user_id=str(user_id),
+            project_id=str(project_id) if project_id is not None else None,
+            book_id=book_id,
+            language=reader_lang,
+            glossary=glossary,
+        )
+        # M3 — coalesce-read the on-demand summary/time_cue/title cache + fire the
+        # lazy fill for the page's misses (never blocks this GET on the LLM).
+        await localize_event_text(
+            rows,
+            user_id=user_id,
+            language=reader_lang,
+            repo=event_text_repo,
+            translation=translation,
+        )
+
     return TimelineResponse(events=rows, total=total)
 
 

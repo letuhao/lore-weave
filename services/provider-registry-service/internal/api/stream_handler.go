@@ -69,6 +69,14 @@ type streamRequest struct {
 	// hidden thinking so reasoning_tokens don't burn the output budget.
 	ReasoningEffort    *string        `json:"reasoning_effort,omitempty"`
 	ChatTemplateKwargs map[string]any `json:"chat_template_kwargs,omitempty"`
+	// Structured-output enforcement — forwarded to the provider unchanged via the
+	// adapter's forwardOptionalChatFields allowlist. OpenAI/LM Studio/vLLM shape:
+	// {"type":"json_object"} or {"type":"json_schema","json_schema":{…}}. Lets the
+	// JSON pipelines (extraction, glossary/chapter translation) force valid JSON so
+	// a clean-finish-but-malformed array (the residual completed_with_errors cause)
+	// can't happen. `any` (not a typed struct) keeps the gateway shape-agnostic —
+	// the provider validates the concrete shape.
+	ResponseFormat any `json:"response_format,omitempty"`
 	StreamFormat string         `json:"stream_format,omitempty"`
 	Input        map[string]any `json:"input,omitempty"` // Phase 5a; tts only
 	TraceID      string         `json:"trace_id,omitempty"`
@@ -387,6 +395,9 @@ func buildChatStreamInput(in streamRequest) map[string]any {
 	}
 	if in.ChatTemplateKwargs != nil {
 		input["chat_template_kwargs"] = in.ChatTemplateKwargs
+	}
+	if in.ResponseFormat != nil {
+		input["response_format"] = in.ResponseFormat
 	}
 	return input
 }

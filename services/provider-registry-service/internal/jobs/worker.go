@@ -409,6 +409,17 @@ func (w *Worker) Process(
 		return
 	}
 
+	// D-PROVIDER-CONCURRENCY-CONFIG — the concurrency class (credential id) +
+	// its cap (NULL → 0 = unlimited). Fail-open: if the lookup errors, fall back
+	// to the provider kind as the class + unlimited, so a transient DB hiccup
+	// never wedges a job. (repo is non-nil here — MarkRunning ran above.)
+	concClass, concLimit := providerKind, 0
+	if k, lim, ok, cerr := w.repo.ResolveConcurrency(ctx, modelSource, ownerUserID, modelRef); cerr != nil {
+		logger.Warn("resolve concurrency failed — defaulting to unlimited", "err", cerr)
+	} else if ok {
+		concClass, concLimit = k, lim
+	}
+
 	adapter, err := w.adapter(providerKind)
 	if err != nil {
 		w.finalizeAndNotify(ctx, jobID, ownerUserID, operation, "failed", nil, "LLM_PROVIDER_ROUTE_VIOLATION", err.Error(), "")
@@ -434,14 +445,14 @@ func (w *Worker) Process(
 	// Otherwise we fall through to single-call Phase 2b path unchanged.
 	chunkPieces := w.maybeChunk(inputMap, chunking, logger)
 	if len(chunkPieces) > 1 {
-		if err := w.processChunks(ctx, jobID, agg, adapter, providerKind, endpointBaseURL, secret, providerModelName, inputMap, chunkPieces, emit, logger); err != nil {
+		if err := w.processChunks(ctx, jobID, agg, adapter, concClass, concLimit, endpointBaseURL, secret, providerModelName, inputMap, chunkPieces, emit, logger); err != nil {
 			errCode := classifyStreamErrorCode(err)
 			w.finalizeAndNotify(ctx, jobID, ownerUserID, operation, "failed", nil, errCode, err.Error(), "")
 			return
 		}
 	} else {
 		// Single-call Phase 2b path with Phase 4a-α Step 0b transient retry.
-		streamErr := w.streamWithRetry(ctx, agg, adapter, providerKind, endpointBaseURL, secret, providerModelName, inputMap, emit, logger)
+		streamErr := w.streamWithRetry(ctx, agg, adapter, concClass, concLimit, endpointBaseURL, secret, providerModelName, inputMap, emit, logger)
 		if streamErr != nil {
 			logger.Error("stream failed", "err", streamErr)
 			errCode := classifyStreamErrorCode(streamErr)
@@ -494,7 +505,8 @@ func (w *Worker) processChunks(
 	jobID uuid.UUID,
 	agg Aggregator,
 	adapter provider.Adapter,
-	providerKind string,
+	concClass string,
+	concLimit int,
 	endpointBaseURL, secret, providerModelName string,
 	inputMap map[string]any,
 	chunks []string,
@@ -515,7 +527,7 @@ func (w *Worker) processChunks(
 			// S3a: governor + circuit-breaker wrap the provider call. Inside
 			// retryTransient so each retry re-checks the breaker + re-acquires
 			// a slot, and a transient failure counts toward opening.
-			return ratelimit.Guard(ctx, w.gov, w.brk, providerKind, provider.IsTransientUpstreamError, func() error {
+			return ratelimit.Guard(ctx, w.gov, w.brk, concClass, concLimit, provider.IsTransientUpstreamError, func() error {
 				return adapter.Stream(ctx, endpointBaseURL, secret, providerModelName, perChunkInput, emit)
 			})
 		})
@@ -552,7 +564,8 @@ func (w *Worker) streamWithRetry(
 	ctx context.Context,
 	agg Aggregator,
 	adapter provider.Adapter,
-	providerKind string,
+	concClass string,
+	concLimit int,
 	endpointBaseURL, secret, providerModelName string,
 	input map[string]any,
 	emit EmitFn,
@@ -561,7 +574,7 @@ func (w *Worker) streamWithRetry(
 	err := retryTransient(ctx, w.maxRetries, logger, func() error {
 		agg.StartChunk(0)
 		// S3a: governor + circuit-breaker wrap the provider call (see processChunks).
-		return ratelimit.Guard(ctx, w.gov, w.brk, providerKind, provider.IsTransientUpstreamError, func() error {
+		return ratelimit.Guard(ctx, w.gov, w.brk, concClass, concLimit, provider.IsTransientUpstreamError, func() error {
 			return adapter.Stream(ctx, endpointBaseURL, secret, providerModelName, input, emit)
 		})
 	})

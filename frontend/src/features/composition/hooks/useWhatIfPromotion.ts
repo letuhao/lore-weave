@@ -20,7 +20,7 @@
 import { useCallback, useMemo } from 'react';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { compositionApi } from '../api';
-import { derivativeOverridesKey } from './useDerivativeContext';
+import { derivativeContextKey } from './useDerivativeContext';
 import type { DeriveBody, DivergenceTaxonomy, EntityOverride, Work } from '../types';
 
 /** The EPHEMERAL what-if exploration — the in-memory delta the writer is toying with
@@ -96,12 +96,10 @@ export function useWhatIfPromotion({
         throw new Error('promotion reused the source project_id (expected a fresh derivative project)');
       }
       if (derivative.project_id) {
-        // Stash the REAL submitted override set keyed by the derivative's own project
-        // so the studio badges (C24 useDerivativeContext) reflect persisted state.
-        qc.setQueryData(derivativeOverridesKey(derivative.project_id), {
-          sourceProjectId: sourceWork.project_id,
-          overrideIds: Object.keys(draft.overrides),
-        });
+        // WS-B2: the studio badges now read the DURABLE spec via the
+        // derivative-context endpoint (persisted in the derive txn) — invalidate
+        // that key so the next read returns real state (no ephemeral stash).
+        qc.invalidateQueries({ queryKey: derivativeContextKey(derivative.project_id) });
       }
       qc.invalidateQueries({ queryKey: ['composition', 'work', sourceWork.book_id] });
       onPromoted?.(derivative);

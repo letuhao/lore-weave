@@ -249,6 +249,47 @@
   outline: none;
 }
 
+/* ── T5.1 focus / typewriter mode ──────────────────────────────────────────
+   Driven by `.lw-focus` on the editor wrapper (TiptapEditor focusMode prop).
+   Non-current top-level blocks dim to 28%; the caret's block (`.focusline`,
+   set by TiptapEditor on selection change) stays full opacity. Large vertical
+   padding lets any line — including the first/last — scroll to center for the
+   typewriter effect (scrollIntoView block:center). */
+.lw-focus .tiptap-content {
+  padding-top: 42vh;
+  padding-bottom: 42vh;
+}
+.lw-focus .tiptap-content > * {
+  opacity: 0.28;
+  transition: opacity 0.2s ease;
+}
+.lw-focus .tiptap-content > .focusline {
+  opacity: 1;
+}
+
+/* T5.2 — in-prose mention heatmap: tint an entity's name by its density band
+   (0 = rarely mentioned → 4 = dominant). Inert unless the heatmap extension is
+   enabled (no `.heat-band` decorations are emitted otherwise). */
+.heat-band { border-radius: 2px; padding: 0 1px; }
+.heat-band-0 { background: rgba(59, 130, 246, 0.10); }   /* low — faint blue */
+.heat-band-1 { background: rgba(132, 204, 22, 0.16); }
+.heat-band-2 { background: rgba(234, 179, 8, 0.20); }
+.heat-band-3 { background: rgba(249, 115, 22, 0.24); }
+.heat-band-4 { background: rgba(239, 68, 68, 0.28); }    /* high — red */
+
+/* T5.3 — AI-provenance underlay. Unreviewed AI prose carries a faint dotted
+   underline (always-on by default); clicking a span flips it to reviewed, which
+   removes the underlay (the mark stays in the JSON for the audit trail). The
+   toolbar eye toggle adds `.provenance-underlay-off` on the editor root to hide
+   all underlays without touching the marks. */
+.provenance-mark { cursor: pointer; }
+.provenance-unreviewed {
+  background: rgba(139, 92, 246, 0.08);                  /* faint violet wash */
+  border-bottom: 1px dotted rgba(139, 92, 246, 0.55);
+}
+.provenance-reviewed { background: none; border-bottom: none; }
+.provenance-underlay-off .provenance-unreviewed { background: none; border-bottom: none; }
+
 .tiptap-content p {
   margin-bottom: 0.75em;
 }

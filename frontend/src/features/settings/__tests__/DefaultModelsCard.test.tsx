@@ -15,6 +15,8 @@ const setDefault = vi.fn();
 vi.mock('../api', () => ({
   RERANK_CAPABILITY: 'rerank',
   EMBEDDING_CAPABILITY: 'embedding',
+  PLANNER_CAPABILITY: 'planner',
+  CHAT_CAPABILITY: 'chat',
   defaultModelsApi: {
     get: (...a: unknown[]) => getDefaults(...a),
     set: (...a: unknown[]) => setDefault(...a),
@@ -37,24 +39,35 @@ beforeEach(() => {
 });
 
 describe('DefaultModelsCard', () => {
-  it('lists rerank models and persists a selected default', async () => {
+  it('lists rerank + planner models and persists a selected default', async () => {
     render(<DefaultModelsCard />);
     await waitFor(() => expect(listUserModels).toHaveBeenCalledWith('tok', { capability: 'rerank', include_inactive: false }));
+    // Planner is a role with no model flag → it lists CHAT models.
+    await waitFor(() => expect(listUserModels).toHaveBeenCalledWith('tok', { capability: 'chat', include_inactive: false }));
     // Embedding is intentionally not exposed yet (no consumer) → never queried.
     expect(listUserModels).not.toHaveBeenCalledWith('tok', { capability: 'embedding', include_inactive: false });
 
-    const select = await screen.findByRole('combobox');
-    fireEvent.change(select, { target: { value: 'm1' } });
-
+    // Two rows now: [0] rerank, [1] planner.
+    const selects = await screen.findAllByRole('combobox');
+    expect(selects).toHaveLength(2);
+    fireEvent.change(selects[0], { target: { value: 'm1' } });
     await waitFor(() => expect(setDefault).toHaveBeenCalledWith('tok', 'rerank', 'm1'));
   });
 
-  it('preloads the existing rerank default from the server', async () => {
-    getDefaults.mockResolvedValue({ defaults: { rerank: 'm1' } });
+  it('persists a planner default under the planner capability', async () => {
+    render(<DefaultModelsCard />);
+    const selects = await screen.findAllByRole('combobox');
+    fireEvent.change(selects[1], { target: { value: 'm1' } });
+    await waitFor(() => expect(setDefault).toHaveBeenCalledWith('tok', 'planner', 'm1'));
+  });
+
+  it('preloads the existing rerank + planner defaults from the server', async () => {
+    getDefaults.mockResolvedValue({ defaults: { rerank: 'm1', planner: 'm1' } });
     render(<DefaultModelsCard />);
     await waitFor(() => {
-      const select = screen.getByRole('combobox') as HTMLSelectElement;
-      expect(select.value).toBe('m1');
+      const selects = screen.getAllByRole('combobox') as HTMLSelectElement[];
+      expect(selects[0].value).toBe('m1');
+      expect(selects[1].value).toBe('m1');
     });
   });
 });

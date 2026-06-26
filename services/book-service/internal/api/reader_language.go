@@ -31,6 +31,23 @@ var langTagRe = regexp.MustCompile(`^[A-Za-z]{2,3}(-[A-Za-z0-9]{1,8})*$`)
 
 const maxReaderLangLen = 35
 
+// primaryLangSubtag folds a BCP-47-ish tag to its lowercased primary subtag
+// ("vi-VN" → "vi", "zh-Hant" → "zh"). Returns "" for blank/malformed so a caller
+// can treat it as "no language requested" (KG-TL M1 chapter-title sibling lookup).
+// Mirrors knowledge-service's app/labels/reader_lang.py:primary_subtag so the two
+// sides resolve the language axis identically.
+func primaryLangSubtag(lang string) string {
+	lang = strings.TrimSpace(lang)
+	if lang == "" || len(lang) > maxReaderLangLen || !langTagRe.MatchString(lang) {
+		return ""
+	}
+	primary := lang
+	if i := strings.IndexAny(lang, "-_"); i >= 0 {
+		primary = lang[:i]
+	}
+	return strings.ToLower(primary)
+}
+
 // getReaderLanguage — GET /v1/books/{book_id}/reader-language
 // View-gated (a public/unlisted book counts as viewable so a reader of a shared
 // novel can keep a preference). Returns reader_language=null when unset.

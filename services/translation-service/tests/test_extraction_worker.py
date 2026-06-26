@@ -475,6 +475,59 @@ async def _run_one_chapter_batch(finish_reason: str | None, entities: list[dict]
         return result, post
 
 
+# ── D-EXTRACTION-BATCH-CONCURRENCY: the worker fans batches out under a semaphore ──
+
+
+@pytest.mark.asyncio
+async def test_batch_concurrency_runs_all_units_via_gather():
+    """concurrency>1 drives every (window×batch) unit through the semaphore-bounded
+    gather: each spends tokens, records an outcome, and its entity reaches the
+    writeback — same coverage as the sequential path, just concurrent."""
+    db = AsyncMock()
+    db.fetchval = AsyncMock(return_value=uuid4())  # owner_user_id resolve
+    llm = MagicMock()
+    llm.submit_and_wait = AsyncMock(side_effect=lambda **kw: _sdk_job("stop"))
+    post = AsyncMock(return_value={"created": 4, "updated": 0, "skipped": 0})
+    persist = AsyncMock()
+    batches = [["character"], ["location"], ["item"], ["event"]]
+
+    def _parse(text, batch, profile):
+        # one entity per batch, named by kind so the cross-window merge keeps all 4 distinct
+        kind = batch[0]
+        return (
+            [{"name": f"e-{kind}", "kind_code": kind, "evidence": "", "attributes": {}}],
+            ParseStats(raw_count=1, parse_ok=True),
+        )
+
+    with patch.object(ew.httpx, "AsyncClient",
+                      return_value=_http_cm_returning({"title": "Ch1", "content": "text"})), \
+         patch.object(ew, "prepare_chapter_text", new=MagicMock(return_value="some chapter text")), \
+         patch.object(ew, "plan_kind_batches", return_value=batches), \
+         patch.object(ew, "build_known_entities_context", return_value=""), \
+         patch.object(ew, "build_extraction_prompt", return_value={}), \
+         patch.object(ew, "build_system_prompt", return_value="sys"), \
+         patch.object(ew, "build_user_prompt", return_value="usr"), \
+         patch.object(ew, "reasoning_fields", return_value={}), \
+         patch.object(ew, "parse_and_validate_with_stats", side_effect=_parse), \
+         patch.object(ew, "_persist_batch_outcomes", new=persist), \
+         patch.object(ew, "get_cached_batch", new=AsyncMock(return_value=None)), \
+         patch.object(ew, "put_batch", new=AsyncMock()), \
+         patch.object(ew, "post_extracted_entities", new=post):
+        result = await ew._process_extraction_chapter(
+            job_id=uuid4(), book_id="b", chapter_id=uuid4(), chapter_index=0,
+            extraction_profile={k[0]: {} for k in batches}, kinds_metadata=[], known_entities=[],
+            source_language="zh", model_source="user_model", model_ref=str(uuid4()),
+            max_entities_per_kind=10, thinking_enabled=False, reasoning_effort=None,
+            pool=_pool(db), llm_client=llm, concurrency=4,
+        )
+
+    assert llm.submit_and_wait.await_count == 4          # all 4 units ran (one LLM call each)
+    assert len(persist.await_args.args[-1]) == 4         # 4 outcome rows recorded (the SSOT)
+    posted = post.await_args.kwargs["entities"]
+    assert len({e["name"] for e in posted}) == 4         # all 4 distinct entities reached writeback
+    assert result["output_tokens"] == 80                 # 4 × 20 tokens summed across concurrent units
+
+
 # ── RE (D-RE-WORKER-GRADED-EFFORT): the worker honors graded reasoning_effort ──
 
 
@@ -594,3 +647,32 @@ async def test_process_chapter_skips_stale_writeback_on_source_drift(caplog):
     assert result["created"] == 0
     post.assert_not_awaited()  # nothing written back
     assert any("DRIFTED" in r.getMessage() for r in caplog.records)
+
+
+# ── D-LLM-FAILURE-RATE #1 — structured-output schema builder ──────────────────
+
+
+def test_entity_response_format_is_loose_array_schema():
+    """The json_schema must force a top-level ARRAY of objects that require
+    kind (restricted to the batch's kinds) + name, while leaving attributes FREE
+    (additionalProperties) so the per-kind profile fields aren't constrained."""
+    rf = ew._entity_response_format(["character", "location", "item"])
+    assert rf["type"] == "json_schema"
+    schema = rf["json_schema"]["schema"]
+    assert schema["type"] == "array"
+    item = schema["items"]
+    assert item["type"] == "object"
+    assert item["required"] == ["kind", "name"]
+    assert item["additionalProperties"] is True
+    # kind is enum-restricted to exactly this batch's kinds (kills wrong-kind output)
+    assert item["properties"]["kind"]["enum"] == ["character", "location", "item"]
+    assert item["properties"]["name"]["type"] == "string"
+
+
+def test_entity_response_format_enum_tracks_the_batch():
+    """A different batch → a different kind enum (per-call, not global)."""
+    rf = ew._entity_response_format(["event", "relationship"])
+    assert rf["json_schema"]["schema"]["items"]["properties"]["kind"]["enum"] == [
+        "event",
+        "relationship",
+    ]

@@ -6,7 +6,7 @@ import { useAuth } from '@/auth';
 import { aiModelsApi, type UserModel } from '@/features/ai-models/api';
 import { ProjectPicker } from '@/components/shared/ProjectPicker';
 import { chatApi } from '../api';
-import type { ChatSession, GenerationParams, PatchSessionPayload } from '../types';
+import type { ChatSession, GenerationParams, PatchSessionPayload, ReasoningEffort } from '../types';
 
 const SYSTEM_PROMPT_PRESETS: Record<string, string> = {
   Custom: '',
@@ -35,7 +35,13 @@ export function SessionSettingsPanel({ session, onSessionUpdate, onClose }: Sess
   const [topP, setTopP] = useState(session.generation_params?.top_p ?? 0.9);
   const [maxTokens, setMaxTokens] = useState(session.generation_params?.max_tokens ?? 0);
   const [unlimited, setUnlimited] = useState(!session.generation_params?.max_tokens);
-  const [thinkingDefault, setThinkingDefault] = useState(session.generation_params?.thinking ?? false);
+  // Granular reasoning effort (replaces the old binary Think/Fast). 'off' disables hidden
+  // thinking — the fix for an over-thinking model that loops without finishing. Derived
+  // from a stored reasoning_effort, else the legacy boolean `thinking`.
+  const [reasoningEffort, setReasoningEffort] = useState<ReasoningEffort>(
+    session.generation_params?.reasoning_effort ??
+      (session.generation_params?.thinking ? 'medium' : 'off'),
+  );
   const [selectedPreset, setSelectedPreset] = useState('Custom');
 
   // Model selector
@@ -44,6 +50,9 @@ export function SessionSettingsPanel({ session, onSessionUpdate, onClose }: Sess
   const [modelsLoading, setModelsLoading] = useState(false);
   // A2A phase-2: optional composer model (in-turn prose delegation). '' = none.
   const [selectedComposerRef, setSelectedComposerRef] = useState(session.composer_model_ref ?? '');
+  // D-PLAN-PLANNER-DEFAULT-FE phase 2: optional per-session planner model. '' = none
+  // (falls back to the per-user planner default / chat fallback).
+  const [selectedPlannerRef, setSelectedPlannerRef] = useState(session.planner_model_ref ?? '');
 
   // K9.1 / W4: project picker — drives knowledge-service memory mode for
   // this session. The shared ProjectPicker self-loads active projects and
@@ -193,9 +202,11 @@ export function SessionSettingsPanel({ session, onSessionUpdate, onClose }: Sess
     patchSession({ generation_params: { max_tokens: checked ? null : (maxTokens || 4096) } });
   }
 
-  function handleThinkingToggle(thinking: boolean) {
-    setThinkingDefault(thinking);
-    patchSession({ generation_params: { thinking } });
+  function handleEffortChange(effort: ReasoningEffort) {
+    setReasoningEffort(effort);
+    // Send reasoning_effort (the granular knob resolve_reasoning reads). Also clear the
+    // legacy boolean so the two can't disagree (reasoning_effort wins, but keep it tidy).
+    patchSession({ generation_params: { reasoning_effort: effort, thinking: null } });
   }
 
   function handleModelChange(modelId: string) {
@@ -210,6 +221,16 @@ export function SessionSettingsPanel({ session, onSessionUpdate, onClose }: Sess
     patchSession({
       composer_model_source: next ? 'user_model' : null,
       composer_model_ref: next,
+    });
+  }
+
+  function handlePlannerChange(modelId: string) {
+    // '' clears the per-session planner (falls back to the per-user default).
+    const next = modelId || null;
+    setSelectedPlannerRef(modelId);
+    patchSession({
+      planner_model_source: next ? 'user_model' : null,
+      planner_model_ref: next,
     });
   }
 
@@ -302,6 +323,36 @@ export function SessionSettingsPanel({ session, onSessionUpdate, onClose }: Sess
           )}
           <p className="mt-1 text-[10px] text-muted-foreground">
             {t('settings.composer_hint', { defaultValue: 'When set, the AI can delegate prose-writing to this model via compose_prose (best: a reasoning model for writing + a tool-capable main model).' })}
+          </p>
+        </div>
+
+        {/* ── Planner model (per-session override for glossary_plan) ──── */}
+        <div>
+          <label className="mb-1.5 block text-xs font-medium text-muted-foreground">
+            {t('settings.planner_model', { defaultValue: 'Planner model (optional)' })}
+          </label>
+          {modelsLoading ? (
+            <div className="h-9 animate-pulse rounded-md bg-muted" />
+          ) : (
+            <select
+              value={selectedPlannerRef}
+              onChange={(e) => handlePlannerChange(e.target.value)}
+              className="h-9 w-full rounded-md border border-border bg-background px-2 text-sm text-foreground outline-none focus:border-ring focus:shadow-[0_0_0_3px_rgba(212,149,42,0.2)]"
+            >
+              <option value="">{t('settings.planner_none', { defaultValue: 'Use my default planner' })}</option>
+              {Object.entries(groupedModels).map(([provider, models]) => (
+                <optgroup key={provider} label={provider}>
+                  {models.map((m) => (
+                    <option key={m.user_model_id} value={m.user_model_id}>
+                      {m.alias ?? m.provider_model_name}
+                    </option>
+                  ))}
+                </optgroup>
+              ))}
+            </select>
+          )}
+          <p className="mt-1 text-[10px] text-muted-foreground">
+            {t('settings.planner_hint', { defaultValue: 'The model the glossary assistant plans multi-step ontology changes with (overrides your Settings default for this session). Pick a strong, tool-capable model.' })}
           </p>
         </div>
 
@@ -428,37 +479,36 @@ export function SessionSettingsPanel({ session, onSessionUpdate, onClose }: Sess
             </div>
           </div>
 
-          {/* Thinking Mode Default */}
+          {/* Reasoning effort (replaces binary Think/Fast). 'Off' disables hidden thinking
+              — use it to stop an over-thinking model that loops without answering. */}
           <div className="mb-2">
-            <div className="flex items-center justify-between">
-              <label className="text-[11px] text-muted-foreground">{t('settings.default_mode')}</label>
+            <div className="mb-1.5 flex items-center justify-between">
+              <label className="text-[11px] text-muted-foreground">
+                {t('settings.reasoning_effort', { defaultValue: 'Reasoning effort' })}
+              </label>
               <div className="inline-flex rounded-md bg-secondary p-0.5 gap-0.5">
-                <button
-                  type="button"
-                  onClick={() => handleThinkingToggle(true)}
-                  className={`flex items-center gap-1 rounded px-2.5 py-1 text-[11px] font-medium transition-colors ${
-                    thinkingDefault
-                      ? 'bg-[#1e1633] text-[#a78bfa] border border-[#3b2d6b]'
-                      : 'text-muted-foreground'
-                  }`}
-                >
-                  <Brain className="h-2.5 w-2.5" />
-                  {t('input.think')}
-                </button>
-                <button
-                  type="button"
-                  onClick={() => handleThinkingToggle(false)}
-                  className={`flex items-center gap-1 rounded px-2.5 py-1 text-[11px] font-medium transition-colors ${
-                    !thinkingDefault
-                      ? 'bg-accent/10 text-accent border border-accent/30'
-                      : 'text-muted-foreground'
-                  }`}
-                >
-                  <Zap className="h-2.5 w-2.5" />
-                  {t('input.fast')}
-                </button>
+                {(['off', 'low', 'medium', 'high'] as const).map((level) => (
+                  <button
+                    key={level}
+                    type="button"
+                    onClick={() => handleEffortChange(level)}
+                    className={`flex items-center gap-1 rounded px-2 py-1 text-[11px] font-medium transition-colors ${
+                      reasoningEffort === level
+                        ? level === 'off'
+                          ? 'bg-accent/10 text-accent border border-accent/30'
+                          : 'bg-[#1e1633] text-[#a78bfa] border border-[#3b2d6b]'
+                        : 'text-muted-foreground'
+                    }`}
+                  >
+                    {level === 'off' ? <Zap className="h-2.5 w-2.5" /> : <Brain className="h-2.5 w-2.5" />}
+                    {t(`settings.effort.${level}`, { defaultValue: level === 'off' ? 'Off' : level[0].toUpperCase() + level.slice(1) })}
+                  </button>
+                ))}
               </div>
             </div>
+            <p className="text-[10px] text-muted-foreground">
+              {t('settings.reasoning_effort_hint', { defaultValue: 'How much the model thinks before answering. Off = no hidden thinking (fastest, and stops runaway reasoning loops). Higher = deeper but slower and more tokens.' })}
+            </p>
           </div>
         </details>
 
@@ -493,12 +543,12 @@ export function SessionSettingsPanel({ session, onSessionUpdate, onClose }: Sess
                 setTopP(0.9);
                 setMaxTokens(0);
                 setUnlimited(true);
-                setThinkingDefault(false);
+                setReasoningEffort('off');
                 setSystemPrompt('');
                 setSelectedPreset('Custom');
                 patchSession({
                   system_prompt: '',
-                  generation_params: { temperature: null, top_p: null, max_tokens: null, thinking: null },
+                  generation_params: { temperature: null, top_p: null, max_tokens: null, thinking: null, reasoning_effort: null },
                 });
               }}
               className="flex-1 rounded-md border border-border px-3 py-2 text-xs text-muted-foreground hover:bg-secondary transition-colors"

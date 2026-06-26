@@ -236,6 +236,8 @@ ON CREATE SET
   r.schema_version = $schema_version,
   r.graph_id = $graph_id,
   r.created_at = datetime(),
+  // T4.1 flywheel — the extraction job that first minted this relation (net-new).
+  r.created_job_id = $job_id,
   r.updated_at = datetime()
 ON MATCH SET
   r.source_event_ids = CASE
@@ -281,6 +283,7 @@ async def create_relation(
     schema_version: int | None = None,
     graph_id: str | None = None,
     cardinality: str | None = None,
+    job_id: str | None = None,
 ) -> Relation | None:
     """Idempotent edge upsert. Re-running with the same
     `(subject_id, predicate, object_id)` returns the same edge —
@@ -348,6 +351,7 @@ async def create_relation(
         pending_validation=pending_validation,
         schema_version=schema_version,
         graph_id=graph_id,
+        job_id=job_id,
     )
     record = await result.single()
     if record is None:

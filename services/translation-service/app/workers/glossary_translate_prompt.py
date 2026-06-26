@@ -56,6 +56,26 @@ def parse_translation_response(raw: str, expected_codes: set[str]) -> dict[str, 
     return out
 
 
+def attr_response_format(expected_codes: set[str]) -> dict:
+    """D-LLM-FAILURE-RATE #1 — a LOOSE json_schema forcing the output to be a JSON
+    OBJECT of string values keyed by the expected attribute codes (exactly what
+    ``parse_translation_response`` consumes). ``additionalProperties:false`` matches
+    the prompt's "do not add keys beyond those provided". Kills the malformed-JSON
+    parse failures (the "Expecting ',' delimiter" class that fails an entity).
+    Passed as ``response_format``; a model that rejects it is retried without it."""
+    return {
+        "type": "json_schema",
+        "json_schema": {
+            "name": "translated_attributes",
+            "schema": {
+                "type": "object",
+                "properties": {c: {"type": "string"} for c in sorted(expected_codes)},
+                "additionalProperties": False,
+            },
+        },
+    }
+
+
 def estimate_glossary_translate_cost(entity_count: int, attr_count: int) -> dict:
     """Heuristic cost estimate for the wizard confirm step."""
     llm_calls = max(entity_count, 1)

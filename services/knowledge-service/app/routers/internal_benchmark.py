@@ -74,7 +74,13 @@ async def get_benchmark_status(
     ),
     repo: BenchmarkRunsRepo = Depends(get_benchmark_runs_repo),
 ) -> BenchmarkStatusResponse:
-    row = await repo.get_latest(user_id, project_id, embedding_model)
+    # D-JOURNEY-KG-BENCHMARK-UX — mirror the public endpoint: a supplied model uses
+    # the MODEL-scoped lookup (matches the gate; finds the hidden-sandbox run), else
+    # the project-scoped "ever benchmarked?" read.
+    if embedding_model:
+        row = await repo.get_latest_for_model(user_id, embedding_model)
+    else:
+        row = await repo.get_latest(user_id, project_id, embedding_model)
     if row is None:
         return BenchmarkStatusResponse(has_run=False)
     return BenchmarkStatusResponse(

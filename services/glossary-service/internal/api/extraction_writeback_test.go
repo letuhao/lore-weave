@@ -11,6 +11,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"slices"
@@ -1195,10 +1196,162 @@ func TestMergeStrategy_FromOntology(t *testing.T) {
 	}
 }
 
+// TestAdoptClone_PropagatesMergeStrategy — D-EXTRACT-ATTR-MERGE-DEFAULTS review-impl HIGH fix.
+// The migration (0039) is a ONE-TIME re-seed; the book_attributes column DEFAULT is still
+// fill_if_empty, so a book adopted/cloned LATER must inherit the (healed) source's merge_strategy
+// or it re-freezes. This proves the adoption clone COPIES merge_strategy from the System source.
+func TestAdoptClone_PropagatesMergeStrategy(t *testing.T) {
+	pool := openTestDB(t)
+	runK2aMigrations(t, pool)
+	ctx := context.Background()
+	// Heal a System attribute to a non-default strategy (what 0039 does in prod). system_attributes
+	// is SHARED across tests on this DB, so capture the original + RESTORE in cleanup — otherwise the
+	// (now strategy-copying) adopt helper would leak this value into other tests' cloned books.
+	const where = `code='appearance' AND kind_id IN (SELECT kind_id FROM system_kinds WHERE code='character')`
+	var orig string
+	if err := pool.QueryRow(ctx, `SELECT merge_strategy FROM system_attributes WHERE `+where).Scan(&orig); err != nil {
+		t.Fatalf("read original system strategy: %v", err)
+	}
+	if _, err := pool.Exec(ctx, `UPDATE system_attributes SET merge_strategy='append' WHERE `+where); err != nil {
+		t.Fatalf("seed system strategy: %v", err)
+	}
+	t.Cleanup(func() {
+		_, _ = pool.Exec(context.Background(), `UPDATE system_attributes SET merge_strategy=$1 WHERE `+where, orig)
+	})
+	bookID := uuid.MustParse("00000000-0000-0000-0001-0000000a1026")
+	adoptTestBook(t, pool, bookID)
+	t.Cleanup(func() { cleanupExtractBook(pool, bookID.String()) })
+
+	kindID := bookKindID(t, pool, bookID, "character")
+	attrID := bookAttrID(t, pool, bookID, kindID, "appearance")
+	var strat string
+	if err := pool.QueryRow(ctx,
+		`SELECT merge_strategy FROM book_attributes WHERE attr_id=$1`, attrID).Scan(&strat); err != nil {
+		t.Fatalf("read cloned strategy: %v", err)
+	}
+	if strat != "append" {
+		t.Errorf("adoption clone must inherit the System source's merge_strategy; got %q want append "+
+			"(a new book would re-freeze on fill_if_empty)", strat)
+	}
+}
+
+// TestEvidenceChapterFor — D-EVIDENCE-PROVENANCE-OVERHAUL M2. The evidence's chapter must be the
+// chapter the writeback PROCESSED (req.ChapterID, where the quote came from), not the entity's
+// first appearance — the firstChapterID bug mislabeled a chapter-50 quote as chapter 1.
+func TestEvidenceChapterFor(t *testing.T) {
+	c1, c50 := uuid.NewString(), uuid.NewString()
+	links := []chapterLinkIn{
+		{ChapterID: c1, ChapterTitle: "Ch1", ChapterIndex: 1},
+		{ChapterID: c50, ChapterTitle: "Ch50", ChapterIndex: 50},
+	}
+	// Writeback for chapter 50 → evidence stamped with c50 + its title/index (NOT c1).
+	id, title, idx := evidenceChapterFor(c50, links)
+	if id == nil || id.String() != c50 || title != "Ch50" || idx == nil || *idx != 50 {
+		t.Fatalf("scope=c50 → got id=%v title=%q idx=%v want c50/Ch50/50", id, title, idx)
+	}
+	// Scope chapter present but no matching link → correct id, empty title (backfilled later).
+	other := uuid.NewString()
+	id2, title2, idx2 := evidenceChapterFor(other, links)
+	if id2 == nil || id2.String() != other || title2 != "" || idx2 != nil {
+		t.Fatalf("scope=other → got id=%v title=%q idx=%v want other/empty/nil", id2, title2, idx2)
+	}
+	// Legacy (no scope) → first link, preserving old behavior.
+	id3, title3, idx3 := evidenceChapterFor("", links)
+	if id3 == nil || id3.String() != c1 || title3 != "Ch1" || idx3 == nil || *idx3 != 1 {
+		t.Fatalf("legacy → got id=%v title=%q idx=%v want c1/Ch1/1", id3, title3, idx3)
+	}
+	// Nothing → nil.
+	if id4, _, _ := evidenceChapterFor("", nil); id4 != nil {
+		t.Fatalf("empty → want nil id, got %v", id4)
+	}
+}
+
+// TestSeedMergeStrategy — D-EXTRACT-ATTR-MERGE-DEFAULTS review fix. The runtime heuristic for
+// a NEWLY-created ontology attribute (book adoption clone of a fresh source, custom kind/attr,
+// user-tier attr) MUST match migration 0039's CASE so new books/attrs don't re-freeze on the
+// column's fill_if_empty default. This locks the mapping (the migration itself has no Go test).
+func TestSeedMergeStrategy(t *testing.T) {
+	cases := []struct {
+		code, fieldType string
+		required        bool
+		want            string
+	}{
+		{"name", "text", true, "fill_if_empty"},   // identity key
+		{"term", "text", false, "fill_if_empty"},  // identity key (glossary term)
+		{"slug", "text", true, "fill_if_empty"},   // any required text key
+		{"aliases", "tags", false, "append"},      // list → accumulate
+		{"abilities", "tags", true, "append"},     // required tags still append
+		{"location", "text", false, "overwrite"},  // non-required state text → advance
+		{"biography", "textarea", false, "overwrite"},
+		{"power_level", "number", false, "overwrite"},
+		{"affiliation", "select", false, "overwrite"},
+	}
+	for _, c := range cases {
+		if got := seedMergeStrategy(c.code, c.fieldType, c.required); got != c.want {
+			t.Errorf("seedMergeStrategy(%q,%q,%v)=%q want %q", c.code, c.fieldType, c.required, got, c.want)
+		}
+	}
+}
+
+// TestMergeStrategy_DefaultSentinel — D-EXTRACT-ATTR-MERGE-DEFAULTS M2. The worker/FE now
+// send an explicit "default" action (instead of forcing "fill", which froze every
+// already-filled attribute on re-extraction) so the attribute's authored merge_strategy
+// governs. This proves the "default" sentinel routes to the authored strategy identically to
+// an omitted action — for BOTH append (accumulate) and overwrite (advance state).
+func TestMergeStrategy_DefaultSentinel(t *testing.T) {
+	pool := openTestDB(t)
+	runK2aMigrations(t, pool)
+	bookID := "00000000-0000-0000-0001-0000000a1025"
+	adoptTestBook(t, pool, uuid.MustParse(bookID))
+	t.Cleanup(func() { cleanupExtractBook(pool, bookID) })
+	srv, token := newEntitiesListServer(t)
+	srv.pool = pool
+	links := []map[string]any{{"chapter_id": uuid.NewString(), "chapter_index": 1}}
+	// Every post sends the explicit "default" sentinel for appearance.
+	defaultAction := map[string]any{"character": map[string]any{"appearance": "default"}}
+
+	post := func(val string) {
+		postExtract(t, srv, token, bookID, map[string]any{
+			"source_language":   "zh",
+			"attribute_actions": defaultAction,
+			"entities": []map[string]any{
+				{"kind_code": "character", "name": "默認者",
+					"attributes": map[string]any{"appearance": val}, "chapter_links": links},
+			},
+		})
+	}
+
+	// Seed a clean scalar baseline under fill_if_empty.
+	setMergeStrategy(t, pool, bookID, "appearance", "fill_if_empty")
+	post("tall")
+	if v := appearanceValue(t, pool, bookID); v != "tall" {
+		t.Fatalf("baseline (default→fill on empty): want \"tall\", got %q", v)
+	}
+
+	// strategy=append + action="default" → ACCUMULATE (the core fix).
+	setMergeStrategy(t, pool, bookID, "appearance", "append")
+	post("short")
+	if v := appearanceValue(t, pool, bookID); v != `["tall","short"]` {
+		t.Errorf("default→append: want [\"tall\",\"short\"], got %q", v)
+	}
+
+	// strategy=overwrite + action="default" → ADVANCE to the latest value, REPLACING the
+	// accumulated list (not appending). The attr is in multi-row mode after the append step,
+	// so the replaced single value serializes as a one-element list — the point is that
+	// "tall"/"short" are gone and only "medium" remains.
+	setMergeStrategy(t, pool, bookID, "appearance", "overwrite")
+	post("medium")
+	if v := appearanceValue(t, pool, bookID); v != `["medium"]` {
+		t.Errorf("default→overwrite: want [\"medium\"] (replaced, not appended), got %q", v)
+	}
+}
+
 // TestEntityDedup_UniqueIndexBackstop proves the constraint backstop (INV-C2): two
-// LIVE entities of the same book+kind cannot share a normalized name. Driven through
-// the real EAV name-write path (the trig_eav_snapshot trigger maintains cached_name,
-// from which normalized_name is generated and the unique index is checked).
+// LIVE entities of the same book+kind cannot share a normalized name. Post
+// D-GLOSSARY-ST-DEDUP M3a, normalized_name is APP-MAINTAINED (no longer a GENERATED
+// expression), so the backstop is keyed when the app stamps the dedup key via
+// refreshEntityDedupKey — NOT on a raw EAV insert that bypasses the app. This test
+// drives that app path: the second entity's key stamp must violate uq_entity_dedup.
 func TestEntityDedup_UniqueIndexBackstop(t *testing.T) {
 	pool := openTestDB(t)
 	ctx := context.Background()
@@ -1212,7 +1365,7 @@ func TestEntityDedup_UniqueIndexBackstop(t *testing.T) {
 	kindID := bookKindID(t, pool, bid, "character")
 	nameAttr := bookAttrID(t, pool, bid, kindID, "name")
 
-	// Entity 1 named 独一 — lands fine.
+	// Entity 1 named 独一 — name lands, app stamps the dedup key: fine.
 	var e1, e2 uuid.UUID
 	if err := pool.QueryRow(ctx,
 		`INSERT INTO glossary_entities(book_id,kind_id,status) VALUES($1,$2,'draft') RETURNING entity_id`,
@@ -1224,8 +1377,12 @@ func TestEntityDedup_UniqueIndexBackstop(t *testing.T) {
 		 VALUES($1,$2,'zh','独一')`, e1, nameAttr); err != nil {
 		t.Fatalf("name e1: %v", err)
 	}
+	if err := refreshEntityDedupKey(ctx, pool, e1); err != nil {
+		t.Fatalf("stamp dedup key e1: %v", err)
+	}
 
-	// Entity 2 with the SAME normalized name — its name write must violate uq_entity_dedup.
+	// Entity 2 with the SAME normalized name — the raw name insert succeeds (plain
+	// column), but the app's key stamp must violate uq_entity_dedup.
 	if err := pool.QueryRow(ctx,
 		`INSERT INTO glossary_entities(book_id,kind_id,status) VALUES($1,$2,'draft') RETURNING entity_id`,
 		bid, kindID).Scan(&e2); err != nil {
@@ -1233,7 +1390,14 @@ func TestEntityDedup_UniqueIndexBackstop(t *testing.T) {
 	}
 	if _, err := pool.Exec(ctx,
 		`INSERT INTO entity_attribute_values(entity_id,attr_def_id,original_language,original_value)
-		 VALUES($1,$2,'zh','独一')`, e2, nameAttr); err == nil {
-		t.Errorf("uq_entity_dedup did not reject a second live entity with the same normalized name")
+		 VALUES($1,$2,'zh','独一')`, e2, nameAttr); err != nil {
+		t.Fatalf("name e2: %v", err)
+	}
+	err := refreshEntityDedupKey(ctx, pool, e2)
+	if err == nil {
+		t.Fatalf("uq_entity_dedup did not reject a second live entity with the same normalized name")
+	}
+	if !errors.Is(err, errDuplicateName) {
+		t.Errorf("want errDuplicateName (→ 409), got %v", err)
 	}
 }

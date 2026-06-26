@@ -59,6 +59,7 @@ from pydantic import BaseModel
 
 from app.db.neo4j_helpers import CypherSession
 from app.db.neo4j_repos.canonical import canonicalize_entity_name
+from app.db.neo4j_repos.entities import resolve_participant_anchors
 from app.db.neo4j_repos.entity_status import merge_entity_status
 from app.db.neo4j_repos.events import (
     EVENT_ORDER_CHAPTER_STRIDE,
@@ -436,6 +437,7 @@ async def write_pass2_extraction(
             confidence=ent.confidence,
             alias_map_repo=alias_map_repo,
             provenance=provenance,
+            job_id=job_id,
         )
         merged_entity_ids.add(entity.id)
         entities_merged += 1
@@ -579,6 +581,7 @@ async def write_pass2_extraction(
                     alias_map_repo=alias_map_repo,
                     auto_created=True,
                     provenance=provenance,
+                    job_id=job_id,
                 )
             except Exception:
                 logger.warning(
@@ -691,6 +694,7 @@ async def write_pass2_extraction(
             schema_version=schema.schema_version if schema else None,
             graph_id=None,
             cardinality=edge_cardinality,
+            job_id=job_id,
         )
         if result is not None:
             relations_created += 1
@@ -747,6 +751,20 @@ async def write_pass2_extraction(
         # ("the next morning", "in his youth", "summer 1880") — kept
         # for FE display + parsed best-effort by the C18 backfill
         # helper into event_date_iso when possible.
+        sanitized_participants = [
+            _sanitize(p, project_id) for p in evt.participants
+        ]
+        # KG-TL Option A (D-KG-TL-PARTICIPANT-ANCHOR) — resolve each participant
+        # name to its glossary entity_id NOW (Pass-1 entities are already in the
+        # graph) and store the anchor on the event, so the timeline localizer
+        # joins by stored id instead of re-resolving names at read time.
+        # Best-effort: an unanchored name → source fallback + marker.
+        participant_anchors = await resolve_participant_anchors(
+            session,
+            user_id=user_id,
+            project_id=project_id,
+            names=sanitized_participants,
+        )
         event = await merge_event(
             session,
             user_id=user_id,
@@ -756,12 +774,12 @@ async def write_pass2_extraction(
             event_order=event_order,
             event_date_iso=evt.event_date,
             time_cue=evt.time_cue,
-            participants=[
-                _sanitize(p, project_id) for p in evt.participants
-            ],
+            participants=sanitized_participants,
+            participant_anchors=participant_anchors,
             source_type=source_type,
             confidence=evt.confidence,
             provenance=provenance,
+            job_id=job_id,
         )
         events_merged += 1
         if evt.event_date:

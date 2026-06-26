@@ -17,7 +17,7 @@
 import { useCallback, useMemo, useState } from 'react';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { compositionApi } from '../api';
-import { derivativeOverridesKey } from './useDerivativeContext';
+import { derivativeContextKey } from './useDerivativeContext';
 import type { DeriveBody, DivergenceTaxonomy, EntityOverride, Work } from '../types';
 
 export type WizardStep = 1 | 2 | 3 | 4;
@@ -124,17 +124,12 @@ export function useDivergenceWizard({
     mutationFn: () => compositionApi.deriveWork(sourceWork.project_id, buildBody(), token!),
     onSuccess: (derivative) => {
       // The derivative is a fresh Work for the SAME book — bust the work-resolution
-      // cache so a re-resolve sees the new candidate. The studio (DPS2) badges read
-      // the REAL override set the wizard just submitted: stash the override
-      // target-ids in the cache keyed by the derivative's own project_id so
-      // useDerivativeContext labels INHERITED vs OVERRIDDEN from actual persisted
-      // state (the BE stored exactly these), not a guess. (M0 has no BE read
-      // endpoint for overrides — that's C25's packer concern; brief scopes OUT new BE.)
+      // cache so a re-resolve sees the new candidate. WS-B2: the studio badges now
+      // read the DURABLE spec via GET /works/{id}/derivative-context (persisted in
+      // the same txn as the derive), so we just invalidate that key — no ephemeral
+      // override-id stash. The next read of the derivative returns real state.
       if (derivative.project_id) {
-        qc.setQueryData(derivativeOverridesKey(derivative.project_id), {
-          sourceProjectId: sourceWork.project_id,
-          overrideIds: Object.keys(overrides),
-        });
+        qc.invalidateQueries({ queryKey: derivativeContextKey(derivative.project_id) });
       }
       qc.invalidateQueries({ queryKey: ['composition', 'work', sourceWork.book_id] });
       onDerived?.(derivative);

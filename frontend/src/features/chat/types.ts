@@ -1,11 +1,16 @@
 // ── Chat V2 Types ─────────────────────────────────────────────────────────────
 // Mirrors chat-service backend models.
 
+export type ReasoningEffort = 'off' | 'auto' | 'low' | 'medium' | 'high';
+
 export interface GenerationParams {
   max_tokens?: number | null;
   temperature?: number | null;
   top_p?: number | null;
   thinking?: boolean | null;
+  // Granular reasoning effort (takes precedence over `thinking`). 'off' disables hidden
+  // thinking — the fix for an over-thinking model that loops without finishing.
+  reasoning_effort?: ReasoningEffort | null;
 }
 
 export interface ChatSession {
@@ -32,6 +37,9 @@ export interface ChatSession {
   // (model_ref) can call compose_prose, which streams THIS model for prose.
   composer_model_source?: string | null;
   composer_model_ref?: string | null;
+  // D-PLAN-PLANNER-DEFAULT-FE phase 2: optional per-session planner model.
+  planner_model_source?: string | null;
+  planner_model_ref?: string | null;
   // K-CLEAN-5 (D-K8-04): memory mode for the chat header
   // MemoryIndicator.
   //   no_project — no project linked, AI sees only the global bio
@@ -175,4 +183,7 @@ export interface PatchSessionPayload {
   // semantics as project_id — emit explicit null to clear.
   composer_model_source?: string | null;
   composer_model_ref?: string | null;
+  // D-PLAN-PLANNER-DEFAULT-FE phase 2: set/clear the per-session planner model.
+  planner_model_source?: string | null;
+  planner_model_ref?: string | null;
 }

@@ -81,6 +81,8 @@ export function TranslateModal({ open, onClose, bookId, onJobCreated, preselecte
   const [qaDepth, setQaDepth] = useState<'rule_only' | 'standard' | 'thorough'>('standard');
   const [maxQaRounds, setMaxQaRounds] = useState(2);
   const [forceRetranslate, setForceRetranslate] = useState(false);
+  // Enable model reasoning (thinking) for the translation LLM. Default OFF.
+  const [thinkingEnabled, setThinkingEnabled] = useState(false);
 
   const presetKey = (preselectedChapterIds ?? []).join(',');
 
@@ -128,6 +130,7 @@ export function TranslateModal({ open, onClose, bookId, onJobCreated, preselecte
         setQaDepth('standard');
         setMaxQaRounds(2);
         setForceRetranslate(false);
+        setThinkingEnabled(false);
       })
       .catch((e) => toast.error((e as Error).message))
       .finally(() => setLoading(false));
@@ -233,6 +236,8 @@ export function TranslateModal({ open, onClose, bookId, onJobCreated, preselecte
             }
           : {}),
         force_retranslate: force,
+        // D-TRANSLATE-REASONING-TOGGLE — per-job reasoning enable/disable.
+        thinking_enabled: thinkingEnabled,
       });
       toast.success(t('translate.job_started', { count: chapterIds.length }));
       onJobCreated();
@@ -376,7 +381,26 @@ export function TranslateModal({ open, onClose, bookId, onJobCreated, preselecte
                       {t('translate.translate_needed', { count: neededIds.length })}
                     </button>
                   ) : (
-                    <p className="text-[11px] text-emerald-500">{t('translate.needs_none')}</p>
+                    // Everything is already translated — the primary "translate needed"
+                    // CTA is gone, which left re-translation a dead-end (buried behind
+                    // Advanced → Force). Offer a direct force-retranslate of the SELECTED
+                    // chapters (the per-chapter page preselects this chapter) so making a
+                    // fresh translation is always one click, not a hunt.
+                    <div className="space-y-1.5">
+                      <p className="text-[11px] text-emerald-500">{t('translate.needs_none')}</p>
+                      <button
+                        onClick={() => void submitJob([...selectedChapters], true)}
+                        disabled={!configReady || selectedChapters.size === 0 || submitting}
+                        className="inline-flex w-full items-center justify-center gap-1.5 rounded-md border border-primary/40 bg-primary/5 px-4 py-2 text-xs font-medium text-primary hover:bg-primary/10 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                        data-testid="translate-retranslate-selected"
+                      >
+                        {submitting && <Loader2 className="h-3.5 w-3.5 animate-spin" />}
+                        {t('translate.retranslate_selected', {
+                          count: selectedChapters.size,
+                          defaultValue: 'Re-translate selected ({{count}})',
+                        })}
+                      </button>
+                    </div>
                   )}
                 </div>
               )}
@@ -472,6 +496,28 @@ export function TranslateModal({ open, onClose, bookId, onJobCreated, preselecte
                       <span className="flex flex-col gap-0.5">
                         <span className="text-xs font-medium">{t('translate.force_retranslate')}</span>
                         <span className="text-[10px] text-muted-foreground">{t('translate.force_retranslate_hint')}</span>
+                      </span>
+                    </label>
+
+                    {/* Enable model reasoning (thinking) — default OFF. */}
+                    <label className="flex items-start gap-2 cursor-pointer">
+                      <input
+                        type="checkbox"
+                        checked={thinkingEnabled}
+                        onChange={(e) => setThinkingEnabled(e.target.checked)}
+                        className="mt-0.5 h-3.5 w-3.5 rounded border-border accent-primary"
+                        data-testid="translate-thinking-toggle"
+                      />
+                      <span className="flex flex-col gap-0.5">
+                        <span className="text-xs font-medium">
+                          {t('translate.reasoning_enable', { defaultValue: 'Enable model reasoning (thinking)' })}
+                        </span>
+                        <span className="text-[10px] text-muted-foreground">
+                          {t('translate.reasoning_hint', {
+                            defaultValue:
+                              'Off by default — hidden thinking can burn the output budget on local models. Enable for hard passages on a reasoning model.',
+                          })}
+                        </span>
                       </span>
                     </label>
                   </div>

@@ -13,7 +13,9 @@ const { mockStream, mockCritique, mockAuto, mockCorrection } = vi.hoisted(() => 
   mockAuto: { mutate: vi.fn(), reset: vi.fn(), data: undefined as unknown, isPending: false, isError: false },
   mockCorrection: { mutate: vi.fn(), isPending: false },
 }));
-vi.mock('../../hooks/useCompositionStream', () => ({ useCompositionStream: () => mockStream }));
+// T5.4 — the co-writer stream is now consumed via the hoisted LiveStateContext, so
+// the mock targets useLiveStream (ComposeView no longer calls useCompositionStream).
+vi.mock('../../context/LiveStateContext', () => ({ useLiveStream: () => mockStream }));
 vi.mock('../../hooks/useCritique', () => ({ useCritique: () => mockCritique }));
 vi.mock('../../hooks/useAutoGenerate', () => ({
   useAutoGenerate: () => mockAuto,
@@ -58,7 +60,11 @@ describe('ComposeView (ghost / accept — §13 SC4)', () => {
     render(<ComposeView {...baseProps} onAccept={onAccept} />);
     fireEvent.click(screen.getByText('accept'));
     expect(onAccept).toHaveBeenCalledWith('drafted prose');
-    expect(mockCritique.critique.mutate).toHaveBeenCalledWith({ jobId: 'job-1', passage: 'drafted prose' });
+    // WS-B1: accept also wires an onSuccess that lifts the verdict to the shared store.
+    expect(mockCritique.critique.mutate).toHaveBeenCalledWith(
+      { jobId: 'job-1', passage: 'drafted prose' },
+      expect.objectContaining({ onSuccess: expect.any(Function) }),
+    );
     expect(mockStream.clearGhost).toHaveBeenCalled();
   });
 

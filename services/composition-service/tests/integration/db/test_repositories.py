@@ -12,7 +12,7 @@ from __future__ import annotations
 import json
 import os
 import uuid
-from datetime import datetime, timedelta, timezone
+from datetime import date, datetime, timedelta, timezone
 
 import asyncpg
 import pytest
@@ -22,9 +22,12 @@ from app.db.models import DivergenceSpec, EntityOverride
 from app.db.repositories import ReferenceViolationError, VersionMismatchError
 from app.db.repositories import outbox
 from app.db.repositories.canon_rules import CanonRulesRepo
+from app.db.repositories.daily_progress import DailyProgressRepo
 from app.db.repositories.derivatives import DerivativesRepo
+from app.db.repositories.style_voice import StyleProfileRepo, VoiceProfileRepo
 from app.db.repositories.generation_corrections import GenerationCorrectionsRepo
 from app.db.repositories.generation_jobs import GenerationJobsRepo
+from app.db.repositories.grounding_pins import GroundingPinsRepo
 from app.db.repositories.narrative_thread import NarrativeThreadRepo
 from app.db.repositories.outline import OutlineRepo
 from app.db.repositories.scene_links import SceneLinksRepo
@@ -38,6 +41,11 @@ pytestmark = pytest.mark.skipif(
 )
 
 _TABLES = [
+    "composition_daily_progress",
+    "composition_progress_baseline",
+    "style_profile",
+    "voice_profile",
+    "scene_grounding_pins",
     "outbox_events", "generation_correction", "generation_job", "narrative_thread",
     "canon_rule", "scene_link", "outline_node", "structure_template",
     "entity_override", "divergence_spec", "composition_work",
@@ -745,6 +753,49 @@ async def test_canon_rules_ifmatch(pool):
         await repo.update(user, r.id, {"text": "x"}, expected_version=1)
 
 
+# ───────────────────────── grounding_pins (T3.4) ─────────────────────────
+
+async def test_grounding_pins_upsert_flip_clear_and_tenancy(pool):
+    repo = GroundingPinsRepo(pool)
+    olr = OutlineRepo(pool)
+    user, project, _ = _ids()
+    # outline_node_id is an in-DB FK (ON DELETE CASCADE) → create a real scene.
+    scene = await olr.create_node(user, project, kind="scene", chapter_id=uuid.uuid4())
+    # pin a lore source + exclude a cast entity
+    p1 = await repo.set_action(user, project, scene.id, "lore", "src-1", "pin")
+    assert p1.action == "pin" and p1.item_type == "lore" and p1.item_id == "src-1"
+    await repo.set_action(user, project, scene.id, "present", "ent-1", "exclude")
+    rows = await repo.list_for_scene(user, project, scene.id)
+    assert {(r.item_type, r.item_id, r.action) for r in rows} == {
+        ("lore", "src-1", "pin"), ("present", "ent-1", "exclude"),
+    }
+    # flip the lore pin → exclude IN PLACE (still one row for that item)
+    flipped = await repo.set_action(user, project, scene.id, "lore", "src-1", "exclude")
+    assert flipped.action == "exclude"
+    rows = await repo.list_for_scene(user, project, scene.id)
+    assert len(rows) == 2  # no duplicate row for src-1
+    assert next(r for r in rows if r.item_id == "src-1").action == "exclude"
+    # clear → row gone; a second clear is a no-op (False)
+    assert await repo.clear(user, project, scene.id, "lore", "src-1") is True
+    assert await repo.clear(user, project, scene.id, "lore", "src-1") is False
+    assert len(await repo.list_for_scene(user, project, scene.id)) == 1
+    # cross-user isolation — another user sees nothing for this scene
+    assert await repo.list_for_scene(uuid.uuid4(), project, scene.id) == []
+
+
+async def test_grounding_pins_cascade_on_scene_delete(pool):
+    repo = GroundingPinsRepo(pool)
+    olr = OutlineRepo(pool)
+    user, project, _ = _ids()
+    scene = await olr.create_node(user, project, kind="scene", chapter_id=uuid.uuid4())
+    await repo.set_action(user, project, scene.id, "canon", str(uuid.uuid4()), "pin")
+    assert len(await repo.list_for_scene(user, project, scene.id)) == 1
+    # deleting the scene CASCADE-drops its pins (no orphan rows)
+    async with pool.acquire() as c:
+        await c.execute("DELETE FROM outline_node WHERE id = $1", scene.id)
+    assert await repo.list_for_scene(user, project, scene.id) == []
+
+
 # ───────────────────────── generation_jobs ─────────────────────────
 
 async def test_generation_job_idempotency_replay(pool):
@@ -1372,3 +1423,183 @@ async def test_narrative_thread_node_delete_sets_null(pool):
         await c.execute("DELETE FROM outline_node WHERE id = $1", node)
     after = (await repo.list_for_project(user, project))[0]
     assert after.id == t.id and after.opened_at_node is None
+
+
+# ─────────────────────── daily_progress (T4.2) ───────────────────────
+
+async def test_daily_progress_diff_streak_and_book_total(pool):
+    """Snapshot-differencing model: the FIRST snapshot of a chapter is a baseline
+    (0 authored), later snapshots count their positive delta, a deletion clamps to
+    0, the book total is the sum of each chapter's latest snapshot, and a re-report
+    the same (chapter, date) overwrites that day's snapshot (idempotent upsert)."""
+    repo = DailyProgressRepo(pool)
+    user, project, _ = _ids()
+    chA, chB = uuid.uuid4(), uuid.uuid4()
+    d20, d21, d22 = date(2026, 6, 20), date(2026, 6, 21), date(2026, 6, 22)
+
+    # chapter A: baseline 500 (pre-existing) -> 800 (+300) -> 750 (deleted 50)
+    await repo.report(user, project, chA, 500, d20)
+    await repo.report(user, project, chA, 800, d21)
+    await repo.report(user, project, chA, 750, d22)
+    # chapter B: first appears on d21 at 100 (baseline, 0 authored) -> 250 (+150)
+    await repo.report(user, project, chB, 100, d21)
+    await repo.report(user, project, chB, 250, d22)
+
+    agg = await repo.read_aggregate(user, project, d22)
+    by_date = dict(agg.day_words)
+    # d20: A baseline -> 0
+    assert by_date[d20] == 0
+    # d21: A +300, B baseline 0 -> 300
+    assert by_date[d21] == 300
+    # d22: A delta -50 clamps to 0, B +150 -> 150
+    assert by_date[d22] == 150
+    # book total = latest snapshot per chapter = A:750 + B:250
+    assert agg.book_total == 1000
+
+
+async def test_daily_progress_report_is_idempotent_per_date(pool):
+    """Re-reporting the same (chapter, date) overwrites — never double-counts."""
+    repo = DailyProgressRepo(pool)
+    user, project, _ = _ids()
+    ch = uuid.uuid4()
+    d = date(2026, 6, 24)
+    await repo.report(user, project, ch, 100, d)
+    await repo.report(user, project, ch, 900, d)  # same day, corrected count
+    agg = await repo.read_aggregate(user, project, d)
+    # one baseline row for the day -> 0 authored, book total reflects the LATEST value
+    assert dict(agg.day_words).get(d, 0) == 0
+    assert agg.book_total == 900
+
+
+async def test_daily_progress_anchor_excludes_future_dates_and_isolates_user(pool):
+    """`on_or_before` clips future-dated snapshots (clock skew) and the read is
+    per-user (another user's words never leak into the aggregate)."""
+    repo = DailyProgressRepo(pool)
+    user, project, _ = _ids()
+    ch = uuid.uuid4()
+    await repo.report(user, project, ch, 200, date(2026, 6, 20))
+    await repo.report(user, project, ch, 400, date(2026, 6, 25))  # "future" vs anchor
+    agg = await repo.read_aggregate(user, project, date(2026, 6, 22))
+    assert agg.book_total == 200  # the 25th is excluded
+    # cross-user isolation
+    other = await repo.read_aggregate(uuid.uuid4(), project, date(2026, 6, 25))
+    assert other.book_total == 0 and other.day_words == []
+
+
+async def test_daily_progress_baseline_excludes_preexisting_counts_deltas(pool):
+    """An EXISTING chapter baselined at its pre-existing count: its first daily
+    snapshot counts only the NEW words (no enablement spike), book total is current."""
+    repo = DailyProgressRepo(pool)
+    user, project, _ = _ids()
+    ch = uuid.uuid4()
+    await repo.ensure_baseline(user, project, ch, 5000)   # pre-existing on open
+    await repo.report(user, project, ch, 5200, date(2026, 6, 24))  # wrote 200 today
+    agg = await repo.read_aggregate(user, project, date(2026, 6, 24))
+    assert dict(agg.day_words)[date(2026, 6, 24)] == 200  # 5200-5000, NOT 5200
+    assert agg.book_total == 5200
+
+
+async def test_daily_progress_new_chapter_baselined_zero_counts_fully(pool):
+    """A NEW chapter (opened at ~0 words → baseline 0): its first day counts FULLY."""
+    repo = DailyProgressRepo(pool)
+    user, project, _ = _ids()
+    ch = uuid.uuid4()
+    await repo.ensure_baseline(user, project, ch, 0)
+    await repo.report(user, project, ch, 300, date(2026, 6, 24))
+    agg = await repo.read_aggregate(user, project, date(2026, 6, 24))
+    assert dict(agg.day_words)[date(2026, 6, 24)] == 300  # all 300 count
+    assert agg.book_total == 300
+
+
+async def test_daily_progress_baseline_is_insert_once(pool):
+    """Re-opening a chapter must NOT reset the baseline (would erase progress)."""
+    repo = DailyProgressRepo(pool)
+    user, project, _ = _ids()
+    ch = uuid.uuid4()
+    await repo.ensure_baseline(user, project, ch, 1000)
+    await repo.ensure_baseline(user, project, ch, 9999)  # later re-open — ignored
+    await repo.report(user, project, ch, 1100, date(2026, 6, 24))
+    agg = await repo.read_aggregate(user, project, date(2026, 6, 24))
+    assert dict(agg.day_words)[date(2026, 6, 24)] == 100  # 1100-1000 (baseline stayed)
+
+
+async def test_daily_progress_book_total_includes_unwritten_baseline(pool):
+    """A chapter opened (baselined) but not yet written this window still counts
+    toward the book total at its baseline value."""
+    repo = DailyProgressRepo(pool)
+    user, project, _ = _ids()
+    ch_written, ch_opened = uuid.uuid4(), uuid.uuid4()
+    await repo.ensure_baseline(user, project, ch_written, 2000)
+    await repo.report(user, project, ch_written, 2100, date(2026, 6, 24))
+    await repo.ensure_baseline(user, project, ch_opened, 500)  # opened, not written
+    agg = await repo.read_aggregate(user, project, date(2026, 6, 24))
+    assert agg.book_total == 2600  # 2100 (written latest) + 500 (opened baseline)
+
+
+# ─────────────────────── style_profile / voice_profile (T3.5) ───────────────────────
+
+async def test_style_profile_resolve_precedence(pool):
+    """resolve() returns the MOST SPECIFIC scope: scene > chapter > work > None."""
+    repo = StyleProfileRepo(pool)
+    user, project, _ = _ids()
+    scene, chapter = uuid.uuid4(), uuid.uuid4()
+    await repo.upsert(user, project, "work", project, 50, 50)
+    # only work set → resolve returns work
+    r = await repo.resolve(user, project, scene, chapter)
+    assert r is not None and r.scope_type == "work"
+    # add chapter → chapter wins over work
+    await repo.upsert(user, project, "chapter", chapter, 40, 60)
+    r = await repo.resolve(user, project, scene, chapter)
+    assert r.scope_type == "chapter" and r.density == 40
+    # add scene → scene wins over chapter + work
+    await repo.upsert(user, project, "scene", scene, 80, 20)
+    r = await repo.resolve(user, project, scene, chapter)
+    assert r.scope_type == "scene" and r.density == 80 and r.pace == 20
+    # a DIFFERENT scene (no scene row) falls back to chapter
+    other = await repo.resolve(user, project, uuid.uuid4(), chapter)
+    assert other.scope_type == "chapter"
+
+
+async def test_style_profile_upsert_replaces_and_delete_reverts(pool):
+    repo = StyleProfileRepo(pool)
+    user, project, _ = _ids()
+    chapter = uuid.uuid4()
+    await repo.upsert(user, project, "chapter", chapter, 30, 30)
+    await repo.upsert(user, project, "chapter", chapter, 70, 70)  # replace in place
+    rows = await repo.list_all(user, project)
+    assert len(rows) == 1 and rows[0].density == 70
+    assert await repo.delete(user, project, "chapter", chapter) is True
+    assert await repo.list_all(user, project) == []
+    # cross-user isolation
+    assert await repo.resolve(uuid.uuid4(), project, None, chapter) is None
+
+
+async def test_voice_profile_present_only_and_upsert(pool):
+    """list_for_entities returns only the requested (present) entities; upsert replaces."""
+    repo = VoiceProfileRepo(pool)
+    user, project, _ = _ids()
+    kael, mira, absent = uuid.uuid4(), uuid.uuid4(), uuid.uuid4()
+    await repo.upsert(user, project, kael, "Kael", ["terse", "understatement"])
+    await repo.upsert(user, project, mira, "Mira", ["formal"])
+    # only Kael present in the scene
+    present = await repo.list_for_entities(user, project, [kael, absent])
+    assert [v.entity_name for v in present] == ["Kael"]
+    assert present[0].tags == ["terse", "understatement"]
+    # upsert replaces tags in place (not a second row)
+    await repo.upsert(user, project, kael, "Kael", ["wry"])
+    again = await repo.list_for_entities(user, project, [kael])
+    assert again[0].tags == ["wry"]
+    # empty present set → no query, empty list
+    assert await repo.list_for_entities(user, project, []) == []
+    # cross-user isolation
+    assert await repo.list_for_entities(uuid.uuid4(), project, [kael]) == []
+
+
+async def test_voice_profile_list_all_and_delete(pool):
+    repo = VoiceProfileRepo(pool)
+    user, project, _ = _ids()
+    e = uuid.uuid4()
+    await repo.upsert(user, project, e, "Kael", ["terse"])
+    assert len(await repo.list_all(user, project)) == 1
+    assert await repo.delete(user, project, e) is True
+    assert await repo.list_all(user, project) == []
