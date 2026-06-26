@@ -1352,6 +1352,12 @@ func (s *Server) createExtractedEntity(
 		}
 	}
 
+	// D-GLOSSARY-ST-DEDUP M3a: stamp the app-maintained dedup key from the
+	// just-landed name (cached_name is set by the snapshot trigger on the name EAV).
+	if err := refreshEntityDedupKey(ctx, q, entityID); err != nil {
+		return uuid.Nil, fmt.Errorf("refresh dedup key: %w", err)
+	}
+
 	return entityID, nil
 }
 
@@ -1543,6 +1549,11 @@ func (s *Server) mergeExtractedEntity(
 	if len(written) > 0 {
 		if _, err := q.Exec(ctx, `UPDATE glossary_entities SET updated_at = now() WHERE entity_id = $1`, entityID); err != nil {
 			return nil, nil, fmt.Errorf("touch updated_at: %w", err)
+		}
+		// D-GLOSSARY-ST-DEDUP M3a: if the name/term was among the written attrs the
+		// dedup key must follow it. Idempotent (no-op when cached_name is unchanged).
+		if err := refreshEntityDedupKey(ctx, q, entityID); err != nil {
+			return nil, nil, fmt.Errorf("refresh dedup key: %w", err)
 		}
 	}
 

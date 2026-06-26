@@ -207,6 +207,13 @@ func (s *Server) applyEntityEdit(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// D-GLOSSARY-ST-DEDUP M3a: a multi-attr apply may have changed name/term; keep
+	// the app-maintained dedup key in sync (idempotent — no-op when unchanged).
+	if err := refreshEntityDedupKey(ctx, tx, entityID); err != nil {
+		writeError(w, http.StatusInternalServerError, "GLOSS_INTERNAL", "dedup key refresh failed")
+		return
+	}
+
 	// AFTER snapshot (cached_name/aliases already refreshed by the K2a trigger on
 	// the EAV writes) + ONE transactional glossary.entity_updated event.
 	afterName, afterKind, afterAliases, afterShortDesc, _ := loadEntityEventFields(ctx, tx, entityID)

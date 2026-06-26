@@ -305,5 +305,13 @@ func (s *Server) rekeyEntityToKind(ctx context.Context, tx pgx.Tx, entityID, new
 	if tag.RowsAffected() == 0 {
 		return pgx.ErrNoRows
 	}
+	// D-GLOSSARY-ST-DEDUP M3a: re-keying moved the name/term value onto a different
+	// attr_def (the trigger recomputed cached_name); re-stamp the dedup key so it
+	// reflects the (possibly newly-resolved) name. Idempotent when unchanged.
+	if eid, perr := uuid.Parse(entityID); perr == nil {
+		if err := refreshEntityDedupKey(ctx, tx, eid); err != nil {
+			return err
+		}
+	}
 	return nil
 }

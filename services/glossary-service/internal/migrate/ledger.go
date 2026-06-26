@@ -89,6 +89,10 @@ var chain = []Step{
 	// D-EXTRACT-ATTR-MERGE-DEFAULTS M1 — re-seed merge_strategy by type heuristic
 	// (tags→append, state→overwrite, identity→fill) so re-extraction accumulates.
 	{"0039_merge_strategy_heuristic", UpMergeStrategyHeuristic},
+	// D-GLOSSARY-ST-DEDUP M3a — normalized_name GENERATED→app-maintained so the
+	// dedup-key backstop folds CJK simplified/traditional + full-width + casefold
+	// via the shared loreweave_extraction SDK (the same fold the resolver uses).
+	{"0040_st_dedup_app_maintained", UpStDedupAppMaintained},
 }
 
 // EnsureLedger creates the schema_migrations bookkeeping table. Idempotent; must run

@@ -249,6 +249,14 @@ func (s *Server) patchAttributeValue(w http.ResponseWriter, r *http.Request) {
 					"entity_id", entityID.String(), "error", err.Error())
 			}
 		}
+		// D-GLOSSARY-ST-DEDUP M3a: a name/term edit must move the app-maintained
+		// dedup key with it (cached_name was just recomputed by the EAV trigger).
+		if attrCode == "name" || attrCode == "term" {
+			if err := refreshEntityDedupKey(ctx, tx, entityID); err != nil {
+				writeError(w, http.StatusInternalServerError, "GLOSS_INTERNAL", "dedup key refresh failed")
+				return
+			}
+		}
 
 		// AFTER snapshot + ONE transactional user-correction event (parity with
 		// patchEntity). A book-owner PATCH is a user correction by construction

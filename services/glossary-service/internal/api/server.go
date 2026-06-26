@@ -142,6 +142,10 @@ func (s *Server) Router() http.Handler {
 		r.Get("/books/{book_id}/entities/stats", s.internalEntityStats)
 		// mui #1c G-cand — knowledge's coref detector proposes merge clusters here.
 		r.Post("/books/{book_id}/merge-candidates", s.internalProposeMergeCandidates)
+		// D-GLOSSARY-ST-DEDUP M3b — remediate pre-existing CJK simplified/traditional
+		// (+ full-width/case) entity name-variant duplicates: group by the folded key
+		// and merge each group into one winner. DRY-RUN unless ?apply=true.
+		r.Post("/books/{book_id}/dedup-name-variants", s.internalDedupNameVariants)
 		// Set canonical content (short_description) on an existing entity.
 		// Used by lore-enrichment promote to write enriched canon THROUGH the
 		// glossary SSOT (Q2) — extract-entities can't set this column.

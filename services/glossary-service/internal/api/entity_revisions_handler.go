@@ -328,5 +328,10 @@ func reconcileEntityFromSnapshot(ctx context.Context, tx pgx.Tx, entityID uuid.U
 	if err := resyncEntityListItems(ctx, tx, entityID, "verified"); err != nil {
 		return err
 	}
+	// D-GLOSSARY-ST-DEDUP M3a: a restore can change the name/term to a prior value;
+	// re-stamp the app-maintained dedup key (idempotent — no-op when unchanged).
+	if err := refreshEntityDedupKey(ctx, tx, entityID); err != nil {
+		return err
+	}
 	return nil
 }
