@@ -28,7 +28,7 @@ from ..models import CreateJobPayload
 from ..workers.extraction_blobstore import get_blob_store
 from ..workers.extraction_cache import offload_raw_responses, purge_stale_raw_outputs
 from ..workers.extraction_outcomes import reconcile_from_rows
-from ..workers.extraction_replay import replay_chapter_from_cache
+from ..workers.extraction_replay import replay_chapter_from_cache, rerun_merge_book
 from ..workers.segment_store import ensure_chapter_segments
 from ..workers.segment_status import compute_segment_status
 from .jobs import _resolve_and_create_job, _cancel_job_core, _pause_job_core, _resume_job_core
@@ -430,6 +430,10 @@ class ReplayPayload(BaseModel):
     # Two-step write gate: confirm=False (default) returns a dry-run PREVIEW (no glossary
     # write); confirm=True performs the idempotent whole-chapter writeback.
     confirm: bool = False
+    # HEAL mode (D-EXTRACT-ATTR-MERGE-DEFAULTS M3): re-merge under the attributes' AUTHORED
+    # merge_strategy (append/overwrite) instead of the source job's frozen `fill` actions —
+    # unfreezes attributes extracted before the merge-defaults fix. Default off = faithful replay.
+    use_authored_strategy: bool = False
 
 
 @router.post("/extraction-cache/replay", dependencies=[Depends(require_internal_token)])
@@ -454,6 +458,38 @@ async def extraction_cache_replay(
         book_id=str(payload.book_id),
         chapter_id=str(payload.chapter_id),
         confirm=payload.confirm,
+        use_authored_strategy=payload.use_authored_strategy,
+    )
+
+
+class RerunMergePayload(BaseModel):
+    # Asserted caller (re-checked for EDIT on the book); heal reads ONLY this user's cache (INV-9).
+    user_id: UUID
+    book_id: UUID
+    confirm: bool = False
+    # Optional subset; omitted = every chapter with a cached parse for this book+owner.
+    chapter_ids: list[UUID] | None = None
+
+
+@router.post("/extraction-cache/rerun-merge", dependencies=[Depends(require_internal_token)])
+async def extraction_cache_rerun_merge(
+    payload: RerunMergePayload,
+    db: asyncpg.Pool = Depends(get_db),
+) -> dict:
+    """HEAL a whole book (D-EXTRACT-ATTR-MERGE-DEFAULTS M3): re-merge every chapter that has a
+    faithful cached parse under the attributes' AUTHORED merge_strategy — unfreezing attributes
+    that were extracted under the old `fill` default — at $0 LLM. Same grant/tenancy/confirm gates
+    as the per-chapter replay (EDIT on the book; reads only the caller's own cache; confirm=False
+    is a bounded dry-run). For a large book this iterates synchronously over the cached chapters;
+    the response is bounded (status counts + a capped problem sample)."""
+    caller = str(payload.user_id)
+    await authorize_book(get_grant_client(), payload.book_id, payload.user_id, GrantLevel.EDIT)
+    return await rerun_merge_book(
+        db,
+        caller_user_id=caller,
+        book_id=str(payload.book_id),
+        confirm=payload.confirm,
+        chapter_ids=[str(c) for c in payload.chapter_ids] if payload.chapter_ids else None,
     )
 
 
