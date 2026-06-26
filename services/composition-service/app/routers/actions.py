@@ -24,8 +24,10 @@ revealing whether the resource exists.
 
 from __future__ import annotations
 
+import hashlib
 import json
 import logging
+from datetime import datetime, timezone
 from typing import Any
 from uuid import UUID
 
@@ -60,6 +62,24 @@ router = APIRouter(prefix="/v1/composition/actions")
 _PUBLISH_DESCRIPTOR = "composition.publish"
 _GENERATE_DESCRIPTOR = "composition.generate"
 
+# W4 motif-library Tier-W descriptors. adopt is a tenancy/quota cross-tier clone;
+# mine/import/conformance are LLM-spend 202+poll worker enqueues. All four are
+# replay-guarded by the consumed-token ledger (they are NOT idempotent-by-effect
+# like publish/generate); mine/import/conformance additionally run a real usage-
+# billing precheck (fail-closed) BEFORE enqueue.
+_MOTIF_ADOPT_DESCRIPTOR = "composition.motif_adopt"
+_MOTIF_MINE_DESCRIPTOR = "composition.motif_mine"
+_ARC_IMPORT_DESCRIPTOR = "composition.arc_import"
+_CONFORMANCE_RUN_DESCRIPTOR = "composition.conformance_run"
+
+# The full Tier-W descriptor allowlist this confirm path commits (MD-9 routes each
+# to its scope: adopt/arc_import = user-scoped; mine = book/corpus; the rest = Work).
+_ALL_DESCRIPTORS = (
+    _PUBLISH_DESCRIPTOR, _GENERATE_DESCRIPTOR,
+    _MOTIF_ADOPT_DESCRIPTOR, _MOTIF_MINE_DESCRIPTOR,
+    _ARC_IMPORT_DESCRIPTOR, _CONFORMANCE_RUN_DESCRIPTOR,
+)
+
 # The generate effect's service bearer must outlive a multi-minute LLM generation
 # AND the subsequent chapter-draft persist (which reuses it). 15 min is generous
 # headroom for a slow local model on a long chapter (vs the 60s immediate-call default).
@@ -85,6 +105,21 @@ def _verify(token: str) -> Any:
         raise HTTPException(status_code=410, detail={"code": "token_expired"}) from exc
     except ConfirmTokenInvalid as exc:
         raise HTTPException(status_code=400, detail={"code": "action_error"}) from exc
+
+
+def _jti(token: str) -> str:
+    """The replay-ledger jti (W4-MD7). The C-KIT confirm token carries no `jti`
+    claim, so synthesize a deterministic id from the signed token string itself: a
+    replay of the SAME token reuses the exact bytes → same hash → the ledger's
+    ON CONFLICT rejects it. Two distinct proposes (different exp/payload → different
+    signature) get distinct jtis."""
+    return hashlib.sha256(token.encode("utf-8")).hexdigest()
+
+
+def _exp_dt(claims: Any) -> datetime:
+    """The confirm token's `exp` is unix seconds (int); the consumed_tokens.exp
+    column is TIMESTAMPTZ. Convert for the ledger insert."""
+    return datetime.fromtimestamp(int(claims.exp), tz=timezone.utc)
 
 
 @router.get("/preview")
@@ -136,18 +171,43 @@ async def confirm_action(
         # H13 anti-oracle — uniform refusal, never reveal "this token is someone else's".
         raise HTTPException(status_code=400, detail={"code": "action_error"})
 
-    if claims.descriptor not in (_PUBLISH_DESCRIPTOR, _GENERATE_DESCRIPTOR):
+    if claims.descriptor not in _ALL_DESCRIPTORS:
         raise HTTPException(status_code=400, detail={"code": "action_error"})
 
     payload = claims.payload if isinstance(claims.payload, dict) else {}
+
+    # ── adopt + arc_import are USER-scoped (no Work/book — R1.1 / §12.6): they SKIP
+    # the shared Work re-resolve and re-check their own user-scope owner inside the
+    # effect (MD-9). Both are replay-guarded by the consumed-token ledger.
+    if claims.descriptor == _MOTIF_ADOPT_DESCRIPTOR:
+        return await _execute_motif_adopt(payload, envelope_user, token=token, claims=claims)
+    if claims.descriptor == _ARC_IMPORT_DESCRIPTOR:
+        return await _execute_arc_import(payload, envelope_user, token=token, claims=claims)
+
+    # ── mine is BOOK/CORPUS-scoped, NOT Work-scoped (its payload has no project_id —
+    # it binds book_id for scope='book', user for 'corpus'). Re-check the BOOK grant
+    # directly for scope='book' (a grant revoked since propose stops the spend); a
+    # corpus mine is envelope-identity-gated (the worker re-checks each book touched).
+    if claims.descriptor == _MOTIF_MINE_DESCRIPTOR:
+        if str(payload.get("scope")) == "book":
+            try:
+                book_id = UUID(str(payload["book_id"]))
+            except (KeyError, ValueError, TypeError) as exc:
+                raise HTTPException(status_code=400, detail={"code": "action_error"}) from exc
+            try:
+                await authorize_book(grant, book_id, envelope_user, GrantLevel.EDIT)
+            except (OwnershipError, InsufficientGrant) as exc:
+                raise HTTPException(status_code=403, detail={"code": "action_error"}) from exc
+        return await _execute_motif_mine(payload, envelope_user, token=token, claims=claims)
+
+    # ── Work-scoped descriptors (publish / generate / conformance): re-resolve
+    # ownership + EDIT at confirm time (the Work is user-scoped → None if not the
+    # caller's; the grant may have been revoked since propose).
     try:
         project_id = UUID(str(payload["project_id"]))
     except (KeyError, ValueError, TypeError) as exc:
         raise HTTPException(status_code=400, detail={"code": "action_error"}) from exc
 
-    # Re-resolve ownership + EDIT at confirm time, common to every composition
-    # confirm descriptor (the Work is user-scoped → None if not the caller's; the
-    # grant may have been revoked since propose).
     work = await works.get(envelope_user, project_id)
     if work is None:
         raise HTTPException(status_code=400, detail={"code": "action_error"})
@@ -158,7 +218,10 @@ async def confirm_action(
 
     if claims.descriptor == _PUBLISH_DESCRIPTOR:
         return await _execute_publish(payload, project_id, work, envelope_user, outline, book)
-    return await _execute_generate(payload, project_id, work, envelope_user)
+    if claims.descriptor == _GENERATE_DESCRIPTOR:
+        return await _execute_generate(payload, project_id, work, envelope_user)
+    return await _execute_conformance_run(payload, project_id, work, envelope_user,
+                                          token=token, claims=claims)
 
 
 async def _execute_publish(
@@ -305,4 +368,224 @@ async def _execute_generate(
         "target_kind": target_kind,
         "target_id": str(target_id),
         "generation": result,
+    }
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# W4 — Tier-W motif confirm effects. adopt = tenancy/quota cross-tier clone (no
+# LLM spend, ledger-guarded); mine/import/conformance = LLM-spend 202+poll worker
+# enqueues (ledger-claim → real usage-billing precheck → enqueue). The compute for
+# mine/import/conformance is owned by W8/W9/W5 (Wave 2); W4 owns the enqueue + poll
+# + ledger + precheck SEAM — until those WSs land the job sits `pending` and the
+# poll returns `pending` (the contract is the enqueue, not the compute).
+# ══════════════════════════════════════════════════════════════════════════════
+
+
+async def _claim_or_replay(token: str, claims: Any) -> None:
+    """Consume-first replay guard (W4 §3.2). Claim the jti BEFORE the effect; a
+    replay of the same token hits the ledger PK → 409 already_consumed. A spent
+    token never re-applies (fail-closed) — the human re-proposes."""
+    from app.db.pool import get_pool
+    from app.db.repositories.consumed_tokens import ConsumedTokenRepo
+
+    ledger = ConsumedTokenRepo(get_pool())
+    won = await ledger.consume(jti=_jti(token), descriptor=claims.descriptor, exp=_exp_dt(claims))
+    if not won:
+        raise HTTPException(status_code=409, detail={"code": "action_error", "reason": "already_consumed"})
+
+
+async def _precheck_or_402(*, owner_user_id: UUID, job_id: str, estimate_usd: float) -> None:
+    """Real usage-billing precheck (W4 §3.3, MD-8 fail-CLOSED). Runs BEFORE the
+    enqueue so an over-budget caller never queues spend; a billing outage denies the
+    new spend (billing_unavailable) rather than letting it through."""
+    from app.clients.billing_client import get_billing_client
+
+    billing = get_billing_client()
+    ok = await billing.precheck(
+        owner_user_id=str(owner_user_id), job_id=job_id, estimate_usd=estimate_usd,
+    )
+    if not ok:
+        raise HTTPException(
+            status_code=402,
+            detail={"code": "action_error", "reason": "quota_exhausted"},
+        )
+
+
+async def _enqueue_motif_job(
+    *, envelope_user: UUID, project_id: UUID | None, operation: str, spec: dict[str, Any],
+) -> str:
+    """Create a pending generation_job + best-effort enqueue the worker trigger.
+    Returns the job id. The job row persists even if the Redis XADD blips (the
+    sweeper re-drives) — consistent with the platform best-effort enqueue rail."""
+    from uuid import uuid4
+
+    from app.db.pool import get_pool
+    from app.db.repositories.generation_jobs import GenerationJobsRepo
+    from app.worker.events import enqueue_job
+
+    jobs = GenerationJobsRepo(get_pool())
+    # mine/import/conformance are not Work-bound for the corpus case; generation_job
+    # requires a project_id (NOT NULL). For a book/corpus mine with no Work, stamp a
+    # synthetic project_id from the user so the row is valid + user-scoped. (The
+    # Wave-2 worker reads worker_op from input, not project_id.) Where a real Work
+    # project_id exists (conformance), use it.
+    pid = project_id if project_id is not None else uuid4()
+    job, _created = await jobs.create(
+        envelope_user, pid, operation=operation,
+        input={"worker_op": operation, **spec}, status="pending",
+    )
+    await enqueue_job(
+        settings.redis_url, job_id=str(job.id),
+        user_id=str(envelope_user), project_id=str(pid),
+    )
+    return str(job.id)
+
+
+async def _execute_motif_adopt(
+    payload: dict[str, Any], envelope_user: UUID, *, token: str, claims: Any,
+) -> dict[str, Any]:
+    """composition.motif_adopt effect — clone a public/system motif into the caller's
+    library (the ONE clone primitive). Ledger-claim → quota → clone. No LLM spend, so
+    no billing precheck; the quota ceiling (motif_max_adopt) is the tenancy guard."""
+    from app.db.pool import get_pool
+    from app.db.repositories.motif_repo import MotifRepo
+
+    try:
+        motif_id = UUID(str(payload["motif_id"]))
+    except (KeyError, ValueError, TypeError) as exc:
+        raise HTTPException(status_code=400, detail={"code": "action_error"}) from exc
+    retag = payload.get("retag_genres")
+    if retag is not None and not isinstance(retag, list):
+        raise HTTPException(status_code=400, detail={"code": "action_error"})
+
+    # Replay guard FIRST (a replayed adopt past the quota would double-add).
+    await _claim_or_replay(token, claims)
+
+    repo = MotifRepo(get_pool())
+    # Re-check visibility at confirm (you may adopt only what you can still see).
+    src = await repo.get_visible(envelope_user, motif_id)
+    if src is None:
+        raise HTTPException(status_code=400, detail={"code": "action_error"})
+
+    # Quota (B-4): count the caller's library; 0 = unlimited (dev default off).
+    ceiling = int(getattr(settings, "motif_max_adopt", 0) or 0)
+    if ceiling > 0:
+        owned = await repo.list_for_caller(envelope_user, scope="user", status=None, limit=10_000)
+        if len(owned) >= ceiling:
+            raise HTTPException(
+                status_code=402,
+                detail={"code": "action_error", "reason": "quota_exhausted"},
+            )
+
+    try:
+        clone = await repo.clone(
+            envelope_user, motif_id, target_owner=envelope_user, retag_genres=retag,
+        )
+    except LookupError as exc:
+        raise HTTPException(status_code=400, detail={"code": "action_error"}) from exc
+    except Exception as exc:  # noqa: BLE001 — code collision etc. → uniform action_error
+        # A UniqueViolation (the source code already exists in the caller's tier) is a
+        # benign idempotency outcome; surface a clean conflict rather than a 500.
+        logger.info("motif adopt clone conflict/error: %s", exc)
+        raise HTTPException(
+            status_code=409,
+            detail={"code": "action_error", "reason": "already_adopted"},
+        ) from exc
+
+    return {
+        "outcome": "action_done",
+        "descriptor": _MOTIF_ADOPT_DESCRIPTOR,
+        "motif_id": str(clone.id),
+    }
+
+
+async def _execute_motif_mine(
+    payload: dict[str, Any], envelope_user: UUID, *, token: str, claims: Any,
+) -> dict[str, Any]:
+    """composition.motif_mine effect — ledger-claim → usage-billing precheck →
+    enqueue a `mine_motifs` worker job (202+poll). The compute is owned by W8."""
+    await _claim_or_replay(token, claims)
+    estimate = float(payload.get("estimate_usd") or 0.0)
+    # job_id for the idempotent precheck reserve = the jti (one hold per proposal).
+    await _precheck_or_402(owner_user_id=envelope_user, job_id=_jti(token), estimate_usd=estimate)
+    job_id = await _enqueue_motif_job(
+        envelope_user=envelope_user, project_id=None, operation="mine_motifs",
+        spec={
+            "scope": payload.get("scope"),
+            "book_id": payload.get("book_id"),
+            "min_support": payload.get("min_support"),
+            "promote_to": payload.get("promote_to"),
+            "language": payload.get("language"),
+        },
+    )
+    return {
+        "outcome": "action_accepted",
+        "descriptor": _MOTIF_MINE_DESCRIPTOR,
+        "job_id": job_id,
+        "poll": "composition_get_mine_job",
+    }
+
+
+async def _execute_arc_import(
+    payload: dict[str, Any], envelope_user: UUID, *, token: str, claims: Any,
+) -> dict[str, Any]:
+    """composition.arc_import effect — re-check the import_source owner (user-scoped,
+    un-shareable §12.6), then ledger-claim → precheck → enqueue `analyze_reference`
+    (202+poll). The compute is owned by W9."""
+    from app.db.pool import get_pool
+
+    try:
+        import_source_id = UUID(str(payload["import_source_id"]))
+    except (KeyError, ValueError, TypeError) as exc:
+        raise HTTPException(status_code=400, detail={"code": "action_error"}) from exc
+
+    # Re-check ownership at confirm (the import_source row is per-user, no visibility
+    # column — a foreign id is a uniform action_error, never an oracle).
+    owner = await get_pool().fetchval(
+        "SELECT owner_user_id FROM import_source WHERE id = $1", import_source_id
+    )
+    if owner is None or owner != envelope_user:
+        raise HTTPException(status_code=400, detail={"code": "action_error"})
+
+    await _claim_or_replay(token, claims)
+    estimate = float(payload.get("estimate_usd") or 0.0)
+    await _precheck_or_402(owner_user_id=envelope_user, job_id=_jti(token), estimate_usd=estimate)
+    job_id = await _enqueue_motif_job(
+        envelope_user=envelope_user, project_id=None, operation="analyze_reference",
+        spec={
+            "import_source_id": str(import_source_id),
+            "use_web": payload.get("use_web"),
+            "arc_hint": payload.get("arc_hint"),
+        },
+    )
+    return {
+        "outcome": "action_accepted",
+        "descriptor": _ARC_IMPORT_DESCRIPTOR,
+        "job_id": job_id,
+        "poll": "composition_get_mine_job",
+    }
+
+
+async def _execute_conformance_run(
+    payload: dict[str, Any], project_id: UUID, work: CompositionWork, envelope_user: UUID,
+    *, token: str, claims: Any,
+) -> dict[str, Any]:
+    """composition.conformance_run effect — ledger-claim → precheck → enqueue a
+    `conformance_run` job (202+poll). The compute is owned by W5."""
+    await _claim_or_replay(token, claims)
+    estimate = float(payload.get("estimate_usd") or 0.0)
+    await _precheck_or_402(owner_user_id=envelope_user, job_id=_jti(token), estimate_usd=estimate)
+    job_id = await _enqueue_motif_job(
+        envelope_user=envelope_user, project_id=project_id, operation="conformance_run",
+        spec={
+            "book_id": str(work.book_id),
+            "scope": payload.get("scope"),
+            "chapter_id": payload.get("chapter_id"),
+        },
+    )
+    return {
+        "outcome": "action_accepted",
+        "descriptor": _CONFORMANCE_RUN_DESCRIPTOR,
+        "job_id": job_id,
+        "poll": "composition_get_mine_job",
     }
