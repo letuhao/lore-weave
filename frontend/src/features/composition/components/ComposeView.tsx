@@ -31,9 +31,16 @@ type Props = {
    *  append (functional updater) keeps working. */
   guide: string;
   onGuideChange: Dispatch<SetStateAction<string>>;
+  /** M1 (D-DERIVATIVE-ADAPT-FROM-SOURCE) — when true, offer the "✦ Adapt from source"
+   *  action (the open Work is a derivative, the scene is at/after branch_point, and the
+   *  source chapter has prose). Computed by CompositionPanel via useAdaptFromSource. */
+  canAdapt?: boolean;
+  /** M1 — derivative + at/after branch but the source chapter is empty → show a
+   *  "nothing to adapt" hint instead of the action (no silent weak generation). */
+  adaptSourceEmpty?: boolean;
 };
 
-export function ComposeView({ projectId, sceneId, modelRef, modelKind, modelName, token, onAccept, guide, onGuideChange }: Props) {
+export function ComposeView({ projectId, sceneId, modelRef, modelKind, modelName, token, onAccept, guide, onGuideChange, canAdapt, adaptSourceEmpty }: Props) {
   const { t } = useTranslation('composition');
   const guideRef = useRef<HTMLTextAreaElement>(null);
   // Reasoning preference. "auto" lets the server decide per the selected model
@@ -60,6 +67,13 @@ export function ComposeView({ projectId, sceneId, modelRef, modelKind, modelName
     reasoning, modelKind, modelName,
   };
   const generate = () => (diverge ? auto.mutate(genParams) : stream.start(genParams));
+  // M1 — adapt the inherited SOURCE scene through the divergence. Same surface as a
+  // normal generate (diverge → K cards; else → ghost), just the `adapt_scene` op: the
+  // BE fires gather_source_scene + a no-auto-insert ghost the writer accepts manually.
+  const adapt = () => {
+    const p = { ...genParams, operation: 'adapt_scene' as const };
+    return diverge ? auto.mutate(p) : stream.start(p);
+  };
 
   const accept = () => {
     if (!stream.ghost) return;
@@ -179,6 +193,25 @@ export function ComposeView({ projectId, sceneId, modelRef, modelKind, modelName
           >
             {auto.isPending ? t('generating', { defaultValue: 'Generating…' }) : t('generate', { defaultValue: 'Generate' })}
           </button>
+        )}
+        {/* M1 — adapt the inherited source scene through the divergence (derivative,
+            at/after branch, source has prose). Sits beside Generate; same ghost/cards
+            surface. Hidden while a stream is mid-flight (the Stop button owns that). */}
+        {canAdapt && !stream.streaming && (
+          <button
+            type="button" data-testid="compose-adapt"
+            className="rounded border border-purple-400 px-3 py-1.5 text-sm text-purple-700 hover:bg-purple-50 disabled:opacity-50 dark:border-purple-600 dark:text-purple-300 dark:hover:bg-purple-950/30"
+            disabled={!canGenerate}
+            title={t('derive.adapt.hint', { defaultValue: 'Rewrite the inherited source scene to honour this branch (a ghost you review and accept).' })}
+            onClick={adapt}
+          >
+            ✦ {t('derive.adapt.action', { defaultValue: 'Adapt from source' })}
+          </button>
+        )}
+        {adaptSourceEmpty && !canAdapt && (
+          <span data-testid="compose-adapt-empty" className="self-center text-xs text-muted-foreground" title={t('derive.adapt.emptyHint', { defaultValue: 'The source chapter has no prose to adapt — generate a fresh draft instead.' })}>
+            {t('derive.adapt.empty', { defaultValue: 'Nothing to adapt' })}
+          </span>
         )}
         {!sceneId && <span data-testid="compose-need-scene" className="self-center text-xs text-amber-600">{t('needScene', { defaultValue: 'Pick a scene' })}</span>}
         {sceneId && !modelRef && <span data-testid="compose-need-model" className="self-center text-xs text-amber-600">{t('needModel', { defaultValue: 'Pick a model' })}</span>}

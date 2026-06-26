@@ -457,6 +457,12 @@
     "noSynopsis": "No synopsis"
   },
   "derive": {
+    "adapt": {
+      "action": "Adapt from source",
+      "hint": "Rewrite the inherited source scene to honour this branch (a ghost you review and accept).",
+      "empty": "Nothing to adapt",
+      "emptyHint": "The source chapter has no prose to adapt — generate a fresh draft instead."
+    },
     "launch": "Spawn what-if",
     "launchHint": "Spawn a what-if branching from this canon",
     "title": "Spawn a what-if (derivative)",

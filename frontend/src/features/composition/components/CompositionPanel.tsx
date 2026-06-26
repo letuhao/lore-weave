@@ -41,6 +41,7 @@ import { PromoteWhatIfButton } from './PromoteWhatIfButton';
 import { DerivativeBanner } from './DerivativeBanner';
 import { DerivativeGroundingLayers } from './DerivativeGroundingLayers';
 import { useDerivativeContext } from '../hooks/useDerivativeContext';
+import { useAdaptFromSource } from '../hooks/useAdaptFromSource';
 import { CanonRulesPanel } from './CanonRulesPanel';
 import { CriticPanel } from './CriticPanel';
 import { ThreadsPanel } from './ThreadsPanel';
@@ -146,6 +147,10 @@ export function CompositionPanel({ bookId, chapterId, token, onAccept, sceneId: 
   // the 2-layer (INHERITED/OVERRIDDEN) grounding badges when the open Work is a
   // derivative (source_work_id set). No-ops for a greenfield Work.
   const derivativeCtx = useDerivativeContext(work, token);
+  // M1 (D-DERIVATIVE-ADAPT-FROM-SOURCE) — whether the active chapter's scenes can be
+  // adapted from inherited source prose (derivative + at/after branch + source has
+  // prose). No-ops (no fetch) on a greenfield Work. Drives ComposeView's adapt action.
+  const adaptability = useAdaptFromSource(bookId, chapterId, derivativeCtx, token);
   // EXPLICIT handler from the wizard's onDerived (NOT a useEffect-for-events): switch
   // the studio to the new derivative + refresh the resolution cache so a later
   // re-resolve also sees it.
@@ -658,6 +663,8 @@ export function CompositionPanel({ bookId, chapterId, token, onAccept, sceneId: 
             onAccept={acceptProse}
             guide={composeGuide}
             onGuideChange={setComposeGuide}
+            canAdapt={adaptability.canAdapt}
+            adaptSourceEmpty={adaptability.sourceEmpty}
           />
         </DockSlot>
         <DockSlot {...slot('cowriter')}>

@@ -457,6 +457,12 @@
     "noSynopsis": "Chưa có tóm tắt"
   },
   "derive": {
+    "adapt": {
+      "action": "Phỏng theo bản gốc",
+      "hint": "Viết lại cảnh gốc thừa hưởng để phù hợp với nhánh này (một bản nháp bạn xem lại và chấp nhận).",
+      "empty": "Không có gì để phỏng theo",
+      "emptyHint": "Chương gốc không có nội dung để phỏng theo — hãy tạo bản nháp mới thay thế."
+    },
     "launch": "Tạo dị bản",
     "launchHint": "Tạo một dị bản giả định rẽ nhánh từ chính truyện",
     "title": "Tạo dị bản (bản phái sinh)",
