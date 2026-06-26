@@ -114,9 +114,10 @@ export function SceneGraphCanvas({ work, bookId, token, onPromoted }: {
     draft: whatIfDraft,
     token,
     onPromoted: (derivative) => {
-      // Seed the READY takes as scene nodes in the derivative project (prose-persist
-      // deferred), THEN switch the studio — so the derivative's outline already has the
-      // seeded scenes when it mounts (switching first would open an empty outline).
+      // Seed the READY takes as scene nodes in the derivative project, then persist each
+      // take's ghost PROSE into the derivative's scene store (M3), THEN switch the studio
+      // — so the derivative's outline already has the seeded scenes + their prose when it
+      // mounts (switching first would open an empty outline).
       const ready = whatIf.branch?.alts.filter((a) => a.status === 'ready') ?? [];
       const finish = () => {
         // local cleanup BEFORE the (possibly unmounting) studio switch.
@@ -130,11 +131,28 @@ export function SceneGraphCanvas({ work, bookId, token, onPromoted }: {
         // live smoke). The take is an alternate of the anchor scene, so it belongs to the
         // anchor's chapter (a book chapter, shared by the COW derivative).
         const chapterId = anchorScene?.chapter_id ?? null;
+        let proseFailed = 0;
         void Promise.allSettled(
-          ready.map((a) => compositionApi.createNode(proj, { kind: 'scene', title: a.title, chapter_id: chapterId }, token)),
+          ready.map(async (a) => {
+            const node = await compositionApi.createNode(proj, { kind: 'scene', title: a.title, chapter_id: chapterId }, token);
+            // M3 — best-effort persist the take's ghost prose into the new derivative
+            // scene (synthetic-job store; server-side source-clobber guard). A blank
+            // ghost is skipped (BE would 422 EMPTY_SCENE_PROSE). A persist failure does
+            // NOT fail the scene-add — the scene exists; prose is re-promotable — so we
+            // surface a SOFT count rather than rejecting the chain.
+            const ghost = a.take?.ghost?.trim();
+            if (ghost) {
+              try {
+                await compositionApi.persistScenePromoteProse(proj, node.id, ghost, token);
+              } catch {
+                proseFailed += 1;
+              }
+            }
+          }),
         ).then((results) => {
           const failed = results.filter((r) => r.status === 'rejected').length;
           if (failed) toast.error(t('whatif.promotedPartial', { defaultValue: 'Promoted, but {{n}} take(s) couldn’t be added.', n: failed }));
+          else if (proseFailed) toast.warning(t('whatif.promotedProsePartial', { defaultValue: 'Promoted, but {{n}} take(s)’ prose couldn’t be saved — re-promote to retry.', n: proseFailed }));
           else toast.success(t('whatif.promoted', { defaultValue: 'Promoted to a what-if derivative.' }));
           finish();
         });

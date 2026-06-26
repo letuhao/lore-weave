@@ -141,6 +141,7 @@
     "promoting": "Đang thăng cấp…",
     "promoted": "Đã thăng cấp thành dị bản giả định.",
     "promotedPartial": "Đã thăng cấp, nhưng {{n}} bản không thể thêm được.",
+    "promotedProsePartial": "Đã thăng cấp, nhưng không lưu được nội dung của {{n}} bản — thăng cấp lại để thử lại.",
     "promoteHint": "Tạo ít nhất một bản để thăng cấp"
   },
   "cast": "Nhân vật",

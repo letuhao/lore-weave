@@ -141,6 +141,7 @@
     "promoting": "提升中…",
     "promoted": "已提升為假設異本。",
     "promotedPartial": "已提升，但有 {{n}} 個版本無法加入。",
+    "promotedProsePartial": "已提升，但有 {{n}} 個版本的內文無法儲存——請重新提升以重試。",
     "promoteHint": "請先生成至少一個版本才能提升"
   },
   "cast": "角色",

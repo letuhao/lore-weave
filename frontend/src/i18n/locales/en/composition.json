@@ -141,6 +141,7 @@
     "promoting": "Promoting…",
     "promoted": "Promoted to a what-if derivative.",
     "promotedPartial": "Promoted, but {{n}} take(s) couldn’t be added.",
+    "promotedProsePartial": "Promoted, but {{n}} take(s)’ prose couldn’t be saved — re-promote to retry.",
     "promoteHint": "Generate at least one take to promote"
   },
   "cast": "Cast",
