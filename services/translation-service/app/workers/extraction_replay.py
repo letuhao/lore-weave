@@ -143,15 +143,30 @@ async def replay_chapter_from_cache(
                 "chapter_title": chapter_title,
                 "chapter_index": chapter_index,
                 "relevance": ent.get("relevance", "appears"),
+                # M7 — placeholder; computed once per MERGED entity below over the whole
+                # chapter_text. Replay has no per-window text (only cached parses), and the
+                # same entity recurs across cache rows, so a per-row count would over-sum in
+                # _merge_window_entities. Count once post-merge instead.
+                "mention_count": 0,
             }]
             assembled.append(ent)
     # Reuse the worker's exact merge (single source of truth — a future change to the
     # window-merge key must not silently diverge between live extraction and replay). Lazy
     # import keeps the router's import graph light + dodges any import-order coupling.
-    from .extraction_worker import _merge_window_entities
+    from .extraction_worker import _entity_alias_forms, _merge_window_entities
+    from .mention_count import count_entity_mentions
     entities = _merge_window_entities(assembled)
     if not entities:
         return {"status": "empty", "reason": "cached_parse_had_no_entities"}
+
+    # M7 — stamp the per-chapter mention_count on each entity's (single) chapter link by
+    # counting its surface forms over the whole chapter_text (CJK-aware longest-match,
+    # span-deduped). Presence-gated: only entities present in this chapter are counted.
+    for ent in entities:
+        mc = count_entity_mentions(chapter_text, ent.get("name", ""), _entity_alias_forms(ent))
+        for link in ent.get("chapter_links", []):
+            if link.get("chapter_id") == chapter_id:
+                link["mention_count"] = mc
 
     # Re-stamp VALIDATED evidence provenance against the CURRENT text — sound because the
     # content_hash matched, so the offsets index exactly the text that will back the writeback.

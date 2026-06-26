@@ -439,6 +439,12 @@ type chapterLinkIn struct {
 	ChapterTitle string `json:"chapter_title"`
 	ChapterIndex int    `json:"chapter_index"`
 	Relevance    string `json:"relevance"`
+	// MentionCount (M7) — per-chapter mention frequency for this entity, computed by
+	// the translation-service producer (CJK-aware longest-match over canonical+aliases,
+	// presence-gated). Omitted ⇒ 0 (backward-compatible: a producer predating M7 leaves
+	// the column at its default). The upsert overwrites with EXCLUDED so a recount lands
+	// the fresh value.
+	MentionCount int `json:"mention_count"`
 }
 
 type entityResult struct {
@@ -781,13 +787,14 @@ func (s *Server) bulkExtractEntities(w http.ResponseWriter, r *http.Request) {
 				relevance = "appears"
 			}
 			if _, err := tx.Exec(ctx, `
-				INSERT INTO chapter_entity_links (entity_id, chapter_id, chapter_title, chapter_index, relevance)
-				VALUES ($1, $2, $3, $4, $5)
+				INSERT INTO chapter_entity_links (entity_id, chapter_id, chapter_title, chapter_index, relevance, mention_count)
+				VALUES ($1, $2, $3, $4, $5, $6)
 				ON CONFLICT (entity_id, chapter_id) DO UPDATE SET
 					chapter_title = EXCLUDED.chapter_title,
 					chapter_index = EXCLUDED.chapter_index,
-					relevance = EXCLUDED.relevance
-			`, entID, chID, cl.ChapterTitle, cl.ChapterIndex, relevance); err != nil {
+					relevance = EXCLUDED.relevance,
+					mention_count = EXCLUDED.mention_count
+			`, entID, chID, cl.ChapterTitle, cl.ChapterIndex, relevance, cl.MentionCount); err != nil {
 				// In a tx a failed statement poisons it, so this must not error in
 				// practice — the ON CONFLICT makes the insert total. Roll back + 500
 				// rather than swallow (a swallowed error would abort every later

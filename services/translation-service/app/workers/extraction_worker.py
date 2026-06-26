@@ -52,6 +52,7 @@ from .extraction_outcomes import (
 )
 from .extraction_preprocessor import prepare_chapter_text
 from .extraction_provenance import stamp_entity_provenance
+from .mention_count import count_entity_mentions
 from .extraction_prompt import (
     build_extraction_prompt,
     build_known_entities_context,
@@ -161,11 +162,40 @@ def _plan_chapter_windows(chapter: dict, chapter_text: str, context_window: int,
     return windows or [chapter_text]
 
 
+def _entity_alias_forms(ent: dict) -> list[str]:
+    """Extract alias surface forms from a parsed entity dict for mention counting (M7).
+
+    Aliases live under the whitelisted 'aliases' attribute (`ent['attributes']['aliases']`)
+    when the kind defines it. The model may emit them as a list OR a delimiter-joined
+    string; normalize both to a list of strings. Canonical-name counting is handled by the
+    caller (count_entity_mentions takes name + aliases) — this returns aliases only.
+    """
+    attrs = ent.get("attributes") or {}
+    raw = attrs.get("aliases")
+    if raw is None:
+        return []
+    if isinstance(raw, str):
+        # Split on the common CJK + ASCII separators a model uses in a flat string.
+        parts: list[str] = [raw]
+        for sep in ("、", "，", ",", "/", "|", "；", ";"):
+            parts = [p for chunk in parts for p in chunk.split(sep)]
+        return [p.strip() for p in parts if p.strip()]
+    if isinstance(raw, list):
+        return [str(a).strip() for a in raw if a is not None and str(a).strip()]
+    return []
+
+
 def _merge_window_entities(entities: list[dict]) -> list[dict]:
     """Accumulate entities found across sub-chapter windows: merge by (kind, normalized
     name), unioning each entity's chapter_links by chapter_id. The glossary bulk-upsert
     also dedups by name, but merging here keeps the chapter_links clean + the posted set
-    small. First occurrence wins for the entity's attributes (order-stable)."""
+    small. First occurrence wins for the entity's attributes (order-stable).
+
+    M7 — when the SAME entity surfaces in multiple windows of the SAME chapter, each
+    window contributes a per-window mention_count; the chapter total is their SUM (the
+    same entity mentioned 3× in window A and 2× in window B is 5× in the chapter). So a
+    repeat chapter_id link no longer skips — it ADDS its mention_count into the kept link
+    (everything else on the link is identical for one chapter, so first-seen wins)."""
     merged: dict[tuple[str, str], dict] = {}
     for ent in entities:
         name = str(ent.get("name", "")).strip()
@@ -176,11 +206,18 @@ def _merge_window_entities(entities: list[dict]) -> list[dict]:
             merged[key] = ent
             continue
         existing = merged[key]
-        seen = {l.get("chapter_id") for l in existing.get("chapter_links", [])}
+        links_by_chapter: dict = {
+            l.get("chapter_id"): l for l in existing.get("chapter_links", [])
+        }
         for link in ent.get("chapter_links", []):
-            if link.get("chapter_id") not in seen:
+            cid = link.get("chapter_id")
+            if cid not in links_by_chapter:
                 existing.setdefault("chapter_links", []).append(link)
-                seen.add(link.get("chapter_id"))
+                links_by_chapter[cid] = link
+            else:
+                # Same (entity, chapter) seen in another window → SUM the per-window counts.
+                kept = links_by_chapter[cid]
+                kept["mention_count"] = kept.get("mention_count", 0) + link.get("mention_count", 0)
     return list(merged.values())
 
 
@@ -687,16 +724,26 @@ async def _process_extraction_chapter(
             "event_id": compute_event_id(str(job_id), str(chapter_id), call_idx, content_hash),
         })
 
-    def _accept(entities: list[dict]) -> None:
+    def _accept(entities: list[dict], window_text: str = "") -> None:
         # Attach this chapter's link to each entity (fresh per run — NOT cached, since the
         # chapter_index is per-job) and merge into the chapter's accumulated entities.
+        #
+        # M7 — per-chapter mention_count: count this entity's surface forms (canonical +
+        # alias) in THIS window's text with a CJK-aware longest-match scan (span-deduped,
+        # fold-insensitive). Presence-gated by construction: we only count for an entity we
+        # just accepted as present in this chapter. _merge_window_entities SUMs the count
+        # across windows of the same chapter_id, so a window-local count is correct here.
         chapter_title = chapter.get("title", "")
         for ent in entities:
+            mention_count = count_entity_mentions(
+                window_text, ent.get("name", ""), _entity_alias_forms(ent),
+            ) if window_text else 0
             ent["chapter_links"] = [{
                 "chapter_id": str(chapter_id),
                 "chapter_title": chapter_title,
                 "chapter_index": chapter_index,
                 "relevance": ent.get("relevance", "appears"),
+                "mention_count": mention_count,
             }]
         all_entities.extend(entities)
 
@@ -823,7 +870,7 @@ async def _process_extraction_chapter(
             )
             log.info("extraction: chapter %s call %d/%d (win %d) — CACHE HIT (%d entities, 0 tokens, effort=%s)",
                      chapter_id, call_idx + 1, total_calls, window_idx, len(entities), _effort_band)
-            _accept(entities)
+            _accept(entities, window_text)
             return
 
         # 4. Build prompt
@@ -1005,7 +1052,7 @@ async def _process_extraction_chapter(
                 overwrite=_busted,
             )
 
-        _accept(entities)
+        _accept(entities, window_text)
 
     # D-EXTRACTION-BATCH-CONCURRENCY — drive the per-(window,batch) units. Build the flat
     # unit list (call_idx = stable per-chapter index → OBS event_id), then run them under an
