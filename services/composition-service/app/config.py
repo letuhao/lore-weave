@@ -150,6 +150,19 @@ class Settings(BaseSettings):
     # ceilings the W1 router + W4 MCP pre-check; 0 = unlimited (dev default off).
     motif_max_public: int = 0
     motif_max_adopt: int = 0
+    # ── Motif conformance (W5, §2.4) — the binary, ADVISORY beat-conformance dim
+    # written into generation_job.critic. OFF by default → zero LLM cost on the hot
+    # path (mirrors narrative_thread_enabled). `calibrated` flips true ONLY after the
+    # calibration harness passes AND a human sets it — it drives the UI honesty label
+    # (false → "unverified self-report"). Never claim calibrated from a single-model
+    # self-host run (panel_safety, §5).
+    motif_conformance_enabled: bool = False
+    motif_conformance_calibrated: bool = False
+    # The 0-100 tension-band half-width (§2.2): the planned band is centre±halfwidth.
+    motif_conformance_tension_halfwidth: int = 15
+    # Random-sample rate for non-high-tension bound scenes (§5.2): high-tension/
+    # high-weight beats are ALWAYS judged; the rest at this %, so cost stays bounded.
+    motif_conformance_sample_random_pct: int = 20
     # RECONCILE D3 — the Tier-W usage-billing precheck endpoint (W4's mine/import
     # ops; composition-service has no billing client → net-new in W4). Reuses
     # internal_service_token for the internal call.
