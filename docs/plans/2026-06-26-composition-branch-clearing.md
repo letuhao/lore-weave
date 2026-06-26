@@ -11,12 +11,14 @@
 - **Date:** 2026-06-26 · **Design branch:** `feat/composition-service` (docs only) ·
   **Build branch:** new (TBD)
 - **Goal:** close out the last open composition debt — built on a new branch, not here.
-- **PO decisions (LOCKED 2026-06-26):** all five greenlit at the fullest build —
+- **PO decisions (LOCKED 2026-06-26):** all greenlit at the fullest build —
   adapt = **per-scene ghost from source**; chat-hoist = **full SharedWorker hub**;
-  WS-B3 = **build both deferrals** (prose-persist + vs-canon delta); WS-F = **build a
-  mobile pass now**. `D-T5.2-WINDOWED-MENTIONS` stays **externally blocked** (knowledge
-  track `D-P2-PER-SCENE-FANOUT`) — out of scope, recorded as blocked.
-- **Grounding:** 3 read-only research passes over the actual code (2026-06-26), refs inline.
+  WS-B3 = **build both deferrals** (prose-persist + vs-canon delta); WS-F = **mobile pass
+  now** (two-level nav + heavy-canvas mobile views); **M6** canon-at-chapter inspector
+  (both branch-point + per-scene); **M7** per-chapter mention frequency **build now**
+  (re-scoped: needs per-*chapter* counts, NOT the per-*scene* `D-P2-PER-SCENE-FANOUT`, so
+  it is NOT blocked). Only per-*scene* fanout + CJK alias-per-chapter stay out of scope.
+- **Grounding:** 5 read-only research passes over the actual code (2026-06-26), refs inline.
 
 This is **one coherent effort, classified XL**, run as **9 milestones** (M0 world-i18n,
 M4 delta, M6 canon-at-chapter inspector, M3 prose, M1 adapt, M5a mobile-shell,
@@ -343,6 +345,250 @@ mandatory** + a live-smoke proving the count flows extraction → glossary → F
 1. `adapt_scene` op + `gather_source_scene` lens (M1) — additive, no schema change.
 2. `POST /works/{project_id}/scenes/{node_id}/prose` scene-draft persist (M3) — new
    endpoint, writes to the derivative project's scene-draft store.
+3. Gateway/composition public passthrough for glossary `known-entities` + per-chapter
+   links (M6) — read-only, VIEW-grant scoped.
+4. `chapter_entity_links.mention_count INT` column + `chapterLinkIn` payload field +
+   producer count pass (M7) — glossary migration + knowledge→glossary contract.
 
 Everything else is FE + orchestration over already-built infra (derive, critic, ghost,
 the SharedWorker template, the `useIsMobile` precedent).
+
+---
+
+# Edge-case hardening (adversarial pass, 2026-06-26)
+
+Decided handling for each edge case found per milestone. These are **design requirements**,
+not options — fold into the detailed design. Cross-cutting rules first, then per-milestone.
+
+## Cross-cutting (apply to every milestone)
+- **Tenancy/grants** — every new read/write endpoint (M3 prose, M6 passthrough, M7 count)
+  filters by `owner_user_id`/`book_id` and is grant-gated (VIEW for reads, EDIT for writes).
+  No endpoint returns another tenant's data; no shared-row write. (CLAUDE.md tenancy tiers.)
+- **Idempotency** — every write (M3 persist, M7 backfill, M1 ghost-accept) is idempotent on a
+  natural key (node_id+version / entity_id+chapter_id) so a double-click / retry / concurrent
+  promote is a no-op, never a duplicate or clobber.
+- **Degrade-safe** — every LLM-dependent surface (M4 critic, M1 adapt, M2 chat) renders a
+  clear "unavailable / not yet analyzed" state on null/empty/degrade — never a broken value
+  or a silent empty that reads as "nothing here".
+- **Derivative/COW scope** — any derivative write (M3) targets the **derivative** `project_id`,
+  never the shared `book_id` draft (would clobber source). Any derivative read windows to
+  `branch_point` against the **source** project (the derivative's own project is empty
+  pre-promote).
+
+## M0 — world i18n parity
+- **Empty-string keys fail too** — the suite checks key-set AND non-empty AND placeholder
+  parity. Fill **real translations**, not English copies or blanks.
+- **Preserve `{{placeholders}}` verbatim** — translating the placeholder *name* (e.g.
+  `{{count}}`→`{{số}}`) fails the placeholder check. Keep tokens identical across locales.
+- **Plural/nested keys** — i18next `_plural`/`_zero` suffix keys and nested objects must match
+  shape, not just leaf count.
+- **zh-TW = Traditional** (not Simplified); **regression guard** is the existing parity test in
+  CI — a future en-only key re-breaks it, by design.
+
+## M4 — vs-canon judge delta
+- **No canon baseline** — anchor scene's chapter draft is empty/absent → show "no canon
+  baseline to compare" (not a 0-delta). Don't fabricate a baseline.
+- **Null dims on degrade** — critic down / no distinct critic model configured
+  (`engine.py:1447-1454` skips LLM) → per-dim delta null-guards → show absolute take score +
+  "vs-canon unavailable".
+- **Canon-judge cache key = `(chapter_id, draft_version)`**, NOT `chapter_id` alone — a chapter
+  edit changes canon prose; keying on id alone serves a stale delta.
+- **Scope mismatch (documented)** — baseline = anchor scene's *chapter* draft (scene prose
+  isn't isolated in storage); on a multi-scene/long chapter the critic may truncate. Note as a
+  V1 limitation; if scene offsets are known, slice the relevant span.
+- **Cost** — judge canon once per `(chapter_id, draft_version)`; only the **chosen** take
+  auto-judges; debounce rapid take cycling.
+
+## M6 — canon-at-chapter inspector
+- **Not-yet-extracted chapter** — windowed endpoints return empty because extraction is
+  pending/never-run → show "chapter not yet analyzed" with the extraction status, not "empty
+  canon".
+- **`before_chapter_id` unresolvable** (chapter deleted/reordered/not in book) — endpoints
+  **fail-closed** (per `timeline.py`); the panel surfaces "window unavailable", never an
+  unwindowed whole-book leak.
+- **Derivative pre-promote** — window against `source_project_id` at `branch_point` (the
+  derivative's own project is empty until promote). Reuse the grounding endpoint's derivative
+  branch.
+- **glossary vs knowledge skew** — presence (glossary `chapter_entity_links`) and
+  facts/statuses (knowledge) are two stores that can disagree; label each by source, don't
+  silently merge into one "truth".
+- **Large cast** — "entities as of chapter N" can be hundreds → paginate + sort by relevance
+  (`major`/`appears`/`mentioned` then coverage); cap the default view.
+- **`chapter_index` consistency** — resolve `chapter_id`→order **live** (`resolve_before_order`)
+  so a reorder doesn't silently shift the window.
+
+## M3 — prose-persist-on-promote
+- **Empty/failed take ghost** — skip persistence for that scene (don't write an empty draft);
+  report it in the result count.
+- **Source-clobber guard (critical)** — write to the **derivative** project's scene-draft
+  store, never `book.get_draft(shared_book_id, chapter_id)`. Add a test asserting the source
+  chapter draft is byte-identical after promote.
+- **Direct write (no job)** — the take was generated on the canon project pre-promote and
+  exists client-side; the new endpoint persists prose **without** a generation_job (the
+  existing `jobs/persist` is chapter-only). Provide a job-less scene-draft write.
+- **Partial promote** — derive succeeds, some scene persists fail → best-effort per scene,
+  surface "N of M scenes got prose"; the empty nodes are valid (acceptance allows it).
+- **Idempotent on `node_id`** — a re-promote / double-submit overwrites the same scene draft,
+  never duplicates.
+- **Format** — convert ghost plain-text → the scene-draft store's expected doc shape
+  (Tiptap/JSON) at the boundary.
+
+## M1 — adapt-from-source
+- **Pre-branch scene = read-only** — gate the "Adapt from source" action to scenes at/after
+  `branch_point`; a pre-divergence inherited scene must NOT be adaptable (it's canon).
+- **New derivative scene (no source counterpart)** — a scene added post-branch has no source
+  prose → fall back to `draft_scene`, not `adapt_scene`; only offer adapt where a source scene
+  exists for that position.
+- **Empty source prose** — source chapter draft empty → clear "nothing to adapt" message (or
+  fall back to draft), not a silent weak generation.
+- **Overrides flow** — an entity-renaming override must reach the adapt prompt so the adapted
+  ghost uses the new name (verify the override merge feeds `adapt_scene`).
+- **Spoiler-bound the source lens** — `gather_source_scene` reads ≤ the scene's position; it
+  must not pull post-branch source prose into the adapt context.
+- **Token budget** — long source scene → respect the pack token budget like `gather_recent`
+  (truncate/window), don't blow the context.
+
+## M5a — mobile shell + nav
+- **Desktop↔mobile breakpoint flip mid-session** — the `useIsMobile` branch swaps shells
+  (unmount). Keep workspace/draft state in providers mounted **above** the branch
+  (`WorkspaceLayoutProvider`, draft context) so a resize/rotate doesn't lose state. (CLAUDE.md:
+  never conditionally unmount stateful state — hoist it.)
+- **Persisted `active` is a desktop-only/hidden panel** — clamp to a visible panel on mobile
+  (the desktop path already clamps `:321-324`); apply the `threads` gate.
+- **Popout deep-link on mobile** — `/composition/popout` is desktop-only → redirect to the
+  in-shell panel; never `window.open` on mobile.
+- **Soft-keyboard viewport resize** — the bottom group bar must not obscure the editor input
+  when the mobile keyboard opens (use `visualViewport`/safe-area, not a fixed bottom that
+  overlaps).
+
+## M5b — heavy-canvas mobile views
+- **Pinch-zoom vs page-scroll** — set `touch-action` on the canvas so pinch zooms the graph
+  and doesn't scroll the page (and vice-versa outside it).
+- **Tap vs pan disambiguation** — a tap selects (→ bottom-sheet actions), a drag pans;
+  threshold like the desktop dnd distance.
+- **Huge graph perf** — cap rendered nodes / virtualize on mobile; fit-to-screen must handle
+  1 node and thousands without NaN transforms.
+- **Overlapping hit targets** — tap on overlapping nodes → disambiguation (nearest / a small
+  picker), with finger-sized hit areas.
+- **Timeline horizontal-scroll vs vertical page-scroll** — lock axes so the timeline pans
+  horizontally without fighting the page.
+
+## M7 — per-chapter mention frequency
+- **CJK counting** — count surface forms with a CJK-aware matcher (longest-match over
+  canonical + aliases), NOT a space tokenizer (`feedback_space_tokenizer_degrades_on_cjk`).
+- **Alias overlap double-count** — "Harker" inside "Jonathan Harker" → longest-match + span
+  dedup so one mention isn't counted twice.
+- **Presence-gated frequency** — count only within chapters the entity is **linked** to
+  (`chapter_entity_links`); a raw string match in an *unlinked* chapter may be a homonym/other
+  entity → don't count it (avoids false positives).
+- **Migration default + backfill** — new `mention_count` column defaults 0; backfill is a
+  **deterministic recount job** over existing books (no LLM), batched + idempotent.
+- **Staleness on edit** — a chapter edit invalidates its counts → recount via the chapter-update
+  event consumer (don't serve stale counts).
+- **Heatmap windowing** — FE sums counts ≤ cutoff (replacing the whole-book scalar); guard the
+  cutoff resolution like M6.
+
+## M2 — chat-hoist
+- **Preserve every AG-UI event** — the `runChatTurn` extraction must handle reasoning + 3×
+  tool-call frames + 4× CUSTOM sub-events + RUN_FINISHED(suspend) + RUN_ERROR; a dropped type
+  is a silent regression → enumerate + test each. **`/review-impl` mandatory.**
+- **Single-writer side-effects** — the `onStreamEnd` fan-out (session refresh + pending-facts
+  refetch) must fire **once**, not per-window. Elect the originating window or make the effect
+  idempotent (dedupe on turn id).
+- **Optimistic append dedupe** — two windows appending the same optimistic user message →
+  dedupe on a client message id (or append only in the worker snapshot).
+- **Resume/tool-result across windows** — a tool result submitted in one window routes through
+  the worker `start`; other windows see the resumed turn via the snapshot.
+- **SharedWorker absent** (some mobile/embedded browsers) — fall back to the in-process hook
+  (the `LiveStateContext` selector pattern); ACK-timeout degrades on script-load failure.
+- **Token refresh mid-stream** — the worker holds the bearer; on refresh, plumb the new token
+  to the worker (or re-`start` with it) so a long turn doesn't 401.
+- **Abort propagation** — stop from any window aborts the worker's single controller → all
+  windows see the stop.
+
+## KG extraction-cache (separate spec) — edge cases
+See [`docs/specs/2026-06-26-kg-extraction-cache.md`](../specs/2026-06-26-kg-extraction-cache.md) §8.
+
+---
+
+# Parallelization plan (for fan-out build)
+
+Goal: build several milestones concurrently. The blocker is **file overlap** — a few hot FE
+files are touched by multiple milestones and cannot be edited by parallel agents without merge
+conflicts. The plan = (1) freeze shared contracts, (2) run the genuinely-isolated lanes in
+parallel, (3) serialize the canvas cluster under one owner.
+
+## Conflict matrix — which milestone touches which HOT file
+| Hot file | M0 | M1 | M3 | M4 | M5a | M5b | M6 | M7 | M2 |
+|---|---|---|---|---|---|---|---|---|---|
+| `SceneGraphCanvas.tsx` | | | ✔ promote | ✔ judge | | ✔ canvas | ✔ mount | | |
+| `CompositionPanel.tsx` | | | | | ✔ mobile | | ✔ register | | |
+| what-if hooks (`useWhatIf*`) | | | ✔ | ✔ | | | ✔ | | |
+| composition `api.ts` (additive) | | ✔ | ✔ | ✔ | | | ✔ | ✔ | |
+| `composition.json` i18n (additive) | | ✔ | ✔ | ✔ | ✔ | ✔ | ✔ | ✔ | |
+| chat feature (`useChatMessages` …) | | | | | | | | | ✔ |
+| `world.json` i18n | ✔ | | | | | | | | |
+| BE composition (`cowrite/lenses/pack`) | | ✔ | ✔ ep | | | | | | |
+| glossary + knowledge (cross-svc) | | | | | | | | ✔ | |
+
+**Bottleneck = `SceneGraphCanvas.tsx`** (M3, M4, M5b, M6 — 4-way). Secondary =
+`CompositionPanel.tsx` (M5a, M6). `api.ts`/i18n are *additive* (append-only → low conflict if
+each milestone uses its own namespace/functions).
+
+## Step 1 — FREEZE these contracts first (single short pass, before any fan-out)
+A frozen interface lets BE and FE lanes build against stubs in parallel
+(`feedback_run_parallel_tasks_when_possible`):
+1. **M1** `adapt_scene` op name + `generate` body param shape.
+2. **M3** `POST /works/{project_id}/scenes/{node_id}/prose` request/response + idempotency key.
+3. **M6** gateway/composition passthrough endpoints (known-entities, per-chapter links) shapes
+   + grant scope.
+4. **M7** `chapter_entity_links.mention_count` column + `chapterLinkIn.mention_count` payload
+   field.
+5. **SceneGraphCanvas extension points** — declare WHERE M4 (judge badge), M3 (promote prose),
+   M5b (mobile wrapper), M6 (branch-point mount) each plug in, so the single canvas owner
+   sequences them without re-architecting.
+
+## Step 2 — LANES (parallel-safe owners)
+| Lane | Milestones | Scope (non-overlapping) | Parallel? |
+|---|---|---|---|
+| **L-i18n** | M0 | `world.json` ×4 | ✅ anytime, isolated |
+| **L-chat** | M2 | chat feature only (`runChatTurn`/hub/worker/provider) | ✅ isolated |
+| **L-kg** | KG cache | knowledge-service/worker-ai — **separate branch** | ✅ isolated |
+| **L-be** | M1-BE, M3-BE | composition-service Python (`cowrite/lenses/pack`, new prose ep) | ✅ no FE overlap |
+| **L-xsvc** | M7-BE | glossary Go migration + knowledge producer + contract | ✅ own services |
+| **L-mobileshell** | M5a | `ChapterEditorPage`, `CompositionPanel` mobile branch, new `MobilePanelSwitcher`, hoist `useIsMobile` | ⚠ shares `CompositionPanel` with M6 (see coord) |
+| **L-canvas** | M4, M3-FE, M5b, M6-mount | **single owner** of `SceneGraphCanvas.tsx` + what-if hooks; does these 4 **sequentially** | 🔁 serialized internally |
+| **L-m6panel** | M6 panel + M6-BE-FE-wire | new `CanonAtChapterPanel` (isolated new file) + per-scene mount + passthrough client | ⚠ panel registration in `CompositionPanel` (coord with L-mobileshell) |
+
+**Coordination points (the only cross-lane edits):**
+- `CompositionPanel.tsx` — **L-m6panel registers the panel** (additive: PANEL_IDS + DockSlot),
+  then **L-mobileshell** consumes the panel list. Sequence: m6 registration → mobileshell, or
+  let L-mobileshell own the file and m6panel hands it the registration diff.
+- `SceneGraphCanvas.tsx` branch-point mount — owned by **L-canvas**; L-m6panel provides the
+  panel component as a prop/slot, L-canvas wires the mount.
+
+## Step 3 — WAVES (dependency order)
+- **Wave A (parallel, immediately):** L-i18n (M0), L-chat (M2), L-kg, L-be (M1/M3 BE),
+  L-xsvc (M7 BE) — five lanes, zero file overlap. Plus the **contract freeze** (Step 1) gating
+  the FE lanes.
+- **Wave B (parallel, after contracts + relevant BE stubs):** L-mobileshell (M5a),
+  L-m6panel (M6 panel+wire). Coordinate the `CompositionPanel` touch.
+- **Wave C (serialized lane, runs alongside A/B):** L-canvas does M4 → M3-FE → M6-mount → M5b
+  in order (all on `SceneGraphCanvas`).
+- **Integration:** M6-mount (needs M6 panel from L-m6panel) and M3-FE (needs M3-BE ep) join at
+  the end of their dependency.
+
+## Step 4 — Fan-out mechanics
+- Each parallel lane = **its own worktree** (`isolation: worktree`) so concurrent file writes
+  don't collide; merge per-lane at a green checkpoint.
+- **Per-lane gate** stays full: VERIFY evidence, 2-stage REVIEW, `/review-impl` for the
+  load-bearing lanes (L-chat/M2, L-xsvc/M7, L-be/M1, L-kg), live-smoke for cross-service
+  (M1, M3, M6, M7, KG) + browser two-window (M2, M5).
+- **Order of merge** to minimize rebase: L-be + L-xsvc (BE contracts land) → L-m6panel →
+  L-canvas → L-mobileshell → L-chat → L-i18n. KG-cache merges to its own branch independently.
+
+## Detailed design — next step (itself fan-out-able)
+Per-milestone detailed design (file-level change lists, test plans, exact signatures) is the
+natural next fan-out: **one design agent per lane**, each producing its milestone's detailed
+design against the frozen contracts above. That is the recommended "fan out" entry point for
+the next session.

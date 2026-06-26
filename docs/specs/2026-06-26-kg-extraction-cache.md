@@ -110,7 +110,40 @@ remove is re-extracting on an **unchanged** config (every rebuild today).
 - **Live-smoke required** (live extraction path, ≥2 services). **`/review-impl` mandatory**
   (load-bearing: a bug here silently corrupts the graph or wastes spend).
 
-## 8. Scope / branch
+## 8. Edge cases & hardening (adversarial pass, 2026-06-26)
+
+- **Cache key must include `schema_key`** — custom-ontology (lane LB) threads an advisory
+  `ExtractionSchema` into the extractors; two runs with the same text/op/model but different
+  schema produce different candidates. The existing `task_id` already includes `schema` —
+  preserve it; dropping it serves wrong candidates.
+- **Only cache CLEAN batches** — truncated / validation-rejected / partial responses must NOT
+  be cached (mirror translation-service: cache only `OK`/`EMPTY_VALID`), else a transient
+  failure poisons the cache and a re-run can't recover.
+- **Model-in-key policy** — translation deliberately **excludes** model from the key
+  (`D-CACHE-MODEL-KEY`) with an opt-in bust-on-model-change. Decide explicitly for KG: default
+  **include** `model_ref` (the built `task_id` already does) so a model swap re-extracts —
+  safer for graph quality. Document the choice.
+- **Partial-DAG cache** — the DAG is `entity → gather(relation,event,fact)`. A cache HIT on
+  `entity` but MISS on `relation` must still run relation against the **cached** entities (not
+  re-run entity). Cache per-op, gate per-op; don't treat the chapter as all-or-nothing.
+- **Concurrent extraction of the same leaf** — two jobs hit the same `task_id` → the `put` must
+  be idempotent (`ON CONFLICT DO NOTHING`/`DO UPDATE`), and a race shouldn't double-spend the
+  LLM (best-effort: check-then-call; a rare double-call is acceptable, a corrupted row is not).
+- **`save_raw_extraction` off** — the opt-in raw store stays empty; the candidate cache
+  (`candidates_jsonb`) is what the gate reads, so caching works regardless. Raw is debug-only.
+- **Invalidation correctness** — `invalidate-cache/{book_id}` + a parse/extractor-version bump
+  must drop the now-stale rows so a rebuild re-extracts with the new logic; verify a version
+  bump actually misses (don't serve pre-bump candidates).
+- **Rebuild idempotency** — `rebuild_extraction` deletes the graph then re-derives; if it now
+  reads cache, ensure a mid-rebuild crash leaves a re-runnable state (the job is restartable;
+  cache rows survive the graph delete).
+- **Live-path parity** — the legacy `/extract-item` path and the live `decoupled_extract` path
+  must compute the **same** `task_id` for the same input, or they fragment the cache. Share the
+  `task_id` helper; test parity.
+- **Cost telemetry** — record cache HIT/MISS + tokens-saved so the win is measurable (and a
+  silent cache that never hits is detectable).
+
+## 9. Scope / branch
 
 - **NOT `feat/composition-service`.** Build on a **new branch** (proposed
   `feat/kg-extraction-cache`), knowledge-service + worker-ai.
