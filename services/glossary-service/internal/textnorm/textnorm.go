@@ -10,18 +10,21 @@ import (
 	"regexp"
 	"strings"
 
-	"golang.org/x/text/unicode/norm"
+	namenorm "github.com/loreweave/loreweave_extraction"
 )
 
 var wsCollapse = regexp.MustCompile(`\s+`)
 
-// Normalize prepares a string for dedup comparison: Unicode NFC, trim, collapse
-// internal whitespace, lowercase. (The former api.normalizeEntity.)
+// Normalize prepares a string for dedup comparison. The multi-language
+// equivalence fold (NFKC + Unicode casefold + CJK traditional->simplified) is
+// delegated to the shared loreweave_extraction SDK — the SAME fold the Python
+// knowledge-service uses — so simplified/traditional and full-width variants of
+// one entity name dedup together (D-GLOSSARY-ST-DEDUP). The trim + whitespace
+// collapse stay here. casefold subsumes the former ToLower; NFKC subsumes NFC.
 func Normalize(s string) string {
-	s = norm.NFC.String(s)
+	s = namenorm.NormalizeEntityName(s)
 	s = strings.TrimSpace(s)
 	s = wsCollapse.ReplaceAllString(s, " ")
-	s = strings.ToLower(s)
 	return s
 }
 
