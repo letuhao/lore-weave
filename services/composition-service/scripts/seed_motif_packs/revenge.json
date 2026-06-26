@@ -1,0 +1,289 @@
+[
+  {
+    "code": "revenge.betrayal_to_exile",
+    "language": "en",
+    "kind": "sequence",
+    "category": "revenge.fall",
+    "name": "Betrayal to Exile",
+    "summary": "On the eve of triumph the closest ally turns; stripped of all and cast out, the survivor swears to return.",
+    "genre_tags": ["revenge", "bao-thu", "betrayal"],
+    "roles": [
+      {"key": "protagonist", "actant": "subject", "label": "the betrayed survivor", "constraints": ["trusting, on the rise"]},
+      {"key": "betrayer", "actant": "opponent", "label": "the sworn brother / betrayer", "constraints": ["intimate, trusted"]},
+      {"key": "lost_kin", "actant": "receiver", "label": "the kin or allies lost", "constraints": ["taken in the fall"]},
+      {"key": "vengeance", "actant": "object", "label": "the vow of vengeance", "constraints": ["sworn, driving"]}
+    ],
+    "beats": [
+      {"key": "trust", "label": "Trust established", "intent": "an intimate bond is set up to be broken", "tension_target": 2, "order": 1},
+      {"key": "betrayal", "label": "Betrayal sprung", "intent": "the closest ally turns at the worst moment", "tension_target": 4, "order": 2},
+      {"key": "fall", "label": "Fall and loss", "intent": "the protagonist is stripped of all", "tension_target": 4, "order": 3},
+      {"key": "vow", "label": "Exile with a vow", "intent": "cast out, the survivor swears return", "tension_target": 3, "order": 4}
+    ],
+    "preconditions": [
+      {"text": "the protagonist holds trust, standing, or power"}
+    ],
+    "effects": [
+      {"text": "the protagonist is stripped of standing and cast out"},
+      {"text": "a driving vow of vengeance is sworn"}
+    ],
+    "tension_target": 4,
+    "emotion_target": "grief",
+    "examples": [
+      {"text": "On the eve of triumph the closest ally turns; stripped of all and cast out, the survivor swears return."}
+    ],
+    "annotations": {},
+    "source": "authored",
+    "source_version": 1
+  },
+  {
+    "code": "revenge.three_year_pact",
+    "language": "en",
+    "kind": "pattern",
+    "category": "revenge.arc",
+    "name": "Three-Year Pact",
+    "summary": "Given a span to grow strong or die, the outcast trains in obscurity through humiliation and a fortuitous turn, then returns to overturn the one who broke them.",
+    "genre_tags": ["revenge", "bao-thu", "comeback"],
+    "roles": [
+      {"key": "protagonist", "actant": "subject", "label": "the outcast", "constraints": ["given a deadline to grow"]},
+      {"key": "mentor", "actant": "sender", "label": "the mentor of the wilderness", "constraints": ["hidden, demanding"]},
+      {"key": "rival", "actant": "opponent", "label": "the one who broke them", "constraints": ["secure in victory"]},
+      {"key": "ally", "actant": "helper", "label": "the loyal ally", "constraints": ["stands by through the climb"]}
+    ],
+    "beats": [
+      {"key": "humiliation", "label": "Humiliation", "intent": "the outcast is broken and given a deadline", "tension_target": 2, "order": 1},
+      {"key": "encounter", "label": "Fortuitous encounter", "intent": "a chance turn opens a path to power", "tension_target": 3, "order": 2},
+      {"key": "ascent", "label": "Bitter ascent", "intent": "obscure, grinding growth", "tension_target": 3, "order": 3},
+      {"key": "breakthrough", "label": "Breakthrough", "intent": "the protagonist crosses the threshold of strength", "tension_target": 4, "order": 4},
+      {"key": "return", "label": "Return and reversal", "intent": "return to overturn the one who broke them", "tension_target": 5, "order": 5}
+    ],
+    "preconditions": [
+      {"text": "the protagonist has been broken and humiliated"},
+      {"text": "a finite window to grow strong is set"}
+    ],
+    "effects": [
+      {"text": "the protagonist returns transformed and powerful"},
+      {"text": "the one who broke them is overturned"}
+    ],
+    "tension_target": 4,
+    "emotion_target": "vindication",
+    "examples": [
+      {"text": "Given a span to grow strong or die, the outcast trains in obscurity and returns to overturn the one who broke them."}
+    ],
+    "annotations": {},
+    "source": "authored",
+    "source_version": 1
+  },
+  {
+    "code": "revenge.false_accusation",
+    "language": "en",
+    "kind": "situation",
+    "category": "revenge.injustice",
+    "name": "False Accusation",
+    "summary": "Branded a traitor on planted proof, the accused endures public disgrace until the true hand is dragged into the light.",
+    "genre_tags": ["revenge", "bao-thu", "injustice"],
+    "roles": [
+      {"key": "protagonist", "actant": "subject", "label": "the falsely accused", "constraints": ["publicly condemned"]},
+      {"key": "framer", "actant": "opponent", "label": "the framer", "constraints": ["concealed, methodical"]},
+      {"key": "clue", "actant": "sender", "label": "the hidden witness or clue", "constraints": ["suppressed at first"]},
+      {"key": "judges", "actant": "receiver", "label": "the judging body", "constraints": ["swayed by appearance"]}
+    ],
+    "beats": [
+      {"key": "framed", "label": "Framed for a crime", "intent": "planted proof brands the protagonist", "tension_target": 3, "order": 1},
+      {"key": "condemned", "label": "Condemned publicly", "intent": "the protagonist is disgraced before all", "tension_target": 4, "order": 2},
+      {"key": "evidence_hidden", "label": "Evidence hidden", "intent": "the truth is suppressed; the low ebb", "tension_target": 2, "order": 3},
+      {"key": "unmasked", "label": "Truth unmasked", "intent": "the true hand is dragged to light", "tension_target": 5, "order": 4}
+    ],
+    "preconditions": [
+      {"text": "the protagonist can be plausibly blamed for a crime"}
+    ],
+    "effects": [
+      {"text": "the protagonist's name is cleared"},
+      {"text": "the true culprit is exposed"}
+    ],
+    "tension_target": 4,
+    "emotion_target": "indignation",
+    "examples": [
+      {"text": "Branded a traitor on planted proof, the accused endures disgrace until the true hand is dragged to light."}
+    ],
+    "annotations": {},
+    "source": "authored",
+    "source_version": 1
+  },
+  {
+    "code": "revenge.patient_infiltration",
+    "language": "en",
+    "kind": "sequence",
+    "category": "revenge.infiltration",
+    "name": "Patient Infiltration",
+    "summary": "Under a borrowed name the avenger climbs the enemy's own ranks, gathers leverage, then turns their secrets against them from within.",
+    "genre_tags": ["revenge", "bao-thu", "infiltration"],
+    "roles": [
+      {"key": "protagonist", "actant": "subject", "label": "the disguised avenger", "constraints": ["concealing their identity"]},
+      {"key": "target_house", "actant": "opponent", "label": "the enemy house", "constraints": ["powerful, guarded"]},
+      {"key": "leverage", "actant": "object", "label": "the gathered leverage", "constraints": ["secrets, proof"]},
+      {"key": "contact", "actant": "helper", "label": "the inside contact", "constraints": ["a quiet ally within"]}
+    ],
+    "beats": [
+      {"key": "enter", "label": "Enter under a false name", "intent": "infiltrate the enemy under cover", "tension_target": 2, "order": 1},
+      {"key": "earn_trust", "label": "Earn trust inside", "intent": "climb the ranks of the enemy", "tension_target": 2, "order": 2},
+      {"key": "gather", "label": "Gather leverage", "intent": "quietly collect secrets and proof", "tension_target": 3, "order": 3},
+      {"key": "strike", "label": "Strike from within", "intent": "turn the enemy's secrets against them", "tension_target": 5, "order": 4}
+    ],
+    "preconditions": [
+      {"text": "the protagonist can pass unrecognized into the enemy's circle"}
+    ],
+    "effects": [
+      {"text": "the enemy is undone by its own secrets"},
+      {"text": "the avenger's true identity is revealed at the strike"}
+    ],
+    "tension_target": 4,
+    "emotion_target": "tension",
+    "examples": [
+      {"text": "Under a borrowed name the avenger climbs the enemy's own ranks, then turns their secrets against them."}
+    ],
+    "annotations": {},
+    "source": "authored",
+    "source_version": 1
+  },
+  {
+    "code": "revenge.blood_debt_collection",
+    "language": "en",
+    "kind": "situation",
+    "category": "revenge.reckoning",
+    "name": "Blood-Debt Collection",
+    "summary": "One by one the avenger finds those who shared the crime, confronts each with proof, and makes them answer for it.",
+    "genre_tags": ["revenge", "bao-thu", "reckoning"],
+    "roles": [
+      {"key": "protagonist", "actant": "subject", "label": "the avenger", "constraints": ["driven, methodical"]},
+      {"key": "perpetrator", "actant": "opponent", "label": "the guilty party", "constraints": ["one of several"]},
+      {"key": "wronged_dead", "actant": "receiver", "label": "the wronged dead", "constraints": ["the cause being answered for"]}
+    ],
+    "beats": [
+      {"key": "locate", "label": "Locate the guilty", "intent": "find one who shared the crime", "tension_target": 3, "order": 1},
+      {"key": "confront", "label": "Confront with proof", "intent": "present undeniable proof", "tension_target": 4, "order": 2},
+      {"key": "respond", "label": "Guilty pleads or defies", "intent": "the guilty begs or stands defiant", "tension_target": 4, "order": 3},
+      {"key": "exact", "label": "Exact the price", "intent": "make them answer for it", "tension_target": 5, "order": 4}
+    ],
+    "preconditions": [
+      {"text": "multiple parties share guilt for a past wrong"}
+    ],
+    "effects": [
+      {"text": "one of the guilty is held to account"},
+      {"text": "the chain of reckoning advances toward the prime mover"}
+    ],
+    "tension_target": 4,
+    "emotion_target": "grim-resolve",
+    "examples": [
+      {"text": "One by one the avenger finds those who shared the crime and makes each answer for it."}
+    ],
+    "annotations": {},
+    "source": "authored",
+    "source_version": 1
+  },
+  {
+    "code": "revenge.mercy_or_vengeance",
+    "language": "en",
+    "kind": "situation",
+    "category": "revenge.choice",
+    "name": "Mercy or Vengeance",
+    "summary": "With the killer helpless, a reason to spare appears; the avenger's choice reshapes who they become.",
+    "genre_tags": ["revenge", "bao-thu", "moral-choice"],
+    "roles": [
+      {"key": "protagonist", "actant": "subject", "label": "the avenger at the brink", "constraints": ["holds the power to end it"]},
+      {"key": "broken_enemy", "actant": "opponent", "label": "the helpless enemy", "constraints": ["at the protagonist's mercy"]},
+      {"key": "moral_voice", "actant": "sender", "label": "the voice for mercy", "constraints": ["kin, conscience, or witness"]}
+    ],
+    "beats": [
+      {"key": "at_mercy", "label": "Enemy at mercy", "intent": "the killer lies helpless", "tension_target": 4, "order": 1},
+      {"key": "reason", "label": "Reason to spare surfaces", "intent": "a reason not to strike appears", "tension_target": 3, "order": 2},
+      {"key": "choice", "label": "Choice forced", "intent": "the avenger must decide", "tension_target": 5, "order": 3},
+      {"key": "consequence", "label": "Consequence lands", "intent": "the choice reshapes who they are", "tension_target": 4, "order": 4}
+    ],
+    "preconditions": [
+      {"text": "the protagonist has the enemy at their mercy"}
+    ],
+    "effects": [
+      {"text": "the protagonist is changed by their choice"},
+      {"text": "the cycle of vengeance is closed or perpetuated"}
+    ],
+    "tension_target": 5,
+    "emotion_target": "moral-tension",
+    "examples": [
+      {"text": "With the killer helpless, a reason to spare appears; the avenger's choice reshapes who they become."}
+    ],
+    "annotations": {},
+    "source": "authored",
+    "source_version": 1
+  },
+  {
+    "code": "revenge.pyrrhic_victory",
+    "language": "en",
+    "kind": "sequence",
+    "category": "revenge.aftermath",
+    "name": "Pyrrhic Victory",
+    "summary": "The enemy falls at last, and in the silence after, the avenger sees what the years of hate have cost.",
+    "genre_tags": ["revenge", "bao-thu", "aftermath"],
+    "roles": [
+      {"key": "protagonist", "actant": "subject", "label": "the avenger", "constraints": ["consumed by the long pursuit"]},
+      {"key": "arch_enemy", "actant": "opponent", "label": "the arch-enemy", "constraints": ["the final target"]},
+      {"key": "revenge_attained", "actant": "object", "label": "the revenge attained", "constraints": ["hollow once won"]}
+    ],
+    "beats": [
+      {"key": "confront", "label": "Final confrontation", "intent": "the last reckoning arrives", "tension_target": 4, "order": 1},
+      {"key": "victory", "label": "Victory achieved", "intent": "the enemy falls", "tension_target": 5, "order": 2},
+      {"key": "cost", "label": "Hidden cost revealed", "intent": "the price of the pursuit surfaces", "tension_target": 4, "order": 3},
+      {"key": "aftermath", "label": "Hollow aftermath", "intent": "the avenger reckons with the emptiness", "tension_target": 2, "order": 4}
+    ],
+    "preconditions": [
+      {"text": "the protagonist nears the end of a long pursuit of vengeance"}
+    ],
+    "effects": [
+      {"text": "the arch-enemy is defeated"},
+      {"text": "the avenger confronts the cost of their vengeance"}
+    ],
+    "tension_target": 4,
+    "emotion_target": "melancholy",
+    "examples": [
+      {"text": "The enemy falls at last — and in the silence after, the avenger sees what the years of hate have cost."}
+    ],
+    "annotations": {},
+    "source": "authored",
+    "source_version": 1
+  },
+  {
+    "code": "revenge.usurped_inheritance",
+    "language": "en",
+    "kind": "situation",
+    "category": "revenge.birthright",
+    "name": "Usurped Inheritance",
+    "summary": "A stolen birthright and a forged will leave the true heir a beggar, until the proof none could destroy resurfaces.",
+    "genre_tags": ["revenge", "bao-thu", "birthright"],
+    "roles": [
+      {"key": "protagonist", "actant": "subject", "label": "the dispossessed heir", "constraints": ["robbed of their due"]},
+      {"key": "usurper", "actant": "opponent", "label": "the usurper", "constraints": ["holds the stolen claim"]},
+      {"key": "birthright", "actant": "object", "label": "the birthright", "constraints": ["the contested inheritance"]},
+      {"key": "retainer", "actant": "sender", "label": "the loyal retainer", "constraints": ["guards the proof"]}
+    ],
+    "beats": [
+      {"key": "stolen", "label": "Rightful claim stolen", "intent": "the birthright is seized by forgery", "tension_target": 2, "order": 1},
+      {"key": "cast_out", "label": "Cast out as a pretender", "intent": "the true heir is disowned", "tension_target": 3, "order": 2},
+      {"key": "seek_proof", "label": "Proof of lineage sought", "intent": "the heir hunts the proof that survives", "tension_target": 3, "order": 3},
+      {"key": "reclaim", "label": "Claim reclaimed", "intent": "the proof resurfaces and the claim is restored", "tension_target": 5, "order": 4}
+    ],
+    "preconditions": [
+      {"text": "the protagonist holds a rightful claim that can be stolen"}
+    ],
+    "effects": [
+      {"text": "the usurper is exposed"},
+      {"text": "the protagonist reclaims their birthright"}
+    ],
+    "tension_target": 4,
+    "emotion_target": "vindication",
+    "examples": [
+      {"text": "A stolen birthright and a forged will leave the true heir a beggar — until the proof none could destroy resurfaces."}
+    ],
+    "annotations": {},
+    "source": "authored",
+    "source_version": 1
+  }
+]
