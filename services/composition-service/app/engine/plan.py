@@ -33,6 +33,7 @@ import asyncio
 import logging
 from dataclasses import dataclass, field
 from typing import Any
+from uuid import UUID
 
 from loreweave_llm.errors import LLMError
 
@@ -76,6 +77,12 @@ class ChapterScenes:
     chapter: ChapterPlan
     scenes: list[ScenePlan]
     warning: str | None = None
+    # ── motif binding (W2) — None on the invent path (back-compat: a bound and an
+    # invented chapter are indistinguishable at the node-write layer; only these
+    # extra fields differ, surfaced to the author + carried to commit).
+    motif: Any = None                       # SelectedMotif | None  (kept loose to avoid an import cycle)
+    binding: Any = None                     # MotifBinding | None
+    application_rows: list[dict[str, Any]] = field(default_factory=list)
 
 
 @dataclass
@@ -83,6 +90,8 @@ class DecomposeResult:
     arc_title: str
     chapters: list[ChapterScenes] = field(default_factory=list)
     unmapped_beats: list[str] = field(default_factory=list)
+    # ── B1 coverage telemetry (W2 §7.6): "bound a motif to N of M chapters".
+    motif_coverage: dict[str, Any] = field(default_factory=dict)
 
 
 def _lang_clause(source_language: str) -> str:
@@ -273,10 +282,28 @@ async def decompose(
     k_ceiling: int, high_threshold: int, min_scenes: int, max_scenes: int,
     source_language: str = "auto", trace_id: str | None = None,
     l1_max_tokens: int = 2048, l2_max_tokens: int = 1536,
+    # ── W2 motif select+bind (all OPTIONAL → strict back-compat: motifs disabled
+    # ⇒ the invent path runs VERBATIM; the worker/router that don't pass these get
+    # exactly today's behavior). motifs_enabled gates the whole new branch.
+    motifs_enabled: bool = False,
+    retriever: Any = None,
+    book_id: UUID | None = None,
+    project_id: UUID | None = None,
+    genre_tags: list[str] | None = None,
+    motif_min_score: float = 0.30,
+    motif_connective_floor_margin: float = 0.08,
+    motif_max_reapply: int = 0,
+    motif_applied_counts: dict[str, int] | None = None,
 ) -> DecomposeResult:
     """L1 chapter-map (1 call) → L2 scenes (per chapter, bounded concurrency).
     Degrades per-level: an L1 failure leaves every chapter beat_role=None (scenes
-    still attempt); an L2 failure for a chapter yields scenes=[] + a warning."""
+    still attempt); an L2 failure for a chapter yields scenes=[] + a warning.
+
+    When `motifs_enabled` (W2), a retrieve+select+bind stage runs BEFORE the LLM
+    invent call per chapter; a MATCH instantiates scenes from the motif's beats (no
+    LLM), a NO-MATCH falls back to today's invent path unchanged (the F1 fallback
+    matrix, W2 doc §2.4). prev-bound effects are carried chapter-to-chapter for legal
+    succession (passed into retrieve)."""
     beat_keys = {b.get("key") for b in beats if isinstance(b.get("key"), str)}
     beat_purpose = {b.get("key"): b.get("purpose", "") for b in beats if isinstance(b.get("key"), str)}
     cast_index = {
@@ -284,6 +311,19 @@ async def decompose(
         for e in cast if e.get("name") and e.get("entity_id")
     }
     cast_names = [e["name"] for e in cast if e.get("name")]
+    # entity_id → display name (for motif beat-synopsis role substitution).
+    cast_name_by_id = {
+        str(e["entity_id"]): e["name"]
+        for e in cast if e.get("name") and e.get("entity_id")
+    }
+
+    motif_active = bool(
+        motifs_enabled and retriever is not None
+        and book_id is not None and project_id is not None
+    )
+    if motifs_enabled and not motif_active:
+        logger.warning("decompose: motifs_enabled but retriever/book/project missing "
+                       "→ invent path (no motif binding this run)")
 
     # L1 — map beats onto existing chapters.
     mapped, unmapped = chapters, []
@@ -298,7 +338,10 @@ async def decompose(
     # L2 — decompose each chapter into scenes (bounded fan-out).
     sem = asyncio.Semaphore(_L2_CONCURRENCY)
 
-    async def one_chapter(ch: ChapterPlan) -> ChapterScenes:
+    async def _invent_chapter(ch: ChapterPlan, *, warning: str | None = None) -> ChapterScenes:
+        """Today's invent path VERBATIM (used on a no-match fallback OR motifs off).
+        `warning` overrides the default warning to record WHY the motif path was not
+        taken (the F1 fallback tokens) while still producing invented scenes."""
         async with sem:
             sys2, usr2 = build_scene_decompose_messages(
                 premise, ch, beat_purpose.get(ch.beat_role, "") if ch.beat_role else "",
@@ -308,12 +351,95 @@ async def decompose(
                                 model_ref=model_ref, system=sys2, user=usr2,
                                 max_tokens=l2_max_tokens, trace_id=trace_id)
         if c is None:
-            return ChapterScenes(chapter=ch, scenes=[], warning="scene_decompose_degraded")
+            return ChapterScenes(chapter=ch, scenes=[],
+                                 warning=warning or "scene_decompose_degraded")
         scenes = parse_scenes(c, cast_index, min_scenes=min_scenes, max_scenes=max_scenes,
                               beat_role=ch.beat_role, k_ceiling=k_ceiling,
                               high_threshold=high_threshold)
-        warning = None if scenes else "no_scenes_parsed"
-        return ChapterScenes(chapter=ch, scenes=scenes, warning=warning)
+        # a motif-fallback token wins; else the existing no-scenes token.
+        eff_warning = warning if warning is not None else (None if scenes else "no_scenes_parsed")
+        return ChapterScenes(chapter=ch, scenes=scenes, warning=eff_warning)
 
-    results = await asyncio.gather(*(one_chapter(ch) for ch in mapped))
-    return DecomposeResult(arc_title=arc_title, chapters=list(results), unmapped_beats=unmapped)
+    # The motif path mutates a carry of the previously-bound motif's effects, for
+    # legal-succession. The L2 fan-out is concurrent; to keep the prev-effects carry
+    # deterministic the motif SELECT runs sequentially in chapter order, then the
+    # invent fan-out (for the no-match chapters) runs concurrently as today.
+    if not motif_active:
+        results = await asyncio.gather(*(_invent_chapter(ch) for ch in mapped))
+        return DecomposeResult(arc_title=arc_title, chapters=list(results),
+                               unmapped_beats=unmapped)
+
+    # local imports: the motif engine imports plan.ScenePlan (cycle-safe at call time).
+    from app.engine.motif_select import (
+        MotifBinding, bind_motif, build_application_rows,
+        scenes_from_motif, select_motif_for_chapter,
+    )
+
+    slots: list[ChapterScenes | None] = [None] * len(mapped)
+    invent_jobs: list[tuple[int, ChapterPlan, str | None]] = []
+    prev_effects: list[str] = []
+    fallbacks: dict[str, int] = {}
+    # Anti-repetition tally: seed with the PRE-RUN per-book DB counts, then increment
+    # as chapters bind WITHIN this run — so the same trope can't carpet a single
+    # decompose either (the DB count alone is stale mid-run). Copied so we don't
+    # mutate the caller's dict.
+    applied_tally: dict[str, int] = dict(motif_applied_counts or {})
+
+    def _note_fallback(token: str) -> str:
+        fallbacks[token] = fallbacks.get(token, 0) + 1
+        return token
+
+    for i, ch in enumerate(mapped):
+        # Selection is gated on a mapped beat_role (a degraded/unmapped chapter has
+        # no structural slot → straight to invent, no retrieve — W2 §2.1).
+        if ch.beat_role is None:
+            invent_jobs.append((i, ch, None))
+            continue
+        sel = await select_motif_for_chapter(
+            ch, retriever,
+            book_id=book_id, project_id=project_id, caller_id=UUID(str(user_id)),
+            genre_tags=genre_tags or [], language=source_language,
+            prev_effects=prev_effects,
+            min_score=motif_min_score, high_threshold=high_threshold,
+            connective_floor_margin=motif_connective_floor_margin,
+            applied_counts=applied_tally, max_reapply=motif_max_reapply,
+        )
+        if sel is None:
+            invent_jobs.append((i, ch, _note_fallback("no_motif_match")))
+            continue
+        # MATCH → bind + instantiate scenes from beats (no LLM).
+        binding = bind_motif(sel, cast_index, ch)
+        scenes = scenes_from_motif(
+            sel, binding, ch, k_ceiling=k_ceiling, high_threshold=high_threshold,
+            min_scenes=min_scenes, max_scenes=max_scenes, cast_names=cast_name_by_id,
+        )
+        rows = build_application_rows(sel, binding, scenes)
+        prev_effects = [e.get("text", "") if isinstance(e, dict) else str(e)
+                        for e in sel.motif.effects]
+        mid = str(sel.motif.id)
+        applied_tally[mid] = applied_tally.get(mid, 0) + 1   # intra-run repetition cap
+        slots[i] = ChapterScenes(
+            chapter=ch, scenes=scenes, warning=binding.warning,
+            motif=sel, binding=binding, application_rows=rows,
+        )
+
+    # Run the no-match invent chapters concurrently (today's behavior) and slot them.
+    if invent_jobs:
+        invented = await asyncio.gather(
+            *(_invent_chapter(ch, warning=w) for _i, ch, w in invent_jobs)
+        )
+        for (idx, _ch, _w), cs in zip(invent_jobs, invented):
+            slots[idx] = cs
+
+    results = [cs for cs in slots if cs is not None]
+    mapped_count = sum(1 for ch in mapped if ch.beat_role is not None)
+    bound_count = sum(1 for cs in results if cs.motif is not None)
+    distinct = len({str(cs.motif.motif.id) for cs in results if cs.motif is not None})
+    coverage = {
+        "mapped_chapters": mapped_count,
+        "bound_chapters": bound_count,
+        "distinct_motifs": distinct,
+        "fallbacks": fallbacks,
+    }
+    return DecomposeResult(arc_title=arc_title, chapters=results,
+                           unmapped_beats=unmapped, motif_coverage=coverage)
