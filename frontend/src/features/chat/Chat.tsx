@@ -1,5 +1,6 @@
 import { useState } from 'react';
-import { ChatSessionProvider, ChatStreamProvider, useChatSession } from './providers';
+import { useAuth } from '@/auth';
+import { ChatSessionProvider, ChatStreamProvider, ChatLiveStateProvider, useChatSession } from './providers';
 import { ChatView } from './components/ChatView';
 import { NewChatDialog } from './components/NewChatDialog';
 import { ChatEmptyState } from './components/ChatEmptyState';
@@ -40,16 +41,24 @@ export function Chat({ bookId, editorContext, composeMode, actionBar, className 
   // S6: the user's per-book display language (set only when viewing a translation).
   // Forwarded so knowledge composes entity aliases in it for the chat context.
   const { apiDisplayLanguage } = useGlossaryDisplayLanguage(bookId ?? '');
+  const { accessToken } = useAuth();
   return (
     <ChatSessionProvider embedded>
-      <ChatStreamProvider
-        editorContext={editorContext}
-        composeMode={composeMode}
-        bookContext={bookContext}
-        displayLanguage={apiDisplayLanguage}
-      >
-        <EmbeddedChat bookId={bookId} actionBar={actionBar} className={className} />
-      </ChatStreamProvider>
+      {/* M2 (D-T5.4-CHAT-HOIST): mount ABOVE ChatStreamProvider — the future chat
+          windowing host sits between them. windowingEnabled defaults false, so
+          this is an inert pass-through today (useChatMessages owns the in-process
+          stream, byte-identical to pre-M2). When a host flips windowing on, the
+          turn moves into the SharedWorker and survives pop-out. */}
+      <ChatLiveStateProvider token={accessToken ?? null}>
+        <ChatStreamProvider
+          editorContext={editorContext}
+          composeMode={composeMode}
+          bookContext={bookContext}
+          displayLanguage={apiDisplayLanguage}
+        >
+          <EmbeddedChat bookId={bookId} actionBar={actionBar} className={className} />
+        </ChatStreamProvider>
+      </ChatLiveStateProvider>
     </ChatSessionProvider>
   );
 }
