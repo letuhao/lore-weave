@@ -23,15 +23,27 @@ entities paged, 436 links counted). **M2 browser two-window PASS** — a real lm
 in the popped-out cowriter, and an initiator-window token mirrored into a second window mid-stream
 then cleared on the observer refetch (single-writer split, live).
 
+**Recently cleared:**
+- **`D-M3-PROSEJOB-PUBLISHGATE`** (MED) — **FIXED** (commit follows). The publish-gate's
+  latest-canon-verdict pick (`db/repositories/outline.py` `chapter_scene_gate`) took the most
+  recent completed job per scene *regardless of operation*, so an M3 synthetic
+  `promoted_scene_prose` job (no canon verdict) could shadow an earlier auto-gen's confirmed
+  `canon.resolved=false` and silently un-block publish. Fix: exclude
+  `operation='promoted_scene_prose'` from the subquery — keeps the gate conservative-for-canon
+  (only a real re-generation can clear a block). Real-PG integration test proves it before/after
+  (masking test FAILS on the old image, PASSES with the fix; 9/9 prose+gate tests green). It was
+  a one-line root-cause fix surfaced *by* M3 (M3 creates the synthetic job) → fixed now, not
+  deferred to a separate track.
+
 **Open deferrals (tracked):**
-- **`D-T5.4-CHAT-MULTIWINDOW-ORPHAN`** (LOW) — if the chat turn's initiator window closes
-  mid-turn, no window fires the one-time `onStreamEnd` fan-out (session/pending-facts refresh).
-  Observers still refetch the message (visible); only the refresh is skipped, recovered on the
-  observer's next natural refetch. Defer reason: conscious won't-fix-now (rare; a leader-election
-  re-assign is a structural add disproportionate to the residual).
-- **`D-M3-PROSEJOB-PUBLISHGATE`** (MED) — a synthetic prose job can mask a canon-contradiction
-  verdict in the publish-gate (`outline.py:603`); NOT reachable in the M3 fresh-node promote flow.
-  Defer reason: out-of-scope (publish-gate track), needs its own plan.
+- **`D-T5.4-CHAT-MULTIWINDOW-ORPHAN`** (LOW, conscious defer) — if the chat turn's initiator
+  window closes mid-turn, no window fires the one-time `onStreamEnd` fan-out (session/pending-facts
+  refresh). Observers still refetch the message (it stays visible); only the one-time refresh is
+  skipped, recovered on the observer's next natural action. Defer reason (gate #2 structural / #5
+  conscious): the robust fix swaps the just-shipped nonce election for a hub-assigned port-id
+  leader-election with re-assignment on writer disconnect — a structural protocol change
+  disproportionate to a rare, self-healing, message-still-visible residual. Revisit if chat
+  windowing ships to real multi-window use and the skipped refresh proves user-visible.
 
 - **Status:** CLARIFY ✅ → DESIGN ✅ → **DEFERRED to a new branch (no build on
   `feat/composition-service`).**

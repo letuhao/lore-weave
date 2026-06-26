@@ -1185,6 +1185,34 @@ async def test_chapter_scene_gate_blocks_on_unresolved_canon(pool):
     assert gate["canon_blocked"] is False and gate["can_publish"] is True
 
 
+async def test_chapter_scene_gate_synthetic_prose_job_does_not_mask_canon(pool):
+    """D-M3-PROSEJOB-PUBLISHGATE — a synthetic `promoted_scene_prose` job (M3, no
+    canon verdict) must NOT shadow an earlier auto-gen's CONFIRMED contradiction.
+    It is NEWER than the contradicting job, but carries no canon-check, so treating
+    it as 'latest' would silently un-block publish. The gate excludes it → still
+    blocked (conservative-for-canon: only a real re-generation can clear the block)."""
+    repo = OutlineRepo(pool)
+    jobs = GenerationJobsRepo(pool)
+    user, project, _ = _ids()
+    chapter = uuid.uuid4()
+    s1 = await repo.create_node(user, project, kind="scene", chapter_id=chapter)
+    await repo.update_node_commit_aware(user, s1.id, {"status": "done"})
+
+    # auto job leaves an unresolved contradiction → blocked.
+    j1, _ = await jobs.create(user, project, operation="draft_scene",
+                              outline_node_id=s1.id, mode="auto", status="running", input={})
+    await jobs.update_status(user, j1.id, "completed",
+                             result={"text": "x", "canon": {"resolved": False,
+                                                            "violations": [{"entity_id": "e"}]}})
+    assert (await repo.chapter_scene_gate(user, project, chapter))["canon_blocked"] is True
+
+    # a LATER synthetic prose-persist job (no canon key) must NOT mask the block.
+    await jobs.upsert_promoted_scene_prose(user, project, s1.id, "author's edited take prose")
+    gate = await repo.chapter_scene_gate(user, project, chapter)
+    assert gate["canon_blocked"] is True and gate["canon_unresolved_scenes"] == 1
+    assert gate["can_publish"] is False
+
+
 async def test_chapter_scene_gate_surfaces_unchecked_without_blocking(pool):
     """Dirty-data path: a scene whose latest auto job could NOT verify canon
     (status=skipped_no_position / degraded) is SURFACED via canon_unchecked_scenes

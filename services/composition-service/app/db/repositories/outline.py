@@ -606,6 +606,14 @@ class OutlineRepo:
                   WHERE j.user_id = $1 AND j.project_id = $2 AND n.chapter_id = $3
                     AND n.kind = 'scene' AND NOT n.is_archived
                     AND j.status = 'completed'
+                    -- D-M3-PROSEJOB-PUBLISHGATE: the M3 prose-persist writes a SYNTHETIC
+                    -- completed job (operation 'promoted_scene_prose') that carries NO
+                    -- canon verdict. It must NOT be the "latest" job here, or it would
+                    -- SHADOW an earlier auto-gen's CONFIRMED contradiction and silently
+                    -- un-block publish. Excluding it keeps the gate conservative-for-canon:
+                    -- a synthetic prose write can't clear a block — only a real
+                    -- re-generation (which re-runs the canon-check) can.
+                    AND j.operation <> 'promoted_scene_prose'
                   ORDER BY j.outline_node_id, j.created_at DESC, j.id DESC
                 ) latest
                 """,
