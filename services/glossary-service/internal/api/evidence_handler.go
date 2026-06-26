@@ -32,6 +32,12 @@ type evidenceListItem struct {
 	DisplayText      string    `json:"display_text"`
 	DisplayLanguage  string    `json:"display_language"`
 	Note             *string   `json:"note"`
+	// Provenance (D-EVIDENCE-PROVENANCE-OVERHAUL M1) — validated upstream + stored, now
+	// surfaced so the GUI can show a trust badge + deep-link to the source offset. char_*
+	// are NULL when the quote wasn't offset-matched; status defaults 'unverified'.
+	CharStart        *int      `json:"char_start"`
+	CharEnd          *int      `json:"char_end"`
+	ProvenanceStatus string    `json:"provenance_status"`
 	CreatedAt        time.Time `json:"created_at"`
 }
 
@@ -200,7 +206,7 @@ func (s *Server) listEntityEvidences(w http.ResponseWriter, r *http.Request) {
 			ev.original_language, ev.original_text,
 			%s AS display_text,
 			%s AS display_language,
-			ev.note, ev.created_at
+			ev.note, ev.char_start, ev.char_end, ev.provenance_status, ev.created_at
 		FROM evidences ev
 		JOIN entity_attribute_values eav ON eav.attr_value_id = ev.attr_value_id
 		JOIN book_attributes ad ON ad.attr_id = eav.attr_def_id
@@ -228,7 +234,7 @@ func (s *Server) listEntityEvidences(w http.ResponseWriter, r *http.Request) {
 			&item.BlockOrLine, &item.EvidenceType,
 			&item.OriginalLanguage, &item.OriginalText,
 			&item.DisplayText, &item.DisplayLanguage,
-			&item.Note, &item.CreatedAt,
+			&item.Note, &item.CharStart, &item.CharEnd, &item.ProvenanceStatus, &item.CreatedAt,
 		); err != nil {
 			writeError(w, http.StatusInternalServerError, "GLOSS_INTERNAL", "scan failed")
 			return

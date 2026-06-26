@@ -68,6 +68,14 @@
       "summary": "摘要",
       "reference": "參照"
     },
+    "provenance": {
+      "ambiguous": "比對不確定",
+      "ambiguous_hint": "此引文在原文中比對到多個位置 — 確切位置不確定。",
+      "unmatched": "原文中找不到",
+      "unmatched_hint": "在章節內容中找不到此引文 — 可能是改寫或杜撰。請先查證再採信。",
+      "unverified": "未驗證",
+      "unverified_hint": "此引文尚未與原文比對。"
+    },
     "filter": {
       "all": "全部",
       "attr_aria": "依屬性篩選",

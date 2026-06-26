@@ -68,6 +68,14 @@
       "summary": "Tóm tắt",
       "reference": "Tham chiếu"
     },
+    "provenance": {
+      "ambiguous": "Khớp chưa chắc",
+      "ambiguous_hint": "Trích dẫn này khớp với văn bản nguồn ở nhiều vị trí — không chắc vị trí chính xác.",
+      "unmatched": "Không thấy trong nguồn",
+      "unmatched_hint": "Không tìm thấy trích dẫn này trong nội dung chương — có thể bị diễn giải lại hoặc bịa ra. Hãy kiểm chứng trước khi tin.",
+      "unverified": "Chưa kiểm chứng",
+      "unverified_hint": "Trích dẫn này chưa được đối chiếu với văn bản nguồn."
+    },
     "filter": {
       "all": "Tất cả",
       "attr_aria": "Lọc theo thuộc tính",

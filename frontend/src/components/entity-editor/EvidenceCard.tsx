@@ -9,6 +9,18 @@ const TYPE_COLORS: Record<EvidenceType, string> = {
   reference: 'bg-amber-500/15 text-amber-400',
 };
 
+// Trust badge per provenance_status (D-EVIDENCE-PROVENANCE-OVERHAUL M1). `exact`/`resolved` =
+// the quote was validated against the real chapter text → trustworthy; `unmatched` = the quote
+// couldn't be found in the source (likely an LLM hallucination) → warn; `unverified` = no
+// validation ran → neutral. Hidden for the benign verified cases to keep the row clean.
+const PROVENANCE_STYLE: Record<string, string> = {
+  exact: 'bg-emerald-500/15 text-emerald-400',
+  resolved: 'bg-emerald-500/15 text-emerald-400',
+  ambiguous: 'bg-amber-500/15 text-amber-400',
+  unmatched: 'bg-red-500/15 text-red-400',
+  unverified: 'bg-muted text-muted-foreground',
+};
+
 interface EvidenceCardProps {
   item: EvidenceListItem;
   isEditing: boolean;
@@ -100,6 +112,15 @@ export function EvidenceCard({
         <span className="rounded bg-muted px-1.5 py-0.5 font-medium text-muted-foreground">
           {item.attribute_name}
         </span>
+        {/* Trust badge — only for quote-type evidence with a meaningful (non-verified) status. */}
+        {item.evidence_type === 'quote' && item.provenance_status && item.provenance_status !== 'exact' && item.provenance_status !== 'resolved' && (
+          <span
+            className={`rounded-full px-2 py-0.5 font-medium ${PROVENANCE_STYLE[item.provenance_status] ?? PROVENANCE_STYLE.unverified}`}
+            title={t(`evidence.provenance.${item.provenance_status}_hint`)}
+          >
+            {t(`evidence.provenance.${item.provenance_status}`)}
+          </span>
+        )}
         {item.chapter_title && (
           <span className="text-muted-foreground">
             {item.chapter_title}{item.block_or_line ? ` \u00b7 ${item.block_or_line}` : ''}

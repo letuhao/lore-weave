@@ -68,6 +68,14 @@
       "summary": "要約",
       "reference": "参照"
     },
+    "provenance": {
+      "ambiguous": "一致が不確実",
+      "ambiguous_hint": "この引用は原文の複数箇所に一致しました — 正確な位置は不確実です。",
+      "unmatched": "原文に見つかりません",
+      "unmatched_hint": "この引用は章の本文に見つかりませんでした — 言い換えや創作の可能性があります。信頼する前に確認してください。",
+      "unverified": "未検証",
+      "unverified_hint": "この引用は原文と照合されていません。"
+    },
     "filter": {
       "all": "すべて",
       "attr_aria": "属性で絞り込み",

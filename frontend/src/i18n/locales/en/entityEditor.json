@@ -68,6 +68,14 @@
       "summary": "Summary",
       "reference": "Reference"
     },
+    "provenance": {
+      "ambiguous": "Unverified match",
+      "ambiguous_hint": "This quote matched the source text in more than one place — the exact location is uncertain.",
+      "unmatched": "Not found in source",
+      "unmatched_hint": "This quote could not be located in the chapter text — it may be paraphrased or hallucinated. Verify before trusting it.",
+      "unverified": "Unverified",
+      "unverified_hint": "This quote has not been validated against the source text."
+    },
     "filter": {
       "all": "All",
       "attr_aria": "Filter by attribute",
