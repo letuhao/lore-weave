@@ -51,6 +51,7 @@ from loreweave_mcp import (
     mint_confirm_token,
     require_book_owner,
     require_meta,
+    require_user_scope,
     uniform_not_accessible,
 )
 
@@ -63,6 +64,8 @@ from app.db.repositories import (
 )
 from app.db.repositories.canon_rules import CanonRulesRepo
 from app.db.repositories.generation_jobs import GenerationJobsRepo
+from app.db.repositories.motif_repo import MotifRepo
+from app.db.repositories.motif_retrieve import MotifRetriever
 from app.db.repositories.outline import OutlineRepo
 from app.db.repositories.scene_links import SceneLinksRepo
 from app.db.repositories.works import WorksRepo
@@ -81,6 +84,19 @@ _PUBLISH_DESCRIPTOR = "composition.publish"
 # which only SAVES prose the LLM wrote itself). Mints a confirm token; the actual
 # spend happens in the confirm-route effect (app/routers/actions.py).
 _GENERATE_DESCRIPTOR = "composition.generate"
+
+# ── W4 motif-library Tier-W confirm descriptors (R2.8 / audit H-6). adopt is a
+# tenancy/quota-bearing cross-tier clone (confirm-token, NOT auto-write — the
+# glossary class-C adopt precedent); mine/import/conformance are LLM-spend jobs
+# (confirm-token + a real usage-billing precheck + a 202+poll worker enqueue).
+_MOTIF_ADOPT_DESCRIPTOR = "composition.motif_adopt"
+_MOTIF_MINE_DESCRIPTOR = "composition.motif_mine"
+_ARC_IMPORT_DESCRIPTOR = "composition.arc_import"
+_CONFORMANCE_RUN_DESCRIPTOR = "composition.conformance_run"
+
+# The motif kinds + the closed enums the LLM may pass (R1.4 schema). Defined here so
+# the arg models below and the tests share one source.
+_MotifKind = Literal["sequence", "situation", "hook", "emotion_arc", "trope", "pattern", "scheme"]
 
 
 # ── shared helpers ────────────────────────────────────────────────────────────
@@ -126,6 +142,77 @@ def _undo(tool: str, **args: Any) -> dict[str, Any]:
     """Build the C-ACTIVITY `_meta.undo_hint` a Tier-A result carries so the FE
     activity strip can offer Undo via a verified reverse op."""
     return {"tool": tool, "args": args}
+
+
+# ── W4 motif helpers ──────────────────────────────────────────────────────────
+
+# The fields a NON-owner (a public/system motif the caller previewed but does not
+# own) may see — the W1 catalog allow-list (audit B-3). NEVER the embedding vector,
+# the raw source_ref lineage, the copied examples[], or owner_user_id. The owner of
+# a row gets the full Motif.model_dump via _get; everyone else gets this projection.
+_MOTIF_PUBLIC_FIELDS = (
+    "id", "code", "language", "visibility", "kind", "category", "name", "summary",
+    "genre_tags", "roles", "beats", "preconditions", "effects", "info_asymmetry",
+    "tension_target", "emotion_target", "abstraction_confidence", "source",
+    "status", "version", "created_at", "updated_at",
+)
+
+
+def _motif_public_projection(motif: Any) -> dict[str, Any]:
+    """Project a Motif to the non-owner allow-list (B-3): drops embedding/raw
+    source_ref/examples/owner_user_id. `motif` is a pydantic Motif row."""
+    full = motif.model_dump(mode="json")
+    return {k: full[k] for k in _MOTIF_PUBLIC_FIELDS if k in full}
+
+
+def _motif_view(motif: Any, caller_id: UUID) -> dict[str, Any]:
+    """Full dump for the owner; the allow-list projection for a system/public-not-
+    owned row (so an adopter previewing a public motif sees roles/beats/conditions
+    but not embedding/raw source_ref/copied examples — audit B-3)."""
+    if motif.owner_user_id is not None and motif.owner_user_id == caller_id:
+        return motif.model_dump(mode="json")
+    return _motif_public_projection(motif)
+
+
+def _motif_owner_resolver(repo: MotifRepo):
+    """`require_user_scope` owner-of for a motif: returns motif.owner_user_id so the
+    guard asserts owner == caller. A system row (owner NULL) or a row the caller
+    cannot see resolves to a deny (the kit's nil/missing -> uniform_not_accessible).
+    Used by the user-tier WRITE tools (_archive) where a system/public-not-owned
+    motif is read-only to a regular user (glossary system-kind-lock parity §11)."""
+
+    async def owner_of(tc: ToolContext, motif_id: UUID) -> UUID:
+        motif = await repo.get_visible(tc.user_id, motif_id)
+        if motif is None or motif.owner_user_id is None:
+            # missing / foreign-private / system -> the kit maps the raise to deny.
+            raise uniform_not_accessible()
+        return motif.owner_user_id
+
+    return owner_of
+
+
+async def _import_source_owner(tc: ToolContext, import_source_id: UUID) -> UUID:
+    """`require_user_scope` owner-of for an import_source row (§12.6/B-3 — per-user,
+    structurally un-shareable: NO visibility column). Returns owner_user_id so the
+    guard asserts owner == caller. The W9 import_source repo does not exist yet at
+    W4 build time, so this reads the owner column directly via the pool (the row
+    shape is FROZEN by F0's migrate.py)."""
+    pool = get_pool()
+    owner = await pool.fetchval(
+        "SELECT owner_user_id FROM import_source WHERE id = $1", import_source_id
+    )
+    if owner is None:
+        raise uniform_not_accessible()
+    return owner
+
+
+def _mine_estimate(*, scope: str) -> dict[str, Any]:
+    """Coarse $ estimate for the confirm card + the billing precheck (W4 §3.3). Not
+    exact — it gates the obvious over-quota case and drives the card's display. A
+    corpus mine is pricier than a single book; an import/conformance is per-chapter.
+    The real per-token cost lands when the W8/W9/W5 worker compute runs."""
+    est = 0.50 if scope == "book" else 2.00
+    return {"estimated_usd": est, "currency": "USD", "basis": scope}
 
 
 # ── Tier R — reads ────────────────────────────────────────────────────────────
@@ -974,6 +1061,700 @@ async def composition_generate(ctx: MCPContext, args: _GenerateArgs) -> dict:
         "requires": "human confirmation via the review surface — this spends LLM "
                     "tokens; nothing is generated until confirmed",
     }
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# W4 — NARRATIVE MOTIF LIBRARY MCP TOOLS (spec §R2.8 / §13 · domain owns its tools;
+# ai-gateway federates the `composition_` prefix). 4 R · 4 A · 4 W-confirm · 1 R
+# poll. Identity from the envelope ONLY; ForbidExtra on every arg model; the closed
+# Literal enums make a system/both-NULL/public-at-create row UNCONSTRUCTIBLE by the
+# LLM. Motif is a USER-tier resource (no book_id) → user-scope reads use the repo
+# read predicate (system | public | owner); book-scoped ops (suggest/bind/mine/
+# conformance) keep the existing book-owner gate.
+# ══════════════════════════════════════════════════════════════════════════════
+
+
+# ── Tier R — motif reads ──────────────────────────────────────────────────────
+
+
+class _MotifSearchArgs(ForbidExtra):
+    genre: str | None = None
+    kind: _MotifKind | None = None
+    q: str | None = None
+    scope: Literal["mine", "public", "system", "all"] = "all"
+    status: Literal["draft", "active", "archived"] | None = None
+    language: str | None = None
+    limit: int = 20
+
+
+@mcp_server.tool(
+    name="composition_motif_search",
+    description=(
+        "Search the narrative motif library — reusable plot patterns, tropes, "
+        "situations, hooks, emotion arcs, schemes (e.g. 套路 / 爽点 / 打脸). Filter by "
+        "genre, kind, free text (q), language, or status. `scope` narrows the tier: "
+        "'mine' (your motifs), 'public' (shared), 'system' (the seeded library), 'all'. "
+        "Returns a list projection (no private internals). Use composition_motif_get for "
+        "a single motif's full detail."
+    ),
+    meta=require_meta(
+        "R", "user",
+        synonyms=["motif", "trope", "pattern", "plot beat", "cliché", "套路", "爽点",
+                  "打脸", "find motif", "browse motifs", "narrative device"],
+        tool_name="composition_motif_search",
+    ),
+)
+async def composition_motif_search(ctx: MCPContext, args: _MotifSearchArgs) -> dict:
+    tc = _ctx(ctx)
+    repo = MotifRepo(get_pool())
+    # No book gate — motif is user/system-tier. The repo SELECT carries the R1.1
+    # read predicate (system | public | owner); `scope` is a filter, never a
+    # privilege escalation (a 'system'/'public'/'all' scope can NOT surface a foreign
+    # private row). Map the MCP scope vocab to the repo's predicate vocab.
+    repo_scope = "user" if args.scope == "mine" else args.scope
+    motifs = await repo.list_for_caller(
+        tc.user_id, scope=repo_scope, genre=args.genre, kind=args.kind,
+        status=args.status, q=args.q, language=args.language, limit=args.limit,
+    )
+    # MD-1: uniform allow-list projection in search (owner reads full via _get) — no
+    # per-row branch, no embedding/examples leak in a list view.
+    return {
+        "motifs": [_motif_public_projection(m) for m in motifs],
+        "count": len(motifs),
+    }
+
+
+@mcp_server.tool(
+    name="composition_motif_get",
+    description=(
+        "Get one motif's full detail — its roles, beats, preconditions, effects, and "
+        "(for your own motifs) all authoring fields. A system/public motif you don't own "
+        "returns the shareable projection (no private internals). A motif you cannot see "
+        "is indistinguishable from one that doesn't exist."
+    ),
+    meta=require_meta(
+        "R", "user",
+        synonyms=["motif detail", "trope detail", "get motif", "show pattern",
+                  "motif roles", "motif beats"],
+        tool_name="composition_motif_get",
+    ),
+)
+async def composition_motif_get(
+    ctx: MCPContext,
+    motif_id: Annotated[str, "The motif's id."],
+) -> dict:
+    tc = _ctx(ctx)
+    repo = MotifRepo(get_pool())
+    # get_visible IS the IDOR guard for a non-book resource: it enforces R1.1
+    # (system | public | owner), so a foreign PRIVATE id is indistinguishable from a
+    # missing one (H13) — no enumeration oracle.
+    motif = await repo.get_visible(tc.user_id, UUID(motif_id))
+    if motif is None:
+        raise uniform_not_accessible()
+    return _motif_view(motif, tc.user_id)
+
+
+@mcp_server.tool(
+    name="composition_motif_suggest_for_chapter",
+    description=(
+        "Suggest motifs that fit a specific chapter — ranked candidates with a 'why "
+        "this motif' breakdown (tension/genre/precondition/semantic match), so you can "
+        "pick a plot pattern grounded in the Work. VIEW on the book required."
+    ),
+    meta=require_meta(
+        "R", "book",
+        synonyms=["suggest motif", "which motif", "motif for this chapter", "why this motif",
+                  "recommend trope", "fit a pattern", "plot beat for scene"],
+        tool_name="composition_motif_suggest_for_chapter",
+    ),
+)
+async def composition_motif_suggest_for_chapter(
+    ctx: MCPContext,
+    project_id: Annotated[str, "The Work's project_id."],
+    node_id: Annotated[str, "The chapter outline node to rank motifs against."],
+    limit: Annotated[int, "Max candidates."] = 5,
+) -> dict:
+    tc = _ctx(ctx)
+    works = WorksRepo(get_pool())
+    pid = UUID(project_id)
+    work = await _work_or_deny(works, tc, pid)
+    await _gate(tc, work.book_id, GrantLevel.VIEW)
+    outline = OutlineRepo(get_pool())
+    node = await outline.get_node(tc.user_id, UUID(node_id))
+    # Per-tool IDOR: the node must be in the resolved Work's project (a same-user
+    # node from another Work would otherwise be ranked under THIS book's gate).
+    if node is None or node.project_id != pid:
+        raise uniform_not_accessible()
+    retriever = MotifRetriever(get_pool())
+    candidates = await retriever.retrieve(
+        tc.user_id, book_id=work.book_id, project_id=pid,
+        genre_tags=list(getattr(work, "genre_tags", []) or []),
+        language=getattr(work, "language", None) or "en",
+        beat_role=None, tension=getattr(node, "tension_target", None), limit=limit,
+    )
+    return {
+        "candidates": [
+            {
+                "motif": _motif_view(c.motif, tc.user_id),
+                "score": c.score,
+                "match_reason": c.match_reason,
+            }
+            for c in candidates
+        ]
+    }
+
+
+@mcp_server.tool(
+    name="composition_arc_suggest",
+    description=(
+        "Suggest multi-chapter ARC templates that fit a Work's premise/genre — the "
+        "large-scale structures (parallel threads × motifs over a chapter span). Returns "
+        "ranked candidates with a match breakdown. VIEW on the book required."
+    ),
+    meta=require_meta(
+        "R", "book",
+        synonyms=["suggest arc", "arc template", "story arc", "multi-chapter structure",
+                  "arc for premise", "arc structure"],
+        tool_name="composition_arc_suggest",
+    ),
+)
+async def composition_arc_suggest(
+    ctx: MCPContext,
+    project_id: Annotated[str, "The Work's project_id."],
+    premise: Annotated[str | None, "Optional premise text to seed the rank."] = None,
+    genre: Annotated[str | None, "Optional genre filter."] = None,
+    limit: Annotated[int, "Max candidates."] = 5,
+) -> dict:
+    tc = _ctx(ctx)
+    works = WorksRepo(get_pool())
+    pid = UUID(project_id)
+    work = await _work_or_deny(works, tc, pid)
+    await _gate(tc, work.book_id, GrantLevel.VIEW)
+    retriever = MotifRetriever(get_pool())
+    # Arc retrieval ranks the caller-visible arc_template set under the read
+    # predicate (no target id beyond the Work gate). The arc retriever method is
+    # owned by W3 (F0 froze only the motif `retrieve`); until W3 lands, the tool is
+    # registered (wire-tested) and returns a clean "not yet available" rather than a
+    # 500. Seam note: W3 supplies `retrieve_arcs(caller, *, book_id, project_id,
+    # premise, genre, limit) -> list[ArcCandidate{arc_template, score, match_reason}]`.
+    retrieve_arcs = getattr(retriever, "retrieve_arcs", None)
+    if retrieve_arcs is None:
+        return {"success": False, "error": "arc retrieval not yet available",
+                "reason": "pending_w3", "candidates": []}
+    candidates = await retrieve_arcs(
+        tc.user_id, book_id=work.book_id, project_id=pid,
+        premise=premise, genre=genre, limit=limit,
+    )
+    return {
+        "candidates": [
+            {
+                "arc_template": (
+                    c.arc_template.model_dump(mode="json")
+                    if getattr(c.arc_template, "owner_user_id", None) == tc.user_id
+                    else _arc_public_projection(c.arc_template)
+                ),
+                "score": c.score,
+                "match_reason": c.match_reason,
+            }
+            for c in candidates
+        ]
+    }
+
+
+def _arc_public_projection(arc: Any) -> dict[str, Any]:
+    """Allow-list projection for a non-owned arc_template (parallels the motif one):
+    drops embedding/raw source_ref/owner. Mirrors the motif B-3 discipline."""
+    full = arc.model_dump(mode="json")
+    drop = {"embedding", "embedding_model", "embedding_dim", "source_ref",
+            "owner_user_id", "source_version"}
+    return {k: v for k, v in full.items() if k not in drop}
+
+
+# ── Tier A — motif auto-write + Undo ──────────────────────────────────────────
+
+
+class _MotifCreateArgs(ForbidExtra):
+    # target='user' ONLY (R2.8): the Book tier is gone (R1.1) and a system/both-NULL
+    # row is migrate/seed-only — the closed Literal makes them UNCONSTRUCTIBLE here.
+    target: Literal["user"] = "user"
+    code: str
+    name: str
+    language: str = "en"
+    kind: _MotifKind = "sequence"
+    summary: str = ""
+    genre_tags: list[str] = []
+    roles: list[dict[str, Any]] = []
+    beats: list[dict[str, Any]] = []
+    preconditions: list[dict[str, Any]] = []
+    effects: list[dict[str, Any]] = []
+    tension_target: int | None = None
+    emotion_target: str | None = None
+    examples: list[dict[str, Any]] = []
+    # 'public' is EXCLUDED at create — publishing is the separate W1 visibility-flip
+    # path, not a create-time arg (a public-at-birth row would skip the publish gate).
+    visibility: Literal["private", "unlisted"] = "private"
+
+
+@mcp_server.tool(
+    name="composition_motif_create",
+    description=(
+        "Create a motif in YOUR library — a reusable plot pattern (sequence/situation/"
+        "hook/emotion_arc/trope/pattern/scheme) with roles, beats, preconditions, and "
+        "effects. The motif is owned by you and private by default. To publish it later, "
+        "use the library's publish flow."
+    ),
+    meta=require_meta(
+        "A", "user",
+        synonyms=["create motif", "new trope", "author a motif", "define pattern",
+                  "add motif to my library", "make a beat"],
+        tool_name="composition_motif_create",
+    ),
+)
+async def composition_motif_create(ctx: MCPContext, args: _MotifCreateArgs) -> dict:
+    tc = _ctx(ctx)
+    repo = MotifRepo(get_pool())
+    # Owner-stamp: MotifRepo.create stamps owner_user_id = tc.user_id unconditionally
+    # (there is NO owner arg) and the DB motif_user_owned CHECK rejects a both-NULL
+    # write — the envelope user is the owner, no arg can override it (audit B-2/S2).
+    from app.db.models import MotifCreateArgs as _RepoCreateArgs
+    try:
+        create_args = _RepoCreateArgs(
+            code=args.code, name=args.name, language=args.language, kind=args.kind,
+            summary=args.summary, genre_tags=args.genre_tags, roles=args.roles,
+            beats=args.beats, preconditions=args.preconditions, effects=args.effects,
+            tension_target=args.tension_target, emotion_target=args.emotion_target,
+            examples=args.examples, visibility=args.visibility,
+        )
+    except (ValueError, TypeError) as exc:  # pydantic ValidationError ⊂ ValueError
+        return {"success": False, "error": "invalid motif fields", "detail": str(exc)[:300]}
+    try:
+        motif = await repo.create(tc.user_id, create_args)
+    except asyncpg.UniqueViolationError:
+        return {
+            "success": False, "outcome": "applied_conflict",
+            "error": "a motif with this code + language already exists in your library",
+        }
+    out = motif.model_dump(mode="json")
+    # MD-2: create carries an honest undo via the reverse-op _archive tool (soft,
+    # reversible). The activity strip can call it to undo the create.
+    out["_meta"] = {"undo_hint": _undo("composition_motif_archive", motif_id=str(motif.id))}
+    return out
+
+
+@mcp_server.tool(
+    name="composition_motif_archive",
+    description=(
+        "Soft-archive one of YOUR motifs (reversible — un-archive from the library). "
+        "A system or public-not-owned motif is read-only to you and cannot be archived "
+        "here. Used as the verified reverse op for create."
+    ),
+    meta=require_meta(
+        "A", "user",
+        synonyms=["archive motif", "delete motif", "retire trope", "remove from library"],
+        tool_name="composition_motif_archive",
+    ),
+)
+async def composition_motif_archive(
+    ctx: MCPContext,
+    motif_id: Annotated[str, "The motif to archive (must be yours)."],
+) -> dict:
+    tc = _ctx(ctx)
+    repo = MotifRepo(get_pool())
+    mid = UUID(motif_id)
+    # USER scope: you may only archive YOUR OWN motif. The owner-resolver raises the
+    # uniform deny for a missing/foreign/system row before any write.
+    guard = require_user_scope(_motif_owner_resolver(repo))
+    await guard(tc, mid)
+    await repo.archive(tc.user_id, mid)
+    # archive() flips status='archived'; there is no MCP un-archive tool today (the
+    # W1 patch is the FE un-archive surface), so the MCP undo is honest None — matches
+    # composition_canon_rule_delete.
+    return {"motif_id": motif_id, "archived": True, "_meta": {"undo_hint": None}}
+
+
+class _MotifBindArgs(ForbidExtra):
+    project_id: str
+    node_id: str
+    motif_id: str
+    role_bindings: dict[str, str] = {}
+    derive_scenes: bool = True
+
+
+@mcp_server.tool(
+    name="composition_motif_bind",
+    description=(
+        "Bind a motif to a chapter — instantiate its beats as scene nodes and map its "
+        "roles to glossary entities (role_bindings: {role_key: entity_id}). Re-binding "
+        "over a prior motif ARCHIVES (never deletes) the affected scenes, so the change "
+        "is reversible. EDIT on the book required (auto-applied; Undo restores the prior "
+        "binding or unbinds)."
+    ),
+    meta=require_meta(
+        "A", "book",
+        synonyms=["bind motif", "apply motif", "use this trope", "attach pattern to chapter",
+                  "swap motif", "set chapter motif"],
+        tool_name="composition_motif_bind",
+    ),
+)
+async def composition_motif_bind(ctx: MCPContext, args: _MotifBindArgs) -> dict:
+    tc = _ctx(ctx)
+    works = WorksRepo(get_pool())
+    pid = UUID(args.project_id)
+    work = await _work_or_deny(works, tc, pid)
+    await _gate(tc, work.book_id, GrantLevel.EDIT)
+    outline = OutlineRepo(get_pool())
+    node_id = UUID(args.node_id)
+    # IDOR #1: the chapter node is in the resolved Work's project.
+    node = await outline.get_node(tc.user_id, node_id)
+    if node is None or node.project_id != pid:
+        raise uniform_not_accessible()
+    # IDOR #2: the motif is caller-visible (you can only bind a motif you can see).
+    repo = MotifRepo(get_pool())
+    motif = await repo.get_visible(tc.user_id, UUID(args.motif_id))
+    if motif is None:
+        raise uniform_not_accessible()
+    # The bind/swap/undo ENGINE is owned by W2 (engine/motif_select.py) — W4 imports
+    # it, never re-implements (the one-engine-two-entries seam, RECONCILE §2). It
+    # writes the motif_application row (book_id pinned, motif_version pinned per
+    # edge-F3) and, on a swap, ARCHIVES (not deletes) the prior scenes so the undo is
+    # a verified reverse op (R2.6 / MCP-R2). Until W2 lands, this import fails — the
+    # tool is registered (find_tools/wire-tested) and returns a clean "not yet
+    # available" rather than a 500.
+    try:
+        from app.engine.motif_select import bind_motif  # type: ignore
+    except ImportError:
+        return {
+            "success": False,
+            "error": "motif binding engine not yet available",
+            "reason": "pending_w2",
+        }
+    result = await bind_motif(
+        tc.user_id, project_id=pid, book_id=work.book_id, node_id=node_id,
+        motif=motif, role_bindings=args.role_bindings, derive_scenes=args.derive_scenes,
+    )
+    application = result.get("application")
+    prior = result.get("prior")  # the prior binding the engine archived, if any
+    derived_scene_ids = result.get("derived_scene_ids", [])
+    # Honest verified undo (MCP-R2): a re-bind restores the PRIOR motif + its archived
+    # scenes; a FIRST bind has no prior, so the reverse op is _unbind.
+    if prior:
+        undo = _undo(
+            "composition_motif_bind",
+            project_id=args.project_id, node_id=args.node_id,
+            motif_id=str(prior.get("motif_id")),
+            role_bindings=prior.get("role_bindings", {}),
+        )
+    else:
+        undo = _undo(
+            "composition_motif_unbind",
+            project_id=args.project_id, node_id=args.node_id,
+            application_id=str(application.get("id")) if application else None,
+        )
+    return {
+        "application": application,
+        "derived_scene_ids": [str(s) for s in derived_scene_ids],
+        "_meta": {"undo_hint": undo},
+    }
+
+
+@mcp_server.tool(
+    name="composition_motif_unbind",
+    description=(
+        "Unbind a motif from a chapter — archive the binding and its derived scenes "
+        "(reversible). The verified reverse op for a first bind. EDIT on the book "
+        "required (auto-applied)."
+    ),
+    meta=require_meta(
+        "A", "book",
+        synonyms=["unbind motif", "remove motif", "clear chapter motif", "detach pattern"],
+        tool_name="composition_motif_unbind",
+    ),
+)
+async def composition_motif_unbind(
+    ctx: MCPContext,
+    project_id: Annotated[str, "The Work's project_id."],
+    node_id: Annotated[str, "The chapter node the motif is bound to."],
+    application_id: Annotated[str, "The motif_application id to unbind."],
+) -> dict:
+    tc = _ctx(ctx)
+    works = WorksRepo(get_pool())
+    pid = UUID(project_id)
+    work = await _work_or_deny(works, tc, pid)
+    await _gate(tc, work.book_id, GrantLevel.EDIT)
+    try:
+        from app.engine.motif_select import unbind_motif  # type: ignore
+    except ImportError:
+        return {
+            "success": False,
+            "error": "motif binding engine not yet available",
+            "reason": "pending_w2",
+        }
+    # The engine's unbind asserts the application's project_id == pid AND book_id ==
+    # work.book_id (the per-tool IDOR for the application target) before archiving.
+    ok = await unbind_motif(
+        tc.user_id, project_id=pid, book_id=work.book_id,
+        node_id=UUID(node_id), application_id=UUID(application_id),
+    )
+    if not ok:
+        raise uniform_not_accessible()
+    return {"unbound": True, "application_id": application_id, "_meta": {"undo_hint": None}}
+
+
+# ── Tier W — motif confirm-token ops (cost/tenancy-gated) ─────────────────────
+
+
+class _MotifAdoptArgs(ForbidExtra):
+    motif_id: str
+    target: Literal["user"] = "user"
+    retag_genres: list[str] | None = None
+
+
+@mcp_server.tool(
+    name="composition_motif_adopt",
+    description=(
+        "PROPOSE adopting a public/system motif into YOUR library (a clone you can then "
+        "customize), optionally retagging it to different genres. This crosses the "
+        "tenancy boundary and counts against your library quota, so it is human-"
+        "confirmed: it returns a confirm_token + a preview; nothing is cloned until you "
+        "confirm via confirm_action."
+    ),
+    meta=require_meta(
+        "W", "user",
+        synonyms=["adopt motif", "clone motif", "copy trope to my library",
+                  "import public motif", "reuse a pattern", "clone and retag"],
+        tool_name="composition_motif_adopt",
+    ),
+)
+async def composition_motif_adopt(ctx: MCPContext, args: _MotifAdoptArgs) -> dict:
+    tc = _ctx(ctx)
+    repo = MotifRepo(get_pool())
+    mid = UUID(args.motif_id)
+    # READPRED: you may adopt only a motif you can see (public/system/own). A foreign
+    # private id is the uniform deny (H13) — no oracle.
+    motif = await repo.get_visible(tc.user_id, mid)
+    if motif is None:
+        raise uniform_not_accessible()
+    payload = {
+        "motif_id": args.motif_id,
+        "retag_genres": args.retag_genres,
+    }
+    confirm_token = mint_confirm_token(
+        settings.confirm_token_signing_secret,
+        tc.user_id, mid, _MOTIF_ADOPT_DESCRIPTOR, payload,
+    )
+    return {
+        "confirm_token": confirm_token,
+        "descriptor": _MOTIF_ADOPT_DESCRIPTOR,
+        "title": "Adopt motif into your library",
+        "domain": "composition",
+        "preview": {
+            "source_name": motif.name,
+            "will_clone": True,
+            "retag_to": args.retag_genres or list(motif.genre_tags),
+        },
+    }
+
+
+class _MotifMineArgs(ForbidExtra):
+    scope: Literal["book", "corpus"]
+    book_id: str | None = None
+    min_support: int = 2
+    promote_to: Literal["draft"] = "draft"
+    language: str = "en"
+
+
+@mcp_server.tool(
+    name="composition_motif_mine",
+    description=(
+        "PROPOSE mining motifs from a book or your whole corpus — abstract the recurring "
+        "plot patterns into draft motifs for your library. This spends LLM tokens, so it "
+        "is cost-gated: it returns a confirm_token + a $ estimate; nothing runs until you "
+        "confirm via confirm_action, then it runs as a background job you poll with "
+        "composition_get_mine_job."
+    ),
+    meta=require_meta(
+        "W", "book",
+        synonyms=["mine motifs", "extract patterns", "discover tropes",
+                  "find motifs in my books", "analyze my corpus", "套路 mining"],
+        tool_name="composition_motif_mine",
+    ),
+)
+async def composition_motif_mine(ctx: MCPContext, args: _MotifMineArgs) -> dict:
+    tc = _ctx(ctx)
+    if args.scope == "book":
+        if not args.book_id:
+            return {"success": False, "error": "book_id is required when scope='book'"}
+        # BOOK(EDIT) gate on the named book (mining writes draft motifs informed by it).
+        await _gate(tc, UUID(args.book_id), GrantLevel.EDIT)
+    # MD-4: corpus mining has no single resource id → gated by envelope identity only;
+    # the worker filters every read on user_id=caller + re-checks each book's grant.
+    estimate = _mine_estimate(scope=args.scope)
+    payload = {
+        "scope": args.scope,
+        "book_id": args.book_id,
+        "min_support": args.min_support,
+        "promote_to": args.promote_to,
+        "language": args.language,
+        "estimate_usd": estimate["estimated_usd"],
+    }
+    # resource_id binds the token: the named book for scope='book', else the user.
+    resource_id = UUID(args.book_id) if args.scope == "book" and args.book_id else tc.user_id
+    confirm_token = mint_confirm_token(
+        settings.confirm_token_signing_secret,
+        tc.user_id, resource_id, _MOTIF_MINE_DESCRIPTOR, payload,
+    )
+    return {
+        "confirm_token": confirm_token,
+        "descriptor": _MOTIF_MINE_DESCRIPTOR,
+        "title": f"Mine motifs from {args.scope}",
+        "domain": "composition",
+        "requires": "human confirmation — this spends LLM tokens",
+        "estimate": estimate,
+    }
+
+
+class _ArcImportArgs(ForbidExtra):
+    import_source_id: str
+    use_web: bool = False
+    arc_hint: str | None = None
+
+
+@mcp_server.tool(
+    name="composition_arc_import_analyze",
+    description=(
+        "PROPOSE deconstructing an imported reference work (拆文) into an abstract arc "
+        "template — reverse-engineer its structure WITHOUT copying its prose. The raw "
+        "import stays private; only the derived abstract template is shareable. Spends "
+        "LLM tokens → returns a confirm_token + a $ estimate; runs as a background job."
+    ),
+    meta=require_meta(
+        "W", "user",
+        synonyms=["import arc", "deconstruct", "analyze a work", "拆文",
+                  "reverse-engineer arc", "extract arc template", "analyze reference"],
+        tool_name="composition_arc_import_analyze",
+    ),
+)
+async def composition_arc_import_analyze(ctx: MCPContext, args: _ArcImportArgs) -> dict:
+    tc = _ctx(ctx)
+    isid = UUID(args.import_source_id)
+    # USER scope on the import_source row (§12.6/B-3 — structurally un-shareable):
+    # owner == caller, else uniform deny.
+    guard = require_user_scope(_import_source_owner)
+    await guard(tc, isid)
+    estimate = _mine_estimate(scope="corpus")
+    payload = {
+        "import_source_id": args.import_source_id,
+        "use_web": args.use_web,
+        "arc_hint": args.arc_hint,
+        "estimate_usd": estimate["estimated_usd"],
+    }
+    confirm_token = mint_confirm_token(
+        settings.confirm_token_signing_secret,
+        tc.user_id, isid, _ARC_IMPORT_DESCRIPTOR, payload,
+    )
+    return {
+        "confirm_token": confirm_token,
+        "descriptor": _ARC_IMPORT_DESCRIPTOR,
+        "title": "Analyze a reference work into an arc template",
+        "domain": "composition",
+        "requires": "human confirmation — this spends LLM tokens",
+        "estimate": estimate,
+    }
+
+
+class _ConformanceRunArgs(ForbidExtra):
+    project_id: str
+    scope: Literal["chapter", "arc"]
+    chapter_id: str | None = None
+
+
+@mcp_server.tool(
+    name="composition_conformance_run",
+    description=(
+        "PROPOSE a conformance check — did the generated prose actually realize the "
+        "bound motifs/arc (beats hit, reversals landed)? Arc-scope re-extracts and "
+        "spends LLM tokens, so it is cost-gated: returns a confirm_token; runs as a "
+        "background job you poll with composition_get_mine_job. EDIT on the book required."
+    ),
+    meta=require_meta(
+        "W", "book",
+        synonyms=["check conformance", "did the AI follow the arc", "verify against plan",
+                  "arc conformance", "beat realized", "drift check"],
+        tool_name="composition_conformance_run",
+    ),
+)
+async def composition_conformance_run(ctx: MCPContext, args: _ConformanceRunArgs) -> dict:
+    tc = _ctx(ctx)
+    works = WorksRepo(get_pool())
+    pid = UUID(args.project_id)
+    work = await _work_or_deny(works, tc, pid)
+    await _gate(tc, work.book_id, GrantLevel.EDIT)
+    if args.scope == "chapter":
+        if not args.chapter_id:
+            return {"success": False, "error": "chapter_id is required when scope='chapter'"}
+        outline = OutlineRepo(get_pool())
+        node = await outline.get_node(tc.user_id, UUID(args.chapter_id))
+        # IDOR: the chapter is in the resolved Work's project.
+        if node is None or node.project_id != pid:
+            raise uniform_not_accessible()
+    estimate = _mine_estimate(scope="book")
+    payload = {
+        "project_id": args.project_id,
+        "book_id": str(work.book_id),
+        "scope": args.scope,
+        "chapter_id": args.chapter_id,
+        "estimate_usd": estimate["estimated_usd"],
+    }
+    confirm_token = mint_confirm_token(
+        settings.confirm_token_signing_secret,
+        tc.user_id, pid, _CONFORMANCE_RUN_DESCRIPTOR, payload,
+    )
+    return {
+        "confirm_token": confirm_token,
+        "descriptor": _CONFORMANCE_RUN_DESCRIPTOR,
+        "title": f"Run {args.scope} conformance check",
+        "domain": "composition",
+        "requires": "human confirmation — this spends LLM tokens",
+        "estimate": estimate,
+    }
+
+
+# ── R poll — the one tool for all three W-async motif jobs ─────────────────────
+
+
+@mcp_server.tool(
+    name="composition_get_mine_job",
+    description=(
+        "Poll an async motif job — the mining / arc-import / conformance job a confirmed "
+        "Tier-W motif action returns. Returns the job's status, its result once complete, "
+        "and cost. Use to wait for a mine/import/conformance to finish. VIEW on the book "
+        "required."
+    ),
+    meta=require_meta(
+        "R", "book",
+        synonyms=["mining job", "import job", "conformance job", "poll mining",
+                  "is mining done", "motif job status"],
+        tool_name="composition_get_mine_job",
+    ),
+)
+async def composition_get_mine_job(
+    ctx: MCPContext,
+    project_id: Annotated[str, "The Work's project_id."],
+    job_id: Annotated[str, "The motif job id returned by a confirmed Tier-W motif action."],
+) -> dict:
+    tc = _ctx(ctx)
+    works = WorksRepo(get_pool())
+    pid = UUID(project_id)
+    work = await _work_or_deny(works, tc, pid)
+    await _gate(tc, work.book_id, GrantLevel.VIEW)
+    jobs = GenerationJobsRepo(get_pool())
+    job = await jobs.get(tc.user_id, UUID(job_id))
+    # Cross-Work IDOR (exact clone of composition_get_generation_job): the repo
+    # filters user_id; also confirm the job is in THIS project (a job_id from another
+    # of the caller's Works can't be read through this one). A miss is uniform.
+    if job is None or job.project_id != pid:
+        raise uniform_not_accessible()
+    return job.model_dump(mode="json")
 
 
 # ── ASGI factory ──────────────────────────────────────────────────────────────

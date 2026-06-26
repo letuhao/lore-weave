@@ -59,11 +59,27 @@ EXPECTED_TOOLS = {
     "composition_canon_rule_delete", "composition_write_prose",
     # Tier W
     "composition_publish", "composition_generate",
+    # ── W4 narrative-motif-library tools (register on the SAME server) ──
+    # Tier R (motif)
+    "composition_motif_search", "composition_motif_get",
+    "composition_motif_suggest_for_chapter", "composition_arc_suggest",
+    "composition_get_mine_job",
+    # Tier A (motif)
+    "composition_motif_create", "composition_motif_archive",
+    "composition_motif_bind", "composition_motif_unbind",
+    # Tier W (motif)
+    "composition_motif_adopt", "composition_motif_mine",
+    "composition_arc_import_analyze", "composition_conformance_run",
 }
 TIER_R = {"composition_get_work", "composition_list_outline",
           "composition_get_prose", "composition_list_canon_rules",
-          "composition_get_generation_job"}
-TIER_W = {"composition_publish", "composition_generate"}
+          "composition_get_generation_job",
+          "composition_motif_search", "composition_motif_get",
+          "composition_motif_suggest_for_chapter", "composition_arc_suggest",
+          "composition_get_mine_job"}
+TIER_W = {"composition_publish", "composition_generate",
+          "composition_motif_adopt", "composition_motif_mine",
+          "composition_arc_import_analyze", "composition_conformance_run"}
 
 
 # ── wire-path fixture ─────────────────────────────────────────────────────────
@@ -131,7 +147,11 @@ async def test_every_tool_has_description(mcp_base_url):
 
 
 async def test_every_tool_carries_valid_meta(mcp_base_url):
-    """C-TOOL: each tool's `_meta` declares a valid tier + scope=book + synonyms."""
+    """C-TOOL: each tool's `_meta` declares a valid tier + scope + synonyms.
+
+    MD-10: the W4 motif tools introduce a `user` scope (motif is a User-tier
+    resource with no book_id), so the scope assertion is relaxed from the original
+    hardcoded `== 'book'` to `in {'book', 'user'}` (the only valid scopes)."""
     async with _mcp_client(mcp_base_url, {"X-Internal-Token": _GOOD_TOKEN}) as session:
         listing = await session.list_tools()
     for tool in listing.tools:
@@ -139,7 +159,7 @@ async def test_every_tool_carries_valid_meta(mcp_base_url):
         assert meta is not None, f"{tool.name!r} has no _meta"
         tier = meta.get("tier")
         assert tier in {"R", "A", "W"}, f"{tool.name}: bad tier {tier!r}"
-        assert meta.get("scope") == "book", f"{tool.name}: expected scope book"
+        assert meta.get("scope") in {"book", "user"}, f"{tool.name}: bad scope {meta.get('scope')!r}"
         syns = meta.get("synonyms")
         assert isinstance(syns, list) and syns, f"{tool.name}: missing synonyms"
         if tool.name in TIER_R:
