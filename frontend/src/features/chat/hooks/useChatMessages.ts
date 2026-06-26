@@ -81,9 +81,11 @@ export function useChatMessages(
   const live = useChatLiveStateOptional();
   const useWorker = live?.useWorker ?? false;
   const worker = live?.shared;
-  // Dedupe the single-writer side-effects (onStreamEnd fan-out + assembled
-  // append) on the worker's turnId so two windows don't double-fire.
-  const lastAppendedTurnRef = useRef(0);
+  // Dedupe the per-turn terminal side-effects (clean-end append, abort/error
+  // refetch, and the onStreamEnd fan-out) on the worker's monotonic turnId so a
+  // single window fires each once. (Cross-window single-firing of onStreamEnd is a
+  // separate concern handled at the M2 browser-smoke finalize — D-T5.4-CHAT-MULTIWINDOW.)
+  const lastTerminalTurnRef = useRef(0);
   const lastMemoryModeTurnRef = useRef(0);
 
   // ── Fetch messages on session change ──────────────────────────────────────────
@@ -302,21 +304,36 @@ export function useChatMessages(
       onMemoryModeRef.current?.(worker.memoryMode);
     }
 
-    // Terminal: append the assembled assistant message ONCE per turn + fire the
-    // stream-end fan-out once. The worker carries the assembled `result`; we own
-    // sequence_num (local state), so re-assemble here. Dedupe on turnId so a
-    // second window mirroring the same `ended` snapshot does not re-append.
-    if (worker.ended && worker.result && worker.turnId !== lastAppendedTurnRef.current) {
-      lastAppendedTurnRef.current = worker.turnId;
-      const assistantMessage = assembleAssistantMessage(
-        worker.result,
-        sessionId ?? '',
-        messages.length + 2,
-      );
-      setMessages((prev) => [...prev, assistantMessage]);
-      // Clear the streaming buffers (the in-process finally did this).
-      setStreamingText('');
-      setStreamingReasoning('');
+    // Terminal handling — ONCE per turn, deduped on the worker's turnId, mirroring
+    // the inline path's three terminal branches:
+    //   • clean end  → seamless append of the assembled assistant message;
+    //   • abort/error → refetch (pull any partial the server persisted), no append.
+    // Both fire the onStreamEnd fan-out once (session refresh + pending-facts), as
+    // the inline path does on every terminal branch (review-impl M2). The hub sets
+    // `result` (partial) on abort and `streamStatus:'error'` on error.
+    const cleanEnd = worker.ended && !!worker.result;
+    const nonCleanTerminal =
+      worker.streamStatus === 'error' ||
+      (worker.streamStatus === 'idle' && !worker.ended && worker.result != null);
+    if ((cleanEnd || nonCleanTerminal) && worker.turnId > 0 && worker.turnId !== lastTerminalTurnRef.current) {
+      lastTerminalTurnRef.current = worker.turnId;
+      if (cleanEnd) {
+        // Derive sequence_num from the freshest list (functional update) — the
+        // optimistic user message is already in `messages` on the worker path, so a
+        // fixed `length+2` offset double-counted it (review-impl: off-by-one). Using
+        // the last message's sequence_num + 1 is path-agnostic and stale-closure-free.
+        const result = worker.result!;
+        setMessages((prev) => {
+          const lastSeq = prev.length ? prev[prev.length - 1].sequence_num : 0;
+          return [...prev, assembleAssistantMessage(result, sessionId ?? '', lastSeq + 1)];
+        });
+        // Clear the streaming buffers (the in-process finally did this).
+        setStreamingText('');
+        setStreamingReasoning('');
+      } else {
+        // Abort/error → mirror the inline branches: pull partial-persisted messages.
+        void fetchMessages();
+      }
       onStreamEndRef.current?.();
     }
     // worker is a fresh object each render (spread snapshot); gate on the fields
