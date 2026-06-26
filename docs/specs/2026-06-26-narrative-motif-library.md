@@ -1,9 +1,102 @@
 # Narrative Motif Library — DESIGN SPEC (CLARIFY stage)
 
 > **Track:** LOOM / composition-service · **Size:** **XL** (schema migration + planner rework + cross-service mining + publish/adopt tenancy + MCP tools) → spec + plan required; subagent recommended.
-> **Status:** DESIGN draft for PO review. The **CLARIFY decisions** (§9) are *proposed*, not locked — they need PO sign-off before PLAN/BUILD.
+> **Status:** DESIGN — **REVISED R1 (2026-06-26) after the [consolidated pre-build audit](../reports/2026-06-26-motif-library-audit.md)**. Read **§R1 (below) FIRST** — it carries the LOCKED PO decisions + the corrections that **supersede** conflicting text in §2/§3/§4/§6/§12/§13/§14/§17.
 > **Research basis:** [`docs/research/2026-06-26-narrative-control-formalisms.md`](../research/2026-06-26-narrative-control-formalisms.md) (formalism survey) + [`docs/research/2026-06-02-ai-novel-composition-prior-art.md`](../research/2026-06-02-ai-novel-composition-prior-art.md) (product/system prior art).
 > **Workflow note:** A1/A2/A3 (`decompose` planner) are the substrate this extends — see [`2026-06-06-a3-decompose-planner.md`](2026-06-06-a3-decompose-planner.md).
+
+---
+
+## §R1 — POST-AUDIT REVISION (2026-06-26) · LOCKED decisions + corrections (SUPERSEDES the body where they conflict)
+
+> The original draft (§0-§17 below) is kept for context, but the following **supersede** it. Source: [consolidated audit](../reports/2026-06-26-motif-library-audit.md) (8 adversarial reviews).
+
+### R1.1 — LOCKED PO decisions
+1. **2-tier + clone-to-customize (drop the Book tier).** `motif`/`arc_template` are **User-owned (owner set) + System (owner NULL, seed/migrate-only)**, with `visibility ∈ private|unlisted|public`. **`motif.book_id` is REMOVED.** Templates are **book-independent** and survive book deletion. Per-book customization = **clone the template into a new user-template** (`variant_of` the original), edit the clone, reuse it forever. **`adopt` and `clone-to-customize` are ONE primitive** (clone-down): public→user, system→user, user→user-variant all clone. → §2/§4/§12 tier text is superseded by R1.4. **Read predicate (answers the audit's blocking Q1):** a motif is visible IFF `owner_user_id IS NULL` (system) `OR visibility='public' OR owner_user_id = caller`. No book-grant branch (kills IDOR-1's book dimension).
+2. **One platform embedding model for ALL motif vectors** (a fixed `motif_embed_model` platform config — NOT the user's BYOK model). Makes cross-tier cosine correct; clone copies the vector (same space). Supersedes §3.4's "reuse the Work's `*_embed_model_ref`".
+3. **`language` is a first-class axis on `motif`** (P1) and part of the dedup/embedding key. The platform is multilingual; retrofitting after embed+dedup is a re-key migration.
+4. **`motif_application` is per-book/project scope** (carries `book_id`): the anti-repetition cap + the "why this scene" trace aggregate **across a book's collaborators**, not per-user (the kinds-bug lesson applied to the application table).
+
+### R1.2 — CORRECTIONS to false "reuse" claims (the audit's highest-confidence findings)
+- **F-1 — the flywheel substrate does NOT exist.** knowledge-service has **no `(:Event)-[:CAUSES|:HAPPENS_BEFORE]` edges** (only scalar `event_order`/`chronological_order`). §3.2/§12.4/research-§4 are **wrong** to call it production. → **drop "frequent-subgraph mining"**; re-base mining on the NEW `motif_beat` extractor + scalar-order sequences; arc-conformance extract-diff (§14.4) needs **new knowledge-service work** and is **P4+**, not free.
+- **F-2 — STITCH already ships.** `engine/stitch.py` + `worker/operations.py:run_stitch()` exist (with the canon re-check). §17's "NEW" is wrong. → §17 is a **delta**: add a structured cross-scene repetition signal + respect §16 dials + **fix the two known failure modes** (it **no-ops on ≤2-scene chapters** and **elides the middle** via a head+tail char cap). Re-size §17 from "P2 greenfield" to **S/M enhancement**.
+- **F-3 — there is NO narrative-quality judge.** `loreweave_eval` scores **extraction precision/recall** (binary, gold = human extraction corrections). `motif_conformance`/`plot_density`/freshness are **new graded subjective** judgments with **no gold set**. → ship `motif_conformance` **binary-first** (`beat_realized` y/n + `tension_band_match` y/n) so it plugs into the existing binary `calibrate_judge`; **build a 30-50 scene PO-labeled gold set** (the PO already hand-judged the POCs) OR ship as **uncalibrated advisory and say so in the UI**. *(Gold-set ownership = remaining OPEN decision.)* Stop calling any of this "reuse the calibrated judge."
+
+### R1.3 — Blocker design rules (B-2/B-3/B-4) folded in
+- **System-tier writes are migrate/seed-time ONLY** (like `structure_template`). The user CRUD path **server-stamps `owner_user_id = JWT.sub` unconditionally and rejects both-NULL**; add a DB `CHECK (owner_user_id IS NOT NULL)` on the user-write path. The ONE read predicate (R1.1) lives in the repo SELECT, not the handler.
+- **`import_source` gets a real schema** (R1.4) with scope keys and **NO `visibility` column** (structurally un-shareable). On publish/adopt of an **imported-derived** motif: **strip `examples[]`** (DB trigger, not a prompt) and **replace `source_ref` with an opaque lineage token** (no back-readable foreign id). The **catalog projection is an explicit allow-list** (never `motif.*` — excludes `embedding`, raw `source_ref`, `examples[]`).
+- **Per-user quotas** on publish/adopt/mine-runs (mirror `D-MCP-BOOK-CREATE-QUOTA`); **a real usage-billing pre-check** in the mine/import confirm effect (it is **net-new** — `_execute_generate` has none). Mining/import run as **202+poll worker jobs**, not in-process confirm effects.
+
+### R1.4 — Corrected schema (SUPERSEDES §2.1 `motif` + §2.3 `motif_application`)
+```sql
+CREATE TABLE motif (
+  id              UUID PRIMARY KEY DEFAULT uuidv7(),
+  owner_user_id   UUID,                          -- NULL = system (seed/migrate-only). NO book_id. [R1.1]
+  code            TEXT NOT NULL,
+  language        TEXT NOT NULL DEFAULT 'en',     -- [R1.1.3] part of the dedup/embed key
+  visibility      TEXT NOT NULL DEFAULT 'private' CHECK (visibility IN ('private','unlisted','public')),
+  kind            TEXT NOT NULL DEFAULT 'sequence'
+                    CHECK (kind IN ('sequence','situation','hook','emotion_arc','trope','pattern','scheme')),
+  category        TEXT, name TEXT NOT NULL, summary TEXT NOT NULL DEFAULT '', genre_tags TEXT[] NOT NULL DEFAULT '{}',
+  roles JSONB NOT NULL DEFAULT '[]', beats JSONB NOT NULL DEFAULT '[]',
+  preconditions JSONB NOT NULL DEFAULT '[]', effects JSONB NOT NULL DEFAULT '[]',
+  tension_target SMALLINT, emotion_target TEXT,
+  examples JSONB NOT NULL DEFAULT '[]', abstraction_confidence TEXT,
+  source TEXT NOT NULL DEFAULT 'authored' CHECK (source IN ('authored','mined','adopted','imported')),
+  source_ref TEXT, source_version INT,            -- [N-4] version pin for the upstream 3-way diff
+  embedding REAL[], embedding_model TEXT NOT NULL DEFAULT '',  -- ONE platform model [R1.1.2]; no per-user choice
+  embedded_summary_hash TEXT,                     -- re-embed staleness guard (motifs are mutable, unlike reference_source)
+  judge_score NUMERIC(4,3), mining_support INT,
+  status TEXT NOT NULL DEFAULT 'active' CHECK (status IN ('draft','active','archived')),
+  version INT NOT NULL DEFAULT 1, created_at TIMESTAMPTZ NOT NULL DEFAULT now(), updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  CONSTRAINT motif_user_owned CHECK (owner_user_id IS NOT NULL OR visibility <> 'private')  -- a both-NULL row must be a published/system row, never a private orphan
+);
+-- 2 tenancy partials (NO book tier), keyed incl. language [R1.1.1 + R1.1.3]:
+CREATE UNIQUE INDEX uq_motif_user   ON motif(owner_user_id, code, language) WHERE owner_user_id IS NOT NULL;
+CREATE UNIQUE INDEX uq_motif_system ON motif(code, language)                WHERE owner_user_id IS NULL;
+CREATE INDEX idx_motif_owner  ON motif(owner_user_id) WHERE owner_user_id IS NOT NULL;
+CREATE INDEX idx_motif_public ON motif(visibility, updated_at DESC) WHERE visibility = 'public';
+CREATE INDEX idx_motif_genre  ON motif USING GIN (genre_tags);
+-- retrieval pre-filter (genre ∩ + status + tier predicate) runs in SQL BEFORE loading vectors (audit data-R1).
+
+CREATE TABLE motif_application (
+  id UUID PRIMARY KEY DEFAULT uuidv7(),
+  user_id UUID NOT NULL, project_id UUID NOT NULL,
+  book_id UUID NOT NULL,                          -- [R1.1.4] per-book scope for anti-repetition + trace
+  motif_id UUID REFERENCES motif(id) ON DELETE SET NULL,  -- [data-R3] FK + SET NULL (not the no-FK+NOT-NULL+deletable combo)
+  motif_version INT,                              -- [edge-F3] pin the bound version (trace shows what was bound, not live)
+  outline_node_id UUID REFERENCES outline_node(id) ON DELETE CASCADE,
+  role_bindings JSONB NOT NULL DEFAULT '{}',
+  annotations JSONB NOT NULL DEFAULT '{}',        -- [data-R7] bound info_asymmetry / reversal / alliance_shift
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+  -- app guard [edge-G2]: outline_node_id MUST belong to project_id (cross-project bind rejected)
+);
+CREATE INDEX idx_motif_application_book_motif ON motif_application(book_id, motif_id);  -- [data-R6] anti-repetition hot read
+CREATE INDEX idx_motif_application_node       ON motif_application(outline_node_id);
+```
+`motif_link` (§2.2) gains a **cycle guard** on `precedes`/`composed_of` insert and a rule that **user-created edges may not touch system motifs** (audit H-2). `arc_template.layout` stores a **resolved `motif_id`** alongside `motif_code`, and publish/adopt **clones the member subgraph** (audit H-3). `import_source` (NEW): `(id, owner_user_id, project_id, title, content, created_at)` — **no visibility column** (audit B-3).
+
+### R1.5 — Re-phasing
+- **P1 is XL** (absorbs §15 `scheme`+`info_asymmetry`, §16 `target_words`, §11 `match_reason`, §14 binary `motif_conformance`). Re-classify §7's "P1 (L)" → **XL**.
+- **Import/deconstruct (was P4) runs BEFORE graph-mining (P3)** — import is self-contained text analysis, not blocked on the missing causal-event graph (F-1); it bootstraps the library immediately.
+- **§14 arc extract-diff** ships **coarse `chapter_id` only** near-term; full extract-diff is **P4+** (rides F-1 + full re-extraction cost).
+
+### R1.6 — Superseded/corrected sections map
+| Body section | Status after R1 |
+|---|---|
+| §2.1 `motif`, §2.3 `motif_application` | **superseded by R1.4** (drop book_id, +language, +source_version, FK SET NULL, 2 partials, platform embed) |
+| §3.4 embedding ("Work's BYOK model / share one space") | **superseded by R1.1.2** (one platform model) |
+| §3.2, §12.4, research §4 (flywheel "ALREADY PRODUCTION") | **corrected by R1.2 F-1** (no causal graph; re-base on motif_beat + scalar order) |
+| §4 tenancy/publish/adopt (3-tier, book tier) | **superseded by R1.1.1** (2-tier + clone primitive) |
+| §6, §14 ("reuse the calibrated judge") | **corrected by R1.2 F-3** (new judge dims; binary-first; gold set needed) |
+| §13 MCP tiers (adopt Tier-A; bind undo; in-process mine) | **corrected by audit H-6** (adopt=Tier-W confirm; bind undo via archive-not-delete; mine=202+poll) |
+| §17 STITCH ("NEW") | **corrected by R1.2 F-2** (delta on existing `engine/stitch.py`) |
+
+### R1.7 — Still-OPEN before PLAN
+- **Gold-set ownership (F-3):** who labels the 30-50 narrative scenes for `motif_conformance` calibration, or do we ship uncalibrated-advisory? *(PO)*
+- **F-1 path:** fund causal-edge extraction in knowledge-service, or accept scalar-order + `motif_beat` mining only? *(decides whether P3 is reachable)* *(PO)*
+- **N-3 derivative inheritance:** do motifs carry into a dị bản Work (a `motif_override` parallel to `entity_override`), or start empty? *(PO)*
+- **N-2 genre as filter vs soft prior** (the POC's cross-genre re-skin is suppressed by a hard `genre_tags ∩` filter). *(recommend: soft re-ranking prior + cross-genre clone re-tags)*
 
 ---
 
