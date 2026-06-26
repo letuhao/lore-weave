@@ -19,14 +19,16 @@ const GROUP_LABEL: Record<GroundingGroup, string> = {
   present: 'Cast in scene', canon: 'Canon rules', lore: 'Lore',
 };
 
-export function GroundingPanel({ projectId, sceneId, token, heatmapEnabled, onToggleHeatmap }: {
-  projectId: string; sceneId: string; token: string | null;
+export function GroundingPanel({ projectId, bookId, chapterId, sceneId, token, heatmapEnabled, onToggleHeatmap }: {
+  projectId: string; bookId: string; chapterId: string; sceneId: string; token: string | null;
   heatmapEnabled?: boolean; onToggleHeatmap?: () => void;
 }) {
   const { t } = useTranslation('composition');
   const grounding = useGrounding(projectId, sceneId, '', token, !!sceneId);
   const pins = useGroundingPins(projectId, sceneId, token);
-  const heatmap = useMentionHeatmap(projectId, token);
+  // M7 — the cast-density bar list shares the chapter-windowed heatmap (same cache as
+  // the editor's in-prose tint), keyed by bookId + the active scene's chapter.
+  const heatmap = useMentionHeatmap(bookId, chapterId, token);
 
   if (!sceneId) return <div className="p-3 text-sm text-neutral-500">{t('needScene', { defaultValue: 'Pick a scene' })}</div>;
   if (grounding.isLoading) return <div className="p-3 text-sm text-neutral-500">{t('loadingGrounding', { defaultValue: 'Loading grounding…' })}</div>;

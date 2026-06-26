@@ -401,7 +401,9 @@ export function ChapterEditorPage() {
   // T5.2 — mention heatmap: push the top-cast density terms + the toggle into the
   // editor so the in-prose tinting tracks both the data and the on/off state. The
   // GroundingPanel shares this same query (cache) for its bar list.
-  const heatmap = useMentionHeatmap(composeProjectId ?? undefined, accessToken);
+  // M7 — the heatmap is now windowed to THIS chapter's per-chapter mention_count
+  // (glossary), keyed by bookId + chapterId (not the knowledge projectId).
+  const heatmap = useMentionHeatmap(bookId, chapterId, accessToken);
   useEffect(() => {
     // tint the canonical name AND every alias (mention_count counts all surface
     // forms; canonical-only would miss most occurrences in alias-heavy CJK prose)

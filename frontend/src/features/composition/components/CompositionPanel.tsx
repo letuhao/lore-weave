@@ -769,6 +769,8 @@ export function CompositionPanel({ bookId, chapterId, token, onAccept, sceneId: 
           )}
           <GroundingPanel
             projectId={work.project_id}
+            bookId={bookId}
+            chapterId={selectedScene?.chapter_id ?? chapterId}
             sceneId={effectiveScene}
             token={token}
             heatmapEnabled={heatmapEnabled}

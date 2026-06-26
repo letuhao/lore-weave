@@ -37,7 +37,7 @@ describe('GroundingPanel pin/exclude (T3.4)', () => {
         item({ type: 'lore', id: 'src1', label: 'a lore snippet' }),
       ],
     });
-    render(<GroundingPanel projectId="p" sceneId="s" token="t" />);
+    render(<GroundingPanel projectId="p" bookId="b" chapterId="c" sceneId="s" token="t" />);
     expect(screen.getByTestId('grounding-item-present-g1')).toBeTruthy();
     expect(screen.getByTestId('grounding-item-lore-src1')).toBeTruthy();
     // the non-addressable 'recent' block still renders…
@@ -50,7 +50,7 @@ describe('GroundingPanel pin/exclude (T3.4)', () => {
   it('pin button calls setAction(item, "pin")', () => {
     const it0 = item({ type: 'present', id: 'g1' });
     mockGrounding.data = grounding({ grounding_items: [it0] });
-    render(<GroundingPanel projectId="p" sceneId="s" token="t" />);
+    render(<GroundingPanel projectId="p" bookId="b" chapterId="c" sceneId="s" token="t" />);
     fireEvent.click(screen.getByTestId('grounding-pin-g1'));
     expect(setAction).toHaveBeenCalledWith(it0, 'pin');
   });
@@ -58,7 +58,7 @@ describe('GroundingPanel pin/exclude (T3.4)', () => {
   it('an already-pinned item un-pins (action "none")', () => {
     const it0 = item({ type: 'canon', id: 'r1', pinned: true });
     mockGrounding.data = grounding({ grounding_items: [it0] });
-    render(<GroundingPanel projectId="p" sceneId="s" token="t" />);
+    render(<GroundingPanel projectId="p" bookId="b" chapterId="c" sceneId="s" token="t" />);
     fireEvent.click(screen.getByTestId('grounding-pin-r1'));
     expect(setAction).toHaveBeenCalledWith(it0, 'none');
   });
@@ -66,7 +66,7 @@ describe('GroundingPanel pin/exclude (T3.4)', () => {
   it('excluded row is dimmed and restores (action "none") on its exclude toggle', () => {
     const it0 = item({ type: 'lore', id: 'src1', excluded: true });
     mockGrounding.data = grounding({ grounding_items: [it0] });
-    render(<GroundingPanel projectId="p" sceneId="s" token="t" />);
+    render(<GroundingPanel projectId="p" bookId="b" chapterId="c" sceneId="s" token="t" />);
     expect(screen.getByTestId('grounding-item-lore-src1').className).toContain('opacity-50');
     fireEvent.click(screen.getByTestId('grounding-exclude-src1'));
     expect(setAction).toHaveBeenCalledWith(it0, 'none');
@@ -75,14 +75,14 @@ describe('GroundingPanel pin/exclude (T3.4)', () => {
   it('a non-excluded item excludes (action "exclude") on its exclude toggle', () => {
     const it0 = item({ type: 'present', id: 'g2' });
     mockGrounding.data = grounding({ grounding_items: [it0] });
-    render(<GroundingPanel projectId="p" sceneId="s" token="t" />);
+    render(<GroundingPanel projectId="p" bookId="b" chapterId="c" sceneId="s" token="t" />);
     fireEvent.click(screen.getByTestId('grounding-exclude-g2'));
     expect(setAction).toHaveBeenCalledWith(it0, 'exclude');
   });
 
   it('falls back to opaque addressable blocks when there are no grounding_items (legacy/derivative)', () => {
     mockGrounding.data = grounding({ blocks: { present: 'Kael bio', canon: 'rule' }, grounding_items: [] });
-    render(<GroundingPanel projectId="p" sceneId="s" token="t" />);
+    render(<GroundingPanel projectId="p" bookId="b" chapterId="c" sceneId="s" token="t" />);
     expect(screen.getByTestId('composition-grounding-block-present')).toBeTruthy();
     expect(screen.getByTestId('composition-grounding-block-canon')).toBeTruthy();
     expect(screen.queryByTestId('grounding-items-present')).toBeNull();
@@ -92,10 +92,10 @@ describe('GroundingPanel pin/exclude (T3.4)', () => {
 describe('GroundingPanel mention heatmap (T5.2)', () => {
   it('renders heatmap rows when data is present, hidden when empty', () => {
     mockGrounding.data = grounding();
-    const { rerender } = render(<GroundingPanel projectId="p" sceneId="s" token="t" />);
+    const { rerender } = render(<GroundingPanel projectId="p" bookId="b" chapterId="c" sceneId="s" token="t" />);
     expect(screen.queryByTestId('composition-heatmap')).toBeNull(); // empty → hidden
     mockHeat.data = [{ id: 'a', name: 'Kael', mention_count: 100, band: 4 }];
-    rerender(<GroundingPanel projectId="p" sceneId="s" token="t" />);
+    rerender(<GroundingPanel projectId="p" bookId="b" chapterId="c" sceneId="s" token="t" />);
     expect(screen.getByTestId('composition-heatmap')).toBeTruthy();
     expect(screen.getByTestId('heatmap-row-a')).toBeTruthy();
   });
@@ -104,9 +104,9 @@ describe('GroundingPanel mention heatmap (T5.2)', () => {
     mockGrounding.data = grounding();
     mockHeat.data = [{ id: 'a', name: 'Kael', mention_count: 50, band: 3 }];
     const onToggle = vi.fn();
-    const { rerender } = render(<GroundingPanel projectId="p" sceneId="s" token="t" />);
+    const { rerender } = render(<GroundingPanel projectId="p" bookId="b" chapterId="c" sceneId="s" token="t" />);
     expect(screen.queryByTestId('heatmap-prose-toggle')).toBeNull(); // no handler → no toggle
-    rerender(<GroundingPanel projectId="p" sceneId="s" token="t" heatmapEnabled={false} onToggleHeatmap={onToggle} />);
+    rerender(<GroundingPanel projectId="p" bookId="b" chapterId="c" sceneId="s" token="t" heatmapEnabled={false} onToggleHeatmap={onToggle} />);
     fireEvent.click(screen.getByTestId('heatmap-prose-toggle'));
     expect(onToggle).toHaveBeenCalled();
   });
