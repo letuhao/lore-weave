@@ -1,0 +1,192 @@
+// Narrative Motif Library (W6) — the FROZEN DTO/API shapes mirrored from
+// F0 §3.6 / W6 §1.3. These are the parallelization contract: tsc fails if a
+// W1/W2/W3/W5 response drifts from these shapes. W6 is a PURE consumer — it
+// exposes nothing back-end; it binds to these and mocks the API in tests until
+// the real endpoints land.
+
+// ── motif library DTOs ──────────────────────────────────────────────────────
+
+/** DERIVED on the FE from {owner_user_id, visibility} — see `motifTier` in
+ *  simpleMode.ts. The wire never sends a `tier`; it's a presentation grouping. */
+export type MotifTier = 'system' | 'user' | 'public';
+
+export type MotifKind =
+  | 'sequence' | 'situation' | 'hook' | 'emotion_arc' | 'trope' | 'pattern' | 'scheme';
+export type MotifStatus = 'draft' | 'active' | 'archived';
+export type MotifSource = 'authored' | 'mined' | 'adopted' | 'imported';
+export type MotifVisibility = 'private' | 'unlisted' | 'public';
+export type Actant = 'subject' | 'object' | 'sender' | 'receiver' | 'helper' | 'opponent';
+
+export type MotifBeat = {
+  key: string;
+  label: string;
+  intent?: string;
+  tension_target?: number;
+  order: number;
+};
+
+export type MotifRole = {
+  key: string;
+  actant: Actant;
+  label: string;
+  constraints?: string;
+};
+
+/** §15.1 scheme intrigue (kind='scheme'). */
+export type InfoAsymmetry = { knows: string[]; deceived: string[]; gap: string };
+
+/** The full motif read projection (owner's own / system / public). The
+ *  `embedding` vector + raw `source_ref` are NEVER projected (F0 — server-side). */
+export type Motif = {
+  id: string;
+  owner_user_id: string | null;            // null = system tier
+  code: string;
+  language: string;
+  visibility: MotifVisibility;
+  kind: MotifKind;
+  category: string | null;
+  name: string;
+  summary: string;
+  genre_tags: string[];
+  roles: MotifRole[];
+  beats: MotifBeat[];
+  preconditions: { text: string }[];
+  effects: { text: string }[];
+  tension_target: number | null;
+  emotion_target: string | null;
+  info_asymmetry?: InfoAsymmetry | null;
+  examples: { text: string }[];
+  abstraction_confidence: 'high' | 'med' | 'low' | null;
+  source: MotifSource;
+  source_version: number | null;
+  judge_score: number | null;
+  mining_support: number | null;
+  status: MotifStatus;
+  version: number;
+};
+
+/** The catalog allow-list projection (audit B-3): a STRICT subset — never a full
+ *  Motif. No `intent` on beats, no examples, no embedding, no raw source_ref. */
+export type CatalogMotif = Pick<
+  Motif, 'id' | 'code' | 'name' | 'summary' | 'kind' | 'genre_tags' | 'tension_target'
+> & {
+  beats: { label: string; order: number }[];   // labels only, NO intent
+  adopt_count?: number;                          // P2+ social fields — optional
+  rating?: number;
+};
+
+// ── planner-binding DTOs (W2 exposes; the existing DecomposePreview gains these) ─
+
+export type MatchReason = {
+  tension: number;
+  genre: string[];
+  precond: string;
+  cosine: number;
+  summary: string;          // the plain-language one-liner (simple mode leads with it)
+};
+
+export type RoleBinding = { entity_id: string | null; entity_name: string };
+
+export type BoundMotif = {
+  motif_id: string | null;
+  motif_name: string;
+  motif_source: MotifSource;
+  role_bindings: Record<string, RoleBinding>;   // role_key → cast (null = unresolved)
+  match_reason: MatchReason;
+};
+
+/** Extends an existing decompose scene node with the motif binding. `motif: null`
+ *  ⇒ free-form (the A3 invent fallback) — NOT an error state. */
+export type DecomposeSceneMotif = {
+  beat_key?: string;
+  beat_label?: string;
+  tension_target?: number;
+  motif?: BoundMotif | null;
+};
+
+export type OveruseWarning = {
+  motif_id: string;
+  motif_name: string;
+  applied_in: string[];        // chapter labels where it's already applied
+};
+
+export type SuccessionHint = {
+  from_motif_id: string;
+  to_motif_code: string;
+  to_motif_name: string;
+  for_node_id: string;
+};
+
+// ── conformance trace (W5 exposes — GET …/conformance?scope=chapter) ──────────
+
+export type SceneConformance = {
+  outline_node_id: string;
+  beat_label: string;
+  planned_tension: number | null;
+  role_bindings: Record<string, string>;
+  realized_excerpt: string;
+  realized_events: string[];
+  realized_tension: number | null;
+  beat_realized: boolean;
+  tension_band_match: boolean;
+  calibrated: boolean;          // false ⇒ "advisory, unverified self-report"
+  flags: string[];              // e.g. ['beat_drift','tension_low']
+};
+
+export type ChapterConformance = {
+  chapter_id: string;
+  motif_name: string;
+  conform_count: [number, number];   // [conforming, total]
+  scenes: SceneConformance[];
+};
+
+// ── quota / cost-confirm (Tier-W — the FE mints + confirms, never executes) ───
+
+export type ConfirmDescriptor =
+  | 'composition.motif_mine' | 'composition.arc_import' | 'composition.conformance_run';
+
+export type CostEstimate = {
+  confirm_token: string;
+  descriptor: ConfirmDescriptor;
+  est_usd: number;
+  est_tokens: number;
+  quota_remaining: number | null;
+};
+
+export type QuotaError = {
+  code: 'quota_exceeded';
+  resource: 'publish' | 'adopt' | 'mine';
+  limit: number;
+  used: number;
+};
+
+// ── write-arg shapes (mirror F0 MotifCreateArgs — owner is NEVER an arg) ───────
+
+export type MotifCreateArgs = {
+  code: string;
+  name: string;
+  language?: string;
+  kind?: MotifKind;
+  category?: string | null;
+  summary?: string;
+  genre_tags?: string[];
+  roles?: MotifRole[];
+  beats?: MotifBeat[];
+  preconditions?: { text: string }[];
+  effects?: { text: string }[];
+  info_asymmetry?: InfoAsymmetry | null;
+  tension_target?: number | null;
+  emotion_target?: string | null;
+  examples?: { text: string }[];
+  visibility?: MotifVisibility;
+};
+
+export type MotifPatchArgs = Partial<Omit<MotifCreateArgs, 'code' | 'language'>> & {
+  status?: MotifStatus;
+};
+
+/** The bind→COMMIT→GENERATE route contract (W6 designs; W2 wires it). §4.6. */
+export type CommitAndGenerateRoute = {
+  tab: 'compose' | 'assemble';
+  sceneId: string;
+};
