@@ -817,13 +817,9 @@ func (s *Server) bulkExtractEntities(w http.ResponseWriter, r *http.Request) {
 					// safe DEFAULT 'unverified' until the translation-side offset map +
 					// validation populate them (INV-7: model offsets are validated, never
 					// trusted — that's the model-offset-trust step, deliberately not here).
-					var evChapterTitle string
-					var evChapterIndex *int
-					if len(ent.ChapterLinks) > 0 {
-						evChapterTitle = ent.ChapterLinks[0].ChapterTitle
-						ci := ent.ChapterLinks[0].ChapterIndex
-						evChapterIndex = &ci
-					}
+					// M2 — the quote's chapter is the chapter THIS writeback processed
+					// (req.ChapterID), not the entity's first-ever appearance.
+					evChapterID, evChapterTitle, evChapterIndex := evidenceChapterFor(req.ChapterID, ent.ChapterLinks)
 					// PROV/M3 — VALIDATED offset + trust status (INV-7). The worker already
 					// located the quote in the real text; glossary trusts no raw number —
 					// evidenceProvenanceFields clamps + enum-gates, degrading anything
@@ -854,7 +850,7 @@ func (s *Server) bulkExtractEntities(w http.ResponseWriter, r *http.Request) {
 							char_start        = EXCLUDED.char_start,
 							char_end          = EXCLUDED.char_end,
 							provenance_status = EXCLUDED.provenance_status
-					`, nameAVID, s.firstChapterID(ent.ChapterLinks), evChapterTitle, evChapterIndex,
+					`, nameAVID, evChapterID, evChapterTitle, evChapterIndex,
 						provBlk, provCS, provCE, provStatus,
 						req.SourceLanguage, ent.Evidence); err != nil {
 						BulkExtractTotal.WithLabelValues(OutcomeQueryFailed).Inc()
@@ -1530,16 +1526,33 @@ func (s *Server) mergeExtractedEntity(
 	return written, skipped, nil
 }
 
-// firstChapterID extracts the first chapter UUID from chapter links input.
-func (s *Server) firstChapterID(links []chapterLinkIn) *uuid.UUID {
-	if len(links) == 0 {
-		return nil
+// evidenceChapterFor resolves the chapter an extracted quote belongs to: the chapter THIS
+// writeback processed (reqChapterID — where the quote was extracted), with title/index from the
+// matching ChapterLink. Falls back to the entity's FIRST link only when reqChapterID is unset
+// (the legacy single-entity / MCP path). Fixes the firstChapterID bug (D-EVIDENCE-PROVENANCE-
+// OVERHAUL M2) that stamped every quote with the entity's first-ever appearance — so a
+// chapter-50 quote on a recurring character was labeled chapter 1, making evidence un-traceable.
+func evidenceChapterFor(reqChapterID string, links []chapterLinkIn) (*uuid.UUID, string, *int) {
+	if reqChapterID != "" {
+		if id, err := uuid.Parse(reqChapterID); err == nil {
+			for _, cl := range links {
+				if cl.ChapterID == reqChapterID {
+					ci := cl.ChapterIndex
+					return &id, cl.ChapterTitle, &ci
+				}
+			}
+			// Valid scope chapter but the worker didn't include a matching link → still stamp
+			// the correct chapter id; title/index are then filled by the chapter-title backfill.
+			return &id, "", nil
+		}
 	}
-	id, err := uuid.Parse(links[0].ChapterID)
-	if err != nil {
-		return nil
+	if len(links) > 0 {
+		if id, err := uuid.Parse(links[0].ChapterID); err == nil {
+			ci := links[0].ChapterIndex
+			return &id, links[0].ChapterTitle, &ci
+		}
 	}
-	return &id
+	return nil, "", nil
 }
 
 // firstChapterIDFromLinks extracts the first chapter UUID (nullable) from chapter links.

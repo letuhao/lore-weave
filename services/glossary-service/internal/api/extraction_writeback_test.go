@@ -1234,6 +1234,37 @@ func TestAdoptClone_PropagatesMergeStrategy(t *testing.T) {
 	}
 }
 
+// TestEvidenceChapterFor — D-EVIDENCE-PROVENANCE-OVERHAUL M2. The evidence's chapter must be the
+// chapter the writeback PROCESSED (req.ChapterID, where the quote came from), not the entity's
+// first appearance — the firstChapterID bug mislabeled a chapter-50 quote as chapter 1.
+func TestEvidenceChapterFor(t *testing.T) {
+	c1, c50 := uuid.NewString(), uuid.NewString()
+	links := []chapterLinkIn{
+		{ChapterID: c1, ChapterTitle: "Ch1", ChapterIndex: 1},
+		{ChapterID: c50, ChapterTitle: "Ch50", ChapterIndex: 50},
+	}
+	// Writeback for chapter 50 → evidence stamped with c50 + its title/index (NOT c1).
+	id, title, idx := evidenceChapterFor(c50, links)
+	if id == nil || id.String() != c50 || title != "Ch50" || idx == nil || *idx != 50 {
+		t.Fatalf("scope=c50 → got id=%v title=%q idx=%v want c50/Ch50/50", id, title, idx)
+	}
+	// Scope chapter present but no matching link → correct id, empty title (backfilled later).
+	other := uuid.NewString()
+	id2, title2, idx2 := evidenceChapterFor(other, links)
+	if id2 == nil || id2.String() != other || title2 != "" || idx2 != nil {
+		t.Fatalf("scope=other → got id=%v title=%q idx=%v want other/empty/nil", id2, title2, idx2)
+	}
+	// Legacy (no scope) → first link, preserving old behavior.
+	id3, title3, idx3 := evidenceChapterFor("", links)
+	if id3 == nil || id3.String() != c1 || title3 != "Ch1" || idx3 == nil || *idx3 != 1 {
+		t.Fatalf("legacy → got id=%v title=%q idx=%v want c1/Ch1/1", id3, title3, idx3)
+	}
+	// Nothing → nil.
+	if id4, _, _ := evidenceChapterFor("", nil); id4 != nil {
+		t.Fatalf("empty → want nil id, got %v", id4)
+	}
+}
+
 // TestSeedMergeStrategy — D-EXTRACT-ATTR-MERGE-DEFAULTS review fix. The runtime heuristic for
 // a NEWLY-created ontology attribute (book adoption clone of a fresh source, custom kind/attr,
 // user-tier attr) MUST match migration 0039's CASE so new books/attrs don't re-freeze on the
