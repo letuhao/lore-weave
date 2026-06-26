@@ -284,10 +284,16 @@ export function useChatMessages(
   // ── M2 worker bridge ──────────────────────────────────────────────────────────
   // When the SharedWorker owns the turn, mirror its broadcast snapshot into this
   // hook's local state so every consumer (mid-stream indicators, the message
-  // list) renders identically to the in-process path. Fire the single-writer
-  // side-effects (onStreamEnd fan-out, onMemoryMode, the assembled append) EXACTLY
-  // ONCE per turn — deduped on the worker's monotonic turnId — so two windows
-  // don't double-fire. Inert when !useWorker (default).
+  // list) renders identically to the in-process path. Two dedup scopes apply:
+  //   • per-WINDOW (lastTerminalTurnRef): the snapshot re-renders many times per
+  //     turn; the terminal branch must run once per turn IN THIS window.
+  //   • cross-WINDOW (D-T5.4-CHAT-MULTIWINDOW): the hub fans the SAME snapshot to
+  //     every window, so the onStreamEnd fan-out + the seamless assembled-append
+  //     run ONLY in the window that initiated the turn (worker.initiatedTurnId).
+  //     Observer windows (incl. a mid-turn pop-out) converge via refetch instead,
+  //     so they pick up both the user message they never optimistically appended
+  //     and the assistant turn — without double-firing the fan-out.
+  // Inert when !useWorker (default).
   useEffect(() => {
     if (!useWorker || !worker) return;
     // Mirror streaming facets every snapshot (the worker is the source of truth).
@@ -315,13 +321,15 @@ export function useChatMessages(
     const nonCleanTerminal =
       worker.streamStatus === 'error' ||
       (worker.streamStatus === 'idle' && !worker.ended && worker.result != null);
+    // This window owns the turn's terminal side-effects iff it initiated the turn.
+    const isWriter = worker.turnId > 0 && worker.turnId === worker.initiatedTurnId;
     if ((cleanEnd || nonCleanTerminal) && worker.turnId > 0 && worker.turnId !== lastTerminalTurnRef.current) {
       lastTerminalTurnRef.current = worker.turnId;
-      if (cleanEnd) {
-        // Derive sequence_num from the freshest list (functional update) — the
-        // optimistic user message is already in `messages` on the worker path, so a
-        // fixed `length+2` offset double-counted it (review-impl: off-by-one). Using
-        // the last message's sequence_num + 1 is path-agnostic and stale-closure-free.
+      if (cleanEnd && isWriter) {
+        // Writer (initiator) → seamless append. Its optimistic user message is
+        // already in `messages`, so derive sequence_num from the freshest list
+        // (functional update; review-impl off-by-one: the fixed length+2 offset
+        // double-counted the optimistic user msg). Last seq + 1 is path-agnostic.
         const result = worker.result!;
         setMessages((prev) => {
           const lastSeq = prev.length ? prev[prev.length - 1].sequence_num : 0;
@@ -331,16 +339,22 @@ export function useChatMessages(
         setStreamingText('');
         setStreamingReasoning('');
       } else {
-        // Abort/error → mirror the inline branches: pull partial-persisted messages.
+        // Observer window (never optimistically appended the user msg), OR
+        // abort/error in any window → converge from the server, which is the SSOT
+        // for both the user turn and the assistant (partial or assembled).
         void fetchMessages();
       }
-      onStreamEndRef.current?.();
+      // Single-writer: only the initiator fires the session/pending-facts fan-out,
+      // so N windows don't N× refetch. Orphan case (initiator closed mid-turn):
+      // observers still refetch above → the turn is visible; only the one-time
+      // fan-out is skipped, recovered on the observer's next natural refetch.
+      if (isWriter) onStreamEndRef.current?.();
     }
     // worker is a fresh object each render (spread snapshot); gate on the fields
     // that actually drive the mirror to avoid an unnecessary re-run storm.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [
-    useWorker, worker?.turnId, worker?.streamingText, worker?.streamingReasoning,
+    useWorker, worker?.turnId, worker?.initiatedTurnId, worker?.streamingText, worker?.streamingReasoning,
     worker?.streamPhase, worker?.thinkingElapsed, worker?.streamStatus, worker?.isComposing,
     worker?.memoryMode, worker?.ended, sessionId,
   ]);

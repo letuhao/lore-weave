@@ -21,6 +21,13 @@ interface ChatProps {
    *  The co-writer panel passes its Insert/Use-as-guide bar + starters here so it
    *  can read the live chat stream via useChatStream/useChatSession. */
   actionBar?: React.ReactNode;
+  /** M2 (D-T5.4-CHAT-HOIST): opener — chat windowing is on, so the turn must run in
+   *  the SharedWorker (a panel float/pop-out would otherwise kill it). The composition
+   *  host sets this from its windowing flag; off everywhere else → in-process, unchanged. */
+  windowingEnabled?: boolean;
+  /** M2 (D-T5.4-CHAT-HOIST): pop-out — force the worker path (a pop-out window has no
+   *  windowing host of its own, but must share the opener's in-flight turn). */
+  forceShared?: boolean;
   className?: string;
 }
 
@@ -33,7 +40,7 @@ interface ChatProps {
  * hook owns which session is active and binds it to the book's knowledge
  * project so the assistant has the book's lore/memory.
  */
-export function Chat({ bookId, editorContext, composeMode, actionBar, className }: ChatProps) {
+export function Chat({ bookId, editorContext, composeMode, actionBar, windowingEnabled, forceShared, className }: ChatProps) {
   // Glossary-assistant P3: any book-scoped chat (incl. the editor) advertises the
   // glossary edit-existing tool. The editor also passes editorContext (chapter
   // prose tool); a glossary-page/reader chat passes only bookContext.
@@ -49,7 +56,7 @@ export function Chat({ bookId, editorContext, composeMode, actionBar, className 
           this is an inert pass-through today (useChatMessages owns the in-process
           stream, byte-identical to pre-M2). When a host flips windowing on, the
           turn moves into the SharedWorker and survives pop-out. */}
-      <ChatLiveStateProvider token={accessToken ?? null}>
+      <ChatLiveStateProvider token={accessToken ?? null} windowingEnabled={windowingEnabled} forceShared={forceShared}>
         <ChatStreamProvider
           editorContext={editorContext}
           composeMode={composeMode}

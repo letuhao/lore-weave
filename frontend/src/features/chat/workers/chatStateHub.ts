@@ -55,6 +55,12 @@ export type ChatLiveState = {
   usage: { promptTokens?: number; completionTokens?: number };
   timing: { responseTimeMs?: number; timeToFirstTokenMs?: number };
   suspendedRun: SuspendedRun;
+  /** D-T5.4-CHAT-MULTIWINDOW — the globally-unique nonce of the `start`/`toolResult`
+   *  that began this turn (echoed verbatim from the inbound message). The window whose
+   *  pending nonce matches owns the turn's terminal side-effects; every other window is
+   *  an observer. Nonce (not "the port that sent start") so attribution is race-free even
+   *  when two windows start turns in the same tick. Null for the idle/cleared state. */
+  initiatorNonce: string | null;
   /** True once the turn finished cleanly (the consumer appends + fires fan-out,
    *  deduped on turnId). Reset to false on the next `start`. */
   ended: boolean;
@@ -66,14 +72,14 @@ export type ChatLiveState = {
 };
 
 export type InboundMessage =
-  | { type: 'start'; args: ChatStreamArgs; token: string | null }
+  | { type: 'start'; args: ChatStreamArgs; token: string | null; nonce?: string }
   | { type: 'stop' }
   | { type: 'clear' }
   // The resume / tool-result path: re-enter the run loop with an override
   // url/body (chatApi.toolResultsUrl + the outcome payload). Same stream
   // handling, so a tool result submitted in one window resumes the turn for ALL
   // windows via the broadcast snapshot.
-  | { type: 'toolResult'; override: { url: string; body: Record<string, unknown> }; token: string | null };
+  | { type: 'toolResult'; override: { url: string; body: Record<string, unknown> }; token: string | null; nonce?: string };
 
 export type OutboundMessage = { type: 'state'; state: ChatLiveState };
 
@@ -106,6 +112,7 @@ const EMPTY: ChatLiveState = {
   usage: {},
   timing: {},
   suspendedRun: null,
+  initiatorNonce: null,
   ended: false,
   result: null,
   error: null,
@@ -136,16 +143,19 @@ export function createChatStateHub(run: RunFn) {
     thinkingTimer = setInterval(() => { set({ thinkingElapsed: (Date.now() - thinkingStart) / 1000 }); }, 100);
   };
 
-  function beginRun(args: ChatStreamArgs, token: string | null) {
+  function beginRun(args: ChatStreamArgs, token: string | null, nonce: string | null) {
     ctrl?.abort();                       // a 2nd turn supersedes the in-flight one
     stopThinkingTimer();
     const c = new AbortController();
     ctrl = c;
     const isCurrent = () => ctrl === c;
-    // Fresh turn — bump turnId, reset the streaming facets, keep ports.
+    // Fresh turn — bump turnId, stamp the initiator nonce, reset the streaming
+    // facets, keep ports. The nonce rides every broadcast of this turn so the
+    // initiating window (and only it) claims the terminal side-effects.
     state = {
       ...EMPTY,
       turnId: state.turnId + 1,
+      initiatorNonce: nonce,
       streamStatus: 'streaming',
     };
     broadcast();
@@ -217,8 +227,8 @@ export function createChatStateHub(run: RunFn) {
   }
 
   function handle(msg: InboundMessage) {
-    if (msg.type === 'start') beginRun(msg.args, msg.token);
-    else if (msg.type === 'toolResult') beginRun({ sessionId: '', content: '', override: msg.override }, msg.token);
+    if (msg.type === 'start') beginRun(msg.args, msg.token, msg.nonce ?? null);
+    else if (msg.type === 'toolResult') beginRun({ sessionId: '', content: '', override: msg.override }, msg.token, msg.nonce ?? null);
     else if (msg.type === 'stop') {
       ctrl?.abort();
       ctrl = null;

@@ -1,5 +1,38 @@
 # Plan — Clear the Writing-Assistant Composition Debt
 
+## ✅ COMPLETE — all 9 milestones shipped on `feat/composition-debt` (2026-06-26)
+
+Built in the locked order `M0 → M4 → M6 → M3 → M1 → M5a → M5b → M7 → M2`, each through the
+12-phase v2.2 `/loom` workflow with grouped PO checkpoints. Commits:
+
+| M | What | Commit |
+|---|---|---|
+| M0 | world i18n parity | (earlier) |
+| M4 | vs-canon judge delta | (earlier) |
+| M6 | canon-at-chapter inspector (+`/review-impl`: knowledge-project HIGH) | `c27b57e7` |
+| M3 | prose-persist-on-promote (+`/review-impl` HIGH: seed `story_order`) | `12cc1044`, `8f52ef2b` |
+| M1 | adapt-from-source (+`/review-impl` HIGH: branch_point=null) | `d633fff9`, `93890d4d` |
+| M5a | mobile shell + two-level nav | `117b5367` |
+| M5b | heavy-canvas mobile (pinch + fit-on-mount) | `f05d89c3` |
+| M7 | per-chapter mention heatmap windowing (cross-service) | `992290e5` |
+| M2 | chat-hoist finalize (worker engagement + single-writer) | _this commit_ |
+
+**Live-smokes:** M1/M3/M6/M7 cross-service PASS; **M7 bulk `mention_backfill` run across all 7
+books with chapter links** (Dracula ×4 scenario + 万古神帝 ×2 — the large CJK book: 5495 alive
+entities paged, 436 links counted). **M2 browser two-window PASS** — a real lm_studio turn ran
+in the popped-out cowriter, and an initiator-window token mirrored into a second window mid-stream
+then cleared on the observer refetch (single-writer split, live).
+
+**Open deferrals (tracked):**
+- **`D-T5.4-CHAT-MULTIWINDOW-ORPHAN`** (LOW) — if the chat turn's initiator window closes
+  mid-turn, no window fires the one-time `onStreamEnd` fan-out (session/pending-facts refresh).
+  Observers still refetch the message (visible); only the refresh is skipped, recovered on the
+  observer's next natural refetch. Defer reason: conscious won't-fix-now (rare; a leader-election
+  re-assign is a structural add disproportionate to the residual).
+- **`D-M3-PROSEJOB-PUBLISHGATE`** (MED) — a synthetic prose job can mask a canon-contradiction
+  verdict in the publish-gate (`outline.py:603`); NOT reachable in the M3 fresh-node promote flow.
+  Defer reason: out-of-scope (publish-gate track), needs its own plan.
+
 - **Status:** CLARIFY ✅ → DESIGN ✅ → **DEFERRED to a new branch (no build on
   `feat/composition-service`).**
 - **⚠ BUILD TARGET (PO decision 2026-06-26): a NEW branch, NOT `feat/composition-service`.**

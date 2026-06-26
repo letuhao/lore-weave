@@ -28,10 +28,20 @@ const EMPTY: ChatLiveState = {
   usage: {},
   timing: {},
   suspendedRun: null,
+  initiatorNonce: null,
   ended: false,
   result: null,
   error: null,
 };
+
+/** A window-unique, monotonic nonce source for writer election. The random prefix
+ *  makes it globally unique across windows (so two windows never collide), the
+ *  counter makes each start within a window distinct. */
+function makeNonceSource() {
+  const prefix = Math.random().toString(36).slice(2, 10);
+  let n = 0;
+  return () => `${prefix}:${++n}`;
+}
 
 // WS-D (D-T5.4-POPOUT-WORKER-HEALTHCHECK) — the hub replays a snapshot to every
 // new port the instant it connects (chatStateHub.addPort → postMessage). So a
@@ -43,6 +53,18 @@ const ACK_TIMEOUT_MS = 4000;
 export function useSharedChatStream(token: string | null, enabled: boolean) {
   const [state, setState] = useState<ChatLiveState>(EMPTY);
   const portRef = useRef<MessagePort | null>(null);
+  // D-T5.4-CHAT-MULTIWINDOW — single-writer election. The hub broadcasts the SAME
+  // snapshot to every window, so without this every window would re-fire the per-turn
+  // terminal side-effects (assembled-message append + the onStreamEnd session/facts
+  // fan-out). Each `start`/`toolResult` we send carries a globally-unique nonce; the
+  // hub stamps it onto the turn's snapshots. We claim the turn whose initiatorNonce
+  // matches the nonce we last sent — race-free even if two windows start in one tick
+  // (vs. a turnId-increment heuristic, which mis-attributes on interleaving). The
+  // consumer fires the fan-out only for its own initiated turn; observers refetch.
+  const [initiatedTurnId, setInitiatedTurnId] = useState(0);
+  const myNonceRef = useRef<string | null>(null);
+  const nextNonceRef = useRef<(() => string) | null>(null);
+  if (nextNonceRef.current === null) nextNonceRef.current = makeNonceSource();
   // Token is held in a ref so a refresh mid-stream plumbs the NEW bearer to the
   // worker on the next start/toolResult without re-subscribing the port (a long
   // turn already in flight keeps the token it started with — the worker holds it).
@@ -69,7 +91,16 @@ export function useSharedChatStream(token: string | null, enabled: boolean) {
     port.onmessage = (e: MessageEvent) => {
       acked = true;
       clearTimeout(ackTimer);   // any message proves the worker is alive
-      if (e.data?.type === 'state') setState(e.data.state as ChatLiveState);
+      if (e.data?.type === 'state') {
+        const next = e.data.state as ChatLiveState;
+        // Claim the turn iff its initiator nonce matches the one WE last sent. A
+        // late-join replay of a turn started elsewhere carries a foreign nonce (or
+        // null) → we stay an observer, so the right window fires the fan-out.
+        if (next.initiatorNonce && next.initiatorNonce === myNonceRef.current) {
+          setInitiatedTurnId(next.turnId);
+        }
+        setState(next);
+      }
     };
     // No silent seams: if the worker script errors (e.g. failed to load
     // post-deploy), surface it instead of letting Send hang with no feedback.
@@ -92,7 +123,9 @@ export function useSharedChatStream(token: string | null, enabled: boolean) {
   }, [enabled]);
 
   const start = useCallback((args: ChatStreamArgs) => {
-    portRef.current?.postMessage({ type: 'start', args, token: tokenRef.current });
+    const nonce = nextNonceRef.current!();   // claim the turn this start produces (writer election)
+    myNonceRef.current = nonce;
+    portRef.current?.postMessage({ type: 'start', args, token: tokenRef.current, nonce });
   }, []);
   const stop = useCallback(() => { portRef.current?.postMessage({ type: 'stop' }); }, []);
   const clear = useCallback(() => {
@@ -105,6 +138,8 @@ export function useSharedChatStream(token: string | null, enabled: boolean) {
   // loop — so other windows see the resumed turn via the broadcast snapshot.
   const submitToolResult = useCallback(
     (sessionId: string, runId: string, toolCallId: string, outcome: FrontendToolOutcome, appliedText?: string) => {
+      const nonce = nextNonceRef.current!();   // resume re-enters the run loop → a new turn we own
+      myNonceRef.current = nonce;
       portRef.current?.postMessage({
         type: 'toolResult',
         override: {
@@ -112,6 +147,7 @@ export function useSharedChatStream(token: string | null, enabled: boolean) {
           body: { run_id: runId, tool_call_id: toolCallId, outcome, applied_text: appliedText },
         },
         token: tokenRef.current,
+        nonce,
       });
     },
     [],
@@ -120,6 +156,8 @@ export function useSharedChatStream(token: string | null, enabled: boolean) {
   // MCP fan-out (C-NAV): resolve a `ui_*` nav tool immediately with a structured result.
   const submitToolResolve = useCallback(
     (sessionId: string, runId: string, toolCallId: string, result: Record<string, unknown>) => {
+      const nonce = nextNonceRef.current!();   // resume re-enters the run loop → a new turn we own
+      myNonceRef.current = nonce;
       portRef.current?.postMessage({
         type: 'toolResult',
         override: {
@@ -127,10 +165,11 @@ export function useSharedChatStream(token: string | null, enabled: boolean) {
           body: { run_id: runId, tool_call_id: toolCallId, result },
         },
         token: tokenRef.current,
+        nonce,
       });
     },
     [],
   );
 
-  return { ...state, start, stop, clear, submitToolResult, submitToolResolve };
+  return { ...state, initiatedTurnId, start, stop, clear, submitToolResult, submitToolResolve };
 }

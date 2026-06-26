@@ -696,6 +696,11 @@ export function CompositionPanel({ bookId, chapterId, token, onAccept, sceneId: 
             bookId={bookId}
             onAccept={acceptProse}
             onUseAsGuide={(text) => { setComposeGuide(text); selectTab('compose'); }}
+            // M2 (D-T5.4-CHAT-HOIST): engage the chat SharedWorker when the panel can
+            // float/pop-out — opener (dock on) or the solo pop-out window — so an
+            // in-flight chat turn survives the panel re-parenting / opener close.
+            windowingEnabled={dockOn}
+            forceShared={solo}
           />
         </DockSlot>
         <DockSlot {...slot('assemble')}>
