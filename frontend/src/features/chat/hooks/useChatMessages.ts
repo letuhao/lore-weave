@@ -310,18 +310,22 @@ export function useChatMessages(
       onMemoryModeRef.current?.(worker.memoryMode);
     }
 
-    // Terminal handling — ONCE per turn, deduped on the worker's turnId, mirroring
-    // the inline path's three terminal branches:
-    //   • clean end  → seamless append of the assembled assistant message;
-    //   • abort/error → refetch (pull any partial the server persisted), no append.
-    // Both fire the onStreamEnd fan-out once (session refresh + pending-facts), as
-    // the inline path does on every terminal branch (review-impl M2). The hub sets
-    // `result` (partial) on abort and `streamStatus:'error'` on error.
+    // Terminal handling — ONCE per turn per window, deduped on the worker's turnId.
+    // Two facets, with DIFFERENT scoping:
+    //   • message list (writer-scoped): the INITIATOR appends the assembled assistant
+    //     message seamlessly (its optimistic user msg is already local); every other
+    //     window — and any abort/error — converges by refetch (server is SSOT).
+    //   • onStreamEnd fan-out (per-WINDOW): session-list refresh + pending-facts
+    //     refetch are idempotent reads of THIS window's own derived state, so EVERY
+    //     window must fire them — both to keep an observer's sidebar/facts fresh AND
+    //     so the turn is never left untracked if the initiator window closed mid-turn
+    //     (D-T5.4-CHAT-MULTIWINDOW-ORPHAN). N× idempotent GETs is the (small) cost of
+    //     never orphaning; refreshSessions is itself debounced.
     const cleanEnd = worker.ended && !!worker.result;
     const nonCleanTerminal =
       worker.streamStatus === 'error' ||
       (worker.streamStatus === 'idle' && !worker.ended && worker.result != null);
-    // This window owns the turn's terminal side-effects iff it initiated the turn.
+    // This window appended the optimistic user msg iff it initiated the turn.
     const isWriter = worker.turnId > 0 && worker.turnId === worker.initiatedTurnId;
     if ((cleanEnd || nonCleanTerminal) && worker.turnId > 0 && worker.turnId !== lastTerminalTurnRef.current) {
       lastTerminalTurnRef.current = worker.turnId;
@@ -344,11 +348,10 @@ export function useChatMessages(
         // for both the user turn and the assistant (partial or assembled).
         void fetchMessages();
       }
-      // Single-writer: only the initiator fires the session/pending-facts fan-out,
-      // so N windows don't N× refetch. Orphan case (initiator closed mid-turn):
-      // observers still refetch above → the turn is visible; only the one-time
-      // fan-out is skipped, recovered on the observer's next natural refetch.
-      if (isWriter) onStreamEndRef.current?.();
+      // Per-window (NOT writer-gated): each window refreshes its OWN session list +
+      // pending facts. This is what makes the orphan a non-event — a surviving
+      // observer keeps the session tracked + resumable even if the initiator is gone.
+      onStreamEndRef.current?.();
     }
     // worker is a fresh object each render (spread snapshot); gate on the fields
     // that actually drive the mirror to avoid an unnecessary re-run storm.

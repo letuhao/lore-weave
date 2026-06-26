@@ -64,7 +64,7 @@ describe('useChatMessages worker bridge — single-writer election', () => {
     expect(onEnd).toHaveBeenCalledTimes(1);
   });
 
-  it('OBSERVER (foreign turn) does NOT append from the snapshot nor fire onStreamEnd — it refetches', async () => {
+  it('OBSERVER (foreign turn) does NOT blind-append, but DOES refetch AND fire its own onStreamEnd', async () => {
     shared = sharedSnap();
     const onEnd = vi.fn();
     const { result, rerender } = renderHook(() => useChatMessages('s-1'));
@@ -72,14 +72,18 @@ describe('useChatMessages worker bridge — single-writer election', () => {
     act(() => { result.current.onStreamEndRef.current = onEnd; });
     const callsBefore = listMessagesMock.mock.calls.length;
 
-    // A turn started in ANOTHER window: initiatedTurnId stays 0 ≠ turnId.
+    // A turn started in ANOTHER window: initiatedTurnId stays 0 ≠ turnId. This is also
+    // the ORPHAN case (D-T5.4-CHAT-MULTIWINDOW-ORPHAN) — the initiator may have closed,
+    // so the observer must keep its own session/facts tracked, not skip the fan-out.
     shared = sharedSnap({ turnId: 9, initiatedTurnId: 0, ended: true, result: RESULT, streamStatus: 'idle' });
     rerender();
 
-    // Converges via refetch (server SSOT), no blind append, no fan-out.
+    // Converges via refetch (server SSOT), no blind append…
     await waitFor(() => expect(listMessagesMock.mock.calls.length).toBeGreaterThan(callsBefore));
     expect(result.current.messages.some((m) => m.role === 'assistant')).toBe(false);
-    expect(onEnd).not.toHaveBeenCalled();
+    // …and fires its OWN per-window fan-out (session refresh + pending-facts) so the
+    // turn stays tracked/resumable even if the initiator window is gone.
+    expect(onEnd).toHaveBeenCalledTimes(1);
   });
 
   it('fires the terminal branch only ONCE per turn within a window (per-window dedupe)', async () => {

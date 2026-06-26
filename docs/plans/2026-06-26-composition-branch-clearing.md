@@ -35,15 +35,18 @@ then cleared on the observer refetch (single-writer split, live).
   a one-line root-cause fix surfaced *by* M3 (M3 creates the synthetic job) → fixed now, not
   deferred to a separate track.
 
-**Open deferrals (tracked):**
-- **`D-T5.4-CHAT-MULTIWINDOW-ORPHAN`** (LOW, conscious defer) — if the chat turn's initiator
-  window closes mid-turn, no window fires the one-time `onStreamEnd` fan-out (session/pending-facts
-  refresh). Observers still refetch the message (it stays visible); only the one-time refresh is
-  skipped, recovered on the observer's next natural action. Defer reason (gate #2 structural / #5
-  conscious): the robust fix swaps the just-shipped nonce election for a hub-assigned port-id
-  leader-election with re-assignment on writer disconnect — a structural protocol change
-  disproportionate to a rare, self-healing, message-still-visible residual. Revisit if chat
-  windowing ships to real multi-window use and the skipped refresh proves user-visible.
+- **`D-T5.4-CHAT-MULTIWINDOW-ORPHAN`** — **FIXED** (commit follows). Re-graded from LOW: an
+  orphaned turn leaving a session untracked/unresumable is a real failure, not cosmetic. Root
+  cause was a mis-scoped gate: `onStreamEnd` was fired only in the initiator window, but it does
+  nothing but two **idempotent reads** — `refreshSessions()` (debounced) + `pendingFacts.refetch()`
+  — which are EACH window's own derived state. Single-writer gating both orphaned the refresh when
+  the initiator closed AND left every observer's sidebar/pending-facts stale. Fix: fire
+  `onStreamEnd` **per-window** (each refreshes its own tracking); only the message *append* stays
+  writer-scoped (initiator appends seamlessly, observers refetch). No hub leader-election needed —
+  a surviving window self-serves, so the turn is always tracked + resumable. Unit-proven (the
+  observer test now asserts it fires its own fan-out while NOT blind-appending).
+
+**Open deferrals (tracked):** _none._
 
 - **Status:** CLARIFY ✅ → DESIGN ✅ → **DEFERRED to a new branch (no build on
   `feat/composition-service`).**
