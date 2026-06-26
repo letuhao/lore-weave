@@ -23,6 +23,9 @@ from app.clients.book_client import get_book_client
 from app.clients.llm_client import get_llm_client
 from app.config import settings
 from app.db.migrations.backfill_orders import run_orders_backfill
+from app.db.migrations.backfill_participant_anchors import (
+    run_participant_anchor_backfill,
+)
 from app.db.migrations.backfill_status import (
     make_llm_classify_fn,
     run_status_backfill,
@@ -75,6 +78,41 @@ async def backfill_orders(project_id: UUID) -> dict:
         "events_skipped_no_sort": result.events_skipped_no_sort,
         "passages_indexed": result.passages_indexed,
         "chrono_ranked": result.chrono_ranked,
+    }
+
+
+@router.post("/{project_id}/backfill-participant-anchors")
+async def backfill_participant_anchors(project_id: UUID) -> dict:
+    """D-KG-TL-PARTICIPANT-ANCHOR — resolve + stamp ``participant_entity_ids`` on
+    a project's existing events so the timeline localizer joins participant names
+    by stored glossary id instead of re-resolving at read time. Idempotent;
+    project-scoped. Resolves the owning user from knowledge_projects."""
+    row = await get_knowledge_pool().fetchrow(
+        "SELECT user_id FROM knowledge_projects WHERE project_id = $1 LIMIT 1",
+        project_id,
+    )
+    if row is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="project not found",
+        )
+    user_id = row["user_id"]
+
+    if not settings.neo4j_uri:
+        # Track 1 (no graph) — nothing to backfill; clean no-op.
+        return {"project_id": str(project_id), "skipped": "neo4j_unavailable"}
+
+    async with neo4j_session() as session:
+        result = await run_participant_anchor_backfill(
+            session,
+            user_id=str(user_id),
+            project_id=str(project_id),
+        )
+
+    return {
+        "project_id": str(project_id),
+        "events_scanned": result.events_scanned,
+        "events_anchored": result.events_anchored,
+        "anchors_resolved": result.anchors_resolved,
     }
 
 

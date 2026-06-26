@@ -150,6 +150,15 @@ class Event(BaseModel):
     # ON MATCH so re-mentions don't churn the original phrasing.
     time_cue: str | None = None
     participants: list[str] = Field(default_factory=list)
+    # KG-TL Option A (D-KG-TL-PARTICIPANT-ANCHOR) — stored anchor: the glossary
+    # ``entity_id`` per participant slot, same length+order as ``participants``,
+    # ``""`` where the participant couldn't be anchored (Neo4j lists can't hold
+    # nulls → ``""`` sentinel, never a real UUID). ``exclude=True``: populated
+    # FROM the node so the read-time localizer can consume it, but NOT serialized
+    # into the timeline API response — it's an internal anchor, not FE-facing, so
+    # the wire contract is unchanged. ``None`` / a length-mismatched array signals
+    # "not resolved" → the localizer falls back to read-time name resolution.
+    participant_entity_ids: list[str] | None = Field(default=None, exclude=True)
     confidence: float = 0.0
     source_types: list[str] = Field(default_factory=list)
     evidence_count: int = 0
@@ -300,6 +309,10 @@ ON CREATE SET
   e.event_date_iso = $event_date_iso,
   e.time_cue = $time_cue,
   e.participants = $participants,
+  // KG-TL Option A — anchor array, aligned to $participants (built post-dedup
+  // by merge_event). [] when the caller didn't resolve anchors → the read path
+  // sees a length mismatch and falls back to read-time resolution.
+  e.participant_entity_ids = $participant_entity_ids,
   e.confidence = $confidence,
   e.source_types = [$source_type],
   e.provenances = [$provenance],
@@ -353,6 +366,17 @@ ON MATCH SET
     WHEN size($participants) = 0 THEN e.participants
     ELSE e.participants + [p IN $participants WHERE NOT p IN e.participants]
   END,
+  // KG-TL Option A — append the anchor for each NEW participant, by the SAME
+  // index filter as the participants append above so the two arrays stay
+  // aligned. coalesce($participant_entity_ids[i], "") guards a caller that
+  // passed [] (no anchors resolved): an out-of-range index → null → "" (Neo4j
+  // lists reject null elements). A legacy node (no prior array) starts from []
+  // → a short array → the read path's length guard falls it back to read-time
+  // resolution until the backfill normalizes it.
+  e.participant_entity_ids = CASE
+    WHEN size($participants) = 0 THEN coalesce(e.participant_entity_ids, [])
+    ELSE coalesce(e.participant_entity_ids, []) + [i IN range(0, size($participants) - 1) WHERE NOT $participants[i] IN e.participants | coalesce($participant_entity_ids[i], "")]
+  END,
   e.source_types = CASE
     WHEN $source_type IN e.source_types THEN e.source_types
     ELSE e.source_types + $source_type
@@ -386,6 +410,7 @@ async def merge_event(
     event_date_iso: str | None = None,
     time_cue: str | None = None,
     participants: list[str] | None = None,
+    participant_anchors: dict[str, str] | None = None,
     source_type: str = "book_content",
     confidence: float = 0.0,
     provenance: str = "human_authored",
@@ -437,6 +462,17 @@ async def merge_event(
     # order in Python 3.7+, which is also Cypher list traversal
     # order, so the first-spotted entity stays at index 0.
     deduped_participants = list(dict.fromkeys(participants or []))
+    # KG-TL Option A — build the anchor array ALIGNED to the deduped participants
+    # (the list actually passed to Cypher), so index i of participant_entity_ids
+    # always maps to participant i. `participant_anchors=None` → [] (caller didn't
+    # resolve → the read path falls back to read-time resolution); a provided map
+    # → glossary entity_id per slot, "" where the name isn't anchored.
+    if participant_anchors is None:
+        participant_entity_ids: list[str] = []
+    else:
+        participant_entity_ids = [
+            participant_anchors.get(p, "") for p in deduped_participants
+        ]
     # R4: empty string → None so coalesce in Cypher treats it as
     # "no new value", not "deliberate clear". Applied to time_cue too
     # for the same reason — a blank narrative hint must not clobber a
@@ -458,6 +494,7 @@ async def merge_event(
         event_date_iso=event_date_iso,
         time_cue=normalized_time_cue,
         participants=deduped_participants,
+        participant_entity_ids=participant_entity_ids,
         source_type=source_type,
         confidence=confidence,
         provenance=provenance,

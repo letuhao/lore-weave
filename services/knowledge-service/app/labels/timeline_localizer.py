@@ -33,7 +33,7 @@ from uuid import UUID
 from app.clients.glossary_client import GlossaryClient
 from app.clients.translation_client import TranslationClient
 from app.db.neo4j import neo4j_session
-from app.db.neo4j_repos.entities import find_entities_by_name
+from app.db.neo4j_repos.entities import resolve_participant_anchors
 from app.db.neo4j_repos.events import Event
 from app.db.repositories.event_text_translations import (
     EVENT_TEXT_FIELDS,
@@ -60,35 +60,21 @@ async def _resolve_names_to_entity_ids(
     project_id: str | None,
     names: list[str],
 ) -> dict[str, str]:
-    """Invert NAME → glossary_entity_id for a page's distinct participant names.
+    """Invert NAME → glossary_entity_id for a page's participant names (Option B,
+    read-time fallback for events whose stored anchors are absent/misaligned).
 
-    For each name, take the best ``find_entities_by_name`` match that carries a
-    glossary anchor (the helper already ranks anchored entities first). Ambiguous
-    names (same surface, two entities) tie-break on that ranking — preferring the
-    anchored, higher-confidence entity already in this project's graph (Option B
-    tie-break in the spec §5c). A name with no anchored match is omitted (it stays
-    source + marked). One Neo4j session for the whole page.
+    Delegates to the shared :func:`resolve_participant_anchors` — the SAME
+    resolution the write path stores at extraction time — so read-time fallback
+    and write-time anchoring can never drift. Opens one Neo4j session for the
+    whole batch. A name with no anchored match is omitted (it stays source +
+    marked, AC-T3).
     """
-    out: dict[str, str] = {}
     if not names:
-        return out
+        return {}
     async with neo4j_session() as session:
-        for name in names:
-            try:
-                matches = await find_entities_by_name(
-                    session,
-                    user_id=user_id,
-                    project_id=project_id,
-                    name=name,
-                )
-            except Exception as exc:  # best-effort — a resolution miss never 500s
-                logger.warning("participant name resolution failed for %r: %s", name, exc)
-                continue
-            for ent in matches:
-                if ent.glossary_entity_id:
-                    out[name] = ent.glossary_entity_id
-                    break
-    return out
+        return await resolve_participant_anchors(
+            session, user_id=user_id, project_id=project_id, names=names,
+        )
 
 
 async def localize_participants(
@@ -108,16 +94,46 @@ async def localize_participants(
     """
     if not events or book_id is None:
         return
-    # Distinct participant names across the whole page → ONE resolution + ONE
-    # glossary round-trip (not per-event).
-    distinct: list[str] = list(
-        {p for e in events for p in e.participants if p and p.strip()}
+    # KG-TL Option A (D-KG-TL-PARTICIPANT-ANCHOR) — prefer the anchor STORED on
+    # the event at extraction time over re-resolving names at read time.
+    #   - An event whose ``participant_entity_ids`` is aligned (same length as
+    #     ``participants``) is trusted wholesale: a non-empty slot is the glossary
+    #     id; a ``""`` slot is a KNOWN-unanchored participant (source fallback) —
+    #     not re-resolved.
+    #   - An event with absent / length-mismatched anchors (legacy, un-backfilled,
+    #     or a re-mention that grew a short array) falls back to read-time name
+    #     resolution for its names only (Option B). A fully-backfilled page does
+    #     ZERO read-time resolution — the durable win.
+    name_to_eid: dict[str, str] = {}
+    anchored_names: set[str] = set()  # names settled by a stored array (id or "")
+    for e in events:
+        ids = e.participant_entity_ids
+        if not ids or len(ids) != len(e.participants):
+            continue
+        for p, eid in zip(e.participants, ids):
+            if not (p and p.strip()):
+                continue
+            anchored_names.add(p)
+            if eid and p not in name_to_eid:
+                name_to_eid[p] = eid
+    # Residual = names from events WITHOUT an aligned stored array, and not
+    # already settled by some other event's array.
+    residual: list[str] = list(
+        {
+            p
+            for e in events
+            if not e.participant_entity_ids
+            or len(e.participant_entity_ids) != len(e.participants)
+            for p in e.participants
+            if p and p.strip() and p not in anchored_names and p not in name_to_eid
+        }
     )
-    if not distinct:
-        return
-    name_to_eid = await _resolve_names_to_entity_ids(
-        user_id=user_id, project_id=project_id, names=distinct
-    )
+    if residual:
+        resolved = await _resolve_names_to_entity_ids(
+            user_id=user_id, project_id=project_id, names=residual
+        )
+        for n, eid in resolved.items():
+            name_to_eid.setdefault(n, eid)
     translated_names: dict[str, str] = {}
     if name_to_eid:
         eid_to_name = await glossary.fetch_entity_display_names(
