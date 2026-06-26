@@ -901,11 +901,18 @@ async def run_migrations(pool: asyncpg.Pool) -> None:
 
 
 async def _seed_motif_packs(conn: asyncpg.Connection) -> None:
-    """F0 no-op stub — the call site is frozen so W7 can fill the seed-pack body
-    (the system-tier motif/arc rows) without re-editing run_migrations. System seeds
-    use visibility='unlisted' (RECONCILE D6) so the both-NULL rows satisfy the
-    motif_user_owned CHECK; embedding starts NULL (D4 — W3 back-fills lazily)."""
-    return
+    """F0 frozen call site — DELEGATES to the W7-owned `app.db.seed_motifs` module so
+    W7 fills the seed-pack body (the system-tier motif/arc rows) by creating ITS OWN
+    new file, never editing this frozen migrate.py. A soft import keeps boot working
+    before W7 lands (no-op until then — the C16 'never wall boot on an optional part'
+    discipline). System seeds use visibility='unlisted' (RECONCILE D6) so the both-NULL
+    rows satisfy the motif_user_owned CHECK; embedding starts NULL (D4 — W3 back-fills
+    lazily)."""
+    try:
+        from app.db.seed_motifs import seed_motif_packs
+    except ImportError:
+        return  # W7 not landed yet
+    await seed_motif_packs(conn)
 
 
 async def _seed_builtin_templates(conn: asyncpg.Connection) -> None:
