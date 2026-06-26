@@ -636,6 +636,72 @@ async def test_memory_public_key_cannot_use_unowned_project(monkeypatch):
     assert "project not found" in res.error
 
 
+# ── H-I: project_id arg supplies scope when the envelope has none ──────
+
+
+@pytest.mark.asyncio
+async def test_hi_project_id_arg_supplies_scope_for_public_call(monkeypatch):
+    """A public call carries no envelope project (ctx.project_id None). The
+    project_id ARG supplies the scope, the owner gate validates it (owned), and
+    the handler runs against THAT project."""
+    fe = AsyncMock(return_value=[])
+    monkeypatch.setattr("app.tools.executor.find_entities_by_name", fe)
+    arg_pid = uuid4()
+    ctx = _ctx(project_id=None, project_owner=_USER)  # owner gate will pass
+    res = await execute_tool(ctx, "memory_recall_entity",
+                             {"entity_name": "Kai", "project_id": str(arg_pid)})
+    assert res.success
+    assert fe.await_args.kwargs["project_id"] == str(arg_pid)  # hoisted into scope
+
+
+@pytest.mark.asyncio
+async def test_hi_envelope_project_wins_over_arg(monkeypatch):
+    """First-party: the trusted envelope project is authoritative — a project_id
+    arg cannot redirect the call to a different project (D3 preserved)."""
+    fe = AsyncMock(return_value=[])
+    monkeypatch.setattr("app.tools.executor.find_entities_by_name", fe)
+    ctx = _ctx(project_id=_PROJECT, project_owner=_USER)  # envelope set
+    res = await execute_tool(ctx, "memory_recall_entity",
+                             {"entity_name": "Kai", "project_id": str(uuid4())})
+    assert res.success
+    assert fe.await_args.kwargs["project_id"] == str(_PROJECT)  # envelope wins
+
+
+@pytest.mark.asyncio
+async def test_hi_malformed_project_id_arg_is_tool_error():
+    ctx = _ctx(project_id=None, project_owner=_USER)
+    res = await execute_tool(ctx, "memory_recall_entity",
+                             {"entity_name": "Kai", "project_id": "not-a-uuid"})
+    assert not res.success
+    assert "project_id must be a valid id" in res.error
+
+
+@pytest.mark.asyncio
+async def test_hi_memory_search_arg_owner_checked_via_get():
+    """memory_search's owner check is projects_repo.get (owner-keyed), NOT the
+    shared _require_project_owner_memory gate. Verify it too rejects an
+    arg-supplied project the caller doesn't own, over the H-I hoist path."""
+    # project_owner=_OTHER_USER ⇒ the default repo's owner-keyed get() returns None.
+    ctx = _ctx(project_id=None, project_owner=_OTHER_USER)
+    res = await execute_tool(ctx, "memory_search",
+                             {"query": "x", "project_id": str(uuid4())})
+    assert not res.success
+    assert "project not found" in res.error
+
+
+@pytest.mark.asyncio
+async def test_hi_project_id_arg_for_unowned_project_rejected(monkeypatch):
+    """The owner gate still applies to an arg-supplied project — a public agent
+    can only address a project it owns (H-U + OD-8 hold over the H-I path)."""
+    monkeypatch.setattr("app.tools.executor.find_entities_by_name",
+                        AsyncMock(return_value=[]))
+    ctx = _ctx(project_id=None, project_owner=_OTHER_USER)  # arg project not owned
+    res = await execute_tool(ctx, "memory_recall_entity",
+                             {"entity_name": "Kai", "project_id": str(uuid4())})
+    assert not res.success
+    assert "project not found" in res.error
+
+
 # ── dispatch + error handling ─────────────────────────────────────────
 
 

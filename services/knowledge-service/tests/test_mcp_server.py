@@ -144,14 +144,16 @@ async def test_mcp_tools_list_each_tool_has_name_and_description(mcp_base_url):
 
 
 async def test_mcp_tools_list_exposes_no_scope_args(mcp_base_url):
-    """Design D3 — user_id / project_id / session_id are NEVER tool
-    parameters; they arrive via context headers. Assert no tool's input
-    schema leaks a scope id (which would let the LLM override scope) or
-    the injected FastMCP context object."""
+    """Design D3 / INV-K2 (H-I-amended) — user_id / session_id are NEVER tool
+    parameters (identity arrives via context headers); the injected FastMCP ctx
+    must not leak either. project_id is DELIBERATELY excluded from this set: it is
+    now an allowed, ownership-checked scope arg (the public edge mints no
+    X-Project-Id, so a public agent supplies it; the owner gate confines it to the
+    caller's own projects)."""
     headers = {"X-Internal-Token": _GOOD_TOKEN}
     async with _mcp_client(mcp_base_url, headers) as session:
         listing = await session.list_tools()
-    forbidden = {"user_id", "project_id", "session_id", "ctx"}
+    forbidden = {"user_id", "session_id", "ctx"}
     for tool in listing.tools:
         props = set(tool.inputSchema.get("properties", {}))
         leaked = props & forbidden

@@ -29,7 +29,7 @@ from __future__ import annotations
 import json
 import logging
 import time
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from typing import TYPE_CHECKING
 from uuid import UUID
 
@@ -205,6 +205,30 @@ def _truncate(text: str | None, limit: int = _SNIPPET_CHARS) -> str:
     if not text:
         return ""
     return text if len(text) <= limit else text[:limit] + "…"
+
+
+def _resolve_project_scope(ctx: ToolContext, args: BaseModel) -> ToolContext:
+    """H-I: adopt a tool's ``project_id`` arg as the call's scope WHEN the envelope
+    carries none. The public MCP edge mints no ``X-Project-Id``, so a public agent
+    has no other way to say which project a call targets; it supplies it as an arg.
+
+    The trusted envelope WINS when present — a first-party chat session's project
+    scope is authoritative, so an LLM cannot redirect a session to a different
+    project (D3 preserved on that path). The arg only SUPPLIES scope when the
+    envelope has none. Either way the per-handler owner gate
+    (_require_project_owner_memory / _resolve_project_owner) validates it, so an
+    LLM-supplied id can only ever address a project the caller already owns.
+    """
+    if ctx.project_id is not None:
+        return ctx
+    arg_pid = getattr(args, "project_id", None)
+    if not arg_pid:
+        return ctx
+    try:
+        pid = UUID(arg_pid)
+    except (ValueError, TypeError):
+        raise ToolExecutionError("project_id must be a valid id")
+    return replace(ctx, project_id=pid)
 
 
 async def _require_project_owner_memory(ctx: ToolContext) -> None:
@@ -539,6 +563,10 @@ async def execute_tool(ctx: ToolContext, tool_name: str, tool_args: dict) -> Too
             )
 
         try:
+            # H-I: resolve the effective project scope (envelope wins; else the
+            # project_id arg) BEFORE dispatch, so every project-scoped handler sees
+            # the same ctx.project_id and its owner gate validates it.
+            ctx = _resolve_project_scope(ctx, args)
             result_payload = await _HANDLERS[tool_name](ctx, args)
         except ToolExecutionError as exc:
             outcome = "tool_error"
