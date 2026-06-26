@@ -1,9 +1,14 @@
 # Spec — Scene-Graph What-If on Canvas (LOOM composition)
 
-- **Status:** CLARIFY → DESIGN (spec only — **no build** this cycle; WS-B3 of the
-  [LOOM debt-clearing plan](../plans/2026-06-25-loom-debt-clearing.md))
-- **Date:** 2026-06-26 · **Branch:** `feat/composition-service` · **Size:** L/XL (own cycle)
-- **Owner decision needed:** see §8 (one open product call before BUILD is scheduled)
+- **Status:** ✅ **BUILT 2026-06-26** (V1 functionally complete — M1+M2+M3 on
+  `feat/composition-service`; WS-B3 of the
+  [LOOM debt-clearing plan](../plans/2026-06-25-loom-debt-clearing.md)). The §8 product call
+  is **RESOLVED: build it** (done). Two spec deferrals remain, now tracked as **M3
+  (prose-persist-on-promote)** + **M4 (vs-canon judge delta)** in the
+  [composition branch-clearing plan](../plans/2026-06-26-composition-branch-clearing.md)
+  (deferred to a new build branch, NOT `feat/composition-service`).
+- **Date:** 2026-06-26 · **Build branch (V1):** `feat/composition-service` · **Extensions:**
+  new branch · **Size:** L/XL (own cycle)
 
 ---
 
@@ -152,15 +157,21 @@ critic/canon-gate) **already exists** — this feature is mostly FE + orchestrat
 6. The on-canvas flow and the Divergence Wizard converge on the **same** derivative
    model (no second persistence path).
 
-## 8. ⚠ Open product call (one decision before BUILD is scheduled)
+## 8. ✅ RESOLVED — built (was: open product call)
 
-**Does the on-canvas what-if get built, or is the Divergence Wizard the canonical
-what-if and the canvas version a conscious won't-build?** This spec recommends
-**build it** as the ephemeral→promote front-end above (it adds real value: visual,
-iterative, judged, zero-residue exploration that the wizard can't offer), scheduled as
-its **own** L/XL CLARIFY→BUILD cycle. If the answer is *won't-build*, record B3 as a
-conscious won't-build (gate 5) with the wizard as the canonical path, and this spec
-becomes the rationale.
+**Decision: BUILD IT.** The on-canvas what-if was built as the ephemeral→promote front-end
+above (V1 = M1 scaffold + M2 generate-take/judge + M3 promote→derivative, shipped
+2026-06-26 on `feat/composition-service`). It adds the value the wizard can't: visual,
+iterative, judged, zero-residue exploration that promotes into the *same* derivative model.
+The Divergence Wizard remains a second entry point to that one model (no second persistence
+path, per §2).
+
+**Two V1 deferrals remain (now scheduled, not open questions):**
+- **prose-persist-on-promote** → **M3** in the branch-clearing plan (promote currently seeds
+  empty scene nodes; persist the chosen take's prose scene-scoped in the derivative project).
+- **true vs-canon judge delta** → **M4** (the badge shows the take's own critic dims; M4 adds
+  a per-dim delta vs the canon anchor).
+Both build on a **new branch**, not `feat/composition-service`.
 
 ## 9. Risks / notes
 
