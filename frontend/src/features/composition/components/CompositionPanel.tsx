@@ -749,9 +749,10 @@ export function CompositionPanel({ bookId, chapterId, token, onAccept, sceneId: 
               derivative, window against the SOURCE project (the derivative's own is
               empty pre-promote). Fetches only when this tab is active (4 windowed
               cross-service reads). */}
+          {/* Knowledge project is resolved by book_id inside the hook (distinct from
+              work.project_id); a derivative shares book_id → source canon's graph. */}
           <CanonAtChapterPanel
             bookId={bookId}
-            projectId={derivativeCtx.isDerivative && derivativeCtx.sourceProjectId ? derivativeCtx.sourceProjectId : work.project_id}
             chapterId={selectedScene?.chapter_id ?? chapterId}
             token={token}
             enabled={activeTab === 'canonview'}

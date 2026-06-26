@@ -54,12 +54,13 @@ export function CanonAtChapterPanel(props: CanonAtChapterInput & { chapterLabel?
               <p className="text-muted-foreground/70">{t('canonview.noneHere', { defaultValue: 'No entities linked to this chapter.' })}</p>
             ) : (
               <ul className="flex flex-wrap gap-1">
-                {canon.present.map((e) => (
+                {canon.present.slice(0, 80).map((e) => (
                   <li key={e.entity_id} className={`rounded px-1.5 py-0.5 ${RELEVANCE_STYLE[e.relevance] ?? RELEVANCE_STYLE.mentioned}`}>
                     {e.name}
                     {e.mention_count > 0 && <span className="ml-1 font-mono opacity-70">×{e.mention_count}</span>}
                   </li>
                 ))}
+                {canon.present.length > 80 && <li className="px-1 text-muted-foreground/60">+{canon.present.length - 80}</li>}
               </ul>
             )}
           </section>
@@ -87,7 +88,9 @@ export function CanonAtChapterPanel(props: CanonAtChapterInput & { chapterLabel?
               {t('canonview.canonState', { defaultValue: 'Canon state' })}
               <span className="ml-1 font-normal opacity-60">{t('canonview.srcKnowledge', { defaultValue: '· knowledge' })}</span>
             </h4>
-            {canon.canonState && !canon.canonState.windowAvailable ? (
+            {canon.knowledgeError ? (
+              <p data-testid="canonview-knowledge-error" className="text-amber-700 dark:text-amber-300">{t('canonview.knowledgeUnavailable', { defaultValue: 'Canon state unavailable — the knowledge service did not respond.' })}</p>
+            ) : canon.canonState && !canon.canonState.windowAvailable ? (
               <p className="text-amber-700 dark:text-amber-300">{t('canonview.windowUnavailable', { defaultValue: 'Reading position unknown — window unavailable for this chapter.' })}</p>
             ) : (
               <div className="flex flex-wrap gap-3 text-muted-foreground">

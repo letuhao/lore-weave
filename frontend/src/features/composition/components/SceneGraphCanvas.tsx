@@ -324,7 +324,6 @@ export function SceneGraphCanvas({ work, bookId, token, onPromoted }: {
         <div data-testid="scenegraph-branch-canon" className="max-h-64 shrink-0 overflow-y-auto border-b border-indigo-200 bg-indigo-50/30 dark:border-indigo-900 dark:bg-indigo-950/20">
           <CanonAtChapterPanel
             bookId={bookId}
-            projectId={projectId}
             chapterId={anchorScene.chapter_id}
             chapterIndex={anchorChapterSort}
             chapterLabel={anchorChapterSort != null ? t('canonview.chapterN', { defaultValue: 'chapter {{n}}', n: anchorChapterSort + 1 }) : undefined}

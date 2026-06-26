@@ -7,7 +7,7 @@ vi.mock('../../hooks/useCanonAtChapter', () => ({ useCanonAtChapter: () => h.sta
 
 import { CanonAtChapterPanel } from '../CanonAtChapterPanel';
 
-const base = { bookId: 'b', projectId: 'p', chapterId: 'c1', token: 't', enabled: true };
+const base = { bookId: 'b', chapterId: 'c1', token: 't', enabled: true };
 
 describe('CanonAtChapterPanel (M6)', () => {
   it('no chapter in focus → prompt (no fetch)', () => {
@@ -16,7 +16,7 @@ describe('CanonAtChapterPanel (M6)', () => {
   });
 
   it('loading state', () => {
-    h.state = { present: [], established: null, canonState: null, timeline: null, isLoading: true, isEmpty: false };
+    h.state = { present: [], established: null, canonState: null, timeline: null, knowledgeError: false, isLoading: true, isEmpty: false };
     render(<CanonAtChapterPanel {...base} />);
     expect(screen.getByTestId('canonview-loading')).toBeTruthy();
   });
@@ -24,10 +24,19 @@ describe('CanonAtChapterPanel (M6)', () => {
   it('not-analyzed when every windowed source is empty', () => {
     h.state = {
       present: [], established: [], canonState: { active: 0, gone: 0, windowAvailable: true },
-      timeline: { events: 0, windowAvailable: true }, isLoading: false, isEmpty: true,
+      timeline: { events: 0 }, knowledgeError: false, isLoading: false, isEmpty: true,
     };
     render(<CanonAtChapterPanel {...base} />);
     expect(screen.getByTestId('canonview-not-analyzed')).toBeTruthy();
+  });
+
+  it('knowledge fetch error → "canon state unavailable" (not a silent empty)', () => {
+    h.state = {
+      present: [{ entity_id: 'e1', name: 'Alice', kind_code: 'character', relevance: 'major', chapter_index: 0, mention_count: 0 }],
+      established: null, canonState: null, timeline: null, knowledgeError: true, isLoading: false, isEmpty: false,
+    };
+    render(<CanonAtChapterPanel {...base} />);
+    expect(screen.getByTestId('canonview-knowledge-error')).toBeTruthy();
   });
 
   it('renders glossary presence + established + knowledge canon-state, labeled by source', () => {
@@ -36,7 +45,7 @@ describe('CanonAtChapterPanel (M6)', () => {
       established: [{ entity_id: 'e1', name: 'Alice', kind_code: 'character', aliases: [], frequency: 3, first_chapter_index: 0, last_chapter_index: 2, coverage_pct: 0.5 }],
       canonState: { active: 5, gone: 1, windowAvailable: true },
       timeline: { events: 4 },
-      isLoading: false, isEmpty: false,
+      knowledgeError: false, isLoading: false, isEmpty: false,
     };
     render(<CanonAtChapterPanel {...base} chapterIndex={0} />);
     const presence = screen.getByTestId('canonview-presence');
@@ -55,7 +64,7 @@ describe('CanonAtChapterPanel (M6)', () => {
     h.state = {
       present: [{ entity_id: 'e1', name: 'Bob', kind_code: 'character', relevance: 'appears', chapter_index: 1, mention_count: 0 }],
       established: null, canonState: { active: 0, gone: 0, windowAvailable: false }, timeline: null,
-      isLoading: false, isEmpty: false,
+      knowledgeError: false, isLoading: false, isEmpty: false,
     };
     render(<CanonAtChapterPanel {...base} />);
     expect(screen.getByText('canonview.windowUnavailable')).toBeTruthy();
