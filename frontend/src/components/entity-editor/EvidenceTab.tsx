@@ -95,6 +95,7 @@ export function EvidenceTab({ bookId, entityId, bookOriginalLanguage, defaultDis
             <EvidenceCard
               key={item.evidence_id}
               item={item}
+              bookId={bookId}
               isEditing={ev.editingId === item.evidence_id}
               editForm={ev.editForm}
               editSaving={ev.editSaving}

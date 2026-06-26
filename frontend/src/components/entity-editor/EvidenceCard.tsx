@@ -1,5 +1,6 @@
 import { useTranslation } from 'react-i18next';
-import { Loader2, Pencil, Trash2, X } from 'lucide-react';
+import { Link } from 'react-router-dom';
+import { ExternalLink, Loader2, Pencil, Trash2, X } from 'lucide-react';
 import type { EvidenceListItem, EvidenceType, PatchEvidencePayload } from '@/features/glossary/types';
 
 const EVIDENCE_TYPES: EvidenceType[] = ['quote', 'summary', 'reference'];
@@ -21,8 +22,14 @@ const PROVENANCE_STYLE: Record<string, string> = {
   unverified: 'bg-muted text-muted-foreground',
 };
 
+// A reference's source URL is stored in block_or_line (the deep-research attach path).
+function asUrl(v: string): string | null {
+  return /^https?:\/\//i.test(v.trim()) ? v.trim() : null;
+}
+
 interface EvidenceCardProps {
   item: EvidenceListItem;
+  bookId: string;
   isEditing: boolean;
   editForm: PatchEvidencePayload;
   editSaving: boolean;
@@ -34,10 +41,20 @@ interface EvidenceCardProps {
 }
 
 export function EvidenceCard({
-  item, isEditing, editForm, editSaving,
+  item, bookId, isEditing, editForm, editSaving,
   onEdit, onCancelEdit, onSaveEdit, onEditFormChange, onDelete,
 }: EvidenceCardProps) {
   const { t } = useTranslation('entityEditor');
+  // Deep-link to the source: the reader at this chapter, carrying the validated offset range as
+  // a hint the reader can highlight (only when the quote was offset-matched + trusted).
+  const readerHref = item.chapter_id
+    ? `/books/${bookId}/chapters/${item.chapter_id}/read` +
+      (item.char_start != null && item.char_end != null &&
+        (item.provenance_status === 'exact' || item.provenance_status === 'resolved')
+        ? `?hl=${item.char_start}-${item.char_end}`
+        : '')
+    : null;
+  const refUrl = item.evidence_type === 'reference' ? asUrl(item.block_or_line) : null;
   if (isEditing) {
     return (
       <div className="rounded-lg border bg-card p-3 space-y-2">
@@ -122,9 +139,33 @@ export function EvidenceCard({
           </span>
         )}
         {item.chapter_title && (
-          <span className="text-muted-foreground">
-            {item.chapter_title}{item.block_or_line ? ` \u00b7 ${item.block_or_line}` : ''}
-          </span>
+          readerHref ? (
+            <Link
+              to={readerHref}
+              className="inline-flex items-center gap-0.5 text-primary hover:underline"
+              title={t('evidence.card.open_source')}
+            >
+              {item.chapter_title}{item.char_start != null ? ` \u00b7 @${item.char_start}` : ''}
+              <ExternalLink className="h-2.5 w-2.5" />
+            </Link>
+          ) : (
+            <span className="text-muted-foreground">
+              {item.chapter_title}{item.block_or_line ? ` \u00b7 ${item.block_or_line}` : ''}
+            </span>
+          )
+        )}
+        {/* Reference evidence: its source URL lives in block_or_line \u2014 render as a real link. */}
+        {refUrl && (
+          <a
+            href={refUrl}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="inline-flex items-center gap-0.5 text-primary hover:underline truncate max-w-[160px]"
+            title={refUrl}
+          >
+            {refUrl.replace(/^https?:\/\//, '')}
+            <ExternalLink className="h-2.5 w-2.5 shrink-0" />
+          </a>
         )}
         <span className="flex-1" />
         <span className="text-muted-foreground">

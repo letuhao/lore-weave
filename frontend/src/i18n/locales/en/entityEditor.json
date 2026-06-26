@@ -119,6 +119,7 @@
       "cancel": "Cancel",
       "save": "Save",
       "edit_title": "Edit",
+      "open_source": "Open the source chapter",
       "delete_title": "Delete",
       "translated": "Translated ({{lang}})",
       "note_label": "Note: {{note}}"

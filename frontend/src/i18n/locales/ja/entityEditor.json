@@ -119,6 +119,7 @@
       "cancel": "キャンセル",
       "save": "保存",
       "edit_title": "編集",
+      "open_source": "出典の章を開く",
       "delete_title": "削除",
       "translated": "翻訳済み（{{lang}}）",
       "note_label": "メモ: {{note}}"

@@ -119,6 +119,7 @@
       "cancel": "Hủy",
       "save": "Lưu",
       "edit_title": "Sửa",
+      "open_source": "Mở chương nguồn",
       "delete_title": "Xóa",
       "translated": "Đã dịch ({{lang}})",
       "note_label": "Ghi chú: {{note}}"

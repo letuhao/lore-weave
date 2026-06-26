@@ -119,6 +119,7 @@
       "cancel": "取消",
       "save": "儲存",
       "edit_title": "編輯",
+      "open_source": "開啟來源章節",
       "delete_title": "刪除",
       "translated": "已翻譯（{{lang}}）",
       "note_label": "備註：{{note}}"
