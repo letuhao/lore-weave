@@ -1,4 +1,9 @@
 {
+  "mobile": {
+    "switchPanel": "Switch panel",
+    "panels": "Panels",
+    "close": "Close"
+  },
   "groundingPins": {
     "present": "Cast in scene",
     "canon": "Canon rules",

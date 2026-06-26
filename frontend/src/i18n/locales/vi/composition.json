@@ -1,4 +1,9 @@
 {
+  "mobile": {
+    "switchPanel": "Đổi bảng",
+    "panels": "Bảng",
+    "close": "Đóng"
+  },
   "groundingPins": {
     "present": "Nhân vật trong cảnh",
     "canon": "Luật canon",

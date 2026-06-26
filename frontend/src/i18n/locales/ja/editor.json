@@ -32,6 +32,12 @@
   "toggle_history": "履歴 / AIパネルの切り替え",
   "unsaved": "未保存",
   "saved_badge": "保存済み",
+  "mobile": {
+    "editor": "エディタ",
+    "studio": "スタジオ",
+    "history": "履歴",
+    "nav": "エディタのセクション"
+  },
   "discard_title": "未保存の変更をすべて破棄",
   "discard": "破棄",
   "save": "保存",

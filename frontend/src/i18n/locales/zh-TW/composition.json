@@ -1,4 +1,9 @@
 {
+  "mobile": {
+    "switchPanel": "切換面板",
+    "panels": "面板",
+    "close": "關閉"
+  },
   "groundingPins": {
     "present": "場景中的角色",
     "canon": "正典規則",

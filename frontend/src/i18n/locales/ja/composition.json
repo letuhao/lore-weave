@@ -1,4 +1,9 @@
 {
+  "mobile": {
+    "switchPanel": "パネル切替",
+    "panels": "パネル",
+    "close": "閉じる"
+  },
   "groundingPins": {
     "present": "シーンの登場人物",
     "canon": "正典ルール",
