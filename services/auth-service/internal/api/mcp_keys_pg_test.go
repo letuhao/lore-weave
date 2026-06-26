@@ -221,3 +221,27 @@ func TestMcpKeys_FlagOffBlocksCreate_PG(t *testing.T) {
 		t.Fatalf("create with flag off: got %d, want 403", rr.Code)
 	}
 }
+
+// The FE reads public_mcp_enabled off the profile to decide whether to show the
+// MCP-access tab. Guard that contract both ways so a refactor can't silently drop
+// the field (which would hide the tab forever with nothing red).
+func TestProfile_ReflectsPublicMcpFlag_PG(t *testing.T) {
+	for _, flagOn := range []bool{true, false} {
+		s, pool := mcpKeysServer(t, flagOn)
+		uid := mkUser(t, pool)
+		tok := bearer(t, uid)
+		rr := doJSON(s, http.MethodGet, "/v1/account/profile", tok, nil)
+		if rr.Code != http.StatusOK {
+			t.Fatalf("profile (flag=%v): got %d body=%s", flagOn, rr.Code, rr.Body.String())
+		}
+		var body struct {
+			PublicMcpEnabled bool `json:"public_mcp_enabled"`
+		}
+		if err := json.Unmarshal(rr.Body.Bytes(), &body); err != nil {
+			t.Fatalf("profile body (flag=%v): %v %s", flagOn, err, rr.Body.String())
+		}
+		if body.PublicMcpEnabled != flagOn {
+			t.Fatalf("profile public_mcp_enabled = %v, want %v", body.PublicMcpEnabled, flagOn)
+		}
+	}
+}

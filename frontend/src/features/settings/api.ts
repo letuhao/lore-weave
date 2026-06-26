@@ -6,6 +6,8 @@ export type Profile = {
   display_name: string | null;
   email: string;
   email_verified: boolean;
+  // Q-GATE: read-only platform flag — when false the public-MCP tab is hidden.
+  public_mcp_enabled?: boolean;
 };
 
 export const accountApi = {
@@ -224,5 +226,66 @@ export const providerApi = {
     }>(
       `/v1/model-registry/user-models/${modelId}/verify`, { method: 'POST', token },
     );
+  },
+};
+
+// ── Public MCP API keys (P1) ────────────────────────────────────────────────
+// External-agent credentials for the public MCP edge. The full secret is shown
+// ONCE at creation (`McpKeyCreated.key`); only an Argon2id hash is stored. The
+// whole feature's visibility is gated by the platform PUBLIC_MCP_ENABLED flag,
+// surfaced on the profile (`Profile.public_mcp_enabled`).
+// See docs/specs/2026-06-26-public-mcp/03-public-mcp-security-design.md §5.
+
+// Coarse scope categories the public edge advertises against — the
+// `public_scope_rec` tokens from docs/specs/2026-06-26-public-mcp/05 §2. P2's
+// scope-filter keys on exactly these. New keys default to `read` only (Wave-A
+// safe rollout: read/non-paid tools only).
+export const MCP_SCOPES = ['read', 'paid_read', 'write_auto', 'write_confirm'] as const;
+export type McpScope = (typeof MCP_SCOPES)[number];
+
+export type McpKey = {
+  key_id: string;
+  name: string;
+  key_prefix: string;
+  scopes: string[];
+  spend_cap_usd: number | null;
+  rate_limit_rpm: number;
+  allow_self_confirm: boolean;
+  status: 'active' | 'revoked';
+  last_used_at: string | null;
+  expires_at: string | null;
+  created_at: string;
+};
+
+// The create response — the ONLY payload that ever carries the raw secret.
+export type McpKeyCreated = {
+  key_id: string;
+  name: string;
+  key: string;
+  key_prefix: string;
+  scopes: string[];
+  created_at: string;
+};
+
+export type McpKeyCreatePayload = {
+  name: string;
+  scopes?: string[];
+  spend_cap_usd?: number | null;
+  rate_limit_rpm?: number;
+  allow_self_confirm?: boolean;
+  expires_at?: string | null;
+};
+
+export const mcpKeysApi = {
+  list(token: string) {
+    return apiJson<{ items: McpKey[] }>('/v1/account/mcp-keys', { token });
+  },
+  create(token: string, payload: McpKeyCreatePayload) {
+    return apiJson<McpKeyCreated>('/v1/account/mcp-keys', {
+      method: 'POST', token, body: JSON.stringify(payload),
+    });
+  },
+  revoke(token: string, keyId: string) {
+    return apiJson<void>(`/v1/account/mcp-keys/${keyId}`, { method: 'DELETE', token });
   },
 };

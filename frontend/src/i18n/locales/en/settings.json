@@ -7,7 +7,65 @@
       "providers": "Model Providers",
       "translation": "Translation",
       "reading": "Reading",
-      "language": "Language"
+      "language": "Language",
+      "mcp": "MCP Access"
+    }
+  },
+  "mcp": {
+    "heading": "MCP Access Keys",
+    "subtitle": "Create API keys so external agents can use the platform over MCP without the UI. Each key acts as you, with the scopes and limits you set.",
+    "create_key": "Create Key",
+    "loading": "Loading keys…",
+    "empty": "No MCP keys yet. Create one to let an external agent connect.",
+    "scopes_label": "Scopes: {{scopes}}",
+    "last_used": "Last used: {{date}}",
+    "expires_label": "Expires: {{date}}",
+    "revoke_aria": "Revoke key {{name}}",
+    "status": {
+      "active": "Active",
+      "revoked": "Revoked"
+    },
+    "scope": {
+      "read": "Read",
+      "paid_read": "Paid read",
+      "write_auto": "Auto write",
+      "write_confirm": "Confirm write"
+    },
+    "create": {
+      "title": "Create MCP Key",
+      "subtitle": "The secret is shown only once. Store it somewhere safe.",
+      "name": "Name",
+      "name_ph": "e.g. my-research-agent",
+      "scopes": "Scopes",
+      "scopes_hint": "What the key may do. Start with Read only; add more only as needed.",
+      "rate_limit": "Rate limit (req/min)",
+      "spend_cap": "Spend cap (USD)",
+      "spend_cap_ph": "No cap",
+      "expires": "Expires (optional)",
+      "self_confirm": "Allow self-confirm of write actions",
+      "self_confirm_hint": "When off, write actions that need confirmation must be approved by you. Leave off unless this is a trusted automated agent.",
+      "cancel": "Cancel",
+      "submit": "Create Key",
+      "creating": "Creating…"
+    },
+    "reveal": {
+      "title": "Key created",
+      "subtitle": "Copy this secret now — it will never be shown again.",
+      "copy": "Copy key",
+      "warning": "Shown once",
+      "done": "Done"
+    },
+    "revoke": {
+      "title": "Revoke {{name}}?",
+      "desc": "The key stops working immediately (within ~60s). Any agent using it will lose access. This cannot be undone.",
+      "confirm": "Revoke"
+    },
+    "toast": {
+      "load_failed": "Failed to load MCP keys",
+      "created": "Key \"{{name}}\" created",
+      "create_failed": "Failed to create key",
+      "revoked": "Key revoked",
+      "revoke_failed": "Failed to revoke key"
     }
   },
   "account": {

@@ -1,4 +1,4 @@
-# ▶▶ NEXT SESSION STARTS HERE — **Public MCP Gateway P0 + P1-backend SHIPPED** · branch `feat/public-mcp-gateway` · 2026-06-26
+# ▶▶ NEXT SESSION STARTS HERE — **Public MCP Gateway P0 + P1 (backend + FE) SHIPPED** · branch `feat/public-mcp-gateway` · 2026-06-26
 
 > **TRACK:** expose MCP to external/third-party agents over the internet with a NEW security model. Full doc set: [docs/specs/2026-06-26-public-mcp/](../specs/2026-06-26-public-mcp/) (README + 01 feature-catalog · 02 interface-matrix · 03 security-design+edge-cases+spikes · 04 plan · 05 tool-scope-map).
 >
@@ -11,12 +11,16 @@
 > - **mcp-public-gateway edge:** `KeyResolver` swapped from the static key to a real `POST ${AUTH_SERVICE_URL}/internal/mcp-keys/resolve` call with a ~45s in-mem TTL cache (bounds the hot path + revocation lag); identity is auth-derived, never client-supplied. Dev static key retained as an optional smoke convenience.
 > - **Wired:** compose — edge gets `AUTH_SERVICE_URL` + `depends_on auth-service healthy`; auth-service gets `PUBLIC_MCP_ENABLED` passthrough.
 > - **VERIFY:** auth-service api suite green incl **3 real-PG tests** (create→resolve→tampered-reject→list-no-secret→revoke; H-L deleted-account→401; flag-off→403) against infra postgres:5555; edge **10/10** (incl real-key auth-resolve + PUB-9 strip); provider-gate OK; go build+vet clean. **live smoke: real-PG resolve flow.** ⏳ full external→edge→auth→ai-gateway stack-up deferred → `D-PMCP-P1-LIVE-SMOKE`.
-> - **REMAINING P1 slice:** **FE Settings → MCP access tab** (create/copy-once/list/revoke, hidden when flag off) — separable UI glue, not yet built.
+>
+> **WHAT SHIPPED (P1 FE — Settings → MCP access tab, run via /loom continuous-flow + /review-impl):** the credential UX is live.
+> - **FE:** new tab [McpAccessTab.tsx](../../frontend/src/features/settings/McpAccessTab.tsx) (list w/ status/scopes/last-used/expiry + revoke-confirm), [McpCreateKeyDialog.tsx](../../frontend/src/features/settings/McpCreateKeyDialog.tsx) (two-phase form→**copy-once** secret reveal; secret lives only in dialog state, dropped on close — never localStorage), [useMcpKeys.ts](../../frontend/src/features/settings/useMcpKeys.ts) (controller hook), `mcpKeysApi`+types+`MCP_SCOPES` in [api.ts](../../frontend/src/features/settings/api.ts). Tab is **flag-gated** ([SettingsPage.tsx](../../frontend/src/pages/SettingsPage.tsx) — only shown when `public_mcp_enabled`; deep-link to `/settings/mcp` when off → redirect). New keys default to **`read` scope only** (Wave-A safe). i18n ×4.
+> - **Flag carrier:** `GET /v1/account/profile` now returns `public_mcp_enabled` ([handlers.go](../../services/auth-service/internal/api/handlers.go) `getProfile` — read-only system flag, mirrors `cfg.PublicMcpEnabled`); FE reads it off the cached profile (fail-closed: undefined/fetch-fail → tab hidden; backend 403s create regardless).
+> - **VERIFY:** FE `tsc` clean · ESLint clean · **3 vitest** (copy-once reveal + secret-dropped-on-close + revoke-only-on-active); auth-service **6 real-PG tests** (the 5 credential + new `TestProfile_ReflectsPublicMcpFlag_PG` flag on/off) green on infra postgres:5555; go build+vet clean. **live smoke: real-PG profile-flag + credential resolve.**
+> - **🔎 /review-impl:** 1 LOW fixed (the profile-flag had zero test coverage → added the PG test both ways); 4 LOW/COSMETIC accepted+documented (deep-link bounce until profile cached = fail-safe; FE doesn't pre-validate rate/spend bounds = backend is the gate; zero-scope submit = least-privilege; date-expiry is UTC-midnight). Secret-never-persists + no-unhandled-rejection + contract-alignment verified.
 >
 > **PO decisions LOCKED (2026-06-26):** dedicated edge service · v1 FULL incl. priced jobs · API keys first (OAuth P5) · owned-books-only (OD-8) · key-creation behind a feature flag (Q-GATE) · **BYOK-only spend, no free-tier draw (PUB-12)** · **headless Tier-W = human-approve by default (OD-2)**, `allow_self_confirm` opt-in.
 >
-> **▶ NEXT (per [04-implementation-plan.md](../specs/2026-06-26-public-mcp/04-implementation-plan.md)):**
-> - **P1 FE slice:** Settings → MCP access tab (the only remaining P1 piece). Then `/review-impl` the credential core (auth/credential — load-bearing).
+> **▶ NEXT (per [04-implementation-plan.md](../specs/2026-06-26-public-mcp/04-implementation-plan.md)):** ✅ **P1 COMPLETE** (P0 edge + credential backend + FE tab, all reviewed). Next is the kit pre-step → P2 fanout.
 > - **Kit pre-step (serial, before P2 fanout):** shared MCP kits lift `X-Mcp-Key-Id`→ctx + owner-only resolver variant (OD-8) + `require_project_owner` helper; ai-gateway forward `X-Mcp-Key-Id`; provider-registry submit merges it into `job_meta`.
 > - **P2 (fanout, 1 agent/provider per [05 §4](../specs/2026-06-26-public-mcp/05-tool-scope-map.md)):** scope filter + 🔴 **H-U (add require_project_owner to the 5 `memory_*` tools)** + idempotency keys + project_id-as-arg.
 > - **P3:** rate-limit + per-key BYOK-only spend (H-C/PUB-12) + audit. **P4:** human-approval write queue + priced tools.

@@ -7,7 +7,65 @@
       "providers": "モデルプロバイダー",
       "translation": "翻訳",
       "reading": "読書",
-      "language": "言語"
+      "language": "言語",
+      "mcp": "MCPアクセス"
+    }
+  },
+  "mcp": {
+    "heading": "MCPアクセスキー",
+    "subtitle": "外部エージェントがUIを介さずMCP経由でプラットフォームを利用できるAPIキーを作成します。各キーは、あなたが設定したスコープと制限の範囲であなたとして動作します。",
+    "create_key": "キーを作成",
+    "loading": "キーを読み込み中…",
+    "empty": "MCPキーはまだありません。外部エージェントを接続するにはキーを作成してください。",
+    "scopes_label": "スコープ: {{scopes}}",
+    "last_used": "最終使用: {{date}}",
+    "expires_label": "有効期限: {{date}}",
+    "revoke_aria": "キー {{name}} を取り消す",
+    "status": {
+      "active": "有効",
+      "revoked": "取り消し済み"
+    },
+    "scope": {
+      "read": "読み取り",
+      "paid_read": "有料読み取り",
+      "write_auto": "自動書き込み",
+      "write_confirm": "確認付き書き込み"
+    },
+    "create": {
+      "title": "MCPキーを作成",
+      "subtitle": "シークレットは一度だけ表示されます。安全な場所に保管してください。",
+      "name": "名前",
+      "name_ph": "例: my-research-agent",
+      "scopes": "スコープ",
+      "scopes_hint": "キーで何ができるか。まずは読み取りのみで始め、必要に応じて追加してください。",
+      "rate_limit": "レート制限（リクエスト/分）",
+      "spend_cap": "支出上限（USD）",
+      "spend_cap_ph": "上限なし",
+      "expires": "有効期限（任意）",
+      "self_confirm": "書き込み操作の自己確認を許可",
+      "self_confirm_hint": "オフの場合、確認が必要な書き込み操作はあなたの承認が必要です。信頼できる自動エージェントでない限りオフのままにしてください。",
+      "cancel": "キャンセル",
+      "submit": "キーを作成",
+      "creating": "作成中…"
+    },
+    "reveal": {
+      "title": "キーを作成しました",
+      "subtitle": "今すぐこのシークレットをコピーしてください。二度と表示されません。",
+      "copy": "キーをコピー",
+      "warning": "一度だけ表示",
+      "done": "完了"
+    },
+    "revoke": {
+      "title": "{{name}} を取り消しますか？",
+      "desc": "キーは直ちに（約60秒以内に）無効になります。使用中のエージェントはアクセスを失います。元に戻せません。",
+      "confirm": "取り消す"
+    },
+    "toast": {
+      "load_failed": "MCPキーの読み込みに失敗しました",
+      "created": "キー「{{name}}」を作成しました",
+      "create_failed": "キーの作成に失敗しました",
+      "revoked": "キーを取り消しました",
+      "revoke_failed": "キーの取り消しに失敗しました"
     }
   },
   "account": {
