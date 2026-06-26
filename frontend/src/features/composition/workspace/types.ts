@@ -9,12 +9,13 @@
 export type WorkspacePanelId =
   | 'compose' | 'cowriter' | 'assemble' | 'planner' | 'beats' | 'graph' | 'cast'
   | 'relmap' | 'timeline' | 'arc' | 'worldmap' | 'grounding' | 'references'
-  | 'style' | 'canon' | 'critic' | 'threads' | 'progress' | 'quality' | 'flywheel' | 'settings';
+  | 'style' | 'canon' | 'critic' | 'threads' | 'progress' | 'quality' | 'flywheel'
+  | 'motifs' | 'conformance' | 'settings';   // W6 (motif library) — additive
 
 const PANEL_IDS: WorkspacePanelId[] = [
   'compose', 'cowriter', 'assemble', 'planner', 'beats', 'graph', 'cast', 'relmap',
   'timeline', 'arc', 'worldmap', 'grounding', 'references', 'style', 'canon', 'critic',
-  'threads', 'progress', 'quality', 'flywheel', 'settings',
+  'threads', 'progress', 'quality', 'flywheel', 'motifs', 'conformance', 'settings',
 ];
 
 /** Narrow an untrusted string (e.g. a popout URL param) to a known panel id. */
@@ -44,7 +45,7 @@ export type WorkspaceLayout = {
 const DOCK_ORDER: WorkspacePanelId[] = [
   'compose', 'cowriter', 'assemble', 'planner', 'beats', 'graph', 'cast', 'relmap',
   'timeline', 'arc', 'worldmap', 'grounding', 'references', 'style', 'canon', 'critic',
-  'threads', 'progress', 'quality', 'flywheel', 'settings',
+  'threads', 'progress', 'quality', 'flywheel', 'motifs', 'conformance', 'settings',
 ];
 
 export function defaultLayout(): WorkspaceLayout {
