@@ -720,7 +720,9 @@ func (s *Server) listEntities(w http.ResponseWriter, r *http.Request) {
 	// Pagination
 	limit := 50
 	offset := 0
-	if v, err := strconv.Atoi(q.Get("limit")); err == nil && v > 0 && v <= 200 {
+	// bug #6: allow up to 1000 per page so a large glossary (15000+ entities) can be paged
+	// in bulk for activation. A value above the cap (or unparseable) keeps the default 50.
+	if v, err := strconv.Atoi(q.Get("limit")); err == nil && v > 0 && v <= 1000 {
 		limit = v
 	}
 	if v, err := strconv.Atoi(q.Get("offset")); err == nil && v >= 0 {

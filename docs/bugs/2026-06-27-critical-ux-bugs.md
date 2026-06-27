@@ -154,11 +154,18 @@ Translation glossary cannot be configured to run parallel like the glossary extr
 > asyncio), `except Exception` doesn't swallow CancelledError, gather never orphans a task
 > (catch-all), failed entities aren't retried (same as original). Tests: worker 9/9 + router 8/8.
 
-### [ ] 6. Glossary page should allow 1000 entities per page
+### [x] 6. Glossary page should allow 1000 entities per page
 Need to activate glossary but have >15000 entities — current paging makes this really annoying. Want 1000 entities per page.
 
-> RC:
-> Fix:
+> RC: Two-part cap. (a) FE page-size `<select>` only offered `[10,20,50,100,200]`
+> (`EntityListBrowser.tsx`). (b) The glossary-service list handler clamped `limit` to `<=200`
+> (`entity_handler.go:723`) AND silently fell back to the default 50 for anything larger — so
+> even hand-editing the URL to limit=1000 gave 50, not 1000.
+> Fix (FS): FE options → `[10,20,50,100,200,500,1000]`; BE cap `v<=200` → `v<=1000`. The FE
+> already passes `pageSize` straight through as `limit` (no client clamp); verified no test
+> asserted either old value. tsc clean, glossary-service builds, EntityListBrowser 4/4.
+> Live-smoke: low-risk permissive bound widening (the FE already sent `limit`; this just allows
+> larger values through the generic /v1/glossary passthrough) — not separately smoked.
 
 ### [ ] 7. Glossary extraction forgets to update attributes for frequent characters (merge bug)
 Extraction almost forgets to update some attributes for frequent characters. Seems like the description is only extracted/set the first time. Need to investigate the current merge method. Suspect data already updates in the DB or a glossary version but is never reflected to the **current active version** shown on the GUI. (User will give evidence.)
@@ -256,11 +263,18 @@ System kind, user, and book are never wired correctly — critical UX bug. Users
 > RC:
 > Fix:
 
-### [ ] 23. Sharing tab in workspace is redundant with Settings tab
+### [x] 23. Sharing tab in workspace is redundant with Settings tab
 Sharing tab in the workspace is redundant — we already have a Settings tab. Consider merging them or removing the sharing setting in the Settings tab.
 
-> RC:
-> Fix:
+> RC: The book SettingsTab had a "Visibility" section (private/unlisted/public radios) that
+> wrote via the EXACT same `booksApi.patchSharing` (sharing-service) endpoint as the dedicated
+> SharingTab — pure duplication. SharingTab additionally owns the unlisted share-link + token
+> rotation + collaborators, so it's the more complete home for sharing.
+> Fix (chose "remove sharing setting in setting tab"): deleted the Visibility section from
+> SettingsTab + its state/useEffect-sync/isDirty term/handleSave block/discard reset/now-unused
+> `Visibility` import. SharingTab is untouched and remains the single place for visibility/sharing
+> (no backend path changes — both used the same patchSharing). tsc clean; book-tabs suites 16/16;
+> no leftover refs. (Unused `settings.visibility*` i18n keys left in place — harmless.)
 
 ### [ ] 24. Usage GUI mislabels LLM call kind (background jobs shown as "chat")
 The "kind" of LLM call in the Usage GUI is incorrect — almost everything shows as `chat` kind but they're background jobs. Review this parameter when calling the LLM provider.
