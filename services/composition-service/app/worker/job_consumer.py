@@ -78,7 +78,14 @@ async def run_job(
         )
         return "failed"
 
-    await repo.update_status(uid, UUID(job_id), "completed", result=result)
+    # W5 (D-MOTIF-CONFORMANCE-ENGINE-WIRING): an op may return a critic-merge patch
+    # under `_critic` (currently `generate`'s motif_conformance dim). Pop it OUT of the
+    # result blob and stamp it onto the job's `critic` column (the COALESCE-safe
+    # update_status path) — None leaves the existing critic untouched.
+    critic_patch = result.pop("_critic", None) if isinstance(result, dict) else None
+    await repo.update_status(
+        uid, UUID(job_id), "completed", result=result, critic=critic_patch,
+    )
     return "completed"
 
 
