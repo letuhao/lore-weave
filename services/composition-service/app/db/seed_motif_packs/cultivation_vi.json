@@ -27,7 +27,7 @@
       {"text": "hình thành một món nợ hoặc mối ràng buộc bí mật với cao nhân"}
     ],
     "tension_target": 3,
-    "emotion_target": "hy vọng",
+    "emotion_target": "hope",
     "examples": [
       {"text": "Bị ném vào hẻm núi phong ấn, kẻ phế vật vô tình gặp một cao nhân hấp hối khảo nghiệm rồi truyền lại cấm thuật — ràng buộc bởi một món nợ trung thành."}
     ],
@@ -65,7 +65,7 @@
       {"text": "danh tiếng và thực lực của họ tăng vọt rõ rệt"}
     ],
     "tension_target": 4,
-    "emotion_target": "kỳ vọng",
+    "emotion_target": "anticipation",
     "examples": [
       {"text": "Bế quan để phá cảnh giới ngưng trệ, tu sĩ đối mặt bức tường nội tâm, một đạo thiên kiếp, cận kề cái chết rồi đột phá lên cảnh giới mới."}
     ],
@@ -101,7 +101,7 @@
       {"text": "phe ngạo mạn bị bẽ mặt và trở thành kẻ thù"}
     ],
     "tension_target": 4,
-    "emotion_target": "thỏa mãn",
+    "emotion_target": "satisfaction",
     "examples": [
       {"text": "Một kẻ kế thừa vênh váo cười nhạo 'phế vật'; giữa trận đấu phế vật hiển lộ công pháp cao thâm hơn và kẻ kia bị vả mặt công khai."}
     ],
@@ -136,7 +136,7 @@
       {"text": "những kẻ từng khinh miệt buộc phải thừa nhận họ"}
     ],
     "tension_target": 4,
-    "emotion_target": "minh oan",
+    "emotion_target": "vindication",
     "examples": [
       {"text": "Thân thể bị gọi là 'tàn phế' hóa ra ẩn chứa một thể chất hiếm có; chính khiếm khuyết ấy trở thành động lực thăng tiến."}
     ],
@@ -171,7 +171,7 @@
       {"text": "loại bỏ điểm yếu trước ảo cảnh hoặc cám dỗ"}
     ],
     "tension_target": 4,
-    "emotion_target": "kiên định",
+    "emotion_target": "resolve",
     "examples": [
       {"text": "Một ảo cảnh khảo nghiệm tái hiện nỗi day dứt sâu nặng nhất của tu sĩ; chỉ khi cự tuyệt lời dối an ủi thì đạo tâm mới đứng vững."}
     ],
@@ -207,7 +207,7 @@
       {"text": "một đối thủ giàu có bị áp đảo công khai"}
     ],
     "tension_target": 3,
-    "emotion_target": "khải hoàn",
+    "emotion_target": "triumph",
     "examples": [
       {"text": "Một di vật xuất hiện tại phiên đấu giá; bị áp đảo về tài lực và bị chế giễu, nhân vật chính giành lấy nó bằng một cách không ai ngờ tới."}
     ],
@@ -242,7 +242,7 @@
       {"text": "gieo mầm mối thù với phe giữ cửa"}
     ],
     "tension_target": 3,
-    "emotion_target": "khải hoàn",
+    "emotion_target": "triumph",
     "examples": [
       {"text": "Một kẻ ngoại lai vô hạng làm vỡ tan giới hạn của linh khí trắc nghiệm; các trưởng lão tranh nhau thu nhận họ."}
     ],
@@ -274,10 +274,10 @@
     ],
     "effects": [
       {"text": "một đối thủ bị đánh bại dứt khoát, thường là tới chết"},
-      {"text": "địa vị của nhân vật chính được lật đổi hoàn toàn"}
+      {"text": "địa vị của nhân vật chính bị đảo lộn hoàn toàn"}
     ],
     "tension_target": 4,
-    "emotion_target": "căng thẳng",
+    "emotion_target": "tension",
     "examples": [
       {"text": "Một trận quyết đấu sinh tử trên đấu đài; kẻ con cưng được sủng ái thua cuộc đúng vào khoảnh khắc hắn nghĩ mình đã thắng."}
     ],
@@ -313,7 +313,7 @@
       {"text": "nhân vật chính thăng lên một cấp"}
     ],
     "tension_target": 3,
-    "emotion_target": "quyết tâm",
+    "emotion_target": "determination",
     "examples": [
       {"text": "Mắc kẹt dưới một bức tường cảnh giới, tu sĩ săn tìm một linh vật được canh giữ vào tử địa và đột phá nhờ uy lực của nó."}
     ],
@@ -348,7 +348,7 @@
       {"text": "lòng trung thành của nhân vật chính được chứng minh hoặc tan vỡ"}
     ],
     "tension_target": 3,
-    "emotion_target": "ân nghĩa",
+    "emotion_target": "obligation",
     "examples": [
       {"text": "Được một sư phụ ẩn thế cứu giúp, đệ tử mang một món nợ bị đòi vào đúng thời khắc tồi tệ nhất."}
     ],
@@ -383,7 +383,7 @@
       {"text": "địa vị nơi thế giới cũ của họ bị bỏ lại phía sau"}
     ],
     "tension_target": 5,
-    "emotion_target": "kinh ngạc",
+    "emotion_target": "awe",
     "examples": [
       {"text": "Uy lực chiêu dẫn thiên uy giáng nộ; chín đợt lôi kiếp phải được vượt qua để phi thăng."}
     ],

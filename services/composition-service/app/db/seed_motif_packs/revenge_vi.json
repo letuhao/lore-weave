@@ -27,7 +27,7 @@
       {"text": "một lời thề báo thù thôi thúc được lập ra"}
     ],
     "tension_target": 4,
-    "emotion_target": "bi thương",
+    "emotion_target": "grief",
     "examples": [
       {"text": "Ngay trước thềm khải hoàn, kẻ thân tín nhất trở mặt; bị tước sạch mọi thứ và đuổi đi, người sống sót thề sẽ quay về."}
     ],
@@ -65,7 +65,7 @@
       {"text": "kẻ đã hủy hoại mình bị lật đổ"}
     ],
     "tension_target": 4,
-    "emotion_target": "rửa hận",
+    "emotion_target": "vindication",
     "examples": [
       {"text": "Được cho một kỳ hạn để mạnh lên hoặc là chết, kẻ bị ruồng bỏ ẩn nhẫn khổ luyện rồi trở về lật đổ kẻ đã hủy hoại mình."}
     ],
@@ -101,7 +101,7 @@
       {"text": "thủ phạm thật sự bị phơi bày"}
     ],
     "tension_target": 4,
-    "emotion_target": "phẫn nộ",
+    "emotion_target": "indignation",
     "examples": [
       {"text": "Bị gán tội phản đồ bằng chứng cứ ngụy tạo, kẻ bị hàm oan chịu nhục cho đến khi bàn tay thật sự bị lôi ra ánh sáng."}
     ],
@@ -137,7 +137,7 @@
       {"text": "thân phận thật của kẻ báo thù lộ ra vào khoảnh khắc ra đòn"}
     ],
     "tension_target": 4,
-    "emotion_target": "căng thẳng",
+    "emotion_target": "tension",
     "examples": [
       {"text": "Dưới một danh tính mượn tạm, kẻ báo thù leo dần lên chính hàng ngũ của kẻ địch, rồi quay lại dùng chính bí mật của chúng để hạ chúng."}
     ],
@@ -172,7 +172,7 @@
       {"text": "chuỗi thanh toán tiến dần tới kẻ chủ mưu"}
     ],
     "tension_target": 4,
-    "emotion_target": "quyết tâm lạnh lùng",
+    "emotion_target": "grim-resolve",
     "examples": [
       {"text": "Lần lượt từng kẻ một, người báo thù truy tìm những kẻ đã chung tay gây tội và bắt từng đứa phải trả giá."}
     ],
@@ -207,7 +207,7 @@
       {"text": "vòng xoáy báo thù khép lại hoặc cứ thế tiếp diễn"}
     ],
     "tension_target": 5,
-    "emotion_target": "giằng xé lương tâm",
+    "emotion_target": "moral-tension",
     "examples": [
       {"text": "Khi kẻ sát nhân đã nằm trong tay, một lý do để tha thứ bỗng hiện ra; lựa chọn của người báo thù định hình lại con người họ sẽ trở thành."}
     ],
@@ -242,7 +242,7 @@
       {"text": "kẻ báo thù đối diện với cái giá của mối thù mình đã trả"}
     ],
     "tension_target": 4,
-    "emotion_target": "u sầu",
+    "emotion_target": "melancholy",
     "examples": [
       {"text": "Kẻ thù rốt cuộc cũng gục ngã — và trong khoảng lặng sau đó, kẻ báo thù nhìn ra cái giá mà những năm tháng hận thù đã lấy đi."}
     ],
@@ -278,7 +278,7 @@
       {"text": "nhân vật chính đòi lại quyền thừa kế chính danh của mình"}
     ],
     "tension_target": 4,
-    "emotion_target": "rửa hận",
+    "emotion_target": "vindication",
     "examples": [
       {"text": "Quyền thừa kế bị cướp đoạt và một di chúc giả mạo khiến người thừa kế chân chính thành kẻ ăn mày — cho đến khi bằng chứng không ai phá hủy nổi lại trồi lên."}
     ],

@@ -40,7 +40,7 @@
       }
     },
     "tension_target": 4,
-    "emotion_target": "khiếp sợ",
+    "emotion_target": "dread",
     "examples": [
       {"text": "Một cuốn sổ sách đã bị sửa chữa được lén đặt vào nơi đối thủ sẽ tìm ra rồi 'vạch trần' — để rồi bước thẳng vào cái bẫy chỉ đích danh chính mình."}
     ],
@@ -88,7 +88,7 @@
       "alliance_shift": {"a": "schemer", "b": "false_ally", "from": "allied", "to": "opposed"}
     },
     "tension_target": 4,
-    "emotion_target": "căng thẳng",
+    "emotion_target": "tension",
     "examples": [
       {"text": "Một lời thề chân thành, một bí mật chung vừa đủ thật để khiến người ta tin — cho đến khoảnh khắc bội ước trở nên có lợi."}
     ],
@@ -134,7 +134,7 @@
       }
     },
     "tension_target": 3,
-    "emotion_target": "bất an",
+    "emotion_target": "unease",
     "examples": [
       {"text": "Một mối nghi ngờ gieo sẵn, được lặp lại qua những cái miệng chẳng biết cội nguồn của nó, cho đến khi mục tiêu trơ trọi một mình."}
     ],
@@ -180,7 +180,7 @@
       }
     },
     "tension_target": 3,
-    "emotion_target": "hồi hộp",
+    "emotion_target": "suspense",
     "examples": [
       {"text": "Một cánh cửa cố ý để hé mời gọi thực chất là một phép thử; kẻ nào bước qua liền để lộ đúng điều mà người rình theo dõi cần biết."}
     ],
@@ -226,7 +226,7 @@
       }
     },
     "tension_target": 4,
-    "emotion_target": "hồi hộp",
+    "emotion_target": "suspense",
     "examples": [
       {"text": "Một chỗ rò rỉ quá chính xác để có thể là tình cờ; một bí mật giả được gài mồi chứng minh ai là kẻ mách lẻo — và mách cho ai."}
     ],
@@ -273,7 +273,7 @@
       "alliance_shift": {"a": "schemer", "b": "scapegoat", "from": "neutral", "to": "opposed"}
     },
     "tension_target": 4,
-    "emotion_target": "khiếp sợ",
+    "emotion_target": "dread",
     "examples": [
       {"text": "Khi tội lỗi buộc phải có chỗ giáng xuống, bàn tay khôn khéo bảo đảm nó giáng vào một kẻ khác."}
     ],
