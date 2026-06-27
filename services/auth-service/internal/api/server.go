@@ -84,6 +84,9 @@ func (s *Server) Router() http.Handler {
 			// Public MCP per-key call audit ingest (P3 / H-O) — the edge fires a
 			// best-effort batch of audit rows (one per tools/call) after each request.
 			r.Post("/mcp-keys/audit", http.HandlerFunc(s.internalIngestMcpAudit))
+			// Public MCP human-approval divert (P4 / OD-2) — the edge diverts a default
+			// key's Tier-W propose here instead of handing the agent the confirm token.
+			r.Post("/mcp-keys/approvals", http.HandlerFunc(s.internalCreateApproval))
 		})
 
 		// Admin-JWT issuance (074/075) — mounted only when enabled. Gated by the
@@ -142,6 +145,11 @@ func (s *Server) Router() http.Handler {
 		// Public MCP API keys (the "new security setting") — owner-only; handlers
 		// parse the JWT themselves. Creation is additionally Q-GATE-flag-gated.
 		r.Get("/account/mcp-keys", http.HandlerFunc(s.listMcpKeys))
+		// P4 / OD-2 approval queue (static segment — declared BEFORE the {key_id} routes
+		// so chi matches "approvals" exactly, never as a key_id).
+		r.Get("/account/mcp-keys/approvals", http.HandlerFunc(s.listMcpApprovals))
+		r.Post("/account/mcp-keys/approvals/{approval_id}/approve", http.HandlerFunc(s.approveMcpApproval))
+		r.Post("/account/mcp-keys/approvals/{approval_id}/deny", http.HandlerFunc(s.denyMcpApproval))
 		r.Get("/account/mcp-keys/{key_id}/audit", http.HandlerFunc(s.listMcpKeyAudit))
 		r.Post("/account/mcp-keys", http.HandlerFunc(s.createMcpKey))
 		r.Patch("/account/mcp-keys/{key_id}", http.HandlerFunc(s.patchMcpKey))

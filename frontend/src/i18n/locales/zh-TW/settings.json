@@ -85,6 +85,21 @@
         "upstream_error": "上游錯誤"
       }
     },
+    "approvals": {
+      "heading": "待核准的代理操作 ({{count}})",
+      "subtitle": "使用您金鑰的代理請求了這些操作。核准即執行（費用計入該金鑰），或拒絕以捨棄。",
+      "key_label": "金鑰 {{key}}…",
+      "cost_label": "預估 ${{cost}}",
+      "approve": "核准",
+      "deny": "拒絕",
+      "toast": {
+        "approved": "已核准並執行操作",
+        "denied": "已拒絕操作",
+        "reprice": "費用已變動 — 請讓代理重新提出",
+        "approve_failed": "無法核准此操作",
+        "deny_failed": "無法拒絕此操作"
+      }
+    },
     "toast": {
       "load_failed": "載入 MCP 金鑰失敗",
       "created": "已建立金鑰「{{name}}」",

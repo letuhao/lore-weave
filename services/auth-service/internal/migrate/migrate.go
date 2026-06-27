@@ -201,6 +201,36 @@ EXCEPTION
     WHEN undefined_object THEN
         RAISE NOTICE 'role app_service_role does not exist (dev stack); skipping REVOKE';
 END $$;
+
+-- Public MCP human-approval queue (P4 / OD-2, docs/specs/2026-06-26-public-mcp/03 §6.3). A
+-- default (allow_self_confirm=false) public key's Tier-W "propose" returns a confirm_token
+-- WITHOUT spending; the mcp-public-gateway edge diverts it here (POST /internal/mcp-keys/approvals)
+-- instead of handing the token to the agent. The owner sees the pending action, Approve replays
+-- the token to the owning domain's /v1/<domain>/actions/confirm (the ONLY spend path) tagged with
+-- X-Mcp-Key-Id so cost attributes to the AGENT's key, Deny drops it. Unlike mcp_call_audit this is
+-- MUTABLE (status transitions) so it is NOT append-only. key_id is NOT a FK (the queue must outlive
+-- a revoked key, same as audit); owner_user_id IS an FK (CASCADE) so a deleted account's queue is
+-- purged with it. confirm_token is stored PLAINTEXT — it is already single-use (provider jti ledger)
+-- + expiry-bound + user-bound, so at-rest exposure is bounded and avoids a re-mint round-trip.
+CREATE TABLE IF NOT EXISTS mcp_pending_approvals (
+  approval_id       UUID PRIMARY KEY DEFAULT uuidv7(),
+  key_id            UUID NOT NULL,                       -- the public key that proposed (NOT a FK)
+  owner_user_id     UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  tool_name         TEXT NOT NULL,                       -- the Tier-W tool the agent called
+  domain            TEXT NOT NULL,                       -- the propose result's domain — routes the execute
+  confirm_token     TEXT NOT NULL,                       -- the server-minted token replayed on approve
+  preview           JSONB NOT NULL DEFAULT '{}',         -- the propose result shown to the human
+  cost_estimate_usd NUMERIC NULL,                        -- the agent-visible estimate, if any
+  status            TEXT NOT NULL DEFAULT 'pending'
+                      CHECK (status IN ('pending','denied','expired','executed','failed')),
+  expires_at        TIMESTAMPTZ NOT NULL,                -- mirrors the confirm token's own exp
+  created_at        TIMESTAMPTZ NOT NULL DEFAULT now(),
+  decided_at        TIMESTAMPTZ NULL                      -- when the owner approved/denied (or it was executed)
+);
+
+-- Owner read path: the owner's pending (then recent) approvals, newest first.
+CREATE INDEX IF NOT EXISTS idx_mcp_pending_approvals_owner
+  ON mcp_pending_approvals (owner_user_id, status, created_at DESC);
 `
 
 func Up(ctx context.Context, pool *pgxpool.Pool) error {

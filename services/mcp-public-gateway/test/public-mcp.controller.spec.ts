@@ -406,6 +406,68 @@ describe('PublicMcpController', () => {
     );
     expect(r.statusCode).toBe(502);
   });
+
+  // ── P4 / OD-2: human-approval divert ──────────────────────────────────────
+  // A default key (allow_self_confirm=false) calling a write_confirm propose has its
+  // token diverted to the owner's queue; the agent gets only {pending_human_approval}.
+  function wcFetch(resolve: Record<string, unknown>, opts?: { approvalStatus?: number; created?: unknown[] }) {
+    return jest.fn().mockImplementation((url: string, init?: { body?: string }) => {
+      if (String(url).includes('/internal/mcp-keys/resolve')) {
+        return Promise.resolve({ status: 200, json: async () => resolve, headers: { get: () => 'application/json' } });
+      }
+      if (String(url).includes('/internal/mcp-keys/approvals')) {
+        if (opts?.created) opts.created.push(JSON.parse(init!.body!));
+        const st = opts?.approvalStatus ?? 201;
+        return Promise.resolve({ status: st, json: async () => (st < 300 ? { approval_id: 'appr-77' } : {}), headers: { get: () => 'application/json' } });
+      }
+      // relay → a propose result carrying a confirm_token
+      return Promise.resolve({
+        status: 200,
+        text: async () => JSON.stringify({ jsonrpc: '2.0', id: 5, result: { structuredContent: { confirm_token: 'SECRET-TOK', domain: 'composition', title: 'Generate' } } }),
+        headers: { get: (h: string) => (h.toLowerCase() === 'content-type' ? 'application/json' : null) },
+      });
+    });
+  }
+  const wcBody = { jsonrpc: '2.0', method: 'tools/call', params: { name: 'composition_publish' }, id: 5 };
+
+  it('diverts a default key Tier-W propose to the approval queue and STRIPS the token (P4/OD-2)', async () => {
+    setEnv();
+    const created: unknown[] = [];
+    (global as unknown as { fetch: jest.Mock }).fetch = wcFetch(
+      { user_id: 'u', key_id: 'k', scopes: ['write_confirm', 'domain:composition'], allow_self_confirm: false },
+      { created },
+    );
+    const r = mockRes();
+    await new PublicMcpController().handle(mockReq({ headers: { authorization: 'Bearer lw_pk_wckey' }, body: wcBody }), r.res);
+    expect(r.statusCode).toBe(200);
+    const sent = JSON.parse(r.sentBody as string);
+    expect(sent.result.structuredContent).toEqual({ status: 'pending_human_approval', approval_id: 'appr-77' });
+    expect(r.sentBody as string).not.toContain('SECRET-TOK'); // token NEVER returned to the agent
+    expect(created[0]).toMatchObject({ key_id: 'k', owner_user_id: 'u', domain: 'composition', confirm_token: 'SECRET-TOK', tool_name: 'composition_publish' });
+    expect((created[0] as { preview: Record<string, unknown> }).preview.confirm_token).toBeUndefined();
+  });
+
+  it('fails CLOSED (no token leak) when the approval queue is unreachable', async () => {
+    setEnv();
+    (global as unknown as { fetch: jest.Mock }).fetch = wcFetch(
+      { user_id: 'u', key_id: 'k', scopes: ['write_confirm', 'domain:composition'], allow_self_confirm: false },
+      { approvalStatus: 500 },
+    );
+    const r = mockRes();
+    await new PublicMcpController().handle(mockReq({ headers: { authorization: 'Bearer lw_pk_wckey' }, body: wcBody }), r.res);
+    expect(r.sentBody as string).not.toContain('SECRET-TOK');
+    expect(JSON.parse(r.sentBody as string).result.isError).toBe(true);
+  });
+
+  it('does NOT divert when the key allows self-confirm (token flows back for slice-B confirm_action)', async () => {
+    setEnv();
+    const f = wcFetch({ user_id: 'u', key_id: 'k', scopes: ['write_confirm', 'domain:composition'], allow_self_confirm: true });
+    (global as unknown as { fetch: jest.Mock }).fetch = f;
+    const r = mockRes();
+    await new PublicMcpController().handle(mockReq({ headers: { authorization: 'Bearer lw_pk_sc' }, body: wcBody }), r.res);
+    expect(r.sentBody as string).toContain('SECRET-TOK'); // self-confirm keeps the token
+    expect(f.mock.calls.some((c) => String(c[0]).includes('/internal/mcp-keys/approvals'))).toBe(false);
+  });
 });
 
 describe('helpers', () => {

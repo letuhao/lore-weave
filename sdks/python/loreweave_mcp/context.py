@@ -36,6 +36,7 @@ __all__ = [
     "build_tool_context",
     "make_stateless_fastmcp",
     "is_owner_only",
+    "apply_public_key_attribution_headers",
 ]
 
 
@@ -170,6 +171,29 @@ def _parse_spend_cap(raw: str | None) -> float | None:
     except (TypeError, ValueError):
         return None
     return v if v >= 0 else None
+
+
+def apply_public_key_attribution_headers(
+    mcp_key_id: str | None, spend_cap_raw: str | None
+) -> None:
+    """Lift the public-key spend-attribution headers (X-Mcp-Key-Id /
+    X-Mcp-Spend-Cap-Usd) into the loreweave_llm contextvar for THIS async task.
+
+    ``build_tool_context`` already does this for MCP *tool calls*. This helper is for
+    a NON-tool-call effect the kit's hook doesn't cover — e.g. a REST
+    ``/v1/<domain>/actions/confirm`` route that, on an approved public action, runs
+    an IN-PROCESS LLM submit and must tag its ``job_meta`` with the agent's key + cap
+    (P4/Wave-C slice A, the confirm-route carrier-lift). Set it before the in-process
+    submit and CLEAR it in a ``finally`` by calling with ``(None, None)`` so the
+    attribution never leaks into the next request on a pooled worker.
+
+    No-op when ``loreweave_llm`` isn't installed (first-party services). An empty
+    header value is treated as absent; a malformed cap fails open to None.
+    """
+    if _set_llm_attribution is None:
+        return
+    key = mcp_key_id or None
+    _set_llm_attribution(key, _parse_spend_cap(spend_cap_raw))
 
 
 def is_owner_only(ctx: object) -> bool:

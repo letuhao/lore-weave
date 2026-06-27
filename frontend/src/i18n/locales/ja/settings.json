@@ -85,6 +85,21 @@
         "upstream_error": "上流エラー"
       }
     },
+    "approvals": {
+      "heading": "承認待ちのエージェント操作 ({{count}})",
+      "subtitle": "あなたのキーを使うエージェントがこれらの操作を要求しました。承認すると実行され（費用はそのキーに請求）、拒否すると破棄されます。",
+      "key_label": "キー {{key}}…",
+      "cost_label": "概算 ${{cost}}",
+      "approve": "承認",
+      "deny": "拒否",
+      "toast": {
+        "approved": "操作を承認し実行しました",
+        "denied": "操作を拒否しました",
+        "reprice": "費用が変わりました — エージェントに再度提案させてください",
+        "approve_failed": "操作を承認できませんでした",
+        "deny_failed": "操作を拒否できませんでした"
+      }
+    },
     "toast": {
       "load_failed": "MCPキーの読み込みに失敗しました",
       "created": "キー「{{name}}」を作成しました",

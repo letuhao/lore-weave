@@ -91,6 +91,20 @@ export function isWriteRequest(body: unknown): boolean {
 }
 
 /**
+ * The tool name iff the body is a SINGLE (non-batch) `tools/call` to a `write_confirm`
+ * tool — the only shape the P4 approval-divert handles. Returns null for a batch, a
+ * non-call, or a call to any other tier (write_auto/read/paid_read are never diverted).
+ * A batch containing a write_confirm propose is intentionally NOT diverted in v1.
+ */
+export function singleWriteConfirmToolName(body: unknown): string | null {
+  if (Array.isArray(body)) return null; // batch — out of scope for the divert
+  if (!body || typeof body !== 'object') return null;
+  const msg = body as JsonRpcRequest;
+  if (!isToolCall(msg)) return null;
+  return TOOL_POLICY[msg.params.name]?.tier === 'write_confirm' ? msg.params.name : null;
+}
+
+/**
  * Count the `tools/call` entries in the request — the rate-limit weight, so a
  * JSON-RPC BATCH of N calls costs N against the per-minute limit (not 1). Returns
  * 0 for a body with no tool calls (the caller floors the weight at 1).

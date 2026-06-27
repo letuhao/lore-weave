@@ -335,3 +335,41 @@ export const mcpKeysApi = {
     return apiJson<{ items: McpAuditRow[] }>(`/v1/account/mcp-keys/${keyId}/audit`, { token });
   },
 };
+
+// ── Public MCP human-approval queue (P4 / OD-2) ─────────────────────────────
+// A DEFAULT key's (allow_self_confirm=false) Tier-W action is held here until the
+// owner approves — the edge diverts the propose to auth-service instead of handing
+// the agent the confirm token. The owner approves (the action executes, attributed
+// to the agent's key) or denies (the token is dropped).
+// See docs/specs/2026-06-26-public-mcp/03-public-mcp-security-design.md §6.3.
+
+export type McpApproval = {
+  approval_id: string;
+  key_id: string;
+  tool_name: string;
+  domain: string;
+  preview: Record<string, unknown>;
+  cost_estimate_usd?: number | null;
+  status: 'pending' | 'denied' | 'expired' | 'executed' | 'failed';
+  expires_at: string;
+  created_at: string;
+  decided_at?: string | null;
+};
+
+export const mcpApprovalsApi = {
+  list(token: string, status = 'pending') {
+    const qs = status ? `?status=${encodeURIComponent(status)}` : '';
+    return apiJson<{ items: McpApproval[] }>(`/v1/account/mcp-keys/approvals${qs}`, { token });
+  },
+  approve(token: string, approvalId: string) {
+    return apiJson<{ status: string; result?: unknown; detail?: unknown }>(
+      `/v1/account/mcp-keys/approvals/${approvalId}/approve`,
+      { method: 'POST', token },
+    );
+  },
+  deny(token: string, approvalId: string) {
+    return apiJson<{ status: string }>(`/v1/account/mcp-keys/approvals/${approvalId}/deny`, {
+      method: 'POST', token,
+    });
+  },
+};

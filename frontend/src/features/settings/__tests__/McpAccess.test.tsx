@@ -101,7 +101,23 @@ vi.mock('../useMcpKeys', () => ({
   }),
 }));
 
+// P4 / OD-2: the approval panel (mounted in McpAccessTab) pulls in useMcpApprovals →
+// useAuth. Mock it with a shared, mutable state so the tab tests render the panel as
+// empty (→ null) and a dedicated panel test can inject a pending row.
+const approvalsHoist = vi.hoisted(() => ({
+  state: {
+    approvals: [] as Array<Record<string, unknown>>,
+    loading: false,
+    busyId: null as string | null,
+    approve: vi.fn(),
+    deny: vi.fn(),
+    refresh: vi.fn(),
+  },
+}));
+vi.mock('../useMcpApprovals', () => ({ useMcpApprovals: () => approvalsHoist.state }));
+
 import { McpAccessTab } from '../McpAccessTab';
+import { McpApprovalsPanel } from '../McpApprovalsPanel';
 
 describe('McpAccessTab', () => {
   beforeEach(() => {
@@ -142,5 +158,35 @@ describe('McpAccessTab', () => {
     render(<McpAccessTab />);
     fireEvent.click(screen.getAllByRole('button', { name: 'mcp.audit.toggle_aria' })[0]);
     await waitFor(() => expect(screen.getByText('mcp.audit.empty')).toBeInTheDocument());
+  });
+});
+
+// P4 / OD-2 — the owner's pending-approval panel.
+describe('McpApprovalsPanel', () => {
+  beforeEach(() => {
+    approvalsHoist.state.approvals = [];
+    approvalsHoist.state.busyId = null;
+    approvalsHoist.state.approve = vi.fn();
+    approvalsHoist.state.deny = vi.fn();
+  });
+
+  it('renders nothing when there are no pending approvals', () => {
+    const { container } = render(<McpApprovalsPanel />);
+    expect(container.querySelector('[data-testid="mcp-approvals-panel"]')).toBeNull();
+  });
+
+  it('renders a pending approval and wires Approve/Deny', () => {
+    approvalsHoist.state.approvals = [
+      { approval_id: 'ap1', key_id: 'abcdef0123', tool_name: 'composition_generate', domain: 'composition', preview: { title: 'Generate scene' }, cost_estimate_usd: 0.5, status: 'pending', expires_at: '2026-06-28T01:00:00Z', created_at: '2026-06-28T00:00:00Z' },
+    ];
+    render(<McpApprovalsPanel />);
+    expect(screen.getByTestId('mcp-approvals-panel')).toBeInTheDocument();
+    expect(screen.getByText('Generate scene')).toBeInTheDocument();
+    expect(screen.getByText('composition_generate')).toBeInTheDocument();
+
+    fireEvent.click(screen.getByText('mcp.approvals.approve'));
+    expect(approvalsHoist.state.approve).toHaveBeenCalledWith('ap1');
+    fireEvent.click(screen.getByText('mcp.approvals.deny'));
+    expect(approvalsHoist.state.deny).toHaveBeenCalledWith('ap1');
   });
 });

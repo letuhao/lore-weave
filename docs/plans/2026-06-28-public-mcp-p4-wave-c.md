@@ -187,6 +187,52 @@ Six read-only investigation agents pinned exact files/lines and resolved the ope
 ### F — H17 partial-failure  *(INDEPENDENT — edge-only)*
 - Pure helpers `parseRequestSteps` + `buildStepOutcomes` in `scope-filter.ts`; inject a `step_outcomes` wrapper **only for batch requests** (`Array.isArray(body)`), single requests unchanged (backward-compat). Build the outcome map **as the edge gates** (it's the source of truth), don't parse the opaque upstream response. Batch-level rate-limit/upstream-fail stays a single error (no per-step). Smallest slice.
 
+## 4c. DESIGN — slice A build (2026-06-28, PO-approved A2 + auth→domain-direct)
+
+CLARIFY resolved two forks: **A2** (absorb the in-process confirm-route carrier-lift + attribution live-smoke; worker-boundary carrier stays `D-PMCP-WORKER-CARRIER`) and **auth→domain-direct** execute. Investigation refined the execute + notification legs to be *simpler* than §4b-A assumed:
+
+- **Execute needs no JWT-mint.** The domain confirm routes (`POST /v1/<domain>/actions/confirm`) are **internal-token + `X-User-Id`** gated (the confirm *token* binds identity; [composition/actions.py:108-137](services/composition-service/app/routers/actions.py#L108-L137)). So auth-service (a trusted internal caller) replays directly with `X-Internal-Token` + `X-User-Id=owner` + `X-Mcp-Key-Id=key_id` — auth keeps full control of the attribution header reaching the domain. (The CLARIFY "JWT-mint" sub-detail is dropped; topology is unchanged = auth→domain-direct.)
+- **Notification needs no AMQP producer.** notification-service exposes `POST /internal/notifications/` (internal-token, [server.go:65-68](services/notification-service/internal/api/server.go#L65)). auth fires a best-effort HTTP POST (category `mcp_approval`, added to `allowedCategories`) — no new broker binding in auth.
+- **Propose-result shape (edge divert crux):** a propose tool returns a top-level `{confirm_token, descriptor, domain, title, …}` ([composition/server.py:876-881](services/composition-service/app/mcp/server.py#L876)). The result `domain` is authoritative for routing the execute; `confirm_token` presence ⇒ this is a propose to divert.
+
+**A1 — `mcp_pending_approvals` (auth migrate.go), mirrors `mcp_call_audit` but mutable:**
+```sql
+CREATE TABLE IF NOT EXISTS mcp_pending_approvals (
+  approval_id       UUID PRIMARY KEY DEFAULT uuidv7(),
+  key_id            UUID NOT NULL,                    -- NOT a FK (outlives key revoke, like audit)
+  owner_user_id     UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  tool_name         TEXT NOT NULL,
+  domain            TEXT NOT NULL,                    -- from the propose result; routes the execute
+  confirm_token     TEXT NOT NULL,                    -- plaintext (single-use jti + exp + user-bound)
+  preview           JSONB NOT NULL DEFAULT '{}',
+  cost_estimate_usd NUMERIC NULL,
+  status            TEXT NOT NULL DEFAULT 'pending'
+                      CHECK (status IN ('pending','approved','denied','expired','executed','failed')),
+  expires_at        TIMESTAMPTZ NOT NULL,             -- mirror token exp
+  created_at        TIMESTAMPTZ NOT NULL DEFAULT now(),
+  decided_at        TIMESTAMPTZ NULL
+);
+CREATE INDEX idx_mcp_pending_approvals_owner ON mcp_pending_approvals(owner_user_id, status, created_at DESC);
+```
+(Not append-only — status mutates; no REVOKE UPDATE.)
+
+**A2 — auth handlers (`mcp_approvals.go`, mirrors `mcp_audit.go`):**
+- `internalCreateApproval` — `POST /internal/mcp-keys/approvals` (X-Internal-Token). Insert pending row; fire-and-forget notification; return `{approval_id}`.
+- `listApprovals` — `GET /v1/account/mcp-keys/approvals?status=` (JWT, `WHERE owner_user_id=caller`). Lazy-expire: a row past `expires_at` reads as `expired`.
+- `approveApproval` — `POST /v1/account/mcp-keys/approvals/{id}/approve` (JWT). Load `WHERE owner_user_id=caller AND status='pending'` (anti-oracle 404). Reject if expired. Re-resolve the key's **live** `spend_cap_usd` from `mcp_api_keys`. Replay the token to `{domainURL}/v1/{domain}/actions/confirm?token=` with `X-Internal-Token`+`X-User-Id=owner`+`X-Mcp-Key-Id=key_id`+`X-Mcp-Spend-Cap-Usd`. 2xx → `executed`; 409 reprice → stay `pending`, surface the signal; other → `failed`+surface.
+- `denyApproval` — `POST …/{id}/deny` (JWT). `denied`, drop the token (never replayed).
+- New `NotificationClient` (HTTP POST to notification-service) + a domain→base-URL config map (`COMPOSITION_SERVICE_URL`, …; composition populated for the live-smoke).
+
+**A3 — edge divert (`approval-client.ts` + a pure `detectProposeResult`):**
+- After relay, IF: single-message `tools/call`, tool tier=`write_confirm`, key `allowSelfConfirm=false`, response carries `confirm_token` → **AWAIT** `POST auth /internal/mcp-keys/approvals` (need the id; not fire-and-forget) → **rewrite** the agent response to `{result:{status:'pending_human_approval', approval_id}}` (TOKEN STRIPPED). On create failure → fail-closed JSON-RPC error (never leak the token).
+- `allowSelfConfirm=true` keys skip the divert (token flows back for slice-B `confirm_action`). Batch write_confirm divert deferred (single-message handled; note in deferrals).
+
+**A4 — carrier-lift on the in-process confirm route (A2 money path):** composition [`confirm_action`](services/composition-service/app/routers/actions.py#L108) gains `X-Mcp-Key-Id`+`X-Mcp-Spend-Cap-Usd` header params; a kit helper `apply_public_key_attribution_headers(key_id, cap_raw)` sets the contextvar before `_execute_generate` (the in-process engine submit) and clears it in `finally`. → the engine's `submit_job` merges it into `job_meta` → provider-registry reserve attributes + caps → `usage_logs.mcp_key_id`.
+
+**A5 — FE `McpApprovalsPanel`** in the Settings → MCP Access tab: poll `GET …/approvals?status=pending`, render preview+estimate+key, Approve/Deny → POST, refresh; reuse the ConfirmActionCard *visual* (new component — not the chat-coupled card). i18n ×4.
+
+**Live-smoke (A2 DoD):** mint a public key (write_confirm + domain:composition, no self-confirm, a spend_cap) → `composition_generate` propose through the edge → assert `pending_human_approval` + a row → owner approve → assert `usage_logs.mcp_key_id` tagged + the per-key cap honored (local lm_studio model = $0). Cross-owner approve → 404.
+
 ## 5. Recommended build order & milestones
 
 1. **D** (carrier SET + H-K cap + web_search BYOK) — money-safety floor; live-smoke the attribution. *Most load-bearing → `/review-impl`.* Unblocks advertising priced tools.

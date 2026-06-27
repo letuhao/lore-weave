@@ -145,6 +145,36 @@ def test_build_tool_context_malformed_cap_fails_open_to_none(monkeypatch):
     assert captured == {"key": None, "cap": None}  # cleared, never leaks a prior call's cap
 
 
+def test_apply_public_key_attribution_headers_forwards_parsed(monkeypatch):
+    # The non-tool-call carrier-lift (P4/Wave-C slice A) used by a REST confirm route.
+    # It parses the cap header and forwards (key, cap) to the loreweave_llm setter.
+    import loreweave_mcp.context as ctxmod
+    from loreweave_mcp import apply_public_key_attribution_headers
+
+    captured: dict[str, object] = {}
+    monkeypatch.setattr(ctxmod, "_set_llm_attribution", lambda key, cap: captured.update(key=key, cap=cap))
+
+    apply_public_key_attribution_headers("key-1", "5.0")
+    assert captured == {"key": "key-1", "cap": 5.0}
+
+    # An empty key + malformed cap → both None (treated as absent / fail-open).
+    apply_public_key_attribution_headers("", "abc")
+    assert captured == {"key": None, "cap": None}
+
+    # The finally-clear path: (None, None) clears the contextvar.
+    apply_public_key_attribution_headers(None, None)
+    assert captured == {"key": None, "cap": None}
+
+
+def test_apply_public_key_attribution_headers_noop_without_llm(monkeypatch):
+    # A service without loreweave_llm installed (setter is None) → no-op, no crash.
+    import loreweave_mcp.context as ctxmod
+    from loreweave_mcp import apply_public_key_attribution_headers
+
+    monkeypatch.setattr(ctxmod, "_set_llm_attribution", None)
+    apply_public_key_attribution_headers("key-1", "5.0")  # must not raise
+
+
 def test_build_tool_context_lifts_mcp_key_id():
     # A public-edge call carries X-Mcp-Key-Id → it lands on the ctx (H-C carrier)
     # and flips owner-only ON (OD-8).

@@ -85,6 +85,21 @@
         "upstream_error": "Lỗi phía trên"
       }
     },
+    "approvals": {
+      "heading": "Hành động đang chờ duyệt ({{count}})",
+      "subtitle": "Một tác nhân dùng khóa của bạn đã yêu cầu các hành động này. Duyệt để chạy (chi phí tính vào khóa đó) hoặc từ chối để bỏ.",
+      "key_label": "Khóa {{key}}…",
+      "cost_label": "Ước tính ${{cost}}",
+      "approve": "Duyệt",
+      "deny": "Từ chối",
+      "toast": {
+        "approved": "Đã duyệt và thực thi hành động",
+        "denied": "Đã từ chối hành động",
+        "reprice": "Chi phí đã thay đổi — hãy yêu cầu tác nhân đề xuất lại",
+        "approve_failed": "Không duyệt được hành động",
+        "deny_failed": "Không từ chối được hành động"
+      }
+    },
     "toast": {
       "load_failed": "Không tải được khóa MCP",
       "created": "Đã tạo khóa \"{{name}}\"",

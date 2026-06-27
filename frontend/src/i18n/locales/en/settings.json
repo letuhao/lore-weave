@@ -85,6 +85,21 @@
         "upstream_error": "Upstream error"
       }
     },
+    "approvals": {
+      "heading": "Pending agent actions ({{count}})",
+      "subtitle": "An agent using one of your keys requested these actions. Approve to run it (cost is charged to that key) or deny to drop it.",
+      "key_label": "Key {{key}}…",
+      "cost_label": "Est. ${{cost}}",
+      "approve": "Approve",
+      "deny": "Deny",
+      "toast": {
+        "approved": "Action approved and executed",
+        "denied": "Action denied",
+        "reprice": "The cost changed since proposed — ask the agent to propose it again",
+        "approve_failed": "Could not approve the action",
+        "deny_failed": "Could not deny the action"
+      }
+    },
     "toast": {
       "load_failed": "Failed to load MCP keys",
       "created": "Key \"{{name}}\" created",

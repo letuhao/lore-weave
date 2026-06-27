@@ -3,10 +3,12 @@ import { randomUUID } from 'node:crypto';
 import type { Request, Response } from 'express';
 import { loadConfig } from '../config/config.js';
 import { KeyResolver } from '../auth/key-resolver.js';
-import { countToolCalls, filterListResponseText, gateRequestBody, isListRequest, isWriteRequest } from '../scope/scope-filter.js';
+import { countToolCalls, filterListResponseText, gateRequestBody, isListRequest, isWriteRequest, singleWriteConfirmToolName } from '../scope/scope-filter.js';
+import { detectProposeResult, pendingApprovalResponse, proposeDivertError } from '../scope/propose-detect.js';
 import { RateLimiter } from '../ratelimit/rate-limiter.js';
 import { makeRateLimitStoreFromEnv } from '../ratelimit/redis-store.js';
 import { AuditClient } from '../audit/audit-client.js';
+import { ApprovalClient } from '../approval/approval-client.js';
 
 /**
  * The PUBLIC MCP edge. An external agent connects here (via api-gateway-bff `/mcp`)
@@ -37,6 +39,8 @@ export class PublicMcpController {
   private readonly limiter = new RateLimiter(makeRateLimitStoreFromEnv());
   // H-O: best-effort per-key call audit (fire-and-forget to auth-service).
   private readonly audit = new AuditClient();
+  // P4 / OD-2: divert a default key's Tier-W propose to the owner's approval queue.
+  private readonly approvals = new ApprovalClient();
 
   @All()
   async handle(@Req() req: Request, @Res() res: Response): Promise<void> {
@@ -134,6 +138,35 @@ export class PublicMcpController {
       const ok = upstream.status >= 200 && upstream.status < 300;
       // H-O: record the relay outcome (per tools/call; non-call relays are not audited).
       this.audit.record(req.body, resolved.keyId, resolved.userId, traceId, ok ? 'relayed' : 'upstream_error');
+
+      // P4 / OD-2: a DEFAULT key's (allow_self_confirm=false) single Tier-W propose returns
+      // a confirm_token WITHOUT spending. Do NOT hand it to the agent — divert the action to
+      // the owner's approval queue and return only {status:pending_human_approval}. A
+      // self-confirm key keeps the token (slice B's confirm_action path).
+      if (ok && hasBody && !resolved.allowSelfConfirm) {
+        const wcTool = singleWriteConfirmToolName(req.body);
+        if (wcTool) {
+          const propose = detectProposeResult(text);
+          if (propose) {
+            const approvalId = await this.approvals.create({
+              keyId: resolved.keyId,
+              ownerUserId: resolved.userId,
+              toolName: wcTool,
+              domain: propose.domain,
+              confirmToken: propose.confirmToken,
+              preview: propose.preview,
+              costEstimateUsd: propose.costEstimateUsd,
+            });
+            // Fail-closed: if the queue is unreachable we still must NOT return the token.
+            const out = approvalId ? pendingApprovalResponse(req.body, approvalId) : proposeDivertError(req.body);
+            res.status(200);
+            res.setHeader('content-type', 'application/json');
+            res.send(JSON.stringify(out));
+            return;
+          }
+        }
+      }
+
       const rewroteList = ok && hasBody && isListRequest(req.body);
       if (rewroteList) {
         text = filterListResponseText(text, resolved.scopes, this.log);

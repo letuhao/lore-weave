@@ -6,6 +6,7 @@ import { ConfirmDialog } from '@/components/shared/ConfirmDialog';
 import { useMcpKeys } from './useMcpKeys';
 import { McpCreateKeyDialog } from './McpCreateKeyDialog';
 import { McpKeyAuditView } from './McpKeyAuditView';
+import { McpApprovalsPanel } from './McpApprovalsPanel';
 import { splitScopes, type McpKey } from './api';
 
 function fmtDate(iso: string | null): string {
@@ -45,6 +46,9 @@ export function McpAccessTab() {
           {t('mcp.create_key')}
         </button>
       </div>
+
+      {/* P4 / OD-2 — pending headless-agent actions awaiting this owner's approval. */}
+      <McpApprovalsPanel />
 
       {loading ? (
         <p className="py-8 text-center text-sm text-muted-foreground">{t('mcp.loading')}</p>

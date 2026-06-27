@@ -30,6 +30,13 @@ type Config struct {
 	NotificationServiceInternalURL string
 	InternalServiceToken           string
 
+	// Public MCP human-approval execute (P4 / OD-2): base URLs of the domain
+	// services whose POST /v1/<domain>/actions/confirm the approve handler replays
+	// an approved confirm token to, KEYED by the propose result's `domain`. Only a
+	// configured domain is executable; an approval whose domain has no URL fails
+	// closed (the row is recorded but Approve returns a clear "not executable").
+	DomainConfirmServiceURLs map[string]string
+
 	// Q-GATE (public MCP): key creation is gated by this platform feature flag — any
 	// user may mint a public MCP key when ON, fast kill-switch when OFF. Default OFF.
 	PublicMcpEnabled bool
@@ -94,6 +101,7 @@ func Load() (*Config, error) {
 	if c.InternalServiceToken == "" {
 		return nil, fmt.Errorf("INTERNAL_SERVICE_TOKEN is required")
 	}
+	c.DomainConfirmServiceURLs = loadDomainConfirmURLs()
 
 	// Admin-JWT issuance (074/075). Feature is off unless a KMS signing key is
 	// configured; when on, the rest is required and fails closed.
@@ -116,6 +124,27 @@ func Load() (*Config, error) {
 		}
 	}
 	return c, nil
+}
+
+// loadDomainConfirmURLs maps a confirm `domain` (as it appears in a propose result
+// and in the /v1/<domain>/actions/confirm path) to its owning service's base URL,
+// read from per-service env vars. Absent vars simply leave that domain non-executable.
+func loadDomainConfirmURLs() map[string]string {
+	src := map[string]string{
+		"book":        "BOOK_SERVICE_URL",
+		"composition": "COMPOSITION_SERVICE_URL",
+		"translation": "TRANSLATION_SERVICE_URL",
+		"glossary":    "GLOSSARY_SERVICE_URL",
+		"kg":          "KNOWLEDGE_SERVICE_URL",
+		"settings":    "PROVIDER_REGISTRY_SERVICE_URL",
+	}
+	out := map[string]string{}
+	for domain, env := range src {
+		if v := strings.TrimSpace(os.Getenv(env)); v != "" {
+			out[domain] = strings.TrimRight(v, "/")
+		}
+	}
+	return out
 }
 
 func getEnv(k, def string) string {
