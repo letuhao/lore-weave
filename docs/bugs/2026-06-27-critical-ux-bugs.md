@@ -141,6 +141,18 @@ Translation glossary cannot be configured to run parallel like the glossary extr
 > unchanged); parallelism is unit-proven. "Other jobs": chapter translation already has its own
 > P5 coordinator/fairness concurrency; extraction already had this — glossary-translate was the gap.
 > Cancellation stays per-page granularity (same as before; finer interrupt = bug #34).
+> /review-impl (MED, fixed): the first cut wrote per-entity progress to the DB INSIDE the
+> semaphore — each `pool.acquire()` while holding a slot. On a fast/cache-hit burst, up to
+> `concurrency`(16) entities would grab connections from the SHARED `max_size=10` pool
+> (database.py:9), starving the rest of the service (other jobs + HTTP handlers) — a
+> multi-tenancy hazard extraction doesn't have (it writes once per chapter, sequentially).
+> Fixed: write the page's accumulated progress in ONE DB write after the gather; per-entity
+> live progress stays on the broker `publish_event` channel (no pool). LOW (fixed): added a
+> route test asserting `concurrency_level` rides the published message as `concurrency`.
+> LOW (accepted, matches extraction): route allows le=64 but the worker caps at 16 (FE caps at
+> 16, so the API never receives >16). Verified safe: atomic counter mutation (single-threaded
+> asyncio), `except Exception` doesn't swallow CancelledError, gather never orphans a task
+> (catch-all), failed entities aren't retried (same as original). Tests: worker 9/9 + router 8/8.
 
 ### [ ] 6. Glossary page should allow 1000 entities per page
 Need to activate glossary but have >15000 entities — current paging makes this really annoying. Want 1000 entities per page.

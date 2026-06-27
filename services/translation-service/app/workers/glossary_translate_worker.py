@@ -282,16 +282,10 @@ async def _run_job(
                 attrs_skipped += result.get("skipped_verified", 0) + result.get("skipped_empty", 0)
                 completed += 1
 
-                async with pool.acquire() as db:
-                    await db.execute(
-                        """UPDATE glossary_translation_jobs
-                           SET completed_entities=$2, failed_entities=$3,
-                               attrs_translated=$4, attrs_skipped=$5,
-                               total_input_tokens=$6, total_output_tokens=$7
-                           WHERE job_id=$1""",
-                        job_id, completed, failed, attrs_translated, attrs_skipped,
-                        total_in, total_out,
-                    )
+                # Live progress on the broker channel (no DB connection — safe to do per
+                # entity under concurrency). The durable DB write is batched per page below
+                # (a per-entity DB write would hold up to `concurrency` of the shared
+                # max_size=10 pool's connections at once — review MED).
                 await publish_event(user_id, {
                     "event": "job.status_changed",
                     "job_id": str(job_id),
@@ -361,6 +355,21 @@ async def _run_job(
         for ent in items:
             processed_entity_ids.add(ent["entity_id"])
         await asyncio.gather(*[_process_entity(ent) for ent in items])
+
+        # Persist the page's accumulated progress in ONE write — a per-entity DB write would
+        # hold up to `concurrency` of the shared max_size=10 pool's connections at once and
+        # could starve the rest of the service (review MED). Counters were updated live in
+        # each coroutine; this snapshots them. The finalize write below is authoritative.
+        async with pool.acquire() as db:
+            await db.execute(
+                """UPDATE glossary_translation_jobs
+                   SET completed_entities=$2, failed_entities=$3,
+                       attrs_translated=$4, attrs_skipped=$5,
+                       total_input_tokens=$6, total_output_tokens=$7
+                   WHERE job_id=$1""",
+                job_id, completed, failed, attrs_translated, attrs_skipped,
+                total_in, total_out,
+            )
 
         if overwrite_mode == "missing_only":
             # Candidate set shrinks as translations are written — always page from 0.
