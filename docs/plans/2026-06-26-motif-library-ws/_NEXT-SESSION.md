@@ -1,6 +1,42 @@
 # ▶ NEXT SESSION — Narrative Motif Library BUILD (handoff)
 
-## STATUS (2026-06-27 PM) — WAVE 2 BACKEND COMPLETE · all 6 WS landed · only LLM/FE live-smoke deferred
+## STATUS (2026-06-28) — WAVE 2 BACKEND COMPLETE + 7 DEFERS CLEARED · only infra/product/test-infra remain
+
+**Defer-clearing pass (2026-06-28) — 7 code-only defers cleared + DB-verified on real Postgres:**
+- **`D-W9-ARC-PUBLISH-STRIP`** `8577c17b` — arc_template B-3 parity: `imported_derived` column +
+  publish-strip trigger (opaque-ize source_ref on imported/derived publish) + clone taint
+  propagation. DB-verified (`test_arc_publish_strip_trigger`).
+- **`D-MOTIF-MCP-BIND-WIRING`** `ce7b0e42` — composition_motif_bind/_unbind now call W2's
+  apply_motif_swap/undo_motif_swap (no more `pending_bind_wiring` degrade); 3 real tests.
+- **`D-W9-IMPORT-LANGUAGE-ARG`** `ce7b0e42` — `composition_arc_import_analyze` gains `language`,
+  stamped envelope→arc+motifs (R1.1.3 re-key risk closed).
+- **`D-MOTIF-FE-CATALOG-ENDPOINT`** `e51d7a52` — catalog tab uses `motifApi.catalog` (the B-3
+  allow-list), not `list({scope:'public'})`; the wrong `CatalogMotif` FE type fixed to the real
+  `_CATALOG_COLS`. tsc clean, 56+585 FE tests.
+- **`D-WAVE2-DB-ROUNDTRIP-TEST`** `12a9728c` — real-Postgres mined/imported create-column round-trip
+  (the serially-edited 23-col INSERT) + arc `list_for_caller` every-scope (the scope=system 500 class).
+- **`D-MOTIF-SYNC-REPIN-ATOMICITY`** `045e6d40` — the source_version re-pin rides the SAME patch
+  UPDATE (`repin_source_version=`) → no partial-write window.
+- **`D-MOTIF-SYNC-3WAY-BASE`** `83388add` — TRUE 3-way merge: `adopted_base` JSONB snapshot captured
+  at clone time → diff reports base/ours/theirs + conflict; re-baselined atomically on apply. Pre-feature
+  clones degrade to honest 2-way. DB-verified.
+
+**Kept deferred (consciously, with cause):**
+- **`D-W2-MCP-SESSION-ISOLATION`** (test-infra, gate-4) — INVESTIGATED: every MCP test FILE passes in
+  isolation; only a LARGE batch triggers `getaddrinfo`/RuntimeError, with a VARYING victim file. Root
+  cause = the module-global `app.main:app` + FastMCP `StreamableHTTPSessionManager` (run-once-per-instance)
+  + cross-file TestClient lifespan state. NOT a production bug, NOT a timeboxed fix. **Fix path:** isolate
+  app.main per test file (`importlib.reload`) OR a session-scoped fixture that owns the app lifespan + a
+  session-manager reset; until then run MCP files in isolation (CI per-file). Advisory only.
+- **`D-MOTIF-FE-PLANNERVIEW-WIRING`** — RECLASSIFIED (was "1-line wiring"; the FE agent found it's a
+  cross-layer FEATURE): the FE preview types carry no per-scene `motif`/`BoundMotif` field, the
+  `MotifBindingCard` is per-scene but the preview is per-chapter, and `outline_node_id` exists only
+  post-commit. Needs a FE contract change (add `motif` to `PlannerChapterPreview`) + chapter-vs-scene
+  binding decision — gate-2, a real feature not a wiring.
+
+---
+
+## (historical) STATUS (2026-06-27 PM) — WAVE 2 BACKEND COMPLETE · all 6 WS landed · only LLM/FE live-smoke deferred
 
 **Wave-2 foundation + Batch A are built, verified, committed on `feat/narrative-pattern-library`:**
 - **W2-F0 worker-seam freeze** `1330b1b4` — the three Tier-W motif ops (`mine_motifs`/
