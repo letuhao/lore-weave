@@ -59,6 +59,12 @@ export class PublicMcpController {
       'x-internal-token': this.cfg.internalToken,
       'x-user-id': resolved.userId,
       'x-mcp-key-id': resolved.keyId,
+      // A public agent has no chat conversation, but the envelope still needs a
+      // session (some domains, e.g. knowledge, require X-Session-Id for working
+      // memory / pending-fact scoping). We mint a STABLE session per credential —
+      // session_id = key_id (a UUID) — so one public key behaves as one long-lived
+      // agent session (continuity + bounded session rows), never client-supplied.
+      'x-session-id': resolved.keyId,
       'x-trace-id': traceId,
       accept: req.header('accept') ?? 'application/json, text/event-stream',
       'content-type': req.header('content-type') ?? 'application/json',

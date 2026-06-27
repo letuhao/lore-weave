@@ -157,6 +157,9 @@ describe('PublicMcpController', () => {
     expect(init.headers['x-user-id']).toBe(TEST_USER);
     expect(init.headers['x-mcp-key-id']).toBe('dev-test-key');
     expect(init.headers['x-trace-id']).toMatch(/[0-9a-f-]{36}/);
+    // Edge mints a session (knowledge requires X-Session-Id) = the key id, stable
+    // per credential. Never absent, never client-supplied.
+    expect(init.headers['x-session-id']).toBe('dev-test-key');
   });
 
   it('resolves a REAL key via auth-service and relays with the resolved identity (P1)', async () => {
@@ -227,6 +230,7 @@ describe('PublicMcpController', () => {
           'x-internal-token': 'EVIL-INTERNAL',
           'x-user-id': 'victim-user-id',
           'x-project-id': 'victim-project',
+          'x-session-id': 'attacker-session',
           'x-trace-id': 'attacker-trace',
         },
         body: { jsonrpc: '2.0', method: 'tools/list', id: 1 },
@@ -244,6 +248,9 @@ describe('PublicMcpController', () => {
     expect(init.headers['x-trace-id']).not.toBe('attacker-trace');
     // No inbound x-project-id leaks through (P0 relays no project scope).
     expect(init.headers['x-project-id']).toBeUndefined();
+    // The smuggled session is discarded and replaced by the edge-minted key id.
+    expect(init.headers['x-session-id']).toBe('dev-test-key');
+    expect(init.headers['x-session-id']).not.toBe('attacker-session');
   });
 
   it('denies an out-of-scope tools/call at the edge without relaying (PUB-3 / H-E)', async () => {
