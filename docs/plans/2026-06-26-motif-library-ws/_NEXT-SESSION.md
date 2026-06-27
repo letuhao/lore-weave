@@ -1,6 +1,6 @@
 # ▶ NEXT SESSION — Narrative Motif Library BUILD (handoff)
 
-## STATUS (2026-06-27 PM) — WAVE 2 IN PROGRESS · W2-F0 + Batch A landed · Batch B next
+## STATUS (2026-06-27 PM) — WAVE 2 BACKEND COMPLETE · all 6 WS landed · only LLM/FE live-smoke deferred
 
 **Wave-2 foundation + Batch A are built, verified, committed on `feat/narrative-pattern-library`:**
 - **W2-F0 worker-seam freeze** `1330b1b4` — the three Tier-W motif ops (`mine_motifs`/
@@ -39,12 +39,29 @@ silent), `deps.get_arc_template_repo()`, `main.py` +1 include, models `ArcTempla
 `DropMergeEntry`. Tests: `tests/unit/test_arc_template_repo.py` (18) + `test_arc_apply.py` (16) = 34
 green; 1108 collected; provider-gate clean. NO migration (arc_template F0-frozen). NO LLM/DB in apply.
 
-**▶ NEXT — Batch B continues:** W9 import (`import_source` ingest + `engine/motif_deconstruct.py`
-fills the W2-F0 stub; consumes W10's frozen `arc_template_repo` to write deconstructed arc rows) →
-W8 mine (cross-service `motif_beat` extractor in knowledge-service + `engine/motif_mine.py`). Plus
-the W10 follow-ups below. LLM/cross-service live-smoke (W8/W9 deconstruct+mine, W5 conformance
-extract-diff) defers to an lm_studio + embedding-credential stack-up (R-NODE-P3/P4), mirroring the
-R-NODE-P1 LLM-slice deferral.
+**W9 import — BACKEND LANDED** `08895083`: `db/repositories/import_source_repo.py` (per-user CRUD,
+no public path §12.6), `routers/import_source.py` (NOT `import.py` — `import` is a keyword; owner-scoped
+HTTP CRUD, H13 404), filled `engine/motif_deconstruct.py` `run_analyze_reference` (chunk → LLM-direct
+abstract deconstruct MAP → reduce → §12.6 `scrub_verbatim` POST-CHECK → arc_template `source='imported'`
++ motifs `source='imported',imported_derived=True`), `deps.get_import_source_repo`, config knobs.
+**Load-bearing test proves a verbatim source passage does NOT survive** into beats/summary/examples.
+Additive: `motif_repo.create`/`arc_template_repo.create` gained `source`/`imported_derived`/`status`
+kwargs (all defaulted → existing callers unchanged). 25 green; 1133 collected; provider-gate clean.
+
+**W8 mine — BACKEND LANDED** `cc3dee40`: filled `engine/motif_mine.py` `run_mine_motifs` (PrefixSpan
+frequent-sequential miner over `event_order` beat sequences → LLM abstraction → binary judge →
+`MotifRepo.create(source='mined',status='draft',judge_score,mining_support)`), `knowledge_client.get_motif_beat_sequences`
+(thin cross-service wrapper; server route deferred). **No-silent-drop (§11):** result lists EVERY
+candidate with `judge_score`+`passed_gate`; below-gate shown not persisted. Degrades cleanly
+(`mined:0, reason:'beat_extractor_unavailable'`) until the extractor ships. Additive: `motif_repo.create`
+gained `judge_score`/`mining_support` (defaulted; coexists with W9's additive set). 11 green; 1144 collected;
+motif_router 23 (no regression); worker-seam 5 (stub test updated to W8's real terminal-fail contract).
+
+**▶ NEXT — only deferred slices remain (no new WS): the R-NODE-P3/P4 LLM+cross-service live-smoke**
+(W8 mine→draft→promote→reuse · W9 deconstruct→arc_template · W5 conformance extract-diff), the
+knowledge-service `motif_beat` extractor (W8 server piece), and the FE slices (W10 arc-timeline,
+the W6 catalog-endpoint fix). All need an lm_studio + platform-embedding-credential stack-up
+(mirrors the R-NODE-P1 LLM-slice deferral). See the full deferred ledger below.
 
 **Deferred — W10 (NEW, gate-passing):**
 - **`D-W10-FE-TIMELINE`** (gate 1 out-of-scope · target W10-FE / W6 extends): the FE thread×chapter
@@ -60,7 +77,29 @@ R-NODE-P1 LLM-slice deferral.
   depends on the import/extract path (W9) + W5's deferred arc-diff dimension — implementable only once
   those land. Master-plan §5 W10 lists it; not in the backend-CRUD/apply slice.
 
-Carried: `D-MOTIF-SYNC-3WAY-BASE` (W11 schema), `D-WSTITCH-LIVE-SMOKE`.
+**Deferred — W9 (NEW, gate-passing):**
+- **`D-W9-DECONSTRUCT-LIVE-SMOKE`** (gate 4 blocked-on-infra · target R-NODE-P4): real end-to-end
+  import→LLM-deconstruct→arc_template+motifs on a stack-up (needs lm_studio).
+- **`D-W9-DECONSTRUCT-DEEP-RAIL`** (gate 2 large/structural · target P4): this slice does a single
+  LLM-direct deconstruct over chunked text; the deep §12.4 rail (the 5th `motif_beat` map-extractor +
+  semantic arc segmentation) is the harder cross-service piece — shared with `D-W8-MOTIF-BEAT-EXTRACTOR`.
+- **`D-W9-WEBSEARCH`** (gate 1 out-of-scope · target P4): `use_web` is a prompt flag stub
+  (`websearch_status:"deferred:D-W9-WEBSEARCH"`); the real web-search arc-boundary augment is unbuilt.
+
+**Deferred — W8 (NEW, gate-passing):**
+- **`D-W8-MOTIF-BEAT-EXTRACTOR`** (gate 2 large/structural, cross-service · target P3): the
+  knowledge-service SERVER `motif_beat` extractor — a 5th map-extractor in `loreweave_extraction`
+  (§12.4) keyed by `motif_mine_extractor_version` (`motif_beat@v1`). CONTRACT (frozen on
+  `KnowledgeClient.get_motif_beat_sequences`): `POST /internal/extraction/motif-beats` (X-Internal-Token),
+  `{user_id, book_id|corpus, language?, extractor_version}` → `{sequences:[[{beat,thread,tension,role_mentions},…],…]}`
+  ordered by `event_order`. The composition-side mining path is fully wired against it (degrades to
+  `mined:0` until it lands). Needs the running service + corpus + LLM.
+- **`D-W8-MINE-LIVE-SMOKE`** (gate 4 blocked-on-infra · target R-NODE-P3): real mine→draft→promote→reuse;
+  needs the extractor above + lm_studio + the platform embedding credential.
+
+Carried: `D-MOTIF-SYNC-3WAY-BASE` (W11 schema), `D-WSTITCH-LIVE-SMOKE`. Plus the Wave-1 carries
+(`D-MOTIF-MCP-BIND-WIRING`, `D-MOTIF-CONFORMANCE-ENGINE-WIRING`, `D-MOTIF-FE-PLANNERVIEW-WIRING`,
+`D-MOTIF-FE-CATALOG-ENDPOINT`, `D-W2-MCP-SESSION-ISOLATION` test-infra flake, the W7/conformance PO items).
 
 ---
 
