@@ -448,11 +448,22 @@ The total-LLM-call prediction for extraction doesn't work well. With 30 glossary
 > RC:
 > Fix:
 
-### [ ] 37. Job GUI should show number of LLM calls and estimated total calls
+### [x] 37. Job GUI should show number of LLM calls and estimated total calls
 The job GUI should display the number of LLM calls and the estimated total calls.
 
-> RC:
-> Fix:
+> RC: the unified Job had no LLM-call notion — only chapter/item progress + cost/tokens.
+> Fix: contract via the existing whitelisted `params` JSONB (no projection schema change):
+> `estimated_llm_calls` (create event) + `llm_calls_done` (running events). FE renders
+> "LLM calls: done / total" in JobProgressPanel (generic, all producers). Wired all 3 estimable
+> producers — extraction + glossary-translate (commit 27253a36) + KG-build (this commit). KG-build
+> runs DECOUPLED by default, so its count is a persisted `extraction_jobs.llm_calls_made` column
+> incremented at the submit chokepoints (inline entity submit + the consumer `_submit_map` fan-out)
+> and emitted at the per-chunk finalize (also fixed its frozen progress bar). Required changing the
+> jobs-service projection to MERGE params (jsonb `||`) instead of whole-replace, so static create
+> params coexist with live keys. Live-smoked all 3 on the real stack (KG-build: projection params
+> `{llm_calls_done, estimated_llm_calls:16}` advancing per chapter). NOTE: realized can exceed the
+> estimate (windowed extraction chapters / KG recovery+filter calls the estimate omits) — honest
+> "estimate, not quote"; the realized count is exact.
 
 ### [ ] 38. Extraction creates impossible entity counts (duplicates across kinds)
 Extraction progression has a critical bug: 30 glossary kinds but it extracts 360 entities with an error message. A chapter can't have that many kinds. Suspect this is part of why extraction is slow. 739 entities created for only 5 chapters — impossible. Maybe glossary duplication (one glossary duplicated across multiple kinds because kind definitions are bad, or LLM mistakes).

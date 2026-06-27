@@ -403,7 +403,7 @@ async def test_submit_map_bounds_inflight_to_concurrency_level():
     rs = {"user_id": USER, "concurrency_level": 2}
     submits = {f"k{i}": {"operation": "chat"} for i in range(5)}
 
-    jobs = await _submit_map(llm, rs, submits)
+    jobs = await _submit_map(AsyncMock(), "job1", llm, rs, submits)
 
     assert rec.total == 5                       # all 5 submitted
     assert len(jobs) == 5                        # all mapped key→job_id
@@ -422,7 +422,7 @@ async def test_submit_map_applies_default_cap_when_unset():
     fan_out = DEFAULT_DECOUPLED_SUBMIT_CAP + 3
     submits = {f"k{i}": {"operation": "chat"} for i in range(fan_out)}
 
-    jobs = await _submit_map(llm, rs, submits)
+    jobs = await _submit_map(AsyncMock(), "job1", llm, rs, submits)
 
     assert rec.total == fan_out and len(jobs) == fan_out  # all submitted
     assert rec.max_live <= DEFAULT_DECOUPLED_SUBMIT_CAP    # never exceeds the default cap
@@ -439,10 +439,30 @@ async def test_submit_map_default_cap_for_zero_none_negative():
         llm.submit_job = rec
         rs = {"user_id": USER, "concurrency_level": bad}
         submits = {f"k{i}": {"operation": "chat"} for i in range(fan_out)}
-        await _submit_map(llm, rs, submits)
+        await _submit_map(AsyncMock(), "job1", llm, rs, submits)
         assert rec.max_live == DEFAULT_DECOUPLED_SUBMIT_CAP, (
             f"concurrency_level={bad!r} should fall back to the default cap"
         )
+
+
+async def test_submit_map_bumps_llm_calls_counter():
+    """bug #37 — the fan-out chokepoint atomically advances llm_calls_made by the number
+    submitted, on the caller's (locked) conn, so the Jobs GUI's realized call count tracks
+    every decoupled trio/recovery/filter submit."""
+    conn = AsyncMock()
+    llm = AsyncMock()
+    llm.submit_job = AsyncMock(side_effect=lambda **kw: SimpleNamespace(job_id="pj"))
+    rs = {"user_id": USER}
+    submits = {f"k{i}": {"operation": "chat"} for i in range(3)}
+
+    await _submit_map(conn, "job-xyz", llm, rs, submits)
+
+    bumps = [
+        c for c in conn.execute.await_args_list
+        if "llm_calls_made = llm_calls_made +" in str(c.args[0])
+    ]
+    assert len(bumps) == 1
+    assert bumps[0].args[1] == "job-xyz" and bumps[0].args[2] == 3  # +3 (the fan-out size)
 
 
 async def test_entity_fold_trio_submit_respects_concurrency_level(monkeypatch):

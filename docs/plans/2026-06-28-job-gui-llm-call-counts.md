@@ -25,8 +25,17 @@ defaults to 0 until the first progress emit.
      accumulate `total_llm_calls`; `_emit_unified_progress` emits `params={"llm_calls_done": total_llm_calls}`.
 2. **Glossary-translate** (`routers/glossary_translate.py` create + `workers/glossary_translate_worker.py`):
    - estimate `llm_calls = max(entity_count, 1)`; counter = entities translated.
-3. **KG-build** (`worker-ai` create path + `runner.py`):
-   - estimate `est_llm_calls` (planner); counter = pass/extractor calls completed.
+3. **KG-build** (knowledge-service create + worker-ai decoupled consumer): DONE — second commit.
+   - **Decoupled** is the production default (`EXTRACTION_DECOUPLE_ENABLED=true`): LLM calls are
+     fire-and-forget `submit_job` fan-outs across terminal events, so inline counting is impossible.
+   - New `extraction_jobs.llm_calls_made` column (migration); incremented at the submit chokepoints —
+     +1 at the inline entity submit (`runner._start_decoupled_chunk`) and +len at the consumer's
+     `_submit_map` fan-out (trio/recovery/filter), on the locked conn (no deadlock).
+   - `llm_extract_consumer._emit_kg_progress` emits unified progress at the per-chunk finalize —
+     `params.llm_calls_done` (the column) + `estimated_llm_calls` (items_total × [1 + requested trio]);
+     ALSO fixes KG-build's previously-frozen progress bar (worker-ai emitted only the terminal event).
+   - knowledge-service create also sets the estimate upfront when items_total is known at create.
+   - Inline path (decouple OFF, non-default fallback) is intentionally not counted — documented.
 
 ## Verify
 - Unit: producer emit carries `estimated_llm_calls`/`llm_calls_done`; FE render tests.

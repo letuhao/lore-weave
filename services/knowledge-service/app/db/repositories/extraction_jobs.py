@@ -384,11 +384,27 @@ class ExtractionJobsRepo:
                     data.reasoning_effort,
                 )
                 job = _row_to_job(row)
+                # bug #37 — estimated LLM-call budget for the Jobs GUI ("done / total").
+                # Per item: 1 entity call + one each for the requested relation/event/fact
+                # trio (recovery/precision-filter add realized calls the estimate omits, so
+                # realized can exceed it — "estimate, not quote"). Null-safe: omitted when
+                # items_total is unknown (backfill enumeration). The worker advances
+                # llm_calls_done; the projection merges params so neither wipes the other.
+                _job_params = None
+                if data.items_total:
+                    _eff_targets = (
+                        list(data.targets) if data.targets is not None else list(DEFAULT_TARGETS)
+                    )
+                    _calls_per_item = 1 + sum(
+                        1 for _t in _eff_targets if _t in ("relations", "events", "facts")
+                    )
+                    _job_params = {"estimated_llm_calls": data.items_total * _calls_per_item}
                 # Unified Job Control Plane P1 — emit the initial lifecycle event.
                 await emit_job_event(
                     conn, service=_JOB_SERVICE, job_id=str(job.job_id),
                     owner_user_id=str(user_id), kind=_JOB_KIND,
                     status=_canonical_job_status(job.status),
+                    params=_job_params,
                 )
         return job
 

@@ -32,7 +32,7 @@ from uuid import UUID
 
 import redis.asyncio as aioredis
 
-from loreweave_jobs import BaseTerminalConsumer
+from loreweave_jobs import BaseTerminalConsumer, JobStatus, emit_job_event_safe
 
 from app import decoupled_extract as dx
 from app.llm_client import LLMClient, set_billing_user_id, set_campaign_id
@@ -196,6 +196,9 @@ async def _persist_chunk(pool, knowledge_client, ej_id, rs: dict) -> None:
         "decoupled extraction: chunk %s persisted via event path (entities=%d relations=%d)",
         ctx["source_id"], result.entities_merged, result.relations_created,
     )
+    # bug #37 — this is the per-item finalize chokepoint (cursor advanced → items_processed
+    # incremented in the tx above); surface live progress + the realized call count.
+    await _emit_kg_progress(pool, ej_id, owner_id)
 
 
 # ── WX Wave 4 — recovery/filter stage dispatch ──────────────────────────────────
@@ -230,13 +233,70 @@ def _concurrency_level(rs: dict) -> int | None:
     return None
 
 
-async def _submit_map(llm_client: LLMClient, rs: dict, submits: dict[str, dict]) -> dict[str, str]:
+async def _bump_llm_calls(conn, ej_id, n: int) -> None:
+    """bug #37 — atomically advance the realized LLM-call counter for the Jobs GUI. Runs
+    on the SAME locked connection as the caller's fan-out (every _submit_map call is under
+    the row's FOR UPDATE), so it never self-deadlocks and the count commits with the stage
+    advance. Best-effort: a display counter must never break the extraction finalize."""
+    if n <= 0:
+        return
+    try:
+        await conn.execute(
+            "UPDATE extraction_jobs SET llm_calls_made = llm_calls_made + $2 WHERE job_id = $1",
+            ej_id, n,
+        )
+    except Exception:  # noqa: BLE001
+        logger.warning("decoupled extraction: llm_calls_made bump failed for job %s", ej_id, exc_info=True)
+
+
+async def _emit_kg_progress(pool, ej_id, owner_id) -> None:
+    """bug #37 — advance the unified Jobs GUI after a chunk finalizes: progress (items
+    done / total) + params.llm_calls_done (realized calls, paired with the create event's
+    estimated_llm_calls). worker-ai otherwise emits only the terminal event, so the KG-build
+    detail page's progress bar + call count sat frozen for the whole run. Best-effort; the
+    projection merges params so this never wipes the create event's model/estimate."""
+    from app.runner import _JOB_KIND, _JOB_SERVICE
+
+    try:
+        row = await pool.fetchrow(
+            "SELECT items_processed, items_total, llm_calls_made, targets "
+            "FROM extraction_jobs WHERE job_id=$1",
+            ej_id,
+        )
+        if row is None:
+            return
+        params = {"llm_calls_done": row["llm_calls_made"]}
+        # Re-assert the estimate here too (not only at create): items_total is often
+        # enumerated by the worker AFTER the job is created, so create couldn't compute it.
+        # Same formula as the create event (1 entity + the requested trio); recovery/filter
+        # add realized calls the estimate omits. Projection merge keeps both keys consistent.
+        if row["items_total"]:
+            _targets = row["targets"] or []
+            _cpi = 1 + sum(1 for _t in _targets if _t in ("relations", "events", "facts"))
+            params["estimated_llm_calls"] = row["items_total"] * _cpi
+        await emit_job_event_safe(
+            pool, service=_JOB_SERVICE, job_id=str(ej_id), owner_user_id=str(owner_id),
+            kind=_JOB_KIND, status=JobStatus.RUNNING,
+            progress={"done": row["items_processed"], "total": row["items_total"]}
+            if row["items_total"] else None,
+            params=params,
+        )
+    except Exception:  # noqa: BLE001
+        logger.warning("decoupled extraction: KG progress emit failed for job %s", ej_id, exc_info=True)
+
+
+async def _submit_map(
+    conn, ej_id, llm_client: LLMClient, rs: dict, submits: dict[str, dict],
+) -> dict[str, str]:
     """Submit a fan-out of provider jobs ({key: submit_kwargs}) and return
     {key: provider_job_id}. C12 — bound the number of concurrent in-flight submits
     to the job's `concurrency_level` (an asyncio.Semaphore over the gather), mirroring
     the SDK sync-gather cap so the decoupled path honours the same knob. D-078 — when
     the user set no cap, fall back to `DEFAULT_DECOUPLED_SUBMIT_CAP` (never unbounded),
-    so a large recovery/filter batch can't burst every enqueue at once."""
+    so a large recovery/filter batch can't burst every enqueue at once.
+
+    bug #37 — the single fan-out chokepoint, so the realized LLM-call counter is bumped
+    here by the number submitted (on the caller's locked `conn`)."""
     user_id = rs["user_id"]
     cap = _concurrency_level(rs) or DEFAULT_DECOUPLED_SUBMIT_CAP
     sem = asyncio.Semaphore(cap)
@@ -248,25 +308,27 @@ async def _submit_map(llm_client: LLMClient, rs: dict, submits: dict[str, dict])
 
     keys = list(submits.keys())
     job_ids = await asyncio.gather(*(_one(submits[k]) for k in keys))
+    await _bump_llm_calls(conn, ej_id, len(keys))
     return dict(zip(keys, job_ids))
 
 
-async def _dispatch_next(llm_client: LLMClient, rs: dict) -> tuple[dict, list[str] | None]:
+async def _dispatch_next(conn, ej_id, llm_client: LLMClient, rs: dict) -> tuple[dict, list[str] | None]:
     """Submit the next stage's fan-out. Returns (rs, inflight_ids) for the first stage
     with work, or (rs, None) = ready-to-persist when it reaches PERSIST. Only entered
-    after a fold ADVANCED past its stage, so it never sees ENTITY/TRIO here."""
+    after a fold ADVANCED past its stage, so it never sees ENTITY/TRIO here. `conn`/`ej_id`
+    thread through to _submit_map for the bug #37 call-count bump (on the locked conn)."""
     while True:
         stage = rs["stage"]
         if stage == dx.RECOVERY:
             submits, rs = dx.assemble_recovery(rs)
             if submits:
-                jobs = await _submit_map(llm_client, rs, submits)
+                jobs = await _submit_map(conn, ej_id, llm_client, rs, submits)
                 return dx.begin_recovery(rs, jobs), list(jobs.values())
             rs = dx.begin_recovery(rs, {})  # no Tier-3 work → advance to filter/persist
         elif stage == dx.FILTER:
             submits, rs = dx.assemble_filter(rs)
             if submits:
-                jobs = await _submit_map(llm_client, rs, submits)
+                jobs = await _submit_map(conn, ej_id, llm_client, rs, submits)
                 return dx.begin_filter(rs, jobs), list(jobs.values())
             rs = dx.begin_filter(rs, {})  # no items → persist
         else:  # PERSIST / unexpected
@@ -284,7 +346,7 @@ async def _advance_after_fold(conn, llm_client: LLMClient, ej_id, fresh: dict, f
         return None
     if fold_stage == dx.FILTER:
         return dx.finalize_filter(fresh)  # filter only ever completes → PERSIST
-    rs2, inflight = await _dispatch_next(llm_client, fresh)
+    rs2, inflight = await _dispatch_next(conn, ej_id, llm_client, fresh)
     if inflight is not None:
         await _persist_inflight(conn, ej_id, inflight, rs2)
         return None
@@ -331,7 +393,7 @@ async def _resume(pool, knowledge_client, llm_client: LLMClient, owner_user_id, 
                         # Semaphore), exactly like the recovery/filter fan-outs. None ⇒
                         # unbounded (back-compat). The ops set is UNCHANGED — only HOW
                         # MANY submit at once is capped; begin_trio records the same ids.
-                        trio_jobs = await _submit_map(llm_client, fresh, submits)
+                        trio_jobs = await _submit_map(conn, ej_id, llm_client, fresh, submits)
                         fresh = dx.begin_trio(fresh, trio_jobs)
                         await _persist_inflight(conn, ej_id, list(trio_jobs.values()), fresh)
                     elif fresh["stage"] in (dx.RECOVERY, dx.FILTER):
@@ -342,7 +404,7 @@ async def _resume(pool, knowledge_client, llm_client: LLMClient, owner_user_id, 
                         # only the persist (PERSIST stage / no fan-out work)
                         # finalizes outside. Without this the chunk would
                         # persist empty, dropping recovery/filter entirely.
-                        rs2, inflight = await _dispatch_next(llm_client, fresh)
+                        rs2, inflight = await _dispatch_next(conn, ej_id, llm_client, fresh)
                         if inflight is not None:
                             await _persist_inflight(conn, ej_id, inflight, rs2)
                         else:

@@ -349,6 +349,13 @@ ALTER TABLE extraction_jobs
   ADD COLUMN IF NOT EXISTS resume_state     JSONB,
   ADD COLUMN IF NOT EXISTS pipeline_stage   TEXT;
 
+-- bug #37 — realized LLM-call counter for the Jobs GUI ("LLM calls: done / estimated").
+-- Incremented at each provider-job submit (the decoupled consumer's _submit_map fan-out +
+-- the inline entity submit); surfaced on the unified job's params.llm_calls_done. NOT NULL
+-- DEFAULT 0 so every pre-existing + omitting job reads 0, never NULL.
+ALTER TABLE extraction_jobs
+  ADD COLUMN IF NOT EXISTS llm_calls_made INT NOT NULL DEFAULT 0;
+
 -- C12 — target-typed extraction. `targets` selects which Pass-2 passes a
 -- build runs (entities/relations/events/facts/summaries). NOT NULL with a
 -- DEFAULT of ALL passes ⇒ every pre-C12 job + every caller that omits the

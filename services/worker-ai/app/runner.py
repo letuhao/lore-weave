@@ -1643,6 +1643,9 @@ async def _start_decoupled_chunk(
     await pool.execute(
         """UPDATE extraction_jobs
            SET resume_state=$2::jsonb, provider_job_ids=$3::jsonb, pipeline_stage=$4,
+               -- bug #37 — count the entity submit (the chunk's first LLM call); the
+               -- consumer's _submit_map bumps the trio/recovery/filter fan-outs.
+               llm_calls_made = llm_calls_made + 1,
                updated_at=now()
            WHERE job_id=$1""",
         job.job_id, json.dumps(rs), json.dumps([str(submit.job_id)]), rs["stage"],
