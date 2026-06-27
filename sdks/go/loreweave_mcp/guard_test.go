@@ -57,6 +57,44 @@ func TestBookOwnerGuard(t *testing.T) {
 			t.Fatalf("Check = %v, want ErrCheckUnavailable", err)
 		}
 	})
+
+	// OD-8: a public MCP key (X-Mcp-Key-Id in ctx) escalates the required level to
+	// GrantOwner — so a book merely SHARED to the caller (a non-OWNER grant) is
+	// denied, while the OWNER still passes. First-party calls keep the nominal level.
+	t.Run("OD-8 escalates required level to GrantOwner for a public key", func(t *testing.T) {
+		ownerOnlyCtx := ContextWithMcpKeyID(ctx, "key-123")
+		cap := &capturingGrants{}
+		g := BookOwnerGuard(cap, GrantEdit) // nominal level = Edit
+		_ = g.Check(ownerOnlyCtx, user, book)
+		if cap.need != GrantOwner {
+			t.Fatalf("public-key call required level = %v, want GrantOwner (OD-8)", cap.need)
+		}
+		// First-party (no key) keeps the nominal Edit.
+		cap2 := &capturingGrants{}
+		g2 := BookOwnerGuard(cap2, GrantEdit)
+		_ = g2.Check(ctx, user, book)
+		if cap2.need != GrantEdit {
+			t.Fatalf("first-party call required level = %v, want GrantEdit (unchanged)", cap2.need)
+		}
+	})
+
+	t.Run("OD-8 denies a non-owner public key (only a share)", func(t *testing.T) {
+		ownerOnlyCtx := ContextWithMcpKeyID(ctx, "key-123")
+		// The grant authority forbids OWNER (caller holds only a share) → deny.
+		g := BookOwnerGuard(fakeGrants{err: grantclient.ErrForbidden}, GrantView)
+		if err := g.Check(ownerOnlyCtx, user, book); !errors.Is(err, ErrNotAccessible) {
+			t.Fatalf("Check = %v, want ErrNotAccessible (public non-owner)", err)
+		}
+	})
+}
+
+// capturingGrants records the level RequireGrant was asked for (to assert OD-8
+// escalation) and always succeeds.
+type capturingGrants struct{ need GrantLevel }
+
+func (c *capturingGrants) RequireGrant(_ context.Context, _, _ uuid.UUID, need GrantLevel) error {
+	c.need = need
+	return nil
 }
 
 func TestUserScopeGuard(t *testing.T) {

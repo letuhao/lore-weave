@@ -105,6 +105,17 @@ func TraceIDFromCtx(ctx context.Context) (string, bool) {
 	return v, true
 }
 
+// ContextWithMcpKeyID injects the public MCP key id (X-Mcp-Key-Id) under the kit's
+// private context key, so a provider running its OWN identity middleware (e.g.
+// glossary — services that use IdentityMiddleware / NewStatelessHandler, like
+// book-service, already get this for free) can still light up McpKeyIDFromCtx /
+// OwnerOnlyFromCtx (OD-8). Pass the raw header value; an empty string leaves the
+// call first-party (OwnerOnlyFromCtx stays false). IdentityMiddleware does this
+// internally — use this only when wiring a bespoke middleware.
+func ContextWithMcpKeyID(ctx context.Context, keyID string) context.Context {
+	return context.WithValue(ctx, ctxKeyMcpKeyID, keyID)
+}
+
 // McpKeyIDFromCtx returns the public MCP API key id (X-Mcp-Key-Id). ok is false
 // when absent — i.e. this is a first-party (non-public-key) call. The id is
 // opaque to providers (the auth-service mints/owns it); a tool only needs to know

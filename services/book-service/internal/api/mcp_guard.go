@@ -43,6 +43,13 @@ func (s *Server) mcpRequireGrant(ctx context.Context, bookID, userID uuid.UUID, 
 		// missing book, no grant, or below the required level — one uniform deny.
 		return uuid.Nil, lwmcp.ErrNotAccessible
 	}
+	// OD-8 (owned-books-only): a PUBLIC MCP key (X-Mcp-Key-Id present) reaches a
+	// book ONLY as its OWNER — never one merely shared TO the caller. We have the
+	// resolved owner in hand, so check owner-equality directly (the cleanest form;
+	// equivalent to requiring GrantOwner). First-party calls keep the grant path.
+	if lwmcp.OwnerOnlyFromCtx(ctx) && userID != owner {
+		return uuid.Nil, lwmcp.ErrNotAccessible
+	}
 	return owner, nil
 }
 

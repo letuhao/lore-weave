@@ -152,6 +152,58 @@ func TestMCP_ScopeGuard_NonOwnerRejected(t *testing.T) {
 	}
 }
 
+// OD-8: book_list (the "my library" enumeration, no per-book guard) must not list
+// books merely SHARED to the caller for a public key — the filter drops the
+// collaborator clause when owner-only.
+func TestBookListFilter_OD8_OwnedOnly(t *testing.T) {
+	firstParty := bookListFilter(false)
+	if !strings.Contains(firstParty, "book_collaborators") {
+		t.Fatalf("first-party filter must include shared books, got %q", firstParty)
+	}
+	ownerOnly := bookListFilter(true)
+	if strings.Contains(ownerOnly, "book_collaborators") {
+		t.Fatalf("OD-8 owner-only filter must NOT include the collaborator clause, got %q", ownerOnly)
+	}
+	if !strings.Contains(ownerOnly, "b.owner_user_id=$1") {
+		t.Fatalf("OD-8 filter must still scope to the owner, got %q", ownerOnly)
+	}
+}
+
+// OD-8: a PUBLIC MCP key (X-Mcp-Key-Id in ctx) reaches a book ONLY as its OWNER.
+// A caller holding a SHARE (manage) on a book owned by someone else — allowed
+// first-party — is denied for a public key; the owner still passes.
+func TestMCP_ScopeGuard_OD8_OwnedOnly(t *testing.T) {
+	caller := uuid.New()
+	otherOwner := uuid.New()
+	bookID := uuid.New()
+
+	// Caller holds a Manage SHARE; the book is owned by otherOwner.
+	shared := mcpTestServer(GrantManage)
+	shared.resolveBook = func(ctx context.Context, b, u uuid.UUID) (GrantLevel, uuid.UUID, string, error) {
+		return GrantManage, otherOwner, "active", nil
+	}
+	firstParty := context.Background()
+	publicKey := lwmcp.ContextWithMcpKeyID(context.Background(), "key-xyz")
+
+	// First-party: the share satisfies a view-tier read.
+	if _, err := shared.mcpRequireGrant(firstParty, bookID, caller, GrantView); err != nil {
+		t.Fatalf("first-party share read err = %v, want nil", err)
+	}
+	// Public key: the same shared book is denied (OD-8 requires owner-equality).
+	if _, err := shared.mcpRequireGrant(publicKey, bookID, caller, GrantView); err != lwmcp.ErrNotAccessible {
+		t.Fatalf("public-key shared-book err = %v, want ErrNotAccessible (OD-8)", err)
+	}
+
+	// Caller IS the owner → passes even for a public key.
+	owned := mcpTestServer(GrantOwner)
+	owned.resolveBook = func(ctx context.Context, b, u uuid.UUID) (GrantLevel, uuid.UUID, string, error) {
+		return GrantOwner, caller, "active", nil // owner == caller
+	}
+	if _, err := owned.mcpRequireGrant(publicKey, bookID, caller, GrantView); err != nil {
+		t.Fatalf("public-key owner read err = %v, want nil", err)
+	}
+}
+
 // mcpOwnershipError maps the sentinels to distinct caller messages (retryable vs not).
 func TestMCP_OwnershipErrorMapping(t *testing.T) {
 	if mcpOwnershipError(lwmcp.ErrNotAccessible) != errBookNotAccessible {

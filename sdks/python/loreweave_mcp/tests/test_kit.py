@@ -270,6 +270,36 @@ async def test_book_owner_guard_does_not_cache_denials():
     assert await guard(tc, book) == 4
 
 
+# ── book-owner guard OD-8 (owned-only for public MCP keys) ──────────────
+
+
+@pytest.mark.asyncio
+async def test_book_owner_guard_od8_public_key_denied_shared_book():
+    """A public key (mcp_key_id set) holding only a SHARE (manage<owner) is denied
+    even on a tool that nominally needs view — OD-8 escalates the bar to OWNER."""
+    async def resolver(book_id, user_id):
+        return 3  # manage — a collaboration grant, NOT owner
+
+    guard = require_book_owner(resolver, level=1)  # view-tier tool
+    book = uuid.uuid4()
+    public = ToolContext(user_id=uuid.uuid4(), session_id="s", mcp_key_id="key-abc")
+    with pytest.raises(NotAccessibleError):
+        await guard(public, book)
+    # The SAME grant is fine for a first-party call (no mcp_key_id) → grant path.
+    first_party = ToolContext(user_id=uuid.uuid4(), session_id="s")
+    assert await guard(first_party, book) == 3
+
+
+@pytest.mark.asyncio
+async def test_book_owner_guard_od8_public_key_owner_passes():
+    async def resolver(book_id, user_id):
+        return 4  # owner
+
+    guard = require_book_owner(resolver, level=1)
+    public = ToolContext(user_id=uuid.uuid4(), session_id="s", mcp_key_id="key-abc")
+    assert await guard(public, uuid.uuid4()) == 4  # owner clears OD-8
+
+
 # ── user-scope guard (H15) ─────────────────────────────────────────────
 
 
