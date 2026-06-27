@@ -84,6 +84,46 @@ async def test_create_stamps_owner_and_roundtrips_jsonb(repo):
     assert emb is None
 
 
+async def test_create_mined_and_imported_columns_roundtrip(repo):
+    """D-WAVE2-DB-ROUNDTRIP-TEST — the serially-edited create() (W9 source/imported_derived/
+    status + W8 judge_score/mining_support) writes each additive column to the RIGHT place.
+    The unit tests use fakes that never hit the real 23-col INSERT, so a placeholder/column
+    misalignment ships green; this round-trips against real Postgres."""
+    from decimal import Decimal
+
+    r, pool = repo
+    u = uuid.uuid4()
+
+    mined = await r.create(
+        u, _args(code="mined.shape"), source="mined", status="draft",
+        judge_score=Decimal("0.875"), mining_support=3,
+    )
+    assert mined.source == "mined" and mined.status == "draft"
+    assert mined.imported_derived is False
+    async with pool.acquire() as c:
+        row = await c.fetchrow(
+            "SELECT source, status, judge_score, mining_support, imported_derived "
+            "FROM motif WHERE id=$1", mined.id)
+    assert row["source"] == "mined" and row["status"] == "draft"
+    assert float(row["judge_score"]) == 0.875   # judge_score → judge_score, not mining_support
+    assert row["mining_support"] == 3
+    assert row["imported_derived"] is False
+
+    imported = await r.create(
+        u, _args(code="imported.shape"), source="imported", imported_derived=True, status="draft")
+    assert imported.source == "imported" and imported.imported_derived is True
+
+    # an authored create leaves the mined columns NULL (the default path is unchanged).
+    auth = await r.create(u, _args(code="authored.shape"))
+    async with pool.acquire() as c:
+        arow = await c.fetchrow(
+            "SELECT source, judge_score, mining_support, imported_derived FROM motif WHERE id=$1",
+            auth.id)
+    assert arow["source"] == "authored"
+    assert arow["judge_score"] is None and arow["mining_support"] is None
+    assert arow["imported_derived"] is False
+
+
 async def test_create_unique_per_owner_code_language(repo):
     r, _ = repo
     u = uuid.uuid4()
