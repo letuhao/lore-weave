@@ -76,6 +76,13 @@ describe('tool-policy.isToolAllowed (default-deny)', () => {
       expect(knownTool(t)).toBe(false);
     }
   });
+
+  it('classifies settings_model_delete as write_confirm in the settings domain (drift fix)', () => {
+    expect(isToolAllowed('settings_model_delete', ['write_confirm', domainScope('settings')])).toBe(true);
+    // Not reachable by a lesser tier or wrong domain.
+    expect(isToolAllowed('settings_model_delete', ['write_auto', domainScope('settings')])).toBe(false);
+    expect(isToolAllowed('settings_model_delete', ['write_confirm', domainScope('book')])).toBe(false);
+  });
 });
 
 describe('tool-policy.filterTools', () => {

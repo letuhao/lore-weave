@@ -187,6 +187,10 @@ export const TOOL_POLICY: Record<string, ToolPolicy> = {
   kg_triage_schema_write: { tier: 'write_confirm', domains: ['knowledge'] },
   kg_project_create: { tier: 'write_confirm', domains: ['knowledge'] },
   composition_publish: { tier: 'write_confirm', domains: ['composition'] },
+  // settings_model_delete is Tier-W (mints a confirm token; destructive BYOK-model
+  // removal) — omitted from the original scope-map §2 audit, surfaced by the edge
+  // drift-log against the live registry.
+  settings_model_delete: { tier: 'write_confirm', domains: ['settings'] },
   // Priced W (BYOK + spend pre-check at P3; cross-domain by tools-touched — H-F)
   translation_start_job: { tier: 'write_confirm', domains: ['translation'] },
   translation_retranslate_dirty: { tier: 'write_confirm', domains: ['translation'] },
