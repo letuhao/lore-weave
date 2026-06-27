@@ -473,6 +473,64 @@ async def test_wait_terminal_returns_cancelled_job():
 
 
 @pytest.mark.asyncio
+async def test_wait_terminal_cancel_check_fires_delete_and_returns_cancelled():
+    # bug #34 — when cancel_check returns True, wait_terminal issues DELETE
+    # (cancel_job) to abort the in-flight provider call, then returns the
+    # cancelled Job. This is what stops a long job's token-burn on user-cancel.
+    state = {"gets": 0, "deletes": 0}
+
+    def handler(req: httpx.Request) -> httpx.Response:
+        if req.method == "DELETE":
+            state["deletes"] += 1
+            return httpx.Response(204)
+        state["gets"] += 1
+        # running until the DELETE lands, then cancelled (mirrors provider-registry)
+        status = "cancelled" if state["deletes"] > 0 else "running"
+        return httpx.Response(200, json={
+            "job_id": JOB_UUID, "operation": "entity_extraction",
+            "status": status, "submitted_at": "2026-04-26T00:00:00Z",
+        })
+
+    async def cancel_now() -> bool:
+        return True
+
+    client = _make_client(handler)
+    job = await client.wait_terminal(
+        JOB_UUID, poll_interval_s=0.001, max_poll_interval_s=0.001, cancel_check=cancel_now,
+    )
+    assert job.status == "cancelled"
+    assert state["deletes"] == 1  # DELETE issued exactly once, NOT per-poll
+
+
+@pytest.mark.asyncio
+async def test_wait_terminal_cancel_check_fault_does_not_break_wait():
+    # A faulty cancel_check (e.g. its DB status read errors) must degrade to a
+    # normal poll — never abort the wait or spuriously cancel.
+    state = {"gets": 0, "deletes": 0}
+
+    def handler(req: httpx.Request) -> httpx.Response:
+        if req.method == "DELETE":
+            state["deletes"] += 1
+            return httpx.Response(204)
+        state["gets"] += 1
+        status = "completed" if state["gets"] >= 2 else "running"
+        return httpx.Response(200, json={
+            "job_id": JOB_UUID, "operation": "chat",
+            "status": status, "submitted_at": "2026-04-26T00:00:00Z",
+        })
+
+    async def boom() -> bool:
+        raise RuntimeError("status source down")
+
+    client = _make_client(handler)
+    job = await client.wait_terminal(
+        JOB_UUID, poll_interval_s=0.001, max_poll_interval_s=0.001, cancel_check=boom,
+    )
+    assert job.status == "completed"
+    assert state["deletes"] == 0  # never cancelled despite the faulty check
+
+
+@pytest.mark.asyncio
 async def test_wait_terminal_http_failure_within_budget_recovers():
     state = {"polls": 0}
 

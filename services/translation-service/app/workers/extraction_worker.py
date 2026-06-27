@@ -975,6 +975,21 @@ async def _process_extraction_chapter(
         if _STRUCTURED_OUTPUT_ENABLED:
             call_input["response_format"] = _entity_response_format(batch)
 
+        async def _is_cancelled() -> bool:
+            # bug #34: poll the parent extraction job's status so an in-flight LLM
+            # call is aborted (DELETE'd at the gateway) the moment the user cancels
+            # — instead of burning tokens until the call finishes naturally. A read
+            # failure returns False so a transient DB blip never spuriously cancels a
+            # healthy job (the SDK also tolerates a raising check; this is belt+braces).
+            try:
+                async with pool.acquire() as db:
+                    st = await db.fetchval(
+                        "SELECT status FROM extraction_jobs WHERE job_id=$1", job_id
+                    )
+                return st in ("cancelling", "cancelled")
+            except Exception:  # noqa: BLE001 — never let a status read abort healthy work
+                return False
+
         async def _submit(_inp: dict):
             return await llm_client.submit_and_wait(
                 user_id=str(owner_user_id),
@@ -994,6 +1009,7 @@ async def _process_extraction_chapter(
                     "batch_idx": batch_idx,
                 },
                 transient_retry_budget=1,
+                cancel_check=_is_cancelled,
             )
 
         try:

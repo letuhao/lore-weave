@@ -84,7 +84,7 @@
     "pause": "Pause",
     "resume": "Resume",
     "cancel": "Cancel",
-    "cancelConfirm": "Cancel job?",
+    "cancelConfirm": "Stop now? In-progress work is discarded; completed parts are kept.",
     "cancelYes": "Yes",
     "cancelNo": "No",
     "cancelled": "Cancelled.",

@@ -84,7 +84,7 @@
     "pause": "暫停",
     "resume": "繼續",
     "cancel": "取消",
-    "cancelConfirm": "取消工作？",
+    "cancelConfirm": "立即停止？進行中的工作將被捨棄；已完成的部分會保留。",
     "cancelYes": "是",
     "cancelNo": "否",
     "cancelled": "已取消。",

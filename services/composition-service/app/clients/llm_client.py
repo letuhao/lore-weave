@@ -16,6 +16,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+from collections.abc import Awaitable, Callable
 from typing import Any
 
 from loreweave_llm.client import Client as SDKClient
@@ -56,6 +57,7 @@ class LLMClient:
         trace_id: str | None = None,
         job_meta: dict[str, Any] | None = None,
         transient_retry_budget: int = 1,
+        cancel_check: Callable[[], Awaitable[bool]] | None = None,
     ) -> Job:
         """Submit a gateway job + wait for a terminal status, re-submitting on a
         transient terminal (the SDK doesn't retain inputs, so this loop re-issues
@@ -83,6 +85,7 @@ class LLMClient:
                 try:
                     job = await self._sdk.wait_terminal(
                         submit.job_id, user_id=user_id, transient_retry_budget=1,
+                        cancel_check=cancel_check,
                     )
                 except LLMTransientRetryNeededError as exc:
                     llm_job_total.labels(operation=operation, outcome="transient_retry").inc()
