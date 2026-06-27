@@ -392,9 +392,10 @@ class ExtractionJobsRepo:
                 # llm_calls_done; the projection merges params so neither wipes the other.
                 _job_params = None
                 if data.items_total:
-                    _eff_targets = (
-                        list(data.targets) if data.targets is not None else list(DEFAULT_TARGETS)
-                    )
+                    # None OR empty ⇒ "run all" (the SDK's normalize_targets semantics) ⇒
+                    # entity + the full relation/event/fact trio. `if data.targets` is falsy
+                    # for both None and [] → defaults to all, matching the worker.
+                    _eff_targets = list(data.targets) if data.targets else list(DEFAULT_TARGETS)
                     _calls_per_item = 1 + sum(
                         1 for _t in _eff_targets if _t in ("relations", "events", "facts")
                     )

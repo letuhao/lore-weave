@@ -19,6 +19,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 from app import decoupled_extract as dx
 from app.llm_extract_consumer import (
     DEFAULT_DECOUPLED_SUBMIT_CAP,
+    _emit_kg_progress,
     _persist_chunk,
     _resume,
     _submit_map,
@@ -463,6 +464,53 @@ async def test_submit_map_bumps_llm_calls_counter():
     ]
     assert len(bumps) == 1
     assert bumps[0].args[1] == "job-xyz" and bumps[0].args[2] == 3  # +3 (the fan-out size)
+
+
+async def _run_emit_kg(row: dict | None):
+    """Drive _emit_kg_progress with a scripted job row; return the emit_job_event_safe kwargs
+    (or None if no emit fired). emit_job_event_safe is patched (the unit asserts the GUI
+    payload, not the relay)."""
+    pool = MagicMock()
+    pool.fetchrow = AsyncMock(return_value=row)
+    with patch("app.llm_extract_consumer.emit_job_event_safe", new=AsyncMock()) as emit:
+        await _emit_kg_progress(pool, EJ, USER)
+    return emit.await_args.kwargs if emit.await_args else None
+
+
+async def test_emit_kg_progress_concrete_targets():
+    # bug #37 — estimated_llm_calls = items_total × (1 entity + requested trio); llm_calls_done
+    # = the persisted column; progress = items done/total.
+    kw = await _run_emit_kg({
+        "items_processed": 2, "items_total": 5, "llm_calls_made": 7,
+        "targets": ["entities", "relations", "facts"],  # 2 of the trio → cpi = 1 + 2 = 3
+    })
+    assert kw["params"] == {"llm_calls_done": 7, "estimated_llm_calls": 15}  # 5 × 3
+    assert kw["progress"] == {"done": 2, "total": 5}
+
+
+async def test_emit_kg_progress_empty_or_none_targets_means_all():
+    # bug #37 review (#2) — empty/None targets ⇒ "run all" (normalize_targets) ⇒ cpi = 4,
+    # NOT entities-only (cpi=1). Both [] and None must estimate items_total × 4.
+    for targets in ([], None):
+        kw = await _run_emit_kg({
+            "items_processed": 1, "items_total": 4, "llm_calls_made": 4, "targets": targets,
+        })
+        assert kw["params"]["estimated_llm_calls"] == 16, f"targets={targets!r} → 4×4"
+
+
+async def test_emit_kg_progress_no_items_total_omits_estimate_and_progress():
+    # items_total unknown (worker hasn't enumerated yet) → bare done-count, no estimate/bar.
+    kw = await _run_emit_kg({
+        "items_processed": 0, "items_total": None, "llm_calls_made": 3, "targets": ["entities"],
+    })
+    assert kw["params"] == {"llm_calls_done": 3}
+    assert "estimated_llm_calls" not in kw["params"]
+    assert kw["progress"] is None
+
+
+async def test_emit_kg_progress_no_row_no_emit():
+    # a vanished/cleared job row → no emit (best-effort, never crashes the finalize).
+    assert await _run_emit_kg(None) is None
 
 
 async def test_entity_fold_trio_submit_respects_concurrency_level(monkeypatch):

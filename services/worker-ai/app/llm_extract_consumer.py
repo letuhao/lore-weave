@@ -236,17 +236,18 @@ def _concurrency_level(rs: dict) -> int | None:
 async def _bump_llm_calls(conn, ej_id, n: int) -> None:
     """bug #37 — atomically advance the realized LLM-call counter for the Jobs GUI. Runs
     on the SAME locked connection as the caller's fan-out (every _submit_map call is under
-    the row's FOR UPDATE), so it never self-deadlocks and the count commits with the stage
-    advance. Best-effort: a display counter must never break the extraction finalize."""
+    the row's FOR UPDATE), so the count commits ATOMICALLY with the stage advance — a
+    redelivered terminal that the stage-guard skips never re-bumps. NOT wrapped in a swallow:
+    a failed statement poisons the asyncpg transaction (the sibling `_persist_inflight` would
+    then fail anyway), so catching it here can't make the finalize non-fatal — it would only
+    hide the cause. A bump failure rides the same rollback as any other in-tx write; the
+    stuck-resume sweeper re-drives the chunk, exactly as for a `_persist_inflight` failure."""
     if n <= 0:
         return
-    try:
-        await conn.execute(
-            "UPDATE extraction_jobs SET llm_calls_made = llm_calls_made + $2 WHERE job_id = $1",
-            ej_id, n,
-        )
-    except Exception:  # noqa: BLE001
-        logger.warning("decoupled extraction: llm_calls_made bump failed for job %s", ej_id, exc_info=True)
+    await conn.execute(
+        "UPDATE extraction_jobs SET llm_calls_made = llm_calls_made + $2 WHERE job_id = $1",
+        ej_id, n,
+    )
 
 
 async def _emit_kg_progress(pool, ej_id, owner_id) -> None:
@@ -271,8 +272,13 @@ async def _emit_kg_progress(pool, ej_id, owner_id) -> None:
         # Same formula as the create event (1 entity + the requested trio); recovery/filter
         # add realized calls the estimate omits. Projection merge keeps both keys consistent.
         if row["items_total"]:
-            _targets = row["targets"] or []
-            _cpi = 1 + sum(1 for _t in _targets if _t in ("relations", "events", "facts"))
+            # None OR empty targets ⇒ "run all" (the SDK's normalize_targets) ⇒ entity +
+            # the full trio (cpi=4); a concrete list counts only its requested trio ops.
+            _targets = row["targets"]
+            _cpi = (
+                1 + sum(1 for _t in _targets if _t in ("relations", "events", "facts"))
+                if _targets else 4
+            )
             params["estimated_llm_calls"] = row["items_total"] * _cpi
         await emit_job_event_safe(
             pool, service=_JOB_SERVICE, job_id=str(ej_id), owner_user_id=str(owner_id),
