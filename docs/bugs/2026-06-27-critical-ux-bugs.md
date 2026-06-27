@@ -106,7 +106,15 @@ Job detail doesn't show total cost. Current token cost is not updated until the 
 > Follow-up (optional, not blocking): the extraction GET endpoint (`extraction.py`) still returns
 > only `cost_estimate`, not the new actual `cost_usd` — the unified Jobs detail page (the bug
 > surface) reads the projection so it's fixed; exposing actual cost on the wizard's own results
-> is a minor nicety. Per-chapter pricing adds 1 best-effort HTTP/chapter (chapters are slow, fine).
+> is a minor nicety.
+> /review-impl (MED, fixed): the first cut re-priced cost EVERY chapter — and pricing is a
+> 5s-timeout call to provider-registry inside the chapter loop, so a degraded registry would
+> inject up to 5s PER chapter (~+58min on a 700-ch job). Fixed with a throttle (`_COST_REPRICE_EVERY=5`):
+> reprice on the first chapter + every 5th + finalize, reuse the last figure between; TOKENS still
+> update every chapter. Added a regression test asserting reprices < chapter count. Column drift
+> verified safe (GET maps by-name; `SELECT *` ignores the extra key). LOW (accepted): if registry
+> is down AT finalize, `extraction_jobs.cost_usd` stays NULL though the projection still has the
+> last live cost (GET doesn't expose cost_usd anyway). Tests: extraction-worker 21/21.
 
 ### [ ] 4. Translation glossary cannot be configured to run parallel; need GUI for parallel workers
 Translation glossary cannot be configured to run parallel like the glossary extraction job. May happen in other jobs too. Need a GUI to set parallel workers.

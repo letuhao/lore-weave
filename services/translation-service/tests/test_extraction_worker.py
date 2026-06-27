@@ -184,6 +184,40 @@ async def test_progress_and_terminal_carry_live_cost_and_tokens():
 
 
 @pytest.mark.asyncio
+async def test_cost_repricing_is_throttled_not_every_chapter():
+    # bug #3 review (MED): pricing hits provider-registry on a 5s-timeout network call.
+    # Repricing every chapter would couple the run's latency to registry health (a degraded
+    # registry → +5s PER chapter). Cost is re-priced on the first chapter + every
+    # _COST_REPRICE_EVERY, reusing the last figure between — while TOKENS update on every emit.
+    jid = uuid4()
+    chapters = [str(uuid4()) for _ in range(6)]
+    db = AsyncMock()
+    db.fetchval = AsyncMock(return_value=jid)  # claim + each in-loop status check → not cancelled
+    db.fetch = AsyncMock(return_value=[])
+    db.execute = AsyncMock()
+    publish, publish_event = AsyncMock(), AsyncMock()
+    result = {"created": 1, "input_tokens": 10, "output_tokens": 5, "entities": []}
+
+    with patch("app.workers.extraction_worker.fetch_known_entities", new=AsyncMock(return_value=[])), \
+         patch("app.workers.extraction_worker._process_extraction_chapter", new=AsyncMock(return_value=result)), \
+         patch("app.workers.extraction_worker.resolve_job_cost_usd", new=AsyncMock(return_value=0.02)) as price, \
+         patch("app.workers.extraction_worker.emit_job_event_safe", new=AsyncMock()) as emit:
+        await _run_extraction_job(
+            {"book_id": "b", "chapter_ids": chapters, "model_source": "user_model", "model_ref": "m1"},
+            jid, "u", _pool(db), publish, publish_event, MagicMock(),
+        )
+
+    # 6 chapters but far fewer reprices (baseline + first + every-5th + finalize = 4) — WITHOUT
+    # the throttle this would be 8 (baseline + 6 + finalize). The `< len` bound proves throttle.
+    assert price.await_count < len(chapters), f"cost re-priced too often: {price.await_count}"
+    # every per-chapter progress emit still carries live, cumulative tokens
+    progress_emits = [c for c in emit.await_args_list
+                      if c.kwargs.get("status") == "running" and c.kwargs.get("progress")]
+    assert len(progress_emits) == len(chapters) + 1  # baseline + one per chapter
+    assert progress_emits[-1].kwargs["tokens_in"] == 60  # 6 × 10, cumulative & live
+
+
+@pytest.mark.asyncio
 async def test_job_terminal_emits_batch_summary_rollup():
     # OBS/M2 (INV-O14): the job-terminal notification carries a per-status rollup derived
     # from the extraction_batch_outcomes SSOT, so a truncated/rejected batch is visible.

@@ -99,6 +99,12 @@ _CONTEXT_SAFETY_RATIO = 0.15  # mirror the gateway's context-fit safety margin
 # glossary per-book advisory lock from a runaway request). 1 ⇒ sequential.
 _EXTRACTION_MAX_CONCURRENCY = 16
 
+# bug #3: how often (in chapters) to re-price the live job cost via the provider-registry
+# oracle during the run. Tokens update every chapter regardless; cost re-prices on the first
+# chapter + every Nth, reusing the last figure between, to bound registry calls + keep a
+# degraded registry from injecting its 5s timeout into every chapter of the run.
+_COST_REPRICE_EVERY = 5
+
 # D-LLM-FAILURE-RATE #1 — structured-output enforcement. Default ON; set
 # EXTRACTION_STRUCTURED_OUTPUT=0 to disable fleet-wide. The per-call
 # LLMInvalidRequest fallback already degrades a single unsupported model safely,
@@ -419,23 +425,33 @@ async def _run_extraction_job(msg: dict, job_id: UUID, user_id: str, pool, publi
     # sat frozen for the whole run. Each emit carries a fresh occurred_at, so the monotonic
     # projection applies it (forward-in-time) and pushes an SSE frame. Best-effort: a failed
     # emit never disturbs the run (the terminal rollup + reconcile sweep backstop accuracy).
-    async def _emit_unified_progress() -> None:
+    # bug #3: carry live tokens + a derived cost so the /jobs detail Cost & Usage panel
+    # updates as the run advances instead of only at completion. TOKENS ride every emit (free
+    # — already summed). COST needs the provider-registry pricing oracle (the gateway `usage`
+    # has no cost; same call cost.py uses for actuals — D-JOBS-P4), which is NETWORK I/O on a
+    # 5s timeout. Repricing every chapter would couple the run's latency to registry health (a
+    # degraded registry → up to 5s added PER chapter). So we reprice only periodically and
+    # REUSE the last good figure between: tokens stay fully live, cost advances in steps, and
+    # registry calls are bounded to ~chapters/_COST_REPRICE_EVERY. Best-effort throughout: a
+    # None reprice keeps the last cost; a fresh 0-token call skips the HTTP entirely.
+    _last_cost: float | None = None
+
+    async def _emit_unified_progress(reprice: bool = True) -> None:
+        nonlocal _last_cost
         done = completed + failed
-        # bug #3: carry live tokens + derived cost so the /jobs detail Cost & Usage panel
-        # updates every chapter instead of only at completion. The gateway `usage` has no
-        # cost, so price the running token totals via the provider-registry oracle (same
-        # call cost.py uses for actuals — D-JOBS-P4). Both helpers are best-effort: a
-        # provider-registry blip just shows cost null for this frame, corrected next chapter.
-        cost = await resolve_job_cost_usd(
-            owner_user_id=str(user_id), model_source=model_source, model_ref=model_ref,
-            input_tokens=total_input_tokens, output_tokens=total_output_tokens,
-        )
+        if reprice:
+            priced = await resolve_job_cost_usd(
+                owner_user_id=str(user_id), model_source=model_source, model_ref=model_ref,
+                input_tokens=total_input_tokens, output_tokens=total_output_tokens,
+            )
+            if priced is not None:
+                _last_cost = priced
         await emit_job_event_safe(
             pool, service=_JOB_SERVICE, job_id=str(job_id), owner_user_id=str(user_id),
             kind=_JOB_KIND, status="running",
             progress={"done": done, "total": len(chapter_ids)},
             detail_status=f"{done}/{len(chapter_ids)} chapters",
-            cost_usd=cost,
+            cost_usd=_last_cost,
             tokens_in=total_input_tokens or None, tokens_out=total_output_tokens or None,
         )
 
@@ -579,9 +595,11 @@ async def _run_extraction_job(msg: dict, job_id: UUID, user_id: str, pool, publi
             },
         })
 
-        # Mirror the same advance onto the unified jobs-service stream (bug #2 — live
-        # progress on the /jobs detail page). See _emit_unified_progress above.
-        await _emit_unified_progress()
+        # Mirror the same advance onto the unified jobs-service stream (bug #2 — live progress
+        # on the /jobs detail page). Reprice cost on the first processed chapter (so cost
+        # appears early even for small jobs) and then every _COST_REPRICE_EVERY chapters;
+        # tokens still update on every emit. See _emit_unified_progress above (bug #3).
+        await _emit_unified_progress(reprice=(idx == 0 or (idx + 1) % _COST_REPRICE_EVERY == 0))
 
     # Job complete. OBS/M2 — the job is 'completed' only when nothing failed AND no chapter
     # finished with batch errors; a chapter that finished completed_with_errors now bubbles
