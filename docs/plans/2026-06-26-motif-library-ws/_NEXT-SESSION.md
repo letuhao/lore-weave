@@ -17,9 +17,13 @@
   per-pack check is `_vi`-suffix aware. **12 unit pass + 5 DB-integration pass** (real Postgres:
   88-row idempotent double-seed, system-tier count, NULL-embed, same-tier links). Provider-gate clean.
 
-**▶ PO ACTION NEEDED:** review the vi rows for genre faithfulness (the axis only the PO/domain
-authority can sign off, W7 §4 / §294). Accept/edit/reject per row; edits are data-only + re-seed
-(`reseed=True` dev path). Until then `D-W7-PO-REVIEW` stays open. The en sibling parity already exists.
+**PO REVIEW DONE** (`D-W7-PO-REVIEW` ✅, edits @`86ed6ec9`) — the PO reviewed the rendered packs +
+made the one systemic call: **`emotion_target` is a stable English taxonomy token** (matches en +
+`genre_tags`) across all 44 vi rows, so it's a shared cross-language axis (display text stays vi).
+Also: POV role term unified to "nhân vật điểm nhìn" (hooks↔emotion_arcs parallel-authoring drift);
+one wording fix (`life_and_death_duel`). NOT changed: intrigue I1/I6 `emotion_target:"dread"` is
+FAITHFUL to en (not a vi defect) → kept for parity. Per-row spot-edits remain welcome later (data-
+only + `reseed=True`). Genre register verdict: authentic tu-tiên/báo-thù/cung-đấu; fit to seed.
 
 ---
 
