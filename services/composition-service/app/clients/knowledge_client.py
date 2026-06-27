@@ -212,6 +212,60 @@ class KnowledgeClient:
             logger.warning("knowledge extract-item unavailable: %r", exc)
             return None
 
+    # ── W8 motif mining: the motif_beat sequence source (cross-service) ──────────
+    async def get_motif_beat_sequences(
+        self, user_id: UUID, *, book_id: UUID | None = None, corpus: bool = False,
+        language: str | None = None,
+    ) -> list[list[dict[str, Any]]]:
+        """W8 — the `motif_beat` extraction source for the composition-side miner.
+
+        Returns ORDERED beat sequences: one list per coherent narrative unit
+        (book/arc/chapter), each a list of `{beat, thread, tension, role_mentions}`
+        ordered by the knowledge timeline's `event_order` (the SPADE/PrefixSpan
+        input). Scope is `book_id` (one book) or `corpus=True` (all the user's
+        books); `language` narrows the axis. The user scope is carried on the call
+        (tenancy — the server filters by user_id; a cross-user book returns []).
+
+        DEFERRED — D-W8-MOTIF-BEAT-EXTRACTOR: the knowledge-service SERVER route
+        (`POST /internal/extraction/motif-beats`) — a 5th map-extractor in
+        loreweave_extraction (§12.4) emitting `{beat, thread, tension, role_mentions}`
+        per scene/chapter, keyed by `motif_mine_extractor_version` — does NOT exist
+        yet (it needs the running service + a corpus + an LLM). Until it lands this
+        thin client returns [] on a 404/501/transport-error so the miner DEGRADES
+        cleanly (`mined: 0, reason: 'beat_extractor_unavailable'`) instead of
+        crashing — the whole mining path is wired + unit-testable now, and flips
+        live the moment the extractor ships (no composition-side change).
+        """
+        url = f"{self._base_url}/internal/extraction/motif-beats"
+        payload: dict[str, Any] = {"user_id": str(user_id)}
+        if corpus:
+            payload["corpus"] = True
+        elif book_id is not None:
+            payload["book_id"] = str(book_id)
+        if language:
+            payload["language"] = language
+        payload["extractor_version"] = settings.motif_mine_extractor_version
+        try:
+            resp = await self._http.post(url, json=payload, headers=self._internal_headers())
+        except httpx.HTTPError as exc:
+            logger.warning("knowledge motif-beats unavailable (extractor deferred): %s", exc)
+            return []
+        # 404 (route not deployed yet) / 501 (not implemented) → the deferred
+        # extractor — degrade to [] (NOT a crash). Any other non-200 also degrades.
+        if resp.status_code != 200:
+            logger.warning("knowledge motif-beats → %d (extractor deferred?)", resp.status_code)
+            return []
+        try:
+            data = resp.json()
+        except (ValueError, AttributeError) as exc:
+            logger.warning("knowledge motif-beats bad JSON: %s", exc)
+            return []
+        seqs = data.get("sequences") if isinstance(data, dict) else None
+        if not isinstance(seqs, list):
+            return []
+        # Normalize: keep only well-formed list-of-dict sequences.
+        return [s for s in seqs if isinstance(s, list)]
+
     # ── M4 packer lenses ────────────────────────────────────────────────
     # All return None/[] on any failure (the packer `_safe_*` degrade, F1) so a
     # knowledge outage thins the pack rather than 500-ing a generate.

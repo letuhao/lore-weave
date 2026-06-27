@@ -74,7 +74,8 @@ class MotifRepo:
     async def create(
         self, user_id: UUID, args: MotifCreateArgs,
         *, source: str = "authored", imported_derived: bool = False,
-        status: str = "active",
+        status: str = "active", judge_score: Any = None,
+        mining_support: int | None = None,
     ) -> Motif:
         """Create a USER-tier motif. owner_user_id is STAMPED = user_id (never an
         arg → a both-NULL/system row is impossible from this path; the DB CHECK is
@@ -85,17 +86,24 @@ class MotifRepo:
         (every existing caller is unchanged). W9's deconstruct passes
         source='imported', imported_derived=True so the B-3 lineage taint is set at
         birth (the publish-strip trigger reads it); a draft import passes
-        status='draft'."""
+        status='draft'.
+
+        `judge_score`/`mining_support` default NULL (the authored/imported paths
+        leave them unset — those columns are F0-frozen, §2). W8's mining passes
+        source='mined', status='draft' + the binary judge_score (0..1) + the
+        PrefixSpan mining_support count so a mined draft carries its provenance for
+        the review/promote UI. Added ADDITIVELY (every existing caller unchanged),
+        the same way source/status were added for W9."""
         info = args.info_asymmetry.model_dump(mode="json") if args.info_asymmetry else None
         query = f"""
         INSERT INTO motif
           (owner_user_id, code, language, visibility, kind, category, name, summary,
            genre_tags, roles, beats, preconditions, effects, info_asymmetry,
            annotations, tension_target, emotion_target, examples, source,
-           imported_derived, status)
+           imported_derived, status, judge_score, mining_support)
         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,
                 $10::jsonb,$11::jsonb,$12::jsonb,$13::jsonb,$14::jsonb,$15::jsonb,
-                $16,$17,$18::jsonb,$19,$20,$21)
+                $16,$17,$18::jsonb,$19,$20,$21,$22,$23)
         RETURNING {_SELECT_COLS}
         """
         async with self._pool.acquire() as c:
@@ -108,6 +116,7 @@ class MotifRepo:
                 _jsonb(info) if info is not None else None,
                 _jsonb(args.annotations), args.tension_target, args.emotion_target,
                 _jsonb(args.examples), source, imported_derived, status,
+                judge_score, mining_support,
             )
         return _row_to_motif(row)
 

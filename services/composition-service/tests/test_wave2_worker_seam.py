@@ -69,10 +69,15 @@ async def test_dispatch_routes_each_wave2_op_to_its_module(monkeypatch, op, modu
 
 
 async def test_dispatch_stub_raises_terminal_business_error(monkeypatch):
-    """Before a WS lands its compute, the stub raises ValueError — a TERMINAL business
-    error (job marked failed cleanly), NOT UnsupportedOperationError and NOT an infra
-    error that would redeliver-loop. Verified through the real run_job path."""
-    job = _job("mine_motifs")
+    """A WS handler that hits a bad/missing input raises ValueError — a TERMINAL
+    business error (job marked failed cleanly), NOT UnsupportedOperationError and NOT
+    an infra error that would redeliver-loop. Verified through the real run_job path.
+
+    (W8 has now landed the ``mine_motifs`` compute; this drives it with a scope='book'
+    job that carries NO book_id, so the handler's input-validation ValueError stands
+    in for the former stub ValueError — the SAME terminal-fail contract, a real
+    business error instead of the not-yet-implemented placeholder.)"""
+    job = _job("mine_motifs", input={"worker_op": "mine_motifs", "scope": "book"})
 
     class _FakeRepo:
         def __init__(self, j):
@@ -93,4 +98,4 @@ async def test_dispatch_stub_raises_terminal_business_error(monkeypatch):
     out = await jc.run_job(object(), object(), job_id=str(job.id), user_id=str(job.user_id))
     assert out == "failed"  # ValueError is a business error → clean terminal fail
     assert repo.updates[-1][0] == "failed"
-    assert "not yet implemented" in repo.updates[-1][1]["error"]
+    assert "book_id" in repo.updates[-1][1]["error"]  # the handler's terminal business ValueError
