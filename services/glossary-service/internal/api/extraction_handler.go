@@ -102,7 +102,7 @@ func (s *Server) writeExtractionProfile(w http.ResponseWriter, ctx context.Conte
 	// 2. Fetch all book kinds (book-local). All adopted/native book kinds are
 	//    auto-selected (the user already scaffolded them); is_hidden kinds excluded.
 	kindRows, err := s.pool.Query(ctx, `
-		SELECT book_kind_id, code, name, icon
+		SELECT book_kind_id, code, name, icon, description
 		FROM book_kinds
 		WHERE book_id = $1 AND is_hidden = false AND deprecated_at IS NULL
 		ORDER BY sort_order, name
@@ -126,6 +126,7 @@ func (s *Server) writeExtractionProfile(w http.ResponseWriter, ctx context.Conte
 		KindID       string    `json:"kind_id"`
 		Code         string    `json:"code"`
 		Name         string    `json:"name"`
+		Description  *string   `json:"description"` // bug #33 — fed to the extraction prompt so the model picks the right kind
 		Icon         string    `json:"icon"`
 		AutoSelected bool      `json:"auto_selected"`
 		Attributes   []attrOut `json:"attributes"`
@@ -135,7 +136,8 @@ func (s *Server) writeExtractionProfile(w http.ResponseWriter, ctx context.Conte
 	for kindRows.Next() {
 		var kindID uuid.UUID
 		var code, name, icon string
-		if err := kindRows.Scan(&kindID, &code, &name, &icon); err != nil {
+		var description *string
+		if err := kindRows.Scan(&kindID, &code, &name, &icon, &description); err != nil {
 			writeError(w, http.StatusInternalServerError, "GLOSS_INTERNAL", "failed to scan kind")
 			return
 		}
@@ -184,6 +186,7 @@ func (s *Server) writeExtractionProfile(w http.ResponseWriter, ctx context.Conte
 			KindID:       kindID.String(),
 			Code:         code,
 			Name:         name,
+			Description:  description,
 			Icon:         icon,
 			AutoSelected: true,
 			Attributes:   attrs,

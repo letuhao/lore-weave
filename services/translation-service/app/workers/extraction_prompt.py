@@ -201,9 +201,16 @@ def build_extraction_prompt(
             json_fields["evidence_block"] = "0"
         json_fields["relevance"] = "major|appears"
 
+        # bug #33 — give the model the KIND's own definition (distinct from the
+        # per-attribute descriptions) so it picks the right kind instead of
+        # tagging one name under several ambiguous kinds (a driver of #38).
+        kind_desc = (kind_meta.get("description") or "").strip()
+        header = f"## {kind_code}\n"
+        if kind_desc:
+            header += f"{kind_desc}\n"
         sections.append(
-            f"## {kind_code}\n"
-            f"Attributes to extract:\n"
+            header
+            + "Attributes to extract:\n"
             + "\n".join(attr_lines) + "\n"
             + f"Output format: {json.dumps(json_fields, ensure_ascii=False)}"
         )
