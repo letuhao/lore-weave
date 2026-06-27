@@ -115,6 +115,34 @@ def test_build_tool_context_optional_headers_absent():
     assert tc.project_id is None
     assert tc.trace_id is None
     assert tc.mcp_key_id is None  # first-party call carries no public-key id
+    assert tc.spend_cap_usd is None  # nor a per-key cap
+
+
+def test_build_tool_context_lifts_spend_cap(monkeypatch):
+    # A public-edge call may carry X-Mcp-Spend-Cap-Usd → lands on the ctx (H-K) AND
+    # (universal hook) sets the loreweave_llm contextvar so a job this tool submits
+    # carries it into job_meta. We spy on the soft-imported setter.
+    import loreweave_mcp.context as ctxmod
+
+    captured: dict[str, object] = {}
+    monkeypatch.setattr(
+        ctxmod, "_set_llm_attribution",
+        lambda key, cap: captured.update(key=key, cap=cap),
+    )
+    tc = build_tool_context(_ctx(**{"x-mcp-key-id": "key-xyz", "x-mcp-spend-cap-usd": "5.5"}), SECRET)
+    assert tc.spend_cap_usd == 5.5
+    assert captured == {"key": "key-xyz", "cap": 5.5}
+
+
+def test_build_tool_context_malformed_cap_fails_open_to_none(monkeypatch):
+    import loreweave_mcp.context as ctxmod
+
+    captured: dict[str, object] = {}
+    monkeypatch.setattr(ctxmod, "_set_llm_attribution", lambda key, cap: captured.update(key=key, cap=cap))
+    # Garbage / negative cap → None (no per-key cap); a first-party call clears it.
+    tc = build_tool_context(_ctx(**{"x-mcp-spend-cap-usd": "not-a-number"}), SECRET)
+    assert tc.spend_cap_usd is None
+    assert captured == {"key": None, "cap": None}  # cleared, never leaks a prior call's cap
 
 
 def test_build_tool_context_lifts_mcp_key_id():

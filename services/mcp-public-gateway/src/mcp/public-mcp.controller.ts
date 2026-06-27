@@ -99,6 +99,12 @@ export class PublicMcpController {
       accept: req.header('accept') ?? 'application/json, text/event-stream',
       'content-type': req.header('content-type') ?? 'application/json',
     };
+    // P4/Wave-C (H-K) — forward the key's per-key USD spend sub-cap so a priced
+    // tool's job carries it (kit → job_meta → provider-registry reserve). Only
+    // when the key HAS a cap; a null cap means "owner guardrail only".
+    if (resolved.spendCapUsd != null) {
+      outboundHeaders['x-mcp-spend-cap-usd'] = String(resolved.spendCapUsd);
+    }
     const mcpVersion = req.header('mcp-protocol-version');
     if (mcpVersion) outboundHeaders['mcp-protocol-version'] = mcpVersion;
 

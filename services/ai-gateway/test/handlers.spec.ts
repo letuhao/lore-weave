@@ -51,6 +51,17 @@ describe('headerValue / extractEnvelope', () => {
     // absent (undefined) for first-party calls, so it forwards only when present
     expect(extractEnvelope({ 'x-user-id': 'u1' }).mcpKeyId).toBeUndefined();
   });
+
+  it('lifts X-Mcp-Spend-Cap-Usd into the envelope (per-key cap carrier, H-K)', () => {
+    const env = extractEnvelope({
+      'x-user-id': 'u1',
+      'x-mcp-key-id': 'key-xyz',
+      'x-mcp-spend-cap-usd': '5',
+    });
+    expect(env.spendCapUsd).toBe('5');
+    // absent for first-party calls + for public keys with no cap
+    expect(extractEnvelope({ 'x-user-id': 'u1' }).spendCapUsd).toBeUndefined();
+  });
 });
 
 describe('handleListTools', () => {

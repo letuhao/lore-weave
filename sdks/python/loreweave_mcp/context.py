@@ -21,6 +21,16 @@ from mcp.server.fastmcp import Context as MCPContext
 from mcp.server.fastmcp import FastMCP
 from mcp.server.transport_security import TransportSecuritySettings
 
+# Soft dependency on the LLM SDK (P4/Wave-C slice D). The kit lives in services
+# that DON'T submit LLM jobs (e.g. a pure read facade) and so may not depend on
+# loreweave_llm — skip the carrier hook there. Where it IS installed, every tool
+# call routes public-key attribution into the job_meta carrier (see
+# build_tool_context).
+try:
+    from loreweave_llm.attribution import set_public_key_attribution as _set_llm_attribution
+except Exception:  # pragma: no cover - exercised by services without loreweave_llm
+    _set_llm_attribution = None
+
 __all__ = [
     "ToolContext",
     "build_tool_context",
@@ -45,6 +55,11 @@ class ToolContext:
     # public edge (mcp-public-gateway); None for first-party traffic. Carrier for
     # per-key spend attribution (H-C) and the owned-resources-only default (OD-8).
     mcp_key_id: str | None = None
+    # The public key's per-key USD spend sub-cap (X-Mcp-Spend-Cap-Usd), forwarded
+    # by the edge from the resolved key; None when the key has no cap or for
+    # first-party traffic. P4/Wave-C slice D (H-K) — rides job_meta to the
+    # provider-registry reserve so two concurrent calls can't exceed the cap.
+    spend_cap_usd: float | None = None
     internal_token: str = ""
 
 
@@ -119,6 +134,17 @@ def build_tool_context(ctx: MCPContext, internal_token: str) -> ToolContext:
     session_id = _require_header(ctx, "x-session-id")
     trace_id = _optional_header(ctx, "x-trace-id")
     mcp_key_id = _optional_header(ctx, "x-mcp-key-id")
+    spend_cap_usd = _parse_spend_cap(_optional_header(ctx, "x-mcp-spend-cap-usd"))
+
+    # P4/Wave-C slice D — universal carrier hook. Set (or CLEAR) the public-key
+    # attribution on the loreweave_llm contextvar for THIS task, so any provider
+    # job this tool submits via loreweave_llm.submit_job carries mcp_key_id + cap
+    # in job_meta (the header is gone by the time we call provider-registry). Done
+    # here, once per tool call, so no priced provider needs per-tool wiring. A
+    # first-party call clears it to None (no leak across pooled tasks). Soft dep:
+    # services without loreweave_llm installed simply skip it.
+    if _set_llm_attribution is not None:
+        _set_llm_attribution(mcp_key_id, spend_cap_usd)
 
     return ToolContext(
         user_id=user_id,
@@ -126,8 +152,24 @@ def build_tool_context(ctx: MCPContext, internal_token: str) -> ToolContext:
         project_id=project_id,
         trace_id=trace_id,
         mcp_key_id=mcp_key_id,
+        spend_cap_usd=spend_cap_usd,
         internal_token=raw_token,
     )
+
+
+def _parse_spend_cap(raw: str | None) -> float | None:
+    """Parse the X-Mcp-Spend-Cap-Usd header to a non-negative float, or None when
+    absent/malformed/negative. A malformed cap fails OPEN to None (no per-key cap)
+    rather than rejecting the call — the owner-level guardrail still bounds spend,
+    and the edge is the trusted source of this value (a bad value here is a bug,
+    not an attack vector)."""
+    if not raw:
+        return None
+    try:
+        v = float(raw)
+    except (TypeError, ValueError):
+        return None
+    return v if v >= 0 else None
 
 
 def is_owner_only(ctx: object) -> bool:

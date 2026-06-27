@@ -181,6 +181,34 @@ describe('PublicMcpController', () => {
     // The relay carries the identity auth-service resolved — not anything client-supplied.
     expect(relayCall![1].headers['x-user-id']).toBe('real-user-from-auth');
     expect(relayCall![1].headers['x-internal-token']).toBe(INTERNAL);
+    // A key with NO cap → the cap header is absent (owner guardrail only, H-K).
+    expect('x-mcp-spend-cap-usd' in relayCall![1].headers).toBe(false);
+  });
+
+  it('forwards X-Mcp-Spend-Cap-Usd to the relay when the resolved key carries a cap (H-K)', async () => {
+    setEnv();
+    (global as unknown as { fetch: jest.Mock }).fetch = jest.fn().mockImplementation((url: string, init?: { body?: string }) => {
+      if (String(url).includes('/internal/mcp-keys/resolve')) {
+        return Promise.resolve({
+          status: 200,
+          json: async () => ({ user_id: 'u1', key_id: 'capped-key', scopes: ['read'], spend_cap_usd: 7.5, rate_limit_rpm: 60 }),
+          headers: { get: () => 'application/json' },
+        });
+      }
+      return Promise.resolve({
+        status: 200,
+        text: async () => '{"jsonrpc":"2.0","result":{"tools":[]},"id":1}',
+        headers: { get: (h: string) => (h.toLowerCase() === 'content-type' ? 'application/json' : null) },
+      });
+    });
+    const r = mockRes();
+    await new PublicMcpController().handle(
+      mockReq({ headers: { authorization: 'Bearer lw_pk_cappedkey' }, body: { jsonrpc: '2.0', method: 'tools/list', id: 1 } }),
+      r.res,
+    );
+    const relayCall = (global as unknown as { fetch: jest.Mock }).fetch.mock.calls.find((c) => String(c[0]).endsWith('/mcp'));
+    expect(relayCall).toBeDefined();
+    expect(relayCall![1].headers['x-mcp-spend-cap-usd']).toBe('7.5');
   });
 
   it('does NOT cache a transient auth failure (HIGH — a blip must not deny a valid key)', async () => {

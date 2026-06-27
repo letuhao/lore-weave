@@ -26,6 +26,11 @@ Streaming usage:
     await client.aclose()
 """
 
+from loreweave_llm.attribution import (
+    get_public_key_attribution,
+    merge_attribution_into_job_meta,
+    set_public_key_attribution,
+)
 from loreweave_llm.client import Client
 from loreweave_llm.errors import (
     LLMAudioFetchFailed,
@@ -86,6 +91,10 @@ from .reasoning import (
 
 __all__ = [
     "Client",
+    # P4/Wave-C slice D — public MCP-key spend attribution carrier
+    "set_public_key_attribution",
+    "get_public_key_attribution",
+    "merge_attribution_into_job_meta",
     # Models
     "StreamRequest",
     "ReasoningEffort",

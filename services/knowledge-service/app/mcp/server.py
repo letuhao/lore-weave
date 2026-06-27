@@ -66,6 +66,17 @@ from app.tools.definitions import (
     TIMELINE_LIMIT_MAX,
 )
 from app.tools.executor import ToolContext, execute_tool, get_tools_redis
+
+# P4/Wave-C slice D — public MCP-key spend carrier. knowledge-service builds its
+# OWN ToolContext (richer than the loreweave_mcp kit's), so the kit's universal
+# carrier hook never runs here — we must set the loreweave_llm attribution
+# contextvar ourselves in _build_tool_context, or kg_build_graph/build_wiki/
+# run_benchmark (priced) would carry NO per-key cap + NO attribution. Soft import
+# so a knowledge build without loreweave_llm still loads.
+try:
+    from loreweave_llm.attribution import set_public_key_attribution as _set_llm_attribution
+except Exception:  # pragma: no cover
+    _set_llm_attribution = None
 from app.tools.graph_schema_tools import (
     GRAPH_LIMIT_DEFAULT,
     GRAPH_LIMIT_MAX,
@@ -131,6 +142,19 @@ def _optional_header(ctx: MCPContext, header: str) -> str | None:
     return ctx.request_context.request.headers.get(header) or None
 
 
+def _parse_spend_cap(raw: str | None) -> float | None:
+    """Parse X-Mcp-Spend-Cap-Usd to a non-negative float, else None (fails OPEN to
+    no per-key cap on a malformed value — the owner guardrail still bounds spend).
+    Mirrors loreweave_mcp.context._parse_spend_cap (P4/Wave-C slice D)."""
+    if not raw:
+        return None
+    try:
+        v = float(raw)
+    except (TypeError, ValueError):
+        return None
+    return v if v >= 0 else None
+
+
 def _build_tool_context(ctx: MCPContext) -> ToolContext:
     """Build a ToolContext from MCP request headers.
 
@@ -174,6 +198,14 @@ def _build_tool_context(ctx: MCPContext) -> ToolContext:
 
     session_id = _require_header(ctx, "x-session-id")
     mcp_key_id = _optional_header(ctx, "x-mcp-key-id")
+
+    # P4/Wave-C slice D — set (or CLEAR) the public-key spend carrier on the
+    # loreweave_llm contextvar for THIS task, so a priced kg_* tool's provider job
+    # carries mcp_key_id + cap into job_meta (header is gone by the time we submit
+    # to provider-registry). Mirrors loreweave_mcp.build_tool_context's universal
+    # hook, which this custom builder bypasses. A first-party call clears it (None).
+    if _set_llm_attribution is not None:
+        _set_llm_attribution(mcp_key_id, _parse_spend_cap(_optional_header(ctx, "x-mcp-spend-cap-usd")))
 
     pool = get_knowledge_pool()
     projects_repo = ProjectsRepo(pool)

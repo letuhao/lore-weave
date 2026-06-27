@@ -361,3 +361,19 @@ async def test_mcp_server_rejects_bad_user_id_uuid(mcp_base_url):
         result = await session.call_tool("memory_search", {"query": "anything"})
     assert result.isError is True
     assert "x-user-id" in _error_text(result)
+
+
+# P4/Wave-C slice D — knowledge builds its OWN ToolContext, so it must run the
+# spend-carrier hook itself (the loreweave_mcp universal hook is bypassed). The
+# header parse is the local helper; the contextvar set mirrors the proven kit
+# pattern (sdks/python/loreweave_mcp/tests/test_kit.py) + the SDK merge
+# (sdks/python/tests/test_attribution.py).
+def test_parse_spend_cap():
+    from app.mcp.server import _parse_spend_cap
+
+    assert _parse_spend_cap("5.5") == 5.5
+    assert _parse_spend_cap("0") == 0.0
+    assert _parse_spend_cap(None) is None
+    assert _parse_spend_cap("") is None
+    assert _parse_spend_cap("not-a-number") is None  # fails open → no per-key cap
+    assert _parse_spend_cap("-1") is None  # negative rejected

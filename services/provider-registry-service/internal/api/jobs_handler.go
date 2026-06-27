@@ -202,7 +202,12 @@ func (s *Server) doSubmitJob(w http.ResponseWriter, r *http.Request, userID uuid
 		writeError(w, http.StatusInternalServerError, "LLM_INTERNAL_ERROR", "failed to allocate job id")
 		return
 	}
-	pf, ok := s.runGuardrailPreflight(w, r, jobID, userID, modelRef, in.Operation, in.ModelSource, in.Input, chunkCfg)
+	// P4/Wave-C (H-K) — the public key id + its spend cap ride job_meta (the SDK
+	// carrier bridge set them; the header is gone by the time a domain service
+	// calls us). Both nil for first-party traffic → no per-key cap, no attribution.
+	mcpKeyID := jobs.ParseJobMetaMcpKeyID(in.JobMeta)
+	spendCap := jobs.ParseJobMetaSpendCap(in.JobMeta)
+	pf, ok := s.runGuardrailPreflight(w, r, jobID, userID, modelRef, in.Operation, in.ModelSource, in.Input, chunkCfg, mcpKeyID, spendCap)
 	if !ok {
 		return // runGuardrailPreflight already wrote the error response
 	}
@@ -310,6 +315,7 @@ func (s *Server) runGuardrailPreflight(
 	operation, modelSource string,
 	rawInput json.RawMessage,
 	chunkCfg *jobs.ChunkConfig,
+	mcpKeyID *uuid.UUID, spendCapUSD *float64, // P4/Wave-C (H-K) — per-key cap carrier
 ) (preflightResult, bool) {
 	ctx := r.Context()
 
@@ -399,7 +405,7 @@ func (s *Server) runGuardrailPreflight(
 	}
 
 	// 3 + 4. Reserve. A success carries the reservation onto the job row.
-	res, err := s.guardrail.Reserve(ctx, userID, jobID, estimate, modelSource)
+	res, err := s.guardrail.Reserve(ctx, userID, jobID, estimate, modelSource, mcpKeyID, spendCapUSD)
 	if err != nil {
 		// Fail CLOSED — no job runs on an unconfirmed reservation. This is
 		// a deliberate availability coupling (/review-impl MED#4): while
@@ -418,6 +424,14 @@ func (s *Server) runGuardrailPreflight(
 	// platform pool, not the user's daily/monthly budget, is the binding
 	// constraint. Propagate it directly (Phase 6a-γ).
 	if res.Code == "PLATFORM_BALANCE_EXHAUSTED" {
+		writeBudget402(w, res)
+		return preflightResult{}, false
+	}
+	// Public MCP P4/Wave-C (H-K) — a per-key sub-cap breach is a hard ceiling on
+	// the KEY, not a per-job-size problem: don't salvage it by shrinking
+	// max_tokens (a public agent hitting its cap should get a clear 402, not a
+	// silently-truncated artifact). Propagate directly, like the platform gate.
+	if res.Code == "MCP_KEY_CAP_EXCEEDED" {
 		writeBudget402(w, res)
 		return preflightResult{}, false
 	}
@@ -444,7 +458,7 @@ func (s *Server) runGuardrailPreflight(
 		writeError(w, http.StatusInternalServerError, "LLM_INTERNAL_ERROR", "re-estimate failed")
 		return preflightResult{}, false
 	}
-	res2, err := s.guardrail.Reserve(ctx, userID, jobID, estimate2, modelSource)
+	res2, err := s.guardrail.Reserve(ctx, userID, jobID, estimate2, modelSource, mcpKeyID, spendCapUSD)
 	if err != nil {
 		writeError(w, http.StatusServiceUnavailable, "LLM_INTERNAL_ERROR", "billing service unavailable")
 		return preflightResult{}, false
@@ -506,11 +520,21 @@ func (s *Server) affordableMaxTokens(
 func writeBudget402(w http.ResponseWriter, res billing.ReserveResult) {
 	msg := fmt.Sprintf("insufficient budget: estimated $%.8f, available daily $%.8f / monthly $%.8f",
 		res.Requested, res.DailyAvailable, res.MonthlyAvailable)
+	code := "LLM_QUOTA_EXCEEDED"
 	if res.Code == "PLATFORM_BALANCE_EXHAUSTED" {
 		msg = fmt.Sprintf("platform free tier + credits exhausted: estimated $%.8f, available $%.8f",
 			res.Requested, res.PlatformAvailable)
 	}
-	writeError(w, http.StatusPaymentRequired, "LLM_QUOTA_EXCEEDED", msg)
+	// Public MCP P4/Wave-C (H-K) — a per-key sub-cap breach is distinct from the
+	// owner budget: surface its own code + the key's remaining headroom so a
+	// public agent (and the owner's audit) can tell "my key is capped" from "the
+	// account is out of budget".
+	if res.Code == "MCP_KEY_CAP_EXCEEDED" {
+		code = "LLM_BYOK_KEY_CAP_EXCEEDED"
+		msg = fmt.Sprintf("per-key spend cap reached: estimated $%.8f, key remaining $%.8f",
+			res.Requested, res.KeyAvailable)
+	}
+	writeError(w, http.StatusPaymentRequired, code, msg)
 }
 
 // mergeJobMeta folds a max_tokens cap into the caller's job_meta. Returns a

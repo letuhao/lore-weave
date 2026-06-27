@@ -19,6 +19,7 @@ export function extractEnvelope(headers: Headers): Envelope {
     traceId: headerValue(headers, 'x-trace-id'),
     projectId: headerValue(headers, 'x-project-id'),
     mcpKeyId: headerValue(headers, 'x-mcp-key-id'),
+    spendCapUsd: headerValue(headers, 'x-mcp-spend-cap-usd'),
   };
 }
 

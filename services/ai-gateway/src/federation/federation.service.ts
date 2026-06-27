@@ -24,6 +24,14 @@ export interface Envelope {
    */
   mcpKeyId?: string;
   /**
+   * Public key per-key USD spend sub-cap (X-Mcp-Spend-Cap-Usd) — set only for
+   * public-edge traffic whose key carries a cap. Forwarded downstream (SEC-1)
+   * so a priced tool's provider job carries it into job_meta → the
+   * provider-registry per-key reserve (H-K). Absent on first-party calls and on
+   * keys with no cap.
+   */
+  spendCapUsd?: string;
+  /**
    * Admin authority (INV-T2) — the RS256 `admin:write` token, forwarded ONLY on
    * the admin federation path as `X-Admin-Token`. It is a bearer credential and
    * MUST NEVER be logged or serialized (spec §6.7, §11 #7). The normal `/mcp`
@@ -49,6 +57,7 @@ export function buildEnvelopeHeaders(internalToken: string, env: Envelope): Reco
   if (env.traceId) headers['X-Trace-Id'] = env.traceId;
   if (env.projectId) headers['X-Project-Id'] = env.projectId;
   if (env.mcpKeyId) headers['X-Mcp-Key-Id'] = env.mcpKeyId;
+  if (env.spendCapUsd) headers['X-Mcp-Spend-Cap-Usd'] = env.spendCapUsd;
   return headers;
 }
 

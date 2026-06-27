@@ -489,6 +489,27 @@ func ParseJobMetaMcpKeyID(jobMeta []byte) *uuid.UUID {
 	return &id
 }
 
+// ParseJobMetaSpendCap extracts job_meta.spend_cap_usd (the public key's per-key
+// USD sub-cap, H-K) as a float. The SDK carrier writes it as a JSON number, so it
+// decodes to float64. Nil-tolerant on EVERY failure (absent / non-object /
+// non-number / negative): a malformed cap must never fail submit — it just means
+// no per-key cap is enforced for this job (the owner guardrail still applies).
+// Only meaningful alongside a non-nil ParseJobMetaMcpKeyID (public-key traffic).
+func ParseJobMetaSpendCap(jobMeta []byte) *float64 {
+	if len(jobMeta) == 0 {
+		return nil
+	}
+	var m map[string]any
+	if err := json.Unmarshal(jobMeta, &m); err != nil {
+		return nil
+	}
+	v, ok := m["spend_cap_usd"].(float64)
+	if !ok || v < 0 {
+		return nil
+	}
+	return &v
+}
+
 // Cancel transitions a pre-terminal job to cancelled and stamps
 // completed_at. Returns rows-affected so caller can distinguish "already
 // terminal" (0) from "actually cancelled" (1).
