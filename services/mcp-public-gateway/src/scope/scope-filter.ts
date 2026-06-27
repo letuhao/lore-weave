@@ -199,3 +199,158 @@ export function filterListResponseText(text: string, scopes: readonly string[], 
   }
   return JSON.stringify(parsed);
 }
+
+// ─────────────────────────────────────────────────────────────────────────────
+// P4 slice F (H17) — multi-step partial-failure honesty.
+//
+// A JSON-RPC BATCH (`Array.isArray(body)`) that partially lands must report WHAT
+// ACTUALLY LANDED per step, not an opaque all-or-nothing blob. We attach a
+// `step_outcomes` array to a successfully-relayed batch so the agent can report
+// honestly per step. The EDGE is the source of truth for what it did: which steps
+// it would deny at the scope gate vs which it relayed; for relayed steps we refine
+// to `failed` iff the upstream JSON-RPC entry for that step's id is an `error`.
+//
+// SINGLE (non-batch) requests are never touched — backward-compat (the wrapper is
+// only invoked for `Array.isArray(body)`). A batch-level failure (rate-limit /
+// upstream-down) never reaches this code — it stays a single error envelope.
+// ─────────────────────────────────────────────────────────────────────────────
+
+/** The per-step outcome an agent sees: edge-denied, relayed-ok, or relayed-but-the-step-errored. */
+export type StepOutcome = 'relayed' | 'denied_scope' | 'failed';
+
+export interface RequestStep {
+  /** The JSON-RPC id of this request step (null when the element carried none — a notification). */
+  id: unknown;
+  /** The `tools/call` tool name, else the JSON-RPC method, else null (a malformed element). */
+  name: string | null;
+  /** True iff this element is a `tools/call` (only these are scope-gated / cost-bearing). */
+  isToolCall: boolean;
+}
+
+export interface StepOutcomeEntry {
+  id: unknown;
+  name: string | null;
+  outcome: StepOutcome;
+}
+
+/** True iff the body is a JSON-RPC batch (array). The ONLY shape slice F enriches. */
+export function isBatchBody(body: unknown): boolean {
+  return Array.isArray(body);
+}
+
+/**
+ * Parse a request body into its ordered per-step descriptors. Faithful to the wire
+ * order so a `step_outcomes` array lines up 1:1 with the request the agent sent.
+ * Works for a single message (length-1) or a batch; the caller only enriches batches.
+ */
+export function parseRequestSteps(body: unknown): RequestStep[] {
+  const messages: JsonRpcRequest[] = Array.isArray(body)
+    ? (body as JsonRpcRequest[])
+    : body && typeof body === 'object'
+      ? [body as JsonRpcRequest]
+      : [];
+  return messages.map((m) => {
+    const tc = isToolCall(m);
+    const name = tc
+      ? (m as JsonRpcRequest & { params: { name: string } }).params.name
+      : typeof m?.method === 'string'
+        ? m.method
+        : null;
+    return { id: m?.id ?? null, name, isToolCall: tc };
+  });
+}
+
+/** Index a parsed upstream batch response by JSON-RPC id → whether that entry is an error. */
+function upstreamErrorById(upstreamText: string): Map<string, boolean> | null {
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(upstreamText);
+  } catch {
+    return null; // not JSON (SSE / unexpected) — can't refine; treat relayed steps as relayed
+  }
+  if (!Array.isArray(parsed)) return null; // not a batch response array — no per-step refinement
+  const map = new Map<string, boolean>();
+  for (const entry of parsed) {
+    if (entry && typeof entry === 'object') {
+      const id = (entry as { id?: unknown }).id;
+      const hasError = (entry as { error?: unknown }).error != null;
+      map.set(idKey(id), hasError);
+    }
+  }
+  return map;
+}
+
+/** Stable string key for matching a JSON-RPC id across request/response (number|string|null). */
+function idKey(id: unknown): string {
+  if (id === null || id === undefined) return ' null';
+  return `${typeof id}:${String(id)}`;
+}
+
+/**
+ * Build the per-step `step_outcomes` for a BATCH relay (H17). One entry per request
+ * step, in wire order:
+ *   - `denied_scope` — the edge would default-deny this tool call (out-of-scope / unknown).
+ *   - `failed`       — relayed, but the upstream JSON-RPC entry for this id came back an error.
+ *   - `relayed`      — relayed and (as far as the edge can tell) landed.
+ *
+ * A `*` (wildcard) key relays everything, so no step is `denied_scope`. When the upstream
+ * body is not a parseable JSON-RPC batch array (SSE / a single error), relayed steps stay
+ * `relayed` — we never FABRICATE per-step success or failure we can't see.
+ */
+export function buildStepOutcomes(
+  body: unknown,
+  scopes: readonly string[],
+  upstreamText: string,
+): StepOutcomeEntry[] {
+  const steps = parseRequestSteps(body);
+  const wildcard = scopes.includes(WILDCARD_SCOPE);
+  const errById = upstreamErrorById(upstreamText);
+  return steps.map((s) => {
+    // The edge is the source of truth for what it relayed vs denied.
+    if (s.isToolCall && s.name != null && !wildcard && !isToolAllowed(s.name, scopes)) {
+      return { id: s.id, name: s.name, outcome: 'denied_scope' as StepOutcome };
+    }
+    // Relayed: refine to `failed` only when the upstream entry for THIS id is an error.
+    const errored = errById?.get(idKey(s.id)) === true;
+    return { id: s.id, name: s.name, outcome: (errored ? 'failed' : 'relayed') as StepOutcome };
+  });
+}
+
+/**
+ * Annotate a successfully-relayed BATCH response IN PLACE with each step's edge verdict —
+ * keeping the bare JSON-RPC array shape (H-M transport-transparency). Each response item
+ * gains an additive top-level `_meta.step_outcome` (`relayed` | `failed` | `denied_scope`):
+ * a strict JSON-RPC client ignores the unknown field, while an agent reads it for honest
+ * per-step status. ADDITIVE + backward-compatible:
+ *   - A SINGLE (non-array) request → upstream text returned UNCHANGED (byte-for-byte).
+ *   - A batch whose upstream body is not a parseable JSON-RPC array (SSE / single error) →
+ *     returned UNCHANGED (we never reshape what we can't parse, and never FABRICATE).
+ *   - A batch JSON-RPC array → the SAME array, each object item carrying `_meta.step_outcome`.
+ */
+export function annotateBatchStepOutcomes(
+  body: unknown,
+  scopes: readonly string[],
+  upstreamText: string,
+): string {
+  if (!Array.isArray(body)) return upstreamText; // single request — never touched
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(upstreamText);
+  } catch {
+    return upstreamText; // not JSON (SSE) — leave as-is
+  }
+  if (!Array.isArray(parsed)) return upstreamText; // not a batch response array — leave as-is
+  // The edge's verdict per request-step id (denied_scope from the gate; relayed/failed
+  // refined from the upstream entry). Map onto the response items by JSON-RPC id.
+  const verdictById = new Map<string, StepOutcome>();
+  for (const e of buildStepOutcomes(body, scopes, upstreamText)) verdictById.set(idKey(e.id), e.outcome);
+  for (const item of parsed) {
+    if (!item || typeof item !== 'object') continue;
+    const id = (item as { id?: unknown }).id;
+    const outcome =
+      verdictById.get(idKey(id)) ?? ((item as { error?: unknown }).error != null ? 'failed' : 'relayed');
+    const obj = item as { _meta?: Record<string, unknown> };
+    obj._meta = { ...(obj._meta ?? {}), step_outcome: outcome };
+  }
+  return JSON.stringify(parsed);
+}

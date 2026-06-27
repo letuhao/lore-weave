@@ -3,7 +3,7 @@ import { randomUUID } from 'node:crypto';
 import type { Request, Response } from 'express';
 import { loadConfig } from '../config/config.js';
 import { KeyResolver } from '../auth/key-resolver.js';
-import { countToolCalls, filterListResponseText, gateRequestBody, isListRequest, isWriteRequest, singleWriteConfirmToolName } from '../scope/scope-filter.js';
+import { annotateBatchStepOutcomes, countToolCalls, filterListResponseText, gateRequestBody, isBatchBody, isListRequest, isWriteRequest, singleWriteConfirmToolName } from '../scope/scope-filter.js';
 import { detectProposeResult, pendingApprovalResponse, proposeDivertError } from '../scope/propose-detect.js';
 import { confirmActionResult, denyConfirmAction, detectConfirmActionCall, injectConfirmActionTool } from '../scope/confirm-action.js';
 import { domainScope, type Domain } from '../scope/tool-policy.js';
@@ -213,9 +213,28 @@ export class PublicMcpController {
           text = injectConfirmActionTool(text);
         }
       }
+
+      // P4 slice F (H17): multi-step partial-failure honesty. For a successfully-relayed
+      // JSON-RPC BATCH, annotate each response item with its `_meta.step_outcome` so the agent
+      // sees which steps landed (vs which errored upstream / the edge denied) — WITHOUT
+      // reshaping the response: it stays a bare JSON-RPC array (H-M transport-transparency),
+      // each item just gains an additive, ignorable `_meta` field. ADDITIVE — a single request
+      // and a non-batch/SSE upstream body pass through byte-for-byte (annotateBatchStepOutcomes
+      // is a no-op there). A batch-level failure (rate-limit / upstream-down) returned earlier
+      // as a single error envelope, so it never reaches here. The confirm_action +
+      // propose-divert paths above are single-message-only and have already returned.
+      let annotatedBatch = false;
+      if (ok && hasBody && !rewroteList && isBatchBody(req.body)) {
+        const enriched = annotateBatchStepOutcomes(req.body, resolved.scopes, text);
+        if (enriched !== text) {
+          text = enriched;
+          annotatedBatch = true;
+        }
+      }
+
       res.status(upstream.status);
-      // We emit JSON when we rewrote the list; otherwise echo the upstream type.
-      const ct = rewroteList ? 'application/json' : upstream.headers.get('content-type');
+      // We emit JSON when we rewrote the list or annotated a batch; otherwise echo upstream type.
+      const ct = rewroteList || annotatedBatch ? 'application/json' : upstream.headers.get('content-type');
       if (ct) res.setHeader('content-type', ct);
       res.send(text);
     } catch (e) {

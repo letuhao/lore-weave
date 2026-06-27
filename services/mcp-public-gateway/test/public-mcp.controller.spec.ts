@@ -527,6 +527,81 @@ describe('PublicMcpController', () => {
     expect(f.mock.calls.some((c) => String(c[0]).includes('/internal/mcp-keys/confirm'))).toBe(false);
   });
 
+  // ── P4 slice F (H17): multi-step partial-failure honesty ───────────────────
+  // A relayed JSON-RPC BATCH stays a bare array; each item gains _meta.step_outcome.
+  function batchFetch(resolve: Record<string, unknown>, upstreamArray: unknown[] | string) {
+    return jest.fn().mockImplementation((url: string) => {
+      if (String(url).includes('/internal/mcp-keys/resolve')) {
+        return Promise.resolve({ status: 200, json: async () => resolve, headers: { get: () => 'application/json' } });
+      }
+      const text = typeof upstreamArray === 'string' ? upstreamArray : JSON.stringify(upstreamArray);
+      return Promise.resolve({
+        status: 200,
+        text: async () => text,
+        headers: { get: (h: string) => (h.toLowerCase() === 'content-type' ? 'application/json' : null) },
+      });
+    });
+  }
+  const kgReadResolve = { user_id: 'u', key_id: 'k', scopes: ['read', 'domain:knowledge'] };
+  const twoStepBatch = [
+    { jsonrpc: '2.0', method: 'tools/call', params: { name: 'kg_graph_query' }, id: 1 },
+    { jsonrpc: '2.0', method: 'tools/call', params: { name: 'memory_search' }, id: 2 },
+  ];
+
+  it('annotates a partially-failed batch with per-item _meta.step_outcome, keeping the array (H17)', async () => {
+    setEnv();
+    (global as unknown as { fetch: jest.Mock }).fetch = batchFetch(kgReadResolve, [
+      { jsonrpc: '2.0', id: 1, result: { ok: true } },
+      { jsonrpc: '2.0', id: 2, error: { code: -32000, message: 'boom' } },
+    ]);
+    const r = mockRes();
+    await new PublicMcpController().handle(
+      mockReq({ headers: { authorization: 'Bearer lw_pk_kgkey' }, body: twoStepBatch }),
+      r.res,
+    );
+    expect(r.statusCode).toBe(200);
+    const out = JSON.parse(r.sentBody as string);
+    // STILL a bare JSON-RPC array (transport-transparent), each item gains _meta.step_outcome.
+    expect(Array.isArray(out)).toBe(true);
+    expect(out[0]).toEqual({ jsonrpc: '2.0', id: 1, result: { ok: true }, _meta: { step_outcome: 'relayed' } });
+    expect(out[1]).toEqual({ jsonrpc: '2.0', id: 2, error: { code: -32000, message: 'boom' }, _meta: { step_outcome: 'failed' } });
+    expect(r.headers['content-type']).toBe('application/json');
+  });
+
+  it('leaves a SINGLE request response unchanged (backward-compat — no step_outcomes)', async () => {
+    setEnv();
+    (global as unknown as { fetch: jest.Mock }).fetch = batchFetch(
+      kgReadResolve,
+      '{"jsonrpc":"2.0","id":1,"result":{"ok":true}}',
+    );
+    const r = mockRes();
+    await new PublicMcpController().handle(
+      mockReq({
+        headers: { authorization: 'Bearer lw_pk_kgkey' },
+        body: { jsonrpc: '2.0', method: 'tools/call', params: { name: 'kg_graph_query' }, id: 1 },
+      }),
+      r.res,
+    );
+    expect(r.statusCode).toBe(200);
+    // Byte-for-byte upstream echo — no annotation, no step_outcome key.
+    expect(r.sentBody).toBe('{"jsonrpc":"2.0","id":1,"result":{"ok":true}}');
+    expect(r.sentBody as string).not.toContain('step_outcome');
+  });
+
+  it('does NOT wrap when the upstream batch body is not a JSON array (no fabrication)', async () => {
+    setEnv();
+    // ai-gateway answered the batch with a single error envelope (object, not array).
+    const upstream = '{"jsonrpc":"2.0","error":{"code":-32600,"message":"bad"},"id":null}';
+    (global as unknown as { fetch: jest.Mock }).fetch = batchFetch(kgReadResolve, upstream);
+    const r = mockRes();
+    await new PublicMcpController().handle(
+      mockReq({ headers: { authorization: 'Bearer lw_pk_kgkey' }, body: twoStepBatch }),
+      r.res,
+    );
+    expect(r.sentBody).toBe(upstream); // passed through unchanged
+    expect(r.sentBody as string).not.toContain('step_outcome');
+  });
+
   it('advertises confirm_action in tools/list for a dual-flag key', async () => {
     setEnv();
     (global as unknown as { fetch: jest.Mock }).fetch = jest.fn().mockImplementation((url: string) => {
