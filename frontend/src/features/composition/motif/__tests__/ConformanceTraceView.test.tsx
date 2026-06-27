@@ -32,9 +32,19 @@ describe('ConformanceTraceView — missing conform_count must not crash', () => 
     expect(screen.queryByText(/^\d+\/\d+$/)).toBeNull();
   });
 
-  it('renders the count when conform_count IS present (forward-compatible)', async () => {
-    apiJson.mockResolvedValue({ chapter_id: 'c1', conform_count: [2, 3], calibrated: true, scenes: [] });
+  it('derives the [conforming/judged] count from the nested scene verdicts', async () => {
+    const sc = (id: string, beat: boolean | null, band: boolean | null) => ({
+      outline_node_id: id, title: id, beat_role: 'rising',
+      planned: { motif_id: 'm1', motif_version: 1, beat_key: 'b', tension: 40, role_bindings: {} },
+      realized: { job_id: 'j', has_prose: true },
+      conformance: beat === null ? null : { beat_realized: beat, tension_band_match: band, calibrated: true },
+    });
+    // 3 judged scenes, 2 conforming; +1 unjudged (null verdict) is excluded from the denominator.
+    apiJson.mockResolvedValue({
+      scope: 'chapter', chapter_id: 'c1', calibrated: true,
+      scenes: [sc('a', true, true), sc('b', true, true), sc('c', false, true), sc('d', null, null)],
+    });
     render(<ConformanceTraceView projectId="p1" chapterId="c1" token="tok" />, { wrapper: wrap() });
-    expect(await screen.findByText('2/3')).toBeInTheDocument();
+    expect(await screen.findByTestId('conformance-count')).toHaveTextContent('2/3');
   });
 });

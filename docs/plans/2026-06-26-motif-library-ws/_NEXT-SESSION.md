@@ -1,5 +1,34 @@
 # ▶ NEXT SESSION — Narrative Motif Library BUILD (handoff)
 
+## STATUS (2026-06-28 PM-7) — D-MOTIF-CONFORMANCE-CONTRACT CLEARED (FE↔reader reconciled, live)
+
+**`D-MOTIF-CONFORMANCE-CONTRACT`** ✅ — the W6 conformance FE panel now mirrors its W5 reader.
+Aligned the FE to the reader's NESTED shape (`routers/conformance.py _assemble_conformance` +
+the `build_conformance_dim` dim) instead of the old flat `SceneConformance`:
+- `motif/types.ts`: new `ConformanceDim` (`beat_realized|tension_band_match: bool|null`, `reason`,
+  `motif_id`, `beat_key`, `planned_tension_band`, `calibrated`, `error?`); `SceneConformance` is now
+  `{outline_node_id, title, beat_role, planned{motif_id,motif_version,beat_key,tension,role_bindings},
+  realized{job_id,has_prose}, conformance: dim|null}`; `ChapterConformance` = `{scope?, chapter_id,
+  calibrated, scenes}`. **Dropped** `conform_count` + `motif_name` (the reader never sent them; a
+  single chapter motif_name is ill-defined — a chapter holds per-scene motifs).
+- `ConformanceSceneRow.tsx`: reads the nested shape; 3 verdict states — judged (✓/⚠/✗ + advisory
+  when `!calibrated`, R2.1), `null` verdict → neutral "Not checked yet", degraded judge (null
+  booleans + `error`) → "Couldn't check". Realized is presence-only ("Written"/"Not written yet" —
+  the trace never carries prose).
+- `ConformanceTraceView.tsx`: DERIVES the `[conforming/judged]` header count from the per-scene
+  verdicts (the reader emits no `conform_count`).
+- Tests reshaped: `ConformanceSceneRow` (5, +null/degraded), `contract.test` (nested fixture, asserts
+  no `conform_count`), `ConformanceTraceView` (derived-count). **598 composition FE green; tsc clean.**
+- **LIVE-VERIFIED:** `GET …/conformance?scope=chapter` returns exactly the new shape (`{scope,
+  chapter_id, calibrated, scenes:[{…planned,realized,conformance:null}]}`); the panel — which
+  WHITE-SCREENED in PM-6 — now renders 3 real scene rows ("Planned setup T20 / Realized Not written
+  yet / Conformance Not checked yet"), no boundary fallback, no crash. (Conformance dim is null
+  because the producer is OFF by default — populating it is `D-MOTIF-CONFORMANCE-PRODUCER-LIVE-SMOKE`,
+  separate.) The PM-6 `MotifPanelBoundary` stays as defense-in-depth.
+
+**Still open from PM-6:** `D-MOTIF-FE-SWAP-NODE-GRANULARITY` (per-scene surface vs per-chapter W2
+bind engine — needs the binding-granularity decision before building).
+
 ## STATUS (2026-06-28 PM-6) — D-MOTIF-FE browser smoke RUN · 2 crashes FIXED · 2 new defers
 
 Ran the deferred Playwright smoke for `D-MOTIF-FE-PLANNERVIEW-WIRING` (Shape A) on the **real

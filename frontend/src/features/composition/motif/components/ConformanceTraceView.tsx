@@ -17,19 +17,23 @@ export function ConformanceTraceView({ projectId, chapterId, token }: Props) {
   const { t } = useTranslation('composition');
   const trace = useConformanceTrace(projectId, chapterId, token);
   const conf = trace.conformance;
-  const isEmpty = !trace.isLoading && !trace.isError && (!conf || conf.scenes.length === 0);
+  const scenes = conf?.scenes ?? [];
+  const isEmpty = !trace.isLoading && !trace.isError && scenes.length === 0;
+  // The reader emits no chapter-level conform_count — derive [conforming, judged]
+  // from the per-scene verdicts (a scene counts only once both binary flags resolved).
+  const judged = scenes.filter(
+    (s) => s.conformance && typeof s.conformance.beat_realized === 'boolean' && typeof s.conformance.tension_band_match === 'boolean',
+  );
+  const conforming = judged.filter((s) => s.conformance!.beat_realized && s.conformance!.tension_band_match).length;
 
   return (
     <div data-testid="conformance-trace-view" className="flex h-full flex-col gap-2 overflow-auto p-2">
       <div className="flex items-center justify-between gap-2">
         <div className="text-sm font-medium text-neutral-800 dark:text-neutral-100">
           {t('motif.conf.title', { defaultValue: 'Conformance' })}
-          {/* conform_count is summary-only; the chapter reader (GET …/conformance)
-              does NOT emit it today (D-MOTIF-CONFORMANCE-CONTRACT). Guard the array
-              access so a missing field degrades the header to no-count instead of
-              white-screening the whole studio (the panel is always-mounted). */}
-          {Array.isArray(conf?.conform_count) && (
-            <span className="ml-2 text-xs text-neutral-500">{conf.conform_count[0]}/{conf.conform_count[1]}</span>
+          {/* FE-derived [conforming/judged] count (the reader emits no conform_count). */}
+          {judged.length > 0 && (
+            <span className="ml-2 text-xs text-neutral-500" data-testid="conformance-count">{conforming}/{judged.length}</span>
           )}
         </div>
         <button
@@ -61,7 +65,7 @@ export function ConformanceTraceView({ projectId, chapterId, token }: Props) {
           </p>
         ) : (
           <div>
-            {(conf?.scenes ?? []).map((s) => (
+            {scenes.map((s) => (
               <ConformanceSceneRow key={s.outline_node_id} scene={s} onRegenerate={(id) => trace.regenerateToBeat.mutate(id)} />
             ))}
           </div>

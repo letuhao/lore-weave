@@ -37,14 +37,14 @@ const boundMotif = {
 } satisfies BoundMotif;
 
 const sceneConf = {
-  outline_node_id: 'n1', beat_label: 'Discovery', planned_tension: 2,
-  role_bindings: { seeker: 'Lin' }, realized_excerpt: '…', realized_events: ['found jade'],
-  realized_tension: 2, beat_realized: true, tension_band_match: true, calibrated: false,
-  flags: [],
+  outline_node_id: 'n1', title: 'Discovery', beat_role: 'rising',
+  planned: { motif_id: 'm1', motif_version: 1, beat_key: 'Discovery', tension: 40, role_bindings: { seeker: 'Lin' } },
+  realized: { job_id: 'j1', has_prose: true },
+  conformance: { beat_realized: true, tension_band_match: true, calibrated: false, reason: '' },
 } satisfies SceneConformance;
 
 const chapterConf = {
-  chapter_id: 'c1', motif_name: 'Fortuitous Encounter', conform_count: [2, 3], scenes: [sceneConf],
+  scope: 'chapter', chapter_id: 'c1', calibrated: false, scenes: [sceneConf],
 } satisfies ChapterConformance;
 
 const cost = {
@@ -70,11 +70,13 @@ describe('F0 §3.6 frozen DTO fixtures', () => {
     expect(boundMotif.match_reason.summary.length).toBeGreaterThan(0);
     expect(typeof boundMotif.match_reason.cosine).toBe('number');
   });
-  it('SceneConformance carries the calibration honesty flag', () => {
-    expect(sceneConf.calibrated).toBe(false);
+  it('SceneConformance carries the calibration honesty flag on its verdict dim', () => {
+    expect(sceneConf.conformance?.calibrated).toBe(false);
   });
-  it('ChapterConformance conform_count is a [conforming,total] tuple', () => {
-    expect(chapterConf.conform_count).toEqual([2, 3]);
+  it('ChapterConformance mirrors the reader: nested scene rows, no conform_count', () => {
+    expect(chapterConf).not.toHaveProperty('conform_count');
+    expect(chapterConf.scenes[0].planned.role_bindings).toEqual({ seeker: 'Lin' });
+    expect(chapterConf.scenes[0].realized.has_prose).toBe(true);
   });
   it('CostEstimate carries a confirm_token + quota_remaining', () => {
     expect(cost.confirm_token).toBe('tok');

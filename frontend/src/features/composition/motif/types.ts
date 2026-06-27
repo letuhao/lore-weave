@@ -147,30 +147,49 @@ export type SuccessionHint = {
 };
 
 // ── conformance trace (W5 exposes — GET …/conformance?scope=chapter) ──────────
+// The shape MIRRORS the chapter reader's nested rows (routers/conformance.py
+// `_assemble_conformance`): per scene `{planned, realized, conformance}`. The
+// `conformance` dim is the critic.motif_conformance verdict (or null when no
+// completed job / no dim yet / no bound motif). `calibrated=false` ⇒ the verdict is
+// an advisory unverified self-report (R2.1 honesty). booleans may be null when the
+// judge degraded (error set). NB: the reader emits NO chapter-level `conform_count`
+// or `motif_name` — a chapter holds per-scene motifs, so a single chapter motif_name
+// is ill-defined; the panel DERIVES the conforming/total count from `scenes`.
+
+/** The critic.motif_conformance dim, echoed verbatim from the latest job's critic. */
+export type ConformanceDim = {
+  beat_realized: boolean | null;
+  tension_band_match: boolean | null;
+  reason?: string;
+  motif_id?: string | null;
+  beat_key?: string | null;
+  planned_tension_band?: [number, number];
+  calibrated: boolean;          // false ⇒ "advisory, unverified self-report"
+  error?: string;               // set when the judge degraded (booleans null)
+};
 
 export type SceneConformance = {
   outline_node_id: string;
-  beat_label: string;
-  planned_tension: number | null;
-  role_bindings: Record<string, string>;
-  realized_excerpt: string;
-  realized_events: string[];
-  realized_tension: number | null;
-  beat_realized: boolean;
-  tension_band_match: boolean;
-  calibrated: boolean;          // false ⇒ "advisory, unverified self-report"
-  flags: string[];              // e.g. ['beat_drift','tension_low']
+  title: string;
+  beat_role: string | null;
+  planned: {
+    motif_id: string | null;
+    motif_version: number | null;
+    beat_key: string | null;
+    tension: number | null;            // 0-100 (outline_node scale)
+    role_bindings: Record<string, string>;
+  };
+  realized: {
+    job_id: string | null;
+    has_prose: boolean;                // presence only — the trace never carries prose
+  };
+  conformance: ConformanceDim | null;  // null = not judged yet / no bound motif
 };
 
 export type ChapterConformance = {
+  scope?: string;
   chapter_id: string;
-  // NOTE (D-MOTIF-CONFORMANCE-CONTRACT): the chapter reader (GET …/conformance)
-  // currently emits only {scope, chapter_id, calibrated, scenes} and its scene rows
-  // are NESTED ({planned, realized, conformance}), NOT the flat SceneConformance
-  // below. These two summary fields are NOT sent today — hence optional + guarded at
-  // the call site. Full FE↔BE reconciliation is the deferred contract work.
-  motif_name?: string;
-  conform_count?: [number, number];   // [conforming, total]
+  calibrated: boolean;                 // chapter-level calibration flag (R2.1)
   scenes: SceneConformance[];
 };
 
