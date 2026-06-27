@@ -97,6 +97,13 @@
     "no_matches": "Không có kết quả cho \"{{query}}\"",
     "message_matches": "Khớp tin nhắn"
   },
+  "switcher": {
+    "switch": "Chuyển cuộc trò chuyện",
+    "new_chat": "Trò chuyện mới",
+    "no_active": "Chưa có trò chuyện",
+    "loading": "Đang tải…",
+    "empty": "Chưa có cuộc trò chuyện nào."
+  },
   "view": {
     "configure_voice": "Cấu hình {{missing}} để bật Trợ lý giọng nói",
     "missing_both": "mô hình STT và TTS",

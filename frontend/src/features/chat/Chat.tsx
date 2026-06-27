@@ -4,6 +4,7 @@ import { ChatSessionProvider, ChatStreamProvider, ChatLiveStateProvider, useChat
 import { ChatView } from './components/ChatView';
 import { NewChatDialog } from './components/NewChatDialog';
 import { ChatEmptyState } from './components/ChatEmptyState';
+import { SessionSwitcher } from './components/SessionSwitcher';
 import { useEmbeddedChatBinding } from './useEmbeddedChatBinding';
 import { useGlossaryDisplayLanguage } from '@/features/glossary/hooks/useGlossaryDisplayLanguage';
 
@@ -71,12 +72,20 @@ export function Chat({ bookId, editorContext, composeMode, actionBar, windowingE
 }
 
 function EmbeddedChat({ bookId, actionBar, className }: ChatProps) {
-  const { sessions, sessionsLoading, activeSession, selectSession, createSession, updateActiveSession } =
-    useChatSession();
+  const {
+    sessions,
+    sessionsLoading,
+    activeSession,
+    selectSession,
+    createSession,
+    updateActiveSession,
+    showNewDialog,
+    setShowNewDialog,
+  } = useChatSession();
   // The user can dismiss the create dialog without making a session.
   const [dialogDismissed, setDialogDismissed] = useState(false);
 
-  const { needsNewSession } = useEmbeddedChatBinding({
+  const { projectId, needsNewSession } = useEmbeddedChatBinding({
     bookId,
     sessions,
     sessionsLoading,
@@ -88,20 +97,29 @@ function EmbeddedChat({ bookId, actionBar, className }: ChatProps) {
   // Derived, not stored: show the create dialog while a book-scoped session is
   // needed and none is active — until the user dismisses it. No setState in
   // render (CLAUDE.md: don't drive UI off a useEffect/render side-effect).
-  const dialogOpen = needsNewSession && !activeSession && !dialogDismissed;
+  // The session switcher's "New chat" (showNewDialog) opens it on demand too,
+  // even when a session is already active (bug #17).
+  const dialogOpen = (needsNewSession && !activeSession && !dialogDismissed) || showNewDialog;
 
   return (
     <div className={`flex h-full flex-col overflow-hidden ${className ?? ''}`}>
-      <ChatView className={!activeSession ? 'hidden' : 'flex-1'} footerSlot={actionBar} />
+      <ChatView
+        className={!activeSession ? 'hidden' : 'flex-1'}
+        footerSlot={actionBar}
+        headerSlot={<SessionSwitcher scopeProjectId={projectId} />}
+      />
       {!activeSession && <ChatEmptyState className="flex-1" />}
       <NewChatDialog
         open={dialogOpen}
-        onClose={() => setDialogDismissed(true)}
+        onClose={() => {
+          setDialogDismissed(true);
+          setShowNewDialog(false);
+        }}
         onCreate={(modelRef, systemPrompt) => {
           void createSession({
             model_source: 'user_model',
             model_ref: modelRef,
-            title: 'Editor Chat',
+            title: 'New Chat',
             system_prompt: systemPrompt,
           });
         }}

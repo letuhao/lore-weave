@@ -227,11 +227,11 @@ Chose "build full" for KG but don't see fact, summary, and other parts. Unsure i
 > RC:
 > Fix:
 
-### [ ] 17. Cannot open a fresh AI assistant in workspace (old session is huge)
+### [x] 17. Cannot open a fresh AI assistant in workspace (old session is huge)
 Cannot open a fresh AI assistant in the workspace — the old chat session is too huge.
 
-> RC:
-> Fix:
+> RC: Multi-session was fully built (chat-service CRUD + `SessionSidebar`/`NewChatDialog`/`useSessions` on the `/chat` page), but the **embedded/workspace chat** (BookAssistantDock + editor AI panel) auto-binds exactly ONE session per book via `useEmbeddedChatBinding` and exposed NO switcher or new-chat affordance — so once a book's chat grew huge, there was no in-workspace way to start a fresh one. The embedded `ChatEmptyState` "Start new chat" button was also inert (its `setShowNewDialog(true)` was never read by `EmbeddedChat.dialogOpen`).
+> Fix: New shared `features/chat/components/SessionSwitcher.tsx` — a compact in-header dropdown (reads everything from `useChatSession`) to switch between this book's chats, archive a stale one, and start a fresh chat. Mounted via a new host-injected `headerSlot` on `ChatView`→`ChatHeader` (page mode unaffected; the static title shows when no slot). `EmbeddedChat` now threads the binding's `projectId` into the switcher's `scopeProjectId` so it lists ONLY this book's sessions — which also prevents the binding from re-patching a foreign session into this book on switch — and folds `showNewDialog` into `dialogOpen` so "New chat" (and the empty-state CTA) open the dialog even with an active session. 7 new unit tests; 185/185 chat tests green; tsc clean.
 
 ### [ ] 18. Glossary assistant planner loops forever (self-recheck loop)
 The glossary-assistant planner usually loops, even with a very strong local model. Seems stuck in a self-recheck loop forever. Investigate what our planner does — does it hand the whole plan to the model? A plan's progress needs multiple pieces of work controllable by logic. Tools like Kiro actively inject important info to control the model's work. (Web search + investigate.)

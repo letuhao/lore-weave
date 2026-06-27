@@ -97,6 +97,13 @@
     "no_matches": "找不到「{{query}}」的結果",
     "message_matches": "訊息符合"
   },
+  "switcher": {
+    "switch": "切換對話",
+    "new_chat": "新對話",
+    "no_active": "無對話",
+    "loading": "載入中…",
+    "empty": "尚無對話。"
+  },
   "view": {
     "configure_voice": "設定{{missing}}以啟用語音輔助",
     "missing_both": "STT 與 TTS 模型",

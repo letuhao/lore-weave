@@ -97,6 +97,13 @@
     "no_matches": "No matches for \"{{query}}\"",
     "message_matches": "Message matches"
   },
+  "switcher": {
+    "switch": "Switch chat",
+    "new_chat": "New chat",
+    "no_active": "No chat",
+    "loading": "Loading…",
+    "empty": "No chats yet."
+  },
   "view": {
     "configure_voice": "Configure {{missing}} to enable Voice Assist",
     "missing_both": "STT and TTS models",

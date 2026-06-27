@@ -97,6 +97,13 @@
     "no_matches": "「{{query}}」に一致する結果がありません",
     "message_matches": "メッセージの一致"
   },
+  "switcher": {
+    "switch": "チャットを切り替え",
+    "new_chat": "新しいチャット",
+    "no_active": "チャットなし",
+    "loading": "読み込み中…",
+    "empty": "まだチャットがありません。"
+  },
   "view": {
     "configure_voice": "{{missing}}を設定して音声アシストを有効化",
     "missing_both": "STTとTTSモデル",
