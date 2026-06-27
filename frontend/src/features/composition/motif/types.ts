@@ -122,6 +122,17 @@ export type DecomposeSceneMotif = {
   motif?: BoundMotif | null;
 };
 
+/** D-MOTIF-FE-PLANNERVIEW-WIRING (Shape A) — a committed scene's bound motif as
+ *  returned by GET …/outline/motif-bindings: a BoundMotif plus the scene's beat_key. */
+export type SceneBoundMotif = BoundMotif & { beat_key?: string | null };
+
+/** The motif-bindings read response: per committed scene node, its bound motif (or
+ *  null = free-form). The planner renders MotifBindingCard per node from this map. */
+export type MotifBindingsResponse = {
+  chapter_id: string;
+  bindings: Record<string, SceneBoundMotif | null>;
+};
+
 export type OveruseWarning = {
   motif_id: string;
   motif_name: string;
