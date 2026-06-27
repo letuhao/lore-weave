@@ -188,8 +188,8 @@ Built KG from the first 700 chapters (700+ chapters, 15000+ glossary entries). P
 ### [I] 10. Timeline events still in English despite multilingual KG; entities untranslated
 Timeline shows English: "Chi Yao kills her fiancé, Zhang Ruochen." But the book origin is `zh`. We were supposed to have multilingual KG support. Also the English translation was never made — "Chi Yao" and "Zhang Ruochen" are unknown entities (nobody knows them).
 
-> RC (investigated): the BE multilingual timeline (M1-M3: `language` param, participant-name localization, cached summary/time_cue translation) IS implemented (`knowledge-service/.../timeline.py` ~184-360, `labels/timeline_localizer.py`). The FE never sends it — `useTimeline` (`frontend/.../knowledge/hooks/useTimeline.ts` ~41-66) omits `language` from the queryKey/params, so events render in source script and the lazy translation cache is never populated. (Events are stored in original script by design.)
-> Fix (proposed): thread `i18n.language` → `useTimeline` queryKey + the `api.ts` query string (small FE fix); the BE localization then fills on read.
+> RC (VERIFIED — corrected): the FE language wiring is ALREADY complete — `TimelineTab` sets `language: i18n.language` (~84), `useTimeline` keys on `params.language` AND passes it (~63,67), and `listTimeline` sends `?language=` (`api.ts` ~1834). The agent's "FE drops language" was wrong. The real problem is upstream: the events themselves are stored in **English/romanized** ("Chi Yao", "Zhang Ruochen" — pinyin, not the zh source script and not a real translation), and participant names aren't anchored to glossary entities, so the read-time localizer has nothing to resolve. = an EVENT-EXTRACTION-LANGUAGE + entity-anchoring problem, not a FE fix.
+> Fix (NEEDS REPRO): confirm with the user's data — is the book's source actually zh or an EN translation? Are the events English in the DB (event extraction output language)? Then fix event extraction to keep source script + anchor participants to entities. Belongs with the extraction/KG cluster, not the quick-win pass. Left `[I]`.
 
 ### [I] 11. KG entities have no description/information (only nodes + edges)
 Entities in the KG have no description or information — the GUI only shows nodes and edge relationships. Is this our design or did we implement the KG standard wrong? Unclear on the difference between KG and glossary, but an entity with only a name and relationships — is that correct?
@@ -209,11 +209,11 @@ Glossary extraction seems to also rebuild the KG. When building glossary, the KG
 > RC (investigated — likely NOT a code coupling): glossary extraction (`POST /internal/books/{book_id}/extract-entities`) writes glossary + emits entity outbox events for learning-service ONLY — there is NO listener that auto-triggers a KG build. KG build fires solely from explicit user actions (`/extraction/start` or the build confirm-card). The reported coupling appears to be a perception / the user manually triggering both, not a code path.
 > Fix (proposed): no code change expected; make the workspace UI clearly distinguish "extract glossary" vs "build KG", and document the separation. CONFIRM against the user's reproduction/evidence before closing.
 
-### [I] 14. Rebuild KG destroys old KG (no update path, no confirmation)
+### [x] 14. Rebuild KG destroys old KG (no update path, no confirmation)
 Rebuild KG seems to destroy the old KG — had 12000+ entities and it destroyed all to rebuild from scratch. There's supposed to be an **update KG** feature. Very bad design, and it destroys without any warning/confirmation. We should never do that. (AWS-style: require typed confirmation without copy-paste to destroy important data.)
 
 > RC (VERIFIED): `rebuild_extraction` (`knowledge-service/app/routers/public/extraction.py` ~1183-1261) calls `_delete_project_graph` — DETACH DELETE of ALL Entity/Event/Fact/Source for the project (~1013-1033) — UNCONDITIONALLY at ~1234 before starting the new job. Guards exist for active-jobs/missing-neo4j, but there is NO user confirmation and NO incremental update mode; the delete is non-atomic (graph lost if the restart fails — acknowledged in the docstring ~1207-1209).
-> Fix (proposed): (1) IMMEDIATE/cheap: require an explicit `?confirm=true` / typed-confirm gate + a destructive confirm-card (preview `destructive:true`); (2) add `mode: rebuild|update` where 'update' skips the delete and relies on `persist_pass2` merge semantics (the real "update KG"). **Highest data-safety priority.**
+> Fix: DONE (`bf30eed3`) — BE `?confirm=true` guard returns a destructive-warning preview (live node counts) and deletes nothing without it; FE reusable typed-confirmation (paste blocked) requiring the project name + live count. The incremental `mode: update` (merge instead of delete) is the remaining follow-up → D-KG-UPDATE-MODE.
 
 ### [I] 15. Event timeline lacks metadata (chapter/scene/block); needs in-book time detection
 Event timeline should carry metadata: chapter, block/scene, etc. — needed to trace events because some novels are non-linear; hard to build a timeline without metadata. Also need to detect the **real in-book time** mentioned in the book — an advanced feature because time in a book is rarely stated.
@@ -361,11 +361,11 @@ Batch logic is bad — after the agent lists many kinds, it only batches very fe
 > RC (investigated): batch propose tools cap a single call (e.g. `toolProposeKinds` ≤20 kinds, `action_propose_tools.go` ~203), and the agent calls them in a LOOP emitting many cards — which then hit the #27 run-orphan failure — instead of one batch. The skill permits but doesn't ENFORCE single-proposal batching (`chat-service/app/services/glossary_skill.py` ~108-126 is soft: "call once" / "stop after 2 re-plans"). The agent "loses track mid-list" = the loop, not a planner defect.
 > Fix (proposed — matches the user's ask): the agent ONLY proposes; the MCP/executor commits the whole batch deterministically in one confirm card (loop/raise the batch internally, never N cards). Pairs with #27/#29 and the #18 hard-stop.
 
-### [I] 31. Glossary GUI can't view `select`-type attributes (combobox empty)
+### [x] 31. Glossary GUI can't view `select`-type attributes (combobox empty)
 The glossary GUI cannot view attributes with `select` type — the combobox is empty.
 
-> RC (investigated): the extraction-profile response builder (`extraction_handler.go` ~104-201) selects attribute `code,name,field_type,description,auto_fill_prompt,is_required` but NOT `ba.options`, so a `select`-type attribute reaches the FE with no options → `AttributeField` renders an empty `<select>`. (The book-ontology read path DOES include options — `book_ontology_handler.go` ~67 — so entity-editor forms may be fine; confirm which view is empty.)
-> Fix (proposed): add `ba.options` to the extraction-profile SELECT + `attrOut` struct + JSON; verify options survive to `AttributeField` in the affected view. (Small.)
+> RC (VERIFIED — corrected): the empty combobox is `EntityEditorModal`'s `AttrSelectCard`, which gets `options` from the entity's embedded `attribute_def`. The entity GET (`entity_handler.go` Query 3, ~213-235) built that `attribute_def` from `book_attributes` but **never SELECTed/scanned `ad.options`** → `def.options` empty → empty `<select>`. The struct `attrDefResp.Options` and the FE `AttributeDefinition.options` already existed; only the query dropped it. (The whole create/adopt/book-ontology-read chain DOES carry options — that path was a red herring.)
+> Fix: DONE (`26012411`) — add `ad.options` to the entity-GET SELECT + scan into `av.AttributeDef.Options` (mirrors `book_ontology_handler`). go build+vet clean.
 
 ### [I] 32. LLM calls not consistently logged to bill service (no request/response tracing)
 LLM calls should go through the LLM provider; the provider should store all request/response logs to the bill service. Currently not every call is written to the bill service, and input/output aren't stored — can't trace or analyze LLM calls.
@@ -373,11 +373,11 @@ LLM calls should go through the LLM provider; the provider should store all requ
 > RC (investigated): provider-registry DOES meter usage → `usage_outbox` → Redis → usage-billing `usage_logs` (token counts + cost). Two gaps: (a) only COMPLETED jobs are metered (`provider-registry-service/internal/jobs/worker.go` ~126 `status=="completed"`) — failed/cancelled produce NO audit row; (b) request/response PAYLOADS are never persisted (no `request_payload`/`response_payload` column anywhere) — so a call can't be traced/reproduced. (The provider-gateway invariant holds — calls route through provider-registry — so coverage is structural, not per-call bypass.)
 > Fix (proposed): persist request/response payloads (new columns or a `job_payloads` table) + write audit rows for failed/cancelled jobs (cost 0). Larger; billing-side schema + relay + consumer.
 
-### [I] 33. Platform lacks kind description (not attribute) — model extracts wrong kind
+### [x] 33. Platform lacks kind description (not attribute) — model extracts wrong kind
 The platform lacks a **kind description** (distinct from attribute), so the model doesn't understand and extracts the wrong kind.
 
 > RC (VERIFIED): the kind `description` column EXISTS in schema/domain (system_kinds/user_kinds/book_kinds; `EntityKind.Description`) but is never threaded to extraction — `kindOut` (`extraction_handler.go` ~125) doesn't SELECT/return it, and `build_extraction_prompt` (`extraction_prompt.py`) only uses ATTRIBUTE descriptions (`attr_meta.get("description")`), never a kind-level one. So the LLM gets a kind code/name with no definition → wrong-kind extraction. **Root cause feeding #38.**
-> Fix (proposed): SELECT kind description into the profile response + include it in the prompt's per-kind schema header; expose kind-description editing in ManageWorkspace. (Small, HIGH leverage.)
+> Fix: DONE (`73f87476`) — glossary extraction-profile now returns `book_kinds.description`; `build_extraction_prompt` emits it under the `## <kind>` schema header. (Exposing kind-description EDITING in ManageWorkspace is folded into the #22 standards-GUI work.)
 
 ### [x] 34. Some jobs are very hard to interrupt (30 min from cancel to stop)
 Some jobs are very hard to interrupt — 30 minutes from cancelling until actually cancelled because the job keeps running. Need an enforce feature + GUI to accept data loss and stop the job immediately (user doesn't want to waste tokens).
