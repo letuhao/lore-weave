@@ -1,5 +1,31 @@
 # ▶ NEXT SESSION — Narrative Motif Library BUILD (handoff)
 
+## STATUS (2026-06-28 PM-2) — D-W8-MINE-LIVE-SMOKE PASSING (full cross-service mine→draft)
+
+**`D-W8-MINE-LIVE-SMOKE`** ✅ — the LAST big W8 gap is closed end-to-end on the real stack.
+- **knowledge-service REBUILT** (`docker compose build` + `up -d --force-recreate --no-deps
+  knowledge-service`) to deploy the `motif_beat` extractor route @73004c33. Verified live:
+  `POST /internal/extraction/motif-beats` returns `event_order`-ordered `{beat,thread,tension,
+  role_mentions}` sequences. (Container `infra-knowledge-service-1`.)
+- **Seeded a mineable `:Event` corpus** for the test account: 4 book-projects (4 PrefixSpan
+  sequences) — 3 revenge books sharing a SHORT core `humiliation→exile→face slap` (support 3,
+  with book-unique padding beats at support 1 so PrefixSpan yields a tight 4-pattern set, not a
+  2^n blow-up) + 1 romance negative control. `chapter_id=None` → the miner symbol is the bare
+  beat label (cross-book shape match). **Seeded via knowledge-service's own `merge_event`** (exact
+  `:Event` shape) — NOT raw Cypher.
+- **Ran the real mine** (`run_mine_motifs`, scope=corpus): composition → the live motif-beats route
+  → Neo4j corpus → PrefixSpan (4 patterns) → **Qwen2.5** abstraction + binary judge (provider-registry
+  → lm_studio) → **mined=4 draft motifs**, `below_gate=0`, `reason=None` (NO `beat_extractor_unavailable`
+  degrade). The shared revenge core surfaced as a pattern; judge scores 0.6–0.8 all passed the 0.60 gate.
+- **Cleaned up** — the 4 seeded projects + their `:Event` nodes removed from the shared test account;
+  the mined draft motifs deleted; throwaway smoke/seed scripts removed from both containers.
+
+This proves the W8 cross-service seam the unit tests could only mock (the `mined:0` degrade path is
+unit-proven; the LIVE mine needed the route + corpus + LLM, now all real). `D-W8-MOTIF-BEAT-EXTRACTOR`
+was already built @73004c33; this is its end-to-end validation.
+
+---
+
 ## STATUS (2026-06-28 PM) — D-W9-WEBSEARCH BUILT + LIVE-SMOKE PASSING (real searxng)
 
 **`D-W9-WEBSEARCH`** ✅ BUILT — the import/deconstruct `use_web` augment is now real, not a
