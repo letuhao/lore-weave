@@ -44,10 +44,22 @@ commits + the reconcile commit on `feat/narrative-pattern-library`.
 (genre-faithfulness sign-off), plus W5's P2/P4 scope-fenced dims (arc-diff, fine-anchor,
 plot-density, act-rate).
 
-**▶ NEXT:** R-NODE-P1 assembled-stack live-smoke (needs composition + provider-registry +
-a platform embed model configured + seeded DB), then Wave 2 (W8 mine · W9 import · W10 arc ·
-W-STITCH · W11 sync). Worktrees under `.claude/worktrees/agent-*` can be pruned
-(`git worktree remove`) — the `ws/w*` branches are merged.
+**R-NODE-P1 DATA PLANE — VERIFIED ✅** (committed as `tests/integration/db/test_rnode_p1_dataplane.py`,
+the cross-WS regression guard). Ran all 7 WSs' code together against a real seeded DB via the
+actual repo/engine paths: W7 seeds (44 motifs/19 links) → W1 create → W3 retrieve (R4 degrade,
+genre+tension, no embed model) → W2 motif_application (beat_key in annotations) → W5 trace read
+→ W2 anti-repetition aggregate. The W2→W5 `beat_key` seam is now verified DYNAMICALLY, not just
+statically. (The full dev stack is up, but `infra-composition-service` runs the PRE-Wave-1 image —
+NOT rebuilt, to avoid disrupting the shared healthy service + migrating the shared dev DB.)
+
+**▶ NEXT — the remaining R-NODE-P1 surface (the Wave-2 entry gate):** the FULL HTTP + LLM-decompose
++ semantic-embed smoke. Needs: rebuild + restart `composition-service` from this branch (runs the
+motif migration + W7 seeds on its DB — confirm the shared-env impact first), a platform embed model
+configured (`motif_embed_model_ref`/`_owner_id` → a provider-registry embedding credential, e.g.
+bge-m3) for W3's cosine path, and the test account driving auth → create book/project → decompose
+(real LLM via lm_studio) → bind → trace via HTTP + the W4 MCP path + W6 FE. Run once at the Wave-2
+stack stand-up, then Wave 2 (W8 mine · W9 import · W10 arc · W-STITCH · W11 sync). The `ws/w*`
+branch refs remain as per-WS history pointers (worktrees pruned).
 
 ---
 
