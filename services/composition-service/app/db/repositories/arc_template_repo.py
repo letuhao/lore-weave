@@ -84,17 +84,25 @@ class ArcTemplateRepo:
     def __init__(self, pool: asyncpg.Pool) -> None:
         self._pool = pool
 
-    async def create(self, user_id: UUID, args: ArcTemplateCreateArgs) -> ArcTemplate:
+    async def create(
+        self, user_id: UUID, args: ArcTemplateCreateArgs,
+        *, source: str = "authored", status: str = "active",
+    ) -> ArcTemplate:
         """Create a USER-tier arc_template. owner_user_id is STAMPED = user_id (never an
         arg → a both-NULL/system row is impossible from this path; the DB CHECK is the
         backstop). embedding starts NULL (W9 fills it). UNIQUE(owner,code,lang) violation
-        → asyncpg.UniqueViolationError (router maps to 409)."""
+        → asyncpg.UniqueViolationError (router maps to 409).
+
+        `source`/`status` default to the authored-active path (every existing caller is
+        unchanged). W9's deconstruct passes source='imported', status='draft' so the
+        proposed arc lands as a reviewable draft (§12.3); the arc_template.source CHECK
+        allows ('authored','mined','imported')."""
         query = f"""
         INSERT INTO arc_template
           (owner_user_id, code, language, visibility, name, summary, genre_tags,
-           chapter_span, threads, layout, pacing, arc_roster, source)
+           chapter_span, threads, layout, pacing, arc_roster, source, status)
         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,
-                $9::jsonb,$10::jsonb,$11::jsonb,$12::jsonb,'authored')
+                $9::jsonb,$10::jsonb,$11::jsonb,$12::jsonb,$13,$14)
         RETURNING {_SELECT_COLS}
         """
         async with self._pool.acquire() as c:
@@ -103,7 +111,7 @@ class ArcTemplateRepo:
                 user_id, args.code, args.language, args.visibility, args.name,
                 args.summary, args.genre_tags, args.chapter_span,
                 _jsonb(_dump_models(args.threads)), _jsonb(_dump_models(args.layout)),
-                _jsonb(args.pacing), _jsonb(_dump_models(args.arc_roster)),
+                _jsonb(args.pacing), _jsonb(_dump_models(args.arc_roster)), source, status,
             )
         return _row_to_arc(row)
 

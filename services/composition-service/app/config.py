@@ -182,6 +182,24 @@ class Settings(BaseSettings):
     # contract) + default min support before a beat-pattern becomes a draft motif.
     motif_mine_extractor_version: str = "motif_beat@v1"
     motif_mine_min_support: int = 3
+    # W9 import/deconstruct (§12.3/§12.4): the LLM-direct deconstruct model. EMPTY by
+    # default (NO hardcoded model name — provider-gateway invariant); resolved from the
+    # job input (model_source/model_ref) when present, else this PLATFORM default. The
+    # handler fails closed (ValueError) if neither yields a model_ref — so a deconstruct
+    # never silently runs on an unconfigured model. Source defaults to 'platform_model'
+    # (the local-rerank-as-platform precedent — resolve via provider-registry).
+    motif_deconstruct_model_source: str = "platform_model"
+    motif_deconstruct_model_ref: str = ""        # platform chat model id; resolved at call time
+    # The per-chunk character cap for the deconstruct MAP pass (rides the P1/P2 rails —
+    # chunk the imported content so each map call fits the window; the arc-reduce sees
+    # the abstract per-chunk extractions, never the raw text — §12.4).
+    motif_deconstruct_chunk_chars: int = 12000
+    # Abstraction post-check (§12.6 guardrail): the min source-token shingle overlap
+    # ratio above which a generated beat/example is treated as near-verbatim source
+    # retelling → scrubbed. Lower = stricter. 0.0 disables (never — the guardrail is
+    # load-bearing); the default flags substantial verbatim n-gram reuse.
+    motif_deconstruct_verbatim_shingle: int = 6     # shingle size (consecutive words)
+    motif_deconstruct_verbatim_max_overlap: float = 0.50  # max share of source shingles allowed
 
 
 settings = Settings()  # type: ignore[call-arg]

@@ -23,6 +23,7 @@ from app.db.repositories.derivatives import DerivativesRepo
 from app.db.repositories.generation_corrections import GenerationCorrectionsRepo
 from app.db.repositories.generation_jobs import GenerationJobsRepo
 from app.db.repositories.grounding_pins import GroundingPinsRepo
+from app.db.repositories.import_source_repo import ImportSourceRepo
 from app.db.repositories.motif_application import MotifApplicationRepo
 from app.db.repositories.motif_repo import MotifRepo
 from app.db.repositories.motif_retrieve import MotifRetriever
@@ -111,6 +112,14 @@ async def get_arc_template_repo() -> ArcTemplateRepo:
     get_motif_repo; the router (arc.py) consumes this. W9 (import/deconstruct) will
     consume the same repo through this factory."""
     return ArcTemplateRepo(get_pool())
+
+
+async def get_import_source_repo() -> ImportSourceRepo:
+    """W9 — the per-user deconstruct-input store (import/deconstruct, §12.3/§12.6).
+    The import_source CRUD router consumes this; the worker handler
+    (engine/motif_deconstruct) loads the row owner-checked off the same table.
+    Mirrors get_motif_repo (cheap per-request wrapper over the shared pool)."""
+    return ImportSourceRepo(get_pool())
 
 
 async def get_motif_retriever() -> MotifRetriever:

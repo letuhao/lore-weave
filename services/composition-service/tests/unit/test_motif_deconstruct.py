@@ -1,0 +1,209 @@
+"""W9 — motif_deconstruct orchestration + §12.6 abstraction post-check (fakes only).
+
+Proves, with an injected fake LLM + fake repos (no DB, no real gateway):
+  - the deconstruct chunks → maps → reduces → persists an arc_template (source='imported',
+    status='draft') + member motifs (source='imported', imported_derived=True);
+  - the §12.6 abstraction POST-CHECK SCRUBS near-verbatim source prose so a verbatim
+    passage does NOT survive into a motif's beats/examples (the load-bearing copyright test);
+  - the handler fails closed on an empty model_ref (provider-gateway invariant).
+"""
+
+from __future__ import annotations
+
+import json
+import uuid
+
+import pytest
+
+from app.config import settings
+from app.db.models import ArcTemplate, Motif
+from app.engine import motif_deconstruct as md
+
+USER = str(uuid.uuid4())
+
+# A distinctive long source passage (the "verbatim" the deconstruct must never echo).
+VERBATIN = (
+    "the crimson lotus blade descended through the shattered moonlight as elder "
+    "fang whispered the forbidden cultivation art to his trembling disciple beneath "
+    "the ancient withered pine of the eastern cloud sect at the hour of the rat"
+)
+SOURCE_TEXT = "Chapter 1. " + VERBATIN + ". And then more story happened afterwards."
+
+
+class _FakeJob:
+    def __init__(self, content):
+        self.status = "completed"
+        self.result = {"messages": [{"content": content}]}
+
+
+class _FakeLLM:
+    """Returns one canned deconstruct frame per call (records the messages it saw)."""
+
+    def __init__(self, frames):
+        self._frames = list(frames)
+        self.calls: list[dict] = []
+
+    async def submit_and_wait(self, *, user_id, operation, model_source, model_ref,
+                              input, job_meta=None, **kw):
+        self.calls.append({"model_source": model_source, "model_ref": model_ref,
+                           "operation": operation, "input": input})
+        return _FakeJob(self._frames.pop(0) if self._frames else "{}")
+
+
+class _FakeArcRepo:
+    def __init__(self):
+        self.created: list[dict] = []
+
+    async def create(self, user_id, args, *, source="authored", status="active"):
+        self.created.append({"args": args, "source": source, "status": status})
+        return ArcTemplate(id=uuid.uuid4(), owner_user_id=user_id, code=args.code,
+                           name=args.name, source=source, status=status)
+
+
+class _FakeMotifRepo:
+    def __init__(self):
+        self.created: list[dict] = []
+
+    async def create(self, user_id, args, *, source="authored",
+                     imported_derived=False, status="active"):
+        self.created.append({"args": args, "source": source,
+                             "imported_derived": imported_derived, "status": status})
+        return Motif(id=uuid.uuid4(), owner_user_id=user_id, code=args.code,
+                     name=args.name, source=source, imported_derived=imported_derived,
+                     status=status)
+
+
+def _frame(*, beat_label, summary="an abstract motif", example=None):
+    """One deconstruct frame with a single motif whose beat carries `beat_label`."""
+    motif = {
+        "code": "imported.motif-a", "name": "Abstract Motif", "kind": "sequence",
+        "summary": summary, "thread": "combat", "tension_target": 4,
+        "roles": [{"key": "protagonist", "actant": "subject", "label": "the hero"}],
+        "beats": [{"key": "b1", "label": beat_label, "intent": "advance", "order": 0}],
+        "preconditions": ["the hero is isolated"], "effects": ["the hero gains power"],
+    }
+    if example is not None:
+        motif["examples"] = [{"text": example}]
+    return json.dumps({
+        "threads": [{"key": "combat", "label": "Combat"}],
+        "roster": [{"key": "protagonist", "actant": "subject", "label": "hero"}],
+        "motifs": [motif],
+        "placements": [{"motif_code": "imported.motif-a", "thread": "combat",
+                        "span_start": 1, "span_end": 5, "ord": 0}],
+        "pacing": [{"chapter": 1, "tension": 4}],
+    })
+
+
+# ── happy path: persists an imported draft arc + imported_derived motifs ───────────────
+async def test_deconstruct_persists_imported_draft_arc_and_motifs():
+    llm = _FakeLLM([_frame(beat_label="isolation by disaster")])
+    arc_repo, motif_repo = _FakeArcRepo(), _FakeMotifRepo()
+    result = await md.deconstruct_reference(
+        llm=llm, arc_repo=arc_repo, motif_repo=motif_repo,
+        user_id=USER, source_title="Admired Work", source_content=SOURCE_TEXT,
+        model_source="platform_model", model_ref="m-ref",
+    )
+    # arc persisted as an imported DRAFT.
+    assert len(arc_repo.created) == 1
+    assert arc_repo.created[0]["source"] == "imported"
+    assert arc_repo.created[0]["status"] == "draft"
+    # member motif persisted as imported + imported_derived (B-3 taint at birth).
+    assert len(motif_repo.created) == 1
+    assert motif_repo.created[0]["source"] == "imported"
+    assert motif_repo.created[0]["imported_derived"] is True
+    # result dict shape for the poll.
+    assert result["arc_template_id"]
+    assert len(result["motif_ids"]) == 1
+    assert "abstraction_check" in result
+
+
+# ── THE §12.6 load-bearing test: a near-verbatim source beat does NOT survive ──────────
+async def test_verbatim_source_beat_is_scrubbed_out_of_motif():
+    # the model "leaks" the source passage verbatim into a beat label — the post-check
+    # MUST strip it so no source prose survives into the persisted motif.
+    llm = _FakeLLM([_frame(beat_label=VERBATIN, summary=VERBATIN,
+                           example=VERBATIN)])
+    arc_repo, motif_repo = _FakeArcRepo(), _FakeMotifRepo()
+    result = await md.deconstruct_reference(
+        llm=llm, arc_repo=arc_repo, motif_repo=motif_repo,
+        user_id=USER, source_title="Admired Work", source_content=SOURCE_TEXT,
+        model_source="platform_model", model_ref="m-ref",
+    )
+    args = motif_repo.created[0]["args"]
+    # the verbatim passage is gone from the beat label, the summary, AND the examples.
+    persisted_blob = json.dumps([b.model_dump() for b in args.beats]) + (args.summary or "")
+    persisted_blob += json.dumps(args.examples)
+    assert VERBATIN not in persisted_blob
+    # the copied example was DROPPED entirely (an imported example must be synthetic).
+    assert args.examples == []
+    # the scrub was actually recorded (not a vacuous pass).
+    assert result["abstraction_check"]["scrubbed_fields"] >= 1
+
+
+def test_scrub_verbatim_unit_drops_copied_example_and_blanks_beat():
+    motifs = [{
+        "summary": VERBATIN,
+        "beats": [{"key": "b", "label": VERBATIN, "intent": "x"}],
+        "examples": [{"text": VERBATIN}, {"text": "an original synthetic line"}],
+    }]
+    out, n = md.scrub_verbatim(motifs, source_text=SOURCE_TEXT)
+    assert out[0]["summary"] == ""
+    assert out[0]["beats"][0]["label"] == ""
+    # the copied example dropped; the synthetic one kept.
+    assert {"text": VERBATIN} not in out[0]["examples"]
+    assert {"text": "an original synthetic line"} in out[0]["examples"]
+    assert n >= 2
+
+
+def test_scrub_verbatim_keeps_short_generic_beat_labels():
+    # a short generic abstract label shares no long source shingle → survives untouched.
+    motifs = [{"summary": "isolation by disaster",
+               "beats": [{"key": "b", "label": "betrayal reveal", "intent": ""}],
+               "examples": []}]
+    out, n = md.scrub_verbatim(motifs, source_text=SOURCE_TEXT)
+    assert out[0]["summary"] == "isolation by disaster"
+    assert out[0]["beats"][0]["label"] == "betrayal reveal"
+    assert n == 0
+
+
+# ── provider-gateway invariant: fail closed on an empty model_ref ─────────────────────
+async def test_deconstruct_fails_closed_on_empty_model_ref():
+    llm = _FakeLLM([_frame(beat_label="x")])
+    with pytest.raises(ValueError, match="model_ref"):
+        await md.deconstruct_reference(
+            llm=llm, arc_repo=_FakeArcRepo(), motif_repo=_FakeMotifRepo(),
+            user_id=USER, source_title="T", source_content=SOURCE_TEXT,
+            model_source="platform_model", model_ref="",
+        )
+
+
+async def test_deconstruct_raises_on_empty_content():
+    llm = _FakeLLM([])
+    with pytest.raises(ValueError, match="empty"):
+        await md.deconstruct_reference(
+            llm=llm, arc_repo=_FakeArcRepo(), motif_repo=_FakeMotifRepo(),
+            user_id=USER, source_title="T", source_content="   ",
+            model_source="platform_model", model_ref="m-ref",
+        )
+
+
+# ── chunking rides the P1 rail ────────────────────────────────────────────────────────
+def test_chunk_content_splits_on_paragraphs():
+    text = "\n\n".join(["para " + "x" * 50 for _ in range(10)])
+    chunks = md.chunk_content(text, chunk_chars=120)
+    assert len(chunks) > 1
+    assert all(len(c) <= 200 for c in chunks)
+
+
+def test_chunk_content_empty_is_empty():
+    assert md.chunk_content("   ", chunk_chars=100) == []
+
+
+# ── the deconstruct prompt carries the §12.6 abstraction instruction ──────────────────
+def test_prompt_instructs_abstraction_and_no_proper_nouns():
+    system, user = md.build_deconstruct_messages(
+        "some passage", arc_hint=None, use_web=False, total_chunks=1, chunk_index=0)
+    low = system.lower()
+    assert "role slot" in low or "role_slot" in low.replace(" ", "_")
+    assert "proper noun" in low
+    assert "no verbatim" in low or "no source" in low
