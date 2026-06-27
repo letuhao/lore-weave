@@ -109,7 +109,7 @@ async def pairwise_judge(
                 "response_format": {"type": "text"}, "temperature": 0.0,
                 "max_tokens": max_tokens, **_NO_THINK,
             },
-            job_meta={"extractor": "pairwise_judge"}, trace_id=trace_id,
+            job_meta={"usage_purpose": "prose_eval", "extractor": "pairwise_judge"}, trace_id=trace_id,
         )
     except LLMError as exc:
         logger.warning("pairwise_judge LLM error: %s", exc)

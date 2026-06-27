@@ -50,7 +50,7 @@ from app.db.online_translation_judge import persist_translation_judge
 
 logger = logging.getLogger(__name__)
 
-_JOB_META = {"extractor": "llm_judge"}
+_JOB_META = {"usage_purpose": "reward_judge", "extractor": "llm_judge"}
 
 
 def _rs(row: asyncpg.Record) -> dict:

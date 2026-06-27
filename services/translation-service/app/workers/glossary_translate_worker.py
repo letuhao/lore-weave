@@ -214,6 +214,7 @@ async def _run_job(
                         input=_inp,
                         chunking=None,
                         job_meta={
+                            "usage_purpose": "glossary_translation",
                             "operation": "glossary_translate",
                             "glossary_translate_job_id": str(job_id),
                             "entity_id": entity_id,

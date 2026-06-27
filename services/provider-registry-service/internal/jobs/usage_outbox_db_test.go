@@ -89,6 +89,101 @@ func TestFinalizeWithUsageOutbox_CompletedWritesOutboxInTx(t *testing.T) {
 	}
 }
 
+// bug #24 — the usage-billing `purpose` (the Usage-GUI label) overrides the
+// overloaded `operation` from job_meta.usage_purpose. Capture the 6th INSERT arg
+// (operation column) to prove the label that lands is the purpose, NOT the
+// chat-shaped operation the worker used.
+func TestFinalizeWithUsageOutbox_UsagePurposeOverridesOperationLabel(t *testing.T) {
+	mock, _ := pgxmock.NewPool()
+	defer mock.Close()
+	repo := &Repo{pool: mock}
+
+	jobMeta := []byte(`{"usage_purpose":"glossary_extraction","chapter_id":"x"}`)
+	mock.ExpectBegin()
+	mock.ExpectQuery("UPDATE llm_jobs").WithArgs(anyArgs(6)...).
+		WillReturnRows(pgxmock.NewRows([]string{"job_meta"}).AddRow(jobMeta))
+	// args[5] (0-based) is the `operation` column — assert the overridden label.
+	insertArgs := anyArgs(9)
+	insertArgs[5] = "glossary_extraction"
+	mock.ExpectExec("INSERT INTO usage_outbox").WithArgs(insertArgs...).
+		WillReturnResult(pgxmock.NewResult("INSERT", 1))
+	mock.ExpectCommit()
+
+	usage := &UsageOutbox{ModelSource: "user_model", ModelRef: uuid.New(),
+		Operation: "chat", InputTokens: 10, OutputTokens: 5, CostUSD: floatPtr(0.002)}
+	rows, err := repo.FinalizeWithUsageOutbox(context.Background(), uuid.New(), uuid.New(),
+		"completed", map[string]any{"x": 1}, "", "", "", usage, nil)
+	if err != nil {
+		t.Fatalf("err: %v", err)
+	}
+	if rows != 1 {
+		t.Fatalf("rows=%d want 1", rows)
+	}
+	if err := mock.ExpectationsWereMet(); err != nil {
+		t.Fatalf("expectations: %v", err)
+	}
+}
+
+// A malformed usage_purpose (illegal chars) must fail-soft → the real operation
+// label is used, never the injected string.
+func TestFinalizeWithUsageOutbox_MalformedUsagePurposeFallsBack(t *testing.T) {
+	mock, _ := pgxmock.NewPool()
+	defer mock.Close()
+	repo := &Repo{pool: mock}
+
+	jobMeta := []byte(`{"usage_purpose":"Robert'); DROP TABLE usage_logs;--"}`)
+	mock.ExpectBegin()
+	mock.ExpectQuery("UPDATE llm_jobs").WithArgs(anyArgs(6)...).
+		WillReturnRows(pgxmock.NewRows([]string{"job_meta"}).AddRow(jobMeta))
+	insertArgs := anyArgs(9)
+	insertArgs[5] = "chat" // fell back to the real operation
+	mock.ExpectExec("INSERT INTO usage_outbox").WithArgs(insertArgs...).
+		WillReturnResult(pgxmock.NewResult("INSERT", 1))
+	mock.ExpectCommit()
+
+	usage := &UsageOutbox{ModelSource: "user_model", ModelRef: uuid.New(),
+		Operation: "chat", InputTokens: 1, OutputTokens: 1, CostUSD: floatPtr(0.1)}
+	if _, err := repo.FinalizeWithUsageOutbox(context.Background(), uuid.New(), uuid.New(),
+		"completed", nil, "", "", "", usage, nil); err != nil {
+		t.Fatalf("err: %v", err)
+	}
+	if err := mock.ExpectationsWereMet(); err != nil {
+		t.Fatalf("expectations: %v", err)
+	}
+}
+
+func TestParseJobMetaUsagePurpose(t *testing.T) {
+	cases := []struct {
+		name string
+		meta string
+		want string
+	}{
+		{"valid", `{"usage_purpose":"glossary_extraction"}`, "glossary_extraction"},
+		{"valid_with_digits", `{"usage_purpose":"prose_draft2"}`, "prose_draft2"},
+		{"absent", `{"campaign_id":"x"}`, ""},
+		{"empty_meta", ``, ""},
+		{"non_object", `["a"]`, ""},
+		{"non_string", `{"usage_purpose":42}`, ""},
+		{"leading_digit", `{"usage_purpose":"1bad"}`, ""},
+		{"leading_underscore", `{"usage_purpose":"_bad"}`, ""},
+		{"uppercase", `{"usage_purpose":"Chat"}`, ""},
+		{"spaces", `{"usage_purpose":"glossary extraction"}`, ""},
+		{"injection", `{"usage_purpose":"a'; DROP TABLE x;--"}`, ""},
+		{"too_long", `{"usage_purpose":"` + "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa" + `"}`, ""},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			var meta []byte
+			if c.meta != "" {
+				meta = []byte(c.meta)
+			}
+			if got := parseJobMetaUsagePurpose(meta); got != c.want {
+				t.Fatalf("parseJobMetaUsagePurpose=%q want %q", got, c.want)
+			}
+		})
+	}
+}
+
 func TestFinalizeWithUsageOutbox_RaceLost_NoOutbox(t *testing.T) {
 	// UPDATE matches 0 rows (cancel won the race) → QueryRow.Scan → ErrNoRows →
 	// commit + return 0, and NO outbox INSERT (no ExpectExec; an unexpected call

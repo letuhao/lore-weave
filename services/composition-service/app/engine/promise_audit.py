@@ -117,7 +117,7 @@ async def audit_promises(
                 "response_format": {"type": "text"}, "temperature": 0.0,
                 "max_tokens": max_tokens, **_NO_THINK,
             },
-            job_meta={"extractor": "promise_audit"}, trace_id=trace_id,
+            job_meta={"usage_purpose": "promise_audit", "extractor": "promise_audit"}, trace_id=trace_id,
         )
     except LLMError as exc:
         logger.warning("promise_audit LLM error: %s", exc)
@@ -237,7 +237,7 @@ async def _chat(llm, *, user_id, model_source, model_ref, system, user, max_toke
                 "response_format": {"type": "text"}, "temperature": 0.0,
                 "max_tokens": max_tokens, **_NO_THINK,
             },
-            job_meta={"extractor": tag}, trace_id=trace_id,
+            job_meta={"usage_purpose": "promise_audit", "extractor": tag}, trace_id=trace_id,
         )
     except LLMError as exc:
         logger.warning("%s LLM error: %s", tag, exc)

@@ -301,11 +301,29 @@ Sharing tab in the workspace is redundant — we already have a Settings tab. Co
 > (no backend path changes — both used the same patchSharing). tsc clean; book-tabs suites 16/16;
 > no leftover refs. (Unused `settings.visibility*` i18n keys left in place — harmless.)
 
-### [ ] 24. Usage GUI mislabels LLM call kind (background jobs shown as "chat")
+### [x] 24. Usage GUI mislabels LLM call kind (background jobs shown as "chat")
 The "kind" of LLM call in the Usage GUI is incorrect — almost everything shows as `chat` kind but they're background jobs. Review this parameter when calling the LLM provider.
 
-> RC:
-> Fix:
+> RC: The provider-registry `operation` field is **overloaded** — it selects the
+> worker's result aggregator AND the cost-estimate path AND the over-budget
+> max_tokens-cap salvage AND the usage-billing `purpose` label. Every background-job
+> caller (glossary extraction, prose drafting, KG summaries, judges, …) submits
+> `operation="chat"` because it parses the chat-shaped result + wants the chat
+> aggregator/estimate/salvage — so all of them billed as "chat". (Expanding the
+> operation enum would have forced parallel changes in 4 Go branch points + risked
+> changing budget-edge behavior.)
+> Fix: Decoupled the *billing label* from `operation` via the existing free-form
+> `job_meta`. Each background caller now tags `job_meta.usage_purpose` with a
+> distinct per-operation label (`glossary_extraction`, `prose_draft`,
+> `prose_critic`, `canon_check`, `kg_summary`, `reward_judge`, …). provider-registry
+> `FinalizeWithUsageOutbox` overrides ONLY `usage_outbox.operation` (→ billing
+> `purpose`) from it (fail-soft, charset-gated against injection); the job's real
+> `operation` stays `chat`, so aggregator/estimate/salvage are byte-for-byte
+> unchanged. FE: widened `Purpose` to an open string set, data-drove the filter from
+> `by_purpose`, family-based color/badge, +19 labels ×4 locales. ~18 callers across
+> translation/composition/knowledge/learning. Go test proves the override reaches
+> the INSERT op-arg + falls back on malformed. (Cross-service live-smoke deferred →
+> D-USAGE-PURPOSE-LIVE-SMOKE.)
 
 ### [ ] 25. "Adopt genre" is useless (genre never wired to kind + attribute)
 Adopt genre is useless because there's nothing to adopt — genre is never wired to kind and attribute.

@@ -156,7 +156,7 @@ async def detect_and_update_threads(
                 # the budget on <think> and emit empty.
                 "chat_template_kwargs": {"thinking": False, "enable_thinking": False},
             },
-            job_meta={"extractor": "narrative_thread_detect"}, trace_id=trace_id,
+            job_meta={"usage_purpose": "narrative_thread", "extractor": "narrative_thread_detect"}, trace_id=trace_id,
         )
     except LLMError as exc:
         logger.warning("narrative_thread detect degraded (LLM error): %s", exc)

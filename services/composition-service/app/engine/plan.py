@@ -253,7 +253,7 @@ async def _llm_json(
                 "response_format": {"type": "text"}, "temperature": 0.4,
                 "max_tokens": max_tokens, **_NO_THINK,
             },
-            job_meta={"extractor": "decompose"}, trace_id=trace_id,
+            job_meta={"usage_purpose": "prose_plan", "extractor": "decompose"}, trace_id=trace_id,
         )
     except LLMError as exc:
         logger.warning("decompose LLM error: %s", exc)

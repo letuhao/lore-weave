@@ -312,6 +312,7 @@ def make_llm_classify_fn(
                 "temperature": 0.0,
                 "max_tokens": 2048,
             },
+            job_meta={"usage_purpose": "kg_backfill"},
         )
         out: dict[str, list[tuple[str, str]]] = {}
         if getattr(job, "status", None) != "completed" or job.result is None:

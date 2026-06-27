@@ -98,7 +98,7 @@ async def stitch_chapter(
                 "response_format": {"type": "text"},
                 **({"reasoning_effort": reasoning_effort} if reasoning_effort is not None else _NO_THINK),
             },
-            job_meta={"extractor": "stitch_chapter"}, trace_id=trace_id,
+            job_meta={"usage_purpose": "prose_stitch", "extractor": "stitch_chapter"}, trace_id=trace_id,
         )
     except LLMError as exc:
         logger.warning("stitch LLM error: %s → degrade to raw concat", exc)

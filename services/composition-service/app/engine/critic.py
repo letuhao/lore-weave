@@ -158,7 +158,7 @@ async def judge_prose(
                 "reasoning_effort": "none",
                 "chat_template_kwargs": {"thinking": False, "enable_thinking": False},
             },
-            job_meta={"extractor": "judge_prose"}, trace_id=trace_id,
+            job_meta={"usage_purpose": "prose_critic", "extractor": "judge_prose"}, trace_id=trace_id,
         )
     except LLMError as exc:
         logger.warning("judge_prose degraded (LLM error): %s", exc)

@@ -73,7 +73,7 @@ async def _one_draft(
                 "response_format": {"type": "text"},
                 **({"reasoning_effort": reasoning_effort} if reasoning_effort is not None else _NO_THINK),
             },
-            job_meta={"extractor": "diverge_draft"}, trace_id=trace_id,
+            job_meta={"usage_purpose": "prose_draft", "extractor": "diverge_draft"}, trace_id=trace_id,
         )
     except LLMError as exc:
         logger.warning("diverge draft LLM error: %s", exc)
@@ -154,7 +154,7 @@ async def score(
                 "response_format": {"type": "text"}, "temperature": 0.0,
                 "max_tokens": max_tokens, **_NO_THINK,
             },
-            job_meta={"extractor": "rerank"}, trace_id=trace_id,
+            job_meta={"usage_purpose": "prose_rerank", "extractor": "rerank"}, trace_id=trace_id,
         )
     except LLMError as exc:
         logger.warning("rerank degraded (LLM error): %s → candidate[0]", exc)

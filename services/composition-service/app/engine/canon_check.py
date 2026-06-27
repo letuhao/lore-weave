@@ -211,7 +211,7 @@ async def judge_canon(
                 "max_tokens": max_tokens, "reasoning_effort": "none",
                 "chat_template_kwargs": {"thinking": False, "enable_thinking": False},
             },
-            job_meta={"extractor": "judge_canon"}, trace_id=trace_id,
+            job_meta={"usage_purpose": "canon_check", "extractor": "judge_canon"}, trace_id=trace_id,
         )
     except LLMError as exc:
         logger.warning("judge_canon degraded (LLM error): %s — symbolic-only", exc)

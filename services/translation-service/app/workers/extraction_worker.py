@@ -978,14 +978,16 @@ async def _process_extraction_chapter(
         async def _submit(_inp: dict):
             return await llm_client.submit_and_wait(
                 user_id=str(owner_user_id),
-                # operation="chat" routes to the chatAggregator but labels glossary
-                # extraction accurately in gateway telemetry/billing.
+                # operation="chat" routes to the chatAggregator (chat-shaped result
+                # we parse). bug #24: the Usage-GUI billing label rides
+                # job_meta.usage_purpose so it reads "glossary_extraction", not "chat".
                 operation="chat",
                 model_source=model_source,
                 model_ref=str(model_ref),
                 input=_inp,
                 chunking=None,
                 job_meta={
+                    "usage_purpose": "glossary_extraction",
                     "extractor": "glossary",
                     "extraction_job_id": str(job_id),
                     "chapter_id": str(chapter_id),

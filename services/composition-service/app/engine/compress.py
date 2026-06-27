@@ -99,7 +99,7 @@ async def compress(
                 "response_format": {"type": "text"}, "temperature": 0.2,
                 "max_tokens": max_tokens, **_NO_THINK,
             },
-            job_meta={"extractor": "compress"}, trace_id=trace_id,
+            job_meta={"usage_purpose": "context_compress", "extractor": "compress"}, trace_id=trace_id,
         )
     except LLMError as exc:
         logger.warning("compress LLM error: %s — keeping raw prose", exc)

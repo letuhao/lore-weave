@@ -410,13 +410,25 @@ RETURNING job_meta
 	campaignID := parseJobMetaCampaignID(jobMeta)
 
 	if status == "completed" && usage != nil {
+		// bug #24: the usage-billing `purpose` (the human label in the Usage GUI)
+		// is derived from this `operation` column. But `operation` is overloaded —
+		// it ALSO selects the worker's result aggregator + cost estimate + budget
+		// salvage, so every background-job caller submits operation="chat" (the
+		// chat-shaped result they parse) and was therefore mislabeled "chat". The
+		// caller's real intent rides job_meta.usage_purpose; prefer it for the
+		// billing label only, leaving the job's real operation untouched. Fail-soft
+		// (absent/malformed → fall back to the operation), mirroring campaign_id.
+		operationLabel := usage.Operation
+		if p := parseJobMetaUsagePurpose(jobMeta); p != "" {
+			operationLabel = p
+		}
 		if _, err := tx.Exec(ctx, `
 INSERT INTO usage_outbox
   (request_id, owner_user_id, campaign_id, model_source, model_ref,
    operation, input_tokens, output_tokens, cost_usd)
 VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)
 `, jobID, ownerUserID, campaignID, usage.ModelSource, usage.ModelRef,
-			usage.Operation, usage.InputTokens, usage.OutputTokens, usage.CostUSD); err != nil {
+			operationLabel, usage.InputTokens, usage.OutputTokens, usage.CostUSD); err != nil {
 			return 0, fmt.Errorf("finalize+outbox: insert outbox: %w", err)
 		}
 	}
@@ -458,6 +470,45 @@ func parseJobMetaCampaignID(jobMeta []byte) *uuid.UUID {
 		return nil
 	}
 	return &id
+}
+
+// parseJobMetaUsagePurpose extracts job_meta.usage_purpose (bug #24) — the
+// caller's human label for the Usage GUI's `purpose` column, decoupled from the
+// overloaded `operation`. Returns "" (→ caller falls back to the real operation)
+// on EVERY failure: absent, non-object, non-string, or a value that isn't a
+// safe label. The charset gate (lowercase alnum + underscore, 1..48 chars,
+// leading letter) keeps an untrusted job_meta from injecting arbitrary text
+// into a billing audit row — a malformed label must never break a finalize.
+func parseJobMetaUsagePurpose(jobMeta []byte) string {
+	if len(jobMeta) == 0 {
+		return ""
+	}
+	var m map[string]any
+	if err := json.Unmarshal(jobMeta, &m); err != nil {
+		return ""
+	}
+	raw, ok := m["usage_purpose"].(string)
+	if !ok || !isSafeUsagePurpose(raw) {
+		return ""
+	}
+	return raw
+}
+
+// isSafeUsagePurpose reports whether s is a safe snake_case label: 1..48 chars,
+// leading lowercase letter, then lowercase letters / digits / underscores.
+func isSafeUsagePurpose(s string) bool {
+	if len(s) == 0 || len(s) > 48 {
+		return false
+	}
+	for i, r := range s {
+		switch {
+		case r >= 'a' && r <= 'z':
+		case i > 0 && (r == '_' || (r >= '0' && r <= '9')):
+		default:
+			return false
+		}
+	}
+	return true
 }
 
 // Cancel transitions a pre-terminal job to cancelled and stamps

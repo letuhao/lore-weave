@@ -164,7 +164,7 @@ async def run_executive(
                 "max_tokens": 500,
             },
             chunking=None,
-            job_meta={"extractor": "working_memory_executive"},
+            job_meta={"usage_purpose": "working_memory", "extractor": "working_memory_executive"},
             transient_retry_budget=1,
         )
     except Exception as exc:  # best-effort: the executive never breaks the caller

@@ -451,6 +451,9 @@ async def test_graded_effort_reaches_llm_input():
     inp = llm.submit_and_wait.await_args.kwargs["input"]
     assert inp.get("reasoning_effort") == "low"            # graded → reached the LLM
     assert put_mock.await_args.args[1].effort_band == "low"  # graded → keyed the cache
+    # bug #24: the Usage-GUI billing label rides job_meta.usage_purpose — lock it so a
+    # future refactor can't silently revert glossary extraction to a "chat" label.
+    assert llm.submit_and_wait.await_args.kwargs["job_meta"]["usage_purpose"] == "glossary_extraction"
 
 
 @pytest.mark.asyncio
