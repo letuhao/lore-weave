@@ -1,0 +1,278 @@
+# Critical UX Bugs — 2026-06-27
+
+Branch: `fix/critical-ux-bugs` (off `origin/main` @ 0cc8ff6c)
+
+Reported by user. These are critical bugs causing bad user experience. We investigate
+and fix **one by one**. Each item carries the user's original description verbatim plus a
+working section for root-cause + fix notes.
+
+Status legend: `[ ]` open · `[I]` investigating · `[F]` fix in progress · `[x]` done · `[D]` deferred
+
+---
+
+## Theme index (for batching related work)
+
+- **Jobs / progress / monitoring**: 1, 2, 3, 34, 37, 38, 9, 16
+- **Parallelism / config GUI**: 4
+- **Glossary extraction & merge correctness**: 7, 26, 36, 38, 13
+- **Translation glossary**: 8
+- **Glossary GUI / paging / kinds / standards**: 6, 21, 22, 25, 31, 33, 35
+- **Knowledge Graph (KG)**: 9, 10, 11, 13, 14, 15, 28, 29
+- **Timeline**: 10, 12, 15
+- **Chat / AI assistant / planner**: 17, 18, 19, 27, 30
+- **Auth**: 20
+- **Billing / LLM provider tracing**: 24, 32
+- **Workspace tabs**: 23
+
+---
+
+## Bugs
+
+### [x] 1. Glossary extraction cannot be stopped; no show/hide toggle
+Glossary extraction cannot stop after running. No button to hide or show it again.
+
+> RC: The glossary `ExtractionWizard` is a self-contained modal with its own polling
+> (`useExtractionPolling` → `/v1/extraction/jobs/{id}`), disconnected from the unified
+> Jobs dashboard (`features/jobs`, which already streams + cancels and lists
+> `glossary_extraction` as a kind). During the running ("progress") step the wizard was
+> **hard-locked open**: `useExtractionState.canClose = state.step !== 'progress'` → the
+> header X was hidden and backdrop-click was a no-op (`ExtractionWizard.tsx`), trapping the
+> user behind a modal they couldn't dismiss. The job lived only in local React state, so
+> there was also no re-entry to a backgrounded run. (A Cancel button *did* exist in
+> `StepProgress`; backend honoring it promptly is bug #34.)
+> Fix (FE-only): `canClose = true` always (job continues server-side, tracked in Jobs);
+> added a **"Run in background"** button on the progress step + a toast handoff with a
+> "View in Jobs" action linking to `/jobs`. Strings added to all 4 locales. Tests: extraction
+> suite 9/9 (added a background→Jobs-handoff test asserting toast + navigate), tsc clean.
+> Review (/review-impl): the new "reopen + start a 2nd run" path is bounded server-side —
+> translation-service admission control caps concurrent extraction jobs per user (429
+> `EXTRACT_TOO_MANY_JOBS`, `extraction.py:207`) + a per-book advisory lock; `StepConfirm`
+> surfaces the 429 via toast and does not advance. No concurrency-guard change needed.
+
+> NOTE for later bugs found while here: glossary extraction already has a "Parallel LLM
+> calls" concurrency input (`StepConfirm.tsx:116`, D-EXTRACTION-BATCH-CONCURRENCY) → relevant
+> to #4 (translation glossary lacks it). The LLM-call estimate `llmCalls = chapters *
+> ceil(schemaTokens/2000)` (`StepConfirm.tsx:53-59`) is the likely culprit for #36's
+> under-prediction. The estimate is shown on confirm but NOT on the running job (→ #37).
+
+### [ ] 2. Job detail page cannot monitor realtime job progression
+Want to monitor the glossary extraction live but cannot — job detail page has no realtime progression.
+
+> RC:
+> Fix:
+
+### [ ] 3. Job detail missing total cost; token cost not updated until job done
+Job detail doesn't show total cost. Current token cost is not updated until the job is done — should update frequently.
+
+> RC:
+> Fix:
+
+### [ ] 4. Translation glossary cannot be configured to run parallel; need GUI for parallel workers
+Translation glossary cannot be configured to run parallel like the glossary extraction job. May happen in other jobs too. Need a GUI to set parallel workers.
+
+> RC:
+> Fix:
+
+### [ ] 6. Glossary page should allow 1000 entities per page
+Need to activate glossary but have >15000 entities — current paging makes this really annoying. Want 1000 entities per page.
+
+> RC:
+> Fix:
+
+### [ ] 7. Glossary extraction forgets to update attributes for frequent characters (merge bug)
+Extraction almost forgets to update some attributes for frequent characters. Seems like the description is only extracted/set the first time. Need to investigate the current merge method. Suspect data already updates in the DB or a glossary version but is never reflected to the **current active version** shown on the GUI. (User will give evidence.)
+
+> RC:
+> Fix:
+
+### [ ] 8. Translation glossary usually fails (output structure bug; no chunking/budget)
+Translation glossary usually fails — maybe an output-structure bug. Happens with translation glossaries that exceed ~4000 output tokens. Suspect the token limit cuts off the model mid-generation. Do we calculate a budget for this job? Models have large context windows. The glossary has so much info but we don't do a **structured chunk** — putting everything into translation without a plan is bad.
+
+> RC:
+> Fix:
+
+### [ ] 9. Build-KG progression shows "1/100" — meaning unclear
+Built KG from the first 700 chapters (700+ chapters, 15000+ glossary entries). Progress shows "1/100" — what does that mean?
+
+> RC:
+> Fix:
+
+### [ ] 10. Timeline events still in English despite multilingual KG; entities untranslated
+Timeline shows English: "Chi Yao kills her fiancé, Zhang Ruochen." But the book origin is `zh`. We were supposed to have multilingual KG support. Also the English translation was never made — "Chi Yao" and "Zhang Ruochen" are unknown entities (nobody knows them).
+
+> RC:
+> Fix:
+
+### [ ] 11. KG entities have no description/information (only nodes + edges)
+Entities in the KG have no description or information — the GUI only shows nodes and edge relationships. Is this our design or did we implement the KG standard wrong? Unclear on the difference between KG and glossary, but an entity with only a name and relationships — is that correct?
+
+> RC:
+> Fix:
+
+### [ ] 12. Timeline GUI is low quality; browsers across platform are scattered
+Timeline GUI is bad quality — not a rich browser mode like other GUIs (especially glossary). Browsers across the platform are scattered and annoying. Want consistency.
+
+> RC:
+> Fix:
+
+### [ ] 13. Glossary extraction also rebuilds KG (should be decoupled)
+Glossary extraction seems to also rebuild the KG. When building glossary, the KG also updates. Want to build glossary **first**, then build KG **on demand**. We already have a Campaign GUI, but I used glossary extraction in the **workspace**, not in a campaign. Investigate.
+
+> RC:
+> Fix:
+
+### [ ] 14. Rebuild KG destroys old KG (no update path, no confirmation)
+Rebuild KG seems to destroy the old KG — had 12000+ entities and it destroyed all to rebuild from scratch. There's supposed to be an **update KG** feature. Very bad design, and it destroys without any warning/confirmation. We should never do that. (AWS-style: require typed confirmation without copy-paste to destroy important data.)
+
+> RC:
+> Fix:
+
+### [ ] 15. Event timeline lacks metadata (chapter/scene/block); needs in-book time detection
+Event timeline should carry metadata: chapter, block/scene, etc. — needed to trace events because some novels are non-linear; hard to build a timeline without metadata. Also need to detect the **real in-book time** mentioned in the book — an advanced feature because time in a book is rarely stated.
+
+> RC:
+> Fix:
+
+### [ ] 16. "Build full" KG option — fact/summary/etc not visible (stopped early)
+Chose "build full" for KG but don't see fact, summary, and other parts. Unsure if they build later — stopped at item 4/100 due to the many bugs above, don't want to waste tokens before they're fixed.
+
+> RC:
+> Fix:
+
+### [ ] 17. Cannot open a fresh AI assistant in workspace (old session is huge)
+Cannot open a fresh AI assistant in the workspace — the old chat session is too huge.
+
+> RC:
+> Fix:
+
+### [ ] 18. Glossary assistant planner loops forever (self-recheck loop)
+The glossary-assistant planner usually loops, even with a very strong local model. Seems stuck in a self-recheck loop forever. Investigate what our planner does — does it hand the whole plan to the model? A plan's progress needs multiple pieces of work controllable by logic. Tools like Kiro actively inject important info to control the model's work. (Web search + investigate.)
+
+> RC:
+> Fix:
+
+### [ ] 19. Hardcoded `google/gemma-4-26b-a4b-qat` planner called after stopping session
+A critical bug: `google/gemma-4-26b-a4b-qat` is called even after stopping the glossary planner. It uses the **default** planner, but I already selected another planner in the chat session. Also, after stopping the session the planner MCP should never be called. Changing the default planner in user settings still calls `google/gemma-4-26b-a4b-qat` — suspect it's hardcoded.
+
+> RC:
+> Fix:
+
+### [ ] 20. Active user gets logged out on JWT expiry (loses working data)
+User is active but the JWT expires and forces logout. Critical — causes loss of working data.
+
+> RC:
+> Fix:
+
+### [ ] 21. Custom `romantic_scene` kind in Xianxia Harem genre not wired in GUI
+Created `romantic_scene` in a custom Xianxia Harem genre, but the GUI doesn't wire it — can't edit `romantic_scene` kind anymore.
+
+> RC:
+> Fix:
+
+### [ ] 22. System/user/book kinds never wired correctly to FE (no edit GUI)
+System kind, user, and book are never wired correctly — critical UX bug. Users can't edit them due to lack of GUI. Happens on **Glossary Standards** (no GUI to write genre, kind, attribute), and on the **book** too (no ability to edit/wire them). Seems like BE exists but was never wired to FE.
+
+> RC:
+> Fix:
+
+### [ ] 23. Sharing tab in workspace is redundant with Settings tab
+Sharing tab in the workspace is redundant — we already have a Settings tab. Consider merging them or removing the sharing setting in the Settings tab.
+
+> RC:
+> Fix:
+
+### [ ] 24. Usage GUI mislabels LLM call kind (background jobs shown as "chat")
+The "kind" of LLM call in the Usage GUI is incorrect — almost everything shows as `chat` kind but they're background jobs. Review this parameter when calling the LLM provider.
+
+> RC:
+> Fix:
+
+### [ ] 25. "Adopt genre" is useless (genre never wired to kind + attribute)
+Adopt genre is useless because there's nothing to adopt — genre is never wired to kind and attribute.
+
+> RC:
+> Fix:
+
+### [ ] 26. Glossary merge needs a "merge/summary/overwrite" mode (dedup + rewrite)
+Glossary merge/append lacks an important type — call it merge or summary. A character's description changes each chapter but is almost the same; normal append produces lots of nearly-identical/useless data. Better to have a "merge overwrite" mode: take new raw extracted data, append to old data, and **rewrite a better version** with dedup. (User will give more detail on why.)
+
+> RC:
+> Fix:
+
+### [ ] 27. Multiple agent confirm cards — only the first works (later cards expire)
+Agent proposes multiple confirm cards but only the first works; later cards expire because confirming the first card invalidates them.
+
+> RC:
+> Fix:
+
+### [ ] 28. No way to review KG schema on either book or knowledge GUI
+There is no way to review the KG schema on both the book and knowledge GUIs.
+
+> RC:
+> Fix:
+
+### [ ] 29. KG schema lacks batch operations (agent proposes only 1–2 edges, second expires)
+KG schema lacks batch work. Told the agent to update the whole KG schema but it doesn't work well — only proposes 1–2 edges, and the second edge always fails (expired/something).
+
+> RC:
+> Fix:
+
+### [ ] 30. Batch logic is poor; agent loses track mid-list — planner/executor must be stricter
+Batch logic is bad — after the agent lists many kinds, it only batches very few items. The agent gets lost in the middle. Make the planner/executor stricter: the agent should only **propose** and send the proposal to the MCP; the MCP does the whole work instead.
+
+> RC:
+> Fix:
+
+### [ ] 31. Glossary GUI can't view `select`-type attributes (combobox empty)
+The glossary GUI cannot view attributes with `select` type — the combobox is empty.
+
+> RC:
+> Fix:
+
+### [ ] 32. LLM calls not consistently logged to bill service (no request/response tracing)
+LLM calls should go through the LLM provider; the provider should store all request/response logs to the bill service. Currently not every call is written to the bill service, and input/output aren't stored — can't trace or analyze LLM calls.
+
+> RC:
+> Fix:
+
+### [ ] 33. Platform lacks kind description (not attribute) — model extracts wrong kind
+The platform lacks a **kind description** (distinct from attribute), so the model doesn't understand and extracts the wrong kind.
+
+> RC:
+> Fix:
+
+### [ ] 34. Some jobs are very hard to interrupt (30 min from cancel to stop)
+Some jobs are very hard to interrupt — 30 minutes from cancelling until actually cancelled because the job keeps running. Need an enforce feature + GUI to accept data loss and stop the job immediately (user doesn't want to waste tokens).
+
+> RC:
+> Fix:
+
+### [ ] 35. Platform lacks a language picker (user must type language code)
+The platform lacks a language picker — the user must input the language code. Bad design.
+
+> RC:
+> Fix:
+
+### [ ] 36. Extraction glossary LLM-call prediction is wrong (predicts ~2/chapter)
+The total-LLM-call prediction for extraction doesn't work well. With 30 glossary kinds (many attributes), the number of calls is >30, but the prediction shows only ~2 per chapter.
+
+> RC:
+> Fix:
+
+### [ ] 37. Job GUI should show number of LLM calls and estimated total calls
+The job GUI should display the number of LLM calls and the estimated total calls.
+
+> RC:
+> Fix:
+
+### [ ] 38. Extraction creates impossible entity counts (duplicates across kinds)
+Extraction progression has a critical bug: 30 glossary kinds but it extracts 360 entities with an error message. A chapter can't have that many kinds. Suspect this is part of why extraction is slow. 739 entities created for only 5 chapters — impossible. Maybe glossary duplication (one glossary duplicated across multiple kinds because kind definitions are bad, or LLM mistakes).
+
+> RC:
+> Fix:
+
+---
+
+## Notes
+- Items 7, 26 have promised follow-up evidence from the user.
+- Several items cluster around the **glossary extraction → merge → KG flywheel** (7, 13, 26, 36, 38) and the **agent planner/MCP batch** flow (18, 19, 27, 29, 30) — likely shared root causes.

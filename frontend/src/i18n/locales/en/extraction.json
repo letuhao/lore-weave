@@ -80,7 +80,10 @@
     "activityLog": "Activity Log",
     "cancel": "Cancel",
     "cancelConfirm": "Cancel this extraction job? Chapters already processed will keep their results.",
-    "cancelRequested": "Cancellation requested"
+    "cancelRequested": "Cancellation requested",
+    "background": "Run in background",
+    "backgroundToast": "Extraction is running in the background.",
+    "viewInJobs": "View in Jobs"
   },
   "results": {
     "title": "Extraction Complete",
