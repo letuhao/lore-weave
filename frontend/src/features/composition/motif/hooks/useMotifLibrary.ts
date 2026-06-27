@@ -22,10 +22,14 @@ export function useMotifLibrary(token: string | null, opts?: { initialScope?: Li
 
   // The server params: scope 'my' fetches the full read-predicate list ('all'),
   // 'catalog' fetches the public allow-list. `q` rides to the server (ILIKE).
+  // NB: GET /motifs caps limit at 100 (router le=100) — sending 200 422s every call
+  // (R-NODE-P1 contract drift). The 'catalog' tab still 422s on scope='public' (the
+  // router accepts only mine|system|all, and scope=public would bypass the B-3
+  // catalog allow-list anyway) — it must move to motifApi.catalog: D-MOTIF-FE-CATALOG-ENDPOINT.
   const params: MotifListParams = {
     scope: scope === 'catalog' ? 'public' : 'all',
     q: search.trim() || undefined,
-    limit: 200,
+    limit: 100,
   };
 
   const query = useQuery({

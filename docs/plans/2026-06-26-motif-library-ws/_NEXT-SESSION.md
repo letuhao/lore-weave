@@ -36,6 +36,15 @@ commits + the reconcile commit on `feat/narrative-pattern-library`.
 - **`D-MOTIF-FE-PLANNERVIEW-WIRING`** (gate #3): W6 ships `useMotifBinding`+`MotifBindingCard`;
   the 1-line `selectTab`/`setSceneId` wiring in `PlannerView.tsx` (W2's FE seam) is unwired.
   The W6 dock panel provides the motif UI; this is the inline-in-planner enhancement (H-8 path).
+- **`D-MOTIF-FE-CATALOG-ENDPOINT`** (HIGH, gate #2 — found by /review-impl): the W6 library's
+  `catalog` tab calls `motifApi.list({scope:'public'})` → `GET /motifs`, which (a) 422s (the router
+  accepts only `mine|system|all`) and (b) would BYPASS the B-3 allow-list (`list_for_caller` returns
+  full rows). The catalog tab must call `motifApi.catalog` (`GET /motifs/catalog` = `list_public`,
+  the `_CATALOG_COLS` allow-list) and the hook must handle the `CatalogMotif` shape (the tier facet
+  reads `owner_user_id`/`visibility`, which the allow-list omits). Fix in the FE-integration pass
+  (`D-MOTIF-FE-LIVE-SMOKE`). The companion `limit: 200 → 100` 422 (every list call) was fixed in-commit.
+  NOTE: W7 seed packs now live in `app/db/seed_motif_packs/` (not `scripts/`); the W7 design doc's
+  path refs are stale — code + this handoff are authoritative.
 
 **Deferred — WS-reported (carried; many target R-NODE-P1):** `D-MOTIF-RETRIEVE-LIVE-SMOKE`,
 `D-MOTIF-PGVECTOR-TRIGGER` (perf, ceiling=500), `D-W4-MINE-WORKER-LIVE-SMOKE` (Wave-2 compute),
