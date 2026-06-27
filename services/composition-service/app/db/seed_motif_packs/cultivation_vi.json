@@ -1,0 +1,394 @@
+[
+  {
+    "code": "cultivation.fortuitous_encounter",
+    "language": "vi",
+    "kind": "sequence",
+    "category": "cultivation.encounter",
+    "name": "Kỳ Ngộ → Truyền Thừa",
+    "summary": "Một phế vật bị nhục mạ, cô lập sau khi sa cơ hoặc bị trục xuất, tình cờ phát hiện một di vật hoặc cao nhân sắp tắt mạng, trải qua khảo nghiệm và nhận được truyền thừa ẩn giấu, đổi lại bằng một món nợ ràng buộc.",
+    "genre_tags": ["cultivation", "xianxia", "tu-tien", "progression"],
+    "roles": [
+      {"key": "protagonist", "actant": "subject", "label": "kẻ phế vật cô độc", "constraints": ["hiện đang yếu kém hoặc thất thế"]},
+      {"key": "mentor", "actant": "sender", "label": "cao nhân hấp hối / khí linh của di vật", "constraints": ["sắp tắt mạng hoặc đang trầm ngủ"]},
+      {"key": "legacy", "actant": "object", "label": "công pháp hoặc huyết mạch được truyền thừa", "constraints": ["cấm kỵ hoặc cái thế vô song"]}
+    ],
+    "beats": [
+      {"key": "isolation", "label": "Cô lập sau khi sa cơ", "intent": "đẩy nhân vật chính vào tuyệt cảnh không người cứu giúp, lúc khốn cùng nhất", "tension_target": 2, "order": 1},
+      {"key": "discovery", "label": "Phát hiện di vật / cao nhân", "intent": "cơ duyên tình cờ làm thay đổi tất cả", "tension_target": 3, "order": 2},
+      {"key": "trial", "label": "Khảo nghiệm của truyền thừa", "intent": "cao nhân hoặc di vật thử thách tư cách", "tension_target": 3, "order": 3},
+      {"key": "inheritance", "label": "Nhận truyền thừa kèm giá phải trả", "intent": "ban cho sức mạnh ràng buộc bởi một món nợ hoặc bí mật", "tension_target": 2, "order": 4}
+    ],
+    "preconditions": [
+      {"text": "nhân vật chính yếu kém, bị nhục mạ hoặc bị trục xuất"},
+      {"text": "không có đồng minh nào bên cạnh"}
+    ],
+    "effects": [
+      {"text": "nhân vật chính có được một sức mạnh hoặc công pháp ẩn giấu"},
+      {"text": "hình thành một món nợ hoặc mối ràng buộc bí mật với cao nhân"}
+    ],
+    "tension_target": 3,
+    "emotion_target": "hy vọng",
+    "examples": [
+      {"text": "Bị ném vào hẻm núi phong ấn, kẻ phế vật vô tình gặp một cao nhân hấp hối khảo nghiệm rồi truyền lại cấm thuật — ràng buộc bởi một món nợ trung thành."}
+    ],
+    "annotations": {},
+    "source": "authored",
+    "source_version": 1
+  },
+  {
+    "code": "cultivation.closed_door_breakthrough",
+    "language": "vi",
+    "kind": "sequence",
+    "category": "cultivation.breakthrough",
+    "name": "Bế Quan Đột Phá",
+    "summary": "Bế quan để phá cảnh giới ngưng trệ, tu sĩ đối mặt với bức tường nội tâm, gắng chịu thiên kiếp, cận kề sinh tử rồi đột phá lên một cảnh giới mới.",
+    "genre_tags": ["cultivation", "xianxia", "tu-tien", "progression"],
+    "roles": [
+      {"key": "protagonist", "actant": "subject", "label": "tu sĩ bị đình trệ", "constraints": ["mắc kẹt dưới bức tường cảnh giới"]},
+      {"key": "tribulation", "actant": "opponent", "label": "thiên kiếp", "constraints": ["vô tình, ngày càng dữ dội"]},
+      {"key": "guardian", "actant": "helper", "label": "đồng minh canh giữ cửa bế quan", "constraints": ["không bắt buộc"]}
+    ],
+    "beats": [
+      {"key": "seclusion", "label": "Vào bế quan", "intent": "lui về tĩnh tu để phá nút thắt", "tension_target": 2, "order": 1},
+      {"key": "bottleneck", "label": "Đụng phải bức tường nội tâm", "intent": "cảnh giới ngưng trệ kháng cự", "tension_target": 3, "order": 2},
+      {"key": "insight", "label": "Đốn ngộ", "intent": "một tầng lĩnh ngộ phá vỡ bức tường", "tension_target": 3, "order": 3},
+      {"key": "tribulation", "label": "Thiên kiếp giáng xuống", "intent": "trời cao khảo nghiệm bước thăng tiến", "tension_target": 4, "order": 4},
+      {"key": "crisis", "label": "Cận kề cái chết", "intent": "kiếp nạn suýt lấy mạng tu sĩ", "tension_target": 5, "order": 5},
+      {"key": "breakthrough", "label": "Đột phá cảnh giới", "intent": "sống sót và đột phá thành công", "tension_target": 4, "order": 6}
+    ],
+    "preconditions": [
+      {"text": "nhân vật chính bị chặn lại tại một nút thắt tu luyện"},
+      {"text": "có sẵn một lượng tài nguyên hoặc lĩnh ngộ"}
+    ],
+    "effects": [
+      {"text": "nhân vật chính thăng lên một cảnh giới hoặc một cấp"},
+      {"text": "danh tiếng và thực lực của họ tăng vọt rõ rệt"}
+    ],
+    "tension_target": 4,
+    "emotion_target": "kỳ vọng",
+    "examples": [
+      {"text": "Bế quan để phá cảnh giới ngưng trệ, tu sĩ đối mặt bức tường nội tâm, một đạo thiên kiếp, cận kề cái chết rồi đột phá lên cảnh giới mới."}
+    ],
+    "annotations": {},
+    "source": "authored",
+    "source_version": 1
+  },
+  {
+    "code": "cultivation.face_slap",
+    "language": "vi",
+    "kind": "situation",
+    "category": "cultivation.reversal",
+    "name": "Phản Đòn Vả Mặt",
+    "summary": "Một phe ngạo mạn chế giễu nhân vật chính bị xem thường, người này liền phơi bày sức mạnh ẩn giấu và giáng trả nỗi nhục lên kẻ chế giễu ngay trước mặt đám đông.",
+    "genre_tags": ["cultivation", "xianxia", "tu-tien", "reversal"],
+    "roles": [
+      {"key": "protagonist", "actant": "subject", "label": "kẻ bị xem thường", "constraints": ["bị coi rẻ trước đám đông"]},
+      {"key": "arrogant", "actant": "opponent", "label": "thiên tài ngạo mạn", "constraints": ["kiêu căng, hậu thuẫn vững"]},
+      {"key": "witnesses", "actant": "receiver", "label": "đám đông đang nhìn", "constraints": ["khán giả công khai"]}
+    ],
+    "beats": [
+      {"key": "mockery", "label": "Phe ngạo mạn chế giễu", "intent": "kẻ kế thừa kiêu căng cười nhạo nhân vật chính", "tension_target": 2, "order": 1},
+      {"key": "underestimate", "label": "Nhân vật chính bị xem thường", "intent": "đám đông coi như họ chẳng là gì", "tension_target": 2, "order": 2},
+      {"key": "reveal", "label": "Phơi bày sức mạnh ẩn giấu", "intent": "nhân vật chính hiển lộ một công pháp cao thâm hơn", "tension_target": 4, "order": 3},
+      {"key": "reversal", "label": "Đảo ngược nỗi nhục", "intent": "kẻ chế giễu bị vả mặt công khai", "tension_target": 5, "order": 4}
+    ],
+    "preconditions": [
+      {"text": "nhân vật chính bị xem thường hoặc lăng nhục trước đám đông"},
+      {"text": "nhân vật chính ngầm sở hữu sức mạnh vượt xa cấp bậc bề ngoài"}
+    ],
+    "effects": [
+      {"text": "thực lực thật sự của nhân vật chính được phơi bày trước mắt mọi người"},
+      {"text": "phe ngạo mạn bị bẽ mặt và trở thành kẻ thù"}
+    ],
+    "tension_target": 4,
+    "emotion_target": "thỏa mãn",
+    "examples": [
+      {"text": "Một kẻ kế thừa vênh váo cười nhạo 'phế vật'; giữa trận đấu phế vật hiển lộ công pháp cao thâm hơn và kẻ kia bị vả mặt công khai."}
+    ],
+    "annotations": {},
+    "source": "authored",
+    "source_version": 1
+  },
+  {
+    "code": "cultivation.trash_to_genius",
+    "language": "vi",
+    "kind": "pattern",
+    "category": "cultivation.arc",
+    "name": "Phế Vật Hóa Thiên Tài — Rửa Hận",
+    "summary": "Một khuyết tật ẩn giấu bị khinh miệt là tàn phế lại được chẩn đoán là một thiên phú hiếm có; chính khiếm khuyết ấy trở thành động lực thăng tiến và nhân vật chính được minh oan.",
+    "genre_tags": ["cultivation", "xianxia", "tu-tien", "progression"],
+    "roles": [
+      {"key": "protagonist", "actant": "subject", "label": "'phế nhân' bị khinh miệt", "constraints": ["bị cho là thiếu tư chất"]},
+      {"key": "diagnostician", "actant": "sender", "label": "trưởng lão / người chẩn mạch", "constraints": ["có thể nhìn ra thể chất thật sự"]},
+      {"key": "clan", "actant": "opponent", "label": "gia tộc khinh miệt", "constraints": ["coi rẻ, trọng địa vị"]}
+    ],
+    "beats": [
+      {"key": "affliction", "label": "Khuyết tật ẩn giấu", "intent": "nhân vật chính bị đối xử như kẻ tàn phế", "tension_target": 2, "order": 1},
+      {"key": "explained", "label": "Khuyết tật được lý giải", "intent": "khiếm khuyết được nhìn ra là một thể chất hiếm có", "tension_target": 3, "order": 2},
+      {"key": "gift", "label": "Khuyết tật hóa thiên phú", "intent": "khiếm khuyết thúc đẩy một bước thăng tiến phi thường", "tension_target": 4, "order": 3},
+      {"key": "vindication", "label": "Rửa hận", "intent": "những kẻ khinh miệt bị chứng minh là sai lầm", "tension_target": 5, "order": 4}
+    ],
+    "preconditions": [
+      {"text": "nhân vật chính bị coi là vô dụng hoặc tàn phế"}
+    ],
+    "effects": [
+      {"text": "tiềm năng ẩn giấu của nhân vật chính được khai mở"},
+      {"text": "những kẻ từng khinh miệt buộc phải thừa nhận họ"}
+    ],
+    "tension_target": 4,
+    "emotion_target": "minh oan",
+    "examples": [
+      {"text": "Thân thể bị gọi là 'tàn phế' hóa ra ẩn chứa một thể chất hiếm có; chính khiếm khuyết ấy trở thành động lực thăng tiến."}
+    ],
+    "annotations": {},
+    "source": "authored",
+    "source_version": 1
+  },
+  {
+    "code": "cultivation.dao_heart_temper",
+    "language": "vi",
+    "kind": "sequence",
+    "category": "cultivation.inner",
+    "name": "Tôi Luyện Đạo Tâm",
+    "summary": "Tâm ma trỗi dậy trong một ảo cảnh khảo nghiệm tái hiện nỗi day dứt sâu nặng nhất của tu sĩ; chỉ khi cự tuyệt lời dối an ủi thì đạo tâm mới đứng vững.",
+    "genre_tags": ["cultivation", "xianxia", "tu-tien", "inner-demon"],
+    "roles": [
+      {"key": "protagonist", "actant": "subject", "label": "tu sĩ", "constraints": ["mang nỗi day dứt chưa hóa giải"]},
+      {"key": "inner_demon", "actant": "opponent", "label": "tâm ma", "constraints": ["đeo một gương mặt an ủi"]},
+      {"key": "dao_heart", "actant": "object", "label": "đạo tâm / ý chí", "constraints": ["thứ đang bị đặt cược"]}
+    ],
+    "beats": [
+      {"key": "surface", "label": "Tâm ma trỗi dậy", "intent": "nỗi hoài nghi của tu sĩ hiện hình", "tension_target": 3, "order": 1},
+      {"key": "false_memory", "label": "Khảo nghiệm ký ức giả", "intent": "một ảo cảnh tái hiện nỗi day dứt sâu nặng nhất", "tension_target": 4, "order": 2},
+      {"key": "confront", "label": "Đối mặt với chính mình", "intent": "tu sĩ phải cự tuyệt lời dối an ủi", "tension_target": 5, "order": 3},
+      {"key": "emerge", "label": "Bước ra kiên định", "intent": "đạo tâm đứng vững, được tôi luyện", "tension_target": 3, "order": 4}
+    ],
+    "preconditions": [
+      {"text": "nhân vật chính mang một nỗi day dứt hoặc chấp niệm chưa hóa giải"}
+    ],
+    "effects": [
+      {"text": "ý chí của nhân vật chính được tôi luyện và sáng tỏ"},
+      {"text": "loại bỏ điểm yếu trước ảo cảnh hoặc cám dỗ"}
+    ],
+    "tension_target": 4,
+    "emotion_target": "kiên định",
+    "examples": [
+      {"text": "Một ảo cảnh khảo nghiệm tái hiện nỗi day dứt sâu nặng nhất của tu sĩ; chỉ khi cự tuyệt lời dối an ủi thì đạo tâm mới đứng vững."}
+    ],
+    "annotations": {},
+    "source": "authored",
+    "source_version": 1
+  },
+  {
+    "code": "cultivation.auction_house_treasure",
+    "language": "vi",
+    "kind": "situation",
+    "category": "cultivation.contest",
+    "name": "Bảo Vật Đấu Giá",
+    "summary": "Một bảo vật hiếm xuất hiện tại phiên đấu giá; bị áp đảo về tài lực và bị chế giễu, nhân vật chính lại giành được nó nhờ một hậu thuẫn ẩn giấu hoặc một cách bất ngờ.",
+    "genre_tags": ["cultivation", "xianxia", "tu-tien", "contest"],
+    "roles": [
+      {"key": "protagonist", "actant": "subject", "label": "người ra giá", "constraints": ["thiếu tài nguyên"]},
+      {"key": "rival", "actant": "opponent", "label": "đối thủ giàu có", "constraints": ["ngạo mạn, túi tiền rủng rỉnh"]},
+      {"key": "treasure", "actant": "object", "label": "di vật được đấu giá", "constraints": ["hiếm có, ai cũng thèm khát"]},
+      {"key": "backer", "actant": "helper", "label": "một hậu thuẫn ẩn giấu", "constraints": ["chỗ dựa được giấu kín"]}
+    ],
+    "beats": [
+      {"key": "surface", "label": "Bảo vật hiếm xuất hiện", "intent": "một di vật khiến ai cũng thèm khát được đem ra đấu giá", "tension_target": 2, "order": 1},
+      {"key": "bidding_war", "label": "Cuộc tranh giá", "intent": "các đối thủ đẩy giá lên cao", "tension_target": 3, "order": 2},
+      {"key": "outbid", "label": "Đối thủ vượt giá", "intent": "nhân vật chính bị áp đảo về tài lực và bị chế giễu", "tension_target": 3, "order": 3},
+      {"key": "secret_win", "label": "Đắc thắng bằng cách bí ẩn", "intent": "nhân vật chính giành lấy nó bằng một cách bất ngờ", "tension_target": 4, "order": 4}
+    ],
+    "preconditions": [
+      {"text": "một tài nguyên ai cũng thèm khát được mở ra tranh đoạt công khai"}
+    ],
+    "effects": [
+      {"text": "nhân vật chính giành được bảo vật"},
+      {"text": "một đối thủ giàu có bị áp đảo công khai"}
+    ],
+    "tension_target": 3,
+    "emotion_target": "khải hoàn",
+    "examples": [
+      {"text": "Một di vật xuất hiện tại phiên đấu giá; bị áp đảo về tài lực và bị chế giễu, nhân vật chính giành lấy nó bằng một cách không ai ngờ tới."}
+    ],
+    "annotations": {},
+    "source": "authored",
+    "source_version": 1
+  },
+  {
+    "code": "cultivation.sect_entrance_trial",
+    "language": "vi",
+    "kind": "sequence",
+    "category": "cultivation.trial",
+    "name": "Khảo Nghiệm Nhập Môn",
+    "summary": "Một kẻ ngoại lai vô danh vô hạng làm vỡ tan linh khí trắc nghiệm tại khảo nghiệm nhập môn của tông môn; các trưởng lão tranh nhau thu nhận, kèm theo những điều kiện đánh cược.",
+    "genre_tags": ["cultivation", "xianxia", "tu-tien", "trial"],
+    "roles": [
+      {"key": "protagonist", "actant": "subject", "label": "kẻ ngoại lai vô danh", "constraints": ["vô hạng, ngoài dự liệu"]},
+      {"key": "elder", "actant": "sender", "label": "trưởng lão tông môn", "constraints": ["phán xét và chiêu mộ"]},
+      {"key": "gatekeeper", "actant": "opponent", "label": "đệ tử giữ cửa", "constraints": ["kẻ cả khinh khỉnh"]}
+    ],
+    "beats": [
+      {"key": "arrive", "label": "Đến nơi vô danh", "intent": "kẻ ngoại lai đến mà không có chút thân phận", "tension_target": 2, "order": 1},
+      {"key": "underestimated", "label": "Bị xem thường tại khảo nghiệm", "intent": "đệ tử giữ cửa coi rẻ họ", "tension_target": 2, "order": 2},
+      {"key": "exceed", "label": "Vượt ngưỡng trắc nghiệm", "intent": "linh khí trắc nghiệm bị làm vỡ tan", "tension_target": 4, "order": 3},
+      {"key": "recruited", "label": "Được thu nhận kèm điều kiện", "intent": "các trưởng lão tranh nhau thu nhận họ", "tension_target": 3, "order": 4}
+    ],
+    "preconditions": [
+      {"text": "một khảo nghiệm hoặc trắc nghiệm mở quyết định việc gia nhập một thế lực"}
+    ],
+    "effects": [
+      {"text": "nhân vật chính có được một chỗ đứng và một người chống lưng"},
+      {"text": "gieo mầm mối thù với phe giữ cửa"}
+    ],
+    "tension_target": 3,
+    "emotion_target": "khải hoàn",
+    "examples": [
+      {"text": "Một kẻ ngoại lai vô hạng làm vỡ tan giới hạn của linh khí trắc nghiệm; các trưởng lão tranh nhau thu nhận họ."}
+    ],
+    "annotations": {},
+    "source": "authored",
+    "source_version": 1
+  },
+  {
+    "code": "cultivation.life_and_death_duel",
+    "language": "vi",
+    "kind": "situation",
+    "category": "cultivation.duel",
+    "name": "Sinh Tử Quyết Đấu",
+    "summary": "Một trận quyết đấu sinh tử được lập thề trên đấu đài; kẻ con cưng được sủng ái thua cuộc đúng vào khoảnh khắc hắn tin rằng mình đã thắng.",
+    "genre_tags": ["cultivation", "xianxia", "tu-tien", "duel"],
+    "roles": [
+      {"key": "protagonist", "actant": "subject", "label": "kẻ khiêu chiến hoặc bị khiêu chiến", "constraints": ["bề ngoài có vẻ thua kém"]},
+      {"key": "rival", "actant": "opponent", "label": "đối thủ được sủng ái", "constraints": ["tự tin, có hậu thuẫn"]},
+      {"key": "crowd", "actant": "receiver", "label": "đám đông đang nhìn", "constraints": ["đấu đài công khai"]}
+    ],
+    "beats": [
+      {"key": "challenge", "label": "Lời khiêu chiến", "intent": "một trận quyết đấu được phát ra", "tension_target": 3, "order": 1},
+      {"key": "stakes", "label": "Lập thề sinh tử", "intent": "cái chết được đặt làm giá phải trả", "tension_target": 3, "order": 2},
+      {"key": "turn", "label": "Cục diện xoay chuyển", "intent": "thế trận đảo chiều bất ngờ", "tension_target": 4, "order": 3},
+      {"key": "reversal", "label": "Đảo ngược chí mạng", "intent": "kẻ được sủng ái gục ngã ngay khoảnh khắc chắc thắng", "tension_target": 5, "order": 4}
+    ],
+    "preconditions": [
+      {"text": "một cuộc đối đầu công khai, đặt cược lớn được lập thề"}
+    ],
+    "effects": [
+      {"text": "một đối thủ bị đánh bại dứt khoát, thường là tới chết"},
+      {"text": "địa vị của nhân vật chính được lật đổi hoàn toàn"}
+    ],
+    "tension_target": 4,
+    "emotion_target": "căng thẳng",
+    "examples": [
+      {"text": "Một trận quyết đấu sinh tử trên đấu đài; kẻ con cưng được sủng ái thua cuộc đúng vào khoảnh khắc hắn nghĩ mình đã thắng."}
+    ],
+    "annotations": {},
+    "source": "authored",
+    "source_version": 1
+  },
+  {
+    "code": "cultivation.bottleneck_resource_hunt",
+    "language": "vi",
+    "kind": "sequence",
+    "category": "cultivation.hunt",
+    "name": "Săn Tìm Tài Nguyên Phá Quan",
+    "summary": "Đình trệ dưới một bức tường cảnh giới, tu sĩ săn tìm một linh vật được canh giữ vào tử địa và đột phá nhờ uy lực của nó.",
+    "genre_tags": ["cultivation", "xianxia", "tu-tien", "hunt"],
+    "roles": [
+      {"key": "protagonist", "actant": "subject", "label": "tu sĩ bị đình trệ", "constraints": ["cần một tài nguyên cụ thể"]},
+      {"key": "resource", "actant": "object", "label": "linh thảo / yêu đan", "constraints": ["hiếm có, được canh giữ"]},
+      {"key": "guardian", "actant": "opponent", "label": "yêu thú trấn giữ", "constraints": ["chí mạng, hung hãn giữ lãnh địa"]}
+    ],
+    "beats": [
+      {"key": "stall", "label": "Cảnh giới đình trệ", "intent": "tiến triển khựng lại trước một bức tường", "tension_target": 2, "order": 1},
+      {"key": "named", "label": "Xác định tài nguyên", "intent": "linh vật cần thiết được nhận diện", "tension_target": 3, "order": 2},
+      {"key": "acquire", "label": "Đoạt lấy giữa hiểm nguy", "intent": "đoạt lấy nó từ một tử địa", "tension_target": 4, "order": 3},
+      {"key": "advance", "label": "Hấp thụ và thăng tiến", "intent": "đột phá nhờ uy lực của nó", "tension_target": 3, "order": 4}
+    ],
+    "preconditions": [
+      {"text": "nhân vật chính bị chặn lại tại một nút thắt"},
+      {"text": "biết rõ một tài nguyên cụ thể có thể phá vỡ nó"}
+    ],
+    "effects": [
+      {"text": "nhân vật chính có được tài nguyên cần thiết"},
+      {"text": "nhân vật chính thăng lên một cấp"}
+    ],
+    "tension_target": 3,
+    "emotion_target": "quyết tâm",
+    "examples": [
+      {"text": "Mắc kẹt dưới một bức tường cảnh giới, tu sĩ săn tìm một linh vật được canh giữ vào tử địa và đột phá nhờ uy lực của nó."}
+    ],
+    "annotations": {},
+    "source": "authored",
+    "source_version": 1
+  },
+  {
+    "code": "cultivation.master_disciple_debt",
+    "language": "vi",
+    "kind": "situation",
+    "category": "cultivation.bond",
+    "name": "Ân Nghĩa Sư Đồ",
+    "summary": "Được một sư phụ ẩn thế cứu giúp hoặc truyền dạy, đệ tử mang một món nợ không thể trả hết, để rồi bị đòi vào đúng thời khắc tồi tệ nhất.",
+    "genre_tags": ["cultivation", "xianxia", "tu-tien", "bond"],
+    "roles": [
+      {"key": "protagonist", "actant": "subject", "label": "đệ tử mang ân nghĩa", "constraints": ["mắc nợ sư phụ"]},
+      {"key": "master", "actant": "sender", "label": "sư phụ ẩn thế", "constraints": ["cường đại, khắt khe"]},
+      {"key": "obligation", "actant": "object", "label": "ân nghĩa / nghĩa vụ", "constraints": ["ràng buộc, đắt giá"]}
+    ],
+    "beats": [
+      {"key": "taught", "label": "Được cứu hoặc truyền dạy", "intent": "sư phụ cứu giúp hoặc chỉ dạy nhân vật chính", "tension_target": 1, "order": 1},
+      {"key": "incur", "label": "Mang nợ không thể trả hết", "intent": "hình thành một nghĩa vụ vượt quá khả năng dễ dàng đền đáp", "tension_target": 2, "order": 2},
+      {"key": "called", "label": "Ân nghĩa bị đòi", "intent": "sư phụ đòi đền đáp vào một thời khắc gian nan", "tension_target": 3, "order": 3},
+      {"key": "loyalty_test", "label": "Thử thách lòng trung", "intent": "lòng trung thành của đệ tử bị thử thách", "tension_target": 4, "order": 4}
+    ],
+    "preconditions": [
+      {"text": "nhân vật chính nhận được sự cứu giúp hoặc truyền dạy làm thay đổi cuộc đời"}
+    ],
+    "effects": [
+      {"text": "một nghĩa vụ ràng buộc trói nhân vật chính với sư phụ"},
+      {"text": "lòng trung thành của nhân vật chính được chứng minh hoặc tan vỡ"}
+    ],
+    "tension_target": 3,
+    "emotion_target": "ân nghĩa",
+    "examples": [
+      {"text": "Được một sư phụ ẩn thế cứu giúp, đệ tử mang một món nợ bị đòi vào đúng thời khắc tồi tệ nhất."}
+    ],
+    "annotations": {},
+    "source": "authored",
+    "source_version": 1
+  },
+  {
+    "code": "cultivation.tribulation_ascension",
+    "language": "vi",
+    "kind": "sequence",
+    "category": "cultivation.ascension",
+    "name": "Độ Kiếp Phi Thăng",
+    "summary": "Uy lực tích tụ chiêu dẫn thiên uy giáng nộ; chín đợt lôi kiếp phải được vượt qua để phi thăng, được một đồng minh trấn giữ làm điểm tựa.",
+    "genre_tags": ["cultivation", "xianxia", "tu-tien", "ascension"],
+    "roles": [
+      {"key": "protagonist", "actant": "subject", "label": "tu sĩ sắp phi thăng", "constraints": ["đứng trước ngưỡng phi thăng"]},
+      {"key": "tribulation", "actant": "opponent", "label": "thiên kiếp", "constraints": ["ngày càng dữ dội, chí mạng"]},
+      {"key": "anchor", "actant": "helper", "label": "đồng minh làm điểm tựa", "constraints": ["giữ vững phòng tuyến"]}
+    ],
+    "beats": [
+      {"key": "merit", "label": "Tích lũy công đức", "intent": "uy lực đạt tới ngưỡng phi thăng", "tension_target": 3, "order": 1},
+      {"key": "notice", "label": "Trời cao để mắt", "intent": "thiên kiếp tụ tập", "tension_target": 4, "order": 2},
+      {"key": "tribulation", "label": "Lôi kiếp giáng xuống", "intent": "từng đợt nối tiếp nhau phải gắng chịu", "tension_target": 5, "order": 3},
+      {"key": "ascend", "label": "Phi thăng hoặc rơi rụng", "intent": "sống sót để phi thăng, hoặc tan biến", "tension_target": 4, "order": 4}
+    ],
+    "preconditions": [
+      {"text": "nhân vật chính đã đạt tới ngưỡng phi thăng"}
+    ],
+    "effects": [
+      {"text": "nhân vật chính phi thăng lên một tầng trời hoặc cảnh giới cao hơn"},
+      {"text": "địa vị nơi thế giới cũ của họ bị bỏ lại phía sau"}
+    ],
+    "tension_target": 5,
+    "emotion_target": "kinh ngạc",
+    "examples": [
+      {"text": "Uy lực chiêu dẫn thiên uy giáng nộ; chín đợt lôi kiếp phải được vượt qua để phi thăng."}
+    ],
+    "annotations": {},
+    "source": "authored",
+    "source_version": 1
+  }
+]

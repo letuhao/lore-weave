@@ -48,8 +48,14 @@ logger = logging.getLogger(__name__)
 _PACK_DIR = Path(__file__).resolve().parent / "seed_motif_packs"
 
 # The motif packs (each a JSON array of motif objects). links.json is loaded
-# separately (it is edges, not motifs).
-_MOTIF_PACKS = ("cultivation", "revenge", "intrigue", "hooks", "emotion_arcs")
+# separately (it is edges, not motifs). The `*_vi` packs (D-W7-VI-PACK) are the
+# Vietnamese SOURCE-OF-TRUTH siblings — SAME codes, `language:"vi"` → distinct ids via
+# `_motif_id(code, language)` (R1.1.3 dedup/embed key). links.json is shared: the
+# loader emits one edge PER language whose endpoints both exist (see load_link_edges).
+_MOTIF_PACKS = (
+    "cultivation", "revenge", "intrigue", "hooks", "emotion_arcs",
+    "cultivation_vi", "revenge_vi", "intrigue_vi", "hooks_vi", "emotion_arcs_vi",
+)
 _LINKS_PACK = "links"
 
 # Fixed W7 namespace for deterministic uuid5 ids (any constant UUID). Changing this
@@ -170,33 +176,50 @@ def load_motif_rows() -> list[dict[str, Any]]:
 def load_link_edges(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
     """Load the precedes/composed_of edges from links.json and resolve from/to codes
     to seeded ids. Raises on a dangling edge (a code not in the loaded packs) or a
-    composed_of parent that is not a `kind='pattern'` motif. Pure (no DB)."""
-    by_code: dict[str, dict[str, Any]] = {}
+    composed_of parent that is not a `kind='pattern'` motif. Pure (no DB).
+
+    MULTI-LANGUAGE (D-W7-VI-PACK): codes are shared across language packs (the same
+    `cultivation.face_slap` exists in both en and vi as distinct rows). links.json is
+    a single, language-agnostic edge manifest; this loader emits ONE edge PER language
+    in which BOTH endpoints exist — so the en chain and the vi chain are both wired,
+    each resolving to its own-language `_motif_id`. (An edge endpoint pair sharing no
+    language is a dangling-link error.) `kind` is language-invariant (same row code →
+    same kind in every language), so the composed_of='pattern' check is per-code."""
+    # code → set of languages it was seeded in; code → kind (language-invariant).
+    langs_by_code: dict[str, set[str]] = {}
+    kind_by_code: dict[str, str] = {}
     for r in rows:
-        by_code[r["code"]] = r
+        code = r["code"]
+        langs_by_code.setdefault(code, set()).add(r.get("language", "en"))
+        kind_by_code[code] = r.get("kind", "sequence")
     edges: list[dict[str, Any]] = []
     for e in _read_pack(_LINKS_PACK):
         frm, to, kind = e["from_code"], e["to_code"], e["kind"]
-        if frm not in by_code:
+        if frm not in langs_by_code:
             raise ValueError(f"link from_code {frm!r} not a seeded motif")
-        if to not in by_code:
+        if to not in langs_by_code:
             raise ValueError(f"link to_code {to!r} not a seeded motif")
         if kind not in ("composed_of", "precedes", "variant_of"):
             raise ValueError(f"link kind {kind!r} invalid")
-        if kind == "composed_of" and by_code[frm].get("kind") != "pattern":
+        if kind == "composed_of" and kind_by_code[frm] != "pattern":
             raise ValueError(f"composed_of parent {frm!r} must be kind='pattern'")
-        # All seeded motifs are 'en' for the first cut (D1); resolve in that language.
-        lang_from = by_code[frm].get("language", "en")
-        lang_to = by_code[to].get("language", "en")
-        edges.append(
-            {
-                "id": _link_id(frm, to, kind, lang_from),
-                "from_id": _motif_id(frm, lang_from),
-                "to_id": _motif_id(to, lang_to),
-                "kind": kind,
-                "ord": e.get("ord"),
-            }
-        )
+        shared_langs = langs_by_code[frm] & langs_by_code[to]
+        if not shared_langs:
+            raise ValueError(
+                f"link {frm!r}→{to!r} has no shared language "
+                f"({sorted(langs_by_code[frm])} vs {sorted(langs_by_code[to])})"
+            )
+        # One edge per shared language → the en chain and the vi chain are both wired.
+        for lang in sorted(shared_langs):
+            edges.append(
+                {
+                    "id": _link_id(frm, to, kind, lang),
+                    "from_id": _motif_id(frm, lang),
+                    "to_id": _motif_id(to, lang),
+                    "kind": kind,
+                    "ord": e.get("ord"),
+                }
+            )
     return edges
 
 

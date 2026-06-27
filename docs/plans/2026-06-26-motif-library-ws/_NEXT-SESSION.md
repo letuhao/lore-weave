@@ -1,5 +1,28 @@
 # ▶ NEXT SESSION — Narrative Motif Library BUILD (handoff)
 
+## STATUS (2026-06-28 PM-3) — D-W7-VI-PACK BUILT (vi seed packs) · ⏳ awaiting PO genre sign-off
+
+**`D-W7-VI-PACK`** ✅ engineering done + verified — ⏳ **PO genre-faithfulness review OUTSTANDING**
+(`D-W7-PO-REVIEW`). The Vietnamese SOURCE-OF-TRUTH sibling packs are authored + loading:
+- 5 new packs `app/db/seed_motif_packs/{cultivation,revenge,intrigue,hooks,emotion_arcs}_vi.json`
+  — SAME codes as en, `language:"vi"` → distinct ids via `_motif_id(code, language)` (R1.1.3 key).
+  44 vi rows mirror the 44 en rows 1:1 (identical code/kind/category/genre_tags/role keys/beat
+  keys+orders+tensions); only the human-readable fields (name/summary/labels/intents/precond/
+  effects/examples/emotion_target, + intrigue `gap`) are natural genre-faithful Vietnamese
+  (tu-tiên / báo-thù / cung-đấu register). Authored by 5 parallel subagents, structure-verified.
+- **Loader** `seed_motifs.py`: `_MOTIF_PACKS` += the 5 vi packs; **`load_link_edges` is now
+  multi-language** — links.json is ONE manifest, emitted once PER language whose endpoints both
+  exist (the old `by_code` dict collided on shared codes). en + vi chains both wired.
+- **Tests**: `test_seed_motifs.py` inventory → 88 rows / 24 precedes / 14 composed_of; the kind-
+  per-pack check is `_vi`-suffix aware. **12 unit pass + 5 DB-integration pass** (real Postgres:
+  88-row idempotent double-seed, system-tier count, NULL-embed, same-tier links). Provider-gate clean.
+
+**▶ PO ACTION NEEDED:** review the vi rows for genre faithfulness (the axis only the PO/domain
+authority can sign off, W7 §4 / §294). Accept/edit/reject per row; edits are data-only + re-seed
+(`reseed=True` dev path). Until then `D-W7-PO-REVIEW` stays open. The en sibling parity already exists.
+
+---
+
 ## STATUS (2026-06-28 PM-2) — D-W8-MINE-LIVE-SMOKE PASSING (full cross-service mine→draft)
 
 **`D-W8-MINE-LIVE-SMOKE`** ✅ — the LAST big W8 gap is closed end-to-end on the real stack.

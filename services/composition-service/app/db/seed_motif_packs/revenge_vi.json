@@ -1,0 +1,289 @@
+[
+  {
+    "code": "revenge.betrayal_to_exile",
+    "language": "vi",
+    "kind": "sequence",
+    "category": "revenge.fall",
+    "name": "Phản bội rồi lưu đày",
+    "summary": "Ngay trước thềm khải hoàn, kẻ thân tín nhất trở mặt; bị tước sạch mọi thứ và đuổi đi, người sống sót thề sẽ quay về.",
+    "genre_tags": ["revenge", "bao-thu", "betrayal"],
+    "roles": [
+      {"key": "protagonist", "actant": "subject", "label": "người sống sót bị phản bội", "constraints": ["cả tin, đang trên đà lên"]},
+      {"key": "betrayer", "actant": "opponent", "label": "huynh đệ kết nghĩa / kẻ phản bội", "constraints": ["thân cận, được tin tưởng"]},
+      {"key": "lost_kin", "actant": "receiver", "label": "thân quyến hoặc đồng minh đã mất", "constraints": ["bị cuốn theo trong cơn sụp đổ"]},
+      {"key": "vengeance", "actant": "object", "label": "lời thề báo thù", "constraints": ["đã thề, thôi thúc khôn nguôi"]}
+    ],
+    "beats": [
+      {"key": "trust", "label": "Gây dựng lòng tin", "intent": "một mối thâm tình được dựng lên để rồi bị bẻ gãy", "tension_target": 2, "order": 1},
+      {"key": "betrayal", "label": "Phản bội giáng xuống", "intent": "kẻ thân cận nhất trở mặt vào thời khắc tồi tệ nhất", "tension_target": 4, "order": 2},
+      {"key": "fall", "label": "Sụp đổ và mất mát", "intent": "nhân vật chính bị tước sạch mọi thứ", "tension_target": 4, "order": 3},
+      {"key": "vow", "label": "Lưu đày cùng một lời thề", "intent": "bị đuổi đi, người sống sót thề sẽ trở về", "tension_target": 3, "order": 4}
+    ],
+    "preconditions": [
+      {"text": "nhân vật chính đang nắm giữ lòng tin, địa vị hoặc quyền lực"}
+    ],
+    "effects": [
+      {"text": "nhân vật chính bị tước đoạt địa vị và bị đuổi đi"},
+      {"text": "một lời thề báo thù thôi thúc được lập ra"}
+    ],
+    "tension_target": 4,
+    "emotion_target": "bi thương",
+    "examples": [
+      {"text": "Ngay trước thềm khải hoàn, kẻ thân tín nhất trở mặt; bị tước sạch mọi thứ và đuổi đi, người sống sót thề sẽ quay về."}
+    ],
+    "annotations": {},
+    "source": "authored",
+    "source_version": 1
+  },
+  {
+    "code": "revenge.three_year_pact",
+    "language": "vi",
+    "kind": "pattern",
+    "category": "revenge.arc",
+    "name": "Giao ước ba năm",
+    "summary": "Được cho một kỳ hạn để mạnh lên hoặc là chết, kẻ bị ruồng bỏ ẩn nhẫn khổ luyện qua nhục nhã và một cơ duyên bất ngờ, rồi trở về lật đổ kẻ đã hủy hoại mình.",
+    "genre_tags": ["revenge", "bao-thu", "comeback"],
+    "roles": [
+      {"key": "protagonist", "actant": "subject", "label": "kẻ bị ruồng bỏ", "constraints": ["được định cho một kỳ hạn để mạnh lên"]},
+      {"key": "mentor", "actant": "sender", "label": "kỳ nhân chốn hoang dã", "constraints": ["ẩn dật, khắt khe"]},
+      {"key": "rival", "actant": "opponent", "label": "kẻ đã hủy hoại mình", "constraints": ["yên vị trong chiến thắng"]},
+      {"key": "ally", "actant": "helper", "label": "đồng minh trung thành", "constraints": ["sát cánh suốt chặng leo lên"]}
+    ],
+    "beats": [
+      {"key": "humiliation", "label": "Nhục nhã", "intent": "kẻ bị ruồng bỏ bị đánh gục và bị ra kỳ hạn", "tension_target": 2, "order": 1},
+      {"key": "encounter", "label": "Cơ duyên bất ngờ", "intent": "một bước ngoặt tình cờ mở ra con đường tới sức mạnh", "tension_target": 3, "order": 2},
+      {"key": "ascent", "label": "Trỗi dậy đầy cay đắng", "intent": "âm thầm khổ luyện mài giũa", "tension_target": 3, "order": 3},
+      {"key": "breakthrough", "label": "Đột phá", "intent": "nhân vật chính vượt qua ngưỡng cửa sức mạnh", "tension_target": 4, "order": 4},
+      {"key": "return", "label": "Trở về và lật ngược thế cờ", "intent": "trở về lật đổ kẻ đã hủy hoại mình", "tension_target": 5, "order": 5}
+    ],
+    "preconditions": [
+      {"text": "nhân vật chính đã bị đánh gục và làm nhục"},
+      {"text": "một khoảng thời gian hữu hạn để mạnh lên được ấn định"}
+    ],
+    "effects": [
+      {"text": "nhân vật chính trở về với diện mạo đổi thay và đầy sức mạnh"},
+      {"text": "kẻ đã hủy hoại mình bị lật đổ"}
+    ],
+    "tension_target": 4,
+    "emotion_target": "rửa hận",
+    "examples": [
+      {"text": "Được cho một kỳ hạn để mạnh lên hoặc là chết, kẻ bị ruồng bỏ ẩn nhẫn khổ luyện rồi trở về lật đổ kẻ đã hủy hoại mình."}
+    ],
+    "annotations": {},
+    "source": "authored",
+    "source_version": 1
+  },
+  {
+    "code": "revenge.false_accusation",
+    "language": "vi",
+    "kind": "situation",
+    "category": "revenge.injustice",
+    "name": "Vu oan giá họa",
+    "summary": "Bị gán tội phản đồ bằng chứng cứ ngụy tạo, kẻ bị hàm oan nhẫn nhịn chịu nhục trước bàn dân thiên hạ cho đến khi bàn tay thật sự bị lôi ra ánh sáng.",
+    "genre_tags": ["revenge", "bao-thu", "injustice"],
+    "roles": [
+      {"key": "protagonist", "actant": "subject", "label": "kẻ bị vu oan", "constraints": ["bị kết tội trước bàn dân thiên hạ"]},
+      {"key": "framer", "actant": "opponent", "label": "kẻ giăng bẫy vu khống", "constraints": ["giấu mặt, tính toán bài bản"]},
+      {"key": "clue", "actant": "sender", "label": "nhân chứng hoặc manh mối bị che giấu", "constraints": ["ban đầu bị vùi lấp"]},
+      {"key": "judges", "actant": "receiver", "label": "hội đồng xét xử", "constraints": ["bị vẻ ngoài đánh lừa"]}
+    ],
+    "beats": [
+      {"key": "framed", "label": "Bị gài tội", "intent": "chứng cứ ngụy tạo gán tội cho nhân vật chính", "tension_target": 3, "order": 1},
+      {"key": "condemned", "label": "Bị kết tội công khai", "intent": "nhân vật chính bị bôi nhọ trước mặt mọi người", "tension_target": 4, "order": 2},
+      {"key": "evidence_hidden", "label": "Chứng cứ bị che giấu", "intent": "sự thật bị vùi lấp; điểm trũng nhất", "tension_target": 2, "order": 3},
+      {"key": "unmasked", "label": "Lật mặt sự thật", "intent": "bàn tay thật sự bị lôi ra ánh sáng", "tension_target": 5, "order": 4}
+    ],
+    "preconditions": [
+      {"text": "nhân vật chính có thể bị đổ tội một cách có vẻ hợp lý"}
+    ],
+    "effects": [
+      {"text": "thanh danh của nhân vật chính được rửa sạch"},
+      {"text": "thủ phạm thật sự bị phơi bày"}
+    ],
+    "tension_target": 4,
+    "emotion_target": "phẫn nộ",
+    "examples": [
+      {"text": "Bị gán tội phản đồ bằng chứng cứ ngụy tạo, kẻ bị hàm oan chịu nhục cho đến khi bàn tay thật sự bị lôi ra ánh sáng."}
+    ],
+    "annotations": {},
+    "source": "authored",
+    "source_version": 1
+  },
+  {
+    "code": "revenge.patient_infiltration",
+    "language": "vi",
+    "kind": "sequence",
+    "category": "revenge.infiltration",
+    "name": "Ẩn nhẫn trà trộn",
+    "summary": "Dưới một danh tính mượn tạm, kẻ báo thù leo dần lên chính hàng ngũ của kẻ địch, thu thập thóp nắm trong tay, rồi quay lại dùng chính bí mật của chúng để hạ chúng từ bên trong.",
+    "genre_tags": ["revenge", "bao-thu", "infiltration"],
+    "roles": [
+      {"key": "protagonist", "actant": "subject", "label": "kẻ báo thù cải trang", "constraints": ["giấu kín thân phận của mình"]},
+      {"key": "target_house", "actant": "opponent", "label": "gia tộc kẻ thù", "constraints": ["thế lực hùng mạnh, phòng bị nghiêm ngặt"]},
+      {"key": "leverage", "actant": "object", "label": "thóp đã nắm được", "constraints": ["bí mật, bằng chứng"]},
+      {"key": "contact", "actant": "helper", "label": "nội ứng bên trong", "constraints": ["một đồng minh thầm lặng trong nội bộ"]}
+    ],
+    "beats": [
+      {"key": "enter", "label": "Trà trộn dưới tên giả", "intent": "trà trộn vào kẻ thù dưới lớp vỏ bọc", "tension_target": 2, "order": 1},
+      {"key": "earn_trust", "label": "Lấy lòng tin từ bên trong", "intent": "leo dần lên hàng ngũ của kẻ thù", "tension_target": 2, "order": 2},
+      {"key": "gather", "label": "Thu thập thóp", "intent": "âm thầm góp nhặt bí mật và bằng chứng", "tension_target": 3, "order": 3},
+      {"key": "strike", "label": "Ra đòn từ bên trong", "intent": "quay bí mật của kẻ thù lại chống chính chúng", "tension_target": 5, "order": 4}
+    ],
+    "preconditions": [
+      {"text": "nhân vật chính có thể trà trộn vào vòng trong của kẻ thù mà không bị nhận ra"}
+    ],
+    "effects": [
+      {"text": "kẻ thù tự sụp đổ bởi chính bí mật của mình"},
+      {"text": "thân phận thật của kẻ báo thù lộ ra vào khoảnh khắc ra đòn"}
+    ],
+    "tension_target": 4,
+    "emotion_target": "căng thẳng",
+    "examples": [
+      {"text": "Dưới một danh tính mượn tạm, kẻ báo thù leo dần lên chính hàng ngũ của kẻ địch, rồi quay lại dùng chính bí mật của chúng để hạ chúng."}
+    ],
+    "annotations": {},
+    "source": "authored",
+    "source_version": 1
+  },
+  {
+    "code": "revenge.blood_debt_collection",
+    "language": "vi",
+    "kind": "situation",
+    "category": "revenge.reckoning",
+    "name": "Đòi món nợ máu",
+    "summary": "Lần lượt từng kẻ một, người báo thù truy tìm những kẻ đã chung tay gây tội, đối mặt với từng đứa cùng bằng chứng, và bắt chúng phải trả giá.",
+    "genre_tags": ["revenge", "bao-thu", "reckoning"],
+    "roles": [
+      {"key": "protagonist", "actant": "subject", "label": "kẻ báo thù", "constraints": ["bị thôi thúc, tính toán bài bản"]},
+      {"key": "perpetrator", "actant": "opponent", "label": "kẻ có tội", "constraints": ["một trong số nhiều kẻ"]},
+      {"key": "wronged_dead", "actant": "receiver", "label": "người đã khuất bị hàm oan", "constraints": ["nỗi oan đang được đòi lại công bằng"]}
+    ],
+    "beats": [
+      {"key": "locate", "label": "Truy ra kẻ có tội", "intent": "tìm ra một kẻ đã chung tay gây tội", "tension_target": 3, "order": 1},
+      {"key": "confront", "label": "Đối mặt cùng bằng chứng", "intent": "đưa ra bằng chứng không thể chối cãi", "tension_target": 4, "order": 2},
+      {"key": "respond", "label": "Kẻ có tội van xin hay ngoan cố", "intent": "kẻ có tội cầu xin hoặc ngang nhiên thách thức", "tension_target": 4, "order": 3},
+      {"key": "exact", "label": "Đòi đủ cái giá", "intent": "bắt chúng phải trả giá", "tension_target": 5, "order": 4}
+    ],
+    "preconditions": [
+      {"text": "nhiều kẻ cùng chung tội với một oan khuất trong quá khứ"}
+    ],
+    "effects": [
+      {"text": "một trong những kẻ có tội bị bắt phải trả giá"},
+      {"text": "chuỗi thanh toán tiến dần tới kẻ chủ mưu"}
+    ],
+    "tension_target": 4,
+    "emotion_target": "quyết tâm lạnh lùng",
+    "examples": [
+      {"text": "Lần lượt từng kẻ một, người báo thù truy tìm những kẻ đã chung tay gây tội và bắt từng đứa phải trả giá."}
+    ],
+    "annotations": {},
+    "source": "authored",
+    "source_version": 1
+  },
+  {
+    "code": "revenge.mercy_or_vengeance",
+    "language": "vi",
+    "kind": "situation",
+    "category": "revenge.choice",
+    "name": "Khoan dung hay báo thù",
+    "summary": "Khi kẻ sát nhân đã nằm trong tay, một lý do để tha thứ bỗng hiện ra; lựa chọn của người báo thù định hình lại con người họ sẽ trở thành.",
+    "genre_tags": ["revenge", "bao-thu", "moral-choice"],
+    "roles": [
+      {"key": "protagonist", "actant": "subject", "label": "kẻ báo thù bên bờ vực", "constraints": ["nắm trong tay quyền kết liễu tất cả"]},
+      {"key": "broken_enemy", "actant": "opponent", "label": "kẻ thù không còn sức kháng cự", "constraints": ["nằm trong tay nhân vật chính, mặc cho định đoạt"]},
+      {"key": "moral_voice", "actant": "sender", "label": "tiếng nói kêu gọi khoan dung", "constraints": ["thân quyến, lương tri hoặc một nhân chứng"]}
+    ],
+    "beats": [
+      {"key": "at_mercy", "label": "Kẻ thù nằm trong tay", "intent": "kẻ sát nhân nằm đó không còn sức kháng cự", "tension_target": 4, "order": 1},
+      {"key": "reason", "label": "Lý do để tha thứ hiện ra", "intent": "một lý do để không ra tay bỗng hiện ra", "tension_target": 3, "order": 2},
+      {"key": "choice", "label": "Buộc phải lựa chọn", "intent": "người báo thù phải định đoạt", "tension_target": 5, "order": 3},
+      {"key": "consequence", "label": "Hệ quả ập đến", "intent": "lựa chọn ấy định hình lại con người họ", "tension_target": 4, "order": 4}
+    ],
+    "preconditions": [
+      {"text": "nhân vật chính đang nắm kẻ thù trong tay, mặc cho mình định đoạt"}
+    ],
+    "effects": [
+      {"text": "nhân vật chính bị chính lựa chọn của mình làm thay đổi"},
+      {"text": "vòng xoáy báo thù khép lại hoặc cứ thế tiếp diễn"}
+    ],
+    "tension_target": 5,
+    "emotion_target": "giằng xé lương tâm",
+    "examples": [
+      {"text": "Khi kẻ sát nhân đã nằm trong tay, một lý do để tha thứ bỗng hiện ra; lựa chọn của người báo thù định hình lại con người họ sẽ trở thành."}
+    ],
+    "annotations": {},
+    "source": "authored",
+    "source_version": 1
+  },
+  {
+    "code": "revenge.pyrrhic_victory",
+    "language": "vi",
+    "kind": "sequence",
+    "category": "revenge.aftermath",
+    "name": "Chiến thắng cay đắng",
+    "summary": "Kẻ thù rốt cuộc cũng gục ngã, và trong khoảng lặng sau đó, kẻ báo thù nhìn ra cái giá mà những năm tháng hận thù đã lấy đi.",
+    "genre_tags": ["revenge", "bao-thu", "aftermath"],
+    "roles": [
+      {"key": "protagonist", "actant": "subject", "label": "kẻ báo thù", "constraints": ["bị cuộc truy đuổi dằng dặc gặm mòn"]},
+      {"key": "arch_enemy", "actant": "opponent", "label": "kẻ thù không đội trời chung", "constraints": ["mục tiêu cuối cùng"]},
+      {"key": "revenge_attained", "actant": "object", "label": "mối thù đã trả xong", "constraints": ["trống rỗng một khi đã đạt được"]}
+    ],
+    "beats": [
+      {"key": "confront", "label": "Trận đối đầu cuối cùng", "intent": "cuộc thanh toán cuối cùng ập đến", "tension_target": 4, "order": 1},
+      {"key": "victory", "label": "Giành được chiến thắng", "intent": "kẻ thù gục ngã", "tension_target": 5, "order": 2},
+      {"key": "cost", "label": "Cái giá khuất lấp lộ ra", "intent": "cái giá của cuộc truy đuổi hiện rõ", "tension_target": 4, "order": 3},
+      {"key": "aftermath", "label": "Dư âm trống rỗng", "intent": "kẻ báo thù đối diện với sự trống rỗng", "tension_target": 2, "order": 4}
+    ],
+    "preconditions": [
+      {"text": "nhân vật chính sắp đi đến hồi kết của một cuộc truy đuổi báo thù dằng dặc"}
+    ],
+    "effects": [
+      {"text": "kẻ thù không đội trời chung bị đánh bại"},
+      {"text": "kẻ báo thù đối diện với cái giá của mối thù mình đã trả"}
+    ],
+    "tension_target": 4,
+    "emotion_target": "u sầu",
+    "examples": [
+      {"text": "Kẻ thù rốt cuộc cũng gục ngã — và trong khoảng lặng sau đó, kẻ báo thù nhìn ra cái giá mà những năm tháng hận thù đã lấy đi."}
+    ],
+    "annotations": {},
+    "source": "authored",
+    "source_version": 1
+  },
+  {
+    "code": "revenge.usurped_inheritance",
+    "language": "vi",
+    "kind": "situation",
+    "category": "revenge.birthright",
+    "name": "Cướp đoạt gia sản kế thừa",
+    "summary": "Quyền thừa kế bị cướp đoạt và một di chúc giả mạo khiến người thừa kế chân chính thành kẻ ăn mày, cho đến khi bằng chứng không ai phá hủy nổi lại trồi lên.",
+    "genre_tags": ["revenge", "bao-thu", "birthright"],
+    "roles": [
+      {"key": "protagonist", "actant": "subject", "label": "người thừa kế bị tước đoạt", "constraints": ["bị cướp mất thứ vốn thuộc về mình"]},
+      {"key": "usurper", "actant": "opponent", "label": "kẻ tiếm đoạt", "constraints": ["nắm giữ phần quyền thừa kế đã cướp"]},
+      {"key": "birthright", "actant": "object", "label": "quyền thừa kế chính danh", "constraints": ["phần gia sản đang bị tranh đoạt"]},
+      {"key": "retainer", "actant": "sender", "label": "gia nhân trung thành", "constraints": ["canh giữ bằng chứng"]}
+    ],
+    "beats": [
+      {"key": "stolen", "label": "Quyền chính danh bị cướp", "intent": "quyền thừa kế bị chiếm đoạt bằng giấy tờ giả mạo", "tension_target": 2, "order": 1},
+      {"key": "cast_out", "label": "Bị đuổi đi như kẻ mạo nhận", "intent": "người thừa kế chân chính bị chối bỏ", "tension_target": 3, "order": 2},
+      {"key": "seek_proof", "label": "Truy tìm bằng chứng huyết thống", "intent": "người thừa kế truy tìm bằng chứng còn sót lại", "tension_target": 3, "order": 3},
+      {"key": "reclaim", "label": "Đòi lại phần chính danh", "intent": "bằng chứng trồi lên và quyền thừa kế được khôi phục", "tension_target": 5, "order": 4}
+    ],
+    "preconditions": [
+      {"text": "nhân vật chính nắm giữ một quyền chính danh có thể bị cướp đoạt"}
+    ],
+    "effects": [
+      {"text": "kẻ tiếm đoạt bị phơi bày"},
+      {"text": "nhân vật chính đòi lại quyền thừa kế chính danh của mình"}
+    ],
+    "tension_target": 4,
+    "emotion_target": "rửa hận",
+    "examples": [
+      {"text": "Quyền thừa kế bị cướp đoạt và một di chúc giả mạo khiến người thừa kế chân chính thành kẻ ăn mày — cho đến khi bằng chứng không ai phá hủy nổi lại trồi lên."}
+    ],
+    "annotations": {},
+    "source": "authored",
+    "source_version": 1
+  }
+]

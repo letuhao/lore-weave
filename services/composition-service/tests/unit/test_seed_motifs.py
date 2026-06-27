@@ -94,13 +94,16 @@ def test_kind_matches_pack():
 
     for pack in _MOTIF_PACKS:
         pack_rows = _read_pack(pack)
+        # the *_vi sibling packs (D-W7-VI-PACK) carry the same kind contract as their
+        # en base — normalize the suffix so the per-pack kind check applies to both.
+        base = pack[:-3] if pack.endswith("_vi") else pack
         for r in pack_rows:
             kind = r.get("kind")
-            if pack == "hooks":
+            if base == "hooks":
                 assert kind == "hook"
-            elif pack == "emotion_arcs":
+            elif base == "emotion_arcs":
                 assert kind == "emotion_arc"
-            elif pack == _SCHEME_PACK:
+            elif base == _SCHEME_PACK:
                 assert kind == "scheme"
                 ia = r.get("info_asymmetry")
                 assert ia, f"{r['code']} scheme missing info_asymmetry"
@@ -230,12 +233,13 @@ def test_inventory_counts(rows, edges):
     from app.db.seed_motifs import _read_pack
 
     counts = {pack: len(_read_pack(pack)) for pack in _MOTIF_PACKS}
-    assert counts["cultivation"] == 11
-    assert counts["revenge"] == 8
-    assert counts["intrigue"] == 6
-    assert counts["hooks"] == 13
-    assert counts["emotion_arcs"] == 6
-    assert len(rows) == 44  # 11 + 8 + 6 + 13 + 6
-    # links: 12 precedes + 7 composed_of = 19 edges (§2.6).
-    assert sum(1 for e in edges if e["kind"] == "precedes") == 12
-    assert sum(1 for e in edges if e["kind"] == "composed_of") == 7
+    # en base packs (§2 inventory) — and each `*_vi` sibling mirrors its base 1:1.
+    for base, n in (("cultivation", 11), ("revenge", 8), ("intrigue", 6),
+                    ("hooks", 13), ("emotion_arcs", 6)):
+        assert counts[base] == n, f"{base} count {counts[base]} != {n}"
+        assert counts[f"{base}_vi"] == n, f"{base}_vi count {counts[f'{base}_vi']} != {n}"
+    assert len(rows) == 88  # (11 + 8 + 6 + 13 + 6) × 2 languages (en + vi)
+    # links.json is one manifest; the loader emits it per shared language → both the
+    # en and vi chains are wired (D-W7-VI-PACK): 12 precedes + 7 composed_of, ×2.
+    assert sum(1 for e in edges if e["kind"] == "precedes") == 24
+    assert sum(1 for e in edges if e["kind"] == "composed_of") == 14
