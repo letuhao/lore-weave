@@ -181,14 +181,21 @@ class MotifRepo:
         'public' (visibility=public), 'all' (the full predicate). genre filters the
         GIN array; q is an ILIKE on name/summary; language/status/kind are exact.
         System rows sort first (NULLS FIRST), then name."""
-        params: list[Any] = [caller_id]
+        # caller_id is bound as $1 ONLY when the scope's SQL references it. A
+        # 'system'/'public' scope filters on owner_user_id/visibility alone — binding an
+        # UNUSED $1 makes asyncpg raise IndeterminateDatatypeError (it can't infer the
+        # type of a parameter no clause uses). R-NODE-P1 caught this 500 on
+        # GET /motifs?scope=system; the default 'all' path masked it (it uses $1).
+        params: list[Any] = []
         if scope == "system":
             where = ["owner_user_id IS NULL"]
-        elif scope == "user":
-            where = ["owner_user_id = $1"]
         elif scope == "public":
             where = ["visibility = 'public'"]
-        else:
+        elif scope == "user":
+            params.append(caller_id)            # $1
+            where = ["owner_user_id = $1"]
+        else:  # 'all' — the tier-merged predicate references $1 (caller_id)
+            params.append(caller_id)            # $1
             where = [_VISIBLE_PREDICATE]
         if genre is not None:
             params.append(genre)

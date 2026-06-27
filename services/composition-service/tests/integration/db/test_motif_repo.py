@@ -178,6 +178,41 @@ async def test_clone_copies_fields_vector_and_lineage(repo):
     assert row["embedded_summary_hash"] == "h1"
 
 
+async def test_list_for_caller_every_scope(repo):
+    """R-NODE-P1 regression: list_for_caller must work for EVERY scope, not just the
+    default 'all'. 'system'/'public' don't reference caller_id ($1) — binding it unused
+    made asyncpg raise IndeterminateDatatypeError (a live 500 on GET /motifs?scope=system).
+    Also exercises a genre filter under each scope (the param-numbering shift)."""
+    r, pool = repo
+    u1 = uuid.uuid4()
+    # a system motif (owner NULL, unlisted — the seed path), a public user motif, and
+    # the caller's own private motif.
+    async with pool.acquire() as c:
+        await c.execute(
+            "INSERT INTO motif (owner_user_id, code, visibility, name, genre_tags) "
+            "VALUES (NULL,'sys.m','unlisted','Sys', ARRAY['xianxia'])"
+        )
+    await r.create(uuid.uuid4(), _args(code="pub.m", visibility="public", genre_tags=["xianxia"]))
+    await r.create(u1, _args(code="own.m", visibility="private", genre_tags=["xianxia"]))
+
+    # NB: the fixture ran run_migrations, so the W7 system seeds are present too —
+    # assert MEMBERSHIP, not equality. The point is each scope QUERY RUNS (no
+    # IndeterminateDatatypeError 500) and returns the right tier.
+    sys_codes = {m.code for m in await r.list_for_caller(u1, scope="system")}
+    pub_codes = {m.code for m in await r.list_for_caller(u1, scope="public")}
+    user_codes = {m.code for m in await r.list_for_caller(u1, scope="user")}
+    all_codes = {m.code for m in await r.list_for_caller(u1, scope="all")}
+
+    assert "sys.m" in sys_codes and "pub.m" not in sys_codes and "own.m" not in sys_codes
+    assert "pub.m" in pub_codes and "sys.m" not in pub_codes and "own.m" not in pub_codes
+    assert user_codes == {"own.m"}  # only the caller's own tier (seeds are owner NULL)
+    assert {"sys.m", "pub.m", "own.m"} <= all_codes
+    # the genre filter must not break param-numbering under a caller-less scope.
+    sys_xianxia = {m.code for m in await r.list_for_caller(u1, scope="system", genre="xianxia")}
+    assert "sys.m" in sys_xianxia
+    assert await r.list_for_caller(u1, scope="system", genre="zzz_nonexistent_genre") == []
+
+
 async def test_clone_of_invisible_source_raises(repo):
     r, _ = repo
     u1, u2 = uuid.uuid4(), uuid.uuid4()
