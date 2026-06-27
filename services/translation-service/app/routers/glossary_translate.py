@@ -143,6 +143,9 @@ async def create_glossary_translate_job(
         "target_language": payload.target_language,
         "overwrite_mode": payload.overwrite_mode,
         "thinking_enabled": payload.thinking_enabled,
+        # bug #37 — estimated LLM-call budget (≈ one per entity); the worker advances
+        # llm_calls_done on each page. None-safe downstream.
+        "estimated_llm_calls": cost_estimate.get("llm_calls") if cost_estimate else None,
     }
 
     # INSERT + emit the 'pending' lifecycle event in ONE tx (H1: the JobEvent commits

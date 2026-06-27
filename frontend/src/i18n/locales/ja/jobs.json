@@ -103,6 +103,7 @@
   },
   "detail": {
     "progress": "進捗",
+    "llmCalls": "LLM 呼び出し",
     "elapsed": "経過",
     "throughput": "スループット",
     "throughputVal": "~{{n}} /時",

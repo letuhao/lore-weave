@@ -162,6 +162,10 @@ async def _run_job(
     total_in = 0
     total_out = 0
     total_entities = 0
+    # bug #37 — realized LLM calls: one per entity that actually issues a call (an entity with
+    # no attributes returns early without a call). Pairs with the create event's
+    # estimated_llm_calls (= entity_count) for the Jobs-GUI "done / total".
+    llm_calls_made = 0
 
     # bug #4: translate up to `concurrency` entities in parallel. Each entity is independent
     # (its own LLM call + its own glossary rows), so a Semaphore-bounded gather over a page
@@ -172,7 +176,7 @@ async def _run_job(
     sem = asyncio.Semaphore(concurrency)
 
     async def _process_entity(ent: dict) -> None:
-        nonlocal completed, failed, attrs_translated, attrs_skipped, total_in, total_out
+        nonlocal completed, failed, attrs_translated, attrs_skipped, total_in, total_out, llm_calls_made
         try:
             async with sem:
                 entity_id = ent["entity_id"]
@@ -222,6 +226,7 @@ async def _run_job(
                         transient_retry_budget=1,
                     )
 
+                llm_calls_made += 1  # bug #37 — this entity issues an LLM call (retry = same logical call)
                 try:
                     try:
                         sdk_job = await _submit(call_input)
@@ -372,6 +377,19 @@ async def _run_job(
                 total_in, total_out,
             )
 
+        # bug #37 / unified live progress — advance the Jobs GUI per page (this worker
+        # otherwise emits only the initial 'running' + the terminal, so its detail page sat
+        # frozen). progress = entities done; params.llm_calls_done = realized calls (paired
+        # with the create event's estimated_llm_calls). Best-effort (emit_job_event_safe).
+        await emit_job_event_safe(
+            pool, service=_JOB_SERVICE, job_id=str(job_id), owner_user_id=str(user_id),
+            kind=_JOB_KIND, status="running",
+            progress={"done": completed + failed, "total": total_entities},
+            detail_status=f"{completed + failed}/{total_entities} entities",
+            params={"llm_calls_done": llm_calls_made},
+            tokens_in=total_in or None, tokens_out=total_out or None,
+        )
+
         if overwrite_mode == "missing_only":
             # Candidate set shrinks as translations are written — always page from 0.
             continue
@@ -397,6 +415,7 @@ async def _run_job(
     await emit_job_event_safe(
         pool, service=_JOB_SERVICE, job_id=str(job_id), owner_user_id=str(user_id),
         kind=_JOB_KIND, status="completed",
+        params={"llm_calls_done": llm_calls_made},  # bug #37 — final realized call count
         tokens_in=total_in or None, tokens_out=total_out or None,
     )
     await publish_event(user_id, {

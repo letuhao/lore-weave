@@ -190,6 +190,37 @@ async def test_per_chapter_emits_unified_progress_for_live_monitoring():
 
 
 @pytest.mark.asyncio
+async def test_progress_emits_llm_calls_done_from_batch_outcomes():
+    # bug #37 — the running progress emit advances params.llm_calls_done = accumulated realized
+    # batch calls (one per BatchOutcome row, the unit estimated_llm_calls counts). Baseline
+    # starts at 0 (the seed count from the mock is a non-int → 0), then climbs per chapter.
+    jid = uuid4()
+    c1 = str(uuid4())
+    db = AsyncMock()
+    db.fetchval = AsyncMock(return_value=jid)  # claim ok; seed count → non-int → 0
+    db.fetch = AsyncMock(return_value=[])
+    db.execute = AsyncMock()
+    publish, publish_event = AsyncMock(), AsyncMock()
+    chapter_result = {
+        "created": 1, "input_tokens": 10, "output_tokens": 5, "entities": [],
+        "batch_outcomes": [{"status": "completed"}, {"status": "completed"}, {"status": "completed"}],
+    }
+    with patch("app.workers.extraction_worker.fetch_known_entities", new=AsyncMock(return_value=[])), \
+         patch("app.workers.extraction_worker._process_extraction_chapter",
+               new=AsyncMock(return_value=chapter_result)), \
+         patch("app.workers.extraction_worker.resolve_job_cost_usd", new=AsyncMock(return_value=None)), \
+         patch("app.workers.extraction_worker.emit_job_event_safe", new=AsyncMock()) as emit:
+        await _run_extraction_job(
+            {"book_id": "b", "chapter_ids": [c1]},
+            jid, "u", _pool(db), publish, publish_event, MagicMock(),
+        )
+    running = [c for c in emit.await_args_list
+               if c.kwargs.get("status") == "running" and c.kwargs.get("progress")]
+    assert running[0].kwargs.get("params", {}).get("llm_calls_done") == 0   # baseline pre-loop
+    assert running[-1].kwargs.get("params", {}).get("llm_calls_done") == 3   # after 1 chapter, 3 batches
+
+
+@pytest.mark.asyncio
 async def test_progress_and_terminal_carry_live_cost_and_tokens():
     # bug #3: the unified Jobs detail Cost & Usage panel must update live, not only at
     # completion. Each progress emit + the terminal emit carry tokens_in/out and a cost_usd

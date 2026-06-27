@@ -202,6 +202,9 @@ async def _create_extraction_job_core(
         "max_entities_per_kind": payload.max_entities_per_kind,
         "thinking_enabled": payload.thinking_enabled,
         "reasoning_effort": reasoning_effort,
+        # bug #37 — surface the planner's estimated LLM-call budget on the Jobs GUI
+        # (the worker advances llm_calls_done on each progress emit). None-safe downstream.
+        "estimated_llm_calls": cost_estimate.get("llm_calls"),
     }
 
     # D-EXTRACTION-ADMISSION-CONTROL: cap CONCURRENT extraction jobs per user. P5 fair-scheduling

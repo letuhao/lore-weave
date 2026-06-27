@@ -103,6 +103,7 @@
   },
   "detail": {
     "progress": "進度",
+    "llmCalls": "LLM 呼叫次數",
     "elapsed": "已耗時",
     "throughput": "處理速率",
     "throughputVal": "~{{n}} /小時",

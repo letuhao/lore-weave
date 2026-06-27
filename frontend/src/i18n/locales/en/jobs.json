@@ -103,6 +103,7 @@
   },
   "detail": {
     "progress": "Progress",
+    "llmCalls": "LLM calls",
     "elapsed": "Elapsed",
     "throughput": "Throughput",
     "throughputVal": "~{{n}} /h",

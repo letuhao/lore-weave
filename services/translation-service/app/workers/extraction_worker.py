@@ -416,6 +416,19 @@ async def _run_extraction_job(msg: dict, job_id: UUID, user_id: str, pool, publi
     completed = sum(1 for r in done_rows if r["status"] in ("completed", "completed_with_errors"))
     chapters_with_errors = sum(1 for r in done_rows if r["status"] == "completed_with_errors")
     failed = sum(1 for r in done_rows if r["status"] == "failed")
+    # bug #37 — realized LLM-call count (one per executed window×batch = one BatchOutcome row,
+    # the SAME unit the planner's estimated_llm_calls counts). Seed from the outcomes already
+    # persisted on prior deliveries so the GUI counter is MONOTONIC across a resume (the loop
+    # below only processes not-yet-done chapters, so it never double-counts). Best-effort.
+    try:
+        async with pool.acquire() as db:
+            _seed_calls = await db.fetchval(
+                "SELECT count(*) FROM extraction_batch_outcomes WHERE job_id=$1", job_id
+            )
+        # isinstance gate: a real count is an int; tolerate a mocked/odd value → 0.
+        total_llm_calls = _seed_calls if isinstance(_seed_calls, int) else 0
+    except Exception:  # noqa: BLE001 — a display counter must never fail the run
+        total_llm_calls = 0
 
     # D-JOBS-EXTRACT-LIVE-PROGRESS (bug #2): mirror per-chapter progress onto the UNIFIED
     # jobs-service stream so the /jobs detail page advances live. The translation-service
@@ -451,6 +464,9 @@ async def _run_extraction_job(msg: dict, job_id: UUID, user_id: str, pool, publi
             kind=_JOB_KIND, status="running",
             progress={"done": done, "total": len(chapter_ids)},
             detail_status=f"{done}/{len(chapter_ids)} chapters",
+            # bug #37 — advance the realized LLM-call count on the Jobs GUI (paired with the
+            # create event's estimated_llm_calls). COALESCE-merged on the projection.
+            params={"llm_calls_done": total_llm_calls},
             cost_usd=_last_cost,
             tokens_in=total_input_tokens or None, tokens_out=total_output_tokens or None,
         )
@@ -538,6 +554,9 @@ async def _run_extraction_job(msg: dict, job_id: UUID, user_id: str, pool, publi
             total_skipped += ch_skipped
             total_input_tokens += ch_input_tokens
             total_output_tokens += ch_output_tokens
+            # bug #37 — realized LLM calls = one per executed batch (BatchOutcome row), the
+            # same unit estimated_llm_calls counts. Advances the Jobs-GUI "done / total".
+            total_llm_calls += len(result.get("batch_outcomes") or [])
             completed += 1
             # OBS/M2 — the chapter status is DERIVED from its batch outcomes (INV-F15):
             # 'completed' only if every batch was clean, else 'completed_with_errors'. This

@@ -368,6 +368,12 @@ async def test_running_and_terminal_emitted_for_glossary_translation(_stub_emit)
     # terminal carried summed tokens (10 in / 5 out from _llm_ok)
     term = [c for c in _stub_emit.await_args_list if c.kwargs.get("status") == "completed"][-1]
     assert term.kwargs.get("tokens_in") == 10 and term.kwargs.get("tokens_out") == 5
+    # bug #37 — one entity → one realized LLM call, surfaced on the terminal + the per-page
+    # 'running' emit (paired with the create event's estimated_llm_calls on the GUI).
+    assert term.kwargs.get("params", {}).get("llm_calls_done") == 1
+    page_running = [c for c in _stub_emit.await_args_list
+                    if c.kwargs.get("status") == "running" and c.kwargs.get("progress")]
+    assert page_running and page_running[-1].kwargs.get("params", {}).get("llm_calls_done") == 1
 
 
 @pytest.mark.asyncio

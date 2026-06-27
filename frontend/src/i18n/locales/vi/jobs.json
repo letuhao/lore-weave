@@ -103,6 +103,7 @@
   },
   "detail": {
     "progress": "Tiến độ",
+    "llmCalls": "Lượt gọi LLM",
     "elapsed": "Đã chạy",
     "throughput": "Thông lượng",
     "throughputVal": "~{{n}} /giờ",

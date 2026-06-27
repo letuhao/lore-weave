@@ -54,7 +54,11 @@ ON CONFLICT (service, job_id) DO UPDATE SET
   cost_usd       = COALESCE(EXCLUDED.cost_usd, job_projection.cost_usd),
   tokens_in      = COALESCE(EXCLUDED.tokens_in, job_projection.tokens_in),
   tokens_out     = COALESCE(EXCLUDED.tokens_out, job_projection.tokens_out),
-  params         = COALESCE(EXCLUDED.params, job_projection.params),
+  -- params ACCUMULATE (jsonb merge, new keys win) rather than whole-replace, so a
+  -- producer can set static params at create (model, estimated_llm_calls) and advance
+  -- live keys on later events (llm_calls_done — bug #37) without wiping the create set.
+  -- An event that omits params (NULL) keeps the accumulated object intact.
+  params         = COALESCE(job_projection.params, '{}'::jsonb) || COALESCE(EXCLUDED.params, '{}'::jsonb),
   job_created_at = LEAST(job_projection.job_created_at, EXCLUDED.job_created_at),
   job_updated_at = EXCLUDED.job_updated_at,
   projected_at   = now()
