@@ -1,5 +1,37 @@
 # ▶ NEXT SESSION — Narrative Motif Library BUILD (handoff)
 
+## STATUS (2026-06-28 PM-8) — D-MOTIF-FE-SWAP-NODE-GRANULARITY CLEARED (per-scene bind, new BE)
+
+**`D-MOTIF-FE-SWAP-NODE-GRANULARITY`** ✅ (decision: *per-scene bind, new BE*). Shape A presents a
+per-SCENE binding surface, but W2's `apply_motif_swap` REQUIRES a chapter node (a motif's beats
+*become* the chapter's scenes) — so a scene-node swap 404'd. Added a real per-scene bind path:
+- **BE `routers/plan.py`** — the PATCH `…/outline/{node_id}/motif` route is now **node-kind-aware**:
+  a **chapter** node → the existing heavy `apply_motif_swap` (unchanged); a **scene** node → the
+  new `_bind_scene_motif` — a lightweight ledger write (one `motif_application` replacing the node's
+  prior binding via `delete_for_nodes`+`insert_many`, motif-level so `beat_key` null, `annotations.
+  bound_via="manual_scene"`), NO scene regeneration. Roles resolve via `bind_motif` (cast name-hint;
+  partial bind is fine). `motif_id=null` clears. NEW **DELETE** `…/outline/{node_id}/motif` route
+  (was missing entirely — the FE's `clearMotif`/`rebindRole`/`chainIt` all 404'd): scene → drop the
+  ledger row; chapter → motif-less `apply_motif_swap`. H13 uniform 404 on missing/cross-project node
+  or non-visible motif; no write on a rejected motif.
+- **FE** — `MotifBindingCard`'s FREE-FORM branch gained a **"Bind motif"** affordance (the gap that
+  made the surface read-only post-commit): opens the same `SwapMotifPopover` → `onSwap` → PATCH. New
+  `useMotifCandidates(token)` lists the user's visible motifs (scope=all, ≤100) as the picker
+  options; `ChapterMotifBindings` fetches once + passes to every card.
+- **Tests:** 7 new BE (`test_scene_motif_bind.py` — `_bind_scene_motif` clear/bind/404 + route
+  node-kind dispatch scene/chapter/missing + DELETE) + the existing chapter-swap test updated
+  (`StubOutline.get_node`); +1 FE (free-form bind → PATCH `…/n2/motif`). **599 composition FE +
+  7 BE green; tsc clean; provider-gate clean.**
+- **LIVE-VERIFIED** (rebuilt composition-service + frontend, authed gateway calls): scene **bind**
+  → 200 `bound:true` (the node that 404'd in PM-6); **re-read** shows it bound while siblings stay
+  free-form; **DELETE clear** → 200 `removed:1`; **re-read** back to null (replace left no dup). The
+  FE bind affordance is unit-verified (the browser click-through hit unrelated dock/modal harness
+  friction; the bind/swap/clear path itself is live-proven through the gateway).
+- **Still deferred (scene-scoped refinements):** `rebindRole` (PATCH `…/motif/role`) and `chainIt`
+  (POST `…/motif/chain`) routes still don't exist for ANY node (pre-existing) — a bound scene's
+  role-rebind / chain buttons remain inert. Out of scope for the bind/swap/clear core; track if a
+  user hits them.
+
 ## STATUS (2026-06-28 PM-7) — D-MOTIF-CONFORMANCE-CONTRACT CLEARED (FE↔reader reconciled, live)
 
 **`D-MOTIF-CONFORMANCE-CONTRACT`** ✅ — the W6 conformance FE panel now mirrors its W5 reader.

@@ -42,11 +42,34 @@ export function MotifBindingCard({
   const { t } = useTranslation('composition');
   const [swapOpen, setSwapOpen] = useState(false);
 
-  // free-form fallback — NOT an error (the A3 invent path, §4.1).
+  // free-form fallback — NOT an error (the A3 invent path, §4.1). A scene CAN still
+  // be bound from here (D-MOTIF-FE-SWAP-NODE-GRANULARITY — the per-scene bind BE):
+  // "Bind motif" opens the same picker as swap and PATCHes a per-scene application.
   if (!bound || bound.motif_id == null) {
     return (
       <div data-testid={`motif-binding-${sceneId}`} data-state="free-form" className="rounded border border-dashed border-neutral-300 p-2 text-xs text-neutral-500 dark:border-neutral-600">
-        {t('motif.binding.freeForm', { defaultValue: 'No motif matched — this scene is free-form.' })}
+        <div className="flex items-center justify-between gap-2">
+          <span>{t('motif.binding.freeForm', { defaultValue: 'No motif matched — this scene is free-form.' })}</span>
+          {candidates.length > 0 && (
+            <button
+              type="button"
+              data-testid={`motif-binding-bind-${sceneId}`}
+              aria-haspopup="dialog"
+              className="shrink-0 rounded border border-amber-400 px-1.5 py-0.5 text-[11px] text-amber-700 disabled:opacity-50 dark:text-amber-300"
+              disabled={swapping}
+              onClick={() => setSwapOpen((v) => !v)}
+            >
+              {t('motif.action.bind', { defaultValue: 'Bind motif' })}
+            </button>
+          )}
+        </div>
+        <SwapMotifPopover
+          open={swapOpen}
+          candidates={candidates}
+          swapping={!!swapping}
+          onSwap={(id) => { onSwap(id); setSwapOpen(false); }}
+          onClose={() => setSwapOpen(false)}
+        />
       </div>
     );
   }

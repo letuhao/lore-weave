@@ -8,6 +8,7 @@ import type { CommitAndGenerateRoute, SceneBoundMotif } from '../types';
 import type { RosterOption } from '../../hooks/useGlossaryRoster';
 import { useMotifBindings } from '../hooks/useMotifBindings';
 import { useMotifBinding } from '../hooks/useMotifBinding';
+import { useMotifCandidates } from '../hooks/useMotifCandidates';
 import { MotifBindingCard, type MotifCandidateOption } from './MotifBindingCard';
 
 export type CommittedScene = { id: string; title: string };
@@ -30,6 +31,9 @@ export function ChapterMotifBindings({
   const { t } = useTranslation('composition');
   const q = useMotifBindings(projectId, chapterId, token);
   const bindings = q.data?.bindings ?? {};
+  // the user's visible motifs — the bind/swap picker options (same for every scene).
+  const candidates = useMotifCandidates(token);
+  const candidateOpts = candidates.data ?? [];
 
   if (!chapterId || scenes.length === 0) return null;
 
@@ -52,7 +56,7 @@ export function ChapterMotifBindings({
           title={s.title}
           bound={bindings[s.id] ?? null}
           roster={roster}
-          candidates={candidatesByNode[s.id] ?? []}
+          candidates={candidatesByNode[s.id] ?? candidateOpts}
           token={token}
           onGenerate={onGenerate}
         />

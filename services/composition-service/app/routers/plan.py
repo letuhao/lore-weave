@@ -456,8 +456,59 @@ class MotifSwapRequest(BaseModel):
     undo_token: dict | None = None
 
 
+async def _bind_scene_motif(
+    *, pool: Any, apps: MotifApplicationRepo, glossary: GlossaryClient,
+    user_id: UUID, project_id: UUID, book_id: UUID, node_id: UUID,
+    motif_id: UUID | None,
+) -> dict[str, Any]:
+    """Per-SCENE motif bind/swap/clear (D-MOTIF-FE-SWAP-NODE-GRANULARITY).
+
+    Unlike the chapter swap (`apply_motif_swap` regenerates a chapter's scenes FROM a
+    motif's beats), a scene bind is a lightweight ledger write: record "this ONE scene
+    realizes motif M" as a single `motif_application` (motif-level — `beat_key` null),
+    atomically REPLACING any prior binding on the node. No scene is archived or
+    instantiated. `motif_id=None` clears the node's binding (→ free-form)."""
+    if motif_id is None:
+        async with pool.acquire() as c:
+            async with c.transaction():
+                removed = await apps.delete_for_nodes(user_id, project_id, [node_id], conn=c)
+        return {"node_id": str(node_id), "cleared": True, "removed": removed}
+
+    from app.db.repositories.motif_repo import MotifRepo
+    motif = await MotifRepo(pool).get_visible(user_id, motif_id)
+    if motif is None:
+        # H13 uniform — no existence oracle for a foreign/missing motif.
+        raise HTTPException(status_code=404, detail={"code": "NOT_FOUND"})
+    cast = await _cast_roster(glossary, book_id)
+    cast_index = {e["name"].strip().casefold(): e["entity_id"] for e in cast}
+    sel = SelectedMotif(motif=motif, score=1.0, match_reason={})
+    # bind_motif ignores its ChapterPlan arg (only resolves roles→cast) → throwaway.
+    binding = bind_motif(sel, cast_index, ChapterPlan(
+        chapter_id=str(node_id), title="", sort_order=0, beat_role=None, intent=""))
+    row = {
+        "motif_id": str(motif.id),
+        "motif_version": motif.version,
+        "outline_node_id": str(node_id),
+        "role_bindings": binding.role_bindings,
+        # motif-level (no beat_key); a manual scene bind isn't a plan-time match.
+        "annotations": {**binding.annotations, "bound_via": "manual_scene"},
+    }
+    async with pool.acquire() as c:
+        async with c.transaction():
+            await apps.delete_for_nodes(user_id, project_id, [node_id], conn=c)
+            await apps.insert_many(user_id, project_id, book_id, [row], conn=c)
+    return {
+        "node_id": str(node_id),
+        "motif_id": str(motif.id),
+        "motif_name": motif.name,
+        "bound": True,
+        "unresolved_roles": binding.unresolved_roles,
+        "warning": binding.warning,
+    }
+
+
 @router.patch("/works/{project_id}/outline/{node_id}/motif")
-async def swap_chapter_motif(
+async def swap_node_motif(
     project_id: UUID,
     node_id: UUID,
     body: MotifSwapRequest,
@@ -468,17 +519,19 @@ async def swap_chapter_motif(
     glossary: GlossaryClient = Depends(get_glossary_client_dep),
     outline: OutlineRepo = Depends(get_outline_repo),
 ):
-    """Swap (or clear) a CHAPTER's bound motif after its scenes may already have
-    prose. Archives the old scenes (prose preserved — never deleted), instantiates
-    the new motif's scenes, flags orphaned narrative_thread promises (surfaced, not
-    closed), and returns an undo_token. `undo_token` in the body runs the inverse
-    (restore prior binding + prose). The JWT-gated HTTP twin of W4's MCP
-    `composition_motif_bind` — ONE engine (motif_select), two entries."""
+    """Bind / swap / clear a node's motif — NODE-KIND-AWARE (one URL, the FE's seam):
+    - a **chapter** node → the heavy CHAPTER swap (`apply_motif_swap`): archives the
+      old scenes (prose preserved), instantiates the new motif's beats as scenes,
+      flags orphaned threads, returns an `undo_token`. `undo_token` in the body runs
+      the inverse. The JWT-gated HTTP twin of W4's MCP `composition_motif_bind`.
+    - a **scene** node → the lightweight per-SCENE ledger bind (`_bind_scene_motif`):
+      one motif_application replacing the node's prior binding, no scene regeneration.
+    `motif_id=null` clears (→ free-form) in both modes."""
     work = await _require_work(works, user_id, project_id)
     apps = MotifApplicationRepo(get_pool())
     pool = get_pool()
 
-    # UNDO mode — restore the prior binding (the honored Tier-A undo).
+    # UNDO mode — restore the prior binding (the honored Tier-A undo; chapter-only).
     if body.undo_token is not None:
         async with pool.acquire() as c:
             async with c.transaction():
@@ -486,7 +539,20 @@ async def swap_chapter_motif(
                                             body.undo_token, conn=c)
         return {"undone": True, **res}
 
-    # APPLY mode — resolve + bind the new motif (or clear when motif_id is None).
+    node = await outline.get_node(user_id, node_id)
+    if node is None or node.project_id != project_id:
+        # H13 uniform — no existence oracle for a foreign/missing node.
+        raise HTTPException(status_code=404, detail={"code": "NOT_FOUND"})
+
+    # SCENE node → the lightweight per-scene ledger bind (no scene regeneration).
+    if node.kind == "scene":
+        return await _bind_scene_motif(
+            pool=pool, apps=apps, glossary=glossary, user_id=user_id,
+            project_id=project_id, book_id=work.book_id, node_id=node_id,
+            motif_id=body.motif_id,
+        )
+
+    # CHAPTER node → APPLY mode: resolve + bind the new motif (or clear when None).
     new_sel: SelectedMotif | None = None
     binding: MotifBinding | None = None
     cast_names: dict[str, str] = {}
@@ -527,6 +593,54 @@ async def swap_chapter_motif(
         "orphaned_thread_ids": res.orphaned_thread_ids,
         "new_motif_id": res.new_motif_id,
         "undo_token": res.undo_token,
+    }
+
+
+@router.delete("/works/{project_id}/outline/{node_id}/motif")
+async def clear_node_motif(
+    project_id: UUID,
+    node_id: UUID,
+    user_id: UUID = Depends(get_current_user),
+    bearer: str = Depends(get_bearer_token),
+    works: WorksRepo = Depends(get_works_repo),
+    outline: OutlineRepo = Depends(get_outline_repo),
+):
+    """Clear a node's bound motif → free-form. NODE-KIND-AWARE: a **scene** drops its
+    single ledger row (`delete_for_nodes`); a **chapter** runs the heavy clear
+    (`apply_motif_swap` with no motif → archives the motif's scenes, prose preserved).
+    The DELETE twin of the PATCH `motif_id=null` clear (the FE's `clearMotif`)."""
+    work = await _require_work(works, user_id, project_id)
+    apps = MotifApplicationRepo(get_pool())
+    pool = get_pool()
+
+    node = await outline.get_node(user_id, node_id)
+    if node is None or node.project_id != project_id:
+        raise HTTPException(status_code=404, detail={"code": "NOT_FOUND"})
+
+    if node.kind == "scene":
+        async with pool.acquire() as c:
+            async with c.transaction():
+                removed = await apps.delete_for_nodes(user_id, project_id, [node_id], conn=c)
+        return {"node_id": str(node_id), "cleared": True, "removed": removed}
+
+    # chapter clear → the heavy archive-scenes path (motif-less apply_motif_swap).
+    try:
+        async with pool.acquire() as c:
+            async with c.transaction():
+                res = await apply_motif_swap(
+                    outline, apps, user_id, project_id, work.book_id, node_id,
+                    new_motif=None, binding=None, cast_names={},
+                    k_ceiling=settings.compose_diverge_k,
+                    high_threshold=settings.plan_high_tension_threshold,
+                    min_scenes=settings.plan_min_scenes_per_chapter,
+                    max_scenes=settings.plan_max_scenes_per_chapter, conn=c,
+                )
+    except MotifSwapError as exc:
+        raise HTTPException(status_code=404, detail={"code": "NOT_FOUND"}) from exc
+    return {
+        "chapter_node_id": res.chapter_node_id,
+        "archived_scene_ids": res.archived_scene_ids,
+        "cleared": True,
     }
 
 

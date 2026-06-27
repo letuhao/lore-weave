@@ -32,7 +32,10 @@ beforeEach(() => {
     if (url.includes('/motif-bindings')) {
       return Promise.resolve({ chapter_id: 'c1', bindings: { n1: BOUND, n2: null } });
     }
-    return Promise.resolve({ ok: true }); // swap/clear PATCH/DELETE
+    if (url.includes('/motifs')) { // useMotifCandidates — the bind/swap picker options
+      return Promise.resolve({ motifs: [{ id: 'm9', name: 'Library Motif', summary: 's' }] });
+    }
+    return Promise.resolve({ ok: true }); // swap/clear/bind PATCH/DELETE
   });
 });
 
@@ -63,6 +66,18 @@ describe('ChapterMotifBindings (Shape A)', () => {
     await waitFor(() => {
       const patch = apiJson.mock.calls.find((c) => String(c[0]).includes('/outline/n1/motif'));
       expect(patch?.[0]).toContain('/works/p1/outline/n1/motif');
+    });
+  });
+
+  it('a FREE-FORM scene can BIND a library motif → PATCHes that node (per-scene bind BE)', async () => {
+    render(<ChapterMotifBindings projectId="p1" bookId="b1" chapterId="c1" scenes={SCENES} token="tok" />, { wrapper: wrap() });
+    // n2 is free-form; once candidates load it offers a "Bind motif" affordance.
+    const bindBtn = await screen.findByTestId('motif-binding-bind-n2');
+    fireEvent.click(bindBtn);
+    fireEvent.click(screen.getByTestId('motif-swap-option-m9'));
+    await waitFor(() => {
+      const patch = apiJson.mock.calls.find((c) => String(c[0]).includes('/outline/n2/motif'));
+      expect(patch?.[0]).toContain('/works/p1/outline/n2/motif');
     });
   });
 

@@ -54,6 +54,12 @@ class StubOutline:
         self.existing: set = set()   # chapter_ids that already have active scenes
         self.created = None
         self.ledger: dict = {}       # idempotency_key → result (replay)
+        # the swap route now dispatches on node.kind — default to a chapter node so
+        # the chapter-swap test keeps routing to apply_motif_swap.
+        self.node_kind = "chapter"
+    async def get_node(self, user_id, node_id, *, conn=None):
+        from types import SimpleNamespace
+        return SimpleNamespace(project_id=PROJECT, kind=self.node_kind)
     async def commit_decomposed_tree(self, u, p, *, arc_title, chapters, replace=False, idempotency_key=None):
         if idempotency_key and idempotency_key in self.ledger:
             return {**self.ledger[idempotency_key], "replay": True}
