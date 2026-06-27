@@ -171,6 +171,17 @@ class Settings(BaseSettings):
     # ops; composition-service has no billing client → net-new in W4). Reuses
     # internal_service_token for the internal call.
     usage_billing_service_url: str = "http://usage-billing-service:8086"
+    # ── Wave-2 worker-op knobs (W2-F0 freeze — homed here so W8/W9/W5 fill their
+    # engine modules, NOT config.py). Cost estimates feed the Tier-W confirm $-dialog
+    # (heuristics, NOT provider pricing — pricing still resolves from provider-registry).
+    motif_mine_estimate_usd_book: float = 0.50      # W8 — per-book mine $ estimate
+    motif_mine_estimate_usd_corpus: float = 2.00    # W8 — whole-corpus mine $ estimate
+    arc_import_estimate_usd: float = 1.00           # W9 — deconstruct $ estimate
+    conformance_run_estimate_usd: float = 0.30      # W5 — arc/chapter extract-diff $ estimate
+    # W8 mining (P3): the motif_beat extractor version (knowledge-service cross-service
+    # contract) + default min support before a beat-pattern becomes a draft motif.
+    motif_mine_extractor_version: str = "motif_beat@v1"
+    motif_mine_min_support: int = 3
 
 
 settings = Settings()  # type: ignore[call-arg]

@@ -116,6 +116,28 @@ async def _run_operation(pool: asyncpg.Pool, llm: LLMClient, job) -> dict:
         inp = dict(job.input or {})
         inp.setdefault("user_id", str(job.user_id))
         return await run_selection_edit(llm, input=inp)
+    # ── Wave-2 motif ops (W2-F0 frozen dispatch seam) ─────────────────────────────
+    # The Tier-W confirm effects (routers/actions.py) already stamp the full input
+    # envelope; each handler lives in its WS-owned engine module (lazy import keeps
+    # the worker's top-level surface small + the seam frozen — a WS fills its module
+    # body, never this dispatch).
+    if op == "mine_motifs":
+        from app.engine.motif_mine import run_mine_motifs
+        return await run_mine_motifs(
+            pool, llm, get_knowledge_client(),
+            user_id=str(job.user_id), input=job.input or {},
+        )
+    if op == "analyze_reference":
+        from app.engine.motif_deconstruct import run_analyze_reference
+        return await run_analyze_reference(
+            pool, llm, user_id=str(job.user_id), input=job.input or {},
+        )
+    if op == "conformance_run":
+        from app.engine.motif_conformance_run import run_conformance_run
+        return await run_conformance_run(
+            pool, llm, get_knowledge_client(),
+            user_id=str(job.user_id), project_id=str(job.project_id), input=job.input or {},
+        )
     raise UnsupportedOperationError(op)
 
 

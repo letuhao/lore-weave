@@ -28,8 +28,14 @@ from typing import Any
 __all__ = ["SUPPORTED_OPERATIONS", "worker_op_of", "is_worker_drivable"]
 
 #: worker-op identifiers the worker can run (== the retryable set).
+#: The three Wave-2 motif ops (mine_motifs/analyze_reference/conformance_run) are
+#: enqueued TODAY by the Tier-W confirm effects (routers/actions.py) — they are in
+#: this set so the dispatch RECOGNIZES them (not ``UnsupportedOperationError``) and
+#: they are server-retryable; the compute is owned by the Wave-2 workstreams behind
+#: their own engine modules (W8 motif_mine / W9 motif_deconstruct / W5 conformance).
 SUPPORTED_OPERATIONS: frozenset[str] = frozenset(
-    {"decompose_preview", "stitch_chapter", "generate", "chapter_generate", "selection_edit"}
+    {"decompose_preview", "stitch_chapter", "generate", "chapter_generate", "selection_edit",
+     "mine_motifs", "analyze_reference", "conformance_run"}
 )
 
 
