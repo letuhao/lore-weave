@@ -12,8 +12,12 @@ message and return them as strict JSON. Events are time-indexed
 happenings with participants — distinct from static relations.
 
 TEXT may be in any language (English, Vietnamese, Chinese, or mixed).
-Keep `name`, `participants`, `location`, `time_cue`, and `summary` in
-the ORIGINAL script of TEXT. Keep `kind` values in English.
+Write `name`, `participants`, `location`, `time_cue`, and `summary` in
+the SAME language and script as TEXT. This includes the GENERATED fields
+`summary` and `name` — not only the names copied verbatim from TEXT. If
+TEXT is Chinese, write the summary in Chinese; if Vietnamese, in
+Vietnamese. NEVER translate or romanise any field into English. Keep only
+`kind` values in English.
 
 ## Known entities
 
@@ -122,6 +126,42 @@ Output:
       "summary": "Zhao fights rebels at the Iron Gate and dies.",
       "confidence": 0.9,
       "status_effects": [{{ "entity_ref": "Zhao", "status": "gone" }}]
+    }}
+  ]
+}}
+```
+
+Example 2 — a NON-English TEXT. Note the `summary` and `name` stay in the
+SAME script as TEXT (Chinese here), not English:
+
+TEXT: "拂晓时分，林凯带着玉玺离开了北城。当日稍晚，赵战在铁门关与叛军交战，战死。"
+KNOWN_ENTITIES: ["林凯", "北城", "赵战", "铁门关"]
+
+Output:
+```json
+{{
+  "events": [
+    {{
+      "name": "林凯离开北城",
+      "kind": "travel",
+      "participants": ["林凯"],
+      "location": "北城",
+      "time_cue": "拂晓时分",
+      "event_date": null,
+      "summary": "林凯于拂晓时分带着玉玺离开北城。",
+      "confidence": 0.95,
+      "status_effects": []
+    }},
+    {{
+      "name": "铁门关之战",
+      "kind": "battle",
+      "participants": ["赵战"],
+      "location": "铁门关",
+      "time_cue": "当日稍晚",
+      "event_date": null,
+      "summary": "赵战在铁门关与叛军交战，最终战死。",
+      "confidence": 0.9,
+      "status_effects": [{{ "entity_ref": "赵战", "status": "gone" }}]
     }}
   ]
 }}
