@@ -42,6 +42,12 @@ export type FrontendToolOutcome =
   // Generalized class-C action confirm (spec §13) — supersedes the schema_* set
   | 'action_done'
   | 'token_expired'
+  // H-J / H14 re-price-on-execute: the priced confirm route returned 409
+  // reprice_required (actual cost drifted up past the BE threshold). The token is
+  // single-use + now spent — the agent must re-propose at the new price, never
+  // silently overspend. Distinct from token_expired so the model knows it's a cost
+  // change, not a stale token.
+  | 'reprice_required'
   | 'action_error'
   | 'cancelled';
 

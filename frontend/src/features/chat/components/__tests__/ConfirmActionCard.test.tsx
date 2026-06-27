@@ -12,14 +12,21 @@ const previewAction = vi.fn();
 
 vi.mock('@/auth', () => ({ useAuth: () => ({ accessToken: 'tok' }) }));
 vi.mock('../../providers', () => ({ useChatStream: () => ({ submitToolResult }) }));
-vi.mock('../../actionsApi', () => ({
-  actionsApi: {
-    confirmAction: (...a: unknown[]) => confirmAction(...a),
-    previewAction: (...a: unknown[]) => previewAction(...a),
-  },
-}));
+vi.mock('../../actionsApi', async (importOriginal) => {
+  // Keep the REAL parseRepriceError (a pure function the card calls on a 409) —
+  // only the API methods are stubbed.
+  const actual = await importOriginal<typeof import('../../actionsApi')>();
+  return {
+    ...actual,
+    actionsApi: {
+      confirmAction: (...a: unknown[]) => confirmAction(...a),
+      previewAction: (...a: unknown[]) => previewAction(...a),
+    },
+  };
+});
 
 import { ConfirmActionCard, descriptorDomain } from '../ConfirmActionCard';
+import { parseRepriceError } from '../../actionsApi';
 import type { ToolCallRecord } from '../../types';
 
 function record(args: Record<string, unknown>): ToolCallRecord {
@@ -177,6 +184,60 @@ describe('ConfirmActionCard', () => {
     await waitFor(() => expect(confirmAction).toHaveBeenCalledWith('glossary', 'plantok', 'tok', ['op-2']));
   });
 
+  // H-J / H14 re-price-on-execute: a priced confirm route returns 409
+  // reprice_required (FastAPI nests it under body.detail) when the actual cost
+  // drifted up past the BE threshold. The card surfaces the NEW price and resumes
+  // `reprice_required` (NOT token_expired / action_error) so the agent re-proposes
+  // at the real price — never a silent overspend.
+  it('resumes reprice_required on a 409 reprice and shows old→new cost', async () => {
+    confirmAction.mockRejectedValue(
+      Object.assign(new Error('reprice'), {
+        status: 409,
+        body: {
+          detail: {
+            code: 'TRANSL_REPRICE_REQUIRED',
+            status: 'reprice_required',
+            confirmed_cost_usd: 0.4,
+            actual_cost_usd: 0.95,
+            estimate: { cost_usd: 0.95 },
+          },
+        },
+      }),
+    );
+    render(<ConfirmActionCard record={record(baseArgs)} />);
+    fireEvent.click(screen.getByText('actionConfirm.confirm'));
+    await waitFor(() => expect(submitToolResult).toHaveBeenCalledWith('r1', 'c1', 'reprice_required'));
+    // the new-price card renders (FE never recomputes the threshold — it reacts to
+    // the BE 409). The i18n stub returns keys, so assert the card + its title key.
+    const card = await screen.findByTestId('confirm-reprice');
+    expect(card.textContent).toContain('actionConfirm.reprice_title');
+  });
+
+  // The reprice detail may arrive at body root (not under .detail) — e.g. a
+  // non-FastAPI emitter or the headless edge replay; parse both shapes.
+  it('handles a 409 reprice carried at body root (status marker)', async () => {
+    confirmAction.mockRejectedValue(
+      Object.assign(new Error('reprice'), {
+        status: 409,
+        body: { status: 'reprice_required', actual_cost_usd: 1.2, confirmed_cost_usd: 0.5 },
+      }),
+    );
+    render(<ConfirmActionCard record={record(baseArgs)} />);
+    fireEvent.click(screen.getByText('actionConfirm.confirm'));
+    await waitFor(() => expect(submitToolResult).toHaveBeenCalledWith('r1', 'c1', 'reprice_required'));
+  });
+
+  // A 409 that is NOT a reprice (e.g. a generic conflict) must fall through to
+  // action_error, not be swallowed as a reprice.
+  it('a non-reprice 409 resumes action_error', async () => {
+    confirmAction.mockRejectedValue(
+      Object.assign(new Error('conflict'), { status: 409, body: { code: 'SOME_OTHER', message: 'nope' } }),
+    );
+    render(<ConfirmActionCard record={record(baseArgs)} />);
+    fireEvent.click(screen.getByText('actionConfirm.confirm'));
+    await waitFor(() => expect(submitToolResult).toHaveBeenCalledWith('r1', 'c1', 'action_error'));
+  });
+
   it('resumes action_error on a non-422 failure', async () => {
     confirmAction.mockRejectedValue(Object.assign(new Error('boom'), { status: 500 }));
     render(<ConfirmActionCard record={record(baseArgs)} />);
@@ -197,6 +258,29 @@ describe('ConfirmActionCard', () => {
     fireEvent.click(screen.getByText('actionConfirm.confirm'));
     await waitFor(() => expect(confirmAction).toHaveBeenCalledWith('book', 'tok123', 'tok'));
     await waitFor(() => expect(submitToolResult).toHaveBeenCalledWith('r1', 'c1', 'action_done'));
+  });
+});
+
+describe('parseRepriceError (H-J / H14)', () => {
+  it('extracts the new estimate from a FastAPI-nested 409 reprice detail', () => {
+    const r = parseRepriceError(
+      Object.assign(new Error('x'), {
+        status: 409,
+        body: { detail: { code: 'TRANSL_REPRICE_REQUIRED', status: 'reprice_required', confirmed_cost_usd: 0.4, actual_cost_usd: 0.95, estimate: { cost_usd: 0.95 } } },
+      }),
+    );
+    expect(r?.confirmed_cost_usd).toBe(0.4);
+    expect(r?.actual_cost_usd).toBe(0.95);
+    expect(r?.estimate?.cost_usd).toBe(0.95);
+  });
+  it('accepts the detail at body root (status marker), not just under .detail', () => {
+    const r = parseRepriceError(Object.assign(new Error('x'), { status: 409, body: { status: 'reprice_required', actual_cost_usd: 1.2 } }));
+    expect(r?.actual_cost_usd).toBe(1.2);
+  });
+  it('returns null for a non-409, a non-reprice 409, and a missing body', () => {
+    expect(parseRepriceError(Object.assign(new Error('x'), { status: 422, body: { status: 'reprice_required' } }))).toBeNull();
+    expect(parseRepriceError(Object.assign(new Error('x'), { status: 409, body: { code: 'OTHER' } }))).toBeNull();
+    expect(parseRepriceError(Object.assign(new Error('x'), { status: 409 }))).toBeNull();
   });
 });
 

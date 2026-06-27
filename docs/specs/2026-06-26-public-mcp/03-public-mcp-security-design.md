@@ -306,6 +306,13 @@ The edge strips `X-Project-Id` (H-A), and the known bug `D-GW-XPROJECT-NOT-FORWA
 ### H-J 🟡 Headless confirm re-price overshoot
 A Tier-W confirm token re-prices at execute. The FE re-confirms a changed price via a new card (internal H14); a headless agent has no card. If actual > estimate×1.25, silently spending breaks the spend contract; an opaque error strands the agent. **Patch:** on re-price breach, `confirm_action` returns a **structured `price_changed` result with the new estimate + a fresh token** (re-propose), never auto-spends over the breach. The agent re-confirms explicitly. **P4.**
 
+> **H-J contract — uniform `reprice_required` shape (P4 slice C, SHIPPED for translation).** Every **priced** confirm handler (translation `actions/confirm` is done; glossary/composition/kg priced confirm routes MUST follow) re-prices at execute and, on a breach of `actual > estimate×1.25 OR actual > estimate + $0.50` (the threshold is **BE-owned** — `transl_reprice_mult` / `transl_reprice_abs_usd`; the edge/FE never recompute it), MUST refuse-and-re-confirm with **HTTP 409 `TRANSL_REPRICE_REQUIRED`**-style body rather than spend:
+> ```json
+> { "code": "<DOMAIN>_REPRICE_REQUIRED", "message": "...", "status": "reprice_required",
+>   "confirmed_cost_usd": 0.40, "actual_cost_usd": 0.95, "estimate": { "cost_usd": 0.95, ... } }
+> ```
+> (FastAPI nests this under `{ "detail": {...} }`.) This single shape lets every consumer handle reprice **uniformly**: the **edge** maps the domain 409 → `{status:'reprice_required', detail}` MCP `isError` result (auth-service `confirmReplayLabel`/`writeConfirmReplayResult` + `confirm-action.ts`); the **first-party FE** `ConfirmActionCard` detects the 409 (`status==='reprice_required'` or the `*_REPRICE_REQUIRED` code, at `body.detail` or `body` root), surfaces old→new cost, and resumes the agent with a `reprice_required` outcome so it re-proposes at the real price. The single-use token is spent on the breach, so re-confirming is always a **fresh proposal**, never a silent retry.
+
 ### H-K 🟡 Per-key spend-cap race under concurrency
 Two priced calls from one key can both pass the pre-check before either records → overshoot. **Patch:** atomic edge-side reserve (Redis `INCRBY` with a check, or reuse the usage-billing reserve primitive keyed by `key_id`); accept a bounded overshoot ≤ in-flight concurrency. **P3.**
 
