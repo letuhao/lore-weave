@@ -97,6 +97,28 @@ the W6 catalog-endpoint fix). All need an lm_studio + platform-embedding-credent
 - **`D-W8-MINE-LIVE-SMOKE`** (gate 4 blocked-on-infra · target R-NODE-P3): real mine→draft→promote→reuse;
   needs the extractor above + lm_studio + the platform embedding credential.
 
+**Deferred — /review-impl (2026-06-27, 3 adversarial reviewers; HIGH + fix-now MEDs already FIXED @ `e35510d1`):**
+- **`D-W9-ARC-PUBLISH-STRIP`** (gate 2 schema-migration · defense-in-depth): the §12.6 leak HIGH was
+  fixed by extending the scrub to every persisted field (incl. arc envelope) — but `arc_template`
+  still has no `imported_derived` column + no publish-strip trigger (motif has both). Add them so an
+  imported arc gets the same DB-level belt-and-suspenders the motif gets, not scrub-only.
+- **`D-W9-IMPORT-LANGUAGE-ARG`** (gate 1 small-UX): the deconstruct now THREADS `language` end-to-end
+  (envelope→arc+motifs), but the PRODUCER (the `composition_arc_import_analyze` MCP tool arg + the
+  `_execute_arc_import` confirm spec) doesn't yet capture the user's source language, so it defaults
+  'en'. Add the tool arg + stamp it (the plumbing is ready).
+- **`D-WAVE2-DB-ROUNDTRIP-TEST`** (gate 1 coverage): the serially-edited `motif_repo.create` (W9+W8
+  additive cols) + `ArcTemplateRepo`/`ImportSourceRepo` have NO DB-backed test — a future column
+  misalignment or the `scope=system` placeholder bug (R-NODE-P1 class) would stay green. Add a
+  Postgres round-trip for the mined/imported columns + an arc `list_for_caller` every-scope test
+  (mirror the motif one). Needs infra-postgres.
+- **`D-MOTIF-SYNC-REPIN-ATOMICITY`** (gate 5 accept/document): W11 sync's patch + source_version
+  re-pin are two statements/connections — a crash between leaves version bumped + source_version
+  stale (self-heals on the next diff; not corruption). Wrap in one txn if it ever bites.
+- Accept+document (no row): HIGH-2 short-phrase/lone-proper-noun residue (the scrub is long-run-only
+  by design; residue held by the abstraction prompt + role-slot model per §12.6 — now stated honestly
+  in the `scrub_verbatim` docstring); L1 mine `promote_to` stamped-but-unused; L2 mine synthetic
+  `project_id`; L8 deconstruct tension-range.
+
 Carried: `D-MOTIF-SYNC-3WAY-BASE` (W11 schema), `D-WSTITCH-LIVE-SMOKE`. Plus the Wave-1 carries
 (`D-MOTIF-MCP-BIND-WIRING`, `D-MOTIF-CONFORMANCE-ENGINE-WIRING`, `D-MOTIF-FE-PLANNERVIEW-WIRING`,
 `D-MOTIF-FE-CATALOG-ENDPOINT`, `D-W2-MCP-SESSION-ISOLATION` test-infra flake, the W7/conformance PO items).
