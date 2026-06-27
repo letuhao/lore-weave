@@ -8,6 +8,7 @@ import { useTranslation } from 'react-i18next';
 import { usePlanner, type PlannerError } from '../hooks/usePlanner';
 import { useGlossaryRoster } from '../hooks/useGlossaryRoster';
 import { PlannerTree } from './PlannerTree';
+import { CommittedSceneBindings } from '../motif/components/CommittedSceneBindings';
 
 type PlannerModel = { user_model_id: string; provider_model_name: string };
 type Props = {
@@ -17,6 +18,10 @@ type Props = {
   modelSource?: 'user_model' | 'platform_model';
   models?: PlannerModel[];
   token: string | null;
+  /** D-MOTIF-FE-PLANNERVIEW-WIRING (Shape A) — route a scene's commit→generate to the
+   *  compose tab (the W2 seam: CompositionPanel wires selectTab('compose')+setSceneId).
+   *  Optional: when absent the binding cards still swap/bind; only the generate link no-ops. */
+  onSelectScene?: (sceneId: string) => void;
 };
 
 function errorText(e: PlannerError, t: (k: string) => string): string {
@@ -27,11 +32,12 @@ function errorText(e: PlannerError, t: (k: string) => string): string {
   return e.message;
 }
 
-export function PlannerView({ projectId, bookId, modelRef, modelSource, models = [], token }: Props) {
+export function PlannerView({ projectId, bookId, modelRef, modelSource, models = [], token, onSelectScene }: Props) {
   const { t } = useTranslation('composition');
   const p = usePlanner(projectId, token);
   const templates = p.templates.data ?? [];
   const roster = useGlossaryRoster(bookId, token);
+  const committedChapterIds = p.committedChapterIds ?? [];
   // FD-15 — planner-local model override. '' = inherit the panel's model. A
   // local pick is always a user_model (the picker lists the user's chat models).
   const [localModel, setLocalModel] = useState('');
@@ -123,6 +129,21 @@ export function PlannerView({ projectId, bookId, modelRef, modelSource, models =
             <span className="text-xs text-muted-foreground">{t('plan.scene_count', { count: p.totalScenes })}</span>
           </div>
         </div>
+      )}
+
+      {/* D-MOTIF-FE-PLANNERVIEW-WIRING (Shape A) — post-commit per-scene motif binding.
+          Conditionally mounted (the committed-outline read lives in the child so it runs
+          only after a commit, not on every render). */}
+      {committedChapterIds.length > 0 && (
+        <CommittedSceneBindings
+          projectId={projectId}
+          bookId={bookId}
+          chapterIds={committedChapterIds}
+          roster={roster.data ?? []}
+          token={token}
+          onDismiss={p.dismissCommitted}
+          onSelectScene={onSelectScene}
+        />
       )}
     </div>
   );
