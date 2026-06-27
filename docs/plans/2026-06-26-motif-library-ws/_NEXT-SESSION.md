@@ -1,6 +1,43 @@
 # ▶ NEXT SESSION — Narrative Motif Library BUILD (handoff)
 
-## STATUS (2026-06-27) — WAVE 1 BUILT + MERGED + RECONCILED · Wave 2 is next
+## STATUS (2026-06-27 PM) — WAVE 2 IN PROGRESS · W2-F0 + Batch A landed · Batch B next
+
+**Wave-2 foundation + Batch A are built, verified, committed on `feat/narrative-pattern-library`:**
+- **W2-F0 worker-seam freeze** `1330b1b4` — the three Tier-W motif ops (`mine_motifs`/
+  `analyze_reference`/`conformance_run`) already enqueue via the confirm effects
+  (`routers/actions.py`); the gap was the worker handler. Froze the 3-way collision zone
+  (`worker/constants.py` + `worker/job_consumer.py`) once: each op dispatches to a WS-owned
+  stub engine module (`engine/motif_mine.py` W8 · `motif_deconstruct.py` W9 ·
+  `motif_conformance_run.py` W5-wiring) with frozen signatures + input envelopes; stubs raise
+  a terminal `ValueError` until filled. All Wave-2 config knobs pre-added. Freeze test +
+  `Wave2-RECONCILE.md`. (23 green.)
+- **W-STITCH** `94bc3aeb` (§17.2 R2.7) — seam repetition signal + overlapping-window +
+  dial-respect + ≤2-scene over-resolve fix + no-flatten eval-gate on `engine/stitch.py`. (43 green.)
+- **W11 sync** `6485017e` — `routers/motif_sync.py`: upstream-diff + apply-merge. HONEST
+  **2-way** (not 3-way): the motif table keeps only the current row (no history), so the
+  pinned-version base text is unrecoverable → `diff_mode="two_way"`, never a fabricated base.
+  Owner-scoped patch + re-pin (H13). (42 green; 1074 collected.)
+
+**⚠️ WORKTREE-BASE HAZARD (lesson — carry forward):** `isolation:"worktree"` agents in this
+repo intermittently branch off the **concurrent `feat/composition-debt` track HEAD `0cc8ff6c`**
+(merged PR #47), which **predates the entire motif library** (no `motif_repo.py`, no motif
+schema, no W2-F0 seam) — NOT off `feat/narrative-pattern-library`. A branch-merge would drag the
+whole other track in. **Mitigation in force:** build Wave-2 WSs with **non-isolated agents in the
+main tree** (correct base, commit directly); if a worktree must be used, add a **base-guard**
+(assert `motif_repo.py` + `mine_motifs` seam exist, else STOP) and reconcile by **cherry-picking
+the WS's own commit**, never merging its branch.
+
+**▶ NEXT — Batch B (sequential, non-isolated, backend-first):** W10 arc (land
+`arc_template_repo` + `routers/arc.py` CRUD + `engine/arc_apply.py` proportional rescale R2.5;
+FE arc-timeline = W10-FE follow-up) → W9 import (`import_source` ingest + `engine/motif_deconstruct.py`
+fills the W2-F0 stub) → W8 mine (cross-service `motif_beat` extractor in knowledge-service +
+`engine/motif_mine.py`). LLM/cross-service live-smoke (W8/W9 deconstruct+mine, W5 conformance
+extract-diff) defers to an lm_studio + embedding-credential stack-up (R-NODE-P3/P4), mirroring the
+R-NODE-P1 LLM-slice deferral. New `D-MOTIF-SYNC-3WAY-BASE` (W11 schema), `D-WSTITCH-LIVE-SMOKE`.
+
+---
+
+## (historical) STATUS (2026-06-27 AM) — WAVE 1 BUILT + MERGED + RECONCILED · Wave 2 is next
 
 **All 7 Wave-1 workstreams (W1–W7) built in parallel worktrees, merged into
 `feat/narrative-pattern-library`, and reconciled.** Merge was clean (only `main.py`
