@@ -5,6 +5,7 @@
   "search_placeholder": "Tìm sách...",
   "all_languages": "Tất cả ngôn ngữ",
   "all_states": "Tất cả trạng thái",
+  "select_language": "Chọn ngôn ngữ…",
   "book_count": "{{count}} sách",
   "book_count_other": "{{count}} sách",
   "translated_to": "Đã dịch sang: {{langs}}",

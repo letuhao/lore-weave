@@ -5,6 +5,7 @@
   "search_placeholder": "搜尋書籍...",
   "all_languages": "所有語言",
   "all_states": "所有狀態",
+  "select_language": "選擇語言…",
   "book_count": "{{count}} 本書",
   "book_count_other": "{{count}} 本書",
   "translated_to": "已翻譯為：{{langs}}",

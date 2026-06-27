@@ -1,4 +1,8 @@
-# ▶▶ NEXT SESSION STARTS HERE — **Glossary plan-and-execute (Phase 1) SHIPPED** · branch `feat/composition-service` · HEAD `b2439fcf` · 2026-06-26
+# ▶▶ NEXT SESSION STARTS HERE — **Critical UX bug track** · branch `feat/composition-debt` · HEAD `79426c0e` · 2026-06-28
+
+> **UX BUG TRACK** (`docs/bugs/2026-06-27-critical-ux-bugs.md`): fixing ~40 critical UX bugs one by one. **Done this session:** #34 immediate-cancel (sync + decoupled translation), #37 LLM-call count GUI (all 3 producers, reviewed), **#35 language picker** (new shared `LanguagePicker`, 4 sites). **In progress:** #17 fresh-AI-assistant-in-workspace — multi-session is already fully built (chat-service CRUD + `SessionSidebar`/`NewChatDialog`/`useSessions`/`ChatPage`); the gap is embedded/workspace chat (BookAssistantDock + editor AI panel) auto-binds ONE session via `useEmbeddedChatBinding` with no switcher/new-chat — surfacing a shared session-control component there. **Deferred cluster** (hard glossary/KG/standards/merge): #7,#8,#9–16,#22,#25,#26,#28,#29,#31,#33,#36,#38,#39 + agent-planner #18,#19,#27,#30.
+
+> **(prior)** Glossary plan-and-execute (Phase 1) SHIPPED · `feat/composition-service` · HEAD `b2439fcf`
 
 > **WHAT SHIPPED:** the glossary assistant can now do **multi-step ontology goals in ONE confirm** — the agent calls `glossary_plan(book_id, goal)`, a capable model emits a **typed plan**, and a **deterministic executor** applies it (no ReAct loop). Validated against the literature (typed-plan ≫ ReAct; control-flow-integrity against prompt injection). Built as **reusable SDK kits**, not ad-hoc — see [[project_agentic_sdk_lives_in_loreweave_mcp_kit]]: this project will run many agents, so the pattern lives in `sdks/`.
 >

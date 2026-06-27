@@ -5,6 +5,7 @@
   "search_placeholder": "書籍を検索...",
   "all_languages": "すべての言語",
   "all_states": "すべての状態",
+  "select_language": "言語を選択…",
   "book_count": "{{count}}冊",
   "book_count_other": "{{count}}冊",
   "translated_to": "翻訳済み: {{langs}}",

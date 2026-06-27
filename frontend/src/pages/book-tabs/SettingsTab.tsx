@@ -8,6 +8,7 @@ import { apiJson } from '@/api';
 import { booksApi, type Book } from '@/features/books/api';
 import { glossaryApi } from '@/features/glossary/api';
 import { BookWorldSection } from '@/features/world/components/BookWorldSection';
+import { LanguagePicker } from '@/components/shared';
 import { cn } from '@/lib/utils';
 
 type Props = {
@@ -184,11 +185,11 @@ export function SettingsTab({ bookId, book, onReload }: Props) {
       <div className="mb-5 grid grid-cols-2 gap-4">
         <div>
           <Label>{t('settings.language')}</Label>
-          <input
+          <LanguagePicker
             value={language}
-            onChange={(e) => setLanguage(e.target.value)}
-            placeholder={t('settings.language_placeholder')}
-            className="w-full rounded-md border bg-background px-3 py-1.5 text-sm font-mono focus:border-ring focus:outline-none focus:ring-1 focus:ring-ring/30"
+            onChange={setLanguage}
+            placeholder={t('select_language')}
+            className="w-full rounded-md border bg-background px-3 py-1.5 text-sm focus:border-ring focus:outline-none focus:ring-1 focus:ring-ring/30"
           />
         </div>
         <div>

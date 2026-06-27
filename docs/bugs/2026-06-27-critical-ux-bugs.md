@@ -436,11 +436,11 @@ Some jobs are very hard to interrupt — 30 minutes from cancelling until actual
 > assertion. Composition + KG-build share the proven keystone (same SDK `wait_terminal` +
 > provider-registry abort), unit-verified for forwarding, not separately live-smoked.
 
-### [ ] 35. Platform lacks a language picker (user must type language code)
+### [x] 35. Platform lacks a language picker (user must type language code)
 The platform lacks a language picker — the user must input the language code. Bad design.
 
-> RC:
-> Fix:
+> RC: Four flows asked the user to free-type a language code (BooksPage create dialog, book SettingsTab, Campaign wizard target-language, EntityEditorModal "add translation language"). A canonical list (`lib/languages.ts` `LANGUAGE_NAMES`, 13 codes) and `LanguageDisplay` already existed, but no reusable picker — TranslateModal and glossary-translate had each hand-rolled their own `<select>`.
+> Fix: New shared `components/shared/LanguagePicker.tsx` — a dropdown over `LANGUAGE_NAMES` rendering "Native name (code)", with `placeholder`/`exclude` props and a data-loss guard that keeps an unrecognised current value selectable (so editing a book whose `original_language` is outside the 13 never silently blanks it). Wired into the 4 free-text sites. Enrichment `ProfileForm.language` left as free text — it is a prose style descriptor (beside voice/era), not a code. 6 unit tests, tsc clean.
 
 ### [ ] 36. Extraction glossary LLM-call prediction is wrong (predicts ~2/chapter)
 The total-LLM-call prediction for extraction doesn't work well. With 30 glossary kinds (many attributes), the number of calls is >30, but the prediction shows only ~2 per chapter.
