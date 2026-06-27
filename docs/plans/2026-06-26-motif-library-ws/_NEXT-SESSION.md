@@ -16,8 +16,24 @@ live-proven in D-MOTIF-CONFORMANCE-GOLD-SET (gemma-4-26b). Deferred: a full prod
 **e2e** live-smoke (`D-MOTIF-CONFORMANCE-PRODUCER-LIVE-SMOKE`, gate-4 — run when enabled + a bound
 scene exists; the slices are unit+live proven).
 
-**`D-MOTIF-FE-PLANNERVIEW-WIRING`** — SCOPED + GAP-IDENTIFIED. Decision = **scene-level**, **Shape A
-(bind POST-commit)**. It is a focused full-stack build with TWO real gaps found while tracing it:
+**`D-MOTIF-FE-PLANNERVIEW-WIRING`** ✅ BUILT (Shape A, scene-level, full-stack) — only a Playwright
+browser smoke remains (needs the FE container rebuilt to deploy the new bundle). Commits:
+- BE `83a07b79`: GAP-1 fix (persist plan-time `match_reason` into `motif_application.annotations`)
+  + `GET …/outline/motif-bindings?chapter_id=` → `{node_id: BoundMotif|null}` (pure
+  `_assemble_motif_bindings`, tenant-scoped, null=free-form). 8 unit tests.
+- FE layer `d72699ad`: `compositionApi.getMotifBindings` + types + `useMotifBindings` +
+  `ChapterMotifBindings` (per-scene card; each child owns its `useMotifBinding(nodeId)`). 5 vitest.
+- FE mount `2102fb56`: `usePlanner.committedChapterIds` (set on commit, cleared on preview) +
+  `PlannerView` conditionally renders `CommittedSceneBindings` (owns the lazy committed-outline read).
+  tsc clean; **591 composition FE tests green**.
+**▶ ONLY REMAINING:** rebuild `infra-frontend-1` to deploy the bundle, then a Playwright smoke
+(plan → commit → see per-scene cards → swap a motif → verify the PATCH + re-read). Optionally wire
+`onSelectScene` in `CompositionPanel` (selectTab('compose')+setSceneId) so the commit→generate link
+routes — currently a no-op when the prop is absent (the bind/swap core works without it).
+
+<details><summary>(historical) the two gaps found while scoping — now fixed</summary>
+
+It was an XL full-stack feature, not an FE wire, with TWO real gaps found while tracing it:
 - **GAP-1 (BE): `match_reason` is not persisted.** W2's `bind_motif`/`_bind_annotations`
   (`engine/motif_select.py`) stores only `info_asymmetry` into `motif_application.annotations`
   (+ `role_bindings`, `beat_key`). `match_reason` is a PLAN-TIME artifact (`SelectedMotif.match_reason`
@@ -37,6 +53,8 @@ scene exists; the slices are unit+live proven).
   `{node_id: BoundMotif}` via `motif_application ⋈ motif.get_visible` (+ GAP-1 decision); (FE) a
   committed-scene binding section rendering `MotifBindingCard` per node wired to `useMotifBinding`;
   tests both sides + a **Playwright browser smoke** (load-bearing planner UI). Est. L. Start here.
+
+</details>
 
 ---
 
