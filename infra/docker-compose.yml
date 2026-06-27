@@ -905,6 +905,8 @@ services:
       # P1: resolve real keys via auth-service credential store.
       AUTH_SERVICE_URL: http://auth-service:8081
       PUBLIC_MCP_ENABLED: ${PUBLIC_MCP_ENABLED:-false}
+      # P3 (PUB-8): per-key rate-limit counter store. Unset → limiter disabled (dev).
+      REDIS_URL: redis://redis:6379
       # DEV/SMOKE static credential (optional). Empty = disabled (real keys via auth).
       MCP_PUBLIC_TEST_KEY: ${MCP_PUBLIC_TEST_KEY:-}
       MCP_PUBLIC_TEST_USER_ID: ${MCP_PUBLIC_TEST_USER_ID:-}
@@ -913,6 +915,8 @@ services:
       ai-gateway:
         condition: service_healthy
       auth-service:
+        condition: service_healthy
+      redis:
         condition: service_healthy
     ports:
       - "8219:8211"

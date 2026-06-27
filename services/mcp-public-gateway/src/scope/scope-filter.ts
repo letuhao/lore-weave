@@ -1,5 +1,5 @@
 import type { Logger } from '@nestjs/common';
-import { WILDCARD_SCOPE, filterTools, isToolAllowed, knownTool } from './tool-policy.js';
+import { TOOL_POLICY, WILDCARD_SCOPE, filterTools, isToolAllowed, knownTool } from './tool-policy.js';
 
 /**
  * Edge scope enforcement (PUB-3 / H-E / H-F), the SECOND of the two checks (the
@@ -67,6 +67,41 @@ export function gateRequestBody(body: unknown, scopes: readonly string[]): unkno
   // At least one denied call → reject the whole request, fail-closed.
   const errors = denied.map((m) => denyError(m.id, m.params.name));
   return Array.isArray(body) ? errors : errors[0];
+}
+
+/**
+ * Classify the request as a WRITE for the rate-limiter's fail policy (PUB-8): a
+ * `tools/call` to a tool whose tier is `write_auto`/`write_confirm`. Everything
+ * else — reads, `tools/list`, `initialize`, `ping`, and any unknown/unclassified
+ * tool — is treated as a READ (an unknown tool is denied by the scope gate anyway,
+ * and reads fail OPEN, the safe-for-availability default). A batch is a write if
+ * ANY call in it is a write.
+ */
+export function isWriteRequest(body: unknown): boolean {
+  const messages: JsonRpcRequest[] = Array.isArray(body)
+    ? (body as JsonRpcRequest[])
+    : body && typeof body === 'object'
+      ? [body as JsonRpcRequest]
+      : [];
+  return messages.some((m) => {
+    if (!isToolCall(m)) return false;
+    const tier = TOOL_POLICY[m.params.name]?.tier;
+    return tier === 'write_auto' || tier === 'write_confirm';
+  });
+}
+
+/**
+ * Count the `tools/call` entries in the request — the rate-limit weight, so a
+ * JSON-RPC BATCH of N calls costs N against the per-minute limit (not 1). Returns
+ * 0 for a body with no tool calls (the caller floors the weight at 1).
+ */
+export function countToolCalls(body: unknown): number {
+  const messages: JsonRpcRequest[] = Array.isArray(body)
+    ? (body as JsonRpcRequest[])
+    : body && typeof body === 'object'
+      ? [body as JsonRpcRequest]
+      : [];
+  return messages.filter(isToolCall).length;
 }
 
 /** True iff the inbound body is (or contains) a `tools/list` request. */

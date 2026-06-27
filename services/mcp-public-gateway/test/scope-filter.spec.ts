@@ -8,6 +8,8 @@ import {
 import {
   gateRequestBody,
   isListRequest,
+  isWriteRequest,
+  countToolCalls,
   filterListResponseText,
 } from '../src/scope/scope-filter.js';
 
@@ -151,6 +153,40 @@ describe('scope-filter.gateRequestBody (request gate)', () => {
   it('wildcard bypasses the gate', () => {
     const body = { jsonrpc: '2.0', method: 'tools/call', params: { name: 'book_chapter_purge' }, id: 1 };
     expect(gateRequestBody(body, ['*'])).toBeNull();
+  });
+});
+
+describe('scope-filter.isWriteRequest (rate-limit fail-policy classifier)', () => {
+  it('classifies a write-tier tools/call as a write', () => {
+    expect(isWriteRequest({ method: 'tools/call', params: { name: 'book_create' } })).toBe(true); // write_auto
+    expect(isWriteRequest({ method: 'tools/call', params: { name: 'kg_propose_fact' } })).toBe(true); // write_confirm
+  });
+  it('classifies reads / list / initialize / unknown as NOT a write', () => {
+    expect(isWriteRequest({ method: 'tools/call', params: { name: 'book_get' } })).toBe(false); // read
+    expect(isWriteRequest({ method: 'tools/call', params: { name: 'glossary_web_search' } })).toBe(false); // paid_read
+    expect(isWriteRequest({ method: 'tools/list' })).toBe(false);
+    expect(isWriteRequest({ method: 'initialize' })).toBe(false);
+    expect(isWriteRequest({ method: 'tools/call', params: { name: 'unknown_tool' } })).toBe(false);
+    expect(isWriteRequest(undefined)).toBe(false);
+  });
+  it('a batch is a write if ANY call is a write', () => {
+    expect(isWriteRequest([
+      { method: 'tools/call', params: { name: 'book_get' } },
+      { method: 'tools/call', params: { name: 'book_create' } },
+    ])).toBe(true);
+  });
+});
+
+describe('scope-filter.countToolCalls (rate-limit weight)', () => {
+  it('counts tools/call entries (single + batch); 0 for non-calls', () => {
+    expect(countToolCalls({ method: 'tools/call', params: { name: 'book_get' } })).toBe(1);
+    expect(countToolCalls({ method: 'tools/list' })).toBe(0);
+    expect(countToolCalls([
+      { method: 'tools/call', params: { name: 'book_get' } },
+      { method: 'tools/list' },
+      { method: 'tools/call', params: { name: 'book_create' } },
+    ])).toBe(2);
+    expect(countToolCalls(undefined)).toBe(0);
   });
 });
 

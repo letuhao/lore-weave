@@ -3,7 +3,9 @@ import { randomUUID } from 'node:crypto';
 import type { Request, Response } from 'express';
 import { loadConfig } from '../config/config.js';
 import { KeyResolver } from '../auth/key-resolver.js';
-import { filterListResponseText, gateRequestBody, isListRequest } from '../scope/scope-filter.js';
+import { countToolCalls, filterListResponseText, gateRequestBody, isListRequest, isWriteRequest } from '../scope/scope-filter.js';
+import { RateLimiter } from '../ratelimit/rate-limiter.js';
+import { makeRateLimitStoreFromEnv } from '../ratelimit/redis-store.js';
 
 /**
  * The PUBLIC MCP edge. An external agent connects here (via api-gateway-bff `/mcp`)
@@ -30,6 +32,8 @@ export class PublicMcpController {
   private readonly cfg = loadConfig();
   private readonly log = new Logger(PublicMcpController.name);
   private readonly resolver = new KeyResolver();
+  // Built once (one Redis connection); null store (no REDIS_URL) → limiter disabled.
+  private readonly limiter = new RateLimiter(makeRateLimitStoreFromEnv());
 
   @All()
   async handle(@Req() req: Request, @Res() res: Response): Promise<void> {
@@ -48,6 +52,25 @@ export class PublicMcpController {
     if (!this.cfg.internalToken) {
       this.log.error('FATAL: INTERNAL_SERVICE_TOKEN missing — cannot mint envelope');
       return this.deny(res, -32603, 'gateway misconfigured', 500);
+    }
+
+    // PUB-8: per-key rate limit BEFORE doing any work (shed abusive load early). A
+    // write (tools/call to a write-tier tool) fails CLOSED on a store outage; a
+    // read fails OPEN. The dev wildcard key still counts (it has a finite rpm).
+    const hasBody = req.method !== 'GET' && req.method !== 'HEAD' && req.body !== undefined;
+    const isWrite = hasBody ? isWriteRequest(req.body) : false;
+    // Weight by tool-call count so a batch can't smuggle N executions past the
+    // per-minute limit; a non-call request (list/initialize/single) weighs 1.
+    const weight = hasBody ? Math.max(1, countToolCalls(req.body)) : 1;
+    const rl = await this.limiter.check(resolved.keyId, resolved.rateLimitRpm, isWrite, weight);
+    if (!rl.allowed) {
+      res.setHeader('Retry-After', String(rl.retryAfter));
+      res.status(429).json({
+        jsonrpc: '2.0',
+        error: { code: -32029, message: 'rate limit exceeded', data: { retry_after: rl.retryAfter, limit: rl.limit } },
+        id: jsonRpcId(req.body),
+      });
+      return;
     }
 
     // PUB-9: build the outbound header set FROM SCRATCH. We copy NOTHING from the
@@ -75,7 +98,6 @@ export class PublicMcpController {
     // PUB-3 / H-E: scope gate the REQUEST. A `tools/call` to a tool outside the key's
     // tier∩domain scope (or an unknown tool) is denied HERE, before the relay —
     // default-deny / fail-closed. A `*` (dev) key bypasses inside the helper.
-    const hasBody = req.method !== 'GET' && req.method !== 'HEAD' && req.body !== undefined;
     if (hasBody) {
       const denial = gateRequestBody(req.body, resolved.scopes);
       if (denial !== null) {
@@ -114,6 +136,14 @@ export class PublicMcpController {
   private deny(res: Response, code: number, message: string, status = 401): void {
     res.status(status).json({ jsonrpc: '2.0', error: { code, message }, id: null });
   }
+}
+
+/** Best-effort JSON-RPC id for an error envelope (null for a batch / no id). */
+function jsonRpcId(body: unknown): unknown {
+  if (body && typeof body === 'object' && !Array.isArray(body)) {
+    return (body as { id?: unknown }).id ?? null;
+  }
+  return null;
 }
 
 /** Extract the bearer token from an `Authorization: Bearer <token>` header. */

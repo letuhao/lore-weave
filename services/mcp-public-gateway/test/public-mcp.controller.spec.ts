@@ -349,6 +349,25 @@ describe('PublicMcpController', () => {
     expect(relay).toBeUndefined();
   });
 
+  it('returns 429 with Retry-After when the per-key rate limit is exceeded (PUB-8)', async () => {
+    setEnv();
+    const ctrl = new PublicMcpController();
+    // Inject a limiter that always blocks (test seam — production builds from REDIS_URL).
+    (ctrl as unknown as { limiter: { check: () => Promise<unknown> } }).limiter = {
+      check: async () => ({ allowed: false, retryAfter: 42, limit: 60, remaining: 0 }),
+    };
+    const r = mockRes();
+    await ctrl.handle(
+      mockReq({ headers: { authorization: `Bearer ${TEST_KEY}` }, body: { jsonrpc: '2.0', method: 'tools/list', id: 1 } }),
+      r.res,
+    );
+    expect(r.statusCode).toBe(429);
+    expect(r.headers['retry-after']).toBe('42');
+    expect((r.jsonBody as { error?: { code: number } }).error?.code).toBe(-32029);
+    // Nothing relayed to ai-gateway once rate-limited.
+    expect(fetchMock.mock.calls.some((c) => String(c[0]).endsWith('/mcp'))).toBe(false);
+  });
+
   it('returns 502 when the upstream gateway is unreachable', async () => {
     setEnv();
     fetchMock.mockRejectedValueOnce(new Error('ECONNREFUSED'));
