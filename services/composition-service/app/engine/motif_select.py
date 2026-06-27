@@ -297,6 +297,12 @@ def build_application_rows(
     for beat in ordered_beats:
         ann = dict(binding.annotations)
         ann["beat_key"] = beat.get("key")
+        # D-MOTIF-FE-PLANNERVIEW-WIRING (GAP-1): persist the plan-time match_reason
+        # ({tension,genre,precond,cosine}) so a POST-commit binding read can render the
+        # MatchReasonChip — without it the chip degrades to empty on a re-read. Additive
+        # JSONB key; existing readers (W5 trace reads beat_key) ignore it.
+        if sel.match_reason:
+            ann["match_reason"] = dict(sel.match_reason)
         if beat.get("reversal") is not None:
             ann["reversal"] = beat["reversal"]
         if beat.get("alliance_shift") is not None:

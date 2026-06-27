@@ -17,6 +17,7 @@ from __future__ import annotations
 
 import dataclasses
 import logging
+from typing import Any
 from uuid import UUID
 
 import asyncpg
@@ -527,3 +528,86 @@ async def swap_chapter_motif(
         "new_motif_id": res.new_motif_id,
         "undo_token": res.undo_token,
     }
+
+
+def _assemble_motif_bindings(
+    *, scenes: list, apps_by_node: dict, motif_by_id: dict, cast_names: dict[str, str],
+) -> dict[str, Any]:
+    """PURE in-memory join → ``{node_id: BoundMotif | null}`` (no DB, no glossary —
+    the join-correctness surface, mirrors conformance._assemble_conformance).
+
+    Every committed scene appears (null = free-form / cleared / archived-motif, the A3
+    invent path — NOT an error), so the FE renders a card per scene without guessing
+    which nodes exist. A bound scene → the ``BoundMotif`` shape the FE
+    ``MotifBindingCard`` consumes: role_bindings resolved to {entity_id, entity_name}
+    via the book cast, the persisted plan-time ``match_reason``, the scene ``beat_key``."""
+    bindings: dict[str, Any] = {}
+    for s in scenes:
+        app = apps_by_node.get(s.id)
+        motif = motif_by_id.get(app.motif_id) if (app and app.motif_id) else None
+        if app is None or app.motif_id is None or motif is None:
+            bindings[str(s.id)] = None
+            continue
+        role_bindings = {
+            rk: {"entity_id": str(eid), "entity_name": cast_names.get(str(eid), "")}
+            for rk, eid in (app.role_bindings or {}).items()
+        }
+        ann = app.annotations or {}
+        bindings[str(s.id)] = {
+            "motif_id": str(app.motif_id),
+            "motif_name": motif.name,
+            "motif_source": motif.source,
+            "role_bindings": role_bindings,
+            "match_reason": ann.get("match_reason") or {},
+            "beat_key": ann.get("beat_key"),
+        }
+    return bindings
+
+
+@router.get("/works/{project_id}/outline/motif-bindings")
+async def get_motif_bindings(
+    project_id: UUID,
+    chapter_id: UUID,
+    user_id: UUID = Depends(get_current_user),
+    works: WorksRepo = Depends(get_works_repo),
+    outline: OutlineRepo = Depends(get_outline_repo),
+    glossary: GlossaryClient = Depends(get_glossary_client_dep),
+) -> dict[str, Any]:
+    """D-MOTIF-FE-PLANNERVIEW-WIRING (Shape A) — the POST-commit per-scene motif
+    binding for a chapter's committed scene nodes, so the FE renders
+    ``MotifBindingCard`` per scene wired to ``useMotifBinding(node_id)``.
+
+    Returns ``{chapter_id, bindings: {node_id: BoundMotif | null}}``. READ-only over
+    W2's ``motif_application``; tenant-scoped on BOTH the application AND the scene
+    (the kinds-bug rule — ``by_nodes`` + ``scenes_for_chapter`` both filter user+project).
+    A foreign/missing motif (get_visible → None) degrades that scene to null (no oracle)."""
+    from app.db.repositories.motif_repo import MotifRepo
+
+    work = await _require_work(works, user_id, project_id)
+    scenes = await outline.scenes_for_chapter(user_id, project_id, chapter_id)
+    apps = await MotifApplicationRepo(get_pool()).by_nodes(
+        user_id, project_id, [s.id for s in scenes])
+
+    # latest application per node (by_nodes is created_at ASC → last wins on a re-bind).
+    apps_by_node: dict[UUID, Any] = {
+        a.outline_node_id: a for a in apps if a.outline_node_id is not None}
+
+    # resolve the distinct bound motifs (name/source) + the book cast (entity → name),
+    # both ONCE, only when something is actually bound.
+    motif_by_id: dict[UUID, Any] = {}
+    cast_names: dict[str, str] = {}
+    bound_ids = {a.motif_id for a in apps_by_node.values() if a.motif_id is not None}
+    if bound_ids:
+        mrepo = MotifRepo(get_pool())
+        for mid in bound_ids:
+            m = await mrepo.get_visible(user_id, mid)
+            if m is not None:
+                motif_by_id[mid] = m
+        cast = await _cast_roster(glossary, work.book_id)
+        cast_names = {e["entity_id"]: e["name"] for e in cast}
+
+    bindings = _assemble_motif_bindings(
+        scenes=scenes, apps_by_node=apps_by_node,
+        motif_by_id=motif_by_id, cast_names=cast_names,
+    )
+    return {"chapter_id": str(chapter_id), "bindings": bindings}

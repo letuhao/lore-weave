@@ -260,6 +260,9 @@ def test_build_application_rows_pins_version_and_beat_key():
         assert row["role_bindings"] == binding.role_bindings
         # W5 trace: beat_key folded into annotations (no F0 schema column needed)
         assert row["annotations"]["beat_key"] == beat["key"]
+        # D-MOTIF-FE-PLANNERVIEW-WIRING (GAP-1): the plan-time match_reason is
+        # PERSISTED so a post-commit binding read can render the MatchReasonChip.
+        assert row["annotations"]["match_reason"] == sel.match_reason
 
 
 # ── §7.2 the F1 fallback matrix ─────────────────────────────────────────
