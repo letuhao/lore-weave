@@ -1,8 +1,28 @@
 # ▶ NEXT SESSION — Narrative Motif Library BUILD (handoff)
 
-## STATUS (2026-06-28) — WAVE 2 BACKEND COMPLETE + 7 DEFERS CLEARED · only infra/product/test-infra remain
+## STATUS (2026-06-28) — WAVE 2 COMPLETE + 8 DEFERS CLEARED + 4 LIVE-SMOKES PASSING + motif_beat extractor built
 
-**Defer-clearing pass (2026-06-28) — 7 code-only defers cleared + DB-verified on real Postgres:**
+**LIVE-SMOKES (real stack — container REBUILT from this branch; lm_studio + provider-registry):** the
+test account's models drive 4 passing end-to-end smokes (scripts in scratchpad, evidence below):
+- **`D-W9-DECONSTRUCT-LIVE-SMOKE`** ✅ — Qwen2.5 deconstructed a revenge-cultivation text → 2 abstract
+  motifs + arc (source='imported', imported_derived=True, B-3 taint). model_source=`user_model`.
+- **`D-WSTITCH-LIVE-SMOKE`** ✅ — real stitch DEDUPED a deliberate cross-scene seam echo ("breath
+  clouding in the dark / sealed letter" → rewritten) while preserving content — W-STITCH on a real model.
+- **`D-MOTIF-RETRIEVE-LIVE-SMOKE`** ✅ — real bge-m3 (1024-dim) embed + cosine **0.638**, degraded=False
+  (real cosine path). model_source=`user_model`, ref=bge-m3 local.
+- **`D-MOTIF-CONFORMANCE-LIVE-SMOKE`** ✅ — the binary judge discriminated realized (True/True) vs
+  not-realized (False/False) passages via Qwen2.5.
+- **Model refs (test account `019d5e3c-…`):** chat `019eb620-…` (Qwen2.5 7B), embed `019e7f71-…`
+  (bge-m3 local), web_search `019eeb08-3819-…` (searxng). Container `infra-composition-service-1` rebuilt
+  `--no-cache` + force-recreated → migrations applied (adopted_base col + arc publish-strip trigger live).
+
+**`D-W8-MOTIF-BEAT-EXTRACTOR`** ✅ built `73004c33` (knowledge-service) — `POST /internal/extraction/motif-beats`
+(Option A: derives beat sequences from existing `:Event` nodes ordered by `event_order`, no new LLM call;
+matches the frozen `knowledge_client.get_motif_beat_sequences` contract). 23 + 57 tests. **NEXT for mine:**
+rebuild knowledge-service to deploy the route + seed a `:Event` corpus for the test account, then run
+`D-W8-MINE-LIVE-SMOKE` (the pipeline + degrade are unit-proven; the real mine needs that corpus).
+
+**Defer-clearing pass (2026-06-28) — 8 code-only defers cleared + DB-verified on real Postgres:**
 - **`D-W9-ARC-PUBLISH-STRIP`** `8577c17b` — arc_template B-3 parity: `imported_derived` column +
   publish-strip trigger (opaque-ize source_ref on imported/derived publish) + clone taint
   propagation. DB-verified (`test_arc_publish_strip_trigger`).
@@ -21,13 +41,16 @@
   at clone time → diff reports base/ours/theirs + conflict; re-baselined atomically on apply. Pre-feature
   clones degrade to honest 2-way. DB-verified.
 
+- **`D-W2-MCP-SESSION-ISOLATION`** `d1888a2a`+`3376021a` — FULLY CLEARED. Two root causes: (1) the MCP
+  confirm-route fixtures patched `app.db.pool.create_pool` but not the SEPARATE `app.main.create_pool`
+  binding → the lifespan hit the real DB host (getaddrinfo) in a batch; (2) FastMCP
+  `StreamableHTTPSessionManager.run()` is once-per-instance and app.main's lifespan runs it, so every
+  `TestClient(app.main)` consumed the global manager → test_mcp_server's loopback then failed. Fixed both:
+  patched the app.main.* bindings in the fixtures + an autouse conftest fixture that stubs ONLY
+  `app.main.mcp_server` (test_mcp_server uses build_mcp_app's separate binding, stays real).
+  **VERIFY: full unit suite 962 passed, 0 errors in ONE batch run** (was 916 + 18 errors). The Wave-1 flake is gone.
+
 **Kept deferred (consciously, with cause):**
-- **`D-W2-MCP-SESSION-ISOLATION`** (test-infra, gate-4) — INVESTIGATED: every MCP test FILE passes in
-  isolation; only a LARGE batch triggers `getaddrinfo`/RuntimeError, with a VARYING victim file. Root
-  cause = the module-global `app.main:app` + FastMCP `StreamableHTTPSessionManager` (run-once-per-instance)
-  + cross-file TestClient lifespan state. NOT a production bug, NOT a timeboxed fix. **Fix path:** isolate
-  app.main per test file (`importlib.reload`) OR a session-scoped fixture that owns the app lifespan + a
-  session-manager reset; until then run MCP files in isolation (CI per-file). Advisory only.
 - **`D-MOTIF-FE-PLANNERVIEW-WIRING`** — RECLASSIFIED (was "1-line wiring"; the FE agent found it's a
   cross-layer FEATURE): the FE preview types carry no per-scene `motif`/`BoundMotif` field, the
   `MotifBindingCard` is per-scene but the preview is per-chapter, and `outline_node_id` exists only
