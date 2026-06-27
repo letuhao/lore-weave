@@ -178,28 +178,61 @@ def _is_near_verbatim(candidate: str, source_shingles: set[tuple[str, ...]], n: 
     return (overlap / len(cand)) > settings.motif_deconstruct_verbatim_max_overlap
 
 
+def _scrub_str_list(values: Any, src: set[tuple[str, ...]], n: int) -> tuple[list[Any], int]:
+    """Blank (→ '') any string entry of a string-list field (preconditions/effects)
+    that reproduces a near-verbatim source run. Non-str entries pass through. Returns
+    (scrubbed_list, count)."""
+    out: list[Any] = []
+    hits = 0
+    for v in values or []:
+        if isinstance(v, str) and _is_near_verbatim(v, src, n):
+            out.append("")
+            hits += 1
+        else:
+            out.append(v)
+    return out, hits
+
+
 def scrub_verbatim(
     motifs: list[dict[str, Any]], *, source_text: str,
 ) -> tuple[list[dict[str, Any]], int]:
     """THE §12.6 abstraction post-check (a real gate, not a comment): walk every
-    generated motif and BLANK any free-text field (beat label/intent, motif summary,
-    example text) that reproduces a near-verbatim run of source prose. Returns the
-    scrubbed motifs + the count of fields scrubbed. ``examples[]`` is dropped entirely
-    if it survives at all (an imported-derived example must be author-written/synthetic,
-    never copied source — §11/§12.6), and any example carrying source prose is removed.
+    generated motif and BLANK **every persisted free-text field** that reproduces a
+    near-verbatim run of source prose — ``name``, ``summary``, each ``roles[].label``,
+    each ``beats[].label``/``intent``, every ``preconditions[]``/``effects[]`` string,
+    and ``examples[]`` (a copied example is DROPPED, not blanked). Returns the scrubbed
+    motifs + the count of fields scrubbed. The field set here MUST stay in sync with
+    what ``_motif_args`` actually persists (HIGH-1 /review-impl: a persisted field the
+    scrub skips is a verbatim-leak hole — the motif publish-strip trigger only strips
+    ``examples[]``+``source_ref``, so the scrub is the SOLE guard for name/roles/
+    preconditions/effects).
 
-    The model is INSTRUCTED to abstract; this is the backstop that proves verbatim
-    source retelling cannot survive into a motif even if the model leaks one."""
+    SCOPE/HONESTY: this catches *long-run* near-verbatim (≥ the ``shingle`` window, default
+    6 words). A short verbatim phrase (< window) or a lone proper noun produces no
+    matching shingle and is NOT caught here — that residue is held by the abstraction
+    PROMPT (role slots, no proper nouns) + the role-slot data model (§12.6), not this
+    backstop. The arc-level fields (thread/roster labels, arc name) are scrubbed
+    separately in ``deconstruct_reference`` before ``_arc_args``."""
     n = settings.motif_deconstruct_verbatim_shingle
     src = _shingles(source_text, n)
     scrubbed = 0
     out: list[dict[str, Any]] = []
     for m in motifs:
         mm = dict(m)
-        # summary
-        if _is_near_verbatim(str(mm.get("summary") or ""), src, n):
-            mm["summary"] = ""
-            scrubbed += 1
+        # name + summary (both persisted by _motif_args, neither publish-stripped).
+        for field in ("name", "summary"):
+            if _is_near_verbatim(str(mm.get(field) or ""), src, n):
+                mm[field] = ""
+                scrubbed += 1
+        # roles: label (the only free-text on a role; key/actant are slugged/enumerated).
+        roles_out: list[dict[str, Any]] = []
+        for r in mm.get("roles") or []:
+            rr = dict(r) if isinstance(r, dict) else {}
+            if _is_near_verbatim(str(rr.get("label") or ""), src, n):
+                rr["label"] = ""
+                scrubbed += 1
+            roles_out.append(rr)
+        mm["roles"] = roles_out
         # beats: label + intent
         beats_out: list[dict[str, Any]] = []
         for b in mm.get("beats") or []:
@@ -210,7 +243,12 @@ def scrub_verbatim(
                     scrubbed += 1
             beats_out.append(bb)
         mm["beats"] = beats_out
-        # examples: any example reproducing source prose is REMOVED (not just blanked).
+        # preconditions + effects (free-text string lists, persisted as {"text": …}).
+        for field in ("preconditions", "effects"):
+            mm[field], hits = _scrub_str_list(mm.get(field), src, n)
+            scrubbed += hits
+        # examples: any example reproducing source prose is REMOVED (not just blanked) —
+        # an imported-derived example must be author-written/synthetic (§11/§12.6).
         examples_in = mm.get("examples") or []
         examples_out: list[dict[str, Any]] = []
         for ex in examples_in:
@@ -226,6 +264,29 @@ def scrub_verbatim(
         mm["examples"] = examples_out
         out.append(mm)
     return out, scrubbed
+
+
+def scrub_arc_fields(
+    reduced: dict[str, Any], arc_name: str, *, source_text: str,
+) -> tuple[str, int]:
+    """Scrub the ARC-level free-text the §12.6 motif scrub doesn't reach: each
+    ``threads[].label`` and ``arc_roster[].label`` (mutated in-place on ``reduced``) plus
+    the proposed arc ``name``. Returns (scrubbed_arc_name, count). arc_template has NO
+    publish-strip trigger (unlike motif), so this is the SOLE guard for the arc envelope
+    on a publish (HIGH-1). A near-verbatim arc name → a neutral placeholder."""
+    n = settings.motif_deconstruct_verbatim_shingle
+    src = _shingles(source_text, n)
+    hits = 0
+    for coll in ("threads", "roster"):
+        for it in reduced.get(coll) or []:
+            if isinstance(it, dict) and _is_near_verbatim(str(it.get("label") or ""), src, n):
+                it["label"] = ""
+                hits += 1
+    name = arc_name
+    if _is_near_verbatim(str(arc_name or ""), src, n):
+        name = "Imported Arc"
+        hits += 1
+    return name, hits
 
 
 # ── parse one chunk's LLM deconstruct frame → a normalized dict ──────────────────────
@@ -300,11 +361,14 @@ def _coerce_tension(value: Any) -> int | None:
 
 
 def _slug(value: Any, fallback: str) -> str:
+    # Cap at 120 (well under the code/key column's 200) — a long import_source.title
+    # otherwise produces a code that fails ArcTemplateCreateArgs validation and crashes
+    # the whole deconstruct (/review-impl: surfaced by a long-title test).
     s = re.sub(r"[^a-z0-9._-]+", "-", str(value or "").strip().lower()).strip("-.")
-    return s or fallback
+    return (s or fallback)[:120].strip("-.") or fallback
 
 
-def _motif_args(spec: dict[str, Any], *, index: int) -> MotifCreateArgs:
+def _motif_args(spec: dict[str, Any], *, index: int, language: str = "en") -> MotifCreateArgs:
     roles = [
         MotifRole(
             key=_slug(r.get("key"), f"role-{i}"),
@@ -326,6 +390,7 @@ def _motif_args(spec: dict[str, Any], *, index: int) -> MotifCreateArgs:
     effects = [{"text": str(e)[:2000]} for e in (spec.get("effects") or []) if e]
     return MotifCreateArgs(
         code=_slug(spec.get("code"), f"imported.motif-{index}"),
+        language=language,
         name=str(spec.get("name") or f"Imported Motif {index + 1}")[:500],
         kind=spec.get("kind") if spec.get("kind") in
         {"sequence", "scheme", "reveal", "reversal", "relationship"} else "sequence",
@@ -385,7 +450,7 @@ async def deconstruct_reference(
     *, llm: LLMClient, arc_repo: ArcTemplateRepo, motif_repo: MotifRepo,
     user_id: str, source_title: str, source_content: str,
     model_source: str, model_ref: str,
-    arc_hint: str | None = None, use_web: bool = False,
+    arc_hint: str | None = None, use_web: bool = False, language: str = "en",
 ) -> dict[str, Any]:
     """Pure deconstruct: chunk → per-chunk LLM map → reduce → §12.6 scrub →
     persist (arc_template draft + imported_derived motifs). The LLM client + both
@@ -405,6 +470,7 @@ async def deconstruct_reference(
 
     # MAP — one abstract deconstruct per chunk (rides the P2 rail; each fits the window).
     chunk_results: list[dict[str, Any]] = []
+    chunks_failed = 0  # MED-4: surfaced in the result — a partial deconstruct is NEVER silent.
     for i, ch in enumerate(chunks):
         system, user = build_deconstruct_messages(
             ch, arc_hint=arc_hint, use_web=use_web,
@@ -423,6 +489,7 @@ async def deconstruct_reference(
         )
         if getattr(job, "status", None) != "completed":
             logger.warning("deconstruct chunk %d not completed: %s", i, getattr(job, "status", None))
+            chunks_failed += 1
             chunk_results.append({"threads": [], "roster": [], "motifs": [],
                                   "placements": [], "pacing": []})
             continue
@@ -430,27 +497,34 @@ async def deconstruct_reference(
 
     reduced = _reduce_chunks(chunk_results)
 
-    # §12.6 ABSTRACTION POST-CHECK — scrub near-verbatim source prose out of the motifs.
+    # §12.6 ABSTRACTION POST-CHECK — scrub near-verbatim source prose out of EVERY
+    # persisted free-text field: the motif fields (name/summary/roles/beats/precond/
+    # effects/examples) AND the arc-level fields (thread/roster labels, arc name).
     reduced["motifs"], scrubbed_count = scrub_verbatim(
         reduced.get("motifs") or [], source_text=source_content,
     )
+    arc_name, arc_scrubbed = scrub_arc_fields(
+        reduced, source_title or "Imported Arc", source_text=source_content,
+    )
+    scrubbed_count += arc_scrubbed
 
     if not reduced["motifs"]:
         raise ValueError("analyze_reference: deconstruct produced no abstract motifs")
 
     # PERSIST — member motifs (source='imported', imported_derived=True) then the arc.
-    base = _slug(source_title, "imported-arc")
+    # Base the arc code on the SCRUBBED name (not the raw title) so a source-y/long title
+    # neither leaks into the exposed `code` nor overflows the column.
+    base = _slug(arc_name, "imported-arc")
     motif_ids: list[str] = []
     for idx, mspec in enumerate(reduced["motifs"]):
-        args = _motif_args(mspec, index=idx)
+        args = _motif_args(mspec, index=idx, language=language)
         motif: Motif = await motif_repo.create(
             UUID(user_id), args, source="imported", imported_derived=True,
         )
         motif_ids.append(str(motif.id))
 
     arc_args = _arc_args(
-        reduced, code=f"{base}.arc", name=source_title or "Imported Arc",
-        language="en",
+        reduced, code=f"{base}.arc", name=arc_name, language=language,
     )
     arc: ArcTemplate = await arc_repo.create(
         UUID(user_id), arc_args, source="imported", status="draft",
@@ -466,6 +540,9 @@ async def deconstruct_reference(
             "motifs_emitted": len(motif_ids),
         },
         "chunks": len(chunks),
+        "chunks_parsed": len(chunks) - chunks_failed,
+        "chunks_failed": chunks_failed,  # MED-4: a partial deconstruct is visible, not silent.
+        "language": language,
         "use_web": bool(use_web),
         "websearch_status": "deferred:D-W9-WEBSEARCH" if use_web else "off",
     }
@@ -507,4 +584,8 @@ async def run_analyze_reference(
         model_ref=model_ref,
         arc_hint=input.get("arc_hint"),
         use_web=bool(input.get("use_web")),
+        # M3 (/review-impl): the language axis (R1.1.3 — a first-class dedup/embed key;
+        # tagging an imported zh work 'en' is a re-key migration later). From the envelope
+        # else 'en'. The confirm effect stamps it from the arc-import tool arg.
+        language=str(input.get("language") or "en"),
     )

@@ -198,6 +198,33 @@ async def test_below_gate_candidate_shown_not_dropped():
     assert result["below_gate"] >= 1
 
 
+async def test_code_collision_does_not_sink_the_whole_candidate_list():
+    """MED-6 (/review-impl): a (owner, code, language) UniqueViolation on ONE persist must
+    NOT crash mine_motifs and lose every other candidate (the §11 no-silent-drop guarantee).
+    The colliding candidate is surfaced persisted=False/status='code_collision'; the job
+    completes instead of raising."""
+    import asyncpg
+
+    class _CollidingRepo(_FakeMotifRepo):
+        async def create(self, *a, **k):
+            raise asyncpg.UniqueViolationError("duplicate key (owner, code, language)")
+
+    knowledge = _FakeKnowledge([_seq("a", "b"), _seq("a", "b"), _seq("a", "b")])
+    llm = _FakeLLM(abstraction=_abstraction(), judge_score=0.9)  # passes the gate
+    result = await mm.mine_motifs(
+        knowledge=knowledge, llm=llm, motif_repo=_CollidingRepo(), user_id=USER,
+        scope="book", book_id=uuid.uuid4(), language="en",
+        min_support=2, min_judge=0.6,
+        model_source="platform_model", model_ref="m-ref",
+    )
+    assert result["mined"] == 0          # nothing persisted (the collision)
+    assert result["candidates"]          # but the candidate is SHOWN, not lost to a crash
+    c0 = result["candidates"][0]
+    assert c0["passed_gate"] is True
+    assert c0.get("persisted") is False
+    assert c0.get("status") == "code_collision"
+
+
 async def test_beat_extractor_unavailable_degrades_cleanly():
     # the deferred motif_beat extractor → client returns [] → job COMPLETES degraded.
     knowledge = _FakeKnowledge([])                 # extractor not available yet

@@ -140,6 +140,56 @@ async def test_verbatim_source_beat_is_scrubbed_out_of_motif():
     assert result["abstraction_check"]["scrubbed_fields"] >= 1
 
 
+async def test_verbatim_scrubbed_from_ALL_persisted_motif_and_arc_fields():
+    """HIGH-1 (/review-impl): the scrub must cover EVERY persisted free-text field, not
+    just beats/summary/examples. A model leaking the source passage into motif name /
+    role label / precondition / effect, or into an arc thread label / roster label / the
+    arc name, must NOT survive to the persisted args — the motif publish-strip trigger
+    only strips examples+source_ref, and arc_template has NO trigger at all, so the scrub
+    is the sole guard for these fields on a publish."""
+    frame = json.dumps({
+        "threads": [{"key": "combat", "label": VERBATIN}],
+        "roster": [{"key": "protagonist", "actant": "subject", "label": VERBATIN}],
+        "motifs": [{
+            "code": "imported.motif-a", "name": VERBATIN, "kind": "sequence",
+            "summary": "abstract", "thread": "combat", "tension_target": 4,
+            "roles": [{"key": "protagonist", "actant": "subject", "label": VERBATIN}],
+            "beats": [{"key": "b1", "label": "ok", "intent": "advance", "order": 0}],
+            "preconditions": [VERBATIN], "effects": [VERBATIN],
+        }],
+        "placements": [{"motif_code": "imported.motif-a", "thread": "combat",
+                        "span_start": 1, "span_end": 5, "ord": 0}],
+        "pacing": [],
+    })
+    arc_repo, motif_repo = _FakeArcRepo(), _FakeMotifRepo()
+    await md.deconstruct_reference(
+        llm=_FakeLLM([frame]), arc_repo=arc_repo, motif_repo=motif_repo,
+        user_id=USER, source_title=VERBATIN, source_content=SOURCE_TEXT,
+        model_source="platform_model", model_ref="m-ref",
+    )
+    motif_blob = json.dumps(motif_repo.created[0]["args"].model_dump(mode="json"))
+    assert VERBATIN not in motif_blob   # name/roles.label/preconditions/effects all scrubbed
+    arc_blob = json.dumps(arc_repo.created[0]["args"].model_dump(mode="json"))
+    assert VERBATIN not in arc_blob     # thread/roster labels scrubbed; arc name → "Imported Arc"
+    assert arc_repo.created[0]["args"].name == "Imported Arc"
+
+
+async def test_imported_motif_and_arc_carry_the_request_language():
+    """M3 (/review-impl): the `language` axis (R1.1.3) threads from the envelope through
+    to BOTH the persisted arc_template AND every member motif — tagging an imported zh
+    work 'en' would be a dedup/embed re-key migration later."""
+    arc_repo, motif_repo = _FakeArcRepo(), _FakeMotifRepo()
+    result = await md.deconstruct_reference(
+        llm=_FakeLLM([_frame(beat_label="isolation by disaster")]),
+        arc_repo=arc_repo, motif_repo=motif_repo,
+        user_id=USER, source_title="Work", source_content=SOURCE_TEXT,
+        model_source="platform_model", model_ref="m-ref", language="zh",
+    )
+    assert result["language"] == "zh"
+    assert motif_repo.created[0]["args"].language == "zh"
+    assert arc_repo.created[0]["args"].language == "zh"
+
+
 def test_scrub_verbatim_unit_drops_copied_example_and_blanks_beat():
     motifs = [{
         "summary": VERBATIN,

@@ -385,7 +385,12 @@ async def mine_motifs(
                 "status": "abstraction_failed",
             })
             continue
-        spec = parse_critique_json(extract_judge_content(job.result)) or {}
+        parsed = parse_critique_json(extract_judge_content(job.result))
+        spec = parsed or {}
+        # MED-5 (/review-impl): a COMPLETED job whose frame won't parse yields {} — the
+        # candidate is still SHOWN (§11), but tag it so a reviewer can tell "model judged
+        # it weak" from "we couldn't parse the model".
+        unparseable = not parsed
 
         # 2) binary judge.
         sys_j, usr_j = build_judge_messages(spec)
@@ -413,17 +418,32 @@ async def mine_motifs(
             "judge_score": round(score, 4),
             "passed_gate": passed,
         }
+        if unparseable:
+            entry["status"] = "abstraction_unparseable"
 
         # 3) persist ONLY gate-passers (drafts); the rest are SHOWN, never dropped.
         if passed:
             args = _motif_args(spec, index=idx, language=language)
-            motif: Motif = await motif_repo.create(
-                UUID(user_id), args,
-                source="mined", status="draft",
-                judge_score=Decimal(str(round(score, 4))), mining_support=support,
-            )
+            try:
+                motif: Motif = await motif_repo.create(
+                    UUID(user_id), args,
+                    source="mined", status="draft",
+                    judge_score=Decimal(str(round(score, 4))), mining_support=support,
+                )
+            except asyncpg.UniqueViolationError:
+                # MED-6 (/review-impl): a (owner, code, language) collision (a re-run, or
+                # two patterns abstracting to the same slug) must NOT crash the whole job
+                # and lose every other candidate (the §11 no-silent-drop guarantee). Mark
+                # this one persisted=False + keep going; the user can re-mine / rename.
+                logger.info("mine: code collision persisting candidate idx=%d (skipped)", idx)
+                entry["passed_gate"] = True
+                entry["persisted"] = False
+                entry["status"] = "code_collision"
+                candidates.append(entry)
+                continue
             entry["motif_id"] = str(motif.id)
             entry["code"] = motif.code
+            entry["persisted"] = True
             persisted_ids.append(str(motif.id))
         candidates.append(entry)
 
