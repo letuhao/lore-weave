@@ -148,4 +148,39 @@ describe('apiJson', () => {
     expect(localStorage.getItem('lw_auth')).toBeNull();
     expect(window.location.href).toBe('/login');
   });
+
+  it('multi-tab: recovers via another tab’s rotated token instead of logging out', async () => {
+    // Another tab already refreshed (rotating our refresh token): localStorage holds a NEW
+    // access token, but this request used the stale React-state token. Our own refresh fails
+    // (revoked refresh token), but we must retry with the localStorage token, NOT log out.
+    localStorage.setItem('lw_auth', JSON.stringify({ accessToken: 'fromOtherTab', refreshToken: 'r1' }));
+    Object.defineProperty(window, 'location', { writable: true, value: { href: '' } });
+    const seen: Record<string, number> = {};
+    globalThis.fetch = vi.fn().mockImplementation((url: string) => {
+      if (url.endsWith('/v1/auth/refresh')) return Promise.resolve(unauthorized()); // our refresh fails
+      seen[url] = (seen[url] ?? 0) + 1;
+      return Promise.resolve(seen[url] === 1 ? unauthorized() : jsonOk({ data: 'recovered' }));
+    });
+
+    const result = await apiJson('/v1/protected', { token: 'stale' });
+    expect(result).toEqual({ data: 'recovered' });
+    expect(globalThis.fetch).toHaveBeenCalledWith('/v1/protected', expect.objectContaining({
+      headers: expect.objectContaining({ Authorization: 'Bearer fromOtherTab' }),
+    }));
+    expect(localStorage.getItem('lw_auth')).not.toBeNull(); // did NOT log out
+    expect(window.location.href).toBe(''); // no redirect
+  });
+
+  it('logs out if even the freshly-refreshed token is rejected (retried 401)', async () => {
+    localStorage.setItem('lw_auth', JSON.stringify({ accessToken: 'old', refreshToken: 'r0' }));
+    Object.defineProperty(window, 'location', { writable: true, value: { href: '' } });
+    globalThis.fetch = vi.fn().mockImplementation((url: string) => {
+      if (url.endsWith('/v1/auth/refresh')) return Promise.resolve(jsonOk({ access_token: 'new', refresh_token: 'r1' }));
+      return Promise.resolve(unauthorized()); // /v1/protected 401s even with the new token
+    });
+
+    await apiJson('/v1/protected', { token: 'old' });
+    expect(localStorage.getItem('lw_auth')).toBeNull();
+    expect(window.location.href).toBe('/login');
+  });
 });

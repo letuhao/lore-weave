@@ -110,6 +110,14 @@ export async function apiJson<T>(
         if (newToken) {
           return apiJson<T>(path, { ...init, token: newToken }, true);
         }
+        // Multi-tab rotation race: our refresh can fail because ANOTHER tab refreshed first,
+        // rotating + revoking our refresh token. If localStorage now holds a different access
+        // token, that other tab already recovered the session — retry with it instead of
+        // logging out (otherwise one of two active tabs loses its work).
+        const current = readAuth().accessToken;
+        if (current && current !== init.token) {
+          return apiJson<T>(path, { ...init, token: current }, true);
+        }
       }
       forceLogout();
       return undefined as T;

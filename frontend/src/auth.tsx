@@ -79,8 +79,16 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       setAccess(readToken('accessToken'));
       setRefresh(readToken('refreshToken'));
     };
+    // Same-tab: api.ts fires this after a silent refresh. Cross-tab: a `storage` event fires in
+    // OTHER tabs when this origin's localStorage changes — pick up another tab's refresh (so we
+    // send the new token, avoiding our own 401) or its logout (clearing lw_auth → we sign out too).
+    const onStorage = (e: StorageEvent) => { if (e.key === AUTH_KEY || e.key === null) onRefreshed(); };
     window.addEventListener('lw-auth-refreshed', onRefreshed);
-    return () => window.removeEventListener('lw-auth-refreshed', onRefreshed);
+    window.addEventListener('storage', onStorage);
+    return () => {
+      window.removeEventListener('lw-auth-refreshed', onRefreshed);
+      window.removeEventListener('storage', onStorage);
+    };
   }, []);
 
   // Fetch user profile when token is available

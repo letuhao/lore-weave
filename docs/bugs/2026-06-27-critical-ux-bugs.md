@@ -264,9 +264,17 @@ User is active but the JWT expires and forces logout. Critical — causes loss o
 > `refreshInFlight = p` assignment, leaking a resolved-null promise that permanently short-circuits
 > every later refresh (→ instant logout on the next expiry). Fixed with `p.finally(reset)` AFTER
 > assignment + an identity guard.
-> Tests: api suite 11/11 (added refresh-and-retry, single-flight, refresh-fails→logout) + auth 7/7;
-> tsc clean. Follow-ups (not blocking): SSE/WebSocket streams carry the token outside apiJson, so
-> they won't auto-refresh on expiry; cross-tab React-state sync (a `storage` listener) is a nicety.
+> Tests: api suite (added refresh-and-retry, single-flight, refresh-fails→logout) + auth 7/7;
+> tsc clean.
+> /review-impl (MED, fixed): multi-tab race — the refresh token ROTATES, so two tabs of the same
+> user both 401'ing on expiry would both refresh with the same r0; one wins (rotates r0→r1), the
+> other hits a revoked r0 → logout (one of two active tabs loses work). Fixed: before forceLogout,
+> re-read localStorage — if the access token changed (another tab refreshed), retry with it instead
+> of logging out. Added a `storage`-event listener in AuthProvider so a tab proactively adopts
+> another tab's refresh (and cross-tab logout). Tests: +multi-tab-recovery, +retried-401→logout
+> (api 13/13). Follow-ups (not blocking): SSE/WebSocket streams carry the token outside apiJson so
+> they won't auto-refresh on expiry; no timeout on the refresh fetch (a hung /v1/auth/refresh blocks
+> 401'd callers until the browser default fires).
 
 ### [ ] 21. Custom `romantic_scene` kind in Xianxia Harem genre not wired in GUI
 Created `romantic_scene` in a custom Xianxia Harem genre, but the GUI doesn't wire it — can't edit `romantic_scene` kind anymore.
