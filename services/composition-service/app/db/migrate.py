@@ -570,6 +570,7 @@ CREATE TABLE IF NOT EXISTS motif (
   imported_derived BOOLEAN NOT NULL DEFAULT false,
   source_ref      TEXT,                                   -- lineage; opaque token on imported-derived publish (B-3)
   source_version  INT,                                    -- N-4 upstream 3-way-diff version pin
+  adopted_base    JSONB,                                  -- D-MOTIF-SYNC-3WAY-BASE: snapshot of the upstream's mergeable fields AT adopt time (the true 3-way merge base; NULL = non-adopted)
   embedding       REAL[],                                 -- brute-force cosine (reference_source precedent); NULL at seed (RECONCILE D4, W3 back-fills)
   embedding_model TEXT NOT NULL DEFAULT '',               -- ONE platform model (B-1); no per-row choice
   embedding_dim   INT,
@@ -811,6 +812,8 @@ END $$;
 -- the publish transition of an imported/adopted-from-imported arc — the same lineage
 -- hygiene the motif trigger applies. Cannot be bypassed by the router/LLM.
 ALTER TABLE arc_template ADD COLUMN IF NOT EXISTS imported_derived BOOLEAN NOT NULL DEFAULT false;
+-- D-MOTIF-SYNC-3WAY-BASE: the merge-base snapshot column (additive ALTER for an existing motif).
+ALTER TABLE motif ADD COLUMN IF NOT EXISTS adopted_base JSONB;
 CREATE OR REPLACE FUNCTION arc_template_publish_strip() RETURNS trigger AS $$
 BEGIN
   IF NEW.visibility IN ('public','unlisted')

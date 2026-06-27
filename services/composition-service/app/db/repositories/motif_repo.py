@@ -59,6 +59,17 @@ def _jsonb(value: Any) -> str:
     return json.dumps(value)
 
 
+def _coerce_jsonb_value(value: Any) -> Any:
+    """A JSONB column read from asyncpg is a json STRING (or already parsed) — return the
+    PARSED value (list/dict) for embedding into a nested structure (the adopted_base snapshot)."""
+    if isinstance(value, str):
+        try:
+            return json.loads(value)
+        except (ValueError, TypeError):
+            return value
+    return value
+
+
 def _dump_models(items: list[Any]) -> list[dict[str, Any]]:
     """[MotifRole|MotifBeat|dict] → [dict] for JSONB serialization."""
     out: list[dict[str, Any]] = []
@@ -134,7 +145,7 @@ class MotifRepo:
 
     async def patch(
         self, caller_id: UUID, motif_id: UUID, args: MotifPatchArgs, *, expected_version: int,
-        repin_source_version: int | None = None,
+        repin_source_version: int | None = None, repin_adopted_base: str | None = None,
     ) -> Motif | None:
         """Optimistic-lock edit, OWNER-only (WHERE owner_user_id = caller_id — a
         system or foreign motif is never patchable here). Bumps version, sets
@@ -168,6 +179,9 @@ class MotifRepo:
         if repin_source_version is not None:
             params.append(repin_source_version)
             sets.append(f"source_version = ${len(params)}")
+        if repin_adopted_base is not None:
+            params.append(repin_adopted_base)
+            sets.append(f"adopted_base = ${len(params)}::jsonb")
         sets.append("version = version + 1")
         sets.append("updated_at = now()")
         params.append(expected_version)
@@ -283,6 +297,18 @@ class MotifRepo:
             # tainted so the publish-strip trigger fires on an adopted-from-imported
             # publish; adopted-from-AUTHORED stays false (those examples are shareable).
             tainted = s["source"] == "imported" or bool(s["imported_derived"])
+            # D-MOTIF-SYNC-3WAY-BASE: snapshot the upstream's mergeable fields AT adopt
+            # time = the true merge base. A later sync diffs base↔ours (local edits) ↔
+            # theirs (upstream current) for per-field conflict detection. genre_tags is the
+            # SOURCE's tags (a retag at adopt is a local change vs this base).
+            adopted_base = _jsonb({
+                "summary": s["summary"],
+                "genre_tags": list(s["genre_tags"]),
+                "beats": _coerce_jsonb_value(s["beats"]),
+                "roles": _coerce_jsonb_value(s["roles"]),
+                "preconditions": _coerce_jsonb_value(s["preconditions"]),
+                "effects": _coerce_jsonb_value(s["effects"]),
+            })
             row = await c.fetchrow(
                 f"""
                 INSERT INTO motif
@@ -291,11 +317,12 @@ class MotifRepo:
                    info_asymmetry, annotations, tension_target, emotion_target,
                    examples, abstraction_confidence, source, imported_derived,
                    source_ref, source_version,
-                   embedding, embedding_model, embedding_dim, embedded_summary_hash)
+                   embedding, embedding_model, embedding_dim, embedded_summary_hash,
+                   adopted_base)
                 VALUES ($1,$2,$3,'private',$4,$5,$6,$7,$8,
                         $9::jsonb,$10::jsonb,$11::jsonb,$12::jsonb,$13::jsonb,$14::jsonb,
                         $15,$16,$17::jsonb,$18,'adopted',$25,$19,$20,
-                        $21,$22,$23,$24)
+                        $21,$22,$23,$24,$26::jsonb)
                 RETURNING {_SELECT_COLS}
                 """,
                 target_owner, s["code"], s["language"], s["kind"], s["category"],
@@ -306,7 +333,7 @@ class MotifRepo:
                 s["tension_target"], s["emotion_target"], _passthru_jsonb(s["examples"]),
                 s["abstraction_confidence"], f"lineage:{src_motif_id}", s["version"],
                 s["embedding"], s["embedding_model"], s["embedding_dim"],
-                s["embedded_summary_hash"], tainted,
+                s["embedded_summary_hash"], tainted, adopted_base,
             )
         return _row_to_motif(row)
 

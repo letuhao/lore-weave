@@ -124,6 +124,35 @@ async def test_create_mined_and_imported_columns_roundtrip(repo):
     assert arow["imported_derived"] is False
 
 
+async def test_clone_captures_adopted_base_snapshot(repo):
+    """D-MOTIF-SYNC-3WAY-BASE: clone snapshots the source's mergeable fields into
+    adopted_base (the true 3-way merge base) — verified against real Postgres incl. the
+    additive ALTER for the column."""
+    import json
+
+    from app.db.models import MotifBeat, MotifRole
+
+    r, pool = repo
+    u1, u2 = uuid.uuid4(), uuid.uuid4()
+    src = await r.create(
+        u2, _args(code="src", visibility="public", summary="upstream summary",
+                  genre_tags=["xianxia"],
+                  roles=[MotifRole(key="hero", actant="subject", label="Hero")],
+                  beats=[MotifBeat(key="b1", label="Discovery", order=1)]))
+    clone = await r.clone(u1, src.id, target_owner=u1)
+    async with pool.acquire() as c:
+        raw = await c.fetchval("SELECT adopted_base FROM motif WHERE id=$1", clone.id)
+    base = json.loads(raw) if isinstance(raw, str) else raw
+    assert base["summary"] == "upstream summary"
+    assert base["genre_tags"] == ["xianxia"]
+    assert base["roles"][0]["key"] == "hero"
+    assert base["beats"][0]["label"] == "Discovery"
+    # a non-adopted (created, not cloned) motif has no base.
+    async with pool.acquire() as c:
+        nb = await c.fetchval("SELECT adopted_base FROM motif WHERE id=$1", src.id)
+    assert nb is None
+
+
 async def test_create_unique_per_owner_code_language(repo):
     r, _ = repo
     u = uuid.uuid4()

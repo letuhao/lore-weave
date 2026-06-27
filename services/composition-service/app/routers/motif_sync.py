@@ -10,23 +10,17 @@
                                      the upstream CURRENT version.
 
 ──────────────────────────────────────────────────────────────────────────────
-HONESTY — why this is a TWO-WAY diff, not a true 3-way (the central design fact):
-
-A true 3-way merge needs THREE texts: base (upstream AT the pinned
-`source_version`), ours (the caller's local edits), theirs (upstream CURRENT).
-But the `motif` table (app/db/migrate.py §motif) keeps ONLY the current row —
-`version` is a single in-place INT counter bumped by patch(); there is NO
-`motif_revision`/history table, so the *text* of the upstream at the pinned
-version is GONE. We therefore CANNOT reconstruct a real base and DO NOT fabricate
-one. The diff degrades to a deterministic **2-way** (ours vs theirs-CURRENT),
-labelled `diff_mode="two_way"` + `base_available=False` in every response so the
-FE renders an honest "ours vs upstream" picker, never a false 3-way auto-merge.
-
-A genuine 3-way needs a schema change (a `motif_revision` history table or a
-JSONB snapshot pinned at adopt time) — tracked as **D-MOTIF-SYNC-3WAY-BASE**
-(defer gate #2 large/structural: schema migration). Wave2-RECONCILE §3 anticipates
-exactly this degrade ("base = pinned `source_version`" is only a version *pin*, the
-text is not retained).
+3-WAY MERGE (D-MOTIF-SYNC-3WAY-BASE cleared): a true 3-way needs THREE texts —
+base (the upstream AT adopt time), ours (the caller's local edits), theirs
+(upstream CURRENT). The base is the `motif.adopted_base` JSONB snapshot that
+`clone()` captures of the source's mergeable fields at adopt time (NOT reconstructed
+from a version pin — the table keeps no per-version history). So each field reports
+base/ours/theirs + `ours_changed`/`theirs_changed`/`conflict` (both sides moved to
+DIFFERENT values), `diff_mode="three_way"`. After a sync the base is RE-BASELINED to
+the reconciled upstream (atomically, in the same patch UPDATE) so the next diff is
+clean. A row cloned BEFORE this feature has no snapshot → the diff degrades to a
+labelled 2-way (ours vs theirs-current, `base_available=False`) — honest, never a
+fabricated base.
 ──────────────────────────────────────────────────────────────────────────────
 
 TENANCY (the kinds-bug fix + R1.1 / H13): the LOCAL motif is read via
@@ -112,11 +106,14 @@ def _lineage_src_id(source_ref: str | None) -> UUID | None:
 
 async def _resolve_local_and_upstream(
     caller_id: UUID, motif_id: UUID, repo: MotifRepo,
-) -> tuple[Motif, asyncpg.Record]:
+) -> tuple[Motif, asyncpg.Record, dict[str, Any] | None]:
     """Shared resolve for both surfaces: load the caller's LOCAL motif (read
     predicate → H13 404 on miss/foreign), confirm it carries a lineage (→ 409
     not-adopted), then re-resolve the UPSTREAM CURRENT row under the SAME predicate
-    (→ 410 gone if it vanished/was archived since adopt). Returns (local, upstream)."""
+    (→ 410 gone if it vanished/was archived since adopt). Also loads the local's
+    `adopted_base` snapshot (the true 3-way merge base, D-MOTIF-SYNC-3WAY-BASE; None for
+    a pre-3-way clone → the diff degrades to 2-way for that row). Returns (local,
+    upstream, base)."""
     local = await repo.get_visible(caller_id, motif_id)
     if local is None:
         raise HTTPException(status_code=404, detail=_NOT_FOUND)
@@ -130,7 +127,8 @@ async def _resolve_local_and_upstream(
 
     from app.db.pool import get_pool
 
-    upstream = await get_pool().fetchrow(
+    pool = get_pool()
+    upstream = await pool.fetchrow(
         f"SELECT {_UPSTREAM_COLS} FROM motif "
         f"WHERE id = $2 AND {_VISIBLE_PREDICATE} AND status <> 'archived'",
         caller_id, src_id,
@@ -140,7 +138,14 @@ async def _resolve_local_and_upstream(
             "code": "MOTIF_UPSTREAM_GONE",
             "message": "the upstream motif is no longer available",
         })
-    return local, upstream
+    # the merge base = the local row's adopted_base snapshot (owner-scoped read).
+    base_row = await pool.fetchrow(
+        "SELECT adopted_base FROM motif WHERE id = $1 AND owner_user_id = $2",
+        motif_id, caller_id,
+    )
+    base = (_coerce_jsonb(base_row["adopted_base"])
+            if base_row is not None and base_row["adopted_base"] is not None else None)
+    return local, upstream, base
 
 
 def _coerce_jsonb(value: Any) -> Any:
@@ -155,14 +160,29 @@ def _coerce_jsonb(value: Any) -> Any:
     return value
 
 
-def _field_diff(local: Motif, upstream: asyncpg.Record) -> dict[str, dict[str, Any]]:
-    """Per-field 2-way diff (ours vs theirs-CURRENT). NO `base` key — we have no
-    historical base (see module docstring). `changed` is a structural inequality."""
+def _field_diff(
+    local: Motif, upstream: asyncpg.Record, base: dict[str, Any] | None,
+) -> dict[str, dict[str, Any]]:
+    """Per-field diff. With a `base` (adopted_base snapshot) it is a TRUE 3-way:
+    `ours_changed`/`theirs_changed` vs the base + `conflict` (both sides moved to
+    DIFFERENT values). Without a base (a pre-3-way clone) it degrades to 2-way (ours vs
+    theirs, no base key). `changed` (ours != theirs) is always present."""
     fields: dict[str, dict[str, Any]] = {}
     for f in _MERGEABLE_FIELDS:
         ours = getattr(local, f)
         theirs = _coerce_jsonb(upstream[f])
-        fields[f] = {"ours": ours, "theirs": theirs, "changed": ours != theirs}
+        entry: dict[str, Any] = {"ours": ours, "theirs": theirs, "changed": ours != theirs}
+        if base is not None:
+            b = base.get(f)
+            ours_changed = ours != b
+            theirs_changed = theirs != b
+            entry["base"] = b
+            entry["ours_changed"] = ours_changed
+            entry["theirs_changed"] = theirs_changed
+            # conflict: BOTH sides diverged from the base, to different values. A field
+            # only theirs-changed is a clean fast-forward; only ours-changed is a local edit.
+            entry["conflict"] = ours_changed and theirs_changed and (ours != theirs)
+        fields[f] = entry
     return fields
 
 
@@ -174,22 +194,22 @@ async def upstream_diff(
 ) -> dict[str, Any]:
     """The "update available" signal + per-field diff for an adopted motif.
 
-    DEGRADED to 2-way (ours vs theirs-current) — `diff_mode="two_way"`,
-    `base_available=False` — because no upstream history is retained (the table
-    keeps only the current row; see module docstring + D-MOTIF-SYNC-3WAY-BASE).
-    `update_available` is True when the upstream CURRENT version moved past the
+    TRUE 3-way (`diff_mode="three_way"`, `base_available=True`) when the row carries an
+    `adopted_base` snapshot (D-MOTIF-SYNC-3WAY-BASE) — each field reports base/ours/theirs
+    + ours_changed/theirs_changed/conflict. A pre-3-way clone (no snapshot) degrades to
+    2-way. `update_available` is True when the upstream CURRENT version moved past the
     locally pinned `source_version`."""
-    local, upstream = await _resolve_local_and_upstream(user_id, motif_id, repo)
+    local, upstream, base = await _resolve_local_and_upstream(user_id, motif_id, repo)
     pinned = local.source_version
     upstream_version = int(upstream["version"])
     update_available = pinned is None or upstream_version > pinned
     return {
-        "diff_mode": "two_way",
-        "base_available": False,
+        "diff_mode": "three_way" if base is not None else "two_way",
+        "base_available": base is not None,
         "pinned_source_version": pinned,
         "upstream_version": upstream_version,
         "update_available": update_available,
-        "fields": _field_diff(local, upstream),
+        "fields": _field_diff(local, upstream, base),
     }
 
 
@@ -221,9 +241,16 @@ async def sync_motif(
     optimistic-lock patch (a foreign/system row never matches → H13 404; a stale
     local row → 412, no silent overwrite). $0 — plain HTTP, no Tier-W token."""
     body._validate_fields()
-    local, upstream = await _resolve_local_and_upstream(user_id, motif_id, repo)
+    local, upstream, _base = await _resolve_local_and_upstream(user_id, motif_id, repo)
 
     upstream_version = int(upstream["version"])
+    # RE-BASELINE: after a sync the merge base advances to the upstream we reconciled
+    # against — its current mergeable fields. Next diff is then base=this-upstream vs
+    # ours(possibly-edited) vs future-upstream. Re-baselined for ALL fields (even kept-ours),
+    # since the user has now SEEN this upstream and chosen.
+    import json as _json
+
+    new_base = _json.dumps({f: _coerce_jsonb(upstream[f]) for f in _MERGEABLE_FIELDS})
 
     # Publish ceiling only matters if THIS row is currently shareable (sync never
     # changes visibility, so we check the local row's existing state).
@@ -231,11 +258,10 @@ async def sync_motif(
         await _publish_quota_guard(repo, user_id)
 
     # The merge is ONE atomic owner-scoped write (D-MOTIF-SYNC-REPIN-ATOMICITY): the
-    # accepted CONTENT fields AND the source_version re-pin ride the SAME optimistic-lock
-    # patch() UPDATE (repin_source_version=) — so no crash window can leave a bumped
-    # version with a stale pin. When accept=[] (no content change) the re-pin is a
-    # standalone owner-scoped UPDATE (atomic on its own) so "reviewed, kept mine" still
-    # clears the update signal.
+    # accepted CONTENT fields + the source_version re-pin + the adopted_base re-baseline
+    # ride the SAME optimistic-lock patch() UPDATE — so no crash window can leave a
+    # bumped version with a stale pin/base. When accept=[] (no content change) the re-pin
+    # + re-baseline are a standalone owner-scoped UPDATE (atomic on its own).
     updated = local
     if body.accept:
         patch_kwargs = {f: _coerce_jsonb(upstream[f]) for f in body.accept}
@@ -243,7 +269,7 @@ async def sync_motif(
         try:
             patched = await repo.patch(
                 user_id, motif_id, args, expected_version=local.version,
-                repin_source_version=upstream_version,
+                repin_source_version=upstream_version, repin_adopted_base=new_base,
             )
         except VersionMismatchError as exc:
             raise HTTPException(status_code=412, detail={
@@ -261,22 +287,23 @@ async def sync_motif(
             raise HTTPException(status_code=404, detail=_NOT_FOUND)
         updated = patched
     else:
-        # accept=[] — re-pin only (one atomic owner-scoped UPDATE; no version bump, it's
-        # lineage bookkeeping not a content edit).
+        # accept=[] — re-pin + re-baseline only (one atomic owner-scoped UPDATE; no version
+        # bump, it's lineage bookkeeping not a content edit).
         from app.db.pool import get_pool
 
         repinned = await get_pool().fetchrow(
-            "UPDATE motif SET source_version = $3, updated_at = now() "
+            "UPDATE motif SET source_version = $3, adopted_base = $4::jsonb, updated_at = now() "
             "WHERE owner_user_id = $1 AND id = $2 RETURNING source_version",
-            user_id, motif_id, upstream_version,
+            user_id, motif_id, upstream_version, new_base,
         )
         if repinned is None:
             raise HTTPException(status_code=404, detail=_NOT_FOUND)
 
     return {
         "synced": True,
-        "diff_mode": "two_way",
+        "diff_mode": "three_way" if _base is not None else "two_way",
         "accepted": list(body.accept),
         "repinned_source_version": upstream_version,
+        "rebaselined": True,
         "motif": updated.model_dump(mode="json"),
     }

@@ -60,9 +60,10 @@ class StubMotifRepo:
         return self.get_result
 
     async def patch(self, caller_id, motif_id, args, *, expected_version,
-                    repin_source_version=None):
+                    repin_source_version=None, repin_adopted_base=None):
         self.last_patch_args = (caller_id, motif_id, args, expected_version)
-        self.last_repin = repin_source_version   # D-MOTIF-SYNC-REPIN-ATOMICITY: re-pin rides patch
+        self.last_repin = repin_source_version       # re-pin rides patch (atomicity)
+        self.last_rebaseline = repin_adopted_base    # 3-way re-baseline rides patch
         if self.patch_raises:
             raise self.patch_raises
         return self.patch_result
@@ -80,12 +81,16 @@ class StubPool:
     def __init__(self) -> None:
         self.upstream_row: dict | None = None
         self.repin_row: dict | None = {"source_version": 0}
+        self.base_row: dict | None = None   # adopted_base snapshot (None → 2-way degrade)
         self.calls: list = []
 
     async def fetchrow(self, query, *args):
         self.calls.append((query, args))
-        if query.strip().upper().startswith("UPDATE"):
+        q = query.strip().upper()
+        if q.startswith("UPDATE"):
             return self.repin_row
+        if "ADOPTED_BASE" in q:
+            return {"adopted_base": self.base_row}
         return self.upstream_row
 
 
@@ -267,6 +272,60 @@ def test_sync_accepts_theirs_and_repins(ctx):
     assert repo.last_repin == 5
     update_calls = [q for q, a in pool.calls if q.strip().upper().startswith("UPDATE")]
     assert len(update_calls) == 0
+
+
+def test_diff_three_way_with_base_detects_conflict(ctx):
+    """D-MOTIF-SYNC-3WAY-BASE: with an adopted_base snapshot the diff is TRUE 3-way —
+    per-field base/ours/theirs + ours_changed/theirs_changed/conflict."""
+    c, repo, pool, _ = ctx
+    src_id = uuid.uuid4()
+    repo.get_result = _motif(owner_user_id=USER, source_ref=f"lineage:{src_id}",
+                             source_version=1, version=3,
+                             summary="MY edit", genre_tags=["xianxia"])
+    pool.upstream_row = {
+        "id": src_id, "summary": "THEIR edit", "genre_tags": ["xianxia"], "beats": [],
+        "roles": [], "preconditions": [], "effects": [], "version": 5,
+        "visibility": "public", "owner_user_id": OTHER,
+    }
+    pool.base_row = {"summary": "original", "genre_tags": ["xianxia"], "beats": [],
+                     "roles": [], "preconditions": [], "effects": []}
+    r = c.get(f"/v1/composition/motifs/{uuid.uuid4()}/upstream-diff")
+    assert r.status_code == 200
+    body = r.json()
+    assert body["diff_mode"] == "three_way" and body["base_available"] is True
+    s = body["fields"]["summary"]
+    assert s["base"] == "original" and s["ours"] == "MY edit" and s["theirs"] == "THEIR edit"
+    assert s["ours_changed"] is True and s["theirs_changed"] is True
+    assert s["conflict"] is True              # both moved to DIFFERENT values
+    g = body["fields"]["genre_tags"]          # nobody changed → clean, not a conflict
+    assert g["ours_changed"] is False and g["theirs_changed"] is False and g["conflict"] is False
+
+
+def test_sync_rebaselines_adopted_base_via_patch(ctx):
+    """D-MOTIF-SYNC-3WAY-BASE: applying a merge re-baselines adopted_base to the
+    reconciled upstream — atomically, in the SAME patch UPDATE (repin_adopted_base)."""
+    import json
+
+    c, repo, pool, _ = ctx
+    src_id = uuid.uuid4()
+    repo.get_result = _motif(owner_user_id=USER, source_ref=f"lineage:{src_id}",
+                             source_version=1, version=3, summary="mine")
+    pool.upstream_row = {
+        "id": src_id, "summary": "theirs", "genre_tags": ["xianxia"], "beats": [],
+        "roles": [], "preconditions": [], "effects": [], "version": 5,
+        "visibility": "public", "owner_user_id": OTHER,
+    }
+    pool.base_row = {"summary": "orig", "genre_tags": [], "beats": [], "roles": [],
+                     "preconditions": [], "effects": []}
+    repo.patch_result = _motif(owner_user_id=USER, summary="theirs", version=4, source_version=5)
+    r = c.post(f"/v1/composition/motifs/{uuid.uuid4()}/sync", json={"accept": ["summary"]})
+    assert r.status_code == 200
+    assert r.json()["diff_mode"] == "three_way"
+    assert r.json()["rebaselined"] is True
+    # the re-baseline rode the patch (atomic) = the upstream's current mergeable fields.
+    rebaselined = json.loads(repo.last_rebaseline)
+    assert rebaselined["summary"] == "theirs"
+    assert repo.last_repin == 5
 
 
 def test_sync_empty_accept_repins_only(ctx):
