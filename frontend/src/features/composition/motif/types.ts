@@ -66,13 +66,31 @@ export type Motif = {
 };
 
 /** The catalog allow-list projection (audit B-3): a STRICT subset — never a full
- *  Motif. No `intent` on beats, no examples, no embedding, no raw source_ref. */
+ *  Motif. The wire shape is exactly `_CATALOG_COLS` in the backend
+ *  motif_repo.list_public (+ `adopt_target` stamped by the router). It STRUCTURALLY
+ *  omits embedding / examples / beats / roles / raw source_ref / owner_user_id /
+ *  visibility, so a non-owner never receives authored prose or the author id.
+ *  GET /v1/composition/motifs/catalog answers `{ items, total, limit, offset }`. */
 export type CatalogMotif = Pick<
-  Motif, 'id' | 'code' | 'name' | 'summary' | 'kind' | 'genre_tags' | 'tension_target'
+  Motif, 'id' | 'code' | 'language' | 'kind' | 'category' | 'name' | 'summary'
+  | 'genre_tags' | 'tension_target' | 'emotion_target' | 'source'
+  | 'abstraction_confidence'
 > & {
-  beats: { label: string; order: number }[];   // labels only, NO intent
-  adopt_count?: number;                          // P2+ social fields — optional
+  judge_score: number | null;
+  version: number;
+  updated_at: string;            // ISO — list_public projects updated_at
+  adopt_target: 'user';          // router-stamped: adopt always clones to the user tier
+  adopt_count?: number;          // P2+ social fields — not yet on the wire
   rating?: number;
+};
+
+/** The catalog list envelope (B-3 discovery). Distinct from the `{ motifs }`
+ *  envelope of GET /motifs — the catalog route paginates with total/offset. */
+export type CatalogList = {
+  items: CatalogMotif[];
+  total: number;
+  limit: number;
+  offset: number;
 };
 
 // ── planner-binding DTOs (W2 exposes; the existing DecomposePreview gains these) ─

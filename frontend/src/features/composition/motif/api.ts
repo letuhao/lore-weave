@@ -11,20 +11,34 @@ import { apiJson } from '../../../api';
 import { compositionApi } from '../api';
 import type { GenerationJob } from '../types';
 import type {
-  CatalogMotif, ChapterConformance, CostEstimate, Motif, MotifCreateArgs,
+  CatalogList, ChapterConformance, CostEstimate, Motif, MotifCreateArgs,
   MotifPatchArgs, MotifTier,
 } from './types';
 
 const BASE = '/v1/composition';
 
+/** GET /motifs scope — the router accepts ONLY mine|system|all (NOT 'public';
+ *  others' public rows are the CATALOG route, never this list). */
 export type MotifListParams = {
-  scope?: 'all' | 'system' | 'user' | 'public';
+  scope?: 'all' | 'system' | 'mine';
   genre?: string;
   kind?: string;
   status?: string;
   q?: string;
   language?: string;
   limit?: number;
+};
+
+/** GET /motifs/catalog params — the catalog route has NO scope (always public)
+ *  and paginates with sort/offset instead. */
+export type CatalogParams = {
+  genre?: string;
+  kind?: string;
+  q?: string;
+  language?: string;
+  sort?: 'recent' | 'name';
+  limit?: number;
+  offset?: number;
 };
 
 function _qs(params: Record<string, string | number | undefined>): string {
@@ -62,8 +76,11 @@ export const motifApi = {
   },
 
   // ── catalog (W1 — the B-3 allow-list projection) ───────────────────────────
-  catalog(params: MotifListParams, token: string): Promise<{ motifs: CatalogMotif[] }> {
-    return apiJson<{ motifs: CatalogMotif[] }>(`${BASE}/motifs/catalog${_qs(params)}`, { token });
+  // Hits GET /motifs/catalog → list_public (the _CATALOG_COLS allow-list), NOT
+  // GET /motifs with scope='public' (which 422s AND would bypass the allow-list).
+  // Answers the `{ items, total, limit, offset }` envelope, NOT `{ motifs }`.
+  catalog(params: CatalogParams, token: string): Promise<CatalogList> {
+    return apiJson<CatalogList>(`${BASE}/motifs/catalog${_qs(params)}`, { token });
   },
 
   // ── Tier-W: adopt = clone (R2.8 confirm-token). mint → confirm → poll ───────

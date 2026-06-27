@@ -21,9 +21,13 @@ const motif = {
   status: 'active', version: 1,
 } satisfies Motif;
 
+// The B-3 catalog allow-list projection (= _CATALOG_COLS + adopt_target). It has
+// NO beats/roles/examples/owner_user_id/visibility — structurally narrower than Motif.
 const catalogMotif = {
-  id: 'm1', code: 'x', name: 'X', summary: 's', kind: 'situation', genre_tags: ['a'],
-  tension_target: 4, beats: [{ label: 'B', order: 0 }], adopt_count: 12, rating: 4.5,
+  id: 'm1', code: 'x', language: 'en', kind: 'situation', category: null, name: 'X',
+  summary: 's', genre_tags: ['a'], tension_target: 4, emotion_target: 'wonder',
+  source: 'authored', abstraction_confidence: 'high', judge_score: null, version: 1,
+  updated_at: '2026-06-27T00:00:00Z', adopt_target: 'user', adopt_count: 12, rating: 4.5,
 } satisfies CatalogMotif;
 
 const boundMotif = {
@@ -53,9 +57,14 @@ describe('F0 §3.6 frozen DTO fixtures', () => {
     expect(motif).not.toHaveProperty('embedding');
     expect(motif.owner_user_id).toBeNull(); // system tier
   });
-  it('CatalogMotif beats carry labels only (no intent — B-3 allow-list)', () => {
-    expect(catalogMotif.beats[0]).not.toHaveProperty('intent');
+  it('CatalogMotif is the B-3 allow-list — no authored prose, no beats/roles', () => {
+    // the allow-list structurally omits beats/roles/examples/source_ref/owner_user_id
+    expect(catalogMotif).not.toHaveProperty('beats');
+    expect(catalogMotif).not.toHaveProperty('roles');
     expect(catalogMotif).not.toHaveProperty('examples');
+    expect(catalogMotif).not.toHaveProperty('owner_user_id');
+    expect(catalogMotif).not.toHaveProperty('visibility');
+    expect(catalogMotif.adopt_target).toBe('user');
   });
   it('BoundMotif match_reason has the plain summary + numeric breakdown', () => {
     expect(boundMotif.match_reason.summary.length).toBeGreaterThan(0);
