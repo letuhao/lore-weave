@@ -44,22 +44,31 @@ commits + the reconcile commit on `feat/narrative-pattern-library`.
 (genre-faithfulness sign-off), plus W5's P2/P4 scope-fenced dims (arc-diff, fine-anchor,
 plot-density, act-rate).
 
-**R-NODE-P1 DATA PLANE — VERIFIED ✅** (committed as `tests/integration/db/test_rnode_p1_dataplane.py`,
-the cross-WS regression guard). Ran all 7 WSs' code together against a real seeded DB via the
-actual repo/engine paths: W7 seeds (44 motifs/19 links) → W1 create → W3 retrieve (R4 degrade,
-genre+tension, no embed model) → W2 motif_application (beat_key in annotations) → W5 trace read
-→ W2 anti-repetition aggregate. The W2→W5 `beat_key` seam is now verified DYNAMICALLY, not just
-statically. (The full dev stack is up, but `infra-composition-service` runs the PRE-Wave-1 image —
-NOT rebuilt, to avoid disrupting the shared healthy service + migrating the shared dev DB.)
+**R-NODE-P1 — VERIFIED (data plane + live HTTP) ✅.** Two layers proven:
+1. **Data plane** (committed guard `tests/integration/db/test_rnode_p1_dataplane.py`): all 7 WSs'
+   code against a real seeded DB — W7 seeds (44/19) → W1 create → W3 retrieve (R4 degrade) → W2
+   motif_application (beat_key in annotations) → W5 trace → W2 anti-repetition.
+2. **Live HTTP** (composition-service REBUILT from this branch, ran against shared `loreweave_composition`):
+   - W1 surface: `GET /motifs?scope=system` (44 seeds), create/get, `/motifs/catalog` (B-3 allow-list,
+     no leaked examples/embedding/source_ref), `POST /motifs/{seed}/adopt` (clone, lineage set).
+   - W2 bind: `PATCH .../outline/{node}/motif` → derived scenes + motif_application written + undo_token.
+   - W5 trace: `GET .../conformance?scope=chapter` → references the bound motif.
 
-**▶ NEXT — the remaining R-NODE-P1 surface (the Wave-2 entry gate):** the FULL HTTP + LLM-decompose
-+ semantic-embed smoke. Needs: rebuild + restart `composition-service` from this branch (runs the
-motif migration + W7 seeds on its DB — confirm the shared-env impact first), a platform embed model
-configured (`motif_embed_model_ref`/`_owner_id` → a provider-registry embedding credential, e.g.
-bge-m3) for W3's cosine path, and the test account driving auth → create book/project → decompose
-(real LLM via lm_studio) → bind → trace via HTTP + the W4 MCP path + W6 FE. Run once at the Wave-2
-stack stand-up, then Wave 2 (W8 mine · W9 import · W10 arc · W-STITCH · W11 sync). The `ws/w*`
-branch refs remain as per-WS history pointers (worktrees pruned).
+**R-NODE-P1 caught 3 real DEPLOYMENT/RUNTIME bugs the 843+130 tests could NOT (all fixed + committed):**
+- **Container boot crash** — W7 seed JSON lived in `scripts/` but the prod Dockerfile COPYs only
+  `app/`; moved the packs into `app/db/seed_motif_packs/` (commit on branch).
+- **HIGH: `GET /motifs?scope=system` 500** — `list_for_caller` bound `caller_id` as an UNUSED `$1`
+  for system/public scopes → asyncpg `IndeterminateDatatypeError`; the default `all` scope masked it
+  in every test. Fixed + a real-DB regression test over all scopes (`87004a8d`).
+- **Stale-image gotcha** — a normal `docker compose build` reused a cached pre-Wave-1 image; needed
+  `build --no-cache` + `up -d --force-recreate`. NB: this is a SHARED env — another track can recreate
+  `infra-composition-service` from cache; re-`--no-cache` if `/openapi.json` lacks `/v1/composition/motifs`.
+
+**▶ NEXT — only the LLM/semantic slice of R-NODE-P1 remains (optional, not a blocker):** real
+LLM-decompose auto-bind (needs lm_studio up) + W3 semantic cosine (needs `motif_embed_model_ref`/
+`_owner_id` → a provider-registry embedding credential, e.g. bge-m3) + the W4 MCP envelope path + W6 FE.
+The data flow they exercise is already proven via the swap-bind path. **Wave 2 is unblocked:**
+W8 mine · W9 import · W10 arc · W-STITCH · W11 sync. The `ws/w*` refs remain as per-WS history pointers.
 
 ---
 
