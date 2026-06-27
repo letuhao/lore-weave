@@ -56,6 +56,7 @@ def _arc_row(**kw) -> dict:
         "pacing": kw.get("pacing", "[]"),
         "arc_roster": kw.get("arc_roster", "[]"),
         "source": kw.get("source", "authored"),
+        "imported_derived": kw.get("imported_derived", False),
         "source_ref": kw.get("source_ref", None),
         "source_version": kw.get("source_version", None),
         "embedding_model": "",

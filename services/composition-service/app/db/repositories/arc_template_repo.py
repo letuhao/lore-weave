@@ -38,8 +38,8 @@ from app.db.repositories import VersionMismatchError
 # embedding + raw embed cols deliberately excluded — projection is the model shape only.
 _SELECT_COLS = """
   id, owner_user_id, code, language, visibility, name, summary, genre_tags,
-  chapter_span, threads, layout, pacing, arc_roster, source, source_ref,
-  source_version, embedding_model, embedding_dim, status, version,
+  chapter_span, threads, layout, pacing, arc_roster, source, imported_derived,
+  source_ref, source_version, embedding_model, embedding_dim, status, version,
   created_at, updated_at
 """
 # JSONB columns json.loads'd on read (asyncpg returns them as str).
@@ -87,6 +87,7 @@ class ArcTemplateRepo:
     async def create(
         self, user_id: UUID, args: ArcTemplateCreateArgs,
         *, source: str = "authored", status: str = "active",
+        imported_derived: bool = False,
     ) -> ArcTemplate:
         """Create a USER-tier arc_template. owner_user_id is STAMPED = user_id (never an
         arg → a both-NULL/system row is impossible from this path; the DB CHECK is the
@@ -100,9 +101,10 @@ class ArcTemplateRepo:
         query = f"""
         INSERT INTO arc_template
           (owner_user_id, code, language, visibility, name, summary, genre_tags,
-           chapter_span, threads, layout, pacing, arc_roster, source, status)
+           chapter_span, threads, layout, pacing, arc_roster, source, status,
+           imported_derived)
         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,
-                $9::jsonb,$10::jsonb,$11::jsonb,$12::jsonb,$13,$14)
+                $9::jsonb,$10::jsonb,$11::jsonb,$12::jsonb,$13,$14,$15)
         RETURNING {_SELECT_COLS}
         """
         async with self._pool.acquire() as c:
@@ -112,6 +114,7 @@ class ArcTemplateRepo:
                 args.summary, args.genre_tags, args.chapter_span,
                 _jsonb(_dump_models(args.threads)), _jsonb(_dump_models(args.layout)),
                 _jsonb(args.pacing), _jsonb(_dump_models(args.arc_roster)), source, status,
+                imported_derived,
             )
         return _row_to_arc(row)
 
@@ -261,16 +264,20 @@ class ArcTemplateRepo:
                 raise LookupError("source arc_template not found or not accessible")
             s = dict(src)
             genres = retag_genres if retag_genres is not None else list(s["genre_tags"])
+            # B-3 taint propagation: an adopt of an imported (or already-tainted) arc
+            # stays tainted so the publish-strip trigger fires on the clone too;
+            # adopt-of-authored stays false (the strip isn't over-broad).
+            tainted = bool(s["source"] == "imported" or s["imported_derived"])
             row = await c.fetchrow(
                 f"""
                 INSERT INTO arc_template
                   (owner_user_id, code, language, visibility, name, summary, genre_tags,
                    chapter_span, threads, layout, pacing, arc_roster, source, source_ref,
                    source_version, embedding, embedding_model, embedding_dim,
-                   embedded_summary_hash)
+                   embedded_summary_hash, imported_derived)
                 VALUES ($1,$2,$3,'private',$4,$5,$6,$7,
                         $8::jsonb,$9::jsonb,$10::jsonb,$11::jsonb,$12,$13,$14,
-                        $15,$16,$17,$18)
+                        $15,$16,$17,$18,$19)
                 RETURNING {_SELECT_COLS}
                 """,
                 target_owner, s["code"], s["language"], s["name"], s["summary"], genres,
@@ -278,7 +285,7 @@ class ArcTemplateRepo:
                 _passthru_jsonb(s["layout"]), _passthru_jsonb(s["pacing"]),
                 _passthru_jsonb(s["arc_roster"]), s["source"], f"lineage:{src_arc_id}",
                 s["version"], s["embedding"], s["embedding_model"], s["embedding_dim"],
-                s["embedded_summary_hash"],
+                s["embedded_summary_hash"], tainted,
             )
         return _row_to_arc(row)
 

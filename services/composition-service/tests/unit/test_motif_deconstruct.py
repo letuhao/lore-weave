@@ -54,10 +54,13 @@ class _FakeArcRepo:
     def __init__(self):
         self.created: list[dict] = []
 
-    async def create(self, user_id, args, *, source="authored", status="active"):
-        self.created.append({"args": args, "source": source, "status": status})
+    async def create(self, user_id, args, *, source="authored", status="active",
+                     imported_derived=False):
+        self.created.append({"args": args, "source": source, "status": status,
+                             "imported_derived": imported_derived})
         return ArcTemplate(id=uuid.uuid4(), owner_user_id=user_id, code=args.code,
-                           name=args.name, source=source, status=status)
+                           name=args.name, source=source, status=status,
+                           imported_derived=imported_derived)
 
 
 class _FakeMotifRepo:
@@ -103,10 +106,11 @@ async def test_deconstruct_persists_imported_draft_arc_and_motifs():
         user_id=USER, source_title="Admired Work", source_content=SOURCE_TEXT,
         model_source="platform_model", model_ref="m-ref",
     )
-    # arc persisted as an imported DRAFT.
+    # arc persisted as an imported DRAFT, tainted (B-3 — the publish-strip trigger fires).
     assert len(arc_repo.created) == 1
     assert arc_repo.created[0]["source"] == "imported"
     assert arc_repo.created[0]["status"] == "draft"
+    assert arc_repo.created[0]["imported_derived"] is True
     # member motif persisted as imported + imported_derived (B-3 taint at birth).
     assert len(motif_repo.created) == 1
     assert motif_repo.created[0]["source"] == "imported"

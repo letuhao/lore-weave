@@ -528,6 +528,7 @@ async def deconstruct_reference(
     )
     arc: ArcTemplate = await arc_repo.create(
         UUID(user_id), arc_args, source="imported", status="draft",
+        imported_derived=True,
     )
 
     return {

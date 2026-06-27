@@ -217,6 +217,51 @@ async def test_motif_application_scope_and_book_required(pool):
         assert surviving is None
 
 
+async def _seed_arc(
+    c: asyncpg.Connection, *, owner=None, code="a", language="en", visibility="private",
+    source="authored", imported_derived=False, source_ref=None, name="A",
+):
+    return await c.fetchval(
+        """
+        INSERT INTO arc_template (owner_user_id, code, language, visibility, name,
+                                  source, imported_derived, source_ref)
+        VALUES ($1,$2,$3,$4,$5,$6,$7,$8) RETURNING id
+        """,
+        owner, code, language, visibility, name, source, imported_derived, source_ref,
+    )
+
+
+async def test_arc_publish_strip_trigger(pool):
+    """D-W9-ARC-PUBLISH-STRIP — publishing an imported (or adopted-from-imported)
+    arc_template opaque-izes a back-readable source_ref (the motif B-3 parity; arc has no
+    examples column, its free-text is abstracted by the deconstruct scrub). An authored,
+    non-derived arc keeps its source_ref."""
+    await run_migrations(pool)
+    u1 = uuid.uuid4()
+    foreign = f"import:{uuid.uuid4()}"
+    async with pool.acquire() as c:
+        # imported arc → opaque-ized on publish.
+        imp = await _seed_arc(c, owner=u1, code="aimp", source="imported",
+                              visibility="private", source_ref=foreign)
+        await c.execute("UPDATE arc_template SET visibility='public' WHERE id=$1", imp)
+        ref = await c.fetchval("SELECT source_ref FROM arc_template WHERE id=$1", imp)
+        assert ref.startswith("lineage:") and foreign not in ref
+
+        # adopted-from-imported (source='authored' but imported_derived=True) ALSO strips.
+        der = await _seed_arc(c, owner=u1, code="ader", source="authored",
+                              imported_derived=True, visibility="private", source_ref=foreign)
+        await c.execute("UPDATE arc_template SET visibility='public' WHERE id=$1", der)
+        ref2 = await c.fetchval("SELECT source_ref FROM arc_template WHERE id=$1", der)
+        assert ref2.startswith("lineage:") and foreign not in ref2
+
+        # an authored, non-derived arc KEEPS its source_ref on publish (strip is import-only).
+        auth = await _seed_arc(c, owner=u1, code="aauth", source="authored",
+                               visibility="private", source_ref=foreign)
+        await c.execute("UPDATE arc_template SET visibility='public' WHERE id=$1", auth)
+        ref3 = await c.fetchval("SELECT source_ref FROM arc_template WHERE id=$1", auth)
+        assert ref3 == foreign
+
+
 async def test_publish_strip_trigger(pool):
     """4.8 — B-3: publishing an imported-derived motif strips examples + opaque-izes
     source_ref; an authored motif keeps its examples."""

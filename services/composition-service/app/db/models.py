@@ -454,6 +454,7 @@ class ArcTemplate(BaseModel):
     pacing: list[dict[str, Any]] = Field(default_factory=list)
     arc_roster: list[dict[str, Any]] = Field(default_factory=list)
     source: ArcSource = "authored"
+    imported_derived: bool = False                 # B-3 lineage taint (clone propagates; trigger reads)
     source_ref: _Short | None = None
     source_version: int | None = None
     embedding_model: _Title = ""

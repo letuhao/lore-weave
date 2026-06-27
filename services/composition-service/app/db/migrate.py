@@ -724,6 +724,7 @@ CREATE TABLE IF NOT EXISTS arc_template (
   arc_roster    JSONB NOT NULL DEFAULT '[]'::jsonb,
   source        TEXT NOT NULL DEFAULT 'authored'
                   CHECK (source IN ('authored','mined','imported')),
+  imported_derived BOOLEAN NOT NULL DEFAULT false,         -- B-3 taint: imported OR adopted-from-imported
   source_ref    TEXT,
   source_version INT,
   embedding     REAL[],
@@ -800,6 +801,35 @@ BEGIN
     CREATE TRIGGER motif_publish_strip_trg
       BEFORE INSERT OR UPDATE OF visibility ON motif
       FOR EACH ROW EXECUTE FUNCTION motif_publish_strip();
+  END IF;
+END $$;
+
+-- ── arc_template B-3 parity (D-W9-ARC-PUBLISH-STRIP): the imported_derived taint column
+-- (additive — ALTER for an already-created arc_template) + the publish-strip trigger.
+-- arc_template has NO examples column (its free-text is abstracted by the deconstruct
+-- scrub at create time), so the trigger's DB-level belt is to opaque-ize source_ref on
+-- the publish transition of an imported/adopted-from-imported arc — the same lineage
+-- hygiene the motif trigger applies. Cannot be bypassed by the router/LLM.
+ALTER TABLE arc_template ADD COLUMN IF NOT EXISTS imported_derived BOOLEAN NOT NULL DEFAULT false;
+CREATE OR REPLACE FUNCTION arc_template_publish_strip() RETURNS trigger AS $$
+BEGIN
+  IF NEW.visibility IN ('public','unlisted')
+     AND (NEW.source = 'imported' OR NEW.imported_derived)
+     AND (TG_OP = 'INSERT' OR OLD.visibility = 'private'
+          OR OLD.visibility IS DISTINCT FROM NEW.visibility) THEN
+    IF NEW.source_ref IS NULL OR NEW.source_ref NOT LIKE 'lineage:%' THEN
+      NEW.source_ref := 'lineage:' || NEW.id::text;
+    END IF;
+  END IF;
+  RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+DO $$
+BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_trigger WHERE tgname = 'arc_template_publish_strip_trg') THEN
+    CREATE TRIGGER arc_template_publish_strip_trg
+      BEFORE INSERT OR UPDATE OF visibility ON arc_template
+      FOR EACH ROW EXECUTE FUNCTION arc_template_publish_strip();
   END IF;
 END $$;
 """
