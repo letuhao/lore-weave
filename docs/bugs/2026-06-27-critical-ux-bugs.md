@@ -14,9 +14,9 @@ Status legend: `[ ]` open · `[I]` investigating · `[F]` fix in progress · `[x
 
 - **Jobs / progress / monitoring**: 1, 2, 3, 34, 37, 38, 9, 16
 - **Parallelism / config GUI**: 4
-- **Glossary extraction & merge correctness**: 7, 26, 36, 38, 13
+- **Glossary extraction & merge correctness**: 7, 26, 36, 38, 39, 13
 - **Translation glossary**: 8
-- **Glossary GUI / paging / kinds / standards**: 6, 21, 22, 25, 31, 33, 35
+- **Glossary GUI / paging / kinds / standards**: 6, 21, 22, 25, 31, 33, 35, 40
 - **Knowledge Graph (KG)**: 9, 10, 11, 13, 14, 15, 28, 29
 - **Timeline**: 10, 12, 15
 - **Chat / AI assistant / planner**: 17, 18, 19, 27, 30
@@ -55,11 +55,27 @@ Glossary extraction cannot stop after running. No button to hide or show it agai
 > ceil(schemaTokens/2000)` (`StepConfirm.tsx:53-59`) is the likely culprit for #36's
 > under-prediction. The estimate is shown on confirm but NOT on the running job (→ #37).
 
-### [ ] 2. Job detail page cannot monitor realtime job progression
+### [x] 2. Job detail page cannot monitor realtime job progression
 Want to monitor the glossary extraction live but cannot — job detail page has no realtime progression.
 
-> RC:
-> Fix:
+> RC: The unified Jobs detail page (`JobMonitor`) IS fully wired for live updates — it overlays
+> the jobs-service SSE stream (`useJobLive` + `effectiveJob`) and `JobProgressPanel` renders a
+> live bar + %/done-total + throughput/ETA from `job.progress`/`detail_status`. The gap was
+> backend: the translation-service extraction worker emitted per-chapter progress only on its
+> OWN `publish_event` channel (legacy translation UI), while the unified stream got just the
+> single `running` transition + the terminal event via `emit_job_event_safe`. So the detail
+> page's progress bar/detail_status sat frozen for the whole run.
+> Fix (BE-only, `extraction_worker.py`): added `_emit_unified_progress()` which calls
+> `emit_job_event_safe(status='running', progress={done,total}, detail_status='k/N chapters')`
+> — invoked once as a pre-loop baseline (accurate on resume) and again after each chapter's
+> existing progress write. Each emit carries a fresh `occurred_at`, so the monotonic projection
+> applies it (forward-in-time) and the consumer pushes an SSE frame → the detail page advances
+> live. Best-effort: a failed emit never disturbs the run; terminal rollup + reconcile sweep
+> backstop accuracy. Tests: extraction-worker suite 19/19 (added a unified-progress-emit test);
+> job-emit-wiring + jobs suites 43/43. FE needs no change.
+> Live-smoke: deferred — full stack (translation-svc + jobs-svc + RabbitMQ/Redis + a real LLM
+> extraction) not bootable here. Reuses the proven emit path already used for running/terminal
+> on this same job, so cross-service contract risk is low. D-JOBS-EXTRACT-LIVE-PROGRESS-LIVE-SMOKE.
 
 ### [ ] 3. Job detail missing total cost; token cost not updated until job done
 Job detail doesn't show total cost. Current token cost is not updated until the job is done — should update frequently.
@@ -271,8 +287,24 @@ Extraction progression has a critical bug: 30 glossary kinds but it extracts 360
 > RC:
 > Fix:
 
+### [ ] 39. Re-running extraction produces 100% duplicate entities
+Glossary extraction has a bug when run many times: 30 kinds, 10 chapters generates 3000+
+glossary entries — 100% duplicated. Need to investigate. (Likely the same root cause as #38 —
+the merge/dedup path failing to recognize an already-extracted entity on a re-run, so each run
+re-creates instead of merging.)
+
+> RC:
+> Fix:
+
+### [ ] 40. No way to batch-delete glossary entities
+There is no way to batch delete glossary entities (e.g. to clean up the duplicates from #38/#39).
+
+> RC:
+> Fix:
+
 ---
 
 ## Notes
 - Items 7, 26 have promised follow-up evidence from the user.
-- Several items cluster around the **glossary extraction → merge → KG flywheel** (7, 13, 26, 36, 38) and the **agent planner/MCP batch** flow (18, 19, 27, 29, 30) — likely shared root causes.
+- Several items cluster around the **glossary extraction → merge → KG flywheel** (7, 13, 26, 36, 38, 39) and the **agent planner/MCP batch** flow (18, 19, 27, 29, 30) — likely shared root causes.
+- **#39 is almost certainly a duplicate of #38** (re-run dedup failure). Investigate together; #40 (batch-delete) is the cleanup tool needed after fixing them.

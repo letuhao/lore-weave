@@ -410,6 +410,25 @@ async def _run_extraction_job(msg: dict, job_id: UUID, user_id: str, pool, publi
     chapters_with_errors = sum(1 for r in done_rows if r["status"] == "completed_with_errors")
     failed = sum(1 for r in done_rows if r["status"] == "failed")
 
+    # D-JOBS-EXTRACT-LIVE-PROGRESS (bug #2): mirror per-chapter progress onto the UNIFIED
+    # jobs-service stream so the /jobs detail page advances live. The translation-service
+    # `publish_event` channel only reaches the legacy translation UI; the unified Job detail
+    # page (JobMonitor) subscribes to the jobs-service SSE overlay, which previously saw only
+    # the single 'running' transition + the terminal event — so its progress bar/detail_status
+    # sat frozen for the whole run. Each emit carries a fresh occurred_at, so the monotonic
+    # projection applies it (forward-in-time) and pushes an SSE frame. Best-effort: a failed
+    # emit never disturbs the run (the terminal rollup + reconcile sweep backstop accuracy).
+    async def _emit_unified_progress() -> None:
+        done = completed + failed
+        await emit_job_event_safe(
+            pool, service=_JOB_SERVICE, job_id=str(job_id), owner_user_id=str(user_id),
+            kind=_JOB_KIND, status="running",
+            progress={"done": done, "total": len(chapter_ids)},
+            detail_status=f"{done}/{len(chapter_ids)} chapters",
+        )
+
+    await _emit_unified_progress()  # baseline (0/N fresh, or k/N on resume) before the loop
+
     for idx, chapter_id_str in enumerate(chapter_ids):
         chapter_id = UUID(chapter_id_str) if isinstance(chapter_id_str, str) else chapter_id_str
 
@@ -547,6 +566,10 @@ async def _run_extraction_job(msg: dict, job_id: UUID, user_id: str, pool, publi
                 "entities_skipped": total_skipped,
             },
         })
+
+        # Mirror the same advance onto the unified jobs-service stream (bug #2 — live
+        # progress on the /jobs detail page). See _emit_unified_progress above.
+        await _emit_unified_progress()
 
     # Job complete. OBS/M2 — the job is 'completed' only when nothing failed AND no chapter
     # finished with batch errors; a chapter that finished completed_with_errors now bubbles

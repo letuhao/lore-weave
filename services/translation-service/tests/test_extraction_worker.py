@@ -104,6 +104,40 @@ async def test_resume_skips_completed_chapters_and_finalizes():
 
 
 @pytest.mark.asyncio
+async def test_per_chapter_emits_unified_progress_for_live_monitoring():
+    # bug #2 (D-JOBS-EXTRACT-LIVE-PROGRESS): each processed chapter mirrors progress onto the
+    # UNIFIED jobs-service stream (a 'running' event carrying progress={done,total}) so the
+    # /jobs detail page advances live instead of sitting frozen between the lone 'running'
+    # transition and the terminal event.
+    jid = uuid4()
+    c1 = str(uuid4())
+    db = AsyncMock()
+    db.fetchval = AsyncMock(return_value=jid)  # claim succeeds; in-loop status check → not cancelled
+    db.fetch = AsyncMock(return_value=[])      # no resume checkpoint; empty finalize rollup
+    db.execute = AsyncMock()
+    publish, publish_event = AsyncMock(), AsyncMock()
+
+    with patch("app.workers.extraction_worker.fetch_known_entities", new=AsyncMock(return_value=[])), \
+         patch("app.workers.extraction_worker._process_extraction_chapter", new=AsyncMock(return_value={})) as proc, \
+         patch("app.workers.extraction_worker.emit_job_event_safe", new=AsyncMock()) as emit:
+        await _run_extraction_job(
+            {"book_id": "b", "chapter_ids": [c1]},
+            jid, "u", _pool(db), publish, publish_event, MagicMock(),
+        )
+
+    proc.assert_awaited_once()
+    progress_emits = [
+        c for c in emit.await_args_list
+        if c.kwargs.get("status") == "running" and c.kwargs.get("progress")
+    ]
+    assert progress_emits, "no unified 'running' progress event emitted for live /jobs monitoring"
+    # baseline (0/1 before the loop) + per-chapter (1/1 after processing c1)
+    assert progress_emits[0].kwargs["progress"] == {"done": 0, "total": 1}
+    assert progress_emits[-1].kwargs["progress"] == {"done": 1, "total": 1}
+    assert all(c.kwargs.get("kind") == "glossary_extraction" for c in progress_emits)
+
+
+@pytest.mark.asyncio
 async def test_job_terminal_emits_batch_summary_rollup():
     # OBS/M2 (INV-O14): the job-terminal notification carries a per-status rollup derived
     # from the extraction_batch_outcomes SSOT, so a truncated/rejected batch is visible.
