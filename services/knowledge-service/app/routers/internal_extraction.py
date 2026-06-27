@@ -1371,6 +1371,92 @@ async def process_summarize_message_endpoint(
     )
 
 
+# ── D-W8-MOTIF-BEAT-EXTRACTOR — motif-beat sequences (Option A) ────────
+#
+# Server side of composition-service's frozen `get_motif_beat_sequences`
+# client (app/clients/knowledge_client.py). The miner (narrative-pattern-
+# library W8) consumes ORDERED beat sequences as its PrefixSpan input.
+#
+# Option A: derive the sequences from the EXISTING extracted `:Event`
+# timeline (event_order axis) — deterministic, no new LLM call. Each event
+# → a {beat, thread, tension, role_mentions} step; one sequence per book.
+# The LLM-quality `motif_beat` map-extractor (spec §12.4) is the follow-up
+# (D-W8-MOTIF-BEAT-LLM-EXTRACTOR); until then this rides the event data and
+# the composition client degrades on [] for any book without events.
+
+
+class MotifBeatsRequest(BaseModel):
+    """Frozen wire shape — mirrors knowledge_client.get_motif_beat_sequences:
+    `{user_id, book_id?, corpus?, language?, extractor_version?}`."""
+
+    user_id: UUID
+    book_id: UUID | None = None
+    corpus: bool = False
+    language: str | None = None
+    # The composition client sends its `motif_mine_extractor_version`
+    # ("motif_beat@v1") so a future cache/version axis can key on it. Option A
+    # is deterministic over event data, so we accept + echo it but don't branch
+    # on it yet (the LLM extractor follow-up will).
+    extractor_version: str | None = None
+
+
+class MotifBeatStep(BaseModel):
+    """One ordered beat step. Frozen field names — the composition miner reads
+    exactly these keys (knowledge_client.py L218/L266)."""
+
+    beat: str
+    thread: str
+    tension: int
+    role_mentions: list[str] = Field(default_factory=list)
+
+
+class MotifBeatsResponse(BaseModel):
+    """A LIST of beat sequences, one per book/chapter container, each an
+    `event_order`-ordered list of steps. Empty/absent corpus → `[]` (the
+    composition client degrades cleanly on the empty list)."""
+
+    sequences: list[list[MotifBeatStep]] = Field(default_factory=list)
+
+
+@router.post(
+    "/motif-beats",
+    response_model=MotifBeatsResponse,
+    status_code=status.HTTP_200_OK,
+    summary="W8 — derive ordered motif-beat sequences from the event timeline",
+    description=(
+        "Option A motif-beat source for the composition-side miner. Returns "
+        "`event_order`-ordered `{beat, thread, tension, role_mentions}` "
+        "sequences (one per book), derived deterministically from the extracted "
+        ":Event timeline — no LLM call. Scoped to `user_id` (a cross-user book → "
+        "[]). Behind X-Internal-Token. An empty/absent corpus → `{sequences: []}`."
+    ),
+)
+async def motif_beats(body: MotifBeatsRequest) -> MotifBeatsResponse:
+    """Derive motif-beat sequences for the composition miner (W8).
+
+    Needs Neo4j (the :Event timeline lives there). With Neo4j unconfigured we
+    return an empty list rather than 503 — the composition client treats any
+    non-success as the deferred-extractor degrade path, and `{sequences: []}`
+    is the cleaner, contract-shaped equivalent (mining reports
+    `mined: 0` instead of erroring)."""
+    if not settings.neo4j_uri:
+        logger.info("motif-beats: Neo4j not configured — returning empty sequences")
+        return MotifBeatsResponse(sequences=[])
+
+    from app.extraction.motif_beat import derive_motif_beat_sequences
+
+    raw_sequences = await derive_motif_beat_sequences(
+        user_id=body.user_id,
+        book_id=body.book_id,
+        corpus=body.corpus,
+        language=body.language,
+    )
+    # raw_sequences is list[list[dict]] in the frozen shape; Pydantic validates
+    # each step into MotifBeatStep (a field-name mismatch would 422 here, which
+    # is the contract guard we want).
+    return MotifBeatsResponse(sequences=raw_sequences)  # type: ignore[arg-type]
+
+
 # ── K17 (cycle 12b) — entity-embedding backfill ───────────────────────
 
 # One batch's worth of candidates per producer call; the loop drains.
