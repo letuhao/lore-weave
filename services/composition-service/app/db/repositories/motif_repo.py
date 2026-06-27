@@ -134,12 +134,18 @@ class MotifRepo:
 
     async def patch(
         self, caller_id: UUID, motif_id: UUID, args: MotifPatchArgs, *, expected_version: int,
+        repin_source_version: int | None = None,
     ) -> Motif | None:
         """Optimistic-lock edit, OWNER-only (WHERE owner_user_id = caller_id — a
         system or foreign motif is never patchable here). Bumps version, sets
         updated_at. On a summary change, embedded_summary_hash is cleared so W3's
         re-embed fires. Returns None if the row isn't the caller's (router → H13);
         raises VersionMismatchError(current) on a stale expected_version.
+
+        ``repin_source_version`` (W11 sync, D-MOTIF-SYNC-REPIN-ATOMICITY): when set, the
+        upstream-lineage pin is updated IN THE SAME UPDATE as the content merge — so an
+        accept-upstream + re-pin is ONE atomic statement (no crash window leaving a bumped
+        version with a stale source_version). Default None = unchanged for every other caller.
 
         (Return is Motif|None to match the canon_rules/works house convention; the
         frozen CONTRACT is the parameter names + the version-mismatch raise.)"""
@@ -159,6 +165,9 @@ class MotifRepo:
                 sets.append(f"{field} = ${len(params)}")
         if "summary" in data:
             sets.append("embedded_summary_hash = NULL")  # W3 re-embeds on next retrieve
+        if repin_source_version is not None:
+            params.append(repin_source_version)
+            sets.append(f"source_version = ${len(params)}")
         sets.append("version = version + 1")
         sets.append("updated_at = now()")
         params.append(expected_version)

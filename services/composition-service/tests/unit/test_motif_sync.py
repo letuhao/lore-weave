@@ -59,8 +59,10 @@ class StubMotifRepo:
     async def get_visible(self, caller_id, motif_id):
         return self.get_result
 
-    async def patch(self, caller_id, motif_id, args, *, expected_version):
+    async def patch(self, caller_id, motif_id, args, *, expected_version,
+                    repin_source_version=None):
         self.last_patch_args = (caller_id, motif_id, args, expected_version)
+        self.last_repin = repin_source_version   # D-MOTIF-SYNC-REPIN-ATOMICITY: re-pin rides patch
         if self.patch_raises:
             raise self.patch_raises
         return self.patch_result
@@ -255,15 +257,16 @@ def test_sync_accepts_theirs_and_repins(ctx):
     body = r.json()
     assert body["synced"] is True
     assert body["repinned_source_version"] == 5
-    # patch received ONLY the accepted content field + the local expected_version
-    # (source_version is NOT a patch arg → it re-pins via the direct UPDATE).
+    # patch received the accepted content field + the local expected_version.
     _, _, args, expected_version = repo.last_patch_args
     assert args.summary == "theirs"
     assert not hasattr(args, "source_version")
     assert expected_version == 3
-    # the re-pin UPDATE carried the upstream version.
+    # D-MOTIF-SYNC-REPIN-ATOMICITY: the re-pin rides the SAME patch UPDATE (atomic) —
+    # repin_source_version carried the upstream version; NO separate UPDATE on accept!=[].
+    assert repo.last_repin == 5
     update_calls = [q for q, a in pool.calls if q.strip().upper().startswith("UPDATE")]
-    assert len(update_calls) == 1
+    assert len(update_calls) == 0
 
 
 def test_sync_empty_accept_repins_only(ctx):

@@ -230,15 +230,12 @@ async def sync_motif(
     if local.visibility in ("public", "unlisted"):
         await _publish_quota_guard(repo, user_id)
 
-    # The merge is TWO writes against the caller's OWN row:
-    #   1. the accepted CONTENT fields via W1's optimistic-lock patch() (bumps
-    #      version, clears the embed hash on a summary change → W3 re-embeds). The
-    #      W1 MotifPatchArgs deliberately does NOT expose source_version (lineage is
-    #      immutable through the CRUD path), so the re-pin can't ride the patch.
-    #   2. the source_version RE-PIN via a direct OWNER-scoped UPDATE (this router
-    #      owns it). We re-pin even on accept=[] so "reviewed, kept mine" clears the
-    #      update signal. No version bump on the re-pin (it's lineage bookkeeping,
-    #      not a content edit).
+    # The merge is ONE atomic owner-scoped write (D-MOTIF-SYNC-REPIN-ATOMICITY): the
+    # accepted CONTENT fields AND the source_version re-pin ride the SAME optimistic-lock
+    # patch() UPDATE (repin_source_version=) — so no crash window can leave a bumped
+    # version with a stale pin. When accept=[] (no content change) the re-pin is a
+    # standalone owner-scoped UPDATE (atomic on its own) so "reviewed, kept mine" still
+    # clears the update signal.
     updated = local
     if body.accept:
         patch_kwargs = {f: _coerce_jsonb(upstream[f]) for f in body.accept}
@@ -246,6 +243,7 @@ async def sync_motif(
         try:
             patched = await repo.patch(
                 user_id, motif_id, args, expected_version=local.version,
+                repin_source_version=upstream_version,
             )
         except VersionMismatchError as exc:
             raise HTTPException(status_code=412, detail={
@@ -262,18 +260,18 @@ async def sync_motif(
             # owner-only patch returned None → not the caller's row (H13 uniform).
             raise HTTPException(status_code=404, detail=_NOT_FOUND)
         updated = patched
+    else:
+        # accept=[] — re-pin only (one atomic owner-scoped UPDATE; no version bump, it's
+        # lineage bookkeeping not a content edit).
+        from app.db.pool import get_pool
 
-    # Re-pin source_version on the caller's OWN row (owner_user_id = caller filters
-    # a system/foreign row → no-op; UPDATE...RETURNING confirms it landed).
-    from app.db.pool import get_pool
-
-    repinned = await get_pool().fetchrow(
-        "UPDATE motif SET source_version = $3, updated_at = now() "
-        "WHERE owner_user_id = $1 AND id = $2 RETURNING source_version",
-        user_id, motif_id, upstream_version,
-    )
-    if repinned is None:
-        raise HTTPException(status_code=404, detail=_NOT_FOUND)
+        repinned = await get_pool().fetchrow(
+            "UPDATE motif SET source_version = $3, updated_at = now() "
+            "WHERE owner_user_id = $1 AND id = $2 RETURNING source_version",
+            user_id, motif_id, upstream_version,
+        )
+        if repinned is None:
+            raise HTTPException(status_code=404, detail=_NOT_FOUND)
 
     return {
         "synced": True,
