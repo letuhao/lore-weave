@@ -16,17 +16,27 @@ live-proven in D-MOTIF-CONFORMANCE-GOLD-SET (gemma-4-26b). Deferred: a full prod
 **e2e** live-smoke (`D-MOTIF-CONFORMANCE-PRODUCER-LIVE-SMOKE`, gate-4 — run when enabled + a bound
 scene exists; the slices are unit+live proven).
 
-**`D-MOTIF-FE-PLANNERVIEW-WIRING`** — SCOPED, decision = **scene-level** binding. Finding: it is an
-**XL full-stack feature**, not an FE wire. `PlannerView` renders the PRE-COMMIT decompose preview
-(`usePlanner.preview`); `PlannerScenePreview` carries no `outline_node_id` or bound `motif`, and
-`motif_application` keys on the node id that exists only AFTER commit. The W6 `useMotifBinding` hook
-+ `MotifBindingCard` already do per-node swap/rebind/clear/chain — they just need a committed node
-id. Two implementable shapes (a design call): **(A)** bind POST-commit — the preview/commit response
-carries per-scene `outline_node_id` + current binding; FE renders the card on committed scenes
-(smaller BE delta); **(B)** stage a desired-motif on the preview scene draft, applied at commit
-(commit creates node + writes `motif_application`; larger commit-path change). Needs: BE preview/
-commit contract change + `PlannerScenePreview.motif`/`outline_node_id` + PlannerView render-wire +
-tests both sides. NOT a tail-of-session quick clear.
+**`D-MOTIF-FE-PLANNERVIEW-WIRING`** — SCOPED + GAP-IDENTIFIED. Decision = **scene-level**, **Shape A
+(bind POST-commit)**. It is a focused full-stack build with TWO real gaps found while tracing it:
+- **GAP-1 (BE): `match_reason` is not persisted.** W2's `bind_motif`/`_bind_annotations`
+  (`engine/motif_select.py`) stores only `info_asymmetry` into `motif_application.annotations`
+  (+ `role_bindings`, `beat_key`). `match_reason` is a PLAN-TIME artifact (`SelectedMotif.match_reason`
+  — `{tension,genre,precond,cosine}`) that is NOT written to the application row. So a post-commit
+  binding read returns `match_reason: {}` and `MatchReasonChip` degrades. Fix options: persist
+  `match_reason` into `annotations` at bind time (small `motif_select` + binder delta), OR accept the
+  empty chip on a post-hoc read.
+- **GAP-2 (FE): no committed-scene surface exists.** `PlannerView` renders the pre-commit
+  `usePlanner.preview` only; after commit it navigates away. There is NO "committed outline with
+  per-scene cards" view to hang `MotifBindingCard` on — that surface must be BUILT (read `GET
+  …/outline` for committed scene nodes + a new per-node binding read).
+- **Building blocks that DO exist** (so the build is bounded): `BoundMotif`/`DecomposeSceneMotif`
+  types, `useMotifBinding` (swap/rebind/clear/chain/regenerate over a nodeId), `MotifBindingCard`,
+  `GET …/works/{project_id}/outline` (committed nodes), the `motif_application` table + the
+  `ConformanceTraceReader.apps_by_nodes` query to copy.
+- **Build steps:** (BE) a `GET …/outline/motif-bindings` (or extend the outline read) returning
+  `{node_id: BoundMotif}` via `motif_application ⋈ motif.get_visible` (+ GAP-1 decision); (FE) a
+  committed-scene binding section rendering `MotifBindingCard` per node wired to `useMotifBinding`;
+  tests both sides + a **Playwright browser smoke** (load-bearing planner UI). Est. L. Start here.
 
 ---
 
