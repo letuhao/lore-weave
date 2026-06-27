@@ -144,6 +144,11 @@ export const TOOL_POLICY: Record<string, ToolPolicy> = {
   translation_patch_block: { tier: 'write_auto', domains: ['translation'] },
   translation_update_settings: { tier: 'write_auto', domains: ['translation'] },
   translation_job_control: { tier: 'write_auto', domains: ['translation'] },
+  // jobs control (P4 slice E / H-N): an agent stops its OWN runaway job. Tier-A —
+  // cancel/pause are free + reversible (no spend, no confirm). Owner-scoped on the
+  // jobs-service side (anti-oracle 404 on a non-owned job).
+  jobs_cancel: { tier: 'write_auto', domains: ['jobs'] },
+  jobs_pause: { tier: 'write_auto', domains: ['jobs'] },
   // composition
   composition_create_work: { tier: 'write_auto', domains: ['composition'] },
   composition_outline_node_create: { tier: 'write_auto', domains: ['composition'] },
