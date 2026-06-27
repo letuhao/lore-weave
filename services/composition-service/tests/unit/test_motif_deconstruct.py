@@ -261,3 +261,104 @@ def test_prompt_instructs_abstraction_and_no_proper_nouns():
     assert "role slot" in low or "role_slot" in low.replace(" ", "_")
     assert "proper noun" in low
     assert "no verbatim" in low or "no source" in low
+
+
+# ── D-W9-WEBSEARCH — the public arc-convention augment ────────────────────────────────
+from app.clients.web_search_client import WebSearchHit, WebSearchResult  # noqa: E402
+
+
+class _FakeWebSearch:
+    """Records the query it saw + returns a canned WebSearchResult (or raises)."""
+
+    def __init__(self, result=None, *, raises=False):
+        self._result = result
+        self._raises = raises
+        self.calls: list[dict] = []
+
+    async def search(self, *, user_id, query, max_results=5):
+        self.calls.append({"user_id": user_id, "query": query, "max_results": max_results})
+        if self._raises:
+            raise RuntimeError("web boom")
+        return self._result
+
+
+def test_build_web_query_uses_title_and_hint():
+    assert md.build_web_query("", None) == ""
+    q = md.build_web_query("Renegade Immortal", None)
+    assert "Renegade Immortal" in q and "arc" in q.lower()
+    q2 = md.build_web_query("Renegade Immortal", "revenge cultivation")
+    assert "revenge cultivation" in q2
+
+
+def test_format_web_context_joins_and_caps():
+    res = WebSearchResult(
+        answer="A revenge cultivation arc.",
+        hits=[WebSearchHit(title="t1", url="https://x", snippet="the hero is cast out"),
+              WebSearchHit(title="t2", url="https://y", snippet="he returns stronger")],
+    )
+    ctx = md.format_web_context(res)
+    assert "revenge cultivation arc" in ctx
+    assert "cast out" in ctx and "returns stronger" in ctx
+    assert len(md.format_web_context(res, cap=10)) == 10
+
+
+async def test_use_web_injects_neutralized_context_on_chunk0():
+    res = WebSearchResult(
+        answer="public arc summary",
+        hits=[WebSearchHit(title="wiki", url="https://w", snippet="isolation then return")],
+    )
+    web = _FakeWebSearch(res)
+    llm = _FakeLLM([_frame(beat_label="isolation by disaster")])
+    result = await md.deconstruct_reference(
+        llm=llm, arc_repo=_FakeArcRepo(), motif_repo=_FakeMotifRepo(),
+        user_id=USER, source_title="Admired Work", source_content=SOURCE_TEXT,
+        model_source="platform_model", model_ref="m-ref",
+        use_web=True, web_search=web,
+    )
+    # the search ran once for the work's arc conventions.
+    assert len(web.calls) == 1 and "Admired Work" in web.calls[0]["query"]
+    # chunk-0's user message carries the PUBLIC REFERENCE block (untrusted DATA).
+    chunk0_user = llm.calls[0]["input"]["messages"][1]["content"]
+    assert "PUBLIC REFERENCE" in chunk0_user and "isolation then return" in chunk0_user
+    assert result["websearch_status"] == "ok:1"
+
+
+async def test_use_web_not_configured_degrades_but_deconstruct_succeeds():
+    web = _FakeWebSearch(WebSearchResult(error="not_configured"))
+    llm = _FakeLLM([_frame(beat_label="isolation by disaster")])
+    result = await md.deconstruct_reference(
+        llm=llm, arc_repo=_FakeArcRepo(), motif_repo=_FakeMotifRepo(),
+        user_id=USER, source_title="Work", source_content=SOURCE_TEXT,
+        model_source="platform_model", model_ref="m-ref",
+        use_web=True, web_search=web,
+    )
+    # NO reference block leaked into the prompt; the job still produced motifs.
+    assert "PUBLIC REFERENCE" not in llm.calls[0]["input"]["messages"][1]["content"]
+    assert result["websearch_status"] == "not_configured"
+    assert len(result["motif_ids"]) == 1
+
+
+async def test_use_web_outage_never_fails_the_job():
+    web = _FakeWebSearch(raises=True)
+    result = await md.deconstruct_reference(
+        llm=_FakeLLM([_frame(beat_label="isolation by disaster")]),
+        arc_repo=_FakeArcRepo(), motif_repo=_FakeMotifRepo(),
+        user_id=USER, source_title="Work", source_content=SOURCE_TEXT,
+        model_source="platform_model", model_ref="m-ref",
+        use_web=True, web_search=web,
+    )
+    assert result["websearch_status"] == "unavailable"
+    assert len(result["motif_ids"]) == 1
+
+
+async def test_no_web_does_not_call_search():
+    web = _FakeWebSearch(WebSearchResult())
+    result = await md.deconstruct_reference(
+        llm=_FakeLLM([_frame(beat_label="isolation by disaster")]),
+        arc_repo=_FakeArcRepo(), motif_repo=_FakeMotifRepo(),
+        user_id=USER, source_title="Work", source_content=SOURCE_TEXT,
+        model_source="platform_model", model_ref="m-ref",
+        use_web=False, web_search=web,
+    )
+    assert web.calls == []
+    assert result["websearch_status"] == "off"

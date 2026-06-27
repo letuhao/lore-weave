@@ -1,5 +1,25 @@
 # ▶ NEXT SESSION — Narrative Motif Library BUILD (handoff)
 
+## STATUS (2026-06-28 PM) — D-W9-WEBSEARCH BUILT + LIVE-SMOKE PASSING (real searxng)
+
+**`D-W9-WEBSEARCH`** ✅ BUILT — the import/deconstruct `use_web` augment is now real, not a
+prompt stub. New `app/clients/web_search_client.py` (singleton, mirrors `embedding_client`):
+`POST {provider-registry}/internal/web-search?user_id=` (X-Internal-Token) → the user's BYOK
+`web_search` credential, resolved server-side (provider-gateway invariant — NO search SDK/key in
+composition). INV-6: every title/url/snippet is neutralized (control/ws collapsed, capped) and
+**non-http(s) URLs dropped**. Wired into `deconstruct_reference`: when `use_web`, ONE search runs
+up front for the work's PUBLIC arc conventions; the neutralized block is injected on chunk 0 as
+untrusted DATA (§12.6 output scrub remains the copyright backstop). Degrades honestly via
+`websearch_status` (`off|no_client|not_configured|unavailable|no_results|ok:N`) — a web outage or
+a missing credential NEVER fails the import. **+13 tests** (`test_web_search_client.py` 8 incl.
+404→not_configured / non-http drop / transport-degrade; deconstruct web path 5). **Full unit suite
+975 passed, 0 fail** (was 962). Provider-gate clean.
+**LIVE-SMOKE** ✅ `D-W9-WEBSEARCH-LIVE-SMOKE` — real searxng (`019eeb08-3819-…`) via
+provider-registry returned **5 neutralized http hits**; the deconstruct augment fired end-to-end
+(`websearch_status=ok:5`, 3 motifs). model_source=`user_model`.
+
+---
+
 ## STATUS (2026-06-28) — WAVE 2 COMPLETE + 8 DEFERS CLEARED + 4 LIVE-SMOKES PASSING + motif_beat extractor built
 
 **LIVE-SMOKES (real stack — container REBUILT from this branch; lm_studio + provider-registry):** the

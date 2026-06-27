@@ -24,6 +24,7 @@ from app.clients.embedding_client import close_embedding_client
 from app.clients.glossary_client import close_glossary_client
 from app.clients.knowledge_client import close_knowledge_client
 from app.clients.llm_client import close_llm_client
+from app.clients.web_search_client import close_web_search_client
 from app.grant_client import close_grant_client, get_grant_client
 from app.config import settings
 from app.db.migrate import run_migrations
@@ -130,6 +131,7 @@ async def lifespan(app: FastAPI):
         await close_book_client()
         await close_glossary_client()
         await close_embedding_client()
+        await close_web_search_client()
         await close_llm_client()
         await close_grant_client()  # E0-4c
         await close_pool()
