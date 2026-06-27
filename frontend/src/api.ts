@@ -17,9 +17,68 @@ export const apiBase = base;
 
 export type ApiError = { code: string; message: string };
 
+const AUTH_KEY = 'lw_auth';
+
+function readAuth(): { accessToken?: string | null; refreshToken?: string | null } {
+  try {
+    const raw = localStorage.getItem(AUTH_KEY);
+    return raw ? JSON.parse(raw) : {};
+  } catch {
+    return {};
+  }
+}
+
+// bug #20: single-flight access-token refresh. The access token is short-lived; on expiry the
+// app used to wipe auth + bounce to /login mid-work (data loss). Instead we silently exchange
+// the long-lived refresh token for a new access token and retry. The refresh ROTATES the
+// refresh token server-side, so concurrent 401s MUST share one in-flight refresh — otherwise
+// the 2nd request reads the same (already-rotated) refresh token and gets logged out.
+let refreshInFlight: Promise<string | null> | null = null;
+
+function refreshAccessToken(): Promise<string | null> {
+  if (refreshInFlight) return refreshInFlight;
+  const p = (async (): Promise<string | null> => {
+    try {
+      const { refreshToken } = readAuth();
+      if (!refreshToken) return null;
+      const res = await fetch(`${base()}/v1/auth/refresh`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ refresh_token: refreshToken }),
+      });
+      if (!res.ok) return null;
+      const data = (await res.json()) as { access_token?: string; refresh_token?: string };
+      if (!data.access_token) return null;
+      localStorage.setItem(
+        AUTH_KEY,
+        JSON.stringify({ accessToken: data.access_token, refreshToken: data.refresh_token ?? refreshToken }),
+      );
+      // Same-tab React state sync (storage events only fire cross-tab). AuthProvider re-reads.
+      window.dispatchEvent(new CustomEvent('lw-auth-refreshed'));
+      return data.access_token;
+    } catch {
+      return null;
+    }
+  })();
+  refreshInFlight = p;
+  // Clear AFTER assignment (a microtask, even for a synchronous early-return path) so a later
+  // refresh isn't short-circuited by a stale resolved promise. Guard against clobbering a newer
+  // in-flight refresh. NOTE: clearing inside the IIFE's `finally` would run BEFORE this
+  // assignment on the sync path, leaking the resolved promise forever.
+  void p.finally(() => { if (refreshInFlight === p) refreshInFlight = null; });
+  return p;
+}
+
+function forceLogout(): void {
+  localStorage.removeItem('lw_auth');
+  localStorage.removeItem('lw_user');
+  window.location.href = '/login';
+}
+
 export async function apiJson<T>(
   path: string,
   init: RequestInit & { token?: string | null } = {},
+  retried = false,
 ): Promise<T> {
   const headers: Record<string, string> = {
     'Content-Type': 'application/json',
@@ -42,10 +101,17 @@ export async function apiJson<T>(
     }
   }
   if (!res.ok) {
-    // Auto-clear auth on 401 — token expired or invalid
-    if (res.status === 401 && init.token) {
-      localStorage.removeItem('lw_auth');
-      window.location.href = '/login';
+    // 401 on an authenticated request — try a silent refresh + ONE retry before logging out.
+    // Skip the auth endpoints themselves (a bad login/refresh must not loop). `retried` guards
+    // against an infinite loop if even the freshly-refreshed token is rejected.
+    if (res.status === 401 && init.token && !path.startsWith('/v1/auth/')) {
+      if (!retried) {
+        const newToken = await refreshAccessToken();
+        if (newToken) {
+          return apiJson<T>(path, { ...init, token: newToken }, true);
+        }
+      }
+      forceLogout();
       return undefined as T;
     }
     const err = body as ApiError;

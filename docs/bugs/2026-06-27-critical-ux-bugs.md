@@ -245,11 +245,28 @@ A critical bug: `google/gemma-4-26b-a4b-qat` is called even after stopping the g
 > RC:
 > Fix:
 
-### [ ] 20. Active user gets logged out on JWT expiry (loses working data)
+### [x] 20. Active user gets logged out on JWT expiry (loses working data)
 User is active but the JWT expires and forces logout. Critical — causes loss of working data.
 
-> RC:
-> Fix:
+> RC: The refresh infrastructure fully existed — auth-service `POST /v1/auth/refresh`
+> (`handlers.go:180`, rotates the refresh token) and the FE already stored both tokens — but the
+> central fetch wrapper's 401 handler (`api.ts`) **never used it**: any 401 wiped `lw_auth` and
+> hard-redirected to /login, discarding in-progress work. Access tokens are short-lived, so an
+> active user got bounced the moment the token expired.
+> Fix (FE-only): on a 401 for an authenticated request, `api.ts` now does a SINGLE-FLIGHT silent
+> refresh (the refresh ROTATES server-side, so concurrent 401s must share one in-flight refresh
+> or the 2nd reads an already-rotated token → logout), persists the new pair, retries the request
+> once, and only force-logs-out if the refresh itself fails. AuthProvider listens for a
+> `lw-auth-refreshed` event to sync React state (so consumers send the new token). Auth endpoints
+> are excluded (no loop); a `retried` flag bounds it to one retry.
+> BUG CAUGHT BY TESTS (real, would ship): the first cut cleared `refreshInFlight` in the IIFE's
+> `finally` — but on the synchronous no-refresh-token path the finally runs BEFORE the outer
+> `refreshInFlight = p` assignment, leaking a resolved-null promise that permanently short-circuits
+> every later refresh (→ instant logout on the next expiry). Fixed with `p.finally(reset)` AFTER
+> assignment + an identity guard.
+> Tests: api suite 11/11 (added refresh-and-retry, single-flight, refresh-fails→logout) + auth 7/7;
+> tsc clean. Follow-ups (not blocking): SSE/WebSocket streams carry the token outside apiJson, so
+> they won't auto-refresh on expiry; cross-tab React-state sync (a `storage` listener) is a nicety.
 
 ### [ ] 21. Custom `romantic_scene` kind in Xianxia Harem genre not wired in GUI
 Created `romantic_scene` in a custom Xianxia Harem genre, but the GUI doesn't wire it — can't edit `romantic_scene` kind anymore.
