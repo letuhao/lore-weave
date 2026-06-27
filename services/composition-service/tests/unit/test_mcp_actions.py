@@ -87,6 +87,12 @@ def client():
         patch("app.db.pool.create_pool", new_callable=AsyncMock),
         patch("app.db.pool.close_pool", new_callable=AsyncMock),
         patch("app.db.pool.get_pool", return_value=spy_pool),
+        # D-W2-MCP-SESSION-ISOLATION: app.main does `from app.db.pool import create_pool`,
+        # so the lifespan's create_pool is a SEPARATE binding the app.db.pool patch misses —
+        # unpatched it connects to the real DB host in a batch (getaddrinfo). Patch app.main.* too.
+        patch("app.main.create_pool", new_callable=AsyncMock),
+        patch("app.main.close_pool", new_callable=AsyncMock),
+        patch("app.main.get_pool", return_value=spy_pool),
         patch("app.main.run_migrations", new_callable=AsyncMock),
         patch("app.main.mcp_server", _mcp_stub),
         patch("app.main.get_grant_client", MagicMock()),

@@ -554,6 +554,14 @@ def client():
         patch("app.db.pool.create_pool", new_callable=AsyncMock),
         patch("app.db.pool.close_pool", new_callable=AsyncMock),
         patch("app.db.pool.get_pool", return_value=spy_pool),
+        # D-W2-MCP-SESSION-ISOLATION: app.main does `from app.db.pool import create_pool`,
+        # so the lifespan calls app.main.create_pool — a SEPARATE binding the app.db.pool
+        # patch misses. Unpatched, the lifespan connects to the real DB host (postgres:5432)
+        # → getaddrinfo fails when this file runs in a batch. Patch the app.main bindings too
+        # (mirrors test_motif_sync.ctx, which never flaked because it already does this).
+        patch("app.main.create_pool", new_callable=AsyncMock),
+        patch("app.main.close_pool", new_callable=AsyncMock),
+        patch("app.main.get_pool", return_value=spy_pool),
         patch("app.main.run_migrations", new_callable=AsyncMock),
         patch("app.main.mcp_server", _mcp_stub),
         patch("app.main.get_grant_client", MagicMock()),
