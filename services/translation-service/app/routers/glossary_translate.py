@@ -36,6 +36,9 @@ class CreateGlossaryTranslatePayload(BaseModel):
     kind_codes: list[str] = Field(default_factory=list)
     entity_status: str = "all"
     thinking_enabled: bool = False
+    # bug #4: how many entities translate in parallel (1 = sequential). Clamped again in the
+    # worker to _GLOSSARY_TRANSLATE_MAX_CONCURRENCY. None ⇒ 1 (prior behavior).
+    concurrency_level: int | None = Field(default=None, ge=1, le=64)
 
 
 class CancelJobResponse(BaseModel):
@@ -175,6 +178,7 @@ async def create_glossary_translate_job(
         "model_ref": str(model_ref),
         "overwrite_mode": payload.overwrite_mode,
         "thinking_enabled": payload.thinking_enabled,
+        "concurrency": payload.concurrency_level,
         "metadata": metadata,
     })
 

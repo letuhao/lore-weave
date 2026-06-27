@@ -116,11 +116,31 @@ Job detail doesn't show total cost. Current token cost is not updated until the 
 > is down AT finalize, `extraction_jobs.cost_usd` stays NULL though the projection still has the
 > last live cost (GET doesn't expose cost_usd anyway). Tests: extraction-worker 21/21.
 
-### [ ] 4. Translation glossary cannot be configured to run parallel; need GUI for parallel workers
+### [x] 4. Translation glossary cannot be configured to run parallel; need GUI for parallel workers
 Translation glossary cannot be configured to run parallel like the glossary extraction job. May happen in other jobs too. Need a GUI to set parallel workers.
 
-> RC:
-> Fix:
+> RC: The glossary-translate worker (`glossary_translate_worker.py`) processed entities strictly
+> sequentially (`for ent in items:` — one awaited LLM call each), with no concurrency param at all
+> — unlike extraction, which already had `concurrency` (Semaphore+gather over batches) and a
+> "Parallel LLM calls" input in its confirm step. So the translation-glossary wizard had no way to
+> parallelize, making large glossaries (15000+ entities) painfully slow.
+> Fix (FS, mirrors extraction):
+>  - Worker: added `_GLOSSARY_TRANSLATE_MAX_CONCURRENCY=16` + reads `concurrency` from the msg
+>    (clamped). Refactored the per-entity body into a `_process_entity` coroutine bounded by an
+>    `asyncio.Semaphore(concurrency)`, run via `asyncio.gather` per page. Shared counters mutate
+>    between awaits only (single-threaded asyncio). Added a per-entity catch-all so one entity's
+>    unexpected error fails only that entity (more robust than the original, which aborted the job).
+>  - Route: `CreateGlossaryTranslatePayload.concurrency_level` (ge=1, le=64) → published `concurrency`.
+>  - FE: ported the "Parallel LLM calls" number input to the glossary-translate StepConfirm; sends
+>    `concurrency_level` when >1.
+> Tests: glossary-translate-worker 9/9 (added parallel-bounded + default-sequential tests proving
+> max-in-flight == cap / == 1); router + structured-output + internal-control + prompt suites 35/35
+> all green; FE tsc clean + state suite 6/6.
+> Live-smoke: deferred (D-GLOSSARY-TRANSLATE-CONCURRENCY-LIVE-SMOKE) — needs translation-svc +
+> glossary-svc + a real LLM. Only the ORCHESTRATION changed (per-entity LLM/apply contracts are
+> unchanged); parallelism is unit-proven. "Other jobs": chapter translation already has its own
+> P5 coordinator/fairness concurrency; extraction already had this — glossary-translate was the gap.
+> Cancellation stays per-page granularity (same as before; finer interrupt = bug #34).
 
 ### [ ] 6. Glossary page should allow 1000 entities per page
 Need to activate glossary but have >15000 entities — current paging makes this really annoying. Want 1000 entities per page.
