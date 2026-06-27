@@ -40,8 +40,12 @@ from app.db.models import Motif, MotifCreateArgs
 
 logger = logging.getLogger(__name__)
 
-# The pack files live next to this module's data dir (W7-owned, disjoint).
-_PACK_DIR = Path(__file__).resolve().parents[2] / "scripts" / "seed_motif_packs"
+# The pack files ship INSIDE the app package (app/db/seed_motif_packs/) so the
+# production Docker image — which COPYs only app/, not scripts/ — has the seed data
+# at runtime. (R-NODE-P1 caught the original scripts/ location FileNotFound-ing at
+# container boot; runtime-required data belongs with the code, not in the dev/CI
+# scripts/ dir.)
+_PACK_DIR = Path(__file__).resolve().parent / "seed_motif_packs"
 
 # The motif packs (each a JSON array of motif objects). links.json is loaded
 # separately (it is edges, not motifs).
