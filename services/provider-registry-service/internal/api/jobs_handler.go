@@ -140,6 +140,13 @@ func (s *Server) doSubmitJob(w http.ResponseWriter, r *http.Request, userID uuid
 		writeError(w, http.StatusBadRequest, "LLM_INVALID_REQUEST", "invalid model_source")
 		return
 	}
+	// PUB-12 (BYOK-only) — reject a public-MCP-key platform_model draw BEFORE the
+	// guardrail reservation (no held reserve leaked). The key id rides the
+	// X-Mcp-Key-Id header (present at submit) or job_meta.mcp_key_id (persisted for
+	// the async worker path). First-party traffic carries neither and is unaffected.
+	if rejectPlatformDrawForPublicKey(w, in.ModelSource, isPublicMcpKeyCall(r, in.JobMeta)) {
+		return
+	}
 	modelRef, err := uuid.Parse(in.ModelRef)
 	if err != nil {
 		writeError(w, http.StatusBadRequest, "LLM_INVALID_REQUEST", "invalid model_ref")
