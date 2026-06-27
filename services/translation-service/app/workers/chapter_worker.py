@@ -88,6 +88,19 @@ async def handle_chapter_message(
 
     try:
         await _process_chapter(msg, job_id, chapter_id, user_id, pool, publish_event, llm_client)
+    except _CancelledError as exc:
+        # bug #34 — an in-flight LLM call was aborted because the user cancelled the
+        # job mid-translation (cancel_check fired). This is a clean STOP, NOT a real
+        # translation failure: route it exactly like the chapter-start cancel branch
+        # (job_cancelled), so it never trips the circuit-open auto-pause and reads as
+        # a cancelled (not failed-because-broken) outcome.
+        log.info("chapter %s: cancelled mid-flight (%s) — clean stop", chapter_id, exc)
+        await _fail_chapter_idempotent(pool, job_id, chapter_id, "job_cancelled")
+        await _emit_chapter_done(publish_event, user_id, msg, "failed", "job_cancelled")
+        await _check_job_completion(pool, job_id, user_id, msg, publish_event)
+        record_stage("translation.chapter", pipeline=msg.get("pipeline_version", "v2"),
+                     status="cancelled", chapter_id=str(chapter_id))
+        return
     except _TransientError as exc:
         log.warning("chapter %s: transient error — %s", chapter_id, exc)
         await _fail_chapter_idempotent(pool, job_id, chapter_id, f"transient: {exc}")
@@ -225,6 +238,29 @@ async def _process_chapter(msg, job_id, chapter_id, user_id, pool, publish_event
         from .session_translator import translate_chapter_blocks as _translate_blocks
         _translate_text = translate_chapter
 
+    # bug #34 — immediate cancel: an async probe the session translator forwards to
+    # the SDK's submit_and_wait so a user-cancel aborts the in-flight LLM call NOW
+    # (instead of polling it to natural completion + burning tokens). Reads the SAME
+    # job-cancel signal as the chapter-start check above (translation_jobs.status).
+    # FAIL-SOFT: any read error returns False so a transient DB blip never spuriously
+    # cancels a healthy job. Pool-acquire idiom mirrors the start check (~line 116).
+    async def cancel_check() -> bool:
+        try:
+            async with pool.acquire() as db:
+                st = await db.fetchval(
+                    "SELECT status FROM translation_jobs WHERE job_id=$1", job_id
+                )
+            return st == "cancelled"
+        except Exception:  # noqa: BLE001 — fail-soft: never cancel a healthy job on a read fault
+            log.warning("chapter %s: cancel_check read failed — treating as not-cancelled", chapter_id)
+            return False
+
+    # Only the v2 synchronous translators accept cancel_check (bug #34). The v3
+    # orchestrator + decoupled/event-driven paths have a different (event) cancel
+    # story and do NOT take this kwarg — spread an empty dict for them so we never
+    # pass an unsupported keyword.
+    cancel_kwargs = {"cancel_check": cancel_check} if pipeline_version != "v3" else {}
+
     # Detect JSON body → use block pipeline, otherwise fall back to text pipeline
     use_block_pipeline = (
         isinstance(chapter_body, dict)
@@ -304,6 +340,7 @@ async def _process_chapter(msg, job_id, chapter_id, user_id, pool, publish_event
                     chapter_translation_id=chapter_translation_id,
                     llm_client=llm_client,
                     context_window=context_window,
+                    **cancel_kwargs,  # bug #34 — abort in-flight LLM on cancel (v2 only)
                 )
             )
         # Total-failure guard: if the chapter HAD translatable blocks but none
@@ -372,6 +409,7 @@ async def _process_chapter(msg, job_id, chapter_id, user_id, pool, publish_event
             chapter_translation_id=chapter_translation_id,
             llm_client=llm_client,
             context_window=context_window,
+            **cancel_kwargs,  # bug #34 — abort in-flight LLM on cancel (v2 only)
         )
         translated_body_json = None
         translated_body_format = "text"
@@ -1118,3 +1156,10 @@ class _TransientError(Exception):
 
 class _PermanentError(Exception):
     """Bad data, 404, 402, unrecoverable — retry won't help."""
+
+
+class _CancelledError(Exception):
+    """bug #34 — a user cancelled the job while an LLM call was in flight, so the
+    cancel_check probe fired and the SDK aborted the call (sdk_job.status='cancelled').
+    Distinct from _PermanentError so handle_chapter_message routes a user-cancel to a
+    clean stop (job_cancelled) instead of a spurious translation failure."""

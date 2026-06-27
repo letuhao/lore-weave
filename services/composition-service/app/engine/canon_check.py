@@ -185,6 +185,7 @@ async def judge_canon(
     judge, *, user_id: str, model_source: str, model_ref: str,
     draft: str, candidates: list[CanonViolation], source_language: str = "auto",
     max_tokens: int = 1024, trace_id: str | None = None,
+    cancel_check: Callable[[], Awaitable[bool]] | None = None,
 ) -> list[CanonViolation]:
     """Confirm the symbolic candidates with the LLM-judge (D2 — only the cheap
     SCORE pre-filter runs on everything; the judge confirms the few candidates).
@@ -212,6 +213,7 @@ async def judge_canon(
                 "chat_template_kwargs": {"thinking": False, "enable_thinking": False},
             },
             job_meta={"usage_purpose": "canon_check", "extractor": "judge_canon"}, trace_id=trace_id,
+            cancel_check=cancel_check,
         )
     except LLMError as exc:
         logger.warning("judge_canon degraded (LLM error): %s — symbolic-only", exc)
@@ -233,6 +235,7 @@ async def check_canon(
     draft: str, snapshot: dict[str, Any] | None, *,
     judge=None, user_id: str = "", model_source: str = "", model_ref: str = "",
     source_language: str = "auto", trace_id: str | None = None,
+    cancel_check: Callable[[], Awaitable[bool]] | None = None,
 ) -> list[CanonViolation]:
     """Full canon check on a draft: SCORE symbolic pre-filter → (if any
     candidates AND a distinct judge is configured) LLM-judge confirmation.
@@ -244,7 +247,7 @@ async def check_canon(
     return await judge_canon(
         judge, user_id=user_id, model_source=model_source, model_ref=model_ref,
         draft=draft, candidates=candidates, source_language=source_language,
-        trace_id=trace_id,
+        trace_id=trace_id, cancel_check=cancel_check,
     )
 
 

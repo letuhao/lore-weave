@@ -17,6 +17,7 @@ from __future__ import annotations
 
 import json
 import logging
+from collections.abc import Awaitable, Callable
 from typing import Any, Literal
 
 from pydantic import BaseModel, Field, ValidationError
@@ -55,6 +56,8 @@ async def summarize_level(
     model_source: Literal["user_model", "platform_model"],
     model_ref: str,
     llm_client: LLMClientProtocol,
+    # bug #34 — optional immediate-cancel hook forwarded to submit_and_wait.
+    cancel_check: Callable[[], Awaitable[bool]] | None = None,
 ) -> LevelSummary:
     """Generate a 2-3 sentence summary of *level* via the BYOK LLM.
 
@@ -107,6 +110,7 @@ async def summarize_level(
         model_source=model_source,
         model_ref=model_ref,
         prompt=prompt,
+        cancel_check=cancel_check,
     )
     return _postprocess(raw)
 
@@ -119,6 +123,8 @@ async def _call_llm(
     model_source: Literal["user_model", "platform_model"],
     model_ref: str,
     prompt: str,
+    # bug #34 — optional immediate-cancel hook forwarded to submit_and_wait.
+    cancel_check: Callable[[], Awaitable[bool]] | None = None,
 ) -> dict[str, Any]:
     """Submit summarize_level job via the gateway; return raw response dict.
 
@@ -155,6 +161,7 @@ async def _call_llm(
                 "project_id": project_id or "",
             },
             transient_retry_budget=1,
+            cancel_check=cancel_check,
         )
     except Exception as exc:
         # Per LLMClientProtocol — re-raise as ExtractionError so caller can

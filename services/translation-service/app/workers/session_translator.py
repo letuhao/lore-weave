@@ -15,6 +15,7 @@ Errors bubble up as _TransientError / _PermanentError (defined in chapter_worker
 from __future__ import annotations
 
 import logging
+from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, field
 from typing import Any
 from uuid import UUID
@@ -300,6 +301,7 @@ async def translate_chapter(
     *,
     llm_client: LLMClient,
     context_window: int = _FALLBACK_CONTEXT_WINDOW,
+    cancel_check: Callable[[], Awaitable[bool]] | None = None,
 ) -> tuple[str, int, int]:
     """
     Translate a full chapter using session-based chunking.
@@ -351,6 +353,7 @@ async def translate_chapter(
             compact_memo=compact_memo,
             pool=pool,
             chapter_translation_id=chapter_translation_id,
+            cancel_check=cancel_check,  # bug #34 — abort in-flight LLM on cancel
         )
         log.info(
             "session_translator: chunk %d/%d done — %d chars, in=%d out=%d (ct=%s)",
@@ -476,6 +479,7 @@ async def _translate_chunk(
     compact_memo: str,
     pool,
     chapter_translation_id: UUID,
+    cancel_check: Callable[[], Awaitable[bool]] | None = None,
 ) -> tuple[str, int, int]:
     """
     Invoke the AI model for a single chunk via the loreweave_llm SDK
@@ -488,7 +492,7 @@ async def _translate_chunk(
     cancelled/failed jobs map to _PermanentError matching the legacy
     billing_rejected / model_not_found / provider_error_* contract.
     """
-    from .chapter_worker import _TransientError, _PermanentError  # local import avoids circular
+    from .chapter_worker import _TransientError, _PermanentError, _CancelledError  # local import avoids circular
 
     # Insert pending chunk row
     chunk_row_id = await _insert_chunk_row(
@@ -518,6 +522,7 @@ async def _translate_chunk(
                 "chunk_idx": chunk_idx,
             },
             transient_retry_budget=1,
+            cancel_check=cancel_check,  # bug #34 — abort this call if the job is cancelled
         )
     except LLMTransientRetryNeededError as exc:
         log.error(
@@ -565,9 +570,12 @@ async def _translate_chunk(
     )
 
     if sdk_job.status == "cancelled":
-        # Operator-initiated LLM-job cancel — surface as permanent so
-        # the chapter row stays failed (worker doesn't retry on cancel).
-        raise _PermanentError("cancelled")
+        # bug #34 — the SDK aborted this call because the parent job was cancelled
+        # mid-flight (cancel_check fired) OR an operator cancelled the LLM job directly.
+        # Either way it's a user-driven STOP, not a translation failure: raise
+        # _CancelledError so handle_chapter_message ends the chapter as a clean
+        # cancel (job_cancelled) instead of a spurious failure (and no retry).
+        raise _CancelledError("cancelled")
     if sdk_job.status != "completed":
         # Map gateway error codes to the legacy permanent/transient
         # contract the chapter_worker retry loop expects.
@@ -890,6 +898,7 @@ async def translate_batch_with_retry(
     max_retries: int,
     job_meta_base: dict,
     thinking_enabled: bool = False,
+    cancel_check: Callable[[], Awaitable[bool]] | None = None,
 ) -> BatchTranslateResult:
     """Translate one [BLOCK N] batch: SDK call → validate → retry with a correction
     prompt on failure. Shared per-batch kernel (M5d/TD2) — the worker pipeline wraps
@@ -898,6 +907,7 @@ async def translate_batch_with_retry(
     worker's original per-batch logic, verbatim, so worker behaviour is unchanged.
     """
     from .block_batcher import parse_translated_blocks
+    from .chapter_worker import _CancelledError  # local import avoids circular
 
     parsed: dict[int, str] = {}
     failed: set[int] = set()
@@ -932,7 +942,14 @@ async def translate_batch_with_retry(
                 chunking=None,
                 job_meta={**job_meta_base, "attempt": attempt},
                 transient_retry_budget=1,
+                cancel_check=cancel_check,  # bug #34 — abort this call if the job is cancelled
             )
+            if sdk_job.status == "cancelled":
+                # bug #34 — the SDK aborted this call because the parent job was
+                # cancelled mid-flight (cancel_check fired). This is a user STOP, not a
+                # batch failure: raise so the chapter ends as a clean cancel instead of
+                # the "produced no output" failure the empty-result path would surface.
+                raise _CancelledError("cancelled")
             if sdk_job.status != "completed":
                 err_code = sdk_job.error.code if sdk_job.error else "unknown"
                 log.error("translate_batch: attempt %d job ended status=%s code=%s",
@@ -966,6 +983,10 @@ async def translate_batch_with_retry(
                 else:
                     failed.update(set(block_indices) - set(parsed.keys()))
 
+        except _CancelledError:
+            # bug #34 — a user-cancel must NOT be swallowed by the broad retry catch
+            # below; propagate so the chapter ends as a clean cancel.
+            raise
         except (LLMQuotaExceeded, LLMModelNotFound, LLMAuthFailed,
                 LLMInvalidRequest, LLMDecodeError, LLMStreamNotSupported) as exc:
             # Permanent SDK errors won't fix on retry — fail the whole batch.
@@ -998,6 +1019,7 @@ async def translate_chapter_blocks(
     context_window: int = _FALLBACK_CONTEXT_WINDOW,
     extra_system: str = "",
     group_ids: dict[int, int] | None = None,
+    cancel_check: Callable[[], Awaitable[bool]] | None = None,
 ) -> tuple[list[dict], int, int]:
     """
     Translate a chapter's Tiptap blocks using the block-level pipeline (V2).
@@ -1163,6 +1185,7 @@ async def translate_chapter_blocks(
             out_max=out_max, max_retries=_MAX_BATCH_RETRIES,
             job_meta_base={"chapter_translation_id": str(chapter_translation_id), "batch_idx": batch_idx},
             thinking_enabled=bool(msg.get("thinking_enabled", False)),
+            cancel_check=cancel_check,  # bug #34 — abort in-flight LLM on cancel
         )
         parsed = _br.parsed
         total_input += _br.input_tokens

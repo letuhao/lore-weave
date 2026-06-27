@@ -41,6 +41,11 @@ class LLMClientProtocol(Protocol):
         trace_id: str | None = None,
         job_meta: dict[str, Any] | None = None,
         transient_retry_budget: int = 1,
+        # bug #34 — optional immediate-cancel hook. Forwarded to
+        # loreweave_llm.Client.wait_terminal so an in-flight LLM call is
+        # aborted the moment the owning job is cancelled. Default None ⇒
+        # no cancellation polling (byte-identical for every existing caller).
+        cancel_check: Callable[[], Awaitable[bool]] | None = None,
     ) -> Job:
         ...
 

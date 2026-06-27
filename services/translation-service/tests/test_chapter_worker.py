@@ -793,3 +793,90 @@ async def test_check_job_completion_all_failed_status(monkeypatch):
 
     payload = publish_event.call_args.args[1]["payload"]
     assert payload["status"] == "failed"
+
+
+# ── bug #34: mid-flight cancel routes to a clean stop (not a failure) ──────────
+
+@pytest.mark.asyncio
+async def test_chapter_worker_threads_cancel_check_into_translate():
+    """bug #34 — _process_chapter builds a cancel_check closure and threads it into
+    the (v2) translate_chapter call so an in-flight LLM call can be aborted on cancel."""
+    pool, _ = _make_pool()
+    publish_event = AsyncMock()
+    msg = _chapter_msg()
+
+    with patch("app.workers.chapter_worker.httpx.AsyncClient") as mock_cls, \
+         patch("app.workers.chapter_worker.translate_chapter",
+               new_callable=AsyncMock, return_value=("Translated body.", 10, 8)) as mock_translate:
+        mock_cls.return_value.__aenter__ = AsyncMock(return_value=_patched_book_http())
+        mock_cls.return_value.__aexit__ = AsyncMock(return_value=False)
+
+        from app.workers.chapter_worker import handle_chapter_message
+        await handle_chapter_message(msg, pool, publish_event, MagicMock(), retry_count=0)
+
+    cc = mock_translate.call_args.kwargs.get("cancel_check")
+    assert cc is not None and callable(cc)
+    # The fake pool's fetchval returns the job_status ('running') → not cancelled.
+    assert await cc() is False
+
+
+@pytest.mark.asyncio
+async def test_cancel_check_closure_is_fail_soft_on_read_error():
+    """bug #34 — the cancel_check closure must NEVER spuriously cancel a healthy job:
+    any DB read exception returns False."""
+    pool, db = _make_pool(job_status="running")  # healthy job — not cancelled at start
+    publish_event = AsyncMock()
+    msg = _chapter_msg()
+    captured = {}
+
+    async def _capture(*a, **k):
+        captured["cc"] = k.get("cancel_check")
+        return ("Translated body.", 10, 8)
+
+    with patch("app.workers.chapter_worker.httpx.AsyncClient") as mock_cls, \
+         patch("app.workers.chapter_worker.translate_chapter", side_effect=_capture):
+        mock_cls.return_value.__aenter__ = AsyncMock(return_value=_patched_book_http())
+        mock_cls.return_value.__aexit__ = AsyncMock(return_value=False)
+
+        from app.workers.chapter_worker import handle_chapter_message
+        await handle_chapter_message(msg, pool, publish_event, MagicMock(), retry_count=0)
+
+    cc = captured["cc"]
+    # Make the next DB read blow up → closure must swallow + return False.
+    db.fetchval = AsyncMock(side_effect=RuntimeError("db down"))
+    assert await cc() is False
+
+
+@pytest.mark.asyncio
+async def test_chapter_worker_cancelled_error_is_clean_stop_not_failure():
+    """bug #34 — a _CancelledError from the translator (user cancelled mid-flight) ends
+    the chapter as a clean job_cancelled outcome: chapter marked failed with reason
+    'job_cancelled', a chapter_done event emitted, and NO re-raise (the message is ACKed)."""
+    pool, db = _make_pool()
+    publish_event = AsyncMock()
+    msg = _chapter_msg()
+
+    from app.workers.chapter_worker import _CancelledError
+
+    with patch("app.workers.chapter_worker.httpx.AsyncClient") as mock_cls, \
+         patch("app.workers.chapter_worker.translate_chapter",
+               new_callable=AsyncMock, side_effect=_CancelledError("cancelled")):
+        mock_cls.return_value.__aenter__ = AsyncMock(return_value=_patched_book_http())
+        mock_cls.return_value.__aexit__ = AsyncMock(return_value=False)
+
+        from app.workers.chapter_worker import handle_chapter_message
+        # Must NOT raise — a user-cancel is a clean stop, not an error to re-deliver.
+        await handle_chapter_message(msg, pool, publish_event, MagicMock(), retry_count=0)
+
+    # chapter was marked failed with reason job_cancelled (mirrors the start-cancel branch).
+    # _fail_chapter_idempotent runs the UPDATE...RETURNING via db.fetchval.
+    failed_update_args = [
+        c.args for c in db.fetchval.call_args_list
+        if len(c.args) > 0 and isinstance(c.args[0], str) and "status='failed'" in c.args[0]
+    ]
+    assert failed_update_args, "expected a status='failed' UPDATE for the cancelled chapter"
+    assert any("job_cancelled" in str(a) for a in failed_update_args)
+    # chapter_done event emitted with job_cancelled.
+    done = [c.args[1] for c in publish_event.call_args_list
+            if c.args[1].get("event") == "job.chapter_done"]
+    assert done and done[0]["payload"]["error_message"] == "job_cancelled"

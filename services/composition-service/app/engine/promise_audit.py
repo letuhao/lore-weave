@@ -23,6 +23,7 @@ would corrupt the count) — the prompt delimits it robustly, mirroring
 from __future__ import annotations
 
 import logging
+from collections.abc import Awaitable, Callable
 from typing import Any
 
 from loreweave_llm.errors import LLMError
@@ -104,6 +105,7 @@ async def audit_promises(
     llm: LLMClient, *, user_id: str, model_source: str, model_ref: str,
     arc_text: str, source_language: str = "auto",
     max_tokens: int = 1500, trace_id: str | None = None,
+    cancel_check: Callable[[], Awaitable[bool]] | None = None,
 ) -> dict[str, Any]:
     """Audit one arc's promises. On any LLM/parse failure returns empty lists +
     `error` (never raises — an eval that errors must not fabricate a count)."""
@@ -118,6 +120,7 @@ async def audit_promises(
                 "max_tokens": max_tokens, **_NO_THINK,
             },
             job_meta={"usage_purpose": "promise_audit", "extractor": "promise_audit"}, trace_id=trace_id,
+            cancel_check=cancel_check,
         )
     except LLMError as exc:
         logger.warning("promise_audit LLM error: %s", exc)
@@ -225,7 +228,8 @@ def _parse_coverage(content: str, promises: list[str]) -> dict[str, Any]:
     return _coverage_shape(promises, verdicts)
 
 
-async def _chat(llm, *, user_id, model_source, model_ref, system, user, max_tokens, trace_id, tag):
+async def _chat(llm, *, user_id, model_source, model_ref, system, user, max_tokens, trace_id, tag,
+                cancel_check: Callable[[], Awaitable[bool]] | None = None):
     """Shared single-shot, reasoning-disabled, degrade-safe call. Returns the
     parsed content string, or None on LLM/non-completed failure."""
     try:
@@ -238,6 +242,7 @@ async def _chat(llm, *, user_id, model_source, model_ref, system, user, max_toke
                 "max_tokens": max_tokens, **_NO_THINK,
             },
             job_meta={"usage_purpose": "promise_audit", "extractor": tag}, trace_id=trace_id,
+            cancel_check=cancel_check,
         )
     except LLMError as exc:
         logger.warning("%s LLM error: %s", tag, exc)
@@ -252,13 +257,14 @@ async def extract_tracked_promises(
     llm: LLMClient, *, user_id: str, model_source: str, model_ref: str,
     premise: str, plan_text: str, source_language: str = "auto",
     max_tokens: int = 800, trace_id: str | None = None,
+    cancel_check: Callable[[], Awaitable[bool]] | None = None,
 ) -> list[str]:
     """Derive the fixed tracked-promise set from premise+plan. Returns [] on
     failure (the harness then skips the book rather than scoring a phantom set)."""
     system, user = build_extract_messages(premise, plan_text, source_language)
     content = await _chat(llm, user_id=user_id, model_source=model_source, model_ref=model_ref,
                           system=system, user=user, max_tokens=max_tokens, trace_id=trace_id,
-                          tag="promise_extract")
+                          tag="promise_extract", cancel_check=cancel_check)
     if content is None:
         return []
     obj = parse_critique_json(content) or {}
@@ -269,6 +275,7 @@ async def score_promise_coverage(
     llm: LLMClient, *, user_id: str, model_source: str, model_ref: str,
     promises: list[str], arc_text: str, source_language: str = "auto",
     max_tokens: int = 1500, trace_id: str | None = None,
+    cancel_check: Callable[[], Awaitable[bool]] | None = None,
 ) -> dict[str, Any]:
     """Score one arc's prose against the FIXED promise set. On failure returns the
     all-'absent' shape + `error` (never raises)."""
@@ -277,7 +284,7 @@ async def score_promise_coverage(
     system, user = build_coverage_messages(promises, arc_text, source_language)
     content = await _chat(llm, user_id=user_id, model_source=model_source, model_ref=model_ref,
                          system=system, user=user, max_tokens=max_tokens, trace_id=trace_id,
-                         tag="promise_coverage")
+                         tag="promise_coverage", cancel_check=cancel_check)
     if content is None:
         return _coverage_shape(promises, ["absent"] * len(promises), error="coverage_unavailable")
     return _parse_coverage(content, promises)

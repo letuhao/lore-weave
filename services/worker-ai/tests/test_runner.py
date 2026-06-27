@@ -200,6 +200,48 @@ def test_jobrow_default_reasoning_effort_is_none():
     assert _job(reasoning_effort="high").reasoning_effort == "high"
 
 
+# ── bug #34 — immediate-cancel hook threaded into the SDK ──────────────
+
+
+@pytest.mark.asyncio
+@patch("app.runner.extract_pass2", new_callable=AsyncMock)
+async def test_extract_and_persist_forwards_cancel_check(mock_pass2):
+    """bug #34 — _extract_and_persist(cancel_check=...) forwards it to extract_pass2."""
+    from app.runner import _extract_and_persist
+
+    mock_pass2.return_value = _FakeCandidates()
+
+    async def _cancel() -> bool:
+        return False
+
+    await _extract_and_persist(
+        knowledge_client=_mock_knowledge_client(),
+        llm_client=_mock_llm_client(),
+        user_id=uuid4(), project_id=uuid4(),
+        source_type="chapter", source_id="ch-1", job_id=uuid4(),
+        model_ref="m", text="Kai walks.",
+        cancel_check=_cancel,
+    )
+    assert mock_pass2.call_args.kwargs["cancel_check"] is _cancel
+
+
+@pytest.mark.asyncio
+@patch("app.runner.extract_pass2", new_callable=AsyncMock)
+async def test_extract_and_persist_default_cancel_check_is_none(mock_pass2):
+    """bug #34 — omitting cancel_check forwards None (back-compat)."""
+    from app.runner import _extract_and_persist
+
+    mock_pass2.return_value = _FakeCandidates()
+    await _extract_and_persist(
+        knowledge_client=_mock_knowledge_client(),
+        llm_client=_mock_llm_client(),
+        user_id=uuid4(), project_id=uuid4(),
+        source_type="chapter", source_id="ch-1", job_id=uuid4(),
+        model_ref="m", text="Kai walks.",
+    )
+    assert mock_pass2.call_args.kwargs["cancel_check"] is None
+
+
 @pytest.mark.asyncio
 async def test_start_decoupled_chunk_stashes_effort_into_resume_state():
     """D-KG-WORKER-GRADED-EFFORT — the decoupled dispatch MUST stash the job's

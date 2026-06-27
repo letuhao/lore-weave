@@ -379,11 +379,32 @@ The platform lacks a **kind description** (distinct from attribute), so the mode
 > RC:
 > Fix:
 
-### [ ] 34. Some jobs are very hard to interrupt (30 min from cancel to stop)
+### [x] 34. Some jobs are very hard to interrupt (30 min from cancel to stop)
 Some jobs are very hard to interrupt — 30 minutes from cancelling until actually cancelled because the job keeps running. Need an enforce feature + GUI to accept data loss and stop the job immediately (user doesn't want to waste tokens).
 
-> RC:
-> Fix:
+> RC: Long-running workers checked cancellation only **cooperatively between units**
+> (per-chapter/per-block) and **never aborted the in-flight provider call**, so the
+> current LLM call(s) burned tokens to natural completion — compounding toward ~30
+> min on a slow local model across many units. provider-registry already aborts an
+> in-flight jobs-path call on `DELETE /v1/llm/jobs/{id}`; the missing piece was
+> propagating the user's job-cancel down to it.
+> Fix (keystone + 4-worker wiring): SDK `loreweave_llm.wait_terminal` gained a
+> `cancel_check` async predicate — on first fire it issues the DELETE (`cancel_job`,
+> aborting the upstream call) and returns the cancelled Job (same terminal a UI
+> DELETE produces). Both check + DELETE are fail-soft. The 3 service wrappers forward
+> it; each worker passes a fail-soft closure reading its parent-job status:
+> **extraction** (`extraction_jobs.status`), **chapter translation**
+> (`translation_jobs.status` — also fixed a mid-flight cancel surfacing as a chapter
+> FAILURE: new `_CancelledError` → clean stop, no circuit-breaker trip), **KG build**
+> (worker-ai → threaded through the `loreweave_extraction` SDK `extract_pass2` +
+> entity/relation/event/fact extractors → `submit_and_wait`; reads knowledge-DB
+> `extraction_jobs.status`), **composition prose-gen** (`generation_job.status` —
+> threaded `run_job`→engine; streaming `.sdk` edit path skipped). FE: existing Cancel
+> button is now an immediate stop; confirm copy clarified ("stops now, discards
+> in-progress, keeps completed parts") ×4 locales. The in-flight call (and all
+> concurrent batch calls) abort within one poll interval (~0.25–5s). Shipped in two
+> milestones: M1 `473143c0` (keystone + extraction + FE), M2 (composition +
+> translation + KG-build). Cross-service live-smoke deferred → D-CANCEL-IMMEDIATE-LIVE-SMOKE.
 
 ### [ ] 35. Platform lacks a language picker (user must type language code)
 The platform lacks a language picker — the user must input the language code. Bad design.

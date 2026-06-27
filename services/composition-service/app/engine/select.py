@@ -23,6 +23,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
 
 from loreweave_llm.errors import LLMError
@@ -62,6 +63,7 @@ async def _one_draft(
     llm: LLMClient, *, user_id: str, model_source: str, model_ref: str,
     messages: list[dict[str, str]], prompt_est: int, max_tokens: int,
     temperature: float, reasoning_effort: str | None, trace_id: str | None,
+    cancel_check: Callable[[], Awaitable[bool]] | None = None,
 ) -> Candidate | None:
     """One blocking draft completion. Returns None (dropped) on error / non-completed
     / empty output — diverge keeps the survivors."""
@@ -74,6 +76,7 @@ async def _one_draft(
                 **({"reasoning_effort": reasoning_effort} if reasoning_effort is not None else _NO_THINK),
             },
             job_meta={"usage_purpose": "prose_draft", "extractor": "diverge_draft"}, trace_id=trace_id,
+            cancel_check=cancel_check,
         )
     except LLMError as exc:
         logger.warning("diverge draft LLM error: %s", exc)
@@ -99,6 +102,7 @@ async def diverge(
     packed_prompt: str, profile: BookProfile, operation: str, guide: str,
     k: int, prompt_est: int, max_tokens: int, temperature: float = 0.8,
     reasoning_effort: str | None = None, trace_id: str | None = None,
+    cancel_check: Callable[[], Awaitable[bool]] | None = None,
 ) -> list[Candidate]:
     """K parallel draft completions of the SAME grounded prompt; diversity comes
     from temperature > 0 (Re3). Raises if zero candidates survive."""
@@ -108,6 +112,7 @@ async def diverge(
             llm, user_id=user_id, model_source=model_source, model_ref=model_ref,
             messages=messages, prompt_est=prompt_est, max_tokens=max_tokens,
             temperature=temperature, reasoning_effort=reasoning_effort, trace_id=trace_id,
+            cancel_check=cancel_check,
         )
         for _ in range(max(1, k))
     ]
@@ -139,6 +144,7 @@ async def score(
     judge: LLMClient, *, user_id: str, model_source: str, model_ref: str,
     candidates: list[Candidate], profile: BookProfile, max_tokens: int = 512,
     trace_id: str | None = None,
+    cancel_check: Callable[[], Awaitable[bool]] | None = None,
 ) -> tuple[int, str, bool]:
     """Rerank → (winner_index, reason, measured). measured=False (→ index 0) on a
     single candidate or any failure/malformed verdict (never raises)."""
@@ -155,6 +161,7 @@ async def score(
                 "max_tokens": max_tokens, **_NO_THINK,
             },
             job_meta={"usage_purpose": "prose_rerank", "extractor": "rerank"}, trace_id=trace_id,
+            cancel_check=cancel_check,
         )
     except LLMError as exc:
         logger.warning("rerank degraded (LLM error): %s → candidate[0]", exc)
@@ -177,6 +184,7 @@ async def select_draft(
     packed_prompt: str, profile: BookProfile, operation: str, guide: str,
     k: int, prompt_est: int, max_tokens: int, temperature: float = 0.8,
     reasoning_effort: str | None = None, trace_id: str | None = None,
+    cancel_check: Callable[[], Awaitable[bool]] | None = None,
 ) -> Selection:
     """diverge(k) → score → Selection. The auto-loop's converge step; the winner
     is what A2's canon-check + critic then run on."""
@@ -184,11 +192,11 @@ async def select_draft(
         llm, user_id=user_id, model_source=drafter_source, model_ref=drafter_ref,
         packed_prompt=packed_prompt, profile=profile, operation=operation, guide=guide,
         k=k, prompt_est=prompt_est, max_tokens=max_tokens, temperature=temperature,
-        reasoning_effort=reasoning_effort, trace_id=trace_id,
+        reasoning_effort=reasoning_effort, trace_id=trace_id, cancel_check=cancel_check,
     )
     idx, reason, measured = await score(
         judge, user_id=user_id, model_source=judge_source, model_ref=judge_ref,
-        candidates=cands, profile=profile, trace_id=trace_id,
+        candidates=cands, profile=profile, trace_id=trace_id, cancel_check=cancel_check,
     )
     return Selection(
         winner=cands[idx], winner_index=idx, candidates=cands,

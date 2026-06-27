@@ -175,6 +175,63 @@ async def test_known_entities_merged_with_extracted(
 
 
 @pytest.mark.asyncio
+@patch(f"{_PASS2}.extract_facts", new_callable=AsyncMock)
+@patch(f"{_PASS2}.extract_events", new_callable=AsyncMock)
+@patch(f"{_PASS2}.extract_relations", new_callable=AsyncMock)
+@patch(f"{_PASS2}.extract_entities", new_callable=AsyncMock)
+async def test_cancel_check_forwarded_to_all_extractors(
+    mock_entities, mock_relations, mock_events, mock_facts,
+):
+    """bug #34 — extract_pass2 threads cancel_check to entity + R/E/F so an
+    in-flight LLM call aborts on job cancellation."""
+    mock_entities.return_value = [_entity("Kai")]
+    mock_relations.return_value = []
+    mock_events.return_value = []
+    mock_facts.return_value = []
+
+    async def _cancel() -> bool:
+        return False
+
+    await extract_pass2(
+        text="Kai met Zhao.",
+        known_entities=[],
+        user_id=USER_ID, project_id=PROJECT_ID,
+        model_source="user_model", model_ref="test-model",
+        llm_client=_fake_llm_client(),
+        cancel_check=_cancel,
+    )
+
+    for mock in (mock_entities, mock_relations, mock_events, mock_facts):
+        assert mock.call_args.kwargs["cancel_check"] is _cancel
+
+
+@pytest.mark.asyncio
+@patch(f"{_PASS2}.extract_facts", new_callable=AsyncMock)
+@patch(f"{_PASS2}.extract_events", new_callable=AsyncMock)
+@patch(f"{_PASS2}.extract_relations", new_callable=AsyncMock)
+@patch(f"{_PASS2}.extract_entities", new_callable=AsyncMock)
+async def test_cancel_check_defaults_none(
+    mock_entities, mock_relations, mock_events, mock_facts,
+):
+    """bug #34 — omitting cancel_check forwards None (back-compat)."""
+    mock_entities.return_value = [_entity("Kai")]
+    mock_relations.return_value = []
+    mock_events.return_value = []
+    mock_facts.return_value = []
+
+    await extract_pass2(
+        text="Kai met Zhao.",
+        known_entities=[],
+        user_id=USER_ID, project_id=PROJECT_ID,
+        model_source="user_model", model_ref="test-model",
+        llm_client=_fake_llm_client(),
+    )
+
+    for mock in (mock_entities, mock_relations, mock_events, mock_facts):
+        assert mock.call_args.kwargs["cancel_check"] is None
+
+
+@pytest.mark.asyncio
 @patch(f"{_PASS2}.extract_entities", new_callable=AsyncMock)
 async def test_extraction_error_from_entities_propagates(mock_entities):
     """ExtractionError from the entity stage halts the pipeline and

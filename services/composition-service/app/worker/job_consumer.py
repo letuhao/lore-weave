@@ -12,6 +12,7 @@ consumer crash) — the runtime backstop since a Redis stream gives no post-ACK 
 from __future__ import annotations
 
 import logging
+from collections.abc import Awaitable, Callable
 from datetime import datetime, timedelta, timezone
 from uuid import UUID
 
@@ -68,8 +69,20 @@ async def run_job(
         return f"already_{job.status}"
 
     await repo.update_status(uid, UUID(job_id), "running")
+
+    async def cancel_check() -> bool:
+        # bug #34 — immediate-cancel: abort the in-flight LLM call the moment the
+        # cancel endpoint CAS-sets generation_job.status='cancelled'. Fail-soft: any
+        # DB/read error returns False so a transient blip never spuriously cancels a
+        # healthy job (the engine LLM calls just continue).
+        try:
+            row = await repo.get(uid, UUID(job_id))
+        except Exception:  # noqa: BLE001 — read failure must not cancel a live job
+            return False
+        return row is not None and row.status == "cancelled"
+
     try:
-        result = await _run_operation(pool, llm, job)
+        result = await _run_operation(pool, llm, job, cancel_check=cancel_check)
     except _BUSINESS_ERRORS as exc:
         logger.info("composition job %s (%s) failed: %s", job_id, job.operation, exc)
         await repo.update_status(
@@ -89,30 +102,39 @@ def _worker_op(job) -> str:
     return (job.input or {}).get("worker_op") or job.operation
 
 
-async def _run_operation(pool: asyncpg.Pool, llm: LLMClient, job) -> dict:
+async def _run_operation(
+    pool: asyncpg.Pool, llm: LLMClient, job, *,
+    cancel_check: Callable[[], Awaitable[bool]] | None = None,
+) -> dict:
     """Dispatch by worker-op. The op's bearer-authenticated context was resolved
     into job.input by the endpoint; user_id/project_id come off the job row. Ops
-    needing knowledge (canon-reflect) grab the internal-auth singleton lazily."""
+    needing knowledge (canon-reflect) grab the internal-auth singleton lazily.
+    `cancel_check` is threaded into each blocking-LLM op so an in-flight call aborts
+    on cancel (bug #34); selection_edit streams via the SDK — a different abort path."""
     op = _worker_op(job)
     if op == "decompose_preview":
-        return await run_decompose(llm, user_id=str(job.user_id), input=job.input or {})
+        return await run_decompose(
+            llm, user_id=str(job.user_id), input=job.input or {}, cancel_check=cancel_check)
     if op == "stitch_chapter":
         inp = dict(job.input or {})
         inp.setdefault("user_id", str(job.user_id))
         inp.setdefault("project_id", str(job.project_id))
-        return await run_stitch(pool, llm, get_knowledge_client(), input=inp)
+        return await run_stitch(pool, llm, get_knowledge_client(), input=inp, cancel_check=cancel_check)
     if op == "generate":
         inp = dict(job.input or {})
         inp.setdefault("user_id", str(job.user_id))
         inp.setdefault("project_id", str(job.project_id))
-        return await run_generate(pool, llm, get_knowledge_client(), input=inp)
+        return await run_generate(pool, llm, get_knowledge_client(), input=inp, cancel_check=cancel_check)
     if op == "chapter_generate":
         inp = dict(job.input or {})
         inp.setdefault("user_id", str(job.user_id))
         inp.setdefault("project_id", str(job.project_id))
-        return await run_chapter_generate(pool, llm, get_knowledge_client(), input=inp)
+        return await run_chapter_generate(
+            pool, llm, get_knowledge_client(), input=inp, cancel_check=cancel_check)
     if op == "selection_edit":
         # No knowledge / pool needed — the endpoint pre-built the message list.
+        # cancel_check is NOT threaded here: selection_edit drains stream_draft via
+        # the raw SDK (engine/cowrite), which has its own abort path (not submit_and_wait).
         inp = dict(job.input or {})
         inp.setdefault("user_id", str(job.user_id))
         return await run_selection_edit(llm, input=inp)
