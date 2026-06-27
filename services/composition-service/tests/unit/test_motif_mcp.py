@@ -292,13 +292,45 @@ async def test_archive_user_scope_foreign_rejected():
     repo.archive.assert_not_awaited()
 
 
-async def test_bind_validates_then_degrades_pending_wiring():
-    """Wave-1 reconcile (D-MOTIF-MCP-BIND-WIRING): the W2 engine landed exposing
-    apply_motif_swap/undo_motif_swap (token-based undo), not the bind_motif(...)→dict /
-    application_id-undo contract this tool was authored against. Until the contract is
-    reconciled, composition_motif_bind VALIDATES (work/gate + the two IDOR checks) then
-    degrades cleanly (no engine mis-call); the HTTP twin is the working bind for P1.
-    REPLACE this test with the real undo assertions when the wiring lands."""
+class _FakeTxn:
+    async def __aenter__(self): return None
+    async def __aexit__(self, *a): return False
+
+
+class _FakeConn:
+    def transaction(self): return _FakeTxn()
+
+
+class _FakePoolCM:
+    async def __aenter__(self): return _FakeConn()
+    async def __aexit__(self, *a): return False
+
+
+class _FakePool:
+    """A pool whose acquire()/transaction() are no-op async CMs — so the wired
+    bind/unbind tools can run their `async with pool.acquire()/c.transaction()` blocks
+    while the engine call itself is mocked."""
+    def acquire(self): return _FakePoolCM()
+
+
+def _swap_result(**kw):
+    from types import SimpleNamespace
+    base = dict(
+        chapter_node_id=str(NODE), archived_scene_ids=["s-old"],
+        new_scene_ids=["s-new-1", "s-new-2"], orphaned_thread_ids=[],
+        new_motif_id=str(uuid.uuid4()),
+        undo_token={"chapter_node_id": str(NODE), "archived_scene_ids": ["s-old"],
+                    "new_scene_ids": ["s-new-1", "s-new-2"]},
+    )
+    base.update(kw)
+    return SimpleNamespace(**base)
+
+
+async def test_bind_wires_to_swap_engine_and_returns_undo_token():
+    """D-MOTIF-MCP-BIND-WIRING (cleared): composition_motif_bind validates work/gate +
+    the two IDOR checks, then calls W2's apply_motif_swap in one tx (the one-engine-two-
+    entries seam) and returns the real swap result + the undo_token (the verified A-tier
+    inverse via composition_motif_unbind)."""
     import app.mcp.server as srv
     from app.db.models import OutlineNode
 
@@ -308,16 +340,27 @@ async def test_bind_validates_then_degrades_pending_wiring():
     outline.get_node = AsyncMock(return_value=node)
     repo = AsyncMock()
     repo.get_visible = AsyncMock(return_value=_motif())
+    swap = AsyncMock(return_value=_swap_result())
     async with _patched(OutlineRepo=outline, MotifRepo=repo):
-        res = await srv.composition_motif_bind(
-            _Ctx(), srv._MotifBindArgs(
-                project_id=str(PROJECT), node_id=str(NODE), motif_id=str(uuid.uuid4()),
-            ),
-        )
-    assert res["success"] is False
-    assert res["reason"] == "pending_bind_wiring"
-    assert "outline" in res["use_instead"]  # points the agent at the working HTTP twin
-    # the IDOR validation still ran (you can only bind a motif you can see).
+        with patch.object(srv, "get_pool", return_value=_FakePool()), \
+                patch("app.db.repositories.motif_application.MotifApplicationRepo", MagicMock()), \
+                patch("app.engine.motif_select.apply_motif_swap", swap):
+            res = await srv.composition_motif_bind(
+                _Ctx(), srv._MotifBindArgs(
+                    project_id=str(PROJECT), node_id=str(NODE), motif_id=str(uuid.uuid4()),
+                    role_bindings={"protagonist": "ent-1"},
+                ),
+            )
+    assert res["success"] is True
+    assert res["new_scene_ids"] == ["s-new-1", "s-new-2"]
+    assert res["undo_token"]["new_scene_ids"] == ["s-new-1", "s-new-2"]
+    # the A-tier reversible contract: the undo_hint names the verified inverse tool.
+    assert res["_meta"]["undo_hint"]["tool"] == "composition_motif_unbind"
+    # the engine ran with new_motif set (a bind, not a clear) + the agent's role_bindings.
+    swap.assert_awaited_once()
+    _, kwargs = swap.call_args
+    assert kwargs["new_motif"] is not None
+    assert kwargs["binding"].role_bindings == {"protagonist": "ent-1"}
     repo.get_visible.assert_awaited_once()
 
 
@@ -343,21 +386,54 @@ async def test_bind_idor_foreign_motif_still_rejected():
             )
 
 
-async def test_unbind_validates_then_degrades_pending_wiring():
-    """Same reconcile seam (D-MOTIF-MCP-BIND-WIRING): unbind resolves the Work + gates
-    EDIT, then degrades EXPLICITLY (not via a fragile missing-symbol ImportError that
-    would flip to a wrong-signature call if an `unbind_motif` is later added to the
-    engine). REPLACE with the real archive assertion when the wiring lands."""
+async def test_unbind_clears_chapter_when_no_token():
+    """D-MOTIF-MCP-BIND-WIRING (cleared): unbind with no undo_token CLEARS the chapter's
+    motif (apply_motif_swap with new_motif=None) — the HTTP twin's motif_id=null mode."""
     import app.mcp.server as srv
+    from app.db.models import OutlineNode
 
-    async with _patched():  # WorksRepo + grant gate (EDIT) mocked by the helper
-        res = await srv.composition_motif_unbind(
-            _Ctx(), project_id=str(PROJECT), node_id=str(NODE),
-            application_id=str(uuid.uuid4()),
-        )
-    assert res["success"] is False
-    assert res["reason"] == "pending_bind_wiring"
-    assert "outline" in res["use_instead"]
+    node = OutlineNode(id=NODE, user_id=TEST_USER, project_id=PROJECT,
+                       kind="chapter", rank="a0", title="C", status="empty", version=1)
+    outline = AsyncMock()
+    outline.get_node = AsyncMock(return_value=node)
+    swap = AsyncMock(return_value=_swap_result(new_scene_ids=[], new_motif_id=None))
+    async with _patched(OutlineRepo=outline):
+        with patch.object(srv, "get_pool", return_value=_FakePool()), \
+                patch("app.db.repositories.motif_application.MotifApplicationRepo", MagicMock()), \
+                patch("app.engine.motif_select.apply_motif_swap", swap):
+            res = await srv.composition_motif_unbind(
+                _Ctx(), project_id=str(PROJECT), node_id=str(NODE),
+            )
+    assert res["success"] is True and res["cleared"] is True
+    swap.assert_awaited_once()
+    _, kwargs = swap.call_args
+    assert kwargs["new_motif"] is None  # a CLEAR, not a bind
+
+
+async def test_unbind_with_token_does_exact_inverse():
+    """unbind WITH an undo_token runs undo_motif_swap (the exact inverse of a prior bind —
+    restores the pre-bind scenes + prose)."""
+    import app.mcp.server as srv
+    from app.db.models import OutlineNode
+
+    node = OutlineNode(id=NODE, user_id=TEST_USER, project_id=PROJECT,
+                       kind="chapter", rank="a0", title="C", status="empty", version=1)
+    outline = AsyncMock()
+    outline.get_node = AsyncMock(return_value=node)
+    undo = AsyncMock(return_value={"chapter_node_id": str(NODE),
+                                   "restored_scene_ids": ["s-old"], "removed_scene_ids": ["s-new"]})
+    token = {"chapter_node_id": str(NODE), "archived_scene_ids": ["s-old"],
+             "new_scene_ids": ["s-new"]}
+    async with _patched(OutlineRepo=outline):
+        with patch.object(srv, "get_pool", return_value=_FakePool()), \
+                patch("app.db.repositories.motif_application.MotifApplicationRepo", MagicMock()), \
+                patch("app.engine.motif_select.undo_motif_swap", undo):
+            res = await srv.composition_motif_unbind(
+                _Ctx(), project_id=str(PROJECT), node_id=str(NODE), undo_token=token,
+            )
+    assert res["success"] is True and res["undone"] is True
+    assert res["restored_scene_ids"] == ["s-old"]
+    undo.assert_awaited_once()
 
 
 async def test_adopt_propose_mints_token_no_clone():

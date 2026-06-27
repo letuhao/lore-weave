@@ -1377,7 +1377,6 @@ class _MotifBindArgs(ForbidExtra):
     node_id: str
     motif_id: str
     role_bindings: dict[str, str] = {}
-    derive_scenes: bool = True
 
 
 @mcp_server.tool(
@@ -1413,22 +1412,50 @@ async def composition_motif_bind(ctx: MCPContext, args: _MotifBindArgs) -> dict:
     motif = await repo.get_visible(tc.user_id, UUID(args.motif_id))
     if motif is None:
         raise uniform_not_accessible()
-    # The bind/swap/undo ENGINE is owned by W2 (engine/motif_select.py) — the
-    # one-engine-two-entries seam (RECONCILE §2). At the Wave-1 reconcile node the W2
-    # engine landed exposing apply_motif_swap()/undo_motif_swap() (token-based undo),
-    # whereas this MCP tool was authored against a bind_motif(...)→dict / application_id
-    # undo contract. Reconciling the two — the response shape AND the undo model
-    # (token vs application_id) plus the ~30 mocked tests here — is a focused cross-WS
-    # contract task tracked as D-MOTIF-MCP-BIND-WIRING (see SESSION handoff). Until that
-    # lands, this tool VALIDATES (work/gate/IDOR above) then degrades cleanly rather
-    # than mis-calling the engine; the JWT-gated HTTP twin
-    # (PATCH /works/{p}/outline/{n}/motif) is the working bind entry for P1, and the
-    # planner auto-binds during decompose.
+    # WIRED to W2's engine (engine/motif_select.py) — the one-engine-two-entries seam
+    # (RECONCILE §2; D-MOTIF-MCP-BIND-WIRING cleared). The agent supplies role_bindings
+    # ({role_key: entity_id}) directly, so the binding is built without the glossary
+    # cast-name resolution the HTTP twin does (the agent already chose the entities); the
+    # swap runs in ONE transaction exactly like PATCH …/motif.
+    from app.db.repositories.motif_application import MotifApplicationRepo
+    from app.engine.motif_select import (
+        MotifBinding, MotifSwapError, SelectedMotif, _bind_annotations, apply_motif_swap,
+    )
+    pool = get_pool()
+    apps = MotifApplicationRepo(pool)
+    sel = SelectedMotif(motif=motif, score=1.0, match_reason={})
+    binding = MotifBinding(
+        role_bindings=dict(args.role_bindings),
+        unresolved_roles=[],
+        annotations=_bind_annotations(motif, args.role_bindings),
+        warning=None,
+    )
+    try:
+        async with pool.acquire() as c:
+            async with c.transaction():
+                res = await apply_motif_swap(
+                    outline, apps, tc.user_id, pid, work.book_id, node_id,
+                    new_motif=sel, binding=binding, cast_names={},
+                    k_ceiling=settings.compose_diverge_k,
+                    high_threshold=settings.plan_high_tension_threshold,
+                    min_scenes=settings.plan_min_scenes_per_chapter,
+                    max_scenes=settings.plan_max_scenes_per_chapter, conn=c,
+                )
+    except MotifSwapError:
+        # H13 uniform — a swap failure (e.g. node not a chapter) is not an oracle.
+        raise uniform_not_accessible()
     return {
-        "success": False,
-        "error": "motif binding via MCP is pending engine-contract reconciliation",
-        "reason": "pending_bind_wiring",
-        "use_instead": "PATCH /v1/composition/works/{project_id}/outline/{node_id}/motif",
+        "success": True,
+        "chapter_node_id": res.chapter_node_id,
+        "archived_scene_ids": res.archived_scene_ids,
+        "new_scene_ids": res.new_scene_ids,
+        "orphaned_thread_ids": res.orphaned_thread_ids,
+        "new_motif_id": res.new_motif_id,
+        "undo_token": res.undo_token,
+        # A-tier reversible: the verified inverse is composition_motif_unbind(undo_token).
+        "_meta": {"undo_hint": {"tool": "composition_motif_unbind",
+                                "args": {"project_id": args.project_id, "node_id": args.node_id,
+                                         "undo_token": res.undo_token}}},
     }
 
 
@@ -1448,25 +1475,54 @@ async def composition_motif_bind(ctx: MCPContext, args: _MotifBindArgs) -> dict:
 async def composition_motif_unbind(
     ctx: MCPContext,
     project_id: Annotated[str, "The Work's project_id."],
-    node_id: Annotated[str, "The chapter node the motif is bound to."],
-    application_id: Annotated[str, "The motif_application id to unbind."],
+    node_id: Annotated[str, "The chapter node to clear / undo a bind on."],
+    undo_token: Annotated[
+        dict | None,
+        "The undo_token from a prior composition_motif_bind — when present, does the EXACT "
+        "inverse (restores the pre-bind scenes + prose). Omit to CLEAR the chapter's motif.",
+    ] = None,
 ) -> dict:
     tc = _ctx(ctx)
     works = WorksRepo(get_pool())
     pid = UUID(project_id)
     work = await _work_or_deny(works, tc, pid)
     await _gate(tc, work.book_id, GrantLevel.EDIT)
-    # Same seam as composition_motif_bind: W2's engine offers apply_motif_swap(clear
-    # mode)/undo_motif_swap (token-based), not the unbind_motif(application_id) contract
-    # this tool was authored against. Degrade EXPLICITLY (not via a fragile ImportError
-    # that would flip to a wrong-signature call the instant an `unbind_motif` symbol is
-    # added to the engine) — tracked D-MOTIF-MCP-BIND-WIRING. The HTTP twin
-    # (PATCH …/motif with motif_id=null = clear) is the working entry for P1.
+    outline = OutlineRepo(get_pool())
+    nid = UUID(node_id)
+    node = await outline.get_node(tc.user_id, nid)
+    if node is None or node.project_id != pid:
+        raise uniform_not_accessible()
+    # WIRED to W2's engine (D-MOTIF-MCP-BIND-WIRING cleared): a token does the exact
+    # inverse of a bind (undo_motif_swap); no token CLEARS the chapter's motif
+    # (apply_motif_swap with new_motif=None) — the two modes of the HTTP twin.
+    from app.db.repositories.motif_application import MotifApplicationRepo
+    from app.engine.motif_select import apply_motif_swap, MotifSwapError, undo_motif_swap
+    pool = get_pool()
+    apps = MotifApplicationRepo(pool)
+    if undo_token is not None:
+        async with pool.acquire() as c:
+            async with c.transaction():
+                res = await undo_motif_swap(outline, apps, tc.user_id, pid, undo_token, conn=c)
+        return {"success": True, "undone": True, **res}
+    try:
+        async with pool.acquire() as c:
+            async with c.transaction():
+                res = await apply_motif_swap(
+                    outline, apps, tc.user_id, pid, work.book_id, nid,
+                    new_motif=None, binding=None, cast_names={},
+                    k_ceiling=settings.compose_diverge_k,
+                    high_threshold=settings.plan_high_tension_threshold,
+                    min_scenes=settings.plan_min_scenes_per_chapter,
+                    max_scenes=settings.plan_max_scenes_per_chapter, conn=c,
+                )
+    except MotifSwapError:
+        raise uniform_not_accessible()
     return {
-        "success": False,
-        "error": "motif unbinding via MCP is pending engine-contract reconciliation",
-        "reason": "pending_bind_wiring",
-        "use_instead": "PATCH /v1/composition/works/{project_id}/outline/{node_id}/motif (motif_id=null)",
+        "success": True, "cleared": True,
+        "chapter_node_id": res.chapter_node_id,
+        "archived_scene_ids": res.archived_scene_ids,
+        "new_scene_ids": res.new_scene_ids,
+        "undo_token": res.undo_token,
     }
 
 
@@ -1587,6 +1643,10 @@ class _ArcImportArgs(ForbidExtra):
     import_source_id: str
     use_web: bool = False
     arc_hint: str | None = None
+    # The SOURCE language (R1.1.3 — a first-class dedup/embed key; an imported zh work
+    # tagged 'en' is a re-key migration later). The deconstruct threads this onto the
+    # derived arc_template + member motifs.
+    language: str = "en"
 
 
 @mcp_server.tool(
@@ -1616,6 +1676,7 @@ async def composition_arc_import_analyze(ctx: MCPContext, args: _ArcImportArgs) 
         "import_source_id": args.import_source_id,
         "use_web": args.use_web,
         "arc_hint": args.arc_hint,
+        "language": args.language,
         "estimate_usd": estimate["estimated_usd"],
     }
     confirm_token = mint_confirm_token(

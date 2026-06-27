@@ -556,6 +556,7 @@ async def _execute_arc_import(
             "import_source_id": str(import_source_id),
             "use_web": payload.get("use_web"),
             "arc_hint": payload.get("arc_hint"),
+            "language": payload.get("language") or "en",
         },
     )
     return {
