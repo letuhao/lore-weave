@@ -34,6 +34,7 @@ from loreweave_llm.reasoning import ReasoningDirective, reasoning_fields
 from ..config import settings
 from ..llm_client import LLMClient
 from .block_batcher import build_batch_plan
+from .cost import resolve_job_cost_usd
 from .chunk_splitter import estimate_tokens
 from .extraction_cache import (
     RawCacheKey,
@@ -420,11 +421,22 @@ async def _run_extraction_job(msg: dict, job_id: UUID, user_id: str, pool, publi
     # emit never disturbs the run (the terminal rollup + reconcile sweep backstop accuracy).
     async def _emit_unified_progress() -> None:
         done = completed + failed
+        # bug #3: carry live tokens + derived cost so the /jobs detail Cost & Usage panel
+        # updates every chapter instead of only at completion. The gateway `usage` has no
+        # cost, so price the running token totals via the provider-registry oracle (same
+        # call cost.py uses for actuals — D-JOBS-P4). Both helpers are best-effort: a
+        # provider-registry blip just shows cost null for this frame, corrected next chapter.
+        cost = await resolve_job_cost_usd(
+            owner_user_id=str(user_id), model_source=model_source, model_ref=model_ref,
+            input_tokens=total_input_tokens, output_tokens=total_output_tokens,
+        )
         await emit_job_event_safe(
             pool, service=_JOB_SERVICE, job_id=str(job_id), owner_user_id=str(user_id),
             kind=_JOB_KIND, status="running",
             progress={"done": done, "total": len(chapter_ids)},
             detail_status=f"{done}/{len(chapter_ids)} chapters",
+            cost_usd=cost,
+            tokens_in=total_input_tokens or None, tokens_out=total_output_tokens or None,
         )
 
     await _emit_unified_progress()  # baseline (0/N fresh, or k/N on resume) before the loop
@@ -580,10 +592,20 @@ async def _run_extraction_job(msg: dict, job_id: UUID, user_id: str, pool, publi
         final_status = "completed"
     else:
         final_status = "completed_with_errors"
+    # bug #3 / D-JOBS-P4: derive the ACTUAL job cost from the summed tokens via the
+    # provider-registry pricing oracle (the gateway `usage` carries only tokens). Resolved
+    # out-of-tx (network I/O), best-effort (None on an unpriced model / registry blip), and
+    # folded into the finalize UPDATE + the terminal job event so the GET endpoint and the
+    # unified Jobs detail page both show the final cost.
+    _final_cost = await resolve_job_cost_usd(
+        owner_user_id=str(user_id), model_source=model_source, model_ref=model_ref,
+        input_tokens=total_input_tokens, output_tokens=total_output_tokens,
+    )
     async with pool.acquire() as db:
         await db.execute(
-            "UPDATE extraction_jobs SET status=$2, finished_at=now() WHERE job_id=$1",
-            job_id, final_status,
+            "UPDATE extraction_jobs SET status=$2, finished_at=now(), "
+            "cost_usd=COALESCE($3, cost_usd) WHERE job_id=$1",
+            job_id, final_status, _final_cost,
         )
 
     # OBS/M2 (INV-O14) — the JOB-TERMINAL rollup. The per-batch outcome rows are the SSOT;
@@ -609,6 +631,7 @@ async def _run_extraction_job(msg: dict, job_id: UUID, user_id: str, pool, publi
     await emit_job_event_safe(
         pool, service=_JOB_SERVICE, job_id=str(job_id), owner_user_id=str(user_id),
         kind=_JOB_KIND, status=_canon,
+        cost_usd=_final_cost,
         tokens_in=total_input_tokens or None, tokens_out=total_output_tokens or None,
     )
 

@@ -76,12 +76,37 @@ Want to monitor the glossary extraction live but cannot — job detail page has 
 > Live-smoke: deferred — full stack (translation-svc + jobs-svc + RabbitMQ/Redis + a real LLM
 > extraction) not bootable here. Reuses the proven emit path already used for running/terminal
 > on this same job, so cross-service contract risk is low. D-JOBS-EXTRACT-LIVE-PROGRESS-LIVE-SMOKE.
+> /review-impl: no HIGH/MED. Verified single sequential progress site (no bypass via the
+> within-chapter gather), no consumer reacts to job.running except the SSE notify (no
+> notification spam), late running events can't regress a terminal row (monotonic WHERE), and
+> the relay→projection→SSE→FE path for `progress` is PRODUCTION-PROVEN by book-service's
+> book_import (import.go:519, outbox_test.go) — extraction is just a new producer onto it.
 
-### [ ] 3. Job detail missing total cost; token cost not updated until job done
+### [x] 3. Job detail missing total cost; token cost not updated until job done
 Job detail doesn't show total cost. Current token cost is not updated until the job is done — should update frequently.
 
-> RC:
-> Fix:
+> RC: Two gaps in the extraction worker's unified-stream emits. (1) COST was never computed:
+> the LLM gateway `usage` carries only tokens (no cost), and unlike the translation worker
+> (D-JOBS-P4 `resolve_job_cost_usd`) the extraction worker never priced its tokens — its
+> terminal emit passed `tokens_in/out` but no `cost_usd`, so the projection's `cost_usd` stayed
+> NULL → the detail "Cost so far" showed "—" forever. (2) TOKENS only rode the terminal event,
+> so they appeared only at completion. The FE `JobCostUsagePanel` was already built for live
+> updates ("Cost so far"); the gap was purely producer-side.
+> Fix (BE-only): `_emit_unified_progress()` (the bug-#2 helper) now also resolves cost via the
+> provider-registry oracle from the running token totals and carries `cost_usd` + `tokens_in/out`
+> on every per-chapter emit (live). Finalize resolves the final cost, persists it to the new
+> `extraction_jobs.cost_usd` column (mirrors `translation_jobs.cost_usd`, idempotent migration),
+> and the terminal emit carries it too. Pricing comes ENTIRELY from provider-registry (no
+> hardcoded pricing/model). Best-effort: a 0-token baseline skips the HTTP; a registry blip
+> shows cost null for that frame and self-corrects next chapter (projection + `effectiveJob`
+> both COALESCE cost, so it never flickers to null).
+> Tests: extraction-worker 20/20 (added a live-cost/tokens + persisted-cost_usd test).
+> Live-smoke: deferred with #2 (D-JOBS-EXTRACT-LIVE-PROGRESS-LIVE-SMOKE) — same stack/path;
+> reuses the translation worker's proven `resolve_job_cost_usd` oracle call.
+> Follow-up (optional, not blocking): the extraction GET endpoint (`extraction.py`) still returns
+> only `cost_estimate`, not the new actual `cost_usd` — the unified Jobs detail page (the bug
+> surface) reads the projection so it's fixed; exposing actual cost on the wizard's own results
+> is a minor nicety. Per-chapter pricing adds 1 best-effort HTTP/chapter (chapters are slow, fine).
 
 ### [ ] 4. Translation glossary cannot be configured to run parallel; need GUI for parallel workers
 Translation glossary cannot be configured to run parallel like the glossary extraction job. May happen in other jobs too. Need a GUI to set parallel workers.

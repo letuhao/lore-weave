@@ -86,6 +86,7 @@ async def test_resume_skips_completed_chapters_and_finalizes():
 
     with patch("app.workers.extraction_worker.fetch_known_entities", new=AsyncMock(return_value=[])), \
          patch("app.workers.extraction_worker._process_extraction_chapter", new=AsyncMock()) as proc, \
+         patch("app.workers.extraction_worker.resolve_job_cost_usd", new=AsyncMock(return_value=None)), \
          patch("app.workers.extraction_worker.emit_job_event_safe", new=AsyncMock()) as emit:
         await _run_extraction_job(
             {"book_id": "b", "chapter_ids": [c1, c2]},
@@ -138,6 +139,51 @@ async def test_per_chapter_emits_unified_progress_for_live_monitoring():
 
 
 @pytest.mark.asyncio
+async def test_progress_and_terminal_carry_live_cost_and_tokens():
+    # bug #3: the unified Jobs detail Cost & Usage panel must update live, not only at
+    # completion. Each progress emit + the terminal emit carry tokens_in/out and a cost_usd
+    # PRICED FROM THE ACTUAL summed tokens via the provider-registry oracle (not a placeholder),
+    # and finalize persists cost_usd onto extraction_jobs.
+    jid = uuid4()
+    c1 = str(uuid4())
+    db = AsyncMock()
+    db.fetchval = AsyncMock(return_value=jid)
+    db.fetch = AsyncMock(return_value=[])
+    db.execute = AsyncMock()
+    publish, publish_event = AsyncMock(), AsyncMock()
+    chapter_result = {"created": 2, "input_tokens": 100, "output_tokens": 40, "entities": []}
+
+    with patch("app.workers.extraction_worker.fetch_known_entities", new=AsyncMock(return_value=[])), \
+         patch("app.workers.extraction_worker._process_extraction_chapter",
+               new=AsyncMock(return_value=chapter_result)), \
+         patch("app.workers.extraction_worker.resolve_job_cost_usd",
+               new=AsyncMock(return_value=0.0123)) as price, \
+         patch("app.workers.extraction_worker.emit_job_event_safe", new=AsyncMock()) as emit:
+        await _run_extraction_job(
+            {"book_id": "b", "chapter_ids": [c1], "model_source": "user_model", "model_ref": "m1"},
+            jid, "u", _pool(db), publish, publish_event, MagicMock(),
+        )
+
+    # cost is priced from the ACTUAL summed tokens (100/40), not a flat placeholder
+    price.assert_awaited()
+    assert price.await_args_list[-1].kwargs["input_tokens"] == 100
+    assert price.await_args_list[-1].kwargs["output_tokens"] == 40
+    # the post-chapter progress emit carries live cost + tokens (updates every chapter)
+    progress_emits = [c for c in emit.await_args_list
+                      if c.kwargs.get("status") == "running" and c.kwargs.get("progress")]
+    live = progress_emits[-1].kwargs
+    assert live["cost_usd"] == 0.0123
+    assert live["tokens_in"] == 100 and live["tokens_out"] == 40
+    # the terminal emit also carries the final cost + tokens
+    terminal = [c for c in emit.await_args_list
+                if c.kwargs.get("status") in ("completed", "completed_with_errors", "failed")]
+    assert terminal and terminal[-1].kwargs["cost_usd"] == 0.0123
+    assert terminal[-1].kwargs["tokens_in"] == 100
+    # finalize persisted cost_usd onto extraction_jobs
+    assert any("cost_usd=COALESCE" in str(c.args[0]) for c in db.execute.await_args_list)
+
+
+@pytest.mark.asyncio
 async def test_job_terminal_emits_batch_summary_rollup():
     # OBS/M2 (INV-O14): the job-terminal notification carries a per-status rollup derived
     # from the extraction_batch_outcomes SSOT, so a truncated/rejected batch is visible.
@@ -156,6 +202,7 @@ async def test_job_terminal_emits_batch_summary_rollup():
 
     with patch("app.workers.extraction_worker.fetch_known_entities", new=AsyncMock(return_value=[])), \
          patch("app.workers.extraction_worker._process_extraction_chapter", new=AsyncMock()), \
+         patch("app.workers.extraction_worker.resolve_job_cost_usd", new=AsyncMock(return_value=None)), \
          patch("app.workers.extraction_worker.emit_job_event_safe", new=AsyncMock()):
         await _run_extraction_job(
             {"book_id": "b", "chapter_ids": [c1]},
