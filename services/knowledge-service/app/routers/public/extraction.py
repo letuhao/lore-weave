@@ -1191,17 +1191,21 @@ class RebuildRequest(BaseModel):
 
 @router.post(
     "/{project_id}/extraction/rebuild",
-    response_model=ExtractionJob,
     status_code=status.HTTP_201_CREATED,
 )
 async def rebuild_extraction(
     project_id: UUID,
     body: RebuildRequest,
+    confirm: bool = False,
     user_id: UUID = Depends(require_project_grant(GrantLevel.OWNER)),
     projects_repo: ProjectsRepo = Depends(get_projects_repo),
     jobs_repo: ExtractionJobsRepo = Depends(get_extraction_jobs_repo),
-) -> ExtractionJob:
+) -> ExtractionJob | dict:
     """Delete the existing graph and start a full extraction rebuild.
+
+    Without ``?confirm=true``: returns a destructive-warning preview with the
+    live node counts (``action_required='confirm'``) and deletes NOTHING (bug
+    #14). With ``?confirm=true``: deletes the graph and starts the rebuild.
 
     Combines K16.8 (delete graph) + K16.3 (start job with scope=all).
     The delete runs first; if the start fails, the graph is gone but
@@ -1229,6 +1233,27 @@ async def rebuild_extraction(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
             detail="Neo4j not configured",
         )
+
+    # K-DATASAFE (bug #14) — destructive guard: a rebuild DELETES the entire
+    # graph, so require an explicit ?confirm=true. Without it, return a warning
+    # preview carrying the live node counts so the FE can show "this deletes N
+    # entities" and demand a typed confirmation (mirrors change_embedding_model).
+    # Defense-in-depth: holds even if a caller bypasses the FE confirm dialog.
+    if not confirm:
+        _params = {"user_id": str(user_id), "project_id": str(project_id)}
+        async with neo4j_session() as session:
+            _rec = await (await session.run(_GRAPH_STATS_CYPHER, _params)).single()
+        return {
+            "warning": (
+                "Rebuilding permanently DELETES this project's entire knowledge "
+                "graph and rebuilds it from scratch. This cannot be undone. "
+                "Pass ?confirm=true to proceed."
+            ),
+            "entity_count": int(_rec["entity_count"] or 0) if _rec else 0,
+            "fact_count": int(_rec["fact_count"] or 0) if _rec else 0,
+            "event_count": int(_rec["event_count"] or 0) if _rec else 0,
+            "action_required": "confirm",
+        }
 
     # Step 1: Delete existing graph
     await _delete_project_graph(user_id, project_id)

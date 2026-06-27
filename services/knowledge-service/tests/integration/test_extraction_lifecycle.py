@@ -341,7 +341,7 @@ def test_full_extraction_lifecycle():
                         return_value=_mock_pool()):
                 state.job_status = "running"
                 resp = client.post(
-                    f"/v1/knowledge/projects/{_TEST_PROJECT}/extraction/rebuild",
+                    f"/v1/knowledge/projects/{_TEST_PROJECT}/extraction/rebuild?confirm=true",
                     json={
                         "llm_model": "test-model",
                         "embedding_model": "bge-m3",

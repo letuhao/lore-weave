@@ -133,7 +133,7 @@ def test_rebuild_success(mock_settings, mock_neo4j):
     mock_neo4j.return_value.__aexit__ = AsyncMock(return_value=False)
 
     client, repo = _make_client()
-    resp = client.post(_url(), json=_body())
+    resp = client.post(_url() + "?confirm=true", json=_body())
     _stop(client)
     assert resp.status_code == 201
     data = resp.json()
@@ -142,6 +142,33 @@ def test_rebuild_success(mock_settings, mock_neo4j):
 
     # Neo4j delete should have been called for each label
     assert mock_session.run.call_count == 4  # 4 labels
+
+
+@patch("app.routers.public.extraction.neo4j_session")
+@patch("app.routers.public.extraction.app_settings")
+def test_rebuild_without_confirm_returns_warning_and_deletes_nothing(mock_settings, mock_neo4j):
+    """bug #14 — a rebuild without ?confirm=true must NOT delete; it returns a
+    destructive-warning preview carrying the live node counts."""
+    mock_settings.neo4j_uri = "bolt://localhost:7687"
+
+    mock_record = {"entity_count": 12000, "fact_count": 50, "event_count": 30, "passage_count": 0}
+    mock_result = AsyncMock()
+    mock_result.single = AsyncMock(return_value=mock_record)
+    mock_session = AsyncMock()
+    mock_session.run = AsyncMock(return_value=mock_result)
+    mock_neo4j.return_value.__aenter__ = AsyncMock(return_value=mock_session)
+    mock_neo4j.return_value.__aexit__ = AsyncMock(return_value=False)
+
+    client, _ = _make_client()
+    resp = client.post(_url(), json=_body())  # no confirm
+    _stop(client)
+    assert resp.status_code == 201
+    data = resp.json()
+    assert data["action_required"] == "confirm"
+    assert data["entity_count"] == 12000
+    assert "scope" not in data  # not a job — nothing was started
+    # Only the stats COUNT query ran — the 4-label destructive delete did NOT.
+    assert mock_session.run.call_count == 1
 
 
 def test_rebuild_project_not_found():

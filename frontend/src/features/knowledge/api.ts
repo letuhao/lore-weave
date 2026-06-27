@@ -202,6 +202,17 @@ export interface RebuildPayload {
   max_spend_usd?: string;
 }
 
+// bug #14 — without `?confirm=true` the rebuild BE returns this destructive
+// preview (carrying live node counts) and deletes NOTHING; with it, the
+// rebuild runs and returns the new ExtractionJob.
+export interface RebuildWarning {
+  warning: string;
+  entity_count: number;
+  fact_count: number;
+  event_count: number;
+  action_required: 'confirm';
+}
+
 // K19a.6 — discriminated return type for PUT /embedding-model.
 // Without `?confirm=true` the BE returns a warning preview; with it
 // the destructive change runs and the BE returns the result metadata.
@@ -1340,13 +1351,17 @@ export const knowledgeApi = {
     );
   },
 
+  // bug #14 — destructive guard. Without `confirm`, the BE returns a
+  // RebuildWarning preview (node counts) and deletes nothing; the FE shows a
+  // typed confirmation, then re-calls with `confirm=true` to commit.
   rebuildGraph(
     projectId: string,
     payload: RebuildPayload,
     token: string,
-  ): Promise<ExtractionJobWire> {
-    return apiJson<ExtractionJobWire>(
-      `${BASE}/projects/${projectId}/extraction/rebuild`,
+    confirm = false,
+  ): Promise<ExtractionJobWire | RebuildWarning> {
+    return apiJson<ExtractionJobWire | RebuildWarning>(
+      `${BASE}/projects/${projectId}/extraction/rebuild${confirm ? '?confirm=true' : ''}`,
       { method: 'POST', body: JSON.stringify(payload), token },
     );
   },

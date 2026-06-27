@@ -46,4 +46,29 @@ describe('ConfirmDialog', () => {
     render(<ConfirmDialog {...defaultProps} loading />);
     expect(screen.getByText('Confirm')).toBeDisabled();
   });
+
+  // bug #14 — AWS-style typed confirmation
+  it('gates confirm behind a typed phrase and enables only on exact match', async () => {
+    const onConfirm = vi.fn();
+    render(<ConfirmDialog {...defaultProps} confirmLabel="Rebuild" confirmationPhrase="My Project" onConfirm={onConfirm} />);
+    const confirmBtn = screen.getByText('Rebuild');
+    expect(confirmBtn).toBeDisabled();
+
+    const input = screen.getByTestId('confirm-phrase-input');
+    await userEvent.type(input, 'My Proj');
+    expect(confirmBtn).toBeDisabled(); // partial — still gated
+    await userEvent.type(input, 'ect');
+    expect(confirmBtn).toBeEnabled();
+    await userEvent.click(confirmBtn);
+    expect(onConfirm).toHaveBeenCalledOnce();
+  });
+
+  it('blocks paste into the typed-confirmation input (no copy-paste)', async () => {
+    render(<ConfirmDialog {...defaultProps} confirmationPhrase="DELETE" />);
+    const input = screen.getByTestId('confirm-phrase-input') as HTMLInputElement;
+    input.focus();
+    await userEvent.paste('DELETE');
+    expect(input.value).toBe(''); // paste prevented → still gated
+    expect(screen.getByText('Confirm')).toBeDisabled();
+  });
 });
