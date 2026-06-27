@@ -243,6 +243,39 @@ export const providerApi = {
 export const MCP_SCOPES = ['read', 'paid_read', 'write_auto', 'write_confirm'] as const;
 export type McpScope = (typeof MCP_SCOPES)[number];
 
+// Domain scopes (PUB-3 / OD-5). A key reaches a tool only if it holds the tool's
+// TIER scope AND a `domain:<d>` scope for every domain the tool touches (the edge
+// scope-filter enforces both — docs/specs/2026-06-26-public-mcp/05 §2, H-F). New
+// keys default to `read` on `book + glossary + knowledge` (OD-5). Stored in the same
+// flat `scopes[]` array as the tier scopes, prefixed with `domain:`.
+export const MCP_DOMAINS = [
+  'book',
+  'glossary',
+  'knowledge',
+  'translation',
+  'composition',
+  'jobs',
+  'settings',
+  'lore_enrichment',
+] as const;
+export type McpDomain = (typeof MCP_DOMAINS)[number];
+
+export const DEFAULT_MCP_DOMAINS: McpDomain[] = ['book', 'glossary', 'knowledge'];
+
+/** The scope token a key must carry to reach domain `d` (mirrors the edge). */
+export const domainScope = (d: McpDomain): string => `domain:${d}`;
+
+/** Split a stored `scopes[]` into its tier tokens and bare domain names. */
+export function splitScopes(scopes: string[]): { tiers: string[]; domains: string[] } {
+  const tiers: string[] = [];
+  const domains: string[] = [];
+  for (const s of scopes) {
+    if (s.startsWith('domain:')) domains.push(s.slice('domain:'.length));
+    else tiers.push(s);
+  }
+  return { tiers, domains };
+}
+
 export type McpKey = {
   key_id: string;
   name: string;

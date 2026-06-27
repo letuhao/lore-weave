@@ -18,6 +18,7 @@
     "loading": "Đang tải khóa…",
     "empty": "Chưa có khóa MCP nào. Tạo một khóa để cho tác nhân bên ngoài kết nối.",
     "scopes_label": "Phạm vi: {{scopes}}",
+    "domains_label": "Lĩnh vực: {{domains}}",
     "last_used": "Dùng lần cuối: {{date}}",
     "expires_label": "Hết hạn: {{date}}",
     "revoke_aria": "Thu hồi khóa {{name}}",
@@ -31,6 +32,16 @@
       "write_auto": "Ghi tự động",
       "write_confirm": "Ghi cần xác nhận"
     },
+    "domain": {
+      "book": "Sách",
+      "glossary": "Thuật ngữ",
+      "knowledge": "Tri thức",
+      "translation": "Dịch thuật",
+      "composition": "Sáng tác",
+      "jobs": "Tác vụ",
+      "settings": "Cài đặt",
+      "lore_enrichment": "Làm giàu cốt truyện"
+    },
     "create": {
       "title": "Tạo khóa MCP",
       "subtitle": "Bí mật chỉ hiển thị một lần. Hãy lưu vào nơi an toàn.",
@@ -38,6 +49,8 @@
       "name_ph": "vd: tac-nhan-nghien-cuu",
       "scopes": "Phạm vi",
       "scopes_hint": "Khóa được phép làm gì. Bắt đầu chỉ với Đọc; thêm khi thực sự cần.",
+      "domains": "Lĩnh vực",
+      "domains_hint": "Khóa được phép truy cập những mảng nào. Khóa không chọn lĩnh vực nào sẽ không gọi được gì.",
       "rate_limit": "Giới hạn tốc độ (yêu cầu/phút)",
       "spend_cap": "Hạn mức chi (USD)",
       "spend_cap_ph": "Không giới hạn",

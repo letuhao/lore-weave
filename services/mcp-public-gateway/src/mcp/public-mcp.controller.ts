@@ -3,6 +3,7 @@ import { randomUUID } from 'node:crypto';
 import type { Request, Response } from 'express';
 import { loadConfig } from '../config/config.js';
 import { KeyResolver } from '../auth/key-resolver.js';
+import { filterListResponseText, gateRequestBody, isListRequest } from '../scope/scope-filter.js';
 
 /**
  * The PUBLIC MCP edge. An external agent connects here (via api-gateway-bff `/mcp`)
@@ -65,18 +66,37 @@ export class PublicMcpController {
     const mcpVersion = req.header('mcp-protocol-version');
     if (mcpVersion) outboundHeaders['mcp-protocol-version'] = mcpVersion;
 
+    // PUB-3 / H-E: scope gate the REQUEST. A `tools/call` to a tool outside the key's
+    // tier∩domain scope (or an unknown tool) is denied HERE, before the relay —
+    // default-deny / fail-closed. A `*` (dev) key bypasses inside the helper.
+    const hasBody = req.method !== 'GET' && req.method !== 'HEAD' && req.body !== undefined;
+    if (hasBody) {
+      const denial = gateRequestBody(req.body, resolved.scopes);
+      if (denial !== null) {
+        res.status(200).json(denial); // JSON-RPC errors travel as a 200 envelope
+        return;
+      }
+    }
+
     // Relay to the USER surface only — never `/mcp/admin` (PUB-9 / H-A).
     const target = `${this.cfg.aiGatewayUrl}/mcp`;
-    const hasBody = req.method !== 'GET' && req.method !== 'HEAD' && req.body !== undefined;
     try {
       const upstream = await fetch(target, {
         method: req.method,
         headers: outboundHeaders,
         body: hasBody ? JSON.stringify(req.body) : undefined,
       });
-      const text = await upstream.text();
+      let text = await upstream.text();
+      // PUB-3 / H-F: filter the `tools/list` RESPONSE so the agent only ever sees the
+      // tools its key may call. Only rewrite a successful list; errors pass through.
+      const ok = upstream.status >= 200 && upstream.status < 300;
+      const rewroteList = ok && hasBody && isListRequest(req.body);
+      if (rewroteList) {
+        text = filterListResponseText(text, resolved.scopes, this.log);
+      }
       res.status(upstream.status);
-      const ct = upstream.headers.get('content-type');
+      // We emit JSON when we rewrote the list; otherwise echo the upstream type.
+      const ct = rewroteList ? 'application/json' : upstream.headers.get('content-type');
       if (ct) res.setHeader('content-type', ct);
       res.send(text);
     } catch (e) {

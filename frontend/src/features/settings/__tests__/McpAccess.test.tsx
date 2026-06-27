@@ -31,7 +31,7 @@ function DialogHarness({ onCreate }: { onCreate: (p: McpKeyCreatePayload) => Pro
 }
 
 describe('McpCreateKeyDialog', () => {
-  it('defaults to the read scope and reveals the secret once on create', async () => {
+  it('defaults to read tier + OD-5 domains and reveals the secret once on create', async () => {
     const onCreate = vi.fn().mockResolvedValue(CREATED);
     render(<DialogHarness onCreate={onCreate} />);
 
@@ -39,15 +39,32 @@ describe('McpCreateKeyDialog', () => {
     fireEvent.click(screen.getByRole('button', { name: 'mcp.create.submit' }));
 
     await waitFor(() => expect(screen.getByText('lw_pk_SUPERSECRETVALUE')).toBeInTheDocument());
+    // The composed scopes[]: read tier + the OD-5 default domains (book/glossary/knowledge).
     expect(onCreate).toHaveBeenCalledWith(
       expect.objectContaining({
         name: 'agent',
-        scopes: ['read'],
+        scopes: ['read', 'domain:book', 'domain:glossary', 'domain:knowledge'],
         rate_limit_rpm: 60,
         spend_cap_usd: null,
         allow_self_confirm: false,
         expires_at: null,
       }),
+    );
+  });
+
+  it('composes deselected domains out of the submitted scopes', async () => {
+    const onCreate = vi.fn().mockResolvedValue(CREATED);
+    render(<DialogHarness onCreate={onCreate} />);
+
+    fireEvent.change(screen.getByPlaceholderText('mcp.create.name_ph'), { target: { value: 'agent' } });
+    // Untick the two non-knowledge defaults → only domain:knowledge remains.
+    fireEvent.click(screen.getByText('mcp.domain.book'));
+    fireEvent.click(screen.getByText('mcp.domain.glossary'));
+    fireEvent.click(screen.getByRole('button', { name: 'mcp.create.submit' }));
+
+    await waitFor(() => expect(onCreate).toHaveBeenCalled());
+    expect(onCreate).toHaveBeenCalledWith(
+      expect.objectContaining({ scopes: ['read', 'domain:knowledge'] }),
     );
   });
 

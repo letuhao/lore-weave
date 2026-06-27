@@ -4,7 +4,15 @@ import { useTranslation } from 'react-i18next';
 import { AlertTriangle, KeyRound, X } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { CopyButton } from '@/components/shared/CopyButton';
-import { MCP_SCOPES, type McpKeyCreatePayload, type McpKeyCreated } from './api';
+import {
+  MCP_SCOPES,
+  MCP_DOMAINS,
+  DEFAULT_MCP_DOMAINS,
+  domainScope,
+  type McpDomain,
+  type McpKeyCreatePayload,
+  type McpKeyCreated,
+} from './api';
 
 interface Props {
   open: boolean;
@@ -24,6 +32,7 @@ export function McpCreateKeyDialog({ open, onOpenChange, onCreate }: Props) {
   const { t } = useTranslation('settings');
   const [name, setName] = useState('');
   const [scopes, setScopes] = useState<string[]>(['read']);
+  const [domains, setDomains] = useState<McpDomain[]>(DEFAULT_MCP_DOMAINS);
   const [rateLimit, setRateLimit] = useState('60');
   const [spendCap, setSpendCap] = useState('');
   const [allowSelfConfirm, setAllowSelfConfirm] = useState(false);
@@ -34,6 +43,7 @@ export function McpCreateKeyDialog({ open, onOpenChange, onCreate }: Props) {
   function reset() {
     setName('');
     setScopes(['read']);
+    setDomains(DEFAULT_MCP_DOMAINS);
     setRateLimit('60');
     setSpendCap('');
     setAllowSelfConfirm(false);
@@ -52,15 +62,22 @@ export function McpCreateKeyDialog({ open, onOpenChange, onCreate }: Props) {
     setScopes((prev) => (prev.includes(s) ? prev.filter((x) => x !== s) : [...prev, s]));
   }
 
+  function toggleDomain(d: McpDomain) {
+    setDomains((prev) => (prev.includes(d) ? prev.filter((x) => x !== d) : [...prev, d]));
+  }
+
   async function handleSubmit() {
     const trimmed = name.trim();
     if (!trimmed) return;
     setSaving(true);
     const rpm = Number(rateLimit);
     const cap = spendCap.trim() === '' ? null : Number(spendCap);
+    // Compose the flat scopes[] the edge keys on: tier tokens + `domain:<d>` tokens.
+    // A key with no domain selected reaches nothing (the edge fails closed).
+    const composedScopes = [...scopes, ...domains.map(domainScope)];
     const result = await onCreate({
       name: trimmed,
-      scopes,
+      scopes: composedScopes,
       rate_limit_rpm: Number.isFinite(rpm) && rpm > 0 ? rpm : 60,
       spend_cap_usd: cap !== null && Number.isFinite(cap) ? cap : null,
       allow_self_confirm: allowSelfConfirm,
@@ -163,6 +180,32 @@ export function McpCreateKeyDialog({ open, onOpenChange, onCreate }: Props) {
                     ))}
                   </div>
                   <p className="mt-1 text-xs text-muted-foreground">{t('mcp.create.scopes_hint')}</p>
+                </div>
+
+                <div>
+                  <label className="mb-1 block text-xs font-medium text-muted-foreground">
+                    {t('mcp.create.domains')}
+                  </label>
+                  <div className="grid grid-cols-2 gap-2">
+                    {MCP_DOMAINS.map((d) => (
+                      <label
+                        key={d}
+                        className={cn(
+                          'flex cursor-pointer items-center gap-2 rounded-md border px-3 py-2 text-sm transition-colors',
+                          domains.includes(d) ? 'border-primary bg-primary/5' : 'hover:bg-secondary',
+                        )}
+                      >
+                        <input
+                          type="checkbox"
+                          checked={domains.includes(d)}
+                          onChange={() => toggleDomain(d)}
+                          className="h-3.5 w-3.5"
+                        />
+                        {t(`mcp.domain.${d}`)}
+                      </label>
+                    ))}
+                  </div>
+                  <p className="mt-1 text-xs text-muted-foreground">{t('mcp.create.domains_hint')}</p>
                 </div>
 
                 <div className="grid grid-cols-2 gap-3">

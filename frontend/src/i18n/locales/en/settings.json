@@ -18,6 +18,7 @@
     "loading": "Loading keys…",
     "empty": "No MCP keys yet. Create one to let an external agent connect.",
     "scopes_label": "Scopes: {{scopes}}",
+    "domains_label": "Domains: {{domains}}",
     "last_used": "Last used: {{date}}",
     "expires_label": "Expires: {{date}}",
     "revoke_aria": "Revoke key {{name}}",
@@ -31,6 +32,16 @@
       "write_auto": "Auto write",
       "write_confirm": "Confirm write"
     },
+    "domain": {
+      "book": "Books",
+      "glossary": "Glossary",
+      "knowledge": "Knowledge",
+      "translation": "Translation",
+      "composition": "Composition",
+      "jobs": "Jobs",
+      "settings": "Settings",
+      "lore_enrichment": "Lore enrichment"
+    },
     "create": {
       "title": "Create MCP Key",
       "subtitle": "The secret is shown only once. Store it somewhere safe.",
@@ -38,6 +49,8 @@
       "name_ph": "e.g. my-research-agent",
       "scopes": "Scopes",
       "scopes_hint": "What the key may do. Start with Read only; add more only as needed.",
+      "domains": "Domains",
+      "domains_hint": "Which areas the key may reach. A key with no domain selected can't call anything.",
       "rate_limit": "Rate limit (req/min)",
       "spend_cap": "Spend cap (USD)",
       "spend_cap_ph": "No cap",

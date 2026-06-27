@@ -115,7 +115,12 @@ export class KeyResolver {
         value: {
           userId: body.user_id,
           keyId: body.key_id,
-          scopes: body.scopes ?? [],
+          // SECURITY: the `*` wildcard is the edge's full-bypass token, reserved for
+          // the locally-minted dev static key ONLY (resolved earlier, never here). The
+          // auth-service create endpoint stores `scopes` unvalidated, so a user could
+          // POST scopes:["*"] directly — strip it so a STORED key can never bypass the
+          // scope filter (it would otherwise defeat tier/domain least-privilege).
+          scopes: (body.scopes ?? []).filter((s) => s !== '*'),
           allowSelfConfirm: body.allow_self_confirm ?? false,
           spendCapUsd: body.spend_cap_usd ?? null,
           rateLimitRpm: body.rate_limit_rpm ?? 60,

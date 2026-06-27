@@ -18,6 +18,7 @@
     "loading": "正在載入金鑰…",
     "empty": "尚無 MCP 金鑰。建立一把以讓外部代理連線。",
     "scopes_label": "範圍：{{scopes}}",
+    "domains_label": "領域：{{domains}}",
     "last_used": "上次使用：{{date}}",
     "expires_label": "到期：{{date}}",
     "revoke_aria": "撤銷金鑰 {{name}}",
@@ -31,6 +32,16 @@
       "write_auto": "自動寫入",
       "write_confirm": "需確認寫入"
     },
+    "domain": {
+      "book": "書籍",
+      "glossary": "詞彙表",
+      "knowledge": "知識",
+      "translation": "翻譯",
+      "composition": "創作",
+      "jobs": "任務",
+      "settings": "設定",
+      "lore_enrichment": "設定集擴充"
+    },
     "create": {
       "title": "建立 MCP 金鑰",
       "subtitle": "密鑰只會顯示一次，請妥善保存。",
@@ -38,6 +49,8 @@
       "name_ph": "例如：my-research-agent",
       "scopes": "範圍",
       "scopes_hint": "金鑰可執行的操作。先只用讀取，必要時再增加。",
+      "domains": "領域",
+      "domains_hint": "金鑰可存取的範疇。未選擇任何領域的金鑰將無法呼叫任何工具。",
       "rate_limit": "速率限制（次/分鐘）",
       "spend_cap": "支出上限（USD）",
       "spend_cap_ph": "無上限",

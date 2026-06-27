@@ -246,6 +246,102 @@ describe('PublicMcpController', () => {
     expect(init.headers['x-project-id']).toBeUndefined();
   });
 
+  it('denies an out-of-scope tools/call at the edge without relaying (PUB-3 / H-E)', async () => {
+    setEnv();
+    // A real key scoped to knowledge-read only.
+    (global as unknown as { fetch: jest.Mock }).fetch = jest.fn().mockImplementation((url: string) => {
+      if (String(url).includes('/internal/mcp-keys/resolve')) {
+        return Promise.resolve({
+          status: 200,
+          json: async () => ({ user_id: 'u', key_id: 'k', scopes: ['read', 'domain:knowledge'] }),
+          headers: { get: () => 'application/json' },
+        });
+      }
+      return Promise.resolve({ status: 200, text: async () => '{}', headers: { get: () => 'application/json' } });
+    });
+    const r = mockRes();
+    await new PublicMcpController().handle(
+      mockReq({
+        headers: { authorization: 'Bearer lw_pk_kgkey' },
+        body: { jsonrpc: '2.0', method: 'tools/call', params: { name: 'book_get' }, id: 9 },
+      }),
+      r.res,
+    );
+    expect(r.statusCode).toBe(200); // JSON-RPC error rides a 200 envelope
+    expect((r.jsonBody as { error?: { code: number } }).error?.code).toBe(-32601);
+    // Critically: nothing was relayed to ai-gateway.
+    const relay = (global as unknown as { fetch: jest.Mock }).fetch.mock.calls.find((c: unknown[]) =>
+      String(c[0]).endsWith('/mcp'),
+    );
+    expect(relay).toBeUndefined();
+  });
+
+  it('filters the tools/list response down to the key scope (PUB-3 / H-F)', async () => {
+    setEnv();
+    (global as unknown as { fetch: jest.Mock }).fetch = jest.fn().mockImplementation((url: string) => {
+      if (String(url).includes('/internal/mcp-keys/resolve')) {
+        return Promise.resolve({
+          status: 200,
+          json: async () => ({ user_id: 'u', key_id: 'k', scopes: ['read', 'domain:knowledge'] }),
+          headers: { get: () => 'application/json' },
+        });
+      }
+      return Promise.resolve({
+        status: 200,
+        text: async () =>
+          JSON.stringify({
+            jsonrpc: '2.0',
+            result: { tools: [{ name: 'kg_graph_query' }, { name: 'book_get' }, { name: 'memory_remember' }] },
+            id: 1,
+          }),
+        headers: { get: (h: string) => (h.toLowerCase() === 'content-type' ? 'application/json' : null) },
+      });
+    });
+    const r = mockRes();
+    await new PublicMcpController().handle(
+      mockReq({
+        headers: { authorization: 'Bearer lw_pk_kgkey' },
+        body: { jsonrpc: '2.0', method: 'tools/list', id: 1 },
+      }),
+      r.res,
+    );
+    expect(r.statusCode).toBe(200);
+    const parsed = JSON.parse(r.sentBody as string);
+    expect(parsed.result.tools.map((t: { name: string }) => t.name)).toEqual(['kg_graph_query']);
+    expect(r.headers['content-type']).toBe('application/json');
+  });
+
+  it('strips a STORED `*` wildcard from an auth-resolved key (no scope bypass)', async () => {
+    setEnv();
+    // A user crafted a key with scopes ["*"] directly via the API. The edge must
+    // NOT honor it as the full-bypass token (that is the dev static key's privilege
+    // only) — after stripping, the key has no scopes → fails closed on a tool call.
+    (global as unknown as { fetch: jest.Mock }).fetch = jest.fn().mockImplementation((url: string) => {
+      if (String(url).includes('/internal/mcp-keys/resolve')) {
+        return Promise.resolve({
+          status: 200,
+          json: async () => ({ user_id: 'u', key_id: 'k', scopes: ['*'] }),
+          headers: { get: () => 'application/json' },
+        });
+      }
+      return Promise.resolve({ status: 200, text: async () => '{}', headers: { get: () => 'application/json' } });
+    });
+    const r = mockRes();
+    await new PublicMcpController().handle(
+      mockReq({
+        headers: { authorization: 'Bearer lw_pk_wildcardkey' },
+        body: { jsonrpc: '2.0', method: 'tools/call', params: { name: 'book_get' }, id: 3 },
+      }),
+      r.res,
+    );
+    // Denied at the edge (stripped `*` → no scope → fail-closed), nothing relayed.
+    expect((r.jsonBody as { error?: { code: number } }).error?.code).toBe(-32601);
+    const relay = (global as unknown as { fetch: jest.Mock }).fetch.mock.calls.find((c: unknown[]) =>
+      String(c[0]).endsWith('/mcp'),
+    );
+    expect(relay).toBeUndefined();
+  });
+
   it('returns 502 when the upstream gateway is unreachable', async () => {
     setEnv();
     fetchMock.mockRejectedValueOnce(new Error('ECONNREFUSED'));

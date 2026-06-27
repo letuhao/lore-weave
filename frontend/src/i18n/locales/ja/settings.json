@@ -18,6 +18,7 @@
     "loading": "キーを読み込み中…",
     "empty": "MCPキーはまだありません。外部エージェントを接続するにはキーを作成してください。",
     "scopes_label": "スコープ: {{scopes}}",
+    "domains_label": "領域: {{domains}}",
     "last_used": "最終使用: {{date}}",
     "expires_label": "有効期限: {{date}}",
     "revoke_aria": "キー {{name}} を取り消す",
@@ -31,6 +32,16 @@
       "write_auto": "自動書き込み",
       "write_confirm": "確認付き書き込み"
     },
+    "domain": {
+      "book": "書籍",
+      "glossary": "用語集",
+      "knowledge": "ナレッジ",
+      "translation": "翻訳",
+      "composition": "創作",
+      "jobs": "ジョブ",
+      "settings": "設定",
+      "lore_enrichment": "ロア拡充"
+    },
     "create": {
       "title": "MCPキーを作成",
       "subtitle": "シークレットは一度だけ表示されます。安全な場所に保管してください。",
@@ -38,6 +49,8 @@
       "name_ph": "例: my-research-agent",
       "scopes": "スコープ",
       "scopes_hint": "キーで何ができるか。まずは読み取りのみで始め、必要に応じて追加してください。",
+      "domains": "領域",
+      "domains_hint": "キーがアクセスできる領域。領域を選択しないキーは何も呼び出せません。",
       "rate_limit": "レート制限（リクエスト/分）",
       "spend_cap": "支出上限（USD）",
       "spend_cap_ph": "上限なし",

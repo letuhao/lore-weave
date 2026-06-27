@@ -5,7 +5,7 @@ import { cn } from '@/lib/utils';
 import { ConfirmDialog } from '@/components/shared/ConfirmDialog';
 import { useMcpKeys } from './useMcpKeys';
 import { McpCreateKeyDialog } from './McpCreateKeyDialog';
-import type { McpKey } from './api';
+import { splitScopes, type McpKey } from './api';
 
 function fmtDate(iso: string | null): string {
   if (!iso) return '—';
@@ -53,7 +53,9 @@ export function McpAccessTab() {
         </div>
       ) : (
         <ul className="space-y-2">
-          {keys.map((k) => (
+          {keys.map((k) => {
+            const { tiers, domains } = splitScopes(k.scopes);
+            return (
             <li
               key={k.key_id}
               className="flex items-center justify-between gap-4 rounded-lg border px-4 py-3"
@@ -74,7 +76,8 @@ export function McpAccessTab() {
                 </div>
                 <div className="mt-1 flex flex-wrap gap-x-3 gap-y-0.5 text-xs text-muted-foreground">
                   <code className="font-mono">{k.key_prefix}…</code>
-                  <span>{t('mcp.scopes_label', { scopes: k.scopes.join(', ') || '—' })}</span>
+                  <span>{t('mcp.scopes_label', { scopes: tiers.join(', ') || '—' })}</span>
+                  <span>{t('mcp.domains_label', { domains: domains.join(', ') || '—' })}</span>
                   <span>{t('mcp.last_used', { date: fmtDate(k.last_used_at) })}</span>
                   {k.expires_at && <span>{t('mcp.expires_label', { date: fmtDate(k.expires_at) })}</span>}
                 </div>
@@ -89,7 +92,8 @@ export function McpAccessTab() {
                 </button>
               )}
             </li>
-          ))}
+            );
+          })}
         </ul>
       )}
 
