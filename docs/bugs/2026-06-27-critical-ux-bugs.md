@@ -417,13 +417,24 @@ Some jobs are very hard to interrupt — 30 minutes from cancelling until actual
 > chapter-aggregate (`completed_with_errors`) instead of `cancelled`. Fixed in
 > `extraction_worker._run_extraction_job` (cancel-aware finalize + canonical event) + regression
 > test `test_late_cancel_on_last_chapter_finalizes_as_cancelled`.
-> CAVEAT (new defer row): the chapter-**translation** path runs DECOUPLED in the default
-> deployment (`TRANSLATION_DECOUPLE_ENABLED=true`), which is event-driven and does NOT sit in
-> the synchronous `wait_terminal(cancel_check)` — so #34's in-flight abort only fires when the
-> flag is OFF. The decoupled path cancels cooperatively at the next batch boundary, NOT via
-> in-flight DELETE → **D-CANCEL-IMMEDIATE-TRANSLATION-DECOUPLED**. Composition + KG-build share
-> the proven keystone (same SDK `wait_terminal` + provider-registry abort) and are unit-verified
-> for forwarding, but were not separately live-smoked.
+> **DECOUPLED TRANSLATION (D-CANCEL-IMMEDIATE-TRANSLATION-DECOUPLED — DONE):** the
+> chapter-translation path runs DECOUPLED in the default deployment
+> (`TRANSLATION_DECOUPLE_ENABLED=true`): event-driven submit→release driven by
+> `llm_terminal_consumer`, never sitting in `wait_terminal(cancel_check)`. Fixed with a
+> path-specific equivalent (no SDK cancel_check there): (A) the cancel endpoint (`_do_cancel`)
+> now DELETEs every in-flight `chapter_translations.provider_job_id` for the job's non-terminal
+> chapters → provider-registry aborts the upstream call NOW (best-effort; no-op for the sync
+> path, which doesn't persist provider_job_id); (B) the terminal consumer's `_resume_loaded`
+> gained a parent-cancel gate — once the job is cancelled it clean-stops the chapter
+> (`job_cancelled`, clears resume_state/provider_job_id, releases the WFQ lease) instead of
+> folding the aborted job as a batch-failure and submitting the next batch (which
+> `decoupled_block_translate.resume`'s `status != 'completed'` branch would otherwise do,
+> defeating the cancel). Live-smoked: 4-chapter Vietnamese job, cancel → `DELETE` (204) →
+> provider-registry `operation:translation ... context canceled` ~2.5 s later → job `cancelled`,
+> in-flight chapter `job_cancelled` with provider_job_id cleared. +4 unit tests (cancel-gate
+> ×2, abort-sweep, best-effort-on-fault) + a drive-by fix of a pre-existing stale finalize
+> assertion. Composition + KG-build share the proven keystone (same SDK `wait_terminal` +
+> provider-registry abort), unit-verified for forwarding, not separately live-smoked.
 
 ### [ ] 35. Platform lacks a language picker (user must type language code)
 The platform lacks a language picker — the user must input the language code. Bad design.

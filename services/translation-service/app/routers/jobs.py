@@ -1,4 +1,5 @@
 import json
+import logging
 from uuid import UUID
 from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel
@@ -6,6 +7,7 @@ import asyncpg
 from loreweave_jobs import emit_job_event
 
 from ..deps import get_current_user, get_db
+from ..llm_client import get_llm_client
 from ..config import DEFAULT_COMPACT_SYSTEM_PROMPT, DEFAULT_COMPACT_USER_PROMPT_TPL
 from ..models import CreateJobPayload, TranslationJob, ChapterTranslation, ErrorResponse
 from ..broker import publish, publish_event
@@ -17,6 +19,8 @@ from ..grant_deps import (
 from ..workers.segment_status import compute_segment_status
 
 router = APIRouter(prefix="/v1/translation", tags=["translation-jobs"])
+
+logger = logging.getLogger("translation.jobs")
 
 #: Unified Job Control Plane P1 — the service id stamped on every emitted JobEvent.
 _JOB_SERVICE = "translation"
@@ -527,6 +531,42 @@ async def _do_cancel(db: asyncpg.Pool, job_id: UUID) -> None:
                 conn, service=_JOB_SERVICE, job_id=str(job_id),
                 owner_user_id=str(row["owner_user_id"]), kind=_JOB_KIND,
                 status="cancelled",
+            )
+    # bug #34 (D-CANCEL-IMMEDIATE-TRANSLATION-DECOUPLED) — abort the in-flight provider
+    # call(s) NOW so the user's cancel stops token-burn immediately on the decoupled path
+    # (which never sits in wait_terminal(cancel_check)). Outside the status tx: a DELETE is
+    # network I/O (must not run inside the finalize tx) and is best-effort — the
+    # terminal-consumer cancel-gate is the correctness backstop if a DELETE fails.
+    await _abort_inflight_provider_jobs(db, job_id)
+
+
+async def _abort_inflight_provider_jobs(db: asyncpg.Pool, job_id: UUID) -> None:
+    """bug #34 — the decoupled translate path submits one provider LLM job per chapter and
+    RELEASES (the wait + resume happen in the terminal-consumer, not in
+    wait_terminal(cancel_check)), so a user-cancel can't abort the in-flight upstream call
+    the way the synchronous path does. DELETE every in-flight provider job for this
+    translation job's non-terminal chapters → provider-registry aborts the upstream call
+    immediately (the SAME DELETE the sync path's cancel_check issues). Best-effort per job:
+    a failure just falls back to the consumer's cancel-gate (cooperative stop at the next
+    batch boundary). No-op for the synchronous path (provider_job_id is decoupled-only)."""
+    rows = await db.fetch(
+        "SELECT provider_job_id, owner_user_id FROM chapter_translations "
+        "WHERE job_id=$1 AND provider_job_id IS NOT NULL "
+        "AND status NOT IN ('completed', 'failed')",
+        job_id,
+    )
+    if not rows:
+        return
+    llm = get_llm_client()
+    for r in rows:
+        try:
+            await llm.sdk.cancel_job(
+                str(r["provider_job_id"]), user_id=str(r["owner_user_id"]),
+            )
+        except Exception:  # noqa: BLE001 — best-effort; the consumer cancel-gate still stops it
+            logger.warning(
+                "translation cancel: aborting in-flight provider job %s failed — will stop "
+                "cooperatively at the terminal-consumer", r["provider_job_id"], exc_info=True,
             )
 
 
