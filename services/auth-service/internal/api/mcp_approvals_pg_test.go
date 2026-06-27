@@ -195,6 +195,64 @@ func TestMcpApprovals_CreateListApproveDeny_PG(t *testing.T) {
 	}
 }
 
+func TestMcpSelfConfirm_PG(t *testing.T) {
+	// Stub composition confirm endpoint — records attribution headers, returns OK.
+	var gotKeyID, gotCap, gotInternal string
+	stub := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gotKeyID = r.Header.Get("X-Mcp-Key-Id")
+		gotCap = r.Header.Get("X-Mcp-Spend-Cap-Usd")
+		gotInternal = r.Header.Get("X-Internal-Token")
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"outcome":"action_done"}`))
+	}))
+	defer stub.Close()
+
+	s, pool := approvalsServer(t, stub.URL)
+	uid := mkUser(t, pool)
+	tok := bearer(t, uid)
+
+	// A capped self-confirm key.
+	kr := doJSON(s, http.MethodPost, "/v1/account/mcp-keys", tok, map[string]any{"name": "headless", "spend_cap_usd": 4, "allow_self_confirm": true})
+	if kr.Code != http.StatusCreated {
+		t.Fatalf("create key: %d %s", kr.Code, kr.Body.String())
+	}
+	var key struct {
+		KeyID string `json:"key_id"`
+	}
+	_ = json.Unmarshal(kr.Body.Bytes(), &key)
+
+	// Self-confirm (internal-token) → replays to the domain tagged with the key + cap.
+	var buf bytes.Buffer
+	_ = json.NewEncoder(&buf).Encode(map[string]any{
+		"key_id": key.KeyID, "owner_user_id": uid.String(),
+		"domain": "composition", "confirm_token": "tok-x",
+	})
+	req := httptest.NewRequest(http.MethodPost, "/internal/mcp-keys/confirm", &buf)
+	req.Header.Set("X-Internal-Token", mcpInternalTok)
+	rr := httptest.NewRecorder()
+	s.Router().ServeHTTP(rr, req)
+	if rr.Code != http.StatusOK {
+		t.Fatalf("self-confirm: %d %s", rr.Code, rr.Body.String())
+	}
+	if gotKeyID != key.KeyID {
+		t.Fatalf("self-confirm replay X-Mcp-Key-Id: got %q want %q", gotKeyID, key.KeyID)
+	}
+	if gotCap != "4" {
+		t.Fatalf("self-confirm replay cap: got %q want 4", gotCap)
+	}
+	if gotInternal != mcpInternalTok {
+		t.Fatalf("self-confirm replay internal token: got %q", gotInternal)
+	}
+
+	// Internal-token required.
+	noTok := httptest.NewRequest(http.MethodPost, "/internal/mcp-keys/confirm", bytes.NewBufferString("{}"))
+	nr := httptest.NewRecorder()
+	s.Router().ServeHTTP(nr, noTok)
+	if nr.Code != http.StatusUnauthorized {
+		t.Fatalf("self-confirm without internal token: expected 401, got %d", nr.Code)
+	}
+}
+
 func TestMcpApprovals_Expired_PG(t *testing.T) {
 	s, pool := approvalsServer(t, "http://unused.invalid")
 	uid := mkUser(t, pool)

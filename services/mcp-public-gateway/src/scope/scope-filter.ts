@@ -85,6 +85,9 @@ export function isWriteRequest(body: unknown): boolean {
       : [];
   return messages.some((m) => {
     if (!isToolCall(m)) return false;
+    // confirm_action is a synthetic edge tool (absent from TOOL_POLICY) that EXECUTES a
+    // proposed Tier-W action — treat it as a write so it fails CLOSED on a store outage.
+    if (m.params.name === 'confirm_action') return true;
     const tier = TOOL_POLICY[m.params.name]?.tier;
     return tier === 'write_auto' || tier === 'write_confirm';
   });

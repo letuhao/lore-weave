@@ -127,7 +127,7 @@ export function proposeDivertError(body: unknown): unknown {
 }
 
 /** The JSON-RPC id of a single (non-batch) request body; null otherwise. */
-function jsonRpcIdOf(body: unknown): unknown {
+export function jsonRpcIdOf(body: unknown): unknown {
   if (body && typeof body === 'object' && !Array.isArray(body)) {
     return (body as { id?: unknown }).id ?? null;
   }

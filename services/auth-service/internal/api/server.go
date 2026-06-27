@@ -87,6 +87,10 @@ func (s *Server) Router() http.Handler {
 			// Public MCP human-approval divert (P4 / OD-2) — the edge diverts a default
 			// key's Tier-W propose here instead of handing the agent the confirm token.
 			r.Post("/mcp-keys/approvals", http.HandlerFunc(s.internalCreateApproval))
+			// Public MCP self-confirm (P4 slice B) — the edge calls this when an
+			// allow_self_confirm key executes a Tier-W action via confirm_action; replays
+			// the token to the domain with X-Mcp-Key-Id (no approval row).
+			r.Post("/mcp-keys/confirm", http.HandlerFunc(s.internalSelfConfirm))
 		})
 
 		// Admin-JWT issuance (074/075) — mounted only when enabled. Gated by the

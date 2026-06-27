@@ -468,6 +468,78 @@ describe('PublicMcpController', () => {
     expect(r.sentBody as string).toContain('SECRET-TOK'); // self-confirm keeps the token
     expect(f.mock.calls.some((c) => String(c[0]).includes('/internal/mcp-keys/approvals'))).toBe(false);
   });
+
+  // ── P4 slice B: confirm_action (headless self-confirm) ─────────────────────
+  const caBody = { jsonrpc: '2.0', method: 'tools/call', params: { name: 'confirm_action', arguments: { confirm_token: 'tok', domain: 'composition' } }, id: 8 };
+
+  it('executes confirm_action for a dual-flag key via auth self-confirm', async () => {
+    setEnv();
+    let confirmBody: Record<string, unknown> | undefined;
+    (global as unknown as { fetch: jest.Mock }).fetch = jest.fn().mockImplementation((url: string, init?: { body?: string }) => {
+      if (String(url).includes('/internal/mcp-keys/resolve')) {
+        return Promise.resolve({ status: 200, json: async () => ({ user_id: 'u', key_id: 'k', scopes: ['write_confirm', 'domain:composition'], allow_self_confirm: true }), headers: { get: () => 'application/json' } });
+      }
+      if (String(url).includes('/internal/mcp-keys/confirm')) {
+        confirmBody = JSON.parse(init!.body!);
+        return Promise.resolve({ status: 200, text: async () => JSON.stringify({ status: 'executed', result: { ok: true } }), headers: { get: () => 'application/json' } });
+      }
+      return Promise.resolve({ status: 200, text: async () => '{}', headers: { get: () => 'application/json' } });
+    });
+    const r = mockRes();
+    await new PublicMcpController().handle(mockReq({ headers: { authorization: 'Bearer lw_pk_sc' }, body: caBody }), r.res);
+    expect(r.statusCode).toBe(200);
+    expect(confirmBody).toMatchObject({ key_id: 'k', owner_user_id: 'u', domain: 'composition', confirm_token: 'tok' });
+    const out = JSON.parse(r.sentBody as string);
+    expect(out.result.structuredContent.status).toBe('executed');
+    // confirm_action is intercepted, NEVER relayed to ai-gateway.
+    expect((global as unknown as { fetch: jest.Mock }).fetch.mock.calls.some((c) => String(c[0]).endsWith('/mcp'))).toBe(false);
+  });
+
+  it('denies confirm_action for a key WITHOUT the dual flag (anti-oracle, no auth call)', async () => {
+    setEnv();
+    const f = jest.fn().mockImplementation((url: string) => {
+      if (String(url).includes('/internal/mcp-keys/resolve')) {
+        // has write_confirm but NOT allow_self_confirm
+        return Promise.resolve({ status: 200, json: async () => ({ user_id: 'u', key_id: 'k', scopes: ['write_confirm', 'domain:composition'], allow_self_confirm: false }), headers: { get: () => 'application/json' } });
+      }
+      return Promise.resolve({ status: 200, text: async () => '{}', headers: { get: () => 'application/json' } });
+    });
+    (global as unknown as { fetch: jest.Mock }).fetch = f;
+    const r = mockRes();
+    await new PublicMcpController().handle(mockReq({ headers: { authorization: 'Bearer lw_pk_nosc' }, body: caBody }), r.res);
+    expect((r.jsonBody as { error?: { code: number } }).error?.code).toBe(-32601);
+    expect(f.mock.calls.some((c) => String(c[0]).includes('/internal/mcp-keys/confirm'))).toBe(false);
+  });
+
+  it('denies confirm_action when the self-confirm key lacks the action domain scope (least-privilege)', async () => {
+    setEnv();
+    const f = jest.fn().mockImplementation((url: string) => {
+      if (String(url).includes('/internal/mcp-keys/resolve')) {
+        // self-confirm + write_confirm, but domain:book (NOT domain:composition)
+        return Promise.resolve({ status: 200, json: async () => ({ user_id: 'u', key_id: 'k', scopes: ['write_confirm', 'domain:book'], allow_self_confirm: true }), headers: { get: () => 'application/json' } });
+      }
+      return Promise.resolve({ status: 200, text: async () => '{}', headers: { get: () => 'application/json' } });
+    });
+    (global as unknown as { fetch: jest.Mock }).fetch = f;
+    const r = mockRes();
+    await new PublicMcpController().handle(mockReq({ headers: { authorization: 'Bearer lw_pk_sc' }, body: caBody }), r.res);
+    expect((r.jsonBody as { error?: { code: number } }).error?.code).toBe(-32601);
+    expect(f.mock.calls.some((c) => String(c[0]).includes('/internal/mcp-keys/confirm'))).toBe(false);
+  });
+
+  it('advertises confirm_action in tools/list for a dual-flag key', async () => {
+    setEnv();
+    (global as unknown as { fetch: jest.Mock }).fetch = jest.fn().mockImplementation((url: string) => {
+      if (String(url).includes('/internal/mcp-keys/resolve')) {
+        return Promise.resolve({ status: 200, json: async () => ({ user_id: 'u', key_id: 'k', scopes: ['write_confirm', 'domain:composition'], allow_self_confirm: true }), headers: { get: () => 'application/json' } });
+      }
+      return Promise.resolve({ status: 200, text: async () => JSON.stringify({ jsonrpc: '2.0', id: 1, result: { tools: [{ name: 'composition_publish' }] } }), headers: { get: (h: string) => (h.toLowerCase() === 'content-type' ? 'application/json' : null) } });
+    });
+    const r = mockRes();
+    await new PublicMcpController().handle(mockReq({ headers: { authorization: 'Bearer lw_pk_sc' }, body: { jsonrpc: '2.0', method: 'tools/list', id: 1 } }), r.res);
+    const names = JSON.parse(r.sentBody as string).result.tools.map((t: { name: string }) => t.name);
+    expect(names).toContain('confirm_action');
+  });
 });
 
 describe('helpers', () => {

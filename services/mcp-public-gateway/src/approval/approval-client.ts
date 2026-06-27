@@ -58,4 +58,40 @@ export class ApprovalClient {
       return null;
     }
   }
+
+  /**
+   * Self-confirm replay (P4 slice B): forward an `allow_self_confirm` key's confirm_action to
+   * auth-service `POST /internal/mcp-keys/confirm`, which replays the token to the owning
+   * domain tagged with X-Mcp-Key-Id. Returns the auth {status, body} for the edge to shape
+   * into an MCP result, or null on a transport failure. The timeout is generous — a priced
+   * confirm effect (e.g. composition.generate) runs the engine in-process for minutes.
+   */
+  async selfConfirm(input: {
+    keyId: string;
+    ownerUserId: string;
+    domain: string;
+    confirmToken: string;
+  }): Promise<{ status: number; body: string } | null> {
+    if (!this.cfg.internalToken) {
+      this.log.error('cannot self-confirm: INTERNAL_SERVICE_TOKEN unset');
+      return null;
+    }
+    try {
+      const res = await fetch(`${this.cfg.authServiceUrl}/internal/mcp-keys/confirm`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json', 'x-internal-token': this.cfg.internalToken },
+        body: JSON.stringify({
+          key_id: input.keyId,
+          owner_user_id: input.ownerUserId,
+          domain: input.domain,
+          confirm_token: input.confirmToken,
+        }),
+        signal: AbortSignal.timeout(16 * 60 * 1000),
+      });
+      return { status: res.status, body: await res.text() };
+    } catch (e) {
+      this.log.warn(`self-confirm failed: ${e}`);
+      return null;
+    }
+  }
 }

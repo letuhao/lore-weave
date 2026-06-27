@@ -5,6 +5,8 @@ import { loadConfig } from '../config/config.js';
 import { KeyResolver } from '../auth/key-resolver.js';
 import { countToolCalls, filterListResponseText, gateRequestBody, isListRequest, isWriteRequest, singleWriteConfirmToolName } from '../scope/scope-filter.js';
 import { detectProposeResult, pendingApprovalResponse, proposeDivertError } from '../scope/propose-detect.js';
+import { confirmActionResult, denyConfirmAction, detectConfirmActionCall, injectConfirmActionTool } from '../scope/confirm-action.js';
+import { domainScope, type Domain } from '../scope/tool-policy.js';
 import { RateLimiter } from '../ratelimit/rate-limiter.js';
 import { makeRateLimitStoreFromEnv } from '../ratelimit/redis-store.js';
 import { AuditClient } from '../audit/audit-client.js';
@@ -83,6 +85,41 @@ export class PublicMcpController {
         id: jsonRpcId(req.body),
       });
       return;
+    }
+
+    // P4 slice B: confirm_action — the headless self-confirm tool. It is a SYNTHETIC edge
+    // tool (not federated / not in TOOL_POLICY), so it must be handled BEFORE the scope gate
+    // (which would otherwise deny it as unknown). A key with BOTH `write_confirm` AND
+    // `allow_self_confirm` may execute a proposed Tier-W action by replaying its token; any
+    // other key gets the SAME anti-oracle "not available" as a scope-denied tool.
+    if (hasBody) {
+      const ca = detectConfirmActionCall(req.body);
+      if (ca) {
+        // Gate: the key must hold write_confirm + allow_self_confirm AND the domain scope
+        // for the action it is confirming (least-privilege — confirm_action takes a domain
+        // arg, so a self-confirm key can't reach a domain it lacks; the domain confirm route
+        // re-verifies the token as a backstop). Anything else → anti-oracle deny.
+        const dualFlag =
+          resolved.allowSelfConfirm &&
+          resolved.scopes.includes('write_confirm') &&
+          resolved.scopes.includes(domainScope(ca.domain as Domain));
+        if (!dualFlag) {
+          this.audit.record(req.body, resolved.keyId, resolved.userId, traceId, 'denied_scope');
+          res.status(200).json(denyConfirmAction(req.body));
+          return;
+        }
+        const sc = await this.approvals.selfConfirm({
+          keyId: resolved.keyId,
+          ownerUserId: resolved.userId,
+          domain: ca.domain,
+          confirmToken: ca.confirmToken,
+        });
+        this.audit.record(req.body, resolved.keyId, resolved.userId, traceId, sc ? 'relayed' : 'upstream_error');
+        res.status(200);
+        res.setHeader('content-type', 'application/json');
+        res.send(JSON.stringify(confirmActionResult(req.body, sc?.status ?? 502, sc?.body ?? '{}')));
+        return;
+      }
     }
 
     // PUB-9: build the outbound header set FROM SCRATCH. We copy NOTHING from the
@@ -170,6 +207,11 @@ export class PublicMcpController {
       const rewroteList = ok && hasBody && isListRequest(req.body);
       if (rewroteList) {
         text = filterListResponseText(text, resolved.scopes, this.log);
+        // P4 slice B: advertise the synthetic confirm_action tool to a dual-flag key so the
+        // agent can discover the headless self-confirm path (it is not in the federated list).
+        if (resolved.allowSelfConfirm && resolved.scopes.includes('write_confirm')) {
+          text = injectConfirmActionTool(text);
+        }
       }
       res.status(upstream.status);
       // We emit JSON when we rewrote the list; otherwise echo the upstream type.

@@ -117,6 +117,89 @@ func (s *Server) internalCreateApproval(w http.ResponseWriter, r *http.Request) 
 	writeJSON(w, http.StatusCreated, map[string]any{"approval_id": approvalID.String()})
 }
 
+// internalSelfConfirm — POST /internal/mcp-keys/confirm (X-Internal-Token).
+//
+// The mcp-public-gateway edge calls this when a key with BOTH `write_confirm` and
+// `allow_self_confirm` executes a Tier-W action via the `confirm_action(token, domain)`
+// tool — the AGENT is the second actor (no human queue). The edge has already verified
+// the dual flags; this replays the token to the owning domain's confirm route tagged with
+// `X-Mcp-Key-Id` so the spend attributes to the agent's key (the carrier rail). No approval
+// row is created — self-confirm bypasses the OD-2 queue entirely.
+func (s *Server) internalSelfConfirm(w http.ResponseWriter, r *http.Request) {
+	var req struct {
+		KeyID        string `json:"key_id"`
+		OwnerUserID  string `json:"owner_user_id"`
+		Domain       string `json:"domain"`
+		ConfirmToken string `json:"confirm_token"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeErr(w, http.StatusBadRequest, "AUTH_VALIDATION_ERROR", "invalid json")
+		return
+	}
+	keyID, err := uuid.Parse(req.KeyID)
+	if err != nil {
+		writeErr(w, http.StatusBadRequest, "AUTH_VALIDATION_ERROR", "invalid key_id")
+		return
+	}
+	ownerID, err := uuid.Parse(req.OwnerUserID)
+	if err != nil {
+		writeErr(w, http.StatusBadRequest, "AUTH_VALIDATION_ERROR", "invalid owner_user_id")
+		return
+	}
+	if req.Domain == "" || req.ConfirmToken == "" {
+		writeErr(w, http.StatusBadRequest, "AUTH_VALIDATION_ERROR", "domain and confirm_token are required")
+		return
+	}
+	baseURL, ok := s.cfg.DomainConfirmServiceURLs[req.Domain]
+	if !ok || baseURL == "" {
+		writeErr(w, http.StatusUnprocessableEntity, "AUTH_CONFIRM_DOMAIN_UNROUTABLE", "this action's domain is not executable on this deployment")
+		return
+	}
+	spendCap := s.lookupKeySpendCap(r.Context(), keyID)
+	resp, body, execErr := s.replayConfirm(r.Context(), baseURL, req.Domain, req.ConfirmToken, ownerID, keyID, spendCap)
+	if execErr != nil {
+		writeErr(w, http.StatusBadGateway, "AUTH_CONFIRM_EXECUTE_FAILED", "could not reach the action's service")
+		return
+	}
+	writeConfirmReplayResult(w, confirmReplayLabel(resp), body)
+}
+
+// confirmReplayLabel maps a domain confirm-replay HTTP status to a terminal label, shared
+// by the human-approve and self-confirm paths (the approve path also drives a row update
+// off it). 2xx→executed; 409→reprice_required (single-use token can't re-confirm at the
+// new price — leave pending / surface); 410→expired; anything else→failed.
+func confirmReplayLabel(resp int) string {
+	switch {
+	case resp >= 200 && resp < 300:
+		return "executed"
+	case resp == http.StatusConflict:
+		return "reprice_required"
+	case resp == http.StatusGone:
+		return "expired"
+	default:
+		return "failed"
+	}
+}
+
+// writeConfirmReplayResult writes the HTTP response for a confirm-replay label so the
+// human-approve and self-confirm paths surface the domain result identically.
+func writeConfirmReplayResult(w http.ResponseWriter, label string, body []byte) {
+	switch label {
+	case "executed":
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusOK)
+		_ = json.NewEncoder(w).Encode(map[string]any{"status": "executed", "result": json.RawMessage(orEmptyJSON(body))})
+	case "reprice_required":
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusConflict)
+		_ = json.NewEncoder(w).Encode(map[string]any{"status": "reprice_required", "detail": json.RawMessage(orEmptyJSON(body))})
+	case "expired":
+		writeErr(w, http.StatusGone, "AUTH_APPROVAL_EXPIRED", "this confirmation has expired — propose it again")
+	default:
+		writeErr(w, http.StatusBadGateway, "AUTH_APPROVAL_EXECUTE_FAILED", "the action's service rejected the confirmation")
+	}
+}
+
 // listMcpApprovals — GET /v1/account/mcp-keys/approvals?status= (JWT, owner-only).
 // A pending row past its expiry reads as "expired" (lazy — no sweeper needed).
 func (s *Server) listMcpApprovals(w http.ResponseWriter, r *http.Request) {
@@ -243,28 +326,19 @@ func (s *Server) approveMcpApproval(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, http.StatusBadGateway, "AUTH_APPROVAL_EXECUTE_FAILED", "could not reach the action's service")
 		return
 	}
-	switch {
-	case resp >= 200 && resp < 300:
+	label := confirmReplayLabel(resp)
+	// Drive the row's terminal status off the outcome BEFORE writing the response. A
+	// reprice (409) leaves the row 'pending' — the single-use token can't re-confirm at
+	// the new price, so the owner can deny it and ask the agent to re-propose.
+	switch label {
+	case "executed":
 		_, _ = s.pool.Exec(r.Context(), `UPDATE mcp_pending_approvals SET status='executed', decided_at=now() WHERE approval_id=$1`, approvalID)
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusOK)
-		// Envelope the domain result so the FE knows it executed.
-		_ = json.NewEncoder(w).Encode(map[string]any{"status": "executed", "result": json.RawMessage(orEmptyJSON(body))})
-	case resp == http.StatusConflict:
-		// Re-price (H-J): the cost changed since propose. The single-use token can't be
-		// re-confirmed at the new price — leave pending so the owner can deny, and surface
-		// the domain's structured reprice signal so the FE can explain it.
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusConflict)
-		_ = json.NewEncoder(w).Encode(map[string]any{"status": "reprice_required", "detail": json.RawMessage(orEmptyJSON(body))})
-	case resp == http.StatusGone:
-		// The token expired between queueing and approval — mark expired.
+	case "expired":
 		_, _ = s.pool.Exec(r.Context(), `UPDATE mcp_pending_approvals SET status='expired', decided_at=now() WHERE approval_id=$1`, approvalID)
-		writeErr(w, http.StatusGone, "AUTH_APPROVAL_EXPIRED", "this approval has expired — ask the agent to propose it again")
-	default:
+	case "failed":
 		_, _ = s.pool.Exec(r.Context(), `UPDATE mcp_pending_approvals SET status='failed', decided_at=now() WHERE approval_id=$1`, approvalID)
-		writeErr(w, http.StatusBadGateway, "AUTH_APPROVAL_EXECUTE_FAILED", "the action's service rejected the confirmation")
 	}
+	writeConfirmReplayResult(w, label, body)
 }
 
 // --- helpers ---
