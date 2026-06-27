@@ -48,6 +48,8 @@ from uuid import UUID, uuid4
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
+from app.tools.argbase import ProjectScopedArgs
+
 from app.config import settings
 from app.ontology.confirm import (
     ACTION_TOKEN_TTL_S,
@@ -131,10 +133,8 @@ _ACTIONS_SCHEMA_WRITE = (
 # ── arg models (extra="forbid"; envelope keys are NEVER fields) ───────
 
 
-class KgGraphQueryArgs(BaseModel):
+class KgGraphQueryArgs(ProjectScopedArgs):
     """`kg_graph_query` — nodes+edges for a view, as-of a chapter."""
-
-    model_config = ConfigDict(extra="forbid")
 
     view: str | None = Field(default=None, max_length=_CODE_MAX)
     as_of_chapter: int | None = Field(default=None, ge=0)
@@ -143,7 +143,12 @@ class KgGraphQueryArgs(BaseModel):
 
 class KgEntityEdgeTimelineArgs(BaseModel):
     """`kg_entity_edge_timeline` — the temporal instance chain for one
-    entity + edge type (e.g. a drive arc)."""
+    entity + edge type (e.g. a drive arc).
+
+    NOT ProjectScopedArgs: this tool scopes by the ENTITY (resolved to its own
+    project + owner via _resolve_entity_project_grant), so a project_id arg would
+    be a no-op. OD-8 is enforced by passing owner_only to that gate, not via the
+    central project hoist."""
 
     model_config = ConfigDict(extra="forbid")
 
@@ -152,10 +157,8 @@ class KgEntityEdgeTimelineArgs(BaseModel):
     limit: int = Field(default=TIMELINE_LIMIT_DEFAULT, ge=1, le=TIMELINE_LIMIT_MAX)
 
 
-class KgSchemaReadArgs(BaseModel):
+class KgSchemaReadArgs(ProjectScopedArgs):
     """`kg_schema_read` — the resolved (effective) project graph schema."""
-
-    model_config = ConfigDict(extra="forbid")
 
 
 class KgListTemplatesArgs(BaseModel):
@@ -166,22 +169,16 @@ class KgListTemplatesArgs(BaseModel):
     scope: Literal["system", "user"] | None = None
 
 
-class KgSyncAvailableArgs(BaseModel):
+class KgSyncAvailableArgs(ProjectScopedArgs):
     """`kg_sync_available` — does the project schema have upstream updates?"""
 
-    model_config = ConfigDict(extra="forbid")
 
-
-class KgViewReadArgs(BaseModel):
+class KgViewReadArgs(ProjectScopedArgs):
     """`kg_view_read` — list the caller's views in the project."""
 
-    model_config = ConfigDict(extra="forbid")
 
-
-class KgTriageListArgs(BaseModel):
+class KgTriageListArgs(ProjectScopedArgs):
     """`kg_triage_list` — the triage queue grouped by signature."""
-
-    model_config = ConfigDict(extra="forbid")
 
     status: Literal["pending", "pending_glossary", "resolved", "dismissed"] = "pending"
     limit: int = Field(default=TRIAGE_LIMIT_DEFAULT, ge=1, le=TRIAGE_LIMIT_MAX)
@@ -385,6 +382,19 @@ def _tool(name: str, description: str, properties: dict, required: list[str]) ->
     }
 
 
+# H-I: the optional project_id schema property shared by the project-scoped
+# kg-READ tools (mirrors ProjectScopedArgs.project_id; drift-locked by
+# test_no_envelope_keys_leak / test_mcp_inputschema_mirrors). Write/build kg tools
+# stay envelope-only until their public exposure (P3/P4).
+_PROJECT_ID_PROP = {
+    "type": "string",
+    "description": (
+        "Optional knowledge project id to scope this call to. Omit to use the "
+        "project linked to the current session. On the public API set it to one "
+        "of YOUR projects — you can only address projects you own."
+    ),
+}
+
 GRAPH_SCHEMA_TOOL_DEFINITIONS: list[dict] = [
     _tool(
         "kg_graph_query",
@@ -414,6 +424,7 @@ GRAPH_SCHEMA_TOOL_DEFINITIONS: list[dict] = [
                 "maximum": GRAPH_LIMIT_MAX,
                 "description": f"Max edges to scan (default {GRAPH_LIMIT_DEFAULT}).",
             },
+            "project_id": _PROJECT_ID_PROP,
         },
         [],
     ),
@@ -448,7 +459,7 @@ GRAPH_SCHEMA_TOOL_DEFINITIONS: list[dict] = [
         "the edge types, fact types, controlled vocab, and expected node "
         "kinds. Use this to learn what relationship and fact codes are valid "
         "before proposing an edge or fact.",
-        {},
+        {"project_id": _PROJECT_ID_PROP},
         [],
     ),
     _tool(
@@ -473,14 +484,14 @@ GRAPH_SCHEMA_TOOL_DEFINITIONS: list[dict] = [
         "Check whether the current project's graph schema has upstream "
         "template updates available to pull (a tree-granular diff). Read-only: "
         "reports what changed; it does NOT apply anything.",
-        {},
+        {"project_id": _PROJECT_ID_PROP},
         [],
     ),
     _tool(
         "kg_view_read",
         "List the caller's saved views (named lenses of edge/node kinds) for "
         "the current project. Views are per-user — you only ever see your own.",
-        {},
+        {"project_id": _PROJECT_ID_PROP},
         [],
     ),
     _tool(
@@ -501,6 +512,7 @@ GRAPH_SCHEMA_TOOL_DEFINITIONS: list[dict] = [
                 "maximum": TRIAGE_LIMIT_MAX,
                 "description": f"Max signature groups (default {TRIAGE_LIMIT_DEFAULT}).",
             },
+            "project_id": _PROJECT_ID_PROP,
         },
         [],
     ),
@@ -912,7 +924,9 @@ async def _handle_kg_entity_edge_timeline(
 
     try:
         await _resolve_entity_project_grant(
-            args.entity_id, ctx.user_id, ctx.grant_client, ctx.projects_repo
+            args.entity_id, ctx.user_id, ctx.grant_client, ctx.projects_repo,
+            # OD-8: a public MCP-key call is owned-only (no grant-derived access).
+            owner_only=ctx.mcp_key_id is not None,
         )
     except HTTPException as exc:
         # 404 (not found / no grant) + 403 (under tier) collapse to a tool

@@ -42,7 +42,11 @@ _OWNER = uuid4()
 _PROJECT = uuid4()
 _BOOK = uuid4()
 
-_ENVELOPE_KEYS = {"user_id", "project_id", "session_id"}
+# INV-K2 (H-I-amended): user_id / session_id are envelope-only FOREVER (identity).
+# project_id is NO LONGER here — it is a deliberately-allowed, ownership-checked
+# SCOPE arg on the kg-READ tools (the public edge mints no X-Project-Id, so a
+# public agent supplies it; the owner gate confines it to the caller's projects).
+_ENVELOPE_KEYS = {"user_id", "session_id"}
 
 # The 12 tools this lane builds (R + reversible W).
 _LANE_LF_TOOLS = {
@@ -148,8 +152,10 @@ def test_schema_properties_match_arg_model_fields(name: str):
 
 
 def test_no_envelope_keys_leak_into_any_lane_lf_schema():
-    """Design D3 / INV-K2 — user_id / project_id / session_id are envelope
-    fields, never tool parameters."""
+    """Design D3 / INV-K2 (H-I-amended) — user_id / session_id are envelope
+    identity fields, NEVER tool parameters. (project_id IS allowed on the kg-read
+    tools as an ownership-checked scope arg — see
+    test_kg_read_tools_accept_project_id_arg.)"""
     for name in _REGISTERED_KG_TOOLS:
         props = set(_defn(name)["function"]["parameters"]["properties"])
         assert _ENVELOPE_KEYS.isdisjoint(props), name
@@ -169,11 +175,26 @@ def test_graph_query_defaults_and_bounds():
         KgGraphQueryArgs(as_of_chapter=-1)  # ge=0
 
 
-def test_arg_models_reject_smuggled_scope_override():
-    """extra='forbid' — a hallucinated project_id is a tool error, not a
-    silent scope override."""
+def test_kg_read_tools_accept_project_id_arg():
+    """H-I — project_id is now a valid, optional, ownership-checked scope arg on
+    the kg-READ tools. The owner gate (executor) confines it to the caller's own
+    projects; extra='forbid' still rejects identity keys."""
+    assert KgGraphQueryArgs(project_id="p1").project_id == "p1"
+    assert KgGraphQueryArgs().project_id is None  # optional
     with pytest.raises(ValidationError):
-        KgGraphQueryArgs(project_id="x")
+        KgGraphQueryArgs(user_id="smuggled")  # identity stays forbidden
+
+
+def test_arg_models_reject_smuggled_scope_override():
+    """extra='forbid' — identity keys (user_id) are NEVER accepted, and a
+    project_id arg is still rejected on a WRITE tool that did not opt into it
+    (only the kg-read tools carry project_id; writes stay envelope-only until
+    their public exposure, P3/P4)."""
+    with pytest.raises(ValidationError):
+        KgProposeEdgeArgs(
+            source_entity_id="a", target_entity_id="b", edge_type="loves",
+            project_id="x",  # write tool has no project_id field → rejected
+        )
     with pytest.raises(ValidationError):
         KgProposeEdgeArgs(
             source_entity_id="a", target_entity_id="b", edge_type="loves",
@@ -259,6 +280,22 @@ async def test_project_tool_404s_for_non_grantee():
     projects_repo.project_meta = AsyncMock(return_value=(_OWNER, _BOOK))  # owner != caller
     ctx = _ctx(user_id=_USER, projects_repo=projects_repo, grant_client=grant)
     res = await execute_tool(ctx, "kg_view_read", {})
+    assert not res.success
+    assert "not found" in res.error.lower()
+
+
+@pytest.mark.asyncio
+async def test_hi_kg_read_project_id_arg_hoisted_and_owner_checked():
+    """H-I — a kg-read tool's project_id arg supplies scope when the envelope has
+    none (the executor hoist), and the owner gate then validates it: a project the
+    caller neither owns nor has a grant on yields the uniform 'project not found'."""
+    grant = AsyncMock()
+    grant.resolve_grant = AsyncMock(return_value=GrantLevel.NONE)
+    projects_repo = AsyncMock()
+    projects_repo.project_meta = AsyncMock(return_value=(_OWNER, _BOOK))  # not the caller
+    ctx = _ctx(user_id=_USER, project_id=None,
+               projects_repo=projects_repo, grant_client=grant)
+    res = await execute_tool(ctx, "kg_schema_read", {"project_id": str(uuid4())})
     assert not res.success
     assert "not found" in res.error.lower()
 

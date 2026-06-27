@@ -101,6 +101,18 @@ mcp_server = FastMCP(
     transport_security=TransportSecuritySettings(enable_dns_rebinding_protection=False),
 )
 
+# H-I: the optional project_id parameter shared by project-scoped tools. The
+# public edge mints no X-Project-Id, so a public agent supplies the project here;
+# the trusted envelope still wins when present, and the owner gate confines it to
+# the caller's own projects (executor._resolve_project_scope + the per-tool gate).
+# Mirrors ProjectScopedArgs.project_id (drift-locked by test_mcp_server's
+# inputSchema-mirrors-bespoke check).
+_PROJECT_ID_ARG = Annotated[
+    str | None,
+    "Knowledge project id to scope this call to. Omit to use the project linked "
+    "to the current session; on the public API set it to one of your own projects.",
+]
+
 
 # ── Context extraction helpers ────────────────────────────────────────
 
@@ -245,10 +257,13 @@ async def memory_search(
         "Optional — restrict to one source: 'chapter', 'chat', or "
         "'glossary'. Omit to search all.",
     ] = None,
+    project_id: _PROJECT_ID_ARG = None,
 ) -> dict:
     args: dict[str, Any] = {"query": query, "limit": limit}
     if source_type is not None:
         args["source_type"] = source_type
+    if project_id is not None:
+        args["project_id"] = project_id
     return await _dispatch(ctx, "memory_search", args)
 
 
@@ -264,8 +279,12 @@ async def memory_search(
 async def memory_recall_entity(
     ctx: MCPContext,
     entity_name: Annotated[str, "The entity's name as it appears in the story."],
+    project_id: _PROJECT_ID_ARG = None,
 ) -> dict:
-    return await _dispatch(ctx, "memory_recall_entity", {"entity_name": entity_name})
+    args: dict[str, Any] = {"entity_name": entity_name}
+    if project_id is not None:
+        args["project_id"] = project_id
+    return await _dispatch(ctx, "memory_recall_entity", args)
 
 
 @mcp_server.tool(
@@ -297,6 +316,7 @@ async def memory_timeline(
         f"Max events to return (default {TIMELINE_LIMIT_DEFAULT}, "
         f"max {TIMELINE_LIMIT_MAX}).",
     ] = TIMELINE_LIMIT_DEFAULT,
+    project_id: _PROJECT_ID_ARG = None,
 ) -> dict:
     args: dict[str, Any] = {"limit": limit}
     if from_date is not None:
@@ -305,6 +325,8 @@ async def memory_timeline(
         args["to_date"] = to_date
     if entity_name is not None:
         args["entity_name"] = entity_name
+    if project_id is not None:
+        args["project_id"] = project_id
     return await _dispatch(ctx, "memory_timeline", args)
 
 
@@ -326,12 +348,12 @@ async def memory_remember(
         "habit; milestone = a notable achievement; negation = something "
         "explicitly NOT true.",
     ],
+    project_id: _PROJECT_ID_ARG = None,
 ) -> dict:
-    return await _dispatch(
-        ctx,
-        "memory_remember",
-        {"fact_text": fact_text, "fact_type": fact_type},
-    )
+    args: dict[str, Any] = {"fact_text": fact_text, "fact_type": fact_type}
+    if project_id is not None:
+        args["project_id"] = project_id
+    return await _dispatch(ctx, "memory_remember", args)
 
 
 @mcp_server.tool(
@@ -429,12 +451,15 @@ async def kg_graph_query(
         Field(ge=1, le=GRAPH_LIMIT_MAX),
         f"Max edges to scan (default {GRAPH_LIMIT_DEFAULT}).",
     ] = GRAPH_LIMIT_DEFAULT,
+    project_id: _PROJECT_ID_ARG = None,
 ) -> dict:
     args: dict[str, Any] = {"limit": limit}
     if view is not None:
         args["view"] = view
     if as_of_chapter is not None:
         args["as_of_chapter"] = as_of_chapter
+    if project_id is not None:
+        args["project_id"] = project_id
     return await _dispatch(ctx, "kg_graph_query", args)
 
 
@@ -457,6 +482,8 @@ async def kg_entity_edge_timeline(
         f"Max instances (default {KG_TIMELINE_LIMIT_DEFAULT}).",
     ] = KG_TIMELINE_LIMIT_DEFAULT,
 ) -> dict:
+    # No project_id arg: this tool scopes by the ENTITY (resolved to its owner +
+    # OD-8-gated in the handler), so a project_id here would be a no-op.
     return await _dispatch(
         ctx,
         "kg_entity_edge_timeline",
@@ -473,8 +500,13 @@ async def kg_entity_edge_timeline(
         "before proposing an edge or fact."
     ),
 )
-async def kg_schema_read(ctx: MCPContext) -> dict:
-    return await _dispatch(ctx, "kg_schema_read", {})
+async def kg_schema_read(
+    ctx: MCPContext, project_id: _PROJECT_ID_ARG = None
+) -> dict:
+    args: dict[str, Any] = {}
+    if project_id is not None:
+        args["project_id"] = project_id
+    return await _dispatch(ctx, "kg_schema_read", args)
 
 
 @mcp_server.tool(
@@ -506,8 +538,13 @@ async def kg_list_templates(
         "reports what changed; it does NOT apply anything."
     ),
 )
-async def kg_sync_available(ctx: MCPContext) -> dict:
-    return await _dispatch(ctx, "kg_sync_available", {})
+async def kg_sync_available(
+    ctx: MCPContext, project_id: _PROJECT_ID_ARG = None
+) -> dict:
+    args: dict[str, Any] = {}
+    if project_id is not None:
+        args["project_id"] = project_id
+    return await _dispatch(ctx, "kg_sync_available", args)
 
 
 @mcp_server.tool(
@@ -517,8 +554,13 @@ async def kg_sync_available(ctx: MCPContext) -> dict:
         "the current project. Views are per-user — you only ever see your own."
     ),
 )
-async def kg_view_read(ctx: MCPContext) -> dict:
-    return await _dispatch(ctx, "kg_view_read", {})
+async def kg_view_read(
+    ctx: MCPContext, project_id: _PROJECT_ID_ARG = None
+) -> dict:
+    args: dict[str, Any] = {}
+    if project_id is not None:
+        args["project_id"] = project_id
+    return await _dispatch(ctx, "kg_view_read", args)
 
 
 @mcp_server.tool(
@@ -540,10 +582,12 @@ async def kg_triage_list(
         Field(ge=1, le=TRIAGE_LIMIT_MAX),
         f"Max signature groups (default {TRIAGE_LIMIT_DEFAULT}).",
     ] = TRIAGE_LIMIT_DEFAULT,
+    project_id: _PROJECT_ID_ARG = None,
 ) -> dict:
-    return await _dispatch(
-        ctx, "kg_triage_list", {"status": status, "limit": limit}
-    )
+    args: dict[str, Any] = {"status": status, "limit": limit}
+    if project_id is not None:
+        args["project_id"] = project_id
+    return await _dispatch(ctx, "kg_triage_list", args)
 
 
 @mcp_server.tool(
@@ -887,8 +931,15 @@ async def kg_build_graph(
         Field(ge=0),
         "Optional inclusive upper chapter ordinal (with chapter_from).",
     ] = None,
+    reasoning_effort: Annotated[
+        Literal["none", "low", "medium", "high"],
+        "Model reasoning effort (default 'none'; clamped to your grant — Edit "
+        "caps at medium, Manage/owner at high).",
+    ] = "none",
 ) -> dict:
-    args: dict[str, Any] = {"llm_model": llm_model, "scope": scope}
+    args: dict[str, Any] = {
+        "llm_model": llm_model, "scope": scope, "reasoning_effort": reasoning_effort,
+    }
     if chapter_from is not None:
         args["chapter_from"] = chapter_from
     if chapter_to is not None:
@@ -919,8 +970,16 @@ async def kg_build_wiki(
         list[str] | None,
         "Optional explicit entity ids; omit to generate for ALL book entities.",
     ] = None,
+    reasoning_effort: Annotated[
+        Literal["none", "low", "medium", "high"],
+        "Model reasoning effort (default 'none'; clamped to your grant — Edit "
+        "caps at medium, Manage/owner at high).",
+    ] = "none",
 ) -> dict:
-    args: dict[str, Any] = {"model_ref": model_ref, "model_source": model_source}
+    args: dict[str, Any] = {
+        "model_ref": model_ref, "model_source": model_source,
+        "reasoning_effort": reasoning_effort,
+    }
     if entity_ids is not None:
         args["entity_ids"] = entity_ids
     return await _dispatch(ctx, "kg_build_wiki", args)
