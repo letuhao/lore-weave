@@ -1,5 +1,35 @@
 # ▶ NEXT SESSION — Narrative Motif Library BUILD (handoff)
 
+## STATUS (2026-06-28 PM-5) — D-MOTIF-CONFORMANCE-ENGINE-WIRING done · D-MOTIF-FE scoped (XL)
+
+**`D-MOTIF-CONFORMANCE-ENGINE-WIRING`** ✅ `1466215c` (decision: *wire it, keep 'unverified'*).
+New `engine/motif_conformance_producer.py`: the per-scene `run_generate` producer now resolves a
+node's bound `motif_application` (tenant-scoped, read-only over W2's table) → motif + the specific
+beat → `should_judge_conformance` (sampled) → `judge_motif_conformance` → `build_conformance_dim`
+(`calibrated` from config = **false**) → `merge_conformance`. The patch rides `result['_critic']`;
+the consumer pops it onto the job's `critic` column (COALESCE-safe `update_status`). Advisory +
+degrade-safe (gated OFF by default via `motif_conformance_enabled`; never raises/fails a generate;
+prefers the distinct critic). 7 producer unit tests + 137 related green; provider-gate clean.
+**ACTIVATION = config:** flip `motif_conformance_enabled=true` to run it; `calibrated` stays false
+(single-local-judge panel-safety) → FE labels the dim 'unverified self-report'. Judge path was
+live-proven in D-MOTIF-CONFORMANCE-GOLD-SET (gemma-4-26b). Deferred: a full producer→persist→trace
+**e2e** live-smoke (`D-MOTIF-CONFORMANCE-PRODUCER-LIVE-SMOKE`, gate-4 — run when enabled + a bound
+scene exists; the slices are unit+live proven).
+
+**`D-MOTIF-FE-PLANNERVIEW-WIRING`** — SCOPED, decision = **scene-level** binding. Finding: it is an
+**XL full-stack feature**, not an FE wire. `PlannerView` renders the PRE-COMMIT decompose preview
+(`usePlanner.preview`); `PlannerScenePreview` carries no `outline_node_id` or bound `motif`, and
+`motif_application` keys on the node id that exists only AFTER commit. The W6 `useMotifBinding` hook
++ `MotifBindingCard` already do per-node swap/rebind/clear/chain — they just need a committed node
+id. Two implementable shapes (a design call): **(A)** bind POST-commit — the preview/commit response
+carries per-scene `outline_node_id` + current binding; FE renders the card on committed scenes
+(smaller BE delta); **(B)** stage a desired-motif on the preview scene draft, applied at commit
+(commit creates node + writes `motif_application`; larger commit-path change). Needs: BE preview/
+commit contract change + `PlannerScenePreview.motif`/`outline_node_id` + PlannerView render-wire +
+tests both sides. NOT a tail-of-session quick clear.
+
+---
+
 ## STATUS (2026-06-28 PM-4) — D-MOTIF-CONFORMANCE-GOLD-SET — gate CALIBRATED
 
 **`D-MOTIF-CONFORMANCE-GOLD-SET`** ✅ `575d79af` — the W5 conformance judge now has a real
