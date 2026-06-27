@@ -70,6 +70,18 @@ export function SessionSwitcher({ scopeProjectId, className }: SessionSwitcherPr
     setShowNewDialog(true);
   }
 
+  // Archiving the active session would null it out and unmount the switcher
+  // (the only switch UI in embedded mode), stranding the user from their other
+  // book chats. Advance to the next scoped session after the archive so the
+  // workspace stays on a live session. archiveSession() itself nulls the active
+  // one, so re-select afterwards (its closure captured the old active).
+  async function handleArchive(s: ChatSession) {
+    const wasActive = s.session_id === activeSession?.session_id;
+    const next = wasActive ? (scoped.find((x) => x.session_id !== s.session_id) ?? null) : null;
+    await archiveSession(s.session_id);
+    if (wasActive) selectSession(next);
+  }
+
   return (
     <div ref={rootRef} className={cn('relative min-w-0', className)}>
       <button
@@ -134,9 +146,9 @@ export function SessionSwitcher({ scopeProjectId, className }: SessionSwitcherPr
                   aria-label={t('sidebar.archive')}
                   onClick={(e) => {
                     e.stopPropagation();
-                    void archiveSession(s.session_id);
+                    void handleArchive(s);
                   }}
-                  className="hidden shrink-0 rounded p-1 text-muted-foreground hover:text-foreground group-hover:block"
+                  className="hidden shrink-0 rounded p-1 text-muted-foreground hover:text-foreground group-hover:block max-md:block"
                 >
                   <Archive className="h-3 w-3" />
                 </button>

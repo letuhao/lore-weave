@@ -86,12 +86,26 @@ describe('SessionSwitcher', () => {
     expect(setShowNewDialog).toHaveBeenCalledWith(true);
   });
 
-  it('archives a session without selecting it', () => {
+  it('archives a non-active session without switching', async () => {
+    render(<SessionSwitcher scopeProjectId="p1" />);
+    fireEvent.click(screen.getByTestId('session-switcher-trigger'));
+    // scoped order is [A (active), B]; archive B (not active).
+    const archiveButtons = screen.getAllByRole('button', { name: 'sidebar.archive' });
+    fireEvent.click(archiveButtons[1]);
+    await Promise.resolve();
+    await Promise.resolve();
+    expect(archiveSession).toHaveBeenCalledWith('b');
+    expect(selectSession).not.toHaveBeenCalled();
+  });
+
+  it('advances to the next session when archiving the active one (no strand)', async () => {
     render(<SessionSwitcher scopeProjectId="p1" />);
     fireEvent.click(screen.getByTestId('session-switcher-trigger'));
     const archiveButtons = screen.getAllByRole('button', { name: 'sidebar.archive' });
-    fireEvent.click(archiveButtons[0]);
+    fireEvent.click(archiveButtons[0]); // A is active
+    await Promise.resolve();
+    await Promise.resolve();
     expect(archiveSession).toHaveBeenCalledWith('a');
-    expect(selectSession).not.toHaveBeenCalled();
+    expect(selectSession).toHaveBeenCalledWith(B);
   });
 });
