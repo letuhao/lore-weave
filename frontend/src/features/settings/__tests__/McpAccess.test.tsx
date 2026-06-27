@@ -93,14 +93,21 @@ const ACTIVE: McpKey = {
 const REVOKED: McpKey = { ...ACTIVE, key_id: 'r1', name: 'dead-agent', status: 'revoked' };
 
 const revokeMock = vi.fn();
+const loadAuditMock = vi.fn();
 vi.mock('../useMcpKeys', () => ({
-  useMcpKeys: () => ({ keys: [ACTIVE, REVOKED], loading: false, create: vi.fn(), revoke: revokeMock, refresh: vi.fn() }),
+  useMcpKeys: () => ({
+    keys: [ACTIVE, REVOKED], loading: false, create: vi.fn(),
+    revoke: revokeMock, refresh: vi.fn(), loadAudit: loadAuditMock,
+  }),
 }));
 
 import { McpAccessTab } from '../McpAccessTab';
 
 describe('McpAccessTab', () => {
-  beforeEach(() => revokeMock.mockReset());
+  beforeEach(() => {
+    revokeMock.mockReset();
+    loadAuditMock.mockReset();
+  });
 
   it('offers a revoke action only for active keys', () => {
     render(<McpAccessTab />);
@@ -110,5 +117,30 @@ describe('McpAccessTab', () => {
     expect(revokeButtons).toHaveLength(1); // not for the revoked key
     expect(screen.getByText('live-agent')).toBeInTheDocument();
     expect(screen.getByText('dead-agent')).toBeInTheDocument();
+  });
+
+  it('expands a key to show its call audit (H-O), fetching once per key', async () => {
+    loadAuditMock.mockResolvedValue([
+      { audit_id: 'au1', method: 'tools/call', tool_name: 'book_get', outcome: 'relayed', trace_id: null, created_at: '2026-06-28T00:00:00Z' },
+      { audit_id: 'au2', method: 'tools/call', tool_name: 'kg_graph_query', outcome: 'denied_scope', trace_id: null, created_at: '2026-06-28T00:01:00Z' },
+    ]);
+    render(<McpAccessTab />);
+    // Both keys offer the history toggle (audit is available even for a revoked key).
+    const toggles = screen.getAllByRole('button', { name: 'mcp.audit.toggle_aria' });
+    fireEvent.click(toggles[0]); // expand the active key
+
+    await waitFor(() => expect(screen.getByText('book_get')).toBeInTheDocument());
+    expect(screen.getByText('kg_graph_query')).toBeInTheDocument();
+    // Outcome chips are localized.
+    expect(screen.getByText('mcp.audit.outcome.relayed')).toBeInTheDocument();
+    expect(screen.getByText('mcp.audit.outcome.denied_scope')).toBeInTheDocument();
+    expect(loadAuditMock).toHaveBeenCalledWith('a1');
+  });
+
+  it('shows an empty state when a key has no recorded calls', async () => {
+    loadAuditMock.mockResolvedValue([]);
+    render(<McpAccessTab />);
+    fireEvent.click(screen.getAllByRole('button', { name: 'mcp.audit.toggle_aria' })[0]);
+    await waitFor(() => expect(screen.getByText('mcp.audit.empty')).toBeInTheDocument());
   });
 });

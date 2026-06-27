@@ -73,12 +73,25 @@
       "desc": "金鑰會立即（約 60 秒內）停止運作。使用中的代理將失去存取權。此操作無法復原。",
       "confirm": "撤銷"
     },
+    "audit": {
+      "toggle_aria": "{{name}} 的近期呼叫",
+      "loading": "正在載入近期呼叫…",
+      "empty": "尚未記錄任何呼叫。",
+      "outcome": {
+        "relayed": "已轉送",
+        "denied_scope": "已拒絕（範圍）",
+        "rate_limited": "已限流",
+        "unauthorized": "未授權",
+        "upstream_error": "上游錯誤"
+      }
+    },
     "toast": {
       "load_failed": "載入 MCP 金鑰失敗",
       "created": "已建立金鑰「{{name}}」",
       "create_failed": "建立金鑰失敗",
       "revoked": "已撤銷金鑰",
-      "revoke_failed": "撤銷金鑰失敗"
+      "revoke_failed": "撤銷金鑰失敗",
+      "audit_failed": "載入呼叫紀錄失敗"
     }
   },
   "account": {

@@ -73,12 +73,25 @@
       "desc": "Khóa ngừng hoạt động ngay lập tức (trong ~60 giây). Mọi tác nhân đang dùng sẽ mất quyền truy cập. Không thể hoàn tác.",
       "confirm": "Thu hồi"
     },
+    "audit": {
+      "toggle_aria": "Lệnh gọi gần đây của {{name}}",
+      "loading": "Đang tải lệnh gọi gần đây…",
+      "empty": "Chưa có lệnh gọi nào được ghi nhận.",
+      "outcome": {
+        "relayed": "Đã chuyển tiếp",
+        "denied_scope": "Bị từ chối (phạm vi)",
+        "rate_limited": "Bị giới hạn tần suất",
+        "unauthorized": "Không được phép",
+        "upstream_error": "Lỗi phía trên"
+      }
+    },
     "toast": {
       "load_failed": "Không tải được khóa MCP",
       "created": "Đã tạo khóa \"{{name}}\"",
       "create_failed": "Không tạo được khóa",
       "revoked": "Đã thu hồi khóa",
-      "revoke_failed": "Không thu hồi được khóa"
+      "revoke_failed": "Không thu hồi được khóa",
+      "audit_failed": "Không tải được lịch sử lệnh gọi"
     }
   },
   "account": {

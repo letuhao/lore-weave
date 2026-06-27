@@ -2,7 +2,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { toast } from 'sonner';
 import { useAuth } from '@/auth';
-import { mcpKeysApi, type McpKey, type McpKeyCreatePayload, type McpKeyCreated } from './api';
+import { mcpKeysApi, type McpAuditRow, type McpKey, type McpKeyCreatePayload, type McpKeyCreated } from './api';
 
 /**
  * Controller for the Settings → MCP access tab: owns the key list + the
@@ -63,5 +63,19 @@ export function useMcpKeys() {
     [accessToken, refresh, t],
   );
 
-  return { keys, loading, create, revoke, refresh };
+  const loadAudit = useCallback(
+    async (keyId: string): Promise<McpAuditRow[]> => {
+      if (!accessToken) return [];
+      try {
+        const data = await mcpKeysApi.audit(accessToken, keyId);
+        return data.items ?? [];
+      } catch {
+        toast.error(t('mcp.toast.audit_failed'));
+        return [];
+      }
+    },
+    [accessToken, t],
+  );
+
+  return { keys, loading, create, revoke, refresh, loadAudit };
 }

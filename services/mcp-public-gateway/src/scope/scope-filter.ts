@@ -104,6 +104,30 @@ export function countToolCalls(body: unknown): number {
   return messages.filter(isToolCall).length;
 }
 
+/**
+ * The `tools/call` tool names in the request (one per call; a batch yields N). Used
+ * to build per-call audit rows (H-O). Empty when the body has no tool calls.
+ */
+export function toolCallNames(body: unknown): string[] {
+  const messages: JsonRpcRequest[] = Array.isArray(body)
+    ? (body as JsonRpcRequest[])
+    : body && typeof body === 'object'
+      ? [body as JsonRpcRequest]
+      : [];
+  return messages.filter(isToolCall).map((m) => m.params.name);
+}
+
+/** The first JSON-RPC method in the body (for auditing a non-call request); '' when absent. */
+export function firstMethod(body: unknown): string {
+  const messages: JsonRpcRequest[] = Array.isArray(body)
+    ? (body as JsonRpcRequest[])
+    : body && typeof body === 'object'
+      ? [body as JsonRpcRequest]
+      : [];
+  const m = messages.find((x) => typeof x?.method === 'string');
+  return m && typeof m.method === 'string' ? m.method : '';
+}
+
 /** True iff the inbound body is (or contains) a `tools/list` request. */
 export function isListRequest(body: unknown): boolean {
   const messages: JsonRpcRequest[] = Array.isArray(body)

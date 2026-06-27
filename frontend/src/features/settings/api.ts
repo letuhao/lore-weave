@@ -309,6 +309,16 @@ export type McpKeyCreatePayload = {
   expires_at?: string | null;
 };
 
+// One per-key call audit row (H-O) — the owner's view of what an agent did with a key.
+export type McpAuditRow = {
+  audit_id: string;
+  method: string;
+  tool_name: string | null;
+  outcome: 'relayed' | 'denied_scope' | 'rate_limited' | 'unauthorized' | 'upstream_error';
+  trace_id: string | null;
+  created_at: string;
+};
+
 export const mcpKeysApi = {
   list(token: string) {
     return apiJson<{ items: McpKey[] }>('/v1/account/mcp-keys', { token });
@@ -320,5 +330,8 @@ export const mcpKeysApi = {
   },
   revoke(token: string, keyId: string) {
     return apiJson<void>(`/v1/account/mcp-keys/${keyId}`, { method: 'DELETE', token });
+  },
+  audit(token: string, keyId: string) {
+    return apiJson<{ items: McpAuditRow[] }>(`/v1/account/mcp-keys/${keyId}/audit`, { token });
   },
 };

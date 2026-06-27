@@ -169,6 +169,38 @@ CREATE TABLE IF NOT EXISTS mcp_api_keys (
 -- Resolve hot-path: prefix lookup scoped to live keys.
 CREATE INDEX IF NOT EXISTS idx_mcp_api_keys_prefix ON mcp_api_keys (key_prefix) WHERE status = 'active';
 CREATE INDEX IF NOT EXISTS idx_mcp_api_keys_owner ON mcp_api_keys (owner_user_id);
+
+-- Public MCP per-key call audit (P3 / H-O, docs/specs/2026-06-26-public-mcp/03 §H-O). The
+-- mcp-public-gateway edge sees EVERY external-agent call and fires a best-effort audit row here
+-- (one per tools/call; non-call methods carry method only). Append-only: the owner reads their
+-- own key's call history (GET /v1/account/mcp-keys/{id}/audit). key_id is NOT a FK — audit rows
+-- OUTLIVE a revoked/deleted key (the history must survive key deletion); owner_user_id IS an FK
+-- (CASCADE) so a deleted account's audit is purged with it.
+CREATE TABLE IF NOT EXISTS mcp_call_audit (
+  audit_id       UUID PRIMARY KEY DEFAULT uuidv7(),
+  key_id         UUID NOT NULL,
+  owner_user_id  UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  method         TEXT NOT NULL,                       -- the JSON-RPC method (tools/call, tools/list, …)
+  tool_name      TEXT NULL,                           -- the tools/call name; NULL for non-call methods
+  outcome        TEXT NOT NULL CHECK (outcome IN ('relayed','denied_scope','rate_limited','unauthorized','upstream_error')),
+  trace_id       TEXT NULL,                           -- the edge-minted x-trace-id (correlation)
+  created_at     TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+-- Owner read path: a key's recent calls, newest first.
+CREATE INDEX IF NOT EXISTS idx_mcp_call_audit_owner_key_created
+  ON mcp_call_audit (owner_user_id, key_id, created_at DESC);
+
+-- Append-only: REVOKE UPDATE/DELETE so even a compromised app role cannot rewrite the call
+-- history. Same dev-stack caveat as admin_token_issuance_audit (no-op when connected as the DB
+-- owner; production MUST run auth-service under app_service_role).
+DO $$
+BEGIN
+    EXECUTE 'REVOKE UPDATE, DELETE ON TABLE mcp_call_audit FROM app_service_role';
+EXCEPTION
+    WHEN undefined_object THEN
+        RAISE NOTICE 'role app_service_role does not exist (dev stack); skipping REVOKE';
+END $$;
 `
 
 func Up(ctx context.Context, pool *pgxpool.Pool) error {

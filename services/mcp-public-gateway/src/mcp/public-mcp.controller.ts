@@ -6,6 +6,7 @@ import { KeyResolver } from '../auth/key-resolver.js';
 import { countToolCalls, filterListResponseText, gateRequestBody, isListRequest, isWriteRequest } from '../scope/scope-filter.js';
 import { RateLimiter } from '../ratelimit/rate-limiter.js';
 import { makeRateLimitStoreFromEnv } from '../ratelimit/redis-store.js';
+import { AuditClient } from '../audit/audit-client.js';
 
 /**
  * The PUBLIC MCP edge. An external agent connects here (via api-gateway-bff `/mcp`)
@@ -34,6 +35,8 @@ export class PublicMcpController {
   private readonly resolver = new KeyResolver();
   // Built once (one Redis connection); null store (no REDIS_URL) → limiter disabled.
   private readonly limiter = new RateLimiter(makeRateLimitStoreFromEnv());
+  // H-O: best-effort per-key call audit (fire-and-forget to auth-service).
+  private readonly audit = new AuditClient();
 
   @All()
   async handle(@Req() req: Request, @Res() res: Response): Promise<void> {
@@ -54,6 +57,10 @@ export class PublicMcpController {
       return this.deny(res, -32603, 'gateway misconfigured', 500);
     }
 
+    // Mint our own trace id once (never trust an inbound x-trace-id) — reused for
+    // the outbound envelope AND every audit row for this request (correlation).
+    const traceId = randomUUID();
+
     // PUB-8: per-key rate limit BEFORE doing any work (shed abusive load early). A
     // write (tools/call to a write-tier tool) fails CLOSED on a store outage; a
     // read fails OPEN. The dev wildcard key still counts (it has a finite rpm).
@@ -64,6 +71,7 @@ export class PublicMcpController {
     const weight = hasBody ? Math.max(1, countToolCalls(req.body)) : 1;
     const rl = await this.limiter.check(resolved.keyId, resolved.rateLimitRpm, isWrite, weight);
     if (!rl.allowed) {
+      this.audit.record(req.body, resolved.keyId, resolved.userId, traceId, 'rate_limited'); // H-O
       res.setHeader('Retry-After', String(rl.retryAfter));
       res.status(429).json({
         jsonrpc: '2.0',
@@ -77,7 +85,6 @@ export class PublicMcpController {
     // inbound x-* namespace (in particular X-Admin-Token / X-Internal-Token /
     // X-User-Id can never be smuggled through). Only transport-relevant non-x-*
     // headers (Accept, Content-Type, MCP-Protocol-Version) are carried.
-    const traceId = randomUUID(); // mint our own; never trust an inbound x-trace-id
     const outboundHeaders: Record<string, string> = {
       'x-internal-token': this.cfg.internalToken,
       'x-user-id': resolved.userId,
@@ -101,6 +108,7 @@ export class PublicMcpController {
     if (hasBody) {
       const denial = gateRequestBody(req.body, resolved.scopes);
       if (denial !== null) {
+        this.audit.record(req.body, resolved.keyId, resolved.userId, traceId, 'denied_scope'); // H-O
         res.status(200).json(denial); // JSON-RPC errors travel as a 200 envelope
         return;
       }
@@ -118,6 +126,8 @@ export class PublicMcpController {
       // PUB-3 / H-F: filter the `tools/list` RESPONSE so the agent only ever sees the
       // tools its key may call. Only rewrite a successful list; errors pass through.
       const ok = upstream.status >= 200 && upstream.status < 300;
+      // H-O: record the relay outcome (per tools/call; non-call relays are not audited).
+      this.audit.record(req.body, resolved.keyId, resolved.userId, traceId, ok ? 'relayed' : 'upstream_error');
       const rewroteList = ok && hasBody && isListRequest(req.body);
       if (rewroteList) {
         text = filterListResponseText(text, resolved.scopes, this.log);
@@ -128,6 +138,7 @@ export class PublicMcpController {
       if (ct) res.setHeader('content-type', ct);
       res.send(text);
     } catch (e) {
+      this.audit.record(req.body, resolved.keyId, resolved.userId, traceId, 'upstream_error'); // H-O
       this.log.warn(`relay to ai-gateway failed: ${e}`);
       return this.deny(res, -32603, 'upstream gateway unavailable', 502);
     }

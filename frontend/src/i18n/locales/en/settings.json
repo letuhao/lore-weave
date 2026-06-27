@@ -73,12 +73,25 @@
       "desc": "The key stops working immediately (within ~60s). Any agent using it will lose access. This cannot be undone.",
       "confirm": "Revoke"
     },
+    "audit": {
+      "toggle_aria": "Recent calls for {{name}}",
+      "loading": "Loading recent calls…",
+      "empty": "No calls recorded yet.",
+      "outcome": {
+        "relayed": "Relayed",
+        "denied_scope": "Denied (scope)",
+        "rate_limited": "Rate limited",
+        "unauthorized": "Unauthorized",
+        "upstream_error": "Upstream error"
+      }
+    },
     "toast": {
       "load_failed": "Failed to load MCP keys",
       "created": "Key \"{{name}}\" created",
       "create_failed": "Failed to create key",
       "revoked": "Key revoked",
-      "revoke_failed": "Failed to revoke key"
+      "revoke_failed": "Failed to revoke key",
+      "audit_failed": "Failed to load call history"
     }
   },
   "account": {

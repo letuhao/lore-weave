@@ -1,10 +1,11 @@
 import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { KeyRound, Plus, Trash2 } from 'lucide-react';
+import { History, KeyRound, Plus, Trash2 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { ConfirmDialog } from '@/components/shared/ConfirmDialog';
 import { useMcpKeys } from './useMcpKeys';
 import { McpCreateKeyDialog } from './McpCreateKeyDialog';
+import { McpKeyAuditView } from './McpKeyAuditView';
 import { splitScopes, type McpKey } from './api';
 
 function fmtDate(iso: string | null): string {
@@ -15,10 +16,11 @@ function fmtDate(iso: string | null): string {
 
 export function McpAccessTab() {
   const { t } = useTranslation('settings');
-  const { keys, loading, create, revoke } = useMcpKeys();
+  const { keys, loading, create, revoke, loadAudit } = useMcpKeys();
   const [showCreate, setShowCreate] = useState(false);
   const [pendingRevoke, setPendingRevoke] = useState<McpKey | null>(null);
   const [revoking, setRevoking] = useState(false);
+  const [auditOpen, setAuditOpen] = useState<string | null>(null);
 
   async function handleRevoke() {
     if (!pendingRevoke) return;
@@ -56,10 +58,8 @@ export function McpAccessTab() {
           {keys.map((k) => {
             const { tiers, domains } = splitScopes(k.scopes);
             return (
-            <li
-              key={k.key_id}
-              className="flex items-center justify-between gap-4 rounded-lg border px-4 py-3"
-            >
+            <li key={k.key_id} className="overflow-hidden rounded-lg border">
+              <div className="flex items-center justify-between gap-4 px-4 py-3">
               <div className="min-w-0">
                 <div className="flex items-center gap-2">
                   <span className="truncate text-sm font-medium">{k.name}</span>
@@ -82,15 +82,30 @@ export function McpAccessTab() {
                   {k.expires_at && <span>{t('mcp.expires_label', { date: fmtDate(k.expires_at) })}</span>}
                 </div>
               </div>
-              {k.status === 'active' && (
+              <div className="flex flex-shrink-0 items-center gap-1">
                 <button
-                  onClick={() => setPendingRevoke(k)}
-                  aria-label={t('mcp.revoke_aria', { name: k.name })}
-                  className="flex-shrink-0 rounded-md p-2 text-muted-foreground transition-colors hover:bg-destructive/10 hover:text-destructive"
+                  onClick={() => setAuditOpen((cur) => (cur === k.key_id ? null : k.key_id))}
+                  aria-label={t('mcp.audit.toggle_aria', { name: k.name })}
+                  aria-expanded={auditOpen === k.key_id}
+                  className={cn(
+                    'rounded-md p-2 text-muted-foreground transition-colors hover:bg-muted',
+                    auditOpen === k.key_id && 'bg-muted text-foreground',
+                  )}
                 >
-                  <Trash2 className="h-4 w-4" />
+                  <History className="h-4 w-4" />
                 </button>
-              )}
+                {k.status === 'active' && (
+                  <button
+                    onClick={() => setPendingRevoke(k)}
+                    aria-label={t('mcp.revoke_aria', { name: k.name })}
+                    className="rounded-md p-2 text-muted-foreground transition-colors hover:bg-destructive/10 hover:text-destructive"
+                  >
+                    <Trash2 className="h-4 w-4" />
+                  </button>
+                )}
+              </div>
+              </div>
+              {auditOpen === k.key_id && <McpKeyAuditView keyId={k.key_id} load={loadAudit} />}
             </li>
             );
           })}

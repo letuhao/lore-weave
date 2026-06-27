@@ -73,12 +73,25 @@
       "desc": "キーは直ちに（約60秒以内に）無効になります。使用中のエージェントはアクセスを失います。元に戻せません。",
       "confirm": "取り消す"
     },
+    "audit": {
+      "toggle_aria": "{{name}} の最近の呼び出し",
+      "loading": "最近の呼び出しを読み込み中…",
+      "empty": "まだ呼び出しは記録されていません。",
+      "outcome": {
+        "relayed": "中継",
+        "denied_scope": "拒否（スコープ）",
+        "rate_limited": "レート制限",
+        "unauthorized": "未認可",
+        "upstream_error": "上流エラー"
+      }
+    },
     "toast": {
       "load_failed": "MCPキーの読み込みに失敗しました",
       "created": "キー「{{name}}」を作成しました",
       "create_failed": "キーの作成に失敗しました",
       "revoked": "キーを取り消しました",
-      "revoke_failed": "キーの取り消しに失敗しました"
+      "revoke_failed": "キーの取り消しに失敗しました",
+      "audit_failed": "呼び出し履歴の読み込みに失敗しました"
     }
   },
   "account": {
