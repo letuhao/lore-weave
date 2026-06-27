@@ -16,6 +16,7 @@ from app.clients.glossary_client import GlossaryClient, get_glossary_client
 from app.clients.knowledge_client import KnowledgeClient, get_knowledge_client
 from app.clients.llm_client import LLMClient, get_llm_client
 from app.db.pool import get_pool
+from app.db.repositories.arc_template_repo import ArcTemplateRepo
 from app.db.repositories.canon_rules import CanonRulesRepo
 from app.db.repositories.daily_progress import DailyProgressRepo
 from app.db.repositories.derivatives import DerivativesRepo
@@ -103,6 +104,13 @@ async def get_motif_repo() -> MotifRepo:
     the HTTP surface (adopt/publish/catalog); the engine (W2)/MCP (W4) consume the
     same instance through this factory."""
     return MotifRepo(get_pool())
+
+
+async def get_arc_template_repo() -> ArcTemplateRepo:
+    """W10 — the arc-template library CRUD + clone primitive + apply-preview. Mirrors
+    get_motif_repo; the router (arc.py) consumes this. W9 (import/deconstruct) will
+    consume the same repo through this factory."""
+    return ArcTemplateRepo(get_pool())
 
 
 async def get_motif_retriever() -> MotifRetriever:

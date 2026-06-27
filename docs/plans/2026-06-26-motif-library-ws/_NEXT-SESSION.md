@@ -27,13 +27,40 @@ main tree** (correct base, commit directly); if a worktree must be used, add a *
 (assert `motif_repo.py` + `mine_motifs` seam exist, else STOP) and reconcile by **cherry-picking
 the WS's own commit**, never merging its branch.
 
-**▶ NEXT — Batch B (sequential, non-isolated, backend-first):** W10 arc (land
-`arc_template_repo` + `routers/arc.py` CRUD + `engine/arc_apply.py` proportional rescale R2.5;
-FE arc-timeline = W10-FE follow-up) → W9 import (`import_source` ingest + `engine/motif_deconstruct.py`
-fills the W2-F0 stub) → W8 mine (cross-service `motif_beat` extractor in knowledge-service +
-`engine/motif_mine.py`). LLM/cross-service live-smoke (W8/W9 deconstruct+mine, W5 conformance
+**W10 arc — BACKEND LANDED** (`feat/narrative-pattern-library`): `db/repositories/arc_template_repo.py`
+(CRUD + clone/adopt + `list_public` allow-list + `count_shared_by_owner`, mirrors `motif_repo`
+verbatim — same 2-tier read predicate, same conditional-param binding that does NOT bind an unused
+`$1` for scope=system/public, optimistic-lock patch), `routers/arc.py` (`/v1/composition/arc-templates`
+list/catalog/get/create/patch/archive/adopt **+ `apply`-preview**), `engine/arc_apply.py` (PURE
+deterministic apply: R2.5 proportional placement-rescale into [1..target] with endpoints anchored +
+arc_roster bound ONCE → propagated to every placement + a §12.6 drop/merge report that is NEVER
+silent), `deps.get_arc_template_repo()`, `main.py` +1 include, models `ArcTemplateCreateArgs`/
+`ArcTemplatePatchArgs`/`ArcThread`/`ArcRosterEntry`/`ArcApplyArgs`/`ArcApplyPlan`/`ResolvedPlacement`/
+`DropMergeEntry`. Tests: `tests/unit/test_arc_template_repo.py` (18) + `test_arc_apply.py` (16) = 34
+green; 1108 collected; provider-gate clean. NO migration (arc_template F0-frozen). NO LLM/DB in apply.
+
+**▶ NEXT — Batch B continues:** W9 import (`import_source` ingest + `engine/motif_deconstruct.py`
+fills the W2-F0 stub; consumes W10's frozen `arc_template_repo` to write deconstructed arc rows) →
+W8 mine (cross-service `motif_beat` extractor in knowledge-service + `engine/motif_mine.py`). Plus
+the W10 follow-ups below. LLM/cross-service live-smoke (W8/W9 deconstruct+mine, W5 conformance
 extract-diff) defers to an lm_studio + embedding-credential stack-up (R-NODE-P3/P4), mirroring the
-R-NODE-P1 LLM-slice deferral. New `D-MOTIF-SYNC-3WAY-BASE` (W11 schema), `D-WSTITCH-LIVE-SMOKE`.
+R-NODE-P1 LLM-slice deferral.
+
+**Deferred — W10 (NEW, gate-passing):**
+- **`D-W10-FE-TIMELINE`** (gate 1 out-of-scope · target W10-FE / W6 extends): the FE thread×chapter
+  arc-timeline subtree (the shared timeline editor, spec §10) — explicitly fenced out of this
+  backend slice; the apply-preview JSON (`ArcApplyPlan`) is its data contract.
+- **`D-W10-APPLY-PLANNER-MATERIALIZE`** (gate 2 large/structural · target Batch-B live-smoke): the
+  apply endpoint returns the PURE plan only — it does NOT materialize `outline_node` rows, write a
+  `motif_application` ledger, or invoke the LLM decompose planner. That deep planner integration
+  (turn the rescaled placements into a committed multi-chapter outline, §12.5) rides the existing
+  `engine/plan.py` decompose path + needs a stack-up live-smoke; build when W9/W8 bring the LLM rails up.
+- **`D-W10-ARC-CONFORMANCE`** (gate 3 naturally-next · target P4 with W5 arc-diff): coarse
+  arc-conformance (thread-progress / pacing / succession diff of realized arc vs template, §14.4 altitude 3)
+  depends on the import/extract path (W9) + W5's deferred arc-diff dimension — implementable only once
+  those land. Master-plan §5 W10 lists it; not in the backend-CRUD/apply slice.
+
+Carried: `D-MOTIF-SYNC-3WAY-BASE` (W11 schema), `D-WSTITCH-LIVE-SMOKE`.
 
 ---
 

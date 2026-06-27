@@ -521,3 +521,99 @@ class MotifPatchArgs(_ForbidExtra):
     examples: list[dict[str, Any]] | None = None
     visibility: MotifVisibility | None = None
     status: MotifStatus | None = None
+
+
+# ── ARC-TEMPLATE write-arg models (W10) — mirror the motif Create/Patch shape.
+# owner is NEVER an arg (the repo stamps it = caller); embedding-model is platform
+# config, never a write choice (B-1). The JSONB members (threads/layout/pacing/
+# arc_roster) are validated by their sub-shapes on write.
+class ArcThread(BaseModel):
+    key: _Key
+    label: _Title = ""
+
+
+class ArcRosterEntry(BaseModel):                   # one arc_roster[] entry (§12.2)
+    key: _Key                                      # the arc-level role slot (e.g. 'protagonist')
+    actant: Actant | None = None
+    label: _Title = ""
+    constraints: list[_Short] = Field(default_factory=list)
+
+
+class ArcTemplateCreateArgs(_ForbidExtra):
+    code: _Code
+    name: _Title
+    language: _Lang = "en"
+    summary: _Long = ""
+    genre_tags: list[_Key] = Field(default_factory=list)
+    chapter_span: Annotated[int, Field(ge=1)] | None = None
+    threads: list[ArcThread] = Field(default_factory=list)
+    layout: list[ArcPlacement] = Field(default_factory=list)
+    pacing: list[dict[str, Any]] = Field(default_factory=list)
+    arc_roster: list[ArcRosterEntry] = Field(default_factory=list)
+    visibility: MotifVisibility = "private"         # public/unlisted allowed at create; system is migrate-only
+
+
+class ArcTemplatePatchArgs(_ForbidExtra):
+    # every field optional (PATCH semantics); owner/code/language/source are NOT
+    # patchable (identity/lineage are immutable post-create — clone to re-key).
+    name: _Title | None = None
+    summary: _Long | None = None
+    genre_tags: list[_Key] | None = None
+    chapter_span: Annotated[int, Field(ge=1)] | None = None
+    threads: list[ArcThread] | None = None
+    layout: list[ArcPlacement] | None = None
+    pacing: list[dict[str, Any]] | None = None
+    arc_roster: list[ArcRosterEntry] | None = None
+    visibility: MotifVisibility | None = None
+    status: MotifStatus | None = None
+
+
+# ── ARC APPLY (W10) — the PURE/deterministic placement-rescale contract (§12.5).
+# apply = decompose at arc scale: reconcile chapter_span→target, bind arc_roster
+# ONCE, place motifs across the target chapters, interleave per thread, and surface
+# a drop/merge report (§12.6 — NEVER silent). NO LLM/DB here; the deep planner
+# materialization (outline_node rows) is the W10 live-smoke follow-up.
+class ArcApplyArgs(_ForbidExtra):
+    target_chapters: Annotated[int, Field(ge=1, le=2000)]
+    # role binding: arc_roster role-key → the new book's concrete cast id/name
+    # (bound ONCE for the whole arc, propagated to every placement). ForbidExtra
+    # keeps the LLM/caller from smuggling ownership ids onto the apply.
+    roster_bindings: dict[str, Any] = Field(default_factory=dict)
+
+
+class ResolvedPlacement(BaseModel):                # one rescaled placement in the plan
+    motif_code: _Code
+    motif_id: UUID | None = None
+    thread: _Key
+    ord: int = 0
+    src_span_start: int                            # the template's original span (audit)
+    src_span_end: int
+    span_start: int                                # rescaled into [1..target_chapters]
+    span_end: int
+    role_hints: dict[str, Any] = Field(default_factory=dict)
+    role_bindings: dict[str, Any] = Field(default_factory=dict)   # arc_roster propagated
+    triggers: list[str] = Field(default_factory=list)
+    merged_codes: list[str] = Field(default_factory=list)         # other placements folded in (§12.6)
+
+
+class DropMergeEntry(BaseModel):                   # one §12.6 reconciliation event — never silent
+    kind: Literal["dropped", "merged"]
+    motif_code: _Code
+    thread: _Key
+    src_span_start: int
+    src_span_end: int
+    into_motif_code: _Code | None = None           # the survivor a merge folded into
+    reason: _Short = ""
+
+
+class ArcApplyPlan(BaseModel):                      # the apply-preview result (router returns this)
+    arc_template_id: UUID
+    source_chapter_span: int                        # the span the rescale ran from
+    target_chapters: int
+    threads: list[dict[str, Any]] = Field(default_factory=list)
+    placements: list[ResolvedPlacement] = Field(default_factory=list)
+    roster_bindings: dict[str, Any] = Field(default_factory=dict)   # bound ONCE (§12.5)
+    unbound_roster_keys: list[str] = Field(default_factory=list)    # roster slots with no binding supplied
+    drop_merge_report: list[DropMergeEntry] = Field(default_factory=list)
+    # per-chapter interleave: chapter_no (1-based) → [placement ords active there]
+    chapter_interleave: dict[str, list[int]] = Field(default_factory=dict)

@@ -34,7 +34,7 @@ from app.logging_config import setup_logging, trace_id_var
 from app.mcp.server import build_mcp_app, mcp_server
 from app.middleware.trace_id import TraceIdMiddleware
 from app.routers import (
-    actions, approve, canon, conformance, engine, grounding, health, internal_eval,
+    actions, approve, arc, canon, conformance, engine, grounding, health, internal_eval,
     internal_job_control, metrics, motif, motif_sync, narrative_threads, outline, ping, plan,
     progress, prose, references, style_voice, works,
 )
@@ -179,6 +179,7 @@ app.include_router(style_voice.router)  # LOOM T3.5 — style & voice steering
 app.include_router(references.router)  # LOOM T3.6 — author reference shelf + retrieval
 app.include_router(motif.router)  # Narrative motif library W1 — CRUD/adopt/publish/catalog
 app.include_router(motif_sync.router)  # W11 — publish/adopt sync (upstream-diff + apply-merge)
+app.include_router(arc.router)  # W10 — arc-template CRUD/adopt/catalog + apply-preview
 app.include_router(engine.router)
 app.include_router(outline.router)
 app.include_router(plan.router)
