@@ -343,6 +343,23 @@ async def test_bind_idor_foreign_motif_still_rejected():
             )
 
 
+async def test_unbind_validates_then_degrades_pending_wiring():
+    """Same reconcile seam (D-MOTIF-MCP-BIND-WIRING): unbind resolves the Work + gates
+    EDIT, then degrades EXPLICITLY (not via a fragile missing-symbol ImportError that
+    would flip to a wrong-signature call if an `unbind_motif` is later added to the
+    engine). REPLACE with the real archive assertion when the wiring lands."""
+    import app.mcp.server as srv
+
+    async with _patched():  # WorksRepo + grant gate (EDIT) mocked by the helper
+        res = await srv.composition_motif_unbind(
+            _Ctx(), project_id=str(PROJECT), node_id=str(NODE),
+            application_id=str(uuid.uuid4()),
+        )
+    assert res["success"] is False
+    assert res["reason"] == "pending_bind_wiring"
+    assert "outline" in res["use_instead"]
+
+
 async def test_adopt_propose_mints_token_no_clone():
     """H-6: adopt propose returns a confirm_token + tenancy preview; NO clone at
     propose (the effect is the only clone path)."""

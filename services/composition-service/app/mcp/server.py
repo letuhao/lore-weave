@@ -1458,26 +1458,16 @@ async def composition_motif_unbind(
     await _gate(tc, work.book_id, GrantLevel.EDIT)
     # Same seam as composition_motif_bind: W2's engine offers apply_motif_swap(clear
     # mode)/undo_motif_swap (token-based), not the unbind_motif(application_id) contract
-    # this tool was authored against. Degrades cleanly pending D-MOTIF-MCP-BIND-WIRING;
-    # the HTTP twin (PATCH …/motif with motif_id=null = clear) is the working entry.
-    try:
-        from app.engine.motif_select import unbind_motif  # type: ignore
-    except ImportError:
-        return {
-            "success": False,
-            "error": "motif unbinding via MCP is pending engine-contract reconciliation",
-            "reason": "pending_bind_wiring",
-            "use_instead": "PATCH /v1/composition/works/{project_id}/outline/{node_id}/motif (motif_id=null)",
-        }
-    # The engine's unbind asserts the application's project_id == pid AND book_id ==
-    # work.book_id (the per-tool IDOR for the application target) before archiving.
-    ok = await unbind_motif(
-        tc.user_id, project_id=pid, book_id=work.book_id,
-        node_id=UUID(node_id), application_id=UUID(application_id),
-    )
-    if not ok:
-        raise uniform_not_accessible()
-    return {"unbound": True, "application_id": application_id, "_meta": {"undo_hint": None}}
+    # this tool was authored against. Degrade EXPLICITLY (not via a fragile ImportError
+    # that would flip to a wrong-signature call the instant an `unbind_motif` symbol is
+    # added to the engine) — tracked D-MOTIF-MCP-BIND-WIRING. The HTTP twin
+    # (PATCH …/motif with motif_id=null = clear) is the working entry for P1.
+    return {
+        "success": False,
+        "error": "motif unbinding via MCP is pending engine-contract reconciliation",
+        "reason": "pending_bind_wiring",
+        "use_instead": "PATCH /v1/composition/works/{project_id}/outline/{node_id}/motif (motif_id=null)",
+    }
 
 
 # ── Tier W — motif confirm-token ops (cost/tenancy-gated) ─────────────────────

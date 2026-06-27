@@ -304,6 +304,7 @@ async def decompose_preview(
         genre_tags=motif_genres,
         motif_min_score=settings.motif_min_score,
         motif_max_reapply=settings.motif_max_reapply,
+        motif_connective_floor_margin=settings.motif_connective_floor_margin,
         motif_applied_counts=motif_applied_counts,
     )
     return _decompose_response(result)
