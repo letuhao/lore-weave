@@ -105,6 +105,57 @@ async def test_resume_skips_completed_chapters_and_finalizes():
 
 
 @pytest.mark.asyncio
+async def test_late_cancel_on_last_chapter_finalizes_as_cancelled():
+    # bug #34 (live-smoke D-CANCEL-IMMEDIATE): a cancel that lands DURING the last chapter
+    # aborts its in-flight LLM calls (cancel_check → DELETE → upstream abort) but the
+    # per-chapter cooperative gate never fires again (no chapter left to gate), so the loop
+    # falls through to finalize with the job still 'cancelling'. The finalize must honor the
+    # cancel — report 'cancelled' (completed chapters kept) — NOT let the chapter-aggregate
+    # mask it as 'completed'/'completed_with_errors'. The smoke caught the row + the unified
+    # jobs stream both mislabeling an explicit cancel as "completed with errors".
+    jid = uuid4()
+    c1 = str(uuid4())
+    db = AsyncMock()
+    # claim UPDATE...RETURNING → jid; the lone "SELECT status FROM extraction_jobs" is the
+    # NEW finalize check (the per-chapter gate is skipped — c1 is a resume-done chapter) →
+    # 'cancelling' simulates the cancel arriving mid-last-chapter.
+    async def _fetchval(query, *args):
+        if "SELECT status FROM extraction_jobs" in str(query):
+            return "cancelling"
+        return jid
+
+    db.fetchval = AsyncMock(side_effect=_fetchval)
+    # one resume-done chapter → aggregate would be 'completed' (failed==0, errors==0)
+    db.fetch = AsyncMock(return_value=[
+        {"chapter_id": c1, "status": "completed", "it": 100, "ot": 50},
+    ])
+    db.execute = AsyncMock()
+    publish, publish_event = AsyncMock(), AsyncMock()
+
+    with patch("app.workers.extraction_worker.fetch_known_entities", new=AsyncMock(return_value=[])), \
+         patch("app.workers.extraction_worker._process_extraction_chapter", new=AsyncMock()) as proc, \
+         patch("app.workers.extraction_worker.resolve_job_cost_usd", new=AsyncMock(return_value=None)), \
+         patch("app.workers.extraction_worker.emit_job_event_safe", new=AsyncMock()) as emit:
+        await _run_extraction_job(
+            {"book_id": "b", "chapter_ids": [c1]},
+            jid, "u", _pool(db), publish, publish_event, MagicMock(),
+        )
+
+    proc.assert_not_awaited()  # c1 already done → no work; cancel lands at finalize
+    # the terminal UPDATE wrote 'cancelled', NOT the 'completed' aggregate it would otherwise be
+    finals = [c for c in db.execute.await_args_list if "SET status=$2, finished_at=now()" in str(c.args[0])]
+    assert finals and finals[-1].args[2] == "cancelled"
+    # the unified jobs stream agrees: canonical terminal event is 'cancelled' (not 'completed')
+    assert any(c.kwargs.get("status") == "cancelled" for c in emit.await_args_list)
+    assert not any(c.kwargs.get("status") == "completed" for c in emit.await_args_list)
+    # the SSE payload to the user also reads 'cancelled'
+    terminal_payloads = [c.args[1]["payload"]["status"] for c in publish_event.await_args_list
+                         if c.args[1].get("event") == "job.status_changed"
+                         and c.args[1]["payload"].get("status") in ("completed", "completed_with_errors", "cancelled", "failed")]
+    assert terminal_payloads and terminal_payloads[-1] == "cancelled"
+
+
+@pytest.mark.asyncio
 async def test_per_chapter_emits_unified_progress_for_live_monitoring():
     # bug #2 (D-JOBS-EXTRACT-LIVE-PROGRESS): each processed chapter mirrors progress onto the
     # UNIFIED jobs-service stream (a 'running' event carrying progress={done,total}) so the

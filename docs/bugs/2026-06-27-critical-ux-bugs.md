@@ -404,7 +404,26 @@ Some jobs are very hard to interrupt — 30 minutes from cancelling until actual
 > in-progress, keeps completed parts") ×4 locales. The in-flight call (and all
 > concurrent batch calls) abort within one poll interval (~0.25–5s). Shipped in two
 > milestones: M1 `473143c0` (keystone + extraction + FE), M2 (composition +
-> translation + KG-build). Cross-service live-smoke deferred → D-CANCEL-IMMEDIATE-LIVE-SMOKE.
+> translation + KG-build).
+> **LIVE-SMOKE (D-CANCEL-IMMEDIATE-LIVE-SMOKE — DONE):** end-to-end on the real stack via
+> glossary **extraction** (4×~30 KB Dracula chapters, local lm_studio `gemma-4-26b-a4b-qat`).
+> Cancel → worker `cancel_check` fired → `DELETE /internal/llm/jobs/{id}` (204) → provider-registry
+> aborted the live upstream call (`POST host.docker.internal:1234/v1/chat/completions: context
+> canceled`); job reached terminal **~1.9 s** after cancel, keeping the 68 entities already
+> extracted (in-progress chapter discarded). NOTE: the deployed images had to be rebuilt first
+> (the running worker predated M1 — see [[feedback_verify_deployed_image_matches_source]]).
+> The smoke ALSO surfaced + fixed a label bug: a cancel landing on the LAST chapter aborted its
+> in-flight calls but fell through finalize, which overwrote `cancelling` with the
+> chapter-aggregate (`completed_with_errors`) instead of `cancelled`. Fixed in
+> `extraction_worker._run_extraction_job` (cancel-aware finalize + canonical event) + regression
+> test `test_late_cancel_on_last_chapter_finalizes_as_cancelled`.
+> CAVEAT (new defer row): the chapter-**translation** path runs DECOUPLED in the default
+> deployment (`TRANSLATION_DECOUPLE_ENABLED=true`), which is event-driven and does NOT sit in
+> the synchronous `wait_terminal(cancel_check)` — so #34's in-flight abort only fires when the
+> flag is OFF. The decoupled path cancels cooperatively at the next batch boundary, NOT via
+> in-flight DELETE → **D-CANCEL-IMMEDIATE-TRANSLATION-DECOUPLED**. Composition + KG-build share
+> the proven keystone (same SDK `wait_terminal` + provider-registry abort) and are unit-verified
+> for forwarding, but were not separately live-smoked.
 
 ### [ ] 35. Platform lacks a language picker (user must type language code)
 The platform lacks a language picker — the user must input the language code. Bad design.

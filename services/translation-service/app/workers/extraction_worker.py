@@ -610,6 +610,19 @@ async def _run_extraction_job(msg: dict, job_id: UUID, user_id: str, pool, publi
         final_status = "completed"
     else:
         final_status = "completed_with_errors"
+    # bug #34 (live-smoke D-CANCEL-IMMEDIATE) — a mid-chapter cancel that lands on the LAST
+    # chapter aborts that chapter's in-flight LLM calls (the cancel_check → DELETE → upstream
+    # abort) but never re-enters the per-chapter cooperative gate above (no chapter left to
+    # gate), so the loop falls through to here with the job still 'cancelling'. Honor the
+    # user's intent: report 'cancelled' (already-completed chapters are kept — the documented
+    # "discards in-progress, keeps completed parts" semantics) instead of letting the
+    # chapter-aggregate mask the cancel as 'completed_with_errors'.
+    async with pool.acquire() as db:
+        _cur_status = await db.fetchval(
+            "SELECT status FROM extraction_jobs WHERE job_id=$1", job_id
+        )
+    if _cur_status in ("cancelling", "cancelled"):
+        final_status = "cancelled"
     # bug #3 / D-JOBS-P4: derive the ACTUAL job cost from the summed tokens via the
     # provider-registry pricing oracle (the gateway `usage` carries only tokens). Resolved
     # out-of-tx (network I/O), best-effort (None on an unpriced model / registry blip), and
@@ -645,7 +658,12 @@ async def _run_extraction_job(msg: dict, job_id: UUID, user_id: str, pool, publi
 
     # P1 terminal emit (best-effort). 'completed_with_errors' has no canonical JobStatus →
     # map to 'completed' (the job DID finish; per-chapter failures are tracked on the row).
-    _canon = "completed" if final_status in ("completed", "completed_with_errors") else "failed"
+    # A late cancel (above) emits the canonical 'cancelled', mirroring the per-chapter
+    # cooperative-gate path so the unified jobs stream agrees with the row status.
+    if final_status == "cancelled":
+        _canon = "cancelled"
+    else:
+        _canon = "completed" if final_status in ("completed", "completed_with_errors") else "failed"
     await emit_job_event_safe(
         pool, service=_JOB_SERVICE, job_id=str(job_id), owner_user_id=str(user_id),
         kind=_JOB_KIND, status=_canon,
