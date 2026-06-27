@@ -1,5 +1,22 @@
 # ▶ NEXT SESSION — Narrative Motif Library BUILD (handoff)
 
+## STATUS (2026-06-28 PM-4) — D-MOTIF-CONFORMANCE-GOLD-SET — gate CALIBRATED
+
+**`D-MOTIF-CONFORMANCE-GOLD-SET`** ✅ `575d79af` — the W5 conformance judge now has a real
+Source-A gold set. Replaced the 4 scaffolding rows in `scripts/motif_conformance_gold/po_seed.jsonl`
+with **25 curated author-written scenes** (ground-truth-by-construction, abstract §12.6, over the
+real seeded motifs), balanced + decorrelated so both binary sub-flags see both classes
+(T/T 9 · F/F 8 · T/F 4 · F/T 4 → each flag 13T/12F).
+**Live calibration** (composition → provider-registry → lm_studio `gemma-4-26b`, cross-service
+live-smoke): **GATE = CALIBRATED** — `beat_realized` kappa=1.000/bacc=1.000; `tension_band_match`
+kappa=0.762/bacc=0.885 (the harder axis, 3 fn). Both clear kappa≥0.4 & bacc≥0.75.
+**NOT activated:** `motif_conformance_calibrated` stays false — the gate says a HUMAN may flip it,
+and the single-local-judge panel-safety caveat (no ≥2 disjoint judges) makes activation a human
+call, tied to the still-open `D-MOTIF-CONFORMANCE-ENGINE-WIRING`. The dim ships honest 'unverified'.
+Re-run anytime: `python scripts/calibrate_motif_conformance.py` (live) / `--offline` (shape only).
+
+---
+
 ## STATUS (2026-06-28 PM-3) — D-W7-VI-PACK BUILT (vi seed packs) · ⏳ awaiting PO genre sign-off
 
 **`D-W7-VI-PACK`** ✅ engineering done + verified — ⏳ **PO genre-faithfulness review OUTSTANDING**
