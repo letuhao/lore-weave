@@ -51,6 +51,7 @@ import { CompositionSettingsView } from './CompositionSettingsView';
 // two registrations are the only studio-shell touches (master §4 W6 / 00-RECONCILE §2).
 import { MotifLibraryView } from '../motif/components/MotifLibraryView';
 import { ConformanceTraceView } from '../motif/components/ConformanceTraceView';
+import { MotifPanelBoundary } from '../motif/components/MotifPanelBoundary';
 import { MotifSimpleModeProvider } from '../motif/context/MotifSimpleModeContext';
 
 type Props = {
@@ -794,14 +795,18 @@ export function CompositionPanel({ bookId, chapterId, token, onAccept, sceneId: 
             wraps BOTH so the simple/expert toggle is shared across them (one stable
             per-device preference). */}
         <DockSlot {...slot('motifs')}>
-          <MotifSimpleModeProvider token={token}>
-            <MotifLibraryView token={token} books={[{ id: bookId, name: bookId }]} />
-          </MotifSimpleModeProvider>
+          <MotifPanelBoundary label="motifs">
+            <MotifSimpleModeProvider token={token}>
+              <MotifLibraryView token={token} books={[{ id: bookId, name: bookId }]} />
+            </MotifSimpleModeProvider>
+          </MotifPanelBoundary>
         </DockSlot>
         <DockSlot {...slot('conformance')}>
-          <MotifSimpleModeProvider token={token}>
-            <ConformanceTraceView projectId={work.project_id} chapterId={chapterId} token={token} />
-          </MotifSimpleModeProvider>
+          <MotifPanelBoundary label="conformance">
+            <MotifSimpleModeProvider token={token}>
+              <ConformanceTraceView projectId={work.project_id} chapterId={chapterId} token={token} />
+            </MotifSimpleModeProvider>
+          </MotifPanelBoundary>
         </DockSlot>
         <DockSlot {...slot('settings')}>
           <CompositionSettingsView

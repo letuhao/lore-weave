@@ -164,8 +164,13 @@ export type SceneConformance = {
 
 export type ChapterConformance = {
   chapter_id: string;
-  motif_name: string;
-  conform_count: [number, number];   // [conforming, total]
+  // NOTE (D-MOTIF-CONFORMANCE-CONTRACT): the chapter reader (GET …/conformance)
+  // currently emits only {scope, chapter_id, calibrated, scenes} and its scene rows
+  // are NESTED ({planned, realized, conformance}), NOT the flat SceneConformance
+  // below. These two summary fields are NOT sent today — hence optional + guarded at
+  // the call site. Full FE↔BE reconciliation is the deferred contract work.
+  motif_name?: string;
+  conform_count?: [number, number];   // [conforming, total]
   scenes: SceneConformance[];
 };
 

@@ -1,5 +1,62 @@
 # ▶ NEXT SESSION — Narrative Motif Library BUILD (handoff)
 
+## STATUS (2026-06-28 PM-6) — D-MOTIF-FE browser smoke RUN · 2 crashes FIXED · 2 new defers
+
+Ran the deferred Playwright smoke for `D-MOTIF-FE-PLANNERVIEW-WIRING` (Shape A) on the **real
+stack** (frontend `infra-frontend-1` + composition-service rebuilt from this branch, live Qwen2.5
+decompose). It **passed the read-side end-to-end AND surfaced 3 real bugs the mocked unit tests
+hid** (2 now fixed, 1 deferred).
+
+**PROVEN live (book 万古神帝 `019eb60e…`, project `019eb683…`, chapter 1 `019eb60f-3b81…`):**
+- New FE bundle deploys; the planner panel renders `PlannerView` (Shape A).
+- Plan (real Qwen2.5 decompose) → editable draft tree; commit → **409 replace-confirm flow** →
+  replace → success.
+- **Shape-A committed-binding surface renders: 25 per-scene `MotifBindingCard`s**, scene titles
+  from the committed-outline read ("The Reborn Prince" …), all correctly `free-form` (nothing
+  auto-bound post-commit).
+- **Read endpoint live 200 + correct shape**: `GET …/works/{proj}/outline/motif-bindings?chapter_id=`
+  → `{chapter_id, bindings:{node→null}}` (3 nodes for ch.1). Verified via authed gateway call.
+
+**FIXED NOW (2 app-crashing white-screens — `CompositionPanel` mounts ALL ~22 sub-panels at once,
+CSS-hidden, with NO error isolation, so one panel throw blanks the whole studio):**
+1. **`ConformanceTraceView` `conform_count[0]` crash** — the chapter reader (`GET …/conformance`)
+   does NOT emit `conform_count`; the header dereferenced `conf.conform_count[0]` unguarded →
+   white-screen on every chapter. Guarded (`Array.isArray`) + made the two summary fields optional
+   in the type. +2 regression tests.
+2. **`ConformanceSceneRow` `scene.flags.length` crash** — the reader's scene rows are NESTED
+   (`{planned,realized,conformance}`) but the FE `SceneConformance` type is FLAT; every field is
+   `undefined` → crash whenever a chapter has committed scenes. Contained by a new
+   **`MotifPanelBoundary`** (React error boundary) wrapping the two W6 dock panels (motifs +
+   conformance) in `CompositionPanel` → a motif-panel throw now degrades to an in-panel fallback,
+   never the studio. +3 boundary tests. (596 composition FE tests green; tsc clean.)
+- **Deployment note:** the read 404'd at first because the running `infra-composition-service`
+  image predated BE commit `83a07b79`; rebuilt + recreated (`--no-deps composition-service
+  composition-worker`) → route live. SHARED env: another track can recreate it from a cached
+  pre-`83a07b79` image — re-`build` if `/openapi.json` lacks `outline/motif-bindings`.
+
+**NEW DEFERS (both gate-2 large/structural):**
+- **`D-MOTIF-CONFORMANCE-CONTRACT`** — the W6 conformance FE panel is unreconciled with its W5
+  reader: (a) the reader omits `conform_count` + `motif_name`; (b) its scene rows are NESTED
+  (`{planned,realized,conformance}`) while `SceneConformance`/`ConformanceSceneRow` expect a FLAT
+  shape — so the panel can render NOTHING correctly (currently shows the boundary fallback when a
+  chapter has scenes). Fix = reconcile the FE types + `ConformanceSceneRow` to the reader shape
+  (and decide whether the reader should compute `conform_count`/`motif_name`). Needs a contract
+  pass across `routers/conformance.py` ⋈ `motif/types.ts` + `ConformanceSceneRow.tsx`.
+- **`D-MOTIF-FE-SWAP-NODE-GRANULARITY`** — Shape A presents a per-SCENE binding surface, but W2's
+  bind engine is per-CHAPTER: `PATCH …/outline/{node}/motif` → `apply_motif_swap` REQUIRES a
+  **chapter** node (`MotifSwapError` → 404 on a scene node; confirmed live). And
+  `MotifBindingCard` shows the Swap/clear affordance ONLY for an already-BOUND scene — a free-form
+  scene has NO bind entry point. So post-commit (all free-form) the surface is effectively
+  read-only: you cannot bind/swap a scene's motif from it. The per-scene READ is correct
+  (motif_application is per-scene `outline_node_id`); the WRITE path needs either a real per-scene
+  bind endpoint or the surface re-targeted to chapter-node swaps + a free-form→bind affordance.
+  Decide the binding granularity (the PM-5 "scene-level" decision collides with the chapter-level
+  W2 engine) before building.
+- **Smoke side-effect (benign):** the commit REPLACED the test project's planned outline for ch.1–7
+  with the smoke premise's scenes (old scenes ARCHIVED, not deleted, per R2.6; book PROSE in
+  book-service is untouched — only the composition planning layer changed). Test account, expected
+  smoke surface.
+
 ## STATUS (2026-06-28 PM-5) — D-MOTIF-CONFORMANCE-ENGINE-WIRING done · D-MOTIF-FE scoped (XL)
 
 **`D-MOTIF-CONFORMANCE-ENGINE-WIRING`** ✅ `1466215c` (decision: *wire it, keep 'unverified'*).

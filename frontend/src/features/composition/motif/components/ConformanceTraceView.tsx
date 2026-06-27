@@ -24,7 +24,13 @@ export function ConformanceTraceView({ projectId, chapterId, token }: Props) {
       <div className="flex items-center justify-between gap-2">
         <div className="text-sm font-medium text-neutral-800 dark:text-neutral-100">
           {t('motif.conf.title', { defaultValue: 'Conformance' })}
-          {conf && <span className="ml-2 text-xs text-neutral-500">{conf.conform_count[0]}/{conf.conform_count[1]}</span>}
+          {/* conform_count is summary-only; the chapter reader (GET …/conformance)
+              does NOT emit it today (D-MOTIF-CONFORMANCE-CONTRACT). Guard the array
+              access so a missing field degrades the header to no-count instead of
+              white-screening the whole studio (the panel is always-mounted). */}
+          {Array.isArray(conf?.conform_count) && (
+            <span className="ml-2 text-xs text-neutral-500">{conf.conform_count[0]}/{conf.conform_count[1]}</span>
+          )}
         </div>
         <button
           type="button"
