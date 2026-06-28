@@ -4,7 +4,7 @@
 // map) + useMotifBinding (per-node swap/rebind/clear/chain). Each scene's binding hook
 // lives in its own child (SceneMotifBindingRow) so hooks aren't called in a loop.
 import { useTranslation } from 'react-i18next';
-import type { CommitAndGenerateRoute, SceneBoundMotif } from '../types';
+import type { CommitAndGenerateRoute, SceneBoundMotif, SuccessionHint } from '../types';
 import type { RosterOption } from '../../hooks/useGlossaryRoster';
 import { useMotifBindings } from '../hooks/useMotifBindings';
 import { useMotifBinding } from '../hooks/useMotifBinding';
@@ -31,6 +31,7 @@ export function ChapterMotifBindings({
   const { t } = useTranslation('composition');
   const q = useMotifBindings(projectId, chapterId, token);
   const bindings = q.data?.bindings ?? {};
+  const succession = q.data?.succession ?? {};
   // the user's visible motifs — the bind/swap picker options (same for every scene).
   const candidates = useMotifCandidates(token);
   const candidateOpts = candidates.data ?? [];
@@ -55,6 +56,7 @@ export function ChapterMotifBindings({
           nodeId={s.id}
           title={s.title}
           bound={bindings[s.id] ?? null}
+          succession={succession[s.id] ?? null}
           roster={roster}
           candidates={candidatesByNode[s.id] ?? candidateOpts}
           token={token}
@@ -71,6 +73,7 @@ type RowProps = {
   nodeId: string;
   title: string;
   bound: SceneBoundMotif | null;
+  succession: SuccessionHint | null;
   roster: RosterOption[];
   candidates: MotifCandidateOption[];
   token: string | null;
@@ -78,7 +81,7 @@ type RowProps = {
 };
 
 function SceneMotifBindingRow({
-  projectId, bookId, nodeId, title, bound, roster, candidates, token, onGenerate,
+  projectId, bookId, nodeId, title, bound, succession, roster, candidates, token, onGenerate,
 }: RowProps) {
   const b = useMotifBinding({ projectId, bookId, nodeId, token });
   return (
@@ -87,6 +90,7 @@ function SceneMotifBindingRow({
       <MotifBindingCard
         sceneId={nodeId}
         bound={bound}
+        succession={succession}
         candidates={candidates}
         roster={roster}
         swapping={b.swap.isPending}

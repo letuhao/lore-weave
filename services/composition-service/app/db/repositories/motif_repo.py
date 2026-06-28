@@ -167,6 +167,33 @@ class MotifRepo:
             out.setdefault(m.code, m)   # first per code wins (caller-owned ordered first)
         return out
 
+    async def successors_by_ids(self, motif_ids: list[UUID]) -> dict[str, list[dict[str, Any]]]:
+        """`precedes` legal-succession successors per motif (D-MOTIF-CHAIN-SUCCESSION-HINT)
+        → ``{from_motif_id(str): [{code, name, ord}]}``, ordered by ``ord``. JOINs
+        ``motif_link`` (kind='precedes') → the TARGET motif for its code+name.
+
+        No extra visibility filter is needed: the F0 same-tier link guard
+        (``motif_link_guard``) forbids a `precedes`/`composed_of` edge from crossing tiers,
+        so a successor of a motif the caller can already see is itself in the caller's
+        visible tier — no cross-tenant leak. Inactive (archived) targets are excluded."""
+        uniq = list({m for m in motif_ids if m is not None})
+        if not uniq:
+            return {}
+        query = """
+        SELECT l.from_motif_id, m.code, m.name, l.ord
+        FROM motif_link l
+        JOIN motif m ON m.id = l.to_motif_id
+        WHERE l.kind = 'precedes' AND l.from_motif_id = ANY($1) AND m.status = 'active'
+        ORDER BY l.from_motif_id, l.ord
+        """
+        async with self._pool.acquire() as c:
+            rows = await c.fetch(query, uniq)
+        out: dict[str, list[dict[str, Any]]] = {}
+        for r in rows:
+            out.setdefault(str(r["from_motif_id"]), []).append(
+                {"code": r["code"], "name": r["name"], "ord": r["ord"]})
+        return out
+
     async def patch(
         self, caller_id: UUID, motif_id: UUID, args: MotifPatchArgs, *, expected_version: int,
         repin_source_version: int | None = None, repin_adopted_base: str | None = None,

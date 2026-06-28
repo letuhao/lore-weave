@@ -131,6 +131,9 @@ export type SceneBoundMotif = BoundMotif & { beat_key?: string | null };
 export type MotifBindingsResponse = {
   chapter_id: string;
   bindings: Record<string, SceneBoundMotif | null>;
+  /** D-MOTIF-CHAIN-SUCCESSION-HINT — per displaying-scene node, a legal-succession hint
+   *  pre-seeding the NEXT (free-form) scene, or null. Drives the ChainIt affordance. */
+  succession?: Record<string, SuccessionHint | null>;
 };
 
 export type OveruseWarning = {

@@ -1,5 +1,25 @@
 # ▶ NEXT SESSION — Narrative Motif Library BUILD (handoff)
 
+## STATUS (2026-06-28 PM-15) — D-MOTIF-CHAIN-SUCCESSION-HINT CLEARED (ChainIt now reachable, full loop)
+
+**`D-MOTIF-CHAIN-SUCCESSION-HINT`** ✅ — the `ChainItHint` is now surfaced, so the PM-14 chain
+route is reachable end-to-end (the loop is closed: bound scene → legal-successor hint → click →
+`POST …/motif/chain` pre-seeds the next scene). Full-stack (composition-service + frontend).
+- **BE:** NEW `MotifRepo.successors_by_ids(motif_ids)` → `{from_motif_id: [{code,name,ord}]}` (JOINs
+  `motif_link` kind='precedes' → the target motif; the F0 same-tier link guard keeps successors in
+  the caller's visible tier — no cross-tenant leak). NEW pure `_assemble_succession` helper +
+  `GET …/outline/motif-bindings` now also returns `succession: {node_id: SuccessionHint | null}`.
+  A hint shows on scene[i] only when it's bound to a motif WITH a `precedes` successor AND scene[i+1]
+  exists and is FREE-FORM (we never suggest chaining OVER a deliberate next-scene binding).
+- **FE:** `MotifBindingsResponse` += optional `succession` (additive); `ChapterMotifBindings` reads it
+  and threads `succession` → `SceneMotifBindingRow` → `MotifBindingCard` (which already wired
+  `ChainItHint` + `onChain` → `chainIt.mutate` → the chain POST). No new component — pure plumbing.
+- **VERIFY:** BE 22 (5 new pure-succession: hint→next, first-by-ord, suppressed-when-next-bound,
+  no-successor, invisible-motif) + FE 127 (1 new: ChainIt renders → POSTs `…/n2/motif/chain` with the
+  successor code) ; tsc 0 errors; provider-gate clean. A full live-smoke of the read→click→chain→rebind
+  loop needs a container + FE rebuild — deferrable (`D-MOTIF-CHAIN-LIVE-SMOKE`, gate-4 infra); both
+  halves are unit-proven against the same contract.
+
 ## STATUS (2026-06-28 PM-14) — scene rebindRole + chain ROUTES CLEARED (the last low-reach BE)
 
 **`D-MOTIF-SCENE-REBIND-CHAIN`** ✅ (the routes half) — the two per-scene affordances the FE

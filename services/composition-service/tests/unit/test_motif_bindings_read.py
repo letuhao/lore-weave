@@ -13,7 +13,7 @@ import uuid
 from types import SimpleNamespace
 
 from app.db.models import MotifApplication
-from app.routers.plan import _assemble_motif_bindings
+from app.routers.plan import _assemble_motif_bindings, _assemble_succession
 
 
 def _scene(node_id):
@@ -105,3 +105,62 @@ def test_every_scene_present_in_map():
         motif_by_id={mid: _motif()}, cast_names={})
     assert set(out.keys()) == {str(n1), str(n2), str(n3)}
     assert out[str(n1)] is not None and out[str(n2)] is None and out[str(n3)] is None
+
+
+# ── _assemble_succession (D-MOTIF-CHAIN-SUCCESSION-HINT) ──────────────────────────
+
+def test_succession_hint_points_at_the_free_form_next_scene():
+    n1, n2, mid = uuid.uuid4(), uuid.uuid4(), uuid.uuid4()
+    app = _app(n1, motif_id=mid)
+    succ = {str(mid): [{"code": "revenge.face_slap", "name": "Face Slap", "ord": 0}]}
+    out = _assemble_succession(
+        scenes=[_scene(n1), _scene(n2)], apps_by_node={n1: app},
+        motif_by_id={mid: _motif()}, successors=succ)
+    # the hint shows on scene 1's card and pre-seeds the (unbound) scene 2.
+    assert out[str(n1)] == {
+        "from_motif_id": str(mid), "to_motif_code": "revenge.face_slap",
+        "to_motif_name": "Face Slap", "for_node_id": str(n2)}
+    assert out[str(n2)] is None  # last scene → no next to pre-seed
+
+
+def test_succession_first_successor_wins_by_ord():
+    n1, n2, mid = uuid.uuid4(), uuid.uuid4(), uuid.uuid4()
+    app = _app(n1, motif_id=mid)
+    succ = {str(mid): [{"code": "a.first", "name": "First", "ord": 0},
+                       {"code": "b.second", "name": "Second", "ord": 1}]}
+    out = _assemble_succession(
+        scenes=[_scene(n1), _scene(n2)], apps_by_node={n1: app},
+        motif_by_id={mid: _motif()}, successors=succ)
+    assert out[str(n1)]["to_motif_code"] == "a.first"
+
+
+def test_succession_suppressed_when_next_scene_already_bound():
+    # never suggest chaining OVER a deliberate binding on the next scene.
+    n1, n2, mid, mid2 = (uuid.uuid4() for _ in range(4))
+    a1 = _app(n1, motif_id=mid)
+    a2 = _app(n2, motif_id=mid2)
+    succ = {str(mid): [{"code": "x", "name": "X", "ord": 0}]}
+    out = _assemble_succession(
+        scenes=[_scene(n1), _scene(n2)], apps_by_node={n1: a1, n2: a2},
+        motif_by_id={mid: _motif(), mid2: _motif()}, successors=succ)
+    assert out[str(n1)] is None
+
+
+def test_succession_null_when_motif_has_no_successor():
+    n1, n2, mid = uuid.uuid4(), uuid.uuid4(), uuid.uuid4()
+    app = _app(n1, motif_id=mid)
+    out = _assemble_succession(
+        scenes=[_scene(n1), _scene(n2)], apps_by_node={n1: app},
+        motif_by_id={mid: _motif()}, successors={})  # no precedes edge
+    assert out[str(n1)] is None
+
+
+def test_succession_null_for_unbound_or_invisible_scene():
+    n1, n2, mid = uuid.uuid4(), uuid.uuid4(), uuid.uuid4()
+    # scene 1 bound but its motif isn't visible (archived/foreign) → no hint.
+    app = _app(n1, motif_id=mid)
+    succ = {str(mid): [{"code": "x", "name": "X", "ord": 0}]}
+    out = _assemble_succession(
+        scenes=[_scene(n1), _scene(n2)], apps_by_node={n1: app},
+        motif_by_id={}, successors=succ)  # motif_by_id misses mid
+    assert out[str(n1)] is None and out[str(n2)] is None

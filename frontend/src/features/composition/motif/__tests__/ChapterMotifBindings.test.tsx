@@ -81,6 +81,31 @@ describe('ChapterMotifBindings (Shape A)', () => {
     });
   });
 
+  it('a succession hint renders ChainIt on the bound scene → POSTs the chain to the next node', async () => {
+    apiJson.mockImplementation((url: string) => {
+      if (url.includes('/motif-bindings')) {
+        return Promise.resolve({
+          chapter_id: 'c1',
+          bindings: { n1: BOUND, n2: null },
+          succession: {
+            n1: { from_motif_id: 'm1', to_motif_code: 'revenge.face_slap', to_motif_name: 'Face Slap', for_node_id: 'n2' },
+            n2: null,
+          },
+        });
+      }
+      if (url.includes('/motifs')) return Promise.resolve({ motifs: [] });
+      return Promise.resolve({ ok: true });
+    });
+    render(<ChapterMotifBindings projectId="p1" bookId="b1" chapterId="c1" scenes={SCENES} token="tok" />, { wrapper: wrap() });
+    fireEvent.click(await screen.findByTestId('motif-chain-it-btn'));
+    await waitFor(() => {
+      const post = apiJson.mock.calls.find((c) => String(c[0]).includes('/outline/n2/motif/chain'));
+      expect(post?.[0]).toContain('/works/p1/outline/n2/motif/chain');
+      // the legal-successor code rides the chain POST body.
+      expect(String((post?.[1] as { body?: string })?.body)).toContain('revenge.face_slap');
+    });
+  });
+
   it('commit+generate routes the scene (closes the H-8 dead-end)', async () => {
     const onGenerate = vi.fn();
     render(<ChapterMotifBindings projectId="p1" bookId="b1" chapterId="c1" scenes={SCENES} token="tok" onGenerate={onGenerate} />, { wrapper: wrap() });

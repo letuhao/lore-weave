@@ -788,6 +788,43 @@ def _assemble_motif_bindings(
     return bindings
 
 
+def _assemble_succession(
+    *, scenes: list, apps_by_node: dict, motif_by_id: dict,
+    successors: dict[str, list[dict[str, Any]]],
+) -> dict[str, Any]:
+    """PURE in-memory join → ``{node_id: SuccessionHint | null}`` for the FE ChainIt
+    affordance (D-MOTIF-CHAIN-SUCCESSION-HINT).
+
+    A hint is emitted on scene[i]'s card when ALL hold: scene[i] has a bound motif M whose
+    `precedes` chain has a successor S, AND scene[i+1] exists and is currently FREE-FORM
+    (unbound). The hint pre-seeds that empty next scene — we never suggest chaining OVER an
+    already-bound next scene (that would clobber a deliberate binding). ``for_node_id`` is
+    the NEXT scene node (where the FE POSTs the chain); the hint shape mirrors the FE
+    ``SuccessionHint`` (``from_motif_id``/``to_motif_code``/``to_motif_name``/``for_node_id``)."""
+    hints: dict[str, Any] = {}
+    for i, s in enumerate(scenes):
+        hints[str(s.id)] = None
+        app = apps_by_node.get(s.id)
+        if app is None or app.motif_id is None or app.motif_id not in motif_by_id:
+            continue
+        succ = successors.get(str(app.motif_id)) or []
+        if not succ:
+            continue
+        nxt = scenes[i + 1] if i + 1 < len(scenes) else None
+        if nxt is None:
+            continue
+        nxt_app = apps_by_node.get(nxt.id)
+        if nxt_app is not None and nxt_app.motif_id is not None:
+            continue  # next scene already bound — don't suggest clobbering it
+        hints[str(s.id)] = {
+            "from_motif_id": str(app.motif_id),
+            "to_motif_code": succ[0]["code"],
+            "to_motif_name": succ[0]["name"],
+            "for_node_id": str(nxt.id),
+        }
+    return hints
+
+
 @router.get("/works/{project_id}/outline/motif-bindings")
 async def get_motif_bindings(
     project_id: UUID,
@@ -820,6 +857,7 @@ async def get_motif_bindings(
     # both ONCE, only when something is actually bound.
     motif_by_id: dict[UUID, Any] = {}
     cast_names: dict[str, str] = {}
+    successors: dict[str, list[dict[str, Any]]] = {}
     bound_ids = {a.motif_id for a in apps_by_node.values() if a.motif_id is not None}
     if bound_ids:
         mrepo = MotifRepo(get_pool())
@@ -829,12 +867,18 @@ async def get_motif_bindings(
                 motif_by_id[mid] = m
         cast = await _cast_roster(glossary, work.book_id)
         cast_names = {e["entity_id"]: e["name"] for e in cast}
+        # the legal-succession edges for the bound motifs → the ChainIt hints.
+        successors = await mrepo.successors_by_ids(list(bound_ids))
 
     bindings = _assemble_motif_bindings(
         scenes=scenes, apps_by_node=apps_by_node,
         motif_by_id=motif_by_id, cast_names=cast_names,
     )
-    return {"chapter_id": str(chapter_id), "bindings": bindings}
+    succession = _assemble_succession(
+        scenes=scenes, apps_by_node=apps_by_node,
+        motif_by_id=motif_by_id, successors=successors,
+    )
+    return {"chapter_id": str(chapter_id), "bindings": bindings, "succession": succession}
 
 
 # ── W10 arc materialize (D-W10-APPLY-PLANNER-MATERIALIZE) ───────────────────────
