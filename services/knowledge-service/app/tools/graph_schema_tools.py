@@ -184,7 +184,7 @@ class KgTriageListArgs(ProjectScopedArgs):
     limit: int = Field(default=TRIAGE_LIMIT_DEFAULT, ge=1, le=TRIAGE_LIMIT_MAX)
 
 
-class KgProposeFactArgs(BaseModel):
+class KgProposeFactArgs(ProjectScopedArgs):
     """`kg_propose_fact` — draft a narrative fact into the inbox (reviewed)."""
 
     model_config = ConfigDict(extra="forbid")
@@ -193,7 +193,7 @@ class KgProposeFactArgs(BaseModel):
     fact_type: Literal["decision", "preference", "milestone", "negation"]
 
 
-class KgProposeEdgeArgs(BaseModel):
+class KgProposeEdgeArgs(ProjectScopedArgs):
     """`kg_propose_edge` — draft a relationship edge into the inbox.
 
     Schema-validated against `kg_edge_types`; a temporal edge type REQUIRES
@@ -229,7 +229,7 @@ class KgProposeEdgeArgs(BaseModel):
         return self
 
 
-class KgViewUpsertArgs(BaseModel):
+class KgViewUpsertArgs(ProjectScopedArgs):
     """`kg_view_upsert` — create/replace one of the caller's views."""
 
     model_config = ConfigDict(extra="forbid")
@@ -241,7 +241,7 @@ class KgViewUpsertArgs(BaseModel):
     node_kind_codes: list[str] = Field(default_factory=list, max_length=200)
 
 
-class KgViewDeleteArgs(BaseModel):
+class KgViewDeleteArgs(ProjectScopedArgs):
     """`kg_view_delete` — delete one of the caller's views by code."""
 
     model_config = ConfigDict(extra="forbid")
@@ -249,7 +249,7 @@ class KgViewDeleteArgs(BaseModel):
     code: str = Field(min_length=1, max_length=_CODE_MAX)
 
 
-class KgTriageResolveArgs(BaseModel):
+class KgTriageResolveArgs(ProjectScopedArgs):
     """`kg_triage_resolve` — resolve a triage signature with a KG-LOCAL action.
 
     Only the reversible KG-local actions are accepted here (Edit-gated). The
@@ -264,7 +264,7 @@ class KgTriageResolveArgs(BaseModel):
     params: dict = Field(default_factory=dict)
 
 
-class KgSchemaEditArgs(BaseModel):
+class KgSchemaEditArgs(ProjectScopedArgs):
     """`kg_schema_edit` — class-C. Adds or deprecates a project edge_type/fact_type
     and bumps the schema_version. Mints a confirm-token (no write); a human confirms
     via the review surface (INV-K1: graph-shape changes are human-gated)."""
@@ -277,7 +277,7 @@ class KgSchemaEditArgs(BaseModel):
     label: str = Field(default="", max_length=_NAME_MAX)
 
 
-class KgAdoptTemplateArgs(BaseModel):
+class KgAdoptTemplateArgs(ProjectScopedArgs):
     """`kg_adopt_template` — class-C. Copies a system/user ontology template down into
     the current project (scaffold). Mints a confirm-token (no write); a human confirms
     via the review surface. `source_schema_id` is a template id from `kg_list_templates`."""
@@ -298,7 +298,7 @@ class KgSyncDecision(BaseModel):
     choice: Literal["keep_mine", "take_theirs"]
 
 
-class KgSyncApplyArgs(BaseModel):
+class KgSyncApplyArgs(ProjectScopedArgs):
     """`kg_sync_apply` — class-C. Applies per-child keep_mine/take_theirs decisions to
     bring the project ontology in line with its upstream template. Mints a confirm-token
     (no write). `base_source_hash` is the upstream hash from `kg_sync_available`."""
@@ -309,7 +309,7 @@ class KgSyncApplyArgs(BaseModel):
     decisions: list[KgSyncDecision] = Field(default_factory=list)
 
 
-class KgTriagePlaceEdgeArgs(BaseModel):
+class KgTriagePlaceEdgeArgs(ProjectScopedArgs):
     """`kg_triage_place_edge` — class-C. Places a drafted `proposed_edge` triage item
     into the graph. Mints a `kg_triage_proposed_edge` confirm-token (NO write — INV-K1);
     a human redeems it on the review surface. `triage_id` is from `kg_triage_list`."""
@@ -319,7 +319,7 @@ class KgTriagePlaceEdgeArgs(BaseModel):
     triage_id: str = Field(min_length=1, max_length=64)
 
 
-class KgTriageSchemaWriteArgs(BaseModel):
+class KgTriageSchemaWriteArgs(ProjectScopedArgs):
     """`kg_triage_schema_write` — class-C. Resolves a schema-mutating triage signature
     (add a vocab value / edge type, widen an edge's target kinds, or make an edge type
     multi_active) by MINTING a `kg_triage_schema_write` confirm-token (NO write — INV-T3
@@ -536,6 +536,7 @@ GRAPH_SCHEMA_TOOL_DEFINITIONS: list[dict] = [
                     "negation = something explicitly NOT true."
                 ),
             },
+            "project_id": _PROJECT_ID_PROP,
         },
         ["fact_text", "fact_type"],
     ),
@@ -580,6 +581,7 @@ GRAPH_SCHEMA_TOOL_DEFINITIONS: list[dict] = [
                 "minimum": 0,
                 "description": "Optional — the chapter ordinal the relationship ended.",
             },
+            "project_id": _PROJECT_ID_PROP,
         },
         ["source_entity_id", "target_entity_id", "edge_type"],
     ),
@@ -611,6 +613,7 @@ GRAPH_SCHEMA_TOOL_DEFINITIONS: list[dict] = [
                 "items": {"type": "string"},
                 "description": "Node-kind codes the view includes (empty = all).",
             },
+            "project_id": _PROJECT_ID_PROP,
         },
         ["code", "name"],
     ),
@@ -623,6 +626,7 @@ GRAPH_SCHEMA_TOOL_DEFINITIONS: list[dict] = [
                 "type": "string",
                 "description": "The code of the view to delete.",
             },
+            "project_id": _PROJECT_ID_PROP,
         },
         ["code"],
     ),
@@ -648,6 +652,7 @@ GRAPH_SCHEMA_TOOL_DEFINITIONS: list[dict] = [
                 "type": "object",
                 "description": "Optional action parameters (e.g. the map target code).",
             },
+            "project_id": _PROJECT_ID_PROP,
         },
         ["signature", "action"],
     ),
@@ -679,6 +684,7 @@ GRAPH_SCHEMA_TOOL_DEFINITIONS: list[dict] = [
                 "maxLength": _NAME_MAX,
                 "description": "Human-readable label (for add; defaults to the code).",
             },
+            "project_id": _PROJECT_ID_PROP,
         },
         ["verb", "level", "code"],
     ),
@@ -693,6 +699,7 @@ GRAPH_SCHEMA_TOOL_DEFINITIONS: list[dict] = [
                 "type": "string",
                 "description": "The template id to adopt (from kg_list_templates).",
             },
+            "project_id": _PROJECT_ID_PROP,
         },
         ["source_schema_id"],
     ),
@@ -723,6 +730,7 @@ GRAPH_SCHEMA_TOOL_DEFINITIONS: list[dict] = [
                     "required": ["node_type", "code", "choice"],
                 },
             },
+            "project_id": _PROJECT_ID_PROP,
         },
         ["base_source_hash"],
     ),
@@ -738,6 +746,7 @@ GRAPH_SCHEMA_TOOL_DEFINITIONS: list[dict] = [
                 "type": "string",
                 "description": "The proposed_edge triage item id to place (from kg_triage_list).",
             },
+            "project_id": _PROJECT_ID_PROP,
         },
         ["triage_id"],
     ),
@@ -777,6 +786,7 @@ GRAPH_SCHEMA_TOOL_DEFINITIONS: list[dict] = [
                 "items": {"type": "string"},
                 "description": "Target node kinds to add (widen_target_kinds only).",
             },
+            "project_id": _PROJECT_ID_PROP,
         },
         ["signature", "action"],
     ),

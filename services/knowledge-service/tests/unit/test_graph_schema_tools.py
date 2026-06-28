@@ -44,8 +44,9 @@ _BOOK = uuid4()
 
 # INV-K2 (H-I-amended): user_id / session_id are envelope-only FOREVER (identity).
 # project_id is NO LONGER here — it is a deliberately-allowed, ownership-checked
-# SCOPE arg on the kg-READ tools (the public edge mints no X-Project-Id, so a
-# public agent supplies it; the owner gate confines it to the caller's projects).
+# SCOPE arg on the kg READ **and WRITE/BUILD** tools (Wave-C Slice 3 exposed the
+# writes; the public edge mints no X-Project-Id, so a public agent supplies it; the
+# owner gate confines it to the caller's own projects).
 _ENVELOPE_KEYS = {"user_id", "session_id"}
 
 # The 12 tools this lane builds (R + reversible W).
@@ -186,19 +187,29 @@ def test_kg_read_tools_accept_project_id_arg():
 
 
 def test_arg_models_reject_smuggled_scope_override():
-    """extra='forbid' — identity keys (user_id) are NEVER accepted, and a
-    project_id arg is still rejected on a WRITE tool that did not opt into it
-    (only the kg-read tools carry project_id; writes stay envelope-only until
-    their public exposure, P3/P4)."""
-    with pytest.raises(ValidationError):
+    """extra='forbid' — identity keys (user_id / session_id) are NEVER accepted on a
+    WRITE tool. project_id IS now an accepted, OPTIONAL, ownership-checked scope arg
+    on the kg WRITE tools too (Wave-C Slice 3 public exposure — the executor's owner
+    gate confines it to the caller's own projects, with OD-8 owned-only for public
+    keys); only identity stays envelope-only forever."""
+    # H-I: project_id is now a valid optional scope arg on writes (owner-gated downstream).
+    assert (
         KgProposeEdgeArgs(
             source_entity_id="a", target_entity_id="b", edge_type="loves",
-            project_id="x",  # write tool has no project_id field → rejected
-        )
+            project_id="x",
+        ).project_id
+        == "x"
+    )
+    # Identity keys remain forbidden, forever (envelope-only).
     with pytest.raises(ValidationError):
         KgProposeEdgeArgs(
             source_entity_id="a", target_entity_id="b", edge_type="loves",
             user_id="smuggled",
+        )
+    with pytest.raises(ValidationError):
+        KgProposeEdgeArgs(
+            source_entity_id="a", target_entity_id="b", edge_type="loves",
+            session_id="smuggled",
         )
 
 
@@ -298,6 +309,28 @@ async def test_hi_kg_read_project_id_arg_hoisted_and_owner_checked():
     res = await execute_tool(ctx, "kg_schema_read", {"project_id": str(uuid4())})
     assert not res.success
     assert "not found" in res.error.lower()
+
+
+@pytest.mark.asyncio
+async def test_hi_kg_write_project_id_arg_hoisted_and_owner_checked():
+    """H-I (Wave-C Slice 3) — a kg-WRITE tool's project_id arg now supplies scope for
+    a public key (no envelope project); the owner gate then confines it. A public key
+    targeting ANOTHER tenant's project is denied with the uniform 'project not found'
+    (OD-8 owned-only, before grants are consulted), proving the newly-exposed write
+    surface is tenant-safe."""
+    grant = AsyncMock()
+    grant.resolve_grant = AsyncMock(return_value=GrantLevel.EDIT)  # would pass IF consulted
+    projects_repo = AsyncMock()
+    projects_repo.project_meta = AsyncMock(return_value=(_OWNER, _BOOK))  # owner != caller
+    ctx = _ctx(user_id=_USER, project_id=None, projects_repo=projects_repo,
+               grant_client=grant, mcp_key_id="lw_pk_publickey")
+    res = await execute_tool(
+        ctx, "kg_propose_fact",
+        {"fact_text": "x", "fact_type": "decision", "project_id": str(uuid4())},
+    )
+    assert not res.success
+    assert "not found" in res.error.lower()
+    grant.resolve_grant.assert_not_awaited()  # OD-8 short-circuits before grants
 
 
 @pytest.mark.asyncio

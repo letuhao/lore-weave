@@ -25,7 +25,7 @@ _BOOK = uuid4()
 
 
 def _mk_ctx(*, embedding_model="emb-model-1", project_id=_PROJECT, owner=_USER, grant=None,
-           book_id=_BOOK):
+           book_id=_BOOK, mcp_key_id=None):
     repo = AsyncMock()
     repo.project_meta = AsyncMock(return_value=(owner, _BOOK))
     repo.get = AsyncMock(
@@ -37,6 +37,7 @@ def _mk_ctx(*, embedding_model="emb-model-1", project_id=_PROJECT, owner=_USER, 
         user_id=_USER,
         project_id=project_id,
         session_id="sess-build",
+        mcp_key_id=mcp_key_id,
         projects_repo=repo,
         pending_facts_repo=AsyncMock(),
         embedding_client=AsyncMock(),
@@ -139,12 +140,34 @@ async def test_build_graph_invalid_scope_rejected():
 
 
 @pytest.mark.asyncio
-async def test_build_graph_smuggled_scope_arg_rejected():
-    ctx = _mk_ctx()
+async def test_build_graph_arg_project_id_ignored_when_envelope_present():
+    """H-I / D3: project_id is now an ACCEPTED arg (Wave-C Slice 3 public exposure),
+    but the trusted ENVELOPE project still WINS — a first-party session cannot be
+    redirected to another project by a smuggled arg. The minted token binds to the
+    envelope project, not the arg."""
+    ctx = _mk_ctx()  # envelope project = _PROJECT
     res = await execute_tool(
-        ctx, "kg_build_graph", {"llm_model": "gpt-x", "project_id": "smuggled"}
+        ctx, "kg_build_graph", {"llm_model": "gpt-x", "project_id": str(uuid4())}
+    )
+    assert res.success, res.error  # accepted now (no longer rejected as an extra field)
+    import time as _t
+    claims = verify_action_token(settings.jwt_secret, res.result["confirm_token"], _t.time())
+    assert claims.project_id == str(_PROJECT)  # envelope wins, NOT the smuggled arg
+
+
+@pytest.mark.asyncio
+async def test_build_graph_public_key_arg_scope_is_owner_gated_cross_tenant():
+    """H-I + OD-8: a public MCP key (mcp_key_id set) has NO envelope project, so it
+    supplies project_id as an arg. The executor adopts it, then the owner gate confines
+    it — a project owned by ANOTHER tenant is denied with the anti-oracle 'project not
+    found' (the SAME error a nonexistent project gives, so no existence oracle)."""
+    other_owner = uuid4()  # the project's real owner != the caller (_USER)
+    ctx = _mk_ctx(project_id=None, owner=other_owner, mcp_key_id="key-1")
+    res = await execute_tool(
+        ctx, "kg_build_graph", {"llm_model": "gpt-x", "project_id": str(_PROJECT)}
     )
     assert not res.success
+    assert "project not found" in res.error.lower()
 
 
 # ── kg_build_wiki mint ────────────────────────────────────────────────

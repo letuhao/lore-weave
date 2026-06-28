@@ -363,6 +363,7 @@ TOOL_DEFINITIONS: list[dict] = [
                 "description": "Reasoning effort for the extraction LLM (paid compute; clamped "
                                "to your grant — Edit caps at medium, Manage/owner at high).",
             },
+            "project_id": _PROJECT_ID_PROP,
         },
         ["llm_model"],
     ),
@@ -397,6 +398,7 @@ TOOL_DEFINITIONS: list[dict] = [
                 "description": "Reasoning effort for the wiki-gen LLM (paid compute; clamped "
                                "to your grant — Edit caps at medium, Manage/owner at high).",
             },
+            "project_id": _PROJECT_ID_PROP,
         },
         ["model_ref"],
     ),
@@ -409,7 +411,7 @@ TOOL_DEFINITIONS: list[dict] = [
         "the UI. Cheap (embeddings only, no LLM cost) and runs immediately on a hidden "
         "sandbox (it never touches the real graph). Returns passed + gate_failures; a pass "
         "enables Build-KG for this embedding model.",
-        {},
+        {"project_id": _PROJECT_ID_PROP},
         [],
     ),
 ]
