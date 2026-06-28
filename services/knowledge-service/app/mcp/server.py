@@ -639,12 +639,12 @@ async def kg_propose_fact(
         "decision = a choice made; preference = a standing like/dislike; "
         "milestone = a notable achievement; negation = something NOT true.",
     ],
+    project_id: _PROJECT_ID_ARG = None,
 ) -> dict:
-    return await _dispatch(
-        ctx,
-        "kg_propose_fact",
-        {"fact_text": fact_text, "fact_type": fact_type},
-    )
+    args: dict[str, Any] = {"fact_text": fact_text, "fact_type": fact_type}
+    if project_id is not None:
+        args["project_id"] = project_id
+    return await _dispatch(ctx, "kg_propose_fact", args)
 
 
 @mcp_server.tool(
@@ -679,12 +679,15 @@ async def kg_propose_edge(
         Field(ge=0),
         "Optional — the chapter ordinal the relationship ended.",
     ] = None,
+    project_id: _PROJECT_ID_ARG = None,
 ) -> dict:
     args: dict[str, Any] = {
         "source_entity_id": source_entity_id,
         "target_entity_id": target_entity_id,
         "edge_type": edge_type,
     }
+    if project_id is not None:
+        args["project_id"] = project_id
     if source_kind is not None:
         args["source_kind"] = source_kind
     if target_kind is not None:
@@ -715,18 +718,18 @@ async def kg_view_upsert(
     node_kind_codes: Annotated[
         list[str] | None, "Node-kind codes the view includes (empty = all)."
     ] = None,
+    project_id: _PROJECT_ID_ARG = None,
 ) -> dict:
-    return await _dispatch(
-        ctx,
-        "kg_view_upsert",
-        {
-            "code": code,
-            "name": name,
-            "description": description,
-            "edge_type_codes": edge_type_codes or [],
-            "node_kind_codes": node_kind_codes or [],
-        },
-    )
+    args: dict[str, Any] = {
+        "code": code,
+        "name": name,
+        "description": description,
+        "edge_type_codes": edge_type_codes or [],
+        "node_kind_codes": node_kind_codes or [],
+    }
+    if project_id is not None:
+        args["project_id"] = project_id
+    return await _dispatch(ctx, "kg_view_upsert", args)
 
 
 @mcp_server.tool(
@@ -739,8 +742,12 @@ async def kg_view_upsert(
 async def kg_view_delete(
     ctx: MCPContext,
     code: Annotated[str, "The code of the view to delete."],
+    project_id: _PROJECT_ID_ARG = None,
 ) -> dict:
-    return await _dispatch(ctx, "kg_view_delete", {"code": code})
+    args: dict[str, Any] = {"code": code}
+    if project_id is not None:
+        args["project_id"] = project_id
+    return await _dispatch(ctx, "kg_view_delete", args)
 
 
 @mcp_server.tool(
@@ -763,12 +770,12 @@ async def kg_triage_resolve(
     params: Annotated[
         dict | None, "Optional action parameters (e.g. the map target code)."
     ] = None,
+    project_id: _PROJECT_ID_ARG = None,
 ) -> dict:
-    return await _dispatch(
-        ctx,
-        "kg_triage_resolve",
-        {"signature": signature, "action": action, "params": params or {}},
-    )
+    args: dict[str, Any] = {"signature": signature, "action": action, "params": params or {}}
+    if project_id is not None:
+        args["project_id"] = project_id
+    return await _dispatch(ctx, "kg_triage_resolve", args)
 
 
 # ── KG ontology class-C tools (KM6) — PROPOSE only ─────────────────────
@@ -800,12 +807,12 @@ async def kg_schema_edit(
     label: Annotated[
         str, "Human-readable label (for add; defaults to the code)."
     ] = "",
+    project_id: _PROJECT_ID_ARG = None,
 ) -> dict:
-    return await _dispatch(
-        ctx,
-        "kg_schema_edit",
-        {"verb": verb, "level": level, "code": code, "label": label},
-    )
+    args: dict[str, Any] = {"verb": verb, "level": level, "code": code, "label": label}
+    if project_id is not None:
+        args["project_id"] = project_id
+    return await _dispatch(ctx, "kg_schema_edit", args)
 
 
 @mcp_server.tool(
@@ -823,10 +830,12 @@ async def kg_adopt_template(
     source_schema_id: Annotated[
         str, "The template id to adopt (from kg_list_templates)."
     ],
+    project_id: _PROJECT_ID_ARG = None,
 ) -> dict:
-    return await _dispatch(
-        ctx, "kg_adopt_template", {"source_schema_id": source_schema_id}
-    )
+    args: dict[str, Any] = {"source_schema_id": source_schema_id}
+    if project_id is not None:
+        args["project_id"] = project_id
+    return await _dispatch(ctx, "kg_adopt_template", args)
 
 
 @mcp_server.tool(
@@ -848,18 +857,18 @@ async def kg_sync_apply(
         list[KgSyncDecision] | None,
         "Per-change decisions to apply (omit for none).",
     ] = None,
+    project_id: _PROJECT_ID_ARG = None,
 ) -> dict:
     # Typed item model (not bare list[dict]) so the MCP inputSchema carries the
     # SAME per-decision shape the bespoke OpenAI schema advertises (parity).
     # model_dump() back to plain dicts — execute_tool re-validates via the arg model.
-    return await _dispatch(
-        ctx,
-        "kg_sync_apply",
-        {
-            "base_source_hash": base_source_hash,
-            "decisions": [d.model_dump() for d in (decisions or [])],
-        },
-    )
+    args: dict[str, Any] = {
+        "base_source_hash": base_source_hash,
+        "decisions": [d.model_dump() for d in (decisions or [])],
+    }
+    if project_id is not None:
+        args["project_id"] = project_id
+    return await _dispatch(ctx, "kg_sync_apply", args)
 
 
 @mcp_server.tool(
@@ -876,8 +885,12 @@ async def kg_triage_place_edge(
     triage_id: Annotated[
         str, "The proposed_edge triage item id to place (from kg_triage_list)."
     ],
+    project_id: _PROJECT_ID_ARG = None,
 ) -> dict:
-    return await _dispatch(ctx, "kg_triage_place_edge", {"triage_id": triage_id})
+    args: dict[str, Any] = {"triage_id": triage_id}
+    if project_id is not None:
+        args["project_id"] = project_id
+    return await _dispatch(ctx, "kg_triage_place_edge", args)
 
 
 @mcp_server.tool(
@@ -912,19 +925,19 @@ async def kg_triage_schema_write(
         list[str] | None,
         "Target node-kind codes to allow (widen_target_kinds only).",
     ] = None,
+    project_id: _PROJECT_ID_ARG = None,
 ) -> dict:
-    return await _dispatch(
-        ctx,
-        "kg_triage_schema_write",
-        {
-            "signature": signature,
-            "action": action,
-            "code": code,
-            "label": label,
-            "set_code": set_code,
-            "add_kinds": add_kinds or [],
-        },
-    )
+    args: dict[str, Any] = {
+        "signature": signature,
+        "action": action,
+        "code": code,
+        "label": label,
+        "set_code": set_code,
+        "add_kinds": add_kinds or [],
+    }
+    if project_id is not None:
+        args["project_id"] = project_id
+    return await _dispatch(ctx, "kg_triage_schema_write", args)
 
 
 # ── Cost-gated job triggers (KM6) — PROPOSE only ──────────────────────
@@ -968,6 +981,7 @@ async def kg_build_graph(
         "Model reasoning effort (default 'none'; clamped to your grant — Edit "
         "caps at medium, Manage/owner at high).",
     ] = "none",
+    project_id: _PROJECT_ID_ARG = None,
 ) -> dict:
     args: dict[str, Any] = {
         "llm_model": llm_model, "scope": scope, "reasoning_effort": reasoning_effort,
@@ -976,6 +990,8 @@ async def kg_build_graph(
         args["chapter_from"] = chapter_from
     if chapter_to is not None:
         args["chapter_to"] = chapter_to
+    if project_id is not None:
+        args["project_id"] = project_id
     return await _dispatch(ctx, "kg_build_graph", args)
 
 
@@ -1007,6 +1023,7 @@ async def kg_build_wiki(
         "Model reasoning effort (default 'none'; clamped to your grant — Edit "
         "caps at medium, Manage/owner at high).",
     ] = "none",
+    project_id: _PROJECT_ID_ARG = None,
 ) -> dict:
     args: dict[str, Any] = {
         "model_ref": model_ref, "model_source": model_source,
@@ -1014,6 +1031,8 @@ async def kg_build_wiki(
     }
     if entity_ids is not None:
         args["entity_ids"] = entity_ids
+    if project_id is not None:
+        args["project_id"] = project_id
     return await _dispatch(ctx, "kg_build_wiki", args)
 
 
@@ -1027,8 +1046,13 @@ async def kg_build_wiki(
         "sandbox. Returns passed + gate_failures; a pass enables Build-KG for this model."
     ),
 )
-async def kg_run_benchmark(ctx: MCPContext) -> dict:
-    return await _dispatch(ctx, "kg_run_benchmark", {})
+async def kg_run_benchmark(
+    ctx: MCPContext, project_id: _PROJECT_ID_ARG = None
+) -> dict:
+    args: dict[str, Any] = {}
+    if project_id is not None:
+        args["project_id"] = project_id
+    return await _dispatch(ctx, "kg_run_benchmark", args)
 
 
 # ── ASGI factory ──────────────────────────────────────────────────────
