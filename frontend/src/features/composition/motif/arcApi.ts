@@ -1,0 +1,62 @@
+// W10 arc-timeline — the arc-template API layer. Relative `/v1/composition/arc-templates*`
+// rides the Vite proxy → gateway (dev :3123) / nginx (prod). Mirrors motifApi exactly
+// (tenancy, the uniform H13 404, If-Match optimistic concurrency). The `apply` call is
+// the §12.5 PURE preview — it returns a deterministic plan, persists nothing.
+import { apiJson } from '../../../api';
+import type {
+  ArcApplyArgs, ArcApplyPlan, ArcTemplate, ArcTemplateCreateArgs,
+  ArcTemplateList, ArcTemplateListParams, ArcTemplatePatchArgs,
+} from './arcTypes';
+
+const BASE = '/v1/composition';
+
+function _qs(params: Record<string, string | number | undefined>): string {
+  const usp = new URLSearchParams();
+  for (const [k, v] of Object.entries(params)) {
+    if (v !== undefined && v !== '') usp.set(k, String(v));
+  }
+  const s = usp.toString();
+  return s ? `?${s}` : '';
+}
+
+export const arcApi = {
+  list(params: ArcTemplateListParams, token: string): Promise<ArcTemplateList> {
+    return apiJson<ArcTemplateList>(`${BASE}/arc-templates${_qs(params)}`, { token });
+  },
+  get(arcId: string, token: string): Promise<ArcTemplate> {
+    return apiJson<ArcTemplate>(`${BASE}/arc-templates/${arcId}`, { token });
+  },
+  create(args: ArcTemplateCreateArgs, token: string): Promise<ArcTemplate> {
+    return apiJson<ArcTemplate>(`${BASE}/arc-templates`, {
+      method: 'POST', body: JSON.stringify(args), token,
+    });
+  },
+  /** Owner-only edit. If-Match → 412 on a version conflict (the hook surfaces the
+   *  server's current row so the editor can reconcile). */
+  patch(arcId: string, args: ArcTemplatePatchArgs, expectedVersion: number, token: string): Promise<ArcTemplate> {
+    return apiJson<ArcTemplate>(`${BASE}/arc-templates/${arcId}`, {
+      method: 'PATCH',
+      body: JSON.stringify(args),
+      headers: { 'If-Match': String(expectedVersion) },
+      token,
+    });
+  },
+  archive(arcId: string, token: string): Promise<void> {
+    return apiJson<void>(`${BASE}/arc-templates/${arcId}`, { method: 'DELETE', token });
+  },
+  /** Adopt = clone-to-customize into the caller's own tier (cross-genre retag). */
+  adopt(arcId: string, retagGenres: string[] | undefined, token: string): Promise<ArcTemplate> {
+    return apiJson<ArcTemplate>(`${BASE}/arc-templates/${arcId}/adopt`, {
+      method: 'POST',
+      body: JSON.stringify(retagGenres ? { retag_genres: retagGenres } : {}),
+      token,
+    });
+  },
+  /** Apply-PREVIEW (§12.5): deterministic rescale + roster-bind + drop/merge plan.
+   *  PURE — nothing is persisted; the caller renders the plan for review. */
+  apply(arcId: string, args: ArcApplyArgs, token: string): Promise<ArcApplyPlan> {
+    return apiJson<ArcApplyPlan>(`${BASE}/arc-templates/${arcId}/apply`, {
+      method: 'POST', body: JSON.stringify(args), token,
+    });
+  },
+};

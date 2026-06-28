@@ -1,5 +1,40 @@
 # ▶ NEXT SESSION — Narrative Motif Library BUILD (handoff)
 
+## STATUS (2026-06-28 PM-10) — D-W10-FE-TIMELINE CLEARED (the arc-timeline FE subtree, full-stack-verified)
+
+**`D-W10-FE-TIMELINE`** ✅ — the FE thread×chapter arc-timeline editor (spec §10 / W6 §5.4) is built
+against the frozen `ArcTimelineContract` + the `ArcApplyPlan` data contract. **FE-only** (0 backend /
+0 cross-service — it consumes the already-shipped W10 `arc-templates` CRUD + apply routes). **43 new
+unit tests** (motif folder 69→112), **0 tsc errors project-wide**, and a **live cross-service contract
+smoke** (below). Surfaced inside the motif dock panel via a `Motifs | Arc templates` kind-toggle.
+
+- **Data brain (M1):** `arcTypes.ts` (wire DTOs mirrored from `app/db/models.py`), `arcApi.ts`
+  (list/get/create/patch/archive/adopt/apply, mirrors `motifApi` + If-Match), `applyArcEdit.ts` — the
+  PURE reducer both surfaces drive (place/move/resize/remove, all clamped) + layout↔placement mapping
+  + `dragEndToMoveEdit` pointer geometry, and `useArcTimeline` (fetch → working copy → optimistic edit
+  → DEBOUNCED If-Match PATCH → adopt server version; owner-gated `canEdit`; 412 → reconcile).
+- **Editor (M2):** `ArcTimelineGrid` (desktop) — the audit-mandated **keyboard model** (Tab→Enter
+  grab→Arrow move / Shift+Arrow resize / Arrow↑↓ thread / Enter drop / Esc release; `aria-grabbed` +
+  `aria-describedby` "combat thread, chapters 2-3" + a polite live-region) **plus** dnd-kit pointer
+  drag (studio idiom). `ArcTimelineEditor` — responsive shell swapping grid (≥md) ↔ the existing
+  `ArcTimelineMobileList` (<md) via `useIsMobile`; the stateful hook is hoisted ABOVE the swap so a
+  breakpoint change never loses edit state. Read-only (adopt-to-edit) for system/foreign arcs.
+- **Apply-preview (M3):** `useArcApplyPreview` + `ArcApplyPreview` — target chapters + roster-bind →
+  POST …/apply → renders the deterministic plan (rescaled placements, the §12.6 drop/merge report,
+  unbound roster slots). PREVIEW-ONLY by design (committing to outline rows stays
+  `D-W10-APPLY-PLANNER-MATERIALIZE`). `useArcLibrary` + `ArcTemplateLibraryView` (list → select →
+  editor + apply-preview), wired into `MotifLibraryView` via the kind-toggle.
+- **Live contract smoke (cross-service):** logged in (test acct) → `POST/GET/POST apply/DELETE` against
+  the running `infra-composition-service-1` (:8217). `ArcTemplate`, `ArcApplyPlan`, `ResolvedPlacement`
+  JSON keys match the TS types **exactly**; rescale+merge worked live (source 10→target 2 merged
+  `ambush` into `duel`, `unbound:[mentor]`). Throwaway arc archived; test account only.
+
+**▶ Remaining motif defers are all large/structural, blocked, perf, or config:**
+`D-W10-APPLY-PLANNER-MATERIALIZE` (arc apply → committed outline — large BE, commit-path),
+`D-W10-ARC-CONFORMANCE` (blocked on W5 arc-diff), `D-MOTIF-PGVECTOR-TRIGGER` (perf, fix-when-profiling),
+conformance activation (human config), and the scene `rebindRole`/`chainIt` routes (low-reach). Each is
+its own focused effort — pick one explicitly.
+
 ## STATUS (2026-06-28 PM-9) — D-MOTIF-CONFORMANCE-PRODUCER-LIVE-SMOKE CLEARED (full loop, live)
 
 **`D-MOTIF-CONFORMANCE-PRODUCER-LIVE-SMOKE`** ✅ — the conformance loop is now proven end-to-end on
@@ -423,9 +458,9 @@ the W6 catalog-endpoint fix). All need an lm_studio + platform-embedding-credent
 (mirrors the R-NODE-P1 LLM-slice deferral). See the full deferred ledger below.
 
 **Deferred — W10 (NEW, gate-passing):**
-- **`D-W10-FE-TIMELINE`** (gate 1 out-of-scope · target W10-FE / W6 extends): the FE thread×chapter
-  arc-timeline subtree (the shared timeline editor, spec §10) — explicitly fenced out of this
-  backend slice; the apply-preview JSON (`ArcApplyPlan`) is its data contract.
+- ~~**`D-W10-FE-TIMELINE`**~~ ✅ **CLEARED PM-10** — the FE thread×chapter arc-timeline subtree
+  (editor + apply-preview, built against the frozen `ArcTimelineContract` + `ArcApplyPlan`), surfaced
+  via the motif-panel `Motifs | Arc templates` kind-toggle. 43 tests, live contract smoke. See PM-10.
 - **`D-W10-APPLY-PLANNER-MATERIALIZE`** (gate 2 large/structural · target Batch-B live-smoke): the
   apply endpoint returns the PURE plan only — it does NOT materialize `outline_node` rows, write a
   `motif_application` ledger, or invoke the LLM decompose planner. That deep planner integration
