@@ -405,6 +405,16 @@ There is no way to review the KG schema on both the book and knowledge GUIs.
 > editing (the editor targets the project's active schema; `_writable_schema_for_caller` gates to
 > project scope), and you can add **vocab values** but not create a new **vocab set** (no
 > create-set endpoint — still AI-only). → D-KG-SCHEMA-FROM-SCRATCH / D-KG-VOCAB-SET-CREATE-FE.
+> **/review-impl → 1 MED fixed:** the schema endpoints (BOTH tree + resolved) return vocab
+> **values separately** (`vocab_values`, keyed by set code) while `SchemaEditor` reads **nested**
+> `vocab_sets[].values` — so vocab values **never rendered** in either surface (a pre-existing
+> latent bug my "view the schema" feature surfaced). Fixed at the `ontologyApi` read boundary
+> (`nestVocabValues` on `getSchema` + `getResolvedSchema`) + the FE types now declare
+> `vocab_values`. +6 tests (3 boundary-nesting, 1 inspector-renders-values, 2 add-edge/add-fact
+> wiring); knowledge suite 695/695; tsc clean. **Accepted LOWs:** `?view=schema` honored only on a
+> fresh route mount (the cross-route CTA always remounts, so it works); deprecate toasts the generic
+> "Schema updated"; pre-adopt the Knowledge-GUI inspector shows the system-default schema while the
+> book editor says "adopt first".
 
 ### [I] 29. KG schema lacks batch operations (agent proposes only 1–2 edges, second expires)
 KG schema lacks batch work. Told the agent to update the whole KG schema but it doesn't work well — only proposes 1–2 edges, and the second edge always fails (expired/something).

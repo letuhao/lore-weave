@@ -53,6 +53,20 @@ describe('ProjectSchemaSection (#28 read-only inspector)', () => {
     expect(screen.queryByTestId('schema-edit-cta')).not.toBeInTheDocument();
   });
 
+  it('renders vocab values nested into their set (the #28 contract-drift fix)', () => {
+    resolved.value = {
+      schema: {
+        ...SCHEMA,
+        vocab_sets: [{ code: 'status', label: 'Status', closed: true, values: [{ code: 'alive', label: 'Alive' }] }],
+      },
+      isLoading: false,
+      isError: false,
+    };
+    renderSection('b-9');
+    // The value (nested by ontologyApi) must reach the rendered inspector.
+    expect(screen.getByText('alive')).toBeInTheDocument();
+  });
+
   it('shows an error placeholder when the schema fails to load', () => {
     resolved.value = { schema: null, isLoading: false, isError: true };
     renderSection('b-9');

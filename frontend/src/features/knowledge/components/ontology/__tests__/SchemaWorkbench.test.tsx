@@ -65,6 +65,26 @@ describe('SchemaWorkbench (#28 Part B — human schema edit)', () => {
     );
   });
 
+  it('adds an edge type via the controller mutation', async () => {
+    renderWB(ctrl);
+    fireEvent.change(screen.getByTestId('edge-code-input'), { target: { value: 'LOVER_OF' } });
+    fireEvent.change(screen.getByTestId('edge-label-input'), { target: { value: 'Lover of' } });
+    fireEvent.click(screen.getByTestId('edge-submit'));
+    await waitFor(() =>
+      expect(ctrl.addEdgeType).toHaveBeenCalledWith(
+        expect.objectContaining({ code: 'LOVER_OF', label: 'Lover of' }),
+      ),
+    );
+  });
+
+  it('adds a fact type via the controller mutation', async () => {
+    renderWB(ctrl);
+    fireEvent.change(screen.getByTestId('fact-type-code-input'), { target: { value: 'birth' } });
+    fireEvent.change(screen.getByTestId('fact-type-label-input'), { target: { value: 'Birth' } });
+    fireEvent.click(screen.getByTestId('fact-type-submit'));
+    await waitFor(() => expect(ctrl.addFactType).toHaveBeenCalledWith({ code: 'birth', label: 'Birth' }));
+  });
+
   it('deprecating an edge type passes through to the controller', async () => {
     renderWB(ctrl);
     fireEvent.click(screen.getByTestId('deprecate-edge-allied_with'));
