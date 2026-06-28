@@ -143,6 +143,30 @@ class MotifRepo:
             row = await c.fetchrow(query, caller_id, motif_id)
         return _row_to_motif(row) if row is not None else None
 
+    async def get_by_codes(self, caller_id: UUID, codes: list[str]) -> dict[str, Motif]:
+        """Resolve VISIBLE active motifs by exact code → {code: Motif} (W10 arc
+        materialize). Tier-merged under the same R1.1 read predicate as get_visible;
+        when a code exists in more than one visible tier, the CALLER'S OWN row shadows
+        system/public (the resolution-merge order System→User). Codes with no visible
+        match are simply absent from the map (the caller surfaces them as unresolved —
+        no silent invention). Distinct caller-owned codes are unique, so the first row
+        per code under the ordering is the correct winner."""
+        uniq = sorted({c for c in codes if c})
+        if not uniq:
+            return {}
+        query = f"""
+        SELECT {_SELECT_COLS} FROM motif
+        WHERE code = ANY($2) AND status = 'active' AND {_VISIBLE_PREDICATE}
+        ORDER BY (owner_user_id = $1) DESC NULLS LAST, owner_user_id NULLS FIRST, version DESC
+        """
+        async with self._pool.acquire() as c:
+            rows = await c.fetch(query, caller_id, uniq)
+        out: dict[str, Motif] = {}
+        for r in rows:
+            m = _row_to_motif(r)
+            out.setdefault(m.code, m)   # first per code wins (caller-owned ordered first)
+        return out
+
     async def patch(
         self, caller_id: UUID, motif_id: UUID, args: MotifPatchArgs, *, expected_version: int,
         repin_source_version: int | None = None, repin_adopted_base: str | None = None,

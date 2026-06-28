@@ -1,5 +1,40 @@
 # ▶ NEXT SESSION — Narrative Motif Library BUILD (handoff)
 
+## STATUS (2026-06-28 PM-11) — D-W10-APPLY-PLANNER-MATERIALIZE CLEARED (arc apply → committed outline, live)
+
+**`D-W10-APPLY-PLANNER-MATERIALIZE`** ✅ — the arc-apply preview now MATERIALIZES into a committed
+arc→chapter→scene outline + a `motif_application` ledger. **DETERMINISTIC (no LLM)** — the key finding
+was that `engine/motif_select.scenes_from_motif` already turns a motif's beats → ScenePlans with no LLM
+("the motif IS the structure"), so materialize reuses the exact A3 commit primitives
+(`commit_decomposed_tree` atomic+idempotent+replace · `MotifApplicationRepo.insert_many`). The richer
+per-scene prose stays the EXISTING downstream generate path. Plan doc: `docs/plans/2026-06-28-arc-materialize.md`.
+
+- **NEW `engine/arc_materialize.py` (pure):** `build_materialize_spec` distributes EVERY beat of each
+  placement across its chapter span (`beat j → s + floor(j*w/n)`, grouped per chapter — no beat lost,
+  §12.6), binds the motif roles to the book cast (`bind_motif` name-hints) with the **arc roster
+  (bound once, by name) overriding** any role key it covers, and emits per-chapter scenes + ledger
+  payloads (beat_key + arc lineage in annotations). Unresolved placements are SURFACED, never dropped.
+- **NEW `MotifRepo.get_by_codes`** (additive): tier-merged code→Motif resolution (caller's own shadows
+  system) for placements that carry a `motif_code` but no pinned `motif_id`.
+- **NEW endpoint `POST /v1/composition/works/{project_id}/arc/materialize`** (in plan.py, the decompose
+  family): maps the arc onto the book's EXISTING chapters (target = book chapter count; `build_apply_plan`
+  rescales), resolves motifs, builds the spec, commits via the A3 primitives, ledgers the bindings
+  (FK-tolerant, non-atomic — mirrors decompose). Guards: H13 arc 404, NO_CHAPTERS, TOO_MANY_CHAPTERS,
+  NO_MATERIALIZABLE_PLACEMENTS (all-unresolved 400), AlreadyPlanned 409, replace + idempotency_key.
+- **REVIEW fix-now (§12.6):** the response now includes `drop_merge_report` — when the book has fewer
+  chapters than the arc span, placements merge and the folded-away motifs aren't materialized; surfaced.
+- **VERIFY:** 15 new unit tests (10 pure engine + 5 route, fakes) + 41 regression (plan-router/scene-bind/
+  arc-apply) green; 1011 collected; provider-gate clean. **Live cross-service smoke** (rebuilt
+  composition-service): throwaway book(2 ch) + work + arc(2 system motifs, 4 beats each) → materialize →
+  **chapters=2, scenes=8, applications=8, beats_distributed=8, unresolved=0**; the ledger reads back via
+  the FE `motif-bindings` endpoint (4 bound scenes on ch1, beat_key='surface', motif='Auction-House
+  Treasure'). Cleaned up (arc archived, book deleted; orphan work inert — no work-DELETE route, 405).
+
+**▶ Remaining motif defers:** `D-W10-ARC-CONFORMANCE` (blocked on W5 arc-diff), `D-W10-FE-PLACE-MOTIF-PICKER`
+(mobile place-empty-motif, needs a picker), `D-MOTIF-PGVECTOR-TRIGGER` (perf), conformance activation
+(human config), scene `rebindRole`/`chainIt` routes (low-reach). A natural NEXT-NEXT: a thin FE
+"materialize this arc" button wiring the new endpoint (the editor's apply-preview already exists).
+
 ## STATUS (2026-06-28 PM-10) — D-W10-FE-TIMELINE CLEARED (the arc-timeline FE subtree, full-stack-verified)
 
 **`D-W10-FE-TIMELINE`** ✅ — the FE thread×chapter arc-timeline editor (spec §10 / W6 §5.4) is built
@@ -480,11 +515,10 @@ the W6 catalog-endpoint fix). All need an lm_studio + platform-embedding-credent
   place (and on a placed cell) — needs the `useMotifCandidates` picker wired into the timeline; until
   then "+ place" can author unresolvable rows. Low blast radius (mobile-only; the editor's primary job
   is arranging EXISTING placements from adopted/deconstructed templates).
-- **`D-W10-APPLY-PLANNER-MATERIALIZE`** (gate 2 large/structural · target Batch-B live-smoke): the
-  apply endpoint returns the PURE plan only — it does NOT materialize `outline_node` rows, write a
-  `motif_application` ledger, or invoke the LLM decompose planner. That deep planner integration
-  (turn the rescaled placements into a committed multi-chapter outline, §12.5) rides the existing
-  `engine/plan.py` decompose path + needs a stack-up live-smoke; build when W9/W8 bring the LLM rails up.
+- ~~**`D-W10-APPLY-PLANNER-MATERIALIZE`**~~ ✅ **CLEARED PM-11** — `POST …/works/{id}/arc/materialize`
+  turns the rescaled placements into a committed arc→chapter→scene outline + a `motif_application`
+  ledger, DETERMINISTICALLY (no LLM — `scenes_from_motif`). 15 tests + a live cross-service smoke
+  (book+work+arc → 8 scenes/8 ledger rows, read back via motif-bindings). See PM-11.
 - **`D-W10-ARC-CONFORMANCE`** (gate 3 naturally-next · target P4 with W5 arc-diff): coarse
   arc-conformance (thread-progress / pacing / succession diff of realized arc vs template, §14.4 altitude 3)
   depends on the import/extract path (W9) + W5's deferred arc-diff dimension — implementable only once
