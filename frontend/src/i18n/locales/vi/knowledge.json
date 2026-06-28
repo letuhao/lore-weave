@@ -24,6 +24,14 @@
     "loadFailed": "Không tải được đồ thị: {{error}}",
     "empty": "Chưa có đồ thị tri thức — hãy xây dựng dự án này để khám phá mạng lưới của nó."
   },
+  "schemaSection": {
+    "title": "Lược đồ hiệu lực",
+    "subtitle": "Các loại nút, loại quan hệ, loại sự kiện và từ vựng mà đồ thị của dự án này đang dùng.",
+    "editCta": "Sửa lược đồ",
+    "freeEdges": "Cho phép quan hệ ngoài từ vựng (cạnh tự do).",
+    "closedEdges": "Quan hệ giới hạn ở các loại quan hệ đã khai báo; phần khác đưa vào phân loại.",
+    "error": "Không tải được lược đồ của dự án này."
+  },
   "shell": {
     "backToProjects": "Tất cả dự án",
     "sections": {
@@ -35,6 +43,7 @@
       "proposals": "Đề xuất",
       "gap": "Thiếu sót",
       "insights": "Phân tích",
+      "schema": "Lược đồ",
       "graph": "Dựng / Khám phá đồ thị"
     },
     "notFound": "Không tìm thấy dự án.",

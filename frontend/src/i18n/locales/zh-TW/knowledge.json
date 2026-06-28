@@ -24,6 +24,14 @@
     "loadFailed": "載入圖譜失敗：{{error}}",
     "empty": "尚無知識圖譜 — 建立此專案以探索其網路。"
   },
+  "schemaSection": {
+    "title": "有效綱要",
+    "subtitle": "此專案圖譜實際使用的節點類型、關係類型、事實類型與詞彙。",
+    "editCta": "編輯綱要",
+    "freeEdges": "允許詞彙外的關係（自由邊）。",
+    "closedEdges": "關係僅限已宣告的關係類型；其餘進入待處理。",
+    "error": "無法載入此專案的綱要。"
+  },
   "shell": {
     "backToProjects": "所有專案",
     "sections": {
@@ -35,6 +43,7 @@
       "proposals": "提案",
       "gap": "缺口",
       "insights": "洞察",
+      "schema": "綱要",
       "graph": "建構／探索圖譜"
     },
     "notFound": "找不到專案。",

@@ -24,6 +24,14 @@
     "loadFailed": "Failed to load graph: {{error}}",
     "empty": "No knowledge graph yet — build this project to explore its network."
   },
+  "schemaSection": {
+    "title": "Effective schema",
+    "subtitle": "The effective node-kinds, edge-types, fact-types and vocab this project's graph uses.",
+    "editCta": "Edit schema",
+    "freeEdges": "Off-vocabulary relations are allowed (free edges).",
+    "closedEdges": "Relations are limited to the declared edge-types; others go to triage.",
+    "error": "Couldn't load this project's schema."
+  },
   "shell": {
     "backToProjects": "All projects",
     "sections": {
@@ -35,6 +43,7 @@
       "proposals": "Proposals",
       "gap": "Gap",
       "insights": "Insights",
+      "schema": "Schema",
       "graph": "Build / Explore graph"
     },
     "notFound": "Project not found.",
