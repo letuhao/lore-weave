@@ -56,6 +56,7 @@ from app.clients import (
     ProviderRegistryClient,
 )
 from app.llm_client import LLMClient, set_billing_user_id, set_campaign_id
+from loreweave_llm.attribution import set_public_key_attribution
 from app.metrics import (
     worker_ai_extraction_reasoning_model_advised_total,
     worker_ai_extraction_zero_output_total,
@@ -1536,6 +1537,11 @@ async def _start_decoupled_chunk(
         concurrency_level=job.concurrency_level,
         campaign_id=(str(job.campaign_id) if job.campaign_id else None),
         billing_user_id=(str(job.billing_user_id) if job.billing_user_id else None),
+        # D-PMCP-WORKER-CARRIER: seed the public-MCP key + cap so the decoupled
+        # terminal-event consumer re-sets the attribution contextvar on resume
+        # (parity with billing_user_id; both ride resume_state across the process hop).
+        mcp_key_id=job.mcp_key_id,
+        spend_cap_usd=job.spend_cap_usd,
         # D-WX-RUN-SAMPLE-DECOUPLE — the project's raw-retention opt-in, seeded so
         # the consumer's terminal persist can write the extraction_run_sample at
         # parity with the sync chapter loop (keyed by run_payload's run_id).
@@ -1680,6 +1686,12 @@ async def process_job(
     # per job (poll_and_run), so the ContextVar is task-local — concurrent jobs
     # for different campaigns never cross-contaminate.
     set_campaign_id(str(job.campaign_id) if job.campaign_id else None)
+    # D-PMCP-WORKER-CARRIER: bind the public-MCP key + cap for THIS job task so every
+    # provider call made while extracting tags job_meta with the agent's key (the
+    # in-process contextvar set at the kg confirm route died at the job-row boundary;
+    # knowledge extraction is poll-based, so the id rides the row). task-local, like
+    # campaign_id; None ⇒ first-party job.
+    set_public_key_attribution(job.mcp_key_id, job.spend_cap_usd)
 
     # LLM re-arch Phase 2b WX-T3b — decoupled-extraction in-flight guard. If a chunk
     # is already in flight (the llm_extract_consumer is driving it off terminal
