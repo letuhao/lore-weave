@@ -227,6 +227,26 @@ export type ArcSuccessionThread = {
   violations: { from_motif_id: string; to_motif_id: string }[];  // a reversed precedes edge
 };
 
+// The DEEP overlay (D-W10-ARC-CONFORMANCE-DEEP) — only present when ?deep=true. The FIRST
+// realized-from-PROSE measure: pacing drift (extracted :Event tension vs the planned curve).
+// thread_progression + succession are honestly unavailable (the Option-A extractor emits
+// chapter-as-thread + free-text beats — no narrative-thread / motif tagging yet).
+export type ArcDeepDim = { available: false; reason: string };
+
+export type ArcDeep = {
+  available: boolean;
+  source: string;
+  pacing: {
+    comparable: boolean;
+    planned: { chapter_index: number; avg_tension: number }[];
+    realized: { chapter_index: number; avg_tension: number; events: number }[];
+    max_drift: number | null;
+    scale_note: string;
+  };
+  thread_progression: ArcDeepDim;
+  succession: ArcDeepDim;
+};
+
 export type ArcConformance = {
   scope: 'arc';
   available: boolean;
@@ -239,6 +259,7 @@ export type ArcConformance = {
   pacing: ArcPacing;
   succession: { causal_verified: boolean; threads: ArcSuccessionThread[] };
   unmaterialized: { motif_code: string | null; thread: string | null; ord: number }[];
+  deep?: ArcDeep;                      // present only when fetched with deep=true
 };
 
 // ── quota / cost-confirm (Tier-W — the FE mints + confirms, never executes) ───

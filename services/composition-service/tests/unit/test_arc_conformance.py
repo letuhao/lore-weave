@@ -17,7 +17,7 @@ from unittest.mock import AsyncMock
 import pytest
 from fastapi.testclient import TestClient
 
-from app.engine.arc_conformance import build_arc_conformance
+from app.engine.arc_conformance import build_arc_conformance, build_deep_report
 
 U, P = uuid.uuid4(), uuid.uuid4()
 # stable motif ids for the precedes graph.
@@ -147,11 +147,12 @@ def client(monkeypatch):
     monkeypatch.setattr("app.routers.conformance.get_pool", lambda: object())
 
     from app.main import app
-    from app.deps import get_arc_template_repo, get_outline_repo, get_works_repo
+    from app.deps import (get_arc_template_repo, get_knowledge_client_dep,
+                          get_outline_repo, get_works_repo)
     from app.middleware.jwt_auth import get_current_user
     from app.routers.conformance import get_conformance_trace_reader
 
-    state = SimpleNamespace(arc=None, rows=[])
+    state = SimpleNamespace(arc=None, rows=[], sequences=[])
 
     class _Works:
         async def get(self, u, p):
@@ -162,6 +163,9 @@ def client(monkeypatch):
     class _Reader:
         async def arc_bindings(self, u, p, arc_id):
             return state.rows
+    class _Knowledge:
+        async def get_motif_beat_sequences(self, user_id, *, book_id=None, corpus=False, language=None):
+            return state.sequences
 
     class _MotifRepo:
         def __init__(self, pool):
@@ -174,6 +178,7 @@ def client(monkeypatch):
     app.dependency_overrides[get_works_repo] = lambda: _Works()
     app.dependency_overrides[get_arc_template_repo] = lambda: _ArcRepo()
     app.dependency_overrides[get_conformance_trace_reader] = lambda: _Reader()
+    app.dependency_overrides[get_knowledge_client_dep] = lambda: _Knowledge()
     app.dependency_overrides[get_outline_repo] = lambda: object()  # arc branch never uses it
     with TestClient(app) as c:
         yield c, state
@@ -209,3 +214,59 @@ def test_route_arc_scope_returns_the_coarse_report(client):
     assert body["chapter_count"] == 1
     # 'exile' was planned but never bound → surfaced as unmaterialized.
     assert [p["motif_code"] for p in body["unmaterialized"]] == ["exile"]
+    # no deep overlay unless deep=true (it's the expensive cross-service path).
+    assert "deep" not in body
+
+
+def test_route_deep_overlay_adds_prose_pacing(client):
+    c, state = client
+    aid = uuid.uuid4()
+    state.arc = _arc(layout=[_placement("humiliation")])
+    state.arc.id = aid
+    ch1 = uuid.uuid4()
+    # planned outline tension 50 on chapter 1 (index 1).
+    state.rows = [{"motif_id": M_HUMIL, "motif_code": "humiliation",
+                   "annotations": {"thread": "revenge", "arc_template_id": str(aid)},
+                   "chapter_id": ch1, "tension": 50, "story_order": 1}]
+    # realized prose: two :Event steps on chapter ch1, tension band 5 → 100/100.
+    state.sequences = [[{"beat": "the slap", "thread": str(ch1), "tension": 5},
+                        {"beat": "the vow", "thread": str(ch1), "tension": 5}]]
+    r = c.get(f"/v1/composition/works/{P}/conformance?scope=arc&arc_template_id={aid}&deep=true")
+    assert r.status_code == 200
+    deep = r.json()["deep"]
+    assert deep["available"] is True
+    assert deep["pacing"]["realized"][0] == {"chapter_index": 1, "avg_tension": 100.0, "events": 2}
+    # drift = |100 (prose) − 50 (planned outline)|.
+    assert deep["pacing"]["max_drift"] == 50.0
+    # the two honestly-blocked dims.
+    assert deep["thread_progression"]["available"] is False
+    assert deep["succession"]["available"] is False
+
+
+# ── build_deep_report (pure prose-pacing) ────────────────────────────────────────────
+
+def test_deep_groups_prose_tension_by_chapter_and_normalizes():
+    # ch 'a' index 1 (bands 3,5 → avg 4 → 80), ch 'b' index 2 (band 2 → 40).
+    seqs = [[{"beat": "x", "thread": "a", "tension": 3}, {"beat": "y", "thread": "a", "tension": 5},
+             {"beat": "z", "thread": "b", "tension": 2}]]
+    out = build_deep_report(sequences=seqs, chapter_index_by_id={"a": 1, "b": 2},
+                            planned_by_index={1: 80.0, 2: 90.0})
+    assert out["available"] is True
+    assert out["pacing"]["realized"] == [
+        {"chapter_index": 1, "avg_tension": 80.0, "events": 2},
+        {"chapter_index": 2, "avg_tension": 40.0, "events": 1}]
+    # drift: ch1 |80−80|=0, ch2 |40−90|=50 → max 50.
+    assert out["pacing"]["max_drift"] == 50.0
+
+
+def test_deep_empty_corpus_is_unavailable():
+    out = build_deep_report(sequences=[], chapter_index_by_id={"a": 1}, planned_by_index={1: 50.0})
+    assert out["available"] is False and out["pacing"]["realized"] == []
+    assert out["pacing"]["max_drift"] is None
+
+
+def test_deep_ignores_events_in_unknown_chapters():
+    # an event whose chapter isn't in the arc's materialized set is dropped (no index).
+    seqs = [[{"beat": "x", "thread": "ghost", "tension": 4}]]
+    out = build_deep_report(sequences=seqs, chapter_index_by_id={"a": 1}, planned_by_index={})
+    assert out["available"] is False

@@ -1,5 +1,37 @@
 # ▶ NEXT SESSION — Narrative Motif Library BUILD (handoff)
 
+## STATUS (2026-06-28 PM-18) — D-W10-ARC-CONFORMANCE-DEEP (pacing slice) — prose-drift, full-stack
+
+**`D-W10-ARC-CONFORMANCE-DEEP`** — the buildable slice DONE; the rest precisely fenced. A code-verified
+investigation corrected the stale "blocked on F-1 causal graph" framing: the `/internal/extraction/
+motif-beats` route DOES exist (live-verified PM-2; the prior audit missed it), BUT it's **Option A** —
+`motif_beat.py:96` emits `thread = event.chapter_id` (a CHAPTER proxy, not a narrative thread) and
+`beat = event.title` (free text, not a motif beat key). So of the 3 deep dims, only **pacing** is
+realizable from prose today; thread-progression + legal-succession need the narrative-thread / motif
+tagging extractor (a knowledge-service follow-up) + causal edges — now fenced with code reasons, not
+a vague note. (User chose "build prose-pacing-drift now".)
+- **BE pure `engine/arc_conformance.build_deep_report`** — groups the extracted `:Event` tension
+  (1..5 band → ×20 = 0..100) per chapter → the realized-from-PROSE pacing curve, diffed vs the planned
+  outline tension (`max_drift`). **This is the FIRST real prose-drift measure** — the coarse
+  `pacing.realized` is actually the PLANNED `outline_node.tension`, never the prose. thread_progression
+  + succession returned `available:false` + a reason (never faked).
+- **`scope=arc&deep=true`** branch: only on opt-in does it make the cross-service `motif_beat` read
+  (the expensive path); degrades to `available:false` on an extractor outage / empty corpus.
+- **FE:** `ArcConformancePanel` gained a **"Check prose drift"** button → refetches `deep=true` → an
+  indigo prose-drift section (realized tension chips + max-drift + the honest "thread+succession need
+  the tagging extractor (P4+)" note). `useArcConformance(…, deep)` + `arcConformance(…, deep)` +
+  `ArcDeep` types (additive-optional `deep?`).
+- **VERIFY:** BE 17 (4 new: pure group/normalize, empty-corpus, unknown-chapter-drop, route deep
+  overlay) + FE 134 (2 new: deep button→overlay, honest-empty); tsc 0; provider-gate clean.
+  **Cross-service at runtime** (composition→knowledge motif_beat) — live smoke deferred
+  `D-W10-ARC-CONFORMANCE-DEEP-LIVE-SMOKE` (needs knowledge-service + an :Event corpus); both halves
+  unit-proven against the frozen `get_motif_beat_sequences` contract.
+
+**▶ Genuinely-blocked remainder (P4+, knowledge-service track):** `D-W10-ARC-CONFORMANCE-THREAD-TAG`
+— a narrative-thread (and motif) tagging extractor on `:Event` is the real unblocker for deep
+thread-progression + succession; and prose-verified legal-succession (effects⊨preconditions) still
+needs `:CAUSES` edges (F-1). Both are knowledge-service LLM-extractor work, not composition wiring.
+
 ## STATUS (2026-06-28 PM-17) — D-W10-ARC-CONFORMANCE-FE CLEARED — the arc dashboard (07-B)
 
 **`D-W10-ARC-CONFORMANCE-FE`** ✅ — the PM-16 coarse arc-conformance report now has a UI. FE-only

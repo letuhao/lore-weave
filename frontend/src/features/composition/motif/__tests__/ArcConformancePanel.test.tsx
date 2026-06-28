@@ -1,7 +1,7 @@
 // D-W10-ARC-CONFORMANCE-FE — the coarse arc-conformance dashboard: renders thread
 // coverage, the realized pacing curve, structural succession flags, and unmaterialized
 // (folded-away) placements from the scope=arc report. Logic lives in useArcConformance.
-import { render, screen } from '@testing-library/react';
+import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { describe, expect, it, vi, beforeEach } from 'vitest';
 
@@ -89,5 +89,48 @@ describe('ArcConformancePanel', () => {
     render(<ArcConformancePanel projectId={null} arcTemplateId="a1" token="tok" />, { wrapper: wrap() });
     expect(screen.getByTestId('arc-conf-no-work')).toBeInTheDocument();
     expect(apiJson).not.toHaveBeenCalled();
+  });
+
+  it('"Check prose drift" refetches with deep=true and shows the prose-pacing overlay', async () => {
+    // coarse first; deep=true adds the realized-from-prose pacing overlay.
+    apiJson.mockImplementation((url: string) => Promise.resolve(
+      String(url).includes('deep=true')
+        ? REPORT({ deep: {
+            available: true, source: 'motif_beat_extractor',
+            pacing: { comparable: true, planned: [{ chapter_index: 1, avg_tension: 50 }],
+              realized: [{ chapter_index: 1, avg_tension: 100, events: 2 }], max_drift: 50,
+              scale_note: 's' },
+            thread_progression: { available: false, reason: 'P4+' },
+            succession: { available: false, reason: 'P4+' },
+          } })
+        : REPORT(),
+    ));
+    render(<ArcConformancePanel projectId="p1" arcTemplateId="a1" token="tok" />, { wrapper: wrap() });
+    fireEvent.click(await screen.findByTestId('arc-conf-deep-btn'));
+    // the deep section + the drift readout appear once the deep fetch resolves.
+    const deepSection = await screen.findByTestId('arc-conf-deep');
+    expect(screen.getByTestId('arc-conf-deep-drift')).toBeInTheDocument();
+    // the realized prose tension (100) is rendered raw (not via i18n) → a real data check.
+    expect(deepSection).toHaveTextContent('100');
+    await waitFor(() => {
+      const deepCall = apiJson.mock.calls.find((c) => String(c[0]).includes('deep=true'));
+      expect(deepCall?.[0]).toContain('scope=arc');
+    });
+  });
+
+  it('deep overlay degrades honestly when no prose is extracted yet', async () => {
+    apiJson.mockImplementation((url: string) => Promise.resolve(
+      String(url).includes('deep=true')
+        ? REPORT({ deep: {
+            available: false, source: 'motif_beat_extractor',
+            pacing: { comparable: false, planned: [], realized: [], max_drift: null, scale_note: 's' },
+            thread_progression: { available: false, reason: 'P4+' },
+            succession: { available: false, reason: 'P4+' },
+          } })
+        : REPORT(),
+    ));
+    render(<ArcConformancePanel projectId="p1" arcTemplateId="a1" token="tok" />, { wrapper: wrap() });
+    fireEvent.click(await screen.findByTestId('arc-conf-deep-btn'));
+    expect(await screen.findByTestId('arc-conf-deep-empty')).toBeInTheDocument();
   });
 });

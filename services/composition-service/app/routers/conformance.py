@@ -42,8 +42,10 @@ from app.db.repositories.arc_template_repo import ArcTemplateRepo
 from app.db.repositories.motif_repo import MotifRepo
 from app.db.repositories.outline import OutlineRepo
 from app.db.repositories.works import WorksRepo
-from app.deps import get_arc_template_repo, get_outline_repo, get_works_repo
-from app.engine.arc_conformance import build_arc_conformance
+from app.clients.knowledge_client import KnowledgeClient
+from app.deps import (get_arc_template_repo, get_knowledge_client_dep,
+                      get_outline_repo, get_works_repo)
+from app.engine.arc_conformance import build_arc_conformance, build_deep_report
 from app.middleware.jwt_auth import get_current_user
 
 router = APIRouter(prefix="/v1/composition")
@@ -242,11 +244,13 @@ async def read_conformance(
     scope: str = Query("chapter"),
     chapter_id: UUID | None = None,
     arc_template_id: UUID | None = None,
+    deep: bool = Query(False),
     user_id: UUID = Depends(get_current_user),
     works: WorksRepo = Depends(get_works_repo),
     outline: OutlineRepo = Depends(get_outline_repo),
     reader: ConformanceTraceReader = Depends(get_conformance_trace_reader),
     arc_repo: ArcTemplateRepo = Depends(get_arc_template_repo),
+    knowledge: KnowledgeClient = Depends(get_knowledge_client_dep),
 ) -> dict[str, Any]:
     """The motif-conformance trace (§4). `scope=chapter` (default) is the per-scene
     planned│realized│conformance trace. `scope=arc` is the COARSE arc-conformance diff
@@ -284,7 +288,19 @@ async def read_conformance(
         realized_ids = [UUID(x["motif_id"]) for x in realized if x["motif_id"]]
         succ_map = await MotifRepo(get_pool()).successors_by_ids(realized_ids)
         precedes_pairs = {(frm, s["id"]) for frm, lst in succ_map.items() for s in lst}
-        return build_arc_conformance(arc=arc, realized=realized, precedes_pairs=precedes_pairs)
+        report = build_arc_conformance(arc=arc, realized=realized, precedes_pairs=precedes_pairs)
+        if deep:
+            # DEEP overlay — the realized-from-PROSE pacing curve (the motif_beat extractor,
+            # a cross-service read). Only fetched on demand (deep=true) — it's the expensive
+            # path. Degrades to available:false on an extractor outage / empty corpus.
+            seqs = await knowledge.get_motif_beat_sequences(user_id, book_id=work.book_id)
+            report["deep"] = build_deep_report(
+                sequences=seqs or [],
+                chapter_index_by_id={str(ch): idx for ch, idx in order.items()},
+                planned_by_index={pt["chapter_index"]: pt["avg_tension"]
+                                  for pt in report["pacing"]["realized"]},
+            )
+        return report
     if scope != "chapter":
         raise HTTPException(status_code=422, detail={"code": "UNSUPPORTED_SCOPE", "scope": scope})
     if chapter_id is None:

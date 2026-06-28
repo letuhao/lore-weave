@@ -48,6 +48,67 @@ def _planned_pacing(pacing: list[Any]) -> list[float] | None:
     return out or None
 
 
+def build_deep_report(
+    *, sequences: list[list[dict[str, Any]]],
+    chapter_index_by_id: dict[str, int],
+    planned_by_index: dict[int, float],
+) -> dict[str, Any]:
+    """The DEEP (realized-from-PROSE) overlay (D-W10-ARC-CONFORMANCE-DEEP).
+
+    The coarse diff reads the planned ledger; this reads what the PROSE actually delivered
+    via the `motif_beat` extractor (Option A), which projects the realized `:Event` timeline
+    into `{beat, thread, tension}` steps. But that extractor's `thread` is the event's
+    CHAPTER (not a narrative thread) and `beat` is the event TITLE (not a motif beat key),
+    so ONLY pacing is realizable from prose today: the realized per-chapter tension curve.
+    This is the FIRST real prose-drift measure — the coarse `pacing.realized` is actually the
+    PLANNED `outline_node.tension`, never the prose. thread-progression + legal-succession
+    from prose need the narrative-thread / motif tagging extractor (a knowledge-service
+    follow-up) + causal edges — surfaced as `available:false` with a reason, NEVER faked.
+
+    `sequences`: motif_beat steps (thread = chapter_id, tension a 1..5 band).
+    `chapter_index_by_id`: chapter_id → the 1-based realized index (from the materialized
+    ledger). `planned_by_index`: index → planned avg tension (0..100, the outline plan).
+    Realized tension (1..5) is normalized ×20 → 0..100 for a like-for-like drift vs the plan."""
+    by_idx: dict[int, list[float]] = {}
+    for seq in sequences:
+        for step in seq:
+            if not isinstance(step, dict):
+                continue
+            idx = chapter_index_by_id.get(str(step.get("thread") or ""))
+            t = step.get("tension")
+            if idx is None or not isinstance(t, (int, float)):
+                continue
+            by_idx.setdefault(idx, []).append(float(t) * 20.0)   # 1..5 band → 0..100
+    realized = [
+        {"chapter_index": i, "avg_tension": round(sum(by_idx[i]) / len(by_idx[i]), 1),
+         "events": len(by_idx[i])}
+        for i in sorted(by_idx)
+    ]
+    planned = [{"chapter_index": r["chapter_index"],
+                "avg_tension": round(planned_by_index.get(r["chapter_index"], 0.0), 1)}
+               for r in realized]
+    drifts = [abs(r["avg_tension"] - p["avg_tension"])
+              for r, p in zip(realized, planned) if r["chapter_index"] in planned_by_index]
+    max_drift = round(max(drifts), 1) if drifts else None
+    return {
+        "available": len(realized) > 0,
+        "source": "motif_beat_extractor",
+        "pacing": {
+            "comparable": len(realized) > 0 and bool(drifts),
+            "planned": planned, "realized": realized, "max_drift": max_drift,
+            "scale_note": "realized tension from extracted :Event salience (1..5 band → ×20)",
+        },
+        "thread_progression": {
+            "available": False,
+            "reason": "realized beats carry chapter, not narrative-thread, labels — needs the thread-tagging extractor (P4+)",
+        },
+        "succession": {
+            "available": False,
+            "reason": "realized beats are free-text event titles, not motif-tagged — needs motif tagging + causal edges (P4+)",
+        },
+    }
+
+
 def build_arc_conformance(
     *, arc: Any, realized: list[dict[str, Any]], precedes_pairs: set[tuple[str, str]],
 ) -> dict[str, Any]:
