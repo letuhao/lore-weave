@@ -824,13 +824,27 @@ async def list_events_in_order(
 # ── set_narrative_threads (D-W10-ARC-CONFORMANCE-THREAD-TAG) ───────────
 
 
+# Clear-aware: a row whose ``thread`` is null REMOVES the property (Neo4j SET …=null),
+# so re-tagging a previously-tagged event that now classifies as "none" / dropped out of a
+# changed vocabulary nulls its stale tag instead of leaving it to pollute succession/causal
+# pairs (D-THREAD-TAG-RETAG-STALE). ``tagged`` counts only the non-null SETs.
 _SET_NARRATIVE_THREADS_CYPHER = """
 UNWIND $rows AS row
 MATCH (e:Event {id: row.id})
 WHERE e.user_id = $user_id
 SET e.narrative_thread = row.thread, e.updated_at = datetime()
-RETURN count(e) AS tagged
+RETURN count(CASE WHEN row.thread IS NOT NULL THEN e END) AS tagged
 """
+
+
+def _retag_rows(assignments: dict[str, str], event_ids: set[str] | None) -> list[dict]:
+    """Build the UNWIND rows for a clear-aware re-tag. Without ``event_ids`` (the legacy
+    set-only path) only assigned, non-empty rows are written. With ``event_ids`` (the full
+    considered set) EVERY id in scope is written — assigned → its value, unassigned → null —
+    so a stale prior tag on an event the classifier no longer picks is cleared."""
+    if event_ids is None:
+        return [{"id": eid, "v": v} for eid, v in assignments.items() if v]
+    return [{"id": eid, "v": assignments.get(eid) or None} for eid in event_ids]
 
 
 async def set_narrative_threads(
@@ -838,14 +852,19 @@ async def set_narrative_threads(
     *,
     user_id: str,
     assignments: dict[str, str],
+    event_ids: set[str] | None = None,
 ) -> int:
     """Persist the thread-tag classifier's verdicts onto ``:Event.narrative_thread``
     (D-W10-ARC-CONFORMANCE-THREAD-TAG). ``assignments`` is ``{event_id: thread_key}``.
 
     Tenancy: the MATCH filters ``e.user_id = $user_id`` so a row naming another user's
     event id silently matches nothing (never a cross-tenant write). Returns the number of
-    events actually tagged (rows whose id+user matched a node)."""
-    rows = [{"id": eid, "thread": thread} for eid, thread in assignments.items() if thread]
+    events actually tagged (rows whose id+user matched a node).
+
+    Pass ``event_ids`` (the full re-tagged scope) to also CLEAR a stale tag on any event in
+    that scope the classifier did not assign (D-THREAD-TAG-RETAG-STALE); omit it for the
+    legacy set-only behavior."""
+    rows = [{"id": r["id"], "thread": r["v"]} for r in _retag_rows(assignments, event_ids)]
     if not rows:
         return 0
     result = await run_write(
@@ -855,12 +874,14 @@ async def set_narrative_threads(
     return int(record["tagged"]) if record else 0
 
 
+# Clear-aware (see _SET_NARRATIVE_THREADS_CYPHER): a null ``code`` REMOVES the property so a
+# vocabulary change / "none" flip nulls a stale realized_motif_code (D-THREAD-TAG-RETAG-STALE).
 _SET_REALIZED_MOTIFS_CYPHER = """
 UNWIND $rows AS row
 MATCH (e:Event {id: row.id})
 WHERE e.user_id = $user_id
 SET e.realized_motif_code = row.code, e.updated_at = datetime()
-RETURN count(e) AS tagged
+RETURN count(CASE WHEN row.code IS NOT NULL THEN e END) AS tagged
 """
 
 
@@ -869,11 +890,15 @@ async def set_realized_motifs(
     *,
     user_id: str,
     assignments: dict[str, str],
+    event_ids: set[str] | None = None,
 ) -> int:
     """Persist the motif-tag classifier's verdicts onto ``:Event.realized_motif_code``
     (D-W10-ARC-CONFORMANCE-SUCCESSION). ``assignments`` is ``{event_id: motif_code}``.
-    Tenant-scoped on ``e.user_id`` (a foreign id matches nothing). Returns the count tagged."""
-    rows = [{"id": eid, "code": code} for eid, code in assignments.items() if code]
+    Tenant-scoped on ``e.user_id`` (a foreign id matches nothing). Returns the count tagged.
+
+    Pass ``event_ids`` (the full re-tagged scope) to also CLEAR a stale code on any event in
+    that scope the classifier did not assign (D-THREAD-TAG-RETAG-STALE)."""
+    rows = [{"id": r["id"], "code": r["v"]} for r in _retag_rows(assignments, event_ids)]
     if not rows:
         return 0
     result = await run_write(

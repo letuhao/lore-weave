@@ -1465,6 +1465,28 @@ async def motif_beats(body: MotifBeatsRequest) -> MotifBeatsResponse:
 # ── D-W10-ARC-CONFORMANCE-THREAD-TAG — narrative-thread classifier ─────
 
 
+def _neutralize_event_dicts(events: list, *, project_id: str) -> list[dict]:
+    """Build the classifier event dicts with extracted prose neutralized
+    (D-EXTRACTOR-PROMPT-INJECTION). The tag classifiers embed each event's title/summary/
+    participants into an LLM prompt; this passes them through the knowledge-service injection
+    defense first so a planted instruction in the source text is tagged, not obeyed. Output is
+    still vocab/id-validated downstream, so this is defense-in-depth, not the only guard."""
+    from app.extraction.injection_defense import neutralize_injection
+
+    def _clean(text: str) -> str:
+        return neutralize_injection(text or "", project_id=project_id)[0]
+
+    out = []
+    for e in events:
+        out.append({
+            "id": e.id,
+            "title": _clean(e.title),
+            "summary": _clean(e.summary),
+            "participants": [_clean(p) for p in (e.participants or [])],
+        })
+    return out
+
+
 class TagThreadsRequest(BaseModel):
     """Tag a book's :Event timeline with narrative-thread labels from the caller's
     vocabulary (the arc template's threads). model_source/model_ref resolve the BYOK
@@ -1520,16 +1542,17 @@ async def tag_threads(body: TagThreadsRequest) -> TagThreadsResponse:
             if not events:
                 continue
             seen += len(events)
-            ev_dicts = [{"id": e.id, "title": e.title, "summary": e.summary,
-                         "participants": list(e.participants)} for e in events]
+            ev_dicts = _neutralize_event_dicts(events, project_id=str(project_id))
             assignments = await classify_event_threads(
                 llm, user_id=str(body.user_id), model_source=body.model_source,
                 model_ref=body.model_ref, events=ev_dicts, threads=valid)
-            if assignments:
-                tagged += await set_narrative_threads(
-                    session, user_id=str(body.user_id), assignments=assignments)
-                for th in assignments.values():
-                    counts[th] = counts.get(th, 0) + 1
+            # Pass the full considered scope so a stale tag on an event the classifier no
+            # longer picks is cleared, not left to pollute deep conformance (retag-stale).
+            tagged += await set_narrative_threads(
+                session, user_id=str(body.user_id), assignments=assignments,
+                event_ids={e["id"] for e in ev_dicts})
+            for th in assignments.values():
+                counts[th] = counts.get(th, 0) + 1
     return TagThreadsResponse(tagged=tagged, events_seen=seen, threads_assigned=counts)
 
 
@@ -1590,16 +1613,16 @@ async def tag_motifs(body: TagMotifsRequest) -> TagMotifsResponse:
             if not events:
                 continue
             seen += len(events)
-            ev_dicts = [{"id": e.id, "title": e.title, "summary": e.summary,
-                         "participants": list(e.participants)} for e in events]
+            ev_dicts = _neutralize_event_dicts(events, project_id=str(project_id))
             assignments = await classify_event_motifs(
                 llm, user_id=str(body.user_id), model_source=body.model_source,
                 model_ref=body.model_ref, events=ev_dicts, motifs=valid)
-            if assignments:
-                tagged += await set_realized_motifs(
-                    session, user_id=str(body.user_id), assignments=assignments)
-                for code in assignments.values():
-                    counts[code] = counts.get(code, 0) + 1
+            # Clear a stale realized_motif_code on any considered event left unassigned.
+            tagged += await set_realized_motifs(
+                session, user_id=str(body.user_id), assignments=assignments,
+                event_ids={e["id"] for e in ev_dicts})
+            for code in assignments.values():
+                counts[code] = counts.get(code, 0) + 1
     return TagMotifsResponse(tagged=tagged, events_seen=seen, motifs_assigned=counts)
 
 
@@ -1654,7 +1677,7 @@ async def causal_edges(body: CausalEdgesRequest) -> CausalEdgesResponse:
             if len(events) < 2:
                 continue
             considered += len(events)
-            ev_dicts = [{"id": e.id, "title": e.title, "summary": e.summary} for e in events]
+            ev_dicts = _neutralize_event_dicts(events, project_id=str(project_id))
             pairs = await infer_causal_edges(
                 llm, user_id=str(body.user_id), model_source=body.model_source,
                 model_ref=body.model_ref, events=ev_dicts)

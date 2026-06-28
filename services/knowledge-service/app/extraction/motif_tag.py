@@ -30,6 +30,15 @@ _SYSTEM_PROMPT = (
 
 _MAX_EVENTS_PER_CALL = 50
 
+# Size the output budget to the batch so a full batch's `{id: code}` JSON can't truncate
+# (the batch would otherwise degrade to untagged) — see thread_tag (D-THREAD-TAG-BATCH-TOKENS).
+_BASE_OUTPUT_TOKENS = 256
+_TOKENS_PER_EVENT = 48
+
+
+def _max_tokens_for(batch_len: int) -> int:
+    return _BASE_OUTPUT_TOKENS + _TOKENS_PER_EVENT * batch_len
+
 
 def build_messages(events: list[dict[str, Any]], motifs: list[dict[str, Any]]) -> list[dict[str, str]]:
     """PURE — chat messages for one classify batch. ``events``: ``[{id,title,summary?,
@@ -113,7 +122,7 @@ async def classify_event_motifs(
                 user_id=user_id, operation="chat", model_source=model_source,
                 model_ref=model_ref,
                 input={"messages": build_messages(batch, motifs),
-                       "temperature": 0.0, "max_tokens": 1500},
+                       "temperature": 0.0, "max_tokens": _max_tokens_for(len(batch))},
                 job_meta={"extractor": "realized_motif"},
             )
         except Exception as exc:
