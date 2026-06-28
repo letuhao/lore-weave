@@ -883,6 +883,53 @@ async def set_realized_motifs(
     return int(record["tagged"]) if record else 0
 
 
+# ── causal edges (D-W10-ARC-CONFORMANCE-SUCCESSION F2) ─────────────────
+
+
+_MERGE_CAUSAL_EDGES_CYPHER = """
+UNWIND $rows AS row
+MATCH (a:Event {id: row.cause}), (b:Event {id: row.effect})
+WHERE a.user_id = $user_id AND b.user_id = $user_id
+MERGE (a)-[:CAUSES]->(b)
+RETURN count(*) AS written
+"""
+
+_CAUSAL_MOTIF_PAIRS_CYPHER = """
+MATCH (a:Event)-[:CAUSES]->(b:Event)
+WHERE a.user_id = $user_id AND b.user_id = $user_id
+  AND ($project_id IS NULL OR (a.project_id = $project_id AND b.project_id = $project_id))
+  AND a.realized_motif_code IS NOT NULL AND b.realized_motif_code IS NOT NULL
+RETURN DISTINCT a.realized_motif_code AS cause, b.realized_motif_code AS effect
+"""
+
+
+async def merge_causal_edges(
+    session: CypherSession, *, user_id: str, pairs: list[tuple[str, str]],
+) -> int:
+    """Persist inferred `(:Event)-[:CAUSES]->(:Event)` edges (idempotent MERGE), tenant-scoped
+    on BOTH endpoints (a foreign id matches nothing → never a cross-tenant edge). ``pairs`` is
+    ``[(cause_event_id, effect_event_id)]``. Returns the rows whose endpoints both matched."""
+    rows = [{"cause": c, "effect": e} for c, e in pairs if c and e and c != e]
+    if not rows:
+        return 0
+    result = await run_write(session, _MERGE_CAUSAL_EDGES_CYPHER, user_id=user_id, rows=rows)
+    record = await result.single()
+    return int(record["written"]) if record else 0
+
+
+async def get_causal_motif_pairs(
+    session: CypherSession, *, user_id: str, project_id: str | None = None,
+) -> list[tuple[str, str]]:
+    """The realized CAUSES edges projected into MOTIF-CODE space (the join lives here because
+    Neo4j holds both the edges AND ``realized_motif_code`` on each event). Returns DISTINCT
+    ``(cause_code, effect_code)`` over edges whose BOTH endpoints are motif-tagged — exactly
+    the ``causal_code_pairs`` deep arc-conformance needs to flip a transition causally-verified.
+    Tenant-scoped on both endpoints."""
+    result = await run_read(
+        session, _CAUSAL_MOTIF_PAIRS_CYPHER, user_id=user_id, project_id=project_id)
+    return [(r["cause"], r["effect"]) async for r in result]
+
+
 # ── delete_events_with_zero_evidence ──────────────────────────────────
 
 

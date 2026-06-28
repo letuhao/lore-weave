@@ -1603,6 +1603,104 @@ async def tag_motifs(body: TagMotifsRequest) -> TagMotifsResponse:
     return TagMotifsResponse(tagged=tagged, events_seen=seen, motifs_assigned=counts)
 
 
+# ── D-W10-ARC-CONFORMANCE-SUCCESSION F2 — causal-edge inference ────────
+
+
+class CausalEdgesRequest(BaseModel):
+    user_id: UUID
+    book_id: UUID
+    model_source: str
+    model_ref: str
+    # infer only over the motif-tagged subset (the arc-relevant beats) by default — bounds cost.
+    tagged_only: bool = True
+
+
+class CausalEdgesResponse(BaseModel):
+    edges_written: int = 0
+    events_considered: int = 0
+
+
+@router.post(
+    "/causal-edges",
+    response_model=CausalEdgesResponse,
+    status_code=status.HTTP_200_OK,
+    summary="Infer (:Event)-[:CAUSES]->(:Event) edges (deep succession causal-verify)",
+    description=(
+        "Infers direct causal links over the ordered :Event timeline (LLM, operation=chat → "
+        "provider-registry), MERGEing :CAUSES edges so deep arc-conformance can flip a legal "
+        "succession transition causally-verified. By default runs over the motif-tagged subset "
+        "(bounds cost). ADVISORY / uncalibrated; degrades to fewer/no edges. X-Internal-Token."
+    ),
+)
+async def causal_edges(body: CausalEdgesRequest) -> CausalEdgesResponse:
+    if not settings.neo4j_uri:
+        logger.info("causal-edges: Neo4j not configured — no-op")
+        return CausalEdgesResponse()
+
+    from app.db.neo4j_repos.events import list_events_in_order, merge_causal_edges
+    from app.extraction.causal_edges import infer_causal_edges
+    from app.extraction.motif_beat import _list_user_book_projects
+
+    llm = get_llm_client()
+    containers = await _list_user_book_projects(body.user_id, body.book_id, corpus=False)
+    considered = 0
+    written = 0
+    async with neo4j_session() as session:
+        for project_id, _book_id in containers:
+            events = await list_events_in_order(
+                session, user_id=str(body.user_id), project_id=str(project_id), limit=2000)
+            if body.tagged_only:
+                events = [e for e in events if e.realized_motif_code]
+            if len(events) < 2:
+                continue
+            considered += len(events)
+            ev_dicts = [{"id": e.id, "title": e.title, "summary": e.summary} for e in events]
+            pairs = await infer_causal_edges(
+                llm, user_id=str(body.user_id), model_source=body.model_source,
+                model_ref=body.model_ref, events=ev_dicts)
+            if pairs:
+                written += await merge_causal_edges(
+                    session, user_id=str(body.user_id), pairs=pairs)
+    return CausalEdgesResponse(edges_written=written, events_considered=considered)
+
+
+class CausalMotifPairsRequest(BaseModel):
+    user_id: UUID
+    book_id: UUID
+
+
+class CausalMotifPairsResponse(BaseModel):
+    pairs: list[list[str]] = Field(default_factory=list)   # [[cause_code, effect_code]]
+
+
+@router.post(
+    "/causal-motif-pairs",
+    response_model=CausalMotifPairsResponse,
+    status_code=status.HTTP_200_OK,
+    summary="Read realized CAUSES edges in motif-code space (deep succession causal-verify)",
+    description=(
+        "The realized :CAUSES edges projected to (cause_motif_code, effect_motif_code) over "
+        "events whose both endpoints are motif-tagged — the causal_code_pairs deep "
+        "arc-conformance flips a transition causally-verified with. X-Internal-Token."
+    ),
+)
+async def causal_motif_pairs(body: CausalMotifPairsRequest) -> CausalMotifPairsResponse:
+    if not settings.neo4j_uri:
+        return CausalMotifPairsResponse()
+
+    from app.db.neo4j_repos.events import get_causal_motif_pairs
+    from app.extraction.motif_beat import _list_user_book_projects
+
+    containers = await _list_user_book_projects(body.user_id, body.book_id, corpus=False)
+    seen: set[tuple[str, str]] = set()
+    async with neo4j_session() as session:
+        for project_id, _book_id in containers:
+            for c, e in await get_causal_motif_pairs(
+                    session, user_id=str(body.user_id), project_id=str(project_id)):
+                seen.add((c, e))
+    return CausalMotifPairsResponse(pairs=[[c, e] for c, e in sorted(seen)])
+
+
 # ── K17 (cycle 12b) — entity-embedding backfill ───────────────────────
 
 # One batch's worth of candidates per producer call; the loop drains.
