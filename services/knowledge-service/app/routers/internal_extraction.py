@@ -1457,6 +1457,77 @@ async def motif_beats(body: MotifBeatsRequest) -> MotifBeatsResponse:
     return MotifBeatsResponse(sequences=raw_sequences)  # type: ignore[arg-type]
 
 
+# ── D-W10-ARC-CONFORMANCE-THREAD-TAG — narrative-thread classifier ─────
+
+
+class TagThreadsRequest(BaseModel):
+    """Tag a book's :Event timeline with narrative-thread labels from the caller's
+    vocabulary (the arc template's threads). model_source/model_ref resolve the BYOK
+    classify model (provider-gateway invariant — composition resolves it, passes it here)."""
+
+    user_id: UUID
+    book_id: UUID
+    threads: list[dict] = Field(default_factory=list)   # [{key, label?}]
+    model_source: str
+    model_ref: str
+
+
+class TagThreadsResponse(BaseModel):
+    tagged: int = 0                       # events whose narrative_thread was written
+    events_seen: int = 0                  # events considered
+    threads_assigned: dict[str, int] = Field(default_factory=dict)  # thread_key → count
+
+
+@router.post(
+    "/tag-threads",
+    response_model=TagThreadsResponse,
+    status_code=status.HTTP_200_OK,
+    summary="Tag :Event nodes with narrative-thread labels (deep arc-conformance)",
+    description=(
+        "Classifies each :Event (title+summary+participants) into one of the caller's "
+        "thread keys via an LLM (operation=chat → provider-registry), persisting "
+        ":Event.narrative_thread so motif-beats emits real threads. ADVISORY / "
+        "uncalibrated; degrades to a partial/empty tag on any LLM failure. X-Internal-Token."
+    ),
+)
+async def tag_threads(body: TagThreadsRequest) -> TagThreadsResponse:
+    if not settings.neo4j_uri:
+        logger.info("tag-threads: Neo4j not configured — no-op")
+        return TagThreadsResponse()
+
+    from app.db.neo4j_repos.events import list_events_in_order, set_narrative_threads
+    from app.extraction.motif_beat import _list_user_book_projects
+    from app.extraction.thread_tag import classify_event_threads
+
+    valid = [t for t in body.threads if t.get("key")]
+    if not valid:
+        return TagThreadsResponse()
+
+    llm = get_llm_client()
+    containers = await _list_user_book_projects(body.user_id, body.book_id, corpus=False)
+    seen = 0
+    tagged = 0
+    counts: dict[str, int] = {}
+    async with neo4j_session() as session:
+        for project_id, _book_id in containers:
+            events = await list_events_in_order(
+                session, user_id=str(body.user_id), project_id=str(project_id), limit=2000)
+            if not events:
+                continue
+            seen += len(events)
+            ev_dicts = [{"id": e.id, "title": e.title, "summary": e.summary,
+                         "participants": list(e.participants)} for e in events]
+            assignments = await classify_event_threads(
+                llm, user_id=str(body.user_id), model_source=body.model_source,
+                model_ref=body.model_ref, events=ev_dicts, threads=valid)
+            if assignments:
+                tagged += await set_narrative_threads(
+                    session, user_id=str(body.user_id), assignments=assignments)
+                for th in assignments.values():
+                    counts[th] = counts.get(th, 0) + 1
+    return TagThreadsResponse(tagged=tagged, events_seen=seen, threads_assigned=counts)
+
+
 # ── K17 (cycle 12b) — entity-embedding backfill ───────────────────────
 
 # One batch's worth of candidates per producer call; the loop drains.

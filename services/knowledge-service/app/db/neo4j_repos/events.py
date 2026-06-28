@@ -149,6 +149,11 @@ class Event(BaseModel):
     # parse_time_cue_to_iso when possible). First-write-wins on
     # ON MATCH so re-mentions don't churn the original phrasing.
     time_cue: str | None = None
+    # D-W10-ARC-CONFORMANCE-THREAD-TAG — the narrative-thread label (combat/romance/…)
+    # the thread-tag classifier assigns from a caller-supplied vocabulary (the arc's
+    # threads). None until tagged; the motif_beat extractor prefers it over chapter_id
+    # so deep arc-conformance can measure realized thread-progression from prose.
+    narrative_thread: str | None = None
     participants: list[str] = Field(default_factory=list)
     # KG-TL Option A (D-KG-TL-PARTICIPANT-ANCHOR) — stored anchor: the glossary
     # ``entity_id`` per participant slot, same length+order as ``participants``,
@@ -810,6 +815,40 @@ async def list_events_in_order(
         limit=limit,
     )
     return [_node_to_event(record["e"]) async for record in result]
+
+
+# ── set_narrative_threads (D-W10-ARC-CONFORMANCE-THREAD-TAG) ───────────
+
+
+_SET_NARRATIVE_THREADS_CYPHER = """
+UNWIND $rows AS row
+MATCH (e:Event {id: row.id})
+WHERE e.user_id = $user_id
+SET e.narrative_thread = row.thread, e.updated_at = datetime()
+RETURN count(e) AS tagged
+"""
+
+
+async def set_narrative_threads(
+    session: CypherSession,
+    *,
+    user_id: str,
+    assignments: dict[str, str],
+) -> int:
+    """Persist the thread-tag classifier's verdicts onto ``:Event.narrative_thread``
+    (D-W10-ARC-CONFORMANCE-THREAD-TAG). ``assignments`` is ``{event_id: thread_key}``.
+
+    Tenancy: the MATCH filters ``e.user_id = $user_id`` so a row naming another user's
+    event id silently matches nothing (never a cross-tenant write). Returns the number of
+    events actually tagged (rows whose id+user matched a node)."""
+    rows = [{"id": eid, "thread": thread} for eid, thread in assignments.items() if thread]
+    if not rows:
+        return 0
+    result = await run_write(
+        session, _SET_NARRATIVE_THREADS_CYPHER, user_id=user_id, rows=rows,
+    )
+    record = await result.single()
+    return int(record["tagged"]) if record else 0
 
 
 # ── delete_events_with_zero_evidence ──────────────────────────────────

@@ -135,7 +135,7 @@ def test_route_rejects_missing_user_id():
 
 def _event(
     title, *, chapter_id="ch-1", participants=None, confidence=0.0,
-    mention_count=0,
+    mention_count=0, narrative_thread=None,
 ):
     """A minimal :Event projection. `importance` is a computed_field on the real
     Event, so we replicate its derivation here for the fake."""
@@ -152,11 +152,22 @@ def _event(
     return SimpleNamespace(
         title=title,
         chapter_id=chapter_id,
+        narrative_thread=narrative_thread,
         participants=participants,
         confidence=confidence,
         mention_count=mention_count,
         importance=_importance(),
     )
+
+
+def test_beat_step_prefers_narrative_thread_over_chapter_id():
+    """D-W10-ARC-CONFORMANCE-THREAD-TAG — once a classifier tags narrative_thread, the
+    beat step uses it; absent a tag it falls back to chapter_id (the Option-A proxy)."""
+    from app.extraction.motif_beat import _event_to_beat_step
+    tagged = _event_to_beat_step(_event("Duel at dawn", chapter_id="ch-9", narrative_thread="combat"))
+    assert tagged["thread"] == "combat"
+    untagged = _event_to_beat_step(_event("Quiet talk", chapter_id="ch-9"))
+    assert untagged["thread"] == "ch-9"  # fallback to chapter proxy
 
 
 @pytest.mark.parametrize(

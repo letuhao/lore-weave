@@ -86,14 +86,15 @@ def _event_to_beat_step(event: Event) -> dict:
     """Project one ``:Event`` into the frozen beat-step shape
     ``{beat, thread, tension, role_mentions}`` the composition client expects.
 
-    ``thread`` falls back to ``""`` when an event has no ``chapter_id`` (chat /
-    global events) — a real string thread key, never null, so the miner can
-    still partition by it (it groups every thread-less beat together).
-    ``role_mentions`` is always a list (empty when no participants resolved).
+    ``thread`` prefers the classifier-assigned ``narrative_thread`` (D-W10-ARC-
+    CONFORMANCE-THREAD-TAG — a real narrative thread like combat/romance), falling back
+    to ``chapter_id`` (the Option-A proxy) then ``""`` when neither is set — a real string
+    thread key, never null, so the miner can still partition by it (it groups every
+    thread-less beat together). ``role_mentions`` is always a list (empty when none resolved).
     """
     return {
         "beat": event.title,
-        "thread": event.chapter_id or "",
+        "thread": event.narrative_thread or event.chapter_id or "",
         "tension": _tension_band(event),
         "role_mentions": list(event.participants),
     }
