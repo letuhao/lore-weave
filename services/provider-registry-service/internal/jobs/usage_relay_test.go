@@ -64,6 +64,26 @@ func TestBuildUsageFields_NullsArePassthroughEmpty(t *testing.T) {
 	}
 }
 
+func TestCampaignFields_StripsPayloads(t *testing.T) {
+	// #32 /review-impl MED — the campaign_usage stream must NOT carry the plaintext
+	// request/response payloads (the spend consumer reads only cost/ids).
+	full := buildUsageFields("r", "o", "c", "user_model", "m", "chat", "0.01", 5, 5,
+		"success", `{"in":1}`, `{"out":1}`)
+	camp := campaignFields(full)
+	if _, ok := camp["request_payload"]; ok {
+		t.Fatal("campaign fields must not include request_payload")
+	}
+	if _, ok := camp["response_payload"]; ok {
+		t.Fatal("campaign fields must not include response_payload")
+	}
+	// Everything the spend consumer reads is still present.
+	for _, k := range []string{"request_id", "campaign_id", "cost_usd", "request_status"} {
+		if camp[k] != full[k] {
+			t.Fatalf("campaign field %q dropped/changed: %v", k, camp[k])
+		}
+	}
+}
+
 func TestBuildUsageFields_CarriesFailedStatus(t *testing.T) {
 	// #32 — a failed/cancelled call now carries its real status (not hardcoded
 	// "success") so usage-billing audits every call distinctly.

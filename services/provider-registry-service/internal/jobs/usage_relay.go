@@ -144,6 +144,21 @@ func buildUsageFields(requestID, ownerID, campaign, modelSource, modelRef, opera
 	}
 }
 
+// campaignFields strips the traced request/response payloads from a usage field map
+// before it goes to the campaign_usage stream (#32 /review-impl MED): the campaign
+// spend consumer reads ONLY cost/ids, and the payloads are PLAINTEXT on the wire — so
+// there's no reason to broaden their footprint to a second stream.
+func campaignFields(f map[string]any) map[string]any {
+	out := make(map[string]any, len(f))
+	for k, v := range f {
+		if k == "request_payload" || k == "response_payload" {
+			continue
+		}
+		out[k] = v
+	}
+	return out
+}
+
 // drainOnce publishes one batch of unpublished rows. Returns the count published.
 func (r *UsageRelay) drainOnce(ctx context.Context) (int, error) {
 	// Bound the whole batch (locks held across XADD) — see RelayConfig.DrainTimeout.
@@ -231,7 +246,7 @@ FOR UPDATE SKIP LOCKED
 				Stream: r.cfg.CampaignUsageStream,
 				MaxLen: r.cfg.CampaignMaxLen,
 				Approx: true,
-				Values: b.fields,
+				Values: campaignFields(b.fields),
 			}).Err(); err != nil {
 				return 0, err
 			}

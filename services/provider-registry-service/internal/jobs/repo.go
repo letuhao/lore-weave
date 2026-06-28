@@ -356,6 +356,32 @@ type TerminalOutbox struct {
 	CorrelationID string
 }
 
+// insertUsageOutbox writes one usage_outbox audit row inside the caller's tx (#32).
+// Shared by FinalizeWithUsageOutbox (worker terminal path) and Cancel (user-cancel
+// path) so EVERY terminal call — including a cancellation — produces a usage-billing
+// audit row, and both paths attach the same UTF-8-safe-truncated request/response
+// payloads + request_status. cost may be nil (cancelled/unpriced → stored NULL).
+func insertUsageOutbox(
+	ctx context.Context, tx pgx.Tx,
+	jobID, ownerUserID uuid.UUID, campaignID *uuid.UUID,
+	modelSource string, modelRef uuid.UUID, operationLabel string,
+	inTok, outTok int, cost *float64, requestStatus string,
+	inputJSON, resultJSON []byte,
+) error {
+	reqPayload := truncatePayload(inputJSON, usagePayloadCapBytes)
+	respPayload := truncatePayload(resultJSON, usagePayloadCapBytes)
+	_, err := tx.Exec(ctx, `
+INSERT INTO usage_outbox
+  (request_id, owner_user_id, campaign_id, model_source, model_ref,
+   operation, input_tokens, output_tokens, cost_usd,
+   request_status, request_payload, response_payload)
+VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)
+`, jobID, ownerUserID, campaignID, modelSource, modelRef,
+		operationLabel, inTok, outTok, cost,
+		nullIfEmpty(requestStatus), nullIfEmpty(reqPayload), nullIfEmpty(respPayload))
+	return err
+}
+
 // insertJobEventOutbox writes one job_event_outbox row inside the caller's tx.
 // Shared by FinalizeWithUsageOutbox (worker terminal path) and Cancel (cancel
 // handler) so both emit the same durable, per-job-correlated terminal event.
@@ -477,17 +503,10 @@ RETURNING job_meta, input
 		if p := parseJobMetaUsagePurpose(jobMeta); p != "" {
 			operationLabel = p
 		}
-		reqPayload := truncatePayload(inputJSON, usagePayloadCapBytes)
-		respPayload := truncatePayload(resultJSON, usagePayloadCapBytes)
-		if _, err := tx.Exec(ctx, `
-INSERT INTO usage_outbox
-  (request_id, owner_user_id, campaign_id, model_source, model_ref,
-   operation, input_tokens, output_tokens, cost_usd,
-   request_status, request_payload, response_payload)
-VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)
-`, jobID, ownerUserID, campaignID, usage.ModelSource, usage.ModelRef,
-			operationLabel, usage.InputTokens, usage.OutputTokens, usage.CostUSD,
-			nullIfEmpty(usage.RequestStatus), nullIfEmpty(reqPayload), nullIfEmpty(respPayload)); err != nil {
+		if err := insertUsageOutbox(ctx, tx, jobID, ownerUserID, campaignID,
+			usage.ModelSource, usage.ModelRef, operationLabel,
+			usage.InputTokens, usage.OutputTokens, usage.CostUSD, usage.RequestStatus,
+			inputJSON, resultJSON); err != nil {
 			return 0, fmt.Errorf("finalize+outbox: insert outbox: %w", err)
 		}
 	}
@@ -586,15 +605,20 @@ func (r *Repo) Cancel(ctx context.Context, jobID, ownerUserID uuid.UUID) (int64,
 	}
 	defer func() { _ = tx.Rollback(ctx) }()
 
-	var operation string
-	var jobMeta []byte
+	// #32 — RETURNING model_source/model_ref + input/result too so a cancellation
+	// also produces a usage-billing audit row (the worker's FinalizeWithUsageOutbox
+	// never runs for a user-cancel: it's gated WHERE status='running', which this
+	// UPDATE already flipped to 'cancelled').
+	var operation, modelSource string
+	var modelRef uuid.UUID
+	var jobMeta, inputJSON, resultJSON []byte
 	err = tx.QueryRow(ctx, `
 UPDATE llm_jobs
 SET status = 'cancelled', completed_at = now()
 WHERE job_id = $1 AND owner_user_id = $2
   AND status IN ('pending','running')
-RETURNING operation, job_meta
-`, jobID, ownerUserID).Scan(&operation, &jobMeta)
+RETURNING operation, model_source, model_ref, job_meta, input, result
+`, jobID, ownerUserID).Scan(&operation, &modelSource, &modelRef, &jobMeta, &inputJSON, &resultJSON)
 	if errors.Is(err, pgx.ErrNoRows) {
 		// Not found OR already terminal — no transition, no event.
 		if cerr := tx.Commit(ctx); cerr != nil {
@@ -607,6 +631,18 @@ RETURNING operation, job_meta
 	}
 
 	campaignID := parseJobMetaCampaignID(jobMeta)
+	// #32 — audit the cancelled call (cost 0, request_status='cancelled') with the
+	// traced request/response payloads, mirroring the worker terminal path's label
+	// override so the Usage GUI purpose matches.
+	operationLabel := operation
+	if p := parseJobMetaUsagePurpose(jobMeta); p != "" {
+		operationLabel = p
+	}
+	if err := insertUsageOutbox(ctx, tx, jobID, ownerUserID, campaignID,
+		modelSource, modelRef, operationLabel, 0, 0, nil, "cancelled",
+		inputJSON, resultJSON); err != nil {
+		return 0, fmt.Errorf("cancel: insert outbox: %w", err)
+	}
 	if err := insertJobEventOutbox(ctx, tx, jobID, ownerUserID,
 		operation, "cancelled", "", nil, "", "", campaignID, ""); err != nil {
 		return 0, fmt.Errorf("cancel: insert job_event: %w", err)

@@ -310,9 +310,10 @@ func TestDrainOnce_RoutesToStreamsAndMarksPublished(t *testing.T) {
 
 	f1 := buildUsageFields(req1, owner, camp, "user_model", modelRef, "translation", "0.001", 10, 5, "success", reqPay, respPay)
 	f2 := buildUsageFields(req2, owner, "", "user_model", modelRef, "chat", "", 3, 2, "", "", "")
-	// Row 1: usage + campaign. Row 2: usage only.
+	// Row 1: usage + campaign. Row 2: usage only. #32 — the campaign stream gets the
+	// payload-STRIPPED fields (campaignFields); the usage stream keeps them.
 	rxm.ExpectXAdd(&redis.XAddArgs{Stream: "u", MaxLen: 10, Approx: true, Values: f1}).SetVal("1-0")
-	rxm.ExpectXAdd(&redis.XAddArgs{Stream: "c", MaxLen: 10, Approx: true, Values: f1}).SetVal("1-0")
+	rxm.ExpectXAdd(&redis.XAddArgs{Stream: "c", MaxLen: 10, Approx: true, Values: campaignFields(f1)}).SetVal("1-0")
 	db.ExpectExec("UPDATE usage_outbox SET published_at").WithArgs(anyArgs(1)...).WillReturnResult(pgxmock.NewResult("UPDATE", 1))
 	rxm.ExpectXAdd(&redis.XAddArgs{Stream: "u", MaxLen: 10, Approx: true, Values: f2}).SetVal("2-0")
 	db.ExpectExec("UPDATE usage_outbox SET published_at").WithArgs(anyArgs(1)...).WillReturnResult(pgxmock.NewResult("UPDATE", 1))
@@ -425,16 +426,21 @@ func TestFinalizeWithUsageOutbox_CompletedWritesBothOutboxes(t *testing.T) {
 }
 
 func TestCancel_WritesTerminalEventInTx(t *testing.T) {
-	// A real cancel transition → UPDATE…RETURNING operation,job_meta + the
-	// job_event_outbox INSERT (status=cancelled), all in one tx.
+	// A real cancel transition → UPDATE…RETURNING operation,model_source,model_ref,
+	// job_meta,input,result + the #32 usage_outbox audit INSERT (request_status=
+	// cancelled) THEN the job_event_outbox INSERT (status=cancelled), all in one tx.
 	mock, _ := pgxmock.NewPool()
 	defer mock.Close()
 	repo := &Repo{pool: mock}
 
 	mock.ExpectBegin()
 	mock.ExpectQuery("UPDATE llm_jobs").WithArgs(anyArgs(2)...).
-		WillReturnRows(pgxmock.NewRows([]string{"operation", "job_meta"}).
-			AddRow("entity_extraction", []byte(`{}`)))
+		WillReturnRows(pgxmock.NewRows([]string{"operation", "model_source", "model_ref", "job_meta", "input", "result"}).
+			AddRow("entity_extraction", "user_model", uuid.New(), []byte(`{}`), []byte(`{"messages":[]}`), []byte(`null`)))
+	// #32 — a cancelled call is now audited too (was missing: user-cancel never hit
+	// the worker's FinalizeWithUsageOutbox). request_status/payload args are *string.
+	mock.ExpectExec("INSERT INTO usage_outbox").WithArgs(anyArgs(12)...).
+		WillReturnResult(pgxmock.NewResult("INSERT", 1))
 	mock.ExpectExec("INSERT INTO job_event_outbox").WithArgs(anyArgs(10)...).
 		WillReturnResult(pgxmock.NewResult("INSERT", 1))
 	mock.ExpectCommit()
@@ -453,14 +459,14 @@ func TestCancel_WritesTerminalEventInTx(t *testing.T) {
 
 func TestCancel_NoRow_NoEventNoOp(t *testing.T) {
 	// Already-terminal / not-found → UPDATE matches 0 rows → ErrNoRows → commit,
-	// NO job_event INSERT, returns 0.
+	// NO usage/job_event INSERT, returns 0.
 	mock, _ := pgxmock.NewPool()
 	defer mock.Close()
 	repo := &Repo{pool: mock}
 
 	mock.ExpectBegin()
 	mock.ExpectQuery("UPDATE llm_jobs").WithArgs(anyArgs(2)...).
-		WillReturnRows(pgxmock.NewRows([]string{"operation", "job_meta"})) // empty → ErrNoRows
+		WillReturnRows(pgxmock.NewRows([]string{"operation", "model_source", "model_ref", "job_meta", "input", "result"})) // empty → ErrNoRows
 	mock.ExpectCommit()
 
 	rows, err := repo.Cancel(context.Background(), uuid.New(), uuid.New())
