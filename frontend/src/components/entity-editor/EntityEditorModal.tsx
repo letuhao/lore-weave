@@ -10,6 +10,7 @@ import { getLanguageName } from '@/lib/languages';
 import { Skeleton } from '@/components/shared/Skeleton';
 import { LanguagePicker } from '@/components/shared';
 import { AttrCard } from './AttrCard';
+import { SummarizeAttrBody } from './SummarizeAttrBody';
 import { AttrTranslationRow } from './AttrTranslationRow';
 import { getCardComponent, SHORT_TYPES } from './cardRegistry';
 import { EvidenceTab } from './EvidenceTab';
@@ -537,11 +538,26 @@ function AttrGrid({ attrs, getValue, onChange, pendingChanges, translationLang, 
         translationSlot={translationSlot}
       >
         {!viewTranslationMode && (
-          <CardComponent
-            value={getValue(attr)}
-            onChange={(v) => onChange(attr.attr_value_id, v)}
-            options={def.options}
-          />
+          def.merge_strategy === 'summarize' ? (
+            <SummarizeAttrBody
+              canonicalValue={attr.canonical_value}
+              canonicalDirty={attr.canonical_dirty}
+              rawValue={getValue(attr)}
+              rawCard={
+                <CardComponent
+                  value={getValue(attr)}
+                  onChange={(v) => onChange(attr.attr_value_id, v)}
+                  options={def.options}
+                />
+              }
+            />
+          ) : (
+            <CardComponent
+              value={getValue(attr)}
+              onChange={(v) => onChange(attr.attr_value_id, v)}
+              options={def.options}
+            />
+          )
         )}
       </AttrCard>
     );

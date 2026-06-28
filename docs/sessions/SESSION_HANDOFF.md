@@ -17,11 +17,17 @@
 > mention → promote verbatim, no LLM; best-effort — never fails the job; source-language). Wired
 > after the job terminal state for completed/with-errors only. Tests: glossary canonical endpoints
 > (real Postgres) + `test_resummarize.py` 6 + extraction-worker 29 green; go vet clean.
-> **Deferred `D-SUMMARIZE-LIVE-SMOKE`** (gate 4 — needs a glossary rebuild w/ 0043 routes + a
-> local-LLM extraction run; wire contract verified by inspection + real-Postgres handler tests).
-> **▶ NEXT — M3 (FE):** render `canonical_value` as the summarize-attr headline + raw items under
-> a "sources / history" disclosure; a manual "Re-summarize" button (single-entity trigger reusing
-> the M2 pass) — that button naturally clears `D-SUMMARIZE-LIVE-SMOKE` end-to-end.
+> **✅ M3a DONE (this commit):** entity GET exposes `merge_strategy`/`canonical_value`/
+> `canonical_dirty` (BE `attrDefResp`/`attrValueResp` + Query 3); FE `SummarizeAttrBody` renders
+> the canonical value as the summarize-attr headline + the raw mentions under a "sources"
+> disclosure, wired into `AttrGrid` (branch on `merge_strategy==='summarize'`); entityEditor
+> `summarize.*` ×4 locales. Tests: `loadEntityDetail` exposure (real Postgres) + `SummarizeAttrBody`
+> 7 + entity-editor 14 green; tsc + go vet clean. **#26 + #7 → `[x]`** (the merge-rewrite flow is
+> complete + user-visible end-to-end: extract → accumulate → end-of-job synthesize → headline).
+> **Deferred:** `D-SUMMARIZE-MANUAL-BUTTON` (on-demand single-entity re-summarize — needs a new
+> single-entity trigger endpoint; gate 2/3) + `D-SUMMARIZE-LIVE-SMOKE` (gate 4 — needs a glossary
+> rebuild w/ 0043 routes + a local-LLM run; wire contract verified by inspection + real-Postgres
+> handler tests). The automatic end-of-job path already delivers the value.
 
 > **✅ SHIPPED — #12 timeline overhaul (L, 3 parts) + #16 build-stages.** Verified first: the
 > timeline was already feature-rich (filters/sort/ranges/pagination/rich rows) — the "low quality"

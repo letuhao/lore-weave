@@ -167,11 +167,12 @@ Need to activate glossary but have >15000 entities — current paging makes this
 > Live-smoke: low-risk permissive bound widening (the FE already sent `limit`; this just allows
 > larger values through the generic /v1/glossary passthrough) — not separately smoked.
 
-### [I] 7. Glossary extraction forgets to update attributes for frequent characters (merge bug)
+### [x] 7. Glossary extraction forgets to update attributes for frequent characters (merge bug)
 Extraction almost forgets to update some attributes for frequent characters. Seems like the description is only extracted/set the first time. Need to investigate the current merge method. Suspect data already updates in the DB or a glossary version but is never reflected to the **current active version** shown on the GUI. (User will give evidence.)
 
 > RC (investigated): the `fill_if_empty` merge strategy — the default for identity/descriptive text fields (`seedMergeStrategy`, `glossary-service/internal/api/extraction_handler.go` ~1128-1146) — locks in the FIRST extracted value. On re-extraction `mergeExtractedEntity` (~1438-1463) sees `existingValue != ""` and SKIPS with `skip_reason="fill_occupied"`. A skipped write fires no event, so the projection/revision consumer records no change and the GUI keeps the stale value. There is NO separate "active version" model — the current EAV row IS the active view; the update simply never lands.
 > Fix (proposed): switch the default merge strategy for descriptive fields (description/detail) from `fill_if_empty` to `overwrite` (or the new "rewrite" mode of #26); surface skip reasons in the FE so a skipped update is visible.
+> **FIXED with #26** (the `summarize` merge-rewrite mode, L, plan [docs/plans/2026-06-29-glossary-summarize-merge-mode.md]): a descriptive attr set to `summarize` now ACCUMULATES every chapter's mention (lossless raw layer — no more frozen first-value) and an end-of-job LLM pass rewrites them into one deduped canonical value, surfaced as the FE headline. Closes the "frozen / never reflected" symptom (the update lands + is visible).
 
 ### [x] 8. Translation glossary usually fails (output structure bug; no chunking/budget)
 Translation glossary usually fails — maybe an output-structure bug. Happens with translation glossaries that exceed ~4000 output tokens. Suspect the token limit cuts off the model mid-generation. Do we calculate a budget for this job? Models have large context windows. The glossary has so much info but we don't do a **structured chunk** — putting everything into translation without a plan is bad.
@@ -405,11 +406,16 @@ Adopt genre is useless because there's nothing to adopt — genre is never wired
 > says "Save failed" though the kind exists). New/adopted kinds via the current flow are unaffected;
 > a proper fix is BE-atomic create-with-genres. Revisit only if it surfaces.
 
-### [I] 26. Glossary merge needs a "merge/summary/overwrite" mode (dedup + rewrite)
+### [x] 26. Glossary merge needs a "merge/summary/overwrite" mode (dedup + rewrite)
 Glossary merge/append lacks an important type — call it merge or summary. A character's description changes each chapter but is almost the same; normal append produces lots of nearly-identical/useless data. Better to have a "merge overwrite" mode: take new raw extracted data, append to old data, and **rewrite a better version** with dedup. (User will give more detail on why.)
 
 > RC (investigated): merge supports only `fill_if_empty` / `overwrite` / `append` (`extraction_handler.go` ~1438-1549). `append` dedups per-item by normalized text, so slightly-different LLM phrasings of the same fact ("a warrior" vs "a skilled warrior") accumulate as near-duplicate list items across chapters/runs. There is no "merge+rewrite/summarize" mode.
 > Fix (proposed): add a "merge/summary" strategy — after append, run an LLM pass that rewrites the accumulated raw values into one deduped canonical description (the user's "merge overwrite" request). Larger (new LLM pass + prompt).
+> **FIXED (L, 3 milestones — plan [docs/plans/2026-06-29-glossary-summarize-merge-mode.md]):** new `summarize` merge mode = a distinct mode (NOT append), keeping a lossless RAW item layer + a synthesized CANONICAL layer.
+> - **M1 (`b2a779f4`):** migration `0043_canonical_summary` (`canonical_value`/`canonical_dirty`/`canonical_synced_at`); `strategyToAction("summarize")`; the writeback shares the append raw layer + flags `canonical_dirty` on a real change (never on an idempotent no-op).
+> - **M2 (`166e2b87`):** glossary internal endpoints `GET …/canonical-dirty` + `POST …/entities/{id}/canonical` (compare-and-clear via a raw-set md5 fingerprint → no concurrent-extraction lost update; LLM text neutralized + rune-capped); translation-service `resummarize.py` end-of-job pass rewrites the raw mentions into one deduped canonical value via the SAME provider-registry path the job used (`usage_purpose="glossary_resummarize"`, single mention → verbatim, source-language, best-effort — never fails the job).
+> - **M3a:** entity GET exposes `merge_strategy`/`canonical_value`/`canonical_dirty`; FE `SummarizeAttrBody` renders the canonical headline + the raw mentions under a "sources" disclosure (+i18n ×4). Trigger = end-of-extraction-job batched (user decision); storage = keep both raw + canonical.
+> **Deferred:** `D-SUMMARIZE-MANUAL-BUTTON` (on-demand single-entity re-summarize — needs a new single-entity trigger endpoint; the automatic end-of-job path already delivers the value) + `D-SUMMARIZE-LIVE-SMOKE` (needs a glossary rebuild w/ 0043 routes + a local-LLM extraction run).
 
 ### [I] 27. Multiple agent confirm cards — only the first works (later cards expire)
 Agent proposes multiple confirm cards but only the first works; later cards expire because confirming the first card invalidates them.

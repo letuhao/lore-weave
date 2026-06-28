@@ -49,6 +49,9 @@ type attrDefResp struct {
 	IsSystem   bool     `json:"is_system"`
 	SortOrder  int      `json:"sort_order"`
 	Options    []string `json:"options,omitempty"`
+	// #26/#7 — the authored merge_strategy. The FE branches on 'summarize' to render the
+	// synthesized canonical_value as the headline + the raw items under "sources/history".
+	MergeStrategy string `json:"merge_strategy,omitempty"`
 }
 
 type translationResp struct {
@@ -92,6 +95,10 @@ type attrValueResp struct {
 	OriginalValue    string            `json:"original_value"`
 	Translations     []translationResp `json:"translations"`
 	Evidences        []evidenceResp    `json:"evidences"`
+	// #26/#7 summarize mode — the LLM-synthesized canonical value (null until the first
+	// end-of-job resynthesis) + whether a re-synthesis is pending (the raw set changed since).
+	CanonicalValue *string `json:"canonical_value,omitempty"`
+	CanonicalDirty bool    `json:"canonical_dirty,omitempty"`
 }
 
 type entityListItem struct {
@@ -212,8 +219,8 @@ func (s *Server) loadEntityDetail(ctx context.Context, bookID, entityID uuid.UUI
 	// Query 3: attribute values + embedded attr defs
 	avRows, err := s.pool.Query(ctx, `
 		SELECT eav.attr_value_id, eav.entity_id, eav.attr_def_id,
-		       eav.original_language, eav.original_value,
-		       ad.attr_id, ad.code, ad.name, ad.field_type, ad.is_required, false AS is_system, ad.sort_order, ad.options
+		       eav.original_language, eav.original_value, eav.canonical_value, eav.canonical_dirty,
+		       ad.attr_id, ad.code, ad.name, ad.field_type, ad.is_required, false AS is_system, ad.sort_order, ad.options, ad.merge_strategy
 		FROM entity_attribute_values eav
 		JOIN book_attributes ad ON ad.attr_id = eav.attr_def_id
 		WHERE eav.entity_id = $1
@@ -229,9 +236,9 @@ func (s *Server) loadEntityDetail(ctx context.Context, bookID, entityID uuid.UUI
 		var av attrValueResp
 		if err := avRows.Scan(
 			&av.AttrValueID, &av.EntityID, &av.AttrDefID,
-			&av.OriginalLanguage, &av.OriginalValue,
+			&av.OriginalLanguage, &av.OriginalValue, &av.CanonicalValue, &av.CanonicalDirty,
 			&av.AttributeDef.AttrDefID, &av.AttributeDef.Code, &av.AttributeDef.Name,
-			&av.AttributeDef.FieldType, &av.AttributeDef.IsRequired, &av.AttributeDef.IsSystem, &av.AttributeDef.SortOrder, &av.AttributeDef.Options,
+			&av.AttributeDef.FieldType, &av.AttributeDef.IsRequired, &av.AttributeDef.IsSystem, &av.AttributeDef.SortOrder, &av.AttributeDef.Options, &av.AttributeDef.MergeStrategy,
 		); err != nil {
 			return nil, err
 		}

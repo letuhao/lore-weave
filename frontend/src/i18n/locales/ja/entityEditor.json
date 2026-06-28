@@ -145,5 +145,12 @@
       "created": "根拠を作成しました",
       "text_required": "原文は必須です"
     }
+  },
+  "summarize": {
+    "canonical_label": "統合サマリー",
+    "pending_dirty": "次の抽出後に再要約されます",
+    "pending_new": "次の抽出後に要約されます",
+    "sources": "元の記述 ({{count}})",
+    "empty": "まだ記述がありません"
   }
 }

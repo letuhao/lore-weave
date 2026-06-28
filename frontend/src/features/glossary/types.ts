@@ -28,6 +28,9 @@ export type AttributeDefinition = {
   genre_tags: string[];
   auto_fill_prompt?: string | null;
   translation_hint?: string | null;
+  // #26/#7 — the authored merge strategy; 'summarize' attrs render the synthesized
+  // canonical_value as the headline + the raw items under a "sources" disclosure.
+  merge_strategy?: string;
 };
 
 export type EntityKind = {
@@ -124,6 +127,10 @@ export type AttributeValue = {
   original_value: string;
   translations: Translation[];
   evidences: Evidence[];
+  // #26/#7 summarize mode — the LLM-synthesized canonical value (null until the first
+  // end-of-job resynthesis) + whether a re-synthesis is pending (the raw set changed since).
+  canonical_value?: string | null;
+  canonical_dirty?: boolean;
 };
 
 // Raw-search "why it matched" payload (search_mode=raw). Highlights are

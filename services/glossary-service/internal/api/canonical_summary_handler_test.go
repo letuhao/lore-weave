@@ -262,6 +262,50 @@ func TestCanonical_StaleFingerprintKeepsDirty(t *testing.T) {
 	}
 }
 
+// TestLoadEntityDetail_ExposesCanonical confirms the entity GET surfaces the summarize fields
+// the FE branches on: attribute_def.merge_strategy='summarize' + canonical_value + canonical_dirty.
+func TestLoadEntityDetail_ExposesCanonical(t *testing.T) {
+	pool := openTestDB(t)
+	ctx := context.Background()
+	runCanonContentMigrations(t, pool)
+	bookID := "00000000-0000-0000-0001-0000000a2046"
+	eid := seedSummarizeDirtyEntity(t, pool, bookID, "详情者", `["tall","short"]`)
+	// Land a canonical value + clear dirty (simulate a completed resynthesis).
+	if _, err := pool.Exec(ctx, `
+		UPDATE entity_attribute_values eav SET canonical_value='a tall, short warrior',
+			canonical_dirty=false
+		FROM glossary_entities ge, book_attributes ba
+		WHERE eav.entity_id=ge.entity_id AND eav.attr_def_id=ba.attr_id
+		  AND ge.book_id=$1 AND ba.code='appearance'`, bookID); err != nil {
+		t.Fatalf("set canonical: %v", err)
+	}
+
+	srv, _ := newCanonicalServer(t)
+	srv.pool = pool
+	detail, err := srv.loadEntityDetail(ctx, uuid.MustParse(bookID), uuid.MustParse(eid))
+	if err != nil {
+		t.Fatalf("loadEntityDetail: %v", err)
+	}
+	var found *attrValueResp
+	for i := range detail.AttributeValues {
+		if detail.AttributeValues[i].AttributeDef.Code == "appearance" {
+			found = &detail.AttributeValues[i]
+		}
+	}
+	if found == nil {
+		t.Fatal("appearance attribute value missing from detail")
+	}
+	if found.AttributeDef.MergeStrategy != "summarize" {
+		t.Errorf("merge_strategy: want summarize, got %q", found.AttributeDef.MergeStrategy)
+	}
+	if found.CanonicalValue == nil || *found.CanonicalValue != "a tall, short warrior" {
+		t.Errorf("canonical_value: want set, got %v", found.CanonicalValue)
+	}
+	if found.CanonicalDirty {
+		t.Errorf("canonical_dirty: want false after synthesis, got true")
+	}
+}
+
 // TestWriteCanonical_NonSummarizeAttrReturns404 confirms a non-summarize attr (or stale entity)
 // is a 404, not a silent write — the endpoint only serves the summarize tier.
 func TestWriteCanonical_NonSummarizeAttrReturns404(t *testing.T) {
