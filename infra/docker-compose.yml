@@ -103,6 +103,16 @@ services:
       INTERNAL_SERVICE_TOKEN: ${INTERNAL_SERVICE_TOKEN:-dev_internal_token}
       # Q-GATE (public MCP): gate mcp_api_keys creation behind this flag (kill-switch).
       PUBLIC_MCP_ENABLED: ${PUBLIC_MCP_ENABLED:-false}
+      # D-PMCP-SELFCONFIRM-ROUTES — Tier-W confirm replay (self-confirm + human-approve)
+      # POSTs {URL}/v1/<domain>/actions/confirm with the internal token. Absent vars
+      # leave that domain non-executable (AUTH_CONFIRM_DOMAIN_UNROUTABLE). See
+      # config.go:loadDomainConfirmURLs — domain key → owning service base URL.
+      BOOK_SERVICE_URL: http://book-service:8082
+      COMPOSITION_SERVICE_URL: http://composition-service:8093
+      TRANSLATION_SERVICE_URL: http://translation-service:8087
+      GLOSSARY_SERVICE_URL: http://glossary-service:8088
+      KNOWLEDGE_SERVICE_URL: http://knowledge-service:8092
+      PROVIDER_REGISTRY_SERVICE_URL: http://provider-registry-service:8085
       # Phase 6c — OpenTelemetry trace export (see provider-registry-service).
       OTEL_EXPORTER_OTLP_ENDPOINT: ${OTEL_EXPORTER_OTLP_ENDPOINT:-}
       # Admin-JWT issuance (admin CMS / D-GKA-SYSTEM-TIER-ADMIN). Disabled unless a
