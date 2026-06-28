@@ -170,6 +170,33 @@ describe('PublicMcpController', () => {
     expect(init.headers['x-session-id']).toBe('dev-test-key');
   });
 
+  it('H-G: strips the edge-only idempotency_key from a write_auto create before relay', async () => {
+    setEnv();
+    const r = mockRes();
+    await new PublicMcpController().handle(
+      mockReq({
+        headers: { authorization: `Bearer ${TEST_KEY}` },
+        body: {
+          jsonrpc: '2.0',
+          method: 'tools/call',
+          id: 5,
+          params: { name: 'book_create', arguments: { title: 'My Book', idempotency_key: 'k-1' } },
+        },
+      }),
+      r.res,
+    );
+    expect(r.statusCode).toBe(200);
+    const relayCall = fetchMock.mock.calls.find((c) => String(c[0]).endsWith('/mcp'));
+    expect(relayCall).toBeDefined();
+    const sentBody = JSON.parse((relayCall![1] as { body: string }).body) as {
+      params: { arguments: Record<string, unknown> };
+    };
+    // The underlying tool uses ForbidExtra — the edge field must NOT reach it…
+    expect('idempotency_key' in sentBody.params.arguments).toBe(false);
+    // …while the real create arguments are preserved verbatim.
+    expect(sentBody.params.arguments.title).toBe('My Book');
+  });
+
   it('resolves a REAL key via auth-service and relays with the resolved identity (P1)', async () => {
     setEnv();
     const r = mockRes();

@@ -53,10 +53,10 @@ A provider's tools flip to advertised ONLY when ALL hold:
 
 Ordered cheapest-and-safest first; priced/write advertise LAST per provider.
 
-- **Slice 1 — Idempotency-key kit + book/composition creates** (`D-PMCP-PROVIDER-HARDENING`).
-  Shared `idempotency_key` arg + edge dedup helper (kit pre-step, serial), then book + composition non-idempotent creates. Tier-A only, no spend → low risk. Live-smoke: double-submit same key → one row.
-- **Slice 2 — glossary creates idempotency + `include_shared` decision** (`D-PMCP-PROVIDER-HARDENING`).
-  glossary create_chapter_link/create_evidence/propose_new_entity/user_create. Resolve `include_shared`: read/list tools advertise an `include_shared` arg (default **false** = owner-only) so a public key never enumerates shared rows by default (the OD-8 list-leak lesson).
+- **Slice 1 — Edge-centric idempotency for ALL write_auto creates** ✅ **SHIPPED 2026-06-28** (`D-PMCP-PROVIDER-HARDENING` idempotency half).
+  **Design pivot from the original per-service sketch:** the dedup lives at the **edge** (`mcp-public-gateway`), keyed on tier — so a single mechanism covers **every** `write_auto` create across all providers (book, glossary, composition), not just book+composition, and needs **zero Go/Python service changes** (no shared-tree hazard with the concurrent composition LOOM). An agent supplies `idempotency_key` on a single `write_auto` `tools/call`; the edge dedups on `(key_id, tool, idempotency_key)` via Redis (mirrors the rate-limiter): first call relays + caches the response, a retry REPLAYS it, a concurrent in-flight retry gets an "in progress" error. The key is **stripped before relay** (ForbidExtra-safe) and **advertised** on `write_auto` tools' schemas at `tools/list`. Fail-OPEN on store outage (a Redis blip must not block a write). `composition_create_work` + `book_chapter_bulk_create` already idempotent → untouched. **VERIFY:** 171/171 edge suite (incl. 51 new idempotency unit tests + a controller strip integration test) + tsc + nest build clean. Single-service; live double-submit folds into the Slice-4 per-provider exposure smoke. **This collapses the original Slice 1+2 idempotency work into one.**
+- **Slice 2 — `include_shared` decision (idempotency now done in Slice 1)** (`D-PMCP-PROVIDER-HARDENING` remainder).
+  Resolve `include_shared`: read/list tools advertise an `include_shared` arg (default **false** = owner-only) so a public key never enumerates shared rows by default (the OD-8 list-leak lesson).
 - **Slice 3 — knowledge kg write/build H-I + cost-tags** (`D-PMCP-KG-WRITE-BUILD-EXPOSURE` + memory remainder).
   H-I ownership-checked `project_id` on kg write/build (mirror the proven memory gate); add the `incurs_cost` hook for `kg_build_graph`/`kg_build_wiki`/`kg_run_benchmark`. **Security-critical → /review-impl mandatory.**
 - **Slice 4 — staged advertise flip, provider-by-provider** (`D-PMCP-PRICED-EXPOSURE-FLIP`).

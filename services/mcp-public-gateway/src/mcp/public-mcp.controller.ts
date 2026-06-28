@@ -10,6 +10,9 @@ import { confirmActionResult, denyConfirmAction, detectConfirmActionCall, inject
 import { domainScope, type Domain } from '../scope/tool-policy.js';
 import { RateLimiter } from '../ratelimit/rate-limiter.js';
 import { makeRateLimitStoreFromEnv } from '../ratelimit/redis-store.js';
+import { Idempotency } from '../idempotency/idempotency-store.js';
+import { makeIdempotencyStoreFromEnv } from '../idempotency/redis-idempotency-store.js';
+import { advertiseIdempotencyKeyInList, idempotencyInProgressError, idempotencyRedisKey, idempotentWriteCallInfo, stripIdempotencyKey } from '../idempotency/idempotency.js';
 import { AuditClient } from '../audit/audit-client.js';
 import { ApprovalClient } from '../approval/approval-client.js';
 import { wwwAuthenticateChallenge } from '../oauth/discovery.js';
@@ -43,6 +46,8 @@ export class PublicMcpController {
   private readonly limiter = new RateLimiter(makeRateLimitStoreFromEnv());
   // H-O: best-effort per-key call audit (fire-and-forget to auth-service).
   private readonly audit = new AuditClient();
+  // H-G: edge dedup of headless write retries (one Redis connection; null → disabled).
+  private readonly idempotency = new Idempotency(makeIdempotencyStoreFromEnv());
   // P4 / OD-2: divert a default key's Tier-W propose to the owner's approval queue.
   private readonly approvals = new ApprovalClient();
 
@@ -168,13 +173,46 @@ export class PublicMcpController {
       }
     }
 
+    // H-G: idempotency for a SINGLE write_auto `tools/call` carrying `idempotency_key`.
+    // The key is an edge-only field → strip it from the relayed body (the tool uses
+    // ForbidExtra and would reject it). When the key is usable, dedup on
+    // (key_id, tool, key): replay a cached response, reject a concurrent in-flight
+    // retry, or claim the slot and cache the result after a successful relay.
+    let relayBody: unknown = req.body;
+    let idemCacheKey: string | null = null; // set iff we claimed → cache/abort post-relay
+    if (hasBody) {
+      const idem = idempotentWriteCallInfo(req.body);
+      if (idem) {
+        relayBody = stripIdempotencyKey(req.body); // never leak the edge field to the tool
+        if (idem.idemKey) {
+          const rkey = idempotencyRedisKey(resolved.keyId, idem.toolName, idem.idemKey);
+          const begin = await this.idempotency.begin(rkey);
+          if (begin.kind === 'replay') {
+            // The original call already ran — return its response verbatim, no re-execute.
+            this.audit.record(req.body, resolved.keyId, resolved.userId, traceId, 'relayed'); // H-O
+            res.status(200);
+            res.setHeader('content-type', 'application/json');
+            res.send(begin.text);
+            return;
+          }
+          if (begin.kind === 'pending') {
+            // A concurrent identical request holds the claim — don't double-execute.
+            this.audit.record(req.body, resolved.keyId, resolved.userId, traceId, 'relayed'); // H-O
+            res.status(200).json(idempotencyInProgressError(req.body));
+            return;
+          }
+          idemCacheKey = rkey; // we won the claim → remember to cache/abort after relay
+        }
+      }
+    }
+
     // Relay to the USER surface only — never `/mcp/admin` (PUB-9 / H-A).
     const target = `${this.cfg.aiGatewayUrl}/mcp`;
     try {
       const upstream = await fetch(target, {
         method: req.method,
         headers: outboundHeaders,
-        body: hasBody ? JSON.stringify(req.body) : undefined,
+        body: hasBody ? JSON.stringify(relayBody) : undefined,
       });
       let text = await upstream.text();
       // PUB-3 / H-F: filter the `tools/list` RESPONSE so the agent only ever sees the
@@ -236,6 +274,9 @@ export class PublicMcpController {
       const rewroteList = ok && hasBody && isListRequest(req.body);
       if (rewroteList) {
         text = filterListResponseText(text, resolved.scopes, this.log);
+        // H-G: advertise the optional `idempotency_key` arg on write_auto tools so the
+        // agent can discover the retry-dedup path (edge-only; stripped before relay).
+        text = advertiseIdempotencyKeyInList(text);
         // P4 slice B: advertise the synthetic confirm_action tool to a dual-flag key so the
         // agent can discover the headless self-confirm path (it is not in the federated list).
         if (resolved.allowSelfConfirm && resolved.scopes.includes('write_confirm')) {
@@ -261,12 +302,23 @@ export class PublicMcpController {
         }
       }
 
+      // H-G: cache a SUCCESSFUL idempotent write's response for replay; release the
+      // claim on any failure (upstream error / tool_error) so a retry re-attempts —
+      // we never cache an error. `text` is the unmodified upstream body here (the
+      // divert/list/annotate paths don't run for a single write_auto call).
+      if (idemCacheKey) {
+        if (relayOutcome === 'relayed') await this.idempotency.complete(idemCacheKey, text);
+        else await this.idempotency.abort(idemCacheKey);
+      }
+
       res.status(upstream.status);
       // We emit JSON when we rewrote the list or annotated a batch; otherwise echo upstream type.
       const ct = rewroteList || annotatedBatch ? 'application/json' : upstream.headers.get('content-type');
       if (ct) res.setHeader('content-type', ct);
       res.send(text);
     } catch (e) {
+      // Release the idempotency claim so the agent's retry isn't stuck "pending".
+      if (idemCacheKey) await this.idempotency.abort(idemCacheKey);
       this.audit.record(req.body, resolved.keyId, resolved.userId, traceId, 'upstream_error'); // H-O
       this.log.warn(`relay to ai-gateway failed: ${e}`);
       return this.deny(res, -32603, 'upstream gateway unavailable', 502);
