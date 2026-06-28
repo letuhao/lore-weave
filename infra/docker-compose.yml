@@ -186,7 +186,12 @@ services:
       # the composition-worker's flag (same env var): API on / worker off enqueues
       # jobs nothing consumes; API off (the bug this fixes — the var was never wired
       # to the service) silently runs every batch op inline + the worker idles.
-      COMPOSITION_WORKER_ENABLED: ${COMPOSITION_WORKER_ENABLED:-false}
+      # Default TRUE (2026-06-28): the Tier-W motif jobs (mine / arc-import /
+      # conformance, incl. the deep arc-conformance job) ALWAYS enqueue via the confirm
+      # effect, so they only run if the worker consumes — a false default left them
+      # pending forever. The batch endpoints (decompose/generate/stitch) become 202+poll
+      # (the FE already polls GET /jobs/{id}).
+      COMPOSITION_WORKER_ENABLED: ${COMPOSITION_WORKER_ENABLED:-true}
       # W5 motif-conformance — the per-scene producer (judge each generated scene vs
       # its bound motif) + the calibrated label. ENABLED 2026-06-28 (the W5 judge gate
       # is satisfied: kappa 1.0 / 0.762 ≥ thresholds). Single-local-judge, so the FE
@@ -239,8 +244,9 @@ services:
       INTERNAL_SERVICE_TOKEN: ${INTERNAL_SERVICE_TOKEN:-dev_internal_token}
       REDIS_URL: redis://redis:6379
       LOG_LEVEL: INFO
-      # Must match composition-service: the worker runs only when the API enqueues.
-      COMPOSITION_WORKER_ENABLED: ${COMPOSITION_WORKER_ENABLED:-false}
+      # Must match composition-service (default TRUE 2026-06-28 — the Tier-W motif jobs
+      # require a consuming worker; see the API block).
+      COMPOSITION_WORKER_ENABLED: ${COMPOSITION_WORKER_ENABLED:-true}
       # W5 motif-conformance — mirror the API (the worker's conformance_run job +
       # any producer path reads these). ENABLED 2026-06-28 (gate satisfied).
       MOTIF_CONFORMANCE_ENABLED: ${MOTIF_CONFORMANCE_ENABLED:-true}
