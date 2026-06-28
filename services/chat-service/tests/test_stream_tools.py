@@ -195,6 +195,7 @@ def _run(
     tools: list[dict] | None = None,
     gen_params: dict | None = None,
     project_id: str | None = "proj-1",
+    planner_model_ref: str | None = None,
 ):
     """Build a `_stream_with_tools` async generator with sane defaults."""
     return _stream_with_tools(
@@ -207,6 +208,7 @@ def _run(
         knowledge_client=knowledge_client,
         session_id=TEST_SESSION_ID,
         project_id=project_id,
+        planner_model_ref=planner_model_ref,
     )
 
 
@@ -838,3 +840,55 @@ class TestProjectIdPassthrough:
         with _patch_client(scripts):
             await _drain(_run(scripts, knowledge_client=kc, project_id=None))
         assert kc.mcp_execute_tool.await_args.kwargs["project_id"] is None
+
+
+class TestPlannerModelRefAuthority:
+    """#19 — choosing the planner model is a USER/config decision, never the agent's.
+    chat-service is authoritative over the glossary_plan model_ref: a session pin wins,
+    and an absent pin STRIPS any model-supplied ref so the per-user Settings default
+    (resolved downstream in glossary) applies. Without this a weak model that fills the
+    exposed model_ref arg silently overrides the user's selection."""
+
+    def _glossary_plan_script(self, args_json: str):
+        return [
+            [
+                tool_frag(index=0, id="p1", name="glossary_plan"),
+                tool_frag(index=0, arguments_delta=args_json),
+                done("tool_calls"),
+            ],
+            [tok("planned"), done("stop")],
+        ]
+
+    @pytest.mark.asyncio
+    async def test_session_pin_injected_when_model_omits_ref(self):
+        kc = AsyncMock()
+        kc.mcp_execute_tool.return_value = _envelope(success=True, result={})
+        scripts = self._glossary_plan_script('{"book_id":"b1","goal":"design ontology"}')
+        with _patch_client(scripts):
+            await _drain(_run(scripts, knowledge_client=kc, planner_model_ref="session-model"))
+        assert kc.mcp_execute_tool.await_args.kwargs["tool_args"]["model_ref"] == "session-model"
+
+    @pytest.mark.asyncio
+    async def test_session_pin_overrides_model_supplied_ref(self):
+        """The fix: a model that fills model_ref does NOT bypass the user's session pin."""
+        kc = AsyncMock()
+        kc.mcp_execute_tool.return_value = _envelope(success=True, result={})
+        scripts = self._glossary_plan_script(
+            '{"book_id":"b1","goal":"x","model_ref":"model-hallucinated"}'
+        )
+        with _patch_client(scripts):
+            await _drain(_run(scripts, knowledge_client=kc, planner_model_ref="session-model"))
+        assert kc.mcp_execute_tool.await_args.kwargs["tool_args"]["model_ref"] == "session-model"
+
+    @pytest.mark.asyncio
+    async def test_model_supplied_ref_stripped_when_no_session_pin(self):
+        """No session pin → the model's guess is removed so glossary resolves the
+        per-user Settings 'planner' default (not whatever the model invented)."""
+        kc = AsyncMock()
+        kc.mcp_execute_tool.return_value = _envelope(success=True, result={})
+        scripts = self._glossary_plan_script(
+            '{"book_id":"b1","goal":"x","model_ref":"model-hallucinated"}'
+        )
+        with _patch_client(scripts):
+            await _drain(_run(scripts, knowledge_client=kc, planner_model_ref=None))
+        assert "model_ref" not in kc.mcp_execute_tool.await_args.kwargs["tool_args"]

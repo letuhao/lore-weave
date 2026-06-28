@@ -698,17 +698,18 @@ async def _stream_with_tools(
                         }
                         break
 
-                # D-PLAN-PLANNER-DEFAULT-FE phase 2: per-session planner override. When the
-                # agent calls glossary_plan and this session pins a planner model, inject it
-                # as model_ref (unless the model already chose one) so planning uses the
-                # session's model instead of the per-user provider-registry default.
-                if (
-                    c["name"] == "glossary_plan"
-                    and planner_model_ref
-                    and isinstance(args_obj, dict)
-                    and not args_obj.get("model_ref")
-                ):
-                    args_obj["model_ref"] = planner_model_ref
+                # D-PLAN-PLANNER-DEFAULT-FE phase 2 + #19: who picks the planner model is a
+                # USER/config decision, NEVER the agent's. The glossary_plan tool exposes a
+                # model_ref arg, so a weak model can fill it and silently override the user's
+                # session pin AND their Settings 'planner' default (glossary only resolves the
+                # default when in.ModelRef is empty). chat-service is therefore AUTHORITATIVE:
+                # a session pin always wins; otherwise the model's guess is STRIPPED so the
+                # downstream resolver applies the per-user Settings default → fallback.
+                if c["name"] == "glossary_plan" and isinstance(args_obj, dict):
+                    if planner_model_ref:
+                        args_obj["model_ref"] = planner_model_ref
+                    else:
+                        args_obj.pop("model_ref", None)
 
                 # backend tool — execute via the ai-gateway over MCP (ai-gateway
                 # P0: the only tool transport). Tier-A auto-commits here (the
