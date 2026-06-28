@@ -91,8 +91,35 @@ func TestRecordUsageParams_Mapping(t *testing.T) {
 	if want := float64(150) * flatCostPerToken; p.CostUSD != want {
 		t.Fatalf("flat cost: got %v want %v", p.CostUSD, want)
 	}
-	if p.InputPayload["a"] != 1.0 || p.OutputPayload["b"] != 2.0 {
+	inMap, _ := p.InputPayload.(map[string]any)
+	outMap, _ := p.OutputPayload.(map[string]any)
+	if inMap["a"] != 1.0 || outMap["b"] != 2.0 {
 		t.Fatalf("payloads dropped: %+v", p)
+	}
+}
+
+func TestParseUsageEvent_CarriesPayloadsAndStatus(t *testing.T) {
+	// #32 — the jobs-path stream now carries the traced request/response payloads
+	// (truncated JSON text) + a real request_status. Absent payloads stay nil.
+	owner, model := uuid.New(), uuid.New()
+	ev := map[string]any{
+		"request_id": uuid.New().String(), "owner_user_id": owner.String(),
+		"model_ref": model.String(), "input_tokens": "10", "output_tokens": "5",
+		"request_status": "failed", "operation": "glossary_extraction",
+		"request_payload": `{"messages":[]}`, "response_payload": "",
+	}
+	p, err := parseUsageEvent(ev)
+	if err != nil {
+		t.Fatalf("parse: %v", err)
+	}
+	if p.RequestStatus != "failed" {
+		t.Fatalf("request_status: got %q want failed", p.RequestStatus)
+	}
+	if p.InputPayload != `{"messages":[]}` {
+		t.Fatalf("request payload not carried: %v", p.InputPayload)
+	}
+	if p.OutputPayload != nil {
+		t.Fatalf("absent response payload must be nil, got %v", p.OutputPayload)
 	}
 }
 

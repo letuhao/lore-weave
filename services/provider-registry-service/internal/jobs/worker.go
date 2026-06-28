@@ -117,23 +117,35 @@ func (w *Worker) finalizeAndNotify(
 		}
 	}
 
-	// S4b (decision C) — build the usage-outbox payload for a COMPLETED job with
-	// resolvable token usage, computing the real per-model cost ONCE (reused for
-	// the reservation reconcile below). usage stays nil for failed/cancelled or
-	// media/no-token jobs → no outbox row, and a nil cost reconciles at estimate.
+	// S4b (decision C) + #32 — build the usage-outbox payload. A COMPLETED job with
+	// resolvable token usage carries real tokens + the per-model cost (computed ONCE,
+	// reused for the reservation reconcile below). #32: failed/cancelled (and a
+	// completed job whose tokens didn't resolve) now ALSO emit a row — cost 0 / nil,
+	// tokens 0 — so usage-billing audits EVERY call; RequestStatus distinguishes them
+	// and the repo attaches the truncated request/response payloads for tracing. Still
+	// gated on billingFound (billing wired); a nil cost reconciles at estimate.
 	var usage *UsageOutbox
 	var cost *float64
-	if billingFound && status == "completed" {
-		if tokIn, tokOut, ok := usageTokens(result); ok {
-			cost = w.actualUSD(ctx, ownerUserID, modelSource, modelRef, result)
-			usage = &UsageOutbox{
-				ModelSource:  modelSource,
-				ModelRef:     modelRef,
-				Operation:    operation,
-				InputTokens:  tokIn,
-				OutputTokens: tokOut,
-				CostUSD:      cost,
+	if billingFound {
+		requestStatus := "success"
+		if status != "completed" {
+			requestStatus = status // "failed" | "cancelled"
+		}
+		var tokIn, tokOut int
+		if status == "completed" {
+			if ti, to, ok := usageTokens(result); ok {
+				tokIn, tokOut = ti, to
+				cost = w.actualUSD(ctx, ownerUserID, modelSource, modelRef, result)
 			}
+		}
+		usage = &UsageOutbox{
+			ModelSource:   modelSource,
+			ModelRef:      modelRef,
+			Operation:     operation,
+			InputTokens:   tokIn,
+			OutputTokens:  tokOut,
+			CostUSD:       cost,
+			RequestStatus: requestStatus,
 		}
 	}
 

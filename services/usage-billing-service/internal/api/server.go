@@ -260,10 +260,12 @@ type usageLogParams struct {
 	CostUSD       float64
 	RequestStatus string
 	Purpose       string
-	// Payloads are nil/empty for the jobs path (the usage stream carries no
-	// payloads — matching the prior jobs-path RecordUsage, which sent none).
-	InputPayload  map[string]any
-	OutputPayload map[string]any
+	// `any`, not `map[string]any`, so BOTH callers fit: the /record HTTP path passes
+	// a structured object (map), while the jobs path (#32) passes the truncated
+	// request/response JSON as a STRING. writeUsageLog json.Marshal-s either shape
+	// before encrypting. nil ⇒ no payload (encrypts to `null`).
+	InputPayload  any
+	OutputPayload any
 }
 
 // writeUsageLog writes the audit row (usage_logs + usage_log_details) idempotently

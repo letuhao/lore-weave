@@ -202,6 +202,14 @@ func parseUsageEvent(v map[string]any) (usageLogParams, error) {
 		}
 	}
 	cost := recordCostUSD(inTok+outTok, override)
+	// #32 — the traced request/response payloads (truncated JSON text) ride the stream
+	// now. nilIfEmpty keeps an absent payload as nil (encrypts to `null`, not `""`).
+	nilIfEmpty := func(s string) any {
+		if s == "" {
+			return nil
+		}
+		return s
+	}
 	return usageLogParams{
 		RequestID:     reqID,
 		OwnerUserID:   owner,
@@ -212,5 +220,7 @@ func parseUsageEvent(v map[string]any) (usageLogParams, error) {
 		CostUSD:       cost,
 		RequestStatus: get("request_status"),
 		Purpose:       get("operation"),
+		InputPayload:  nilIfEmpty(get("request_payload")),
+		OutputPayload: nilIfEmpty(get("response_payload")),
 	}, nil
 }

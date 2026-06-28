@@ -9,7 +9,10 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"os"
+	"strconv"
 	"time"
+	"unicode/utf8"
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
@@ -17,6 +20,43 @@ import (
 
 	"github.com/loreweave/provider-registry-service/internal/billing"
 )
+
+// #32 — per-payload byte cap for the traced request/response stored on usage_outbox.
+// Bounds Redis-event size + the encrypted usage_logs column volume. Tunable via env.
+var usagePayloadCapBytes = func() int {
+	if v := os.Getenv("LLM_USAGE_PAYLOAD_CAP_BYTES"); v != "" {
+		if n, err := strconv.Atoi(v); err == nil && n > 0 {
+			return n
+		}
+	}
+	return 16384
+}()
+
+// truncatePayload returns b as a string capped at capBytes, backing off to a valid
+// UTF-8 rune boundary (a mid-rune cut would be invalid UTF-8 → Postgres TEXT rejects
+// the INSERT). Empty in → empty out (caller stores NULL). The marker keeps it obvious
+// in the trace that the payload was clipped.
+func truncatePayload(b []byte, capBytes int) string {
+	if len(b) == 0 {
+		return ""
+	}
+	if len(b) <= capBytes {
+		return string(b)
+	}
+	cut := capBytes
+	for cut > 0 && !utf8.RuneStart(b[cut]) {
+		cut--
+	}
+	return string(b[:cut]) + fmt.Sprintf("…[truncated %d bytes]", len(b)-cut)
+}
+
+// nullIfEmpty maps "" → NULL so an absent payload/status doesn't store an empty string.
+func nullIfEmpty(s string) *string {
+	if s == "" {
+		return nil
+	}
+	return &s
+}
 
 // PgxPool is the subset of *pgxpool.Pool that Repo + UsageRelay use. Declaring it
 // as an interface lets tests inject pgxmock (PgxPoolIface) while production passes
@@ -292,6 +332,12 @@ type UsageOutbox struct {
 	InputTokens  int
 	OutputTokens int
 	CostUSD      *float64 // nil → cost unresolvable (stored NULL)
+	// #32 — full-logging fields. RequestStatus is "success" (completed) | "failed" |
+	// "cancelled". RequestPayload/ResponsePayload are the truncated job input/result
+	// (tracing artifact; usage-billing encrypts them). Empty string ⇒ stored NULL.
+	RequestStatus   string
+	RequestPayload  string
+	ResponsePayload string
 }
 
 // TerminalOutbox is the LLM re-arch Phase 1 terminal-event payload written to
@@ -388,14 +434,17 @@ func (r *Repo) FinalizeWithUsageOutbox(
 	// Same race guard as Finalize (WHERE status='running'); RETURNING job_meta so
 	// we can stamp the outbox row with the job's campaign_id in this tx. No row
 	// matched ⇒ a cancel beat us → no transition, no outbox (matches notifier gate).
+	// #32 — RETURNING input too: the immutable request payload the worker truncates
+	// into the usage_outbox row (no extra query; same tx).
 	var jobMeta []byte
+	var inputJSON []byte
 	err = tx.QueryRow(ctx, `
 UPDATE llm_jobs
 SET status = $2, completed_at = now(), result = $3,
     error_code = $4, error_message = $5, finish_reason = $6
 WHERE job_id = $1 AND status = 'running'
-RETURNING job_meta
-`, jobID, status, resultJSON, ec, em, fr).Scan(&jobMeta)
+RETURNING job_meta, input
+`, jobID, status, resultJSON, ec, em, fr).Scan(&jobMeta, &inputJSON)
 	if errors.Is(err, pgx.ErrNoRows) {
 		if cerr := tx.Commit(ctx); cerr != nil {
 			return 0, fmt.Errorf("finalize+outbox: commit (no-op): %w", cerr)
@@ -409,7 +458,13 @@ RETURNING job_meta
 	// campaign_id (the S4a correlation tag) stamps BOTH outbox rows; parse once.
 	campaignID := parseJobMetaCampaignID(jobMeta)
 
-	if status == "completed" && usage != nil {
+	// #32 — emit a usage_outbox row for EVERY terminal status the worker provides a
+	// usage for (not just completed) so usage-billing audits every call. The worker
+	// sets usage on all terminal statuses now; cost/tokens are 0/nil for non-completed
+	// and RequestStatus distinguishes them (usage_logs is audit-only — enforcement is
+	// the guardrail, untouched). Payloads are filled HERE from the immutable input +
+	// the result (both in this tx), UTF-8-safe truncated, so a call can be traced.
+	if usage != nil {
 		// bug #24: the usage-billing `purpose` (the human label in the Usage GUI)
 		// is derived from this `operation` column. But `operation` is overloaded —
 		// it ALSO selects the worker's result aggregator + cost estimate + budget
@@ -422,13 +477,17 @@ RETURNING job_meta
 		if p := parseJobMetaUsagePurpose(jobMeta); p != "" {
 			operationLabel = p
 		}
+		reqPayload := truncatePayload(inputJSON, usagePayloadCapBytes)
+		respPayload := truncatePayload(resultJSON, usagePayloadCapBytes)
 		if _, err := tx.Exec(ctx, `
 INSERT INTO usage_outbox
   (request_id, owner_user_id, campaign_id, model_source, model_ref,
-   operation, input_tokens, output_tokens, cost_usd)
-VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)
+   operation, input_tokens, output_tokens, cost_usd,
+   request_status, request_payload, response_payload)
+VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)
 `, jobID, ownerUserID, campaignID, usage.ModelSource, usage.ModelRef,
-			operationLabel, usage.InputTokens, usage.OutputTokens, usage.CostUSD); err != nil {
+			operationLabel, usage.InputTokens, usage.OutputTokens, usage.CostUSD,
+			nullIfEmpty(usage.RequestStatus), nullIfEmpty(reqPayload), nullIfEmpty(respPayload)); err != nil {
 			return 0, fmt.Errorf("finalize+outbox: insert outbox: %w", err)
 		}
 	}
