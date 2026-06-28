@@ -124,6 +124,11 @@ func (s *Server) oauthAuthorize(w http.ResponseWriter, r *http.Request) {
 			cq.Set(k, v)
 		}
 	}
+	// Forward the registered display name so the consent screen can name the app
+	// (the FE only ever has the opaque client_id otherwise). Display-only.
+	if client.ClientName != "" {
+		cq.Set("client_name", client.ClientName)
+	}
 	consent.RawQuery = cq.Encode()
 	http.Redirect(w, r, consent.String(), http.StatusFound)
 }
@@ -161,6 +166,7 @@ func (s *Server) oauthConsent(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	var body struct {
+		Action              string   `json:"action"` // "" / "approve" (default) | "deny"
 		ClientID            string   `json:"client_id"`
 		RedirectURI         string   `json:"redirect_uri"`
 		GrantedScopes       []string `json:"granted_scopes"`
@@ -186,6 +192,25 @@ func (s *Server) oauthConsent(w http.ResponseWriter, r *http.Request) {
 	}
 	if !redirectURIRegistered(body.RedirectURI, client.RedirectURIs) {
 		writeErr(w, http.StatusBadRequest, "invalid_redirect_uri", "redirect_uri not registered")
+		return
+	}
+	// Deny — the user refuses. The redirect_uri is now validated (registered for
+	// this client), so we bounce per OAuth with error=access_denied. The FE never
+	// constructs this redirect itself (anti-open-redirect — a direct link with an
+	// unregistered redirect_uri 400s above instead of leaking the trusted origin).
+	if body.Action == "deny" {
+		u, perr := url.Parse(body.RedirectURI)
+		if perr != nil {
+			writeErr(w, http.StatusBadRequest, "invalid_redirect_uri", "redirect_uri not parseable")
+			return
+		}
+		rq := u.Query()
+		rq.Set("error", "access_denied")
+		if body.State != "" {
+			rq.Set("state", body.State)
+		}
+		u.RawQuery = rq.Encode()
+		writeJSON(w, http.StatusOK, map[string]any{"redirect_uri": u.String()})
 		return
 	}
 	if body.CodeChallenge == "" || body.CodeChallengeMethod != "S256" {

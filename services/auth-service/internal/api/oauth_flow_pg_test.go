@@ -141,6 +141,63 @@ func TestOAuthAuthCodeFlow_PG(t *testing.T) {
 	_ = ctx
 }
 
+// TestOAuthConsentDeny_PG — a deny bounces to the (validated) client redirect with
+// error=access_denied and mints NO code; an UNREGISTERED redirect_uri is rejected
+// 400 (anti-open-redirect — the FE relies on the AS validating before bouncing).
+func TestOAuthConsentDeny_PG(t *testing.T) {
+	srv, pool, itok := oauthFlowServer(t)
+	ts := httptest.NewServer(srv.Router())
+	defer ts.Close()
+
+	uid := mkUser(t, pool)
+	userJWT, err := authjwt.SignAccess([]byte(mcpTestSecret), uid, uuid.New(), time.Hour)
+	if err != nil {
+		t.Fatal(err)
+	}
+	redirectURI := "https://client.test/cb"
+	clientID := registerClient(t, ts.URL, itok, redirectURI)
+
+	// Deny with the REGISTERED redirect → 200 + access_denied bounce, no code.
+	body, _ := json.Marshal(map[string]any{
+		"action": "deny", "client_id": clientID, "redirect_uri": redirectURI, "state": "s1",
+	})
+	req, _ := http.NewRequest("POST", ts.URL+"/v1/account/oauth/consent", bytes.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Authorization", "Bearer "+userJWT)
+	res, err := http.DefaultClient.Do(req)
+	if err != nil || res.StatusCode != http.StatusOK {
+		t.Fatalf("deny: err=%v status=%v", err, res.StatusCode)
+	}
+	var out struct {
+		RedirectURI string `json:"redirect_uri"`
+	}
+	json.NewDecoder(res.Body).Decode(&out)
+	res.Body.Close()
+	u, _ := url.Parse(out.RedirectURI)
+	if u.Query().Get("error") != "access_denied" || u.Query().Get("state") != "s1" {
+		t.Errorf("deny redirect = %q, want error=access_denied&state=s1", out.RedirectURI)
+	}
+	if u.Query().Get("code") != "" {
+		t.Errorf("deny must not mint a code, got %q", out.RedirectURI)
+	}
+
+	// Deny with an UNREGISTERED redirect_uri → 400 (no open redirect).
+	bad, _ := json.Marshal(map[string]any{
+		"action": "deny", "client_id": clientID, "redirect_uri": "https://evil.example/cb", "state": "s1",
+	})
+	req2, _ := http.NewRequest("POST", ts.URL+"/v1/account/oauth/consent", bytes.NewReader(bad))
+	req2.Header.Set("Content-Type", "application/json")
+	req2.Header.Set("Authorization", "Bearer "+userJWT)
+	res2, err := http.DefaultClient.Do(req2)
+	if err != nil {
+		t.Fatal(err)
+	}
+	res2.Body.Close()
+	if res2.StatusCode != http.StatusBadRequest {
+		t.Errorf("deny unregistered redirect status = %d, want 400", res2.StatusCode)
+	}
+}
+
 // --- helpers ----------------------------------------------------------------
 
 func registerClient(t *testing.T, base, itok, redirectURI string) string {
