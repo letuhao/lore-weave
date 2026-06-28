@@ -195,12 +195,30 @@ LoreWeave is a hobby project with **no fixed deadline**. This shapes how reviews
   1. **Out of scope** — belongs to a different branch/module/track than the one in flight (fixing it here would scope-creep the current effort).
   2. **Large / structural** — the correct fix needs a refactor, a schema/DB migration, a new feature, or touches a cross-service contract — i.e. it needs a *serious plan*, not a quick edit.
   3. **Naturally-next-phase** — it is genuinely implementable only when a later phase begins (its prerequisites don't exist yet).
-  4. **Blocked / unresolvable now** — waiting on an external dependency, a product decision, or profiling evidence (perf items: fix when profiling shows pain).
+  4. **Blocked / unresolvable now** — waiting on a *genuinely external* dependency (another team's
+     unreleased work, an upstream API that doesn't exist), a product decision, or profiling
+     evidence (perf items: fix when profiling shows pain).
   5. **Conscious won't-fix** — a deliberate decision to not fix, recorded so it stops re-surfacing.
 
   If a finding fits **none** of these, it is NOT eligible to defer — fix it this run. When in
   doubt between "small enough to fix now" and "large enough to defer", **fix it now**; only the
   things that clearly clear the gate above earn a row.
+
+- **"Missing infrastructure" is NOT "blocked" — it is unbuilt work to implement (LOCKED — the
+  anti-laziness rule).** Gate #4 is the one most often abused. A feature that needs a new module,
+  extractor, schema, or service-side piece that *you could write in this repo* is **buildable**, not
+  blocked — it just hasn't been built yet. Before you ever label something "blocked" or defer it as
+  "needs X that doesn't exist":
+  1. **Verify the claim against code**, don't trust a handoff/doc note (those go stale — a "blocked
+     on the missing route" item this project shipped twice turned out to *already exist*).
+  2. **Check for the signal/seam** the build needs (e.g. does the row carry a `summary` field an LLM
+     could classify from? does a sibling extractor/pattern already exist to mirror?). If the signal
+     exists and the pattern exists, it is buildable — **scope it and implement it.**
+  3. **Decompose** a "blocked" item into the buildable slice + the genuinely-external remainder. Most
+     "blocked" items are mostly buildable now with a small truly-external tail (or no tail at all).
+  Only a dependency that is *external to this repo and you cannot write* clears gate #4. "It's a big
+  new track" is gate #2 (large/structural — write a plan), **not** "blocked". Saying "blocked" when
+  you mean "I'd have to build it" is the lazy tell this rule exists to kill.
 
 - **A deferral that passes the gate gets a tracked row** in the **Deferred Items** section of
   `docs/sessions/SESSION_HANDOFF.md` (and `docs/deferred/DEFERRED.md` in AMAW mode): ID, origin
