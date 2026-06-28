@@ -24,6 +24,38 @@ DB). Single-service. Commit: this.
   wiring) + conformance-run worker 9 (now incl. the entailment-via-llm path) + arc_conformance 29,
   green; provider-gate clean.
 
+**▶ The deep-conformance VERTICAL is backend-complete** (coarse + pacing + thread-progression +
+succession{structural/causal/entailment}, all real-from-prose, as a Tier-W job). All buildable
+BACKEND debt is cleared. The one remaining piece is the FE — and it surfaced a genuine architectural
+finding, recorded below (NOT a lazy block — verified against code + decomposed).
+
+### NEW DEFER — `D-W10-ARC-CONFORMANCE-DEEP-FE` (gate-2 large/structural · cross-layer contract)
+**The FE model-picker that triggers the deep job needs the FE↔composition Tier-W *propose*
+mechanism, which is UNBUILT** (and is an architectural decision, not a quick build):
+- **Verified against code:** composition's actions router has only `GET /actions/preview` +
+  `POST /actions/confirm?token=` (token in the QUERY, INTERNAL X-Internal-Token + X-User-Id headers,
+  gateway-injected). There is **NO `/actions/{op}/estimate` endpoint** — the confirm token is MINTED
+  only inside the MCP propose tools (`composition_conformance_run` etc.). The gateway proxies
+  `/v1/composition/*` straight through (no estimate→MCP translation).
+- **The FE's existing Tier-W code is speculative and does NOT match the backend:** `motif/api.ts`
+  POSTs to `/actions/{op}/estimate` and `/actions/{op}/confirm` with the token in the BODY — neither
+  the path nor the token location matches the real `/actions/confirm?token=`. So the whole FE Tier-W
+  propose/confirm/poll for composition (motif_adopt, conformance_run, …) is non-functional scaffolding.
+- **The decision (why it's not a rush-build):** per the **MCP-first invariant**, *propose* (mint
+  the cost-gated confirm token) is agentic and should be an **MCP-tool-call path** from the FE, NOT a
+  bespoke REST `/estimate` endpoint (adding one would violate MCP-first). So the buildable work is:
+  pick/establish the FE→MCP-tool-call mechanism (how does the FE invoke `composition_conformance_run`
+  to get `{confirm_token, estimate}`?), then reconcile the FE confirm to `/actions/confirm?token=` +
+  the poll (`composition_get_mine_job` / `GET /v1/jobs/{id}`). This is shared infra (all Tier-W ops),
+  so it deserves one coherent design, not a per-feature hack.
+- **Decomposed remainder once the bridge exists:** model-picker UI in `ArcConformancePanel`
+  (`ModelRolePicker capability='chat'` + `useByokModels`, both already exist in `features/campaigns`),
+  thread `effectiveModelRef` CompositionPanel→MotifLibraryView→ArcTemplateLibraryView, and render the
+  job's `result` (the arc report with `.deep`, incl. the new `entailment_verified`/`entailed`).
+- **Backend is READY for it:** the MCP `composition_conformance_run` already accepts arc_template_id +
+  model_ref + model_source and the worker produces the full deep report — only the FE propose
+  mechanism is missing.
+
 ## STATUS (2026-06-28 PM-22) — D-W10-ARC-CONFORMANCE-DEEP-JOB CLEARED — deep overlay is now a Tier-W job
 
 **`D-W10-ARC-CONFORMANCE-DEEP-JOB`** ✅ (the MED from the SUCCESSION /review-impl) — the deep arc
