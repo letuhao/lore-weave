@@ -283,17 +283,30 @@ User is active but the JWT expires and forces logout. Critical — causes loss o
 > they won't auto-refresh on expiry; no timeout on the refresh fetch (a hung /v1/auth/refresh blocks
 > 401'd callers until the browser default fires).
 
-### [I] 21. Custom `romantic_scene` kind in Xianxia Harem genre not wired in GUI
+### [x] 21. Custom `romantic_scene` kind in Xianxia Harem genre not wired in GUI
 Created `romantic_scene` in a custom Xianxia Harem genre, but the GUI doesn't wire it — can't edit `romantic_scene` kind anymore.
 
 > RC (investigated): no FE UI calls the existing `setUserKindGenres` (`frontend/.../glossary/tieringApi.ts` ~161) / `PUT /v1/glossary/user-kinds/{id}/genres` — a user can create a user-kind but cannot link it to a genre, so it's invisible in any genre context and uneditable. BE CRUD exists; FE wiring is missing.
-> Fix (proposed): a User-Standards workspace exposing each user-kind's linked genres via a genre picker wired to `setUserKindGenres` (shared with #22).
+> **VERIFIED ALREADY-FIXED (not a code change this round):** the original RC was stale. The
+> **Standards Library** (`frontend/src/features/standards/`) shipped 2026-06-20 (3 milestones
+> `FE-STANDARDS-LIBRARY` — commits `73998267`/`2b5601ef`/`62a9c68a`, all on this branch) and IS
+> routed (`/standards/:tab`, sidebar nav, 4-locale i18n). The user-kind↔genre link editor is
+> `KindsPanel.tsx` → `KindGenresModal.tsx`, wired to `setUserKindGenres`. So a user CAN create a
+> user-kind and link it to genres. Confirmed live: standards suite 20/20 green (not dead code).
+> The earlier "no Standards GUI" RC was another Explore-agent miss caught by verifying in-code.
 
-### [I] 22. System/user/book kinds never wired correctly to FE (no edit GUI)
+### [x] 22. System/user/book kinds never wired correctly to FE (no edit GUI)
 System kind, user, and book are never wired correctly — critical UX bug. Users can't edit them due to lack of GUI. Happens on **Glossary Standards** (no GUI to write genre, kind, attribute), and on the **book** too (no ability to edit/wire them). Seems like BE exists but was never wired to FE.
 
 > RC (VERIFIED): all 3-tier CRUD endpoints exist (`glossary-service/internal/api/server.go`: user-kinds/genres/attributes ~213-300, system-* admin ~273-290 RS256-gated, book ontology ~305-340). FE has the book-tier Manage workspace (`ManageWorkspace.tsx`) + the `tieringApi` client, but there is NO per-user "Standards" GUI to browse/CRUD user kinds/genres/attributes, and no kind↔genre link UI (#21). System tier is intentionally read-only (admin-seed) but has no discoverability surface either.
-> Fix (proposed): build a User-Standards workspace (user kinds/genres/attributes CRUD + kind↔genre links) reusing `tieringApi`; add a read-only System-standards browser for discoverability. (FE build; BE already there.)
+> **VERIFIED ALREADY-FIXED (Standards) + FIXED HERE (book).** The per-user Standards GUI exists
+> (see #21): `StandardsShell` tabs **Genres / Kinds / Attributes**, each a full CRUD panel
+> (`GenresPanel`/`KindsPanel`/`AttributesPanel` + `StandardFormModal`/`AttributeFormModal` +
+> `TrashDrawer` recycle bin). System tier is surfaced **read-only via "Clone into your tier"**
+> (`KindsPanel.tsx:66`) — the correct tenancy pattern (System is admin-seed, users clone, never
+> mutate the shared row). The **book** half of the complaint ("no ability to edit/wire them on
+> the book") is the same gap as **#25** and is fixed in this commit (book-tier kind↔genre editor
+> in `ManageWorkspace`).
 
 ### [x] 23. Sharing tab in workspace is redundant with Settings tab
 Sharing tab in the workspace is redundant — we already have a Settings tab. Consider merging them or removing the sharing setting in the Settings tab.
@@ -332,11 +345,17 @@ The "kind" of LLM call in the Usage GUI is incorrect — almost everything shows
 > the INSERT op-arg + falls back on malformed. (Cross-service live-smoke deferred →
 > D-USAGE-PURPOSE-LIVE-SMOKE.)
 
-### [I] 25. "Adopt genre" is useless (genre never wired to kind + attribute)
+### [x] 25. "Adopt genre" is useless (genre never wired to kind + attribute)
 Adopt genre is useless because there's nothing to adopt — genre is never wired to kind and attribute.
 
-> RC (investigated): `adoptBookOntology` DOES copy kind↔genre links + attributes into the book tier (`book_adopt_handler.go` ~132-206) — so adopt wires them on the BE. The complaint is post-adopt: `ManageWorkspace.tsx` exposes no UI to add/change kind↔genre links afterward (the `PUT /books/{book_id}/ontology/kinds/{id}/genres` endpoint exists, `server.go` ~329, but is uncalled).
-> Fix (proposed): add a "Linked genres" editor per kind in ManageWorkspace wired to `setBookKindGenres`. (Same pattern as #21/#22.)
+> RC (VERIFIED): `adoptBookOntology` DOES copy kind↔genre links + attributes into the book tier (`book_adopt_handler.go` ~132-206) — so adopt wires them on the BE. The complaint is post-adopt: `ManageWorkspace.tsx` exposes no UI to add/change kind↔genre links afterward (the `PUT /books/{book_id}/ontology/kinds/{id}/genres` endpoint + the `ont.setKindGenres` hook wrapper exist, but NOTHING called them). **Second BE gap found while here:** `createBookKindCore` (`book_ontology_core.go:100`) inserts the kind but creates **no** `book_kind_genres` link — so a book kind created via the Manage QuickCreate had zero links → invisible in the genre-first drilldown (the book-tier twin of #21's "created a kind, can't find it").
+> **FIXED (FE-only; BE already there):**
+> 1. **Book kind↔genre editor** — new `BookKindGenresModal.tsx` + a "Linked genres" (chain) action on each kind row in `ManageWorkspace`'s kinds column, wired to `ont.setKindGenres`. Toggles the book's genres as a replace-set. Enforces a **≥1-genre invariant** (Save disabled on an empty set): a kind with no link is unreachable in a genre-first view and can hold no attributes (attrs are per kind×genre), so the invariant guarantees every kind stays reachable under ≥1 genre column. Wiring the link also unblocks attribute creation, covering the "…and attribute" half.
+> 2. **Auto-link on create** — creating a book kind in Manage (with a genre selected) now links it to that genre immediately, fixing the create-then-vanish.
+> Tests: `BookKindGenresModal` (3) + `OntologyColumn` onLinks (2) — 8/8; full tiering+standards 45/45; tsc clean; +`col.links_kind`/`links.*`/`toast.links_*` ×4 locales.
+> **Known minor edge (not fixed):** book kinds created via the *old* QuickCreate (pre-fix) have
+> zero links → still invisible in Manage. New/adopted kinds are unaffected. Low (rare pre-fix
+> data); revisit only if it surfaces. → D-BOOK-ORPHAN-KIND-RELINK.
 
 ### [I] 26. Glossary merge needs a "merge/summary/overwrite" mode (dedup + rewrite)
 Glossary merge/append lacks an important type — call it merge or summary. A character's description changes each chapter but is almost the same; normal append produces lots of nearly-identical/useless data. Better to have a "merge overwrite" mode: take new raw extracted data, append to old data, and **rewrite a better version** with dedup. (User will give more detail on why.)

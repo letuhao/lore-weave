@@ -1,4 +1,21 @@
-# ▶▶ NEXT SESSION STARTS HERE — **Critical UX bug track** · branch `fix/critical-ux-bugs` · HEAD `0c914e24`+ · 2026-06-28
+# ▶▶ NEXT SESSION STARTS HERE — **Critical UX bug track** · branch `fix/critical-ux-bugs` · HEAD `168deb8a`+ · 2026-06-28
+
+> **✅ SHIPPED THIS SESSION — #21/#22/#25 kinds/standards FE cluster (M, FE-only).** "Can't
+> edit user/book kinds, no genre↔kind wiring; adopt-genre useless." **#21 + #22 were
+> ALREADY-FIXED** (verify-before-fix caught the stale RC, again): the **Standards Library**
+> (`frontend/src/features/standards/`, 3 milestones `73998267`/`2b5601ef`/`62a9c68a`, shipped
+> 2026-06-20, on-branch) is routed (`/standards/:tab` + sidebar) and gives full user-tier
+> Genres/Kinds/Attributes CRUD + a user-kind↔genre link editor (`KindGenresModal`) + System
+> read-only-via-clone + a recycle bin — verified live, standards suite 20/20. **#25 was the
+> only real gap (book tier):** `setBookKindGenres`/`ont.setKindGenres` existed but NOTHING
+> called it, AND `createBookKindCore` made no `book_kind_genres` link so a Manage-created kind
+> vanished. **Fix (FE):** new `BookKindGenresModal` + a "Linked genres" chain action per kind
+> row in `ManageWorkspace` (→ `setKindGenres`, replace-set, **≥1-genre invariant** so every kind
+> stays reachable); auto-link a new book kind to the selected genre on create. +`col.links_kind`/
+> `links.*`/`toast.links_*` ×4 locales. **VERIFY:** 8 new tests (modal 3 + column 2 + …);
+> tiering+standards 45/45; tsc clean; locales parse. Bug doc #21/#22/#25 → `[x]`. **Deferred
+> `D-BOOK-ORPHAN-KIND-RELINK`** (LOW — book kinds created via the *old* pre-fix QuickCreate have
+> zero links → still invisible in Manage; new/adopted unaffected).
 
 > **✅ SHIPPED THIS SESSION — #32 LLM-call full logging (XL, provider-registry + usage-billing).** "Not every call is logged + input/output not stored." **RC was wrong (4th this session):** usage-billing's store ALREADY persists encrypted request+response payloads + `request_status` — the gaps were pure plumbing in provider-registry: (a) `usage_outbox` only for `status=="completed"` + relay hardcoded `request_status:"success"` → failures unaudited; (b) `UsageOutbox` had no payload fields → empty `{}` stored. **Fix** (user chose full build, payloads capped): migration adds `usage_outbox.request_status/request_payload/response_payload`; `FinalizeWithUsageOutbox` `RETURNING …, input` + emits for EVERY terminal status (gate now `usage != nil`; cost 0 for failures so the cost SUM is unchanged — usage_logs is audit-only) with UTF-8-safe-truncated request+response payloads (cap env `LLM_USAGE_PAYLOAD_CAP_BYTES`=16384); relay carries status+payloads; usage-billing `parseUsageEvent` reads them → existing `writeUsageLog` encrypts. `usageLogParams.Input/OutputPayload` widened `map→any` (map for /record, string for jobs). Forward-compatible stream. **VERIFY:** both services full go test/vet green (provider-registry DB-mock INSERT-12/SELECT-13 + wire-contract; usage-billing payload/status parse). Plan [docs/plans/2026-06-28-llm-call-full-logging.md](../plans/2026-06-28-llm-call-full-logging.md). **Deferred `D-32-FULL-LOGGING-LIVE-SMOKE`** (full-stack real+forced-fail job round-trip). Bug doc #32 → `[x]`. **/review-impl ran → 2 fixes:** HIGH — user-cancel goes through `Cancel` (not the worker finalize), so cancelled calls were still unaudited → `Cancel` now emits the usage_outbox audit row (shared `insertUsageOutbox`); MED — stripped the plaintext payloads from the campaign_usage stream (`campaignFields`). +3 tests, full provider-registry suite green.
 

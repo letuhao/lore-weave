@@ -43,6 +43,35 @@ describe('OntologyColumn delete affordance', () => {
     expect(screen.getByTestId('ontology-row-g1')).toBeInTheDocument();
   });
 
+  it('renders a links button per row when onLinks is provided and calls it without selecting the row', () => {
+    const onLinks = vi.fn();
+    const onSelect = vi.fn();
+    render(
+      <OntologyColumn
+        title="Kinds"
+        rows={rows}
+        selectedId={null}
+        onSelect={onSelect}
+        emptyText="empty"
+        onLinks={onLinks}
+        linksLabel="Linked genres"
+      />,
+    );
+    const links = screen.getByTestId('ontology-links-g1');
+    // Must be reachable on touch — not hover-revealed (same rule as edit/delete).
+    expect(links.className).not.toMatch(/opacity-0|group-hover/);
+    fireEvent.click(links);
+    expect(onLinks).toHaveBeenCalledWith(rows[0]);
+    expect(onSelect).not.toHaveBeenCalled();
+  });
+
+  it('omits the links button when onLinks is not provided', () => {
+    render(
+      <OntologyColumn title="Genres" rows={rows} selectedId={null} onSelect={vi.fn()} emptyText="empty" />,
+    );
+    expect(screen.queryByTestId('ontology-links-g1')).not.toBeInTheDocument();
+  });
+
   it('selecting a row still works alongside the delete button', () => {
     const onSelect = vi.fn();
     render(
