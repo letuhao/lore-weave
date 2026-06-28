@@ -230,6 +230,28 @@ def test_retry_resubmits_failed_job_standalone(client, fake_pool, mocker):
     assert payload.pipeline_version == "v3"
 
 
+def test_retry_threads_public_mcp_carrier(fake_pool, mocker):
+    """D-PMCP-WORKER-CARRIER /review-impl HIGH: a confirm-route retry is a NET-NEW
+    re-spend → the CONFIRMING caller's mcp_key_id + cap must ride the fresh job, else a
+    public agent whose job hit the per-key cap (→ 'failed') could retry into an UNCAPPED
+    job. _retry_job_core must forward both to _resolve_and_create_job."""
+    import asyncio
+
+    from app.routers.internal_dispatch import _retry_job_core
+
+    fake_pool.fetchrow.return_value = _failed_row()
+    core = mocker.patch(
+        "app.routers.internal_dispatch._resolve_and_create_job",
+        new_callable=AsyncMock,
+        return_value=SimpleNamespace(job_id=UUID(NEW_JOB), status="pending"))
+    asyncio.run(_retry_job_core(
+        fake_pool, UUID(JOB), UUID(USER),
+        mcp_key_id="0a0a0a0a-1111-4111-8111-000000000abc", spend_cap_usd=0.25,
+    ))
+    assert core.call_args.kwargs["mcp_key_id"] == "0a0a0a0a-1111-4111-8111-000000000abc"
+    assert core.call_args.kwargs["spend_cap_usd"] == 0.25
+
+
 def test_retry_404_when_not_owned(client, fake_pool):
     fake_pool.fetchrow.return_value = None  # owner-scoped SELECT matched nothing
     resp = client.post(

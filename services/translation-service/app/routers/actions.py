@@ -396,9 +396,18 @@ async def confirm_action(
         # Owner-scoped cores (re-verify the owner against the row). The user binding
         # in the token (claims.user_id) is the verified owner.
         if claims.descriptor == DESC_JOB_RESUME:
+            # Resume re-drives the SAME job from its row (which already carries the
+            # original key/cap via RETURNING * → _job_message_from_row), bounded to the
+            # job's still-pending chapters — so it keeps the original attribution.
             res = await _resume_job_core(db, job_id, claims.user_id)
         else:
-            res = await _retry_job_core(db, job_id, claims.user_id)
+            # Retry creates a FRESH job → the re-spend must carry the CONFIRMING caller's
+            # key + cap (else a public agent could retry a cap-failed job into an
+            # uncapped one — D-PMCP-WORKER-CARRIER /review-impl HIGH).
+            res = await _retry_job_core(
+                db, job_id, claims.user_id,
+                mcp_key_id=mcp_key_id, spend_cap_usd=spend_cap_usd,
+            )
         out = dict(res)
         out["job_status"] = out.pop("status", None)
         out["status"] = "action_done"
