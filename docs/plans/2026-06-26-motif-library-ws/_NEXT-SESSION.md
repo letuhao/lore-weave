@@ -1,5 +1,42 @@
 # ▶ NEXT SESSION — Narrative Motif Library BUILD (handoff)
 
+## STATUS (2026-06-28 PM-16) — D-W10-ARC-CONFORMANCE (COARSE) CLEARED — the scope=arc endpoint is real
+
+**`D-W10-ARC-CONFORMANCE`** ✅ (the COARSE tier — §14.4 altitude 3, §R1.5). The `scope=arc`
+conformance endpoint, which had returned a hard-coded `available:false` "P4" stub, now computes a
+real structural diff of the materialized bindings vs the arc TEMPLATE — **purely from data that
+already exists** (no LLM, no causal-event graph). The Explore audit confirmed the "blocked on W9 +
+W5 arc-diff" claim was stale: W9 + materialize + the `precedes` graph all landed, so the coarse
+diff is buildable now; only the DEEP prose-extract diff (effects→preconditions over written text)
+stays P4+ (rides F-1's causal edges + the motif_beat extractor) — surfaced honestly as
+`coarse=true`, `causal_verified=false`.
+
+- **NEW pure `engine/arc_conformance.py` `build_arc_conformance`** — 3 coarse dims + honesty:
+  - **thread_progress**: per thread, each placed motif (by CODE, the stable key) covered vs missing.
+  - **pacing**: realized per-chapter avg `outline_node.tension` curve vs the template `pacing` curve
+    (tolerant numeric extract; `comparable=false` + realized-only when the template has no curve);
+    reports `max_drift`.
+  - **succession**: per thread, the realized motif order checked against the `precedes` graph —
+    legal / unrelated / VIOLATION (a reversed precedes edge). Structural only (`causal_verified=false`).
+  - **unmaterialized**: template placements that produced NO binding (drop/merge folded them, §12.6).
+- **NEW `ConformanceTraceReader.arc_bindings`** — the realized ledger for one arc: `motif_application`
+  (keyed by `annotations->>'arc_template_id'`) ⋈ its scene `outline_node` (chapter+tension) ⋈ `motif`
+  (code). Tenant-scoped on BOTH the application AND the node (kinds-bug rule); INNER motif join drops
+  cleared/archived bindings. `MotifRepo.successors_by_ids` gained the target `id` (additive) → the
+  `precedes_pairs` set the succession dim needs.
+- **`scope=arc` branch rewired**: requires `arc_template_id` (422 without), H13 404 on a foreign/missing
+  arc, assigns a 1-based realized-chapter index by story-order, builds the report.
+- **VERIFY:** 13 new tests (`test_arc_conformance.py` — 10 pure engine: thread covered/missing,
+  declared-empty-thread, pacing avg/drift/non-comparable, succession legal/violation/unrelated,
+  unmaterialized, coarse-flags; 3 route: 422/404/happy-path). Broad regression green; provider-gate
+  clean. Single-service.
+
+**▶ NARROWED remaining defer — `D-W10-ARC-CONFORMANCE-FE` (gate-2, FE):** the BE arc-scope report
+exists but has NO FE consumer yet (the conformance dock is chapter-only; `useConformanceTrace` doesn't
+fetch arc scope). The arc dashboard (mockup 07-B: threads × placements timeline + the pacing curve +
+succession flags) is a focused FE feature. **And the DEEP `D-W10-ARC-CONFORMANCE-DEEP` stays P4+**
+(prose extract-diff over the causal-event graph — genuinely blocked on knowledge-service F-1).
+
 ## STATUS (2026-06-28 PM-15) — D-MOTIF-CHAIN-SUCCESSION-HINT CLEARED (ChainIt now reachable, full loop)
 
 **`D-MOTIF-CHAIN-SUCCESSION-HINT`** ✅ — the `ChainItHint` is now surfaced, so the PM-14 chain

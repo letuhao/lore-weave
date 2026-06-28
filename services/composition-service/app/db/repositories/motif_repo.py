@@ -180,7 +180,7 @@ class MotifRepo:
         if not uniq:
             return {}
         query = """
-        SELECT l.from_motif_id, m.code, m.name, l.ord
+        SELECT l.from_motif_id, m.id AS to_id, m.code, m.name, l.ord
         FROM motif_link l
         JOIN motif m ON m.id = l.to_motif_id
         WHERE l.kind = 'precedes' AND l.from_motif_id = ANY($1) AND m.status = 'active'
@@ -191,7 +191,7 @@ class MotifRepo:
         out: dict[str, list[dict[str, Any]]] = {}
         for r in rows:
             out.setdefault(str(r["from_motif_id"]), []).append(
-                {"code": r["code"], "name": r["name"], "ord": r["ord"]})
+                {"id": str(r["to_id"]), "code": r["code"], "name": r["name"], "ord": r["ord"]})
         return out
 
     async def patch(

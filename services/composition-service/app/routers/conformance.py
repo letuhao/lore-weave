@@ -38,9 +38,12 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 
 from app.db.models import MotifApplication, OutlineNode
 from app.db.pool import get_pool
+from app.db.repositories.arc_template_repo import ArcTemplateRepo
+from app.db.repositories.motif_repo import MotifRepo
 from app.db.repositories.outline import OutlineRepo
 from app.db.repositories.works import WorksRepo
-from app.deps import get_outline_repo, get_works_repo
+from app.deps import get_arc_template_repo, get_outline_repo, get_works_repo
+from app.engine.arc_conformance import build_arc_conformance
 from app.middleware.jwt_auth import get_current_user
 
 router = APIRouter(prefix="/v1/composition")
@@ -77,6 +80,39 @@ class ConformanceTraceReader:
             app = MotifApplication.model_validate(_jsonb_loads(dict(r)))
             if app.outline_node_id is not None:
                 out[app.outline_node_id] = app
+        return out
+
+    async def arc_bindings(
+        self, user_id: UUID, project_id: UUID, arc_template_id: UUID,
+    ) -> list[dict[str, Any]]:
+        """The realized bindings materialized from one arc (D-W10-ARC-CONFORMANCE) →
+        rows ``{motif_id, motif_code, annotations, chapter_id, tension, story_order}``,
+        ordered by story_order. JOINs ``motif_application`` (the materialize ledger, keyed
+        by ``annotations->>'arc_template_id'``) → its scene ``outline_node`` (chapter +
+        tension) → ``motif`` (the stable code). Tenant-scoped on BOTH the application AND
+        the node (the kinds-bug rule). An archived/cleared binding (motif_id NULL) drops
+        out via the INNER motif JOIN — it can't be conformance-checked."""
+        rows = await self._pool.fetch(
+            """
+            SELECT a.motif_id, m.code AS motif_code, a.annotations,
+                   o.chapter_id, o.tension, o.story_order
+            FROM motif_application a
+            JOIN outline_node o ON o.id = a.outline_node_id
+            JOIN motif m ON m.id = a.motif_id
+            WHERE a.user_id = $1 AND a.project_id = $2
+              AND o.user_id = $1 AND o.project_id = $2
+              AND a.annotations->>'arc_template_id' = $3
+            ORDER BY o.story_order NULLS LAST, o.id
+            """,
+            user_id, project_id, str(arc_template_id),
+        )
+        import json
+        out: list[dict[str, Any]] = []
+        for r in rows:
+            d = dict(r)
+            ann = d.get("annotations")
+            d["annotations"] = json.loads(ann) if isinstance(ann, str) else (ann or {})
+            out.append(d)
         return out
 
     async def latest_completed_by_nodes(
@@ -205,14 +241,19 @@ async def read_conformance(
     project_id: UUID,
     scope: str = Query("chapter"),
     chapter_id: UUID | None = None,
+    arc_template_id: UUID | None = None,
     user_id: UUID = Depends(get_current_user),
     works: WorksRepo = Depends(get_works_repo),
     outline: OutlineRepo = Depends(get_outline_repo),
     reader: ConformanceTraceReader = Depends(get_conformance_trace_reader),
+    arc_repo: ArcTemplateRepo = Depends(get_arc_template_repo),
 ) -> dict[str, Any]:
-    """The motif-conformance trace for a chapter (§4). `scope=chapter` (default) is
-    the only computable scope in P1; `scope=arc` is accepted (stable FE contract)
-    but returns a clear P4 not-available body (the §14.4 extract-diff is OUT)."""
+    """The motif-conformance trace (§4). `scope=chapter` (default) is the per-scene
+    planned│realized│conformance trace. `scope=arc` is the COARSE arc-conformance diff
+    (D-W10-ARC-CONFORMANCE, §14.4 altitude 3): the materialized bindings vs the arc
+    template across thread-progress / pacing / structural succession. The DEEP
+    prose-extract diff (effects→preconditions over written text) stays P4+ —
+    `coarse=true`, `causal_verified=false`."""
     from app.config import settings
 
     work = await works.get(user_id, project_id)
@@ -220,15 +261,30 @@ async def read_conformance(
         raise HTTPException(status_code=404, detail="work not found")
 
     if scope == "arc":
-        # MD-5: accept the param, return an honest "not available yet" body so the
-        # FE arc view can be built later WITHOUT a contract change.
-        return {
-            "scope": "arc",
-            "available": False,
-            "reason": "arc-scope conformance is not available yet (P4 — needs the "
-                      "§14.4 thread/pacing extract-diff). Use scope=chapter.",
-            "scenes": [],
-        }
+        if arc_template_id is None:
+            raise HTTPException(status_code=422, detail={"code": "ARC_TEMPLATE_ID_REQUIRED"})
+        arc = await arc_repo.get_visible(user_id, arc_template_id)
+        if arc is None:
+            # H13 uniform — no existence oracle for a foreign/missing arc.
+            raise HTTPException(status_code=404, detail={"code": "NOT_FOUND"})
+        rows = await reader.arc_bindings(user_id, project_id, arc_template_id)
+        # assign a 1-based realized-chapter index: chapters in story_order of first sight.
+        order: dict[Any, int] = {}
+        for r in rows:
+            ch = r["chapter_id"]
+            if ch not in order:
+                order[ch] = len(order) + 1
+        realized = [{
+            "motif_id": str(r["motif_id"]) if r["motif_id"] else None,
+            "motif_code": r["motif_code"],
+            "thread": (r["annotations"] or {}).get("thread"),
+            "chapter_index": order[r["chapter_id"]],
+            "tension": r["tension"],
+        } for r in rows]
+        realized_ids = [UUID(x["motif_id"]) for x in realized if x["motif_id"]]
+        succ_map = await MotifRepo(get_pool()).successors_by_ids(realized_ids)
+        precedes_pairs = {(frm, s["id"]) for frm, lst in succ_map.items() for s in lst}
+        return build_arc_conformance(arc=arc, realized=realized, precedes_pairs=precedes_pairs)
     if scope != "chapter":
         raise HTTPException(status_code=422, detail={"code": "UNSUPPORTED_SCOPE", "scope": scope})
     if chapter_id is None:
