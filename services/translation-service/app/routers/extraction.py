@@ -91,6 +91,9 @@ async def _create_extraction_job_core(
     book_id: UUID,
     uid: UUID,
     payload: CreateExtractionJobPayload,
+    *,
+    mcp_key_id: str | None = None,
+    spend_cap_usd: float | None = None,
 ) -> dict:
     """Resolve the model + extraction profile, estimate cost, atomically create the
     job (+ chapter-result rows + the 'pending' JobEvent), and publish to the worker
@@ -236,8 +239,8 @@ async def _create_extraction_job_core(
                 INSERT INTO extraction_jobs
                   (book_id, owner_user_id, status, source_language, model_source, model_ref,
                    extraction_profile, context_filters, chapter_ids, total_chapters, cost_estimate,
-                   reasoning_effort)
-                VALUES ($1,$2,'pending',$3,$4,$5,$6,$7,$8,$9,$10,$11)
+                   reasoning_effort, mcp_key_id, spend_cap_usd)
+                VALUES ($1,$2,'pending',$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)
                 RETURNING *
                 """,
                 book_id, uid, source_language, model_source, model_ref,
@@ -247,6 +250,7 @@ async def _create_extraction_job_core(
                 len(payload.chapter_ids),
                 json.dumps(cost_estimate),
                 reasoning_effort,
+                mcp_key_id, spend_cap_usd,
             )
             job_id = job_row["job_id"]
 
@@ -279,6 +283,10 @@ async def _create_extraction_job_core(
         "reasoning_effort": reasoning_effort,
         # D-EXTRACTION-BATCH-CONCURRENCY: per-chapter LLM-call fan-out cap (None ⇒ 1).
         "concurrency": payload.concurrency_level,
+        # D-PMCP-WORKER-CARRIER: ride the public-MCP key + cap so the extraction
+        # worker re-sets the attribution contextvar before each provider call.
+        "mcp_key_id": mcp_key_id,
+        "spend_cap_usd": spend_cap_usd,
     })
 
     return {

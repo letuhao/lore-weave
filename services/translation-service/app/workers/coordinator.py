@@ -73,6 +73,10 @@ async def handle_job_message(msg: dict, pool, publish, publish_event) -> None:
             # S4a: propagate the owning campaign to the per-chapter worker, which
             # sets it as a contextvar so every provider job_meta carries it.
             "campaign_id":          msg.get("campaign_id"),
+            # D-PMCP-WORKER-CARRIER: propagate the public-MCP key + cap so the
+            # chapter worker re-sets the attribution contextvar before each LLM call.
+            "mcp_key_id":           msg.get("mcp_key_id"),
+            "spend_cap_usd":        msg.get("spend_cap_usd"),
             # T2-M2: dirty-only re-translate scope (None for whole-chapter jobs).
             "block_index_filter":   msg.get("block_index_filter"),
             "seed_version_id":      msg.get("seed_version_id"),

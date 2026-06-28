@@ -281,6 +281,9 @@ def _resume_row(**over):
         "eval_judge_model_source": None, "eval_judge_model_ref": None,
         "cold_start_mode": "single_pass", "campaign_id": None,
         "block_index_filter": None, "seed_version_id": None, "thinking_enabled": False,
+        # D-PMCP-WORKER-CARRIER: columns _job_message_from_row reads so a resume of a
+        # public-key job re-carries the attribution from the row.
+        "mcp_key_id": None, "spend_cap_usd": None,
     }
     base.update(over)
     return FakeRecord(base)

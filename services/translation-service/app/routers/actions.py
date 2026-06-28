@@ -38,10 +38,12 @@ key split so a leak of one cannot forge the other).
 from __future__ import annotations
 
 import logging
+import secrets
 from uuid import UUID
 
 import asyncpg
-from fastapi import APIRouter, Depends, HTTPException, Query, status
+import jwt
+from fastapi import APIRouter, Depends, Header, HTTPException, Query, status
 from pydantic import BaseModel
 
 from loreweave_mcp import (
@@ -141,6 +143,53 @@ def _assert_caller(claims, caller_user_id: str) -> None:
         raise _forbidden()
 
 
+def _parse_spend_cap(raw: str | None) -> float | None:
+    """Tolerant parse of X-Mcp-Spend-Cap-Usd → a float ceiling. Absent/unparseable
+    ⇒ None (no per-key cap; the owner USD guardrail still applies downstream). Never
+    raises — a malformed header must not 500 a confirm."""
+    if not raw:
+        return None
+    try:
+        return float(raw)
+    except (TypeError, ValueError):
+        return None
+
+
+def _resolve_confirm_caller(
+    x_internal_token: str | None,
+    x_user_id: str | None,
+    authorization: str | None,
+    x_mcp_key_id: str | None,
+    x_mcp_spend_cap_usd: str | None,
+) -> tuple[str, str | None, float | None]:
+    """Dual-mode confirm auth → (caller_user_id, mcp_key_id, spend_cap_usd).
+
+    - **REPLAY path (public MCP):** ``X-Internal-Token`` (constant-time compare)
+      authenticates the trusted auth-service replay; ``X-User-Id`` is the approved
+      owner. ONLY this path honors the ``X-Mcp-Key-Id`` / ``X-Mcp-Spend-Cap-Usd``
+      attribution headers — a first-party caller must NEVER be able to tag spend to
+      an arbitrary key (the SDK merge is server-set; the route is the gate).
+    - **FE path:** the signed-in user's JWT (``Authorization: Bearer``). Key headers
+      are IGNORED (None) — a first-party translation spends on the user, not a key.
+
+    Cannot use ``Depends(get_current_user)`` (HTTPBearer auto-401s with no header,
+    which would break the replay path), so JWT is verified inline here."""
+    if x_internal_token:
+        if not secrets.compare_digest(x_internal_token, app_settings.internal_service_token):
+            raise HTTPException(status_code=401, detail="invalid internal token")
+        if not x_user_id:
+            raise HTTPException(status_code=401, detail="missing X-User-Id")
+        return x_user_id, (x_mcp_key_id or None), _parse_spend_cap(x_mcp_spend_cap_usd)
+    # FE / JWT path — attribution headers are deliberately ignored.
+    if not authorization or not authorization.lower().startswith("bearer "):
+        raise HTTPException(status_code=401, detail="missing credentials")
+    try:
+        data = jwt.decode(authorization[7:], app_settings.jwt_secret, algorithms=["HS256"])
+    except jwt.InvalidTokenError as exc:
+        raise HTTPException(status_code=401, detail="invalid token") from exc
+    return str(data["sub"]), None, None
+
+
 async def _reauthorize_book(book_id: UUID, user_id: UUID) -> int:
     """Re-resolve the caller's CURRENT grant on the token-bound book at EDIT, at
     confirm time (NOT trusting the mint-time `u`/`r` claims). A grant revoked inside
@@ -207,18 +256,37 @@ def _bound_model(bound_estimate: dict) -> tuple[str | None, str | None]:
 
 @router.post("/confirm")
 async def confirm_action(
-    body: ConfirmRequest,
+    body: ConfirmRequest | None = None,
+    token: str | None = Query(default=None),
+    authorization: str | None = Header(default=None),
+    x_internal_token: str | None = Header(default=None, alias="X-Internal-Token"),
+    x_user_id: str | None = Header(default=None, alias="X-User-Id"),
+    x_mcp_key_id: str | None = Header(default=None, alias="X-Mcp-Key-Id"),
+    x_mcp_spend_cap_usd: str | None = Header(default=None, alias="X-Mcp-Spend-Cap-Usd"),
     db: asyncpg.Pool = Depends(get_db),
-    caller_user_id: str = Depends(get_current_user),
 ) -> dict:
     """The ONLY start path for a priced translation job. Verify the token, assert
-    the JWT caller == the token's bound user, RE-AUTHORIZE the caller's CURRENT
-    grant on the bound book + assert the chapter binding (a grant revoked inside the
-    TTL stops the spend; a payload cannot retarget another book's chapters), then
-    RE-PRICE the bound model (H14) over the accurate to-do/pending scope — either
-    run the action or refuse with a re-confirm signal when the cost drifted up past
-    tolerance."""
-    claims = _verify(body.confirm_token)
+    the caller == the token's bound user, RE-AUTHORIZE the caller's CURRENT grant on
+    the bound book + assert the chapter binding (a grant revoked inside the TTL stops
+    the spend; a payload cannot retarget another book's chapters), then RE-PRICE the
+    bound model (H14) over the accurate to-do/pending scope — either run the action
+    or refuse with a re-confirm signal when the cost drifted up past tolerance.
+
+    Dual-mode auth (D-PMCP-WORKER-CARRIER): the FE confirm card carries the user's
+    JWT + the token in the body; the public-MCP auth-service replay carries
+    X-Internal-Token + X-User-Id + ``?token=`` + (X-Mcp-Key-Id, X-Mcp-Spend-Cap-Usd).
+    Only the replay path supplies a key/cap → it rides the job row + message so the
+    background chapter worker attributes the spend to the agent's key."""
+    caller_user_id, mcp_key_id, spend_cap_usd = _resolve_confirm_caller(
+        x_internal_token, x_user_id, authorization, x_mcp_key_id, x_mcp_spend_cap_usd,
+    )
+    confirm_token = token or (body.confirm_token if body else None)
+    if not confirm_token:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail={"code": "TRANSL_CONFIRM_INVALID", "message": "missing confirmation token"},
+        )
+    claims = _verify(confirm_token)
     _assert_caller(claims, caller_user_id)
     p = _payload(claims)
     user_id = str(claims.user_id)
@@ -266,6 +334,7 @@ async def confirm_action(
                 force_retranslate=force_retranslate,
             ),
             user_id,
+            mcp_key_id=mcp_key_id, spend_cap_usd=spend_cap_usd,
         )
         return {
             "status": "action_done",
@@ -292,7 +361,10 @@ async def confirm_action(
         if reprice_exceeds_threshold(bound_cost, fresh.cost_usd):
             return _reprice_refusal(bound_cost, fresh)
 
-        job = await _retranslate_dirty_core(db, chapter_id, target_language, user_id)
+        job = await _retranslate_dirty_core(
+            db, chapter_id, target_language, user_id,
+            mcp_key_id=mcp_key_id, spend_cap_usd=spend_cap_usd,
+        )
         return {
             "status": "action_done",
             "job_id": str(job.job_id),
@@ -362,7 +434,10 @@ async def confirm_action(
             reasoning_effort=effort,
             thinking_enabled=effort not in ("none", "off"),
         )
-        result = await _create_extraction_job_core(db, book_id, claims.user_id, ext_payload)
+        result = await _create_extraction_job_core(
+            db, book_id, claims.user_id, ext_payload,
+            mcp_key_id=mcp_key_id, spend_cap_usd=spend_cap_usd,
+        )
         return {
             "status": "action_done",
             "job_id": result["job_id"],
