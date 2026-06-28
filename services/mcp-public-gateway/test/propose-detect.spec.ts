@@ -1,10 +1,13 @@
 import {
   descriptorDomain,
+  detectProposeInItem,
   detectProposeResult,
+  pendingApprovalForId,
   pendingApprovalResponse,
   proposeDivertError,
+  proposeDivertErrorForId,
 } from '../src/scope/propose-detect.js';
-import { singleWriteConfirmToolName } from '../src/scope/scope-filter.js';
+import { idKey, singleWriteConfirmToolName, writeConfirmCallsById } from '../src/scope/scope-filter.js';
 
 describe('detectProposeResult', () => {
   it('extracts token + domain from structuredContent and strips the token from preview', () => {
@@ -101,5 +104,48 @@ describe('divert response shaping', () => {
     const out = proposeDivertError({ id: 9 }) as { id: unknown; result: { isError: boolean } };
     expect(out.id).toBe(9);
     expect(out.result.isError).toBe(true);
+  });
+  it('pendingApprovalForId / proposeDivertErrorForId key off an explicit id (per-batch-item)', () => {
+    const ok = pendingApprovalForId('b', 'appr-2') as { id: unknown; result: { structuredContent: unknown } };
+    expect(ok.id).toBe('b');
+    expect(ok.result.structuredContent).toEqual({ status: 'pending_human_approval', approval_id: 'appr-2' });
+    const err = proposeDivertErrorForId(null) as { id: unknown; result: { isError: boolean } };
+    expect(err.id).toBeNull();
+    expect(err.result.isError).toBe(true);
+  });
+});
+
+describe('detectProposeInItem (D-PMCP-BATCH-WCONFIRM-DIVERT)', () => {
+  it('extracts a propose from an already-parsed batch response item', () => {
+    const item = { jsonrpc: '2.0', id: 3, result: { structuredContent: { confirm_token: 'tok-i', domain: 'book' } } };
+    const p = detectProposeInItem(item);
+    expect(p!.confirmToken).toBe('tok-i');
+    expect(p!.domain).toBe('book');
+    expect('confirm_token' in p!.preview).toBe(false);
+  });
+  it('returns null for a non-propose item, a non-object, or an array', () => {
+    expect(detectProposeInItem({ id: 1, result: { structuredContent: { ok: true } } })).toBeNull();
+    expect(detectProposeInItem(null)).toBeNull();
+    expect(detectProposeInItem('x')).toBeNull();
+    expect(detectProposeInItem([{ result: { structuredContent: { confirm_token: 't', domain: 'book' } } }])).toBeNull();
+  });
+});
+
+describe('writeConfirmCallsById (D-PMCP-BATCH-WCONFIRM-DIVERT)', () => {
+  it('maps id→name for write_confirm calls in a batch, ignoring other tiers/methods', () => {
+    const batch = [
+      { method: 'tools/call', params: { name: 'composition_publish' }, id: 1 }, // write_confirm
+      { method: 'tools/call', params: { name: 'book_get' }, id: 2 }, // read
+      { method: 'tools/list', id: 3 },
+    ];
+    const m = writeConfirmCallsById(batch);
+    expect(m.get(idKey(1))).toBe('composition_publish');
+    expect(m.has(idKey(2))).toBe(false);
+    expect(m.has(idKey(3))).toBe(false);
+    expect(m.size).toBe(1);
+  });
+  it('also handles a single (non-batch) write_confirm body and empties for none', () => {
+    expect(writeConfirmCallsById({ method: 'tools/call', params: { name: 'composition_publish' }, id: 9 }).get(idKey(9))).toBe('composition_publish');
+    expect(writeConfirmCallsById([{ method: 'tools/call', params: { name: 'book_get' }, id: 1 }]).size).toBe(0);
   });
 });

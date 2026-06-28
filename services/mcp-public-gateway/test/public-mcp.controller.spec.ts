@@ -469,6 +469,113 @@ describe('PublicMcpController', () => {
     expect(f.mock.calls.some((c) => String(c[0]).includes('/internal/mcp-keys/approvals'))).toBe(false);
   });
 
+  // ── P4 / OD-2: BATCH write_confirm divert (D-PMCP-BATCH-WCONFIRM-DIVERT) ─────
+  // A default key's JSON-RPC BATCH containing a write_confirm propose must NOT leak the
+  // token either: each propose item is diverted to the queue + token-stripped, fail-closed.
+  function wcBatchFetch(resolve: Record<string, unknown>, opts?: { approvalStatus?: number; created?: unknown[] }) {
+    return jest.fn().mockImplementation((url: string, init?: { body?: string }) => {
+      if (String(url).includes('/internal/mcp-keys/resolve')) {
+        return Promise.resolve({ status: 200, json: async () => resolve, headers: { get: () => 'application/json' } });
+      }
+      if (String(url).includes('/internal/mcp-keys/approvals')) {
+        if (opts?.created) opts.created.push(JSON.parse(init!.body!));
+        const st = opts?.approvalStatus ?? 201;
+        return Promise.resolve({ status: st, json: async () => (st < 300 ? { approval_id: 'appr-b1' } : {}), headers: { get: () => 'application/json' } });
+      }
+      // relay → a BATCH response array: one propose (id 5), one normal read (id 6)
+      return Promise.resolve({
+        status: 200,
+        text: async () =>
+          JSON.stringify([
+            { jsonrpc: '2.0', id: 5, result: { structuredContent: { confirm_token: 'SECRET-TOK', domain: 'composition', title: 'Generate' } } },
+            { jsonrpc: '2.0', id: 6, result: { structuredContent: { books: [] } } },
+          ]),
+        headers: { get: (h: string) => (h.toLowerCase() === 'content-type' ? 'application/json' : null) },
+      });
+    });
+  }
+  const batchBody = [
+    { jsonrpc: '2.0', method: 'tools/call', params: { name: 'composition_publish' }, id: 5 },
+    { jsonrpc: '2.0', method: 'tools/call', params: { name: 'book_get' }, id: 6 },
+  ];
+  const batchScopes = { user_id: 'u', key_id: 'k', scopes: ['read', 'write_confirm', 'domain:composition', 'domain:book'], allow_self_confirm: false };
+
+  it('diverts a write_confirm propose INSIDE a batch and STRIPS the token, keeping other items (D-PMCP-BATCH-WCONFIRM-DIVERT)', async () => {
+    setEnv();
+    const created: unknown[] = [];
+    (global as unknown as { fetch: jest.Mock }).fetch = wcBatchFetch(batchScopes, { created });
+    const r = mockRes();
+    await new PublicMcpController().handle(mockReq({ headers: { authorization: 'Bearer lw_pk_batch' }, body: batchBody }), r.res);
+    expect(r.statusCode).toBe(200);
+    expect(r.sentBody as string).not.toContain('SECRET-TOK'); // token NEVER returned to the agent
+    const sent = JSON.parse(r.sentBody as string) as Array<{ id: unknown; result: { structuredContent?: unknown }; _meta?: { step_outcome?: string } }>;
+    const item5 = sent.find((x) => x.id === 5)!;
+    expect(item5.result.structuredContent).toEqual({ status: 'pending_human_approval', approval_id: 'appr-b1' });
+    expect(item5._meta?.step_outcome).toBe('relayed'); // slice-F honesty preserved
+    const item6 = sent.find((x) => x.id === 6)!;
+    expect(item6.result.structuredContent).toEqual({ books: [] }); // untouched
+    expect(item6._meta?.step_outcome).toBe('relayed');
+    // exactly one approval created, attributed to the write_confirm step's tool
+    expect(created).toHaveLength(1);
+    expect(created[0]).toMatchObject({ key_id: 'k', owner_user_id: 'u', domain: 'composition', confirm_token: 'SECRET-TOK', tool_name: 'composition_publish' });
+    expect((created[0] as { preview: Record<string, unknown> }).preview.confirm_token).toBeUndefined();
+  });
+
+  it('fails CLOSED per item when the approval queue is unreachable (batch, no token leak)', async () => {
+    setEnv();
+    (global as unknown as { fetch: jest.Mock }).fetch = wcBatchFetch(batchScopes, { approvalStatus: 500 });
+    const r = mockRes();
+    await new PublicMcpController().handle(mockReq({ headers: { authorization: 'Bearer lw_pk_batch' }, body: batchBody }), r.res);
+    expect(r.sentBody as string).not.toContain('SECRET-TOK');
+    const sent = JSON.parse(r.sentBody as string) as Array<{ id: unknown; result: { isError?: boolean } }>;
+    expect(sent.find((x) => x.id === 5)!.result.isError).toBe(true);
+  });
+
+  it('does NOT divert a batch when the key allows self-confirm (tokens flow back)', async () => {
+    setEnv();
+    const f = wcBatchFetch({ ...batchScopes, allow_self_confirm: true });
+    (global as unknown as { fetch: jest.Mock }).fetch = f;
+    const r = mockRes();
+    await new PublicMcpController().handle(mockReq({ headers: { authorization: 'Bearer lw_pk_batch_sc' }, body: batchBody }), r.res);
+    expect(r.sentBody as string).toContain('SECRET-TOK'); // self-confirm keeps the token (slice-B path)
+    expect(f.mock.calls.some((c) => String(c[0]).includes('/internal/mcp-keys/approvals'))).toBe(false);
+  });
+
+  it('STILL scope-filters the tools/list item of a mixed batch after diverting the propose (no catalogue leak)', async () => {
+    setEnv();
+    // A batch that mixes a tools/list with a write_confirm propose. The divert must strip the
+    // token AND the list must still be filtered to the key's scope (regression guard).
+    (global as unknown as { fetch: jest.Mock }).fetch = jest.fn().mockImplementation((url: string) => {
+      if (String(url).includes('/internal/mcp-keys/resolve')) {
+        return Promise.resolve({ status: 200, json: async () => ({ user_id: 'u', key_id: 'k', scopes: ['read', 'write_confirm', 'domain:composition'], allow_self_confirm: false }), headers: { get: () => 'application/json' } });
+      }
+      if (String(url).includes('/internal/mcp-keys/approvals')) {
+        return Promise.resolve({ status: 201, json: async () => ({ approval_id: 'appr-mix' }), headers: { get: () => 'application/json' } });
+      }
+      return Promise.resolve({
+        status: 200,
+        text: async () =>
+          JSON.stringify([
+            { jsonrpc: '2.0', id: 'L', result: { tools: [{ name: 'book_get' }, { name: 'composition_publish' }, { name: 'kg_graph_query' }] } },
+            { jsonrpc: '2.0', id: 5, result: { structuredContent: { confirm_token: 'SECRET-TOK', domain: 'composition' } } },
+          ]),
+        headers: { get: (h: string) => (h.toLowerCase() === 'content-type' ? 'application/json' : null) },
+      });
+    });
+    const mixedBody = [
+      { jsonrpc: '2.0', method: 'tools/list', id: 'L' },
+      { jsonrpc: '2.0', method: 'tools/call', params: { name: 'composition_publish' }, id: 5 },
+    ];
+    const r = mockRes();
+    await new PublicMcpController().handle(mockReq({ headers: { authorization: 'Bearer lw_pk_mix' }, body: mixedBody }), r.res);
+    expect(r.sentBody as string).not.toContain('SECRET-TOK'); // token stripped
+    const sent = JSON.parse(r.sentBody as string) as Array<{ id: unknown; result: { tools?: Array<{ name: string }>; structuredContent?: unknown } }>;
+    const listItem = sent.find((x) => x.id === 'L')!;
+    const names = (listItem.result.tools ?? []).map((t) => t.name);
+    expect(names).toEqual(['composition_publish']); // book_get (domain:book) + kg_graph_query (domain:knowledge) filtered out
+    expect(sent.find((x) => x.id === 5)!.result.structuredContent).toEqual({ status: 'pending_human_approval', approval_id: 'appr-mix' });
+  });
+
   // ── P4 slice B: confirm_action (headless self-confirm) ─────────────────────
   const caBody = { jsonrpc: '2.0', method: 'tools/call', params: { name: 'confirm_action', arguments: { confirm_token: 'tok', domain: 'composition' } }, id: 8 };
 

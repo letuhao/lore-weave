@@ -44,20 +44,13 @@ function extractCost(obj: Record<string, unknown>): number | null {
 }
 
 /**
- * Inspect a relayed `tools/call` RESPONSE and extract a propose result, or null when it
- * is not a propose (no `confirm_token`). Single-message responses only — a batch is never
- * diverted in v1 (returns null). Robust to FastMCP's wrapping: checks `result`,
- * `result.structuredContent`, and JSON-parsed `result.content[].text`.
+ * Extract a propose result from a JSON-RPC `result` member (already parsed), or null when
+ * it is not a propose (no routable `confirm_token`). Robust to FastMCP's wrapping: checks
+ * the result object itself, its `structuredContent`, and JSON-parsed `content[].text`.
+ * Shared by the single-message (`detectProposeResult`) and per-item (`detectProposeInItem`)
+ * detectors so they stay byte-identical.
  */
-export function detectProposeResult(responseText: string): ProposeResult | null {
-  let parsed: unknown;
-  try {
-    parsed = JSON.parse(responseText);
-  } catch {
-    return null;
-  }
-  if (Array.isArray(parsed) || !parsed || typeof parsed !== 'object') return null;
-  const result = (parsed as { result?: unknown }).result;
+function extractProposeFromResult(result: unknown): ProposeResult | null {
   if (!result || typeof result !== 'object') return null;
 
   const r = result as Record<string, unknown>;
@@ -93,15 +86,44 @@ export function detectProposeResult(responseText: string): ProposeResult | null 
 }
 
 /**
- * The token-stripped response the agent receives in place of the propose result: a faithful
- * MCP tool result (content text + structuredContent) announcing the action is queued for a
- * human. The agent gets the `approval_id` to reference, never the confirm token.
+ * Inspect a relayed `tools/call` RESPONSE and extract a propose result, or null when it
+ * is not a propose (no `confirm_token`). Single-message responses only — a batch returns
+ * null here (the batch is diverted per-item via `detectProposeInItem`, see
+ * D-PMCP-BATCH-WCONFIRM-DIVERT). Robust to FastMCP's wrapping.
  */
-export function pendingApprovalResponse(body: unknown, approvalId: string): unknown {
+export function detectProposeResult(responseText: string): ProposeResult | null {
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(responseText);
+  } catch {
+    return null;
+  }
+  if (Array.isArray(parsed) || !parsed || typeof parsed !== 'object') return null;
+  return extractProposeFromResult((parsed as { result?: unknown }).result);
+}
+
+/**
+ * Per-item variant for a JSON-RPC BATCH response: extract a propose result from one already
+ * parsed batch response item (an object whose `.result` may carry the propose), or null.
+ * (D-PMCP-BATCH-WCONFIRM-DIVERT — the batch divert needs to inspect each item; the
+ * single-message `detectProposeResult` deliberately ignores batches.)
+ */
+export function detectProposeInItem(item: unknown): ProposeResult | null {
+  if (!item || typeof item !== 'object' || Array.isArray(item)) return null;
+  return extractProposeFromResult((item as { result?: unknown }).result);
+}
+
+/**
+ * The token-stripped response item keyed by an explicit JSON-RPC id — a faithful MCP tool
+ * result announcing the action is queued for a human. Used for BOTH the single-message
+ * divert (`pendingApprovalResponse` passes the request body's id) and per-batch-item divert
+ * (the batch passes each response item's own id so the array lines up 1:1).
+ */
+export function pendingApprovalForId(id: unknown, approvalId: string): unknown {
   const payload = { status: 'pending_human_approval', approval_id: approvalId };
   return {
     jsonrpc: '2.0',
-    id: jsonRpcIdOf(body),
+    id: id ?? null,
     result: {
       content: [{ type: 'text', text: JSON.stringify(payload) }],
       structuredContent: payload,
@@ -110,20 +132,38 @@ export function pendingApprovalResponse(body: unknown, approvalId: string): unkn
 }
 
 /**
- * Fail-closed result when the propose was detected but the approval could not be queued
- * (auth-service unreachable). The token is NEVER returned — the agent is told to retry. An
- * `isError` tool result so the agent's loop treats it as a failed step, not a success.
+ * The token-stripped response the agent receives in place of the propose result: a faithful
+ * MCP tool result (content text + structuredContent) announcing the action is queued for a
+ * human. The agent gets the `approval_id` to reference, never the confirm token.
  */
-export function proposeDivertError(body: unknown): unknown {
+export function pendingApprovalResponse(body: unknown, approvalId: string): unknown {
+  return pendingApprovalForId(jsonRpcIdOf(body), approvalId);
+}
+
+/**
+ * Fail-closed result (keyed by an explicit id) when the propose was detected but the
+ * approval could not be queued (auth-service unreachable). The token is NEVER returned —
+ * the agent is told to retry. An `isError` tool result so the agent's loop treats it as a
+ * failed step, not a success. Used for both the single and per-batch-item divert.
+ */
+export function proposeDivertErrorForId(id: unknown): unknown {
   const msg = 'this action needs human approval but could not be queued — please retry';
   return {
     jsonrpc: '2.0',
-    id: jsonRpcIdOf(body),
+    id: id ?? null,
     result: {
       content: [{ type: 'text', text: msg }],
       isError: true,
     },
   };
+}
+
+/**
+ * Fail-closed result when the propose was detected but the approval could not be queued
+ * (auth-service unreachable). The token is NEVER returned — the agent is told to retry.
+ */
+export function proposeDivertError(body: unknown): unknown {
+  return proposeDivertErrorForId(jsonRpcIdOf(body));
 }
 
 /** The JSON-RPC id of a single (non-batch) request body; null otherwise. */

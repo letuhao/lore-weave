@@ -3,8 +3,9 @@ import { randomUUID } from 'node:crypto';
 import type { Request, Response } from 'express';
 import { loadConfig } from '../config/config.js';
 import { KeyResolver } from '../auth/key-resolver.js';
-import { annotateBatchStepOutcomes, countToolCalls, filterListResponseText, gateRequestBody, isBatchBody, isListRequest, isWriteRequest, singleToolCallErrored, singleWriteConfirmToolName } from '../scope/scope-filter.js';
-import { detectProposeResult, pendingApprovalResponse, proposeDivertError } from '../scope/propose-detect.js';
+import { annotateBatchStepOutcomes, countToolCalls, filterListResponseText, gateRequestBody, idKey, isBatchBody, isListRequest, isWriteRequest, singleToolCallErrored, singleWriteConfirmToolName, writeConfirmCallsById } from '../scope/scope-filter.js';
+import { detectProposeInItem, detectProposeResult, pendingApprovalForId, pendingApprovalResponse, proposeDivertError, proposeDivertErrorForId } from '../scope/propose-detect.js';
+import type { ResolvedKey } from '../auth/key-resolver.js';
 import { confirmActionResult, denyConfirmAction, detectConfirmActionCall, injectConfirmActionTool } from '../scope/confirm-action.js';
 import { domainScope, type Domain } from '../scope/tool-policy.js';
 import { RateLimiter } from '../ratelimit/rate-limiter.js';
@@ -213,6 +214,19 @@ export class PublicMcpController {
         }
       }
 
+      // P4 / OD-2 (D-PMCP-BATCH-WCONFIRM-DIVERT): the single-message divert above only
+      // covers a lone tools/call. A default key can also smuggle a write_confirm propose
+      // inside a JSON-RPC BATCH — that path returned the confirm_token to the agent verbatim.
+      // Divert each propose item in the batch response to the owner's queue (same as the
+      // single path), stripping the token; fail-closed per item. We set `text` and FALL
+      // THROUGH (not return) so a mixed batch's tools/list item still gets scope-filtered and
+      // the step-outcome annotate (slice F) still runs over the rewritten, token-free array.
+      // Self-confirm keys keep their tokens (slice-B confirm_action), so this is default-only.
+      if (ok && hasBody && !resolved.allowSelfConfirm && isBatchBody(req.body)) {
+        const diverted = await this.divertBatchProposes(req.body, text, resolved);
+        if (diverted !== null) text = diverted;
+      }
+
       const rewroteList = ok && hasBody && isListRequest(req.body);
       if (rewroteList) {
         text = filterListResponseText(text, resolved.scopes, this.log);
@@ -251,6 +265,59 @@ export class PublicMcpController {
       this.log.warn(`relay to ai-gateway failed: ${e}`);
       return this.deny(res, -32603, 'upstream gateway unavailable', 502);
     }
+  }
+
+  /**
+   * D-PMCP-BATCH-WCONFIRM-DIVERT: rewrite a default key's relayed BATCH response, diverting
+   * every write_confirm propose item to the owner's approval queue and stripping its
+   * confirm_token. Returns the rewritten JSON text iff at least one item was diverted; null
+   * when there is nothing to divert (no write_confirm step, not a parseable batch array, or
+   * no propose found) so the caller falls through to the normal slice-F annotate path.
+   *
+   * Mirrors the single-message divert: an item is diverted iff its id matches a write_confirm
+   * `tools/call` request step AND its result carries a routable propose. Fail-closed per item
+   * — a queue failure yields a token-free `isError` result, never the token. The caller falls
+   * through to the existing list-filter + slice-F annotate over this returned, token-free text.
+   */
+  private async divertBatchProposes(reqBody: unknown, upstreamText: string, resolved: ResolvedKey): Promise<string | null> {
+    const wcById = writeConfirmCallsById(reqBody);
+    if (wcById.size === 0) return null; // no write_confirm step in the batch → nothing to divert
+    let parsed: unknown;
+    try {
+      parsed = JSON.parse(upstreamText);
+    } catch {
+      return null; // not JSON (SSE / unexpected) — can't safely rewrite; let it pass through
+    }
+    if (!Array.isArray(parsed)) return null; // a batch request should yield an array; if not, pass through
+
+    let diverted = false;
+    for (let i = 0; i < parsed.length; i++) {
+      const item = parsed[i];
+      if (!item || typeof item !== 'object') continue;
+      const toolName = wcById.get(idKey((item as { id?: unknown }).id));
+      if (!toolName) continue; // this item is not a write_confirm step
+      const propose = detectProposeInItem(item);
+      if (!propose) continue; // relayed result with no routable token — nothing to strip
+      const id = (item as { id?: unknown }).id;
+      const approvalId = await this.approvals.create({
+        keyId: resolved.keyId,
+        ownerUserId: resolved.userId,
+        toolName,
+        domain: propose.domain,
+        confirmToken: propose.confirmToken,
+        preview: propose.preview,
+        costEstimateUsd: propose.costEstimateUsd,
+      });
+      // Fail-closed: even if the queue is unreachable we must NOT return the token.
+      parsed[i] = approvalId ? pendingApprovalForId(id, approvalId) : proposeDivertErrorForId(id);
+      diverted = true;
+    }
+    if (!diverted) return null; // tokens present but none routable/matched → leave to normal path
+
+    // Return the token-free array; the caller falls through to list-filter (mixed batch) +
+    // the slice-F step-outcome annotate. Diverted items carry no `error`, so they read as
+    // `relayed` there (the propose DID run; only the token was withheld) — honest reporting.
+    return JSON.stringify(parsed);
   }
 
   private deny(res: Response, code: number, message: string, status = 401): void {

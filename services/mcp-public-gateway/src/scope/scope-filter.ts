@@ -280,8 +280,31 @@ function upstreamErrorById(upstreamText: string): Map<string, boolean> | null {
   return map;
 }
 
+/**
+ * Map of `idKey(id)` → tool name for every `write_confirm` `tools/call` in the body (single
+ * or batch). The batch-divert (D-PMCP-BATCH-WCONFIRM-DIVERT) uses this to divert ONLY genuine
+ * write_confirm request steps — the per-batch parallel of `singleWriteConfirmToolName`. A
+ * response item is diverted iff its id matches a write_confirm request step AND its result
+ * carries a routable propose (so a non-write tool that happens to echo a `confirm_token`-named
+ * field is never diverted). A notification (no id) can't be a tools/call, so it never appears.
+ */
+export function writeConfirmCallsById(body: unknown): Map<string, string> {
+  const messages: JsonRpcRequest[] = Array.isArray(body)
+    ? (body as JsonRpcRequest[])
+    : body && typeof body === 'object'
+      ? [body as JsonRpcRequest]
+      : [];
+  const map = new Map<string, string>();
+  for (const m of messages) {
+    if (isToolCall(m) && TOOL_POLICY[m.params.name]?.tier === 'write_confirm') {
+      map.set(idKey(m.id), m.params.name);
+    }
+  }
+  return map;
+}
+
 /** Stable string key for matching a JSON-RPC id across request/response (number|string|null). */
-function idKey(id: unknown): string {
+export function idKey(id: unknown): string {
   if (id === null || id === undefined) return ' null';
   return `${typeof id}:${String(id)}`;
 }
