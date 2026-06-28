@@ -158,6 +158,17 @@ func TestBookOntologyCRUD_FullLifecycle(t *testing.T) {
 		t.Fatal("artifact→faction link missing after set kind-genres")
 	}
 
+	// ── a book kind must keep ≥1 genre: an empty replace-set is rejected (#25) ─────
+	if w := ukReq(t, srv, http.MethodPut, base+"/ontology/kinds/"+artifact.BookKindID+"/genres", uid,
+		`{"genre_ids":[]}`); w.Code != http.StatusUnprocessableEntity {
+		t.Fatalf("empty kind-genres: want 422, got %d (%s)", w.Code, w.Body.String())
+	}
+	// the rejected empty set must not have cleared the existing link
+	ont = mustOntology(t, srv, base, uid)
+	if !hasKindGenre(ont, artifact.BookKindID, faction.GenreID) {
+		t.Fatal("artifact→faction link lost after a rejected empty set")
+	}
+
 	// ── deprecate attribute → gone from ontology ──────────────────────────────
 	if w := ukReq(t, srv, http.MethodDelete, base+"/ontology/attributes/"+origin.AttrID, uid, ""); w.Code != http.StatusNoContent {
 		t.Fatalf("delete attr: want 204, got %d", w.Code)

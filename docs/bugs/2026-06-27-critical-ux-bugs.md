@@ -352,10 +352,20 @@ Adopt genre is useless because there's nothing to adopt — genre is never wired
 > **FIXED (FE-only; BE already there):**
 > 1. **Book kind↔genre editor** — new `BookKindGenresModal.tsx` + a "Linked genres" (chain) action on each kind row in `ManageWorkspace`'s kinds column, wired to `ont.setKindGenres`. Toggles the book's genres as a replace-set. Enforces a **≥1-genre invariant** (Save disabled on an empty set): a kind with no link is unreachable in a genre-first view and can hold no attributes (attrs are per kind×genre), so the invariant guarantees every kind stays reachable under ≥1 genre column. Wiring the link also unblocks attribute creation, covering the "…and attribute" half.
 > 2. **Auto-link on create** — creating a book kind in Manage (with a genre selected) now links it to that genre immediately, fixing the create-then-vanish.
-> Tests: `BookKindGenresModal` (3) + `OntologyColumn` onLinks (2) — 8/8; full tiering+standards 45/45; tsc clean; +`col.links_kind`/`links.*`/`toast.links_*` ×4 locales.
-> **Known minor edge (not fixed):** book kinds created via the *old* QuickCreate (pre-fix) have
-> zero links → still invisible in Manage. New/adopted kinds are unaffected. Low (rare pre-fix
-> data); revisit only if it surfaces. → D-BOOK-ORPHAN-KIND-RELINK.
+> **/review-impl follow-ups (all fixed):** (a) the ≥1-genre invariant is now **load-bearing
+> server-side** — `setBookKindGenres` rejects an empty replace-set with 422 (`book_ontology_handler.go`;
+> user-tier kinds still allow zero since they're listed flat); (b) added a `ManageWorkspace` test
+> guarding the auto-link-on-create + links-action wiring (the headline fix was previously untested);
+> (c) ManageWorkspace clears a stale kind/attr drilldown selection when you unlink the kind from the
+> genre in view; (d) keyed the modal by kind id.
+> Tests: `BookKindGenresModal` (3) + `OntologyColumn` onLinks (2) + `ManageWorkspace` (2) + book
+> CRUD empty-set 422 (Go) — full tiering+standards 47/47; glossary-service green; tsc clean;
+> +`col.links_kind`/`links.*`/`toast.links_*` ×4 locales.
+> **Known minor edge (deferred → D-BOOK-ORPHAN-KIND-RELINK, LOW):** a book kind can still end up
+> with zero links and thus invisible in Manage via two narrow paths — (1) created through the *old*
+> pre-fix QuickCreate; (2) a transient failure of the link call *after* create succeeds (the toast
+> says "Save failed" though the kind exists). New/adopted kinds via the current flow are unaffected;
+> a proper fix is BE-atomic create-with-genres. Revisit only if it surfaces.
 
 ### [I] 26. Glossary merge needs a "merge/summary/overwrite" mode (dedup + rewrite)
 Glossary merge/append lacks an important type — call it merge or summary. A character's description changes each chapter but is almost the same; normal append produces lots of nearly-identical/useless data. Better to have a "merge overwrite" mode: take new raw extracted data, append to old data, and **rewrite a better version** with dedup. (User will give more detail on why.)

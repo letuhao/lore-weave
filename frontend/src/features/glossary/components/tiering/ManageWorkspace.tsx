@@ -275,10 +275,21 @@ export function ManageWorkspace({ bookId }: { bookId: string }) {
 
       {linkTarget && (
         <BookKindGenresModal
+          key={linkTarget.id}
           kindName={linkTarget.name}
           genres={genres}
           linkedGenreIds={kind_genres.filter((l) => l.kind_id === linkTarget.id).map((l) => l.genre_id)}
-          onSave={(ids) => ont.setKindGenres(linkTarget.id, ids)}
+          onSave={async (ids) => {
+            const r = await ont.setKindGenres(linkTarget.id, ids);
+            // If we just unlinked this kind from the genre currently in view, it leaves
+            // the kinds column — clear any drilldown selection pointing at it so the
+            // attribute panel + research panel don't keep targeting a detached kind.
+            if (linkTarget.id === kindId && genreId && !ids.includes(genreId)) {
+              setKindId(null);
+              setAttrId(null);
+            }
+            return r;
+          }}
           onClose={() => setLinkTarget(null)}
         />
       )}
