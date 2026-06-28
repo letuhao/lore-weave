@@ -128,6 +128,50 @@ async def _get(app, path):
         return await c.get(path, headers=_AUTH_HEADERS)
 
 
+async def _post_replay(app, path, json, *, user_id=_CALLER, internal_token=None,
+                       key=None, cap=None):
+    """POST as the auth-service REPLAY: internal-token + X-User-Id, NO Bearer JWT
+    (D-PMCP-WORKER-CARRIER). A router-level Depends(get_current_user) would 401 this
+    before the confirm helper runs — the bug a live-smoke caught."""
+    headers = {
+        "X-Internal-Token": internal_token if internal_token is not None
+        else settings.internal_service_token,
+        "X-User-Id": str(user_id),
+    }
+    if key is not None:
+        headers["X-Mcp-Key-Id"] = key
+    if cap is not None:
+        headers["X-Mcp-Spend-Cap-Usd"] = cap
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://t") as c:
+        return await c.post(path, json=json, headers=headers)
+
+
+async def test_confirm_replay_path_reaches_effect_without_jwt():
+    # The replay (internal-token + X-User-Id, NO JWT) must reach the confirm effect.
+    app, mutations, tokens, _s = _build()
+    r = await _post_replay(app, "/v1/kg/actions/confirm", {"confirm_token": _token()})
+    assert r.status_code == 200, r.text
+    assert r.json()["applied"] is True
+    tokens.consume.assert_awaited_once()
+
+
+async def test_confirm_replay_invalid_internal_token_401():
+    app, *_ = _build()
+    r = await _post_replay(app, "/v1/kg/actions/confirm", {"confirm_token": _token()},
+                           internal_token="wrong-token-xyz")
+    assert r.status_code == 401
+
+
+async def test_confirm_replay_wrong_user_403():
+    # Token bound to _CALLER; replay asserts X-User-Id=_OTHER → uniform refusal.
+    app, _m, tokens, _s = _build()
+    r = await _post_replay(app, "/v1/kg/actions/confirm", {"confirm_token": _token()},
+                           user_id=_OTHER)
+    assert r.status_code == 403
+    tokens.consume.assert_not_awaited()
+
+
 # ── F2b: the GET /preview?token= alias (generic confirm-card contract) ──────
 async def test_preview_get_requires_token_422():
     # No token query param → FastAPI Query validation rejects (route is wired).

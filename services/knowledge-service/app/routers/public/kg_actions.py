@@ -143,10 +143,16 @@ logger = logging.getLogger(__name__)
 
 _SYSTEM_DESCRIPTORS = frozenset({DESC_SYSTEM_CREATE, DESC_SYSTEM_PATCH, DESC_SYSTEM_DELETE})
 
+# NO router-level Depends(get_current_user): /confirm is DUAL-AUTH (FE JWT OR the
+# auth-service replay's internal-token+X-User-Id, D-PMCP-WORKER-CARRIER) and resolves
+# the caller itself via _resolve_kg_confirm_caller — a router-level Bearer requirement
+# would 401 the replay path before that helper runs (a public MCP key could then never
+# confirm kg_build_graph). The /preview routes keep their OWN param-level
+# Depends(get_current_user) (FE/JWT-only — the replay never previews), so dropping the
+# router-level guard leaves no route unauthenticated.
 router = APIRouter(
     prefix="/v1/kg/actions",
     tags=["kg-actions"],
-    dependencies=[Depends(get_current_user)],
 )
 
 
