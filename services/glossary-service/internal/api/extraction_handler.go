@@ -685,12 +685,35 @@ func (s *Server) bulkExtractEntities(w http.ResponseWriter, r *http.Request) {
 			actions = map[string]string{}
 		}
 
-		// 1. Find existing entity by normalized name or alias match
+		// 1. Find existing entity by normalized name or alias match (same kind).
 		existingID, err := s.findEntityByNameOrAlias(ctx, tx, bookID, kindID, ent.Name)
 		if err != nil {
 			BulkExtractTotal.WithLabelValues(OutcomeQueryFailed).Inc()
 			writeError(w, http.StatusInternalServerError, "GLOSS_INTERNAL", "entity lookup failed")
 			return
+		}
+		// mergeKindID is the kind to merge incoming attributes under. It equals the
+		// extraction kind for a same-kind hit; for a cross-kind hit (#38/#39) it is the
+		// MATCHED entity's actual kind, so attributes resolve against that entity's
+		// schema (compatible codes merge, the rest skip) instead of orphaning onto the
+		// wrong kind.
+		mergeKindID := kindID
+		// 1b. #38/#39 — cross-kind dedup: if the same name already exists under ANOTHER
+		// kind, reuse that entity instead of creating a duplicate. This kills both the
+		// one-name-under-N-kinds explosion (#38) and the re-run-with-changed-kinds
+		// duplication (#39, where the per-chapter writeback_key changes and the per-kind
+		// resolver misses the prior run's entity).
+		if existingID == uuid.Nil {
+			crossID, crossKindID, cerr := s.findEntityCrossKind(ctx, tx, bookID, ent.Name)
+			if cerr != nil {
+				BulkExtractTotal.WithLabelValues(OutcomeQueryFailed).Inc()
+				writeError(w, http.StatusInternalServerError, "GLOSS_INTERNAL", "cross-kind entity lookup failed")
+				return
+			}
+			if crossID != uuid.Nil {
+				existingID = crossID
+				mergeKindID = crossKindID
+			}
 		}
 
 		var result entityResult
@@ -753,8 +776,11 @@ func (s *Server) bulkExtractEntities(w http.ResponseWriter, r *http.Request) {
 			result.AttributesSkipped = []string{}
 			created++
 		} else {
-			// 3. MERGE with existing entity
-			written, skippedAttrs, err := s.mergeExtractedEntity(ctx, tx, existingID, kindID, ent, actions, strategyMap, attrDefMap, req.SourceLanguage)
+			// 3. MERGE with existing entity — under mergeKindID (the matched entity's
+			// own kind, which equals kindID for a same-kind hit and the cross-kind
+			// match's kind for #38/#39 dedup) so attributes resolve against the
+			// entity's real schema.
+			written, skippedAttrs, err := s.mergeExtractedEntity(ctx, tx, existingID, mergeKindID, ent, actions, strategyMap, attrDefMap, req.SourceLanguage)
 			if err != nil {
 				BulkExtractTotal.WithLabelValues(OutcomeQueryFailed).Inc()
 				writeError(w, http.StatusInternalServerError, "GLOSS_INTERNAL", "failed to merge entity: "+err.Error())
@@ -1282,6 +1308,39 @@ func (s *Server) findEntityByNameOrAlias(ctx context.Context, q pgxRWQuerier, bo
 	}
 
 	return uuid.Nil, nil
+}
+
+// findEntityCrossKind resolves a name to an existing book entity REGARDLESS of kind
+// (#38/#39). The per-kind findEntityByNameOrAlias above misses when the LLM tags the
+// same character under a different kind (or a re-run with a changed kind set lands it
+// elsewhere), so the resolver creates a duplicate. This fallback matches the same
+// folded name across ALL kinds in the book via the app-maintained normalized_name
+// column (the SAME textnorm.Normalize fold the per-kind resolver and the dedup
+// backstop use — so 張若塵/张若尘/full-width/case variants all collapse), and returns
+// the matched entity + its ACTUAL kind so the caller merges incoming attributes
+// against that kind, not the (mis-tagged) extraction kind.
+//
+// Oldest-wins (created_at) makes the canonical entity deterministic. Name-only for
+// now — a cross-kind ALIAS collision is rarer and left as a follow-up. Safe under the
+// per-book extraction-writeback advisory lock (the loop is serialized per book), so a
+// cross-kind check-then-merge can't race another job into a duplicate.
+func (s *Server) findEntityCrossKind(ctx context.Context, q pgxRWQuerier, bookID uuid.UUID, name string) (entityID, kindID uuid.UUID, err error) {
+	normalized := normalizeEntity(name)
+	if normalized == "" {
+		return uuid.Nil, uuid.Nil, nil
+	}
+	err = q.QueryRow(ctx, `
+		SELECT entity_id, kind_id FROM glossary_entities
+		WHERE book_id = $1 AND normalized_name = $2 AND deleted_at IS NULL
+		ORDER BY created_at, entity_id
+		LIMIT 1`, bookID, normalized).Scan(&entityID, &kindID)
+	if err == pgx.ErrNoRows {
+		return uuid.Nil, uuid.Nil, nil
+	}
+	if err != nil {
+		return uuid.Nil, uuid.Nil, err
+	}
+	return entityID, kindID, nil
 }
 
 // entityHasTag reports whether the entity's tags array contains tag.

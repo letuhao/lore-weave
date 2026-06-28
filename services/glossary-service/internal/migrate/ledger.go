@@ -96,6 +96,9 @@ var chain = []Step{
 	// M7 (D-T5.2-WINDOWED-MENTIONS) — per-chapter mention_count on chapter_entity_links
 	// so the FE mention heatmap can window per-chapter frequencies ≤ a cutoff.
 	{"0041_chapter_link_mention_count", UpChapterLinkMentionCount},
+	// #38/#39 — (book_id, normalized_name) lookup index for cross-kind entity dedup
+	// (findEntityCrossKind), so a name resolves across kinds without a per-book scan.
+	{"0042_cross_kind_dedup_index", UpCrossKindDedupIndex},
 }
 
 // EnsureLedger creates the schema_migrations bookkeeping table. Idempotent; must run

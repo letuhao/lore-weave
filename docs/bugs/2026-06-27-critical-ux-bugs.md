@@ -467,20 +467,20 @@ The job GUI should display the number of LLM calls and the estimated total calls
 > estimate (windowed extraction chapters / KG recovery+filter calls the estimate omits) — honest
 > "estimate, not quote"; the realized count is exact.
 
-### [I] 38. Extraction creates impossible entity counts (duplicates across kinds)
+### [x] 38. Extraction creates impossible entity counts (duplicates across kinds)
 Extraction progression has a critical bug: 30 glossary kinds but it extracts 360 entities with an error message. A chapter can't have that many kinds. Suspect this is part of why extraction is slow. 739 entities created for only 5 chapters — impossible. Maybe glossary duplication (one glossary duplicated across multiple kinds because kind definitions are bad, or LLM mistakes).
 
 > RC (VERIFIED): the entity dedup unique index is `(book_id, kind_id, normalized_name)` (`glossary-service/internal/migrate/extraction_concurrency.go:54-56`) and the resolver `findEntityByNameOrAlias` scopes lookups to `kind_id` (`extraction_handler.go` ~1173-1282) — so the SAME name extracted under N kinds creates N separate entities. Compounded by **#33** (no kind description in the prompt → the LLM tags one name under several ambiguous kinds). 30 kinds × per-chapter ⇒ hundreds of phantom entities.
-> Fix (DESIGN DECISION): pick the entity-identity model — either make identity `(book, normalized_name)` and reconcile kind (one "Li Yun" regardless of kind), or keep per-kind but have the resolver dedup cross-kind at write time — AND fix #33 to cut wrong-kind tagging at the source.
+> Fix: DONE (**user decision: cross-kind dedup at write time** — keep the per-kind structure, but resolve a name across ALL kinds before creating). New `findEntityCrossKind` ([extraction_handler.go](../../services/glossary-service/internal/api/extraction_handler.go)) matches a name across every kind via the app-maintained `normalized_name` column (the SAME `textnorm.Normalize` fold the per-kind resolver + dedup backstop use — so 張若塵/张若尘/full-width/case variants collapse cross-kind too). The writeback loop calls it on a same-kind miss and **merges into the matched entity under THAT entity's own kind** (`attrDefMap` already holds all book kinds → compatible attrs land, incompatible ones skip), oldest-wins, race-safe under the existing per-book writeback advisory lock. Migration `0042` adds a `(book_id, normalized_name)` partial lookup index so the cross-kind lookup is a seek, not a per-book scan (addresses the "extraction is slow" angle). Plus **#33** (kind description in the prompt, shipped `73f87476`) cuts wrong-kind tagging at the source. VERIFY: glossary build/vet clean; **3 cross-kind tests** (same-name-different-kind reuses + merges, distinct name still creates, traditional↔simplified folds to one) + the extraction/resolver/pipeline/dedup suites green; migration chain (incl. 0042) applies. **Residual `D-CROSSKIND-DEDUP-REMEDIATION`**: this PREVENTS new cross-kind dups; EXISTING ones in a book need cleanup — via #40 bulk-delete, or a future cross-kind extension of the `/dedup-name-variants` remediation (it currently groups by (kind, name)).
 
-### [I] 39. Re-running extraction produces 100% duplicate entities
+### [x] 39. Re-running extraction produces 100% duplicate entities
 Glossary extraction has a bug when run many times: 30 kinds, 10 chapters generates 3000+
 glossary entries — 100% duplicated. Need to investigate. (Likely the same root cause as #38 —
 the merge/dedup path failing to recognize an already-extracted entity on a re-run, so each run
 re-creates instead of merging.)
 
 > RC (investigated): the chapter-level idempotency gate keys on `extraction_writeback_log.writeback_key` = hash(book, chapter, content, kinds, profile) (`extraction_handler.go` ~620-641). Change the profile/kinds and the key changes, so a re-run bypasses idempotency; the resolver then re-creates rather than matching prior-run entities (same per-kind scope limitation as #38). Net: re-run ⇒ ~100% duplicates.
-> Fix (proposed): make dedup ENTITY-scoped — match an existing entity by (book, normalized_name[, kind]) before create, independent of the chapter writeback key; keep writeback_key only as a cheap fast-path skip. Pairs with the #38 identity decision.
+> Fix: DONE together with **#38** — the same `findEntityCrossKind` cross-kind name match is independent of the chapter `writeback_key` AND independent of kind, so a re-run with a changed profile/kind set (the key bypass) now reuses the prior run's entity instead of re-creating. (Same-kind re-runs were already caught by `findEntityByNameOrAlias`; the residual duplication was the cross-kind case.)
 
 ### [x] 40. No way to batch-delete glossary entities
 There is no way to batch delete glossary entities (e.g. to clean up the duplicates from #38/#39).
