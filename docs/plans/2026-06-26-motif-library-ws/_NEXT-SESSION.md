@@ -1,5 +1,36 @@
 # ▶ NEXT SESSION — Narrative Motif Library BUILD (handoff)
 
+## STATUS (2026-06-28 PM-14) — scene rebindRole + chain ROUTES CLEARED (the last low-reach BE)
+
+**`D-MOTIF-SCENE-REBIND-CHAIN`** ✅ (the routes half) — the two per-scene affordances the FE
+`useMotifBinding` hook has always referenced but the backend never served are now real. BE-only
+(composition-service); no migration (reuses `motif_application`).
+- **NEW `PATCH …/works/{project_id}/outline/{node_id}/motif/role`** (`rebind_node_motif_role`):
+  rebind ONE role of a node's bound motif → a cast entity, or `entity_id=null` = unresolve. Targets
+  the single `role_bindings[role_key]` key in place via the NEW `MotifApplicationRepo.set_role_binding`
+  (`jsonb_set`, `create_missing=false`) so the other resolved roles + motif lineage + `created_at`
+  are untouched. **This affordance is FULLY FE-wired** (`RoleBindingRow` → `onRebindRole`) — it now
+  works end-to-end. H13 uniform 404 on: foreign/missing node, a node with NO bound motif, a `role_key`
+  the binding doesn't have (no arbitrary jsonb-key write), or an `entity_id` not in THIS book's cast.
+- **NEW `POST …/works/{project_id}/outline/{node_id}/motif/chain`** (`chain_node_motif`): pre-seed
+  the node (`for_node_id` = the next scene) with a legal-succession motif resolved BY CODE
+  (`MotifRepo.get_by_codes`, caller's own shadows system), then a lightweight per-node ledger bind
+  reusing `_bind_scene_motif` (now parametrized `bound_via='chain'`). H13 404 on a foreign/missing
+  node or an unresolvable/foreign code. **Contract-complete but not yet UI-reachable** — see the
+  narrowed defer below.
+- **VERIFY:** 11 new unit tests (`test_scene_motif_rebind_chain.py` — rebind update/unresolve + 4
+  tenancy 404s, chain resolve/404/404 + dispatch, `bound_via='chain'` provenance) + 62 regression
+  (plan-router/motif_application/scene-bind/arc-materialize) = **73 passed**; provider-gate clean.
+  Single-service (no cross-service seam) → no live-smoke required by the gate; the dispatch + every
+  tenancy 404 are unit-proven.
+
+**▶ NARROWED remaining defer — `D-MOTIF-CHAIN-SUCCESSION-HINT` (gate 2, FE cross-layer):** the chain
+ROUTE exists, but `ChapterMotifBindings` supplies no `succession` prop to `MotifBindingCard`, so
+`ChainItHint` never renders → the button is unreachable. Surfacing it needs a "what motif legally
+follows this one" producer (query the `motif_link` `precedes` edges for the bound motif → a per-scene
+`SuccessionHint{from_motif_id,to_motif_code,to_motif_name,for_node_id}`) threaded into the bindings
+read + the card. That's a focused FE+thin-BE feature, not a route. The rebind half is DONE.
+
 ## STATUS (2026-06-28 PM-13) — D-W10-FE-PLACE-MOTIF-PICKER CLEARED (the "+ place" picker)
 
 **`D-W10-FE-PLACE-MOTIF-PICKER`** ✅ — the timeline "+ place" affordance no longer authors empty-coded

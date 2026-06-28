@@ -126,6 +126,34 @@ class MotifApplicationRepo:
                 recs = await _do(c)
         return {str(r["motif_id"]): int(r["n"]) for r in recs}
 
+    async def set_role_binding(
+        self, user_id: UUID, project_id: UUID, node_id: UUID,
+        role_key: str, entity_id: UUID | None, *, conn: asyncpg.Connection,
+    ) -> int:
+        """Rebind ONE role on the node's bound application (D-MOTIF-SCENE-REBIND-CHAIN).
+
+        Targets the single ``role_bindings[role_key]`` key in place (``jsonb_set``) so a
+        role rebind never disturbs the other resolved roles, the motif lineage, or
+        ``created_at``. ``entity_id=None`` writes a JSON ``null`` — the role stays visible
+        but unresolved (matching the FE ``RoleBinding.entity_id=null``). Scoped to
+        user+project+node (the kinds-bug tenancy rule). ``create_missing=false`` so a
+        role the binding never had is a no-op (the router guards key membership; this is
+        belt-and-suspenders). Returns the rows updated (0 = nothing bound on the node)."""
+        val = json.dumps(str(entity_id)) if entity_id is not None else "null"
+        res = await conn.execute(
+            """
+            UPDATE motif_application
+            SET role_bindings = jsonb_set(
+                  COALESCE(role_bindings, '{}'::jsonb), ARRAY[$4], $5::jsonb, false)
+            WHERE user_id = $1 AND project_id = $2 AND outline_node_id = $3
+            """,
+            user_id, project_id, node_id, role_key, val,
+        )
+        try:
+            return int(res.split()[-1])
+        except (ValueError, IndexError):
+            return 0
+
     async def delete_for_nodes(
         self, user_id: UUID, project_id: UUID, node_ids: list[UUID],
         *, conn: asyncpg.Connection,

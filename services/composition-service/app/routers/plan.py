@@ -465,7 +465,7 @@ class MotifSwapRequest(BaseModel):
 async def _bind_scene_motif(
     *, pool: Any, apps: MotifApplicationRepo, glossary: GlossaryClient,
     user_id: UUID, project_id: UUID, book_id: UUID, node_id: UUID,
-    motif_id: UUID | None,
+    motif_id: UUID | None, bound_via: str = "manual_scene",
 ) -> dict[str, Any]:
     """Per-SCENE motif bind/swap/clear (D-MOTIF-FE-SWAP-NODE-GRANULARITY).
 
@@ -473,7 +473,9 @@ async def _bind_scene_motif(
     motif's beats), a scene bind is a lightweight ledger write: record "this ONE scene
     realizes motif M" as a single `motif_application` (motif-level — `beat_key` null),
     atomically REPLACING any prior binding on the node. No scene is archived or
-    instantiated. `motif_id=None` clears the node's binding (→ free-form)."""
+    instantiated. `motif_id=None` clears the node's binding (→ free-form). `bound_via`
+    stamps the provenance in annotations (`manual_scene` for a hand-bind, `chain` for a
+    legal-succession pre-seed)."""
     if motif_id is None:
         async with pool.acquire() as c:
             async with c.transaction():
@@ -497,7 +499,7 @@ async def _bind_scene_motif(
         "outline_node_id": str(node_id),
         "role_bindings": binding.role_bindings,
         # motif-level (no beat_key); a manual scene bind isn't a plan-time match.
-        "annotations": {**binding.annotations, "bound_via": "manual_scene"},
+        "annotations": {**binding.annotations, "bound_via": bound_via},
     }
     async with pool.acquire() as c:
         async with c.transaction():
@@ -648,6 +650,108 @@ async def clear_node_motif(
         "archived_scene_ids": res.archived_scene_ids,
         "cleared": True,
     }
+
+
+# ── per-scene role-rebind + legal-succession chain (D-MOTIF-SCENE-REBIND-CHAIN) ──
+
+class RoleRebindRequest(BaseModel):
+    # rebind ONE role of the node's bound motif to a cast entity, or null = unresolve.
+    role_key: str
+    entity_id: UUID | None = None
+
+
+class MotifChainRequest(BaseModel):
+    # the legal-succession motif to pre-seed onto this (the NEXT) node, resolved BY CODE.
+    to_motif_code: str
+
+
+@router.patch("/works/{project_id}/outline/{node_id}/motif/role")
+async def rebind_node_motif_role(
+    project_id: UUID,
+    node_id: UUID,
+    body: RoleRebindRequest,
+    user_id: UUID = Depends(get_current_user),
+    bearer: str = Depends(get_bearer_token),
+    works: WorksRepo = Depends(get_works_repo),
+    glossary: GlossaryClient = Depends(get_glossary_client_dep),
+    outline: OutlineRepo = Depends(get_outline_repo),
+):
+    """Rebind ONE role of a node's bound motif → a cast entity (or null = unresolve) —
+    the FE ``RoleBindingRow`` → ``useMotifBinding.rebindRole`` seam (`PATCH …/motif/role`).
+    Targets the single ``role_bindings[role_key]`` key in place, leaving the other
+    resolved roles + motif lineage untouched. H13 uniform 404 (no existence oracle) on:
+    a foreign/missing node, a node with NO bound motif (nothing to rebind), a ``role_key``
+    the binding doesn't have, or an ``entity_id`` not in THIS book's cast (tenant-scoped —
+    a rebind can only point at the book's own glossary entities)."""
+    work = await _require_work(works, user_id, project_id)
+    node = await outline.get_node(user_id, node_id)
+    if node is None or node.project_id != project_id:
+        raise HTTPException(status_code=404, detail={"code": "NOT_FOUND"})
+
+    apps = MotifApplicationRepo(get_pool())
+    bound = await apps.by_nodes(user_id, project_id, [node_id])
+    app = bound[0] if bound else None
+    if app is None or app.motif_id is None:
+        # nothing bound on the node → no role to rebind.
+        raise HTTPException(status_code=404, detail={"code": "NOT_FOUND"})
+    # only a role the binding actually has may be rebound (no arbitrary jsonb-key write).
+    if body.role_key not in (app.role_bindings or {}):
+        raise HTTPException(status_code=404, detail={"code": "NOT_FOUND"})
+    # the target entity must be in the book's own cast (tenant-scoped; no foreign entity).
+    if body.entity_id is not None:
+        cast = await _cast_roster(glossary, work.book_id)
+        if str(body.entity_id) not in {e["entity_id"] for e in cast}:
+            raise HTTPException(status_code=404, detail={"code": "NOT_FOUND"})
+
+    pool = get_pool()
+    async with pool.acquire() as c:
+        async with c.transaction():
+            updated = await apps.set_role_binding(
+                user_id, project_id, node_id, body.role_key, body.entity_id, conn=c)
+    return {
+        "node_id": str(node_id),
+        "role_key": body.role_key,
+        "entity_id": str(body.entity_id) if body.entity_id is not None else None,
+        "rebound": updated > 0,
+    }
+
+
+@router.post("/works/{project_id}/outline/{node_id}/motif/chain")
+async def chain_node_motif(
+    project_id: UUID,
+    node_id: UUID,
+    body: MotifChainRequest,
+    user_id: UUID = Depends(get_current_user),
+    bearer: str = Depends(get_bearer_token),
+    works: WorksRepo = Depends(get_works_repo),
+    glossary: GlossaryClient = Depends(get_glossary_client_dep),
+    outline: OutlineRepo = Depends(get_outline_repo),
+):
+    """Pre-seed a node with a legal-succession motif resolved BY CODE — the FE
+    ``ChainItHint`` → ``useMotifBinding.chainIt`` seam (`POST …/motif/chain`, where
+    ``for_node_id`` is the NEXT scene). Resolves ``to_motif_code`` under the visible
+    tier-merge (the caller's own row shadows system), then writes a lightweight per-node
+    ledger binding (``bound_via='chain'``, no scene regeneration) reusing
+    ``_bind_scene_motif``. H13 uniform 404 (no oracle) on a foreign/missing node or an
+    unresolvable/foreign code."""
+    work = await _require_work(works, user_id, project_id)
+    node = await outline.get_node(user_id, node_id)
+    if node is None or node.project_id != project_id:
+        raise HTTPException(status_code=404, detail={"code": "NOT_FOUND"})
+
+    resolved = await MotifRepo(get_pool()).get_by_codes(user_id, [body.to_motif_code])
+    motif = resolved.get(body.to_motif_code)
+    if motif is None:
+        # no visible active motif with that code → uniform not-found (no oracle).
+        raise HTTPException(status_code=404, detail={"code": "NOT_FOUND"})
+
+    apps = MotifApplicationRepo(get_pool())
+    out = await _bind_scene_motif(
+        pool=get_pool(), apps=apps, glossary=glossary, user_id=user_id,
+        project_id=project_id, book_id=work.book_id, node_id=node_id,
+        motif_id=motif.id, bound_via="chain",
+    )
+    return {**out, "chained": True, "motif_code": motif.code}
 
 
 def _assemble_motif_bindings(
