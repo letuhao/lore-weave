@@ -70,20 +70,80 @@ FIND_TOOLS_TOOL: dict = {
 }
 
 
-# ── C-FT: the always-on core (advertised every universal /chat turn, ≤8) ──────
+# ── C-FT: the always-on core (advertised on every discovery turn, ≤8) ─────────
 # Domain reads/writes are discovered via find_tools; only the meta-tool + the
-# generic frontend tools are always present. The frontend-tool schemas live in
-# frontend_tools.py (S-CONSUMER sole-owns that file); this names which are core.
+# truly GENERIC, surface-agnostic frontend tools are always present. The
+# frontend-tool schemas live in frontend_tools.py (S-CONSUMER sole-owns that
+# file); this names which are core.
+#
+# `propose_edit` is deliberately NOT core: it targets "the chapter the user is
+# currently writing", so it only makes sense with editor_context and is
+# advertised via `frontend_tool_defs(editor=True)` (discovery_extra_frontend) on
+# the editor surface — never on a book-scoped or universal surface where there is
+# no open chapter. (`propose_record_edit` is the generic, surface-agnostic record
+# diff card and stays core.)
 ALWAYS_ON_CORE_NAMES: tuple[str, ...] = (
     FIND_TOOLS_NAME,
     "ui_navigate",
     "ui_open_book",
     "ui_show_panel",
     "ui_watch_job",
-    "propose_edit",
     "propose_record_edit",
     "confirm_action",
 )
+
+
+# ── C-FT: per-surface HOT SET (the enterprise hot-set + lazy-tail pattern) ────
+# Discovery is the STANDARD transport for every agui surface (the full catalog is
+# never shipped — the agent find_tools-searches the long tail on demand). What
+# differs per surface is the HOT SET: the domains whose tools are seeded into the
+# discovery active-set on pass 1, so they're advertised immediately without a
+# find_tools round-trip. This keeps a surface's own skill working (it names those
+# tools directly) while everything OUTSIDE the surface's domains stays lazy — so
+# the per-turn tool payload stays small no matter how many domains/MCP tools the
+# platform federates (P0: scales to thousands of tools).
+#
+# The rule for choosing a surface's hot domains: HOT = the domain(s) the surface's
+# injected SKILL names directly (so the skill works with no discovery hop); every
+# other domain is lazy. Both the book-scoped (glossary page / reader) AND the
+# chapter-editor surfaces inject the SAME glossary skill, which names only
+# `glossary_*` tools — so both have hot domain {glossary}. The editor's extra
+# capability (prose write-back) is the `propose_edit` FRONTEND tool, advertised via
+# `frontend_tool_defs(editor=True)`, NOT a backend domain — so composition / book
+# tools stay lazy there too (reachable via find_tools, which the glossary skill
+# tells the agent to use for off-glossary asks). Universal (no book/editor) seeds
+# nothing — pure discovery. Admin uses its own small catalog (no discovery).
+#
+# Domain membership is by the tool name's prefix (`glossary_book_patch` →
+# `glossary`), matching the federated naming convention; a NEW domain service's
+# tools are therefore lazy-by-default — they only enter a surface's hot set when
+# that surface's domain list opts them in here.
+_BOOK_SCOPED_HOT_DOMAINS: frozenset[str] = frozenset({"glossary"})
+
+
+def surface_hot_domains(*, editor: bool = False, book_scoped: bool = False) -> set[str]:
+    """The domain prefixes whose tools are HOT (advertised every turn) for a
+    surface. Any book-scoped surface (the glossary page/reader OR the chapter
+    editor — both inject the glossary skill) gets the glossary domain hot; the
+    editor adds no extra backend domain (its prose write-back is a frontend tool).
+    Universal (neither flag) returns ∅ — pure discovery."""
+    if book_scoped or editor:
+        return set(_BOOK_SCOPED_HOT_DOMAINS)
+    return set()
+
+
+def hot_tool_names(catalog: list[dict], domains: set[str]) -> set[str]:
+    """The catalog tool names whose domain prefix is in ``domains`` — the set to
+    seed into the discovery active-set so they're advertised on the first pass.
+    Empty ``domains`` → empty set (universal surface: nothing pre-seeded)."""
+    if not domains:
+        return set()
+    out: set[str] = set()
+    for td in catalog:
+        name = tool_name(td)
+        if name and _provider_prefix(name) in domains:
+            out.add(name)
+    return out
 
 
 # ── C-TOOL: tier + meta readers ──────────────────────────────────────────────

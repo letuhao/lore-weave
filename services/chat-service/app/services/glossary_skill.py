@@ -36,6 +36,12 @@ attribute, delete an unneeded one) act DIRECTLY with the glossary tools — do N
 call web-search or list-templates tools. Only research the web or list ontology \
 templates when the user EXPLICITLY asks you to research a topic or adopt a \
 template; otherwise those calls are off-task and waste the turn.
+- **The glossary tools are already advertised — use them directly.** If the user \
+asks for something OUTSIDE the glossary (e.g. start a translation, change a setting, \
+open a page), that capability exists but its tool isn't loaded yet: call \
+`find_tools` with what the user wants, and the matching tool becomes callable on \
+your next step. Do NOT tell the user you can't do something before searching for it \
+with `find_tools`.
 - To find entities, use `glossary_search` — it is the canonical glossary lookup. \
 Do not use `memory_search` for glossary questions; that tool is for conversation \
 memory, not the glossary.
