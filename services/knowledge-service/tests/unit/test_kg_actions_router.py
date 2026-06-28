@@ -13,6 +13,7 @@ from types import SimpleNamespace
 from unittest.mock import AsyncMock
 from uuid import uuid4
 
+import jwt
 import pytest
 from fastapi import FastAPI
 from httpx import ASGITransport, AsyncClient
@@ -106,16 +107,25 @@ def _build(*, caller=_CALLER, meta=(_CALLER, _BOOK), grant=GrantLevel.OWNER,
     return app, mutations, tokens, schemas
 
 
+# confirm_action now resolves the FE caller by decoding the real Authorization
+# header (D-PMCP-WORKER-CARRIER dual-auth: FE JWT *or* the auth-service replay),
+# so the route tests must present a valid Bearer JWT for _CALLER. The preview
+# routes still use Depends(get_current_user) (overridden in _build), which the
+# header leaves untouched.
+_CALLER_JWT = jwt.encode({"sub": str(_CALLER)}, settings.jwt_secret, algorithm="HS256")
+_AUTH_HEADERS = {"Authorization": f"Bearer {_CALLER_JWT}"}
+
+
 async def _post(app, path, json):
     transport = ASGITransport(app=app)
     async with AsyncClient(transport=transport, base_url="http://t") as c:
-        return await c.post(path, json=json)
+        return await c.post(path, json=json, headers=_AUTH_HEADERS)
 
 
 async def _get(app, path):
     transport = ASGITransport(app=app)
     async with AsyncClient(transport=transport, base_url="http://t") as c:
-        return await c.get(path)
+        return await c.get(path, headers=_AUTH_HEADERS)
 
 
 # ── F2b: the GET /preview?token= alias (generic confirm-card contract) ──────

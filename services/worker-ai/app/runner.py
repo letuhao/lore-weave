@@ -599,6 +599,15 @@ class JobRow:
     # the default here only covers synthetic/test rows. No re-clamp (already
     # clamped at mint — the runner is single-purpose + trusted).
     reasoning_effort: str = "none"
+    # D-PMCP-WORKER-CARRIER — the public-MCP key id + per-key spend ceiling that
+    # priced this extraction (kg_build_graph confirm route → extraction_jobs row).
+    # The in-process attribution contextvar dies at the job-row boundary (knowledge
+    # extraction is poll-based), so the carrier rides the row → resume_state →
+    # process_job re-sets set_public_key_attribution before any provider call.
+    # NULL ⇒ a first-party (non-public-MCP) job. spend_cap_usd is DOUBLE PRECISION
+    # (float8) so asyncpg binds the float natively — see the migration note.
+    mcp_key_id: str | None = None
+    spend_cap_usd: float | None = None
 
 
 # ── E0-3 Phase 2a — BYOK dual-identity billing resolution ────────────
@@ -697,7 +706,7 @@ async def _get_running_jobs(pool: asyncpg.Pool) -> list[JobRow]:
                j.cost_spent_usd, j.campaign_id,
                j.billing_user_id, j.billing_embedding_model, j.billing_llm_model,
                j.targets, j.concurrency_level, j.pinned_entity_ids,
-               j.reasoning_effort,
+               j.reasoning_effort, j.mcp_key_id, j.spend_cap_usd,
                p.embedding_dimension,
                p.extraction_config, p.genre, p.save_raw_extraction
         FROM extraction_jobs j
@@ -749,6 +758,10 @@ async def _get_running_jobs(pool: asyncpg.Pool) -> list[JobRow]:
             # D-KG-WORKER-GRADED-EFFORT — TEXT NOT NULL DEFAULT 'none'; coerce a
             # stray NULL (synthetic row / pre-migration replica) to "none".
             reasoning_effort=r["reasoning_effort"] or "none",
+            # D-PMCP-WORKER-CARRIER — public-MCP key + per-key cap (NULL on a
+            # first-party job). spend_cap_usd is float8 → asyncpg returns a float.
+            mcp_key_id=r["mcp_key_id"],
+            spend_cap_usd=r["spend_cap_usd"],
         ))
     return result
 

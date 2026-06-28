@@ -100,9 +100,17 @@ def _build(*, claimed=True, system_repo=None, admin_enabled=True):
     return app, priv, admin_key, repo, tokens
 
 
+# confirm_action resolves the FE caller from a real Authorization Bearer JWT
+# (D-PMCP-WORKER-CARRIER dual-auth). An admin confirms from their signed-in
+# browser, so every admin confirm/preview carries a session JWT *and* the RS256
+# X-Admin-Token. The admin path ignores the caller id, so any valid sub works.
+_SESSION_JWT = jwt.encode({"sub": str(uuid4())}, settings.jwt_secret, algorithm="HS256")
+
+
 async def _post(app, path, json, headers=None):
+    merged = {"Authorization": f"Bearer {_SESSION_JWT}", **(headers or {})}
     async with AsyncClient(transport=ASGITransport(app=app), base_url="http://t") as c:
-        return await c.post(path, json=json, headers=headers or {})
+        return await c.post(path, json=json, headers=merged)
 
 
 # ── happy ─────────────────────────────────────────────────────────────────────
