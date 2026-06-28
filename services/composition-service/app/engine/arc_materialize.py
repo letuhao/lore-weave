@@ -147,9 +147,12 @@ def build_materialize_spec(
             sel = SelectedMotif(motif=sub_motif, score=1.0, match_reason={})
             ch = ChapterPlan(chapter_id=str(chapter_index), title="", sort_order=chapter_index,
                              beat_role=None, intent="")
+            # max_scenes = len(subset): materialize honors EVERY distributed beat (the
+            # arc's authored structure), NOT the planner's per-chapter scene heuristic —
+            # clipping here would silently drop beats and break the no-beat-lost invariant.
             scenes = scenes_from_motif(
                 sel, binding, ch, k_ceiling=k_ceiling, high_threshold=high_threshold,
-                min_scenes=min_scenes, max_scenes=max_scenes, cast_names=cast_names)
+                min_scenes=min_scenes, max_scenes=len(subset), cast_names=cast_names)
             rows = build_application_rows(sel, binding, scenes)
             bucket = per_chapter.setdefault(chapter_index, [])
             for sc, row in zip(scenes, rows):

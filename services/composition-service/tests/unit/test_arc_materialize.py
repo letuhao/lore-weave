@@ -128,6 +128,23 @@ def test_arc_roster_binds_the_cast_into_scenes():
     assert "Lin Fei" in scene.synopsis                       # {protagonist} token rendered to the name
 
 
+def test_every_beat_materializes_even_past_the_planner_scene_cap():
+    # 8 beats on a width-1 span → all 8 must become scenes, NOT clipped to the planner's
+    # per-chapter max_scenes (=6 in prod) — materialize honors the arc's authored beats.
+    m = _motif("epic", 8)
+    plan = _plan([_placement("epic", "combat", 1, 1, motif_id=m.id)], target=1)
+    spec = build_materialize_spec(
+        plan, [m], cast_index={}, cast_names={}, roster_bindings={},
+        arc_template_id=str(plan.arc_template_id),
+        k_ceiling=6, high_threshold=70, min_scenes=1, max_scenes=6)
+    assert spec.scenes_total == 8                 # no clip
+    assert spec.beats_distributed == 8
+    assert len(spec.chapters[0].scenes) == 8
+    # the ledger covers every beat (b0..b7).
+    keys = [s.application_row["annotations"]["beat_key"] for s in spec.chapters[0].scenes]
+    assert keys == [f"b{i}" for i in range(8)]
+
+
 def test_determinism_same_inputs_same_spec():
     m = _motif("duel", 3)
     plan = _plan([_placement("duel", "combat", 1, 3, motif_id=m.id)], target=3)

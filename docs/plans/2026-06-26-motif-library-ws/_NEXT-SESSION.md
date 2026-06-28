@@ -23,6 +23,11 @@ per-scene prose stays the EXISTING downstream generate path. Plan doc: `docs/pla
   NO_MATERIALIZABLE_PLACEMENTS (all-unresolved 400), AlreadyPlanned 409, replace + idempotency_key.
 - **REVIEW fix-now (§12.6):** the response now includes `drop_merge_report` — when the book has fewer
   chapters than the arc span, placements merge and the folded-away motifs aren't materialized; surfaced.
+- **/review-impl fix-now (MED):** the per-chapter scene cap (`max_scenes=6`) was clipping a placement's
+  beats when >6 landed in one chapter (e.g. an 8-beat motif on a width-1 span) → silent beat loss,
+  contradicting the no-beat-lost invariant. Fixed: materialize passes `max_scenes=len(subset)` so EVERY
+  distributed beat becomes a scene (+1 test, 16 total). LOW accepted: N+1 `get_visible` (perf), possible
+  duplicate present_entity_ids (display hint).
 - **VERIFY:** 15 new unit tests (10 pure engine + 5 route, fakes) + 41 regression (plan-router/scene-bind/
   arc-apply) green; 1011 collected; provider-gate clean. **Live cross-service smoke** (rebuilt
   composition-service): throwaway book(2 ch) + work + arc(2 system motifs, 4 beats each) → materialize →
