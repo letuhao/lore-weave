@@ -48,10 +48,43 @@ def _planned_pacing(pacing: list[Any]) -> list[float] | None:
     return out or None
 
 
+def _deep_thread_progression(
+    sequences: list[list[dict[str, Any]]], chapter_index_by_id: dict[str, int],
+    arc_threads: list[dict[str, Any]],
+) -> dict[str, Any]:
+    """The realized-from-PROSE thread-presence diff (unblocked by THREAD-TAG). Reads each
+    step's ``narrative_thread`` (the classifier label) → which planned threads actually show
+    up in the written prose, and in how many chapters. ``available:false`` (with a reason)
+    until events are tagged — never faked. Also surfaces threads the prose introduced that
+    the arc never planned (``unplanned``)."""
+    realized: dict[str, set[int]] = {}
+    for seq in sequences:
+        for step in seq:
+            nt = step.get("narrative_thread")
+            if not nt:
+                continue
+            idx = chapter_index_by_id.get(str(step.get("thread") or ""))
+            realized.setdefault(nt, set())
+            if idx is not None:
+                realized[nt].add(idx)
+    planned = {t["key"]: (t.get("label") or t["key"])
+               for t in (arc_threads or []) if t.get("key")}
+    rows = [{"thread": k, "label": label, "realized": k in realized,
+             "realized_chapters": len(realized.get(k, set()))}
+            for k, label in planned.items()]
+    if not realized:
+        return {"available": False,
+                "reason": "no narrative_thread tags yet — run tag-threads (pass model_ref)",
+                "threads": rows, "unplanned": []}
+    return {"available": True, "threads": rows,
+            "unplanned": sorted(t for t in realized if t not in planned)}
+
+
 def build_deep_report(
     *, sequences: list[list[dict[str, Any]]],
     chapter_index_by_id: dict[str, int],
     planned_by_index: dict[int, float],
+    arc_threads: list[dict[str, Any]] | None = None,
 ) -> dict[str, Any]:
     """The DEEP (realized-from-PROSE) overlay (D-W10-ARC-CONFORMANCE-DEEP).
 
@@ -98,10 +131,8 @@ def build_deep_report(
             "planned": planned, "realized": realized, "max_drift": max_drift,
             "scale_note": "realized tension from extracted :Event salience (1..5 band → ×20)",
         },
-        "thread_progression": {
-            "available": False,
-            "reason": "realized beats carry chapter, not narrative-thread, labels — needs the thread-tagging extractor (P4+)",
-        },
+        "thread_progression": _deep_thread_progression(
+            sequences, chapter_index_by_id, arc_threads or []),
         "succession": {
             "available": False,
             "reason": "realized beats are free-text event titles, not motif-tagged — needs motif tagging + causal edges (P4+)",

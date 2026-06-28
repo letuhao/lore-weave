@@ -89,9 +89,10 @@ def test_route_returns_frozen_sequence_shape(mock_settings):
     seqs = data["sequences"]
     assert len(seqs) == 1 and len(seqs[0]) == 2
     step = seqs[0][0]
-    assert set(step.keys()) == {"beat", "thread", "tension", "role_mentions"}
+    # narrative_thread is the additive D-W10-…-THREAD-TAG field ("" when the fake omits it).
+    assert set(step.keys()) == {"beat", "thread", "narrative_thread", "tension", "role_mentions"}
     assert step == {
-        "beat": "The pact", "thread": "ch-1", "tension": 5,
+        "beat": "The pact", "thread": "ch-1", "narrative_thread": "", "tension": 5,
         "role_mentions": ["Tirami", "Aldric"],
     }
     assert seqs[0][1]["role_mentions"] == []
@@ -160,14 +161,14 @@ def _event(
     )
 
 
-def test_beat_step_prefers_narrative_thread_over_chapter_id():
-    """D-W10-ARC-CONFORMANCE-THREAD-TAG — once a classifier tags narrative_thread, the
-    beat step uses it; absent a tag it falls back to chapter_id (the Option-A proxy)."""
+def test_beat_step_carries_chapter_and_narrative_thread_orthogonally():
+    """D-W10-ARC-CONFORMANCE-THREAD-TAG — `thread` stays the chapter axis (pacing/mining);
+    `narrative_thread` is the additive classifier label ("" until tagged)."""
     from app.extraction.motif_beat import _event_to_beat_step
     tagged = _event_to_beat_step(_event("Duel at dawn", chapter_id="ch-9", narrative_thread="combat"))
-    assert tagged["thread"] == "combat"
+    assert tagged["thread"] == "ch-9" and tagged["narrative_thread"] == "combat"
     untagged = _event_to_beat_step(_event("Quiet talk", chapter_id="ch-9"))
-    assert untagged["thread"] == "ch-9"  # fallback to chapter proxy
+    assert untagged["thread"] == "ch-9" and untagged["narrative_thread"] == ""
 
 
 @pytest.mark.parametrize(

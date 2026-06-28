@@ -245,6 +245,8 @@ async def read_conformance(
     chapter_id: UUID | None = None,
     arc_template_id: UUID | None = None,
     deep: bool = Query(False),
+    model_ref: str | None = Query(None),
+    model_source: str | None = Query(None),
     user_id: UUID = Depends(get_current_user),
     works: WorksRepo = Depends(get_works_repo),
     outline: OutlineRepo = Depends(get_outline_repo),
@@ -290,15 +292,22 @@ async def read_conformance(
         precedes_pairs = {(frm, s["id"]) for frm, lst in succ_map.items() for s in lst}
         report = build_arc_conformance(arc=arc, realized=realized, precedes_pairs=precedes_pairs)
         if deep:
-            # DEEP overlay — the realized-from-PROSE pacing curve (the motif_beat extractor,
-            # a cross-service read). Only fetched on demand (deep=true) — it's the expensive
-            # path. Degrades to available:false on an extractor outage / empty corpus.
+            # DEEP overlay — the realized-from-PROSE diff (motif_beat extractor, cross-service).
+            # Only on opt-in (deep=true). When a classify model is supplied, tag the book's
+            # events into the arc's thread vocabulary FIRST (D-W10-…-THREAD-TAG) so the beats
+            # carry real narrative_thread → thread-progression; without it, pacing-only (plus
+            # any pre-existing tags). Degrades to available:false on an outage / empty corpus.
+            if model_ref:
+                await knowledge.tag_threads(
+                    user_id, book_id=work.book_id, threads=(arc.threads or []),
+                    model_source=model_source or "user_model", model_ref=model_ref)
             seqs = await knowledge.get_motif_beat_sequences(user_id, book_id=work.book_id)
             report["deep"] = build_deep_report(
                 sequences=seqs or [],
                 chapter_index_by_id={str(ch): idx for ch, idx in order.items()},
                 planned_by_index={pt["chapter_index"]: pt["avg_tension"]
                                   for pt in report["pacing"]["realized"]},
+                arc_threads=arc.threads or [],
             )
         return report
     if scope != "chapter":

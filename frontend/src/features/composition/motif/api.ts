@@ -115,9 +115,14 @@ export const motifApi = {
   },
   /** Coarse arc-conformance (D-W10-ARC-CONFORMANCE) — the structural diff of the
    *  materialized bindings vs the arc template (scope=arc). */
-  arcConformance(projectId: string, arcTemplateId: string, token: string, deep = false): Promise<ArcConformance> {
+  arcConformance(projectId: string, arcTemplateId: string, token: string, deep = false, modelRef?: string | null): Promise<ArcConformance> {
     return apiJson<ArcConformance>(
-      `${BASE}/works/${projectId}/conformance${_qs({ scope: 'arc', arc_template_id: arcTemplateId, ...(deep ? { deep: 'true' } : {}) })}`,
+      `${BASE}/works/${projectId}/conformance${_qs({
+        scope: 'arc', arc_template_id: arcTemplateId,
+        ...(deep ? { deep: 'true' } : {}),
+        // model_ref opts into thread-tagging (deep thread-progression); omit ⇒ pacing + existing tags.
+        ...(deep && modelRef ? { model_ref: modelRef, model_source: 'user_model' } : {}),
+      })}`,
       { token },
     );
   },

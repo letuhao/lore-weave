@@ -266,6 +266,32 @@ class KnowledgeClient:
         # Normalize: keep only well-formed list-of-dict sequences.
         return [s for s in seqs if isinstance(s, list)]
 
+    async def tag_threads(
+        self, user_id: UUID, *, book_id: UUID, threads: list[dict[str, Any]],
+        model_source: str, model_ref: str,
+    ) -> dict[str, Any]:
+        """D-W10-ARC-CONFORMANCE-THREAD-TAG — classify the book's :Event timeline into the
+        given narrative-thread vocabulary (the arc's threads) and persist the labels, so a
+        subsequent motif-beats read carries real ``narrative_thread`` per step. ADVISORY:
+        returns ``{tagged, events_seen, threads_assigned}`` on success, or a degrade
+        ``{tagged:0, …, status:'unavailable'}`` on any outage/non-200 (the deep conformance
+        caller then just sees no tags — pacing still works)."""
+        url = f"{self._base_url}/internal/extraction/tag-threads"
+        payload = {"user_id": str(user_id), "book_id": str(book_id), "threads": threads,
+                   "model_source": model_source, "model_ref": model_ref}
+        try:
+            resp = await self._http.post(url, json=payload, headers=self._internal_headers())
+        except httpx.HTTPError as exc:
+            logger.warning("knowledge tag-threads unavailable: %s", exc)
+            return {"tagged": 0, "events_seen": 0, "threads_assigned": {}, "status": "unavailable"}
+        if resp.status_code != 200:
+            logger.warning("knowledge tag-threads → %d", resp.status_code)
+            return {"tagged": 0, "events_seen": 0, "threads_assigned": {}, "status": "unavailable"}
+        try:
+            return resp.json()
+        except (ValueError, AttributeError):
+            return {"tagged": 0, "events_seen": 0, "threads_assigned": {}, "status": "unavailable"}
+
     # ── M4 packer lenses ────────────────────────────────────────────────
     # All return None/[] on any failure (the packer `_safe_*` degrade, F1) so a
     # knowledge outage thins the pack rather than 500-ing a generate.

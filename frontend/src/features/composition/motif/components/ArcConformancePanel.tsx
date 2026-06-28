@@ -8,13 +8,19 @@ import { useTranslation } from 'react-i18next';
 import { MotifStateBoundary } from './MotifStateBoundary';
 import { useArcConformance } from '../hooks/useArcConformance';
 
-type Props = { projectId: string | null | undefined; arcTemplateId: string; token: string | null };
+type Props = {
+  projectId: string | null | undefined;
+  arcTemplateId: string;
+  token: string | null;
+  // when supplied, opting into deep ALSO tags the book's events (deep thread-progression).
+  modelRef?: string | null;
+};
 
-export function ArcConformancePanel({ projectId, arcTemplateId, token }: Props) {
+export function ArcConformancePanel({ projectId, arcTemplateId, token, modelRef }: Props) {
   const { t } = useTranslation('composition');
-  // deep = the realized-from-PROSE pacing overlay (a cross-service read) — opt-in via a button.
+  // deep = the realized-from-PROSE overlay (a cross-service read) — opt-in via a button.
   const [deep, setDeep] = useState(false);
-  const q = useArcConformance(projectId, arcTemplateId, token, deep);
+  const q = useArcConformance(projectId, arcTemplateId, token, deep, deep ? modelRef : null);
   const r = q.data;
 
   // no work bound yet → nothing is materialized, so there's nothing to conform.
@@ -147,9 +153,37 @@ export function ArcConformancePanel({ projectId, arcTemplateId, token }: Props) 
                     </div>
                   </div>
                 )}
-                {/* honest: the two dims the Option-A extractor can't yet realize from prose */}
+                {/* deep thread-progression (unblocked by THREAD-TAG) — realized threads vs planned */}
+                {r.deep.thread_progression.available ? (
+                  <div data-testid="arc-conf-deep-threads" className="mt-2">
+                    <h5 className="mb-0.5 font-medium text-indigo-700 dark:text-indigo-300">
+                      {t('motif.arcConf.proseThreads', { defaultValue: 'Threads in the prose' })}
+                    </h5>
+                    <ul className="flex flex-col gap-0.5">
+                      {r.deep.thread_progression.threads.map((th) => (
+                        <li key={th.thread} data-testid={`arc-conf-deep-thread-${th.thread}`}
+                          className={th.realized ? 'text-emerald-700 dark:text-emerald-400' : 'text-amber-700 dark:text-amber-300'}>
+                          {/* dynamic values rendered RAW (resilient to missing i18n + assertable) */}
+                          {th.label}: {th.realized
+                            ? <span className="tabular-nums">{th.realized_chapters} {t('motif.arcConf.chShort', { defaultValue: 'ch' })}</span>
+                            : t('motif.arcConf.threadMissing', { defaultValue: 'not in prose' })}
+                        </li>
+                      ))}
+                    </ul>
+                    {r.deep.thread_progression.unplanned.length > 0 && (
+                      <p data-testid="arc-conf-deep-unplanned" className="text-neutral-500">
+                        {t('motif.arcConf.unplannedLabel', { defaultValue: 'unplanned in prose' })}: {r.deep.thread_progression.unplanned.join(', ')}
+                      </p>
+                    )}
+                  </div>
+                ) : (
+                  <p data-testid="arc-conf-deep-untagged" className="mt-1 text-[10px] text-neutral-400">
+                    {t('motif.arcConf.notTagged', { defaultValue: 'Thread-progression needs tagging — open with your model to tag the prose.' })}
+                  </p>
+                )}
+                {/* succession from prose still needs motif tagging + causal edges */}
                 <p data-testid="arc-conf-deep-blocked" className="mt-1 text-[10px] text-neutral-400">
-                  {t('motif.arcConf.deepBlocked', { defaultValue: 'Thread + succession from prose need the thread-tagging extractor (P4+).' })}
+                  {t('motif.arcConf.deepBlocked', { defaultValue: 'Succession from prose needs motif tagging + causal edges (P4+).' })}
                 </p>
               </section>
             )}

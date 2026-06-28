@@ -233,6 +233,16 @@ export type ArcSuccessionThread = {
 // chapter-as-thread + free-text beats — no narrative-thread / motif tagging yet).
 export type ArcDeepDim = { available: false; reason: string };
 
+// Unblocked by THREAD-TAG (M2): realized thread-presence from prose. `available:false`
+// (with a reason) until the book's events are tagged. `unplanned` = threads the prose
+// introduced that the arc never planned.
+export type ArcDeepThreadProgression = {
+  available: boolean;
+  reason?: string;
+  threads: { thread: string; label: string; realized: boolean; realized_chapters: number }[];
+  unplanned: string[];
+};
+
 export type ArcDeep = {
   available: boolean;
   source: string;
@@ -243,7 +253,7 @@ export type ArcDeep = {
     max_drift: number | null;
     scale_note: string;
   };
-  thread_progression: ArcDeepDim;
+  thread_progression: ArcDeepThreadProgression;
   succession: ArcDeepDim;
 };
 

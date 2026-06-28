@@ -12,7 +12,7 @@ import { useArcLibrary } from '../hooks/useArcLibrary';
 import { currentUserId } from '../currentUser';
 import type { ArcTemplate } from '../arcTypes';
 
-export function ArcTemplateLibraryView({ token, projectId }: { token: string | null; projectId?: string | null }) {
+export function ArcTemplateLibraryView({ token, projectId, modelRef }: { token: string | null; projectId?: string | null; modelRef?: string | null }) {
   const { t } = useTranslation('composition');
   const lib = useArcLibrary(token);
   const [openArc, setOpenArc] = useState<ArcTemplate | null>(null);
@@ -36,7 +36,7 @@ export function ArcTemplateLibraryView({ token, projectId }: { token: string | n
           </div>
           {/* post-materialize: the coarse structural diff of realized vs this template. */}
           <div className="border-t border-neutral-200 p-2 dark:border-neutral-700">
-            <ArcConformancePanel projectId={projectId} arcTemplateId={openArc.id} token={token} />
+            <ArcConformancePanel projectId={projectId} arcTemplateId={openArc.id} token={token} modelRef={modelRef} />
           </div>
         </div>
       </div>

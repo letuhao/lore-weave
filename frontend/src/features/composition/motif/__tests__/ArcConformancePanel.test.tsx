@@ -100,7 +100,7 @@ describe('ArcConformancePanel', () => {
             pacing: { comparable: true, planned: [{ chapter_index: 1, avg_tension: 50 }],
               realized: [{ chapter_index: 1, avg_tension: 100, events: 2 }], max_drift: 50,
               scale_note: 's' },
-            thread_progression: { available: false, reason: 'P4+' },
+            thread_progression: { available: false, reason: 'P4+', threads: [], unplanned: [] },
             succession: { available: false, reason: 'P4+' },
           } })
         : REPORT(),
@@ -124,7 +124,7 @@ describe('ArcConformancePanel', () => {
         ? REPORT({ deep: {
             available: false, source: 'motif_beat_extractor',
             pacing: { comparable: false, planned: [], realized: [], max_drift: null, scale_note: 's' },
-            thread_progression: { available: false, reason: 'P4+' },
+            thread_progression: { available: false, reason: 'P4+', threads: [], unplanned: [] },
             succession: { available: false, reason: 'P4+' },
           } })
         : REPORT(),
@@ -132,5 +132,33 @@ describe('ArcConformancePanel', () => {
     render(<ArcConformancePanel projectId="p1" arcTemplateId="a1" token="tok" />, { wrapper: wrap() });
     fireEvent.click(await screen.findByTestId('arc-conf-deep-btn'));
     expect(await screen.findByTestId('arc-conf-deep-empty')).toBeInTheDocument();
+  });
+
+  it('deep thread-progression: realized vs missing threads + unplanned (THREAD-TAG)', async () => {
+    apiJson.mockImplementation((url: string) => Promise.resolve(
+      String(url).includes('deep=true')
+        ? REPORT({ deep: {
+            available: true, source: 'motif_beat_extractor',
+            pacing: { comparable: false, planned: [], realized: [{ chapter_index: 1, avg_tension: 60, events: 1 }], max_drift: null, scale_note: 's' },
+            thread_progression: { available: true, threads: [
+              { thread: 'combat', label: 'Combat', realized: true, realized_chapters: 2 },
+              { thread: 'romance', label: 'Romance', realized: false, realized_chapters: 0 },
+            ], unplanned: ['intrigue'] },
+            succession: { available: false, reason: 'P4+' },
+          } })
+        : REPORT(),
+    ));
+    render(<ArcConformancePanel projectId="p1" arcTemplateId="a1" token="tok" modelRef="m1" />, { wrapper: wrap() });
+    fireEvent.click(await screen.findByTestId('arc-conf-deep-btn'));
+    const threads = await screen.findByTestId('arc-conf-deep-threads');
+    expect(threads).toBeInTheDocument();
+    expect(screen.getByTestId('arc-conf-deep-thread-combat')).toHaveTextContent('2');     // realized in 2 ch
+    expect(screen.getByTestId('arc-conf-deep-thread-romance')).toBeInTheDocument();         // planned, not in prose
+    expect(screen.getByTestId('arc-conf-deep-unplanned')).toHaveTextContent('intrigue');
+    // modelRef threaded → the deep fetch opts into tagging (model_ref on the URL).
+    await waitFor(() => {
+      const call = apiJson.mock.calls.find((c) => String(c[0]).includes('deep=true'));
+      expect(String(call?.[0])).toContain('model_ref=m1');
+    });
   });
 });

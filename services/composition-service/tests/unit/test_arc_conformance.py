@@ -152,7 +152,7 @@ def client(monkeypatch):
     from app.middleware.jwt_auth import get_current_user
     from app.routers.conformance import get_conformance_trace_reader
 
-    state = SimpleNamespace(arc=None, rows=[], sequences=[])
+    state = SimpleNamespace(arc=None, rows=[], sequences=[], tag_calls=[])
 
     class _Works:
         async def get(self, u, p):
@@ -166,6 +166,9 @@ def client(monkeypatch):
     class _Knowledge:
         async def get_motif_beat_sequences(self, user_id, *, book_id=None, corpus=False, language=None):
             return state.sequences
+        async def tag_threads(self, user_id, *, book_id, threads, model_source, model_ref):
+            state.tag_calls.append({"threads": threads, "model_ref": model_ref})
+            return {"tagged": 1, "events_seen": 1, "threads_assigned": {}}
 
     class _MotifRepo:
         def __init__(self, pool):
@@ -270,3 +273,50 @@ def test_deep_ignores_events_in_unknown_chapters():
     seqs = [[{"beat": "x", "thread": "ghost", "tension": 4}]]
     out = build_deep_report(sequences=seqs, chapter_index_by_id={"a": 1}, planned_by_index={})
     assert out["available"] is False
+
+
+def test_deep_thread_progression_from_tagged_beats():
+    # tagged beats carry narrative_thread → realized thread-presence vs the arc's threads.
+    seqs = [[{"beat": "duel", "thread": "a", "narrative_thread": "combat", "tension": 4},
+             {"beat": "tryst", "thread": "b", "narrative_thread": "romance", "tension": 2},
+             {"beat": "ambush", "thread": "c", "narrative_thread": "combat", "tension": 5}]]
+    out = build_deep_report(
+        sequences=seqs, chapter_index_by_id={"a": 1, "b": 2, "c": 3},
+        planned_by_index={}, arc_threads=[{"key": "combat", "label": "Combat"},
+                                          {"key": "intrigue", "label": "Intrigue"}])
+    tp = out["thread_progression"]
+    assert tp["available"] is True
+    rows = {r["thread"]: r for r in tp["threads"]}
+    assert rows["combat"]["realized"] is True and rows["combat"]["realized_chapters"] == 2
+    assert rows["intrigue"]["realized"] is False  # planned but never in the prose (drift)
+    assert tp["unplanned"] == ["romance"]          # prose introduced a thread the arc didn't plan
+
+
+def test_deep_thread_progression_unavailable_without_tags():
+    seqs = [[{"beat": "x", "thread": "a", "tension": 3}]]  # no narrative_thread
+    out = build_deep_report(sequences=seqs, chapter_index_by_id={"a": 1}, planned_by_index={},
+                            arc_threads=[{"key": "combat", "label": "Combat"}])
+    assert out["thread_progression"]["available"] is False
+    assert "tag-threads" in out["thread_progression"]["reason"]
+
+
+def test_route_deep_with_model_ref_tags_threads_then_reports_progression(client):
+    c, state = client
+    aid = uuid.uuid4()
+    state.arc = _arc(layout=[_placement("humiliation")],
+                     threads=[{"key": "revenge", "label": "Revenge"}])
+    state.arc.id = aid
+    ch1 = uuid.uuid4()
+    state.rows = [{"motif_id": M_HUMIL, "motif_code": "humiliation",
+                   "annotations": {"thread": "revenge", "arc_template_id": str(aid)},
+                   "chapter_id": ch1, "tension": 50, "story_order": 1}]
+    state.sequences = [[{"beat": "slap", "thread": str(ch1),
+                         "narrative_thread": "revenge", "tension": 5}]]
+    r = c.get(f"/v1/composition/works/{P}/conformance?scope=arc&arc_template_id={aid}"
+              f"&deep=true&model_ref=m1&model_source=user_model")
+    assert r.status_code == 200
+    # the model_ref opt-in triggered a tag-threads call with the arc's vocabulary.
+    assert state.tag_calls and state.tag_calls[0]["threads"] == [{"key": "revenge", "label": "Revenge"}]
+    tp = r.json()["deep"]["thread_progression"]
+    assert tp["available"] is True
+    assert {r["thread"]: r["realized"] for r in tp["threads"]} == {"revenge": True}

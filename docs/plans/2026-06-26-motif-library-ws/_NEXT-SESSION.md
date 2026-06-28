@@ -1,5 +1,36 @@
 # ▶ NEXT SESSION — Narrative Motif Library BUILD (handoff)
 
+## STATUS (2026-06-28 PM-19) — D-W10-ARC-CONFORMANCE-THREAD-TAG CLEARED (full vertical, 3 services)
+
+**`D-W10-ARC-CONFORMANCE-THREAD-TAG`** ✅ — the narrative-thread classifier that unblocks deep
+arc-conformance **thread-progression from prose**. Verified buildable (not blocked): `:Event` carries
+a `summary`, the in-repo `llm_client.submit_and_wait(operation='chat')` is the provider-registry path,
+and the thread vocabulary is the arc's `threads`. Full vertical across knowledge + composition + FE
+(2 commits: M1 knowledge `93b6d5a8`, M2 this).
+- **knowledge (M1+M2):** NEW `extraction/thread_tag.py` — an LLM classifier (event title+summary+
+  participants → one of the caller's thread keys; pure `build_messages`/`parse_assignments`, batched,
+  ADVISORY/never-raises). `Event += narrative_thread` + `set_narrative_threads` (tenant-scoped Cypher
+  SET). NEW `POST /internal/extraction/tag-threads`. `motif_beat` now emits BOTH `thread` (chapter
+  axis — pacing/mining unchanged) AND additive `narrative_thread` (the tag) on each step.
+- **composition (M2):** `knowledge_client.tag_threads` (advisory degrade). Deep conformance gained
+  `model_ref`/`model_source` params: on `deep=true&model_ref=…` it TAGS the book's events into the
+  arc's vocab first, then reads beats → `build_deep_report` computes **thread_progression** (realized
+  thread-presence per planned thread + `unplanned` threads the prose introduced). Succession stays
+  honestly `available:false` (still needs motif-tagging + causal edges).
+- **FE (M2):** `ArcConformancePanel` renders deep thread-progression (realized/missing threads +
+  unplanned); a `modelRef` prop (threaded via `ArcTemplateLibraryView`) opts the deep fetch into
+  tagging. Dynamic values rendered raw (i18n-resilient).
+- **VERIFY:** knowledge 24 (thread_tag 11 + motif_beats dual-field) + 171 events; composition 20
+  (pure thread-progression + route tags-then-reports); FE 135 (deep thread render + model_ref opt-in);
+  tsc 0; provider-gate clean. **Live tagging smoke deferred** `D-W10-ARC-CONFORMANCE-THREAD-TAG-LIVE-SMOKE`
+  (needs Neo4j :Event corpus + a real chat model) + **calibration deferred** (uncalibrated classifier
+  ships advisory, like the conformance judge before its gold-set).
+
+**▶ Remaining (smaller follow-ups):** the FE **model-picker UX** to trigger tagging from the arc view
+(the `model_ref` plumbing is wired; a top-level model source from CompositionPanel is the last bit) +
+the live-smoke + a thread-tag **calibration gold-set**. The deep **succession** dim is still genuinely
+P4+ (motif-tagged realized beats + `:CAUSES` edges).
+
 ## STATUS (2026-06-28 PM-18) — D-W10-ARC-CONFORMANCE-DEEP (pacing slice) — prose-drift, full-stack
 
 **`D-W10-ARC-CONFORMANCE-DEEP`** — the buildable slice DONE; the rest precisely fenced. A code-verified

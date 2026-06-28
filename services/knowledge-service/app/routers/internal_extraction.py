@@ -1406,6 +1406,9 @@ class MotifBeatStep(BaseModel):
 
     beat: str
     thread: str
+    # ADDITIVE (D-W10-ARC-CONFORMANCE-THREAD-TAG): the classifier-assigned narrative thread
+    # (combat/romance/…), "" until tagged. `thread` stays the chapter axis; this is orthogonal.
+    narrative_thread: str = ""
     tension: int
     role_mentions: list[str] = Field(default_factory=list)
 
