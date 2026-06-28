@@ -295,6 +295,34 @@ CREATE TABLE IF NOT EXISTS mcp_oauth_codes (
   consumed_at           TIMESTAMPTZ NULL,
   created_at            TIMESTAMPTZ NOT NULL DEFAULT now()
 );
+
+-- P5 open DCR (RFC 7591, slice 3) audit. The /oauth/register endpoint is PUBLIC
+-- (unauthenticated) — this append-only table records every registration ATTEMPT
+-- (issued or rejected) for abuse detection. Writes are bounded by the per-IP rate
+-- limit (a 429 sheds before any row is written, so the audit can't be flooded).
+-- client_id is NULL on a rejected attempt (no client was issued).
+CREATE TABLE IF NOT EXISTS mcp_oauth_client_registrations (
+  registration_id UUID PRIMARY KEY DEFAULT uuidv7(),
+  client_id       TEXT NULL,
+  client_name     TEXT NOT NULL DEFAULT '',
+  redirect_uris   TEXT[] NOT NULL DEFAULT '{}',
+  outcome         TEXT NOT NULL CHECK (outcome IN ('registered','rejected')),
+  reason          TEXT NULL,                           -- rejection reason code (NULL on success)
+  created_ip      TEXT NOT NULL DEFAULT '',
+  created_at      TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS idx_mcp_oauth_client_registrations_ip
+  ON mcp_oauth_client_registrations (created_ip, created_at DESC);
+
+-- Append-only (mirrors mcp_call_audit) — REVOKE so even a compromised app role can't
+-- rewrite the registration history. No-op when connected as the DB owner (dev stack).
+DO $$
+BEGIN
+    EXECUTE 'REVOKE UPDATE, DELETE ON TABLE mcp_oauth_client_registrations FROM app_service_role';
+EXCEPTION
+    WHEN undefined_object THEN
+        RAISE NOTICE 'role app_service_role does not exist (dev stack); skipping REVOKE';
+END $$;
 `
 
 func Up(ctx context.Context, pool *pgxpool.Pool) error {

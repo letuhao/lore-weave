@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/loreweave/auth-service/internal/authjwt"
+	"github.com/loreweave/auth-service/internal/ratelimit"
 )
 
 // oauthDeps holds the P5 public-MCP OAuth 2.1 subsystem state. It reuses the admin
@@ -19,20 +20,24 @@ type oauthDeps struct {
 	resource   string // canonical MCP resource URL = the token audience (RFC 8707)
 	accessTTL  time.Duration
 	defaultRPM int
-	codeTTL    time.Duration // authorization-code TTL (single-use)
-	refreshTTL time.Duration // refresh-token TTL
-	consentURL string        // FE consent page the authorize endpoint redirects to
+	codeTTL    time.Duration      // authorization-code TTL (single-use)
+	refreshTTL time.Duration      // refresh-token TTL
+	consentURL string             // FE consent page the authorize endpoint redirects to
+	dcrEnabled bool               // open DCR (RFC 7591) /oauth/register kill-switch
+	dcrRL      *ratelimit.Limiter // per-IP rate limiter for /oauth/register (nil = unlimited)
 }
 
 // OAuthOptions carries the P5 OAuth subsystem config for EnableOAuth.
 type OAuthOptions struct {
-	Issuer     string
-	Resource   string
-	AccessTTL  time.Duration
-	DefaultRPM int
-	CodeTTL    time.Duration
-	RefreshTTL time.Duration
-	ConsentURL string
+	Issuer         string
+	Resource       string
+	AccessTTL      time.Duration
+	DefaultRPM     int
+	CodeTTL        time.Duration
+	RefreshTTL     time.Duration
+	ConsentURL     string
+	DCREnabled     bool
+	DCRRatePerHour int // per-IP /oauth/register cap (0 = unlimited)
 }
 
 // EnableOAuth turns on the P5 OAuth endpoints. Called by main when cfg.OAuthEnabled
@@ -40,6 +45,10 @@ type OAuthOptions struct {
 // signer. Reuses the admin RS256 signer to mint audience-bound access tokens with a
 // distinct issuer.
 func (s *Server) EnableOAuth(signer authjwt.DigestSigner, o OAuthOptions) {
+	var dcrRL *ratelimit.Limiter
+	if o.DCRRatePerHour > 0 {
+		dcrRL = ratelimit.New(time.Hour, o.DCRRatePerHour)
+	}
 	s.oauth = &oauthDeps{
 		signer:     signer,
 		issuer:     o.Issuer,
@@ -49,6 +58,8 @@ func (s *Server) EnableOAuth(signer authjwt.DigestSigner, o OAuthOptions) {
 		codeTTL:    o.CodeTTL,
 		refreshTTL: o.RefreshTTL,
 		consentURL: o.ConsentURL,
+		dcrEnabled: o.DCREnabled,
+		dcrRL:      dcrRL,
 	}
 }
 
@@ -88,13 +99,17 @@ func (s *Server) oauthASMetadata(w http.ResponseWriter, r *http.Request) {
 		"issuer":                                s.oauth.issuer,
 		"authorization_endpoint":                base + "/oauth/authorize",
 		"token_endpoint":                        base + "/oauth/token",
-		"registration_endpoint":                 base + "/oauth/register",
 		"jwks_uri":                              base + "/oauth/jwks",
 		"scopes_supported":                      oauthScopesSupported,
 		"response_types_supported":              []string{"code"},
 		"grant_types_supported":                 []string{"authorization_code", "refresh_token"},
 		"code_challenge_methods_supported":      []string{"S256"},
 		"token_endpoint_auth_methods_supported": []string{"none"},
+	}
+	// Only advertise the DCR endpoint when it's actually enabled (RFC 8414 — advertise
+	// supported endpoints only; advertising it while disabled sends clients into a 403).
+	if s.oauth.dcrEnabled {
+		meta["registration_endpoint"] = base + "/oauth/register"
 	}
 	w.Header().Set("Cache-Control", "public, max-age=3600")
 	writeJSON(w, http.StatusOK, meta)

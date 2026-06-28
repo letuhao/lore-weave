@@ -69,6 +69,11 @@ type Config struct {
 	OAuthCodeTTL    time.Duration // authorization-code TTL (default 60s, single-use)
 	OAuthRefreshTTL time.Duration // OAuth refresh-token TTL (default 30d)
 	OAuthConsentURL string        // FE consent page URL the authorize endpoint redirects to (default "${PublicAppURL}/oauth/consent")
+	// P5 slice 3 — open Dynamic Client Registration (RFC 7591). The /oauth/register
+	// endpoint is public+unauthenticated; this flag is its kill-switch (default ON when
+	// OAuth is enabled, per the locked PO "open DCR" decision) and the per-IP rate cap.
+	OAuthDCREnabled     bool
+	OAuthDCRRatePerHour int // per-IP /oauth/register cap; 0 = UNLIMITED (use OAUTH_DCR_ENABLED=false to disable)
 }
 
 func Load() (*Config, error) {
@@ -146,6 +151,8 @@ func Load() (*Config, error) {
 	c.OAuthCodeTTL = time.Duration(getInt("OAUTH_CODE_TTL_SECONDS", 60)) * time.Second
 	c.OAuthRefreshTTL = time.Duration(getInt("OAUTH_REFRESH_TTL_SECONDS", 60*60*24*30)) * time.Second
 	c.OAuthConsentURL = getEnv("OAUTH_CONSENT_URL", defaultConsentURL(c.PublicAppURL))
+	c.OAuthDCREnabled = getBool("OAUTH_DCR_ENABLED", true)
+	c.OAuthDCRRatePerHour = getInt("OAUTH_DCR_RATE_PER_HOUR", 10)
 	c.OAuthEnabled = c.AdminIssuanceEnabled && c.PublicMcpEnabled
 	if c.OAuthEnabled {
 		if c.OAuthResource == "" {

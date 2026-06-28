@@ -116,15 +116,17 @@ func main() {
 		// via /oauth/jwks. On only when the public MCP flag is also set.
 		if cfg.OAuthEnabled {
 			srv.EnableOAuth(signer, api.OAuthOptions{
-				Issuer:     cfg.OAuthIssuer,
-				Resource:   cfg.OAuthResource,
-				AccessTTL:  cfg.OAuthAccessTTL,
-				DefaultRPM: cfg.OAuthDefaultRPM,
-				CodeTTL:    cfg.OAuthCodeTTL,
-				RefreshTTL: cfg.OAuthRefreshTTL,
-				ConsentURL: cfg.OAuthConsentURL,
+				Issuer:         cfg.OAuthIssuer,
+				Resource:       cfg.OAuthResource,
+				AccessTTL:      cfg.OAuthAccessTTL,
+				DefaultRPM:     cfg.OAuthDefaultRPM,
+				CodeTTL:        cfg.OAuthCodeTTL,
+				RefreshTTL:     cfg.OAuthRefreshTTL,
+				ConsentURL:     cfg.OAuthConsentURL,
+				DCREnabled:     cfg.OAuthDCREnabled,
+				DCRRatePerHour: cfg.OAuthDCRRatePerHour,
 			})
-			slog.Info("public-MCP OAuth enabled", "issuer", cfg.OAuthIssuer, "resource", cfg.OAuthResource, "kid", signer.KID())
+			slog.Info("public-MCP OAuth enabled", "issuer", cfg.OAuthIssuer, "resource", cfg.OAuthResource, "kid", signer.KID(), "dcr", cfg.OAuthDCREnabled)
 		}
 	}
 

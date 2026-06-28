@@ -27,6 +27,7 @@ func newOAuthTestServer(t *testing.T, enable bool) (*Server, *signertest.LocalRS
 			CodeTTL:    time.Minute,
 			RefreshTTL: 30 * 24 * time.Hour,
 			ConsentURL: "https://app.loreweave.dev/oauth/consent",
+			DCREnabled: true,
 		})
 	}
 	return srv, signer
@@ -99,6 +100,37 @@ func TestOAuthASMetadata(t *testing.T) {
 	pkce, _ := m["code_challenge_methods_supported"].([]any)
 	if len(pkce) != 1 || pkce[0] != "S256" {
 		t.Errorf("code_challenge_methods_supported = %v (want [S256])", m["code_challenge_methods_supported"])
+	}
+	// DCR enabled in the test server → registration_endpoint advertised.
+	if m["registration_endpoint"] != "https://app.loreweave.dev/oauth/register" {
+		t.Errorf("registration_endpoint = %v", m["registration_endpoint"])
+	}
+}
+
+// With OAuth on but DCR off, the metadata must NOT advertise registration_endpoint
+// (RFC 8414 — don't send clients to a disabled endpoint).
+func TestOAuthASMetadata_OmitsRegistrationWhenDCRDisabled(t *testing.T) {
+	signer, err := signertest.Generate(2048)
+	if err != nil {
+		t.Fatal(err)
+	}
+	srv := &Server{cfg: &config.Config{PublicAppURL: "https://app.loreweave.dev"}}
+	srv.EnableOAuth(signer, OAuthOptions{
+		Issuer: "loreweave-mcp-oauth", Resource: "https://app.loreweave.dev/mcp",
+		AccessTTL: 10 * time.Minute, CodeTTL: time.Minute, RefreshTTL: time.Hour,
+		ConsentURL: "https://app.loreweave.dev/oauth/consent", DCREnabled: false,
+	})
+	ts := httptest.NewServer(srv.Router())
+	defer ts.Close()
+	res, err := http.Get(ts.URL + "/.well-known/oauth-authorization-server")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer res.Body.Close()
+	var m map[string]any
+	json.NewDecoder(res.Body).Decode(&m)
+	if _, ok := m["registration_endpoint"]; ok {
+		t.Errorf("registration_endpoint must be absent when DCR is disabled, got %v", m["registration_endpoint"])
 	}
 }
 

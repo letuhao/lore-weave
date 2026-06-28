@@ -73,6 +73,9 @@ func (s *Server) Router() http.Handler {
 	// P5 slice 2 — auth-code + PKCE flow (public endpoints).
 	r.Get("/oauth/authorize", http.HandlerFunc(s.oauthAuthorize))
 	r.Post("/oauth/token", http.HandlerFunc(s.oauthToken))
+	// P5 slice 3 — open Dynamic Client Registration (RFC 7591). Public; the handler
+	// self-gates on the DCR flag + a per-IP rate limit + writes an audit row.
+	r.Post("/oauth/register", http.HandlerFunc(s.oauthRegister))
 
 	// Internal (service-to-service, no JWT required)
 	r.Route("/internal", func(r chi.Router) {
