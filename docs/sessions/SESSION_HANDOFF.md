@@ -1,4 +1,20 @@
-# ▶▶ NEXT SESSION STARTS HERE — **Critical UX bug track** · branch `fix/critical-ux-bugs` · HEAD `119701f5`+ · 2026-06-28
+# ▶▶ NEXT SESSION STARTS HERE — **Critical UX bug track** · branch `fix/critical-ux-bugs` · HEAD `4e4cb668`+ · 2026-06-29
+
+> **🚧 IN FLIGHT — #26/#7 glossary `summarize` (merge-rewrite) mode (L, 3 milestones).** User
+> approved a NEW merge mode distinct from append: keep the lossless RAW item layer (provenance)
+> + add a synthesized CANONICAL layer an LLM rewrites from the accumulated raw mentions. Trigger:
+> **end-of-extraction-job, batched** (+ a manual button, M3). Plan:
+> [docs/plans/2026-06-29-glossary-summarize-merge-mode.md].
+> **✅ M1 DONE (this commit):** migration `0043_canonical_summary` (`entity_attribute_values`
+> + `canonical_value`/`canonical_dirty`/`canonical_synced_at`); `strategyToAction("summarize")`;
+> `mergeExtractedEntity` summarize branch shares the append raw layer + flags `canonical_dirty` on
+> a real change (never on an idempotent no-op). `TestBulkExtract_SummarizeAction` passes;
+> append/merge suite unregressed; go vet clean.
+> **▶ NEXT — M2:** glossary internal endpoints `GET /internal/books/{id}/canonical-dirty` +
+> `POST …/entities/{id}/canonical`; translation-service `resummarize.py` end-of-job LLM pass
+> (reuses the worker's `llm_client`/`model_ref`, `usage_purpose="glossary_resummarize"`,
+> best-effort). Then **M3** FE: canonical headline + raw under "sources/history" + manual
+> "Re-summarize" button. M2 needs a cross-service live smoke (translation worker ↔ glossary).
 
 > **✅ SHIPPED — #12 timeline overhaul (L, 3 parts) + #16 build-stages.** Verified first: the
 > timeline was already feature-rich (filters/sort/ranges/pagination/rich rows) — the "low quality"

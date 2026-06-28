@@ -1184,6 +1184,10 @@ func strategyToAction(strategy string) string {
 		return "overwrite"
 	case "append":
 		return "append"
+	case "summarize":
+		// #26/#7 — merge-rewrite. Accumulates the raw layer exactly like append, then
+		// flags the EAV for an end-of-job LLM canonical resynthesis (mergeExtractedEntity).
+		return "summarize"
 	case "manual":
 		return "" // skip → 'manual'
 	default: // "fill_if_empty" and anything unrecognized
@@ -1558,7 +1562,7 @@ func (s *Server) mergeExtractedEntity(
 				return nil, nil, fmt.Errorf("overwrite attr %s (items): %w", code, e)
 			}
 			written = append(written, code)
-		} else if action == "append" {
+		} else if action == "append" || action == "summarize" {
 			// D-GLOSSARY-MULTIROW-ATTR-VALUES slice 1 — per-item append. Each incoming
 			// element becomes a child row (its own confidence/status/source-chapter); the
 			// list is deduped by normalized value via UNIQUE(attr_value_id, item_norm) +
@@ -1566,6 +1570,11 @@ func (s *Server) mergeExtractedEntity(
 			// whole op runs under the per-book writeback lock (this tx), so the cache
 			// rebuild is race-free. original_value is kept as the write-synced cache of the
 			// ACTIVE items (rebuildItemsCache) so every existing reader is unchanged.
+			//
+			// #26/#7 — `summarize` shares this RAW layer verbatim (lossless provenance);
+			// it differs only in that a real change also flags canonical_dirty so the
+			// end-of-extraction-job LLM pass rewrites the accumulated raw items into one
+			// deduped canonical_value (see the dirty-set below + resummarize endpoints).
 			incoming := parseListValue(serialized)
 			if len(dedupNormalized(incoming)) == 0 {
 				// nothing meaningful to append (empty/whitespace input)
@@ -1604,9 +1613,20 @@ func (s *Server) mergeExtractedEntity(
 			if added == 0 && attrValueExists {
 				// no NEW element (every incoming item already present) → idempotent;
 				// report 'unchanged' (the cache may have canonicalized, but the active set
-				// is the same). Preserves the slice-2 'unchanged' contract.
+				// is the same). Preserves the slice-2 'unchanged' contract. summarize does
+				// NOT re-dirty here — an unchanged raw set means the canonical is still valid.
 				skipped = append(skipped, attrSkip{code, "unchanged"})
 				continue
+			}
+			// #26/#7 — summarize: a real raw-layer change invalidates the canonical value.
+			// Flag it so the end-of-extraction-job resummarize pass rewrites it (the LLM
+			// rewrite runs OUT of this tx — never inline). Same EAV, same book scope.
+			if action == "summarize" {
+				if _, err := q.Exec(ctx, `
+					UPDATE entity_attribute_values SET canonical_dirty = true WHERE attr_value_id = $1
+				`, attrValueID); err != nil {
+					return nil, nil, fmt.Errorf("summarize attr %s (dirty): %w", code, err)
+				}
 			}
 			written = append(written, code)
 		}
