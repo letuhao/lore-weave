@@ -26,6 +26,7 @@ from .glossary_translate_prompt import (
     attr_response_format,
     build_system_prompt,
     build_user_prompt,
+    entity_output_budget,
     parse_translation_response,
 )
 from .llm_thinking import thinking_llm_fields
@@ -41,6 +42,13 @@ _STRUCTURED_OUTPUT_ENABLED = os.getenv(
 ).strip().lower() not in ("0", "false", "no", "off")
 
 _PAGE_SIZE = 25
+
+# bug #8 — upper bound for the per-entity output budget (entity_output_budget floors at
+# the old 4096 default; this is the ceiling). Tunable per the deployed model's real max
+# output. A genuinely larger entity needs attribute chunking (#26), not a bigger cap.
+_GLOSSARY_TRANSLATE_MAX_OUTPUT_TOKENS = int(
+    os.getenv("GLOSSARY_TRANSLATE_MAX_OUTPUT_TOKENS", "32768") or "32768"
+)
 
 # bug #4: hard ceiling on how many entities translate concurrently, regardless of the
 # caller's requested concurrency (protects the provider/GPU + glossary-service). 1 ⇒
@@ -199,7 +207,11 @@ async def _run_job(
                         {"role": "user", "content": user_prompt},
                     ],
                     "temperature": 0.2,
-                    "max_tokens": 4096,
+                    # bug #8 — budget scales with THIS entity's attribute values (floored at
+                    # the old 4096) instead of a flat cap that truncated large entities.
+                    "max_tokens": entity_output_budget(
+                        attrs, ceiling=_GLOSSARY_TRANSLATE_MAX_OUTPUT_TOKENS
+                    ),
                     **thinking_llm_fields(enabled=thinking_enabled),
                 }
                 # D-LLM-FAILURE-RATE #1 — force a valid JSON object of the expected

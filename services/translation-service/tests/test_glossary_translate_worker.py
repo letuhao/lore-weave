@@ -377,6 +377,92 @@ async def test_running_and_terminal_emitted_for_glossary_translation(_stub_emit)
 
 
 @pytest.mark.asyncio
+async def test_large_entity_gets_output_budget_above_flat_4096():
+    """bug #8 — a long-description entity must send a max_tokens budget ABOVE the old
+    flat 4096 so the structured JSON isn't truncated mid-output. Guards the worker
+    wiring (entity_output_budget threaded into the LLM call) the unit tests can't."""
+    job_id = uuid4()
+    e1 = str(uuid4())
+    big = _entity(e1)
+    big["attributes"].append({
+        "attr_value_id": f"{e1}-desc",
+        "code": "description",
+        "field_type": "text",
+        "original_value": "A young cultivator from the Cloud Sect. " * 400,  # ~16k chars
+    })
+    llm_inputs: list[dict] = []
+
+    async def fake_fetch(*_a, **_kw):
+        if not getattr(fake_fetch, "called", False):
+            fake_fetch.called = True
+            return {"total": 1, "items": [big]}
+        return {"total": 0, "items": []}
+
+    async def capture_llm(**kwargs):
+        llm_inputs.append(kwargs.get("input") or {})
+        return _llm_ok()
+
+    pool, _ = _make_pool()
+    llm = AsyncMock()
+    llm.submit_and_wait = AsyncMock(side_effect=capture_llm)
+    publish = AsyncMock()
+    msg = {
+        "book_id": str(uuid4()), "target_language": "vi", "source_language": "zh",
+        "model_source": "user_model", "model_ref": str(uuid4()),
+        "overwrite_mode": "missing_only", "metadata": {},
+    }
+    with (
+        patch("app.workers.glossary_translate_worker.fetch_translation_candidates",
+              new=AsyncMock(side_effect=fake_fetch)),
+        patch("app.workers.glossary_translate_worker.post_apply_translations",
+              new=AsyncMock(return_value={"translated": 1, "skipped_verified": 0,
+                                          "skipped_empty": 0, "failed": []})),
+    ):
+        await _run_job(msg, job_id, "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa", pool, publish, llm)
+
+    assert llm_inputs and llm_inputs[0]["max_tokens"] > 4096
+
+
+@pytest.mark.asyncio
+async def test_small_entity_keeps_4096_floor():
+    """bug #8 back-compat — a short entity still sends exactly 4096 (the prior default),
+    so the budget change is non-regressive for the common small-entity case."""
+    job_id = uuid4()
+    e1 = str(uuid4())
+    llm_inputs: list[dict] = []
+
+    async def fake_fetch(*_a, **_kw):
+        if not getattr(fake_fetch, "called", False):
+            fake_fetch.called = True
+            return {"total": 1, "items": [_entity(e1)]}
+        return {"total": 0, "items": []}
+
+    async def capture_llm(**kwargs):
+        llm_inputs.append(kwargs.get("input") or {})
+        return _llm_ok()
+
+    pool, _ = _make_pool()
+    llm = AsyncMock()
+    llm.submit_and_wait = AsyncMock(side_effect=capture_llm)
+    publish = AsyncMock()
+    msg = {
+        "book_id": str(uuid4()), "target_language": "vi", "source_language": "zh",
+        "model_source": "user_model", "model_ref": str(uuid4()),
+        "overwrite_mode": "missing_only", "metadata": {},
+    }
+    with (
+        patch("app.workers.glossary_translate_worker.fetch_translation_candidates",
+              new=AsyncMock(side_effect=fake_fetch)),
+        patch("app.workers.glossary_translate_worker.post_apply_translations",
+              new=AsyncMock(return_value={"translated": 1, "skipped_verified": 0,
+                                          "skipped_empty": 0, "failed": []})),
+    ):
+        await _run_job(msg, job_id, "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa", pool, publish, llm)
+
+    assert llm_inputs and llm_inputs[0]["max_tokens"] == 4096
+
+
+@pytest.mark.asyncio
 async def test_concurrency_runs_entities_in_parallel_bounded_by_cap():
     # bug #4: with concurrency=3, up to 3 entities translate at once (parallel), but never
     # more than the requested cap. A gated LLM mock records the peak in-flight count.
