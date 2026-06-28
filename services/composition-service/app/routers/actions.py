@@ -582,6 +582,11 @@ async def _execute_conformance_run(
             "book_id": str(work.book_id),
             "scope": payload.get("scope"),
             "chapter_id": payload.get("chapter_id"),
+            # D-W10-ARC-CONFORMANCE-DEEP-JOB — the arc deep overlay's inputs (the tagging storm
+            # the worker runs); the BYOK classify model rides through (provider-gateway invariant).
+            "arc_template_id": payload.get("arc_template_id"),
+            "model_ref": payload.get("model_ref"),
+            "model_source": payload.get("model_source"),
         },
     )
     return {

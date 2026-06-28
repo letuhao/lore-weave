@@ -1,5 +1,53 @@
 # ▶ NEXT SESSION — Narrative Motif Library BUILD (handoff)
 
+## STATUS (2026-06-28 PM-22) — D-W10-ARC-CONFORMANCE-DEEP-JOB CLEARED — deep overlay is now a Tier-W job
+
+**`D-W10-ARC-CONFORMANCE-DEEP-JOB`** ✅ (the MED from the SUCCESSION /review-impl) — the deep arc
+overlay's ~120-LLM-call tagging storm (tag-threads + tag-motifs + infer-causal-edges) no longer
+runs SYNCHRONOUSLY on a GET (it would time out on a real book). It is now the body of the Tier-W
+`run_conformance_run` worker (the frozen stub that raised `not yet implemented`). Single-service
+(composition). Plan: `docs/plans/2026-06-28-deep-arc-conformance-job.md`. Commit: this.
+- **NEW `engine/arc_conformance_orchestrate.py` `compute_arc_report`** — the ONE place that turns a
+  resolved arc + its materialized bindings into the coarse report (+ optional deep overlay). Takes
+  reader/mrepo/knowledge INJECTED (duck-typed) so it imports only the pure builders → no router
+  cycle. Extracted verbatim from the GET branch; DRYs the GET and the worker.
+- **`routers/conformance.py`** — the `scope=arc` GET branch now calls `compute_arc_report` (behavior
+  identical; the synchronous deep+model_ref path stays for tests/small books, FE uses the job).
+- **`engine/motif_conformance_run.run_conformance_run`** — filled for `scope='arc'`: resolve work +
+  arc (H13 get_visible) → `compute_arc_report(deep=True, model_ref=input.model_ref)` → return the
+  report as the job result (the poll reads it). `scope='chapter'` stays a terminal ValueError (the
+  cheap GET trace serves chapter; the per-scene extract-diff is the separate D-MOTIF-CONFORMANCE-
+  ENGINE-WIRING slice).
+- **Envelope threading** — MCP `_ConformanceRunArgs` += `arc_template_id`/`model_ref`/`model_source`
+  (arc scope requires arc_template_id + model_ref + IDOR get_visible); the confirm effect
+  `_execute_conformance_run` spec carries them.
+- **VERIFY:** composition unit — conformance-run worker 8 (real compute_arc_report via fakes: deep+
+  tagging, pacing-only-no-model, 3 terminal guards, confirm-effect spec, MCP arg model) + arc_conformance
+  29 (GET parity, unchanged) + wave2-seam 5 + MCP 60, all green; provider-gate clean (model_ref passes
+  through; no SDK/literal).
+
+**▶ FE model-picker is now UNGATED** — the storm is a job, so the FE can propose
+`composition_conformance_run` (arc + model_ref) → poll `composition_get_mine_job` → render the deep
+overlay. The model source from CompositionPanel is the last bit (a tracked FE slice). This is the
+natural next.
+
+## STATUS (2026-06-28 PM-21) — extractor hardening: 3 LOW debt rows cleared (clear-aware re-tag + batch tokens + injection)
+
+Cleared the three LOW debt rows from the SUCCESSION/THREAD-TAG /review-impls, all in the
+knowledge-service deep-conformance tag classifiers (one coherent fix-now milestone). Commit `da9b5cd7`.
+- **`D-THREAD-TAG-RETAG-STALE`** ✅ — `set_narrative_threads`/`set_realized_motifs` gain an optional
+  `event_ids` (the full considered scope); `tag-threads`/`tag-motifs` pass it so an event the
+  classifier no longer picks gets its stale tag NULLed (Cypher `SET …=null` removes the property),
+  instead of polluting succession/causal pairs on a vocab change. `tagged` counts only non-null SETs;
+  the legacy set-only path (no `event_ids`) is preserved.
+- **`D-THREAD-TAG-BATCH-TOKENS`** ✅ — `max_tokens` now scales with batch size (`_max_tokens_for`),
+  so a full batch's `{id: key}` JSON can't truncate to an untagged batch.
+- **`D-EXTRACTOR-PROMPT-INJECTION`** ✅ — `_neutralize_event_dicts` runs extracted event
+  title/summary/participants through the knowledge-service injection defense before they enter a
+  classify prompt (all 3 routes). Defense-in-depth (output stays vocab/id-validated).
+- **VERIFY:** knowledge unit — extractor-hardening 8 + thread_tag/motif_tag 26 + motif_beats/causal 33,
+  green; provider-gate clean.
+
 ## STATUS (2026-06-28 PM-20) — D-W10-ARC-CONFORMANCE-SUCCESSION CLEARED — all 3 deep dims now real
 
 **`D-W10-ARC-CONFORMANCE-SUCCESSION`** ✅ — the THIRD deep arc-conformance dim, which I'd repeatedly

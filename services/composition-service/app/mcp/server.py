@@ -62,6 +62,7 @@ from app.db.repositories import (
     ReferenceViolationError,
     VersionMismatchError,
 )
+from app.db.repositories.arc_template_repo import ArcTemplateRepo
 from app.db.repositories.canon_rules import CanonRulesRepo
 from app.db.repositories.generation_jobs import GenerationJobsRepo
 from app.db.repositories.motif_repo import MotifRepo
@@ -1697,6 +1698,11 @@ class _ConformanceRunArgs(ForbidExtra):
     project_id: str
     scope: Literal["chapter", "arc"]
     chapter_id: str | None = None
+    # arc-scope deep overlay (D-W10-ARC-CONFORMANCE-DEEP-JOB): the arc to diff + the BYOK
+    # classify model the worker tags the book's prose with. model_ref required for arc scope.
+    arc_template_id: str | None = None
+    model_ref: str | None = None
+    model_source: str | None = None
 
 
 @mcp_server.tool(
@@ -1728,12 +1734,25 @@ async def composition_conformance_run(ctx: MCPContext, args: _ConformanceRunArgs
         # IDOR: the chapter is in the resolved Work's project.
         if node is None or node.project_id != pid:
             raise uniform_not_accessible()
+    else:  # scope == "arc" — the deep overlay job (D-W10-ARC-CONFORMANCE-DEEP-JOB)
+        if not args.arc_template_id:
+            return {"success": False, "error": "arc_template_id is required when scope='arc'"}
+        if not args.model_ref:
+            return {"success": False,
+                    "error": "model_ref is required when scope='arc' (the deep overlay tags prose)"}
+        # IDOR: the arc must be visible to the caller (H13 uniform deny on a foreign/missing arc).
+        arc = await ArcTemplateRepo(get_pool()).get_visible(tc.user_id, UUID(args.arc_template_id))
+        if arc is None:
+            raise uniform_not_accessible()
     estimate = _mine_estimate(scope="book")
     payload = {
         "project_id": args.project_id,
         "book_id": str(work.book_id),
         "scope": args.scope,
         "chapter_id": args.chapter_id,
+        "arc_template_id": args.arc_template_id,
+        "model_ref": args.model_ref,
+        "model_source": args.model_source,
         "estimate_usd": estimate["estimated_usd"],
     }
     confirm_token = mint_confirm_token(

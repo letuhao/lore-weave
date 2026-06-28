@@ -46,11 +46,50 @@ async def run_conformance_run(
     pool: asyncpg.Pool, llm: LLMClient, knowledge, *, user_id: str, project_id: str,
     input: dict[str, Any],
 ) -> dict[str, Any]:
-    """Run the cost-gated chapter/arc conformance extract-diff. See module docstring
-    for the frozen input envelope. Raises ``ValueError`` (terminal business error —
-    clean job-failed, no redeliver loop) until the conformance-wiring WS lands the
-    compute."""
-    raise ValueError(
-        "conformance_run worker handler not yet implemented "
-        "(Wave-2 W5 — tracked D-MOTIF-CONFORMANCE-ENGINE-WIRING)"
+    """Run the cost-gated arc conformance extract-diff (D-W10-ARC-CONFORMANCE-DEEP-JOB).
+
+    For ``scope='arc'`` this is the production home of the DEEP overlay: the synchronous
+    ``GET …/conformance?scope=arc&deep&model_ref`` fires ~tag-threads+tag-motifs+causal-edges
+    over the whole book — a storm that times out on a GET — so the FE proposes this Tier-W job
+    and polls the result. It REUSES the shared ``compute_arc_report`` (the same compute the GET
+    runs) with ``deep=True``. ``scope='chapter'`` stays a terminal ``ValueError`` — the cheap
+    synchronous GET trace already serves chapter conformance; the per-scene extract-diff is a
+    separate unbuilt slice (D-MOTIF-CONFORMANCE-ENGINE-WIRING).
+
+    Raises ``ValueError`` (terminal business error — clean job-failed, no redeliver) on an
+    unsupported scope or an unresolvable work/arc. All LLM calls route through provider-registry
+    via the passed ``model_ref``/``model_source``."""
+    from uuid import UUID
+
+    from app.db.repositories.arc_template_repo import ArcTemplateRepo
+    from app.db.repositories.motif_repo import MotifRepo
+    from app.db.repositories.works import WorksRepo
+    from app.engine.arc_conformance_orchestrate import compute_arc_report
+    from app.routers.conformance import ConformanceTraceReader
+
+    scope = input.get("scope")
+    if scope != "arc":
+        raise ValueError(
+            f"conformance_run worker supports scope='arc' only (got {scope!r}); "
+            "chapter conformance is the synchronous GET trace "
+            "(tracked D-MOTIF-CONFORMANCE-ENGINE-WIRING)"
+        )
+
+    arc_template_id = input.get("arc_template_id")
+    if not arc_template_id:
+        raise ValueError("conformance_run arc scope requires arc_template_id")
+
+    uid, pid = UUID(user_id), UUID(project_id)
+    work = await WorksRepo(pool).get(uid, pid)
+    if work is None:
+        raise ValueError("conformance_run: work not found")
+    arc_repo = ArcTemplateRepo(pool)
+    arc = await arc_repo.get_visible(uid, UUID(arc_template_id))
+    if arc is None:
+        raise ValueError("conformance_run: arc template not found / not visible")
+
+    return await compute_arc_report(
+        reader=ConformanceTraceReader(pool), mrepo=MotifRepo(pool), knowledge=knowledge,
+        user_id=uid, project_id=pid, book_id=work.book_id, arc=arc,
+        deep=True, model_ref=input.get("model_ref"), model_source=input.get("model_source"),
     )

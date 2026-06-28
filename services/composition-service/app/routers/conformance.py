@@ -45,7 +45,7 @@ from app.db.repositories.works import WorksRepo
 from app.clients.knowledge_client import KnowledgeClient
 from app.deps import (get_arc_template_repo, get_knowledge_client_dep,
                       get_outline_repo, get_works_repo)
-from app.engine.arc_conformance import build_arc_conformance, build_deep_report
+from app.engine.arc_conformance_orchestrate import compute_arc_report
 from app.middleware.jwt_auth import get_current_user
 
 router = APIRouter(prefix="/v1/composition")
@@ -273,65 +273,13 @@ async def read_conformance(
         if arc is None:
             # H13 uniform — no existence oracle for a foreign/missing arc.
             raise HTTPException(status_code=404, detail={"code": "NOT_FOUND"})
-        rows = await reader.arc_bindings(user_id, project_id, arc_template_id)
-        # assign a 1-based realized-chapter index: chapters in story_order of first sight.
-        order: dict[Any, int] = {}
-        for r in rows:
-            ch = r["chapter_id"]
-            if ch not in order:
-                order[ch] = len(order) + 1
-        realized = [{
-            "motif_id": str(r["motif_id"]) if r["motif_id"] else None,
-            "motif_code": r["motif_code"],
-            "thread": (r["annotations"] or {}).get("thread"),
-            "chapter_index": order[r["chapter_id"]],
-            "tension": r["tension"],
-        } for r in rows]
-        realized_ids = [UUID(x["motif_id"]) for x in realized if x["motif_id"]]
-        succ_map = await MotifRepo(get_pool()).successors_by_ids(realized_ids)
-        precedes_pairs = {(frm, s["id"]) for frm, lst in succ_map.items() for s in lst}
-        report = build_arc_conformance(arc=arc, realized=realized, precedes_pairs=precedes_pairs)
-        if deep:
-            # DEEP overlay — the realized-from-PROSE diff (motif_beat extractor, cross-service).
-            # Only on opt-in (deep=true). When a classify model is supplied, tag the book's
-            # events into the arc's thread vocab (→ thread-progression) AND its placement-motif
-            # vocab (→ succession) FIRST; without a model it's pacing-only (+ pre-existing tags).
-            mrepo = MotifRepo(get_pool())
-            placement_codes = sorted({p.get("motif_code") for p in (arc.layout or [])
-                                      if p.get("motif_code")})
-            placement_motifs = await mrepo.get_by_codes(user_id, placement_codes)
-            id_to_code = {str(m.id): m.code for m in placement_motifs.values()}
-            if model_ref:
-                ms = model_source or "user_model"
-                await knowledge.tag_threads(
-                    user_id, book_id=work.book_id, threads=(arc.threads or []),
-                    model_source=ms, model_ref=model_ref)
-                await knowledge.tag_motifs(
-                    user_id, book_id=work.book_id,
-                    motifs=[{"code": m.code, "name": m.name, "summary": m.summary}
-                            for m in placement_motifs.values()],
-                    model_source=ms, model_ref=model_ref)
-                # F2: infer causal edges over the now-tagged events (causal-verify succession).
-                await knowledge.infer_causal_edges(
-                    user_id, book_id=work.book_id, model_source=ms, model_ref=model_ref)
-            seqs = await knowledge.get_motif_beat_sequences(user_id, book_id=work.book_id)
-            # the precedes graph over the placement motifs, keyed by CODE (the realized axis).
-            succ_map = await mrepo.successors_by_ids([m.id for m in placement_motifs.values()])
-            precedes_code_pairs = {(id_to_code[frm], id_to_code[s["id"]])
-                                   for frm, lst in succ_map.items() for s in lst
-                                   if frm in id_to_code and s["id"] in id_to_code}
-            # the realized CAUSES edges in motif-code space → flips a legal transition verified.
-            causal_code_pairs = set(await knowledge.causal_motif_pairs(user_id, book_id=work.book_id))
-            report["deep"] = build_deep_report(
-                sequences=seqs or [],
-                chapter_index_by_id={str(ch): idx for ch, idx in order.items()},
-                planned_by_index={pt["chapter_index"]: pt["avg_tension"]
-                                  for pt in report["pacing"]["realized"]},
-                arc_threads=arc.threads or [],
-                precedes_code_pairs=precedes_code_pairs,
-                causal_code_pairs=causal_code_pairs,
-            )
-        return report
+        # Shared with the Tier-W run_conformance_run worker (D-W10-ARC-CONFORMANCE-DEEP-JOB).
+        # The synchronous deep+model_ref tagging storm stays here for tests/small books; the
+        # FE uses the job (composition_conformance_run) for real books — see the deep-job plan.
+        return await compute_arc_report(
+            reader=reader, mrepo=MotifRepo(get_pool()), knowledge=knowledge,
+            user_id=user_id, project_id=project_id, book_id=work.book_id, arc=arc,
+            deep=deep, model_ref=model_ref, model_source=model_source)
     if scope != "chapter":
         raise HTTPException(status_code=422, detail={"code": "UNSUPPORTED_SCOPE", "scope": scope})
     if chapter_id is None:
