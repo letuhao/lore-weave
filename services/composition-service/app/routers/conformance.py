@@ -294,20 +294,35 @@ async def read_conformance(
         if deep:
             # DEEP overlay — the realized-from-PROSE diff (motif_beat extractor, cross-service).
             # Only on opt-in (deep=true). When a classify model is supplied, tag the book's
-            # events into the arc's thread vocabulary FIRST (D-W10-…-THREAD-TAG) so the beats
-            # carry real narrative_thread → thread-progression; without it, pacing-only (plus
-            # any pre-existing tags). Degrades to available:false on an outage / empty corpus.
+            # events into the arc's thread vocab (→ thread-progression) AND its placement-motif
+            # vocab (→ succession) FIRST; without a model it's pacing-only (+ pre-existing tags).
+            mrepo = MotifRepo(get_pool())
+            placement_codes = sorted({p.get("motif_code") for p in (arc.layout or [])
+                                      if p.get("motif_code")})
+            placement_motifs = await mrepo.get_by_codes(user_id, placement_codes)
+            id_to_code = {str(m.id): m.code for m in placement_motifs.values()}
             if model_ref:
                 await knowledge.tag_threads(
                     user_id, book_id=work.book_id, threads=(arc.threads or []),
                     model_source=model_source or "user_model", model_ref=model_ref)
+                await knowledge.tag_motifs(
+                    user_id, book_id=work.book_id,
+                    motifs=[{"code": m.code, "name": m.name, "summary": m.summary}
+                            for m in placement_motifs.values()],
+                    model_source=model_source or "user_model", model_ref=model_ref)
             seqs = await knowledge.get_motif_beat_sequences(user_id, book_id=work.book_id)
+            # the precedes graph over the placement motifs, keyed by CODE (the realized axis).
+            succ_map = await mrepo.successors_by_ids([m.id for m in placement_motifs.values()])
+            precedes_code_pairs = {(id_to_code[frm], id_to_code[s["id"]])
+                                   for frm, lst in succ_map.items() for s in lst
+                                   if frm in id_to_code and s["id"] in id_to_code}
             report["deep"] = build_deep_report(
                 sequences=seqs or [],
                 chapter_index_by_id={str(ch): idx for ch, idx in order.items()},
                 planned_by_index={pt["chapter_index"]: pt["avg_tension"]
                                   for pt in report["pacing"]["realized"]},
                 arc_threads=arc.threads or [],
+                precedes_code_pairs=precedes_code_pairs,
             )
         return report
     if scope != "chapter":

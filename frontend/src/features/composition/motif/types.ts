@@ -243,6 +243,19 @@ export type ArcDeepThreadProgression = {
   unplanned: string[];
 };
 
+// Unblocked by the realized-motif classifier (F1) — the realized motif ORDER vs the
+// precedes graph. `causal_verified` flips when a `:CAUSES` edge backs a legal transition (F2).
+export type ArcDeepSuccession = {
+  available: boolean;
+  causal_verified: boolean;
+  reason?: string;
+  transitions: number;
+  legal: number;
+  unrelated: number;
+  caused?: number;
+  violations: { from_motif_code: string; to_motif_code: string }[];
+};
+
 export type ArcDeep = {
   available: boolean;
   source: string;
@@ -254,7 +267,7 @@ export type ArcDeep = {
     scale_note: string;
   };
   thread_progression: ArcDeepThreadProgression;
-  succession: ArcDeepDim;
+  succession: ArcDeepSuccession;
 };
 
 export type ArcConformance = {

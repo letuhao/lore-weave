@@ -181,10 +181,35 @@ export function ArcConformancePanel({ projectId, arcTemplateId, token, modelRef 
                     {t('motif.arcConf.notTagged', { defaultValue: 'Thread-progression needs tagging — open with your model to tag the prose.' })}
                   </p>
                 )}
-                {/* succession from prose still needs motif tagging + causal edges */}
-                <p data-testid="arc-conf-deep-blocked" className="mt-1 text-[10px] text-neutral-400">
-                  {t('motif.arcConf.deepBlocked', { defaultValue: 'Succession from prose needs motif tagging + causal edges (P4+).' })}
-                </p>
+                {/* deep succession (unblocked by the realized-motif classifier) */}
+                {r.deep.succession.available ? (
+                  <div data-testid="arc-conf-deep-succession" className="mt-2">
+                    <h5 className="mb-0.5 font-medium text-indigo-700 dark:text-indigo-300">
+                      {t('motif.arcConf.proseSuccession', { defaultValue: 'Succession in the prose' })}
+                      <span className="ml-1 text-[10px] text-neutral-400">
+                        {r.deep.succession.causal_verified
+                          ? t('motif.arcConf.causal', { defaultValue: 'causally verified' })
+                          : t('motif.arcConf.structural', { defaultValue: 'structural' })}
+                      </span>
+                    </h5>
+                    <p className="tabular-nums text-neutral-600 dark:text-neutral-300">
+                      {r.deep.succession.legal}/{r.deep.succession.transitions} {t('motif.arcConf.legalTransitions', { defaultValue: 'legal' })}
+                    </p>
+                    {r.deep.succession.violations.length > 0 && (
+                      <ul data-testid="arc-conf-deep-succ-violations" className="flex flex-col gap-0.5">
+                        {r.deep.succession.violations.map((v) => (
+                          <li key={`${v.from_motif_code}-${v.to_motif_code}`} className="text-amber-700 dark:text-amber-300">
+                            {v.from_motif_code} → {v.to_motif_code}
+                          </li>
+                        ))}
+                      </ul>
+                    )}
+                  </div>
+                ) : (
+                  <p data-testid="arc-conf-deep-succ-untagged" className="mt-1 text-[10px] text-neutral-400">
+                    {t('motif.arcConf.succUntagged', { defaultValue: 'Succession needs motif-tagging — open with your model.' })}
+                  </p>
+                )}
               </section>
             )}
           </div>

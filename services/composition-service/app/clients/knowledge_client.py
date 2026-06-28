@@ -292,6 +292,31 @@ class KnowledgeClient:
         except (ValueError, AttributeError):
             return {"tagged": 0, "events_seen": 0, "threads_assigned": {}, "status": "unavailable"}
 
+    async def tag_motifs(
+        self, user_id: UUID, *, book_id: UUID, motifs: list[dict[str, Any]],
+        model_source: str, model_ref: str,
+    ) -> dict[str, Any]:
+        """D-W10-ARC-CONFORMANCE-SUCCESSION — classify the book's :Event timeline into which
+        arc-placement motif (by code) each event realizes, and persist it, so a subsequent
+        motif-beats read carries ``realized_motif_code`` per step (the realized order for the
+        succession diff). ADVISORY: returns ``{tagged, events_seen, motifs_assigned}`` or a
+        degrade ``{tagged:0, …, status:'unavailable'}`` on any outage/non-200."""
+        url = f"{self._base_url}/internal/extraction/tag-motifs"
+        payload = {"user_id": str(user_id), "book_id": str(book_id), "motifs": motifs,
+                   "model_source": model_source, "model_ref": model_ref}
+        try:
+            resp = await self._http.post(url, json=payload, headers=self._internal_headers())
+        except httpx.HTTPError as exc:
+            logger.warning("knowledge tag-motifs unavailable: %s", exc)
+            return {"tagged": 0, "events_seen": 0, "motifs_assigned": {}, "status": "unavailable"}
+        if resp.status_code != 200:
+            logger.warning("knowledge tag-motifs → %d", resp.status_code)
+            return {"tagged": 0, "events_seen": 0, "motifs_assigned": {}, "status": "unavailable"}
+        try:
+            return resp.json()
+        except (ValueError, AttributeError):
+            return {"tagged": 0, "events_seen": 0, "motifs_assigned": {}, "status": "unavailable"}
+
     # ── M4 packer lenses ────────────────────────────────────────────────
     # All return None/[] on any failure (the packer `_safe_*` degrade, F1) so a
     # knowledge outage thins the pack rather than 500-ing a generate.

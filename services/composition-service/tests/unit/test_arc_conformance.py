@@ -152,7 +152,8 @@ def client(monkeypatch):
     from app.middleware.jwt_auth import get_current_user
     from app.routers.conformance import get_conformance_trace_reader
 
-    state = SimpleNamespace(arc=None, rows=[], sequences=[], tag_calls=[])
+    state = SimpleNamespace(arc=None, rows=[], sequences=[], tag_calls=[],
+                            motif_tag_calls=[], placement_motifs={}, succ_map={})
 
     class _Works:
         async def get(self, u, p):
@@ -169,12 +170,17 @@ def client(monkeypatch):
         async def tag_threads(self, user_id, *, book_id, threads, model_source, model_ref):
             state.tag_calls.append({"threads": threads, "model_ref": model_ref})
             return {"tagged": 1, "events_seen": 1, "threads_assigned": {}}
+        async def tag_motifs(self, user_id, *, book_id, motifs, model_source, model_ref):
+            state.motif_tag_calls.append({"motifs": motifs, "model_ref": model_ref})
+            return {"tagged": 1, "events_seen": 1, "motifs_assigned": {}}
 
     class _MotifRepo:
         def __init__(self, pool):
             pass
         async def successors_by_ids(self, ids):
-            return {}
+            return state.succ_map
+        async def get_by_codes(self, caller_id, codes):
+            return state.placement_motifs
     monkeypatch.setattr("app.routers.conformance.MotifRepo", _MotifRepo)
 
     app.dependency_overrides[get_current_user] = lambda: U
@@ -309,6 +315,69 @@ def test_deep_thread_progression_ignores_threads_outside_the_arc_chapters():
     assert all((not r["realized"]) or r["realized_chapters"] >= 1
                for r in out["thread_progression"]["threads"])
     assert out["thread_progression"]["unplanned"] == []  # combat-out-of-arc isn't "unplanned in-arc"
+
+
+def test_deep_succession_legal_reversed_unrelated():
+    # realized motif order from prose (realized_motif_code per step) vs the precedes graph.
+    seqs = [[{"realized_motif_code": "humiliation", "thread": "a"},
+             {"realized_motif_code": "face_slap", "thread": "b"},   # humiliation→face_slap is legal
+             {"realized_motif_code": "tryst", "thread": "c"}]]      # face_slap→tryst: no edge
+    out = build_deep_report(sequences=seqs, chapter_index_by_id={}, planned_by_index={},
+                            precedes_code_pairs={("humiliation", "face_slap")})
+    s = out["succession"]
+    assert s["available"] is True and s["causal_verified"] is False
+    assert s["transitions"] == 2 and s["legal"] == 1 and s["unrelated"] == 1
+    assert s["violations"] == []
+
+
+def test_deep_succession_flags_reversed_order_as_violation():
+    seqs = [[{"realized_motif_code": "face_slap"}, {"realized_motif_code": "humiliation"}]]
+    out = build_deep_report(sequences=seqs, chapter_index_by_id={}, planned_by_index={},
+                            precedes_code_pairs={("humiliation", "face_slap")})
+    s = out["succession"]
+    assert s["legal"] == 0
+    assert s["violations"] == [{"from_motif_code": "face_slap", "to_motif_code": "humiliation"}]
+
+
+def test_deep_succession_collapses_consecutive_duplicates():
+    seqs = [[{"realized_motif_code": "a"}, {"realized_motif_code": "a"},
+             {"realized_motif_code": "b"}]]
+    out = build_deep_report(sequences=seqs, chapter_index_by_id={}, planned_by_index={},
+                            precedes_code_pairs={("a", "b")})
+    assert out["succession"]["transitions"] == 1 and out["succession"]["legal"] == 1
+
+
+def test_deep_succession_unavailable_without_motif_tags():
+    seqs = [[{"thread": "a", "tension": 3}]]  # no realized_motif_code
+    out = build_deep_report(sequences=seqs, chapter_index_by_id={"a": 1}, planned_by_index={})
+    assert out["succession"]["available"] is False
+    assert "tag-motifs" in out["succession"]["reason"]
+
+
+def test_route_deep_with_model_ref_also_tags_motifs_and_reports_succession(client):
+    c, state = client
+    aid = uuid.uuid4()
+    state.arc = _arc(layout=[_placement("humiliation"), _placement("face_slap")],
+                     threads=[{"key": "revenge", "label": "Revenge"}])
+    state.arc.id = aid
+    ch1 = uuid.uuid4()
+    state.rows = [{"motif_id": M_HUMIL, "motif_code": "humiliation",
+                   "annotations": {"thread": "revenge", "arc_template_id": str(aid)},
+                   "chapter_id": ch1, "tension": 50, "story_order": 1}]
+    # placement motifs resolve (code→Motif) + the precedes graph over their ids.
+    mh = SimpleNamespace(id=M_HUMIL, code="humiliation", name="Humiliation", summary="A public shaming.")
+    mf = SimpleNamespace(id=M_SLAP, code="face_slap", name="Face Slap", summary="The retort.")
+    state.placement_motifs = {"humiliation": mh, "face_slap": mf}
+    state.succ_map = {M_HUMIL: [{"id": M_SLAP, "code": "face_slap", "name": "Face Slap", "ord": 0}]}
+    state.sequences = [[{"realized_motif_code": "humiliation", "thread": str(ch1)},
+                        {"realized_motif_code": "face_slap", "thread": str(ch1)}]]
+    r = c.get(f"/v1/composition/works/{P}/conformance?scope=arc&arc_template_id={aid}"
+              f"&deep=true&model_ref=m1&model_source=user_model")
+    assert r.status_code == 200
+    # the motif vocab (code+name+summary) was sent to tag-motifs.
+    assert state.motif_tag_calls and {m["code"] for m in state.motif_tag_calls[0]["motifs"]} == {"humiliation", "face_slap"}
+    s = r.json()["deep"]["succession"]
+    assert s["available"] is True and s["legal"] == 1 and s["violations"] == []
 
 
 def test_deep_thread_progression_unavailable_without_tags():

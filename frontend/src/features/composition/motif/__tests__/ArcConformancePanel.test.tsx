@@ -101,7 +101,7 @@ describe('ArcConformancePanel', () => {
               realized: [{ chapter_index: 1, avg_tension: 100, events: 2 }], max_drift: 50,
               scale_note: 's' },
             thread_progression: { available: false, reason: 'P4+', threads: [], unplanned: [] },
-            succession: { available: false, reason: 'P4+' },
+            succession: { available: false, causal_verified: false, reason: 'P4+', transitions: 0, legal: 0, unrelated: 0, violations: [] },
           } })
         : REPORT(),
     ));
@@ -125,7 +125,7 @@ describe('ArcConformancePanel', () => {
             available: false, source: 'motif_beat_extractor',
             pacing: { comparable: false, planned: [], realized: [], max_drift: null, scale_note: 's' },
             thread_progression: { available: false, reason: 'P4+', threads: [], unplanned: [] },
-            succession: { available: false, reason: 'P4+' },
+            succession: { available: false, causal_verified: false, reason: 'P4+', transitions: 0, legal: 0, unrelated: 0, violations: [] },
           } })
         : REPORT(),
     ));
@@ -144,7 +144,7 @@ describe('ArcConformancePanel', () => {
               { thread: 'combat', label: 'Combat', realized: true, realized_chapters: 2 },
               { thread: 'romance', label: 'Romance', realized: false, realized_chapters: 0 },
             ], unplanned: ['intrigue'] },
-            succession: { available: false, reason: 'P4+' },
+            succession: { available: false, causal_verified: false, reason: 'P4+', transitions: 0, legal: 0, unrelated: 0, violations: [] },
           } })
         : REPORT(),
     ));
@@ -160,5 +160,24 @@ describe('ArcConformancePanel', () => {
       const call = apiJson.mock.calls.find((c) => String(c[0]).includes('deep=true'));
       expect(String(call?.[0])).toContain('model_ref=m1');
     });
+  });
+
+  it('deep succession: realized motif order vs the precedes graph + a violation (F1)', async () => {
+    apiJson.mockImplementation((url: string) => Promise.resolve(
+      String(url).includes('deep=true')
+        ? REPORT({ deep: {
+            available: true, source: 'motif_beat_extractor',
+            pacing: { comparable: false, planned: [], realized: [{ chapter_index: 1, avg_tension: 60, events: 1 }], max_drift: null, scale_note: 's' },
+            thread_progression: { available: false, reason: 'x', threads: [], unplanned: [] },
+            succession: { available: true, causal_verified: false, transitions: 2, legal: 1, unrelated: 0,
+              violations: [{ from_motif_code: 'face_slap', to_motif_code: 'humiliation' }] },
+          } })
+        : REPORT(),
+    ));
+    render(<ArcConformancePanel projectId="p1" arcTemplateId="a1" token="tok" modelRef="m1" />, { wrapper: wrap() });
+    fireEvent.click(await screen.findByTestId('arc-conf-deep-btn'));
+    const succ = await screen.findByTestId('arc-conf-deep-succession');
+    expect(succ).toHaveTextContent('1');                                   // 1/2 legal (raw count)
+    expect(screen.getByTestId('arc-conf-deep-succ-violations')).toHaveTextContent('face_slap');
   });
 });
