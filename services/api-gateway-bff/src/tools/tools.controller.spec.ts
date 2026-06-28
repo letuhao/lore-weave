@@ -80,11 +80,23 @@ describe('ToolsController (FE→MCP-tool bridge)', () => {
     expect(init.headers['x-internal-token']).toBe('tok');
     expect(init.headers['x-user-id']).toBe('user-42'); // from the JWT sub, never the body
     expect(init.headers['x-project-id']).toBe('p1'); // from args.project_id
+    expect(init.headers['x-session-id']).toMatch(/[0-9a-f-]{36}/); // synthetic per-call session
     expect(JSON.parse(init.body)).toEqual({
       tool: 'composition_conformance_run',
       args: { project_id: 'p1', scope: 'arc' },
     });
     expect(out).toEqual({ result: { confirm_token: 'ct', estimate: { estimated_usd: 0.5 } } });
+  });
+
+  it('extracts X-Project-Id from a propose tool’s NESTED args (args.args.project_id)', async () => {
+    const f = jest.fn().mockResolvedValue({ ok: true, status: 200, text: async () => JSON.stringify({ result: {} }) });
+    (global as any).fetch = f;
+    await controller.execute(
+      { tool: 'composition_conformance_run', args: { args: { project_id: 'pNested', scope: 'arc' } } },
+      bearer('u1'),
+    );
+    const [, init] = f.mock.calls[0];
+    expect(init.headers['x-project-id']).toBe('pNested');
   });
 
   it('relays the gateway error status + message (a tool gate denial → 400)', async () => {

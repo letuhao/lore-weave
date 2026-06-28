@@ -12,6 +12,7 @@
 //     INTERNAL_SERVICE_TOKEN — the same internal trust an MCP client already holds.
 
 import { Body, Controller, Headers, HttpException, Logger, Post } from '@nestjs/common';
+import { randomUUID } from 'node:crypto';
 import * as jwt from 'jsonwebtoken';
 
 /**
@@ -55,7 +56,9 @@ export class ToolsController {
     }
     let userId: string;
     try {
-      const decoded = jwt.verify(token, jwtSecret) as { sub: string };
+      // Pin the algorithm — this is a privileged surface (a valid JWT here invokes
+      // federated MCP tools), so never let a token dictate the verification alg.
+      const decoded = jwt.verify(token, jwtSecret, { algorithms: ['HS256'] }) as { sub: string };
       userId = decoded.sub;
     } catch {
       throw new HttpException('invalid_token', 401);
@@ -85,10 +88,22 @@ export class ToolsController {
       'content-type': 'application/json',
       'x-internal-token': internalToken,
       'x-user-id': userId,
+      // Every composition/domain MCP tool requires a session id (the kit's
+      // build_tool_context lifts X-Session-Id as a required header). The FE bridge is
+      // session-less (no chat session), so mint a synthetic per-call id — it scopes
+      // logs/traces; identity + the spend gate ride X-User-Id + the confirm token.
+      'x-session-id': randomUUID(),
     };
     // Project scope (X-Project-Id) lets project-scoped tools resolve "the current
-    // project" downstream. Taken from args.project_id — non-identity, safe to relay.
-    const projectId = typeof args.project_id === 'string' ? args.project_id : undefined;
+    // project" downstream. Non-identity, safe to relay. Propose tools nest their
+    // fields under a single pydantic `args` param, so look one level in too.
+    const inner = args.args && typeof args.args === 'object' ? (args.args as Record<string, unknown>) : args;
+    const projectId =
+      typeof args.project_id === 'string'
+        ? args.project_id
+        : typeof inner.project_id === 'string'
+          ? inner.project_id
+          : undefined;
     if (projectId) headers['x-project-id'] = projectId;
 
     let upstream: globalThis.Response;

@@ -1,5 +1,56 @@
 # ▶ NEXT SESSION — Narrative Motif Library BUILD (handoff)
 
+## STATUS (2026-06-28 PM-24) — D-W10-ARC-CONFORMANCE-DEEP-FE CLEARED — the deep-conformance vertical is now FE-complete
+
+**`D-W10-ARC-CONFORMANCE-DEEP-FE`** ✅ — the FE that triggers the deep arc-conformance job. The prior
+agent deferred this as "the FE↔composition Tier-W *propose* mechanism is unbuilt"; the user chose the
+**generic FE→MCP-tool bridge** (Option B — reusable for every FE Tier-W op, MCP-first-pure) over a
+per-op REST `/estimate`. XL, 4 services. Plan: `docs/plans/2026-06-28-fe-mcp-tool-bridge-deep-conformance.md`.
+
+- **ai-gateway** — NEW `POST /internal/tools/execute` (`tools/tools.controller.ts`, SO-1-gated, mirrors
+  GroundingController) → `federation.executeTool` → unwraps the CallToolResult (`structuredContent` →
+  text-JSON). 7 tests; suite 62 green.
+- **api-gateway-bff** — NEW `POST /v1/ai/tools/execute` (`tools/`, registered via `ToolsModule`):
+  validates the FE Bearer JWT → `X-User-Id` (server-derived, SEC-1, **HS256 pinned**), enforces an
+  **FE-tool ALLOWLIST** (`composition_conformance_run`/`motif_mine`/`motif_adopt`/`arc_import_analyze`/
+  `get_mine_job` — propose+poll only; NO confirm/bind/admin), mints a synthetic `X-Session-Id` (the kit
+  requires it), forwards to ai-gateway with the internal token. `AI_GATEWAY_URL` added to compose;
+  path-scoped `json()` parser (app is `bodyParser:false`). Fixed 2 stale signature suites. 9 tests;
+  suite 122 green.
+- **composition** — `/actions/confirm` + `/preview` now accept a **Bearer JWT** (`_resolve_envelope_user`
+  + `get_optional_current_user`, mirrors glossary's JWT-authed confirm) so confirm is FE-reachable
+  through the BFF; the internal-token + X-User-Id service path is preserved. Identity binding
+  (`token.u == confirming user`) holds on both. 5 tests; full unit suite **1081 green**.
+- **frontend** — NEW generic `mcpBridge.ts` (`mcpExecute(tool,args,token)`); `motif/api.ts`
+  `arcConformanceRunPropose` (bridge, args **nested under `args`** per FastMCP) + `arcConformanceRunConfirm`
+  (the JWT-authed `/actions/confirm?token=` → poll `getJob` → the deep arc report); `useArcConformanceRun`;
+  `ArcConformancePanel` gains a `ModelRolePicker` (chat) + the propose→confirm→poll job flow + renders the
+  deep report (incl. `entailed`/`entailment_verified`). 139 motif tests + mcpBridge; tsc clean.
+
+**LIVE-SMOKE** ✅ (rebuilt + recreated ai-gateway + api-gateway-bff + composition-service): the bridge
+caught **2 real wiring bugs the units couldn't** — (1) composition MCP tools require `X-Session-Id`
+(BFF now mints one); (2) propose tools take a single pydantic `args` param so FastMCP nests them (FE
+nests). After the fixes: no-bearer→401, non-allowlisted→403, missing-tool→400; `composition_get_mine_job`
++ `composition_conformance_run` both reach composition and return its H13 gate (`not found or not
+accessible`) — proving the full BFF→ai-gateway→composition chain + envelope; the JWT-confirm leg returns
+`400 action_error` (Bearer accepted, reaches token verification — not 401). `/review-impl`: 1 MED
+(JWT alg-pinning) + 1 LOW (nested X-Project-Id) fixed-now; 3 LOW documented below.
+
+**▶ Residual defers (tracked):**
+- `D-ARC-CONFORMANCE-DEEP-FE-HAPPY-SMOKE` (gate-4 infra) — the full happy-path (real materialized arc +
+  EDIT grant → mint confirm_token → confirm → run the ~120-LLM-call deep job → render the deep report)
+  needs heavy fixtures (materialized arc + `:Event` corpus + a chat model); the underlying tools
+  (`composition_conformance_run` propose, the deep job, the confirm executor) were live-smoked in prior
+  sessions. Run when a materialized arc with a tagged corpus exists.
+- `D-MOTIF-TIER-W-BRIDGE-REWIRE` (gate-1 out-of-scope) — the bridge now UNBLOCKS the other broken motif
+  Tier-W propose flows (`adoptEstimate`/`adoptConfirm`, `conformanceRunEstimate`/`Confirm` chapter) which
+  still POST to the non-existent `/actions/{op}/estimate`. Rewire them onto `mcpExecute` + the JWT confirm
+  (same pattern as arc deep). NOTE: chapter `conformance_run` is rejected by the worker (terminal
+  ValueError — chapter conformance is the synchronous GET), so that flow needs a backend decision first.
+- LOW (accept+document): the deep-job CostConfirmCard shows "0 tokens / ∞ quota" (the MCP estimate only
+  carries `estimated_usd`); the bridge doesn't forward `X-Trace-Id` (no trace-stitch); the 5-min poll has
+  no AbortSignal + no reset-after-result button (stale result during re-run). All cosmetic/observability.
+
 ## STATUS (2026-06-28 PM-23) — D-SUCCESSION-ENTAILMENT-JUDGE CLEARED — the deepest succession signal
 
 **`D-SUCCESSION-ENTAILMENT-JUDGE`** ✅ (the honest-tail "deepest form" from the SUCCESSION run) —

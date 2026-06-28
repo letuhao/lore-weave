@@ -253,6 +253,11 @@ export type ArcDeepSuccession = {
   legal: number;
   unrelated: number;
   caused?: number;
+  // D-SUCCESSION-ENTAILMENT-JUDGE — a legal+caused transition whose motif A effects
+  // textually ENTAIL motif B preconditions (the deepest signal; job-only). Optional:
+  // only the deep JOB (not the synchronous GET) computes it.
+  entailment_verified?: boolean;
+  entailed?: number;
   violations: { from_motif_code: string; to_motif_code: string }[];
 };
 

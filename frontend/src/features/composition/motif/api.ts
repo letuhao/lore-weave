@@ -8,6 +8,7 @@
 // the human confirms, the FE POSTs the token to the actions route, the server runs
 // the effect + a job we poll (the existing GenerationJob poll machinery).
 import { apiJson } from '../../../api';
+import { mcpExecute } from '../../../mcpBridge';
 import { compositionApi } from '../api';
 import type { GenerationJob } from '../types';
 import type {
@@ -139,12 +140,84 @@ export const motifApi = {
     const job = await _resolveActionJob(resp, token);
     return (job.result as { conformance: ChapterConformance }).conformance;
   },
+
+  // ── DEEP arc-conformance JOB (D-W10-ARC-CONFORMANCE-DEEP-FE) ─────────────────
+  // The deep arc overlay re-tags the book's prose with ~120 LLM calls, so it is a
+  // Tier-W 202+poll JOB (never a synchronous GET — that would time out on a real
+  // book). PROPOSE mints a confirm token via the FE→MCP-tool bridge (the agentic
+  // mint is an MCP tool-call, per MCP-first), the human confirms (the existing
+  // JWT-authed /actions/confirm), and we poll the job to its deep arc report.
+  /** Step 1 — PROPOSE `composition_conformance_run` (scope=arc) → a cost estimate +
+   *  confirm_token. No spend yet (the worker runs only after confirm). */
+  async arcConformanceRunPropose(
+    args: { projectId: string; arcTemplateId: string; modelRef: string; modelSource?: string },
+    token: string,
+  ): Promise<CostEstimate> {
+    const res = await mcpExecute<_McpProposeResult>(
+      'composition_conformance_run',
+      // The MCP tool takes a single pydantic `args` parameter, so FastMCP nests the
+      // fields under `args` (verified live — a flat body fails arg validation).
+      {
+        args: {
+          project_id: args.projectId,
+          scope: 'arc',
+          arc_template_id: args.arcTemplateId,
+          model_ref: args.modelRef,
+          model_source: args.modelSource ?? 'user_model',
+        },
+      },
+      token,
+    );
+    // The MCP propose envelope estimate is `{estimated_usd, currency, basis}` — map
+    // it onto the FE CostEstimate (token count + quota aren't part of this estimate).
+    return {
+      confirm_token: res.confirm_token,
+      descriptor: 'composition.conformance_run',
+      est_usd: res.estimate?.estimated_usd ?? 0,
+      est_tokens: 0,
+      quota_remaining: null,
+    };
+  },
+  /** Step 2 — confirm the token (the JWT-authed write path) → 202 + a job we poll to
+   *  terminal; the job's result IS the deep arc report (an `ArcConformance` with
+   *  `.deep` populated). */
+  async arcConformanceRunConfirm(confirmToken: string, token: string): Promise<ArcConformance> {
+    const resp = await apiJson<{ job_id?: string } & Record<string, unknown>>(
+      `${BASE}/actions/confirm${_qs({ token: confirmToken })}`,
+      { method: 'POST', token }, // token rides the QUERY; identity is the Bearer JWT
+    );
+    if (!resp.job_id) {
+      // Inline / already-consumed reply — return its result verbatim (replay-safe).
+      return ((resp as { result?: ArcConformance }).result ?? (resp as unknown as ArcConformance));
+    }
+    let job = await compositionApi.getJob(resp.job_id, token);
+    for (let i = 0; i < _POLL_MAX && (job.status === 'pending' || job.status === 'running'); i += 1) {
+      await _sleep(_POLL_INTERVAL_MS);
+      job = await compositionApi.getJob(resp.job_id, token);
+    }
+    if (job.status === 'failed') {
+      throw new Error((job.result as { error?: string } | null)?.error || 'conformance run failed');
+    }
+    if (job.status !== 'completed') {
+      throw new Error('conformance run did not complete in time');
+    }
+    return job.result as ArcConformance;
+  },
   /** Regenerate one scene within its bound beat (reuses the scene-regenerate path). */
   regenerateToBeat(projectId: string, nodeId: string, token: string): Promise<void> {
     return apiJson<void>(`${BASE}/works/${projectId}/scenes/${nodeId}/regenerate-to-beat`, {
       method: 'POST', token,
     });
   },
+};
+
+// The MCP propose tool returns a confirm token + a cost estimate envelope. Shape
+// mirrors composition_conformance_run's return (server.py): a flat object whose
+// `estimate` is `{estimated_usd, currency, basis}`.
+type _McpProposeResult = {
+  confirm_token: string;
+  descriptor?: string;
+  estimate?: { estimated_usd?: number; currency?: string; basis?: string };
 };
 
 // The Tier-W actions route answers a 202 `{ job_id, status }` (the spend runs in a
