@@ -1,13 +1,13 @@
-// W6 §3.2 — the adopt (= clone) Tier-W flow controller. Adopt is a confirm-token
-// spend (R2.8): mint a cost estimate → human confirms → POST the token → poll. The
-// FE NEVER executes the spend. A quota_exceeded surfaces the non-blocking explainer
-// (§4.4), never a silent failure. No JSX.
+// W6 §3.2 — the adopt (= clone) Tier-W flow controller. Adopt clones a public/system
+// motif into YOUR library via a confirm-token spend (R2.8): PROPOSE a confirm token
+// (FE→MCP-tool bridge) → human confirms → the JWT-authed confirm clones it. The FE
+// NEVER executes the spend. Adopt is USER-scoped (the backend tool is target=user);
+// per-book adopt is D-MOTIF-ADOPT-PER-BOOK. A quota ceiling surfaces the §4.4
+// non-blocking explainer. No JSX.
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { useState } from 'react';
 import { isQuotaError, motifApi } from '../api';
 import type { CostEstimate, Motif, QuotaError } from '../types';
-
-export type AdoptTarget = { kind: 'user' } | { kind: 'book'; book_id: string; book_name?: string };
 
 /** Pull a QuotaError out of a thrown api error (apiJson attaches the parsed body),
  *  or null if it isn't a quota error. */
@@ -26,28 +26,25 @@ function readQuota(err: unknown): QuotaError | null {
 export function useAdoptFlow(token: string | null) {
   const qc = useQueryClient();
   const [motifId, setMotifId] = useState<string | null>(null);
-  const [target, setTarget] = useState<AdoptTarget>({ kind: 'user' });
   const [estimate, setEstimate] = useState<CostEstimate | null>(null);
   const [quota, setQuota] = useState<QuotaError | null>(null);
 
-  // Step 1: open the target picker for a motif (no spend yet).
+  // Step 1: open the adopt confirm for a motif (no spend yet).
   const begin = (id: string) => {
     setMotifId(id);
-    setTarget({ kind: 'user' });
     setEstimate(null);
     setQuota(null);
   };
   const cancel = () => { setMotifId(null); setEstimate(null); setQuota(null); };
 
-  // Step 2: mint the cost estimate for the chosen target.
+  // Step 2: mint the confirm token (the propose; no $ — adopt is quota-gated).
   const mint = useMutation({
-    mutationFn: () => motifApi.adoptEstimate(motifId!, target, token!),
+    mutationFn: () => motifApi.adoptEstimate(motifId!, token!),
     onSuccess: (est) => { setEstimate(est); setQuota(null); },
     onError: (err) => { setQuota(readQuota(err)); },
   });
 
-  // Step 3: confirm the minted token → poll → done. Replay-safe (a consumed token
-  // resolves as success in the api layer).
+  // Step 3: confirm the minted token → the clone is created synchronously.
   const confirm = useMutation({
     mutationFn: (): Promise<Motif> => motifApi.adoptConfirm(estimate!.confirm_token, token!),
     onSuccess: () => {
@@ -58,7 +55,7 @@ export function useAdoptFlow(token: string | null) {
   });
 
   return {
-    motifId, target, setTarget, estimate, quota,
+    motifId, estimate, quota,
     begin, cancel, mint, confirm,
     isOpen: motifId != null,
   };

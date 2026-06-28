@@ -1,5 +1,49 @@
 # ▶ NEXT SESSION — Narrative Motif Library BUILD (handoff)
 
+## STATUS (2026-06-28 PM-25) — debt-clearing pass: adopt rewired to the bridge; remaining defers classified
+
+Cleared the buildable code debt on the branch and accurately classified the rest (the branch is now
+functionally complete; the residue is live-fixtures + human-config decisions, none unbuilt).
+
+- **`D-MOTIF-TIER-W-BRIDGE-REWIRE` (adopt) ✅** — `adopt` no longer POSTs to the dead
+  `/actions/motif_adopt/estimate`. It now PROPOSEs via the FE→MCP-tool bridge
+  (`mcpExecute('composition_motif_adopt', { args: { motif_id } })`) → the JWT-authed
+  `/actions/confirm?token=` → the clone is created SYNCHRONOUSLY (the effect returns `motif_id`,
+  fetched as the full Motif). Adopt is **USER-scoped** (the backend tool is `target: Literal["user"]`);
+  the per-book adopt option (unbacked — motifs have no book-scope) was REMOVED from `AdoptTargetModal` +
+  `useAdoptFlow` + the `MotifLibraryView`/`CompositionPanel` `books` prop. `isQuotaError` now also matches
+  the confirm-effect 402 `{reason:'quota_exhausted'}` (adopt's quota now bites at confirm, not propose).
+  VERIFY: 139 motif FE tests + tsc clean. **LIVE-SMOKE ✅** (rebuilt stack): adopted a system motif
+  (`cultivation.auction_house_treasure`) → bridge propose 201 + confirm_token + preview → JWT confirm 200
+  `action_done` → clone owned by the user, correct code; test clone archived (DELETE → archived:true).
+- **`D-MOTIF-SCENE-REBIND-ROUTE` ✅ (already done)** — verified `MotifBindingCard` already wires
+  `onRebindRole` + `onChain` + renders `ChainItHint` from `succession` (cleared in PM-14/PM-15). The
+  enumeration's "inert" note was stale. No work.
+- **NEW `D-MOTIF-ADOPT-PER-BOOK`** (gate-2 large — schema) — adopt-into-a-book needs a book-scope on
+  motif rows + a `target:"book"` on `composition_motif_adopt` + a book-tier clone. A real future feature;
+  the FE per-book option was removed (it never worked) until the backend exists.
+
+**▶ Remaining motif defers — ALL are live-fixtures, human-config, or perf (NONE are unbuilt code):**
+- **Live-smokes (gate-4 — need a fixture, every code leg already proven):**
+  `D-ARC-CONFORMANCE-DEEP-FE-HAPPY-SMOKE` / `D-W10-ARC-CONFORMANCE-DEEP-LIVE-SMOKE` /
+  `D-W10-ARC-CONFORMANCE-THREAD-TAG-LIVE-SMOKE` / `D-MOTIF-CONFORMANCE-PRODUCER-LIVE-SMOKE` /
+  `D-MOTIF-CHAIN-LIVE-SMOKE`. **Decomposed recipe** for the deep happy-path: throwaway book(2ch) → work →
+  arc template (create or adopt) → `POST …/arc/materialize` → seed a tagged `:Event` corpus
+  (knowledge `merge_event` + `POST /internal/extraction/tag-threads|tag-motifs|causal-edges`) → bridge
+  propose `composition_conformance_run`(arc + model_ref) → confirm → poll → assert the deep report.
+  Legs proven: bridge propose + JWT confirm (PM-24/25 smokes); materialize + coarse conformance + the 3
+  deep extractors + the conformance judge (prior-session smokes); the deep-job worker (9 unit tests).
+  The full stitch needs the fixture above — run when a materialized arc with a tagged corpus exists.
+- **Human-config decisions (gate-5 — YOUR call, not engineering):**
+  `motif_conformance_calibrated=true` (the W5 judge gate is SATISFIED — kappa 1.0 / 0.762 ≥ thresholds —
+  but a human must flip it given the single-local-judge panel-safety caveat; ships honest 'unverified'
+  until then), `motif_conformance_enabled=true` (turn the per-generate producer ON — a cost/behavior
+  call), `D-W10-ARC-CONFORMANCE-COARSE-ACTIVATION` (expose the arc-conformance feature to users).
+- **Calibration gold-sets (gate-5 — human labeling + LLM eval):** `D-THREAD-TAG-CALIBRATION` (+ motif-tag,
+  causal) — the 3 extractors ship advisory/uncalibrated (like the conformance judge before its gold-set).
+- **Perf (gate-4 — fix-when-profiling):** `D-MOTIF-PGVECTOR-TRIGGER` — implement when retrieval profiling
+  on a real corpus shows pain.
+
 ## STATUS (2026-06-28 PM-24) — D-W10-ARC-CONFORMANCE-DEEP-FE CLEARED — the deep-conformance vertical is now FE-complete
 
 **`D-W10-ARC-CONFORMANCE-DEEP-FE`** ✅ — the FE that triggers the deep arc-conformance job. The prior

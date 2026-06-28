@@ -293,7 +293,8 @@ export type ArcConformance = {
 // ── quota / cost-confirm (Tier-W — the FE mints + confirms, never executes) ───
 
 export type ConfirmDescriptor =
-  | 'composition.motif_mine' | 'composition.arc_import' | 'composition.conformance_run';
+  | 'composition.motif_mine' | 'composition.arc_import' | 'composition.conformance_run'
+  | 'composition.motif_adopt';
 
 export type CostEstimate = {
   confirm_token: string;

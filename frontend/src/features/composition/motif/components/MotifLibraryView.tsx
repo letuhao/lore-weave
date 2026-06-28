@@ -22,14 +22,13 @@ import { currentUserId } from '../currentUser';
 
 type Props = {
   token: string | null;
-  books?: Array<{ id: string; name: string }>;
   meUserId?: string | null;
   /** The current work, when the panel is mounted inside a project — enables the arc
    *  "Materialize to this book" commit action (D-W10-APPLY-PLANNER-MATERIALIZE). */
   projectId?: string | null;
 };
 
-export function MotifLibraryView({ token, books, meUserId: meProp, projectId }: Props) {
+export function MotifLibraryView({ token, meUserId: meProp, projectId }: Props) {
   const { t } = useTranslation('composition');
   const me = meProp ?? currentUserId();
   const { simple, toggle } = useMotifSimpleMode();
@@ -136,13 +135,10 @@ export function MotifLibraryView({ token, books, meUserId: meProp, projectId }: 
       {/* adopt modal (mount-on-open) */}
       <AdoptTargetModal
         open={adopt.isOpen}
-        books={books}
-        target={adopt.target}
         estimate={adopt.estimate}
         quota={adopt.quota}
         minting={adopt.mint.isPending}
         confirming={adopt.confirm.isPending}
-        onSetTarget={adopt.setTarget}
         onMint={() => adopt.mint.mutate()}
         onConfirm={() => adopt.confirm.mutate()}
         onCancel={adopt.cancel}

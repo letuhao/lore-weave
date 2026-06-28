@@ -1,29 +1,26 @@
-// W6 §4 / §4.5 — adopt → User library | a book. A focus-trapped dialog (Esc closes,
-// focus returns to trigger) that picks the target, mints the estimate, then shows
-// the CostConfirmCard (adopt is Tier-W — R2.8). On quota_exceeded shows the §4.4
-// non-blocking explainer (never a silent fail). Render-only — driven by useAdoptFlow.
+// W6 §4 / §4.5 — adopt → YOUR library. A focus-trapped dialog (Esc closes, focus
+// returns to trigger) that mints the confirm token, then shows the CostConfirmCard
+// (adopt is Tier-W — R2.8). On quota_exceeded shows the §4.4 non-blocking explainer
+// (never a silent fail). Render-only — driven by useAdoptFlow. Adopt is USER-scoped
+// (the backend tool is target=user); per-book adopt is D-MOTIF-ADOPT-PER-BOOK.
 import { useTranslation } from 'react-i18next';
 import { useEffect, useRef } from 'react';
-import type { AdoptTarget } from '../hooks/useAdoptFlow';
 import type { CostEstimate, QuotaError } from '../types';
 import { CostConfirmCard } from './CostConfirmCard';
 
 type Props = {
   open: boolean;
-  books?: Array<{ id: string; name: string }>;
-  target: AdoptTarget;
   estimate: CostEstimate | null;
   quota: QuotaError | null;
   minting: boolean;
   confirming: boolean;
-  onSetTarget: (t: AdoptTarget) => void;
   onMint: () => void;
   onConfirm: () => void;
   onCancel: () => void;
 };
 
 export function AdoptTargetModal({
-  open, books = [], target, estimate, quota, minting, confirming, onSetTarget, onMint, onConfirm, onCancel,
+  open, estimate, quota, minting, confirming, onMint, onConfirm, onCancel,
 }: Props) {
   const { t } = useTranslation('composition');
   const ref = useRef<HTMLDivElement>(null);
@@ -51,35 +48,8 @@ export function AdoptTargetModal({
           {t('motif.adopt.title', { defaultValue: 'Adopt motif' })}
         </h2>
         <p className="mt-1 text-xs text-neutral-500">
-          {t('motif.adopt.body', { defaultValue: 'Adopt makes your own private editable copy. Choose where it goes.' })}
+          {t('motif.adopt.bodyUser', { defaultValue: 'Adopt makes your own private, editable copy in your library.' })}
         </p>
-
-        {/* target picker */}
-        <div role="radiogroup" aria-label={t('motif.adopt.targetLabel', { defaultValue: 'Adopt into' })} className="mt-3 flex flex-col gap-1.5">
-          <button
-            type="button"
-            role="radio"
-            aria-checked={target.kind === 'user'}
-            data-testid="motif-adopt-target-user"
-            className={`rounded border px-2 py-1.5 text-left text-xs ${target.kind === 'user' ? 'border-amber-500 bg-amber-50 dark:bg-amber-950/30' : 'border-neutral-300 dark:border-neutral-600'}`}
-            onClick={() => onSetTarget({ kind: 'user' })}
-          >
-            {t('motif.adopt.toUser', { defaultValue: 'My library' })}
-          </button>
-          {books.map((b) => (
-            <button
-              key={b.id}
-              type="button"
-              role="radio"
-              aria-checked={target.kind === 'book' && target.book_id === b.id}
-              data-testid={`motif-adopt-target-book-${b.id}`}
-              className={`rounded border px-2 py-1.5 text-left text-xs ${target.kind === 'book' && target.book_id === b.id ? 'border-amber-500 bg-amber-50 dark:bg-amber-950/30' : 'border-neutral-300 dark:border-neutral-600'}`}
-              onClick={() => onSetTarget({ kind: 'book', book_id: b.id, book_name: b.name })}
-            >
-              {b.name}
-            </button>
-          ))}
-        </div>
 
         {quota && (
           <div data-testid="motif-adopt-quota" role="alert" className="mt-3 rounded border border-amber-300 bg-amber-50 p-2 text-xs text-amber-800 dark:border-amber-800 dark:bg-amber-950/30 dark:text-amber-200">
@@ -118,7 +88,7 @@ export function AdoptTargetModal({
               disabled={minting}
             >
               {minting
-                ? t('motif.adopt.estimating', { defaultValue: 'Estimating…' })
+                ? t('motif.adopt.estimating', { defaultValue: 'Preparing…' })
                 : t('motif.adopt.continue', { defaultValue: 'Continue' })}
             </button>
           </div>

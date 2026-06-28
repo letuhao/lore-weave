@@ -84,27 +84,34 @@ export const motifApi = {
     return apiJson<CatalogList>(`${BASE}/motifs/catalog${_qs(params)}`, { token });
   },
 
-  // ── Tier-W: adopt = clone (R2.8 confirm-token). mint → confirm → poll ───────
-  /** Step 1: mint a cost estimate + confirm_token for adopting `motifId` into the
-   *  target (the User library, or a book). No spend yet. */
-  adoptEstimate(
-    motifId: string,
-    target: { kind: 'user' } | { kind: 'book'; book_id: string },
-    token: string,
-  ): Promise<CostEstimate> {
-    return apiJson<CostEstimate>(`${BASE}/actions/motif_adopt/estimate`, {
-      method: 'POST', body: JSON.stringify({ motif_id: motifId, target }), token,
-    });
-  },
-  /** Step 2: confirm the minted token → 202 + a job we poll to terminal. Replay-
-   *  safe: a consumed token comes back already-done (treated as success). */
-  async adoptConfirm(confirmToken: string, token: string): Promise<Motif> {
-    const resp = await apiJson<{ job_id?: string; status?: string; motif?: Motif } & Record<string, unknown>>(
-      `${BASE}/actions/motif_adopt/confirm`,
-      { method: 'POST', body: JSON.stringify({ confirm_token: confirmToken }), token },
+  // ── Tier-W: adopt = clone into YOUR library (R2.8 confirm-token), via the
+  //    FE→MCP-tool bridge. Adopt is USER-scoped (the backend `composition_motif_adopt`
+  //    tool is `target: Literal["user"]`); per-book adopt needs a motif book-scope
+  //    (D-MOTIF-ADOPT-PER-BOOK). It is quota-gated, not metered — no $ estimate.
+  /** Step 1: PROPOSE the adopt → a confirm token (+ a preview). No clone yet. */
+  async adoptEstimate(motifId: string, token: string): Promise<CostEstimate> {
+    const res = await mcpExecute<_McpProposeResult>(
+      'composition_motif_adopt',
+      { args: { motif_id: motifId } },
+      token,
     );
-    const job = await _resolveActionJob(resp, token);
-    return (job.result as { motif: Motif }).motif;
+    return {
+      confirm_token: res.confirm_token,
+      descriptor: 'composition.motif_adopt',
+      est_usd: 0, // adopt counts against the library quota; it is not LLM-metered
+      est_tokens: 0,
+      quota_remaining: null,
+    };
+  },
+  /** Step 2: confirm the token (JWT-authed write) → the clone is created SYNCHRONOUSLY
+   *  (no job); the effect returns the new motif_id, which we fetch as the full Motif. */
+  async adoptConfirm(confirmToken: string, token: string): Promise<Motif> {
+    const resp = await apiJson<{ outcome?: string; motif_id?: string } & Record<string, unknown>>(
+      `${BASE}/actions/confirm${_qs({ token: confirmToken })}`,
+      { method: 'POST', token }, // token in the QUERY; identity is the Bearer JWT
+    );
+    if (!resp.motif_id) throw new Error('adopt did not return a motif');
+    return motifApi.get(resp.motif_id, token);
   },
 
   // ── conformance trace (W5) ─────────────────────────────────────────────────
@@ -253,11 +260,18 @@ async function _resolveActionJob(
   return job;
 }
 
-/** A QuotaError thrown by the api carries `code: 'quota_exceeded'` on the error
- *  body (apiJson attaches the parsed body). The hooks read it for the explainer. */
+/** A QuotaError thrown by the api carries `code: 'quota_exceeded'` (the legacy estimate
+ *  shape) OR the composition confirm-effect 402 shape `{code:'action_error',
+ *  reason:'quota_exhausted'}` (adopt mints via the bridge, so the quota ceiling now
+ *  bites at confirm, not propose). apiJson attaches the parsed body. */
 export function isQuotaError(err: unknown): err is { body: { resource: string; limit: number; used: number } } {
-  const e = err as { code?: string; body?: { code?: string } } | null;
-  return !!e && (e.code === 'quota_exceeded' || e.body?.code === 'quota_exceeded');
+  const e = err as { code?: string; body?: { code?: string; reason?: string } } | null;
+  return (
+    !!e &&
+    (e.code === 'quota_exceeded' ||
+      e.body?.code === 'quota_exceeded' ||
+      e.body?.reason === 'quota_exhausted')
+  );
 }
 
 export { type MotifTier };
