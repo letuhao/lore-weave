@@ -41,7 +41,46 @@
   },
   "graph": {
     "title": "Đồ thị thế giới",
-    "subtitle": "Xem chỉ-đọc cách tri thức trong thế giới của bạn kết nối."
+    "subtitle": "Xem chỉ-đọc cách tri thức trong thế giới của bạn kết nối.",
+    "rollupSubtitle": "Bản tổng hợp chỉ-đọc đồ thị bản chính của mọi cuốn sách thành viên, hiển thị cùng nhau dưới dạng các đảo theo từng sách.",
+    "counts": "{{nodes}} nút · {{edges}} quan hệ",
+    "sources": "tổng hợp từ {{count}} sách",
+    "truncated": "hiển thị {{n}} đầu tiên — một cuốn sách lớn có thể lấn át cuốn nhỏ hơn",
+    "hint": "Cuộn để thu phóng · kéo vùng trống để di chuyển · nhấp một nút để xem chi tiết",
+    "loading": "Đang tải đồ thị thế giới…",
+    "loadFailed": "Không tải được đồ thị thế giới: {{error}}",
+    "empty": "Chưa có tri thức thế giới — hãy xây cẩm nang hoặc trích xuất một cuốn sách thành viên để tổng hợp đồ thị của nó vào đây."
+  },
+  "timeline": {
+    "title": "Dòng thời gian thế giới",
+    "subtitle": "Bản tổng hợp chỉ-đọc dòng thời gian bản chính của mọi cuốn sách thành viên, theo thứ tự tường thuật.",
+    "counts": "{{count}} sự kiện",
+    "sources": "trên {{count}} sách",
+    "truncated": "hiển thị {{n}} đầu tiên",
+    "chapterLabel": "Chương",
+    "loading": "Đang tải dòng thời gian thế giới…",
+    "loadFailed": "Không tải được dòng thời gian thế giới: {{error}}",
+    "empty": "Chưa có sự kiện nào trong dòng thời gian — hãy trích xuất một cuốn sách thành viên để tổng hợp dòng thời gian của nó vào đây."
+  },
+  "populate": {
+    "addBook": "Thêm sách",
+    "createWhatIf": "Tạo dị bản",
+    "whatIfHint": "Rẽ nhánh một dị bản từ tác phẩm bản chính",
+    "whatIfNeedsCanon": "Hãy thêm một cuốn sách có tác phẩm bản chính trước — dị bản rẽ nhánh từ bản chính.",
+    "pickCanon": "Rẽ nhánh từ…",
+    "addBookTitle": "Thêm một cuốn sách vào thế giới này",
+    "addBookDesc": "Đính kèm một cuốn sách hiện có hoặc tạo mới — nó sẽ tham gia dòng thời gian và đồ thị của thế giới.",
+    "tabAttach": "Đính kèm sách hiện có",
+    "tabCreate": "Tạo mới",
+    "pickBook": "Sách",
+    "bookTitle": "Tiêu đề",
+    "bookTitlePlaceholder": "Tiêu đề sách mới…",
+    "bookDesc": "Mô tả (tùy chọn)",
+    "attach": "Đính kèm sách",
+    "createAttach": "Tạo & thêm",
+    "adding": "Đang thêm…",
+    "cancel": "Hủy",
+    "addFailed": "Không thể thêm sách: {{error}}"
   },
   "living": {
     "heading": "Thế giới sống",

@@ -41,7 +41,46 @@
   },
   "graph": {
     "title": "世界圖譜",
-    "subtitle": "以唯讀方式檢視世界設定之間的連結。"
+    "subtitle": "以唯讀方式檢視世界設定之間的連結。",
+    "rollupSubtitle": "以唯讀方式彙整每本成員書籍的正典圖譜，並以各書為島嶼一同呈現。",
+    "counts": "{{nodes}} 個節點 · {{edges}} 個關係",
+    "sources": "彙整自 {{count}} 本書",
+    "truncated": "顯示前 {{n}} 個 — 大型書籍可能會擠壓較小的書籍",
+    "hint": "滾動縮放 · 拖曳空白處平移 · 點選節點查看詳情",
+    "loading": "正在載入世界圖譜…",
+    "loadFailed": "載入世界圖譜失敗：{{error}}",
+    "empty": "尚無世界知識 — 請建立聖典或擷取一本成員書籍，將其圖譜彙整於此。"
+  },
+  "timeline": {
+    "title": "世界時間軸",
+    "subtitle": "以唯讀方式依敘事順序彙整每本成員書籍的正典時間軸。",
+    "counts": "{{count}} 個事件",
+    "sources": "橫跨 {{count}} 本書",
+    "truncated": "顯示前 {{n}} 個",
+    "chapterLabel": "章",
+    "loading": "正在載入世界時間軸…",
+    "loadFailed": "載入世界時間軸失敗：{{error}}",
+    "empty": "尚無時間軸事件 — 請擷取一本成員書籍，將其時間軸彙整於此。"
+  },
+  "populate": {
+    "addBook": "新增書籍",
+    "createWhatIf": "建立異版",
+    "whatIfHint": "從正典作品分支出一個異版",
+    "whatIfNeedsCanon": "請先新增一本含正典作品的書籍 — 異版會從正典分支。",
+    "pickCanon": "分支自…",
+    "addBookTitle": "新增書籍至此世界",
+    "addBookDesc": "附加現有書籍或建立新書 — 它將加入世界的時間軸與圖譜。",
+    "tabAttach": "附加現有",
+    "tabCreate": "建立新書",
+    "pickBook": "書籍",
+    "bookTitle": "標題",
+    "bookTitlePlaceholder": "新書標題…",
+    "bookDesc": "描述（選填）",
+    "attach": "附加書籍",
+    "createAttach": "建立並新增",
+    "adding": "新增中…",
+    "cancel": "取消",
+    "addFailed": "無法新增書籍：{{error}}"
   },
   "living": {
     "heading": "活世界",
