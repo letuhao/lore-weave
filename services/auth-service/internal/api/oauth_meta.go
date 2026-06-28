@@ -1,0 +1,109 @@
+package api
+
+import (
+	"encoding/base64"
+	"math/big"
+	"net/http"
+	"time"
+
+	"github.com/loreweave/auth-service/internal/authjwt"
+)
+
+// oauthDeps holds the P5 public-MCP OAuth 2.1 subsystem state. It reuses the admin
+// RS256 signer (the key the edge verifies against via /oauth/jwks) but mints tokens
+// with a DISTINCT issuer + audience (see authjwt.OAuthAccessClaims). nil => OAuth
+// endpoints are disabled (404).
+type oauthDeps struct {
+	signer     authjwt.DigestSigner
+	issuer     string
+	resource   string // canonical MCP resource URL = the token audience (RFC 8707)
+	accessTTL  time.Duration
+	defaultRPM int
+}
+
+// EnableOAuth turns on the P5 OAuth endpoints. Called by main when cfg.OAuthEnabled
+// (admin signer present AND public MCP flag on), and by tests with an in-process
+// signer. Slice 1 wires discovery (JWKS + AS metadata) + the token mint helper; the
+// auth-code/token/register endpoints land in slices 2–3.
+func (s *Server) EnableOAuth(signer authjwt.DigestSigner, issuer, resource string, accessTTL time.Duration, defaultRPM int) {
+	s.oauth = &oauthDeps{signer: signer, issuer: issuer, resource: resource, accessTTL: accessTTL, defaultRPM: defaultRPM}
+}
+
+// oauthJWKS serves GET /oauth/jwks — an RFC 7517 JWK Set with the single RS256
+// public key the edge uses to verify OAuth access tokens LOCALLY (no auth-service
+// round-trip on the hot path). The kid matches the JWT header kid so the edge can
+// select the right key across rotations.
+func (s *Server) oauthJWKS(w http.ResponseWriter, r *http.Request) {
+	if s.oauth == nil {
+		writeErr(w, http.StatusNotFound, "oauth_disabled", "oauth is not enabled")
+		return
+	}
+	pub := s.oauth.signer.PublicKey()
+	jwk := map[string]any{
+		"kty": "RSA",
+		"use": "sig",
+		"alg": "RS256",
+		"kid": s.oauth.signer.KID(),
+		"n":   base64.RawURLEncoding.EncodeToString(pub.N.Bytes()),
+		"e":   base64.RawURLEncoding.EncodeToString(big.NewInt(int64(pub.E)).Bytes()),
+	}
+	w.Header().Set("Cache-Control", "public, max-age=3600")
+	writeJSON(w, http.StatusOK, map[string]any{"keys": []any{jwk}})
+}
+
+// oauthASMetadata serves GET /.well-known/oauth-authorization-server — the RFC 8414
+// Authorization Server Metadata a spec-compliant MCP client reads to discover the
+// authorize/token/register/jwks endpoints. The endpoint URLs are absolute, rooted at
+// the public app URL (the external origin the client reached us on). PKCE S256 only.
+func (s *Server) oauthASMetadata(w http.ResponseWriter, r *http.Request) {
+	if s.oauth == nil {
+		writeErr(w, http.StatusNotFound, "oauth_disabled", "oauth is not enabled")
+		return
+	}
+	base := s.oauthPublicBase()
+	meta := map[string]any{
+		"issuer":                                s.oauth.issuer,
+		"authorization_endpoint":                base + "/oauth/authorize",
+		"token_endpoint":                        base + "/oauth/token",
+		"registration_endpoint":                 base + "/oauth/register",
+		"jwks_uri":                              base + "/oauth/jwks",
+		"scopes_supported":                      oauthScopesSupported,
+		"response_types_supported":              []string{"code"},
+		"grant_types_supported":                 []string{"authorization_code", "refresh_token"},
+		"code_challenge_methods_supported":      []string{"S256"},
+		"token_endpoint_auth_methods_supported": []string{"none"},
+	}
+	w.Header().Set("Cache-Control", "public, max-age=3600")
+	writeJSON(w, http.StatusOK, meta)
+}
+
+// oauthPublicBase is the external origin to root absolute discovery URLs at. Prefer
+// the configured PublicAppURL; fall back to the resource URL minus its /mcp suffix.
+func (s *Server) oauthPublicBase() string {
+	if s.cfg.PublicAppURL != "" {
+		return trimTrailingSlash(s.cfg.PublicAppURL)
+	}
+	// resource is "<base>/mcp"; strip the suffix to recover the origin.
+	res := trimTrailingSlash(s.oauth.resource)
+	if len(res) > 4 && res[len(res)-4:] == "/mcp" {
+		return res[:len(res)-4]
+	}
+	return res
+}
+
+func trimTrailingSlash(s string) string {
+	for len(s) > 0 && s[len(s)-1] == '/' {
+		s = s[:len(s)-1]
+	}
+	return s
+}
+
+// oauthScopesSupported is the advertised scope vocabulary (tier + domain), mirroring
+// the edge TOOL_POLICY / FE MCP_SCOPES. Advisory for discovery; the edge is the
+// authoritative scope gate.
+var oauthScopesSupported = []string{
+	"read", "paid_read", "write_auto", "write_confirm",
+	"domain:book", "domain:glossary", "domain:knowledge", "domain:translation",
+	"domain:composition", "domain:lore_enrichment", "domain:jobs", "domain:settings",
+	"domain:catalog",
+}

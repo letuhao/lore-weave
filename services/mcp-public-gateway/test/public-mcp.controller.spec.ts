@@ -1,6 +1,8 @@
+import { generateKeyPairSync, sign, type KeyObject } from 'node:crypto';
 import type { Request, Response } from 'express';
 import { PublicMcpController, parseBearer } from '../src/mcp/public-mcp.controller.js';
 import { constantTimeEquals } from '../src/auth/key-resolver.js';
+import { OAuthDiscoveryController } from '../src/oauth/oauth-discovery.controller.js';
 import { resetConfigForTest } from '../src/config/config.js';
 
 const INTERNAL = 'internal-secret-xyz';
@@ -13,6 +15,12 @@ function setEnv(overrides: Record<string, string | undefined> = {}): void {
   process.env.PUBLIC_MCP_ENABLED = 'true';
   process.env.MCP_PUBLIC_TEST_KEY = TEST_KEY;
   process.env.MCP_PUBLIC_TEST_USER_ID = TEST_USER;
+  // P5 OAuth env is OFF by default — cleared each call so an OAuth test can't leak
+  // its config into a later test (order-independence).
+  delete process.env.OAUTH_ISSUER;
+  delete process.env.MCP_RESOURCE_URL;
+  delete process.env.OAUTH_JWKS_URL;
+  delete process.env.OAUTH_DEFAULT_RPM;
   for (const [k, v] of Object.entries(overrides)) {
     if (v === undefined) delete process.env[k];
     else process.env[k] = v;
@@ -721,6 +729,88 @@ describe('PublicMcpController', () => {
     await new PublicMcpController().handle(mockReq({ headers: { authorization: 'Bearer lw_pk_sc' }, body: { jsonrpc: '2.0', method: 'tools/list', id: 1 } }), r.res);
     const names = JSON.parse(r.sentBody as string).result.tools.map((t: { name: string }) => t.name);
     expect(names).toContain('confirm_action');
+  });
+
+  // ── P5 OAuth 2.1 (slice 1) — discovery + local token verify ────────────────
+  const OAUTH_ISS = 'loreweave-mcp-oauth';
+  const OAUTH_RES = 'https://app.loreweave.dev/mcp';
+  const oauthKeys = generateKeyPairSync('rsa', { modulusLength: 2048 });
+
+  function mintOAuth(key: KeyObject, claims: Record<string, unknown>, kid = 'oauth-kid'): string {
+    const header = Buffer.from(JSON.stringify({ alg: 'RS256', typ: 'JWT', kid })).toString('base64url');
+    const payload = Buffer.from(
+      JSON.stringify({ iss: OAUTH_ISS, aud: OAUTH_RES, exp: Math.floor(Date.now() / 1000) + 600, ...claims }),
+    ).toString('base64url');
+    const si = `${header}.${payload}`;
+    return `${si}.${sign('RSA-SHA256', Buffer.from(si), key).toString('base64url')}`;
+  }
+
+  function oauthJwks(kid = 'oauth-kid') {
+    const j = oauthKeys.publicKey.export({ format: 'jwk' }) as { n: string; e: string };
+    return { keys: [{ kty: 'RSA', use: 'sig', alg: 'RS256', kid, n: j.n, e: j.e }] };
+  }
+
+  it('serves the RFC 9728 Protected Resource Metadata doc', () => {
+    setEnv({ MCP_RESOURCE_URL: OAUTH_RES });
+    const doc = new OAuthDiscoveryController().protectedResource() as { resource: string; authorization_servers: string[] };
+    expect(doc.resource).toBe(OAUTH_RES);
+    expect(doc.authorization_servers).toEqual(['https://app.loreweave.dev']);
+  });
+
+  it('sets WWW-Authenticate (RFC 9728) on a 401 when a resource URL is configured', async () => {
+    setEnv({ MCP_RESOURCE_URL: OAUTH_RES });
+    const r = mockRes();
+    await new PublicMcpController().handle(
+      mockReq({ headers: { authorization: 'Bearer lw_pk_unknownkey999' }, body: { jsonrpc: '2.0', method: 'tools/list', id: 1 } }),
+      r.res,
+    );
+    expect(r.statusCode).toBe(401);
+    expect(r.headers['www-authenticate']).toContain('resource_metadata=');
+  });
+
+  it('verifies an OAuth access token LOCALLY and relays on-behalf-of (P5/S9)', async () => {
+    setEnv({ OAUTH_ISSUER: OAUTH_ISS, MCP_RESOURCE_URL: OAUTH_RES });
+    const token = mintOAuth(oauthKeys.privateKey, { sub: 'user-oauth', grant_id: 'grant-xyz', scope: 'read domain:book' });
+    (global as unknown as { fetch: jest.Mock }).fetch = jest.fn().mockImplementation((url: string) => {
+      if (String(url).includes('/oauth/jwks')) {
+        return Promise.resolve({ status: 200, json: async () => oauthJwks(), headers: { get: () => 'application/json' } });
+      }
+      return Promise.resolve({
+        status: 200,
+        text: async () => '{"jsonrpc":"2.0","result":{"tools":[]},"id":1}',
+        headers: { get: (h: string) => (h.toLowerCase() === 'content-type' ? 'application/json' : null) },
+      });
+    });
+    const r = mockRes();
+    await new PublicMcpController().handle(
+      mockReq({ headers: { authorization: `Bearer ${token}` }, body: { jsonrpc: '2.0', method: 'tools/list', id: 1 } }),
+      r.res,
+    );
+    expect(r.statusCode).toBe(200);
+    const relay = (global as unknown as { fetch: jest.Mock }).fetch.mock.calls.find((c) => String(c[0]).endsWith('/mcp'));
+    expect(relay).toBeDefined();
+    // identity derived from the verified token — never client-supplied; grant_id rides x-mcp-key-id
+    expect(relay![1].headers['x-user-id']).toBe('user-oauth');
+    expect(relay![1].headers['x-mcp-key-id']).toBe('grant-xyz');
+    expect(relay![1].headers['x-internal-token']).toBe(INTERNAL);
+  });
+
+  it('rejects an OAuth token with the WRONG audience (S9 confused-deputy) → 401, no relay', async () => {
+    setEnv({ OAUTH_ISSUER: OAUTH_ISS, MCP_RESOURCE_URL: OAUTH_RES });
+    const token = mintOAuth(oauthKeys.privateKey, { sub: 'u', grant_id: 'g', scope: 'read', aud: 'https://evil.example/mcp' });
+    (global as unknown as { fetch: jest.Mock }).fetch = jest.fn().mockImplementation((url: string) => {
+      if (String(url).includes('/oauth/jwks')) {
+        return Promise.resolve({ status: 200, json: async () => oauthJwks(), headers: { get: () => 'application/json' } });
+      }
+      return Promise.resolve({ status: 200, text: async () => '{}', headers: { get: () => 'application/json' } });
+    });
+    const r = mockRes();
+    await new PublicMcpController().handle(
+      mockReq({ headers: { authorization: `Bearer ${token}` }, body: { jsonrpc: '2.0', method: 'tools/list', id: 1 } }),
+      r.res,
+    );
+    expect(r.statusCode).toBe(401);
+    expect((global as unknown as { fetch: jest.Mock }).fetch.mock.calls.some((c) => String(c[0]).endsWith('/mcp'))).toBe(false);
   });
 });
 

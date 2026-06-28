@@ -20,6 +20,7 @@ type Server struct {
 	rl           *ratelimit.Limiter
 	mcpResolveRL *ratelimit.Limiter // per-prefix Argon2-DoS guard for /internal/mcp-keys/resolve (H-H)
 	admin        *adminDeps         // nil => admin-JWT issuance (074/075) disabled
+	oauth        *oauthDeps         // nil => P5 public-MCP OAuth endpoints disabled
 }
 
 func NewServer(pool *pgxpool.Pool, cfg *config.Config) *Server {
@@ -63,6 +64,12 @@ func (s *Server) Router() http.Handler {
 		}
 		writeJSON(w, http.StatusOK, map[string]string{"status": "ready"})
 	})
+
+	// P5 public-MCP OAuth 2.1 discovery (slice 1) — spec-standard unversioned paths,
+	// no JWT (public discovery). The handlers 404 when OAuth is disabled (s.oauth nil).
+	// The authorize/token/register endpoints land in slices 2–3.
+	r.Get("/.well-known/oauth-authorization-server", http.HandlerFunc(s.oauthASMetadata))
+	r.Get("/oauth/jwks", http.HandlerFunc(s.oauthJWKS))
 
 	// Internal (service-to-service, no JWT required)
 	r.Route("/internal", func(r chi.Router) {

@@ -57,6 +57,15 @@ type Config struct {
 	// wins when both are set. The matching PUBLIC key goes to verifiers (glossary's
 	// ADMIN_JWT_PUBLIC_KEY_PEM).
 	AdminJWTLocalPrivateKeyPEM string
+
+	// P5 public-MCP OAuth 2.1. Reuses the admin RS256 signer to mint access tokens
+	// with a DISTINCT issuer + audience (never an admin token). Enabled iff admin
+	// issuance is on (a signer exists) AND the public MCP feature flag is on.
+	OAuthEnabled    bool
+	OAuthIssuer     string        // "iss" of OAuth access tokens (MUST differ from the admin issuer)
+	OAuthResource   string        // canonical MCP resource URL = the "aud" (RFC 8707); MUST equal the edge's MCP_RESOURCE_URL
+	OAuthAccessTTL  time.Duration // OAuth access-token TTL (default 10m)
+	OAuthDefaultRPM int           // default per-grant rate limit advertised to the edge
 }
 
 func Load() (*Config, error) {
@@ -123,7 +132,43 @@ func Load() (*Config, error) {
 			return nil, fmt.Errorf("ADMIN_TOKEN_TTL_SECONDS must be > 0")
 		}
 	}
+
+	// P5 OAuth 2.1: reuses the admin signer; on only when a signer exists AND the
+	// public MCP flag is set. Audience-bound tokens (RFC 8707) — OAuthResource is the
+	// canonical MCP URL the edge also configures as its aud.
+	c.OAuthIssuer = getEnv("OAUTH_ISSUER", "loreweave-mcp-oauth")
+	c.OAuthResource = getEnv("OAUTH_RESOURCE", defaultOAuthResource(c.PublicAppURL))
+	c.OAuthAccessTTL = time.Duration(getInt("OAUTH_ACCESS_TTL_SECONDS", 600)) * time.Second
+	c.OAuthDefaultRPM = getInt("OAUTH_DEFAULT_RPM", 60)
+	c.OAuthEnabled = c.AdminIssuanceEnabled && c.PublicMcpEnabled
+	if c.OAuthEnabled {
+		if c.OAuthResource == "" {
+			return nil, fmt.Errorf("OAUTH_RESOURCE (or PUBLIC_APP_URL) is required when OAuth is enabled")
+		}
+		// Hard separation from the admin token (defense-in-depth on top of the audience
+		// split): an OAuth token must never share the admin issuer.
+		if c.OAuthIssuer == "" || c.OAuthIssuer == adminTokenIssuer {
+			return nil, fmt.Errorf("OAUTH_ISSUER must be set and differ from the admin issuer %q", adminTokenIssuer)
+		}
+		if c.OAuthAccessTTL <= 0 {
+			return nil, fmt.Errorf("OAUTH_ACCESS_TTL_SECONDS must be > 0")
+		}
+	}
 	return c, nil
+}
+
+// adminTokenIssuer mirrors contracts/adminjwt.Issuer without importing it into the
+// config package (config stays dependency-light). Kept in sync by the cross-rejection
+// test in the api package, which uses the real adminjwt constant.
+const adminTokenIssuer = "loreweave-auth"
+
+// defaultOAuthResource derives the canonical MCP resource URL (the OAuth audience)
+// from the public app URL: "<app>/mcp". Empty when no app URL is configured.
+func defaultOAuthResource(appURL string) string {
+	if strings.TrimSpace(appURL) == "" {
+		return ""
+	}
+	return strings.TrimRight(appURL, "/") + "/mcp"
 }
 
 // loadDomainConfirmURLs maps a confirm `domain` (as it appears in a propose result

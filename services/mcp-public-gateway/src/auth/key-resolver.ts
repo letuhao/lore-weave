@@ -1,5 +1,6 @@
 import { Logger } from '@nestjs/common';
 import { loadConfig } from '../config/config.js';
+import { OAuthTokenVerifier, looksLikeJwt } from '../oauth/token-verifier.js';
 
 /**
  * The resolved identity + policy a credential maps to. P1 fills scopes/caps/
@@ -41,10 +42,29 @@ export class KeyResolver {
   private readonly log = new Logger(KeyResolver.name);
   // Keyed by the raw bearer; small TTL so a revoked/downgraded key clears quickly.
   private readonly cache = new Map<string, CacheEntry>();
+  // P5: local OAuth access-token verification (JWKS + RFC 8707 audience binding).
+  private readonly oauth = new OAuthTokenVerifier(this.cfg.oauthJwksUrl, this.cfg.oauthIssuer, this.cfg.mcpResourceUrl);
 
   async resolve(bearer: string | undefined, now: number = Date.now()): Promise<ResolvedKey | null> {
     if (!this.cfg.featureEnabled) return null; // Q-GATE kill-switch
     if (!bearer) return null;
+
+    // P5: an OAuth 2.1 access token (JWT-shaped, not an `lw_pk_` key) is verified
+    // LOCALLY (RS256 via JWKS + RFC 8707 audience binding) — never sent to the
+    // API-key resolve endpoint. A JWT-shaped bearer that fails verify is a definitive
+    // null (it can't be an API key), so we do NOT fall back to the key path.
+    if (this.oauth.isConfigured() && looksLikeJwt(bearer)) {
+      const v = await this.oauth.verify(bearer, now);
+      if (!v) return null;
+      return {
+        userId: v.userId,
+        keyId: v.grantId, // a UUID — rides x-mcp-key-id uniformly with an API key id
+        scopes: v.scopes,
+        allowSelfConfirm: false, // OAuth headless self-confirm is out of scope for v1
+        spendCapUsd: null, // owner guardrail only (no per-grant cap in v1)
+        rateLimitRpm: this.cfg.oauthDefaultRpm,
+      };
+    }
 
     // Dev/smoke static key — never calls auth-service.
     if (this.cfg.testKey && this.cfg.testUserId && constantTimeEquals(bearer, this.cfg.testKey)) {

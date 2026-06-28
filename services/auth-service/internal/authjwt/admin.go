@@ -59,8 +59,10 @@ type jwtHeader struct {
 //	jwt          = signingInput "." base64url( SignDigest(SHA256(signingInput)) )
 //
 // This is the single load-bearing wire contract shared by the KMS and in-process
-// signers.
-func assembleRS256(ctx context.Context, signer DigestSigner, claims adminjwt.AdminClaims) (string, error) {
+// signers. `claims` is any JSON-marshalable claims struct (AdminClaims for admin
+// tokens, OAuthAccessClaims for P5 OAuth tokens) — the wire-assembly is identical;
+// only the claim set differs.
+func assembleRS256(ctx context.Context, signer DigestSigner, claims any) (string, error) {
 	hb, err := json.Marshal(jwtHeader{Alg: "RS256", Typ: "JWT", Kid: signer.KID()})
 	if err != nil {
 		return "", fmt.Errorf("authjwt: marshal header: %w", err)

@@ -110,6 +110,14 @@ func main() {
 		}
 		srv.EnableAdminIssuance(signer, adminprincipal.New(pool), cfg.AdminTokenIssuerSecret, cfg.AdminAuditHMACKey, cfg.AdminTokenTTL)
 		slog.Info("admin-JWT issuance enabled", "kid", signer.KID())
+
+		// P5 public-MCP OAuth 2.1 (slice 1): reuse the SAME RS256 signer to mint
+		// audience-bound access tokens with a DISTINCT issuer; the edge verifies them
+		// via /oauth/jwks. On only when the public MCP flag is also set.
+		if cfg.OAuthEnabled {
+			srv.EnableOAuth(signer, cfg.OAuthIssuer, cfg.OAuthResource, cfg.OAuthAccessTTL, cfg.OAuthDefaultRPM)
+			slog.Info("public-MCP OAuth enabled", "issuer", cfg.OAuthIssuer, "resource", cfg.OAuthResource, "kid", signer.KID())
+		}
 	}
 
 	httpSrv := &http.Server{

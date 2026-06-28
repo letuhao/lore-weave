@@ -12,6 +12,7 @@ import { RateLimiter } from '../ratelimit/rate-limiter.js';
 import { makeRateLimitStoreFromEnv } from '../ratelimit/redis-store.js';
 import { AuditClient } from '../audit/audit-client.js';
 import { ApprovalClient } from '../approval/approval-client.js';
+import { wwwAuthenticateChallenge } from '../oauth/discovery.js';
 
 /**
  * The PUBLIC MCP edge. An external agent connects here (via api-gateway-bff `/mcp`)
@@ -56,6 +57,11 @@ export class PublicMcpController {
     const resolved = await this.resolver.resolve(bearer);
     if (!resolved) {
       // Uniform 401 — no oracle about which check failed (flag off / bad key / no store).
+      // P5/RFC 9728: point a spec-compliant MCP client at the Protected Resource Metadata
+      // so it can discover the OAuth authorization server and run the auth-code flow.
+      if (this.cfg.mcpResourceUrl) {
+        res.setHeader('WWW-Authenticate', wwwAuthenticateChallenge(this.cfg.mcpResourceUrl));
+      }
       return this.deny(res, -32001, 'unauthorized');
     }
 
