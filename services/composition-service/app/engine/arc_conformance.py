@@ -57,6 +57,11 @@ def _deep_thread_progression(
     up in the written prose, and in how many chapters. ``available:false`` (with a reason)
     until events are tagged — never faked. Also surfaces threads the prose introduced that
     the arc never planned (``unplanned``)."""
+    # A thread counts as realized ONLY in the arc's materialized chapters (the dim asks
+    # "did the thread advance WHERE PLACED"). The motif_beat sequences span the whole book,
+    # so a tagged event in a chapter outside this arc (idx None) is irrelevant here — gating
+    # the setdefault on idx keeps `realized=True` ⟺ `realized_chapters ≥ 1` (no 0-chapter
+    # "realized" verdict) and keeps `unplanned` to threads the prose delivered IN-arc.
     realized: dict[str, set[int]] = {}
     for seq in sequences:
         for step in seq:
@@ -64,9 +69,8 @@ def _deep_thread_progression(
             if not nt:
                 continue
             idx = chapter_index_by_id.get(str(step.get("thread") or ""))
-            realized.setdefault(nt, set())
             if idx is not None:
-                realized[nt].add(idx)
+                realized.setdefault(nt, set()).add(idx)
     planned = {t["key"]: (t.get("label") or t["key"])
                for t in (arc_threads or []) if t.get("key")}
     rows = [{"thread": k, "label": label, "realized": k in realized,

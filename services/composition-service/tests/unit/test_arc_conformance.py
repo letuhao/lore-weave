@@ -292,6 +292,25 @@ def test_deep_thread_progression_from_tagged_beats():
     assert tp["unplanned"] == ["romance"]          # prose introduced a thread the arc didn't plan
 
 
+def test_deep_thread_progression_ignores_threads_outside_the_arc_chapters():
+    # /review-impl #1 — a thread tagged ONLY in a chapter outside the arc's materialized set
+    # is NOT counted (no "realized=True with 0 chapters"); realized ⟺ realized_chapters≥1.
+    seqs = [[{"beat": "skirmish", "thread": "out", "narrative_thread": "combat", "tension": 4},
+             {"beat": "tryst", "thread": "a", "narrative_thread": "romance", "tension": 2}]]
+    out = build_deep_report(
+        sequences=seqs, chapter_index_by_id={"a": 1},  # only chapter 'a' is in the arc
+        planned_by_index={}, arc_threads=[{"key": "combat", "label": "Combat"},
+                                          {"key": "romance", "label": "Romance"}])
+    rows = {r["thread"]: r for r in out["thread_progression"]["threads"]}
+    # combat appeared only in the out-of-arc chapter → not realized here.
+    assert rows["combat"]["realized"] is False and rows["combat"]["realized_chapters"] == 0
+    assert rows["romance"]["realized"] is True and rows["romance"]["realized_chapters"] == 1
+    # no realized row has the contradictory True/0 shape.
+    assert all((not r["realized"]) or r["realized_chapters"] >= 1
+               for r in out["thread_progression"]["threads"])
+    assert out["thread_progression"]["unplanned"] == []  # combat-out-of-arc isn't "unplanned in-arc"
+
+
 def test_deep_thread_progression_unavailable_without_tags():
     seqs = [[{"beat": "x", "thread": "a", "tension": 3}]]  # no narrative_thread
     out = build_deep_report(sequences=seqs, chapter_index_by_id={"a": 1}, planned_by_index={},

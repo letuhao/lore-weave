@@ -31,6 +31,18 @@ and the thread vocabulary is the arc's `threads`. Full vertical across knowledge
 the live-smoke + a thread-tag **calibration gold-set**. The deep **succession** dim is still genuinely
 P4+ (motif-tagged realized beats + `:CAUSES` edges).
 
+**/review-impl (THREAD-TAG) — 1 MED fixed-now + 2 LOW deferred:**
+- **FIXED** (MED): `_deep_thread_progression` could report a planned thread `realized:True` with
+  `realized_chapters:0` (the motif_beat sequences span the whole book; a thread tagged only OUTSIDE
+  the arc's chapters slipped in via an unconditional `setdefault`). Gated on the chapter index →
+  `realized ⟺ realized_chapters≥1`; +1 test (out-of-arc thread not counted).
+- **`D-THREAD-TAG-RETAG-STALE`** (LOW, accept+document): re-tagging never CLEARS a prior tag — the
+  classifier drops `"none"` and `set_narrative_threads` only SETs assigned events, so an event that
+  flips to "none" (or a renamed/removed arc thread) keeps its old `narrative_thread`. Re-tag-only,
+  advisory. Fix = tag-threads nulls out unassigned events (a design choice).
+- **`D-THREAD-TAG-BATCH-TOKENS`** (LOW): batch=60 vs `max_tokens=1500` may truncate a large batch's
+  JSON → that batch degrades to untagged (safe, no crash). Tune batch/tokens when a live smoke shows it.
+
 ## STATUS (2026-06-28 PM-18) — D-W10-ARC-CONFORMANCE-DEEP (pacing slice) — prose-drift, full-stack
 
 **`D-W10-ARC-CONFORMANCE-DEEP`** — the buildable slice DONE; the rest precisely fenced. A code-verified
