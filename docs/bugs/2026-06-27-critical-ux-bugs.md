@@ -218,9 +218,16 @@ Timeline GUI is bad quality — not a rich browser mode like other GUIs (especia
 > `list_events_filtered` Cypher (`AND ($q IS NULL OR toLower(coalesce(e.title/summary,'')) CONTAINS
 > toLower($q))` — parameterized, no injection; matches SOURCE text, deterministic regardless of
 > reader language) + a debounced search box in `TimelineTab` (resets offset; `q` added to the
-> `useTimeline` queryKey so it refetches). **Live smoke:** count + page Cypher executed against the
-> dev Neo4j with `q="duel"` (valid). +1 FE test (q forwarded + clear empties input); TimelineTab
-> 29/29; tsc clean; py_compile clean; +`timeline.search.*` ×4.
+> `useTimeline` queryKey so it refetches). +1 FE test (q forwarded + clear empties input);
+> TimelineTab 29/29; tsc clean; py_compile clean; +`timeline.search.*` ×4.
+> **/review-impl correction:** the original "live smoke" was INVALID — it ran against a STALE
+> container (old image, no `q` clause), so it proved nothing about filtering (the old Cypher
+> ignores `q` → returns all events for every term). RE-VERIFIED properly: copied the updated
+> `events.py` into the container + ran a data-driven smoke (create events → query) → q="duel"→1
+> (case-insens title), q="morning"→1, q="rested"→1 (case-insens SUMMARY), q="dragon"→0, None/""→all,
+> archived excluded — PASS. Added a CI integration-test case `test_timeline_browse_text_search_q`
+> (`tests/integration/db/test_timeline_repo.py`) locking this behavior. The CODE was correct; the
+> VERIFICATION was not (lesson: verify the deployed image matches source before smoking).
 > **Part 3 SHIPPED (bounded) — polish/consistency (#4/#1):** added a **page-size control**
 > (10/25/50/100, default 50) to the timeline pagination, matching the glossary entity browser.
 > +1 FE test (page size → limit, offset reset); TimelineTab 18/18; tsc clean; +`timeline.pagination.pageSize` ×4.
