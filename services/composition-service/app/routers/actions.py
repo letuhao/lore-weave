@@ -40,6 +40,7 @@ from loreweave_mcp import (
 )
 
 from app.config import settings
+from app.middleware.jwt_auth import get_optional_current_user
 from app.grant_client import GrantClient, GrantLevel
 from app.grant_deps import InsufficientGrant, authorize_book
 from app.deps import get_grant_client_dep, get_outline_repo, get_works_repo
@@ -94,6 +95,33 @@ def _require_internal_token(x_internal_token: str | None) -> None:
         raise HTTPException(status_code=401, detail="invalid or missing internal service token")
 
 
+def _resolve_envelope_user(
+    jwt_user: UUID | None, x_internal_token: str | None, x_user_id: str | None
+) -> UUID:
+    """Resolve WHO is confirming/previewing, accepting EITHER identity path:
+
+    - **FE path** — a valid Bearer JWT is sufficient identity (mirrors glossary's
+      JWT-authed `/actions/confirm`). The signed confirm token is the capability; the
+      JWT only proves who is wielding it. This makes the Tier-W confirm reachable
+      directly from the FE through the BFF (no internal token, which the BFF never
+      injects for `/v1/composition/*`).
+    - **Service/MCP path** — the internal service token + an `X-User-Id` envelope (the
+      ai-gateway/BFF set these for service-to-service calls).
+
+    The route's identity binding (envelope_user == the token's proposing user) is
+    enforced by the caller AFTER this resolves, so neither path can confirm another
+    user's token."""
+    if jwt_user is not None:
+        return jwt_user
+    _require_internal_token(x_internal_token)
+    if not x_user_id:
+        raise HTTPException(status_code=401, detail="missing X-User-Id")
+    try:
+        return UUID(x_user_id)
+    except ValueError as exc:
+        raise HTTPException(status_code=401, detail="invalid X-User-Id") from exc
+
+
 def _verify(token: str) -> Any:
     """Decode + verify a confirm token; map the kit's distinct failure modes to
     the C-CONFIRM outcome semantics. Invalid/forged → 400 (re-propose);
@@ -126,11 +154,23 @@ def _exp_dt(claims: Any) -> datetime:
 async def preview_action(
     token: str = Query(..., min_length=1),
     x_internal_token: str | None = Header(default=None, alias="X-Internal-Token"),
+    jwt_user: UUID | None = Depends(get_optional_current_user),
 ) -> dict[str, Any]:
     """Decode the confirm token and return a human-readable descriptor of what
-    confirming would do (NO side effects). The FE's confirm card renders this."""
-    _require_internal_token(x_internal_token)
+    confirming would do (NO side effects). The FE's confirm card renders this.
+
+    Accepts EITHER a Bearer JWT (FE) or the internal-token envelope (service). On
+    the JWT path the previewing user must own the token (a user can't preview someone
+    else's proposal); the internal path is the trusted gateway (no per-user binding,
+    historically X-User-Id-free for this read-only describe)."""
+    if jwt_user is None:
+        # Service path — internal token only (unchanged; preview never required
+        # X-User-Id here, the gateway is the trusted caller).
+        _require_internal_token(x_internal_token)
     claims = _verify(token)
+    if jwt_user is not None and jwt_user != claims.user_id:
+        # H13 anti-oracle — uniform refusal, never reveal "this token is someone else's".
+        raise HTTPException(status_code=400, detail={"code": "action_error"})
     payload = claims.payload if isinstance(claims.payload, dict) else {}
     return {
         "descriptor": claims.descriptor,
@@ -145,6 +185,7 @@ async def confirm_action(
     token: str = Query(..., min_length=1),
     x_internal_token: str | None = Header(default=None, alias="X-Internal-Token"),
     x_user_id: str | None = Header(default=None, alias="X-User-Id"),
+    jwt_user: UUID | None = Depends(get_optional_current_user),
     works: WorksRepo = Depends(get_works_repo),
     outline: OutlineRepo = Depends(get_outline_repo),
     book: BookClient = Depends(get_book_client_dep),
@@ -153,20 +194,16 @@ async def confirm_action(
     """Verify the token and EXECUTE the bound action — the ONLY write path for a
     Tier-W S-COMPOSE action. Returns `{outcome: "action_done", ...}` on success.
 
-    Re-checks: (1) the token's `u` (proposing user) MUST equal the envelope
-    `X-User-Id` (a token minted for A can't be confirmed as B); (2) the caller
-    still owns the Work + holds EDIT on its book at confirm time (a grant revoked
-    between propose and confirm stops the write)."""
-    _require_internal_token(x_internal_token)
+    Identity comes from EITHER a Bearer JWT (the FE path — the confirm token is the
+    capability, the JWT proves who wields it; mirrors glossary) OR the internal-token
+    + `X-User-Id` envelope (the service/MCP path). Re-checks: (1) the token's `u`
+    (proposing user) MUST equal the confirming envelope user (a token minted for A
+    can't be confirmed as B); (2) the caller still owns the Work + holds EDIT on its
+    book at confirm time (a grant revoked between propose and confirm stops the write)."""
+    envelope_user = _resolve_envelope_user(jwt_user, x_internal_token, x_user_id)
     claims = _verify(token)
 
     # Identity binding (INV-9): the confirming envelope user must be the proposer.
-    if not x_user_id:
-        raise HTTPException(status_code=401, detail="missing X-User-Id")
-    try:
-        envelope_user = UUID(x_user_id)
-    except ValueError as exc:
-        raise HTTPException(status_code=401, detail="invalid X-User-Id") from exc
     if envelope_user != claims.user_id:
         # H13 anti-oracle — uniform refusal, never reveal "this token is someone else's".
         raise HTTPException(status_code=400, detail={"code": "action_error"})

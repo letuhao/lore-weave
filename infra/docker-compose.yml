@@ -1333,6 +1333,11 @@ services:
       RABBITMQ_URL: amqp://loreweave:loreweave_dev@rabbitmq:5672/
       JWT_SECRET: ${JWT_SECRET:-loreweave_local_dev_jwt_secret_change_me_32chars}
       INTERNAL_SERVICE_TOKEN: ${INTERNAL_SERVICE_TOKEN:-dev_internal_token}
+      # FE→MCP-tool bridge (D-W10-ARC-CONFORMANCE-DEEP-FE) — the BFF's
+      # /v1/ai/tools/execute controller validates the FE's JWT then forwards a
+      # whitelisted federated tool call to ai-gateway's /internal/tools/execute
+      # (SO-1, the same internal token above). Same base the chat-service uses.
+      AI_GATEWAY_URL: http://ai-gateway:8210
       # Phase 6c-γ — OpenTelemetry trace export (see provider-registry-service).
       OTEL_EXPORTER_OTLP_ENDPOINT: ${OTEL_EXPORTER_OTLP_ENDPOINT:-}
     depends_on:

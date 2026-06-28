@@ -30,7 +30,12 @@ from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 
 from app.config import settings
 
-__all__ = ["get_current_user", "get_bearer_token", "bearer_scheme"]
+__all__ = [
+    "get_current_user",
+    "get_optional_current_user",
+    "get_bearer_token",
+    "bearer_scheme",
+]
 
 bearer_scheme = HTTPBearer(auto_error=False)
 
@@ -72,6 +77,33 @@ def get_current_user(
         return UUID(sub)
     except (ValueError, TypeError):
         raise _unauthorized("invalid sub claim")
+
+
+def get_optional_current_user(
+    credentials: HTTPAuthorizationCredentials | None = Depends(bearer_scheme),
+) -> UUID | None:
+    """Return the JWT `sub` user id when a VALID Bearer token is present, else None.
+
+    Unlike :func:`get_current_user` this NEVER raises — it is for routes that accept
+    EITHER a user JWT (the FE path) OR an internal-token + X-User-Id service envelope
+    (the MCP/gateway path), so a missing or malformed JWT must fall through to the
+    service path rather than 401. Identity is still taken ONLY from the `sub` claim
+    (never body/query). An invalid/expired/forged token reads as "no JWT identity"
+    (None) — the caller then falls back to the internal-token path, which is the
+    higher-trust credential anyway."""
+    if credentials is None:
+        return None
+    try:
+        data = jwt.decode(credentials.credentials, settings.jwt_secret, algorithms=["HS256"])
+    except jwt.InvalidTokenError:
+        return None
+    sub = data.get("sub")
+    if not isinstance(sub, str) or not sub:
+        return None
+    try:
+        return UUID(sub)
+    except (ValueError, TypeError):
+        return None
 
 
 def get_bearer_token(

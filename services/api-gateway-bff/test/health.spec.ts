@@ -25,10 +25,16 @@ describe('Gateway (e2e)', () => {
       translationUrl: 'http://127.0.0.1:9',
       glossaryUrl: 'http://127.0.0.1:9',
       chatUrl: 'http://127.0.0.1:9',
+      roleplayUrl: 'http://127.0.0.1:9',
       videoGenUrl: 'http://127.0.0.1:9',
       statisticsUrl: 'http://127.0.0.1:9',
       notificationUrl: 'http://127.0.0.1:9',
       knowledgeUrl: 'http://127.0.0.1:9',
+      campaignUrl: 'http://127.0.0.1:9',
+      loreEnrichmentUrl: 'http://127.0.0.1:9',
+      learningUrl: 'http://127.0.0.1:9',
+      compositionUrl: 'http://127.0.0.1:9',
+      jobsUrl: 'http://127.0.0.1:9',
     });
     await app.init();
   });
