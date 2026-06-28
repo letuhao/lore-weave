@@ -49,6 +49,14 @@ describe('OAuthConsentPage', () => {
     expect(boxes.every((b) => b.checked)).toBe(true);
   });
 
+  it('surfaces the redirect host + unverified-app hint (open-DCR legibility)', () => {
+    renderAt(QS);
+    // The judgeable signal under open DCR: the registered redirect host, not the
+    // attacker-settable client_name.
+    expect(screen.getByText('client.test')).toBeInTheDocument();
+    expect(screen.getByText('consent.unverified')).toBeInTheDocument();
+  });
+
   it('downscopes: untoggling write_auto omits it from granted_scopes (requested intact)', async () => {
     renderAt(QS);
     const boxes = screen.getAllByRole('checkbox') as HTMLInputElement[];

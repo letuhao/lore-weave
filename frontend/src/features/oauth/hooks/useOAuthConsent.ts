@@ -39,6 +39,17 @@ export function useOAuthConsent() {
   );
   const { tiers, domains } = useMemo(() => splitScopes(requestedTokens), [requestedTokens]);
 
+  // The host the client will redirect back to. Under open DCR the `client_name` is
+  // attacker-controlled, so we surface the registered redirect_uri host (which the
+  // user can actually judge) plus an "unverified app" hint before they approve.
+  const redirectHost = useMemo(() => {
+    try {
+      return new URL(params.redirectUri).host;
+    } catch {
+      return '';
+    }
+  }, [params.redirectUri]);
+
   const valid =
     !!params.clientId &&
     !!params.redirectUri &&
@@ -125,6 +136,7 @@ export function useOAuthConsent() {
 
   return {
     params,
+    redirectHost,
     tiers,
     domains,
     granted,

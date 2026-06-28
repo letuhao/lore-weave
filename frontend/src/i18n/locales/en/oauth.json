@@ -5,6 +5,8 @@
     "client_named": "{{client}} is requesting access to your account.",
     "client_unnamed": "An application is requesting access to your account.",
     "signed_in_as": "Signed in as {{email}}",
+    "redirect_to": "Redirects to",
+    "unverified": "This app is not verified by LoreWeave. Only continue if you recognize and trust it — check the redirect address above.",
     "permissions_heading": "Permissions requested",
     "permissions_hint": "Turn off anything you don't want to grant. You can grant less than requested, never more.",
     "actions_heading": "Actions",

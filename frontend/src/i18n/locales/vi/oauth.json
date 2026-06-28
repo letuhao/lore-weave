@@ -5,6 +5,8 @@
     "client_named": "{{client}} đang yêu cầu truy cập vào tài khoản của bạn.",
     "client_unnamed": "Một ứng dụng đang yêu cầu truy cập vào tài khoản của bạn.",
     "signed_in_as": "Đang đăng nhập với tư cách {{email}}",
+    "redirect_to": "Chuyển hướng đến",
+    "unverified": "Ứng dụng này chưa được LoreWeave xác minh. Chỉ tiếp tục nếu bạn nhận ra và tin tưởng nó — hãy kiểm tra địa chỉ chuyển hướng ở trên.",
     "permissions_heading": "Quyền được yêu cầu",
     "permissions_hint": "Tắt bất kỳ quyền nào bạn không muốn cấp. Bạn có thể cấp ít hơn yêu cầu, nhưng không bao giờ nhiều hơn.",
     "actions_heading": "Hành động",

@@ -40,8 +40,16 @@ export function OAuthConsentView(c: Consent) {
           ? t('consent.client_named', { client: c.params.clientName })
           : t('consent.client_unnamed')}
       </p>
+      {c.redirectHost && (
+        <p className="mt-1 text-xs text-muted-foreground">
+          {t('consent.redirect_to')}: <span className="font-mono">{c.redirectHost}</span>
+        </p>
+      )}
+      <p className="mt-2 rounded-md border border-amber-500/40 bg-amber-500/10 px-3 py-2 text-xs text-amber-700 dark:text-amber-400">
+        {t('consent.unverified')}
+      </p>
       {c.userEmail && (
-        <p className="mt-1 text-xs text-muted-foreground">{t('consent.signed_in_as', { email: c.userEmail })}</p>
+        <p className="mt-2 text-xs text-muted-foreground">{t('consent.signed_in_as', { email: c.userEmail })}</p>
       )}
 
       <div className="mt-5">
