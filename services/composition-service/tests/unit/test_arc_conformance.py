@@ -365,12 +365,23 @@ def test_deep_succession_structural_only_without_causal_edges():
     assert s["legal"] == 1 and s["causal_verified"] is False
 
 
-def test_deep_succession_collapses_consecutive_duplicates():
+def test_deep_succession_uses_first_occurrence_order():
     seqs = [[{"realized_motif_code": "a"}, {"realized_motif_code": "a"},
              {"realized_motif_code": "b"}]]
     out = build_deep_report(sequences=seqs, chapter_index_by_id={}, planned_by_index={},
                             precedes_code_pairs={("a", "b")})
     assert out["succession"]["transitions"] == 1 and out["succession"]["legal"] == 1
+
+
+def test_deep_succession_recurring_motif_is_not_a_false_violation():
+    # /review-impl #2 — a legitimately recurring motif (a, b, a) must NOT manufacture a
+    # b→a reversed-precedes violation; first-occurrence order is [a, b] → one legal transition.
+    seqs = [[{"realized_motif_code": "a"}, {"realized_motif_code": "b"},
+             {"realized_motif_code": "a"}]]
+    out = build_deep_report(sequences=seqs, chapter_index_by_id={}, planned_by_index={},
+                            precedes_code_pairs={("a", "b")})
+    s = out["succession"]
+    assert s["transitions"] == 1 and s["legal"] == 1 and s["violations"] == []
 
 
 def test_deep_succession_unavailable_without_motif_tags():

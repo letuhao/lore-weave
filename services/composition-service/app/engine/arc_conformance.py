@@ -98,11 +98,16 @@ def _deep_succession(
     F2: when ``causal_code_pairs`` is given (realized ``(:Event)-[:CAUSES]`` between the two
     motifs), a legal transition that is ALSO causally backed sets ``caused:true`` and the dim's
     ``causal_verified:true`` — structural-only otherwise."""
+    # FIRST-OCCURRENCE order, each motif once: "did the motifs first appear in legal order".
+    # (Consecutive-only dedup would let a legitimately RECURRING motif — e.g. humiliation,
+    # face_slap, humiliation — manufacture a face_slap→humiliation "reversed" false violation.)
+    seen: set[str] = set()
     seq: list[str] = []
     for s in sequences:
         for step in s:
             c = step.get("realized_motif_code")
-            if c and (not seq or seq[-1] != c):
+            if c and c not in seen:
+                seen.add(c)
                 seq.append(c)
     if not seq:
         return {"available": False, "causal_verified": False,

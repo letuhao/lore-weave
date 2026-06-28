@@ -33,6 +33,22 @@ that compose, both built this run (design: `docs/plans/2026-06-28-deep-successio
 - Live smokes (Neo4j corpus + a chat model) + calibration gold-sets for the 3 classifiers (all ship
   advisory/uncalibrated) + the FE model-picker UX to trigger tagging from the arc view.
 
+**/review-impl (SUCCESSION) — 1 MED fixed-now + 1 MED + 2 LOW deferred:**
+- **FIXED** (MED): `_deep_succession` collapsed only CONSECUTIVE realized-motif dups, so a
+  legitimately recurring motif (a,b,a) manufactured a b→a reversed-precedes false violation. Now
+  first-occurrence order (each motif once) — more correct for "appeared in legal order"; +1 test.
+- **`D-W10-ARC-CONFORMANCE-DEEP-JOB`** (MED, gate-2): the `deep&model_ref` path runs ~120 LLM calls
+  (tag_threads + tag_motifs + infer_causal_edges) SYNCHRONOUSLY on a GET → will time out on a real
+  book. Spec says arc-conformance is a Tier-W 202+poll JOB (the `motif_conformance_run.py` stub is the
+  home). NOT reachable from the UI yet (no model_ref source). **GATE the FE model-picker on this** —
+  do not ship UI-triggered deep-tagging until it's a job.
+- **`D-THREAD-TAG-RETAG-STALE`** (LOW, extended): re-tag staleness now also affects
+  `realized_motif_code` (set-only-never-clear) → stale codes pollute succession + causal pairs on a
+  vocab change. Same fix (null out unassigned events).
+- **`D-EXTRACTOR-PROMPT-INJECTION`** (LOW): the 3 classifiers embed extracted event titles/summaries
+  into LLM prompts without the knowledge-service `injection_defense`; output is vocab/id-validated so
+  a successful injection only yields wrong-but-valid advisory tags. Wrap inputs if it ever matters.
+
 ## STATUS (2026-06-28 PM-19) — D-W10-ARC-CONFORMANCE-THREAD-TAG CLEARED (full vertical, 3 services)
 
 **`D-W10-ARC-CONFORMANCE-THREAD-TAG`** ✅ — the narrative-thread classifier that unblocks deep
