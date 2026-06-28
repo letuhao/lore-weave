@@ -66,6 +66,9 @@ type Config struct {
 	OAuthResource   string        // canonical MCP resource URL = the "aud" (RFC 8707); MUST equal the edge's MCP_RESOURCE_URL
 	OAuthAccessTTL  time.Duration // OAuth access-token TTL (default 10m)
 	OAuthDefaultRPM int           // default per-grant rate limit advertised to the edge
+	OAuthCodeTTL    time.Duration // authorization-code TTL (default 60s, single-use)
+	OAuthRefreshTTL time.Duration // OAuth refresh-token TTL (default 30d)
+	OAuthConsentURL string        // FE consent page URL the authorize endpoint redirects to (default "${PublicAppURL}/oauth/consent")
 }
 
 func Load() (*Config, error) {
@@ -140,6 +143,9 @@ func Load() (*Config, error) {
 	c.OAuthResource = getEnv("OAUTH_RESOURCE", defaultOAuthResource(c.PublicAppURL))
 	c.OAuthAccessTTL = time.Duration(getInt("OAUTH_ACCESS_TTL_SECONDS", 600)) * time.Second
 	c.OAuthDefaultRPM = getInt("OAUTH_DEFAULT_RPM", 60)
+	c.OAuthCodeTTL = time.Duration(getInt("OAUTH_CODE_TTL_SECONDS", 60)) * time.Second
+	c.OAuthRefreshTTL = time.Duration(getInt("OAUTH_REFRESH_TTL_SECONDS", 60*60*24*30)) * time.Second
+	c.OAuthConsentURL = getEnv("OAUTH_CONSENT_URL", defaultConsentURL(c.PublicAppURL))
 	c.OAuthEnabled = c.AdminIssuanceEnabled && c.PublicMcpEnabled
 	if c.OAuthEnabled {
 		if c.OAuthResource == "" {
@@ -169,6 +175,15 @@ func defaultOAuthResource(appURL string) string {
 		return ""
 	}
 	return strings.TrimRight(appURL, "/") + "/mcp"
+}
+
+// defaultConsentURL is the FE consent page the authorize endpoint redirects a
+// logged-in user to: "<app>/oauth/consent". Empty when no app URL is configured.
+func defaultConsentURL(appURL string) string {
+	if strings.TrimSpace(appURL) == "" {
+		return ""
+	}
+	return strings.TrimRight(appURL, "/") + "/oauth/consent"
 }
 
 // loadDomainConfirmURLs maps a confirm `domain` (as it appears in a propose result

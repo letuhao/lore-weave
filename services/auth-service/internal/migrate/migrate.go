@@ -243,6 +243,58 @@ CREATE TABLE IF NOT EXISTS mcp_pending_approvals (
 -- Owner read path: the owner's pending (then recent) approvals, newest first.
 CREATE INDEX IF NOT EXISTS idx_mcp_pending_approvals_owner
   ON mcp_pending_approvals (owner_user_id, status, created_at DESC);
+
+-- P5 OAuth 2.1 (public-MCP on-behalf-of). Three tables:
+--  - mcp_oauth_clients : registered clients (RFC 7591 DCR lands the open registration
+--    in slice 3; slice 2 seeds clients via the internal register). Public PKCE clients
+--    hold no secret (token_endpoint_auth_method='none').
+--  - mcp_oauth_grants  : per (owner,client) consent — the GRANTED (downscoped) scopes +
+--    the rotating refresh-token hash. id is the grant_id that rides x-mcp-key-id.
+--  - mcp_oauth_codes   : short-lived single-use authorization codes (PKCE-bound). No
+--    Redis in auth-service, so codes live here; the code itself is stored HASHED.
+CREATE TABLE IF NOT EXISTS mcp_oauth_clients (
+  client_id                  TEXT PRIMARY KEY,
+  client_name                TEXT NOT NULL DEFAULT '',
+  redirect_uris              TEXT[] NOT NULL DEFAULT '{}',
+  grant_types                TEXT[] NOT NULL DEFAULT '{authorization_code,refresh_token}',
+  token_endpoint_auth_method TEXT NOT NULL DEFAULT 'none',
+  scopes_requested           TEXT[] NOT NULL DEFAULT '{}',
+  status                     TEXT NOT NULL DEFAULT 'active'
+                               CHECK (status IN ('active','disabled')),
+  created_at                 TIMESTAMPTZ NOT NULL DEFAULT now(),
+  created_ip                 TEXT NOT NULL DEFAULT ''
+);
+
+CREATE TABLE IF NOT EXISTS mcp_oauth_grants (
+  id                 UUID PRIMARY KEY DEFAULT uuidv7(),
+  owner_user_id      UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  client_id          TEXT NOT NULL,
+  scopes             TEXT[] NOT NULL DEFAULT '{}',
+  resource           TEXT NOT NULL DEFAULT '',
+  refresh_token_hash TEXT NULL,
+  created_at         TIMESTAMPTZ NOT NULL DEFAULT now(),
+  last_used_at       TIMESTAMPTZ NULL,
+  expires_at         TIMESTAMPTZ NULL,
+  revoked_at         TIMESTAMPTZ NULL,
+  UNIQUE (owner_user_id, client_id)
+);
+CREATE INDEX IF NOT EXISTS idx_mcp_oauth_grants_owner ON mcp_oauth_grants (owner_user_id);
+CREATE INDEX IF NOT EXISTS idx_mcp_oauth_grants_refresh
+  ON mcp_oauth_grants (refresh_token_hash) WHERE refresh_token_hash IS NOT NULL;
+
+CREATE TABLE IF NOT EXISTS mcp_oauth_codes (
+  code_hash             TEXT PRIMARY KEY,                  -- sha256(code); the raw code is never stored
+  owner_user_id         UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  client_id             TEXT NOT NULL,
+  scopes                TEXT[] NOT NULL DEFAULT '{}',
+  redirect_uri          TEXT NOT NULL,
+  resource              TEXT NOT NULL,
+  code_challenge        TEXT NOT NULL,
+  code_challenge_method TEXT NOT NULL DEFAULT 'S256',
+  expires_at            TIMESTAMPTZ NOT NULL,
+  consumed_at           TIMESTAMPTZ NULL,
+  created_at            TIMESTAMPTZ NOT NULL DEFAULT now()
+);
 `
 
 func Up(ctx context.Context, pool *pgxpool.Pool) error {

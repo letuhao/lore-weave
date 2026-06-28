@@ -19,14 +19,37 @@ type oauthDeps struct {
 	resource   string // canonical MCP resource URL = the token audience (RFC 8707)
 	accessTTL  time.Duration
 	defaultRPM int
+	codeTTL    time.Duration // authorization-code TTL (single-use)
+	refreshTTL time.Duration // refresh-token TTL
+	consentURL string        // FE consent page the authorize endpoint redirects to
+}
+
+// OAuthOptions carries the P5 OAuth subsystem config for EnableOAuth.
+type OAuthOptions struct {
+	Issuer     string
+	Resource   string
+	AccessTTL  time.Duration
+	DefaultRPM int
+	CodeTTL    time.Duration
+	RefreshTTL time.Duration
+	ConsentURL string
 }
 
 // EnableOAuth turns on the P5 OAuth endpoints. Called by main when cfg.OAuthEnabled
 // (admin signer present AND public MCP flag on), and by tests with an in-process
-// signer. Slice 1 wires discovery (JWKS + AS metadata) + the token mint helper; the
-// auth-code/token/register endpoints land in slices 2–3.
-func (s *Server) EnableOAuth(signer authjwt.DigestSigner, issuer, resource string, accessTTL time.Duration, defaultRPM int) {
-	s.oauth = &oauthDeps{signer: signer, issuer: issuer, resource: resource, accessTTL: accessTTL, defaultRPM: defaultRPM}
+// signer. Reuses the admin RS256 signer to mint audience-bound access tokens with a
+// distinct issuer.
+func (s *Server) EnableOAuth(signer authjwt.DigestSigner, o OAuthOptions) {
+	s.oauth = &oauthDeps{
+		signer:     signer,
+		issuer:     o.Issuer,
+		resource:   o.Resource,
+		accessTTL:  o.AccessTTL,
+		defaultRPM: o.DefaultRPM,
+		codeTTL:    o.CodeTTL,
+		refreshTTL: o.RefreshTTL,
+		consentURL: o.ConsentURL,
+	}
 }
 
 // oauthJWKS serves GET /oauth/jwks — an RFC 7517 JWK Set with the single RS256

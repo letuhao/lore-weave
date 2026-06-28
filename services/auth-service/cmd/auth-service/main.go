@@ -115,7 +115,15 @@ func main() {
 		// audience-bound access tokens with a DISTINCT issuer; the edge verifies them
 		// via /oauth/jwks. On only when the public MCP flag is also set.
 		if cfg.OAuthEnabled {
-			srv.EnableOAuth(signer, cfg.OAuthIssuer, cfg.OAuthResource, cfg.OAuthAccessTTL, cfg.OAuthDefaultRPM)
+			srv.EnableOAuth(signer, api.OAuthOptions{
+				Issuer:     cfg.OAuthIssuer,
+				Resource:   cfg.OAuthResource,
+				AccessTTL:  cfg.OAuthAccessTTL,
+				DefaultRPM: cfg.OAuthDefaultRPM,
+				CodeTTL:    cfg.OAuthCodeTTL,
+				RefreshTTL: cfg.OAuthRefreshTTL,
+				ConsentURL: cfg.OAuthConsentURL,
+			})
 			slog.Info("public-MCP OAuth enabled", "issuer", cfg.OAuthIssuer, "resource", cfg.OAuthResource, "kid", signer.KID())
 		}
 	}

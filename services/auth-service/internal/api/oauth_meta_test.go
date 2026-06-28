@@ -19,7 +19,15 @@ func newOAuthTestServer(t *testing.T, enable bool) (*Server, *signertest.LocalRS
 	}
 	srv := &Server{cfg: &config.Config{PublicAppURL: "https://app.loreweave.dev"}}
 	if enable {
-		srv.EnableOAuth(signer, "loreweave-mcp-oauth", "https://app.loreweave.dev/mcp", 10*time.Minute, 60)
+		srv.EnableOAuth(signer, OAuthOptions{
+			Issuer:     "loreweave-mcp-oauth",
+			Resource:   "https://app.loreweave.dev/mcp",
+			AccessTTL:  10 * time.Minute,
+			DefaultRPM: 60,
+			CodeTTL:    time.Minute,
+			RefreshTTL: 30 * 24 * time.Hour,
+			ConsentURL: "https://app.loreweave.dev/oauth/consent",
+		})
 	}
 	return srv, signer
 }

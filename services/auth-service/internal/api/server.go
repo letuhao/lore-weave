@@ -70,6 +70,9 @@ func (s *Server) Router() http.Handler {
 	// The authorize/token/register endpoints land in slices 2–3.
 	r.Get("/.well-known/oauth-authorization-server", http.HandlerFunc(s.oauthASMetadata))
 	r.Get("/oauth/jwks", http.HandlerFunc(s.oauthJWKS))
+	// P5 slice 2 — auth-code + PKCE flow (public endpoints).
+	r.Get("/oauth/authorize", http.HandlerFunc(s.oauthAuthorize))
+	r.Post("/oauth/token", http.HandlerFunc(s.oauthToken))
 
 	// Internal (service-to-service, no JWT required)
 	r.Route("/internal", func(r chi.Router) {
@@ -98,6 +101,9 @@ func (s *Server) Router() http.Handler {
 			// allow_self_confirm key executes a Tier-W action via confirm_action; replays
 			// the token to the domain with X-Mcp-Key-Id (no approval row).
 			r.Post("/mcp-keys/confirm", http.HandlerFunc(s.internalSelfConfirm))
+			// P5 slice 2 — seed/register an OAuth client (slice 3 adds the public RFC
+			// 7591 self-registration endpoint on top of the same insert).
+			r.Post("/oauth/clients", http.HandlerFunc(s.internalRegisterOAuthClient))
 		})
 
 		// Admin-JWT issuance (074/075) — mounted only when enabled. Gated by the
@@ -165,6 +171,8 @@ func (s *Server) Router() http.Handler {
 		r.Post("/account/mcp-keys", http.HandlerFunc(s.createMcpKey))
 		r.Patch("/account/mcp-keys/{key_id}", http.HandlerFunc(s.patchMcpKey))
 		r.Delete("/account/mcp-keys/{key_id}", http.HandlerFunc(s.revokeMcpKey))
+		// P5 slice 2 — OAuth consent (owner approves a downscoped grant → mints the auth code).
+		r.Post("/account/oauth/consent", http.HandlerFunc(s.oauthConsent))
 
 		// Public user profiles + follow system
 		r.Route("/users/{user_id}", func(r chi.Router) {
