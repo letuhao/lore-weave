@@ -379,11 +379,32 @@ Agent proposes multiple confirm cards but only the first works; later cards expi
 > RC (VERIFIED — user was right, it's NOT time-expiry): each card's `confirm_token` IS unique (`uuid.NewString()`, `action_propose_tools.go:59`) and single-use per `jti` server-side (`consumeToken` `ON CONFLICT (jti)`, `action_confirm.go:48-56`) — so the token isn't the problem. The shared id is the **agent RUN** (`run_id`). A confirm card commits via the write (`POST /actions/confirm`) AND a *resume* — `submitToolResult(run_id, tool_call_id, outcome)` (`useChatMessages.ts:252-262`) wakes the suspended run. N cards in one turn share ONE `run_id`; confirming the first resumes the run and streams a new turn that SUPERSEDES/orphans the sibling cards → they can't be confirmed. The system is DESIGNED for ONE card committing all rows (`ConfirmActionCard.tsx:23` "Apply — never N cards. The single confirm_token commits all rows server-side"). Same root as #29/#30.
 > Fix (proposed): make the agent propose ONE batched card (one token committing all rows) — enforce batching in the propose tools/skill, not N cards.
 
-### [I] 28. No way to review KG schema on either book or knowledge GUI
+### [x] 28. No way to review KG schema on either book or knowledge GUI
 There is no way to review the KG schema on both the book and knowledge GUIs.
 
-> RC (investigated): a KG-schema model + endpoints exist (`graph_schemas.py`; `GET /v1/kg/schemas/{project_id}`; edit via the `DESC_SCHEMA_EDIT` confirm-card) and a `SchemaEditor.tsx` exists, but ONLY inside the ontology-curation flow — the main KG/graph view and the book GUI have no schema inspector.
-> Fix (proposed): add a read-only "Schema" tab/panel to the KG view (node-kinds, edge-kinds, hierarchy) fetching `GET /v1/kg/schemas` + an "Edit schema" CTA into the existing editor.
+> RC (VERIFIED — and the real ask is bigger): the user clarified they "can only command AI to
+> set up the schema, cannot view or edit by myself." In-code: every BE schema endpoint exists and
+> `useGraphSchema` already wires every mutation (addNodeKind/addEdgeType/deprecateEdgeType/
+> addFactType/addVocabValue/patchMeta). The ONLY schema UI mounted was a read view + one
+> "deprecate edge" button (`KnowledgeOntologyTab` → Schema); an `AddEdgeTypeForm.tsx` existed but
+> was **never mounted** (dead code), and no forms existed for node-kinds/fact-types/vocab. The
+> standalone Knowledge GUI (`ProjectDetailShell`) had **no Schema section** at all. Schema model is
+> additive + deprecate-edge-only (mirror of the AI's edits).
+> **FIXED (L, FE-only — plan [docs/plans/2026-06-28-kg-schema-view-edit.md]):**
+> - **Part A — view** (commit `be1cea7b`): a read-only **Schema** section in the Knowledge GUI
+>   resolving the effective schema (`useResolvedSchema` → `GET /v1/kg/projects/{id}/schema`,
+>   `ProjectSchemaSection` renders `SchemaEditor` readOnly) + an "Edit schema" CTA deep-linking to
+>   the book editor (`?view=schema`).
+> - **Part B — edit**: `SchemaWorkbench` in the book GUI Schema tab — mounts the previously-dead
+>   `AddEdgeTypeForm` + new `AddNodeKindForm`/`AddFactTypeForm`/`AddVocabValueForm` + an
+>   `allow_free_edges` toggle, all on the wired `useGraphSchema` mutations (toast-guarded, 403→clear
+>   message); deprecate-edge kept. `KnowledgeOntologyTab` honors `?view=schema`.
+> Tests: ProjectSchemaSection 4 + SchemaWorkbench 6; knowledge suite 689/689; tsc clean; kgOntology
+> +17 keys & knowledge +schemaSection ×4 locales.
+> **Known limitations (by API surface, not bugs):** you must **adopt a template first** before
+> editing (the editor targets the project's active schema; `_writable_schema_for_caller` gates to
+> project scope), and you can add **vocab values** but not create a new **vocab set** (no
+> create-set endpoint — still AI-only). → D-KG-SCHEMA-FROM-SCRATCH / D-KG-VOCAB-SET-CREATE-FE.
 
 ### [I] 29. KG schema lacks batch operations (agent proposes only 1–2 edges, second expires)
 KG schema lacks batch work. Told the agent to update the whole KG schema but it doesn't work well — only proposes 1–2 edges, and the second edge always fails (expired/something).

@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { Skeleton } from '@/components/shared';
 import { cn } from '@/lib/utils';
@@ -9,7 +9,7 @@ import { useOntologyAdopt } from '@/features/knowledge/hooks/useOntologyAdopt';
 import { useGraphViews } from '@/features/knowledge/hooks/useGraphViews';
 import { useOntologySync } from '@/features/knowledge/hooks/useOntologySync';
 import { AdoptPicker } from '@/features/knowledge/components/ontology/AdoptPicker';
-import { SchemaEditor } from '@/features/knowledge/components/ontology/SchemaEditor';
+import { SchemaWorkbench } from '@/features/knowledge/components/ontology/SchemaWorkbench';
 import { ViewBuilder } from '@/features/knowledge/components/ontology/ViewBuilder';
 import { SyncDiffPanel } from '@/features/knowledge/components/ontology/SyncDiffPanel';
 
@@ -23,7 +23,16 @@ type OntologyView = 'adopt' | 'schema' | 'views' | 'sync';
 export function KnowledgeOntologyTab({ bookId }: { bookId: string }) {
   const { t } = useTranslation('kgOntology');
   const navigate = useNavigate();
-  const [view, setView] = useState<OntologyView>('adopt');
+  const [searchParams] = useSearchParams();
+  // Honor a ?view=<tab> deep-link (e.g. the Knowledge-GUI "Edit schema" CTA →
+  // ?view=schema lands the user straight on the schema authoring surface).
+  const initialView = useMemo<OntologyView>(() => {
+    const v = searchParams.get('view');
+    return v === 'schema' || v === 'views' || v === 'sync' ? v : 'adopt';
+    // intentionally seed once from the initial URL; tab clicks own it after.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+  const [view, setView] = useState<OntologyView>(initialView);
   const [selectedId, setSelectedId] = useState<string | null>(null);
 
   const { items: projects, isLoading: projectsLoading } = useProjects(false);
@@ -136,10 +145,7 @@ export function KnowledgeOntologyTab({ bookId }: { bookId: string }) {
 
       {view === 'schema' &&
         (schema.schema ? (
-          <SchemaEditor
-            schema={schema.schema}
-            onDeprecateEdgeType={(code) => void schema.deprecateEdgeType(code)}
-          />
+          <SchemaWorkbench controller={schema} />
         ) : (
           <p className="text-[12px] text-muted-foreground" data-testid="kg-ontology-no-schema">
             {t('page.noSchema')}

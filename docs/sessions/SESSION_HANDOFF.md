@@ -1,4 +1,18 @@
-# ▶▶ NEXT SESSION STARTS HERE — **Critical UX bug track** · branch `fix/critical-ux-bugs` · HEAD `168deb8a`+ · 2026-06-28
+# ▶▶ NEXT SESSION STARTS HERE — **Critical UX bug track** · branch `fix/critical-ux-bugs` · HEAD `be1cea7b`+ · 2026-06-28
+
+> **✅ SHIPPED THIS SESSION — #28 KG schema view + self-service edit GUI (L, FE-only).** User:
+> "I can only command AI to set up the schema, cannot view or edit by myself." Verify-before-fix:
+> every BE schema endpoint + `useGraphSchema` mutations already existed; the ONLY schema UI mounted
+> was a read view + one deprecate-edge button. `AddEdgeTypeForm` existed but was **never mounted**
+> (dead code); the standalone Knowledge GUI had no Schema section. **Part A (view, `be1cea7b`):**
+> read-only **Schema** section in `ProjectDetailShell` (`useResolvedSchema` → effective schema →
+> `SchemaEditor` readOnly) + "Edit schema" CTA. **Part B (edit):** `SchemaWorkbench` in the book
+> GUI Schema tab — mounts the dead `AddEdgeTypeForm` + new node-kind/fact-type/vocab-value forms +
+> `allow_free_edges` toggle, all on the wired mutations (toast-guarded); `KnowledgeOntologyTab`
+> honors `?view=schema`. Schema model is additive + deprecate-edge-only (mirrors the AI). **VERIFY:**
+> knowledge suite 689/689; tsc clean; kgOntology +17 keys & knowledge +schemaSection ×4 locales.
+> Bug #28 → `[x]`. **Deferred** `D-KG-SCHEMA-FROM-SCRATCH` (must adopt a template before editing) +
+> `D-KG-VOCAB-SET-CREATE-FE` (can add vocab values but not create a new set — no BE endpoint).
 
 > **✅ SHIPPED THIS SESSION — #21/#22/#25 kinds/standards FE cluster (M, FE-only).** "Can't
 > edit user/book kinds, no genre↔kind wiring; adopt-genre useless." **#21 + #22 were

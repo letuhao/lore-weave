@@ -53,7 +53,22 @@
     "label": "Nhãn",
     "temporalField": "theo thời gian (valid_from + nguồn gốc)",
     "cardinality": "Bản số",
-    "addButton": "Thêm loại cạnh"
+    "addButton": "Thêm loại cạnh",
+    "addSectionTitle": "Thêm vào lược đồ",
+    "editHint": "Chỉ bổ sung: thêm loại mới hoặc ngừng dùng một loại cạnh. Không xóa cứng (giống những gì AI làm được).",
+    "allowFreeEdges": "Cho phép quan hệ ngoài từ vựng (cạnh tự do)",
+    "addNodeKind": "Thêm loại node",
+    "addFactType": "Thêm loại sự kiện",
+    "addVocabValue": "Thêm giá trị từ vựng",
+    "kindCode": "Mã loại",
+    "strength": "Mức độ",
+    "required": "bắt buộc",
+    "optional": "tùy chọn",
+    "noVocabSets": "Lược đồ này chưa có bộ từ vựng nào — hãy nhờ AI thêm trước.",
+    "add": "Thêm",
+    "added": "Đã cập nhật lược đồ",
+    "addFailed": "Không thể cập nhật lược đồ",
+    "forbidden": "Bạn cần quyền Quản lý trên dự án này để sửa lược đồ"
   },
   "sync": {
     "upToDate": "Đã cập nhật — không có thay đổi từ nguồn.",
