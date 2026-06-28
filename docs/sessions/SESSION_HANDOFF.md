@@ -1,4 +1,19 @@
-# ▶▶ NEXT SESSION STARTS HERE — **Critical UX bug track** · branch `fix/critical-ux-bugs` · HEAD `be1cea7b`+ · 2026-06-28
+# ▶▶ NEXT SESSION STARTS HERE — **Critical UX bug track** · branch `fix/critical-ux-bugs` · HEAD `ae06e37e`+ · 2026-06-28
+
+> **⚡ HYBRID SWEEP (parallel-investigate → batched build).** 4 read-only agents verified the
+> remaining open bugs at once; verify-before-fix then DOWNGRADED every "bounded" agent claim
+> (caught #29 misdiagnosis + #16 mis-scoped + #11/#7 over-simplified). **Shipped #11** (KG entity
+> Description from the anchored glossary entry — FE-only: fixed a glossary-type drift, new
+> `useAnchoredGlossaryEntity` hook, Description section in `EntityDetailPanel`; 802/802; +2 tests;
+> ×4 locales; deferred D-KG-ENTITY-NATIVE-DESCRIPTION for unanchored). **Closed #13** as won't-fix
+> (re-verified: NO glossary→KG auto-coupling; decoupling already exists). **Corrected the stale
+> bug-doc RCs** for #16 (TargetPicker is already on step 1; real gap = running card lacks
+> target/staging visibility + job status doesn't echo `targets` → ~M cross-layer) and #29
+> (`kg_propose_edge` parks to a triage INBOX, not a confirm-card → NOT the #27 orphan; it's about
+> schema edge-TYPES, tangled with deferred #27/#30 P2). **Remaining bounded-ish:** #16 (~M),
+> #12 (M shared-browser refactor); **larger:** #7+#26 (L merge/summary LLM pass), #27/#30 P2
+> (L coalesce), #15 block-level (L/XL), #18/#19 P2 (deferred/blocked).
+
 
 > **✅ SHIPPED THIS SESSION — #28 KG schema view + self-service edit GUI (L, FE-only).** User:
 > "I can only command AI to set up the schema, cannot view or edit by myself." Verify-before-fix:

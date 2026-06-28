@@ -363,6 +363,8 @@
       "edit": "Edit",
       "merge": "Merge into another entity",
       "metadata": "Metadata",
+      "description": "Description",
+      "descriptionSource": "From the linked glossary entry",
       "aliases": "Aliases",
       "relations": "Relations ({{count}})",
       "truncated": "Showing {{shown}} of {{total}} — filter or search in the table",

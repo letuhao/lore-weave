@@ -360,6 +360,8 @@
       "loadFailed": "無法載入實體：{{error}}",
       "close": "關閉",
       "metadata": "中繼資料",
+      "description": "描述",
+      "descriptionSource": "來自連結的詞彙表項目",
       "aliases": "別名",
       "relations": "關係 ({{count}})",
       "truncated": "顯示 {{shown}} / {{total}} 筆——請在表格中篩選或搜尋",

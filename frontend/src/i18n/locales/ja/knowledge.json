@@ -360,6 +360,8 @@
       "loadFailed": "エンティティを読み込めませんでした：{{error}}",
       "close": "閉じる",
       "metadata": "メタデータ",
+      "description": "説明",
+      "descriptionSource": "リンクされた用語集エントリより",
       "aliases": "エイリアス",
       "relations": "関係 ({{count}})",
       "truncated": "{{shown}} / {{total}} 件表示中 — テーブルで絞り込みまたは検索してください",

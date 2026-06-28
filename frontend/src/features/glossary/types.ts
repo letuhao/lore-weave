@@ -144,6 +144,9 @@ export type GlossaryEntitySummary = {
   display_name_translation: string | null;
   status: EntityStatus;
   alive?: boolean | null;
+  // Authored short description (≤500 chars, nullable). The BE entity GET returns it;
+  // the type previously omitted it (drift). Surfaced in the KG entity detail (#11).
+  short_description?: string | null;
   tags: string[];
   chapter_link_count: number;
   translation_count: number;

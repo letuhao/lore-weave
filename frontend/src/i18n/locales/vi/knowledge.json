@@ -360,6 +360,8 @@
       "loadFailed": "Không thể tải thực thể: {{error}}",
       "close": "Đóng",
       "metadata": "Siêu dữ liệu",
+      "description": "Mô tả",
+      "descriptionSource": "Từ mục từ điển được liên kết",
       "aliases": "Bí danh",
       "relations": "Quan hệ ({{count}})",
       "truncated": "Hiển thị {{shown}} trong tổng số {{total}} — hãy lọc hoặc tìm trong bảng",
