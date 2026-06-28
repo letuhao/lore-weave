@@ -224,11 +224,18 @@ Event timeline should carry metadata: chapter, block/scene, etc. — needed to t
 > RC (investigated): chapter provenance + in-book time ARE already captured — events carry `chapter_id`/`chapter_title`, `event_date_iso` (parsed wall-clock), `time_cue` (free-text narrative hint), and `chronological_order` (for non-linear books) (`knowledge-service/app/db/neo4j_repos/events.py` ~129-151). What's MISSING: block/scene-level provenance (events are extracted per-chapter; intra-chapter position is lost), and the BE date/chronological filters aren't exposed in the FE (same gap as #12).
 > Fix (proposed): expose date/chronological filters in the FE (with #12); add `block_index`/scene anchor to the Event model + extraction for scene granularity (larger, schema change); in-book-time detection beyond `event_date_iso`/`time_cue` is an advanced follow-up.
 
-### [I] 16. "Build full" KG option — fact/summary/etc not visible (stopped early)
+### [x] 16. "Build full" KG option — fact/summary/etc not visible (stopped early)
 Chose "build full" for KG but don't see fact, summary, and other parts. Unsure if they build later — stopped at item 4/100 due to the many bugs above, don't want to waste tokens before they're fixed.
 
 > RC (CORRECTED after verification — the prior "no target picker" RC was WRONG): the build dialog **already has** a `TargetPicker` (`BuildGraphDialog.tsx:690`), and it's on **step 1** which is the DEFAULT step (`wizardStep` inits to `1`) — so the user CAN see/select targets up front. The real gap is at RUN time: the running card (`BuildingRunningCard.tsx`) shows only an aggregate `items_processed/items_total` with NO indication of which targets were requested or that passes run in STAGES (entities → relations/events/facts → summaries). So when a user stops at item 4/100, facts/summaries genuinely haven't run yet and nothing tells them they're queued. Also `ExtractionJobSummary` + the BE job-status response do NOT echo the selected `targets` (the `targets` column exists on the job row but isn't surfaced).
 > Fix (proposed, ~M cross-layer): surface the job's `targets` in the status response + FE type, and render a staged target checklist + "facts/summaries run after entities" note in the running card. (NOT a target-picker-placement fix.)
+> **FIXED (FE-only, right-sized):** added a **build-stages explainer** to `BuildingRunningCard`
+> (`Entities → Relations · Events · Facts → Summaries` + a note that later passes run AFTER earlier
+> ones, so stopping early skips them). Directly answers the "unsure if facts/summaries build later"
+> confusion with **no BE change** (the aggregate counter stays; the staging is now explicit).
+> Tests: ProjectStateCard +1; suite 28/28; tsc clean; +`stagesTitle/stages/stagesNote` ×4 locales.
+> **Deferred (fuller version):** echo the job's selected `targets` in the status response + per-target
+> progress in the running card → D-KG-BUILD-PER-TARGET-PROGRESS (the cross-layer M).
 
 ### [x] 17. Cannot open a fresh AI assistant in workspace (old session is huge)
 Cannot open a fresh AI assistant in the workspace — the old chat session is too huge.

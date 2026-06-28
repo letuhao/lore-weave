@@ -721,7 +721,10 @@
           "spent": "已花費：${{spent}}",
           "spentOfBudget": "已花費：${{spent}} / ${{budget}}",
           "concurrencyLabel": "並行呼叫數",
-          "concurrencyApply": "套用"
+          "concurrencyApply": "套用",
+          "stagesTitle": "建構階段",
+          "stages": "實體 → 關係 · 事件 · 事實 → 摘要",
+          "stagesNote": "各階段依此順序執行。事實與摘要會在實體與關係完成後才執行，因此在完整建構中會較晚出現——提早停止會略過它們。"
         },
         "building_paused_user": {
           "body": "你已暫停此作業。準備好時恢復,或取消以保留部分圖譜。"

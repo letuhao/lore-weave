@@ -721,7 +721,10 @@
           "spent": "使用額: ${{spent}}",
           "spentOfBudget": "使用額: ${{spent}} / ${{budget}}",
           "concurrencyLabel": "並列呼び出し数",
-          "concurrencyApply": "適用"
+          "concurrencyApply": "適用",
+          "stagesTitle": "ビルドの段階",
+          "stages": "エンティティ → 関係 · イベント · ファクト → 要約",
+          "stagesNote": "パスはこの順に実行されます。ファクトと要約はエンティティと関係の完了後に実行されるため、フルビルドでは後から表示されます。早く停止するとスキップされます。"
         },
         "building_paused_user": {
           "body": "ジョブを一時停止しました。準備ができたら再開するか、キャンセルして部分グラフを残せます。"

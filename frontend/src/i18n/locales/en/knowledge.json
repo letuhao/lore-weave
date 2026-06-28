@@ -693,7 +693,10 @@
           "spent": "Spent: ${{spent}}",
           "spentOfBudget": "Spent: ${{spent}} / ${{budget}}",
           "concurrencyLabel": "Parallel calls",
-          "concurrencyApply": "Apply"
+          "concurrencyApply": "Apply",
+          "stagesTitle": "Build stages",
+          "stages": "Entities → Relations · Events · Facts → Summaries",
+          "stagesNote": "Passes run in this order. Facts and Summaries run after Entities and Relations finish, so they appear later in a full build — stopping early skips them."
         },
         "building_paused_user": {
           "body": "You paused this job. Resume when ready, or cancel to keep the partial graph."

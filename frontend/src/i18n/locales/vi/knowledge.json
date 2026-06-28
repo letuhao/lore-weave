@@ -721,7 +721,10 @@
           "spent": "Đã dùng: ${{spent}}",
           "spentOfBudget": "Đã dùng: ${{spent}} / ${{budget}}",
           "concurrencyLabel": "Số lời gọi song song",
-          "concurrencyApply": "Áp dụng"
+          "concurrencyApply": "Áp dụng",
+          "stagesTitle": "Các giai đoạn dựng",
+          "stages": "Thực thể → Quan hệ · Sự kiện · Dữ kiện → Tóm tắt",
+          "stagesNote": "Các lượt chạy theo thứ tự này. Dữ kiện và Tóm tắt chạy sau khi Thực thể và Quan hệ hoàn tất, nên xuất hiện muộn hơn trong bản dựng đầy đủ — dừng sớm sẽ bỏ qua chúng."
         },
         "building_paused_user": {
           "body": "Bạn đã tạm dừng tác vụ này. Tiếp tục khi sẵn sàng, hoặc hủy để giữ lại đồ thị một phần."
