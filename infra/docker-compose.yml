@@ -906,6 +906,12 @@ services:
       # P1: resolve real keys via auth-service credential store.
       AUTH_SERVICE_URL: http://auth-service:8081
       PUBLIC_MCP_ENABLED: ${PUBLIC_MCP_ENABLED:-false}
+      # P5 OAuth (S9 audience binding): the edge verifies third-party OAuth access
+      # tokens LOCALLY (RS256 via auth-service /oauth/jwks) and pins the audience.
+      # MCP_RESOURCE_URL MUST equal auth-service's OAUTH_RESOURCE (defaults to
+      # <PUBLIC_APP_URL>/mcp on both sides) or an audience-confused token is rejected.
+      MCP_RESOURCE_URL: ${MCP_RESOURCE_URL:-http://localhost:5296/mcp}
+      OAUTH_ISSUER: ${OAUTH_ISSUER:-loreweave-mcp-oauth}
       # P3 (PUB-8): per-key rate-limit counter store. Unset → limiter disabled (dev).
       REDIS_URL: redis://redis:6379
       # DEV/SMOKE static credential (optional). Empty = disabled (real keys via auth).
