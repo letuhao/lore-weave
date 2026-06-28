@@ -144,6 +144,17 @@ def _jti(token: str) -> str:
     return hashlib.sha256(token.encode("utf-8")).hexdigest()
 
 
+def _billing_job_id(token: str) -> str:
+    """usage-billing's guardrail `reserve` keys idempotency by a UUID `job_id`
+    (`JobID uuid.UUID`). The natural key is the proposal's jti, but `_jti` is a
+    64-char SHA-256 HEX (the ledger key) which is NOT a UUID — sending it makes the
+    reserve fail to JSON-decode (400 GUARDRAIL_INVALID) → the fail-closed precheck
+    denies EVERY Tier-W LLM-spend (402 quota_exhausted). Derive a deterministic UUID
+    from the first 128 bits of the same hash so the reserve stays idempotent per
+    proposal (same token → same reservation)."""
+    return str(UUID(hex=hashlib.sha256(token.encode("utf-8")).hexdigest()[:32]))
+
+
 def _exp_dt(claims: Any) -> datetime:
     """The confirm token's `exp` is unix seconds (int); the consumed_tokens.exp
     column is TIMESTAMPTZ. Convert for the ledger insert."""
@@ -544,7 +555,7 @@ async def _execute_motif_mine(
     await _claim_or_replay(token, claims)
     estimate = float(payload.get("estimate_usd") or 0.0)
     # job_id for the idempotent precheck reserve = the jti (one hold per proposal).
-    await _precheck_or_402(owner_user_id=envelope_user, job_id=_jti(token), estimate_usd=estimate)
+    await _precheck_or_402(owner_user_id=envelope_user, job_id=_billing_job_id(token), estimate_usd=estimate)
     job_id = await _enqueue_motif_job(
         envelope_user=envelope_user, project_id=None, operation="mine_motifs",
         spec={
@@ -586,7 +597,7 @@ async def _execute_arc_import(
 
     await _claim_or_replay(token, claims)
     estimate = float(payload.get("estimate_usd") or 0.0)
-    await _precheck_or_402(owner_user_id=envelope_user, job_id=_jti(token), estimate_usd=estimate)
+    await _precheck_or_402(owner_user_id=envelope_user, job_id=_billing_job_id(token), estimate_usd=estimate)
     job_id = await _enqueue_motif_job(
         envelope_user=envelope_user, project_id=None, operation="analyze_reference",
         spec={
@@ -612,7 +623,7 @@ async def _execute_conformance_run(
     `conformance_run` job (202+poll). The compute is owned by W5."""
     await _claim_or_replay(token, claims)
     estimate = float(payload.get("estimate_usd") or 0.0)
-    await _precheck_or_402(owner_user_id=envelope_user, job_id=_jti(token), estimate_usd=estimate)
+    await _precheck_or_402(owner_user_id=envelope_user, job_id=_billing_job_id(token), estimate_usd=estimate)
     job_id = await _enqueue_motif_job(
         envelope_user=envelope_user, project_id=project_id, operation="conformance_run",
         spec={

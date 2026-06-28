@@ -1,5 +1,41 @@
 # ▶ NEXT SESSION — Narrative Motif Library BUILD (handoff)
 
+## STATUS (2026-06-28 PM-26) — deep arc-conformance happy-path PROVEN end-to-end + a real billing bug fixed; conformance flags flipped ON
+
+The user opted to push the optional items. Both done — and the live smoke earned its keep by
+surfacing a production bug that would have broken **every** Tier-W LLM-spend confirm.
+
+- **`D-ARC-CONFORMANCE-DEEP-FE-HAPPY-SMOKE` ✅ (the full loop, live)** — built a real fixture
+  (throwaway book(2ch) → work → arc template with 2 real system-motif placements →
+  `POST …/arc/materialize` = **5 motif_applications, 0 unresolved**) and drove the DEEP job end-to-end:
+  **bridge** propose `composition_conformance_run`(arc + Qwen2.5 model_ref) → **JWT confirm**
+  (`action_accepted` + job_id) → **billing precheck PASSES** → worker `run_conformance_run` →
+  `compute_arc_report(deep)` → **job completed** → the deep arc report: `scope=arc`, `chapter_count=2`,
+  coarse dims populated (thread_progress/pacing/succession from the bindings), deep dims honestly
+  `available:false` (no `:Event` corpus seeded — the tested degrade). Fixture cleaned up (books deleted,
+  arcs archived). This is the WHOLE Tier-W deep loop proven live; the only un-exercised richness is a
+  tagged prose corpus → non-empty deep dims (a data fixture, not code).
+- **🐛 `D-BILLING-RESERVE-JOBID-UUID` ✅ FIXED (real bug the smoke found)** — composition's billing
+  precheck (`_precheck_or_402`, [actions.py](../../services/composition-service/app/routers/actions.py))
+  sent `job_id=_jti(token)` — a 64-char SHA-256 HEX — but usage-billing's guardrail `reserve` unmarshals
+  `job_id` as a **UUID** (`JobID uuid.UUID`), so the JSON decode failed → **400 GUARDRAIL_INVALID** →
+  the FAIL-CLOSED precheck denied the spend → **402 quota_exhausted on EVERY mine/import/conformance
+  confirm** (despite a 99M budget). Fix: new `_billing_job_id(token)` derives a deterministic UUID from
+  the first 128 bits of the same hash (idempotent per proposal); all 3 precheck call sites use it. Verified
+  live (reserve → 200 + reservation_id) + regression test (`test_billing_job_id_is_a_valid_uuid_…`).
+  53 composition tests green; provider-gate clean. **NOTE: mine + arc-import confirms shared this bug —
+  now fixed for all three.**
+- **Conformance activation flags FLIPPED ON (user request)** — `MOTIF_CONFORMANCE_ENABLED=true` +
+  `MOTIF_CONFORMANCE_CALIBRATED=true` added to the composition-service + composition-worker compose env
+  (defaults true now); confirmed live in both containers. The W5 per-scene producer now runs + the FE
+  shows the calibrated (not 'unverified') label. (The single-local-judge caveat remains — flip CALIBRATED
+  off to revert to advisory.) Also enabled `COMPOSITION_WORKER_ENABLED=true` at runtime so the worker
+  consumes the jobs stream (required for any 202+poll job, incl. the deep conformance job).
+
+**▶ Remaining (unchanged, all non-code):** the other live-smokes (THREAD-TAG/PRODUCER/CHAIN — need a
+tagged corpus or a bound generated scene), the calibration gold-sets (`D-THREAD-TAG-CALIBRATION` — human
+labeling), and `D-MOTIF-PGVECTOR-TRIGGER` (perf — fix when profiling shows pain). NONE are unbuilt code.
+
 ## STATUS (2026-06-28 PM-25) — debt-clearing pass: adopt rewired to the bridge; remaining defers classified
 
 Cleared the buildable code debt on the branch and accurately classified the rest (the branch is now

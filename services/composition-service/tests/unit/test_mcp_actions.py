@@ -149,6 +149,25 @@ def _bearer(user=USER) -> dict[str, str]:
     return {"Authorization": f"Bearer {tok}"}
 
 
+def test_billing_job_id_is_a_valid_uuid_deterministic_per_token():
+    """Regression: usage-billing's guardrail reserve unmarshals `job_id` as a UUID,
+    so the precheck MUST send a UUID — sending `_jti` (a 64-char SHA-256 hex) made
+    the reserve 400 → the fail-closed precheck denied EVERY Tier-W spend (402). The
+    billing job-id must be a parseable UUID, deterministic per token, distinct across
+    tokens — and NOT the raw 64-char jti."""
+    from app.routers.actions import _billing_job_id, _jti
+
+    a = _billing_job_id("token-A")
+    # a valid UUID (would raise otherwise) + 36-char canonical form
+    assert str(uuid.UUID(a)) == a
+    # deterministic per token, distinct across tokens
+    assert a == _billing_job_id("token-A")
+    assert a != _billing_job_id("token-B")
+    # the bug: it must NOT be the 64-char hex jti (which is not a UUID)
+    assert a != _jti("token-A")
+    assert len(_jti("token-A")) == 64
+
+
 # ── happy path: mint → confirm executes ───────────────────────────────────────
 
 

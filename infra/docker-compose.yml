@@ -187,6 +187,12 @@ services:
       # jobs nothing consumes; API off (the bug this fixes — the var was never wired
       # to the service) silently runs every batch op inline + the worker idles.
       COMPOSITION_WORKER_ENABLED: ${COMPOSITION_WORKER_ENABLED:-false}
+      # W5 motif-conformance — the per-scene producer (judge each generated scene vs
+      # its bound motif) + the calibrated label. ENABLED 2026-06-28 (the W5 judge gate
+      # is satisfied: kappa 1.0 / 0.762 ≥ thresholds). Single-local-judge, so the FE
+      # still surfaces an advisory note; flip CALIBRATED off to fall back to 'unverified'.
+      MOTIF_CONFORMANCE_ENABLED: ${MOTIF_CONFORMANCE_ENABLED:-true}
+      MOTIF_CONFORMANCE_CALIBRATED: ${MOTIF_CONFORMANCE_CALIBRATED:-true}
       LOG_LEVEL: INFO
       # S2 — long-chapter state-compress threshold (chars of raw story-so-far
       # before the packer compresses the older portion). Default 6000; overridable.
@@ -235,6 +241,10 @@ services:
       LOG_LEVEL: INFO
       # Must match composition-service: the worker runs only when the API enqueues.
       COMPOSITION_WORKER_ENABLED: ${COMPOSITION_WORKER_ENABLED:-false}
+      # W5 motif-conformance — mirror the API (the worker's conformance_run job +
+      # any producer path reads these). ENABLED 2026-06-28 (gate satisfied).
+      MOTIF_CONFORMANCE_ENABLED: ${MOTIF_CONFORMANCE_ENABLED:-true}
+      MOTIF_CONFORMANCE_CALIBRATED: ${MOTIF_CONFORMANCE_CALIBRATED:-true}
       # Same internal service URLs as the API — the worker re-resolves pack context
       # (book/glossary/knowledge) + the internal-auth LLM for the compute half.
       KNOWLEDGE_INTERNAL_URL: http://knowledge-service:8092
