@@ -154,6 +154,10 @@ class Event(BaseModel):
     # threads). None until tagged; the motif_beat extractor prefers it over chapter_id
     # so deep arc-conformance can measure realized thread-progression from prose.
     narrative_thread: str | None = None
+    # D-W10-ARC-CONFORMANCE-SUCCESSION — which arc-placement motif (by code) this event
+    # realizes, assigned by the motif-tag classifier. None until tagged; motif_beat emits it
+    # so deep arc-conformance reconstructs the realized motif order for the succession diff.
+    realized_motif_code: str | None = None
     participants: list[str] = Field(default_factory=list)
     # KG-TL Option A (D-KG-TL-PARTICIPANT-ANCHOR) — stored anchor: the glossary
     # ``entity_id`` per participant slot, same length+order as ``participants``,
@@ -846,6 +850,34 @@ async def set_narrative_threads(
         return 0
     result = await run_write(
         session, _SET_NARRATIVE_THREADS_CYPHER, user_id=user_id, rows=rows,
+    )
+    record = await result.single()
+    return int(record["tagged"]) if record else 0
+
+
+_SET_REALIZED_MOTIFS_CYPHER = """
+UNWIND $rows AS row
+MATCH (e:Event {id: row.id})
+WHERE e.user_id = $user_id
+SET e.realized_motif_code = row.code, e.updated_at = datetime()
+RETURN count(e) AS tagged
+"""
+
+
+async def set_realized_motifs(
+    session: CypherSession,
+    *,
+    user_id: str,
+    assignments: dict[str, str],
+) -> int:
+    """Persist the motif-tag classifier's verdicts onto ``:Event.realized_motif_code``
+    (D-W10-ARC-CONFORMANCE-SUCCESSION). ``assignments`` is ``{event_id: motif_code}``.
+    Tenant-scoped on ``e.user_id`` (a foreign id matches nothing). Returns the count tagged."""
+    rows = [{"id": eid, "code": code} for eid, code in assignments.items() if code]
+    if not rows:
+        return 0
+    result = await run_write(
+        session, _SET_REALIZED_MOTIFS_CYPHER, user_id=user_id, rows=rows,
     )
     record = await result.single()
     return int(record["tagged"]) if record else 0

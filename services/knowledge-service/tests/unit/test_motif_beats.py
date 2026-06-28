@@ -89,11 +89,13 @@ def test_route_returns_frozen_sequence_shape(mock_settings):
     seqs = data["sequences"]
     assert len(seqs) == 1 and len(seqs[0]) == 2
     step = seqs[0][0]
-    # narrative_thread is the additive D-W10-…-THREAD-TAG field ("" when the fake omits it).
-    assert set(step.keys()) == {"beat", "thread", "narrative_thread", "tension", "role_mentions"}
+    # narrative_thread + realized_motif_code are the additive D-W10 classifier fields
+    # ("" when the fake omits them).
+    assert set(step.keys()) == {"beat", "thread", "narrative_thread", "realized_motif_code",
+                                "tension", "role_mentions"}
     assert step == {
-        "beat": "The pact", "thread": "ch-1", "narrative_thread": "", "tension": 5,
-        "role_mentions": ["Tirami", "Aldric"],
+        "beat": "The pact", "thread": "ch-1", "narrative_thread": "", "realized_motif_code": "",
+        "tension": 5, "role_mentions": ["Tirami", "Aldric"],
     }
     assert seqs[0][1]["role_mentions"] == []
 
@@ -136,7 +138,7 @@ def test_route_rejects_missing_user_id():
 
 def _event(
     title, *, chapter_id="ch-1", participants=None, confidence=0.0,
-    mention_count=0, narrative_thread=None,
+    mention_count=0, narrative_thread=None, realized_motif_code=None,
 ):
     """A minimal :Event projection. `importance` is a computed_field on the real
     Event, so we replicate its derivation here for the fake."""
@@ -154,6 +156,7 @@ def _event(
         title=title,
         chapter_id=chapter_id,
         narrative_thread=narrative_thread,
+        realized_motif_code=realized_motif_code,
         participants=participants,
         confidence=confidence,
         mention_count=mention_count,
@@ -161,14 +164,16 @@ def _event(
     )
 
 
-def test_beat_step_carries_chapter_and_narrative_thread_orthogonally():
-    """D-W10-ARC-CONFORMANCE-THREAD-TAG — `thread` stays the chapter axis (pacing/mining);
-    `narrative_thread` is the additive classifier label ("" until tagged)."""
+def test_beat_step_carries_chapter_thread_and_realized_motif_orthogonally():
+    """`thread` stays the chapter axis (pacing/mining); `narrative_thread` (THREAD-TAG) and
+    `realized_motif_code` (SUCCESSION) are additive classifier labels, "" until tagged."""
     from app.extraction.motif_beat import _event_to_beat_step
-    tagged = _event_to_beat_step(_event("Duel at dawn", chapter_id="ch-9", narrative_thread="combat"))
+    tagged = _event_to_beat_step(_event("Duel at dawn", chapter_id="ch-9",
+                                         narrative_thread="combat", realized_motif_code="revenge.duel"))
     assert tagged["thread"] == "ch-9" and tagged["narrative_thread"] == "combat"
+    assert tagged["realized_motif_code"] == "revenge.duel"
     untagged = _event_to_beat_step(_event("Quiet talk", chapter_id="ch-9"))
-    assert untagged["thread"] == "ch-9" and untagged["narrative_thread"] == ""
+    assert untagged["narrative_thread"] == "" and untagged["realized_motif_code"] == ""
 
 
 @pytest.mark.parametrize(

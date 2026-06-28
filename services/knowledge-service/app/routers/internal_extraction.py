@@ -1409,6 +1409,8 @@ class MotifBeatStep(BaseModel):
     # ADDITIVE (D-W10-ARC-CONFORMANCE-THREAD-TAG): the classifier-assigned narrative thread
     # (combat/romance/…), "" until tagged. `thread` stays the chapter axis; this is orthogonal.
     narrative_thread: str = ""
+    # ADDITIVE (D-W10-ARC-CONFORMANCE-SUCCESSION): the realized arc-placement motif code, "" until tagged.
+    realized_motif_code: str = ""
     tension: int
     role_mentions: list[str] = Field(default_factory=list)
 
@@ -1529,6 +1531,76 @@ async def tag_threads(body: TagThreadsRequest) -> TagThreadsResponse:
                 for th in assignments.values():
                     counts[th] = counts.get(th, 0) + 1
     return TagThreadsResponse(tagged=tagged, events_seen=seen, threads_assigned=counts)
+
+
+# ── D-W10-ARC-CONFORMANCE-SUCCESSION — realized-motif classifier ───────
+
+
+class TagMotifsRequest(BaseModel):
+    """Tag a book's :Event timeline with the arc-placement motif each event realizes (by
+    code). model_source/model_ref resolve the BYOK classify model (provider-gateway invariant)."""
+
+    user_id: UUID
+    book_id: UUID
+    motifs: list[dict] = Field(default_factory=list)   # [{code, name?, summary?}]
+    model_source: str
+    model_ref: str
+
+
+class TagMotifsResponse(BaseModel):
+    tagged: int = 0
+    events_seen: int = 0
+    motifs_assigned: dict[str, int] = Field(default_factory=dict)   # motif_code → count
+
+
+@router.post(
+    "/tag-motifs",
+    response_model=TagMotifsResponse,
+    status_code=status.HTTP_200_OK,
+    summary="Tag :Event nodes with the arc-placement motif they realize (deep succession)",
+    description=(
+        "Classifies each :Event (title+summary+participants) into one of the arc's placement "
+        "motif codes via an LLM (operation=chat → provider-registry), persisting "
+        ":Event.realized_motif_code so motif-beats emits the realized motif order. ADVISORY / "
+        "uncalibrated; degrades to a partial/empty tag on any LLM failure. X-Internal-Token."
+    ),
+)
+async def tag_motifs(body: TagMotifsRequest) -> TagMotifsResponse:
+    if not settings.neo4j_uri:
+        logger.info("tag-motifs: Neo4j not configured — no-op")
+        return TagMotifsResponse()
+
+    from app.db.neo4j_repos.events import list_events_in_order, set_realized_motifs
+    from app.extraction.motif_beat import _list_user_book_projects
+    from app.extraction.motif_tag import classify_event_motifs
+
+    valid = [m for m in body.motifs if m.get("code")]
+    if not valid:
+        return TagMotifsResponse()
+
+    llm = get_llm_client()
+    containers = await _list_user_book_projects(body.user_id, body.book_id, corpus=False)
+    seen = 0
+    tagged = 0
+    counts: dict[str, int] = {}
+    async with neo4j_session() as session:
+        for project_id, _book_id in containers:
+            events = await list_events_in_order(
+                session, user_id=str(body.user_id), project_id=str(project_id), limit=2000)
+            if not events:
+                continue
+            seen += len(events)
+            ev_dicts = [{"id": e.id, "title": e.title, "summary": e.summary,
+                         "participants": list(e.participants)} for e in events]
+            assignments = await classify_event_motifs(
+                llm, user_id=str(body.user_id), model_source=body.model_source,
+                model_ref=body.model_ref, events=ev_dicts, motifs=valid)
+            if assignments:
+                tagged += await set_realized_motifs(
+                    session, user_id=str(body.user_id), assignments=assignments)
+                for code in assignments.values():
+                    counts[code] = counts.get(code, 0) + 1
+    return TagMotifsResponse(tagged=tagged, events_seen=seen, motifs_assigned=counts)
 
 
 # ── K17 (cycle 12b) — entity-embedding backfill ───────────────────────

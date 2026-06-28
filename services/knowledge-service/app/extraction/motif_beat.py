@@ -97,6 +97,8 @@ def _event_to_beat_step(event: Event) -> dict:
         "beat": event.title,
         "thread": event.chapter_id or "",
         "narrative_thread": event.narrative_thread or "",
+        # the arc-placement motif this event realizes (D-W10-…-SUCCESSION), "" until tagged.
+        "realized_motif_code": event.realized_motif_code or "",
         "tension": _tension_band(event),
         "role_mentions": list(event.participants),
     }
