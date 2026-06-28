@@ -153,7 +153,8 @@ def client(monkeypatch):
     from app.routers.conformance import get_conformance_trace_reader
 
     state = SimpleNamespace(arc=None, rows=[], sequences=[], tag_calls=[],
-                            motif_tag_calls=[], placement_motifs={}, succ_map={})
+                            motif_tag_calls=[], placement_motifs={}, succ_map={},
+                            causal_calls=[], causal_pairs=[])
 
     class _Works:
         async def get(self, u, p):
@@ -173,6 +174,11 @@ def client(monkeypatch):
         async def tag_motifs(self, user_id, *, book_id, motifs, model_source, model_ref):
             state.motif_tag_calls.append({"motifs": motifs, "model_ref": model_ref})
             return {"tagged": 1, "events_seen": 1, "motifs_assigned": {}}
+        async def infer_causal_edges(self, user_id, *, book_id, model_source, model_ref):
+            state.causal_calls.append({"model_ref": model_ref})
+            return {"edges_written": 1, "events_considered": 2}
+        async def causal_motif_pairs(self, user_id, *, book_id):
+            return state.causal_pairs
 
     class _MotifRepo:
         def __init__(self, pool):
@@ -339,6 +345,26 @@ def test_deep_succession_flags_reversed_order_as_violation():
     assert s["violations"] == [{"from_motif_code": "face_slap", "to_motif_code": "humiliation"}]
 
 
+def test_deep_succession_causal_verified_when_causal_edge_backs_a_legal_transition():
+    # F2 — a legal transition (humiliation→face_slap) that ALSO has a realized :CAUSES edge
+    # in motif-code space flips causal_verified + counts it as caused.
+    seqs = [[{"realized_motif_code": "humiliation"}, {"realized_motif_code": "face_slap"}]]
+    out = build_deep_report(
+        sequences=seqs, chapter_index_by_id={}, planned_by_index={},
+        precedes_code_pairs={("humiliation", "face_slap")},
+        causal_code_pairs={("humiliation", "face_slap")})
+    s = out["succession"]
+    assert s["legal"] == 1 and s["caused"] == 1 and s["causal_verified"] is True
+
+
+def test_deep_succession_structural_only_without_causal_edges():
+    seqs = [[{"realized_motif_code": "humiliation"}, {"realized_motif_code": "face_slap"}]]
+    out = build_deep_report(sequences=seqs, chapter_index_by_id={}, planned_by_index={},
+                            precedes_code_pairs={("humiliation", "face_slap")})
+    s = out["succession"]
+    assert s["legal"] == 1 and s["causal_verified"] is False
+
+
 def test_deep_succession_collapses_consecutive_duplicates():
     seqs = [[{"realized_motif_code": "a"}, {"realized_motif_code": "a"},
              {"realized_motif_code": "b"}]]
@@ -378,6 +404,32 @@ def test_route_deep_with_model_ref_also_tags_motifs_and_reports_succession(clien
     assert state.motif_tag_calls and {m["code"] for m in state.motif_tag_calls[0]["motifs"]} == {"humiliation", "face_slap"}
     s = r.json()["deep"]["succession"]
     assert s["available"] is True and s["legal"] == 1 and s["violations"] == []
+    # F2: the deep+model_ref path also kicked off causal-edge inference.
+    assert state.causal_calls and state.causal_calls[0]["model_ref"] == "m1"
+    assert s["causal_verified"] is False  # no causal pairs returned in this run
+
+
+def test_route_deep_causal_verified_when_causal_pairs_present(client):
+    c, state = client
+    aid = uuid.uuid4()
+    state.arc = _arc(layout=[_placement("humiliation"), _placement("face_slap")],
+                     threads=[{"key": "revenge", "label": "Revenge"}])
+    state.arc.id = aid
+    ch1 = uuid.uuid4()
+    state.rows = [{"motif_id": M_HUMIL, "motif_code": "humiliation",
+                   "annotations": {"thread": "revenge", "arc_template_id": str(aid)},
+                   "chapter_id": ch1, "tension": 50, "story_order": 1}]
+    mh = SimpleNamespace(id=M_HUMIL, code="humiliation", name="Humiliation", summary="x")
+    mf = SimpleNamespace(id=M_SLAP, code="face_slap", name="Face Slap", summary="y")
+    state.placement_motifs = {"humiliation": mh, "face_slap": mf}
+    state.succ_map = {M_HUMIL: [{"id": M_SLAP, "code": "face_slap", "name": "Face Slap", "ord": 0}]}
+    state.sequences = [[{"realized_motif_code": "humiliation", "thread": str(ch1)},
+                        {"realized_motif_code": "face_slap", "thread": str(ch1)}]]
+    state.causal_pairs = [("humiliation", "face_slap")]   # a realized CAUSES edge in code space
+    r = c.get(f"/v1/composition/works/{P}/conformance?scope=arc&arc_template_id={aid}"
+              f"&deep=true&model_ref=m1&model_source=user_model")
+    s = r.json()["deep"]["succession"]
+    assert s["legal"] == 1 and s["caused"] == 1 and s["causal_verified"] is True
 
 
 def test_deep_thread_progression_unavailable_without_tags():

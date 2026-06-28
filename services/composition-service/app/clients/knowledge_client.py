@@ -317,6 +317,48 @@ class KnowledgeClient:
         except (ValueError, AttributeError):
             return {"tagged": 0, "events_seen": 0, "motifs_assigned": {}, "status": "unavailable"}
 
+    async def infer_causal_edges(
+        self, user_id: UUID, *, book_id: UUID, model_source: str, model_ref: str,
+    ) -> dict[str, Any]:
+        """D-W10-ARC-CONFORMANCE-SUCCESSION F2 — infer + persist `(:Event)-[:CAUSES]` edges
+        over the book's motif-tagged events. ADVISORY: returns the counts or a degrade dict."""
+        url = f"{self._base_url}/internal/extraction/causal-edges"
+        payload = {"user_id": str(user_id), "book_id": str(book_id),
+                   "model_source": model_source, "model_ref": model_ref}
+        try:
+            resp = await self._http.post(url, json=payload, headers=self._internal_headers())
+        except httpx.HTTPError as exc:
+            logger.warning("knowledge causal-edges unavailable: %s", exc)
+            return {"edges_written": 0, "events_considered": 0, "status": "unavailable"}
+        if resp.status_code != 200:
+            return {"edges_written": 0, "events_considered": 0, "status": "unavailable"}
+        try:
+            return resp.json()
+        except (ValueError, AttributeError):
+            return {"edges_written": 0, "events_considered": 0, "status": "unavailable"}
+
+    async def causal_motif_pairs(self, user_id: UUID, *, book_id: UUID) -> list[tuple[str, str]]:
+        """The realized CAUSES edges in motif-code space — ``[(cause_code, effect_code)]`` —
+        for deep succession causal-verify. ADVISORY: returns ``[]`` on any outage/non-200."""
+        url = f"{self._base_url}/internal/extraction/causal-motif-pairs"
+        payload = {"user_id": str(user_id), "book_id": str(book_id)}
+        try:
+            resp = await self._http.post(url, json=payload, headers=self._internal_headers())
+        except httpx.HTTPError as exc:
+            logger.warning("knowledge causal-motif-pairs unavailable: %s", exc)
+            return []
+        if resp.status_code != 200:
+            return []
+        try:
+            data = resp.json()
+        except (ValueError, AttributeError):
+            return []
+        pairs = data.get("pairs") if isinstance(data, dict) else None
+        if not isinstance(pairs, list):
+            return []
+        return [(p[0], p[1]) for p in pairs
+                if isinstance(p, list) and len(p) == 2 and all(isinstance(x, str) for x in p)]
+
     # ── M4 packer lenses ────────────────────────────────────────────────
     # All return None/[] on any failure (the packer `_safe_*` degrade, F1) so a
     # knowledge outage thins the pack rather than 500-ing a generate.

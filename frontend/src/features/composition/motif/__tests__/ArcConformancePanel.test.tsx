@@ -180,4 +180,21 @@ describe('ArcConformancePanel', () => {
     expect(succ).toHaveTextContent('1');                                   // 1/2 legal (raw count)
     expect(screen.getByTestId('arc-conf-deep-succ-violations')).toHaveTextContent('face_slap');
   });
+
+  it('deep succession: causal-verified shows the caused count (F2)', async () => {
+    apiJson.mockImplementation((url: string) => Promise.resolve(
+      String(url).includes('deep=true')
+        ? REPORT({ deep: {
+            available: true, source: 'motif_beat_extractor',
+            pacing: { comparable: false, planned: [], realized: [{ chapter_index: 1, avg_tension: 60, events: 1 }], max_drift: null, scale_note: 's' },
+            thread_progression: { available: false, reason: 'x', threads: [], unplanned: [] },
+            succession: { available: true, causal_verified: true, transitions: 2, legal: 2, unrelated: 0, caused: 1, violations: [] },
+          } })
+        : REPORT(),
+    ));
+    render(<ArcConformancePanel projectId="p1" arcTemplateId="a1" token="tok" modelRef="m1" />, { wrapper: wrap() });
+    fireEvent.click(await screen.findByTestId('arc-conf-deep-btn'));
+    await screen.findByTestId('arc-conf-deep-succession');
+    expect(screen.getByTestId('arc-conf-deep-succ-caused')).toHaveTextContent('1');
+  });
 });

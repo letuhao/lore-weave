@@ -1,5 +1,38 @@
 # ▶ NEXT SESSION — Narrative Motif Library BUILD (handoff)
 
+## STATUS (2026-06-28 PM-20) — D-W10-ARC-CONFORMANCE-SUCCESSION CLEARED — all 3 deep dims now real
+
+**`D-W10-ARC-CONFORMANCE-SUCCESSION`** ✅ — the THIRD deep arc-conformance dim, which I'd repeatedly
+mislabeled "blocked on the F-1 causal graph". It was never blocked — it's two buildable extractors
+that compose, both built this run (design: `docs/plans/2026-06-28-deep-succession-and-causal-edges.md`).
+**Process fix:** added the LOCKED "missing infrastructure is NOT blocked" rule to CLAUDE.md (defer-gate
+#4) after the user flagged this lazy pattern recurring.
+
+- **Feature 1 — realized-motif classifier (structural succession), 4 commits' worth:**
+  - knowledge `cd4ffc2b`: `extraction/motif_tag.py` (mirror of thread-tag) → classify each :Event into
+    which arc-placement motif CODE it realizes; `Event.realized_motif_code` + `set_realized_motifs` +
+    `POST /tag-motifs`; `motif_beat` step += `realized_motif_code` (3rd orthogonal field).
+  - composition+FE `7aeb78c1`: `tag_motifs` client; deep conformance resolves the placement-motif
+    vocab + the `precedes` graph keyed by CODE; `build_deep_report._deep_succession` flattens the
+    realized motif order vs `precedes` → legal/reversed(violation)/unrelated. FE renders it.
+- **Feature 2 — causal-edge extractor (causally-verified succession):**
+  - knowledge `8fe142be`: `extraction/causal_edges.py` → LLM infers `(:Event)-[:CAUSES]->(:Event)`
+    over a sliding window of the MOTIF-TAGGED subset (cost-bounded: window+stride+`_MAX_WINDOWS`);
+    `merge_causal_edges` (idempotent, tenant-scoped) + `get_causal_motif_pairs` (the join to motif-code
+    space lives here); `POST /causal-edges` + `POST /causal-motif-pairs`.
+  - composition+FE (this commit): `infer_causal_edges` + `causal_motif_pairs` clients; deep conformance
+    infers edges (on model_ref) + reads the code-pairs → `_deep_succession` flips `causal_verified` +
+    `caused` count for a legal transition a `:CAUSES` edge backs. FE shows "causally verified · N caused".
+- **VERIFY:** knowledge — motif_tag 11 + causal_edges 9 + motif_beats(3-field) + 171 events;
+  composition 29; FE 137; tsc 0; provider-gate clean (all 3 new extractors call
+  `submit_and_wait(operation='chat')` with a passed model_ref — no provider SDK).
+
+**▶ Honest tail (the genuinely-further refinements, recorded — NOT "blocked"):**
+- `D-SUCCESSION-ENTAILMENT-JUDGE` — the deepest form (verify motif A's TEXTUAL effects literally
+  entail motif B's preconditions, an NLP judge over the JSONB) is a further calibrated-judge layer.
+- Live smokes (Neo4j corpus + a chat model) + calibration gold-sets for the 3 classifiers (all ship
+  advisory/uncalibrated) + the FE model-picker UX to trigger tagging from the arc view.
+
 ## STATUS (2026-06-28 PM-19) — D-W10-ARC-CONFORMANCE-THREAD-TAG CLEARED (full vertical, 3 services)
 
 **`D-W10-ARC-CONFORMANCE-THREAD-TAG`** ✅ — the narrative-thread classifier that unblocks deep

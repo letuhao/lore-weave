@@ -302,20 +302,26 @@ async def read_conformance(
             placement_motifs = await mrepo.get_by_codes(user_id, placement_codes)
             id_to_code = {str(m.id): m.code for m in placement_motifs.values()}
             if model_ref:
+                ms = model_source or "user_model"
                 await knowledge.tag_threads(
                     user_id, book_id=work.book_id, threads=(arc.threads or []),
-                    model_source=model_source or "user_model", model_ref=model_ref)
+                    model_source=ms, model_ref=model_ref)
                 await knowledge.tag_motifs(
                     user_id, book_id=work.book_id,
                     motifs=[{"code": m.code, "name": m.name, "summary": m.summary}
                             for m in placement_motifs.values()],
-                    model_source=model_source or "user_model", model_ref=model_ref)
+                    model_source=ms, model_ref=model_ref)
+                # F2: infer causal edges over the now-tagged events (causal-verify succession).
+                await knowledge.infer_causal_edges(
+                    user_id, book_id=work.book_id, model_source=ms, model_ref=model_ref)
             seqs = await knowledge.get_motif_beat_sequences(user_id, book_id=work.book_id)
             # the precedes graph over the placement motifs, keyed by CODE (the realized axis).
             succ_map = await mrepo.successors_by_ids([m.id for m in placement_motifs.values()])
             precedes_code_pairs = {(id_to_code[frm], id_to_code[s["id"]])
                                    for frm, lst in succ_map.items() for s in lst
                                    if frm in id_to_code and s["id"] in id_to_code}
+            # the realized CAUSES edges in motif-code space → flips a legal transition verified.
+            causal_code_pairs = set(await knowledge.causal_motif_pairs(user_id, book_id=work.book_id))
             report["deep"] = build_deep_report(
                 sequences=seqs or [],
                 chapter_index_by_id={str(ch): idx for ch, idx in order.items()},
@@ -323,6 +329,7 @@ async def read_conformance(
                                   for pt in report["pacing"]["realized"]},
                 arc_threads=arc.threads or [],
                 precedes_code_pairs=precedes_code_pairs,
+                causal_code_pairs=causal_code_pairs,
             )
         return report
     if scope != "chapter":

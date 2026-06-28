@@ -194,6 +194,9 @@ export function ArcConformancePanel({ projectId, arcTemplateId, token, modelRef 
                     </h5>
                     <p className="tabular-nums text-neutral-600 dark:text-neutral-300">
                       {r.deep.succession.legal}/{r.deep.succession.transitions} {t('motif.arcConf.legalTransitions', { defaultValue: 'legal' })}
+                      {r.deep.succession.caused != null && r.deep.succession.caused > 0 && (
+                        <span data-testid="arc-conf-deep-succ-caused" className="ml-1 text-indigo-700 dark:text-indigo-300">· {r.deep.succession.caused} {t('motif.arcConf.caused', { defaultValue: 'caused' })}</span>
+                      )}
                     </p>
                     {r.deep.succession.violations.length > 0 && (
                       <ul data-testid="arc-conf-deep-succ-violations" className="flex flex-col gap-0.5">
