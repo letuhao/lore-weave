@@ -102,7 +102,9 @@ export function useArcTimeline(arcId: string | null, token: string | null): UseA
 
   const schedulePersist = useCallback(() => {
     if (timerRef.current) clearTimeout(timerRef.current);
-    timerRef.current = setTimeout(() => { void persist(); }, PERSIST_DEBOUNCE_MS);
+    // NULL the ref as the timer fires, so the unmount-flush below only re-fires a
+    // GENUINELY-pending edit — never a duplicate of one already in flight.
+    timerRef.current = setTimeout(() => { timerRef.current = null; void persist(); }, PERSIST_DEBOUNCE_MS);
   }, [persist]);
 
   const onEdit = useCallback(

@@ -26,6 +26,9 @@ export function layoutToPlacements(layout: ArcLayoutEntry[]): ArcPlacement[] {
     span_start: e.span_start,
     span_end: e.span_end,
     ord: e.ord ?? i,
+    // preserve the non-rendered backend fields so a save round-trip can't drop them.
+    role_hints: e.role_hints ?? {},
+    triggers: e.triggers ?? [],
   }));
 }
 
@@ -47,6 +50,9 @@ export function placementsToLayout(placements: ArcPlacement[]): ArcLayoutEntry[]
       span_start: p.span_start,
       span_end: p.span_end,
       ord: n,
+      // round-trip the opaque backend fields (default to empty when absent).
+      role_hints: p.role_hints ?? {},
+      triggers: p.triggers ?? [],
     };
   });
 }
@@ -110,6 +116,8 @@ export function applyArcEdit(
         span_start: start,
         span_end: end,
         ord,
+        role_hints: {},
+        triggers: [],
       };
       return [...placements, created];
     }

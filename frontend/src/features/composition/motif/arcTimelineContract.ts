@@ -37,6 +37,11 @@ export type ArcPlacement = {
   span_start: number;         // first chapter (inclusive)
   span_end: number;           // last chapter (inclusive)
   ord: number;
+  // OPAQUE passthrough of the backend ArcLayoutEntry fields the timeline UI does NOT
+  // render but MUST preserve across an edit→save round-trip (§15.3 — per-placement role
+  // overrides + chained-placement refs). Dropping these on save = silent data loss.
+  role_hints?: Record<string, unknown>;
+  triggers?: string[];
 };
 
 /** A parallel narrative track (a row/lane on the grid). */

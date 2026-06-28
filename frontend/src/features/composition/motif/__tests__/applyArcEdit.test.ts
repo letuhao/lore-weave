@@ -40,11 +40,23 @@ describe('layoutToPlacements / placementsToLayout (mapping)', () => {
 
   it('round-trips a layout (read → write preserves the placements)', () => {
     const layout: ArcLayoutEntry[] = [
-      { motif_code: 'a', motif_id: null, thread: 't1', span_start: 1, span_end: 2, ord: 0 },
-      { motif_code: 'b', motif_id: null, thread: 't1', span_start: 3, span_end: 4, ord: 1 },
+      { motif_code: 'a', motif_id: null, thread: 't1', span_start: 1, span_end: 2, ord: 0, role_hints: {}, triggers: [] },
+      { motif_code: 'b', motif_id: null, thread: 't1', span_start: 3, span_end: 4, ord: 1, role_hints: {}, triggers: [] },
     ];
     const back = placementsToLayout(layoutToPlacements(layout));
     expect(back).toEqual(layout);
+  });
+
+  it('preserves role_hints + triggers across read→write (no silent data loss)', () => {
+    const layout: ArcLayoutEntry[] = [
+      { motif_code: 'a', motif_id: null, thread: 't1', span_start: 1, span_end: 2, ord: 0,
+        role_hints: { protagonist: 'hero-x' }, triggers: ['p7'] },
+    ];
+    // even after an edit (move) the non-rendered fields survive the round-trip.
+    const moved = applyArcEdit(layoutToPlacements(layout), { type: 'move', placement_id: 'p0', to_thread: 't1', delta_chapters: 1 }, 10);
+    const back = placementsToLayout(moved);
+    expect(back[0].role_hints).toEqual({ protagonist: 'hero-x' });
+    expect(back[0].triggers).toEqual(['p7']);
   });
 
   it('maps thread label/glyph, falling back label→key', () => {

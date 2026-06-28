@@ -86,6 +86,32 @@ describe('useArcTimeline', () => {
     expect((patches[1][1] as { headers: Record<string, string> }).headers['If-Match']).toBe('2');
   });
 
+  it('flushes a pending edit on unmount (a last edit is not lost)', async () => {
+    vi.useFakeTimers();
+    apiJson.mockResolvedValueOnce(ARC()).mockResolvedValueOnce(ARC({ version: 2 }));
+    const { wrapper } = wrap();
+    const { result, unmount } = renderHook(() => useArcTimeline('A1', 'tok'), { wrapper });
+    await act(async () => { await vi.advanceTimersByTimeAsync(0); });
+    act(() => { result.current.onEdit({ type: 'remove', placement_id: 'p0' }); });
+    // unmount BEFORE the debounce fires → cleanup flushes the pending persist.
+    await act(async () => { unmount(); await vi.advanceTimersByTimeAsync(0); });
+    const patches = apiJson.mock.calls.filter((c) => (c[1] as { method?: string })?.method === 'PATCH');
+    expect(patches).toHaveLength(1);
+  });
+
+  it('does NOT double-persist when unmount follows an already-fired debounce', async () => {
+    vi.useFakeTimers();
+    apiJson.mockResolvedValueOnce(ARC()).mockResolvedValueOnce(ARC({ version: 2 }));
+    const { wrapper } = wrap();
+    const { result, unmount } = renderHook(() => useArcTimeline('A1', 'tok'), { wrapper });
+    await act(async () => { await vi.advanceTimersByTimeAsync(0); });
+    act(() => { result.current.onEdit({ type: 'remove', placement_id: 'p0' }); });
+    await act(async () => { await vi.advanceTimersByTimeAsync(700); });   // debounce fires → 1 PATCH
+    await act(async () => { unmount(); await vi.advanceTimersByTimeAsync(0); });
+    const patches = apiJson.mock.calls.filter((c) => (c[1] as { method?: string })?.method === 'PATCH');
+    expect(patches).toHaveLength(1);   // NOT 2 — the fired timer nulled its ref
+  });
+
   it('surfaces a 412 conflict on a stale write', async () => {
     vi.useFakeTimers();
     apiJson

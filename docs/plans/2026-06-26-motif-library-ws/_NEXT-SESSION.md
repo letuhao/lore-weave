@@ -28,6 +28,18 @@ smoke** (below). Surfaced inside the motif dock panel via a `Motifs | Arc templa
   the running `infra-composition-service-1` (:8217). `ArcTemplate`, `ArcApplyPlan`, `ResolvedPlacement`
   JSON keys match the TS types **exactly**; rescale+merge worked live (source 10→target 2 merged
   `ambush` into `duel`, `unbound:[mentor]`). Throwaway arc archived; test account only.
+- **/review-impl (adversarial) — 1 HIGH + 1 MED FIXED (@ this commit's follow-up), 3 LOW documented:**
+  - **HIGH (data loss):** `placementsToLayout` dropped the backend `role_hints`+`triggers` (§15.3) →
+    the layout PATCH (full-array replace) wiped them for ALL placements on the first edit. FIXED:
+    carry them as opaque optional passthrough on the contract `ArcPlacement`, mapped both directions;
+    the reducer's `{...p}` preserves them. **Live-verified**: a layout PATCH (span 2-3→4-5) now keeps
+    `role_hints`/`triggers` intact on GET.
+  - **MED (double-write):** the debounce timer never nulled its ref → an unmount AFTER the timer fired
+    but BEFORE the PATCH resolved re-fired `persist()` (duplicate write + 412 + post-unmount setState).
+    FIXED: null `timerRef` as the timer fires; +2 tests (flush-on-unmount persists once; no double).
+  - **LOW (accept+document):** refetch-time external version bump silently re-seeds over unsaved local
+    edits ("server wins"); `placementsToLayout` renumbers `ord` 0..n per thread (apply re-sorts, benign);
+    `arcApi.create/archive/adopt` exported but unwired (future surface).
 
 **▶ Remaining motif defers are all large/structural, blocked, perf, or config:**
 `D-W10-APPLY-PLANNER-MATERIALIZE` (arc apply → committed outline — large BE, commit-path),
@@ -461,6 +473,13 @@ the W6 catalog-endpoint fix). All need an lm_studio + platform-embedding-credent
 - ~~**`D-W10-FE-TIMELINE`**~~ ✅ **CLEARED PM-10** — the FE thread×chapter arc-timeline subtree
   (editor + apply-preview, built against the frozen `ArcTimelineContract` + `ArcApplyPlan`), surfaced
   via the motif-panel `Motifs | Arc templates` kind-toggle. 43 tests, live contract smoke. See PM-10.
+- **`D-W10-FE-PLACE-MOTIF-PICKER`** (gate 1 out-of-scope / NEW, /review-impl PM-10 · target W10-FE): the
+  mobile-list "+ place" affordance emits `motif_code:''` (the W6 skeleton placeholder) → the reducer
+  creates a placement that the debounce PERSISTS as an empty-coded "—" layout entry, with NO surface
+  to assign a motif afterward (neither grid nor list has a motif picker). Add a motif-pick flow on
+  place (and on a placed cell) — needs the `useMotifCandidates` picker wired into the timeline; until
+  then "+ place" can author unresolvable rows. Low blast radius (mobile-only; the editor's primary job
+  is arranging EXISTING placements from adopted/deconstructed templates).
 - **`D-W10-APPLY-PLANNER-MATERIALIZE`** (gate 2 large/structural · target Batch-B live-smoke): the
   apply endpoint returns the PURE plan only — it does NOT materialize `outline_node` rows, write a
   `motif_application` ledger, or invoke the LLM decompose planner. That deep planner integration
