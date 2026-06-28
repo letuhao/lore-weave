@@ -86,9 +86,10 @@ def _arc_input(**over):
     return base
 
 
-async def _run(state, inp):
+async def _run(state, inp, llm=None):
     return await mcr.run_conformance_run(
-        object(), object(), state.knowledge, user_id=U, project_id=P, input=inp)
+        object(), llm if llm is not None else object(), state.knowledge,
+        user_id=U, project_id=P, input=inp)
 
 
 # ── happy path: deep overlay with tagging ─────────────────────────────────────────
@@ -116,6 +117,34 @@ async def test_arc_deep_job_tags_then_builds_coarse_and_deep(patched):
     # deep overlay: a legal, causally-verified succession.
     s = out["deep"]["succession"]
     assert s["legal"] == 1 and s["caused"] == 1 and s["causal_verified"] is True
+
+
+async def test_arc_job_runs_entailment_judge_with_its_llm(patched):
+    # D-SUCCESSION-ENTAILMENT-JUDGE — the job (unlike the GET) passes its llm, so the deepest
+    # signal runs: A's effects entail B's preconditions over the legal precedes edge.
+    state = patched
+    ch1 = uuid.uuid4()
+    state.rows = [{"motif_id": MH, "motif_code": "humiliation",
+                   "annotations": {"thread": "revenge", "arc_template_id": str(AID)},
+                   "chapter_id": ch1, "tension": 50, "story_order": 1}]
+    state.placement_motifs = {
+        "humiliation": SimpleNamespace(id=MH, code="humiliation", name="Humiliation",
+                                       summary="x", effects=[{"desc": "the hero is shamed"}],
+                                       preconditions=[]),
+        "face_slap": SimpleNamespace(id=MS, code="face_slap", name="Face Slap", summary="y",
+                                     effects=[], preconditions=[{"desc": "the hero was shamed"}])}
+    state.succ_map = {MH: [{"id": MS, "code": "face_slap", "name": "Face Slap", "ord": 0}]}
+    state.sequences = [[{"realized_motif_code": "humiliation", "thread": str(ch1)},
+                        {"realized_motif_code": "face_slap", "thread": str(ch1)}]]
+
+    class _LLM:
+        async def submit_and_wait(self, **kw):
+            return SimpleNamespace(status="completed", result={"messages": [
+                {"content": '{"humiliation->face_slap": true}'}]})
+
+    out = await _run(state, _arc_input(), llm=_LLM())
+    s = out["deep"]["succession"]
+    assert s["legal"] == 1 and s["entailed"] == 1 and s["entailment_verified"] is True
 
 
 async def test_arc_job_without_model_ref_is_pacing_only_no_tagging(patched):

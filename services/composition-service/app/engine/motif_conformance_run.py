@@ -92,4 +92,5 @@ async def run_conformance_run(
         reader=ConformanceTraceReader(pool), mrepo=MotifRepo(pool), knowledge=knowledge,
         user_id=uid, project_id=pid, book_id=work.book_id, arc=arc,
         deep=True, model_ref=input.get("model_ref"), model_source=input.get("model_source"),
+        llm=llm,  # the job runs the deepest signal — the entailment judge (the GET does not)
     )

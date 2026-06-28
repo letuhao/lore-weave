@@ -88,6 +88,7 @@ def _deep_succession(
     sequences: list[list[dict[str, Any]]],
     precedes_code_pairs: set[tuple[str, str]],
     causal_code_pairs: set[tuple[str, str]] | None = None,
+    entailed_code_pairs: set[tuple[str, str]] | None = None,
 ) -> dict[str, Any]:
     """The realized-from-PROSE legal-succession diff (unblocked by the motif-tag classifier).
     Flattens the realized motif order (``realized_motif_code`` per step, event-order-ordered,
@@ -97,7 +98,12 @@ def _deep_succession(
 
     F2: when ``causal_code_pairs`` is given (realized ``(:Event)-[:CAUSES]`` between the two
     motifs), a legal transition that is ALSO causally backed sets ``caused:true`` and the dim's
-    ``causal_verified:true`` — structural-only otherwise."""
+    ``causal_verified:true`` — structural-only otherwise.
+
+    D-SUCCESSION-ENTAILMENT-JUDGE: when ``entailed_code_pairs`` is given (the LLM judged A's
+    effects entail B's preconditions), a legal transition that is ALSO entailed sets the dim's
+    ``entailment_verified:true`` + an ``entailed`` count — the deepest signal (a legal, caused
+    transition can still be a non-sequitur if A's outcome doesn't establish B's premises)."""
     # FIRST-OCCURRENCE order, each motif once: "did the motifs first appear in legal order".
     # (Consecutive-only dedup would let a legitimately RECURRING motif — e.g. humiliation,
     # face_slap, humiliation — manufacture a face_slap→humiliation "reversed" false violation.)
@@ -114,21 +120,26 @@ def _deep_succession(
                 "reason": "no realized-motif tags yet — run tag-motifs (pass model_ref)",
                 "transitions": 0, "legal": 0, "unrelated": 0, "violations": []}
     causal = causal_code_pairs or set()
+    entailed = entailed_code_pairs or set()
     legal = unrelated = 0
     violations: list[dict[str, Any]] = []
     caused_total = 0
+    entailed_total = 0
     for a, b in zip(seq, seq[1:]):
         if (a, b) in precedes_code_pairs:
             legal += 1
             if (a, b) in causal:
                 caused_total += 1
+            if (a, b) in entailed:
+                entailed_total += 1
         elif (b, a) in precedes_code_pairs:
             violations.append({"from_motif_code": a, "to_motif_code": b})
         else:
             unrelated += 1
     return {"available": True, "causal_verified": caused_total > 0,
+            "entailment_verified": entailed_total > 0,
             "transitions": len(seq) - 1, "legal": legal, "unrelated": unrelated,
-            "caused": caused_total, "violations": violations}
+            "caused": caused_total, "entailed": entailed_total, "violations": violations}
 
 
 def build_deep_report(
@@ -138,6 +149,7 @@ def build_deep_report(
     arc_threads: list[dict[str, Any]] | None = None,
     precedes_code_pairs: set[tuple[str, str]] | None = None,
     causal_code_pairs: set[tuple[str, str]] | None = None,
+    entailed_code_pairs: set[tuple[str, str]] | None = None,
 ) -> dict[str, Any]:
     """The DEEP (realized-from-PROSE) overlay (D-W10-ARC-CONFORMANCE-DEEP).
 
@@ -187,7 +199,7 @@ def build_deep_report(
         "thread_progression": _deep_thread_progression(
             sequences, chapter_index_by_id, arc_threads or []),
         "succession": _deep_succession(
-            sequences, precedes_code_pairs or set(), causal_code_pairs),
+            sequences, precedes_code_pairs or set(), causal_code_pairs, entailed_code_pairs),
     }
 
 

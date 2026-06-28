@@ -37,12 +37,18 @@ async def compute_arc_report(
     deep: bool = False,
     model_ref: str | None = None,
     model_source: str | None = None,
+    llm: Any = None,
 ) -> dict[str, Any]:
     """Coarse arc-conformance (+ optional deep overlay). ``arc`` must already be resolved and
     visibility-checked by the caller. ``deep`` adds the realized-from-PROSE overlay; when a
     ``model_ref`` is supplied it FIRST tags the book's events into the arc's thread + placement
     vocab and infers causal edges (the expensive path), else the overlay is pacing-only over any
-    pre-existing tags. Returns the report dict (the job result / the GET body)."""
+    pre-existing tags. Returns the report dict (the job result / the GET body).
+
+    ``llm`` (the composition LLM client) is the EXTRA the Tier-W job passes that the synchronous
+    GET does not: with it (+ model_ref) the deepest succession signal runs — the entailment judge
+    over the placement motifs' effects/preconditions (D-SUCCESSION-ENTAILMENT-JUDGE). Without it
+    the deep overlay is structural + causal only (the GET's lighter path)."""
     # Coarse — the materialized bindings vs the template (no LLM).
     rows = await reader.arc_bindings(user_id, project_id, arc.id)
     order: dict[Any, int] = {}
@@ -91,6 +97,24 @@ async def compute_arc_report(
                            for frm, lst in succ_map.items() for s in lst
                            if frm in id_to_code and s["id"] in id_to_code}
     causal_code_pairs = set(await knowledge.causal_motif_pairs(user_id, book_id=book_id))
+    # D-SUCCESSION-ENTAILMENT-JUDGE — does A's effects entail B's preconditions over each legal
+    # precedes edge? Advisory LLM judge over the resolved placement motifs' JSONB. Only the Tier-W
+    # job passes `llm` (the GET stays structural+causal); degrades to structural-only on failure.
+    entailed_code_pairs: set[tuple[str, str]] = set()
+    if llm is not None and model_ref:
+        from app.engine.succession_entailment import judge_entailments
+        edges = []
+        for fc, tc in precedes_code_pairs:
+            fm, tm = placement_motifs.get(fc), placement_motifs.get(tc)
+            if fm is None or tm is None:
+                continue
+            edges.append({"from_code": fc, "to_code": tc,
+                          "from_name": getattr(fm, "name", fc), "to_name": getattr(tm, "name", tc),
+                          "from_effects": getattr(fm, "effects", None),
+                          "to_preconditions": getattr(tm, "preconditions", None)})
+        entailed_code_pairs = await judge_entailments(
+            llm, user_id=str(user_id), model_source=(model_source or "user_model"),
+            model_ref=model_ref, edges=edges)
     report["deep"] = build_deep_report(
         sequences=seqs or [],
         chapter_index_by_id={str(ch): idx for ch, idx in order.items()},
@@ -99,5 +123,6 @@ async def compute_arc_report(
         arc_threads=arc.threads or [],
         precedes_code_pairs=precedes_code_pairs,
         causal_code_pairs=causal_code_pairs,
+        entailed_code_pairs=entailed_code_pairs,
     )
     return report

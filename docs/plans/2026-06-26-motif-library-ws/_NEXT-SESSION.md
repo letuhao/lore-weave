@@ -1,5 +1,29 @@
 # ▶ NEXT SESSION — Narrative Motif Library BUILD (handoff)
 
+## STATUS (2026-06-28 PM-23) — D-SUCCESSION-ENTAILMENT-JUDGE CLEARED — the deepest succession signal
+
+**`D-SUCCESSION-ENTAILMENT-JUDGE`** ✅ (the honest-tail "deepest form" from the SUCCESSION run) —
+the deep succession dim now has a THIRD signal beyond structural (precedes) + causal (`:CAUSES`):
+an LLM judge over each legal transition A→B asking whether motif A's TEXTUAL `effects` entail motif
+B's `preconditions` (a legal, caused transition can still be a non-sequitur if A's outcome doesn't
+establish B's premises). Composition-side LLM (the motif effects/preconditions live in composition's
+DB). Single-service. Commit: this.
+- **NEW `engine/succession_entailment.py`** — the tag-classifier recipe: pure `build_messages` /
+  `parse_verdicts` / `_texts` (tolerant JSONB flatten) + advisory batched `judge_entailments` (NEVER
+  raises; degrades a transition to structural-only). `operation='chat'` → provider-registry (BYOK
+  model_ref passed in; no SDK/literal). Batched, `max_tokens` scales with batch.
+- **`engine/arc_conformance.py`** — `_deep_succession` + `build_deep_report` gain `entailed_code_pairs`
+  (symmetric to `causal_code_pairs`): a legal transition that is ALSO entailed → `entailed` count +
+  `entailment_verified:true`.
+- **`engine/arc_conformance_orchestrate.py`** — `compute_arc_report` gains an `llm` param (the EXTRA
+  the JOB passes that the GET does NOT): with `llm`+model_ref it judges entailment over the legal
+  precedes edges using the resolved placement motifs' effects/preconditions. The GET stays
+  structural+causal (lighter); the deepest signal is job-only.
+- **`run_conformance_run`** passes `llm=llm` → the job runs the judge.
+- **VERIFY:** composition unit — succession-entailment 12 (pure + fake-LLM judge + build_deep_report
+  wiring) + conformance-run worker 9 (now incl. the entailment-via-llm path) + arc_conformance 29,
+  green; provider-gate clean.
+
 ## STATUS (2026-06-28 PM-22) — D-W10-ARC-CONFORMANCE-DEEP-JOB CLEARED — deep overlay is now a Tier-W job
 
 **`D-W10-ARC-CONFORMANCE-DEEP-JOB`** ✅ (the MED from the SUCCESSION /review-impl) — the deep arc
