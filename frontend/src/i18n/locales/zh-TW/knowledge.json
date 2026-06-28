@@ -304,6 +304,11 @@
     },
     "localization": {
       "sourceMarker": "以原始語言顯示 — 翻譯處理中"
+    },
+    "search": {
+      "placeholder": "搜尋事件…",
+      "label": "搜尋事件",
+      "clear": "清除搜尋"
     }
   },
   "entities": {

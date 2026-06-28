@@ -742,6 +742,9 @@ export interface TimelineListParams {
    *  on `event_date_iso`. Events with NULL date are excluded when either is set. */
   event_date_from?: string;
   event_date_to?: string;
+  /** #12: free-text search over event title + summary (case-insensitive
+   *  substring, matched against SOURCE text). Empty/whitespace ignored. */
+  q?: string;
   /** KG-TL — reader language for localizing the timeline (chapter heading +
    *  participant names + summary/time_cue/title). Sourced from the active UI
    *  language; the BE folds it to the primary subtag and resolves the stored
@@ -1831,6 +1834,7 @@ export const knowledgeApi = {
       qs.set('event_date_from', params.event_date_from);
     if (params.event_date_to != null)
       qs.set('event_date_to', params.event_date_to);
+    if (params.q && params.q.trim()) qs.set('q', params.q.trim());
     if (params.language) qs.set('language', params.language);
     if (params.limit != null) qs.set('limit', String(params.limit));
     if (params.offset != null) qs.set('offset', String(params.offset));

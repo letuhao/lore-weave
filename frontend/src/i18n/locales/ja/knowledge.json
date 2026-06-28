@@ -304,6 +304,11 @@
     },
     "localization": {
       "sourceMarker": "原語で表示 — 翻訳待ち"
+    },
+    "search": {
+      "placeholder": "イベントを検索…",
+      "label": "イベントを検索",
+      "clear": "検索をクリア"
     }
   },
   "entities": {

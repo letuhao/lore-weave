@@ -1,8 +1,9 @@
 import { useCallback, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { ChevronLeft, ChevronRight } from 'lucide-react';
+import { ChevronLeft, ChevronRight, Search, X } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useTimeline } from '../hooks/useTimeline';
+import { useDebouncedValue } from '../hooks/useDebouncedValue';
 import { useProjects } from '../hooks/useProjects';
 import {
   TIMELINE_SORT_DIRECTIONS,
@@ -57,6 +58,11 @@ export function TimelineTab({ scopedProjectId }: TimelineTabProps = {}) {
   // D-K19e-α-02 — in-story ISO date-range filter (null = unbounded).
   const [eventDateFrom, setEventDateFrom] = useState<string | null>(null);
   const [eventDateTo, setEventDateTo] = useState<string | null>(null);
+  // #12 — free-text search over event title/summary. Debounced so we don't
+  // refetch on every keystroke; typing resets the page offset (handled in the
+  // input's onChange, not a useEffect, per the FE no-effect-for-events rule).
+  const [searchInput, setSearchInput] = useState('');
+  const debouncedSearch = useDebouncedValue(searchInput.trim(), 300);
 
   const scoped = !!scopedProjectId;
   const effectiveProjectId = scopedProjectId ?? projectFilter;
@@ -76,6 +82,7 @@ export function TimelineTab({ scopedProjectId }: TimelineTabProps = {}) {
       before_chronological: beforeChronological ?? undefined,
       event_date_from: eventDateFrom ?? undefined,
       event_date_to: eventDateTo ?? undefined,
+      q: debouncedSearch || undefined,
       // KG-TL — forward the active UI language as the reader language so the
       // timeline localizes (chapter heading + participants + summary/time_cue/
       // title). The BE folds it to the primary subtag (zh-TW → zh) and resolves
@@ -143,6 +150,38 @@ export function TimelineTab({ scopedProjectId }: TimelineTabProps = {}) {
           </label>
         </div>
       )}
+
+      {/* #12 — free-text search over event title/summary. Debounced; typing
+          resets the page offset so results start from page 1. */}
+      <div className="mb-3 relative">
+        <Search className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
+        <input
+          type="search"
+          value={searchInput}
+          onChange={(e) => {
+            setSearchInput(e.target.value);
+            setOffset(0);
+          }}
+          placeholder={t('timeline.search.placeholder')}
+          aria-label={t('timeline.search.label')}
+          className="w-full rounded-md border bg-input py-1.5 pl-8 pr-8 text-xs outline-none focus:border-ring"
+          data-testid="timeline-search"
+        />
+        {searchInput && (
+          <button
+            type="button"
+            onClick={() => {
+              setSearchInput('');
+              setOffset(0);
+            }}
+            aria-label={t('timeline.search.clear')}
+            className="absolute right-2 top-1/2 -translate-y-1/2 rounded p-0.5 text-muted-foreground transition-colors hover:text-foreground"
+            data-testid="timeline-search-clear"
+          >
+            <X className="h-3.5 w-3.5" />
+          </button>
+        )}
+      </div>
 
       {/* C14 — sort axis toggle (narrative ↔ chronological). A segmented
           control, NOT a project select — the route owns the project scope

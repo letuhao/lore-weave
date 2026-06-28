@@ -305,6 +305,11 @@
     },
     "localization": {
       "sourceMarker": "Shown in source language — translation pending"
+    },
+    "search": {
+      "placeholder": "Search events…",
+      "label": "Search events",
+      "clear": "Clear search"
     }
   },
   "entities": {

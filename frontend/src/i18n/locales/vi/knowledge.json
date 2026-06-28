@@ -304,6 +304,11 @@
     },
     "localization": {
       "sourceMarker": "Hiển thị bằng ngôn ngữ gốc — đang chờ dịch"
+    },
+    "search": {
+      "placeholder": "Tìm sự kiện…",
+      "label": "Tìm sự kiện",
+      "clear": "Xóa tìm kiếm"
     }
   },
   "entities": {

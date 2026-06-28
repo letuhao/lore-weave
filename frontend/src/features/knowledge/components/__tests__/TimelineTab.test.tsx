@@ -102,6 +102,23 @@ describe('TimelineTab', () => {
     expect(cues[0].textContent).toContain('the next morning');
   });
 
+  it('forwards a debounced text search as q and resets the offset (#12)', async () => {
+    render(<TimelineTab />, { wrapper: Wrapper });
+    await screen.findByTestId('timeline-list');
+    fireEvent.change(screen.getByTestId('timeline-search'), {
+      target: { value: 'duel' },
+    });
+    await waitFor(() =>
+      expect(listTimelineMock).toHaveBeenCalledWith(
+        expect.objectContaining({ q: 'duel', offset: 0 }),
+        expect.anything(),
+      ),
+    );
+    // The clear button empties the search input.
+    fireEvent.click(screen.getByTestId('timeline-search-clear'));
+    expect((screen.getByTestId('timeline-search') as HTMLInputElement).value).toBe('');
+  });
+
   it('surfaces API errors via the error banner', async () => {
     listTimelineMock.mockRejectedValueOnce(new Error('network is down'));
     render(<TimelineTab />, { wrapper: Wrapper });
