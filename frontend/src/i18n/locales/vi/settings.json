@@ -82,7 +82,8 @@
         "denied_scope": "Bị từ chối (phạm vi)",
         "rate_limited": "Bị giới hạn tần suất",
         "unauthorized": "Không được phép",
-        "upstream_error": "Lỗi phía trên"
+        "upstream_error": "Lỗi phía trên",
+        "tool_error": "Lỗi công cụ"
       }
     },
     "approvals": {

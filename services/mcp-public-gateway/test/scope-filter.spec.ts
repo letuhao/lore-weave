@@ -11,6 +11,7 @@ import {
   isWriteRequest,
   countToolCalls,
   filterListResponseText,
+  singleToolCallErrored,
 } from '../src/scope/scope-filter.js';
 
 // Scopes a typical "knowledge read" key would carry.
@@ -237,6 +238,41 @@ describe('scope-filter.filterListResponseText (response filter)', () => {
     ]);
     const out = JSON.parse(filterListResponseText(batch, KNOWLEDGE_READ));
     expect(out[0].result.tools.map((t: { name: string }) => t.name)).toEqual(['kg_graph_query']);
+  });
+});
+
+describe('scope-filter.singleToolCallErrored (H-O downstream outcome)', () => {
+  const call = { jsonrpc: '2.0', id: 1, method: 'tools/call', params: { name: 'book_get' } };
+
+  it('true when a single tools/call relayed an error body (JSON-RPC error rides a 200)', () => {
+    const body = JSON.stringify({ jsonrpc: '2.0', id: 1, error: { code: -32000, message: 'denied' } });
+    expect(singleToolCallErrored(call, body)).toBe(true);
+  });
+
+  it('false when the single tools/call body is a normal result', () => {
+    const body = JSON.stringify({ jsonrpc: '2.0', id: 1, result: { ok: true } });
+    expect(singleToolCallErrored(call, body)).toBe(false);
+  });
+
+  it('false for a NON-tools/call method even if the body is an error', () => {
+    const list = { jsonrpc: '2.0', id: 1, method: 'tools/list' };
+    const body = JSON.stringify({ jsonrpc: '2.0', id: 1, error: { code: -32601, message: 'x' } });
+    expect(singleToolCallErrored(list, body)).toBe(false);
+  });
+
+  it('false for a BATCH body (batches keep their per-step _meta.step_outcome, audit stays coarse)', () => {
+    const batch = [call, { ...call, id: 2 }];
+    const body = JSON.stringify([{ jsonrpc: '2.0', id: 1, error: { code: -32000, message: 'x' } }]);
+    expect(singleToolCallErrored(batch, body)).toBe(false);
+  });
+
+  it('false on non-JSON / SSE upstream (never fabricate)', () => {
+    expect(singleToolCallErrored(call, 'event: message\ndata: ...')).toBe(false);
+  });
+
+  it('false when error is null/absent (a present-but-null error is not an error)', () => {
+    const body = JSON.stringify({ jsonrpc: '2.0', id: 1, error: null, result: {} });
+    expect(singleToolCallErrored(call, body)).toBe(false);
   });
 });
 

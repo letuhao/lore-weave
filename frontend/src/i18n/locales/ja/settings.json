@@ -82,7 +82,8 @@
         "denied_scope": "拒否（スコープ）",
         "rate_limited": "レート制限",
         "unauthorized": "未認可",
-        "upstream_error": "上流エラー"
+        "upstream_error": "上流エラー",
+        "tool_error": "ツールエラー"
       }
     },
     "approvals": {

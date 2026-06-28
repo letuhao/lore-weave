@@ -182,10 +182,22 @@ CREATE TABLE IF NOT EXISTS mcp_call_audit (
   owner_user_id  UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
   method         TEXT NOT NULL,                       -- the JSON-RPC method (tools/call, tools/list, …)
   tool_name      TEXT NULL,                           -- the tools/call name; NULL for non-call methods
-  outcome        TEXT NOT NULL CHECK (outcome IN ('relayed','denied_scope','rate_limited','unauthorized','upstream_error')),
+  outcome        TEXT NOT NULL CHECK (outcome IN ('relayed','denied_scope','rate_limited','unauthorized','upstream_error','tool_error')),
   trace_id       TEXT NULL,                           -- the edge-minted x-trace-id (correlation)
   created_at     TIMESTAMPTZ NOT NULL DEFAULT now()
 );
+
+-- D-PMCP-AUDIT-DOWNSTREAM-OUTCOME: add 'tool_error' (a single tools/call the edge
+-- relayed 2xx but whose JSON-RPC body carried an error member — the tool ran and
+-- failed, distinct from a successful 'relayed' or a transport/non-2xx 'upstream_error'). The
+-- inline CHECK above only applies to a FRESH table; this idempotent ALTER widens the
+-- constraint on an already-created one (the auto-named constraint is *_outcome_check).
+DO $$
+BEGIN
+    ALTER TABLE mcp_call_audit DROP CONSTRAINT IF EXISTS mcp_call_audit_outcome_check;
+    ALTER TABLE mcp_call_audit ADD CONSTRAINT mcp_call_audit_outcome_check
+        CHECK (outcome IN ('relayed','denied_scope','rate_limited','unauthorized','upstream_error','tool_error'));
+END $$;
 
 -- Owner read path: a key's recent calls, newest first.
 CREATE INDEX IF NOT EXISTS idx_mcp_call_audit_owner_key_created

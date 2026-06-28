@@ -317,6 +317,30 @@ export function buildStepOutcomes(
 }
 
 /**
+ * D-PMCP-AUDIT-DOWNSTREAM-OUTCOME: true iff `body` is a SINGLE `tools/call` (NOT a
+ * batch) AND the upstream 2xx response is a JSON-RPC object carrying an `error` member —
+ * i.e. the edge relayed successfully but the TOOL itself returned an error (a downstream
+ * denial / validation / tool failure). The H-O audit uses this to record `tool_error`
+ * instead of a misleading `relayed` (a JSON-RPC error rides a 200, so HTTP status alone
+ * can't tell). Batches are NOT refined here — their per-step honesty rides the response's
+ * `_meta.step_outcome` (slice F); a batch's coarse per-key audit row stays `relayed`
+ * (documented ambiguity). Non-JSON / SSE / array bodies → false (never fabricate).
+ */
+export function singleToolCallErrored(body: unknown, upstreamText: string): boolean {
+  if (Array.isArray(body)) return false; // batch — not refined here
+  const step = parseRequestSteps(body)[0];
+  if (!step || !step.isToolCall) return false; // only a tools/call bears a tool outcome
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(upstreamText);
+  } catch {
+    return false; // SSE / non-JSON — can't tell, don't fabricate
+  }
+  if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) return false;
+  return (parsed as { error?: unknown }).error != null;
+}
+
+/**
  * Annotate a successfully-relayed BATCH response IN PLACE with each step's edge verdict —
  * keeping the bare JSON-RPC array shape (H-M transport-transparency). Each response item
  * gains an additive top-level `_meta.step_outcome` (`relayed` | `failed` | `denied_scope`):

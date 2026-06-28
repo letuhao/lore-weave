@@ -11,6 +11,9 @@ const OUTCOME_STYLE: Record<McpAuditRow['outcome'], string> = {
   rate_limited: 'bg-warning/10 text-warning',
   unauthorized: 'bg-destructive/10 text-destructive',
   upstream_error: 'bg-muted text-muted-foreground',
+  // D-PMCP-AUDIT-DOWNSTREAM-OUTCOME: the tool ran but returned an error (a downstream
+  // denial / failure) — worth the owner noticing, distinct from a clean relay.
+  tool_error: 'bg-warning/10 text-warning',
 };
 
 function fmtTime(iso: string): string {

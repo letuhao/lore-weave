@@ -8,7 +8,7 @@ export interface McpAuditRow {
   owner_user_id: string;
   method: string;
   tool_name?: string | null;
-  outcome: 'relayed' | 'denied_scope' | 'rate_limited' | 'unauthorized' | 'upstream_error';
+  outcome: 'relayed' | 'denied_scope' | 'rate_limited' | 'unauthorized' | 'upstream_error' | 'tool_error';
   trace_id?: string | null;
 }
 

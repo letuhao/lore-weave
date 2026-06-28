@@ -314,7 +314,7 @@ export type McpAuditRow = {
   audit_id: string;
   method: string;
   tool_name: string | null;
-  outcome: 'relayed' | 'denied_scope' | 'rate_limited' | 'unauthorized' | 'upstream_error';
+  outcome: 'relayed' | 'denied_scope' | 'rate_limited' | 'unauthorized' | 'upstream_error' | 'tool_error';
   trace_id: string | null;
   created_at: string;
 };

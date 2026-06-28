@@ -82,7 +82,8 @@
         "denied_scope": "Denied (scope)",
         "rate_limited": "Rate limited",
         "unauthorized": "Unauthorized",
-        "upstream_error": "Upstream error"
+        "upstream_error": "Upstream error",
+        "tool_error": "Tool error"
       }
     },
     "approvals": {

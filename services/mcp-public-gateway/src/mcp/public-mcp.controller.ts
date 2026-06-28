@@ -3,7 +3,7 @@ import { randomUUID } from 'node:crypto';
 import type { Request, Response } from 'express';
 import { loadConfig } from '../config/config.js';
 import { KeyResolver } from '../auth/key-resolver.js';
-import { annotateBatchStepOutcomes, countToolCalls, filterListResponseText, gateRequestBody, isBatchBody, isListRequest, isWriteRequest, singleWriteConfirmToolName } from '../scope/scope-filter.js';
+import { annotateBatchStepOutcomes, countToolCalls, filterListResponseText, gateRequestBody, isBatchBody, isListRequest, isWriteRequest, singleToolCallErrored, singleWriteConfirmToolName } from '../scope/scope-filter.js';
 import { detectProposeResult, pendingApprovalResponse, proposeDivertError } from '../scope/propose-detect.js';
 import { confirmActionResult, denyConfirmAction, detectConfirmActionCall, injectConfirmActionTool } from '../scope/confirm-action.js';
 import { domainScope, type Domain } from '../scope/tool-policy.js';
@@ -174,7 +174,16 @@ export class PublicMcpController {
       // tools its key may call. Only rewrite a successful list; errors pass through.
       const ok = upstream.status >= 200 && upstream.status < 300;
       // H-O: record the relay outcome (per tools/call; non-call relays are not audited).
-      this.audit.record(req.body, resolved.keyId, resolved.userId, traceId, ok ? 'relayed' : 'upstream_error');
+      // D-PMCP-AUDIT-DOWNSTREAM-OUTCOME: a single tools/call the edge relayed 2xx but
+      // whose JSON-RPC body carried an `error` (a downstream denial / tool failure rides
+      // a 200) is recorded `tool_error`, not a misleading `relayed`. Batches stay coarse
+      // (their per-step truth is the response's `_meta.step_outcome`).
+      const relayOutcome = !ok
+        ? 'upstream_error'
+        : singleToolCallErrored(req.body, text)
+          ? 'tool_error'
+          : 'relayed';
+      this.audit.record(req.body, resolved.keyId, resolved.userId, traceId, relayOutcome);
 
       // P4 / OD-2: a DEFAULT key's (allow_self_confirm=false) single Tier-W propose returns
       // a confirm_token WITHOUT spending. Do NOT hand it to the agent — divert the action to

@@ -82,7 +82,8 @@
         "denied_scope": "已拒絕（範圍）",
         "rate_limited": "已限流",
         "unauthorized": "未授權",
-        "upstream_error": "上游錯誤"
+        "upstream_error": "上游錯誤",
+        "tool_error": "工具錯誤"
       }
     },
     "approvals": {

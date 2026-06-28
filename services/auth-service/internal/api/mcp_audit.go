@@ -34,7 +34,7 @@ func parseIntQuery(r *http.Request, name string, def, min, max int) int {
 // anyway, but we skip the row rather than fail the whole batch).
 var validMcpAuditOutcomes = map[string]bool{
 	"relayed": true, "denied_scope": true, "rate_limited": true,
-	"unauthorized": true, "upstream_error": true,
+	"unauthorized": true, "upstream_error": true, "tool_error": true,
 }
 
 type mcpAuditRowIn struct {
