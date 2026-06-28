@@ -238,6 +238,7 @@ The glossary-assistant planner usually loops, even with a very strong local mode
 
 > RC (investigated): there is NO ReAct re-check loop in the planner/executor CODE — `runPlanner` (`glossary-service/internal/api/action_plan_tools.go` ~122-169) makes one model call + at most one repair round; `sdks/go/loreweave_mcp/execute.go` is a single-pass deterministic executor. The "loops forever" is the CHAT-AGENT loop re-calling `glossary_plan`, governed only by a SOFT skill rule (`chat-service/app/services/glossary_skill.py` ~108-126: "call once" / "MAY re-ask … stop after 2") — no hard stop.
 > Fix (proposed): hard-stop in the skill ("MUST NOT call glossary_plan more than once per turn"); drive step progress with logic + injected step-state (the user's Kiro point) rather than handing the whole plan back to the model each turn.
+> **P1 SHIPPED (partial):** skill now states the one-card-per-turn HARD rule + "call glossary_plan AT MOST ONCE per turn" + prefer the deterministic `glossary_propose_batch`. Server-side hard-stop enforcement is P2 (run-loop coalesce).
 
 ### [I] 19. Hardcoded `google/gemma-4-26b-a4b-qat` planner called after stopping session
 A critical bug: `google/gemma-4-26b-a4b-qat` is called even after stopping the glossary planner. It uses the **default** planner, but I already selected another planner in the chat session. Also, after stopping the session the planner MCP should never be called. Changing the default planner in user settings still calls `google/gemma-4-26b-a4b-qat` — suspect it's hardcoded.
@@ -360,6 +361,7 @@ Batch logic is bad — after the agent lists many kinds, it only batches very fe
 
 > RC (investigated): batch propose tools cap a single call (e.g. `toolProposeKinds` ≤20 kinds, `action_propose_tools.go` ~203), and the agent calls them in a LOOP emitting many cards — which then hit the #27 run-orphan failure — instead of one batch. The skill permits but doesn't ENFORCE single-proposal batching (`chat-service/app/services/glossary_skill.py` ~108-126 is soft: "call once" / "stop after 2 re-plans"). The agent "loses track mid-list" = the loop, not a planner defect.
 > Fix (proposed — matches the user's ask): the agent ONLY proposes; the MCP/executor commits the whole batch deterministically in one confirm card (loop/raise the batch internally, never N cards). Pairs with #27/#29 and the #18 hard-stop.
+> **P1 SHIPPED:** new deterministic `glossary_propose_batch` MCP tool — the agent passes ALL ops explicitly; they go through `ValidatePlan` → ONE `execute_plan` card → the existing deterministic executor (no planner LLM). Skill hardened (one-card-per-turn HARD rule + no-loop prohibition). Round-trip DB test green (mint→confirm→N kinds). P2 (server auto-coalesces stray multi-card turns in the chat run loop) still pending — see [docs/plans/2026-06-28-confirm-card-server-coalesce.md](../plans/2026-06-28-confirm-card-server-coalesce.md).
 
 ### [x] 31. Glossary GUI can't view `select`-type attributes (combobox empty)
 The glossary GUI cannot view attributes with `select` type — the combobox is empty.

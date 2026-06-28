@@ -121,6 +121,26 @@ func (s *Server) mcpHandler() http.Handler {
 	}, s.toolPlan)
 
 	mcp.AddTool(srv, &mcp.Tool{
+		Name: "glossary_propose_batch",
+		Description: "Apply MANY ontology changes on ONE confirm — the DETERMINISTIC batch path. Pass the " +
+			"operations EXPLICITLY in `ops` and they are validated + minted into a SINGLE execute_plan confirm " +
+			"card (no planner model is called — use this, not glossary_plan, when you already know the exact " +
+			"changes). ALWAYS prefer this over calling glossary_propose_new_kind / glossary_propose_new_attribute / " +
+			"glossary_book_* repeatedly: emitting several individual confirm cards in one turn FAILS — only the first " +
+			"can be confirmed. Each op is {type, params, rationale?}. Op types and their params: " +
+			"adopt_genres {genres:[code],kinds:[code]}; " +
+			"create_kinds {kinds:[{code,name,description,attributes:[{code,name,description,field_type}]}]} (NEW kinds, each with its attributes); " +
+			"add_attributes {kind_code,attributes:[{code,name,description,field_type}]} (to an EXISTING kind); " +
+			"edit_attribute {kind_code,code,...fields,base_version}; " +
+			"delete_genre {genre_code}; delete_kind {kind_code}; delete_attribute {kind_code,genre_code,code}; " +
+			"merge_candidate {candidate_id,winner_id?}; dismiss_candidate {candidate_id}. " +
+			"Every attribute needs a clear `description` (extraction uses it as the instruction). Slug codes only " +
+			"(^[a-z0-9_]+$). The human confirms once; a deterministic executor applies the whole batch idempotently " +
+			"(existing rows are skipped, destructive ops are per-op opt-in). Creates nothing until confirmed. Pass " +
+			"the returned confirm_token to glossary_confirm_action.",
+	}, s.toolProposeBatch)
+
+	mcp.AddTool(srv, &mcp.Tool{
 		Name: "glossary_propose_new_attribute",
 		Description: "Propose a NEW attribute on an existing kind (e.g. add 'cultivation_realm' to the " +
 			"character kind). Schema-level and high-impact — it does NOT write; it returns a confirm_token + " +

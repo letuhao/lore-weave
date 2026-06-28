@@ -104,15 +104,34 @@ a per-row choice set (take_theirs to pull the update, keep_mine to keep the book
 and propose it with `glossary_book_sync_apply` — it returns a `confirm_token` + \
 `descriptor` the user confirms via `glossary_confirm_action` (and may flip any row first).
 
+## One confirm card per turn — NEVER loop individual proposals (read this)
+- **You may emit only ONE confirm card per turn.** If you propose several confirm \
+cards in a single turn (calling `glossary_propose_new_kind` / \
+`glossary_propose_new_attribute` / `glossary_book_*` repeatedly, or `glossary_plan` \
+more than once), ONLY THE FIRST can be confirmed — the rest are dead and the user \
+sees them fail. This is a hard property of the system, not a style preference.
+- **So whenever you intend MORE THAN ONE write, batch it into ONE card.** Two paths:
+  - **You already know the exact changes → `glossary_propose_batch`.** Pass ALL the \
+operations in one `ops` list (create_kinds with their attributes, add_attributes, \
+deletes, merges — see the tool). It mints ONE confirm card, no planner model runs, \
+and a deterministic executor applies the whole batch on one confirm. PREFER this for \
+"add these 3 kinds", "fix these attributes", "delete X and Y".
+  - **The goal is open-ended ("design an ontology for this novel") → `glossary_plan` \
+ONCE.** A planner model reads current state and returns one typed PLAN behind ONE \
+confirm card. Call it AT MOST ONCE per turn.
+- **NEVER** call `glossary_propose_new_kind`, `glossary_propose_kinds`, \
+`glossary_propose_new_attribute`, or `glossary_book_create` / `glossary_book_patch` in \
+a LOOP — that is the old, error-prone path `glossary_propose_batch` / `glossary_plan` \
+replace. Reserve the single propose tools for a genuine ONE-OFF write.
+
 ## Multi-step ontology goals — plan, don't loop
 - **For a MULTI-STEP goal — "build / design / set up an ontology", "fix all the \
-character attributes", or any goal that needs more than one or two writes — call \
-`glossary_plan` ONCE with the user's goal.** It reads the book's current state and \
-returns a single typed PLAN (all the genres, kinds, attributes, and edits as one \
-reviewable artifact) behind ONE confirm card. Do NOT call individual write tools \
-(`glossary_propose_new_kind`, `glossary_propose_kinds`, \
+character attributes", or any goal that needs more than one or two writes — use ONE \
+batch:** `glossary_propose_batch` when you know the ops, or `glossary_plan` ONCE for \
+an open-ended goal. Both return a single typed plan behind ONE confirm card. Do NOT \
+call individual write tools (`glossary_propose_new_kind`, `glossary_propose_kinds`, \
 `glossary_propose_new_attribute`, `glossary_book_create` / `glossary_book_patch`) in a \
-loop for such goals — that is the old, error-prone path the planner replaces.
+loop for such goals — that is the old, error-prone path they replace.
 - **The flow is:** understand the goal → `glossary_plan` → present the plan to the \
 user → on the user's approval, `glossary_confirm_action` → then REPORT THE EXECUTOR'S \
 RETURNED SUMMARY VERBATIM. The summary lists the `applied` / `skipped` / `failed` ops. \

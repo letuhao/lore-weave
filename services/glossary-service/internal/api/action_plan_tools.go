@@ -101,6 +101,83 @@ func (s *Server) toolPlan(ctx context.Context, _ *mcpsdk.CallToolRequest, in pla
 	return s.mintGrantActionCard(userID, bookID, descExecutePlan, title, plan, rows, false)
 }
 
+// ── glossary_propose_batch — the DETERMINISTIC plan path (no planner LLM) ──────
+//
+// Bugs #27/#29/#30: a weak local model loops the single-propose tools and emits N
+// confirm cards; only the first can be confirmed (the run lifecycle honours one card
+// per turn — see docs/plans/2026-06-28-confirm-card-server-coalesce.md). This tool is
+// `toolPlan` minus the planner model: the agent supplies the ops EXPLICITLY (same op
+// vocabulary the planner emits) and we mint ONE execute_plan card directly. Zero extra
+// LLM cost, fully deterministic, and it reuses the entire execute_plan executor +
+// preview + FE card. The agent's job shrinks to "list the ops"; the executor does the
+// writes under ONE human confirm.
+
+type proposeBatchOpIn struct {
+	Type string `json:"type" jsonschema:"op type — one of: adopt_genres, create_kinds, add_attributes, edit_attribute, delete_genre, delete_kind, delete_attribute, merge_candidate, dismiss_candidate"`
+	// Params is the op's typed params object. Shapes mirror the planner vocabulary
+	// (see glossary_propose_batch's tool description), e.g. create_kinds →
+	// {"kinds":[{"code","name","description","attributes":[...]}]}.
+	Params    map[string]any `json:"params" jsonschema:"the op's typed params object (shape depends on type — see the tool description)"`
+	Rationale string         `json:"rationale,omitempty" jsonschema:"optional short why, shown on the confirm card row"`
+}
+
+type proposeBatchToolIn struct {
+	BookID string             `json:"book_id" jsonschema:"the book to act on (UUID; Manage-grant checked)"`
+	Ops    []proposeBatchOpIn `json:"ops" jsonschema:"the ordered list of ontology operations to apply together on ONE confirm"`
+	Goal   string             `json:"goal,omitempty" jsonschema:"optional one-line label for the plan header, e.g. 'add the three missing kinds'"`
+}
+
+// toolProposeBatch handles glossary_propose_batch: validate the explicit ops against
+// the glossary op registry (dedupe, per-op Validate, frozen ids, cap, reject-empty),
+// then mint ONE execute_plan confirm card. NO planner model is called — the agent
+// already specified the ops. The deterministic executor (plan_confirm.go →
+// loreweave_mcp.Execute) does the writes on confirm.
+func (s *Server) toolProposeBatch(ctx context.Context, _ *mcpsdk.CallToolRequest, in proposeBatchToolIn) (*mcpsdk.CallToolResult, confirmCardOut, error) {
+	userID, ok := userIDFromCtx(ctx)
+	if !ok {
+		return nil, confirmCardOut{}, errors.New("missing caller identity")
+	}
+	bookID, err := uuid.Parse(in.BookID)
+	if err != nil {
+		return nil, confirmCardOut{}, errors.New("book_id must be a UUID")
+	}
+	if len(in.Ops) == 0 {
+		return nil, confirmCardOut{}, errors.New("ops must not be empty — pass the operations to batch")
+	}
+	if err := s.checkGrant(ctx, bookID, userID, grantclient.GrantManage); err != nil {
+		return nil, confirmCardOut{}, uniformOwnershipError(err)
+	}
+
+	goal := strings.TrimSpace(in.Goal)
+	if goal == "" {
+		goal = "batch ontology changes"
+	}
+	plan := plankit.Plan{BookID: bookID, Goal: goal}
+	for i, o := range in.Ops {
+		t := strings.TrimSpace(o.Type)
+		if t == "" {
+			return nil, confirmCardOut{}, fmt.Errorf("op %d: type is required", i+1)
+		}
+		raw, merr := json.Marshal(o.Params)
+		if merr != nil {
+			return nil, confirmCardOut{}, fmt.Errorf("op %d (%s): params could not be encoded", i+1, t)
+		}
+		plan.Ops = append(plan.Ops, plankit.Op{Type: t, Params: raw, Rationale: o.Rationale})
+	}
+	// ValidatePlan is the single gate (same one the planner uses): rejects unknown op
+	// types + over-cap plans, runs each op's Validate (slug code, mandatory description),
+	// stamps Destructive from the registry (G1 — never trusts the caller), dedupes by
+	// (type, identity), and freezes ids op-1..N. Its error string is agent-actionable.
+	if err := s.planRegistry().ValidatePlan(&plan); err != nil {
+		return nil, confirmCardOut{}, fmt.Errorf("the batch is not valid: %v", err)
+	}
+	rows := planPreviewRows(plan)
+	title := fmt.Sprintf("Execute plan — %d operation(s)", len(plan.Ops))
+	// Card-level destructive stays false: per-op destructive ops carry their own opt-in
+	// toggle (enabled_ops at confirm), mirroring toolPlan.
+	return s.mintGrantActionCard(userID, bookID, descExecutePlan, title, plan, rows, false)
+}
+
 // llmClient builds an LLM-gateway client pointed at provider-registry (the gateway
 // hosts /internal/llm/stream), authenticated service-to-service. The user is passed
 // per-call to Complete so the gateway resolves the BYOK model from user_id.
