@@ -210,7 +210,13 @@
       "clear": "Clear",
       "done": "{{count}} entities set to {{status}}",
       "select_all_matching": "Select all {{count}} matching",
-      "cap_note": "Selection capped at {{cap}} entities"
+      "cap_note": "Selection capped at {{cap}} entities",
+      "delete": "Delete",
+      "deleted": "{{count}} entities deleted",
+      "delete_confirm": {
+        "title": "Delete {{count}} entities?",
+        "description": "{{count}} selected entities will be moved to the recycle bin."
+      }
     },
     "clear_filters": "Clear all filters",
     "deleted": "Entity deleted",

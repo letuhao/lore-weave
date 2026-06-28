@@ -210,7 +210,13 @@
       "clear": "選択解除",
       "done": "{{count}} 件のエンティティを {{status}} にしました",
       "select_all_matching": "一致する {{count}} 件すべてを選択",
-      "cap_note": "選択は最大 {{cap}} 件までです"
+      "cap_note": "選択は最大 {{cap}} 件までです",
+      "delete": "削除",
+      "deleted": "{{count}} 件のエンティティを削除しました",
+      "delete_confirm": {
+        "title": "{{count}} 件のエンティティを削除しますか？",
+        "description": "選択した {{count}} 件のエンティティはゴミ箱に移動されます。"
+      }
     },
     "clear_filters": "すべてのフィルターをクリア",
     "deleted": "エンティティを削除しました",

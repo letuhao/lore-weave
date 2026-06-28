@@ -61,6 +61,7 @@ export function GlossaryTab({ bookId, bookGenreTags = [], bookOriginalLanguage }
   const [batchTranslateOpen, setBatchTranslateOpen] = useState(false);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [bulkBusy, setBulkBusy] = useState(false);
+  const [bulkDeleteOpen, setBulkDeleteOpen] = useState(false);
   // Default sort = appearance (chapter-link count) DESC, so the most-present
   // entities (main characters etc.) surface first instead of sinking by recency.
   const [sort, setSort] = useState<EntitySort>('links');
@@ -300,6 +301,26 @@ export function GlossaryTab({ bookId, bookGenreTags = [], bookOriginalLanguage }
     try {
       const { updated } = await glossaryApi.bulkSetStatus(bookId, status, ids, accessToken);
       toast.success(t('glossary.bulk.done', { count: updated, status: t(`glossary.status.${status}`) }));
+      clearSelection();
+      invalidate();
+    } catch (e) {
+      toast.error((e as Error).message);
+    } finally {
+      setBulkBusy(false);
+    }
+  };
+
+  // Bulk soft-delete the selected entities (clean up extraction duplicates, #40).
+  // Gated behind a destructive confirm; the server ignores foreign/already-deleted
+  // ids, so `deleted` is the real count (the partial-success report).
+  const handleBulkDelete = async () => {
+    const ids = [...selectedIds];
+    if (!accessToken || ids.length === 0) return;
+    setBulkBusy(true);
+    try {
+      const { deleted } = await glossaryApi.bulkDeleteEntities(bookId, ids, accessToken);
+      toast.success(t('glossary.bulk.deleted', { count: deleted }));
+      setBulkDeleteOpen(false);
       clearSelection();
       invalidate();
     } catch (e) {
@@ -685,6 +706,14 @@ export function GlossaryTab({ bookId, bookGenreTags = [], bookOriginalLanguage }
           <CircleSlash className="h-3.5 w-3.5" />
           {t('glossary.bulk.deactivate')}
         </button>
+        <button
+          onClick={() => setBulkDeleteOpen(true)}
+          disabled={bulkBusy}
+          className="inline-flex items-center gap-1.5 rounded-full bg-destructive/90 px-4 py-1.5 text-xs font-medium text-white hover:bg-destructive disabled:opacity-50 transition-colors"
+        >
+          <Trash2 className="h-3.5 w-3.5" />
+          {t('glossary.bulk.delete')}
+        </button>
         <button onClick={clearSelection} className="text-xs text-muted-foreground hover:text-foreground transition-colors">
           {t('glossary.bulk.clear')}
         </button>
@@ -698,6 +727,17 @@ export function GlossaryTab({ bookId, bookGenreTags = [], bookOriginalLanguage }
         confirmLabel={t('glossary.delete_confirm.confirm')}
         variant="destructive"
         onConfirm={() => void handleDelete()}
+      />
+
+      <ConfirmDialog
+        open={bulkDeleteOpen}
+        onOpenChange={setBulkDeleteOpen}
+        title={t('glossary.bulk.delete_confirm.title', { count: selectedIds.size })}
+        description={t('glossary.bulk.delete_confirm.description', { count: selectedIds.size })}
+        confirmLabel={t('glossary.bulk.delete')}
+        variant="destructive"
+        loading={bulkBusy}
+        onConfirm={() => void handleBulkDelete()}
       />
 
       {/* Entity Editor Modal */}

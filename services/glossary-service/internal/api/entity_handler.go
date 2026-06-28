@@ -1350,6 +1350,73 @@ func (s *Server) deleteEntity(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusNoContent)
 }
 
+// ── POST /v1/glossary/books/{book_id}/entities/bulk-delete ───────────────────
+
+// bulkDeleteEntities soft-deletes many book-scoped entities in one UPDATE — the
+// bulk sibling of deleteEntity, for cleaning up duplicate/unwanted entities (e.g.
+// the cross-kind duplicates extraction can produce, #38/#39). Book-scoped +
+// Manage-grant gated — delete is a destructive, manage-level op, matching the
+// single-entity DELETE. Soft-delete (deleted_at) so the row + its history survive;
+// returns the count actually deleted — ids that don't match a live book entity
+// simply don't count (the implicit partial-success report).
+//
+// No outbox event is emitted — mirrors the single-entity deleteEntity (the
+// glossary.entity_* events carry no "deleted" variant today; adding one is a
+// separate cross-cutting change).
+func (s *Server) bulkDeleteEntities(w http.ResponseWriter, r *http.Request) {
+	userID, ok := s.requireUserID(r)
+	if !ok {
+		writeError(w, http.StatusUnauthorized, "GLOSS_UNAUTHORIZED", "valid Bearer token required")
+		return
+	}
+	bookID, ok := parsePathUUID(w, r, "book_id")
+	if !ok {
+		return
+	}
+	if !s.requireGrant(w, r.Context(), bookID, userID, grantclient.GrantManage) {
+		return
+	}
+
+	var in struct {
+		EntityIDs []string `json:"entity_ids"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&in); err != nil {
+		writeError(w, http.StatusBadRequest, "GLOSS_INVALID_BODY", "invalid JSON")
+		return
+	}
+	if len(in.EntityIDs) == 0 {
+		writeError(w, http.StatusBadRequest, "GLOSS_INVALID_BODY", "entity_ids must not be empty")
+		return
+	}
+	if len(in.EntityIDs) > 1000 {
+		writeError(w, http.StatusUnprocessableEntity, "GLOSS_TOO_MANY",
+			"entity_ids must be at most 1000")
+		return
+	}
+	// Drop malformed ids (mirrors bulk-status) — a bad id never matches the
+	// book-scoped WHERE anyway, so coerce to a clean uuid slice.
+	ids := make([]uuid.UUID, 0, len(in.EntityIDs))
+	for _, raw := range in.EntityIDs {
+		if id, err := uuid.Parse(strings.TrimSpace(raw)); err == nil {
+			ids = append(ids, id)
+		}
+	}
+	if len(ids) == 0 {
+		writeJSON(w, http.StatusOK, map[string]int{"deleted": 0})
+		return
+	}
+
+	tag, err := s.pool.Exec(r.Context(),
+		`UPDATE glossary_entities SET deleted_at = now(), updated_at = now()
+		 WHERE book_id = $1 AND entity_id = ANY($2::uuid[]) AND deleted_at IS NULL`,
+		bookID, ids)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "GLOSS_INTERNAL", "bulk delete failed")
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]int{"deleted": int(tag.RowsAffected())})
+}
+
 // ── GET /v1/glossary/books/{book_id}/entity-names ───────────────────────────
 // Lightweight endpoint for editor decoration scanning.
 // Returns only entity_id, display_name, display_name_translation, kind metadata.
