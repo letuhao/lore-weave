@@ -94,6 +94,9 @@ export const TOOL_POLICY: Record<string, ToolPolicy> = {
   jobs_list: { tier: 'read', domains: ['jobs'] },
   jobs_summary: { tier: 'read', domains: ['jobs'] },
   jobs_get: { tier: 'read', domains: ['jobs'] },
+  // catalog (P5 OD-7 — PUBLIC discovery; owner-agnostic, returns only public books)
+  catalog_list_public_books: { tier: 'read', domains: ['catalog'] },
+  catalog_get_book: { tier: 'read', domains: ['catalog'] },
   // settings (secrets redacted upstream)
   settings_get_profile: { tier: 'read', domains: ['settings'] },
   settings_list_providers: { tier: 'read', domains: ['settings'] },

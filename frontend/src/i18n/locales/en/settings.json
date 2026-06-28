@@ -40,7 +40,8 @@
       "composition": "Composition",
       "jobs": "Jobs",
       "settings": "Settings",
-      "lore_enrichment": "Lore enrichment"
+      "lore_enrichment": "Lore enrichment",
+      "catalog": "Catalog"
     },
     "create": {
       "title": "Create MCP Key",

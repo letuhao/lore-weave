@@ -257,6 +257,7 @@ export const MCP_DOMAINS = [
   'jobs',
   'settings',
   'lore_enrichment',
+  'catalog',
 ] as const;
 export type McpDomain = (typeof MCP_DOMAINS)[number];
 

@@ -40,7 +40,8 @@
       "composition": "創作",
       "jobs": "ジョブ",
       "settings": "設定",
-      "lore_enrichment": "ロア拡充"
+      "lore_enrichment": "ロア拡充",
+      "catalog": "カタログ"
     },
     "create": {
       "title": "MCPキーを作成",

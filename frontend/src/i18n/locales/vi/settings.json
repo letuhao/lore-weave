@@ -40,7 +40,8 @@
       "composition": "Sáng tác",
       "jobs": "Tác vụ",
       "settings": "Cài đặt",
-      "lore_enrichment": "Làm giàu cốt truyện"
+      "lore_enrichment": "Làm giàu cốt truyện",
+      "catalog": "Danh mục"
     },
     "create": {
       "title": "Tạo khóa MCP",

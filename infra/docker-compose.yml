@@ -871,7 +871,8 @@ services:
       # Wave 2: book, composition, translation, settings.
       # Provider name `lore_enrichment` (underscore) → derived prefix `lore_enrichment_`
       # (no DEFAULT_PREFIX_MAP entry needed), which matches the tool `lore_enrichment_auto_enrich`.
-      AI_GATEWAY_PROVIDERS: "knowledge=http://knowledge-service:8092/mcp,glossary=http://glossary-service:8088/mcp,jobs=http://jobs-service:8096/mcp,book=http://book-service:8082/mcp,composition=http://composition-service:8093/mcp,translation=http://translation-service:8087/mcp,settings=http://provider-registry-service:8085/mcp,lore_enrichment=http://lore-enrichment-service:8093/mcp"
+      # Wave 3 (P5 OD-7): catalog — public-discovery read tools (catalog_*).
+      AI_GATEWAY_PROVIDERS: "knowledge=http://knowledge-service:8092/mcp,glossary=http://glossary-service:8088/mcp,jobs=http://jobs-service:8096/mcp,book=http://book-service:8082/mcp,composition=http://composition-service:8093/mcp,translation=http://translation-service:8087/mcp,settings=http://provider-registry-service:8085/mcp,lore_enrichment=http://lore-enrichment-service:8093/mcp,catalog=http://catalog-service:8084/mcp"
       OTEL_EXPORTER_OTLP_ENDPOINT: ${OTEL_EXPORTER_OTLP_ENDPOINT:-}
     depends_on:
       knowledge-service:

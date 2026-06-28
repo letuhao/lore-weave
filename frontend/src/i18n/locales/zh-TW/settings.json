@@ -40,7 +40,8 @@
       "composition": "創作",
       "jobs": "任務",
       "settings": "設定",
-      "lore_enrichment": "設定集擴充"
+      "lore_enrichment": "設定集擴充",
+      "catalog": "目錄"
     },
     "create": {
       "title": "建立 MCP 金鑰",
