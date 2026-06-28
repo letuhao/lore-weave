@@ -5,16 +5,23 @@
 > + add a synthesized CANONICAL layer an LLM rewrites from the accumulated raw mentions. Trigger:
 > **end-of-extraction-job, batched** (+ a manual button, M3). Plan:
 > [docs/plans/2026-06-29-glossary-summarize-merge-mode.md].
-> **✅ M1 DONE (this commit):** migration `0043_canonical_summary` (`entity_attribute_values`
-> + `canonical_value`/`canonical_dirty`/`canonical_synced_at`); `strategyToAction("summarize")`;
+> **✅ M1 DONE (`b2a779f4`):** migration `0043_canonical_summary`; `strategyToAction("summarize")`;
 > `mergeExtractedEntity` summarize branch shares the append raw layer + flags `canonical_dirty` on
-> a real change (never on an idempotent no-op). `TestBulkExtract_SummarizeAction` passes;
-> append/merge suite unregressed; go vet clean.
-> **▶ NEXT — M2:** glossary internal endpoints `GET /internal/books/{id}/canonical-dirty` +
-> `POST …/entities/{id}/canonical`; translation-service `resummarize.py` end-of-job LLM pass
-> (reuses the worker's `llm_client`/`model_ref`, `usage_purpose="glossary_resummarize"`,
-> best-effort). Then **M3** FE: canonical headline + raw under "sources/history" + manual
-> "Re-summarize" button. M2 needs a cross-service live smoke (translation worker ↔ glossary).
+> a real change (never on an idempotent no-op). `TestBulkExtract_SummarizeAction` passes.
+> **✅ M2 DONE (this commit):** glossary internal endpoints `GET /internal/books/{id}/canonical-dirty`
+> + `POST …/entities/{id}/canonical` (compare-and-clear on the dirty flag via a raw-set md5
+> fingerprint, so a concurrent extraction can't cause a lost-update; LLM text neutralized +
+> rune-capped; book-scoped 404; emits `glossary.entity_updated`). translation-service
+> `resummarize.py` end-of-job pass (`glossary_client.fetch_canonical_dirty`/`post_canonical`;
+> reuses the worker's `llm_client`/`model_ref`; `usage_purpose="glossary_resummarize"`; single
+> mention → promote verbatim, no LLM; best-effort — never fails the job; source-language). Wired
+> after the job terminal state for completed/with-errors only. Tests: glossary canonical endpoints
+> (real Postgres) + `test_resummarize.py` 6 + extraction-worker 29 green; go vet clean.
+> **Deferred `D-SUMMARIZE-LIVE-SMOKE`** (gate 4 — needs a glossary rebuild w/ 0043 routes + a
+> local-LLM extraction run; wire contract verified by inspection + real-Postgres handler tests).
+> **▶ NEXT — M3 (FE):** render `canonical_value` as the summarize-attr headline + raw items under
+> a "sources / history" disclosure; a manual "Re-summarize" button (single-entity trigger reusing
+> the M2 pass) — that button naturally clears `D-SUMMARIZE-LIVE-SMOKE` end-to-end.
 
 > **✅ SHIPPED — #12 timeline overhaul (L, 3 parts) + #16 build-stages.** Verified first: the
 > timeline was already feature-rich (filters/sort/ranges/pagination/rich rows) — the "low quality"

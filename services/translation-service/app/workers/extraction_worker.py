@@ -717,6 +717,27 @@ async def _run_extraction_job(msg: dict, job_id: UUID, user_id: str, pool, publi
         job_id, total_created, total_updated, total_skipped, failed,
     )
 
+    # #26/#7 — end-of-job canonical resynthesis for `summarize`-mode attributes. The
+    # writeback flagged each changed summarize attr canonical_dirty; now (after the job
+    # terminal state, never for a cancelled job) batch-rewrite their accumulated raw
+    # mentions into one deduped canonical value via the SAME provider-registry path this
+    # job used. BEST-EFFORT + fully decoupled: the extraction already committed, so a
+    # resummarize problem is logged and swallowed — it never changes the job's outcome.
+    if final_status in ("completed", "completed_with_errors"):
+        try:
+            from .resummarize import run_resummarize_pass
+
+            summary = await run_resummarize_pass(
+                book_id=book_id, owner_user_id=str(user_id),
+                model_source=model_source, model_ref=model_ref,
+                source_language=source_language, llm_client=llm_client,
+            )
+            if summary.get("dirty"):
+                log.info("extraction_worker: job %s resummarize — %s", job_id, summary)
+        except Exception as exc:  # noqa: BLE001 — resummarize must never fail the job
+            log.warning("extraction_worker: job %s resummarize pass failed (non-fatal): %s",
+                        job_id, exc)
+
 
 async def _process_extraction_chapter(
     job_id: UUID,
