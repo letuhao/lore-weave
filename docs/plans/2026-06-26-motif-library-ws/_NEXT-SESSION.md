@@ -1,5 +1,27 @@
 # ▶ NEXT SESSION — Narrative Motif Library BUILD (handoff)
 
+## STATUS (2026-06-28 PM-17) — D-W10-ARC-CONFORMANCE-FE CLEARED — the arc dashboard (07-B)
+
+**`D-W10-ARC-CONFORMANCE-FE`** ✅ — the PM-16 coarse arc-conformance report now has a UI. FE-only
+(consumes the live `GET …/conformance?scope=arc`). Surfaced in the arc-template DETAIL view (below
+the timeline editor + apply-preview), so an author who opens an arc sees, post-materialize, how the
+realized outline conforms to the template.
+- NEW `motifApi.arcConformance` + `ArcConformance` types (+ nested ThreadProgress/Pacing/Succession);
+  NEW `useArcConformance` (gated on projectId+arcId+token); NEW `ArcConformancePanel` (mockup 07-B):
+  thread-progress coverage (covered/planned + the missing motifs), the realized pacing curve (+ max
+  drift vs the template curve when present), structural succession (OK / per-thread violations), and
+  the §12.6 unmaterialized (folded-away) placements. Stamps **"Coarse · structural only"** (mirrors
+  the BE `causal_verified=false` honesty — no prose extract-diff).
+- Degrades cleanly: no `projectId` → "materialize this arc first" (no fetch); `chapter_count===0`
+  → "nothing materialized yet"; load/error via `MotifStateBoundary`.
+- **VERIFY:** 5 new tests (`ArcConformancePanel.test.tsx` — full report render, scope=arc URL,
+  succession violation, empty, no-work-no-fetch); full motif FE suite green; tsc 0 errors.
+
+**▶ Remaining arc-conformance defers:** `D-W10-ARC-CONFORMANCE-DEEP` (P4+, genuinely blocked on the
+knowledge-service causal-event graph F-1 — the prose effects→precond extract-diff) and
+`D-W10-ARC-CONFORMANCE-LIVE-SMOKE` (endpoint smoke against a materialized arc — needs a container +
+FE rebuild). The coarse loop (BE diff + FE dashboard) is now complete end-to-end at the unit level.
+
 ## STATUS (2026-06-28 PM-16) — D-W10-ARC-CONFORMANCE (COARSE) CLEARED — the scope=arc endpoint is real
 
 **`D-W10-ARC-CONFORMANCE`** ✅ (the COARSE tier — §14.4 altitude 3, §R1.5). The `scope=arc`

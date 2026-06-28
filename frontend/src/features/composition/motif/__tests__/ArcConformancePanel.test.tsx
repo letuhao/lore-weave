@@ -1,0 +1,93 @@
+// D-W10-ARC-CONFORMANCE-FE — the coarse arc-conformance dashboard: renders thread
+// coverage, the realized pacing curve, structural succession flags, and unmaterialized
+// (folded-away) placements from the scope=arc report. Logic lives in useArcConformance.
+import { render, screen } from '@testing-library/react';
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import { describe, expect, it, vi, beforeEach } from 'vitest';
+
+const apiJson = vi.fn();
+vi.mock('@/api', () => ({ apiJson: (...a: unknown[]) => apiJson(...a), apiBase: () => '' }));
+
+import { ArcConformancePanel } from '../components/ArcConformancePanel';
+import type { ArcConformance } from '../types';
+
+const REPORT = (over: Partial<ArcConformance> = {}): ArcConformance => ({
+  scope: 'arc', available: true, coarse: true, causal_verified: false,
+  arc_template_id: 'a1', arc_name: 'Revenge Arc', chapter_count: 2,
+  thread_progress: [
+    { thread: 'revenge', label: 'Revenge', planned: 3, covered: 2, missing: [{ motif_code: 'exile', ord: 1 }] },
+  ],
+  pacing: { comparable: true, planned: [30, 90], realized: [
+    { chapter_index: 1, avg_tension: 40, scenes: 2 }, { chapter_index: 2, avg_tension: 70, scenes: 1 },
+  ], max_drift: 20 },
+  succession: { causal_verified: false, threads: [
+    { thread: 'revenge', label: 'Revenge', transitions: 1, legal: 1, unrelated: 0, violations: [] },
+  ] },
+  unmaterialized: [{ motif_code: 'exile', thread: 'revenge', ord: 1 }],
+  ...over,
+});
+
+function wrap() {
+  const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+  return ({ children }: { children: React.ReactNode }) => (
+    <QueryClientProvider client={qc}>{children}</QueryClientProvider>
+  );
+}
+
+beforeEach(() => {
+  apiJson.mockReset();
+  apiJson.mockImplementation(() => Promise.resolve(REPORT()));
+});
+
+describe('ArcConformancePanel', () => {
+  it('renders the coarse badge + thread coverage + pacing + unmaterialized', async () => {
+    render(<ArcConformancePanel projectId="p1" arcTemplateId="a1" token="tok" />, { wrapper: wrap() });
+    // thread coverage only appears once the query resolves (the wrapper renders eagerly).
+    const thread = await screen.findByTestId('arc-conf-thread-revenge');
+    // honest coarse stamp (causal_verified=false).
+    expect(screen.getByTestId('arc-conf-coarse-badge')).toBeInTheDocument();
+    // thread coverage 2/3 + the missing motif surfaced.
+    expect(thread).toHaveTextContent('2/3');
+    expect(screen.getByTestId('arc-conf-missing-revenge')).toHaveTextContent('exile');
+    // pacing drift + a realized point.
+    expect(screen.getByTestId('arc-conf-drift')).toBeInTheDocument();
+    expect(screen.getByTestId('arc-conf-pacing')).toHaveTextContent('40');
+    // no violations → the OK row.
+    expect(screen.getByTestId('arc-conf-succession-ok')).toBeInTheDocument();
+    // folded-away placement surfaced (§12.6 honesty).
+    expect(screen.getByTestId('arc-conf-unmaterialized')).toHaveTextContent('exile');
+  });
+
+  it('hits the scope=arc endpoint with the arc id', async () => {
+    render(<ArcConformancePanel projectId="p1" arcTemplateId="a1" token="tok" />, { wrapper: wrap() });
+    await screen.findByTestId('arc-conformance-panel');
+    const call = apiJson.mock.calls.find((c) => String(c[0]).includes('/conformance'));
+    expect(String(call?.[0])).toContain('/works/p1/conformance');
+    expect(String(call?.[0])).toContain('scope=arc');
+    expect(String(call?.[0])).toContain('arc_template_id=a1');
+  });
+
+  it('surfaces a succession violation when the realized order is reversed', async () => {
+    apiJson.mockImplementation(() => Promise.resolve(REPORT({
+      succession: { causal_verified: false, threads: [
+        { thread: 'revenge', label: 'Revenge', transitions: 1, legal: 0, unrelated: 0,
+          violations: [{ from_motif_id: 'm-slap', to_motif_id: 'm-humil' }] },
+      ] },
+    })));
+    render(<ArcConformancePanel projectId="p1" arcTemplateId="a1" token="tok" />, { wrapper: wrap() });
+    expect(await screen.findByTestId('arc-conf-violation-revenge')).toBeInTheDocument();
+    expect(screen.queryByTestId('arc-conf-succession-ok')).toBeNull();
+  });
+
+  it('shows the empty state when nothing is materialized', async () => {
+    apiJson.mockImplementation(() => Promise.resolve(REPORT({ chapter_count: 0 })));
+    render(<ArcConformancePanel projectId="p1" arcTemplateId="a1" token="tok" />, { wrapper: wrap() });
+    expect(await screen.findByTestId('arc-conf-empty')).toBeInTheDocument();
+  });
+
+  it('without a projectId, prompts to materialize first (no fetch)', () => {
+    render(<ArcConformancePanel projectId={null} arcTemplateId="a1" token="tok" />, { wrapper: wrap() });
+    expect(screen.getByTestId('arc-conf-no-work')).toBeInTheDocument();
+    expect(apiJson).not.toHaveBeenCalled();
+  });
+});

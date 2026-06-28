@@ -196,6 +196,51 @@ export type ChapterConformance = {
   scenes: SceneConformance[];
 };
 
+// ── coarse arc-conformance (D-W10-ARC-CONFORMANCE — GET …/conformance?scope=arc) ──
+// A STRUCTURAL diff of the materialized bindings vs the arc template (§14.4 altitude 3).
+// coarse=true / causal_verified=false ⇒ no prose extract-diff — the deep effects→precond
+// check over written text stays P4+. The view stamps "Coarse · structural only".
+
+export type ArcThreadProgress = {
+  thread: string;
+  label: string;
+  planned: number;                     // placements on this thread
+  covered: number;                     // placements whose motif actually got bound
+  missing: { motif_code: string | null; ord: number }[];
+};
+
+export type ArcPacingPoint = { chapter_index: number; avg_tension: number; scenes: number };
+
+export type ArcPacing = {
+  comparable: boolean;                 // a template pacing curve was present + numeric
+  planned: number[];                   // the template tension curve (empty when !comparable)
+  realized: ArcPacingPoint[];          // realized per-chapter avg tension
+  max_drift: number | null;            // max |planned−realized| over the overlap
+};
+
+export type ArcSuccessionThread = {
+  thread: string;
+  label: string;
+  transitions: number;
+  legal: number;                       // consecutive pairs that ARE precedes edges
+  unrelated: number;                   // pairs with no precedes edge either way
+  violations: { from_motif_id: string; to_motif_id: string }[];  // a reversed precedes edge
+};
+
+export type ArcConformance = {
+  scope: 'arc';
+  available: boolean;
+  coarse: boolean;
+  causal_verified: boolean;
+  arc_template_id: string;
+  arc_name: string;
+  chapter_count: number;
+  thread_progress: ArcThreadProgress[];
+  pacing: ArcPacing;
+  succession: { causal_verified: boolean; threads: ArcSuccessionThread[] };
+  unmaterialized: { motif_code: string | null; thread: string | null; ord: number }[];
+};
+
 // ── quota / cost-confirm (Tier-W — the FE mints + confirms, never executes) ───
 
 export type ConfirmDescriptor =

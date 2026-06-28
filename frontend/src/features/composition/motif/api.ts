@@ -11,7 +11,7 @@ import { apiJson } from '../../../api';
 import { compositionApi } from '../api';
 import type { GenerationJob } from '../types';
 import type {
-  CatalogList, ChapterConformance, CostEstimate, Motif, MotifCreateArgs,
+  ArcConformance, CatalogList, ChapterConformance, CostEstimate, Motif, MotifCreateArgs,
   MotifPatchArgs, MotifTier,
 } from './types';
 
@@ -110,6 +110,14 @@ export const motifApi = {
   conformance(projectId: string, chapterId: string, token: string): Promise<ChapterConformance> {
     return apiJson<ChapterConformance>(
       `${BASE}/works/${projectId}/conformance${_qs({ scope: 'chapter', chapter_id: chapterId })}`,
+      { token },
+    );
+  },
+  /** Coarse arc-conformance (D-W10-ARC-CONFORMANCE) — the structural diff of the
+   *  materialized bindings vs the arc template (scope=arc). */
+  arcConformance(projectId: string, arcTemplateId: string, token: string): Promise<ArcConformance> {
+    return apiJson<ArcConformance>(
+      `${BASE}/works/${projectId}/conformance${_qs({ scope: 'arc', arc_template_id: arcTemplateId })}`,
       { token },
     );
   },

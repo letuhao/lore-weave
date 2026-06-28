@@ -7,6 +7,7 @@ import { useTranslation } from 'react-i18next';
 import { MotifStateBoundary } from './MotifStateBoundary';
 import { ArcTimelineEditor } from './ArcTimelineEditor';
 import { ArcApplyPreview } from './ArcApplyPreview';
+import { ArcConformancePanel } from './ArcConformancePanel';
 import { useArcLibrary } from '../hooks/useArcLibrary';
 import { currentUserId } from '../currentUser';
 import type { ArcTemplate } from '../arcTypes';
@@ -32,6 +33,10 @@ export function ArcTemplateLibraryView({ token, projectId }: { token: string | n
           <ArcTimelineEditor arcId={openArc.id} token={token} />
           <div className="p-2">
             <ArcApplyPreview arc={openArc} token={token} projectId={projectId} />
+          </div>
+          {/* post-materialize: the coarse structural diff of realized vs this template. */}
+          <div className="border-t border-neutral-200 p-2 dark:border-neutral-700">
+            <ArcConformancePanel projectId={projectId} arcTemplateId={openArc.id} token={token} />
           </div>
         </div>
       </div>
