@@ -7,8 +7,17 @@
 import { useTranslation } from 'react-i18next';
 import type { ArcTemplate } from '../arcTypes';
 import { useArcApplyPreview } from '../hooks/useArcApplyPreview';
+import { ArcMaterializeAction } from './ArcMaterializeAction';
 
-export function ArcApplyPreview({ arc, token }: { arc: ArcTemplate; token: string | null }) {
+type Props = {
+  arc: ArcTemplate;
+  token: string | null;
+  /** When set, the preview gains a "Materialize to this book" commit action
+   *  (D-W10-APPLY-PLANNER-MATERIALIZE). Absent ⇒ preview-only (no work context). */
+  projectId?: string | null;
+};
+
+export function ArcApplyPreview({ arc, token, projectId }: Props) {
   const { t } = useTranslation('composition');
   const ctrl = useArcApplyPreview(arc.id, token, arc.chapter_span ?? 10);
   const plan = ctrl.plan;
@@ -105,10 +114,17 @@ export function ArcApplyPreview({ arc, token }: { arc: ArcTemplate; token: strin
             </div>
           )}
 
-          <p className="text-[10px] italic text-neutral-400">
-            {t('motif.arc.apply.previewOnly', { defaultValue: 'Preview only — nothing is written yet. Committing the plan to chapters is coming soon.' })}
-          </p>
+          {!projectId && (
+            <p className="text-[10px] italic text-neutral-400">
+              {t('motif.arc.apply.previewOnly', { defaultValue: 'Preview only — open this arc inside a book to commit it.' })}
+            </p>
+          )}
         </div>
+      )}
+
+      {/* the commit action — only with a work context (D-W10-APPLY-PLANNER-MATERIALIZE). */}
+      {projectId && (
+        <ArcMaterializeAction arc={arc} projectId={projectId} token={token} rosterBindings={ctrl.rosterBindings} />
       )}
     </div>
   );

@@ -11,7 +11,7 @@ import { useArcLibrary } from '../hooks/useArcLibrary';
 import { currentUserId } from '../currentUser';
 import type { ArcTemplate } from '../arcTypes';
 
-export function ArcTemplateLibraryView({ token }: { token: string | null }) {
+export function ArcTemplateLibraryView({ token, projectId }: { token: string | null; projectId?: string | null }) {
   const { t } = useTranslation('composition');
   const lib = useArcLibrary(token);
   const [openArc, setOpenArc] = useState<ArcTemplate | null>(null);
@@ -31,7 +31,7 @@ export function ArcTemplateLibraryView({ token }: { token: string | null }) {
         <div className="min-h-0 flex-1 overflow-auto">
           <ArcTimelineEditor arcId={openArc.id} token={token} />
           <div className="p-2">
-            <ArcApplyPreview arc={openArc} token={token} />
+            <ArcApplyPreview arc={openArc} token={token} projectId={projectId} />
           </div>
         </div>
       </div>

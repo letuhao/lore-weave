@@ -1,5 +1,20 @@
 # ▶ NEXT SESSION — Narrative Motif Library BUILD (handoff)
 
+## STATUS (2026-06-28 PM-12) — W10 arc loop CLOSED (FE "Materialize to this book" wired)
+
+The W10 arc feature is now end-to-end from the UI: the apply-preview gained a **"Materialize to
+this book"** commit action wiring the PM-11 endpoint. FE-only (consumes the live-verified
+`POST …/works/{projectId}/arc/materialize`).
+- `arcApi.materialize` + `ArcMaterializeArgs`/`ArcMaterializeResult` types + `useArcMaterialize`
+  (mutation; invalidates the planner decompose + motif-bindings queries on success; surfaces 409
+  as `conflict`). NEW `ArcMaterializeAction` — commit button → on 409 a "Replace existing" affordance
+  re-POSTs `replace:true`; the result summarizes committed scenes/chapters + unresolved + scale-folded
+  motifs (§12.6 never silent). `projectId` threaded CompositionPanel(`work.project_id`) → MotifLibraryView
+  → ArcTemplateLibraryView → ArcApplyPreview; absent ⇒ preview-only (the C16 pending-work degrade).
+- **VERIFY:** 121 motif FE tests (+9), 0 tsc errors project-wide. The BE endpoint was already
+  live-smoked (PM-11); this is its FE consumer against the same contract. **FE bundle rebuild needed to
+  see it in the browser** (deployment step; `infra-frontend-1`).
+
 ## STATUS (2026-06-28 PM-11) — D-W10-APPLY-PLANNER-MATERIALIZE CLEARED (arc apply → committed outline, live)
 
 **`D-W10-APPLY-PLANNER-MATERIALIZE`** ✅ — the arc-apply preview now MATERIALIZES into a committed

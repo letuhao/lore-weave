@@ -797,7 +797,7 @@ export function CompositionPanel({ bookId, chapterId, token, onAccept, sceneId: 
         <DockSlot {...slot('motifs')}>
           <MotifPanelBoundary label="motifs">
             <MotifSimpleModeProvider token={token}>
-              <MotifLibraryView token={token} books={[{ id: bookId, name: bookId }]} />
+              <MotifLibraryView token={token} books={[{ id: bookId, name: bookId }]} projectId={work.project_id} />
             </MotifSimpleModeProvider>
           </MotifPanelBoundary>
         </DockSlot>

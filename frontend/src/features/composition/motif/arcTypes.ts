@@ -138,6 +138,30 @@ export type DropMergeEntry = {
   reason: string;
 };
 
+// ── materialize (D-W10-APPLY-PLANNER-MATERIALIZE — commit the arc onto a book) ──────
+export type ArcMaterializeArgs = {
+  arc_template_id: string;
+  roster_bindings?: Record<string, unknown>;
+  replace?: boolean;
+  idempotency_key?: string;
+};
+
+/** The committed-outline report. `unresolved_placements` + `drop_merge_report` are
+ *  surfaced so a lost motif (no visible match, or folded by a scale mismatch) is never
+ *  silent (§12.6). */
+export type ArcMaterializeResult = {
+  arc_id: string;
+  arc_template_id: string;
+  chapter_ids: string[];
+  scene_ids: string[];
+  motif_applications: number;
+  scenes_total: number;
+  beats_distributed: number;
+  unresolved_placements: { motif_code: string; thread: string; reason: string }[];
+  drop_merge_report: DropMergeEntry[];
+  replay: boolean;
+};
+
 export type ArcApplyPlan = {
   arc_template_id: string;
   source_chapter_span: number;

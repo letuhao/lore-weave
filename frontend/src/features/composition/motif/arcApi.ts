@@ -4,8 +4,8 @@
 // the §12.5 PURE preview — it returns a deterministic plan, persists nothing.
 import { apiJson } from '../../../api';
 import type {
-  ArcApplyArgs, ArcApplyPlan, ArcTemplate, ArcTemplateCreateArgs,
-  ArcTemplateList, ArcTemplateListParams, ArcTemplatePatchArgs,
+  ArcApplyArgs, ArcApplyPlan, ArcMaterializeArgs, ArcMaterializeResult, ArcTemplate,
+  ArcTemplateCreateArgs, ArcTemplateList, ArcTemplateListParams, ArcTemplatePatchArgs,
 } from './arcTypes';
 
 const BASE = '/v1/composition';
@@ -56,6 +56,14 @@ export const arcApi = {
    *  PURE — nothing is persisted; the caller renders the plan for review. */
   apply(arcId: string, args: ArcApplyArgs, token: string): Promise<ArcApplyPlan> {
     return apiJson<ArcApplyPlan>(`${BASE}/arc-templates/${arcId}/apply`, {
+      method: 'POST', body: JSON.stringify(args), token,
+    });
+  },
+  /** MATERIALIZE (D-W10-APPLY-PLANNER-MATERIALIZE): commit the arc onto THIS work's
+   *  book — a real arc→chapter→scene outline + motif_application ledger. Work-scoped
+   *  (not arc-scoped). 409 if a chapter is already planned (resend with replace). */
+  materialize(projectId: string, args: ArcMaterializeArgs, token: string): Promise<ArcMaterializeResult> {
+    return apiJson<ArcMaterializeResult>(`${BASE}/works/${projectId}/arc/materialize`, {
       method: 'POST', body: JSON.stringify(args), token,
     });
   },

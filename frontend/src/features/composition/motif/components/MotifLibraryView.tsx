@@ -24,9 +24,12 @@ type Props = {
   token: string | null;
   books?: Array<{ id: string; name: string }>;
   meUserId?: string | null;
+  /** The current work, when the panel is mounted inside a project — enables the arc
+   *  "Materialize to this book" commit action (D-W10-APPLY-PLANNER-MATERIALIZE). */
+  projectId?: string | null;
 };
 
-export function MotifLibraryView({ token, books, meUserId: meProp }: Props) {
+export function MotifLibraryView({ token, books, meUserId: meProp, projectId }: Props) {
   const { t } = useTranslation('composition');
   const me = meProp ?? currentUserId();
   const { simple, toggle } = useMotifSimpleMode();
@@ -54,7 +57,7 @@ export function MotifLibraryView({ token, books, meUserId: meProp }: Props) {
 
       {kind === 'arcs' ? (
         <div className="min-h-0 flex-1 overflow-auto">
-          <ArcTemplateLibraryView token={token} />
+          <ArcTemplateLibraryView token={token} projectId={projectId} />
         </div>
       ) : (
       <>

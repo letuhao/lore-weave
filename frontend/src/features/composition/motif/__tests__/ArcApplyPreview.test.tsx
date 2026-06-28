@@ -64,6 +64,16 @@ describe('ArcApplyPreview', () => {
     expect(screen.getByTestId('arc-apply-dropmerge')).toBeInTheDocument();
   });
 
+  it('shows the materialize action only with a work context (projectId)', () => {
+    render(<ArcApplyPreview arc={ARC} token="tok" projectId="p1" />, { wrapper: wrap() });
+    expect(screen.getByTestId('arc-materialize-action')).toBeInTheDocument();
+  });
+
+  it('is preview-only without a projectId (no materialize action)', () => {
+    render(<ArcApplyPreview arc={ARC} token="tok" />, { wrapper: wrap() });
+    expect(screen.queryByTestId('arc-materialize-action')).toBeNull();
+  });
+
   it('an empty roster binding is omitted from the request', async () => {
     apiJson.mockResolvedValueOnce(PLAN);
     render(<ArcApplyPreview arc={ARC} token="tok" />, { wrapper: wrap() });
