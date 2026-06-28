@@ -1,5 +1,39 @@
 # ▶ NEXT SESSION — Narrative Motif Library BUILD (handoff)
 
+## STATUS (2026-06-28 PM-9) — D-MOTIF-CONFORMANCE-PRODUCER-LIVE-SMOKE CLEARED (full loop, live)
+
+**`D-MOTIF-CONFORMANCE-PRODUCER-LIVE-SMOKE`** ✅ — the conformance loop is now proven end-to-end on
+the real stack, unblocked by PM-8's per-scene bind. No code change (a verification); no shared
+container config mutated (conformance was enabled IN-PROCESS in a throwaway script).
+- **Method:** bound the Auction-House-Treasure motif to a committed scene via the PM-8 PATCH route,
+  then ran `maybe_conformance_patch` directly in `infra-composition-service-1` against a real
+  **Qwen2.5** judge (lighter than a full worker generate; the producer is the deferred slice).
+- **Producer (real LLM) discriminates:** REALIZED auction prose → `beat_realized:true,
+  tension_band_match:true` ("Intent enacted; tension fits band."); a quiet unrelated scene →
+  `false,false` ("No auction, no tension."). Band derived `[65,95]` (tension 80 ± 15).
+- **Persist → trace:** persisted the REALIZED verdict to a COMPLETED `generation_job.critic`
+  (the exact `job_consumer` path: `update_status(result=…, critic=patch)`), then `GET /conformance`
+  surfaced it on the scene: `planned.motif_id`=the bound motif, `realized.has_prose:true`,
+  `conformance`={beat_realized:true, tension_band_match:true, calibrated:false,
+  planned_tension_band:[65,95], …} — the EXACT PM-7 nested `ConformanceDim` shape. The PM-7
+  `ConformanceSceneRow` renders this as "✓ On beat · Advisory — unverified self-report".
+- **Closes the loop:** PM-8 bind → producer (real judge) → persist → trace → PM-7 FE shape, all live.
+- **Cleanup:** the smoke binding (DELETE → removed:1) + the smoke `generation_job` (DELETE 1) were
+  removed; the scene is back to free-form/null. Test account only.
+- **Activation is STILL a human config decision:** `motif_conformance_enabled` stays **false** in
+  the containers (the smoke flipped it in-process only); `motif_conformance_calibrated` stays false
+  (single-local-judge → the dim ships honest 'unverified'). Flip both in env to turn it on for real.
+- **Infra note:** a Docker restart (session resume) had left `infra-postgres-1` / `redis` /
+  `api-gateway-bff` exited (composition-service was crash-looping on DB DNS) — brought them back with
+  `docker compose up -d postgres redis api-gateway-bff`; stack healthy again.
+
+**▶ Remaining motif defers are all large/structural, blocked, perf, or config:** `D-W10-FE-TIMELINE`
+(thread×chapter arc-timeline editor — large FE), `D-W10-APPLY-PLANNER-MATERIALIZE` (arc apply →
+committed outline — large BE, commit-path), `D-W10-ARC-CONFORMANCE` (blocked on W5 arc-diff),
+`D-MOTIF-PGVECTOR-TRIGGER` (perf, fix-when-profiling), conformance activation (human config), and the
+scene `rebindRole`/`chainIt` routes (low-reach: manual binds leave roles unresolved + succession
+isn't surfaced). Each is its own focused effort — pick one explicitly.
+
 ## STATUS (2026-06-28 PM-8) — D-MOTIF-FE-SWAP-NODE-GRANULARITY CLEARED (per-scene bind, new BE)
 
 **`D-MOTIF-FE-SWAP-NODE-GRANULARITY`** ✅ (decision: *per-scene bind, new BE*). Shape A presents a
