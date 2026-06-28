@@ -66,6 +66,24 @@ def test_merge_overwrites_caller_supplied_attribution():
     assert out["spend_cap_usd"] == 1.0
 
 
+def test_merge_no_key_strips_smuggled_attribution():
+    # SECURITY (defense-in-depth): with NO server key in scope, a caller-supplied
+    # mcp_key_id / spend_cap_usd in job_meta is STRIPPED (server-set only) — a
+    # first-party path can never carry a forged key. Other keys are preserved.
+    out = merge_attribution_into_job_meta(
+        {"campaign_id": "c1", "mcp_key_id": "spoofed", "spend_cap_usd": 9999.0}
+    )
+    assert out == {"campaign_id": "c1"}
+    assert "mcp_key_id" not in out and "spend_cap_usd" not in out
+
+
+def test_merge_no_key_clean_meta_is_identity_unchanged():
+    # The no-strip fast path must still return the SAME object (the caller's
+    # submit_job identity-equality "no change" check depends on it).
+    meta = {"campaign_id": "c1"}
+    assert merge_attribution_into_job_meta(meta) is meta
+
+
 def test_set_then_clear():
     set_public_key_attribution("k", 2.0)
     assert get_public_key_attribution() == ("k", 2.0)

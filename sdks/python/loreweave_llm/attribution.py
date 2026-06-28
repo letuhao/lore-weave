@@ -62,13 +62,26 @@ def merge_attribution_into_job_meta(
 ) -> dict[str, Any] | None:
     """Fold the current task's public-key attribution into ``job_meta``.
 
-    Returns ``job_meta`` UNCHANGED (same object) when no public key is in scope —
-    so the caller can cheaply detect "no change" by identity. When a key is in
-    scope, returns a NEW dict with ``mcp_key_id`` (and ``spend_cap_usd`` when
-    set) **overwriting** any caller value (server-set wins — see module docstring).
+    Returns ``job_meta`` UNCHANGED (same object) when no public key is in scope
+    AND it carries no attribution keys — so the caller can cheaply detect "no
+    change" by identity. When a key is in scope, returns a NEW dict with
+    ``mcp_key_id`` (and ``spend_cap_usd`` when set) **overwriting** any caller
+    value (server-set wins — see module docstring).
+
+    Defense-in-depth (no-key path): ``mcp_key_id`` / ``spend_cap_usd`` are
+    SERVER-SET only (via the contextvar). A first-party / no-key call must never
+    carry them, so if the caller's ``job_meta`` smuggled either, STRIP it (return
+    a new dict). This makes the anti-spoof guarantee unconditional rather than
+    relying on every caller-path keeping its ``job_meta`` clean. Today no public
+    path lets a caller control provider ``job_meta``, so this is belt-and-braces.
     """
     key_id, cap = get_public_key_attribution()
     if key_id is None:
+        if job_meta and ("mcp_key_id" in job_meta or "spend_cap_usd" in job_meta):
+            return {
+                k: v for k, v in job_meta.items()
+                if k not in ("mcp_key_id", "spend_cap_usd")
+            }
         return job_meta
     merged = dict(job_meta or {})
     merged["mcp_key_id"] = key_id
