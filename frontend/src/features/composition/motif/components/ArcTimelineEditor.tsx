@@ -6,6 +6,7 @@
 import { useTranslation } from 'react-i18next';
 import { useIsMobile } from '../../../knowledge/hooks/useIsMobile';
 import { useArcTimeline } from '../hooks/useArcTimeline';
+import { useMotifCandidates } from '../hooks/useMotifCandidates';
 import type { ArcTimelineContract } from '../arcTimelineContract';
 import { ArcTimelineGrid } from './ArcTimelineGrid';
 import { ArcTimelineMobileList } from './ArcTimelineMobileList';
@@ -16,6 +17,8 @@ export function ArcTimelineEditor({ arcId, token }: { arcId: string | null; toke
   const {
     arc, isLoading, isError, threads, placements, chapterSpan, canEdit, onEdit, saving, saveError,
   } = useArcTimeline(arcId, token);
+  // the user's visible motifs — the "+ place" picker options (only fetched when editable).
+  const candidates = useMotifCandidates(canEdit ? token : null).data ?? [];
 
   if (!arcId) return null;
   if (isLoading) {
@@ -29,6 +32,7 @@ export function ArcTimelineEditor({ arcId, token }: { arcId: string | null; toke
     threads,
     placements,
     chapterSpan,
+    candidates: canEdit ? candidates : [],
     // read-only when not the owner → withhold onEdit so the grid/list render inert.
     onEdit: canEdit ? onEdit : undefined,
     // the edit-grid is allowed only on desktop AND when the caller may edit.

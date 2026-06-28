@@ -26,6 +26,8 @@
 //   W10 implements ArcTimelineGrid (desktop) against THIS contract; the mobile
 //   ArcTimelineMobileList skeleton (the sibling .tsx) is the frozen interface.
 
+import type { MotifCandidateOption } from './components/MotifBindingCard';
+
 /** One motif placement on the (thread, chapter-span) grid. Mirrors the F0
  *  `ArcPlacement` shape (layout[] entry) the backend stores. */
 export type ArcPlacement = {
@@ -57,7 +59,9 @@ export type ArcThread = {
  *  desktop grid produces these via drag OR the keyboard model above; the mobile
  *  list produces the move/resize ones via stepper buttons. */
 export type ArcTimelineEdit =
-  | { type: 'place'; thread: string; motif_code: string; span_start: number; span_end: number }
+  // `motif_id`/`motif_name` ride the place edit when a motif is PICKED (the W10 picker) so
+  // the new placement is resolvable (materialize) + labelled, not an empty-code stub.
+  | { type: 'place'; thread: string; motif_code: string; motif_id?: string | null; motif_name?: string; span_start: number; span_end: number }
   | { type: 'move'; placement_id: string; to_thread: string; delta_chapters: number }
   | { type: 'resize'; placement_id: string; edge: 'start' | 'end'; delta: number }
   | { type: 'remove'; placement_id: string };
@@ -68,6 +72,9 @@ export type ArcTimelineContract = {
   threads: ArcThread[];
   placements: ArcPlacement[];
   chapterSpan: number;        // total chapters (the grid's column count)
+  /** The user's visible motifs — the "+ place" picker options (W10). Absent/empty ⇒
+   *  no place affordance (you can only rearrange existing placements). */
+  candidates?: MotifCandidateOption[];
   /** Edit affordances (desktop grid OR mobile stepper) emit edits through here.
    *  Read-only viewers pass `undefined` (the grid renders non-interactive). */
   onEdit?: (edit: ArcTimelineEdit) => void;

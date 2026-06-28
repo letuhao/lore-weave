@@ -8,6 +8,8 @@ const useArcTimeline = vi.fn();
 const useIsMobile = vi.fn();
 vi.mock('../hooks/useArcTimeline', () => ({ useArcTimeline: (...a: unknown[]) => useArcTimeline(...a) }));
 vi.mock('../../../knowledge/hooks/useIsMobile', () => ({ useIsMobile: () => useIsMobile() }));
+// the editor fetches "+ place" candidates via react-query; stub it (no QueryClient here).
+vi.mock('../hooks/useMotifCandidates', () => ({ useMotifCandidates: () => ({ data: [] }) }));
 
 import { ArcTimelineEditor } from '../components/ArcTimelineEditor';
 

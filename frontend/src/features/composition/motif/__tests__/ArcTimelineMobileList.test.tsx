@@ -32,10 +32,18 @@ describe('ArcTimelineMobileList (mobile fallback contract)', () => {
     expect(onEdit).toHaveBeenCalledWith({ type: 'move', placement_id: 'p1', to_thread: 'combat', delta_chapters: 1 });
   });
 
-  it('+ place emits a place edit for the thread', () => {
+  it('+ place opens the picker → selecting a motif emits a resolvable place edit', () => {
     const onEdit = vi.fn();
-    render(<ArcTimelineMobileList {...base} onEdit={onEdit} />);
+    render(<ArcTimelineMobileList {...base} candidates={[{ motif_id: 'm9', motif_name: 'Ambush', motif_code: 'ambush' }]} onEdit={onEdit} />);
     fireEvent.click(screen.getByTestId('arc-place-combat'));
-    expect(onEdit).toHaveBeenCalledWith(expect.objectContaining({ type: 'place', thread: 'combat' }));
+    fireEvent.click(screen.getByTestId('motif-swap-option-m9'));
+    expect(onEdit).toHaveBeenCalledWith(expect.objectContaining({
+      type: 'place', thread: 'combat', motif_code: 'ambush', motif_id: 'm9', motif_name: 'Ambush',
+    }));
+  });
+
+  it('no "+ place" affordance without candidates (can only rearrange existing)', () => {
+    render(<ArcTimelineMobileList {...base} onEdit={vi.fn()} />);
+    expect(screen.queryByTestId('arc-place-combat')).toBeNull();
   });
 });

@@ -22,19 +22,23 @@ import {
 import { CSS } from '@dnd-kit/utilities';
 import { useTranslation } from 'react-i18next';
 import type { ArcThread, ArcTimelineContract, ArcTimelineEdit, ArcPlacement } from '../arcTimelineContract';
-import { dragEndToMoveEdit } from '../applyArcEdit';
+import { dragEndToMoveEdit, placeEditFromCandidate } from '../applyArcEdit';
+import { SwapMotifPopover } from './SwapMotifPopover';
+import type { MotifCandidateOption } from './MotifBindingCard';
 
 const THREAD_DROP_PREFIX = 'arc-thread:';
 
 export function ArcTimelineGrid({
-  threads, placements, chapterSpan, onEdit, editGridEnabled,
+  threads, placements, chapterSpan, candidates = [], onEdit, editGridEnabled,
 }: ArcTimelineContract) {
   const { t } = useTranslation('composition');
   const [grabbedId, setGrabbedId] = useState<string | null>(null);
   const [announce, setAnnounce] = useState('');
+  const [placingThread, setPlacingThread] = useState<string | null>(null);   // open "+ place" picker
   // measured pixel width of one chapter column — drives the pointer-drag chapter delta.
   const trackRef = useRef<HTMLDivElement | null>(null);
   const editable = editGridEnabled && !!onEdit;
+  const canPlace = editable && candidates.length > 0;
   const cols = Math.max(1, chapterSpan);
 
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 5 } }));
@@ -89,6 +93,9 @@ export function ArcTimelineGrid({
                 }
               }}
               onEdit={onEdit}
+              candidates={canPlace ? candidates : []}
+              placing={placingThread === th.key}
+              setPlacing={(open) => setPlacingThread(open ? th.key : null)}
               trackRef={th.key === threads[0]?.key ? trackRef : undefined}
             />
           ))}
@@ -107,18 +114,49 @@ type ThreadRowProps = {
   grabbedId: string | null;
   setGrabbed: (id: string | null) => void;
   onEdit?: (edit: ArcTimelineEdit) => void;
+  candidates: MotifCandidateOption[];
+  placing: boolean;
+  setPlacing: (open: boolean) => void;
   trackRef?: React.MutableRefObject<HTMLDivElement | null>;
 };
 
 function ThreadRow({
-  thread, threads, placements, chapterSpan, editable, grabbedId, setGrabbed, onEdit, trackRef,
+  thread, threads, placements, chapterSpan, editable, grabbedId, setGrabbed, onEdit,
+  candidates, placing, setPlacing, trackRef,
 }: ThreadRowProps) {
+  const { t } = useTranslation('composition');
   const { setNodeRef, isOver } = useDroppable({ id: `${THREAD_DROP_PREFIX}${thread.key}` });
   return (
     <div className="flex items-stretch gap-1" data-testid={`arc-grid-thread-${thread.key}`}>
-      <div className="flex w-24 shrink-0 items-center gap-1 text-xs text-neutral-600 dark:text-neutral-300">
+      <div className="relative flex w-24 shrink-0 items-center gap-1 text-xs text-neutral-600 dark:text-neutral-300">
         {thread.glyph ? <span aria-hidden>{thread.glyph}</span> : null}
         <span className="truncate">{thread.label}</span>
+        {candidates.length > 0 && (
+          <button
+            type="button"
+            aria-haspopup="dialog"
+            aria-expanded={placing}
+            aria-label={t('motif.arc.place', { defaultValue: 'Place a motif' })}
+            data-testid={`arc-grid-place-${thread.key}`}
+            className="ml-auto rounded border border-amber-400 px-1 text-[10px] leading-tight text-amber-700 dark:text-amber-300"
+            onClick={() => setPlacing(!placing)}
+          >+</button>
+        )}
+        {placing && (
+          <div className="absolute left-0 top-full z-40 w-56">
+            <SwapMotifPopover
+              open
+              candidates={candidates}
+              swapping={false}
+              onSwap={(motifId) => {
+                const cand = candidates.find((c) => c.motif_id === motifId);
+                if (cand) onEdit?.(placeEditFromCandidate(thread.key, cand));
+                setPlacing(false);
+              }}
+              onClose={() => setPlacing(false)}
+            />
+          </div>
+        )}
       </div>
       <div
         ref={(node) => { setNodeRef(node); if (trackRef) trackRef.current = node; }}

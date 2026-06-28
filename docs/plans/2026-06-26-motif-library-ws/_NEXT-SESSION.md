@@ -1,5 +1,21 @@
 # ▶ NEXT SESSION — Narrative Motif Library BUILD (handoff)
 
+## STATUS (2026-06-28 PM-13) — D-W10-FE-PLACE-MOTIF-PICKER CLEARED (the "+ place" picker)
+
+**`D-W10-FE-PLACE-MOTIF-PICKER`** ✅ — the timeline "+ place" affordance no longer authors empty-coded
+`—` stubs. Both surfaces now open a **motif picker** (the existing `SwapMotifPopover` + `useMotifCandidates`)
+and place a REAL motif (code + id + name) — resolvable by materialize, labelled in the grid. FE-only
+(consumes the live `motifApi.list`).
+- `MotifCandidateOption` += `motif_code`; `useMotifCandidates` maps it. The frozen `ArcTimelineEdit`
+  `place` gained optional `motif_id`/`motif_name` (additive); the reducer stamps them (was hard-null).
+  `ArcTimelineContract` += optional `candidates`; `placeEditFromCandidate` builds the edit.
+- Mobile list "+ place" → picker (was: emit empty-code immediately). Grid gained a per-thread "+"
+  place button (it had NONE) → picker. No candidates ⇒ no place affordance (can only rearrange
+  existing — the read-only / no-library degrade). `ArcTimelineEditor` fetches candidates only when editable.
+- **VERIFY:** 126 motif FE tests (+5: reducer place-with-id + `placeEditFromCandidate`, grid place +
+  no-candidates, mobile picker-flow + no-candidates), 0 tsc errors. a11y: `aria-haspopup`/`expanded` +
+  an `aria-label` on the grid "+" button; the picker is `SwapMotifPopover` (focus-trap, Esc-close).
+
 ## STATUS (2026-06-28 PM-12) — W10 arc loop CLOSED (FE "Materialize to this book" wired)
 
 The W10 arc feature is now end-to-end from the UI: the apply-preview gained a **"Materialize to
@@ -528,13 +544,9 @@ the W6 catalog-endpoint fix). All need an lm_studio + platform-embedding-credent
 - ~~**`D-W10-FE-TIMELINE`**~~ ✅ **CLEARED PM-10** — the FE thread×chapter arc-timeline subtree
   (editor + apply-preview, built against the frozen `ArcTimelineContract` + `ArcApplyPlan`), surfaced
   via the motif-panel `Motifs | Arc templates` kind-toggle. 43 tests, live contract smoke. See PM-10.
-- **`D-W10-FE-PLACE-MOTIF-PICKER`** (gate 1 out-of-scope / NEW, /review-impl PM-10 · target W10-FE): the
-  mobile-list "+ place" affordance emits `motif_code:''` (the W6 skeleton placeholder) → the reducer
-  creates a placement that the debounce PERSISTS as an empty-coded "—" layout entry, with NO surface
-  to assign a motif afterward (neither grid nor list has a motif picker). Add a motif-pick flow on
-  place (and on a placed cell) — needs the `useMotifCandidates` picker wired into the timeline; until
-  then "+ place" can author unresolvable rows. Low blast radius (mobile-only; the editor's primary job
-  is arranging EXISTING placements from adopted/deconstructed templates).
+- ~~**`D-W10-FE-PLACE-MOTIF-PICKER`**~~ ✅ **CLEARED PM-13** — both surfaces' "+ place" now open a motif
+  picker (`SwapMotifPopover` + `useMotifCandidates`) and place a real motif (code+id+name); no candidates
+  ⇒ no place affordance. The empty-`—`-stub path is gone. See PM-13.
 - ~~**`D-W10-APPLY-PLANNER-MATERIALIZE`**~~ ✅ **CLEARED PM-11** — `POST …/works/{id}/arc/materialize`
   turns the rescaled placements into a committed arc→chapter→scene outline + a `motif_application`
   ledger, DETERMINISTICALLY (no LLM — `scenes_from_motif`). 15 tests + a live cross-service smoke

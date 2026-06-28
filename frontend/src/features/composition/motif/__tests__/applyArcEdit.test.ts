@@ -3,7 +3,8 @@
 // two surfaces can never diverge. Fully deterministic (no clock/random).
 import { describe, expect, it } from 'vitest';
 import {
-  applyArcEdit, dragEndToMoveEdit, layoutToPlacements, placementsToLayout, threadsToContract,
+  applyArcEdit, dragEndToMoveEdit, layoutToPlacements, placeEditFromCandidate,
+  placementsToLayout, threadsToContract,
 } from '../applyArcEdit';
 import type { ArcPlacement } from '../arcTimelineContract';
 import type { ArcLayoutEntry } from '../arcTypes';
@@ -83,6 +84,19 @@ describe('applyArcEdit — place', () => {
     const start = [P()];
     applyArcEdit(start, { type: 'place', thread: 't', motif_code: 'x', span_start: 1, span_end: 1 }, 10);
     expect(start).toHaveLength(1);
+  });
+
+  it('a PICKED place carries the motif id + name (resolvable, not an empty stub)', () => {
+    const edit = placeEditFromCandidate('combat', { motif_id: 'm9', motif_name: 'Ambush', motif_code: 'ambush' });
+    const next = applyArcEdit([], edit, 10);
+    expect(next[0]).toMatchObject({ motif_code: 'ambush', motif_id: 'm9', motif_name: 'Ambush', thread: 'combat' });
+  });
+});
+
+describe('placeEditFromCandidate', () => {
+  it('builds a 1-chapter place edit from a candidate', () => {
+    expect(placeEditFromCandidate('romance', { motif_id: 'm1', motif_name: 'Tryst', motif_code: 'tryst' }))
+      .toEqual({ type: 'place', thread: 'romance', motif_code: 'tryst', motif_id: 'm1', motif_name: 'Tryst', span_start: 1, span_end: 1 });
   });
 });
 

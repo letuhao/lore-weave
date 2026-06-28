@@ -5,6 +5,21 @@
 // backend's pure `arc_apply.build_apply_plan`).
 import type { ArcPlacement, ArcThread, ArcTimelineEdit } from './arcTimelineContract';
 import type { ArcLayoutEntry, ArcThreadEntry } from './arcTypes';
+import type { MotifCandidateOption } from './components/MotifBindingCard';
+
+/** Build a `place` edit from a picked motif candidate (the W10 picker). The new
+ *  placement carries the motif's code + id + name so it's resolvable + labelled — never
+ *  an empty-code stub. Defaults to a 1-chapter span at chapter 1 (the user then moves/
+ *  resizes it). */
+export function placeEditFromCandidate(
+  thread: string, cand: MotifCandidateOption, span_start = 1, span_end = 1,
+): ArcTimelineEdit {
+  return {
+    type: 'place', thread,
+    motif_code: cand.motif_code ?? '', motif_id: cand.motif_id, motif_name: cand.motif_name,
+    span_start, span_end,
+  };
+}
 
 /** Clamp n into [lo, hi] (hi assumed ≥ lo). */
 function clamp(n: number, lo: number, hi: number): number {
@@ -110,8 +125,8 @@ export function applyArcEdit(
       const created: ArcPlacement = {
         id: nextId(placements),
         motif_code: edit.motif_code,
-        motif_id: null,
-        motif_name: edit.motif_code || '—',
+        motif_id: edit.motif_id ?? null,
+        motif_name: edit.motif_name || edit.motif_code || '—',
         thread: edit.thread,
         span_start: start,
         span_end: end,

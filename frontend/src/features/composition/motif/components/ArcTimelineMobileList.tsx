@@ -6,11 +6,16 @@
 //
 // This is the P1 deliverable for the mobile fallback contract (§5.4) — a working,
 // accessible list. W10 wires it to a real arc-template + replaces the desktop grid.
+import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import type { ArcTimelineContract, ArcPlacement } from '../arcTimelineContract';
+import { placeEditFromCandidate } from '../applyArcEdit';
+import { SwapMotifPopover } from './SwapMotifPopover';
 
-export function ArcTimelineMobileList({ threads, placements, chapterSpan, onEdit, editGridEnabled }: ArcTimelineContract) {
+export function ArcTimelineMobileList({ threads, placements, chapterSpan, candidates = [], onEdit, editGridEnabled }: ArcTimelineContract) {
   const { t } = useTranslation('composition');
+  const [placing, setPlacing] = useState<string | null>(null);   // thread key whose picker is open
+  const canPlace = !!onEdit && candidates.length > 0;
   const byThread = (key: string): ArcPlacement[] =>
     placements.filter((p) => p.thread === key).sort((a, b) => a.span_start - b.span_start || a.ord - b.ord);
 
@@ -23,18 +28,37 @@ export function ArcTimelineMobileList({ threads, placements, chapterSpan, onEdit
       )}
       {threads.map((th) => (
         <section key={th.key} aria-label={th.label} className="flex flex-col gap-1">
-          <header className="flex items-center justify-between">
+          <header className="relative flex items-center justify-between">
             <span className="text-xs font-medium text-neutral-700 dark:text-neutral-200">
               {th.glyph ? `${th.glyph} ` : ''}{th.label}
             </span>
-            <button
-              type="button"
-              data-testid={`arc-place-${th.key}`}
-              className="rounded border border-amber-400 px-1.5 py-0.5 text-[11px] text-amber-700 dark:text-amber-300"
-              onClick={() => onEdit?.({ type: 'place', thread: th.key, motif_code: '', span_start: 1, span_end: 1 })}
-            >
-              + {t('motif.arc.place', { defaultValue: 'place' })}
-            </button>
+            {canPlace && (
+              <button
+                type="button"
+                aria-haspopup="dialog"
+                aria-expanded={placing === th.key}
+                data-testid={`arc-place-${th.key}`}
+                className="rounded border border-amber-400 px-1.5 py-0.5 text-[11px] text-amber-700 dark:text-amber-300"
+                onClick={() => setPlacing((cur) => (cur === th.key ? null : th.key))}
+              >
+                + {t('motif.arc.place', { defaultValue: 'place' })}
+              </button>
+            )}
+            {placing === th.key && (
+              <div className="absolute right-0 top-full z-40 w-64">
+                <SwapMotifPopover
+                  open
+                  candidates={candidates}
+                  swapping={false}
+                  onSwap={(motifId) => {
+                    const cand = candidates.find((c) => c.motif_id === motifId);
+                    if (cand) onEdit?.(placeEditFromCandidate(th.key, cand));
+                    setPlacing(null);
+                  }}
+                  onClose={() => setPlacing(null)}
+                />
+              </div>
+            )}
           </header>
           {byThread(th.key).map((p) => (
             <div key={p.id} data-testid={`arc-row-${p.id}`} className="flex items-center justify-between gap-2 rounded border border-neutral-200 px-2 py-1 text-xs dark:border-neutral-700">

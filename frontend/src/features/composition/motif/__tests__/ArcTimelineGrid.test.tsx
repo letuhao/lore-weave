@@ -80,6 +80,21 @@ describe('ArcTimelineGrid — keyboard model', () => {
     expect(cell).toHaveAttribute('aria-grabbed', 'false');
   });
 
+  it('+ place opens a per-thread picker → selecting a motif emits a resolvable place edit', () => {
+    const onEdit = vi.fn();
+    render(<ArcTimelineGrid {...base({ onEdit, candidates: [{ motif_id: 'm9', motif_name: 'Ambush', motif_code: 'ambush' }] })} />);
+    fireEvent.click(screen.getByTestId('arc-grid-place-combat'));
+    fireEvent.click(screen.getByTestId('motif-swap-option-m9'));
+    expect(onEdit).toHaveBeenCalledWith(expect.objectContaining({
+      type: 'place', thread: 'combat', motif_code: 'ambush', motif_id: 'm9', motif_name: 'Ambush',
+    }));
+  });
+
+  it('no "+ place" affordance without candidates', () => {
+    render(<ArcTimelineGrid {...base({ onEdit: vi.fn() })} />);
+    expect(screen.queryByTestId('arc-grid-place-combat')).toBeNull();
+  });
+
   it('read-only (no onEdit) renders placements disabled and emits nothing', () => {
     render(<ArcTimelineGrid {...base({ onEdit: undefined, editGridEnabled: false })} />);
     const cell = screen.getByTestId('arc-grid-placement-p1');

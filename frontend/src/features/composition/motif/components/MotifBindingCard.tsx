@@ -16,7 +16,7 @@ import { ChainItHint } from './ChainItHint';
 import { InfoAsymmetryCard } from './InfoAsymmetryCard';
 import type { InfoAsymmetry } from '../types';
 
-export type MotifCandidateOption = { motif_id: string; motif_name: string; summary?: string };
+export type MotifCandidateOption = { motif_id: string; motif_name: string; summary?: string; motif_code?: string };
 
 type Props = {
   sceneId: string;

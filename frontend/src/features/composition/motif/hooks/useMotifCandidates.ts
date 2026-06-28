@@ -11,7 +11,7 @@ export function useMotifCandidates(token: string | null) {
     queryKey: ['composition', 'motif-candidates'],
     queryFn: async (): Promise<MotifCandidateOption[]> => {
       const { motifs } = await motifApi.list({ scope: 'all', limit: 100 }, token!);
-      return motifs.map((m) => ({ motif_id: m.id, motif_name: m.name, summary: m.summary }));
+      return motifs.map((m) => ({ motif_id: m.id, motif_name: m.name, summary: m.summary, motif_code: m.code }));
     },
     enabled: !!token,
     staleTime: 5 * 60_000, // the library changes rarely; don't refetch per card render.
