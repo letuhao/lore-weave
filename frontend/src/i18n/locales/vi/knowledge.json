@@ -705,7 +705,7 @@
           "durationMin": "~{{n}} phút"
         },
         "building_running": {
-          "progress": "{{processed}} / {{total}} mục",
+          "progress": "{{processed}} / {{total}} mục (chương + chat + bảng chú giải)",
           "elapsed": "Đã trôi: {{elapsed}}",
           "spent": "Đã dùng: ${{spent}}",
           "spentOfBudget": "Đã dùng: ${{spent}} / ${{budget}}",

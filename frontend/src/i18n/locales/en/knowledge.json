@@ -677,7 +677,7 @@
           "durationMin": "~{{n}} min estimated"
         },
         "building_running": {
-          "progress": "{{processed}} / {{total}} items",
+          "progress": "{{processed}} / {{total}} items (chapters + chat + glossary)",
           "elapsed": "Elapsed: {{elapsed}}",
           "spent": "Spent: ${{spent}}",
           "spentOfBudget": "Spent: ${{spent}} / ${{budget}}",

@@ -705,7 +705,7 @@
           "durationMin": "約 {{n}} 分鐘"
         },
         "building_running": {
-          "progress": "{{processed}} / {{total}} 項",
+          "progress": "{{processed}} / {{total}} 項（章節＋聊天＋詞彙表）",
           "elapsed": "已過：{{elapsed}}",
           "spent": "已花費：${{spent}}",
           "spentOfBudget": "已花費：${{spent}} / ${{budget}}",

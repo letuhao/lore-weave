@@ -187,6 +187,10 @@ class StartJobRequest(BaseModel):
     llm_model: str = Field(min_length=1, max_length=200)
     embedding_model: str = Field(min_length=1, max_length=200)
     max_spend_usd: Annotated[Decimal, Field(ge=0)] | None = None
+    # #9 — DEPRECATED / IGNORED. The create path now computes items_total server-side
+    # from the real scope counts (chapters+chat+glossary), so a client-supplied value
+    # (the old "1/100" placeholder) is never stored. Kept on the schema only so existing
+    # callers that still send it don't 422; its value is discarded.
     items_total: Annotated[int, Field(ge=0)] | None = None
     # C12 — target-typed extraction. None / empty ⇒ ALL passes (back-compat).
     # A concrete list runs only those passes. Dependent targets are
@@ -236,6 +240,58 @@ class EstimateItemCounts(BaseModel):
     chat_turns: int = 0
     glossary_entities: int = 0
 
+    @property
+    def total(self) -> int:
+        return self.chapters + self.chat_turns + self.glossary_entities
+
+
+async def _count_scope_items(
+    scope: str,
+    scope_range: dict[str, Any] | None,
+    project: Any,
+    user_id: UUID,
+    project_id: UUID,
+    *,
+    book_client: BookClient | None = None,
+    pending_repo: ExtractionPendingRepo | None = None,
+    glossary_client: GlossaryClient | None = None,
+) -> EstimateItemCounts:
+    """Count the items an extraction job will actually process for a scope, server-side.
+
+    Shared by the cost ESTIMATE and the job CREATE path so the stored ``items_total``
+    is the REAL denominator (chapters + chat_turns + glossary_entities) — never a
+    client-supplied placeholder (#9: the "1/100" progress bug, where the FE's optional
+    ``items_total`` was trusted verbatim). The same published-scoped chapter count the
+    runner enumerates is used, so the progress bar's denominator matches the work done.
+
+    Each client is optional: a public handler injects them (so test ``dependency_overrides``
+    apply); an internal/retry caller that doesn't passes None and we fall back to the
+    per-worker singleton accessor.
+    """
+    chapters = chat_turns = glossary_entities = 0
+    chapter_from, chapter_to = _extract_chapter_range(scope_range)
+
+    if scope in ("chapters", "all") and project.book_id is not None:
+        bc = book_client if book_client is not None else await get_book_client()
+        count = await bc.count_chapters(
+            project.book_id, from_sort=chapter_from, to_sort=chapter_to,
+            editorial_status="published",
+        )
+        chapters = count if count is not None else 0
+
+    if scope in ("chat", "all"):
+        pr = pending_repo if pending_repo is not None else await get_extraction_pending_repo()
+        chat_turns = await pr.count_pending(user_id, project_id)
+
+    if scope in ("glossary_sync", "all") and project.book_id is not None:
+        gc = glossary_client if glossary_client is not None else await get_glossary_client()
+        count = await gc.count_entities(project.book_id)
+        glossary_entities = count if count is not None else 0
+
+    return EstimateItemCounts(
+        chapters=chapters, chat_turns=chat_turns, glossary_entities=glossary_entities,
+    )
+
 
 class EstimateResponse(BaseModel):
     items_total: int
@@ -280,37 +336,20 @@ async def estimate_extraction_cost(
             detail="project not found",
         )
 
-    chapters = 0
-    chat_turns = 0
-    glossary_entities = 0
-
     scope = body.scope
 
-    chapter_from, chapter_to = _extract_chapter_range(body.scope_range)
-
-    # Chapter count — via book-service internal API. CM3c: gate to
-    # editorial_status='published' so the estimate matches what the gated
-    # whole-book rebuild actually extracts (drafts are skipped) — same
-    # server-side filter the worker enumeration uses (no count divergence).
-    if scope in ("chapters", "all") and project.book_id is not None:
-        count = await book_client.count_chapters(
-            project.book_id,
-            from_sort=chapter_from,
-            to_sort=chapter_to,
-            editorial_status="published",
-        )
-        chapters = count if count is not None else 0
-
-    # Pending chat turns — from extraction_pending queue
-    if scope in ("chat", "all"):
-        chat_turns = await pending_repo.count_pending(user_id, project_id)
-
-    # Glossary entity count — via glossary-service internal API
-    if scope in ("glossary_sync", "all") and project.book_id is not None:
-        count = await glossary_client.count_entities(project.book_id)
-        glossary_entities = count if count is not None else 0
-
-    items_total = chapters + chat_turns + glossary_entities
+    # Chapter count gates to editorial_status='published' (CM3c) so the estimate
+    # matches what the gated whole-book rebuild actually extracts (drafts skipped) —
+    # the SAME server-side count the CREATE path now stores as items_total (#9), so
+    # preview and progress-denominator can never diverge.
+    counts = await _count_scope_items(
+        scope, body.scope_range, project, user_id, project_id,
+        book_client=book_client, pending_repo=pending_repo, glossary_client=glossary_client,
+    )
+    chapters = counts.chapters
+    chat_turns = counts.chat_turns
+    glossary_entities = counts.glossary_entities
+    items_total = counts.total
     # C13 — pinned-injection cost. The pinned names are prepended to EVERY
     # extraction window's known_entities, and there is one window per chapter +
     # one per chat turn (the two LLM-extraction item types; glossary_sync is a
@@ -491,6 +530,11 @@ async def start_extraction_job(
     jobs_repo: ExtractionJobsRepo = Depends(get_extraction_jobs_repo),
     benchmark_repo: BenchmarkRunsRepo = Depends(get_benchmark_runs_repo),
     book_client: BookClient = Depends(get_book_client),
+    # #9 — injected so the core can compute items_total server-side (and so test
+    # dependency_overrides apply); the core falls back to the singletons for the
+    # internal-dispatch callers that don't pass them.
+    pending_repo: ExtractionPendingRepo = Depends(get_extraction_pending_repo),
+    glossary_client: GlossaryClient = Depends(get_glossary_client),
     extraction_wake: ExtractionWakeFn = Depends(get_extraction_wake),
 ) -> ExtractionJob:
     """Public route handler. Delegates to the core.
@@ -505,6 +549,8 @@ async def start_extraction_job(
         project_id, body, principals.owner, projects_repo, jobs_repo, benchmark_repo,
         caller=principals.caller,
         book_client=book_client,
+        pending_repo=pending_repo,
+        glossary_client=glossary_client,
         extraction_wake=extraction_wake,
     )
 
@@ -520,6 +566,8 @@ async def _start_extraction_job_core(
     campaign_id: UUID | None = None,
     caller: UUID | None = None,
     book_client: BookClient | None = None,
+    pending_repo: ExtractionPendingRepo | None = None,
+    glossary_client: GlossaryClient | None = None,
     extraction_wake: ExtractionWakeFn | None = None,
 ) -> ExtractionJob:
     """Create and start an extraction job for a project.
@@ -780,6 +828,28 @@ async def _start_extraction_job_core(
             },
         )
 
+    # 2.7. #9 — compute the REAL progress denominator server-side (chapters + chat +
+    # glossary for this scope), IGNORING any client-supplied body.items_total (the old
+    # "1/100" placeholder). Best-effort: a transient count failure stores NULL → the FE
+    # renders an indeterminate bar, which is strictly better than a wrong number or
+    # blocking the job start. Done OUTSIDE the tx (network I/O; never hold a tx open
+    # across it — H1).
+    server_items_total: int | None = None
+    try:
+        server_items_total = (
+            await _count_scope_items(
+                body.scope, body.scope_range, project, user_id, project_id,
+                book_client=book_client,
+                pending_repo=pending_repo,
+                glossary_client=glossary_client,
+            )
+        ).total
+    except Exception:  # noqa: BLE001 — the count is advisory; never block job start
+        logger.warning(
+            "#9: failed to compute items_total project_id=%s scope=%s; storing NULL",
+            project_id, body.scope, exc_info=True,
+        )
+
     # 3. Validate + create job atomically.
     trace_id = trace_id_var.get()
     validated = ExtractionJobCreate(
@@ -791,7 +861,8 @@ async def _start_extraction_job_core(
         embedding_model=storage_embedding_model,
         max_spend_usd=body.max_spend_usd,
         scope_range=body.scope_range,
-        items_total=body.items_total,
+        # #9 — server-computed denominator, NOT body.items_total (deprecated/ignored).
+        items_total=server_items_total,
         campaign_id=campaign_id,  # S4a: internal-only (None for public callers)
         # E0-3 Phase 2b — caller's BYOK billing identity (all None on owner path).
         billing_user_id=billing_user_id,
@@ -1200,6 +1271,10 @@ async def rebuild_extraction(
     user_id: UUID = Depends(require_project_grant(GrantLevel.OWNER)),
     projects_repo: ProjectsRepo = Depends(get_projects_repo),
     jobs_repo: ExtractionJobsRepo = Depends(get_extraction_jobs_repo),
+    # #9 — count sources for the server-computed items_total denominator.
+    book_client: BookClient = Depends(get_book_client),
+    pending_repo: ExtractionPendingRepo = Depends(get_extraction_pending_repo),
+    glossary_client: GlossaryClient = Depends(get_glossary_client),
 ) -> ExtractionJob | dict:
     """Delete the existing graph and start a full extraction rebuild.
 
@@ -1260,12 +1335,30 @@ async def rebuild_extraction(
 
     # Step 2: Start new job with scope=all via shared helper
     trace_id = trace_id_var.get()
+    # #9 — server-computed progress denominator (a rebuild is always scope=all).
+    # Best-effort: a count failure → NULL (indeterminate bar), never blocks the rebuild.
+    rebuild_items_total: int | None = None
+    try:
+        rebuild_items_total = (
+            await _count_scope_items(
+                "all", None, project, user_id, project_id,
+                book_client=book_client,
+                pending_repo=pending_repo,
+                glossary_client=glossary_client,
+            )
+        ).total
+    except Exception:  # noqa: BLE001 — advisory count; never block the rebuild
+        logger.warning(
+            "#9: failed to compute items_total for rebuild project_id=%s; storing NULL",
+            project_id, exc_info=True,
+        )
     validated = ExtractionJobCreate(
         project_id=project_id,
         scope="all",
         llm_model=body.llm_model,
         embedding_model=body.embedding_model,
         max_spend_usd=body.max_spend_usd,
+        items_total=rebuild_items_total,
     )
 
     job_id = await _create_and_start_job(

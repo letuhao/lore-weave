@@ -705,7 +705,7 @@
           "durationMin": "約 {{n}} 分"
         },
         "building_running": {
-          "progress": "{{processed}} / {{total}} 件",
+          "progress": "{{processed}} / {{total}} 件（章・チャット・用語集）",
           "elapsed": "経過: {{elapsed}}",
           "spent": "使用額: ${{spent}}",
           "spentOfBudget": "使用額: ${{spent}} / ${{budget}}",
