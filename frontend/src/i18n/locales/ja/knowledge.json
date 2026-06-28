@@ -286,7 +286,8 @@
       "chapterLabel": "章",
       "chapterUnresolved": "章ID {{id}} — タイトル未解決",
       "participantsMore": "+{{count}}名",
-      "confidenceLabel": "信頼度"
+      "confidenceLabel": "信頼度",
+      "timeLabel": "作中の時間"
     },
     "detail": {
       "summary": "要約",

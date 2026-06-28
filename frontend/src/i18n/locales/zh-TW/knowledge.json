@@ -286,7 +286,8 @@
       "chapterLabel": "章",
       "chapterUnresolved": "章 ID {{id}} — 標題未解析",
       "participantsMore": "+{{count}} 位",
-      "confidenceLabel": "信心度"
+      "confidenceLabel": "信心度",
+      "timeLabel": "故事內時間"
     },
     "detail": {
       "summary": "摘要",

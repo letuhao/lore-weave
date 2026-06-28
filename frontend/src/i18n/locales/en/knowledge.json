@@ -287,7 +287,8 @@
       "chapterLabel": "Chapter",
       "chapterUnresolved": "Chapter id {{id}} — title unresolved",
       "participantsMore": "+{{count}} more",
-      "confidenceLabel": "Confidence"
+      "confidenceLabel": "Confidence",
+      "timeLabel": "In-story time"
     },
     "detail": {
       "summary": "Summary",

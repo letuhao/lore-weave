@@ -203,8 +203,19 @@ Entities in the KG have no description or information — the GUI only shows nod
 ### [I] 12. Timeline GUI is low quality; browsers across platform are scattered
 Timeline GUI is bad quality — not a rich browser mode like other GUIs (especially glossary). Browsers across the platform are scattered and annoying. Want consistency.
 
-> RC (investigated): the timeline is a cycle-α MVP list; the BE already supports entity/date/chronological filters (`timeline.py` ~120-154) but the FE doesn't surface them, and it doesn't reuse the rich glossary browser shell (`frontend/.../glossary/components/EntityListBrowser.tsx` — search/sort/filter-slot/detail/pagination).
-> Fix (proposed): extract a shared "browser" primitive from EntityListBrowser and build the timeline (and other scattered browsers) on it; expose the existing BE filters. (Consistency play across the platform.)
+> RC (CORRECTED after reading the code): the timeline is NOT a thin MVP — `TimelineTab` already
+> surfaces project filter, narrative/chronological sort + direction, entity filter, chronological +
+> ISO-date ranges, pagination, expandable rows; `TimelineEventRow` already shows order, importance,
+> localized title, chapter, participant chips (+ summary/all-participants on expand). The real gaps
+> (user picked all 4 aspects): (1) no shared browser SHELL across timeline/entities/evidence, (2)
+> in-story `time_cue` was only in the expanded detail, (3) NO text search — the BE `timeline.py`
+> endpoint (a Neo4j Cypher query) has no `q` param, so search needs a BE change, (4) polish/density.
+> **L overhaul — plan: [docs/plans/2026-06-28-timeline-browser-overhaul.md]. Part 1 SHIPPED:**
+> surfaced `time_cue` (localized + source-marker) on the COLLAPSED row so the list reads as a
+> chronology at a glance (#2). +1 test (chip shows only where present); TimelineTab 16/16; tsc clean;
+> +`timeline.row.timeLabel` ×4. **Remaining parts (deferred to their own commits):** Part 2 =
+> timeline text search (BE Cypher `q` + FE box); Part 3 = shared `BrowserShell` primitive adopted in
+> the timeline (then entities/evidence) for consistency + polish.
 
 ### [D] 13. Glossary extraction also rebuilds KG (should be decoupled)
 Glossary extraction seems to also rebuild the KG. When building glossary, the KG also updates. Want to build glossary **first**, then build KG **on demand**. We already have a Campaign GUI, but I used glossary extraction in the **workspace**, not in a campaign. Investigate.

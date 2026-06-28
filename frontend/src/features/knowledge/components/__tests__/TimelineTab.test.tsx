@@ -42,6 +42,7 @@ const EVENT_DUEL = {
   title: 'Kai duels Zhao',
   canonical_title: 'kai duels zhao',
   summary: 'A clash at the bridge.',
+  time_cue: 'the next morning',
   chapter_id: 'ch-aaaa-bbbb-cccc-dddd',
   // C6: TimelineEvent now carries the BE-resolved title. Default
   // fixtures leave it null so existing tests exercise the UUID-
@@ -64,6 +65,7 @@ const EVENT_REVEAL = {
   id: 'ev-reveal',
   title: 'The hidden name revealed',
   summary: null,
+  time_cue: null,
   participants: ['Kai'],
   event_order: 20,
 };
@@ -89,6 +91,15 @@ describe('TimelineTab', () => {
       expect.objectContaining({ limit: 50, offset: 0 }),
       'tok-test',
     );
+  });
+
+  it('shows the in-story time-cue chip on the collapsed row, only where present (#12)', async () => {
+    render(<TimelineTab />, { wrapper: Wrapper });
+    await screen.findByTestId('timeline-list');
+    // EVENT_DUEL has a time_cue; EVENT_REVEAL has none → exactly one chip.
+    const cues = await screen.findAllByTestId('timeline-row-time-cue');
+    expect(cues).toHaveLength(1);
+    expect(cues[0].textContent).toContain('the next morning');
   });
 
   it('surfaces API errors via the error banner', async () => {

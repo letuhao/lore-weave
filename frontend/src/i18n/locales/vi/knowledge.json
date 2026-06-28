@@ -286,7 +286,8 @@
       "chapterLabel": "Chương",
       "chapterUnresolved": "Chương với id {{id}} — không giải được tiêu đề",
       "participantsMore": "+{{count}} người nữa",
-      "confidenceLabel": "Độ tin cậy"
+      "confidenceLabel": "Độ tin cậy",
+      "timeLabel": "Thời điểm trong truyện"
     },
     "detail": {
       "summary": "Tóm tắt",
