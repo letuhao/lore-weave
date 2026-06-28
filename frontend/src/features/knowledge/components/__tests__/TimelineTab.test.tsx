@@ -119,6 +119,20 @@ describe('TimelineTab', () => {
     expect((screen.getByTestId('timeline-search') as HTMLInputElement).value).toBe('');
   });
 
+  it('changes the page size and resets the offset (#12)', async () => {
+    render(<TimelineTab />, { wrapper: Wrapper });
+    await screen.findByTestId('timeline-list');
+    fireEvent.change(screen.getByTestId('timeline-page-size'), {
+      target: { value: '25' },
+    });
+    await waitFor(() =>
+      expect(listTimelineMock).toHaveBeenCalledWith(
+        expect.objectContaining({ limit: 25, offset: 0 }),
+        expect.anything(),
+      ),
+    );
+  });
+
   it('surfaces API errors via the error banner', async () => {
     listTimelineMock.mockRejectedValueOnce(new Error('network is down'));
     render(<TimelineTab />, { wrapper: Wrapper });

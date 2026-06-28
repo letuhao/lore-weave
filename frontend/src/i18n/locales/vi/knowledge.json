@@ -300,7 +300,8 @@
       "refreshing": "đang làm mới…",
       "prev": "Trang trước",
       "next": "Trang sau",
-      "backToFirst": "Về trang đầu"
+      "backToFirst": "Về trang đầu",
+      "pageSize": "Mỗi trang"
     },
     "localization": {
       "sourceMarker": "Hiển thị bằng ngôn ngữ gốc — đang chờ dịch"

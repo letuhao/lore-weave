@@ -24,7 +24,10 @@ import { TimelineFilters } from './TimelineFilters';
 // hook but intentionally not surfaced as UI controls in cycle β. They
 // land as a range input in γ or when entity-scope drill-down ships.
 
-const PAGE_SIZE = 50;
+// #12 Part 3 — page-size options, matching the glossary entity browser for
+// cross-browser consistency. 50 is the back-compat default.
+const PAGE_SIZE_OPTIONS = [10, 25, 50, 100] as const;
+const DEFAULT_PAGE_SIZE = 50;
 
 interface TimelineTabProps {
   // C6 (G6) — route-scoped project when hosted inside the project-detail
@@ -39,6 +42,7 @@ export function TimelineTab({ scopedProjectId }: TimelineTabProps = {}) {
     scopedProjectId ?? '',
   );
   const [offset, setOffset] = useState(0);
+  const [pageSize, setPageSize] = useState<number>(DEFAULT_PAGE_SIZE);
   const [selectedEventId, setSelectedEventId] = useState<string | null>(null);
   // C10 (D-K19e-α-01 + D-K19e-α-03) — secondary filters. Entity is
   // stored as the whole Entity object so the chip can show its name
@@ -91,7 +95,7 @@ export function TimelineTab({ scopedProjectId }: TimelineTabProps = {}) {
       language: i18n.language || undefined,
       sort_by: sortBy,
       sort_dir: sortDir,
-      limit: PAGE_SIZE,
+      limit: pageSize,
       offset,
     },
     {
@@ -103,9 +107,9 @@ export function TimelineTab({ scopedProjectId }: TimelineTabProps = {}) {
     },
   );
 
-  const maxOffset = Math.max(0, Math.floor((total - 1) / PAGE_SIZE) * PAGE_SIZE);
+  const maxOffset = Math.max(0, Math.floor((total - 1) / pageSize) * pageSize);
   const canPrev = offset > 0;
-  const canNext = offset + PAGE_SIZE < total;
+  const canNext = offset + pageSize < total;
 
   const handleFilterChange = (update: () => void) => {
     update();
@@ -350,10 +354,28 @@ export function TimelineTab({ scopedProjectId }: TimelineTabProps = {}) {
               )}
             </span>
             <div className="flex items-center gap-2">
+              <label className="flex items-center gap-1 text-muted-foreground">
+                {t('timeline.pagination.pageSize')}
+                <select
+                  value={pageSize}
+                  onChange={(e) => {
+                    setPageSize(Number(e.target.value));
+                    setOffset(0);
+                  }}
+                  className="rounded-md border bg-input px-1.5 py-1 outline-none focus:border-ring"
+                  data-testid="timeline-page-size"
+                >
+                  {PAGE_SIZE_OPTIONS.map((n) => (
+                    <option key={n} value={n}>
+                      {n}
+                    </option>
+                  ))}
+                </select>
+              </label>
               <button
                 type="button"
                 disabled={!canPrev}
-                onClick={() => setOffset(Math.max(0, offset - PAGE_SIZE))}
+                onClick={() => setOffset(Math.max(0, offset - pageSize))}
                 className="inline-flex items-center gap-1 rounded-md border px-2 py-1 transition-colors hover:bg-secondary disabled:cursor-not-allowed disabled:opacity-50"
                 data-testid="timeline-pagination-prev"
               >
@@ -364,7 +386,7 @@ export function TimelineTab({ scopedProjectId }: TimelineTabProps = {}) {
                 type="button"
                 disabled={!canNext}
                 onClick={() =>
-                  setOffset(Math.min(maxOffset, offset + PAGE_SIZE))
+                  setOffset(Math.min(maxOffset, offset + pageSize))
                 }
                 className="inline-flex items-center gap-1 rounded-md border px-2 py-1 transition-colors hover:bg-secondary disabled:cursor-not-allowed disabled:opacity-50"
                 data-testid="timeline-pagination-next"

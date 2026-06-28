@@ -200,7 +200,7 @@ Entities in the KG have no description or information — the GUI only shows nod
 > **FIXED (interim, FE-only):** added `short_description` to the FE glossary type (fixing the drift); new `useAnchoredGlossaryEntity` hook fetches the anchored glossary entry; `EntityDetailPanel` renders a **Description** section (from the linked glossary entry) when present. No BE change (the data was already served). Tests: EntityDetailPanel +2 (renders when present / omitted when absent); knowledge+glossary 802/802; tsc clean; +`entities.detail.description`/`descriptionSource` ×4 locales.
 > **Deferred (full version):** a native KG per-entity description (model field + gated LLM pass) for UNanchored discovered entities → D-KG-ENTITY-NATIVE-DESCRIPTION. The interim covers anchored/canonical entities (the ones with authored prose).
 
-### [I] 12. Timeline GUI is low quality; browsers across platform are scattered
+### [x] 12. Timeline GUI is low quality; browsers across platform are scattered
 Timeline GUI is bad quality — not a rich browser mode like other GUIs (especially glossary). Browsers across the platform are scattered and annoying. Want consistency.
 
 > RC (CORRECTED after reading the code): the timeline is NOT a thin MVP — `TimelineTab` already
@@ -221,8 +221,13 @@ Timeline GUI is bad quality — not a rich browser mode like other GUIs (especia
 > `useTimeline` queryKey so it refetches). **Live smoke:** count + page Cypher executed against the
 > dev Neo4j with `q="duel"` (valid). +1 FE test (q forwarded + clear empties input); TimelineTab
 > 29/29; tsc clean; py_compile clean; +`timeline.search.*` ×4.
-> **Remaining:** Part 3 = shared `BrowserShell` primitive adopted in the timeline (then
-> entities/evidence) for consistency + polish.
+> **Part 3 SHIPPED (bounded) — polish/consistency (#4/#1):** added a **page-size control**
+> (10/25/50/100, default 50) to the timeline pagination, matching the glossary entity browser.
+> +1 FE test (page size → limit, offset reset); TimelineTab 18/18; tsc clean; +`timeline.pagination.pageSize` ×4.
+> **DONE for the user-visible asks** (time_cue rows + text search + page-size/polish). **Deferred
+> (the heavy structural piece):** extracting a single shared `BrowserShell` and porting timeline +
+> entities + evidence onto it is a genuine L refactor with regression surface across 3 browsers —
+> not rushed here → **D-KG-SHARED-BROWSER-SHELL** (full cross-browser consistency).
 
 ### [D] 13. Glossary extraction also rebuilds KG (should be decoupled)
 Glossary extraction seems to also rebuild the KG. When building glossary, the KG also updates. Want to build glossary **first**, then build KG **on demand**. We already have a Campaign GUI, but I used glossary extraction in the **workspace**, not in a campaign. Investigate.

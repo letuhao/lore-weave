@@ -1,4 +1,17 @@
-# ▶▶ NEXT SESSION STARTS HERE — **Critical UX bug track** · branch `fix/critical-ux-bugs` · HEAD `ae06e37e`+ · 2026-06-28
+# ▶▶ NEXT SESSION STARTS HERE — **Critical UX bug track** · branch `fix/critical-ux-bugs` · HEAD `119701f5`+ · 2026-06-28
+
+> **✅ SHIPPED — #12 timeline overhaul (L, 3 parts) + #16 build-stages.** Verified first: the
+> timeline was already feature-rich (filters/sort/ranges/pagination/rich rows) — the "low quality"
+> was missing affordances + consistency, not a broken UI. **Part 1** (`69441791`): in-story
+> `time_cue` surfaced on the collapsed row. **Part 2** (`119701f5`): free-text search — BE `q`
+> param + `list_events_filtered` Cypher (`toLower(coalesce(title/summary,'')) CONTAINS toLower($q)`,
+> parameterized; SOURCE-text deterministic) + debounced FE search box + `q` in the `useTimeline`
+> queryKey; **live-smoked** count+page Cypher vs dev Neo4j. **Part 3**: page-size control
+> (10/25/50/100) matching the glossary browser. **#16** (`3222ae15`): build-stages explainer in the
+> running card (facts/summaries run after entities). Plan: [docs/plans/2026-06-28-timeline-browser-overhaul.md].
+> **Deferred** `D-KG-SHARED-BROWSER-SHELL` (extract one shell + port timeline/entities/evidence — a
+> real L refactor, not rushed) + `D-KG-BUILD-PER-TARGET-PROGRESS`.
+
 
 > **⚡ HYBRID SWEEP (parallel-investigate → batched build).** 4 read-only agents verified the
 > remaining open bugs at once; verify-before-fix then DOWNGRADED every "bounded" agent claim

@@ -301,7 +301,8 @@
       "refreshing": "refreshing…",
       "prev": "Previous",
       "next": "Next",
-      "backToFirst": "Back to first page"
+      "backToFirst": "Back to first page",
+      "pageSize": "Per page"
     },
     "localization": {
       "sourceMarker": "Shown in source language — translation pending"

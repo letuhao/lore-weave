@@ -300,7 +300,8 @@
       "refreshing": "更新中…",
       "prev": "前へ",
       "next": "次へ",
-      "backToFirst": "最初のページへ"
+      "backToFirst": "最初のページへ",
+      "pageSize": "表示件数"
     },
     "localization": {
       "sourceMarker": "原語で表示 — 翻訳待ち"

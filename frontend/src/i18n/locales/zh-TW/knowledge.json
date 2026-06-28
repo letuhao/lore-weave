@@ -300,7 +300,8 @@
       "refreshing": "重新整理中…",
       "prev": "上一頁",
       "next": "下一頁",
-      "backToFirst": "回到第一頁"
+      "backToFirst": "回到第一頁",
+      "pageSize": "每頁"
     },
     "localization": {
       "sourceMarker": "以原始語言顯示 — 翻譯處理中"
