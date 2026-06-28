@@ -64,6 +64,43 @@ export function stripIdempotencyKey(body: unknown): unknown {
   return { ...msg, params: { ...msg.params, arguments: rest } };
 }
 
+/** One idempotency-relevant write step inside a JSON-RPC BATCH (D-PMCP-BATCH-IDEMPOTENCY). */
+export interface BatchIdemItem {
+  /** The element's raw JSON-RPC id (the controller maps it via `idKey` for response matching). */
+  id: unknown;
+  toolName: string;
+  /** The cleaned dedup key, or null when the `idempotency_key` was present but unusable
+   *  (empty / non-string / too long) — such an item is STILL stripped but not deduped. */
+  idemKey: string | null;
+}
+
+/**
+ * Per-item idempotency descriptors for a BATCH body: each `write_auto` `tools/call` element
+ * that carries an `idempotency_key` argument (reusing the single-message classifier per
+ * element). Returns `[]` for a non-batch body or a batch with no such element — the signal the
+ * controller uses to fall back to the normal (untouched) relay. A `write_confirm`/read/unknown
+ * element, or one without the key, never appears (the propose/divert path owns write_confirm).
+ */
+export function batchIdempotentItems(body: unknown): BatchIdemItem[] {
+  if (!Array.isArray(body)) return [];
+  const out: BatchIdemItem[] = [];
+  for (const m of body) {
+    const info = idempotentWriteCallInfo(m);
+    if (info) out.push({ id: (m as { id?: unknown }).id ?? null, toolName: info.toolName, idemKey: info.idemKey });
+  }
+  return out;
+}
+
+/**
+ * Clone a BATCH body with `idempotency_key` stripped from EVERY element that carries one
+ * (reusing the single-element strip), so the underlying `ForbidExtra` tools never see the
+ * edge-only field. A non-array body is returned unchanged — the single-message path owns it.
+ */
+export function stripIdempotencyKeyFromBatch(body: unknown): unknown {
+  if (!Array.isArray(body)) return body;
+  return body.map((m) => stripIdempotencyKey(m));
+}
+
 /** The Redis dedup key: scoped per credential + tool + agent-supplied key. */
 export function idempotencyRedisKey(keyId: string, toolName: string, idemKey: string): string {
   return `mcp:idem:${keyId}:${toolName}:${idemKey}`;
@@ -71,13 +108,19 @@ export function idempotencyRedisKey(keyId: string, toolName: string, idemKey: st
 
 /** A JSON-RPC error telling the agent its identical request is still being processed. */
 export function idempotencyInProgressError(body: unknown): unknown {
+  return idempotencyInProgressErrorForId(jsonRpcId(body));
+}
+
+/** As above, but for an explicit JSON-RPC id — the per-item form a BATCH short-circuit needs
+ *  (each in-flight item replies under its OWN request id so the agent matches it). */
+export function idempotencyInProgressErrorForId(id: unknown): unknown {
   return {
     jsonrpc: '2.0',
     error: {
       code: JSONRPC_IDEM_IN_PROGRESS,
       message: 'a request with this idempotency_key is already in progress; retry shortly',
     },
-    id: jsonRpcId(body),
+    id: id ?? null,
   };
 }
 

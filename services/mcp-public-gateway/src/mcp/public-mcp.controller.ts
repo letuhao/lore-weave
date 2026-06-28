@@ -12,10 +12,23 @@ import { RateLimiter } from '../ratelimit/rate-limiter.js';
 import { makeRateLimitStoreFromEnv } from '../ratelimit/redis-store.js';
 import { Idempotency } from '../idempotency/idempotency-store.js';
 import { makeIdempotencyStoreFromEnv } from '../idempotency/redis-idempotency-store.js';
-import { advertiseIdempotencyKeyInList, idempotencyInProgressError, idempotencyRedisKey, idempotentWriteCallInfo, stripIdempotencyKey } from '../idempotency/idempotency.js';
+import { advertiseIdempotencyKeyInList, batchIdempotentItems, idempotencyInProgressError, idempotencyInProgressErrorForId, idempotencyRedisKey, idempotentWriteCallInfo, stripIdempotencyKey, stripIdempotencyKeyFromBatch } from '../idempotency/idempotency.js';
 import { AuditClient } from '../audit/audit-client.js';
 import { ApprovalClient } from '../approval/approval-client.js';
 import { wwwAuthenticateChallenge } from '../oauth/discovery.js';
+
+/**
+ * D-PMCP-BATCH-IDEMPOTENCY plan: the result of the pre-relay pass over a JSON-RPC BATCH.
+ * `relayArray` is the reduced + key-stripped body to relay; `shortCircuit` are the cached
+ * (replay) / in-flight (pending) response items to merge back; `claims` are the proceed-item
+ * Redis keys to cache-or-release after the relay settles.
+ */
+interface BatchIdemState {
+  active: boolean;
+  relayArray: unknown[];
+  shortCircuit: unknown[];
+  claims: Array<{ idKey: string; rkey: string }>;
+}
 
 /**
  * The PUBLIC MCP edge. An external agent connects here (via api-gateway-bff `/mcp`)
@@ -180,6 +193,7 @@ export class PublicMcpController {
     // retry, or claim the slot and cache the result after a successful relay.
     let relayBody: unknown = req.body;
     let idemCacheKey: string | null = null; // set iff we claimed → cache/abort post-relay
+    let batchIdem: BatchIdemState | null = null; // set iff a BATCH carries idempotent-write items
     if (hasBody) {
       const idem = idempotentWriteCallInfo(req.body);
       if (idem) {
@@ -203,21 +217,47 @@ export class PublicMcpController {
           }
           idemCacheKey = rkey; // we won the claim → remember to cache/abort after relay
         }
+      } else {
+        // D-PMCP-BATCH-IDEMPOTENCY: the single classifier returns null for an array, so a
+        // BATCH carrying per-item idempotency keys is handled here. Strip every key, claim
+        // each usable one, and EXCLUDE replay/pending items from the relay (we must not
+        // re-execute a cached/in-flight item). `active=false` → not a batch with idempotent
+        // writes → relay untouched (preserves the divert/annotate batch paths verbatim).
+        const plan = await this.beginBatchIdempotency(req.body, resolved.keyId);
+        if (plan.active) {
+          batchIdem = plan;
+          relayBody = plan.relayArray; // the reduced + key-stripped array
+        }
       }
     }
 
     // Relay to the USER surface only — never `/mcp/admin` (PUB-9 / H-A).
     const target = `${this.cfg.aiGatewayUrl}/mcp`;
     try {
-      const upstream = await fetch(target, {
-        method: req.method,
-        headers: outboundHeaders,
-        body: hasBody ? JSON.stringify(relayBody) : undefined,
-      });
-      let text = await upstream.text();
+      // D-PMCP-BATCH-IDEMPOTENCY: when EVERY idempotent-write item short-circuited (all
+      // replay/pending), the reduced relay array is empty → skip the upstream call entirely
+      // and synthesize an empty batch response that finalize merges the cached items into.
+      const skipRelay = batchIdem !== null && Array.isArray(relayBody) && relayBody.length === 0;
+      let upstreamStatus: number;
+      let upstreamCt: string | null;
+      let text: string;
+      if (skipRelay) {
+        upstreamStatus = 200;
+        upstreamCt = 'application/json';
+        text = '[]';
+      } else {
+        const upstream = await fetch(target, {
+          method: req.method,
+          headers: outboundHeaders,
+          body: hasBody ? JSON.stringify(relayBody) : undefined,
+        });
+        text = await upstream.text();
+        upstreamStatus = upstream.status;
+        upstreamCt = upstream.headers.get('content-type');
+      }
       // PUB-3 / H-F: filter the `tools/list` RESPONSE so the agent only ever sees the
       // tools its key may call. Only rewrite a successful list; errors pass through.
-      const ok = upstream.status >= 200 && upstream.status < 300;
+      const ok = upstreamStatus >= 200 && upstreamStatus < 300;
       // H-O: record the relay outcome (per tools/call; non-call relays are not audited).
       // D-PMCP-AUDIT-DOWNSTREAM-OUTCOME: a single tools/call the edge relayed 2xx but
       // whose JSON-RPC body carried an `error` (a downstream denial / tool failure rides
@@ -229,6 +269,16 @@ export class PublicMcpController {
           ? 'tool_error'
           : 'relayed';
       this.audit.record(req.body, resolved.keyId, resolved.userId, traceId, relayOutcome);
+
+      // D-PMCP-BATCH-IDEMPOTENCY: settle the per-item claims against the relayed response
+      // (cache each successful proceed-item; release errored/missing ones) and MERGE the
+      // short-circuited replay/pending items back into the array. We do this BEFORE the
+      // divert/list/annotate passes so (a) we cache the RAW relayed item (never a diverted /
+      // _meta-annotated one) and (b) those passes see the full, merged batch. Items match by
+      // JSON-RPC id, so the merge order is irrelevant. No-op when batchIdem is null.
+      if (batchIdem) {
+        text = await this.finalizeBatchIdempotency(batchIdem, text, !skipRelay);
+      }
 
       // P4 / OD-2: a DEFAULT key's (allow_self_confirm=false) single Tier-W propose returns
       // a confirm_token WITHOUT spending. Do NOT hand it to the agent — divert the action to
@@ -311,18 +361,108 @@ export class PublicMcpController {
         else await this.idempotency.abort(idemCacheKey);
       }
 
-      res.status(upstream.status);
-      // We emit JSON when we rewrote the list or annotated a batch; otherwise echo upstream type.
-      const ct = rewroteList || annotatedBatch ? 'application/json' : upstream.headers.get('content-type');
+      res.status(upstreamStatus);
+      // We emit JSON when we rewrote the list, annotated a batch, or merged a batch-idempotency
+      // response (finalize always produces a JSON array); otherwise echo the upstream type.
+      const ct = rewroteList || annotatedBatch || batchIdem ? 'application/json' : upstreamCt;
       if (ct) res.setHeader('content-type', ct);
       res.send(text);
     } catch (e) {
-      // Release the idempotency claim so the agent's retry isn't stuck "pending".
+      // Release any idempotency claim so the agent's retry isn't stuck "pending" — both the
+      // single-message claim and every per-item batch claim we reserved before the relay threw.
       if (idemCacheKey) await this.idempotency.abort(idemCacheKey);
+      if (batchIdem) for (const c of batchIdem.claims) await this.idempotency.abort(c.rkey);
       this.audit.record(req.body, resolved.keyId, resolved.userId, traceId, 'upstream_error'); // H-O
       this.log.warn(`relay to ai-gateway failed: ${e}`);
       return this.deny(res, -32603, 'upstream gateway unavailable', 502);
     }
+  }
+
+  /**
+   * D-PMCP-BATCH-IDEMPOTENCY — pre-relay planning for a JSON-RPC BATCH. For each `write_auto`
+   * item carrying an `idempotency_key`:
+   *   - strip the edge-only key from EVERY item (so `ForbidExtra` never sees it),
+   *   - `begin()` each usable key: a `replay` (cached) or `pending` (in-flight) item is recorded
+   *     as a short-circuit response AND EXCLUDED from the relay (we must not re-execute it); a
+   *     `proceed` item stays in the relay array and is remembered as a claim to settle after.
+   * `active=false` (no idempotent-write item / not a batch) tells the caller to relay untouched —
+   * which keeps the existing divert/annotate batch behaviour byte-for-byte for non-idempotent batches.
+   */
+  private async beginBatchIdempotency(body: unknown, keyId: string): Promise<BatchIdemState> {
+    const items = batchIdempotentItems(body);
+    if (items.length === 0) return { active: false, relayArray: [], shortCircuit: [], claims: [] };
+    const stripped = stripIdempotencyKeyFromBatch(body) as unknown[];
+    const excluded = new Set<string>(); // idKey of items removed from the relay (replay/pending)
+    const shortCircuit: unknown[] = [];
+    const claims: Array<{ idKey: string; rkey: string }> = [];
+    for (const it of items) {
+      if (it.idemKey == null) continue; // unusable key → stripped only, relays normally (no dedup)
+      const rkey = idempotencyRedisKey(keyId, it.toolName, it.idemKey);
+      const begin = await this.idempotency.begin(rkey);
+      if (begin.kind === 'replay') {
+        excluded.add(idKey(it.id));
+        shortCircuit.push(this.parseReplayItem(begin.text, it.id));
+      } else if (begin.kind === 'pending') {
+        excluded.add(idKey(it.id));
+        shortCircuit.push(idempotencyInProgressErrorForId(it.id));
+      } else {
+        claims.push({ idKey: idKey(it.id), rkey });
+      }
+    }
+    const relayArray = stripped.filter((m) => !excluded.has(idKey((m as { id?: unknown })?.id ?? null)));
+    return { active: true, relayArray, shortCircuit, claims };
+  }
+
+  /**
+   * D-PMCP-BATCH-IDEMPOTENCY — post-relay settlement + merge. Cache each proceed-item claim from
+   * the relayed response (release errored/missing ones so a retry re-executes), then append the
+   * short-circuited replay/pending items. Returns the merged response array as JSON text. If the
+   * upstream body isn't a parseable JSON array (SSE / a single error envelope) we can't match
+   * per-id, so we release all claims (retry-safe) and pass the upstream text through unchanged.
+   */
+  private async finalizeBatchIdempotency(state: BatchIdemState, upstreamText: string, relayed: boolean): Promise<string> {
+    let relayedItems: unknown[] = [];
+    if (relayed) {
+      let parsed: unknown;
+      try {
+        parsed = JSON.parse(upstreamText);
+      } catch {
+        for (const c of state.claims) await this.idempotency.abort(c.rkey);
+        return upstreamText; // can't safely merge a non-JSON body
+      }
+      if (!Array.isArray(parsed)) {
+        for (const c of state.claims) await this.idempotency.abort(c.rkey);
+        return upstreamText; // a single error envelope (e.g. batch-level reject) — don't reshape
+      }
+      relayedItems = parsed;
+      const byId = new Map<string, unknown>();
+      for (const item of relayedItems) {
+        if (item && typeof item === 'object') byId.set(idKey((item as { id?: unknown }).id), item);
+      }
+      for (const c of state.claims) {
+        const item = byId.get(c.idKey);
+        // Cache only a clean success — an errored or missing item must stay retryable (never cached).
+        if (item && typeof item === 'object' && (item as { error?: unknown }).error == null) {
+          await this.idempotency.complete(c.rkey, JSON.stringify(item));
+        } else {
+          await this.idempotency.abort(c.rkey);
+        }
+      }
+    }
+    return JSON.stringify([...relayedItems, ...state.shortCircuit]);
+  }
+
+  /** Parse a cached replay item back to an object; defensively wrap a non-object cache value in a
+   *  minimal JSON-RPC result under the request id (a stored value is always a response object, so
+   *  this only guards corruption). */
+  private parseReplayItem(text: string, id: unknown): unknown {
+    try {
+      const obj = JSON.parse(text);
+      if (obj && typeof obj === 'object') return obj;
+    } catch {
+      /* fall through to the defensive wrapper */
+    }
+    return { jsonrpc: '2.0', id: id ?? null, result: { isError: false } };
   }
 
   /**

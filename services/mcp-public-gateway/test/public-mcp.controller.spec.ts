@@ -4,6 +4,7 @@ import { PublicMcpController, parseBearer } from '../src/mcp/public-mcp.controll
 import { constantTimeEquals } from '../src/auth/key-resolver.js';
 import { OAuthDiscoveryController } from '../src/oauth/oauth-discovery.controller.js';
 import { resetConfigForTest } from '../src/config/config.js';
+import { Idempotency, PENDING_MARKER, type IdempotencyStore } from '../src/idempotency/idempotency-store.js';
 
 const INTERNAL = 'internal-secret-xyz';
 const TEST_KEY = 'lw_pk_testkey_abc123';
@@ -756,6 +757,176 @@ describe('PublicMcpController', () => {
     await new PublicMcpController().handle(mockReq({ headers: { authorization: 'Bearer lw_pk_sc' }, body: { jsonrpc: '2.0', method: 'tools/list', id: 1 } }), r.res);
     const names = JSON.parse(r.sentBody as string).result.tools.map((t: { name: string }) => t.name);
     expect(names).toContain('confirm_action');
+  });
+
+  // ── D-PMCP-BATCH-IDEMPOTENCY: per-item idempotency inside a JSON-RPC batch ──
+  // A FakeStore with SET-NX semantics, injected so the edge actually dedups (the default
+  // build has no REDIS_URL → idempotency disabled). Mirrors idempotency.spec's FakeStore.
+  class FakeIdemStore implements IdempotencyStore {
+    m = new Map<string, string>();
+    async claimOrLoad(key: string, pendingValue: string): Promise<{ won: true } | { won: false; value: string }> {
+      if (!this.m.has(key)) {
+        this.m.set(key, pendingValue);
+        return { won: true };
+      }
+      return { won: false, value: this.m.get(key)! };
+    }
+    async store(key: string, value: string): Promise<void> {
+      this.m.set(key, value);
+    }
+    async remove(key: string): Promise<void> {
+      this.m.delete(key);
+    }
+  }
+  const wa = (name: string, args: Record<string, unknown>, id: unknown) => ({
+    jsonrpc: '2.0',
+    method: 'tools/call',
+    params: { name, arguments: args },
+    id,
+  });
+  // A relay mock that ECHOES one response item per relayed tools/call (id preserved) — so it
+  // works for a full relay AND a reduced (partial) relay. Records the relayed bodies.
+  function idemRelayFetch(resolve: Record<string, unknown>) {
+    return jest.fn().mockImplementation((url: string, init?: { body?: string }) => {
+      if (String(url).includes('/internal/mcp-keys/resolve')) {
+        return Promise.resolve({ status: 200, json: async () => resolve, headers: { get: () => 'application/json' } });
+      }
+      const relayed = init?.body ? JSON.parse(init.body) : undefined;
+      const items = (Array.isArray(relayed) ? relayed : []).filter((m) => m?.method === 'tools/call');
+      const respArr = items.map((m) => ({ jsonrpc: '2.0', id: m.id, result: { structuredContent: { created: m.id } } }));
+      return Promise.resolve({
+        status: 200,
+        text: async () => JSON.stringify(respArr),
+        headers: { get: (h: string) => (h.toLowerCase() === 'content-type' ? 'application/json' : null) },
+      });
+    });
+  }
+  const waScopes = { user_id: 'u', key_id: 'k', scopes: ['write_auto', 'domain:book'] };
+  const relaysTo = (f: jest.Mock) => f.mock.calls.filter((c) => String(c[0]).endsWith('/mcp')).length;
+
+  it('dedups a batch: first call relays + caches each item (keys stripped), a full retry replays with NO relay', async () => {
+    setEnv();
+    const f = idemRelayFetch(waScopes);
+    (global as unknown as { fetch: jest.Mock }).fetch = f;
+    const ctrl = new PublicMcpController();
+    (ctrl as unknown as { idempotency: Idempotency }).idempotency = new Idempotency(new FakeIdemStore());
+    const body = [wa('book_create', { title: 'A', idempotency_key: 'k-a' }, 1), wa('book_create', { title: 'B', idempotency_key: 'k-b' }, 2)];
+
+    const r1 = mockRes();
+    await ctrl.handle(mockReq({ headers: { authorization: 'Bearer lw_pk_b' }, body }), r1.res);
+    expect(r1.statusCode).toBe(200);
+    const out1 = JSON.parse(r1.sentBody as string) as Array<{ id: number }>;
+    expect(out1.map((x) => x.id).sort()).toEqual([1, 2]);
+    // The relay body carried NO edge-only idempotency_key on any item (ForbidExtra safety).
+    const relay1 = f.mock.calls.find((c) => String(c[0]).endsWith('/mcp'));
+    const sent1 = JSON.parse((relay1![1] as { body: string }).body) as Array<{ params: { arguments: Record<string, unknown> } }>;
+    expect(sent1.every((m) => !('idempotency_key' in m.params.arguments))).toBe(true);
+    expect(sent1).toHaveLength(2); // first call → both items relayed
+
+    // Retry the SAME batch → both items replay from cache, nothing re-relayed.
+    const before = relaysTo(f);
+    const r2 = mockRes();
+    await ctrl.handle(mockReq({ headers: { authorization: 'Bearer lw_pk_b' }, body }), r2.res);
+    expect(relaysTo(f)).toBe(before); // NO new relay — fully served from cache
+    const out2 = JSON.parse(r2.sentBody as string) as Array<{ id: number; result: { structuredContent: { created: number } } }>;
+    expect(out2.map((x) => x.id).sort()).toEqual([1, 2]);
+    expect(out2.find((x) => x.id === 1)!.result.structuredContent.created).toBe(1); // original response replayed
+  });
+
+  it('relays ONLY the not-yet-seen item of a batch and merges the cached one back (partial dedup)', async () => {
+    setEnv();
+    const f = idemRelayFetch(waScopes);
+    (global as unknown as { fetch: jest.Mock }).fetch = f;
+    const ctrl = new PublicMcpController();
+    (ctrl as unknown as { idempotency: Idempotency }).idempotency = new Idempotency(new FakeIdemStore());
+
+    // Prime item 1 with a single-item batch.
+    await ctrl.handle(mockReq({ headers: { authorization: 'Bearer lw_pk_b' }, body: [wa('book_create', { title: 'A', idempotency_key: 'k-a' }, 1)] }), mockRes().res);
+    const before = relaysTo(f);
+
+    // Now a batch of {1 (already done), 2 (new)} → only item 2 is relayed; item 1 merges from cache.
+    const r = mockRes();
+    await ctrl.handle(
+      mockReq({ headers: { authorization: 'Bearer lw_pk_b' }, body: [wa('book_create', { title: 'A', idempotency_key: 'k-a' }, 1), wa('book_create', { title: 'B', idempotency_key: 'k-b' }, 2)] }),
+      r.res,
+    );
+    expect(relaysTo(f)).toBe(before + 1); // exactly one new relay
+    const relay2 = f.mock.calls.filter((c) => String(c[0]).endsWith('/mcp')).pop();
+    const sent = JSON.parse((relay2![1] as { body: string }).body) as Array<{ id: number }>;
+    expect(sent.map((m) => m.id)).toEqual([2]); // ONLY the new item went upstream
+    const out = JSON.parse(r.sentBody as string) as Array<{ id: number }>;
+    expect(out.map((x) => x.id).sort()).toEqual([1, 2]); // both ids present (1 from cache, 2 relayed)
+  });
+
+  it('returns an in-progress error for a concurrently in-flight batch item (pending), no relay', async () => {
+    setEnv();
+    const f = idemRelayFetch(waScopes);
+    (global as unknown as { fetch: jest.Mock }).fetch = f;
+    const ctrl = new PublicMcpController();
+    const store = new FakeIdemStore();
+    store.m.set('mcp:idem:k:book_create:k-a', PENDING_MARKER); // someone else already claimed it
+    (ctrl as unknown as { idempotency: Idempotency }).idempotency = new Idempotency(store);
+    const before = relaysTo(f);
+
+    const r = mockRes();
+    await ctrl.handle(mockReq({ headers: { authorization: 'Bearer lw_pk_b' }, body: [wa('book_create', { title: 'A', idempotency_key: 'k-a' }, 1)] }), r.res);
+    expect(relaysTo(f)).toBe(before); // the only item was pending → nothing relayed
+    const out = JSON.parse(r.sentBody as string) as Array<{ id: number; error?: { code: number } }>;
+    expect(out).toHaveLength(1);
+    expect(out[0].id).toBe(1);
+    expect(out[0].error?.code).toBe(-32030); // in-progress
+  });
+
+  it('leaves a batch with NO idempotency keys completely untouched (backward-compat with divert/annotate)', async () => {
+    setEnv();
+    // A plain read batch — no idempotency items → the relay body equals the request body.
+    const f = idemRelayFetch({ user_id: 'u', key_id: 'k', scopes: ['read', 'domain:book'] });
+    (global as unknown as { fetch: jest.Mock }).fetch = f;
+    const ctrl = new PublicMcpController();
+    (ctrl as unknown as { idempotency: Idempotency }).idempotency = new Idempotency(new FakeIdemStore());
+    const body = [
+      { jsonrpc: '2.0', method: 'tools/call', params: { name: 'book_get', arguments: { id: 'x' } }, id: 1 },
+      { jsonrpc: '2.0', method: 'tools/call', params: { name: 'book_get', arguments: { id: 'y' } }, id: 2 },
+    ];
+    const r = mockRes();
+    await ctrl.handle(mockReq({ headers: { authorization: 'Bearer lw_pk_b' }, body }), r.res);
+    const relay = f.mock.calls.find((c) => String(c[0]).endsWith('/mcp'));
+    const sent = JSON.parse((relay![1] as { body: string }).body);
+    expect(sent).toEqual(body); // relayed verbatim — no strip, no reduce
+  });
+
+  it('coexists with the write_confirm divert: idempotent create caches, the propose token is still diverted (no leak)', async () => {
+    setEnv();
+    // A default key's batch mixing a FREE write_auto create (idempotent) with a PRICED
+    // write_confirm propose. The merge must run before the divert so the token is stripped.
+    const created: unknown[] = [];
+    (global as unknown as { fetch: jest.Mock }).fetch = jest.fn().mockImplementation((url: string, init?: { body?: string }) => {
+      if (String(url).includes('/internal/mcp-keys/resolve')) {
+        return Promise.resolve({ status: 200, json: async () => ({ user_id: 'u', key_id: 'k', scopes: ['write_auto', 'domain:book', 'write_confirm', 'domain:composition'], allow_self_confirm: false }), headers: { get: () => 'application/json' } });
+      }
+      if (String(url).includes('/internal/mcp-keys/approvals')) {
+        created.push(JSON.parse(init!.body!));
+        return Promise.resolve({ status: 201, json: async () => ({ approval_id: 'appr-coex' }), headers: { get: () => 'application/json' } });
+      }
+      // relay echoes: the create (id 1) and the propose (id 2, with a token)
+      const relayed = init?.body ? JSON.parse(init.body) : [];
+      const out = (relayed as Array<{ id: unknown; params: { name: string } }>).map((m) =>
+        m.params.name === 'composition_publish'
+          ? { jsonrpc: '2.0', id: m.id, result: { structuredContent: { confirm_token: 'SECRET-TOK', domain: 'composition', title: 'Gen' } } }
+          : { jsonrpc: '2.0', id: m.id, result: { structuredContent: { created: m.id } } },
+      );
+      return Promise.resolve({ status: 200, text: async () => JSON.stringify(out), headers: { get: (h: string) => (h.toLowerCase() === 'content-type' ? 'application/json' : null) } });
+    });
+    const ctrl = new PublicMcpController();
+    (ctrl as unknown as { idempotency: Idempotency }).idempotency = new Idempotency(new FakeIdemStore());
+    const body = [wa('book_create', { title: 'A', idempotency_key: 'k-a' }, 1), { jsonrpc: '2.0', method: 'tools/call', params: { name: 'composition_publish' }, id: 2 }];
+    const r = mockRes();
+    await ctrl.handle(mockReq({ headers: { authorization: 'Bearer lw_pk_b' }, body }), r.res);
+    expect(r.sentBody as string).not.toContain('SECRET-TOK'); // token never leaks
+    const out = JSON.parse(r.sentBody as string) as Array<{ id: unknown; result: { structuredContent?: Record<string, unknown> } }>;
+    expect(out.find((x) => x.id === 1)!.result.structuredContent!.created).toBe(1); // create landed
+    expect(out.find((x) => x.id === 2)!.result.structuredContent).toEqual({ status: 'pending_human_approval', approval_id: 'appr-coex' }); // propose diverted
+    expect(created).toHaveLength(1); // exactly one approval queued
   });
 
   // ── P5 OAuth 2.1 (slice 1) — discovery + local token verify ────────────────

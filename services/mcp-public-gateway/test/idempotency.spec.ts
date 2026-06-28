@@ -5,10 +5,13 @@ import {
 } from '../src/idempotency/idempotency-store.js';
 import {
   advertiseIdempotencyKeyInList,
+  batchIdempotentItems,
   idempotencyInProgressError,
+  idempotencyInProgressErrorForId,
   idempotencyRedisKey,
   idempotentWriteCallInfo,
   stripIdempotencyKey,
+  stripIdempotencyKeyFromBatch,
 } from '../src/idempotency/idempotency.js';
 
 // A fake store mirroring SET-NX semantics we can drive deterministically.
@@ -125,6 +128,62 @@ describe('idempotencyRedisKey + idempotencyInProgressError', () => {
     expect(err.error.code).toBe(-32030);
     expect(err.error.message).toMatch(/in progress/i);
     expect(err.id).toBe(42);
+  });
+
+  it('idempotencyInProgressErrorForId carries the explicit id (the batch per-item form)', () => {
+    const err = idempotencyInProgressErrorForId('item-9') as { error: { code: number }; id: unknown };
+    expect(err.error.code).toBe(-32030);
+    expect(err.id).toBe('item-9');
+    expect((idempotencyInProgressErrorForId(undefined) as { id: unknown }).id).toBeNull();
+  });
+});
+
+describe('batchIdempotentItems (D-PMCP-BATCH-IDEMPOTENCY)', () => {
+  it('returns one descriptor per write_auto element carrying an idempotency_key (id + tool + key)', () => {
+    const body = [
+      call('book_create', { title: 'A', idempotency_key: 'k-a' }, 1),
+      call('book_get', { id: 'x' }, 2), // read — ignored
+      call('composition_create_work', { title: 'W', idempotency_key: 'k-w' }, 3),
+      call('book_create', { title: 'NoKey' }, 4), // no key — ignored
+    ];
+    expect(batchIdempotentItems(body)).toEqual([
+      { id: 1, toolName: 'book_create', idemKey: 'k-a' },
+      { id: 3, toolName: 'composition_create_work', idemKey: 'k-w' },
+    ]);
+  });
+
+  it('keeps an element with an UNUSABLE key (idemKey=null) — it must still be stripped, not deduped', () => {
+    const body = [call('book_create', { idempotency_key: '' }, 7)];
+    expect(batchIdempotentItems(body)).toEqual([{ id: 7, toolName: 'book_create', idemKey: null }]);
+  });
+
+  it('returns [] for a non-array body, a write_confirm/read batch, or a batch with no keys', () => {
+    expect(batchIdempotentItems(call('book_create', { idempotency_key: 'k' }))).toEqual([]); // single
+    expect(batchIdempotentItems([call('translation_start_job', { idempotency_key: 'k' }, 1)])).toEqual([]); // write_confirm
+    expect(batchIdempotentItems([call('book_get', { idempotency_key: 'k' }, 1)])).toEqual([]); // read
+    expect(batchIdempotentItems([call('book_create', { title: 'x' }, 1)])).toEqual([]); // no key
+    expect(batchIdempotentItems(null)).toEqual([]);
+  });
+});
+
+describe('stripIdempotencyKeyFromBatch', () => {
+  it('removes idempotency_key from every element that has one, preserving the rest', () => {
+    const body = [
+      call('book_create', { title: 'A', idempotency_key: 'k-a' }, 1),
+      call('book_get', { id: 'x' }, 2),
+    ];
+    const out = stripIdempotencyKeyFromBatch(body) as Array<{ params: { arguments: Record<string, unknown> } }>;
+    expect('idempotency_key' in out[0].params.arguments).toBe(false);
+    expect(out[0].params.arguments.title).toBe('A');
+    expect(out[1].params.arguments).toEqual({ id: 'x' }); // untouched element
+  });
+
+  it('does not mutate the original batch and is a no-op for a non-array body', () => {
+    const body = [call('book_create', { idempotency_key: 'k' }, 1)];
+    stripIdempotencyKeyFromBatch(body);
+    expect((body[0].params.arguments as Record<string, unknown>).idempotency_key).toBe('k');
+    const single = call('book_create', { idempotency_key: 'k' });
+    expect(stripIdempotencyKeyFromBatch(single)).toBe(single);
   });
 });
 
