@@ -1,4 +1,23 @@
-# ▶▶ NEXT SESSION STARTS HERE — **Critical UX bug track** · branch `fix/critical-ux-bugs` · HEAD `543ae7f3`+ · 2026-06-29
+# ▶▶ NEXT SESSION STARTS HERE — **Critical UX bug track** · branch `fix/critical-ux-bugs` · HEAD `4dfbfd03`(merge)+ · 2026-06-29
+
+> **✅ MERGED origin/main (public-MCP gateway PR #48, 61 commits) → `4dfbfd03`.** 8 conflicts, all
+> in the usage/billing pipeline, resolved to the UNION (public-MCP `mcp_key_id` attribution + #32
+> `request_status`/payload audit coexist on every usage_outbox row). All affected suites green.
+
+> **🚧 IN FLIGHT — public-MCP lazy tool-loading (L, session-scoped state machine).** The public
+> edge dumps the full (permission-scoped) tool catalogue at an external agent → context bloat. User:
+> minimum tool loads, default-on, **state machine BELONGS TO THE SESSION** (ChatGPT/Anthropic/LM
+> Studio style — progressive disclosure, max control). The gateway already mints a stable session
+> per key (`session_id = key_id`), so the activated set is Redis-backed per session. Plan:
+> [docs/plans/2026-06-29-public-mcp-lazy-tool-loading.md].
+> **✅ M1 DONE (this commit):** the SHARED `find_tools` in ai-gateway (`federation/find-tools.ts` —
+> ported the proven `tool_discovery.py` search to TS; `handleListTools` prepends the find_tools
+> meta-tool; `handleCallTool` intercepts find_tools LOCALLY, no provider route). Tests: find-tools 11
+> + handlers 13 = 24 green; nest build clean.
+> **▶ NEXT — M2:** mcp-public-gateway per-SESSION state machine — Redis `tool-activation-store`
+> (keyed by session_id=key_id); `tools/list` = edge core (find_tools+confirm_action) ∪ the session's
+> activated set ∩ key scope; `find_tools` call → relay to ai-gateway search → intersect with scope →
+> activate into the session set → return. Anti-oracle + gateRequestBody unchanged (no scope widening).
 
 > **✅ SHIPPED + LIVE-VERIFIED — #26/#7 glossary `summarize` (merge-rewrite) mode (L, 3 milestones).** User
 > approved a NEW merge mode distinct from append: keep the lossless RAW item layer (provenance)

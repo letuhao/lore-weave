@@ -1,5 +1,6 @@
 import { Logger } from '@nestjs/common';
 import type { Envelope, FederationService } from '../federation/federation.service.js';
+import { FIND_TOOLS_NAME, FIND_TOOLS_TOOL, findToolsResult } from '../federation/find-tools.js';
 
 const log = new Logger('McpProxy');
 
@@ -34,9 +35,34 @@ export function handleListTools(federation: FederationService): {
     .providerAvailability()
     .filter((p) => !p.available)
     .map((p) => p.name);
+  // Prepend the consumer-local `find_tools` meta-tool so a minimal surface (the public edge) can
+  // advertise it + relay its calls back here. chat-service already carries find_tools as core, so
+  // the duplicate is deduped by name (its active set is name-keyed) + excluded from its own search.
   return {
-    tools: federation.catalog() as any[],
+    tools: [FIND_TOOLS_TOOL, ...(federation.catalog() as any[])],
     _meta: { unavailable_providers: unavailable, partial: federation.isPartial() },
+  };
+}
+
+/**
+ * Handle a local `find_tools` call (the lazy-discovery meta-tool). It is consumer-local (OD-1):
+ * it searches ONLY the federation catalogue, never a provider — so it needs no envelope/ownership
+ * (none of the caller's data is touched). Returns a standard MCP CallToolResult; the matched names
+ * are carried in `structuredContent.tools` for the agent to call next.
+ */
+export function handleFindTools(federation: FederationService, args: Record<string, unknown>): any {
+  const intent = typeof args?.intent === 'string' ? args.intent : '';
+  const rawLimit = typeof args?.limit === 'number' ? args.limit : FIND_TOOLS_TOOL.inputSchema.properties.limit.default;
+  const limit = Math.max(1, Math.min(25, rawLimit));
+  const unavailable = federation
+    .providerAvailability()
+    .filter((p) => !p.available)
+    .map((p) => p.name);
+  // Exclude find_tools itself so a search never re-suggests the meta-tool.
+  const { payload } = findToolsResult(federation.catalog(), intent, limit, new Set([FIND_TOOLS_NAME]), unavailable);
+  return {
+    content: [{ type: 'text', text: JSON.stringify(payload) }],
+    structuredContent: payload,
   };
 }
 
@@ -53,6 +79,12 @@ export async function handleCallTool(
   headers: Headers,
   meta?: unknown,
 ): Promise<any> {
+  // find_tools is consumer-local — handle it HERE without a downstream provider (no provider owns
+  // it; routing it to executeTool would throw "unknown tool"). No envelope needed (OD-1).
+  if (name === FIND_TOOLS_NAME) {
+    return handleFindTools(federation, args);
+  }
+
   const env = extractEnvelope(headers);
   // A CallTool with no caller identity is almost always a bug. Per-tool identity
   // enforcement stays on the PROVIDER (SEC-2 — and some tools, e.g.
