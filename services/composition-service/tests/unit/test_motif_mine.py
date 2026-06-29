@@ -57,8 +57,15 @@ class _FakeLLM:
 
 
 class _FakeMotifRepo:
-    def __init__(self):
+    def __init__(self, catalog=None):
         self.created: list[dict] = []
+        # the user's visible motif catalog the tag-beats pre-pass classifies against
+        self._catalog = catalog if catalog is not None else [
+            Motif(id=uuid.uuid4(), owner_user_id=None, code="cultivation.face_slap",
+                  name="Face-Slap Reversal", summary="a humiliation repaid"),
+            Motif(id=uuid.uuid4(), owner_user_id=None, code="revenge.betrayal_to_exile",
+                  name="Betrayal to Exile", summary="cast out by an ally"),
+        ]
 
     async def create(self, user_id, args, *, source="authored",
                      imported_derived=False, status="active",
@@ -71,19 +78,35 @@ class _FakeMotifRepo:
                      name=args.name, source=source, status=status,
                      judge_score=judge_score, mining_support=mining_support)
 
+    async def list_for_caller(self, caller_id, *, scope="all", status="active",
+                              limit=100, **kw):
+        return list(self._catalog)
+
 
 class _FakeKnowledge:
-    """Returns canned raw beat sequences (or [] for the deferred-extractor degrade)."""
+    """Returns canned raw beat sequences (or [] for the cold/empty-corpus degrade) and
+    records the tag-beats pre-pass (D-W8-MOTIF-BEAT-LLM-EXTRACTOR)."""
 
     def __init__(self, sequences):
         self._sequences = sequences
         self.calls: list[dict] = []
+        self.tag_calls: list[dict] = []
 
     async def get_motif_beat_sequences(self, user_id, *, book_id=None, corpus=False,
                                        language=None):
         self.calls.append({"user_id": str(user_id), "book_id": book_id,
-                           "corpus": corpus, "language": language})
+                           "corpus": corpus, "language": language,
+                           # capture ordering: how many tag calls preceded this fetch
+                           "tagged_before": len(self.tag_calls)})
         return list(self._sequences)
+
+    async def tag_beats(self, user_id, *, book_id=None, corpus=False, motifs,
+                        model_source, model_ref):
+        self.tag_calls.append({"user_id": str(user_id), "book_id": book_id,
+                               "corpus": corpus, "motifs": motifs,
+                               "model_source": model_source, "model_ref": model_ref})
+        return {"tagged": len(motifs), "events_seen": 1,
+                "motifs_assigned": {motifs[0]["code"]: 1} if motifs else {}}
 
 
 def _seq(*beats):
@@ -279,3 +302,83 @@ async def test_run_mine_motifs_requires_book_id_for_book_scope():
             knowledge=_FakeKnowledge([]),
             user_id=USER, input={"worker_op": "mine_motifs", "scope": "book"},
         )
+
+
+# ── D-W8-MOTIF-BEAT-LLM-EXTRACTOR — the tag-beats pre-pass in run_mine_motifs ──────────
+
+
+async def test_run_mine_motifs_triggers_tag_beats_with_visible_catalog_first():
+    """The worker tags the :Event corpus into the user's VISIBLE motif catalog (BYOK model)
+    BEFORE fetching beat sequences — so motif-beats emits generic axes for PrefixSpan."""
+    from unittest.mock import patch
+    book = uuid.uuid4()
+    knowledge = _FakeKnowledge([_seq("a", "b"), _seq("a", "b")])
+    fake_repo = _FakeMotifRepo()
+    with patch("app.db.repositories.motif_repo.MotifRepo", return_value=fake_repo):
+        await mm.run_mine_motifs(
+            pool=None, llm=_FakeLLM(abstraction=_abstraction(), judge_score=0.9),
+            knowledge=knowledge, user_id=USER,
+            input={"worker_op": "mine_motifs", "scope": "book", "book_id": str(book),
+                   "model_ref": "m-ref", "model_source": "user_model", "min_support": 2},
+        )
+    # tag-beats ran exactly once, with the visible catalog + the BYOK model, scoped to the book
+    assert len(knowledge.tag_calls) == 1
+    tc = knowledge.tag_calls[0]
+    assert tc["model_ref"] == "m-ref" and tc["corpus"] is False and tc["book_id"] == book
+    codes = {m["code"] for m in tc["motifs"]}
+    assert "cultivation.face_slap" in codes and "revenge.betrayal_to_exile" in codes
+    # ORDERING: the sequence fetch saw the tag pre-pass already done (tagged_before == 1)
+    assert knowledge.calls and knowledge.calls[0]["tagged_before"] == 1
+
+
+async def test_run_mine_corpus_tags_whole_corpus():
+    """scope='corpus' tags the whole corpus (corpus=True), not a single book."""
+    from unittest.mock import patch
+    knowledge = _FakeKnowledge([])
+    with patch("app.db.repositories.motif_repo.MotifRepo", return_value=_FakeMotifRepo()):
+        await mm.run_mine_motifs(
+            pool=None, llm=_FakeLLM(abstraction=_abstraction(), judge_score=0.9),
+            knowledge=knowledge, user_id=USER,
+            input={"worker_op": "mine_motifs", "scope": "corpus",
+                   "model_ref": "m-ref", "model_source": "user_model"},
+        )
+    assert knowledge.tag_calls and knowledge.tag_calls[0]["corpus"] is True
+    assert knowledge.tag_calls[0]["book_id"] is None
+
+
+async def test_run_mine_skips_tag_beats_without_a_model(monkeypatch):
+    """No resolvable model → NO tagging (don't spend on a no-op), and mine_motifs then fails
+    closed on the same empty model_ref (provider-gateway invariant)."""
+    from unittest.mock import patch
+    monkeypatch.setattr(mm.settings, "motif_deconstruct_model_ref", "", raising=False)
+    knowledge = _FakeKnowledge([])
+    with patch("app.db.repositories.motif_repo.MotifRepo", return_value=_FakeMotifRepo()):
+        with pytest.raises(ValueError, match="model_ref"):
+            await mm.run_mine_motifs(
+                pool=None, llm=_FakeLLM(abstraction=_abstraction(), judge_score=0.9),
+                knowledge=knowledge, user_id=USER,
+                input={"worker_op": "mine_motifs", "scope": "book",
+                       "book_id": str(uuid.uuid4())},  # no model_ref in input
+            )
+    assert knowledge.tag_calls == []  # never tagged without a model
+
+
+async def test_run_mine_tag_beats_failure_degrades_to_mining(monkeypatch):
+    """A tag-beats outage must NOT fail the mine — it falls back to the Option-A axes."""
+    from unittest.mock import patch
+    book = uuid.uuid4()
+    knowledge = _FakeKnowledge([_seq("a", "b"), _seq("a", "b")])
+
+    async def _boom(*a, **k):
+        raise RuntimeError("knowledge down")
+    knowledge.tag_beats = _boom  # type: ignore[assignment]
+
+    with patch("app.db.repositories.motif_repo.MotifRepo", return_value=_FakeMotifRepo()):
+        result = await mm.run_mine_motifs(
+            pool=None, llm=_FakeLLM(abstraction=_abstraction(), judge_score=0.9),
+            knowledge=knowledge, user_id=USER,
+            input={"worker_op": "mine_motifs", "scope": "book", "book_id": str(book),
+                   "model_ref": "m-ref", "model_source": "user_model", "min_support": 2},
+        )
+    # mining still completed (the sequences were fetched + mined despite the tagging error)
+    assert result["mined"] >= 1 and knowledge.calls

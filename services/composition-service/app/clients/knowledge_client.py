@@ -226,15 +226,15 @@ class KnowledgeClient:
         books); `language` narrows the axis. The user scope is carried on the call
         (tenancy — the server filters by user_id; a cross-user book returns []).
 
-        DEFERRED — D-W8-MOTIF-BEAT-EXTRACTOR: the knowledge-service SERVER route
-        (`POST /internal/extraction/motif-beats`) — a 5th map-extractor in
-        loreweave_extraction (§12.4) emitting `{beat, thread, tension, role_mentions}`
-        per scene/chapter, keyed by `motif_mine_extractor_version` — does NOT exist
-        yet (it needs the running service + a corpus + an LLM). Until it lands this
-        thin client returns [] on a 404/501/transport-error so the miner DEGRADES
-        cleanly (`mined: 0, reason: 'beat_extractor_unavailable'`) instead of
-        crashing — the whole mining path is wired + unit-testable now, and flips
-        live the moment the extractor ships (no composition-side change).
+        SHIPPED — the knowledge-service SERVER route (`POST /internal/extraction/
+        motif-beats`, commit 73004c33) derives these sequences deterministically from
+        the extracted `:Event` timeline (Option A). v2 (D-W8-MOTIF-BEAT-LLM-EXTRACTOR):
+        when the mine worker has first run `tag_beats`, each step's beat/thread axes are
+        the GENERIC `namespace:local` of the event's `mined_motif_code`, so corpus
+        PrefixSpan finds reusable motif-sequences. This thin client still returns [] on a
+        404/501/transport-error or empty corpus so the miner DEGRADES cleanly
+        (`mined: 0, reason: 'beat_extractor_unavailable'`) when no `:Event` corpus exists
+        for the book yet (a cold book that was never analysis-extracted).
         """
         url = f"{self._base_url}/internal/extraction/motif-beats"
         payload: dict[str, Any] = {"user_id": str(user_id)}
@@ -311,6 +311,42 @@ class KnowledgeClient:
             return {"tagged": 0, "events_seen": 0, "motifs_assigned": {}, "status": "unavailable"}
         if resp.status_code != 200:
             logger.warning("knowledge tag-motifs → %d", resp.status_code)
+            return {"tagged": 0, "events_seen": 0, "motifs_assigned": {}, "status": "unavailable"}
+        try:
+            return resp.json()
+        except (ValueError, AttributeError):
+            return {"tagged": 0, "events_seen": 0, "motifs_assigned": {}, "status": "unavailable"}
+
+    async def tag_beats(
+        self, user_id: UUID, *, book_id: UUID | None = None, corpus: bool = False,
+        motifs: list[dict[str, Any]], model_source: str, model_ref: str,
+    ) -> dict[str, Any]:
+        """D-W8-MOTIF-BEAT-LLM-EXTRACTOR — classify the book's (or whole corpus's) :Event
+        timeline into the user's VISIBLE motif catalog (by code) and persist it, so a
+        subsequent motif-beats read emits GENERIC beat/thread axes (namespace:local) and corpus
+        PrefixSpan mines reusable motif-sequences instead of one-off concrete titles. The mine
+        worker calls this BEFORE get_motif_beat_sequences, passing the user's BYOK model. ADVISORY:
+        returns ``{tagged, events_seen, motifs_assigned}`` or a degrade
+        ``{tagged:0, …, status:'unavailable'}`` on any outage/non-200 (mining then falls back to
+        the deterministic Option-A axes — fewer patterns, never a crash)."""
+        url = f"{self._base_url}/internal/extraction/tag-beats"
+        payload: dict[str, Any] = {"user_id": str(user_id), "motifs": motifs,
+                                   "model_source": model_source, "model_ref": model_ref}
+        if corpus:
+            payload["corpus"] = True
+        elif book_id is not None:
+            payload["book_id"] = str(book_id)
+        try:
+            resp = await self._http.post(
+                url, json=payload, headers=self._internal_headers(),
+                # LLM tagging over a whole book/corpus is slow — use the extract lens.
+                timeout=httpx.Timeout(self._extract_timeout_s),
+            )
+        except httpx.HTTPError as exc:
+            logger.warning("knowledge tag-beats unavailable: %s", exc)
+            return {"tagged": 0, "events_seen": 0, "motifs_assigned": {}, "status": "unavailable"}
+        if resp.status_code != 200:
+            logger.warning("knowledge tag-beats → %d", resp.status_code)
             return {"tagged": 0, "events_seen": 0, "motifs_assigned": {}, "status": "unavailable"}
         try:
             return resp.json()

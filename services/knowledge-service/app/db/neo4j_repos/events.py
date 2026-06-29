@@ -158,6 +158,14 @@ class Event(BaseModel):
     # realizes, assigned by the motif-tag classifier. None until tagged; motif_beat emits it
     # so deep arc-conformance reconstructs the realized motif order for the succession diff.
     realized_motif_code: str | None = None
+    # D-W8-MOTIF-BEAT-LLM-EXTRACTOR — which catalog motif (by code) this event most embodies,
+    # assigned by the tag-beats classifier against the user's VISIBLE motif catalog (system +
+    # user motifs), independent of any arc. None until tagged. DISTINCT from realized_motif_code
+    # (that one is arc-scoped, vs the arc's placements) so mining and arc-conformance never
+    # clobber each other's tags. The motif_beat producer emits it as the generic beat/thread
+    # axes so corpus PrefixSpan mines reusable motif-SEQUENCES (arc skeletons), not one-off
+    # concrete titles. "" / null is the Option-A fallback (title/chapter_id).
+    mined_motif_code: str | None = None
     participants: list[str] = Field(default_factory=list)
     # KG-TL Option A (D-KG-TL-PARTICIPANT-ANCHOR) — stored anchor: the glossary
     # ``entity_id`` per participant slot, same length+order as ``participants``,
@@ -903,6 +911,42 @@ async def set_realized_motifs(
         return 0
     result = await run_write(
         session, _SET_REALIZED_MOTIFS_CYPHER, user_id=user_id, rows=rows,
+    )
+    record = await result.single()
+    return int(record["tagged"]) if record else 0
+
+
+# Clear-aware (D-THREAD-TAG-RETAG-STALE): a null ``code`` REMOVES the property so a re-mine
+# with a changed catalog / "none" flip nulls a stale mined_motif_code.
+_SET_MINED_MOTIFS_CYPHER = """
+UNWIND $rows AS row
+MATCH (e:Event {id: row.id})
+WHERE e.user_id = $user_id
+SET e.mined_motif_code = row.code, e.updated_at = datetime()
+RETURN count(CASE WHEN row.code IS NOT NULL THEN e END) AS tagged
+"""
+
+
+async def set_mined_motif_codes(
+    session: CypherSession,
+    *,
+    user_id: str,
+    assignments: dict[str, str],
+    event_ids: set[str] | None = None,
+) -> int:
+    """Persist the tag-beats classifier's verdicts onto ``:Event.mined_motif_code``
+    (D-W8-MOTIF-BEAT-LLM-EXTRACTOR). ``assignments`` is ``{event_id: motif_code}`` against the
+    user's VISIBLE motif catalog. Tenant-scoped on ``e.user_id`` (a foreign id matches
+    nothing). Returns the count tagged.
+
+    Pass ``event_ids`` (the full re-tagged scope) to also CLEAR a stale code on any event in
+    that scope the classifier did not assign (D-THREAD-TAG-RETAG-STALE) — so a re-mine after
+    the catalog changed doesn't leave orphaned generic labels."""
+    rows = [{"id": r["id"], "code": r["v"]} for r in _retag_rows(assignments, event_ids)]
+    if not rows:
+        return 0
+    result = await run_write(
+        session, _SET_MINED_MOTIFS_CYPHER, user_id=user_id, rows=rows,
     )
     record = await result.single()
     return int(record["tagged"]) if record else 0

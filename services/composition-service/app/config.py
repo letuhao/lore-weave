@@ -180,7 +180,11 @@ class Settings(BaseSettings):
     conformance_run_estimate_usd: float = 0.30      # W5 — arc/chapter extract-diff $ estimate
     # W8 mining (P3): the motif_beat extractor version (knowledge-service cross-service
     # contract) + default min support before a beat-pattern becomes a draft motif.
-    motif_mine_extractor_version: str = "motif_beat@v1"
+    # v2 (D-W8-MOTIF-BEAT-LLM-EXTRACTOR): the mine worker runs tag-beats first, so beat/thread
+    # axes are the GENERIC namespace:local of each event's mined_motif_code (corpus-reusable)
+    # rather than the Option-A title/chapter_id. Backward-compatible: an untagged event still
+    # falls back to Option A, so a v2 reader over a v1/cold corpus just mines fewer patterns.
+    motif_mine_extractor_version: str = "motif_beat@v2"
     motif_mine_min_support: int = 3
     # W9 import/deconstruct (§12.3/§12.4): the LLM-direct deconstruct model. EMPTY by
     # default (NO hardcoded model name — provider-gateway invariant); resolved from the

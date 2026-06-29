@@ -13,12 +13,15 @@ to a beat step:
 
   * **beat**          — the event's ``title`` (the narrative step label; the
                         miner abstracts these into ``(thread:beat)`` shapes).
+                        **v2 (D-W8-MOTIF-BEAT-LLM-EXTRACTOR):** once tag-beats has
+                        stamped a ``mined_motif_code``, the beat/thread axes go
+                        GENERIC (``local``/``namespace`` of the code) so corpus
+                        PrefixSpan mines reusable shapes — see :func:`_beat_axes`.
   * **thread**        — the event's ``chapter_id`` (the coherent grouping the
-                        event belongs to). Option A has no causal/thread edges
-                        (spec R1.2 F-1: there are NO ``:CAUSES`` edges, only
-                        scalar order), so chapter is the available thread proxy;
-                        a real per-thread label is the LLM-extractor follow-up
-                        (D-W8-MOTIF-BEAT-LLM-EXTRACTOR).
+                        event belongs to) on the Option-A path, OR the catalog
+                        motif's namespace once tag-beats has run. Option A has no
+                        causal/thread edges (spec R1.2 F-1: NO ``:CAUSES`` edges,
+                        only scalar order), so chapter is the cold-start proxy.
   * **tension**       — a 1..5 band derived from the event's salience signals
                         (the same ``importance`` projection the timeline rail
                         uses: participant breadth + confidence + re-mention
@@ -82,20 +85,43 @@ def _tension_band(event: Event) -> int:
     return 1
 
 
+def _beat_axes(event: Event) -> tuple[str, str]:
+    """Resolve the ``(beat, thread)`` axes for one event — the symbol PrefixSpan mines on.
+
+    **v2 (D-W8-MOTIF-BEAT-LLM-EXTRACTOR):** when the tag-beats classifier has stamped a
+    ``mined_motif_code`` (``namespace.local``, e.g. ``cultivation.face_slap``) the axes go
+    GENERIC — ``beat = local`` (``face_slap``), ``thread = namespace`` (``cultivation``) —
+    so the consumer symbol ``thread:beat`` (``cultivation:face_slap``) REPEATS across stories
+    and corpus PrefixSpan finds reusable motif-sequences (arc skeletons).
+
+    **v1 (Option A) fallback:** an untagged event (no mining run, or the classifier returned
+    "none") keeps the deterministic axes — ``beat = title``, ``thread = chapter_id`` — so a
+    cold/partly-tagged corpus still contributes its concrete sequence (it just yields fewer
+    frequent patterns). A code with no ``.`` is treated as all-local with an empty thread.
+    """
+    code = (event.mined_motif_code or "").strip()
+    if code:
+        namespace, sep, local = code.partition(".")
+        if sep:
+            return (local or code), namespace
+        return code, ""
+    return event.title, (event.chapter_id or "")
+
+
 def _event_to_beat_step(event: Event) -> dict:
     """Project one ``:Event`` into the frozen beat-step shape
     ``{beat, thread, tension, role_mentions}`` the composition client expects.
 
-    ``thread`` stays the ``chapter_id`` grouping (the Option-A proxy — the miner's
-    partition axis AND the chapter key deep arc-conformance pacing groups on); ``""`` when
-    an event has no chapter (chat/global). ``narrative_thread`` is the ADDITIVE
-    classifier-assigned real thread (D-W10-ARC-CONFORMANCE-THREAD-TAG — combat/romance/…),
-    ``""`` until tagged — deep arc-conformance reads it for thread-progression while pacing
-    keeps using the chapter axis. ``role_mentions`` is always a list.
+    ``beat``/``thread`` come from :func:`_beat_axes` — GENERIC (``namespace``/``local`` of the
+    tag-beats ``mined_motif_code``) when mined, else the Option-A ``title``/``chapter_id``.
+    ``narrative_thread`` is the ADDITIVE arc-scoped thread (D-W10-ARC-CONFORMANCE-THREAD-TAG —
+    combat/romance/…), ``""`` until tagged — deep arc-conformance reads it for thread-progression
+    while mining uses the generic axes. ``role_mentions`` is always a list.
     """
+    beat, thread = _beat_axes(event)
     return {
-        "beat": event.title,
-        "thread": event.chapter_id or "",
+        "beat": beat,
+        "thread": thread,
         "narrative_thread": event.narrative_thread or "",
         # the arc-placement motif this event realizes (D-W10-…-SUCCESSION), "" until tagged.
         "realized_motif_code": event.realized_motif_code or "",

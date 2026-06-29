@@ -20,12 +20,18 @@ and ``user_id`` comes off the job row. The result dict is written to
 The compute (W8), structured as a PURE orchestration with injected
 knowledge/llm/repo (unit-testable with FAKES — the W9 precedent):
 
+  0. **Tag-beats pre-pass (v2, D-W8-MOTIF-BEAT-LLM-EXTRACTOR):** ``run_mine_motifs`` first
+     calls ``knowledge.tag_beats`` over the book/corpus with the user's VISIBLE motif catalog
+     (system + own) + the BYOK model, so the :Event timeline carries ``mined_motif_code`` and
+     the beat-source emits GENERIC ``namespace:local`` axes (corpus-reusable). Best-effort:
+     skipped without a model; any tagging error → the Option-A axes (fewer patterns, no crash).
   1. **Beat-sequence source (cross-service):** ``knowledge.get_motif_beat_sequences``
      returns ``event_order``-ordered beat sequences (each a list of
      ``{beat, thread, tension, role_mentions}``). The knowledge-service SERVER
-     ``motif_beat`` extractor is DEFERRED (``D-W8-MOTIF-BEAT-EXTRACTOR``); the client
-     returns ``[]`` until it lands, so the path DEGRADES cleanly
-     (``mined: 0, reason: 'beat_extractor_unavailable'``) — wired + testable now.
+     ``motif_beat`` extractor (``POST /internal/extraction/motif-beats``, commit 73004c33)
+     SHIPPED; the client returns ``[]`` only for a cold/empty corpus, so the path still
+     DEGRADES cleanly (``mined: 0, reason: 'beat_extractor_unavailable'``) when a book was
+     never analysis-extracted.
   2. **PrefixSpan mining:** mine frequent ordered beat-subsequences with support ≥
      ``min_support``. Each frequent pattern (+ its ``mining_support`` count) is a
      candidate motif. ``prefixspan`` is a pure, unit-tested function.
@@ -45,17 +51,13 @@ from the job input or the platform default; fails closed if neither yields a ref
 beat source goes through the knowledge client, never a direct DB read of
 loreweave_extraction (the contract §3 seam).
 
-DEFERRED:
-  - ``D-W8-MOTIF-BEAT-EXTRACTOR`` — the knowledge-service SERVER ``motif_beat``
-    extractor (a 5th map-extractor in loreweave_extraction, §12.4): per scene/chapter
-    emit ``{beat, thread, tension, role_mentions}``, keyed by
-    ``motif_mine_extractor_version`` (``motif_beat@v1``). Needs the running service +
-    a corpus + an LLM. Contract spelled out on
-    ``KnowledgeClient.get_motif_beat_sequences``; the route is
-    ``POST /internal/extraction/motif-beats``.
-  - ``D-W8-MINE-LIVE-SMOKE`` — the REAL end-to-end mine→draft→promote→reuse live-smoke
-    (R-NODE-P3): needs the extractor above + lm_studio + the platform embedding
-    credential.
+SHIPPED:
+  - ``D-W8-MOTIF-BEAT-EXTRACTOR`` (commit 73004c33) — the knowledge-service ``motif_beat``
+    deriver (Option A: deterministic, rides the extracted :Event timeline).
+  - ``D-W8-MOTIF-BEAT-LLM-EXTRACTOR`` — the ``tag-beats`` classifier (catalog → ``mined_motif_code``)
+    that promotes the beat/thread axes to generic ``namespace:local`` (the tag-beats pre-pass
+    above + ``motif_beat@v2``). Live-smoked over a real 106-event corpus (22 events → 7 codes).
+  - ``D-W8-MINE-LIVE-SMOKE`` (commit f890da77) — the cross-service mine→draft live-smoke.
 
 W2-F0 FREEZE: this module is the SOLE worker-owned entrypoint for mining — W8 fills
 the body. The worker-dispatch seam (``constants.py`` + ``job_consumer.py``) is frozen
@@ -90,6 +92,13 @@ __all__ = [
 
 _VALID_ACTANTS = {"subject", "object", "sender", "receiver", "helper", "opponent"}
 _VALID_KINDS = {"sequence", "situation", "hook", "emotion_arc", "trope", "pattern", "scheme"}
+
+# D-W8-MOTIF-BEAT-LLM-EXTRACTOR — how many of the user's visible motifs form the tag-beats
+# vocabulary. The whole seeded system catalog (~60) + a user's own motifs fits comfortably in
+# the classifier prompt (the engine lists code+name+summary per code); cap so a power user with
+# hundreds of motifs can't blow the context. System rows sort first (NULLS FIRST), so the cap
+# keeps the canonical packs even when truncating a large personal library.
+_MINE_CATALOG_LIMIT = 200
 
 
 # ── beat-symbol encoding (the PrefixSpan alphabet) ───────────────────────────────────
@@ -499,10 +508,35 @@ async def run_mine_motifs(
 
     from app.db.repositories.motif_repo import MotifRepo
 
+    motif_repo = MotifRepo(pool)
+
+    # D-W8-MOTIF-BEAT-LLM-EXTRACTOR — tag the :Event corpus into the user's visible motif
+    # catalog FIRST (operation=chat via the BYOK model), so motif-beats emits GENERIC
+    # namespace:local axes and PrefixSpan mines reusable motif-sequences rather than one-off
+    # concrete titles. ADVISORY + best-effort: skipped when no model resolved (mine_motifs then
+    # fails closed on the same empty model_ref), and any tagging error degrades to the Option-A
+    # axes — never breaks the mine. Only the catalog the user can actually see is the vocab
+    # (system + their own motifs); a cross-user motif can never enter it.
+    if model_ref:
+        try:
+            catalog = await motif_repo.list_for_caller(
+                UUID(user_id), scope="all", status="active", limit=_MINE_CATALOG_LIMIT,
+            )
+            vocab = [{"code": m.code, "name": m.name, "summary": m.summary} for m in catalog]
+            if vocab:
+                result = await knowledge.tag_beats(
+                    UUID(user_id), book_id=book_id, corpus=(scope == "corpus"),
+                    motifs=vocab, model_source=model_source, model_ref=model_ref,
+                )
+                logger.info("mine_motifs: tag-beats over %d-motif catalog → %s",
+                            len(vocab), result.get("tagged") if isinstance(result, dict) else "?")
+        except Exception as exc:  # advisory — tagging never fails the mine (Option-A fallback)
+            logger.warning("mine_motifs: tag-beats pre-pass failed (Option-A fallback): %r", exc)
+
     return await mine_motifs(
         knowledge=knowledge,
         llm=llm,
-        motif_repo=MotifRepo(pool),
+        motif_repo=motif_repo,
         user_id=user_id,
         scope=scope,
         book_id=book_id,

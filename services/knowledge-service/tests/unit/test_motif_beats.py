@@ -139,6 +139,7 @@ def test_route_rejects_missing_user_id():
 def _event(
     title, *, chapter_id="ch-1", participants=None, confidence=0.0,
     mention_count=0, narrative_thread=None, realized_motif_code=None,
+    mined_motif_code=None,
 ):
     """A minimal :Event projection. `importance` is a computed_field on the real
     Event, so we replicate its derivation here for the fake."""
@@ -157,6 +158,7 @@ def _event(
         chapter_id=chapter_id,
         narrative_thread=narrative_thread,
         realized_motif_code=realized_motif_code,
+        mined_motif_code=mined_motif_code,
         participants=participants,
         confidence=confidence,
         mention_count=mention_count,
@@ -216,6 +218,37 @@ def test_event_to_beat_step_shape():
 def test_event_to_beat_step_threadless_event_uses_empty_string():
     step = deriver_mod._event_to_beat_step(_event("global", chapter_id=None))
     assert step["thread"] == ""  # never null — miner can still partition
+
+
+# ── deriver v2 (D-W8-MOTIF-BEAT-LLM-EXTRACTOR): generic axes from mined_motif_code ──────
+
+
+def test_beat_axes_generic_when_mined_motif_code_present():
+    """v2: a tag-beats-stamped event yields the GENERIC namespace:local axes (so the
+    consumer symbol repeats across the corpus), NOT the concrete title/chapter."""
+    step = deriver_mod._event_to_beat_step(
+        _event("Lin slaps the Zhao heir", chapter_id="ch-42",
+               mined_motif_code="cultivation.face_slap"))
+    assert step["beat"] == "face_slap"      # the local part (the reusable beat)
+    assert step["thread"] == "cultivation"  # the namespace (the reusable thread family)
+
+
+def test_beat_axes_code_without_namespace_has_empty_thread():
+    """A catalog code with no dot → all-local beat, empty thread (still a valid symbol)."""
+    assert deriver_mod._beat_axes(_event("x", mined_motif_code="loner")) == ("loner", "")
+
+
+def test_beat_axes_falls_back_to_option_a_when_untagged():
+    """No mined_motif_code → deterministic Option-A axes (title / chapter_id) — a cold or
+    arc-conformance-only corpus still mines (just fewer cross-book patterns)."""
+    assert deriver_mod._beat_axes(
+        _event("Quiet talk", chapter_id="ch-9")) == ("Quiet talk", "ch-9")
+
+
+def test_beat_axes_blank_code_falls_back():
+    """An empty-string mined_motif_code (defensive) is treated as untagged."""
+    assert deriver_mod._beat_axes(
+        _event("Duel", chapter_id="ch-3", mined_motif_code="  ")) == ("Duel", "ch-3")
 
 
 # ── deriver: scoping + grouping (pg pool + neo4j mocked) ──────────────────────

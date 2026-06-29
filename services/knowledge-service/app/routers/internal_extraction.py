@@ -1626,6 +1626,86 @@ async def tag_motifs(body: TagMotifsRequest) -> TagMotifsResponse:
     return TagMotifsResponse(tagged=tagged, events_seen=seen, motifs_assigned=counts)
 
 
+# ── D-W8-MOTIF-BEAT-LLM-EXTRACTOR — catalog-motif classifier (mining source) ────
+
+
+class TagBeatsRequest(BaseModel):
+    """Tag a book's (or the whole corpus's) :Event timeline with the catalog motif each event
+    most embodies (by code), classified against the user's VISIBLE motif catalog — NOT an arc.
+    Persists :Event.mined_motif_code so a subsequent motif-beats read emits GENERIC beat/thread
+    axes (namespace:local) and corpus PrefixSpan mines reusable motif-sequences. model_source/
+    model_ref resolve the BYOK classify model (provider-gateway invariant — composition resolves
+    the user's pick and passes it here; NO platform model literal)."""
+
+    user_id: UUID
+    book_id: UUID | None = None
+    corpus: bool = False
+    motifs: list[dict] = Field(default_factory=list)   # [{code, name?, summary?}] — the catalog
+    model_source: str
+    model_ref: str
+
+
+class TagBeatsResponse(BaseModel):
+    tagged: int = 0
+    events_seen: int = 0
+    motifs_assigned: dict[str, int] = Field(default_factory=dict)   # motif_code → count
+
+
+@router.post(
+    "/tag-beats",
+    response_model=TagBeatsResponse,
+    status_code=status.HTTP_200_OK,
+    summary="Tag :Event nodes with the catalog motif they embody (W8 mining source)",
+    description=(
+        "Classifies each :Event (title+summary+participants) into one code of the user's "
+        "VISIBLE motif catalog via an LLM (operation=chat → provider-registry), persisting "
+        ":Event.mined_motif_code so motif-beats emits generic beat/thread axes for corpus "
+        "mining. Scope is one book (book_id) or the whole corpus (corpus=true). ADVISORY / "
+        "uncalibrated; degrades to a partial/empty tag on any LLM failure. X-Internal-Token."
+    ),
+)
+async def tag_beats(body: TagBeatsRequest) -> TagBeatsResponse:
+    if not settings.neo4j_uri:
+        logger.info("tag-beats: Neo4j not configured — no-op")
+        return TagBeatsResponse()
+
+    from app.db.neo4j_repos.events import list_events_in_order, set_mined_motif_codes
+    from app.extraction.motif_beat import _list_user_book_projects
+    # Reuse the realized-motif classifier engine verbatim — same task shape (classify each
+    # event into one code of a provided vocab); only the vocab source (catalog vs arc) and the
+    # persisted property differ. No duplicate prompt/parse logic.
+    from app.extraction.motif_tag import classify_event_motifs
+
+    valid = [m for m in body.motifs if m.get("code")]
+    if not valid:
+        return TagBeatsResponse()
+
+    llm = get_llm_client()
+    containers = await _list_user_book_projects(body.user_id, body.book_id, corpus=body.corpus)
+    seen = 0
+    tagged = 0
+    counts: dict[str, int] = {}
+    async with neo4j_session() as session:
+        for project_id, _book_id in containers:
+            events = await list_events_in_order(
+                session, user_id=str(body.user_id), project_id=str(project_id), limit=2000)
+            if not events:
+                continue
+            seen += len(events)
+            ev_dicts = _neutralize_event_dicts(events, project_id=str(project_id))
+            assignments = await classify_event_motifs(
+                llm, user_id=str(body.user_id), model_source=body.model_source,
+                model_ref=body.model_ref, events=ev_dicts, motifs=valid)
+            # Clear a stale mined_motif_code on any considered event left unassigned (re-mine
+            # after the catalog changed must not leave orphaned generic labels).
+            tagged += await set_mined_motif_codes(
+                session, user_id=str(body.user_id), assignments=assignments,
+                event_ids={e["id"] for e in ev_dicts})
+            for code in assignments.values():
+                counts[code] = counts.get(code, 0) + 1
+    return TagBeatsResponse(tagged=tagged, events_seen=seen, motifs_assigned=counts)
+
+
 # ── D-W10-ARC-CONFORMANCE-SUCCESSION F2 — causal-edge inference ────────
 
 

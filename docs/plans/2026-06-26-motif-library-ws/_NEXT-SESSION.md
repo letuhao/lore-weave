@@ -1,5 +1,44 @@
 # ▶ NEXT SESSION — Narrative Motif Library BUILD (handoff)
 
+## STATUS (2026-06-29 PM-28) — D-W8-MOTIF-BEAT-LLM-EXTRACTOR built (tag-beats) — mining axes go GENERIC; live-smoked on a real 106-event corpus
+
+First corrected a stale-doc error: **`D-W8-MOTIF-BEAT-EXTRACTOR` was already built** (Option A,
+commit 73004c33, 24 tests) and **`D-W8-MINE-LIVE-SMOKE` already cleared** (f890da77) — the
+"deferred/unbuilt" labels in the consumer docstrings were stale (verified against code + git).
+The genuine remaining enhancement was the **LLM** extractor; built it this session.
+
+- **`D-W8-MOTIF-BEAT-LLM-EXTRACTOR` ✅ (NEW)** — a `tag-beats` classifier so mining axes stop
+  being one-off concrete titles/chapter-UUIDs and become GENERIC reusable shapes. Design insight:
+  no new taxonomy needed — reuse the seeded **system motif catalog** (namespaced: cultivation/
+  hook/intrigue/emotion_arc/revenge/…) as the beat vocabulary, and reuse the proven `tag-motifs`
+  classify engine wholesale. Pieces:
+  - **knowledge-service:** `POST /internal/extraction/tag-beats` ([internal_extraction.py](../../services/knowledge-service/app/routers/internal_extraction.py)) classifies each :Event
+    against the user's VISIBLE catalog (system+own, NOT an arc) → persists a NEW
+    `:Event.mined_motif_code` (distinct from arc-conformance's `realized_motif_code`, so they
+    never clobber). Reuses `classify_event_motifs` (BYOK model_ref, advisory degrade, batched,
+    injection-neutralized, retag-stale-aware). Supports book OR corpus scope. New persistence
+    `set_mined_motif_codes` ([events.py](../../services/knowledge-service/app/db/neo4j_repos/events.py)).
+  - **producer `_event_to_beat_step` / `_beat_axes` ([motif_beat.py](../../services/knowledge-service/app/extraction/motif_beat.py)):** when `mined_motif_code`
+    is set → `beat = local` (`face_slap`), `thread = namespace` (`cultivation`); else Option-A
+    `title`/`chapter_id` fallback. No consumer-contract change (only the VALUES go generic).
+  - **composition:** `KnowledgeClient.tag_beats` + `run_mine_motifs` runs the tag-beats pre-pass
+    (visible catalog via `list_for_caller`, capped `_MINE_CATALOG_LIMIT=200`, BYOK model_ref) BEFORE
+    `get_motif_beat_sequences`. Bumped `motif_mine_extractor_version` → `motif_beat@v2`. Best-effort:
+    skipped without a model (mine_motifs then fails closed); any tagging error → Option-A fallback.
+- **VERIFY ✅** — knowledge 3189 + composition 1091 unit tests green (+8 new: producer axes, route
+  persist-wiring/corpus-routing, client book/corpus/degrade, worker pre-pass ordering + skip-without-
+  model + tag-failure-degrades). provider-gate clean. **LIVE-SMOKE ✅** (rebuilt knowledge+composition+
+  worker): on the test account's real **106-event** book, `tag-beats` classified **22 events → 7 motif
+  codes** (emotion_arc.fall_then_rise×8, revenge.blood_debt_collection×7, hook.mystery_deepened×3, …)
+  and `motif-beats` then emitted **22 generic `namespace:local` steps** — the v2 mining axes firing on
+  real persisted data. (Full corpus mine→draft yield is a corpus-similarity property already proven by
+  D-W8-MINE-LIVE-SMOKE; this isolated the new capability.)
+
+**▶ Remaining (all non-code on the motif surface):** mine→draft yield improves with a multi-book
+corpus (PrefixSpan support counts books); `D-THREAD-TAG-CALIBRATION` (human gold-sets), the other
+THREAD-TAG/PRODUCER/CHAIN live-smokes (tagged corpus), `D-MOTIF-PGVECTOR-TRIGGER` (perf),
+`D-MOTIF-ADOPT-PER-BOOK` (schema).
+
 ## STATUS (2026-06-29 PM-27) — the OTHER two bridge paths (mine + arc-import) live-smoked; a real BYOK model_ref gap found + fixed
 
 Live-tested the remaining two FE→MCP-tool bridge Tier-W paths the user asked about (adopt / mine /
