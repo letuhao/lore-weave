@@ -4,11 +4,13 @@
 // control is disabled + a prominent "Clone to edit" (the kinds-bug lesson — a user
 // never edits a shared row, they clone-down). Render-only.
 import { useTranslation } from 'react-i18next';
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import type { Motif } from '../types';
 import { actantLabelKey, kindLabelKey, tierLabelKey, motifTier } from '../simpleMode';
 import { useMotifSimpleMode } from '../context/MotifSimpleModeContext';
+import { useMotifEditor } from '../hooks/useMotifEditor';
 import { InfoAsymmetryCard } from './InfoAsymmetryCard';
+import { MotifEditorForm } from './MotifEditorForm';
 
 type Props = {
   motif: Motif | null;
@@ -16,16 +18,22 @@ type Props = {
   readOnly: boolean;
   isLoading?: boolean;
   isError?: boolean;
+  token?: string | null;        // WI-2 — enables the in-place editor for owned motifs
   onClose: () => void;
   onClone: (id: string) => void;
 };
 
-export function MotifDetailDrawer({ motif, meUserId, readOnly, isLoading, isError, onClose, onClone }: Props) {
+export function MotifDetailDrawer({ motif, meUserId, readOnly, isLoading, isError, token, onClose, onClone }: Props) {
   const { t } = useTranslation('composition');
   const { simple } = useMotifSimpleMode();
   const ref = useRef<HTMLDivElement>(null);
+  const [editing, setEditing] = useState(false);
+  // WI-2 — the full field editor (owned motifs only). Hook is unconditional (rules of
+  // hooks); it only renders when `editing`. Seeds from the motif; PATCHes on save.
+  const editor = useMotifEditor(motif, token ?? null, () => setEditing(false));
 
   useEffect(() => { ref.current?.focus(); }, [motif?.id]);
+  useEffect(() => { setEditing(false); }, [motif?.id]);   // a different motif → back to view
 
   const tier = motif ? motifTier(motif, meUserId) : 'user';
 
@@ -45,12 +53,24 @@ export function MotifDetailDrawer({ motif, meUserId, readOnly, isLoading, isErro
           <h2 className="text-base font-medium text-neutral-800 dark:text-neutral-100">
             {motif?.name ?? (isLoading ? t('loading', { defaultValue: 'Loading…' }) : t('motif.detail.title', { defaultValue: 'Motif' }))}
           </h2>
-          <button type="button" aria-label={t('motif.action.close', { defaultValue: 'Close' })} data-testid="motif-detail-close" className="rounded p-1 text-neutral-500 hover:bg-neutral-100 dark:hover:bg-neutral-800" onClick={onClose}>✕</button>
+          <div className="flex items-center gap-1">
+            {/* WI-2 — owned motifs get an in-place editor; shared rows use clone-to-edit */}
+            {motif && !readOnly && !editing && token && (
+              <button type="button" data-testid="motif-detail-edit" className="rounded border border-neutral-300 px-2 py-0.5 text-xs text-neutral-700 hover:bg-neutral-100 dark:border-neutral-600 dark:text-neutral-200 dark:hover:bg-neutral-800" onClick={() => setEditing(true)}>
+                {t('motif.action.edit', { defaultValue: 'Edit' })}
+              </button>
+            )}
+            <button type="button" aria-label={t('motif.action.close', { defaultValue: 'Close' })} data-testid="motif-detail-close" className="rounded p-1 text-neutral-500 hover:bg-neutral-100 dark:hover:bg-neutral-800" onClick={onClose}>✕</button>
+          </div>
         </div>
 
         {isError && <p role="alert" className="text-xs text-red-600">{t('motif.error.load', { defaultValue: "Couldn't load." })}</p>}
 
-        {motif && (
+        {motif && editing && (
+          <MotifEditorForm ctrl={editor} onCancel={() => setEditing(false)} />
+        )}
+
+        {motif && !editing && (
           <>
             <div className="flex flex-wrap items-center gap-1">
               <span data-testid="motif-detail-tier" className="rounded bg-neutral-200 px-1.5 py-0.5 text-[10px] dark:bg-neutral-700">

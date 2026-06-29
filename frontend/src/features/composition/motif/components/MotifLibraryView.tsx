@@ -158,6 +158,7 @@ export function MotifLibraryView({ token, meUserId: meProp, projectId, bookId }:
           readOnly={detail.readOnly}
           isLoading={detail.isLoading}
           isError={detail.isError}
+          token={token}
           onClose={() => setOpenId(null)}
           onClone={(id) => { setOpenId(null); adopt.begin(id); }}
         />
