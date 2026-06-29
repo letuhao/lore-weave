@@ -59,6 +59,7 @@ from __future__ import annotations
 # (its docstring explains why INT64_MAX over INT32_MAX), and F3 must not mint a
 # second, drifting copy.
 from app.db.neo4j_repos.events import _NULL_ORDER_SENTINEL
+from app.db.neo4j_helpers import CypherSession, run_write
 
 __all__ = [
     "ORDINAL_OPEN_CEILING",
@@ -66,6 +67,7 @@ __all__ = [
     "valid_to_ordinal_eff",
     "MAINTAIN_FACT_CHAIN_CYPHER",
     "MAINTAIN_RELATION_CHAIN_CYPHER",
+    "restitch_chains_after_retract",
 ]
 
 # The +∞ ceiling a NULL (open) ``valid_to_ordinal`` resolves to for the stored
@@ -140,6 +142,107 @@ SET cur.valid_to_ordinal =
     cur.updated_at = datetime()
 RETURN count(cur) AS maintained
 """
+
+# ── retract re-stitch (§12.3.3 step B.3.5, A3) ──────────────────────────────
+#
+# When a re-extraction RETRACTS a fact/relation (transaction-time close via
+# remove_evidence_* → zero-evidence sweep), the STORY-time interval it occupied
+# is left dangling: its predecessor's valid_to_ordinal still points at the now-
+# deleted instance's valid_from_ordinal, so an as-of read between them returns
+# nothing (A3). The fix is to re-run the SAME ordinal-aware chain-maintenance
+# over the SURVIVORS of every affected chain — the predecessor's valid_to is
+# re-derived to the next surviving instance's valid_from (or NULL/open if it is
+# now the last), auto-restitching the chain. This is the same single maintainer
+# routine of §12.3.3, just driven across all chains in the partition rather than
+# one. It only runs on a genuine retract (gated by the caller on removed > 0),
+# so the O(distinct-chains) cost is off the hot first-extract path.
+#
+# These two re-derive EVERY fact-chain / relation-chain in the (user, project)
+# partition in one pass. A chain that wasn't touched re-derives to its existing
+# values (idempotent no-op write). Positionless instances (NULL
+# valid_from_ordinal) are excluded from the re-derivation exactly as in the
+# single-chain routine, so they never shadow a positioned interval.
+_RESTITCH_ALL_FACT_CHAINS_CYPHER = """
+MATCH (f:Fact)-[:ABOUT]->(e:Entity)
+WHERE f.user_id = $user_id
+  AND e.user_id = $user_id
+  AND ($project_id IS NULL OR f.project_id = $project_id)
+  AND f.valid_until IS NULL
+  AND f.valid_from_ordinal IS NOT NULL
+WITH e.id AS entity_id, f.type AS attr, f
+ORDER BY f.valid_from_ordinal ASC, f.created_at ASC
+WITH entity_id, attr, collect(f) AS chain
+UNWIND range(0, size(chain) - 1) AS i
+WITH chain, i, chain[i] AS cur,
+     CASE WHEN i + 1 < size(chain) THEN chain[i + 1] ELSE NULL END AS nxt
+SET cur.valid_to_ordinal =
+      CASE WHEN nxt IS NULL THEN NULL ELSE nxt.valid_from_ordinal END,
+    cur.valid_to_ordinal_eff =
+      CASE WHEN nxt IS NULL THEN $open_ceiling ELSE nxt.valid_from_ordinal END,
+    cur.updated_at = datetime()
+RETURN count(cur) AS restitched
+"""
+
+_RESTITCH_ALL_RELATION_CHAINS_CYPHER = """
+MATCH (subj:Entity)-[r:RELATES_TO]->(obj:Entity)
+WHERE r.user_id = $user_id
+  AND subj.user_id = $user_id
+  AND obj.user_id = $user_id
+  AND ($project_id IS NULL OR subj.project_id = $project_id)
+  AND r.valid_until IS NULL
+  AND r.valid_from_ordinal IS NOT NULL
+WITH subj.id AS subject_id, r.predicate AS predicate, r
+ORDER BY r.valid_from_ordinal ASC, r.created_at ASC
+WITH subject_id, predicate, collect(r) AS chain
+UNWIND range(0, size(chain) - 1) AS i
+WITH chain, i, chain[i] AS cur,
+     CASE WHEN i + 1 < size(chain) THEN chain[i + 1] ELSE NULL END AS nxt
+SET cur.valid_to_ordinal =
+      CASE WHEN nxt IS NULL THEN NULL ELSE nxt.valid_from_ordinal END,
+    cur.valid_to_ordinal_eff =
+      CASE WHEN nxt IS NULL THEN $open_ceiling ELSE nxt.valid_from_ordinal END,
+    cur.updated_at = datetime()
+RETURN count(cur) AS restitched
+"""
+
+
+async def restitch_chains_after_retract(
+    session: CypherSession,
+    *,
+    user_id: str,
+    project_id: str | None = None,
+) -> int:
+    """Re-stitch every story-time interval chain in the partition after a
+    retract (§12.3.3 step B.3.5, A3).
+
+    Re-runs the ordinal-aware chain-maintenance over the SURVIVORS of every
+    fact-chain ``(entity, type)`` and relation-chain ``(subject, predicate)`` so a
+    predecessor whose successor was retracted re-extends to the next survivor (or
+    re-opens if it is now the last). Idempotent on untouched chains (re-derives to
+    the same values). Caller gates this on a genuine retract (``removed > 0``) so
+    it never runs on a first-time extraction. Returns the total instances
+    re-derived (facts + relations).
+    """
+    fact_res = await run_write(
+        session,
+        _RESTITCH_ALL_FACT_CHAINS_CYPHER,
+        user_id=user_id,
+        project_id=project_id,
+        open_ceiling=ORDINAL_OPEN_CEILING,
+    )
+    fact_row = await fact_res.single()
+    rel_res = await run_write(
+        session,
+        _RESTITCH_ALL_RELATION_CHAINS_CYPHER,
+        user_id=user_id,
+        project_id=project_id,
+        open_ceiling=ORDINAL_OPEN_CEILING,
+    )
+    rel_row = await rel_res.single()
+    facts = int(fact_row["restitched"]) if fact_row else 0
+    rels = int(rel_row["restitched"]) if rel_row else 0
+    return facts + rels
+
 
 # Relation chain: one ``(subject)-[:RELATES_TO {predicate}]->`` scope, across ANY
 # object, scoped by ``$user_id`` — mirrors the ``single_active`` scope (same

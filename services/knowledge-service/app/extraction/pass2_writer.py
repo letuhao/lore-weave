@@ -468,6 +468,23 @@ async def write_pass2_extraction(
     endpoints_repaired_by_name = 0
     autocreate_budget_remaining = autocreate_max  # None = unlimited (when enabled)
 
+    # F3 — the chapter's STORY-time ordinal (chapter sort_order × stride), hoisted
+    # here (was computed in Step 4) so BOTH the relation chain (Step 3) and the
+    # fact chain (Step 5) can stamp valid_from_ordinal + drive the ordinal-aware
+    # interval-split close. It is the SAME dense reading-axis ordinal used for
+    # event_order / from_order — unifying story valid-time with the reading axis
+    # per §8B. None for genuinely positionless sources (chat turns) → no story
+    # interval, no chain maintenance (the legacy path).
+    _chapter_ordinal = (
+        hierarchy_paths.chapter_index if hierarchy_paths is not None
+        else chapter_index
+    )
+    chapter_base = (
+        _chapter_ordinal * EVENT_ORDER_CHAPTER_STRIDE
+        if _chapter_ordinal is not None
+        else None
+    )
+
     # Step 3 — create relations.
     relations_created = 0
     for rel in relation_list:
@@ -695,6 +712,13 @@ async def write_pass2_extraction(
             graph_id=None,
             cardinality=edge_cardinality,
             job_id=job_id,
+            # F3 — story valid-time. Stamp the chapter ordinal this edge was
+            # established at + drive the ordinal-aware interval-split close (Path A
+            # close-prior) so a re-membership/drive supersedes the prior instance
+            # in STORY time, correct under out-of-order/backfill arrival.
+            # chapter_base=None (chat) ⇒ no ordinal ⇒ chain maintenance skipped.
+            valid_from_ordinal=chapter_base,
+            maintain_chain=True,
         )
         if result is not None:
             relations_created += 1
@@ -715,15 +739,8 @@ async def write_pass2_extraction(
     # fine for the strict range filter, keeps the order non-decreasing). The
     # stride is the SHARED EVENT_ORDER_CHAPTER_STRIDE (events.py) — backfill
     # imports the same constant so both write on one scale.
-    _chapter_ordinal = (
-        hierarchy_paths.chapter_index if hierarchy_paths is not None
-        else chapter_index
-    )
-    chapter_base = (
-        _chapter_ordinal * EVENT_ORDER_CHAPTER_STRIDE
-        if _chapter_ordinal is not None
-        else None
-    )
+    # F3 — `_chapter_ordinal` + `chapter_base` are computed ONCE above (hoisted
+    # before Step 3 so the relation chain can also stamp valid_from_ordinal).
     events_merged = 0
     statuses_merged = 0  # A2-S1b — :EntityStatus transitions written
     dated_written = 0  # CM4 debounce: rerank chrono only if a dated event changed
@@ -915,6 +932,11 @@ async def write_pass2_extraction(
             provenance=provenance,
             subject_id=fact_subject_id,
             from_order=chapter_base,
+            # F3 — drive the ordinal-aware interval-split close over this fact's
+            # (subject, type) chain (Path A close-prior). merge_fact internally
+            # no-ops the chain when there's no subject or no story ordinal, so a
+            # positionless / subjectless fact stays on the legacy path.
+            maintain_chain=True,
         )
         facts_merged += 1
 
