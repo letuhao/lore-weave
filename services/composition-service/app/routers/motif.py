@@ -29,7 +29,7 @@ from __future__ import annotations
 
 import datetime as _dt
 import decimal as _dec
-from typing import Any, Literal
+from typing import Any
 from uuid import UUID
 
 import asyncpg
@@ -42,7 +42,7 @@ from app.db.models import (
     Motif, MotifCreateArgs, MotifPatchArgs, _ForbidExtra, _Key,
 )
 from app.db.repositories import VersionMismatchError
-from app.db.repositories.motif_repo import MotifRepo, _coerce_jsonb_value, _jsonb
+from app.db.repositories.motif_repo import MotifRepo
 from app.deps import get_motif_repo
 from app.middleware.jwt_auth import get_current_user
 
@@ -314,152 +314,6 @@ async def adopt_motif(
     body_out["members_adopted"] = members_adopted
     status_code = 201 if created else 200
     return JSONResponse(status_code=status_code, content=body_out)
-
-
-# ── W11 publish sync — upstream-diff + apply-merge (D-MOTIF-SYNC-3WAY-BASE) ──────
-# An adopted clone keeps the REAL upstream id in `source_ref='lineage:{id}'` (opaquing
-# is a PUBLISH-time transform; the private clone is back-resolvable) + the merge `base`
-# in `adopted_base`. So the diff is a TRUE 3-way when a base snapshot is present, else a
-# 2-way (ours vs theirs-current) — honestly labelled, never a fabricated base. The merge
-# is deterministic (no LLM) → REST, not MCP.
-_MERGE_FIELDS = ("summary", "genre_tags", "beats", "roles", "preconditions", "effects")
-_MergeableField = Literal["summary", "genre_tags", "beats", "roles", "preconditions", "effects"]
-
-
-class SyncBody(_ForbidExtra):
-    # the upstream-changed fields the caller chooses to TAKE; [] = keep all local (just
-    # acknowledge the review by re-pinning). A field outside the allow-list → 422.
-    accept: list[_MergeableField] = Field(default_factory=list)
-
-
-def _lineage_uuid(source_ref: str | None) -> UUID | None:
-    if not source_ref or not str(source_ref).startswith("lineage:"):
-        return None
-    try:
-        return UUID(str(source_ref)[len("lineage:"):])
-    except (ValueError, TypeError):
-        return None
-
-
-def _row_field(row: Any, f: str) -> Any:
-    """One mergeable field off the upstream row (JSONB str → parsed; text[] → list)."""
-    v = row[f]
-    if f in ("beats", "roles", "preconditions", "effects"):
-        return _coerce_jsonb_value(v)
-    if f == "genre_tags":
-        return list(v) if v is not None else []
-    return v
-
-
-async def _resolve_sync(pool, repo: MotifRepo, user_id: UUID, motif_id: UUID):
-    """Shared resolve for both surfaces: the caller's local motif (get_visible → 404),
-    its lineage upstream (→ 409 not-adopted / 410 gone), and the adopted_base snapshot.
-    Returns (local, upstream_row, base_dict_or_None)."""
-    local = await repo.get_visible(user_id, motif_id)
-    if local is None:
-        raise HTTPException(status_code=404, detail=_NOT_FOUND)
-    up_id = _lineage_uuid(local.source_ref)
-    if up_id is None:
-        raise HTTPException(status_code=409, detail={
-            "code": "MOTIF_NOT_ADOPTED", "message": "this motif was not adopted — no upstream"})
-    upstream = await pool.fetchrow(
-        """
-        SELECT id, summary, genre_tags, beats, roles, preconditions, effects, version
-        FROM motif
-        WHERE id = $2 AND status = 'active'
-          AND (owner_user_id IS NULL OR visibility = 'public' OR owner_user_id = $1)
-        """,
-        user_id, up_id,
-    )
-    if upstream is None:
-        raise HTTPException(status_code=410, detail={
-            "code": "MOTIF_UPSTREAM_GONE", "message": "the upstream source is no longer available"})
-    base_row = await pool.fetchrow(
-        "SELECT adopted_base FROM motif WHERE id = $2 AND owner_user_id = $1", user_id, motif_id)
-    base = _coerce_jsonb_value(base_row["adopted_base"]) if base_row and base_row["adopted_base"] is not None else None
-    return local, upstream, base
-
-
-@router.get("/motifs/{motif_id}/upstream-diff")
-async def upstream_diff(
-    motif_id: UUID,
-    user_id: UUID = Depends(get_current_user),
-    repo: MotifRepo = Depends(get_motif_repo),
-) -> dict[str, Any]:
-    """Per-field diff of the caller's adopted motif vs its current upstream. 3-way (with
-    base/ours_changed/theirs_changed/conflict) when an `adopted_base` snapshot exists, else
-    a 2-way (ours/theirs/changed) — labelled, no fabricated base. 404/409/410 on the resolve."""
-    from app.db.pool import get_pool
-    local, upstream, base = await _resolve_sync(get_pool(), repo, user_id, motif_id)
-    local_dump = local.model_dump(mode="json")
-    base_available = base is not None
-    fields: dict[str, Any] = {}
-    for f in _MERGE_FIELDS:
-        ours, theirs = local_dump[f], _row_field(upstream, f)
-        if base_available:
-            b = base.get(f)
-            oc, tc = ours != b, theirs != b
-            fields[f] = {"base": b, "ours": ours, "theirs": theirs,
-                         "ours_changed": oc, "theirs_changed": tc,
-                         "conflict": oc and tc and ours != theirs}
-        else:
-            fields[f] = {"ours": ours, "theirs": theirs, "changed": ours != theirs}
-    pinned, upv = local.source_version, upstream["version"]
-    return {
-        "diff_mode": "three_way" if base_available else "two_way",
-        "base_available": base_available,
-        "pinned_source_version": pinned,
-        "upstream_version": upv,
-        "update_available": upv > (pinned or 0),
-        "fields": fields,
-    }
-
-
-@router.post("/motifs/{motif_id}/sync")
-async def sync_motif(
-    motif_id: UUID,
-    body: SyncBody | None = None,
-    user_id: UUID = Depends(get_current_user),
-    repo: MotifRepo = Depends(get_motif_repo),
-) -> dict[str, Any]:
-    """Apply the chosen merge. `accept=[fields]` writes the upstream value for each via the
-    owner-only PATCH, carrying the source_version re-pin AND (3-way) the adopted_base
-    re-baseline in the SAME atomic UPDATE (D-MOTIF-SYNC-REPIN-ATOMICITY). `accept=[]` keeps
-    all local and only re-pins (a direct UPDATE — no content edit). 404/409/410 on resolve;
-    412 on a concurrent local edit."""
-    from app.db.pool import get_pool
-    pool = get_pool()
-    accept = body.accept if body else []
-    local, upstream, base = await _resolve_sync(pool, repo, user_id, motif_id)
-    diff_mode = "three_way" if base is not None else "two_way"
-    upv = upstream["version"]
-
-    if accept:
-        merged = {f: _row_field(upstream, f) for f in accept}
-        rebaselined = base is not None
-        # 3-way: the next merge base = the upstream we just reconciled to (all mergeable fields).
-        repin_base = _jsonb({f: _row_field(upstream, f) for f in _MERGE_FIELDS}) if rebaselined else None
-        try:
-            await repo.patch(
-                user_id, motif_id, MotifPatchArgs.model_validate(merged),
-                expected_version=local.version,
-                repin_source_version=upv, repin_adopted_base=repin_base,
-            )
-        except VersionMismatchError as exc:
-            raise HTTPException(status_code=412, detail={
-                "code": "MOTIF_VERSION_CONFLICT", "current_version": exc.current.version,
-            }) from exc
-        return {"synced": True, "repinned_source_version": upv,
-                "diff_mode": diff_mode, "rebaselined": rebaselined}
-
-    # accept=[] — keep all local, just re-pin (acknowledge the review). No content edit.
-    row = await pool.fetchrow(
-        "UPDATE motif SET source_version = $1, updated_at = now() "
-        "WHERE owner_user_id = $2 AND id = $3 RETURNING source_version",
-        upv, user_id, motif_id,
-    )
-    return {"synced": True, "diff_mode": diff_mode, "rebaselined": False,
-            "repinned_source_version": (row["source_version"] if row else upv)}
 
 
 def _jsonify(value: Any) -> Any:
