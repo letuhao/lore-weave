@@ -69,6 +69,24 @@ describe('BatchConfirmCard', () => {
     expect(confirmActionBatch).not.toHaveBeenCalled();
   });
 
+  // #29 — KG schema-edit cards inherit the SAME coalesce: 'kg' is NOT in
+  // BATCH_CONFIRM_DOMAINS, so N kg children take the single-confirm LOOP →
+  // confirmAction('kg', token) → POST /v1/kg/actions/confirm. (Previously only the
+  // structurally-identical 'book' loop was tested; this asserts the kg path directly.)
+  it('loops single /confirm for KG schema-edit children (#29 inheritance)', async () => {
+    confirmAction.mockResolvedValue({});
+    const kgChildren: BatchChild[] = [
+      { token: 'k1', domain: 'kg', descriptor: 'kg_schema_edit', title: 'Add edge_type HUNTS' },
+      { token: 'k2', domain: 'kg', descriptor: 'kg_schema_edit', title: 'Add node_kind Beast' },
+    ];
+    render(<BatchConfirmCard children={kgChildren} />);
+    fireEvent.click(screen.getByText('batchConfirm.confirm_all'));
+    await waitFor(() => expect(confirmAction).toHaveBeenCalledTimes(2));
+    expect(confirmAction).toHaveBeenCalledWith('kg', 'k1', 'tok');
+    expect(confirmAction).toHaveBeenCalledWith('kg', 'k2', 'tok');
+    expect(confirmActionBatch).not.toHaveBeenCalled();
+  });
+
   it('mixes domains: glossary→batch endpoint, book→single loop', async () => {
     confirmActionBatch.mockResolvedValue({ applied: 1, skipped: 0, failed: 0, children: [] });
     confirmAction.mockResolvedValue({});
