@@ -51,6 +51,12 @@ import { QualityPanel } from './QualityPanel';
 import { ProgressPanel } from './ProgressPanel';
 import { StyleVoicePanel } from './StyleVoicePanel';
 import { CompositionSettingsView } from './CompositionSettingsView';
+// W6 (motif library) — additive dock panels. The motif subtree is W6-owned; these
+// two registrations are the only studio-shell touches (master §4 W6 / 00-RECONCILE §2).
+import { MotifLibraryView } from '../motif/components/MotifLibraryView';
+import { ConformanceTraceView } from '../motif/components/ConformanceTraceView';
+import { MotifPanelBoundary } from '../motif/components/MotifPanelBoundary';
+import { MotifSimpleModeProvider } from '../motif/context/MotifSimpleModeContext';
 
 type Props = {
   bookId: string;
@@ -73,7 +79,7 @@ type Props = {
   soloPanel?: WorkspacePanelId;
 };
 
-type SubTab = 'compose' | 'cowriter' | 'assemble' | 'planner' | 'beats' | 'graph' | 'cast' | 'relmap' | 'timeline' | 'arc' | 'worldmap' | 'grounding' | 'canonview' | 'references' | 'style' | 'canon' | 'critic' | 'threads' | 'progress' | 'quality' | 'flywheel' | 'settings';
+type SubTab = 'compose' | 'cowriter' | 'assemble' | 'planner' | 'beats' | 'graph' | 'cast' | 'relmap' | 'timeline' | 'arc' | 'worldmap' | 'grounding' | 'canonview' | 'references' | 'style' | 'canon' | 'critic' | 'threads' | 'progress' | 'quality' | 'flywheel' | 'motifs' | 'conformance' | 'settings';
 
 export function CompositionPanel({ bookId, chapterId, token, onAccept, sceneId: sceneIdProp, onSceneChange, heatmapEnabled, onToggleHeatmap, soloPanel }: Props) {
   const solo = soloPanel != null;
@@ -430,7 +436,7 @@ export function CompositionPanel({ bookId, chapterId, token, onAccept, sceneId: 
 
   // The fixed sub-tab order (the `threads` gate applied) — shared by the flag-OFF
   // TabScrollStrip and the mobile switcher's flag-OFF list.
-  const stripIds: SubTab[] = ['compose', 'cowriter', 'assemble', 'planner', 'beats', 'graph', 'cast', 'relmap', 'timeline', 'arc', 'worldmap', 'grounding', 'canonview', 'references', 'style', 'canon', 'critic', ...(threadsEnabled ? ['threads' as const] : []), 'progress', 'quality', 'flywheel', 'settings'];
+  const stripIds: SubTab[] = ['compose', 'cowriter', 'assemble', 'planner', 'beats', 'graph', 'cast', 'relmap', 'timeline', 'arc', 'worldmap', 'grounding', 'canonview', 'references', 'style', 'canon', 'critic', ...(threadsEnabled ? ['threads' as const] : []), 'progress', 'quality', 'flywheel', 'motifs', 'conformance', 'settings'];
   // M5a — the mobile switcher's panel list: the dock's visible ids when the windowing
   // flag is ON (respects hide + reorder + the threads gate), else the fixed strip order.
   const mobileIds: SubTab[] = dockOn ? (dockVisible as SubTab[]) : stripIds;
@@ -837,6 +843,23 @@ export function CompositionPanel({ bookId, chapterId, token, onAccept, sceneId: 
             onOpenTimeline={() => selectTab('timeline')}
             onOpenRelations={() => selectTab('relmap')}
           />
+        </DockSlot>
+        {/* W6 — motif library + conformance dock panels. The MotifSimpleModeProvider
+            wraps BOTH so the simple/expert toggle is shared across them (one stable
+            per-device preference). */}
+        <DockSlot {...slot('motifs')}>
+          <MotifPanelBoundary label="motifs">
+            <MotifSimpleModeProvider token={token}>
+              <MotifLibraryView token={token} projectId={work.project_id} />
+            </MotifSimpleModeProvider>
+          </MotifPanelBoundary>
+        </DockSlot>
+        <DockSlot {...slot('conformance')}>
+          <MotifPanelBoundary label="conformance">
+            <MotifSimpleModeProvider token={token}>
+              <ConformanceTraceView projectId={work.project_id} chapterId={chapterId} token={token} />
+            </MotifSimpleModeProvider>
+          </MotifPanelBoundary>
         </DockSlot>
         <DockSlot {...slot('settings')}>
           <CompositionSettingsView

@@ -16,12 +16,17 @@ from app.clients.glossary_client import GlossaryClient, get_glossary_client
 from app.clients.knowledge_client import KnowledgeClient, get_knowledge_client
 from app.clients.llm_client import LLMClient, get_llm_client
 from app.db.pool import get_pool
+from app.db.repositories.arc_template_repo import ArcTemplateRepo
 from app.db.repositories.canon_rules import CanonRulesRepo
 from app.db.repositories.daily_progress import DailyProgressRepo
 from app.db.repositories.derivatives import DerivativesRepo
 from app.db.repositories.generation_corrections import GenerationCorrectionsRepo
 from app.db.repositories.generation_jobs import GenerationJobsRepo
 from app.db.repositories.grounding_pins import GroundingPinsRepo
+from app.db.repositories.import_source_repo import ImportSourceRepo
+from app.db.repositories.motif_application import MotifApplicationRepo
+from app.db.repositories.motif_repo import MotifRepo
+from app.db.repositories.motif_retrieve import MotifRetriever
 from app.db.repositories.narrative_thread import NarrativeThreadRepo
 from app.db.repositories.outline import OutlineRepo
 from app.db.repositories.references import ReferencesRepo
@@ -93,6 +98,41 @@ async def get_generation_corrections_repo() -> GenerationCorrectionsRepo:
 
 async def get_structure_templates_repo() -> StructureTemplatesRepo:
     return StructureTemplatesRepo(get_pool())
+
+
+async def get_motif_repo() -> MotifRepo:
+    """F0 — the narrative motif library CRUD + clone primitive. W1 extends it with
+    the HTTP surface (adopt/publish/catalog); the engine (W2)/MCP (W4) consume the
+    same instance through this factory."""
+    return MotifRepo(get_pool())
+
+
+async def get_arc_template_repo() -> ArcTemplateRepo:
+    """W10 — the arc-template library CRUD + clone primitive + apply-preview. Mirrors
+    get_motif_repo; the router (arc.py) consumes this. W9 (import/deconstruct) will
+    consume the same repo through this factory."""
+    return ArcTemplateRepo(get_pool())
+
+
+async def get_import_source_repo() -> ImportSourceRepo:
+    """W9 — the per-user deconstruct-input store (import/deconstruct, §12.3/§12.6).
+    The import_source CRUD router consumes this; the worker handler
+    (engine/motif_deconstruct) loads the row owner-checked off the same table.
+    Mirrors get_motif_repo (cheap per-request wrapper over the shared pool)."""
+    return ImportSourceRepo(get_pool())
+
+
+async def get_motif_retriever() -> MotifRetriever:
+    """F0 frozen signature; W3 implements. The planner (W2) and the MCP
+    _suggest_for_chapter (W4) both resolve candidates through this one core."""
+    return MotifRetriever(get_pool())
+
+
+async def get_motif_application_repo() -> MotifApplicationRepo:
+    """W2 — the motif_application binding ledger (W2 is the sole writer; W5's
+    conformance trace + the planner read it). Added at the Wave-1 reconcile node as
+    the F0 follow-up W2/W5 both requested (deps was F0-frozen during the wave)."""
+    return MotifApplicationRepo(get_pool())
 
 
 async def get_references_repo() -> ReferencesRepo:

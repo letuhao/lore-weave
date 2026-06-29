@@ -5,11 +5,18 @@ import { AdminMcpController } from './mcp/admin-mcp.controller.js';
 import { McpController } from './mcp/mcp.controller.js';
 import { HealthController } from './health/health.controller.js';
 import { GroundingController } from './grounding/grounding.controller.js';
+import { ToolsController } from './tools/tools.controller.js';
 
 @Module({
   // AdminMcpController is listed before McpController so the more-specific
   // `/mcp/admin` route is registered ahead of `/mcp` (INV-T6 — distinct surfaces).
-  controllers: [AdminMcpController, McpController, HealthController, GroundingController],
+  controllers: [
+    AdminMcpController,
+    McpController,
+    HealthController,
+    GroundingController,
+    ToolsController,
+  ],
   providers: [FederationService, AdminFederationService],
 })
 export class AppModule {}

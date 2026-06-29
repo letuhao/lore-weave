@@ -125,5 +125,85 @@ class Settings(BaseSettings):
     # compress's OWN prompt. Keep the most-recent chars (continuity-relevant).
     compress_max_input_chars: int = 24000
 
+    # ── Narrative motif library (F0 + 00-RECONCILE §1). ONE platform embedding model
+    # for ALL motif vectors (R1.1.2/B-1) — NOT the user's BYOK model — so cross-tier
+    # cosine is correct and a clone can copy the vector. Resolved via provider-registry
+    # /internal/embed (the embedding_client) as a (source, ref) pair, PLATFORM-fixed.
+    # The owner_id is the reserved platform-owner identity whose BYOK credential holds
+    # the platform embedding model (the local-rerank-as-platform precedent — D2). W3
+    # fails closed if model_ref/owner are unset before its embed pipeline runs.
+    motif_embed_model_source: str = "platform_model"
+    motif_embed_model_ref: str = ""              # platform embedding model id; W3 asserts non-empty
+    motif_embed_owner_id: str = ""               # RECONCILE D2 — reserved platform-owner row
+    # Retrieval (W3/W2): the SQL pre-filter ceiling (rows loaded for the cosine pass),
+    # the top-K returned, and the minimum cosine for a planner-bindable match.
+    motif_candidate_ceiling: int = 500           # RECONCILE D2 (W3) — pre-filter cap
+    motif_retrieve_top_k: int = 10
+    motif_min_score: float = 0.30
+    # Anti-repetition (W2): max times one motif may be applied within a single book
+    # before the planner/UX warns (the cowrite craft-nudge made structural — §11).
+    motif_max_reapply: int = 3
+    # Planner connective-tissue floor (W2 MD-3): min match-margin a candidate must
+    # clear over the next-best before the planner auto-binds without a connective hint
+    # (below it, the splice adds a bridging beat). Surfaced as config per W2's request.
+    motif_connective_floor_margin: float = 0.08
+    # Mining gate (P3/W8): mined drafts below this judge score are shown, never
+    # silently added (no silent drop — §11).
+    motif_mine_min_judge: float = 0.60
+    # Per-user quotas (B-4 — mirror D-MCP-BOOK-CREATE-QUOTA). The publish/adopt
+    # ceilings the W1 router + W4 MCP pre-check; 0 = unlimited (dev default off).
+    motif_max_public: int = 0
+    motif_max_adopt: int = 0
+    # ── Motif conformance (W5, §2.4) — the binary, ADVISORY beat-conformance dim
+    # written into generation_job.critic. OFF by default → zero LLM cost on the hot
+    # path (mirrors narrative_thread_enabled). `calibrated` flips true ONLY after the
+    # calibration harness passes AND a human sets it — it drives the UI honesty label
+    # (false → "unverified self-report"). Never claim calibrated from a single-model
+    # self-host run (panel_safety, §5).
+    motif_conformance_enabled: bool = False
+    motif_conformance_calibrated: bool = False
+    # The 0-100 tension-band half-width (§2.2): the planned band is centre±halfwidth.
+    motif_conformance_tension_halfwidth: int = 15
+    # Random-sample rate for non-high-tension bound scenes (§5.2): high-tension/
+    # high-weight beats are ALWAYS judged; the rest at this %, so cost stays bounded.
+    motif_conformance_sample_random_pct: int = 20
+    # RECONCILE D3 — the Tier-W usage-billing precheck endpoint (W4's mine/import
+    # ops; composition-service has no billing client → net-new in W4). Reuses
+    # internal_service_token for the internal call.
+    usage_billing_service_url: str = "http://usage-billing-service:8086"
+    # ── Wave-2 worker-op knobs (W2-F0 freeze — homed here so W8/W9/W5 fill their
+    # engine modules, NOT config.py). Cost estimates feed the Tier-W confirm $-dialog
+    # (heuristics, NOT provider pricing — pricing still resolves from provider-registry).
+    motif_mine_estimate_usd_book: float = 0.50      # W8 — per-book mine $ estimate
+    motif_mine_estimate_usd_corpus: float = 2.00    # W8 — whole-corpus mine $ estimate
+    arc_import_estimate_usd: float = 1.00           # W9 — deconstruct $ estimate
+    conformance_run_estimate_usd: float = 0.30      # W5 — arc/chapter extract-diff $ estimate
+    # W8 mining (P3): the motif_beat extractor version (knowledge-service cross-service
+    # contract) + default min support before a beat-pattern becomes a draft motif.
+    # v2 (D-W8-MOTIF-BEAT-LLM-EXTRACTOR): the mine worker runs tag-beats first, so beat/thread
+    # axes are the GENERIC namespace:local of each event's mined_motif_code (corpus-reusable)
+    # rather than the Option-A title/chapter_id. Backward-compatible: an untagged event still
+    # falls back to Option A, so a v2 reader over a v1/cold corpus just mines fewer patterns.
+    motif_mine_extractor_version: str = "motif_beat@v2"
+    motif_mine_min_support: int = 3
+    # W9 import/deconstruct (§12.3/§12.4): the LLM-direct deconstruct model. EMPTY by
+    # default (NO hardcoded model name — provider-gateway invariant); resolved from the
+    # job input (model_source/model_ref) when present, else this PLATFORM default. The
+    # handler fails closed (ValueError) if neither yields a model_ref — so a deconstruct
+    # never silently runs on an unconfigured model. Source defaults to 'platform_model'
+    # (the local-rerank-as-platform precedent — resolve via provider-registry).
+    motif_deconstruct_model_source: str = "platform_model"
+    motif_deconstruct_model_ref: str = ""        # platform chat model id; resolved at call time
+    # The per-chunk character cap for the deconstruct MAP pass (rides the P1/P2 rails —
+    # chunk the imported content so each map call fits the window; the arc-reduce sees
+    # the abstract per-chunk extractions, never the raw text — §12.4).
+    motif_deconstruct_chunk_chars: int = 12000
+    # Abstraction post-check (§12.6 guardrail): the min source-token shingle overlap
+    # ratio above which a generated beat/example is treated as near-verbatim source
+    # retelling → scrubbed. Lower = stricter. 0.0 disables (never — the guardrail is
+    # load-bearing); the default flags substantial verbatim n-gram reuse.
+    motif_deconstruct_verbatim_shingle: int = 6     # shingle size (consecutive words)
+    motif_deconstruct_verbatim_max_overlap: float = 0.50  # max share of source shingles allowed
+
 
 settings = Settings()  # type: ignore[call-arg]

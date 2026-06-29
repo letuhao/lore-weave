@@ -270,6 +270,19 @@ async def run_generate(
         scene_text=final_text, opened_at_node=input.get("outline_node_id"),
         model_source=model_source, model_ref=model_ref, cancel_check=cancel_check)
 
+    # W5 (D-MOTIF-CONFORMANCE-ENGINE-WIRING): the sampled binary conformance judge over
+    # the realized scene, IF the node has a bound motif + conformance is enabled. The
+    # returned patch (critic.motif_conformance) is stashed under `_critic` for the
+    # consumer to persist via update_status(critic=…). Advisory + degrade-safe (never
+    # raises). Judge prefers the DISTINCT critic (anti-self-reinforcement) → drafter.
+    from app.engine.motif_conformance_producer import maybe_conformance_patch
+    critic_patch = await maybe_conformance_patch(
+        pool, llm, user_id=user_id, project_id=project_id, profile=profile,
+        final_text=final_text, outline_node_id=input.get("outline_node_id"),
+        beat_role=input.get("beat_role"), tension=input.get("tension"),
+        model_source=critic_source or model_source, model_ref=critic_ref or model_ref,
+    )
+
     total_out = w.metering.output_tokens + revise_out_tokens
     truncated = (w.metering.finish_reason == "length") or (revise_finish == "length")
     return {
@@ -286,6 +299,10 @@ async def run_generate(
         "reasoning_source": input.get("reasoning"), "reasoning_effort": effort,
         "reinjected_promise_count": input.get("reinjected_promise_count"),
         "persisted": False,
+        # W5: critic-merge patch for the consumer (popped off → the job's `critic`
+        # column, NOT the result blob). None when conformance is off / not sampled /
+        # no bound motif. The trace read (routers/conformance.py) surfaces it.
+        "_critic": critic_patch,
     }
 
 

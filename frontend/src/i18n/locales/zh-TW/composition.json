@@ -539,5 +539,214 @@
     "needsName": "為假設命名以晉升。",
     "namePlaceholder": "為一個假設命名…",
     "nameLabel": "假設名稱"
+  },
+  "motifs": "Motifs",
+  "conformance": "Conformance",
+  "motif": {
+    "tier": {
+      "system": "System",
+      "user": "Mine",
+      "public": "Public"
+    },
+    "mode": {
+      "simple": "Simple",
+      "expert": "Expert"
+    },
+    "scope": {
+      "label": "Motif scope",
+      "my": "My library",
+      "catalog": "Public catalog"
+    },
+    "search": "Search motifs",
+    "overuse": "\"{{name}}\" is already used in {{chapters}} — consider varying it.",
+    "list": {
+      "noMatch": "No motifs match — clear filters."
+    },
+    "error": {
+      "load": "Couldn't load — please retry."
+    },
+    "permission": {
+      "readOnly": "This is a shared template — clone it to make your own editable copy."
+    },
+    "action": {
+      "open": "Open",
+      "adopt": "Adopt",
+      "newMotif": "New motif",
+      "cloneToEdit": "Clone to edit",
+      "close": "Close",
+      "cancel": "Cancel",
+      "retry": "Retry",
+      "swap": "Swap",
+      "clear": "Free-form"
+    },
+    "card": {
+      "draft": "Mined draft",
+      "tension": "Intensity"
+    },
+    "empty": {
+      "title": "Your motif library is ready",
+      "body": "Motifs are reusable plot shapes. The planner picks one per chapter so even a small model writes a solid scene. 12 starter motifs are already here — tu-tiên and báo-thù.",
+      "browseSystem": "Browse the 12 starters",
+      "hint": "No tokens needed — building a motif by hand is free."
+    },
+    "facet": {
+      "tier": "Tier",
+      "kind": "Kind",
+      "genre": "Genre",
+      "tension": "Intensity",
+      "clear": "Clear filters",
+      "filters": "Filters"
+    },
+    "detail": {
+      "title": "Motif",
+      "roles": "Roles",
+      "beats": "Beats",
+      "none": "—"
+    },
+    "create": {
+      "title": "New motif",
+      "name": "Name",
+      "code": "Code (a short id, e.g. cultivation.fortuitous_encounter)",
+      "kind": "Kind",
+      "summary": "Summary (this is what the planner matches on)",
+      "genres": "Genres (comma-separated)",
+      "beats": "Beats (the ordered shape)",
+      "beat": "beat",
+      "beatLabel": "Beat label",
+      "removeBeat": "Remove beat",
+      "save": "Create motif",
+      "saving": "Saving…",
+      "err": {
+        "name": "A name is required",
+        "code": "A code is required",
+        "save": "Couldn't save — check the code isn't already used."
+      }
+    },
+    "adopt": {
+      "title": "Adopt motif",
+      "body": "Adopt makes your own private editable copy. Choose where it goes.",
+      "targetLabel": "Adopt into",
+      "toUser": "My library",
+      "whatItDoes": "Copy this motif into your library (a private, editable clone).",
+      "continue": "Continue",
+      "estimating": "Estimating…"
+    },
+    "quota": {
+      "adopt": "You've adopted {{used}}/{{limit}} this period — archive some or wait."
+    },
+    "cost": {
+      "title": "Confirm cost",
+      "usd": "Est. cost",
+      "tokens": "Est. tokens",
+      "quota": "Quota left",
+      "confirm": "Confirm",
+      "confirming": "Working…"
+    },
+    "match": {
+      "why": "Why this motif?",
+      "tension": "Tension fit",
+      "genre": "Genre",
+      "precond": "Setup",
+      "cosine": "Similarity"
+    },
+    "role": {
+      "pickFor": "Pick cast for {{role}}",
+      "unresolved": "⚠ pick…"
+    },
+    "binding": {
+      "freeForm": "No motif matched — this scene is free-form.",
+      "commitGenerate": "Commit + write this scene →"
+    },
+    "swap": {
+      "title": "Swap motif",
+      "none": "No other matches."
+    },
+    "chain": {
+      "hint": "Next: \"{{name}}\" follows naturally.",
+      "action": "Chain it"
+    },
+    "conf": {
+      "title": "Conformance",
+      "planned": "Planned",
+      "realized": "Realized",
+      "conformance": "Conformance",
+      "advisory": "Advisory — unverified self-report",
+      "regenerate": "Regenerate to beat",
+      "rerun": "Re-run",
+      "rerunWhat": "Re-check every scene in this chapter against its planned beat.",
+      "empty": "Not generated yet — generate scenes to see conformance.",
+      "tone": {
+        "ok": "On beat",
+        "warn": "Tension drift",
+        "bad": "Beat missed"
+      }
+    },
+    "arc": {
+      "mobileNotice": "The timeline grid is available on a larger screen — here you can edit it as a list.",
+      "place": "place",
+      "chapters": "ch {{from}}-{{to}}",
+      "moveLeft": "Move earlier",
+      "moveRight": "Move later",
+      "grow": "Lengthen",
+      "shrink": "Shorten",
+      "remove": "Remove"
+    },
+    "simple": {
+      "actant": {
+        "subject": "the hero / who acts",
+        "sender": "who sets it in motion",
+        "object": "what's at stake",
+        "receiver": "who it's for",
+        "helper": "who lends a hand",
+        "opponent": "who stands in the way"
+      },
+      "kind": {
+        "sequence": "a plot shape",
+        "situation": "a setup",
+        "hook": "a hook",
+        "emotion_arc": "a feeling arc",
+        "trope": "a familiar move",
+        "pattern": "a pattern",
+        "scheme": "a plot / deception"
+      },
+      "field": {
+        "tension_target": "intensity",
+        "preconditions": "needs before",
+        "effects": "leaves after",
+        "info_asymmetry": "who's in the dark"
+      },
+      "infoAsymmetry": "Who's in the dark",
+      "infoKnows": "{{who}} knows the truth",
+      "infoDeceived": "{{who}} is fooled"
+    },
+    "expert": {
+      "actant": {
+        "subject": "subject",
+        "sender": "sender",
+        "object": "object",
+        "receiver": "receiver",
+        "helper": "helper",
+        "opponent": "opponent"
+      },
+      "kind": {
+        "sequence": "sequence",
+        "situation": "situation",
+        "hook": "hook",
+        "emotion_arc": "emotion arc",
+        "trope": "trope",
+        "pattern": "pattern",
+        "scheme": "scheme"
+      },
+      "field": {
+        "tension_target": "tension target",
+        "preconditions": "preconditions",
+        "effects": "effects",
+        "info_asymmetry": "information asymmetry"
+      },
+      "infoAsymmetry": "Information asymmetry",
+      "knows": "Knows",
+      "deceived": "Deceived",
+      "gap": "Gap"
+    }
   }
 }

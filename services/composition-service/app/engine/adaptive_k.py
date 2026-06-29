@@ -39,6 +39,42 @@ HIGH_WEIGHT_BEATS: frozenset[str] = frozenset({
 })
 
 
+# ── Motif tension reconcile (W2 / audit R3) ────────────────────────────
+#
+# Two tension scales coexist: the MOTIF library uses a coarse 1..5 authoring dial
+# (motif.tension_target + motif.beats[].tension_target), while the OUTLINE/scene
+# layer + this adaptive_k gate use the 0..100 scale (high gate at high_threshold,
+# default 70). A bound motif beat carrying tension_target=4 must NOT be fed to
+# adaptive_k as `4` (that reads as "calm", base=1) — it is mapped to 0..100 FIRST.
+#
+# This map is the SINGLE source of truth for the 1..5 → 0..100 conversion; nothing
+# else hand-rolls it. Anchored so band semantics line up with adaptive_k's gates:
+#   5 → 90 (well above the 70 high gate → ceiling K),
+#   4 → 75 (above 70 → ceiling K; a motif turn/climax beat earns ceiling),
+#   3 → 50 (mid band [high//2, high)),
+#   2 → 30 (below mid → K=1),
+#   1 → 10 (calm → K=1).
+_MOTIF_TENSION_MAP: dict[int, int] = {1: 10, 2: 30, 3: 50, 4: 75, 5: 90}
+
+
+def motif_tension_to_scale(
+    tens5: int | None, *, fallback: int | None = None,
+) -> int | None:
+    """Map a motif 1..5 tension to the outline 0..100 scale (W2/§3, audit R3).
+
+    Returns None when NEITHER the beat tension nor the motif-level `fallback` is a
+    real int → the scene then gets the A3 neutral default (50) downstream, exactly
+    as a model-omitted tension does (parse_scenes). `fallback` is the motif-level
+    tension_target (also 1..5). A bool is rejected (Python bool is an int subtype —
+    `True`/`False` must never read as tension 1/0). Out-of-range ints are clamped
+    into 1..5 before the lookup, so the map can never KeyError.
+    """
+    v = tens5 if isinstance(tens5, int) and not isinstance(tens5, bool) else fallback
+    if not isinstance(v, int) or isinstance(v, bool):
+        return None
+    return _MOTIF_TENSION_MAP[max(1, min(5, v))]
+
+
 def adaptive_k(
     beat_role: str | None,
     tension: int | None,

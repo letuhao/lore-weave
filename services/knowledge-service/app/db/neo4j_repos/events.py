@@ -149,6 +149,23 @@ class Event(BaseModel):
     # parse_time_cue_to_iso when possible). First-write-wins on
     # ON MATCH so re-mentions don't churn the original phrasing.
     time_cue: str | None = None
+    # D-W10-ARC-CONFORMANCE-THREAD-TAG — the narrative-thread label (combat/romance/…)
+    # the thread-tag classifier assigns from a caller-supplied vocabulary (the arc's
+    # threads). None until tagged; the motif_beat extractor prefers it over chapter_id
+    # so deep arc-conformance can measure realized thread-progression from prose.
+    narrative_thread: str | None = None
+    # D-W10-ARC-CONFORMANCE-SUCCESSION — which arc-placement motif (by code) this event
+    # realizes, assigned by the motif-tag classifier. None until tagged; motif_beat emits it
+    # so deep arc-conformance reconstructs the realized motif order for the succession diff.
+    realized_motif_code: str | None = None
+    # D-W8-MOTIF-BEAT-LLM-EXTRACTOR — which catalog motif (by code) this event most embodies,
+    # assigned by the tag-beats classifier against the user's VISIBLE motif catalog (system +
+    # user motifs), independent of any arc. None until tagged. DISTINCT from realized_motif_code
+    # (that one is arc-scoped, vs the arc's placements) so mining and arc-conformance never
+    # clobber each other's tags. The motif_beat producer emits it as the generic beat/thread
+    # axes so corpus PrefixSpan mines reusable motif-SEQUENCES (arc skeletons), not one-off
+    # concrete titles. "" / null is the Option-A fallback (title/chapter_id).
+    mined_motif_code: str | None = None
     participants: list[str] = Field(default_factory=list)
     # KG-TL Option A (D-KG-TL-PARTICIPANT-ANCHOR) — stored anchor: the glossary
     # ``entity_id`` per participant slot, same length+order as ``participants``,
@@ -810,6 +827,176 @@ async def list_events_in_order(
         limit=limit,
     )
     return [_node_to_event(record["e"]) async for record in result]
+
+
+# ── set_narrative_threads (D-W10-ARC-CONFORMANCE-THREAD-TAG) ───────────
+
+
+# Clear-aware: a row whose ``thread`` is null REMOVES the property (Neo4j SET …=null),
+# so re-tagging a previously-tagged event that now classifies as "none" / dropped out of a
+# changed vocabulary nulls its stale tag instead of leaving it to pollute succession/causal
+# pairs (D-THREAD-TAG-RETAG-STALE). ``tagged`` counts only the non-null SETs.
+_SET_NARRATIVE_THREADS_CYPHER = """
+UNWIND $rows AS row
+MATCH (e:Event {id: row.id})
+WHERE e.user_id = $user_id
+SET e.narrative_thread = row.thread, e.updated_at = datetime()
+RETURN count(CASE WHEN row.thread IS NOT NULL THEN e END) AS tagged
+"""
+
+
+def _retag_rows(assignments: dict[str, str], event_ids: set[str] | None) -> list[dict]:
+    """Build the UNWIND rows for a clear-aware re-tag. Without ``event_ids`` (the legacy
+    set-only path) only assigned, non-empty rows are written. With ``event_ids`` (the full
+    considered set) EVERY id in scope is written — assigned → its value, unassigned → null —
+    so a stale prior tag on an event the classifier no longer picks is cleared."""
+    if event_ids is None:
+        return [{"id": eid, "v": v} for eid, v in assignments.items() if v]
+    return [{"id": eid, "v": assignments.get(eid) or None} for eid in event_ids]
+
+
+async def set_narrative_threads(
+    session: CypherSession,
+    *,
+    user_id: str,
+    assignments: dict[str, str],
+    event_ids: set[str] | None = None,
+) -> int:
+    """Persist the thread-tag classifier's verdicts onto ``:Event.narrative_thread``
+    (D-W10-ARC-CONFORMANCE-THREAD-TAG). ``assignments`` is ``{event_id: thread_key}``.
+
+    Tenancy: the MATCH filters ``e.user_id = $user_id`` so a row naming another user's
+    event id silently matches nothing (never a cross-tenant write). Returns the number of
+    events actually tagged (rows whose id+user matched a node).
+
+    Pass ``event_ids`` (the full re-tagged scope) to also CLEAR a stale tag on any event in
+    that scope the classifier did not assign (D-THREAD-TAG-RETAG-STALE); omit it for the
+    legacy set-only behavior."""
+    rows = [{"id": r["id"], "thread": r["v"]} for r in _retag_rows(assignments, event_ids)]
+    if not rows:
+        return 0
+    result = await run_write(
+        session, _SET_NARRATIVE_THREADS_CYPHER, user_id=user_id, rows=rows,
+    )
+    record = await result.single()
+    return int(record["tagged"]) if record else 0
+
+
+# Clear-aware (see _SET_NARRATIVE_THREADS_CYPHER): a null ``code`` REMOVES the property so a
+# vocabulary change / "none" flip nulls a stale realized_motif_code (D-THREAD-TAG-RETAG-STALE).
+_SET_REALIZED_MOTIFS_CYPHER = """
+UNWIND $rows AS row
+MATCH (e:Event {id: row.id})
+WHERE e.user_id = $user_id
+SET e.realized_motif_code = row.code, e.updated_at = datetime()
+RETURN count(CASE WHEN row.code IS NOT NULL THEN e END) AS tagged
+"""
+
+
+async def set_realized_motifs(
+    session: CypherSession,
+    *,
+    user_id: str,
+    assignments: dict[str, str],
+    event_ids: set[str] | None = None,
+) -> int:
+    """Persist the motif-tag classifier's verdicts onto ``:Event.realized_motif_code``
+    (D-W10-ARC-CONFORMANCE-SUCCESSION). ``assignments`` is ``{event_id: motif_code}``.
+    Tenant-scoped on ``e.user_id`` (a foreign id matches nothing). Returns the count tagged.
+
+    Pass ``event_ids`` (the full re-tagged scope) to also CLEAR a stale code on any event in
+    that scope the classifier did not assign (D-THREAD-TAG-RETAG-STALE)."""
+    rows = [{"id": r["id"], "code": r["v"]} for r in _retag_rows(assignments, event_ids)]
+    if not rows:
+        return 0
+    result = await run_write(
+        session, _SET_REALIZED_MOTIFS_CYPHER, user_id=user_id, rows=rows,
+    )
+    record = await result.single()
+    return int(record["tagged"]) if record else 0
+
+
+# Clear-aware (D-THREAD-TAG-RETAG-STALE): a null ``code`` REMOVES the property so a re-mine
+# with a changed catalog / "none" flip nulls a stale mined_motif_code.
+_SET_MINED_MOTIFS_CYPHER = """
+UNWIND $rows AS row
+MATCH (e:Event {id: row.id})
+WHERE e.user_id = $user_id
+SET e.mined_motif_code = row.code, e.updated_at = datetime()
+RETURN count(CASE WHEN row.code IS NOT NULL THEN e END) AS tagged
+"""
+
+
+async def set_mined_motif_codes(
+    session: CypherSession,
+    *,
+    user_id: str,
+    assignments: dict[str, str],
+    event_ids: set[str] | None = None,
+) -> int:
+    """Persist the tag-beats classifier's verdicts onto ``:Event.mined_motif_code``
+    (D-W8-MOTIF-BEAT-LLM-EXTRACTOR). ``assignments`` is ``{event_id: motif_code}`` against the
+    user's VISIBLE motif catalog. Tenant-scoped on ``e.user_id`` (a foreign id matches
+    nothing). Returns the count tagged.
+
+    Pass ``event_ids`` (the full re-tagged scope) to also CLEAR a stale code on any event in
+    that scope the classifier did not assign (D-THREAD-TAG-RETAG-STALE) — so a re-mine after
+    the catalog changed doesn't leave orphaned generic labels."""
+    rows = [{"id": r["id"], "code": r["v"]} for r in _retag_rows(assignments, event_ids)]
+    if not rows:
+        return 0
+    result = await run_write(
+        session, _SET_MINED_MOTIFS_CYPHER, user_id=user_id, rows=rows,
+    )
+    record = await result.single()
+    return int(record["tagged"]) if record else 0
+
+
+# ── causal edges (D-W10-ARC-CONFORMANCE-SUCCESSION F2) ─────────────────
+
+
+_MERGE_CAUSAL_EDGES_CYPHER = """
+UNWIND $rows AS row
+MATCH (a:Event {id: row.cause}), (b:Event {id: row.effect})
+WHERE a.user_id = $user_id AND b.user_id = $user_id
+MERGE (a)-[:CAUSES]->(b)
+RETURN count(*) AS written
+"""
+
+_CAUSAL_MOTIF_PAIRS_CYPHER = """
+MATCH (a:Event)-[:CAUSES]->(b:Event)
+WHERE a.user_id = $user_id AND b.user_id = $user_id
+  AND ($project_id IS NULL OR (a.project_id = $project_id AND b.project_id = $project_id))
+  AND a.realized_motif_code IS NOT NULL AND b.realized_motif_code IS NOT NULL
+RETURN DISTINCT a.realized_motif_code AS cause, b.realized_motif_code AS effect
+"""
+
+
+async def merge_causal_edges(
+    session: CypherSession, *, user_id: str, pairs: list[tuple[str, str]],
+) -> int:
+    """Persist inferred `(:Event)-[:CAUSES]->(:Event)` edges (idempotent MERGE), tenant-scoped
+    on BOTH endpoints (a foreign id matches nothing → never a cross-tenant edge). ``pairs`` is
+    ``[(cause_event_id, effect_event_id)]``. Returns the rows whose endpoints both matched."""
+    rows = [{"cause": c, "effect": e} for c, e in pairs if c and e and c != e]
+    if not rows:
+        return 0
+    result = await run_write(session, _MERGE_CAUSAL_EDGES_CYPHER, user_id=user_id, rows=rows)
+    record = await result.single()
+    return int(record["written"]) if record else 0
+
+
+async def get_causal_motif_pairs(
+    session: CypherSession, *, user_id: str, project_id: str | None = None,
+) -> list[tuple[str, str]]:
+    """The realized CAUSES edges projected into MOTIF-CODE space (the join lives here because
+    Neo4j holds both the edges AND ``realized_motif_code`` on each event). Returns DISTINCT
+    ``(cause_code, effect_code)`` over edges whose BOTH endpoints are motif-tagged — exactly
+    the ``causal_code_pairs`` deep arc-conformance needs to flip a transition causally-verified.
+    Tenant-scoped on both endpoints."""
+    result = await run_read(
+        session, _CAUSAL_MOTIF_PAIRS_CYPHER, user_id=user_id, project_id=project_id)
+    return [(r["cause"], r["effect"]) async for r in result]
 
 
 # ── delete_events_with_zero_evidence ──────────────────────────────────

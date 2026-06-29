@@ -314,3 +314,316 @@ class OutboxEvent(BaseModel):
     published_at: datetime | None = None
     retry_count: int = 0
     last_error: str | None = None
+
+
+# ════════════════════════════════════════════════════════════════════════════
+# NARRATIVE MOTIF LIBRARY (F0 — spec §R1.4 + 00-RECONCILE §1). 2-tier tenancy
+# (system = owner NULL | user = owner set). Row models are the read shape (the
+# `embedding` vector is NEVER projected — it stays server-side, reference_source
+# precedent); the *Args models are the write shape and forbid extra keys (audit
+# S2 — the LLM/router cannot smuggle owner_user_id or an embedding-model choice).
+# ════════════════════════════════════════════════════════════════════════════
+
+# ── enums (type aliases)
+MotifKind = Literal["sequence", "situation", "hook", "emotion_arc", "trope", "pattern", "scheme"]
+MotifSource = Literal["authored", "mined", "adopted", "imported"]
+MotifVisibility = Literal["private", "unlisted", "public"]
+MotifStatus = Literal["draft", "active", "archived"]
+MotifLinkKind = Literal["composed_of", "precedes", "variant_of"]
+Actant = Literal["subject", "object", "sender", "receiver", "helper", "opponent"]
+ArcSource = Literal["authored", "mined", "imported"]
+_Code = Annotated[str, StringConstraints(max_length=200)]
+_Lang = Annotated[str, StringConstraints(max_length=20)]
+_Key = Annotated[str, StringConstraints(max_length=100)]
+
+
+class _ForbidExtra(BaseModel):
+    """Base for write-arg models — extra='forbid' is the S2 guard so a caller (the
+    LLM/router/MCP tool) cannot smuggle `owner_user_id` or an embedding-model choice
+    onto a write. Mirrors loreweave_mcp.ForbidExtra; a local alias so non-MCP
+    callers/routers share it."""
+
+    model_config = {"extra": "forbid"}
+
+
+# ── sub-shapes (validated JSONB members on write)
+class MotifRole(BaseModel):
+    key: _Key
+    actant: Actant
+    label: _Title = ""
+    constraints: list[_Short] = Field(default_factory=list)
+
+
+class MotifBeat(BaseModel):
+    key: _Key
+    label: _Title = ""
+    intent: _Short = ""
+    tension_target: int | None = None             # 1..5
+    order: int = 0
+    reversal: dict[str, Any] | None = None         # §15.2 {thread, from, to}
+    alliance_shift: dict[str, Any] | None = None   # §15.2 {a, b, from, to}
+
+
+class InfoAsymmetry(BaseModel):
+    knows: list[str] = Field(default_factory=list)
+    deceived: list[str] = Field(default_factory=list)
+    gap: _Long = ""
+
+
+# ── row models (the repo return shape; embedding is NEVER projected)
+class Motif(BaseModel):
+    id: UUID
+    owner_user_id: UUID | None = None              # NULL = system tier
+    book_id: UUID | None = None                    # per-book label (D-MOTIF-ADOPT-PER-BOOK); NULL = global/system. Owner's full dump only — NOT in the public/non-owner projections.
+    book_shared: bool = False                      # D-MOTIF-ADOPT-BOOK-COLLAB-TIER (model B): true = the book's SHARED tier (book-grant gated). Owner full dump only — never on the public catalog allow-list.
+    code: _Code
+    language: _Lang = "en"
+    visibility: MotifVisibility = "private"
+    kind: MotifKind = "sequence"
+    category: _Code | None = None
+    name: _Title
+    summary: _Long = ""
+    genre_tags: list[_Key] = Field(default_factory=list)
+    roles: list[dict[str, Any]] = Field(default_factory=list)         # validated via MotifRole on write
+    beats: list[dict[str, Any]] = Field(default_factory=list)         # validated via MotifBeat on write
+    preconditions: list[dict[str, Any]] = Field(default_factory=list)
+    effects: list[dict[str, Any]] = Field(default_factory=list)
+    info_asymmetry: dict[str, Any] | None = None
+    annotations: dict[str, Any] = Field(default_factory=dict)         # RECONCILE D1 — template-level scheme props
+    tension_target: int | None = None
+    emotion_target: Annotated[str, StringConstraints(max_length=100)] | None = None
+    examples: list[dict[str, Any]] = Field(default_factory=list)
+    abstraction_confidence: Literal["high", "med", "low"] | None = None
+    source: MotifSource = "authored"
+    imported_derived: bool = False                 # B-3 lineage taint (clone propagates; trigger reads)
+    source_ref: _Short | None = None
+    source_version: int | None = None
+    embedding_model: _Title = ""                   # the vector itself is omitted from the projection
+    embedding_dim: int | None = None
+    judge_score: Decimal | None = None
+    mining_support: int | None = None
+    status: MotifStatus = "active"
+    version: int = 1
+    created_at: datetime | None = None
+    updated_at: datetime | None = None
+
+
+class MotifLink(BaseModel):
+    id: UUID
+    from_motif_id: UUID
+    to_motif_id: UUID
+    kind: MotifLinkKind
+    ord: int | None = None
+    created_at: datetime | None = None
+
+
+class MotifApplication(BaseModel):
+    id: UUID
+    user_id: UUID
+    project_id: UUID
+    book_id: UUID
+    motif_id: UUID | None = None                   # SET NULL if the motif is archived
+    motif_version: int | None = None
+    outline_node_id: UUID | None = None
+    role_bindings: dict[str, Any] = Field(default_factory=dict)
+    annotations: dict[str, Any] = Field(default_factory=dict)
+    created_at: datetime | None = None
+
+
+class ArcPlacement(BaseModel):                     # one layout[] entry
+    motif_code: _Code
+    motif_id: UUID | None = None                   # resolved id (R1.4)
+    thread: _Key
+    span_start: int
+    span_end: int
+    ord: int = 0
+    role_hints: dict[str, Any] = Field(default_factory=dict)
+    triggers: list[str] = Field(default_factory=list)   # §15.3 other-placement ids
+
+
+class ArcTemplate(BaseModel):
+    id: UUID
+    owner_user_id: UUID | None = None
+    code: _Code
+    language: _Lang = "en"
+    visibility: MotifVisibility = "private"
+    name: _Title
+    summary: _Long = ""
+    genre_tags: list[_Key] = Field(default_factory=list)
+    chapter_span: int | None = None
+    threads: list[dict[str, Any]] = Field(default_factory=list)
+    layout: list[dict[str, Any]] = Field(default_factory=list)
+    pacing: list[dict[str, Any]] = Field(default_factory=list)
+    arc_roster: list[dict[str, Any]] = Field(default_factory=list)
+    source: ArcSource = "authored"
+    imported_derived: bool = False                 # B-3 lineage taint (clone propagates; trigger reads)
+    source_ref: _Short | None = None
+    source_version: int | None = None
+    embedding_model: _Title = ""
+    embedding_dim: int | None = None
+    status: MotifStatus = "active"
+    version: int = 1
+    created_at: datetime | None = None
+    updated_at: datetime | None = None
+
+
+class ImportSource(BaseModel):
+    id: UUID
+    owner_user_id: UUID
+    project_id: UUID | None = None
+    title: _Title = ""
+    content: _Long
+    created_at: datetime | None = None
+
+
+# ── retrieval result (the FROZEN contract W3 produces / W2 + the MCP suggest consume)
+class MotifCandidate(BaseModel):
+    motif: Motif
+    score: float
+    match_reason: dict[str, Any] = Field(default_factory=dict)   # {tension, genre, precond, cosine}
+
+
+# ── arc retrieval result (D-ARC-RETRIEVE — composition_arc_suggest consumes this)
+class ArcCandidate(BaseModel):
+    arc_template: ArcTemplate
+    score: float
+    match_reason: dict[str, Any] = Field(default_factory=dict)   # {genre, cosine[, degraded]}
+
+
+# ── WRITE-ARG models (ForbidExtra — owner is NEVER an arg; the repo stamps it; there
+# is NO embedding-model arg — the model is platform config, never a write choice, B-1)
+class MotifCreateArgs(_ForbidExtra):
+    code: _Code
+    name: _Title
+    language: _Lang = "en"
+    kind: MotifKind = "sequence"
+    category: _Code | None = None
+    summary: _Long = ""
+    genre_tags: list[_Key] = Field(default_factory=list)
+    roles: list[MotifRole] = Field(default_factory=list)
+    beats: list[MotifBeat] = Field(default_factory=list)
+    preconditions: list[dict[str, Any]] = Field(default_factory=list)
+    effects: list[dict[str, Any]] = Field(default_factory=list)
+    info_asymmetry: InfoAsymmetry | None = None
+    annotations: dict[str, Any] = Field(default_factory=dict)   # RECONCILE D1
+    tension_target: Annotated[int, Field(ge=1, le=5)] | None = None
+    emotion_target: Annotated[str, StringConstraints(max_length=100)] | None = None
+    examples: list[dict[str, Any]] = Field(default_factory=list)
+    visibility: MotifVisibility = "private"            # public/unlisted allowed at create; system is migrate-only
+
+
+class MotifPatchArgs(_ForbidExtra):
+    # every field optional (PATCH semantics); owner/code/language/source are NOT
+    # patchable here (identity/lineage are immutable post-create — clone to re-key).
+    name: _Title | None = None
+    kind: MotifKind | None = None
+    category: _Code | None = None
+    summary: _Long | None = None
+    genre_tags: list[_Key] | None = None
+    roles: list[MotifRole] | None = None
+    beats: list[MotifBeat] | None = None
+    preconditions: list[dict[str, Any]] | None = None
+    effects: list[dict[str, Any]] | None = None
+    info_asymmetry: InfoAsymmetry | None = None
+    annotations: dict[str, Any] | None = None          # RECONCILE D1
+    tension_target: Annotated[int, Field(ge=1, le=5)] | None = None
+    emotion_target: Annotated[str, StringConstraints(max_length=100)] | None = None
+    examples: list[dict[str, Any]] | None = None
+    visibility: MotifVisibility | None = None
+    status: MotifStatus | None = None
+
+
+# ── ARC-TEMPLATE write-arg models (W10) — mirror the motif Create/Patch shape.
+# owner is NEVER an arg (the repo stamps it = caller); embedding-model is platform
+# config, never a write choice (B-1). The JSONB members (threads/layout/pacing/
+# arc_roster) are validated by their sub-shapes on write.
+class ArcThread(BaseModel):
+    key: _Key
+    label: _Title = ""
+
+
+class ArcRosterEntry(BaseModel):                   # one arc_roster[] entry (§12.2)
+    key: _Key                                      # the arc-level role slot (e.g. 'protagonist')
+    actant: Actant | None = None
+    label: _Title = ""
+    constraints: list[_Short] = Field(default_factory=list)
+
+
+class ArcTemplateCreateArgs(_ForbidExtra):
+    code: _Code
+    name: _Title
+    language: _Lang = "en"
+    summary: _Long = ""
+    genre_tags: list[_Key] = Field(default_factory=list)
+    chapter_span: Annotated[int, Field(ge=1)] | None = None
+    threads: list[ArcThread] = Field(default_factory=list)
+    layout: list[ArcPlacement] = Field(default_factory=list)
+    pacing: list[dict[str, Any]] = Field(default_factory=list)
+    arc_roster: list[ArcRosterEntry] = Field(default_factory=list)
+    visibility: MotifVisibility = "private"         # public/unlisted allowed at create; system is migrate-only
+
+
+class ArcTemplatePatchArgs(_ForbidExtra):
+    # every field optional (PATCH semantics); owner/code/language/source are NOT
+    # patchable (identity/lineage are immutable post-create — clone to re-key).
+    name: _Title | None = None
+    summary: _Long | None = None
+    genre_tags: list[_Key] | None = None
+    chapter_span: Annotated[int, Field(ge=1)] | None = None
+    threads: list[ArcThread] | None = None
+    layout: list[ArcPlacement] | None = None
+    pacing: list[dict[str, Any]] | None = None
+    arc_roster: list[ArcRosterEntry] | None = None
+    visibility: MotifVisibility | None = None
+    status: MotifStatus | None = None
+
+
+# ── ARC APPLY (W10) — the PURE/deterministic placement-rescale contract (§12.5).
+# apply = decompose at arc scale: reconcile chapter_span→target, bind arc_roster
+# ONCE, place motifs across the target chapters, interleave per thread, and surface
+# a drop/merge report (§12.6 — NEVER silent). NO LLM/DB here; the deep planner
+# materialization (outline_node rows) is the W10 live-smoke follow-up.
+class ArcApplyArgs(_ForbidExtra):
+    target_chapters: Annotated[int, Field(ge=1, le=2000)]
+    # role binding: arc_roster role-key → the new book's concrete cast id/name
+    # (bound ONCE for the whole arc, propagated to every placement). ForbidExtra
+    # keeps the LLM/caller from smuggling ownership ids onto the apply.
+    roster_bindings: dict[str, Any] = Field(default_factory=dict)
+
+
+class ResolvedPlacement(BaseModel):                # one rescaled placement in the plan
+    motif_code: _Code
+    motif_id: UUID | None = None
+    thread: _Key
+    ord: int = 0
+    src_span_start: int                            # the template's original span (audit)
+    src_span_end: int
+    span_start: int                                # rescaled into [1..target_chapters]
+    span_end: int
+    role_hints: dict[str, Any] = Field(default_factory=dict)
+    role_bindings: dict[str, Any] = Field(default_factory=dict)   # arc_roster propagated
+    triggers: list[str] = Field(default_factory=list)
+    merged_codes: list[str] = Field(default_factory=list)         # other placements folded in (§12.6)
+
+
+class DropMergeEntry(BaseModel):                   # one §12.6 reconciliation event — never silent
+    kind: Literal["dropped", "merged"]
+    motif_code: _Code
+    thread: _Key
+    src_span_start: int
+    src_span_end: int
+    into_motif_code: _Code | None = None           # the survivor a merge folded into
+    reason: _Short = ""
+
+
+class ArcApplyPlan(BaseModel):                      # the apply-preview result (router returns this)
+    arc_template_id: UUID
+    source_chapter_span: int                        # the span the rescale ran from
+    target_chapters: int
+    threads: list[dict[str, Any]] = Field(default_factory=list)
+    placements: list[ResolvedPlacement] = Field(default_factory=list)
+    roster_bindings: dict[str, Any] = Field(default_factory=dict)   # bound ONCE (§12.5)
+    unbound_roster_keys: list[str] = Field(default_factory=list)    # roster slots with no binding supplied
+    drop_merge_report: list[DropMergeEntry] = Field(default_factory=list)
+    # per-chapter interleave: chapter_no (1-based) → [placement ords active there]
+    chapter_interleave: dict[str, list[int]] = Field(default_factory=dict)

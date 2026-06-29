@@ -6,6 +6,7 @@ import type {
   AutoGeneration, CanonRule, ChapterGeneration, CommitDecomposePayload, CorrectionBody, CorrectionStats,
   DecomposePreview, DeriveBody, DerivativeContextResponse, GenerationJob, Grounding, GroundingItemType, NarrativeThread, OutlineNode, PinAction, ProgressStats, PublishGate, ReferenceList, ReferenceSearch, ReferenceSource, SceneLink, SceneLinkKind, StructureTemplate, StyleProfile, StyleScope, VoiceProfile, Work, WorkResolution,
 } from './types';
+import type { MotifBindingsResponse } from './motif/types';
 
 // A3 decompose preview request (cycle 13).
 export type DecomposeBody = {
@@ -135,6 +136,12 @@ export const compositionApi = {
   getOutline(projectId: string, token: string, includeArchived = false): Promise<{ nodes: OutlineNode[]; scene_links: SceneLink[] }> {
     const qs = includeArchived ? '?include_archived=true' : '';
     return apiJson(`${BASE}/works/${projectId}/outline${qs}`, { token });
+  },
+  // D-MOTIF-FE-PLANNERVIEW-WIRING (Shape A) — the POST-commit per-scene motif binding
+  // for a committed chapter: { node_id: BoundMotif | null } (null = free-form). The
+  // planner renders MotifBindingCard per committed scene from this map.
+  getMotifBindings(projectId: string, chapterId: string, token: string): Promise<MotifBindingsResponse> {
+    return apiJson(`${BASE}/works/${projectId}/outline/motif-bindings?chapter_id=${encodeURIComponent(chapterId)}`, { token });
   },
   // T1.3 Scene Graph — create a typed scene edge. 201 → the new link; 409
   // SCENE_LINK_EXISTS on a duplicate (from,to,kind); 400 BAD_REFERENCE if either

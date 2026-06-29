@@ -1371,6 +1371,463 @@ async def process_summarize_message_endpoint(
     )
 
 
+# ── D-W8-MOTIF-BEAT-EXTRACTOR — motif-beat sequences (Option A) ────────
+#
+# Server side of composition-service's frozen `get_motif_beat_sequences`
+# client (app/clients/knowledge_client.py). The miner (narrative-pattern-
+# library W8) consumes ORDERED beat sequences as its PrefixSpan input.
+#
+# Option A: derive the sequences from the EXISTING extracted `:Event`
+# timeline (event_order axis) — deterministic, no new LLM call. Each event
+# → a {beat, thread, tension, role_mentions} step; one sequence per book.
+# The LLM-quality `motif_beat` map-extractor (spec §12.4) is the follow-up
+# (D-W8-MOTIF-BEAT-LLM-EXTRACTOR); until then this rides the event data and
+# the composition client degrades on [] for any book without events.
+
+
+class MotifBeatsRequest(BaseModel):
+    """Frozen wire shape — mirrors knowledge_client.get_motif_beat_sequences:
+    `{user_id, book_id?, corpus?, language?, extractor_version?}`."""
+
+    user_id: UUID
+    book_id: UUID | None = None
+    corpus: bool = False
+    language: str | None = None
+    # The composition client sends its `motif_mine_extractor_version`
+    # ("motif_beat@v1") so a future cache/version axis can key on it. Option A
+    # is deterministic over event data, so we accept + echo it but don't branch
+    # on it yet (the LLM extractor follow-up will).
+    extractor_version: str | None = None
+
+
+class MotifBeatStep(BaseModel):
+    """One ordered beat step. Frozen field names — the composition miner reads
+    exactly these keys (knowledge_client.py L218/L266)."""
+
+    beat: str
+    thread: str
+    # ADDITIVE (D-W10-ARC-CONFORMANCE-THREAD-TAG): the classifier-assigned narrative thread
+    # (combat/romance/…), "" until tagged. `thread` stays the chapter axis; this is orthogonal.
+    narrative_thread: str = ""
+    # ADDITIVE (D-W10-ARC-CONFORMANCE-SUCCESSION): the realized arc-placement motif code, "" until tagged.
+    realized_motif_code: str = ""
+    tension: int
+    role_mentions: list[str] = Field(default_factory=list)
+
+
+class MotifBeatsResponse(BaseModel):
+    """A LIST of beat sequences, one per book/chapter container, each an
+    `event_order`-ordered list of steps. Empty/absent corpus → `[]` (the
+    composition client degrades cleanly on the empty list)."""
+
+    sequences: list[list[MotifBeatStep]] = Field(default_factory=list)
+
+
+@router.post(
+    "/motif-beats",
+    response_model=MotifBeatsResponse,
+    status_code=status.HTTP_200_OK,
+    summary="W8 — derive ordered motif-beat sequences from the event timeline",
+    description=(
+        "Option A motif-beat source for the composition-side miner. Returns "
+        "`event_order`-ordered `{beat, thread, tension, role_mentions}` "
+        "sequences (one per book), derived deterministically from the extracted "
+        ":Event timeline — no LLM call. Scoped to `user_id` (a cross-user book → "
+        "[]). Behind X-Internal-Token. An empty/absent corpus → `{sequences: []}`."
+    ),
+)
+async def motif_beats(body: MotifBeatsRequest) -> MotifBeatsResponse:
+    """Derive motif-beat sequences for the composition miner (W8).
+
+    Needs Neo4j (the :Event timeline lives there). With Neo4j unconfigured we
+    return an empty list rather than 503 — the composition client treats any
+    non-success as the deferred-extractor degrade path, and `{sequences: []}`
+    is the cleaner, contract-shaped equivalent (mining reports
+    `mined: 0` instead of erroring)."""
+    if not settings.neo4j_uri:
+        logger.info("motif-beats: Neo4j not configured — returning empty sequences")
+        return MotifBeatsResponse(sequences=[])
+
+    from app.extraction.motif_beat import derive_motif_beat_sequences
+
+    raw_sequences = await derive_motif_beat_sequences(
+        user_id=body.user_id,
+        book_id=body.book_id,
+        corpus=body.corpus,
+        language=body.language,
+    )
+    # raw_sequences is list[list[dict]] in the frozen shape; Pydantic validates
+    # each step into MotifBeatStep (a field-name mismatch would 422 here, which
+    # is the contract guard we want).
+    return MotifBeatsResponse(sequences=raw_sequences)  # type: ignore[arg-type]
+
+
+# ── D-W10-ARC-CONFORMANCE-THREAD-TAG — narrative-thread classifier ─────
+
+
+def _neutralize_event_dicts(events: list, *, project_id: str) -> list[dict]:
+    """Build the classifier event dicts with extracted prose neutralized
+    (D-EXTRACTOR-PROMPT-INJECTION). The tag classifiers embed each event's title/summary/
+    participants into an LLM prompt; this passes them through the knowledge-service injection
+    defense first so a planted instruction in the source text is tagged, not obeyed. Output is
+    still vocab/id-validated downstream, so this is defense-in-depth, not the only guard."""
+    from app.extraction.injection_defense import neutralize_injection
+
+    def _clean(text: str) -> str:
+        return neutralize_injection(text or "", project_id=project_id)[0]
+
+    out = []
+    for e in events:
+        out.append({
+            "id": e.id,
+            "title": _clean(e.title),
+            "summary": _clean(e.summary),
+            "participants": [_clean(p) for p in (e.participants or [])],
+        })
+    return out
+
+
+def _neutralize_motif_vocab(motifs: list[dict]) -> list[dict]:
+    """Neutralize the catalog-vocab name/summary before they enter the classifier prompt
+    (D-EXTRACTOR-PROMPT-INJECTION). UNLIKE the arc placements tag-motifs uses (the caller's
+    OWN authored motifs), the tag-beats mining catalog includes OTHER users' PUBLIC motifs
+    (list_for_caller scope='all'), whose name/summary are attacker-controllable free text — so
+    a planted instruction in a public motif must be tagged, not obeyed, when another tenant
+    mines. The `code` is NOT touched: it is the controlled answer-key (validated against the
+    same vocab downstream), never free prose. Defense-in-depth — output is still code-validated."""
+    from app.extraction.injection_defense import neutralize_injection
+
+    def _clean(text) -> str:
+        return neutralize_injection(str(text or ""), project_id="motif-catalog")[0]
+
+    out = []
+    for m in motifs:
+        if not m.get("code"):
+            continue
+        out.append({"code": m["code"], "name": _clean(m.get("name")),
+                    "summary": _clean(m.get("summary"))})
+    return out
+
+
+class TagThreadsRequest(BaseModel):
+    """Tag a book's :Event timeline with narrative-thread labels from the caller's
+    vocabulary (the arc template's threads). model_source/model_ref resolve the BYOK
+    classify model (provider-gateway invariant — composition resolves it, passes it here)."""
+
+    user_id: UUID
+    book_id: UUID
+    threads: list[dict] = Field(default_factory=list)   # [{key, label?}]
+    model_source: str
+    model_ref: str
+
+
+class TagThreadsResponse(BaseModel):
+    tagged: int = 0                       # events whose narrative_thread was written
+    events_seen: int = 0                  # events considered
+    threads_assigned: dict[str, int] = Field(default_factory=dict)  # thread_key → count
+
+
+@router.post(
+    "/tag-threads",
+    response_model=TagThreadsResponse,
+    status_code=status.HTTP_200_OK,
+    summary="Tag :Event nodes with narrative-thread labels (deep arc-conformance)",
+    description=(
+        "Classifies each :Event (title+summary+participants) into one of the caller's "
+        "thread keys via an LLM (operation=chat → provider-registry), persisting "
+        ":Event.narrative_thread so motif-beats emits real threads. ADVISORY / "
+        "uncalibrated; degrades to a partial/empty tag on any LLM failure. X-Internal-Token."
+    ),
+)
+async def tag_threads(body: TagThreadsRequest) -> TagThreadsResponse:
+    if not settings.neo4j_uri:
+        logger.info("tag-threads: Neo4j not configured — no-op")
+        return TagThreadsResponse()
+
+    from app.db.neo4j_repos.events import list_events_in_order, set_narrative_threads
+    from app.extraction.motif_beat import _list_user_book_projects
+    from app.extraction.thread_tag import classify_event_threads
+
+    valid = [t for t in body.threads if t.get("key")]
+    if not valid:
+        return TagThreadsResponse()
+
+    llm = get_llm_client()
+    containers = await _list_user_book_projects(body.user_id, body.book_id, corpus=False)
+    seen = 0
+    tagged = 0
+    counts: dict[str, int] = {}
+    async with neo4j_session() as session:
+        for project_id, _book_id in containers:
+            events = await list_events_in_order(
+                session, user_id=str(body.user_id), project_id=str(project_id), limit=2000)
+            if not events:
+                continue
+            seen += len(events)
+            ev_dicts = _neutralize_event_dicts(events, project_id=str(project_id))
+            assignments = await classify_event_threads(
+                llm, user_id=str(body.user_id), model_source=body.model_source,
+                model_ref=body.model_ref, events=ev_dicts, threads=valid)
+            # Pass the full considered scope so a stale tag on an event the classifier no
+            # longer picks is cleared, not left to pollute deep conformance (retag-stale).
+            tagged += await set_narrative_threads(
+                session, user_id=str(body.user_id), assignments=assignments,
+                event_ids={e["id"] for e in ev_dicts})
+            for th in assignments.values():
+                counts[th] = counts.get(th, 0) + 1
+    return TagThreadsResponse(tagged=tagged, events_seen=seen, threads_assigned=counts)
+
+
+# ── D-W10-ARC-CONFORMANCE-SUCCESSION — realized-motif classifier ───────
+
+
+class TagMotifsRequest(BaseModel):
+    """Tag a book's :Event timeline with the arc-placement motif each event realizes (by
+    code). model_source/model_ref resolve the BYOK classify model (provider-gateway invariant)."""
+
+    user_id: UUID
+    book_id: UUID
+    motifs: list[dict] = Field(default_factory=list)   # [{code, name?, summary?}]
+    model_source: str
+    model_ref: str
+
+
+class TagMotifsResponse(BaseModel):
+    tagged: int = 0
+    events_seen: int = 0
+    motifs_assigned: dict[str, int] = Field(default_factory=dict)   # motif_code → count
+
+
+@router.post(
+    "/tag-motifs",
+    response_model=TagMotifsResponse,
+    status_code=status.HTTP_200_OK,
+    summary="Tag :Event nodes with the arc-placement motif they realize (deep succession)",
+    description=(
+        "Classifies each :Event (title+summary+participants) into one of the arc's placement "
+        "motif codes via an LLM (operation=chat → provider-registry), persisting "
+        ":Event.realized_motif_code so motif-beats emits the realized motif order. ADVISORY / "
+        "uncalibrated; degrades to a partial/empty tag on any LLM failure. X-Internal-Token."
+    ),
+)
+async def tag_motifs(body: TagMotifsRequest) -> TagMotifsResponse:
+    if not settings.neo4j_uri:
+        logger.info("tag-motifs: Neo4j not configured — no-op")
+        return TagMotifsResponse()
+
+    from app.db.neo4j_repos.events import list_events_in_order, set_realized_motifs
+    from app.extraction.motif_beat import _list_user_book_projects
+    from app.extraction.motif_tag import classify_event_motifs
+
+    valid = [m for m in body.motifs if m.get("code")]
+    if not valid:
+        return TagMotifsResponse()
+
+    llm = get_llm_client()
+    containers = await _list_user_book_projects(body.user_id, body.book_id, corpus=False)
+    seen = 0
+    tagged = 0
+    counts: dict[str, int] = {}
+    async with neo4j_session() as session:
+        for project_id, _book_id in containers:
+            events = await list_events_in_order(
+                session, user_id=str(body.user_id), project_id=str(project_id), limit=2000)
+            if not events:
+                continue
+            seen += len(events)
+            ev_dicts = _neutralize_event_dicts(events, project_id=str(project_id))
+            assignments = await classify_event_motifs(
+                llm, user_id=str(body.user_id), model_source=body.model_source,
+                model_ref=body.model_ref, events=ev_dicts, motifs=valid)
+            # Clear a stale realized_motif_code on any considered event left unassigned.
+            tagged += await set_realized_motifs(
+                session, user_id=str(body.user_id), assignments=assignments,
+                event_ids={e["id"] for e in ev_dicts})
+            for code in assignments.values():
+                counts[code] = counts.get(code, 0) + 1
+    return TagMotifsResponse(tagged=tagged, events_seen=seen, motifs_assigned=counts)
+
+
+# ── D-W8-MOTIF-BEAT-LLM-EXTRACTOR — catalog-motif classifier (mining source) ────
+
+
+class TagBeatsRequest(BaseModel):
+    """Tag a book's (or the whole corpus's) :Event timeline with the catalog motif each event
+    most embodies (by code), classified against the user's VISIBLE motif catalog — NOT an arc.
+    Persists :Event.mined_motif_code so a subsequent motif-beats read emits GENERIC beat/thread
+    axes (namespace:local) and corpus PrefixSpan mines reusable motif-sequences. model_source/
+    model_ref resolve the BYOK classify model (provider-gateway invariant — composition resolves
+    the user's pick and passes it here; NO platform model literal)."""
+
+    user_id: UUID
+    book_id: UUID | None = None
+    corpus: bool = False
+    motifs: list[dict] = Field(default_factory=list)   # [{code, name?, summary?}] — the catalog
+    model_source: str
+    model_ref: str
+
+
+class TagBeatsResponse(BaseModel):
+    tagged: int = 0
+    events_seen: int = 0
+    motifs_assigned: dict[str, int] = Field(default_factory=dict)   # motif_code → count
+
+
+@router.post(
+    "/tag-beats",
+    response_model=TagBeatsResponse,
+    status_code=status.HTTP_200_OK,
+    summary="Tag :Event nodes with the catalog motif they embody (W8 mining source)",
+    description=(
+        "Classifies each :Event (title+summary+participants) into one code of the user's "
+        "VISIBLE motif catalog via an LLM (operation=chat → provider-registry), persisting "
+        ":Event.mined_motif_code so motif-beats emits generic beat/thread axes for corpus "
+        "mining. Scope is one book (book_id) or the whole corpus (corpus=true). ADVISORY / "
+        "uncalibrated; degrades to a partial/empty tag on any LLM failure. X-Internal-Token."
+    ),
+)
+async def tag_beats(body: TagBeatsRequest) -> TagBeatsResponse:
+    if not settings.neo4j_uri:
+        logger.info("tag-beats: Neo4j not configured — no-op")
+        return TagBeatsResponse()
+
+    from app.db.neo4j_repos.events import list_events_in_order, set_mined_motif_codes
+    from app.extraction.motif_beat import _list_user_book_projects
+    # Reuse the realized-motif classifier engine verbatim — same task shape (classify each
+    # event into one code of a provided vocab); only the vocab source (catalog vs arc) and the
+    # persisted property differ. No duplicate prompt/parse logic.
+    from app.extraction.motif_tag import classify_event_motifs
+
+    # Neutralize the catalog vocab — it may carry OTHER tenants' public-motif free text
+    # (cross-tenant prompt-injection surface; the events are already neutralized below).
+    valid = _neutralize_motif_vocab(body.motifs)
+    if not valid:
+        return TagBeatsResponse()
+
+    llm = get_llm_client()
+    containers = await _list_user_book_projects(body.user_id, body.book_id, corpus=body.corpus)
+    seen = 0
+    tagged = 0
+    counts: dict[str, int] = {}
+    async with neo4j_session() as session:
+        for project_id, _book_id in containers:
+            events = await list_events_in_order(
+                session, user_id=str(body.user_id), project_id=str(project_id), limit=2000)
+            if not events:
+                continue
+            seen += len(events)
+            ev_dicts = _neutralize_event_dicts(events, project_id=str(project_id))
+            assignments = await classify_event_motifs(
+                llm, user_id=str(body.user_id), model_source=body.model_source,
+                model_ref=body.model_ref, events=ev_dicts, motifs=valid)
+            # Clear a stale mined_motif_code on any considered event left unassigned (re-mine
+            # after the catalog changed must not leave orphaned generic labels).
+            tagged += await set_mined_motif_codes(
+                session, user_id=str(body.user_id), assignments=assignments,
+                event_ids={e["id"] for e in ev_dicts})
+            for code in assignments.values():
+                counts[code] = counts.get(code, 0) + 1
+    return TagBeatsResponse(tagged=tagged, events_seen=seen, motifs_assigned=counts)
+
+
+# ── D-W10-ARC-CONFORMANCE-SUCCESSION F2 — causal-edge inference ────────
+
+
+class CausalEdgesRequest(BaseModel):
+    user_id: UUID
+    book_id: UUID
+    model_source: str
+    model_ref: str
+    # infer only over the motif-tagged subset (the arc-relevant beats) by default — bounds cost.
+    tagged_only: bool = True
+
+
+class CausalEdgesResponse(BaseModel):
+    edges_written: int = 0
+    events_considered: int = 0
+
+
+@router.post(
+    "/causal-edges",
+    response_model=CausalEdgesResponse,
+    status_code=status.HTTP_200_OK,
+    summary="Infer (:Event)-[:CAUSES]->(:Event) edges (deep succession causal-verify)",
+    description=(
+        "Infers direct causal links over the ordered :Event timeline (LLM, operation=chat → "
+        "provider-registry), MERGEing :CAUSES edges so deep arc-conformance can flip a legal "
+        "succession transition causally-verified. By default runs over the motif-tagged subset "
+        "(bounds cost). ADVISORY / uncalibrated; degrades to fewer/no edges. X-Internal-Token."
+    ),
+)
+async def causal_edges(body: CausalEdgesRequest) -> CausalEdgesResponse:
+    if not settings.neo4j_uri:
+        logger.info("causal-edges: Neo4j not configured — no-op")
+        return CausalEdgesResponse()
+
+    from app.db.neo4j_repos.events import list_events_in_order, merge_causal_edges
+    from app.extraction.causal_edges import infer_causal_edges
+    from app.extraction.motif_beat import _list_user_book_projects
+
+    llm = get_llm_client()
+    containers = await _list_user_book_projects(body.user_id, body.book_id, corpus=False)
+    considered = 0
+    written = 0
+    async with neo4j_session() as session:
+        for project_id, _book_id in containers:
+            events = await list_events_in_order(
+                session, user_id=str(body.user_id), project_id=str(project_id), limit=2000)
+            if body.tagged_only:
+                events = [e for e in events if e.realized_motif_code]
+            if len(events) < 2:
+                continue
+            considered += len(events)
+            ev_dicts = _neutralize_event_dicts(events, project_id=str(project_id))
+            pairs = await infer_causal_edges(
+                llm, user_id=str(body.user_id), model_source=body.model_source,
+                model_ref=body.model_ref, events=ev_dicts)
+            if pairs:
+                written += await merge_causal_edges(
+                    session, user_id=str(body.user_id), pairs=pairs)
+    return CausalEdgesResponse(edges_written=written, events_considered=considered)
+
+
+class CausalMotifPairsRequest(BaseModel):
+    user_id: UUID
+    book_id: UUID
+
+
+class CausalMotifPairsResponse(BaseModel):
+    pairs: list[list[str]] = Field(default_factory=list)   # [[cause_code, effect_code]]
+
+
+@router.post(
+    "/causal-motif-pairs",
+    response_model=CausalMotifPairsResponse,
+    status_code=status.HTTP_200_OK,
+    summary="Read realized CAUSES edges in motif-code space (deep succession causal-verify)",
+    description=(
+        "The realized :CAUSES edges projected to (cause_motif_code, effect_motif_code) over "
+        "events whose both endpoints are motif-tagged — the causal_code_pairs deep "
+        "arc-conformance flips a transition causally-verified with. X-Internal-Token."
+    ),
+)
+async def causal_motif_pairs(body: CausalMotifPairsRequest) -> CausalMotifPairsResponse:
+    if not settings.neo4j_uri:
+        return CausalMotifPairsResponse()
+
+    from app.db.neo4j_repos.events import get_causal_motif_pairs
+    from app.extraction.motif_beat import _list_user_book_projects
+
+    containers = await _list_user_book_projects(body.user_id, body.book_id, corpus=False)
+    seen: set[tuple[str, str]] = set()
+    async with neo4j_session() as session:
+        for project_id, _book_id in containers:
+            for c, e in await get_causal_motif_pairs(
+                    session, user_id=str(body.user_id), project_id=str(project_id)):
+                seen.add((c, e))
+    return CausalMotifPairsResponse(pairs=[[c, e] for c, e in sorted(seen)])
+
+
 # ── K17 (cycle 12b) — entity-embedding backfill ───────────────────────
 
 # One batch's worth of candidates per producer call; the loop drains.

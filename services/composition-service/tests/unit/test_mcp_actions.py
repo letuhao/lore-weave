@@ -21,6 +21,7 @@ import uuid
 from contextlib import asynccontextmanager
 from unittest.mock import AsyncMock, MagicMock, patch
 
+import jwt
 import pytest
 from fastapi.testclient import TestClient
 
@@ -87,6 +88,12 @@ def client():
         patch("app.db.pool.create_pool", new_callable=AsyncMock),
         patch("app.db.pool.close_pool", new_callable=AsyncMock),
         patch("app.db.pool.get_pool", return_value=spy_pool),
+        # D-W2-MCP-SESSION-ISOLATION: app.main does `from app.db.pool import create_pool`,
+        # so the lifespan's create_pool is a SEPARATE binding the app.db.pool patch misses —
+        # unpatched it connects to the real DB host in a batch (getaddrinfo). Patch app.main.* too.
+        patch("app.main.create_pool", new_callable=AsyncMock),
+        patch("app.main.close_pool", new_callable=AsyncMock),
+        patch("app.main.get_pool", return_value=spy_pool),
         patch("app.main.run_migrations", new_callable=AsyncMock),
         patch("app.main.mcp_server", _mcp_stub),
         patch("app.main.get_grant_client", MagicMock()),
@@ -135,6 +142,32 @@ def _confirm(client, token, *, user=USER):
     )
 
 
+def _bearer(user=USER) -> dict[str, str]:
+    """A valid FE-style Bearer JWT (HS256, `sub`) — the FE path identity, NO
+    internal token (the BFF never injects one for /v1/composition/*)."""
+    tok = jwt.encode({"sub": str(user)}, settings.jwt_secret, algorithm="HS256")
+    return {"Authorization": f"Bearer {tok}"}
+
+
+def test_billing_job_id_is_a_valid_uuid_deterministic_per_token():
+    """Regression: usage-billing's guardrail reserve unmarshals `job_id` as a UUID,
+    so the precheck MUST send a UUID — sending `_jti` (a 64-char SHA-256 hex) made
+    the reserve 400 → the fail-closed precheck denied EVERY Tier-W spend (402). The
+    billing job-id must be a parseable UUID, deterministic per token, distinct across
+    tokens — and NOT the raw 64-char jti."""
+    from app.routers.actions import _billing_job_id, _jti
+
+    a = _billing_job_id("token-A")
+    # a valid UUID (would raise otherwise) + 36-char canonical form
+    assert str(uuid.UUID(a)) == a
+    # deterministic per token, distinct across tokens
+    assert a == _billing_job_id("token-A")
+    assert a != _billing_job_id("token-B")
+    # the bug: it must NOT be the 64-char hex jti (which is not a UUID)
+    assert a != _jti("token-A")
+    assert len(_jti("token-A")) == 64
+
+
 # ── happy path: mint → confirm executes ───────────────────────────────────────
 
 
@@ -158,6 +191,65 @@ def test_preview_describes_without_writing(client):
     assert body["descriptor"] == "composition.publish"
     assert body["resource_id"] == str(CHAPTER)
     client._book.publish_chapter.assert_not_awaited()
+
+
+# ── FE path: a Bearer JWT is sufficient identity (mirrors glossary) ─────────────
+
+
+def test_confirm_executes_publish_via_jwt(client):
+    """The FE drives confirm with ONLY its user JWT (no internal token / X-User-Id) —
+    the confirm token is the capability, the JWT proves who wields it."""
+    resp = client.post(
+        "/v1/composition/actions/confirm",
+        params={"token": _publish_token()},
+        headers=_bearer(USER),
+    )
+    assert resp.status_code == 200, resp.text
+    assert resp.json()["outcome"] == "action_done"
+    client._book.publish_chapter.assert_awaited_once()
+
+
+def test_confirm_jwt_for_other_user_refused(client):
+    """A token minted for USER cannot be confirmed by OTHER's JWT (INV-9)."""
+    resp = client.post(
+        "/v1/composition/actions/confirm",
+        params={"token": _publish_token(user=USER)},
+        headers=_bearer(OTHER),
+    )
+    assert resp.status_code == 400
+    assert resp.json()["detail"]["code"] == "action_error"
+    client._book.publish_chapter.assert_not_awaited()
+
+
+def test_preview_via_jwt(client):
+    resp = client.get(
+        "/v1/composition/actions/preview",
+        params={"token": _publish_token()},
+        headers=_bearer(USER),
+    )
+    assert resp.status_code == 200, resp.text
+    assert resp.json()["descriptor"] == "composition.publish"
+
+
+def test_preview_jwt_for_other_user_refused(client):
+    """A user can't preview someone else's proposal (anti-oracle on the JWT path)."""
+    resp = client.get(
+        "/v1/composition/actions/preview",
+        params={"token": _publish_token(user=USER)},
+        headers=_bearer(OTHER),
+    )
+    assert resp.status_code == 400
+
+
+def test_confirm_no_jwt_and_no_internal_token_refused(client):
+    """Neither identity path → 401 (the internal-token requirement still bites when
+    no JWT is present)."""
+    resp = client.post(
+        "/v1/composition/actions/confirm",
+        params={"token": _publish_token()},
+        headers={"X-User-Id": str(USER)},  # no JWT, no internal token
+    )
+    assert resp.status_code == 401
 
 
 # ── refusals ──────────────────────────────────────────────────────────────────

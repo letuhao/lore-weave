@@ -198,7 +198,18 @@ services:
       # the composition-worker's flag (same env var): API on / worker off enqueues
       # jobs nothing consumes; API off (the bug this fixes — the var was never wired
       # to the service) silently runs every batch op inline + the worker idles.
-      COMPOSITION_WORKER_ENABLED: ${COMPOSITION_WORKER_ENABLED:-false}
+      # Default TRUE (2026-06-28): the Tier-W motif jobs (mine / arc-import /
+      # conformance, incl. the deep arc-conformance job) ALWAYS enqueue via the confirm
+      # effect, so they only run if the worker consumes — a false default left them
+      # pending forever. The batch endpoints (decompose/generate/stitch) become 202+poll
+      # (the FE already polls GET /jobs/{id}).
+      COMPOSITION_WORKER_ENABLED: ${COMPOSITION_WORKER_ENABLED:-true}
+      # W5 motif-conformance — the per-scene producer (judge each generated scene vs
+      # its bound motif) + the calibrated label. ENABLED 2026-06-28 (the W5 judge gate
+      # is satisfied: kappa 1.0 / 0.762 ≥ thresholds). Single-local-judge, so the FE
+      # still surfaces an advisory note; flip CALIBRATED off to fall back to 'unverified'.
+      MOTIF_CONFORMANCE_ENABLED: ${MOTIF_CONFORMANCE_ENABLED:-true}
+      MOTIF_CONFORMANCE_CALIBRATED: ${MOTIF_CONFORMANCE_CALIBRATED:-true}
       LOG_LEVEL: INFO
       # S2 — long-chapter state-compress threshold (chars of raw story-so-far
       # before the packer compresses the older portion). Default 6000; overridable.
@@ -245,8 +256,13 @@ services:
       INTERNAL_SERVICE_TOKEN: ${INTERNAL_SERVICE_TOKEN:-dev_internal_token}
       REDIS_URL: redis://redis:6379
       LOG_LEVEL: INFO
-      # Must match composition-service: the worker runs only when the API enqueues.
-      COMPOSITION_WORKER_ENABLED: ${COMPOSITION_WORKER_ENABLED:-false}
+      # Must match composition-service (default TRUE 2026-06-28 — the Tier-W motif jobs
+      # require a consuming worker; see the API block).
+      COMPOSITION_WORKER_ENABLED: ${COMPOSITION_WORKER_ENABLED:-true}
+      # W5 motif-conformance — mirror the API (the worker's conformance_run job +
+      # any producer path reads these). ENABLED 2026-06-28 (gate satisfied).
+      MOTIF_CONFORMANCE_ENABLED: ${MOTIF_CONFORMANCE_ENABLED:-true}
+      MOTIF_CONFORMANCE_CALIBRATED: ${MOTIF_CONFORMANCE_CALIBRATED:-true}
       # Same internal service URLs as the API — the worker re-resolves pack context
       # (book/glossary/knowledge) + the internal-auth LLM for the compute half.
       KNOWLEDGE_INTERNAL_URL: http://knowledge-service:8092
@@ -1392,6 +1408,11 @@ services:
       RABBITMQ_URL: amqp://loreweave:loreweave_dev@rabbitmq:5672/
       JWT_SECRET: ${JWT_SECRET:-loreweave_local_dev_jwt_secret_change_me_32chars}
       INTERNAL_SERVICE_TOKEN: ${INTERNAL_SERVICE_TOKEN:-dev_internal_token}
+      # FE→MCP-tool bridge (D-W10-ARC-CONFORMANCE-DEEP-FE) — the BFF's
+      # /v1/ai/tools/execute controller validates the FE's JWT then forwards a
+      # whitelisted federated tool call to ai-gateway's /internal/tools/execute
+      # (SO-1, the same internal token above). Same base the chat-service uses.
+      AI_GATEWAY_URL: http://ai-gateway:8210
       # Phase 6c-γ — OpenTelemetry trace export (see provider-registry-service).
       OTEL_EXPORTER_OTLP_ENDPOINT: ${OTEL_EXPORTER_OTLP_ENDPOINT:-}
     depends_on:

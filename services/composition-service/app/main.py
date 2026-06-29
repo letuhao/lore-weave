@@ -24,6 +24,7 @@ from app.clients.embedding_client import close_embedding_client
 from app.clients.glossary_client import close_glossary_client
 from app.clients.knowledge_client import close_knowledge_client
 from app.clients.llm_client import close_llm_client
+from app.clients.web_search_client import close_web_search_client
 from app.grant_client import close_grant_client, get_grant_client
 from app.config import settings
 from app.db.migrate import run_migrations
@@ -34,9 +35,9 @@ from app.logging_config import setup_logging, trace_id_var
 from app.mcp.server import build_mcp_app, mcp_server
 from app.middleware.trace_id import TraceIdMiddleware
 from app.routers import (
-    actions, approve, canon, engine, grounding, health, internal_eval, internal_job_control,
-    metrics, narrative_threads, outline, ping, plan, progress, prose, references, style_voice,
-    works,
+    actions, approve, arc, canon, conformance, engine, grounding, health, import_source,
+    internal_eval, internal_job_control, metrics, motif, motif_sync, narrative_threads,
+    outline, ping, plan, progress, prose, references, style_voice, works,
 )
 
 logger = logging.getLogger(__name__)
@@ -130,6 +131,7 @@ async def lifespan(app: FastAPI):
         await close_book_client()
         await close_glossary_client()
         await close_embedding_client()
+        await close_web_search_client()
         await close_llm_client()
         await close_grant_client()  # E0-4c
         await close_pool()
@@ -177,6 +179,10 @@ app.include_router(grounding.router)
 app.include_router(progress.router)  # LOOM T4.2 — writing-progress stats
 app.include_router(style_voice.router)  # LOOM T3.5 — style & voice steering
 app.include_router(references.router)  # LOOM T3.6 — author reference shelf + retrieval
+app.include_router(motif.router)  # Narrative motif library W1 — CRUD/adopt/publish/catalog
+app.include_router(motif_sync.router)  # W11 — publish/adopt sync (upstream-diff + apply-merge)
+app.include_router(arc.router)  # W10 — arc-template CRUD/adopt/catalog + apply-preview
+app.include_router(import_source.router)  # W9 — import_source CRUD (per-user deconstruct input)
 app.include_router(engine.router)
 app.include_router(outline.router)
 app.include_router(plan.router)
@@ -184,6 +190,7 @@ app.include_router(internal_eval.router)
 app.include_router(internal_job_control.router)  # Unified Job Control Plane P3
 app.include_router(canon.router)
 app.include_router(narrative_threads.router)
+app.include_router(conformance.router)  # W5 — motif-conformance trace read (advisory)
 app.include_router(actions.router)  # MCP fan-out S-COMPOSE Tier-W confirm/preview
 
 # MCP fan-out S-COMPOSE — mount the /mcp facade. stateless_http=True + path="/" so

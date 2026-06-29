@@ -212,6 +212,189 @@ class KnowledgeClient:
             logger.warning("knowledge extract-item unavailable: %r", exc)
             return None
 
+    # ── W8 motif mining: the motif_beat sequence source (cross-service) ──────────
+    async def get_motif_beat_sequences(
+        self, user_id: UUID, *, book_id: UUID | None = None, corpus: bool = False,
+        language: str | None = None,
+    ) -> list[list[dict[str, Any]]]:
+        """W8 — the `motif_beat` extraction source for the composition-side miner.
+
+        Returns ORDERED beat sequences: one list per coherent narrative unit
+        (book/arc/chapter), each a list of `{beat, thread, tension, role_mentions}`
+        ordered by the knowledge timeline's `event_order` (the SPADE/PrefixSpan
+        input). Scope is `book_id` (one book) or `corpus=True` (all the user's
+        books); `language` narrows the axis. The user scope is carried on the call
+        (tenancy — the server filters by user_id; a cross-user book returns []).
+
+        SHIPPED — the knowledge-service SERVER route (`POST /internal/extraction/
+        motif-beats`, commit 73004c33) derives these sequences deterministically from
+        the extracted `:Event` timeline (Option A). v2 (D-W8-MOTIF-BEAT-LLM-EXTRACTOR):
+        when the mine worker has first run `tag_beats`, each step's beat/thread axes are
+        the GENERIC `namespace:local` of the event's `mined_motif_code`, so corpus
+        PrefixSpan finds reusable motif-sequences. This thin client still returns [] on a
+        404/501/transport-error or empty corpus so the miner DEGRADES cleanly
+        (`mined: 0, reason: 'beat_extractor_unavailable'`) when no `:Event` corpus exists
+        for the book yet (a cold book that was never analysis-extracted).
+        """
+        url = f"{self._base_url}/internal/extraction/motif-beats"
+        payload: dict[str, Any] = {"user_id": str(user_id)}
+        if corpus:
+            payload["corpus"] = True
+        elif book_id is not None:
+            payload["book_id"] = str(book_id)
+        if language:
+            payload["language"] = language
+        payload["extractor_version"] = settings.motif_mine_extractor_version
+        try:
+            resp = await self._http.post(url, json=payload, headers=self._internal_headers())
+        except httpx.HTTPError as exc:
+            logger.warning("knowledge motif-beats unavailable (extractor deferred): %s", exc)
+            return []
+        # 404 (route not deployed yet) / 501 (not implemented) → the deferred
+        # extractor — degrade to [] (NOT a crash). Any other non-200 also degrades.
+        if resp.status_code != 200:
+            logger.warning("knowledge motif-beats → %d (extractor deferred?)", resp.status_code)
+            return []
+        try:
+            data = resp.json()
+        except (ValueError, AttributeError) as exc:
+            logger.warning("knowledge motif-beats bad JSON: %s", exc)
+            return []
+        seqs = data.get("sequences") if isinstance(data, dict) else None
+        if not isinstance(seqs, list):
+            return []
+        # Normalize: keep only well-formed list-of-dict sequences.
+        return [s for s in seqs if isinstance(s, list)]
+
+    async def tag_threads(
+        self, user_id: UUID, *, book_id: UUID, threads: list[dict[str, Any]],
+        model_source: str, model_ref: str,
+    ) -> dict[str, Any]:
+        """D-W10-ARC-CONFORMANCE-THREAD-TAG — classify the book's :Event timeline into the
+        given narrative-thread vocabulary (the arc's threads) and persist the labels, so a
+        subsequent motif-beats read carries real ``narrative_thread`` per step. ADVISORY:
+        returns ``{tagged, events_seen, threads_assigned}`` on success, or a degrade
+        ``{tagged:0, …, status:'unavailable'}`` on any outage/non-200 (the deep conformance
+        caller then just sees no tags — pacing still works)."""
+        url = f"{self._base_url}/internal/extraction/tag-threads"
+        payload = {"user_id": str(user_id), "book_id": str(book_id), "threads": threads,
+                   "model_source": model_source, "model_ref": model_ref}
+        try:
+            resp = await self._http.post(url, json=payload, headers=self._internal_headers())
+        except httpx.HTTPError as exc:
+            logger.warning("knowledge tag-threads unavailable: %s", exc)
+            return {"tagged": 0, "events_seen": 0, "threads_assigned": {}, "status": "unavailable"}
+        if resp.status_code != 200:
+            logger.warning("knowledge tag-threads → %d", resp.status_code)
+            return {"tagged": 0, "events_seen": 0, "threads_assigned": {}, "status": "unavailable"}
+        try:
+            return resp.json()
+        except (ValueError, AttributeError):
+            return {"tagged": 0, "events_seen": 0, "threads_assigned": {}, "status": "unavailable"}
+
+    async def tag_motifs(
+        self, user_id: UUID, *, book_id: UUID, motifs: list[dict[str, Any]],
+        model_source: str, model_ref: str,
+    ) -> dict[str, Any]:
+        """D-W10-ARC-CONFORMANCE-SUCCESSION — classify the book's :Event timeline into which
+        arc-placement motif (by code) each event realizes, and persist it, so a subsequent
+        motif-beats read carries ``realized_motif_code`` per step (the realized order for the
+        succession diff). ADVISORY: returns ``{tagged, events_seen, motifs_assigned}`` or a
+        degrade ``{tagged:0, …, status:'unavailable'}`` on any outage/non-200."""
+        url = f"{self._base_url}/internal/extraction/tag-motifs"
+        payload = {"user_id": str(user_id), "book_id": str(book_id), "motifs": motifs,
+                   "model_source": model_source, "model_ref": model_ref}
+        try:
+            resp = await self._http.post(url, json=payload, headers=self._internal_headers())
+        except httpx.HTTPError as exc:
+            logger.warning("knowledge tag-motifs unavailable: %s", exc)
+            return {"tagged": 0, "events_seen": 0, "motifs_assigned": {}, "status": "unavailable"}
+        if resp.status_code != 200:
+            logger.warning("knowledge tag-motifs → %d", resp.status_code)
+            return {"tagged": 0, "events_seen": 0, "motifs_assigned": {}, "status": "unavailable"}
+        try:
+            return resp.json()
+        except (ValueError, AttributeError):
+            return {"tagged": 0, "events_seen": 0, "motifs_assigned": {}, "status": "unavailable"}
+
+    async def tag_beats(
+        self, user_id: UUID, *, book_id: UUID | None = None, corpus: bool = False,
+        motifs: list[dict[str, Any]], model_source: str, model_ref: str,
+    ) -> dict[str, Any]:
+        """D-W8-MOTIF-BEAT-LLM-EXTRACTOR — classify the book's (or whole corpus's) :Event
+        timeline into the user's VISIBLE motif catalog (by code) and persist it, so a
+        subsequent motif-beats read emits GENERIC beat/thread axes (namespace:local) and corpus
+        PrefixSpan mines reusable motif-sequences instead of one-off concrete titles. The mine
+        worker calls this BEFORE get_motif_beat_sequences, passing the user's BYOK model. ADVISORY:
+        returns ``{tagged, events_seen, motifs_assigned}`` or a degrade
+        ``{tagged:0, …, status:'unavailable'}`` on any outage/non-200 (mining then falls back to
+        the deterministic Option-A axes — fewer patterns, never a crash)."""
+        url = f"{self._base_url}/internal/extraction/tag-beats"
+        payload: dict[str, Any] = {"user_id": str(user_id), "motifs": motifs,
+                                   "model_source": model_source, "model_ref": model_ref}
+        if corpus:
+            payload["corpus"] = True
+        elif book_id is not None:
+            payload["book_id"] = str(book_id)
+        try:
+            resp = await self._http.post(
+                url, json=payload, headers=self._internal_headers(),
+                # LLM tagging over a whole book/corpus is slow — use the extract lens.
+                timeout=httpx.Timeout(self._extract_timeout_s),
+            )
+        except httpx.HTTPError as exc:
+            logger.warning("knowledge tag-beats unavailable: %s", exc)
+            return {"tagged": 0, "events_seen": 0, "motifs_assigned": {}, "status": "unavailable"}
+        if resp.status_code != 200:
+            logger.warning("knowledge tag-beats → %d", resp.status_code)
+            return {"tagged": 0, "events_seen": 0, "motifs_assigned": {}, "status": "unavailable"}
+        try:
+            return resp.json()
+        except (ValueError, AttributeError):
+            return {"tagged": 0, "events_seen": 0, "motifs_assigned": {}, "status": "unavailable"}
+
+    async def infer_causal_edges(
+        self, user_id: UUID, *, book_id: UUID, model_source: str, model_ref: str,
+    ) -> dict[str, Any]:
+        """D-W10-ARC-CONFORMANCE-SUCCESSION F2 — infer + persist `(:Event)-[:CAUSES]` edges
+        over the book's motif-tagged events. ADVISORY: returns the counts or a degrade dict."""
+        url = f"{self._base_url}/internal/extraction/causal-edges"
+        payload = {"user_id": str(user_id), "book_id": str(book_id),
+                   "model_source": model_source, "model_ref": model_ref}
+        try:
+            resp = await self._http.post(url, json=payload, headers=self._internal_headers())
+        except httpx.HTTPError as exc:
+            logger.warning("knowledge causal-edges unavailable: %s", exc)
+            return {"edges_written": 0, "events_considered": 0, "status": "unavailable"}
+        if resp.status_code != 200:
+            return {"edges_written": 0, "events_considered": 0, "status": "unavailable"}
+        try:
+            return resp.json()
+        except (ValueError, AttributeError):
+            return {"edges_written": 0, "events_considered": 0, "status": "unavailable"}
+
+    async def causal_motif_pairs(self, user_id: UUID, *, book_id: UUID) -> list[tuple[str, str]]:
+        """The realized CAUSES edges in motif-code space — ``[(cause_code, effect_code)]`` —
+        for deep succession causal-verify. ADVISORY: returns ``[]`` on any outage/non-200."""
+        url = f"{self._base_url}/internal/extraction/causal-motif-pairs"
+        payload = {"user_id": str(user_id), "book_id": str(book_id)}
+        try:
+            resp = await self._http.post(url, json=payload, headers=self._internal_headers())
+        except httpx.HTTPError as exc:
+            logger.warning("knowledge causal-motif-pairs unavailable: %s", exc)
+            return []
+        if resp.status_code != 200:
+            return []
+        try:
+            data = resp.json()
+        except (ValueError, AttributeError):
+            return []
+        pairs = data.get("pairs") if isinstance(data, dict) else None
+        if not isinstance(pairs, list):
+            return []
+        return [(p[0], p[1]) for p in pairs
+                if isinstance(p, list) and len(p) == 2 and all(isinstance(x, str) for x in p)]
+
     # ── M4 packer lenses ────────────────────────────────────────────────
     # All return None/[] on any failure (the packer `_safe_*` degrade, F1) so a
     # knowledge outage thins the pack rather than 500-ing a generate.

@@ -523,6 +523,409 @@ ALTER TABLE composition_work DROP COLUMN IF EXISTS branch_point;
 ALTER TABLE composition_work DROP COLUMN IF EXISTS source_work_id;
 """
 
+# ════════════════════════════════════════════════════════════════════════════
+# NARRATIVE MOTIF LIBRARY (spec §R1.4 + 00-RECONCILE §1 deltas). 2-tier (User-owned
+# + System), NO book tier — a motif is book-INDEPENDENT and survives book deletion;
+# per-book customization = clone the template. Tenancy is enforced at the DB (the
+# partials + the motif_user_owned CHECK + the cross-tier link trigger) — audit B-2/H-2.
+# Executed AFTER _SCHEMA_SQL (so outline_node exists before motif_application FKs it).
+# ════════════════════════════════════════════════════════════════════════════
+_MOTIF_SCHEMA_SQL = """
+-- ── motif: the library unit (system tier = owner_user_id NULL, seed/migrate-only;
+-- user tier = owner set). `language` is first-class + part of the dedup/embed key
+-- (R1.1.3). ONE platform embedding model for ALL motif vectors (embedding_model is a
+-- fixed platform id, NOT a per-row/per-user choice — R1.1.2/B-1).
+CREATE TABLE IF NOT EXISTS motif (
+  id              UUID PRIMARY KEY DEFAULT uuidv7(),
+  owner_user_id   UUID,                                   -- NULL = system (seed/migrate-only); else the creator (attribution + the tenancy backstop)
+  book_id         UUID,                                   -- per-book label (D-MOTIF-ADOPT-PER-BOOK); NULL = global user/system tier
+  book_shared     BOOLEAN NOT NULL DEFAULT false,         -- D-MOTIF-ADOPT-BOOK-COLLAB-TIER (model B): true = the book's SHARED tier (visible to the book's VIEW-grantees, writable by EDIT-grantees, access = the book grant resolved at the caller — owner is attribution only); false = model-A private label / global / system
+  code            TEXT NOT NULL,
+  language        TEXT NOT NULL DEFAULT 'en',             -- part of the dedup/embed key (R1.1.3)
+  visibility      TEXT NOT NULL DEFAULT 'private'
+                    CHECK (visibility IN ('private','unlisted','public')),
+  kind            TEXT NOT NULL DEFAULT 'sequence'
+                    CHECK (kind IN ('sequence','situation','hook','emotion_arc','trope','pattern','scheme')),
+  category        TEXT,
+  name            TEXT NOT NULL,
+  summary         TEXT NOT NULL DEFAULT '',               -- the embedded text
+  genre_tags      TEXT[] NOT NULL DEFAULT '{}',
+  roles           JSONB NOT NULL DEFAULT '[]'::jsonb,     -- [{key, actant, label, constraints}]
+  beats           JSONB NOT NULL DEFAULT '[]'::jsonb,     -- [{key, label, intent, tension_target, order, reversal?, alliance_shift?}]
+  preconditions   JSONB NOT NULL DEFAULT '[]'::jsonb,     -- [{text}]
+  effects         JSONB NOT NULL DEFAULT '[]'::jsonb,     -- [{text}]
+  info_asymmetry  JSONB,                                  -- §15.1 scheme {knows,deceived,gap} (nullable, motif-level — conformance reads it)
+  annotations     JSONB NOT NULL DEFAULT '{}'::jsonb,     -- RECONCILE D1: template-level scheme/info-asymmetry props (W7 seeds, W5 reads on the motif)
+  tension_target  SMALLINT,                               -- overall 1..5
+  emotion_target  TEXT,
+  examples        JSONB NOT NULL DEFAULT '[]'::jsonb,     -- [{text}] — STRIPPED on imported-derived publish (trigger below)
+  abstraction_confidence TEXT,                            -- mined: high|med|low
+  source          TEXT NOT NULL DEFAULT 'authored'
+                    CHECK (source IN ('authored','mined','adopted','imported')),
+  -- B-3 lineage taint: an 'adopted' clone loses the 'imported' source marker, so the
+  -- publish-strip trigger (keyed on source='imported') would MISS an adopted clone of
+  -- an imported motif and leak its source passages on publish. clone() propagates this
+  -- flag down the lineage (src.source='imported' OR src.imported_derived) so the
+  -- trigger strips an adopted-from-imported row too — what W1's design expects (W1 §1
+  -- "source IN ('imported','adopted'-from-imported)"). 'adopted'-from-AUTHORED stays
+  -- false (those examples are legitimately shareable), so the strip is not over-broad.
+  imported_derived BOOLEAN NOT NULL DEFAULT false,
+  source_ref      TEXT,                                   -- lineage; opaque token on imported-derived publish (B-3)
+  source_version  INT,                                    -- N-4 upstream 3-way-diff version pin
+  adopted_base    JSONB,                                  -- D-MOTIF-SYNC-3WAY-BASE: snapshot of the upstream's mergeable fields AT adopt time (the true 3-way merge base; NULL = non-adopted)
+  embedding       REAL[],                                 -- brute-force cosine (reference_source precedent); NULL at seed (RECONCILE D4, W3 back-fills)
+  embedding_model TEXT NOT NULL DEFAULT '',               -- ONE platform model (B-1); no per-row choice
+  embedding_dim   INT,
+  embedded_summary_hash TEXT,                             -- re-embed staleness guard (motifs are mutable)
+  judge_score     NUMERIC(4,3),
+  mining_support  INT,
+  status          TEXT NOT NULL DEFAULT 'active'
+                    CHECK (status IN ('draft','active','archived')),
+  version         INT NOT NULL DEFAULT 1,
+  created_at      TIMESTAMPTZ NOT NULL DEFAULT now(),
+  updated_at      TIMESTAMPTZ NOT NULL DEFAULT now(),
+  -- B-2: a both-NULL (system) row must be a published/system row, never a private
+  -- orphan. The user-write path additionally server-stamps owner_user_id (app code);
+  -- this CHECK is the DB backstop that a private row ALWAYS has an owner.
+  CONSTRAINT motif_user_owned CHECK (owner_user_id IS NOT NULL OR visibility <> 'private'),
+  -- D-MOTIF-ADOPT-BOOK-COLLAB-TIER: a SHARED row must carry a book + a creator (owner) AND stay
+  -- private — the public-catalog axis (visibility='public') and the shared-tier axis (book_shared)
+  -- are ORTHOGONAL, so a shared row can NEVER leak into global public discovery.
+  CONSTRAINT motif_book_shared_shape CHECK (
+    NOT book_shared OR (book_id IS NOT NULL AND owner_user_id IS NOT NULL AND visibility = 'private')
+  )
+);
+-- On an EXISTING model-A DB the CREATE TABLE above is a no-op, so the partials below that
+-- reference book_shared (D-MOTIF-ADOPT-BOOK-COLLAB-TIER) would fail — add the column FIRST here
+-- (idempotent; a no-op on a fresh DB where CREATE TABLE already declared it). The shape CHECK +
+-- the model-A re-narrow live in the ALTER block lower down (guarded for existing DBs).
+ALTER TABLE motif ADD COLUMN IF NOT EXISTS book_shared BOOLEAN NOT NULL DEFAULT false;
+-- tenancy partials keyed incl. language (R1.1.3). A user's GLOBAL tier (book_id NULL) and
+-- PER-BOOK labels (book_id set, D-MOTIF-ADOPT-PER-BOOK = model A book-scoped filter) dedup
+-- INDEPENDENTLY, so the same source may be adopted globally AND into a book without a false
+-- code collision (the confirm path uses clone(), which raises on collision). The read
+-- predicate is UNCHANGED — book_id only narrows what the OWNER sees, never widens visibility.
+CREATE UNIQUE INDEX IF NOT EXISTS uq_motif_user
+  ON motif(owner_user_id, code, language) WHERE owner_user_id IS NOT NULL AND book_id IS NULL;
+-- model-A private book label: per-(owner,book) dedup, scoped to NOT shared. The SHARED tier
+-- (book_shared) dedups per-BOOK instead (uq_motif_book_shared) — one code+language per book
+-- across ALL collaborators, so two grantees can't fork the same shared code.
+CREATE UNIQUE INDEX IF NOT EXISTS uq_motif_user_book
+  ON motif(owner_user_id, book_id, code, language) WHERE book_id IS NOT NULL AND NOT book_shared;
+CREATE UNIQUE INDEX IF NOT EXISTS uq_motif_book_shared
+  ON motif(book_id, code, language) WHERE book_shared;
+CREATE UNIQUE INDEX IF NOT EXISTS uq_motif_system
+  ON motif(code, language)                WHERE owner_user_id IS NULL;
+CREATE INDEX IF NOT EXISTS idx_motif_owner  ON motif(owner_user_id) WHERE owner_user_id IS NOT NULL;
+CREATE INDEX IF NOT EXISTS idx_motif_book   ON motif(book_id)        WHERE book_id IS NOT NULL;
+CREATE INDEX IF NOT EXISTS idx_motif_book_shared ON motif(book_id)   WHERE book_shared;
+CREATE INDEX IF NOT EXISTS idx_motif_public ON motif(visibility, updated_at DESC) WHERE visibility = 'public';
+CREATE INDEX IF NOT EXISTS idx_motif_genre  ON motif USING GIN (genre_tags);
+-- retrieval pre-filter (genre ∩ + status + tier predicate) runs in SQL BEFORE loading
+-- vectors (audit data-R1). The composite supports the active-status list scan.
+CREATE INDEX IF NOT EXISTS idx_motif_retrieve
+  ON motif(status, language) WHERE status = 'active';
+
+-- ── motif_link: composition + legal succession + variant (ATU + plot-graph). Cycle
+-- guard on precedes/composed_of (H-2) + user edges may not touch system motifs (H-2).
+CREATE TABLE IF NOT EXISTS motif_link (
+  id            UUID PRIMARY KEY DEFAULT uuidv7(),
+  from_motif_id UUID NOT NULL REFERENCES motif(id) ON DELETE CASCADE,
+  to_motif_id   UUID NOT NULL REFERENCES motif(id) ON DELETE CASCADE,
+  kind          TEXT NOT NULL CHECK (kind IN ('composed_of','precedes','variant_of')),
+  ord           INT,
+  created_at    TIMESTAMPTZ NOT NULL DEFAULT now(),
+  CONSTRAINT motif_link_distinct CHECK (from_motif_id <> to_motif_id),
+  UNIQUE (from_motif_id, to_motif_id, kind)
+);
+CREATE INDEX IF NOT EXISTS idx_motif_link_from ON motif_link(from_motif_id, kind, ord);
+CREATE INDEX IF NOT EXISTS idx_motif_link_to   ON motif_link(to_motif_id, kind);
+
+-- H-2 same-tier guard + cycle guard (BEFORE INSERT on motif_link). A user-created
+-- edge may not span into a system motif (a user must not reshape the shared graph),
+-- and a precedes/composed_of insert may not close a cycle. Idempotent via CREATE OR
+-- REPLACE; the trigger is (re)attached in a guarded DO-block.
+CREATE OR REPLACE FUNCTION motif_link_guard() RETURNS trigger AS $$
+DECLARE
+  from_owner UUID;  to_owner  UUID;
+  from_shared BOOLEAN; to_shared BOOLEAN;
+  from_book UUID; to_book UUID;
+  same_tier BOOLEAN;
+  cyc        BOOLEAN;
+BEGIN
+  SELECT owner_user_id, book_shared, book_id INTO from_owner, from_shared, from_book
+    FROM motif WHERE id = NEW.from_motif_id;
+  SELECT owner_user_id, book_shared, book_id INTO to_owner, to_shared, to_book
+    FROM motif WHERE id = NEW.to_motif_id;
+  -- same-tier rule (D-MOTIF-LINK-SHARED-TIER): a link must stay within ONE tier —
+  --   • both SYSTEM (owner NULL, not shared), OR
+  --   • both the SAME book's SHARED tier (book_shared AND same book_id; owners MAY differ —
+  --     that is the whole point of a collaborator-shared graph), OR
+  --   • both the SAME user's PRIVATE tier (same non-null owner, neither shared).
+  -- A shared↔private edge (even same owner) is rejected — it would expose a private motif as a
+  -- neighbor to the book's grantees (a read leak). shared↔system and cross-book shared are also
+  -- rejected (a user must never reshape the shared/system graph beyond their own book's tier).
+  -- every arm is kept NULL-safe (a bare `a = b` with a NULL operand yields NULL, and
+  -- `IF NOT NULL` would NOT fire — so a user→system link must NOT rely on `owner = owner`).
+  same_tier :=
+       (from_owner IS NULL AND to_owner IS NULL AND NOT from_shared AND NOT to_shared)
+    OR (from_shared AND to_shared
+        AND from_book IS NOT NULL AND to_book IS NOT NULL AND from_book = to_book)
+    OR (NOT from_shared AND NOT to_shared
+        AND from_owner IS NOT NULL AND to_owner IS NOT NULL AND from_owner = to_owner);
+  IF NOT same_tier THEN
+    RAISE EXCEPTION 'motif_link cross-tier: from(owner=%,shared=%,book=%) to(owner=%,shared=%,book=%)',
+      from_owner, from_shared, from_book, to_owner, to_shared, to_book
+      USING ERRCODE = 'check_violation';
+  END IF;
+  -- cycle guard for the ordered edge kinds (variant_of is symmetric-ish, skip).
+  IF NEW.kind IN ('precedes','composed_of') THEN
+    WITH RECURSIVE walk(node) AS (
+      SELECT NEW.to_motif_id
+      UNION
+      SELECT ml.to_motif_id FROM motif_link ml
+        JOIN walk w ON ml.from_motif_id = w.node
+       WHERE ml.kind = NEW.kind
+    )
+    SELECT EXISTS (SELECT 1 FROM walk WHERE node = NEW.from_motif_id) INTO cyc;
+    IF cyc THEN
+      RAISE EXCEPTION 'motif_link cycle on % via %', NEW.kind, NEW.from_motif_id
+        USING ERRCODE = 'check_violation';
+    END IF;
+  END IF;
+  RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+DO $$
+BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_trigger WHERE tgname = 'motif_link_guard_trg') THEN
+    CREATE TRIGGER motif_link_guard_trg
+      BEFORE INSERT ON motif_link
+      FOR EACH ROW EXECUTE FUNCTION motif_link_guard();
+  END IF;
+END $$;
+
+-- ── motif_application: what was applied where (binding ledger). Per-BOOK scope
+-- (R1.1.4 — the anti-repetition cap + "why this scene" trace aggregate ACROSS a
+-- book's collaborators). FK SET NULL keeps history if the motif is archived
+-- (data-R3). motif_version pins what was bound (edge-F3).
+CREATE TABLE IF NOT EXISTS motif_application (
+  id              UUID PRIMARY KEY DEFAULT uuidv7(),
+  user_id         UUID NOT NULL,
+  project_id      UUID NOT NULL,
+  book_id         UUID NOT NULL,                          -- R1.1.4 per-book scope
+  motif_id        UUID REFERENCES motif(id) ON DELETE SET NULL,
+  motif_version   INT,                                    -- the bound version (trace shows bound, not live)
+  outline_node_id UUID REFERENCES outline_node(id) ON DELETE CASCADE,
+  role_bindings   JSONB NOT NULL DEFAULT '{}'::jsonb,     -- {role_key: glossary_entity_id}
+  annotations     JSONB NOT NULL DEFAULT '{}'::jsonb,     -- data-R7 bound info_asymmetry/reversal/alliance_shift
+  created_at      TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS idx_motif_application_book_motif ON motif_application(book_id, motif_id);  -- data-R6 anti-repetition hot read
+CREATE INDEX IF NOT EXISTS idx_motif_application_node       ON motif_application(outline_node_id);
+CREATE INDEX IF NOT EXISTS idx_motif_application_project    ON motif_application(project_id, created_at DESC);
+-- H-5 app-guard: outline_node_id MUST belong to project_id (a cross-project bind is
+-- rejected). The in-DB FK only proves the node EXISTS, not that it is in THIS project
+-- — a BEFORE INSERT trigger closes it at the DB.
+CREATE OR REPLACE FUNCTION motif_application_scope_guard() RETURNS trigger AS $$
+DECLARE node_project UUID;
+BEGIN
+  IF NEW.outline_node_id IS NOT NULL THEN
+    SELECT project_id INTO node_project FROM outline_node WHERE id = NEW.outline_node_id;
+    IF node_project IS NULL OR node_project <> NEW.project_id THEN
+      RAISE EXCEPTION 'motif_application outline_node % not in project %',
+        NEW.outline_node_id, NEW.project_id USING ERRCODE = 'check_violation';
+    END IF;
+  END IF;
+  RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+DO $$
+BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_trigger WHERE tgname = 'motif_application_scope_guard_trg') THEN
+    CREATE TRIGGER motif_application_scope_guard_trg
+      BEFORE INSERT ON motif_application
+      FOR EACH ROW EXECUTE FUNCTION motif_application_scope_guard();
+  END IF;
+END $$;
+
+-- ── arc_template: multi-thread × motifs over a chapter span (§12.2). SAME 2-tier
+-- tenancy as motif (owner set | NULL=system). layout stores a RESOLVED motif_id
+-- alongside motif_code (R1.4 — so a clone/apply walks ids, not codes). ONE platform
+-- embedding model. F0 ships the table + model only; W10 owns its repo.
+CREATE TABLE IF NOT EXISTS arc_template (
+  id            UUID PRIMARY KEY DEFAULT uuidv7(),
+  owner_user_id UUID,                                     -- NULL = system (seed/migrate-only)
+  code          TEXT NOT NULL,
+  language      TEXT NOT NULL DEFAULT 'en',
+  visibility    TEXT NOT NULL DEFAULT 'private'
+                  CHECK (visibility IN ('private','unlisted','public')),
+  name          TEXT NOT NULL,
+  summary       TEXT NOT NULL DEFAULT '',
+  genre_tags    TEXT[] NOT NULL DEFAULT '{}',
+  chapter_span  INT,
+  threads       JSONB NOT NULL DEFAULT '[]'::jsonb,       -- [{key,label}] parallel tracks
+  layout        JSONB NOT NULL DEFAULT '[]'::jsonb,       -- [{motif_code, motif_id, thread, span_start, span_end, ord, role_hints, triggers?}]
+  pacing        JSONB NOT NULL DEFAULT '[]'::jsonb,
+  arc_roster    JSONB NOT NULL DEFAULT '[]'::jsonb,
+  source        TEXT NOT NULL DEFAULT 'authored'
+                  CHECK (source IN ('authored','mined','imported')),
+  imported_derived BOOLEAN NOT NULL DEFAULT false,         -- B-3 taint: imported OR adopted-from-imported
+  source_ref    TEXT,
+  source_version INT,
+  embedding     REAL[],
+  embedding_model TEXT NOT NULL DEFAULT '',
+  embedding_dim INT,
+  embedded_summary_hash TEXT,
+  status        TEXT NOT NULL DEFAULT 'active'
+                  CHECK (status IN ('draft','active','archived')),
+  version       INT NOT NULL DEFAULT 1,
+  created_at    TIMESTAMPTZ NOT NULL DEFAULT now(),
+  updated_at    TIMESTAMPTZ NOT NULL DEFAULT now(),
+  CONSTRAINT arc_template_user_owned CHECK (owner_user_id IS NOT NULL OR visibility <> 'private')
+);
+CREATE UNIQUE INDEX IF NOT EXISTS uq_arc_template_user
+  ON arc_template(owner_user_id, code, language) WHERE owner_user_id IS NOT NULL;
+CREATE UNIQUE INDEX IF NOT EXISTS uq_arc_template_system
+  ON arc_template(code, language)                WHERE owner_user_id IS NULL;
+CREATE INDEX IF NOT EXISTS idx_arc_template_owner  ON arc_template(owner_user_id) WHERE owner_user_id IS NOT NULL;
+CREATE INDEX IF NOT EXISTS idx_arc_template_public ON arc_template(visibility, updated_at DESC) WHERE visibility = 'public';
+CREATE INDEX IF NOT EXISTS idx_arc_template_genre  ON arc_template USING GIN (genre_tags);
+
+-- ── import_source: the 拆文 deconstruct INPUT (§12.3/§12.6). Per-user/per-book tier
+-- ONLY — STRUCTURALLY un-shareable: there is NO visibility column (audit B-3 / the
+-- copyright split). Raw imported text stays in the user's own store; only the DERIVED
+-- abstract template (arc_template/motif) is ever shareable. F0 ships the table; W9
+-- owns its repo.
+CREATE TABLE IF NOT EXISTS import_source (
+  id            UUID PRIMARY KEY DEFAULT uuidv7(),
+  owner_user_id UUID NOT NULL,                            -- NEVER NULL (no system import; un-shareable)
+  project_id    UUID,                                     -- optional book/project scope (cross-DB, no FK)
+  title         TEXT NOT NULL DEFAULT '',
+  content       TEXT NOT NULL,
+  created_at    TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS idx_import_source_owner ON import_source(owner_user_id, created_at DESC);
+
+-- ── consumed_tokens (RECONCILE D3, W4-MD3/MD7): the Tier-W confirm-token
+-- replay-prevention ledger. NOT tenant-scoped — the jti is server-minted + globally
+-- unique (jti = sha256(token_string), MD-7); identity is checked at the confirm
+-- endpoint BEFORE the claim (same as knowledge-service's action_tokens). consume()
+-- does INSERT … ON CONFLICT (jti) DO NOTHING, True only on the first claim.
+CREATE TABLE IF NOT EXISTS consumed_tokens (
+  jti          TEXT PRIMARY KEY,
+  descriptor   TEXT NOT NULL,
+  exp          TIMESTAMPTZ NOT NULL,
+  consumed_at  TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+-- ── B-3 trigger: strip examples[] + opaque-ize source_ref when a motif derived from
+-- an import is published. An imported-derived motif going public/unlisted must carry
+-- NO source prose (examples) and NO back-readable foreign id. This is a DB trigger,
+-- not a prompt — it cannot be bypassed by the LLM/router. Fires on the visibility
+-- transition INTO a shared state. RECONCILE D5: the opaque token is the motif's OWN
+-- id ('lineage:'||id::text) — it reveals nothing about the source and needs no
+-- pgcrypto extension (the §6-C no-extension default).
+CREATE OR REPLACE FUNCTION motif_publish_strip() RETURNS trigger AS $$
+BEGIN
+  IF NEW.visibility IN ('public','unlisted')
+     AND (NEW.source = 'imported' OR NEW.imported_derived)   -- B-3: imported OR adopted-from-imported
+     AND (TG_OP = 'INSERT' OR OLD.visibility = 'private'
+          OR OLD.visibility IS DISTINCT FROM NEW.visibility) THEN
+    NEW.examples := '[]'::jsonb;                          -- no source passages leave the workspace
+    -- replace any back-readable foreign id with an opaque lineage token (own id).
+    IF NEW.source_ref IS NULL OR NEW.source_ref NOT LIKE 'lineage:%' THEN
+      NEW.source_ref := 'lineage:' || NEW.id::text;
+    END IF;
+  END IF;
+  RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+DO $$
+BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_trigger WHERE tgname = 'motif_publish_strip_trg') THEN
+    CREATE TRIGGER motif_publish_strip_trg
+      BEFORE INSERT OR UPDATE OF visibility ON motif
+      FOR EACH ROW EXECUTE FUNCTION motif_publish_strip();
+  END IF;
+END $$;
+
+-- ── arc_template B-3 parity (D-W9-ARC-PUBLISH-STRIP): the imported_derived taint column
+-- (additive — ALTER for an already-created arc_template) + the publish-strip trigger.
+-- arc_template has NO examples column (its free-text is abstracted by the deconstruct
+-- scrub at create time), so the trigger's DB-level belt is to opaque-ize source_ref on
+-- the publish transition of an imported/adopted-from-imported arc — the same lineage
+-- hygiene the motif trigger applies. Cannot be bypassed by the router/LLM.
+ALTER TABLE arc_template ADD COLUMN IF NOT EXISTS imported_derived BOOLEAN NOT NULL DEFAULT false;
+-- D-MOTIF-SYNC-3WAY-BASE: the merge-base snapshot column (additive ALTER for an existing motif).
+ALTER TABLE motif ADD COLUMN IF NOT EXISTS adopted_base JSONB;
+-- D-MOTIF-ADOPT-PER-BOOK: the per-book label column + the book-scoped uniqueness partial
+-- (additive, for an already-created motif). On an EXISTING DB the base `CREATE UNIQUE INDEX
+-- IF NOT EXISTS uq_motif_user` above is a no-op (the index already exists with the OLD
+-- predicate, no `book_id IS NULL` clause), so recreate it once when its def lacks book_id.
+ALTER TABLE motif ADD COLUMN IF NOT EXISTS book_id UUID;
+DO $$
+BEGIN
+  IF EXISTS (
+    SELECT 1 FROM pg_indexes
+    WHERE indexname = 'uq_motif_user' AND indexdef NOT LIKE '%book_id%'
+  ) THEN
+    DROP INDEX uq_motif_user;
+    CREATE UNIQUE INDEX uq_motif_user
+      ON motif(owner_user_id, code, language) WHERE owner_user_id IS NOT NULL AND book_id IS NULL;
+  END IF;
+END $$;
+CREATE UNIQUE INDEX IF NOT EXISTS uq_motif_user_book
+  ON motif(owner_user_id, book_id, code, language) WHERE book_id IS NOT NULL;
+CREATE INDEX IF NOT EXISTS idx_motif_book ON motif(book_id) WHERE book_id IS NOT NULL;
+-- D-MOTIF-ADOPT-BOOK-COLLAB-TIER (model B): the shared-tier marker + its per-book dedup, the
+-- orthogonality CHECK, and the re-narrowed model-A partial — all additive for an existing motif.
+ALTER TABLE motif ADD COLUMN IF NOT EXISTS book_shared BOOLEAN NOT NULL DEFAULT false;
+DO $$
+BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'motif_book_shared_shape') THEN
+    ALTER TABLE motif ADD CONSTRAINT motif_book_shared_shape CHECK (
+      NOT book_shared OR (book_id IS NOT NULL AND owner_user_id IS NOT NULL AND visibility = 'private')
+    );
+  END IF;
+  -- the model-A partial pre-dates book_shared (its predicate lacks the column) — recreate once so
+  -- a shared row and a model-A label of the same (owner,book,code) don't collide on it.
+  IF EXISTS (
+    SELECT 1 FROM pg_indexes
+    WHERE indexname = 'uq_motif_user_book' AND indexdef NOT LIKE '%book_shared%'
+  ) THEN
+    DROP INDEX uq_motif_user_book;
+    CREATE UNIQUE INDEX uq_motif_user_book
+      ON motif(owner_user_id, book_id, code, language) WHERE book_id IS NOT NULL AND NOT book_shared;
+  END IF;
+END $$;
+CREATE UNIQUE INDEX IF NOT EXISTS uq_motif_book_shared
+  ON motif(book_id, code, language) WHERE book_shared;
+CREATE INDEX IF NOT EXISTS idx_motif_book_shared ON motif(book_id) WHERE book_shared;
+CREATE OR REPLACE FUNCTION arc_template_publish_strip() RETURNS trigger AS $$
+BEGIN
+  IF NEW.visibility IN ('public','unlisted')
+     AND (NEW.source = 'imported' OR NEW.imported_derived)
+     AND (TG_OP = 'INSERT' OR OLD.visibility = 'private'
+          OR OLD.visibility IS DISTINCT FROM NEW.visibility) THEN
+    IF NEW.source_ref IS NULL OR NEW.source_ref NOT LIKE 'lineage:%' THEN
+      NEW.source_ref := 'lineage:' || NEW.id::text;
+    END IF;
+  END IF;
+  RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+DO $$
+BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_trigger WHERE tgname = 'arc_template_publish_strip_trg') THEN
+    CREATE TRIGGER arc_template_publish_strip_trg
+      BEFORE INSERT OR UPDATE OF visibility ON arc_template
+      FOR EACH ROW EXECUTE FUNCTION arc_template_publish_strip();
+  END IF;
+END $$;
+"""
+
+
 # Built-in structure templates (owner_user_id NULL = global). Deterministic ids
 # → ON CONFLICT (id) DO NOTHING makes the seed idempotent across restarts. The
 # beats drive the M4 packer's beat→scene mapping + the M8 outline view.
@@ -612,8 +1015,25 @@ async def run_migrations(pool: asyncpg.Pool) -> None:
     """Apply the idempotent schema + seed built-in templates. Safe on every start."""
     async with pool.acquire() as conn:
         await conn.execute(_SCHEMA_SQL)
+        await conn.execute(_MOTIF_SCHEMA_SQL)          # F0: narrative motif library DDL
         await _seed_builtin_templates(conn)
+        await _seed_motif_packs(conn)                  # F0 adds the CALL; W7 fills the body
     logger.info("composition migrate: schema applied + %d built-in templates seeded", len(BUILTIN_TEMPLATES))
+
+
+async def _seed_motif_packs(conn: asyncpg.Connection) -> None:
+    """F0 frozen call site — DELEGATES to the W7-owned `app.db.seed_motifs` module so
+    W7 fills the seed-pack body (the system-tier motif/arc rows) by creating ITS OWN
+    new file, never editing this frozen migrate.py. A soft import keeps boot working
+    before W7 lands (no-op until then — the C16 'never wall boot on an optional part'
+    discipline). System seeds use visibility='unlisted' (RECONCILE D6) so the both-NULL
+    rows satisfy the motif_user_owned CHECK; embedding starts NULL (D4 — W3 back-fills
+    lazily)."""
+    try:
+        from app.db.seed_motifs import seed_motif_packs
+    except ImportError:
+        return  # W7 not landed yet
+    await seed_motif_packs(conn)
 
 
 async def _seed_builtin_templates(conn: asyncpg.Connection) -> None:

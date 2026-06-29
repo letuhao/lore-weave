@@ -54,6 +54,12 @@ class StubOutline:
         self.existing: set = set()   # chapter_ids that already have active scenes
         self.created = None
         self.ledger: dict = {}       # idempotency_key → result (replay)
+        # the swap route now dispatches on node.kind — default to a chapter node so
+        # the chapter-swap test keeps routing to apply_motif_swap.
+        self.node_kind = "chapter"
+    async def get_node(self, user_id, node_id, *, conn=None):
+        from types import SimpleNamespace
+        return SimpleNamespace(project_id=PROJECT, kind=self.node_kind)
     async def commit_decomposed_tree(self, u, p, *, arc_title, chapters, replace=False, idempotency_key=None):
         if idempotency_key and idempotency_key in self.ledger:
             return {**self.ledger[idempotency_key], "replay": True}
@@ -255,6 +261,104 @@ def test_decompose_commit_empty_plan_400(ctx):
                json=_commit_body(chapters=[{"chapter_id": str(CH1), "title": "Ch 1",
                                             "intent": "open", "beat_role": "setup", "scenes": []}]))
     assert r.status_code == 400 and r.json()["detail"]["code"] == "EMPTY_DECOMPOSE_PLAN"
+
+
+# ── W2 motif persistence + swap endpoint ──
+
+def test_decompose_commit_persists_motif_applications(ctx, monkeypatch):
+    """A commit body carrying motif_application_rows persists them (one per bound
+    scene), positionally mapped to the created scene nodes."""
+    c, _, _, _, outline, _ = ctx
+    captured = {}
+
+    class _Apps:
+        def __init__(self, pool): pass
+        async def insert_many(self, u, p, b, rows, *, conn=None):
+            captured["rows"] = rows
+            return rows
+
+    monkeypatch.setattr("app.routers.plan.MotifApplicationRepo", _Apps)
+    monkeypatch.setattr("app.routers.plan.get_pool", lambda: object())
+
+    motif_id = str(uuid.uuid4())
+    body = _commit_body()
+    body["chapters"][0]["motif_application_rows"] = [
+        {"motif_id": motif_id, "motif_version": 2,
+         "role_bindings": {"hero": str(ENT)}, "annotations": {"beat_key": "bait"}},
+    ]
+    r = c.post(f"/v1/composition/works/{PROJECT}/outline/decompose/commit", json=body)
+    assert r.status_code == 201
+    assert r.json()["motif_applications"] == 1
+    assert captured["rows"][0]["motif_id"] == motif_id
+    assert captured["rows"][0]["annotations"]["beat_key"] == "bait"
+    assert "outline_node_id" in captured["rows"][0]
+
+
+def test_swap_endpoint_apply(ctx, monkeypatch):
+    c, *_ = ctx
+    from app.engine.motif_select import SwapResult
+
+    class _FakeConn:
+        async def __aenter__(self): return self
+        async def __aexit__(self, *a): return False
+        def transaction(self): return self
+
+    class _FakePool:
+        def acquire(self): return _FakeConn()
+
+    monkeypatch.setattr("app.routers.plan.get_pool", lambda: _FakePool())
+    monkeypatch.setattr("app.routers.plan.MotifApplicationRepo", lambda pool: object())
+
+    async def fake_apply(*a, **kw):
+        return SwapResult(chapter_node_id="n", archived_scene_ids=["a"],
+                          new_scene_ids=["b"], orphaned_thread_ids=["t"],
+                          new_motif_id="m", undo_token={"chapter_node_id": "n"})
+
+    # resolve the motif via a stubbed MotifRepo.get_visible
+    from app.db.models import Motif
+
+    async def fake_get_visible(self, u, mid):
+        return Motif.model_validate({"id": mid, "owner_user_id": None, "code": "m",
+                                     "name": "M", "kind": "scheme", "visibility": "unlisted",
+                                     "status": "active", "version": 1, "roles": [], "beats": []})
+
+    monkeypatch.setattr("app.routers.plan.apply_motif_swap", fake_apply)
+    monkeypatch.setattr("app.db.repositories.motif_repo.MotifRepo.get_visible", fake_get_visible)
+
+    node = str(uuid.uuid4())
+    r = c.patch(f"/v1/composition/works/{PROJECT}/outline/{node}/motif",
+                json={"motif_id": str(uuid.uuid4())})
+    assert r.status_code == 200
+    body = r.json()
+    assert body["new_motif_id"] == "m"
+    assert body["orphaned_thread_ids"] == ["t"]
+    assert body["undo_token"] == {"chapter_node_id": "n"}
+
+
+def test_swap_endpoint_undo(ctx, monkeypatch):
+    c, _, _, _, outline, _ = ctx
+
+    class _FakeConn:
+        async def __aenter__(self): return self
+        async def __aexit__(self, *a): return False
+        def transaction(self): return self
+
+    class _FakePool:
+        def acquire(self): return _FakeConn()
+
+    monkeypatch.setattr("app.routers.plan.get_pool", lambda: _FakePool())
+    monkeypatch.setattr("app.routers.plan.MotifApplicationRepo", lambda pool: object())
+
+    async def fake_undo(*a, **kw):
+        return {"chapter_node_id": "n", "restored_scene_ids": ["a"], "removed_scene_ids": ["b"]}
+
+    monkeypatch.setattr("app.routers.plan.undo_motif_swap", fake_undo)
+    node = str(uuid.uuid4())
+    r = c.patch(f"/v1/composition/works/{PROJECT}/outline/{node}/motif",
+                json={"undo_token": {"chapter_node_id": "n", "archived_scene_ids": ["a"],
+                                     "new_scene_ids": ["b"]}})
+    assert r.status_code == 200
+    assert r.json()["undone"] is True
     assert outline.created is None  # nothing committed
 
 

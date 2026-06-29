@@ -1,5 +1,6 @@
 import type { INestApplication } from '@nestjs/common';
 import { createProxyMiddleware } from 'http-proxy-middleware';
+import { json } from 'express';
 import type { Request, Response, NextFunction } from 'express';
 import type { Socket } from 'net';
 
@@ -334,6 +335,12 @@ export function configureGatewayApp(
 
   const httpAdapter = app.getHttpAdapter();
   const instance = httpAdapter.getInstance();
+  // FE→MCP-tool bridge: the app is created with bodyParser:false (bodies stream to
+  // the upstream proxies), so the locally-served ToolsController would get an
+  // undefined body. Parse JSON ONLY for /v1/ai/tools — never for the streaming
+  // proxy paths (that would break SSE / large uploads). Registered before the proxy
+  // middleware so req.body is populated by the time Nest routes to the controller.
+  instance.use('/v1/ai/tools', json());
   const authProxyFn = authProxy as unknown as (
     req: Request,
     res: Response,
