@@ -1,4 +1,23 @@
-# ▶▶ NEXT SESSION STARTS HERE — **Critical UX bug track** · branch `fix/critical-ux-bugs` · HEAD `db5fb841` · 2026-06-29
+# ▶▶ NEXT SESSION STARTS HERE — **Critical UX bug track** · branch `fix/critical-ux-bugs` · HEAD `63258d40` · 2026-06-29
+
+> **✅ DONE — #19 / `D-PLANNER-INFLIGHT-ABORT`: the propagation gap CLOSED.** Traced the full
+> cancellation chain (chat disconnect → ai-gateway → glossary → provider-registry) and found it
+> already cancels on connection-drop at EVERY hop EXCEPT one: `ai-gateway federation.executeTool`
+> did `await client.callTool(params)` with NO abort signal, so a chat-turn stop closed the INBOUND
+> MCP server (`res 'close'` → `server.close()` → the SDK aborts `extra.signal`) but left the OUTBOUND
+> call to glossary running to completion (~39s zombie planner). Fix: thread `extra.signal` →
+> `proxy-server.factory` → `handleCallTool` → `executeTool` → `client.callTool(params, undefined,
+> {signal})`. Now an abort drops the glossary fetch → glossary `r.Context()` cancels → `runPlanner`
+> `cctx` cancels → `client.Complete` aborts → provider-registry `r.Context()` cancels the provider
+> call (the last two hops were ALREADY ctx-wired — verified by code + provider-registry stream_handler.go:13-16).
+> +1 unit test (signal→executeTool) + updated the 4-arg assertion; ai-gateway 37/37; nest build clean;
+> rebuilt+deployed, happy-path live smoke OK (real plan via ai-gateway on the fixed image).
+> **▶ Deferred `D-PLANNER-INFLIGHT-ABORT-CAPTURE`** (gate 4: blocked on observability): the rigorous
+> end-to-end ABORT A/B couldn't run here — the sync planner path writes NO `llm_jobs`/log row, and the
+> local gemma is fast (~3s) + non-serializing (a queuing-timing A/B showed a post-abort call running
+> in 0.9s, so it can't detect cancellation). Recipe for a future capture: add a sync-path observability
+> row OR use a controlled slow+single-slot model, then assert the provider call terminates 'cancelled'
+> shortly after the chat-turn stop. The CODE gap is closed regardless.
 
 > **✅ DONE — #18 planner self-recheck loop: MECHANICAL hard-stop.** RC (already investigated):
 > NO ReAct loop in the planner CODE — the "loops forever" is the chat agent re-calling the heavy

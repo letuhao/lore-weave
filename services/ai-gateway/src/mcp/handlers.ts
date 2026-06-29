@@ -78,6 +78,10 @@ export async function handleCallTool(
   args: Record<string, unknown>,
   headers: Headers,
   meta?: unknown,
+  // D-PLANNER-INFLIGHT-ABORT (#19) — aborts when the inbound MCP request's
+  // transport closes (chat-turn stop). Threaded to the downstream tool call so a
+  // heavy in-flight tool (the ~39s glossary_plan) is cancelled, not orphaned.
+  signal?: AbortSignal,
 ): Promise<any> {
   // find_tools is consumer-local — handle it HERE without a downstream provider (no provider owns
   // it; routing it to executeTool would throw "unknown tool"). No envelope needed (OD-1).
@@ -96,7 +100,7 @@ export async function handleCallTool(
   try {
     // Forward the MCP `_meta` channel downstream (the proven TS→Go alternate to
     // headers, §20) so a provider that reads req.Params.Meta still receives it.
-    return await federation.executeTool(name, args, env, meta);
+    return await federation.executeTool(name, args, env, meta, signal);
   } catch (e) {
     // Full detail stays server-side only. The LLM-visible text is GENERIC: a
     // transport failure's `String(e)` includes the internal provider URL (e.g.

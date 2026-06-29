@@ -103,13 +103,32 @@ describe('handleCallTool', () => {
       meta,
     );
     // AIGW-LOW2: the `_meta` channel is forwarded downstream as the 4th arg.
+    // #19: the 5th arg is the (here absent) abort signal.
     expect(executeTool).toHaveBeenCalledWith(
       'memory_search',
       { query: 'x' },
       { userId: 'u1', sessionId: 's1', traceId: undefined },
       meta,
+      undefined,
     );
     expect(res).toEqual({ content: [{ type: 'text', text: 'ok' }] });
+  });
+
+  it('D-PLANNER-INFLIGHT-ABORT (#19): forwards the abort signal to executeTool', async () => {
+    const executeTool = jest.fn().mockResolvedValue({ content: [] });
+    const fed = fakeFederation({ executeTool });
+    const ac = new AbortController();
+    await handleCallTool(
+      fed,
+      'glossary_plan',
+      { goal: 'design' },
+      { 'x-user-id': 'u1' },
+      undefined,
+      ac.signal,
+    );
+    // The inbound request's signal rides through as the 5th arg, so a chat-turn
+    // stop cancels the in-flight downstream tool call.
+    expect(executeTool.mock.calls[0][4]).toBe(ac.signal);
   });
 
   it('carries X-Project-Id through the envelope to executeTool (M1 fix)', async () => {
