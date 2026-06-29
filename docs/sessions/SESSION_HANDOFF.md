@@ -35,10 +35,19 @@
 > controller adds the batch branch. Tests: +4 (id-harvest, batch filter, mixed-batch-untouched,
 > wildcard/empty/single short-circuit); full suite **204/204**; nest build clean. 2 accepted: find_tools
 > absence bricking discovery (LOW — upstream always prepends it) + stale confidence note (COSMETIC).
-> **▶ NEXT:** the cross-service **live smoke** (`D-PMCP-LAZY-LIVE-SMOKE`) — redeploy both gateways,
-> external agent: fresh session lists find_tools only → find_tools activates a tool → re-list shows it
-> → it calls. Deferred: `D-FINDTOOLS-CHAT-SHARE` (chat-service still has its own local find_tools;
-> pointing it at the gateway's is a separate refactor).
+> **✅ LIVE SMOKE DONE (`D-PMCP-LAZY-LIVE-SMOKE` CLEARED).** Both gateways rebuilt (`PUBLIC_MCP_ENABLED=true`),
+> minted a real SCOPED key (`read`+`domain:book`) via auth-service, drove an external-agent session
+> against mcp-public-gateway :8219: (1) fresh `tools/list` → **only find_tools**; (2) `find_tools` →
+> exactly the 3 in-scope book reads (no out-of-scope leak); (3) re-`tools/list` → **grew** to find_tools
+> + the 3 activated; (4) `book_list` → relayed through ai-gateway → book-service, real books returned.
+> **The live smoke caught a real bug my unit tests missed** (the recurring lesson): ai-gateway COLLAPSES
+> a single-element batch REQUEST into a single OBJECT response, so the adversary's `[{find_tools}]` (the
+> batch-bypass) returned an object my array-only `scopeFilterFindToolsBatch` skipped → out-of-scope leak.
+> Fixed (handle object-or-array, id-matched) + re-smoked: BATCH cross-domain intent → leaked NONE; BATCH
+> book intent → 3 reads, no write-tier leak. Suite 205/205.
+> **▶ NEXT:** the lazy tool-loading feature (M1+M2+2 anti-oracle fixes) is COMPLETE + live-verified.
+> Resume the critical-UX bug queue, or PR `fix/critical-ux-bugs`. Deferred: `D-FINDTOOLS-CHAT-SHARE`
+> (chat-service still has its own local find_tools; pointing it at the gateway's is a separate refactor).
 
 > **✅ SHIPPED + LIVE-VERIFIED — #26/#7 glossary `summarize` (merge-rewrite) mode (L, 3 milestones).** User
 > approved a NEW merge mode distinct from append: keep the lossless RAW item layer (provenance)

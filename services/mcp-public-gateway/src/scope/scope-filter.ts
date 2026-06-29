@@ -310,13 +310,18 @@ export function findToolsCallIdKeys(body: unknown): Set<string> {
 }
 
 /**
- * Batch parallel of `scopeFilterFindToolsResult`: scope-filter EVERY `find_tools` result item in a
- * JSON-RPC batch RESPONSE, matched to its request by id (`findToolsIds`). Closes the anti-oracle
- * hole where a `find_tools` batched with other calls relayed its FULL-catalogue matches unfiltered.
- * Only items whose id is a find_tools request are touched — a mixed batch's other tool results
- * (which may legitimately carry a `name`-bearing list of their own data) are left intact. Returns
- * the rewritten text + the union of in-scope matched names. On a `*` key / empty id-set / a
- * non-array (single) body, returns the text unchanged + no names (the single path handles those).
+ * Batch parallel of `scopeFilterFindToolsResult`: scope-filter EVERY `find_tools` result in a
+ * BATCHED `tools/call` RESPONSE, matched to its request by id (`findToolsIds`). Closes the
+ * anti-oracle hole where a `find_tools` smuggled inside a JSON-RPC batch relayed its FULL-catalogue
+ * matches unfiltered. Only items whose id is a find_tools request are touched — a mixed batch's
+ * other tool results (which may legitimately carry a `name`-bearing list of their own data) are
+ * left intact. Returns the rewritten text + the union of in-scope matched names.
+ *
+ * Handles BOTH response shapes, because the upstream (ai-gateway, enableJsonResponse) COLLAPSES a
+ * single-element batch REQUEST into a single OBJECT response (not a 1-element array) — the exact
+ * bypass an adversary uses (`[{find_tools}]` → object → the array-only filter would miss it). An
+ * array response → filter each matching item; a single object whose id matches → filter it. On a
+ * `*` key / empty id-set / unparseable body → unchanged + no names.
  */
 export function scopeFilterFindToolsBatch(
   text: string,
@@ -330,12 +335,16 @@ export function scopeFilterFindToolsBatch(
   } catch {
     return { text, activatedNames: [] }; // SSE / non-JSON — never fabricate
   }
-  if (!Array.isArray(parsed)) return { text, activatedNames: [] };
   const names = new Set<string>();
-  for (const item of parsed) {
-    if (!item || typeof item !== 'object') continue;
-    if (!findToolsIds.has(idKey((item as { id?: unknown }).id))) continue;
+  const handleItem = (item: unknown): void => {
+    if (!item || typeof item !== 'object') return;
+    if (!findToolsIds.has(idKey((item as { id?: unknown }).id))) return; // id-match: only find_tools results
     for (const n of filterOneFindToolsResult((item as { result?: unknown }).result, scopes)) names.add(n);
+  };
+  if (Array.isArray(parsed)) {
+    for (const item of parsed) handleItem(item);
+  } else {
+    handleItem(parsed); // upstream collapsed a single-element batch into one object response
   }
   return { text: JSON.stringify(parsed), activatedNames: [...names] };
 }

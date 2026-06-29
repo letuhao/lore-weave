@@ -203,12 +203,22 @@ describe('findToolsCallIdKeys + scopeFilterFindToolsBatch — batched find_tools
     expect(parsed[1].result.structuredContent.tools.map((t: { name: string }) => t.name)).toEqual(['not_a_tool']); // untouched
   });
 
-  it('a wildcard key / empty id-set / single (non-array) body → unchanged + no names', () => {
+  it('filters a single-OBJECT response when the upstream collapsed a 1-element batch (id-matched)', () => {
+    // ai-gateway returns a single object (not a 1-element array) for a 1-element batch request —
+    // the exact anti-oracle bypass. The id-matched object MUST still be scope-filtered.
+    const upstream = JSON.stringify(ftResponseItem(1, 'book_get', 'kg_search'));
+    const { text, activatedNames } = scopeFilterFindToolsBatch(upstream, SCOPES, new Set([idKeyOf(1)]));
+    expect(JSON.parse(text).result.structuredContent.tools.map((t: { name: string }) => t.name)).toEqual(['book_get']);
+    expect(activatedNames).toEqual(['book_get']);
+    // An object whose id is NOT a find_tools request is left intact (no over-filtering).
+    const other = JSON.stringify(ftResponseItem(2, 'book_get', 'kg_search'));
+    expect(scopeFilterFindToolsBatch(other, SCOPES, new Set([idKeyOf(1)]))).toEqual({ text: other, activatedNames: [] });
+  });
+
+  it('a wildcard key / empty id-set → unchanged + no names', () => {
     const upstream = JSON.stringify([ftResponseItem(1, 'book_get', 'kg_search')]);
     expect(scopeFilterFindToolsBatch(upstream, ['*'], new Set([idKeyOf(1)]))).toEqual({ text: upstream, activatedNames: [] });
     expect(scopeFilterFindToolsBatch(upstream, SCOPES, new Set())).toEqual({ text: upstream, activatedNames: [] });
-    const single = JSON.stringify(ftResponseItem(1, 'book_get'));
-    expect(scopeFilterFindToolsBatch(single, SCOPES, new Set([idKeyOf(1)]))).toEqual({ text: single, activatedNames: [] });
   });
 });
 
