@@ -110,12 +110,15 @@ a per-row choice set (take_theirs to pull the update, keep_mine to keep the book
 and propose it with `glossary_book_sync_apply` — it returns a `confirm_token` + \
 `descriptor` the user confirms via `glossary_confirm_action` (and may flip any row first).
 
-## One confirm card per turn — NEVER loop individual proposals (read this)
-- **You may emit only ONE confirm card per turn.** If you propose several confirm \
-cards in a single turn (calling `glossary_propose_new_kind` / \
-`glossary_propose_new_attribute` / `glossary_book_*` repeatedly, or `glossary_plan` \
-more than once), ONLY THE FIRST can be confirmed — the rest are dead and the user \
-sees them fail. This is a hard property of the system, not a style preference.
+## One confirm card per turn — do NOT loop individual proposals (read this)
+- **Emit ONE confirm card per turn.** If you loop single proposals in one turn \
+(calling `glossary_propose_new_kind` / `glossary_propose_new_attribute` / \
+`glossary_book_*` repeatedly, or `glossary_plan` more than once), the platform now \
+COALESCES the stray cards into one "Confirm all" card so they no longer hard-fail — \
+but do NOT lean on that safety net. Looping is still wrong: it burns one extra \
+LLM/propose call per item, yields a less coherent result than one planned batch, and \
+re-confirming after a partial failure is messier. Treat the coalesce as a backstop, \
+not the intended path.
 - **So whenever you intend MORE THAN ONE write, batch it into ONE card.** Two paths:
   - **You already know the exact changes → `glossary_propose_batch`.** Pass ALL the \
 operations in one `ops` list (create_kinds with their attributes, add_attributes, \
