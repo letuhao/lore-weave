@@ -265,7 +265,7 @@ func (s *Server) effectMerge(w http.ResponseWriter, ctx context.Context, claims 
 		writeError(w, http.StatusUnprocessableEntity, "GLOSS_ACTION_TOKEN", "no losers — propose again")
 		return
 	}
-	results, err := s.mergeEntitiesCore(ctx, claims.BookID, winnerID, p.LoserIDs, claims.UserID)
+	results, err := s.mergeEntitiesCore(ctx, claims.BookID, winnerID, p.LoserIDs, claims.UserID, false)
 	if errors.Is(err, errMergeBadWinner) {
 		writeError(w, http.StatusUnprocessableEntity, "GLOSS_ACTION_TOKEN", "the winner is no longer a live entity — propose again")
 		return

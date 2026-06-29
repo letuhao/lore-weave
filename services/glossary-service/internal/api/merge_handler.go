@@ -127,7 +127,7 @@ func (s *Server) mergeEntities(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	results, err := s.mergeEntitiesCore(r.Context(), bookID, winnerID, req.LoserIDs, userID)
+	results, err := s.mergeEntitiesCore(r.Context(), bookID, winnerID, req.LoserIDs, userID, false)
 	if errors.Is(err, errMergeBadWinner) {
 		writeError(w, http.StatusUnprocessableEntity, "GLOSS_BAD_WINNER", "winner not a live entity in this book")
 		return
@@ -147,7 +147,11 @@ var errMergeBadWinner = errors.New("winner not a live entity in this book")
 // fully-resolved merge candidates to merged. Returns the per-loser results. Grant +
 // loser-non-empty are the CALLER's concern. Single source of truth for the HTTP merge
 // handler and the glossary_propose_merge confirm effect.
-func (s *Server) mergeEntitiesCore(ctx context.Context, bookID, winnerID uuid.UUID, loserIDs []string, actor uuid.UUID) ([]mergeResultItem, error) {
+// crossKind=false is the normal, same-kind merge (every caller except the #43
+// cross-kind dedup remediation). crossKind=true relaxes the same-kind gate AND
+// scopes the attribute repoint to the WINNER's kind (a loser-kind-only attribute is
+// left on the loser, not mis-attached) — mirroring the write-time cross-kind resolver.
+func (s *Server) mergeEntitiesCore(ctx context.Context, bookID, winnerID uuid.UUID, loserIDs []string, actor uuid.UUID, crossKind bool) ([]mergeResultItem, error) {
 	// Winner must exist, live, in this book — resolve its kind for the same-kind check.
 	var winnerKind uuid.UUID
 	var winnerDeleted *time.Time
@@ -172,7 +176,7 @@ func (s *Server) mergeEntitiesCore(ctx context.Context, bookID, winnerID uuid.UU
 			results = append(results, mergeResultItem{LoserID: raw, Status: "skipped", Reason: "invalid uuid"})
 			continue
 		}
-		jid, reason, merr := s.mergeOne(ctx, bookID, winnerID, winnerKind, loserID, actor)
+		jid, reason, merr := s.mergeOne(ctx, bookID, winnerID, winnerKind, loserID, actor, crossKind)
 		if merr != nil {
 			// MED-3b: don't abort the whole request — earlier losers already
 			// committed. Record this one as failed and continue so the response
@@ -211,13 +215,16 @@ func (s *Server) mergeEntitiesCore(ctx context.Context, bookID, winnerID uuid.UU
 // mergeOne performs the transactional merge of one loser into the winner.
 // Returns (journal_id, "", nil) on success or ("", reason, nil) on a validation
 // skip; a non-nil error is a real failure (caller 500s, tx rolled back).
+// crossKindOpt is variadic so the many same-kind call sites (tests + the user merge
+// path) stay unchanged; only the #43 cross-kind dedup passes true.
 func (s *Server) mergeOne(
-	ctx context.Context, bookID, winnerID, winnerKind, loserID, actor uuid.UUID,
+	ctx context.Context, bookID, winnerID, winnerKind, loserID, actor uuid.UUID, crossKindOpt ...bool,
 ) (uuid.UUID, string, error) {
+	crossKind := len(crossKindOpt) > 0 && crossKindOpt[0]
 	if loserID == winnerID {
 		return uuid.Nil, "same entity", nil
 	}
-	// Validate loser: live + same book + same kind.
+	// Validate loser: live + same book + (unless crossKind) same kind.
 	var loserKind, loserBook uuid.UUID
 	var loserDeleted *time.Time
 	if err := s.pool.QueryRow(ctx,
@@ -228,7 +235,11 @@ func (s *Server) mergeOne(
 	if loserBook != bookID || loserDeleted != nil {
 		return uuid.Nil, "loser not a live entity in this book", nil
 	}
-	if loserKind != winnerKind {
+	// #43 — same-kind is the default reversible-merge invariant. crossKind relaxes it
+	// (the dedup remediation collapses same-name/different-kind dups into the winner's
+	// kind); the EAV repoint below is then scoped to the winner's kind so a loser-kind-
+	// only attribute is left behind rather than mis-attached.
+	if !crossKind && loserKind != winnerKind {
 		return uuid.Nil, "different kind", nil
 	}
 
@@ -302,12 +313,18 @@ func (s *Server) mergeOne(
 	if err != nil {
 		return uuid.Nil, "", err
 	}
+	// #43 — on a cross-kind merge ($4=true), only repoint attribute values whose
+	// attr_def belongs to the WINNER's kind ($5); a loser-kind-only attribute is left
+	// on the (soon soft-deleted) loser rather than mis-attached to a different-kind
+	// winner. For a same-kind merge the clause is inert (loser attrs already belong to
+	// the shared kind), so the existing path is byte-identical.
 	eavs, err := scanUUIDs(ctx, tx, `
 		UPDATE entity_attribute_values SET entity_id = $1
 		WHERE entity_id = $2
 		  AND ($3::uuid IS NULL OR attr_def_id <> $3)
 		  AND attr_def_id NOT IN (SELECT attr_def_id FROM entity_attribute_values WHERE entity_id = $1)
-		RETURNING attr_value_id`, winnerID, loserID, aliasDefPtr)
+		  AND ($4::boolean = false OR attr_def_id IN (SELECT attr_id FROM book_attributes WHERE kind_id = $5))
+		RETURNING attr_value_id`, winnerID, loserID, aliasDefPtr, crossKind, winnerKind)
 	if err != nil {
 		return uuid.Nil, "", err
 	}
