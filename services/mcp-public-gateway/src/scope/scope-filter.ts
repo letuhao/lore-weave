@@ -1,5 +1,5 @@
 import type { Logger } from '@nestjs/common';
-import { TOOL_POLICY, WILDCARD_SCOPE, filterTools, isToolAllowed, knownTool } from './tool-policy.js';
+import { FIND_TOOLS_NAME, TOOL_POLICY, WILDCARD_SCOPE, filterTools, isToolAllowed, knownTool } from './tool-policy.js';
 
 /**
  * Edge scope enforcement (PUB-3 / H-E / H-F), the SECOND of the two checks (the
@@ -159,20 +159,38 @@ interface ToolsListResult {
   result?: { tools?: unknown };
 }
 
-function filterOneListMessage(msg: ToolsListResult, scopes: readonly string[], log?: Logger): void {
+function filterOneListMessage(
+  msg: ToolsListResult,
+  scopes: readonly string[],
+  log?: Logger,
+  activated?: ReadonlySet<string>,
+): void {
   const tools = msg?.result?.tools;
   if (!Array.isArray(tools)) return;
   // Drift signal: any advertised tool not in the policy table is being denied —
   // surface it so a newly-federated tool gets classified rather than silently lost.
+  // find_tools is the exception (always-allowed meta-tool) — never warn on it.
   if (log) {
     for (const t of tools) {
       const n = (t as { name?: unknown })?.name;
-      if (typeof n === 'string' && !knownTool(n)) {
+      if (typeof n === 'string' && n !== FIND_TOOLS_NAME && !knownTool(n)) {
         log.warn(`scope-filter: federated tool '${n}' not in policy table — denied (classify it in tool-policy.ts)`);
       }
     }
   }
-  msg.result!.tools = filterTools(tools as Array<{ name?: unknown }>, scopes);
+  let out = filterTools(tools as Array<{ name?: unknown }>, scopes);
+  // LAZY TOOL-LOADING (the per-session state machine): when an `activated` set is supplied,
+  // collapse the scope-filtered list to the SESSION SURFACE — `find_tools` (always, the
+  // discovery entrypoint) plus only the tools the agent has ACTIVATED this session. A fresh
+  // session → just find_tools; the surface grows as find_tools activates tools. `*` (wildcard
+  // dev key) is already returned whole by filterTools, so it never reaches this collapse.
+  if (activated && !scopes.includes(WILDCARD_SCOPE)) {
+    out = out.filter((t) => {
+      const n = (t as { name?: unknown }).name;
+      return n === FIND_TOOLS_NAME || (typeof n === 'string' && activated.has(n));
+    });
+  }
+  msg.result!.tools = out;
 }
 
 /**
@@ -183,7 +201,12 @@ function filterOneListMessage(msg: ToolsListResult, scopes: readonly string[], l
  * unexpected SSE/error shape), we FAIL CLOSED: return an empty tool list rather than
  * leak the unfiltered catalogue.
  */
-export function filterListResponseText(text: string, scopes: readonly string[], log?: Logger): string {
+export function filterListResponseText(
+  text: string,
+  scopes: readonly string[],
+  log?: Logger,
+  activated?: ReadonlySet<string>,
+): string {
   if (scopes.includes(WILDCARD_SCOPE)) return text;
   let parsed: unknown;
   try {
@@ -193,11 +216,72 @@ export function filterListResponseText(text: string, scopes: readonly string[], 
     return JSON.stringify({ jsonrpc: '2.0', result: { tools: [] }, id: null });
   }
   if (Array.isArray(parsed)) {
-    for (const m of parsed) filterOneListMessage(m as ToolsListResult, scopes, log);
+    for (const m of parsed) filterOneListMessage(m as ToolsListResult, scopes, log, activated);
   } else if (parsed && typeof parsed === 'object') {
-    filterOneListMessage(parsed as ToolsListResult, scopes, log);
+    filterOneListMessage(parsed as ToolsListResult, scopes, log, activated);
   }
   return JSON.stringify(parsed);
+}
+
+/**
+ * True iff the body is a SINGLE (non-batch) `tools/call` to `find_tools` — the lazy-discovery
+ * meta-tool whose RESULT the edge scope-filters + whose matches it activates into the session.
+ */
+export function isFindToolsCall(body: unknown): boolean {
+  if (Array.isArray(body)) return false;
+  if (!body || typeof body !== 'object') return false;
+  const msg = body as JsonRpcRequest;
+  return isToolCall(msg) && msg.params.name === FIND_TOOLS_NAME;
+}
+
+interface FindToolsMatch {
+  name?: unknown;
+}
+
+/**
+ * Scope-filter a `find_tools` RESULT (anti-oracle) + collect the in-scope matched names to
+ * activate. ai-gateway searches the FULL catalogue, so its matches can include tools outside
+ * this key's scope; the edge intersects them with `isToolAllowed` so an external agent never
+ * even DISCOVERS an out-of-scope tool (same anti-oracle contract as the list filter). Returns
+ * the rewritten response text + the in-scope matched names (to SADD into the session). On a
+ * `*` key, or any non-find_tools / unparseable body, returns the text unchanged + no names.
+ */
+export function scopeFilterFindToolsResult(
+  text: string,
+  scopes: readonly string[],
+): { text: string; activatedNames: string[] } {
+  if (scopes.includes(WILDCARD_SCOPE)) return { text, activatedNames: [] };
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(text);
+  } catch {
+    return { text, activatedNames: [] }; // SSE / non-JSON — never fabricate
+  }
+  // A single tools/call response is a JSON-RPC object with `result`. The result is an MCP
+  // CallToolResult: `{ content: [...], structuredContent?: { tools: [...] } }`. We filter the
+  // discovered tool list in BOTH the structuredContent and the text content block (so a client
+  // reading either sees the same scoped set).
+  if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) return { text, activatedNames: [] };
+  const result = (parsed as { result?: unknown }).result;
+  if (!result || typeof result !== 'object') return { text, activatedNames: [] };
+
+  const inScope = new Set<string>();
+  const sc = (result as { structuredContent?: { tools?: unknown } }).structuredContent;
+  if (sc && Array.isArray(sc.tools)) {
+    sc.tools = (sc.tools as FindToolsMatch[]).filter((m) => {
+      const n = typeof m?.name === 'string' ? m.name : '';
+      const ok = n !== '' && isToolAllowed(n, scopes);
+      if (ok) inScope.add(n);
+      return ok;
+    });
+    // Keep the text content block (a JSON string of the same payload) consistent with the
+    // filtered structuredContent, so a client that reads `content[0].text` sees the scoped set.
+    const content = (result as { content?: unknown }).content;
+    if (Array.isArray(content) && content[0] && typeof content[0] === 'object') {
+      (content[0] as { text?: unknown }).text = JSON.stringify(sc);
+    }
+  }
+  return { text: JSON.stringify(parsed), activatedNames: [...inScope] };
 }
 
 // ─────────────────────────────────────────────────────────────────────────────

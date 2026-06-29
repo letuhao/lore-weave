@@ -3,7 +3,9 @@ import { randomUUID } from 'node:crypto';
 import type { Request, Response } from 'express';
 import { loadConfig } from '../config/config.js';
 import { KeyResolver } from '../auth/key-resolver.js';
-import { annotateBatchStepOutcomes, countToolCalls, filterListResponseText, gateRequestBody, idKey, isBatchBody, isListRequest, isWriteRequest, singleToolCallErrored, singleWriteConfirmToolName, writeConfirmCallsById } from '../scope/scope-filter.js';
+import { annotateBatchStepOutcomes, countToolCalls, filterListResponseText, gateRequestBody, idKey, isBatchBody, isFindToolsCall, isListRequest, isWriteRequest, scopeFilterFindToolsResult, singleToolCallErrored, singleWriteConfirmToolName, writeConfirmCallsById } from '../scope/scope-filter.js';
+import { ToolActivation } from '../session/tool-activation.js';
+import { makeToolActivationStoreFromEnv } from '../session/tool-activation-store.js';
 import { detectProposeInItem, detectProposeResult, pendingApprovalForId, pendingApprovalResponse, proposeDivertError, proposeDivertErrorForId } from '../scope/propose-detect.js';
 import type { ResolvedKey } from '../auth/key-resolver.js';
 import { confirmActionResult, denyConfirmAction, detectConfirmActionCall, injectConfirmActionTool } from '../scope/confirm-action.js';
@@ -63,6 +65,9 @@ export class PublicMcpController {
   private readonly idempotency = new Idempotency(makeIdempotencyStoreFromEnv());
   // P4 / OD-2: divert a default key's Tier-W propose to the owner's approval queue.
   private readonly approvals = new ApprovalClient();
+  // Lazy tool-loading: the per-session activated-tool set (Redis when REDIS_URL, else in-memory
+  // so the state machine always works). Keyed by session_id (= key_id).
+  private readonly toolActivation = new ToolActivation(makeToolActivationStoreFromEnv());
 
   @All()
   async handle(@Req() req: Request, @Res() res: Response): Promise<void> {
@@ -321,9 +326,22 @@ export class PublicMcpController {
         if (diverted !== null) text = diverted;
       }
 
+      // LAZY TOOL-LOADING — find_tools discovery: the agent searched the catalogue. The result
+      // came from ai-gateway's FULL search, so scope-filter it (anti-oracle) + ACTIVATE the
+      // in-scope matches into the session, so they appear on the next tools/list (the surface
+      // grows). Best-effort: an activation blip just means the agent re-discovers.
+      if (ok && hasBody && isFindToolsCall(req.body)) {
+        const { text: filtered, activatedNames } = scopeFilterFindToolsResult(text, resolved.scopes);
+        text = filtered;
+        await this.toolActivation.activate(resolved.keyId, activatedNames);
+      }
+
       const rewroteList = ok && hasBody && isListRequest(req.body);
       if (rewroteList) {
-        text = filterListResponseText(text, resolved.scopes, this.log);
+        // The SESSION SURFACE: collapse the scope-filtered list to find_tools + the tools the
+        // agent has activated this session (lazy tool-loading). session_id = key_id.
+        const activated = await this.toolActivation.activated(resolved.keyId);
+        text = filterListResponseText(text, resolved.scopes, this.log, activated);
         // H-G: advertise the optional `idempotency_key` arg on write_auto tools so the
         // agent can discover the retry-dedup path (edge-only; stripped before relay).
         text = advertiseIdempotencyKeyInList(text);

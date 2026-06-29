@@ -14,10 +14,22 @@
 > ported the proven `tool_discovery.py` search to TS; `handleListTools` prepends the find_tools
 > meta-tool; `handleCallTool` intercepts find_tools LOCALLY, no provider route). Tests: find-tools 11
 > + handlers 13 = 24 green; nest build clean.
-> **▶ NEXT — M2:** mcp-public-gateway per-SESSION state machine — Redis `tool-activation-store`
-> (keyed by session_id=key_id); `tools/list` = edge core (find_tools+confirm_action) ∪ the session's
-> activated set ∩ key scope; `find_tools` call → relay to ai-gateway search → intersect with scope →
-> activate into the session set → return. Anti-oracle + gateRequestBody unchanged (no scope widening).
+> **✅ M2 DONE (this commit) — the per-SESSION state machine.** `session/tool-activation-store.ts`
+> (Redis SADD+sliding-EXPIRE per session, keyed by session_id=key_id; in-memory fallback so it
+> always works) + `session/tool-activation.ts` (fail-soft service: a store blip → minimal surface,
+> never throws). `tool-policy.ts`: `find_tools` is the always-allowed discovery meta-tool (passes
+> the request gate + survives the scope filter, any scope). `scope-filter.ts`: `filterListResponseText`
+> takes an `activated` set → collapses the scoped list to `find_tools` ∪ activated (a FRESH session
+> shows ONLY find_tools); `scopeFilterFindToolsResult` intersects ai-gateway's full-catalogue matches
+> with the key's scope (anti-oracle) + harvests the in-scope names; `isFindToolsCall`. Controller:
+> on a find_tools call → scope-filter the result + `activate()` the matches into the session; on
+> tools/list → collapse to the session surface. **No scope widening** (gateRequestBody unchanged;
+> activation governs VISIBILITY, not permission). Tests: tool-activation 18 new + 2 controller
+> updated; full mcp-public-gateway suite 200/200; both gateways nest-build clean.
+> **▶ NEXT:** `/review-impl` (public-security edge) + a cross-service live smoke (external agent →
+> mcp-public-gateway → ai-gateway: fresh session lists find_tools only → find_tools activates a tool
+> → re-list shows it → it calls). Deferred: `D-FINDTOOLS-CHAT-SHARE` (chat-service still has its own
+> local find_tools; pointing it at the gateway's is a separate refactor).
 
 > **✅ SHIPPED + LIVE-VERIFIED — #26/#7 glossary `summarize` (merge-rewrite) mode (L, 3 milestones).** User
 > approved a NEW merge mode distinct from append: keep the lossless RAW item layer (provenance)
