@@ -876,3 +876,38 @@ def test_entity_response_format_enum_tracks_the_batch():
         "event",
         "relationship",
     ]
+
+
+# ── extraction-quality (2026-06-29 ontology analysis) ────────────────────────
+
+
+def test_drop_non_extractable_kinds_removes_relationship():
+    """`relationship` is a KG edge, not a glossary entity — it must be filtered from the
+    LLM extraction profile + metadata so it can't flood the glossary with `A與B的關係`
+    phrase-rows. Other (concrete) kinds are untouched."""
+    profile = {"character": {"name": "fill"}, "relationship": {"name": "fill"}, "location": {"name": "fill"}}
+    meta = [{"code": "character"}, {"code": "relationship"}, {"code": "location"}]
+    fp, fm, dropped = ew.drop_non_extractable_kinds(profile, meta)
+    assert dropped == ["relationship"]
+    assert set(fp) == {"character", "location"}
+    assert [m["code"] for m in fm] == ["character", "location"]
+
+
+def test_drop_non_extractable_kinds_noop_when_absent():
+    """A book without `relationship` is unaffected (returns the inputs, no churn)."""
+    profile = {"character": {"name": "fill"}}
+    meta = [{"code": "character"}]
+    fp, fm, dropped = ew.drop_non_extractable_kinds(profile, meta)
+    assert dropped == []
+    assert fp == profile and fm == meta
+
+
+def test_extraction_system_template_has_precision_filter():
+    """The glossary extraction prompt must carry the scene-relevance / discreteness filter
+    (the precision control the KG prompt had and this one lacked) and must NOT say 'all'."""
+    from app.workers.extraction_prompt import SYSTEM_TEMPLATE
+    t = SYSTEM_TEMPLATE
+    assert "SALIENT, DISCRETE, NAMED" in t
+    assert "identify all named entities" not in t.lower()
+    assert "RELATIONSHIPS between" in t  # explicit: a relationship is not an entity
+    assert "OMIT" in t and "backstory" in t  # omission bias for background mentions

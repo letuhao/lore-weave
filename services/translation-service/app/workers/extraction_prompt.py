@@ -29,8 +29,8 @@ SCHEMA_TOKEN_BUDGET = 2000  # max schema tokens per LLM call (INPUT side)
 MAX_KINDS_PER_BATCH = 3
 
 SYSTEM_TEMPLATE = """\
-You are a literary entity extractor. Analyze the following {source_language} novel \
-chapter and identify all named entities matching the types below.
+You are a precise literary entity extractor. Analyze the following {source_language} \
+novel chapter and identify the SALIENT, DISCRETE, NAMED entities matching the types below.
 
 IMPORTANT — Language rules:
 - ALL output (names, descriptions, attribute values) MUST be in {source_language}.
@@ -46,8 +46,18 @@ text (in {source_language}) that best supports the entity's identification. Max 
 
 {dynamic_schema}
 
-Extract up to {max_entities_per_kind} most significant entities per type.
-Prioritize entities with relevance "major" over "appears".
+Extract up to {max_entities_per_kind} entities per type. Prioritize entities with \
+relevance "major"; OMIT trivial one-off background mentions entirely.
+
+What to EXTRACT vs OMIT (precision filter — read carefully):
+- Extract a DISCRETE, NAMED instance of a type — a proper name that ACTS, speaks, is \
+addressed, or is the subject of THIS chapter's events.
+- DO NOT extract themes, abstract ideas, generic descriptions, or RELATIONSHIPS between \
+entities (e.g. "the rivalry between A and B", "A's master") — a relationship is NOT an \
+entity; extract A and B separately as their own types instead.
+- DO NOT extract a name mentioned ONLY in backstory/memory, ONLY as a geographic aside, \
+or ONLY in a passing comparison/anecdote. When in doubt, OMIT. Under-extraction of \
+one-off background is far better than filling the glossary with noise.
 
 {known_entities_context}
 

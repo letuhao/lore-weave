@@ -350,6 +350,12 @@ fix #4**: `relationship` as a glossary kind is 100% phrase-noise; concrete kinds
 dilution in the 10-kind batch is itself the evidence that `relationship` over-produces when given
 a dedicated call. → **Drop `relationship` as a glossary kind; relationships are KG edges.**
 
+**Cross-model confirmation:** re-running REL_OWN_BATCH on **qwen3.6-27b** (a different model) gave
+the **same 100% phrase rate** (3/3 chapters; samples even more elaborate —
+`张若尘与端木星灵的陪练指导关系`, `张若尘与风知林的生死台对决关系`), CHAR_ONLY 0%. So the
+`relationship`-kind defect is **model-INDEPENDENT** (structural ontology issue), unlike the abstract-
+kind over-extraction which was model-sensitive (clear on gemma, muted on qwen).
+
 ### 9e. Validated remediation (what the whole POC supports)
 
 1. **Raw / stateless extraction** — stop injecting `known_entities`; rely on the write-time

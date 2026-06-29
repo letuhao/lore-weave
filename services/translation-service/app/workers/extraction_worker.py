@@ -95,6 +95,31 @@ _EXTRACTION_OUTPUT_CEILING = 8000  # per-window output cap (entities JSON is sma
 _EXTRACTION_OUTPUT_FLOOR = 1024
 _CONTEXT_SAFETY_RATIO = 0.15  # mirror the gateway's context-fit safety margin
 
+# Glossary-extraction quality (2026-06-29 ontology analysis, docs/analysis/2026-06-29-
+# ontology-extraction-bloat.md): a `relationship` is a KG EDGE (A→B), NOT a discrete named
+# entity. Extracting it as a glossary kind yields ~100% `A與B的關係` phrase-"entities"
+# (POC reproduced on gemma AND qwen, 6/6 chapters; matches the 4,789 relationship rows /
+# 88% phrases observed live). Such kinds are dropped from LLM EXTRACTION — the kind still
+# exists in the book ontology for manual/authored use; it just isn't auto-extracted.
+_NON_EXTRACTABLE_GLOSSARY_KINDS: frozenset[str] = frozenset({"relationship"})
+
+
+def drop_non_extractable_kinds(
+    extraction_profile: dict, kinds_metadata: list,
+) -> tuple[dict, list, list[str]]:
+    """Remove non-entity kinds (``_NON_EXTRACTABLE_GLOSSARY_KINDS``) from the extraction
+    profile + kinds metadata so the LLM is never asked to extract them. Returns
+    ``(filtered_profile, filtered_metadata, dropped_codes)``. A no-op (returns the inputs)
+    when none are present, so existing books without such kinds are unaffected."""
+    dropped = [k for k in extraction_profile if k in _NON_EXTRACTABLE_GLOSSARY_KINDS]
+    if not dropped:
+        return extraction_profile, kinds_metadata, []
+    profile = {k: v for k, v in extraction_profile.items()
+               if k not in _NON_EXTRACTABLE_GLOSSARY_KINDS}
+    metadata = [m for m in kinds_metadata
+                if m.get("code") not in _NON_EXTRACTABLE_GLOSSARY_KINDS]
+    return profile, metadata, dropped
+
 # D-EXTRACTION-BATCH-CONCURRENCY: hard ceiling on the per-chapter LLM-call fan-out
 # regardless of the caller's requested concurrency (protects the provider/GPU + the
 # glossary per-book advisory lock from a runaway request). 1 ⇒ sequential.
@@ -304,8 +329,13 @@ async def _run_extraction_job(msg: dict, job_id: UUID, user_id: str, pool, publi
     """Inner extraction job runner — separated for top-level error handling."""
     book_id = msg["book_id"]
     chapter_ids = msg["chapter_ids"]
-    extraction_profile = msg.get("extraction_profile", {})
-    kinds_metadata = msg.get("kinds_metadata", [])
+    # Drop non-entity kinds (e.g. `relationship` → a KG edge) from LLM extraction so they
+    # can't flood the glossary with `A與B的關係` phrase-rows. The kind row is untouched.
+    extraction_profile, kinds_metadata, _dropped = drop_non_extractable_kinds(
+        msg.get("extraction_profile", {}), msg.get("kinds_metadata", []))
+    if _dropped:
+        log.info("extraction: skipping non-entity kinds %s (relationships are KG edges) book=%s",
+                 _dropped, book_id)
     context_filters = msg.get("context_filters", {})
     source_language = msg.get("source_language", "zh")
     model_source = msg.get("model_source", "platform_model")
