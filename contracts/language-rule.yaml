@@ -83,3 +83,4 @@ services:
   chaos-engine: missing                # V1+30d (Q-L4-4)
   oncall-bot: missing                  # V1+30d
   session-cost-rollup-worker: missing  # PRR-17: never scaffolded — empty meta sink
+  knowledge-gateway: missing           # KAL gateway — contract frozen (contracts/api/knowledge-gateway/kal.v1.yaml, F0); promote to `typescript` when the F4 scaffold lands. Spec §6D.
