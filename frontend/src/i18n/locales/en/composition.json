@@ -1,4 +1,9 @@
 {
+  "mobile": {
+    "switchPanel": "Switch panel",
+    "panels": "Panels",
+    "close": "Close"
+  },
   "groundingPins": {
     "present": "Cast in scene",
     "canon": "Canon rules",
@@ -141,6 +146,7 @@
     "promoting": "Promoting…",
     "promoted": "Promoted to a what-if derivative.",
     "promotedPartial": "Promoted, but {{n}} take(s) couldn’t be added.",
+    "promotedProsePartial": "Promoted, but {{n}} take(s)’ prose couldn’t be saved — re-promote to retry.",
     "promoteHint": "Generate at least one take to promote"
   },
   "cast": "Cast",
@@ -456,6 +462,12 @@
     "noSynopsis": "No synopsis"
   },
   "derive": {
+    "adapt": {
+      "action": "Adapt from source",
+      "hint": "Rewrite the inherited source scene to honour this branch (a ghost you review and accept).",
+      "empty": "Nothing to adapt",
+      "emptyHint": "The source chapter has no prose to adapt — generate a fresh draft instead."
+    },
     "launch": "Spawn what-if",
     "launchHint": "Spawn a what-if branching from this canon",
     "title": "Spawn a what-if (derivative)",

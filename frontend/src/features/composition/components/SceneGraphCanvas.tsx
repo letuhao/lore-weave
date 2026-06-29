@@ -17,11 +17,14 @@ import { useSetWorkSettings } from '../hooks/useWork';
 import { useSceneWhatIf, whatIfAltPositions, whatIfAltEdges, type WhatIfEdge } from '../hooks/useSceneWhatIf';
 import { useWhatIfTakes } from '../hooks/useWhatIfTakes';
 import { useWhatIfPromotion } from '../hooks/useWhatIfPromotion';
+import { useVsCanonDelta } from '../hooks/useVsCanonDelta';
 import { compositionApi } from '../api';
 import type { OutlineNode, SceneLink, SceneLinkKind, Work } from '../types';
 import { SceneNode } from './SceneNode';
 import { SceneEdge } from './SceneEdge';
 import { WhatIfAltNode } from './WhatIfAltNode';
+import { WhatIfJudgeBadge } from './WhatIfJudgeBadge';
+import { CanonAtChapterPanel } from './CanonAtChapterPanel';
 import { GraphCanvas } from './GraphCanvas';
 import { autoLayout, NODE_H, NODE_W, PAD, type Pos } from './sceneGraphLayout';
 
@@ -78,6 +81,9 @@ export function SceneGraphCanvas({ work, bookId, token, onPromoted }: {
   const selectedWhatIfModel = whatIfModelList.find((mm) => mm.user_model_id === effectiveWhatIfModel);
   const takes = useWhatIfTakes({ projectId, token, updateAlt: whatIf.updateAlt });
   const [previewAltId, setPreviewAltId] = useState<string | null>(null);
+  // M6 — the canon-at-branch-point inspector (what canon knows right before the
+  // divergence). Toggled from the what-if bar; the headline use of CanonAtChapterPanel.
+  const [showBranchCanon, setShowBranchCanon] = useState(false);
 
   // M3 — promote the ephemeral branch into a persistent derivative Work (the SAME
   // path the Divergence Wizard uses), then seed each generated take as a scene node
@@ -108,9 +114,10 @@ export function SceneGraphCanvas({ work, bookId, token, onPromoted }: {
     draft: whatIfDraft,
     token,
     onPromoted: (derivative) => {
-      // Seed the READY takes as scene nodes in the derivative project (prose-persist
-      // deferred), THEN switch the studio — so the derivative's outline already has the
-      // seeded scenes when it mounts (switching first would open an empty outline).
+      // Seed the READY takes as scene nodes in the derivative project, then persist each
+      // take's ghost PROSE into the derivative's scene store (M3), THEN switch the studio
+      // — so the derivative's outline already has the seeded scenes + their prose when it
+      // mounts (switching first would open an empty outline).
       const ready = whatIf.branch?.alts.filter((a) => a.status === 'ready') ?? [];
       const finish = () => {
         // local cleanup BEFORE the (possibly unmounting) studio switch.
@@ -124,11 +131,33 @@ export function SceneGraphCanvas({ work, bookId, token, onPromoted }: {
         // live smoke). The take is an alternate of the anchor scene, so it belongs to the
         // anchor's chapter (a book chapter, shared by the COW derivative).
         const chapterId = anchorScene?.chapter_id ?? null;
+        let proseFailed = 0;
         void Promise.allSettled(
-          ready.map((a) => compositionApi.createNode(proj, { kind: 'scene', title: a.title, chapter_id: chapterId }, token)),
+          ready.map(async (a, idx) => {
+            // story_order is REQUIRED for the prose to be read back: prior_scene_drafts /
+            // chapter_scene_drafts / gather_recent's fallback all filter `story_order IS
+            // NOT NULL` (/review-impl HIGH — without it the persisted prose is write-only).
+            // The derivative outline is created EMPTY (create_derivative copies no nodes),
+            // so a dense 0..n-1 index by ready-order is collision-free + reading-ordered.
+            const node = await compositionApi.createNode(proj, { kind: 'scene', title: a.title, chapter_id: chapterId, story_order: idx }, token);
+            // M3 — best-effort persist the take's ghost prose into the new derivative
+            // scene (synthetic-job store; server-side source-clobber guard). A blank
+            // ghost is skipped (BE would 422 EMPTY_SCENE_PROSE). A persist failure does
+            // NOT fail the scene-add — the scene exists; prose is re-promotable — so we
+            // surface a SOFT count rather than rejecting the chain.
+            const ghost = a.take?.ghost?.trim();
+            if (ghost) {
+              try {
+                await compositionApi.persistScenePromoteProse(proj, node.id, ghost, token);
+              } catch {
+                proseFailed += 1;
+              }
+            }
+          }),
         ).then((results) => {
           const failed = results.filter((r) => r.status === 'rejected').length;
           if (failed) toast.error(t('whatif.promotedPartial', { defaultValue: 'Promoted, but {{n}} take(s) couldn’t be added.', n: failed }));
+          else if (proseFailed) toast.warning(t('whatif.promotedProsePartial', { defaultValue: 'Promoted, but {{n}} take(s)’ prose couldn’t be saved — re-promote to retry.', n: proseFailed }));
           else toast.success(t('whatif.promoted', { defaultValue: 'Promoted to a what-if derivative.' }));
           finish();
         });
@@ -204,6 +233,17 @@ export function SceneGraphCanvas({ work, bookId, token, onPromoted }: {
   const allNodeIds = [...scenes.map((s) => s.id), ...(branch?.alts ?? []).map((a) => a.id)];
   const allEdges: GraphEdge[] = branch ? [...links, ...whatIfAltEdges(branch)] : links;
   const previewAlt = branch?.alts.find((a) => a.id === previewAltId) ?? null;
+
+  // M4 — judge the canon baseline (the anchor scene's chapter draft) so the preview
+  // badge can show each dim RELATIVE to canon, not just the take's own score. Only
+  // fires while a take with a judge is previewed; memoized by (chapter_id, version).
+  const vsCanon = useVsCanonDelta({
+    bookId,
+    token,
+    chapterId: anchorScene?.chapter_id ?? null,
+    jobId: previewAlt?.take?.jobId ?? null,
+    enabled: !!previewAlt?.take?.judge,
+  });
 
   return (
     <div className="flex h-full flex-col" data-testid="composition-graph">
@@ -282,6 +322,14 @@ export function SceneGraphCanvas({ work, bookId, token, onPromoted }: {
               {promotion.isPromoting ? t('whatif.promoting', { defaultValue: 'Promoting…' }) : t('whatif.promote', { defaultValue: 'Promote' })}
             </button>
             <button
+              type="button" data-testid="scenegraph-whatif-canon"
+              className={`rounded border px-2 py-0.5 ${showBranchCanon ? 'border-indigo-400 bg-indigo-50 text-indigo-700 dark:border-indigo-600 dark:bg-indigo-950/30 dark:text-indigo-300' : 'border-transparent text-muted-foreground hover:text-foreground'}`}
+              title={t('canonview.branchHint', { defaultValue: 'What canon knows right before this branch' })}
+              onClick={() => setShowBranchCanon((v) => !v)}
+            >
+              ⊙ {t('canonview.branchToggle', { defaultValue: 'Canon at branch' })}
+            </button>
+            <button
               type="button" data-testid="scenegraph-whatif-discard"
               className="rounded px-2 py-0.5 text-muted-foreground hover:text-foreground"
               onClick={whatIf.discard}
@@ -291,6 +339,22 @@ export function SceneGraphCanvas({ work, bookId, token, onPromoted }: {
           </div>
         )}
       </div>
+
+      {/* M6 — canon-at-branch-point inspector: what canon establishes/knows right
+          before the divergence chapter. Windowed to the anchor scene's chapter (with
+          its sort_order → established-by-N). Source = the canon project (pre-promote). */}
+      {whatIf.active && showBranchCanon && anchorScene?.chapter_id && (
+        <div data-testid="scenegraph-branch-canon" className="max-h-64 shrink-0 overflow-y-auto border-b border-indigo-200 bg-indigo-50/30 dark:border-indigo-900 dark:bg-indigo-950/20">
+          <CanonAtChapterPanel
+            bookId={bookId}
+            chapterId={anchorScene.chapter_id}
+            chapterIndex={anchorChapterSort}
+            chapterLabel={anchorChapterSort != null ? t('canonview.chapterN', { defaultValue: 'chapter {{n}}', n: anchorChapterSort + 1 }) : undefined}
+            token={token}
+            enabled={showBranchCanon}
+          />
+        </div>
+      )}
 
       {scenes.length === 0 ? (
         <div data-testid="scenegraph-empty" className="p-3 text-xs text-muted-foreground">
@@ -361,9 +425,12 @@ export function SceneGraphCanvas({ work, bookId, token, onPromoted }: {
           <div className="flex items-center gap-2">
             <span className="font-medium text-purple-800 dark:text-purple-200">⑂ {previewAlt.title}</span>
             {previewAlt.take.judge && (
-              <span className="font-mono text-[10px] text-purple-700/80 dark:text-purple-300/80">
-                C{previewAlt.take.judge.coherence ?? '–'} · V{previewAlt.take.judge.voice_match ?? '–'} · P{previewAlt.take.judge.pacing ?? '–'} · K{previewAlt.take.judge.canon_consistency ?? '–'}
-              </span>
+              <WhatIfJudgeBadge
+                judge={previewAlt.take.judge}
+                canon={vsCanon.canon}
+                baselineAvailable={vsCanon.baselineAvailable}
+                judging={vsCanon.judging}
+              />
             )}
             <button
               type="button" data-testid="whatif-preview-close"

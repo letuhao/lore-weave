@@ -2308,3 +2308,19 @@ ALTER TABLE user_kinds   DROP COLUMN IF EXISTS genre_tags;
 func UpGlossaryDropLegacyG4(ctx context.Context, pool *pgxpool.Pool) error {
 	return execGuarded(ctx, pool, "glossary-drop-legacy-g4", glossaryDropLegacyG4SQL)
 }
+
+// chapterLinkMentionCountSQL adds the per-chapter mention-frequency column to
+// chapter_entity_links (M7 / D-T5.2-WINDOWED-MENTIONS). Additive, forward-only —
+// glossary has no down-migration. The UNIQUE(entity_id, chapter_id) is unchanged
+// (the count lives WITHIN a chapter, one row per (entity,chapter)); a recount
+// upsert overwrites the value via ON CONFLICT … DO UPDATE in the extraction
+// writeback. Defaults 0 so existing rows read as "not yet recounted" until the
+// producer re-runs (live extraction) or the backfill recount job lands.
+const chapterLinkMentionCountSQL = `
+ALTER TABLE chapter_entity_links ADD COLUMN IF NOT EXISTS mention_count INT NOT NULL DEFAULT 0;
+`
+
+// UpChapterLinkMentionCount adds chapter_entity_links.mention_count. Idempotent.
+func UpChapterLinkMentionCount(ctx context.Context, pool *pgxpool.Pool) error {
+	return execGuarded(ctx, pool, "chapter-link-mention-count", chapterLinkMentionCountSQL)
+}

@@ -37,7 +37,7 @@ func (s *Server) verifyEntityInBook(w http.ResponseWriter, ctx context.Context, 
 // chapter_index NULLS LAST, then added_at.
 func (s *Server) queryChapterLinks(ctx context.Context, entityID uuid.UUID) ([]chapterLinkResp, error) {
 	rows, err := s.pool.Query(ctx, `
-		SELECT link_id, entity_id, chapter_id, chapter_title, chapter_index, relevance, note, added_at
+		SELECT link_id, entity_id, chapter_id, chapter_title, chapter_index, relevance, note, added_at, mention_count
 		FROM chapter_entity_links
 		WHERE entity_id = $1
 		ORDER BY chapter_index NULLS LAST, added_at`, entityID)
@@ -51,7 +51,7 @@ func (s *Server) queryChapterLinks(ctx context.Context, entityID uuid.UUID) ([]c
 		var cl chapterLinkResp
 		if err := rows.Scan(
 			&cl.LinkID, &cl.EntityID, &cl.ChapterID,
-			&cl.ChapterTitle, &cl.ChapterIndex, &cl.Relevance, &cl.Note, &cl.AddedAt,
+			&cl.ChapterTitle, &cl.ChapterIndex, &cl.Relevance, &cl.Note, &cl.AddedAt, &cl.MentionCount,
 		); err != nil {
 			return nil, err
 		}
@@ -64,13 +64,13 @@ func (s *Server) queryChapterLinks(ctx context.Context, entityID uuid.UUID) ([]c
 func (s *Server) scanChapterLink(ctx context.Context, linkID, entityID uuid.UUID) (*chapterLinkResp, error) {
 	var cl chapterLinkResp
 	err := s.pool.QueryRow(ctx, `
-		SELECT link_id, entity_id, chapter_id, chapter_title, chapter_index, relevance, note, added_at
+		SELECT link_id, entity_id, chapter_id, chapter_title, chapter_index, relevance, note, added_at, mention_count
 		FROM chapter_entity_links
 		WHERE link_id = $1 AND entity_id = $2`,
 		linkID, entityID,
 	).Scan(
 		&cl.LinkID, &cl.EntityID, &cl.ChapterID,
-		&cl.ChapterTitle, &cl.ChapterIndex, &cl.Relevance, &cl.Note, &cl.AddedAt,
+		&cl.ChapterTitle, &cl.ChapterIndex, &cl.Relevance, &cl.Note, &cl.AddedAt, &cl.MentionCount,
 	)
 	if err != nil {
 		return nil, err
@@ -197,11 +197,11 @@ func (s *Server) createChapterLinkCore(ctx context.Context, bookID, entityID, ch
 	err := s.pool.QueryRow(ctx, `
 		INSERT INTO chapter_entity_links(entity_id, chapter_id, chapter_title, chapter_index, relevance, note)
 		VALUES($1,$2,$3,$4,$5,$6)
-		RETURNING link_id, entity_id, chapter_id, chapter_title, chapter_index, relevance, note, added_at`,
+		RETURNING link_id, entity_id, chapter_id, chapter_title, chapter_index, relevance, note, added_at, mention_count`,
 		entityID, chapterID, chapterTitle, chapterIndex, relevance, note,
 	).Scan(
 		&cl.LinkID, &cl.EntityID, &cl.ChapterID,
-		&cl.ChapterTitle, &cl.ChapterIndex, &cl.Relevance, &cl.Note, &cl.AddedAt,
+		&cl.ChapterTitle, &cl.ChapterIndex, &cl.Relevance, &cl.Note, &cl.AddedAt, &cl.MentionCount,
 	)
 	if err != nil {
 		var pgErr *pgconn.PgError

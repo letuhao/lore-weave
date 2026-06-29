@@ -32,6 +32,12 @@
   "toggle_history": "切換歷史 / AI 面板",
   "unsaved": "未儲存",
   "saved_badge": "已儲存",
+  "mobile": {
+    "editor": "編輯器",
+    "studio": "工作室",
+    "history": "歷史",
+    "nav": "編輯器區段"
+  },
   "discard_title": "捨棄所有未儲存的變更",
   "discard": "捨棄",
   "save": "儲存",

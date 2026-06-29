@@ -1,5 +1,53 @@
 # Plan — Clear the Writing-Assistant Composition Debt
 
+## ✅ COMPLETE — all 9 milestones shipped on `feat/composition-debt` (2026-06-26)
+
+Built in the locked order `M0 → M4 → M6 → M3 → M1 → M5a → M5b → M7 → M2`, each through the
+12-phase v2.2 `/loom` workflow with grouped PO checkpoints. Commits:
+
+| M | What | Commit |
+|---|---|---|
+| M0 | world i18n parity | (earlier) |
+| M4 | vs-canon judge delta | (earlier) |
+| M6 | canon-at-chapter inspector (+`/review-impl`: knowledge-project HIGH) | `c27b57e7` |
+| M3 | prose-persist-on-promote (+`/review-impl` HIGH: seed `story_order`) | `12cc1044`, `8f52ef2b` |
+| M1 | adapt-from-source (+`/review-impl` HIGH: branch_point=null) | `d633fff9`, `93890d4d` |
+| M5a | mobile shell + two-level nav | `117b5367` |
+| M5b | heavy-canvas mobile (pinch + fit-on-mount) | `f05d89c3` |
+| M7 | per-chapter mention heatmap windowing (cross-service) | `992290e5` |
+| M2 | chat-hoist finalize (worker engagement + single-writer) | _this commit_ |
+
+**Live-smokes:** M1/M3/M6/M7 cross-service PASS; **M7 bulk `mention_backfill` run across all 7
+books with chapter links** (Dracula ×4 scenario + 万古神帝 ×2 — the large CJK book: 5495 alive
+entities paged, 436 links counted). **M2 browser two-window PASS** — a real lm_studio turn ran
+in the popped-out cowriter, and an initiator-window token mirrored into a second window mid-stream
+then cleared on the observer refetch (single-writer split, live).
+
+**Recently cleared:**
+- **`D-M3-PROSEJOB-PUBLISHGATE`** (MED) — **FIXED** (commit follows). The publish-gate's
+  latest-canon-verdict pick (`db/repositories/outline.py` `chapter_scene_gate`) took the most
+  recent completed job per scene *regardless of operation*, so an M3 synthetic
+  `promoted_scene_prose` job (no canon verdict) could shadow an earlier auto-gen's confirmed
+  `canon.resolved=false` and silently un-block publish. Fix: exclude
+  `operation='promoted_scene_prose'` from the subquery — keeps the gate conservative-for-canon
+  (only a real re-generation can clear a block). Real-PG integration test proves it before/after
+  (masking test FAILS on the old image, PASSES with the fix; 9/9 prose+gate tests green). It was
+  a one-line root-cause fix surfaced *by* M3 (M3 creates the synthetic job) → fixed now, not
+  deferred to a separate track.
+
+- **`D-T5.4-CHAT-MULTIWINDOW-ORPHAN`** — **FIXED** (commit follows). Re-graded from LOW: an
+  orphaned turn leaving a session untracked/unresumable is a real failure, not cosmetic. Root
+  cause was a mis-scoped gate: `onStreamEnd` was fired only in the initiator window, but it does
+  nothing but two **idempotent reads** — `refreshSessions()` (debounced) + `pendingFacts.refetch()`
+  — which are EACH window's own derived state. Single-writer gating both orphaned the refresh when
+  the initiator closed AND left every observer's sidebar/pending-facts stale. Fix: fire
+  `onStreamEnd` **per-window** (each refreshes its own tracking); only the message *append* stays
+  writer-scoped (initiator appends seamlessly, observers refetch). No hub leader-election needed —
+  a surviving window self-serves, so the turn is always tracked + resumable. Unit-proven (the
+  observer test now asserts it fires its own fan-out while NOT blind-appending).
+
+**Open deferrals (tracked):** _none._
+
 - **Status:** CLARIFY ✅ → DESIGN ✅ → **DEFERRED to a new branch (no build on
   `feat/composition-service`).**
 - **⚠ BUILD TARGET (PO decision 2026-06-26): a NEW branch, NOT `feat/composition-service`.**

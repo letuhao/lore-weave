@@ -93,6 +93,9 @@ var chain = []Step{
 	// dedup-key backstop folds CJK simplified/traditional + full-width + casefold
 	// via the shared loreweave_extraction SDK (the same fold the resolver uses).
 	{"0040_st_dedup_app_maintained", UpStDedupAppMaintained},
+	// M7 (D-T5.2-WINDOWED-MENTIONS) — per-chapter mention_count on chapter_entity_links
+	// so the FE mention heatmap can window per-chapter frequencies ≤ a cutoff.
+	{"0041_chapter_link_mention_count", UpChapterLinkMentionCount},
 }
 
 // EnsureLedger creates the schema_migrations bookkeeping table. Idempotent; must run

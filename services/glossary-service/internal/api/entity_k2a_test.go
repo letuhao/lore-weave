@@ -112,6 +112,10 @@ func runK2aMigrations(t *testing.T, pool *pgxpool.Pool) {
 	if err := migrate.UpStDedupAppMaintained(ctx, pool); err != nil {
 		t.Fatalf("migrate.UpStDedupAppMaintained: %v", err)
 	}
+	// 0041 — M7: chapter_entity_links.mention_count (per-chapter mention frequency).
+	if err := migrate.UpChapterLinkMentionCount(ctx, pool); err != nil {
+		t.Fatalf("migrate.UpChapterLinkMentionCount: %v", err)
+	}
 }
 
 // ── schema shape tests ──────────────────────────────────────────────────────
