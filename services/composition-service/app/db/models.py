@@ -374,6 +374,7 @@ class InfoAsymmetry(BaseModel):
 class Motif(BaseModel):
     id: UUID
     owner_user_id: UUID | None = None              # NULL = system tier
+    book_id: UUID | None = None                    # per-book label (D-MOTIF-ADOPT-PER-BOOK); NULL = global/system. Owner's full dump only — NOT in the public/non-owner projections.
     code: _Code
     language: _Lang = "en"
     visibility: MotifVisibility = "private"

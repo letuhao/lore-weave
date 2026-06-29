@@ -538,6 +538,7 @@ _MOTIF_SCHEMA_SQL = """
 CREATE TABLE IF NOT EXISTS motif (
   id              UUID PRIMARY KEY DEFAULT uuidv7(),
   owner_user_id   UUID,                                   -- NULL = system (seed/migrate-only)
+  book_id         UUID,                                   -- per-book label (D-MOTIF-ADOPT-PER-BOOK); NULL = global user/system tier
   code            TEXT NOT NULL,
   language        TEXT NOT NULL DEFAULT 'en',             -- part of the dedup/embed key (R1.1.3)
   visibility      TEXT NOT NULL DEFAULT 'private'
@@ -587,12 +588,19 @@ CREATE TABLE IF NOT EXISTS motif (
   -- this CHECK is the DB backstop that a private row ALWAYS has an owner.
   CONSTRAINT motif_user_owned CHECK (owner_user_id IS NOT NULL OR visibility <> 'private')
 );
--- 2 tenancy partials (NO book tier), keyed incl. language (R1.1.1 + R1.1.3):
+-- tenancy partials keyed incl. language (R1.1.3). A user's GLOBAL tier (book_id NULL) and
+-- PER-BOOK labels (book_id set, D-MOTIF-ADOPT-PER-BOOK = model A book-scoped filter) dedup
+-- INDEPENDENTLY, so the same source may be adopted globally AND into a book without a false
+-- code collision (the confirm path uses clone(), which raises on collision). The read
+-- predicate is UNCHANGED — book_id only narrows what the OWNER sees, never widens visibility.
 CREATE UNIQUE INDEX IF NOT EXISTS uq_motif_user
-  ON motif(owner_user_id, code, language) WHERE owner_user_id IS NOT NULL;
+  ON motif(owner_user_id, code, language) WHERE owner_user_id IS NOT NULL AND book_id IS NULL;
+CREATE UNIQUE INDEX IF NOT EXISTS uq_motif_user_book
+  ON motif(owner_user_id, book_id, code, language) WHERE book_id IS NOT NULL;
 CREATE UNIQUE INDEX IF NOT EXISTS uq_motif_system
   ON motif(code, language)                WHERE owner_user_id IS NULL;
 CREATE INDEX IF NOT EXISTS idx_motif_owner  ON motif(owner_user_id) WHERE owner_user_id IS NOT NULL;
+CREATE INDEX IF NOT EXISTS idx_motif_book   ON motif(book_id)        WHERE book_id IS NOT NULL;
 CREATE INDEX IF NOT EXISTS idx_motif_public ON motif(visibility, updated_at DESC) WHERE visibility = 'public';
 CREATE INDEX IF NOT EXISTS idx_motif_genre  ON motif USING GIN (genre_tags);
 -- retrieval pre-filter (genre ∩ + status + tier predicate) runs in SQL BEFORE loading
@@ -814,6 +822,25 @@ END $$;
 ALTER TABLE arc_template ADD COLUMN IF NOT EXISTS imported_derived BOOLEAN NOT NULL DEFAULT false;
 -- D-MOTIF-SYNC-3WAY-BASE: the merge-base snapshot column (additive ALTER for an existing motif).
 ALTER TABLE motif ADD COLUMN IF NOT EXISTS adopted_base JSONB;
+-- D-MOTIF-ADOPT-PER-BOOK: the per-book label column + the book-scoped uniqueness partial
+-- (additive, for an already-created motif). On an EXISTING DB the base `CREATE UNIQUE INDEX
+-- IF NOT EXISTS uq_motif_user` above is a no-op (the index already exists with the OLD
+-- predicate, no `book_id IS NULL` clause), so recreate it once when its def lacks book_id.
+ALTER TABLE motif ADD COLUMN IF NOT EXISTS book_id UUID;
+DO $$
+BEGIN
+  IF EXISTS (
+    SELECT 1 FROM pg_indexes
+    WHERE indexname = 'uq_motif_user' AND indexdef NOT LIKE '%book_id%'
+  ) THEN
+    DROP INDEX uq_motif_user;
+    CREATE UNIQUE INDEX uq_motif_user
+      ON motif(owner_user_id, code, language) WHERE owner_user_id IS NOT NULL AND book_id IS NULL;
+  END IF;
+END $$;
+CREATE UNIQUE INDEX IF NOT EXISTS uq_motif_user_book
+  ON motif(owner_user_id, book_id, code, language) WHERE book_id IS NOT NULL;
+CREATE INDEX IF NOT EXISTS idx_motif_book ON motif(book_id) WHERE book_id IS NOT NULL;
 CREATE OR REPLACE FUNCTION arc_template_publish_strip() RETURNS trigger AS $$
 BEGIN
   IF NEW.visibility IN ('public','unlisted')

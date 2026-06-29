@@ -45,7 +45,7 @@ export function MotifLibraryView({ token, meUserId: meProp, projectId, bookId }:
 
   const detail = useMotifDetail(openId, me, token);
   const quickCreate = useMotifQuickCreate(token, (m) => { setCreating(false); setOpenId(m.id); });
-  const adopt = useAdoptFlow(token);
+  const adopt = useAdoptFlow(token, bookId);
   const drafts = useMotifDraftActions(token);
   const draftBusy = drafts.promote.isPending || drafts.discard.isPending;
 
@@ -171,6 +171,9 @@ export function MotifLibraryView({ token, meUserId: meProp, projectId, bookId }:
         quota={adopt.quota}
         minting={adopt.mint.isPending}
         confirming={adopt.confirm.isPending}
+        target={adopt.target}
+        canTargetBook={adopt.canTargetBook}
+        onTarget={adopt.setTarget}
         onMint={() => adopt.mint.mutate()}
         onConfirm={() => adopt.confirm.mutate()}
         onCancel={adopt.cancel}

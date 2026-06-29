@@ -85,14 +85,16 @@ export const motifApi = {
   },
 
   // ── Tier-W: adopt = clone into YOUR library (R2.8 confirm-token), via the
-  //    FE→MCP-tool bridge. Adopt is USER-scoped (the backend `composition_motif_adopt`
-  //    tool is `target: Literal["user"]`); per-book adopt needs a motif book-scope
-  //    (D-MOTIF-ADOPT-PER-BOOK). It is quota-gated, not metered — no $ estimate.
-  /** Step 1: PROPOSE the adopt → a confirm token (+ a preview). No clone yet. */
-  async adoptEstimate(motifId: string, token: string): Promise<CostEstimate> {
+  //    FE→MCP-tool bridge. Adopt defaults to the user's GLOBAL tier; passing a bookId
+  //    LABELS the clone with that book (D-MOTIF-ADOPT-PER-BOOK = model A book-scoped
+  //    filter — the clone is still owner-stamped, only book_id-tagged so it surfaces
+  //    under that book's library, EDIT-gated on the book). Quota-gated, not metered.
+  /** Step 1: PROPOSE the adopt → a confirm token (+ a preview). No clone yet.
+   *  Pass `opts.bookId` to label the clone for that book (target='book'). */
+  async adoptEstimate(motifId: string, token: string, opts?: { bookId?: string | null }): Promise<CostEstimate> {
     const res = await mcpExecute<_McpProposeResult>(
       'composition_motif_adopt',
-      { args: { motif_id: motifId } },
+      { args: { motif_id: motifId, ...(opts?.bookId ? { target: 'book', book_id: opts.bookId } : {}) } },
       token,
     );
     return {

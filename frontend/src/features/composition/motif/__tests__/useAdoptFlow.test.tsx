@@ -41,6 +41,30 @@ describe('useAdoptFlow', () => {
     expect(result.current.estimate?.est_usd).toBe(0);
   });
 
+  it('target=book labels the mint with book_id (D-MOTIF-ADOPT-PER-BOOK)', async () => {
+    mcpExecute.mockResolvedValueOnce({ confirm_token: 'ct', preview: { into: 'book' } });
+    const { result } = renderHook(() => useAdoptFlow('tok', 'bk1'), { wrapper: wrap() });
+    expect(result.current.canTargetBook).toBe(true);            // a book is in context
+    act(() => result.current.begin('m1'));
+    act(() => result.current.setTarget('book'));
+    await act(async () => { await result.current.mint.mutateAsync(); });
+    expect(mcpExecute).toHaveBeenCalledWith(
+      'composition_motif_adopt',
+      { args: { motif_id: 'm1', target: 'book', book_id: 'bk1' } },
+      'tok',
+    );
+  });
+
+  it('default target=user stays global even with a book in context', async () => {
+    mcpExecute.mockResolvedValueOnce({ confirm_token: 'ct' });
+    const { result } = renderHook(() => useAdoptFlow('tok', 'bk1'), { wrapper: wrap() });
+    act(() => result.current.begin('m1'));   // target defaults to 'user'
+    await act(async () => { await result.current.mint.mutateAsync(); });
+    expect(mcpExecute).toHaveBeenCalledWith(
+      'composition_motif_adopt', { args: { motif_id: 'm1' } }, 'tok',
+    );
+  });
+
   it('quota_exhausted on CONFIRM → the explainer is surfaced (not a silent fail)', async () => {
     mcpExecute.mockResolvedValueOnce({ confirm_token: 'ct' });
     // confirm hits POST /actions/confirm → 402 with the composition action-effect shape

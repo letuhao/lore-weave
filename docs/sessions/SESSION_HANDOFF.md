@@ -1,4 +1,23 @@
-# ▶▶ NEXT SESSION STARTS HERE — **Glossary plan-and-execute (Phase 1) SHIPPED** · branch `feat/composition-service` · HEAD `b2439fcf` · 2026-06-26
+# ▶▶ NEXT SESSION STARTS HERE — **Motif library "tail" COMPLETE (incl. WI-5 per-book adopt)** · branch `feat/narrative-pattern-library` · HEAD `b8f0ddb3`+ · 2026-06-29
+
+> **What this branch is:** the narrative-pattern (motif/arc) library — Tier-W cost-gated MCP flows for mining, conformance, adopt, and 3-way publish-sync, fronted by the FE→MCP-tool bridge. The feature body landed across prior sessions; this session closed the **completeness-audit tail** AND shipped **WI-5 per-book adopt**.
+>
+> **▶ Shipped this session (all green — 1083+ backend unit + 151 FE motif tests, tsc + provider-gate clean):**
+> - **Audit tail (committed `f1157b25`…`b8f0ddb3`):** BYOK model_ref threading through `motif_mine`/`arc_import`; the **tag-beats LLM extractor** (knowledge `POST /internal/extraction/tag-beats` → composition mine pre-pass; cross-tenant injection neutralized); **WI-3 arc semantic retrieve** (`composition_arc_suggest`); **WI-1/WI-2/WI-4 FE** (mine panel, full editor, publish-sync); `/review-impl` fixes (arc back-fill scoped to own/system; editor edit-loss). Completeness audit: [`docs/reports/2026-06-29-motif-completeness-audit.md`](../reports/2026-06-29-motif-completeness-audit.md).
+> - **WI-5 per-book adopt (`D-MOTIF-ADOPT-PER-BOOK`) — model A "book-scoped filter" (user-chosen, NOT the tier-reversal):** `motif.book_id` is a per-book LABEL on a clone the adopter still owns. The read predicate + 2-tier tenancy are **UNCHANGED** (book_id only narrows the owner's view, never widens visibility). Design: [`docs/plans/2026-06-29-motif-adopt-per-book.md`](../plans/2026-06-29-motif-adopt-per-book.md). Touch-points: schema (`book_id` col + `uq_motif_user` scoped to `book_id IS NULL` + new `uq_motif_user_book` partial + `idx_motif_book`); `MotifRepo.clone/adopt/_clone_with_code/list_for_caller`; `_MotifAdoptArgs.target=Literal['user','book']`+`book_id` (EDIT-gated at propose **and** confirm); FE adopt-to-book toggle (api/hook/AdoptTargetModal/MotifLibraryView). **Live-smoked** on real `loreweave_composition`: migration idempotent; global+per-book coexist; same-book dup blocked by `uq_motif_user_book`; 0 leaked rows.
+>
+> **⚠ Two already-built misfires earlier this session** (memory [[verify-built-before-building]]): `D-W8-MOTIF-BEAT-EXTRACTOR` and `D-MOTIF-SYNC-3WAY-BASE` backend were **already shipped** — I rebuilt a duplicate sync router and reverted it (`a24d99ea`). **Before building ANY "missing"/deferred motif item: `git grep` the route/module/test first.**
+>
+> **▶ NEXT:** **PR `feat/narrative-pattern-library` → main** — the feature body + audit tail + WI-5 are complete, green, and live-smoked. (Note: the WI-5 migration was applied to the *running* dev `loreweave_composition` by the live-smoke; a fresh stack picks it up from `migrate.py` on boot.)
+>
+> **▶ Deferred (motif — each clears the defer-gate):**
+> - **`D-MOTIF-ADOPT-BOOK-COLLAB-TIER`** — gate #2 (large/structural): model B, a true book-collaboration tenancy tier (visible/writable to all the book's E0 grantees, grant-resolution in the read predicate + mandatory adversarial tenancy review). Only if multi-collaborator shared book motif libraries are wanted. Model A (shipped) covers the per-user case.
+> - **`D-MOTIF-LINK-EDGEWALK`** (WI-6, optional) — gate #2: a `motif_link` edge-walk MCP API (related-motif traversal). Target: when the FE needs related-motif navigation.
+> - **`D-MOTIF-HTTP-ADOPT-BOOK`** (minor) — gate #5 (conscious defer): the HTTP `POST /motifs/{id}/adopt` route stays user-only (the FE uses the MCP bridge); the repo supports `book_id` but the HTTP route doesn't expose it. Wire only if a non-MCP client needs book-targeted adopt.
+
+---
+
+# ▶▶ (prior) **Glossary plan-and-execute (Phase 1) SHIPPED** · branch `feat/composition-service` · HEAD `b2439fcf` · 2026-06-26
 
 > **WHAT SHIPPED:** the glossary assistant can now do **multi-step ontology goals in ONE confirm** — the agent calls `glossary_plan(book_id, goal)`, a capable model emits a **typed plan**, and a **deterministic executor** applies it (no ReAct loop). Validated against the literature (typed-plan ≫ ReAct; control-flow-integrity against prompt injection). Built as **reusable SDK kits**, not ad-hoc — see [[project_agentic_sdk_lives_in_loreweave_mcp_kit]]: this project will run many agents, so the pattern lives in `sdks/`.
 >

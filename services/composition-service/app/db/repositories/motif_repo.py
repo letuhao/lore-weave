@@ -30,7 +30,7 @@ from app.db.repositories import VersionMismatchError
 
 # vector + hash deliberately excluded — projection is the model shape only.
 _SELECT_COLS = """
-  id, owner_user_id, code, language, visibility, kind, category, name, summary,
+  id, owner_user_id, book_id, code, language, visibility, kind, category, name, summary,
   genre_tags, roles, beats, preconditions, effects, info_asymmetry, annotations,
   tension_target, emotion_target, examples, abstraction_confidence, source,
   imported_derived, source_ref, source_version, embedding_model, embedding_dim,
@@ -268,7 +268,7 @@ class MotifRepo:
     async def list_for_caller(
         self, caller_id: UUID, *, scope: str = "all", genre: str | None = None,
         kind: str | None = None, status: str | None = "active", q: str | None = None,
-        language: str | None = None, limit: int = 100,
+        language: str | None = None, book_id: UUID | None = None, limit: int = 100,
     ) -> list[Motif]:
         """Tier-merged list under the read predicate (system | public | owner).
         `scope` narrows the predicate: 'system' (owner NULL), 'user' (owner=caller),
@@ -303,6 +303,12 @@ class MotifRepo:
         if language is not None:
             params.append(language)
             where.append(f"language = ${len(params)}")
+        if book_id is not None:
+            # The book-library view (D-MOTIF-ADOPT-PER-BOOK): motifs AVAILABLE to this book
+            # = its per-book clones PLUS the caller's globals (book_id NULL). Combined with
+            # the tier predicate above (so a system/public global still surfaces here).
+            params.append(book_id)
+            where.append(f"(book_id = ${len(params)} OR book_id IS NULL)")
         if q:
             params.append(f"%{q}%")
             where.append(f"(name ILIKE ${len(params)} OR summary ILIKE ${len(params)})")
@@ -319,7 +325,7 @@ class MotifRepo:
 
     async def clone(
         self, caller_id: UUID, src_motif_id: UUID, *, target_owner: UUID,
-        retag_genres: list[str] | None = None,
+        retag_genres: list[str] | None = None, book_id: UUID | None = None,
     ) -> Motif:
         """The ONE clone primitive (= adopt = clone-to-customize = cross-genre retag;
         R1.1.1). Reads the SOURCE under the read predicate (so you may only clone what
@@ -363,14 +369,14 @@ class MotifRepo:
             row = await c.fetchrow(
                 f"""
                 INSERT INTO motif
-                  (owner_user_id, code, language, visibility, kind, category, name,
+                  (owner_user_id, book_id, code, language, visibility, kind, category, name,
                    summary, genre_tags, roles, beats, preconditions, effects,
                    info_asymmetry, annotations, tension_target, emotion_target,
                    examples, abstraction_confidence, source, imported_derived,
                    source_ref, source_version,
                    embedding, embedding_model, embedding_dim, embedded_summary_hash,
                    adopted_base)
-                VALUES ($1,$2,$3,'private',$4,$5,$6,$7,$8,
+                VALUES ($1,$27,$2,$3,'private',$4,$5,$6,$7,$8,
                         $9::jsonb,$10::jsonb,$11::jsonb,$12::jsonb,$13::jsonb,$14::jsonb,
                         $15,$16,$17::jsonb,$18,'adopted',$25,$19,$20,
                         $21,$22,$23,$24,$26::jsonb)
@@ -384,7 +390,7 @@ class MotifRepo:
                 s["tension_target"], s["emotion_target"], _passthru_jsonb(s["examples"]),
                 s["abstraction_confidence"], f"lineage:{src_motif_id}", s["version"],
                 s["embedding"], s["embedding_model"], s["embedding_dim"],
-                s["embedded_summary_hash"], tainted, adopted_base,
+                s["embedded_summary_hash"], tainted, adopted_base, book_id,
             )
         return _row_to_motif(row)
 
@@ -407,7 +413,7 @@ class MotifRepo:
 
     async def adopt(
         self, caller_id: UUID, src_motif_id: UUID,
-        *, retag_genres: list[str] | None = None,
+        *, retag_genres: list[str] | None = None, book_id: UUID | None = None,
     ) -> tuple[Motif, bool]:
         """The HTTP/MCP adopt op = clone into the caller's OWN tier with a
         deterministic code-suffix on collision (F0's clone() raises on a code
@@ -437,13 +443,16 @@ class MotifRepo:
                 raise LookupError("source motif not found or not accessible")
             base_code = src["code"]
             lineage = f"lineage:{src_motif_id}"
-            # Idempotency (MD-6(a)): an existing adopt of the SAME source in the
-            # caller's tier (same lineage source_ref) → return it, no duplicate.
+            # Idempotency (MD-6(a)): an existing adopt of the SAME source into the SAME
+            # tier+book (same lineage source_ref AND same book_id — NULL=global) → return
+            # it, no duplicate. Re-adopting into a DIFFERENT book is a distinct intent and
+            # makes a new book-labelled clone (D-MOTIF-ADOPT-PER-BOOK).
             existing = await c.fetchrow(
                 f"SELECT {_SELECT_COLS} FROM motif "
                 "WHERE owner_user_id = $1 AND source = 'adopted' AND source_ref = $2 "
+                "AND book_id IS NOT DISTINCT FROM $3 "
                 "ORDER BY created_at LIMIT 1",
-                caller_id, lineage,
+                caller_id, lineage, book_id,
             )
             if existing is not None:
                 return _row_to_motif(existing), False
@@ -453,7 +462,7 @@ class MotifRepo:
             for attempt in range(0, 50):
                 code = base_code if attempt == 0 else f"{base_code}-{attempt + 1}"
                 row = await self._clone_with_code(
-                    c, caller_id, src_motif_id, code, retag_genres,
+                    c, caller_id, src_motif_id, code, retag_genres, book_id=book_id,
                 )
                 if row is not None:
                     return _row_to_motif(row), True
@@ -463,7 +472,7 @@ class MotifRepo:
 
     async def _clone_with_code(
         self, c: asyncpg.Connection, caller_id: UUID, src_motif_id: UUID,
-        code: str, retag_genres: list[str] | None,
+        code: str, retag_genres: list[str] | None, *, book_id: UUID | None = None,
     ) -> asyncpg.Record | None:
         """One adopt INSERT...SELECT under an already-open connection/txn (the
         advisory lock is held by the caller). Column-enumerated copy (glossary
@@ -491,13 +500,13 @@ class MotifRepo:
                 return await c.fetchrow(
                     f"""
                     INSERT INTO motif
-                      (owner_user_id, code, language, visibility, kind, category, name,
+                      (owner_user_id, book_id, code, language, visibility, kind, category, name,
                        summary, genre_tags, roles, beats, preconditions, effects,
                        info_asymmetry, annotations, tension_target, emotion_target,
                        examples, abstraction_confidence, source, imported_derived,
                        source_ref, source_version,
                        embedding, embedding_model, embedding_dim, embedded_summary_hash)
-                    VALUES ($1,$2,$3,'private',$4,$5,$6,$7,$8,
+                    VALUES ($1,$26,$2,$3,'private',$4,$5,$6,$7,$8,
                             $9::jsonb,$10::jsonb,$11::jsonb,$12::jsonb,$13::jsonb,$14::jsonb,
                             $15,$16,$17::jsonb,$18,'adopted',$25,$19,$20,
                             $21,$22,$23,$24)
@@ -511,11 +520,12 @@ class MotifRepo:
                     s["tension_target"], s["emotion_target"], _passthru_jsonb(s["examples"]),
                     s["abstraction_confidence"], f"lineage:{src_motif_id}", s["version"],
                     s["embedding"], s["embedding_model"], s["embedding_dim"],
-                    s["embedded_summary_hash"], tainted,
+                    s["embedded_summary_hash"], tainted, book_id,
                 )
         except asyncpg.UniqueViolationError as exc:
-            # Only the per-owner code partial is a "retry with a suffix" condition.
-            if getattr(exc, "constraint_name", "") == "uq_motif_user":
+            # A per-owner code collision (global uq_motif_user OR the per-book
+            # uq_motif_user_book) is the "retry with a suffix" condition.
+            if getattr(exc, "constraint_name", "") in ("uq_motif_user", "uq_motif_user_book"):
                 return None
             raise
 

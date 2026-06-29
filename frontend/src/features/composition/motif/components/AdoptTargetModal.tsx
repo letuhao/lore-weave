@@ -1,8 +1,9 @@
 // W6 §4 / §4.5 — adopt → YOUR library. A focus-trapped dialog (Esc closes, focus
 // returns to trigger) that mints the confirm token, then shows the CostConfirmCard
 // (adopt is Tier-W — R2.8). On quota_exceeded shows the §4.4 non-blocking explainer
-// (never a silent fail). Render-only — driven by useAdoptFlow. Adopt is USER-scoped
-// (the backend tool is target=user); per-book adopt is D-MOTIF-ADOPT-PER-BOOK.
+// (never a silent fail). Render-only — driven by useAdoptFlow. Adopt defaults to the
+// user's global library; when a book is in context the user may target THIS book's
+// library instead (D-MOTIF-ADOPT-PER-BOOK = model A book-scoped filter).
 import { useTranslation } from 'react-i18next';
 import { useEffect, useRef } from 'react';
 import type { CostEstimate, QuotaError } from '../types';
@@ -14,13 +15,18 @@ type Props = {
   quota: QuotaError | null;
   minting: boolean;
   confirming: boolean;
+  /** the adopt destination + whether a book context is available (else book is hidden) */
+  target: 'user' | 'book';
+  canTargetBook: boolean;
+  onTarget: (t: 'user' | 'book') => void;
   onMint: () => void;
   onConfirm: () => void;
   onCancel: () => void;
 };
 
 export function AdoptTargetModal({
-  open, estimate, quota, minting, confirming, onMint, onConfirm, onCancel,
+  open, estimate, quota, minting, confirming,
+  target, canTargetBook, onTarget, onMint, onConfirm, onCancel,
 }: Props) {
   const { t } = useTranslation('composition');
   const ref = useRef<HTMLDivElement>(null);
@@ -71,7 +77,35 @@ export function AdoptTargetModal({
             />
           </div>
         ) : (
-          <div className="mt-4 flex items-center justify-end gap-2">
+          <div className="mt-4">
+            {canTargetBook && (
+              <fieldset className="mb-3" data-testid="motif-adopt-target">
+                <legend className="text-xs font-medium text-neutral-600 dark:text-neutral-300">
+                  {t('motif.adopt.targetLegend', { defaultValue: 'Add to' })}
+                </legend>
+                <div className="mt-1 flex gap-2">
+                  <button
+                    type="button"
+                    data-testid="motif-adopt-target-user"
+                    aria-pressed={target === 'user'}
+                    onClick={() => onTarget('user')}
+                    className={`rounded border px-2 py-1 text-xs ${target === 'user' ? 'border-amber-500 bg-amber-50 text-amber-800 dark:bg-amber-950/40 dark:text-amber-200' : 'border-neutral-300 text-neutral-600 dark:border-neutral-600 dark:text-neutral-300'}`}
+                  >
+                    {t('motif.adopt.targetUser', { defaultValue: 'My library' })}
+                  </button>
+                  <button
+                    type="button"
+                    data-testid="motif-adopt-target-book"
+                    aria-pressed={target === 'book'}
+                    onClick={() => onTarget('book')}
+                    className={`rounded border px-2 py-1 text-xs ${target === 'book' ? 'border-amber-500 bg-amber-50 text-amber-800 dark:bg-amber-950/40 dark:text-amber-200' : 'border-neutral-300 text-neutral-600 dark:border-neutral-600 dark:text-neutral-300'}`}
+                  >
+                    {t('motif.adopt.targetBook', { defaultValue: 'This book' })}
+                  </button>
+                </div>
+              </fieldset>
+            )}
+            <div className="flex items-center justify-end gap-2">
             <button
               type="button"
               data-testid="motif-adopt-cancel"
@@ -91,6 +125,7 @@ export function AdoptTargetModal({
                 ? t('motif.adopt.estimating', { defaultValue: 'Preparing…' })
                 : t('motif.adopt.continue', { defaultValue: 'Continue' })}
             </button>
+            </div>
           </div>
         )}
       </div>

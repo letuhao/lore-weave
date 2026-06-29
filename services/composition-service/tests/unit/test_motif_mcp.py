@@ -457,6 +457,69 @@ async def test_adopt_propose_mints_token_no_clone():
     repo.clone.assert_not_awaited()
     claims = verify_confirm_token(settings.confirm_token_signing_secret, res["confirm_token"])
     assert claims.user_id == TEST_USER
+    # default target='user' → no book label rides the payload.
+    assert claims.payload.get("book_id") is None
+
+
+def test_adopt_target_enum_accepts_user_and_book():
+    """D-MOTIF-ADOPT-PER-BOOK: adopt target opens to 'book' (the CREATE tool stays
+    user-only — that S2 guard is unchanged); 'system'/'public' are still unconstructible."""
+    from app.mcp.server import _MotifAdoptArgs
+
+    _MotifAdoptArgs(motif_id="m", target="user")
+    _MotifAdoptArgs(motif_id="m", target="book", book_id="b")
+    for bad in ("system", "public", "global"):
+        with pytest.raises(Exception):
+            _MotifAdoptArgs(motif_id="m", target=bad)
+
+
+async def test_adopt_target_book_requires_book_id():
+    """target='book' without a book_id is a clean refusal at propose (no token minted)."""
+    import app.mcp.server as srv
+
+    motif = _motif(owner_user_id=OTHER_USER, visibility="public")
+    repo = AsyncMock()
+    repo.get_visible = AsyncMock(return_value=motif)
+    async with _patched(MotifRepo=repo):
+        res = await srv.composition_motif_adopt(
+            _Ctx(), srv._MotifAdoptArgs(motif_id=str(motif.id), target="book"),
+        )
+    assert res["success"] is False
+    assert "book_id" in res["error"]
+
+
+async def test_adopt_target_book_mints_book_label_edit_gated():
+    """D-MOTIF-ADOPT-PER-BOOK: a book-targeted adopt is EDIT-gated on the book and mints
+    the book_id into the confirm payload (the effect stamps the clone's book_id label)."""
+    import app.mcp.server as srv
+    from loreweave_mcp import verify_confirm_token
+    from app.config import settings
+
+    motif = _motif(owner_user_id=OTHER_USER, visibility="public")
+    repo = AsyncMock()
+    repo.get_visible = AsyncMock(return_value=motif)
+    async with _patched(grant_level=2, MotifRepo=repo):   # EDIT
+        res = await srv.composition_motif_adopt(
+            _Ctx(), srv._MotifAdoptArgs(motif_id=str(motif.id), target="book", book_id=str(BOOK)),
+        )
+    assert res["preview"]["into"] == "book"
+    claims = verify_confirm_token(settings.confirm_token_signing_secret, res["confirm_token"])
+    assert claims.payload["book_id"] == str(BOOK)
+
+
+async def test_adopt_target_book_denied_without_edit():
+    """Adopting INTO a book you cannot EDIT is the H13 uniform deny (no token minted)."""
+    import app.mcp.server as srv
+    from loreweave_mcp import NotAccessibleError
+
+    motif = _motif(owner_user_id=OTHER_USER, visibility="public")
+    repo = AsyncMock()
+    repo.get_visible = AsyncMock(return_value=motif)
+    async with _patched(grant_level=1, MotifRepo=repo):   # VIEW only
+        with pytest.raises(NotAccessibleError):
+            await srv.composition_motif_adopt(
+                _Ctx(), srv._MotifAdoptArgs(motif_id=str(motif.id), target="book", book_id=str(BOOK)),
+            )
 
 
 async def test_mine_propose_mints_token_with_estimate():
@@ -540,11 +603,12 @@ from app.config import settings as _settings  # noqa: E402
 IMPORT_SOURCE = uuid.uuid4()
 
 
-def _adopt_token(user=TEST_USER, motif_id=None, *, ttl=600, now=None):
+def _adopt_token(user=TEST_USER, motif_id=None, *, book_id=None, ttl=600, now=None):
     mid = motif_id or uuid.uuid4()
     return mint_confirm_token(
         _settings.confirm_token_signing_secret, user, mid, "composition.motif_adopt",
-        {"motif_id": str(mid), "retag_genres": None}, ttl=ttl, now=now,
+        {"motif_id": str(mid), "retag_genres": None,
+         "book_id": str(book_id) if book_id else None}, ttl=ttl, now=now,
     )
 
 
@@ -649,6 +713,29 @@ def test_adopt_confirm_clones(client):
     assert body["motif_id"] == str(clone.id)
     repo.clone.assert_awaited_once()
     assert repo.clone.await_args.kwargs["target_owner"] == TEST_USER
+    # default (no book label) → clone gets book_id=None.
+    assert repo.clone.await_args.kwargs.get("book_id") is None
+
+
+def test_adopt_confirm_book_label_passes_book_id_and_regates(client):
+    """D-MOTIF-ADOPT-PER-BOOK: a book-targeted adopt token → the effect re-gates EDIT on
+    the book (a revoked grant stops the clone) and passes the book_id label to clone()."""
+    clone = _motif()
+    src = _motif(owner_user_id=OTHER_USER, visibility="public")
+    repo = AsyncMock()
+    repo.get_visible = AsyncMock(return_value=src)
+    repo.list_for_caller = AsyncMock(return_value=[])
+    repo.clone = AsyncMock(return_value=clone)
+    ledger = AsyncMock()
+    ledger.consume = AsyncMock(return_value=True)
+    with (
+        patch("app.db.repositories.motif_repo.MotifRepo", return_value=repo),
+        patch("app.db.repositories.consumed_tokens.ConsumedTokenRepo", return_value=ledger),
+    ):
+        resp = _confirm(client, _adopt_token(motif_id=src.id, book_id=BOOK))
+    assert resp.status_code == 200, resp.text
+    repo.clone.assert_awaited_once()
+    assert repo.clone.await_args.kwargs["book_id"] == BOOK
 
 
 def test_w_replay_blocked_by_ledger(client):

@@ -1532,7 +1532,12 @@ async def composition_motif_unbind(
 
 class _MotifAdoptArgs(ForbidExtra):
     motif_id: str
-    target: Literal["user"] = "user"
+    # target="book" labels the clone with book_id so it surfaces under that book's library
+    # (D-MOTIF-ADOPT-PER-BOOK = model A book-scoped filter). The clone is STILL owner-stamped
+    # = the caller (the read predicate is unchanged — book_id only narrows what the owner
+    # sees, never widens visibility). book_id is required iff target="book".
+    target: Literal["user", "book"] = "user"
+    book_id: str | None = None
     retag_genres: list[str] | None = None
 
 
@@ -1561,9 +1566,19 @@ async def composition_motif_adopt(ctx: MCPContext, args: _MotifAdoptArgs) -> dic
     motif = await repo.get_visible(tc.user_id, mid)
     if motif is None:
         raise uniform_not_accessible()
+    # target="book": the clone is LABELLED with book_id (D-MOTIF-ADOPT-PER-BOOK). You may
+    # only adopt INTO a book you can EDIT — gate it now and re-gate at confirm (a grant
+    # revoked between propose and confirm stops the clone, mirroring motif_mine scope=book).
+    book_id: str | None = None
+    if args.target == "book":
+        if not args.book_id:
+            return {"success": False, "error": "book_id is required when target='book'"}
+        await _gate(tc, UUID(args.book_id), GrantLevel.EDIT)
+        book_id = args.book_id
     payload = {
         "motif_id": args.motif_id,
         "retag_genres": args.retag_genres,
+        "book_id": book_id,
     }
     confirm_token = mint_confirm_token(
         settings.confirm_token_signing_secret,
@@ -1578,6 +1593,7 @@ async def composition_motif_adopt(ctx: MCPContext, args: _MotifAdoptArgs) -> dic
             "source_name": motif.name,
             "will_clone": True,
             "retag_to": args.retag_genres or list(motif.genre_tags),
+            "into": "book" if book_id else "user",
         },
     }
 

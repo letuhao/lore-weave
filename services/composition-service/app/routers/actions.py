@@ -228,6 +228,18 @@ async def confirm_action(
     # the shared Work re-resolve and re-check their own user-scope owner inside the
     # effect (MD-9). Both are replay-guarded by the consumed-token ledger.
     if claims.descriptor == _MOTIF_ADOPT_DESCRIPTOR:
+        # D-MOTIF-ADOPT-PER-BOOK: a book-targeted adopt is EDIT-gated on the book — re-check
+        # at confirm (a grant revoked since propose stops the clone), mirroring scope=book mine.
+        book_target = payload.get("book_id")
+        if book_target:
+            try:
+                book_uuid = UUID(str(book_target))
+            except (ValueError, TypeError) as exc:
+                raise HTTPException(status_code=400, detail={"code": "action_error"}) from exc
+            try:
+                await authorize_book(grant, book_uuid, envelope_user, GrantLevel.EDIT)
+            except (OwnershipError, InsufficientGrant) as exc:
+                raise HTTPException(status_code=403, detail={"code": "action_error"}) from exc
         return await _execute_motif_adopt(payload, envelope_user, token=token, claims=claims)
     if claims.descriptor == _ARC_IMPORT_DESCRIPTOR:
         return await _execute_arc_import(payload, envelope_user, token=token, claims=claims)
@@ -505,6 +517,12 @@ async def _execute_motif_adopt(
     retag = payload.get("retag_genres")
     if retag is not None and not isinstance(retag, list):
         raise HTTPException(status_code=400, detail={"code": "action_error"})
+    # D-MOTIF-ADOPT-PER-BOOK: the per-book label (the dispatch already re-gated EDIT on it).
+    book_label = payload.get("book_id")
+    try:
+        book_uuid = UUID(str(book_label)) if book_label else None
+    except (ValueError, TypeError) as exc:
+        raise HTTPException(status_code=400, detail={"code": "action_error"}) from exc
 
     # Replay guard FIRST (a replayed adopt past the quota would double-add).
     await _claim_or_replay(token, claims)
@@ -528,6 +546,7 @@ async def _execute_motif_adopt(
     try:
         clone = await repo.clone(
             envelope_user, motif_id, target_owner=envelope_user, retag_genres=retag,
+            book_id=book_uuid,
         )
     except LookupError as exc:
         raise HTTPException(status_code=400, detail={"code": "action_error"}) from exc
