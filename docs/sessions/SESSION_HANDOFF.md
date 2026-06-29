@@ -1,4 +1,28 @@
-# ▶▶ NEXT SESSION STARTS HERE — **Critical UX bug track** · branch `fix/critical-ux-bugs` · HEAD `af735435` · 2026-06-29
+# ▶▶ NEXT SESSION STARTS HERE — **Critical UX bug track** · branch `fix/critical-ux-bugs` · HEAD `947dbac6` · 2026-06-29
+
+> **✅ DONE — 3 NEW user-reported bugs #41/#42/#43 (all fix-now, each its own commit), after a
+> 3-agent code-audit confirmed the prior 9 closures had no overclaims (only #29's multi-KG-card
+> coalesce was under-tested → added 2 tests `c8ad4b16`).**
+> - **#41 (`b6450ae1`, FE)** — agent (MCP) commits didn't refresh the GUI (needed F5). The 3 chat
+>   confirm cards never invalidated react-query; new `invalidateAfterConfirm(domain→key-prefixes)`
+>   wired into all 3 (ConfirmActionCard=committed domain, ConfirmCard=glossary, BatchConfirmCard=union
+>   of committed domains). 45 FE tests green (4 confirm-card test files now wrap a `QueryClientProvider`
+>   via new `test-utils/renderWithClient`); tsc clean. Follow-ups: `D-KG-MANUAL-REFRESH-BUTTON`,
+>   `D-MCP-REFRESH-LIVE-SMOKE`.
+> - **#42 (`e8dd9bab`, knowledge)** — KG rebuild only wiped-and-redid-all. The incremental accumulate
+>   path already existed (`scope=chapters`+range / `chapters_pending`, idempotent MERGE); added
+>   `mode:"update"` to `RebuildRequest` that skips the confirm-gate + `_delete_project_graph` and routes
+>   to the existing non-destructive core. 10/10 rebuild tests (also un-rotted 6 pre-existing ones broken
+>   by #9 DI drift). Closes `D-KG-UPDATE-MODE`. Follow-ups: `D-KG-UPDATE-MODE-FE` (an "Update" button
+>   distinct from destructive "Rebuild"), `D-KG-UPDATE-MODE-LIVE-SMOKE`.
+> - **#43 (`947dbac6`, glossary, M)** — 3000+ same-name/different-kind dups from pre-fix extractions;
+>   nothing could clean them (mergeOne deliberately rejects cross-kind). Threaded a `crossKind` flag
+>   through `mergeEntitiesCore`(required, 3 callers=false)→`mergeOne`(variadic) that skips the same-kind
+>   gate + kind-scopes the EAV repoint to the winner's kind (same-kind path byte-identical); dedup
+>   endpoint gains `?cross_kind=true`. Real-DB tests (collapse→1, winner keeps kind, loser soft-deleted;
+>   default keeps kinds separate) + all Merge/Wiki regression green. **User runs
+>   `POST /internal/books/{book_id}/dedup-name-variants?apply=true&cross_kind=true` per affected book**
+>   (DRY-RUN by default). Follow-up: `D-CROSSKIND-DEDUP-FE` (user-facing trigger).
 
 > **✅ DONE — #27/#29/#30 marker reconciliation (bookkeeping; verified, no code change).** The
 > coalesce P2 shipped (`3cce85d9`/`a721c93c`/`cabbe35d`/`038bdbff`/`f61a83de`) but the bug-tracker
