@@ -1,6 +1,6 @@
-# ▶▶ NEXT SESSION STARTS HERE — **Critical UX bug track** · branch `fix/critical-ux-bugs` · HEAD `4e4cb668`+ · 2026-06-29
+# ▶▶ NEXT SESSION STARTS HERE — **Critical UX bug track** · branch `fix/critical-ux-bugs` · HEAD `543ae7f3`+ · 2026-06-29
 
-> **🚧 IN FLIGHT — #26/#7 glossary `summarize` (merge-rewrite) mode (L, 3 milestones).** User
+> **✅ SHIPPED + LIVE-VERIFIED — #26/#7 glossary `summarize` (merge-rewrite) mode (L, 3 milestones).** User
 > approved a NEW merge mode distinct from append: keep the lossless RAW item layer (provenance)
 > + add a synthesized CANONICAL layer an LLM rewrites from the accumulated raw mentions. Trigger:
 > **end-of-extraction-job, batched** (+ a manual button, M3). Plan:
@@ -24,10 +24,15 @@
 > `summarize.*` ×4 locales. Tests: `loadEntityDetail` exposure (real Postgres) + `SummarizeAttrBody`
 > 7 + entity-editor 14 green; tsc + go vet clean. **#26 + #7 → `[x]`** (the merge-rewrite flow is
 > complete + user-visible end-to-end: extract → accumulate → end-of-job synthesize → headline).
+> **✅ LIVE-SMOKE DONE (gemma-4-26b-qat, real stack):** rebuilt + deployed glossary +
+> translation-worker; ran the REAL `run_resummarize_pass` against 張若塵 (book `019efae6`) whose
+> append-accumulated appearance/description/personality held **22/30/29** near-dup raw items →
+> gemma collapsed each into ONE clean canonical (dirty cleared, synced stamped). **Caught a real
+> bug** the mocked units missed: a reasoning model (gemma) burned the whole output budget on
+> `reasoning_content` → empty content → 0 syntheses; FIXED (`reasoning_effort="none"`) + regression
+> test. The cross-service + LLM seam is now proven live, not just by inspection.
 > **Deferred:** `D-SUMMARIZE-MANUAL-BUTTON` (on-demand single-entity re-summarize — needs a new
-> single-entity trigger endpoint; gate 2/3) + `D-SUMMARIZE-LIVE-SMOKE` (gate 4 — needs a glossary
-> rebuild w/ 0043 routes + a local-LLM run; wire contract verified by inspection + real-Postgres
-> handler tests). The automatic end-of-job path already delivers the value.
+> single-entity trigger endpoint; the automatic end-of-job path already delivers the value).
 
 > **✅ SHIPPED — #12 timeline overhaul (L, 3 parts) + #16 build-stages.** Verified first: the
 > timeline was already feature-rich (filters/sort/ranges/pagination/rich rows) — the "low quality"

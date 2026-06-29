@@ -21,6 +21,8 @@ from __future__ import annotations
 import asyncio
 import logging
 
+from loreweave_llm.reasoning import ReasoningDirective, reasoning_fields
+
 from ..llm_client import LLMClient
 from .glossary_client import fetch_canonical_dirty, post_canonical
 
@@ -96,6 +98,11 @@ async def _resummarize_one(
                 "messages": messages,
                 "temperature": 0.2,
                 "max_tokens": _RESUMMARIZE_OUTPUT_TOKENS,
+                # Merge/dedup is not a reasoning task — DISABLE hidden thinking. Without this a
+                # reasoning model (e.g. gemma-4-26b-qat) spends the entire output budget on
+                # reasoning_content and returns EMPTY content (finish_reason=length) → every
+                # synthesis comes back blank. Mirrors the extraction worker's effort control.
+                **reasoning_fields(ReasoningDirective(effort="none", passthrough=False, source="user")),
             },
             chunking=None,
             job_meta={

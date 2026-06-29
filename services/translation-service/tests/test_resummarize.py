@@ -53,6 +53,9 @@ async def test_resummarize_synthesizes_multi_mention():
     assert kwargs["raw_fingerprint"] == "fp123"
     # The billing label rides usage_purpose.
     assert llm.submit_and_wait.call_args.kwargs["job_meta"]["usage_purpose"] == "glossary_resummarize"
+    # Hidden thinking is DISABLED — a reasoning model (e.g. gemma-4-26b-qat) otherwise spends the
+    # whole output budget on reasoning_content and returns empty content (live-smoke regression).
+    assert llm.submit_and_wait.call_args.kwargs["input"]["reasoning_effort"] == "none"
 
 
 @pytest.mark.asyncio
