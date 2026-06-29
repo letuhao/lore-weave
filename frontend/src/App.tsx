@@ -59,6 +59,7 @@ import { ProfilePage } from '@/pages/ProfilePage';
 import { NotificationsPage } from '@/pages/NotificationsPage';
 import { RawSearchPage } from '@/pages/RawSearchPage';
 import { OnboardingPage } from '@/features/onboarding/pages/OnboardingPage';
+import { OAuthConsentPage } from '@/pages/OAuthConsentPage';
 
 function AuthenticatedThemeProvider({ children }: { children: React.ReactNode }) {
   const { accessToken } = useAuth();
@@ -85,6 +86,9 @@ export function App() {
             <Route path="/register" element={<RegisterPage />} />
             <Route path="/forgot" element={<ForgotPage />} />
             <Route path="/reset" element={<ResetPage />} />
+            {/* P5 public-MCP OAuth consent — the page handles auth itself (preserves
+                the query string across the login round-trip), so it's NOT in RequireAuth. */}
+            <Route path="/oauth/consent" element={<OAuthConsentPage />} />
           </Route>
 
           {/* Public pages with sidebar — no auth required */}

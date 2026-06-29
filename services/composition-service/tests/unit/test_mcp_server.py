@@ -277,6 +277,26 @@ async def test_get_work_owner_ok():
     assert res["project_id"] == str(PROJECT)
 
 
+async def test_od8_public_key_owned_only():
+    """OD-8 wiring: a public MCP key (ctx.mcp_key_id set) reaches a book ONLY as its
+    OWNER — the kit's require_book_owner escalates the bar to OWNER. A caller holding
+    a MANAGE share (allowed first-party) is denied for a public key. Proves the ctx
+    flows into the guard so the escalation actually fires at composition's call site."""
+    import app.mcp.server as srv
+    from loreweave_mcp import NotAccessibleError
+
+    public = _Ctx()
+    public.mcp_key_id = "key-abc"  # marks the call as public → is_owner_only True
+
+    async with _patched(grant_level=3):  # MANAGE — a share, below OWNER
+        # First-party (no mcp_key_id) with the same MANAGE share → allowed.
+        res = await srv.composition_get_work(_Ctx(), project_id=str(PROJECT))
+        assert res["project_id"] == str(PROJECT)
+        # Public key → OD-8 requires OWNER; MANAGE(3) < OWNER(4) → denied.
+        with pytest.raises(NotAccessibleError):
+            await srv.composition_get_work(public, project_id=str(PROJECT))
+
+
 async def test_get_work_non_owner_rejected():
     """A caller with NO Work row (the repo filters on user_id) → H13 uniform error."""
     import app.mcp.server as srv

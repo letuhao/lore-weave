@@ -1,0 +1,40 @@
+{
+  "consent": {
+    "title": "授權存取",
+    "subtitle": "有應用程式想要在 LoreWeave 中代表您執行操作。",
+    "client_named": "{{client}} 正在要求存取您的帳戶。",
+    "client_unnamed": "有應用程式正在要求存取您的帳戶。",
+    "signed_in_as": "以 {{email}} 身分登入",
+    "redirect_to": "重新導向至",
+    "unverified": "此應用程式未經 LoreWeave 驗證。僅在您認得且信任時才繼續——請檢查上方的重新導向位址。",
+    "permissions_heading": "要求的權限",
+    "permissions_hint": "關閉任何您不想授予的權限。您可以授予比要求更少的權限，但不能更多。",
+    "actions_heading": "操作",
+    "areas_heading": "範圍",
+    "resource_label": "資源",
+    "allow": "允許存取",
+    "allowing": "授權中…",
+    "deny": "拒絕",
+    "sign_in": "登入以繼續",
+    "no_scopes": "請至少選擇一項權限以繼續。",
+    "invalid_request": "此授權要求缺少資訊或資訊無效。請返回應用程式再試一次。",
+    "error": "無法完成授權。請再試一次。",
+    "scope": {
+      "read": "讀取您的內容",
+      "paid_read": "執行付費讀取操作",
+      "write_auto": "自動進行變更",
+      "write_confirm": "進行變更（需確認）"
+    },
+    "domain": {
+      "book": "書籍",
+      "glossary": "詞彙表",
+      "knowledge": "知識",
+      "translation": "翻譯",
+      "composition": "創作",
+      "jobs": "工作",
+      "settings": "設定",
+      "lore_enrichment": "設定豐富化",
+      "catalog": "目錄"
+    }
+  }
+}

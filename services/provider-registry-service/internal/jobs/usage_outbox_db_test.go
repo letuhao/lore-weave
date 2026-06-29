@@ -70,7 +70,7 @@ func TestFinalizeWithUsageOutbox_CompletedWritesOutboxInTx(t *testing.T) {
 	mock.ExpectBegin()
 	mock.ExpectQuery("UPDATE llm_jobs").WithArgs(anyArgs(6)...).
 		WillReturnRows(pgxmock.NewRows([]string{"job_meta"}).AddRow(jobMeta))
-	mock.ExpectExec("INSERT INTO usage_outbox").WithArgs(anyArgs(9)...).
+	mock.ExpectExec("INSERT INTO usage_outbox").WithArgs(anyArgs(10)...).
 		WillReturnResult(pgxmock.NewResult("INSERT", 1))
 	mock.ExpectCommit()
 
@@ -162,19 +162,20 @@ func TestDrainOnce_RoutesToStreamsAndMarksPublished(t *testing.T) {
 	req1, req2 := uuid.New().String(), uuid.New().String()
 	owner, modelRef := uuid.New().String(), uuid.New().String()
 
-	cols := []string{"id", "request_id", "owner_user_id", "campaign_id", "model_source",
+	cols := []string{"id", "request_id", "owner_user_id", "campaign_id", "mcp_key_id", "model_source",
 		"model_ref", "operation", "input_tokens", "output_tokens", "cost_usd"}
+	mcpKey := uuid.NewString()
 	db.ExpectBegin()
-	// campaign_id + cost_usd scan into *string (nullable ::text); pgxmock needs the
-	// row value to be a *string (real pgx coerces, the mock does not).
+	// campaign_id + mcp_key_id + cost_usd scan into *string (nullable ::text); pgxmock
+	// needs the row value to be a *string (real pgx coerces, the mock does not).
 	db.ExpectQuery("SELECT").WithArgs(anyArgs(1)...).WillReturnRows(
 		pgxmock.NewRows(cols).
-			AddRow(int64(1), req1, owner, &camp, "user_model", modelRef, "translation", 10, 5, &cost1).
-			AddRow(int64(2), req2, owner, (*string)(nil), "user_model", modelRef, "chat", 3, 2, (*string)(nil)),
+			AddRow(int64(1), req1, owner, &camp, &mcpKey, "user_model", modelRef, "translation", 10, 5, &cost1).
+			AddRow(int64(2), req2, owner, (*string)(nil), (*string)(nil), "user_model", modelRef, "chat", 3, 2, (*string)(nil)),
 	)
 
-	f1 := buildUsageFields(req1, owner, camp, "user_model", modelRef, "translation", "0.001", 10, 5)
-	f2 := buildUsageFields(req2, owner, "", "user_model", modelRef, "chat", "", 3, 2)
+	f1 := buildUsageFields(req1, owner, camp, mcpKey, "user_model", modelRef, "translation", "0.001", 10, 5)
+	f2 := buildUsageFields(req2, owner, "", "", "user_model", modelRef, "chat", "", 3, 2)
 	// Row 1: usage + campaign. Row 2: usage only.
 	rxm.ExpectXAdd(&redis.XAddArgs{Stream: "u", MaxLen: 10, Approx: true, Values: f1}).SetVal("1-0")
 	rxm.ExpectXAdd(&redis.XAddArgs{Stream: "c", MaxLen: 10, Approx: true, Values: f1}).SetVal("1-0")
@@ -266,7 +267,7 @@ func TestFinalizeWithUsageOutbox_CompletedWritesBothOutboxes(t *testing.T) {
 	mock.ExpectBegin()
 	mock.ExpectQuery("UPDATE llm_jobs").WithArgs(anyArgs(6)...).
 		WillReturnRows(pgxmock.NewRows([]string{"job_meta"}).AddRow([]byte(`{}`)))
-	mock.ExpectExec("INSERT INTO usage_outbox").WithArgs(anyArgs(9)...).
+	mock.ExpectExec("INSERT INTO usage_outbox").WithArgs(anyArgs(10)...).
 		WillReturnResult(pgxmock.NewResult("INSERT", 1))
 	mock.ExpectExec("INSERT INTO job_event_outbox").WithArgs(anyArgs(10)...).
 		WillReturnResult(pgxmock.NewResult("INSERT", 1))

@@ -19,6 +19,7 @@ from uuid import UUID
 import httpx
 
 from loreweave_jobs import emit_job_event_safe
+from loreweave_llm.attribution import set_public_key_attribution
 from loreweave_llm.errors import (
     LLMAuthFailed,
     LLMDecodeError,
@@ -310,6 +311,12 @@ async def _run_extraction_job(msg: dict, job_id: UUID, user_id: str, pool, publi
     # D-EXTRACTION-BATCH-CONCURRENCY: per-chapter LLM-call fan-out cap. Absent/None on a
     # pre-field message ⇒ 1 (sequential, prior behavior). Clamped to a hard ceiling.
     concurrency = max(1, min(_EXTRACTION_MAX_CONCURRENCY, int(msg.get("concurrency") or 1)))
+
+    # D-PMCP-WORKER-CARRIER: re-set the public-MCP-key attribution for THIS task so
+    # every provider job submitted while extracting tags job_meta with the agent's
+    # key (+ cap) — the confirm-route contextvar died at the AMQP hop. Unconditional
+    # (None clears) so a pooled task never inherits a prior job's key.
+    set_public_key_attribution(msg.get("mcp_key_id"), msg.get("spend_cap_usd"))
 
     log.info("extraction_worker: job %s — %d chapters (concurrency=%d)", job_id, len(chapter_ids), concurrency)
 

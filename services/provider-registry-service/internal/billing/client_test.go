@@ -48,7 +48,7 @@ func TestGuardrailClient_Reserve_OK(t *testing.T) {
 
 	c := NewGuardrailClient(stub.server.URL, "secret-token", nil)
 	owner, job := uuid.New(), uuid.New()
-	res, err := c.Reserve(context.Background(), owner, job, 2.5, "platform_model")
+	res, err := c.Reserve(context.Background(), owner, job, 2.5, "platform_model", nil, nil)
 	if err != nil {
 		t.Fatalf("Reserve: %v", err)
 	}
@@ -87,7 +87,7 @@ func TestGuardrailClient_Reserve_402_Insufficient(t *testing.T) {
 	}
 	c := NewGuardrailClient(stub.server.URL, "tok", nil)
 
-	res, err := c.Reserve(context.Background(), uuid.New(), uuid.New(), 5.0, "user_model")
+	res, err := c.Reserve(context.Background(), uuid.New(), uuid.New(), 5.0, "user_model", nil, nil)
 	if err != nil {
 		t.Fatalf("Reserve should not error on a 402, got %v", err)
 	}
@@ -113,7 +113,7 @@ func TestGuardrailClient_Reserve_402_PlatformExhausted(t *testing.T) {
 	}
 	c := NewGuardrailClient(stub.server.URL, "tok", nil)
 
-	res, err := c.Reserve(context.Background(), uuid.New(), uuid.New(), 8.0, "platform_model")
+	res, err := c.Reserve(context.Background(), uuid.New(), uuid.New(), 8.0, "platform_model", nil, nil)
 	if err != nil {
 		t.Fatalf("Reserve should not error on a 402: %v", err)
 	}
@@ -131,7 +131,7 @@ func TestGuardrailClient_Reserve_500_IsError(t *testing.T) {
 	stub.replyBody = map[string]any{"error": "boom"}
 	c := NewGuardrailClient(stub.server.URL, "tok", nil)
 
-	if _, err := c.Reserve(context.Background(), uuid.New(), uuid.New(), 1.0, "user_model"); err == nil {
+	if _, err := c.Reserve(context.Background(), uuid.New(), uuid.New(), 1.0, "user_model", nil, nil); err == nil {
 		t.Fatal("expected an error on a 500 reserve")
 	}
 }
@@ -142,7 +142,7 @@ func TestGuardrailClient_Reserve_200_NilReservationID_IsError(t *testing.T) {
 	stub.replyBody = map[string]any{} // no reservation_id
 	c := NewGuardrailClient(stub.server.URL, "tok", nil)
 
-	if _, err := c.Reserve(context.Background(), uuid.New(), uuid.New(), 1.0, "user_model"); err == nil {
+	if _, err := c.Reserve(context.Background(), uuid.New(), uuid.New(), 1.0, "user_model", nil, nil); err == nil {
 		t.Fatal("expected an error when a 200 carries no reservation_id")
 	}
 }

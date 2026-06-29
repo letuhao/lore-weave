@@ -14,19 +14,22 @@ import (
 )
 
 type Server struct {
-	pool   *pgxpool.Pool
-	cfg    *config.Config
-	secret []byte
-	rl     *ratelimit.Limiter
-	admin  *adminDeps // nil => admin-JWT issuance (074/075) disabled
+	pool         *pgxpool.Pool
+	cfg          *config.Config
+	secret       []byte
+	rl           *ratelimit.Limiter
+	mcpResolveRL *ratelimit.Limiter // per-prefix Argon2-DoS guard for /internal/mcp-keys/resolve (H-H)
+	admin        *adminDeps         // nil => admin-JWT issuance (074/075) disabled
+	oauth        *oauthDeps         // nil => P5 public-MCP OAuth endpoints disabled
 }
 
 func NewServer(pool *pgxpool.Pool, cfg *config.Config) *Server {
 	return &Server{
-		pool:   pool,
-		cfg:    cfg,
-		secret: []byte(cfg.JWTSecret),
-		rl:     ratelimit.New(cfg.RateLimitWindow, cfg.RateLimitMax),
+		pool:         pool,
+		cfg:          cfg,
+		secret:       []byte(cfg.JWTSecret),
+		rl:           ratelimit.New(cfg.RateLimitWindow, cfg.RateLimitMax),
+		mcpResolveRL: newMcpResolveLimiter(),
 	}
 }
 
@@ -62,6 +65,18 @@ func (s *Server) Router() http.Handler {
 		writeJSON(w, http.StatusOK, map[string]string{"status": "ready"})
 	})
 
+	// P5 public-MCP OAuth 2.1 discovery (slice 1) — spec-standard unversioned paths,
+	// no JWT (public discovery). The handlers 404 when OAuth is disabled (s.oauth nil).
+	// The authorize/token/register endpoints land in slices 2–3.
+	r.Get("/.well-known/oauth-authorization-server", http.HandlerFunc(s.oauthASMetadata))
+	r.Get("/oauth/jwks", http.HandlerFunc(s.oauthJWKS))
+	// P5 slice 2 — auth-code + PKCE flow (public endpoints).
+	r.Get("/oauth/authorize", http.HandlerFunc(s.oauthAuthorize))
+	r.Post("/oauth/token", http.HandlerFunc(s.oauthToken))
+	// P5 slice 3 — open Dynamic Client Registration (RFC 7591). Public; the handler
+	// self-gates on the DCR flag + a per-IP rate limit + writes an audit row.
+	r.Post("/oauth/register", http.HandlerFunc(s.oauthRegister))
+
 	// Internal (service-to-service, no JWT required)
 	r.Route("/internal", func(r chi.Router) {
 		r.Get("/users/{user_id}/profile", http.HandlerFunc(s.internalGetUserProfile))
@@ -76,6 +91,22 @@ func (s *Server) Router() http.Handler {
 			r.Use(s.requireInternalServiceToken)
 			r.Get("/users/{user_id}/full-profile", http.HandlerFunc(s.internalGetFullProfile))
 			r.Patch("/users/{user_id}/full-profile", http.HandlerFunc(s.internalUpdateFullProfile))
+			// Public MCP credential resolve — the mcp-public-gateway edge turns an
+			// external agent's API key into {user_id, scopes, policy} here (P1).
+			r.Post("/mcp-keys/resolve", http.HandlerFunc(s.internalResolveMcpKey))
+			// Public MCP per-key call audit ingest (P3 / H-O) — the edge fires a
+			// best-effort batch of audit rows (one per tools/call) after each request.
+			r.Post("/mcp-keys/audit", http.HandlerFunc(s.internalIngestMcpAudit))
+			// Public MCP human-approval divert (P4 / OD-2) — the edge diverts a default
+			// key's Tier-W propose here instead of handing the agent the confirm token.
+			r.Post("/mcp-keys/approvals", http.HandlerFunc(s.internalCreateApproval))
+			// Public MCP self-confirm (P4 slice B) — the edge calls this when an
+			// allow_self_confirm key executes a Tier-W action via confirm_action; replays
+			// the token to the domain with X-Mcp-Key-Id (no approval row).
+			r.Post("/mcp-keys/confirm", http.HandlerFunc(s.internalSelfConfirm))
+			// P5 slice 2 — seed/register an OAuth client (slice 3 adds the public RFC
+			// 7591 self-registration endpoint on top of the same insert).
+			r.Post("/oauth/clients", http.HandlerFunc(s.internalRegisterOAuthClient))
 		})
 
 		// Admin-JWT issuance (074/075) — mounted only when enabled. Gated by the
@@ -130,6 +161,21 @@ func (s *Server) Router() http.Handler {
 		r.Get("/me/preferences", http.HandlerFunc(s.getPreferences))
 		r.Patch("/me/preferences", http.HandlerFunc(s.patchPreferences))
 		r.Delete("/account", http.HandlerFunc(s.deleteAccount))
+
+		// Public MCP API keys (the "new security setting") — owner-only; handlers
+		// parse the JWT themselves. Creation is additionally Q-GATE-flag-gated.
+		r.Get("/account/mcp-keys", http.HandlerFunc(s.listMcpKeys))
+		// P4 / OD-2 approval queue (static segment — declared BEFORE the {key_id} routes
+		// so chi matches "approvals" exactly, never as a key_id).
+		r.Get("/account/mcp-keys/approvals", http.HandlerFunc(s.listMcpApprovals))
+		r.Post("/account/mcp-keys/approvals/{approval_id}/approve", http.HandlerFunc(s.approveMcpApproval))
+		r.Post("/account/mcp-keys/approvals/{approval_id}/deny", http.HandlerFunc(s.denyMcpApproval))
+		r.Get("/account/mcp-keys/{key_id}/audit", http.HandlerFunc(s.listMcpKeyAudit))
+		r.Post("/account/mcp-keys", http.HandlerFunc(s.createMcpKey))
+		r.Patch("/account/mcp-keys/{key_id}", http.HandlerFunc(s.patchMcpKey))
+		r.Delete("/account/mcp-keys/{key_id}", http.HandlerFunc(s.revokeMcpKey))
+		// P5 slice 2 — OAuth consent (owner approves a downscoped grant → mints the auth code).
+		r.Post("/account/oauth/consent", http.HandlerFunc(s.oauthConsent))
 
 		// Public user profiles + follow system
 		r.Route("/users/{user_id}", func(r chi.Router) {

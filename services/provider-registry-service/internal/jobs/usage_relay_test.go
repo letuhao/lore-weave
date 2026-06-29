@@ -9,13 +9,14 @@ package jobs
 import "testing"
 
 func TestBuildUsageFields_Contract(t *testing.T) {
-	f := buildUsageFields("req-1", "owner-1", "camp-1", "user_model", "model-1",
+	f := buildUsageFields("req-1", "owner-1", "camp-1", "mcpkey-1", "user_model", "model-1",
 		"translation", "0.00012345", 120, 30)
 
 	want := map[string]string{
 		"request_id":     "req-1",
 		"owner_user_id":  "owner-1",
 		"campaign_id":    "camp-1",
+		"mcp_key_id":     "mcpkey-1",
 		"model_source":   "user_model",
 		"model_ref":      "model-1",
 		"operation":      "translation",
@@ -41,10 +42,13 @@ func TestBuildUsageFields_Contract(t *testing.T) {
 func TestBuildUsageFields_NullsArePassthroughEmpty(t *testing.T) {
 	// A non-campaign job (campaign="") and a media/unpriced job (cost="") carry
 	// empty strings — the consumer treats "" as null. Zero tokens stringify to "0".
-	f := buildUsageFields("req-2", "owner-2", "", "platform_model", "model-2",
+	f := buildUsageFields("req-2", "owner-2", "", "", "platform_model", "model-2",
 		"image_gen", "", 0, 0)
 	if f["campaign_id"] != "" {
 		t.Fatalf("campaign_id: want empty, got %v", f["campaign_id"])
+	}
+	if f["mcp_key_id"] != "" {
+		t.Fatalf("mcp_key_id: want empty, got %v", f["mcp_key_id"])
 	}
 	if f["cost_usd"] != "" {
 		t.Fatalf("cost_usd: want empty, got %v", f["cost_usd"])

@@ -408,14 +408,17 @@ RETURNING job_meta
 
 	// campaign_id (the S4a correlation tag) stamps BOTH outbox rows; parse once.
 	campaignID := parseJobMetaCampaignID(jobMeta)
+	// mcp_key_id (H-C/PUB-11 per-key spend attribution) rides the same job_meta tag
+	// into the usage_outbox row → usage stream → usage_logs. NULL for first-party jobs.
+	mcpKeyID := ParseJobMetaMcpKeyID(jobMeta)
 
 	if status == "completed" && usage != nil {
 		if _, err := tx.Exec(ctx, `
 INSERT INTO usage_outbox
-  (request_id, owner_user_id, campaign_id, model_source, model_ref,
+  (request_id, owner_user_id, campaign_id, mcp_key_id, model_source, model_ref,
    operation, input_tokens, output_tokens, cost_usd)
-VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)
-`, jobID, ownerUserID, campaignID, usage.ModelSource, usage.ModelRef,
+VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)
+`, jobID, ownerUserID, campaignID, mcpKeyID, usage.ModelSource, usage.ModelRef,
 			usage.Operation, usage.InputTokens, usage.OutputTokens, usage.CostUSD); err != nil {
 			return 0, fmt.Errorf("finalize+outbox: insert outbox: %w", err)
 		}
@@ -458,6 +461,53 @@ func parseJobMetaCampaignID(jobMeta []byte) *uuid.UUID {
 		return nil
 	}
 	return &id
+}
+
+// ParseJobMetaMcpKeyID extracts job_meta.mcp_key_id (the public-MCP-key spend
+// attribution tag, H-C/PUB-11) as a UUID. Exported so the submit handler can
+// reuse it for the PUB-12 BYOK-only gate. Nil-tolerant on EVERY failure
+// (absent / non-object / non-string / bad-uuid), mirroring parseJobMetaCampaignID:
+// a malformed tag must never fail a billing-critical finalize — it just yields an
+// un-attributed (mcp_key_id NULL) usage row. Its presence means the call
+// originated at the public MCP edge (first-party traffic never sets it).
+func ParseJobMetaMcpKeyID(jobMeta []byte) *uuid.UUID {
+	if len(jobMeta) == 0 {
+		return nil
+	}
+	var m map[string]any
+	if err := json.Unmarshal(jobMeta, &m); err != nil {
+		return nil
+	}
+	raw, ok := m["mcp_key_id"].(string)
+	if !ok || raw == "" {
+		return nil
+	}
+	id, err := uuid.Parse(raw)
+	if err != nil {
+		return nil
+	}
+	return &id
+}
+
+// ParseJobMetaSpendCap extracts job_meta.spend_cap_usd (the public key's per-key
+// USD sub-cap, H-K) as a float. The SDK carrier writes it as a JSON number, so it
+// decodes to float64. Nil-tolerant on EVERY failure (absent / non-object /
+// non-number / negative): a malformed cap must never fail submit — it just means
+// no per-key cap is enforced for this job (the owner guardrail still applies).
+// Only meaningful alongside a non-nil ParseJobMetaMcpKeyID (public-key traffic).
+func ParseJobMetaSpendCap(jobMeta []byte) *float64 {
+	if len(jobMeta) == 0 {
+		return nil
+	}
+	var m map[string]any
+	if err := json.Unmarshal(jobMeta, &m); err != nil {
+		return nil
+	}
+	v, ok := m["spend_cap_usd"].(float64)
+	if !ok || v < 0 {
+		return nil
+	}
+	return &v
 }
 
 // Cancel transitions a pre-terminal job to cancelled and stamps

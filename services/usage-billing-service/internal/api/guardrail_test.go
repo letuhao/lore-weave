@@ -339,6 +339,122 @@ func TestGuardrailReserve_ZeroCost_NeverGated(t *testing.T) {
 	}
 }
 
+// ── per-key spend sub-cap (P4/Wave-C H-K) ──────────────────────────────────
+
+// callReserveWithKey posts a reserve carrying a public mcp_key_id + its sub-cap.
+func callReserveWithKey(t *testing.T, srv *Server, owner, job, mcpKey uuid.UUID, est, cap float64) *httptest.ResponseRecorder {
+	t.Helper()
+	body, _ := json.Marshal(map[string]any{
+		"owner_user_id": owner, "job_id": job, "estimated_usd": est,
+		"mcp_key_id": mcpKey, "spend_cap_usd": cap,
+	})
+	req := httptest.NewRequest(http.MethodPost, "/internal/billing/guardrail/reserve", bytes.NewReader(body))
+	rr := httptest.NewRecorder()
+	srv.guardrailReserve(rr, req)
+	return rr
+}
+
+// A key's HELD reservations count toward its sub-cap — the core H-K race guard:
+// two concurrent holds from one key cannot exceed the cap even before either
+// reconciles. Estimates stay under the OWNER daily/monthly budget so only the
+// per-key cap binds.
+func TestGuardrailReserve_PerKeyCap_HeldHoldsCountTowardCap(t *testing.T) {
+	pool := openGuardrailTestDB(t)
+	srv := newGuardrailServer(t, pool)
+	owner, mcpKey := uuid.New(), uuid.New()
+	const cap = 4.0
+
+	// First hold: $2 of a $4 key cap (and well under the $10 owner daily).
+	rr1 := callReserveWithKey(t, srv, owner, uuid.New(), mcpKey, 2.0, cap)
+	if rr1.Code != http.StatusOK {
+		t.Fatalf("first reserve: expected 200, got %d (%s)", rr1.Code, rr1.Body.String())
+	}
+	// The reservation row must carry the key (so the held-sum + later attribution work).
+	var stamped int
+	if err := pool.QueryRow(context.Background(),
+		`SELECT count(*) FROM token_reservations WHERE mcp_key_id = $1 AND status = 'held'`,
+		mcpKey).Scan(&stamped); err != nil {
+		t.Fatalf("count stamped reservations: %v", err)
+	}
+	if stamped != 1 {
+		t.Fatalf("expected the reservation stamped with mcp_key_id, got %d", stamped)
+	}
+
+	// Second hold: $3 would push held to $5 > $4 cap → 402 MCP_KEY_CAP_EXCEEDED,
+	// even though the owner budget ($10 daily) still has room.
+	rr2 := callReserveWithKey(t, srv, owner, uuid.New(), mcpKey, 3.0, cap)
+	if rr2.Code != http.StatusPaymentRequired {
+		t.Fatalf("second reserve: expected 402, got %d (%s)", rr2.Code, rr2.Body.String())
+	}
+	var out struct {
+		Code         string  `json:"code"`
+		KeyAvailable float64 `json:"key_available"`
+	}
+	if err := json.Unmarshal(rr2.Body.Bytes(), &out); err != nil {
+		t.Fatalf("decode 402: %v", err)
+	}
+	if out.Code != "MCP_KEY_CAP_EXCEEDED" {
+		t.Fatalf("expected MCP_KEY_CAP_EXCEEDED, got %q", out.Code)
+	}
+	if out.KeyAvailable != 2.0 { // cap 4 − held 2
+		t.Fatalf("key_available: got %v want 2.0", out.KeyAvailable)
+	}
+
+	// Releasing the first hold frees the key budget → the $3 reserve now fits.
+	resID1 := reservationIDFrom(t, rr1)
+	if rr := callRelease(t, srv, resID1); rr.Code != http.StatusOK {
+		t.Fatalf("release: expected 200, got %d", rr.Code)
+	}
+	rr3 := callReserveWithKey(t, srv, owner, uuid.New(), mcpKey, 3.0, cap)
+	if rr3.Code != http.StatusOK {
+		t.Fatalf("third reserve after release: expected 200, got %d (%s)", rr3.Code, rr3.Body.String())
+	}
+}
+
+// A key's COMMITTED spend (usage_logs this month) counts toward its sub-cap, so a
+// key cannot reset its budget by letting jobs finish.
+func TestGuardrailReserve_PerKeyCap_CommittedUsageCounts(t *testing.T) {
+	pool := openGuardrailTestDB(t)
+	srv := newGuardrailServer(t, pool)
+	owner, mcpKey := uuid.New(), uuid.New()
+	const cap = 5.0
+
+	// Seed $4 of committed spend this month attributed to the key.
+	if _, err := pool.Exec(context.Background(), `
+INSERT INTO usage_logs (request_id, owner_user_id, provider_kind, model_source, model_ref,
+  total_cost_usd, billing_decision, request_status, mcp_key_id)
+VALUES ($1,$2,'openai','user_model',$3,4.0,'recorded','success',$4)`,
+		uuid.New(), owner, uuid.New(), mcpKey); err != nil {
+		t.Fatalf("seed usage_logs: %v", err)
+	}
+
+	// $1.50 would push committed+estimate to $5.50 > $5 cap → 402.
+	rr := callReserveWithKey(t, srv, owner, uuid.New(), mcpKey, 1.5, cap)
+	if rr.Code != http.StatusPaymentRequired {
+		t.Fatalf("expected 402 from committed usage, got %d (%s)", rr.Code, rr.Body.String())
+	}
+	// $0.50 fits under the remaining $1.
+	rr2 := callReserveWithKey(t, srv, owner, uuid.New(), mcpKey, 0.5, cap)
+	if rr2.Code != http.StatusOK {
+		t.Fatalf("expected $0.50 to fit under the cap, got %d (%s)", rr2.Code, rr2.Body.String())
+	}
+}
+
+// A first-party reserve (no mcp_key_id) is never per-key capped — the cap path is
+// inert for non-public traffic.
+func TestGuardrailReserve_NoKey_NotCapped(t *testing.T) {
+	pool := openGuardrailTestDB(t)
+	srv := newGuardrailServer(t, pool)
+	owner := uuid.New()
+	// Two $4 reserves (no key) — owner daily is $10, so both pass; no per-key gate.
+	if rr := callReserve(t, srv, owner, uuid.New(), 4.0); rr.Code != http.StatusOK {
+		t.Fatalf("first no-key reserve: got %d", rr.Code)
+	}
+	if rr := callReserve(t, srv, owner, uuid.New(), 4.0); rr.Code != http.StatusOK {
+		t.Fatalf("second no-key reserve: got %d", rr.Code)
+	}
+}
+
 // ── reconcile ──────────────────────────────────────────────────────────────
 
 func TestGuardrailReconcile_RecordsSpendAndDropsHold(t *testing.T) {

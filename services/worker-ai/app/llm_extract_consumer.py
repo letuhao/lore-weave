@@ -33,6 +33,7 @@ from uuid import UUID
 import redis.asyncio as aioredis
 
 from loreweave_jobs import BaseTerminalConsumer
+from loreweave_llm.attribution import set_public_key_attribution
 
 from app import decoupled_extract as dx
 from app.llm_client import LLMClient, set_billing_user_id, set_campaign_id
@@ -295,6 +296,10 @@ async def _resume(pool, knowledge_client, llm_client: LLMClient, owner_user_id, 
     """Fold the terminal job into the SM, then submit the next stage or persist."""
     set_campaign_id(rs.get("campaign_id"))
     set_billing_user_id(rs.get("billing_user_id"))
+    # D-PMCP-WORKER-CARRIER: re-set the public-MCP-key attribution for the resume
+    # submit (a separate process from the start) so the extraction re-spend keeps
+    # tagging job_meta with the agent's key (+ cap). Rides resume_state, like billing.
+    set_public_key_attribution(rs.get("mcp_key_id"), rs.get("spend_cap_usd"))
     try:
         job = await llm_client.get_job(job_id, user_id=owner_user_id or rs.get("billing_user_id") or rs["user_id"])
         stage = rs["stage"]
@@ -443,6 +448,7 @@ async def _resume(pool, knowledge_client, llm_client: LLMClient, owner_user_id, 
     finally:
         set_campaign_id(None)
         set_billing_user_id(None)
+        set_public_key_attribution(None, None)
 
 
 async def _handle(pool, knowledge_client, llm_client, fields: dict) -> None:

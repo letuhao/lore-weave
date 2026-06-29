@@ -21,13 +21,15 @@ import pytest
 from pydantic import ValidationError
 
 from app.tools.definitions import ARG_MODELS, TOOL_DEFINITIONS, TOOL_NAMES
-from app.tools.executor import ToolContext, execute_tool
+from app.tools.executor import ToolContext, ToolExecutionError, execute_tool
 from app.tools.graph_schema_tools import (
     GRAPH_SCHEMA_ARG_MODELS,
     GRAPH_SCHEMA_TOOL_DEFINITIONS,
     KgGraphQueryArgs,
     KgProposeEdgeArgs,
     KgTriageResolveArgs,
+    _resolve_project_owner,
+    _resolve_project_owner_and_level,
 )
 
 try:
@@ -40,7 +42,12 @@ _OWNER = uuid4()
 _PROJECT = uuid4()
 _BOOK = uuid4()
 
-_ENVELOPE_KEYS = {"user_id", "project_id", "session_id"}
+# INV-K2 (H-I-amended): user_id / session_id are envelope-only FOREVER (identity).
+# project_id is NO LONGER here — it is a deliberately-allowed, ownership-checked
+# SCOPE arg on the kg READ **and WRITE/BUILD** tools (Wave-C Slice 3 exposed the
+# writes; the public edge mints no X-Project-Id, so a public agent supplies it; the
+# owner gate confines it to the caller's own projects).
+_ENVELOPE_KEYS = {"user_id", "session_id"}
 
 # The 12 tools this lane builds (R + reversible W).
 _LANE_LF_TOOLS = {
@@ -146,8 +153,10 @@ def test_schema_properties_match_arg_model_fields(name: str):
 
 
 def test_no_envelope_keys_leak_into_any_lane_lf_schema():
-    """Design D3 / INV-K2 — user_id / project_id / session_id are envelope
-    fields, never tool parameters."""
+    """Design D3 / INV-K2 (H-I-amended) — user_id / session_id are envelope
+    identity fields, NEVER tool parameters. (project_id IS allowed on the kg-read
+    tools as an ownership-checked scope arg — see
+    test_kg_read_tools_accept_project_id_arg.)"""
     for name in _REGISTERED_KG_TOOLS:
         props = set(_defn(name)["function"]["parameters"]["properties"])
         assert _ENVELOPE_KEYS.isdisjoint(props), name
@@ -167,15 +176,40 @@ def test_graph_query_defaults_and_bounds():
         KgGraphQueryArgs(as_of_chapter=-1)  # ge=0
 
 
-def test_arg_models_reject_smuggled_scope_override():
-    """extra='forbid' — a hallucinated project_id is a tool error, not a
-    silent scope override."""
+def test_kg_read_tools_accept_project_id_arg():
+    """H-I — project_id is now a valid, optional, ownership-checked scope arg on
+    the kg-READ tools. The owner gate (executor) confines it to the caller's own
+    projects; extra='forbid' still rejects identity keys."""
+    assert KgGraphQueryArgs(project_id="p1").project_id == "p1"
+    assert KgGraphQueryArgs().project_id is None  # optional
     with pytest.raises(ValidationError):
-        KgGraphQueryArgs(project_id="x")
+        KgGraphQueryArgs(user_id="smuggled")  # identity stays forbidden
+
+
+def test_arg_models_reject_smuggled_scope_override():
+    """extra='forbid' — identity keys (user_id / session_id) are NEVER accepted on a
+    WRITE tool. project_id IS now an accepted, OPTIONAL, ownership-checked scope arg
+    on the kg WRITE tools too (Wave-C Slice 3 public exposure — the executor's owner
+    gate confines it to the caller's own projects, with OD-8 owned-only for public
+    keys); only identity stays envelope-only forever."""
+    # H-I: project_id is now a valid optional scope arg on writes (owner-gated downstream).
+    assert (
+        KgProposeEdgeArgs(
+            source_entity_id="a", target_entity_id="b", edge_type="loves",
+            project_id="x",
+        ).project_id
+        == "x"
+    )
+    # Identity keys remain forbidden, forever (envelope-only).
     with pytest.raises(ValidationError):
         KgProposeEdgeArgs(
             source_entity_id="a", target_entity_id="b", edge_type="loves",
             user_id="smuggled",
+        )
+    with pytest.raises(ValidationError):
+        KgProposeEdgeArgs(
+            source_entity_id="a", target_entity_id="b", edge_type="loves",
+            session_id="smuggled",
         )
 
 
@@ -259,6 +293,105 @@ async def test_project_tool_404s_for_non_grantee():
     res = await execute_tool(ctx, "kg_view_read", {})
     assert not res.success
     assert "not found" in res.error.lower()
+
+
+@pytest.mark.asyncio
+async def test_hi_kg_read_project_id_arg_hoisted_and_owner_checked():
+    """H-I — a kg-read tool's project_id arg supplies scope when the envelope has
+    none (the executor hoist), and the owner gate then validates it: a project the
+    caller neither owns nor has a grant on yields the uniform 'project not found'."""
+    grant = AsyncMock()
+    grant.resolve_grant = AsyncMock(return_value=GrantLevel.NONE)
+    projects_repo = AsyncMock()
+    projects_repo.project_meta = AsyncMock(return_value=(_OWNER, _BOOK))  # not the caller
+    ctx = _ctx(user_id=_USER, project_id=None,
+               projects_repo=projects_repo, grant_client=grant)
+    res = await execute_tool(ctx, "kg_schema_read", {"project_id": str(uuid4())})
+    assert not res.success
+    assert "not found" in res.error.lower()
+
+
+@pytest.mark.asyncio
+async def test_hi_kg_write_project_id_arg_hoisted_and_owner_checked():
+    """H-I (Wave-C Slice 3) — a kg-WRITE tool's project_id arg now supplies scope for
+    a public key (no envelope project); the owner gate then confines it. A public key
+    targeting ANOTHER tenant's project is denied with the uniform 'project not found'
+    (OD-8 owned-only, before grants are consulted), proving the newly-exposed write
+    surface is tenant-safe."""
+    grant = AsyncMock()
+    grant.resolve_grant = AsyncMock(return_value=GrantLevel.EDIT)  # would pass IF consulted
+    projects_repo = AsyncMock()
+    projects_repo.project_meta = AsyncMock(return_value=(_OWNER, _BOOK))  # owner != caller
+    ctx = _ctx(user_id=_USER, project_id=None, projects_repo=projects_repo,
+               grant_client=grant, mcp_key_id="lw_pk_publickey")
+    res = await execute_tool(
+        ctx, "kg_propose_fact",
+        {"fact_text": "x", "fact_type": "decision", "project_id": str(uuid4())},
+    )
+    assert not res.success
+    assert "not found" in res.error.lower()
+    grant.resolve_grant.assert_not_awaited()  # OD-8 short-circuits before grants
+
+
+@pytest.mark.asyncio
+async def test_public_key_call_is_owned_only_no_grants():
+    """OD-8 — a public MCP-key call (mcp_key_id set) gets owned-only access: a
+    project owned by someone ELSE is rejected BEFORE the grant client is consulted,
+    even when the caller would otherwise hold an EDIT grant on the book. A
+    third-party agent must never inherit the owner's share-grants."""
+    grant = AsyncMock()
+    grant.resolve_grant = AsyncMock(return_value=GrantLevel.EDIT)  # would pass IF consulted
+    projects_repo = AsyncMock()
+    projects_repo.project_meta = AsyncMock(return_value=(_OWNER, _BOOK))  # owner != caller
+    ctx = _ctx(user_id=_USER, projects_repo=projects_repo, grant_client=grant,
+               mcp_key_id="lw_pk_publickey")
+    res = await execute_tool(ctx, "kg_view_read", {})
+    assert not res.success
+    assert "not found" in res.error.lower()
+    grant.resolve_grant.assert_not_awaited()  # OD-8 short-circuits before grants
+
+
+@pytest.mark.asyncio
+async def test_resolve_project_owner_public_key_owner_still_allowed():
+    """OD-8 only drops GRANT-derived access — a public key acting as the project
+    OWNER resolves normally (both resolver variants)."""
+    grant = AsyncMock()
+    projects_repo = AsyncMock()
+    projects_repo.project_meta = AsyncMock(return_value=(_USER, _BOOK))  # caller IS owner
+    ctx = _ctx(user_id=_USER, projects_repo=projects_repo, grant_client=grant,
+               mcp_key_id="lw_pk_publickey")
+    assert await _resolve_project_owner(ctx, GrantLevel.EDIT) == _USER
+    owner, lvl = await _resolve_project_owner_and_level(ctx, GrantLevel.EDIT)
+    assert owner == _USER and lvl == GrantLevel.OWNER
+    grant.resolve_grant.assert_not_awaited()  # owner path never consults grants
+
+
+@pytest.mark.asyncio
+async def test_resolve_project_owner_and_level_public_key_denied_before_grants():
+    """Symmetry: the _and_level variant also short-circuits a non-owner public-key
+    call before the grant client (would otherwise return a grant level)."""
+    grant = AsyncMock()
+    grant.resolve_grant = AsyncMock(return_value=GrantLevel.OWNER)  # would pass IF consulted
+    projects_repo = AsyncMock()
+    projects_repo.project_meta = AsyncMock(return_value=(_OWNER, _BOOK))  # owner != caller
+    ctx = _ctx(user_id=_USER, projects_repo=projects_repo, grant_client=grant,
+               mcp_key_id="lw_pk_publickey")
+    with pytest.raises(ToolExecutionError, match="not found"):
+        await _resolve_project_owner_and_level(ctx, GrantLevel.VIEW)
+    grant.resolve_grant.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_first_party_grantee_path_unchanged_by_od8():
+    """Regression: a FIRST-PARTY call (mcp_key_id is None) keeps the grant-aware
+    path — a book grantee still resolves to the owner via the grant client."""
+    grant = AsyncMock()
+    grant.resolve_grant = AsyncMock(return_value=GrantLevel.EDIT)
+    projects_repo = AsyncMock()
+    projects_repo.project_meta = AsyncMock(return_value=(_OWNER, _BOOK))  # owner != caller
+    ctx = _ctx(user_id=_USER, projects_repo=projects_repo, grant_client=grant)  # no mcp_key_id
+    assert await _resolve_project_owner(ctx, GrantLevel.EDIT) == _OWNER
+    grant.resolve_grant.assert_awaited_once()  # grant path WAS consulted
 
 
 @pytest.mark.asyncio

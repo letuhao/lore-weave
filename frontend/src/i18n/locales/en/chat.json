@@ -161,7 +161,10 @@
     "expired_short": "Expired — re-ask",
     "error": "Could not apply the change.",
     "error_short": "Failed",
-    "cancelled": "Cancelled"
+    "cancelled": "Cancelled",
+    "reprice": "The cost rose to {{cost}} since this was estimated — ask again to re-confirm at the new price.",
+    "reprice_title": "Cost changed — not applied",
+    "reprice_detail": "Estimated {{old}}, now {{new}}. Nothing was spent — ask again to re-confirm at the new price."
   },
   "recordEdit": {
     "label": "Proposed edit",

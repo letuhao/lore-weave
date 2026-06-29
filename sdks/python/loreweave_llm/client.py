@@ -17,6 +17,7 @@ from uuid import UUID
 
 import httpx
 
+from loreweave_llm.attribution import merge_attribution_into_job_meta
 from loreweave_llm.errors import (
     LLMAuthFailed,
     LLMDecodeError,
@@ -346,6 +347,14 @@ class Client:
             raise LLMInvalidRequest(
                 f"model_ref must be a UUID-shaped string, got {request.model_ref!r}",
             ) from exc
+
+        # P4/Wave-C slice D — carrier bridge. A public MCP-key call lost the
+        # X-Mcp-Key-Id / cap headers on the hop into us; the contextvar set at the
+        # tool handler is the only surviving signal. Fold it into job_meta so
+        # provider-registry can per-key-cap (H-K) + attribute the spend (H-C).
+        merged_meta = merge_attribution_into_job_meta(request.job_meta)
+        if merged_meta is not request.job_meta:
+            request = request.model_copy(update={"job_meta": merged_meta})
 
         url, params, headers = self._jobs_endpoint("submit", user_id=user_id)
         body = request.to_request_body()

@@ -4,6 +4,7 @@ import { StreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/
 import { AdminFederationService } from '../federation/admin-federation.service.js';
 import { buildAdminProxyServer } from './admin-proxy-server.factory.js';
 import { loadConfig } from '../config/config.js';
+import { constantTimeEquals } from '../util/auth.js';
 
 /**
  * The gateway's admin MCP face (`/mcp/admin`) — a SEPARATE downstream surface from
@@ -34,7 +35,7 @@ export class AdminMcpController {
   async handle(@Req() req: Request, @Res() res: Response): Promise<void> {
     // SO-1: service-auth gate on EVERY /mcp/admin request.
     const token = req.header('x-internal-token');
-    if (!this.cfg.internalToken || token !== this.cfg.internalToken) {
+    if (!this.cfg.internalToken || !constantTimeEquals(token ?? '', this.cfg.internalToken)) {
       res.status(401).json({
         jsonrpc: '2.0',
         error: { code: -32001, message: 'invalid internal token' },

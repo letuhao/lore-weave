@@ -120,11 +120,12 @@ type usageRow struct {
 // key is here, all values string-encoded (stream values are strings); empty
 // string for a null campaign_id / cost_usd. Pure + unit-tested so a key rename
 // or a dropped field is caught without a live stack.
-func buildUsageFields(requestID, ownerID, campaign, modelSource, modelRef, operation, cost string, inTok, outTok int) map[string]any {
+func buildUsageFields(requestID, ownerID, campaign, mcpKey, modelSource, modelRef, operation, cost string, inTok, outTok int) map[string]any {
 	return map[string]any{
 		"request_id":     requestID,
 		"owner_user_id":  ownerID,
 		"campaign_id":    campaign,
+		"mcp_key_id":     mcpKey,
 		"model_source":   modelSource,
 		"model_ref":      modelRef,
 		"operation":      operation,
@@ -149,7 +150,7 @@ func (r *UsageRelay) drainOnce(ctx context.Context) (int, error) {
 
 	// uuid + numeric columns cast to ::text so they scan cleanly into string.
 	rows, err := tx.Query(ctx, `
-SELECT id, request_id::text, owner_user_id::text, campaign_id::text,
+SELECT id, request_id::text, owner_user_id::text, campaign_id::text, mcp_key_id::text,
        model_source, model_ref::text, operation,
        input_tokens, output_tokens, cost_usd::text
 FROM usage_outbox
@@ -166,9 +167,9 @@ FOR UPDATE SKIP LOCKED
 	for rows.Next() {
 		var id int64
 		var requestID, ownerID, modelSource, modelRef, operation string
-		var campaignID, costUSD *string // nullable
+		var campaignID, mcpKeyID, costUSD *string // nullable
 		var inTok, outTok int
-		if err := rows.Scan(&id, &requestID, &ownerID, &campaignID, &modelSource,
+		if err := rows.Scan(&id, &requestID, &ownerID, &campaignID, &mcpKeyID, &modelSource,
 			&modelRef, &operation, &inTok, &outTok, &costUSD); err != nil {
 			rows.Close()
 			return 0, err
@@ -177,6 +178,10 @@ FOR UPDATE SKIP LOCKED
 		if campaignID != nil {
 			camp = *campaignID
 		}
+		mcpKey := ""
+		if mcpKeyID != nil {
+			mcpKey = *mcpKeyID
+		}
 		cost := ""
 		if costUSD != nil {
 			cost = *costUSD
@@ -184,7 +189,7 @@ FOR UPDATE SKIP LOCKED
 		batch = append(batch, usageRow{
 			id:       id,
 			campaign: camp,
-			fields:   buildUsageFields(requestID, ownerID, camp, modelSource, modelRef, operation, cost, inTok, outTok),
+			fields:   buildUsageFields(requestID, ownerID, camp, mcpKey, modelSource, modelRef, operation, cost, inTok, outTok),
 		})
 	}
 	// Must drain+close the cursor BEFORE issuing further queries on this tx.

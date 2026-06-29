@@ -30,6 +30,17 @@ type Config struct {
 	NotificationServiceInternalURL string
 	InternalServiceToken           string
 
+	// Public MCP human-approval execute (P4 / OD-2): base URLs of the domain
+	// services whose POST /v1/<domain>/actions/confirm the approve handler replays
+	// an approved confirm token to, KEYED by the propose result's `domain`. Only a
+	// configured domain is executable; an approval whose domain has no URL fails
+	// closed (the row is recorded but Approve returns a clear "not executable").
+	DomainConfirmServiceURLs map[string]string
+
+	// Q-GATE (public MCP): key creation is gated by this platform feature flag — any
+	// user may mint a public MCP key when ON, fast kill-switch when OFF. Default OFF.
+	PublicMcpEnabled bool
+
 	// Admin-JWT issuance (074/075). Feature is ENABLED iff KMSAdminSigningKeyID
 	// is set; when enabled the other admin fields are required (fail-closed).
 	AdminIssuanceEnabled   bool
@@ -46,6 +57,23 @@ type Config struct {
 	// wins when both are set. The matching PUBLIC key goes to verifiers (glossary's
 	// ADMIN_JWT_PUBLIC_KEY_PEM).
 	AdminJWTLocalPrivateKeyPEM string
+
+	// P5 public-MCP OAuth 2.1. Reuses the admin RS256 signer to mint access tokens
+	// with a DISTINCT issuer + audience (never an admin token). Enabled iff admin
+	// issuance is on (a signer exists) AND the public MCP feature flag is on.
+	OAuthEnabled    bool
+	OAuthIssuer     string        // "iss" of OAuth access tokens (MUST differ from the admin issuer)
+	OAuthResource   string        // canonical MCP resource URL = the "aud" (RFC 8707); MUST equal the edge's MCP_RESOURCE_URL
+	OAuthAccessTTL  time.Duration // OAuth access-token TTL (default 10m)
+	OAuthDefaultRPM int           // default per-grant rate limit advertised to the edge
+	OAuthCodeTTL    time.Duration // authorization-code TTL (default 60s, single-use)
+	OAuthRefreshTTL time.Duration // OAuth refresh-token TTL (default 30d)
+	OAuthConsentURL string        // FE consent page URL the authorize endpoint redirects to (default "${PublicAppURL}/oauth/consent")
+	// P5 slice 3 — open Dynamic Client Registration (RFC 7591). The /oauth/register
+	// endpoint is public+unauthenticated; this flag is its kill-switch (default ON when
+	// OAuth is enabled, per the locked PO "open DCR" decision) and the per-IP rate cap.
+	OAuthDCREnabled     bool
+	OAuthDCRRatePerHour int // per-IP /oauth/register cap; 0 = UNLIMITED (use OAUTH_DCR_ENABLED=false to disable)
 }
 
 func Load() (*Config, error) {
@@ -64,6 +92,7 @@ func Load() (*Config, error) {
 		PublicAppURL:                   getEnv("PUBLIC_APP_URL", ""),
 		NotificationServiceInternalURL: getEnv("NOTIFICATION_SERVICE_INTERNAL_URL", ""),
 		InternalServiceToken:           os.Getenv("INTERNAL_SERVICE_TOKEN"),
+		PublicMcpEnabled:               getBool("PUBLIC_MCP_ENABLED", false),
 		KMSAdminSigningKeyID:           os.Getenv("KMS_ADMIN_SIGNING_KEY_ID"),
 		KMSEndpoint:                    os.Getenv("KMS_ENDPOINT"),
 		AWSRegion:                      getEnv("AWS_REGION", "us-east-1"),
@@ -89,6 +118,7 @@ func Load() (*Config, error) {
 	if c.InternalServiceToken == "" {
 		return nil, fmt.Errorf("INTERNAL_SERVICE_TOKEN is required")
 	}
+	c.DomainConfirmServiceURLs = loadDomainConfirmURLs()
 
 	// Admin-JWT issuance (074/075). Feature is off unless a KMS signing key is
 	// configured; when on, the rest is required and fails closed.
@@ -110,7 +140,78 @@ func Load() (*Config, error) {
 			return nil, fmt.Errorf("ADMIN_TOKEN_TTL_SECONDS must be > 0")
 		}
 	}
+
+	// P5 OAuth 2.1: reuses the admin signer; on only when a signer exists AND the
+	// public MCP flag is set. Audience-bound tokens (RFC 8707) — OAuthResource is the
+	// canonical MCP URL the edge also configures as its aud.
+	c.OAuthIssuer = getEnv("OAUTH_ISSUER", "loreweave-mcp-oauth")
+	c.OAuthResource = getEnv("OAUTH_RESOURCE", defaultOAuthResource(c.PublicAppURL))
+	c.OAuthAccessTTL = time.Duration(getInt("OAUTH_ACCESS_TTL_SECONDS", 600)) * time.Second
+	c.OAuthDefaultRPM = getInt("OAUTH_DEFAULT_RPM", 60)
+	c.OAuthCodeTTL = time.Duration(getInt("OAUTH_CODE_TTL_SECONDS", 60)) * time.Second
+	c.OAuthRefreshTTL = time.Duration(getInt("OAUTH_REFRESH_TTL_SECONDS", 60*60*24*30)) * time.Second
+	c.OAuthConsentURL = getEnv("OAUTH_CONSENT_URL", defaultConsentURL(c.PublicAppURL))
+	c.OAuthDCREnabled = getBool("OAUTH_DCR_ENABLED", true)
+	c.OAuthDCRRatePerHour = getInt("OAUTH_DCR_RATE_PER_HOUR", 10)
+	c.OAuthEnabled = c.AdminIssuanceEnabled && c.PublicMcpEnabled
+	if c.OAuthEnabled {
+		if c.OAuthResource == "" {
+			return nil, fmt.Errorf("OAUTH_RESOURCE (or PUBLIC_APP_URL) is required when OAuth is enabled")
+		}
+		// Hard separation from the admin token (defense-in-depth on top of the audience
+		// split): an OAuth token must never share the admin issuer.
+		if c.OAuthIssuer == "" || c.OAuthIssuer == adminTokenIssuer {
+			return nil, fmt.Errorf("OAUTH_ISSUER must be set and differ from the admin issuer %q", adminTokenIssuer)
+		}
+		if c.OAuthAccessTTL <= 0 {
+			return nil, fmt.Errorf("OAUTH_ACCESS_TTL_SECONDS must be > 0")
+		}
+	}
 	return c, nil
+}
+
+// adminTokenIssuer mirrors contracts/adminjwt.Issuer without importing it into the
+// config package (config stays dependency-light). Kept in sync by the cross-rejection
+// test in the api package, which uses the real adminjwt constant.
+const adminTokenIssuer = "loreweave-auth"
+
+// defaultOAuthResource derives the canonical MCP resource URL (the OAuth audience)
+// from the public app URL: "<app>/mcp". Empty when no app URL is configured.
+func defaultOAuthResource(appURL string) string {
+	if strings.TrimSpace(appURL) == "" {
+		return ""
+	}
+	return strings.TrimRight(appURL, "/") + "/mcp"
+}
+
+// defaultConsentURL is the FE consent page the authorize endpoint redirects a
+// logged-in user to: "<app>/oauth/consent". Empty when no app URL is configured.
+func defaultConsentURL(appURL string) string {
+	if strings.TrimSpace(appURL) == "" {
+		return ""
+	}
+	return strings.TrimRight(appURL, "/") + "/oauth/consent"
+}
+
+// loadDomainConfirmURLs maps a confirm `domain` (as it appears in a propose result
+// and in the /v1/<domain>/actions/confirm path) to its owning service's base URL,
+// read from per-service env vars. Absent vars simply leave that domain non-executable.
+func loadDomainConfirmURLs() map[string]string {
+	src := map[string]string{
+		"book":        "BOOK_SERVICE_URL",
+		"composition": "COMPOSITION_SERVICE_URL",
+		"translation": "TRANSLATION_SERVICE_URL",
+		"glossary":    "GLOSSARY_SERVICE_URL",
+		"kg":          "KNOWLEDGE_SERVICE_URL",
+		"settings":    "PROVIDER_REGISTRY_SERVICE_URL",
+	}
+	out := map[string]string{}
+	for domain, env := range src {
+		if v := strings.TrimSpace(os.Getenv(env)); v != "" {
+			out[domain] = strings.TrimRight(v, "/")
+		}
+	}
+	return out
 }
 
 func getEnv(k, def string) string {

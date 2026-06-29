@@ -34,6 +34,7 @@ from fastapi import APIRouter, Depends, Header, HTTPException, Query
 from loreweave_mcp import (
     ConfirmTokenExpired,
     ConfirmTokenInvalid,
+    apply_public_key_attribution_headers,
     verify_confirm_token,
 )
 
@@ -110,6 +111,8 @@ async def confirm_action(
     token: str = Query(..., min_length=1),
     x_internal_token: str | None = Header(default=None, alias="X-Internal-Token"),
     x_user_id: str | None = Header(default=None, alias="X-User-Id"),
+    x_mcp_key_id: str | None = Header(default=None, alias="X-Mcp-Key-Id"),
+    x_mcp_spend_cap_usd: str | None = Header(default=None, alias="X-Mcp-Spend-Cap-Usd"),
     works: WorksRepo = Depends(get_works_repo),
     outline: OutlineRepo = Depends(get_outline_repo),
     book: BookClient = Depends(get_book_client_dep),
@@ -121,7 +124,15 @@ async def confirm_action(
     Re-checks: (1) the token's `u` (proposing user) MUST equal the envelope
     `X-User-Id` (a token minted for A can't be confirmed as B); (2) the caller
     still owns the Work + holds EDIT on its book at confirm time (a grant revoked
-    between propose and confirm stops the write)."""
+    between propose and confirm stops the write).
+
+    Public-MCP spend attribution (P4/Wave-C slice A): when this confirm originates
+    from an approved public-key action, `X-Mcp-Key-Id` (+ optional cap) is lifted
+    into the loreweave_llm contextvar so the IN-PROCESS `composition.generate`
+    submit tags its `job_meta` with the agent's key — cost lands on the key, not the
+    human session. This route is NOT an MCP tool call, so the kit's universal hook
+    (`build_tool_context`) never fires here; we set it explicitly and clear it in a
+    `finally` to avoid leaking across pooled requests."""
     _require_internal_token(x_internal_token)
     claims = _verify(token)
 
@@ -156,9 +167,17 @@ async def confirm_action(
     except (OwnershipError, InsufficientGrant) as exc:
         raise HTTPException(status_code=403, detail={"code": "action_error"}) from exc
 
-    if claims.descriptor == _PUBLISH_DESCRIPTOR:
-        return await _execute_publish(payload, project_id, work, envelope_user, outline, book)
-    return await _execute_generate(payload, project_id, work, envelope_user)
+    # Carrier-lift around the effect: the spend path (_execute_generate) submits an
+    # LLM job IN-PROCESS on this task, so the contextvar must be set before it runs
+    # and cleared after (no-op for publish, which spends nothing). Clearing in
+    # `finally` prevents the attribution leaking into the next request on this worker.
+    apply_public_key_attribution_headers(x_mcp_key_id, x_mcp_spend_cap_usd)
+    try:
+        if claims.descriptor == _PUBLISH_DESCRIPTOR:
+            return await _execute_publish(payload, project_id, work, envelope_user, outline, book)
+        return await _execute_generate(payload, project_id, work, envelope_user)
+    finally:
+        apply_public_key_attribution_headers(None, None)
 
 
 async def _execute_publish(

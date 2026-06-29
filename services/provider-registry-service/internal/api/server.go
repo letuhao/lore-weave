@@ -659,6 +659,14 @@ func (s *Server) doProxy(w http.ResponseWriter, r *http.Request, userID uuid.UUI
 		return
 	}
 
+	// PUB-12 (BYOK-only) — a public MCP key (X-Mcp-Key-Id header) may not draw a
+	// platform_model through the transparent proxy either. Reject 402 before any
+	// credential resolution / spend. Synchronous path → header is the carrier.
+	if rejectPlatformDrawForPublicKey(w, modelSource, isPublicMcpKeyCall(r, nil)) {
+		ProxyRequestsTotal.WithLabelValues(OutcomeByokRequired).Inc()
+		return
+	}
+
 	// Resolve credentials
 	var providerKind, providerModelName, endpointBaseURL, secretCipher string
 	if modelSource == "user_model" {

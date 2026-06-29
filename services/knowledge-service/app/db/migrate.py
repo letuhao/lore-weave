@@ -335,6 +335,20 @@ ALTER TABLE extraction_jobs
   ADD COLUMN IF NOT EXISTS billing_embedding_model TEXT,
   ADD COLUMN IF NOT EXISTS billing_llm_model       TEXT;
 
+-- Public-MCP spend attribution (P4 / D-PMCP-WORKER-CARRIER): when a priced
+-- extraction is started by a PUBLIC MCP key, the key id + the key's spend cap ride
+-- the job row so worker-ai (a separate process; knowledge extraction is poll-based,
+-- no AMQP) can re-set loreweave_llm.set_public_key_attribution before each provider
+-- call — mirroring billing_user_id. Both also ride resume_state for the decoupled
+-- terminal-event resume. NULL ⇒ first-party (or legacy) ⇒ no per-key attribution.
+-- spend_cap_usd is DOUBLE PRECISION (not NUMERIC): it originates as a Python float
+-- and asyncpg's numeric codec requires a Decimal (binding a float raises DataError),
+-- so float8 avoids a real-PG failure that mocked tests can't catch. Coarse spend
+-- ceiling, not ledger money (authoritative per-key accounting is in usage-billing).
+ALTER TABLE extraction_jobs
+  ADD COLUMN IF NOT EXISTS mcp_key_id    TEXT,
+  ADD COLUMN IF NOT EXISTS spend_cap_usd DOUBLE PRECISION;
+
 -- LLM re-arch Phase 2b WX-T1 (worker-ai extraction decouple): event-driven resume
 -- state. extract_pass2 is a multi-stage DAG with a concurrent fan-in (entity →
 -- gather(relation,event,fact) → recovery → filter, × chunks), so the decoupled

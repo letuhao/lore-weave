@@ -313,6 +313,10 @@ func (s *Server) getProfile(w http.ResponseWriter, r *http.Request) {
 		"email_verified": emailVerified,
 		"updated_at":     updatedAt.UTC().Format(time.RFC3339Nano),
 		"languages":      languages,
+		// Read-only platform capability flag (Q-GATE) so the FE can hide the
+		// public-MCP settings tab when the feature is off. System-tier, never
+		// user-mutable — just mirrors the deployment's PUBLIC_MCP_ENABLED.
+		"public_mcp_enabled": s.cfg.PublicMcpEnabled,
 	}
 	if displayName != nil {
 		m["display_name"] = *displayName

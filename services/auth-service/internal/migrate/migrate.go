@@ -142,6 +142,187 @@ EXCEPTION
     WHEN undefined_object THEN
         RAISE NOTICE 'role app_service_role does not exist (dev stack); skipping REVOKE';
 END $$;
+
+-- Public MCP credential store (P1, docs/specs/2026-06-26-public-mcp/03 §5). An
+-- external agent presents an API key (lw_pk_<random>) in the Authorization header;
+-- the mcp-public-gateway edge resolves it here. The raw secret is NEVER stored —
+-- only an Argon2id hash (same primitive as password_hash). Lookup is by key_prefix
+-- (the leading, non-secret slice) then a constant-time hash verify of the candidates.
+-- ON DELETE CASCADE: deleting a user invalidates their keys (the resolve path also
+-- re-checks users.account_status='active', H-L).
+CREATE TABLE IF NOT EXISTS mcp_api_keys (
+  key_id             UUID PRIMARY KEY DEFAULT uuidv7(),
+  owner_user_id      UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  name               TEXT NOT NULL,
+  key_prefix         TEXT NOT NULL,                       -- e.g. 'lw_pk_AbC1' (shown in UI; O(1) lookup)
+  key_hash           TEXT NOT NULL,                       -- argon2id$… of the full secret (never the raw key)
+  scopes             TEXT[] NOT NULL DEFAULT '{}',        -- tier∩domain scopes (P2 fills; P0/P1 may be empty)
+  spend_cap_usd      NUMERIC(16,8) NULL,                  -- per-key monthly USD sub-cap (NULL = inherit guardrail only, P3)
+  rate_limit_rpm     INT NOT NULL DEFAULT 60,             -- edge per-key rate limit (P3)
+  allow_self_confirm BOOLEAN NOT NULL DEFAULT FALSE,      -- OD-2: headless Tier-W self-confirm opt-in (default human-approve)
+  status             TEXT NOT NULL DEFAULT 'active' CHECK (status IN ('active','revoked')),
+  last_used_at       TIMESTAMPTZ NULL,
+  expires_at         TIMESTAMPTZ NULL,                    -- optional rotation/expiry
+  created_at         TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+-- Resolve hot-path: prefix lookup scoped to live keys.
+CREATE INDEX IF NOT EXISTS idx_mcp_api_keys_prefix ON mcp_api_keys (key_prefix) WHERE status = 'active';
+CREATE INDEX IF NOT EXISTS idx_mcp_api_keys_owner ON mcp_api_keys (owner_user_id);
+
+-- Public MCP per-key call audit (P3 / H-O, docs/specs/2026-06-26-public-mcp/03 §H-O). The
+-- mcp-public-gateway edge sees EVERY external-agent call and fires a best-effort audit row here
+-- (one per tools/call; non-call methods carry method only). Append-only: the owner reads their
+-- own key's call history (GET /v1/account/mcp-keys/{id}/audit). key_id is NOT a FK — audit rows
+-- OUTLIVE a revoked/deleted key (the history must survive key deletion); owner_user_id IS an FK
+-- (CASCADE) so a deleted account's audit is purged with it.
+CREATE TABLE IF NOT EXISTS mcp_call_audit (
+  audit_id       UUID PRIMARY KEY DEFAULT uuidv7(),
+  key_id         UUID NOT NULL,
+  owner_user_id  UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  method         TEXT NOT NULL,                       -- the JSON-RPC method (tools/call, tools/list, …)
+  tool_name      TEXT NULL,                           -- the tools/call name; NULL for non-call methods
+  outcome        TEXT NOT NULL CHECK (outcome IN ('relayed','denied_scope','rate_limited','unauthorized','upstream_error','tool_error')),
+  trace_id       TEXT NULL,                           -- the edge-minted x-trace-id (correlation)
+  created_at     TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+-- D-PMCP-AUDIT-DOWNSTREAM-OUTCOME: add 'tool_error' (a single tools/call the edge
+-- relayed 2xx but whose JSON-RPC body carried an error member — the tool ran and
+-- failed, distinct from a successful 'relayed' or a transport/non-2xx 'upstream_error'). The
+-- inline CHECK above only applies to a FRESH table; this idempotent ALTER widens the
+-- constraint on an already-created one (the auto-named constraint is *_outcome_check).
+DO $$
+BEGIN
+    ALTER TABLE mcp_call_audit DROP CONSTRAINT IF EXISTS mcp_call_audit_outcome_check;
+    ALTER TABLE mcp_call_audit ADD CONSTRAINT mcp_call_audit_outcome_check
+        CHECK (outcome IN ('relayed','denied_scope','rate_limited','unauthorized','upstream_error','tool_error'));
+END $$;
+
+-- Owner read path: a key's recent calls, newest first.
+CREATE INDEX IF NOT EXISTS idx_mcp_call_audit_owner_key_created
+  ON mcp_call_audit (owner_user_id, key_id, created_at DESC);
+
+-- Append-only: REVOKE UPDATE/DELETE so even a compromised app role cannot rewrite the call
+-- history. Same dev-stack caveat as admin_token_issuance_audit (no-op when connected as the DB
+-- owner; production MUST run auth-service under app_service_role).
+DO $$
+BEGIN
+    EXECUTE 'REVOKE UPDATE, DELETE ON TABLE mcp_call_audit FROM app_service_role';
+EXCEPTION
+    WHEN undefined_object THEN
+        RAISE NOTICE 'role app_service_role does not exist (dev stack); skipping REVOKE';
+END $$;
+
+-- Public MCP human-approval queue (P4 / OD-2, docs/specs/2026-06-26-public-mcp/03 §6.3). A
+-- default (allow_self_confirm=false) public key's Tier-W "propose" returns a confirm_token
+-- WITHOUT spending; the mcp-public-gateway edge diverts it here (POST /internal/mcp-keys/approvals)
+-- instead of handing the token to the agent. The owner sees the pending action, Approve replays
+-- the token to the owning domain's /v1/<domain>/actions/confirm (the ONLY spend path) tagged with
+-- X-Mcp-Key-Id so cost attributes to the AGENT's key, Deny drops it. Unlike mcp_call_audit this is
+-- MUTABLE (status transitions) so it is NOT append-only. key_id is NOT a FK (the queue must outlive
+-- a revoked key, same as audit); owner_user_id IS an FK (CASCADE) so a deleted account's queue is
+-- purged with it. confirm_token is stored PLAINTEXT — it is already single-use (provider jti ledger)
+-- + expiry-bound + user-bound, so at-rest exposure is bounded and avoids a re-mint round-trip.
+CREATE TABLE IF NOT EXISTS mcp_pending_approvals (
+  approval_id       UUID PRIMARY KEY DEFAULT uuidv7(),
+  key_id            UUID NOT NULL,                       -- the public key that proposed (NOT a FK)
+  owner_user_id     UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  tool_name         TEXT NOT NULL,                       -- the Tier-W tool the agent called
+  domain            TEXT NOT NULL,                       -- the propose result's domain — routes the execute
+  confirm_token     TEXT NOT NULL,                       -- the server-minted token replayed on approve
+  preview           JSONB NOT NULL DEFAULT '{}',         -- the propose result shown to the human
+  cost_estimate_usd NUMERIC NULL,                        -- the agent-visible estimate, if any
+  status            TEXT NOT NULL DEFAULT 'pending'
+                      CHECK (status IN ('pending','denied','expired','executed','failed')),
+  expires_at        TIMESTAMPTZ NOT NULL,                -- mirrors the confirm token's own exp
+  created_at        TIMESTAMPTZ NOT NULL DEFAULT now(),
+  decided_at        TIMESTAMPTZ NULL                      -- when the owner approved/denied (or it was executed)
+);
+
+-- Owner read path: the owner's pending (then recent) approvals, newest first.
+CREATE INDEX IF NOT EXISTS idx_mcp_pending_approvals_owner
+  ON mcp_pending_approvals (owner_user_id, status, created_at DESC);
+
+-- P5 OAuth 2.1 (public-MCP on-behalf-of). Three tables:
+--  - mcp_oauth_clients : registered clients (RFC 7591 DCR lands the open registration
+--    in slice 3; slice 2 seeds clients via the internal register). Public PKCE clients
+--    hold no secret (token_endpoint_auth_method='none').
+--  - mcp_oauth_grants  : per (owner,client) consent — the GRANTED (downscoped) scopes +
+--    the rotating refresh-token hash. id is the grant_id that rides x-mcp-key-id.
+--  - mcp_oauth_codes   : short-lived single-use authorization codes (PKCE-bound). No
+--    Redis in auth-service, so codes live here; the code itself is stored HASHED.
+CREATE TABLE IF NOT EXISTS mcp_oauth_clients (
+  client_id                  TEXT PRIMARY KEY,
+  client_name                TEXT NOT NULL DEFAULT '',
+  redirect_uris              TEXT[] NOT NULL DEFAULT '{}',
+  grant_types                TEXT[] NOT NULL DEFAULT '{authorization_code,refresh_token}',
+  token_endpoint_auth_method TEXT NOT NULL DEFAULT 'none',
+  scopes_requested           TEXT[] NOT NULL DEFAULT '{}',
+  status                     TEXT NOT NULL DEFAULT 'active'
+                               CHECK (status IN ('active','disabled')),
+  created_at                 TIMESTAMPTZ NOT NULL DEFAULT now(),
+  created_ip                 TEXT NOT NULL DEFAULT ''
+);
+
+CREATE TABLE IF NOT EXISTS mcp_oauth_grants (
+  id                 UUID PRIMARY KEY DEFAULT uuidv7(),
+  owner_user_id      UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  client_id          TEXT NOT NULL,
+  scopes             TEXT[] NOT NULL DEFAULT '{}',
+  resource           TEXT NOT NULL DEFAULT '',
+  refresh_token_hash TEXT NULL,
+  created_at         TIMESTAMPTZ NOT NULL DEFAULT now(),
+  last_used_at       TIMESTAMPTZ NULL,
+  expires_at         TIMESTAMPTZ NULL,
+  revoked_at         TIMESTAMPTZ NULL,
+  UNIQUE (owner_user_id, client_id)
+);
+CREATE INDEX IF NOT EXISTS idx_mcp_oauth_grants_owner ON mcp_oauth_grants (owner_user_id);
+CREATE INDEX IF NOT EXISTS idx_mcp_oauth_grants_refresh
+  ON mcp_oauth_grants (refresh_token_hash) WHERE refresh_token_hash IS NOT NULL;
+
+CREATE TABLE IF NOT EXISTS mcp_oauth_codes (
+  code_hash             TEXT PRIMARY KEY,                  -- sha256(code); the raw code is never stored
+  owner_user_id         UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  client_id             TEXT NOT NULL,
+  scopes                TEXT[] NOT NULL DEFAULT '{}',
+  redirect_uri          TEXT NOT NULL,
+  resource              TEXT NOT NULL,
+  code_challenge        TEXT NOT NULL,
+  code_challenge_method TEXT NOT NULL DEFAULT 'S256',
+  expires_at            TIMESTAMPTZ NOT NULL,
+  consumed_at           TIMESTAMPTZ NULL,
+  created_at            TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+-- P5 open DCR (RFC 7591, slice 3) audit. The /oauth/register endpoint is PUBLIC
+-- (unauthenticated) — this append-only table records every registration ATTEMPT
+-- (issued or rejected) for abuse detection. Writes are bounded by the per-IP rate
+-- limit (a 429 sheds before any row is written, so the audit can't be flooded).
+-- client_id is NULL on a rejected attempt (no client was issued).
+CREATE TABLE IF NOT EXISTS mcp_oauth_client_registrations (
+  registration_id UUID PRIMARY KEY DEFAULT uuidv7(),
+  client_id       TEXT NULL,
+  client_name     TEXT NOT NULL DEFAULT '',
+  redirect_uris   TEXT[] NOT NULL DEFAULT '{}',
+  outcome         TEXT NOT NULL CHECK (outcome IN ('registered','rejected')),
+  reason          TEXT NULL,                           -- rejection reason code (NULL on success)
+  created_ip      TEXT NOT NULL DEFAULT '',
+  created_at      TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS idx_mcp_oauth_client_registrations_ip
+  ON mcp_oauth_client_registrations (created_ip, created_at DESC);
+
+-- Append-only (mirrors mcp_call_audit) — REVOKE so even a compromised app role can't
+-- rewrite the registration history. No-op when connected as the DB owner (dev stack).
+DO $$
+BEGIN
+    EXECUTE 'REVOKE UPDATE, DELETE ON TABLE mcp_oauth_client_registrations FROM app_service_role';
+EXCEPTION
+    WHEN undefined_object THEN
+        RAISE NOTICE 'role app_service_role does not exist (dev stack); skipping REVOKE';
+END $$;
 `
 
 func Up(ctx context.Context, pool *pgxpool.Pool) error {

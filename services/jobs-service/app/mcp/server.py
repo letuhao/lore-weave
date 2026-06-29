@@ -41,6 +41,7 @@ from loreweave_mcp import (
     require_meta,
 )
 
+from .. import control
 from ..config import settings
 from ..contract import derive_control_caps
 from ..database import get_pool
@@ -217,6 +218,125 @@ async def jobs_get(
         # cleanly, mirroring the kit's uniform message.
         return {"success": False, "error": "not found or not accessible"}
     return _with_caps(job)
+
+
+# ── Control tools (Tier-A, P4 slice E / H-N) ──────────────────────────────────
+# An agent that STARTED a (possibly priced) job must be able to STOP a runaway over
+# MCP — today control was REST/FE-only. These two tools are **Tier-A** (free,
+# reversible: cancel/pause never spends) on the `jobs` scope.
+#
+# Ownership is enforced EXACTLY as the REST `control_job` route does (and never via
+# a tool arg beyond the job_id selector):
+#   1. identity comes ONLY from the envelope (`build_tool_context`); the lookup
+#      `store.get_job(..., owner_user_id, ...)` is scoped to the authorized owner →
+#      a non-owned / nonexistent job returns the SAME anti-oracle "not found or not
+#      accessible" (the two are indistinguishable; the worker-loaded-id rule —
+#      a client-supplied job_id MUST be scoped to the authorized owner).
+#   2. the state-aware `control_caps` gate rejects an action invalid for the job's
+#      current status (mirrors the GUI / REST cap gate).
+#   3. `control.forward_control` re-forwards to the owning service over internal-token,
+#      which RE-VERIFIES ownership on the actual row (spec M4) — the projection is a
+#      possibly-stale mirror, never the authority for a mutation. 501 if the owning
+#      service ships no control endpoint.
+
+
+async def _control(ctx: MCPContext, service: str, job_id: str, action: str) -> dict:
+    """Shared owner-scoped control path for `jobs_cancel` / `jobs_pause`."""
+    tool_ctx = build_tool_context(ctx, settings.internal_service_token)
+    owner = str(tool_ctx.user_id)
+    job = await store.get_job(get_pool(), owner, service, job_id)
+    if job is None:
+        # Anti-oracle: a non-owned OR nonexistent job is indistinguishable. NEVER
+        # reveal existence of another owner's job.
+        return {"success": False, "error": "not found or not accessible"}
+    caps = [
+        c.value
+        for c in derive_control_caps(
+            job["status"], job["kind"], retryable=_retryable_flag(job)
+        )
+    ]
+    if action not in caps:
+        return {
+            "success": False,
+            "error": f"action '{action}' not valid for status '{job['status']}'",
+        }
+    result = await control.forward_control(service, job_id, action, owner, job["kind"])
+    ok = 200 <= result.status_code < 300
+    return {"success": ok, "status_code": result.status_code, "result": result.body}
+
+
+@mcp_server.tool(
+    name="jobs_cancel",
+    description=(
+        "Cancel one of the CALLER'S OWN running/pending/paused background jobs by "
+        "its service + job_id (e.g. to stop a runaway translation or extraction run). "
+        "Free and reversible-by-restart — no spend, no confirm needed. Owner-scoped: "
+        "returns 'not found or not accessible' if the job does not exist OR is not the "
+        "caller's (an anti-oracle), and refuses if cancel isn't valid for the job's "
+        "current state. Find the service + job_id (and whether 'cancel' is a valid "
+        "action) via `jobs_list` / `jobs_get` `control_caps`."
+    ),
+    meta=require_meta(
+        "A",
+        "user",
+        synonyms=[
+            "cancel job",
+            "stop job",
+            "abort job",
+            "kill job",
+            "stop a running job",
+            "cancel my task",
+        ],
+        tool_name="jobs_cancel",
+    ),
+)
+async def jobs_cancel(
+    ctx: MCPContext,
+    service: Annotated[
+        str,
+        "The owning service of the job (e.g. 'translation', 'knowledge', "
+        "'composition') — as seen on a job from `jobs_list`.",
+    ],
+    job_id: Annotated[str, "The job's id (UUID) — must be one of the caller's own jobs."],
+) -> dict:
+    return await _control(ctx, service, job_id, "cancel")
+
+
+@mcp_server.tool(
+    name="jobs_pause",
+    description=(
+        "Pause one of the CALLER'S OWN multi-unit background jobs by its service + "
+        "job_id (stops dispatching new units + drains in-flight; resume later from the "
+        "GUI). Free and reversible — no spend, no confirm needed. Only multi-unit jobs "
+        "(extraction / campaign / multi-chapter translation / enrichment) can pause; a "
+        "single-call job is cancel-only. Owner-scoped: returns 'not found or not "
+        "accessible' if the job does not exist OR is not the caller's (an anti-oracle), "
+        "and refuses if pause isn't valid for the job's current state (check `jobs_get` "
+        "`control_caps`)."
+    ),
+    meta=require_meta(
+        "A",
+        "user",
+        synonyms=[
+            "pause job",
+            "hold job",
+            "suspend job",
+            "pause a running job",
+            "pause my task",
+        ],
+        tool_name="jobs_pause",
+    ),
+)
+async def jobs_pause(
+    ctx: MCPContext,
+    service: Annotated[
+        str,
+        "The owning service of the job (e.g. 'translation', 'knowledge') — as seen "
+        "on a job from `jobs_list`.",
+    ],
+    job_id: Annotated[str, "The job's id (UUID) — must be one of the caller's own jobs."],
+) -> dict:
+    return await _control(ctx, service, job_id, "pause")
 
 
 # ── ASGI factory ──────────────────────────────────────────────────────────────
