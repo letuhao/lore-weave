@@ -171,3 +171,74 @@ async def test_patch_and_archive_shared_by_any_grantee(pool):
     async with pool.acquire() as c:
         st = await c.fetchval("SELECT status FROM motif WHERE id=$1", shared.id)
     assert st == "archived"
+
+
+# ── D-MOTIF-LINK-SHARED-TIER: the same-book-shared link tier ───────────────────
+
+
+async def test_link_guard_allows_same_book_shared_rejects_cross_tier(pool):
+    """The rewritten motif_link_guard: a link between two SHARED motifs of the SAME book is
+    allowed (owners may differ); a shared↔private, shared↔system, or cross-book shared link is
+    rejected at the DB (CheckViolation)."""
+    import asyncpg as _pg
+    repo = MotifRepo(pool)
+    u1, u2, book, other_book = (uuid.uuid4() for _ in range(4))
+    s1 = await _system_source(pool, code="a")
+    s2 = await _system_source(pool, code="b")
+    s3 = await _system_source(pool, code="c")
+    s4 = await _system_source(pool, code="d")
+
+    # two shared rows in `book` owned by DIFFERENT grantees
+    shared_a, _ = await repo.adopt(u1, s1, book_id=book, book_shared=True)
+    shared_b, _ = await repo.adopt(u2, s2, book_id=book, book_shared=True)
+    # a private row (u1) and another book's shared row
+    priv = await repo.create(u1, MotifCreateArgs(code="priv", name="Priv"))
+    other_shared, _ = await repo.adopt(u1, s3, book_id=other_book, book_shared=True)
+
+    async def _link(frm, to):
+        async with pool.acquire() as c:
+            await c.execute(
+                "INSERT INTO motif_link (from_motif_id, to_motif_id, kind) VALUES ($1,$2,'variant_of')",
+                frm, to)
+
+    # same-book shared, different owners → ALLOWED (the whole point of model B link sharing)
+    await _link(shared_a.id, shared_b.id)
+    # shared ↔ private (even same owner u1) → rejected (would leak a private motif as a neighbor)
+    with pytest.raises(_pg.CheckViolationError):
+        await _link(shared_a.id, priv.id)
+    # cross-book shared → rejected
+    with pytest.raises(_pg.CheckViolationError):
+        await _link(shared_a.id, other_shared.id)
+    # shared ↔ system → rejected
+    with pytest.raises(_pg.CheckViolationError):
+        await _link(shared_a.id, s4)
+
+
+async def test_create_list_delete_link_shared_tier(pool):
+    """The repo link methods with book_id: create between two shared rows of the book, list them
+    as a grantee, delete one. A non-shared / wrong-book endpoint is refused."""
+    repo = MotifRepo(pool)
+    u1, u2, u3, book = (uuid.uuid4() for _ in range(4))
+    s1 = await _system_source(pool, code="rise")
+    s2 = await _system_source(pool, code="fall")
+    a, _ = await repo.adopt(u1, s1, book_id=book, book_shared=True)
+    b, _ = await repo.adopt(u2, s2, book_id=book, book_shared=True)
+
+    # create_link(book_id) between the two shared rows (different owners) — allowed.
+    link = await repo.create_link(u1, a.id, b.id, "precedes", book_id=book)
+    assert link.from_motif_id == a.id and link.to_motif_id == b.id
+
+    # a private endpoint is refused (LookupError), even for the creator.
+    priv = await repo.create(u1, MotifCreateArgs(code="p", name="P"))
+    with pytest.raises(LookupError):
+        await repo.create_link(u1, a.id, priv.id, "variant_of", book_id=book)
+
+    # u3 (a third grantee who created neither) can list the shared graph in the book context.
+    links = await repo.list_links(u3, a.id, book_id=book, direction="out")
+    assert any(l["neighbor"]["id"] == str(b.id) for l in links)
+    # the non-book path hides the shared anchor entirely (fail-closed).
+    assert await repo.list_links(u3, a.id, direction="out") == []
+
+    # delete_link(book_id) removes the shared edge (any grantee, EDIT-gated at the tool).
+    assert await repo.delete_link(u3, link.id, book_id=book) is True
+    assert await repo.delete_link(u3, link.id, book_id=book) is False  # already gone

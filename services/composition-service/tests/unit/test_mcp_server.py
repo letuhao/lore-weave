@@ -66,7 +66,7 @@ EXPECTED_TOOLS = {
     "composition_get_mine_job", "composition_motif_link_list",
     "composition_motif_book_list",
     # Tier A (motif)
-    "composition_motif_create", "composition_motif_archive",
+    "composition_motif_create", "composition_motif_archive", "composition_motif_patch",
     "composition_motif_bind", "composition_motif_unbind",
     "composition_motif_link_create", "composition_motif_link_delete",
     # Tier W (motif)

@@ -42,7 +42,7 @@ MOTIF_TOOLS = {
     "composition_motif_search", "composition_motif_get",
     "composition_motif_suggest_for_chapter", "composition_arc_suggest",
     "composition_get_mine_job",
-    "composition_motif_create", "composition_motif_archive",
+    "composition_motif_create", "composition_motif_archive", "composition_motif_patch",
     "composition_motif_bind", "composition_motif_unbind",
     "composition_motif_adopt", "composition_motif_mine",
     "composition_arc_import_analyze", "composition_conformance_run",
@@ -52,7 +52,7 @@ MOTIF_TOOLS = {
 }
 MOTIF_USER_SCOPE = {
     "composition_motif_search", "composition_motif_get",
-    "composition_motif_create", "composition_motif_archive",
+    "composition_motif_create", "composition_motif_archive", "composition_motif_patch",
     "composition_motif_adopt", "composition_arc_import_analyze",
     "composition_motif_link_list", "composition_motif_link_create",
     "composition_motif_link_delete",
@@ -75,7 +75,8 @@ def _motif(**kw):
         language="en", visibility=kw.get("visibility", "private"),
         kind="sequence", summary="a lucky meeting",
         genre_tags=kw.get("genre_tags", ["xianxia"]),
-        embedding_model="platform-bge", status=kw.get("status", "active"), version=1,
+        embedding_model="platform-bge", status=kw.get("status", "active"),
+        version=kw.get("version", 1),
     )
     return Motif(**base)
 
@@ -809,6 +810,193 @@ async def test_motif_link_delete_happy_and_foreign():
     async with _patched(MotifRepo=repo):
         with pytest.raises(NotAccessibleError):
             await srv.composition_motif_link_delete(_Ctx(), link_id=str(uuid.uuid4()))
+
+
+# ── D-MOTIF-LINK-SHARED-TIER: book-context link tools ─────────────────────────
+
+
+async def test_link_list_book_view_gated_passes_book_id():
+    """list with book_id VIEW-gates the book + threads book_id to list_links (shared graph walk)."""
+    import app.mcp.server as srv
+
+    repo = AsyncMock()
+    repo.list_links = AsyncMock(return_value=[])
+    async with _patched(grant_level=1, MotifRepo=repo):   # VIEW
+        res = await srv.composition_motif_link_list(
+            _Ctx(), motif_id=str(uuid.uuid4()), book_id=str(BOOK))
+    assert res["count"] == 0
+    assert repo.list_links.await_args.kwargs["book_id"] == BOOK
+
+
+async def test_link_list_book_denied_without_view():
+    import app.mcp.server as srv
+    from loreweave_mcp import NotAccessibleError
+
+    repo = AsyncMock()
+    async with _patched(grant_level=0, MotifRepo=repo):   # NONE
+        with pytest.raises(NotAccessibleError):
+            await srv.composition_motif_link_list(
+                _Ctx(), motif_id=str(uuid.uuid4()), book_id=str(BOOK))
+    repo.list_links.assert_not_awaited()
+
+
+async def test_link_create_book_shared_edit_gated():
+    """create with book_id EDIT-gates the book + threads book_id (shared-tier co-edit)."""
+    import app.mcp.server as srv
+    from app.db.models import MotifLink
+
+    a, b = uuid.uuid4(), uuid.uuid4()
+    link = MotifLink(id=uuid.uuid4(), from_motif_id=a, to_motif_id=b, kind="precedes", ord=None)
+    repo = AsyncMock()
+    repo.create_link = AsyncMock(return_value=link)
+    async with _patched(grant_level=2, MotifRepo=repo):   # EDIT
+        res = await srv.composition_motif_link_create(
+            _Ctx(), srv._MotifLinkCreateArgs(from_motif_id=str(a), to_motif_id=str(b),
+                                             kind="precedes", book_id=str(BOOK)),
+        )
+    assert res["kind"] == "precedes"
+    assert repo.create_link.await_args.kwargs["book_id"] == BOOK
+    # the undo carries the book_id so the reverse delete re-gates the book.
+    assert res["_meta"]["undo_hint"]["args"]["book_id"] == str(BOOK)
+
+
+async def test_link_create_book_shared_denied_without_edit():
+    import app.mcp.server as srv
+    from loreweave_mcp import NotAccessibleError
+
+    repo = AsyncMock()
+    async with _patched(grant_level=1, MotifRepo=repo):   # VIEW only
+        with pytest.raises(NotAccessibleError):
+            await srv.composition_motif_link_create(
+                _Ctx(), srv._MotifLinkCreateArgs(from_motif_id=str(uuid.uuid4()),
+                                                 to_motif_id=str(uuid.uuid4()),
+                                                 kind="precedes", book_id=str(BOOK)),
+            )
+    repo.create_link.assert_not_awaited()
+
+
+async def test_link_delete_book_shared_edit_gated():
+    import app.mcp.server as srv
+
+    repo = AsyncMock()
+    repo.delete_link = AsyncMock(return_value=True)
+    lid = uuid.uuid4()
+    async with _patched(grant_level=2, MotifRepo=repo):   # EDIT
+        res = await srv.composition_motif_link_delete(
+            _Ctx(), link_id=str(lid), book_id=str(BOOK))
+    assert res["deleted"] is True
+    assert repo.delete_link.await_args.kwargs["book_id"] == BOOK
+
+
+async def test_link_delete_book_shared_denied_without_edit():
+    import app.mcp.server as srv
+    from loreweave_mcp import NotAccessibleError
+
+    repo = AsyncMock()
+    async with _patched(grant_level=1, MotifRepo=repo):   # VIEW only
+        with pytest.raises(NotAccessibleError):
+            await srv.composition_motif_link_delete(
+                _Ctx(), link_id=str(uuid.uuid4()), book_id=str(BOOK))
+    repo.delete_link.assert_not_awaited()
+
+
+# ── D-MOTIF-MCP-PATCH-SHARED: the MCP edit tool (owner + shared paths) ─────────
+
+
+async def test_motif_patch_owner_edits_own_with_undo():
+    """Owner edit: patches the caller's own motif + an honest undo back to the prior values."""
+    import app.mcp.server as srv
+
+    mid = uuid.uuid4()
+    prior = _motif(id=mid, owner_user_id=TEST_USER, name="Old", summary="old", version=3)
+    after = _motif(id=mid, owner_user_id=TEST_USER, name="New", summary="old", version=4)
+    repo = AsyncMock()
+    repo.get_visible = AsyncMock(return_value=prior)
+    repo.patch = AsyncMock(return_value=after)
+    async with _patched(MotifRepo=repo):
+        res = await srv.composition_motif_patch(
+            _Ctx(), srv._MotifPatchToolArgs(motif_id=str(mid), expected_version=3, name="New"))
+    assert res["name"] == "New"
+    repo.patch.assert_awaited_once()
+    # undo patches `name` back to "Old" at the NEW version.
+    undo = res["_meta"]["undo_hint"]
+    assert undo["tool"] == "composition_motif_patch"
+    assert undo["args"]["name"] == "Old" and undo["args"]["expected_version"] == 4
+
+
+async def test_motif_patch_owner_foreign_denied():
+    """A motif the caller doesn't own → uniform deny BEFORE any write."""
+    import app.mcp.server as srv
+    from loreweave_mcp import NotAccessibleError
+
+    foreign = _motif(owner_user_id=OTHER_USER, visibility="public")
+    repo = AsyncMock()
+    repo.get_visible = AsyncMock(return_value=foreign)
+    async with _patched(MotifRepo=repo):
+        with pytest.raises(NotAccessibleError):
+            await srv.composition_motif_patch(
+                _Ctx(), srv._MotifPatchToolArgs(motif_id=str(foreign.id),
+                                                expected_version=1, name="hijack"))
+    repo.patch.assert_not_awaited()
+
+
+async def test_motif_patch_no_fields_refused():
+    import app.mcp.server as srv
+
+    repo = AsyncMock()
+    async with _patched(MotifRepo=repo):
+        res = await srv.composition_motif_patch(
+            _Ctx(), srv._MotifPatchToolArgs(motif_id=str(uuid.uuid4()), expected_version=1))
+    assert res["success"] is False and "no fields" in res["error"]
+    repo.get_visible.assert_not_awaited()
+
+
+async def test_motif_patch_version_conflict():
+    import app.mcp.server as srv
+    from app.db.repositories import VersionMismatchError
+
+    mid = uuid.uuid4()
+    prior = _motif(id=mid, owner_user_id=TEST_USER, version=5)
+    repo = AsyncMock()
+    repo.get_visible = AsyncMock(return_value=prior)
+    repo.patch = AsyncMock(side_effect=VersionMismatchError(_motif(id=mid, owner_user_id=TEST_USER, version=7)))
+    async with _patched(MotifRepo=repo):
+        res = await srv.composition_motif_patch(
+            _Ctx(), srv._MotifPatchToolArgs(motif_id=str(mid), expected_version=5, name="x"))
+    assert res["outcome"] == "applied_conflict" and res["current_version"] == 7
+
+
+async def test_motif_patch_shared_edit_gated():
+    """book_id → EDIT-gate the book, confirm the shared row, call patch_shared."""
+    import app.mcp.server as srv
+
+    mid = uuid.uuid4()
+    prior = _motif(id=mid, owner_user_id=OTHER_USER, book_id=BOOK, book_shared=True, version=2)
+    after = _motif(id=mid, owner_user_id=OTHER_USER, book_id=BOOK, book_shared=True, name="Edited", version=3)
+    repo = AsyncMock()
+    repo.get_in_book = AsyncMock(return_value=prior)
+    repo.patch_shared = AsyncMock(return_value=after)
+    async with _patched(grant_level=2, MotifRepo=repo):   # EDIT
+        res = await srv.composition_motif_patch(
+            _Ctx(), srv._MotifPatchToolArgs(motif_id=str(mid), expected_version=2,
+                                            book_id=str(BOOK), name="Edited"))
+    assert res["name"] == "Edited"
+    repo.patch_shared.assert_awaited_once()
+    assert repo.patch_shared.await_args.args[2] == BOOK   # (caller, mid, book, patch, ...)
+    assert res["_meta"]["undo_hint"]["args"]["book_id"] == str(BOOK)
+
+
+async def test_motif_patch_shared_denied_without_edit():
+    import app.mcp.server as srv
+    from loreweave_mcp import NotAccessibleError
+
+    repo = AsyncMock()
+    async with _patched(grant_level=1, MotifRepo=repo):   # VIEW only
+        with pytest.raises(NotAccessibleError):
+            await srv.composition_motif_patch(
+                _Ctx(), srv._MotifPatchToolArgs(motif_id=str(uuid.uuid4()), expected_version=1,
+                                                book_id=str(BOOK), name="x"))
+    repo.patch_shared.assert_not_awaited()
 
 
 async def test_mine_propose_mints_token_with_estimate():

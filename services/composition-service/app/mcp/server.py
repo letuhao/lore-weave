@@ -1445,10 +1445,116 @@ async def composition_motif_archive(
     guard = require_user_scope(_motif_owner_resolver(repo))
     await guard(tc, mid)
     await repo.archive(tc.user_id, mid)
-    # archive() flips status='archived'; there is no MCP un-archive tool today (the
-    # W1 patch is the FE un-archive surface), so the MCP undo is honest None — matches
-    # composition_canon_rule_delete.
+    # archive() flips status='archived'; un-archive is composition_motif_patch(status='active'),
+    # but archive() doesn't return the post-write version, so the MCP undo stays honest None here.
     return {"motif_id": motif_id, "archived": True, "_meta": {"undo_hint": None}}
+
+
+# ── D-MOTIF-MCP-PATCH-SHARED — edit a motif's content (the MCP twin of HTTP PATCH /motifs/{id}).
+# Default: edit YOUR OWN motif (owner-keyed). With book_id: edit a SHARED book-tier row — any
+# EDIT-grantee may (the book grant is the gate; D-MOTIF-ADOPT-BOOK-COLLAB-TIER). Optimistic-lock
+# via expected_version (a stale version → applied_conflict, never a blind clobber). Visibility/
+# publish is deliberately NOT editable here (publishing is a separate human flow; a shared row is
+# private by CHECK anyway).
+class _MotifPatchToolArgs(ForbidExtra):
+    motif_id: str
+    expected_version: int
+    # book_id set → edit the SHARED row in that book (EDIT-gated); omit → edit your own motif.
+    book_id: str | None = None
+    name: str | None = None
+    kind: _MotifKind | None = None
+    category: str | None = None
+    summary: str | None = None
+    genre_tags: list[str] | None = None
+    roles: list[dict[str, Any]] | None = None
+    beats: list[dict[str, Any]] | None = None
+    preconditions: list[dict[str, Any]] | None = None
+    effects: list[dict[str, Any]] | None = None
+    annotations: dict[str, Any] | None = None
+    tension_target: int | None = None
+    emotion_target: str | None = None
+    status: Literal["draft", "active", "archived"] | None = None
+
+
+_MOTIF_PATCH_META = {"motif_id", "expected_version", "book_id"}
+
+
+@mcp_server.tool(
+    name="composition_motif_patch",
+    description=(
+        "Edit a motif's content — name, summary, kind, genres, roles, beats, preconditions, "
+        "effects, tension, status. By default edits one of YOUR OWN motifs. Pass `book_id` to edit "
+        "a SHARED book-tier motif (any collaborator with EDIT on the book may). Requires "
+        "`expected_version` (optimistic concurrency — a stale version is refused, no blind "
+        "clobber). To publish, archive, or adopt instead, use those dedicated tools."
+    ),
+    meta=require_meta(
+        "A", "user",
+        synonyms=["edit motif", "update motif", "rename motif", "change motif summary",
+                  "edit trope", "fix motif beats", "edit shared motif"],
+        tool_name="composition_motif_patch",
+    ),
+)
+async def composition_motif_patch(ctx: MCPContext, args: _MotifPatchToolArgs) -> dict:
+    tc = _ctx(ctx)
+    repo = MotifRepo(get_pool())
+    mid = UUID(args.motif_id)
+    from app.db.models import MotifPatchArgs as _Patch
+
+    # Only the fields the caller actually set become the patch (PATCH semantics — exclude_unset).
+    patch_fields = args.model_fields_set - _MOTIF_PATCH_META
+    if not patch_fields:
+        return {"success": False, "error": "no fields to update"}
+    try:
+        patch = _Patch(**{f: getattr(args, f) for f in patch_fields})
+    except (ValueError, TypeError) as exc:   # pydantic ValidationError ⊂ ValueError
+        return {"success": False, "error": "invalid motif fields", "detail": str(exc)[:300]}
+
+    bid: UUID | None = None
+    if args.book_id is not None:
+        # SHARED-tier edit: the book grant is the gate (not ownership). EDIT-gate, confirm the
+        # target is a shared row IN this book (so undo/prior reads the right row), then patch_shared.
+        bid = UUID(args.book_id)
+        await _gate(tc, bid, GrantLevel.EDIT)
+        prior = await repo.get_in_book(tc.user_id, mid, bid)
+        if prior is None or not prior.book_shared or prior.book_id != bid:
+            raise uniform_not_accessible()
+    else:
+        # OWNER edit: must be the caller's OWN row (system/public/foreign → deny).
+        prior = await repo.get_visible(tc.user_id, mid)
+        if prior is None or prior.owner_user_id != tc.user_id:
+            raise uniform_not_accessible()
+
+    try:
+        if bid is not None:
+            motif = await repo.patch_shared(
+                tc.user_id, mid, bid, patch, expected_version=args.expected_version)
+        else:
+            motif = await repo.patch(
+                tc.user_id, mid, patch, expected_version=args.expected_version)
+    except VersionMismatchError as exc:
+        return {
+            "success": False, "outcome": "applied_conflict",
+            "error": "stale expected_version — refetch and retry",
+            "current_version": exc.current.version,
+        }
+    except asyncpg.UniqueViolationError:
+        return {"success": False, "outcome": "applied_conflict",
+                "error": "a motif with this code + language already exists"}
+    if motif is None:
+        raise uniform_not_accessible()
+
+    out = motif.model_dump(mode="json")
+    # MD-2 honest undo: patch the changed fields BACK to their prior values + the new version.
+    prior_dump = prior.model_dump(mode="json")
+    undo_values = {f: prior_dump.get(f) for f in patch_fields}
+    undo_args: dict[str, Any] = {
+        "motif_id": args.motif_id, "expected_version": motif.version, **undo_values,
+    }
+    if args.book_id is not None:
+        undo_args["book_id"] = args.book_id
+    out["_meta"] = {"undo_hint": _undo("composition_motif_patch", **undo_args)}
+    return out
 
 
 # ── motif_link edge-walk (D-MOTIF-LINK-EDGEWALK) — traverse + edit the relationship
@@ -1461,6 +1567,9 @@ class _MotifLinkCreateArgs(ForbidExtra):
     to_motif_id: str
     kind: Literal["composed_of", "precedes", "variant_of"]
     ord: int | None = None
+    # book_id (D-MOTIF-LINK-SHARED-TIER): set to link two SHARED motifs of that book — requires
+    # EDIT on the book; both endpoints must be book_shared in it. Omit for your own user-tier graph.
+    book_id: str | None = None
 
 
 @mcp_server.tool(
@@ -1483,15 +1592,24 @@ async def composition_motif_link_list(
     motif_id: Annotated[str, "The motif whose edges to list (must be visible to you)."],
     direction: Annotated[str, "'out', 'in', or 'both'."] = "both",
     kinds: Annotated[list[str] | None, "Optional filter, e.g. ['precedes']."] = None,
+    book_id: Annotated[
+        str | None,
+        "Set to walk a SHARED book motif's graph (D-MOTIF-LINK-SHARED-TIER) — requires VIEW on "
+        "the book. Omit for your own/system/public motif.",
+    ] = None,
 ) -> dict:
     tc = _ctx(ctx)
     if direction not in ("out", "in", "both"):
         return {"success": False, "error": "direction must be 'out', 'in', or 'both'"}
+    bid: UUID | None = None
+    if book_id is not None:
+        bid = UUID(book_id)
+        await _gate(tc, bid, GrantLevel.VIEW)   # the book grant is the read access for the shared graph
     repo = MotifRepo(get_pool())
     # READPRED: list_links returns [] for a motif you can't see (IDOR-safe — empty is
     # indistinguishable from 'no edges', no existence oracle).
     links = await repo.list_links(
-        tc.user_id, UUID(motif_id), direction=direction, kinds=kinds,
+        tc.user_id, UUID(motif_id), direction=direction, kinds=kinds, book_id=bid,
     )
     return {"motif_id": motif_id, "links": links, "count": len(links)}
 
@@ -1499,10 +1617,11 @@ async def composition_motif_link_list(
 @mcp_server.tool(
     name="composition_motif_link_create",
     description=(
-        "Create a relationship edge between TWO of YOUR OWN motifs: `composed_of` "
-        "(a pattern's member), `precedes` (legal succession), or `variant_of`. Both "
-        "endpoints must be yours (you cannot edit the shared/system graph). A duplicate "
-        "edge, a self-link, or a cycle (on composed_of/precedes) is refused."
+        "Create a relationship edge between two motifs: `composed_of` (a pattern's member), "
+        "`precedes` (legal succession), or `variant_of`. By default both endpoints must be YOUR "
+        "OWN motifs (you cannot edit the system graph). Pass `book_id` to link two SHARED motifs "
+        "of that book (collaborators co-edit the shared graph — needs EDIT on the book). A "
+        "duplicate edge, a self-link, or a cycle (on composed_of/precedes) is refused."
     ),
     meta=require_meta(
         "A", "user",
@@ -1514,30 +1633,40 @@ async def composition_motif_link_list(
 async def composition_motif_link_create(ctx: MCPContext, args: _MotifLinkCreateArgs) -> dict:
     tc = _ctx(ctx)
     repo = MotifRepo(get_pool())
+    bid: UUID | None = None
+    if args.book_id is not None:
+        # SHARED-tier edge (D-MOTIF-LINK-SHARED-TIER): EDIT on the book is the write gate; the repo
+        # then requires both endpoints to be book_shared in this book.
+        bid = UUID(args.book_id)
+        await _gate(tc, bid, GrantLevel.EDIT)
     try:
         link = await repo.create_link(
             tc.user_id, UUID(args.from_motif_id), UUID(args.to_motif_id), args.kind,
-            ord=args.ord,
+            ord=args.ord, book_id=bid,
         )
     except LookupError:
-        # one/both endpoints aren't the caller's own → uniform deny (no oracle).
+        # an endpoint isn't in the required scope (your own, or this book's shared tier) → deny.
         raise uniform_not_accessible()
     except asyncpg.UniqueViolationError:
         return {"success": False, "outcome": "applied_conflict",
                 "error": "that edge already exists"}
     except asyncpg.CheckViolationError:
-        # the F0 motif_link_guard rejected a self-link / cycle / cross-tier edge.
+        # the motif_link_guard rejected a self-link / cycle / cross-tier edge.
         return {"success": False, "error": "invalid edge (self-link, cycle, or cross-tier)"}
     out = link.model_dump(mode="json")
-    out["_meta"] = {"undo_hint": _undo("composition_motif_link_delete", link_id=str(link.id))}
+    undo_args = {"link_id": str(link.id)}
+    if args.book_id is not None:
+        undo_args["book_id"] = args.book_id   # the reverse delete needs the same book gate
+    out["_meta"] = {"undo_hint": _undo("composition_motif_link_delete", **undo_args)}
     return out
 
 
 @mcp_server.tool(
     name="composition_motif_link_delete",
     description=(
-        "Delete a relationship edge between two of YOUR motifs (hard delete — edges have "
-        "no children). EDIT auto-applied; a foreign/system/missing edge is refused."
+        "Delete a relationship edge (hard delete — edges have no children). By default the edge "
+        "must be on one of YOUR motifs; pass `book_id` to delete an edge in that book's SHARED "
+        "graph (needs EDIT on the book). A foreign/system/missing/wrong-book edge is refused."
     ),
     meta=require_meta(
         "A", "user",
@@ -1548,10 +1677,19 @@ async def composition_motif_link_create(ctx: MCPContext, args: _MotifLinkCreateA
 async def composition_motif_link_delete(
     ctx: MCPContext,
     link_id: Annotated[str, "The motif-link edge id (must be on one of your motifs)."],
+    book_id: Annotated[
+        str | None,
+        "Set to delete an edge in a SHARED book graph (D-MOTIF-LINK-SHARED-TIER) — requires EDIT "
+        "on the book. Omit for an edge on one of your own motifs.",
+    ] = None,
 ) -> dict:
     tc = _ctx(ctx)
     repo = MotifRepo(get_pool())
-    deleted = await repo.delete_link(tc.user_id, UUID(link_id))
+    bid: UUID | None = None
+    if book_id is not None:
+        bid = UUID(book_id)
+        await _gate(tc, bid, GrantLevel.EDIT)
+    deleted = await repo.delete_link(tc.user_id, UUID(link_id), book_id=bid)
     if not deleted:
         raise uniform_not_accessible()
     # A hard delete has no verified reverse op (the row is gone) → undo unavailable.

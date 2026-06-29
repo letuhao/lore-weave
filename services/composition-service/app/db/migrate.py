@@ -647,16 +647,35 @@ CREATE INDEX IF NOT EXISTS idx_motif_link_to   ON motif_link(to_motif_id, kind);
 -- REPLACE; the trigger is (re)attached in a guarded DO-block.
 CREATE OR REPLACE FUNCTION motif_link_guard() RETURNS trigger AS $$
 DECLARE
-  from_owner UUID;
-  to_owner   UUID;
+  from_owner UUID;  to_owner  UUID;
+  from_shared BOOLEAN; to_shared BOOLEAN;
+  from_book UUID; to_book UUID;
+  same_tier BOOLEAN;
   cyc        BOOLEAN;
 BEGIN
-  SELECT owner_user_id INTO from_owner FROM motif WHERE id = NEW.from_motif_id;
-  SELECT owner_user_id INTO to_owner   FROM motif WHERE id = NEW.to_motif_id;
-  -- same-tier rule: both system, or both the SAME user. A user edge touching a
-  -- system motif (or two different users' motifs) is rejected.
-  IF from_owner IS DISTINCT FROM to_owner THEN
-    RAISE EXCEPTION 'motif_link cross-tier: from(%) to(%) differ', from_owner, to_owner
+  SELECT owner_user_id, book_shared, book_id INTO from_owner, from_shared, from_book
+    FROM motif WHERE id = NEW.from_motif_id;
+  SELECT owner_user_id, book_shared, book_id INTO to_owner, to_shared, to_book
+    FROM motif WHERE id = NEW.to_motif_id;
+  -- same-tier rule (D-MOTIF-LINK-SHARED-TIER): a link must stay within ONE tier —
+  --   • both SYSTEM (owner NULL, not shared), OR
+  --   • both the SAME book's SHARED tier (book_shared AND same book_id; owners MAY differ —
+  --     that is the whole point of a collaborator-shared graph), OR
+  --   • both the SAME user's PRIVATE tier (same non-null owner, neither shared).
+  -- A shared↔private edge (even same owner) is rejected — it would expose a private motif as a
+  -- neighbor to the book's grantees (a read leak). shared↔system and cross-book shared are also
+  -- rejected (a user must never reshape the shared/system graph beyond their own book's tier).
+  -- every arm is kept NULL-safe (a bare `a = b` with a NULL operand yields NULL, and
+  -- `IF NOT NULL` would NOT fire — so a user→system link must NOT rely on `owner = owner`).
+  same_tier :=
+       (from_owner IS NULL AND to_owner IS NULL AND NOT from_shared AND NOT to_shared)
+    OR (from_shared AND to_shared
+        AND from_book IS NOT NULL AND to_book IS NOT NULL AND from_book = to_book)
+    OR (NOT from_shared AND NOT to_shared
+        AND from_owner IS NOT NULL AND to_owner IS NOT NULL AND from_owner = to_owner);
+  IF NOT same_tier THEN
+    RAISE EXCEPTION 'motif_link cross-tier: from(owner=%,shared=%,book=%) to(owner=%,shared=%,book=%)',
+      from_owner, from_shared, from_book, to_owner, to_shared, to_book
       USING ERRCODE = 'check_violation';
   END IF;
   -- cycle guard for the ordered edge kinds (variant_of is symmetric-ish, skip).
