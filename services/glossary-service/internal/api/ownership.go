@@ -9,6 +9,7 @@ import (
 	"github.com/google/uuid"
 
 	"github.com/loreweave/grantclient"
+	lwmcp "github.com/loreweave/loreweave_mcp"
 )
 
 // Grant sentinels for the book-scoped guards (E0-1 collaboration model).
@@ -54,6 +55,15 @@ func (s *Server) checkGrant(ctx context.Context, bookID, userID uuid.UUID, need 
 		return ErrBookUnavailable
 	}
 	if !acc.Level.AtLeast(need) {
+		return ErrNotAccessible
+	}
+	// OD-8 (owned-books-only): a PUBLIC MCP key (X-Mcp-Key-Id in ctx) reaches a
+	// book ONLY as its OWNER, never via a collaboration grant. A share never
+	// confers OWNER (E0: none<view<edit<manage<owner), so requiring OWNER here is
+	// exactly "owned, not shared". Applied as a SEPARATE check (not by mutating
+	// `need`) so it doesn't disturb the write-active gate below — a public OWNER
+	// read on a trashed book stays allowed. First-party/HTTP calls are unaffected.
+	if lwmcp.OwnerOnlyFromCtx(ctx) && !acc.Level.AtLeast(grantclient.GrantOwner) {
 		return ErrNotAccessible
 	}
 	if need >= grantclient.GrantEdit && !acc.Active() {

@@ -413,6 +413,8 @@ async def _resolve_entity_project_grant(
     caller: UUID,
     gc: GrantClient,
     projects_repo: ProjectsRepo,
+    *,
+    owner_only: bool = False,
 ) -> tuple[str, UUID]:
     """Grant-gate the timeline route (which carries NO project_id in its path)
     and resolve-to-owner so a book grantee can read the OWNER's entity timeline.
@@ -449,6 +451,13 @@ async def _resolve_entity_project_grant(
     # owner is the graph-partition authority for its own entity.
     if caller == owner:
         return project_id, owner
+    # OD-8: a public MCP-key call gets owned-only access — it must NOT inherit the
+    # owner's E0 share-grants (a third-party agent's principal never consented to
+    # reaching an entity in a book merely SHARED with the caller). Reject a
+    # non-owner BEFORE consulting grants, with the same uniform 404 (no oracle).
+    # First-party callers (owner_only=False, the default) keep the grant path.
+    if owner_only:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="entity not found")
     # Cross-owner: re-confirm a VIEW grant on the OWNER's project book.
     # project_meta wants a UUID; knowledge project ids ARE uuids. A non-uuid
     # project_id (legacy/global) has no resolvable book → owner-only → 404 for a

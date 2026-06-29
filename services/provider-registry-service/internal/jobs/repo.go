@@ -363,20 +363,24 @@ type TerminalOutbox struct {
 // payloads + request_status. cost may be nil (cancelled/unpriced → stored NULL).
 func insertUsageOutbox(
 	ctx context.Context, tx pgx.Tx,
-	jobID, ownerUserID uuid.UUID, campaignID *uuid.UUID,
+	jobID, ownerUserID uuid.UUID, campaignID, mcpKeyID *uuid.UUID,
 	modelSource string, modelRef uuid.UUID, operationLabel string,
 	inTok, outTok int, cost *float64, requestStatus string,
 	inputJSON, resultJSON []byte,
 ) error {
 	reqPayload := truncatePayload(inputJSON, usagePayloadCapBytes)
 	respPayload := truncatePayload(resultJSON, usagePayloadCapBytes)
+	// mcp_key_id (public-MCP per-key spend attribution, H-C/PUB-11) is carried alongside
+	// the #32 audit columns (request_status + payloads); both migrations add their columns
+	// to usage_outbox, so the merged row records BOTH the public-key attribution and the
+	// traceable payload/status.
 	_, err := tx.Exec(ctx, `
 INSERT INTO usage_outbox
-  (request_id, owner_user_id, campaign_id, model_source, model_ref,
+  (request_id, owner_user_id, campaign_id, mcp_key_id, model_source, model_ref,
    operation, input_tokens, output_tokens, cost_usd,
    request_status, request_payload, response_payload)
-VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)
-`, jobID, ownerUserID, campaignID, modelSource, modelRef,
+VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)
+`, jobID, ownerUserID, campaignID, mcpKeyID, modelSource, modelRef,
 		operationLabel, inTok, outTok, cost,
 		nullIfEmpty(requestStatus), nullIfEmpty(reqPayload), nullIfEmpty(respPayload))
 	return err
@@ -483,6 +487,9 @@ RETURNING job_meta, input
 
 	// campaign_id (the S4a correlation tag) stamps BOTH outbox rows; parse once.
 	campaignID := parseJobMetaCampaignID(jobMeta)
+	// mcp_key_id (H-C/PUB-11 per-key spend attribution) rides the same job_meta tag
+	// into the usage_outbox row → usage stream → usage_logs. NULL for first-party jobs.
+	mcpKeyID := ParseJobMetaMcpKeyID(jobMeta)
 
 	// #32 — emit a usage_outbox row for EVERY terminal status the worker provides a
 	// usage for (not just completed) so usage-billing audits every call. The worker
@@ -490,6 +497,7 @@ RETURNING job_meta, input
 	// and RequestStatus distinguishes them (usage_logs is audit-only — enforcement is
 	// the guardrail, untouched). Payloads are filled HERE from the immutable input +
 	// the result (both in this tx), UTF-8-safe truncated, so a call can be traced.
+	// mcp_key_id (public-MCP per-key attribution) rides the same insert (NULL first-party).
 	if usage != nil {
 		// bug #24: the usage-billing `purpose` (the human label in the Usage GUI)
 		// is derived from this `operation` column. But `operation` is overloaded —
@@ -503,7 +511,7 @@ RETURNING job_meta, input
 		if p := parseJobMetaUsagePurpose(jobMeta); p != "" {
 			operationLabel = p
 		}
-		if err := insertUsageOutbox(ctx, tx, jobID, ownerUserID, campaignID,
+		if err := insertUsageOutbox(ctx, tx, jobID, ownerUserID, campaignID, mcpKeyID,
 			usage.ModelSource, usage.ModelRef, operationLabel,
 			usage.InputTokens, usage.OutputTokens, usage.CostUSD, usage.RequestStatus,
 			inputJSON, resultJSON); err != nil {
@@ -589,6 +597,53 @@ func isSafeUsagePurpose(s string) bool {
 	return true
 }
 
+// ParseJobMetaMcpKeyID extracts job_meta.mcp_key_id (the public-MCP-key spend
+// attribution tag, H-C/PUB-11) as a UUID. Exported so the submit handler can
+// reuse it for the PUB-12 BYOK-only gate. Nil-tolerant on EVERY failure
+// (absent / non-object / non-string / bad-uuid), mirroring parseJobMetaCampaignID:
+// a malformed tag must never fail a billing-critical finalize — it just yields an
+// un-attributed (mcp_key_id NULL) usage row. Its presence means the call
+// originated at the public MCP edge (first-party traffic never sets it).
+func ParseJobMetaMcpKeyID(jobMeta []byte) *uuid.UUID {
+	if len(jobMeta) == 0 {
+		return nil
+	}
+	var m map[string]any
+	if err := json.Unmarshal(jobMeta, &m); err != nil {
+		return nil
+	}
+	raw, ok := m["mcp_key_id"].(string)
+	if !ok || raw == "" {
+		return nil
+	}
+	id, err := uuid.Parse(raw)
+	if err != nil {
+		return nil
+	}
+	return &id
+}
+
+// ParseJobMetaSpendCap extracts job_meta.spend_cap_usd (the public key's per-key
+// USD sub-cap, H-K) as a float. The SDK carrier writes it as a JSON number, so it
+// decodes to float64. Nil-tolerant on EVERY failure (absent / non-object /
+// non-number / negative): a malformed cap must never fail submit — it just means
+// no per-key cap is enforced for this job (the owner guardrail still applies).
+// Only meaningful alongside a non-nil ParseJobMetaMcpKeyID (public-key traffic).
+func ParseJobMetaSpendCap(jobMeta []byte) *float64 {
+	if len(jobMeta) == 0 {
+		return nil
+	}
+	var m map[string]any
+	if err := json.Unmarshal(jobMeta, &m); err != nil {
+		return nil
+	}
+	v, ok := m["spend_cap_usd"].(float64)
+	if !ok || v < 0 {
+		return nil
+	}
+	return &v
+}
+
 // Cancel transitions a pre-terminal job to cancelled and stamps
 // completed_at. Returns rows-affected so caller can distinguish "already
 // terminal" (0) from "actually cancelled" (1).
@@ -631,14 +686,16 @@ RETURNING operation, model_source, model_ref, job_meta, input, result
 	}
 
 	campaignID := parseJobMetaCampaignID(jobMeta)
+	mcpKeyID := ParseJobMetaMcpKeyID(jobMeta)
 	// #32 — audit the cancelled call (cost 0, request_status='cancelled') with the
 	// traced request/response payloads, mirroring the worker terminal path's label
-	// override so the Usage GUI purpose matches.
+	// override so the Usage GUI purpose matches. mcp_key_id attributes a cancelled
+	// public-MCP job (NULL first-party).
 	operationLabel := operation
 	if p := parseJobMetaUsagePurpose(jobMeta); p != "" {
 		operationLabel = p
 	}
-	if err := insertUsageOutbox(ctx, tx, jobID, ownerUserID, campaignID,
+	if err := insertUsageOutbox(ctx, tx, jobID, ownerUserID, campaignID, mcpKeyID,
 		modelSource, modelRef, operationLabel, 0, 0, nil, "cancelled",
 		inputJSON, resultJSON); err != nil {
 		return 0, fmt.Errorf("cancel: insert outbox: %w", err)

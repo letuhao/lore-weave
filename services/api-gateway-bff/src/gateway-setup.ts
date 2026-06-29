@@ -29,8 +29,11 @@ export function configureGatewayApp(
     learningUrl: string;
     compositionUrl: string;
     jobsUrl: string;
+    /** PUBLIC MCP edge; optional + defaulted so existing callers/tests need no change. */
+    mcpPublicGatewayUrl?: string;
   },
 ): void {
+  const mcpPublicGatewayUrl = urls.mcpPublicGatewayUrl ?? 'http://mcp-public-gateway:8211';
   app.enableCors({
     origin: true,
     credentials: true,
@@ -56,7 +59,11 @@ export function configureGatewayApp(
     target: urls.authUrl,
     changeOrigin: true,
     pathFilter: (pathname: string) =>
-      pathname.startsWith('/v1/auth') || pathname.startsWith('/v1/account') || pathname.startsWith('/v1/me/preferences') || pathname.startsWith('/v1/users') || pathname.startsWith('/v1/admin'),
+      pathname.startsWith('/v1/auth') || pathname.startsWith('/v1/account') || pathname.startsWith('/v1/me/preferences') || pathname.startsWith('/v1/users') || pathname.startsWith('/v1/admin') ||
+      // P5 OAuth 2.1 — the authorization server lives in auth-service (RFC 8414 AS
+      // metadata + the /oauth/* endpoints). External OAuth traffic still flows through
+      // the BFF edge (gateway invariant).
+      pathname === '/.well-known/oauth-authorization-server' || pathname.startsWith('/oauth/'),
   });
   const bookProxy = createProxyMiddleware({
     target: urls.bookUrl,
@@ -253,6 +260,22 @@ export function configureGatewayApp(
     pathFilter: (pathname: string) => pathname.startsWith('/v1/jobs'),
   });
 
+  // PUBLIC MCP edge — the SECOND public entry class (external agents), distinct
+  // from the /v1 REST surface. `/mcp` (NOT /v1-prefixed; MCP is unversioned) →
+  // mcp-public-gateway, which authenticates the agent's API key, strips inbound
+  // x-* (PUB-9), mints the internal envelope, and relays to ai-gateway/mcp ONLY.
+  // selfHandleResponse:false so MCP streamable-HTTP (SSE) passes un-buffered.
+  const mcpPublicProxy = createProxyMiddleware({
+    target: mcpPublicGatewayUrl,
+    changeOrigin: true,
+    selfHandleResponse: false,
+    // `/mcp*` plus the P5 RFC 9728 Protected Resource Metadata (served by the resource = the edge).
+    pathFilter: (pathname: string) =>
+      pathname === '/mcp' ||
+      pathname.startsWith('/mcp/') ||
+      pathname === '/.well-known/oauth-protected-resource',
+  });
+
   // Phase B — learning-service (Axis-1 correction read API).
   const learningProxy = createProxyMiddleware({
     target: urls.learningUrl,
@@ -431,8 +454,22 @@ export function configureGatewayApp(
     res: Response,
     next: NextFunction,
   ) => void;
+  const mcpPublicProxyFn = mcpPublicProxy as unknown as (
+    req: Request,
+    res: Response,
+    next: NextFunction,
+  ) => void;
   instance.use((req: Request, res: Response, next: NextFunction) => {
-    if (req.path.startsWith('/v1/auth') || req.path.startsWith('/v1/account') || req.path.startsWith('/v1/me/preferences') || req.path.startsWith('/v1/users') || req.path.startsWith('/v1/admin')) {
+    // PUBLIC MCP (unversioned, external-agent entry) — matched before the /v1 chain.
+    // Includes the P5 RFC 9728 Protected Resource Metadata served by the edge.
+    if (req.path === '/mcp' || req.path.startsWith('/mcp/') || req.path === '/.well-known/oauth-protected-resource') {
+      return mcpPublicProxyFn(req, res, next);
+    }
+    // P5 OAuth authorization server (RFC 8414 AS metadata + /oauth/*) → auth-service.
+    if (
+      req.path.startsWith('/v1/auth') || req.path.startsWith('/v1/account') || req.path.startsWith('/v1/me/preferences') || req.path.startsWith('/v1/users') || req.path.startsWith('/v1/admin') ||
+      req.path === '/.well-known/oauth-authorization-server' || req.path.startsWith('/oauth/')
+    ) {
       return authProxyFn(req, res, next);
     }
     // MCP-fanout C-CONFIRM: `/v1/book/actions/*` (singular) → book-service. Must

@@ -29,6 +29,7 @@ import logging
 from uuid import UUID
 
 from loreweave_jobs import BaseTerminalConsumer
+from loreweave_llm.attribution import set_public_key_attribution
 
 from ..llm_client import LLMClient, set_campaign_id
 from ..workers import decoupled_block_translate, decoupled_translate
@@ -122,6 +123,10 @@ class LLMTerminalConsumer(BaseTerminalConsumer):
                 await self._cancel_chapter(ct_id, msg)
                 return
         set_campaign_id(msg.get("campaign_id"))
+        # D-PMCP-WORKER-CARRIER: re-set the public-MCP-key attribution for the resume
+        # submit too (the decoupled engine runs in a different process than the first
+        # submit), so a V3/block resume keeps tagging job_meta with the agent's key.
+        set_public_key_attribution(msg.get("mcp_key_id"), msg.get("spend_cap_usd"))
         try:
             if rs.get("mode") == "v3_coldstart":
                 # 2b-T3b cold-start — the bilingual namepair terminal → pass-2 re-translate
@@ -155,6 +160,7 @@ class LLMTerminalConsumer(BaseTerminalConsumer):
                 )
         finally:
             set_campaign_id(None)
+            set_public_key_attribution(None, None)
 
     async def _cancel_chapter(self, ct_id: UUID, msg: dict) -> None:
         """bug #34 — clean-stop a decoupled chapter whose parent job was cancelled. Clears

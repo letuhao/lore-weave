@@ -101,6 +101,18 @@ services:
       PUBLIC_APP_URL: ${PUBLIC_APP_URL:-http://localhost:5296}
       NOTIFICATION_SERVICE_INTERNAL_URL: http://notification-service:8091
       INTERNAL_SERVICE_TOKEN: ${INTERNAL_SERVICE_TOKEN:-dev_internal_token}
+      # Q-GATE (public MCP): gate mcp_api_keys creation behind this flag (kill-switch).
+      PUBLIC_MCP_ENABLED: ${PUBLIC_MCP_ENABLED:-false}
+      # D-PMCP-SELFCONFIRM-ROUTES — Tier-W confirm replay (self-confirm + human-approve)
+      # POSTs {URL}/v1/<domain>/actions/confirm with the internal token. Absent vars
+      # leave that domain non-executable (AUTH_CONFIRM_DOMAIN_UNROUTABLE). See
+      # config.go:loadDomainConfirmURLs — domain key → owning service base URL.
+      BOOK_SERVICE_URL: http://book-service:8082
+      COMPOSITION_SERVICE_URL: http://composition-service:8093
+      TRANSLATION_SERVICE_URL: http://translation-service:8087
+      GLOSSARY_SERVICE_URL: http://glossary-service:8088
+      KNOWLEDGE_SERVICE_URL: http://knowledge-service:8092
+      PROVIDER_REGISTRY_SERVICE_URL: http://provider-registry-service:8085
       # Phase 6c — OpenTelemetry trace export (see provider-registry-service).
       OTEL_EXPORTER_OTLP_ENDPOINT: ${OTEL_EXPORTER_OTLP_ENDPOINT:-}
       # Admin-JWT issuance (admin CMS / D-GKA-SYSTEM-TIER-ADMIN). Disabled unless a
@@ -869,7 +881,8 @@ services:
       # Wave 2: book, composition, translation, settings.
       # Provider name `lore_enrichment` (underscore) → derived prefix `lore_enrichment_`
       # (no DEFAULT_PREFIX_MAP entry needed), which matches the tool `lore_enrichment_auto_enrich`.
-      AI_GATEWAY_PROVIDERS: "knowledge=http://knowledge-service:8092/mcp,glossary=http://glossary-service:8088/mcp,jobs=http://jobs-service:8096/mcp,book=http://book-service:8082/mcp,composition=http://composition-service:8093/mcp,translation=http://translation-service:8087/mcp,settings=http://provider-registry-service:8085/mcp,lore_enrichment=http://lore-enrichment-service:8093/mcp"
+      # Wave 3 (P5 OD-7): catalog — public-discovery read tools (catalog_*).
+      AI_GATEWAY_PROVIDERS: "knowledge=http://knowledge-service:8092/mcp,glossary=http://glossary-service:8088/mcp,jobs=http://jobs-service:8096/mcp,book=http://book-service:8082/mcp,composition=http://composition-service:8093/mcp,translation=http://translation-service:8087/mcp,settings=http://provider-registry-service:8085/mcp,lore_enrichment=http://lore-enrichment-service:8093/mcp,catalog=http://catalog-service:8084/mcp"
       OTEL_EXPORTER_OTLP_ENDPOINT: ${OTEL_EXPORTER_OTLP_ENDPOINT:-}
     depends_on:
       knowledge-service:
@@ -882,6 +895,50 @@ services:
       # node is always present in the image (wget/curl are not) — a wget probe
       # left the gateway permanently "unhealthy", blocking dependents' depends_on.
       test: ["CMD-SHELL", "node -e \"require('http').get('http://localhost:8210/health',r=>process.exit(r.statusCode===200?0:1)).on('error',()=>process.exit(1))\""]
+      interval: 5s
+      timeout: 3s
+      start_period: 15s
+      retries: 5
+
+  # PUBLIC MCP security edge — authenticates external-agent credentials, strips the
+  # inbound x-* namespace, mints the internal envelope, and relays to ai-gateway/mcp
+  # ONLY (never /mcp/admin). OFF by default (PUBLIC_MCP_ENABLED). Reached externally
+  # via api-gateway-bff /mcp. P0: envelope hop only (static test credential).
+  mcp-public-gateway:
+    build:
+      context: ../services/mcp-public-gateway
+      dockerfile: Dockerfile
+      labels: *build-labels
+    environment:
+      MCP_PUBLIC_GATEWAY_PORT: "8211"
+      INTERNAL_SERVICE_TOKEN: ${INTERNAL_SERVICE_TOKEN:-dev_internal_token}
+      AI_GATEWAY_URL: http://ai-gateway:8210
+      # P1: resolve real keys via auth-service credential store.
+      AUTH_SERVICE_URL: http://auth-service:8081
+      PUBLIC_MCP_ENABLED: ${PUBLIC_MCP_ENABLED:-false}
+      # P5 OAuth (S9 audience binding): the edge verifies third-party OAuth access
+      # tokens LOCALLY (RS256 via auth-service /oauth/jwks) and pins the audience.
+      # MCP_RESOURCE_URL MUST equal auth-service's OAUTH_RESOURCE (defaults to
+      # <PUBLIC_APP_URL>/mcp on both sides) or an audience-confused token is rejected.
+      MCP_RESOURCE_URL: ${MCP_RESOURCE_URL:-http://localhost:5296/mcp}
+      OAUTH_ISSUER: ${OAUTH_ISSUER:-loreweave-mcp-oauth}
+      # P3 (PUB-8): per-key rate-limit counter store. Unset → limiter disabled (dev).
+      REDIS_URL: redis://redis:6379
+      # DEV/SMOKE static credential (optional). Empty = disabled (real keys via auth).
+      MCP_PUBLIC_TEST_KEY: ${MCP_PUBLIC_TEST_KEY:-}
+      MCP_PUBLIC_TEST_USER_ID: ${MCP_PUBLIC_TEST_USER_ID:-}
+      OTEL_EXPORTER_OTLP_ENDPOINT: ${OTEL_EXPORTER_OTLP_ENDPOINT:-}
+    depends_on:
+      ai-gateway:
+        condition: service_healthy
+      auth-service:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    ports:
+      - "8219:8211"
+    healthcheck:
+      test: ["CMD-SHELL", "node -e \"require('http').get('http://localhost:8211/health',r=>process.exit(r.statusCode===200?0:1)).on('error',()=>process.exit(1))\""]
       interval: 5s
       timeout: 3s
       start_period: 15s
@@ -1330,6 +1387,8 @@ services:
       COMPOSITION_SERVICE_URL: http://composition-service:8093
       # Unified Job Control Plane P2 — jobs-service (/v1/jobs list/detail/SSE).
       JOBS_SERVICE_URL: http://jobs-service:8096
+      # PUBLIC MCP edge — /mcp (unversioned) → mcp-public-gateway (external-agent entry).
+      MCP_PUBLIC_GATEWAY_URL: http://mcp-public-gateway:8211
       RABBITMQ_URL: amqp://loreweave:loreweave_dev@rabbitmq:5672/
       JWT_SECRET: ${JWT_SECRET:-loreweave_local_dev_jwt_secret_change_me_32chars}
       INTERNAL_SERVICE_TOKEN: ${INTERNAL_SERVICE_TOKEN:-dev_internal_token}

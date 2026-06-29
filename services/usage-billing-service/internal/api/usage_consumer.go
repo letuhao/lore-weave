@@ -193,6 +193,15 @@ func parseUsageEvent(v map[string]any) (usageLogParams, error) {
 	}
 	inTok, _ := strconv.Atoi(get("input_tokens"))
 	outTok, _ := strconv.Atoi(get("output_tokens"))
+	// mcp_key_id (H-C/PUB-11) — present only when the job originated at the public
+	// MCP edge. Empty/unparseable → nil (un-attributed), never a parse failure: a
+	// malformed tag must not drop a billing-critical usage row.
+	var mcpKeyID *uuid.UUID
+	if mk := get("mcp_key_id"); mk != "" {
+		if id, e := uuid.Parse(mk); e == nil {
+			mcpKeyID = &id
+		}
+	}
 	// Authoritative stream cost_usd (when present + parseable) overrides the flat
 	// fallback; recordCostUSD applies the verbatim/zero/negative-reject contract.
 	var override *float64
@@ -220,6 +229,7 @@ func parseUsageEvent(v map[string]any) (usageLogParams, error) {
 		CostUSD:       cost,
 		RequestStatus: get("request_status"),
 		Purpose:       get("operation"),
+		McpKeyID:      mcpKeyID,
 		InputPayload:  nilIfEmpty(get("request_payload")),
 		OutputPayload: nilIfEmpty(get("response_payload")),
 	}, nil

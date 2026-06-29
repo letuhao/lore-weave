@@ -27,6 +27,7 @@ const (
 	ctxKeyUserID    ctxKey = "lw-mcp-user-id"
 	ctxKeySessionID ctxKey = "lw-mcp-session-id"
 	ctxKeyTraceID   ctxKey = "lw-mcp-trace-id"
+	ctxKeyMcpKeyID  ctxKey = "lw-mcp-key-id"
 )
 
 // Envelope header names the gateway forwards on every per-call MCP request.
@@ -35,6 +36,12 @@ const (
 	HeaderUserID        = "X-User-Id"
 	HeaderSessionID     = "X-Session-Id"
 	HeaderTraceID       = "X-Trace-Id"
+	// HeaderMcpKeyID identifies the public MCP API key a request was authenticated
+	// with at the public edge (mcp-public-gateway). Present ONLY on public-key
+	// traffic; absent for first-party (FE→chat→gateway) calls. The edge mints it,
+	// ai-gateway forwards it (additive). Carrier for per-key spend attribution
+	// (H-C) and the owned-resources-only default (OD-8).
+	HeaderMcpKeyID = "X-Mcp-Key-Id"
 )
 
 // IdentityMiddleware validates X-Internal-Token in constant time (SEC-1) and,
@@ -56,6 +63,7 @@ func IdentityMiddleware(internalToken string, next http.Handler) http.Handler {
 		ctx = context.WithValue(ctx, ctxKeyUserID, r.Header.Get(HeaderUserID))
 		ctx = context.WithValue(ctx, ctxKeySessionID, r.Header.Get(HeaderSessionID))
 		ctx = context.WithValue(ctx, ctxKeyTraceID, r.Header.Get(HeaderTraceID))
+		ctx = context.WithValue(ctx, ctxKeyMcpKeyID, r.Header.Get(HeaderMcpKeyID))
 		next.ServeHTTP(w, r.WithContext(ctx))
 	})
 }
@@ -95,4 +103,39 @@ func TraceIDFromCtx(ctx context.Context) (string, bool) {
 		return "", false
 	}
 	return v, true
+}
+
+// ContextWithMcpKeyID injects the public MCP key id (X-Mcp-Key-Id) under the kit's
+// private context key, so a provider running its OWN identity middleware (e.g.
+// glossary — services that use IdentityMiddleware / NewStatelessHandler, like
+// book-service, already get this for free) can still light up McpKeyIDFromCtx /
+// OwnerOnlyFromCtx (OD-8). Pass the raw header value; an empty string leaves the
+// call first-party (OwnerOnlyFromCtx stays false). IdentityMiddleware does this
+// internally — use this only when wiring a bespoke middleware.
+func ContextWithMcpKeyID(ctx context.Context, keyID string) context.Context {
+	return context.WithValue(ctx, ctxKeyMcpKeyID, keyID)
+}
+
+// McpKeyIDFromCtx returns the public MCP API key id (X-Mcp-Key-Id). ok is false
+// when absent — i.e. this is a first-party (non-public-key) call. The id is
+// opaque to providers (the auth-service mints/owns it); a tool only needs to know
+// it is set to attribute spend (H-C) and apply the owned-only default (OD-8).
+func McpKeyIDFromCtx(ctx context.Context) (string, bool) {
+	v, _ := ctx.Value(ctxKeyMcpKeyID).(string)
+	if v == "" {
+		return "", false
+	}
+	return v, true
+}
+
+// OwnerOnlyFromCtx reports whether ownership resolution must be restricted to
+// resources the caller OWNS — dropping grant-derived (shared-with-me) access
+// (OD-8). It is true exactly for public MCP-key traffic (X-Mcp-Key-Id present):
+// a third-party agent acting as user U must not reach books merely shared with U
+// by their true owner, who never consented to a third-party agent. First-party
+// calls return false (grant-aware resolution unchanged). A guard honours this by
+// using owner-equality instead of a grant check when true.
+func OwnerOnlyFromCtx(ctx context.Context) bool {
+	_, ok := McpKeyIDFromCtx(ctx)
+	return ok
 }

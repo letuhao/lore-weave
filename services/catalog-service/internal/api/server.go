@@ -92,6 +92,11 @@ func (s *Server) Router() http.Handler {
 		r.Get("/books/{book_id}/chapters", s.listPublicBookChapters)
 		r.Get("/books/{book_id}/chapters/{chapter_id}", s.getPublicBookChapter)
 	})
+	// S-CATALOG (P5 OD-7) — MCP read tools (catalog_*). Both "/mcp" and "/mcp/*" so
+	// the go-sdk StreamableHTTP handler serves the session sub-paths. Identity-gated
+	// by the kit (X-Internal-Token); reached via the public edge → ai-gateway.
+	r.Handle("/mcp", s.mcpHandler())
+	r.Handle("/mcp/*", s.mcpHandler())
 	return r
 }
 
@@ -210,15 +215,31 @@ func (s *Server) listPublicBooks(w http.ResponseWriter, r *http.Request) {
 			offset = n
 		}
 	}
-	q := r.URL.Query().Get("q")
-	language := r.URL.Query().Get("language")
-	genre := r.URL.Query().Get("genre")  // filter by genre tag (OR if comma-separated)
-	sortBy := r.URL.Query().Get("sort")  // recent, chapters, alpha
-	author := r.URL.Query().Get("author") // filter by owner_user_id
+	items, total, status, code, msg := s.queryPublicBooks(limit, offset,
+		r.URL.Query().Get("q"), r.URL.Query().Get("language"),
+		r.URL.Query().Get("genre"), r.URL.Query().Get("sort"), r.URL.Query().Get("author"))
+	if status != http.StatusOK {
+		writeError(w, status, code, msg)
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"items": items, "total": total})
+}
+
+// queryPublicBooks is the shared core behind the HTTP list endpoint AND the
+// catalog_list_public_books MCP tool. It returns ONLY public + active books (the
+// sharing-service public gate + lifecycle filter) — owner-AGNOSTIC (OD-7: public
+// discovery, not owner-scoped), so it is safe to expose to any caller, including a
+// public MCP key (no OD-8 gate applies — there is no private data here).
+func (s *Server) queryPublicBooks(limit, offset int, q, language, genre, sortBy, author string) ([]map[string]any, int, int, string, string) {
+	if limit <= 0 || limit > 100 {
+		limit = 20
+	}
+	if offset < 0 {
+		offset = 0
+	}
 	if author != "" {
 		if _, err := uuid.Parse(author); err != nil {
-			writeError(w, http.StatusBadRequest, "CATALOG_INVALID_QUERY", "invalid author id")
-			return
+			return nil, 0, http.StatusBadRequest, "CATALOG_INVALID_QUERY", "invalid author id"
 		}
 	}
 
@@ -238,8 +259,7 @@ func (s *Server) listPublicBooks(w http.ResponseWriter, r *http.Request) {
 	fetchLimit := 200
 	ids, status := s.fetchPublicIDs(fetchLimit, 0, q)
 	if status != http.StatusOK {
-		writeError(w, http.StatusBadGateway, "BOOK_CONFLICT", "failed to query public books")
-		return
+		return nil, 0, http.StatusBadGateway, "BOOK_CONFLICT", "failed to query public books"
 	}
 
 	// Collect projections
@@ -340,10 +360,7 @@ func (s *Server) listPublicBooks(w http.ResponseWriter, r *http.Request) {
 	for i, e := range page {
 		items[i] = e.data
 	}
-	writeJSON(w, http.StatusOK, map[string]any{
-		"items": items,
-		"total": total,
-	})
+	return items, total, http.StatusOK, "", ""
 }
 
 func (s *Server) getPublicBook(w http.ResponseWriter, r *http.Request) {
@@ -352,18 +369,29 @@ func (s *Server) getPublicBook(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "CATALOG_INVALID_QUERY", "invalid book id")
 		return
 	}
+	data, status := s.queryPublicBook(bookID)
+	if status != http.StatusOK {
+		writeError(w, http.StatusNotFound, "BOOK_NOT_FOUND", "book not found")
+		return
+	}
+	writeJSON(w, http.StatusOK, data)
+}
+
+// queryPublicBook is the shared core behind the HTTP get endpoint AND the
+// catalog_get_book MCP tool. Returns one public + active book (sharing public gate +
+// lifecycle), owner-agnostic (OD-7). status != 200 ⇒ not found / not public.
+func (s *Server) queryPublicBook(bookID uuid.UUID) (map[string]any, int) {
 	res, err := s.internalGet(fmt.Sprintf("%s/internal/sharing/public/%s", strings.TrimRight(s.cfg.SharingServiceInternalURL, "/"), bookID))
 	if err != nil || res.StatusCode != http.StatusOK {
-		writeError(w, http.StatusNotFound, "BOOK_NOT_FOUND", "book not found")
-		return
+		if res != nil {
+			res.Body.Close()
+		}
+		return nil, http.StatusNotFound
 	}
-	if res != nil {
-		res.Body.Close()
-	}
+	res.Body.Close()
 	p, st := s.fetchProjection(bookID)
 	if st != http.StatusOK || p.LifecycleState != "active" {
-		writeError(w, http.StatusNotFound, "BOOK_NOT_FOUND", "book not found")
-		return
+		return nil, http.StatusNotFound
 	}
 	// Fetch available translation languages (best-effort, non-blocking)
 	languages := s.fetchBookLanguages(p.BookID)
@@ -372,7 +400,7 @@ func (s *Server) getPublicBook(w http.ResponseWriter, r *http.Request) {
 	if genreTags == nil {
 		genreTags = []string{}
 	}
-	writeJSON(w, http.StatusOK, map[string]any{
+	return map[string]any{
 		"book_id":             p.BookID,
 		"owner_user_id":       p.OwnerUserID,
 		"title":               p.Title,
@@ -386,7 +414,7 @@ func (s *Server) getPublicBook(w http.ResponseWriter, r *http.Request) {
 		"visibility":          "public",
 		"created_at":          p.CreatedAt,
 		"available_languages": languages,
-	})
+	}, http.StatusOK
 }
 
 func (s *Server) fetchBookLanguages(bookID uuid.UUID) []map[string]any {

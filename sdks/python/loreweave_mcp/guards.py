@@ -29,8 +29,14 @@ import time
 from typing import Awaitable, Callable, Protocol
 from uuid import UUID
 
-from .context import ToolContext
+from .context import ToolContext, is_owner_only
 from .errors import uniform_not_accessible
+
+# The OWNER grant tier (loreweave_grants GrantLevel.OWNER == 4; E0 contract
+# none<view<edit<manage<owner). A SHARE never confers OWNER — only the actual
+# book owner holds it — so requiring OWNER is exactly "owned, not shared" (OD-8).
+# The kit stays int-based (decoupled from loreweave_grants); overridable per-call.
+OWNER_GRANT_LEVEL = 4
 
 # The zero/nil UUID. A row whose resolved owner is the nil UUID (a NULL/zero owner
 # column) owns nothing — it must never match any caller, not even a zero-UUID
@@ -75,6 +81,7 @@ def require_book_owner(
     level: int,
     *,
     cache_ttl_s: float = DEFAULT_GRANT_CACHE_TTL_S,
+    owner_level: int = OWNER_GRANT_LEVEL,
     now: Callable[[], float] = time.monotonic,
 ):
     """Build an async book-ownership guard requiring grant >= `level` (SEC-2).
@@ -83,6 +90,13 @@ def require_book_owner(
     verified grant level on success and raises the H13 uniform error on denial.
     Fail-closed: a resolver exception is treated as level 0 (deny). A POSITIVE
     grant is cached for `cache_ttl_s`; denials are never cached.
+
+    OD-8 (owned-books-only): when the call is from a PUBLIC MCP key
+    (``is_owner_only(ctx)`` — an ``mcp_key_id`` is in the envelope), the required
+    level is escalated to ``owner_level`` (the OWNER tier). A public key therefore
+    reaches a book ONLY when the caller is its OWNER, never one merely SHARED to
+    them — a public key never inherits the user's collaboration grants. First-party
+    calls (no mcp_key_id) keep the nominal `level` and the full grant path.
     """
     # key "user_id:book_id" -> (level, expiry)
     cache: dict[str, tuple[int, float]] = {}
@@ -99,7 +113,11 @@ def require_book_owner(
                 raise uniform_not_accessible(exc) from exc
             if resolved > 0:
                 cache[key] = (resolved, now() + cache_ttl_s)
-        if resolved < level:
+        # OD-8: a public key must hold OWNER, not just `level` (shares never confer
+        # OWNER). The resolved level is cached the same way — only the threshold
+        # changes — so this composes with the positive-grant cache.
+        required = owner_level if is_owner_only(ctx) else level
+        if resolved < required:
             raise uniform_not_accessible()
         return resolved
 

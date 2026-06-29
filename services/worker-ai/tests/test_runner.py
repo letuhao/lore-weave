@@ -1731,6 +1731,8 @@ async def test_get_running_jobs_pulls_embedding_dimension(monkeypatch):
         "concurrency_level": None,
         "pinned_entity_ids": None,
         "reasoning_effort": "none",
+        "mcp_key_id": None,
+        "spend_cap_usd": None,
     }
     pool = AsyncMock()
     pool.fetch = AsyncMock(return_value=[fake_row])
@@ -1766,6 +1768,8 @@ async def test_get_running_jobs_handles_null_embedding_dimension():
         "concurrency_level": None,
         "pinned_entity_ids": None,
         "reasoning_effort": "none",
+        "mcp_key_id": None,
+        "spend_cap_usd": None,
     }
     pool = AsyncMock()
     pool.fetch = AsyncMock(return_value=[fake_row])
@@ -1800,6 +1804,8 @@ async def test_get_running_jobs_threads_billing_identity():
         "concurrency_level": None,
         "pinned_entity_ids": None,
         "reasoning_effort": "none",
+        "mcp_key_id": None,
+        "spend_cap_usd": None,
     }
     pool = AsyncMock()
     pool.fetch = AsyncMock(return_value=[fake_row])
@@ -1836,6 +1842,8 @@ async def test_get_running_jobs_threads_pinned_entity_ids():
         # JSONB returned as a raw JSON string (the asyncpg default codec).
         "pinned_entity_ids": '["g-1", "g-2"]',
         "reasoning_effort": "high",
+        "mcp_key_id": None,
+        "spend_cap_usd": None,
     }
     pool = AsyncMock()
     pool.fetch = AsyncMock(return_value=[fake_row])

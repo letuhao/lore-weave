@@ -688,6 +688,41 @@ async def test_grant_view_grantee_resolves_to_owner(monkeypatch):
     assert resolved == owner  # resolve-to-owner, NOT the caller
 
 
+class _GCExplode:
+    """Grant client that fails if consulted — proves OD-8 short-circuits first."""
+
+    async def resolve_grant(self, book_id, user_id):
+        raise AssertionError("grant client must not be consulted for owner_only")
+
+
+@_pytest.mark.asyncio
+async def test_grant_owner_only_public_key_denied_before_grants(monkeypatch):
+    """OD-8 — a public MCP-key call (owner_only=True) gets owned-only access: a
+    non-owner is rejected with the uniform 404 BEFORE the grant client is even
+    consulted, even though it would otherwise hold a VIEW grant."""
+    owner, grantee, book = uuid4(), uuid4(), uuid4()
+    _patch_entity(monkeypatch, _owned_entity(owner))
+    with _pytest.raises(HTTPException) as ei:
+        await gv._resolve_entity_project_grant(
+            "kai", grantee, _GCExplode(), _ProjectsRepoFixed((owner, book)),
+            owner_only=True,
+        )
+    assert ei.value.status_code == 404  # no oracle, no grant consulted
+
+
+@_pytest.mark.asyncio
+async def test_grant_owner_only_owner_self_read_still_ok(monkeypatch):
+    """OD-8 drops only GRANT-derived access — a public key acting as the entity
+    OWNER still reads its own timeline."""
+    owner = uuid4()
+    _patch_entity(monkeypatch, _owned_entity(owner))
+    pid, resolved = await gv._resolve_entity_project_grant(
+        "kai", owner, _GCExplode(), _ProjectsRepoFixed((owner, None)),
+        owner_only=True,
+    )
+    assert pid == _PROJ_UUID and resolved == owner
+
+
 @_pytest.mark.asyncio
 async def test_grant_under_view_is_403(monkeypatch):
     owner, grantee, book = uuid4(), uuid4(), uuid4()

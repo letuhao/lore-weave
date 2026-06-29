@@ -168,7 +168,10 @@
     "expired_short": "Hết hạn — hỏi lại",
     "error": "Không thể áp dụng thay đổi.",
     "error_short": "Thất bại",
-    "cancelled": "Đã hủy"
+    "cancelled": "Đã hủy",
+    "reprice": "Chi phí đã tăng lên {{cost}} so với ước tính — hãy hỏi lại để xác nhận lại theo giá mới.",
+    "reprice_title": "Chi phí đã thay đổi — chưa áp dụng",
+    "reprice_detail": "Ước tính {{old}}, hiện là {{new}}. Chưa tốn khoản nào — hãy hỏi lại để xác nhận theo giá mới."
   },
   "recordEdit": {
     "label": "Đề xuất chỉnh sửa",

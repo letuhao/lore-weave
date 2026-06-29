@@ -172,7 +172,8 @@ _SELECT_COLS = """
   started_at, paused_at, completed_at, created_at, updated_at,
   error_message, campaign_id,
   billing_user_id, billing_embedding_model, billing_llm_model,
-  targets, concurrency_level, pinned_entity_ids, reasoning_effort
+  targets, concurrency_level, pinned_entity_ids, reasoning_effort,
+  mcp_key_id, spend_cap_usd
 """
 
 
@@ -206,6 +207,13 @@ class ExtractionJob(BaseModel):
     billing_user_id: UUID | None = None
     billing_embedding_model: str | None = None
     billing_llm_model: str | None = None
+
+    # D-PMCP-WORKER-CARRIER: public-MCP-key attribution for a kg_build_graph started
+    # by a public key. Ride the row → resume_state → worker re-set so the extraction
+    # spend tags job_meta with the key (+ its cap). NULL ⇒ first-party. spend_cap_usd
+    # is float (DOUBLE PRECISION column), NOT Decimal — asyncpg rejects float→numeric.
+    mcp_key_id: str | None = None
+    spend_cap_usd: float | None = None
 
     # C12 — target-typed extraction. The subset of Pass-2 passes this job
     # runs (entities/relations/events/facts/summaries). The DB column is
@@ -289,6 +297,11 @@ class ExtractionJobCreate(BaseModel):
     pinned_entity_ids: list[str] | None = None
     # D-RE-OTHER-AGENTIC-EFFORT: clamped reasoning effort persisted on the job. Default 'none'.
     reasoning_effort: str = "none"
+    # D-PMCP-WORKER-CARRIER: public-MCP-key attribution (set only by the kg confirm
+    # replay for a public-key kg_build_graph). spend_cap_usd is float (DOUBLE
+    # PRECISION column), NOT Decimal — asyncpg rejects a float→numeric bind.
+    mcp_key_id: str | None = None
+    spend_cap_usd: float | None = None
 
 
 # ── try_spend outcome ────────────────────────────────────────────────────

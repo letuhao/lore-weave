@@ -74,6 +74,7 @@ services:
   api-gateway-bff: typescript
   game-server: typescript
   ai-gateway: typescript          # MCP federation gateway (MCP-first invariant)
+  mcp-public-gateway: typescript  # PUBLIC MCP security edge (auth/scope/spend/audit → mints internal envelope → ai-gateway). Sibling of api-gateway-bff.
 
   # ── Not yet scaffolded (directory absent; lint allows while truly missing).
   #    Promote to a real language the moment the scaffold lands.

@@ -651,14 +651,23 @@ async def _cancel_secondary_core(
     return {"job_id": str(job_id), "status": "cancelling"}
 
 
-async def _retry_job_core(db: asyncpg.Pool, job_id: UUID, owner_user_id: UUID) -> dict:
+async def _retry_job_core(
+    db: asyncpg.Pool, job_id: UUID, owner_user_id: UUID,
+    *, mcp_key_id: str | None = None, spend_cap_usd: float | None = None,
+) -> dict:
     """D-JOBS-P4-RETRY — re-submit a FAILED translation job as a FRESH job (new job_id),
     reusing the failed row's model/language/pipeline/QA params. Owner-scoped (M4 re-check:
     404 if not owned). 409 unless the job is `failed` (retry is only offered there). The
     retried job is created STANDALONE (campaign_id=None) — a user retry is detached from any
     original campaign saga, which orchestrates its own jobs. `force_retranslate=True` re-runs
     the stored chapter set regardless of the skip-gate. Prompts + any unset params resolve
-    from the user's CURRENT settings (the model/language/pipeline choices are preserved)."""
+    from the user's CURRENT settings (the model/language/pipeline choices are preserved).
+
+    D-PMCP-WORKER-CARRIER: retry is a NET-NEW re-spend initiated by the CONFIRMING caller, so
+    the public-MCP key + cap come from the confirm route (NOT the failed row's original
+    carrier — the new spend is attributed + capped to whoever drives the retry NOW). Omitting
+    them was a per-key-cap BYPASS: a public agent whose job hit MCP_KEY_CAP_EXCEEDED (→ status
+    'failed') could retry into a fresh UNCAPPED job. None ⇒ a first-party (FE/JWT) retry."""
     row = await db.fetchrow(
         "SELECT * FROM translation_jobs WHERE job_id=$1 AND owner_user_id=$2",
         job_id, owner_user_id,
@@ -705,6 +714,7 @@ async def _retry_job_core(db: asyncpg.Pool, job_id: UUID, owner_user_id: UUID) -
     )
     new_job = await _resolve_and_create_job(
         db, row["book_id"], payload, str(owner_user_id), campaign_id=None,
+        mcp_key_id=mcp_key_id, spend_cap_usd=spend_cap_usd,
     )
     return {"job_id": str(new_job.job_id), "status": new_job.status,
             "retried_from": str(job_id)}

@@ -13,6 +13,8 @@ import (
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
+
+	lwmcp "github.com/loreweave/loreweave_mcp"
 )
 
 const (
@@ -49,6 +51,18 @@ type bookListOut struct {
 	Total int           `json:"total"`
 }
 
+// bookListFilter builds the WHERE clause for book_list (the "my library"
+// enumeration), parameterized by $1 = caller. ownerOnly=true (OD-8 — a PUBLIC MCP
+// key) drops the collaborator clause so a public key cannot ENUMERATE books merely
+// SHARED to the caller (it would otherwise leak another tenant's book ids/titles),
+// matching the per-book owner gate (mcpRequireGrant). First-party keeps owned+shared.
+func bookListFilter(ownerOnly bool) string {
+	if ownerOnly {
+		return `b.owner_user_id=$1 AND b.is_bible=false AND b.lifecycle_state='active'`
+	}
+	return `(b.owner_user_id=$1 OR EXISTS(SELECT 1 FROM book_collaborators bc WHERE bc.book_id=b.id AND bc.user_id=$1)) AND b.is_bible=false AND b.lifecycle_state='active'`
+}
+
 func (s *Server) toolBookList(ctx context.Context, _ *mcp.CallToolRequest, in bookListIn) (*mcp.CallToolResult, bookListOut, error) {
 	userID, ok := mcpUserID(ctx)
 	if !ok {
@@ -61,7 +75,7 @@ func (s *Server) toolBookList(ctx context.Context, _ *mcp.CallToolRequest, in bo
 	}
 	// "My library": owned + collaborated, mirroring listBooks (excludes hidden
 	// world-bible containers). Scoped to the caller by $1 — no cross-tenant leak.
-	const filter = `(b.owner_user_id=$1 OR EXISTS(SELECT 1 FROM book_collaborators bc WHERE bc.book_id=b.id AND bc.user_id=$1)) AND b.is_bible=false AND b.lifecycle_state='active'`
+	filter := bookListFilter(lwmcp.OwnerOnlyFromCtx(ctx))
 	rows, err := s.pool.Query(ctx, `
 SELECT b.id,b.title,b.original_language,b.lifecycle_state,
   COALESCE((SELECT COUNT(*) FROM chapters c WHERE c.book_id=b.id AND c.lifecycle_state='active'),0),

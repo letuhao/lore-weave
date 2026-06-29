@@ -41,6 +41,27 @@ describe('headerValue / extractEnvelope', () => {
     // omitted when the header is absent (so it is forwarded only when present)
     expect(extractEnvelope({ 'x-user-id': 'u1' }).projectId).toBeUndefined();
   });
+
+  it('lifts X-Mcp-Key-Id into the envelope (public-edge spend attribution, H-C)', () => {
+    const env = extractEnvelope({
+      'x-user-id': 'u1',
+      'x-mcp-key-id': 'key-xyz',
+    });
+    expect(env.mcpKeyId).toBe('key-xyz');
+    // absent (undefined) for first-party calls, so it forwards only when present
+    expect(extractEnvelope({ 'x-user-id': 'u1' }).mcpKeyId).toBeUndefined();
+  });
+
+  it('lifts X-Mcp-Spend-Cap-Usd into the envelope (per-key cap carrier, H-K)', () => {
+    const env = extractEnvelope({
+      'x-user-id': 'u1',
+      'x-mcp-key-id': 'key-xyz',
+      'x-mcp-spend-cap-usd': '5',
+    });
+    expect(env.spendCapUsd).toBe('5');
+    // absent for first-party calls + for public keys with no cap
+    expect(extractEnvelope({ 'x-user-id': 'u1' }).spendCapUsd).toBeUndefined();
+  });
 });
 
 describe('handleListTools', () => {
@@ -101,6 +122,19 @@ describe('handleCallTool', () => {
     );
     const env = executeTool.mock.calls[0][2];
     expect(env.projectId).toBe('proj-9');
+  });
+
+  it('carries X-Mcp-Key-Id through the envelope to executeTool (H-C)', async () => {
+    const executeTool = jest.fn().mockResolvedValue({ content: [] });
+    const fed = fakeFederation({ executeTool });
+    await handleCallTool(
+      fed,
+      'memory_search',
+      { query: 'x' },
+      { 'x-user-id': 'u1', 'x-mcp-key-id': 'key-xyz' },
+    );
+    const env = executeTool.mock.calls[0][2];
+    expect(env.mcpKeyId).toBe('key-xyz');
   });
 
   it('turns a provider failure into an MCP tool error (isError), not a throw', async () => {

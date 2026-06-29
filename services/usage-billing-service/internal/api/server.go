@@ -100,6 +100,11 @@ func (s *Server) Router() http.Handler {
 		r.Post("/billing/guardrail/reserve", s.guardrailReserve)
 		r.Post("/billing/guardrail/reconcile", s.guardrailReconcile)
 		r.Post("/billing/guardrail/release", s.guardrailRelease)
+		// Public MCP P3 (H-C/PUB-11) — per-key spend rollup for an owner. The MCP
+		// edge calls this to surface per-key usage (owner audit view, H-O) and feeds
+		// the future per-key sub-cap (H-K). Internal-token gated; owner_user_id is an
+		// explicit query arg (the caller already authenticated the owner).
+		r.Get("/billing/mcp-key-usage", s.getMcpKeyUsage)
 	})
 
 	r.Route("/v1/model-billing", func(r chi.Router) {
@@ -260,6 +265,10 @@ type usageLogParams struct {
 	CostUSD       float64
 	RequestStatus string
 	Purpose       string
+	// McpKeyID (H-C/PUB-11) — the public MCP API key that incurred this spend, or
+	// nil for first-party traffic. Persisted to usage_logs.mcp_key_id for per-key
+	// attribution / monthly rollup.
+	McpKeyID *uuid.UUID
 	// `any`, not `map[string]any`, so BOTH callers fit: the /record HTTP path passes
 	// a structured object (map), while the jobs path (#32) passes the truncated
 	// request/response JSON as a STRING. writeUsageLog json.Marshal-s either shape
@@ -318,13 +327,13 @@ func (s *Server) writeUsageLog(ctx context.Context, tx pgx.Tx, p usageLogParams)
 INSERT INTO usage_logs(
   request_id, owner_user_id, provider_kind, model_source, model_ref,
   input_tokens, output_tokens, total_tokens, total_cost_usd, billing_decision, request_status, policy_version,
-  input_payload_ciphertext, output_payload_ciphertext, payload_encryption_key_ref, payload_encryption_algo, purpose
-) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,'AES-256-GCM',$16)
+  input_payload_ciphertext, output_payload_ciphertext, payload_encryption_key_ref, payload_encryption_algo, purpose, mcp_key_id
+) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,'AES-256-GCM',$16,$17)
 ON CONFLICT (request_id) DO NOTHING
 RETURNING usage_log_id
 `, p.RequestID, p.OwnerUserID, p.ProviderKind, p.ModelSource, p.ModelRef,
 		p.InputTokens, p.OutputTokens, totalTokens, costUSD, billingDecisionRecorded, requestStatus, policyVersion,
-		inputCipher, outputCipher, keyRef, purpose).Scan(&usageLogID)
+		inputCipher, outputCipher, keyRef, purpose, p.McpKeyID).Scan(&usageLogID)
 	if err == pgx.ErrNoRows {
 		// Duplicate request_id — already recorded. Re-read so the response/cost is
 		// identical across retries; write no details.

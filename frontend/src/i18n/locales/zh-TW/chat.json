@@ -168,7 +168,10 @@
     "expired_short": "已過期 — 請重問",
     "error": "無法套用變更。",
     "error_short": "失敗",
-    "cancelled": "已取消"
+    "cancelled": "已取消",
+    "reprice": "估價後費用已上漲至 {{cost}} — 請重新詢問以依新價格再次確認。",
+    "reprice_title": "費用已變動 — 尚未套用",
+    "reprice_detail": "原估 {{old}}，現為 {{new}}。未產生任何花費 — 請重新詢問以依新價格再次確認。"
   },
   "recordEdit": {
     "label": "建議的編輯",

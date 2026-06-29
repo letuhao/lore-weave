@@ -120,10 +120,11 @@ type usageRow struct {
 // key is here, all values string-encoded (stream values are strings); empty
 // string for a null campaign_id / cost_usd. Pure + unit-tested so a key rename
 // or a dropped field is caught without a live stack.
-func buildUsageFields(requestID, ownerID, campaign, modelSource, modelRef, operation, cost string, inTok, outTok int, requestStatus, requestPayload, responsePayload string) map[string]any {
+func buildUsageFields(requestID, ownerID, campaign, mcpKey, modelSource, modelRef, operation, cost string, inTok, outTok int, requestStatus, requestPayload, responsePayload string) map[string]any {
 	// #32 — request_status is now carried from the row (success | failed | cancelled),
 	// no longer hardcoded; the traced request/response payloads ride along (empty when
 	// unpopulated, e.g. legacy rows). usage-billing's parseUsageEvent reads these.
+	// mcp_key_id (public-MCP per-key attribution) is carried through to the usage stream.
 	status := requestStatus
 	if status == "" {
 		status = "success" // back-compat for any legacy row written before #32
@@ -132,6 +133,7 @@ func buildUsageFields(requestID, ownerID, campaign, modelSource, modelRef, opera
 		"request_id":       requestID,
 		"owner_user_id":    ownerID,
 		"campaign_id":      campaign,
+		"mcp_key_id":       mcpKey,
 		"model_source":     modelSource,
 		"model_ref":        modelRef,
 		"operation":        operation,
@@ -173,7 +175,7 @@ func (r *UsageRelay) drainOnce(ctx context.Context) (int, error) {
 
 	// uuid + numeric columns cast to ::text so they scan cleanly into string.
 	rows, err := tx.Query(ctx, `
-SELECT id, request_id::text, owner_user_id::text, campaign_id::text,
+SELECT id, request_id::text, owner_user_id::text, campaign_id::text, mcp_key_id::text,
        model_source, model_ref::text, operation,
        input_tokens, output_tokens, cost_usd::text,
        request_status, request_payload, response_payload
@@ -191,10 +193,10 @@ FOR UPDATE SKIP LOCKED
 	for rows.Next() {
 		var id int64
 		var requestID, ownerID, modelSource, modelRef, operation string
-		var campaignID, costUSD *string // nullable
-		var reqStatus, reqPayload, respPayload *string // nullable (#32)
+		var campaignID, mcpKeyID, costUSD *string       // nullable
+		var reqStatus, reqPayload, respPayload *string  // nullable (#32)
 		var inTok, outTok int
-		if err := rows.Scan(&id, &requestID, &ownerID, &campaignID, &modelSource,
+		if err := rows.Scan(&id, &requestID, &ownerID, &campaignID, &mcpKeyID, &modelSource,
 			&modelRef, &operation, &inTok, &outTok, &costUSD,
 			&reqStatus, &reqPayload, &respPayload); err != nil {
 			rows.Close()
@@ -203,6 +205,10 @@ FOR UPDATE SKIP LOCKED
 		camp := ""
 		if campaignID != nil {
 			camp = *campaignID
+		}
+		mcpKey := ""
+		if mcpKeyID != nil {
+			mcpKey = *mcpKeyID
 		}
 		cost := ""
 		if costUSD != nil {
@@ -217,7 +223,7 @@ FOR UPDATE SKIP LOCKED
 		batch = append(batch, usageRow{
 			id:       id,
 			campaign: camp,
-			fields: buildUsageFields(requestID, ownerID, camp, modelSource, modelRef, operation, cost, inTok, outTok,
+			fields: buildUsageFields(requestID, ownerID, camp, mcpKey, modelSource, modelRef, operation, cost, inTok, outTok,
 				deref(reqStatus), deref(reqPayload), deref(respPayload)),
 		})
 	}

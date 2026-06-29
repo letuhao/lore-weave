@@ -4,6 +4,7 @@ from uuid import UUID
 
 import httpx
 from loreweave_jobs import emit_job_event
+from loreweave_llm.attribution import set_public_key_attribution
 
 from ..config import settings
 from ..llm_client import LLMClient, set_campaign_id
@@ -85,6 +86,12 @@ async def handle_chapter_message(
     # campaign_id in its job_meta. Unconditional set (None for non-campaign work)
     # prevents a sequential reuse from inheriting a prior chapter's campaign.
     set_campaign_id(msg.get("campaign_id"))
+    # D-PMCP-WORKER-CARRIER: re-set the public-MCP-key attribution for THIS task so
+    # every provider job submitted while translating this chapter tags job_meta with
+    # the agent's key (+ its spend cap) — the in-process contextvar set at the confirm
+    # route died at the AMQP hop. Unconditional (None clears) — prevents a pooled task
+    # inheriting a prior chapter's key (cf. the campaign_id leak lesson).
+    set_public_key_attribution(msg.get("mcp_key_id"), msg.get("spend_cap_usd"))
 
     try:
         await _process_chapter(msg, job_id, chapter_id, user_id, pool, publish_event, llm_client)

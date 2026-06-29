@@ -28,6 +28,36 @@ export interface ActionPreview {
   destructive: boolean;
 }
 
+/** H-J / H14 re-price-on-execute — the structured detail a priced confirm route
+ *  returns on a >×1.25 (+$0.50 abs) cost drift since the token was minted. The BE
+ *  emits HTTP 409 `TRANSL_REPRICE_REQUIRED` with this detail (FastAPI wraps it under
+ *  `{detail}`); the card surfaces the NEW number so the human re-confirms against the
+ *  real, higher cost instead of silently overspending. The FE NEVER computes the
+ *  threshold — it only reacts to the BE's 409 (D-TRANSL-REPRICE-THRESHOLD-DRIFT). */
+export interface RepriceDetail {
+  code?: string;
+  message?: string;
+  status?: string;
+  confirmed_cost_usd?: number | null;
+  actual_cost_usd?: number | null;
+  estimate?: { cost_usd?: number | null } & Record<string, unknown>;
+}
+
+/** Detect + extract a re-price 409 out of a thrown `apiJson` error. Returns the
+ *  detail when the error is a 409 whose body marks `reprice_required`
+ *  (`status==='reprice_required'` or `code==='TRANSL_REPRICE_REQUIRED'`), else null.
+ *  FastAPI nests the HTTPException detail under `body.detail`; a non-FastAPI emitter
+ *  (or the headless edge replay) may put it at `body` directly — accept both. */
+export function parseRepriceError(err: unknown): RepriceDetail | null {
+  const e = err as { status?: number; body?: unknown };
+  if (e?.status !== 409 || e.body == null || typeof e.body !== 'object') return null;
+  const body = e.body as Record<string, unknown>;
+  const raw = (body.detail && typeof body.detail === 'object' ? body.detail : body) as RepriceDetail;
+  const isReprice =
+    raw.status === 'reprice_required' || raw.code === 'TRANSL_REPRICE_REQUIRED';
+  return isReprice ? raw : null;
+}
+
 /** One field change in a `propose_record_edit` diff. */
 export interface RecordEditChange {
   field_label?: string;

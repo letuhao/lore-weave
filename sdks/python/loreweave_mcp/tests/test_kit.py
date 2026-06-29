@@ -25,6 +25,7 @@ from loreweave_mcp import (
     NotAccessibleError,
     ToolContext,
     build_tool_context,
+    is_owner_only,
     make_stateless_fastmcp,
     mint_confirm_token,
     require_book_owner,
@@ -113,6 +114,91 @@ def test_build_tool_context_optional_headers_absent():
     tc = build_tool_context(_ctx(), SECRET)
     assert tc.project_id is None
     assert tc.trace_id is None
+    assert tc.mcp_key_id is None  # first-party call carries no public-key id
+    assert tc.spend_cap_usd is None  # nor a per-key cap
+
+
+def test_build_tool_context_lifts_spend_cap(monkeypatch):
+    # A public-edge call may carry X-Mcp-Spend-Cap-Usd → lands on the ctx (H-K) AND
+    # (universal hook) sets the loreweave_llm contextvar so a job this tool submits
+    # carries it into job_meta. We spy on the soft-imported setter.
+    import loreweave_mcp.context as ctxmod
+
+    captured: dict[str, object] = {}
+    monkeypatch.setattr(
+        ctxmod, "_set_llm_attribution",
+        lambda key, cap: captured.update(key=key, cap=cap),
+    )
+    tc = build_tool_context(_ctx(**{"x-mcp-key-id": "key-xyz", "x-mcp-spend-cap-usd": "5.5"}), SECRET)
+    assert tc.spend_cap_usd == 5.5
+    assert captured == {"key": "key-xyz", "cap": 5.5}
+
+
+def test_build_tool_context_malformed_cap_fails_open_to_none(monkeypatch):
+    import loreweave_mcp.context as ctxmod
+
+    captured: dict[str, object] = {}
+    monkeypatch.setattr(ctxmod, "_set_llm_attribution", lambda key, cap: captured.update(key=key, cap=cap))
+    # Garbage / negative cap → None (no per-key cap); a first-party call clears it.
+    tc = build_tool_context(_ctx(**{"x-mcp-spend-cap-usd": "not-a-number"}), SECRET)
+    assert tc.spend_cap_usd is None
+    assert captured == {"key": None, "cap": None}  # cleared, never leaks a prior call's cap
+
+
+def test_apply_public_key_attribution_headers_forwards_parsed(monkeypatch):
+    # The non-tool-call carrier-lift (P4/Wave-C slice A) used by a REST confirm route.
+    # It parses the cap header and forwards (key, cap) to the loreweave_llm setter.
+    import loreweave_mcp.context as ctxmod
+    from loreweave_mcp import apply_public_key_attribution_headers
+
+    captured: dict[str, object] = {}
+    monkeypatch.setattr(ctxmod, "_set_llm_attribution", lambda key, cap: captured.update(key=key, cap=cap))
+
+    apply_public_key_attribution_headers("key-1", "5.0")
+    assert captured == {"key": "key-1", "cap": 5.0}
+
+    # An empty key + malformed cap → both None (treated as absent / fail-open).
+    apply_public_key_attribution_headers("", "abc")
+    assert captured == {"key": None, "cap": None}
+
+    # The finally-clear path: (None, None) clears the contextvar.
+    apply_public_key_attribution_headers(None, None)
+    assert captured == {"key": None, "cap": None}
+
+
+def test_apply_public_key_attribution_headers_noop_without_llm(monkeypatch):
+    # A service without loreweave_llm installed (setter is None) → no-op, no crash.
+    import loreweave_mcp.context as ctxmod
+    from loreweave_mcp import apply_public_key_attribution_headers
+
+    monkeypatch.setattr(ctxmod, "_set_llm_attribution", None)
+    apply_public_key_attribution_headers("key-1", "5.0")  # must not raise
+
+
+def test_build_tool_context_lifts_mcp_key_id():
+    # A public-edge call carries X-Mcp-Key-Id → it lands on the ctx (H-C carrier)
+    # and flips owner-only ON (OD-8).
+    tc = build_tool_context(_ctx(**{"x-mcp-key-id": "key-xyz"}), SECRET)
+    assert tc.mcp_key_id == "key-xyz"
+    assert is_owner_only(tc) is True
+
+
+def test_is_owner_only_false_for_first_party():
+    tc = build_tool_context(_ctx(), SECRET)
+    assert is_owner_only(tc) is False
+
+
+def test_is_owner_only_duck_typed_on_foreign_ctx():
+    # Works on any object exposing mcp_key_id (e.g. knowledge-service's richer
+    # ToolContext, which composes its own dataclass).
+    class _Foreign:
+        mcp_key_id = "k1"
+
+    class _Bare:
+        pass
+
+    assert is_owner_only(_Foreign()) is True
+    assert is_owner_only(_Bare()) is False
 
 
 def test_build_tool_context_missing_token_rejected():
@@ -240,6 +326,36 @@ async def test_book_owner_guard_does_not_cache_denials():
     # Grant just landed — must NOT be stale-denied (denials are never cached).
     state["level"] = 4
     assert await guard(tc, book) == 4
+
+
+# ── book-owner guard OD-8 (owned-only for public MCP keys) ──────────────
+
+
+@pytest.mark.asyncio
+async def test_book_owner_guard_od8_public_key_denied_shared_book():
+    """A public key (mcp_key_id set) holding only a SHARE (manage<owner) is denied
+    even on a tool that nominally needs view — OD-8 escalates the bar to OWNER."""
+    async def resolver(book_id, user_id):
+        return 3  # manage — a collaboration grant, NOT owner
+
+    guard = require_book_owner(resolver, level=1)  # view-tier tool
+    book = uuid.uuid4()
+    public = ToolContext(user_id=uuid.uuid4(), session_id="s", mcp_key_id="key-abc")
+    with pytest.raises(NotAccessibleError):
+        await guard(public, book)
+    # The SAME grant is fine for a first-party call (no mcp_key_id) → grant path.
+    first_party = ToolContext(user_id=uuid.uuid4(), session_id="s")
+    assert await guard(first_party, book) == 3
+
+
+@pytest.mark.asyncio
+async def test_book_owner_guard_od8_public_key_owner_passes():
+    async def resolver(book_id, user_id):
+        return 4  # owner
+
+    guard = require_book_owner(resolver, level=1)
+    public = ToolContext(user_id=uuid.uuid4(), session_id="s", mcp_key_id="key-abc")
+    assert await guard(public, uuid.uuid4()) == 4  # owner clears OD-8
 
 
 # ── user-scope guard (H15) ─────────────────────────────────────────────

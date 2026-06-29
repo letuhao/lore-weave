@@ -36,7 +36,10 @@ async function bootstrap() {
   const learningUrl = requireEnv('LEARNING_SERVICE_URL');
   const compositionUrl = requireEnv('COMPOSITION_SERVICE_URL');
   const jobsUrl = requireEnv('JOBS_SERVICE_URL');
-  configureGatewayApp(app, { authUrl, bookUrl, sharingUrl, catalogUrl, providerRegistryUrl, usageBillingUrl, translationUrl, glossaryUrl, chatUrl, roleplayUrl, videoGenUrl, statisticsUrl, notificationUrl, knowledgeUrl, campaignUrl, loreEnrichmentUrl, learningUrl, compositionUrl, jobsUrl });
+  // PUBLIC MCP edge — optional (the public surface is itself flag-gated in the edge),
+  // so a default internal URL avoids forcing a new mandatory env on every deployment.
+  const mcpPublicGatewayUrl = process.env.MCP_PUBLIC_GATEWAY_URL ?? 'http://mcp-public-gateway:8211';
+  configureGatewayApp(app, { authUrl, bookUrl, sharingUrl, catalogUrl, providerRegistryUrl, usageBillingUrl, translationUrl, glossaryUrl, chatUrl, roleplayUrl, videoGenUrl, statisticsUrl, notificationUrl, knowledgeUrl, campaignUrl, loreEnrichmentUrl, learningUrl, compositionUrl, jobsUrl, mcpPublicGatewayUrl });
 
   app.enableShutdownHooks();
   const port = parseInt(process.env.PORT || '3000', 10);

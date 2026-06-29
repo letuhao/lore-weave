@@ -463,6 +463,27 @@ ALTER TABLE chapter_translations
 ALTER TABLE translation_jobs
   ADD COLUMN IF NOT EXISTS campaign_id UUID;
 
+-- Public-MCP spend attribution (P4 / D-PMCP-WORKER-CARRIER): when a priced
+-- translation/extraction job is started by a PUBLIC MCP key (via the
+-- /v1/translation/actions/confirm replay), the key id + the key's spend cap are
+-- stored on the job row so the BACKGROUND worker (a separate process — the
+-- in-process contextvar carrier dies at the AMQP hop) can re-set
+-- loreweave_llm.set_public_key_attribution before each provider call. NULL for
+-- ordinary first-party jobs. TEXT (not UUID) mirrors the edge/header form;
+-- spend_cap_usd is the per-key ceiling enforced at provider-registry's reserve.
+-- spend_cap_usd is DOUBLE PRECISION (not NUMERIC) on purpose: the value originates
+-- as a Python float (parsed from the X-Mcp-Spend-Cap-Usd header) and asyncpg's
+-- numeric codec REQUIRES a Decimal — binding a float to NUMERIC raises DataError at
+-- execute time (a real-PG failure that spy-pool unit tests cannot catch). float8
+-- binds the float natively and round-trips as a float (it's a coarse spend ceiling,
+-- not ledger money — the authoritative per-key accounting lives in usage-billing).
+ALTER TABLE translation_jobs
+  ADD COLUMN IF NOT EXISTS mcp_key_id    TEXT,
+  ADD COLUMN IF NOT EXISTS spend_cap_usd DOUBLE PRECISION;
+ALTER TABLE extraction_jobs
+  ADD COLUMN IF NOT EXISTS mcp_key_id    TEXT,
+  ADD COLUMN IF NOT EXISTS spend_cap_usd DOUBLE PRECISION;
+
 -- T2-M2 dirty-only re-translate: a job scoped to specific block positions of a
 -- single chapter. block_index_filter = the dirty block positions; seed_version_id
 -- = the prior llm version whose blocks are copied for every NON-filtered position.

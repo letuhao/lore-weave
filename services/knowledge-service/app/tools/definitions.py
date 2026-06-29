@@ -28,6 +28,7 @@ from app.tools.graph_schema_tools import (
     GRAPH_SCHEMA_ARG_MODELS,
     GRAPH_SCHEMA_TOOL_DEFINITIONS,
 )
+from app.tools.argbase import ProjectScopedArgs
 from app.tools.build_tools import BUILD_TOOL_ARG_MODELS
 from app.tools.project_tools import PROJECT_TOOL_ARG_MODELS
 
@@ -54,14 +55,25 @@ SEARCH_LIMIT_DEFAULT = 10
 TIMELINE_LIMIT_MAX = 50
 TIMELINE_LIMIT_DEFAULT = 20
 
+# H-I: the optional, ownership-checked project_id parameter shared by the
+# project-scoped memory tools (mirrors ProjectScopedArgs.project_id). Drift-locked
+# against the model by test_schema_properties_match_arg_model_fields.
+_PROJECT_ID_PROP = {
+    "type": "string",
+    "description": (
+        "Optional knowledge project id to scope this call to. Omit to use the "
+        "project linked to the current session. On the public API (no session "
+        "project) set this to one of YOUR projects — you can only address projects "
+        "you own."
+    ),
+}
+
 
 # ── per-tool argument models ──────────────────────────────────────────
 
 
-class MemorySearchArgs(BaseModel):
+class MemorySearchArgs(ProjectScopedArgs):
     """`memory_search` — semantic passage search within the project."""
-
-    model_config = ConfigDict(extra="forbid")
 
     query: str = Field(min_length=1, max_length=1000)
     limit: int = Field(
@@ -70,18 +82,14 @@ class MemorySearchArgs(BaseModel):
     source_type: Literal["chapter", "chat", "glossary"] | None = None
 
 
-class MemoryRecallEntityArgs(BaseModel):
+class MemoryRecallEntityArgs(ProjectScopedArgs):
     """`memory_recall_entity` — entity detail + relations, by name."""
-
-    model_config = ConfigDict(extra="forbid")
 
     entity_name: str = Field(min_length=1, max_length=200)
 
 
-class MemoryTimelineArgs(BaseModel):
+class MemoryTimelineArgs(ProjectScopedArgs):
     """`memory_timeline` — narrative events, optionally filtered."""
-
-    model_config = ConfigDict(extra="forbid")
 
     from_date: str | None = Field(default=None, pattern=_ISO_DATE_PATTERN)
     to_date: str | None = Field(default=None, pattern=_ISO_DATE_PATTERN)
@@ -101,10 +109,8 @@ class MemoryTimelineArgs(BaseModel):
         return self
 
 
-class MemoryRememberArgs(BaseModel):
+class MemoryRememberArgs(ProjectScopedArgs):
     """`memory_remember` — store a new fact (guardrailed, design D5)."""
-
-    model_config = ConfigDict(extra="forbid")
 
     fact_text: str = Field(min_length=1, max_length=2000)
     fact_type: Literal["decision", "preference", "milestone", "negation"]
@@ -187,6 +193,7 @@ TOOL_DEFINITIONS: list[dict] = [
                     "Optional — restrict to one source. Omit to search all."
                 ),
             },
+            "project_id": _PROJECT_ID_PROP,
         },
         ["query"],
     ),
@@ -201,6 +208,7 @@ TOOL_DEFINITIONS: list[dict] = [
                 "type": "string",
                 "description": "The entity's name as it appears in the story.",
             },
+            "project_id": _PROJECT_ID_PROP,
         },
         ["entity_name"],
     ),
@@ -236,6 +244,7 @@ TOOL_DEFINITIONS: list[dict] = [
                     f"Max events to return (default {TIMELINE_LIMIT_DEFAULT})."
                 ),
             },
+            "project_id": _PROJECT_ID_PROP,
         },
         [],
     ),
@@ -259,6 +268,7 @@ TOOL_DEFINITIONS: list[dict] = [
                     "achievement; negation = something explicitly NOT true."
                 ),
             },
+            "project_id": _PROJECT_ID_PROP,
         },
         ["fact_text", "fact_type"],
     ),
@@ -353,6 +363,7 @@ TOOL_DEFINITIONS: list[dict] = [
                 "description": "Reasoning effort for the extraction LLM (paid compute; clamped "
                                "to your grant — Edit caps at medium, Manage/owner at high).",
             },
+            "project_id": _PROJECT_ID_PROP,
         },
         ["llm_model"],
     ),
@@ -387,6 +398,7 @@ TOOL_DEFINITIONS: list[dict] = [
                 "description": "Reasoning effort for the wiki-gen LLM (paid compute; clamped "
                                "to your grant — Edit caps at medium, Manage/owner at high).",
             },
+            "project_id": _PROJECT_ID_PROP,
         },
         ["model_ref"],
     ),
@@ -399,7 +411,7 @@ TOOL_DEFINITIONS: list[dict] = [
         "the UI. Cheap (embeddings only, no LLM cost) and runs immediately on a hidden "
         "sandbox (it never touches the real graph). Returns passed + gate_failures; a pass "
         "enables Build-KG for this embedding model.",
-        {},
+        {"project_id": _PROJECT_ID_PROP},
         [],
     ),
 ]

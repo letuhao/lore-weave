@@ -86,6 +86,43 @@ func TestParseJobMetaCampaignID(t *testing.T) {
 	}
 }
 
+func TestParseJobMetaMcpKeyID(t *testing.T) {
+	// H-C/PUB-11: the mcp_key_id attribution tag is parsed from job_meta with the
+	// SAME nil-tolerance contract as campaign_id — a malformed tag must never fail a
+	// billing-critical finalize; it just yields an un-attributed (NULL) usage row.
+	// The PUB-12 gate also relies on this returning non-nil ONLY for a real key.
+	valid := uuid.New()
+	cases := []struct {
+		name string
+		raw  string
+		want *uuid.UUID
+	}{
+		{"valid", `{"mcp_key_id":"` + valid.String() + `"}`, &valid},
+		{"valid with other keys", `{"campaign_id":"` + uuid.New().String() + `","mcp_key_id":"` + valid.String() + `"}`, &valid},
+		{"absent key", `{"campaign_id":"` + uuid.New().String() + `"}`, nil},
+		{"empty string value", `{"mcp_key_id":""}`, nil},
+		{"non-string value", `{"mcp_key_id":42}`, nil},
+		{"bad uuid", `{"mcp_key_id":"not-a-uuid"}`, nil},
+		{"empty bytes", ``, nil},
+		{"null literal", `null`, nil},
+		{"non-object", `"just a string"`, nil},
+		{"malformed json", `{not json`, nil},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			got := ParseJobMetaMcpKeyID([]byte(tc.raw))
+			switch {
+			case tc.want == nil && got != nil:
+				t.Fatalf("expected nil, got %v", *got)
+			case tc.want != nil && got == nil:
+				t.Fatalf("expected %v, got nil", *tc.want)
+			case tc.want != nil && *got != *tc.want:
+				t.Fatalf("expected %v, got %v", *tc.want, *got)
+			}
+		})
+	}
+}
+
 func TestActualUSD_NoUsageBlock_ReturnsNil(t *testing.T) {
 	// A result with no `usage` block (every media operation) yields nil so
 	// the caller reconciles with the reservation's stored estimate.

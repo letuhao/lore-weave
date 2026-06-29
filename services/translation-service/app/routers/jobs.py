@@ -104,6 +104,7 @@ async def retranslate_dirty(
 async def _retranslate_dirty_core(
     db: asyncpg.Pool, chapter_id: UUID, target_language: str, user_id: str,
     *, book_id: UUID | None = None,
+    mcp_key_id: str | None = None, spend_cap_usd: float | None = None,
 ) -> "TranslationJob":
     """Core of the dirty-only re-translate — book ownership is assumed ALREADY
     verified by the caller (the public route authorizes via the E0-4a grant gate;
@@ -157,12 +158,16 @@ async def _retranslate_dirty_core(
         block_index_filter=block_idx,
         seed_version_id=seed,
     )
-    return await _resolve_and_create_job(db, book_id, payload, user_id)
+    return await _resolve_and_create_job(
+        db, book_id, payload, user_id,
+        mcp_key_id=mcp_key_id, spend_cap_usd=spend_cap_usd,
+    )
 
 
 async def _resolve_and_create_job(
     db: asyncpg.Pool, book_id: UUID, payload: CreateJobPayload, user_id: str,
     *, campaign_id: UUID | None = None,
+    mcp_key_id: str | None = None, spend_cap_usd: float | None = None,
 ) -> TranslationJob:
     """Core job-create: resolve effective settings + overrides, insert the job +
     chapter rows in one transaction, publish to RabbitMQ. Ownership is assumed
@@ -171,7 +176,14 @@ async def _resolve_and_create_job(
 
     S4a: `campaign_id` is an internal-only attribution tag (None for public
     callers); it is persisted on the job + rides the message chain to every
-    provider job's job_meta."""
+    provider job's job_meta.
+
+    D-PMCP-WORKER-CARRIER: `mcp_key_id`/`spend_cap_usd` are the PUBLIC-MCP-key
+    attribution (None for first-party callers), set ONLY by the confirm-route
+    replay. They persist on the job row + ride the message chain so the background
+    chapter worker can re-set the loreweave_llm contextvar before each provider
+    call (the in-process contextvar dies at the AMQP hop). Server-set: never read
+    from a public-controllable body."""
     uid = UUID(user_id)
 
     # Resolve effective settings, then overlay any per-job overrides (Fix-C): a one-off
@@ -281,9 +293,10 @@ async def _resolve_and_create_job(
                    qa_depth, max_qa_rounds, verifier_model_source, verifier_model_ref,
                    cold_start_mode, campaign_id,
                    eval_judge_model_source, eval_judge_model_ref,
-                   block_index_filter, seed_version_id, thinking_enabled)
+                   block_index_filter, seed_version_id, thinking_enabled,
+                   mcp_key_id, spend_cap_usd)
                 VALUES ($1,$2,'pending',$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,
-                        $17,$18,$19,$20,$21,$22,$23,$24,$25,$26,$27)
+                        $17,$18,$19,$20,$21,$22,$23,$24,$25,$26,$27,$28,$29)
                 RETURNING *
                 """,
                 book_id, uid,
@@ -300,6 +313,7 @@ async def _resolve_and_create_job(
                 eff.get("eval_judge_model_source"), eff.get("eval_judge_model_ref"),
                 payload.block_index_filter, payload.seed_version_id,
                 payload.thinking_enabled,
+                mcp_key_id, spend_cap_usd,
             )
 
             job_id = job_row["job_id"]
@@ -399,6 +413,10 @@ async def _resolve_and_create_job(
             "thinking_enabled":        payload.thinking_enabled,
             # S4a: ride campaign_id through the message chain (job → chapter → job_meta).
             "campaign_id":             str(campaign_id) if campaign_id else None,
+            # D-PMCP-WORKER-CARRIER: ride the public-MCP key + cap through the message
+            # chain so the chapter worker re-sets the attribution contextvar.
+            "mcp_key_id":              mcp_key_id,
+            "spend_cap_usd":           spend_cap_usd,
             # T2-M2: dirty-only re-translate scope (None for whole-chapter jobs).
             "block_index_filter":      payload.block_index_filter,
             "seed_version_id":         str(payload.seed_version_id) if payload.seed_version_id else None,
@@ -633,6 +651,11 @@ def _job_message_from_row(row, chapter_ids: list) -> dict:
         # D-TRANSLATE-REASONING-TOGGLE: rebuilt from the row so resume keeps the setting.
         "thinking_enabled":        row["thinking_enabled"],
         "campaign_id":             str(row["campaign_id"]) if row["campaign_id"] else None,
+        # D-PMCP-WORKER-CARRIER: rebuilt from the row so a resume/retry of a
+        # public-key job keeps attributing the re-spend to the agent's key. The column
+        # is DOUBLE PRECISION → already a float; the coalesce keeps NULL as None.
+        "mcp_key_id":              row["mcp_key_id"],
+        "spend_cap_usd":           float(row["spend_cap_usd"]) if row["spend_cap_usd"] is not None else None,
         "block_index_filter":      row["block_index_filter"],
         "seed_version_id":         str(row["seed_version_id"]) if row["seed_version_id"] else None,
     }

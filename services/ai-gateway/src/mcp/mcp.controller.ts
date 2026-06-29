@@ -4,6 +4,7 @@ import { StreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/
 import { FederationService } from '../federation/federation.service.js';
 import { buildProxyServer } from './proxy-server.factory.js';
 import { loadConfig } from '../config/config.js';
+import { constantTimeEquals } from '../util/auth.js';
 
 /**
  * The single upstream MCP face. Consumers (chat, composition) connect here as
@@ -22,7 +23,7 @@ export class McpController {
   async handle(@Req() req: Request, @Res() res: Response): Promise<void> {
     // SO-1: service-auth gate on EVERY /mcp request (initialize / list / call).
     const token = req.header('x-internal-token');
-    if (!this.cfg.internalToken || token !== this.cfg.internalToken) {
+    if (!this.cfg.internalToken || !constantTimeEquals(token ?? '', this.cfg.internalToken)) {
       res.status(401).json({
         jsonrpc: '2.0',
         error: { code: -32001, message: 'invalid internal token' },

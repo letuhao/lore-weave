@@ -15,6 +15,7 @@ import (
 
 	"github.com/loreweave/glossary-service/internal/domain"
 	"github.com/loreweave/grantclient"
+	lwmcp "github.com/loreweave/loreweave_mcp"
 )
 
 // mcpHandler builds the glossary MCP server (Tier-R read tools) wrapped in the
@@ -169,6 +170,10 @@ func (s *Server) mcpIdentityMiddleware(next http.Handler) http.Handler {
 			return
 		}
 		ctx := context.WithValue(r.Context(), ctxKeyUserID, r.Header.Get("X-User-Id"))
+		// OD-8 carrier: lift X-Mcp-Key-Id into the kit's ctx so OwnerOnlyFromCtx
+		// fires for public-key traffic (glossary runs its own middleware, not the
+		// kit's IdentityMiddleware, so we inject via the kit helper).
+		ctx = lwmcp.ContextWithMcpKeyID(ctx, r.Header.Get(lwmcp.HeaderMcpKeyID))
 		next.ServeHTTP(w, r.WithContext(ctx))
 	})
 }

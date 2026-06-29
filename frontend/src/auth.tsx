@@ -7,6 +7,8 @@ type UserProfile = {
   email: string;
   display_name: string | null;
   avatar_url: string | null;
+  // Q-GATE: read-only platform flag — gates the public-MCP settings tab.
+  public_mcp_enabled?: boolean;
 };
 
 type AuthState = {

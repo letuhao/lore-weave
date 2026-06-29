@@ -66,6 +66,8 @@ async def apply_build_graph(
     benchmark_repo,
     book_client,
     extraction_wake,
+    mcp_key_id: str | None = None,
+    spend_cap_usd: float | None = None,
 ) -> dict:
     """Start the extraction job via the shared core. Returns {job_id, status, scope}.
     HTTPExceptions from the core (benchmark gate 409, active-job 409, scope 422) propagate
@@ -80,6 +82,7 @@ async def apply_build_graph(
     job = await _start_extraction_job_core(
         UUID(project_id), body, owner, projects_repo, jobs_repo, benchmark_repo,
         caller=None, book_client=book_client, extraction_wake=extraction_wake,
+        mcp_key_id=mcp_key_id, spend_cap_usd=spend_cap_usd,
     )
     return {
         "started": True,

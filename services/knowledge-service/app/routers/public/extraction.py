@@ -431,9 +431,10 @@ async def _create_and_start_job(
                       (user_id, project_id, scope, scope_range, llm_model,
                        embedding_model, max_spend_usd, items_total, campaign_id,
                        billing_user_id, billing_embedding_model, billing_llm_model,
-                       targets, concurrency_level, pinned_entity_ids)
+                       targets, concurrency_level, pinned_entity_ids,
+                       mcp_key_id, spend_cap_usd)
                     VALUES ($1, $2, $3, $4::jsonb, $5, $6, $7, $8, $9,
-                            $10, $11, $12, $13, $14, $15::jsonb)
+                            $10, $11, $12, $13, $14, $15::jsonb, $16, $17)
                     RETURNING job_id
                     """,
                     user_id,
@@ -464,6 +465,10 @@ async def _create_and_start_job(
                     # pinned names and prepend them into every window.
                     json.dumps(validated.pinned_entity_ids)
                     if validated.pinned_entity_ids else None,
+                    # D-PMCP-WORKER-CARRIER: public-MCP key + cap (float8 column) so
+                    # worker-ai re-sets the attribution contextvar from the row.
+                    validated.mcp_key_id,
+                    validated.spend_cap_usd,
                 )
                 job_id = job_row["job_id"]
 
@@ -569,6 +574,8 @@ async def _start_extraction_job_core(
     pending_repo: ExtractionPendingRepo | None = None,
     glossary_client: GlossaryClient | None = None,
     extraction_wake: ExtractionWakeFn | None = None,
+    mcp_key_id: str | None = None,
+    spend_cap_usd: float | None = None,
 ) -> ExtractionJob:
     """Create and start an extraction job for a project.
 
@@ -876,6 +883,10 @@ async def _start_extraction_job_core(
         pinned_entity_ids=body.pinned_glossary_entity_ids,
         # D-RE-OTHER-AGENTIC-EFFORT: the clamped reasoning effort persisted on the job row.
         reasoning_effort=body.reasoning_effort,
+        # D-PMCP-WORKER-CARRIER: public-MCP attribution (set only by the kg confirm
+        # replay; None for first-party/HTTP callers — the public route never accepts it).
+        mcp_key_id=mcp_key_id,
+        spend_cap_usd=spend_cap_usd,
     )
 
     job_id = await _create_and_start_job(

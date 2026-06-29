@@ -9,13 +9,14 @@ package jobs
 import "testing"
 
 func TestBuildUsageFields_Contract(t *testing.T) {
-	f := buildUsageFields("req-1", "owner-1", "camp-1", "user_model", "model-1",
+	f := buildUsageFields("req-1", "owner-1", "camp-1", "mcpkey-1", "user_model", "model-1",
 		"translation", "0.00012345", 120, 30, "success", `{"messages":[]}`, `{"text":"hi"}`)
 
 	want := map[string]string{
 		"request_id":       "req-1",
 		"owner_user_id":    "owner-1",
 		"campaign_id":      "camp-1",
+		"mcp_key_id":       "mcpkey-1",
 		"model_source":     "user_model",
 		"model_ref":        "model-1",
 		"operation":        "translation",
@@ -43,10 +44,13 @@ func TestBuildUsageFields_Contract(t *testing.T) {
 func TestBuildUsageFields_NullsArePassthroughEmpty(t *testing.T) {
 	// A non-campaign job (campaign="") and a media/unpriced job (cost="") carry
 	// empty strings — the consumer treats "" as null. Zero tokens stringify to "0".
-	f := buildUsageFields("req-2", "owner-2", "", "platform_model", "model-2",
+	f := buildUsageFields("req-2", "owner-2", "", "", "platform_model", "model-2",
 		"image_gen", "", 0, 0, "", "", "")
 	if f["campaign_id"] != "" {
 		t.Fatalf("campaign_id: want empty, got %v", f["campaign_id"])
+	}
+	if f["mcp_key_id"] != "" {
+		t.Fatalf("mcp_key_id: want empty, got %v", f["mcp_key_id"])
 	}
 	if f["cost_usd"] != "" {
 		t.Fatalf("cost_usd: want empty, got %v", f["cost_usd"])
@@ -67,7 +71,7 @@ func TestBuildUsageFields_NullsArePassthroughEmpty(t *testing.T) {
 func TestCampaignFields_StripsPayloads(t *testing.T) {
 	// #32 /review-impl MED — the campaign_usage stream must NOT carry the plaintext
 	// request/response payloads (the spend consumer reads only cost/ids).
-	full := buildUsageFields("r", "o", "c", "user_model", "m", "chat", "0.01", 5, 5,
+	full := buildUsageFields("r", "o", "c", "", "user_model", "m", "chat", "0.01", 5, 5,
 		"success", `{"in":1}`, `{"out":1}`)
 	camp := campaignFields(full)
 	if _, ok := camp["request_payload"]; ok {
@@ -87,7 +91,7 @@ func TestCampaignFields_StripsPayloads(t *testing.T) {
 func TestBuildUsageFields_CarriesFailedStatus(t *testing.T) {
 	// #32 — a failed/cancelled call now carries its real status (not hardcoded
 	// "success") so usage-billing audits every call distinctly.
-	f := buildUsageFields("req-3", "owner-3", "", "user_model", "model-3",
+	f := buildUsageFields("req-3", "owner-3", "", "", "user_model", "model-3",
 		"chat", "", 0, 0, "failed", `{"messages":[]}`, "")
 	if f["request_status"] != "failed" {
 		t.Fatalf("request_status: want failed, got %v", f["request_status"])

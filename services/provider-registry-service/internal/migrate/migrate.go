@@ -243,6 +243,11 @@ CREATE TABLE IF NOT EXISTS usage_outbox (
 CREATE INDEX IF NOT EXISTS idx_usage_outbox_unpublished
   ON usage_outbox(id) WHERE published_at IS NULL;
 
+-- Public MCP P3 (H-C/PUB-11) — per-key spend attribution. A job that originated at
+-- the public MCP edge carries job_meta.mcp_key_id; FinalizeWithUsageOutbox stamps it
+-- here so it rides the usage stream → usage-billing usage_logs. NULL for first-party.
+ALTER TABLE usage_outbox ADD COLUMN IF NOT EXISTS mcp_key_id UUID;
+
 -- LLM re-arch Phase 1 — transactional terminal-event outbox. On EVERY terminal
 -- transition (completed|failed|cancelled) the worker (and the cancel handler)
 -- writes one row HERE in the same tx as the llm_jobs finalize; a relay XADDs it

@@ -72,6 +72,7 @@ export const DEFAULT_PREFIX_MAP: Record<string, string> = {
   translation: 'translation_',
   settings: 'settings_',
   jobs: 'jobs_',
+  catalog: 'catalog_',
 };
 
 /**
