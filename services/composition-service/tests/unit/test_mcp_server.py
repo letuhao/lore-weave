@@ -63,10 +63,11 @@ EXPECTED_TOOLS = {
     # Tier R (motif)
     "composition_motif_search", "composition_motif_get",
     "composition_motif_suggest_for_chapter", "composition_arc_suggest",
-    "composition_get_mine_job",
+    "composition_get_mine_job", "composition_motif_link_list",
     # Tier A (motif)
     "composition_motif_create", "composition_motif_archive",
     "composition_motif_bind", "composition_motif_unbind",
+    "composition_motif_link_create", "composition_motif_link_delete",
     # Tier W (motif)
     "composition_motif_adopt", "composition_motif_mine",
     "composition_arc_import_analyze", "composition_conformance_run",
@@ -76,7 +77,7 @@ TIER_R = {"composition_get_work", "composition_list_outline",
           "composition_get_generation_job",
           "composition_motif_search", "composition_motif_get",
           "composition_motif_suggest_for_chapter", "composition_arc_suggest",
-          "composition_get_mine_job"}
+          "composition_get_mine_job", "composition_motif_link_list"}
 TIER_W = {"composition_publish", "composition_generate",
           "composition_motif_adopt", "composition_motif_mine",
           "composition_arc_import_analyze", "composition_conformance_run"}

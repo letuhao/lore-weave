@@ -194,6 +194,105 @@ class MotifRepo:
                 {"id": str(r["to_id"]), "code": r["code"], "name": r["name"], "ord": r["ord"]})
         return out
 
+    # ────────────────────────────────────────────────────────────────────────
+    # motif_link edge-walk (D-MOTIF-LINK-EDGEWALK) — traverse + edit the relationship
+    # graph (composed_of / precedes / variant_of). The F0 motif_link_guard trigger
+    # enforces same-tier + acyclicity at the DB, but a user editing the SYSTEM graph
+    # (system↔system, both owner NULL → "not distinct") slips that guard — so the
+    # WRITE methods here additionally require BOTH endpoints owned by the caller (a
+    # user may never reshape the shared/system graph; the kinds-bug class). READ is
+    # allowed for any VISIBLE anchor motif (own/system/public), read-only.
+    # ────────────────────────────────────────────────────────────────────────
+
+    async def list_links(
+        self, caller_id: UUID, motif_id: UUID, *,
+        direction: str = "both", kinds: list[str] | None = None, limit: int = 200,
+    ) -> list[dict[str, Any]]:
+        """Edges touching a VISIBLE motif, each joined to its NEIGHBOR (id/code/name).
+        `direction`: 'out' (motif→neighbor), 'in' (neighbor→motif), 'both'. Returns []
+        if the anchor isn't visible to the caller (router maps the empty/None to H13 at
+        the tool). Neighbors are re-filtered by the read predicate (defense-in-depth —
+        the same-tier guard already keeps them in the caller's visible tier)."""
+        anchor = await self.get_visible(caller_id, motif_id)
+        if anchor is None:
+            return []
+        kind_clause = ""
+        params: list[Any] = [caller_id, motif_id]
+        if kinds:
+            params.append(list(kinds))
+            kind_clause = f" AND l.kind = ANY(${len(params)})"
+        params.append(max(0, limit))
+        limit_pos = len(params)
+        arms: list[str] = []
+        if direction in ("out", "both"):
+            arms.append(f"""
+            SELECT l.id, l.kind, l.ord, 'out' AS direction,
+                   m.id AS neighbor_id, m.code AS neighbor_code, m.name AS neighbor_name
+            FROM motif_link l JOIN motif m ON m.id = l.to_motif_id
+            WHERE l.from_motif_id = $2 AND {_VISIBLE_PREDICATE}{kind_clause}""")
+        if direction in ("in", "both"):
+            arms.append(f"""
+            SELECT l.id, l.kind, l.ord, 'in' AS direction,
+                   m.id AS neighbor_id, m.code AS neighbor_code, m.name AS neighbor_name
+            FROM motif_link l JOIN motif m ON m.id = l.from_motif_id
+            WHERE l.to_motif_id = $2 AND {_VISIBLE_PREDICATE}{kind_clause}""")
+        if not arms:
+            return []
+        query = f"{' UNION ALL '.join(arms)} ORDER BY kind, ord NULLS LAST LIMIT ${limit_pos}"
+        async with self._pool.acquire() as c:
+            rows = await c.fetch(query, *params)
+        return [
+            {
+                "id": str(r["id"]), "kind": r["kind"], "ord": r["ord"],
+                "direction": r["direction"],
+                "neighbor": {"id": str(r["neighbor_id"]), "code": r["neighbor_code"],
+                             "name": r["neighbor_name"]},
+            }
+            for r in rows
+        ]
+
+    async def create_link(
+        self, caller_id: UUID, from_motif_id: UUID, to_motif_id: UUID, kind: str,
+        *, ord: int | None = None,
+    ) -> "MotifLink":
+        """Create one edge between TWO motifs the caller OWNS (the both-owned app gate
+        — a user may not touch the system/foreign graph; the DB same-tier guard misses
+        system↔system). Raises LookupError if either endpoint isn't the caller's own;
+        asyncpg.UniqueViolationError on a duplicate edge; asyncpg.CheckViolationError on
+        a self-link or a cycle/cross-tier the DB trigger rejects."""
+        from app.db.models import MotifLink
+        async with self._pool.acquire() as c:
+            owners = await c.fetch(
+                "SELECT id, owner_user_id FROM motif WHERE id = ANY($1)",
+                [from_motif_id, to_motif_id],
+            )
+            owned = {r["id"]: r["owner_user_id"] for r in owners}
+            if owned.get(from_motif_id) != caller_id or owned.get(to_motif_id) != caller_id:
+                raise LookupError("both endpoints must be motifs you own")
+            row = await c.fetchrow(
+                """
+                INSERT INTO motif_link (from_motif_id, to_motif_id, kind, ord)
+                VALUES ($1, $2, $3, $4)
+                RETURNING id, from_motif_id, to_motif_id, kind, ord, created_at
+                """,
+                from_motif_id, to_motif_id, kind, ord,
+            )
+        return MotifLink.model_validate(dict(row))
+
+    async def delete_link(self, caller_id: UUID, link_id: UUID) -> bool:
+        """Delete one edge the caller OWNS (its from_motif is the caller's — and by the
+        same-tier guard the to_motif is too). A foreign/system/missing edge is a no-op
+        the router maps to H13 (no oracle). Returns True iff a row was removed."""
+        async with self._pool.acquire() as c:
+            tag = await c.execute(
+                """
+                DELETE FROM motif_link l USING motif m
+                WHERE l.id = $2 AND m.id = l.from_motif_id AND m.owner_user_id = $1
+                """,
+                caller_id, link_id,
+            )
+        return tag.rsplit(" ", 1)[-1] != "0"
+
     async def patch(
         self, caller_id: UUID, motif_id: UUID, args: MotifPatchArgs, *, expected_version: int,
         repin_source_version: int | None = None, repin_adopted_base: str | None = None,

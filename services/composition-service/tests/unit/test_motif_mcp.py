@@ -46,11 +46,15 @@ MOTIF_TOOLS = {
     "composition_motif_bind", "composition_motif_unbind",
     "composition_motif_adopt", "composition_motif_mine",
     "composition_arc_import_analyze", "composition_conformance_run",
+    "composition_motif_link_list", "composition_motif_link_create",
+    "composition_motif_link_delete",
 }
 MOTIF_USER_SCOPE = {
     "composition_motif_search", "composition_motif_get",
     "composition_motif_create", "composition_motif_archive",
     "composition_motif_adopt", "composition_arc_import_analyze",
+    "composition_motif_link_list", "composition_motif_link_create",
+    "composition_motif_link_delete",
 }
 
 
@@ -520,6 +524,106 @@ async def test_adopt_target_book_denied_without_edit():
             await srv.composition_motif_adopt(
                 _Ctx(), srv._MotifAdoptArgs(motif_id=str(motif.id), target="book", book_id=str(BOOK)),
             )
+
+
+# ── motif_link edge-walk (D-MOTIF-LINK-EDGEWALK) ──────────────────────────────
+
+
+async def test_motif_link_list_returns_neighbors():
+    """The list tool returns a visible motif's edges + neighbor projection (no oracle —
+    list_links itself returns [] for a motif the caller can't see)."""
+    import app.mcp.server as srv
+
+    repo = AsyncMock()
+    repo.list_links = AsyncMock(return_value=[
+        {"id": "l1", "kind": "precedes", "ord": 0, "direction": "out",
+         "neighbor": {"id": "m2", "code": "fall", "name": "The Fall"}},
+    ])
+    async with _patched(MotifRepo=repo):
+        res = await srv.composition_motif_link_list(_Ctx(), motif_id=str(uuid.uuid4()))
+    assert res["count"] == 1
+    assert res["links"][0]["neighbor"]["code"] == "fall"
+    assert repo.list_links.await_args.kwargs["direction"] == "both"
+
+
+async def test_motif_link_list_rejects_bad_direction():
+    import app.mcp.server as srv
+
+    async with _patched(MotifRepo=AsyncMock()):
+        res = await srv.composition_motif_link_list(
+            _Ctx(), motif_id=str(uuid.uuid4()), direction="sideways")
+    assert res["success"] is False
+
+
+async def test_motif_link_create_happy_with_undo():
+    """Create an edge between two of MY motifs → the edge + a delete undo-hint."""
+    import app.mcp.server as srv
+    from app.db.models import MotifLink
+
+    a, b = uuid.uuid4(), uuid.uuid4()
+    link = MotifLink(id=uuid.uuid4(), from_motif_id=a, to_motif_id=b, kind="composed_of", ord=1)
+    repo = AsyncMock()
+    repo.create_link = AsyncMock(return_value=link)
+    async with _patched(MotifRepo=repo):
+        res = await srv.composition_motif_link_create(
+            _Ctx(), srv._MotifLinkCreateArgs(from_motif_id=str(a), to_motif_id=str(b),
+                                             kind="composed_of", ord=1),
+        )
+    assert res["kind"] == "composed_of"
+    assert res["_meta"]["undo_hint"]["tool"] == "composition_motif_link_delete"
+
+
+async def test_motif_link_create_foreign_endpoint_denied():
+    """The both-owned gate: a system/foreign endpoint → uniform deny (a user may not
+    reshape the shared graph — the kinds-bug class)."""
+    import app.mcp.server as srv
+    from loreweave_mcp import NotAccessibleError
+
+    repo = AsyncMock()
+    repo.create_link = AsyncMock(side_effect=LookupError("not yours"))
+    async with _patched(MotifRepo=repo):
+        with pytest.raises(NotAccessibleError):
+            await srv.composition_motif_link_create(
+                _Ctx(), srv._MotifLinkCreateArgs(
+                    from_motif_id=str(uuid.uuid4()), to_motif_id=str(uuid.uuid4()),
+                    kind="precedes"),
+            )
+
+
+async def test_motif_link_create_duplicate_and_cycle():
+    import app.mcp.server as srv
+    import asyncpg
+
+    repo = AsyncMock()
+    repo.create_link = AsyncMock(side_effect=asyncpg.UniqueViolationError("dup"))
+    async with _patched(MotifRepo=repo):
+        dup = await srv.composition_motif_link_create(
+            _Ctx(), srv._MotifLinkCreateArgs(
+                from_motif_id=str(uuid.uuid4()), to_motif_id=str(uuid.uuid4()), kind="precedes"))
+    assert dup["outcome"] == "applied_conflict"
+
+    repo.create_link = AsyncMock(side_effect=asyncpg.CheckViolationError("cycle"))
+    async with _patched(MotifRepo=repo):
+        cyc = await srv.composition_motif_link_create(
+            _Ctx(), srv._MotifLinkCreateArgs(
+                from_motif_id=str(uuid.uuid4()), to_motif_id=str(uuid.uuid4()), kind="precedes"))
+    assert cyc["success"] is False and "cycle" in cyc["error"]
+
+
+async def test_motif_link_delete_happy_and_foreign():
+    import app.mcp.server as srv
+    from loreweave_mcp import NotAccessibleError
+
+    repo = AsyncMock()
+    repo.delete_link = AsyncMock(return_value=True)
+    async with _patched(MotifRepo=repo):
+        res = await srv.composition_motif_link_delete(_Ctx(), link_id=str(uuid.uuid4()))
+    assert res["deleted"] is True
+
+    repo.delete_link = AsyncMock(return_value=False)   # foreign/missing edge
+    async with _patched(MotifRepo=repo):
+        with pytest.raises(NotAccessibleError):
+            await srv.composition_motif_link_delete(_Ctx(), link_id=str(uuid.uuid4()))
 
 
 async def test_mine_propose_mints_token_with_estimate():

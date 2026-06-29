@@ -1367,6 +1367,113 @@ async def composition_motif_archive(
     return {"motif_id": motif_id, "archived": True, "_meta": {"undo_hint": None}}
 
 
+# ── motif_link edge-walk (D-MOTIF-LINK-EDGEWALK) — traverse + edit the relationship
+# graph (composed_of = a pattern's members, precedes = legal succession, variant_of =
+# ATU variants). READ over any VISIBLE motif; WRITE only between TWO of YOUR OWN motifs
+# (the both-owned gate — a user may never reshape the shared/system graph; the F0
+# motif_link_guard trigger also blocks cross-tier + cycles at the DB).
+class _MotifLinkCreateArgs(ForbidExtra):
+    from_motif_id: str
+    to_motif_id: str
+    kind: Literal["composed_of", "precedes", "variant_of"]
+    ord: int | None = None
+
+
+@mcp_server.tool(
+    name="composition_motif_link_list",
+    description=(
+        "List the relationship edges of one motif — its `composed_of` members, "
+        "`precedes` successions, and `variant_of` links, with each neighbor's code + "
+        "name. Walk the graph by following a neighbor id into another list call. "
+        "direction: 'out' (this→neighbor), 'in' (neighbor→this), or 'both' (default)."
+    ),
+    meta=require_meta(
+        "R", "user",
+        synonyms=["motif links", "related motifs", "motif graph", "composed of",
+                  "what follows this motif", "motif variants", "traverse motifs"],
+        tool_name="composition_motif_link_list",
+    ),
+)
+async def composition_motif_link_list(
+    ctx: MCPContext,
+    motif_id: Annotated[str, "The motif whose edges to list (must be visible to you)."],
+    direction: Annotated[str, "'out', 'in', or 'both'."] = "both",
+    kinds: Annotated[list[str] | None, "Optional filter, e.g. ['precedes']."] = None,
+) -> dict:
+    tc = _ctx(ctx)
+    if direction not in ("out", "in", "both"):
+        return {"success": False, "error": "direction must be 'out', 'in', or 'both'"}
+    repo = MotifRepo(get_pool())
+    # READPRED: list_links returns [] for a motif you can't see (IDOR-safe — empty is
+    # indistinguishable from 'no edges', no existence oracle).
+    links = await repo.list_links(
+        tc.user_id, UUID(motif_id), direction=direction, kinds=kinds,
+    )
+    return {"motif_id": motif_id, "links": links, "count": len(links)}
+
+
+@mcp_server.tool(
+    name="composition_motif_link_create",
+    description=(
+        "Create a relationship edge between TWO of YOUR OWN motifs: `composed_of` "
+        "(a pattern's member), `precedes` (legal succession), or `variant_of`. Both "
+        "endpoints must be yours (you cannot edit the shared/system graph). A duplicate "
+        "edge, a self-link, or a cycle (on composed_of/precedes) is refused."
+    ),
+    meta=require_meta(
+        "A", "user",
+        synonyms=["link motifs", "connect motifs", "add motif edge", "compose pattern",
+                  "set succession", "mark variant", "relate tropes"],
+        tool_name="composition_motif_link_create",
+    ),
+)
+async def composition_motif_link_create(ctx: MCPContext, args: _MotifLinkCreateArgs) -> dict:
+    tc = _ctx(ctx)
+    repo = MotifRepo(get_pool())
+    try:
+        link = await repo.create_link(
+            tc.user_id, UUID(args.from_motif_id), UUID(args.to_motif_id), args.kind,
+            ord=args.ord,
+        )
+    except LookupError:
+        # one/both endpoints aren't the caller's own → uniform deny (no oracle).
+        raise uniform_not_accessible()
+    except asyncpg.UniqueViolationError:
+        return {"success": False, "outcome": "applied_conflict",
+                "error": "that edge already exists"}
+    except asyncpg.CheckViolationError:
+        # the F0 motif_link_guard rejected a self-link / cycle / cross-tier edge.
+        return {"success": False, "error": "invalid edge (self-link, cycle, or cross-tier)"}
+    out = link.model_dump(mode="json")
+    out["_meta"] = {"undo_hint": _undo("composition_motif_link_delete", link_id=str(link.id))}
+    return out
+
+
+@mcp_server.tool(
+    name="composition_motif_link_delete",
+    description=(
+        "Delete a relationship edge between two of YOUR motifs (hard delete — edges have "
+        "no children). EDIT auto-applied; a foreign/system/missing edge is refused."
+    ),
+    meta=require_meta(
+        "A", "user",
+        synonyms=["unlink motifs", "remove motif edge", "delete motif link", "disconnect motifs"],
+        tool_name="composition_motif_link_delete",
+    ),
+)
+async def composition_motif_link_delete(
+    ctx: MCPContext,
+    link_id: Annotated[str, "The motif-link edge id (must be on one of your motifs)."],
+) -> dict:
+    tc = _ctx(ctx)
+    repo = MotifRepo(get_pool())
+    deleted = await repo.delete_link(tc.user_id, UUID(link_id))
+    if not deleted:
+        raise uniform_not_accessible()
+    # A hard delete has no verified reverse op (the row is gone) → undo unavailable.
+    return {"deleted": True, "link_id": link_id, "_meta": {"undo_hint": None}}
+
+
 class _MotifBindArgs(ForbidExtra):
     project_id: str
     node_id: str
