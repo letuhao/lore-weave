@@ -9,8 +9,10 @@ import type { Motif } from '../types';
 import { actantLabelKey, kindLabelKey, tierLabelKey, motifTier } from '../simpleMode';
 import { useMotifSimpleMode } from '../context/MotifSimpleModeContext';
 import { useMotifEditor } from '../hooks/useMotifEditor';
+import { useMotifSync } from '../hooks/useMotifSync';
 import { InfoAsymmetryCard } from './InfoAsymmetryCard';
 import { MotifEditorForm } from './MotifEditorForm';
+import { SyncDiffDrawer } from './SyncDiffDrawer';
 
 type Props = {
   motif: Motif | null;
@@ -28,12 +30,15 @@ export function MotifDetailDrawer({ motif, meUserId, readOnly, isLoading, isErro
   const { simple } = useMotifSimpleMode();
   const ref = useRef<HTMLDivElement>(null);
   const [editing, setEditing] = useState(false);
+  const [reviewingSync, setReviewingSync] = useState(false);
   // WI-2 — the full field editor (owned motifs only). Hook is unconditional (rules of
   // hooks); it only renders when `editing`. Seeds from the motif; PATCHes on save.
   const editor = useMotifEditor(motif, token ?? null, () => setEditing(false));
+  // WI-4 — upstream sync for an adopted motif (the diff query is gated on source='adopted').
+  const sync = useMotifSync(motif, token ?? null);
 
   useEffect(() => { ref.current?.focus(); }, [motif?.id]);
-  useEffect(() => { setEditing(false); }, [motif?.id]);   // a different motif → back to view
+  useEffect(() => { setEditing(false); setReviewingSync(false); }, [motif?.id]);   // a different motif → reset
 
   const tier = motif ? motifTier(motif, meUserId) : 'user';
 
@@ -81,6 +86,24 @@ export function MotifDetailDrawer({ motif, meUserId, readOnly, isLoading, isErro
               </span>
               {motif.tension_target != null && <span className="text-[10px] text-neutral-500">T{motif.tension_target}</span>}
             </div>
+
+            {/* WI-4 — upstream update available (adopted motif): banner → review & merge */}
+            {sync.hasUpdate && sync.diff && (
+              <div data-testid="motif-sync-banner" className="flex flex-col gap-1">
+                {!reviewingSync ? (
+                  <div className="flex items-center justify-between rounded border border-amber-300 bg-amber-50 p-2 text-xs dark:border-amber-800 dark:bg-amber-950/30">
+                    <span className="text-amber-800 dark:text-amber-200">
+                      {t('motif.sync.available', { defaultValue: 'The upstream template has an update.' })}
+                    </span>
+                    <button type="button" data-testid="motif-sync-review" className="ml-2 rounded bg-amber-600 px-2 py-0.5 font-medium text-white hover:bg-amber-700" onClick={() => setReviewingSync(true)}>
+                      {t('motif.sync.review', { defaultValue: 'Review & merge' })}
+                    </button>
+                  </div>
+                ) : (
+                  <SyncDiffDrawer diff={sync.diff} sync={sync} onClose={() => setReviewingSync(false)} />
+                )}
+              </div>
+            )}
 
             {/* read-only lock (the kinds-bug lesson made visible) */}
             {readOnly && (

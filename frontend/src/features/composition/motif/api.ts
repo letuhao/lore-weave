@@ -13,7 +13,7 @@ import { compositionApi } from '../api';
 import type { GenerationJob } from '../types';
 import type {
   ArcConformance, CatalogList, ChapterConformance, CostEstimate, MineResult, Motif,
-  MotifCreateArgs, MotifPatchArgs, MotifTier,
+  MotifCreateArgs, MotifPatchArgs, MotifTier, SyncDiff, SyncResult,
 } from './types';
 
 const BASE = '/v1/composition';
@@ -174,6 +174,20 @@ export const motifApi = {
    *  owner-only PATCH (If-Match optimistic lock); discard is `archive`. */
   promote(motifId: string, expectedVersion: number, token: string): Promise<Motif> {
     return motifApi.patch(motifId, { status: 'active' }, expectedVersion, token);
+  },
+
+  // ── publish sync (W11) — upstream-diff + apply-merge ─────────────────────────
+  /** The per-field diff of an adopted motif vs its current upstream (3-way when a base
+   *  snapshot exists, else 2-way). 404/409/410 when not the caller's resolvable clone. */
+  upstreamDiff(motifId: string, token: string): Promise<SyncDiff> {
+    return apiJson<SyncDiff>(`${BASE}/motifs/${motifId}/upstream-diff`, { token });
+  },
+  /** Apply the chosen merge: `accept` = the upstream-changed fields to TAKE ([] = keep all
+   *  local, just re-pin). Atomic content-merge + re-pin (+ 3-way re-baseline). */
+  sync(motifId: string, accept: string[], token: string): Promise<SyncResult> {
+    return apiJson<SyncResult>(`${BASE}/motifs/${motifId}/sync`, {
+      method: 'POST', body: JSON.stringify({ accept }), token,
+    });
   },
 
   // ── conformance trace (W5) ─────────────────────────────────────────────────

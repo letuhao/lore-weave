@@ -311,6 +311,29 @@ export type QuotaError = {
   used: number;
 };
 
+// ── publish sync (W11) — the upstream 3-way / 2-way diff + apply ────────────────
+export type SyncFieldTwoWay = { ours: unknown; theirs: unknown; changed: boolean };
+export type SyncFieldThreeWay = {
+  base: unknown; ours: unknown; theirs: unknown;
+  ours_changed: boolean; theirs_changed: boolean; conflict: boolean;
+};
+export type SyncField = SyncFieldTwoWay | SyncFieldThreeWay;
+export type SyncDiff = {
+  diff_mode: 'two_way' | 'three_way';
+  base_available: boolean;
+  pinned_source_version: number | null;
+  upstream_version: number;
+  update_available: boolean;
+  fields: Record<string, SyncField>;
+};
+export type SyncResult = {
+  synced: boolean; repinned_source_version: number; diff_mode: string; rebaselined: boolean;
+};
+/** A 3-way field carries `conflict`; a 2-way field carries `changed`. */
+export function isThreeWayField(f: SyncField): f is SyncFieldThreeWay {
+  return 'conflict' in f;
+}
+
 // ── mining (W8) — the result of a confirmed composition_motif_mine job ──────────
 /** One mined candidate (§11 no-silent-drop: EVERY candidate is returned with its
  *  judge score + gate flag; only gate-passers are persisted as draft motifs). */
