@@ -239,12 +239,37 @@ interface FindToolsMatch {
 }
 
 /**
- * Scope-filter a `find_tools` RESULT (anti-oracle) + collect the in-scope matched names to
- * activate. ai-gateway searches the FULL catalogue, so its matches can include tools outside
- * this key's scope; the edge intersects them with `isToolAllowed` so an external agent never
- * even DISCOVERS an out-of-scope tool (same anti-oracle contract as the list filter). Returns
- * the rewritten response text + the in-scope matched names (to SADD into the session). On a
- * `*` key, or any non-find_tools / unparseable body, returns the text unchanged + no names.
+ * Scope-filter ONE find_tools CallToolResult IN PLACE — drop out-of-scope matches from BOTH the
+ * structuredContent and the mirrored text content block (so a client reading either sees the same
+ * scoped set). Returns the in-scope matched names (to SADD into the session). Shared by the single
+ * and the batch path so they enforce the identical anti-oracle contract.
+ */
+function filterOneFindToolsResult(result: unknown, scopes: readonly string[]): string[] {
+  if (!result || typeof result !== 'object') return [];
+  const inScope = new Set<string>();
+  const sc = (result as { structuredContent?: { tools?: unknown } }).structuredContent;
+  if (sc && Array.isArray(sc.tools)) {
+    sc.tools = (sc.tools as FindToolsMatch[]).filter((m) => {
+      const n = typeof m?.name === 'string' ? m.name : '';
+      const ok = n !== '' && isToolAllowed(n, scopes);
+      if (ok) inScope.add(n);
+      return ok;
+    });
+    const content = (result as { content?: unknown }).content;
+    if (Array.isArray(content) && content[0] && typeof content[0] === 'object') {
+      (content[0] as { text?: unknown }).text = JSON.stringify(sc);
+    }
+  }
+  return [...inScope];
+}
+
+/**
+ * Scope-filter a SINGLE (non-batch) `find_tools` RESULT (anti-oracle) + collect the in-scope
+ * matched names to activate. ai-gateway searches the FULL catalogue, so its matches can include
+ * tools outside this key's scope; the edge intersects them with `isToolAllowed` so an external
+ * agent never even DISCOVERS an out-of-scope tool (same anti-oracle contract as the list filter).
+ * Returns the rewritten response text + the in-scope matched names (to SADD into the session). On
+ * a `*` key, or any non-object / unparseable body, returns the text unchanged + no names.
  */
 export function scopeFilterFindToolsResult(
   text: string,
@@ -257,31 +282,62 @@ export function scopeFilterFindToolsResult(
   } catch {
     return { text, activatedNames: [] }; // SSE / non-JSON — never fabricate
   }
-  // A single tools/call response is a JSON-RPC object with `result`. The result is an MCP
-  // CallToolResult: `{ content: [...], structuredContent?: { tools: [...] } }`. We filter the
-  // discovered tool list in BOTH the structuredContent and the text content block (so a client
-  // reading either sees the same scoped set).
+  // A single tools/call response is a JSON-RPC object with `result` (an MCP CallToolResult:
+  // `{ content: [...], structuredContent?: { tools: [...] } }`).
   if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) return { text, activatedNames: [] };
-  const result = (parsed as { result?: unknown }).result;
-  if (!result || typeof result !== 'object') return { text, activatedNames: [] };
+  const names = filterOneFindToolsResult((parsed as { result?: unknown }).result, scopes);
+  return { text: JSON.stringify(parsed), activatedNames: names };
+}
 
-  const inScope = new Set<string>();
-  const sc = (result as { structuredContent?: { tools?: unknown } }).structuredContent;
-  if (sc && Array.isArray(sc.tools)) {
-    sc.tools = (sc.tools as FindToolsMatch[]).filter((m) => {
-      const n = typeof m?.name === 'string' ? m.name : '';
-      const ok = n !== '' && isToolAllowed(n, scopes);
-      if (ok) inScope.add(n);
-      return ok;
-    });
-    // Keep the text content block (a JSON string of the same payload) consistent with the
-    // filtered structuredContent, so a client that reads `content[0].text` sees the scoped set.
-    const content = (result as { content?: unknown }).content;
-    if (Array.isArray(content) && content[0] && typeof content[0] === 'object') {
-      (content[0] as { text?: unknown }).text = JSON.stringify(sc);
-    }
+/**
+ * The set of JSON-RPC `idKey`s for the `find_tools` `tools/call`s in `body` (single or batch).
+ * Used to scope-filter a BATCHED find_tools result by matching the response item back to its
+ * request — so a find_tools smuggled inside a batch can't bypass the single-call anti-oracle
+ * filter. A find_tools call carrying no id (a notification) is impossible (tools/call always
+ * carries an id), so the ` null` sentinel never wrongly matches a non-find_tools item.
+ */
+export function findToolsCallIdKeys(body: unknown): Set<string> {
+  const messages: JsonRpcRequest[] = Array.isArray(body)
+    ? (body as JsonRpcRequest[])
+    : body && typeof body === 'object'
+      ? [body as JsonRpcRequest]
+      : [];
+  const ids = new Set<string>();
+  for (const m of messages) {
+    if (isToolCall(m) && m.params.name === FIND_TOOLS_NAME) ids.add(idKey(m.id));
   }
-  return { text: JSON.stringify(parsed), activatedNames: [...inScope] };
+  return ids;
+}
+
+/**
+ * Batch parallel of `scopeFilterFindToolsResult`: scope-filter EVERY `find_tools` result item in a
+ * JSON-RPC batch RESPONSE, matched to its request by id (`findToolsIds`). Closes the anti-oracle
+ * hole where a `find_tools` batched with other calls relayed its FULL-catalogue matches unfiltered.
+ * Only items whose id is a find_tools request are touched — a mixed batch's other tool results
+ * (which may legitimately carry a `name`-bearing list of their own data) are left intact. Returns
+ * the rewritten text + the union of in-scope matched names. On a `*` key / empty id-set / a
+ * non-array (single) body, returns the text unchanged + no names (the single path handles those).
+ */
+export function scopeFilterFindToolsBatch(
+  text: string,
+  scopes: readonly string[],
+  findToolsIds: ReadonlySet<string>,
+): { text: string; activatedNames: string[] } {
+  if (scopes.includes(WILDCARD_SCOPE) || findToolsIds.size === 0) return { text, activatedNames: [] };
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(text);
+  } catch {
+    return { text, activatedNames: [] }; // SSE / non-JSON — never fabricate
+  }
+  if (!Array.isArray(parsed)) return { text, activatedNames: [] };
+  const names = new Set<string>();
+  for (const item of parsed) {
+    if (!item || typeof item !== 'object') continue;
+    if (!findToolsIds.has(idKey((item as { id?: unknown }).id))) continue;
+    for (const n of filterOneFindToolsResult((item as { result?: unknown }).result, scopes)) names.add(n);
+  }
+  return { text: JSON.stringify(parsed), activatedNames: [...names] };
 }
 
 // ─────────────────────────────────────────────────────────────────────────────

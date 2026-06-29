@@ -5,7 +5,9 @@ import {
 import { ToolActivation } from '../src/session/tool-activation.js';
 import {
   filterListResponseText,
+  findToolsCallIdKeys,
   isFindToolsCall,
+  scopeFilterFindToolsBatch,
   scopeFilterFindToolsResult,
 } from '../src/scope/scope-filter.js';
 
@@ -158,6 +160,60 @@ describe('isFindToolsCall', () => {
   it('false for another tool, a list, or a batch', () => {
     expect(isFindToolsCall(call('book_get'))).toBe(false);
     expect(isFindToolsCall({ jsonrpc: '2.0', id: 1, method: 'tools/list' })).toBe(false);
-    expect(isFindToolsCall([call('find_tools')])).toBe(false); // batch out of scope
+    expect(isFindToolsCall([call('find_tools')])).toBe(false); // batch out of scope for the SINGLE path
   });
 });
+
+describe('findToolsCallIdKeys + scopeFilterFindToolsBatch — batched find_tools anti-oracle', () => {
+  const call = (id: unknown, name: string) => ({ jsonrpc: '2.0', id, method: 'tools/call', params: { name } });
+  // A batch RESPONSE item: a JSON-RPC object whose result is an MCP CallToolResult carrying matches.
+  const ftResponseItem = (id: unknown, ...names: string[]) => {
+    const tools = names.map((name) => ({ name, description: name }));
+    return { jsonrpc: '2.0', id, result: { content: [{ type: 'text', text: JSON.stringify({ tools }) }], structuredContent: { tools } } };
+  };
+
+  it('finds the ids of every find_tools call in a batch (and ignores other calls)', () => {
+    const ids = findToolsCallIdKeys([call(1, 'find_tools'), call(2, 'book_get'), call(3, 'find_tools')]);
+    expect(ids.has(idKeyOf(1))).toBe(true);
+    expect(ids.has(idKeyOf(3))).toBe(true);
+    expect(ids.has(idKeyOf(2))).toBe(false);
+    expect(ids.size).toBe(2);
+  });
+
+  it('scope-filters a batched find_tools result (the single-call path would have missed it)', () => {
+    const body = [call(1, 'find_tools')];
+    const ftIds = findToolsCallIdKeys(body);
+    const upstream = JSON.stringify([ftResponseItem(1, 'book_get', 'kg_search')]); // kg_search out of scope
+    const { text, activatedNames } = scopeFilterFindToolsBatch(upstream, SCOPES, ftIds);
+    const parsed = JSON.parse(text);
+    expect(parsed[0].result.structuredContent.tools.map((t: { name: string }) => t.name)).toEqual(['book_get']);
+    expect(JSON.parse(parsed[0].result.content[0].text).tools.map((t: { name: string }) => t.name)).toEqual(['book_get']);
+    expect(activatedNames).toEqual(['book_get']);
+  });
+
+  it('leaves a non-find_tools item in a mixed batch intact (matches by id only)', () => {
+    const body = [call(1, 'find_tools'), call(2, 'book_get')];
+    const ftIds = findToolsCallIdKeys(body);
+    // item id=2 is book_get's result — happens to carry a name-bearing list of ITS OWN data; must not be filtered.
+    const bookResult = { jsonrpc: '2.0', id: 2, result: { structuredContent: { tools: [{ name: 'not_a_tool', description: 'a book row' }] } } };
+    const upstream = JSON.stringify([ftResponseItem(1, 'book_get', 'kg_search'), bookResult]);
+    const { text } = scopeFilterFindToolsBatch(upstream, SCOPES, ftIds);
+    const parsed = JSON.parse(text);
+    expect(parsed[0].result.structuredContent.tools.map((t: { name: string }) => t.name)).toEqual(['book_get']); // filtered
+    expect(parsed[1].result.structuredContent.tools.map((t: { name: string }) => t.name)).toEqual(['not_a_tool']); // untouched
+  });
+
+  it('a wildcard key / empty id-set / single (non-array) body → unchanged + no names', () => {
+    const upstream = JSON.stringify([ftResponseItem(1, 'book_get', 'kg_search')]);
+    expect(scopeFilterFindToolsBatch(upstream, ['*'], new Set([idKeyOf(1)]))).toEqual({ text: upstream, activatedNames: [] });
+    expect(scopeFilterFindToolsBatch(upstream, SCOPES, new Set())).toEqual({ text: upstream, activatedNames: [] });
+    const single = JSON.stringify(ftResponseItem(1, 'book_get'));
+    expect(scopeFilterFindToolsBatch(single, SCOPES, new Set([idKeyOf(1)]))).toEqual({ text: single, activatedNames: [] });
+  });
+});
+
+// idKey is internal to scope-filter; mirror its stable key here for the id-set assertions.
+function idKeyOf(id: unknown): string {
+  if (id === null || id === undefined) return ' null';
+  return `${typeof id}:${String(id)}`;
+}

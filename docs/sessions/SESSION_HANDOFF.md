@@ -26,10 +26,19 @@
 > tools/list → collapse to the session surface. **No scope widening** (gateRequestBody unchanged;
 > activation governs VISIBILITY, not permission). Tests: tool-activation 18 new + 2 controller
 > updated; full mcp-public-gateway suite 200/200; both gateways nest-build clean.
-> **▶ NEXT:** `/review-impl` (public-security edge) + a cross-service live smoke (external agent →
-> mcp-public-gateway → ai-gateway: fresh session lists find_tools only → find_tools activates a tool
-> → re-list shows it → it calls). Deferred: `D-FINDTOOLS-CHAT-SHARE` (chat-service still has its own
-> local find_tools; pointing it at the gateway's is a separate refactor).
+> **✅ /review-impl DONE — 1 MED found + FIXED.** Anti-oracle hole: `find_tools` smuggled inside a
+> JSON-RPC **batch** bypassed `scopeFilterFindToolsResult` (`isFindToolsCall` is single-only), so a
+> batched `[find_tools]` relayed its FULL-catalogue matches unfiltered (out-of-scope tool *names*
+> leak — discovery, not callability; gateRequestBody still denies the call). Fix: `scope-filter.ts`
+> extracts `filterOneFindToolsResult` (shared by single+batch) + new `findToolsCallIdKeys` /
+> `scopeFilterFindToolsBatch` (id-matched, so a mixed batch's other-tool results are untouched);
+> controller adds the batch branch. Tests: +4 (id-harvest, batch filter, mixed-batch-untouched,
+> wildcard/empty/single short-circuit); full suite **204/204**; nest build clean. 2 accepted: find_tools
+> absence bricking discovery (LOW — upstream always prepends it) + stale confidence note (COSMETIC).
+> **▶ NEXT:** the cross-service **live smoke** (`D-PMCP-LAZY-LIVE-SMOKE`) — redeploy both gateways,
+> external agent: fresh session lists find_tools only → find_tools activates a tool → re-list shows it
+> → it calls. Deferred: `D-FINDTOOLS-CHAT-SHARE` (chat-service still has its own local find_tools;
+> pointing it at the gateway's is a separate refactor).
 
 > **✅ SHIPPED + LIVE-VERIFIED — #26/#7 glossary `summarize` (merge-rewrite) mode (L, 3 milestones).** User
 > approved a NEW merge mode distinct from append: keep the lossless RAW item layer (provenance)

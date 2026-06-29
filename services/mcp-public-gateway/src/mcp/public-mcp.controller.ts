@@ -3,7 +3,7 @@ import { randomUUID } from 'node:crypto';
 import type { Request, Response } from 'express';
 import { loadConfig } from '../config/config.js';
 import { KeyResolver } from '../auth/key-resolver.js';
-import { annotateBatchStepOutcomes, countToolCalls, filterListResponseText, gateRequestBody, idKey, isBatchBody, isFindToolsCall, isListRequest, isWriteRequest, scopeFilterFindToolsResult, singleToolCallErrored, singleWriteConfirmToolName, writeConfirmCallsById } from '../scope/scope-filter.js';
+import { annotateBatchStepOutcomes, countToolCalls, filterListResponseText, findToolsCallIdKeys, gateRequestBody, idKey, isBatchBody, isFindToolsCall, isListRequest, isWriteRequest, scopeFilterFindToolsBatch, scopeFilterFindToolsResult, singleToolCallErrored, singleWriteConfirmToolName, writeConfirmCallsById } from '../scope/scope-filter.js';
 import { ToolActivation } from '../session/tool-activation.js';
 import { makeToolActivationStoreFromEnv } from '../session/tool-activation-store.js';
 import { detectProposeInItem, detectProposeResult, pendingApprovalForId, pendingApprovalResponse, proposeDivertError, proposeDivertErrorForId } from '../scope/propose-detect.js';
@@ -329,11 +329,20 @@ export class PublicMcpController {
       // LAZY TOOL-LOADING — find_tools discovery: the agent searched the catalogue. The result
       // came from ai-gateway's FULL search, so scope-filter it (anti-oracle) + ACTIVATE the
       // in-scope matches into the session, so they appear on the next tools/list (the surface
-      // grows). Best-effort: an activation blip just means the agent re-discovers.
+      // grows). Best-effort: an activation blip just means the agent re-discovers. The BATCH
+      // branch closes the anti-oracle hole where a find_tools smuggled inside a JSON-RPC batch
+      // would otherwise relay its full-catalogue matches unfiltered (isFindToolsCall is single-only).
       if (ok && hasBody && isFindToolsCall(req.body)) {
         const { text: filtered, activatedNames } = scopeFilterFindToolsResult(text, resolved.scopes);
         text = filtered;
         await this.toolActivation.activate(resolved.keyId, activatedNames);
+      } else if (ok && hasBody && isBatchBody(req.body)) {
+        const ftIds = findToolsCallIdKeys(req.body);
+        if (ftIds.size > 0) {
+          const { text: filtered, activatedNames } = scopeFilterFindToolsBatch(text, resolved.scopes, ftIds);
+          text = filtered;
+          await this.toolActivation.activate(resolved.keyId, activatedNames);
+        }
       }
 
       const rewroteList = ok && hasBody && isListRequest(req.body);
