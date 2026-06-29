@@ -31,6 +31,18 @@
 > call `glossary_plan` more than once per turn." Cheap reinforcement; the coalesce already makes the
 > loop harmless. Other open critical-UX bugs: `[I] 15` (timeline metadata), `[I] 18/19` (planner loop /
 > `D-PLANNER-INFLIGHT-ABORT`), `[D] 13`. Deferred: `D-FINDTOOLS-CHAT-SHARE`.
+> **✅ /review-impl DONE (post-M3) — 1 test gap FIXED + 1 deferred.** FIXED: the partial-batch
+> effect-failure path (one child applies, one fails, failed token burned, rest NOT aborted) was
+> claimed in the `confirmActionBatch` doc but untested — added `TestConfirmBatch_PartialFailureApplies
+> RestAndBurnsFailed` (real DB, PASS). DEFERRED `D-BATCH-PREVIEW-FE-WIRE` (gate #2, structural UI):
+> M1 built `/actions/preview-batch` (tested) but `BatchConfirmCard` never calls it — the coalesced
+> card shows mint-time titles, dropping the §5.1#5 CURRENT-state preview (e.g. delete blast-radius)
+> + uses a FE descriptor-substring `destructive` heuristic instead of the server's authoritative flag.
+> SAFE today (dominant create-kind is non-destructive; server still re-validates each child + destructive
+> ops fail-closed since the card sends no `enabled_ops`); wire preview-batch into the card to restore the
+> full affordance + authoritative destructive accent. Latent note: confirm-batch fans ONE `enabled_ops`
+> across ALL children — only matters if a future caller batches >1 `execute_plan` with destructive ops
+> (the card sends none today, so all such ops skip safely).
 
 > **✅ DONE — public-MCP lazy tool-loading (L) + 2 anti-oracle fixes — committed + LIVE-SMOKED** (`ffc712e5`,
 > `f8160f00`). Per-session progressive-disclosure state machine; see the lazy-tool-loading section below

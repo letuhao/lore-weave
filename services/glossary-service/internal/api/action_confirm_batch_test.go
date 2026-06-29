@@ -99,6 +99,60 @@ func TestConfirmBatch_ReplaySkipsNeverDoubleApplies(t *testing.T) {
 	}
 }
 
+// A child whose EFFECT fails (here: a duplicate kind code) is reported `failed` and its
+// single-use token is BURNED, WITHOUT aborting the rest — the other child still `applied`.
+// This is the "honest partial, never silent all-or-nothing" invariant the confirmActionBatch
+// loop claims (it `continue`s past a failed child, never `return`s); the happy-path tests
+// can't catch a future refactor that aborts on first failure, so this locks it.
+func TestConfirmBatch_PartialFailureAppliesRestAndBurnsFailed(t *testing.T) {
+	pool := openTestDB(t)
+	f := newActionFixture(t, pool)
+	t.Cleanup(func() {
+		pool.Exec(context.Background(), `DELETE FROM book_kinds WHERE book_id=$1 AND code IN ('qa_pf_dup','qa_pf_new')`, f.bookID)
+	})
+	// Pre-create qa_pf_dup via a real single confirm (also scaffolds the book), so a SECOND
+	// create for the same code hits a unique-violation inside the batch.
+	if w := f.confirm(t, f.mintKindToken(f.ownerID, f.bookID, "qa_pf_dup", "Dup", time.Now())); w.Code != http.StatusCreated {
+		t.Fatalf("seed dup kind: want 201, got %d (%s)", w.Code, w.Body.String())
+	}
+	dup := f.mintKindToken(f.ownerID, f.bookID, "qa_pf_dup", "Dup Again", time.Now()) // new jti, same code → effect 409
+	fresh := f.mintKindToken(f.ownerID, f.bookID, "qa_pf_new", "Fresh", time.Now())   // → applies
+
+	w := f.batchPost(t, "/v1/glossary/actions/confirm-batch", dup, fresh)
+	if w.Code != http.StatusOK {
+		t.Fatalf("partial batch: want 200, got %d (%s)", w.Code, w.Body.String())
+	}
+	var res batchConfirmResult
+	if err := json.Unmarshal(w.Body.Bytes(), &res); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if res.Applied != 1 || res.Failed != 1 || res.Skipped != 0 {
+		t.Errorf("want applied=1 failed=1 skipped=0, got %+v", res)
+	}
+	// the surviving child actually landed; the duplicate did NOT double-insert
+	if c := kindCount(t, pool, f.bookID, "qa_pf_new"); c != 1 {
+		t.Errorf("the non-failing child must still apply: qa_pf_new count=%d", c)
+	}
+	if c := kindCount(t, pool, f.bookID, "qa_pf_dup"); c != 1 {
+		t.Errorf("the failed create must not double-insert: qa_pf_dup count=%d", c)
+	}
+	// the failed child reports a detail message (not a silent empty failure)
+	var sawFailedDetail bool
+	for _, ch := range res.Children {
+		if ch.Outcome == "failed" && ch.Detail != "" {
+			sawFailedDetail = true
+		}
+	}
+	if !sawFailedDetail {
+		t.Errorf("the failed child must carry a detail message, got %+v", res.Children)
+	}
+	// fail-closed: the failed child's single-use token is BURNED (re-confirm → already-confirmed),
+	// so the human re-proposes rather than silently retrying a consumed token.
+	if w := f.confirm(t, dup); w.Code != http.StatusUnprocessableEntity {
+		t.Errorf("a failed child's token must be burned: re-confirm want 422, got %d", w.Code)
+	}
+}
+
 // A batch spanning two books is rejected up front (the suspended run is bound to one book) —
 // fail-closed BEFORE any token is consumed, so neither child is burned.
 func TestConfirmBatch_MixedBookRejectedNoneConsumed(t *testing.T) {
