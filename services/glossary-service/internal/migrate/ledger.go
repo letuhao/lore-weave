@@ -110,6 +110,10 @@ var chain = []Step{
 	// entity_facts.valid_to_ordinal (ordinal-aware interval-split + retract restitch
 	// + merge reconcile, one routine). Spec §12.3.3 (LOCKED).
 	{"0045_maintain_chain", UpMaintainChain},
+	// Temporal-knowledge F1h — cold-start seed: every flat EAV value becomes one open
+	// bi-temporal fact so the derived projection is byte-identical to the pre-migration
+	// flat store on day one. Spec §12.5.4 / dec-5.
+	{"0046_facts_cold_start", UpFactsColdStart},
 }
 
 // EnsureLedger creates the schema_migrations bookkeeping table. Idempotent; must run
