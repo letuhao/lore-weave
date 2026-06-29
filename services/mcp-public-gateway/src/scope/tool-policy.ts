@@ -98,6 +98,15 @@ export const TOOL_POLICY: Record<string, ToolPolicy> = {
   composition_get_prose: { tier: 'read', domains: ['composition'] },
   composition_list_canon_rules: { tier: 'read', domains: ['composition'] },
   composition_get_generation_job: { tier: 'read', domains: ['composition'] },
+  // composition — narrative motif library (W4+) reads. All composition-local (the
+  // motif/arc graph + retrieval live in composition's own DB).
+  composition_motif_search: { tier: 'read', domains: ['composition'] },
+  composition_motif_get: { tier: 'read', domains: ['composition'] },
+  composition_motif_suggest_for_chapter: { tier: 'read', domains: ['composition'] },
+  composition_arc_suggest: { tier: 'read', domains: ['composition'] },
+  composition_motif_link_list: { tier: 'read', domains: ['composition'] },
+  composition_motif_book_list: { tier: 'read', domains: ['composition'] },
+  composition_get_mine_job: { tier: 'read', domains: ['composition'] },
   // jobs (own explicit domain — never implied; edge result-filtering is H-F/P-future)
   jobs_list: { tier: 'read', domains: ['jobs'] },
   jobs_summary: { tier: 'read', domains: ['jobs'] },
@@ -172,6 +181,17 @@ export const TOOL_POLICY: Record<string, ToolPolicy> = {
   composition_canon_rule_update: { tier: 'write_auto', domains: ['composition'] },
   composition_canon_rule_delete: { tier: 'write_auto', domains: ['composition'] },
   composition_write_prose: { tier: 'write_auto', domains: ['composition'] },
+  // composition — motif library (W4+) auto-writes. All composition-local: create/edit/
+  // archive a motif, bind/unbind a chapter (motif_bind takes role→entity ids the agent
+  // supplies — it stores them, it does NOT call glossary, so no glossary domain), and the
+  // motif_link graph edits (own-tier or a book's shared tier, EDIT-gated server-side).
+  composition_motif_create: { tier: 'write_auto', domains: ['composition'] },
+  composition_motif_patch: { tier: 'write_auto', domains: ['composition'] },
+  composition_motif_archive: { tier: 'write_auto', domains: ['composition'] },
+  composition_motif_bind: { tier: 'write_auto', domains: ['composition'] },
+  composition_motif_unbind: { tier: 'write_auto', domains: ['composition'] },
+  composition_motif_link_create: { tier: 'write_auto', domains: ['composition'] },
+  composition_motif_link_delete: { tier: 'write_auto', domains: ['composition'] },
   // settings
   settings_update_profile: { tier: 'write_auto', domains: ['settings'] },
   settings_model_register: { tier: 'write_auto', domains: ['settings'] },
@@ -203,6 +223,11 @@ export const TOOL_POLICY: Record<string, ToolPolicy> = {
   kg_triage_schema_write: { tier: 'write_confirm', domains: ['knowledge'] },
   kg_project_create: { tier: 'write_confirm', domains: ['knowledge'] },
   composition_publish: { tier: 'write_confirm', domains: ['composition'] },
+  // composition — motif library (W4+) confirm-gated writes. adopt = a tenancy/quota cross-tier
+  // clone (composition-local, no LLM spend); arc_import = an LLM deconstruct of the user's own
+  // imported text (composition-local). Both mint a confirm token (human-approve at the edge).
+  composition_motif_adopt: { tier: 'write_confirm', domains: ['composition'] },
+  composition_arc_import_analyze: { tier: 'write_confirm', domains: ['composition'] },
   // settings_model_delete is Tier-W (mints a confirm token; destructive BYOK-model
   // removal) — omitted from the original scope-map §2 audit, surfaced by the edge
   // drift-log against the live registry.
@@ -217,6 +242,11 @@ export const TOOL_POLICY: Record<string, ToolPolicy> = {
   kg_build_wiki: { tier: 'write_confirm', domains: ['knowledge'] },
   kg_run_benchmark: { tier: 'write_confirm', domains: ['knowledge'] },
   composition_generate: { tier: 'write_confirm', domains: ['composition', 'glossary', 'knowledge'] },
+  // composition — motif mining + conformance: priced LLM jobs that ALSO touch knowledge
+  // (mine reads the :Event beat-sequences AND writes mined_motif_code tags; conformance reads
+  // the thread/causal/realized-motif tags). H-F: list BOTH domains so the key needs knowledge too.
+  composition_motif_mine: { tier: 'write_confirm', domains: ['composition', 'knowledge'] },
+  composition_conformance_run: { tier: 'write_confirm', domains: ['composition', 'knowledge'] },
   // lore-enrichment: reclassified priced+confirm for public (NOT write_auto — a paid
   // auto-tool violates the money model); cross-domain by tools-touched.
   lore_enrichment_auto_enrich: { tier: 'write_confirm', domains: ['lore_enrichment', 'glossary', 'knowledge'] },
