@@ -23,6 +23,7 @@ from __future__ import annotations
 
 import json
 import logging
+from collections.abc import Awaitable, Callable
 from typing import Any, Literal
 
 from pydantic import BaseModel, Field, ValidationError
@@ -125,6 +126,9 @@ async def extract_entities(
     # D-KG-WORKER-GRADED-EFFORT — graded reasoning effort threaded to the
     # submit builder. Default "none" ⇒ no wire fields (back-compat).
     reasoning_effort: str = "none",
+    # bug #34 — optional immediate-cancel hook forwarded to submit_and_wait.
+    # None (default) ⇒ no cancellation polling (back-compat for every caller).
+    cancel_check: Callable[[], Awaitable[bool]] | None = None,
 ) -> list[LLMEntityCandidate]:
     """Extract named entities from *text* via the user's BYOK LLM.
 
@@ -185,6 +189,7 @@ async def extract_entities(
         context_budget=context_budget,
         reasoning_effort=reasoning_effort,
         schema=schema,
+        cancel_check=cancel_check,
     )
 
     return _postprocess(
@@ -211,6 +216,8 @@ async def _extract_via_llm_client(
     context_budget: ContextBudget | None = None,
     schema: ExtractionSchema | None = None,
     reasoning_effort: str = "none",
+    # bug #34 — optional immediate-cancel hook forwarded to submit_and_wait.
+    cancel_check: Callable[[], Awaitable[bool]] | None = None,
 ) -> list["_LLMEntity"]:
     """Submit entity_extraction job + wait_terminal + tolerant-parse the
     `result.entities` envelope into a list of `_LLMEntity` records.
@@ -252,7 +259,8 @@ async def _extract_via_llm_client(
     )
     try:
         job = await llm_client.submit_and_wait(
-            user_id=user_id, transient_retry_budget=1, **kwargs,
+            user_id=user_id, transient_retry_budget=1,
+            cancel_check=cancel_check, **kwargs,
         )
     except LLMTransientRetryNeededError as exc:
         raise ExtractionError(

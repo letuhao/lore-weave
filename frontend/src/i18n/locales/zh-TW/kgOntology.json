@@ -53,7 +53,22 @@
     "label": "標籤",
     "temporalField": "時序（valid_from + 來源）",
     "cardinality": "基數",
-    "addButton": "新增邊類型"
+    "addButton": "新增邊類型",
+    "addSectionTitle": "新增至綱要",
+    "editHint": "僅新增：可新增類型或將邊類型標記為棄用。不可硬刪除（與 AI 能做的一致）。",
+    "allowFreeEdges": "允許詞彙外的關係（自由邊）",
+    "addNodeKind": "新增節點類別",
+    "addFactType": "新增事實類型",
+    "addVocabValue": "新增詞彙值",
+    "kindCode": "類別代碼",
+    "strength": "強度",
+    "required": "必填",
+    "optional": "選填",
+    "noVocabSets": "此綱要尚無詞彙集——請先請 AI 新增一個。",
+    "add": "新增",
+    "added": "已更新綱要",
+    "addFailed": "無法更新綱要",
+    "forbidden": "你需要此專案的「管理」權限才能編輯綱要"
   },
   "sync": {
     "upToDate": "已是最新——上游沒有變更。",

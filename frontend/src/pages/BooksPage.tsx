@@ -6,7 +6,7 @@ import { useAuth } from '@/auth';
 import { booksApi, type Book } from '@/features/books/api';
 import { translationApi } from '@/features/translation/api';
 import { PageHeader } from '@/components/layout/PageHeader';
-import { FilterToolbar, Pagination, EmptyState, FormDialog, StatusBadge, SkeletonCard } from '@/components/shared';
+import { FilterToolbar, Pagination, EmptyState, FormDialog, StatusBadge, SkeletonCard, LanguagePicker } from '@/components/shared';
 import { LanguageDisplay } from '@/components/shared/LanguageDisplay';
 
 /** Generate a stable hue from a book ID for cover gradient */
@@ -326,12 +326,12 @@ export function BooksPage() {
           </div>
           <div className="space-y-1.5">
             <label className="text-sm font-medium">{t('create.language')}</label>
-            <input
+            <LanguagePicker
               value={newLang}
-              onChange={(e) => setNewLang(e.target.value)}
-              placeholder="ja, en, vi, zh-TW..."
+              onChange={setNewLang}
+              placeholder={t('select_language')}
               data-testid="book-language-input"
-              className="w-full rounded-md border bg-background px-3 py-2 text-sm placeholder:text-muted-foreground/50 focus:outline-none focus:ring-2 focus:ring-ring/40"
+              className="w-full rounded-md border bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring/40"
             />
           </div>
           <div className="space-y-1.5">

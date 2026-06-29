@@ -20,6 +20,7 @@ import { ProposeEditCard } from './ProposeEditCard';
 import { GlossaryDiffCard } from './GlossaryDiffCard';
 import { ConfirmCard } from './ConfirmCard';
 import { ConfirmActionCard, descriptorDomain } from './ConfirmActionCard';
+import { BatchConfirmCard, type BatchChild } from './BatchConfirmCard';
 import { RecordDiffCard } from './RecordDiffCard';
 import { TranslationReviewCard, isTranslationProposeCall, summarizeTranslationReview } from './TranslationReviewCard';
 import { ActivityStrip } from './ActivityStrip';
@@ -236,13 +237,51 @@ export function AssistantMessage({
           seenTokens.add(p.confirm_token);
           autoConfirms.push(p);
         }
+        // #27/#29/#30 COALESCE — when a turn produced MORE THAN ONE live confirm token
+        // (a weak model looped single-propose tools), fold them ALL into ONE batch card
+        // ("Confirm all") instead of N cards that orphan each other. Gathers the explicit
+        // pending confirm cards + the auto-rendered ones; non-confirm frontend tools
+        // (propose_edit, translation review, record-diff) still render individually.
+        const confirmProposals = proposals.filter(
+          (tc) =>
+            (tc.tool === 'glossary_confirm_action' || tc.tool === 'confirm_action') &&
+            !!(tc.args as { confirm_token?: string } | undefined)?.confirm_token,
+        );
+        const batchChildren: BatchChild[] = [];
+        const batchTokens = new Set<string>();
+        const addChild = (token: string | undefined, descriptor?: string, ttl?: string, argDomain?: string) => {
+          if (!token || batchTokens.has(token)) return;
+          batchTokens.add(token);
+          batchChildren.push({ token, domain: argDomain ?? descriptorDomain(descriptor) ?? 'glossary', descriptor, title: ttl });
+        };
+        for (const tc of confirmProposals) {
+          const a = (tc.args ?? {}) as { confirm_token?: string; descriptor?: string; title?: string; domain?: string };
+          addChild(a.confirm_token, a.descriptor, a.title, a.domain);
+        }
+        for (const p of autoConfirms) addChild(p.confirm_token, p.descriptor, p.title);
+        const coalesce = batchChildren.length > 1;
+        // The explicit confirm that suspended the run (≤1 per turn) — resume it ONCE after
+        // the whole batch commits so the agent learns the outcome.
+        const batchResume = confirmProposals.find((tc) => tc.runId && tc.toolCallId);
+        const proposalsToRender = coalesce ? proposals.filter((tc) => !confirmProposals.includes(tc)) : proposals;
+        const autoToRender = coalesce ? [] : autoConfirms;
         return (
           <>
             {rest.length > 0 && <ToolCallIndicator toolCalls={rest} />}
             {translationCards.map((tc) => (
               <TranslationReviewCard key={tc.toolCallId ?? `${tc.tool}-${tc.iteration ?? 0}`} record={tc} />
             ))}
-            {proposals.map((tc) => {
+            {coalesce && (
+              <BatchConfirmCard
+                children={batchChildren}
+                resume={
+                  batchResume?.runId && batchResume.toolCallId
+                    ? { runId: batchResume.runId, toolCallId: batchResume.toolCallId }
+                    : undefined
+                }
+              />
+            )}
+            {proposalsToRender.map((tc) => {
               const key = tc.toolCallId ?? tc.tool;
               if (tc.tool === 'glossary_propose_entity_edit') return <GlossaryDiffCard key={key} record={tc} />;
               if (tc.tool === 'glossary_confirm_action') {
@@ -265,7 +304,7 @@ export function AssistantMessage({
                 Confirm POSTs to the real /actions/confirm endpoint. Routed by
                 descriptor domain (dotted generic → ConfirmActionCard, glossary's
                 non-dotted → ConfirmCard). */}
-            {autoConfirms.map((p) => {
+            {autoToRender.map((p) => {
               const synthetic: ToolCallRecord = {
                 tool: 'glossary_confirm_action',
                 ok: true,

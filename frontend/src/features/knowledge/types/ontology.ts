@@ -112,6 +112,9 @@ export interface GraphSchemaTree extends GraphSchemaSummary {
   edge_types?: EdgeType[];
   fact_types?: FactType[];
   vocab_sets?: VocabSet[];
+  /** BE returns vocab values SEPARATELY, keyed by vocab-set code (not nested in
+   *  each set). `ontologyApi` nests them into `vocab_sets[].values` on read. */
+  vocab_values?: Record<string, VocabValue[]>;
   node_kinds?: SchemaNodeKind[];
 }
 
@@ -128,6 +131,9 @@ export interface ResolvedSchema {
   edge_types?: EdgeType[];
   fact_types?: FactType[];
   vocab_sets?: VocabSet[];
+  /** Separate, keyed by vocab-set code (see GraphSchemaTree). Nested into
+   *  `vocab_sets[].values` by `ontologyApi` on read. */
+  vocab_values?: Record<string, VocabValue[]>;
   node_kinds?: SchemaNodeKind[];
 }
 

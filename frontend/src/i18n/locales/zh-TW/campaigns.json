@@ -22,7 +22,8 @@
     "projectNoEmbedding": "無嵌入模型",
     "projectHint": "擷取結果會寫入此專案。其嵌入/重排序模型可在「模型」步驟覆寫。",
     "targetLanguage": "目標語言（選填）",
-    "targetLanguagePlaceholder": "例如：vi — 留空則使用你的翻譯設定"
+    "targetLanguagePlaceholder": "例如：vi — 留空則使用你的翻譯設定",
+    "targetLanguageAny": "使用你的翻譯設定"
   },
   "range": {
     "intro": "本書有 {{count}} 個已發佈章節。留空則處理整本書。",

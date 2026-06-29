@@ -49,6 +49,9 @@ type attrDefResp struct {
 	IsSystem   bool     `json:"is_system"`
 	SortOrder  int      `json:"sort_order"`
 	Options    []string `json:"options,omitempty"`
+	// #26/#7 — the authored merge_strategy. The FE branches on 'summarize' to render the
+	// synthesized canonical_value as the headline + the raw items under "sources/history".
+	MergeStrategy string `json:"merge_strategy,omitempty"`
 }
 
 type translationResp struct {
@@ -92,6 +95,10 @@ type attrValueResp struct {
 	OriginalValue    string            `json:"original_value"`
 	Translations     []translationResp `json:"translations"`
 	Evidences        []evidenceResp    `json:"evidences"`
+	// #26/#7 summarize mode — the LLM-synthesized canonical value (null until the first
+	// end-of-job resynthesis) + whether a re-synthesis is pending (the raw set changed since).
+	CanonicalValue *string `json:"canonical_value,omitempty"`
+	CanonicalDirty bool    `json:"canonical_dirty,omitempty"`
 }
 
 type entityListItem struct {
@@ -212,8 +219,8 @@ func (s *Server) loadEntityDetail(ctx context.Context, bookID, entityID uuid.UUI
 	// Query 3: attribute values + embedded attr defs
 	avRows, err := s.pool.Query(ctx, `
 		SELECT eav.attr_value_id, eav.entity_id, eav.attr_def_id,
-		       eav.original_language, eav.original_value,
-		       ad.attr_id, ad.code, ad.name, ad.field_type, ad.is_required, false AS is_system, ad.sort_order
+		       eav.original_language, eav.original_value, eav.canonical_value, eav.canonical_dirty,
+		       ad.attr_id, ad.code, ad.name, ad.field_type, ad.is_required, false AS is_system, ad.sort_order, ad.options, ad.merge_strategy
 		FROM entity_attribute_values eav
 		JOIN book_attributes ad ON ad.attr_id = eav.attr_def_id
 		WHERE eav.entity_id = $1
@@ -229,9 +236,9 @@ func (s *Server) loadEntityDetail(ctx context.Context, bookID, entityID uuid.UUI
 		var av attrValueResp
 		if err := avRows.Scan(
 			&av.AttrValueID, &av.EntityID, &av.AttrDefID,
-			&av.OriginalLanguage, &av.OriginalValue,
+			&av.OriginalLanguage, &av.OriginalValue, &av.CanonicalValue, &av.CanonicalDirty,
 			&av.AttributeDef.AttrDefID, &av.AttributeDef.Code, &av.AttributeDef.Name,
-			&av.AttributeDef.FieldType, &av.AttributeDef.IsRequired, &av.AttributeDef.IsSystem, &av.AttributeDef.SortOrder,
+			&av.AttributeDef.FieldType, &av.AttributeDef.IsRequired, &av.AttributeDef.IsSystem, &av.AttributeDef.SortOrder, &av.AttributeDef.Options, &av.AttributeDef.MergeStrategy,
 		); err != nil {
 			return nil, err
 		}
@@ -720,7 +727,9 @@ func (s *Server) listEntities(w http.ResponseWriter, r *http.Request) {
 	// Pagination
 	limit := 50
 	offset := 0
-	if v, err := strconv.Atoi(q.Get("limit")); err == nil && v > 0 && v <= 200 {
+	// bug #6: allow up to 1000 per page so a large glossary (15000+ entities) can be paged
+	// in bulk for activation. A value above the cap (or unparseable) keeps the default 50.
+	if v, err := strconv.Atoi(q.Get("limit")); err == nil && v > 0 && v <= 1000 {
 		limit = v
 	}
 	if v, err := strconv.Atoi(q.Get("offset")); err == nil && v >= 0 {
@@ -1346,6 +1355,73 @@ func (s *Server) deleteEntity(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	w.WriteHeader(http.StatusNoContent)
+}
+
+// ── POST /v1/glossary/books/{book_id}/entities/bulk-delete ───────────────────
+
+// bulkDeleteEntities soft-deletes many book-scoped entities in one UPDATE — the
+// bulk sibling of deleteEntity, for cleaning up duplicate/unwanted entities (e.g.
+// the cross-kind duplicates extraction can produce, #38/#39). Book-scoped +
+// Manage-grant gated — delete is a destructive, manage-level op, matching the
+// single-entity DELETE. Soft-delete (deleted_at) so the row + its history survive;
+// returns the count actually deleted — ids that don't match a live book entity
+// simply don't count (the implicit partial-success report).
+//
+// No outbox event is emitted — mirrors the single-entity deleteEntity (the
+// glossary.entity_* events carry no "deleted" variant today; adding one is a
+// separate cross-cutting change).
+func (s *Server) bulkDeleteEntities(w http.ResponseWriter, r *http.Request) {
+	userID, ok := s.requireUserID(r)
+	if !ok {
+		writeError(w, http.StatusUnauthorized, "GLOSS_UNAUTHORIZED", "valid Bearer token required")
+		return
+	}
+	bookID, ok := parsePathUUID(w, r, "book_id")
+	if !ok {
+		return
+	}
+	if !s.requireGrant(w, r.Context(), bookID, userID, grantclient.GrantManage) {
+		return
+	}
+
+	var in struct {
+		EntityIDs []string `json:"entity_ids"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&in); err != nil {
+		writeError(w, http.StatusBadRequest, "GLOSS_INVALID_BODY", "invalid JSON")
+		return
+	}
+	if len(in.EntityIDs) == 0 {
+		writeError(w, http.StatusBadRequest, "GLOSS_INVALID_BODY", "entity_ids must not be empty")
+		return
+	}
+	if len(in.EntityIDs) > 1000 {
+		writeError(w, http.StatusUnprocessableEntity, "GLOSS_TOO_MANY",
+			"entity_ids must be at most 1000")
+		return
+	}
+	// Drop malformed ids (mirrors bulk-status) — a bad id never matches the
+	// book-scoped WHERE anyway, so coerce to a clean uuid slice.
+	ids := make([]uuid.UUID, 0, len(in.EntityIDs))
+	for _, raw := range in.EntityIDs {
+		if id, err := uuid.Parse(strings.TrimSpace(raw)); err == nil {
+			ids = append(ids, id)
+		}
+	}
+	if len(ids) == 0 {
+		writeJSON(w, http.StatusOK, map[string]int{"deleted": 0})
+		return
+	}
+
+	tag, err := s.pool.Exec(r.Context(),
+		`UPDATE glossary_entities SET deleted_at = now(), updated_at = now()
+		 WHERE book_id = $1 AND entity_id = ANY($2::uuid[]) AND deleted_at IS NULL`,
+		bookID, ids)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "GLOSS_INTERNAL", "bulk delete failed")
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]int{"deleted": int(tag.RowsAffected())})
 }
 
 // ── GET /v1/glossary/books/{book_id}/entity-names ───────────────────────────

@@ -394,6 +394,15 @@ func (s *Server) setBookKindGenres(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
+	// A book kind must stay linked to ≥1 genre: the ontology is genre-first, so a
+	// zero-link kind is unreachable in the Manage drilldown and can hold no attributes
+	// (attributes are keyed per kind×genre). This is the load-bearing form of the FE
+	// modal's invariant (#25). (User-tier kinds are listed flat, so they allow zero.)
+	if len(genreIDs) == 0 {
+		writeError(w, http.StatusUnprocessableEntity, "GLOSS_INVALID_BODY",
+			"a kind must stay linked to at least one genre")
+		return
+	}
 
 	ctx := r.Context()
 	tx, err := s.pool.Begin(ctx)

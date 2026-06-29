@@ -20,6 +20,7 @@ Degrade-safe: any LLM/empty failure returns "" — the caller then keeps the raw
 from __future__ import annotations
 
 import logging
+from collections.abc import Awaitable, Callable
 
 from loreweave_llm.errors import LLMError
 
@@ -82,6 +83,7 @@ async def compress(
     prose: list[str], timeline: list[str], plan: str = "",
     source_language: str = "auto", max_tokens: int = 512,
     max_input_chars: int = 24000, trace_id: str | None = None,
+    cancel_check: Callable[[], Awaitable[bool]] | None = None,
 ) -> str:
     """Condense into a re-injectable state summary. Returns "" on any failure
     (caller keeps the raw, budget-trimmed prose). No-op ("" ) when there is
@@ -99,7 +101,8 @@ async def compress(
                 "response_format": {"type": "text"}, "temperature": 0.2,
                 "max_tokens": max_tokens, **_NO_THINK,
             },
-            job_meta={"extractor": "compress"}, trace_id=trace_id,
+            job_meta={"usage_purpose": "context_compress", "extractor": "compress"}, trace_id=trace_id,
+            cancel_check=cancel_check,
         )
     except LLMError as exc:
         logger.warning("compress LLM error: %s — keeping raw prose", exc)

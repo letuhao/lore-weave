@@ -166,6 +166,12 @@ export class FederationService implements OnModuleInit, OnModuleDestroy {
     args: Record<string, unknown>,
     env: Envelope,
     meta?: unknown,
+    // D-PLANNER-INFLIGHT-ABORT (#19): when set and aborted (inbound chat request
+    // closed), the downstream provider callTool is cancelled — its fetch aborts,
+    // dropping the provider's HTTP connection so the provider's own r.Context()
+    // cancels and a heavy in-flight call (the ~39s glossary_plan) stops instead
+    // of running to completion after the user already stopped the turn.
+    signal?: AbortSignal,
   ): Promise<unknown> {
     const p = this.providerFor(tool);
     if (!p) {
@@ -185,7 +191,10 @@ export class FederationService implements OnModuleInit, OnModuleDestroy {
         arguments: args,
       };
       if (meta && typeof meta === 'object') params._meta = meta as Record<string, unknown>;
-      return await client.callTool(params);
+      // `signal` propagates an inbound chat-turn stop down to the provider call.
+      // Omit `resultSchema` (pass-through) but supply it explicitly since the
+      // signal rides the 3rd `options` arg.
+      return await client.callTool(params, undefined, signal ? { signal } : undefined);
     } finally {
       await client.close().catch(() => undefined);
     }

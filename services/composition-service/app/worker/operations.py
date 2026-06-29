@@ -15,6 +15,7 @@ from __future__ import annotations
 
 import dataclasses
 import logging
+from collections.abc import Awaitable, Callable
 from typing import Any
 from uuid import UUID
 
@@ -46,6 +47,7 @@ async def _maybe_narrative_threads(
     pool: asyncpg.Pool, llm: LLMClient, sdict: dict[str, Any], profile, *,
     user_id: str, project_id: str, scene_text: str, opened_at_node: str | None,
     model_source: str, model_ref: str,
+    cancel_check: Callable[[], Awaitable[bool]] | None = None,
 ) -> None:
     """FD-1 narrative_thread S2 best-effort producer, gated per-work. Mirrors the
     inline ``_maybe_detect_narrative_threads`` — never raises into the compute
@@ -63,12 +65,16 @@ async def _maybe_narrative_threads(
             drafter_source=model_source, drafter_ref=model_ref,
             source_language=profile.source_language,
             max_open=settings.narrative_thread_max_open_per_scene,
+            cancel_check=cancel_check,
         )
     except Exception:  # noqa: BLE001 — advisory; must not fail the generate
         logger.warning("narrative_thread S2 producer failed (advisory)", exc_info=True)
 
 
-async def run_decompose(llm: LLMClient, *, user_id: str, input: dict[str, Any]) -> dict[str, Any]:
+async def run_decompose(
+    llm: LLMClient, *, user_id: str, input: dict[str, Any],
+    cancel_check: Callable[[], Awaitable[bool]] | None = None,
+) -> dict[str, Any]:
     """Run the decompose planner from the persisted, fully-resolved input. The
     endpoint stored chapters/cast/beats/profile so this needs NO bearer (only the
     internal-auth LLM). Returns ``dataclasses.asdict(result)`` for the poll."""
@@ -92,12 +98,14 @@ async def run_decompose(llm: LLMClient, *, user_id: str, input: dict[str, Any]) 
         min_scenes=input["min_scenes"],
         max_scenes=input["max_scenes"],
         source_language=input["source_language"],
+        cancel_check=cancel_check,
     )
     return dataclasses.asdict(result)
 
 
 async def run_stitch(
-    pool: asyncpg.Pool, llm: LLMClient, knowledge, *, input: dict[str, Any]
+    pool: asyncpg.Pool, llm: LLMClient, knowledge, *, input: dict[str, Any],
+    cancel_check: Callable[[], Awaitable[bool]] | None = None,
 ) -> dict[str, Any]:
     """Stitch a chapter's completed scene drafts into one chapter + re-run the
     chapter-level canon guard (Option A — the worker COMPUTES + stores the result;
@@ -132,7 +140,7 @@ async def run_stitch(
         llm, user_id=user_id, model_source=input["model_source"], model_ref=input["model_ref"],
         scene_drafts=drafts, chapter_intent=input["chapter_intent"], profile=profile,
         max_tokens=max_out, max_input_chars=settings.stitch_max_input_chars,
-        reasoning_effort=reasoning_effort,
+        reasoning_effort=reasoning_effort, cancel_check=cancel_check,
     )
     degraded = not stitched
     final_text = stitched or "\n\n".join(drafts)
@@ -152,7 +160,7 @@ async def run_stitch(
             judge_source=input.get("critic_source"), judge_ref=input.get("critic_ref"),
             prompt_estimate=0, max_output_tokens=max_out,
             max_iters=int(input.get("reflect_max_iters", 1) or 1),
-            reasoning_effort=reasoning_effort,
+            reasoning_effort=reasoning_effort, cancel_check=cancel_check,
         )
         canon_v = {"violations": [v.model_dump() for v in reflect.violations],
                    "resolved": reflect.resolved, "iterations": reflect.iterations,
@@ -172,7 +180,8 @@ async def run_stitch(
 
 
 async def run_generate(
-    pool: asyncpg.Pool, llm: LLMClient, knowledge, *, input: dict[str, Any]
+    pool: asyncpg.Pool, llm: LLMClient, knowledge, *, input: dict[str, Any],
+    cancel_check: Callable[[], Awaitable[bool]] | None = None,
 ) -> dict[str, Any]:
     """Run the AUTO per-scene draft (diverge→converge→canon-reflect) from the
     persisted, fully-resolved input. Mirrors the inline ``generate`` auto path
@@ -224,6 +233,7 @@ async def run_generate(
             packed_prompt=packed_prompt, profile=profile, operation=operation, guide=guide,
             k=k, prompt_est=prompt_estimate, max_tokens=max_out,
             temperature=settings.compose_diverge_temperature, reasoning_effort=effort_arg,
+            cancel_check=cancel_check,
         )
     except Exception as exc:  # noqa: BLE001 — mirror inline: diverge produced
         # nothing / transport → a TERMINAL job failure (run_job marks failed + ACK,
@@ -245,7 +255,7 @@ async def run_generate(
             judge_source=critic_source, judge_ref=critic_ref,
             prompt_estimate=prompt_estimate, max_output_tokens=max_out,
             max_iters=int(input.get("reflect_max_iters", 1) or 1),
-            reasoning_effort=effort_arg,
+            reasoning_effort=effort_arg, cancel_check=cancel_check,
         )
         canon = {"violations": [v.model_dump() for v in reflect.violations],
                  "resolved": reflect.resolved, "iterations": reflect.iterations,
@@ -258,7 +268,7 @@ async def run_generate(
     await _maybe_narrative_threads(
         pool, llm, sdict, profile, user_id=user_id, project_id=project_id,
         scene_text=final_text, opened_at_node=input.get("outline_node_id"),
-        model_source=model_source, model_ref=model_ref)
+        model_source=model_source, model_ref=model_ref, cancel_check=cancel_check)
 
     total_out = w.metering.output_tokens + revise_out_tokens
     truncated = (w.metering.finish_reason == "length") or (revise_finish == "length")
@@ -280,7 +290,8 @@ async def run_generate(
 
 
 async def run_chapter_generate(
-    pool: asyncpg.Pool, llm: LLMClient, knowledge, *, input: dict[str, Any]
+    pool: asyncpg.Pool, llm: LLMClient, knowledge, *, input: dict[str, Any],
+    cancel_check: Callable[[], Awaitable[bool]] | None = None,
 ) -> dict[str, Any]:
     """Run the B2 single-pass chapter draft (``diverge`` k=1 → chapter-level
     canon-reflect over the union cast) from the persisted input. Mirrors the inline
@@ -320,6 +331,7 @@ async def run_chapter_generate(
             packed_prompt=packed_prompt, profile=profile, operation=operation, guide=guide,
             k=1, prompt_est=prompt_estimate, max_tokens=max_out,
             temperature=settings.compose_diverge_temperature, reasoning_effort=effort_arg,
+            cancel_check=cancel_check,
         )
     except Exception as exc:  # noqa: BLE001 — no candidate / transport → terminal fail
         raise ValueError(f"chapter generate failed: {exc}") from exc
@@ -339,7 +351,7 @@ async def run_chapter_generate(
             judge_source=critic_source, judge_ref=critic_ref,
             prompt_estimate=prompt_estimate, max_output_tokens=max_out,
             max_iters=int(input.get("reflect_max_iters", 1) or 1),
-            reasoning_effort=effort_arg,
+            reasoning_effort=effort_arg, cancel_check=cancel_check,
         )
         canon_v = {"violations": [v.model_dump() for v in reflect.violations],
                    "resolved": reflect.resolved, "iterations": reflect.iterations,
@@ -353,7 +365,7 @@ async def run_chapter_generate(
     await _maybe_narrative_threads(
         pool, llm, sdict, profile, user_id=user_id, project_id=project_id,
         scene_text=final_text, opened_at_node=None,
-        model_source=model_source, model_ref=model_ref)
+        model_source=model_source, model_ref=model_ref, cancel_check=cancel_check)
 
     # FD-1 S4a — advisory unpaid-promise DEBT count at chapter end (None when off).
     open_promise_count: int | None = None

@@ -120,20 +120,45 @@ type usageRow struct {
 // key is here, all values string-encoded (stream values are strings); empty
 // string for a null campaign_id / cost_usd. Pure + unit-tested so a key rename
 // or a dropped field is caught without a live stack.
-func buildUsageFields(requestID, ownerID, campaign, mcpKey, modelSource, modelRef, operation, cost string, inTok, outTok int) map[string]any {
-	return map[string]any{
-		"request_id":     requestID,
-		"owner_user_id":  ownerID,
-		"campaign_id":    campaign,
-		"mcp_key_id":     mcpKey,
-		"model_source":   modelSource,
-		"model_ref":      modelRef,
-		"operation":      operation,
-		"input_tokens":   strconv.Itoa(inTok),
-		"output_tokens":  strconv.Itoa(outTok),
-		"cost_usd":       cost,
-		"request_status": "success",
+func buildUsageFields(requestID, ownerID, campaign, mcpKey, modelSource, modelRef, operation, cost string, inTok, outTok int, requestStatus, requestPayload, responsePayload string) map[string]any {
+	// #32 — request_status is now carried from the row (success | failed | cancelled),
+	// no longer hardcoded; the traced request/response payloads ride along (empty when
+	// unpopulated, e.g. legacy rows). usage-billing's parseUsageEvent reads these.
+	// mcp_key_id (public-MCP per-key attribution) is carried through to the usage stream.
+	status := requestStatus
+	if status == "" {
+		status = "success" // back-compat for any legacy row written before #32
 	}
+	return map[string]any{
+		"request_id":       requestID,
+		"owner_user_id":    ownerID,
+		"campaign_id":      campaign,
+		"mcp_key_id":       mcpKey,
+		"model_source":     modelSource,
+		"model_ref":        modelRef,
+		"operation":        operation,
+		"input_tokens":     strconv.Itoa(inTok),
+		"output_tokens":    strconv.Itoa(outTok),
+		"cost_usd":         cost,
+		"request_status":   status,
+		"request_payload":  requestPayload,
+		"response_payload": responsePayload,
+	}
+}
+
+// campaignFields strips the traced request/response payloads from a usage field map
+// before it goes to the campaign_usage stream (#32 /review-impl MED): the campaign
+// spend consumer reads ONLY cost/ids, and the payloads are PLAINTEXT on the wire — so
+// there's no reason to broaden their footprint to a second stream.
+func campaignFields(f map[string]any) map[string]any {
+	out := make(map[string]any, len(f))
+	for k, v := range f {
+		if k == "request_payload" || k == "response_payload" {
+			continue
+		}
+		out[k] = v
+	}
+	return out
 }
 
 // drainOnce publishes one batch of unpublished rows. Returns the count published.
@@ -152,7 +177,8 @@ func (r *UsageRelay) drainOnce(ctx context.Context) (int, error) {
 	rows, err := tx.Query(ctx, `
 SELECT id, request_id::text, owner_user_id::text, campaign_id::text, mcp_key_id::text,
        model_source, model_ref::text, operation,
-       input_tokens, output_tokens, cost_usd::text
+       input_tokens, output_tokens, cost_usd::text,
+       request_status, request_payload, response_payload
 FROM usage_outbox
 WHERE published_at IS NULL
 ORDER BY id
@@ -167,10 +193,12 @@ FOR UPDATE SKIP LOCKED
 	for rows.Next() {
 		var id int64
 		var requestID, ownerID, modelSource, modelRef, operation string
-		var campaignID, mcpKeyID, costUSD *string // nullable
+		var campaignID, mcpKeyID, costUSD *string       // nullable
+		var reqStatus, reqPayload, respPayload *string  // nullable (#32)
 		var inTok, outTok int
 		if err := rows.Scan(&id, &requestID, &ownerID, &campaignID, &mcpKeyID, &modelSource,
-			&modelRef, &operation, &inTok, &outTok, &costUSD); err != nil {
+			&modelRef, &operation, &inTok, &outTok, &costUSD,
+			&reqStatus, &reqPayload, &respPayload); err != nil {
 			rows.Close()
 			return 0, err
 		}
@@ -186,10 +214,17 @@ FOR UPDATE SKIP LOCKED
 		if costUSD != nil {
 			cost = *costUSD
 		}
+		deref := func(p *string) string {
+			if p != nil {
+				return *p
+			}
+			return ""
+		}
 		batch = append(batch, usageRow{
 			id:       id,
 			campaign: camp,
-			fields:   buildUsageFields(requestID, ownerID, camp, mcpKey, modelSource, modelRef, operation, cost, inTok, outTok),
+			fields: buildUsageFields(requestID, ownerID, camp, mcpKey, modelSource, modelRef, operation, cost, inTok, outTok,
+				deref(reqStatus), deref(reqPayload), deref(respPayload)),
 		})
 	}
 	// Must drain+close the cursor BEFORE issuing further queries on this tx.
@@ -217,7 +252,7 @@ FOR UPDATE SKIP LOCKED
 				Stream: r.cfg.CampaignUsageStream,
 				MaxLen: r.cfg.CampaignMaxLen,
 				Approx: true,
-				Values: b.fields,
+				Values: campaignFields(b.fields),
 			}).Err(); err != nil {
 				return 0, err
 			}

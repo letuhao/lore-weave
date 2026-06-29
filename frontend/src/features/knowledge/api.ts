@@ -202,6 +202,17 @@ export interface RebuildPayload {
   max_spend_usd?: string;
 }
 
+// bug #14 — without `?confirm=true` the rebuild BE returns this destructive
+// preview (carrying live node counts) and deletes NOTHING; with it, the
+// rebuild runs and returns the new ExtractionJob.
+export interface RebuildWarning {
+  warning: string;
+  entity_count: number;
+  fact_count: number;
+  event_count: number;
+  action_required: 'confirm';
+}
+
 // K19a.6 — discriminated return type for PUT /embedding-model.
 // Without `?confirm=true` the BE returns a warning preview; with it
 // the destructive change runs and the BE returns the result metadata.
@@ -731,6 +742,9 @@ export interface TimelineListParams {
    *  on `event_date_iso`. Events with NULL date are excluded when either is set. */
   event_date_from?: string;
   event_date_to?: string;
+  /** #12: free-text search over event title + summary (case-insensitive
+   *  substring, matched against SOURCE text). Empty/whitespace ignored. */
+  q?: string;
   /** KG-TL — reader language for localizing the timeline (chapter heading +
    *  participant names + summary/time_cue/title). Sourced from the active UI
    *  language; the BE folds it to the primary subtag and resolves the stored
@@ -1340,13 +1354,17 @@ export const knowledgeApi = {
     );
   },
 
+  // bug #14 — destructive guard. Without `confirm`, the BE returns a
+  // RebuildWarning preview (node counts) and deletes nothing; the FE shows a
+  // typed confirmation, then re-calls with `confirm=true` to commit.
   rebuildGraph(
     projectId: string,
     payload: RebuildPayload,
     token: string,
-  ): Promise<ExtractionJobWire> {
-    return apiJson<ExtractionJobWire>(
-      `${BASE}/projects/${projectId}/extraction/rebuild`,
+    confirm = false,
+  ): Promise<ExtractionJobWire | RebuildWarning> {
+    return apiJson<ExtractionJobWire | RebuildWarning>(
+      `${BASE}/projects/${projectId}/extraction/rebuild${confirm ? '?confirm=true' : ''}`,
       { method: 'POST', body: JSON.stringify(payload), token },
     );
   },
@@ -1816,6 +1834,7 @@ export const knowledgeApi = {
       qs.set('event_date_from', params.event_date_from);
     if (params.event_date_to != null)
       qs.set('event_date_to', params.event_date_to);
+    if (params.q && params.q.trim()) qs.set('q', params.q.trim());
     if (params.language) qs.set('language', params.language);
     if (params.limit != null) qs.set('limit', String(params.limit));
     if (params.offset != null) qs.set('offset', String(params.offset));

@@ -29,8 +29,9 @@ class FakeSDK:
                 raise exc
         return SimpleNamespace(job_id=f"job{self.submit_calls}")
 
-    async def wait_terminal(self, job_id, *, user_id, transient_retry_budget=1):
+    async def wait_terminal(self, job_id, *, user_id, transient_retry_budget=1, cancel_check=None):
         self.wait_calls += 1
+        self.last_cancel_check = cancel_check  # bug #34 — assert the wrapper forwards it
         b = self._wait.pop(0)
         if isinstance(b, Exception):
             raise b
@@ -57,6 +58,16 @@ async def test_happy_path_returns_terminal_job():
     job = await _run(sdk)
     assert job.status == "completed"
     assert sdk.submit_calls == 1 and sdk.wait_calls == 1
+
+
+async def test_cancel_check_is_forwarded_to_wait_terminal():
+    # bug #34 — the wrapper must hand its cancel_check to the SDK's wait_terminal
+    # so an in-flight LLM call is abortable on user-cancel.
+    async def my_check() -> bool:
+        return False
+    sdk = FakeSDK([_completed()])
+    await _run(sdk, cancel_check=my_check)
+    assert sdk.last_cancel_check is my_check
 
 
 async def test_transient_retry_then_success_resubmits():

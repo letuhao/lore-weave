@@ -57,6 +57,8 @@ export function useTimeline(
       params.sort_dir ?? 'asc',
       params.event_date_from ?? null,
       params.event_date_to ?? null,
+      // #12: text search is part of the cache key so typing refetches.
+      params.q ?? null,
       // KG-TL — reader language is part of the cache key so switching the UI
       // language refetches the localized timeline instead of serving the
       // previous language's cached page.

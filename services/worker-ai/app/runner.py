@@ -21,6 +21,7 @@ import json
 import logging
 import os
 import re
+from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from typing import Any
@@ -1336,6 +1337,10 @@ async def _extract_and_persist(
     # into the SDK's core extraction LLM calls. Default "none" ⇒ no reasoning
     # wire fields (chat_turn / glossary callers omit it → unchanged).
     reasoning_effort: str = "none",
+    # bug #34 — optional immediate-cancel hook threaded into extract_pass2 so an
+    # in-flight extraction LLM call is aborted the moment the KG-build job is
+    # cancelled. None (default) ⇒ no cancellation polling (back-compat).
+    cancel_check: "Callable[[], Awaitable[bool]] | None" = None,
 ) -> tuple[ExtractionResult, "Pass2Candidates | None"]:
     """Phase 4b-γ — replaces the legacy `knowledge_client.extract_item`.
 
@@ -1408,6 +1413,9 @@ async def _extract_and_persist(
             # D-KG-WORKER-GRADED-EFFORT — graded effort → core extraction LLM
             # calls ("none" ⇒ no wire fields; recovery/filter stay force-off).
             reasoning_effort=reasoning_effort,
+            # bug #34 — immediate-cancel hook → core extraction submit_and_wait
+            # calls so an in-flight LLM call aborts on job cancellation.
+            cancel_check=cancel_check,
         )
     except ExtractionError as exc:
         retryable = exc.stage == "provider_exhausted"
@@ -1654,6 +1662,9 @@ async def _start_decoupled_chunk(
     await pool.execute(
         """UPDATE extraction_jobs
            SET resume_state=$2::jsonb, provider_job_ids=$3::jsonb, pipeline_stage=$4,
+               -- bug #37 — count the entity submit (the chunk's first LLM call); the
+               -- consumer's _submit_map bumps the trio/recovery/filter fan-outs.
+               llm_calls_made = llm_calls_made + 1,
                updated_at=now()
            WHERE job_id=$1""",
         job.job_id, json.dumps(rs), json.dumps([str(submit.job_id)]), rs["stage"],
@@ -1705,6 +1716,22 @@ async def process_job(
     # knowledge extraction is poll-based, so the id rides the row). task-local, like
     # campaign_id; None ⇒ first-party job.
     set_public_key_attribution(job.mcp_key_id, job.spend_cap_usd)
+
+    # bug #34 — immediate-cancel hook for in-flight extraction LLM calls.
+    # Polled by loreweave_llm.Client.wait_terminal (threaded down via
+    # extract_pass2) so a cancelled KG-build job aborts its current LLM call
+    # at once, rather than only between items via _refresh_job_status. Mirrors
+    # _refresh_job_status's query/acquire idiom. FAIL-SOFT: any read error
+    # returns False so a transient DB blip never spuriously cancels healthy work.
+    async def cancel_check() -> bool:
+        try:
+            status = await pool.fetchval(
+                "SELECT status FROM extraction_jobs WHERE job_id = $1",
+                job.job_id,
+            )
+        except Exception:
+            return False
+        return status == "cancelled"
 
     # LLM re-arch Phase 2b WX-T3b — decoupled-extraction in-flight guard. If a chunk
     # is already in flight (the llm_extract_consumer is driving it off terminal
@@ -2095,6 +2122,8 @@ async def process_job(
                     pinned_names=pinned_names,
                     # D-KG-WORKER-GRADED-EFFORT — the job's stored graded effort.
                     reasoning_effort=job.reasoning_effort,
+                    # bug #34 — abort an in-flight LLM call on job cancellation.
+                    cancel_check=cancel_check,
                 )
 
                 if result.error:
@@ -2298,6 +2327,8 @@ async def process_job(
                     schema=extraction_schema,
                     # D-KG-WORKER-GRADED-EFFORT — the job's stored graded effort.
                     reasoning_effort=job.reasoning_effort,
+                    # bug #34 — abort an in-flight LLM call on job cancellation.
+                    cancel_check=cancel_check,
                 )
 
                 if result.error and not result.retryable:

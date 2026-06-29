@@ -34,6 +34,7 @@ import type {
   TriageResolvePayload,
   TriageResolveResult,
   ViewCreate,
+  VocabSet,
   VocabValue,
   VocabValueCreate,
 } from '../types/ontology';
@@ -57,6 +58,21 @@ function qs(
 // an interface to an index signature implicitly — coerce at the boundary.
 type QueryParams = Record<string, string | number | boolean | undefined>;
 
+// The schema endpoints return vocab VALUES separately (`vocab_values`, keyed by
+// set code) rather than nested in each `vocab_sets[]` row. Every FE consumer
+// (SchemaEditor, the inspector) reads `vocab_sets[].values`, so nest them here at
+// the read boundary — once, for both the tree and the resolved schema.
+function nestVocabValues<T extends { vocab_sets?: VocabSet[]; vocab_values?: Record<string, VocabValue[]> }>(
+  schema: T,
+): T {
+  const byCode = schema?.vocab_values;
+  if (!byCode || !schema.vocab_sets) return schema;
+  return {
+    ...schema,
+    vocab_sets: schema.vocab_sets.map((vs) => ({ ...vs, values: byCode[vs.code] ?? vs.values ?? [] })),
+  };
+}
+
 export interface ListSchemasParams {
   scope?: Scope | 'all';
   project_id?: string;
@@ -74,7 +90,7 @@ export const ontologyApi = {
   },
 
   getSchema(schemaId: string, token: string): Promise<GraphSchemaTree> {
-    return apiJson(`${BASE}/graph-schemas/${schemaId}`, { token });
+    return apiJson<GraphSchemaTree>(`${BASE}/graph-schemas/${schemaId}`, { token }).then(nestVocabValues);
   },
 
   patchSchema(
@@ -99,7 +115,7 @@ export const ontologyApi = {
   // ── resolved (effective) schema ──────────────────────────────────────────────
 
   getResolvedSchema(projectId: string, token: string): Promise<ResolvedSchema> {
-    return apiJson(`${BASE}/projects/${projectId}/schema`, { token });
+    return apiJson<ResolvedSchema>(`${BASE}/projects/${projectId}/schema`, { token }).then(nestVocabValues);
   },
 
   // ── adopt (copy-down) ────────────────────────────────────────────────────────

@@ -219,6 +219,96 @@ def _current_month_key() -> str:
     return _dt.now(_tz.utc).strftime("%Y-%m")
 
 
+def _capturing_pool():
+    """Like ``_mock_pool`` but returns ``(pool, mock_conn)`` so a test can inspect
+    the INSERT's positional args (e.g. the stored items_total, #9)."""
+    mock_conn = AsyncMock()
+    mock_conn.fetchrow = AsyncMock(return_value={"job_id": _JOB_ID})
+    mock_conn.execute = AsyncMock()
+
+    @asynccontextmanager
+    async def mock_transaction():
+        yield
+
+    mock_conn.transaction = mock_transaction
+
+    @asynccontextmanager
+    async def mock_acquire():
+        yield mock_conn
+
+    pool = MagicMock()
+    pool.acquire = mock_acquire
+    pool.fetchrow = AsyncMock(
+        return_value=_BudgetRow(current_month_key=_current_month_key()),
+    )
+    pool.execute = AsyncMock()
+    return pool, mock_conn
+
+
+# INSERT positional args order (extraction_jobs):
+#   (sql, user_id, project_id, scope, scope_range, llm_model, embedding_model,
+#    max_spend_usd, items_total, campaign_id, ...) → items_total is index 8.
+_INSERT_ITEMS_TOTAL_IDX = 8
+
+
+def test_start_computes_items_total_server_side_ignoring_client():
+    """#9 — the stored items_total is the SERVER count (chapters 45 + chat 100 +
+    glossary 200 = 345), never the client-supplied placeholder. This is the '1/100'
+    progress bug: the FE's optional items_total used to be trusted verbatim."""
+    state = _MockState()
+    state.active = False
+    client = _setup(state)
+    pool, mock_conn = _capturing_pool()
+
+    with patch("app.routers.public.extraction.get_knowledge_pool", return_value=pool):
+        resp = client.post(
+            f"/v1/knowledge/projects/{_TEST_PROJECT}/extraction/start",
+            json={
+                "scope": "all",
+                "llm_model": "test-model",
+                "embedding_model": "bge-m3",
+                "max_spend_usd": "10.00",
+                "items_total": 99999,  # bogus client placeholder — must be DISCARDED
+            },
+        )
+
+    assert resp.status_code == 201, resp.text
+    insert_args = mock_conn.fetchrow.call_args_list[0].args
+    assert insert_args[_INSERT_ITEMS_TOTAL_IDX] == 45 + 100 + 200
+
+
+def test_start_items_total_is_best_effort_null_on_count_failure():
+    """#9 — a transient count failure must NOT block the job start: items_total is
+    stored NULL (FE renders an indeterminate bar) instead of raising or persisting a
+    wrong number."""
+    from app.main import app
+    from app.deps import get_glossary_client
+
+    state = _MockState()
+    state.active = False
+    client = _setup(state)
+
+    failing = AsyncMock(spec=GlossaryClient)
+    failing.count_entities = AsyncMock(side_effect=RuntimeError("glossary-service down"))
+    app.dependency_overrides[get_glossary_client] = lambda: failing
+
+    pool, mock_conn = _capturing_pool()
+    with patch("app.routers.public.extraction.get_knowledge_pool", return_value=pool):
+        resp = client.post(
+            f"/v1/knowledge/projects/{_TEST_PROJECT}/extraction/start",
+            json={
+                "scope": "all",
+                "llm_model": "test-model",
+                "embedding_model": "bge-m3",
+                "max_spend_usd": "10.00",
+            },
+        )
+
+    assert resp.status_code == 201, resp.text
+    insert_args = mock_conn.fetchrow.call_args_list[0].args
+    assert insert_args[_INSERT_ITEMS_TOTAL_IDX] is None
+
+
 def _mock_neo4j():
     mock_result = AsyncMock()
     mock_result.single = AsyncMock(return_value={"deleted": 5})
@@ -341,7 +431,7 @@ def test_full_extraction_lifecycle():
                         return_value=_mock_pool()):
                 state.job_status = "running"
                 resp = client.post(
-                    f"/v1/knowledge/projects/{_TEST_PROJECT}/extraction/rebuild",
+                    f"/v1/knowledge/projects/{_TEST_PROJECT}/extraction/rebuild?confirm=true",
                     json={
                         "llm_model": "test-model",
                         "embedding_model": "bge-m3",

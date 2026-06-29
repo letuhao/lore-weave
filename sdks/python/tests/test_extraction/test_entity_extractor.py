@@ -160,6 +160,50 @@ async def test_empty_text_returns_empty_no_llm_call():
 
 
 @pytest.mark.asyncio
+async def test_cancel_check_forwarded_to_submit_and_wait():
+    """bug #34 — cancel_check reaches the submit_and_wait call so the base
+    SDK can abort an in-flight LLM call on job cancellation."""
+    fake = FakeLLMClient()
+    fake.queue_job(entities=[_entity("Kai")])
+
+    async def _cancel() -> bool:
+        return False
+
+    await extract_entities(
+        text="Kai left Harbin.",
+        known_entities=[],
+        user_id=USER_ID,
+        project_id=PROJECT_ID,
+        model_source="user_model",
+        model_ref="test-model",
+        llm_client=_as_client(fake),
+        cancel_check=_cancel,
+    )
+
+    assert len(fake.calls) == 1
+    assert fake.calls[0]["cancel_check"] is _cancel
+
+
+@pytest.mark.asyncio
+async def test_cancel_check_defaults_none_in_submit():
+    """bug #34 — omitting cancel_check forwards None (back-compat)."""
+    fake = FakeLLMClient()
+    fake.queue_job(entities=[_entity("Kai")])
+
+    await extract_entities(
+        text="Kai left Harbin.",
+        known_entities=[],
+        user_id=USER_ID,
+        project_id=PROJECT_ID,
+        model_source="user_model",
+        model_ref="test-model",
+        llm_client=_as_client(fake),
+    )
+
+    assert fake.calls[0]["cancel_check"] is None
+
+
+@pytest.mark.asyncio
 async def test_known_entities_anchoring():
     """LLM returns 'kai' but known_entities has 'Kai' -> canonical spelling used."""
     fake = FakeLLMClient()

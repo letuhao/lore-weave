@@ -45,6 +45,23 @@ export function BuildingRunningCard({ job, onPause, onCancel, onSetConcurrency }
         </p>
       )}
       <p className="text-[12px] text-muted-foreground">{spentLine}</p>
+      {/* #16 — a full build runs passes in STAGES (facts/summaries last); the
+          aggregate item counter hides this, so a user who stops early thinks
+          facts/summaries are missing. Make the staging explicit. */}
+      <div
+        className="rounded-md border bg-muted/30 px-2.5 py-2"
+        data-testid="building-running-stages"
+      >
+        <p className="text-[11px] font-medium text-muted-foreground">
+          {t('projects.state.cards.building_running.stagesTitle')}
+        </p>
+        <p className="mt-0.5 text-[11px]">
+          {t('projects.state.cards.building_running.stages')}
+        </p>
+        <p className="mt-1 text-[10px] leading-snug text-muted-foreground">
+          {t('projects.state.cards.building_running.stagesNote')}
+        </p>
+      </div>
       <ConcurrencyControl
         jobId={job.job_id}
         current={job.concurrency_level}

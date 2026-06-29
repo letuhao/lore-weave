@@ -116,6 +116,11 @@ func runK2aMigrations(t *testing.T, pool *pgxpool.Pool) {
 	if err := migrate.UpChapterLinkMentionCount(ctx, pool); err != nil {
 		t.Fatalf("migrate.UpChapterLinkMentionCount: %v", err)
 	}
+	// 0043 — #26/#7: the summarize mode's canonical layer on the EAV
+	// (canonical_value + canonical_dirty + canonical_synced_at).
+	if err := migrate.UpCanonicalSummary(ctx, pool); err != nil {
+		t.Fatalf("migrate.UpCanonicalSummary: %v", err)
+	}
 }
 
 // ── schema shape tests ──────────────────────────────────────────────────────

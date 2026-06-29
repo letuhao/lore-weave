@@ -181,6 +181,21 @@ export const glossaryApi = {
     });
   },
 
+  /** Bulk soft-delete many entities in one request (clean up duplicate/unwanted
+   *  entities). Returns the count actually deleted (book-scoped; absent/foreign/
+   *  already-deleted ids are ignored — the partial-success report). */
+  bulkDeleteEntities(
+    bookId: string,
+    entityIds: string[],
+    token: string,
+  ): Promise<{ deleted: number }> {
+    return apiJson<{ deleted: number }>(`${BASE}/books/${bookId}/entities/bulk-delete`, {
+      method: 'POST',
+      body: JSON.stringify({ entity_ids: entityIds }),
+      token,
+    });
+  },
+
   // ── VG-3: entity revision history + restore (D-GLOSSARY-VERSIONING) ─────────
 
   listEntityRevisions(

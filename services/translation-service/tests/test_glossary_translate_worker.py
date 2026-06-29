@@ -1,6 +1,7 @@
 """Unit tests for glossary_translate_worker pagination and entity_ids filter."""
 from __future__ import annotations
 
+import asyncio
 from unittest.mock import AsyncMock, MagicMock, patch
 from uuid import uuid4
 
@@ -367,3 +368,186 @@ async def test_running_and_terminal_emitted_for_glossary_translation(_stub_emit)
     # terminal carried summed tokens (10 in / 5 out from _llm_ok)
     term = [c for c in _stub_emit.await_args_list if c.kwargs.get("status") == "completed"][-1]
     assert term.kwargs.get("tokens_in") == 10 and term.kwargs.get("tokens_out") == 5
+    # bug #37 — one entity → one realized LLM call, surfaced on the terminal + the per-page
+    # 'running' emit (paired with the create event's estimated_llm_calls on the GUI).
+    assert term.kwargs.get("params", {}).get("llm_calls_done") == 1
+    page_running = [c for c in _stub_emit.await_args_list
+                    if c.kwargs.get("status") == "running" and c.kwargs.get("progress")]
+    assert page_running and page_running[-1].kwargs.get("params", {}).get("llm_calls_done") == 1
+
+
+@pytest.mark.asyncio
+async def test_large_entity_gets_output_budget_above_flat_4096():
+    """bug #8 — a long-description entity must send a max_tokens budget ABOVE the old
+    flat 4096 so the structured JSON isn't truncated mid-output. Guards the worker
+    wiring (entity_output_budget threaded into the LLM call) the unit tests can't."""
+    job_id = uuid4()
+    e1 = str(uuid4())
+    big = _entity(e1)
+    big["attributes"].append({
+        "attr_value_id": f"{e1}-desc",
+        "code": "description",
+        "field_type": "text",
+        "original_value": "A young cultivator from the Cloud Sect. " * 400,  # ~16k chars
+    })
+    llm_inputs: list[dict] = []
+
+    async def fake_fetch(*_a, **_kw):
+        if not getattr(fake_fetch, "called", False):
+            fake_fetch.called = True
+            return {"total": 1, "items": [big]}
+        return {"total": 0, "items": []}
+
+    async def capture_llm(**kwargs):
+        llm_inputs.append(kwargs.get("input") or {})
+        return _llm_ok()
+
+    pool, _ = _make_pool()
+    llm = AsyncMock()
+    llm.submit_and_wait = AsyncMock(side_effect=capture_llm)
+    publish = AsyncMock()
+    msg = {
+        "book_id": str(uuid4()), "target_language": "vi", "source_language": "zh",
+        "model_source": "user_model", "model_ref": str(uuid4()),
+        "overwrite_mode": "missing_only", "metadata": {},
+    }
+    with (
+        patch("app.workers.glossary_translate_worker.fetch_translation_candidates",
+              new=AsyncMock(side_effect=fake_fetch)),
+        patch("app.workers.glossary_translate_worker.post_apply_translations",
+              new=AsyncMock(return_value={"translated": 1, "skipped_verified": 0,
+                                          "skipped_empty": 0, "failed": []})),
+    ):
+        await _run_job(msg, job_id, "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa", pool, publish, llm)
+
+    assert llm_inputs and llm_inputs[0]["max_tokens"] > 4096
+
+
+@pytest.mark.asyncio
+async def test_small_entity_keeps_4096_floor():
+    """bug #8 back-compat — a short entity still sends exactly 4096 (the prior default),
+    so the budget change is non-regressive for the common small-entity case."""
+    job_id = uuid4()
+    e1 = str(uuid4())
+    llm_inputs: list[dict] = []
+
+    async def fake_fetch(*_a, **_kw):
+        if not getattr(fake_fetch, "called", False):
+            fake_fetch.called = True
+            return {"total": 1, "items": [_entity(e1)]}
+        return {"total": 0, "items": []}
+
+    async def capture_llm(**kwargs):
+        llm_inputs.append(kwargs.get("input") or {})
+        return _llm_ok()
+
+    pool, _ = _make_pool()
+    llm = AsyncMock()
+    llm.submit_and_wait = AsyncMock(side_effect=capture_llm)
+    publish = AsyncMock()
+    msg = {
+        "book_id": str(uuid4()), "target_language": "vi", "source_language": "zh",
+        "model_source": "user_model", "model_ref": str(uuid4()),
+        "overwrite_mode": "missing_only", "metadata": {},
+    }
+    with (
+        patch("app.workers.glossary_translate_worker.fetch_translation_candidates",
+              new=AsyncMock(side_effect=fake_fetch)),
+        patch("app.workers.glossary_translate_worker.post_apply_translations",
+              new=AsyncMock(return_value={"translated": 1, "skipped_verified": 0,
+                                          "skipped_empty": 0, "failed": []})),
+    ):
+        await _run_job(msg, job_id, "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa", pool, publish, llm)
+
+    assert llm_inputs and llm_inputs[0]["max_tokens"] == 4096
+
+
+@pytest.mark.asyncio
+async def test_concurrency_runs_entities_in_parallel_bounded_by_cap():
+    # bug #4: with concurrency=3, up to 3 entities translate at once (parallel), but never
+    # more than the requested cap. A gated LLM mock records the peak in-flight count.
+    job_id = uuid4()
+    book_id = str(uuid4())
+    entities = [_entity(str(uuid4())) for _ in range(6)]
+
+    async def fake_fetch(*_a, **_kw):
+        if not getattr(fake_fetch, "called", False):
+            fake_fetch.called = True
+            return {"total": 6, "items": entities}
+        return {"total": 0, "items": []}
+
+    inflight = 0
+    max_inflight = 0
+
+    async def gated_llm(**_kwargs):
+        nonlocal inflight, max_inflight
+        inflight += 1
+        max_inflight = max(max_inflight, inflight)
+        await asyncio.sleep(0.02)  # hold so concurrent calls overlap
+        inflight -= 1
+        return _llm_ok()
+
+    pool, _ = _make_pool()
+    llm = AsyncMock()
+    llm.submit_and_wait = AsyncMock(side_effect=gated_llm)
+    publish = AsyncMock()
+    msg = {
+        "book_id": book_id, "target_language": "vi", "source_language": "zh",
+        "model_source": "user_model", "model_ref": str(uuid4()),
+        "overwrite_mode": "missing_only", "metadata": {}, "concurrency": 3,
+    }
+    with (
+        patch("app.workers.glossary_translate_worker.fetch_translation_candidates",
+              new=AsyncMock(side_effect=fake_fetch)),
+        patch("app.workers.glossary_translate_worker.post_apply_translations",
+              new=AsyncMock(return_value={"translated": 1, "skipped_verified": 0,
+                                          "skipped_empty": 0, "failed": []})),
+    ):
+        await _run_job(msg, job_id, "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa", pool, publish, llm)
+
+    assert llm.submit_and_wait.await_count == 6  # every entity translated
+    assert max_inflight == 3  # ran in parallel, bounded exactly by the concurrency cap
+
+
+@pytest.mark.asyncio
+async def test_default_concurrency_is_sequential():
+    # bug #4 back-compat: no `concurrency` in the message ⇒ 1 (strictly sequential).
+    job_id = uuid4()
+    entities = [_entity(str(uuid4())) for _ in range(4)]
+
+    async def fake_fetch(*_a, **_kw):
+        if not getattr(fake_fetch, "called", False):
+            fake_fetch.called = True
+            return {"total": 4, "items": entities}
+        return {"total": 0, "items": []}
+
+    inflight = 0
+    max_inflight = 0
+
+    async def gated_llm(**_kwargs):
+        nonlocal inflight, max_inflight
+        inflight += 1
+        max_inflight = max(max_inflight, inflight)
+        await asyncio.sleep(0.01)
+        inflight -= 1
+        return _llm_ok()
+
+    pool, _ = _make_pool()
+    llm = AsyncMock()
+    llm.submit_and_wait = AsyncMock(side_effect=gated_llm)
+    publish = AsyncMock()
+    msg = {
+        "book_id": str(uuid4()), "target_language": "vi", "source_language": "zh",
+        "model_source": "user_model", "model_ref": str(uuid4()),
+        "overwrite_mode": "missing_only", "metadata": {},  # no concurrency key
+    }
+    with (
+        patch("app.workers.glossary_translate_worker.fetch_translation_candidates",
+              new=AsyncMock(side_effect=fake_fetch)),
+        patch("app.workers.glossary_translate_worker.post_apply_translations",
+              new=AsyncMock(return_value={"translated": 1, "skipped_verified": 0,
+                                          "skipped_empty": 0, "failed": []})),
+    ):
+        await _run_job(msg, job_id, "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa", pool, publish, llm)
+
+    assert max_inflight == 1  # sequential by default

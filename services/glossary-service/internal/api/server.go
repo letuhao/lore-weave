@@ -158,6 +158,11 @@ func (s *Server) Router() http.Handler {
 		// re-promote SELF-HEAL (adversary WARN-1): if a prior canon-content
 		// write failed transiently, a re-promote reads NULL here and re-writes.
 		r.Get("/books/{book_id}/entities/{entity_id}/canon-content", s.internalGetCanonContent)
+		// #26/#7 summarize (merge-rewrite) — the end-of-extraction-job LLM pass fetches
+		// the dirty summarize attributes here, rewrites their accumulated raw mentions into
+		// one canonical value, and writes it back (compare-and-clear on canonical_dirty).
+		r.Get("/books/{book_id}/canonical-dirty", s.internalCanonicalDirty)
+		r.Post("/books/{book_id}/entities/{entity_id}/canonical", s.internalWriteCanonical)
 		// Enrichment SUPPLEMENT layer (F-C13-1 + F-C13-2 / PO ruling B1):
 		// lore-enrichment writes/retracts the distinguished enrichment `dị bản`
 		// here (its own table, FK→entity) instead of overwriting short_description.
@@ -199,6 +204,10 @@ func (s *Server) Router() http.Handler {
 		// the retired /schema/confirm. /preview is non-consuming (current-state card).
 		r.Post("/actions/confirm", s.confirmAction)
 		r.Post("/actions/preview", s.previewAction)
+		// #27/#29/#30 coalesce — ONE human card commits/previews the N child tokens a chat
+		// turn minted (the run-loop bundles strays). Reuses the per-descriptor effects above.
+		r.Post("/actions/confirm-batch", s.confirmActionBatch)
+		r.Post("/actions/preview-batch", s.previewActionBatch)
 		// T4 — System-tier admin confirm path, RS256-gated (requireAdminScope inside),
 		// SEPARATE from the HS256 user /actions/confirm above. The MCP admin tools
 		// propose (authorityAdmin token); a human admin confirms a System write here.
@@ -431,6 +440,9 @@ func (s *Server) Router() http.Handler {
 				// feed the translation glossary). Static path — registered before
 				// /{entity_id} so chi matches it first.
 				r.Post("/bulk-status", s.bulkSetEntityStatus)
+				// Bulk soft-delete (clean up duplicate/unwanted entities). Static
+				// path — registered before /{entity_id} so chi matches it first.
+				r.Post("/bulk-delete", s.bulkDeleteEntities)
 				r.Route("/{entity_id}", func(r chi.Router) {
 					r.Get("/", s.getEntityDetail)
 					r.Patch("/", s.patchEntity)

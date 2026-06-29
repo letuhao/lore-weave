@@ -516,3 +516,126 @@ class TestGenericFrontendTools:
         assert len(td.ALWAYS_ON_CORE_NAMES) <= 8
         # no discovered domain tools yet (active set empty)
         assert "translation_start_job" not in names
+
+
+# ════════════════════════════════════════════════════════════════════════════
+# C-FT hot set + lazy tail — per-surface domain scoping (the standard)
+# ════════════════════════════════════════════════════════════════════════════
+
+
+# A mixed-domain catalog spanning several federated services.
+_MIXED_CATALOG = [
+    _tool("glossary_search", "Search glossary entities", tier="R"),
+    _tool("glossary_get_entity", "Read one entity", tier="R"),
+    _tool("glossary_propose_batch", "Batch glossary ops", tier="W"),
+    _tool("book_create", "Create a book", tier="A"),
+    _tool("book_list", "List books", tier="R"),
+    _tool("composition_outline_create", "Create an outline", tier="A"),
+    _tool("translation_start_job", "Start a translation", tier="W"),
+    _tool("settings_list_models", "List models", tier="R"),
+    _tool("memory_search", "Search conversation memory", tier="R"),
+]
+
+
+class TestSurfaceHotDomains:
+    def test_universal_is_pure_discovery(self):
+        assert td.surface_hot_domains(editor=False, book_scoped=False) == set()
+
+    def test_book_scoped_is_glossary_only(self):
+        assert td.surface_hot_domains(editor=False, book_scoped=True) == {"glossary"}
+
+    def test_editor_matches_book_glossary_skill(self):
+        # Both surfaces inject the glossary skill (names glossary_* only); the
+        # editor's prose write-back is a FRONTEND tool, not a backend domain — so
+        # the editor's hot domains equal the book-scoped surface's.
+        editor = td.surface_hot_domains(editor=True, book_scoped=True)
+        book = td.surface_hot_domains(editor=False, book_scoped=True)
+        assert editor == book == {"glossary"}
+
+
+class TestHotToolNames:
+    def test_empty_domains_yields_empty(self):
+        assert td.hot_tool_names(_MIXED_CATALOG, set()) == set()
+
+    def test_picks_only_matching_prefixes(self):
+        hot = td.hot_tool_names(_MIXED_CATALOG, {"glossary"})
+        assert hot == {"glossary_search", "glossary_get_entity", "glossary_propose_batch"}
+        # the long tail is excluded — it stays lazy (find_tools).
+        assert "book_create" not in hot
+        assert "translation_start_job" not in hot
+
+    def test_multi_domain_union(self):
+        hot = td.hot_tool_names(_MIXED_CATALOG, {"glossary", "book"})
+        assert "glossary_search" in hot and "book_create" in hot and "book_list" in hot
+        assert "composition_outline_create" not in hot
+        assert "translation_start_job" not in hot
+
+
+class TestHotSetAdvertisedOnFirstPass:
+    def test_seed_advertises_hot_tools_immediately(self):
+        """A book-scoped surface seeds the glossary domain into the active set, so
+        its full schemas are advertised on pass 0 WITHOUT a find_tools round-trip —
+        while the non-glossary long tail stays out (lazy)."""
+        from app.services.stream_service import _advertise_discovery_tools, _catalog_index
+        seed = td.hot_tool_names(
+            _MIXED_CATALOG, td.surface_hot_domains(editor=False, book_scoped=True)
+        )
+        adv = _advertise_discovery_tools(
+            _catalog_index(_MIXED_CATALOG), seed,
+            frontend_tool_defs(editor=False, book_scoped=True),
+        )
+        names = {t["function"]["name"] for t in adv}
+        # glossary hot set present immediately
+        assert {"glossary_search", "glossary_get_entity", "glossary_propose_batch"} <= names
+        # book-scoped frontend write-back tools present
+        assert "glossary_propose_entity_edit" in names
+        # the long tail is NOT advertised — it's discovered on demand
+        assert "translation_start_job" not in names
+        assert "composition_outline_create" not in names
+        assert "memory_search" not in names
+        # find_tools is still there so the agent can reach the tail
+        assert td.FIND_TOOLS_NAME in names
+
+    @pytest.mark.asyncio
+    async def test_seeded_loop_advertises_hot_and_still_lazy_for_tail(self):
+        """End-to-end through the loop: pass 0 advertises the seeded glossary hot
+        set AND find_tools, but not the tail; the agent can act on a hot tool with
+        no discovery hop, then find_tools to reach a tail tool."""
+        kc = _kc()
+        kc.mcp_execute_tool.return_value = _envelope(success=True, result={"ok": 1})
+        seed = td.hot_tool_names(
+            _MIXED_CATALOG, td.surface_hot_domains(editor=False, book_scoped=True)
+        )
+        scripts = [
+            # Pass 0: act directly on a hot glossary tool (no find_tools needed).
+            [tool_frag(0, id="g", name="glossary_search"),
+             tool_frag(0, arguments_delta='{"q":"king"}'),
+             done("tool_calls")],
+            [tok("Found it."), done("stop")],
+        ]
+        with _patch_client(scripts):
+            stream = _stream_with_tools(
+                model_source="user_model",
+                model_ref=TEST_MODEL_REF,
+                user_id=TEST_USER_ID,
+                messages=[{"role": "user", "content": "find the king"}],
+                gen_params={},
+                tools=[],
+                knowledge_client=kc,
+                session_id=TEST_SESSION_ID,
+                project_id="proj-1",
+                max_iterations=10,
+                discovery_catalog=_MIXED_CATALOG,
+                discovery_extra_frontend=frontend_tool_defs(editor=False, book_scoped=True),
+                discovery_seed_names=seed,
+            )
+            chunks = await _drain(stream)
+
+        reqs = _FakeClient.instances[0].requests
+        p0 = {t["function"]["name"] for t in reqs[0].tools}
+        assert "glossary_search" in p0  # hot — advertised pass 0
+        assert "translation_start_job" not in p0  # tail — lazy
+        # The hot tool executed directly (no find_tools hop).
+        assert kc.mcp_execute_tool.await_count == 1
+        assert kc.mcp_execute_tool.await_args.kwargs["tool_name"] == "glossary_search"
+        assert chunks[-1]["finish_reason"] == "stop"

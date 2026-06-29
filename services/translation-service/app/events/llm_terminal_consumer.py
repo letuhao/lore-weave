@@ -105,6 +105,23 @@ class LLMTerminalConsumer(BaseTerminalConsumer):
         the worker set on the first submit). Shared by the event path (`_handle`) and
         the Wave-2a sweeper (`sweep_once`)."""
         msg = rs["msg"]
+        # bug #34 (D-CANCEL-IMMEDIATE-TRANSLATION-DECOUPLED) — the decoupled path never sits in
+        # wait_terminal(cancel_check), so a user-cancel can't abort it the way the sync path
+        # does. Gate EVERY resume on the parent job status: once cancelled, STOP this chapter's
+        # state machine instead of folding the (now aborted) job as a batch-failure and
+        # submitting the next batch — which decoupled_block_translate.resume()'s
+        # status != 'completed' branch would otherwise do, defeating the cancel. The cancel
+        # endpoint also DELETEs the in-flight provider job so the upstream call aborts NOW;
+        # this gate is the correctness backstop guaranteeing termination (≤1 batch overrun if a
+        # batch was submitted in the race window before the cancel committed).
+        job_id = msg.get("job_id")
+        if job_id:
+            parent_status = await self._pool.fetchval(
+                "SELECT status FROM translation_jobs WHERE job_id=$1", UUID(str(job_id)),
+            )
+            if parent_status in ("cancelled", "cancelling"):
+                await self._cancel_chapter(ct_id, msg)
+                return
         set_campaign_id(msg.get("campaign_id"))
         # D-PMCP-WORKER-CARRIER: re-set the public-MCP-key attribution for the resume
         # submit too (the decoupled engine runs in a different process than the first
@@ -144,6 +161,30 @@ class LLMTerminalConsumer(BaseTerminalConsumer):
         finally:
             set_campaign_id(None)
             set_public_key_attribution(None, None)
+
+    async def _cancel_chapter(self, ct_id: UUID, msg: dict) -> None:
+        """bug #34 — clean-stop a decoupled chapter whose parent job was cancelled. Clears
+        the resume bookkeeping (so the stuck-resume sweeper won't re-drive it), marks the
+        chapter a clean 'job_cancelled' — NOT a translation failure, mirroring the sync
+        path's start-of-chapter cancel branch (`chapter_worker` lines ~95/135) so it never
+        trips the circuit-open auto-pause — and runs the per-chapter completion chokepoint to
+        release the WFQ lease. The job row is already 'cancelled' (set by the cancel
+        endpoint), so `_check_job_completion`'s `status='running'` guard keeps it cancelled
+        (it won't be flipped to 'completed'/'failed')."""
+        from ..workers.chapter_worker import (
+            _check_job_completion, _emit_chapter_done, _fail_chapter_idempotent,
+        )
+
+        await self._pool.execute(
+            "UPDATE chapter_translations SET resume_state=NULL, provider_job_id=NULL WHERE id=$1",
+            ct_id,
+        )
+        job_id = UUID(str(msg["job_id"]))
+        chapter_id = UUID(str(msg["chapter_id"]))
+        user_id = msg["user_id"]
+        await _fail_chapter_idempotent(self._pool, job_id, chapter_id, "job_cancelled")
+        await _emit_chapter_done(self._publish_event, user_id, msg, "failed", "job_cancelled")
+        await _check_job_completion(self._pool, job_id, user_id, msg, self._publish_event)
 
     # ── Wave 2a — stuck-resume sweeper (D-2B-SUBMIT-PERSIST-GAP) ──────────────────
     # The runtime backstop for a stranded resume_state (consumer crash/poison, a lost

@@ -145,5 +145,12 @@
       "created": "Đã tạo dẫn chứng",
       "text_required": "Văn bản gốc là bắt buộc"
     }
+  },
+  "summarize": {
+    "canonical_label": "Tóm tắt đã gộp",
+    "pending_dirty": "Sẽ tóm tắt lại sau lần trích xuất tiếp theo",
+    "pending_new": "Sẽ được tóm tắt sau lần trích xuất tiếp theo",
+    "sources": "Lần nhắc gốc ({{count}})",
+    "empty": "Chưa có lần nhắc nào"
   }
 }

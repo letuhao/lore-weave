@@ -3,6 +3,16 @@ import httpx
 
 from .config import settings
 
+# #36 — the extraction COST estimate used to feed the windowing-aware planner a flat
+# `text_length: 8000` for EVERY chapter, so it never windowed and undercounted LLM calls
+# on large chapters. We now fetch the REAL per-chapter size (book-service's
+# `word_count_estimate`, = octet_length(body)/5) and pass it through.
+_DEFAULT_CHAPTER_TEXT_LENGTH = 8000   # legacy assumption — used when a size is unknown
+_WORD_COUNT_TO_TEXT_LENGTH = 5        # reconstruct ~byte length (octet_length) as a char proxy;
+                                      # conservative for CJK (bytes > chars) → never UNDER-windows
+_CHAPTER_LIST_PAGE = 200
+_CHAPTER_LIST_MAX_PAGES = 50          # hard bound: ≤10k chapters scanned, even on a malformed book
+
 
 async def book_owns_chapter(book_id, chapter_id) -> bool:
     """Authoritative chapter→book binding check (book-service is the single
@@ -49,3 +59,62 @@ async def get_chapter_blocks(book_id, chapter_id) -> list[dict]:
             return []
         r.raise_for_status()
         return r.json().get("blocks", []) or []
+
+
+async def get_chapter_word_counts(book_id, chapter_ids) -> dict[str, int]:
+    """#36 — best-effort per-chapter size signal for the extraction cost estimate.
+
+    Reads `word_count_estimate` from the existing `GET /internal/books/{id}/chapters`
+    list (the same endpoint knowledge-service uses for ITS cost estimate). Returns
+    `{chapter_id: word_count_estimate}` for the requested ids that exist; an id we
+    couldn't find is simply absent (the caller defaults its size). Returns `{}` on ANY
+    transport/parse error — a cost estimate must NEVER fail job creation, so we degrade
+    to the legacy uniform-size assumption instead of raising.
+    """
+    wanted = {str(c) for c in chapter_ids}
+    if not wanted:
+        return {}
+    base = (
+        f"{settings.book_service_internal_url}"
+        f"/internal/books/{book_id}/chapters"
+    )
+    out: dict[str, int] = {}
+    offset = 0
+    try:
+        async with httpx.AsyncClient(timeout=15) as client:
+            for _ in range(_CHAPTER_LIST_MAX_PAGES):
+                r = await client.get(
+                    base,
+                    params={"limit": _CHAPTER_LIST_PAGE, "offset": offset},
+                    headers={"X-Internal-Token": settings.internal_service_token},
+                )
+                r.raise_for_status()
+                items = r.json().get("items") or []
+                for it in items:
+                    cid = str(it.get("chapter_id") or "")
+                    if cid in wanted:
+                        out[cid] = int(it.get("word_count_estimate") or 0)
+                # Stop on the last page or once every requested id is resolved.
+                if len(items) < _CHAPTER_LIST_PAGE or len(out) >= len(wanted):
+                    break
+                offset += _CHAPTER_LIST_PAGE
+    except Exception:  # noqa: BLE001 — advisory size; degrade to defaults, never block
+        return {}
+    return out
+
+
+async def build_chapters_meta(book_id, chapter_ids) -> list[dict]:
+    """#36 — chapters_meta for `estimate_extraction_cost`, carrying REAL per-chapter
+    sizes (best-effort) instead of the flat `[{'text_length': 8000}]` placeholder that
+    blinded the windowing planner. Order-preserving over `chapter_ids`; any chapter whose
+    size we couldn't fetch keeps the legacy 8000-char default (→ no regression)."""
+    sizes = await get_chapter_word_counts(book_id, chapter_ids)
+    meta: list[dict] = []
+    for cid in chapter_ids:
+        wc = sizes.get(str(cid))
+        text_length = (
+            wc * _WORD_COUNT_TO_TEXT_LENGTH if wc and wc > 0
+            else _DEFAULT_CHAPTER_TEXT_LENGTH
+        )
+        meta.append({"chapter_id": str(cid), "text_length": text_length})
+    return meta

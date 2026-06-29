@@ -69,13 +69,14 @@ func TestFinalizeWithUsageOutbox_CompletedWritesOutboxInTx(t *testing.T) {
 
 	mock.ExpectBegin()
 	mock.ExpectQuery("UPDATE llm_jobs").WithArgs(anyArgs(6)...).
-		WillReturnRows(pgxmock.NewRows([]string{"job_meta"}).AddRow(jobMeta))
-	mock.ExpectExec("INSERT INTO usage_outbox").WithArgs(anyArgs(10)...).
+		WillReturnRows(pgxmock.NewRows([]string{"job_meta", "input"}).AddRow(jobMeta, []byte(`{"messages":[]}`)))
+	mock.ExpectExec("INSERT INTO usage_outbox").WithArgs(anyArgs(13)...).
 		WillReturnResult(pgxmock.NewResult("INSERT", 1))
 	mock.ExpectCommit()
 
 	usage := &UsageOutbox{ModelSource: "user_model", ModelRef: modelRef,
-		Operation: "translation", InputTokens: 120, OutputTokens: 30, CostUSD: floatPtr(0.0001)}
+		Operation: "translation", InputTokens: 120, OutputTokens: 30, CostUSD: floatPtr(0.0001),
+		RequestStatus: "success"}
 	rows, err := repo.FinalizeWithUsageOutbox(context.Background(), jobID, owner,
 		"completed", map[string]any{"x": 1}, "", "", "", usage, nil)
 	if err != nil {
@@ -89,6 +90,102 @@ func TestFinalizeWithUsageOutbox_CompletedWritesOutboxInTx(t *testing.T) {
 	}
 }
 
+// bug #24 — the usage-billing `purpose` (the Usage-GUI label) overrides the
+// overloaded `operation` from job_meta.usage_purpose. Capture the 6th INSERT arg
+// (operation column) to prove the label that lands is the purpose, NOT the
+// chat-shaped operation the worker used.
+func TestFinalizeWithUsageOutbox_UsagePurposeOverridesOperationLabel(t *testing.T) {
+	mock, _ := pgxmock.NewPool()
+	defer mock.Close()
+	repo := &Repo{pool: mock}
+
+	jobMeta := []byte(`{"usage_purpose":"glossary_extraction","chapter_id":"x"}`)
+	mock.ExpectBegin()
+	mock.ExpectQuery("UPDATE llm_jobs").WithArgs(anyArgs(6)...).
+		WillReturnRows(pgxmock.NewRows([]string{"job_meta", "input"}).AddRow(jobMeta, []byte(`{}`)))
+	// args[6] (0-based) is the `operation` column (mcp_key_id added at index 3 shifted it) —
+	// assert the overridden label.
+	insertArgs := anyArgs(13)
+	insertArgs[6] ="glossary_extraction"
+	mock.ExpectExec("INSERT INTO usage_outbox").WithArgs(insertArgs...).
+		WillReturnResult(pgxmock.NewResult("INSERT", 1))
+	mock.ExpectCommit()
+
+	usage := &UsageOutbox{ModelSource: "user_model", ModelRef: uuid.New(),
+		Operation: "chat", InputTokens: 10, OutputTokens: 5, CostUSD: floatPtr(0.002)}
+	rows, err := repo.FinalizeWithUsageOutbox(context.Background(), uuid.New(), uuid.New(),
+		"completed", map[string]any{"x": 1}, "", "", "", usage, nil)
+	if err != nil {
+		t.Fatalf("err: %v", err)
+	}
+	if rows != 1 {
+		t.Fatalf("rows=%d want 1", rows)
+	}
+	if err := mock.ExpectationsWereMet(); err != nil {
+		t.Fatalf("expectations: %v", err)
+	}
+}
+
+// A malformed usage_purpose (illegal chars) must fail-soft → the real operation
+// label is used, never the injected string.
+func TestFinalizeWithUsageOutbox_MalformedUsagePurposeFallsBack(t *testing.T) {
+	mock, _ := pgxmock.NewPool()
+	defer mock.Close()
+	repo := &Repo{pool: mock}
+
+	jobMeta := []byte(`{"usage_purpose":"Robert'); DROP TABLE usage_logs;--"}`)
+	mock.ExpectBegin()
+	mock.ExpectQuery("UPDATE llm_jobs").WithArgs(anyArgs(6)...).
+		WillReturnRows(pgxmock.NewRows([]string{"job_meta", "input"}).AddRow(jobMeta, []byte(`{}`)))
+	insertArgs := anyArgs(13)
+	insertArgs[6] = "chat" // fell back to the real operation (index 6: mcp_key_id shifted it)
+	mock.ExpectExec("INSERT INTO usage_outbox").WithArgs(insertArgs...).
+		WillReturnResult(pgxmock.NewResult("INSERT", 1))
+	mock.ExpectCommit()
+
+	usage := &UsageOutbox{ModelSource: "user_model", ModelRef: uuid.New(),
+		Operation: "chat", InputTokens: 1, OutputTokens: 1, CostUSD: floatPtr(0.1)}
+	if _, err := repo.FinalizeWithUsageOutbox(context.Background(), uuid.New(), uuid.New(),
+		"completed", nil, "", "", "", usage, nil); err != nil {
+		t.Fatalf("err: %v", err)
+	}
+	if err := mock.ExpectationsWereMet(); err != nil {
+		t.Fatalf("expectations: %v", err)
+	}
+}
+
+func TestParseJobMetaUsagePurpose(t *testing.T) {
+	cases := []struct {
+		name string
+		meta string
+		want string
+	}{
+		{"valid", `{"usage_purpose":"glossary_extraction"}`, "glossary_extraction"},
+		{"valid_with_digits", `{"usage_purpose":"prose_draft2"}`, "prose_draft2"},
+		{"absent", `{"campaign_id":"x"}`, ""},
+		{"empty_meta", ``, ""},
+		{"non_object", `["a"]`, ""},
+		{"non_string", `{"usage_purpose":42}`, ""},
+		{"leading_digit", `{"usage_purpose":"1bad"}`, ""},
+		{"leading_underscore", `{"usage_purpose":"_bad"}`, ""},
+		{"uppercase", `{"usage_purpose":"Chat"}`, ""},
+		{"spaces", `{"usage_purpose":"glossary extraction"}`, ""},
+		{"injection", `{"usage_purpose":"a'; DROP TABLE x;--"}`, ""},
+		{"too_long", `{"usage_purpose":"` + "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa" + `"}`, ""},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			var meta []byte
+			if c.meta != "" {
+				meta = []byte(c.meta)
+			}
+			if got := parseJobMetaUsagePurpose(meta); got != c.want {
+				t.Fatalf("parseJobMetaUsagePurpose=%q want %q", got, c.want)
+			}
+		})
+	}
+}
+
 func TestFinalizeWithUsageOutbox_RaceLost_NoOutbox(t *testing.T) {
 	// UPDATE matches 0 rows (cancel won the race) → QueryRow.Scan → ErrNoRows →
 	// commit + return 0, and NO outbox INSERT (no ExpectExec; an unexpected call
@@ -99,7 +196,7 @@ func TestFinalizeWithUsageOutbox_RaceLost_NoOutbox(t *testing.T) {
 
 	mock.ExpectBegin()
 	mock.ExpectQuery("UPDATE llm_jobs").WithArgs(anyArgs(6)...).
-		WillReturnRows(pgxmock.NewRows([]string{"job_meta"})) // empty → ErrNoRows
+		WillReturnRows(pgxmock.NewRows([]string{"job_meta", "input"})) // empty → ErrNoRows
 	mock.ExpectCommit()
 
 	usage := &UsageOutbox{ModelSource: "user_model", ModelRef: uuid.New(),
@@ -117,19 +214,54 @@ func TestFinalizeWithUsageOutbox_RaceLost_NoOutbox(t *testing.T) {
 	}
 }
 
-func TestFinalizeWithUsageOutbox_Failed_NoOutbox(t *testing.T) {
-	// failed → usage nil → finalize UPDATE only, NO outbox INSERT.
+func TestFinalizeWithUsageOutbox_NilUsage_NoOutbox(t *testing.T) {
+	// Repo contract: a nil usage → finalize UPDATE only, NO outbox INSERT (regardless
+	// of status). #32 — the WORKER now passes a non-nil usage for failed/cancelled too
+	// (see TestFinalizeWithUsageOutbox_FailedWithUsage_WritesOutbox); this guards the
+	// repo's nil-usage path.
 	mock, _ := pgxmock.NewPool()
 	defer mock.Close()
 	repo := &Repo{pool: mock}
 
 	mock.ExpectBegin()
 	mock.ExpectQuery("UPDATE llm_jobs").WithArgs(anyArgs(6)...).
-		WillReturnRows(pgxmock.NewRows([]string{"job_meta"}).AddRow([]byte(`{}`)))
+		WillReturnRows(pgxmock.NewRows([]string{"job_meta", "input"}).AddRow([]byte(`{}`), []byte(`{}`)))
 	mock.ExpectCommit()
 
 	rows, err := repo.FinalizeWithUsageOutbox(context.Background(), uuid.New(), uuid.New(),
 		"failed", nil, "LLM_ERR", "boom", "", nil, nil)
+	if err != nil {
+		t.Fatalf("err: %v", err)
+	}
+	if rows != 1 {
+		t.Fatalf("rows=%d want 1", rows)
+	}
+	if err := mock.ExpectationsWereMet(); err != nil {
+		t.Fatalf("expectations: %v", err)
+	}
+}
+
+// #32 — a FAILED job with a (worker-supplied) usage writes an audit outbox row with
+// request_status="failed" + the truncated request payload, so usage-billing logs it.
+func TestFinalizeWithUsageOutbox_FailedWithUsage_WritesOutbox(t *testing.T) {
+	mock, _ := pgxmock.NewPool()
+	defer mock.Close()
+	repo := &Repo{pool: mock}
+
+	mock.ExpectBegin()
+	mock.ExpectQuery("UPDATE llm_jobs").WithArgs(anyArgs(6)...).
+		WillReturnRows(pgxmock.NewRows([]string{"job_meta", "input"}).AddRow([]byte(`{}`), []byte(`{"messages":[]}`)))
+	// The INSERT now fires for a failed job too (the gate is usage != nil, not
+	// status=="completed"). request_status/payloads are *string args → matched as
+	// AnyArg here; their values are pinned by TestBuildUsageFields_CarriesFailedStatus.
+	mock.ExpectExec("INSERT INTO usage_outbox").WithArgs(anyArgs(13)...).
+		WillReturnResult(pgxmock.NewResult("INSERT", 1))
+	mock.ExpectCommit()
+
+	usage := &UsageOutbox{ModelSource: "user_model", ModelRef: uuid.New(),
+		Operation: "chat", InputTokens: 0, OutputTokens: 0, CostUSD: nil, RequestStatus: "failed"}
+	rows, err := repo.FinalizeWithUsageOutbox(context.Background(), uuid.New(), uuid.New(),
+		"failed", nil, "LLM_ERR", "boom", "", usage, nil)
 	if err != nil {
 		t.Fatalf("err: %v", err)
 	}
@@ -163,22 +295,27 @@ func TestDrainOnce_RoutesToStreamsAndMarksPublished(t *testing.T) {
 	owner, modelRef := uuid.New().String(), uuid.New().String()
 
 	cols := []string{"id", "request_id", "owner_user_id", "campaign_id", "mcp_key_id", "model_source",
-		"model_ref", "operation", "input_tokens", "output_tokens", "cost_usd"}
+		"model_ref", "operation", "input_tokens", "output_tokens", "cost_usd",
+		"request_status", "request_payload", "response_payload"}
 	mcpKey := uuid.NewString()
 	db.ExpectBegin()
-	// campaign_id + mcp_key_id + cost_usd scan into *string (nullable ::text); pgxmock
-	// needs the row value to be a *string (real pgx coerces, the mock does not).
+	// campaign_id + mcp_key_id + cost_usd + the #32 status/payload cols scan into *string
+	// (nullable ::text / TEXT); pgxmock needs the row value to be a *string (real pgx coerces).
+	okStatus := "success"
+	reqPay := `{"in":1}`
+	respPay := `{"out":1}`
 	db.ExpectQuery("SELECT").WithArgs(anyArgs(1)...).WillReturnRows(
 		pgxmock.NewRows(cols).
-			AddRow(int64(1), req1, owner, &camp, &mcpKey, "user_model", modelRef, "translation", 10, 5, &cost1).
-			AddRow(int64(2), req2, owner, (*string)(nil), (*string)(nil), "user_model", modelRef, "chat", 3, 2, (*string)(nil)),
+			AddRow(int64(1), req1, owner, &camp, &mcpKey, "user_model", modelRef, "translation", 10, 5, &cost1, &okStatus, &reqPay, &respPay).
+			AddRow(int64(2), req2, owner, (*string)(nil), (*string)(nil), "user_model", modelRef, "chat", 3, 2, (*string)(nil), (*string)(nil), (*string)(nil), (*string)(nil)),
 	)
 
-	f1 := buildUsageFields(req1, owner, camp, mcpKey, "user_model", modelRef, "translation", "0.001", 10, 5)
-	f2 := buildUsageFields(req2, owner, "", "", "user_model", modelRef, "chat", "", 3, 2)
-	// Row 1: usage + campaign. Row 2: usage only.
+	f1 := buildUsageFields(req1, owner, camp, mcpKey, "user_model", modelRef, "translation", "0.001", 10, 5, "success", reqPay, respPay)
+	f2 := buildUsageFields(req2, owner, "", "", "user_model", modelRef, "chat", "", 3, 2, "", "", "")
+	// Row 1: usage + campaign. Row 2: usage only. #32 — the campaign stream gets the
+	// payload-STRIPPED fields (campaignFields); the usage stream keeps them.
 	rxm.ExpectXAdd(&redis.XAddArgs{Stream: "u", MaxLen: 10, Approx: true, Values: f1}).SetVal("1-0")
-	rxm.ExpectXAdd(&redis.XAddArgs{Stream: "c", MaxLen: 10, Approx: true, Values: f1}).SetVal("1-0")
+	rxm.ExpectXAdd(&redis.XAddArgs{Stream: "c", MaxLen: 10, Approx: true, Values: campaignFields(f1)}).SetVal("1-0")
 	db.ExpectExec("UPDATE usage_outbox SET published_at").WithArgs(anyArgs(1)...).WillReturnResult(pgxmock.NewResult("UPDATE", 1))
 	rxm.ExpectXAdd(&redis.XAddArgs{Stream: "u", MaxLen: 10, Approx: true, Values: f2}).SetVal("2-0")
 	db.ExpectExec("UPDATE usage_outbox SET published_at").WithArgs(anyArgs(1)...).WillReturnResult(pgxmock.NewResult("UPDATE", 1))
@@ -238,7 +375,7 @@ func TestFinalizeWithUsageOutbox_WritesTerminalEvent(t *testing.T) {
 
 	mock.ExpectBegin()
 	mock.ExpectQuery("UPDATE llm_jobs").WithArgs(anyArgs(6)...).
-		WillReturnRows(pgxmock.NewRows([]string{"job_meta"}).AddRow([]byte(`{}`)))
+		WillReturnRows(pgxmock.NewRows([]string{"job_meta", "input"}).AddRow([]byte(`{}`), []byte(`{}`)))
 	mock.ExpectExec("INSERT INTO job_event_outbox").WithArgs(anyArgs(10)...).
 		WillReturnResult(pgxmock.NewResult("INSERT", 1))
 	mock.ExpectCommit()
@@ -266,15 +403,16 @@ func TestFinalizeWithUsageOutbox_CompletedWritesBothOutboxes(t *testing.T) {
 
 	mock.ExpectBegin()
 	mock.ExpectQuery("UPDATE llm_jobs").WithArgs(anyArgs(6)...).
-		WillReturnRows(pgxmock.NewRows([]string{"job_meta"}).AddRow([]byte(`{}`)))
-	mock.ExpectExec("INSERT INTO usage_outbox").WithArgs(anyArgs(10)...).
+		WillReturnRows(pgxmock.NewRows([]string{"job_meta", "input"}).AddRow([]byte(`{}`), []byte(`{}`)))
+	mock.ExpectExec("INSERT INTO usage_outbox").WithArgs(anyArgs(13)...).
 		WillReturnResult(pgxmock.NewResult("INSERT", 1))
 	mock.ExpectExec("INSERT INTO job_event_outbox").WithArgs(anyArgs(10)...).
 		WillReturnResult(pgxmock.NewResult("INSERT", 1))
 	mock.ExpectCommit()
 
 	usage := &UsageOutbox{ModelSource: "user_model", ModelRef: uuid.New(),
-		Operation: "chat", InputTokens: 10, OutputTokens: 5, CostUSD: floatPtr(0.002)}
+		Operation: "chat", InputTokens: 10, OutputTokens: 5, CostUSD: floatPtr(0.002),
+		RequestStatus: "success"}
 	term := &TerminalOutbox{Operation: "chat", CostUSD: floatPtr(0.002)}
 	rows, err := repo.FinalizeWithUsageOutbox(context.Background(), uuid.New(), uuid.New(),
 		"completed", map[string]any{"x": 1}, "", "", "", usage, term)
@@ -290,16 +428,21 @@ func TestFinalizeWithUsageOutbox_CompletedWritesBothOutboxes(t *testing.T) {
 }
 
 func TestCancel_WritesTerminalEventInTx(t *testing.T) {
-	// A real cancel transition → UPDATE…RETURNING operation,job_meta + the
-	// job_event_outbox INSERT (status=cancelled), all in one tx.
+	// A real cancel transition → UPDATE…RETURNING operation,model_source,model_ref,
+	// job_meta,input,result + the #32 usage_outbox audit INSERT (request_status=
+	// cancelled) THEN the job_event_outbox INSERT (status=cancelled), all in one tx.
 	mock, _ := pgxmock.NewPool()
 	defer mock.Close()
 	repo := &Repo{pool: mock}
 
 	mock.ExpectBegin()
 	mock.ExpectQuery("UPDATE llm_jobs").WithArgs(anyArgs(2)...).
-		WillReturnRows(pgxmock.NewRows([]string{"operation", "job_meta"}).
-			AddRow("entity_extraction", []byte(`{}`)))
+		WillReturnRows(pgxmock.NewRows([]string{"operation", "model_source", "model_ref", "job_meta", "input", "result"}).
+			AddRow("entity_extraction", "user_model", uuid.New(), []byte(`{}`), []byte(`{"messages":[]}`), []byte(`null`)))
+	// #32 — a cancelled call is now audited too (was missing: user-cancel never hit
+	// the worker's FinalizeWithUsageOutbox). request_status/payload args are *string.
+	mock.ExpectExec("INSERT INTO usage_outbox").WithArgs(anyArgs(13)...).
+		WillReturnResult(pgxmock.NewResult("INSERT", 1))
 	mock.ExpectExec("INSERT INTO job_event_outbox").WithArgs(anyArgs(10)...).
 		WillReturnResult(pgxmock.NewResult("INSERT", 1))
 	mock.ExpectCommit()
@@ -318,14 +461,14 @@ func TestCancel_WritesTerminalEventInTx(t *testing.T) {
 
 func TestCancel_NoRow_NoEventNoOp(t *testing.T) {
 	// Already-terminal / not-found → UPDATE matches 0 rows → ErrNoRows → commit,
-	// NO job_event INSERT, returns 0.
+	// NO usage/job_event INSERT, returns 0.
 	mock, _ := pgxmock.NewPool()
 	defer mock.Close()
 	repo := &Repo{pool: mock}
 
 	mock.ExpectBegin()
 	mock.ExpectQuery("UPDATE llm_jobs").WithArgs(anyArgs(2)...).
-		WillReturnRows(pgxmock.NewRows([]string{"operation", "job_meta"})) // empty → ErrNoRows
+		WillReturnRows(pgxmock.NewRows([]string{"operation", "model_source", "model_ref", "job_meta", "input", "result"})) // empty → ErrNoRows
 	mock.ExpectCommit()
 
 	rows, err := repo.Cancel(context.Background(), uuid.New(), uuid.New())

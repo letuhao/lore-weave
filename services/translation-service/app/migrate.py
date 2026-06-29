@@ -264,6 +264,12 @@ CREATE TABLE IF NOT EXISTS extraction_jobs (
 -- worker honors per call. Additive + idempotent; default 'none' ⇒ zero behavior change for
 -- existing rows (the worker falls back to the thinking_enabled bool when absent).
 ALTER TABLE extraction_jobs ADD COLUMN IF NOT EXISTS reasoning_effort TEXT NOT NULL DEFAULT 'none';
+-- bug #3 / D-JOBS-P4: actual job cost for the unified Jobs GUI. The gateway `usage` carries
+-- only tokens (no cost), so this is DERIVED from the summed per-chapter tokens × the model's
+-- pricing (provider-registry estimate oracle) and rides the live + terminal job events.
+-- Nullable: an older/unpriced job leaves it NULL (the GUI renders cost null-safe). Mirrors
+-- translation_jobs.cost_usd.
+ALTER TABLE extraction_jobs ADD COLUMN IF NOT EXISTS cost_usd NUMERIC;
 CREATE INDEX IF NOT EXISTS idx_ej_owner ON extraction_jobs(owner_user_id, created_at DESC);
 CREATE INDEX IF NOT EXISTS idx_ej_book  ON extraction_jobs(book_id, created_at DESC);
 

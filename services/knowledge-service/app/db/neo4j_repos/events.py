@@ -913,6 +913,11 @@ WHERE e.user_id = $user_id
   AND ($event_date_from IS NULL OR e.event_date_iso >= $event_date_from)
   AND ($event_date_to IS NULL OR e.event_date_iso <= $event_date_to)
   AND ($participant_candidates IS NULL OR ANY(c IN $participant_candidates WHERE c IN e.participants))
+  AND (
+    $q IS NULL OR $q = ''
+    OR toLower(coalesce(e.title, '')) CONTAINS toLower($q)
+    OR toLower(coalesce(e.summary, '')) CONTAINS toLower($q)
+  )
 """
 
 _LIST_EVENTS_COUNT_CYPHER = _LIST_EVENTS_FILTER_WHERE + """
@@ -983,6 +988,7 @@ async def list_events_filtered(
     event_date_from: str | None = None,
     event_date_to: str | None = None,
     participant_candidates: list[str] | None = None,
+    q: str | None = None,
     sort_by: str = "narrative",
     sort_dir: str = "asc",
     limit: int,
@@ -1083,6 +1089,7 @@ async def list_events_filtered(
         event_date_from=event_date_from,
         event_date_to=event_date_to,
         participant_candidates=participant_candidates,
+        q=q,
     )
     count_record = await count_result.single()
     total = int(count_record["total"]) if count_record else 0
@@ -1100,6 +1107,7 @@ async def list_events_filtered(
         event_date_from=event_date_from,
         event_date_to=event_date_to,
         participant_candidates=participant_candidates,
+        q=q,
         offset=offset,
         limit=effective_limit,
     )

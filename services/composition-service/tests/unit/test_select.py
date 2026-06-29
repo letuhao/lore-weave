@@ -33,8 +33,10 @@ class FakeLLM:
         self._rerank_raises = rerank_raises
         self.draft_calls = 0
         self.rerank_calls = 0
+        self.seen_cancel_checks = []  # bug #34 — record what each call forwarded
 
     async def submit_and_wait(self, **kw):
+        self.seen_cancel_checks.append(kw.get("cancel_check"))
         meta = kw.get("job_meta") or {}
         if meta.get("extractor") == "rerank":
             self.rerank_calls += 1
@@ -167,3 +169,20 @@ async def test_select_draft_returns_reranked_winner():
     assert sel.winner_index == 1
     assert len(sel.candidates) == 3
     assert sel.rerank_measured is True
+
+
+async def test_select_draft_forwards_cancel_check_to_every_call():
+    # bug #34 — select_draft must thread cancel_check into both diverge drafts and
+    # the rerank, so an in-flight LLM call aborts the moment the job is cancelled.
+    async def my_check() -> bool:
+        return False
+
+    llm = FakeLLM(drafts=["a", "b", "c"], rerank=json.dumps({"best": 0, "reason": "a"}))
+    await select.select_draft(
+        llm, llm, user_id="u",
+        drafter_source="user_model", drafter_ref="d", judge_source="user_model", judge_ref="j",
+        packed_prompt="ctx", profile=NEUTRAL, operation="continue", guide="",
+        k=3, prompt_est=10, max_tokens=256, cancel_check=my_check,
+    )
+    # 3 draft calls + 1 rerank call, each handed the SAME cancel_check.
+    assert llm.seen_cancel_checks == [my_check, my_check, my_check, my_check]

@@ -557,7 +557,7 @@ async def rerank_passages(
                     "max_tokens": _rerank_max_tokens(n),
                 },
                 chunking=None,
-                job_meta={"extractor": "passage_rerank"},
+                job_meta={"usage_purpose": "passage_select", "extractor": "passage_rerank"},
                 transient_retry_budget=1,
             ),
             timeout=timeout_s,

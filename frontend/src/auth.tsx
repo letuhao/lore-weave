@@ -72,6 +72,27 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     });
   }, []);
 
+  // bug #20: api.ts silently refreshes the access token on a 401 and writes the new pair to
+  // localStorage. Re-read it here so React state (and every consumer's `accessToken`) tracks
+  // the new token — otherwise components keep sending the stale token and 401 again. The
+  // refresh-rotates-the-refresh-token design means stale-token churn would eventually log out.
+  useEffect(() => {
+    const onRefreshed = () => {
+      setAccess(readToken('accessToken'));
+      setRefresh(readToken('refreshToken'));
+    };
+    // Same-tab: api.ts fires this after a silent refresh. Cross-tab: a `storage` event fires in
+    // OTHER tabs when this origin's localStorage changes — pick up another tab's refresh (so we
+    // send the new token, avoiding our own 401) or its logout (clearing lw_auth → we sign out too).
+    const onStorage = (e: StorageEvent) => { if (e.key === AUTH_KEY || e.key === null) onRefreshed(); };
+    window.addEventListener('lw-auth-refreshed', onRefreshed);
+    window.addEventListener('storage', onStorage);
+    return () => {
+      window.removeEventListener('lw-auth-refreshed', onRefreshed);
+      window.removeEventListener('storage', onStorage);
+    };
+  }, []);
+
   // Fetch user profile when token is available
   useEffect(() => {
     if (!accessToken) return;

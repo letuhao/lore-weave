@@ -16,6 +16,7 @@ import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
 import { useEntityDetail } from '../hooks/useEntityDetail';
 import { useEntityFacts } from '../hooks/useEntityFacts';
+import { useAnchoredGlossaryEntity } from '../hooks/useAnchoredGlossaryEntity';
 import {
   useUnlockEntity,
   usePromoteEntity,
@@ -186,6 +187,12 @@ export function EntityDetailPanel({
     onError: (err) =>
       toast.error(t('entities.detail.unpinFailed', { error: err.message })),
   });
+  // #11 — KG entities carry no description of their own; when anchored to a
+  // glossary entity, surface that entity's authored short description here.
+  const { shortDescription } = useAnchoredGlossaryEntity(
+    bookId ?? null,
+    detail?.entity.glossary_entity_id,
+  );
   const handleUnpin = async () => {
     if (!detail?.entity.glossary_entity_id || !bookId) return;
     try {
@@ -302,6 +309,19 @@ export function EntityDetailPanel({
 
             {detail && !isLoading && !error && (
               <>
+                {shortDescription && (
+                  <section className="space-y-1.5" data-testid="entity-detail-description">
+                    <h3 className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
+                      {t('entities.detail.description')}
+                    </h3>
+                    <p className="whitespace-pre-wrap text-[12px] leading-relaxed">
+                      {shortDescription}
+                    </p>
+                    <p className="text-[10px] text-muted-foreground">
+                      {t('entities.detail.descriptionSource')}
+                    </p>
+                  </section>
+                )}
                 <section className="space-y-2">
                   <h3 className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
                     {t('entities.detail.metadata')}

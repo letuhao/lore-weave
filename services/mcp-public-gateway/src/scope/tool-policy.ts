@@ -37,6 +37,14 @@ export interface ToolPolicy {
 /** The wildcard scope (dev/smoke static key) bypasses all scope gating. */
 export const WILDCARD_SCOPE = '*';
 
+/**
+ * The consumer-local lazy-discovery meta-tool. It is ALWAYS allowed (scope-independent):
+ * searching the catalogue reveals nothing on its own — the find_tools RESULT is scope-filtered
+ * at the edge, and any discovered tool is still gated by `isToolAllowed` when actually called.
+ * So a key may always call find_tools and always sees it in `tools/list`, regardless of scope.
+ */
+export const FIND_TOOLS_NAME = 'find_tools';
+
 /** Build the `domain:<d>` scope string the key must carry to reach domain `d`. */
 export function domainScope(d: Domain): string {
   return `domain:${d}`;
@@ -229,6 +237,9 @@ export function knownTool(name: string): boolean {
  */
 export function isToolAllowed(name: string, scopes: readonly string[]): boolean {
   if (scopes.includes(WILDCARD_SCOPE)) return true;
+  // find_tools is the always-allowed discovery meta-tool (its results are scope-filtered; a
+  // discovered tool is re-checked here when called) — permitted for every key, any scope.
+  if (name === FIND_TOOLS_NAME) return true;
   const pol = TOOL_POLICY[name];
   if (!pol) return false;
   if (!scopes.includes(pol.tier)) return false;

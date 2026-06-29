@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen, fireEvent, waitFor } from '@testing-library/react';
+import { screen, fireEvent, waitFor } from '@testing-library/react';
+import { renderWithClient } from '@/test-utils/renderWithClient';
 
 // MCP fan-out (C-CONFIRM) — the GENERIC confirm card: domain selects the confirm
 // endpoint; on mount it previews (non-consuming); Confirm POSTs the token and
@@ -48,14 +49,14 @@ describe('ConfirmActionCard', () => {
 
   it('previews against the domain on mount', async () => {
     confirmAction.mockResolvedValue({});
-    render(<ConfirmActionCard record={record(baseArgs)} />);
+    renderWithClient(<ConfirmActionCard record={record(baseArgs)} />);
     await waitFor(() => expect(previewAction).toHaveBeenCalledWith('book', 'tok123', 'tok'));
     await waitFor(() => expect(screen.getByText('Chapter 5')).toBeInTheDocument());
   });
 
   it('confirm POSTs the token to the domain and resumes action_done', async () => {
     confirmAction.mockResolvedValue({});
-    render(<ConfirmActionCard record={record(baseArgs)} />);
+    renderWithClient(<ConfirmActionCard record={record(baseArgs)} />);
     fireEvent.click(screen.getByText('actionConfirm.confirm'));
     await waitFor(() => expect(confirmAction).toHaveBeenCalledWith('book', 'tok123', 'tok'));
     await waitFor(() => expect(submitToolResult).toHaveBeenCalledWith('r1', 'c1', 'action_done'));
@@ -63,13 +64,13 @@ describe('ConfirmActionCard', () => {
 
   it('resumes token_expired on a 422', async () => {
     confirmAction.mockRejectedValue(Object.assign(new Error('expired'), { status: 422 }));
-    render(<ConfirmActionCard record={record(baseArgs)} />);
+    renderWithClient(<ConfirmActionCard record={record(baseArgs)} />);
     fireEvent.click(screen.getByText('actionConfirm.confirm'));
     await waitFor(() => expect(submitToolResult).toHaveBeenCalledWith('r1', 'c1', 'token_expired'));
   });
 
   it('cancel resumes cancelled without a confirm POST', async () => {
-    render(<ConfirmActionCard record={record(baseArgs)} />);
+    renderWithClient(<ConfirmActionCard record={record(baseArgs)} />);
     fireEvent.click(screen.getByText('actionConfirm.cancel'));
     await waitFor(() => expect(submitToolResult).toHaveBeenCalledWith('r1', 'c1', 'cancelled'));
     expect(confirmAction).not.toHaveBeenCalled();
@@ -80,7 +81,7 @@ describe('ConfirmActionCard', () => {
     // on the preview having loaded (FIX 1).
     previewAction.mockResolvedValue({ descriptor: 'book.publish_batch', title: 'Publish 3 drafts', preview_rows: null, destructive: false });
     confirmAction.mockResolvedValue({});
-    render(<ConfirmActionCard record={record({
+    renderWithClient(<ConfirmActionCard record={record({
       ...baseArgs, descriptor: 'book.publish_batch',
       items: [{ title: 'Chapter 1' }, { title: 'Chapter 2' }, { title: 'Chapter 3' }],
     })} />);
@@ -114,7 +115,7 @@ describe('ConfirmActionCard', () => {
       destructive: false,
     });
     confirmAction.mockResolvedValue({});
-    render(<ConfirmActionCard record={record({
+    renderWithClient(<ConfirmActionCard record={record({
       ...baseArgs, descriptor: 'book.publish_batch',
       // LLM-supplied items differ from the server set on purpose — server wins.
       items: [{ title: 'Chapter X (llm)' }, { title: 'Chapter Y (llm)' }, { title: 'Chapter Z (llm)' }],
@@ -152,7 +153,7 @@ describe('ConfirmActionCard', () => {
 
   it('a destructive plan op renders an opt-in checkbox and a skipped-unless-enabled hint', async () => {
     previewAction.mockResolvedValue(planPreview());
-    render(<ConfirmActionCard record={record(planArgs)} />);
+    renderWithClient(<ConfirmActionCard record={record(planArgs)} />);
     // the destructive row has a checkbox keyed by op_id, UNCHECKED by default
     const box = await screen.findByTestId('enable-op');
     expect(box).toHaveAttribute('data-op-id', 'op-2');
@@ -164,7 +165,7 @@ describe('ConfirmActionCard', () => {
   it('confirm with nothing checked sends NO enabled_ops (destructive op is skipped)', async () => {
     previewAction.mockResolvedValue(planPreview());
     confirmAction.mockResolvedValue({ applied: [], skipped: [{ reason: 'not_confirmed' }], failed: [] });
-    render(<ConfirmActionCard record={record(planArgs)} />);
+    renderWithClient(<ConfirmActionCard record={record(planArgs)} />);
     await screen.findByTestId('enable-op');
     fireEvent.click(screen.getByText('actionConfirm.confirm'));
     // 3-arg call — no enabled_ops appended
@@ -174,7 +175,7 @@ describe('ConfirmActionCard', () => {
   it('checking a destructive op sends its op_id in enabled_ops on confirm', async () => {
     previewAction.mockResolvedValue(planPreview());
     confirmAction.mockResolvedValue({ applied: [{ reason: '' }], skipped: [], failed: [] });
-    render(<ConfirmActionCard record={record(planArgs)} />);
+    renderWithClient(<ConfirmActionCard record={record(planArgs)} />);
     const box = await screen.findByTestId('enable-op');
     fireEvent.click(box); // enable op-2
     expect(box).toBeChecked();
@@ -204,7 +205,7 @@ describe('ConfirmActionCard', () => {
         },
       }),
     );
-    render(<ConfirmActionCard record={record(baseArgs)} />);
+    renderWithClient(<ConfirmActionCard record={record(baseArgs)} />);
     fireEvent.click(screen.getByText('actionConfirm.confirm'));
     await waitFor(() => expect(submitToolResult).toHaveBeenCalledWith('r1', 'c1', 'reprice_required'));
     // the new-price card renders (FE never recomputes the threshold — it reacts to
@@ -222,7 +223,7 @@ describe('ConfirmActionCard', () => {
         body: { status: 'reprice_required', actual_cost_usd: 1.2, confirmed_cost_usd: 0.5 },
       }),
     );
-    render(<ConfirmActionCard record={record(baseArgs)} />);
+    renderWithClient(<ConfirmActionCard record={record(baseArgs)} />);
     fireEvent.click(screen.getByText('actionConfirm.confirm'));
     await waitFor(() => expect(submitToolResult).toHaveBeenCalledWith('r1', 'c1', 'reprice_required'));
   });
@@ -233,14 +234,14 @@ describe('ConfirmActionCard', () => {
     confirmAction.mockRejectedValue(
       Object.assign(new Error('conflict'), { status: 409, body: { code: 'SOME_OTHER', message: 'nope' } }),
     );
-    render(<ConfirmActionCard record={record(baseArgs)} />);
+    renderWithClient(<ConfirmActionCard record={record(baseArgs)} />);
     fireEvent.click(screen.getByText('actionConfirm.confirm'));
     await waitFor(() => expect(submitToolResult).toHaveBeenCalledWith('r1', 'c1', 'action_error'));
   });
 
   it('resumes action_error on a non-422 failure', async () => {
     confirmAction.mockRejectedValue(Object.assign(new Error('boom'), { status: 500 }));
-    render(<ConfirmActionCard record={record(baseArgs)} />);
+    renderWithClient(<ConfirmActionCard record={record(baseArgs)} />);
     fireEvent.click(screen.getByText('actionConfirm.confirm'));
     await waitFor(() => expect(submitToolResult).toHaveBeenCalledWith('r1', 'c1', 'action_error'));
   });
@@ -252,7 +253,7 @@ describe('ConfirmActionCard', () => {
   it('derives the domain from a dotted descriptor when args.domain is absent', async () => {
     confirmAction.mockResolvedValue({});
     const { confirm_token, descriptor, title } = baseArgs; // no `domain`
-    render(<ConfirmActionCard record={record({ confirm_token, descriptor, title })} />);
+    renderWithClient(<ConfirmActionCard record={record({ confirm_token, descriptor, title })} />);
     // previews + commits against `book` (derived from `book.publish`), not '' / glossary.
     await waitFor(() => expect(previewAction).toHaveBeenCalledWith('book', 'tok123', 'tok'));
     fireEvent.click(screen.getByText('actionConfirm.confirm'));
@@ -314,7 +315,7 @@ describe('ConfirmActionCard — KG domain routing', () => {
     confirmAction.mockResolvedValue({});
     previewAction.mockResolvedValue({ descriptor: 'kg_schema_edit', title: 'add edge_type HUNTS', preview_rows: [], destructive: false });
     // No explicit domain arg → the card derives it from the descriptor.
-    render(<ConfirmActionCard record={record({ confirm_token: 'kgtok', descriptor: 'kg_schema_edit', title: 'add edge_type HUNTS' })} />);
+    renderWithClient(<ConfirmActionCard record={record({ confirm_token: 'kgtok', descriptor: 'kg_schema_edit', title: 'add edge_type HUNTS' })} />);
     await waitFor(() => expect(previewAction).toHaveBeenCalledWith('kg', 'kgtok', 'tok'));
     fireEvent.click(screen.getByText('actionConfirm.confirm'));
     await waitFor(() => expect(confirmAction).toHaveBeenCalledWith('kg', 'kgtok', 'tok'));

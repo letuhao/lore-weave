@@ -64,6 +64,7 @@
     "new_attr": "Thuộc tính mới",
     "edit_genre": "Cài đặt thể loại",
     "edit_kind": "Cài đặt loại",
+    "links_kind": "Thể loại liên kết",
     "delete_genre": "Xóa thể loại",
     "delete_kind": "Xóa loại",
     "select_genre": "Chọn một thể loại",
@@ -212,6 +213,14 @@
     "confirm": "Xóa",
     "cancel": "Hủy"
   },
+  "links": {
+    "title": "Thể loại cho {{name}}",
+    "hint": "Chọn các thể loại mà loại này thuộc về. Mỗi loại phải được liên kết với ít nhất một thể loại.",
+    "empty": "Cuốn sách này chưa có thể loại nào — hãy áp dụng hoặc tạo một thể loại trước.",
+    "save": "Lưu",
+    "saving": "Đang lưu…",
+    "cancel": "Hủy"
+  },
   "toast": {
     "adopted": "Đã áp dụng vào cuốn sách này",
     "saved": "Đã lưu",
@@ -221,6 +230,8 @@
     "delete_failed": "Xóa thất bại",
     "revert_failed": "Khôi phục thất bại",
     "adopt_failed": "Áp dụng thất bại",
+    "links_saved": "Đã cập nhật liên kết thể loại",
+    "links_failed": "Không thể cập nhật liên kết thể loại",
     "forbidden": "Bạn cần quyền Quản lý trên cuốn sách này để thực hiện thay đổi"
   }
 }

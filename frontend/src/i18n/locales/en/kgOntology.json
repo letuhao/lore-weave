@@ -53,7 +53,22 @@
     "label": "Label",
     "temporalField": "temporal (valid_from + provenance)",
     "cardinality": "Cardinality",
-    "addButton": "Add edge type"
+    "addButton": "Add edge type",
+    "addSectionTitle": "Add to schema",
+    "editHint": "Additive: add new types or deprecate an edge type. No hard delete (mirrors what the AI can do).",
+    "allowFreeEdges": "Allow off-vocabulary relations (free edges)",
+    "addNodeKind": "Add node kind",
+    "addFactType": "Add fact type",
+    "addVocabValue": "Add vocab value",
+    "kindCode": "Kind code",
+    "strength": "Strength",
+    "required": "required",
+    "optional": "optional",
+    "noVocabSets": "No vocab sets in this schema yet — ask the AI to add one first.",
+    "add": "Add",
+    "added": "Schema updated",
+    "addFailed": "Couldn't update the schema",
+    "forbidden": "You need Manage access on this project to edit the schema"
   },
   "sync": {
     "upToDate": "Up to date — no upstream changes.",

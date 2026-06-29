@@ -16,6 +16,7 @@ from __future__ import annotations
 import asyncio
 import contextvars
 import logging
+from collections.abc import Awaitable, Callable
 from typing import Any
 
 from loreweave_llm.client import Client as SDKClient
@@ -85,9 +86,14 @@ class LLMClient:
         trace_id: str | None = None,
         job_meta: dict[str, Any] | None = None,
         transient_retry_budget: int = 1,
+        cancel_check: Callable[[], Awaitable[bool]] | None = None,
     ) -> Job:
         """Submit job + wait_terminal with one retry on transient
         upstream errors. Honors gateway-supplied retry_after_s.
+
+        bug #34: ``cancel_check`` (an async "is my parent job cancelled?" probe)
+        is forwarded to wait_terminal so a user-cancel aborts the in-flight LLM
+        call immediately instead of polling it to natural completion.
 
         Returns the terminal Job (status in {completed, failed,
         cancelled}). Caller inspects Job.status + Job.error to decide
@@ -124,6 +130,7 @@ class LLMClient:
                         submit.job_id,
                         user_id=user_id,
                         transient_retry_budget=1,
+                        cancel_check=cancel_check,
                     )
                 except LLMTransientRetryNeededError as exc:
                     if attempts >= max_attempts:

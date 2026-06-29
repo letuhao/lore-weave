@@ -24,6 +24,14 @@
     "loadFailed": "Failed to load graph: {{error}}",
     "empty": "No knowledge graph yet — build this project to explore its network."
   },
+  "schemaSection": {
+    "title": "Effective schema",
+    "subtitle": "The effective node-kinds, edge-types, fact-types and vocab this project's graph uses.",
+    "editCta": "Edit schema",
+    "freeEdges": "Off-vocabulary relations are allowed (free edges).",
+    "closedEdges": "Relations are limited to the declared edge-types; others go to triage.",
+    "error": "Couldn't load this project's schema."
+  },
   "shell": {
     "backToProjects": "All projects",
     "sections": {
@@ -35,6 +43,7 @@
       "proposals": "Proposals",
       "gap": "Gap",
       "insights": "Insights",
+      "schema": "Schema",
       "graph": "Build / Explore graph"
     },
     "notFound": "Project not found.",
@@ -278,7 +287,8 @@
       "chapterLabel": "Chapter",
       "chapterUnresolved": "Chapter id {{id}} — title unresolved",
       "participantsMore": "+{{count}} more",
-      "confidenceLabel": "Confidence"
+      "confidenceLabel": "Confidence",
+      "timeLabel": "In-story time"
     },
     "detail": {
       "summary": "Summary",
@@ -291,10 +301,16 @@
       "refreshing": "refreshing…",
       "prev": "Previous",
       "next": "Next",
-      "backToFirst": "Back to first page"
+      "backToFirst": "Back to first page",
+      "pageSize": "Per page"
     },
     "localization": {
       "sourceMarker": "Shown in source language — translation pending"
+    },
+    "search": {
+      "placeholder": "Search events…",
+      "label": "Search events",
+      "clear": "Clear search"
     }
   },
   "entities": {
@@ -354,6 +370,8 @@
       "edit": "Edit",
       "merge": "Merge into another entity",
       "metadata": "Metadata",
+      "description": "Description",
+      "descriptionSource": "From the linked glossary entry",
       "aliases": "Aliases",
       "relations": "Relations ({{count}})",
       "truncated": "Showing {{shown}} of {{total}} — filter or search in the table",
@@ -677,12 +695,15 @@
           "durationMin": "~{{n}} min estimated"
         },
         "building_running": {
-          "progress": "{{processed}} / {{total}} items",
+          "progress": "{{processed}} / {{total}} items (chapters + chat + glossary)",
           "elapsed": "Elapsed: {{elapsed}}",
           "spent": "Spent: ${{spent}}",
           "spentOfBudget": "Spent: ${{spent}} / ${{budget}}",
           "concurrencyLabel": "Parallel calls",
-          "concurrencyApply": "Apply"
+          "concurrencyApply": "Apply",
+          "stagesTitle": "Build stages",
+          "stages": "Entities → Relations · Events · Facts → Summaries",
+          "stagesNote": "Passes run in this order. Facts and Summaries run after Entities and Relations finish, so they appear later in a full build — stopping early skips them."
         },
         "building_paused_user": {
           "body": "You paused this job. Resume when ready, or cancel to keep the partial graph."

@@ -300,6 +300,16 @@ CREATE TABLE IF NOT EXISTS settings_consumed_tokens (
   consumed_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 CREATE INDEX IF NOT EXISTS idx_settings_consumed_tokens_exp ON settings_consumed_tokens(exp);
+
+-- #32 — full LLM-call logging. The usage_outbox now carries (1) request_status so the
+-- billing audit records EVERY terminal status (not just completed — failed/cancelled get
+-- a cost-0 audit row) and (2) the truncated request/response payloads so a call can be
+-- traced/reproduced. usage-billing's writeUsageLog already encrypts + audited-decrypts
+-- these (input_payload_ciphertext/output_payload_ciphertext); this carries them through
+-- the worker→outbox→relay→consumer plumbing. Nullable: legacy/unpopulated rows stay valid.
+ALTER TABLE usage_outbox ADD COLUMN IF NOT EXISTS request_status   TEXT;
+ALTER TABLE usage_outbox ADD COLUMN IF NOT EXISTS request_payload  TEXT;
+ALTER TABLE usage_outbox ADD COLUMN IF NOT EXISTS response_payload TEXT;
 `
 
 func Up(ctx context.Context, pool *pgxpool.Pool) error {

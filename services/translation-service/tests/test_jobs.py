@@ -1,7 +1,7 @@
 """Integration tests for job endpoints using mocked DB pool + mocked HTTP."""
 import datetime
 import json
-from unittest.mock import AsyncMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 from uuid import UUID, uuid4
 
 import pytest
@@ -600,6 +600,50 @@ def test_cancel_job_sets_cancelled_status(client, fake_pool):
     emit.assert_awaited_once()
     assert emit.await_args.kwargs["status"] == "cancelled"
     assert emit.await_args.kwargs["service"] == "translation"
+
+
+def test_cancel_aborts_inflight_provider_jobs(client, fake_pool):
+    # bug #34 (D-CANCEL-IMMEDIATE-TRANSLATION-DECOUPLED): cancelling a job whose decoupled
+    # chapters have in-flight provider jobs DELETEs each one via the SDK so provider-registry
+    # aborts the upstream call NOW (not at the next batch boundary).
+    fake_pool.fetchrow.return_value = FakeRecord({
+        "book_id": UUID(BOOK_ID),
+        "status": "running",
+        "owner_user_id": UUID(USER_ID),
+    })
+    pj1, pj2 = uuid4(), uuid4()
+    # two non-terminal chapters each carrying an in-flight provider_job_id
+    fake_pool.fetch.return_value = [
+        {"provider_job_id": pj1, "owner_user_id": UUID(USER_ID)},
+        {"provider_job_id": pj2, "owner_user_id": UUID(USER_ID)},
+    ]
+    sdk = AsyncMock()
+    llm = MagicMock()
+    llm.sdk = sdk
+    with patch("app.routers.jobs.emit_job_event", new_callable=AsyncMock), \
+         patch("app.routers.jobs.get_llm_client", return_value=llm):
+        resp = client.post(f"/v1/translation/jobs/{JOB_ID}/cancel")
+    assert resp.status_code == 204
+    # one DELETE (cancel_job) per in-flight provider job, scoped to the owner
+    assert sdk.cancel_job.await_count == 2
+    aborted = {call.args[0] for call in sdk.cancel_job.await_args_list}
+    assert aborted == {str(pj1), str(pj2)}
+    assert all(call.kwargs["user_id"] == USER_ID for call in sdk.cancel_job.await_args_list)
+
+
+def test_cancel_abort_is_best_effort_on_sdk_failure(client, fake_pool):
+    # A failing DELETE must NOT 500 the cancel — the consumer cancel-gate is the backstop.
+    fake_pool.fetchrow.return_value = FakeRecord({
+        "book_id": UUID(BOOK_ID), "status": "running", "owner_user_id": UUID(USER_ID),
+    })
+    fake_pool.fetch.return_value = [{"provider_job_id": uuid4(), "owner_user_id": UUID(USER_ID)}]
+    sdk = AsyncMock()
+    sdk.cancel_job = AsyncMock(side_effect=RuntimeError("provider-registry down"))
+    llm = MagicMock(); llm.sdk = sdk
+    with patch("app.routers.jobs.emit_job_event", new_callable=AsyncMock), \
+         patch("app.routers.jobs.get_llm_client", return_value=llm):
+        resp = client.post(f"/v1/translation/jobs/{JOB_ID}/cancel")
+    assert resp.status_code == 204  # cancel still succeeds despite the abort fault
 
 
 def test_cancel_job_returns_409_when_already_completed(client, fake_pool):

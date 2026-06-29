@@ -732,7 +732,10 @@ async def translation_start_extraction(
             for k in kinds_metadata
             if k.get("auto_selected", True) and k.get("attributes")
         }
-    chapters_meta = [{"text_length": 8000}] * len(cids)
+    # #36 — real per-chapter sizes (best-effort) so the windowing planner isn't blind to
+    # chapter length (the flat 8000 placeholder undercounted LLM calls on large chapters).
+    from ..book_client import build_chapters_meta
+    chapters_meta = await build_chapters_meta(book_id, cids)
     # D-CACHE-PLANNER-WIRING: split-aware quote against the REAL model context (caller's own
     # model → user_model). Best-effort resolve → conservative fallback.
     from ..workers.extraction_model import get_model_context_window

@@ -8,7 +8,9 @@ import { isDisplayingTranslation, resolveEntityDisplayName } from '@/features/gl
 import { type GlossaryEntity, type AttributeValue, type Translation } from '@/features/glossary/types';
 import { getLanguageName } from '@/lib/languages';
 import { Skeleton } from '@/components/shared/Skeleton';
+import { LanguagePicker } from '@/components/shared';
 import { AttrCard } from './AttrCard';
+import { SummarizeAttrBody } from './SummarizeAttrBody';
 import { AttrTranslationRow } from './AttrTranslationRow';
 import { getCardComponent, SHORT_TYPES } from './cardRegistry';
 import { EvidenceTab } from './EvidenceTab';
@@ -330,28 +332,15 @@ export function EntityEditorModal({ bookId, entityId, bookGenreTags = [], kindGe
                     <option value="__new">{t('modal.add_language')}</option>
                   </select>
                   {translationLang === '__new' && (
-                    <input
-                      autoFocus
-                      type="text"
+                    <LanguagePicker
+                      value=""
+                      exclude={availableLanguages}
                       placeholder={t('modal.lang_placeholder')}
-                      maxLength={5}
-                      pattern="[a-zA-Z]{2,3}(-[a-zA-Z]{2,4})?"
-                      className="w-16 rounded border border-blue-500/40 bg-background px-2 py-1 text-[10px] focus:outline-none"
-                      onBlur={(e) => {
-                        const v = e.target.value.trim().toLowerCase();
-                        if (v && /^[a-z]{2,3}(-[a-z]{2,4})?$/.test(v)) {
-                          setTranslationLang(v);
-                        } else {
-                          if (v) toast.error(t('modal.toast.invalid_lang'));
-                          setTranslationLang('');
-                        }
-                      }}
-                      onKeyDown={(e) => {
-                        if (e.key === 'Enter') {
-                          (e.target as HTMLInputElement).blur();
-                        } else if (e.key === 'Escape') {
-                          setTranslationLang('');
-                        }
+                      aria-label={t('modal.translation_lang_aria')}
+                      className="w-28 rounded border border-blue-500/40 bg-background px-2 py-1 text-[10px] focus:outline-none"
+                      onChange={(code) => {
+                        if (code) setTranslationLang(code);
+                        else setTranslationLang('');
                       }}
                     />
                   )}
@@ -549,11 +538,26 @@ function AttrGrid({ attrs, getValue, onChange, pendingChanges, translationLang, 
         translationSlot={translationSlot}
       >
         {!viewTranslationMode && (
-          <CardComponent
-            value={getValue(attr)}
-            onChange={(v) => onChange(attr.attr_value_id, v)}
-            options={def.options}
-          />
+          def.merge_strategy === 'summarize' ? (
+            <SummarizeAttrBody
+              canonicalValue={attr.canonical_value}
+              canonicalDirty={attr.canonical_dirty}
+              rawValue={getValue(attr)}
+              rawCard={
+                <CardComponent
+                  value={getValue(attr)}
+                  onChange={(v) => onChange(attr.attr_value_id, v)}
+                  options={def.options}
+                />
+              }
+            />
+          ) : (
+            <CardComponent
+              value={getValue(attr)}
+              onChange={(v) => onChange(attr.attr_value_id, v)}
+              options={def.options}
+            />
+          )
         )}
       </AttrCard>
     );

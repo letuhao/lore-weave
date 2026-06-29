@@ -347,7 +347,7 @@ describe('PublicMcpController', () => {
     expect(relay).toBeUndefined();
   });
 
-  it('filters the tools/list response down to the key scope (PUB-3 / H-F)', async () => {
+  it('a FRESH session lists only find_tools — lazy loading (the in-scope catalogue is hidden until discovered)', async () => {
     setEnv();
     (global as unknown as { fetch: jest.Mock }).fetch = jest.fn().mockImplementation((url: string) => {
       if (String(url).includes('/internal/mcp-keys/resolve')) {
@@ -359,10 +359,13 @@ describe('PublicMcpController', () => {
       }
       return Promise.resolve({
         status: 200,
+        // ai-gateway prepends find_tools; the rest is the federated catalogue.
         text: async () =>
           JSON.stringify({
             jsonrpc: '2.0',
-            result: { tools: [{ name: 'kg_graph_query' }, { name: 'book_get' }, { name: 'memory_remember' }] },
+            result: {
+              tools: [{ name: 'find_tools' }, { name: 'kg_graph_query' }, { name: 'book_get' }, { name: 'memory_remember' }],
+            },
             id: 1,
           }),
         headers: { get: (h: string) => (h.toLowerCase() === 'content-type' ? 'application/json' : null) },
@@ -378,7 +381,10 @@ describe('PublicMcpController', () => {
     );
     expect(r.statusCode).toBe(200);
     const parsed = JSON.parse(r.sentBody as string);
-    expect(parsed.result.tools.map((t: { name: string }) => t.name)).toEqual(['kg_graph_query']);
+    // Minimal session surface: only find_tools. Out-of-scope tools (book_get/memory_remember) are
+    // scope-filtered AND the in-scope kg_graph_query is hidden by lazy loading until find_tools
+    // activates it — so nothing but the discovery entrypoint is advertised on a fresh session.
+    expect(parsed.result.tools.map((t: { name: string }) => t.name)).toEqual(['find_tools']);
     expect(r.headers['content-type']).toBe('application/json');
   });
 
@@ -592,7 +598,7 @@ describe('PublicMcpController', () => {
         status: 200,
         text: async () =>
           JSON.stringify([
-            { jsonrpc: '2.0', id: 'L', result: { tools: [{ name: 'book_get' }, { name: 'composition_publish' }, { name: 'kg_graph_query' }] } },
+            { jsonrpc: '2.0', id: 'L', result: { tools: [{ name: 'find_tools' }, { name: 'book_get' }, { name: 'composition_publish' }, { name: 'kg_graph_query' }] } },
             { jsonrpc: '2.0', id: 5, result: { structuredContent: { confirm_token: 'SECRET-TOK', domain: 'composition' } } },
           ]),
         headers: { get: (h: string) => (h.toLowerCase() === 'content-type' ? 'application/json' : null) },
@@ -608,7 +614,9 @@ describe('PublicMcpController', () => {
     const sent = JSON.parse(r.sentBody as string) as Array<{ id: unknown; result: { tools?: Array<{ name: string }>; structuredContent?: unknown } }>;
     const listItem = sent.find((x) => x.id === 'L')!;
     const names = (listItem.result.tools ?? []).map((t) => t.name);
-    expect(names).toEqual(['composition_publish']); // book_get (domain:book) + kg_graph_query (domain:knowledge) filtered out
+    // Fresh session → only find_tools is advertised (lazy loading). book_get/kg_graph_query are
+    // out of scope; the in-scope composition_publish is hidden until find_tools activates it.
+    expect(names).toEqual(['find_tools']);
     expect(sent.find((x) => x.id === 5)!.result.structuredContent).toEqual({ status: 'pending_human_approval', approval_id: 'appr-mix' });
   });
 

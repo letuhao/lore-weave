@@ -21,6 +21,7 @@ swapping order across samples to cancel position bias.
 from __future__ import annotations
 
 import logging
+from collections.abc import Awaitable, Callable
 from typing import Any
 
 from loreweave_llm.errors import LLMError
@@ -95,6 +96,7 @@ async def pairwise_judge(
     llm: LLMClient, *, user_id: str, model_source: str, model_ref: str,
     draft_a: str, draft_b: str, source_language: str = "auto",
     max_tokens: int = 1024, trace_id: str | None = None,
+    cancel_check: Callable[[], Awaitable[bool]] | None = None,
 ) -> dict[str, Any]:
     """Run the pairwise comparison. On any LLM/parse failure returns a 'tie'
     verdict with `error` set (never raises — an eval judge that errors must not
@@ -109,7 +111,8 @@ async def pairwise_judge(
                 "response_format": {"type": "text"}, "temperature": 0.0,
                 "max_tokens": max_tokens, **_NO_THINK,
             },
-            job_meta={"extractor": "pairwise_judge"}, trace_id=trace_id,
+            job_meta={"usage_purpose": "prose_eval", "extractor": "pairwise_judge"}, trace_id=trace_id,
+            cancel_check=cancel_check,
         )
     except LLMError as exc:
         logger.warning("pairwise_judge LLM error: %s", exc)

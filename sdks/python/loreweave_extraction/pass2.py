@@ -18,6 +18,7 @@ future translation/chat-service consumers) is responsible for:
 from __future__ import annotations
 
 import asyncio
+from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, field
 from typing import Literal
 
@@ -161,6 +162,15 @@ async def extract_pass2(
     # D1 carve-out). The value is trusted as-is (already clamped to the caller's
     # grant at mint time, knowledge-side) — the SDK does no re-clamp.
     reasoning_effort: str = "none",
+    # bug #34 — optional immediate-cancel hook threaded down to EVERY core
+    # extraction submit_and_wait (entity + relation/event/fact). The base
+    # loreweave_llm.Client.wait_terminal polls it so an in-flight LLM call is
+    # aborted the moment the owning KG-build job is cancelled. None (default —
+    # worker-ai chat/glossary callers + translation + knowledge pass2 consumers
+    # that don't opt in) ⇒ no cancellation polling, byte-identical behaviour.
+    # NOT applied to the recovery/precision-filter passes (cheap structural
+    # passes, same carve-out as reasoning_effort).
+    cancel_check: Callable[[], Awaitable[bool]] | None = None,
 ) -> Pass2Candidates:
     """Run the full Pass 2 extraction pipeline.
 
@@ -224,6 +234,7 @@ async def extract_pass2(
         prompt_override_system=_sys("entity"),
         schema=schema,
         reasoning_effort=reasoning_effort,
+        cancel_check=cancel_check,
     )
 
     # Gate: if no entities, nothing to anchor.
@@ -246,6 +257,7 @@ async def extract_pass2(
         on_dropped=on_dropped,
         schema=schema,
         reasoning_effort=reasoning_effort,
+        cancel_check=cancel_check,
     )
 
     # C12 — build the gather task-list CONDITIONALLY. Only the requested

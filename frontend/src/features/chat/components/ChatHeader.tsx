@@ -20,9 +20,12 @@ interface ChatHeaderProps {
   onOpenVoiceSettings?: () => void;
   /** Mobile: open session sidebar */
   onOpenSidebar?: () => void;
+  /** Embedded hosts inject a compact session switcher here; when present it
+   *  replaces the static title (the switcher renders the title itself). */
+  sessionSwitcher?: React.ReactNode;
 }
 
-export function ChatHeader({ session, modelNameMap, messageCount, onRename, onOpenSettings, isVoiceModeActive, onToggleVoiceMode, onOpenVoiceSettings, onOpenSidebar }: ChatHeaderProps) {
+export function ChatHeader({ session, modelNameMap, messageCount, onRename, onOpenSettings, isVoiceModeActive, onToggleVoiceMode, onOpenVoiceSettings, onOpenSidebar, sessionSwitcher }: ChatHeaderProps) {
   const { t } = useTranslation('chat');
   // Self-measure: when the header (its container) is narrow — e.g. the editor
   // AI panel at ~300px — collapse the memory chip to icon-only so the action
@@ -57,7 +60,9 @@ export function ChatHeader({ session, modelNameMap, messageCount, onRename, onOp
           </button>
         )}
         <div className="min-w-0">
-        <h2 className="truncate text-sm font-semibold text-foreground">{session.title}</h2>
+        {sessionSwitcher ?? (
+          <h2 className="truncate text-sm font-semibold text-foreground">{session.title}</h2>
+        )}
         <p className="mt-0.5 truncate text-[11px] text-muted-foreground">
           {modelNameMap?.get(session.model_ref) ?? (session.model_source === 'user_model' ? t('header.my_model') : t('header.platform'))} &middot;{' '}
           {t('header.messages', { count: messageCount ?? session.message_count })}

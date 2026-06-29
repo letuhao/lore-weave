@@ -33,6 +33,13 @@ vi.mock('../../hooks/useEntityFacts', () => ({
   }),
 }));
 
+// #11 — the anchored-glossary description hook is stubbed so this suite stays a
+// pure render test (no cross-feature glossary fetch).
+const useAnchoredGlossaryEntityMock = vi.fn(() => ({ shortDescription: null, isLoading: false }));
+vi.mock('../../hooks/useAnchoredGlossaryEntity', () => ({
+  useAnchoredGlossaryEntity: (...args: unknown[]) => useAnchoredGlossaryEntityMock(...args),
+}));
+
 const unlockEntityMock = vi.fn();
 const promoteEntityMock = vi.fn();
 const setGlossaryEntityPinnedMock = vi.fn();
@@ -108,9 +115,36 @@ describe('EntityDetailPanel — C9 unlock CTA', () => {
     toastMocks.success.mockReset();
     toastMocks.error.mockReset();
     useEntityDetailMock.mockReset();
+    useAnchoredGlossaryEntityMock.mockReset();
+    useAnchoredGlossaryEntityMock.mockReturnValue({ shortDescription: null, isLoading: false });
     // jsdom stubs window.confirm to return undefined → falsy; we need
     // the CTA to proceed when the user "confirms" in tests.
     vi.spyOn(window, 'confirm').mockReturnValue(true);
+  });
+
+  it('renders the anchored glossary description when present (#11)', () => {
+    useAnchoredGlossaryEntityMock.mockReturnValue({
+      shortDescription: 'A wandering swordsman who guards the northern pass.',
+      isLoading: false,
+    });
+    setDetail({ glossary_entity_id: 'g-1' });
+    render(
+      <EntityDetailPanel open={true} onOpenChange={vi.fn()} entityId="ent-1" bookId="b-1" />,
+      { wrapper: Wrapper },
+    );
+    expect(screen.getByTestId('entity-detail-description')).toHaveTextContent(
+      'A wandering swordsman who guards the northern pass.',
+    );
+  });
+
+  it('omits the description section when there is no anchored description (#11)', () => {
+    useAnchoredGlossaryEntityMock.mockReturnValue({ shortDescription: null, isLoading: false });
+    setDetail({ glossary_entity_id: null });
+    render(
+      <EntityDetailPanel open={true} onOpenChange={vi.fn()} entityId="ent-1" />,
+      { wrapper: Wrapper },
+    );
+    expect(screen.queryByTestId('entity-detail-description')).not.toBeInTheDocument();
   });
 
   it('hides the unlock section when user_edited=false', () => {

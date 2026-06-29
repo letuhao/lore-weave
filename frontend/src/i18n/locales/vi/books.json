@@ -5,6 +5,7 @@
   "search_placeholder": "Tìm sách...",
   "all_languages": "Tất cả ngôn ngữ",
   "all_states": "Tất cả trạng thái",
+  "select_language": "Chọn ngôn ngữ…",
   "book_count": "{{count}} sách",
   "book_count_other": "{{count}} sách",
   "translated_to": "Đã dịch sang: {{langs}}",
@@ -209,7 +210,13 @@
       "clear": "Bỏ chọn",
       "done": "Đã đặt {{count}} thực thể sang {{status}}",
       "select_all_matching": "Chọn tất cả {{count}} mục khớp",
-      "cap_note": "Chỉ chọn tối đa {{cap}} thực thể"
+      "cap_note": "Chỉ chọn tối đa {{cap}} thực thể",
+      "delete": "Xóa",
+      "deleted": "Đã xóa {{count}} thực thể",
+      "delete_confirm": {
+        "title": "Xóa {{count}} thực thể?",
+        "description": "{{count}} thực thể đã chọn sẽ được chuyển vào thùng rác."
+      }
     },
     "clear_filters": "Xóa tất cả bộ lọc",
     "deleted": "Đã xóa thực thể",

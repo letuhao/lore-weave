@@ -44,6 +44,11 @@ class FakeConn:
     async def fetchrow(self, *a, **k):
         return self._row
 
+    async def fetch(self, *a, **k):
+        # bug #34 — _do_cancel now sweeps in-flight provider jobs via db.fetch; no
+        # decoupled chapters in flight for these emit-focused tests → empty (sweep no-ops).
+        return []
+
     async def execute(self, *a, **k):
         return None
 

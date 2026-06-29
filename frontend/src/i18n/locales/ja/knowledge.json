@@ -24,6 +24,14 @@
     "loadFailed": "グラフの読み込みに失敗しました: {{error}}",
     "empty": "まだナレッジグラフがありません — このプロジェクトをビルドしてネットワークを探索しましょう。"
   },
+  "schemaSection": {
+    "title": "有効なスキーマ",
+    "subtitle": "このプロジェクトのグラフが使うノード種別・エッジ種別・ファクト種別・語彙。",
+    "editCta": "スキーマを編集",
+    "freeEdges": "語彙外の関係を許可（フリーエッジ）。",
+    "closedEdges": "関係は宣言済みのエッジ種別に限定され、それ以外はトリアージへ。",
+    "error": "このプロジェクトのスキーマを読み込めませんでした。"
+  },
   "shell": {
     "backToProjects": "すべてのプロジェクト",
     "sections": {
@@ -35,6 +43,7 @@
       "proposals": "提案",
       "gap": "ギャップ",
       "insights": "インサイト",
+      "schema": "スキーマ",
       "graph": "グラフの構築・探索"
     },
     "notFound": "プロジェクトが見つかりません。",
@@ -277,7 +286,8 @@
       "chapterLabel": "章",
       "chapterUnresolved": "章ID {{id}} — タイトル未解決",
       "participantsMore": "+{{count}}名",
-      "confidenceLabel": "信頼度"
+      "confidenceLabel": "信頼度",
+      "timeLabel": "作中の時間"
     },
     "detail": {
       "summary": "要約",
@@ -290,10 +300,16 @@
       "refreshing": "更新中…",
       "prev": "前へ",
       "next": "次へ",
-      "backToFirst": "最初のページへ"
+      "backToFirst": "最初のページへ",
+      "pageSize": "表示件数"
     },
     "localization": {
       "sourceMarker": "原語で表示 — 翻訳待ち"
+    },
+    "search": {
+      "placeholder": "イベントを検索…",
+      "label": "イベントを検索",
+      "clear": "検索をクリア"
     }
   },
   "entities": {
@@ -351,6 +367,8 @@
       "loadFailed": "エンティティを読み込めませんでした：{{error}}",
       "close": "閉じる",
       "metadata": "メタデータ",
+      "description": "説明",
+      "descriptionSource": "リンクされた用語集エントリより",
       "aliases": "エイリアス",
       "relations": "関係 ({{count}})",
       "truncated": "{{shown}} / {{total}} 件表示中 — テーブルで絞り込みまたは検索してください",
@@ -705,12 +723,15 @@
           "durationMin": "約 {{n}} 分"
         },
         "building_running": {
-          "progress": "{{processed}} / {{total}} 件",
+          "progress": "{{processed}} / {{total}} 件（章・チャット・用語集）",
           "elapsed": "経過: {{elapsed}}",
           "spent": "使用額: ${{spent}}",
           "spentOfBudget": "使用額: ${{spent}} / ${{budget}}",
           "concurrencyLabel": "並列呼び出し数",
-          "concurrencyApply": "適用"
+          "concurrencyApply": "適用",
+          "stagesTitle": "ビルドの段階",
+          "stages": "エンティティ → 関係 · イベント · ファクト → 要約",
+          "stagesNote": "パスはこの順に実行されます。ファクトと要約はエンティティと関係の完了後に実行されるため、フルビルドでは後から表示されます。早く停止するとスキップされます。"
         },
         "building_paused_user": {
           "body": "ジョブを一時停止しました。準備ができたら再開するか、キャンセルして部分グラフを残せます。"

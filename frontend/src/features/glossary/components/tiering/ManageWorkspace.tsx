@@ -9,6 +9,7 @@ import type { AdoptRequest } from '../../tieringTypes';
 import { OntologyColumn, type ColumnRow } from './OntologyColumn';
 import { AttributeEditorPanel } from './AttributeEditorPanel';
 import { AdoptPicklistModal } from './AdoptPicklistModal';
+import { BookKindGenresModal } from './BookKindGenresModal';
 import { QuickCreateModal, type QuickCreatePayload } from './QuickCreateModal';
 import { ConfirmDialog } from '@/components/shared';
 import { KindResearchPanel } from './KindResearchPanel';
@@ -31,6 +32,7 @@ export function ManageWorkspace({ bookId }: { bookId: string }) {
     initial: { name: string; icon?: string; color?: string };
   } | null>(null);
   const [confirmDelete, setConfirmDelete] = useState<{ type: 'genre' | 'kind'; id: string; name: string } | null>(null);
+  const [linkTarget, setLinkTarget] = useState<{ id: string; name: string } | null>(null);
 
   const { genres, kinds, kind_genres, attributes } = ont.ontology;
 
@@ -76,7 +78,17 @@ export function ManageWorkspace({ bookId }: { bookId: string }) {
   const onQuickCreate = (payload: QuickCreatePayload) =>
     quickCreate === 'genre'
       ? guard(() => ont.createGenre(payload), t('toast.saved'), 'toast.save_failed')
-      : guard(() => ont.createKind(payload), t('toast.saved'), 'toast.save_failed');
+      : guard(
+          async () => {
+            const k = (await ont.createKind(payload)) as { book_kind_id?: string };
+            // A book kind with no genre link is invisible in this genre-first drilldown
+            // (and can hold no attributes) — link the new kind to the genre it was
+            // created under so it appears immediately. (#25 create-then-vanish.)
+            if (genreId && k?.book_kind_id) await ont.setKindGenres(k.book_kind_id, [genreId]);
+          },
+          t('toast.saved'),
+          'toast.save_failed',
+        );
 
   // Open the settings modal for a row, seeded from the live ontology (so the
   // colour swatch + icon reflect the current value, not a stale row prop).
@@ -209,6 +221,8 @@ export function ManageWorkspace({ bookId }: { bookId: string }) {
           disabled={!genreId}
           onEdit={(r) => openEditKind(r.id)}
           editLabel={t('col.edit_kind')}
+          onLinks={(r) => setLinkTarget({ id: r.id, name: r.label })}
+          linksLabel={t('col.links_kind')}
           onDelete={(r) => setConfirmDelete({ type: 'kind', id: r.id, name: r.label })}
           deleteLabel={t('col.delete_kind')}
         />
@@ -256,6 +270,27 @@ export function ManageWorkspace({ bookId }: { bookId: string }) {
           loading={standards.isLoading}
           onAdopt={adopt}
           onClose={() => setShowAdopt(false)}
+        />
+      )}
+
+      {linkTarget && (
+        <BookKindGenresModal
+          key={linkTarget.id}
+          kindName={linkTarget.name}
+          genres={genres}
+          linkedGenreIds={kind_genres.filter((l) => l.kind_id === linkTarget.id).map((l) => l.genre_id)}
+          onSave={async (ids) => {
+            const r = await ont.setKindGenres(linkTarget.id, ids);
+            // If we just unlinked this kind from the genre currently in view, it leaves
+            // the kinds column — clear any drilldown selection pointing at it so the
+            // attribute panel + research panel don't keep targeting a detached kind.
+            if (linkTarget.id === kindId && genreId && !ids.includes(genreId)) {
+              setKindId(null);
+              setAttrId(null);
+            }
+            return r;
+          }}
+          onClose={() => setLinkTarget(null)}
         />
       )}
 

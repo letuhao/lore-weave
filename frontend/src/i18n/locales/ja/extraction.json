@@ -80,7 +80,10 @@
     "activityLog": "アクティビティログ",
     "cancel": "キャンセル",
     "cancelConfirm": "抽出ジョブをキャンセルしますか？処理済みのチャプターの結果は保持されます。",
-    "cancelRequested": "キャンセルを要求しました"
+    "cancelRequested": "キャンセルを要求しました",
+    "background": "バックグラウンドで実行",
+    "backgroundToast": "抽出はバックグラウンドで実行中です。",
+    "viewInJobs": "ジョブで表示"
   },
   "results": {
     "title": "抽出完了",

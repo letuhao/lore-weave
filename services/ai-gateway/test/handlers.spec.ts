@@ -65,12 +65,13 @@ describe('headerValue / extractEnvelope', () => {
 });
 
 describe('handleListTools', () => {
-  it('returns the federated catalog with an availability _meta (H10)', () => {
+  it('prepends find_tools, then the federated catalog, with an availability _meta (H10)', () => {
     const fed = fakeFederation({ catalog: () => [{ name: 'memory_search' }] as any });
-    expect(handleListTools(fed)).toEqual({
-      tools: [{ name: 'memory_search' }],
-      _meta: { unavailable_providers: [], partial: false },
-    });
+    const res = handleListTools(fed);
+    // find_tools is advertised FIRST (the lazy-discovery meta-tool), then the catalog.
+    expect(res.tools[0].name).toBe('find_tools');
+    expect(res.tools.map((t: any) => t.name)).toEqual(['find_tools', 'memory_search']);
+    expect(res._meta).toEqual({ unavailable_providers: [], partial: false });
   });
 
   it('reports a down provider in _meta.unavailable_providers (H10)', () => {
@@ -102,13 +103,32 @@ describe('handleCallTool', () => {
       meta,
     );
     // AIGW-LOW2: the `_meta` channel is forwarded downstream as the 4th arg.
+    // #19: the 5th arg is the (here absent) abort signal.
     expect(executeTool).toHaveBeenCalledWith(
       'memory_search',
       { query: 'x' },
       { userId: 'u1', sessionId: 's1', traceId: undefined },
       meta,
+      undefined,
     );
     expect(res).toEqual({ content: [{ type: 'text', text: 'ok' }] });
+  });
+
+  it('D-PLANNER-INFLIGHT-ABORT (#19): forwards the abort signal to executeTool', async () => {
+    const executeTool = jest.fn().mockResolvedValue({ content: [] });
+    const fed = fakeFederation({ executeTool });
+    const ac = new AbortController();
+    await handleCallTool(
+      fed,
+      'glossary_plan',
+      { goal: 'design' },
+      { 'x-user-id': 'u1' },
+      undefined,
+      ac.signal,
+    );
+    // The inbound request's signal rides through as the 5th arg, so a chat-turn
+    // stop cancels the in-flight downstream tool call.
+    expect(executeTool.mock.calls[0][4]).toBe(ac.signal);
   });
 
   it('carries X-Project-Id through the envelope to executeTool (M1 fix)', async () => {
@@ -135,6 +155,25 @@ describe('handleCallTool', () => {
     );
     const env = executeTool.mock.calls[0][2];
     expect(env.mcpKeyId).toBe('key-xyz');
+  });
+
+  it('handles find_tools LOCALLY (never routes downstream) and returns matched tools', async () => {
+    const executeTool = jest.fn();
+    const fed = fakeFederation({
+      executeTool,
+      catalog: () =>
+        [
+          { name: 'book_create', description: 'create a new book' },
+          { name: 'translation_start_job', description: 'start a translation job' },
+        ] as any,
+    });
+    const res = await handleCallTool(fed, 'find_tools', { intent: 'create a book' }, { 'x-user-id': 'u1' });
+    // Consumer-local: find_tools must NOT be routed to a provider (which would throw "unknown tool").
+    expect(executeTool).not.toHaveBeenCalled();
+    const payload = res.structuredContent as { tools: Array<{ name: string }> };
+    expect(payload.tools.map((t) => t.name)).toContain('book_create');
+    // It also returns the standard MCP content block (a text JSON of the payload).
+    expect(res.content[0].type).toBe('text');
   });
 
   it('turns a provider failure into an MCP tool error (isError), not a throw', async () => {

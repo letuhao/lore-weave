@@ -213,6 +213,7 @@ export function UsagePage() {
         filters={filters}
         search={search}
         loading={loading}
+        availablePurposes={(summary?.by_purpose ?? []).map((p) => p.purpose)}
         onSearchChange={setSearch}
         onFiltersChange={handleFiltersChange}
         onOffsetChange={setOffset}

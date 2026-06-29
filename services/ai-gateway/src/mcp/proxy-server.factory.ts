@@ -29,6 +29,12 @@ export function buildProxyServer(federation: FederationService): Server {
       (request.params.arguments ?? {}) as Record<string, unknown>,
       headers,
       request.params._meta,
+      // D-PLANNER-INFLIGHT-ABORT (#19): the SDK aborts `extra.signal` when this
+      // request's transport closes (the controller closes it on the client's
+      // `res 'close'`). Thread it to the downstream tool call so a chat-turn
+      // stop cancels an in-flight heavy tool (e.g. the ~39s glossary_plan) all
+      // the way to the provider — the rest of the chain already honours ctx.
+      extra.signal,
     );
   });
 

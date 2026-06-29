@@ -35,6 +35,7 @@ from loreweave_llm.reasoning import ReasoningDirective, reasoning_fields
 from ..config import settings
 from ..llm_client import LLMClient
 from .block_batcher import build_batch_plan
+from .cost import resolve_job_cost_usd
 from .chunk_splitter import estimate_tokens
 from .extraction_cache import (
     RawCacheKey,
@@ -94,10 +95,41 @@ _EXTRACTION_OUTPUT_CEILING = 8000  # per-window output cap (entities JSON is sma
 _EXTRACTION_OUTPUT_FLOOR = 1024
 _CONTEXT_SAFETY_RATIO = 0.15  # mirror the gateway's context-fit safety margin
 
+# Glossary-extraction quality (2026-06-29 ontology analysis, docs/analysis/2026-06-29-
+# ontology-extraction-bloat.md): a `relationship` is a KG EDGE (A→B), NOT a discrete named
+# entity. Extracting it as a glossary kind yields ~100% `A與B的關係` phrase-"entities"
+# (POC reproduced on gemma AND qwen, 6/6 chapters; matches the 4,789 relationship rows /
+# 88% phrases observed live). Such kinds are dropped from LLM EXTRACTION — the kind still
+# exists in the book ontology for manual/authored use; it just isn't auto-extracted.
+_NON_EXTRACTABLE_GLOSSARY_KINDS: frozenset[str] = frozenset({"relationship"})
+
+
+def drop_non_extractable_kinds(
+    extraction_profile: dict, kinds_metadata: list,
+) -> tuple[dict, list, list[str]]:
+    """Remove non-entity kinds (``_NON_EXTRACTABLE_GLOSSARY_KINDS``) from the extraction
+    profile + kinds metadata so the LLM is never asked to extract them. Returns
+    ``(filtered_profile, filtered_metadata, dropped_codes)``. A no-op (returns the inputs)
+    when none are present, so existing books without such kinds are unaffected."""
+    dropped = [k for k in extraction_profile if k in _NON_EXTRACTABLE_GLOSSARY_KINDS]
+    if not dropped:
+        return extraction_profile, kinds_metadata, []
+    profile = {k: v for k, v in extraction_profile.items()
+               if k not in _NON_EXTRACTABLE_GLOSSARY_KINDS}
+    metadata = [m for m in kinds_metadata
+                if m.get("code") not in _NON_EXTRACTABLE_GLOSSARY_KINDS]
+    return profile, metadata, dropped
+
 # D-EXTRACTION-BATCH-CONCURRENCY: hard ceiling on the per-chapter LLM-call fan-out
 # regardless of the caller's requested concurrency (protects the provider/GPU + the
 # glossary per-book advisory lock from a runaway request). 1 ⇒ sequential.
 _EXTRACTION_MAX_CONCURRENCY = 16
+
+# bug #3: how often (in chapters) to re-price the live job cost via the provider-registry
+# oracle during the run. Tokens update every chapter regardless; cost re-prices on the first
+# chapter + every Nth, reusing the last figure between, to bound registry calls + keep a
+# degraded registry from injecting its 5s timeout into every chapter of the run.
+_COST_REPRICE_EVERY = 5
 
 # D-LLM-FAILURE-RATE #1 — structured-output enforcement. Default ON; set
 # EXTRACTION_STRUCTURED_OUTPUT=0 to disable fleet-wide. The per-call
@@ -297,8 +329,13 @@ async def _run_extraction_job(msg: dict, job_id: UUID, user_id: str, pool, publi
     """Inner extraction job runner — separated for top-level error handling."""
     book_id = msg["book_id"]
     chapter_ids = msg["chapter_ids"]
-    extraction_profile = msg.get("extraction_profile", {})
-    kinds_metadata = msg.get("kinds_metadata", [])
+    # Drop non-entity kinds (e.g. `relationship` → a KG edge) from LLM extraction so they
+    # can't flood the glossary with `A與B的關係` phrase-rows. The kind row is untouched.
+    extraction_profile, kinds_metadata, _dropped = drop_non_extractable_kinds(
+        msg.get("extraction_profile", {}), msg.get("kinds_metadata", []))
+    if _dropped:
+        log.info("extraction: skipping non-entity kinds %s (relationships are KG edges) book=%s",
+                 _dropped, book_id)
     context_filters = msg.get("context_filters", {})
     source_language = msg.get("source_language", "zh")
     model_source = msg.get("model_source", "platform_model")
@@ -416,6 +453,62 @@ async def _run_extraction_job(msg: dict, job_id: UUID, user_id: str, pool, publi
     completed = sum(1 for r in done_rows if r["status"] in ("completed", "completed_with_errors"))
     chapters_with_errors = sum(1 for r in done_rows if r["status"] == "completed_with_errors")
     failed = sum(1 for r in done_rows if r["status"] == "failed")
+    # bug #37 — realized LLM-call count (one per executed window×batch = one BatchOutcome row,
+    # the SAME unit the planner's estimated_llm_calls counts). Seed from the outcomes already
+    # persisted on prior deliveries so the GUI counter is MONOTONIC across a resume (the loop
+    # below only processes not-yet-done chapters, so it never double-counts). Best-effort.
+    try:
+        async with pool.acquire() as db:
+            _seed_calls = await db.fetchval(
+                "SELECT count(*) FROM extraction_batch_outcomes WHERE job_id=$1", job_id
+            )
+        # isinstance gate: a real count is an int; tolerate a mocked/odd value → 0.
+        total_llm_calls = _seed_calls if isinstance(_seed_calls, int) else 0
+    except Exception:  # noqa: BLE001 — a display counter must never fail the run
+        total_llm_calls = 0
+
+    # D-JOBS-EXTRACT-LIVE-PROGRESS (bug #2): mirror per-chapter progress onto the UNIFIED
+    # jobs-service stream so the /jobs detail page advances live. The translation-service
+    # `publish_event` channel only reaches the legacy translation UI; the unified Job detail
+    # page (JobMonitor) subscribes to the jobs-service SSE overlay, which previously saw only
+    # the single 'running' transition + the terminal event — so its progress bar/detail_status
+    # sat frozen for the whole run. Each emit carries a fresh occurred_at, so the monotonic
+    # projection applies it (forward-in-time) and pushes an SSE frame. Best-effort: a failed
+    # emit never disturbs the run (the terminal rollup + reconcile sweep backstop accuracy).
+    # bug #3: carry live tokens + a derived cost so the /jobs detail Cost & Usage panel
+    # updates as the run advances instead of only at completion. TOKENS ride every emit (free
+    # — already summed). COST needs the provider-registry pricing oracle (the gateway `usage`
+    # has no cost; same call cost.py uses for actuals — D-JOBS-P4), which is NETWORK I/O on a
+    # 5s timeout. Repricing every chapter would couple the run's latency to registry health (a
+    # degraded registry → up to 5s added PER chapter). So we reprice only periodically and
+    # REUSE the last good figure between: tokens stay fully live, cost advances in steps, and
+    # registry calls are bounded to ~chapters/_COST_REPRICE_EVERY. Best-effort throughout: a
+    # None reprice keeps the last cost; a fresh 0-token call skips the HTTP entirely.
+    _last_cost: float | None = None
+
+    async def _emit_unified_progress(reprice: bool = True) -> None:
+        nonlocal _last_cost
+        done = completed + failed
+        if reprice:
+            priced = await resolve_job_cost_usd(
+                owner_user_id=str(user_id), model_source=model_source, model_ref=model_ref,
+                input_tokens=total_input_tokens, output_tokens=total_output_tokens,
+            )
+            if priced is not None:
+                _last_cost = priced
+        await emit_job_event_safe(
+            pool, service=_JOB_SERVICE, job_id=str(job_id), owner_user_id=str(user_id),
+            kind=_JOB_KIND, status="running",
+            progress={"done": done, "total": len(chapter_ids)},
+            detail_status=f"{done}/{len(chapter_ids)} chapters",
+            # bug #37 — advance the realized LLM-call count on the Jobs GUI (paired with the
+            # create event's estimated_llm_calls). COALESCE-merged on the projection.
+            params={"llm_calls_done": total_llm_calls},
+            cost_usd=_last_cost,
+            tokens_in=total_input_tokens or None, tokens_out=total_output_tokens or None,
+        )
+
+    await _emit_unified_progress()  # baseline (0/N fresh, or k/N on resume) before the loop
 
     for idx, chapter_id_str in enumerate(chapter_ids):
         chapter_id = UUID(chapter_id_str) if isinstance(chapter_id_str, str) else chapter_id_str
@@ -498,6 +591,9 @@ async def _run_extraction_job(msg: dict, job_id: UUID, user_id: str, pool, publi
             total_skipped += ch_skipped
             total_input_tokens += ch_input_tokens
             total_output_tokens += ch_output_tokens
+            # bug #37 — realized LLM calls = one per executed batch (BatchOutcome row), the
+            # same unit estimated_llm_calls counts. Advances the Jobs-GUI "done / total".
+            total_llm_calls += len(result.get("batch_outcomes") or [])
             completed += 1
             # OBS/M2 — the chapter status is DERIVED from its batch outcomes (INV-F15):
             # 'completed' only if every batch was clean, else 'completed_with_errors'. This
@@ -555,6 +651,12 @@ async def _run_extraction_job(msg: dict, job_id: UUID, user_id: str, pool, publi
             },
         })
 
+        # Mirror the same advance onto the unified jobs-service stream (bug #2 — live progress
+        # on the /jobs detail page). Reprice cost on the first processed chapter (so cost
+        # appears early even for small jobs) and then every _COST_REPRICE_EVERY chapters;
+        # tokens still update on every emit. See _emit_unified_progress above (bug #3).
+        await _emit_unified_progress(reprice=(idx == 0 or (idx + 1) % _COST_REPRICE_EVERY == 0))
+
     # Job complete. OBS/M2 — the job is 'completed' only when nothing failed AND no chapter
     # finished with batch errors; a chapter that finished completed_with_errors now bubbles
     # up so the job rollup reflects the per-batch taxonomy instead of masking it.
@@ -564,10 +666,33 @@ async def _run_extraction_job(msg: dict, job_id: UUID, user_id: str, pool, publi
         final_status = "completed"
     else:
         final_status = "completed_with_errors"
+    # bug #34 (live-smoke D-CANCEL-IMMEDIATE) — a mid-chapter cancel that lands on the LAST
+    # chapter aborts that chapter's in-flight LLM calls (the cancel_check → DELETE → upstream
+    # abort) but never re-enters the per-chapter cooperative gate above (no chapter left to
+    # gate), so the loop falls through to here with the job still 'cancelling'. Honor the
+    # user's intent: report 'cancelled' (already-completed chapters are kept — the documented
+    # "discards in-progress, keeps completed parts" semantics) instead of letting the
+    # chapter-aggregate mask the cancel as 'completed_with_errors'.
+    async with pool.acquire() as db:
+        _cur_status = await db.fetchval(
+            "SELECT status FROM extraction_jobs WHERE job_id=$1", job_id
+        )
+    if _cur_status in ("cancelling", "cancelled"):
+        final_status = "cancelled"
+    # bug #3 / D-JOBS-P4: derive the ACTUAL job cost from the summed tokens via the
+    # provider-registry pricing oracle (the gateway `usage` carries only tokens). Resolved
+    # out-of-tx (network I/O), best-effort (None on an unpriced model / registry blip), and
+    # folded into the finalize UPDATE + the terminal job event so the GET endpoint and the
+    # unified Jobs detail page both show the final cost.
+    _final_cost = await resolve_job_cost_usd(
+        owner_user_id=str(user_id), model_source=model_source, model_ref=model_ref,
+        input_tokens=total_input_tokens, output_tokens=total_output_tokens,
+    )
     async with pool.acquire() as db:
         await db.execute(
-            "UPDATE extraction_jobs SET status=$2, finished_at=now() WHERE job_id=$1",
-            job_id, final_status,
+            "UPDATE extraction_jobs SET status=$2, finished_at=now(), "
+            "cost_usd=COALESCE($3, cost_usd) WHERE job_id=$1",
+            job_id, final_status, _final_cost,
         )
 
     # OBS/M2 (INV-O14) — the JOB-TERMINAL rollup. The per-batch outcome rows are the SSOT;
@@ -589,10 +714,16 @@ async def _run_extraction_job(msg: dict, job_id: UUID, user_id: str, pool, publi
 
     # P1 terminal emit (best-effort). 'completed_with_errors' has no canonical JobStatus →
     # map to 'completed' (the job DID finish; per-chapter failures are tracked on the row).
-    _canon = "completed" if final_status in ("completed", "completed_with_errors") else "failed"
+    # A late cancel (above) emits the canonical 'cancelled', mirroring the per-chapter
+    # cooperative-gate path so the unified jobs stream agrees with the row status.
+    if final_status == "cancelled":
+        _canon = "cancelled"
+    else:
+        _canon = "completed" if final_status in ("completed", "completed_with_errors") else "failed"
     await emit_job_event_safe(
         pool, service=_JOB_SERVICE, job_id=str(job_id), owner_user_id=str(user_id),
         kind=_JOB_KIND, status=_canon,
+        cost_usd=_final_cost,
         tokens_in=total_input_tokens or None, tokens_out=total_output_tokens or None,
     )
 
@@ -622,6 +753,27 @@ async def _run_extraction_job(msg: dict, job_id: UUID, user_id: str, pool, publi
         "extraction_worker: job %s complete — created=%d updated=%d skipped=%d failed_chapters=%d",
         job_id, total_created, total_updated, total_skipped, failed,
     )
+
+    # #26/#7 — end-of-job canonical resynthesis for `summarize`-mode attributes. The
+    # writeback flagged each changed summarize attr canonical_dirty; now (after the job
+    # terminal state, never for a cancelled job) batch-rewrite their accumulated raw
+    # mentions into one deduped canonical value via the SAME provider-registry path this
+    # job used. BEST-EFFORT + fully decoupled: the extraction already committed, so a
+    # resummarize problem is logged and swallowed — it never changes the job's outcome.
+    if final_status in ("completed", "completed_with_errors"):
+        try:
+            from .resummarize import run_resummarize_pass
+
+            summary = await run_resummarize_pass(
+                book_id=book_id, owner_user_id=str(user_id),
+                model_source=model_source, model_ref=model_ref,
+                source_language=source_language, llm_client=llm_client,
+            )
+            if summary.get("dirty"):
+                log.info("extraction_worker: job %s resummarize — %s", job_id, summary)
+        except Exception as exc:  # noqa: BLE001 — resummarize must never fail the job
+            log.warning("extraction_worker: job %s resummarize pass failed (non-fatal): %s",
+                        job_id, exc)
 
 
 async def _process_extraction_chapter(
@@ -918,23 +1070,41 @@ async def _process_extraction_chapter(
         if _STRUCTURED_OUTPUT_ENABLED:
             call_input["response_format"] = _entity_response_format(batch)
 
+        async def _is_cancelled() -> bool:
+            # bug #34: poll the parent extraction job's status so an in-flight LLM
+            # call is aborted (DELETE'd at the gateway) the moment the user cancels
+            # — instead of burning tokens until the call finishes naturally. A read
+            # failure returns False so a transient DB blip never spuriously cancels a
+            # healthy job (the SDK also tolerates a raising check; this is belt+braces).
+            try:
+                async with pool.acquire() as db:
+                    st = await db.fetchval(
+                        "SELECT status FROM extraction_jobs WHERE job_id=$1", job_id
+                    )
+                return st in ("cancelling", "cancelled")
+            except Exception:  # noqa: BLE001 — never let a status read abort healthy work
+                return False
+
         async def _submit(_inp: dict):
             return await llm_client.submit_and_wait(
                 user_id=str(owner_user_id),
-                # operation="chat" routes to the chatAggregator but labels glossary
-                # extraction accurately in gateway telemetry/billing.
+                # operation="chat" routes to the chatAggregator (chat-shaped result
+                # we parse). bug #24: the Usage-GUI billing label rides
+                # job_meta.usage_purpose so it reads "glossary_extraction", not "chat".
                 operation="chat",
                 model_source=model_source,
                 model_ref=str(model_ref),
                 input=_inp,
                 chunking=None,
                 job_meta={
+                    "usage_purpose": "glossary_extraction",
                     "extractor": "glossary",
                     "extraction_job_id": str(job_id),
                     "chapter_id": str(chapter_id),
                     "batch_idx": batch_idx,
                 },
                 transient_retry_budget=1,
+                cancel_check=_is_cancelled,
             )
 
         try:

@@ -132,6 +132,31 @@ async def test_p4_params_jsonb_roundtrip(pool, owner):
 
 
 @pytest.mark.asyncio
+async def test_p4_params_merge_accumulates_across_events(pool, owner):
+    """bug #37 — params ACCUMULATE (jsonb merge) across events, not whole-replace: a
+    producer sets static params at create (model, estimated_llm_calls) and advances a live
+    key (llm_calls_done) on later events without wiping the create set; new keys win on
+    conflict; an event that omits params keeps the accumulated object."""
+    jid = str(uuid.uuid4())
+    t0 = datetime(2026, 6, 15, 10, 0, tzinfo=timezone.utc)
+    # create: static params
+    await upsert_job_event(pool, _ev(owner, jid, JobStatus.PENDING, t0,
+                                     params={"model": "qwen", "estimated_llm_calls": 16}))
+    # running: advance only the live key — must NOT wipe model/estimate
+    await upsert_job_event(pool, _ev(owner, jid, JobStatus.RUNNING, t0 + timedelta(seconds=10),
+                                     params={"llm_calls_done": 4}))
+    job = await get_job(pool, owner, "knowledge", jid)
+    assert job["params"] == {"model": "qwen", "estimated_llm_calls": 16, "llm_calls_done": 4}
+    # later running: bump the live key (new value wins) + an omitted-params event keeps it
+    await upsert_job_event(pool, _ev(owner, jid, JobStatus.RUNNING, t0 + timedelta(seconds=20),
+                                     params={"llm_calls_done": 11}))
+    await upsert_job_event(pool, _ev(owner, jid, JobStatus.RUNNING, t0 + timedelta(seconds=30),
+                                     params=None))  # omits params → accumulated object intact
+    job = await get_job(pool, owner, "knowledge", jid)
+    assert job["params"] == {"model": "qwen", "estimated_llm_calls": 16, "llm_calls_done": 11}
+
+
+@pytest.mark.asyncio
 async def test_paged_history_offset_total_and_created_order(pool, owner):
     """History mode: offset+total, ORDER BY created_at DESC (stable)."""
     t0 = datetime(2026, 6, 15, 10, 0, tzinfo=timezone.utc)

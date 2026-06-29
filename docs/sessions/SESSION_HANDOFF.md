@@ -1,3 +1,316 @@
+# ▶▶ NEXT SESSION STARTS HERE — **Critical UX bug track** · branch `fix/critical-ux-bugs` · HEAD `947dbac6` · 2026-06-29
+
+> **✅ DONE — 3 NEW user-reported bugs #41/#42/#43 (all fix-now, each its own commit), after a
+> 3-agent code-audit confirmed the prior 9 closures had no overclaims (only #29's multi-KG-card
+> coalesce was under-tested → added 2 tests `c8ad4b16`).**
+> - **#41 (`b6450ae1`, FE)** — agent (MCP) commits didn't refresh the GUI (needed F5). The 3 chat
+>   confirm cards never invalidated react-query; new `invalidateAfterConfirm(domain→key-prefixes)`
+>   wired into all 3 (ConfirmActionCard=committed domain, ConfirmCard=glossary, BatchConfirmCard=union
+>   of committed domains). 45 FE tests green (4 confirm-card test files now wrap a `QueryClientProvider`
+>   via new `test-utils/renderWithClient`); tsc clean. Follow-ups: `D-KG-MANUAL-REFRESH-BUTTON`,
+>   `D-MCP-REFRESH-LIVE-SMOKE`.
+> - **#42 (`e8dd9bab`, knowledge)** — KG rebuild only wiped-and-redid-all. The incremental accumulate
+>   path already existed (`scope=chapters`+range / `chapters_pending`, idempotent MERGE); added
+>   `mode:"update"` to `RebuildRequest` that skips the confirm-gate + `_delete_project_graph` and routes
+>   to the existing non-destructive core. 10/10 rebuild tests (also un-rotted 6 pre-existing ones broken
+>   by #9 DI drift). Closes `D-KG-UPDATE-MODE`. Follow-ups: `D-KG-UPDATE-MODE-FE` (an "Update" button
+>   distinct from destructive "Rebuild"), `D-KG-UPDATE-MODE-LIVE-SMOKE`.
+> - **#43 (`947dbac6`, glossary, M)** — 3000+ same-name/different-kind dups from pre-fix extractions;
+>   nothing could clean them (mergeOne deliberately rejects cross-kind). Threaded a `crossKind` flag
+>   through `mergeEntitiesCore`(required, 3 callers=false)→`mergeOne`(variadic) that skips the same-kind
+>   gate + kind-scopes the EAV repoint to the winner's kind (same-kind path byte-identical); dedup
+>   endpoint gains `?cross_kind=true`. Real-DB tests (collapse→1, winner keeps kind, loser soft-deleted;
+>   default keeps kinds separate) + all Merge/Wiki regression green. **User runs
+>   `POST /internal/books/{book_id}/dedup-name-variants?apply=true&cross_kind=true` per affected book**
+>   (DRY-RUN by default). Follow-up: `D-CROSSKIND-DEDUP-FE` (user-facing trigger).
+
+> **✅ DONE — #27/#29/#30 marker reconciliation (bookkeeping; verified, no code change).** The
+> coalesce P2 shipped (`3cce85d9`/`a721c93c`/`cabbe35d`/`038bdbff`/`f61a83de`) but the bug-tracker
+> markers were stale at `[I]`. Re-verified against code: the M2 `BatchConfirmCard` is **all-domain**,
+> and `descriptorDomain` deliberately routes every `kg_`-prefixed descriptor → the `kg` domain
+> (`ConfirmActionCard.tsx:66`, test `:302-318`), so **#29's KG schema-edit cards inherit the same
+> coalesce** (N `kg_schema_edit` tokens fold into one "Confirm all", each commits via the single-confirm
+> loop → `/v1/kg/actions/confirm`). #27/#29/#30 all flipped to `[x]`. **New deferred (optional residual,
+> NOT the bug):** `D-KG-SCHEMA-PROPOSE-BATCH` (a deterministic `kg_schema_propose_batch` tool so the
+> agent emits ONE call), `D-KG-CONFIRM-BATCH-ENDPOINT` (atomic `/v1/kg/actions/confirm-batch` vs the
+> honest-partial loop) — both gate 2, token/UX optimizations only.
+
+> **✅ DONE — #19 / `D-PLANNER-INFLIGHT-ABORT`: the propagation gap CLOSED.** Traced the full
+> cancellation chain (chat disconnect → ai-gateway → glossary → provider-registry) and found it
+> already cancels on connection-drop at EVERY hop EXCEPT one: `ai-gateway federation.executeTool`
+> did `await client.callTool(params)` with NO abort signal, so a chat-turn stop closed the INBOUND
+> MCP server (`res 'close'` → `server.close()` → the SDK aborts `extra.signal`) but left the OUTBOUND
+> call to glossary running to completion (~39s zombie planner). Fix: thread `extra.signal` →
+> `proxy-server.factory` → `handleCallTool` → `executeTool` → `client.callTool(params, undefined,
+> {signal})`. Now an abort drops the glossary fetch → glossary `r.Context()` cancels → `runPlanner`
+> `cctx` cancels → `client.Complete` aborts → provider-registry `r.Context()` cancels the provider
+> call (the last two hops were ALREADY ctx-wired — verified by code + provider-registry stream_handler.go:13-16).
+> +1 unit test (signal→executeTool) + updated the 4-arg assertion; ai-gateway 37/37; nest build clean;
+> rebuilt+deployed, happy-path live smoke OK (real plan via ai-gateway on the fixed image).
+> **▶ Deferred `D-PLANNER-INFLIGHT-ABORT-CAPTURE`** (gate 4: blocked on observability): the rigorous
+> end-to-end ABORT A/B couldn't run here — the sync planner path writes NO `llm_jobs`/log row, and the
+> local gemma is fast (~3s) + non-serializing (a queuing-timing A/B showed a post-abort call running
+> in 0.9s, so it can't detect cancellation). Recipe for a future capture: add a sync-path observability
+> row OR use a controlled slow+single-slot model, then assert the provider call terminates 'cancelled'
+> shortly after the chat-turn stop. The CODE gap is closed regardless.
+
+> **✅ DONE — #18 planner self-recheck loop: MECHANICAL hard-stop.** RC (already investigated):
+> NO ReAct loop in the planner CODE — the "loops forever" is the chat agent re-calling the heavy
+> (~39s) `glossary_plan` in a self-recheck cycle, bounded only by a SOFT skill rule. Fix
+> ([stream_service.py](../../services/chat-service/app/services/stream_service.py)): `PLANNER_TOOLS`
+> may run AT MOST `PLANNER_CALLS_PER_TURN_CAP=1` per turn — a 2nd+ call is short-circuited BEFORE the
+> MCP transport (no planner run) with a tool result steering the model to present/confirm the plan it
+> already has (Kiro-style logic control). Cross-turn recovery re-plans = a fresh pass/counter, never
+> blocked. Mirrors the existing Tier-A volume cap. +2 TDD tests (`TestPlannerHardStop`); test_stream_tools
+> 40/40, frontend_tools+tool_discovery green. (test_stream_service's 13 fails proven PRE-EXISTING —
+> `LLMModelNotFound`, identical on pristine HEAD — env needs a patched LLM client.) **#19 remainder
+> stays `D-PLANNER-INFLIGHT-ABORT`** — aborting the IN-FLIGHT planner MCP call on session-stop is the
+> larger cross-service cancellation (gate 2 + 4: structural + blocked on a live capture).
+
+> **✅ DONE — #27/#29/#30 confirm-card coalesce (XL, load-bearing — agent run lifecycle +
+> human-gate boundary). M1+M2+M3 complete; branch ready to PR.** A weak model loops single-propose tools, minting N confirm_tokens in ONE
+> turn; the old UX rendered N cards that orphaned each other (confirming the first resumed/superseded
+> the shared run). Plan: [docs/plans/2026-06-28-confirm-card-server-coalesce.md] — but VERIFYING it
+> vs code CORRECTED its core assumption (the dominant path is the FE auto-confirm synthesis, which
+> has NO runId + never suspends, so a server-side suspend-point coalesce would never fire). The fix
+> belongs in the FE. User chose **all-domain** coverage.
+> **✅ M1 DONE (`3cce85d9`) — glossary batch endpoints.** `/actions/confirm-batch` + `/preview-batch`:
+> verify+authorize ALL children before consuming (fail-closed; same-book, proposer-bound, Manage-grant),
+> then per child claim jti (single-use) → run the SAME per-descriptor effect (via a recorder; dispatch
+> extracted, no effect rewritten) → per-child applied/skipped/failed. Replay→skip. 8 tests + existing green.
+> **✅ M2 DONE (`a721c93c`) — FE coalesce.** `BatchConfirmCard` (all-domain: glossary→atomic confirm-batch,
+> others→loop single confirm; resume the run ONCE) + `AssistantMessage` folds >1 live tokens into ONE
+> card (dedup-by-token, suppress individuals); single token unchanged. `actionsApi.confirmActionBatch` +
+> `BATCH_CONFIRM_DOMAINS`. frontend 88/88; tsc clean; 4 locales.
+> **✅ M3 DONE — cross-service LIVE SMOKE PASSED (the XL VERIFY gate).** Rebuilt + recreated
+> glossary-service (M1 endpoints now live: `confirm-batch` 404→401). Drove the contract smoke on the
+> test account against the live stack + live DB (`loreweave_glossary`): (1) minted **2 real signed
+> tokens** via the live MCP tool `glossary_propose_new_kind` (`POST /mcp`, X-Internal-Token + X-User-Id)
+> for an owned active book; (2) `POST /v1/glossary/actions/confirm-batch {child_tokens:[A,B]}` with the
+> test JWT → **applied=2, skipped=0, failed=0**, `book_kinds` 0→2; (3) **REPLAY** same batch → applied=0,
+> **skipped=2** ("already confirmed"), DB still 2 — single-use ledger holds, no double-apply; (4)
+> `preview-batch` on 2 fresh tokens → aggregated 2 children (descriptor `glossary.batch`), DB count
+> stayed **0** (non-consuming), then confirm-batch the SAME tokens → applied=2 (proves preview didn't
+> burn them). Cleaned up all 4 smoke kinds (scoped to my codes + book). Cross-service ≥2 services
+> (glossary MCP propose + glossary confirm-batch over the wire + auth login). **Branch ready to PR.**
+> **✅ L3 DONE (`f61a83de`) — skill hardening.** Verifying `glossary_skill.py` vs the task: BOTH
+> prescriptions ("prefer ONE batch over looping single proposes" + the #18 "`glossary_plan` AT MOST
+> ONCE per turn" hard-stop) were ALREADY in the prompt (lines 113-151) — padding would dilute the
+> existing forcing function. The real, in-scope fix the coalesce INTRODUCED: the prompt's "ONLY THE
+> FIRST can be confirmed — the rest are dead" was now FALSE (looped proposes coalesce into one card).
+> Reworded to stay discouraging but accurate (loop = wasted LLM calls + worse result; coalesce is a
+> backstop, not the path). chat-service skill suites 51 passed.
+> **✅ DONE — #15 timeline metadata: substantially addressed (no new code this run; verified the
+> implementable parts already shipped).** Chapter provenance is surfaced (`TimelineEventRow` shows the
+> resolved `chapter_title` + `time_cue` + date; C6/D-K19e-β) AND the BE date/chronological filters ARE
+> exposed in the FE (`TimelineFilters` — entity picker + chronological range + ISO date-range bounds;
+> C10/D-K19e-α) — closing the RC's "same gap as #12". Marked `[D]`: the UX bug as filed is resolved;
+> the residual is a tracked structural feature. **New deferred:** `D-KG-EVENT-SCENE-PROVENANCE`
+> (block/scene-level Event anchor — schema + extraction + Neo4j change, gate 2), `D-KG-INBOOK-TIME-DETECTION`
+> (LLM in-story-time inference beyond `event_date_iso`/`time_cue` — naturally-next, gate 3).
+>
+> **▶ NEXT — the critical-UX queue is CLEARED.** Every bug #1–#40 is `[x]`, a verified won't-fix
+> (`[D] 13`), or a tracked structural defer (`[D] 15`). **Recommended next: open the PR for
+> `fix/critical-ux-bugs`** (large branch, coherent boundary). Deferred carry-overs (none block the PR):
+> `D-FINDTOOLS-CHAT-SHARE`, `D-BATCH-PREVIEW-FE-WIRE`, `D-PLANNER-INFLIGHT-ABORT-CAPTURE`,
+> `D-KG-SCHEMA-PROPOSE-BATCH`, `D-KG-CONFIRM-BATCH-ENDPOINT`, `D-KG-EVENT-SCENE-PROVENANCE`,
+> `D-KG-INBOOK-TIME-DETECTION`.
+> **✅ /review-impl DONE (post-M3) — 1 test gap FIXED + 1 deferred.** FIXED: the partial-batch
+> effect-failure path (one child applies, one fails, failed token burned, rest NOT aborted) was
+> claimed in the `confirmActionBatch` doc but untested — added `TestConfirmBatch_PartialFailureApplies
+> RestAndBurnsFailed` (real DB, PASS). DEFERRED `D-BATCH-PREVIEW-FE-WIRE` (gate #2, structural UI):
+> M1 built `/actions/preview-batch` (tested) but `BatchConfirmCard` never calls it — the coalesced
+> card shows mint-time titles, dropping the §5.1#5 CURRENT-state preview (e.g. delete blast-radius)
+> + uses a FE descriptor-substring `destructive` heuristic instead of the server's authoritative flag.
+> SAFE today (dominant create-kind is non-destructive; server still re-validates each child + destructive
+> ops fail-closed since the card sends no `enabled_ops`); wire preview-batch into the card to restore the
+> full affordance + authoritative destructive accent. Latent note: confirm-batch fans ONE `enabled_ops`
+> across ALL children — only matters if a future caller batches >1 `execute_plan` with destructive ops
+> (the card sends none today, so all such ops skip safely).
+
+> **✅ DONE — public-MCP lazy tool-loading (L) + 2 anti-oracle fixes — committed + LIVE-SMOKED** (`ffc712e5`,
+> `f8160f00`). Per-session progressive-disclosure state machine; see the lazy-tool-loading section below
+> if revisiting. Deferred: `D-FINDTOOLS-CHAT-SHARE`.
+
+> **✅ MERGED origin/main (public-MCP gateway PR #48, 61 commits) → `4dfbfd03`.** 8 conflicts, all
+> in the usage/billing pipeline, resolved to the UNION (public-MCP `mcp_key_id` attribution + #32
+> `request_status`/payload audit coexist on every usage_outbox row). All affected suites green.
+
+> **🚧 IN FLIGHT — public-MCP lazy tool-loading (L, session-scoped state machine).** The public
+> edge dumps the full (permission-scoped) tool catalogue at an external agent → context bloat. User:
+> minimum tool loads, default-on, **state machine BELONGS TO THE SESSION** (ChatGPT/Anthropic/LM
+> Studio style — progressive disclosure, max control). The gateway already mints a stable session
+> per key (`session_id = key_id`), so the activated set is Redis-backed per session. Plan:
+> [docs/plans/2026-06-29-public-mcp-lazy-tool-loading.md].
+> **✅ M1 DONE (this commit):** the SHARED `find_tools` in ai-gateway (`federation/find-tools.ts` —
+> ported the proven `tool_discovery.py` search to TS; `handleListTools` prepends the find_tools
+> meta-tool; `handleCallTool` intercepts find_tools LOCALLY, no provider route). Tests: find-tools 11
+> + handlers 13 = 24 green; nest build clean.
+> **✅ M2 DONE (this commit) — the per-SESSION state machine.** `session/tool-activation-store.ts`
+> (Redis SADD+sliding-EXPIRE per session, keyed by session_id=key_id; in-memory fallback so it
+> always works) + `session/tool-activation.ts` (fail-soft service: a store blip → minimal surface,
+> never throws). `tool-policy.ts`: `find_tools` is the always-allowed discovery meta-tool (passes
+> the request gate + survives the scope filter, any scope). `scope-filter.ts`: `filterListResponseText`
+> takes an `activated` set → collapses the scoped list to `find_tools` ∪ activated (a FRESH session
+> shows ONLY find_tools); `scopeFilterFindToolsResult` intersects ai-gateway's full-catalogue matches
+> with the key's scope (anti-oracle) + harvests the in-scope names; `isFindToolsCall`. Controller:
+> on a find_tools call → scope-filter the result + `activate()` the matches into the session; on
+> tools/list → collapse to the session surface. **No scope widening** (gateRequestBody unchanged;
+> activation governs VISIBILITY, not permission). Tests: tool-activation 18 new + 2 controller
+> updated; full mcp-public-gateway suite 200/200; both gateways nest-build clean.
+> **✅ /review-impl DONE — 1 MED found + FIXED.** Anti-oracle hole: `find_tools` smuggled inside a
+> JSON-RPC **batch** bypassed `scopeFilterFindToolsResult` (`isFindToolsCall` is single-only), so a
+> batched `[find_tools]` relayed its FULL-catalogue matches unfiltered (out-of-scope tool *names*
+> leak — discovery, not callability; gateRequestBody still denies the call). Fix: `scope-filter.ts`
+> extracts `filterOneFindToolsResult` (shared by single+batch) + new `findToolsCallIdKeys` /
+> `scopeFilterFindToolsBatch` (id-matched, so a mixed batch's other-tool results are untouched);
+> controller adds the batch branch. Tests: +4 (id-harvest, batch filter, mixed-batch-untouched,
+> wildcard/empty/single short-circuit); full suite **204/204**; nest build clean. 2 accepted: find_tools
+> absence bricking discovery (LOW — upstream always prepends it) + stale confidence note (COSMETIC).
+> **✅ LIVE SMOKE DONE (`D-PMCP-LAZY-LIVE-SMOKE` CLEARED).** Both gateways rebuilt (`PUBLIC_MCP_ENABLED=true`),
+> minted a real SCOPED key (`read`+`domain:book`) via auth-service, drove an external-agent session
+> against mcp-public-gateway :8219: (1) fresh `tools/list` → **only find_tools**; (2) `find_tools` →
+> exactly the 3 in-scope book reads (no out-of-scope leak); (3) re-`tools/list` → **grew** to find_tools
+> + the 3 activated; (4) `book_list` → relayed through ai-gateway → book-service, real books returned.
+> **The live smoke caught a real bug my unit tests missed** (the recurring lesson): ai-gateway COLLAPSES
+> a single-element batch REQUEST into a single OBJECT response, so the adversary's `[{find_tools}]` (the
+> batch-bypass) returned an object my array-only `scopeFilterFindToolsBatch` skipped → out-of-scope leak.
+> Fixed (handle object-or-array, id-matched) + re-smoked: BATCH cross-domain intent → leaked NONE; BATCH
+> book intent → 3 reads, no write-tier leak. Suite 205/205.
+> **▶ NEXT:** the lazy tool-loading feature (M1+M2+2 anti-oracle fixes) is COMPLETE + live-verified.
+> Resume the critical-UX bug queue, or PR `fix/critical-ux-bugs`. Deferred: `D-FINDTOOLS-CHAT-SHARE`
+> (chat-service still has its own local find_tools; pointing it at the gateway's is a separate refactor).
+
+> **✅ SHIPPED + LIVE-VERIFIED — #26/#7 glossary `summarize` (merge-rewrite) mode (L, 3 milestones).** User
+> approved a NEW merge mode distinct from append: keep the lossless RAW item layer (provenance)
+> + add a synthesized CANONICAL layer an LLM rewrites from the accumulated raw mentions. Trigger:
+> **end-of-extraction-job, batched** (+ a manual button, M3). Plan:
+> [docs/plans/2026-06-29-glossary-summarize-merge-mode.md].
+> **✅ M1 DONE (`b2a779f4`):** migration `0043_canonical_summary`; `strategyToAction("summarize")`;
+> `mergeExtractedEntity` summarize branch shares the append raw layer + flags `canonical_dirty` on
+> a real change (never on an idempotent no-op). `TestBulkExtract_SummarizeAction` passes.
+> **✅ M2 DONE (this commit):** glossary internal endpoints `GET /internal/books/{id}/canonical-dirty`
+> + `POST …/entities/{id}/canonical` (compare-and-clear on the dirty flag via a raw-set md5
+> fingerprint, so a concurrent extraction can't cause a lost-update; LLM text neutralized +
+> rune-capped; book-scoped 404; emits `glossary.entity_updated`). translation-service
+> `resummarize.py` end-of-job pass (`glossary_client.fetch_canonical_dirty`/`post_canonical`;
+> reuses the worker's `llm_client`/`model_ref`; `usage_purpose="glossary_resummarize"`; single
+> mention → promote verbatim, no LLM; best-effort — never fails the job; source-language). Wired
+> after the job terminal state for completed/with-errors only. Tests: glossary canonical endpoints
+> (real Postgres) + `test_resummarize.py` 6 + extraction-worker 29 green; go vet clean.
+> **✅ M3a DONE (this commit):** entity GET exposes `merge_strategy`/`canonical_value`/
+> `canonical_dirty` (BE `attrDefResp`/`attrValueResp` + Query 3); FE `SummarizeAttrBody` renders
+> the canonical value as the summarize-attr headline + the raw mentions under a "sources"
+> disclosure, wired into `AttrGrid` (branch on `merge_strategy==='summarize'`); entityEditor
+> `summarize.*` ×4 locales. Tests: `loadEntityDetail` exposure (real Postgres) + `SummarizeAttrBody`
+> 7 + entity-editor 14 green; tsc + go vet clean. **#26 + #7 → `[x]`** (the merge-rewrite flow is
+> complete + user-visible end-to-end: extract → accumulate → end-of-job synthesize → headline).
+> **✅ LIVE-SMOKE DONE (gemma-4-26b-qat, real stack):** rebuilt + deployed glossary +
+> translation-worker; ran the REAL `run_resummarize_pass` against 張若塵 (book `019efae6`) whose
+> append-accumulated appearance/description/personality held **22/30/29** near-dup raw items →
+> gemma collapsed each into ONE clean canonical (dirty cleared, synced stamped). **Caught a real
+> bug** the mocked units missed: a reasoning model (gemma) burned the whole output budget on
+> `reasoning_content` → empty content → 0 syntheses; FIXED (`reasoning_effort="none"`) + regression
+> test. The cross-service + LLM seam is now proven live, not just by inspection.
+> **Deferred:** `D-SUMMARIZE-MANUAL-BUTTON` (on-demand single-entity re-summarize — needs a new
+> single-entity trigger endpoint; the automatic end-of-job path already delivers the value).
+
+> **✅ SHIPPED — #12 timeline overhaul (L, 3 parts) + #16 build-stages.** Verified first: the
+> timeline was already feature-rich (filters/sort/ranges/pagination/rich rows) — the "low quality"
+> was missing affordances + consistency, not a broken UI. **Part 1** (`69441791`): in-story
+> `time_cue` surfaced on the collapsed row. **Part 2** (`119701f5`): free-text search — BE `q`
+> param + `list_events_filtered` Cypher (`toLower(coalesce(title/summary,'')) CONTAINS toLower($q)`,
+> parameterized; SOURCE-text deterministic) + debounced FE search box + `q` in the `useTimeline`
+> queryKey; **live-smoked** count+page Cypher vs dev Neo4j. **Part 3**: page-size control
+> (10/25/50/100) matching the glossary browser. **#16** (`3222ae15`): build-stages explainer in the
+> running card (facts/summaries run after entities). Plan: [docs/plans/2026-06-28-timeline-browser-overhaul.md].
+> **Deferred** `D-KG-SHARED-BROWSER-SHELL` (extract one shell + port timeline/entities/evidence — a
+> real L refactor, not rushed) + `D-KG-BUILD-PER-TARGET-PROGRESS`.
+
+
+> **⚡ HYBRID SWEEP (parallel-investigate → batched build).** 4 read-only agents verified the
+> remaining open bugs at once; verify-before-fix then DOWNGRADED every "bounded" agent claim
+> (caught #29 misdiagnosis + #16 mis-scoped + #11/#7 over-simplified). **Shipped #11** (KG entity
+> Description from the anchored glossary entry — FE-only: fixed a glossary-type drift, new
+> `useAnchoredGlossaryEntity` hook, Description section in `EntityDetailPanel`; 802/802; +2 tests;
+> ×4 locales; deferred D-KG-ENTITY-NATIVE-DESCRIPTION for unanchored). **Closed #13** as won't-fix
+> (re-verified: NO glossary→KG auto-coupling; decoupling already exists). **Corrected the stale
+> bug-doc RCs** for #16 (TargetPicker is already on step 1; real gap = running card lacks
+> target/staging visibility + job status doesn't echo `targets` → ~M cross-layer) and #29
+> (`kg_propose_edge` parks to a triage INBOX, not a confirm-card → NOT the #27 orphan; it's about
+> schema edge-TYPES, tangled with deferred #27/#30 P2). **Remaining bounded-ish:** #16 (~M),
+> #12 (M shared-browser refactor); **larger:** #7+#26 (L merge/summary LLM pass), #27/#30 P2
+> (L coalesce), #15 block-level (L/XL), #18/#19 P2 (deferred/blocked).
+
+
+> **✅ SHIPPED THIS SESSION — #28 KG schema view + self-service edit GUI (L, FE-only).** User:
+> "I can only command AI to set up the schema, cannot view or edit by myself." Verify-before-fix:
+> every BE schema endpoint + `useGraphSchema` mutations already existed; the ONLY schema UI mounted
+> was a read view + one deprecate-edge button. `AddEdgeTypeForm` existed but was **never mounted**
+> (dead code); the standalone Knowledge GUI had no Schema section. **Part A (view, `be1cea7b`):**
+> read-only **Schema** section in `ProjectDetailShell` (`useResolvedSchema` → effective schema →
+> `SchemaEditor` readOnly) + "Edit schema" CTA. **Part B (edit):** `SchemaWorkbench` in the book
+> GUI Schema tab — mounts the dead `AddEdgeTypeForm` + new node-kind/fact-type/vocab-value forms +
+> `allow_free_edges` toggle, all on the wired mutations (toast-guarded); `KnowledgeOntologyTab`
+> honors `?view=schema`. Schema model is additive + deprecate-edge-only (mirrors the AI). **VERIFY:**
+> knowledge suite 689/689; tsc clean; kgOntology +17 keys & knowledge +schemaSection ×4 locales.
+> Bug #28 → `[x]`. **Deferred** `D-KG-SCHEMA-FROM-SCRATCH` (must adopt a template before editing) +
+> `D-KG-VOCAB-SET-CREATE-FE` (can add vocab values but not create a new set — no BE endpoint).
+
+> **✅ SHIPPED THIS SESSION — #21/#22/#25 kinds/standards FE cluster (M, FE-only).** "Can't
+> edit user/book kinds, no genre↔kind wiring; adopt-genre useless." **#21 + #22 were
+> ALREADY-FIXED** (verify-before-fix caught the stale RC, again): the **Standards Library**
+> (`frontend/src/features/standards/`, 3 milestones `73998267`/`2b5601ef`/`62a9c68a`, shipped
+> 2026-06-20, on-branch) is routed (`/standards/:tab` + sidebar) and gives full user-tier
+> Genres/Kinds/Attributes CRUD + a user-kind↔genre link editor (`KindGenresModal`) + System
+> read-only-via-clone + a recycle bin — verified live, standards suite 20/20. **#25 was the
+> only real gap (book tier):** `setBookKindGenres`/`ont.setKindGenres` existed but NOTHING
+> called it, AND `createBookKindCore` made no `book_kind_genres` link so a Manage-created kind
+> vanished. **Fix (FE):** new `BookKindGenresModal` + a "Linked genres" chain action per kind
+> row in `ManageWorkspace` (→ `setKindGenres`, replace-set, **≥1-genre invariant** so every kind
+> stays reachable); auto-link a new book kind to the selected genre on create. +`col.links_kind`/
+> `links.*`/`toast.links_*` ×4 locales. **/review-impl → 4 fixes:** ≥1-genre invariant now
+> **load-bearing server-side** (`setBookKindGenres` 422 on empty replace-set; live-tested vs dev
+> glossary DB, g3b 7.2s green); added a `ManageWorkspace` test guarding auto-link + links-action
+> wiring (headline fix was untested); clear stale kind/attr drilldown selection when unlinking the
+> in-view genre; key the modal by kind id. **VERIFY:** tiering+standards 47/47; glossary-service
+> g3b live-green; tsc clean; locales parse. Bug doc #21/#22/#25 → `[x]`. **Deferred
+> `D-BOOK-ORPHAN-KIND-RELINK`** (LOW — a kind can still end up zero-link via the *old* pre-fix
+> QuickCreate OR a transient link-failure after create; new/adopted unaffected; proper fix is
+> BE-atomic create-with-genres).
+
+> **✅ SHIPPED THIS SESSION — #32 LLM-call full logging (XL, provider-registry + usage-billing).** "Not every call is logged + input/output not stored." **RC was wrong (4th this session):** usage-billing's store ALREADY persists encrypted request+response payloads + `request_status` — the gaps were pure plumbing in provider-registry: (a) `usage_outbox` only for `status=="completed"` + relay hardcoded `request_status:"success"` → failures unaudited; (b) `UsageOutbox` had no payload fields → empty `{}` stored. **Fix** (user chose full build, payloads capped): migration adds `usage_outbox.request_status/request_payload/response_payload`; `FinalizeWithUsageOutbox` `RETURNING …, input` + emits for EVERY terminal status (gate now `usage != nil`; cost 0 for failures so the cost SUM is unchanged — usage_logs is audit-only) with UTF-8-safe-truncated request+response payloads (cap env `LLM_USAGE_PAYLOAD_CAP_BYTES`=16384); relay carries status+payloads; usage-billing `parseUsageEvent` reads them → existing `writeUsageLog` encrypts. `usageLogParams.Input/OutputPayload` widened `map→any` (map for /record, string for jobs). Forward-compatible stream. **VERIFY:** both services full go test/vet green (provider-registry DB-mock INSERT-12/SELECT-13 + wire-contract; usage-billing payload/status parse). Plan [docs/plans/2026-06-28-llm-call-full-logging.md](../plans/2026-06-28-llm-call-full-logging.md). **Deferred `D-32-FULL-LOGGING-LIVE-SMOKE`** (full-stack real+forced-fail job round-trip). Bug doc #32 → `[x]`. **/review-impl ran → 2 fixes:** HIGH — user-cancel goes through `Cancel` (not the worker finalize), so cancelled calls were still unaudited → `Cancel` now emits the usage_outbox audit row (shared `insertUsageOutbox`); MED — stripped the plaintext payloads from the campaign_usage stream (`campaignFields`). +3 tests, full provider-registry suite green.
+
+> **🔎 INVESTIGATED (not bounded) — #19 planner "stuck on gemma despite my selection".** Full STATIC trace found NO defect: both paths are wired end-to-end — session picker→`patchSession`→gateway transparent proxy→chat-service persist (`model_fields_set`)→`stream_service.py` read+inject as `model_ref`→glossary `toolPlan`; AND Settings `DefaultModelsCard`→`defaultModelsApi.set('planner')`→provider-registry `user_default_models`→`internalResolvePlannerModel` (reads `planner` default first, else best tool-calling chat → gemma when none set). No hardcoded literal, no passthrough drop. All 3 symptoms unify into ONE runtime cause: the planner is an **in-flight MCP call** that captured its resolution at turn start and **stopping the turn doesn't abort it** (~39s, finishes on whatever it resolved). → **Deferred `D-PLANNER-INFLIGHT-ABORT`** (gate 2 structural cross-service cancellation feature: chat-turn abort → cancel in-flight ai-gateway MCP call → provider call; gate 4 blocked on a live `model_ref` capture). **PARTIAL FIX SHIPPED** (/review-impl caught a static gap the trace missed): `glossary_plan` exposes `model_ref` to the LLM, and chat-service only injected the session pin when the model OMITTED it — a weak model filling `model_ref` overrode the user's session AND Settings planner. Fix: chat-service is now AUTHORITATIVE ([stream_service.py](../../services/chat-service/app/services/stream_service.py) ~705 — session pin always wins; else strip the model's guess so the Settings default applies); 3 tests + 35 existing green. In-flight-abort remains deferred.
+>
+> **✅ SHIPPED THIS SESSION — #36 extraction LLM-call estimate undercount → feed the planner REAL chapter sizes (M, translation-service).** **The Explore RC was WRONG** (verified by probe): `plan_kind_batches` correctly caps at 3 kinds/batch (30 kinds → 10 batches, not "overloaded"), and the fallback already uses kind-derived `batches_per_chapter`. The REAL cause: both estimate call-sites fed the windowing-aware planner a HARDCODED `[{"text_length": 8000}] * N` — every chapter a fake 4000-token stand-in that NEVER windows, so the estimate collapsed to `chapters × batches` and was blind to real chapter size, while the executor windows large chapters (`windows × batches`). **Fix:** new best-effort `book_client.build_chapters_meta()` ([book_client.py](../../services/translation-service/app/book_client.py)) fetches real per-chapter `word_count_estimate` from the existing `GET /internal/books/{id}/chapters` (knowledge-service uses the same for its estimate) and feeds genuine `text_length`; both [extraction.py](../../services/translation-service/app/routers/extraction.py) (HTTP/FE) and [mcp/server.py](../../services/translation-service/app/mcp/server.py) (agent) now use it. Best-effort: unfetchable size → legacy 8000 default; any fetch error → all-default (never blocks job creation). **VERIFY:** 8 new tests (word-counts filter/paginate/best-effort-error/empty + build-meta real-sizes/all-default + planner size-sensitivity probe-as-test) + admission/book_client green; 3 modules byte-compile; client field reads verified against the live book-service handler. **Deferred:** `D-EXTRACT-ESTIMATE-SCHEMA-PERBATCH` (separate opposite-direction over-count: schema of ALL kinds added to every per-batch unit — inflates INPUT/cost, coupled into windowing, needs its own analysis), `D-EXTRACT-ESTIMATE-SIZES-LIVE-SMOKE`. Bug doc #36 → `[x]`. **Lesson:** [[feedback_verify_explore_rootcause_before_fixing]] — caught a 3rd misdiagnosed Explore RC this session.
+>
+> **✅ SHIPPED THIS SESSION — #9 Build-KG progress "1/100" → server-computed real denominator (M, FS · knowledge-service + frontend).** The progress bar showed a meaningless "1/100": `items_total` came from the FE's OPTIONAL `StartJobRequest.items_total` (a placeholder), trusted verbatim. **Fix:** new shared `_count_scope_items()` ([extraction.py](../../services/knowledge-service/app/routers/public/extraction.py)) returns the real per-scope counts (chapters published-gated + pending chat turns + glossary entities), reused by the cost **estimate** AND both job **create** paths (`start` + `rebuild`) — so the stored denominator equals the work done and matches the preview. `StartJobRequest.items_total` is now **deprecated/ignored** (kept on the schema for back-compat, value discarded). Best-effort: a transient count failure stores NULL → FE indeterminate bar, never blocks the job start; counts run OUTSIDE the tx (H1). Public `start`/`rebuild` inject `book_client`+`pending_repo`+`glossary_client` (so test `dependency_overrides` apply); the internal-dispatch callers fall back to the per-worker singletons. Bonus: a correct `items_total` also tightens the bug-#37 `estimated_llm_calls` budget. **FE:** i18n label ×4 → "{{processed}} / {{total}} items (chapters + chat + glossary)". **VERIFY:** lifecycle test + **2 new** (server-compute ignores a client `99999` → stores `45+100+200=345`; best-effort NULL when glossary count raises) + 25 estimate/caller-pays tests green; 4 locale JSON valid, no test pins the old label. **Deferred `D-KG-ITEMS-TOTAL-LIVE-SMOKE`** (full-stack real extraction job). Bug doc #9 → `[x]`.
+>
+> **✅ SHIPPED THIS SESSION — #8 translation glossary truncation → content-aware output budget (S, translation-service).** "Translation glossary usually fails" on large entities: the glossary-translate worker hard-capped `max_tokens=4096` per entity, blind to glossary size → a long-description / many-attribute entity exceeded it → the structured JSON was truncated mid-output → `parse_translation_response` failed → entity marked failed. **Fix:** new `entity_output_budget(attributes)` ([glossary_translate_prompt.py](../../services/translation-service/app/workers/glossary_translate_prompt.py)) mirrors the REAL payload — each attribute's actual `original_value` token count (CJK-aware via `estimate_tokens`) × a 3× CJK→Latin expansion + per-key JSON overhead — replacing the flat 4096 in the worker ([glossary_translate_worker.py](../../services/translation-service/app/workers/glossary_translate_worker.py) ~206). Clamped to `[4096 floor, env GLOSSARY_TRANSLATE_MAX_OUTPUT_TOKENS=32768 ceiling]`: the floor keeps the old default for small entities (no regression), the budget scales above it so a large entity is no longer cut off. Per-attribute **chunking across calls** for a pathologically huge single entity stays **#26**'s scope (the ceiling caps it for now). **VERIFY:** 21 translation tests pass — 5 new budget unit (floor, grows-past-floor, ceiling-clamp, None/missing-safe, CJK-expands-more-than-Latin) + 2 new worker-wiring (large entity → max_tokens >4096; small → ==4096 back-compat) + 14 existing green. **Deferred `D-GLOSSARY-TRANSLATE-BUDGET-LIVE-SMOKE`** (lm_studio + a real large-entity job consumed off RabbitMQ — single-service, disproportionate now; worker test proves the budget reaches the LLM call). Bug doc #8 → `[x]`.
+>
+> **✅ SHIPPED THIS SESSION — #38/#39 cross-kind entity dedup at extraction write time (L, glossary-service).** The duplicate explosion ("739 entities for 5 chapters", "100% dups on re-run"). **User decision: cross-kind dedup at write time** (keep per-kind structure; resolve a name across ALL kinds before creating). New `findEntityCrossKind` ([extraction_handler.go](../../services/glossary-service/internal/api/extraction_handler.go)) matches by the app-maintained `normalized_name` column (same `textnorm.Normalize` fold as the per-kind resolver + dedup backstop → CJK trad/simpl + full-width + case variants collapse cross-kind); the writeback loop calls it on a same-kind miss and **merges into the matched entity under THAT entity's own kind** (`attrDefMap` holds all book kinds → compatible attrs land, rest skip), oldest-wins, race-safe under the existing per-book writeback advisory lock. Migration **`0042`** adds a `(book_id, normalized_name)` partial lookup index (seek, not per-book scan — the "extraction slow" angle). Pairs with #33 (kind-desc in prompt, already shipped) cutting wrong-kind tagging at source. **VERIFY:** build/vet clean; **3 cross-kind tests** (same-name-diff-kind reuses+merges description, distinct name still creates, 張若塵↔张若尘 folds to one) + extraction/resolver/pipeline/dedup suites green (full-package run only hit the 600s infra timeout, not a failure); migrate chain incl. 0042 applies. Bug doc #38/#39 → `[x]`. **Residual `D-CROSSKIND-DEDUP-REMEDIATION`** (prevents NEW dups; existing ones need #40 bulk-delete or a cross-kind extension of `/dedup-name-variants`). **Deferred:** the assistant `mcp_server.go` create path (line 407) wasn't given cross-kind dedup — low-volume, human-reviewed, and lacks the per-book lock; tracked as `D-MCP-PROPOSE-CROSSKIND-DEDUP`.
+>
+> **✅ SHIPPED THIS SESSION — #40 bulk-delete glossary entities (M, FS · glossary-service + frontend).** Gives the user the tool to clean up the #38/#39 extraction duplicates. **BE:** `POST /v1/glossary/books/{book_id}/entities/bulk-delete` ([entity_handler.go](../../services/glossary-service/internal/api/entity_handler.go) `bulkDeleteEntities`) mirrors `bulkSetEntityStatus` + the single-`deleteEntity` soft-delete — book-scoped, **Manage-grant** gated (destructive op, matches single delete), ≤1000 ids, drops malformed, soft-delete (`deleted_at`), returns `{deleted:N}` (foreign/already-deleted ids ignored). **FE:** the multi-select infra (checkboxes/select-all/`FloatingActionBar`) already existed for bulk-status — added a destructive Delete button → reusable `ConfirmDialog` → `bulkDeleteEntities` API → invalidate+clear ([GlossaryTab.tsx](../../frontend/src/pages/book-tabs/GlossaryTab.tsx), [api.ts](../../frontend/src/features/glossary/api.ts)); i18n ×4. **VERIFY:** glossary build/vet clean; **5 handler tests** (soft-delete book-scoped, already-deleted-not-recounted, empty→400, all-malformed→0, auth→401) + **grant-mapping guard** (view-grantee→403 confirms Manage) green on live test DB; FE tsc+eslint clean, 4 locales valid. **Residual `D-BULK-DELETE-UI-SMOKE`** (optional browser smoke — FE mirrors the working bulk-status pattern). Bug doc #40 → `[x]`.
+>
+> **✅ SHIPPED THIS SESSION — On-demand (lazy) MCP-tool loading is now the STANDARD for every agui chat surface (L, chat-service).** Root cause of the **empty/dead book-chat turn** (diagnosed from the user's lm_studio log `n_keep: 35791 >= n_ctx: 32000`): the **book/editor chat surfaces dumped the ENTIRE federated catalog — 145 tools ≈ ~35k tokens — on every turn**, overflowing qwen2.5-7b's 32k context (Gemma-4 has 131k, so it worked → the "model communication" red herring). Discovery mode (`find_tools` + per-pass `{core}∪{active}` advertisement) already existed but was gated to the *universal* surface only (the `else: tool_defs = catalog` branch shipped everything to book/editor). **Fix (user-directed "do both A and B, make it standard"):** discovery is now the standard transport for ALL agui non-admin surfaces (fresh + resume paths), with a **per-surface HOT SET** seeded into the discovery active-set on pass 1 = the domain(s) the surface's injected SKILL names directly (so the skill works with zero find_tools hop); every other domain is lazy via `find_tools`. **Live-proven against the real 145-tool catalog:** universal 145→**7** (95%↓, pure discovery), book-scoped 145→**51** (all 42 `glossary_*` + core + glossary frontend), editor 145→**52** (= book + `propose_edit`). All three now fit 32k. **Key files:** [tool_discovery.py](../../services/chat-service/app/services/tool_discovery.py) (`surface_hot_domains`/`hot_tool_names` — prefix-scoped, new-domain-services lazy-by-default; **`propose_edit` demoted from always-on core → editor-frontend-only**, it's meaningless without an open chapter), [stream_service.py](../../services/chat-service/app/services/stream_service.py) (`discovery_eligible` replaces `universal_surface`; `discovery_seed_names` threaded fresh+resume→`_emit_chat_turn`→`_stream_with_tools`; gateway-down agui still advertises frontend tools), [glossary_skill.py](../../services/chat-service/app/services/glossary_skill.py) (hint: use `find_tools` for off-glossary asks). **VERIFY:** **437 chat-service tests pass** (1 pre-existing unrelated collection error `test_working_memory.py` = a mount-depth `parents[3]` artifact, NOT my code); 32 discovery tests incl. 9 new (hot-set scoping, lazy-tail, pass-1 advertisement); the previously-passing `test_book_context_advertises_glossary_edit_not_propose_edit` validated the propose_edit demotion. **Live smoke:** real catalog scoping (above) + chat-service boots healthy with the fix loaded. **Reverted** the prior session's wrong-premise SSE-keepalive change (it was uncommitted; based on the disproven cold-start theory). **Note:** this was a newly-discovered design defect, not one of the 40 numbered bugs.
+>
+> **🔎 /review-impl ran (1 fix-now applied, 1 documented):** **FIXED** — the `discovery_seed_names` threading (`stream_response → _emit_chat_turn → _stream_with_tools`) was unguarded: every integration test used a 1-tool catalog so the seed was always ∅, indistinguishable from a dropped param. Added `test_book_surface_seeds_glossary_hot_set_and_lazy_tail` (multi-domain catalog → asserts glossary seeded, book/translation lazy, both at the loop boundary + the first-pass payload). **Considered & REJECTED** — adding `active_tool_names` to the `find_tools` exclude: it would turn "you already have this tool" into an empty "no match" → the agent falsely denies a capability. Current re-suggest behavior is strictly safer; left as-is.
+>
+> **▶ Deferred (this fix):**
+> - 🟡 `D-CHAT-RESUME-SURFACE-SEED` — `resume_stream_response` seeds the editor-superset `{glossary}` hot set for EVERY resume (it can't know the original surface — sets `editor_context={"resumed": True}`). A *universal*-surface suspend (generic `confirm_action`) thus resumes with 42 glossary tools it never had on the fresh turn (~10k wasted tokens, harmless). **Conscious tradeoff** (confirm cards are overwhelmingly glossary, so seeding glossary HELPS the dominant "confirm kind → propose attributes" follow-up). **Gate reason 2 (structural):** the precise fix stores the surface's hot domains in `chat_suspended_runs` and re-applies on resume — a schema/payload change. Low priority.
+> - 🟡 `D-PROVIDER-STREAM-ERROR-SURFACE` — when a provider returns a 200 SSE that carries an `{"error": {...}}` frame (e.g. lm_studio context-overflow), `streamOpenAICompat` ([streamer.go](../../services/provider-registry-service/internal/provider/streamer.go)) decodes only `choices`/`usage` → the error is swallowed into a silent empty turn instead of surfaced. **Gate reason 4 (blocked):** I could NOT reproduce the wire format — lm_studio is currently loaded with a larger context, so an overflow `data:` error frame never appeared on the wire (the `[ERROR]` is server-side log only). Adding a speculative `error`-field parser would be unverified. **Trigger:** revisit when a provider error frame is actually captured on the wire (load a small-`n_ctx` model + overflow it), then parse + surface it. Low blast radius — the root-cause tool-dump fix already prevents the overflow.
+> - 🟡 `D-CHAT-LAZY-LOAD-LIVE-SMOKE` — the unit+integration tests + the real-catalog scoping smoke cover the gating; a full **chat-UI** turn (open book → glossary "Ask AI" on qwen2.5-7b → confirm a non-empty answer with the small tool payload) wasn't driven (the overflow no longer reproduces since lm_studio has a big context now, so it's not a discriminating smoke). Optional: drive it with a small-`n_ctx` model to see the before/after directly.
+
+> **▶ IN FLIGHT — Confirm-card server-coalesce (#27/#29/#30/#18), XL.** Plan: [docs/plans/2026-06-28-confirm-card-server-coalesce.md](../plans/2026-06-28-confirm-card-server-coalesce.md). Root cause VERIFIED: the chat run lifecycle honours ONE confirm card per turn (`chat_suspended_runs` single `pending_tool_call` PK run_id; tool loop `break`s on the first frontend confirm, dropping the tail; first confirm deletes the run row). User chose **full server coalesce**. **P1 SHIPPED (this session):** new deterministic `glossary_propose_batch` MCP tool (explicit ops → `ValidatePlan` → ONE `execute_plan` card → existing deterministic executor, NO planner LLM) + skill hardened (one-card-per-turn HARD rule, no-loop prohibition, glossary_plan ≤1/turn). VERIFY: glossary `go build`+`vet` clean; **3 new propose-batch tests green against live test DB** (round-trip mint→confirm→2 kinds created via multi-op tier-ordered executor; unknown-op rejected; empty-ops rejected); 2 chat-service skill-prompt regression tests pass. **▶ P2 NEXT (load-bearing):** run-loop auto-coalesce of stray multi-card turns — chat-service accumulates every confirm_token minted in a turn; at the suspend point, if >1, bundle into ONE `glossary.batch` card; new glossary `POST /actions/confirm-batch` (+`/preview-batch`) loops the EXISTING per-descriptor effects, claims each jti, returns one aggregated summary. FE routes the batch descriptor. Then cross-service live smoke + mark #27/#29/#30/#18 `[x]`.
+
+> **UX BUG TRACK** (`docs/bugs/2026-06-27-critical-ux-bugs.md`): fixing ~40 critical UX bugs. **All 40 triaged: 15 fixed `[x]`, 24 investigated `[I]` (RC+Fix written), 0 unknown.** Done this session: #34, #37, #35, #17, then the full glossary/KG INVESTIGATION (6 clusters, `14edaede`), then the **data-safety milestone**: **#14** KG-rebuild confirm-guard + AWS typed-confirm (`bf30eed3`), **#33** kind-description→extraction prompt (`73f87476`), **#31** entity-GET returns attribute options (`26012411`).
+>
+> **Two agent misdiagnoses caught by verifying before fixing:** #31's real cause was the entity GET dropping `ad.options` (NOT the extraction profile); **#10**'s FE language wiring is ALREADY complete (TimelineTab→useTimeline→listTimeline all pass `language`) — the real issue is events stored in English/romanized + unanchored participant names (extraction-language/anchoring), so #10 stays `[I]` and needs the user's repro. **Lesson:** an Explore agent's root-cause hypothesis must be code-verified before it drives a fix.
+>
+> **Recommended next milestones** (from the investigation): (2) Extraction correctness #38/#39/#7/#26 — needs the entity-identity decision (one entity per (book,name) vs per (book,kind,name)); (3) Confirm-card batching #27/#29/#30/#18 (shared run_id root, verified); (4) Kinds/standards FE #22/#21/#25. **Deferred follow-ups:** D-KG-UPDATE-MODE (incremental rebuild), D-KG-REBUILD-CONFIRM-LIVE-SMOKE, D-EXTRACTION-KIND-DESC-LIVE-SMOKE, D-GLOSSARY-SELECT-OPTIONS-LIVE-SMOKE.
+
+> **(prior)** Glossary plan-and-execute (Phase 1) SHIPPED · `feat/composition-service` · HEAD `b2439fcf`
 # ▶▶ NEXT SESSION STARTS HERE — **Public MCP Gateway P0+P1+kit+P2+P3 SHIPPED · P4 D+A+B+C+E+F SHIPPED (all 6 Wave-C slices) · D-PMCP-WORKER-CARRIER + E2E-LIVE-SMOKE CLEARED (priced worker-enqueue spend now key-attributed + per-key capped, proven live) · /review-impl found+fixed a HIGH (retry re-spend bypassed the per-key cap) · knowledge/worker-ai carrier ALSO live-proven (e2e smoke caught+fixed a 2nd HIGH: a router-level get_current_user 401'd the kg replay path) · D-PMCP-AUDIT-DOWNSTREAM-OUTCOME RESOLVED (edge audits `tool_error` for a downstream JSON-RPC error, live-smoked) · D-PMCP-BATCH-WCONFIRM-DIVERT RESOLVED (a default key's BATCH write_confirm propose now diverts per-item + token-stripped, fail-closed; /review-impl caught+fixed a mixed-list catalogue leak; edge 134/134) · **P5 OAuth slices 1+2a+2b SHIPPED — discovery (RFC 9728 PRM + RFC 8414 AS-meta + JWKS) + edge LOCAL RS256 verify w/ RFC 8707 aud binding (S9); auth-code+PKCE flow (authorize/consent/token, single-use codes, refresh rotation, anti-open-redirect) PG-proven; FE scope-aware consent page w/ per-scope downscoping (5/5 vitest); open DCR (RFC 7591) /oauth/register w/ flag+per-IP-rate-limit+append-only audit; catalog_* OD-7 public-discovery read provider (federation live-smoked: tools/list+tools/call 31 public books). **P5 OAUTH COMPLETE — all 4 slices**** · branch `feat/public-mcp-gateway` · 2026-06-28 · HEAD `f5e7bcf6` (+slice 4 uncommitted)
 
 > **TRACK:** expose MCP to external/third-party agents over the internet with a NEW security model. Full doc set: [docs/specs/2026-06-26-public-mcp/](../specs/2026-06-26-public-mcp/) (README + 01 feature-catalog · 02 interface-matrix · 03 security-design+edge-cases+spikes · 04 plan · 05 tool-scope-map).

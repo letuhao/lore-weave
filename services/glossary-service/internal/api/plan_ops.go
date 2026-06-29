@@ -368,7 +368,7 @@ func (s *Server) planRegistry() mcp.Registry {
 				if len(losers) == 0 {
 					return nil, fmt.Errorf("%w: merge candidate %s has no losers (need ≥2 members)", mcp.ErrBadParams, candID)
 				}
-				results, merr := s.mergeEntitiesCore(ctx, bookID, winner, losers, userID)
+				results, merr := s.mergeEntitiesCore(ctx, bookID, winner, losers, userID, false)
 				if errors.Is(merr, errMergeBadWinner) {
 					return nil, fmt.Errorf("%w: the winner entity is no longer live", mcp.ErrNotFound)
 				}
