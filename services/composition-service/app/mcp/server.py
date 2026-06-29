@@ -1232,17 +1232,11 @@ async def composition_arc_suggest(
     work = await _work_or_deny(works, tc, pid)
     await _gate(tc, work.book_id, GrantLevel.VIEW)
     retriever = MotifRetriever(get_pool())
-    # Arc retrieval ranks the caller-visible arc_template set under the read
-    # predicate (no target id beyond the Work gate). The arc retriever method is
-    # owned by W3 (F0 froze only the motif `retrieve`); until W3 lands, the tool is
-    # registered (wire-tested) and returns a clean "not yet available" rather than a
-    # 500. Seam note: W3 supplies `retrieve_arcs(caller, *, book_id, project_id,
-    # premise, genre, limit) -> list[ArcCandidate{arc_template, score, match_reason}]`.
-    retrieve_arcs = getattr(retriever, "retrieve_arcs", None)
-    if retrieve_arcs is None:
-        return {"success": False, "error": "arc retrieval not yet available",
-                "reason": "pending_w3", "candidates": []}
-    candidates = await retrieve_arcs(
+    # Arc retrieval (D-ARC-RETRIEVE) ranks the caller-visible arc_template set under
+    # the read predicate (no target id beyond the Work gate): SQL pre-filter →
+    # platform-embed query → cosine → match_reason → genre-degrade, with a bounded
+    # owner-scoped lazy back-fill of NULL-vector arcs (mirrors the motif retriever).
+    candidates = await retriever.retrieve_arcs(
         tc.user_id, book_id=work.book_id, project_id=pid,
         premise=premise, genre=genre, limit=limit,
     )

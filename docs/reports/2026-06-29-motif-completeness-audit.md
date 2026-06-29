@@ -1,8 +1,15 @@
 # Narrative Motif Library — Completeness Audit (draft HTML × spec × source)
 
-> **Date:** 2026-06-29 · **Branch:** `feat/narrative-pattern-library` · **HEAD:** `b8641000`
+> **Date:** 2026-06-29 · **Branch:** `feat/narrative-pattern-library` · **HEAD (at audit):** `b8641000`
 > **Method:** four parallel inventories (8 HTML mockups · the §17 spec + master-plan + 8 workstream docs · the composition-service + knowledge-service backend · the `frontend/.../motif/` frontend), cross-referenced, with load-bearing claims re-verified against code.
 > **Purpose:** confirm whether the motif branch is complete enough to ship.
+>
+> ### ▶ UPDATE 2026-06-29 (post-audit, HEAD `f700b81a`+): the §5 tail was then BUILT.
+> Six of the seven §5 gaps are now **closed and verified against code** — only the
+> low-priority `motif_link` edge-walk MCP API (WI-6) remains, deferred by choice.
+> See the per-row status in §5. Commits: WI-1 `d301e881` (mining FE), WI-2 `851868d2`
+> (full editor FE), WI-3 `47ee1a76` (arc retrieve), WI-4 `cb97bc9b` (sync FE; backend
+> pre-existed `83388add`), WI-5 `f700b81a` (per-book adopt), `b5450647` (stale-doc #7).
 
 ---
 
@@ -100,15 +107,15 @@ Plus this branch closed a **cross-tenant prompt-injection** in the tag-beats cat
 
 ## 5. Genuine gaps (the honest tail)
 
-| Gap | Kind | Scope verdict |
+| Gap | Kind | Status (updated 2026-06-29) |
 |---|---|---|
-| **Mining FE** (screen 04) | [deferred-by-design] | P3/W8 (`D-MOTIF-MINE-FE-BRIDGE`). Backend mining + tag-beats v2 are built + live-smoked; only the trigger/review UI is unbuilt. **Not a P1 miss.** |
-| **Full motif field-editor UI** (screen 02/06) | [partial vs commitment] | P1 W6 committed *view + clone-to-edit + quick-create manual-build* — not a full owned-motif field editor. `motifApi.patch` (PATCH) is built and tested, so this is **UI-only** work, not a contract gap. Recommend a future `D-MOTIF-FULL-EDITOR-FE`. |
-| **`composition_arc_suggest` / `retrieve_arcs`** | [stub — wire-tested] | The arc *semantic-suggest* returns "not yet available" (F0 froze only the motif `retrieve`). Arc templates are discoverable via the library list + apply; semantic arc suggest is a nice-to-have. Track `D-ARC-RETRIEVE`. |
-| **`motif_link` edge-walk MCP API** | [partial] | The table + `precedes`/`composed_of` seed edges + pattern-member adopt exist; there is no MCP tool to *traverse/edit* the graph. Chain-it (succession) works off the binding hint, not a generic edge API. Low priority. |
-| **Motif sync 3-way merge** | [deferred] | `adopted_base` snapshot is captured; `MotifRepo.sync_adopted()` 3-way merge is `D-MOTIF-SYNC-3WAY-BASE` (P2/W11). The "upstream update" banner (mockup 01) depends on it. |
-| **`D-MOTIF-ADOPT-PER-BOOK`** | [deferred — schema] | adopt is user-scoped only; per-book adopt needs a book-scope on motif rows (a real future feature; FE per-book option already removed). |
-| **Stale docstring** `motif_select.py:15` | [doc bug — fix now] | Says "MotifRetriever.retrieve is MOCKED until W3 lands (raises NotImplementedError)" — **false**; W3 is implemented and live in `suggest_for_chapter`. This stale comment misled an inventory pass; correct it. |
+| **Mining FE** (screen 04) | [deferred-by-design] | ✅ **CLOSED** — `MotifMinePanel` + `useMotifMine` (mint→confirm→poll) + draft review/promote shipped (WI-1, `d301e881`). |
+| **Full motif field-editor UI** (screen 02/06) | [partial vs commitment] | ✅ **CLOSED** — `MotifEditorForm` + `useMotifEditor` (seed→edit→If-Match PATCH, reorderable beats, 412 conflict) shipped (WI-2, `851868d2`). |
+| **`composition_arc_suggest` / `retrieve_arcs`** | [stub — wire-tested] | ✅ **CLOSED** — `MotifRetriever.retrieve_arcs` implemented (cosine + owner-scoped lazy back-fill + genre-degrade) and `composition_arc_suggest` calls it directly (WI-3, `47ee1a76`; the dead `pending_w3` fallback removed). |
+| **`motif_link` edge-walk MCP API** | [partial] | ❌ **OPEN (deferred)** — `D-MOTIF-LINK-EDGEWALK` (WI-6). The table + `precedes`/`composed_of` seeds + pattern-member adopt exist; no MCP tool to *traverse/edit* the graph. Chain-it works off the binding hint. **Low priority — the only remaining §5 gap.** |
+| **Motif sync 3-way merge** | [deferred] | ✅ **CLOSED** — backend `motif_sync.py` pre-existed (`83388add`); the FE `SyncDiffDrawer` + `useMotifSync` + upstream-update banner shipped (WI-4, `cb97bc9b`). |
+| **`D-MOTIF-ADOPT-PER-BOOK`** | [deferred — schema] | ✅ **CLOSED** — per-book adopt shipped as model A "book-scoped filter" (WI-5, `f700b81a`); `motif.book_id` label, EDIT-gated, read predicate unchanged, live-smoked. |
+| **Stale docstring** `motif_select.py:15` | [doc bug — fix now] | ✅ **CLOSED** — corrected (`b5450647`). |
 
 **Perf/quality tail (already tracked, not blocking):** `D-MOTIF-PGVECTOR-TRIGGER` (brute-force cosine → pgvector when the candidate ceiling stops bounding), `D-THREAD-TAG-CALIBRATION` (human gold-sets for the conformance judge — until then `calibrated=false`), large-catalog classifier-prompt truncation on small-context local models.
 
