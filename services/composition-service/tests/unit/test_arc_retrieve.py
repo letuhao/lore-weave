@@ -129,8 +129,24 @@ async def test_retrieve_arcs_backfills_null_embedding_then_cosine(monkeypatch):
     assert [c.arc_template.code for c in out] == ["cold"]
     assert out[0].match_reason["cosine"] == pytest.approx(1.0)
     assert "degraded" not in out[0].match_reason          # it got a real vector
-    # the back-fill persisted via an UPDATE arc_template … embedding = …
+    # the back-fill persisted via an UPDATE arc_template … and is OWNER-SCOPED (never a
+    # cross-tenant write — a read must not mutate another tenant's row).
     assert retr._pool.conn.executed and "UPDATE arc_template" in retr._pool.conn.executed[0][0]
+    assert "owner_user_id IS NULL OR owner_user_id = $6" in retr._pool.conn.executed[0][0]
+
+
+async def test_retrieve_arcs_does_not_backfill_a_foreign_public_arc(monkeypatch):
+    """TENANCY: a NULL-vector arc owned by ANOTHER user is NEVER back-filled (a read must
+    not trigger a cross-tenant write) — it ranks on genre this call; its owner back-fills it."""
+    _patch_query(monkeypatch, [1.0, 0.0, 0.0])
+    _patch_backfill_embed(monkeypatch, [1.0, 0.0, 0.0])
+    foreign = _arc("foreign", embedding=None, genre_tags=["xianxia"])
+    foreign["owner_user_id"] = uuid.uuid4()               # someone else's public arc, no vector
+    retr = _retriever([foreign])
+    out = await retr.retrieve_arcs(uuid.uuid4(), premise="rise", genre="xianxia")
+    assert [c.arc_template.code for c in out] == ["foreign"]   # still surfaced…
+    assert out[0].match_reason.get("degraded") is True        # …but genre-ranked, not embedded
+    assert retr._pool.conn.executed == []                     # NO write to the foreign row
 
 
 async def test_retrieve_arcs_backfill_failure_degrades_to_genre(monkeypatch):

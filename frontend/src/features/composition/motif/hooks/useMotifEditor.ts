@@ -67,7 +67,10 @@ export function useMotifEditor(motif: Motif | null, token: string | null, onSave
   const [seed, setSeed] = useState<string>('');
   const [conflict, setConflict] = useState(false);
 
-  // Re-seed whenever the motif identity changes (open a different motif → fresh form).
+  // Re-seed only when the motif IDENTITY changes (open a different motif). NOT on a
+  // version bump — a background refetch (e.g. a list invalidation) must NOT clobber the
+  // user's in-progress edits. A genuinely stale save is caught by the 412 optimistic lock
+  // → conflict surface, not by silently re-seeding underneath the editor.
   useEffect(() => {
     if (motif) {
       const s = fromMotif(motif);
@@ -77,7 +80,7 @@ export function useMotifEditor(motif: Motif | null, token: string | null, onSave
     } else {
       setForm(null);
     }
-  }, [motif?.id, motif?.version]);   // eslint-disable-line react-hooks/exhaustive-deps
+  }, [motif?.id]);   // eslint-disable-line react-hooks/exhaustive-deps
 
   const set = <K extends keyof MotifEditState>(k: K, v: MotifEditState[K]) =>
     setForm((p) => (p ? { ...p, [k]: v } : p));

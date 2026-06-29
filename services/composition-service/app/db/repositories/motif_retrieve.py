@@ -319,8 +319,12 @@ class MotifRetriever:
         for r in rows:
             genre_s = _genre_overlap(list(r["genre_tags"]), genre_tags)
             vec = r["embedding"]
-            if vec is None and qvec is not None and backfilled < _ARC_BACKFILL_CAP:
-                vec = await self._embed_and_persist_arc(r)  # best-effort; None on failure
+            # Back-fill ONLY system (owner NULL) or the caller's OWN arcs — never another
+            # tenant's public arc (a read must not trigger a cross-tenant write; that arc's
+            # owner back-fills it on their own suggest). Others' public NULL arcs rank on genre.
+            own_or_system = r["owner_user_id"] is None or r["owner_user_id"] == caller_id
+            if vec is None and qvec is not None and own_or_system and backfilled < _ARC_BACKFILL_CAP:
+                vec = await self._embed_and_persist_arc(r, caller_id)  # best-effort; None on failure
                 if vec is not None:
                     backfilled += 1
             if qvec is not None and vec is not None:
@@ -365,12 +369,16 @@ class MotifRetriever:
         async with self._pool.acquire() as c:
             return await c.fetch(sql, *params)
 
-    async def _embed_and_persist_arc(self, row: asyncpg.Record) -> list[float] | None:
+    async def _embed_and_persist_arc(self, row: asyncpg.Record, caller_id: UUID) -> list[float] | None:
         """Lazy inline back-fill of one NULL-embedding arc (best-effort). Embeds the
         canonical arc text with the platform model and writes the vector + model + hash in
         ONE statement; returns the vector (or None on any embed/config failure — the caller
         then ranks the arc on genre). Idempotent: a concurrent back-fill just rewrites the
-        same vector. The model is platform config (B-1), never a per-row choice."""
+        same vector. The model is platform config (B-1), never a per-row choice.
+
+        TENANCY: the UPDATE is scoped `id AND (owner NULL OR owner = caller)` so a read can
+        NEVER mutate another tenant's public arc — even an idempotent platform-vector write
+        (the caller already filtered to system/own before calling, this is defence-in-depth)."""
         try:
             arc = _row_to_arc(row)
             text = arc_summary_text(arc)
@@ -382,8 +390,9 @@ class MotifRetriever:
             async with self._pool.acquire() as c:
                 await c.execute(
                     "UPDATE arc_template SET embedding = $2::real[], embedding_model = $3, "
-                    "embedding_dim = $4, embedded_summary_hash = $5 WHERE id = $1",
-                    row["id"], list(vec), ref, len(vec), summary_hash(text),
+                    "embedding_dim = $4, embedded_summary_hash = $5 "
+                    "WHERE id = $1 AND (owner_user_id IS NULL OR owner_user_id = $6)",
+                    row["id"], list(vec), ref, len(vec), summary_hash(text), caller_id,
                 )
             return vec
         except (EmbeddingError, EmbedConfigError) as exc:

@@ -20,8 +20,8 @@ const MOTIF: Motif = {
   status: 'active', version: 7,
 };
 
-function Harness({ onSaved }: { onSaved?: (m: Motif) => void }) {
-  const ctrl = useMotifEditor(MOTIF, 'tok', onSaved);
+function Harness({ onSaved, motif = MOTIF }: { onSaved?: (m: Motif) => void; motif?: Motif }) {
+  const ctrl = useMotifEditor(motif, 'tok', onSaved);
   return <MotifEditorForm ctrl={ctrl} onCancel={() => {}} />;
 }
 
@@ -64,6 +64,16 @@ describe('MotifEditor', () => {
     const beats = (patch.mock.calls[0][1] as { beats: { label: string; order: number }[] }).beats;
     expect(beats.map((b) => b.label)).toEqual(['reversal', 'isolation']);
     expect(beats.map((b) => b.order)).toEqual([0, 1]);       // re-indexed on submit
+  });
+
+  it('does NOT discard in-progress edits when the motif refetches (version bumps)', () => {
+    const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    const { rerender } = render(<QueryClientProvider client={qc}><Harness /></QueryClientProvider>);
+    fireEvent.change(screen.getByTestId('motif-editor-name'), { target: { value: 'Editing…' } });
+    // a background refetch delivers the same motif with a bumped version (e.g. list invalidate)
+    rerender(<QueryClientProvider client={qc}><Harness motif={{ ...MOTIF, version: 8, name: 'Old Name' }} /></QueryClientProvider>);
+    // the edit survives — the seed effect re-runs only on a DIFFERENT motif id, not a version bump
+    expect((screen.getByTestId('motif-editor-name') as HTMLInputElement).value).toBe('Editing…');
   });
 
   it('surfaces a 412 conflict instead of clobbering', async () => {
