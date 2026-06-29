@@ -251,6 +251,24 @@ def test_beat_axes_blank_code_falls_back():
         _event("Duel", chapter_id="ch-3", mined_motif_code="  ")) == ("Duel", "ch-3")
 
 
+def test_real_event_model_carries_mined_motif_code_through_producer():
+    """Guard against a field/property rename: the REAL knowledge Event model (not a
+    SimpleNamespace fake) must expose `mined_motif_code` and the producer must read it for the
+    generic axes — the round-trip the live smoke proved, locked as a unit test."""
+    from app.db.neo4j_repos.events import Event
+    ev = Event(id="e1", user_id="u1", title="Lin slaps the heir",
+               canonical_title="Lin slaps the heir", chapter_id="ch-1",
+               mined_motif_code="cultivation.face_slap")
+    assert ev.mined_motif_code == "cultivation.face_slap"   # field exists on the real model
+    step = deriver_mod._event_to_beat_step(ev)
+    assert step["beat"] == "face_slap" and step["thread"] == "cultivation"
+    # an Event with the property absent (cold corpus) defaults to None → Option-A fallback
+    cold = Event(id="e2", user_id="u1", title="Quiet talk",
+                 canonical_title="Quiet talk", chapter_id="ch-2")
+    assert cold.mined_motif_code is None
+    assert deriver_mod._event_to_beat_step(cold)["beat"] == "Quiet talk"
+
+
 # ── deriver: scoping + grouping (pg pool + neo4j mocked) ──────────────────────
 
 

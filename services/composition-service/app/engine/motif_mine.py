@@ -519,13 +519,14 @@ async def run_mine_motifs(
     # (system + their own motifs); a cross-user motif can never enter it.
     if model_ref:
         try:
+            uid = UUID(user_id)
             catalog = await motif_repo.list_for_caller(
-                UUID(user_id), scope="all", status="active", limit=_MINE_CATALOG_LIMIT,
+                uid, scope="all", status="active", limit=_MINE_CATALOG_LIMIT,
             )
             vocab = [{"code": m.code, "name": m.name, "summary": m.summary} for m in catalog]
             if vocab:
                 result = await knowledge.tag_beats(
-                    UUID(user_id), book_id=book_id, corpus=(scope == "corpus"),
+                    uid, book_id=book_id, corpus=(scope == "corpus"),
                     motifs=vocab, model_source=model_source, model_ref=model_ref,
                 )
                 logger.info("mine_motifs: tag-beats over %d-motif catalog → %s",

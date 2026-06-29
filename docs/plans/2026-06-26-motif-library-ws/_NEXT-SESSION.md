@@ -34,6 +34,21 @@ The genuine remaining enhancement was the **LLM** extractor; built it this sessi
   real persisted data. (Full corpus mine→draft yield is a corpus-similarity property already proven by
   D-W8-MINE-LIVE-SMOKE; this isolated the new capability.)
 
+- **`/review-impl` ✅ (adversarial, post-commit)** — 1 MED fixed now, 2 LOW documented:
+  - **MED FIXED — cross-tenant prompt injection via the mining catalog.** `list_for_caller(scope='all')`
+    pulls OTHER tenants' PUBLIC motifs; their attacker-controllable `name`/`summary` flowed UNNEUTRALIZED
+    into the classifier prompt (the sibling events were neutralized; the vocab wasn't). Blast radius was
+    limited (output is code-validated → at worst misclassification, no exfil/write), but it's a real
+    untrusted-cross-tenant→LLM path tag-motifs never had. Fix: `_neutralize_motif_vocab` tags the vocab
+    name/summary `[FICTIONAL]` before classify (code = answer-key, untouched). +2 tests; live re-smoke
+    identical (neutralization is a no-op on the clean system catalog).
+  - **LOW (documented):** a large personal catalog (≤200 motifs, re-sent per 50-event batch) can truncate
+    the classifier INPUT on a small-context local model → silent under-tagging (advisory degrade, not a
+    crash); and `book_id`+`corpus=true` together → corpus silently wins (the composition client never
+    sends both). Both accept-and-document.
+  - Also added a real-`Event`-model round-trip guard test (locks the `mined_motif_code` field/property
+    name the live smoke proved) + hoisted a double `UUID(user_id)`.
+
 **▶ Remaining (all non-code on the motif surface):** mine→draft yield improves with a multi-book
 corpus (PrefixSpan support counts books); `D-THREAD-TAG-CALIBRATION` (human gold-sets), the other
 THREAD-TAG/PRODUCER/CHAIN live-smokes (tagged corpus), `D-MOTIF-PGVECTOR-TRIGGER` (perf),

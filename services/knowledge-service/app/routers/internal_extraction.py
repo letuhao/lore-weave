@@ -1487,6 +1487,28 @@ def _neutralize_event_dicts(events: list, *, project_id: str) -> list[dict]:
     return out
 
 
+def _neutralize_motif_vocab(motifs: list[dict]) -> list[dict]:
+    """Neutralize the catalog-vocab name/summary before they enter the classifier prompt
+    (D-EXTRACTOR-PROMPT-INJECTION). UNLIKE the arc placements tag-motifs uses (the caller's
+    OWN authored motifs), the tag-beats mining catalog includes OTHER users' PUBLIC motifs
+    (list_for_caller scope='all'), whose name/summary are attacker-controllable free text — so
+    a planted instruction in a public motif must be tagged, not obeyed, when another tenant
+    mines. The `code` is NOT touched: it is the controlled answer-key (validated against the
+    same vocab downstream), never free prose. Defense-in-depth — output is still code-validated."""
+    from app.extraction.injection_defense import neutralize_injection
+
+    def _clean(text) -> str:
+        return neutralize_injection(str(text or ""), project_id="motif-catalog")[0]
+
+    out = []
+    for m in motifs:
+        if not m.get("code"):
+            continue
+        out.append({"code": m["code"], "name": _clean(m.get("name")),
+                    "summary": _clean(m.get("summary"))})
+    return out
+
+
 class TagThreadsRequest(BaseModel):
     """Tag a book's :Event timeline with narrative-thread labels from the caller's
     vocabulary (the arc template's threads). model_source/model_ref resolve the BYOK
@@ -1676,7 +1698,9 @@ async def tag_beats(body: TagBeatsRequest) -> TagBeatsResponse:
     # persisted property differ. No duplicate prompt/parse logic.
     from app.extraction.motif_tag import classify_event_motifs
 
-    valid = [m for m in body.motifs if m.get("code")]
+    # Neutralize the catalog vocab — it may carry OTHER tenants' public-motif free text
+    # (cross-tenant prompt-injection surface; the events are already neutralized below).
+    valid = _neutralize_motif_vocab(body.motifs)
     if not valid:
         return TagBeatsResponse()
 
