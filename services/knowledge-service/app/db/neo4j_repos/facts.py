@@ -54,6 +54,7 @@ __all__ = [
     "list_facts_for_entity",
     "invalidate_fact",
     "delete_facts_with_zero_evidence",
+    "fact_coverage_for_entity",
 ]
 
 # Closed enum per KSA §5.1. New types require both a code change
@@ -555,3 +556,58 @@ async def delete_facts_with_zero_evidence(
     if record is None:
         return 0
     return int(record["deleted"])
+
+
+# ── fact_coverage_for_entity (F3 — canonical-snapshot staleness key) ───
+
+
+# The max `updated_at` over the entity's STORY-time facts valid at/under an
+# ordinal — the §12.1 staleness key for the per-entity canonical snapshot cache.
+# A late / back-filled fact under `as_of_ordinal` bumps this max, so a snapshot
+# whose stored `fact_coverage_at` is older is stale -> rebuild-on-read (B3 self-
+# heal). Scopes to the same (subject, type) chains the canonical folds: facts
+# ABOUT the entity, valid (TRANSACTION-time open) and positioned at/under the
+# ordinal. NULL when the entity has no such facts (nothing to fold yet).
+_FACT_COVERAGE_FOR_ENTITY_CYPHER = """
+MATCH (f:Fact)-[:ABOUT]->(e:Entity {id: $entity_id})
+WHERE f.user_id = $user_id
+  AND e.user_id = $user_id
+  AND f.valid_until IS NULL
+  AND f.valid_from_ordinal IS NOT NULL
+  AND f.valid_from_ordinal <= $as_of_ordinal
+RETURN max(f.updated_at) AS coverage
+"""
+
+
+async def fact_coverage_for_entity(
+    session: CypherSession,
+    *,
+    user_id: str,
+    entity_id: str,
+    as_of_ordinal: int,
+) -> datetime | None:
+    """F3 — the canonical-snapshot staleness key for one entity at an ordinal.
+
+    Returns ``max(updated_at)`` over the entity's story-time facts valid at/under
+    ``as_of_ordinal``. The snapshot cache compares its stored ``fact_coverage_at``
+    against this: a newer value means a late/back-filled fact arrived after the
+    snapshot was built -> the snapshot is stale -> rebuild-on-read (§12.1, B3).
+    ``None`` when the entity has no positioned facts under the ordinal.
+    """
+    if not entity_id:
+        raise ValueError("entity_id must be a non-empty string")
+    result = await run_read(
+        session,
+        _FACT_COVERAGE_FOR_ENTITY_CYPHER,
+        user_id=user_id,
+        entity_id=entity_id,
+        as_of_ordinal=as_of_ordinal,
+    )
+    record = await result.single()
+    if record is None or record["coverage"] is None:
+        return None
+    coverage = record["coverage"]
+    # neo4j temporal -> native datetime (mirrors _node_to_fact's to_native).
+    if hasattr(coverage, "to_native"):
+        return coverage.to_native()
+    return coverage
