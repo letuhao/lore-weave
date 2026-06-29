@@ -3,7 +3,10 @@
 import { useTranslation } from 'react-i18next';
 import type { LibraryScope } from '../hooks/useMotifLibrary';
 
-const TABS: LibraryScope[] = ['my', 'catalog'];
+const TABS: LibraryScope[] = ['my', 'catalog', 'drafts'];
+const TAB_DEFAULT: Record<LibraryScope, string> = {
+  my: 'My library', catalog: 'Public catalog', drafts: 'Drafts',
+};
 
 export function MotifScopeTabs({ scope, onScope }: { scope: LibraryScope; onScope: (s: LibraryScope) => void }) {
   const { t } = useTranslation('composition');
@@ -28,7 +31,7 @@ export function MotifScopeTabs({ scope, onScope }: { scope: LibraryScope; onScop
           className={`rounded-t px-3 py-1 text-xs ${scope === s ? 'bg-neutral-100 font-medium text-neutral-800 dark:bg-neutral-800 dark:text-neutral-100' : 'text-neutral-500'}`}
           onClick={() => onScope(s)}
         >
-          {t(`motif.scope.${s}`, { defaultValue: s === 'my' ? 'My library' : 'Public catalog' })}
+          {t(`motif.scope.${s}`, { defaultValue: TAB_DEFAULT[s] })}
         </button>
       ))}
     </div>

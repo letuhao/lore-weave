@@ -10,7 +10,14 @@ vi.mock('../components/MotifFacetRail', () => ({ MotifFacetRail: () => <div /> }
 vi.mock('../components/MotifEmptyState', () => ({ MotifEmptyState: () => <div data-testid="motif-empty-stub" /> }));
 vi.mock('../components/MotifDetailDrawer', () => ({ MotifDetailDrawer: () => null }));
 vi.mock('../components/MotifQuickCreateForm', () => ({ MotifQuickCreateForm: () => null }));
+vi.mock('../components/MotifMinePanel', () => ({ MotifMinePanel: () => null }));
 vi.mock('../components/AdoptTargetModal', () => ({ AdoptTargetModal: () => null }));
+vi.mock('../hooks/useMotifDraftActions', () => ({
+  useMotifDraftActions: () => ({
+    promote: { mutate: vi.fn(), isPending: false },
+    discard: { mutate: vi.fn(), isPending: false },
+  }),
+}));
 vi.mock('../context/MotifSimpleModeContext', () => ({ useMotifSimpleMode: () => ({ simple: true, toggle: vi.fn() }) }));
 vi.mock('../hooks/useMotifLibrary', () => ({
   useMotifLibrary: () => ({

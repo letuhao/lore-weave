@@ -13,6 +13,10 @@ type Props = {
   meUserId: string | null;
   onOpen: (id: string) => void;
   onAdopt?: (id: string) => void;
+  /** WI-1 mining review — present only on the Drafts tab (status='draft' cards). */
+  onPromote?: (m: Motif) => void;
+  onDiscard?: (id: string) => void;
+  busy?: boolean;
 };
 
 const TIER_CLASS: Record<'system' | 'user' | 'public', string> = {
@@ -21,7 +25,7 @@ const TIER_CLASS: Record<'system' | 'user' | 'public', string> = {
   public: 'bg-emerald-100 text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-300',
 };
 
-export function MotifCard({ motif, meUserId, onOpen, onAdopt }: Props) {
+export function MotifCard({ motif, meUserId, onOpen, onAdopt, onPromote, onDiscard, busy }: Props) {
   const { t } = useTranslation('composition');
   const { simple } = useMotifSimpleMode();
   const tier = motifTier(motif, meUserId);
@@ -96,6 +100,29 @@ export function MotifCard({ motif, meUserId, onOpen, onAdopt }: Props) {
             onClick={() => onAdopt!(motif.id)}
           >
             {t('motif.action.adopt', { defaultValue: 'Adopt' })}
+          </button>
+        )}
+        {/* WI-1 mining review — promote a mined draft into the library, or discard it */}
+        {isDraft && onDiscard && (
+          <button
+            type="button"
+            data-testid={`motif-card-discard-${motif.id}`}
+            disabled={busy}
+            className="rounded border border-neutral-300 px-2 py-0.5 text-xs text-neutral-600 hover:bg-neutral-100 disabled:opacity-50 dark:border-neutral-600 dark:text-neutral-300 dark:hover:bg-neutral-800"
+            onClick={() => onDiscard(motif.id)}
+          >
+            {t('motif.action.discard', { defaultValue: 'Discard' })}
+          </button>
+        )}
+        {isDraft && onPromote && (
+          <button
+            type="button"
+            data-testid={`motif-card-promote-${motif.id}`}
+            disabled={busy}
+            className="rounded bg-emerald-600 px-2 py-0.5 text-xs font-medium text-white hover:bg-emerald-700 disabled:opacity-50"
+            onClick={() => onPromote(motif)}
+          >
+            {t('motif.action.promote', { defaultValue: 'Promote' })}
           </button>
         )}
       </div>

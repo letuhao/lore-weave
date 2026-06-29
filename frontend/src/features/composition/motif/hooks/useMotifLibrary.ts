@@ -14,7 +14,7 @@ import { useQuery } from '@tanstack/react-query';
 import { motifApi, type MotifListParams, type CatalogParams } from '../api';
 import type { CatalogMotif, Motif, MotifKind } from '../types';
 
-export type LibraryScope = 'my' | 'catalog';
+export type LibraryScope = 'my' | 'catalog' | 'drafts';
 
 export type MotifFacets = {
   kind?: MotifKind;
@@ -87,7 +87,18 @@ export function useMotifLibrary(token: string | null, opts?: { initialScope?: Li
     select: (d): Motif[] => d.items.map(catalogToMotif),
   });
 
-  const query = scope === 'catalog' ? catalogQuery : myQuery;
+  // 'drafts' tab (WI-1) — the mining review queue: YOUR draft motifs (status='draft',
+  // source='mined'), which the default 'my' list (active-only) hides. Promote/discard
+  // act on these.
+  const draftsParams: MotifListParams = { scope: 'mine', status: 'draft', q, limit: 100 };
+  const draftsQuery = useQuery({
+    queryKey: ['composition', 'motifs', 'drafts', q],
+    queryFn: () => motifApi.list(draftsParams, token!),
+    enabled: !!token && scope === 'drafts',
+    select: (d): Motif[] => d.motifs,
+  });
+
+  const query = scope === 'catalog' ? catalogQuery : scope === 'drafts' ? draftsQuery : myQuery;
 
   // Client-side facet narrowing over the fetched page (cheap; server already did
   // the scope/q filter). Derived — recomputed only when inputs change.

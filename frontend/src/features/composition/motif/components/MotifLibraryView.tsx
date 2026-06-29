@@ -11,11 +11,13 @@ import { MotifFacetRail } from './MotifFacetRail';
 import { MotifCard } from './MotifCard';
 import { MotifDetailDrawer } from './MotifDetailDrawer';
 import { MotifQuickCreateForm } from './MotifQuickCreateForm';
+import { MotifMinePanel } from './MotifMinePanel';
 import { AdoptTargetModal } from './AdoptTargetModal';
 import { ArcTemplateLibraryView } from './ArcTemplateLibraryView';
 import { useMotifLibrary } from '../hooks/useMotifLibrary';
 import { useMotifDetail } from '../hooks/useMotifDetail';
 import { useMotifQuickCreate } from '../hooks/useMotifQuickCreate';
+import { useMotifDraftActions } from '../hooks/useMotifDraftActions';
 import { useAdoptFlow } from '../hooks/useAdoptFlow';
 import { useMotifSimpleMode } from '../context/MotifSimpleModeContext';
 import { currentUserId } from '../currentUser';
@@ -26,21 +28,26 @@ type Props = {
   /** The current work, when the panel is mounted inside a project — enables the arc
    *  "Materialize to this book" commit action (D-W10-APPLY-PLANNER-MATERIALIZE). */
   projectId?: string | null;
+  /** The current book — enables book-scope mining (corpus scope works without it). */
+  bookId?: string | null;
 };
 
-export function MotifLibraryView({ token, meUserId: meProp, projectId }: Props) {
+export function MotifLibraryView({ token, meUserId: meProp, projectId, bookId }: Props) {
   const { t } = useTranslation('composition');
   const me = meProp ?? currentUserId();
   const { simple, toggle } = useMotifSimpleMode();
   const lib = useMotifLibrary(token);
   const [openId, setOpenId] = useState<string | null>(null);
   const [creating, setCreating] = useState(false);
+  const [mining, setMining] = useState(false);
   const [showFilters, setShowFilters] = useState(false);   // mobile filter sheet (§5.5)
   const [kind, setKind] = useState<'motifs' | 'arcs'>('motifs');   // W10 — motif vs arc-template library
 
   const detail = useMotifDetail(openId, me, token);
   const quickCreate = useMotifQuickCreate(token, (m) => { setCreating(false); setOpenId(m.id); });
   const adopt = useAdoptFlow(token);
+  const drafts = useMotifDraftActions(token);
+  const draftBusy = drafts.promote.isPending || drafts.discard.isPending;
 
   return (
     <div data-testid="motif-library-view" className="flex h-full flex-col">
@@ -67,11 +74,26 @@ export function MotifLibraryView({ token, meUserId: meProp, projectId }: Props) 
           <button type="button" aria-pressed={simple} data-testid="motif-simple-toggle" className="rounded border border-neutral-300 px-2 py-0.5 text-[11px] dark:border-neutral-600" onClick={toggle}>
             {simple ? t('motif.mode.simple', { defaultValue: 'Simple' }) : t('motif.mode.expert', { defaultValue: 'Expert' })}
           </button>
+          <button type="button" data-testid="motif-mine" className="rounded border border-amber-500 px-2 py-0.5 text-[11px] font-medium text-amber-700 hover:bg-amber-50 dark:text-amber-300 dark:hover:bg-amber-950/30" onClick={() => setMining((v) => !v)}>
+            ⛏ {t('motif.action.mine', { defaultValue: 'Mine' })}
+          </button>
           <button type="button" data-testid="motif-new" className="rounded bg-amber-600 px-2 py-0.5 text-[11px] font-medium text-white hover:bg-amber-700" onClick={() => setCreating(true)}>
             + {t('motif.action.newMotif', { defaultValue: 'New motif' })}
           </button>
         </div>
       </div>
+
+      {/* mining panel (mount-on-open) — the self-enrichment flywheel (WI-1) */}
+      {mining && (
+        <div className="border-b border-neutral-200 dark:border-neutral-700">
+          <MotifMinePanel
+            token={token}
+            bookId={bookId}
+            onViewDrafts={() => { setMining(false); lib.setScope('drafts'); }}
+            onClose={() => setMining(false)}
+          />
+        </div>
+      )}
 
       {/* search */}
       <div className="flex items-center gap-1 p-1">
@@ -104,7 +126,16 @@ export function MotifLibraryView({ token, meUserId: meProp, projectId }: Props) 
             ) : (
               <div className="grid grid-cols-1 gap-2 lg:grid-cols-2">
                 {lib.motifs.map((m) => (
-                  <MotifCard key={m.id} motif={m} meUserId={me} onOpen={setOpenId} onAdopt={adopt.begin} />
+                  <MotifCard
+                    key={m.id}
+                    motif={m}
+                    meUserId={me}
+                    onOpen={setOpenId}
+                    onAdopt={adopt.begin}
+                    onPromote={lib.scope === 'drafts' ? (mm) => drafts.promote.mutate({ id: mm.id, version: mm.version }) : undefined}
+                    onDiscard={lib.scope === 'drafts' ? (id) => drafts.discard.mutate(id) : undefined}
+                    busy={draftBusy}
+                  />
                 ))}
               </div>
             )}

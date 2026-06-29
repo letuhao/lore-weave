@@ -311,6 +311,30 @@ export type QuotaError = {
   used: number;
 };
 
+// ── mining (W8) — the result of a confirmed composition_motif_mine job ──────────
+/** One mined candidate (§11 no-silent-drop: EVERY candidate is returned with its
+ *  judge score + gate flag; only gate-passers are persisted as draft motifs). */
+export type MineCandidate = {
+  code?: string;
+  name?: string;
+  judge_score?: number | null;
+  passed_gate?: boolean;
+  persisted?: boolean;
+  status?: string;
+};
+/** The mine_motifs worker result. A clean degrade carries `reason`
+ *  (e.g. 'beat_extractor_unavailable' | 'no_frequent_patterns') with `mined: 0`. */
+export type MineResult = {
+  mined: number;
+  motif_ids?: string[];
+  candidates?: MineCandidate[];
+  below_gate?: number;
+  sequences?: number;
+  patterns?: number;
+  reason?: string;
+  scope?: string;
+};
+
 // ── write-arg shapes (mirror F0 MotifCreateArgs — owner is NEVER an arg) ───────
 
 export type MotifCreateArgs = {

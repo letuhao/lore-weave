@@ -12,8 +12,8 @@ import { mcpExecute } from '../../../mcpBridge';
 import { compositionApi } from '../api';
 import type { GenerationJob } from '../types';
 import type {
-  ArcConformance, CatalogList, ChapterConformance, CostEstimate, Motif, MotifCreateArgs,
-  MotifPatchArgs, MotifTier,
+  ArcConformance, CatalogList, ChapterConformance, CostEstimate, MineResult, Motif,
+  MotifCreateArgs, MotifPatchArgs, MotifTier,
 } from './types';
 
 const BASE = '/v1/composition';
@@ -112,6 +112,68 @@ export const motifApi = {
     );
     if (!resp.motif_id) throw new Error('adopt did not return a motif');
     return motifApi.get(resp.motif_id, token);
+  },
+
+  // ── Tier-W: mining (W8) — the self-enrichment flywheel ──────────────────────
+  // composition_motif_mine spends LLM tokens (PrefixSpan over the corpus → LLM
+  // abstraction → judge), so it is a 202+poll JOB: PROPOSE via the FE→MCP-tool bridge
+  // (mint a confirm token + a $ estimate) → human confirms → poll the mine job → the
+  // mined drafts (status='draft' motifs that then surface in the Drafts tab).
+  /** Step 1 — PROPOSE composition_motif_mine → cost estimate + confirm_token. No spend. */
+  async minePropose(
+    args: {
+      scope: 'book' | 'corpus'; bookId?: string | null; minSupport?: number;
+      language?: string; modelRef: string; modelSource?: string;
+    },
+    token: string,
+  ): Promise<CostEstimate> {
+    const res = await mcpExecute<_McpProposeResult>(
+      'composition_motif_mine',
+      {
+        args: {
+          scope: args.scope,
+          ...(args.scope === 'book' && args.bookId ? { book_id: args.bookId } : {}),
+          ...(args.minSupport != null ? { min_support: args.minSupport } : {}),
+          language: args.language ?? 'en',
+          model_ref: args.modelRef,
+          model_source: args.modelSource ?? 'user_model',
+        },
+      },
+      token,
+    );
+    return {
+      confirm_token: res.confirm_token,
+      descriptor: 'composition.motif_mine',
+      est_usd: res.estimate?.estimated_usd ?? 0,
+      est_tokens: 0,
+      quota_remaining: null,
+    };
+  },
+  /** Step 2 — confirm the token → 202 + a mine job we poll to terminal; the job's
+   *  result IS the MineResult (mined count + every candidate + degrade `reason`). */
+  async mineConfirm(confirmToken: string, token: string): Promise<MineResult> {
+    const resp = await apiJson<{ job_id?: string } & Record<string, unknown>>(
+      `${BASE}/actions/confirm${_qs({ token: confirmToken })}`,
+      { method: 'POST', token }, // token rides the QUERY; identity is the Bearer JWT
+    );
+    if (!resp.job_id) {
+      return ((resp as { result?: MineResult }).result ?? (resp as unknown as MineResult));
+    }
+    let job = await compositionApi.getJob(resp.job_id, token);
+    for (let i = 0; i < _POLL_MAX && (job.status === 'pending' || job.status === 'running'); i += 1) {
+      await _sleep(_POLL_INTERVAL_MS);
+      job = await compositionApi.getJob(resp.job_id, token);
+    }
+    if (job.status === 'failed') {
+      throw new Error((job.result as { error?: string } | null)?.error || 'mining failed');
+    }
+    if (job.status !== 'completed') throw new Error('mining did not complete in time');
+    return job.result as MineResult;
+  },
+  /** Promote a mined draft into the active library (status draft → active). Reuses the
+   *  owner-only PATCH (If-Match optimistic lock); discard is `archive`. */
+  promote(motifId: string, expectedVersion: number, token: string): Promise<Motif> {
+    return motifApi.patch(motifId, { status: 'active' }, expectedVersion, token);
   },
 
   // ── conformance trace (W5) ─────────────────────────────────────────────────
