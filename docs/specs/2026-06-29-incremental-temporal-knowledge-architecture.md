@@ -72,22 +72,50 @@ is a **fact** with **two time axes** (Graphiti):
 - Snapshots are themselves **append-only + ordinal-stamped** → "canonical as of ch.N" time-travel.
 - `canonical-dirty` flag (already exists) triggers the next fold; batched (not every chapter).
 
-## 4. Write path (ingest one chapter)
+## 4. Two write paths — APPEND (new chapter) vs UPDATE (re-extract)
+
+These are **different operations** and must not be conflated. "Don't touch old data" governs path A
+**globally** (no chapter's data is ever rewritten); path B revises **only the re-extracted episode's
+own contribution**, as a new transaction-time version (history retained, never deleted).
+
+### Path A — ingest a NEW chapter (append-only; "development")
+First time chapter N is seen.
 
 ```
-1. Episode:   write the immutable episode row (+ embed).                         [append]
-2. Extract:   clean per-chapter extraction (the just-shipped precision pipeline) → candidate facts.
-3. Resolve:   resolve entities against existing nodes — the write-time resolver + cross-kind
-              merge (#43, ALREADY BUILT + validated: re-extract → 0 dups).        [no rewrite]
-4. Reconcile: for each attribute/relation, OPEN a new fact; if it supersedes a prior value,
-              INVALIDATE the prior (set valid_to/invalidated_at) — never delete.  [append]
-5. Fold:      mark affected entities canonical-dirty; a batched job folds new facts into the
-              bounded canonical snapshot (incremental refine).                    [append]
+1. Episode:   write the immutable episode row (+ embed).                          [append]
+2. Extract:   clean per-chapter extraction (just-shipped precision pipeline) → candidate facts.
+3. Resolve:   resolve entities vs existing nodes — write-time resolver + cross-kind merge
+              (#43, BUILT + validated: re-extract identical text → 0 dups).        [no rewrite]
+4. Reconcile: OPEN each new fact. If it supersedes a prior value IN STORY TIME (ch.500's 境界 >
+              ch.300's), set the prior's `valid_to_ordinal` — a VALID-TIME close, normal growth.   [append]
+5. Fold:      mark affected entities canonical-dirty → batched fold into the bounded snapshot.  [append]
 ```
+**Which time axis moves: VALID (story) time forward.** No other chapter's data is touched.
 
-Steps 1–5 are all **append / mark** — **old data is never mutated** (except a fact's
-`valid_to/invalidated_at` stamp, which is a close, not a rewrite). This is what makes it scale
-forever and stay safe under concurrency/re-runs.
+### Path B — RE-EXTRACT an existing chapter (update/correction; "different concept")
+Triggered when the **chapter text was edited** OR we re-run with a better model/prompt. Scoped to
+**that one episode**; it is a TRANSACTION-TIME correction, and it **must reconcile (incl. RETRACT)**,
+not blindly append:
+
+```
+1. Episode:   the chapter content hash changed (or forced) → write a NEW episode REVISION.   [append version]
+2. Extract:   re-extract chapter N → new_facts.
+3. DIFF vs what episode N's PRIOR revision contributed:
+      • still present  → keep / update the value
+      • GONE (edited out / corrected) → RETRACT: transaction-time close (`invalidated_at`) —
+        we no longer believe this chapter asserts it.  ← pure append/merge CANNOT do this (#42).
+      • NEW            → open
+4. Resolve+Reconcile as in A for the kept/new facts.
+5. Re-fold ONLY the snapshots that CITED episode N (bounded — not the book).
+```
+**Which time axis moves: TRANSACTION time (a new belief about the SAME chapter).** Valid-time/chapter
+is unchanged. The prior episode-revision + its facts are transaction-time-closed (kept for
+audit/time-travel), never deleted. **Run #2 did NOT exercise this** — it re-extracted identical text
+(cache replay), so it validated A's "no over-extraction," not B's retract path.
+
+> **Retraction is the load-bearing new capability.** The platform's `MERGE`/resolver adds + updates
+> but cannot remove a fact a re-extraction dropped (#42, #43). Path B needs an **episode-scoped
+> fact-diff + retract** (`remove_evidence_for_natural_key`-style) — design it explicitly.
 
 ## 5. Read paths
 
@@ -149,6 +177,12 @@ invalidation** on facts/EAV/edges, the **fold-forward** batched job, and the **F
    no backfill of history required (append-only tolerates a cold start).
 6. **Invalidation policy** — when is a new value a *supersession* (invalidate prior) vs a *coexisting*
    alias/multi-value? Needs per-attribute semantics (single-valued like `境界` vs multi like `aliases`).
+7. **Episode revisioning + retract reconciler (Path B)** — key the episode by **content hash** so an
+   edited chapter mints a new revision automatically. The **fact-diff + RETRACT** (close facts the new
+   revision dropped) is a NEW capability the current resolver lacks (#42) — build it as an
+   episode-scoped reconciler. Decide: does an editorial re-run (better model, same text) also retract,
+   or only TEXT edits? (Proposal: text-edit → full diff+retract; same-text re-run → update-only, no
+   retract, to avoid churn.)
 
 ## 10. Why this is the right call
 
