@@ -1,6 +1,7 @@
 # Spec — Incremental Temporal Knowledge Architecture (glossary + KG)
 
-**Date:** 2026-06-29 · **Status:** DRAFT (review → implement next session) · **Scope:** BE + FE
+**Date:** 2026-06-29 · **Status:** DESIGN COMPLETE — all 9 decisions locked (§9); ready to implement
+(next session, separate branch) · **Scope:** BE + FE
 **Pairs with:** `docs/analysis/2026-06-29-ontology-extraction-bloat.md` (clean extraction feeds this)
 
 ---
@@ -279,15 +280,18 @@ The flat→bi-temporal change (and every future change) lands **entirely behind 
 - **Bounding is structural, not a convention** — because the API has no unbounded read, no consumer can
   reintroduce context bloat.
 
-### Built on what exists (not a new service — a contract + discipline)
-- **ai-gateway already federates** the MCP knowledge tools (`glossary_search`, `kg_graph_query` with
-  `as_of_chapter`, `kg_entity_edge_timeline`) — MCP is **already ~half the KAL read contract**. Extend
-  it to be THE contract.
-- The existing **`glossary_client` / `knowledge_client`** become thin KAL adapters; ownership stays
-  with the SSOT services (glossary-svc projection, knowledge-svc KG), federated by the gateway.
-- This is the concrete form of §6C's "stable contract" + Q9 — promoted from an open question to a
-  **load-bearing pillar**: build the KAL FIRST, migrate consumers onto it, then evolve the substrate
-  behind it.
+### Home: a NEW typed knowledge-gateway service (DECIDED 2026-06-29)
+- The KAL is **a dedicated, typed knowledge-gateway service** federating glossary-svc (SSOT projection)
+  + knowledge-svc (KG) behind **one versioned, typed contract** — built for **all** consumers and
+  transports, **not only MCP**. The existing federated MCP tools (`glossary_search`,
+  `kg_graph_query(as_of_chapter)`, `kg_entity_edge_timeline`) become **one client of the KAL**, not the
+  contract itself — so non-agent paths (composition, enrichment, wiki, translation, FE) get the same
+  typed contract with stronger typing/versioning than ad-hoc MCP tool schemas.
+- The existing **`glossary_client` / `knowledge_client`** become thin adapters that call the KAL;
+  ownership of the data stays with the SSOT services, the KAL owns the *contract*.
+- Promoted from an open question (Q9) to a **load-bearing pillar**: build the KAL FIRST (contract +
+  current-projection), migrate the direct-DB outliers (wiki EAV, enrichment full-book) onto it, then
+  evolve the bi-temporal substrate behind the frozen contract.
 
 ## 7. FE impact
 
@@ -371,39 +375,48 @@ the current-projection default. **The work is the write-side substrate (§ above
 > glossary, build-on for KG.** §6's "one mechanism, two surfaces" → **two mechanisms converging on one
 > contract** (the §6C API), built on very different substrates.
 
-## 9. Open questions (resolve in CLARIFY before BUILD)
+## 9. Decisions — CLARIFY RESOLVED (2026-06-29)
 
-1. **Episode granularity** — chapter, or sub-chapter token-window? (Start: per-chapter; window only
-   when a chapter exceeds the model context.)
-2. **Fold cadence** — every chapter, every K chapters, or every sealed segment? (Batch by token
-   budget to bound LLM cost.)
-3. **`valid_from` source** — chapter ordinal (cheap, robust) vs detected in-story time
-   (`event_date_iso`, advanced). Start with **chapter ordinal**.
-4. **Storage** — Postgres bi-temporal tables for glossary; Neo4j edge properties for KG. Do we add a
-   dedicated `episodes` table + an append-only `entity_facts` table, or extend EAV with temporal cols?
-5. **Migration** — existing flat entities → seed as a single open fact (`valid_from = first seen`);
-   no backfill of history required (append-only tolerates a cold start).
-6. **Invalidation policy** — when is a new value a *supersession* (invalidate prior) vs a *coexisting*
-   alias/multi-value? Needs per-attribute semantics (single-valued like `境界` vs multi like `aliases`).
-7. **Episode revisioning + retract reconciler (Path B)** — key the episode by **content hash** so an
-   edited chapter mints a new revision automatically. The **fact-diff + RETRACT** (close facts the new
-   revision dropped) is a NEW capability the current resolver lacks (#42) — build it as an
-   episode-scoped reconciler. Decide: does an editorial re-run (better model, same text) also retract,
-   or only TEXT edits? (Proposal: text-edit → full diff+retract; same-text re-run → update-only, no
-   retract, to avoid churn.)
-8. **Translation as-of-chapter + immutable-once (§6B)** — confirm: translate chapter N against the
-   entity state **valid as of N** (spoiler-free), and translate immutable canonical/segment summaries
-   **once** (cache, re-translate only on a new revision). Audit whether `fetch_translation_glossary`
-   pulls the full book glossary before client-side filtering — if so, move the occurrence/as-of filter
-   server-side. (The chapter-occurrence filter + rolling summary already exist; this adds the as-of
-   bound + the bounded-canonical/immutable-unit translation.)
-9. **Finalize the KAL contract surface (§6D — now a pillar, not a maybe).** The *decision* to route
-   everything through one Knowledge Access Layer is made (§6D); CLARIFY only nails the surface: exact
-   read/write verbs + params, where the contract lives (extend the ai-gateway MCP federation vs a new
-   typed gateway), the `scripts/` lint that enforces INV-KAL, and the **migration order** (build KAL +
-   current-projection → migrate the direct-DB outliers first: wiki EAV read, enrichment full-book read
-   → then composition opts into `as_of`). The substrate (episodes/bi-temporal facts) evolves *behind*
-   this — so the contract must be frozen before the substrate work starts.
+All nine are locked; BUILD can proceed (next session, separate branch) from these.
+
+1. **Episode granularity** → **per-chapter** episode; sub-chapter token-window only when a chapter
+   exceeds the model context (reuse the existing `context_budget` windowing). 🔒
+2. **Fold cadence** → **debounced batch**: mark `canonical_dirty` on each fact change; fold at job-end
+   / every K chapters (NOT per-chapter — too costly). Plus the §9B **periodic re-ground**: every M
+   folds (or on a drift signal), rebuild the canonical *from facts* (bounded retrieval) instead of
+   refine-from-prior — kills accumulation drift. 🔒
+3. **`valid_from` source** → **chapter ordinal**, reusing the KG's existing `from_order`/`event_order`
+   reading axis. Detected in-story time (`event_date_iso`) is a later advanced follow-up. 🔒
+4. **Storage** → **a dedicated append-only `entity_facts` table is the SSOT** (cols: `entity_id`,
+   `attr|relation`, `value`, `valid_from_ordinal`, `valid_to_ordinal`, `created_at`, `invalidated_at`,
+   `source_episode_id`, `cardinality`); **the existing EAV becomes a materialized "current" projection**
+   (latest-valid) so existing reads + the KAL current-projection keep working unchanged. A new
+   `episodes` table holds the immutable, content-hash-revisioned, embedded units. **KG side:** add a
+   **story-ordinal valid axis** to the existing edge props (today's `valid_from/until` is wall-clock
+   transaction-time; unify with `from_order`). *(decided 2026-06-29)* 🔒
+5. **Migration** → **cold-start seed**: existing flat entities become one open fact
+   (`valid_from = first-seen`); **no history backfill** (append-only tolerates it; optional later
+   reconstruction from `entity_revisions`/`extraction_audit_log`). 🔒
+6. **Invalidation policy** → **per-attribute `cardinality`; DEFAULT single-valued (supersede)** — a new
+   value CLOSES the prior in valid-time (`境界: 武者 → 黄极境 @ch.500`); multi-valued attrs (`aliases`,
+   tags) are flagged explicitly to coexist. **Reuse the KG `single_active` (L7) precedent**, which
+   already does atomic close-prior-then-open-new. *(decided 2026-06-29)* 🔒
+7. **Retract trigger** → **content-hash-gated**: a text edit mints a new episode revision → **diff +
+   RETRACT** (transaction-time close the facts the new revision dropped); a same-text re-run (better
+   model/prompt) is **update-only, no retract** (avoid LLM-nondeterminism churn). **Reuse KG's
+   `remove_evidence_*` + zero-evidence cleanup**; build the glossary EAV/`entity_facts` equivalent
+   (net-new there). 🔒
+8. **Translation** → **as-of-chapter injection** (translate ch.N against state `valid_from ≤ N`,
+   spoiler-free) **+ immutable-once caching** (translate each immutable canonical/segment summary once,
+   re-translate only on a new revision). Bound the one full-book read (composition/enrichment
+   `cast_roster` `list_entities`) via the KAL. 🔒
+9. **KAL home** → **a NEW typed knowledge-gateway service** federating glossary-svc (SSOT projection) +
+   knowledge-svc (KG) behind one versioned, typed contract that serves **all** consumers — **MCP is one
+   client of it, not the whole contract** (we build for more than MCP). Add the `scripts/` lint that
+   enforces **INV-KAL** (no direct glossary-EAV/Neo4j read outside the owning services). **Build order:**
+   freeze the KAL contract → build KAL + current-projection → migrate the direct-DB outliers first (wiki
+   EAV read, enrichment full-book read) → then composition opts into `as_of`. The bi-temporal substrate
+   evolves *behind* this frozen contract. *(decided 2026-06-29)* 🔒
 
 ## 9B. Production risks & mitigations (research-grounded)
 
