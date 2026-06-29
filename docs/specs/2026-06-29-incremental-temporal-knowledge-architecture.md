@@ -257,6 +257,62 @@ The FE must stop assuming "one entity = one current value." New surfaces:
 The new build is mostly: **episode store** (immutable + embedded), **bi-temporal columns +
 invalidation** on facts/EAV/edges, the **fold-forward** batched job, and the **FE temporal surfaces**.
 
+## 8B. Codebase reality — VERIFIED (glossary ≠ KG; §8 corrected)
+
+Three read-only agent sweeps verified the "builds-on" claims against code. **Headline correction: §8
+over-claimed and wrongly treated glossary + KG as symmetric. They are in completely different states**
+— the KG (Neo4j) is **~half-built** toward this design; the glossary (Postgres EAV) is a **flat
+overwrite store with none of it.** Net-new scope must be split per side.
+
+### Per-element reality
+
+| Spec element | **KG (knowledge-svc, Neo4j)** | **Glossary (glossary-svc, EAV)** |
+|---|---|---|
+| **bi-temporal fact** | ✅ has `valid_from/valid_until` + a separate read-axis `from_order/chronological_order` — but the validity is **wall-clock transaction-time**, NOT a chapter-ordinal valid-time, and the two axes are **not unified on one fact** (`facts.py:104-112`, `relations.py:99-104`) | ❌ **none.** EAV is `UNIQUE(entity_id, attr_def_id)`, **in-place OVERWRITE**, zero `valid_*` columns (grep: 0 hits). History only out-of-band (`extraction_audit_log`, `entity_revisions`) — not a queryable fact store |
+| **invalidate-not-delete** | ✅ **built + proven** — `invalidate_fact`/`invalidate_relation` keep rows, default reads filter `valid_until IS NULL`, L7 `single_active` does atomic close-prior-then-open-new (`relations.py:190-201`) — but only wired for L7/user, **not driven from extraction** | ❌ none (only enrichment soft-delete, a different mechanism) |
+| **RETRACT (Path B)** | ✅ **already exists** — `remove_evidence_for_natural_key`/`remove_evidence_for_source` + zero-evidence cleanup (`provenance.py:63-66`, `facts.py:469`, `events.py:828`). The #42 "can't retract" is **false for KG** → REUSE it | ❌ **confirmed absent** — writeback only CREATE/MERGE (fill/overwrite/append/summarize); a dropped attribute is never closed. The #42 gap is **glossary-only**; build retract here |
+| **folded canonical** | hierarchical `chapter→part→book` summaries, content-hash-cached (`level_summaries.py`, `summary_processor.py`) = BooookScore's *hierarchical-merge* leg ✅ — but **book-structural (needs a "part" format imported books lack), overwrite per (level,model), not per-entity, not ordinal-stamped** | `#26/#7` `summarize` canonical: bounded (≤2000 runes) LLM resynthesis from a **bounded** raw-item subset (✅ no bloat) + `canonical_dirty` fold-trigger ✅ — but **per-(entity,attribute), single-column OVERWRITE, no snapshot/ordinal/history** |
+| **episode store** (immutable, sealed, revisioned, embedded) | closest = `:Passage` — embedded + content-hashed, but **MERGE-in-place (mutable), no revision chain, no sealed `char_range/token_count/ingested_at`** (`passages.py`) | ❌ none |
+| **evidence/quote citation** | chapter pointer only (`source_chapter`, `EVIDENCED_BY→ExtractionSource`) — **no exact quote stored** | ✅ `evidences` table has the **quote + chapter** (`original_text`, `chapter_id`, char offsets) |
+| **as-of read** | ✅ ~70% — event/fact spoiler-window via `before_order`/`from_order`, paginated timeline + filters (#12/#15) | ❌ no temporal projection possible (flat current value) |
+| **entity `version`** | optimistic-concurrency / ETag counter, **overwrites in place, keeps NO prior state** (`entities.py:136,297`) — NOT a transaction-time version | n/a |
+| **resolve-on-ingest** | ✅ idempotent `merge_entity` + alias/provenance accumulation | ✅ `findEntityByNameOrAlias` + cross-kind merge `#43` (validated: re-extract → 0 dups) |
+
+### Net-new scope, split by side
+
+- **KG side = mostly WIRING + one schema change** (a head start): (a) add a **chapter-ordinal valid-time**
+  axis and **unify** it with the existing `from_order` so a fact carries *story* `valid_from/to_ordinal`
+  **and** *system* `created/invalidated` (today's `valid_*` is the latter); (b) **drive the existing
+  invalidate + retract primitives FROM the extraction path** (Path A close-prior, Path B
+  `remove_evidence_*`), not just L7/user; (c) store the **quote** on KG citations; (d) add the
+  **per-entity ordinal-stamped canonical snapshot** (the summary tree is structural, not per-entity).
+- **Glossary side = MOSTLY NET-NEW substrate** (the heavy lift): the **entire bi-temporal fact store**
+  (episodes + `valid_from/to_ordinal` + `created/invalidated_at`, append not overwrite), the **retract
+  write path** (absent today), and a **per-entity append-versioned canonical** (the #26/#7 bounded
+  resynthesis + dirty-fold is a good *foundation* but is overwrite/per-attribute). The `evidences`
+  quote table + the cross-kind resolver are the parts already in place.
+
+### Migration is the EASY part — the read side is essentially ready (all 4 consumers verified)
+Every consumer reads glossary/KG through **stable, bounded endpoints whose latest-state result IS the
+"current projection."** And the read-side temporal axis **largely already exists**:
+
+| Consumer | Bounded? | As-of already? | Migration |
+|---|---|---|---|
+| **composition** (biggest reader) | ✅ top-K (present 20, timeline 50, lore 40, refs 6); only `_cast_roster` reads ~full glossary (id+name, `limit=100`) | ✅ **already** — `timeline before_order/after_order`, `fact_for_check at_order`, entity detail `valid_until IS NULL` | **LOW** — stable HTTP, already temporal-parameterized |
+| **chat** | ✅ MCP `glossary_search`/`get_entity`/bounded `build_context` | ✅ **KG side already** — `kg_graph_query(as_of_chapter)`, `kg_entity_edge_timeline`; glossary tools latest-only | **LOW** |
+| **wiki** | ✅ per-entity attrs + 1-hop KG ≤200 + ≤8 passages (entity batch ≤50) | ❌ latest-only (spoiler handled downstream) | **LOW** — current snapshot = natural projection |
+| **lore-enrichment** | ⚠️ MIXED — KG passages top-5 + output top-K, but the **glossary canon read pulls the full book** (`list_entities`, cached, filtered by name in-process) | ❌ latest-only | **LOW–MED** — the full-book read is served by the current-projection default; as-of is additive |
+
+**Conclusion (all 4 verified):** the "current-projection + opt-in temporal API" migration needs **no
+bespoke per-consumer rework** — the consumers that need an as-of axis (composition, chat-KG) **already
+expose it**, and the lone full-ish read (composition/enrichment `list_entities`) is trivially served by
+the current-projection default. **The work is the write-side substrate (§ above), not the readers.**
+
+> **Spec correction:** §8 ("the new build is mostly episode store + columns + FE") **understated the
+> glossary lift** and **double-counted retract** (already on KG). Treat §3.2/§3.3 as **net-new for
+> glossary, build-on for KG.** §6's "one mechanism, two surfaces" → **two mechanisms converging on one
+> contract** (the §6C API), built on very different substrates.
+
 ## 9. Open questions (resolve in CLARIFY before BUILD)
 
 1. **Episode granularity** — chapter, or sub-chapter token-window? (Start: per-chapter; window only
