@@ -270,6 +270,17 @@ TIER_A_SAME_OP_CAP = 5
 # but low enough that a high-volume multi-op turn still hits ONE human gate.
 TIER_A_AGGREGATE_CAP = 12
 
+# #18 — mechanical planner hard-stop. The planner tool is a heavy (~39s) model call
+# that mints a typed PLAN; there is NO ReAct loop in the planner CODE, so the
+# "loops forever" is the chat agent re-calling it in a self-recheck cycle, bounded
+# only by a SOFT skill rule. This is the mechanical form of that rule: the planner
+# may run AT MOST this many times per turn; a further call is short-circuited (no
+# execution) with a tool result steering the model to present/confirm the plan it
+# already produced. Cross-turn recovery re-plans are a fresh pass (fresh counter),
+# so legitimate re-planning after a confirmed plan's failures is never blocked.
+PLANNER_TOOLS = frozenset({"glossary_plan"})
+PLANNER_CALLS_PER_TURN_CAP = 1
+
 
 def _is_tools_unsupported(exc: LLMError) -> bool:
     """True when an LLMError is the gateway's 'this provider does not
@@ -470,6 +481,8 @@ async def _stream_with_tools(
         write_passes = 0  # H9 — budget is counted in write passes, not all passes
         # H7 — same-op Tier-A auto-write counter (resets never within a turn).
         tier_a_op_counts: dict[str, int] = {}
+        # #18 — per-turn planner-call counter (mechanical hard-stop on the self-recheck loop).
+        planner_call_counts: dict[str, int] = {}
         # Hard safety bound on TOTAL passes (reads + writes + discovery) so a
         # pathological find_tools/read loop can't spin forever even though those
         # don't count against the write budget.
@@ -697,6 +710,36 @@ async def _stream_with_tools(
                             },
                         }
                         break
+
+                # #18 — planner hard-stop. The planner (glossary_plan) is a heavy ~39s
+                # model call with NO ReAct loop of its own; a weak model loops it in a
+                # self-recheck cycle. The FIRST call this turn runs; a 2nd+ call is
+                # short-circuited HERE — before the MCP transport — with a tool result
+                # that steers the model to present/confirm the plan it already has, rather
+                # than burning another planner run. (Kiro-style: logic controls progress.)
+                if c["name"] in PLANNER_TOOLS:
+                    if planner_call_counts.get(c["name"], 0) >= PLANNER_CALLS_PER_TURN_CAP:
+                        guidance = {
+                            "error": "planner_already_ran",
+                            "message": (
+                                f"{c['name']} already ran this turn — do NOT call it again. "
+                                "Present the plan you already produced for the user to confirm "
+                                "(pass its confirm_token to glossary_confirm_action), or use "
+                                "glossary_propose_batch if you already know the exact ops. "
+                                "Re-planning in the same turn is disabled to stop a self-recheck loop."
+                            ),
+                        }
+                        working.append({
+                            "role": "tool", "tool_call_id": c["id"],
+                            "content": json.dumps(guidance),
+                        })
+                        yield {"tool_call": {
+                            "id": c["id"], "iteration": iteration, "tool": c["name"],
+                            "args": args_obj, "ok": False,
+                            "result": None, "error": guidance["message"],
+                        }}
+                        continue
+                    planner_call_counts[c["name"]] = planner_call_counts.get(c["name"], 0) + 1
 
                 # D-PLAN-PLANNER-DEFAULT-FE phase 2 + #19: who picks the planner model is a
                 # USER/config decision, NEVER the agent's. The glossary_plan tool exposes a

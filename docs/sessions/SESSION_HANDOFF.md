@@ -1,4 +1,17 @@
-# ▶▶ NEXT SESSION STARTS HERE — **Critical UX bug track** · branch `fix/critical-ux-bugs` · HEAD `759e741f` · 2026-06-29
+# ▶▶ NEXT SESSION STARTS HERE — **Critical UX bug track** · branch `fix/critical-ux-bugs` · HEAD `db5fb841` · 2026-06-29
+
+> **✅ DONE — #18 planner self-recheck loop: MECHANICAL hard-stop.** RC (already investigated):
+> NO ReAct loop in the planner CODE — the "loops forever" is the chat agent re-calling the heavy
+> (~39s) `glossary_plan` in a self-recheck cycle, bounded only by a SOFT skill rule. Fix
+> ([stream_service.py](../../services/chat-service/app/services/stream_service.py)): `PLANNER_TOOLS`
+> may run AT MOST `PLANNER_CALLS_PER_TURN_CAP=1` per turn — a 2nd+ call is short-circuited BEFORE the
+> MCP transport (no planner run) with a tool result steering the model to present/confirm the plan it
+> already has (Kiro-style logic control). Cross-turn recovery re-plans = a fresh pass/counter, never
+> blocked. Mirrors the existing Tier-A volume cap. +2 TDD tests (`TestPlannerHardStop`); test_stream_tools
+> 40/40, frontend_tools+tool_discovery green. (test_stream_service's 13 fails proven PRE-EXISTING —
+> `LLMModelNotFound`, identical on pristine HEAD — env needs a patched LLM client.) **#19 remainder
+> stays `D-PLANNER-INFLIGHT-ABORT`** — aborting the IN-FLIGHT planner MCP call on session-stop is the
+> larger cross-service cancellation (gate 2 + 4: structural + blocked on a live capture).
 
 > **✅ DONE — #27/#29/#30 confirm-card coalesce (XL, load-bearing — agent run lifecycle +
 > human-gate boundary). M1+M2+M3 complete; branch ready to PR.** A weak model loops single-propose tools, minting N confirm_tokens in ONE

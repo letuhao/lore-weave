@@ -892,3 +892,67 @@ class TestPlannerModelRefAuthority:
         with _patch_client(scripts):
             await _drain(_run(scripts, knowledge_client=kc, planner_model_ref=None))
         assert "model_ref" not in kc.mcp_execute_tool.await_args.kwargs["tool_args"]
+
+
+class TestPlannerHardStop:
+    """#18 — the planner has no ReAct loop in CODE; the "loops forever" is the chat
+    agent re-calling the heavy (~39s) glossary_plan in a self-recheck cycle, gated only
+    by a SOFT skill rule. Logic — not the prompt — must bound it: the FIRST glossary_plan
+    a turn runs; a 2nd+ call in the SAME tool loop is short-circuited WITHOUT executing,
+    with a tool result steering the model to present/confirm the plan it already has."""
+
+    @pytest.mark.asyncio
+    async def test_second_glossary_plan_in_a_turn_is_short_circuited(self):
+        kc = AsyncMock()
+        kc.mcp_execute_tool.return_value = _envelope(success=True, result={"plan": "p"})
+        scripts = [
+            # Pass 0 — first glossary_plan: runs for real.
+            [
+                tool_frag(index=0, id="p1", name="glossary_plan"),
+                tool_frag(index=0, arguments_delta='{"book_id":"b1","goal":"design"}'),
+                done("tool_calls"),
+            ],
+            # Pass 1 — the self-recheck: a SECOND glossary_plan. Must NOT execute.
+            [
+                tool_frag(index=0, id="p2", name="glossary_plan"),
+                tool_frag(index=0, arguments_delta='{"book_id":"b1","goal":"recheck"}'),
+                done("tool_calls"),
+            ],
+            # Pass 2 — model gives up re-planning and answers.
+            [tok("here is the plan"), done("stop")],
+        ]
+        with _patch_client(scripts):
+            chunks = await _drain(_run(scripts, knowledge_client=kc))
+
+        # The planner ran EXACTLY once — the 2nd call never reached the MCP transport.
+        assert kc.mcp_execute_tool.await_count == 1
+        assert kc.mcp_execute_tool.await_args.kwargs["tool_name"] == "glossary_plan"
+
+        # The short-circuited 2nd call still surfaces a failed tool_call so the FE/model
+        # sees it, carrying guidance (not a silent drop).
+        plan_chunks = [
+            c["tool_call"] for c in chunks
+            if "tool_call" in c and c["tool_call"]["tool"] == "glossary_plan"
+        ]
+        assert len(plan_chunks) == 2
+        assert plan_chunks[0]["ok"] is True
+        assert plan_chunks[1]["ok"] is False
+        assert plan_chunks[1]["id"] == "p2"
+        assert "again" in (plan_chunks[1]["error"] or "").lower()
+
+    @pytest.mark.asyncio
+    async def test_single_glossary_plan_is_unaffected(self):
+        """The common, correct case — ONE plan per turn — runs normally."""
+        kc = AsyncMock()
+        kc.mcp_execute_tool.return_value = _envelope(success=True, result={"plan": "p"})
+        scripts = [
+            [
+                tool_frag(index=0, id="p1", name="glossary_plan"),
+                tool_frag(index=0, arguments_delta='{"book_id":"b1","goal":"design"}'),
+                done("tool_calls"),
+            ],
+            [tok("planned"), done("stop")],
+        ]
+        with _patch_client(scripts):
+            await _drain(_run(scripts, knowledge_client=kc))
+        kc.mcp_execute_tool.assert_awaited_once()
