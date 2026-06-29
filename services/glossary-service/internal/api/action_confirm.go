@@ -132,33 +132,75 @@ func (s *Server) confirmAction(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	s.dispatchConfirmEffect(w, r.Context(), claims, enabledOps)
+}
+
+// dispatchConfirmEffect runs the effect for a verified, authorized, jti-claimed token,
+// writing the effect's HTTP response to `w`. Extracted from confirmAction so the SAME
+// per-descriptor effect handlers serve BOTH the single confirm (/actions/confirm) and
+// the batch confirm (/actions/confirm-batch, #27/#29/#30): the batch path drives each
+// child token through this dispatch via a per-child recorder — no effect is rewritten.
+func (s *Server) dispatchConfirmEffect(w http.ResponseWriter, ctx context.Context, claims actionClaims, enabledOps []string) {
 	switch claims.Descriptor {
 	case descBookDelete:
-		s.effectBookDelete(w, r.Context(), claims)
+		s.effectBookDelete(w, ctx, claims)
 	case descSchemaCreateKind:
-		s.effectSchemaCreateKind(w, r.Context(), claims)
+		s.effectSchemaCreateKind(w, ctx, claims)
 	case descSchemaCreateKinds:
-		s.effectSchemaCreateKinds(w, r.Context(), claims)
+		s.effectSchemaCreateKinds(w, ctx, claims)
 	case descSchemaCreateAttr:
-		s.effectSchemaCreateAttr(w, r.Context(), claims)
+		s.effectSchemaCreateAttr(w, ctx, claims)
 	case descAdopt:
-		s.effectAdopt(w, r.Context(), claims)
+		s.effectAdopt(w, ctx, claims)
 	case descSyncApply:
-		s.effectSyncApply(w, r.Context(), claims)
+		s.effectSyncApply(w, ctx, claims)
 	case descBookRevert:
-		s.effectBookRevert(w, r.Context(), claims)
+		s.effectBookRevert(w, ctx, claims)
 	case descStatusChange:
-		s.effectStatusChange(w, r.Context(), claims)
+		s.effectStatusChange(w, ctx, claims)
 	case descRestoreRevision:
-		s.effectRestoreRevision(w, r.Context(), claims)
+		s.effectRestoreRevision(w, ctx, claims)
 	case descReassignKind:
-		s.effectReassignKind(w, r.Context(), claims)
+		s.effectReassignKind(w, ctx, claims)
 	case descMerge:
-		s.effectMerge(w, r.Context(), claims)
+		s.effectMerge(w, ctx, claims)
 	case descDeepResearch:
-		s.effectDeepResearch(w, r.Context(), claims)
+		s.effectDeepResearch(w, ctx, claims)
 	case descExecutePlan:
-		s.effectExecutePlan(w, r.Context(), claims, enabledOps)
+		s.effectExecutePlan(w, ctx, claims, enabledOps)
+	default:
+		writeError(w, http.StatusUnprocessableEntity, "GLOSS_ACTION_TOKEN", "unknown action")
+	}
+}
+
+// dispatchPreviewEffect renders the (non-consuming) current-state preview for a verified,
+// authorized token. Extracted from previewAction for the same single+batch reuse reason.
+func (s *Server) dispatchPreviewEffect(w http.ResponseWriter, ctx context.Context, claims actionClaims) {
+	switch claims.Descriptor {
+	case descBookDelete:
+		s.previewBookDelete(w, ctx, claims)
+	case descSchemaCreateKind, descSchemaCreateAttr:
+		s.previewSchemaCreate(w, claims)
+	case descSchemaCreateKinds:
+		s.previewSchemaCreateKinds(w, claims)
+	case descAdopt:
+		s.previewAdopt(w, ctx, claims)
+	case descSyncApply:
+		s.previewSyncApply(w, ctx, claims)
+	case descBookRevert:
+		s.previewBookRevert(w, ctx, claims)
+	case descStatusChange:
+		s.previewStatusChange(w, ctx, claims)
+	case descRestoreRevision:
+		s.previewRestoreRevision(w, ctx, claims)
+	case descReassignKind:
+		s.previewReassignKind(w, ctx, claims)
+	case descMerge:
+		s.previewMerge(w, ctx, claims)
+	case descDeepResearch:
+		s.previewDeepResearch(w, ctx, claims)
+	case descExecutePlan:
+		s.previewExecutePlan(w, ctx, claims)
 	default:
 		writeError(w, http.StatusUnprocessableEntity, "GLOSS_ACTION_TOKEN", "unknown action")
 	}
@@ -428,34 +470,7 @@ func (s *Server) previewAction(w http.ResponseWriter, r *http.Request) {
 	if !s.authorizeAction(w, r, userID, claims) {
 		return
 	}
-	switch claims.Descriptor {
-	case descBookDelete:
-		s.previewBookDelete(w, r.Context(), claims)
-	case descSchemaCreateKind, descSchemaCreateAttr:
-		s.previewSchemaCreate(w, claims)
-	case descSchemaCreateKinds:
-		s.previewSchemaCreateKinds(w, claims)
-	case descAdopt:
-		s.previewAdopt(w, r.Context(), claims)
-	case descSyncApply:
-		s.previewSyncApply(w, r.Context(), claims)
-	case descBookRevert:
-		s.previewBookRevert(w, r.Context(), claims)
-	case descStatusChange:
-		s.previewStatusChange(w, r.Context(), claims)
-	case descRestoreRevision:
-		s.previewRestoreRevision(w, r.Context(), claims)
-	case descReassignKind:
-		s.previewReassignKind(w, r.Context(), claims)
-	case descMerge:
-		s.previewMerge(w, r.Context(), claims)
-	case descDeepResearch:
-		s.previewDeepResearch(w, r.Context(), claims)
-	case descExecutePlan:
-		s.previewExecutePlan(w, r.Context(), claims)
-	default:
-		writeError(w, http.StatusUnprocessableEntity, "GLOSS_ACTION_TOKEN", "unknown action")
-	}
+	s.dispatchPreviewEffect(w, r.Context(), claims)
 }
 
 // previewSyncApply re-renders the sync confirm card from CURRENT state (§5.1 #5):

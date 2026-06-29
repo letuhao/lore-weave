@@ -64,6 +64,12 @@ const (
 	// enabled_ops at confirm). MUST equal loreweave_mcp.DescriptorExecutePlan.
 	descExecutePlan = "execute_plan"
 
+	// #27/#29/#30 coalesce — the chat run-loop bundles the N child confirm_tokens a turn
+	// minted into ONE card; the FE confirms/previews the bundle at /actions/(confirm|preview)
+	// -batch. descBatch is ONLY a response/card label — no token is ever signed with it (the
+	// children keep their own descriptors); it tells the FE to route to the batch endpoints.
+	descBatch = "glossary.batch"
+
 	// T4 — System-tier admin writes (authorityAdmin only; confirmed via the
 	// RS256-gated /v1/glossary/actions/admin/confirm, never the user path). Verb is
 	// the descriptor, entity is the `level` in params (genre|kind|attribute).

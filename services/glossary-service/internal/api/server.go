@@ -204,6 +204,10 @@ func (s *Server) Router() http.Handler {
 		// the retired /schema/confirm. /preview is non-consuming (current-state card).
 		r.Post("/actions/confirm", s.confirmAction)
 		r.Post("/actions/preview", s.previewAction)
+		// #27/#29/#30 coalesce — ONE human card commits/previews the N child tokens a chat
+		// turn minted (the run-loop bundles strays). Reuses the per-descriptor effects above.
+		r.Post("/actions/confirm-batch", s.confirmActionBatch)
+		r.Post("/actions/preview-batch", s.previewActionBatch)
 		// T4 — System-tier admin confirm path, RS256-gated (requireAdminScope inside),
 		// SEPARATE from the HS256 user /actions/confirm above. The MCP admin tools
 		// propose (authorityAdmin token); a human admin confirms a System write here.
