@@ -28,6 +28,7 @@ retrieve() degrades to genre+tension ordering over the SAME pre-filtered set —
 from __future__ import annotations
 
 import json
+import logging
 import math
 from typing import Any
 from uuid import UUID
@@ -36,8 +37,13 @@ import asyncpg
 
 from app.clients.embedding_client import EmbeddingError
 from app.config import settings
-from app.db.models import Motif, MotifCandidate
-from app.engine.motif_embed import EmbedConfigError, embed_query
+from app.db.models import ArcCandidate, ArcTemplate, Motif, MotifCandidate
+from app.engine.motif_embed import (
+    EmbedConfigError, _platform_embed_model, arc_summary_text, embed_motif_summary,
+    embed_query, summary_hash,
+)
+
+logger = logging.getLogger(__name__)
 
 # The retrieve projection — same columns as MotifRepo._SELECT_COLS PLUS `embedding`
 # (loaded ONLY for the bounded candidate set; the vector never leaves this repo — the
@@ -59,6 +65,20 @@ _JSONB_FIELDS = (
 # MotifRepo's _VISIBLE_PREDICATE (one predicate, two call sites → a retrieved candidate
 # is provably also get_visible by id; no ghost, no IDOR via the rank path; audit B-2).
 _VISIBLE_PREDICATE = "(owner_user_id IS NULL OR visibility = 'public' OR owner_user_id = $1)"
+
+# arc retrieve projection (D-ARC-RETRIEVE) — the ArcTemplate model shape PLUS `embedding`
+# (loaded only for the bounded set; never returned). Mirrors arc_template_repo._SELECT_COLS.
+_ARC_RETRIEVE_COLS = """
+  id, owner_user_id, code, language, visibility, name, summary, genre_tags,
+  chapter_span, threads, layout, pacing, arc_roster, source, imported_derived,
+  source_ref, source_version, embedding_model, embedding_dim, status, version,
+  created_at, updated_at, embedded_summary_hash, embedding
+"""
+_ARC_JSONB_FIELDS = ("threads", "layout", "pacing", "arc_roster")
+# Cap inline NULL-vector back-fills per retrieve call so one cold suggest can't fan out an
+# unbounded number of embed round-trips (arcs are few; the rest rank on genre this call and
+# back-fill on the next).
+_ARC_BACKFILL_CAP = 16
 
 # Map a motif tension_target (SMALLINT 1..5) to the EXISTING chapter 0..100 scale
 # (plan_high_tension_threshold=70). W3 only REPORTS this band-fit in match_reason; W2
@@ -148,6 +168,19 @@ def _row_to_motif(row: dict[str, Any] | asyncpg.Record) -> Motif:
         if isinstance(v, str):
             data[f] = json.loads(v)
     return Motif.model_validate(data)
+
+
+def _row_to_arc(row: dict[str, Any] | asyncpg.Record) -> ArcTemplate:
+    """Build an ArcTemplate WITHOUT the embedding/hash (server-side only), mirroring
+    `_row_to_motif`. JSONB columns asyncpg returns as str → json.loads."""
+    data = dict(row)
+    data.pop("embedding", None)
+    data.pop("embedded_summary_hash", None)
+    for f in _ARC_JSONB_FIELDS:
+        v = data.get(f)
+        if isinstance(v, str):
+            data[f] = json.loads(v)
+    return ArcTemplate.model_validate(data)
 
 
 class MotifRetriever:
@@ -250,6 +283,112 @@ class MotifRetriever:
             t[1],
         ))
         return [c for _rank, _code, c in scored[: max(0, limit)]]
+
+    # ── arc retrieval (D-ARC-RETRIEVE) — mirrors motif retrieve over arc_template ──────
+    async def retrieve_arcs(
+        self, caller_id: UUID, *, book_id: UUID | None = None,
+        project_id: UUID | None = None, premise: str | None = None,
+        genre: str | None = None, limit: int = 5,
+    ) -> list[ArcCandidate]:
+        """Tier-merged, SQL-pre-filtered, cosine-ranked arc_template candidates for a Work
+        (composition_arc_suggest). Returns up to `limit` ArcCandidate (arc + score +
+        match_reason={genre,cosine[,degraded]}), highest score first.
+
+        Same shape as `retrieve()` with two arc-specific choices: (a) NO language filter —
+        arc suggest is exploratory across languages (cosine is one space, B-1); (b) a
+        NULL-embedding arc is LAZILY back-filled inline (bounded, best-effort) rather than
+        skipped — arcs are few and there is no separate back-fill worker, so this is where a
+        seeded/imported arc earns its vector. An arc that still has no vector ranks on genre
+        (never dropped — suggest must surface options)."""
+        ceiling = settings.motif_candidate_ceiling
+        genre_tags = [genre] if genre else []
+        rows = await self._fetch_arc_candidates(caller_id, genre_tags, ceiling)
+        if not rows:
+            return []
+
+        qtext = " ".join(p for p in [premise or "", genre or ""] if p).strip()
+        qvec: list[float] | None = None
+        if qtext:
+            try:
+                qvec = await embed_query(qtext)
+            except (EmbeddingError, EmbedConfigError):
+                qvec = None  # degrade to genre order (R4) — never 500/[]
+
+        backfilled = 0
+        scored: list[tuple[float, str, ArcCandidate]] = []
+        for r in rows:
+            genre_s = _genre_overlap(list(r["genre_tags"]), genre_tags)
+            vec = r["embedding"]
+            if vec is None and qvec is not None and backfilled < _ARC_BACKFILL_CAP:
+                vec = await self._embed_and_persist_arc(r)  # best-effort; None on failure
+                if vec is not None:
+                    backfilled += 1
+            if qvec is not None and vec is not None:
+                cos = _cosine(qvec, list(vec))
+                rank, degraded = cos, False
+            else:
+                cos, rank, degraded = 0.0, genre_s, True  # genre order (R4 / unembedded)
+            arc = _row_to_arc(r)
+            reason: dict[str, Any] = {"genre": genre_s, "cosine": cos}
+            if degraded:
+                reason["degraded"] = True
+            scored.append((rank, arc.code, ArcCandidate(
+                arc_template=arc, score=rank, match_reason=reason,
+            )))
+
+        # rank DESC, deterministic tie-break (cosine/genre desc, then code asc). No hard
+        # min_score floor — arc suggest is exploratory; the caller picks from the top-N.
+        scored.sort(key=lambda t: (-t[0], t[1]))
+        return [c for _rank, _code, c in scored[: max(0, limit)]]
+
+    async def _fetch_arc_candidates(
+        self, caller_id: UUID, genre_tags: list[str], ceiling: int,
+    ) -> list[asyncpg.Record]:
+        """The arc BOUNDING query — `arc_template` under the SAME read predicate as motifs.
+        $1 caller_id · $2 ceiling · $3 genres (only when non-empty). No language clause
+        (arc suggest spans languages)."""
+        params: list[Any] = [caller_id, max(0, ceiling)]
+        genre_clause = ""
+        if genre_tags:
+            params.append(list(genre_tags))
+            genre_clause = f"  AND genre_tags && ${len(params)}::text[]\n"
+        sql = f"""
+        SELECT {_ARC_RETRIEVE_COLS}
+        FROM arc_template
+        WHERE status = 'active'
+{genre_clause}          AND {_VISIBLE_PREDICATE}
+        ORDER BY
+          (owner_user_id = $1) DESC NULLS LAST,
+          updated_at DESC
+        LIMIT $2
+        """
+        async with self._pool.acquire() as c:
+            return await c.fetch(sql, *params)
+
+    async def _embed_and_persist_arc(self, row: asyncpg.Record) -> list[float] | None:
+        """Lazy inline back-fill of one NULL-embedding arc (best-effort). Embeds the
+        canonical arc text with the platform model and writes the vector + model + hash in
+        ONE statement; returns the vector (or None on any embed/config failure — the caller
+        then ranks the arc on genre). Idempotent: a concurrent back-fill just rewrites the
+        same vector. The model is platform config (B-1), never a per-row choice."""
+        try:
+            arc = _row_to_arc(row)
+            text = arc_summary_text(arc)
+            if not text:
+                return None
+            res = await embed_motif_summary(text)
+            vec = res.embeddings[0]
+            ref = _platform_embed_model()[1]  # the platform model id → embedding_model col
+            async with self._pool.acquire() as c:
+                await c.execute(
+                    "UPDATE arc_template SET embedding = $2::real[], embedding_model = $3, "
+                    "embedding_dim = $4, embedded_summary_hash = $5 WHERE id = $1",
+                    row["id"], list(vec), ref, len(vec), summary_hash(text),
+                )
+            return vec
+        except (EmbeddingError, EmbedConfigError) as exc:
+            logger.warning("arc embed back-fill skipped for %s: %r", row["id"], exc)
+            return None
 
     async def _fetch_candidates(
         self, caller_id: UUID, genre_tags: list[str], language: str, ceiling: int,

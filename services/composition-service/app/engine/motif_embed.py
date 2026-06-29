@@ -41,6 +41,7 @@ from app.config import settings
 __all__ = [
     "EmbedConfigError",
     "motif_summary_text",
+    "arc_summary_text",
     "summary_hash",
     "embed_motif_summary",
     "embed_query",
@@ -96,6 +97,31 @@ def motif_summary_text(motif_like: Any) -> str:
         parts.append(_beat_attr(b, "label"))
         parts.append(_beat_attr(b, "intent"))
     return "\n".join(p for p in parts if p).strip()
+
+
+def arc_summary_text(arc_like: Any) -> str:
+    """The canonical text embedded for an arc_template (D-ARC-RETRIEVE). Stable +
+    deterministic: name + summary + the ordered thread labels + the member-motif codes
+    from the layout. Threads + members ARE part of an arc's identity — two arcs with the
+    same summary but different threads/motifs embed differently. Same platform model as
+    motifs (B-1: one space), so arc queries and arc vectors stay comparable.
+
+    `arc_like` has `.name`, `.summary`, `.threads` ([{key,label}]), `.layout`
+    ([{motif_code,...}]) — an ArcTemplate model or a create-args-derived object."""
+    parts: list[str] = [_attr(arc_like, "name"), _attr(arc_like, "summary")]
+    for t in (_attr(arc_like, "threads") or []):
+        parts.append(_beat_attr(t, "label"))
+    for p in (_attr(arc_like, "layout") or []):
+        parts.append(_beat_attr(p, "motif_code"))
+    return "\n".join(p for p in parts if p).strip()
+
+
+async def embed_arc_summary(text: str) -> EmbeddingResult:
+    """Embed an arc_template's canonical text with the PLATFORM model — the exact same
+    path as `embed_motif_summary` (one model, one space, B-1). Kept as a named alias so
+    arc back-fill reads clearly at the call site; raises EmbeddingError on a provider
+    failure (the retrieve back-fill treats it as best-effort)."""
+    return await embed_motif_summary(text)
 
 
 def summary_hash(text: str) -> str:

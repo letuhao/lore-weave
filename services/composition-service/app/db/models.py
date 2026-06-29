@@ -481,6 +481,13 @@ class MotifCandidate(BaseModel):
     match_reason: dict[str, Any] = Field(default_factory=dict)   # {tension, genre, precond, cosine}
 
 
+# ── arc retrieval result (D-ARC-RETRIEVE — composition_arc_suggest consumes this)
+class ArcCandidate(BaseModel):
+    arc_template: ArcTemplate
+    score: float
+    match_reason: dict[str, Any] = Field(default_factory=dict)   # {genre, cosine[, degraded]}
+
+
 # ── WRITE-ARG models (ForbidExtra — owner is NEVER an arg; the repo stamps it; there
 # is NO embedding-model arg — the model is platform config, never a write choice, B-1)
 class MotifCreateArgs(_ForbidExtra):
