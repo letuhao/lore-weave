@@ -170,6 +170,38 @@ is "so huge." The temporal model bounds it the same way it bounds extraction.
 + relevant as-of facts + (already) a rolling summary, and translates **immutable units once**. No path
 ever feeds it an accumulated monolith.
 
+## 6C. Consumers & blast radius (this is a foundational layer change)
+
+The glossary/KG layer is read/written by **most of the platform**, so this design touches them all.
+That is the *point* (one consistent, bounded, time-traveled knowledge layer for everyone) **and** the
+main risk (broad blast radius). Manage it with a **backward-compat projection** (below), not a big-bang.
+
+| Consumer (verified in code) | Role | Affected by this design |
+|---|---|---|
+| **extraction** (translation-svc) | producer | emits bi-temporal facts cited to episodes (the just-shipped clean pipeline feeds this) |
+| **lore-enrichment-service** (`grounding`, `compose_task`, `book_profile`) | reader **+** producer | grounding reads **bounded, as-of** context (no 50 MB blob); enrichments become **cited bi-temporal facts** (not flat overwrites that erase history) |
+| **composition-service** (co-writer: `plan.py`, `knowledge_client`, `glossary_client`, `style_voice`) | reader **+** producer | **the biggest reader** — must inject canon/KG **as-of the draft's chapter** (spoiler-free, period-correct, bounded) instead of the whole accumulated state; the canon flywheel writes facts valid-from that chapter |
+| **wiki** (glossary-svc `wiki_*`) | reader **+** producer | generate articles from the **bounded canonical + as-of**, not a monolith |
+| **chat / roleplay** (`frontend_tools`, `stream_service`) | reader | Q&A / character voice via **retrieval + as-of** (roleplay a character *as they were at ch.N*) |
+| **search / catalog** | reader | semantic search over **episode/segment embeddings** |
+| **translation** (§6B) | reader | bounded, as-of, immutable-once |
+
+**Per-consumer win (why it's worth the blast radius):** every feature gets **consistency** (one
+canon), **bounding** (no context bloat), and **time-travel** (as-of) *for free* — spoiler-free
+composition, period-correct translation, accurate wiki, grounded enrichment.
+
+### Migration strategy — projection, not big-bang
+The old flat reads (`entity.description`, current EAV, the current KG) become a **stable "current"
+projection** of the new facts (latest-valid facts where `invalidated_at IS NULL`). So:
+- **Existing consumers keep working unchanged** against the projection during the transition.
+- **New / upgraded consumers** opt into the temporal API (`as-of`, `timeline`, `retrieval`).
+- Migration is **per-consumer and incremental** — no service must change on day one. This is what
+  makes a layer-wide change tractable.
+
+> **Open question (add to §9):** define the **knowledge-layer read/write API** (the projection +
+> the temporal endpoints) as the stable contract before any consumer migrates — so the blast radius
+> is mediated by one versioned interface, not N ad-hoc reads.
+
 ## 7. FE impact
 
 The FE must stop assuming "one entity = one current value." New surfaces:
@@ -222,6 +254,13 @@ invalidation** on facts/EAV/edges, the **fold-forward** batched job, and the **F
    pulls the full book glossary before client-side filtering — if so, move the occurrence/as-of filter
    server-side. (The chapter-occurrence filter + rolling summary already exist; this adds the as-of
    bound + the bounded-canonical/immutable-unit translation.)
+9. **Knowledge-layer API contract (§6C blast-radius gate)** — define the stable read/write interface
+   FIRST: (a) the backward-compat **"current" projection** the old flat reads keep using; (b) the new
+   **temporal endpoints** (`as_of=N`, `timeline`, `retrieve(entity, query)`, `append_fact`,
+   `retract_fact`). Versioned, owned by glossary-svc (SSOT) + knowledge-svc (KG). Every consumer
+   (enrichment, composition, wiki, chat, translation) migrates against THIS, not ad-hoc reads — so the
+   blast radius is mediated by one contract. Sequence: ship the layer + projection → migrate consumers
+   one at a time (composition first, biggest win).
 
 ## 10. Why this is the right call
 
