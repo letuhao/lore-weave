@@ -127,6 +127,35 @@ audit/time-travel), never deleted. **Run #2 did NOT exercise this** — it re-ex
 | **Deep dive ("his powers")** | **semantic retrieval over episodes/segments** (embeddings) → top-K relevant, not full-scan. |
 | **Full export** | stream facts ordered by `valid_from` — bounded per page. |
 
+### 5B. Researching a LARGE entity (the read UX — you never load it all)
+
+An entity with thousands of facts across 4,000 chapters is **never loaded whole**. Three bounded modes:
+
+1. **Default (no range) → the newest bounded state.** Opening the entity loads only: the **latest
+   canonical snapshot** (~500 words, one row), the **current facts** (latest-valid value *per
+   attribute*, not all history), and a short **recent-changes tail**. O(1) regardless of book length.
+   → *"without selecting a range, you get the most recent / current state."*
+2. **Range select → time-travel (optional).** A chapter slider / arc picker loads the **as-of-N**
+   view: facts where `valid_from ≤ N < valid_to` + the snapshot with `ordinal ≤ N`. Only when you
+   want a *period* (development view, "around ch.500"), not the current state.
+3. **Topic / question → semantic retrieval.** A question ("his powers?", "bond with 苏挽月?") does
+   **RAG over the entity's embedded segments** → top-K relevant chunks → synthesize. Never a scroll.
+
+**Chunk-load technique:** the full timeline is **cursor-paginated by chapter ordinal, newest-first**
+(scroll back for older windows); topic reads are **vector top-K**; period reads are **indexed range
+queries** on `(entity_id, valid_from)`. All bounded — no query ever returns the whole history.
+
+| Intent | Loads | Cost |
+|---|---|---|
+| who-is-this-now (default) | latest canonical + current facts | O(1) |
+| at chapter N / this arc | facts valid-in-range + as-of snapshot | indexed range |
+| tell me about X | top-K retrieved segments | vector top-K |
+| scroll whole history | windowed pages, newest-first | cursor page |
+
+(Partly exists: the KG timeline already has pagination + chapter/date filters — #12/#15 — reuse it.)
+An LLM agent "researching" the entity uses the **same** path: canonical as the entry, retrieval for
+detail, optional as-of range — it is never handed the monolith either.
+
 ## 6. Applies to BOTH glossary and KG (the unifying point)
 
 - **Glossary**: an entity's attribute values become bi-temporal facts; `description` is a folded
