@@ -114,6 +114,9 @@ var chain = []Step{
 	// bi-temporal fact so the derived projection is byte-identical to the pre-migration
 	// flat store on day one. Spec §12.5.4 / dec-5.
 	{"0046_facts_cold_start", UpFactsColdStart},
+	// Temporal-knowledge F2 — the canonical as a lazy, versioned, regenerable CACHE
+	// (canonical_snapshot rows + per-entity canonical_fold_state). Spec §12.1 (B0 LOCKED).
+	{"0047_canonical_snapshot", UpCanonicalSnapshot},
 }
 
 // EnsureLedger creates the schema_migrations bookkeeping table. Idempotent; must run
