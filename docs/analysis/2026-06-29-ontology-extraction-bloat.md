@@ -371,6 +371,38 @@ kind over-extraction which was model-sensitive (clear on gemma, muted on qwen).
 
 ---
 
+## 10. PRODUCTION VALIDATION — real run on book 019efae6 (万古神帝), 20 chapters, gemma
+
+Implemented fixes #3 (precision-filter prompt) + #4 (drop `relationship` kind) in
+`translation-service` (commit on `feat/extraction-quality`), rebuilt + redeployed the
+translation worker, deleted the book's **15,947** old entities, and ran a **build → re-extract**
+A/B on the first 20 chapters using the owner's `google/gemma-4-26b-a4b-qat`.
+
+| | Old (proportional, 20 ch) | **Run #1 (build)** | **Run #2 (re-extract)** |
+|---|---|---|---|
+| Entities | ~452 (22.6/ch) | **302 (15.1/ch, −33%)** | **308** (+6, flat) |
+| `relationship` kind | ~135 | **0** ✅ | **0** ✅ |
+| Same-name duplicates | — | — | **0** ✅ |
+| Cross-kind dup groups | 464 (book-wide 1,333 rows) | — | **0** ✅ |
+| Batches / chapter | 4 | **3** (relationship dropped) | 3 |
+
+**Findings (all confirmed on real data):**
+1. **`relationship` flood eliminated** — 0 relationship entities (was 4,789 book-wide / ~135 for
+   20 ch). Fix #4 works in production.
+2. **−33% over-extraction** — 15.1 entities/ch vs the old 22.6, with a *healthier* mix (character
+   44 > the old proportional ~24; more real entities, less noise). Fix #3 + #4.
+3. **Re-extraction does NOT over-extract** — a full re-extract of all 20 chapters took the count
+   from 302 → **308** (not ~600), with **0 same-name and 0 cross-kind duplicates**. The write-time
+   resolver + cross-kind merge (`#43`) hold perfectly → the **"raw extract → merge" architecture is
+   validated end-to-end**.
+
+**Residual (follow-ups):** ~8% of names still contain `与` (25/308) — these are `event`-kind
+descriptive phrases (not `relationship`, which is 0), so **`event`** is the next candidate to
+reconsider (route to KG temporal nodes, like `relationship`→edges). And the KG `anchor_loader`
+(uncapped 15k injection, a separate path from the already-capped glossary worker) still needs a cap.
+
+---
+
 ## Appendix — full kind tables
 
 ### Book 1 (`019f0820…`, 10 ch, 3,187 entities, 30 kinds, all `universal` genre)
