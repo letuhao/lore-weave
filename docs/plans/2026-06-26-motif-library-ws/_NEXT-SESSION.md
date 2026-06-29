@@ -1,5 +1,40 @@
 # ▶ NEXT SESSION — Narrative Motif Library BUILD (handoff)
 
+## STATUS (2026-06-29 PM-27) — the OTHER two bridge paths (mine + arc-import) live-smoked; a real BYOK model_ref gap found + fixed
+
+Live-tested the remaining two FE→MCP-tool bridge Tier-W paths the user asked about (adopt / mine /
+arc-import). **adopt** already worked (a 409 was just a prior-session clone collision — correct
+idempotency). **mine + arc-import both FAILED** at the worker with `no abstraction/deconstruct
+model_ref resolved` — and the root cause was a real gap:
+
+- **🐛 `D-MOTIF-MINE-IMPORT-MODELREF` ✅ FIXED** — `composition_motif_mine` + `composition_arc_import_analyze`
+  never accepted or threaded a BYOK `model_ref`/`model_source`. Their workers resolve
+  `input.get("model_ref") or settings.motif_deconstruct_model_ref` ([motif_mine.py:498](../../services/composition-service/app/engine/motif_mine.py#L498),
+  [motif_deconstruct.py:657](../../services/composition-service/app/engine/motif_deconstruct.py)), but
+  the propose tools put nothing in the payload and the platform fallback is unset (a platform-default
+  model ref would violate BYOK/no-hardcoded-model — there's no sensible default). So both Tier-W LLM
+  jobs were **unrunnable from the bridge**. This is the exact gap the deep-conformance fix closed for
+  `conformance_run`, left behind on the other two. Fix (3 sites each, mirroring conformance): added
+  `model_ref`/`model_source` to `_MotifMineArgs` + `_ArcImportArgs`, into both minted token payloads
+  ([server.py](../../services/composition-service/app/mcp/server.py)), and threaded payload→job-spec in
+  `_execute_motif_mine` + `_execute_arc_import` ([actions.py](../../services/composition-service/app/routers/actions.py)).
+  Worker code unchanged (already reads the input). +2 unit tests assert the token payload carries the
+  BYOK model.
+- **LIVE-SMOKE ✅ (rebuilt composition-service)** — all three bridge paths PASS end-to-end:
+  **adopt** → bridge propose → JWT confirm → `action_done` + synchronous clone (cleaned up);
+  **mine** → propose(+model_ref) → confirm `action_accepted` + job → **completed** (`mined=0,
+  reason=beat_extractor_unavailable` — the documented `D-W8-MOTIF-BEAT-EXTRACTOR` degrade; the job got
+  *past* the model_ref fail-closed guard that previously blocked it);
+  **arc-import** → propose(+model_ref) → confirm + job → **completed** with a real Qwen2.5-derived
+  `arc_template_id` + `motif_ids` (the LLM 拆文 actually ran — unambiguous proof the model_ref now
+  resolves). VERIFY: **1083 composition unit tests green** (+2), provider-gate clean.
+
+**▶ Remaining (unchanged, all non-code):** the `motif_beat` extractor itself (`D-W8-MOTIF-BEAT-EXTRACTOR`
+— a knowledge-service map-extractor; until it ships, mine clean-degrades to `mined:0`), the other
+live-smokes needing a tagged corpus (THREAD-TAG/PRODUCER/CHAIN), `D-THREAD-TAG-CALIBRATION` (human
+labeling), `D-MOTIF-PGVECTOR-TRIGGER` (perf), `D-MOTIF-ADOPT-PER-BOOK` (schema). NONE are unbuilt code
+on this branch's bridge surface.
+
 ## STATUS (2026-06-28 PM-26) — deep arc-conformance happy-path PROVEN end-to-end + a real billing bug fixed; conformance flags flipped ON
 
 The user opted to push the optional items. Both done — and the live smoke earned its keep by

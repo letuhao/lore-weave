@@ -1588,6 +1588,12 @@ class _MotifMineArgs(ForbidExtra):
     min_support: int = 2
     promote_to: Literal["draft"] = "draft"
     language: str = "en"
+    # The BYOK abstraction/judge model the worker runs (provider-gateway invariant: NO
+    # platform model literal — the user picks it, same as conformance's deep overlay).
+    # Required at run: the worker fails closed if neither this nor the platform fallback
+    # (settings.motif_deconstruct_model_ref) resolves a ref.
+    model_ref: str | None = None
+    model_source: str | None = None
 
 
 @mcp_server.tool(
@@ -1622,6 +1628,9 @@ async def composition_motif_mine(ctx: MCPContext, args: _MotifMineArgs) -> dict:
         "min_support": args.min_support,
         "promote_to": args.promote_to,
         "language": args.language,
+        # BYOK abstraction model rides through to the worker (provider-gateway invariant).
+        "model_ref": args.model_ref,
+        "model_source": args.model_source,
         "estimate_usd": estimate["estimated_usd"],
     }
     # resource_id binds the token: the named book for scope='book', else the user.
@@ -1648,6 +1657,12 @@ class _ArcImportArgs(ForbidExtra):
     # tagged 'en' is a re-key migration later). The deconstruct threads this onto the
     # derived arc_template + member motifs.
     language: str = "en"
+    # The BYOK deconstruct model the worker runs (provider-gateway invariant: NO platform
+    # model literal — the user picks it, same as conformance's deep overlay). Required at
+    # run: the worker fails closed if neither this nor settings.motif_deconstruct_model_ref
+    # resolves a ref.
+    model_ref: str | None = None
+    model_source: str | None = None
 
 
 @mcp_server.tool(
@@ -1678,6 +1693,9 @@ async def composition_arc_import_analyze(ctx: MCPContext, args: _ArcImportArgs) 
         "use_web": args.use_web,
         "arc_hint": args.arc_hint,
         "language": args.language,
+        # BYOK deconstruct model rides through to the worker (provider-gateway invariant).
+        "model_ref": args.model_ref,
+        "model_source": args.model_source,
         "estimate_usd": estimate["estimated_usd"],
     }
     confirm_token = mint_confirm_token(

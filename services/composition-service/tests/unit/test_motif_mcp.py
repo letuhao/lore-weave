@@ -36,6 +36,7 @@ BOOK = uuid.UUID("cccccccc-cccc-cccc-cccc-cccccccccccc")
 PROJECT = uuid.UUID("dddddddd-dddd-dddd-dddd-dddddddddddd")
 NODE = uuid.UUID("eeeeeeee-eeee-eeee-eeee-eeeeeeeeeeee")
 OTHER_PROJECT = uuid.UUID("ffffffff-ffff-ffff-ffff-ffffffffffff")
+MODEL_REF = uuid.UUID("11111111-2222-3333-4444-555555555555")  # a BYOK user_model id
 
 MOTIF_TOOLS = {
     "composition_motif_search", "composition_motif_get",
@@ -466,12 +467,18 @@ async def test_mine_propose_mints_token_with_estimate():
 
     async with _patched(grant_level=2):
         res = await srv.composition_motif_mine(
-            _Ctx(), srv._MotifMineArgs(scope="book", book_id=str(BOOK)),
+            _Ctx(), srv._MotifMineArgs(scope="book", book_id=str(BOOK),
+                                       model_ref=str(MODEL_REF), model_source="user_model"),
         )
     assert res["descriptor"] == "composition.motif_mine"
     assert res["estimate"]["estimated_usd"] > 0
     claims = verify_confirm_token(settings.confirm_token_signing_secret, res["confirm_token"])
     assert claims.payload["scope"] == "book"
+    # BYOK abstraction model is minted into the token payload so the worker can resolve it
+    # (provider-gateway invariant — no platform model literal). The confirm effect threads
+    # it into the job spec; the worker fails closed without it.
+    assert claims.payload["model_ref"] == str(MODEL_REF)
+    assert claims.payload["model_source"] == "user_model"
 
 
 async def test_mine_book_requires_book_id():
@@ -480,6 +487,29 @@ async def test_mine_book_requires_book_id():
     async with _patched(grant_level=2):
         res = await srv.composition_motif_mine(_Ctx(), srv._MotifMineArgs(scope="book"))
     assert res["success"] is False
+
+
+async def test_arc_import_propose_threads_model_ref():
+    """The arc-import propose mints the BYOK deconstruct model into the token payload
+    (provider-gateway invariant) so the worker can resolve it — same as mine/conformance.
+    Without it the deconstruct fails closed (no model literal in worker code)."""
+    import app.mcp.server as srv
+    from loreweave_mcp import verify_confirm_token
+    from app.config import settings
+
+    async def _owner(tc, isid):  # the per-user import_source owner guard resolves to caller
+        return TEST_USER
+
+    async with _patched(grant_level=2):
+        with patch.object(srv, "_import_source_owner", side_effect=_owner):
+            res = await srv.composition_arc_import_analyze(
+                _Ctx(), srv._ArcImportArgs(import_source_id=str(IMPORT_SOURCE),
+                                           model_ref=str(MODEL_REF), model_source="user_model"),
+            )
+    assert res["descriptor"] == "composition.arc_import"
+    claims = verify_confirm_token(settings.confirm_token_signing_secret, res["confirm_token"])
+    assert claims.payload["model_ref"] == str(MODEL_REF)
+    assert claims.payload["model_source"] == "user_model"
 
 
 async def test_get_mine_job_foreign_project_uniform():

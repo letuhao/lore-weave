@@ -564,6 +564,10 @@ async def _execute_motif_mine(
             "min_support": payload.get("min_support"),
             "promote_to": payload.get("promote_to"),
             "language": payload.get("language"),
+            # BYOK abstraction/judge model rides through (provider-gateway invariant); the
+            # worker fails closed if neither this nor the platform fallback resolves a ref.
+            "model_ref": payload.get("model_ref"),
+            "model_source": payload.get("model_source"),
         },
     )
     return {
@@ -605,6 +609,10 @@ async def _execute_arc_import(
             "use_web": payload.get("use_web"),
             "arc_hint": payload.get("arc_hint"),
             "language": payload.get("language") or "en",
+            # BYOK deconstruct model rides through (provider-gateway invariant); the worker
+            # fails closed if neither this nor the platform fallback resolves a ref.
+            "model_ref": payload.get("model_ref"),
+            "model_source": payload.get("model_source"),
         },
     )
     return {
