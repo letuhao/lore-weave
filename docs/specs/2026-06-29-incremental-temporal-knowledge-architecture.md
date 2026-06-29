@@ -137,6 +137,39 @@ audit/time-travel), never deleted. **Run #2 did NOT exercise this** — it re-ex
   to this model (relations get validity intervals; community/canonical summaries are folded snapshots).
 - One ingest pipeline, two projections (glossary EAV view + Neo4j graph view).
 
+## 6B. Translation — same bounded principle (input side)
+
+Translation **consumes** this knowledge to stay consistent (names, terminology, relationships), so it
+has the **same context-bloat risk** on the *input* side: injecting accumulated glossary/KG data that
+is "so huge." The temporal model bounds it the same way it bounds extraction.
+
+**What already exists (keep + build on):**
+- Chapter translation fetches glossary **scoped to the chapter** (`fetch_translation_glossary(chapter_id)`)
+  and `build_glossary_context` **scores entities by occurrence in the chapter text** — it injects only
+  terms that actually appear, not all 15,947. ✅
+- A **rolling summary** across batches (`session_translator`) — already the incremental-summary pattern. ✅
+- `chapter_translation_glossary_usage` records which entities a chapter used (targeted re-translate). ✅
+
+**Where it still bloats / must change under this design:**
+1. **Translate BOUNDED units, never the accumulated blob.** A glossary entity's `description` under
+   the flat-field model can be the 50 MB monolith → translating it bloats. Translate the **bounded
+   canonical snapshot** + each **immutable episode/segment summary** instead. Because segments/snapshots
+   are **immutable**, each is translated **exactly once** and cached (re-translate only on a new
+   revision) — translation cost scales with *distinct bounded units*, not accumulated size.
+2. **Inject AS-OF-CHAPTER state (spoiler-free + bounded).** When translating chapter N, inject the
+   relevant entities' canonical/facts **valid as of N** (`valid_from ≤ N`), not their final ch.4,000
+   state. Time-travel (§5) makes this a cheap projection and **prevents spoilers + anachronistic terms**
+   (a ch.300 translation must not use a name/title the character only earns at ch.4,000).
+3. **Bound the KG context too.** If/when translation uses KG relationships for disambiguation, inject
+   only the **relevant edges as-of-N** (retrieved by the chapter's entities), never the whole graph.
+4. **Verify the fetch is truly chapter-bounded** end-to-end (the scoring is client-side; confirm the
+   endpoint doesn't pull the full book glossary before filtering — if it does, push the occurrence/
+   as-of filter server-side).
+
+**Net:** translation reuses the *same three append-only layers* — it reads bounded canonical snapshots
++ relevant as-of facts + (already) a rolling summary, and translates **immutable units once**. No path
+ever feeds it an accumulated monolith.
+
 ## 7. FE impact
 
 The FE must stop assuming "one entity = one current value." New surfaces:
@@ -183,6 +216,12 @@ invalidation** on facts/EAV/edges, the **fold-forward** batched job, and the **F
    episode-scoped reconciler. Decide: does an editorial re-run (better model, same text) also retract,
    or only TEXT edits? (Proposal: text-edit → full diff+retract; same-text re-run → update-only, no
    retract, to avoid churn.)
+8. **Translation as-of-chapter + immutable-once (§6B)** — confirm: translate chapter N against the
+   entity state **valid as of N** (spoiler-free), and translate immutable canonical/segment summaries
+   **once** (cache, re-translate only on a new revision). Audit whether `fetch_translation_glossary`
+   pulls the full book glossary before client-side filtering — if so, move the occurrence/as-of filter
+   server-side. (The chapter-occurrence filter + rolling summary already exist; this adds the as-of
+   bound + the bounded-canonical/immutable-unit translation.)
 
 ## 10. Why this is the right call
 
