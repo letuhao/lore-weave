@@ -173,6 +173,20 @@
     "reprice_title": "コストが変わりました — 未適用",
     "reprice_detail": "見積もり {{old}}、現在 {{new}}。費用は発生していません — 新しい価格で再確認するにはもう一度依頼してください。"
   },
+  "batchConfirm": {
+    "title": "{{count}} 件の操作をまとめて確認",
+    "action": "操作",
+    "warning": "これらの重要な変更は確認時にまとめて適用されます。",
+    "warning_destructive": "一部は破壊的です — 確認前に内容をご確認ください。",
+    "confirm_all": "すべて確認",
+    "cancel": "キャンセル",
+    "applied": "{{count}} 件の操作を適用しました",
+    "partial": "{{applied}} 件適用、{{failed}} 件失敗 — 残りはもう一度依頼してください。",
+    "done": "{{count}} 件適用 ✓",
+    "partial_short": "{{applied}} 件適用、{{failed}} 件失敗",
+    "error_short": "適用できませんでした — 再依頼",
+    "cancelled": "キャンセルしました"
+  },
   "recordEdit": {
     "label": "提案された編集",
     "field": "項目",

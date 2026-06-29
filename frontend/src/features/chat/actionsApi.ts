@@ -58,6 +58,28 @@ export function parseRepriceError(err: unknown): RepriceDetail | null {
   return isReprice ? raw : null;
 }
 
+/** Per-child outcome from a coalesced confirm-batch (#27/#29/#30). */
+export interface BatchChildOutcome {
+  descriptor: string;
+  outcome: 'applied' | 'skipped' | 'failed';
+  status: number;
+  detail?: string;
+}
+
+/** The aggregate result of POST /v1/<domain>/actions/confirm-batch. */
+export interface BatchConfirmResult {
+  applied: number;
+  skipped: number;
+  failed: number;
+  children: BatchChildOutcome[];
+}
+
+/** Domains that ship the atomic /actions/confirm-batch endpoint (one call commits all
+ *  child tokens). Other domains are committed by the card looping single confirmAction —
+ *  so the coalesced card works for EVERY domain, with the batch endpoint as a fast-path.
+ *  Add a domain here once its service grows a confirm-batch route. */
+export const BATCH_CONFIRM_DOMAINS = new Set<string>(['glossary']);
+
 /** One field change in a `propose_record_edit` diff. */
 export interface RecordEditChange {
   field_label?: string;
@@ -93,6 +115,26 @@ export const actionsApi = {
     const body: Record<string, unknown> = { confirm_token: confirmToken };
     if (enabledOps && enabledOps.length > 0) body.enabled_ops = enabledOps;
     return apiJson<unknown>(`${actionsBase(domain)}/confirm`, {
+      method: 'POST',
+      body: JSON.stringify(body),
+      token,
+    });
+  },
+
+  /** #27/#29/#30 coalesce commit: ONE call commits N child tokens for a domain that
+   *  ships the batch endpoint (glossary today). Each child is verified/authorized/
+   *  single-use-claimed and run through the SAME effect as /confirm; the result carries
+   *  per-child applied/skipped/failed. Domains WITHOUT a batch endpoint loop confirmAction
+   *  per token instead (the card decides — see BATCH_CONFIRM_DOMAINS). */
+  confirmActionBatch(
+    domain: string,
+    childTokens: string[],
+    token: string,
+    enabledOps?: string[],
+  ): Promise<BatchConfirmResult> {
+    const body: Record<string, unknown> = { child_tokens: childTokens };
+    if (enabledOps && enabledOps.length > 0) body.enabled_ops = enabledOps;
+    return apiJson<BatchConfirmResult>(`${actionsBase(domain)}/confirm-batch`, {
       method: 'POST',
       body: JSON.stringify(body),
       token,

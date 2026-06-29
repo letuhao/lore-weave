@@ -22,9 +22,12 @@ vi.mock('@/features/glossary/api', () => ({ glossaryApi: { previewAction, confir
 
 import { AssistantMessage } from '../AssistantMessage';
 
-/** A 2-part action token whose base64url segment-0 carries `exp` (seconds). */
-function makeToken(expSecondsFromNow: number): string {
-  const claims = { jti: 'x', exp: Math.floor(Date.now() / 1000) + expSecondsFromNow };
+/** A 2-part action token whose base64url segment-0 carries `exp` (seconds). `jti`
+ *  defaults unique-ish per call so two tokens in one test don't accidentally collide
+ *  (the coalesce dedups by token, so distinct cards need distinct tokens). */
+let _jti = 0;
+function makeToken(expSecondsFromNow: number, jti = `x${_jti++}`): string {
+  const claims = { jti, exp: Math.floor(Date.now() / 1000) + expSecondsFromNow };
   const seg = btoa(JSON.stringify(claims)).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
   return `${seg}.sig`;
 }
@@ -67,5 +70,26 @@ describe('AssistantMessage — auto-rendered confirm card', () => {
     render(<AssistantMessage content="Proposed." toolCalls={[proposeCall(token), explicit]} />);
     // Exactly one confirm card (the explicit suspended one), not two.
     expect(screen.getAllByTestId('confirm-card')).toHaveLength(1);
+  });
+
+  // #27/#29/#30 — MORE THAN ONE live token in a turn coalesces into ONE batch card,
+  // never N individual cards (the orphaning bug). One human "Confirm all".
+  it('coalesces multiple live tokens into a SINGLE batch card (not N orphaning cards)', () => {
+    const t1 = makeToken(3600);
+    const t2 = makeToken(3600);
+    const c1 = proposeCall(t1, { confirm_token: t1, descriptor: 'schema_create_kind', title: 'Create kind A' });
+    const c2 = proposeCall(t2, { confirm_token: t2, descriptor: 'schema_create_kind', title: 'Create kind B' });
+    render(<AssistantMessage content="Proposed two." toolCalls={[c1, c2]} />);
+    expect(screen.getByTestId('batch-confirm-card')).toBeTruthy();
+    // the per-action cards are folded in — not rendered individually
+    expect(screen.queryByTestId('confirm-card')).toBeNull();
+    expect(screen.getByTestId('batch-confirm-rows').children).toHaveLength(2);
+  });
+
+  // A SINGLE live token is unchanged (no premature coalescing) — the legacy single card.
+  it('does NOT coalesce a single token (keeps the single card)', () => {
+    render(<AssistantMessage content="Proposed one." toolCalls={[proposeCall(makeToken(3600))]} />);
+    expect(screen.queryByTestId('batch-confirm-card')).toBeNull();
+    expect(screen.getByTestId('confirm-card')).toBeTruthy();
   });
 });

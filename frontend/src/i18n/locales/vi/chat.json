@@ -173,6 +173,20 @@
     "reprice_title": "Chi phí đã thay đổi — chưa áp dụng",
     "reprice_detail": "Ước tính {{old}}, hiện là {{new}}. Chưa tốn khoản nào — hãy hỏi lại để xác nhận theo giá mới."
   },
+  "batchConfirm": {
+    "title": "Xác nhận {{count}} hành động trong một bước",
+    "action": "hành động",
+    "warning": "Các thay đổi quan trọng này được áp dụng cùng lúc khi xác nhận.",
+    "warning_destructive": "Một số thao tác có tính phá hủy — hãy xem kỹ trước khi xác nhận.",
+    "confirm_all": "Xác nhận tất cả",
+    "cancel": "Hủy",
+    "applied": "Đã áp dụng {{count}} hành động",
+    "partial": "Đã áp dụng {{applied}}, {{failed}} thất bại — hãy hỏi lại để thử phần còn lại.",
+    "done": "Đã áp dụng {{count}} ✓",
+    "partial_short": "Đã áp dụng {{applied}}, {{failed}} thất bại",
+    "error_short": "Không thể áp dụng — hỏi lại",
+    "cancelled": "Đã hủy"
+  },
   "recordEdit": {
     "label": "Đề xuất chỉnh sửa",
     "field": "Trường",

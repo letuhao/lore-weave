@@ -173,6 +173,20 @@
     "reprice_title": "費用已變動 — 尚未套用",
     "reprice_detail": "原估 {{old}}，現為 {{new}}。未產生任何花費 — 請重新詢問以依新價格再次確認。"
   },
+  "batchConfirm": {
+    "title": "一次確認 {{count}} 項操作",
+    "action": "操作",
+    "warning": "這些高影響變更會在確認時一起套用。",
+    "warning_destructive": "其中部分具破壞性 — 請先檢視再確認。",
+    "confirm_all": "全部確認",
+    "cancel": "取消",
+    "applied": "已套用 {{count}} 項操作",
+    "partial": "已套用 {{applied}} 項，{{failed}} 項失敗 — 請重新詢問以重試其餘項目。",
+    "done": "已套用 {{count}} 項 ✓",
+    "partial_short": "已套用 {{applied}} 項，{{failed}} 項失敗",
+    "error_short": "無法套用 — 請重新詢問",
+    "cancelled": "已取消"
+  },
   "recordEdit": {
     "label": "建議的編輯",
     "field": "欄位",
