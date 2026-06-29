@@ -2,10 +2,12 @@ import { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { toast } from 'sonner';
 import { ShieldAlert, Check, X } from 'lucide-react';
+import { useQueryClient } from '@tanstack/react-query';
 import { useAuth } from '@/auth';
 import { glossaryApi } from '@/features/glossary/api';
 import type { ActionPreview } from '@/features/glossary/types';
 import { useChatStream } from '../providers';
+import { invalidateAfterConfirm } from '../utils/invalidateAfterConfirm';
 import type { FrontendToolOutcome } from '../hooks/useChatMessages';
 import type { ToolCallRecord } from '../types';
 
@@ -34,6 +36,7 @@ export function ConfirmCard({ record }: Props) {
   const { t } = useTranslation('chat');
   const { accessToken } = useAuth();
   const { submitToolResult } = useChatStream();
+  const queryClient = useQueryClient();
   const [state, setState] = useState<CardState>(null);
   const [busy, setBusy] = useState(false);
   const [preview, setPreview] = useState<ActionPreview | null>(null);
@@ -82,6 +85,9 @@ export function ConfirmCard({ record }: Props) {
       await glossaryApi.confirmAction(token, accessToken);
       outcome = 'action_done';
       setState('done');
+      // bug #41 — this legacy card always commits to glossary; refresh the glossary
+      // browser/ontology so the change shows without an F5.
+      invalidateAfterConfirm(queryClient, 'glossary');
     } catch (err) {
       const status = (err as { status?: number }).status;
       if (status === 422) {

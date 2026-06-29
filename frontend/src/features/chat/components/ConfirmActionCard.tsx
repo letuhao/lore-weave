@@ -2,10 +2,12 @@ import { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { toast } from 'sonner';
 import { ShieldAlert, Check, X } from 'lucide-react';
+import { useQueryClient } from '@tanstack/react-query';
 import { useAuth } from '@/auth';
 import { actionsApi, parseRepriceError, type ActionPreview, type RepriceDetail } from '../actionsApi';
 import { PlannerPlanView } from './PlannerPlanView';
 import { useChatStream } from '../providers';
+import { invalidateAfterConfirm } from '../utils/invalidateAfterConfirm';
 import type { FrontendToolOutcome } from '../hooks/useChatMessages';
 import type { ToolCallRecord } from '../types';
 
@@ -91,6 +93,7 @@ export function ConfirmActionCard({ record }: Props) {
   const { t } = useTranslation('chat');
   const { accessToken } = useAuth();
   const { submitToolResult } = useChatStream();
+  const queryClient = useQueryClient();
   const [state, setState] = useState<CardState>(null);
   const [busy, setBusy] = useState(false);
   const [preview, setPreview] = useState<ActionPreview | null>(null);
@@ -167,6 +170,9 @@ export function ConfirmActionCard({ record }: Props) {
         : actionsApi.confirmAction(domain, token, accessToken));
       outcome = 'action_done';
       setState('done');
+      // bug #41 — refresh the viewing page (KG ontology/graph, glossary) so the agent's
+      // change shows without an F5; the confirm path bypasses the GUI mutation hooks.
+      invalidateAfterConfirm(queryClient, domain);
     } catch (err) {
       const status = (err as { status?: number }).status;
       // H-J / H14 — a priced confirm route re-prices at execute; if the actual cost

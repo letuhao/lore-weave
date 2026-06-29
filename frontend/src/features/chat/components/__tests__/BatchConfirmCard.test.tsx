@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen, fireEvent, waitFor } from '@testing-library/react';
+import { screen, fireEvent, waitFor } from '@testing-library/react';
+import { renderWithClient } from '@/test-utils/renderWithClient';
 
 // #27/#29/#30 — the coalesced "Confirm all" card. It commits a turn's N child tokens
 // (glossary via the atomic /confirm-batch; other domains by looping single /confirm) and
@@ -38,14 +39,14 @@ describe('BatchConfirmCard', () => {
   });
 
   it('lists every child action in ONE card', () => {
-    render(<BatchConfirmCard children={glossaryChildren} />);
+    renderWithClient(<BatchConfirmCard children={glossaryChildren} />);
     expect(screen.getByTestId('batch-confirm-card')).toBeTruthy();
     expect(screen.getByTestId('batch-confirm-rows').children).toHaveLength(2);
   });
 
   it('commits a glossary batch in ONE atomic call and resumes the run once', async () => {
     confirmActionBatch.mockResolvedValue({ applied: 2, skipped: 0, failed: 0, children: [] });
-    render(<BatchConfirmCard children={glossaryChildren} resume={{ runId: 'r1', toolCallId: 'c1' }} />);
+    renderWithClient(<BatchConfirmCard children={glossaryChildren} resume={{ runId: 'r1', toolCallId: 'c1' }} />);
     fireEvent.click(screen.getByText('batchConfirm.confirm_all'));
     // ONE batch call with both tokens (not two single calls)
     await waitFor(() => expect(confirmActionBatch).toHaveBeenCalledWith('glossary', ['t1', 't2'], 'tok'));
@@ -61,7 +62,7 @@ describe('BatchConfirmCard', () => {
       { token: 'b1', domain: 'book', descriptor: 'book.publish', title: 'Publish 1' },
       { token: 'b2', domain: 'book', descriptor: 'book.publish', title: 'Publish 2' },
     ];
-    render(<BatchConfirmCard children={bookChildren} />);
+    renderWithClient(<BatchConfirmCard children={bookChildren} />);
     fireEvent.click(screen.getByText('batchConfirm.confirm_all'));
     await waitFor(() => expect(confirmAction).toHaveBeenCalledTimes(2));
     expect(confirmAction).toHaveBeenCalledWith('book', 'b1', 'tok');
@@ -79,7 +80,7 @@ describe('BatchConfirmCard', () => {
       { token: 'k1', domain: 'kg', descriptor: 'kg_schema_edit', title: 'Add edge_type HUNTS' },
       { token: 'k2', domain: 'kg', descriptor: 'kg_schema_edit', title: 'Add node_kind Beast' },
     ];
-    render(<BatchConfirmCard children={kgChildren} />);
+    renderWithClient(<BatchConfirmCard children={kgChildren} />);
     fireEvent.click(screen.getByText('batchConfirm.confirm_all'));
     await waitFor(() => expect(confirmAction).toHaveBeenCalledTimes(2));
     expect(confirmAction).toHaveBeenCalledWith('kg', 'k1', 'tok');
@@ -94,7 +95,7 @@ describe('BatchConfirmCard', () => {
       { token: 'g1', domain: 'glossary', descriptor: 'merge', title: 'Merge' },
       { token: 'b1', domain: 'book', descriptor: 'book.publish', title: 'Publish' },
     ];
-    render(<BatchConfirmCard children={mixed} />);
+    renderWithClient(<BatchConfirmCard children={mixed} />);
     fireEvent.click(screen.getByText('batchConfirm.confirm_all'));
     await waitFor(() => expect(confirmActionBatch).toHaveBeenCalledWith('glossary', ['g1'], 'tok'));
     await waitFor(() => expect(confirmAction).toHaveBeenCalledWith('book', 'b1', 'tok'));
@@ -102,7 +103,7 @@ describe('BatchConfirmCard', () => {
 
   it('the pure auto-confirm path (no resume) commits without resuming any run', async () => {
     confirmActionBatch.mockResolvedValue({ applied: 2, skipped: 0, failed: 0, children: [] });
-    render(<BatchConfirmCard children={glossaryChildren} />);
+    renderWithClient(<BatchConfirmCard children={glossaryChildren} />);
     fireEvent.click(screen.getByText('batchConfirm.confirm_all'));
     await waitFor(() => expect(confirmActionBatch).toHaveBeenCalled());
     expect(submitToolResult).not.toHaveBeenCalled();
@@ -110,7 +111,7 @@ describe('BatchConfirmCard', () => {
 
   it('reports a partial failure honestly and still resumes once', async () => {
     confirmActionBatch.mockResolvedValue({ applied: 1, skipped: 0, failed: 1, children: [] });
-    render(<BatchConfirmCard children={glossaryChildren} resume={{ runId: 'r1', toolCallId: 'c1' }} />);
+    renderWithClient(<BatchConfirmCard children={glossaryChildren} resume={{ runId: 'r1', toolCallId: 'c1' }} />);
     fireEvent.click(screen.getByText('batchConfirm.confirm_all'));
     await waitFor(() => expect(screen.getByTestId('batch-confirm-result')).toBeTruthy());
     // applied>0 → still action_done (some landed), resumed once
@@ -118,7 +119,7 @@ describe('BatchConfirmCard', () => {
   });
 
   it('cancel resumes cancelled without committing anything', async () => {
-    render(<BatchConfirmCard children={glossaryChildren} resume={{ runId: 'r1', toolCallId: 'c1' }} />);
+    renderWithClient(<BatchConfirmCard children={glossaryChildren} resume={{ runId: 'r1', toolCallId: 'c1' }} />);
     fireEvent.click(screen.getByText('batchConfirm.cancel'));
     await waitFor(() => expect(submitToolResult).toHaveBeenCalledWith('r1', 'c1', 'cancelled'));
     expect(confirmActionBatch).not.toHaveBeenCalled();

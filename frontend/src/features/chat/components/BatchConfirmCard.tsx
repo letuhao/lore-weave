@@ -2,9 +2,11 @@ import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { toast } from 'sonner';
 import { ShieldAlert, Check, X } from 'lucide-react';
+import { useQueryClient } from '@tanstack/react-query';
 import { useAuth } from '@/auth';
 import { actionsApi, BATCH_CONFIRM_DOMAINS } from '../actionsApi';
 import { useChatStream } from '../providers';
+import { invalidateAfterConfirm } from '../utils/invalidateAfterConfirm';
 import type { FrontendToolOutcome } from '../hooks/useChatMessages';
 
 // #27/#29/#30 — the COALESCED confirm card. A weak local model loops single-propose
@@ -42,6 +44,7 @@ export function BatchConfirmCard({ children, resume }: Props) {
   const { t } = useTranslation('chat');
   const { accessToken } = useAuth();
   const { submitToolResult } = useChatStream();
+  const queryClient = useQueryClient();
   const [state, setState] = useState<CardState>(null);
   const [busy, setBusy] = useState(false);
   const [summary, setSummary] = useState<{ applied: number; skipped: number; failed: number } | null>(null);
@@ -95,6 +98,10 @@ export function BatchConfirmCard({ children, resume }: Props) {
       }
     }
     setSummary({ applied, skipped, failed });
+    // bug #41 — refresh every domain this batch actually committed to (union of the
+    // grouped domains), so the open page reflects the changes without an F5. Skip when
+    // nothing landed (all failed) — there is nothing to refetch.
+    if (applied > 0) invalidateAfterConfirm(queryClient, [...byDomain.keys()]);
     const outcome: FrontendToolOutcome = applied > 0 ? 'action_done' : 'action_error';
     setState(failed === 0 ? 'done' : applied > 0 ? 'partial' : 'error');
     if (failed === 0) {

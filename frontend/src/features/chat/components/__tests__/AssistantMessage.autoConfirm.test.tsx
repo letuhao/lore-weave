@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen } from '@testing-library/react';
+import { screen } from '@testing-library/react';
+import { renderWithClient } from '@/test-utils/renderWithClient';
 import type { ToolCallRecord } from '../../types';
 
 // Auto-rendered confirm card: a class-C glossary propose tool mints a confirm_token
@@ -44,19 +45,19 @@ describe('AssistantMessage — auto-rendered confirm card', () => {
   beforeEach(() => { previewAction.mockReset(); previewAction.mockResolvedValue({ title: 'Create kind', preview_rows: [], destructive: false }); });
 
   it('renders an Approve card from a completed propose result with a live token', () => {
-    render(<AssistantMessage content="Proposed." toolCalls={[proposeCall(makeToken(3600))]} />);
+    renderWithClient(<AssistantMessage content="Proposed." toolCalls={[proposeCall(makeToken(3600))]} />);
     expect(screen.getByTestId('confirm-card')).toBeTruthy();
   });
 
   it('does NOT render a card for an EXPIRED token (stale replay)', () => {
-    render(<AssistantMessage content="Proposed." toolCalls={[proposeCall(makeToken(-3600))]} />);
+    renderWithClient(<AssistantMessage content="Proposed." toolCalls={[proposeCall(makeToken(-3600))]} />);
     expect(screen.queryByTestId('confirm-card')).toBeNull();
   });
 
   it('handles the nested {result:{confirm_token}} shape', () => {
     const token = makeToken(3600);
     const nested = proposeCall(token, { ok: true, result: { confirm_token: token, descriptor: 'schema_create_attribute', title: 'Add attribute' } });
-    render(<AssistantMessage content="Proposed." toolCalls={[nested]} />);
+    renderWithClient(<AssistantMessage content="Proposed." toolCalls={[nested]} />);
     expect(screen.getByTestId('confirm-card')).toBeTruthy();
   });
 
@@ -67,7 +68,7 @@ describe('AssistantMessage — auto-rendered confirm card', () => {
       runId: 'r1', toolCallId: 'tc1',
       args: { confirm_token: token, descriptor: 'schema_create_kind', title: 'Create kind' },
     };
-    render(<AssistantMessage content="Proposed." toolCalls={[proposeCall(token), explicit]} />);
+    renderWithClient(<AssistantMessage content="Proposed." toolCalls={[proposeCall(token), explicit]} />);
     // Exactly one confirm card (the explicit suspended one), not two.
     expect(screen.getAllByTestId('confirm-card')).toHaveLength(1);
   });
@@ -79,7 +80,7 @@ describe('AssistantMessage — auto-rendered confirm card', () => {
     const t2 = makeToken(3600);
     const c1 = proposeCall(t1, { confirm_token: t1, descriptor: 'schema_create_kind', title: 'Create kind A' });
     const c2 = proposeCall(t2, { confirm_token: t2, descriptor: 'schema_create_kind', title: 'Create kind B' });
-    render(<AssistantMessage content="Proposed two." toolCalls={[c1, c2]} />);
+    renderWithClient(<AssistantMessage content="Proposed two." toolCalls={[c1, c2]} />);
     expect(screen.getByTestId('batch-confirm-card')).toBeTruthy();
     // the per-action cards are folded in — not rendered individually
     expect(screen.queryByTestId('confirm-card')).toBeNull();
@@ -94,7 +95,7 @@ describe('AssistantMessage — auto-rendered confirm card', () => {
     const t2 = makeToken(3600);
     const kg1: ToolCallRecord = { tool: 'kg_schema_edit', ok: true, result: { confirm_token: t1, descriptor: 'kg_schema_edit', summary: 'Add edge_type HUNTS' } };
     const kg2: ToolCallRecord = { tool: 'kg_schema_edit', ok: true, result: { confirm_token: t2, descriptor: 'kg_schema_edit', summary: 'Add node_kind Beast' } };
-    render(<AssistantMessage content="Proposed two KG edits." toolCalls={[kg1, kg2]} />);
+    renderWithClient(<AssistantMessage content="Proposed two KG edits." toolCalls={[kg1, kg2]} />);
     expect(screen.getByTestId('batch-confirm-card')).toBeTruthy();
     expect(screen.queryByTestId('confirm-card')).toBeNull();
     expect(screen.getByTestId('batch-confirm-rows').children).toHaveLength(2);
@@ -104,7 +105,7 @@ describe('AssistantMessage — auto-rendered confirm card', () => {
 
   // A SINGLE live token is unchanged (no premature coalescing) — the legacy single card.
   it('does NOT coalesce a single token (keeps the single card)', () => {
-    render(<AssistantMessage content="Proposed one." toolCalls={[proposeCall(makeToken(3600))]} />);
+    renderWithClient(<AssistantMessage content="Proposed one." toolCalls={[proposeCall(makeToken(3600))]} />);
     expect(screen.queryByTestId('batch-confirm-card')).toBeNull();
     expect(screen.getByTestId('confirm-card')).toBeTruthy();
   });
