@@ -1,4 +1,32 @@
-# ▶▶ NEXT SESSION STARTS HERE — **Critical UX bug track** · branch `fix/critical-ux-bugs` · HEAD `4dfbfd03`(merge)+ · 2026-06-29
+# ▶▶ NEXT SESSION STARTS HERE — **Critical UX bug track** · branch `fix/critical-ux-bugs` · HEAD `a721c93c` · 2026-06-29
+
+> **🚧 IN FLIGHT — #27/#29/#30 confirm-card coalesce (XL, load-bearing — agent run lifecycle +
+> human-gate boundary).** A weak model loops single-propose tools, minting N confirm_tokens in ONE
+> turn; the old UX rendered N cards that orphaned each other (confirming the first resumed/superseded
+> the shared run). Plan: [docs/plans/2026-06-28-confirm-card-server-coalesce.md] — but VERIFYING it
+> vs code CORRECTED its core assumption (the dominant path is the FE auto-confirm synthesis, which
+> has NO runId + never suspends, so a server-side suspend-point coalesce would never fire). The fix
+> belongs in the FE. User chose **all-domain** coverage.
+> **✅ M1 DONE (`3cce85d9`) — glossary batch endpoints.** `/actions/confirm-batch` + `/preview-batch`:
+> verify+authorize ALL children before consuming (fail-closed; same-book, proposer-bound, Manage-grant),
+> then per child claim jti (single-use) → run the SAME per-descriptor effect (via a recorder; dispatch
+> extracted, no effect rewritten) → per-child applied/skipped/failed. Replay→skip. 8 tests + existing green.
+> **✅ M2 DONE (`a721c93c`) — FE coalesce.** `BatchConfirmCard` (all-domain: glossary→atomic confirm-batch,
+> others→loop single confirm; resume the run ONCE) + `AssistantMessage` folds >1 live tokens into ONE
+> card (dedup-by-token, suppress individuals); single token unchanged. `actionsApi.confirmActionBatch` +
+> `BATCH_CONFIRM_DOMAINS`. frontend 88/88; tsc clean; 4 locales.
+> **▶ NEXT — M3 cross-service LIVE SMOKE** (the XL VERIFY gate). Recipe: rebuild glossary-service (M1
+> endpoints) + chat-service running; drive a real chat turn on the test account that proposes ≥2 glossary
+> kinds in ONE turn (weak local model loops propose → ≥2 live tokens) → assert the FE shows ONE batch card
+> → "Confirm all" → `POST /v1/glossary/actions/confirm-batch` commits both kinds (applied=2) → run resumes
+> once. OR a lower-cost contract smoke: mint 2 real glossary tokens (via `glossary_propose_new_kind` ×2)
+> → `curl POST /actions/confirm-batch {child_tokens:[..]}` with the test JWT → assert both kinds created.
+> Then COMMIT the live-smoke evidence + this branch is ready to PR. Skill follow-up (L3): harden
+> `glossary_skill.py` to prefer one batch (cheap reinforcement; optional).
+
+> **✅ DONE — public-MCP lazy tool-loading (L) + 2 anti-oracle fixes — committed + LIVE-SMOKED** (`ffc712e5`,
+> `f8160f00`). Per-session progressive-disclosure state machine; see the lazy-tool-loading section below
+> if revisiting. Deferred: `D-FINDTOOLS-CHAT-SHARE`.
 
 > **✅ MERGED origin/main (public-MCP gateway PR #48, 61 commits) → `4dfbfd03`.** 8 conflicts, all
 > in the usage/billing pipeline, resolved to the UNION (public-MCP `mcp_key_id` attribution + #32
