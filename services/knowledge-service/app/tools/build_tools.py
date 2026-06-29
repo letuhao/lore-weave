@@ -20,7 +20,7 @@ import time
 from typing import TYPE_CHECKING, Literal
 from uuid import uuid4
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import ConfigDict, Field
 
 from app.config import settings
 from app.ontology.confirm import (
@@ -32,6 +32,7 @@ from app.ontology.confirm import (
     mint_action_token,
 )
 from app.effort import clamp_effort_to_grant
+from app.tools.argbase import ProjectScopedArgs
 from app.tools.graph_schema_tools import (
     GrantLevel,
     _resolve_project_owner_and_level,
@@ -44,7 +45,7 @@ if TYPE_CHECKING:
     from app.tools.executor import ToolContext
 
 
-class KgBuildGraphArgs(BaseModel):
+class KgBuildGraphArgs(ProjectScopedArgs):
     """`kg_build_graph` — class-C cost gate. Start an extraction job over the project's
     book. Mints a confirm-token (no spend until a human confirms)."""
 
@@ -117,7 +118,7 @@ async def _handle_kg_build_graph(ctx: "ToolContext", args: KgBuildGraphArgs) -> 
     }
 
 
-class KgBuildWikiArgs(BaseModel):
+class KgBuildWikiArgs(ProjectScopedArgs):
     """`kg_build_wiki` — class-C cost gate. Generate wiki articles for the project's book
     entities. Mints a confirm-token (no spend until a human confirms)."""
 
@@ -188,7 +189,7 @@ async def _handle_kg_build_wiki(ctx: "ToolContext", args: KgBuildWikiArgs) -> di
     }
 
 
-class KgRunBenchmarkArgs(BaseModel):
+class KgRunBenchmarkArgs(ProjectScopedArgs):
     """`kg_run_benchmark` — R4 (D-JOURNEY-KG-BENCHMARK-UX). Run the K17.9 golden-set
     embedding benchmark for the project's configured embedding model. No args — the
     model is read from the project; the run executes on a hidden sandbox (so it never

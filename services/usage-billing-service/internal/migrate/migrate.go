@@ -142,6 +142,24 @@ ALTER TABLE usage_logs ADD CONSTRAINT usage_logs_billing_decision_check
 -- IF NOT EXISTS block above (it re-creates an EMPTY table — there is no data to restore;
 -- the wallet was never populated post-retirement).
 DROP TABLE IF EXISTS account_balances;
+
+-- Public MCP P3 (H-C/PUB-11) — per-key spend attribution. The usage-stream consumer
+-- writes mcp_key_id for jobs that originated at the public MCP edge (NULL for first-
+-- party). The partial index backs the per-key monthly rollup (mcp-key-usage endpoint)
+-- and the future per-key spend sub-cap (H-K). ROLLBACK: drop the column + index.
+ALTER TABLE usage_logs ADD COLUMN IF NOT EXISTS mcp_key_id UUID;
+CREATE INDEX IF NOT EXISTS idx_usage_logs_mcp_key
+  ON usage_logs(owner_user_id, mcp_key_id, created_at DESC) WHERE mcp_key_id IS NOT NULL;
+
+-- Public MCP P4/Wave-C (H-K) — per-key spend sub-cap. A reservation gets stamped
+-- with the originating public key so the reserve handler can sum this key's HELD
+-- holds (this table) + COMMITTED spend (usage_logs.mcp_key_id) against the key's
+-- spend_cap_usd, inside the existing owner-row FOR UPDATE lock (race-safe). NULL
+-- for first-party reservations (no per-key cap). The partial index backs the
+-- held-sum scan. ROLLBACK: drop the column + index.
+ALTER TABLE token_reservations ADD COLUMN IF NOT EXISTS mcp_key_id UUID;
+CREATE INDEX IF NOT EXISTS idx_token_reservations_mcp_key
+  ON token_reservations(mcp_key_id) WHERE status = 'held' AND mcp_key_id IS NOT NULL;
 `
 
 func Up(ctx context.Context, pool *pgxpool.Pool) error {

@@ -143,6 +143,11 @@ export function TimelineEventRow({
   const titleIsSource = event.title_translated === false;
   const summaryText = event.summary_localized ?? event.summary;
   const summaryIsSource = event.summary_translated === false;
+  // #12 — surface the in-story time cue ("the next morning") on the COLLAPSED row,
+  // not only in the expanded detail, so the timeline reads as a chronology at a
+  // glance. Same localization (COALESCE(cache, source)) + source-marker pattern.
+  const timeCueText = event.time_cue_localized ?? event.time_cue;
+  const timeCueIsSource = event.time_cue_translated === false;
 
   const sourceMarkerLabel = t('timeline.localization.sourceMarker');
 
@@ -195,6 +200,16 @@ export function TimelineEventRow({
             </span>
           </span>
           <span className="mt-1 flex flex-wrap items-center gap-1.5 text-[11px] text-muted-foreground">
+            {timeCueText && (
+              <span
+                className="inline-flex items-center rounded-full bg-amber-500/10 px-1.5 py-[1px] text-[10px] text-amber-700 dark:text-amber-400"
+                data-testid="timeline-row-time-cue"
+                title={t('timeline.row.timeLabel')}
+              >
+                🕒 {timeCueText}
+                {timeCueIsSource && <SourceMarker label={sourceMarkerLabel} />}
+              </span>
+            )}
             {chapterLabel && (
               <span className="inline-flex items-center">
                 {t('timeline.row.chapterLabel')}:{' '}

@@ -145,5 +145,12 @@
       "created": "Evidence created",
       "text_required": "Original text is required"
     }
+  },
+  "summarize": {
+    "canonical_label": "Merged summary",
+    "pending_dirty": "Will re-summarize after the next extraction",
+    "pending_new": "Will be summarized after the next extraction",
+    "sources": "Raw mentions ({{count}})",
+    "empty": "No mentions yet"
   }
 }

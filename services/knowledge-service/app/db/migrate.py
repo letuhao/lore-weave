@@ -335,6 +335,20 @@ ALTER TABLE extraction_jobs
   ADD COLUMN IF NOT EXISTS billing_embedding_model TEXT,
   ADD COLUMN IF NOT EXISTS billing_llm_model       TEXT;
 
+-- Public-MCP spend attribution (P4 / D-PMCP-WORKER-CARRIER): when a priced
+-- extraction is started by a PUBLIC MCP key, the key id + the key's spend cap ride
+-- the job row so worker-ai (a separate process; knowledge extraction is poll-based,
+-- no AMQP) can re-set loreweave_llm.set_public_key_attribution before each provider
+-- call — mirroring billing_user_id. Both also ride resume_state for the decoupled
+-- terminal-event resume. NULL ⇒ first-party (or legacy) ⇒ no per-key attribution.
+-- spend_cap_usd is DOUBLE PRECISION (not NUMERIC): it originates as a Python float
+-- and asyncpg's numeric codec requires a Decimal (binding a float raises DataError),
+-- so float8 avoids a real-PG failure that mocked tests can't catch. Coarse spend
+-- ceiling, not ledger money (authoritative per-key accounting is in usage-billing).
+ALTER TABLE extraction_jobs
+  ADD COLUMN IF NOT EXISTS mcp_key_id    TEXT,
+  ADD COLUMN IF NOT EXISTS spend_cap_usd DOUBLE PRECISION;
+
 -- LLM re-arch Phase 2b WX-T1 (worker-ai extraction decouple): event-driven resume
 -- state. extract_pass2 is a multi-stage DAG with a concurrent fan-in (entity →
 -- gather(relation,event,fact) → recovery → filter, × chunks), so the decoupled
@@ -348,6 +362,13 @@ ALTER TABLE extraction_jobs
   ADD COLUMN IF NOT EXISTS provider_job_ids JSONB,
   ADD COLUMN IF NOT EXISTS resume_state     JSONB,
   ADD COLUMN IF NOT EXISTS pipeline_stage   TEXT;
+
+-- bug #37 — realized LLM-call counter for the Jobs GUI ("LLM calls: done / estimated").
+-- Incremented at each provider-job submit (the decoupled consumer's _submit_map fan-out +
+-- the inline entity submit); surfaced on the unified job's params.llm_calls_done. NOT NULL
+-- DEFAULT 0 so every pre-existing + omitting job reads 0, never NULL.
+ALTER TABLE extraction_jobs
+  ADD COLUMN IF NOT EXISTS llm_calls_made INT NOT NULL DEFAULT 0;
 
 -- C12 — target-typed extraction. `targets` selects which Pass-2 passes a
 -- build runs (entities/relations/events/facts/summaries). NOT NULL with a

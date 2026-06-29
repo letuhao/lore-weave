@@ -172,7 +172,8 @@ _SELECT_COLS = """
   started_at, paused_at, completed_at, created_at, updated_at,
   error_message, campaign_id,
   billing_user_id, billing_embedding_model, billing_llm_model,
-  targets, concurrency_level, pinned_entity_ids, reasoning_effort
+  targets, concurrency_level, pinned_entity_ids, reasoning_effort,
+  mcp_key_id, spend_cap_usd
 """
 
 
@@ -206,6 +207,13 @@ class ExtractionJob(BaseModel):
     billing_user_id: UUID | None = None
     billing_embedding_model: str | None = None
     billing_llm_model: str | None = None
+
+    # D-PMCP-WORKER-CARRIER: public-MCP-key attribution for a kg_build_graph started
+    # by a public key. Ride the row → resume_state → worker re-set so the extraction
+    # spend tags job_meta with the key (+ its cap). NULL ⇒ first-party. spend_cap_usd
+    # is float (DOUBLE PRECISION column), NOT Decimal — asyncpg rejects float→numeric.
+    mcp_key_id: str | None = None
+    spend_cap_usd: float | None = None
 
     # C12 — target-typed extraction. The subset of Pass-2 passes this job
     # runs (entities/relations/events/facts/summaries). The DB column is
@@ -289,6 +297,11 @@ class ExtractionJobCreate(BaseModel):
     pinned_entity_ids: list[str] | None = None
     # D-RE-OTHER-AGENTIC-EFFORT: clamped reasoning effort persisted on the job. Default 'none'.
     reasoning_effort: str = "none"
+    # D-PMCP-WORKER-CARRIER: public-MCP-key attribution (set only by the kg confirm
+    # replay for a public-key kg_build_graph). spend_cap_usd is float (DOUBLE
+    # PRECISION column), NOT Decimal — asyncpg rejects a float→numeric bind.
+    mcp_key_id: str | None = None
+    spend_cap_usd: float | None = None
 
 
 # ── try_spend outcome ────────────────────────────────────────────────────
@@ -384,11 +397,28 @@ class ExtractionJobsRepo:
                     data.reasoning_effort,
                 )
                 job = _row_to_job(row)
+                # bug #37 — estimated LLM-call budget for the Jobs GUI ("done / total").
+                # Per item: 1 entity call + one each for the requested relation/event/fact
+                # trio (recovery/precision-filter add realized calls the estimate omits, so
+                # realized can exceed it — "estimate, not quote"). Null-safe: omitted when
+                # items_total is unknown (backfill enumeration). The worker advances
+                # llm_calls_done; the projection merges params so neither wipes the other.
+                _job_params = None
+                if data.items_total:
+                    # None OR empty ⇒ "run all" (the SDK's normalize_targets semantics) ⇒
+                    # entity + the full relation/event/fact trio. `if data.targets` is falsy
+                    # for both None and [] → defaults to all, matching the worker.
+                    _eff_targets = list(data.targets) if data.targets else list(DEFAULT_TARGETS)
+                    _calls_per_item = 1 + sum(
+                        1 for _t in _eff_targets if _t in ("relations", "events", "facts")
+                    )
+                    _job_params = {"estimated_llm_calls": data.items_total * _calls_per_item}
                 # Unified Job Control Plane P1 — emit the initial lifecycle event.
                 await emit_job_event(
                     conn, service=_JOB_SERVICE, job_id=str(job.job_id),
                     owner_user_id=str(user_id), kind=_JOB_KIND,
                     status=_canonical_job_status(job.status),
+                    params=_job_params,
                 )
         return job
 

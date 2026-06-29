@@ -99,7 +99,7 @@ async def _call_llm(
                 # ({} default ⇒ unchanged for non-opt-in callers).
                 **reasoning_wire_fields(reasoning_effort),
             },
-            job_meta={"feature": "wiki_generate"},
+            job_meta={"usage_purpose": "wiki_generate", "feature": "wiki_generate"},
             transient_retry_budget=1,
         )
     except Exception as exc:  # noqa: BLE001 — generation must not crash on LLM error

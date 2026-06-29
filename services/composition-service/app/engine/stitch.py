@@ -31,6 +31,7 @@ from __future__ import annotations
 
 import logging
 import re
+from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
 
 from loreweave_llm.errors import LLMError
@@ -227,6 +228,7 @@ async def stitch_chapter(
     scene_drafts: list[str], chapter_intent: str, profile: BookProfile,
     max_tokens: int, max_input_chars: int,
     reasoning_effort: str | None = None, trace_id: str | None = None,
+    cancel_check: Callable[[], Awaitable[bool]] | None = None,
 ) -> tuple[str, str | None]:
     """Merge the chapter's scene drafts into one seamless chapter. Returns
     ``(stitched_prose, finish_reason)`` — prose is "" on empty input / LLM failure
@@ -283,7 +285,8 @@ async def stitch_chapter(
                 "response_format": {"type": "text"},
                 **({"reasoning_effort": reasoning_effort} if reasoning_effort is not None else _NO_THINK),
             },
-            job_meta={"extractor": "stitch_chapter"}, trace_id=trace_id,
+            job_meta={"usage_purpose": "prose_stitch", "extractor": "stitch_chapter"}, trace_id=trace_id,
+            cancel_check=cancel_check,
         )
     except LLMError as exc:
         logger.warning("stitch LLM error: %s → degrade to raw concat", exc)

@@ -7,7 +7,8 @@
 // selection, persistence target). The consumer's node/edge components self-position
 // (they receive a Pos); GraphCanvas does NOT transform them, so SceneNode/SceneEdge
 // stay unchanged across the extraction.
-import { Fragment, useRef, useState } from 'react';
+import { Fragment, useEffect, useRef, useState } from 'react';
+import { useIsMobile } from '@/hooks/useIsMobile';
 
 export type Pos = { x: number; y: number };
 
@@ -59,6 +60,17 @@ export function GraphCanvas<E>({
   // C19 — viewport transform for the zoomable mode. Identity when !zoomable.
   const [view, setView] = useState<{ x: number; y: number; k: number }>({ x: 0, y: 0, k: 1 });
   const pan = useRef<PanState | null>(null);
+  // M5b — on a ≤767px viewport EVERY heavy canvas becomes pan/zoom/pinch-able (the
+  // desktop overflow-auto scroller is unusable on touch). Desktop is byte-unchanged:
+  // `effectiveZoomable` collapses to the passed `zoomable` off-mobile.
+  const isMobile = useIsMobile();
+  const effectiveZoomable = zoomable || isMobile;
+  // M5b — pinch-zoom: track active pointers; ≥2 → a pinch gesture (suppresses node-drag
+  // / pan, zooms toward the gesture midpoint). Touch single-finger pan already works via
+  // the pointer-event pan path; this adds the two-finger case the wheel can't cover.
+  const pointers = useRef<Map<number, { x: number; y: number }>>(new Map());
+  const pinch = useRef<{ dist: number; cx: number; cy: number; k: number; vx: number; vy: number } | null>(null);
+  const fitted = useRef(false);
 
   const posOf = (id: string): Pos => positions[id] ?? { x: GRAPH_PAD, y: GRAPH_PAD };
 
@@ -67,7 +79,40 @@ export function GraphCanvas<E>({
     drag.current = { id, startX: e.clientX, startY: e.clientY, origX: p.x, origY: p.y, moved: false };
     try { svgRef.current?.setPointerCapture?.(e.pointerId); } catch { /* jsdom no-op */ }
   };
+  const clampK = (k: number) => Math.min(ZOOM_MAX, Math.max(ZOOM_MIN, k));
+  // M5b — register every pointer (bubbles up from nodes + the bg rect). The 2nd
+  // pointer starts a pinch and cancels any in-flight node-drag / pan.
+  const trackDown = (e: React.PointerEvent) => {
+    pointers.current.set(e.pointerId, { x: e.clientX, y: e.clientY });
+    if (effectiveZoomable && pointers.current.size === 2) {
+      drag.current = null;
+      pan.current = null;
+      const [a, b] = [...pointers.current.values()];
+      const rect = svgRef.current?.getBoundingClientRect();
+      pinch.current = {
+        dist: Math.hypot(a.x - b.x, a.y - b.y) || 1,
+        cx: (a.x + b.x) / 2 - (rect?.left ?? 0),
+        cy: (a.y + b.y) / 2 - (rect?.top ?? 0),
+        k: view.k, vx: view.x, vy: view.y,
+      };
+    }
+  };
+  const trackUp = (e: React.PointerEvent) => {
+    pointers.current.delete(e.pointerId);
+    if (pointers.current.size < 2) pinch.current = null;
+  };
+
   const onPointerMove = (e: React.PointerEvent) => {
+    if (pointers.current.has(e.pointerId)) pointers.current.set(e.pointerId, { x: e.clientX, y: e.clientY });
+    // M5b — a live pinch zooms toward the gesture's start midpoint (keeps that point fixed).
+    const pz = pinch.current;
+    if (pz && pointers.current.size >= 2) {
+      const [a, b] = [...pointers.current.values()];
+      const k = clampK(pz.k * (Math.hypot(a.x - b.x, a.y - b.y) / pz.dist));
+      const ratio = k / pz.k;
+      setView({ k, x: pz.cx - (pz.cx - pz.vx) * ratio, y: pz.cy - (pz.cy - pz.vy) * ratio });
+      return;
+    }
     const d = drag.current;
     if (d) {
       const dx = e.clientX - d.startX;
@@ -81,7 +126,8 @@ export function GraphCanvas<E>({
     const p = pan.current;
     if (p) setView((v) => ({ ...v, x: p.origX + (e.clientX - p.startX), y: p.origY + (e.clientY - p.startY) }));
   };
-  const onPointerUp = () => {
+  const onPointerUp = (e: React.PointerEvent) => {
+    trackUp(e);
     pan.current = null;
     const d = drag.current;
     drag.current = null;
@@ -93,14 +139,14 @@ export function GraphCanvas<E>({
   // C19 — empty-space press starts a pan (zoomable mode) AND clears selection.
   const onBackgroundDown = (e: React.PointerEvent) => {
     onBackgroundClick?.();
-    if (zoomable) {
+    if (effectiveZoomable) {
       pan.current = { startX: e.clientX, startY: e.clientY, origX: view.x, origY: view.y };
       try { svgRef.current?.setPointerCapture?.(e.pointerId); } catch { /* jsdom no-op */ }
     }
   };
   // C19 — mouse-wheel zoom toward the cursor (keeps the point under the cursor fixed).
   const onWheel = (e: React.WheelEvent) => {
-    if (!zoomable) return;
+    if (!effectiveZoomable) return;
     const rect = svgRef.current?.getBoundingClientRect();
     const cx = rect ? e.clientX - rect.left : 0;
     const cy = rect ? e.clientY - rect.top : 0;
@@ -115,6 +161,18 @@ export function GraphCanvas<E>({
 
   const w = Math.max(minWidth, ...nodeIds.map((id) => posOf(id).x + nodeSize.w + GRAPH_PAD));
   const h = Math.max(minHeight, ...nodeIds.map((id) => posOf(id).y + nodeSize.h + GRAPH_PAD));
+
+  // M5b — fit-to-screen on mount (MOBILE ONLY — desktop zoomable keeps its identity
+  // start, byte-unchanged). Fires once, once the graph has content + a measurable
+  // viewport, so a large graph isn't cropped off-screen on a phone.
+  useEffect(() => {
+    if (!isMobile || fitted.current || nodeIds.length === 0) return;
+    const rect = svgRef.current?.getBoundingClientRect();
+    if (!rect || rect.width === 0 || rect.height === 0) return;
+    fitted.current = true;
+    const k = Math.min(rect.width / w, rect.height / h, 1); // never upscale past 1
+    setView({ k, x: (rect.width - w * k) / 2, y: (rect.height - h * k) / 2 });
+  }, [isMobile, nodeIds.length, w, h]);
 
   const content = (
     <>
@@ -135,9 +193,9 @@ export function GraphCanvas<E>({
     </>
   );
 
-  // Non-zoomable (T2.2): the SVG grows to the node extent inside an
+  // Non-zoomable (T2.2 desktop): the SVG grows to the node extent inside an
   // overflow-auto scroller — byte-identical to the pre-C19 behaviour.
-  if (!zoomable) {
+  if (!effectiveZoomable) {
     return (
       <div className="min-h-0 flex-1 overflow-auto">
         <svg ref={svgRef} width={w} height={h} data-testid={testid} onPointerMove={onPointerMove} onPointerUp={onPointerUp}>
@@ -157,8 +215,10 @@ export function GraphCanvas<E>({
         className="h-full w-full touch-none select-none"
         data-testid={testid}
         data-zoom={view.k.toFixed(3)}
+        onPointerDown={trackDown}
         onPointerMove={onPointerMove}
         onPointerUp={onPointerUp}
+        onPointerCancel={trackUp}
         onWheel={onWheel}
       >
         {defs && <defs>{defs}</defs>}

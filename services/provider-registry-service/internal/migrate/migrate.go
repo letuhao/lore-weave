@@ -243,6 +243,11 @@ CREATE TABLE IF NOT EXISTS usage_outbox (
 CREATE INDEX IF NOT EXISTS idx_usage_outbox_unpublished
   ON usage_outbox(id) WHERE published_at IS NULL;
 
+-- Public MCP P3 (H-C/PUB-11) — per-key spend attribution. A job that originated at
+-- the public MCP edge carries job_meta.mcp_key_id; FinalizeWithUsageOutbox stamps it
+-- here so it rides the usage stream → usage-billing usage_logs. NULL for first-party.
+ALTER TABLE usage_outbox ADD COLUMN IF NOT EXISTS mcp_key_id UUID;
+
 -- LLM re-arch Phase 1 — transactional terminal-event outbox. On EVERY terminal
 -- transition (completed|failed|cancelled) the worker (and the cancel handler)
 -- writes one row HERE in the same tx as the llm_jobs finalize; a relay XADDs it
@@ -295,6 +300,16 @@ CREATE TABLE IF NOT EXISTS settings_consumed_tokens (
   consumed_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 CREATE INDEX IF NOT EXISTS idx_settings_consumed_tokens_exp ON settings_consumed_tokens(exp);
+
+-- #32 — full LLM-call logging. The usage_outbox now carries (1) request_status so the
+-- billing audit records EVERY terminal status (not just completed — failed/cancelled get
+-- a cost-0 audit row) and (2) the truncated request/response payloads so a call can be
+-- traced/reproduced. usage-billing's writeUsageLog already encrypts + audited-decrypts
+-- these (input_payload_ciphertext/output_payload_ciphertext); this carries them through
+-- the worker→outbox→relay→consumer plumbing. Nullable: legacy/unpopulated rows stay valid.
+ALTER TABLE usage_outbox ADD COLUMN IF NOT EXISTS request_status   TEXT;
+ALTER TABLE usage_outbox ADD COLUMN IF NOT EXISTS request_payload  TEXT;
+ALTER TABLE usage_outbox ADD COLUMN IF NOT EXISTS response_payload TEXT;
 `
 
 func Up(ctx context.Context, pool *pgxpool.Pool) error {

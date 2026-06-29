@@ -21,6 +21,7 @@ from __future__ import annotations
 import json
 import logging
 import re
+from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
 from uuid import UUID
 
@@ -125,6 +126,7 @@ async def detect_and_update_threads(
     max_open: int = 5,
     max_tokens: int = 1024,
     trace_id: str | None = None,
+    cancel_check: Callable[[], Awaitable[bool]] | None = None,
 ) -> ThreadUpdateResult:
     """Detect & write narrative-thread updates for one generated passage.
 
@@ -156,7 +158,8 @@ async def detect_and_update_threads(
                 # the budget on <think> and emit empty.
                 "chat_template_kwargs": {"thinking": False, "enable_thinking": False},
             },
-            job_meta={"extractor": "narrative_thread_detect"}, trace_id=trace_id,
+            job_meta={"usage_purpose": "narrative_thread", "extractor": "narrative_thread_detect"}, trace_id=trace_id,
+            cancel_check=cancel_check,
         )
     except LLMError as exc:
         logger.warning("narrative_thread detect degraded (LLM error): %s", exc)

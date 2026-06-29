@@ -45,8 +45,10 @@ vi.mock('../../hooks/useWhatIfTakes', () => ({
 }));
 // M3 — mock the promote bridge (fires its onPromoted with a fake derivative) + the
 // node-seeding api so the canvas promote flow is testable without the real cross-service path.
-const { promoteSpy, onPromotedSpy, createNodeSpy } = vi.hoisted(() => ({
-  promoteSpy: vi.fn(), onPromotedSpy: vi.fn(), createNodeSpy: vi.fn().mockResolvedValue({}),
+const { promoteSpy, onPromotedSpy, createNodeSpy, persistProseSpy } = vi.hoisted(() => ({
+  promoteSpy: vi.fn(), onPromotedSpy: vi.fn(),
+  createNodeSpy: vi.fn().mockResolvedValue({ id: 'newnode' }),
+  persistProseSpy: vi.fn().mockResolvedValue({ node_id: 'newnode', persisted: true, version: 1 }),
 }));
 vi.mock('../../hooks/useWhatIfPromotion', () => ({
   useWhatIfPromotion: (args: { onPromoted: (d: unknown) => void }) => ({
@@ -54,7 +56,10 @@ vi.mock('../../hooks/useWhatIfPromotion', () => ({
     isPromoting: false, canPromote: true, buildDeriveBody: vi.fn(), error: null,
   }),
 }));
-vi.mock('../../api', () => ({ compositionApi: { createNode: (...a: unknown[]) => createNodeSpy(...a) } }));
+vi.mock('../../api', () => ({ compositionApi: {
+  createNode: (...a: unknown[]) => createNodeSpy(...a),
+  persistScenePromoteProse: (...a: unknown[]) => persistProseSpy(...a),
+} }));
 // M3 — the chapters lookup (branch_point = the anchor scene's CHAPTER sort_order).
 vi.mock('../../../books/api', () => ({
   booksApi: {
@@ -123,7 +128,7 @@ describe('SceneGraphCanvas (T1.3)', () => {
   beforeEach(() => {
     createSceneLink.mutate.mockReset(); deleteSceneLink.mutate.mockReset();
     setSettings.mutate.mockReset(); navigateFn.mockReset(); generateTakeSpy.mockReset();
-    promoteSpy.mockReset(); onPromotedSpy.mockReset(); createNodeSpy.mockClear(); (toast.error as ReturnType<typeof vi.fn>).mockReset();
+    promoteSpy.mockReset(); onPromotedSpy.mockReset(); createNodeSpy.mockClear(); persistProseSpy.mockClear(); (toast.error as ReturnType<typeof vi.fn>).mockReset();
     outlineHook.mockReturnValue({ data: scenes });
     linksHook.mockReturnValue({ data: links });
   });
@@ -249,7 +254,12 @@ describe('SceneGraphCanvas (T1.3)', () => {
     expect(promoteSpy).toHaveBeenCalled();
     // seeded the ready take as a scene node in the DERIVATIVE project...
     // seeded with the anchor scene's chapter_id (a scene REQUIRES a chapter — live-smoke fix)
-    await waitFor(() => expect(createNodeSpy).toHaveBeenCalledWith('deriv-p', expect.objectContaining({ kind: 'scene', chapter_id: 'C1' }), 't'));
+    // seeded WITH a story_order (review-impl HIGH: the read-back queries filter
+    // `story_order IS NOT NULL`, so a NULL-order seed makes the promoted prose invisible).
+    await waitFor(() => expect(createNodeSpy).toHaveBeenCalledWith('deriv-p', expect.objectContaining({ kind: 'scene', chapter_id: 'C1', story_order: 0 }), 't'));
+    // M3 — and persisted the take's ghost prose into the NEW derivative scene node
+    // (scene-scoped synthetic-job store; never the shared book draft).
+    await waitFor(() => expect(persistProseSpy).toHaveBeenCalledWith('deriv-p', 'newnode', 'g', 't'));
     // ...then switched the studio (AFTER seeding settles) + discarded the branch
     await waitFor(() => expect(onPromotedSpy).toHaveBeenCalledWith(expect.objectContaining({ project_id: 'deriv-p' })));
     expect(screen.queryByTestId('whatif-alt-node')).toBeNull();

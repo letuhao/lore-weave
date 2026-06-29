@@ -42,7 +42,8 @@ from app.packer import profile as profile_mod
 from app.packer import spoiler
 from app.packer.lenses import (
     LensBundle, gather_canon, gather_lore, gather_open_promises, gather_present,
-    gather_recent, gather_references, gather_structural, gather_timeline,
+    gather_recent, gather_references, gather_source_scene, gather_structural,
+    gather_timeline,
 )
 from app.db.repositories.references import reference_embed_model
 
@@ -77,6 +78,13 @@ class PackRequest:
     source_project_id: UUID | None = None
     branch_point: int | None = None
     overrides: list[Any] | None = None
+    # M1 (D-DERIVATIVE-ADAPT-FROM-SOURCE) — the free-form prose operation this pack
+    # serves. Op-AWARE only for `adapt_scene`: that op (and ONLY that op, on a
+    # derivative) fires the `gather_source_scene` lens to read the inherited source
+    # prose into the <source_scene> block. Every other op leaves the pack
+    # BYTE-UNCHANGED. Defaults to the generic draft op so existing callers are
+    # unaffected.
+    operation: str = "draft_scene"
 
 
 @dataclass
@@ -325,6 +333,10 @@ async def pack(
     # DELTA WINS on collision. The override set is re-read+re-applied EVERY pack
     # (self-syncing; the caller passes a fresh req.overrides — no cache here).
     extra_canon: list[str] = []
+    # M1 (D-DERIVATIVE-ADAPT-FROM-SOURCE) — the inherited SOURCE scene's prose,
+    # gathered ONLY for the `adapt_scene` op on a derivative (every other op leaves
+    # the pack byte-unchanged). Empty otherwise → no <source_scene> block.
+    source_scene: list[str] = []
     if is_derivative:
         # branch cutoff on the dense reading-order axis (chapter sort × stride). The
         # base read is capped at min(scene cutoff, branch cutoff) — never past the
@@ -366,6 +378,19 @@ async def pack(
         seen_p = seen_p or base_seen_p
         seen_t = seen_t or base_seen_t
         seen_l = seen_l or base_seen_l
+
+        # M1 — read the inherited SOURCE scene's prose ONLY for the adapt op. The
+        # derivative shares the source book_id + chapter spine (COW), so the source
+        # prose lives in the SAME chapter draft (chapter_id) on the shared book_id.
+        # Spoiler-bounded ≤ the branch inside the lens (a pre-branch chapter is
+        # inherited canon → empty). Gated to adapt_scene so every other derivative
+        # op's pack is unchanged; gated on a resolvable chapter_id (a plan-free
+        # adapt with no chapter → nothing to read → FE falls back to draft_scene).
+        if req.operation == "adapt_scene" and chapter_id is not None:
+            source_scene = await gather_source_scene(
+                book, req.book_id, chapter_id, req.bearer,
+                branch_point=req.branch_point, chapter_sort_order=scene_sort_order,
+            )
 
     # The scene's own chapter sort is resolved above; here resolve ONLY the lore
     # hits whose chapter_index is None (best-effort ingest left it unset).
@@ -418,6 +443,7 @@ async def pack(
         open_promises=open_promises,  # FD-1 S3 — re-injected open-promise ledger
         extra_canon=extra_canon,  # C25 — added canon-rule scope from overrides
         references=references_kept,  # T3.6 — author reference passages (excludes dropped)
+        source_scene=source_scene,  # M1 — inherited source prose for the adapt op (empty otherwise)
     )
 
     # S2 — when the raw "story so far" is large (long chapter), COMPRESS the older

@@ -160,6 +160,20 @@ export const compositionApi = {
   createNode(projectId: string, payload: Partial<OutlineNode> & { kind: string }, token: string): Promise<OutlineNode> {
     return apiJson(`${BASE}/works/${projectId}/outline/nodes`, { method: 'POST', body: JSON.stringify(payload), token });
   },
+  // M3 (WS-B3 prose-persist-on-promote) — persist a promoted derivative scene's take
+  // PROSE, scene-scoped, in the DERIVATIVE project (a synthetic completed job keyed by
+  // node_id; NEVER the shared book draft → source-clobber guard is server-side). Plain
+  // text; empty/whitespace → 422 EMPTY_SCENE_PROSE (caller skips that scene). Idempotent
+  // on node_id (a re-promote overwrites, never duplicates).
+  persistScenePromoteProse(
+    projectId: string, nodeId: string, text: string, token: string, idempotencyKey?: string,
+  ): Promise<{ node_id: string; persisted: boolean; version: number }> {
+    return apiJson(`${BASE}/works/${projectId}/scenes/${nodeId}/prose`, {
+      method: 'POST',
+      body: JSON.stringify({ text, ...(idempotencyKey ? { idempotency_key: idempotencyKey } : {}) }),
+      token,
+    });
+  },
   // Patch an outline node (M9: set a scene's status — 'done' commits it for the
   // chapter-gate + emits composition.scene_committed server-side). T1.1b: pass
   // `version` to send If-Match → the BE 412s with NODE_VERSION_CONFLICT (carrying

@@ -29,6 +29,7 @@ from __future__ import annotations
 import hashlib
 import json
 import logging
+from collections.abc import Awaitable, Callable
 from typing import Any, Literal
 
 from pydantic import BaseModel, Field, ValidationError
@@ -149,6 +150,8 @@ async def extract_facts(
     schema: ExtractionSchema | None = None,
     # D-KG-WORKER-GRADED-EFFORT — graded reasoning effort (default "none" ⇒ off).
     reasoning_effort: str = "none",
+    # bug #34 — optional immediate-cancel hook forwarded to submit_and_wait.
+    cancel_check: Callable[[], Awaitable[bool]] | None = None,
 ) -> list[LLMFactCandidate]:
     """Extract factual claims from *text* via the user's BYOK LLM.
 
@@ -198,6 +201,7 @@ async def extract_facts(
         context_budget=context_budget,
         schema=schema,
         reasoning_effort=reasoning_effort,
+        cancel_check=cancel_check,
     )
 
     return _postprocess(
@@ -312,6 +316,8 @@ async def _extract_via_llm_client(
     context_budget: ContextBudget | None = None,
     schema: ExtractionSchema | None = None,
     reasoning_effort: str = "none",
+    # bug #34 — optional immediate-cancel hook forwarded to submit_and_wait.
+    cancel_check: Callable[[], Awaitable[bool]] | None = None,
 ) -> list[_LLMFact]:
     """Submit fact_extraction job + wait_terminal + tolerant-parse
     `result.facts`. Mirrors entity extractor's SDK path."""
@@ -322,7 +328,8 @@ async def _extract_via_llm_client(
     )
     try:
         job = await llm_client.submit_and_wait(
-            user_id=user_id, transient_retry_budget=1, **kwargs,
+            user_id=user_id, transient_retry_budget=1,
+            cancel_check=cancel_check, **kwargs,
         )
     except LLMTransientRetryNeededError as exc:
         raise ExtractionError(

@@ -1,4 +1,4 @@
-import { Pencil, Plus, Trash2 } from 'lucide-react';
+import { Link2, Pencil, Plus, Trash2 } from 'lucide-react';
 import type { Tier } from '../../tieringTypes';
 import { TierChip } from './TierChip';
 
@@ -28,6 +28,10 @@ type Props = {
    *  modal (name/icon/color). Omit to hide it (e.g. attributes edit inline). */
   onEdit?: (row: ColumnRow) => void;
   editLabel?: string;
+  /** When set, each row gets a links (chain) button — opens the kind↔genre link
+   *  editor. Used by the kinds column so a kind can be (re)linked to genres. */
+  onLinks?: (row: ColumnRow) => void;
+  linksLabel?: string;
 };
 
 /** One column of the Manage workspace drilldown (genres / kinds / attributes).
@@ -45,6 +49,8 @@ export function OntologyColumn({
   deleteLabel,
   onEdit,
   editLabel,
+  onLinks,
+  linksLabel,
 }: Props) {
   return (
     <div className="flex min-h-[420px] flex-col rounded-lg border bg-card">
@@ -89,6 +95,20 @@ export function OntologyColumn({
                       {r.meta && <span className="font-mono text-[10px] text-muted-foreground">{r.meta}</span>}
                       {r.tier && <TierChip tier={r.tier} />}
                     </button>
+                    {/* Linked genres (chain) — always visible muted, primary on hover/focus.
+                        Same always-visible rationale as the trash button below (touch). */}
+                    {onLinks && (
+                      <button
+                        type="button"
+                        onClick={() => onLinks(r)}
+                        title={linksLabel}
+                        aria-label={linksLabel}
+                        data-testid={`ontology-links-${r.id}`}
+                        className="mr-0.5 rounded p-1 text-muted-foreground/60 transition-colors hover:bg-primary/10 hover:text-primary focus:text-primary"
+                      >
+                        <Link2 className="h-3 w-3" />
+                      </button>
+                    )}
                     {/* Edit (settings) — always visible muted, primary on hover/focus.
                         Same always-visible rationale as the trash button below. */}
                     {onEdit && (

@@ -40,6 +40,7 @@ describe('Gateway proxy routing', () => {
   let notificationServer: http.Server;
   let knowledgeServer: http.Server;
   let loreEnrichmentServer: http.Server;
+  let mcpPublicServer: http.Server;
 
   beforeAll(async () => {
     [
@@ -58,6 +59,7 @@ describe('Gateway proxy routing', () => {
       notificationServer,
       knowledgeServer,
       loreEnrichmentServer,
+      mcpPublicServer,
     ] = await Promise.all([
       startUpstream('auth'),
       startUpstream('books'),
@@ -74,6 +76,7 @@ describe('Gateway proxy routing', () => {
       startUpstream('notification'),
       startUpstream('knowledge'),
       startUpstream('lore-enrichment'),
+      startUpstream('mcp-public'),
     ]);
 
     const moduleFixture: TestingModule = await Test.createTestingModule({
@@ -102,6 +105,7 @@ describe('Gateway proxy routing', () => {
       learningUrl: urlOf(knowledgeServer),
       compositionUrl: urlOf(knowledgeServer),
       jobsUrl: urlOf(knowledgeServer),
+      mcpPublicGatewayUrl: urlOf(mcpPublicServer),
     });
     await app.init();
   });
@@ -124,6 +128,7 @@ describe('Gateway proxy routing', () => {
       new Promise((resolve) => notificationServer.close(resolve)),
       new Promise((resolve) => knowledgeServer.close(resolve)),
       new Promise((resolve) => loreEnrichmentServer.close(resolve)),
+      new Promise((resolve) => mcpPublicServer.close(resolve)),
     ]);
   });
 
@@ -171,6 +176,30 @@ describe('Gateway proxy routing', () => {
 
   it('routes /v1/lore-enrichment/* paths to lore-enrichment service', async () => {
     await request(app.getHttpServer()).get('/v1/lore-enrichment/jobs').expect(200).expect('lore-enrichment');
+  });
+
+  it('routes P5 OAuth authorization-server paths to auth service', async () => {
+    // RFC 8414 AS metadata + the /oauth/* endpoints (authorize|token|jwks|register|consent)
+    // live in auth-service; external OAuth traffic must still flow through the gateway.
+    await request(app.getHttpServer())
+      .get('/.well-known/oauth-authorization-server')
+      .expect(200)
+      .expect('auth');
+    await request(app.getHttpServer()).get('/oauth/authorize').expect(200).expect('auth');
+    await request(app.getHttpServer()).post('/oauth/token').expect(200).expect('auth');
+    await request(app.getHttpServer()).get('/oauth/jwks').expect(200).expect('auth');
+    await request(app.getHttpServer()).post('/oauth/register').expect(200).expect('auth');
+  });
+
+  it('routes /mcp + RFC 9728 protected-resource metadata to the public MCP edge', async () => {
+    // /mcp is the SECOND public entry class (external agents), unversioned; the edge
+    // (mcp-public-gateway) also serves the RFC 9728 Protected Resource Metadata.
+    await request(app.getHttpServer()).post('/mcp').expect(200).expect('mcp-public');
+    await request(app.getHttpServer()).get('/mcp/').expect(200).expect('mcp-public');
+    await request(app.getHttpServer())
+      .get('/.well-known/oauth-protected-resource')
+      .expect(200)
+      .expect('mcp-public');
   });
 
   it('returns 404 for unmatched path', async () => {

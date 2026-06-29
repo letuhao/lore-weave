@@ -863,6 +863,57 @@ class TestK21BToolCallingIntegration:
         assert "propose_edit" not in names  # editor-only, no editor_context here
 
     @pytest.mark.asyncio
+    async def test_book_surface_seeds_glossary_hot_set_and_lazy_tail(self):
+        """B (per-surface hot set): a book-scoped chat with a MULTI-DOMAIN catalog
+        seeds the glossary domain into discovery_seed_names (advertised pass 1) and
+        leaves the other domains (book/translation) to the lazy find_tools tail.
+
+        This GUARDS the discovery_seed_names threading stream_response →
+        _emit_chat_turn → _stream_with_tools — the other integration tests use a
+        single-tool catalog, so their empty seed is indistinguishable from a
+        dropped param; only a multi-domain catalog exercises the wiring."""
+        pool, conn = _make_pool_with_conn()
+        pool.fetch.return_value = []
+        conn.fetchval.return_value = 1
+        catalog = [
+            {"type": "function", "function": {"name": "glossary_search"}},
+            {"type": "function", "function": {"name": "glossary_propose_batch"}},
+            {"type": "function", "function": {"name": "book_create"}},
+            {"type": "function", "function": {"name": "translation_start_job"}},
+        ]
+        kc = _patched_knowledge(stable="", volatile="", mode="static", tool_defs=catalog)
+
+        async def fake_tool_loop(**kwargs):
+            yield {"content": "ok", "reasoning_content": "", "finish_reason": "stop", "usage": _Usage(1, 1)}
+
+        with patch("app.services.stream_service.get_knowledge_client", return_value=kc), \
+             patch("app.services.stream_service._stream_with_tools", side_effect=fake_tool_loop) as loop_mock, \
+             patch("app.services.stream_service._stream_via_gateway"):
+            async for _ in stream_response(
+                session_id=TEST_SESSION_ID, user_message_content="add three kinds",
+                user_id=TEST_USER_ID, model_source="user_model",
+                model_ref=TEST_MODEL_REF, creds=_make_creds(),
+                pool=pool, billing=AsyncMock(),
+                stream_format="agui", book_context={"book_id": "b1"},
+            ):
+                pass
+
+        kw = loop_mock.call_args.kwargs
+        # discovery is on with the real catalog passed through.
+        assert kw["discovery_catalog"] is not None
+        # The seed was produced AND threaded down to the loop: glossary hot, tail lazy.
+        seed = kw["discovery_seed_names"]
+        assert seed is not None
+        assert "glossary_search" in seed and "glossary_propose_batch" in seed
+        assert "book_create" not in seed  # lazy — reachable via find_tools
+        assert "translation_start_job" not in seed
+        # …and the first-pass advertisement the model sees reflects it.
+        adv = [t["function"]["name"] for t in kw["tools"]]
+        assert "glossary_search" in adv and "glossary_propose_batch" in adv
+        assert "book_create" not in adv
+        assert "translation_start_job" not in adv
+
+    @pytest.mark.asyncio
     async def test_book_scoped_injects_skill_and_raises_iteration_cap(self):
         """Glossary-assistant P5: a book-scoped chat injects the static glossary
         skill (INV-6 + canonical glossary_search H7) into the system message and

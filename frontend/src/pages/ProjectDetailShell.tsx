@@ -11,6 +11,7 @@ import {
   AlertTriangle,
   BarChart2,
   Network,
+  Share2,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useProjects } from '@/features/knowledge/hooks/useProjects';
@@ -21,6 +22,7 @@ import { MiningInsightsTab } from '@/features/knowledge/components/MiningInsight
 import { GapReportTab } from '@/features/knowledge/components/GapReportTab';
 import { ProposalsInboxTab } from '@/features/knowledge/components/ProposalsInboxTab';
 import { OverviewSection } from '@/features/knowledge/components/shell/OverviewSection';
+import { ProjectSchemaSection } from '@/features/knowledge/components/shell/ProjectSchemaSection';
 import { ProjectGraphView } from '@/features/knowledge/components/ProjectGraphView';
 
 // C6 (G6) — Project-detail SHELL. The IA backbone for the book-workspace
@@ -45,6 +47,7 @@ const SECTIONS = [
   'proposals',
   'gap',
   'insights',
+  'schema',
   'graph',
 ] as const;
 
@@ -58,6 +61,7 @@ const SECTION_DEFS: { id: Section; icon: React.ComponentType<{ className?: strin
   { id: 'proposals', icon: Inbox },
   { id: 'gap', icon: AlertTriangle },
   { id: 'insights', icon: BarChart2 },
+  { id: 'schema', icon: Share2 },
   { id: 'graph', icon: Network },
 ];
 
@@ -158,6 +162,9 @@ export function ProjectDetailShell() {
       )}
       {activeSection === 'gap' && projectId && (
         <GapReportTab scopedProjectId={projectId} />
+      )}
+      {activeSection === 'schema' && projectId && (
+        <ProjectSchemaSection projectId={projectId} bookId={project?.book_id ?? null} />
       )}
       {activeSection === 'graph' && projectId && (
         <ProjectGraphView projectId={projectId} bookId={project?.book_id ?? null} />

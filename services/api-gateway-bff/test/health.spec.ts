@@ -35,6 +35,7 @@ describe('Gateway (e2e)', () => {
       learningUrl: 'http://127.0.0.1:9',
       compositionUrl: 'http://127.0.0.1:9',
       jobsUrl: 'http://127.0.0.1:9',
+      mcpPublicGatewayUrl: 'http://127.0.0.1:9',
     });
     await app.init();
   });

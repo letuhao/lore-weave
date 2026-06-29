@@ -69,7 +69,16 @@ func BookOwnerGuard(grants GrantChecker, level GrantLevel) Guard {
 		if grants == nil {
 			return ErrCheckUnavailable
 		}
-		err := grants.RequireGrant(ctx, resourceID, userID, level)
+		// OD-8 (owned-books-only): a PUBLIC MCP key (X-Mcp-Key-Id present) must
+		// reach a book ONLY as its OWNER, never via a collaboration grant. We
+		// escalate the required level to GrantOwner — which a share never confers
+		// (E0: none<view<edit<manage<owner) — so a public key cannot act on a book
+		// merely shared to the caller. First-party calls keep the nominal `level`.
+		need := level
+		if OwnerOnlyFromCtx(ctx) {
+			need = GrantOwner
+		}
+		err := grants.RequireGrant(ctx, resourceID, userID, need)
 		switch {
 		case err == nil:
 			return nil

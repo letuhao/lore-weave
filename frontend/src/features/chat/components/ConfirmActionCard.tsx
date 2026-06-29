@@ -2,10 +2,12 @@ import { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { toast } from 'sonner';
 import { ShieldAlert, Check, X } from 'lucide-react';
+import { useQueryClient } from '@tanstack/react-query';
 import { useAuth } from '@/auth';
-import { actionsApi, type ActionPreview } from '../actionsApi';
+import { actionsApi, parseRepriceError, type ActionPreview, type RepriceDetail } from '../actionsApi';
 import { PlannerPlanView } from './PlannerPlanView';
 import { useChatStream } from '../providers';
+import { invalidateAfterConfirm } from '../utils/invalidateAfterConfirm';
 import type { FrontendToolOutcome } from '../hooks/useChatMessages';
 import type { ToolCallRecord } from '../types';
 
@@ -43,7 +45,13 @@ interface ConfirmArgs {
   items?: unknown[];
 }
 
-type CardState = null | 'done' | 'expired' | 'error' | 'cancelled';
+type CardState = null | 'done' | 'expired' | 'error' | 'cancelled' | 'reprice';
+
+/** Format a USD cost for the re-price card. The BE sends a number (or null when it
+ *  couldn't be priced) — render `$x.xx` or a dash, never a bare number. */
+function usd(v: number | null | undefined): string {
+  return typeof v === 'number' ? `$${v.toFixed(2)}` : '—';
+}
 
 // The generic confirm domains, derivable from a dotted action descriptor
 // (`book.publish`, `translation.start_job`, …). Used as a fallback when `domain`
@@ -85,6 +93,7 @@ export function ConfirmActionCard({ record }: Props) {
   const { t } = useTranslation('chat');
   const { accessToken } = useAuth();
   const { submitToolResult } = useChatStream();
+  const queryClient = useQueryClient();
   const [state, setState] = useState<CardState>(null);
   const [busy, setBusy] = useState(false);
   const [preview, setPreview] = useState<ActionPreview | null>(null);
@@ -96,6 +105,10 @@ export function ConfirmActionCard({ record }: Props) {
   const [enabledOps, setEnabledOps] = useState<Set<string>>(new Set());
   // The BE's actionable reason for a 422, surfaced instead of a blanket "Expired".
   const [detail, setDetail] = useState('');
+  // H-J / H14: the re-price detail when the priced confirm route returned 409
+  // reprice_required — drives the new-price card so the human re-confirms against
+  // the real, higher cost (never a silent overspend).
+  const [reprice, setReprice] = useState<RepriceDetail | null>(null);
 
   const args = (record.args ?? {}) as ConfirmArgs;
   const token = args.confirm_token ?? '';
@@ -157,9 +170,27 @@ export function ConfirmActionCard({ record }: Props) {
         : actionsApi.confirmAction(domain, token, accessToken));
       outcome = 'action_done';
       setState('done');
+      // bug #41 — refresh the viewing page (KG ontology/graph, glossary) so the agent's
+      // change shows without an F5; the confirm path bypasses the GUI mutation hooks.
+      invalidateAfterConfirm(queryClient, domain);
     } catch (err) {
       const status = (err as { status?: number }).status;
-      if (status === 422) {
+      // H-J / H14 — a priced confirm route re-prices at execute; if the actual cost
+      // drifted up past the BE threshold (×1.25 / +$0.50 — owned by the BE, never
+      // hardcoded here) it returns 409 reprice_required WITHOUT spending. Surface
+      // the NEW estimate and resume `reprice_required` so the agent re-proposes at
+      // the real price — the single-use token is spent, so we never silently retry.
+      const repriceDetail = parseRepriceError(err);
+      if (repriceDetail) {
+        outcome = 'reprice_required';
+        setState('reprice');
+        setReprice(repriceDetail);
+        const newCost = usd(repriceDetail.actual_cost_usd ?? repriceDetail.estimate?.cost_usd);
+        toast.error(t('actionConfirm.reprice', {
+          defaultValue: 'The cost rose to {{cost}} since this was estimated — ask again to re-confirm at the new price.',
+          cost: newCost,
+        }));
+      } else if (status === 422) {
         // expired, already-confirmed (single-use), or a precondition drift — all
         // re-proposable. Surface the BE's actionable reason instead of a blanket
         // "expired" (which used to hide WHY the 422 happened).
@@ -338,6 +369,22 @@ export function ConfirmActionCard({ record }: Props) {
           >
             <X className="h-3 w-3" />{t('actionConfirm.cancel', { defaultValue: 'Cancel' })}
           </button>
+        </div>
+      ) : state === 'reprice' ? (
+        // H-J / H14 — the actual cost drifted up past the BE threshold; the priced
+        // job did NOT run. Show old→new and prompt to re-ask (the single-use token
+        // is spent — re-confirming needs a fresh proposal at the new price).
+        <div data-testid="confirm-reprice" className="mt-1.5 rounded-sm border border-amber-500/40 bg-amber-500/10 p-1.5 text-[10px] text-amber-600 dark:text-amber-400">
+          <p className="font-medium">
+            {t('actionConfirm.reprice_title', { defaultValue: 'Cost changed — not applied' })}
+          </p>
+          <p className="mt-0.5 text-foreground/90">
+            {t('actionConfirm.reprice_detail', {
+              defaultValue: 'Estimated {{old}}, now {{new}}. Nothing was spent — ask again to re-confirm at the new price.',
+              old: usd(reprice?.confirmed_cost_usd),
+              new: usd(reprice?.actual_cost_usd ?? reprice?.estimate?.cost_usd),
+            })}
+          </p>
         </div>
       ) : (
         <div className="mt-1.5 text-[10px] text-muted-foreground">

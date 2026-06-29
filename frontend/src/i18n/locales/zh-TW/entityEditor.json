@@ -145,5 +145,12 @@
       "created": "已建立佐證",
       "text_required": "原文為必填"
     }
+  },
+  "summarize": {
+    "canonical_label": "合併摘要",
+    "pending_dirty": "下次擷取後將重新摘要",
+    "pending_new": "下次擷取後將進行摘要",
+    "sources": "原始提及 ({{count}})",
+    "empty": "尚無提及"
   }
 }

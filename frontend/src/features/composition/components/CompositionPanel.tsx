@@ -28,10 +28,13 @@ import { TimelineView } from './TimelineView';
 import { CharacterArcView } from './CharacterArcView';
 import { WorldMap } from './WorldMap';
 import { GroundingPanel } from './GroundingPanel';
+import { CanonAtChapterPanel } from './CanonAtChapterPanel';
 import { ReferencesPanel } from './ReferencesPanel';
 import { DockRail } from './workspace/DockRail';
 import { DockSlot } from './workspace/DockSlot';
 import { PopoutBridge } from './workspace/PopoutBridge';
+import { MobilePanelSwitcher } from './MobilePanelSwitcher';
+import { useIsMobile } from '@/hooks/useIsMobile';
 import { useWorkspaceLayoutOptional } from '../context/WorkspaceLayoutContext';
 import { visibleDockIds, hiddenDockIds, floatingDockIds, popoutDockIds, nextActiveAfterHide, defaultFloatRect } from '../workspace/dock';
 import type { Rect, WorkspacePanelId } from '../workspace/types';
@@ -40,6 +43,7 @@ import { PromoteWhatIfButton } from './PromoteWhatIfButton';
 import { DerivativeBanner } from './DerivativeBanner';
 import { DerivativeGroundingLayers } from './DerivativeGroundingLayers';
 import { useDerivativeContext } from '../hooks/useDerivativeContext';
+import { useAdaptFromSource } from '../hooks/useAdaptFromSource';
 import { CanonRulesPanel } from './CanonRulesPanel';
 import { CriticPanel } from './CriticPanel';
 import { ThreadsPanel } from './ThreadsPanel';
@@ -75,7 +79,7 @@ type Props = {
   soloPanel?: WorkspacePanelId;
 };
 
-type SubTab = 'compose' | 'cowriter' | 'assemble' | 'planner' | 'beats' | 'graph' | 'cast' | 'relmap' | 'timeline' | 'arc' | 'worldmap' | 'grounding' | 'references' | 'style' | 'canon' | 'critic' | 'threads' | 'progress' | 'quality' | 'flywheel' | 'motifs' | 'conformance' | 'settings';
+type SubTab = 'compose' | 'cowriter' | 'assemble' | 'planner' | 'beats' | 'graph' | 'cast' | 'relmap' | 'timeline' | 'arc' | 'worldmap' | 'grounding' | 'canonview' | 'references' | 'style' | 'canon' | 'critic' | 'threads' | 'progress' | 'quality' | 'flywheel' | 'motifs' | 'conformance' | 'settings';
 
 export function CompositionPanel({ bookId, chapterId, token, onAccept, sceneId: sceneIdProp, onSceneChange, heatmapEnabled, onToggleHeatmap, soloPanel }: Props) {
   const solo = soloPanel != null;
@@ -151,6 +155,10 @@ export function CompositionPanel({ bookId, chapterId, token, onAccept, sceneId: 
   // the 2-layer (INHERITED/OVERRIDDEN) grounding badges when the open Work is a
   // derivative (source_work_id set). No-ops for a greenfield Work.
   const derivativeCtx = useDerivativeContext(work, token);
+  // M1 (D-DERIVATIVE-ADAPT-FROM-SOURCE) — whether the active chapter's scenes can be
+  // adapted from inherited source prose (derivative + at/after branch + source has
+  // prose). No-ops (no fetch) on a greenfield Work. Drives ComposeView's adapt action.
+  const adaptability = useAdaptFromSource(bookId, chapterId, derivativeCtx, token);
   // EXPLICIT handler from the wizard's onDerived (NOT a useEffect-for-events): switch
   // the studio to the new derivative + refresh the resolution cache so a later
   // re-resolve also sees it.
@@ -203,6 +211,10 @@ export function CompositionPanel({ bookId, chapterId, token, onAccept, sceneId: 
   // as acceptProse: a cold-cache first render (the pop-out's separate root) early-returns
   // before this line, then the resolved render reaches it → "rendered more hooks".
   const ws = useWorkspaceLayoutOptional();
+  // M5a — mobile studio: one panel at a time via the MobilePanelSwitcher; the dock
+  // rail / float / popout / picker are never rendered (≤767px). Unconditional hook
+  // (above the early returns) like `ws`.
+  const isMobile = useIsMobile();
 
   if (resolution.isLoading) return <Hint>{t('loading', { defaultValue: 'Loading co-writer…' })}</Hint>;
   if (res?.status === 'unavailable')
@@ -394,10 +406,12 @@ export function CompositionPanel({ bookId, chapterId, token, onAccept, sceneId: 
   const slot = (id: WorkspacePanelId) => ({
     id,
     active: solo ? id === soloPanel : activeTab === id,
-    floated: !solo && dockOn && ws?.layout.panels[id]?.placement === 'float',
+    // M5a — mobile forces every panel DOCKED + MOUNTED (placement ignored): no
+    // FloatingWindow, no popout, just the active panel's CSS-visible DockSlot.
+    floated: !solo && !isMobile && dockOn && ws?.layout.panels[id]?.placement === 'float',
     // Not mounted here when: a non-solo panel in the popout shell, OR (in the opener)
-    // a panel that's popped out to its own window.
-    mounted: solo ? id === soloPanel : ws?.layout.panels[id]?.placement !== 'popout',
+    // a panel that's popped out to its own window. On mobile everything is mounted+docked.
+    mounted: solo ? id === soloPanel : isMobile ? true : ws?.layout.panels[id]?.placement !== 'popout',
     rect: ws?.layout.panels[id]?.rect ?? defaultFloatRect(0),
     title: t(id, { defaultValue: id }),
     zIndex: floatZ(id),
@@ -419,6 +433,13 @@ export function CompositionPanel({ bookId, chapterId, token, onAccept, sceneId: 
       ⛶ {t('view.power_view', { defaultValue: 'Power view' })}
     </button>
   );
+
+  // The fixed sub-tab order (the `threads` gate applied) — shared by the flag-OFF
+  // TabScrollStrip and the mobile switcher's flag-OFF list.
+  const stripIds: SubTab[] = ['compose', 'cowriter', 'assemble', 'planner', 'beats', 'graph', 'cast', 'relmap', 'timeline', 'arc', 'worldmap', 'grounding', 'canonview', 'references', 'style', 'canon', 'critic', ...(threadsEnabled ? ['threads' as const] : []), 'progress', 'quality', 'flywheel', 'motifs', 'conformance', 'settings'];
+  // M5a — the mobile switcher's panel list: the dock's visible ids when the windowing
+  // flag is ON (respects hide + reorder + the threads gate), else the fixed strip order.
+  const mobileIds: SubTab[] = dockOn ? (dockVisible as SubTab[]) : stripIds;
 
   return (
     <div className="flex h-full min-w-0 flex-col overflow-hidden">
@@ -594,8 +615,9 @@ export function CompositionPanel({ bookId, chapterId, token, onAccept, sceneId: 
       )}
 
       {/* T5.4 M4 — opener-side OS pop-out bridges (render nothing; own each popped
-          panel's window). Never in SOLO mode (the popout shell IS a window). */}
-      {!solo && dockPopped.map((id) => (
+          panel's window). Never in SOLO mode (the popout shell IS a window) nor on
+          mobile (M5a — no popout; a popped panel is shown docked instead). */}
+      {!solo && !isMobile && dockPopped.map((id) => (
         <PopoutBridge
           key={id}
           id={id}
@@ -610,7 +632,15 @@ export function CompositionPanel({ bookId, chapterId, token, onAccept, sceneId: 
           the fixed TabScrollStrip. Both keep the Power-view trigger (shared rightSlot)
           and the 19 content divs below stay MOUNTED either way (no remount). SOLO mode
           (the popout shell) shows no strip — the window IS the single panel. */}
-      {solo ? null : dockOn && ws ? (
+      {solo ? null : isMobile ? (
+        // M5a — mobile: replace the rail/strip with a single Studio panel picker (Sheet).
+        <MobilePanelSwitcher
+          ids={mobileIds}
+          active={activeTab}
+          onSelect={(id) => selectTab(id as SubTab)}
+          label={(id) => t(id, { defaultValue: id })}
+        />
+      ) : dockOn && ws ? (
         <DockRail
           visibleIds={dockVisible}
           hiddenIds={hiddenDockIds(ws.layout, threadsEnabled)}
@@ -628,7 +658,7 @@ export function CompositionPanel({ bookId, chapterId, token, onAccept, sceneId: 
           testid="composition-subtabs"
           className="flex gap-1 overflow-x-auto border-b border-neutral-200 px-2 pt-1 text-sm dark:border-neutral-700"
         >
-          {(['compose', 'cowriter', 'assemble', 'planner', 'beats', 'graph', 'cast', 'relmap', 'timeline', 'arc', 'worldmap', 'grounding', 'references', 'style', 'canon', 'critic', ...(threadsEnabled ? ['threads' as const] : []), 'progress', 'quality', 'flywheel', 'motifs', 'conformance', 'settings'] as SubTab[]).map((tb) => (
+          {stripIds.map((tb) => (
             <button
               key={tb}
               data-testid={`composition-subtab-${tb}`}
@@ -663,6 +693,8 @@ export function CompositionPanel({ bookId, chapterId, token, onAccept, sceneId: 
             onAccept={acceptProse}
             guide={composeGuide}
             onGuideChange={setComposeGuide}
+            canAdapt={adaptability.canAdapt}
+            adaptSourceEmpty={adaptability.sourceEmpty}
           />
         </DockSlot>
         <DockSlot {...slot('cowriter')}>
@@ -670,6 +702,11 @@ export function CompositionPanel({ bookId, chapterId, token, onAccept, sceneId: 
             bookId={bookId}
             onAccept={acceptProse}
             onUseAsGuide={(text) => { setComposeGuide(text); selectTab('compose'); }}
+            // M2 (D-T5.4-CHAT-HOIST): engage the chat SharedWorker when the panel can
+            // float/pop-out — opener (dock on) or the solo pop-out window — so an
+            // in-flight chat turn survives the panel re-parenting / opener close.
+            windowingEnabled={dockOn}
+            forceShared={solo}
           />
         </DockSlot>
         <DockSlot {...slot('assemble')}>
@@ -743,10 +780,26 @@ export function CompositionPanel({ bookId, chapterId, token, onAccept, sceneId: 
           )}
           <GroundingPanel
             projectId={work.project_id}
+            bookId={bookId}
+            chapterId={selectedScene?.chapter_id ?? chapterId}
             sceneId={effectiveScene}
             token={token}
             heatmapEnabled={heatmapEnabled}
             onToggleHeatmap={onToggleHeatmap}
+          />
+        </DockSlot>
+        <DockSlot {...slot('canonview')}>
+          {/* M6 — "Canon as of chapter N" for the active scene's chapter. On a
+              derivative, window against the SOURCE project (the derivative's own is
+              empty pre-promote). Fetches only when this tab is active (4 windowed
+              cross-service reads). */}
+          {/* Knowledge project is resolved by book_id inside the hook (distinct from
+              work.project_id); a derivative shares book_id → source canon's graph. */}
+          <CanonAtChapterPanel
+            bookId={bookId}
+            chapterId={selectedScene?.chapter_id ?? chapterId}
+            token={token}
+            enabled={activeTab === 'canonview'}
           />
         </DockSlot>
         <DockSlot {...slot('references')}>

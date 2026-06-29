@@ -16,6 +16,8 @@ export type GlossaryTranslateJobRequest = {
   overwrite_mode: OverwriteMode;
   /** Enable model reasoning/thinking (LM Studio enable_thinking). */
   thinking_enabled?: boolean;
+  /** bug #4: how many entities translate in parallel (1 = sequential). Omitted ⇒ 1. */
+  concurrency_level?: number;
 };
 
 export type GlossaryTranslateJobCreated = {

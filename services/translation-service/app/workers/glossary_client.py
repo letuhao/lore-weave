@@ -449,6 +449,73 @@ async def post_extracted_entities(
         return None
 
 
+# ── #26/#7 summarize (merge-rewrite) — canonical-layer client ─────────────────
+
+
+async def fetch_canonical_dirty(book_id: str, limit: int = 500) -> list[dict]:
+    """Fetch the summarize attributes whose canonical value is stale (canonical_dirty).
+
+    Calls: GET /internal/books/{book_id}/canonical-dirty
+
+    Returns the list of work items (entity_id, entity_name, attr_code, attr_label,
+    raw_values, source_language, raw_fingerprint), or [] on any failure.
+    """
+    try:
+        async with httpx.AsyncClient(timeout=_GLOSSARY_FETCH_TIMEOUT) as client:
+            resp = await client.get(
+                f"{settings.glossary_service_internal_url}"
+                f"/internal/books/{book_id}/canonical-dirty",
+                params={"limit": str(limit)},
+                headers={"X-Internal-Token": settings.internal_service_token},
+            )
+            if resp.status_code != 200:
+                log.warning("canonical-dirty fetch returned %d for book=%s",
+                            resp.status_code, book_id)
+                return []
+            return resp.json().get("items", [])
+    except Exception as exc:
+        log.warning("canonical-dirty fetch failed for book=%s: %s", book_id, exc)
+        return []
+
+
+async def post_canonical(
+    book_id: str,
+    entity_id: str,
+    attr_code: str,
+    canonical_value: str,
+    *,
+    raw_fingerprint: str = "",
+) -> dict | None:
+    """Write a synthesized canonical value back to a summarize attribute.
+
+    Calls: POST /internal/books/{book_id}/entities/{entity_id}/canonical
+
+    `raw_fingerprint` (from fetch_canonical_dirty) enables compare-and-clear: the dirty
+    flag clears only if the raw set is unchanged since the fetch. Returns the response
+    dict, or None on any failure (best-effort — never raises).
+    """
+    try:
+        async with httpx.AsyncClient(timeout=30.0) as client:
+            resp = await client.post(
+                f"{settings.glossary_service_internal_url}"
+                f"/internal/books/{book_id}/entities/{entity_id}/canonical",
+                json={
+                    "attr_code": attr_code,
+                    "canonical_value": canonical_value,
+                    "raw_fingerprint": raw_fingerprint,
+                },
+                headers={"X-Internal-Token": settings.internal_service_token},
+            )
+            if resp.status_code != 200:
+                log.warning("post_canonical returned %d for book=%s entity=%s attr=%s",
+                            resp.status_code, book_id, entity_id, attr_code)
+                return None
+            return resp.json()
+    except Exception as exc:
+        log.warning("post_canonical failed book=%s entity=%s: %s", book_id, entity_id, exc)
+        return None
+
+
 def auto_correct_glossary(
     translated_text: str,
     correction_map: dict[str, str],

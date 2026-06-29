@@ -129,6 +129,15 @@ async def list_timeline_events(
             "existence leak)."
         ),
     ),
+    q: str | None = Query(
+        default=None,
+        max_length=200,
+        description=(
+            "#12 — free-text search over the event title + summary "
+            "(case-insensitive substring, SOURCE text — deterministic "
+            "regardless of reader language). Empty/whitespace is ignored."
+        ),
+    ),
     event_date_from: str | None = Query(
         default=None,
         # C18 REVIEW-DESIGN catch — structural calendar validation:
@@ -305,6 +314,7 @@ async def list_timeline_events(
             event_date_from=event_date_from,
             event_date_to=event_date_to,
             participant_candidates=participant_candidates,
+            q=(q or "").strip() or None,
             sort_by=sort_by,
             sort_dir=sort_dir,
             limit=limit,
@@ -426,6 +436,7 @@ async def list_world_timeline(
                 project_id=pid,
                 after_order=None,
                 before_order=None,
+                q=(q or "").strip() or None,
                 sort_by=sort_by,
                 limit=limit,
                 offset=0,

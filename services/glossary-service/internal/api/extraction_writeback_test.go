@@ -825,6 +825,93 @@ func appearanceValue(t *testing.T, pool *pgxpool.Pool, bookID string) string {
 	return v
 }
 
+// appearanceCanonical reads the (canonical_value, canonical_dirty) of the character's
+// 'appearance' EAV for the book (#26/#7 summarize mode).
+func appearanceCanonical(t *testing.T, pool *pgxpool.Pool, bookID string) (string, bool) {
+	t.Helper()
+	var cv *string
+	var dirty bool
+	if err := pool.QueryRow(context.Background(), `
+		SELECT eav.canonical_value, eav.canonical_dirty FROM entity_attribute_values eav
+		JOIN glossary_entities ge ON ge.entity_id = eav.entity_id
+		JOIN book_attributes ba ON ba.attr_id = eav.attr_def_id
+		WHERE ge.book_id=$1 AND ba.code='appearance'`, bookID).Scan(&cv, &dirty); err != nil {
+		t.Fatalf("query canonical: %v", err)
+	}
+	if cv == nil {
+		return "", dirty
+	}
+	return *cv, dirty
+}
+
+// TestBulkExtract_SummarizeAction proves the #26/#7 summarize merge-rewrite mode: it keeps
+// the SAME lossless raw layer as append (provenance preserved, idempotent) AND flags
+// canonical_dirty on a real change so the end-of-job LLM resynthesis pass picks it up — but
+// NOT on an idempotent no-op re-extraction (an unchanged raw set leaves the canonical valid).
+func TestBulkExtract_SummarizeAction(t *testing.T) {
+	pool := openTestDB(t)
+	runK2aMigrations(t, pool)
+	bookID := "00000000-0000-0000-0001-0000000a1043"
+	adoptTestBook(t, pool, uuid.MustParse(bookID))
+	t.Cleanup(func() { cleanupExtractBook(pool, bookID) })
+	srv, token := newEntitiesListServer(t)
+	srv.pool = pool
+	// Author the attribute as summarize; the worker sends action 'default' so the authored
+	// strategy governs (strategyToAction("summarize") → the summarize branch).
+	setMergeStrategy(t, pool, bookID, "appearance", "summarize")
+	links := []map[string]any{{"chapter_id": uuid.NewString(), "chapter_index": 1}}
+
+	mk := func(val string) map[string]any {
+		return map[string]any{
+			"source_language": "zh",
+			"entities": []map[string]any{
+				{"kind_code": "character", "name": "归纳者",
+					"attributes": map[string]any{"appearance": val}, "chapter_links": links},
+			},
+		}
+	}
+	// Create the entity (createExtractedEntity writes appearance='tall'; dirty defaults false).
+	postExtract(t, srv, token, bookID, mk("tall"))
+	if _, dirty := appearanceCanonical(t, pool, bookID); dirty {
+		t.Errorf("create path should not flag canonical_dirty")
+	}
+	// Summarize-merge 'short' → raw layer ["tall","short"] (same as append) + dirty flagged.
+	postExtract(t, srv, token, bookID, mk("short"))
+	if v := appearanceValue(t, pool, bookID); v != `["tall","short"]` {
+		t.Errorf("summarize raw layer: want [\"tall\",\"short\"], got %q", v)
+	}
+	if _, dirty := appearanceCanonical(t, pool, bookID); !dirty {
+		t.Errorf("summarize: a real change must flag canonical_dirty")
+	}
+	// Simulate the resummarize pass landing a canonical value + clearing dirty.
+	if _, err := pool.Exec(context.Background(), `
+		UPDATE entity_attribute_values eav SET canonical_value='a tall, short warrior',
+			canonical_dirty=false, canonical_synced_at=now()
+		FROM glossary_entities ge, book_attributes ba
+		WHERE eav.entity_id=ge.entity_id AND eav.attr_def_id=ba.attr_id
+		  AND ge.book_id=$1 AND ba.code='appearance'`, bookID); err != nil {
+		t.Fatalf("simulate resummarize: %v", err)
+	}
+	// Idempotent re-extraction of 'short' → unchanged raw set → MUST NOT re-dirty (canonical
+	// is still valid) and must not clobber the synthesized canonical_value.
+	postExtract(t, srv, token, bookID, mk("short"))
+	cv, dirty := appearanceCanonical(t, pool, bookID)
+	if dirty {
+		t.Errorf("idempotent re-extraction must not re-flag canonical_dirty")
+	}
+	if cv != "a tall, short warrior" {
+		t.Errorf("idempotent re-extraction clobbered canonical_value: got %q", cv)
+	}
+	// A genuinely new raw mention re-dirties so the next pass re-synthesizes.
+	postExtract(t, srv, token, bookID, mk("scarred"))
+	if v := appearanceValue(t, pool, bookID); v != `["tall","short","scarred"]` {
+		t.Errorf("summarize raw layer after new mention: got %q", v)
+	}
+	if _, dirty := appearanceCanonical(t, pool, bookID); !dirty {
+		t.Errorf("a new raw mention must re-flag canonical_dirty")
+	}
+}
+
 // TestBulkExtract_AppendAction proves the append action dedup-merges a list value and is
 // idempotent (a re-append of the same item is skipped 'unchanged').
 func TestBulkExtract_AppendAction(t *testing.T) {

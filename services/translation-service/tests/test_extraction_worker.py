@@ -86,6 +86,7 @@ async def test_resume_skips_completed_chapters_and_finalizes():
 
     with patch("app.workers.extraction_worker.fetch_known_entities", new=AsyncMock(return_value=[])), \
          patch("app.workers.extraction_worker._process_extraction_chapter", new=AsyncMock()) as proc, \
+         patch("app.workers.extraction_worker.resolve_job_cost_usd", new=AsyncMock(return_value=None)), \
          patch("app.workers.extraction_worker.emit_job_event_safe", new=AsyncMock()) as emit:
         await _run_extraction_job(
             {"book_id": "b", "chapter_ids": [c1, c2]},
@@ -101,6 +102,201 @@ async def test_resume_skips_completed_chapters_and_finalizes():
     emitted = [c.kwargs.get("status") for c in emit.await_args_list]
     assert "running" in emitted and "completed" in emitted
     assert all(c.kwargs.get("kind") == "glossary_extraction" for c in emit.await_args_list)
+
+
+@pytest.mark.asyncio
+async def test_late_cancel_on_last_chapter_finalizes_as_cancelled():
+    # bug #34 (live-smoke D-CANCEL-IMMEDIATE): a cancel that lands DURING the last chapter
+    # aborts its in-flight LLM calls (cancel_check → DELETE → upstream abort) but the
+    # per-chapter cooperative gate never fires again (no chapter left to gate), so the loop
+    # falls through to finalize with the job still 'cancelling'. The finalize must honor the
+    # cancel — report 'cancelled' (completed chapters kept) — NOT let the chapter-aggregate
+    # mask it as 'completed'/'completed_with_errors'. The smoke caught the row + the unified
+    # jobs stream both mislabeling an explicit cancel as "completed with errors".
+    jid = uuid4()
+    c1 = str(uuid4())
+    db = AsyncMock()
+    # claim UPDATE...RETURNING → jid; the lone "SELECT status FROM extraction_jobs" is the
+    # NEW finalize check (the per-chapter gate is skipped — c1 is a resume-done chapter) →
+    # 'cancelling' simulates the cancel arriving mid-last-chapter.
+    async def _fetchval(query, *args):
+        if "SELECT status FROM extraction_jobs" in str(query):
+            return "cancelling"
+        return jid
+
+    db.fetchval = AsyncMock(side_effect=_fetchval)
+    # one resume-done chapter → aggregate would be 'completed' (failed==0, errors==0)
+    db.fetch = AsyncMock(return_value=[
+        {"chapter_id": c1, "status": "completed", "it": 100, "ot": 50},
+    ])
+    db.execute = AsyncMock()
+    publish, publish_event = AsyncMock(), AsyncMock()
+
+    with patch("app.workers.extraction_worker.fetch_known_entities", new=AsyncMock(return_value=[])), \
+         patch("app.workers.extraction_worker._process_extraction_chapter", new=AsyncMock()) as proc, \
+         patch("app.workers.extraction_worker.resolve_job_cost_usd", new=AsyncMock(return_value=None)), \
+         patch("app.workers.extraction_worker.emit_job_event_safe", new=AsyncMock()) as emit:
+        await _run_extraction_job(
+            {"book_id": "b", "chapter_ids": [c1]},
+            jid, "u", _pool(db), publish, publish_event, MagicMock(),
+        )
+
+    proc.assert_not_awaited()  # c1 already done → no work; cancel lands at finalize
+    # the terminal UPDATE wrote 'cancelled', NOT the 'completed' aggregate it would otherwise be
+    finals = [c for c in db.execute.await_args_list if "SET status=$2, finished_at=now()" in str(c.args[0])]
+    assert finals and finals[-1].args[2] == "cancelled"
+    # the unified jobs stream agrees: canonical terminal event is 'cancelled' (not 'completed')
+    assert any(c.kwargs.get("status") == "cancelled" for c in emit.await_args_list)
+    assert not any(c.kwargs.get("status") == "completed" for c in emit.await_args_list)
+    # the SSE payload to the user also reads 'cancelled'
+    terminal_payloads = [c.args[1]["payload"]["status"] for c in publish_event.await_args_list
+                         if c.args[1].get("event") == "job.status_changed"
+                         and c.args[1]["payload"].get("status") in ("completed", "completed_with_errors", "cancelled", "failed")]
+    assert terminal_payloads and terminal_payloads[-1] == "cancelled"
+
+
+@pytest.mark.asyncio
+async def test_per_chapter_emits_unified_progress_for_live_monitoring():
+    # bug #2 (D-JOBS-EXTRACT-LIVE-PROGRESS): each processed chapter mirrors progress onto the
+    # UNIFIED jobs-service stream (a 'running' event carrying progress={done,total}) so the
+    # /jobs detail page advances live instead of sitting frozen between the lone 'running'
+    # transition and the terminal event.
+    jid = uuid4()
+    c1 = str(uuid4())
+    db = AsyncMock()
+    db.fetchval = AsyncMock(return_value=jid)  # claim succeeds; in-loop status check → not cancelled
+    db.fetch = AsyncMock(return_value=[])      # no resume checkpoint; empty finalize rollup
+    db.execute = AsyncMock()
+    publish, publish_event = AsyncMock(), AsyncMock()
+
+    with patch("app.workers.extraction_worker.fetch_known_entities", new=AsyncMock(return_value=[])), \
+         patch("app.workers.extraction_worker._process_extraction_chapter", new=AsyncMock(return_value={})) as proc, \
+         patch("app.workers.extraction_worker.emit_job_event_safe", new=AsyncMock()) as emit:
+        await _run_extraction_job(
+            {"book_id": "b", "chapter_ids": [c1]},
+            jid, "u", _pool(db), publish, publish_event, MagicMock(),
+        )
+
+    proc.assert_awaited_once()
+    progress_emits = [
+        c for c in emit.await_args_list
+        if c.kwargs.get("status") == "running" and c.kwargs.get("progress")
+    ]
+    assert progress_emits, "no unified 'running' progress event emitted for live /jobs monitoring"
+    # baseline (0/1 before the loop) + per-chapter (1/1 after processing c1)
+    assert progress_emits[0].kwargs["progress"] == {"done": 0, "total": 1}
+    assert progress_emits[-1].kwargs["progress"] == {"done": 1, "total": 1}
+    assert all(c.kwargs.get("kind") == "glossary_extraction" for c in progress_emits)
+
+
+@pytest.mark.asyncio
+async def test_progress_emits_llm_calls_done_from_batch_outcomes():
+    # bug #37 — the running progress emit advances params.llm_calls_done = accumulated realized
+    # batch calls (one per BatchOutcome row, the unit estimated_llm_calls counts). Baseline
+    # starts at 0 (the seed count from the mock is a non-int → 0), then climbs per chapter.
+    jid = uuid4()
+    c1 = str(uuid4())
+    db = AsyncMock()
+    db.fetchval = AsyncMock(return_value=jid)  # claim ok; seed count → non-int → 0
+    db.fetch = AsyncMock(return_value=[])
+    db.execute = AsyncMock()
+    publish, publish_event = AsyncMock(), AsyncMock()
+    chapter_result = {
+        "created": 1, "input_tokens": 10, "output_tokens": 5, "entities": [],
+        "batch_outcomes": [{"status": "completed"}, {"status": "completed"}, {"status": "completed"}],
+    }
+    with patch("app.workers.extraction_worker.fetch_known_entities", new=AsyncMock(return_value=[])), \
+         patch("app.workers.extraction_worker._process_extraction_chapter",
+               new=AsyncMock(return_value=chapter_result)), \
+         patch("app.workers.extraction_worker.resolve_job_cost_usd", new=AsyncMock(return_value=None)), \
+         patch("app.workers.extraction_worker.emit_job_event_safe", new=AsyncMock()) as emit:
+        await _run_extraction_job(
+            {"book_id": "b", "chapter_ids": [c1]},
+            jid, "u", _pool(db), publish, publish_event, MagicMock(),
+        )
+    running = [c for c in emit.await_args_list
+               if c.kwargs.get("status") == "running" and c.kwargs.get("progress")]
+    assert running[0].kwargs.get("params", {}).get("llm_calls_done") == 0   # baseline pre-loop
+    assert running[-1].kwargs.get("params", {}).get("llm_calls_done") == 3   # after 1 chapter, 3 batches
+
+
+@pytest.mark.asyncio
+async def test_progress_and_terminal_carry_live_cost_and_tokens():
+    # bug #3: the unified Jobs detail Cost & Usage panel must update live, not only at
+    # completion. Each progress emit + the terminal emit carry tokens_in/out and a cost_usd
+    # PRICED FROM THE ACTUAL summed tokens via the provider-registry oracle (not a placeholder),
+    # and finalize persists cost_usd onto extraction_jobs.
+    jid = uuid4()
+    c1 = str(uuid4())
+    db = AsyncMock()
+    db.fetchval = AsyncMock(return_value=jid)
+    db.fetch = AsyncMock(return_value=[])
+    db.execute = AsyncMock()
+    publish, publish_event = AsyncMock(), AsyncMock()
+    chapter_result = {"created": 2, "input_tokens": 100, "output_tokens": 40, "entities": []}
+
+    with patch("app.workers.extraction_worker.fetch_known_entities", new=AsyncMock(return_value=[])), \
+         patch("app.workers.extraction_worker._process_extraction_chapter",
+               new=AsyncMock(return_value=chapter_result)), \
+         patch("app.workers.extraction_worker.resolve_job_cost_usd",
+               new=AsyncMock(return_value=0.0123)) as price, \
+         patch("app.workers.extraction_worker.emit_job_event_safe", new=AsyncMock()) as emit:
+        await _run_extraction_job(
+            {"book_id": "b", "chapter_ids": [c1], "model_source": "user_model", "model_ref": "m1"},
+            jid, "u", _pool(db), publish, publish_event, MagicMock(),
+        )
+
+    # cost is priced from the ACTUAL summed tokens (100/40), not a flat placeholder
+    price.assert_awaited()
+    assert price.await_args_list[-1].kwargs["input_tokens"] == 100
+    assert price.await_args_list[-1].kwargs["output_tokens"] == 40
+    # the post-chapter progress emit carries live cost + tokens (updates every chapter)
+    progress_emits = [c for c in emit.await_args_list
+                      if c.kwargs.get("status") == "running" and c.kwargs.get("progress")]
+    live = progress_emits[-1].kwargs
+    assert live["cost_usd"] == 0.0123
+    assert live["tokens_in"] == 100 and live["tokens_out"] == 40
+    # the terminal emit also carries the final cost + tokens
+    terminal = [c for c in emit.await_args_list
+                if c.kwargs.get("status") in ("completed", "completed_with_errors", "failed")]
+    assert terminal and terminal[-1].kwargs["cost_usd"] == 0.0123
+    assert terminal[-1].kwargs["tokens_in"] == 100
+    # finalize persisted cost_usd onto extraction_jobs
+    assert any("cost_usd=COALESCE" in str(c.args[0]) for c in db.execute.await_args_list)
+
+
+@pytest.mark.asyncio
+async def test_cost_repricing_is_throttled_not_every_chapter():
+    # bug #3 review (MED): pricing hits provider-registry on a 5s-timeout network call.
+    # Repricing every chapter would couple the run's latency to registry health (a degraded
+    # registry → +5s PER chapter). Cost is re-priced on the first chapter + every
+    # _COST_REPRICE_EVERY, reusing the last figure between — while TOKENS update on every emit.
+    jid = uuid4()
+    chapters = [str(uuid4()) for _ in range(6)]
+    db = AsyncMock()
+    db.fetchval = AsyncMock(return_value=jid)  # claim + each in-loop status check → not cancelled
+    db.fetch = AsyncMock(return_value=[])
+    db.execute = AsyncMock()
+    publish, publish_event = AsyncMock(), AsyncMock()
+    result = {"created": 1, "input_tokens": 10, "output_tokens": 5, "entities": []}
+
+    with patch("app.workers.extraction_worker.fetch_known_entities", new=AsyncMock(return_value=[])), \
+         patch("app.workers.extraction_worker._process_extraction_chapter", new=AsyncMock(return_value=result)), \
+         patch("app.workers.extraction_worker.resolve_job_cost_usd", new=AsyncMock(return_value=0.02)) as price, \
+         patch("app.workers.extraction_worker.emit_job_event_safe", new=AsyncMock()) as emit:
+        await _run_extraction_job(
+            {"book_id": "b", "chapter_ids": chapters, "model_source": "user_model", "model_ref": "m1"},
+            jid, "u", _pool(db), publish, publish_event, MagicMock(),
+        )
+
+    # 6 chapters but far fewer reprices (baseline + first + every-5th + finalize = 4) — WITHOUT
+    # the throttle this would be 8 (baseline + 6 + finalize). The `< len` bound proves throttle.
+    assert price.await_count < len(chapters), f"cost re-priced too often: {price.await_count}"
+    # every per-chapter progress emit still carries live, cumulative tokens
+    progress_emits = [c for c in emit.await_args_list
+                      if c.kwargs.get("status") == "running" and c.kwargs.get("progress")]
+    assert len(progress_emits) == len(chapters) + 1  # baseline + one per chapter
+    assert progress_emits[-1].kwargs["tokens_in"] == 60  # 6 × 10, cumulative & live
 
 
 @pytest.mark.asyncio
@@ -122,6 +318,7 @@ async def test_job_terminal_emits_batch_summary_rollup():
 
     with patch("app.workers.extraction_worker.fetch_known_entities", new=AsyncMock(return_value=[])), \
          patch("app.workers.extraction_worker._process_extraction_chapter", new=AsyncMock()), \
+         patch("app.workers.extraction_worker.resolve_job_cost_usd", new=AsyncMock(return_value=None)), \
          patch("app.workers.extraction_worker.emit_job_event_safe", new=AsyncMock()):
         await _run_extraction_job(
             {"book_id": "b", "chapter_ids": [c1]},
@@ -336,6 +533,9 @@ async def test_graded_effort_reaches_llm_input():
     inp = llm.submit_and_wait.await_args.kwargs["input"]
     assert inp.get("reasoning_effort") == "low"            # graded → reached the LLM
     assert put_mock.await_args.args[1].effort_band == "low"  # graded → keyed the cache
+    # bug #24: the Usage-GUI billing label rides job_meta.usage_purpose — lock it so a
+    # future refactor can't silently revert glossary extraction to a "chat" label.
+    assert llm.submit_and_wait.await_args.kwargs["job_meta"]["usage_purpose"] == "glossary_extraction"
 
 
 @pytest.mark.asyncio
@@ -676,3 +876,38 @@ def test_entity_response_format_enum_tracks_the_batch():
         "event",
         "relationship",
     ]
+
+
+# ── extraction-quality (2026-06-29 ontology analysis) ────────────────────────
+
+
+def test_drop_non_extractable_kinds_removes_relationship():
+    """`relationship` is a KG edge, not a glossary entity — it must be filtered from the
+    LLM extraction profile + metadata so it can't flood the glossary with `A與B的關係`
+    phrase-rows. Other (concrete) kinds are untouched."""
+    profile = {"character": {"name": "fill"}, "relationship": {"name": "fill"}, "location": {"name": "fill"}}
+    meta = [{"code": "character"}, {"code": "relationship"}, {"code": "location"}]
+    fp, fm, dropped = ew.drop_non_extractable_kinds(profile, meta)
+    assert dropped == ["relationship"]
+    assert set(fp) == {"character", "location"}
+    assert [m["code"] for m in fm] == ["character", "location"]
+
+
+def test_drop_non_extractable_kinds_noop_when_absent():
+    """A book without `relationship` is unaffected (returns the inputs, no churn)."""
+    profile = {"character": {"name": "fill"}}
+    meta = [{"code": "character"}]
+    fp, fm, dropped = ew.drop_non_extractable_kinds(profile, meta)
+    assert dropped == []
+    assert fp == profile and fm == meta
+
+
+def test_extraction_system_template_has_precision_filter():
+    """The glossary extraction prompt must carry the scene-relevance / discreteness filter
+    (the precision control the KG prompt had and this one lacked) and must NOT say 'all'."""
+    from app.workers.extraction_prompt import SYSTEM_TEMPLATE
+    t = SYSTEM_TEMPLATE
+    assert "SALIENT, DISCRETE, NAMED" in t
+    assert "identify all named entities" not in t.lower()
+    assert "RELATIONSHIPS between" in t  # explicit: a relationship is not an entity
+    assert "OMIT" in t and "backstory" in t  # omission bias for background mentions

@@ -53,7 +53,22 @@
     "label": "ラベル",
     "temporalField": "時系列（valid_from + 来歴）",
     "cardinality": "カーディナリティ",
-    "addButton": "エッジ種別を追加"
+    "addButton": "エッジ種別を追加",
+    "addSectionTitle": "スキーマに追加",
+    "editHint": "追加のみ：新しい種別の追加またはエッジ種別の非推奨化。ハード削除はできません（AI と同じ範囲）。",
+    "allowFreeEdges": "語彙外の関係を許可（フリーエッジ）",
+    "addNodeKind": "ノード種別を追加",
+    "addFactType": "ファクト種別を追加",
+    "addVocabValue": "語彙値を追加",
+    "kindCode": "種別コード",
+    "strength": "強度",
+    "required": "必須",
+    "optional": "任意",
+    "noVocabSets": "このスキーマにはまだ語彙セットがありません — まず AI に追加を依頼してください。",
+    "add": "追加",
+    "added": "スキーマを更新しました",
+    "addFailed": "スキーマを更新できませんでした",
+    "forbidden": "スキーマを編集するにはこのプロジェクトの管理権限が必要です"
   },
   "sync": {
     "upToDate": "最新です — 上流の変更はありません。",

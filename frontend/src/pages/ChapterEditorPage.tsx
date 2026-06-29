@@ -33,6 +33,8 @@ import { fireSendToChat } from '@/features/chat/context/sendToChat';
 import { registerEditorTarget } from '@/features/chat/context/editorBridge';
 import { CompositionPanel } from '@/features/composition/components/CompositionPanel';
 import { WorkspaceShell } from '@/features/composition/components/workspace/WorkspaceShell';
+import { MobileEditorShell, type MobileGroup } from '@/components/editor/MobileEditorShell';
+import { useIsMobile } from '@/hooks/useIsMobile';
 import { CowriteBridgeButton } from '@/features/composition/components/CowriteBridgeButton';
 import { SelectionToolbar } from '@/features/composition/components/SelectionToolbar';
 import { InlineAiLayer } from '@/features/composition/components/InlineAiLayer';
@@ -59,6 +61,10 @@ export function ChapterEditorPage() {
   const { accessToken } = useAuth();
   const panels = useEditorPanels();
   const { focusMode, toggle: toggleFocus } = useFocusMode();  // T5.1 focus/typewriter
+  // M5a — mobile shell: a two-level nav (Editor / Studio / History group bar) replaces
+  // the desktop 3-pane on ≤767px. The desktop tree is untouched.
+  const isMobile = useIsMobile();
+  const [mobileGroup, setMobileGroup] = useState<MobileGroup>('editor');
 
   // Resizable right panel — drag the left edge. Width is per-device UI state
   // (persisted in useEditorPanels → localStorage per CLAUDE.md). During the
@@ -395,7 +401,9 @@ export function ChapterEditorPage() {
   // T5.2 — mention heatmap: push the top-cast density terms + the toggle into the
   // editor so the in-prose tinting tracks both the data and the on/off state. The
   // GroundingPanel shares this same query (cache) for its bar list.
-  const heatmap = useMentionHeatmap(composeProjectId ?? undefined, accessToken);
+  // M7 — the heatmap is now windowed to THIS chapter's per-chapter mention_count
+  // (glossary), keyed by bookId + chapterId (not the knowledge projectId).
+  const heatmap = useMentionHeatmap(bookId, chapterId, accessToken);
   useEffect(() => {
     // tint the canonical name AND every alias (mention_count counts all surface
     // forms; canonical-only would miss most occurrences in alias-heavy CJK prose)
@@ -587,6 +595,165 @@ export function ChapterEditorPage() {
 
   // ── Render ────────────────────────────────────────────────────────────────
 
+  // M5a — the three editor surfaces, extracted so the desktop 3-pane AND the mobile
+  // group shell render the SAME element instances (the desktop↔mobile flip swaps which
+  // branch mounts; within a branch the panes keep their state). editorMain = the center
+  // column; studioMain = the hoisted co-writer studio; historyMain = revision history.
+  const editorMain = (
+    <div className="relative flex flex-1 flex-col overflow-hidden bg-background">
+      {/* Title + metadata bar */}
+      <div className="flex-shrink-0 border-b px-6 pt-4 pb-3">
+        <input
+          type="text"
+          data-testid="chapter-title-input"
+          value={title}
+          onChange={(e) => setTitle(e.target.value)}
+          className="w-full bg-transparent font-serif text-xl font-semibold outline-none placeholder:text-muted-foreground/30"
+          placeholder={t('title_placeholder')}
+        />
+        <div className="mt-1.5 flex items-center gap-2 text-[10px] text-muted-foreground">
+          {chapterLang && (
+            <>
+              <span>{chapterLang} <span className="font-mono opacity-60">({chapterLang})</span></span>
+              <span className="text-border">|</span>
+            </>
+          )}
+          <span>{t('chars', { n: charCount.toLocaleString() })}</span>
+          <span className="text-border">|</span>
+          <span>{t('words', { n: wc.toLocaleString() })}</span>
+          <span className="text-border">|</span>
+          <span>{t('paragraphs', { count: paraCount })}</span>
+        </div>
+      </div>
+
+      {/* T5.3 — AI-provenance toolbar (self-hides when there's nothing to review) */}
+      {composeProjectId && !versionHistory && (
+        <div className="px-3 pt-1">
+          <ProvenanceToolbar
+            visible={provenance.visible}
+            unreviewedCount={provenance.unreviewedCount}
+            onToggleVisible={provenance.toggleVisible}
+            onMarkAllReviewed={provenance.markAllReviewed}
+          />
+        </div>
+      )}
+
+      {/* Tiptap editor or version history panel */}
+      {versionHistory ? (
+        <VersionHistoryPanel
+          token={accessToken!}
+          bookId={bookId}
+          chapterId={chapterId}
+          blockId={versionHistory.blockId}
+          blockTitle={versionHistory.blockTitle}
+          currentMediaUrl={versionHistory.mediaSrc}
+          onClose={() => setVersionHistory(null)}
+          onRestore={(version) => {
+            if (version.media_url) {
+              setVersionHistory(null);
+            }
+          }}
+        />
+      ) : (
+        <TiptapEditor
+          ref={tiptapEditorRef}
+          content={savedBody}
+          onUpdate={(json, text) => { setTiptapJson(json); setTextContent(text); }}
+          grammarEnabled={grammarEnabled}
+          editorMode={editorMode}
+          focusMode={focusMode}
+          className="flex-1 overflow-y-auto"
+          selectionMenu={composeProjectId
+            ? (editor) => (
+                <SelectionToolbar
+                  editor={editor}
+                  projectId={composeProjectId}
+                  sceneContext={effectiveSceneId || null}
+                  token={accessToken}
+                />
+              )
+            : undefined}
+          aiLayer={composeProjectId
+            ? (editor) => (
+                <InlineAiLayer
+                  editor={editor}
+                  projectId={composeProjectId}
+                  sceneId={effectiveSceneId || null}
+                  modelRef={composeDefaultModel}
+                  modelKind={composeDefaultModelMeta?.provider_kind}
+                  modelName={composeDefaultModelMeta?.provider_model_name}
+                  token={accessToken}
+                />
+              )
+            : undefined}
+        />
+      )}
+
+      {/* Save note — dimmed in focus mode (mockup .savenote) */}
+      <div className={cn('flex-shrink-0 border-t px-4 py-2', focusMode && 'pointer-events-none opacity-0')}>
+        <input
+          value={saveNote}
+          onChange={(e) => setSaveNote(e.target.value)}
+          placeholder={t('save_note_placeholder')}
+          className="w-full rounded border bg-background px-3 py-1.5 text-xs placeholder:text-muted-foreground/40 focus:outline-none focus:ring-1 focus:ring-ring/40"
+        />
+      </div>
+    </div>
+  );
+
+  const historyMain = (
+    <RevisionHistory key={revKey} bookId={bookId} chapterId={chapterId} onRestore={() => void load()} />
+  );
+
+  const studioMain = (
+    <WorkspaceShell token={accessToken} bookId={bookId} chapterId={chapterId}>
+      <CompositionPanel
+        key={bookId}
+        bookId={bookId}
+        chapterId={chapterId}
+        token={accessToken}
+        onAccept={(text, meta) =>
+          tiptapEditorRef.current?.insertAtCursor(text, {
+            source: 'ai', status: 'unreviewed', model: meta?.model ?? null,
+            ts: new Date().toISOString(),
+          })
+        }
+        sceneId={activeSceneId}
+        onSceneChange={setActiveSceneId}
+        heatmapEnabled={heatmapEnabled}
+        onToggleHeatmap={() => setHeatmapEnabled((v) => !v)}
+      />
+    </WorkspaceShell>
+  );
+
+  // M5a — compact mobile header: breadcrumb-lite + save (the desktop toolbar's controls
+  // don't fit a phone; the studio/history affordances live in the bottom group bar).
+  const mobileHeader = (
+    <div className="flex h-11 flex-shrink-0 items-center gap-2 border-b bg-card px-3">
+      <button onClick={() => guardedNavigate(`/books/${bookId}`)} className="truncate text-xs text-muted-foreground" title={t('breadcrumb.book')}>
+        {title || t('breadcrumb.chapter')}
+      </button>
+      <span className="ml-auto" />
+      {isDirty ? (
+        <span className="inline-flex items-center gap-1 rounded-full bg-warning/12 px-2 py-0.5 text-[10px] font-medium text-warning">
+          <span className="h-1.5 w-1.5 rounded-full bg-warning" />{t('unsaved')}
+        </span>
+      ) : (
+        <span className="inline-flex items-center gap-1 rounded-full bg-success/12 px-2 py-0.5 text-[10px] font-medium text-success">
+          <span className="h-1.5 w-1.5 rounded-full bg-success" />{t('saved_badge')}
+        </span>
+      )}
+      <button
+        data-testid="chapter-save-button-mobile"
+        onClick={() => void save()}
+        disabled={saving}
+        className="inline-flex items-center gap-1 rounded-md bg-primary px-3 py-1.5 text-xs font-medium text-primary-foreground hover:bg-primary/90 disabled:opacity-50"
+      >
+        <Save className="h-3 w-3" />{t('save')}
+      </button>
+    </div>
+  );
+
   return (
     <div className="flex h-full flex-col overflow-hidden">
       {/* T5.1 — focus-mode continuity pill (static ambient affordance; the live
@@ -600,6 +767,19 @@ export function ChapterEditorPage() {
           <span className="text-muted-foreground">{t('focus.hint', { defaultValue: '✦ tap a line for grounding' })}</span>
         </div>
       )}
+      {/* M5a — mobile: a two-level group shell (Editor / Studio / History) replaces the
+          desktop 3-pane. The shared dialogs/tooltips below render in BOTH shells. */}
+      {isMobile ? (
+        <MobileEditorShell
+          group={mobileGroup}
+          onGroupChange={setMobileGroup}
+          header={mobileHeader}
+          editor={editorMain}
+          studio={studioMain}
+          history={historyMain}
+        />
+      ) : (
+      <>
       {/* ── Toolbar ──────────────────────────────────────────────────────── */}
       <div className="flex h-[42px] flex-shrink-0 items-center justify-between border-b bg-card px-4">
 
@@ -969,112 +1149,8 @@ export function ChapterEditorPage() {
           </div>
         )}
 
-        {/* Center — editor */}
-        <div className="relative flex flex-1 flex-col overflow-hidden bg-background">
-
-          {/* Title + metadata bar */}
-          <div className="flex-shrink-0 border-b px-6 pt-4 pb-3">
-            <input
-              type="text"
-              data-testid="chapter-title-input"
-              value={title}
-              onChange={(e) => setTitle(e.target.value)}
-              className="w-full bg-transparent font-serif text-xl font-semibold outline-none placeholder:text-muted-foreground/30"
-              placeholder={t('title_placeholder')}
-            />
-            <div className="mt-1.5 flex items-center gap-2 text-[10px] text-muted-foreground">
-              {chapterLang && (
-                <>
-                  <span>{chapterLang} <span className="font-mono opacity-60">({chapterLang})</span></span>
-                  <span className="text-border">|</span>
-                </>
-              )}
-              <span>{t('chars', { n: charCount.toLocaleString() })}</span>
-              <span className="text-border">|</span>
-              <span>{t('words', { n: wc.toLocaleString() })}</span>
-              <span className="text-border">|</span>
-              <span>{t('paragraphs', { count: paraCount })}</span>
-            </div>
-          </div>
-
-          {/* T5.3 — AI-provenance toolbar (self-hides when there's nothing to review) */}
-          {composeProjectId && !versionHistory && (
-            <div className="px-3 pt-1">
-              <ProvenanceToolbar
-                visible={provenance.visible}
-                unreviewedCount={provenance.unreviewedCount}
-                onToggleVisible={provenance.toggleVisible}
-                onMarkAllReviewed={provenance.markAllReviewed}
-              />
-            </div>
-          )}
-
-          {/* Tiptap editor or version history panel */}
-          {versionHistory ? (
-            <VersionHistoryPanel
-              token={accessToken!}
-              bookId={bookId}
-              chapterId={chapterId}
-              blockId={versionHistory.blockId}
-              blockTitle={versionHistory.blockTitle}
-              currentMediaUrl={versionHistory.mediaSrc}
-              onClose={() => setVersionHistory(null)}
-              onRestore={(version) => {
-                // Update the block's src attr with the restored version's media URL
-                if (version.media_url) {
-                  // The editor will need to update the block — for now just close the panel
-                  // A full restore would require finding the block by blockId and updating its attrs
-                  setVersionHistory(null);
-                }
-              }}
-            />
-          ) : (
-            <TiptapEditor
-              ref={tiptapEditorRef}
-              content={savedBody}
-              onUpdate={(json, text) => { setTiptapJson(json); setTextContent(text); }}
-              grammarEnabled={grammarEnabled}
-              editorMode={editorMode}
-              focusMode={focusMode}
-              className="flex-1 overflow-y-auto"
-              // T3.2: AI Selection Tools — only when a co-writer Work exists.
-              selectionMenu={composeProjectId
-                ? (editor) => (
-                    <SelectionToolbar
-                      editor={editor}
-                      projectId={composeProjectId}
-                      sceneContext={effectiveSceneId || null}
-                      token={accessToken}
-                    />
-                  )
-                : undefined}
-              // T3.3: Classic⇄AI inline mode (toggle + inline ghost) — co-writer Work only.
-              aiLayer={composeProjectId
-                ? (editor) => (
-                    <InlineAiLayer
-                      editor={editor}
-                      projectId={composeProjectId}
-                      sceneId={effectiveSceneId || null}
-                      modelRef={composeDefaultModel}
-                      modelKind={composeDefaultModelMeta?.provider_kind}
-                      modelName={composeDefaultModelMeta?.provider_model_name}
-                      token={accessToken}
-                    />
-                  )
-                : undefined}
-            />
-          )}
-
-          {/* Save note — dimmed in focus mode (mockup .savenote) */}
-          <div className={cn('flex-shrink-0 border-t px-4 py-2', focusMode && 'pointer-events-none opacity-0')}>
-            <input
-              value={saveNote}
-              onChange={(e) => setSaveNote(e.target.value)}
-              placeholder={t('save_note_placeholder')}
-              className="w-full rounded border bg-background px-3 py-1.5 text-xs placeholder:text-muted-foreground/40 focus:outline-none focus:ring-1 focus:ring-ring/40"
-            />
-          </div>
-        </div>
+        {/* Center — editor (shared with the mobile Editor group via editorMain) */}
+        {editorMain}
 
         {/* Right panel */}
         {panels.right && (
@@ -1111,9 +1187,7 @@ export function ChapterEditorPage() {
               </button>
             </div>
             <div className="flex-1 overflow-hidden">
-              {rightTab === 'history' && (
-                <RevisionHistory key={revKey} bookId={bookId} chapterId={chapterId} onRestore={() => void load()} />
-              )}
+              {rightTab === 'history' && historyMain}
               {/* ARCH-1 C5: the editor AI panel — the reusable <Chat> bound to
                   the book's knowledge project, with the current chapter
                   auto-attached as context (fired below when the tab opens).
@@ -1160,29 +1234,10 @@ export function ChapterEditorPage() {
               {/* LOOM M8 — the lore-grounded co-writer Power panel. Accepted prose
                   inserts at the cursor via insertAtCursor (which dirties + autosaves
                   the EDITOR doc); the streaming ghost stays FE-local until then. */}
-              {rightTab === 'compose' && (
-                // T5.4 — WorkspaceShell hoists the live co-writer stream (+ owns the
-                // windowing layout) ABOVE the studio panels so a docked/floated/popped
-                // panel survives a move. M1: renders CompositionPanel unchanged.
-                <WorkspaceShell token={accessToken} bookId={bookId} chapterId={chapterId}>
-                  <CompositionPanel
-                    key={bookId}
-                    bookId={bookId}
-                    chapterId={chapterId}
-                    token={accessToken}
-                    onAccept={(text, meta) =>
-                      tiptapEditorRef.current?.insertAtCursor(text, {
-                        source: 'ai', status: 'unreviewed', model: meta?.model ?? null,
-                        ts: new Date().toISOString(),
-                      })
-                    }
-                    sceneId={activeSceneId}
-                    onSceneChange={setActiveSceneId}
-                    heatmapEnabled={heatmapEnabled}
-                    onToggleHeatmap={() => setHeatmapEnabled((v) => !v)}
-                  />
-                </WorkspaceShell>
-              )}
+              {/* T5.4 — WorkspaceShell hoists the live co-writer stream ABOVE the studio
+                  panels (survives a dock/float/popout move). Shared with the mobile
+                  Studio group via studioMain. */}
+              {rightTab === 'compose' && studioMain}
             </div>
           </div>
         )}
@@ -1204,6 +1259,8 @@ export function ChapterEditorPage() {
           <span><kbd className="rounded border border-border bg-secondary px-1 py-px font-mono text-[9px]">Ctrl+S</kbd> {t('save')}</span>
         </div>
       </div>
+      </>
+      )}
 
       {/* In-place discard confirm */}
       <ConfirmDialog

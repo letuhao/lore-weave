@@ -32,6 +32,12 @@
   "toggle_history": "Toggle history / AI panel",
   "unsaved": "Unsaved",
   "saved_badge": "Saved",
+  "mobile": {
+    "editor": "Editor",
+    "studio": "Studio",
+    "history": "History",
+    "nav": "Editor sections"
+  },
   "discard_title": "Discard all unsaved changes",
   "discard": "Discard",
   "save": "Save",

@@ -97,6 +97,13 @@
     "no_matches": "找不到「{{query}}」的結果",
     "message_matches": "訊息符合"
   },
+  "switcher": {
+    "switch": "切換對話",
+    "new_chat": "新對話",
+    "no_active": "無對話",
+    "loading": "載入中…",
+    "empty": "尚無對話。"
+  },
   "view": {
     "configure_voice": "設定{{missing}}以啟用語音輔助",
     "missing_both": "STT 與 TTS 模型",
@@ -161,6 +168,23 @@
     "expired_short": "已過期 — 請重問",
     "error": "無法套用變更。",
     "error_short": "失敗",
+    "cancelled": "已取消",
+    "reprice": "估價後費用已上漲至 {{cost}} — 請重新詢問以依新價格再次確認。",
+    "reprice_title": "費用已變動 — 尚未套用",
+    "reprice_detail": "原估 {{old}}，現為 {{new}}。未產生任何花費 — 請重新詢問以依新價格再次確認。"
+  },
+  "batchConfirm": {
+    "title": "一次確認 {{count}} 項操作",
+    "action": "操作",
+    "warning": "這些高影響變更會在確認時一起套用。",
+    "warning_destructive": "其中部分具破壞性 — 請先檢視再確認。",
+    "confirm_all": "全部確認",
+    "cancel": "取消",
+    "applied": "已套用 {{count}} 項操作",
+    "partial": "已套用 {{applied}} 項，{{failed}} 項失敗 — 請重新詢問以重試其餘項目。",
+    "done": "已套用 {{count}} 項 ✓",
+    "partial_short": "已套用 {{applied}} 項，{{failed}} 項失敗",
+    "error_short": "無法套用 — 請重新詢問",
     "cancelled": "已取消"
   },
   "recordEdit": {

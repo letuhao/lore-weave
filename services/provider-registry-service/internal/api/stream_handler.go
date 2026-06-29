@@ -176,6 +176,13 @@ func (s *Server) doLlmStream(w http.ResponseWriter, r *http.Request, userID uuid
 		return
 	}
 
+	// PUB-12 (BYOK-only) — a public MCP key (X-Mcp-Key-Id header) may not draw a
+	// platform_model on the streaming path either; reject 402 before any spend.
+	// Synchronous path → header is the carrier (no job_meta here).
+	if rejectPlatformDrawForPublicKey(w, in.ModelSource, isPublicMcpKeyCall(r, nil)) {
+		return
+	}
+
 	// Resolve credentials. Mirrors doProxy's pattern but inlined here
 	// to keep the diff focused; the duplication will be eliminated in a
 	// later cleanup cycle if it bothers us. (Originally referenced

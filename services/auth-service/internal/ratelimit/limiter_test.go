@@ -44,6 +44,22 @@ func TestWindowReset(t *testing.T) {
 	}
 }
 
+func TestSweepEvictsExpiredEntries(t *testing.T) {
+	l := New(30*time.Millisecond, 5)
+	l.Allow("old") // window not elapsed yet → no sweep, entry persists
+	if len(l.byKey) != 1 {
+		t.Fatalf("expected 1 entry after first allow, got %d", len(l.byKey))
+	}
+	time.Sleep(35 * time.Millisecond) // let "old" fully expire
+	l.Allow("new")                    // sweep interval elapsed → evicts expired "old"
+	if _, ok := l.byKey["old"]; ok {
+		t.Fatal("expired entry should have been swept")
+	}
+	if len(l.byKey) != 1 {
+		t.Fatalf("expected only the live entry, got %d", len(l.byKey))
+	}
+}
+
 func TestClientIPForwardedFor(t *testing.T) {
 	r := httptest.NewRequest(http.MethodGet, "/", nil)
 	r.Header.Set("X-Forwarded-For", "203.0.113.1, 10.0.0.1")

@@ -1,3 +1,4 @@
+import { useEffect, useState } from 'react';
 import * as Dialog from '@radix-ui/react-dialog';
 import { AlertTriangle, X } from 'lucide-react';
 import { cn } from '@/lib/utils';
@@ -22,6 +23,14 @@ interface ConfirmDialogProps {
   loading?: boolean;
   /** Custom icon node. Pass false to suppress the default destructive icon. */
   icon?: React.ReactNode | false;
+  /**
+   * AWS-style typed confirmation: when set, the user must TYPE this exact phrase
+   * (paste is blocked) before the confirm button enables. Use for irreversible
+   * destructive ops (e.g. a KG rebuild that deletes thousands of entities).
+   */
+  confirmationPhrase?: string;
+  /** Label above the typed-confirmation input. */
+  confirmationLabel?: string;
 }
 
 export function ConfirmDialog({
@@ -30,8 +39,15 @@ export function ConfirmDialog({
   confirmLabel = 'Confirm', cancelLabel = 'Cancel',
   onConfirm, variant = 'default', loading,
   icon,
+  confirmationPhrase,
+  confirmationLabel,
 }: ConfirmDialogProps) {
   const stacked = !!extraAction;
+  const [typed, setTyped] = useState('');
+  // Clear the typed value whenever the dialog opens/closes so a prior match
+  // can't carry over to the next destructive action.
+  useEffect(() => { setTyped(''); }, [open]);
+  const phraseOk = !confirmationPhrase || typed.trim() === confirmationPhrase;
 
   const defaultIcon = variant === 'destructive'
     ? <AlertTriangle className="h-5 w-5 text-destructive" />
@@ -72,6 +88,26 @@ export function ConfirmDialog({
             </div>
           </div>
 
+          {/* AWS-style typed confirmation (paste blocked) */}
+          {confirmationPhrase && (
+            <div className="px-6 pb-2">
+              <label className="mb-1 block text-xs text-muted-foreground">
+                {confirmationLabel ?? `Type ${confirmationPhrase} to confirm`}
+              </label>
+              <input
+                value={typed}
+                onChange={(e) => setTyped(e.target.value)}
+                onPaste={(e) => e.preventDefault()}
+                disabled={loading}
+                autoComplete="off"
+                spellCheck={false}
+                data-testid="confirm-phrase-input"
+                aria-label={confirmationLabel ?? `Type ${confirmationPhrase} to confirm`}
+                className="w-full rounded-md border bg-background px-3 py-2 text-sm focus:border-ring focus:outline-none focus:ring-1 focus:ring-ring/30"
+              />
+            </div>
+          )}
+
           {/* Actions */}
           <div className={cn('border-t px-6 py-4', stacked ? 'flex flex-col gap-2' : 'flex justify-end gap-2')}>
             {extraAction && (
@@ -86,7 +122,7 @@ export function ConfirmDialog({
 
             <button
               onClick={onConfirm}
-              disabled={loading}
+              disabled={loading || !phraseOk}
               className={cn(
                 'inline-flex items-center justify-center rounded-lg px-4 py-2.5 text-sm font-medium transition-colors disabled:opacity-50',
                 stacked ? 'w-full border border-destructive/30 text-destructive hover:bg-destructive/10' :

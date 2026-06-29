@@ -35,7 +35,15 @@ from mcp.client.streamable_http import streamablehttp_client
 # conftest.py sets the required env BEFORE app import.
 from .conftest import TEST_USER  # noqa: E402
 
-EXPECTED_TOOLS = {"jobs_list", "jobs_summary", "jobs_get"}
+EXPECTED_TOOLS = {"jobs_list", "jobs_summary", "jobs_get", "jobs_cancel", "jobs_pause"}
+# The read tools are Tier R; the P4 slice-E control tools are Tier A (free + reversible).
+EXPECTED_TIERS = {
+    "jobs_list": "R",
+    "jobs_summary": "R",
+    "jobs_get": "R",
+    "jobs_cancel": "A",
+    "jobs_pause": "A",
+}
 
 # Matches conftest.py's INTERNAL_SERVICE_TOKEN default so the auth check passes
 # when we want it to.
@@ -115,17 +123,21 @@ async def test_every_tool_has_name_and_description(mcp_base_url):
 
 
 async def test_every_tool_carries_valid_meta(mcp_base_url):
-    """C-TOOL: each tool's `_meta` must declare tier=R + a valid scope, and the
-    `jobs_*` reads are user-scoped. find_tools recall (H6) relies on synonyms."""
+    """C-TOOL: each tool's `_meta` must declare the expected tier (R for reads, A for
+    the free+reversible control tools) + a user scope. find_tools recall (H6) relies
+    on synonyms."""
     headers = {"X-Internal-Token": _GOOD_TOKEN}
     async with _mcp_client(mcp_base_url, headers) as session:
         listing = await session.list_tools()
     for tool in listing.tools:
         meta = tool.meta
         assert meta is not None, f"tool {tool.name!r} has no _meta"
-        assert meta.get("tier") == "R", f"{tool.name}: expected tier R, got {meta.get('tier')!r}"
+        expected_tier = EXPECTED_TIERS[tool.name]
+        assert meta.get("tier") == expected_tier, (
+            f"{tool.name}: expected tier {expected_tier}, got {meta.get('tier')!r}"
+        )
         assert meta.get("scope") == "user", f"{tool.name}: expected scope user"
-        # synonyms feed find_tools recall — every jobs read declares them.
+        # synonyms feed find_tools recall — every jobs tool declares them.
         syns = meta.get("synonyms")
         assert isinstance(syns, list) and syns, f"{tool.name}: missing synonyms"
 
@@ -344,3 +356,157 @@ async def test_job_get_foreign_job_is_not_accessible():
             job_id="99999999-9999-9999-9999-999999999999",  # OTHER_USER's job
         )
     assert res == {"success": False, "error": "not found or not accessible"}
+
+
+# ── Control tools (jobs_cancel / jobs_pause) — P4 slice E / H-N ────────────────
+
+
+@asynccontextmanager
+async def _patched_control(store_obj, forward_result):
+    """Like `_patched` but also stubs `control.forward_control` so no real HTTP
+    forward fires; the stub records its args and returns `forward_result`."""
+    from unittest.mock import AsyncMock, MagicMock
+
+    from loreweave_mcp import ToolContext
+
+    import app.mcp.server as srv
+
+    def _ctx(user_id):
+        return ToolContext(user_id=user_id, session_id="sess-1")
+
+    fake_control = MagicMock()
+    fake_control.forward_control = AsyncMock(return_value=forward_result)
+
+    with (
+        patch.object(srv, "store", store_obj),
+        patch.object(srv, "get_pool", return_value=object()),
+        patch.object(srv, "build_tool_context", side_effect=lambda ctx, tok: ctx),
+        patch.object(srv, "control", fake_control),
+    ):
+        yield srv, _ctx, fake_control
+
+
+async def test_jobs_cancel_owned_running_job_forwards_and_succeeds():
+    from uuid import UUID
+
+    from app.control import ControlResult
+
+    async with _patched_control(
+        _seed(), ControlResult(200, {"detail": "cancelled"})
+    ) as (srv, _ctx, fake_control):
+        res = await srv.jobs_cancel(
+            _ctx(UUID(TEST_USER)),
+            service="translation",
+            job_id="11111111-1111-1111-1111-111111111111",  # owned + running
+        )
+    assert res["success"] is True
+    assert res["status_code"] == 200
+    # Ownership rides the envelope, NOT a tool arg — the forward carries the
+    # authorized owner, the selected job_id, and the action.
+    args, kwargs = fake_control.forward_control.call_args
+    assert args[0] == "translation"  # service
+    assert args[1] == "11111111-1111-1111-1111-111111111111"  # job_id
+    assert args[2] == "cancel"  # action
+    assert args[3] == TEST_USER  # owner_user_id (from the envelope)
+
+
+async def test_jobs_pause_owned_multiunit_running_job_forwards():
+    from uuid import UUID
+
+    from app.control import ControlResult
+
+    # `extraction` is a multi-unit kind (contract._MULTI_UNIT_KINDS) → pause is a
+    # valid cap when running.
+    store_obj = _FakeStore(
+        [
+            {
+                "owner_user_id": TEST_USER,
+                "service": "knowledge",
+                "job_id": "44444444-4444-4444-4444-444444444444",
+                "kind": "extraction",
+                "status": "running",
+                "params": None,
+            }
+        ]
+    )
+    async with _patched_control(
+        store_obj, ControlResult(200, {"detail": "paused"})
+    ) as (srv, _ctx, fake_control):
+        res = await srv.jobs_pause(
+            _ctx(UUID(TEST_USER)),
+            service="knowledge",
+            job_id="44444444-4444-4444-4444-444444444444",
+        )
+    assert res["success"] is True
+    assert fake_control.forward_control.call_args.args[2] == "pause"
+
+
+async def test_jobs_cancel_foreign_job_anti_oracle_no_forward():
+    """A cross-owner cancel returns the SAME not-accessible error as a nonexistent
+    job (anti-oracle) and NEVER forwards a control action for another owner's job."""
+    from uuid import UUID
+
+    from app.control import ControlResult
+
+    async with _patched_control(
+        _seed(), ControlResult(200, {"detail": "should-not-happen"})
+    ) as (srv, _ctx, fake_control):
+        res = await srv.jobs_cancel(
+            _ctx(UUID(TEST_USER)),
+            service="translation",
+            job_id="99999999-9999-9999-9999-999999999999",  # OTHER_USER's job
+        )
+    assert res == {"success": False, "error": "not found or not accessible"}
+    fake_control.forward_control.assert_not_called()
+
+
+async def test_jobs_cancel_invalid_for_state_is_refused_no_forward():
+    """Cancel on a terminal (completed) job is not a valid cap → refused with the
+    state error, and no control action is forwarded."""
+    from uuid import UUID
+
+    from app.control import ControlResult
+
+    async with _patched_control(
+        _seed(), ControlResult(200, {"detail": "should-not-happen"})
+    ) as (srv, _ctx, fake_control):
+        res = await srv.jobs_cancel(
+            _ctx(UUID(TEST_USER)),
+            service="knowledge",
+            job_id="22222222-2222-2222-2222-222222222222",  # owned but completed
+        )
+    assert res["success"] is False
+    assert "not valid for status" in res["error"]
+    fake_control.forward_control.assert_not_called()
+
+
+async def test_jobs_pause_single_call_job_refused_no_forward():
+    """A single-call (cancel-only) kind cannot pause → refused, no forward. Seed a
+    composition `generate` running job (not multi-unit) for this owner."""
+    from uuid import UUID
+
+    from app.control import ControlResult
+
+    store_obj = _FakeStore(
+        [
+            {
+                "owner_user_id": TEST_USER,
+                "service": "composition",
+                "job_id": "33333333-3333-3333-3333-333333333333",
+                "kind": "generate",  # single LLM call → cancel-only, no pause
+                "status": "running",
+                "params": None,
+            }
+        ]
+    )
+    async with _patched_control(
+        store_obj, ControlResult(200, {"detail": "should-not-happen"})
+    ) as (srv, _ctx, fake_control):
+        res = await srv.jobs_pause(
+            _ctx(UUID(TEST_USER)),
+            service="composition",
+            job_id="33333333-3333-3333-3333-333333333333",
+        )
+    assert res["success"] is False
+    assert "not valid for status" in res["error"]
+    fake_control.forward_control.assert_not_called()

@@ -78,6 +78,21 @@ class TestFrontendToolDefs:
         for name in glossary_frontend_tools:
             assert name in GLOSSARY_SKILL_PROMPT, f"skill prompt is missing tool name {name!r}"
 
+    def test_glossary_skill_prompt_mandates_one_card_batch(self):
+        """#27/#29/#30 regression: the skill must steer multi-write goals to ONE
+        batched card (glossary_propose_batch / glossary_plan) and forbid looping the
+        single-propose tools — the run lifecycle honours only one confirm card per
+        turn, so a loop produces dead, un-confirmable cards. If this guidance is lost,
+        a weak model regresses to the N-card failure."""
+        from app.services.glossary_skill import GLOSSARY_SKILL_PROMPT
+        # the deterministic batch path must be named (it is a backend tool, so the
+        # frontend-name drift guard above does not cover it)
+        assert "glossary_propose_batch" in GLOSSARY_SKILL_PROMPT
+        # the hard one-card-per-turn rule and the no-loop prohibition must be present
+        assert "ONE confirm card per turn" in GLOSSARY_SKILL_PROMPT
+        low = GLOSSARY_SKILL_PROMPT.lower()
+        assert "never" in low and "loop" in low
+
     def test_memory_tools_are_not_frontend(self):
         assert not is_frontend_tool("memory_search")
         assert not is_frontend_tool("memory_remember")

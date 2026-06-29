@@ -4,20 +4,13 @@ import { ChevronDown, Search, X } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { Pagination } from '@/components/shared/Pagination';
 import { ExpandedRow } from './ExpandedRow';
-import type { UsageLog, UsageFilters, ProviderKind, RequestStatus, Purpose } from './types';
+import type { UsageLog, UsageFilters, ProviderKind, RequestStatus } from './types';
+import { KNOWN_PURPOSES, purposeBadgeClass } from './types';
 
 const STATUS_STYLES: Record<string, string> = {
   success: 'bg-green-500/10 text-green-400',
   provider_error: 'bg-destructive/10 text-destructive',
   billing_rejected: 'bg-yellow-500/10 text-yellow-400',
-};
-
-const PURPOSE_STYLES: Record<string, string> = {
-  translation: 'bg-green-500/10 text-green-400 border-green-500/15',
-  chat: 'bg-accent/10 text-accent border-accent/15',
-  chunk_edit: 'bg-purple-500/10 text-purple-400 border-purple-500/15',
-  image_gen: 'bg-primary/10 text-primary border-primary/15',
-  unknown: 'bg-secondary text-muted-foreground border-border',
 };
 
 const PROVIDER_COLORS: Record<string, string> = {
@@ -42,6 +35,9 @@ type Props = {
   filters: UsageFilters;
   search: string;
   loading?: boolean;
+  /** Purposes present in the current period (from by_purpose) — merged with the
+   *  known taxonomy so the filter lists both common + actually-seen labels. */
+  availablePurposes?: string[];
   onSearchChange: (v: string) => void;
   onFiltersChange: (f: UsageFilters) => void;
   onOffsetChange: (offset: number) => void;
@@ -56,6 +52,7 @@ export function RequestLogTable({
   filters,
   search,
   loading,
+  availablePurposes,
   onSearchChange,
   onFiltersChange,
   onOffsetChange,
@@ -65,6 +62,12 @@ export function RequestLogTable({
   const [expandedId, setExpandedId] = useState<string | null>(null);
 
   const activeFilters = Object.entries(filters).filter(([, v]) => v);
+
+  // Filter options = known taxonomy ∪ purposes actually seen this period ∪ the
+  // currently-selected value (so a deep-linked/stale filter stays visible).
+  const purposeOptions = Array.from(
+    new Set([...KNOWN_PURPOSES, ...(availablePurposes ?? []), ...(filters.purpose ? [filters.purpose] : [])]),
+  );
 
   return (
     <div className="overflow-hidden rounded-lg border bg-card">
@@ -121,15 +124,14 @@ export function RequestLogTable({
 
         <select
           value={filters.purpose ?? ''}
-          onChange={(e) => onFiltersChange({ ...filters, purpose: (e.target.value || undefined) as Purpose | undefined })}
+          onChange={(e) => onFiltersChange({ ...filters, purpose: e.target.value || undefined })}
           aria-label={t('log.purpose_aria')}
           className="h-[30px] min-w-[120px] rounded border bg-background px-2 text-[11px]"
         >
           <option value="">{t('log.all_purposes')}</option>
-          <option value="translation">{t('purpose.translation')}</option>
-          <option value="chat">{t('purpose.chat')}</option>
-          <option value="chunk_edit">{t('purpose.chunk_edit')}</option>
-          <option value="image_gen">{t('purpose.image_gen')}</option>
+          {purposeOptions.map((p) => (
+            <option key={p} value={p}>{t(`purpose.${p}`, { defaultValue: p })}</option>
+          ))}
         </select>
 
         <select
@@ -202,7 +204,7 @@ export function RequestLogTable({
                     </span>
                   </td>
                   <td className="px-3 py-2">
-                    <span className={cn('inline-flex rounded border px-2 py-0.5 text-[10px] font-medium', PURPOSE_STYLES[log.purpose] ?? PURPOSE_STYLES.unknown)}>
+                    <span className={cn('inline-flex rounded border px-2 py-0.5 text-[10px] font-medium', purposeBadgeClass(log.purpose))}>
                       {t(`purpose.${log.purpose}`, { defaultValue: log.purpose })}
                     </span>
                   </td>

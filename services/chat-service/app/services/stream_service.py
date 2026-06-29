@@ -54,7 +54,9 @@ from app.services.tool_discovery import (
     FIND_TOOLS_NAME,
     FIND_TOOLS_TOOL,
     find_tools_result,
+    hot_tool_names,
     strip_tool_meta,
+    surface_hot_domains,
     tool_tier,
     tool_undo_hint,
 )
@@ -268,6 +270,17 @@ TIER_A_SAME_OP_CAP = 5
 # but low enough that a high-volume multi-op turn still hits ONE human gate.
 TIER_A_AGGREGATE_CAP = 12
 
+# #18 — mechanical planner hard-stop. The planner tool is a heavy (~39s) model call
+# that mints a typed PLAN; there is NO ReAct loop in the planner CODE, so the
+# "loops forever" is the chat agent re-calling it in a self-recheck cycle, bounded
+# only by a SOFT skill rule. This is the mechanical form of that rule: the planner
+# may run AT MOST this many times per turn; a further call is short-circuited (no
+# execution) with a tool result steering the model to present/confirm the plan it
+# already produced. Cross-turn recovery re-plans are a fresh pass (fresh counter),
+# so legitimate re-planning after a confirmed plan's failures is never blocked.
+PLANNER_TOOLS = frozenset({"glossary_plan"})
+PLANNER_CALLS_PER_TURN_CAP = 1
+
 
 def _is_tools_unsupported(exc: LLMError) -> bool:
     """True when an LLMError is the gateway's 'this provider does not
@@ -416,6 +429,7 @@ async def _stream_with_tools(
     admin_token: str | None = None,
     discovery_catalog: list[dict] | None = None,
     discovery_extra_frontend: list[dict] | None = None,
+    discovery_seed_names: set[str] | None = None,
 ) -> AsyncGenerator[dict, None]:
     """K21-B — the tool-calling loop.
 
@@ -459,10 +473,16 @@ async def _stream_with_tools(
         discovery = discovery_catalog is not None
         cat_index = _catalog_index(discovery_catalog) if discovery else {}
         extra_fe = discovery_extra_frontend or []
-        active_tool_names: set[str] = set()
+        # C-FT hot set: the surface's own domains are seeded into the active set so
+        # their full schemas are advertised on pass 1 (no find_tools round-trip) —
+        # the long tail is still discovered on demand. find_tools unions more names
+        # in as the agent searches.
+        active_tool_names: set[str] = set(discovery_seed_names or ())
         write_passes = 0  # H9 — budget is counted in write passes, not all passes
         # H7 — same-op Tier-A auto-write counter (resets never within a turn).
         tier_a_op_counts: dict[str, int] = {}
+        # #18 — per-turn planner-call counter (mechanical hard-stop on the self-recheck loop).
+        planner_call_counts: dict[str, int] = {}
         # Hard safety bound on TOTAL passes (reads + writes + discovery) so a
         # pathological find_tools/read loop can't spin forever even though those
         # don't count against the write budget.
@@ -691,17 +711,48 @@ async def _stream_with_tools(
                         }
                         break
 
-                # D-PLAN-PLANNER-DEFAULT-FE phase 2: per-session planner override. When the
-                # agent calls glossary_plan and this session pins a planner model, inject it
-                # as model_ref (unless the model already chose one) so planning uses the
-                # session's model instead of the per-user provider-registry default.
-                if (
-                    c["name"] == "glossary_plan"
-                    and planner_model_ref
-                    and isinstance(args_obj, dict)
-                    and not args_obj.get("model_ref")
-                ):
-                    args_obj["model_ref"] = planner_model_ref
+                # #18 — planner hard-stop. The planner (glossary_plan) is a heavy ~39s
+                # model call with NO ReAct loop of its own; a weak model loops it in a
+                # self-recheck cycle. The FIRST call this turn runs; a 2nd+ call is
+                # short-circuited HERE — before the MCP transport — with a tool result
+                # that steers the model to present/confirm the plan it already has, rather
+                # than burning another planner run. (Kiro-style: logic controls progress.)
+                if c["name"] in PLANNER_TOOLS:
+                    if planner_call_counts.get(c["name"], 0) >= PLANNER_CALLS_PER_TURN_CAP:
+                        guidance = {
+                            "error": "planner_already_ran",
+                            "message": (
+                                f"{c['name']} already ran this turn — do NOT call it again. "
+                                "Present the plan you already produced for the user to confirm "
+                                "(pass its confirm_token to glossary_confirm_action), or use "
+                                "glossary_propose_batch if you already know the exact ops. "
+                                "Re-planning in the same turn is disabled to stop a self-recheck loop."
+                            ),
+                        }
+                        working.append({
+                            "role": "tool", "tool_call_id": c["id"],
+                            "content": json.dumps(guidance),
+                        })
+                        yield {"tool_call": {
+                            "id": c["id"], "iteration": iteration, "tool": c["name"],
+                            "args": args_obj, "ok": False,
+                            "result": None, "error": guidance["message"],
+                        }}
+                        continue
+                    planner_call_counts[c["name"]] = planner_call_counts.get(c["name"], 0) + 1
+
+                # D-PLAN-PLANNER-DEFAULT-FE phase 2 + #19: who picks the planner model is a
+                # USER/config decision, NEVER the agent's. The glossary_plan tool exposes a
+                # model_ref arg, so a weak model can fill it and silently override the user's
+                # session pin AND their Settings 'planner' default (glossary only resolves the
+                # default when in.ModelRef is empty). chat-service is therefore AUTHORITATIVE:
+                # a session pin always wins; otherwise the model's guess is STRIPPED so the
+                # downstream resolver applies the per-user Settings default → fallback.
+                if c["name"] == "glossary_plan" and isinstance(args_obj, dict):
+                    if planner_model_ref:
+                        args_obj["model_ref"] = planner_model_ref
+                    else:
+                        args_obj.pop("model_ref", None)
 
                 # backend tool — execute via the ai-gateway over MCP (ai-gateway
                 # P0: the only tool transport). Tier-A auto-commits here (the
@@ -1125,21 +1176,28 @@ async def stream_response(
     # internally; service no longer needs them. We keep `creds.provider_kind`
     # for the Anthropic cache_control branch above.
 
-    # ── K21-B: resolve memory tools ─────────────────────────────────────────
+    # ── K21-B: resolve tools ─────────────────────────────────────────────────
     # Offer tool-calling when the project hasn't opted out
     # (kctx.tool_calling_enabled) AND knowledge-service serves the tool
     # schemas. A fetch failure → empty list → the turn runs tool-free.
-    # MCP-fanout C-FT: the UNIVERSAL /chat surface = agui WITHOUT an editor/book
-    # context (the "do anything" surface). There, the full federated catalog is
-    # too large to ship every turn (P0), so we switch on two-stage discovery:
-    # advertise only the always-on core (find_tools + the generic ui_*/confirm/
-    # propose frontend tools) and let the agent search the catalog with
-    # find_tools. The book/editor surfaces keep their focused, fully-advertised
-    # group (unchanged). F2: legacy clients get NO frontend tools and never
-    # discover/suspend — they fall through to the plain or memory-only path.
-    universal_surface = (
+    #
+    # MCP-fanout C-FT — DISCOVERY IS THE STANDARD for every agui surface (admin
+    # excepted). The full federated catalog is never shipped: it grows without
+    # bound as domains / MCP tools are added (P0 — thousands of tools), and a
+    # 35k-token tool dump overflows small-context models. Instead each turn
+    # advertises the always-on core + the SURFACE'S OWN domains (the "hot set",
+    # seeded into the discovery active-set so they're callable on pass 1), and the
+    # agent find_tools-searches the long tail on demand. The hot set keeps a
+    # surface's skill working (it names its domain's tools directly) while every
+    # other domain stays lazy:
+    #   universal (no editor/book) → ∅ hot (pure discovery)
+    #   book-scoped (book_context) → glossary tools hot
+    #   editor (editor_context)    → glossary + composition + book tools hot
+    # Admin uses its own small System-tier catalog, fully advertised (no
+    # discovery). F2: legacy (non-agui) clients get NO frontend tools and never
+    # discover/suspend — they fall through to the plain or full-catalog path.
+    discovery_eligible = (
         stream_format == "agui"
-        and not (editor_context or book_context)
         and not bool(admin_context)
         and not disable_tools
         and kctx.tool_calling_enabled
@@ -1147,6 +1205,7 @@ async def stream_response(
     tool_defs: list[dict] = []
     discovery_catalog: list[dict] | None = None
     discovery_extra_frontend: list[dict] | None = None
+    discovery_seed_names: set[str] | None = None
     if not disable_tools and kctx.tool_calling_enabled:
         if admin_context:
             # T4c — ADMIN surface (cms chat): advertise ONLY the System-tier admin
@@ -1166,38 +1225,42 @@ async def stream_response(
         else:
             catalog = await knowledge_client.get_tool_definitions()
             # Discovery needs a catalog to search. When the gateway is unreachable
-            # (catalog == []), there is nothing to find_tools over, so we fall back to
-            # the plain tool-free path rather than spin up a discovery loop with only
-            # frontend tools. (TODO(S-GATEWAY): once availability is wired, a partial
-            # catalog still enables discovery.)
-            if universal_surface and not catalog:
-                universal_surface = False
-            if universal_surface:
-                # Discovery mode: the catalog stays available to find_tools, but the
-                # LLM's first pass is advertised only the always-on core. The loop
-                # (in _stream_with_tools) builds {core} ∪ {discovered} per pass.
+            # (catalog == []), there is nothing to find_tools over → fall back to the
+            # plain path rather than spin up a discovery loop with only frontend tools.
+            if discovery_eligible and not catalog:
+                discovery_eligible = False
+            if discovery_eligible:
                 from app.services.frontend_tools import frontend_tool_defs
+                editor = bool(editor_context)
+                book_scoped = bool(editor_context or book_context)
                 discovery_catalog = catalog
-                discovery_extra_frontend = frontend_tool_defs(editor=False, book_scoped=False)
+                discovery_extra_frontend = frontend_tool_defs(
+                    editor=editor, book_scoped=book_scoped
+                )
+                # Hot set: the surface's own domains, seeded so their full schemas
+                # are advertised on pass 1 (no find_tools round-trip). universal → ∅.
+                discovery_seed_names = hot_tool_names(
+                    catalog, surface_hot_domains(editor=editor, book_scoped=book_scoped)
+                )
                 # `tool_defs` is the FIRST-pass advertisement when discovery is on;
-                # _stream_with_tools recomputes it each pass, but a non-empty value
-                # flips use_tools True and seeds the tool path.
+                # _stream_with_tools recomputes it each pass (core ∪ extra_fe ∪
+                # {seed ∪ discovered}), but a non-empty value flips use_tools True.
                 tool_defs = _advertise_discovery_tools(
-                    _catalog_index(catalog), set(), discovery_extra_frontend
+                    _catalog_index(catalog), discovery_seed_names, discovery_extra_frontend
                 )
             else:
+                # No discovery: a legacy non-agui tool-calling client (full catalog —
+                # it has no find_tools loop), or an agui surface with the gateway down.
                 tool_defs = catalog
-            # Frontend (browser-executed, suspend→Apply) write-back tools, advertised
-            # per surface (agui only — other clients never see them):
-            #   propose_edit                 — chapter editor panel (editor_context)
-            #   glossary_propose_entity_edit — any book-scoped chat (editor OR a
-            #     glossary-page/reader chat carrying book_context) [glossary P3]
-            if stream_format == "agui" and (editor_context or book_context):
-                from app.services.frontend_tools import frontend_tool_defs
-                tool_defs = tool_defs + frontend_tool_defs(
-                    editor=bool(editor_context),
-                    book_scoped=bool(editor_context or book_context),
-                )
+                if stream_format == "agui" and (editor_context or book_context):
+                    # Gateway down but still agui: re-advertise the frontend
+                    # write-back tools so the surface can still propose/confirm
+                    # (mirrors the resume path's catalog-down branch).
+                    from app.services.frontend_tools import frontend_tool_defs
+                    tool_defs = tool_defs + frontend_tool_defs(
+                        editor=bool(editor_context),
+                        book_scoped=bool(editor_context or book_context),
+                    )
         # A2A phase-2: advertise compose_prose only when a composer model is
         # configured for this session (orchestrator → writer delegation).
         if composer_model is not None:
@@ -1235,14 +1298,17 @@ async def stream_response(
         composer_system_prompt=system_prompt,
         planner_model_ref=planner_model_ref,
         # Iteration budget by surface (H9 / H11): universal /chat = 20 (find_tools
-        # + reads uncounted), book-scoped + admin (cms) = 10, plain = 5.
+        # + reads uncounted), book-scoped + editor + admin (cms) = 10, plain = 5.
+        # `discovery_catalog is not None and no book/editor` ≡ the universal surface.
         max_iterations=(
-            UNIVERSAL_TOOL_ITERATIONS if universal_surface
+            UNIVERSAL_TOOL_ITERATIONS
+            if (discovery_catalog is not None and not (editor_context or book_context))
             else GLOSSARY_TOOL_ITERATIONS if (editor_context or book_context or admin_context)
             else MAX_TOOL_ITERATIONS
         ),
         discovery_catalog=discovery_catalog,
         discovery_extra_frontend=discovery_extra_frontend,
+        discovery_seed_names=discovery_seed_names,
     ):
         yield line
 
@@ -1276,6 +1342,7 @@ async def _emit_chat_turn(
     max_iterations: int = MAX_TOOL_ITERATIONS,
     discovery_catalog: list[dict] | None = None,
     discovery_extra_frontend: list[dict] | None = None,
+    discovery_seed_names: set[str] | None = None,
 ) -> AsyncGenerator[str, None]:
     """Shared Stream→persist→finish body for a chat turn (fresh OR C6 resume).
 
@@ -1330,6 +1397,7 @@ async def _emit_chat_turn(
                 admin_token=admin_token,
                 discovery_catalog=discovery_catalog,
                 discovery_extra_frontend=discovery_extra_frontend,
+                discovery_seed_names=discovery_seed_names,
             )
         else:
             chunk_stream = _stream_via_gateway(
@@ -1716,6 +1784,7 @@ async def resume_stream_response(
     knowledge_client = get_knowledge_client()
     resume_discovery_catalog: list[dict] | None = None
     resume_extra_frontend: list[dict] | None = None
+    resume_seed_names: set[str] | None = None
     tool_defs: list[dict] = []
     if admin_token:
         # T4c — resuming an ADMIN-surface run: re-derive the admin catalog from
@@ -1758,8 +1827,15 @@ async def resume_stream_response(
                 frontend_tool_defs(editor=False, book_scoped=False)
                 + frontend_tool_defs(editor=True, book_scoped=True)
             )
+            # The resume surface isn't known precisely (a book-scoped OR editor
+            # suspend both resume here), so seed the editor SUPERSET hot domains —
+            # matching the conservative frontend-tools choice above — so the
+            # post-Apply/Confirm follow-up has its domain tools without a re-search.
+            resume_seed_names = hot_tool_names(
+                catalog, surface_hot_domains(editor=True, book_scoped=True)
+            )
             tool_defs = _advertise_discovery_tools(
-                _catalog_index(catalog), set(), resume_extra_frontend
+                _catalog_index(catalog), resume_seed_names, resume_extra_frontend
             )
         elif stream_format == "agui":
             # No catalog (gateway down) → no discovery, but still re-advertise the
@@ -1812,6 +1888,7 @@ async def resume_stream_response(
         ),
         discovery_catalog=resume_discovery_catalog,
         discovery_extra_frontend=resume_extra_frontend,
+        discovery_seed_names=resume_seed_names,
     ):
         yield line
 

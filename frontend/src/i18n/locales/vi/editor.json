@@ -32,6 +32,12 @@
   "toggle_history": "Bật/tắt bảng lịch sử / AI",
   "unsaved": "Chưa lưu",
   "saved_badge": "Đã lưu",
+  "mobile": {
+    "editor": "Soạn thảo",
+    "studio": "Xưởng",
+    "history": "Lịch sử",
+    "nav": "Khu vực soạn thảo"
+  },
   "discard_title": "Hủy mọi thay đổi chưa lưu",
   "discard": "Hủy bỏ",
   "save": "Lưu",

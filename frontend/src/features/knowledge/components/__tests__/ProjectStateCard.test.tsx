@@ -166,6 +166,21 @@ describe('ProjectStateCard dispatcher', () => {
     expect(screen.getByTestId('building-running-elapsed')).toBeDefined();
   });
 
+  it('BuildingRunningCard shows the build-stages explainer so facts/summaries are not "missing" (#16)', () => {
+    render(
+      <ProjectStateCard
+        state={{ kind: 'building_running', job: sampleJob }}
+        actions={noopActions()}
+      />,
+    );
+    const stages = screen.getByTestId('building-running-stages');
+    expect(stages).toBeDefined();
+    // The staging note must mention that later passes run after earlier ones.
+    expect(stages.textContent).toContain(
+      'projects.state.cards.building_running.stagesNote',
+    );
+  });
+
   it('BuildingRunningCard renders a progress bar with role=progressbar', () => {
     const { getByRole } = render(
       <ProjectStateCard

@@ -3,6 +3,7 @@ import { render, screen } from '@testing-library/react';
 
 import { JobParametersPanel } from '../JobParametersPanel';
 import { JobCostUsagePanel } from '../JobCostUsagePanel';
+import { JobProgressPanel } from '../JobProgressPanel';
 import type { Job } from '../../../types';
 
 vi.mock('react-i18next', () => ({
@@ -30,6 +31,45 @@ describe('JobParametersPanel', () => {
   it('renders nothing when there are no params', () => {
     const { container } = render(<JobParametersPanel params={null} />);
     expect(container).toBeEmptyDOMElement();
+  });
+
+  it('excludes the call-count keys (shown in the Progress panel instead)', () => {
+    render(
+      <JobParametersPanel
+        params={{ model: 'm', estimated_llm_calls: 16, llm_calls_done: 11 }}
+      />,
+    );
+    expect(screen.getByText('model')).toBeInTheDocument();
+    expect(screen.queryByText('estimated_llm_calls')).not.toBeInTheDocument();
+    expect(screen.queryByText('llm_calls_done')).not.toBeInTheDocument();
+  });
+});
+
+describe('JobProgressPanel — LLM call counts (bug #37)', () => {
+  it('shows "done / total" when an estimate is present', () => {
+    const j: Job = { ...job, params: { estimated_llm_calls: 16, llm_calls_done: 11 } };
+    render(<JobProgressPanel job={j} />);
+    expect(screen.getByText('LLM calls')).toBeInTheDocument();
+    expect(screen.getByText('11 / 16')).toBeInTheDocument();
+  });
+
+  it('defaults done to 0 when only the estimate is present', () => {
+    const j: Job = { ...job, params: { estimated_llm_calls: 16 } };
+    render(<JobProgressPanel job={j} />);
+    expect(screen.getByText('0 / 16')).toBeInTheDocument();
+  });
+
+  it('shows a bare running count when no estimate is present', () => {
+    const j: Job = { ...job, params: { llm_calls_done: 7 } };
+    render(<JobProgressPanel job={j} />);
+    expect(screen.getByText('LLM calls')).toBeInTheDocument();
+    expect(screen.getByText('7')).toBeInTheDocument();
+  });
+
+  it('hides the LLM-calls row when neither key is present', () => {
+    const j: Job = { ...job, params: { model: 'm' } };
+    render(<JobProgressPanel job={j} />);
+    expect(screen.queryByText('LLM calls')).not.toBeInTheDocument();
   });
 });
 

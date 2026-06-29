@@ -7,7 +7,108 @@
       "providers": "Nhà cung cấp mô hình",
       "translation": "Dịch thuật",
       "reading": "Đọc",
-      "language": "Ngôn ngữ"
+      "language": "Ngôn ngữ",
+      "mcp": "Truy cập MCP"
+    }
+  },
+  "mcp": {
+    "heading": "Khóa truy cập MCP",
+    "subtitle": "Tạo khóa API để tác nhân bên ngoài dùng nền tảng qua MCP mà không cần giao diện. Mỗi khóa hành động thay bạn, với phạm vi và giới hạn bạn đặt.",
+    "create_key": "Tạo khóa",
+    "loading": "Đang tải khóa…",
+    "empty": "Chưa có khóa MCP nào. Tạo một khóa để cho tác nhân bên ngoài kết nối.",
+    "scopes_label": "Phạm vi: {{scopes}}",
+    "domains_label": "Lĩnh vực: {{domains}}",
+    "last_used": "Dùng lần cuối: {{date}}",
+    "expires_label": "Hết hạn: {{date}}",
+    "revoke_aria": "Thu hồi khóa {{name}}",
+    "status": {
+      "active": "Đang hoạt động",
+      "revoked": "Đã thu hồi"
+    },
+    "scope": {
+      "read": "Đọc",
+      "paid_read": "Đọc tính phí",
+      "write_auto": "Ghi tự động",
+      "write_confirm": "Ghi cần xác nhận"
+    },
+    "domain": {
+      "book": "Sách",
+      "glossary": "Thuật ngữ",
+      "knowledge": "Tri thức",
+      "translation": "Dịch thuật",
+      "composition": "Sáng tác",
+      "jobs": "Tác vụ",
+      "settings": "Cài đặt",
+      "lore_enrichment": "Làm giàu cốt truyện",
+      "catalog": "Danh mục"
+    },
+    "create": {
+      "title": "Tạo khóa MCP",
+      "subtitle": "Bí mật chỉ hiển thị một lần. Hãy lưu vào nơi an toàn.",
+      "name": "Tên",
+      "name_ph": "vd: tac-nhan-nghien-cuu",
+      "scopes": "Phạm vi",
+      "scopes_hint": "Khóa được phép làm gì. Bắt đầu chỉ với Đọc; thêm khi thực sự cần.",
+      "domains": "Lĩnh vực",
+      "domains_hint": "Khóa được phép truy cập những mảng nào. Khóa không chọn lĩnh vực nào sẽ không gọi được gì.",
+      "rate_limit": "Giới hạn tốc độ (yêu cầu/phút)",
+      "spend_cap": "Hạn mức chi (USD)",
+      "spend_cap_ph": "Không giới hạn",
+      "expires": "Hết hạn (tùy chọn)",
+      "self_confirm": "Cho phép tự xác nhận hành động ghi",
+      "self_confirm_hint": "Khi tắt, các hành động ghi cần xác nhận phải do bạn duyệt. Chỉ bật nếu đây là tác nhân tự động đáng tin.",
+      "cancel": "Hủy",
+      "submit": "Tạo khóa",
+      "creating": "Đang tạo…"
+    },
+    "reveal": {
+      "title": "Đã tạo khóa",
+      "subtitle": "Sao chép bí mật ngay — nó sẽ không bao giờ hiển thị lại.",
+      "copy": "Sao chép khóa",
+      "warning": "Chỉ hiển thị một lần",
+      "done": "Xong"
+    },
+    "revoke": {
+      "title": "Thu hồi {{name}}?",
+      "desc": "Khóa ngừng hoạt động ngay lập tức (trong ~60 giây). Mọi tác nhân đang dùng sẽ mất quyền truy cập. Không thể hoàn tác.",
+      "confirm": "Thu hồi"
+    },
+    "audit": {
+      "toggle_aria": "Lệnh gọi gần đây của {{name}}",
+      "loading": "Đang tải lệnh gọi gần đây…",
+      "empty": "Chưa có lệnh gọi nào được ghi nhận.",
+      "outcome": {
+        "relayed": "Đã chuyển tiếp",
+        "denied_scope": "Bị từ chối (phạm vi)",
+        "rate_limited": "Bị giới hạn tần suất",
+        "unauthorized": "Không được phép",
+        "upstream_error": "Lỗi phía trên",
+        "tool_error": "Lỗi công cụ"
+      }
+    },
+    "approvals": {
+      "heading": "Hành động đang chờ duyệt ({{count}})",
+      "subtitle": "Một tác nhân dùng khóa của bạn đã yêu cầu các hành động này. Duyệt để chạy (chi phí tính vào khóa đó) hoặc từ chối để bỏ.",
+      "key_label": "Khóa {{key}}…",
+      "cost_label": "Ước tính ${{cost}}",
+      "approve": "Duyệt",
+      "deny": "Từ chối",
+      "toast": {
+        "approved": "Đã duyệt và thực thi hành động",
+        "denied": "Đã từ chối hành động",
+        "reprice": "Chi phí đã thay đổi — hãy yêu cầu tác nhân đề xuất lại",
+        "approve_failed": "Không duyệt được hành động",
+        "deny_failed": "Không từ chối được hành động"
+      }
+    },
+    "toast": {
+      "load_failed": "Không tải được khóa MCP",
+      "created": "Đã tạo khóa \"{{name}}\"",
+      "create_failed": "Không tạo được khóa",
+      "revoked": "Đã thu hồi khóa",
+      "revoke_failed": "Không thu hồi được khóa",
+      "audit_failed": "Không tải được lịch sử lệnh gọi"
     }
   },
   "account": {

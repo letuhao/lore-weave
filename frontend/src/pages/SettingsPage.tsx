@@ -1,16 +1,18 @@
 import { Navigate, useParams, Link } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
-import { User, Cpu, Languages, BookOpen, Globe } from 'lucide-react';
+import { User, Cpu, Languages, BookOpen, Globe, KeyRound } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import { useAuth } from '@/auth';
 import { AccountTab } from '@/features/settings/AccountTab';
 import { ProvidersTab } from '@/features/settings/ProvidersTab';
 import { TranslationTab } from '@/features/settings/TranslationTab';
 import { ReadingTab } from '@/features/settings/ReadingTab';
 import { LanguageTab } from '@/features/settings/LanguageTab';
+import { McpAccessTab } from '@/features/settings/McpAccessTab';
 
-type Tab = 'account' | 'providers' | 'translation' | 'reading' | 'language';
+type Tab = 'account' | 'providers' | 'translation' | 'reading' | 'language' | 'mcp';
 
-const TABS: { id: Tab; icon: React.ComponentType<{ className?: string }> }[] = [
+const BASE_TABS: { id: Tab; icon: React.ComponentType<{ className?: string }> }[] = [
   { id: 'account', icon: User },
   { id: 'providers', icon: Cpu },
   { id: 'translation', icon: Languages },
@@ -21,8 +23,15 @@ const TABS: { id: Tab; icon: React.ComponentType<{ className?: string }> }[] = [
 export function SettingsPage() {
   const { t } = useTranslation('settings');
   const { tab } = useParams<{ tab: string }>();
+  const { user } = useAuth();
 
-  if (!tab || !TABS.some((tb) => tb.id === tab)) {
+  // Q-GATE: the public-MCP tab only appears when the platform flag is on. When
+  // off, a deep link to /settings/mcp falls through to the redirect below.
+  const tabs = user?.public_mcp_enabled
+    ? [...BASE_TABS, { id: 'mcp' as Tab, icon: KeyRound }]
+    : BASE_TABS;
+
+  if (!tab || !tabs.some((tb) => tb.id === tab)) {
     return <Navigate to="/settings/account" replace />;
   }
 
@@ -34,7 +43,7 @@ export function SettingsPage() {
 
       {/* Tab bar */}
       <nav className="mb-6 flex gap-0 border-b" role="tablist" aria-label={t('page.tabs_aria')}>
-        {TABS.map((tb) => {
+        {tabs.map((tb) => {
           const Icon = tb.icon;
           return (
             <Link
@@ -62,6 +71,7 @@ export function SettingsPage() {
       {activeTab === 'translation' && <TranslationTab />}
       {activeTab === 'reading' && <ReadingTab />}
       {activeTab === 'language' && <LanguageTab />}
+      {activeTab === 'mcp' && <McpAccessTab />}
     </div>
   );
 }

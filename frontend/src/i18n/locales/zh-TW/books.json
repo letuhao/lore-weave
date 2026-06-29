@@ -5,6 +5,7 @@
   "search_placeholder": "搜尋書籍...",
   "all_languages": "所有語言",
   "all_states": "所有狀態",
+  "select_language": "選擇語言…",
   "book_count": "{{count}} 本書",
   "book_count_other": "{{count}} 本書",
   "translated_to": "已翻譯為：{{langs}}",
@@ -209,7 +210,13 @@
       "clear": "清除選取",
       "done": "已將 {{count}} 個實體設為 {{status}}",
       "select_all_matching": "選擇全部 {{count}} 個相符項目",
-      "cap_note": "選取上限為 {{cap}} 個實體"
+      "cap_note": "選取上限為 {{cap}} 個實體",
+      "delete": "刪除",
+      "deleted": "已刪除 {{count}} 個實體",
+      "delete_confirm": {
+        "title": "刪除 {{count}} 個實體？",
+        "description": "選取的 {{count}} 個實體將移至回收桶。"
+      }
     },
     "clear_filters": "清除所有篩選",
     "deleted": "已刪除實體",

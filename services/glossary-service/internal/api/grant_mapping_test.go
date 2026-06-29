@@ -60,6 +60,7 @@ func TestGrantMapping_MutatingRoutesRejectViewGrantee(t *testing.T) {
 		{"createEntity", http.MethodPost, pre + "/entities"},
 		{"patchEntity", http.MethodPatch, pre + "/entities/" + e.String()},
 		{"deleteEntity", http.MethodDelete, pre + "/entities/" + e.String()},
+		{"bulkDeleteEntities", http.MethodPost, pre + "/entities/bulk-delete"},
 		{"applyEntityEdit", http.MethodPost, pre + "/entities/" + e.String() + "/apply-edit"},
 		{"pinEntity", http.MethodPost, pre + "/entities/" + e.String() + "/pin"},
 		{"mergeEntities", http.MethodPost, pre + "/entities/" + e.String() + "/merge"},

@@ -7,7 +7,108 @@
       "providers": "模型供應商",
       "translation": "翻譯",
       "reading": "閱讀",
-      "language": "語言"
+      "language": "語言",
+      "mcp": "MCP 存取"
+    }
+  },
+  "mcp": {
+    "heading": "MCP 存取金鑰",
+    "subtitle": "建立 API 金鑰，讓外部代理透過 MCP 使用平台而無需介面。每把金鑰會以你的身分執行，並遵循你設定的範圍與限制。",
+    "create_key": "建立金鑰",
+    "loading": "正在載入金鑰…",
+    "empty": "尚無 MCP 金鑰。建立一把以讓外部代理連線。",
+    "scopes_label": "範圍：{{scopes}}",
+    "domains_label": "領域：{{domains}}",
+    "last_used": "上次使用：{{date}}",
+    "expires_label": "到期：{{date}}",
+    "revoke_aria": "撤銷金鑰 {{name}}",
+    "status": {
+      "active": "啟用中",
+      "revoked": "已撤銷"
+    },
+    "scope": {
+      "read": "讀取",
+      "paid_read": "付費讀取",
+      "write_auto": "自動寫入",
+      "write_confirm": "需確認寫入"
+    },
+    "domain": {
+      "book": "書籍",
+      "glossary": "詞彙表",
+      "knowledge": "知識",
+      "translation": "翻譯",
+      "composition": "創作",
+      "jobs": "任務",
+      "settings": "設定",
+      "lore_enrichment": "設定集擴充",
+      "catalog": "目錄"
+    },
+    "create": {
+      "title": "建立 MCP 金鑰",
+      "subtitle": "密鑰只會顯示一次，請妥善保存。",
+      "name": "名稱",
+      "name_ph": "例如：my-research-agent",
+      "scopes": "範圍",
+      "scopes_hint": "金鑰可執行的操作。先只用讀取，必要時再增加。",
+      "domains": "領域",
+      "domains_hint": "金鑰可存取的範疇。未選擇任何領域的金鑰將無法呼叫任何工具。",
+      "rate_limit": "速率限制（次/分鐘）",
+      "spend_cap": "支出上限（USD）",
+      "spend_cap_ph": "無上限",
+      "expires": "到期（選填）",
+      "self_confirm": "允許自行確認寫入操作",
+      "self_confirm_hint": "關閉時，需確認的寫入操作必須由你核准。除非這是受信任的自動化代理，否則請保持關閉。",
+      "cancel": "取消",
+      "submit": "建立金鑰",
+      "creating": "建立中…"
+    },
+    "reveal": {
+      "title": "已建立金鑰",
+      "subtitle": "請立即複製此密鑰——它不會再次顯示。",
+      "copy": "複製金鑰",
+      "warning": "僅顯示一次",
+      "done": "完成"
+    },
+    "revoke": {
+      "title": "撤銷 {{name}}？",
+      "desc": "金鑰會立即（約 60 秒內）停止運作。使用中的代理將失去存取權。此操作無法復原。",
+      "confirm": "撤銷"
+    },
+    "audit": {
+      "toggle_aria": "{{name}} 的近期呼叫",
+      "loading": "正在載入近期呼叫…",
+      "empty": "尚未記錄任何呼叫。",
+      "outcome": {
+        "relayed": "已轉送",
+        "denied_scope": "已拒絕（範圍）",
+        "rate_limited": "已限流",
+        "unauthorized": "未授權",
+        "upstream_error": "上游錯誤",
+        "tool_error": "工具錯誤"
+      }
+    },
+    "approvals": {
+      "heading": "待核准的代理操作 ({{count}})",
+      "subtitle": "使用您金鑰的代理請求了這些操作。核准即執行（費用計入該金鑰），或拒絕以捨棄。",
+      "key_label": "金鑰 {{key}}…",
+      "cost_label": "預估 ${{cost}}",
+      "approve": "核准",
+      "deny": "拒絕",
+      "toast": {
+        "approved": "已核准並執行操作",
+        "denied": "已拒絕操作",
+        "reprice": "費用已變動 — 請讓代理重新提出",
+        "approve_failed": "無法核准此操作",
+        "deny_failed": "無法拒絕此操作"
+      }
+    },
+    "toast": {
+      "load_failed": "載入 MCP 金鑰失敗",
+      "created": "已建立金鑰「{{name}}」",
+      "create_failed": "建立金鑰失敗",
+      "revoked": "已撤銷金鑰",
+      "revoke_failed": "撤銷金鑰失敗",
+      "audit_failed": "載入呼叫紀錄失敗"
     }
   },
   "account": {

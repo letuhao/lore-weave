@@ -19,10 +19,12 @@ resolve-to-owner gate) rather than via a path-bound `require_project_grant`.
 from __future__ import annotations
 
 import logging
+import secrets
 import time
 from datetime import datetime, timezone
 from uuid import UUID
 
+import jwt
 from fastapi import APIRouter, Depends, Header, HTTPException, Query, status
 from pydantic import BaseModel, ValidationError
 
@@ -141,10 +143,16 @@ logger = logging.getLogger(__name__)
 
 _SYSTEM_DESCRIPTORS = frozenset({DESC_SYSTEM_CREATE, DESC_SYSTEM_PATCH, DESC_SYSTEM_DELETE})
 
+# NO router-level Depends(get_current_user): /confirm is DUAL-AUTH (FE JWT OR the
+# auth-service replay's internal-token+X-User-Id, D-PMCP-WORKER-CARRIER) and resolves
+# the caller itself via _resolve_kg_confirm_caller — a router-level Bearer requirement
+# would 401 the replay path before that helper runs (a public MCP key could then never
+# confirm kg_build_graph). The /preview routes keep their OWN param-level
+# Depends(get_current_user) (FE/JWT-only — the replay never previews), so dropping the
+# router-level guard leaves no route unauthenticated.
 router = APIRouter(
     prefix="/v1/kg/actions",
     tags=["kg-actions"],
-    dependencies=[Depends(get_current_user)],
 )
 
 
@@ -177,6 +185,60 @@ def get_admin_key() -> AdminKey | None:
 
 class ConfirmTokenBody(BaseModel):
     confirm_token: str
+
+
+# ── dual-mode confirm auth (D-PMCP-WORKER-CARRIER) ────────────────────────────
+def _parse_spend_cap(raw: str | None) -> float | None:
+    """Tolerant X-Mcp-Spend-Cap-Usd → float ceiling; absent/garbage ⇒ None. Never raises."""
+    if not raw:
+        return None
+    try:
+        return float(raw)
+    except (TypeError, ValueError):
+        return None
+
+
+def _resolve_kg_confirm_caller(
+    x_internal_token: str | None,
+    x_user_id: str | None,
+    authorization: str | None,
+    x_mcp_key_id: str | None,
+    x_mcp_spend_cap_usd: str | None,
+) -> tuple[UUID, str | None, float | None]:
+    """Dual-mode confirm auth → (caller, mcp_key_id, spend_cap_usd).
+
+    - REPLAY (public MCP): X-Internal-Token (constant-time) authenticates the trusted
+      auth-service replay; X-User-Id is the approved owner. ONLY this path honors the
+      X-Mcp-Key-Id/cap attribution headers (a first-party caller must never tag spend
+      to an arbitrary key).
+    - FE: the user's JWT (Authorization: Bearer). Key headers IGNORED (None).
+
+    Mirrors translation's confirm dual-auth; can't use Depends(get_current_user)
+    (HTTPBearer 401s with no header → would break the replay path)."""
+    if x_internal_token:
+        if not secrets.compare_digest(x_internal_token, settings.internal_service_token):
+            raise HTTPException(status_code=401, detail="invalid internal token")
+        if not x_user_id:
+            raise HTTPException(status_code=401, detail="missing X-User-Id")
+        try:
+            caller = UUID(x_user_id)
+        except (ValueError, TypeError):
+            raise HTTPException(status_code=401, detail="invalid X-User-Id")
+        return caller, (x_mcp_key_id or None), _parse_spend_cap(x_mcp_spend_cap_usd)
+    # FE / JWT path — attribution headers deliberately ignored.
+    if not authorization or not authorization.lower().startswith("bearer "):
+        raise HTTPException(status_code=401, detail="missing credentials")
+    try:
+        data = jwt.decode(authorization[7:], settings.jwt_secret, algorithms=["HS256"])
+    except jwt.InvalidTokenError as exc:
+        raise HTTPException(status_code=401, detail="invalid token") from exc
+    sub = data.get("sub")
+    if not isinstance(sub, str) or not sub:
+        raise HTTPException(status_code=401, detail="missing sub claim")
+    try:
+        return UUID(sub), None, None
+    except (ValueError, TypeError) as exc:
+        raise HTTPException(status_code=401, detail="invalid sub claim") from exc
 
 
 # ── shared decode + authorize ────────────────────────────────────────────────
@@ -306,8 +368,13 @@ async def _authorize_admin(
 # ── confirm (token-gated, single-use write) ───────────────────────────────────
 @router.post("/confirm")
 async def confirm_action(
-    body: ConfirmTokenBody,
-    caller: UUID = Depends(get_current_user),
+    body: ConfirmTokenBody | None = None,
+    token: str | None = Query(default=None),
+    authorization: str | None = Header(default=None),
+    x_internal_token: str | None = Header(default=None, alias="X-Internal-Token"),
+    x_user_id: str | None = Header(default=None, alias="X-User-Id"),
+    x_mcp_key_id: str | None = Header(default=None, alias="X-Mcp-Key-Id"),
+    x_mcp_spend_cap_usd: str | None = Header(default=None, alias="X-Mcp-Spend-Cap-Usd"),
     gc: GrantClient = Depends(get_grant_client),
     projects: ProjectsRepo = Depends(get_projects_repo),
     schemas: GraphSchemasRepo = Depends(get_graph_schemas_repo),
@@ -319,7 +386,17 @@ async def confirm_action(
     admin_key: AdminKey | None = Depends(get_admin_key),
     x_admin_token: str | None = Header(default=None, alias="X-Admin-Token"),
 ) -> dict:
-    claims = _decode_confirm_token(body)
+    # Dual-auth (D-PMCP-WORKER-CARRIER): FE browser JWT + token-in-body, OR the
+    # public-MCP auth-service replay (internal-token + X-User-Id + ?token= +
+    # X-Mcp-Key-Id). Key/cap honored ONLY on the internal path; for kg_build_graph
+    # they ride the job row → resume_state → worker-ai re-set.
+    caller, mcp_key_id, spend_cap_usd = _resolve_kg_confirm_caller(
+        x_internal_token, x_user_id, authorization, x_mcp_key_id, x_mcp_spend_cap_usd,
+    )
+    confirm_token = token or (body.confirm_token if body else None)
+    if not confirm_token or not confirm_token.strip():
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="confirm_token is required")
+    claims = _decode_confirm_token(ConfirmTokenBody(confirm_token=confirm_token))
     owner = await _authorize_action(
         claims, caller, gc, projects, admin_token=x_admin_token, admin_key=admin_key
     )
@@ -348,7 +425,9 @@ async def confirm_action(
     if claims.descriptor == DESC_TRIAGE_SCHEMA_WRITE:
         return await _confirm_triage_schema_write(claims, owner, schemas, mutations, triage)
     if claims.descriptor == DESC_BUILD_GRAPH:
-        return await _confirm_build_graph(claims, owner, projects)
+        return await _confirm_build_graph(
+            claims, owner, projects, mcp_key_id=mcp_key_id, spend_cap_usd=spend_cap_usd,
+        )
     if claims.descriptor == DESC_BUILD_WIKI:
         return await _confirm_build_wiki(claims, owner, projects)
     if claims.descriptor in _SYSTEM_DESCRIPTORS:
@@ -507,7 +586,8 @@ async def _confirm_triage_schema_write(
 
 
 async def _confirm_build_graph(
-    claims: ActionClaims, owner: UUID | None, projects: ProjectsRepo
+    claims: ActionClaims, owner: UUID | None, projects: ProjectsRepo,
+    *, mcp_key_id: str | None = None, spend_cap_usd: float | None = None,
 ) -> dict:
     """Cost-gated job trigger — start the extraction job via the shared core (grant
     authority; `owner` is the resolved project owner, never None here). The core's
@@ -531,6 +611,7 @@ async def _confirm_build_graph(
         benchmark_repo=await get_benchmark_runs_repo(),
         book_client=await get_book_client(),
         extraction_wake=await get_extraction_wake(),
+        mcp_key_id=mcp_key_id, spend_cap_usd=spend_cap_usd,
     )
 
 

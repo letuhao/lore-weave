@@ -181,6 +181,21 @@ export const glossaryApi = {
     });
   },
 
+  /** Bulk soft-delete many entities in one request (clean up duplicate/unwanted
+   *  entities). Returns the count actually deleted (book-scoped; absent/foreign/
+   *  already-deleted ids are ignored — the partial-success report). */
+  bulkDeleteEntities(
+    bookId: string,
+    entityIds: string[],
+    token: string,
+  ): Promise<{ deleted: number }> {
+    return apiJson<{ deleted: number }>(`${BASE}/books/${bookId}/entities/bulk-delete`, {
+      method: 'POST',
+      body: JSON.stringify({ entity_ids: entityIds }),
+      token,
+    });
+  },
+
   // ── VG-3: entity revision history + restore (D-GLOSSARY-VERSIONING) ─────────
 
   listEntityRevisions(
@@ -533,4 +548,56 @@ export const glossaryApi = {
       { method: 'DELETE', token },
     );
   },
+
+  // ── M6 (canon-at-chapter inspector) — public, View-grant gated read routes ──
+
+  /** Entities canon has ESTABLISHED by chapter N (windowed by `before_chapter_index`),
+   *  with first/last appearance + coverage. Bare array. */
+  knownEntitiesAsOf(
+    bookId: string,
+    params: { beforeChapterIndex?: number; minFrequency?: number; limit?: number },
+    token: string,
+  ): Promise<KnownEntityAsOf[]> {
+    const qs = new URLSearchParams();
+    if (params.beforeChapterIndex != null) qs.set('before_chapter_index', String(params.beforeChapterIndex));
+    if (params.minFrequency != null) qs.set('min_frequency', String(params.minFrequency));
+    if (params.limit != null) qs.set('limit', String(params.limit));
+    const q = qs.toString();
+    return apiJson<KnownEntityAsOf[]>(`${BASE}/books/${bookId}/known-entities${q ? `?${q}` : ''}`, { token });
+  },
+
+  /** Entities PRESENT IN a specific chapter (chapter→entities), with relevance +
+   *  per-chapter mention_count (0 until M7 backfill). Bare array. */
+  chapterEntities(
+    bookId: string,
+    chapterId: string,
+    token: string,
+  ): Promise<ChapterEntity[]> {
+    return apiJson<ChapterEntity[]>(
+      `${BASE}/books/${bookId}/chapter-entities?chapter_id=${encodeURIComponent(chapterId)}`,
+      { token },
+    );
+  },
+};
+
+/** M6 — `known-entities` row (entities established by chapter N). */
+export type KnownEntityAsOf = {
+  entity_id: string;
+  name: string;
+  kind_code: string;
+  aliases: string[];
+  frequency: number;
+  first_chapter_index: number | null;
+  last_chapter_index: number | null;
+  coverage_pct: number;
+};
+
+/** M6 — `chapter-entities` row (entities present in chapter N). */
+export type ChapterEntity = {
+  entity_id: string;
+  name: string;
+  kind_code: string;
+  relevance: 'major' | 'appears' | 'mentioned';
+  chapter_index: number | null;
+  mention_count: number;
 };

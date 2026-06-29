@@ -118,8 +118,10 @@ export function useExtractionState(mode: WizardMode, preselectedChapterIds?: str
     setState((prev) => ({ ...prev, finalJobStatus }));
   }, []);
 
-  /** Whether the dialog can be safely closed (not during active job) */
-  const canClose = state.step !== 'progress';
+  /** Whether the dialog can be safely closed. Always true: a running job keeps
+   *  going server-side and is tracked in the unified Jobs dashboard, so the user
+   *  may dismiss the wizard ("Run in background") at any step without losing it. */
+  const canClose = true;
 
   return {
     state,

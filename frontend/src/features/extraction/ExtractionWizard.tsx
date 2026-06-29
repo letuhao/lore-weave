@@ -1,5 +1,7 @@
 import { useEffect, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
+import { useNavigate } from 'react-router-dom';
+import { toast } from 'sonner';
 import { X } from 'lucide-react';
 import { useExtractionState, type WizardMode, type WizardStep } from './useExtractionState';
 import { StepProfile } from './StepProfile';
@@ -36,6 +38,7 @@ export function ExtractionWizard({
   onComplete,
 }: ExtractionWizardProps) {
   const { t } = useTranslation('extraction');
+  const navigate = useNavigate();
   const {
     state,
     reset,
@@ -67,6 +70,17 @@ export function ExtractionWizard({
 
   const handleClose = () => {
     if (!canClose) return;
+    // Dismissing while the job is still running: it continues server-side and is
+    // tracked in the unified Jobs dashboard — surface a handoff so the user can
+    // monitor or cancel it there instead of being trapped in the modal.
+    if (state.step === 'progress' && state.jobId) {
+      toast.success(t('progress.backgroundToast'), {
+        action: {
+          label: t('progress.viewInJobs'),
+          onClick: () => navigate('/jobs'),
+        },
+      });
+    }
     onOpenChange(false);
   };
 
@@ -125,6 +139,7 @@ export function ExtractionWizard({
         return state.jobId ? (
           <StepProgress
             jobId={state.jobId}
+            onBackground={handleClose}
             onComplete={(finalStatus) => {
               setFinalJobStatus(finalStatus);
               goNext();

@@ -128,6 +128,10 @@ func (s *Server) Router() http.Handler {
 		r.Post("/books/{book_id}/select-for-context", s.internalSelectForContext)
 		r.Get("/books/{book_id}/known-entities", s.getKnownEntities)
 		r.Post("/books/{book_id}/extract-entities", s.bulkExtractEntities)
+		// M7 backfill — deterministic per-chapter mention_count recount (no LLM). The
+		// producer computes counts (it holds chapter text + matcher) and POSTs a targeted,
+		// idempotent UPDATE batch here.
+		r.Post("/books/{book_id}/recount-mention-counts", s.internalRecountMentionCounts)
 		r.Get("/books/{book_id}/translation-candidates", s.internalTranslationCandidates)
 		r.Post("/books/{book_id}/apply-translations", s.internalApplyTranslations)
 		r.Get("/books/{book_id}/entity-count", s.internalEntityCount)
@@ -154,6 +158,11 @@ func (s *Server) Router() http.Handler {
 		// re-promote SELF-HEAL (adversary WARN-1): if a prior canon-content
 		// write failed transiently, a re-promote reads NULL here and re-writes.
 		r.Get("/books/{book_id}/entities/{entity_id}/canon-content", s.internalGetCanonContent)
+		// #26/#7 summarize (merge-rewrite) — the end-of-extraction-job LLM pass fetches
+		// the dirty summarize attributes here, rewrites their accumulated raw mentions into
+		// one canonical value, and writes it back (compare-and-clear on canonical_dirty).
+		r.Get("/books/{book_id}/canonical-dirty", s.internalCanonicalDirty)
+		r.Post("/books/{book_id}/entities/{entity_id}/canonical", s.internalWriteCanonical)
 		// Enrichment SUPPLEMENT layer (F-C13-1 + F-C13-2 / PO ruling B1):
 		// lore-enrichment writes/retracts the distinguished enrichment `dị bản`
 		// here (its own table, FK→entity) instead of overwriting short_description.
@@ -195,6 +204,10 @@ func (s *Server) Router() http.Handler {
 		// the retired /schema/confirm. /preview is non-consuming (current-state card).
 		r.Post("/actions/confirm", s.confirmAction)
 		r.Post("/actions/preview", s.previewAction)
+		// #27/#29/#30 coalesce — ONE human card commits/previews the N child tokens a chat
+		// turn minted (the run-loop bundles strays). Reuses the per-descriptor effects above.
+		r.Post("/actions/confirm-batch", s.confirmActionBatch)
+		r.Post("/actions/preview-batch", s.previewActionBatch)
 		// T4 — System-tier admin confirm path, RS256-gated (requireAdminScope inside),
 		// SEPARATE from the HS256 user /actions/confirm above. The MCP admin tools
 		// propose (authorityAdmin token); a human admin confirms a System write here.
@@ -414,6 +427,12 @@ func (s *Server) Router() http.Handler {
 			r.Post("/research-jobs/{job_id}/pause", s.pauseResearchJob)
 			r.Post("/research-jobs/{job_id}/resume", s.resumeResearchJob)
 			r.Post("/research-jobs/{job_id}/cancel", s.cancelResearchJob)
+			// M6 — "Canon at chapter N" public read surface (composition inspector).
+			// Both View-grant gated, bare-array responses. known-entities is a public
+			// mirror of the internal getKnownEntities (+ first/last/coverage); chapter-
+			// entities is the new chapter→entities direction (idx_cel_chapter).
+			r.Get("/known-entities", s.publicKnownEntities)
+			r.Get("/chapter-entities", s.publicChapterEntities)
 			r.Route("/entities", func(r chi.Router) {
 				r.Get("/", s.listEntities)
 				r.Post("/", s.createEntity)
@@ -421,6 +440,9 @@ func (s *Server) Router() http.Handler {
 				// feed the translation glossary). Static path — registered before
 				// /{entity_id} so chi matches it first.
 				r.Post("/bulk-status", s.bulkSetEntityStatus)
+				// Bulk soft-delete (clean up duplicate/unwanted entities). Static
+				// path — registered before /{entity_id} so chi matches it first.
+				r.Post("/bulk-delete", s.bulkDeleteEntities)
 				r.Route("/{entity_id}", func(r chi.Router) {
 					r.Get("/", s.getEntityDetail)
 					r.Patch("/", s.patchEntity)

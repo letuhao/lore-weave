@@ -24,6 +24,14 @@
     "loadFailed": "Không tải được đồ thị: {{error}}",
     "empty": "Chưa có đồ thị tri thức — hãy xây dựng dự án này để khám phá mạng lưới của nó."
   },
+  "schemaSection": {
+    "title": "Lược đồ hiệu lực",
+    "subtitle": "Các loại nút, loại quan hệ, loại sự kiện và từ vựng mà đồ thị của dự án này đang dùng.",
+    "editCta": "Sửa lược đồ",
+    "freeEdges": "Cho phép quan hệ ngoài từ vựng (cạnh tự do).",
+    "closedEdges": "Quan hệ giới hạn ở các loại quan hệ đã khai báo; phần khác đưa vào phân loại.",
+    "error": "Không tải được lược đồ của dự án này."
+  },
   "shell": {
     "backToProjects": "Tất cả dự án",
     "sections": {
@@ -35,6 +43,7 @@
       "proposals": "Đề xuất",
       "gap": "Thiếu sót",
       "insights": "Phân tích",
+      "schema": "Lược đồ",
       "graph": "Dựng / Khám phá đồ thị"
     },
     "notFound": "Không tìm thấy dự án.",
@@ -277,7 +286,8 @@
       "chapterLabel": "Chương",
       "chapterUnresolved": "Chương với id {{id}} — không giải được tiêu đề",
       "participantsMore": "+{{count}} người nữa",
-      "confidenceLabel": "Độ tin cậy"
+      "confidenceLabel": "Độ tin cậy",
+      "timeLabel": "Thời điểm trong truyện"
     },
     "detail": {
       "summary": "Tóm tắt",
@@ -290,10 +300,16 @@
       "refreshing": "đang làm mới…",
       "prev": "Trang trước",
       "next": "Trang sau",
-      "backToFirst": "Về trang đầu"
+      "backToFirst": "Về trang đầu",
+      "pageSize": "Mỗi trang"
     },
     "localization": {
       "sourceMarker": "Hiển thị bằng ngôn ngữ gốc — đang chờ dịch"
+    },
+    "search": {
+      "placeholder": "Tìm sự kiện…",
+      "label": "Tìm sự kiện",
+      "clear": "Xóa tìm kiếm"
     }
   },
   "entities": {
@@ -351,6 +367,8 @@
       "loadFailed": "Không thể tải thực thể: {{error}}",
       "close": "Đóng",
       "metadata": "Siêu dữ liệu",
+      "description": "Mô tả",
+      "descriptionSource": "Từ mục từ điển được liên kết",
       "aliases": "Bí danh",
       "relations": "Quan hệ ({{count}})",
       "truncated": "Hiển thị {{shown}} trong tổng số {{total}} — hãy lọc hoặc tìm trong bảng",
@@ -705,12 +723,15 @@
           "durationMin": "~{{n}} phút"
         },
         "building_running": {
-          "progress": "{{processed}} / {{total}} mục",
+          "progress": "{{processed}} / {{total}} mục (chương + chat + bảng chú giải)",
           "elapsed": "Đã trôi: {{elapsed}}",
           "spent": "Đã dùng: ${{spent}}",
           "spentOfBudget": "Đã dùng: ${{spent}} / ${{budget}}",
           "concurrencyLabel": "Số lời gọi song song",
-          "concurrencyApply": "Áp dụng"
+          "concurrencyApply": "Áp dụng",
+          "stagesTitle": "Các giai đoạn dựng",
+          "stages": "Thực thể → Quan hệ · Sự kiện · Dữ kiện → Tóm tắt",
+          "stagesNote": "Các lượt chạy theo thứ tự này. Dữ kiện và Tóm tắt chạy sau khi Thực thể và Quan hệ hoàn tất, nên xuất hiện muộn hơn trong bản dựng đầy đủ — dừng sớm sẽ bỏ qua chúng."
         },
         "building_paused_user": {
           "body": "Bạn đã tạm dừng tác vụ này. Tiếp tục khi sẵn sàng, hoặc hủy để giữ lại đồ thị một phần."

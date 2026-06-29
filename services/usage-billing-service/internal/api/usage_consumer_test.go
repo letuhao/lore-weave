@@ -48,6 +48,38 @@ func TestParseUsageEvent(t *testing.T) {
 	if p.InputTokens != 120 || p.OutputTokens != 30 || p.CostUSD != 0.05 {
 		t.Fatalf("numeric mismatch: %+v", p)
 	}
+	// H-C/PUB-11: no mcp_key_id field → nil (first-party, un-attributed).
+	if p.McpKeyID != nil {
+		t.Fatalf("mcp_key_id should be nil when absent, got %v", *p.McpKeyID)
+	}
+
+	// mcp_key_id present → parsed onto the audit row (public-MCP-key attribution).
+	withKey := map[string]any{}
+	for k, v := range base {
+		withKey[k] = v
+	}
+	mcpKey := uuid.New().String()
+	withKey["mcp_key_id"] = mcpKey
+	pk, err := parseUsageEvent(withKey)
+	if err != nil {
+		t.Fatalf("parse with mcp_key_id: %v", err)
+	}
+	if pk.McpKeyID == nil || pk.McpKeyID.String() != mcpKey {
+		t.Fatalf("mcp_key_id not threaded: %+v", pk.McpKeyID)
+	}
+	// A malformed mcp_key_id must NOT fail the event (nil-tolerant, like campaign_id).
+	badKey := map[string]any{}
+	for k, v := range base {
+		badKey[k] = v
+	}
+	badKey["mcp_key_id"] = "not-a-uuid"
+	pb, err := parseUsageEvent(badKey)
+	if err != nil {
+		t.Fatalf("malformed mcp_key_id must not error: %v", err)
+	}
+	if pb.McpKeyID != nil {
+		t.Fatalf("malformed mcp_key_id should yield nil, got %v", *pb.McpKeyID)
+	}
 
 	// cost_usd empty → flat fallback (totalTokens × flatCostPerToken).
 	noCost := map[string]any{}
@@ -91,8 +123,35 @@ func TestRecordUsageParams_Mapping(t *testing.T) {
 	if want := float64(150) * flatCostPerToken; p.CostUSD != want {
 		t.Fatalf("flat cost: got %v want %v", p.CostUSD, want)
 	}
-	if p.InputPayload["a"] != 1.0 || p.OutputPayload["b"] != 2.0 {
+	inMap, _ := p.InputPayload.(map[string]any)
+	outMap, _ := p.OutputPayload.(map[string]any)
+	if inMap["a"] != 1.0 || outMap["b"] != 2.0 {
 		t.Fatalf("payloads dropped: %+v", p)
+	}
+}
+
+func TestParseUsageEvent_CarriesPayloadsAndStatus(t *testing.T) {
+	// #32 — the jobs-path stream now carries the traced request/response payloads
+	// (truncated JSON text) + a real request_status. Absent payloads stay nil.
+	owner, model := uuid.New(), uuid.New()
+	ev := map[string]any{
+		"request_id": uuid.New().String(), "owner_user_id": owner.String(),
+		"model_ref": model.String(), "input_tokens": "10", "output_tokens": "5",
+		"request_status": "failed", "operation": "glossary_extraction",
+		"request_payload": `{"messages":[]}`, "response_payload": "",
+	}
+	p, err := parseUsageEvent(ev)
+	if err != nil {
+		t.Fatalf("parse: %v", err)
+	}
+	if p.RequestStatus != "failed" {
+		t.Fatalf("request_status: got %q want failed", p.RequestStatus)
+	}
+	if p.InputPayload != `{"messages":[]}` {
+		t.Fatalf("request payload not carried: %v", p.InputPayload)
+	}
+	if p.OutputPayload != nil {
+		t.Fatalf("absent response payload must be nil, got %v", p.OutputPayload)
 	}
 }
 
@@ -104,7 +163,7 @@ func TestWriteUsageLog_FreshWritesAuditNoBalanceDeduction(t *testing.T) {
 	defer mock.Close()
 
 	mock.ExpectBegin()
-	mock.ExpectQuery("INSERT INTO usage_logs").WithArgs(anyArgs(16)...).
+	mock.ExpectQuery("INSERT INTO usage_logs").WithArgs(anyArgs(17)...).
 		WillReturnRows(pgxmock.NewRows([]string{"usage_log_id"}).AddRow(uuid.New()))
 	mock.ExpectExec("INSERT INTO usage_log_details").WithArgs(anyArgs(4)...).
 		WillReturnResult(pgxmock.NewResult("INSERT", 1))
@@ -133,7 +192,7 @@ func TestWriteUsageLog_DuplicateRereadsNoDetails(t *testing.T) {
 
 	existing := uuid.New()
 	mock.ExpectBegin()
-	mock.ExpectQuery("INSERT INTO usage_logs").WithArgs(anyArgs(16)...).
+	mock.ExpectQuery("INSERT INTO usage_logs").WithArgs(anyArgs(17)...).
 		WillReturnRows(pgxmock.NewRows([]string{"usage_log_id"})) // empty → ErrNoRows (dup)
 	mock.ExpectQuery("SELECT usage_log_id, total_cost_usd FROM usage_logs").WithArgs(anyArgs(1)...).
 		WillReturnRows(pgxmock.NewRows([]string{"usage_log_id", "total_cost_usd"}).AddRow(existing, 9.99))
@@ -157,7 +216,7 @@ func TestHandleMessage_WritesAuditInTx(t *testing.T) {
 	defer mock.Close()
 
 	mock.ExpectBegin()
-	mock.ExpectQuery("INSERT INTO usage_logs").WithArgs(anyArgs(16)...).
+	mock.ExpectQuery("INSERT INTO usage_logs").WithArgs(anyArgs(17)...).
 		WillReturnRows(pgxmock.NewRows([]string{"usage_log_id"}).AddRow(uuid.New()))
 	mock.ExpectExec("INSERT INTO usage_log_details").WithArgs(anyArgs(4)...).
 		WillReturnResult(pgxmock.NewResult("INSERT", 1))

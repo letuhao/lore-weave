@@ -195,6 +195,7 @@ def _run(
     tools: list[dict] | None = None,
     gen_params: dict | None = None,
     project_id: str | None = "proj-1",
+    planner_model_ref: str | None = None,
 ):
     """Build a `_stream_with_tools` async generator with sane defaults."""
     return _stream_with_tools(
@@ -207,6 +208,7 @@ def _run(
         knowledge_client=knowledge_client,
         session_id=TEST_SESSION_ID,
         project_id=project_id,
+        planner_model_ref=planner_model_ref,
     )
 
 
@@ -838,3 +840,119 @@ class TestProjectIdPassthrough:
         with _patch_client(scripts):
             await _drain(_run(scripts, knowledge_client=kc, project_id=None))
         assert kc.mcp_execute_tool.await_args.kwargs["project_id"] is None
+
+
+class TestPlannerModelRefAuthority:
+    """#19 — choosing the planner model is a USER/config decision, never the agent's.
+    chat-service is authoritative over the glossary_plan model_ref: a session pin wins,
+    and an absent pin STRIPS any model-supplied ref so the per-user Settings default
+    (resolved downstream in glossary) applies. Without this a weak model that fills the
+    exposed model_ref arg silently overrides the user's selection."""
+
+    def _glossary_plan_script(self, args_json: str):
+        return [
+            [
+                tool_frag(index=0, id="p1", name="glossary_plan"),
+                tool_frag(index=0, arguments_delta=args_json),
+                done("tool_calls"),
+            ],
+            [tok("planned"), done("stop")],
+        ]
+
+    @pytest.mark.asyncio
+    async def test_session_pin_injected_when_model_omits_ref(self):
+        kc = AsyncMock()
+        kc.mcp_execute_tool.return_value = _envelope(success=True, result={})
+        scripts = self._glossary_plan_script('{"book_id":"b1","goal":"design ontology"}')
+        with _patch_client(scripts):
+            await _drain(_run(scripts, knowledge_client=kc, planner_model_ref="session-model"))
+        assert kc.mcp_execute_tool.await_args.kwargs["tool_args"]["model_ref"] == "session-model"
+
+    @pytest.mark.asyncio
+    async def test_session_pin_overrides_model_supplied_ref(self):
+        """The fix: a model that fills model_ref does NOT bypass the user's session pin."""
+        kc = AsyncMock()
+        kc.mcp_execute_tool.return_value = _envelope(success=True, result={})
+        scripts = self._glossary_plan_script(
+            '{"book_id":"b1","goal":"x","model_ref":"model-hallucinated"}'
+        )
+        with _patch_client(scripts):
+            await _drain(_run(scripts, knowledge_client=kc, planner_model_ref="session-model"))
+        assert kc.mcp_execute_tool.await_args.kwargs["tool_args"]["model_ref"] == "session-model"
+
+    @pytest.mark.asyncio
+    async def test_model_supplied_ref_stripped_when_no_session_pin(self):
+        """No session pin → the model's guess is removed so glossary resolves the
+        per-user Settings 'planner' default (not whatever the model invented)."""
+        kc = AsyncMock()
+        kc.mcp_execute_tool.return_value = _envelope(success=True, result={})
+        scripts = self._glossary_plan_script(
+            '{"book_id":"b1","goal":"x","model_ref":"model-hallucinated"}'
+        )
+        with _patch_client(scripts):
+            await _drain(_run(scripts, knowledge_client=kc, planner_model_ref=None))
+        assert "model_ref" not in kc.mcp_execute_tool.await_args.kwargs["tool_args"]
+
+
+class TestPlannerHardStop:
+    """#18 — the planner has no ReAct loop in CODE; the "loops forever" is the chat
+    agent re-calling the heavy (~39s) glossary_plan in a self-recheck cycle, gated only
+    by a SOFT skill rule. Logic — not the prompt — must bound it: the FIRST glossary_plan
+    a turn runs; a 2nd+ call in the SAME tool loop is short-circuited WITHOUT executing,
+    with a tool result steering the model to present/confirm the plan it already has."""
+
+    @pytest.mark.asyncio
+    async def test_second_glossary_plan_in_a_turn_is_short_circuited(self):
+        kc = AsyncMock()
+        kc.mcp_execute_tool.return_value = _envelope(success=True, result={"plan": "p"})
+        scripts = [
+            # Pass 0 — first glossary_plan: runs for real.
+            [
+                tool_frag(index=0, id="p1", name="glossary_plan"),
+                tool_frag(index=0, arguments_delta='{"book_id":"b1","goal":"design"}'),
+                done("tool_calls"),
+            ],
+            # Pass 1 — the self-recheck: a SECOND glossary_plan. Must NOT execute.
+            [
+                tool_frag(index=0, id="p2", name="glossary_plan"),
+                tool_frag(index=0, arguments_delta='{"book_id":"b1","goal":"recheck"}'),
+                done("tool_calls"),
+            ],
+            # Pass 2 — model gives up re-planning and answers.
+            [tok("here is the plan"), done("stop")],
+        ]
+        with _patch_client(scripts):
+            chunks = await _drain(_run(scripts, knowledge_client=kc))
+
+        # The planner ran EXACTLY once — the 2nd call never reached the MCP transport.
+        assert kc.mcp_execute_tool.await_count == 1
+        assert kc.mcp_execute_tool.await_args.kwargs["tool_name"] == "glossary_plan"
+
+        # The short-circuited 2nd call still surfaces a failed tool_call so the FE/model
+        # sees it, carrying guidance (not a silent drop).
+        plan_chunks = [
+            c["tool_call"] for c in chunks
+            if "tool_call" in c and c["tool_call"]["tool"] == "glossary_plan"
+        ]
+        assert len(plan_chunks) == 2
+        assert plan_chunks[0]["ok"] is True
+        assert plan_chunks[1]["ok"] is False
+        assert plan_chunks[1]["id"] == "p2"
+        assert "again" in (plan_chunks[1]["error"] or "").lower()
+
+    @pytest.mark.asyncio
+    async def test_single_glossary_plan_is_unaffected(self):
+        """The common, correct case — ONE plan per turn — runs normally."""
+        kc = AsyncMock()
+        kc.mcp_execute_tool.return_value = _envelope(success=True, result={"plan": "p"})
+        scripts = [
+            [
+                tool_frag(index=0, id="p1", name="glossary_plan"),
+                tool_frag(index=0, arguments_delta='{"book_id":"b1","goal":"design"}'),
+                done("tool_calls"),
+            ],
+            [tok("planned"), done("stop")],
+        ]
+        with _patch_client(scripts):
+            await _drain(_run(scripts, knowledge_client=kc))
+        kc.mcp_execute_tool.assert_awaited_once()

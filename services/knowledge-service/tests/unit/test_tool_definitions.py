@@ -22,9 +22,13 @@ from app.tools.definitions import (
     MemoryTimelineArgs,
 )
 
-# Scope keys that must NEVER appear in an LLM-facing tool schema —
-# they come from the chat-service envelope (design D3).
-_ENVELOPE_KEYS = {"user_id", "project_id", "session_id"}
+# Identity/session keys that must NEVER appear in an LLM-facing tool schema —
+# they come from the trusted envelope (design D3). INV-K2 amendment (H-I):
+# `project_id` is NO LONGER here — it is a deliberately-allowed, ownership-checked
+# SCOPE selector (the public edge mints no X-Project-Id, so a public agent supplies
+# it as an arg; the owner gate confines it to the caller's own projects). user_id /
+# session_id stay envelope-only forever — they are identity, never an LLM arg.
+_ENVELOPE_KEYS = {"user_id", "session_id"}
 
 
 def _defn(name: str) -> dict:
@@ -110,9 +114,9 @@ def test_schema_properties_match_arg_model_fields(name: str):
 
 
 def test_no_envelope_keys_leak_into_any_schema():
-    """Design D3 — user_id / project_id / session_id are envelope
-    fields, never tool parameters. The LLM must not be able to name
-    them."""
+    """Design D3 / INV-K2 (H-I-amended) — user_id / session_id are envelope
+    identity fields, NEVER tool parameters. (project_id IS now an allowed
+    ownership-checked scope arg — see test_search_args_accepts_project_id.)"""
     for defn in TOOL_DEFINITIONS:
         props = set(defn["function"]["parameters"]["properties"])
         assert _ENVELOPE_KEYS.isdisjoint(props), defn["function"]["name"]
@@ -142,13 +146,19 @@ def test_search_args_defaults_and_bounds():
         MemorySearchArgs(query="")  # min_length=1
 
 
-def test_search_args_reject_unknown_field():
-    """extra='forbid' — a hallucinated parameter (here a smuggled
-    project_id) surfaces as a validation error, not a silent honour."""
-    with pytest.raises(ValidationError):
-        MemorySearchArgs(query="x", project_id="11111111-1111-1111-1111-111111111111")
+def test_search_args_accepts_project_id_but_rejects_identity_and_typos():
+    """H-I — project_id is now a valid, optional, ownership-checked scope arg.
+    extra='forbid' still rejects a hallucinated/typo param and (critically) the
+    identity keys user_id / session_id, which an LLM must never set."""
+    ok = MemorySearchArgs(query="x", project_id="11111111-1111-1111-1111-111111111111")
+    assert ok.project_id == "11111111-1111-1111-1111-111111111111"
+    assert MemorySearchArgs(query="x").project_id is None  # optional
     with pytest.raises(ValidationError):
         MemorySearchArgs(query="x", typo_param=1)
+    with pytest.raises(ValidationError):
+        MemorySearchArgs(query="x", user_id="smuggled")  # identity stays forbidden
+    with pytest.raises(ValidationError):
+        MemorySearchArgs(query="x", session_id="smuggled")
 
 
 def test_search_args_source_type_enum():

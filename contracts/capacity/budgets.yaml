@@ -226,3 +226,12 @@ services:
     class: web
     v1: { min_replicas: 1, max_replicas: 2, cpu_per_replica: 0.5, memory_per_replica: 512Mi, scale_trigger: "rps>100" }
     v3: { min_replicas: 2, max_replicas: 6 }
+  # ── public-MCP gateway track (feat/public-mcp-gateway) + Unified Job Control Plane
+  - name: mcp-public-gateway
+    class: web
+    v1: { min_replicas: 1, max_replicas: 4, cpu_per_replica: 0.5, memory_per_replica: 512Mi, scale_trigger: "rps>200" }
+    v3: { min_replicas: 2, max_replicas: 12 }
+  - name: jobs-service
+    class: web
+    v1: { min_replicas: 1, max_replicas: 2, cpu_per_replica: 0.5, memory_per_replica: 512Mi, scale_trigger: "rps>100" }
+    v3: { min_replicas: 2, max_replicas: 6 }

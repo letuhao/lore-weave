@@ -264,6 +264,7 @@ describe('useProjectState — actions', () => {
         PROJECT_ID,
         { llm_model: 'gpt-4o-mini', embedding_model: 'bge-m3-v2' },
         TOKEN,
+        true, // bug #14 — commit path passes confirm=true
       );
     });
   });
@@ -428,6 +429,7 @@ describe('useProjectState — actions', () => {
         PROJECT_ID,
         { llm_model: 'gpt-4o', embedding_model: 'text-embedding-3-large' },
         TOKEN,
+        true, // bug #14 — commit path passes confirm=true
       );
     });
   });

@@ -64,6 +64,7 @@
     "new_attr": "新增屬性",
     "edit_genre": "類型設定",
     "edit_kind": "種類設定",
+    "links_kind": "連結的類型",
     "delete_genre": "刪除類型",
     "delete_kind": "刪除種類",
     "select_genre": "選擇一個類型",
@@ -212,6 +213,14 @@
     "confirm": "刪除",
     "cancel": "取消"
   },
+  "links": {
+    "title": "{{name}} 的類型",
+    "hint": "選擇此種類所屬的類型。每個種類必須至少連結一個類型。",
+    "empty": "這本書還沒有任何類型 — 請先採用或建立一個。",
+    "save": "儲存",
+    "saving": "儲存中…",
+    "cancel": "取消"
+  },
   "toast": {
     "adopted": "已採用進這本書",
     "saved": "已儲存",
@@ -221,6 +230,8 @@
     "delete_failed": "刪除失敗",
     "revert_failed": "還原失敗",
     "adopt_failed": "採用失敗",
+    "links_saved": "已更新類型連結",
+    "links_failed": "無法更新類型連結",
     "forbidden": "你需要這本書的「管理」權限才能進行變更"
   }
 }

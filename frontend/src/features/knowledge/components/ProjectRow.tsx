@@ -6,7 +6,7 @@ import { useTranslation } from 'react-i18next';
 import { ConfirmDialog } from '@/components/shared';
 import { useAuth } from '@/auth';
 import { useProjectState, PROJECT_ACTION_KEYS } from '../hooks/useProjectState';
-import { knowledgeApi, type ExtractionJobWire } from '../api';
+import { knowledgeApi, type ExtractionJobWire, type RebuildWarning } from '../api';
 import type { Project } from '../types';
 import type { ExtractionJobSummary } from '../types/projectState';
 import { ProjectStateCard, type ProjectStateCardActions } from './ProjectStateCard';
@@ -73,6 +73,9 @@ export function ProjectRow({
   const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
   const [rebuildConfirmStep1, setRebuildConfirmStep1] = useState(false);
   const [rebuildConfirmStep2, setRebuildConfirmStep2] = useState(false);
+  // bug #14 — destructive preview (live node counts) fetched from the BE when
+  // the user advances to the typed-confirmation step.
+  const [rebuildPreview, setRebuildPreview] = useState<RebuildWarning | null>(null);
   const [disableConfirmOpen, setDisableConfirmOpen] = useState(false);
   // Single `submitting` flag shared across all destructive confirm
   // dialogs. Only one can be open at a time so a shared flag is safe;
@@ -198,8 +201,9 @@ export function ProjectRow({
             embedding_model: latest.embedding_model,
           },
           accessToken,
+          true, // bug #14 — explicit confirm; BE deletes only with confirm=true
         ),
-      () => setRebuildConfirmStep2(false),
+      () => { setRebuildConfirmStep2(false); setRebuildPreview(null); },
     );
   }, [accessToken, project.project_id, queryClient, runDestructive, t]);
 
@@ -380,6 +384,24 @@ export function ProjectRow({
         onConfirm={() => {
           setRebuildConfirmStep1(false);
           setRebuildConfirmStep2(true);
+          // bug #14 — fetch the destructive preview (live node counts) so step 2
+          // can show exactly what will be deleted. Best-effort; the typed confirm
+          // + BE guard are the real safety, this is just the number.
+          const jobs = queryClient.getQueryData<ExtractionJobWire[]>([
+            'knowledge-project-jobs',
+            project.project_id,
+          ]);
+          const latest = jobs?.[0];
+          if (accessToken && latest) {
+            void knowledgeApi
+              .rebuildGraph(
+                project.project_id,
+                { llm_model: latest.llm_model, embedding_model: latest.embedding_model },
+                accessToken,
+              )
+              .then((r) => { if ('action_required' in r) setRebuildPreview(r); })
+              .catch(() => {});
+          }
         }}
       />
 
@@ -389,7 +411,21 @@ export function ProjectRow({
           if (!destructiveSubmitting) setRebuildConfirmStep2(o);
         }}
         title={t('projects.confirmDestructive.rebuildStep2.title')}
-        description={t('projects.confirmDestructive.rebuildStep2.description')}
+        description={
+          rebuildPreview
+            ? t('projects.confirmDestructive.rebuildStep2.descriptionCount', {
+                defaultValue:
+                  'This permanently DELETES {{entities}} entities, {{events}} events and {{facts}} facts, then rebuilds from scratch. This cannot be undone.',
+                entities: rebuildPreview.entity_count,
+                events: rebuildPreview.event_count,
+                facts: rebuildPreview.fact_count,
+              })
+            : t('projects.confirmDestructive.rebuildStep2.description')
+        }
+        confirmationPhrase={project.name}
+        confirmationLabel={t('projects.confirmDestructive.rebuildStep2.typePrompt', {
+          defaultValue: 'Type the project name to confirm',
+        })}
         confirmLabel={t('projects.state.actions.rebuild')}
         cancelLabel={t('projects.confirmDestructive.cancel')}
         variant="destructive"

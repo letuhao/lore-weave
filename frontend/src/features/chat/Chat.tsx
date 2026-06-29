@@ -1,8 +1,10 @@
 import { useState } from 'react';
-import { ChatSessionProvider, ChatStreamProvider, useChatSession } from './providers';
+import { useAuth } from '@/auth';
+import { ChatSessionProvider, ChatStreamProvider, ChatLiveStateProvider, useChatSession } from './providers';
 import { ChatView } from './components/ChatView';
 import { NewChatDialog } from './components/NewChatDialog';
 import { ChatEmptyState } from './components/ChatEmptyState';
+import { SessionSwitcher } from './components/SessionSwitcher';
 import { useEmbeddedChatBinding } from './useEmbeddedChatBinding';
 import { useGlossaryDisplayLanguage } from '@/features/glossary/hooks/useGlossaryDisplayLanguage';
 
@@ -20,6 +22,13 @@ interface ChatProps {
    *  The co-writer panel passes its Insert/Use-as-guide bar + starters here so it
    *  can read the live chat stream via useChatStream/useChatSession. */
   actionBar?: React.ReactNode;
+  /** M2 (D-T5.4-CHAT-HOIST): opener — chat windowing is on, so the turn must run in
+   *  the SharedWorker (a panel float/pop-out would otherwise kill it). The composition
+   *  host sets this from its windowing flag; off everywhere else → in-process, unchanged. */
+  windowingEnabled?: boolean;
+  /** M2 (D-T5.4-CHAT-HOIST): pop-out — force the worker path (a pop-out window has no
+   *  windowing host of its own, but must share the opener's in-flight turn). */
+  forceShared?: boolean;
   className?: string;
 }
 
@@ -32,7 +41,7 @@ interface ChatProps {
  * hook owns which session is active and binds it to the book's knowledge
  * project so the assistant has the book's lore/memory.
  */
-export function Chat({ bookId, editorContext, composeMode, actionBar, className }: ChatProps) {
+export function Chat({ bookId, editorContext, composeMode, actionBar, windowingEnabled, forceShared, className }: ChatProps) {
   // Glossary-assistant P3: any book-scoped chat (incl. the editor) advertises the
   // glossary edit-existing tool. The editor also passes editorContext (chapter
   // prose tool); a glossary-page/reader chat passes only bookContext.
@@ -40,27 +49,43 @@ export function Chat({ bookId, editorContext, composeMode, actionBar, className 
   // S6: the user's per-book display language (set only when viewing a translation).
   // Forwarded so knowledge composes entity aliases in it for the chat context.
   const { apiDisplayLanguage } = useGlossaryDisplayLanguage(bookId ?? '');
+  const { accessToken } = useAuth();
   return (
     <ChatSessionProvider embedded>
-      <ChatStreamProvider
-        editorContext={editorContext}
-        composeMode={composeMode}
-        bookContext={bookContext}
-        displayLanguage={apiDisplayLanguage}
-      >
-        <EmbeddedChat bookId={bookId} actionBar={actionBar} className={className} />
-      </ChatStreamProvider>
+      {/* M2 (D-T5.4-CHAT-HOIST): mount ABOVE ChatStreamProvider — the future chat
+          windowing host sits between them. windowingEnabled defaults false, so
+          this is an inert pass-through today (useChatMessages owns the in-process
+          stream, byte-identical to pre-M2). When a host flips windowing on, the
+          turn moves into the SharedWorker and survives pop-out. */}
+      <ChatLiveStateProvider token={accessToken ?? null} windowingEnabled={windowingEnabled} forceShared={forceShared}>
+        <ChatStreamProvider
+          editorContext={editorContext}
+          composeMode={composeMode}
+          bookContext={bookContext}
+          displayLanguage={apiDisplayLanguage}
+        >
+          <EmbeddedChat bookId={bookId} actionBar={actionBar} className={className} />
+        </ChatStreamProvider>
+      </ChatLiveStateProvider>
     </ChatSessionProvider>
   );
 }
 
 function EmbeddedChat({ bookId, actionBar, className }: ChatProps) {
-  const { sessions, sessionsLoading, activeSession, selectSession, createSession, updateActiveSession } =
-    useChatSession();
+  const {
+    sessions,
+    sessionsLoading,
+    activeSession,
+    selectSession,
+    createSession,
+    updateActiveSession,
+    showNewDialog,
+    setShowNewDialog,
+  } = useChatSession();
   // The user can dismiss the create dialog without making a session.
   const [dialogDismissed, setDialogDismissed] = useState(false);
 
-  const { needsNewSession } = useEmbeddedChatBinding({
+  const { projectId, needsNewSession } = useEmbeddedChatBinding({
     bookId,
     sessions,
     sessionsLoading,
@@ -72,20 +97,29 @@ function EmbeddedChat({ bookId, actionBar, className }: ChatProps) {
   // Derived, not stored: show the create dialog while a book-scoped session is
   // needed and none is active — until the user dismisses it. No setState in
   // render (CLAUDE.md: don't drive UI off a useEffect/render side-effect).
-  const dialogOpen = needsNewSession && !activeSession && !dialogDismissed;
+  // The session switcher's "New chat" (showNewDialog) opens it on demand too,
+  // even when a session is already active (bug #17).
+  const dialogOpen = (needsNewSession && !activeSession && !dialogDismissed) || showNewDialog;
 
   return (
     <div className={`flex h-full flex-col overflow-hidden ${className ?? ''}`}>
-      <ChatView className={!activeSession ? 'hidden' : 'flex-1'} footerSlot={actionBar} />
+      <ChatView
+        className={!activeSession ? 'hidden' : 'flex-1'}
+        footerSlot={actionBar}
+        headerSlot={<SessionSwitcher scopeProjectId={projectId} />}
+      />
       {!activeSession && <ChatEmptyState className="flex-1" />}
       <NewChatDialog
         open={dialogOpen}
-        onClose={() => setDialogDismissed(true)}
+        onClose={() => {
+          setDialogDismissed(true);
+          setShowNewDialog(false);
+        }}
         onCreate={(modelRef, systemPrompt) => {
           void createSession({
             model_source: 'user_model',
             model_ref: modelRef,
-            title: 'Editor Chat',
+            title: 'New Chat',
             system_prompt: systemPrompt,
           });
         }}

@@ -1,13 +1,18 @@
 import { render, screen, fireEvent } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { CoWriterActions } from '../CoWriterActions';
+import { CoWriterChat } from '../CoWriterChat';
 
 // CoWriterChat just wraps <Chat> (heavy providers); the bridge logic lives in
 // CoWriterActions, which we test by mocking the chat stream/session hooks.
-const { stream, session } = vi.hoisted(() => ({ stream: vi.fn(), session: vi.fn() }));
+const { stream, session, chatProps } = vi.hoisted(() => ({ stream: vi.fn(), session: vi.fn(), chatProps: vi.fn() }));
 vi.mock('../../../chat/providers', () => ({
   useChatStream: () => stream(),
   useChatSession: () => session(),
+}));
+// Capture the props CoWriterChat hands to <Chat> (the M2 worker-engagement wiring).
+vi.mock('../../../chat/Chat', () => ({
+  Chat: (props: Record<string, unknown>) => { chatProps(props); return null; },
 }));
 
 const onInsert = vi.fn();
@@ -71,5 +76,23 @@ describe('CoWriterActions (T3.1)', () => {
     const { container } = render0();
     expect(container).toBeEmptyDOMElement();
     expect(screen.queryByTestId('cowriter-starters')).not.toBeInTheDocument();
+  });
+});
+
+describe('CoWriterChat — M2 worker-engagement wiring (D-T5.4-CHAT-HOIST)', () => {
+  beforeEach(() => chatProps.mockReset());
+
+  it('forwards windowingEnabled + forceShared to <Chat> so a windowed/popped chat survives', () => {
+    render(<CoWriterChat bookId="b1" onAccept={onInsert} onUseAsGuide={onUseAsGuide} windowingEnabled forceShared />);
+    expect(chatProps).toHaveBeenCalledWith(expect.objectContaining({
+      bookId: 'b1', composeMode: true, windowingEnabled: true, forceShared: true,
+    }));
+  });
+
+  it('defaults the engagement flags off (in-process, byte-identical to pre-M2)', () => {
+    render(<CoWriterChat bookId="b1" onAccept={onInsert} onUseAsGuide={onUseAsGuide} />);
+    const props = chatProps.mock.calls[0][0];
+    expect(props.windowingEnabled).toBeUndefined();
+    expect(props.forceShared).toBeUndefined();
   });
 });

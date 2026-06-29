@@ -106,3 +106,23 @@ def test_extract_json_bare_array_no_fence():
     bare = '[{"kind": "location", "name": "黄极境"}]'
     entities = parse_and_validate(bare, ["location"], {"location": {}})
     assert [e["name"] for e in entities] == ["黄极境"]
+
+
+def test_kind_description_included_in_schema():
+    # bug #33 — the kind's own definition (distinct from attribute descriptions)
+    # must reach the prompt so the model picks the right kind.
+    schema = build_extraction_prompt(
+        ["character"], {"character": {}},
+        [{"code": "character",
+          "description": "A named person or being who acts in the story.",
+          "attributes": []}],
+    )
+    assert "A named person or being who acts in the story." in schema
+    assert "## character" in schema
+
+
+def test_kind_without_description_omits_line():
+    # No description → no stray blank header line; just the code header.
+    schema = build_extraction_prompt(
+        ["item"], {"item": {}}, [{"code": "item", "attributes": []}])
+    assert "## item\nAttributes to extract:" in schema

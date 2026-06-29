@@ -84,7 +84,7 @@
     "pause": "Tạm dừng",
     "resume": "Tiếp tục",
     "cancel": "Hủy",
-    "cancelConfirm": "Hủy tác vụ?",
+    "cancelConfirm": "Dừng ngay? Phần đang xử lý sẽ bị bỏ; phần đã hoàn tất được giữ lại.",
     "cancelYes": "Có",
     "cancelNo": "Không",
     "cancelled": "Đã hủy.",
@@ -103,6 +103,7 @@
   },
   "detail": {
     "progress": "Tiến độ",
+    "llmCalls": "Lượt gọi LLM",
     "elapsed": "Đã chạy",
     "throughput": "Thông lượng",
     "throughputVal": "~{{n}} /giờ",

@@ -30,6 +30,7 @@ from ..grant_deps import (
     require_book_grant,
 )
 from ..model_name import resolve_model_name
+from ..book_client import build_chapters_meta
 from ..workers.extraction_model import get_model_context_window
 from ..workers.extraction_prompt import estimate_extraction_cost
 from ..workers.glossary_client import fetch_extraction_profile
@@ -91,6 +92,9 @@ async def _create_extraction_job_core(
     book_id: UUID,
     uid: UUID,
     payload: CreateExtractionJobPayload,
+    *,
+    mcp_key_id: str | None = None,
+    spend_cap_usd: float | None = None,
 ) -> dict:
     """Resolve the model + extraction profile, estimate cost, atomically create the
     job (+ chapter-result rows + the 'pending' JobEvent), and publish to the worker
@@ -167,8 +171,10 @@ async def _create_extraction_job_core(
         }
 
     # Compute cost estimate
-    # Rough estimate: assumes ~8K chars per chapter. Actual sizes would require fetching
-    # from book-service. This is intentionally approximate per design §6.7.1 ("estimate, not quote").
+    # #36: feed the planner the REAL per-chapter sizes (best-effort) so oversized chapters
+    # window the SAME way the executor windows them — the flat 8000-char placeholder made the
+    # windowing-aware planner blind to chapter size and systematically undercounted LLM calls.
+    # Still "estimate, not quote" (design §6.7.1): an unfetchable size falls back to 8000.
     # D-CACHE-PLANNER-WIRING: resolve the REAL model context so the planner-backed quote
     # windows oversized chapters against the SAME budget the executor will use (not the SDK's
     # conservative default, which would over-split every chapter). Best-effort → fallback.
@@ -183,7 +189,7 @@ async def _create_extraction_job_core(
     _grant_level = await get_grant_client().resolve_grant(book_id, uid)
     reasoning_effort, _ = clamp_effort_to_grant(effort_raw, int(_grant_level))
 
-    chapters_meta = [{"text_length": 8000}] * len(payload.chapter_ids)
+    chapters_meta = await build_chapters_meta(book_id, payload.chapter_ids)
     cost_estimate = estimate_extraction_cost(
         chapters_meta, extraction_profile, kinds_metadata,
         model_context_window=model_context_window,
@@ -202,6 +208,9 @@ async def _create_extraction_job_core(
         "max_entities_per_kind": payload.max_entities_per_kind,
         "thinking_enabled": payload.thinking_enabled,
         "reasoning_effort": reasoning_effort,
+        # bug #37 — surface the planner's estimated LLM-call budget on the Jobs GUI
+        # (the worker advances llm_calls_done on each progress emit). None-safe downstream.
+        "estimated_llm_calls": cost_estimate.get("llm_calls"),
     }
 
     # D-EXTRACTION-ADMISSION-CONTROL: cap CONCURRENT extraction jobs per user. P5 fair-scheduling
@@ -236,8 +245,8 @@ async def _create_extraction_job_core(
                 INSERT INTO extraction_jobs
                   (book_id, owner_user_id, status, source_language, model_source, model_ref,
                    extraction_profile, context_filters, chapter_ids, total_chapters, cost_estimate,
-                   reasoning_effort)
-                VALUES ($1,$2,'pending',$3,$4,$5,$6,$7,$8,$9,$10,$11)
+                   reasoning_effort, mcp_key_id, spend_cap_usd)
+                VALUES ($1,$2,'pending',$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)
                 RETURNING *
                 """,
                 book_id, uid, source_language, model_source, model_ref,
@@ -247,6 +256,7 @@ async def _create_extraction_job_core(
                 len(payload.chapter_ids),
                 json.dumps(cost_estimate),
                 reasoning_effort,
+                mcp_key_id, spend_cap_usd,
             )
             job_id = job_row["job_id"]
 
@@ -279,6 +289,10 @@ async def _create_extraction_job_core(
         "reasoning_effort": reasoning_effort,
         # D-EXTRACTION-BATCH-CONCURRENCY: per-chapter LLM-call fan-out cap (None ⇒ 1).
         "concurrency": payload.concurrency_level,
+        # D-PMCP-WORKER-CARRIER: ride the public-MCP key + cap so the extraction
+        # worker re-sets the attribution contextvar before each provider call.
+        "mcp_key_id": mcp_key_id,
+        "spend_cap_usd": spend_cap_usd,
     })
 
     return {

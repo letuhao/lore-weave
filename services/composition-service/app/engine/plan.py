@@ -31,6 +31,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, field
 from typing import Any
 from uuid import UUID
@@ -250,6 +251,7 @@ def parse_scenes(
 async def _llm_json(
     llm: LLMClient, *, user_id: str, model_source: str, model_ref: str,
     system: str, user: str, max_tokens: int, trace_id: str | None,
+    cancel_check: Callable[[], Awaitable[bool]] | None = None,
 ) -> str | None:
     """One blocking chat completion returning the raw content, or None on
     error / non-completion / empty (the caller degrades)."""
@@ -262,7 +264,8 @@ async def _llm_json(
                 "response_format": {"type": "text"}, "temperature": 0.4,
                 "max_tokens": max_tokens, **_NO_THINK,
             },
-            job_meta={"extractor": "decompose"}, trace_id=trace_id,
+            job_meta={"usage_purpose": "prose_plan", "extractor": "decompose"}, trace_id=trace_id,
+            cancel_check=cancel_check,
         )
     except LLMError as exc:
         logger.warning("decompose LLM error: %s", exc)
@@ -294,6 +297,7 @@ async def decompose(
     motif_connective_floor_margin: float = 0.08,
     motif_max_reapply: int = 0,
     motif_applied_counts: dict[str, int] | None = None,
+    cancel_check: Callable[[], Awaitable[bool]] | None = None,
 ) -> DecomposeResult:
     """L1 chapter-map (1 call) → L2 scenes (per chapter, bounded concurrency).
     Degrades per-level: an L1 failure leaves every chapter beat_role=None (scenes
@@ -329,7 +333,8 @@ async def decompose(
     mapped, unmapped = chapters, []
     sys1, usr1 = build_chapter_map_messages(premise, beats, chapters, source_language)
     l1 = await _llm_json(llm, user_id=user_id, model_source=model_source, model_ref=model_ref,
-                         system=sys1, user=usr1, max_tokens=l1_max_tokens, trace_id=trace_id)
+                         system=sys1, user=usr1, max_tokens=l1_max_tokens, trace_id=trace_id,
+                         cancel_check=cancel_check)
     if l1 is not None:
         mapped, unmapped = parse_chapter_map(l1, chapters, beat_keys)
     else:
@@ -349,7 +354,8 @@ async def decompose(
             )
             c = await _llm_json(llm, user_id=user_id, model_source=model_source,
                                 model_ref=model_ref, system=sys2, user=usr2,
-                                max_tokens=l2_max_tokens, trace_id=trace_id)
+                                max_tokens=l2_max_tokens, trace_id=trace_id,
+                                cancel_check=cancel_check)
         if c is None:
             return ChapterScenes(chapter=ch, scenes=[],
                                  warning=warning or "scene_decompose_degraded")

@@ -64,6 +64,7 @@
     "new_attr": "New attribute",
     "edit_genre": "Genre settings",
     "edit_kind": "Kind settings",
+    "links_kind": "Linked genres",
     "delete_genre": "Delete genre",
     "delete_kind": "Delete kind",
     "select_genre": "Select a genre",
@@ -212,6 +213,14 @@
     "confirm": "Delete",
     "cancel": "Cancel"
   },
+  "links": {
+    "title": "Genres for {{name}}",
+    "hint": "Pick the genres this kind belongs to. A kind must stay linked to at least one genre.",
+    "empty": "This book has no genres yet — adopt or create one first.",
+    "save": "Save",
+    "saving": "Saving…",
+    "cancel": "Cancel"
+  },
   "toast": {
     "adopted": "Adopted into this book",
     "saved": "Saved",
@@ -221,6 +230,8 @@
     "delete_failed": "Delete failed",
     "revert_failed": "Revert failed",
     "adopt_failed": "Adopt failed",
+    "links_saved": "Genre links updated",
+    "links_failed": "Couldn't update genre links",
     "forbidden": "You need Manage access on this book to make changes"
   }
 }

@@ -24,9 +24,12 @@ interface ChatViewProps {
    *  bar (inside the chat providers, so it can read useChatStream/useChatSession).
    *  T3.1 mounts the co-writer Insert/Use-as-guide bar + starter chips here. */
   footerSlot?: React.ReactNode;
+  /** Optional host-supplied header slot (bug #17): the embedded chat passes a
+   *  SessionSwitcher here so the workspace can switch/create sessions. */
+  headerSlot?: React.ReactNode;
 }
 
-export function ChatView({ className, footerSlot }: ChatViewProps) {
+export function ChatView({ className, footerSlot, headerSlot }: ChatViewProps) {
   const { t } = useTranslation('chat');
   const { accessToken } = useAuth();
   const {
@@ -135,6 +138,7 @@ export function ChatView({ className, footerSlot }: ChatViewProps) {
         session={activeSession}
         modelNameMap={modelNameMap}
         messageCount={chat.messages.length}
+        sessionSwitcher={headerSlot}
         onRename={promptRename}
         onOpenSettings={() => setSettingsOpen(true)}
         onOpenSidebar={() => setMobileSidebarOpen(true)}

@@ -48,10 +48,11 @@ func NewGuardrailClient(baseURL, internalToken string, hc *http.Client) *Guardra
 type ReserveResult struct {
 	ReservationID     uuid.UUID
 	Insufficient      bool    // true → usage-billing returned 402
-	Code              string  // the 402 `code` — INSUFFICIENT_BUDGET | PLATFORM_BALANCE_EXHAUSTED
+	Code              string  // the 402 `code` — INSUFFICIENT_BUDGET | PLATFORM_BALANCE_EXHAUSTED | MCP_KEY_CAP_EXCEEDED
 	DailyAvailable    float64 // populated when Insufficient (Subsystem A)
 	MonthlyAvailable  float64 // populated when Insufficient (Subsystem A)
 	PlatformAvailable float64 // populated when Code == PLATFORM_BALANCE_EXHAUSTED (Subsystem B)
+	KeyAvailable      float64 // populated when Code == MCP_KEY_CAP_EXCEEDED (per-key sub-cap, H-K)
 	Requested         float64 // populated when Insufficient
 }
 
@@ -63,13 +64,22 @@ type ReserveResult struct {
 // modelSource ("user_model" | "platform_model") selects the gates: a
 // platform_model reservation also checks + holds Subsystem B (the platform
 // resale ledger) in the same transaction (Phase 6a-β).
-func (c *GuardrailClient) Reserve(ctx context.Context, ownerUserID, jobID uuid.UUID, estimatedUSD float64, modelSource string) (ReserveResult, error) {
-	status, raw, err := c.post(ctx, "/internal/billing/guardrail/reserve", map[string]any{
+func (c *GuardrailClient) Reserve(ctx context.Context, ownerUserID, jobID uuid.UUID, estimatedUSD float64, modelSource string, mcpKeyID *uuid.UUID, spendCapUSD *float64) (ReserveResult, error) {
+	body := map[string]any{
 		"owner_user_id": ownerUserID,
 		"job_id":        jobID,
 		"estimated_usd": estimatedUSD,
 		"model_source":  modelSource,
-	})
+	}
+	// Public MCP P4/Wave-C (H-K) — pass the per-key cap so usage-billing can hold
+	// against it (omitted for first-party jobs, which carry neither).
+	if mcpKeyID != nil {
+		body["mcp_key_id"] = *mcpKeyID
+	}
+	if spendCapUSD != nil {
+		body["spend_cap_usd"] = *spendCapUSD
+	}
+	status, raw, err := c.post(ctx, "/internal/billing/guardrail/reserve", body)
 	if err != nil {
 		return ReserveResult{}, err
 	}
@@ -103,6 +113,7 @@ func (c *GuardrailClient) Reserve(ctx context.Context, ownerUserID, jobID uuid.U
 			DailyAvailable    float64 `json:"daily_available"`
 			MonthlyAvailable  float64 `json:"monthly_available"`
 			PlatformAvailable float64 `json:"platform_available"`
+			KeyAvailable      float64 `json:"key_available"`
 			Requested         float64 `json:"requested"`
 		}
 		_ = json.Unmarshal(raw, &out)
@@ -112,6 +123,7 @@ func (c *GuardrailClient) Reserve(ctx context.Context, ownerUserID, jobID uuid.U
 			DailyAvailable:    out.DailyAvailable,
 			MonthlyAvailable:  out.MonthlyAvailable,
 			PlatformAvailable: out.PlatformAvailable,
+			KeyAvailable:      out.KeyAvailable,
 			Requested:         out.Requested,
 		}, nil
 	default:

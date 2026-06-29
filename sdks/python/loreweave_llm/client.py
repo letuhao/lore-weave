@@ -11,12 +11,13 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
-from collections.abc import AsyncIterator
+from collections.abc import AsyncIterator, Awaitable, Callable
 from typing import Any, Literal
 from uuid import UUID
 
 import httpx
 
+from loreweave_llm.attribution import merge_attribution_into_job_meta
 from loreweave_llm.errors import (
     LLMAuthFailed,
     LLMDecodeError,
@@ -347,6 +348,14 @@ class Client:
                 f"model_ref must be a UUID-shaped string, got {request.model_ref!r}",
             ) from exc
 
+        # P4/Wave-C slice D — carrier bridge. A public MCP-key call lost the
+        # X-Mcp-Key-Id / cap headers on the hop into us; the contextvar set at the
+        # tool handler is the only surviving signal. Fold it into job_meta so
+        # provider-registry can per-key-cap (H-K) + attribute the spend (H-C).
+        merged_meta = merge_attribution_into_job_meta(request.job_meta)
+        if merged_meta is not request.job_meta:
+            request = request.model_copy(update={"job_meta": merged_meta})
+
         url, params, headers = self._jobs_endpoint("submit", user_id=user_id)
         body = request.to_request_body()
         try:
@@ -395,12 +404,24 @@ class Client:
         max_poll_interval_s: float = 5.0,
         poll_backoff: float = 1.5,
         transient_retry_budget: int = 1,
+        cancel_check: Callable[[], Awaitable[bool]] | None = None,
     ) -> Job:
         """Poll get_job until status ∈ {completed, failed, cancelled}.
 
         Exponential backoff between polls (clamped to max_poll_interval_s).
         NO wall-clock timeout — polling continues until terminal or
         repeated HTTP failure.
+
+        bug #34 — immediate cancel: ``cancel_check`` is an optional async
+        predicate the caller passes to mean "is my PARENT job cancelled?".
+        Polled once per loop iteration; the first time it returns True the SDK
+        issues DELETE /v1/llm/jobs/{id} (``cancel_job``), which aborts the
+        in-flight provider call upstream so token spend stops NOW instead of
+        running to natural completion. The next get_job then returns
+        status=cancelled and we return it — the SAME terminal outcome a
+        UI-driven DELETE produces (see "Cancel-race" below), so callers need
+        no new handling. A cancel_check fault never breaks the wait (degrades
+        to a normal poll); a cancel_job fault is retried on the next poll.
 
         Per ADR §3.3 D3c — when the terminal job has status=failed AND
         error.code is transient (LLM_RATE_LIMITED, LLM_UPSTREAM_ERROR),
@@ -429,7 +450,30 @@ class Client:
         # any missed event, so there's no submit↔read gap to worry about.
         last_id = "$"
         event_driven = self._event_redis_url is not None
+        cancel_requested = False
         while True:
+            # bug #34 — immediate cancel: abort the in-flight provider call the
+            # moment the caller's parent job is cancelled, so we don't poll a
+            # token-burning call to completion. DELETE once on first fire; a fault
+            # in either the check or the DELETE must not break the wait.
+            if cancel_check is not None and not cancel_requested:
+                fire = False
+                try:
+                    fire = await cancel_check()
+                except Exception:  # noqa: BLE001 — a cancel_check fault degrades to normal poll
+                    logger.warning(
+                        "loreweave_llm: cancel_check raised for job %s — ignoring", job_id_str,
+                        exc_info=True,
+                    )
+                if fire:
+                    try:
+                        await self.cancel_job(job_id_str, user_id=user_id)
+                        cancel_requested = True  # DELETE accepted — just poll for the cancelled terminal
+                    except Exception:  # noqa: BLE001 — retry the DELETE on the next poll
+                        logger.warning(
+                            "loreweave_llm: cancel_job during wait failed for job %s — will retry",
+                            job_id_str, exc_info=True,
+                        )
             try:
                 job = await self.get_job(job_id_str, user_id=user_id)
             except LLMHttpError:

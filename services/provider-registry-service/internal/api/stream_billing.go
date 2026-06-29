@@ -86,7 +86,11 @@ func (s *Server) preflightStream(
 		writeError(w, http.StatusInternalServerError, "LLM_INTERNAL_ERROR", "failed to allocate stream id")
 		return nil, false
 	}
-	res, err := s.guardrail.Reserve(r.Context(), userID, jobID, estimate, modelSource)
+	// The synchronous stream path is first-party only (public MCP keys reach
+	// priced capability via the async jobs path, where the per-key cap is
+	// enforced); pass nil cap here. If a public-key stream path is ever added,
+	// thread the carrier through like doSubmitJob.
+	res, err := s.guardrail.Reserve(r.Context(), userID, jobID, estimate, modelSource, nil, nil)
 	if err != nil {
 		// Fail closed — no stream opens on an unconfirmed reservation.
 		writeError(w, http.StatusServiceUnavailable, "LLM_INTERNAL_ERROR", "billing service unavailable")

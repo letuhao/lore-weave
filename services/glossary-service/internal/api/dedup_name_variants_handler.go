@@ -48,6 +48,7 @@ type dedupVariantGroup struct {
 
 type dedupVariantResponse struct {
 	DryRun        bool                `json:"dry_run"`
+	CrossKind     bool                `json:"cross_kind"`
 	TotalEntities int                 `json:"total_entities"`
 	GroupCount    int                 `json:"duplicate_group_count"`
 	EntitiesToMerge int               `json:"entities_to_merge"`
@@ -62,6 +63,10 @@ func (s *Server) internalDedupNameVariants(w http.ResponseWriter, r *http.Reques
 		return
 	}
 	apply := r.URL.Query().Get("apply") == "true"
+	// #43 — ?cross_kind=true collapses same-NAME/different-KIND duplicates (the 3000+
+	// dup case from repeated extractions before the write-time cross-kind resolver).
+	// Default false keeps the original same-kind-only variant merge.
+	crossKind := r.URL.Query().Get("cross_kind") == "true"
 	ctx := r.Context()
 
 	// On apply, take the per-book advisory lock (the SAME key the extraction
@@ -116,7 +121,13 @@ func (s *Server) internalDedupNameVariants(w http.ResponseWriter, r *http.Reques
 			return
 		}
 		total++
-		k := groupKey{e.kind, textnorm.Normalize(e.name)}
+		// cross-kind groups by normalized NAME only (kind zeroed), so the same name
+		// under different kinds lands in ONE group and collapses to a single winner.
+		gk := e.kind
+		if crossKind {
+			gk = uuid.Nil
+		}
+		k := groupKey{gk, textnorm.Normalize(e.name)}
 		groups[k] = append(groups[k], e)
 	}
 	if err := rows.Err(); err != nil {
@@ -124,7 +135,7 @@ func (s *Server) internalDedupNameVariants(w http.ResponseWriter, r *http.Reques
 		return
 	}
 
-	resp := dedupVariantResponse{DryRun: !apply, TotalEntities: total}
+	resp := dedupVariantResponse{DryRun: !apply, CrossKind: crossKind, TotalEntities: total}
 
 	// Merge duplicate groups FIRST. Each merge soft-deletes the loser, removing it
 	// from the partial uq_entity_dedup index — which is what makes the subsequent
@@ -142,7 +153,9 @@ func (s *Server) internalDedupNameVariants(w http.ResponseWriter, r *http.Reques
 				winner = e
 			}
 		}
-		g := dedupVariantGroup{KindID: k.kind.String(), Key: k.norm, WinnerID: winner.id.String(), Winner: winner.name}
+		// Show the WINNER's real kind (k.kind is zeroed in cross-kind mode); the
+		// winner keeps its kind and the losers' kinds are collapsed into it.
+		g := dedupVariantGroup{KindID: winner.kind.String(), Key: k.norm, WinnerID: winner.id.String(), Winner: winner.name}
 		loserIDs := make([]string, 0, len(members)-1)
 		for _, e := range members {
 			if e.id == winner.id {
@@ -155,7 +168,7 @@ func (s *Server) internalDedupNameVariants(w http.ResponseWriter, r *http.Reques
 		resp.EntitiesToMerge += len(loserIDs)
 
 		if apply {
-			results, merr := s.mergeEntitiesCore(ctx, bookID, winner.id, loserIDs, uuid.Nil)
+			results, merr := s.mergeEntitiesCore(ctx, bookID, winner.id, loserIDs, uuid.Nil, crossKind)
 			ok := merr == nil
 			g.MergeOK = &ok
 			if merr != nil {
