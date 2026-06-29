@@ -106,6 +106,10 @@ var chain = []Step{
 	// + episodes) + merge_journal fact/episode-move columns. Spec
 	// docs/specs/2026-06-29-incremental-temporal-knowledge-architecture.md §12.0/§12.2/§12.3.
 	{"0044_entity_facts", UpEntityFacts},
+	// Temporal-knowledge F1b — maintain_chain(entity, attr): the single writer of
+	// entity_facts.valid_to_ordinal (ordinal-aware interval-split + retract restitch
+	// + merge reconcile, one routine). Spec §12.3.3 (LOCKED).
+	{"0045_maintain_chain", UpMaintainChain},
 }
 
 // EnsureLedger creates the schema_migrations bookkeeping table. Idempotent; must run
