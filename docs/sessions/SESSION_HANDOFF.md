@@ -76,12 +76,21 @@
 > FIRST can be confirmed — the rest are dead" was now FALSE (looped proposes coalesce into one card).
 > Reworded to stay discouraging but accurate (loop = wasted LLM calls + worse result; coalesce is a
 > backstop, not the path). chat-service skill suites 51 passed.
-> **▶ NEXT — open the PR for `fix/critical-ux-bugs`, OR continue the queue.** #18/#19/#27/#29/#30 all
-> closed. Remaining open critical-UX item: `[I] 15` (timeline metadata — chapter provenance + in-book
-> time ALREADY captured; the residual is block/scene-level provenance, a schema change, + exposing the
-> BE date/chronological filters in the FE — folds with #12). `[D] 13` is a verified won't-fix (no code
-> coupling). Deferred: `D-FINDTOOLS-CHAT-SHARE`, `D-BATCH-PREVIEW-FE-WIRE`, `D-PLANNER-INFLIGHT-ABORT-CAPTURE`,
-> `D-KG-SCHEMA-PROPOSE-BATCH`, `D-KG-CONFIRM-BATCH-ENDPOINT`.
+> **✅ DONE — #15 timeline metadata: substantially addressed (no new code this run; verified the
+> implementable parts already shipped).** Chapter provenance is surfaced (`TimelineEventRow` shows the
+> resolved `chapter_title` + `time_cue` + date; C6/D-K19e-β) AND the BE date/chronological filters ARE
+> exposed in the FE (`TimelineFilters` — entity picker + chronological range + ISO date-range bounds;
+> C10/D-K19e-α) — closing the RC's "same gap as #12". Marked `[D]`: the UX bug as filed is resolved;
+> the residual is a tracked structural feature. **New deferred:** `D-KG-EVENT-SCENE-PROVENANCE`
+> (block/scene-level Event anchor — schema + extraction + Neo4j change, gate 2), `D-KG-INBOOK-TIME-DETECTION`
+> (LLM in-story-time inference beyond `event_date_iso`/`time_cue` — naturally-next, gate 3).
+>
+> **▶ NEXT — the critical-UX queue is CLEARED.** Every bug #1–#40 is `[x]`, a verified won't-fix
+> (`[D] 13`), or a tracked structural defer (`[D] 15`). **Recommended next: open the PR for
+> `fix/critical-ux-bugs`** (large branch, coherent boundary). Deferred carry-overs (none block the PR):
+> `D-FINDTOOLS-CHAT-SHARE`, `D-BATCH-PREVIEW-FE-WIRE`, `D-PLANNER-INFLIGHT-ABORT-CAPTURE`,
+> `D-KG-SCHEMA-PROPOSE-BATCH`, `D-KG-CONFIRM-BATCH-ENDPOINT`, `D-KG-EVENT-SCENE-PROVENANCE`,
+> `D-KG-INBOOK-TIME-DETECTION`.
 > **✅ /review-impl DONE (post-M3) — 1 test gap FIXED + 1 deferred.** FIXED: the partial-batch
 > effect-failure path (one child applies, one fails, failed token burned, rest NOT aborted) was
 > claimed in the `confirmActionBatch` doc but untested — added `TestConfirmBatch_PartialFailureApplies
