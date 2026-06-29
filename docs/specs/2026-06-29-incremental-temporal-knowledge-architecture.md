@@ -642,11 +642,17 @@ short-circuit (reused, not reinvented). **Re-run the validation against the NEW 
 *(Note: `valid_from_ordinal` in the key is what makes oscillation A4 work — a recurring value at a new
 chapter is a distinct row, not a content-hash collision.)*
 
-**12.2.3 ALL fact writes take the same per-book advisory lock (C3, C4, C5).** Path A, Path B, merge, and
-split **all** acquire `pg_advisory_xact_lock(book_id)` (the lock `mergeExtractedEntity` already uses).
-This serializes: append-vs-merge (no orphaned fact on a soft-deleted loser, C4), the two-Path-B race (no
-double-mint/double-retract, C5), and append-vs-fold ordering. The lock is **per-book** (matches existing
-code; per-chapter is a later optimization if contention shows).
+**12.2.3 Fact writes are lock-serialized at their TOCTOU granularity (C3, C4, C5).**
+> ⚠ **SUPERSEDED by §12.7.1** — the original "ALL writes take one **per-book** advisory lock" over-locked
+> (foreclosing within-book parallelism) and was factually wrong that merge "already uses" that lock. The
+> correct model is **per-`(entity, attr)` chain** locks for appends (disjoint entities run in parallel),
+> `UNIQUE(book, normalized_name, kind)` for resolver-create, and the existing entity-pair `FOR UPDATE` for
+> merge/split. Read §12.7.1.
+
+Still serializes the things that need it — append-vs-merge (no orphaned fact on a soft-deleted loser, C4),
+the two-Path-B race (no double-mint/double-retract, C5), append-vs-fold ordering — but at chain/entity-pair
+granularity, not book-global, because the idempotent natural key (§12.2.2) + ordinal-aware `maintain_chain`
+(§12.3.3) already make disjoint appends safe.
 
 **12.2.4 The fold keeps the existing compare-and-clear (C3).** `fold_canonical` captures a fact-set
 fingerprint (`max(created_at)` over the entity's contributing facts) at read; clears `canonical_dirty`
@@ -673,9 +679,13 @@ An open fact stores `valid_to_ordinal = NULL` meaning **+∞**. The canonical as
 valid_from_ordinal <= N AND (valid_to_ordinal IS NULL OR N < valid_to_ordinal)
 ```
 A supersede sets `old.valid_to_ordinal = new.valid_from_ordinal` (contiguous: no gap, no overlap).
-Add a generated indexable column `valid_to_eff = coalesce(valid_to_ordinal, INT_MAX)` (reuse the KG
-`INT64_MAX` null-sink pattern, `spoiler_window.py`) so the range query is index-served on
-`(entity_id, attr, valid_from_ordinal, valid_to_eff)`.
+`valid_to_ordinal` is a **stored column** (maintained by the single chain-maintenance routine of §12.3.3,
+NOT computed by a subquery). Add a generated indexable column
+`valid_to_eff = coalesce(valid_to_ordinal, INT_MAX)` (`GENERATED ALWAYS AS … STORED` — legal because it
+references only the same row's stored `valid_to_ordinal`; reuse the KG `INT64_MAX` null-sink
+`_NULL_ORDER_SENTINEL`/`coalesce(event_order, 9223372036854775807)` in `db/neo4j_repos/events.py` — **NOT**
+`spoiler_window.py`, which is a fail-closed `-1` ceiling, the opposite sentinel) so the range query is
+index-served on `(entity_id, attr, valid_from_ordinal, valid_to_eff)`.
 
 **12.3.2 The close is an ordinal-aware interval-split, a NEW primitive (A2).** This is the single most
 important "do NOT reuse the KG `single_active`" point — that primitive closes *any* open instance by
@@ -689,13 +699,23 @@ This is a proper interval-tree insert; it is correct for backfill, parallel/ATOM
 **The KG side needs the same fix** the moment extraction drives its invalidation (today's `single_active`
 is correct only for monotonic L7/user edits).
 
-**12.3.3 Retract re-stitches the chain (A3).** Path B gains **step B.3.5**: when fact `F_new` is
-retracted (transaction-time close via `remove_evidence_*` / the glossary equivalent), **repair the
-valid-time interval it occupied** — extend its predecessor `F_prev.valid_to ← F_new.valid_to` (or to NULL
-if F_new was the open one), re-close against F_new's successor if any. Cleanest implementation: store
-`valid_to` as **derived** (a chain's each-fact `valid_to` = the `valid_from` of the next *surviving*
-fact, via a trigger/maintained column) so retract auto-restitches with no explicit reopen. Either way,
-**retract must never leave a dangling close** — add a test that closes-then-retracts and asserts the
+**12.3.3 Retract re-stitches the chain (A3) — via ONE chain-maintenance routine.** Path B gains **step
+B.3.5**: when fact `F_new` is retracted (transaction-time close via `remove_evidence_*` / the glossary
+equivalent), **repair the valid-time interval it occupied** — extend its predecessor
+`F_prev.valid_to ← F_new.valid_to` (or to NULL if F_new was the open one), re-close against F_new's
+successor if any.
+
+> **LOCKED — stored `valid_to`, single maintainer (resolves the §12.3.1↔§12.3.3 ambiguity).** `valid_to`
+> is a **stored** column written by **exactly one** *chain-maintenance routine* `maintain_chain(entity,
+> attr)` that, for a given `(entity, attr)` chain, sorts surviving facts by `valid_from_ordinal` and sets
+> each `valid_to = next survivor's valid_from` (open the last). This **single routine is the only writer
+> of `valid_to`** — the §12.3.2 ordinal-aware close, the §12.4.1 merge reconcile, and this B.3.5 retract
+> are **the same routine invoked at three entry points**, not three algorithms. The "trigger" option is
+> merely this routine wired as an `AFTER` trigger — never a *second* writer competing with the
+> application code (that was the trap). So retract auto-restitches by re-running `maintain_chain` over the
+> survivors.
+
+**Retract must never leave a dangling close** — add a test that closes-then-retracts and asserts the
 predecessor is current again. INV-FACTS does not save this; the fact layer itself must be correct.
 
 **12.3.4 Oscillation works because identity includes the interval origin (A4).** Resolved by 12.2.2 —
@@ -717,8 +737,11 @@ force-revision workaround. State plainly in Q7 that without this flag, a same-te
 **Correct the load-bearing false claim:** `#43` is validated for the **flat overwrite store**. Over
 append-only fact history, merge is **net-new**. §4/§6/§8 reworded accordingly.
 
-**12.4.1 Fact-chain merge (A1, C4).** `merge_entities(loser, winner)`:
-1. Acquire `pg_advisory_xact_lock(book_id)` (12.2.3).
+**12.4.1 Fact-chain merge (A1, C4).** `merge_entities(loser, winner)` — **heavy work staged OUTSIDE the
+lock; lock held only for the swap (§12.7.2)**:
+1. Acquire the **entity-pair** lock (loser+winner `FOR UPDATE`) + the affected per-attr chain locks — NOT
+   a book-global lock (§12.7.1). Stage steps 2–4 as a prepared batch outside the lock; take the lock only
+   for the final swap + journal (step 5). Chunk large repoints with release/reacquire.
 2. Repoint **ALL** loser facts → winner (`UPDATE entity_facts SET entity_id=winner WHERE entity_id=loser`)
    — **no `NOT IN` collision dodge** (facts coexist by design). `source_episode_id` + `valid_*` untouched
    (provenance + intervals preserved).
@@ -801,4 +824,76 @@ the existing primitive":
 
 Decisions **1, 3, 5 stand unchanged.** The architecture (append-only bi-temporal facts as the sole SSOT,
 everything else a rebuildable cache — INV-FACTS) is unchanged and reaffirmed; §12 hardens the *mechanisms*
-that realize it. **This is the BUILD-ready design.**
+that realize it. **This is the BUILD-ready design** (see §12.7 for the verification-round tightenings).
+
+### 12.7 Verification-round tightenings (2026-06-30)
+
+Two adversarial agents verified §12 against the code and against itself. They confirmed the substance
+holds (B0/B1/B3/B4, C2/C3, A1/C4/D2/D3, D1/D4/D8 close, with code citations; the merge↔canonical-staleness
+interaction, oscillation-fold, and Path-B compositional trace are all consistent). They found **two HIGH
+self-inflicted serialization bugs**, plus citation/ambiguity defects (fixed inline above: §12.3.1
+`spoiler_window.py`→`events.py`; §12.3.3 stored-`valid_to` single-routine). The locking model is the
+load-bearing fix:
+
+**12.7.1 LOCKING MODEL — scope the lock to its actual TOCTOU surface (closes the two HIGH: over-locking +
+unbounded merge critical section).** §12.2.3's "ALL fact writes take ONE per-book advisory lock" was
+**wrong twice**: (i) it **over-locks** — a book-global lock serializes *all* extraction for a book to one
+writer, foreclosing the within-book parallelism `project_extraction_parallelism_gap` + the analysis doc
+want; and (ii) §12.4.1 ran the whole merge (repoint-all + reconcile + projection rebuild) *inside* that
+lock — an **unbounded critical section** that stalls the book, contradicting §12.2.1's own "rebuild never
+on the hot path." Also: the parenthetical "the lock `mergeExtractedEntity` already uses" is **inaccurate**
+— bulk-extract writeback uses `pg_advisory_xact_lock(extractionWritebackLockNS, hashtext(book))`
+(`extraction_handler.go:611`), but the standalone cross-kind **merge uses row-level `FOR UPDATE`**
+(`merge_handler.go:262-265`), a *different* lock; the adopt/sync paths use yet another single-int
+namespace. **Replace §12.2.3 with a scoped model** — §12's own correctness mechanisms (the idempotent
+natural key §12.2.2 + the ordinal-aware `maintain_chain` §12.3.3) already make disjoint appends safe
+*without* a book-global lock, so:
+
+| Operation | Lock | Why it's sufficient |
+|---|---|---|
+| **Append a fact** (Path A/B chain write + in-tx projection upsert) | **per-`(entity_id, attr)` chain** (advisory or row), acquired in **sorted entity-id order** within a chapter to avoid deadlock | the natural key makes exact-dup appends idempotent; `maintain_chain` under the per-chain lock makes the interval-split correct. Disjoint entities/chapters run **in parallel** → restores the parallelism goal. |
+| **Resolver create** (new entity for an unmatched name) | `UNIQUE(book_id, normalized_name, kind)` + `ON CONFLICT DO NOTHING` (no lock) | constraint resolves the create-TOCTOU without serializing. |
+| **Merge / split** | per-**entity-pair** (the existing `FOR UPDATE` on loser+winner) + the per-chain locks for the affected attrs only | touches two entities' chains, not the book. |
+
+**Name the one canonical fact-write lock key** so Path A/B don't take non-conflicting locks and serialize
+nothing: per-chain = `pg_advisory_xact_lock(FACT_CHAIN_NS, hashtext(entity_id||':'||attr))`. This is an
+explicit, recorded **decision to drop the per-book serialization in favour of per-chain** — realizing
+`project_extraction_parallelism_gap`, not deferring it.
+
+**12.7.2 Bound the merge critical section (HIGH-1).** Stage the heavy work **outside** the lock: repoint +
+`maintain_chain` reconcile + projection rebuild run as a prepared batch; take the per-entity-pair +
+affected-chain locks only for the **final swap + journal write**. For a huge merge, chunk the repoint and
+release/reacquire between chunks. Merges are rare/admin-gated — state that explicitly so the trade-off is
+conscious. The winner projection rebuild is **winner-scoped**, never the §12.2.1 full repair job.
+
+**12.7.3 Roster drain is a stable keyset snapshot (MED-1).** §12.5.2's "drain to completion" needs a
+**keyset cursor** (on a monotonic `id`/`created_at`) so concurrent inserts append *past* the cursor rather
+than shift it, plus a stated contract: *the roster is a snapshot as-of drain-start; entities created
+mid-drain may be omitted — tolerated by the planner's commit-time `BAD_ENTITY`/unresolved-name check*.
+Without this the "complete in aggregate" claim only holds under no concurrent writes.
+
+**12.7.4 Resolver bootstrap on first ingest (LOW, D3).** §12.4.3 describes only steady-state name
+resolution. Add the cold path: **no alias-fact match → create the entity + seed its name/alias facts at
+the current ordinal** (`valid_from = N`), so a brand-new entity with zero name facts doesn't loop the
+resolver.
+
+**12.7.5 Re-ground bucketing key (LOW, B1).** Bucket facts by **`valid_from_ordinal`** — a fact belongs to
+exactly **one** window (its origin); the map-reduce **carries forward open intervals** across window
+boundaries so a fact spanning two windows (`[150,450)`) isn't double-counted.
+
+**12.7.6 Path-B unchanged-value re-points, not re-opens (LOW).** In Path B step 3, a fact value **still
+present** across the edit must **re-point to / no-op against the existing interval** (the prior revision's
+row), not open a parallel interval from the new episode id. `maintain_chain` over survivors collapses any
+transient overlap, but state the intent so a builder doesn't mint a duplicate interval per re-extract.
+
+**12.7.7 Cross-links + deferrals (LOW).** (a) §12.2.5 — add the clause "the §12.2.1 projection upsert
+happens in **tx-2** alongside the fact append, not tx-1." (b) D6 is closed **as a plan, not as
+enforcement** (the HTTP-surface lint doesn't exist yet) — land the **DEFERRED row** (HTTP-surface lint +
+the bespoke `/internal/* list_entities` consumers) in `SESSION_HANDOFF`. (c) The prescribed edits to
+upstream §3.3 / §5 / §6B / §4-Path-B-step-5 are **applied in BUILD**; until then those sections are
+**superseded by §12** where they conflict (a top-to-bottom reader should treat §12 as authoritative).
+
+**Verified consistent (not defects):** the A5↔decision-8 ordering (translation as-of reads the *glossary*
+substrate §12 builds, not the KG `as_of` §12.5.1 defers); the §12.2.1↔§12.2.5 tx-timing; the
+merge→canonical staleness (the merge's re-derived `valid_to` bumps `fact_coverage_txid` → canonical
+rebuilds). **The architecture is unchanged; these are tightenings, not redesign.**
