@@ -231,6 +231,64 @@ projection** of the new facts (latest-valid facts where `invalidated_at IS NULL`
 > the temporal endpoints) as the stable contract before any consumer migrates — so the blast radius
 > is mediated by one versioned interface, not N ad-hoc reads.
 
+## 6D. Knowledge Access Layer (KAL) — the single read/write boundary (FUTURE-PROOFING)
+
+**The most important structural decision.** The agent sweeps showed the glossary/KG read/write surface
+is **scattered**: stable service clients in some places, but also bespoke per-service endpoints, MCP
+tools, **and direct DB reads** (wiki reads `entity_attribute_values` directly; enrichment pulls the
+full-book glossary; composition/chat/enrichment each hit different endpoints). That scattering is the
+real reason a model change (this temporal one — or any future one) threatens an **N-consumer refactor**.
+
+**Fix: every read/write of entity/lore/KG knowledge goes through ONE versioned contract — the KAL.**
+The flat→bi-temporal change (and every future change) lands **entirely behind it**; consumers never move.
+
+### The contract (bounded BY CONSTRUCTION — no "give me everything" call exists)
+
+**Reads** (every one returns a bounded result; this is what makes context bloat structurally impossible):
+- `get_canonical(entity, as_of?)` — the bounded canonical snapshot (current, or as-of chapter N)
+- `get_facts(entity, as_of?, attrs?)` — latest-valid (or valid-at-N) facts, per-attribute bounded
+- `timeline(entity, before_order, after_order, cursor)` — windowed change history (newest-first page)
+- `retrieve(scope, query, k)` — semantic top-K over episodes/segments
+- `search(query, k)` · `neighborhood(entity, hops=1, cap)` — entity search · KG 1-hop
+- *(no `list_all` / unbounded dump — bounding is enforced by the API surface itself)*
+
+**Writes** (the only mutators; encode the two write paths + retract from §4):
+- `ingest_episode(chapter, content_hash)` → immutable episode (mints a new revision on hash change)
+- `resolve_entity(name, kind)` → the cross-kind resolver (`#43`)
+- `append_fact(entity, attr|relation, value, valid_from, source_episode)` · `close_fact(... valid_to)`
+- `retract(episode_revision, dropped_facts)` → transaction-time close (Path B; reuse KG's
+  `remove_evidence_*`, build the glossary equivalent)
+- `fold_canonical(entity)` → trigger the bounded snapshot fold (the `canonical_dirty` mechanism)
+
+### The invariant (this is what prevents the next refactor)
+
+> **INV-KAL — no service reads or writes the glossary EAV or the KG (Neo4j) except through the KAL.**
+> No direct `entity_attribute_values` / Neo4j queries outside the owning services; no new bespoke
+> per-consumer read endpoint. Enforce it like the gateway/provider invariants — a `scripts/` lint that
+> fails on a direct glossary/KG table read from a consumer service. Migrate the current outliers (wiki
+> direct-EAV read, enrichment full-book read) onto the KAL as part of this work.
+
+### Why this future-proofs (the user's ask)
+
+- **The temporal change is absorbed behind the KAL.** v1 of the contract == the **"current projection"**
+  (today's bounded latest-state reads — already what consumers do). Temporal is an **additive** `as_of`
+  parameter + the new write verbs. Consumers opt in; nobody is forced to refactor.
+- **Every FUTURE model change** (new attribute semantics, new storage engine, new summary strategy)
+  lands inside the KAL implementation, behind the stable contract. **No coordinated N-service refactor
+  ever again** — the blast radius is permanently reduced to one layer.
+- **Bounding is structural, not a convention** — because the API has no unbounded read, no consumer can
+  reintroduce context bloat.
+
+### Built on what exists (not a new service — a contract + discipline)
+- **ai-gateway already federates** the MCP knowledge tools (`glossary_search`, `kg_graph_query` with
+  `as_of_chapter`, `kg_entity_edge_timeline`) — MCP is **already ~half the KAL read contract**. Extend
+  it to be THE contract.
+- The existing **`glossary_client` / `knowledge_client`** become thin KAL adapters; ownership stays
+  with the SSOT services (glossary-svc projection, knowledge-svc KG), federated by the gateway.
+- This is the concrete form of §6C's "stable contract" + Q9 — promoted from an open question to a
+  **load-bearing pillar**: build the KAL FIRST, migrate consumers onto it, then evolve the substrate
+  behind it.
+
 ## 7. FE impact
 
 The FE must stop assuming "one entity = one current value." New surfaces:
@@ -339,13 +397,13 @@ the current-projection default. **The work is the write-side substrate (§ above
    pulls the full book glossary before client-side filtering — if so, move the occurrence/as-of filter
    server-side. (The chapter-occurrence filter + rolling summary already exist; this adds the as-of
    bound + the bounded-canonical/immutable-unit translation.)
-9. **Knowledge-layer API contract (§6C blast-radius gate)** — define the stable read/write interface
-   FIRST: (a) the backward-compat **"current" projection** the old flat reads keep using; (b) the new
-   **temporal endpoints** (`as_of=N`, `timeline`, `retrieve(entity, query)`, `append_fact`,
-   `retract_fact`). Versioned, owned by glossary-svc (SSOT) + knowledge-svc (KG). Every consumer
-   (enrichment, composition, wiki, chat, translation) migrates against THIS, not ad-hoc reads — so the
-   blast radius is mediated by one contract. Sequence: ship the layer + projection → migrate consumers
-   one at a time (composition first, biggest win).
+9. **Finalize the KAL contract surface (§6D — now a pillar, not a maybe).** The *decision* to route
+   everything through one Knowledge Access Layer is made (§6D); CLARIFY only nails the surface: exact
+   read/write verbs + params, where the contract lives (extend the ai-gateway MCP federation vs a new
+   typed gateway), the `scripts/` lint that enforces INV-KAL, and the **migration order** (build KAL +
+   current-projection → migrate the direct-DB outliers first: wiki EAV read, enrichment full-book read
+   → then composition opts into `as_of`). The substrate (episodes/bi-temporal facts) evolves *behind*
+   this — so the contract must be frozen before the substrate work starts.
 
 ## 9B. Production risks & mitigations (research-grounded)
 
