@@ -1,4 +1,15 @@
-# ▶▶ NEXT SESSION STARTS HERE — **Critical UX bug track** · branch `fix/critical-ux-bugs` · HEAD `63258d40` · 2026-06-29
+# ▶▶ NEXT SESSION STARTS HERE — **Critical UX bug track** · branch `fix/critical-ux-bugs` · HEAD `af735435` · 2026-06-29
+
+> **✅ DONE — #27/#29/#30 marker reconciliation (bookkeeping; verified, no code change).** The
+> coalesce P2 shipped (`3cce85d9`/`a721c93c`/`cabbe35d`/`038bdbff`/`f61a83de`) but the bug-tracker
+> markers were stale at `[I]`. Re-verified against code: the M2 `BatchConfirmCard` is **all-domain**,
+> and `descriptorDomain` deliberately routes every `kg_`-prefixed descriptor → the `kg` domain
+> (`ConfirmActionCard.tsx:66`, test `:302-318`), so **#29's KG schema-edit cards inherit the same
+> coalesce** (N `kg_schema_edit` tokens fold into one "Confirm all", each commits via the single-confirm
+> loop → `/v1/kg/actions/confirm`). #27/#29/#30 all flipped to `[x]`. **New deferred (optional residual,
+> NOT the bug):** `D-KG-SCHEMA-PROPOSE-BATCH` (a deterministic `kg_schema_propose_batch` tool so the
+> agent emits ONE call), `D-KG-CONFIRM-BATCH-ENDPOINT` (atomic `/v1/kg/actions/confirm-batch` vs the
+> honest-partial loop) — both gate 2, token/UX optimizations only.
 
 > **✅ DONE — #19 / `D-PLANNER-INFLIGHT-ABORT`: the propagation gap CLOSED.** Traced the full
 > cancellation chain (chat disconnect → ai-gateway → glossary → provider-registry) and found it
@@ -65,10 +76,12 @@
 > FIRST can be confirmed — the rest are dead" was now FALSE (looped proposes coalesce into one card).
 > Reworded to stay discouraging but accurate (loop = wasted LLM calls + worse result; coalesce is a
 > backstop, not the path). chat-service skill suites 51 passed.
-> **▶ NEXT — open the PR for `fix/critical-ux-bugs`, OR continue the queue:** `[I] 15` (timeline
-> metadata), `[I] 18/19` (planner loop / `D-PLANNER-INFLIGHT-ABORT` — the MECHANICAL one-plan-per-turn
-> enforcement lives here, not in the prompt), `[D] 13`. Deferred: `D-FINDTOOLS-CHAT-SHARE`,
-> `D-BATCH-PREVIEW-FE-WIRE`.
+> **▶ NEXT — open the PR for `fix/critical-ux-bugs`, OR continue the queue.** #18/#19/#27/#29/#30 all
+> closed. Remaining open critical-UX item: `[I] 15` (timeline metadata — chapter provenance + in-book
+> time ALREADY captured; the residual is block/scene-level provenance, a schema change, + exposing the
+> BE date/chronological filters in the FE — folds with #12). `[D] 13` is a verified won't-fix (no code
+> coupling). Deferred: `D-FINDTOOLS-CHAT-SHARE`, `D-BATCH-PREVIEW-FE-WIRE`, `D-PLANNER-INFLIGHT-ABORT-CAPTURE`,
+> `D-KG-SCHEMA-PROPOSE-BATCH`, `D-KG-CONFIRM-BATCH-ENDPOINT`.
 > **✅ /review-impl DONE (post-M3) — 1 test gap FIXED + 1 deferred.** FIXED: the partial-batch
 > effect-failure path (one child applies, one fails, failed token burned, rest NOT aborted) was
 > claimed in the `confirmActionBatch` doc but untested — added `TestConfirmBatch_PartialFailureApplies
