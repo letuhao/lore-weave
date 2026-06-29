@@ -12,8 +12,9 @@ ledger; W2 is the sole writer — W5's conformance trace JOINs on these rows per
 scene `outline_node_id`, reading motif_id/motif_version/role_bindings + beat_key
 folded into `annotations`).
 
-`MotifRetriever.retrieve` is MOCKED until W3 lands (it raises NotImplementedError in
-F0). This engine consumes only the FROZEN F0 signature.
+`MotifRetriever.retrieve` is IMPLEMENTED (W3 landed — SQL pre-filter → platform-embed
+query → cosine → match_reason → degrade, in `db/repositories/motif_retrieve.py`). This
+engine consumes only the FROZEN F0 signature, so it is agnostic to that implementation.
 """
 
 from __future__ import annotations
