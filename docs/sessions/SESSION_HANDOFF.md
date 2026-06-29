@@ -26,11 +26,17 @@
 > stayed **0** (non-consuming), then confirm-batch the SAME tokens → applied=2 (proves preview didn't
 > burn them). Cleaned up all 4 smoke kinds (scoped to my codes + book). Cross-service ≥2 services
 > (glossary MCP propose + glossary confirm-batch over the wire + auth login). **Branch ready to PR.**
-> **▶ NEXT (optional, L3) — skill hardening:** harden `glossary_skill.py` to prefer ONE batch
-> (`glossary_propose_batch` / `glossary_plan`) over looping single proposes, + #18 hard-stop "MUST NOT
-> call `glossary_plan` more than once per turn." Cheap reinforcement; the coalesce already makes the
-> loop harmless. Other open critical-UX bugs: `[I] 15` (timeline metadata), `[I] 18/19` (planner loop /
-> `D-PLANNER-INFLIGHT-ABORT`), `[D] 13`. Deferred: `D-FINDTOOLS-CHAT-SHARE`.
+> **✅ L3 DONE (`f61a83de`) — skill hardening.** Verifying `glossary_skill.py` vs the task: BOTH
+> prescriptions ("prefer ONE batch over looping single proposes" + the #18 "`glossary_plan` AT MOST
+> ONCE per turn" hard-stop) were ALREADY in the prompt (lines 113-151) — padding would dilute the
+> existing forcing function. The real, in-scope fix the coalesce INTRODUCED: the prompt's "ONLY THE
+> FIRST can be confirmed — the rest are dead" was now FALSE (looped proposes coalesce into one card).
+> Reworded to stay discouraging but accurate (loop = wasted LLM calls + worse result; coalesce is a
+> backstop, not the path). chat-service skill suites 51 passed.
+> **▶ NEXT — open the PR for `fix/critical-ux-bugs`, OR continue the queue:** `[I] 15` (timeline
+> metadata), `[I] 18/19` (planner loop / `D-PLANNER-INFLIGHT-ABORT` — the MECHANICAL one-plan-per-turn
+> enforcement lives here, not in the prompt), `[D] 13`. Deferred: `D-FINDTOOLS-CHAT-SHARE`,
+> `D-BATCH-PREVIEW-FE-WIRE`.
 > **✅ /review-impl DONE (post-M3) — 1 test gap FIXED + 1 deferred.** FIXED: the partial-batch
 > effect-failure path (one child applies, one fails, failed token burned, rest NOT aborted) was
 > claimed in the `confirmActionBatch` doc but untested — added `TestConfirmBatch_PartialFailureApplies
