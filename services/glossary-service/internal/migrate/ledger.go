@@ -102,6 +102,10 @@ var chain = []Step{
 	// #26/#7 — the `summarize` merge-rewrite mode's canonical layer on the EAV
 	// (canonical_value + canonical_dirty + canonical_synced_at).
 	{"0043_canonical_summary", UpCanonicalSummary},
+	// Temporal-knowledge F1a — the append-only bi-temporal fact SSOT (entity_facts
+	// + episodes) + merge_journal fact/episode-move columns. Spec
+	// docs/specs/2026-06-29-incremental-temporal-knowledge-architecture.md §12.0/§12.2/§12.3.
+	{"0044_entity_facts", UpEntityFacts},
 }
 
 // EnsureLedger creates the schema_migrations bookkeeping table. Idempotent; must run
