@@ -1,4 +1,49 @@
-# ▶▶ NEXT SESSION STARTS HERE — **Motif book-collaboration tier (model B) + shared-graph links + MCP edit SHIPPED** · branch `feat/narrative-pattern-library` · HEAD `8c4c45c2`+ · 2026-06-29
+# ▶▶ NEXT SESSION STARTS HERE — **Temporal Knowledge Architecture — foundation spine LANDED (F0–F2 schema)** · branch `feat/temporal-knowledge-architecture` · HEAD `fdf6c0d8`+ · 2026-06-30
+
+> **What this branch is:** implementing the Incremental Temporal Knowledge Architecture
+> ([spec](../specs/2026-06-29-incremental-temporal-knowledge-architecture.md) §12/§12.7.8 govern;
+> [plan](../plans/2026-06-30-temporal-knowledge-architecture-impl.md)). Append-only bi-temporal facts as the
+> sole SSOT (INV-FACTS §12.0); everything else a rebuildable cache. Execution = **serial foundation → parallel
+> fanout** (user-directed: build foundation serially, checkpoint, then fan out consumer migrations).
+>
+> **▶ Shipped this session — the SSOT substrate spine, all real-DB verified on `loreweave_glossary`:**
+> - **F0** `fc4c9a80` — froze the **KAL v1 contract** (`contracts/api/knowledge-gateway/kal.v1.yaml`), the keystone
+>   every consumer binds to; `knowledge-gateway: missing` row in `language-rule.yaml` (→ typescript at F4 scaffold).
+> - **F1a** `ae6f17fd` — `0044` **entity_facts + episodes** bi-temporal SSOT schema (content-addressed natural key,
+>   `valid_to_eff` INT64_MAX null-sink, `coverage_xid` xid8, merge_journal fact/episode-move cols). Idempotent 2×.
+> - **F1b** `728efaf9` — `0045` **maintain_chain** the single `valid_to` writer (§12.3.3). Verified all 3 scenarios:
+>   out-of-order backfill (A2), retract restitch (A3), oscillation (A4).
+> - **F1c** `8a2b8e6d` — **fact core** Go (`facts.go`): appendFact (idempotent NK), retractFacts (restitch),
+>   ingestEpisode, refreshEAVProjection (repair/cutover), per-(entity,attr) chain lock. `TestFactCore` PASSES (real DB).
+> - **F1h** `8eb419f9` — `0046` **cold-start seed**: 22,056 facts seeded from live EAV; **projection==flat_eav 0 mismatches** (§12.5.4/D5).
+> - **F2 schema** `fdf6c0d8` — `0047` **canonical versioned-cache** tables (canonical_snapshot + canonical_fold_state), §12.1.
+>
+> ⚠ Migrations **0044–0047 are applied to the running dev `loreweave_glossary`** (by F1c's `RunChain`); a fresh stack
+> picks them up from the ledger on boot.
+>
+> **▶ PARALLEL track (background agent, worktree):** **F3 — KG ordinal valid-time unify** in `knowledge-service`
+> (Python/Neo4j) — substrate-independent from glossary. Ordinal valid-time unified with `from_order`, ordinal-aware
+> close (A2 on the KG side), extraction-driven invalidate/retract, quote-on-citation, per-entity ordinal snapshot.
+> **Merge its worktree branch at the integration node before F4.**
+>
+> **▶ NEXT (remaining foundation, then fanout):**
+> 1. **Integrate F3** (merge the worktree branch).
+> 2. **F1f/g** — fact-chain merge + `split_entity` (extend `mergeOne` to repoint/journal entity_facts+episodes, §12.4) + bi-temporal name/aliases (§12.4.3).
+> 3. **F2 app** — the fold handler: lazy rebuild-on-read + ordinal-bucketed re-ground (B1) + compare-and-clear + backoff.
+> 4. **F4** — the **KAL TypeScript service** (`services/knowledge-gateway`) implementing `kal.v1.yaml` + per-substrate `as_of` gating + bounded-complete `roster` + the 2 INV-KAL lints; flip `language-rule.yaml` row to `typescript`.
+> 5. **CHECKPOINT** → then parallel **fanout** X1–X7 (consumer migrations onto the KAL, FE temporal surfaces).
+>
+> **▶ Deferred Items (temporal-knowledge):**
+> - **`D-TK-WRITEBACK-ORDINAL` (F1d)** — gate #1/#2 (cross-service contract): wire additive Path-A fact emission into the
+>   glossary writeback. Needs the extraction caller (translation-service) to pass `chapter_ordinal` in the bulk-extract
+>   request (currently absent — only chapter_id+content_hash). Glossary side accepts it optionally; caller update is a fanout item. Target: F1d.
+> - **`D-KAL-HTTP-SURFACE-LINT` (D6)** — gate #2: the HTTP-surface INV-KAL lint (no consumer client hits owning-svc
+>   `/internal/*` knowledge endpoints). Table-read grep ships in F4; HTTP-surface tracked-for-migration. Target: X7.
+> - **`D-KG-INSTORY-EVENTDATE`** — gate #2: detected in-story time (`event_date_iso`) as a valid-time source (spec §9 dec-3). Target: post-foundation.
+
+---
+
+# ▶▶ (prior) **Motif book-collaboration tier (model B) + shared-graph links + MCP edit SHIPPED** · branch `feat/narrative-pattern-library` · HEAD `8c4c45c2`+ · 2026-06-29
 
 > **▶ MERGE 2026-06-29:** `origin/main` merged into this branch (179 commits — the **public-MCP gateway + lazy tool-loading** track, critical-UX fixes, glossary/knowledge/campaign work). Conflicts resolved (composition `actions.py` confirm = JWT-identity ∪ public-MCP spend-attribution; engine `plan.py`/`stitch.py` signatures = both; studio panels = `canonview` ∪ `motifs`/`conformance`; gateway test `mcpPublicGatewayUrl`). The motif MCP tools are exposed to the public-MCP gateway: `find_tools` (lazy discovery) picks them up dynamically from the federation catalog, and they are classified in the edge `TOOL_POLICY` allowlist (commit `2aa65765`). Below is this branch's motif work; the merged-in main tracks + all prior history are archived (see the pointer at the bottom).
 
