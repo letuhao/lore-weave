@@ -41,6 +41,10 @@ from pydantic import BaseModel, Field
 from loreweave_extraction.canonical import relation_id
 
 from app.db.neo4j_helpers import CypherSession, run_read, run_write
+from app.db.neo4j_repos.temporal import (
+    MAINTAIN_RELATION_CHAIN_CYPHER,
+    ORDINAL_OPEN_CEILING,
+)
 
 # K11.6-R1/R1: 1-hop direction options. "both" returns outgoing
 # AND incoming edges, which is what the L2 RAG context loader
@@ -99,6 +103,17 @@ class Relation(BaseModel):
     source_chapter: str | None = None
     valid_from: datetime | None = None
     valid_until: datetime | None = None
+    # F3 — story (valid) time axis (chapter ordinals). The existing
+    # valid_from/valid_until above are wall-clock TRANSACTION-time; these are the
+    # STORY-time half-open interval [valid_from_ordinal, valid_to_ordinal) over
+    # the (subject, predicate) arc. valid_from_ordinal is stamped at write time
+    # (the chapter ordinal the edge was established at, on the same scale as
+    # events.event_order); valid_to_ordinal is set ONLY by temporal.maintain_chain
+    # when a later instance on the same (subject, predicate) chain supersedes it.
+    # NULL on legacy / positionless edges. See app.db.neo4j_repos.temporal + §12.3.
+    valid_from_ordinal: int | None = None
+    valid_to_ordinal: int | None = None
+    valid_to_ordinal_eff: int | None = None
     pending_validation: bool = False
     created_at: datetime | None = None
     updated_at: datetime | None = None
@@ -229,6 +244,13 @@ ON CREATE SET
   r.source_chapter = $source_chapter,
   r.valid_from = coalesce($valid_from, datetime()),
   r.valid_until = NULL,
+  // F3 — story valid-time axis. valid_from_ordinal is the chapter ordinal the
+  // edge was established at; a fresh edge opens its interval (valid_to_ordinal
+  // NULL → eff = +∞ null-sink). The interval CLOSE is done by
+  // temporal.maintain_chain after the merge, never here.
+  r.valid_from_ordinal = $valid_from_ordinal,
+  r.valid_to_ordinal = NULL,
+  r.valid_to_ordinal_eff = $open_ceiling,
   r.pending_validation = $pending_validation,
   // KG customizable-ontology (L7) — stamp the resolved-schema version this edge
   // was written under (M3) + the layer-4 partition seam (M2, NULL at v1). Both
@@ -261,6 +283,15 @@ ON MATCH SET
   // at v1 everywhere, and overwriting would clobber a future partition assignment
   // (M2). The ON CREATE branch still sets graph_id for fresh edges.
   r.schema_version = coalesce($schema_version, r.schema_version),
+  // F3 — backfill the story-time lower bound on a later positioned re-extraction
+  // (an edge first written positionless keeps NULL until a positioned source
+  // re-mentions it); never overwrite an existing one. valid_to_ordinal is owned
+  // by maintain_chain, so it is NOT touched on MATCH here.
+  r.valid_from_ordinal = coalesce(r.valid_from_ordinal, $valid_from_ordinal),
+  r.valid_to_ordinal_eff = coalesce(
+    r.valid_to_ordinal_eff,
+    CASE WHEN r.valid_to_ordinal IS NULL THEN $open_ceiling ELSE r.valid_to_ordinal END
+  ),
   r.updated_at = datetime()
 RETURN properties(r) AS rel,
        properties(subj) AS subj,
@@ -284,6 +315,8 @@ async def create_relation(
     graph_id: str | None = None,
     cardinality: str | None = None,
     job_id: str | None = None,
+    valid_from_ordinal: int | None = None,
+    maintain_chain: bool = False,
 ) -> Relation | None:
     """Idempotent edge upsert. Re-running with the same
     `(subject_id, predicate, object_id)` returns the same edge —
@@ -311,6 +344,16 @@ async def create_relation(
     today's behavior. The close runs in the same session transaction as the
     create (atomic). The new relation's own id is excluded from the close, so a
     pure idempotent re-create of the same edge never closes itself.
+
+    F3 — `valid_from_ordinal` is the STORY-time lower bound (chapter ordinal) the
+    edge was established at (same scale as `events.event_order`). `maintain_chain`
+    (the EXTRACTION path, §12.3.2) re-derives the ordinal `valid_to_ordinal` chain
+    for this `(subject, predicate)` AFTER the merge via `temporal.maintain_chain`
+    — the ordinal-aware interval-split that is correct under out-of-order/backfill
+    arrival, unlike `single_active` (which closes ANY open instance by wall-clock
+    and inverts intervals, A2). `single_active` and `maintain_chain` are distinct
+    mechanisms: use `single_active` for monotonic L7/user edits, `maintain_chain`
+    for extraction. Both default off ⇒ byte-identical legacy behaviour.
     """
     if not predicate:
         raise ValueError("predicate must be a non-empty string")
@@ -348,6 +391,8 @@ async def create_relation(
         source_event_id=source_event_id,
         source_chapter=source_chapter,
         valid_from=valid_from,
+        valid_from_ordinal=valid_from_ordinal,
+        open_ceiling=ORDINAL_OPEN_CEILING,
         pending_validation=pending_validation,
         schema_version=schema_version,
         graph_id=graph_id,
@@ -356,6 +401,20 @@ async def create_relation(
     record = await result.single()
     if record is None:
         return None
+    # F3 — drive the ordinal-aware interval-split close (the EXTRACTION path).
+    # Re-derives valid_to_ordinal over the (subject, predicate) chain from
+    # valid_from_ordinal order AFTER the new instance is in place, so a back-
+    # filled out-of-order edge never inverts a later interval (A2). Only when a
+    # story-time position exists; legacy/positionless writes skip it.
+    if maintain_chain and valid_from_ordinal is not None:
+        await run_write(
+            session,
+            MAINTAIN_RELATION_CHAIN_CYPHER,
+            user_id=user_id,
+            subject_id=subject_id,
+            predicate=predicate,
+            open_ceiling=ORDINAL_OPEN_CEILING,
+        )
     return _edge_props_to_relation(
         rel_props=dict(record["rel"]),
         subject=dict(record["subj"]),
