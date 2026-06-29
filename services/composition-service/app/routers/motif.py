@@ -3,11 +3,12 @@
 `/v1/composition`:
   GET    /motifs                          — list (tier-merged: owned + system + own-public)
   GET    /motifs/catalog                  — PUBLIC discovery projection (allow-list, B-3)
+  GET    /motifs/book/{book_id}            — the book's library: own + the SHARED tier (VIEW-gated)
   GET    /motifs/{id}                      — read one (owner full / public detail redacted)
   POST   /motifs                          — create (user tier; owner server-stamped)
-  PATCH  /motifs/{id}                      — edit / flip visibility (= publish); owner-only
-  DELETE /motifs/{id}                      — soft archive; owner-only
-  POST   /motifs/{id}/adopt                — adopt = clone-to-customize = cross-genre retag
+  PATCH  /motifs/{id}[?book_id=]           — edit; owner-only, or a SHARED row (EDIT-gated)
+  DELETE /motifs/{id}[?book_id=]           — soft archive; owner-only, or a SHARED row (EDIT-gated)
+  POST   /motifs/{id}/adopt                — adopt into user | book (label) | book_shared (EDIT-gated)
 
 Tenancy (the kinds-bug fix + R1.1): owner_user_id is SERVER-STAMPED from the JWT
 `sub` (never a request field — the *Args models forbid extra keys, S2). A read is
@@ -43,10 +44,25 @@ from app.db.models import (
 )
 from app.db.repositories import VersionMismatchError
 from app.db.repositories.motif_repo import MotifRepo
-from app.deps import get_motif_repo
+from app.deps import get_grant_client_dep, get_motif_repo
+from app.grant_client import GrantClient, GrantLevel
+from app.grant_deps import InsufficientGrant, authorize_book
 from app.middleware.jwt_auth import get_current_user
+from app.packer.pack import OwnershipError
 
 router = APIRouter(prefix="/v1/composition")
+
+
+async def _gate_book(grant: GrantClient, book_id: UUID, caller: UUID, need: GrantLevel) -> None:
+    """E0-4c book-grant chokepoint → HTTP (mirrors works._gate_book). none→404 (no oracle),
+    under→403. The book grant is the access control for a book-scoped motif op (adopt-to-book,
+    the shared-tier read/write) — the HTTP route must be NO softer than the MCP path."""
+    try:
+        await authorize_book(grant, book_id, caller, need)
+    except OwnershipError:
+        raise HTTPException(status_code=404, detail="book not found")
+    except InsufficientGrant:
+        raise HTTPException(status_code=403, detail="insufficient access")
 
 # The uniform "no existence oracle" 404 (H13) — identical for missing, foreign-
 # private, and not-owned-on-write, so a caller can't distinguish them.
@@ -59,8 +75,14 @@ _PUBLIC_DETAIL_REDACT = ("examples",)
 
 
 class MotifAdopt(_ForbidExtra):
-    # NO target arg — the adopt target is ALWAYS the caller's own user tier (book
-    # tier dropped, R1.1.1). retag_genres drives the cross-genre clone (R2.2).
+    # target='user'        — the caller's own private library (default; no book context).
+    # target='book'        — model A: a PRIVATE per-user label on the clone (D-MOTIF-ADOPT-PER-BOOK).
+    # target='book_shared' — model B: the book's SHARED tier (D-MOTIF-ADOPT-BOOK-COLLAB-TIER).
+    # 'book'/'book_shared' REQUIRE book_id + EDIT on that book (gated before the clone — the HTTP
+    # route is no softer than the MCP path; D-MOTIF-HTTP-ADOPT-BOOK). retag_genres drives the
+    # cross-genre clone (R2.2).
+    target: str = Field(default="user", pattern="^(user|book|book_shared)$")
+    book_id: UUID | None = None
     retag_genres: list[_Key] | None = Field(default=None, max_length=40)
 
 
@@ -182,6 +204,47 @@ async def catalog_motifs(
     return {"items": out, "total": total, "limit": limit, "offset": offset}
 
 
+def _book_view(motif: Motif, *, caller_id: UUID) -> dict[str, Any]:
+    """Book-library projection (D-MOTIF-ADOPT-BOOK-COLLAB-TIER): own rows full; a SHARED row
+    owned by another collaborator gets the B-3 redaction (no examples / opaque source_ref / no
+    owner) but keeps book_id + book_shared so the FE can badge it + route an edit to the shared
+    path. Mirrors the MCP _motif_book_view."""
+    is_owner = motif.owner_user_id is not None and motif.owner_user_id == caller_id
+    data = _redact_for_viewer(motif, is_owner=is_owner)
+    data["book_id"] = str(motif.book_id) if motif.book_id else None
+    data["book_shared"] = bool(motif.book_shared)
+    return data
+
+
+@router.get("/motifs/book/{book_id}")
+async def list_book_motifs(
+    book_id: UUID,
+    genre: str | None = Query(default=None, max_length=100),
+    kind: str | None = Query(default=None),
+    q: str | None = Query(default=None, max_length=200),
+    language: str | None = Query(default=None, max_length=20),
+    status: str = Query(default="active", pattern="^(draft|active|archived)$"),
+    limit: int = Query(default=50, ge=1, le=100),
+    user_id: UUID = Depends(get_current_user),
+    repo: MotifRepo = Depends(get_motif_repo),
+    grant: GrantClient = Depends(get_grant_client_dep),
+) -> dict[str, Any]:
+    """The book's motif library (D-MOTIF-ADOPT-BOOK-COLLAB-TIER): the caller's own motifs
+    (globals + this book's private labels) PLUS the book's SHARED tier (book_shared rows from
+    any collaborator). VIEW on the book required (the grant is the access control). Shared rows
+    are badged book_shared=true."""
+    await _gate_book(grant, book_id, user_id, GrantLevel.VIEW)
+    rows = await repo.list_in_book(
+        user_id, book_id, genre=genre, kind=kind, status=status,
+        q=q, language=language, limit=limit,
+    )
+    return {
+        "motifs": [_book_view(m, caller_id=user_id) for m in rows],
+        "book_id": str(book_id),
+        "count": len(rows),
+    }
+
+
 @router.get("/motifs/{motif_id}")
 async def get_motif(
     motif_id: UUID,
@@ -225,13 +288,45 @@ async def patch_motif(
     body: MotifPatchArgs,
     user_id: UUID = Depends(get_current_user),
     repo: MotifRepo = Depends(get_motif_repo),
+    grant: GrantClient = Depends(get_grant_client_dep),
     if_match: str | None = Header(default=None, alias="If-Match"),
+    book_id: UUID | None = Query(default=None),
 ) -> dict[str, Any]:
-    """Owner-only edit (the repo filters owner_user_id=caller — a system or
-    foreign row never matches → 404, the 'clone to edit' affordance). Optimistic
-    concurrency via If-Match → 412. Flipping visibility INTO a shareable state
-    runs the publish quota pre-check (un-publishing never hits quota). A summary
-    change clears the embed hash so W3 re-embeds (repo-side)."""
+    """Edit a motif. Default (no book_id) = OWNER-only edit (the repo filters
+    owner_user_id=caller — a system or foreign row never matches → 404, the 'clone to
+    edit' affordance). Pass `book_id` to edit a SHARED book-tier motif
+    (D-MOTIF-ADOPT-BOOK-COLLAB-TIER): any EDIT-grantee of that book may edit it
+    (EDIT-gated here, then the repo matches book_shared AND book_id). Optimistic
+    concurrency via If-Match → 412. Flipping visibility INTO a shareable state runs the
+    publish quota pre-check (un-publishing never hits quota); a shared row stays private (a
+    visibility flip on the shared path is refused up front with a 400, not a DB 500)."""
+    if book_id is not None:
+        # SHARED-tier edit: the book grant is the gate (not ownership). A shared row is private by
+        # the motif_book_shared_shape CHECK — reject a visibility flip up front (a clean 400, not a
+        # DB CheckViolation 500). Publishing is the owner's separate flip on their OWN copy.
+        if body.visibility is not None and body.visibility != "private":
+            raise HTTPException(status_code=400, detail={
+                "code": "MOTIF_SHARED_STAYS_PRIVATE",
+                "message": "a shared book-tier motif stays private; publish from your own copy instead",
+            })
+        await _gate_book(grant, book_id, user_id, GrantLevel.EDIT)
+        try:
+            motif = await repo.patch_shared(
+                user_id, motif_id, book_id, body, expected_version=_parse_if_match(if_match),
+            )
+        except VersionMismatchError as exc:
+            raise HTTPException(status_code=412, detail={
+                "code": "MOTIF_VERSION_CONFLICT",
+                "current": exc.current.model_dump(mode="json"),
+            })
+        except asyncpg.UniqueViolationError:
+            raise HTTPException(status_code=409, detail={
+                "code": "MOTIF_CODE_EXISTS",
+                "message": "a motif with this code + language already exists in this book",
+            })
+        if motif is None:
+            raise HTTPException(status_code=404, detail=_NOT_FOUND)
+        return motif.model_dump(mode="json")
     # publish quota only when transitioning INTO a shareable state. We must know
     # the current visibility to avoid charging quota for a public→public no-op or
     # re-charging a row that is already shared.
@@ -268,11 +363,19 @@ async def archive_motif(
     motif_id: UUID,
     user_id: UUID = Depends(get_current_user),
     repo: MotifRepo = Depends(get_motif_repo),
+    grant: GrantClient = Depends(get_grant_client_dep),
+    book_id: UUID | None = Query(default=None),
 ) -> dict[str, Any]:
-    """Soft archive (status='archived'), owner-only. NOT a hard delete — the
-    motif_application FK is SET NULL so the binding-ledger history survives. A
-    foreign/missing/system row is a no-op (router returns archived:true uniformly
-    — no oracle; the repo only touches the caller's own row)."""
+    """Soft archive (status='archived'). Default (no book_id) = owner-only. Pass
+    `book_id` to archive a SHARED book-tier motif (D-MOTIF-ADOPT-BOOK-COLLAB-TIER) — any
+    EDIT-grantee may (EDIT-gated here, then the repo matches book_shared AND book_id). NOT
+    a hard delete — the motif_application FK is SET NULL so the binding-ledger history
+    survives. A foreign/missing/system row is a no-op (archived:true uniformly — no oracle;
+    the repo only touches an in-scope row)."""
+    if book_id is not None:
+        await _gate_book(grant, book_id, user_id, GrantLevel.EDIT)
+        await repo.archive_shared(user_id, motif_id, book_id)
+        return {"id": str(motif_id), "archived": True}
     await repo.archive(user_id, motif_id)
     return {"id": str(motif_id), "archived": True}
 
@@ -286,17 +389,37 @@ async def adopt_motif(
     body: MotifAdopt | None = None,
     user_id: UUID = Depends(get_current_user),
     repo: MotifRepo = Depends(get_motif_repo),
+    grant: GrantClient = Depends(get_grant_client_dep),
 ) -> dict[str, Any]:
     """Adopt = the ONE clone primitive (= adopt = customize = cross-genre retag,
-    R1.1.1). Clones a visible (public/system/own) motif into the caller's OWN tier
-    as a private 'adopted' row (owner reset to caller, vector copied, source_ref =
-    opaque lineage token, version=1). Idempotent: a repeat adopt of the same
-    source returns the existing clone (200, no duplicate). Adopt is count-gated
-    (B-4). A not-visible source → 404 (no oracle)."""
+    R1.1.1). Clones a visible (public/system/own) motif into a target tier as a
+    private 'adopted' row (vector copied, source_ref = opaque lineage token,
+    version=1). target='user' (default) → the caller's own library; target='book' →
+    a private per-book label; target='book_shared' → the book's SHARED tier
+    (D-MOTIF-HTTP-ADOPT-BOOK / -BOOK-COLLAB-TIER). A book target REQUIRES book_id +
+    EDIT on that book (gated here, no softer than MCP). Idempotent: a repeat adopt of
+    the same source into the same tier returns the existing clone. Count-gated (B-4).
+    A not-visible source → 404 (no oracle)."""
+    target = body.target if body is not None else "user"
+    book_id = body.book_id if body is not None else None
+    book_shared = target == "book_shared"
+    if target in ("book", "book_shared"):
+        if book_id is None:
+            raise HTTPException(
+                status_code=400,
+                detail={"code": "MOTIF_BOOK_REQUIRED",
+                        "message": f"book_id is required when target='{target}'"},
+            )
+        # EDIT-gate the book BEFORE the clone — the grant is the tenancy boundary for a
+        # book-scoped adopt (D-MOTIF-HTTP-ADOPT-BOOK). none→404, under-tier→403.
+        await _gate_book(grant, book_id, user_id, GrantLevel.EDIT)
     await _adopt_quota_guard(repo, user_id)
     retag = body.retag_genres if body is not None else None
     try:
-        motif, created = await repo.adopt(user_id, motif_id, retag_genres=retag)
+        motif, created = await repo.adopt(
+            user_id, motif_id, retag_genres=retag,
+            book_id=book_id, book_shared=book_shared,
+        )
     except LookupError:
         raise HTTPException(status_code=404, detail=_NOT_FOUND)
     except asyncpg.UniqueViolationError:
@@ -307,8 +430,11 @@ async def adopt_motif(
         })
     # if the source was a `pattern`, adopt its direct composed_of members + re-point
     # the edges at the caller's own copies (H-3 / MD-2(b)). Only on a FRESH adopt.
+    # NOT for a book_shared root: the members would be cloned into the adopter's PRIVATE
+    # tier (invisible to other grantees) under a shared root — a half-shared pattern. Shared
+    # member expansion is deferred (D-MOTIF-LINK-SHARED-TIER); the shared root stands alone.
     members_adopted = 0
-    if created and motif.kind == "pattern":
+    if created and motif.kind == "pattern" and not book_shared:
         members_adopted = await repo.adopt_pattern_members(user_id, motif_id, motif.id)
     body_out = motif.model_dump(mode="json")
     body_out["members_adopted"] = members_adopted

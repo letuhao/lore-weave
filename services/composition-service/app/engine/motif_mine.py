@@ -11,6 +11,7 @@ by the confirm effect) is::
         "book_id":     str | None,     # required when scope == "book"
         "min_support": int | None,     # min occurrences before a beat-pattern is a draft
         "promote_to":  "user" | None,  # where accepted drafts land (default user-tier draft)
+        "promote_target": "user" | "book_shared" | None,  # 'book_shared' lands drafts in the book's SHARED tier (D-MOTIF-ADOPT-BOOK-COLLAB-TIER; scope='book' only)
         "language":    str | None,     # motif language axis (P1)
     }
 
@@ -321,6 +322,7 @@ async def mine_motifs(
     scope: str, book_id: UUID | None, language: str,
     min_support: int, min_judge: float,
     model_source: str, model_ref: str,
+    promote_target: str = "user",
 ) -> dict[str, Any]:
     """Pure mining: fetch beat sequences → PrefixSpan → per-candidate LLM abstraction
     → binary judge → persist gate-passers as drafts. knowledge/llm/motif_repo are
@@ -369,6 +371,9 @@ async def mine_motifs(
             "candidates": [],
         }
 
+    # D-MOTIF-ADOPT-BOOK-COLLAB-TIER: shared promote only makes sense with a single book to land in
+    # (the worker fails closed to a private mine otherwise — it never silently drops the book scope).
+    shared = promote_target == "book_shared" and book_id is not None
     candidates: list[dict[str, Any]] = []
     persisted_ids: list[str] = []
     for idx, (pattern, support) in enumerate(patterns):
@@ -438,6 +443,10 @@ async def mine_motifs(
                     UUID(user_id), args,
                     source="mined", status="draft",
                     judge_score=Decimal(str(round(score, 4))), mining_support=support,
+                    # D-MOTIF-ADOPT-BOOK-COLLAB-TIER: land mined drafts in the book's SHARED tier
+                    # when asked (only valid scope='book' — the dispatch EDIT-gated the book).
+                    book_id=book_id if shared else None,
+                    book_shared=shared,
                 )
             except asyncpg.UniqueViolationError:
                 # MED-6 (/review-impl): a (owner, code, language) collision (a re-run, or
@@ -469,7 +478,7 @@ async def mine_motifs(
         # §11 no-silent-drop: EVERY candidate is here with its score + gate flag.
         "candidates": candidates,
         "below_gate": below_gate,
-        "promote_to": "user",
+        "promote_to": "book_shared" if shared else "user",
     }
 
 
@@ -492,6 +501,12 @@ async def run_mine_motifs(
         except (KeyError, ValueError, TypeError) as exc:
             raise ValueError("mine_motifs: scope='book' requires a valid book_id") from exc
     language = str(input.get("language") or "en")
+    # D-MOTIF-ADOPT-BOOK-COLLAB-TIER: promote mined drafts into the book's SHARED tier when asked.
+    # The MCP tool + the confirm dispatch both EDIT-gate the book for scope='book'; force back to
+    # 'user' if there's no single book (defensive — the tool already rejected this combination).
+    promote_target = str(input.get("promote_target") or "user")
+    if promote_target == "book_shared" and (scope != "book" or book_id is None):
+        promote_target = "user"
     # min_support: the job input wins (the user's confirm choice), else the platform
     # default; floored at 2 (a length-≥2 pattern needs ≥2 sequences to be "frequent").
     min_support = int(input.get("min_support") or settings.motif_mine_min_support)
@@ -546,4 +561,5 @@ async def run_mine_motifs(
         min_judge=min_judge,
         model_source=model_source,
         model_ref=model_ref,
+        promote_target=promote_target,
     )

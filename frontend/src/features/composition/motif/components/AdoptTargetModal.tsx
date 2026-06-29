@@ -16,9 +16,9 @@ type Props = {
   minting: boolean;
   confirming: boolean;
   /** the adopt destination + whether a book context is available (else book is hidden) */
-  target: 'user' | 'book';
+  target: 'user' | 'book' | 'book_shared';
   canTargetBook: boolean;
-  onTarget: (t: 'user' | 'book') => void;
+  onTarget: (t: 'user' | 'book' | 'book_shared') => void;
   onMint: () => void;
   onConfirm: () => void;
   onCancel: () => void;
@@ -100,9 +100,23 @@ export function AdoptTargetModal({
                     onClick={() => onTarget('book')}
                     className={`rounded border px-2 py-1 text-xs ${target === 'book' ? 'border-amber-500 bg-amber-50 text-amber-800 dark:bg-amber-950/40 dark:text-amber-200' : 'border-neutral-300 text-neutral-600 dark:border-neutral-600 dark:text-neutral-300'}`}
                   >
-                    {t('motif.adopt.targetBook', { defaultValue: 'This book' })}
+                    {t('motif.adopt.targetBook', { defaultValue: 'This book (private)' })}
+                  </button>
+                  <button
+                    type="button"
+                    data-testid="motif-adopt-target-book-shared"
+                    aria-pressed={target === 'book_shared'}
+                    onClick={() => onTarget('book_shared')}
+                    className={`rounded border px-2 py-1 text-xs ${target === 'book_shared' ? 'border-amber-500 bg-amber-50 text-amber-800 dark:bg-amber-950/40 dark:text-amber-200' : 'border-neutral-300 text-neutral-600 dark:border-neutral-600 dark:text-neutral-300'}`}
+                  >
+                    {t('motif.adopt.targetBookShared', { defaultValue: 'Share with collaborators' })}
                   </button>
                 </div>
+                {target === 'book_shared' && (
+                  <p className="mt-1 text-[11px] text-neutral-500">
+                    {t('motif.adopt.sharedHint', { defaultValue: "Everyone with access to this book can see and edit this motif." })}
+                  </p>
+                )}
               </fieldset>
             )}
             <div className="flex items-center justify-end gap-2">

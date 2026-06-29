@@ -66,14 +66,21 @@ class StubMotifRepo:
     async def get_visible(self, caller_id, motif_id):
         return self.get_result
 
-    async def create(self, user_id, args):
+    async def create(self, user_id, args, **kw):
         self.last_create_args = args
+        self.last_create_kw = kw
         if self.create_raises:
             raise self.create_raises
         return self.create_result
 
-    async def patch(self, caller_id, motif_id, args, *, expected_version):
+    async def patch(self, caller_id, motif_id, args, *, expected_version, **kw):
         self.last_patch_args = (args, expected_version)
+        if self.patch_raises:
+            raise self.patch_raises
+        return self.patch_result
+
+    async def patch_shared(self, caller_id, motif_id, book_id, args, *, expected_version):
+        self.last_patch_shared = (caller_id, motif_id, book_id, args, expected_version)
         if self.patch_raises:
             raise self.patch_raises
         return self.patch_result
@@ -81,8 +88,16 @@ class StubMotifRepo:
     async def archive(self, caller_id, motif_id):
         self.archive_calls.append((caller_id, motif_id))
 
-    async def adopt(self, caller_id, src_motif_id, *, retag_genres=None):
-        self.last_adopt = (caller_id, src_motif_id, retag_genres)
+    async def archive_shared(self, caller_id, motif_id, book_id):
+        self.archive_calls.append((caller_id, motif_id, book_id))
+
+    async def list_in_book(self, caller_id, book_id, **kw):
+        self.last_list_in_book = (caller_id, book_id, kw)
+        return self.list_result
+
+    async def adopt(self, caller_id, src_motif_id, *, retag_genres=None,
+                    book_id=None, book_shared=False):
+        self.last_adopt = (caller_id, src_motif_id, retag_genres, book_id, book_shared)
         if self.adopt_raises:
             raise self.adopt_raises
         return self.adopt_result
@@ -115,12 +130,27 @@ def ctx(monkeypatch):
     monkeypatch.setattr("app.config.settings.motif_max_public", 0, raising=False)
     monkeypatch.setattr("app.config.settings.motif_max_adopt", 0, raising=False)
     from app.main import app
-    from app.deps import get_motif_repo
+    from app.deps import get_grant_client_dep, get_motif_repo
+    from app.grant_client import GrantLevel
     from app.middleware.jwt_auth import get_current_user
 
     repo = StubMotifRepo()
+
+    class _FakeGrant:
+        """Stub GrantClient: `level` drives authorize_book (NONE→404, < need→403)."""
+        def __init__(self) -> None:
+            self.level = GrantLevel.EDIT
+            self.calls: list = []
+
+        async def resolve_grant(self, book_id, caller):
+            self.calls.append((book_id, caller))
+            return self.level
+
+    grant = _FakeGrant()
+    repo.grant = grant  # expose to tests via the repo handle
     app.dependency_overrides[get_current_user] = lambda: USER
     app.dependency_overrides[get_motif_repo] = lambda: repo
+    app.dependency_overrides[get_grant_client_dep] = lambda: grant
     with TestClient(app) as c:
         yield c, repo, monkeypatch
     app.dependency_overrides.clear()
@@ -290,7 +320,8 @@ def test_adopt_retag_passes_through(ctx):
     src = uuid.uuid4()
     r = c.post(f"/v1/composition/motifs/{src}/adopt", json={"retag_genres": ["wuxia"]})
     assert r.status_code == 201
-    assert repo.last_adopt == (USER, src, ["wuxia"])
+    # default target='user' → no book context (book_id None, book_shared False).
+    assert repo.last_adopt == (USER, src, ["wuxia"], None, False)
 
 
 def test_adopt_source_not_visible_404(ctx):
@@ -320,10 +351,139 @@ def test_adopt_pattern_reports_members(ctx):
 
 def test_adopt_forbids_target_arg_422(ctx):
     c, _, _ = ctx
-    # MotifAdopt forbids extras — no target/owner smuggling.
+    # MotifAdopt forbids extras — no owner smuggling (target/book_id ARE legit now).
     r = c.post(f"/v1/composition/motifs/{uuid.uuid4()}/adopt",
                json={"target_owner": str(OTHER)})
     assert r.status_code == 422
+
+
+# ── D-MOTIF-HTTP-ADOPT-BOOK + -BOOK-COLLAB-TIER: HTTP book/shared paths ─────────
+
+
+def test_adopt_book_target_requires_book_id_400(ctx):
+    c, _, _ = ctx
+    r = c.post(f"/v1/composition/motifs/{uuid.uuid4()}/adopt", json={"target": "book"})
+    assert r.status_code == 400 and r.json()["detail"]["code"] == "MOTIF_BOOK_REQUIRED"
+
+
+def test_adopt_book_label_edit_gated_threads_book_id(ctx):
+    c, repo, _ = ctx
+    from app.grant_client import GrantLevel
+    repo.grant.level = GrantLevel.EDIT
+    book = uuid.uuid4()
+    src = uuid.uuid4()
+    r = c.post(f"/v1/composition/motifs/{src}/adopt",
+               json={"target": "book", "book_id": str(book)})
+    assert r.status_code == 201
+    # EDIT-gated on the book + book_id threaded, book_shared False (model A label).
+    assert repo.grant.calls and repo.grant.calls[0][0] == book
+    assert repo.last_adopt[3] == book and repo.last_adopt[4] is False
+
+
+def test_adopt_book_shared_edit_gated_threads_flag(ctx):
+    c, repo, _ = ctx
+    from app.grant_client import GrantLevel
+    repo.grant.level = GrantLevel.EDIT
+    book = uuid.uuid4()
+    repo.adopt_result = (_motif(owner_user_id=USER, source="adopted",
+                                book_id=book, book_shared=True, version=1), True)
+    r = c.post(f"/v1/composition/motifs/{uuid.uuid4()}/adopt",
+               json={"target": "book_shared", "book_id": str(book)})
+    assert r.status_code == 201
+    assert repo.last_adopt[3] == book and repo.last_adopt[4] is True
+
+
+def test_adopt_book_shared_under_tier_403(ctx):
+    c, repo, _ = ctx
+    from app.grant_client import GrantLevel
+    repo.grant.level = GrantLevel.VIEW   # below EDIT
+    r = c.post(f"/v1/composition/motifs/{uuid.uuid4()}/adopt",
+               json={"target": "book_shared", "book_id": str(uuid.uuid4())})
+    assert r.status_code == 403
+
+
+def test_adopt_book_no_grant_404(ctx):
+    c, repo, _ = ctx
+    from app.grant_client import GrantLevel
+    repo.grant.level = GrantLevel.NONE
+    r = c.post(f"/v1/composition/motifs/{uuid.uuid4()}/adopt",
+               json={"target": "book", "book_id": str(uuid.uuid4())})
+    assert r.status_code == 404
+
+
+def test_adopt_book_shared_skips_pattern_member_adopt(ctx):
+    """A shared pattern root does NOT auto-adopt its members into the adopter's private tier
+    (the half-shared-pattern guard) — members_adopted stays 0."""
+    c, repo, _ = ctx
+    from app.grant_client import GrantLevel
+    repo.grant.level = GrantLevel.EDIT
+    book = uuid.uuid4()
+    repo.adopt_result = (_motif(owner_user_id=USER, source="adopted", kind="pattern",
+                                book_id=book, book_shared=True, version=1), True)
+    repo.pattern_members_adopted = 5  # would be used if member-adopt ran
+    r = c.post(f"/v1/composition/motifs/{uuid.uuid4()}/adopt",
+               json={"target": "book_shared", "book_id": str(book)})
+    assert r.status_code == 201 and r.json()["members_adopted"] == 0
+
+
+def test_patch_shared_edit_gated(ctx):
+    c, repo, _ = ctx
+    from app.grant_client import GrantLevel
+    repo.grant.level = GrantLevel.EDIT
+    book = uuid.uuid4()
+    mid = uuid.uuid4()
+    repo.patch_result = _motif(owner_user_id=OTHER, book_id=book, book_shared=True, version=2)
+    r = c.patch(f"/v1/composition/motifs/{mid}?book_id={book}", json={"name": "Edited"})
+    assert r.status_code == 200
+    assert repo.last_patch_shared[1] == mid and repo.last_patch_shared[2] == book
+    assert repo.grant.calls and repo.grant.calls[0][0] == book
+
+
+def test_patch_shared_under_tier_403(ctx):
+    c, repo, _ = ctx
+    from app.grant_client import GrantLevel
+    repo.grant.level = GrantLevel.VIEW
+    r = c.patch(f"/v1/composition/motifs/{uuid.uuid4()}?book_id={uuid.uuid4()}",
+                json={"name": "x"})
+    assert r.status_code == 403
+
+
+def test_delete_shared_edit_gated(ctx):
+    c, repo, _ = ctx
+    from app.grant_client import GrantLevel
+    repo.grant.level = GrantLevel.EDIT
+    book = uuid.uuid4()
+    mid = uuid.uuid4()
+    r = c.delete(f"/v1/composition/motifs/{mid}?book_id={book}")
+    assert r.status_code == 200 and r.json()["archived"] is True
+    # archive_shared recorded a 3-tuple (caller, motif, book); owner archive is a 2-tuple.
+    assert (USER, mid, book) in repo.archive_calls
+
+
+def test_list_book_view_gated(ctx):
+    c, repo, _ = ctx
+    from app.grant_client import GrantLevel
+    repo.grant.level = GrantLevel.VIEW   # VIEW is enough to read
+    book = uuid.uuid4()
+    own = _motif(owner_user_id=USER, code="own")
+    shared = _motif(owner_user_id=OTHER, book_id=book, book_shared=True, code="shared")
+    repo.list_result = [own, shared]
+    r = c.get(f"/v1/composition/motifs/book/{book}")
+    assert r.status_code == 200
+    body = r.json()
+    assert body["count"] == 2 and body["book_id"] == str(book)
+    by_code = {m["code"]: m for m in body["motifs"]}
+    assert by_code["shared"]["book_shared"] is True
+    assert by_code["shared"]["book_id"] == str(book)
+    assert repo.last_list_in_book[1] == book
+
+
+def test_list_book_no_grant_404(ctx):
+    c, repo, _ = ctx
+    from app.grant_client import GrantLevel
+    repo.grant.level = GrantLevel.NONE
+    r = c.get(f"/v1/composition/motifs/book/{uuid.uuid4()}")
+    assert r.status_code == 404
 
 
 # ── catalog (router serialization; allow-list no-leak proven in the DB test) ──

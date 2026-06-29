@@ -64,6 +64,7 @@ EXPECTED_TOOLS = {
     "composition_motif_search", "composition_motif_get",
     "composition_motif_suggest_for_chapter", "composition_arc_suggest",
     "composition_get_mine_job", "composition_motif_link_list",
+    "composition_motif_book_list",
     # Tier A (motif)
     "composition_motif_create", "composition_motif_archive",
     "composition_motif_bind", "composition_motif_unbind",

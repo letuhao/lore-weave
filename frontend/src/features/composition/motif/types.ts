@@ -40,6 +40,8 @@ export type InfoAsymmetry = { knows: string[]; deceived: string[]; gap: string }
 export type Motif = {
   id: string;
   owner_user_id: string | null;            // null = system tier
+  book_id?: string | null;                 // per-book label (D-MOTIF-ADOPT-PER-BOOK); shared-tier rows carry it too
+  book_shared?: boolean;                    // D-MOTIF-ADOPT-BOOK-COLLAB-TIER: a SHARED book-tier motif (badge it)
   code: string;
   language: string;
   visibility: MotifVisibility;

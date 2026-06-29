@@ -30,7 +30,7 @@ from app.db.repositories import VersionMismatchError
 
 # vector + hash deliberately excluded — projection is the model shape only.
 _SELECT_COLS = """
-  id, owner_user_id, book_id, code, language, visibility, kind, category, name, summary,
+  id, owner_user_id, book_id, book_shared, code, language, visibility, kind, category, name, summary,
   genre_tags, roles, beats, preconditions, effects, info_asymmetry, annotations,
   tension_target, emotion_target, examples, abstraction_confidence, source,
   imported_derived, source_ref, source_version, embedding_model, embedding_dim,
@@ -87,6 +87,7 @@ class MotifRepo:
         *, source: str = "authored", imported_derived: bool = False,
         status: str = "active", judge_score: Any = None,
         mining_support: int | None = None,
+        book_id: UUID | None = None, book_shared: bool = False,
     ) -> Motif:
         """Create a USER-tier motif. owner_user_id is STAMPED = user_id (never an
         arg → a both-NULL/system row is impossible from this path; the DB CHECK is
@@ -106,15 +107,18 @@ class MotifRepo:
         the review/promote UI. Added ADDITIVELY (every existing caller unchanged),
         the same way source/status were added for W9."""
         info = args.info_asymmetry.model_dump(mode="json") if args.info_asymmetry else None
+        # book_shared (model B) targets the SHARED tier; the row stays private (the CHECK
+        # motif_book_shared_shape backstops a shared row to visibility='private' + a book + owner).
+        # The owner is STILL server-stamped = user_id (no owner arg → no cross-tenant injection).
         query = f"""
         INSERT INTO motif
           (owner_user_id, code, language, visibility, kind, category, name, summary,
            genre_tags, roles, beats, preconditions, effects, info_asymmetry,
            annotations, tension_target, emotion_target, examples, source,
-           imported_derived, status, judge_score, mining_support)
+           imported_derived, status, judge_score, mining_support, book_id, book_shared)
         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,
                 $10::jsonb,$11::jsonb,$12::jsonb,$13::jsonb,$14::jsonb,$15::jsonb,
-                $16,$17,$18::jsonb,$19,$20,$21,$22,$23)
+                $16,$17,$18::jsonb,$19,$20,$21,$22,$23,$24,$25)
         RETURNING {_SELECT_COLS}
         """
         async with self._pool.acquire() as c:
@@ -127,7 +131,7 @@ class MotifRepo:
                 _jsonb(info) if info is not None else None,
                 _jsonb(args.annotations), args.tension_target, args.emotion_target,
                 _jsonb(args.examples), source, imported_derived, status,
-                judge_score, mining_support,
+                judge_score, mining_support, book_id, book_shared,
             )
         return _row_to_motif(row)
 
@@ -310,8 +314,40 @@ class MotifRepo:
 
         (Return is Motif|None to match the canon_rules/works house convention; the
         frozen CONTRACT is the parameter names + the version-mismatch raise.)"""
+        # OWNER scope: only the caller's own row. Shared-tier edits go through patch_shared.
+        return await self._patch(
+            "owner_user_id = $1", caller_id, motif_id, args,
+            expected_version=expected_version,
+            repin_source_version=repin_source_version,
+            repin_adopted_base=repin_adopted_base,
+        )
+
+    async def patch_shared(
+        self, caller_id: UUID, motif_id: UUID, book_id: UUID, args: MotifPatchArgs,
+        *, expected_version: int,
+    ) -> Motif | None:
+        """EDIT-grantee write to a SHARED book-tier row (D-MOTIF-ADOPT-BOOK-COLLAB-TIER). The
+        caller MUST already hold EDIT on `book_id` (gated at the router/tool — access is the book
+        grant, NOT ownership). Keys on `book_shared AND book_id` instead of owner, so ANY grantee
+        may edit; the optimistic-lock `version` still blocks a blind clobber between collaborators.
+        Returns None if no shared row in that book matches (router → H13); raises VersionMismatch
+        on a stale expected_version. `caller_id` is unused in the predicate (the grant is the gate);
+        it stays in the signature for call-site symmetry + future audit logging."""
+        return await self._patch(
+            "book_shared AND book_id = $1", book_id, motif_id, args,
+            expected_version=expected_version,
+        )
+
+    async def _patch(
+        self, scope_clause: str, scope_param: Any, motif_id: UUID, args: MotifPatchArgs,
+        *, expected_version: int,
+        repin_source_version: int | None = None, repin_adopted_base: str | None = None,
+    ) -> Motif | None:
+        """Shared body for patch (owner scope) + patch_shared (book-shared scope). `scope_clause`
+        is the ownership/tenancy WHERE arm referencing $1 (bound to `scope_param`); $2 = motif_id;
+        the version param is appended last."""
         sets: list[str] = []
-        params: list[Any] = [caller_id, motif_id]
+        params: list[Any] = [scope_param, motif_id]
         data = args.model_dump(exclude_unset=True)
         for field, value in data.items():
             if field in ("roles", "beats"):
@@ -337,17 +373,17 @@ class MotifRepo:
         params.append(expected_version)
         query = f"""
         UPDATE motif SET {", ".join(sets)}
-        WHERE owner_user_id = $1 AND id = $2 AND version = ${len(params)}
+        WHERE {scope_clause} AND id = $2 AND version = ${len(params)}
         RETURNING {_SELECT_COLS}
         """
         async with self._pool.acquire() as c:
             row = await c.fetchrow(query, *params)
             if row is not None:
                 return _row_to_motif(row)
-            # distinguish not-owned/not-found (→ None) from a stale version (→ raise).
+            # distinguish not-in-scope/not-found (→ None) from a stale version (→ raise).
             current = await c.fetchrow(
-                f"SELECT {_SELECT_COLS} FROM motif WHERE owner_user_id = $1 AND id = $2",
-                caller_id, motif_id,
+                f"SELECT {_SELECT_COLS} FROM motif WHERE {scope_clause} AND id = $2",
+                scope_param, motif_id,
             )
         if current is None:
             return None
@@ -363,6 +399,75 @@ class MotifRepo:
                 "WHERE owner_user_id = $1 AND id = $2 AND status <> 'archived'",
                 caller_id, motif_id,
             )
+
+    async def archive_shared(self, caller_id: UUID, motif_id: UUID, book_id: UUID) -> None:
+        """Archive a SHARED book-tier row (D-MOTIF-ADOPT-BOOK-COLLAB-TIER) — any EDIT-grantee may
+        (the caller is EDIT-gated on `book_id` at the router/tool). Keys on book_shared AND book_id,
+        not owner. Idempotent; a foreign/other-book id is a no-op (router → H13)."""
+        async with self._pool.acquire() as c:
+            await c.execute(
+                "UPDATE motif SET status = 'archived', updated_at = now() "
+                "WHERE book_shared AND book_id = $2 AND id = $1 AND status <> 'archived'",
+                motif_id, book_id,
+            )
+
+    async def list_in_book(
+        self, caller_id: UUID, book_id: UUID, *, genre: str | None = None,
+        kind: str | None = None, status: str | None = "active", q: str | None = None,
+        language: str | None = None, limit: int = 100,
+    ) -> list[Motif]:
+        """Book-context list (D-MOTIF-ADOPT-BOOK-COLLAB-TIER). The CALLER MUST have VIEW-gated
+        `book_id` first — the grant is resolved at the router/tool, NEVER here. Returns, for this
+        book: the caller's OWN rows (their globals + this book's model-A private labels) PLUS the
+        book's SHARED tier (book_shared rows owned by ANY collaborator) PLUS system rows. A foreign
+        user's globals, another book's rows, and others' public rows are EXCLUDED."""
+        params: list[Any] = [caller_id, book_id]   # $1 caller, $2 book
+        where = [
+            # own (any) | system | this book's shared tier — NOT public/foreign.
+            "(owner_user_id IS NULL OR owner_user_id = $1 OR (book_shared AND book_id = $2))",
+            # narrow to this book's rows + globals (own globals + system have book_id NULL).
+            "(book_id IS NULL OR book_id = $2)",
+        ]
+        if genre is not None:
+            params.append(genre)
+            where.append(f"${len(params)} = ANY(genre_tags)")
+        if kind is not None:
+            params.append(kind)
+            where.append(f"kind = ${len(params)}")
+        if status is not None:
+            params.append(status)
+            where.append(f"status = ${len(params)}")
+        if language is not None:
+            params.append(language)
+            where.append(f"language = ${len(params)}")
+        if q:
+            params.append(f"%{q}%")
+            where.append(f"(name ILIKE ${len(params)} OR summary ILIKE ${len(params)})")
+        params.append(max(0, limit))
+        query = f"""
+        SELECT {_SELECT_COLS} FROM motif
+        WHERE {" AND ".join(where)}
+        ORDER BY book_shared DESC, owner_user_id NULLS FIRST, name
+        LIMIT ${len(params)}
+        """
+        async with self._pool.acquire() as c:
+            rows = await c.fetch(query, *params)
+        return [_row_to_motif(r) for r in rows]
+
+    async def get_in_book(
+        self, caller_id: UUID, motif_id: UUID, book_id: UUID,
+    ) -> Motif | None:
+        """Single read inside a (VIEW-gated) book context: the row IFF it's the caller's OWN, a
+        SYSTEM row, or this book's SHARED tier. A foreign-private or another-book shared row → None
+        (H13, no oracle). The caller MUST have VIEW-gated `book_id` at the router/tool."""
+        query = f"""
+        SELECT {_SELECT_COLS} FROM motif
+        WHERE id = $3
+          AND (owner_user_id IS NULL OR owner_user_id = $1 OR (book_shared AND book_id = $2))
+        """
+        async with self._pool.acquire() as c:
+            row = await c.fetchrow(query, caller_id, book_id, motif_id)
+        return _row_to_motif(row) if row is not None else None
 
     async def list_for_caller(
         self, caller_id: UUID, *, scope: str = "all", genre: str | None = None,
@@ -425,6 +530,7 @@ class MotifRepo:
     async def clone(
         self, caller_id: UUID, src_motif_id: UUID, *, target_owner: UUID,
         retag_genres: list[str] | None = None, book_id: UUID | None = None,
+        book_shared: bool = False,
     ) -> Motif:
         """The ONE clone primitive (= adopt = clone-to-customize = cross-genre retag;
         R1.1.1). Reads the SOURCE under the read predicate (so you may only clone what
@@ -468,14 +574,14 @@ class MotifRepo:
             row = await c.fetchrow(
                 f"""
                 INSERT INTO motif
-                  (owner_user_id, book_id, code, language, visibility, kind, category, name,
+                  (owner_user_id, book_id, book_shared, code, language, visibility, kind, category, name,
                    summary, genre_tags, roles, beats, preconditions, effects,
                    info_asymmetry, annotations, tension_target, emotion_target,
                    examples, abstraction_confidence, source, imported_derived,
                    source_ref, source_version,
                    embedding, embedding_model, embedding_dim, embedded_summary_hash,
                    adopted_base)
-                VALUES ($1,$27,$2,$3,'private',$4,$5,$6,$7,$8,
+                VALUES ($1,$27,$28,$2,$3,'private',$4,$5,$6,$7,$8,
                         $9::jsonb,$10::jsonb,$11::jsonb,$12::jsonb,$13::jsonb,$14::jsonb,
                         $15,$16,$17::jsonb,$18,'adopted',$25,$19,$20,
                         $21,$22,$23,$24,$26::jsonb)
@@ -489,7 +595,7 @@ class MotifRepo:
                 s["tension_target"], s["emotion_target"], _passthru_jsonb(s["examples"]),
                 s["abstraction_confidence"], f"lineage:{src_motif_id}", s["version"],
                 s["embedding"], s["embedding_model"], s["embedding_dim"],
-                s["embedded_summary_hash"], tainted, adopted_base, book_id,
+                s["embedded_summary_hash"], tainted, adopted_base, book_id, book_shared,
             )
         return _row_to_motif(row)
 
@@ -513,6 +619,7 @@ class MotifRepo:
     async def adopt(
         self, caller_id: UUID, src_motif_id: UUID,
         *, retag_genres: list[str] | None = None, book_id: UUID | None = None,
+        book_shared: bool = False,
     ) -> tuple[Motif, bool]:
         """The HTTP/MCP adopt op = clone into the caller's OWN tier with a
         deterministic code-suffix on collision (F0's clone() raises on a code
@@ -530,10 +637,11 @@ class MotifRepo:
         lineage source_ref → re-read, no duplicate; idempotent re-adopt, MD-6(a)).
         Raises LookupError if the source isn't visible to the caller."""
         async with self._pool.acquire() as c, c.transaction():
-            await c.execute(
-                "SELECT pg_advisory_xact_lock(hashtext($1))",
-                f"motif-adopt:{caller_id}",
-            )
+            # SHARED adopt serializes per-BOOK (concurrent grantees adopting the same source into
+            # the same book must not each create a fork — the shared tier dedups per (book, code)).
+            # Model-A / global adopt serializes per-OWNER (its uniqueness is per-owner).
+            lock_key = f"motif-adopt-book:{book_id}" if book_shared else f"motif-adopt:{caller_id}"
+            await c.execute("SELECT pg_advisory_xact_lock(hashtext($1))", lock_key)
             src = await c.fetchrow(
                 f"SELECT code, language FROM motif WHERE id = $2 AND {_VISIBLE_PREDICATE}",
                 caller_id, src_motif_id,
@@ -542,26 +650,36 @@ class MotifRepo:
                 raise LookupError("source motif not found or not accessible")
             base_code = src["code"]
             lineage = f"lineage:{src_motif_id}"
-            # Idempotency (MD-6(a)): an existing adopt of the SAME source into the SAME
-            # tier+book (same lineage source_ref AND same book_id — NULL=global) → return
-            # it, no duplicate. Re-adopting into a DIFFERENT book is a distinct intent and
-            # makes a new book-labelled clone (D-MOTIF-ADOPT-PER-BOOK).
-            existing = await c.fetchrow(
-                f"SELECT {_SELECT_COLS} FROM motif "
-                "WHERE owner_user_id = $1 AND source = 'adopted' AND source_ref = $2 "
-                "AND book_id IS NOT DISTINCT FROM $3 "
-                "ORDER BY created_at LIMIT 1",
-                caller_id, lineage, book_id,
-            )
+            # Idempotency (MD-6(a)): an existing adopt of the SAME source already in the SAME tier →
+            # return it, no duplicate.
+            #  • SHARED tier: keyed on (book_shared, book_id, source_ref) with NO owner filter — one
+            #    shared clone of a source per book, whichever grantee adopts first wins.
+            #  • Model-A / global: keyed on (owner, source_ref, book_id) — per-user, per-book.
+            if book_shared:
+                existing = await c.fetchrow(
+                    f"SELECT {_SELECT_COLS} FROM motif "
+                    "WHERE book_shared AND book_id = $1 AND source = 'adopted' AND source_ref = $2 "
+                    "ORDER BY created_at LIMIT 1",
+                    book_id, lineage,
+                )
+            else:
+                existing = await c.fetchrow(
+                    f"SELECT {_SELECT_COLS} FROM motif "
+                    "WHERE owner_user_id = $1 AND source = 'adopted' AND source_ref = $2 "
+                    "AND book_id IS NOT DISTINCT FROM $3 AND NOT book_shared "
+                    "ORDER BY created_at LIMIT 1",
+                    caller_id, lineage, book_id,
+                )
             if existing is not None:
                 return _row_to_motif(existing), False
-            # Fresh adopt: try the source code, suffix deterministically on a
-            # per-(owner, code, language) collision. Bounded retry — a degenerate
-            # tier saturated on every suffix raises out (router maps to 409).
+            # Fresh adopt: try the source code, suffix deterministically on a code collision
+            # (per-owner for the global/model-A tier, per-book for the shared tier). Bounded retry —
+            # a degenerate tier saturated on every suffix raises out (router maps to 409).
             for attempt in range(0, 50):
                 code = base_code if attempt == 0 else f"{base_code}-{attempt + 1}"
                 row = await self._clone_with_code(
-                    c, caller_id, src_motif_id, code, retag_genres, book_id=book_id,
+                    c, caller_id, src_motif_id, code, retag_genres,
+                    book_id=book_id, book_shared=book_shared,
                 )
                 if row is not None:
                     return _row_to_motif(row), True
@@ -572,6 +690,7 @@ class MotifRepo:
     async def _clone_with_code(
         self, c: asyncpg.Connection, caller_id: UUID, src_motif_id: UUID,
         code: str, retag_genres: list[str] | None, *, book_id: UUID | None = None,
+        book_shared: bool = False,
     ) -> asyncpg.Record | None:
         """One adopt INSERT...SELECT under an already-open connection/txn (the
         advisory lock is held by the caller). Column-enumerated copy (glossary
@@ -599,13 +718,13 @@ class MotifRepo:
                 return await c.fetchrow(
                     f"""
                     INSERT INTO motif
-                      (owner_user_id, book_id, code, language, visibility, kind, category, name,
+                      (owner_user_id, book_id, book_shared, code, language, visibility, kind, category, name,
                        summary, genre_tags, roles, beats, preconditions, effects,
                        info_asymmetry, annotations, tension_target, emotion_target,
                        examples, abstraction_confidence, source, imported_derived,
                        source_ref, source_version,
                        embedding, embedding_model, embedding_dim, embedded_summary_hash)
-                    VALUES ($1,$26,$2,$3,'private',$4,$5,$6,$7,$8,
+                    VALUES ($1,$26,$27,$2,$3,'private',$4,$5,$6,$7,$8,
                             $9::jsonb,$10::jsonb,$11::jsonb,$12::jsonb,$13::jsonb,$14::jsonb,
                             $15,$16,$17::jsonb,$18,'adopted',$25,$19,$20,
                             $21,$22,$23,$24)
@@ -619,12 +738,15 @@ class MotifRepo:
                     s["tension_target"], s["emotion_target"], _passthru_jsonb(s["examples"]),
                     s["abstraction_confidence"], f"lineage:{src_motif_id}", s["version"],
                     s["embedding"], s["embedding_model"], s["embedding_dim"],
-                    s["embedded_summary_hash"], tainted, book_id,
+                    s["embedded_summary_hash"], tainted, book_id, book_shared,
                 )
         except asyncpg.UniqueViolationError as exc:
-            # A per-owner code collision (global uq_motif_user OR the per-book
-            # uq_motif_user_book) is the "retry with a suffix" condition.
-            if getattr(exc, "constraint_name", "") in ("uq_motif_user", "uq_motif_user_book"):
+            # A code collision in the target tier — global uq_motif_user, model-A
+            # uq_motif_user_book, OR the shared uq_motif_book_shared — is the "retry with a
+            # suffix" condition.
+            if getattr(exc, "constraint_name", "") in (
+                "uq_motif_user", "uq_motif_user_book", "uq_motif_book_shared",
+            ):
                 return None
             raise
 

@@ -517,12 +517,17 @@ async def _execute_motif_adopt(
     retag = payload.get("retag_genres")
     if retag is not None and not isinstance(retag, list):
         raise HTTPException(status_code=400, detail={"code": "action_error"})
-    # D-MOTIF-ADOPT-PER-BOOK: the per-book label (the dispatch already re-gated EDIT on it).
+    # D-MOTIF-ADOPT-PER-BOOK / -BOOK-COLLAB-TIER: the per-book label or shared-tier flag (the
+    # dispatch already re-gated EDIT on the book when book_id is present).
     book_label = payload.get("book_id")
+    book_shared = bool(payload.get("book_shared"))
     try:
         book_uuid = UUID(str(book_label)) if book_label else None
     except (ValueError, TypeError) as exc:
         raise HTTPException(status_code=400, detail={"code": "action_error"}) from exc
+    # book_shared MUST carry a book — a shared clone without a (gated) book is a tenancy defect.
+    if book_shared and book_uuid is None:
+        raise HTTPException(status_code=400, detail={"code": "action_error"})
 
     # Replay guard FIRST (a replayed adopt past the quota would double-add).
     await _claim_or_replay(token, claims)
@@ -546,7 +551,7 @@ async def _execute_motif_adopt(
     try:
         clone = await repo.clone(
             envelope_user, motif_id, target_owner=envelope_user, retag_genres=retag,
-            book_id=book_uuid,
+            book_id=book_uuid, book_shared=book_shared,
         )
     except LookupError as exc:
         raise HTTPException(status_code=400, detail={"code": "action_error"}) from exc
@@ -582,6 +587,10 @@ async def _execute_motif_mine(
             "book_id": payload.get("book_id"),
             "min_support": payload.get("min_support"),
             "promote_to": payload.get("promote_to"),
+            # D-MOTIF-ADOPT-BOOK-COLLAB-TIER: mined drafts may land in the book's SHARED tier.
+            # The mine proposal already EDIT-gated the book (scope='book'); the mine-dispatch
+            # below re-checks that BOOK grant at confirm, so a shared promote stays gated.
+            "promote_target": payload.get("promote_target"),
             "language": payload.get("language"),
             # BYOK abstraction/judge model rides through (provider-gateway invariant); the
             # worker fails closed if neither this nor the platform fallback resolves a ref.

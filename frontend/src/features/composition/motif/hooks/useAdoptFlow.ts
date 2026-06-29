@@ -29,10 +29,11 @@ export function useAdoptFlow(token: string | null, bookId?: string | null) {
   const [motifId, setMotifId] = useState<string | null>(null);
   const [estimate, setEstimate] = useState<CostEstimate | null>(null);
   const [quota, setQuota] = useState<QuotaError | null>(null);
-  // The adopt destination — the user's global library, or (when a bookId is in context)
-  // this book's library (D-MOTIF-ADOPT-PER-BOOK). Chosen BEFORE mint (the target is baked
-  // into the minted confirm token). Resets to 'user' on each begin().
-  const [target, setTarget] = useState<'user' | 'book'>('user');
+  // The adopt destination — the user's global library, or (when a bookId is in context) this
+  // book's PRIVATE label (D-MOTIF-ADOPT-PER-BOOK, model A) or its SHARED tier (model B,
+  // D-MOTIF-ADOPT-BOOK-COLLAB-TIER — visible to collaborators). Chosen BEFORE mint (the target
+  // is baked into the minted confirm token). Resets to 'user' on each begin().
+  const [target, setTarget] = useState<'user' | 'book' | 'book_shared'>('user');
   const canTargetBook = !!bookId;
 
   // Step 1: open the adopt confirm for a motif (no spend yet).
@@ -44,11 +45,15 @@ export function useAdoptFlow(token: string | null, bookId?: string | null) {
   };
   const cancel = () => { setMotifId(null); setEstimate(null); setQuota(null); setTarget('user'); };
 
-  // Step 2: mint the confirm token (the propose; no $ — adopt is quota-gated). A 'book'
-  // target labels the clone for the in-context book; 'user' (or no bookId) stays global.
+  // Step 2: mint the confirm token (the propose; no $ — adopt is quota-gated). 'book' labels a
+  // private per-user copy; 'book_shared' adopts into the book's shared tier; 'user' (or no
+  // bookId) stays global.
   const mint = useMutation({
     mutationFn: () => motifApi.adoptEstimate(
-      motifId!, token!, target === 'book' && bookId ? { bookId } : undefined,
+      motifId!, token!,
+      (target === 'book' || target === 'book_shared') && bookId
+        ? { bookId, shared: target === 'book_shared' }
+        : undefined,
     ),
     onSuccess: (est) => { setEstimate(est); setQuota(null); },
     onError: (err) => { setQuota(readQuota(err)); },

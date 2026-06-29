@@ -69,14 +69,17 @@ class _FakeMotifRepo:
 
     async def create(self, user_id, args, *, source="authored",
                      imported_derived=False, status="active",
-                     judge_score=None, mining_support=None):
+                     judge_score=None, mining_support=None,
+                     book_id=None, book_shared=False):
         self.created.append({
             "args": args, "source": source, "status": status,
             "judge_score": judge_score, "mining_support": mining_support,
+            "book_id": book_id, "book_shared": book_shared,
         })
         return Motif(id=uuid.uuid4(), owner_user_id=user_id, code=args.code,
                      name=args.name, source=source, status=status,
-                     judge_score=judge_score, mining_support=mining_support)
+                     judge_score=judge_score, mining_support=mining_support,
+                     book_id=book_id, book_shared=book_shared)
 
     async def list_for_caller(self, caller_id, *, scope="all", status="active",
                               limit=100, **kw):

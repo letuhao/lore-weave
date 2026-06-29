@@ -537,8 +537,9 @@ _MOTIF_SCHEMA_SQL = """
 -- fixed platform id, NOT a per-row/per-user choice — R1.1.2/B-1).
 CREATE TABLE IF NOT EXISTS motif (
   id              UUID PRIMARY KEY DEFAULT uuidv7(),
-  owner_user_id   UUID,                                   -- NULL = system (seed/migrate-only)
+  owner_user_id   UUID,                                   -- NULL = system (seed/migrate-only); else the creator (attribution + the tenancy backstop)
   book_id         UUID,                                   -- per-book label (D-MOTIF-ADOPT-PER-BOOK); NULL = global user/system tier
+  book_shared     BOOLEAN NOT NULL DEFAULT false,         -- D-MOTIF-ADOPT-BOOK-COLLAB-TIER (model B): true = the book's SHARED tier (visible to the book's VIEW-grantees, writable by EDIT-grantees, access = the book grant resolved at the caller — owner is attribution only); false = model-A private label / global / system
   code            TEXT NOT NULL,
   language        TEXT NOT NULL DEFAULT 'en',             -- part of the dedup/embed key (R1.1.3)
   visibility      TEXT NOT NULL DEFAULT 'private'
@@ -586,8 +587,19 @@ CREATE TABLE IF NOT EXISTS motif (
   -- B-2: a both-NULL (system) row must be a published/system row, never a private
   -- orphan. The user-write path additionally server-stamps owner_user_id (app code);
   -- this CHECK is the DB backstop that a private row ALWAYS has an owner.
-  CONSTRAINT motif_user_owned CHECK (owner_user_id IS NOT NULL OR visibility <> 'private')
+  CONSTRAINT motif_user_owned CHECK (owner_user_id IS NOT NULL OR visibility <> 'private'),
+  -- D-MOTIF-ADOPT-BOOK-COLLAB-TIER: a SHARED row must carry a book + a creator (owner) AND stay
+  -- private — the public-catalog axis (visibility='public') and the shared-tier axis (book_shared)
+  -- are ORTHOGONAL, so a shared row can NEVER leak into global public discovery.
+  CONSTRAINT motif_book_shared_shape CHECK (
+    NOT book_shared OR (book_id IS NOT NULL AND owner_user_id IS NOT NULL AND visibility = 'private')
+  )
 );
+-- On an EXISTING model-A DB the CREATE TABLE above is a no-op, so the partials below that
+-- reference book_shared (D-MOTIF-ADOPT-BOOK-COLLAB-TIER) would fail — add the column FIRST here
+-- (idempotent; a no-op on a fresh DB where CREATE TABLE already declared it). The shape CHECK +
+-- the model-A re-narrow live in the ALTER block lower down (guarded for existing DBs).
+ALTER TABLE motif ADD COLUMN IF NOT EXISTS book_shared BOOLEAN NOT NULL DEFAULT false;
 -- tenancy partials keyed incl. language (R1.1.3). A user's GLOBAL tier (book_id NULL) and
 -- PER-BOOK labels (book_id set, D-MOTIF-ADOPT-PER-BOOK = model A book-scoped filter) dedup
 -- INDEPENDENTLY, so the same source may be adopted globally AND into a book without a false
@@ -595,12 +607,18 @@ CREATE TABLE IF NOT EXISTS motif (
 -- predicate is UNCHANGED — book_id only narrows what the OWNER sees, never widens visibility.
 CREATE UNIQUE INDEX IF NOT EXISTS uq_motif_user
   ON motif(owner_user_id, code, language) WHERE owner_user_id IS NOT NULL AND book_id IS NULL;
+-- model-A private book label: per-(owner,book) dedup, scoped to NOT shared. The SHARED tier
+-- (book_shared) dedups per-BOOK instead (uq_motif_book_shared) — one code+language per book
+-- across ALL collaborators, so two grantees can't fork the same shared code.
 CREATE UNIQUE INDEX IF NOT EXISTS uq_motif_user_book
-  ON motif(owner_user_id, book_id, code, language) WHERE book_id IS NOT NULL;
+  ON motif(owner_user_id, book_id, code, language) WHERE book_id IS NOT NULL AND NOT book_shared;
+CREATE UNIQUE INDEX IF NOT EXISTS uq_motif_book_shared
+  ON motif(book_id, code, language) WHERE book_shared;
 CREATE UNIQUE INDEX IF NOT EXISTS uq_motif_system
   ON motif(code, language)                WHERE owner_user_id IS NULL;
 CREATE INDEX IF NOT EXISTS idx_motif_owner  ON motif(owner_user_id) WHERE owner_user_id IS NOT NULL;
 CREATE INDEX IF NOT EXISTS idx_motif_book   ON motif(book_id)        WHERE book_id IS NOT NULL;
+CREATE INDEX IF NOT EXISTS idx_motif_book_shared ON motif(book_id)   WHERE book_shared;
 CREATE INDEX IF NOT EXISTS idx_motif_public ON motif(visibility, updated_at DESC) WHERE visibility = 'public';
 CREATE INDEX IF NOT EXISTS idx_motif_genre  ON motif USING GIN (genre_tags);
 -- retrieval pre-filter (genre ∩ + status + tier predicate) runs in SQL BEFORE loading
@@ -841,6 +859,30 @@ END $$;
 CREATE UNIQUE INDEX IF NOT EXISTS uq_motif_user_book
   ON motif(owner_user_id, book_id, code, language) WHERE book_id IS NOT NULL;
 CREATE INDEX IF NOT EXISTS idx_motif_book ON motif(book_id) WHERE book_id IS NOT NULL;
+-- D-MOTIF-ADOPT-BOOK-COLLAB-TIER (model B): the shared-tier marker + its per-book dedup, the
+-- orthogonality CHECK, and the re-narrowed model-A partial — all additive for an existing motif.
+ALTER TABLE motif ADD COLUMN IF NOT EXISTS book_shared BOOLEAN NOT NULL DEFAULT false;
+DO $$
+BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'motif_book_shared_shape') THEN
+    ALTER TABLE motif ADD CONSTRAINT motif_book_shared_shape CHECK (
+      NOT book_shared OR (book_id IS NOT NULL AND owner_user_id IS NOT NULL AND visibility = 'private')
+    );
+  END IF;
+  -- the model-A partial pre-dates book_shared (its predicate lacks the column) — recreate once so
+  -- a shared row and a model-A label of the same (owner,book,code) don't collide on it.
+  IF EXISTS (
+    SELECT 1 FROM pg_indexes
+    WHERE indexname = 'uq_motif_user_book' AND indexdef NOT LIKE '%book_shared%'
+  ) THEN
+    DROP INDEX uq_motif_user_book;
+    CREATE UNIQUE INDEX uq_motif_user_book
+      ON motif(owner_user_id, book_id, code, language) WHERE book_id IS NOT NULL AND NOT book_shared;
+  END IF;
+END $$;
+CREATE UNIQUE INDEX IF NOT EXISTS uq_motif_book_shared
+  ON motif(book_id, code, language) WHERE book_shared;
+CREATE INDEX IF NOT EXISTS idx_motif_book_shared ON motif(book_id) WHERE book_shared;
 CREATE OR REPLACE FUNCTION arc_template_publish_strip() RETURNS trigger AS $$
 BEGIN
   IF NEW.visibility IN ('public','unlisted')

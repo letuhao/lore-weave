@@ -1,4 +1,18 @@
-# ▶▶ NEXT SESSION STARTS HERE — **Motif library COMPLETE — audit 7/7 closed (WI-1…WI-6)** · branch `feat/narrative-pattern-library` · HEAD `04bab448`+ · 2026-06-29
+# ▶▶ NEXT SESSION STARTS HERE — **Motif book-collaboration tier (model B) + HTTP adopt-to-book SHIPPED** · branch `feat/narrative-pattern-library` · HEAD `5d86b7cc`+ · 2026-06-29
+
+> **▶ Shipped this session — the two NEW future-feature rows (now CLOSED):**
+> - **`D-MOTIF-ADOPT-BOOK-COLLAB-TIER` (model B) — a THIRD tenancy tier (the book SHARED library).** Spec: [docs/specs/2026-06-29-motif-book-collab-tier.md](../specs/2026-06-29-motif-book-collab-tier.md). A `motif.book_shared=true` row is owned by its creator (attribution) but VISIBLE to the book's VIEW-grantees and WRITABLE by its EDIT-grantees — access is the **book grant resolved at the caller**, never row ownership. User decisions (this session): **context-scoped reads** (per-book gate, no global "all my books"), **any-EDIT-grantee writes** (edit + archive), **adopt + create + mine** all produce shared rows. The base read predicate is **UNCHANGED** (a foreign shared row is fail-closed invisible to get_visible/list_for_caller/catalog/get_by_codes); shared rows surface ONLY through the gated book-context methods. Touch-points: schema (`book_shared` col + `motif_book_shared_shape` CHECK [shared ⇒ book+owner+private, the public-catalog-orthogonality guard] + per-book `uq_motif_book_shared` + re-narrowed `uq_motif_user_book WHERE …AND NOT book_shared`); repo (`clone/adopt/create/_clone_with_code` thread book_shared; new `list_in_book/get_in_book/patch_shared/archive_shared`; adopt locks per-BOOK + dedups per-(book,code) for the shared tier); MCP (`adopt target=book_shared`, `create target=book_shared`, `mine promote_target=book_shared`, `archive book_id=`, new `composition_motif_book_list`); confirm dispatch (`book_shared` rides the payload, re-gated EDIT); FE (3rd adopt target "Share with collaborators" + `Shared` badge).
+> - **`D-MOTIF-HTTP-ADOPT-BOOK` — HTTP parity.** `POST /motifs/{id}/adopt` now takes `target=user|book|book_shared`+`book_id`, **EDIT-gated before the clone** (no softer than MCP); `GET /motifs/book/{id}` (VIEW-gated list); `PATCH`/`DELETE …?book_id=` (EDIT-gated shared edit/archive, visibility-flip refused 400). A book-shared pattern root does NOT auto-adopt its members (the half-shared-pattern guard).
+>
+> **VERIFY:** 90 motif unit tests + new repo/mcp/router cases green; **integration (real PG)**: new `test_motif_book_shared_db.py` (shape CHECK, per-book dedup, list/get scoping, any-grantee patch/archive) + 32 existing motif DB tests pass on a throwaway DB; **migration live-smoked idempotent on the REAL existing model-A `loreweave_composition`** (added book_shared col + CHECK + uq_motif_book_shared + re-narrowed uq_motif_user_book; two runs, no error). FE 152 motif tests + tsc + provider-gate clean. **`/review-impl` adversarial tenancy review: 0 HIGH / 0 MED** — all 9 read/write/leak/confirm/dedup checks PASS with file:line evidence; 3 LOW/COSMETIC notes (deferred below).
+>
+> **▶ Deferred (NEW, from the model-B review — small follow-ups, NOT gaps):**
+> - **`D-MOTIF-LINK-SHARED-TIER`** (gate #2): cross-grantee shared-graph link editing. The `motif_link_guard` same-tier check (`from_owner IS DISTINCT FROM to_owner`) currently REJECTS a link between two grantees' shared rows (fail-closed, safe) — a single user's own shared rows can link. Full shared-tier linking needs the guard to compare `book_id` for shared rows + `list_links/successors_by_ids` to add a book-grant gate.
+> - **`D-MOTIF-MCP-PATCH-SHARED`** (gate #5, minor): no MCP `patch` tool for the shared tier (spec §4.1 mentioned an optional `book_id` on a patch tool that doesn't exist yet). Shared edits go via HTTP `PATCH /motifs/{id}?book_id=` (the FE editor's path); wire an MCP edit tool only if an agent needs to edit shared motifs.
+>
+> ---
+>
+> # ▶▶ (prior) **Motif library COMPLETE — audit 7/7 closed (WI-1…WI-6)** · HEAD `04bab448`+ · 2026-06-29
 
 > **What this branch is:** the narrative-pattern (motif/arc) library — Tier-W cost-gated MCP flows for mining, conformance, adopt, and 3-way publish-sync, fronted by the FE→MCP-tool bridge. The feature body landed across prior sessions; this session closed the **completeness-audit tail** AND shipped **WI-5 per-book adopt**.
 >
@@ -11,9 +25,9 @@
 >
 > **▶ NEXT:** **PR `feat/narrative-pattern-library` → main** — the feature body + audit tail + WI-5 are complete, green, and live-smoked. (Note: the WI-5 migration was applied to the *running* dev `loreweave_composition` by the live-smoke; a fresh stack picks it up from `migrate.py` on boot.)
 >
-> **▶ Deferred (motif — the §5 audit tail is 7/7 CLOSED; these are NEW future-feature rows, not audit gaps):**
-> - **`D-MOTIF-ADOPT-BOOK-COLLAB-TIER`** — gate #2 (large/structural): model B, a true book-collaboration tenancy tier (visible/writable to all the book's E0 grantees, grant-resolution in the read predicate + mandatory adversarial tenancy review). Only if multi-collaborator shared book motif libraries are wanted. Model A (shipped) covers the per-user case.
-> - **`D-MOTIF-HTTP-ADOPT-BOOK`** (minor) — gate #5 (conscious defer): the HTTP `POST /motifs/{id}/adopt` route stays user-only (the FE uses the MCP bridge); the repo supports `book_id` but the HTTP route doesn't expose it. Wire only if a non-MCP client needs book-targeted adopt.
+> **▶ Deferred (motif — the §5 audit tail is 7/7 CLOSED; these were NEW future-feature rows):**
+> - ✅ **`D-MOTIF-ADOPT-BOOK-COLLAB-TIER`** — **CLEARED (2026-06-29):** model B shipped (see the top block). The shared book tier landed with a 0-HIGH/0-MED adversarial tenancy review.
+> - ✅ **`D-MOTIF-HTTP-ADOPT-BOOK`** — **CLEARED (2026-06-29):** the HTTP adopt route exposes `target`+`book_id`, EDIT-gated (see the top block).
 
 ---
 

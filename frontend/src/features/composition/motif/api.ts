@@ -90,11 +90,19 @@ export const motifApi = {
   //    filter — the clone is still owner-stamped, only book_id-tagged so it surfaces
   //    under that book's library, EDIT-gated on the book). Quota-gated, not metered.
   /** Step 1: PROPOSE the adopt → a confirm token (+ a preview). No clone yet.
-   *  Pass `opts.bookId` to label the clone for that book (target='book'). */
-  async adoptEstimate(motifId: string, token: string, opts?: { bookId?: string | null }): Promise<CostEstimate> {
+   *  Pass `opts.bookId` to tie the clone to that book: `opts.shared=false` (default) labels a
+   *  PRIVATE per-user copy (target='book', model A); `opts.shared=true` adopts into the book's
+   *  SHARED tier (target='book_shared', D-MOTIF-ADOPT-BOOK-COLLAB-TIER) — visible to + editable by
+   *  the book's collaborators. Both require EDIT on the book (gated server-side). */
+  async adoptEstimate(
+    motifId: string, token: string, opts?: { bookId?: string | null; shared?: boolean },
+  ): Promise<CostEstimate> {
+    const bookArgs = opts?.bookId
+      ? { target: opts.shared ? 'book_shared' : 'book', book_id: opts.bookId }
+      : {};
     const res = await mcpExecute<_McpProposeResult>(
       'composition_motif_adopt',
-      { args: { motif_id: motifId, ...(opts?.bookId ? { target: 'book', book_id: opts.bookId } : {}) } },
+      { args: { motif_id: motifId, ...bookArgs } },
       token,
     );
     return {

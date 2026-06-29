@@ -375,6 +375,7 @@ class Motif(BaseModel):
     id: UUID
     owner_user_id: UUID | None = None              # NULL = system tier
     book_id: UUID | None = None                    # per-book label (D-MOTIF-ADOPT-PER-BOOK); NULL = global/system. Owner's full dump only — NOT in the public/non-owner projections.
+    book_shared: bool = False                      # D-MOTIF-ADOPT-BOOK-COLLAB-TIER (model B): true = the book's SHARED tier (book-grant gated). Owner full dump only — never on the public catalog allow-list.
     code: _Code
     language: _Lang = "en"
     visibility: MotifVisibility = "private"

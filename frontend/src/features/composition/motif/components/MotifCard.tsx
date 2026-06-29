@@ -63,6 +63,16 @@ export function MotifCard({ motif, meUserId, onOpen, onAdopt, onPromote, onDisca
                 {t('motif.card.draft', { defaultValue: 'Mined draft' })}
               </span>
             )}
+            {/* D-MOTIF-ADOPT-BOOK-COLLAB-TIER: a shared book-tier motif is editable by the book's
+                collaborators — badge it so it reads differently from a private library row. */}
+            {motif.book_shared && (
+              <span
+                data-testid={`motif-card-shared-${motif.id}`}
+                className="rounded bg-sky-100 px-1.5 py-0.5 text-[10px] font-medium text-sky-700 dark:bg-sky-950/40 dark:text-sky-300"
+              >
+                {t('motif.card.shared', { defaultValue: 'Shared' })}
+              </span>
+            )}
           </div>
         </div>
         {/* tension — NUMBER + spark bar (never hue alone) */}

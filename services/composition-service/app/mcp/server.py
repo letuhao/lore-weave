@@ -1155,6 +1155,60 @@ async def composition_motif_get(
     return _motif_view(motif, tc.user_id)
 
 
+def _motif_book_view(motif: Any, caller_id: UUID) -> dict[str, Any]:
+    """Projection for the book-context library (D-MOTIF-ADOPT-BOOK-COLLAB-TIER). The caller is a
+    VIEW-grantee of the book. Own rows → full dump. A SHARED row owned by another collaborator →
+    the B-3 allow-list (roles/beats/etc — enough to read + edit) PLUS book_id + book_shared (so the
+    FE can badge it + route an edit through the shared path), but NEVER embedding/examples/owner."""
+    if motif.owner_user_id is not None and motif.owner_user_id == caller_id:
+        return motif.model_dump(mode="json")
+    proj = _motif_public_projection(motif)
+    proj["book_id"] = str(motif.book_id) if motif.book_id else None
+    proj["book_shared"] = bool(motif.book_shared)
+    return proj
+
+
+@mcp_server.tool(
+    name="composition_motif_book_list",
+    description=(
+        "List the motifs available IN a book: your own library motifs plus the book's SHARED "
+        "tier — motifs collaborators adopted/authored into THIS book that everyone with access "
+        "can see and (with EDIT) edit. VIEW on the book required. Shared rows are badged "
+        "book_shared=true. Use composition_motif_adopt target='book_shared' to add one."
+    ),
+    meta=require_meta(
+        "R", "book",
+        synonyms=["book motifs", "shared motifs", "this book's tropes", "collaborator motifs",
+                  "book motif library", "shared library"],
+        tool_name="composition_motif_book_list",
+    ),
+)
+async def composition_motif_book_list(
+    ctx: MCPContext,
+    book_id: Annotated[str, "The book whose motif library to list (you need VIEW on it)."],
+    genre: Annotated[str | None, "Filter by genre tag."] = None,
+    kind: Annotated[_MotifKind | None, "Filter by motif kind."] = None,
+    q: Annotated[str | None, "Free-text filter on name/summary."] = None,
+    status: Annotated[Literal["draft", "active", "archived"] | None, "Status filter."] = "active",
+    language: Annotated[str | None, "Language filter."] = None,
+    limit: Annotated[int, "Max rows."] = 50,
+) -> dict:
+    tc = _ctx(ctx)
+    bid = UUID(book_id)
+    # VIEW-gate the book — the grant IS the access control for the shared tier (read).
+    await _gate(tc, bid, GrantLevel.VIEW)
+    repo = MotifRepo(get_pool())
+    motifs = await repo.list_in_book(
+        tc.user_id, bid, genre=genre, kind=kind, status=status, q=q,
+        language=language, limit=limit,
+    )
+    return {
+        "motifs": [_motif_book_view(m, tc.user_id) for m in motifs],
+        "count": len(motifs),
+        "book_id": book_id,
+    }
+
+
 @mcp_server.tool(
     name="composition_motif_suggest_for_chapter",
     description=(
@@ -1269,9 +1323,12 @@ def _arc_public_projection(arc: Any) -> dict[str, Any]:
 
 
 class _MotifCreateArgs(ForbidExtra):
-    # target='user' ONLY (R2.8): the Book tier is gone (R1.1) and a system/both-NULL
-    # row is migrate/seed-only — the closed Literal makes them UNCONSTRUCTIBLE here.
-    target: Literal["user"] = "user"
+    # target='user'        — your private library (owner-stamped, the default).
+    # target='book_shared' — author straight into a book's SHARED tier
+    #                        (D-MOTIF-ADOPT-BOOK-COLLAB-TIER); requires book_id + EDIT on the book.
+    # A system/both-NULL row stays migrate/seed-only (no Literal admits it).
+    target: Literal["user", "book_shared"] = "user"
+    book_id: str | None = None
     code: str
     name: str
     language: str = "en"
@@ -1311,6 +1368,16 @@ async def composition_motif_create(ctx: MCPContext, args: _MotifCreateArgs) -> d
     # Owner-stamp: MotifRepo.create stamps owner_user_id = tc.user_id unconditionally
     # (there is NO owner arg) and the DB motif_user_owned CHECK rejects a both-NULL
     # write — the envelope user is the owner, no arg can override it (audit B-2/S2).
+    # target='book_shared': author straight into a book's SHARED tier — EDIT-gate the book first
+    # (the cross-tenant write is safe only behind the grant). A shared row is forced private (the
+    # visibility arg is ignored for shared — the CHECK motif_book_shared_shape requires private).
+    book_id: UUID | None = None
+    book_shared = args.target == "book_shared"
+    if book_shared:
+        if not args.book_id:
+            return {"success": False, "error": "book_id is required when target='book_shared'"}
+        book_id = UUID(args.book_id)
+        await _gate(tc, book_id, GrantLevel.EDIT)
     from app.db.models import MotifCreateArgs as _RepoCreateArgs
     try:
         create_args = _RepoCreateArgs(
@@ -1318,12 +1385,14 @@ async def composition_motif_create(ctx: MCPContext, args: _MotifCreateArgs) -> d
             summary=args.summary, genre_tags=args.genre_tags, roles=args.roles,
             beats=args.beats, preconditions=args.preconditions, effects=args.effects,
             tension_target=args.tension_target, emotion_target=args.emotion_target,
-            examples=args.examples, visibility=args.visibility,
+            examples=args.examples, visibility="private" if book_shared else args.visibility,
         )
     except (ValueError, TypeError) as exc:  # pydantic ValidationError ⊂ ValueError
         return {"success": False, "error": "invalid motif fields", "detail": str(exc)[:300]}
     try:
-        motif = await repo.create(tc.user_id, create_args)
+        motif = await repo.create(
+            tc.user_id, create_args, book_id=book_id, book_shared=book_shared,
+        )
     except asyncpg.UniqueViolationError:
         return {
             "success": False, "outcome": "applied_conflict",
@@ -1351,11 +1420,26 @@ async def composition_motif_create(ctx: MCPContext, args: _MotifCreateArgs) -> d
 )
 async def composition_motif_archive(
     ctx: MCPContext,
-    motif_id: Annotated[str, "The motif to archive (must be yours)."],
+    motif_id: Annotated[str, "The motif to archive."],
+    book_id: Annotated[
+        str | None,
+        "Set ONLY to archive a SHARED book-tier motif — requires EDIT on that book; any "
+        "EDIT-grantee may archive a shared row. Omit for one of YOUR OWN motifs.",
+    ] = None,
 ) -> dict:
     tc = _ctx(ctx)
     repo = MotifRepo(get_pool())
     mid = UUID(motif_id)
+    if book_id is not None:
+        # SHARED tier (D-MOTIF-ADOPT-BOOK-COLLAB-TIER): access is the book grant, not ownership.
+        # EDIT-gate the book, confirm the target is a shared row IN this book (else H13), archive.
+        bid = UUID(book_id)
+        await _gate(tc, bid, GrantLevel.EDIT)
+        target = await repo.get_in_book(tc.user_id, mid, bid)
+        if target is None or not target.book_shared or target.book_id != bid:
+            raise uniform_not_accessible()
+        await repo.archive_shared(tc.user_id, mid, bid)
+        return {"motif_id": motif_id, "archived": True, "_meta": {"undo_hint": None}}
     # USER scope: you may only archive YOUR OWN motif. The owner-resolver raises the
     # uniform deny for a missing/foreign/system row before any write.
     guard = require_user_scope(_motif_owner_resolver(repo))
@@ -1633,11 +1717,13 @@ async def composition_motif_unbind(
 
 class _MotifAdoptArgs(ForbidExtra):
     motif_id: str
-    # target="book" labels the clone with book_id so it surfaces under that book's library
-    # (D-MOTIF-ADOPT-PER-BOOK = model A book-scoped filter). The clone is STILL owner-stamped
-    # = the caller (the read predicate is unchanged — book_id only narrows what the owner
-    # sees, never widens visibility). book_id is required iff target="book".
-    target: Literal["user", "book"] = "user"
+    # target="book"        — model A: a PRIVATE per-user label (D-MOTIF-ADOPT-PER-BOOK). The clone
+    #                        is owner-stamped = the caller; book_id only narrows what the owner sees.
+    # target="book_shared" — model B: the book's SHARED tier (D-MOTIF-ADOPT-BOOK-COLLAB-TIER) — the
+    #                        clone is visible to the book's VIEW-grantees + writable by EDIT-grantees.
+    # Both require book_id AND EDIT on the book (gated at propose + re-gated at confirm). target="user"
+    # is the plain private library (no book context).
+    target: Literal["user", "book", "book_shared"] = "user"
     book_id: str | None = None
     retag_genres: list[str] | None = None
 
@@ -1667,19 +1753,23 @@ async def composition_motif_adopt(ctx: MCPContext, args: _MotifAdoptArgs) -> dic
     motif = await repo.get_visible(tc.user_id, mid)
     if motif is None:
         raise uniform_not_accessible()
-    # target="book": the clone is LABELLED with book_id (D-MOTIF-ADOPT-PER-BOOK). You may
-    # only adopt INTO a book you can EDIT — gate it now and re-gate at confirm (a grant
-    # revoked between propose and confirm stops the clone, mirroring motif_mine scope=book).
+    # target="book"/"book_shared": the clone is tied to a book (D-MOTIF-ADOPT-PER-BOOK /
+    # D-MOTIF-ADOPT-BOOK-COLLAB-TIER). You may only adopt INTO a book you can EDIT — gate it now
+    # and re-gate at confirm (a grant revoked between propose and confirm stops the clone,
+    # mirroring motif_mine scope=book).
     book_id: str | None = None
-    if args.target == "book":
+    book_shared = args.target == "book_shared"
+    if args.target in ("book", "book_shared"):
         if not args.book_id:
-            return {"success": False, "error": "book_id is required when target='book'"}
+            return {"success": False,
+                    "error": f"book_id is required when target='{args.target}'"}
         await _gate(tc, UUID(args.book_id), GrantLevel.EDIT)
         book_id = args.book_id
     payload = {
         "motif_id": args.motif_id,
         "retag_genres": args.retag_genres,
         "book_id": book_id,
+        "book_shared": book_shared,
     }
     confirm_token = mint_confirm_token(
         settings.confirm_token_signing_secret,
@@ -1694,7 +1784,7 @@ async def composition_motif_adopt(ctx: MCPContext, args: _MotifAdoptArgs) -> dic
             "source_name": motif.name,
             "will_clone": True,
             "retag_to": args.retag_genres or list(motif.genre_tags),
-            "into": "book" if book_id else "user",
+            "into": "book_shared" if book_shared else ("book" if book_id else "user"),
         },
     }
 
@@ -1704,6 +1794,10 @@ class _MotifMineArgs(ForbidExtra):
     book_id: str | None = None
     min_support: int = 2
     promote_to: Literal["draft"] = "draft"
+    # promote_target='book_shared' lands the mined drafts in the book's SHARED tier
+    # (D-MOTIF-ADOPT-BOOK-COLLAB-TIER) instead of your private library — valid ONLY with
+    # scope='book' (a corpus mine has no single book). 'user' = your private drafts (default).
+    promote_target: Literal["user", "book_shared"] = "user"
     language: str = "en"
     # The BYOK abstraction/judge model the worker runs (provider-gateway invariant: NO
     # platform model literal — the user picks it, same as conformance's deep overlay).
@@ -1736,6 +1830,10 @@ async def composition_motif_mine(ctx: MCPContext, args: _MotifMineArgs) -> dict:
             return {"success": False, "error": "book_id is required when scope='book'"}
         # BOOK(EDIT) gate on the named book (mining writes draft motifs informed by it).
         await _gate(tc, UUID(args.book_id), GrantLevel.EDIT)
+    # promote_target='book_shared' needs a single book to land in — reject it for a corpus mine.
+    if args.promote_target == "book_shared" and (args.scope != "book" or not args.book_id):
+        return {"success": False,
+                "error": "promote_target='book_shared' requires scope='book' with a book_id"}
     # MD-4: corpus mining has no single resource id → gated by envelope identity only;
     # the worker filters every read on user_id=caller + re-checks each book's grant.
     estimate = _mine_estimate(scope=args.scope)
@@ -1744,6 +1842,7 @@ async def composition_motif_mine(ctx: MCPContext, args: _MotifMineArgs) -> dict:
         "book_id": args.book_id,
         "min_support": args.min_support,
         "promote_to": args.promote_to,
+        "promote_target": args.promote_target,
         "language": args.language,
         # BYOK abstraction model rides through to the worker (provider-gateway invariant).
         "model_ref": args.model_ref,

@@ -48,6 +48,7 @@ MOTIF_TOOLS = {
     "composition_arc_import_analyze", "composition_conformance_run",
     "composition_motif_link_list", "composition_motif_link_create",
     "composition_motif_link_delete",
+    "composition_motif_book_list",
 }
 MOTIF_USER_SCOPE = {
     "composition_motif_search", "composition_motif_get",
@@ -67,6 +68,8 @@ def _motif(**kw):
     base = dict(
         id=kw.get("id", uuid.uuid4()),
         owner_user_id=kw.get("owner_user_id", TEST_USER),
+        book_id=kw.get("book_id"),
+        book_shared=kw.get("book_shared", False),
         code=kw.get("code", "cultivation.fortuitous_encounter"),
         name=kw.get("name", "Fortuitous Encounter"),
         language="en", visibility=kw.get("visibility", "private"),
@@ -526,6 +529,188 @@ async def test_adopt_target_book_denied_without_edit():
             )
 
 
+# ── D-MOTIF-ADOPT-BOOK-COLLAB-TIER (model B): the SHARED tier ──────────────────
+
+
+def test_adopt_target_enum_accepts_book_shared():
+    """Model B: adopt target opens to 'book_shared' (the shared book tier); book_id required."""
+    from app.mcp.server import _MotifAdoptArgs
+
+    _MotifAdoptArgs(motif_id="m", target="book_shared", book_id="b")
+    for bad in ("system", "public", "shared", "book-shared"):
+        with pytest.raises(Exception):
+            _MotifAdoptArgs(motif_id="m", target=bad)
+
+
+async def test_adopt_target_book_shared_requires_book_id():
+    """target='book_shared' without book_id is a clean refusal (no token)."""
+    import app.mcp.server as srv
+
+    motif = _motif(owner_user_id=OTHER_USER, visibility="public")
+    repo = AsyncMock()
+    repo.get_visible = AsyncMock(return_value=motif)
+    async with _patched(MotifRepo=repo):
+        res = await srv.composition_motif_adopt(
+            _Ctx(), srv._MotifAdoptArgs(motif_id=str(motif.id), target="book_shared"),
+        )
+    assert res["success"] is False and "book_id" in res["error"]
+
+
+async def test_adopt_target_book_shared_mints_flag_edit_gated():
+    """A shared adopt is EDIT-gated + rides book_shared=True + the book_id into the payload."""
+    import app.mcp.server as srv
+    from loreweave_mcp import verify_confirm_token
+    from app.config import settings
+
+    motif = _motif(owner_user_id=OTHER_USER, visibility="public")
+    repo = AsyncMock()
+    repo.get_visible = AsyncMock(return_value=motif)
+    async with _patched(grant_level=2, MotifRepo=repo):   # EDIT
+        res = await srv.composition_motif_adopt(
+            _Ctx(), srv._MotifAdoptArgs(motif_id=str(motif.id), target="book_shared", book_id=str(BOOK)),
+        )
+    assert res["preview"]["into"] == "book_shared"
+    claims = verify_confirm_token(settings.confirm_token_signing_secret, res["confirm_token"])
+    assert claims.payload["book_shared"] is True
+    assert claims.payload["book_id"] == str(BOOK)
+
+
+async def test_adopt_target_book_shared_denied_without_edit():
+    """A shared adopt INTO a book you cannot EDIT is the H13 uniform deny (no token)."""
+    import app.mcp.server as srv
+    from loreweave_mcp import NotAccessibleError
+
+    motif = _motif(owner_user_id=OTHER_USER, visibility="public")
+    repo = AsyncMock()
+    repo.get_visible = AsyncMock(return_value=motif)
+    async with _patched(grant_level=1, MotifRepo=repo):   # VIEW only
+        with pytest.raises(NotAccessibleError):
+            await srv.composition_motif_adopt(
+                _Ctx(), srv._MotifAdoptArgs(motif_id=str(motif.id), target="book_shared", book_id=str(BOOK)),
+            )
+
+
+def test_create_target_enum_accepts_book_shared():
+    """Model B: create target opens to 'book_shared' (author straight into the shared tier);
+    'book'/'system'/'public' stay unconstructible (no per-user-label create — that's adopt)."""
+    from app.mcp.server import _MotifCreateArgs
+
+    _MotifCreateArgs(target="book_shared", book_id="b", code="x", name="X")
+    for bad in ("book", "system", "public"):
+        with pytest.raises(Exception):
+            _MotifCreateArgs(target=bad, code="x", name="X")
+
+
+async def test_create_target_book_shared_requires_book_id():
+    """create target='book_shared' without book_id → clean refusal (no write)."""
+    import app.mcp.server as srv
+
+    repo = AsyncMock()
+    async with _patched(MotifRepo=repo):
+        res = await srv.composition_motif_create(
+            _Ctx(), srv._MotifCreateArgs(target="book_shared", code="x", name="X"),
+        )
+    assert res["success"] is False and "book_id" in res["error"]
+    repo.create.assert_not_awaited()
+
+
+async def test_create_target_book_shared_edit_gated_and_private():
+    """create target='book_shared' EDIT-gates the book and writes a SHARED, forced-private row."""
+    import app.mcp.server as srv
+
+    created = _motif(book_id=BOOK, book_shared=True)
+    repo = AsyncMock()
+    repo.create = AsyncMock(return_value=created)
+    async with _patched(grant_level=2, MotifRepo=repo):   # EDIT
+        res = await srv.composition_motif_create(
+            _Ctx(), srv._MotifCreateArgs(target="book_shared", book_id=str(BOOK),
+                                         code="x", name="X", visibility="unlisted"),
+        )
+    assert res["code"] == created.code
+    repo.create.assert_awaited_once()
+    kw = repo.create.await_args.kwargs
+    assert kw["book_shared"] is True and kw["book_id"] == BOOK
+    # the shared row is forced private regardless of the requested visibility (the CHECK demands it).
+    assert repo.create.await_args.args[1].visibility == "private"
+
+
+async def test_create_target_book_shared_denied_without_edit():
+    """Authoring INTO a book you can't EDIT is the H13 deny (no write)."""
+    import app.mcp.server as srv
+    from loreweave_mcp import NotAccessibleError
+
+    repo = AsyncMock()
+    async with _patched(grant_level=1, MotifRepo=repo):   # VIEW only
+        with pytest.raises(NotAccessibleError):
+            await srv.composition_motif_create(
+                _Ctx(), srv._MotifCreateArgs(target="book_shared", book_id=str(BOOK),
+                                             code="x", name="X"),
+            )
+    repo.create.assert_not_awaited()
+
+
+async def test_book_list_view_gated_and_projects():
+    """composition_motif_book_list VIEW-gates the book + returns own-full / shared-badged rows."""
+    import app.mcp.server as srv
+
+    own = _motif(owner_user_id=TEST_USER, code="own.x")
+    shared = _motif(owner_user_id=OTHER_USER, book_id=BOOK, book_shared=True, code="shared.y")
+    repo = AsyncMock()
+    repo.list_in_book = AsyncMock(return_value=[own, shared])
+    async with _patched(grant_level=1, MotifRepo=repo):   # VIEW is enough to read
+        res = await srv.composition_motif_book_list(_Ctx(), book_id=str(BOOK))
+    assert res["count"] == 2 and res["book_id"] == str(BOOK)
+    by_code = {m["code"]: m for m in res["motifs"]}
+    # the shared row (owned by another) is badged + carries book_id, but NOT the owner.
+    assert by_code["shared.y"]["book_shared"] is True
+    assert by_code["shared.y"]["book_id"] == str(BOOK)
+    assert "owner_user_id" not in by_code["shared.y"]
+    repo.list_in_book.assert_awaited_once()
+
+
+async def test_book_list_denied_without_view():
+    """No grant on the book → H13 (no shared-tier oracle)."""
+    import app.mcp.server as srv
+    from loreweave_mcp import NotAccessibleError
+
+    repo = AsyncMock()
+    async with _patched(grant_level=0, MotifRepo=repo):   # NONE
+        with pytest.raises(NotAccessibleError):
+            await srv.composition_motif_book_list(_Ctx(), book_id=str(BOOK))
+    repo.list_in_book.assert_not_awaited()
+
+
+async def test_archive_shared_edit_gated():
+    """composition_motif_archive with book_id → EDIT-gate the book, archive the SHARED row."""
+    import app.mcp.server as srv
+
+    shared = _motif(owner_user_id=OTHER_USER, book_id=BOOK, book_shared=True)
+    repo = AsyncMock()
+    repo.get_in_book = AsyncMock(return_value=shared)
+    repo.archive_shared = AsyncMock()
+    async with _patched(grant_level=2, MotifRepo=repo):   # EDIT
+        res = await srv.composition_motif_archive(
+            _Ctx(), motif_id=str(shared.id), book_id=str(BOOK),
+        )
+    assert res["archived"] is True
+    repo.archive_shared.assert_awaited_once_with(TEST_USER, shared.id, BOOK)
+
+
+async def test_archive_shared_denied_without_edit():
+    """Archiving a shared row without EDIT on the book is the H13 deny (no write)."""
+    import app.mcp.server as srv
+    from loreweave_mcp import NotAccessibleError
+
+    repo = AsyncMock()
+    repo.get_in_book = AsyncMock(return_value=None)
+    async with _patched(grant_level=1, MotifRepo=repo):   # VIEW only
+        with pytest.raises(NotAccessibleError):
+            await srv.composition_motif_archive(
+                _Ctx(), motif_id=str(uuid.uuid4()), book_id=str(BOOK),
+            )
+    repo.archive_shared.assert_not_awaited()
+
+
 # ── motif_link edge-walk (D-MOTIF-LINK-EDGEWALK) ──────────────────────────────
 
 
@@ -656,6 +841,36 @@ async def test_mine_book_requires_book_id():
     assert res["success"] is False
 
 
+async def test_mine_promote_target_book_shared_threads_into_payload():
+    """D-MOTIF-ADOPT-BOOK-COLLAB-TIER: a scope='book' mine with promote_target='book_shared'
+    EDIT-gates the book + carries promote_target into the token payload (the worker stamps the
+    shared tier on each mined draft)."""
+    import app.mcp.server as srv
+    from loreweave_mcp import verify_confirm_token
+    from app.config import settings
+
+    async with _patched(grant_level=2):   # EDIT
+        res = await srv.composition_motif_mine(
+            _Ctx(), srv._MotifMineArgs(scope="book", book_id=str(BOOK),
+                                       promote_target="book_shared",
+                                       model_ref=str(MODEL_REF), model_source="user_model"),
+        )
+    claims = verify_confirm_token(settings.confirm_token_signing_secret, res["confirm_token"])
+    assert claims.payload["promote_target"] == "book_shared"
+
+
+async def test_mine_promote_target_book_shared_rejects_corpus():
+    """promote_target='book_shared' with a corpus mine (no single book) is a clean refusal."""
+    import app.mcp.server as srv
+
+    async with _patched(grant_level=2):
+        res = await srv.composition_motif_mine(
+            _Ctx(), srv._MotifMineArgs(scope="corpus", promote_target="book_shared",
+                                       model_ref=str(MODEL_REF), model_source="user_model"),
+        )
+    assert res["success"] is False and "book_shared" in res["error"]
+
+
 async def test_arc_import_propose_threads_model_ref():
     """The arc-import propose mints the BYOK deconstruct model into the token payload
     (provider-gateway invariant) so the worker can resolve it — same as mine/conformance.
@@ -707,12 +922,13 @@ from app.config import settings as _settings  # noqa: E402
 IMPORT_SOURCE = uuid.uuid4()
 
 
-def _adopt_token(user=TEST_USER, motif_id=None, *, book_id=None, ttl=600, now=None):
+def _adopt_token(user=TEST_USER, motif_id=None, *, book_id=None, book_shared=False, ttl=600, now=None):
     mid = motif_id or uuid.uuid4()
     return mint_confirm_token(
         _settings.confirm_token_signing_secret, user, mid, "composition.motif_adopt",
         {"motif_id": str(mid), "retag_genres": None,
-         "book_id": str(book_id) if book_id else None}, ttl=ttl, now=now,
+         "book_id": str(book_id) if book_id else None, "book_shared": book_shared},
+        ttl=ttl, now=now,
     )
 
 
@@ -840,6 +1056,48 @@ def test_adopt_confirm_book_label_passes_book_id_and_regates(client):
     assert resp.status_code == 200, resp.text
     repo.clone.assert_awaited_once()
     assert repo.clone.await_args.kwargs["book_id"] == BOOK
+    # a plain book-label adopt is NOT shared.
+    assert repo.clone.await_args.kwargs.get("book_shared") is False
+
+
+def test_adopt_confirm_book_shared_passes_flag_and_regates(client):
+    """D-MOTIF-ADOPT-BOOK-COLLAB-TIER: a shared adopt token → the effect re-gates EDIT on the
+    book and passes book_shared=True + the book_id to clone() (the shared tier write)."""
+    clone = _motif(book_id=BOOK, book_shared=True)
+    src = _motif(owner_user_id=OTHER_USER, visibility="public")
+    repo = AsyncMock()
+    repo.get_visible = AsyncMock(return_value=src)
+    repo.list_for_caller = AsyncMock(return_value=[])
+    repo.clone = AsyncMock(return_value=clone)
+    ledger = AsyncMock()
+    ledger.consume = AsyncMock(return_value=True)
+    with (
+        patch("app.db.repositories.motif_repo.MotifRepo", return_value=repo),
+        patch("app.db.repositories.consumed_tokens.ConsumedTokenRepo", return_value=ledger),
+    ):
+        resp = _confirm(client, _adopt_token(motif_id=src.id, book_id=BOOK, book_shared=True))
+    assert resp.status_code == 200, resp.text
+    repo.clone.assert_awaited_once()
+    assert repo.clone.await_args.kwargs["book_id"] == BOOK
+    assert repo.clone.await_args.kwargs["book_shared"] is True
+
+
+def test_adopt_confirm_book_shared_without_book_id_rejected(client):
+    """A book_shared payload missing its book_id is a tenancy defect → action_error (no clone)."""
+    src = _motif(owner_user_id=OTHER_USER, visibility="public")
+    repo = AsyncMock()
+    repo.get_visible = AsyncMock(return_value=src)
+    repo.list_for_caller = AsyncMock(return_value=[])
+    repo.clone = AsyncMock()
+    ledger = AsyncMock()
+    ledger.consume = AsyncMock(return_value=True)
+    with (
+        patch("app.db.repositories.motif_repo.MotifRepo", return_value=repo),
+        patch("app.db.repositories.consumed_tokens.ConsumedTokenRepo", return_value=ledger),
+    ):
+        resp = _confirm(client, _adopt_token(motif_id=src.id, book_id=None, book_shared=True))
+    assert resp.status_code == 400, resp.text
+    repo.clone.assert_not_awaited()
 
 
 def test_w_replay_blocked_by_ledger(client):

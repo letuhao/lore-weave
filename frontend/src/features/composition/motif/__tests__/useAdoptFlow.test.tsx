@@ -55,6 +55,19 @@ describe('useAdoptFlow', () => {
     );
   });
 
+  it('target=book_shared adopts into the book SHARED tier (D-MOTIF-ADOPT-BOOK-COLLAB-TIER)', async () => {
+    mcpExecute.mockResolvedValueOnce({ confirm_token: 'ct', preview: { into: 'book_shared' } });
+    const { result } = renderHook(() => useAdoptFlow('tok', 'bk1'), { wrapper: wrap() });
+    act(() => result.current.begin('m1'));
+    act(() => result.current.setTarget('book_shared'));
+    await act(async () => { await result.current.mint.mutateAsync(); });
+    expect(mcpExecute).toHaveBeenCalledWith(
+      'composition_motif_adopt',
+      { args: { motif_id: 'm1', target: 'book_shared', book_id: 'bk1' } },
+      'tok',
+    );
+  });
+
   it('default target=user stays global even with a book in context', async () => {
     mcpExecute.mockResolvedValueOnce({ confirm_token: 'ct' });
     const { result } = renderHook(() => useAdoptFlow('tok', 'bk1'), { wrapper: wrap() });
