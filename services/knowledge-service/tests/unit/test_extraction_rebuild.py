@@ -58,7 +58,13 @@ def _job_stub(**overrides) -> ExtractionJob:
 
 def _make_client(*, project=None, active_jobs=None):
     from app.main import app
-    from app.deps import get_extraction_jobs_repo, get_projects_repo
+    from app.deps import (
+        get_book_client,
+        get_extraction_jobs_repo,
+        get_extraction_pending_repo,
+        get_glossary_client,
+        get_projects_repo,
+    )
     from app.middleware.jwt_auth import get_current_user
 
     if project is _NO_PROJECT:
@@ -95,6 +101,12 @@ def _make_client(*, project=None, active_jobs=None):
     app.dependency_overrides[get_current_user] = lambda: _TEST_USER
     app.dependency_overrides[get_projects_repo] = lambda: projects_repo
     app.dependency_overrides[get_extraction_jobs_repo] = lambda: jobs_repo
+    # The rebuild endpoint also depends on these for the server-side items_total
+    # count (#9); override them so DI doesn't reach the (uninitialised) real pool.
+    # The count itself is best-effort (swallowed → NULL) so AsyncMocks suffice.
+    app.dependency_overrides[get_extraction_pending_repo] = lambda: AsyncMock()
+    app.dependency_overrides[get_book_client] = lambda: AsyncMock()
+    app.dependency_overrides[get_glossary_client] = lambda: AsyncMock()
 
     client = TestClient(app, raise_server_exceptions=False)
     client._pool_patch = patch(
@@ -198,5 +210,73 @@ def test_rebuild_neo4j_not_configured_returns_503(mock_settings):
 def test_rebuild_empty_model_rejected():
     client, _ = _make_client()
     resp = client.post(_url(), json=_body(llm_model=""))
+    _stop(client)
+    assert resp.status_code == 422
+
+
+# ── bug #42 — incremental "update" mode (accumulate, no wipe) ─────────
+
+
+@patch("app.routers.public.extraction.neo4j_session")
+@patch("app.routers.public.extraction.app_settings")
+def test_rebuild_update_mode_is_nondestructive_and_needs_no_confirm(mock_settings, mock_neo4j):
+    """bug #42 — mode=update starts a job WITHOUT a confirm and WITHOUT touching
+    Neo4j: no destructive-stats query, no delete. It re-extracts on top of the
+    existing graph via the idempotent MERGE writes."""
+    mock_settings.neo4j_uri = "bolt://localhost:7687"
+    mock_session = AsyncMock()
+    mock_session.run = AsyncMock()
+    mock_neo4j.return_value.__aenter__ = AsyncMock(return_value=mock_session)
+    mock_neo4j.return_value.__aexit__ = AsyncMock(return_value=False)
+
+    client, _ = _make_client()
+    resp = client.post(_url(), json=_body(mode="update"))  # NO ?confirm
+    _stop(client)
+    assert resp.status_code == 201
+    assert resp.json()["status"] == "running"  # a job actually started
+    # The destructive path never ran: no stats COUNT and no 4-label delete.
+    assert mock_session.run.call_count == 0
+
+
+@patch("app.routers.public.extraction._count_scope_items", new_callable=AsyncMock)
+@patch("app.routers.public.extraction.app_settings")
+def test_rebuild_update_mode_passes_scope_and_range(mock_settings, mock_count):
+    """bug #42 — mode=update forwards the caller's scope/scope_range to the job
+    (the per-chapter incremental case), instead of the replace path's scope=all."""
+    from types import SimpleNamespace
+    mock_settings.neo4j_uri = "bolt://localhost:7687"
+    mock_count.return_value = SimpleNamespace(total=3)
+
+    client, _ = _make_client()
+    resp = client.post(
+        _url(),
+        json=_body(mode="update", scope="chapters", scope_range={"chapter_range": [1, 3]}),
+    )
+    _stop(client)
+    assert resp.status_code == 201
+    # the scope/range flowed into the items_total count (and thus the job create)
+    args = mock_count.await_args.args
+    assert args[0] == "chapters"
+    assert args[1] == {"chapter_range": [1, 3]}
+
+
+@patch("app.routers.public.extraction.app_settings")
+def test_rebuild_update_mode_rejects_reversed_chapter_range(mock_settings):
+    """bug #42 — an update validates the range shape up front (mirrors StartJob),
+    so a reversed [from>to] range 422s rather than creating a no-op job."""
+    mock_settings.neo4j_uri = "bolt://localhost:7687"
+    client, _ = _make_client()
+    resp = client.post(
+        _url(),
+        json=_body(mode="update", scope="chapters", scope_range={"chapter_range": [3, 1]}),
+    )
+    _stop(client)
+    assert resp.status_code == 422
+
+
+def test_rebuild_invalid_mode_rejected():
+    """An unknown mode is a 422 (Literal validation), never silently treated as replace."""
+    client, _ = _make_client()
+    resp = client.post(_url() + "?confirm=true", json=_body(mode="merge"))
     _stop(client)
     assert resp.status_code == 422

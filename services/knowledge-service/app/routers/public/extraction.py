@@ -1269,6 +1269,16 @@ class RebuildRequest(BaseModel):
     llm_model: str = Field(min_length=1, max_length=200)
     embedding_model: str = Field(min_length=1, max_length=200)
     max_spend_usd: Annotated[Decimal, Field(ge=0)] | None = None
+    # bug #42 — accumulate vs wipe. "replace" (default, back-compat) DELETEs the whole
+    # graph then rebuilds scope=all (the destructive path, ?confirm=true gated). "update"
+    # does NOT delete — it re-extracts on top of the existing graph via the idempotent
+    # MERGE-upsert writes, so a writer can re-generate a specific chapter after an edit, or
+    # add new chapters, without losing the rest. `scope`/`scope_range` apply to "update"
+    # only (a "replace" always rebuilds everything); `scope="chapters"` +
+    # `scope_range={"chapter_range":[from,to]}` is the per-chapter incremental case.
+    mode: Literal["replace", "update"] = "replace"
+    scope: JobScope = "all"
+    scope_range: dict[str, Any] | None = None
 
 
 @router.post(
@@ -1287,17 +1297,29 @@ async def rebuild_extraction(
     pending_repo: ExtractionPendingRepo = Depends(get_extraction_pending_repo),
     glossary_client: GlossaryClient = Depends(get_glossary_client),
 ) -> ExtractionJob | dict:
-    """Delete the existing graph and start a full extraction rebuild.
+    """Rebuild the graph — destructively (``mode="replace"``) or incrementally
+    (``mode="update"``, bug #42).
 
-    Without ``?confirm=true``: returns a destructive-warning preview with the
-    live node counts (``action_required='confirm'``) and deletes NOTHING (bug
-    #14). With ``?confirm=true``: deletes the graph and starts the rebuild.
+    ``mode="replace"`` (default): deletes the existing graph then starts a full
+    ``scope=all`` rebuild. Destructive — without ``?confirm=true`` it returns a
+    warning preview with live node counts (``action_required='confirm'``) and
+    deletes NOTHING (bug #14); with ``?confirm=true`` it deletes then rebuilds.
 
-    Combines K16.8 (delete graph) + K16.3 (start job with scope=all).
-    The delete runs first; if the start fails, the graph is gone but
+    ``mode="update"`` (bug #42): NON-destructive — deletes nothing and needs no
+    confirm. Starts an extraction over ``scope``/``scope_range`` (default
+    ``scope=all``) that re-extracts ON TOP of the existing graph; the writes are
+    idempotent ``MERGE`` upserts (entities/facts/events keyed on a content hash),
+    so re-running a chapter accumulates + refreshes rather than duplicating. Use
+    ``scope="chapters"`` + ``scope_range={"chapter_range":[from,to]}`` to refresh
+    just the chapters a writer edited/added. NOTE: an update adds/refreshes but
+    does not RETRACT entities deleted from edited text (MERGE can't remove); a
+    full retract path is a separate follow-up.
+
+    The replace delete runs first; if the start fails, the graph is gone but
     the project is in 'disabled' state (user can retry). True cross-DB
     atomicity (Neo4j + Postgres) is not possible without 2PC.
     """
+    is_replace = body.mode == "replace"
     project = await projects_repo.get(user_id, project_id)
     if project is None:
         raise HTTPException(
@@ -1320,39 +1342,52 @@ async def rebuild_extraction(
             detail="Neo4j not configured",
         )
 
-    # K-DATASAFE (bug #14) — destructive guard: a rebuild DELETES the entire
-    # graph, so require an explicit ?confirm=true. Without it, return a warning
-    # preview carrying the live node counts so the FE can show "this deletes N
-    # entities" and demand a typed confirmation (mirrors change_embedding_model).
-    # Defense-in-depth: holds even if a caller bypasses the FE confirm dialog.
-    if not confirm:
-        _params = {"user_id": str(user_id), "project_id": str(project_id)}
-        async with neo4j_session() as session:
-            _rec = await (await session.run(_GRAPH_STATS_CYPHER, _params)).single()
-        return {
-            "warning": (
-                "Rebuilding permanently DELETES this project's entire knowledge "
-                "graph and rebuilds it from scratch. This cannot be undone. "
-                "Pass ?confirm=true to proceed."
-            ),
-            "entity_count": int(_rec["entity_count"] or 0) if _rec else 0,
-            "fact_count": int(_rec["fact_count"] or 0) if _rec else 0,
-            "event_count": int(_rec["event_count"] or 0) if _rec else 0,
-            "action_required": "confirm",
-        }
+    # bug #42 — an "update" rebuild is non-destructive: the destructive ?confirm
+    # gate AND the delete are skipped entirely. A "replace" keeps the bug #14
+    # behaviour below. The incremental scope/range apply to "update" only.
+    eff_scope: JobScope = "all" if is_replace else body.scope
+    eff_range = None if is_replace else body.scope_range
 
-    # Step 1: Delete existing graph
-    await _delete_project_graph(user_id, project_id)
+    if is_replace:
+        # K-DATASAFE (bug #14) — destructive guard: a replace rebuild DELETES the
+        # entire graph, so require an explicit ?confirm=true. Without it, return a
+        # warning preview carrying the live node counts so the FE can show "this
+        # deletes N entities" and demand a typed confirmation (mirrors
+        # change_embedding_model). Defense-in-depth: holds even if a caller bypasses
+        # the FE confirm dialog.
+        if not confirm:
+            _params = {"user_id": str(user_id), "project_id": str(project_id)}
+            async with neo4j_session() as session:
+                _rec = await (await session.run(_GRAPH_STATS_CYPHER, _params)).single()
+            return {
+                "warning": (
+                    "Rebuilding permanently DELETES this project's entire knowledge "
+                    "graph and rebuilds it from scratch. This cannot be undone. "
+                    "Pass ?confirm=true to proceed."
+                ),
+                "entity_count": int(_rec["entity_count"] or 0) if _rec else 0,
+                "fact_count": int(_rec["fact_count"] or 0) if _rec else 0,
+                "event_count": int(_rec["event_count"] or 0) if _rec else 0,
+                "action_required": "confirm",
+            }
 
-    # Step 2: Start new job with scope=all via shared helper
+        # Step 1: Delete existing graph (replace only)
+        await _delete_project_graph(user_id, project_id)
+    else:
+        # Validate the incremental range shape up front (mirrors StartJobRequest),
+        # so a malformed chapter_range 422s at request time rather than being
+        # swallowed by the best-effort count below and surfacing later in the worker.
+        _extract_chapter_range(eff_range)
+
+    # Step 2: Start the new job (replace ⇒ scope=all; update ⇒ the caller's scope)
     trace_id = trace_id_var.get()
-    # #9 — server-computed progress denominator (a rebuild is always scope=all).
+    # #9 — server-computed progress denominator.
     # Best-effort: a count failure → NULL (indeterminate bar), never blocks the rebuild.
     rebuild_items_total: int | None = None
     try:
         rebuild_items_total = (
             await _count_scope_items(
-                "all", None, project, user_id, project_id,
+                eff_scope, eff_range, project, user_id, project_id,
                 book_client=book_client,
                 pending_repo=pending_repo,
                 glossary_client=glossary_client,
@@ -1365,7 +1400,8 @@ async def rebuild_extraction(
         )
     validated = ExtractionJobCreate(
         project_id=project_id,
-        scope="all",
+        scope=eff_scope,
+        scope_range=eff_range,
         llm_model=body.llm_model,
         embedding_model=body.embedding_model,
         max_spend_usd=body.max_spend_usd,
