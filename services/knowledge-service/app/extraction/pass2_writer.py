@@ -255,6 +255,21 @@ class Pass2WriteResult(BaseModel):
     statuses_merged: int = 0
 
 
+def _evidence_quote(candidate: object, project_id: str | None) -> str | None:
+    """F3 — extract + sanitize the EXACT supporting quote a candidate carries, if
+    any, for the EVIDENCED_BY citation edge (evidence-grounding, like the glossary
+    `evidences.original_text`). Read forward-compatibly via getattr so the writer
+    is ready the moment an extractor surfaces a quote span (`quote` /
+    `evidence_text`), without a hard dependency on the SDK candidate shape. None
+    when the candidate has no quote → today's behaviour (no quote stored).
+    """
+    raw = getattr(candidate, "quote", None) or getattr(candidate, "evidence_text", None)
+    if not raw or not isinstance(raw, str) or not raw.strip():
+        return None
+    cleaned = _sanitize(raw, project_id)
+    return cleaned.strip() or None
+
+
 def _sanitize(text: str, project_id: str | None) -> str:
     """Injection-sanitize a text field before persisting.
 
@@ -458,6 +473,7 @@ async def write_pass2_extraction(
             extraction_model=extraction_model,
             confidence=ent.confidence,
             job_id=job_id,
+            quote=_evidence_quote(ent, project_id),  # F3 — exact-quote citation
         )
         if ev is not None and ev.created:
             evidence_edges += 1
@@ -811,6 +827,7 @@ async def write_pass2_extraction(
             extraction_model=extraction_model,
             confidence=evt.confidence,
             job_id=job_id,
+            quote=_evidence_quote(evt, project_id),  # F3 — exact-quote citation
         )
         if ev is not None and ev.created:
             evidence_edges += 1
@@ -949,6 +966,7 @@ async def write_pass2_extraction(
             extraction_model=extraction_model,
             confidence=fact.confidence,
             job_id=job_id,
+            quote=_evidence_quote(fact, project_id),  # F3 — exact-quote citation
         )
         if ev is not None and ev.created:
             evidence_edges += 1
