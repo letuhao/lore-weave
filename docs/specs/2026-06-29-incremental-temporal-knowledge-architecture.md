@@ -291,6 +291,24 @@ invalidation** on facts/EAV/edges, the **fold-forward** batched job, and the **F
    blast radius is mediated by one contract. Sequence: ship the layer + projection → migrate consumers
    one at a time (composition first, biggest win).
 
+## 9B. Production risks & mitigations (research-grounded)
+
+Incremental/temporal systems have well-documented failure modes. The spec must design against them.
+
+| Risk (from literature) | Why it bites us | Mitigation (baked into this design) |
+|---|---|---|
+| **Error accumulation in fold-forward summaries** — "as the stream lengthens, errors compound"; drift stages: accurate → misbinding → fabrication (long-doc summarization papers) | a naive `canonical_n = LLM(canonical_{n-1}+new)` over **thousands** of folds drifts/hallucinates | **(a) Facts are the SSOT; the canonical is a REGENERABLE CACHE** (atomic, evidence-cited facts → the canonical can always be rebuilt from them). **(b) Periodic RE-GROUND**: every K folds (or on drift), rebuild the canonical via **bounded retrieval of top facts** (map-reduce), not from the prior summary — resets drift. **(c)** canonical claims **cite facts**; a validator can check. |
+| **Entity-resolution degrades at scale** — prompting the LLM with all prior entities is impractical & drifts (semantic drift: "Apple" co/fruit) | this is *exactly* our extraction bloat finding, now a general law | our resolver is **DETERMINISTIC** (normalized-name fold + cross-kind merge `#43`), **not** LLM-prompt-all-entities → sidesteps the degradation entirely. Known-entities injection stays **bounded** (≤50, by frequency). |
+| **Temporal ambiguity → indexing errors** — time-varying facts merged under one node *without* temporal separation | a character's 境界/relationships change → collapsing them corrupts the entity | **mandatory valid-time axis** — a changing value OPENS a new fact + closes the prior in valid-time; never a single overwritten value. |
+| **Stochastic LLM → non-stable / non-exhaustive KG** — re-runs differ | a routine re-extract could churn/retract facts the model just didn't re-mention | **content-hash-gated retract** (Q7: same-text re-run = update-only, no retract) + **idempotent MERGE** → re-runs CONVERGE (validated: run #2 → 0 dups). |
+| **Temporal conflict/redundancy in retrieval** (T-GRAG) | old + new facts both retrieved → confused answer | **as-of queries** (§5/§5B) project a single consistent slice; default = latest-valid. |
+
+> **The keystone property:** **atomic evidence-cited FACTS are the source of truth; episodes,
+> segments, and the canonical snapshot are all DERIVED + REGENERABLE.** This is what makes the whole
+> design robust — any drift in a derived layer is *recoverable by rebuilding from facts*, which a flat
+> `description` field can never offer. Design every derived layer as a rebuildable projection, never
+> as a place where truth lives.
+
 ## 10. Why this is the right call
 
 - **Append-only / immutable** → never rewrite old data → safe under re-runs (validated: re-extract →
