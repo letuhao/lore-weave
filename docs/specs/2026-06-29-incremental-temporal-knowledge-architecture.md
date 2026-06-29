@@ -836,7 +836,10 @@ self-inflicted serialization bugs**, plus citation/ambiguity defects (fixed inli
 load-bearing fix:
 
 **12.7.1 LOCKING MODEL — scope the lock to its actual TOCTOU surface (closes the two HIGH: over-locking +
-unbounded merge critical section).** §12.2.3's "ALL fact writes take ONE per-book advisory lock" was
+unbounded merge critical section).**
+> ⚠ **The lock TABLE below is REFINED by §12.7.8** — a round-2 verification showed dropping the per-book
+> lock *entirely* lost resolver-create + chapter-write-once protection. §12.7.8 is the authoritative,
+> *decomposed* model (this row's direction is right; its coverage was incomplete). Read §12.7.8. §12.2.3's "ALL fact writes take ONE per-book advisory lock" was
 **wrong twice**: (i) it **over-locks** — a book-global lock serializes *all* extraction for a book to one
 writer, foreclosing the within-book parallelism `project_extraction_parallelism_gap` + the analysis doc
 want; and (ii) §12.4.1 ran the whole merge (repoint-all + reconcile + projection rebuild) *inside* that
@@ -862,9 +865,13 @@ explicit, recorded **decision to drop the per-book serialization in favour of pe
 
 **12.7.2 Bound the merge critical section (HIGH-1).** Stage the heavy work **outside** the lock: repoint +
 `maintain_chain` reconcile + projection rebuild run as a prepared batch; take the per-entity-pair +
-affected-chain locks only for the **final swap + journal write**. For a huge merge, chunk the repoint and
-release/reacquire between chunks. Merges are rare/admin-gated — state that explicitly so the trade-off is
-conscious. The winner projection rebuild is **winner-scoped**, never the §12.2.1 full repair job.
+affected-chain locks for the swap. For a huge merge, chunk the repoint and release/reacquire between
+chunks. Merges are rare/admin-gated — state that explicitly so the trade-off is conscious. The winner
+projection rebuild is **winner-scoped**, never the §12.2.1 full repair job.
+> ⚠ **CORRECTED by §12.7.8 (Probe-2):** "lock only for the swap" reintroduced a lost-update — a loser
+> append between the staging read and the swap is dropped. §12.7.8 requires the affected **chain locks be
+> held from the staging-read through commit** (or a fingerprint re-validate under the swap lock). The
+> *outside-the-lock staging* of the heavy rebuild still stands; only the lock *coverage window* changes.
 
 **12.7.3 Roster drain is a stable keyset snapshot (MED-1).** §12.5.2's "drain to completion" needs a
 **keyset cursor** (on a monotonic `id`/`created_at`) so concurrent inserts append *past* the cursor rather
@@ -893,7 +900,42 @@ the bespoke `/internal/* list_entities` consumers) in `SESSION_HANDOFF`. (c) The
 upstream §3.3 / §5 / §6B / §4-Path-B-step-5 are **applied in BUILD**; until then those sections are
 **superseded by §12** where they conflict (a top-to-bottom reader should treat §12 as authoritative).
 
+**12.7.8 Locking model — CORRECTED (round-2 verification).** A third agent verified §12.7.1/.7.2 against
+the code and found the fix **over-corrected**: dropping the per-book lock entirely lost **two** guarantees
+that fine-grained chain locks don't cover — and §12.7.2's "lock only for the swap" reintroduced a merge
+lost-update. The per-book lock was load-bearing for resolver-create-TOCTOU (the migration comment is
+explicit: *"the advisory lock makes the resolver race-free; this index is the backstop"* —
+`extraction_concurrency.go:21-25`) and chapter write-once. The right model is **NOT "book lock" vs "no
+lock"** — it is to **decompose** the book lock into the minimal scoped locks, each held only over its real
+critical section, so parallelism survives *and* every guarantee is preserved. **This supersedes the lock
+rows of §12.7.1 and §12.7.2.**
+
+| Critical section | Lock (all finer than per-book) | Parallelism / why it closes the gap |
+|---|---|---|
+| **Resolver-create** (new entity for an unmatched name) | per-**`(book, normalized_name, kind)`** advisory lock around the whole resolve→create→**stamp** sequence; **OR** stamp `normalized_name` **in the INSERT** (app-side, not the deferred `refreshEntityDedupKey`) + real `ON CONFLICT (book_id, kind_id, normalized_name) DO NOTHING RETURNING` + **re-read the winner's `entity_id` on conflict**. | name-scoped → different names run parallel. **Closes Probe-3 HIGH:** today's create inserts with empty `cached_name` (`normalized_name=''`) → *outside* the partial `uq_entity_dedup` index (`WHERE … normalized_name<>''`) → two creates both pass, UNIQUE only bites at the later stamp. The partial index is a **backstop, not the primary guard** — §12.7.1 wrongly promoted it. |
+| **Chapter write-once** | `UNIQUE(chapter_id, content_hash)` (§12.2.5) as the chapter idempotency gate + `writeback_key` replay short-circuit | chapter-scoped → different chapters run parallel. **Closes Probe-5 MED:** the book lock incidentally serialized per-chapter writeback; without it, two different `writeback_key`s for the *same* chapter could both proceed — the `(chapter,content_hash)` UNIQUE restores chapter-level write-once. |
+| **Fact append / interval maintenance** | per-**`(entity, attr)`** chain advisory lock `hashtext(entity_id‖':'‖attr)`, acquired in sorted **full-composite-key** order | chain-scoped → disjoint chains parallel. **Closes Probe-1 MED:** sort by the composite chain key, NOT entity-id (an entity has multiple attrs → two chapters writing `{a,b}` of E deadlock under entity-id sort). |
+| **Merge / split** | entity-pair `FOR UPDATE` (sorted by `entity_id`) **+ the affected per-chain locks, held from the staging-READ through COMMIT** (not "only for the swap") | entity-pair-scoped. **Closes Probe-2 HIGH:** holding the loser/winner chain locks across the staging read prevents a loser-chain append from interleaving between stage and swap (which would be dropped or left with a stale `valid_to`). The heavy projection rebuild may still be staged outside, but **chain-lock coverage must span read→commit**; alternatively re-validate the §12.2.4 `max(created_at)` fingerprint under the swap lock and re-stage on mismatch. |
+
+**Global lock order (deadlock-free, spans both lock domains).** Every path acquires in this exact order:
+**(1)** the create lock (if creating) → **(2)** entity rows `FOR UPDATE` sorted by `entity_id` → **(3)**
+chain advisory locks sorted by full composite key `(entity_id, attr)`. Append and merge both nest under
+this single order, so the two lock *types* (row-level `FOR UPDATE` + advisory) can't form a cycle.
+
+**Probe-4 (LOW, confirmed safe — state it):** the EAV projection is keyed **per-`(entity, attr)` row**
+(`ON CONFLICT (entity_id, attr_def_id)`), so two chapters appending *different* attrs of the same entity
+hit *different* projection rows → no lost update; same-`(entity,attr)` upserts serialize on the Postgres
+row lock. §12.2.1 should say "per-`(entity,attr)` projection row" to make this self-evident.
+
+> **Net of round-2:** the per-chain *direction* is right and restores the parallelism goal, but the lock
+> had to be **decomposed, not deleted**. The corrected tiered model above preserves all four guarantees
+> the coarse book lock gave (resolver-create, chapter write-once, chain-interval correctness, merge
+> atomicity) while keeping disjoint chapters/entities/names concurrent. **This is the load-bearing
+> correctness contract for BUILD.**
+
 **Verified consistent (not defects):** the A5↔decision-8 ordering (translation as-of reads the *glossary*
 substrate §12 builds, not the KG `as_of` §12.5.1 defers); the §12.2.1↔§12.2.5 tx-timing; the
 merge→canonical staleness (the merge's re-derived `valid_to` bumps `fact_coverage_txid` → canonical
-rebuilds). **The architecture is unchanged; these are tightenings, not redesign.**
+rebuilds); and (round-2) the append-vs-fold compare-and-clear + episode-revision minting both hold
+independent of the dropped book lock. **The architecture is unchanged across all three review rounds;
+these are tightenings, not redesign.**
