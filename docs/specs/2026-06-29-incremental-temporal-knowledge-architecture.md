@@ -1,7 +1,8 @@
 # Spec — Incremental Temporal Knowledge Architecture (glossary + KG)
 
-**Date:** 2026-06-29 · **Status:** DESIGN COMPLETE — all 9 decisions locked (§9); ready to implement
-(next session, separate branch) · **Scope:** BE + FE
+**Date:** 2026-06-29 · **Status:** DESIGN — architecture validated; **edge-case review (§11) reopened
+6 of the 9 decisions** + surfaced ~14 HIGH gaps (4 root causes). **NOT implementation-ready** — close §11
+first (next session, separate branch) · **Scope:** BE + FE
 **Pairs with:** `docs/analysis/2026-06-29-ontology-extraction-bloat.md` (clean extraction feeds this)
 
 ---
@@ -377,7 +378,10 @@ the current-projection default. **The work is the write-side substrate (§ above
 
 ## 9. Decisions — CLARIFY RESOLVED (2026-06-29)
 
-All nine are locked; BUILD can proceed (next session, separate branch) from these.
+> ⚠ **Superseded in part by the §11 edge-case review.** The *direction* of all nine holds, but the
+> adversarial review showed decisions **2, 4, 6, 7, 8, 9** are **under-specified or rest on an unsafe
+> "reuse the existing primitive" assumption** — they are downgraded `🔒→⚠` and must be hardened per §11
+> before BUILD. Decisions 1, 3, 5 stand. Read §11 alongside this section.
 
 1. **Episode granularity** → **per-chapter** episode; sub-chapter token-window only when a chapter
    exceeds the model context (reuse the existing `context_budget` windowing). 🔒
@@ -446,3 +450,86 @@ Incremental/temporal systems have well-documented failure modes. The spec must d
   *cannot* offer.
 - **Proven** → it's Graphiti + BooookScore, not speculation.
 - **Composes** with the clean-extraction work we just shipped and the merge we already built.
+
+## 11. Edge-case review — gaps to close before BUILD (2026-06-29)
+
+Five independent adversarial agents probed this spec against the **actual code** it claims to build
+on (`merge_handler.go`, `relations.py`/`facts.py`/`provenance.py`, `canonical_summary_handler.go`,
+`resummarize.py`, `plan.py`, the glossary/enrichment clients). The architecture **holds** — append-only
+bi-temporal facts as SSOT with derived/regenerable projections is the right call. But the review found
+**~14 HIGH gaps that collapse to FOUR root causes**, and showed several §9 decisions marked `🔒` are
+**not actually resolved**. **Status downgraded from "DESIGN COMPLETE" → these must be designed first.**
+Convergence (a gap found independently by ≥2 agents) is flagged — it is the strongest signal.
+
+### Root cause A — "REUSE the existing primitive" is unsafe (the spec's most repeated, most load-bearing error)
+The existing KG/merge primitives were built for a **wall-clock transaction-time, flat-overwrite,
+monotonic-user-edit** world. The new model is **chapter-ordinal valid-time, append-only, out-of-order**.
+"Reuse `single_active` / `remove_evidence_*` / `#43` / content-hash identity" is wrong without redesign.
+
+| # | Gap | Sev | Conv. | Resolution to bake in |
+|---|---|---|---|---|
+| A1 | **Merge can't combine two fact HISTORIES.** `#43`'s EAV repoint is a `UNIQUE`-collision dodge (`merge_handler.go:321-330` `NOT IN (SELECT attr_def_id…)`) — on a fact store it orphans the loser's whole interval chain. "`#43` is the entity-resolution step, done+validated" (§4/§6/§8) is **false** for the new substrate. | **HIGH** | ×2 (merge, concurrency) | Define a **fact-chain merge**: repoint ALL loser facts (no collision dodge), re-sort the per-attr chain by `valid_from`, re-derive `valid_to` = next fact's `valid_from`, invalidate-not-delete on overlap with a deterministic tiebreak, journal the moved **fact** ids, then rebuild the projection. Merge is **net-new**, not "done via #43." |
+| A2 | **Out-of-order ingestion inverts intervals.** KG `single_active` close (`relations.py:190-201`) closes *any* open instance by wall-clock `datetime()`, **zero ordinal awareness** → back-filled ch.300 closes the still-correct ch.500 fact. Q5 backfill + §2 ATOM parallel-merge *guarantee* out-of-order arrival. | **HIGH** | ×2 (bi-temporal, fold) | The close must be an **ordinal-aware interval-split**, a NEW primitive: opening F@v sets the containing fact's `valid_to=v` and F's `valid_to` = next fact's `valid_from` (open only if none later). Same fix needed on the KG side the moment extraction drives it. |
+| A3 | **Retract orphans the valid-time close it caused.** `remove_evidence_*` deletes F_new but never reopens F_old that F_new superseded — and the extraction path is *deliberately* coded never to resurrect (`relations.py` comment). → as-of read returns nothing. §9B keystone does **not** save this (the fact layer itself is corrupt). | **HIGH** | bi-temporal | Add **Path-B step B.3.5 — re-stitch the chain around every retracted fact** (reopen predecessor to F_new's `valid_to`). Better: model `valid_to` as *derived* (= next surviving fact's `valid_from` via view/trigger) so retract auto-restitches. |
+| A4 | **Oscillating single-valued attrs collide.** Content-hash fact identity (`facts.py:89`) MERGEs ch.100 `宗门` and ch.300 `宗门` into one node; the intervening `[200,300)=秘境` is orphaned. Q6's cited "re-assert = no-op" (`relations.py:181`) is **exactly wrong** for recurring values. | **MED** | bi-temporal | Fact identity for `entity_facts` must include **interval origin** — key on `(entity_id, attr, value, valid_from_ordinal)` or `(…, source_episode_id)`, not `canonical_content`. "Idempotent re-run = no-op" re-scoped to "same value *from the same episode*." |
+| A5 | **Dual-substrate `as_of` returns incomparable data.** KG `valid_until` is wall-clock; `get_facts(as_of=N)` returns story-time-correct glossary rows + transaction-time-contaminated KG edges behind ONE contract. `from_order` is NULL on legacy/chat facts → silently non-exhaustive (`facts.py:108-112,363-374`). Build order (§9.9) never sequences the KG ordinal-unify **before** exposing `as_of`. | **HIGH** | KAL | Version-gate `as_of` **per substrate capability**: until KG carries a unified story-ordinal valid-time, KAL refuses/marks KG `as_of` as `temporal_unsupported` (degrade-safe). Add to build order: unify KG valid-time **before** `as_of` on the KG branch. |
+
+### Root cause B — the canonical's identity is unresolved: immutable series **vs** regenerable cache
+§3.3 says snapshots are "append-only + ordinal-stamped" (immutable series); §9B's keystone says the
+canonical is a "REGENERABLE CACHE." **These are mutually exclusive.** The design *needs* the cache model
+to be correct (out-of-order facts, re-ground, algorithm evolution); §3.3/§9-dec-5/§10 forbid the rewrites
+it implies. **Resolve this ONE contradiction first** and B1–B4 below become tractable.
+
+| # | Gap | Sev | Conv. | Resolution |
+|---|---|---|---|---|
+| B0 | **The root contradiction itself** — immutable snapshot series vs regenerable cache. | **HIGH** | ×2 (fold, KAL) | Commit to **lazy, versioned, regenerable cache**: snapshots are recomputable performance rows keyed by `(entity, ordinal, fold_algo_version, fact_coverage_txid)`, **never truth**. Delete/qualify "append-only + ordinal-stamped" in §3.3. As-of below the fold head **always** projects from facts. |
+| B1 | **"Bounded retrieval of top facts" is undefined** — top-K drops the long tail (the "loss of development" we exist to prevent); all-facts = the monolith. Worse: the shipped #26/#7 fold already feeds the **entire** active raw-item set with **no input cap** (`resummarize.py` + `extraction_handler.go:1601`) → §8B's "bounded raw-item subset (✅ no bloat)" is **already false** (only the *output* is bounded). | **HIGH** | fold | Re-ground = **hierarchical ordinal-bucketed tree over facts** (per-arc/per-N-chapter buckets, each a bounded folded sub-summary, then map-reduce the sub-summaries — the `summary_processor.py` tree, made per-entity + ordinal not book-structural). State the bucket key, per-bucket bound, reduce step. |
+| B2 | **"Drift signal" is a TODO disguised as a 🔒 decision** — appears once, never defined; detecting drift needs the very rebuild it gates (circular). | **HIGH** | fold | Either drop the branch and commit to deterministic **every-K-folds** re-ground, or define a *cheap* proxy (invalidation-count / new-fact-count since last re-ground), never the full rebuild. |
+| B3 | **Out-of-order facts silently corrupt the as-of snapshot SERIES.** Path-B "re-fold snapshots that CITED episode N" misses a *new* ch.300 fact — by definition it has no citation in the pre-existing snapshots@≥300. | **HIGH** | fold | Falls out of B0: snapshots below the fold head are stale-on-newer-fact → rebuild-on-read from facts. Drop "snapshot series time-travel" or make it lazy. |
+| B4 | **Poison fact wedges an entity forever.** `canonical_dirty` is a bare boolean (`canonical_summary.go:30`); a fold failure never clears it → re-fails every job-end, no backoff/quarantine. The proposed `LLM(canonical_{n-1}+batch)` is *worse* (poison persists into the next input). | **MED** | fold | Add `fold_attempts`/`fold_failed_at` + backoff (reuse the KG `RETRY_BUDGET=3`); after N fails, quarantine + surface "canonical unbuildable" in FE. Keystone holds only if one fact can't permanently block regeneration. |
+
+### Root cause C — flat-store concurrency/idempotency machinery does NOT transfer (assumed, not specified)
+The flat store is safe via three concrete mechanisms the spec never carries forward: per-book
+`pg_advisory_xact_lock` (`extraction_handler.go:611`), `writeback_key`+`extraction_writeback_log`
+idempotency (`:623,:1002`), fingerprint compare-and-clear on `canonical_dirty`
+(`canonical_summary_handler.go:178-192`). §10's "safe under re-runs and concurrency" is an **inherited
+claim that doesn't survive the storage change** — and in two places (C2, C3) the new model *removes* a
+guard the current code has.
+
+| # | Gap | Sev | Conv. | Resolution |
+|---|---|---|---|---|
+| C1 | **Materialized "current projection" has no defined refresh mechanism.** The WHOLE migration story rests on it. Async → every backward-compat reader sees stale current state; a real Postgres matview can't refresh per-row + `REFRESH CONCURRENTLY` is a full rebuild (catastrophic per-chapter). | **HIGH** | ×2 (concurrency, KAL) | Specify: **app-maintained "current" row upserted in the SAME tx as the fact append** (extend the existing per-chapter writeback tx). Invariant: "no fact commits without its projection upsert in-tx." Rebuild-from-facts repair job as backstop. |
+| C2 | **Append-only breaks idempotency.** `entity_facts` has no natural key → re-running Path A appends **duplicate** facts into the SSOT. The "validated 0-dups" (§9B) was on the flat `UNIQUE(entity_id,attr_def_id)` store; the spec itself admits Run #2 was a cache replay. | **HIGH** | concurrency | `UNIQUE(entity_id, attr|relation, value_hash, valid_from_ordinal, source_episode_id)` + `ON CONFLICT DO NOTHING`; carry `writeback_key` forward to gate the Path-A append. Re-run the "identical re-extract → 0 *fact* rows" test (does not transfer). |
+| C3 | **Append-racing-the-fold lost-wakeup — spec REGRESSES an existing guard.** New `fold_canonical` is a bare "mark dirty → fold"; the shipped #26/#7 already solved this with fingerprint compare-and-clear. | **HIGH** | concurrency | Mandate the **existing compare-and-clear**: capture a fact-set fingerprint at read, clear dirty only if unchanged at write (direct reuse of `internalWriteCanonical`'s `md5(...)` clause). |
+| C4 | **Merge must move append-only fact history under the existing locks** (the concurrency face of A1) — `mergeOne` repoints a fixed child-table list that won't include `entity_facts`/`episodes`; a fact-append racing a merge orphans the fact on the soft-deleted loser; un-journaled fact moves break the reversible-merge invariant. | **HIGH** | ×2 (merge, concurrency) | Extend `mergeOne` + `merge_journal` to repoint/journal `entity_facts`+`episodes`; post-merge valid-time reconciliation; **mandate ALL KAL fact writes take the same per-book advisory lock** as `mergeExtractedEntity`. |
+| C5 | **Concurrent Path-B re-extract** — no `UNIQUE(chapter,content_hash)`, no revision allocation, unspecified lock → double-mint revisions / double-retract. | **MED** | concurrency | `UNIQUE(chapter_id, content_hash)` + `ON CONFLICT DO NOTHING`; Path B takes the same per-book lock; diff+retract runs inside it. |
+| C6 | **Crash mid-pipeline strands a sealed empty episode.** §4-A is 5 steps crossing a non-transactional LLM call; crash after step 1 leaves an immutable episode with no facts (and re-run may re-mint it). | **MED** | concurrency | Episode-seal + `writeback_key` reservation in tx-1 with a `pending→reconciled` status; reconcile in tx-2 keyed by the same `writeback_key`; `UNIQUE(chapter,content_hash)` makes re-run resume not re-mint. |
+
+### Root cause D — the KAL contract has unbudgeted shape gaps
+| # | Gap | Sev | Conv. | Resolution |
+|---|---|---|---|---|
+| D1 | **Half-open interval semantics undefined — 3 conflicting conventions.** §5 `valid_from ≤ N < valid_to`, §6B `valid_from ≤ N`, KG code inclusive-lower/no-upper (`facts.py:374`). `valid_to` sentinel for an open fact is undefined → `N < NULL` **excludes the current value from every as-of query**. Directly defeats spoiler-free translation. | **HIGH** | bi-temporal | LOCK one convention: half-open `[valid_from, valid_to)`; open fact `valid_to=NULL`=+∞; predicate `valid_from ≤ N AND (valid_to IS NULL OR N < valid_to)`; supersede sets `old.valid_to = new.valid_from`. Add a `valid_to_eff = coalesce(valid_to, INT_MAX)` indexable column (reuse KG's `INT64_MAX` null-sink). Fix §6B-2. |
+| D2 | **No `split_entity` / un-merge verb.** Append-only makes a wrong CJK-name merge **permanent**; `revertMerge` is LIFO journal-replay that can't unwind interleaved history. §6D writes-list has none. | **HIGH** | merge | Add `split_entity(winner, facts→new, by source_episode provenance)` — re-attribute by `source_episode_id` as a new transaction-time event (invalidate-not-delete preserved). Design now; it's the inverse of the load-bearing merge. |
+| D3 | **Name/aliases are flat EAV, not bi-temporal** (`entityNameAndAliases` reads `code IN ('name','aliases')` as flat rows). → rename-at-ch.4000 spawns a spurious entity every time AND **as-of name (§6B's own anti-spoiler example) is literally impossible.** | **HIGH** | merge | Model name+aliases as **multi-valued bi-temporal facts** (`valid_from_ordinal`); resolver matches the full across-time alias set (ch.4000 mention resolves to the ch.1 entity, no merge); as-of read returns the canonical name valid-at-N. |
+| D4 | **"No unbounded read" forbids the composition planner's legitimate full-cast need.** The planner injects the **entire roster** into the L2 prompt + uses it as the resolver index (`plan.py:160-174,286-290`); a top-K drops characters from both. AND `_cast_roster` already **silently truncates at 100** (`glossary_client.py:80`, ignores `next_cursor`). | **HIGH** | KAL | Add a **bounded-but-complete** primitive: `roster(book, fields=[id,name], cursor)` — cursor-paginated to completion, projection-restricted (never full attributes). Carve into INV-KAL as allowed. **Fix the existing truncation** (`_cast_roster` must drain the cursor) regardless of the KAL. |
+| D5 | **Cold-start seed may be lossy.** Q5 "one open fact valid_from=first-seen" never says **what value** it carries. If first-seen-*value* → the projection regresses to ch.1 state, not today's overwritten current value → "consumers keep working unchanged" is **false on day one**. | **MED** | KAL | Seed the open fact with the entity's **current flat EAV value**, `valid_from=first-seen` as the *bound* only. Migration test: `projection(entity) == flat_eav(entity)` for all entities. |
+| D6 | **INV-KAL lint only half-enforceable.** A grep catches direct table reads but **not** the bespoke-HTTP-endpoint outliers §6D itself lists (consumers calling `/internal/.../entities` is an ordinary HTTP call, indistinguishable from a KAL call). | **MED** | KAL | Two mechanisms: (i) grep lint for direct table/Cypher reads (owning-svc + KAL allowlisted); (ii) **HTTP-surface check** — lint that no consumer client targets the owning services' `/internal/*` knowledge endpoints. Until both, document as "table-read-enforced, HTTP-surface tracked" + a DEFERRED row. |
+| D7 | **Content-hash-gated retract can't self-heal a same-text hallucination** (a model upgrade can't drop a prior hallucinated fact without editing source). Deliberate, but the spec doesn't flag it's **permanent**. | **MED** | bi-temporal | Keep no-auto-retract-on-same-text default; add an explicit `allow_retract_on_remodel` force path keyed on model/prompt-version change (off by default). Document the force-revision escape valve. |
+| D8 | **Translation immutable-once cache goes stale against re-ground.** §6B "translate each immutable snapshot once" vs §9B "rebuild the canonical every K folds" → re-ground rewrites the canonical with no chapter edit → cached translation stale, no "new revision" fired. | **MED** | KAL | Key the translation cache on the **bounded unit's own content-hash** (not "chapter revision"); re-ground that changes content → cache miss; identical content → hit. Falls out of B0 (snapshot = versioned cache identity). |
+| D9 | **Multi-valued attr truncation in the prose canonical.** 200 aliases > `canonicalMaxRunes=2000` → 422-reject (→ wedges via B4) or silent alias drop in the default "who is this now" card. | **MED** | fold | Multi-valued attrs are **structured, not summarized** — keep aliases/tags/appears_in as paginated `entity_facts`, queried directly; the prose fold covers only single-valued/narrative attrs and *references* the list ("known by 200 aliases — see list"). |
+
+### Cross-cutting analysis-integrity corrections (fix the prose, not just add findings)
+- **§4/§6/§8 "the cross-kind merge `#43` is the entity-resolution step — done + validated"** → **FALSE for the new substrate.** `#43` is validated for the flat overwrite store; merge over append-only fact history is **net-new** (A1/C4/D2). Re-scope it.
+- **§8B "summarize reads a bounded raw-item subset (✅ no bloat)"** → **already false** — only the output is bounded; the input set is uncapped (B1). Fix the claim and cap the input.
+- **§9B "deterministic resolver sidesteps entity-resolution drift entirely"** → **overclaims.** It sidesteps *prompt-context* drift only; CJK aliases/honorifics that don't normalize-equal still need a **merge** (→ A1/D2/D3). Rewrite the row.
+- **§10 "safe under re-runs and concurrency"** → **inherited, not designed** (root cause C). Replace with a pointer to the new **§9C concurrency contract**.
+- **Things the review confirmed GENUINELY SOUND (do not touch):** facts-as-SSOT/derived-regenerable keystone; KG retract reuse scoped to glossary-net-new (Q7 correctly identifies #42 is false for KG); content-hash-gated retract vs churn (the *default* is right); cross-item fold isolation (`asyncio.gather(return_exceptions=True)`); the compare-and-clear dirty guard (C3 is about *not dropping* it); idempotent no-op re-fold on unchanged raw set; composition/chat KG side already as-of-parameterized.
+
+### What this means for status
+The spec is **architecturally validated but not implementation-ready.** Before BUILD:
+1. **Resolve B0 first** (immutable series vs regenerable cache) — it unblocks B1/B3/D8.
+2. **Add a §9C "Concurrency & idempotency contract"** (root cause C: in-tx projection upsert, fact natural key, advisory-lock-all-writes, compare-and-clear fold, episode `pending→reconciled`).
+3. **Re-scope merge as net-new** (A1/C4/D2/D3) — fact-chain merge + `split_entity` + bi-temporal name/aliases; the "#43 = done" claim is the single most load-bearing error.
+4. **Lock the interval convention (D1)** and make the close **ordinal-aware** (A2) + **retract chain-restitching** (A3).
+5. **Gate `as_of` per-substrate** (A5) and add the **bounded-complete roster** primitive (D4, + fix the live truncation).
+6. Downgrade the affected §9 `🔒` decisions (2, 4, 6, 7, 8, 9) to ⚠ pending these resolutions.
