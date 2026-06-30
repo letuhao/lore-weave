@@ -44,9 +44,17 @@ build new judges; we re-target existing ones from "post-prose verification" to "
   write-through via `/internal/.../extract-entities`; needs the book ontology adopted first —
   `GLOSS_BOOK_NOT_SCAFFOLDED` otherwise). Seeded the 10-cast into the POC book's glossary (all created),
   then re-ran the threaded decompose: **39/39 scenes now carry `present_entity_ids`** (CH1 S1 = Lâm Uyển
-  + parents + brother; CH1 S4 = Lâm Uyển + Cửu U Ma Cơ) — the grounding loop is proven: propose_cast →
-  seed → roster → scene presence. Bonus: CH1 spread to 4 scenes (less telescoped). ⇒ grounded drafting
-  (the packer pulls present entities' KG state) is unblocked.
+  + parents + brother; CH1 S4 = Lâm Uyển + Cửu U Ma Cơ) — the presence loop is proven: propose_cast →
+  seed → roster → scene presence. Bonus: CH1 spread to 4 scenes (less telescoped).
+- **⚠ review-impl correction — PRESENCE unblocked, DEPTH not yet.** `seed_entities` persists only
+  `{kind_code, name}` (the extract-entities decoder is strict — attributes/evidence → 422). So the
+  glossary entities are **hollow** (name + an auto `"character: <name>"` desc); the role/archetype/
+  traits/relationships `propose_cast` produced are **dropped**. Scene presence works, but grounded
+  drafting can't ground on character DEPTH yet. **D-PLAN-CAST-ATTRS (deferred, next stage):** persist the
+  cast's traits/role/relationships as glossary attributes/canon (needs attr_def mapping — extract-entities
+  no-ops on unmatched attr codes; the canon-content/enrichment endpoints are per-entity). Fixed now:
+  `is_new` string-coercion (`bool("false")` was True), + unit tests for `seed_entities` payload and the
+  coercion.
 
 ### Stage 1 — Motif selection  *(make the theme explicit)*
 - **Reuse:** `composition_motif_search` / `MotifRetriever` / `motif_select` (all built, W2).

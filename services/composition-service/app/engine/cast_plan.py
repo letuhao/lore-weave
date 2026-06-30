@@ -21,6 +21,7 @@ import logging
 import re
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, field
+from typing import Any
 
 from loreweave_llm.errors import LLMError
 
@@ -97,6 +98,15 @@ def parse_cast(content: str) -> list[ProposedChar]:
                 arr.append(row)
     if not arr:
         return []
+    def _as_bool(v: Any) -> bool:
+        # JSON true/false → bool; but a model sometimes emits the STRING "false"/"no",
+        # and bool("false") is True — coerce those textual negatives to False.
+        if isinstance(v, bool):
+            return v
+        if isinstance(v, str):
+            return v.strip().lower() not in ("", "false", "no", "0", "none", "null")
+        return bool(v)
+
     out: list[ProposedChar] = []
     seen: set[str] = set()
     for row in arr if isinstance(arr, list) else []:
@@ -119,7 +129,7 @@ def parse_cast(content: str) -> list[ProposedChar]:
             traits=traits,
             relationships=str(row.get("relationships", "")).strip(),
             summary=str(row.get("summary", "")).strip(),
-            is_new=bool(row.get("is_new", False)),
+            is_new=_as_bool(row.get("is_new", False)),
         ))
     return out
 

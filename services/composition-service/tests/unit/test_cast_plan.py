@@ -41,9 +41,16 @@ def test_parse_cast_tolerant_drops_and_dedups():
 
 
 def test_parse_cast_coerces_bad_traits_and_isnew():
-    content = json.dumps([{"name": "X", "traits": "not a list", "is_new": "yes-ish"}])
+    content = json.dumps([
+        {"name": "X", "traits": "not a list", "is_new": "yes-ish"},   # truthy string → True
+        {"name": "Y", "is_new": "false"},                              # textual negative → False (NOT bool("false")=True)
+        {"name": "Z", "is_new": "no"},
+        {"name": "W", "is_new": True},
+    ])
     out = parse_cast(content)
-    assert out[0].traits == [] and out[0].is_new is True  # bool("yes-ish") → True
+    assert out[0].traits == [] and out[0].is_new is True
+    assert out[1].is_new is False and out[2].is_new is False  # the string-"false" coercion bug guard
+    assert out[3].is_new is True
 
 
 def test_parse_cast_salvages_truncated_array():
