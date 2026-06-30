@@ -99,6 +99,15 @@ build new judges; we re-target existing ones from "post-prose verification" to "
 - **New:** feed present-cast (from stage 3), new-char introductions, bound motifs, and the tension budget
   INTO L2 → populate `present_entity_ids`, motif refs, introduction markers.
 - **POC:** ~40 scenes with REAL present cast + introductions + motif tags + a sane tension curve.
+- **STATUS — `grounded_decompose` validated 2026-06-30** (`engine/grounded_plan.py` + grounding block in
+  `build_scene_decompose_messages`, 6 unit tests). Feeds all of Stages 0-3 into the threaded L2:
+  `motifs_for_beat` (emphasise motifs by arc-role × beat), `intros_by_chapter` (stage each new character
+  at its chapter), the tension target per chapter, + cross-chapter threading. Skips L1 when chapters
+  arrive pre-mapped (the pipeline runs L1 once). **Live full Stage 0→4 on the Lâm Uyển premise: 12 ch / 34
+  scenes, 34/34 with present cast**; tensions follow the deliberate band (CH1 = 35,45 — NOT 100; CH3
+  establishment dips to 30,35); **Cửu U Ma Cơ introduced @ch2 per the schedule** (+ the rest at their
+  planned chapters); motifs woven; "Tiếp nối từ…" threading intact. The cumulative payoff vs the original
+  generic plan (ch1=95-100, no cast, anonymous chars). **Next-stage:** plan self-heal (Stage 5).
 
 ### Stage 5 — Plan self-heal  *(reuse the judge→satellite→splice pattern + the idle judges)*
 - **Reuse:** `engine/self_heal.py` pattern (locate/splice are generic); adapt `promise_audit`

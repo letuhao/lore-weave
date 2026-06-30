@@ -1,0 +1,27 @@
+motifs: ['Kỳ Ngộ → Truyền Thừa', 'Xấu hóa mỹ (Ugliness → Perfection)', 'Ma công phản phệ (Forbidden Power, Corrupting Price)', 'Phục thù kẻ khinh miệt (Revenge on Those Who Scorned Her)']
+intros: {'Cửu U Ma Cơ': 2, 'Thanh Vân Tông': 5, 'Mộ Dung Tuyết': 6, 'Diệp Phàm': 7, 'Hắc Sát': 8, 'Lục Trường Phong': 10}
+
+GROUNDED PLAN: 12 ch, 34 scenes, 34 with present cast
+
+=== CH01 [hook] tensions=[35, 45]
+  S1 (35) [Lâm Uyển,Lâm Chấn Nhạc,Tô Yến,Lâm Tử Hàn]: Mục tiêu là thiết lập sự ghẻ lạnh của gia tộc đối với Lâm Uyển thông qua việc chứng kiến sự thi
+  S2 (45) [Lâm Uyển]: Tiếp nối sự uất ức từ đại sảnh, Lâm Uyển cố gắng đột phá linh lực trong phòng riêng nhưng bị li
+
+=== CH02 [hook] tensions=[45, 60, 65]
+  S1 (45) [Lâm Uyển]: Tiếp nối từ sự tuyệt vọng sau khi bị trục xuất, Lâm Uyển phải tự mình tìm đường ra khỏi hậu việ
+  S2 (60) [Lâm Uyển]: Từ trạng thái cận kề cái chết bên bờ vực, ý thức của Lâm Uyển bị thu hút bởi một luồng hắc khí 
+  S3 (65) [Lâm Uyển,Cửu U Ma Cơ]: Trong không gian u minh, Lâm Uyển đối mặt với tàn hồn của Cửu U Ma Cơ, người đang tìm kiếm một 
+
+=== CH03 [establishment] tensions=[30, 35]
+  S1 (30) [Lâm Uyển,Cửu U Ma Cơ]: Tiếp nối trạng thái nửa tỉnh nửa mê trong hang động, Lâm Uyển bắt đầu vận hành dòng chảy ma khí
+  S2 (35) [Lâm Uyển,Cửu U Ma Cơ]: Sau khi đã ổn định dòng chảy ma khí, Lâm Uyển bước vào giai đoạn thâm nhập sâu hơn vào tủy xươn
+
+=== CH04 [establishment] tensions=[45, 35, 58]
+  S1 (45) [Lâm Uyển,Cửu U Ma Cơ]: Tiếp nối trạng thái tái sinh tại Hắc Phong Uyển, Lâm Uyển phải chịu đựng sự đau đớn tột cùng kh
+  S2 (35) [Lâm Uyển]: Sau khi hoàn tất quá trình cải tạo cơ thể, Lâm Uyển rời khỏi vực thẳm để trở về Lâm gia nhằm tì
+  S3 (58) [Lâm Uyển,Lâm Chấn Nhạc,Tô Yến,Lâm Tử Hàn]: Tại sảnh chính Lâm gia, Lâm Uyển đối mặt với sự lạnh nhạt của Lâm Chấn Nhạc và sự mỉa mai của T
+
+=== CH05 [rising_conflict] tensions=[30, 45, 55]
+  S1 (30) [Lâm Uyển,Cửu U Ma Cơ]: Tiếp nối trạng thái Lâm Uyển đang ẩn nhẫn tại Lâm gia, nàng cố gắng kiểm soát luồng ma khí đang
+  S2 (45) [Lâm Uyển,Lâm Tử Hàn]: Sau khi rời khỏi mật thất, Lâm Uyển đi ngang qua ngự thiền viện, nơi Lâm Tử Hàn đang luyện tập 
+  S3 (55) [Lâm Uyển,Lâm Chấn Nhạc,Tô Yến,Lâm Tử Hàn]: Sự bất an của Lâm Tử Hàn dẫn đến một cuộc kiểm tra linh lực định kỳ tại đại sảnh để chuẩn bị ch

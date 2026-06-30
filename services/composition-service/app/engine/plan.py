@@ -188,6 +188,9 @@ def build_scene_decompose_messages(
     premise: str, chapter: ChapterPlan, beat_purpose: str, cast_names: list[str],
     min_scenes: int, max_scenes: int, source_language: str,
     story_so_far: str = "", emit_exit: bool = False,
+    *, tension_target: int | None = None,
+    motifs: list[dict[str, str]] | None = None,
+    new_intros: list[str] | None = None,
 ) -> tuple[str, str]:
     """(system, user) for one chapter's scene decomposition.
 
@@ -250,12 +253,39 @@ def build_scene_decompose_messages(
         f"STORY SO FAR (continue FROM this state; do NOT repeat its developments):\n"
         f"{story_so_far.strip()}\n\n" if threaded else ""
     )
+    # Stage-4 grounding directives — the planning-pipeline inputs (tension curve, selected
+    # motifs + their arc roles, scheduled new-character introductions) that make the scenes
+    # grounded rather than free-run. All optional → omitted blocks keep the prompt unchanged.
+    ground: list[str] = []
+    if tension_target is not None:
+        ground.append(
+            f"TENSION TARGET: shape this chapter's scenes toward a PEAK around "
+            f"{tension_target}/100 — do not exceed it; reserve 90-100 for the climax. "
+            "Set each scene's tension within this chapter's band."
+        )
+    if motifs:
+        names = "; ".join(
+            f"{m.get('name', '')}" + (f" ({m['arc_role']})" if m.get("arc_role") else "")
+            for m in motifs if m.get("name")
+        )
+        if names:
+            ground.append(
+                f"WEAVE THESE MOTIFS where they fit naturally (do not force every one into "
+                f"every scene): {names}."
+            )
+    if new_intros:
+        ground.append(
+            "INTRODUCE THIS CHAPTER (first on-page appearance — establish who they are and "
+            f"why they matter, at a fitting scene): {', '.join(new_intros)}."
+        )
+    grounding = ("\n\nGROUNDING DIRECTIVES:\n- " + "\n- ".join(ground)) if ground else ""
     user = (
         f"PREMISE:\n{premise}\n\n"
         + so_far
         + f"CHAPTER INTENT (= the TARGET end-state the scene chain must reach):\n"
         f"{chapter.intent or chapter.title}\n\n"
         f"STRUCTURAL PURPOSE OF THIS CHAPTER:\n{beat_purpose}\n\nCAST ROSTER:\n{roster}"
+        + grounding
     )
     return system, user
 
