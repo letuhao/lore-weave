@@ -332,15 +332,16 @@ async def _verify(
 async def _verify_vote(
     llm: LLMClient, chapter: str, finding: Finding, *, canon: str | None, k: int, **kw,
 ) -> bool:
-    """Vote the verify (the POC found single-shot verify is stochastic + fail-toward-refute,
-    so it occasionally drops a REAL finding — CH01 'mẫu thân ngươi'). Run `_verify` k times
-    and REFUTE only on a strict majority; a tie keeps the finding (recall-biased — a clear
-    error is confirmed in most runs, a true confab is refuted in most). k≤1 ⇒ single-shot."""
+    """Vote the verify to RAISE recall — single-shot verify is stochastic + fail-toward-refute
+    (it dropped the real CH01 'mẫu thân ngươi'). Because each `_verify` already DEFAULTS to
+    REFUTED (skeptical, for precision against confabs), a majority vote would only compound the
+    refute-lean. So the vote DROPS only on a UNANIMOUS refute — one confirming vote (overcoming
+    the skeptical default) is enough to keep a finding; a true confab the model refutes every
+    time still gets 0 confirms → dropped. k≤1 ⇒ single-shot."""
     if k <= 1:
         return await _verify(llm, chapter, finding, canon=canon, **kw)
     votes = await asyncio.gather(*[_verify(llm, chapter, finding, canon=canon, **kw) for _ in range(k)])
-    confirms = sum(1 for v in votes if v)
-    return confirms * 2 >= k   # keep unless a STRICT majority refutes (tie → keep)
+    return any(votes)   # keep unless EVERY vote refutes (recall-biased; the human gate culls the rest)
 
 
 # ── code mechanical edits (L1 — deterministic, no LLM) ─────────────────

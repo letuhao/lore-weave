@@ -339,13 +339,13 @@ class _VerdictQueue:
                                result={"messages": [{"content": json.dumps({"verdict": v})}]})
 
 
-async def test_verify_vote_refutes_only_on_strict_majority():
+async def test_verify_vote_drops_only_on_unanimous_refute():
     f = Finding(type="t", span="s", issue="i", fix="f")
     C, R = "CONFIRMED", "REFUTED"
-    # k=3: a single stochastic refute must NOT drop the finding (the CH01 false-refute fix)
-    assert await _verify_vote(_VerdictQueue([C, R, R]), "ch", f, canon=None, k=3, **_KW) is False  # 1/3 confirm → drop
-    assert await _verify_vote(_VerdictQueue([C, C, R]), "ch", f, canon=None, k=3, **_KW) is True   # 2/3 confirm → keep
-    # tie keeps (recall-biased)
+    # recall-biased: ONE confirming vote (overcoming the skeptical default) keeps the finding
+    assert await _verify_vote(_VerdictQueue([C, R, R]), "ch", f, canon=None, k=3, **_KW) is True   # 1/3 confirm → keep
+    assert await _verify_vote(_VerdictQueue([R, R, C]), "ch", f, canon=None, k=3, **_KW) is True   # order-independent
+    assert await _verify_vote(_VerdictQueue([R, R, R]), "ch", f, canon=None, k=3, **_KW) is False  # unanimous refute → drop
     assert await _verify_vote(_VerdictQueue([C, R]), "ch", f, canon=None, k=2, **_KW) is True
     # k<=1 is plain single-shot
     assert await _verify_vote(_VerdictQueue([R]), "ch", f, canon=None, k=1, **_KW) is False
