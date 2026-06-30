@@ -35,6 +35,7 @@ down **once** and never re-explored — read these before doing any new code-spe
 | C6 | **AI chat as core** ("Claude Code in VS Code") — tool curation, skills, model settings | 🟡 discussing | [`stories/04-ai-chat-core.md`](stories/04-ai-chat-core.md) |
 | C2/C5 | Compose panels = toolbox; Media tool | 🟡 toolbox open / **Media deferred** | [`stories/05-compose-toolbox.md`](stories/05-compose-toolbox.md) |
 | **C1 ★** | **The compose journey (process, not tools)** — CORE PROBLEM | 🟡 **investigating** | [`stories/06-compose-journey.md`](stories/06-compose-journey.md) |
+| **C7** | **Self-heal / Polish pass** — manual+auto, double-edged ⇒ accept/reject review-gate, never silent | 🟡 discussing | [`stories/07-self-heal-polish.md`](stories/07-self-heal-polish.md) |
 | D1–D3 | Scenes I can organize | ⬜ not discussed | — |
 
 ### Milestones (build) — sequenced after stories are locked
@@ -46,6 +47,7 @@ down **once** and never re-explored — read these before doing any new code-spe
 | M3 | Scenes panel (add/reorder/archive/restore) | ⬜ planned |
 | M4 | Compose command-center | ⬜ planned |
 | M5 | BookAssistantDock → compose bridge (stretch) | ⬜ planned |
+| M6 | Polish/self-heal review-gate panel (FS) — engine built; needs MCP propose→confirm + UI | ⬜ planned |
 
 ## Operating approach (UPDATED 2026-06-30) — incremental, validate-first
 **We do NOT build M0–M5 big-bang.** Per PO: improve **one small slice** at a time → PO **tests the
@@ -85,3 +87,9 @@ improvement against a real user-story test before scaling.
   chapters now continue from the prior exit-state, **no arc repetition**. review-impl: 0 HIGH, 4
   findings fixed/accepted; composition unit suite 1180 + slice tests green. **Next: POC self-heal —
   measure the `stitch` baseline first.**
+- _2026-07-01_ — **Self-heal cheap-stack judge upgrade shipped + driven over CH1–12** (engine
+  `self_heal.py`: grounded judge + vote + verify + sentence-snap + pronoun prefilter; commits
+  `ac93981fb` + follow-up). Pronouns fixed book-wide, no inflation; verify found to be a **double-edged
+  sword** (stochastic, drops some real findings). **PO decision:** expose the heal as a **user-controlled
+  feature** (manual + opt-in auto) behind an **accept/reject review-gate**, never silent — new story
+  **C7 / M6** ([`stories/07-self-heal-polish.md`](stories/07-self-heal-polish.md)), lands in the UX/UI track.

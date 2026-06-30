@@ -24,9 +24,9 @@
 | Draft | compose, cowriter, assemble |
 | Structure | planner, scenes*, beats, graph |
 | Story Bible | cast, arc, relmap, timeline, worldmap, canon, canonview, motifs |
-| Quality | critic, grounding, style, conformance, quality, threads, progress, flywheel, references |
+| Quality | critic, grounding, style, conformance, quality, threads, progress, flywheel, references, polish† |
 | Settings | settings |
-_(*`scenes` = new panel from M3.)_
+_(*`scenes` = new panel from M3. †`polish` = new self-heal review panel from M6, [`stories/07-self-heal-polish.md`](stories/07-self-heal-polish.md).)_
 
 ## Milestones (FE except M1's one small BE task; ordered by leverage-per-risk)
 
@@ -38,6 +38,7 @@ _(*`scenes` = new panel from M3.)_
 | **M3** | **Scenes panel** — add / drag-reorder / archive / restore | new `ScenesPanel.tsx`; `hooks/useWork.ts` (+3 hooks); register `scenes` in `types.ts` + `CompositionPanel.tsx` | `reorderNode`/`archiveNode`/`restoreNode`/`getOutline(includeArchived)`, dnd-kit from `DockRail` |
 | **M4** | **Compose command-center** — guided launcher | new `ComposeStartView.tsx`; `CompositionPanel.tsx` (compose slot) | `selectTab`, `setComposeGuide`, `setSceneId`, `useGuidedFirstRun`, CoWriter `onUseAsGuide` |
 | **M5** *(stretch)* | `BookAssistantDock` glossary chat → compose/enrichment input | `features/chat/BookAssistantDock.tsx` | `onUseAsGuide` seam |
+| **M6** | **Polish / self-heal pass** (FS) — manual + opt-in auto; **accept/reject review-gate** over the engine's proposals (never silent-apply); deterministic edits default-checked, semantic default-unchecked; per-run controls (canon always-on, verify, vote depth, prefilter); optional stronger-model escalation | new `PolishPanel.tsx` + diff/review pane (Quality group); **composition-service: expose `self_heal` as an MCP propose→confirm tool** (engine `engine/self_heal.py` already built) | `SelfHealReport` proposals, `run_self_heal(canon/vote_k/verify/prefilter)`, planning `PipelineResult` cast bible for canon |
 
 **Recommended first deliverable: M0 + M1 together** — M0 fixes the root-cause mode confusion
 (near-zero risk, derives existing state); M1 gives the most visible relief (translation Postman→GUI
@@ -52,6 +53,9 @@ by extracting one existing page) and needs M0's Workmode for a clean home.
 - M2: 24 panels under 5 labelled sections, 4 locales; in-flight generation survives re-group.
 - M3: add → drag-reorder (persisted via outline refetch) → archive → restore round-trip.
 - M4: 4 launcher actions drive existing handlers end-to-end.
+- M6: manual Polish returns proposals (no silent write); accept/reject splices only accepted edits;
+  auto-polish toggle persists per-book (server); deterministic edits default-checked, semantic
+  default-unchecked; live-smoke the heal through the MCP propose→confirm tool on the running stack.
 
 ## Out of scope (consciously)
 No data-model/contract changes; no touching the `DockSlot` mount list or `WorkspaceShell` provider
@@ -63,3 +67,6 @@ rewrite); the enrichment-vs-writing "Compose" naming fix is a label/placement ta
 2. Translate placement: **center side-by-side** (proposed) vs right-panel?
 3. OK to **demote `Classic↔AI`** to an advanced sub-setting under Write?
 4. Cadence: one milestone at a time through `/loom`?
+5. Polish/self-heal (M6, [`stories/07-self-heal-polish.md`](stories/07-self-heal-polish.md)): auto-polish
+   default **off** vs **on-for-deterministic-edits-only**? Accepted edits → new draft version (OCC) vs
+   edit-in-place+undo? Stronger-model escalation capability + cost-gate UX?

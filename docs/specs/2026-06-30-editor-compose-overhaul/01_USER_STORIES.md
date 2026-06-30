@@ -28,6 +28,10 @@ Persona: **the author** working in the chapter workspace (multi-tenant; their ow
 - **C3.** **Chat about my prologue/idea and then continue** — turn the discussion into a scene/draft
   via a visible Insert / Use-as-guide / Create-scene path. _(⬜)_
 - **C4.** Not be confused by two different "Compose" features — each clearly named and placed. _(⬜)_
+- **C7.** **Polish a chapter/scene on demand (or auto), reviewing every edit before it applies** — the
+  multi-pass self-heal is a *double-edged sword* (reliable on lexical/xưng-hô, but its semantic verify
+  is imperfect), so it must be a user-controlled pass behind an accept/reject gate, never a silent
+  rewrite. 🟡 **discussing** → [`stories/07-self-heal-polish.md`](stories/07-self-heal-polish.md). _(⬜)_
 
 ## Epic D — Scenes I can organize
 - **D1.** **Add, reorder (drag), arrange** scenes from a first-class Scenes panel. _(⬜)_
