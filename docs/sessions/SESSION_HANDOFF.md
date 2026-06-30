@@ -47,9 +47,18 @@
 > - **KAL in docker-compose** `b695ab7d` — built + healthy in-stack; cross-service smoke: composition container →
 >   `knowledge-gateway:3000` roster returns the contract shape.
 >
-> **▶ ONLY REMAINING: X6 FE (in this branch, PO-directed)** — BFF→KAL auth design (the KAL is internal-token-only;
-> the FE path needs a user-JWT mode or a public-route bridge) + the net-new temporal UI surfaces (canonical card,
-> time/version slider, change timeline w/ citations, diff view, retrieval-not-scroll, per-episode translation §7).
+> **▶ X6a/b — FE→KAL bridge DONE + live-verified** `bf772913` (PO: dual-auth chosen):
+> - **KAL dual-auth** (read surface; writes stay internal-only): SERVICE mode (X-Internal-Token) OR USER mode —
+>   validate the platform HS256 Bearer JWT (Node crypto, no dep; rejects alg=none/wrong-sig/expired, timing-safe) +
+>   GRANT-CHECK the book against book-service (`/internal/books/{id}/access`) since the BFF is a dumb proxy. X-User-Id
+>   PINNED from the JWT sub (anti-spoof). Fail-closed + 5s grant timeout + bounded positive-grant cache.
+> - **BFF** `/v1/kal` → knowledge-gateway (dumb JWT passthrough, 503-on-down). KAL compose env: JWT_SECRET + BOOK_SERVICE_URL.
+> - **Reviewed** (/review-impl: MED grant-timeout + LOW cache-bound fixed) + **live-smoked** the full FE path with a
+>   REAL login JWT: owned-book→200, non-granted→403, no-auth/garbage→401, service-mode→200. KAL jest 17 green.
+>
+> **▶ ONLY REMAINING: X6c — the net-new FE TEMPORAL SURFACES (React, this branch):** canonical card (as-of folded
+> canonical), time/version slider (scrub chapter ordinal), change timeline w/ citations, diff view (state between two
+> ordinals), retrieval-not-scroll, per-episode translation (§7). Reads go through the BFF `/v1/kal/*` (now live).
 >
 > **▶ REMAINING = the consumer/FE FANOUT (parallel worktree agents, the locked strategy):**
 > X1 composition→KAL (+fix `_cast_roster` cursor drain) · X2 lore-enrichment→KAL · X3 wiki→KAL (kill direct-EAV) ·
