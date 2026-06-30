@@ -1324,6 +1324,9 @@ async def _process_extraction_chapter(
         content_hash=content_hash,
         writeback_key=writeback_key,
         owner_user_id=str(owner_user_id) if owner_user_id else None,
+        # Temporal-knowledge Path A (§12): pass the chapter's story-time ordinal so glossary
+        # opens append-only bi-temporal facts valid-from this chapter (the SSOT producer).
+        chapter_ordinal=chapter_index,
     )
 
     if upsert_result is None:

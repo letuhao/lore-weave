@@ -331,6 +331,44 @@ func rebuildProjectionForEntity(ctx context.Context, q pgxRWQuerier, entityID uu
 	return nil
 }
 
+// emitChapterFacts is the Path-A producer (§4 step 2-4 / F1d): for each attribute the
+// writeback ACTUALLY WROTE for an entity this chapter, open one append-only fact valid-from
+// the chapter ordinal, citing the immutable episode. Idempotent (the content-addressed
+// natural key short-circuits a re-extract → 0 new rows), ordinal-aware (maintain_chain runs
+// inside appendFact), and additive — it does NOT touch the EAV the merge-strategy path wrote
+// (that stays the live projection during the transition). Values mirror what the EAV stored
+// (serializeValue / the name), so the fact log tracks the accepted value changes.
+//
+// Runs inside the per-chapter writeback tx, under the per-book advisory lock the handler
+// already holds; appendFact additionally takes the per-(entity, attr) chain lock.
+func (s *Server) emitChapterFacts(ctx context.Context, q pgxRWQuerier, bookID, entityID uuid.UUID, ent extractedEntity, writtenCodes []string, ordinal int64, episodeID uuid.UUID) error {
+	for _, code := range writtenCodes {
+		var value string
+		if code == "name" {
+			value = ent.Name
+		} else {
+			val, ok := ent.Attributes[code]
+			if !ok {
+				continue
+			}
+			value = serializeValue(val)
+		}
+		if value == "" {
+			continue
+		}
+		if err := acquireFactChainLock(ctx, q, entityID, code); err != nil {
+			return err
+		}
+		if _, _, err := appendFact(ctx, q, appendFactParams{
+			BookID: bookID, EntityID: entityID, FactKind: "attribute", Attr: code,
+			Value: value, ValidFrom: ordinal, SourceEpisodeID: &episodeID,
+		}); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
 // nullStr returns nil for an empty string so an absent writeback_key stores SQL NULL.
 func nullStr(s string) any {
 	if s == "" {

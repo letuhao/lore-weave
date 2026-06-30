@@ -401,6 +401,7 @@ async def post_extracted_entities(
     content_hash: str | None = None,
     writeback_key: str | None = None,
     owner_user_id: str | None = None,
+    chapter_ordinal: int | None = None,
 ) -> dict | None:
     """Post extracted entities to glossary-service for upsert.
 
@@ -429,6 +430,11 @@ async def post_extracted_entities(
         body["writeback_key"] = writeback_key
     if owner_user_id:
         body["owner_user_id"] = owner_user_id
+    # Temporal-knowledge Path A (§12): the chapter's story-time ordinal (0-based
+    # chapter_index). When present, glossary ALSO opens append-only bi-temporal facts
+    # valid-from this ordinal. Additive — omitting it keeps the flat-only behavior.
+    if chapter_ordinal is not None:
+        body["chapter_ordinal"] = chapter_ordinal
     try:
         async with httpx.AsyncClient(timeout=30.0) as client:
             resp = await client.post(
