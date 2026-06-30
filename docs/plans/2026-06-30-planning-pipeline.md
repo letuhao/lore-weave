@@ -127,6 +127,13 @@ build new judges; we re-target existing ones from "post-prose verification" to "
 - Chain 0–5; checkpoints **blocking** at 1, 2, 4 (motif / cast / arc shape — wait for approval),
   **advisory** at 3, 5, 6, 7 (proceed, human edits after). The LLM proposes at every step (autonomous,
   tool-using); the human directs.
+- **STATUS — `run_planning_pipeline` built 2026-06-30** (`engine/planning_pipeline.py`, 1 orchestrator
+  unit test). Chains 0→1→L1(once)→3→4→5 end-to-end: Stage 0 propose→seed→roster (joins cast to entity-ids
+  by name), Stage 1 motifs, L1 beat-map ONCE (feeds both Stage 3 char-arcs and Stage 4), Stage 4 grounded
+  decompose (pre-mapped ⇒ skips its own L1), Stage 5 plan self-heal. Returns the healed plan + all
+  intermediates (cast / motifs / arcs / heal report) so a UI can checkpoint between stages; end-to-end for
+  the autonomous path. Each stage degrades independently (never hard-fails). Live full Stage 0→5 POC
+  running.
 
 ## Sequencing & rationale
 Start with **Stage 0** — empty cast is the root that starves every later step (motif binding, presence,
