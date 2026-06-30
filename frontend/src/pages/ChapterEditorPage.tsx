@@ -555,6 +555,20 @@ export function ChapterEditorPage() {
     }
   }, [accessToken, tiptapJson]);
 
+  // ── M6 Polish — replace the doc with the self-heal-accepted prose ──────────
+  // Mirrors handleTranslate's whole-doc setContent. Builds the same Tiptap paragraph
+  // shape book-service writes (a `_text` snapshot per block) from the healed plain text.
+  const handleApplyPolish = useCallback((healedText: string) => {
+    const content = healedText.split(/\n\n+/).map((para) => {
+      const tx = para.trim();
+      return tx
+        ? { type: 'paragraph', _text: tx, content: [{ type: 'text', text: tx }] }
+        : { type: 'paragraph', _text: '' };
+    });
+    tiptapEditorRef.current?.setContent({ type: 'doc', content });
+    toast.success(t('polish_applied', { defaultValue: 'Applied polish edits' }));
+  }, [t]);
+
   // ── Leave-page guard ──────────────────────────────────────────────────────
 
   useEffect(() => {
@@ -718,6 +732,7 @@ export function ChapterEditorPage() {
             ts: new Date().toISOString(),
           })
         }
+        onApplyPolish={handleApplyPolish}
         sceneId={activeSceneId}
         onSceneChange={setActiveSceneId}
         heatmapEnabled={heatmapEnabled}

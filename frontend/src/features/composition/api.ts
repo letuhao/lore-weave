@@ -432,6 +432,34 @@ export const compositionApi = {
   getCorrectionStats(projectId: string, token: string): Promise<CorrectionStats> {
     return apiJson(`${BASE}/works/${projectId}/correction-stats`, { token });
   },
+  // M6 Polish — PROPOSE self-heal edits for a chapter draft (the review-gate). Returns the
+  // proposals (NOT applied) for accept/reject; the accepted subset is spliced client-side
+  // (applySelfHealEdits) + saved by the editor. 202+poll when the worker is on, else inline.
+  async proposeSelfHeal(
+    projectId: string,
+    body: {
+      chapterId: string; modelRef: string;
+      modelSource?: 'user_model' | 'platform_model';
+      verify?: boolean; verifyK?: number; voteK?: number; prefilter?: boolean;
+    },
+    token: string,
+  ): Promise<SelfHealProposalResponse> {
+    const resp = await apiJson<SelfHealProposalResponse>(
+      `${BASE}/works/${projectId}/self-heal/propose`,
+      {
+        method: 'POST', token,
+        body: JSON.stringify({
+          chapter_id: body.chapterId,
+          model_source: body.modelSource ?? 'user_model', model_ref: body.modelRef,
+          verify: body.verify ?? true, verify_k: body.verifyK ?? 3,
+          vote_k: body.voteK ?? 5, prefilter: body.prefilter ?? true,
+        }),
+      },
+    );
+    return _resolveJob(resp, token, (job) => ({
+      job_id: job.id, status: job.status, ...(job.result as Record<string, unknown>),
+    }) as SelfHealProposalResponse);
+  },
   critique(jobId: string, passage: string, token: string): Promise<{ critic: GenerationJob['critic']; warning?: string }> {
     return apiJson(`${BASE}/jobs/${jobId}/critique`, {
       method: 'POST', body: JSON.stringify({ passage }), token,
@@ -467,3 +495,43 @@ export const compositionApi = {
     return apiJson(`${BASE}/works/${projectId}/narrative-threads?status=${status}`, { token });
   },
 };
+
+// ── M6 Polish / self-heal ──────────────────────────────────────────────
+export interface SelfHealProposal {
+  id: string;
+  type: string;
+  tier: 'deterministic' | 'semantic';
+  start: number;
+  end: number;
+  before: string;
+  after: string;
+  issue: string;
+  fix: string;
+}
+
+export interface SelfHealProposalResponse {
+  job_id: string;
+  status: string;
+  proposals: SelfHealProposal[];
+  source_text: string;
+  draft_version: number | null;
+  stats?: { findings: number; located: number; edits: number; refuted: number };
+}
+
+/**
+ * Splice the accepted proposals (default: ALL) into the source text, rightmost-first so
+ * earlier offsets stay valid — the JS mirror of the engine's `apply_self_heal_edits`, so the
+ * editor preview byte-matches what the backend would have produced.
+ */
+export function applySelfHealEdits(
+  sourceText: string,
+  proposals: SelfHealProposal[],
+  acceptedIds?: Set<string>,
+): string {
+  const keep = acceptedIds ? proposals.filter((p) => acceptedIds.has(p.id)) : proposals;
+  let out = sourceText;
+  for (const p of [...keep].sort((a, b) => b.start - a.start)) {
+    out = out.slice(0, p.start) + p.after + out.slice(p.end);
+  }
+  return out;
+}

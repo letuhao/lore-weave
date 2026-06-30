@@ -88,8 +88,17 @@
 >     existing `composition_write_prose`** — no new write tool / no confirm-token surgery. **Live-smoke:**
 >     resolve path proven on the stack (get_draft `body` key + draft_version=2 → 7473-char prose; KAL roster
 >     12 cast → 823-char canon); propose engine separately live-validated. Tests: self_heal 27 + worker_jobs
->     (dispatch + serialize). **NEXT:** **M6.3 FE** — `PolishPanel` + accept/reject diff pane (Quality group,
->     story C7); then re-drive CH1–12 with `verify_k=3` to refresh `story-export-v2/`.
+>     (dispatch + serialize).
+>   - **M6.3 FE — DONE (Polish panel), 2026-07-01:** `PolishPanel` + `usePolishProposals` hook + `api.proposeSelfHeal`
+>     / `applySelfHealEdits` (JS mirror of the engine splice); registered `polish` in the **Quality** group
+>     (`workspace/types.ts` + `CompositionPanel` SubTab/stripIds/DockSlot, no-remount preserved); accept/reject
+>     diff list (deterministic pre-checked, semantic unchecked); Apply → `ChapterEditorPage.handleApplyPolish`
+>     replaces the doc via `setContent` (mirrors `handleTranslate`). Endpoint path fixed `/projects`→`/works`.
+>     i18n `polish` label ×4 locales. Tests: tsc clean + **722 composition vitest** (incl. 6 new).
+>     **NEXT:** re-drive CH1–12 with `verify_k=3` to refresh `story-export-v2/`.
+>   - **Deferred D-POLISH-FE-BROWSER-SMOKE** (gate #4, needs FE image rebuild) — full click-through (open
+>     chapter → Polish tab → Run → proposals → Apply) on a rebuilt FE image (running infra-frontend is the
+>     old baked build). BE resolve-path + propose engine already live-smoked; FE↔BE call is typed + unit-tested.
 >   - **Deferred D-SELFHEAL-CANON-ATTRS** (gate #2, structural) — heal canon is currently convention +
 >     roster NAMES (KAL roster is names-only); rich per-character canon (descriptions → catches canon
 >     contradictions like Tô Yến "che chở") needs a glossary "full cast WITH attributes" read. The

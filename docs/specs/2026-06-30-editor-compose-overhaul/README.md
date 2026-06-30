@@ -35,7 +35,7 @@ down **once** and never re-explored — read these before doing any new code-spe
 | C6 | **AI chat as core** ("Claude Code in VS Code") — tool curation, skills, model settings | 🟡 discussing | [`stories/04-ai-chat-core.md`](stories/04-ai-chat-core.md) |
 | C2/C5 | Compose panels = toolbox; Media tool | 🟡 toolbox open / **Media deferred** | [`stories/05-compose-toolbox.md`](stories/05-compose-toolbox.md) |
 | **C1 ★** | **The compose journey (process, not tools)** — CORE PROBLEM | 🟡 **investigating** | [`stories/06-compose-journey.md`](stories/06-compose-journey.md) |
-| **C7** | **Self-heal / Polish pass** — manual+auto, double-edged ⇒ accept/reject review-gate, never silent | 🟡 discussing | [`stories/07-self-heal-polish.md`](stories/07-self-heal-polish.md) |
+| **C7** | **Self-heal / Polish pass** — manual+auto, double-edged ⇒ accept/reject review-gate, never silent | ✅ **BE+FE built (M6.1–M6.3)**; auto-toggle deferred | [`stories/07-self-heal-polish.md`](stories/07-self-heal-polish.md) |
 | D1–D3 | Scenes I can organize | ⬜ not discussed | — |
 
 ### Milestones (build) — sequenced after stories are locked
@@ -47,7 +47,7 @@ down **once** and never re-explored — read these before doing any new code-spe
 | M3 | Scenes panel (add/reorder/archive/restore) | ⬜ planned |
 | M4 | Compose command-center | ⬜ planned |
 | M5 | BookAssistantDock → compose bridge (stretch) | ⬜ planned |
-| M6 | Polish/self-heal review-gate panel (FS) — engine built; needs MCP propose→confirm + UI | ⬜ planned |
+| M6 | Polish/self-heal review-gate panel (FS) | ✅ **built** — M6.1 engine + M6.2 propose endpoint/worker + M6.3 Polish panel (Quality group). Auto-polish toggle + browser smoke deferred. |
 
 ## Operating approach (UPDATED 2026-06-30) — incremental, validate-first
 **We do NOT build M0–M5 big-bang.** Per PO: improve **one small slice** at a time → PO **tests the
@@ -93,3 +93,8 @@ improvement against a real user-story test before scaling.
   sword** (stochastic, drops some real findings). **PO decision:** expose the heal as a **user-controlled
   feature** (manual + opt-in auto) behind an **accept/reject review-gate**, never silent — new story
   **C7 / M6** ([`stories/07-self-heal-polish.md`](stories/07-self-heal-polish.md)), lands in the UX/UI track.
+- _2026-07-01_ — **M6 Polish built (BE+FE)**: M6.1 propose/apply engine split (`c4db3792`), M6.2 propose
+  endpoint + worker op (`160d3b5a0`, resolve-path live-smoked), M6.3 `PolishPanel` in the Quality group
+  (accept/reject diff, deterministic pre-checked / semantic unchecked; Apply replaces the doc). tsc clean +
+  722 composition vitest. Deferred: auto-polish toggle (story decision #1), browser click-through smoke
+  (needs FE image rebuild), rich-attribute canon (D-SELFHEAL-CANON-ATTRS).

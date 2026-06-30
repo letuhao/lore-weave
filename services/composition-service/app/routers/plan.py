@@ -179,7 +179,7 @@ class SelfHealProposeRequest(BaseModel):
     prefilter: bool = True
 
 
-@router.post("/projects/{project_id}/self-heal/propose")
+@router.post("/works/{project_id}/self-heal/propose")
 async def self_heal_propose_endpoint(
     project_id: UUID,
     body: SelfHealProposeRequest,
