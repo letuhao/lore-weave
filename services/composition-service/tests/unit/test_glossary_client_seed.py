@@ -33,24 +33,36 @@ def _client(fake) -> GlossaryClient:
     return c
 
 
-async def test_seed_entities_minimal_payload_and_name_filter():
+async def test_seed_entities_attributes_and_actions_and_name_filter():
     fake = _FakeHTTP(200, {"created": 2, "entities": [
         {"name": "Lâm Uyển", "entity_id": "e1"}, {"name": "Tô Yến", "entity_id": "e2"}]})
     c = _client(fake)
     out = await c.seed_entities(BOOK, source_language="vi", entities=[
-        {"kind_code": "character", "name": "Lâm Uyển", "evidence": "drop me"},
-        {"name": "Tô Yến"},                 # kind_code defaults to "character"
+        {"kind_code": "character", "name": "Lâm Uyển",
+         "attributes": {"role": "protagonist", "personality": "kiên cường"}},
+        {"name": "Tô Yến"},                       # kind defaults to character; no attrs
         {"kind_code": "character", "name": ""},   # nameless → filtered
     ])
     assert len(out) == 2
     sent = fake.calls[0]["json"]
-    # the STRICT minimal contract — no attribute_actions/attributes/evidence (those 422'd live)
-    assert set(sent.keys()) == {"source_language", "default_tags", "entities"}
+    # D-PLAN-CAST-ATTRS: attributes carried + attribute_actions auto-built (fill) per attr sent
+    assert set(sent.keys()) == {"source_language", "default_tags", "entities", "attribute_actions"}
     assert sent["entities"] == [
-        {"kind_code": "character", "name": "Lâm Uyển"},
-        {"kind_code": "character", "name": "Tô Yến"},
+        {"kind_code": "character", "name": "Lâm Uyển",
+         "attributes": {"role": "protagonist", "personality": "kiên cường"}},
+        {"kind_code": "character", "name": "Tô Yến", "attributes": {}},
     ]
+    assert sent["attribute_actions"] == {"character": {"role": "fill", "personality": "fill"}}
     assert fake.calls[0]["url"].endswith(f"/internal/books/{BOOK}/extract-entities")
+
+
+async def test_seed_entities_no_attributes_omits_actions():
+    fake = _FakeHTTP(200, {"entities": []})
+    c = _client(fake)
+    await c.seed_entities(BOOK, source_language="vi", entities=[{"kind_code": "character", "name": "X"}])
+    sent = fake.calls[0]["json"]
+    assert "attribute_actions" not in sent       # no attrs sent → no actions block
+    assert sent["entities"] == [{"kind_code": "character", "name": "X", "attributes": {}}]
 
 
 async def test_seed_entities_empty_input_makes_no_call():

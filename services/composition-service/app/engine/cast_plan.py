@@ -134,6 +134,26 @@ def parse_cast(content: str) -> list[ProposedChar]:
     return out
 
 
+def cast_attributes(c: ProposedChar) -> dict[str, str]:
+    """Map a proposed character's designed fields onto the glossary CHARACTER kind's
+    attribute codes (`role`, `personality`, `relationships`, `description`) so the cast's
+    DEPTH — not just its name — is persisted + reaches drafting grounding (D-PLAN-CAST-ATTRS).
+    Only non-empty fields are emitted; an unknown kind's attrs are dropped by the glossary."""
+    attrs: dict[str, str] = {}
+    if c.role:
+        attrs["role"] = c.role
+    if c.relationships:
+        attrs["relationships"] = c.relationships
+    personality = list(c.traits)
+    if c.archetype:
+        personality.append(c.archetype)
+    if personality:
+        attrs["personality"] = "; ".join(personality)
+    if c.summary:
+        attrs["description"] = c.summary
+    return attrs
+
+
 async def propose_cast(
     llm: LLMClient, *, user_id: str, model_source: str, model_ref: str,
     premise: str, source_language: str = "auto", genre_tags: list[str] | None = None,

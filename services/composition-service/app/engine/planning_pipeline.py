@@ -27,7 +27,7 @@ from typing import Any
 from uuid import UUID
 
 from app.clients.llm_client import LLMClient
-from app.engine.cast_plan import propose_cast
+from app.engine.cast_plan import cast_attributes, propose_cast
 from app.engine.character_plan import plan_character_arcs
 from app.engine.grounded_plan import grounded_decompose
 from app.engine.motif_plan import select_arc_motifs
@@ -69,9 +69,12 @@ async def run_planning_pipeline(
                                    genre_tags=genre_tags, **mk)
     cast_chars = [{"name": c.name, "role": c.role, "is_new": c.is_new} for c in cast_objs]
     if seed_cast and cast_objs:
+        # D-PLAN-CAST-ATTRS — persist DEPTH (role/personality/relationships/description),
+        # not just the name, so drafting can ground on the designed cast.
         await glossary.seed_entities(
             book_id, source_language=source_language,
-            entities=[{"kind_code": "character", "name": c.name} for c in cast_objs])
+            entities=[{"kind_code": "character", "name": c.name, "attributes": cast_attributes(c)}
+                      for c in cast_objs])
     roster = await kal.roster(book_id, user_id=UUID(str(user_id)))
     id_by_name = {e["name"]: e["entity_id"] for e in roster if e.get("name") and e.get("entity_id")}
     cast_decompose = [{"entity_id": id_by_name[c.name], "name": c.name}

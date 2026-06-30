@@ -46,15 +46,15 @@ build new judges; we re-target existing ones from "post-prose verification" to "
   then re-ran the threaded decompose: **39/39 scenes now carry `present_entity_ids`** (CH1 S1 = Lâm Uyển
   + parents + brother; CH1 S4 = Lâm Uyển + Cửu U Ma Cơ) — the presence loop is proven: propose_cast →
   seed → roster → scene presence. Bonus: CH1 spread to 4 scenes (less telescoped).
-- **⚠ review-impl correction — PRESENCE unblocked, DEPTH not yet.** `seed_entities` persists only
-  `{kind_code, name}` (the extract-entities decoder is strict — attributes/evidence → 422). So the
-  glossary entities are **hollow** (name + an auto `"character: <name>"` desc); the role/archetype/
-  traits/relationships `propose_cast` produced are **dropped**. Scene presence works, but grounded
-  drafting can't ground on character DEPTH yet. **D-PLAN-CAST-ATTRS (deferred, next stage):** persist the
-  cast's traits/role/relationships as glossary attributes/canon (needs attr_def mapping — extract-entities
-  no-ops on unmatched attr codes; the canon-content/enrichment endpoints are per-entity). Fixed now:
-  `is_new` string-coercion (`bool("false")` was True), + unit tests for `seed_entities` payload and the
-  coercion.
+- **⚠ review-impl correction — PRESENCE then DEPTH (D-PLAN-CAST-ATTRS — RESOLVED 2026-06-30).** Initially
+  `seed_entities` persisted only `{kind_code, name}` → hollow entities. **Task B fixed it:** the book's
+  character kind has registered attr codes (`role`, `personality`, `relationships`, `description`, …);
+  `cast_plan.cast_attributes` maps propose_cast's role/traits/archetype/relationships/summary onto them,
+  and `seed_entities` now sends `attributes` + an auto-built `attribute_actions` (fill). **Live-verified:**
+  seeding Mộ Dung Tuyết persisted role=foil, personality="kiêu kỳ; thanh cao; …", relationships, description
+  in the glossary EAV — so drafting grounding (`select_for_context` → `description`) now has character
+  DEPTH. (The earlier 422 was only the missing ontology adopt, not attributes.) Also fixed at review:
+  `is_new` string-coercion + `seed_entities` unit tests.
 
 ### Stage 1 — Motif selection  *(make the theme explicit)*
 - **Reuse:** `composition_motif_search` / `MotifRetriever` / `motif_select` (all built, W2).

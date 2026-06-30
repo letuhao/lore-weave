@@ -7,7 +7,19 @@ import json
 from types import SimpleNamespace
 
 from app.engine import cast_plan
-from app.engine.cast_plan import parse_cast, propose_cast
+from app.engine.cast_plan import ProposedChar, cast_attributes, parse_cast, propose_cast
+
+
+def test_cast_attributes_maps_fields_to_glossary_codes():
+    c = ProposedChar(name="Lâm Uyển", role="protagonist", archetype="phế vật nghịch thiên",
+                     traits=["kiên cường", "lạnh lùng"], relationships="đích nữ Lâm gia",
+                     summary="nữ chính bị ruồng bỏ")
+    a = cast_attributes(c)
+    assert a["role"] == "protagonist"
+    assert a["relationships"] == "đích nữ Lâm gia"
+    assert a["personality"] == "kiên cường; lạnh lùng; phế vật nghịch thiên"  # traits + archetype
+    assert a["description"] == "nữ chính bị ruồng bỏ"
+    assert cast_attributes(ProposedChar(name="X")) == {}    # all-empty → no attrs
 
 
 def test_parse_cast_extracts_and_flags_new():
