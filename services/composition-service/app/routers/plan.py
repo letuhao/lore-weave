@@ -71,6 +71,10 @@ class DecomposeRequest(BaseModel):
     # cleanly and A3's default behavior is unchanged until A≥B is proven. Genres for
     # retrieval come from the book object; language from the work's source profile.
     motifs_enabled: bool = False
+    # Phase-0 slice-2 — cross-chapter sequential threading. Default OFF ⇒ today's
+    # concurrent per-chapter decompose. ON ⇒ chapters are decomposed in order, each
+    # conditioned on the prior chapters' typed exit-state so they don't repeat the arc.
+    thread_state: bool = False
 
 
 class CommitScene(BaseModel):
@@ -169,6 +173,9 @@ def _decompose_response(result) -> dict:
             "scenes": [dataclasses.asdict(s) for s in cs.scenes],
             "warning": cs.warning,
             "motif": None,
+            # Phase-0 slice-2 — surface the threaded exit-state so the inline preview
+            # matches the worker path's asdict shape (None when threading is off).
+            "exit_state": dataclasses.asdict(cs.exit_state) if cs.exit_state else None,
         }
         if cs.motif is not None:
             sel: SelectedMotif = cs.motif
@@ -274,6 +281,7 @@ async def decompose_preview(
             "min_scenes": settings.plan_min_scenes_per_chapter,
             "max_scenes": settings.plan_max_scenes_per_chapter,
             "source_language": profile.source_language,
+            "thread_state": body.thread_state,  # Phase-0 slice-2 (worker reads via input.get)
             # W2 — persisted so the worker can bind motifs off-request once
             # operations.run_decompose is wired (worker-path motif binding is a
             # cross-track follow-up; default-OFF in P1 means the worker ignores these
@@ -304,6 +312,7 @@ async def decompose_preview(
         min_scenes=settings.plan_min_scenes_per_chapter,
         max_scenes=settings.plan_max_scenes_per_chapter,
         source_language=profile.source_language,
+        thread_state=body.thread_state,
         motifs_enabled=body.motifs_enabled,
         retriever=MotifRetriever(get_pool()) if body.motifs_enabled else None,
         book_id=work.book_id if body.motifs_enabled else None,

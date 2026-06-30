@@ -1,0 +1,57 @@
+{
+  "seq": 2,
+  "name": "mdtest_patch",
+  "method": "PATCH",
+  "url": "http://localhost:3123/v1/books/019f173a-dfb8-768e-a5e9-89c90ad9bed1/chapters/019f173a-dfe8-799f-b9e8-5dd8a03bf7d0/draft",
+  "status": 200,
+  "request": {
+    "body": "### Cảnh thử\n\nĐây là đoạn văn thứ nhất của cảnh.\n\nĐây là đoạn văn thứ hai.",
+    "body_format": "markdown",
+    "commit_message": "md formatter test"
+  },
+  "response": {
+    "body": {
+      "type": "doc",
+      "content": [
+        {
+          "type": "heading",
+          "_text": "Cảnh thử",
+          "attrs": {
+            "level": 3
+          },
+          "content": [
+            {
+              "text": "Cảnh thử",
+              "type": "text"
+            }
+          ]
+        },
+        {
+          "type": "paragraph",
+          "_text": "Đây là đoạn văn thứ nhất của cảnh.",
+          "content": [
+            {
+              "text": "Đây là đoạn văn thứ nhất của cảnh.",
+              "type": "text"
+            }
+          ]
+        },
+        {
+          "type": "paragraph",
+          "_text": "Đây là đoạn văn thứ hai.",
+          "content": [
+            {
+              "text": "Đây là đoạn văn thứ hai.",
+              "type": "text"
+            }
+          ]
+        }
+      ]
+    },
+    "chapter_id": "019f173a-dfe8-799f-b9e8-5dd8a03bf7d0",
+    "draft_format": "json",
+    "draft_updated_at": "2026-06-30T07:17:44.025417Z",
+    "draft_version": 2,
+    "text_content": "Cảnh thử\n\nĐây là đoạn văn thứ nhất của cảnh.\n\nĐây là đoạn văn thứ hai."
+  }
+}

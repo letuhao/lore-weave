@@ -2,14 +2,14 @@
   "seq": 15,
   "name": "create_work",
   "method": "POST",
-  "url": "http://localhost:3123/v1/composition/books/019f173a-dfb8-768e-a5e9-89c90ad9bed1/work",
+  "url": "http://localhost:3123/v1/composition/books/019f1783-ebb4-78de-ac9d-0dfba6539b7c/work",
   "status": 201,
   "request": null,
   "response": {
-    "project_id": "019f173a-e0b5-786c-bd47-1c151af2801a",
+    "project_id": "019f1783-ecca-7331-afab-9543762a8b68",
     "user_id": "019d5e3c-7cc5-7e6a-8b27-1344e148bf7c",
-    "book_id": "019f173a-dfb8-768e-a5e9-89c90ad9bed1",
-    "id": "019f173a-e0ba-771d-bc38-5103ae3421ca",
+    "book_id": "019f1783-ebb4-78de-ac9d-0dfba6539b7c",
+    "id": "019f1783-eccf-7b0d-8360-843ae9663e31",
     "pending_project_backfill": false,
     "source_work_id": null,
     "branch_point": null,
@@ -19,7 +19,7 @@
       "source_language": "vi"
     },
     "version": 1,
-    "created_at": "2026-06-30T06:32:42.426276Z",
-    "updated_at": "2026-06-30T06:32:42.426276Z"
+    "created_at": "2026-06-30T07:52:29.647536Z",
+    "updated_at": "2026-06-30T07:52:29.647536Z"
   }
 }

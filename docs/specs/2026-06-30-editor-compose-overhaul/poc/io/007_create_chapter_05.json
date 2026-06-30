@@ -2,7 +2,7 @@
   "seq": 7,
   "name": "create_chapter_05",
   "method": "POST",
-  "url": "http://localhost:3123/v1/books/019f173a-dfb8-768e-a5e9-89c90ad9bed1/chapters",
+  "url": "http://localhost:3123/v1/books/019f1783-ebb4-78de-ac9d-0dfba6539b7c/chapters",
   "status": 201,
   "request": {
     "original_language": "vi",
@@ -11,22 +11,22 @@
     "body": ""
   },
   "response": {
-    "book_id": "019f173a-dfb8-768e-a5e9-89c90ad9bed1",
+    "book_id": "019f1783-ebb4-78de-ac9d-0dfba6539b7c",
     "byte_size": 0,
-    "chapter_id": "019f173a-e020-7c7a-93fc-afef107e81f6",
+    "chapter_id": "019f1783-ec27-7181-9c22-d838c21af334",
     "content_type": "text/plain",
-    "created_at": "2026-06-30T06:32:42.272658Z",
+    "created_at": "2026-06-30T07:52:29.478909Z",
     "draft_revision_count": 1,
-    "draft_updated_at": "2026-06-30T06:32:42.272658Z",
+    "draft_updated_at": "2026-06-30T07:52:29.478909Z",
     "editorial_status": "draft",
     "lifecycle_state": "active",
-    "original_filename": "editor-c35d1f97-1572-4494-b4f1-84519f08ff58.txt",
+    "original_filename": "editor-ed345a47-f971-482f-982b-f79256849f1b.txt",
     "original_language": "vi",
     "published_revision_id": null,
     "purge_eligible_at": null,
     "sort_order": 5,
     "title": "Chương 5",
     "trashed_at": null,
-    "updated_at": "2026-06-30T06:32:42.272658Z"
+    "updated_at": "2026-06-30T07:52:29.478909Z"
   }
 }

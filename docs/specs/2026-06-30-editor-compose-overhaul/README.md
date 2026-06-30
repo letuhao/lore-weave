@@ -47,9 +47,19 @@ down **once** and never re-explored — read these before doing any new code-spe
 | M4 | Compose command-center | ⬜ planned |
 | M5 | BookAssistantDock → compose bridge (stretch) | ⬜ planned |
 
+## Operating approach (UPDATED 2026-06-30) — incremental, validate-first
+**We do NOT build M0–M5 big-bang.** Per PO: improve **one small slice** at a time → PO **tests the
+user story** → decide if the GUI is actually better → only then continue. Each slice is small,
+self-contained, and reversible. The milestone table below is the *backlog/menu*, not a build order.
+Rationale: the original draft drifted by building everything up front; we de-risk by validating each
+improvement against a real user-story test before scaling.
+
 ## Decision log (append-only — newest last)
 - _2026-06-30_ — PO confirmed: **re-arrange + wire, no re-architecture**; mental model = "recommend
   optimal"; first milestone = "recommend after mapping". → recommended **M0+M1** first.
+- _2026-06-30_ — **Checkpoint committed** `3945e4764` (works.py language fix + design/POC/findings).
+- _2026-06-30_ — **Approach switched to incremental + validate-first** (small slice → PO tests user
+  story → continue). Milestone table is now a backlog menu, not a build order.
 - _2026-06-30_ — Effort moved into this tracked folder; investigation persisted to avoid re-explore.
 - _2026-06-30_ — **Manual mode decided:** keep **Classic** as designed (ticks original design),
   QoL-only — idle autosave (L2) + ungate media/callouts (L3). Folds into M0. See
@@ -63,3 +73,15 @@ down **once** and never re-explored — read these before doing any new code-spe
   **toolbox that already exists** behind flag `loom.workspace.enabled` (story 05). **Media tool
   DEFERRED** (classic books have no media). **Core problem identified:** the compose GUI encodes no
   creative PROCESS — need a **guided journey** ordering the 24 tools (story 06, investigating).
+- _2026-06-30_ — **PO-pivot: output QUALITY before GUI.** POC chapters read as concatenated scenes →
+  fix the **planning/synthesis** layer first. New design track:
+  [`../2026-06-30-chapter-synthesis-self-healing.md`](../2026-06-30-chapter-synthesis-self-healing.md)
+  (Phase 0 planning connectivity → Phase 2 multi-pass self-heal).
+- _2026-06-30_ — **Phase 0 slice 1 (intra-chapter connectivity)** validated — enriched decompose
+  prompt (goal·conflict·outcome + causality + ending-guided); fixed the 3 worst reviewer defects at
+  the synopsis level (prompt-only).
+- _2026-06-30_ — **Phase 0 slice 2 (cross-chapter threading)** ✅ committed — typed `ChapterExitState`
+  delta threaded chapter→chapter (`thread_state`, default off); live worker smoke (Gemma, 12ch) shows
+  chapters now continue from the prior exit-state, **no arc repetition**. review-impl: 0 HIGH, 4
+  findings fixed/accepted; composition unit suite 1180 + slice tests green. **Next: POC self-heal —
+  measure the `stitch` baseline first.**

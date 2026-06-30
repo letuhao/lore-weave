@@ -2,11 +2,11 @@
   "seq": 3,
   "name": "gen_ch01_sc01",
   "method": "POST",
-  "url": "http://localhost:3123/v1/composition/works/019f173a-e0b5-786c-bd47-1c151af2801a/generate",
+  "url": "http://localhost:3123/v1/composition/works/019f1783-ecca-7331-afab-9543762a8b68/generate",
   "status": 202,
   "request": {
     "mode": "auto",
-    "outline_node_id": "019f173b-6118-76cc-921c-db01b6c574b3",
+    "outline_node_id": "019f1784-a65d-7097-a202-3dcc161e0a45",
     "model_source": "user_model",
     "model_ref": "019ebb72-27a2-72f3-a42d-d2d0e0ded179",
     "operation": "draft_scene",
@@ -14,7 +14,7 @@
     "reasoning": "auto"
   },
   "response": {
-    "job_id": "019f174f-985e-765e-811e-e0be8c478897",
+    "job_id": "019f1789-3c9c-7ea5-9a58-96d9a5e06d50",
     "status": "pending",
     "mode": "auto",
     "assembly_mode": "per_scene",

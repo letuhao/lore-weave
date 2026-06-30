@@ -127,6 +127,22 @@ Ch1 prose: strong, atmospheric, on-theme (clan expulsion → death-cave hunters 
    plain formatter — only need to make the normalizer universal* (PO). POC workaround proves the target:
    harness now builds Tiptap JSON client-side → **53 blocks** persisted ✓.
 
+## POC Part 2 — glossary/KG exploitation for a later chapter (empirical, 2026-06-30)
+Called grounding for a **chapter-2** scene (`GET .../scenes/{id}/grounding`) on the book whose chapter 1
+was drafted + extracted:
+- **✅ Glossary IS exploited** — the `present` lens pulled **all 20 chapter-1 entities by name**
+  (Lâm Uyển, Lâm Chấn Nhạc, Tô Yến, Lâm Tử Hàn, Cửu U Ma Cơ, Cuốn cổ thư, Thanh Vân Tông, the events…).
+  Cross-chapter entity awareness via glossary works **today**, in drafting grounding.
+- **🔴 KG graph NOT built** — `grounding_available: false` + warning *"no knowledge-graph data for this
+  scene/project (C3a)"*. So `present` gives **names only, not STATE** (location, possessions,
+  relationships, timeline). Extraction populated the **glossary** but the **Neo4j KG graph** wasn't
+  built (the flywheel's `kg_build` step didn't run). ⇒ confirms the PO point ("KG captures only some
+  content") AND that the *valuable* KG layer (state/timeline) needs an explicit build to exploit.
+- `beat` lens = the planned scene synopses (outline); `recent` lens = prior prose. Both work.
+- **Next:** build the KG graph (`kg_build_graph`) from chapter 1 → re-check grounding →
+  expect `grounding_available: true` + entity state/timeline. Only then is the full Part-2 latent state
+  available. (Reusable harness phase: `poc_harness.py grounding`.)
+
 ## Implications for the overhaul (so far)
 1. The **guided journey** (story 06) is the right and highest-leverage fix: the engine already does
    Idea→Structure; we just need the command-center + "next step" rail to walk a non-writer into it.

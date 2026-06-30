@@ -38,7 +38,7 @@ def _job(operation="decompose_preview", status="pending", input=None):
 def _patch_run_job(monkeypatch, repo, *, result=None, raises=None):
     monkeypatch.setattr(jc, "GenerationJobsRepo", lambda pool: repo)
 
-    async def _rd(llm, *, user_id, input):
+    async def _rd(llm, *, user_id, input, cancel_check=None):
         if raises is not None:
             raise raises
         return result if result is not None else {"tree": []}
@@ -111,7 +111,7 @@ async def test_run_job_dispatches_stitch_and_stores_result(monkeypatch):
 
     captured: dict = {}
 
-    async def _rs(pool, llm, knowledge, *, input):
+    async def _rs(pool, llm, knowledge, *, input, cancel_check=None):
         captured.update(input)
         return {"text": "stitched chapter", "persisted": False}
 
@@ -207,7 +207,7 @@ async def test_run_job_dispatches_generate_via_worker_op(monkeypatch):
 
     captured: dict = {}
 
-    async def _rg(pool, llm, knowledge, *, input):
+    async def _rg(pool, llm, knowledge, *, input, cancel_check=None):
         captured.update(input)
         return {"text": "auto winner", "persisted": False}
 
@@ -308,7 +308,7 @@ async def test_run_job_dispatches_chapter_generate_via_worker_op(monkeypatch):
 
     captured: dict = {}
 
-    async def _rcg(pool, llm, knowledge, *, input):
+    async def _rcg(pool, llm, knowledge, *, input, cancel_check=None):
         captured.update(input)
         return {"text": "chapter draft", "persisted": False, "chapter_id": "c9"}
 
@@ -378,7 +378,7 @@ async def test_run_job_dispatches_selection_edit_via_worker_op(monkeypatch):
 
     captured: dict = {}
 
-    async def _rse(llm, *, input):
+    async def _rse(llm, *, input, cancel_check=None):
         captured.update(input)
         return {"text": "edited prose", "persisted": False, "selection_edit": True}
 

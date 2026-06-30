@@ -1,0 +1,174 @@
+{
+  "seq": 3,
+  "name": "grounding_ch2",
+  "method": "GET",
+  "url": "http://localhost:3123/v1/composition/works/019f173a-e0b5-786c-bd47-1c151af2801a/scenes/019f173b-611a-7ca5-836b-833f1f12533b/grounding",
+  "status": 200,
+  "request": null,
+  "response": {
+    "blocks": {
+      "present": "Lâm Uyển\nLâm Chấn Nhạc\nTô Yến\nLâm Tử Hàn\nCửu U Ma Cơ\nHang Động Tử Thần\nLệnh bài gia tộc\nLâm Uyển rơi xuống vực\nGặp gỡ trong hang động\nThanh Vân Tông\nSự Ruồng Bỏ Của Gia Tộc\nLâm gia\nHang động\nCuốn cổ thư\nSự phản bội của Lâm gia\nSự tái sinh tà mị\nMa đạo\nSự tái sinh ma đạo của Lâm Uyển\nSự phản bội của gia tộc\nNghịch tập từ phế vật",
+      "beat": "beat=hook | synopsis=Lâm Uyển bị đẩy vào khu vực nguy hiểm trong rừng để chịu tội, thể hiện sự tuyệt vọng và cô độc của nàng.\nplanned: Sự Ruồng Bỏ Của Gia Tộc: Lâm Uyển bị trục xuất khỏi Lâm gia sau khi bị coi là phế vật, đối mặt với sự lạnh lùng của phụ thân và sự khinh miệt của mẫu thân.\nplanned: Sự Phản Bội Của Huynh Trưởng: Lâm Tử Hàn thể hiện sự xa cách và vô tình khi chứng kiến muội muội bị đẩy vào nguy hiểm để bảo vệ danh tiếng gia tộc.\nplanned: Hang Động Tử Thần: Lâm Uyển bị truy đuổi đến đường cùng trong hang động u tối, đối mặt với cái chết cận kề khi linh lực cạn kiệt.\nplanned: Duyên Định Ma Công: Trong khoảnh khắc sinh tử, Lâm Uyển vô tình kích hoạt cuốn cổ thư và gặp được ý thức của Cửu U Ma Cơ.",
+      "recent": "Cảnh thử\nĐây là đoạn văn thứ nhất của cảnh.\nĐây là đoạn văn thứ hai."
+    },
+    "prompt": "<present>\nLâm Uyển\nLâm Chấn Nhạc\nTô Yến\nLâm Tử Hàn\nCửu U Ma Cơ\nHang Động Tử Thần\nLệnh bài gia tộc\nLâm Uyển rơi xuống vực\nGặp gỡ trong hang động\nThanh Vân Tông\nSự Ruồng Bỏ Của Gia Tộc\nLâm gia\nHang động\nCuốn cổ thư\nSự phản bội của Lâm gia\nSự tái sinh tà mị\nMa đạo\nSự tái sinh ma đạo của Lâm Uyển\nSự phản bội của gia tộc\nNghịch tập từ phế vật\n</present>\n<beat>\nbeat=hook | synopsis=Lâm Uyển bị đẩy vào khu vực nguy hiểm trong rừng để chịu tội, thể hiện sự tuyệt vọng và cô độc của nàng.\nplanned: Sự Ruồng Bỏ Của Gia Tộc: Lâm Uyển bị trục xuất khỏi Lâm gia sau khi bị coi là phế vật, đối mặt với sự lạnh lùng của phụ thân và sự khinh miệt của mẫu thân.\nplanned: Sự Phản Bội Của Huynh Trưởng: Lâm Tử Hàn thể hiện sự xa cách và vô tình khi chứng kiến muội muội bị đẩy vào nguy hiểm để bảo vệ danh tiếng gia tộc.\nplanned: Hang Động Tử Thần: Lâm Uyển bị truy đuổi đến đường cùng trong hang động u tối, đối mặt với cái chết cận kề khi linh lực cạn kiệt.\nplanned: Duyên Định Ma Công: Trong khoảnh khắc sinh tử, Lâm Uyển vô tình kích hoạt cuốn cổ thư và gặp được ý thức của Cửu U Ma Cơ.\n</beat>\n<recent>\nCảnh thử\nĐây là đoạn văn thứ nhất của cảnh.\nĐây là đoạn văn thứ hai.\n</recent>",
+    "profile": {
+      "source_language": "vi",
+      "voice": "",
+      "structure_pref": "generic",
+      "density_level": null,
+      "pace_level": null,
+      "character_voices": []
+    },
+    "token_count": 551,
+    "dropped_count": 0,
+    "l4_dropped_no_position": 0,
+    "grounding_available": false,
+    "over_budget": false,
+    "warnings": [
+      "grounding_unavailable: no knowledge-graph data for this scene/project (C3a)"
+    ],
+    "grounding_items": [
+      {
+        "type": "present",
+        "id": "019f1751-e194-73f9-b61b-cf244c211e70",
+        "label": "Lâm Uyển",
+        "pinned": false,
+        "excluded": false
+      },
+      {
+        "type": "present",
+        "id": "019f1751-e1bb-7df6-9d6d-6c37ed16390e",
+        "label": "Lâm Chấn Nhạc",
+        "pinned": false,
+        "excluded": false
+      },
+      {
+        "type": "present",
+        "id": "019f1751-e1dd-7a6e-83c5-c9ed02213518",
+        "label": "Tô Yến",
+        "pinned": false,
+        "excluded": false
+      },
+      {
+        "type": "present",
+        "id": "019f1751-e1fb-783e-a710-3f4ecc9ba8f6",
+        "label": "Lâm Tử Hàn",
+        "pinned": false,
+        "excluded": false
+      },
+      {
+        "type": "present",
+        "id": "019f1751-e21a-7fd5-af8f-6175a5138b58",
+        "label": "Cửu U Ma Cơ",
+        "pinned": false,
+        "excluded": false
+      },
+      {
+        "type": "present",
+        "id": "019f1751-e262-7453-9661-7ea0374d4a10",
+        "label": "Hang Động Tử Thần",
+        "pinned": false,
+        "excluded": false
+      },
+      {
+        "type": "present",
+        "id": "019f1751-e274-7c06-8fed-a8160153e842",
+        "label": "Lệnh bài gia tộc",
+        "pinned": false,
+        "excluded": false
+      },
+      {
+        "type": "present",
+        "id": "019f1751-e29b-7b26-8f6e-352225018d95",
+        "label": "Lâm Uyển rơi xuống vực",
+        "pinned": false,
+        "excluded": false
+      },
+      {
+        "type": "present",
+        "id": "019f1751-e2b0-7cd6-bbe8-68e30b1a1928",
+        "label": "Gặp gỡ trong hang động",
+        "pinned": false,
+        "excluded": false
+      },
+      {
+        "type": "present",
+        "id": "019f1751-e24e-7033-a584-70ccb9c921de",
+        "label": "Thanh Vân Tông",
+        "pinned": false,
+        "excluded": false
+      },
+      {
+        "type": "present",
+        "id": "019f1751-e285-7b55-8249-18e63cc8b8ec",
+        "label": "Sự Ruồng Bỏ Của Gia Tộc",
+        "pinned": false,
+        "excluded": false
+      },
+      {
+        "type": "present",
+        "id": "019f1751-e239-72f8-ad72-0f7d410fa37b",
+        "label": "Lâm gia",
+        "pinned": false,
+        "excluded": false
+      },
+      {
+        "type": "present",
+        "id": "019f1751-e2f0-78b8-a642-7f54c2e71639",
+        "label": "Hang động",
+        "pinned": false,
+        "excluded": false
+      },
+      {
+        "type": "present",
+        "id": "019f1751-e302-7ac1-8985-dbf5b30219c4",
+        "label": "Cuốn cổ thư",
+        "pinned": false,
+        "excluded": false
+      },
+      {
+        "type": "present",
+        "id": "019f1751-e313-7120-94f5-977f5dbd425c",
+        "label": "Sự phản bội của Lâm gia",
+        "pinned": false,
+        "excluded": false
+      },
+      {
+        "type": "present",
+        "id": "019f1751-e326-7e54-bc19-3f0fff42c916",
+        "label": "Sự tái sinh tà mị",
+        "pinned": false,
+        "excluded": false
+      },
+      {
+        "type": "present",
+        "id": "019f1751-e33a-7210-87cd-f499e92403d7",
+        "label": "Ma đạo",
+        "pinned": false,
+        "excluded": false
+      },
+      {
+        "type": "present",
+        "id": "019f1751-e354-7dec-a42a-559580fb2e5f",
+        "label": "Sự tái sinh ma đạo của Lâm Uyển",
+        "pinned": false,
+        "excluded": false
+      },
+      {
+        "type": "present",
+        "id": "019f1751-e36c-745e-8fa4-c3f85591f105",
+        "label": "Sự phản bội của gia tộc",
+        "pinned": false,
+        "excluded": false
+      },
+      {
+        "type": "present",
+        "id": "019f1751-e37f-7741-b869-fb8a6bb56a51",
+        "label": "Nghịch tập từ phế vật",
+        "pinned": false,
+        "excluded": false
+      }
+    ]
+  }
+}

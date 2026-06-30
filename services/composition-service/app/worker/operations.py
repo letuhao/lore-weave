@@ -98,6 +98,7 @@ async def run_decompose(
         min_scenes=input["min_scenes"],
         max_scenes=input["max_scenes"],
         source_language=input["source_language"],
+        thread_state=input.get("thread_state", False),  # Phase-0 slice-2 (default off ⇒ today's behavior)
         cancel_check=cancel_check,
     )
     return dataclasses.asdict(result)

@@ -130,7 +130,8 @@ def phase_structure(token, s):
     print(f"template: {tmpl['name']} ({len(tmpl.get('beats',[]))} beats)")
     st, dec = call("POST", f"/v1/composition/works/{s['project_id']}/outline/decompose", token=token, name="decompose",
                    json_body={"structure_template_id": tmpl["id"], "premise": PREMISE_VI,
-                              "model_source": MODEL_SOURCE, "model_ref": MODEL_REF})
+                              "model_source": MODEL_SOURCE, "model_ref": MODEL_REF,
+                              "thread_state": True})  # Phase-0 slice-2: cross-chapter threading
     if isinstance(dec, dict) and dec.get("job_id") and dec.get("status") in ("pending", "running"):
         job = poll_job(token, dec["job_id"], "decompose"); dec = job.get("result")
     chapters = [{"chapter_id": ch["chapter"]["chapter_id"], "title": ch["chapter"]["title"],
@@ -250,6 +251,46 @@ def phase_motifs(token, s):
              expect={200, 201, 409})
     print(f"MOTIFS: {len(MOTIFS)} ensured")
 
+def phase_grounding(token, s):
+    """POC Part 2 — does a LATER chapter's scene exploit the KG/glossary/prev-chapter
+    latent state? Call grounding for a chapter-2 scene and inspect what context it pulls
+    (present entities from ch1, timeline, canon, lore, open-promises)."""
+    by_ch = scenes_by_chapter(token, s)
+    cid = s["chapter_ids"][1]  # chapter 2
+    scenes = by_ch.get(cid, [])
+    if not scenes:
+        print("no ch2 scenes — run structure first"); return
+    node = scenes[0]
+    st, g = call("GET", f"/v1/composition/works/{s['project_id']}/scenes/{node['id']}/grounding",
+                 token=token, name="grounding_ch2", expect={200, 404})
+    if st == 404:
+        print("grounding 404 — scene/work not found"); return
+    blocks = g.get("blocks") or []
+    items = g.get("items") or g.get("addressable") or []
+    warns = g.get("warnings") or []
+    # try to surface the present-entity names the packer pulled from the KG
+    names = []
+    for b in blocks:
+        t = (b.get("kind") or b.get("type") or "")
+        nm = b.get("name") or b.get("title")
+        if nm: names.append(f"{t}:{nm}")
+    print(f"GROUNDING ch2 '{node.get('title')}': tokens={g.get('token_count')} "
+          f"blocks={len(blocks)} items={len(items)} warnings={warns}")
+    print("  pulled:", ", ".join(names[:25]) if names else "(no named blocks — see io/*_grounding_ch2.json)")
+
+def phase_mdtest(token, s):
+    """Validate the server-side universal formatter: send a MARKDOWN body and confirm
+    the stored draft is canonical Tiptap blocks (heading + paragraphs), not a raw string."""
+    cid = s["chapter_ids"][1]  # an empty chapter
+    md = "### Cảnh thử\n\nĐây là đoạn văn thứ nhất của cảnh.\n\nĐây là đoạn văn thứ hai."
+    call("PATCH", f"/v1/books/{s['book_id']}/chapters/{cid}/draft", token=token, name="mdtest_patch",
+         json_body={"body": md, "body_format": "markdown", "commit_message": "md formatter test"}, expect={200})
+    _, d = call("GET", f"/v1/books/{s['book_id']}/chapters/{cid}/draft", token=token, name="mdtest_get", expect={200})
+    body = d.get("body")
+    doc = body if isinstance(body, dict) else (json.loads(body) if isinstance(body, str) else {})
+    types = [n.get("type") for n in (doc or {}).get("content", [])]
+    print(f"MDTEST: draft_format={d.get('draft_format')} blocks={types}")
+
 def main():
     phase = sys.argv[1] if len(sys.argv) > 1 else "all"
     s = load_state(); token = login(); s["_run_at"] = datetime.datetime.now().isoformat()
@@ -260,6 +301,8 @@ def main():
     if phase in ("write", "all"): phase_write(token, s)
     if phase == "profile": phase_profile(token, s)
     if phase in ("extract", "all"): phase_extract(token, s)
+    if phase == "mdtest": phase_mdtest(token, s)
+    if phase == "grounding": phase_grounding(token, s)
     save_state(s)
 
 if __name__ == "__main__":

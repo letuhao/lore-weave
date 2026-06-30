@@ -2,14 +2,14 @@
   "seq": 6,
   "name": "gen_ch01_sc01_poll2",
   "method": "GET",
-  "url": "http://localhost:3123/v1/composition/jobs/019f174f-985e-765e-811e-e0be8c478897",
+  "url": "http://localhost:3123/v1/composition/jobs/019f1789-3c9c-7ea5-9a58-96d9a5e06d50",
   "status": 200,
   "request": null,
   "response": {
-    "id": "019f174f-985e-765e-811e-e0be8c478897",
+    "id": "019f1789-3c9c-7ea5-9a58-96d9a5e06d50",
     "user_id": "019d5e3c-7cc5-7e6a-8b27-1344e148bf7c",
-    "project_id": "019f173a-e0b5-786c-bd47-1c151af2801a",
-    "outline_node_id": "019f173b-6118-76cc-921c-db01b6c574b3",
+    "project_id": "019f1783-ecca-7331-afab-9543762a8b68",
+    "outline_node_id": "019f1784-a65d-7097-a202-3dcc161e0a45",
     "operation": "draft_scene",
     "mode": "auto",
     "status": "running",
@@ -17,7 +17,7 @@
     "input": {
       "guide": "Giữ tên nhân vật CỐ ĐỊNH, đúng phong cách tiên hiệp: Lâm Uyển (nữ chính), phụ thân Lâm Chấn Nhạc (gia chủ Lâm gia), mẫu thân Tô Yến, huynh trưởng Lâm Tử Hàn, Ma nữ Cửu U Ma Cơ, tông môn Thanh Vân Tông. Xưng hô tu tiên (gia chủ, trưởng lão, công tử, tiểu thư). Tránh \"ông/bà + họ\" hiện đại.",
       "max_out": 1024,
-      "tension": 65,
+      "tension": 85,
       "beat_role": "hook",
       "model_ref": "019ebb72-27a2-72f3-a42d-d2d0e0ded179",
       "operation": "draft_scene",
@@ -27,9 +27,9 @@
       "model_source": "user_model",
       "assembly_mode": "per_scene",
       "critic_source": null,
-      "packed_prompt": "<beat>\nbeat=hook | synopsis=Lâm Uyển bị trục xuất khỏi Lâm gia sau khi bị coi là phế vật, đối mặt với sự lạnh lùng của phụ thân và sự khinh miệt của mẫu thân.\n</beat>\n<guide>\nGiữ tên nhân vật CỐ ĐỊNH, đúng phong cách tiên hiệp: Lâm Uyển (nữ chính), phụ thân Lâm Chấn Nhạc (gia chủ Lâm gia), mẫu thân Tô Yến, huynh trưởng Lâm Tử Hàn, Ma nữ Cửu U Ma Cơ, tông môn Thanh Vân Tông. Xưng hô tu tiên (gia chủ, trưởng lão, công tử, tiểu thư). Tránh \"ông/bà + họ\" hiện đại.\n</guide>",
-      "outline_node_id": "019f173b-6118-76cc-921c-db01b6c574b3",
-      "prompt_estimate": 571,
+      "packed_prompt": "<beat>\nbeat=hook | synopsis=Mở đầu bằng cảnh Lâm Uyển bị đẩy vào hẻm núi tử thần bởi chính người thân để bảo vệ danh dự gia tộc. Xung đột nảy sinh khi Lâm Chấn Nhạc quyết định hy sinh nàng để che đậy một bí mật tu vi của Lâm Tử Hàn. Kết quả là Lâm Uyển bị tước bỏ linh căn và bị ném xuống vực sâu trong sự ghẻ lạnh của Tô Yến.\n</beat>\n<guide>\nGiữ tên nhân vật CỐ ĐỊNH, đúng phong cách tiên hiệp: Lâm Uyển (nữ chính), phụ thân Lâm Chấn Nhạc (gia chủ Lâm gia), mẫu thân Tô Yến, huynh trưởng Lâm Tử Hàn, Ma nữ Cửu U Ma Cơ, tông môn Thanh Vân Tông. Xưng hô tu tiên (gia chủ, trưởng lão, công tử, tiểu thư). Tránh \"ông/bà + họ\" hiện đại.\n</guide>",
+      "outline_node_id": "019f1784-a65d-7097-a202-3dcc161e0a45",
+      "prompt_estimate": 660,
       "reasoning_effort": null,
       "scene_sort_order": 1,
       "reflect_max_iters": 1,
@@ -45,7 +45,7 @@
     "target_revision_id": null,
     "cost_usd": "0.0000",
     "idempotency_key": null,
-    "created_at": "2026-06-30T06:55:20.157644Z",
-    "updated_at": "2026-06-30T06:55:20.165674Z"
+    "created_at": "2026-06-30T07:58:17.755503Z",
+    "updated_at": "2026-06-30T07:58:17.773683Z"
   }
 }
