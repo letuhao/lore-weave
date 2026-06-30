@@ -10,7 +10,18 @@ import json
 from types import SimpleNamespace
 
 from app.engine import self_heal
-from app.engine.self_heal import Finding, locate_span, parse_findings, run_self_heal
+from app.engine.self_heal import (
+    Finding,
+    build_judge_messages,
+    code_mechanical_edits,
+    locate_span,
+    parse_findings,
+    run_self_heal,
+    code_pronoun_findings,
+    _judge_vote,
+    _snap_to_sentence,
+    _verify,
+)
 
 # async tests are collected via pytest.ini asyncio auto-mode.
 
@@ -101,7 +112,7 @@ async def test_run_self_heal_happy_splices_and_rejudges():
     assert rep.located == 2 and rep.edits_applied == 2
     assert "cold and the wind was cold" not in healed
     assert "fell into the abyss without any cause" not in healed
-    assert "<<26>>" in healed and "<<37>>" in healed  # both span lengths spliced in
+    assert healed.count("<<") == 2  # both (sentence-snapped) spans spliced in
     assert rep.rejudge_before == 2 and rep.rejudge_after == 0
 
 
@@ -161,3 +172,142 @@ async def test_run_self_heal_no_findings_is_noop():
         chapter=chapter, source_language="en")
     assert healed == chapter and rep.edits_applied == 0 and rep.rejudge_after is None
     assert llm.edit_calls == 0
+
+
+# ── cheap-stack layers (canon grounding / vote / verify / mechanical) ──
+
+_KW = dict(user_id="u", model_source="user_model", model_ref="m",
+           trace_id=None, cancel_check=None)
+
+
+def test_build_judge_messages_grounds_only_with_canon():
+    plain, _ = build_judge_messages("ch", "vi")
+    assert "demanding fiction editor" in plain and "STORY BIBLE" not in plain
+    grounded, _ = build_judge_messages("ch", "vi", canon="Tô Yến: never protected her.")
+    assert "demanding fiction editor" in grounded           # the test-routing anchor survives
+    assert "STORY BIBLE:" in grounded and "Tô Yến: never protected her." in grounded
+    assert "do NOT infer events outside" in grounded         # the false-positive guard
+
+
+def test_code_mechanical_edits_collapses_consecutive_dup_word():
+    text = "He ran ran fast and the wind was was cold."
+    edits = code_mechanical_edits(text)
+    healed = text
+    for s, e, new in sorted(edits, key=lambda x: x[0], reverse=True):
+        healed = healed[:s] + new + healed[e:]
+    assert healed == "He ran fast and the wind was cold."
+    assert code_mechanical_edits("no repeats at all here") == []
+
+
+class FakeStackLLM:
+    """Routes verify ('SKEPTICAL reviewer') / judge ('demanding fiction editor') / editor.
+    Judge replays a queue; verify_fn(user)->'CONFIRMED'|'REFUTED'; edit via edit_fn."""
+
+    def __init__(self, judge_responses, *, edit_fn=lambda s: f"<<{len(s)}>>", verify_fn=None):
+        self._judge = list(judge_responses)
+        self._edit_fn = edit_fn
+        self._verify_fn = verify_fn
+        self.judge_calls = self.edit_calls = self.verify_calls = 0
+
+    async def submit_and_wait(self, **kw):
+        system = kw["input"]["messages"][0]["content"]
+        user = kw["input"]["messages"][1]["content"]
+        if "SKEPTICAL reviewer" in system:
+            self.verify_calls += 1
+            v = self._verify_fn(user) if self._verify_fn else "CONFIRMED"
+            return SimpleNamespace(status="completed",
+                                   result={"messages": [{"content": json.dumps({"verdict": v})}]})
+        if "demanding fiction editor" in system:
+            r = self._judge[min(self.judge_calls, len(self._judge) - 1)]
+            self.judge_calls += 1
+            return SimpleNamespace(status="completed", result={"messages": [{"content": r}]})
+        sel = user.split("SELECTED PASSAGE:\n", 1)[1].split("\n\nAuthor guidance:", 1)[0]
+        self.edit_calls += 1
+        return SimpleNamespace(status="completed",
+                               result={"messages": [{"content": self._edit_fn(sel)}]})
+
+
+# spans placed >40 chars apart so they fall in distinct vote buckets (offset // 40)
+_VOTE_CH = ("the quick brown fox " + "padd " * 16 + "lazy sleeping hound here "
+            + "more " * 16 + "final distinct ending clause")
+
+
+def _fj(*pairs):
+    return json.dumps([{"type": "t", "span": s, "issue": i, "fix": "f"} for s, i in pairs])
+
+
+async def test_vote_keeps_recurring_drops_singletons():
+    a, b, c = "the quick brown fox", "lazy sleeping hound", "final distinct ending clause"
+    runs = [_fj((a, "ia"), (b, "ib")), _fj((a, "ia")), _fj((c, "ic"))]
+    llm = FakeStackLLM(runs)
+    out = await _judge_vote(llm, _VOTE_CH, source_language="en", max_tokens=100,
+                            canon=None, k=3, min_votes=2, temperature=0.7, **_KW)
+    assert [f.span for f in out] == [a]            # only the 2/3-recurring span survives
+
+
+async def test_vote_must_quote_drops_unlocatable_even_if_recurring():
+    bogus = "this phrase is absent from the chapter entirely"
+    runs = [_fj((bogus, "x")), _fj((bogus, "x")), _fj((bogus, "x"))]
+    llm = FakeStackLLM(runs)
+    out = await _judge_vote(llm, _VOTE_CH, source_language="en", max_tokens=100,
+                            canon=None, k=3, min_votes=2, temperature=0.7, **_KW)
+    assert out == []                                # un-anchorable ⇒ never votes (L2 must-quote)
+
+
+async def test_verify_refuted_finding_is_dropped_not_edited():
+    chapter = "the quick brown fox jumps. the lazy dog sleeps soundly now."
+    good, bad = "the quick brown fox jumps", "the lazy dog sleeps soundly"
+    judge = [_fj((good, "ok"), (bad, "REFUTEME")), "[]"]
+    llm = FakeStackLLM(judge, edit_fn=lambda s: "EDITED",
+                       verify_fn=lambda user: "REFUTED" if "REFUTEME" in user else "CONFIRMED")
+    healed, rep = await run_self_heal(
+        llm, user_id="u", model_source="user_model", model_ref="m",
+        chapter=chapter, source_language="en", verify=True)
+    assert llm.verify_calls == 2 and llm.edit_calls == 1 and rep.edits_applied == 1
+    assert any(f.skip_reason == "refuted" for f in rep.findings)
+    assert bad in healed and good not in healed     # refuted span untouched, confirmed span edited
+
+
+async def test_prefilter_applies_mechanical_with_no_judge_findings():
+    chapter = "He ran ran fast."
+    llm = FakeStackLLM(["[]"])
+    healed, rep = await run_self_heal(
+        llm, user_id="u", model_source="user_model", model_ref="m",
+        chapter=chapter, source_language="en", prefilter=True)
+    assert healed == "He ran fast." and rep.edits_applied == 1 and llm.edit_calls == 0
+
+
+def test_snap_to_sentence_widens_fragment_to_clause():
+    text = "Alpha first sentence. Beta the wind was cold here. Gamma last one."
+    # a fragment quoted mid-sentence snaps OUT to the enclosing sentence (no orphaned tail)
+    i = text.index("wind was cold")
+    s, e = _snap_to_sentence(text, i, i + len("wind was cold"))
+    assert text[s:e] == "Beta the wind was cold here."
+    # already-aligned span at the very start stays put
+    s2, e2 = _snap_to_sentence(text, 0, len("Alpha first sentence."))
+    assert text[s2:e2] == "Alpha first sentence."
+
+
+def test_code_pronoun_findings_full_recall_no_false_hit_on_substrings():
+    text = ("Ánh mắt ông nhìn nàng. Bên cạnh ông, Tô Yến tới. Bà không lên tiếng. "
+            "Nàng không trông thấy gì, lòng không nguôi.")  # 'trông'/'không' must NOT match
+    found = [f.span.lower() for f in code_pronoun_findings(text)]
+    assert found == ["ông", "ông", "bà"]   # 3 real pronoun slips, zero substring false hits
+
+
+async def test_verify_fail_open_on_degrade_keeps_finding():
+    f = Finding(type="t", span="s", issue="i", fix="f")
+    # a degraded (non-completed) verify call ⇒ keep the finding (fail-open)
+    class Degrade:
+        async def submit_and_wait(self, **kw):
+            return SimpleNamespace(status="failed", result={})
+    assert await _verify(Degrade(), "ch", f, canon=None, **_KW) is True
+
+    # explicit REFUTED ⇒ drop; ambiguous garbage ⇒ keep (fail-open)
+    class Resp:
+        def __init__(self, c): self.c = c
+        async def submit_and_wait(self, **kw):
+            return SimpleNamespace(status="completed", result={"messages": [{"content": self.c}]})
+    assert await _verify(Resp('{"verdict":"REFUTED"}'), "ch", f, canon=None, **_KW) is False
+    assert await _verify(Resp('{"verdict":"CONFIRMED"}'), "ch", f, canon=None, **_KW) is True
+    assert await _verify(Resp("no verdict here"), "ch", f, canon=None, **_KW) is True

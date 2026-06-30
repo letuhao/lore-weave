@@ -1,0 +1,136 @@
+{
+ "L1": [
+  [
+   "modern_pronoun",
+   "Bà",
+   "…ộ y phục lụa là quý giá. Bà nhìn đứa con gái mà mình…"
+  ],
+  [
+   "modern_pronoun",
+   "Bà",
+   "…ìn một đống bùn nhơ bẩn. Bà không hề lên tiếng bào c…"
+  ],
+  [
+   "dup_word",
+   "từng từng",
+   "…trưởng nàng — người từng từng hứa sẽ che chở cho …"
+  ]
+ ],
+ "L3": {
+  "xung_ho": {
+   "kept": [],
+   "dropped_no_quote": 0
+  },
+  "canon": {
+   "kept": [],
+   "dropped_no_quote": 0
+  },
+  "logic": {
+   "kept": [
+    {
+     "axis": "Quy ước xưng hô",
+     "quote": "Ánh mắt ông nhìn nàng",
+     "issue": "Sử dụng đại từ 'ông' cho nhân vật Lâm Chấn Nhạc là sai quy ước tiên hiệp (phải dùng 'lão' hoặc 'hắn/y').",
+     "fix": "Ánh mắt lão nhìn nàng"
+    },
+    {
+     "axis": "Quy ước xưng hô",
+     "quote": "Bà nhìn đứa con gái",
+     "issue": "Sử dụng đại từ 'Bà' cho nhân vật Tô Yến là sai quy ước tiên hiệp (phải dùng 'thị' hoặc 'nàng').",
+     "fix": "Thị nhìn đứa con gái"
+    },
+    {
+     "axis": "Quy ước xưng hô",
+     "quote": "Đây là lệnh của mẫu thân ngươi.",
+     "issue": "Nhân vật Tô Yến (mẫu thân) đang nói chuyện trực tiếp với con gái, không được dùng ngôi thứ ba 'mẫu thân ngươi' để tự xưng.",
+     "fix": "Đây là lệnh của ta."
+    },
+    {
+     "axis": "Canon nhân vật",
+     "quote": "Bà nhìn đứa con gái mà mình từng dốc lòng che chở",
+     "issue": "Mâu thuẫn với thiết lập nhân vật Tô Yến: Nàng chưa từng dốc lòng che chở hay thương yêu Lâm Uyển.",
+     "fix": "Thị nhìn đứa con gái mà mình từng khinh miệt"
+    },
+    {
+     "axis": "Logic nội tại",
+     "quote": "đánh thẳng vào đan điền vốn đã tan vỡ của nàng",
+     "issue": "Mâu thuẫn logic: Trước đó Lâm Uyển được mô tả là 'phế vật', nhưng chưa có tình tiết nào xác nhận đan điền của nàng đã bị phá hủy/tan vỡ trước khi bị Hắc Sát Lão Nhân tấn công.",
+     "fix": "đánh thẳng vào đan điền vốn đã bị phế của nàng"
+    }
+   ],
+   "dropped_no_quote": 0
+  }
+ },
+ "L4": {
+  "broad": {
+   "P00": [
+    0,
+    2,
+    4
+   ],
+   "P06": [
+    0
+   ],
+   "P13": [
+    0,
+    4
+   ],
+   "P17": [
+    0,
+    2,
+    4
+   ],
+   "P09": [
+    2
+   ]
+  },
+  "grounded": {
+   "P02": [
+    0,
+    1,
+    2,
+    3,
+    4
+   ],
+   "P05": [
+    0,
+    1,
+    2,
+    3,
+    4
+   ],
+   "P06": [
+    0,
+    1,
+    2,
+    3,
+    4
+   ],
+   "P13": [
+    4
+   ]
+  }
+ },
+ "L5": {
+  "P02": {
+   "quote": "Ánh mắt ông nhìn nàng",
+   "verdict": "CONFIRMED",
+   "reason": "Đúng quy ước xưng hô của thể loại tiên hiệp, việc sử dụng đại từ 'ông' để thay thế cho nhân vật nam (Lâm Chấn Nhạc) tron"
+  },
+  "P05": {
+   "quote": "Bà nhìn đứa con gái mà mình từng dốc lòng che chở",
+   "verdict": "CONFIRMED",
+   "reason": "Lỗi sai nằm ở việc sử dụng đại từ 'Bà' để gọi Tô Yến (vi phạm QUY ƯỚC XƯNG HÔ: không dùng đại từ hiện đại 'ông/bà' làm n"
+  },
+  "P06": {
+   "quote": "Đây là lệnh của mẫu thân ngươi.",
+   "verdict": "CONFIRMED",
+   "reason": "Đúng theo QUY ƯỚC XƯNG HÔ, người đang trực tiếp nói không được tự xưng ngôi thứ ba. Trong đoạn trích, Tô Yến đang nói ch"
+  },
+  "P17": {
+   "quote": "đánh thẳng vào đan điền vốn đã tan vỡ của nàng",
+   "verdict": "REFUTED",
+   "reason": "Finding cho rằng đan điền chưa bị phá hủy là sai so với văn bản. Trong chương có chi tiết mô tả: 'Linh lực trong người n"
+  }
+ }
+}

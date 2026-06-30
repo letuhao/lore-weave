@@ -1,4 +1,4 @@
-# ▶▶ NEXT SESSION STARTS HERE — **Compose synthesis: planning pipeline Stage 0 done + origin/main (KAL) merged → next is Stages 1-6** · branch `feat/editor-compose-overhaul` · 2026-06-30
+# ▶▶ NEXT SESSION STARTS HERE — **Compose synthesis: planning pipeline (0–6) done + self-heal cheap-stack judge upgrade shipped → next is drive the new stack over CH2–12** · branch `feat/editor-compose-overhaul` · 2026-07-01
 
 > **▶ MERGE 2026-06-30: `origin/main` (Temporal-Knowledge / KAL) merged in (55 commits).** The
 > knowledge-gateway (**KAL**) unifies glossary/KG reads under INV-KAL: composition's cast-roster read
@@ -46,6 +46,21 @@
 > - **Task B (D-PLAN-CAST-ATTRS, resolved)** — `cast_attributes` maps role/traits/archetype/relationships/summary → the character kind's attr codes; `seed_entities` sends `attributes`+`attribute_actions`. Live-verified: glossary EAV persists role/personality/relationships/description. Drafting grounding now has DEPTH.
 > - **Task C (the drive, in progress)** — the full grounded+healed 12-ch plan was generated + committed through the production endpoint; CH1 drafted (grounded) + chapter self-healed (`engine/self_heal.py`) as the prose sample. **NEXT:** draft + self-heal the remaining chapters (drive identically) for the full-story PO evaluation; optional: wire `self_heal` to its own endpoint (currently a script).
 > - review-impl on the pipeline: 0 HIGH, 2 MED fixed (motif unrecognised-role drop; L1-once on degrade).
+>
+> **▶ Cheap quality stack — judge upgrade (SHIPPED 2026-07-01, `engine/self_heal.py`):** the bare judge
+> was blind (0 findings on CH1 while real xưng-hô/canon errors stood; confabulated when prompted broad).
+> Root cause = no canon grounding, not model size. POC'd 5 layers on the $0 local Gemma (data:
+> `poc/io/poc_stack_out.json`), then implemented the validated subset — all **default-OFF ⇒ legacy
+> byte-identical**: `canon` (grounds judge **and** satellite editor in a story bible + 2 false-positive
+> guards), `vote_k`/`min_votes` (grounded judge ×K, must-quote folded in), `verify` (skeptical
+> refute-or-confirm, fail-open), `prefilter` (dup-word + full-recall pronoun findings), `_snap_to_sentence`
+> (edit whole sentences ⇒ no splice artifact). **Lesson:** voting alone does NOT kill *systematic*
+> confab — only grounding suppresses it + verify refutes the leak. **CH1 re-healed:** 7 defects → near-zero,
+> **x0.997**, incl. the canon contradiction (`từng dốc lòng che chở`→`luôn khinh miệt`) fixed by the grounded
+> editor; remaining = 1 cosmetic + 1 borderline repetition left for the human/stronger gate. **Tests:**
+> self_heal **21** (12 legacy + 9 new) green; full composition unit suite green. Result file:
+> `poc/io/ch01_healed_cheapstack.txt`. Spec §"Cheap quality stack". **NEXT:** drive the new stack over
+> CH2–12 (per-book canon from the planning pipeline's cast bible); wire `canon` from `PipelineResult`.
 >
 > **▶ Deferred (this track):**
 > - **D-THREAD-MOTIF-COMBINED** — `thread_state` + `motifs_enabled` together: typed-state threading is skipped on the motif path (motif `prev_effects` carry used; warned, not silent). Gate #2 (needs interleaving the motif sequential select with the threaded invent loop). Target: when motifs + threading are both wanted in one run.

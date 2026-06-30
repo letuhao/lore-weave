@@ -21,6 +21,7 @@ self-heal only ever *proposes* localized fixes, never rewrites the chapter whole
 
 from __future__ import annotations
 
+import asyncio
 import json
 import logging
 import re
@@ -66,10 +67,30 @@ class SelfHealReport:
 
 # ── JUDGE (detector) ───────────────────────────────────────────────────
 
-def build_judge_messages(chapter: str, source_language: str = "auto") -> tuple[str, str]:
+# Appended to the judge system prompt when a STORY BIBLE (canon + naming/honorific
+# convention) is supplied. Adds two axes the bare judge can't see — convention violations
+# and canon contradictions — plus the two false-positive guards the POC proved necessary
+# (no out-of-text inference; already-explained ⇒ not a defect). See
+# docs/specs/2026-06-30-chapter-synthesis-self-healing.md (cheap-stack POC).
+_JUDGE_CANON_ADDENDUM = (
+    "\n\nYou are ALSO given a STORY BIBLE — the canon (each character's established "
+    "traits/role) and a naming/honorific CONVENTION. In ADDITION to the defects above, "
+    "flag: (a) any ADDRESS or HONORIFIC that violates the convention, and (b) any action "
+    "or description that CONTRADICTS a character's canon. Two HARD rules to avoid false "
+    "positives: (1) do NOT infer events outside the chapter text; (2) if the chapter "
+    "ALREADY explains something, it is NOT a defect. Ground every finding in this bible "
+    "and copy each span VERBATIM.\n\nSTORY BIBLE:\n"
+)
+
+
+def build_judge_messages(
+    chapter: str, source_language: str = "auto", canon: str | None = None,
+) -> tuple[str, str]:
     """(system, user) for the whole-chapter judge. Language-neutral instruction; the
     span MUST be copied verbatim from the chapter (any language) so code can locate it,
-    and issue/fix are written in the chapter's own language."""
+    and issue/fix are written in the chapter's own language. When `canon` (a story bible)
+    is given, the judge is GROUNDED — it gains the convention/canon axes and the
+    out-of-text/already-explained guards."""
     system = (
         "You are a demanding fiction editor. Read the CHAPTER and list its most "
         "important CONCRETE defects to fix: repeated imagery/motif, repeated "
@@ -84,6 +105,8 @@ def build_judge_messages(chapter: str, source_language: str = "auto") -> tuple[s
         'defects. Return ONLY a JSON array: '
         '[{"type":...,"span":...,"issue":...,"fix":...}]. No prose around it.'
     )
+    if canon and canon.strip():
+        system = system + _JUDGE_CANON_ADDENDUM + canon.strip()
     return system, "CHAPTER:\n\n" + chapter
 
 
@@ -172,6 +195,7 @@ async def _chat(
     llm: LLMClient, *, user_id: str, model_source: str, model_ref: str,
     system: str, user: str, max_tokens: int, purpose: str,
     trace_id: str | None, cancel_check: Callable[[], Awaitable[bool]] | None,
+    temperature: float = 0.3,
 ) -> str | None:
     """One blocking completion → raw content, or None on error/non-completion/empty."""
     try:
@@ -180,7 +204,7 @@ async def _chat(
             input={
                 "messages": [{"role": "system", "content": system},
                              {"role": "user", "content": user}],
-                "response_format": {"type": "text"}, "temperature": 0.3,
+                "response_format": {"type": "text"}, "temperature": temperature,
                 "max_tokens": max_tokens, **_NO_THINK,
             },
             job_meta={"usage_purpose": purpose, "extractor": "self_heal"}, trace_id=trace_id,
@@ -197,17 +221,150 @@ async def _chat(
 
 
 async def _judge(
-    llm: LLMClient, chapter: str, *, source_language: str, max_tokens: int, **kw,
+    llm: LLMClient, chapter: str, *, source_language: str, max_tokens: int,
+    canon: str | None = None, temperature: float = 0.3, **kw,
 ) -> list[Finding] | None:
     """Findings, or None when the judge call itself DEGRADED (so the caller can tell a
     genuine 'zero defects' apart from a failed/empty re-judge — the latter must NOT read
     as 'all clean')."""
-    system, user = build_judge_messages(chapter, source_language)
+    system, user = build_judge_messages(chapter, source_language, canon)
     content = await _chat(llm, system=system, user=user, max_tokens=max_tokens,
-                          purpose="self_heal_judge", **kw)
+                          purpose="self_heal_judge", temperature=temperature, **kw)
     if content is None:
         return None
     return parse_findings(content)
+
+
+# ── VOTE (L4 — self-consistency) ───────────────────────────────────────
+
+def _vote_bucket(span: str, chapter: str) -> int | None:
+    """Coarse span key for cross-run aggregation: the located start offset // 40 (so the
+    judge's quote drift across runs still collapses to one bucket). None ⇒ unlocatable,
+    which is ALSO the must-quote (L2) drop — an un-anchorable finding never votes."""
+    loc = locate_span(span, chapter)
+    return None if loc is None else loc[0] // 40
+
+
+async def _judge_vote(
+    llm: LLMClient, chapter: str, *, source_language: str, max_tokens: int,
+    canon: str | None, k: int, min_votes: int, temperature: float, **kw,
+) -> list[Finding] | None:
+    """Run the (grounded) judge `k` times and keep only findings whose span bucket recurs
+    in ≥ `min_votes` runs. The POC lesson: voting cleans RANDOM noise, but only on a
+    GROUNDED judge — an ungrounded judge confabulates the SAME wrong thing every run, so
+    voting can't save it. Hence vote_k>1 is meant to pair with `canon`. k≤1 ⇒ the plain
+    single-shot judge (temperature 0.3) for byte-identical legacy behavior."""
+    if k <= 1:
+        return await _judge(llm, chapter, source_language=source_language,
+                            max_tokens=max_tokens, canon=canon, temperature=0.3, **kw)
+    runs = await asyncio.gather(*[
+        _judge(llm, chapter, source_language=source_language, max_tokens=max_tokens,
+               canon=canon, temperature=temperature, **kw)
+        for _ in range(k)
+    ])
+    if all(r is None for r in runs):
+        return None  # every run degraded — surface as degrade, not a false 'clean'
+    buckets: dict[int, dict] = {}
+    for ri, fl in enumerate(runs):
+        if not fl:
+            continue
+        seen: set[int] = set()
+        for f in fl:
+            b = _vote_bucket(f.span, chapter)
+            if b is None or b in seen:   # unlocatable (L2 drop) or already counted this run
+                continue
+            seen.add(b)
+            slot = buckets.setdefault(b, {"votes": set(), "rep": f})
+            slot["votes"].add(ri)
+    return [s["rep"] for s in buckets.values() if len(s["votes"]) >= min_votes]
+
+
+# ── VERIFY (L5 — asymmetric skeptical refute) ──────────────────────────
+
+_VERIFY_SYSTEM = (
+    "You are a SKEPTICAL reviewer; default to REFUTED. Given a CHAPTER, a FINDING and its "
+    "QUOTE, decide whether the finding is a REAL defect in the chapter, judged against the "
+    "STORY BIBLE below when provided. REFUTE if: the quote is not present in the chapter; or "
+    "the supposed defect is actually explained elsewhere in the chapter; or the finding "
+    "infers events beyond the text. CONFIRM only when you can point to the exact wrong words. "
+    'Reply ONLY JSON: {"verdict":"CONFIRMED"|"REFUTED","reason":"..."}.'
+)
+
+
+async def _verify(
+    llm: LLMClient, chapter: str, finding: Finding, *, canon: str | None,
+    max_tokens: int = 320, **kw,
+) -> bool:
+    """True ⇒ keep the finding (confirmed or verify degraded), False ⇒ drop (refuted).
+    Fail-OPEN: a degraded/unparseable verify keeps the finding — the satellite edit is
+    canon-grounded and localized, and a human/stronger-model gate follows; dropping a real
+    fix on a transient verify failure is the worse error here."""
+    system = _VERIFY_SYSTEM + ("\n\nSTORY BIBLE:\n" + canon.strip() if canon and canon.strip() else "")
+    user = f"CHAPTER:\n\n{chapter}\n\nFINDING: {finding.issue}\nQUOTE: \"{finding.span}\""
+    content = await _chat(llm, system=system, user=user, max_tokens=max_tokens,
+                          purpose="self_heal_verify", temperature=0.2, **kw)
+    if content is None:
+        return True  # degrade ⇒ fail-open
+    m = re.search(r'"verdict"\s*:\s*"?\s*(CONFIRMED|REFUTED)', content, re.IGNORECASE)
+    if m:
+        return m.group(1).upper() == "CONFIRMED"
+    # no JSON verdict — fall back to a keyword read, still fail-open if ambiguous
+    up = content.upper()
+    return not ("REFUT" in up and "CONFIRM" not in up)
+
+
+# ── code mechanical edits (L1 — deterministic, no LLM) ─────────────────
+
+_DUP_WORD = re.compile(r"\b([^\W\d_]+)(\s+)\1\b", re.IGNORECASE | re.UNICODE)
+
+
+def code_mechanical_edits(chapter: str) -> list[tuple[int, int, str]]:
+    """Deterministic mechanical fixes that need no LLM judgement — currently the
+    consecutive duplicate-word slip ('từng từng' → 'từng'). Returns (start, end, replacement)
+    spans, spliced alongside the satellite edits. Cheap, exact, zero false positives on this
+    class."""
+    return [(m.start(), m.end(), m.group(1)) for m in _DUP_WORD.finditer(chapter)]
+
+
+# A judge span is a fragment quoted mid-clause; editing it in isolation leaves an orphaned
+# tail at the splice ('…dốc lòng. che chở' artifact). Snap the span OUT to the enclosing
+# sentence so the satellite editor always rewrites a coherent unit.
+_SENT_BOUND = frozenset(".!?…\n")
+
+
+def _snap_to_sentence(text: str, s: int, e: int) -> tuple[int, int]:
+    i = s
+    while i > 0 and text[i - 1] not in _SENT_BOUND:
+        i -= 1
+    while i < s and text[i] in " \t\"“”'":     # skip leading whitespace / opening quotes
+        i += 1
+    j = max(e, s + 1)
+    while j < len(text) and text[j - 1] not in _SENT_BOUND:
+        j += 1
+    return i, j
+
+
+# Modern third-person pronouns used as the NARRATOR's voice — a closed lexical class that
+# is ~always wrong in xianxia. Detected deterministically (full recall the voting judge
+# misses); the canon-grounded satellite editor still picks the right replacement in context.
+_MODERN_PRONOUN = re.compile(
+    r"(?<![^\W\d_])(ông ta|bà ta|cô ấy|anh ấy|ông|bà)(?![^\W\d_])", re.IGNORECASE | re.UNICODE)
+
+
+def code_pronoun_findings(chapter: str) -> list[Finding]:
+    """One pre-located Finding per modern-pronoun-as-narrator slip. Detection is mechanical
+    (closed class); the replacement stays contextual — the editor sees the whole (snapped)
+    sentence + the canon and chooses hắn/y/lão (male) or nàng/thị (female)."""
+    out: list[Finding] = []
+    for m in _MODERN_PRONOUN.finditer(chapter):
+        w = m.group(0)
+        out.append(Finding(
+            type="xưng hô (code)", span=w,
+            issue=f"Đại từ hiện đại '{w}' dùng làm ngôi kể — trái quy ước tiên hiệp.",
+            fix=(f"Thay '{w}' bằng đại từ tiên hiệp phù hợp (nam: hắn/y/lão; nữ: nàng/thị) "
+                 "theo canon; giữ nguyên phần còn lại của câu."),
+            located=(m.start(), m.end())))
+    return out
 
 
 async def run_self_heal(
@@ -215,31 +372,65 @@ async def run_self_heal(
     chapter: str, source_language: str = "auto", profile: BookProfile | None = None,
     max_edit_expansion: float = 1.6, judge_max_tokens: int = 2200,
     edit_max_tokens: int = 1200, rejudge: bool = True,
+    canon: str | None = None, vote_k: int = 1, min_votes: int = 2,
+    verify: bool = False, prefilter: bool = False, vote_temperature: float = 0.7,
     trace_id: str | None = None,
     cancel_check: Callable[[], Awaitable[bool]] | None = None,
 ) -> tuple[str, SelfHealReport]:
     """Judge the chapter, satellite-edit each locatable finding's span, splice, and
     (optionally) re-judge. Returns ``(healed_chapter, report)``. Degrade-safe: a judge
     failure returns the chapter unchanged with an empty report; every per-finding
-    failure is skipped (original prose kept)."""
+    failure is skipped (original prose kept).
+
+    The cheap-quality stack (all default-OFF ⇒ legacy single-shot behavior) layers, in
+    the order proven by the POC (docs/specs/2026-06-30-chapter-synthesis-self-healing.md):
+      • `canon`       — ground the judge AND the satellite editor in a story bible so it
+                        catches convention/canon errors and stops confabulating;
+      • `vote_k`/`min_votes` — run the grounded judge K× and keep only findings recurring
+                        in ≥min_votes runs (cleans random noise; pair with `canon`);
+      • `verify`      — a skeptical refute-or-confirm pass drops survivors that are
+                        explained-in-text or out-of-text inference (fail-open on degrade);
+      • `prefilter`   — deterministic mechanical edits (dup-word) with no LLM.
+    Recall/precision measured on CH1: 5/5 real defects caught, 0 confabulations, on a $0
+    local model that previously returned 0 findings ungrounded."""
     profile = profile or BookProfile(source_language=source_language)
     kw = dict(user_id=user_id, model_source=model_source, model_ref=model_ref,
               trace_id=trace_id, cancel_check=cancel_check)
 
-    findings = await _judge(llm, chapter, source_language=source_language,
-                            max_tokens=judge_max_tokens, **kw) or []
+    findings = await _judge_vote(
+        llm, chapter, source_language=source_language, max_tokens=judge_max_tokens,
+        canon=canon, k=vote_k, min_votes=min_votes, temperature=vote_temperature, **kw) or []
     report = SelfHealReport(findings=findings, rejudge_before=len(findings))
-    if not findings:
+
+    # L5 — skeptical verify drops refuted findings (kept in report w/ skip_reason).
+    if verify and findings:
+        survivors: list[Finding] = []
+        for f in findings:
+            if await _verify(llm, chapter, f, canon=canon, **kw):
+                survivors.append(f)
+            else:
+                f.skip_reason = "refuted"
+        findings = survivors
+
+    # L1 — deterministic edits (no LLM): dup-word splice + full-recall pronoun findings.
+    mech = code_mechanical_edits(chapter) if prefilter else []
+    if prefilter and source_language == "vi":
+        pron = code_pronoun_findings(chapter)
+        findings = findings + pron
+        report.findings.extend(pron)
+
+    if not findings and not mech:
         return chapter, report
 
-    # locate every finding's span in the original text
+    # locate every finding's span (code findings arrive pre-located), then SNAP each to its
+    # enclosing sentence so the satellite editor rewrites a coherent unit (no orphaned tail).
     located: list[Finding] = []
     for f in findings:
-        loc = locate_span(f.span, chapter)
+        loc = f.located or locate_span(f.span, chapter)
         if loc is None:
             f.skip_reason = "not_located"
             continue
-        f.located = loc
+        f.located = _snap_to_sentence(chapter, loc[0], loc[1])
         report.located += 1
         located.append(f)
 
@@ -265,7 +456,8 @@ async def run_self_heal(
                  if source_language == "vi" else
                  f"Issue: {f.issue} Fix: {f.fix} "
                  "Edit only the selected passage; keep a similar length; add no new events.")
-        messages = build_selection_messages(original, profile, "rewrite", guide=guide, grounding="")
+        messages = build_selection_messages(original, profile, "rewrite", guide=guide,
+                                            grounding=canon or "")
         new = await _chat(llm, system=messages[0]["content"], user=messages[1]["content"],
                           max_tokens=edit_max_tokens, purpose="self_heal_edit", **kw)
         if not new:
@@ -279,14 +471,26 @@ async def run_self_heal(
         f.edited = True
         report.edits_applied += 1
 
+    # merge the deterministic mechanical edits — satellite edits keep priority (a semantic
+    # rewrite of a clause already subsumes any dup-word inside it), so a mechanical edit is
+    # applied only where it does NOT overlap a satellite edit.
+    final_edits = list(edits)
+    occupied: list[tuple[int, int]] = [(s, e) for s, e, _ in edits]
+    for s, e, new in mech:
+        if any(s < oe and os < e for os, oe in occupied):
+            continue
+        final_edits.append((s, e, new))
+        occupied.append((s, e))
+        report.edits_applied += 1
+
     # splice rightmost-first so earlier offsets stay valid
     healed = chapter
-    for s, e, new in sorted(edits, key=lambda x: x[0], reverse=True):
+    for s, e, new in sorted(final_edits, key=lambda x: x[0], reverse=True):
         healed = healed[:s] + new + healed[e:]
 
     if rejudge and report.edits_applied:
         after = await _judge(llm, healed, source_language=source_language,
-                             max_tokens=judge_max_tokens, **kw)
+                             max_tokens=judge_max_tokens, canon=canon, **kw)
         # None ⇒ the re-judge DEGRADED — leave rejudge_after None (don't report a false 0).
         report.rejudge_after = len(after) if after is not None else None
 

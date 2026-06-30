@@ -457,3 +457,37 @@ lại vẻ lạnh lùng"* (a flicker of pain before the coldness). Artifacts: `p
 Run the pass on POC Chapter 1 → diff before/after → confirm the targeted defect drops (e.g.
 timeline pass: the morning→night jump gets a transition; dedup pass: "phế vật" count drops) **without**
 lowering other dimensions' confidence. Reader re-rates the assembled chapter.
+
+---
+
+## Cheap quality stack — judge upgrade (IMPLEMENTED 2026-07-01)
+
+**Problem found by the PO:** the bare self-heal judge was *blind* — it returned **0 findings on
+CH1** while the chapter held real xưng-hô + canon errors (false-negative), and when prompted as an
+"outside reader" it **confabulated** contradictions that the text actually explains (false-positive).
+Root cause = no canon grounding + a too-broad single question + freedom to free-associate. The lever
+is **architecture, not model size** (same $0 local Gemma throughout).
+
+**POC verdict (data in `poc/io/poc_stack_out.json`)** — on CH1, grounded judge × vote(5) gave the 3
+real xưng-hô/canon errors at **5/5 stability** while the ungrounded judge gave **0/5** real + surfaced
+confabs; **voting alone does NOT kill systematic confab** (an ungrounded judge repeats the same wrong
+read 2–3/5) — only **grounding** suppresses it at the source and **skeptical verify** refutes the
+leak. Single-call-per-axis decomposition was unreliable (2/3 axes returned empty) → dropped; a grounded
+COMBINED judge is the win.
+
+**Shipped in `engine/self_heal.py` (all default-OFF ⇒ legacy single-shot byte-identical):**
+- `canon` — grounds BOTH the judge and the satellite editor in a story bible (convention + per-character
+  canon) + two false-positive guards (no out-of-text inference; already-explained ⇒ not a defect).
+- `vote_k`/`min_votes` — run the grounded judge K× (temp 0.7), keep findings recurring in ≥min_votes;
+  unlocatable spans never vote (must-quote / L2 folded in).
+- `verify` — skeptical refute-or-confirm pass, fail-OPEN on degrade.
+- `prefilter` — deterministic `code_mechanical_edits` (dup-word) + full-recall `code_pronoun_findings`
+  (modern-pronoun closed class the voting judge under-detects; replacement stays contextual).
+- `_snap_to_sentence` — widens every edit span to its enclosing sentence so the satellite editor
+  rewrites a COHERENT unit (kills the `…dốc lòng. che chở` splice artifact).
+
+**CH1 result (full stack, $0 local):** 7 known defects → near-zero, **x0.997** (no inflation):
+`ông`×2→`y`, `Bà`×2→`Thị`, `mẫu thân ngươi`→`của ta`, the **canon contradiction** (`từng dốc lòng che
+chở` → `luôn khinh miệt`, fixed by the grounded editor), `từng từng`→`từng`. Remaining: one cosmetic
+blank-line collapse + one borderline cross-paragraph repetition that verify conservatively kept — left
+for the human / stronger-model gate (the explicit goal: *fewest errors, then gated*, not perfection).
