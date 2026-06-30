@@ -1,4 +1,16 @@
-# ▶▶ NEXT SESSION STARTS HERE — **Compose synthesis: self-heal pipeline PROVEN end-to-end (POC) → next is the orchestrator BUILD** · branch `feat/editor-compose-overhaul` · 2026-06-30
+# ▶▶ NEXT SESSION STARTS HERE — **Compose synthesis: planning pipeline Stage 0 done + origin/main (KAL) merged → next is Stages 1-6** · branch `feat/editor-compose-overhaul` · 2026-06-30
+
+> **▶ MERGE 2026-06-30: `origin/main` (Temporal-Knowledge / KAL) merged in (55 commits).** The
+> knowledge-gateway (**KAL**) unifies glossary/KG reads under INV-KAL: composition's cast-roster read
+> moved from `glossary.list_entities` → **`kal.roster()`** (drains the cursor — fixes the ~100-cast
+> truncation). Conflict was ONLY `SESSION_HANDOFF.md`; router `plan.py` + `glossary_client.py`
+> auto-merged (our `thread_state`/`exit_state`/`seed_entities` survived alongside KAL). Our `seed_entities`
+> WRITE (glossary `extract-entities`) passes **both** INV-KAL gates (knowledge-access + http-surface).
+> **Verified:** composition unit suite **1209 passed**; `kal.roster()` returns the 10 seeded cast;
+> **e2e** on the rebuilt KAL stack — seed → KAL roster → decompose → **34/34 scenes grounded** with
+> `present_entity_ids`. Our code is fully on the new standard (roster via KAL; `cast_plan`/`self_heal`
+> don't touch glossary directly).
+
 
 > **What this track is:** the editor/compose UX overhaul **pivoted (PO)** to fixing **output QUALITY first** — POC chapters read as concatenated scenes. Two design docs:
 > - **[`docs/specs/2026-06-30-editor-compose-overhaul/`](../specs/2026-06-30-editor-compose-overhaul/)** — the GUI track (validate-first, milestones M0–M5 are a backlog menu, NOT a build order).
