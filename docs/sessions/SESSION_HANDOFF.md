@@ -1,4 +1,24 @@
-# ▶▶ NEXT SESSION STARTS HERE — **Temporal Knowledge — FOUNDATION COMPLETE (substrate + producer + KAL read/write + fold + names + KG/in-story); remaining = the FANOUT X1–X7** · branch `feat/temporal-knowledge-architecture` · HEAD `79f81924`+ · 2026-06-30
+# ▶▶ NEXT SESSION STARTS HERE — **Temporal Knowledge — COMPLETE (foundation + close_fact + full fanout X1–X7 + FE temporal surfaces); branch ready for review/merge** · branch `feat/temporal-knowledge-architecture` · HEAD `cb7de1f0` · 2026-06-30
+
+> **▶▶ ENTIRE EFFORT COMPLETE — the Incremental Temporal Knowledge Architecture is built, verified, and
+> committed end-to-end (F0–F4 foundation + close_fact + X1–X7 fanout + X6 FE). The branch is production-ready
+> for review/merge.**
+> - **Foundation** (bi-temporal `entity_facts` SSOT, `maintain_chain` single writer, episodes, fold loop, KG
+>   ordinal valid-time, KAL service) — hardened across **4 /review-impl passes** (4 HIGH + 6 MED + LOWs fixed, e2e green).
+> - **close_fact** — pinned valid-time close (0049 pin-aware maintain_chain); reviewed + live-smoked.
+> - **Fanout:** X1 composition / X2 lore-enrichment / X5 translation → KAL (consumers read bi-temporal knowledge
+>   through the KAL); X3 wiki / X4 chat verified no-ops; **X7 — BOTH INV-KAL lints ENFORCED** (table-read +
+>   HTTP-surface); cross-service smoke green.
+> - **X6 FE:** KAL **dual-auth** (JWT + book grant-check, anti-spoof) + BFF `/v1/kal` route (reviewed + live-verified
+>   200/403/401); **6 temporal surfaces** (canonical card, time slider, change timeline, diff, retrieval,
+>   per-episode translation) — 45 tests, tsc clean, real-KAL shapes validated, mounted in the entity panel's
+>   "Temporal" tab.
+> - **Honest limitations (not bugs, future enhancements):** the per-episode-translation surface degrades to the
+>   as-of canonical (no translation READ endpoint exists yet — a new feature, not this refactor); KG `as_of`
+>   honored (F3 landed). A full browser/Playwright smoke of the Temporal tab is the one remaining nice-to-have
+>   (shapes + the FE→BFF→KAL path + 45 component tests are verified).
+
+
 
 > **▶ FOUNDATION COMPLETE — all verified (real DB / build / tests):** F0 KAL contract · F1a-h substrate
 > (entity_facts/maintain_chain/episodes/cold-start) · F1d producer (facts flow from extraction, idempotent) ·
