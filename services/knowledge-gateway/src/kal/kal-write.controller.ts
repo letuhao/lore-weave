@@ -16,7 +16,7 @@ import { InternalTokenGuard } from '../auth/internal-token.guard.js';
 export class KalWriteController {
   @Post('episodes')
   ingestEpisode(@Param('bookId') bookId: string, @Body() body: unknown, @Headers() h: Record<string, string>) {
-    return this.forward(bookId, 'episodes', body, h);
+    return this.forward(bookId, 'episode', body, h);
   }
 
   @Post('resolve-entity')
@@ -26,7 +26,7 @@ export class KalWriteController {
 
   @Post('facts')
   appendFact(@Param('bookId') bookId: string, @Body() body: unknown, @Headers() h: Record<string, string>) {
-    return this.forward(bookId, 'facts', body, h);
+    return this.forward(bookId, 'append', body, h);
   }
 
   @Post('facts/close')

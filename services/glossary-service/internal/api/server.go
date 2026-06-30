@@ -163,6 +163,15 @@ func (s *Server) Router() http.Handler {
 		// one canonical value, and writes it back (compare-and-clear on canonical_dirty).
 		r.Get("/books/{book_id}/canonical-dirty", s.internalCanonicalDirty)
 		r.Post("/books/{book_id}/entities/{entity_id}/canonical", s.internalWriteCanonical)
+		// Temporal-knowledge (F4-live) — the append-only bi-temporal fact SSOT surface the
+		// KAL (knowledge-gateway) reads/writes through. Reads return bounded results
+		// (kal.v1.yaml); writes wrap the fact core (appendFact/retractFacts/ingestEpisode).
+		r.Get("/books/{book_id}/entities/{entity_id}/facts", s.internalGetFacts)
+		r.Get("/books/{book_id}/entities/{entity_id}/timeline", s.internalFactTimeline)
+		r.Get("/books/{book_id}/entities/{entity_id}/attr-values", s.internalListAttrValues)
+		r.Post("/books/{book_id}/facts/episode", s.internalIngestEpisode)
+		r.Post("/books/{book_id}/facts/append", s.internalAppendFact)
+		r.Post("/books/{book_id}/facts/retract", s.internalRetractFacts)
 		// Enrichment SUPPLEMENT layer (F-C13-1 + F-C13-2 / PO ruling B1):
 		// lore-enrichment writes/retracts the distinguished enrichment `dị bản`
 		// here (its own table, FK→entity) instead of overwriting short_description.
