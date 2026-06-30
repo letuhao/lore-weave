@@ -415,6 +415,22 @@ func (s *Server) mergeOne(
 		}
 	}
 
+	// 2b. Fact-chain merge (§12.4.1 / F1f): repoint ALL loser entity_facts → winner and
+	// reconcile each affected single-valued chain (same-ordinal tiebreak + maintain_chain).
+	// NET-NEW over the append-only fact history (the EAV repoint above is the flat-store
+	// path); the facts SSOT is merged independently and journalled for exact revert.
+	movedFacts, invalidatedFacts, err := mergeFactChains(ctx, tx, winnerID, loserID)
+	if err != nil {
+		return uuid.Nil, "", err
+	}
+	// NOT-NULL journal columns: a nil slice encodes as SQL NULL; coerce to empty arrays.
+	if movedFacts == nil {
+		movedFacts = []uuid.UUID{}
+	}
+	if invalidatedFacts == nil {
+		invalidatedFacts = []uuid.UUID{}
+	}
+
 	// 3. Soft-delete the loser (hidden; conflicting rows stay attached to it).
 	if _, err := tx.Exec(ctx,
 		`UPDATE glossary_entities SET deleted_at = now(), merged_into_entity_id = $1 WHERE entity_id = $2`,
@@ -422,15 +438,17 @@ func (s *Server) mergeOne(
 		return uuid.Nil, "", err
 	}
 
-	// 4. Journal (for revert).
+	// 4. Journal (for revert) — incl. the moved + tiebreak-invalidated fact ids (§12.4.1 step 5).
 	var journalID uuid.UUID
 	if err := tx.QueryRow(ctx, `
 		INSERT INTO merge_journal
 		  (book_id, winner_entity_id, loser_entity_id, repointed_chapter_link_ids,
 		   repointed_eav_ids, repointed_enrichment_ids, repointed_audit_ids,
-		   repointed_wiki_article_id, superseded_wiki_article_id, winner_aliases_before, merged_by)
-		VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11) RETURNING journal_id`,
+		   repointed_wiki_article_id, superseded_wiki_article_id, winner_aliases_before, merged_by,
+		   repointed_fact_ids, invalidated_fact_ids)
+		VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13) RETURNING journal_id`,
 		bookID, winnerID, loserID, chLinks, eavs, enrich, audit, wikiArticle, supersededWiki, aliasesBefore, actor,
+		movedFacts, invalidatedFacts,
 	).Scan(&journalID); err != nil {
 		return uuid.Nil, "", err
 	}
@@ -490,6 +508,8 @@ func (s *Server) revertMergeCore(ctx context.Context, bookID, journalID uuid.UUI
 		jBook             uuid.UUID
 		chLinks, eavs     []uuid.UUID
 		enrich, audit     []uuid.UUID
+		movedFacts        []uuid.UUID
+		invalidatedFacts  []uuid.UUID
 		wikiArticle       *uuid.UUID
 		supersededWiki    *uuid.UUID
 		aliasesBefore     *string
@@ -498,9 +518,11 @@ func (s *Server) revertMergeCore(ctx context.Context, bookID, journalID uuid.UUI
 	if err := s.pool.QueryRow(ctx, `
 		SELECT book_id, winner_entity_id, loser_entity_id, repointed_chapter_link_ids,
 		       repointed_eav_ids, repointed_enrichment_ids, repointed_audit_ids,
-		       repointed_wiki_article_id, superseded_wiki_article_id, winner_aliases_before, status
+		       repointed_wiki_article_id, superseded_wiki_article_id, winner_aliases_before, status,
+		       repointed_fact_ids, invalidated_fact_ids
 		FROM merge_journal WHERE journal_id = $1`, journalID,
-	).Scan(&jBook, &winnerID, &loserID, &chLinks, &eavs, &enrich, &audit, &wikiArticle, &supersededWiki, &aliasesBefore, &status); err != nil {
+	).Scan(&jBook, &winnerID, &loserID, &chLinks, &eavs, &enrich, &audit, &wikiArticle, &supersededWiki, &aliasesBefore, &status,
+		&movedFacts, &invalidatedFacts); err != nil {
 		return "not_found", nil
 	}
 	if jBook != bookID {
@@ -537,6 +559,11 @@ func (s *Server) revertMergeCore(ctx context.Context, bookID, journalID uuid.UUI
 		return "", err
 	}
 	if _, err := tx.Exec(ctx, `UPDATE extraction_audit_log SET entity_id=$1 WHERE id = ANY($2::uuid[])`, loserID, audit); err != nil {
+		return "", err
+	}
+	// Undo the fact-chain merge exactly (F1f): repoint moved facts back + un-invalidate the
+	// tiebreak losers + re-derive both chains. Runs before the loser is un-soft-deleted.
+	if err := revertFactChains(ctx, tx, winnerID, loserID, movedFacts, invalidatedFacts); err != nil {
 		return "", err
 	}
 	if wikiArticle != nil {

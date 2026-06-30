@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"sort"
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
@@ -336,4 +337,161 @@ func nullStr(s string) any {
 		return nil
 	}
 	return s
+}
+
+// mergeFactChains is the fact-chain merge (§12.4.1 / A1) — NET-NEW over append-only
+// history, NOT "#43 done" (that validated the flat overwrite store). It repoints ALL
+// loser facts onto the winner (no `NOT IN` collision dodge — facts coexist by design,
+// distinguished by their bi-temporal intervals), then reconciles each affected
+// single-valued chain: a deterministic same-ordinal tiebreak (newest created_at wins,
+// fact_id as final tiebreak) invalidate-not-deletes the loser of any same-valid_from
+// DIFFERENT-value overlap, and maintain_chain re-derives every valid_to over the merged
+// survivors. source_episode_id + valid_* are untouched (provenance + intervals preserved).
+//
+// Locking (§12.7.8): the caller holds the entity-pair FOR UPDATE; this additionally takes
+// the per-(entity, attr) chain advisory locks for BOTH entities on the affected attrs, in
+// sorted composite-key order, held through commit — so a concurrent append to either chain
+// can't interleave (it would otherwise be dropped or left with a stale valid_to).
+//
+// Episodes are book/chapter-scoped (not entity-owned), so nothing to repoint there.
+// Returns the moved fact ids + the tiebreak-invalidated fact ids for the merge journal
+// (revert via revertFactChains). Returns (nil,nil,nil) when the loser has no facts.
+func mergeFactChains(ctx context.Context, q pgxRWQuerier, winnerID, loserID uuid.UUID) (moved, invalidated []uuid.UUID, err error) {
+	attrs, err := distinctFactAttrs(ctx, q, loserID)
+	if err != nil {
+		return nil, nil, err
+	}
+	if len(attrs) == 0 {
+		return nil, nil, nil
+	}
+	// §12.7.8 chain locks: both entities × affected attrs, sorted composite-key order.
+	type lk struct {
+		entity uuid.UUID
+		attr   string
+	}
+	locks := make([]lk, 0, len(attrs)*2)
+	for _, a := range attrs {
+		locks = append(locks, lk{winnerID, a}, lk{loserID, a})
+	}
+	sort.Slice(locks, func(i, j int) bool {
+		ki := locks[i].entity.String() + ":" + locks[i].attr
+		kj := locks[j].entity.String() + ":" + locks[j].attr
+		return ki < kj
+	})
+	for _, l := range locks {
+		if err := acquireFactChainLock(ctx, q, l.entity, l.attr); err != nil {
+			return nil, nil, err
+		}
+	}
+
+	// Repoint ALL loser facts → winner (no NOT IN dodge).
+	rows, err := q.Query(ctx,
+		`UPDATE entity_facts SET entity_id = $1 WHERE entity_id = $2 RETURNING fact_id`,
+		winnerID, loserID)
+	if err != nil {
+		return nil, nil, fmt.Errorf("merge facts: repoint: %w", err)
+	}
+	for rows.Next() {
+		var id uuid.UUID
+		if err := rows.Scan(&id); err != nil {
+			rows.Close()
+			return nil, nil, fmt.Errorf("merge facts: scan moved: %w", err)
+		}
+		moved = append(moved, id)
+	}
+	rows.Close()
+	if err := rows.Err(); err != nil {
+		return nil, nil, fmt.Errorf("merge facts: moved rows: %w", err)
+	}
+
+	// Same-ordinal tiebreak across the affected single-valued chains: invalidate any fact
+	// that has a NEWER different-value sibling at the same valid_from (keep the newest).
+	irows, err := q.Query(ctx, `
+		UPDATE entity_facts e
+		   SET invalidated_at = now(), invalidated_reason = 'merge_tiebreak'
+		 WHERE e.entity_id = $1 AND e.cardinality = 'single' AND e.invalidated_at IS NULL
+		   AND e.attr_or_predicate = ANY($2)
+		   AND EXISTS (
+		     SELECT 1 FROM entity_facts o
+		     WHERE o.entity_id = e.entity_id AND o.fact_kind = e.fact_kind
+		       AND o.attr_or_predicate = e.attr_or_predicate
+		       AND o.valid_from_ordinal = e.valid_from_ordinal
+		       AND o.invalidated_at IS NULL AND o.value_hash <> e.value_hash
+		       AND (o.created_at > e.created_at OR (o.created_at = e.created_at AND o.fact_id > e.fact_id))
+		   )
+		RETURNING fact_id`,
+		winnerID, attrs)
+	if err != nil {
+		return nil, nil, fmt.Errorf("merge facts: tiebreak: %w", err)
+	}
+	for irows.Next() {
+		var id uuid.UUID
+		if err := irows.Scan(&id); err != nil {
+			irows.Close()
+			return nil, nil, fmt.Errorf("merge facts: scan tiebreak: %w", err)
+		}
+		invalidated = append(invalidated, id)
+	}
+	irows.Close()
+	if err := irows.Err(); err != nil {
+		return nil, nil, fmt.Errorf("merge facts: tiebreak rows: %w", err)
+	}
+
+	for _, a := range attrs {
+		if err := maintainChain(ctx, q, winnerID, a); err != nil {
+			return nil, nil, err
+		}
+	}
+	return moved, invalidated, nil
+}
+
+// revertFactChains undoes mergeFactChains exactly (the reversible-merge invariant): repoint
+// the moved facts back to the loser, un-invalidate the tiebreak losers, and re-derive both
+// sides' affected chains. Driven by the journal's repointed_fact_ids + invalidated_fact_ids.
+func revertFactChains(ctx context.Context, q pgxRWQuerier, winnerID, loserID uuid.UUID, moved, invalidated []uuid.UUID) error {
+	if len(invalidated) > 0 {
+		if _, err := q.Exec(ctx, `
+			UPDATE entity_facts SET invalidated_at = NULL, invalidated_reason = NULL
+			 WHERE fact_id = ANY($1) AND invalidated_reason = 'merge_tiebreak'`, invalidated); err != nil {
+			return fmt.Errorf("revert facts: un-invalidate tiebreak: %w", err)
+		}
+	}
+	if len(moved) > 0 {
+		if _, err := q.Exec(ctx,
+			`UPDATE entity_facts SET entity_id = $1 WHERE fact_id = ANY($2)`, loserID, moved); err != nil {
+			return fmt.Errorf("revert facts: repoint back: %w", err)
+		}
+	}
+	// Re-derive both sides over the union of affected attrs.
+	for _, e := range []uuid.UUID{winnerID, loserID} {
+		attrs, err := distinctFactAttrs(ctx, q, e)
+		if err != nil {
+			return err
+		}
+		for _, a := range attrs {
+			if err := maintainChain(ctx, q, e, a); err != nil {
+				return err
+			}
+		}
+	}
+	return nil
+}
+
+// distinctFactAttrs returns an entity's distinct fact attr/predicate codes (any kind).
+func distinctFactAttrs(ctx context.Context, q pgxRWQuerier, entityID uuid.UUID) ([]string, error) {
+	rows, err := q.Query(ctx,
+		`SELECT DISTINCT attr_or_predicate FROM entity_facts WHERE entity_id = $1`, entityID)
+	if err != nil {
+		return nil, fmt.Errorf("distinct fact attrs: %w", err)
+	}
+	defer rows.Close()
+	var attrs []string
+	for rows.Next() {
+		var a string
+		if err := rows.Scan(&a); err != nil {
+			return nil, fmt.Errorf("distinct fact attrs scan: %w", err)
+		}
+		attrs = append(attrs, a)
+	}
+	return attrs, rows.Err()
 }

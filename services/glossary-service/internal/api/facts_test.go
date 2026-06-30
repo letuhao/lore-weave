@@ -250,6 +250,91 @@ func TestFactChainLockSerializes(t *testing.T) {
 	}
 }
 
+// TestMergeFactChains verifies F1f (§12.4.1): the fact-chain merge repoints ALL loser
+// facts, resolves a same-ordinal conflict deterministically (newest wins), and is EXACTLY
+// reversible via the journalled moved + invalidated ids.
+func TestMergeFactChains(t *testing.T) {
+	ctx := context.Background()
+	pool := openFactsTestDB(t)
+	tx, err := pool.Begin(ctx)
+	if err != nil {
+		t.Fatalf("begin: %v", err)
+	}
+	defer tx.Rollback(ctx) //nolint:errcheck
+
+	// two live entities in one book
+	var bookID, winner, loser uuid.UUID
+	rows, err := tx.Query(ctx, `
+		SELECT book_id, entity_id FROM glossary_entities
+		WHERE deleted_at IS NULL
+		  AND book_id = (SELECT book_id FROM glossary_entities WHERE deleted_at IS NULL
+		                 GROUP BY book_id HAVING count(*) >= 2 LIMIT 1)
+		LIMIT 2`)
+	if err != nil {
+		t.Fatalf("pick entities: %v", err)
+	}
+	var ids []uuid.UUID
+	for rows.Next() {
+		var b, e uuid.UUID
+		if err := rows.Scan(&b, &e); err != nil {
+			rows.Close()
+			t.Fatalf("scan: %v", err)
+		}
+		bookID = b
+		ids = append(ids, e)
+	}
+	rows.Close()
+	if len(ids) < 2 {
+		t.Skip("need a book with >=2 live entities")
+	}
+	winner, loser = ids[0], ids[1]
+
+	app := func(ent uuid.UUID, attr, val string, vf int64) {
+		if err := acquireFactChainLock(ctx, tx, ent, attr); err != nil {
+			t.Fatalf("lock: %v", err)
+		}
+		if _, _, err := appendFact(ctx, tx, appendFactParams{
+			BookID: bookID, EntityID: ent, FactKind: "attribute", Attr: attr, Value: val, ValidFrom: vf,
+		}); err != nil {
+			t.Fatalf("append %s/%s: %v", ent, attr, err)
+		}
+	}
+	// winner: mtk1=W@10 ; loser: mtk1=L@10 (same-ordinal conflict, L appended later=newer) + mtk2=X@5
+	app(winner, "mtk1", "W", 10)
+	app(loser, "mtk1", "L", 10)
+	app(loser, "mtk2", "X", 5)
+
+	moved, invalidated, err := mergeFactChains(ctx, tx, winner, loser)
+	if err != nil {
+		t.Fatalf("mergeFactChains: %v", err)
+	}
+	if len(moved) != 2 { // L@10 + X@5
+		t.Fatalf("moved = %d, want 2", len(moved))
+	}
+	if len(invalidated) != 1 { // W@10 loses the same-ordinal tiebreak to the newer L@10
+		t.Fatalf("invalidated = %d, want 1 (the tiebreak loser)", len(invalidated))
+	}
+	// winner now owns the merged chains: mtk1 open = L (newest), mtk2 open = X
+	assertChain(t, ctx, tx, winner, "mtk1", []chainRow{{"L", 10, nil}})
+	assertChain(t, ctx, tx, winner, "mtk2", []chainRow{{"X", 5, nil}})
+	// loser has no live facts
+	var loserLive int
+	if err := tx.QueryRow(ctx, `SELECT count(*) FROM entity_facts WHERE entity_id=$1`, loser).Scan(&loserLive); err != nil {
+		t.Fatalf("loser count: %v", err)
+	}
+	if loserLive != 0 {
+		t.Fatalf("loser should own 0 facts after merge, has %d", loserLive)
+	}
+
+	// REVERT: exactly restore both sides
+	if err := revertFactChains(ctx, tx, winner, loser, moved, invalidated); err != nil {
+		t.Fatalf("revertFactChains: %v", err)
+	}
+	assertChain(t, ctx, tx, winner, "mtk1", []chainRow{{"W", 10, nil}}) // W restored + un-invalidated
+	assertChain(t, ctx, tx, loser, "mtk1", []chainRow{{"L", 10, nil}})  // L back on loser
+	assertChain(t, ctx, tx, loser, "mtk2", []chainRow{{"X", 5, nil}})
+}
+
 type chainRow struct {
 	value string
 	vf    int64
