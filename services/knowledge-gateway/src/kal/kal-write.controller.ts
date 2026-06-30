@@ -31,7 +31,11 @@ export class KalWriteController {
 
   @Post('facts/close')
   closeFact(@Param('bookId') bookId: string, @Body() body: unknown, @Headers() h: Record<string, string>) {
-    return this.forward(bookId, 'facts/close', body, h);
+    // → /internal/books/{id}/facts/close (the natural URL). NOTE: the glossary backing for an
+    // explicit valid-time close (§12.3.2) is NOT yet implemented — it touches the LOCKED
+    // single-writer (maintain_chain) invariant and needs a design decision; until then this
+    // surfaces the downstream 404 (route-not-yet-backed), never a silent success.
+    return this.forward(bookId, 'close', body, h);
   }
 
   @Post('retract')
@@ -56,10 +60,17 @@ export class KalWriteController {
     @Body() body: unknown,
     @Headers() h: Record<string, string>,
   ) {
-    return this.forward(bookId, `entities/${entityId}/fold`, body, h);
+    // Fold is NOT a facts/* verb — it lives at the entity, not the fact chain. Marks the entity's
+    // canonical dirty so the next fold pass (translation worker, via provider-registry) folds it.
+    return glossary.post(
+      `/internal/books/${bookId}/entities/${entityId}/fold`,
+      body ?? {},
+      ctxFromHeaders(h),
+    );
   }
 
-  /** Forward to the glossary fact-core internal route; 502→501 surfaces "route not yet exposed". */
+  /** Forward to the glossary fact-core internal route under /facts/. A downstream 404 surfaces
+   *  faithfully as "route not yet backed" (downstream.ts maps 4xx through), never a silent success. */
   private async forward(bookId: string, verb: string, body: unknown, h: Record<string, string>) {
     return glossary.post(`/internal/books/${bookId}/facts/${verb}`, body, ctxFromHeaders(h));
   }

@@ -16,7 +16,7 @@ import (
 // This step lays the SSOT substrate only (schema). The interval-maintenance
 // routine (maintain_chain), the synchronous-in-tx EAV projection upsert, Path A
 // append / Path B retract, the tiered locking model, and fact-chain merge/split
-// are application code in later slices; the cold-start seed is step 0045.
+// are application code in later slices; the cold-start seed is step 0046.
 //
 // Three objects + one extension:
 //
@@ -53,7 +53,7 @@ import (
 //
 // All statements idempotent (IF NOT EXISTS / ADD COLUMN IF NOT EXISTS), routed
 // through execGuarded (the migration advisory lock) like every chain step.
-// Forward-only; no data rewrite (the cold-start seed is the separate step 0045).
+// Forward-only; no data rewrite (the cold-start seed is the separate step 0046).
 func UpEntityFacts(ctx context.Context, pool *pgxpool.Pool) error {
 	return execGuarded(ctx, pool, "entity-facts", `
 		-- ── Episodes: immutable, content-hash-revisioned ingest unit ──────────────

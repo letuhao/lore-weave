@@ -1,7 +1,10 @@
-import { Controller, Get, Headers, Param, Post, Query, Body, UseGuards } from '@nestjs/common';
-import { ctxFromHeaders, glossary, knowledge } from './downstream.js';
+import { Controller, Get, Param, Post, Query, Body, Req, UseGuards } from '@nestjs/common';
+import { ctxFromReq, glossary, knowledge } from './downstream.js';
 import { kgAsOfOrDrop, temporalCapability } from './temporal.js';
 import { InternalTokenGuard } from '../auth/internal-token.guard.js';
+
+/** The inbound request shape ctxFromReq needs (identity headers + connection close event). */
+type InboundReq = Parameters<typeof ctxFromReq>[0];
 
 /**
  * KAL bounded reads (contracts/api/knowledge-gateway/kal.v1.yaml). Every result is bounded;
@@ -21,7 +24,7 @@ export class KalReadController {
     @Param('bookId') bookId: string,
     @Param('entityId') entityId: string,
     @Query('as_of') asOf: string | undefined,
-    @Headers() headers: Record<string, string>,
+    @Req() req: InboundReq,
   ) {
     // The folded canonical snapshot (F2-app), degrade-safe to canon-content when no fresh
     // snapshot exists. `as_of` below the fold head projects from facts (get_facts) — the
@@ -29,7 +32,7 @@ export class KalReadController {
     const q = asOf ? `?as_of=${encodeURIComponent(asOf)}` : '';
     const data = await glossary.get(
       `/internal/books/${bookId}/entities/${entityId}/canonical-snapshot${q}`,
-      ctxFromHeaders(headers),
+      ctxFromReq(req),
     );
     return data;
   }
@@ -41,16 +44,18 @@ export class KalReadController {
     @Param('entityId') entityId: string,
     @Query('as_of') asOf: string | undefined,
     @Query('attrs') attrs: string | undefined,
-    @Headers() headers: Record<string, string>,
+    @Req() req: InboundReq,
   ) {
     const qs = new URLSearchParams();
     if (asOf) qs.set('as_of', asOf);
     if (attrs) qs.set('attrs', attrs);
     const data = (await glossary.get(
       `/internal/books/${bookId}/entities/${entityId}/facts?${qs.toString()}`,
-      ctxFromHeaders(headers),
+      ctxFromReq(req),
     )) as Record<string, unknown>;
-    return { items: data?.items ?? data ?? [], temporal_capability: temporalCapability() };
+    // Strict array coercion: a downstream object that lacks `items` must NOT pass through
+    // whole as the bounded item array (the contract types items as array<Fact>). Never `?? data`.
+    return { items: Array.isArray(data?.items) ? data.items : [], temporal_capability: temporalCapability() };
   }
 
   // timeline — windowed change history (newest-first page).
@@ -59,10 +64,10 @@ export class KalReadController {
     @Param('bookId') bookId: string,
     @Param('entityId') entityId: string,
     @Query() query: Record<string, string>,
-    @Headers() headers: Record<string, string>,
+    @Req() req: InboundReq,
   ) {
     const qs = new URLSearchParams(query).toString();
-    return glossary.get(`/internal/books/${bookId}/entities/${entityId}/timeline?${qs}`, ctxFromHeaders(headers));
+    return glossary.get(`/internal/books/${bookId}/entities/${entityId}/timeline?${qs}`, ctxFromReq(req));
   }
 
   // list_attr_values — paginated STRUCTURED multi-valued facts (never folded prose, D9).
@@ -71,10 +76,10 @@ export class KalReadController {
     @Param('bookId') bookId: string,
     @Param('entityId') entityId: string,
     @Query() query: Record<string, string>,
-    @Headers() headers: Record<string, string>,
+    @Req() req: InboundReq,
   ) {
     const qs = new URLSearchParams(query).toString();
-    return glossary.get(`/internal/books/${bookId}/entities/${entityId}/attr-values?${qs}`, ctxFromHeaders(headers));
+    return glossary.get(`/internal/books/${bookId}/entities/${entityId}/attr-values?${qs}`, ctxFromReq(req));
   }
 
   // roster — bounded-per-page, COMPLETE-in-aggregate cast list (§12.5.2 / D4). Keyset cursor;
@@ -84,14 +89,14 @@ export class KalReadController {
     @Param('bookId') bookId: string,
     @Query('cursor') cursor: string | undefined,
     @Query('limit') limit: string | undefined,
-    @Headers() headers: Record<string, string>,
+    @Req() req: InboundReq,
   ) {
     const qs = new URLSearchParams();
     if (cursor) qs.set('cursor', cursor);
     if (limit) qs.set('limit', limit);
     const data = (await glossary.get(
       `/internal/books/${bookId}/entities?${qs.toString()}`,
-      ctxFromHeaders(headers),
+      ctxFromReq(req),
     )) as Record<string, unknown>;
     const items = ((data?.items as Array<Record<string, unknown>>) ?? []).map((e) => ({
       entity_id: e.entity_id,
@@ -105,10 +110,10 @@ export class KalReadController {
   async search(
     @Param('bookId') bookId: string,
     @Query() query: Record<string, string>,
-    @Headers() headers: Record<string, string>,
+    @Req() req: InboundReq,
   ) {
     const qs = new URLSearchParams(query).toString();
-    return glossary.get(`/internal/books/${bookId}/entities/search?${qs}`, ctxFromHeaders(headers));
+    return glossary.get(`/internal/books/${bookId}/entities/search?${qs}`, ctxFromReq(req));
   }
 
   // neighborhood — KG 1-hop (capped). `as_of` gated per substrate (KG temporal_unsupported pre-F3).
@@ -119,19 +124,21 @@ export class KalReadController {
     @Query('hops') hops: string | undefined,
     @Query('cap') cap: string | undefined,
     @Query('as_of') asOf: string | undefined,
-    @Headers() headers: Record<string, string>,
+    @Req() req: InboundReq,
   ) {
     const qs = new URLSearchParams();
     qs.set('entity_id', entityId);
     if (hops) qs.set('hops', hops);
     if (cap) qs.set('cap', cap);
-    const effAsOf = kgAsOfOrDrop(asOf ? parseInt(asOf, 10) : undefined);
+    // Guard parseInt: a non-numeric as_of must not forward literal "NaN" downstream — drop it.
+    const parsedAsOf = asOf !== undefined ? parseInt(asOf, 10) : undefined;
+    const effAsOf = kgAsOfOrDrop(Number.isFinite(parsedAsOf) ? parsedAsOf : undefined);
     if (effAsOf !== undefined) qs.set('as_of_chapter', String(effAsOf));
     const data = (await knowledge.get(
       `/internal/books/${bookId}/kg/neighborhood?${qs.toString()}`,
-      ctxFromHeaders(headers),
+      ctxFromReq(req),
     )) as Record<string, unknown>;
-    return { edges: data?.edges ?? data ?? [], temporal_capability: temporalCapability() };
+    return { edges: Array.isArray(data?.edges) ? data.edges : [], temporal_capability: temporalCapability() };
   }
 
   // retrieve — semantic top-K over embedded episodes/segments.
@@ -139,9 +146,13 @@ export class KalReadController {
   async retrieve(
     @Param('bookId') bookId: string,
     @Body() body: { query: string; scope?: string; k?: number; as_of?: number },
-    @Headers() headers: Record<string, string>,
+    @Req() req: InboundReq,
   ) {
-    const data = await knowledge.post(`/internal/books/${bookId}/retrieve`, body, ctxFromHeaders(headers));
-    return { items: (data as Record<string, unknown>)?.items ?? data ?? [], temporal_capability: temporalCapability() };
+    const data = (await knowledge.post(
+      `/internal/books/${bookId}/retrieve`,
+      body,
+      ctxFromReq(req),
+    )) as Record<string, unknown>;
+    return { items: Array.isArray(data?.items) ? data.items : [], temporal_capability: temporalCapability() };
   }
 }

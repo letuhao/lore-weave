@@ -394,7 +394,7 @@ func TestSplitFactsByEpisode(t *testing.T) {
 	app("spa1", "V1", 10, ep1) // cited to ep1 → will split out
 	app("spa2", "V2", 20, ep2) // cited to ep2 → stays on source
 
-	moved, err := splitFactsByEpisode(ctx, tx, source, newEntity, []uuid.UUID{ep1})
+	moved, err := splitFactsByEpisode(ctx, tx, bookID, source, newEntity, []uuid.UUID{ep1})
 	if err != nil {
 		t.Fatalf("split: %v", err)
 	}

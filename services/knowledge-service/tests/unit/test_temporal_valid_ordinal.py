@@ -67,8 +67,11 @@ def test_maintain_chain_cypher_is_ordinal_aware_not_wallclock():
         assert "valid_until IS NULL" in cy           # only survivors
         assert "valid_from_ordinal IS NOT NULL" in cy  # positionless excluded
         assert "datetime()" in cy  # only for updated_at, see next assert
-        # the CLOSE value is the next survivor's valid_from_ordinal, never now()
-        assert "nxt.valid_from_ordinal" in cy
+        # the CLOSE value is the next STRICTLY-GREATER survivor's valid_from_ordinal, never now()
+        # — strictly-greater so a same-ordinal tie can't collapse into a zero-width [base,base)
+        # interval (the A2 bug); mirrors the Postgres maintain_chain core.
+        assert "x.valid_from_ordinal > cur.valid_from_ordinal" in cy
+        assert "greaters[0]" in cy
         assert "$open_ceiling" in cy
 
 

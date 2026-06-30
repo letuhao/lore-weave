@@ -120,7 +120,10 @@ def test_restitch_cypher_rederives_from_survivors_ordinal_order():
         assert "valid_until IS NULL" in cy            # survivors only
         assert "valid_from_ordinal IS NOT NULL" in cy  # positionless excluded
         assert "valid_from_ordinal ASC" in cy
-        assert "nxt.valid_from_ordinal" in cy          # close = next survivor
+        # close = next STRICTLY-GREATER survivor's valid_from (same-ordinal ties stay co-valid,
+        # never collapse to a zero-width interval); mirrors the Postgres maintain_chain core.
+        assert "x.valid_from_ordinal > cur.valid_from_ordinal" in cy
+        assert "greaters[0]" in cy
         assert "$open_ceiling" in cy
         assert "$user_id" in cy                         # tenant-scoped
     # fact chain groups by (entity, type); relation chain by (subject, predicate)

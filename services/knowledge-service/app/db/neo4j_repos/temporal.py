@@ -133,12 +133,19 @@ WHERE f.user_id = $user_id
 WITH f ORDER BY f.valid_from_ordinal ASC, f.created_at ASC
 WITH collect(f) AS chain
 UNWIND range(0, size(chain) - 1) AS i
-WITH chain, i, chain[i] AS cur,
-     CASE WHEN i + 1 < size(chain) THEN chain[i + 1] ELSE NULL END AS nxt
+WITH chain, chain[i] AS cur
+// STRICTLY-GREATER next bound (mirrors the Postgres maintain_chain core): the
+// next-greater valid_from in the chain, never an EQUAL one. Two instances sharing
+// a valid_from_ordinal (same-chapter ties — facts/relations stamp the chapter
+// ordinal with no per-item offset) must NOT close each other into a zero-width
+// [base, base) interval (invisible at every as-of read, the A2 bug). They both get
+// the same next-greater bound (a real overlap) or both stay open if co-last.
+WITH cur, [x IN chain WHERE x.valid_from_ordinal > cur.valid_from_ordinal
+           | x.valid_from_ordinal] AS greaters
 SET cur.valid_to_ordinal =
-      CASE WHEN nxt IS NULL THEN NULL ELSE nxt.valid_from_ordinal END,
+      CASE WHEN size(greaters) = 0 THEN NULL ELSE greaters[0] END,
     cur.valid_to_ordinal_eff =
-      CASE WHEN nxt IS NULL THEN $open_ceiling ELSE nxt.valid_from_ordinal END,
+      CASE WHEN size(greaters) = 0 THEN $open_ceiling ELSE greaters[0] END,
     cur.updated_at = datetime()
 RETURN count(cur) AS maintained
 """
@@ -173,12 +180,19 @@ WITH e.id AS entity_id, f.type AS attr, f
 ORDER BY f.valid_from_ordinal ASC, f.created_at ASC
 WITH entity_id, attr, collect(f) AS chain
 UNWIND range(0, size(chain) - 1) AS i
-WITH chain, i, chain[i] AS cur,
-     CASE WHEN i + 1 < size(chain) THEN chain[i + 1] ELSE NULL END AS nxt
+WITH chain, chain[i] AS cur
+// STRICTLY-GREATER next bound (mirrors the Postgres maintain_chain core): the
+// next-greater valid_from in the chain, never an EQUAL one. Two instances sharing
+// a valid_from_ordinal (same-chapter ties — facts/relations stamp the chapter
+// ordinal with no per-item offset) must NOT close each other into a zero-width
+// [base, base) interval (invisible at every as-of read, the A2 bug). They both get
+// the same next-greater bound (a real overlap) or both stay open if co-last.
+WITH cur, [x IN chain WHERE x.valid_from_ordinal > cur.valid_from_ordinal
+           | x.valid_from_ordinal] AS greaters
 SET cur.valid_to_ordinal =
-      CASE WHEN nxt IS NULL THEN NULL ELSE nxt.valid_from_ordinal END,
+      CASE WHEN size(greaters) = 0 THEN NULL ELSE greaters[0] END,
     cur.valid_to_ordinal_eff =
-      CASE WHEN nxt IS NULL THEN $open_ceiling ELSE nxt.valid_from_ordinal END,
+      CASE WHEN size(greaters) = 0 THEN $open_ceiling ELSE greaters[0] END,
     cur.updated_at = datetime()
 RETURN count(cur) AS restitched
 """
@@ -195,12 +209,19 @@ WITH subj.id AS subject_id, r.predicate AS predicate, r
 ORDER BY r.valid_from_ordinal ASC, r.created_at ASC
 WITH subject_id, predicate, collect(r) AS chain
 UNWIND range(0, size(chain) - 1) AS i
-WITH chain, i, chain[i] AS cur,
-     CASE WHEN i + 1 < size(chain) THEN chain[i + 1] ELSE NULL END AS nxt
+WITH chain, chain[i] AS cur
+// STRICTLY-GREATER next bound (mirrors the Postgres maintain_chain core): the
+// next-greater valid_from in the chain, never an EQUAL one. Two instances sharing
+// a valid_from_ordinal (same-chapter ties — facts/relations stamp the chapter
+// ordinal with no per-item offset) must NOT close each other into a zero-width
+// [base, base) interval (invisible at every as-of read, the A2 bug). They both get
+// the same next-greater bound (a real overlap) or both stay open if co-last.
+WITH cur, [x IN chain WHERE x.valid_from_ordinal > cur.valid_from_ordinal
+           | x.valid_from_ordinal] AS greaters
 SET cur.valid_to_ordinal =
-      CASE WHEN nxt IS NULL THEN NULL ELSE nxt.valid_from_ordinal END,
+      CASE WHEN size(greaters) = 0 THEN NULL ELSE greaters[0] END,
     cur.valid_to_ordinal_eff =
-      CASE WHEN nxt IS NULL THEN $open_ceiling ELSE nxt.valid_from_ordinal END,
+      CASE WHEN size(greaters) = 0 THEN $open_ceiling ELSE greaters[0] END,
     cur.updated_at = datetime()
 RETURN count(cur) AS restitched
 """
@@ -259,12 +280,19 @@ WHERE r.user_id = $user_id
 WITH r ORDER BY r.valid_from_ordinal ASC, r.created_at ASC
 WITH collect(r) AS chain
 UNWIND range(0, size(chain) - 1) AS i
-WITH chain, i, chain[i] AS cur,
-     CASE WHEN i + 1 < size(chain) THEN chain[i + 1] ELSE NULL END AS nxt
+WITH chain, chain[i] AS cur
+// STRICTLY-GREATER next bound (mirrors the Postgres maintain_chain core): the
+// next-greater valid_from in the chain, never an EQUAL one. Two instances sharing
+// a valid_from_ordinal (same-chapter ties — facts/relations stamp the chapter
+// ordinal with no per-item offset) must NOT close each other into a zero-width
+// [base, base) interval (invisible at every as-of read, the A2 bug). They both get
+// the same next-greater bound (a real overlap) or both stay open if co-last.
+WITH cur, [x IN chain WHERE x.valid_from_ordinal > cur.valid_from_ordinal
+           | x.valid_from_ordinal] AS greaters
 SET cur.valid_to_ordinal =
-      CASE WHEN nxt IS NULL THEN NULL ELSE nxt.valid_from_ordinal END,
+      CASE WHEN size(greaters) = 0 THEN NULL ELSE greaters[0] END,
     cur.valid_to_ordinal_eff =
-      CASE WHEN nxt IS NULL THEN $open_ceiling ELSE nxt.valid_from_ordinal END,
+      CASE WHEN size(greaters) = 0 THEN $open_ceiling ELSE greaters[0] END,
     cur.updated_at = datetime()
 RETURN count(cur) AS maintained
 """

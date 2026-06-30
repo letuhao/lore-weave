@@ -60,7 +60,7 @@ func (s *Server) internalFoldDirty(w http.ResponseWriter, r *http.Request) {
 		  LIMIT $2
 		)
 		SELECT d.entity_id, ge.cached_name, ef.attr_or_predicate, ef.value,
-		       ef.coverage_xid::text, ef.valid_from_ordinal
+		       max(ef.coverage_xid) OVER (PARTITION BY d.entity_id)::text, ef.valid_from_ordinal
 		FROM dirty d
 		JOIN glossary_entities ge ON ge.entity_id = d.entity_id
 		JOIN entity_facts ef ON ef.entity_id = d.entity_id
@@ -101,9 +101,12 @@ func (s *Server) internalFoldDirty(w http.ResponseWriter, r *http.Request) {
 		if ord > it.HeadOrdinal {
 			it.HeadOrdinal = ord
 		}
-		if xid > it.Fingerprint { // xid8::text is lexically monotonic within a wraparound epoch; max = newest
-			it.Fingerprint = xid
-		}
+		// xid is the per-entity NUMERIC max(coverage_xid)::text (window agg), identical for
+		// every row of the entity — so it round-trips byte-for-byte through the worker into
+		// internalWriteFoldSnapshot's compare-and-clear, which recomputes the SAME numeric
+		// max(coverage_xid)::text. (A lexical string-max would disagree on differing-length
+		// values, e.g. "9" > "10", and wedge the entity in a perpetual re-fold livelock.)
+		it.Fingerprint = xid
 	}
 	items := make([]*foldItem, 0, len(order))
 	for _, id := range order {
@@ -214,6 +217,10 @@ func (s *Server) internalGetCanonical(w http.ResponseWriter, r *http.Request) {
 		SELECT cs.content, cs.as_of_ordinal, cs.canonical_status
 		FROM canonical_snapshot cs
 		WHERE cs.entity_id = $1 AND cs.attr_scope = 'narrative'
+		  -- A snapshot with UNKNOWN coverage (NULL fingerprint) is STALE, not eternally fresh:
+		  -- without this guard, ef.coverage_xid > NULL is always NULL → NOT EXISTS always true →
+		  -- the snapshot would be served as current forever and never re-fold.
+		  AND cs.fact_coverage_xid IS NOT NULL
 		  AND NOT EXISTS (
 		    SELECT 1 FROM entity_facts ef
 		    WHERE ef.entity_id = cs.entity_id AND ef.invalidated_at IS NULL
@@ -231,7 +238,8 @@ func (s *Server) internalGetCanonical(w http.ResponseWriter, r *http.Request) {
 	// Degrade: the existing canon-content (short_description) is a real, bounded canonical.
 	var degraded *string
 	_ = s.pool.QueryRow(r.Context(),
-		`SELECT short_description FROM glossary_entities WHERE entity_id = $1`, entityID).Scan(&degraded)
+		`SELECT short_description FROM glossary_entities WHERE entity_id = $1 AND book_id = $2`,
+		entityID, bookID).Scan(&degraded)
 	_ = markFoldDirty(r.Context(), s.pool, entityID, false) // schedule a real fold
 	body := ""
 	if degraded != nil {
@@ -240,6 +248,40 @@ func (s *Server) internalGetCanonical(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]any{
 		"entity_id": entityID.String(), "content": body,
 		"canonical_status": "stale", "source": "canon-content",
+	})
+}
+
+// internalTriggerFold — POST /internal/books/{book_id}/entities/{entity_id}/fold
+// The KAL fold_canonical target. Flags the entity's narrative canonical dirty so the next fold
+// pass (the translation-service fold worker, LLM via provider-registry) regenerates it, and
+// returns the entity's current snapshot status. The fold itself is async + decoupled (there is
+// no LLM in glossary) — this is a "queue a re-fold" trigger, not a synchronous build.
+func (s *Server) internalTriggerFold(w http.ResponseWriter, r *http.Request) {
+	bookID, ok := parsePathUUID(w, r, "book_id")
+	if !ok {
+		return
+	}
+	entityID, ok := parsePathUUID(w, r, "entity_id")
+	if !ok {
+		return
+	}
+	if !s.entityInBook(w, r, entityID, bookID) {
+		return
+	}
+	if err := markFoldDirty(r.Context(), s.pool, entityID, false); err != nil {
+		writeError(w, http.StatusInternalServerError, "GLOSS_INTERNAL", "mark fold dirty failed")
+		return
+	}
+	var status string
+	_ = s.pool.QueryRow(r.Context(), `
+		SELECT canonical_status FROM canonical_snapshot
+		WHERE entity_id = $1 AND attr_scope = 'narrative'
+		ORDER BY built_at DESC LIMIT 1`, entityID).Scan(&status)
+	if status == "" {
+		status = "pending" // no snapshot yet — the first fold will build it
+	}
+	writeJSON(w, http.StatusOK, map[string]any{
+		"entity_id": entityID.String(), "status": "queued", "canonical_status": status,
 	})
 }
 

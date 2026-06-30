@@ -23,15 +23,21 @@ import (
 //     Multi-valued alias facts coexist (maintain_chain leaves them alone) and are the
 //     resolver's across-time alias set.
 //
-// Idempotent: the name UPDATE is a no-op once converted; the alias split is
-// ON CONFLICT DO NOTHING + the source invalidation is guarded on the still-active
-// `attribute` rows. Forward-only, execGuarded.
+// Idempotent + re-run-safe (ledger.go documents a manual re-run after clearing the row as
+// supported): every statement is SCOPED TO COLD-START SEEDS via `source_episode_id IS NULL`.
+// The cold-start seed (0046) is the ONLY producer of `attribute`-kind name/aliases facts —
+// the F1d runtime writeback (emitChapterFacts) already emits names as `name` and aliases as
+// `alias` and cites a real episode, so it can NEVER be swept by a re-run of this one-shot
+// reconciliation. (Without the episode guard a re-run after runtime facts accumulate would be
+// a one-shot conversion in name only — the comment would overstate idempotency; the guard
+// makes "cold-start only" enforced by code, not just by the kind filter.)
 func UpBitemporalNames(ctx context.Context, pool *pgxpool.Pool) error {
 	return execGuarded(ctx, pool, "bitemporal-names", `
-		-- name: attribute → name kind, in place (chain preserved)
+		-- name: attribute → name kind, in place (chain preserved). Cold-start seeds only.
 		UPDATE entity_facts
 		   SET fact_kind = 'name'
-		 WHERE fact_kind = 'attribute' AND attr_or_predicate = 'name';
+		 WHERE fact_kind = 'attribute' AND attr_or_predicate = 'name'
+		   AND source_episode_id IS NULL;
 
 		-- aliases: split the JSON-array attribute fact into per-element multi alias facts
 		INSERT INTO entity_facts
@@ -44,6 +50,7 @@ func UpBitemporalNames(ctx context.Context, pool *pgxpool.Pool) error {
 		  CASE WHEN btrim(ef.value) ~ '^\[' THEN ef.value::jsonb ELSE '[]'::jsonb END
 		) AS elem
 		WHERE ef.fact_kind = 'attribute' AND ef.attr_or_predicate = 'aliases'
+		  AND ef.source_episode_id IS NULL
 		  AND ef.invalidated_at IS NULL AND coalesce(btrim(elem), '') <> ''
 		ON CONFLICT DO NOTHING;
 
@@ -51,5 +58,6 @@ func UpBitemporalNames(ctx context.Context, pool *pgxpool.Pool) error {
 		UPDATE entity_facts
 		   SET invalidated_at = now(), invalidated_reason = 'converted_to_alias_facts'
 		 WHERE fact_kind = 'attribute' AND attr_or_predicate = 'aliases'
+		   AND source_episode_id IS NULL
 		   AND invalidated_at IS NULL;`)
 }

@@ -292,7 +292,14 @@ func refreshEAVProjection(ctx context.Context, q pgxRWQuerier, entityID uuid.UUI
 		  LIMIT 1
 		)
 		INSERT INTO entity_attribute_values (entity_id, attr_def_id, original_language, original_value)
-		SELECT t.entity_id, t.attr_def_id, 'zh', c.value
+		SELECT t.entity_id, t.attr_def_id,
+		       -- The entity's established source language (from any sibling attr), not a
+		       -- hardcoded 'zh' — a net-new projection row for a non-Chinese book must not be
+		       -- mislabeled. ON CONFLICT preserves the existing language for an existing row.
+		       COALESCE((SELECT eav.original_language FROM entity_attribute_values eav
+		                 WHERE eav.entity_id = t.entity_id AND eav.original_language IS NOT NULL
+		                 LIMIT 1), 'zh'),
+		       c.value
 		FROM target t CROSS JOIN cur c
 		ON CONFLICT (entity_id, attr_def_id)
 		DO UPDATE SET original_value = EXCLUDED.original_value`,
@@ -587,15 +594,17 @@ func revertFactChains(ctx context.Context, q pgxRWQuerier, winnerID, loserID uui
 //
 // Returns the number of facts moved. Order matters: COPY (from still-open source facts)
 // before INVALIDATE, so the copy SELECT still sees them.
-func splitFactsByEpisode(ctx context.Context, q pgxRWQuerier, sourceID, newEntityID uuid.UUID, episodeIDs []uuid.UUID) (int, error) {
+func splitFactsByEpisode(ctx context.Context, q pgxRWQuerier, bookID, sourceID, newEntityID uuid.UUID, episodeIDs []uuid.UUID) (int, error) {
 	if len(episodeIDs) == 0 {
 		return 0, nil
 	}
+	// book_id scopes every source read/write (tenancy, defense-in-depth — the handler
+	// already proved source ∈ book via entityInBook, but a fact core must not trust that).
 	// Affected attrs = the source attrs cited to those episodes (open facts only).
 	rows, err := q.Query(ctx, `
 		SELECT DISTINCT attr_or_predicate FROM entity_facts
-		WHERE entity_id = $1 AND source_episode_id = ANY($2) AND invalidated_at IS NULL`,
-		sourceID, episodeIDs)
+		WHERE entity_id = $1 AND book_id = $3 AND source_episode_id = ANY($2) AND invalidated_at IS NULL`,
+		sourceID, episodeIDs, bookID)
 	if err != nil {
 		return 0, fmt.Errorf("split: affected attrs: %w", err)
 	}
@@ -639,11 +648,11 @@ func splitFactsByEpisode(ctx context.Context, q pgxRWQuerier, sourceID, newEntit
 		  (book_id, entity_id, fact_kind, attr_or_predicate, value, valid_from_ordinal, cardinality, source_episode_id)
 		SELECT book_id, $1, fact_kind, attr_or_predicate, value, valid_from_ordinal, cardinality, source_episode_id
 		FROM entity_facts
-		WHERE entity_id = $2 AND source_episode_id = ANY($3) AND invalidated_at IS NULL
+		WHERE entity_id = $2 AND book_id = $4 AND source_episode_id = ANY($3) AND invalidated_at IS NULL
 		ON CONFLICT (entity_id, fact_kind, attr_or_predicate, value_hash, valid_from_ordinal,
 		             coalesce(source_episode_id, '00000000-0000-0000-0000-000000000000'::uuid))
 		DO NOTHING`,
-		newEntityID, sourceID, episodeIDs)
+		newEntityID, sourceID, episodeIDs, bookID)
 	if err != nil {
 		return 0, fmt.Errorf("split: copy to new entity: %w", err)
 	}
@@ -656,9 +665,9 @@ func splitFactsByEpisode(ctx context.Context, q pgxRWQuerier, sourceID, newEntit
 	touchedSet := map[string]struct{}{}
 	irows, err := q.Query(ctx, `
 		UPDATE entity_facts SET invalidated_at = now(), invalidated_reason = 'split'
-		WHERE entity_id = $1 AND source_episode_id = ANY($2) AND invalidated_at IS NULL
+		WHERE entity_id = $1 AND book_id = $3 AND source_episode_id = ANY($2) AND invalidated_at IS NULL
 		RETURNING attr_or_predicate`,
-		sourceID, episodeIDs)
+		sourceID, episodeIDs, bookID)
 	if err != nil {
 		return 0, fmt.Errorf("split: invalidate originals: %w", err)
 	}

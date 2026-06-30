@@ -114,6 +114,15 @@ func TestFoldLoop(t *testing.T) {
 		t.Fatalf("canonical = %v, want the folded snapshot (source=snapshot, current)", canon)
 	}
 
+	// KAL fold_canonical trigger (internalTriggerFold): POST .../fold re-flags the entity dirty
+	// so the next worker pass re-folds, and reports the current snapshot status.
+	if code := doPOST("/internal/books/"+bookID+"/entities/"+entityID+"/fold", map[string]any{}); code != http.StatusOK {
+		t.Fatalf("fold trigger: %d", code)
+	}
+	if n := srv.foldDirtyCount(ctx, bid); n < 1 {
+		t.Fatalf("fold trigger should re-flag dirty, got %d", n)
+	}
+
 	// a NEW fact makes the snapshot STALE → GET canonical degrades + re-flags dirty
 	if code := doPOST("/internal/books/"+bookID+"/facts/append", map[string]any{
 		"entity_id": entityID, "fact_kind": "attribute", "attr_or_predicate": "境界",

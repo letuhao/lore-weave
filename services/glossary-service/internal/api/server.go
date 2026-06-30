@@ -178,6 +178,8 @@ func (s *Server) Router() http.Handler {
 		// F2-app — the canonical fold loop (the LLM fold runs in the translation fold worker).
 		r.Get("/books/{book_id}/fold-dirty", s.internalFoldDirty)
 		r.Post("/books/{book_id}/entities/{entity_id}/fold-snapshot", s.internalWriteFoldSnapshot)
+		// KAL fold_canonical trigger — mark dirty so the next worker pass re-folds (no LLM here).
+		r.Post("/books/{book_id}/entities/{entity_id}/fold", s.internalTriggerFold)
 		r.Get("/books/{book_id}/entities/{entity_id}/canonical-snapshot", s.internalGetCanonical)
 		// Enrichment SUPPLEMENT layer (F-C13-1 + F-C13-2 / PO ruling B1):
 		// lore-enrichment writes/retracts the distinguished enrichment `dị bản`

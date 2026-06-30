@@ -423,6 +423,14 @@ func (s *Server) internalSplitEntity(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "GLOSS_BAD_REQUEST", "source + new_name + new_kind + source_episode_ids required")
 		return
 	}
+	// Tenancy (LOCKED): the `source` entity comes from the request body — it MUST belong to
+	// THIS book before we re-attribute (invalidate + copy) any of its facts. Without this a
+	// caller holding book A's token could pass a book-B source and split its facts onto a
+	// fresh book-A entity (cross-book corruption). splitFactsByEpisode is additionally
+	// book-scoped below as defense-in-depth.
+	if !s.entityInBook(w, r, source, bookID) {
+		return
+	}
 	episodeIDs := make([]uuid.UUID, 0, len(body.SourceEpisodeIDs))
 	for _, s := range body.SourceEpisodeIDs {
 		if id, e := uuid.Parse(s); e == nil {
@@ -461,7 +469,7 @@ func (s *Server) internalSplitEntity(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusInternalServerError, "GLOSS_INTERNAL", "create new entity failed: "+err.Error())
 		return
 	}
-	moved, err := splitFactsByEpisode(r.Context(), tx, source, newID, episodeIDs)
+	moved, err := splitFactsByEpisode(r.Context(), tx, bookID, source, newID, episodeIDs)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "GLOSS_INTERNAL", "split failed: "+err.Error())
 		return
