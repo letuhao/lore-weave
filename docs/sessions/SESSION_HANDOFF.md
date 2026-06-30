@@ -1,4 +1,4 @@
-# ▶▶ NEXT SESSION STARTS HERE — **Temporal Knowledge Architecture — substrate + merge/split + KG side DONE; F4 KAL service NEXT** · branch `feat/temporal-knowledge-architecture` · HEAD `f52e50f7`+ · 2026-06-30
+# ▶▶ NEXT SESSION STARTS HERE — **Temporal Knowledge Architecture — full foundation structure LANDED (substrate + merge/split + KG + KAL service + INV-KAL lint)** · branch `feat/temporal-knowledge-architecture` · HEAD `434894d8`+ · 2026-06-30
 
 > **What this branch is:** implementing the Incremental Temporal Knowledge Architecture
 > ([spec](../specs/2026-06-29-incremental-temporal-knowledge-architecture.md) §12/§12.7.8 govern;
@@ -34,12 +34,22 @@
 > `f52e50f7` **split** (§12.4.2, `splitFactsByEpisode` re-attribute-by-provenance, originals reason='split').
 > `TestMergeFactChains`/`TestSplitFactsByEpisode` green; existing Merge/Revert/Dedup suites green (no regression).
 >
-> **▶ NEXT (remaining foundation, then fanout):**
-> 1. **F4 — the KAL TypeScript service** (`services/knowledge-gateway`, NestJS like mcp-public-gateway) implementing
->    `kal.v1.yaml`: current-projection reads delegating to glossary + KG, write verbs delegating to the new fact core,
->    per-substrate `as_of` gating (KG `temporal_unsupported`→`ordinal_valid_time` now that F3 landed), bounded-complete
->    `roster`, `list_attr_values`; the **2 INV-KAL lints**; flip `language-rule.yaml` `missing`→`typescript`. Needs an
->    npm install/build/test cycle — a focused effort.
+> **▶ F4 — KAL gateway service + INV-KAL lint (DONE, structure):**
+> - `2ab5f710` **KAL NestJS service** (`services/knowledge-gateway`) implementing `kal.v1.yaml`: config/main/health +
+>   `KalReadController` (get_canonical/get_facts/timeline/list_attr_values/roster/search/neighborhood/retrieve, each with
+>   per-substrate `temporal_capability`, KG `as_of` dropped when `temporal_unsupported`) + `KalWriteController`
+>   (append/close/retract/merge/split/fold/ingest_episode/resolve_entity forwarding to glossary `/internal/facts/*`).
+>   **Verified: npm install + nest build clean; boots + serves /health + /health/ready (kgTemporal=ordinal_valid_time),
+>   16 routes mapped.** `language-rule.yaml` `missing`→`typescript`; lint PASS.
+> - `434894d8` **INV-KAL table-read lint** (`scripts/knowledge-access-gate.py`, wired into `.githooks/pre-commit`): no
+>   consumer reads the glossary EAV / Neo4j directly. Full-scan PASS.
+>
+> **▶ NEXT — F4-FOLLOW-ON + remaining foundation, then fanout:**
+> 1. **F4-follow-on (live writes):** add the glossary **`/internal/facts/*` HTTP routes** (Go handlers wrapping the F1c/F1f
+>    fact core — appendFact/retract/mergeFactChains/splitFactsByEpisode/fold) so the KAL write verbs hit a real target;
+>    then a **cross-service live-smoke** (KAL → glossary fact route → DB) + verify the read endpoints' downstream path
+>    mapping against the actual glossary/KG routes. (KAL reads/writes build + the service boots; full delegation is the
+>    cross-service smoke, currently unverified end-to-end.)
 > 2. **F2 app** — the fold handler: lazy rebuild-on-read + ordinal-bucketed re-ground (B1) + compare-and-clear + backoff
 >    (needs a provider-registry LLM call). Enhances `get_canonical` behind the frozen contract.
 > 3. **F1g** — bi-temporal name/aliases (§12.4.3) + as-of-name. **Value partly gated on F1d** (deferred writeback wiring);
