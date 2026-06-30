@@ -104,6 +104,35 @@ async def run_decompose(
     return dataclasses.asdict(result)
 
 
+async def run_plan_pipeline(
+    pool: asyncpg.Pool, llm: LLMClient, *, user_id: str, input: dict[str, Any],
+    cancel_check: Callable[[], Awaitable[bool]] | None = None,
+) -> dict[str, Any]:
+    """Run the multi-step planning pipeline (Stages 0-6) from the persisted input. The
+    endpoint resolved book/chapters/genres into ``input``; the worker builds the
+    retriever (pool) + glossary/KAL singletons (internal-auth) and runs end-to-end.
+    Returns ``dataclasses.asdict(PipelineResult)`` for the poll."""
+    from app.clients.glossary_client import get_glossary_client
+    from app.clients.kal_client import get_kal_client
+    from app.db.repositories.motif_retrieve import MotifRetriever
+    from app.engine.plan import ChapterPlan
+    from app.engine.planning_pipeline import run_planning_pipeline
+
+    chapters = [ChapterPlan(**c) for c in input["chapters"]]
+    result = await run_planning_pipeline(
+        llm, MotifRetriever(pool), get_glossary_client(), get_kal_client(),
+        user_id=user_id, book_id=UUID(input["book_id"]), project_id=UUID(input["project_id"]),
+        premise=input["premise"], beats=input["beats"], chapters=chapters,
+        genre_tags=input.get("genre_tags", []),
+        model_source=input["model_source"], model_ref=input["model_ref"],
+        k_ceiling=input["k_ceiling"], high_threshold=input["high_threshold"],
+        min_scenes=input["min_scenes"], max_scenes=input["max_scenes"],
+        source_language=input["source_language"], self_heal=input.get("self_heal", True),
+        cancel_check=cancel_check,
+    )
+    return dataclasses.asdict(result)
+
+
 async def run_stitch(
     pool: asyncpg.Pool, llm: LLMClient, knowledge, *, input: dict[str, Any],
     cancel_check: Callable[[], Awaitable[bool]] | None = None,

@@ -30,6 +30,7 @@ from app.worker.operations import (
     run_chapter_generate,
     run_decompose,
     run_generate,
+    run_plan_pipeline,
     run_selection_edit,
     run_stitch,
 )
@@ -122,6 +123,11 @@ async def _run_operation(
     if op == "decompose_preview":
         return await run_decompose(
             llm, user_id=str(job.user_id), input=job.input or {}, cancel_check=cancel_check)
+    if op == "plan_pipeline":
+        inp = dict(job.input or {})
+        inp.setdefault("project_id", str(job.project_id))
+        return await run_plan_pipeline(
+            pool, llm, user_id=str(job.user_id), input=inp, cancel_check=cancel_check)
     if op == "stitch_chapter":
         inp = dict(job.input or {})
         inp.setdefault("user_id", str(job.user_id))

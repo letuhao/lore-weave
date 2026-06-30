@@ -75,6 +75,11 @@ class DecomposeRequest(BaseModel):
     # concurrent per-chapter decompose. ON ⇒ chapters are decomposed in order, each
     # conditioned on the prior chapters' typed exit-state so they don't repeat the arc.
     thread_state: bool = False
+    # Planning-pipeline — when true, run the multi-step planner (cast → motifs → tension →
+    # char-arcs/intros → grounded decompose → plan self-heal) instead of the one-shot
+    # decompose. Default OFF (opt-in rollout). Long-running ⇒ always via the worker when
+    # COMPOSITION_WORKER_ENABLED. NOTE: this SEEDS the proposed cast into the glossary.
+    pipeline: bool = False
 
 
 class CommitScene(BaseModel):
@@ -256,6 +261,47 @@ async def decompose_preview(
                     sort_order=c["sort_order"], beat_role=None, intent="")
         for c in chapters_raw
     ]
+
+    # ── Planning pipeline (multi-step) — opt-in via `pipeline=true`. Long-running ⇒ worker
+    # when enabled (202 + job_id); else inline (tests / worker-off). Seeds the cast glossary.
+    if body.pipeline:
+        genre_tags = await _book_genre_tags(book, work.book_id, bearer)
+        pipe_input = {
+            "model_source": str(body.model_source), "model_ref": str(body.model_ref),
+            "worker_op": "plan_pipeline", "premise": body.premise, "beats": tmpl.beats,
+            "chapters": [dataclasses.asdict(c) for c in chapters_in],
+            "genre_tags": genre_tags, "book_id": str(work.book_id), "project_id": str(project_id),
+            "k_ceiling": settings.compose_diverge_k,
+            "high_threshold": settings.plan_high_tension_threshold,
+            "min_scenes": settings.plan_min_scenes_per_chapter,
+            "max_scenes": settings.plan_max_scenes_per_chapter,
+            "source_language": profile.source_language, "self_heal": True,
+        }
+        if settings.composition_worker_enabled:
+            jobs = await get_generation_jobs_repo()
+            job, _created = await jobs.create(
+                user_id, project_id, operation="plan_pipeline", mode="auto",
+                status="pending", input=pipe_input)
+            enqueued = await enqueue_job(
+                settings.redis_url, job_id=str(job.id),
+                user_id=str(user_id), project_id=str(project_id))
+            return JSONResponse(
+                status_code=http_status.HTTP_202_ACCEPTED,
+                content={"job_id": str(job.id), "status": "pending",
+                         "enqueued": "ok" if enqueued else "retriggerable"})
+        # inline (worker-off / tests) — blocks for the full pipeline.
+        from app.clients.glossary_client import get_glossary_client
+        from app.engine.planning_pipeline import run_planning_pipeline
+        res = await run_planning_pipeline(
+            llm, MotifRetriever(get_pool()), get_glossary_client(), kal,
+            user_id=str(user_id), book_id=work.book_id, project_id=project_id,
+            premise=body.premise, beats=tmpl.beats, chapters=chapters_in, genre_tags=genre_tags,
+            model_source=body.model_source, model_ref=body.model_ref,
+            k_ceiling=settings.compose_diverge_k, high_threshold=settings.plan_high_tension_threshold,
+            min_scenes=settings.plan_min_scenes_per_chapter,
+            max_scenes=settings.plan_max_scenes_per_chapter,
+            source_language=profile.source_language, self_heal=True)
+        return JSONResponse(content=dataclasses.asdict(res))
 
     # W2 motif select+bind context (only resolved when the toggle is on — default
     # OFF in P1, so the inline/worker paths are byte-identical to today when off).
