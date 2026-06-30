@@ -41,12 +41,12 @@ export class KalWriteController {
 
   @Post('entities/merge')
   merge(@Param('bookId') bookId: string, @Body() body: unknown, @Headers() h: Record<string, string>) {
-    return this.forward(bookId, 'entities/merge', body, h);
+    return this.forward(bookId, 'merge', body, h);
   }
 
   @Post('entities/split')
   split(@Param('bookId') bookId: string, @Body() body: unknown, @Headers() h: Record<string, string>) {
-    return this.forward(bookId, 'entities/split', body, h);
+    return this.forward(bookId, 'split', body, h);
   }
 
   @Post('entities/:entityId/fold')

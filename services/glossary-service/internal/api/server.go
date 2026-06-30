@@ -172,6 +172,9 @@ func (s *Server) Router() http.Handler {
 		r.Post("/books/{book_id}/facts/episode", s.internalIngestEpisode)
 		r.Post("/books/{book_id}/facts/append", s.internalAppendFact)
 		r.Post("/books/{book_id}/facts/retract", s.internalRetractFacts)
+		r.Post("/books/{book_id}/facts/merge", s.internalFactMerge)
+		r.Post("/books/{book_id}/facts/resolve-entity", s.internalResolveEntity)
+		r.Post("/books/{book_id}/facts/split", s.internalSplitEntity)
 		// Enrichment SUPPLEMENT layer (F-C13-1 + F-C13-2 / PO ruling B1):
 		// lore-enrichment writes/retracts the distinguished enrichment `dị bản`
 		// here (its own table, FK→entity) instead of overwriting short_description.

@@ -141,4 +141,19 @@ func TestFactsHTTP(t *testing.T) {
 			t.Fatalf("after retract, 境界 = %v, want 练气 (chain re-stitched)", f["value"])
 		}
 	}
+
+	// RESOLVE: a known name resolves to the existing entity (no create); a new name creates.
+	code, rsv := post("/internal/books/"+bookID+"/facts/resolve-entity", map[string]any{"name": "苏寒", "kind": "character"})
+	if code != http.StatusOK || rsv["created"] != false || rsv["entity_id"] != entityID {
+		t.Fatalf("resolve known: code=%d resp=%v (want existing %s, created=false)", code, rsv, entityID)
+	}
+	code, rsv2 := post("/internal/books/"+bookID+"/facts/resolve-entity", map[string]any{"name": "未见之人", "kind": "character"})
+	if code != http.StatusOK || rsv2["created"] != true || rsv2["entity_id"] == "" {
+		t.Fatalf("resolve new: code=%d resp=%v (want created=true)", code, rsv2)
+	}
+	// resolving the just-created name again returns the same id (idempotent resolve)
+	code, rsv3 := post("/internal/books/"+bookID+"/facts/resolve-entity", map[string]any{"name": "未见之人", "kind": "character"})
+	if code != http.StatusOK || rsv3["created"] != false || rsv3["entity_id"] != rsv2["entity_id"] {
+		t.Fatalf("re-resolve new: code=%d resp=%v (want same id, created=false)", code, rsv3)
+	}
 }

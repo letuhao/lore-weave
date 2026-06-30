@@ -1,6 +1,7 @@
 package api
 
 import (
+	"context"
 	"net/http"
 	"strconv"
 
@@ -255,6 +256,171 @@ func (s *Server) internalRetractFacts(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"retracted": len(ids), "chains_restitched": len(chains)})
+}
+
+// internalFactMerge — POST .../facts/merge {winner, loser, cross_kind}
+// The fact-chain merge (§12.4.1) via mergeEntitiesCore (which now repoints + reconciles
+// entity_facts, F1f). Service-driven (actor = nil).
+func (s *Server) internalFactMerge(w http.ResponseWriter, r *http.Request) {
+	bookID, ok := parsePathUUID(w, r, "book_id")
+	if !ok {
+		return
+	}
+	var body struct {
+		Winner    string `json:"winner"`
+		Loser     string `json:"loser"`
+		CrossKind bool   `json:"cross_kind"`
+	}
+	if !decodeJSON(w, r, &body) {
+		return
+	}
+	winner, werr := uuid.Parse(body.Winner)
+	if werr != nil || body.Loser == "" {
+		writeError(w, http.StatusBadRequest, "GLOSS_BAD_REQUEST", "winner + loser required")
+		return
+	}
+	results, err := s.mergeEntitiesCore(r.Context(), bookID, winner, []string{body.Loser}, uuid.Nil, body.CrossKind)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "GLOSS_INTERNAL", "merge failed: "+err.Error())
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"winner": body.Winner, "merged": results})
+}
+
+// internalResolveEntity — POST .../facts/resolve-entity {name, kind} → resolve-or-create.
+// The cross-kind resolver (#43) + cold-start bootstrap (§12.7.4): no match → create a
+// minimal entity carrying the name (its name fact is emitted on the next chapter write).
+func (s *Server) internalResolveEntity(w http.ResponseWriter, r *http.Request) {
+	bookID, ok := parsePathUUID(w, r, "book_id")
+	if !ok {
+		return
+	}
+	var body struct {
+		Name string `json:"name"`
+		Kind string `json:"kind"`
+	}
+	if !decodeJSON(w, r, &body) || body.Name == "" || body.Kind == "" {
+		writeError(w, http.StatusBadRequest, "GLOSS_BAD_REQUEST", "name + kind required")
+		return
+	}
+	kindMap, err := s.loadKindMap(r.Context(), bookID)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "GLOSS_INTERNAL", "kind map failed")
+		return
+	}
+	kindID, ok := kindMap[body.Kind]
+	if !ok {
+		writeError(w, http.StatusUnprocessableEntity, "GLOSS_UNKNOWN_KIND", "unknown kind: "+body.Kind)
+		return
+	}
+	existing, err := s.findEntityByNameOrAlias(r.Context(), s.pool, bookID, kindID, body.Name)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "GLOSS_INTERNAL", "resolve failed")
+		return
+	}
+	if existing == uuid.Nil {
+		if cross, _, cerr := s.findEntityCrossKind(r.Context(), s.pool, bookID, body.Name); cerr == nil {
+			existing = cross
+		}
+	}
+	created := false
+	if existing == uuid.Nil {
+		newID, cerr := s.createMinimalEntity(r.Context(), bookID, kindID, body.Name)
+		if cerr != nil {
+			writeError(w, http.StatusInternalServerError, "GLOSS_INTERNAL", "create failed: "+cerr.Error())
+			return
+		}
+		existing = newID
+		created = true
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"entity_id": existing.String(), "created": created})
+}
+
+// internalSplitEntity — POST .../facts/split {source, new_name, new_kind, source_episode_ids}
+// Creates the split-off entity and re-attributes facts cited to those episodes (§12.4.2).
+func (s *Server) internalSplitEntity(w http.ResponseWriter, r *http.Request) {
+	bookID, ok := parsePathUUID(w, r, "book_id")
+	if !ok {
+		return
+	}
+	var body struct {
+		Source           string   `json:"source"`
+		NewName          string   `json:"new_name"`
+		NewKind          string   `json:"new_kind"`
+		SourceEpisodeIDs []string `json:"source_episode_ids"`
+	}
+	if !decodeJSON(w, r, &body) {
+		return
+	}
+	source, serr := uuid.Parse(body.Source)
+	if serr != nil || body.NewName == "" || body.NewKind == "" || len(body.SourceEpisodeIDs) == 0 {
+		writeError(w, http.StatusBadRequest, "GLOSS_BAD_REQUEST", "source + new_name + new_kind + source_episode_ids required")
+		return
+	}
+	episodeIDs := make([]uuid.UUID, 0, len(body.SourceEpisodeIDs))
+	for _, s := range body.SourceEpisodeIDs {
+		if id, e := uuid.Parse(s); e == nil {
+			episodeIDs = append(episodeIDs, id)
+		}
+	}
+	kindMap, err := s.loadKindMap(r.Context(), bookID)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "GLOSS_INTERNAL", "kind map failed")
+		return
+	}
+	kindID, ok := kindMap[body.NewKind]
+	if !ok {
+		writeError(w, http.StatusUnprocessableEntity, "GLOSS_UNKNOWN_KIND", "unknown kind: "+body.NewKind)
+		return
+	}
+	tx, err := s.pool.Begin(r.Context())
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "GLOSS_INTERNAL", "tx begin failed")
+		return
+	}
+	defer tx.Rollback(r.Context()) //nolint:errcheck
+	attrDefMap, err := s.loadAttrDefMap(r.Context(), bookID)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "GLOSS_INTERNAL", "attr def map failed")
+		return
+	}
+	newID, err := s.createExtractedEntity(r.Context(), tx, bookID, kindID, extractedEntity{Name: body.NewName}, map[string]string{}, attrDefMap, "zh", nil)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "GLOSS_INTERNAL", "create new entity failed: "+err.Error())
+		return
+	}
+	moved, err := splitFactsByEpisode(r.Context(), tx, source, newID, episodeIDs)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "GLOSS_INTERNAL", "split failed: "+err.Error())
+		return
+	}
+	if err := tx.Commit(r.Context()); err != nil {
+		writeError(w, http.StatusInternalServerError, "GLOSS_INTERNAL", "commit failed")
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"new_entity_id": newID.String(), "moved_facts": moved})
+}
+
+// createMinimalEntity creates a bare entity (name only) in its own tx — the resolver
+// cold-start (§12.7.4) for a name with no prior entity.
+func (s *Server) createMinimalEntity(ctx context.Context, bookID, kindID uuid.UUID, name string) (uuid.UUID, error) {
+	tx, err := s.pool.Begin(ctx)
+	if err != nil {
+		return uuid.Nil, err
+	}
+	defer tx.Rollback(ctx) //nolint:errcheck
+	attrDefMap, err := s.loadAttrDefMap(ctx, bookID)
+	if err != nil {
+		return uuid.Nil, err
+	}
+	id, err := s.createExtractedEntity(ctx, tx, bookID, kindID, extractedEntity{Name: name}, map[string]string{}, attrDefMap, "zh", nil)
+	if err != nil {
+		return uuid.Nil, err
+	}
+	if err := tx.Commit(ctx); err != nil {
+		return uuid.Nil, err
+	}
+	return id, nil
 }
 
 // ── helpers ─────────────────────────────────────────────────────────────────
