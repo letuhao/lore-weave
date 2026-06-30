@@ -59,11 +59,13 @@ class FakeApps:
         return 1
 
 
-class FakeGlossary:
+class FakeKal:
+    """KAL roster stub — returns the fully-drained cast `[{entity_id, name}]`."""
     def __init__(self, items):
-        self._items = items
-    async def list_entities(self, book_id, **kw):
-        return {"items": self._items, "next_cursor": None}
+        self._items = [{"entity_id": str(i["entity_id"]), "name": i["name"]}
+                       for i in items if i.get("name") and i.get("entity_id")]
+    async def roster(self, book_id, **kw):
+        return list(self._items)
 
 
 def _bound_app(role_bindings):
@@ -79,11 +81,11 @@ def client(monkeypatch):
     monkeypatch.setattr("app.routers.plan.get_pool", lambda: FakePool())
 
     from app.main import app
-    from app.deps import get_glossary_client_dep, get_outline_repo, get_works_repo
+    from app.deps import get_kal_client_dep, get_outline_repo, get_works_repo
     from app.middleware.jwt_auth import get_bearer_token, get_current_user
 
     work = SimpleNamespace(project_id=P, user_id=U, book_id=B, settings={})
-    state = SimpleNamespace(node=None, glossary=FakeGlossary([]))
+    state = SimpleNamespace(node=None, kal=FakeKal([]))
 
     class _Works:
         async def get(self, u, p):
@@ -96,7 +98,7 @@ def client(monkeypatch):
     app.dependency_overrides[get_bearer_token] = lambda: "jwt"
     app.dependency_overrides[get_works_repo] = lambda: _Works()
     app.dependency_overrides[get_outline_repo] = lambda: _Outline()
-    app.dependency_overrides[get_glossary_client_dep] = lambda: state.glossary
+    app.dependency_overrides[get_kal_client_dep] = lambda: state.kal
     with TestClient(app) as c:
         yield c, state
     app.dependency_overrides.clear()
@@ -107,7 +109,7 @@ def client(monkeypatch):
 def test_rebind_role_updates_the_one_role(client, monkeypatch):
     c, state = client
     state.node = SimpleNamespace(project_id=P, kind="scene")
-    state.glossary = FakeGlossary([{"entity_id": str(EID), "name": "Lin"}])
+    state.kal = FakeKal([{"entity_id": str(EID), "name": "Lin"}])
     apps = FakeApps(bound=_bound_app({"seeker": None}))
     monkeypatch.setattr("app.routers.plan.MotifApplicationRepo", lambda pool: apps)
 
@@ -167,7 +169,7 @@ def test_rebind_unknown_role_key_is_404(client, monkeypatch):
 def test_rebind_foreign_entity_not_in_cast_is_404(client, monkeypatch):
     c, state = client
     state.node = SimpleNamespace(project_id=P, kind="scene")
-    state.glossary = FakeGlossary([{"entity_id": str(uuid.uuid4()), "name": "Someone else"}])
+    state.kal = FakeKal([{"entity_id": str(uuid.uuid4()), "name": "Someone else"}])
     apps = FakeApps(bound=_bound_app({"seeker": None}))
     monkeypatch.setattr("app.routers.plan.MotifApplicationRepo", lambda pool: apps)
     # EID is NOT in the book cast → rebind rejected (tenant-scoped), no write.
@@ -259,6 +261,6 @@ async def test_bind_scene_motif_stamps_bound_via_chain(monkeypatch):
 
     apps = FakeApps2()
     await _bind_scene_motif(
-        pool=FakePool(), apps=apps, glossary=FakeGlossary([]),
+        pool=FakePool(), apps=apps, kal=FakeKal([]),
         user_id=U, project_id=P, book_id=B, node_id=N, motif_id=M, bound_via="chain")
     assert apps.inserted[0]["annotations"]["bound_via"] == "chain"

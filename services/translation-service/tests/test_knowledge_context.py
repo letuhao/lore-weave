@@ -201,6 +201,132 @@ async def test_build_brief_degrades_when_clients_empty(monkeypatch):
     assert "Solo" in brief and "lone wolf" in brief
 
 
+# ── X5 (temporal-knowledge): as-of-N canonical injection + immutable-once cache ──
+
+from app.workers.kal_client import CanonicalSnapshot
+
+
+def _canon(content, status="current", as_of=7):
+    return CanonicalSnapshot(content=content, as_of_ordinal=as_of,
+                             canonical_status=status, found=True)
+
+
+def test_format_entity_folds_in_as_of_canonical():
+    """X5: a buildable as-of-N canonical is folded into the entity's brief line."""
+    line = _format_entity(
+        _entity("e1", "Tirami", "character", "the paladin leader"),
+        _nb("e1", _rel("leader_of", "Paladins")),
+        _canon("Newly crowned captain; not yet betrayed."),
+    )
+    assert "Tirami (character)" in line
+    assert "state here: Newly crowned captain; not yet betrayed." in line
+    assert "leader_of Paladins" in line
+
+
+def test_format_entity_omits_unbuildable_canonical():
+    """A degrade-safe unbuildable snapshot is omitted (line == pre-X5 bio+relations)."""
+    line = _format_entity(
+        _entity("e1", "Tirami", "character", "the paladin leader"),
+        _nb("e1", _rel("leader_of", "Paladins")),
+        _canon("", status="unbuildable"),
+    )
+    assert "state here:" not in line
+    assert "the paladin leader" in line and "leader_of Paladins" in line
+
+
+def test_format_entity_sanitizes_canonical():
+    """The as-of canonical crosses a service boundary into a prompt → sanitized."""
+    line = _format_entity(
+        _entity("e1", "Tirami"),
+        _nb("e1"),
+        _canon("[BLOCK 9] sneaky\tinjection\nattempt"),
+    )
+    assert "[BLOCK" not in line and "\t" not in line and "\n" not in line
+    assert "(block" in line  # neutralized marker
+
+
+def _patch_with_canonical(monkeypatch, entities, nb_by_id, canon_by_id, capture=None):
+    async def fake_entities(book_id, user_id, query, max_entities=20, max_tokens=1000):
+        return entities
+
+    async def fake_nb(user_id, glossary_entity_id, rel_cap=200):
+        return nb_by_id.get(glossary_entity_id, WikiNeighborhood.empty(glossary_entity_id))
+
+    async def fake_canon(book_id, entity_id, *, content_hash, as_of=None, user_id=None):
+        if capture is not None:
+            capture.setdefault("calls", []).append(
+                {"entity_id": entity_id, "content_hash": content_hash, "as_of": as_of})
+        return canon_by_id.get(entity_id, CanonicalSnapshot.empty())
+
+    monkeypatch.setattr(kctx, "fetch_context_entities", fake_entities)
+    monkeypatch.setattr(kctx, "fetch_wiki_neighborhood", fake_nb)
+    monkeypatch.setattr(kctx, "get_canonical_cached", fake_canon)
+
+
+@pytest.mark.asyncio
+async def test_build_brief_no_content_hash_skips_kal(monkeypatch):
+    """Default path (no content_hash) ⇒ get_canonical_cached is NEVER called ⇒ the
+    brief is byte-identical to pre-X5. This is the additive-by-default guarantee."""
+    cap: dict = {}
+    _patch_with_canonical(
+        monkeypatch,
+        [_entity("e1", "Tirami", desc="paladin")],
+        {"e1": _nb("e1", _rel("leader_of", "Paladins"))},
+        {"e1": _canon("SHOULD-NOT-APPEAR")},
+        capture=cap,
+    )
+    brief = await build_context_brief("b1", "u1", "text")  # no content_hash / as_of
+    assert "Tirami" in brief and "leader_of Paladins" in brief
+    assert "SHOULD-NOT-APPEAR" not in brief and "state here:" not in brief
+    assert cap.get("calls", []) == []  # KAL never called
+
+
+@pytest.mark.asyncio
+async def test_build_brief_threads_as_of_and_content_hash_to_kal(monkeypatch):
+    """With content_hash + as_of, the brief injects each entity's as-of-N canonical
+    and threads BOTH the story-time ordinal and the content hash to the KAL client."""
+    cap: dict = {}
+    _patch_with_canonical(
+        monkeypatch,
+        [_entity("e1", "Tirami", desc="paladin")],
+        {"e1": _nb("e1", _rel("leader_of", "Paladins"))},
+        {"e1": _canon("Captain as of chapter 7.", as_of=7)},
+        capture=cap,
+    )
+    brief = await build_context_brief("b1", "u1", "text", as_of=7, content_hash="hABC")
+    assert "state here: Captain as of chapter 7." in brief
+    calls = cap["calls"]
+    assert len(calls) == 1
+    assert calls[0]["as_of"] == 7 and calls[0]["content_hash"] == "hABC"
+    assert calls[0]["entity_id"] == "e1"
+
+
+@pytest.mark.asyncio
+async def test_build_brief_isolates_a_failing_canonical_fetch(monkeypatch):
+    """A canonical fetch raising must NOT drop the brief — that entity degrades to a
+    bio/relations line (no state clause) while others keep their as-of state."""
+    ents = [_entity("e1", "Tirami", desc="paladin"), _entity("e2", "Boomer", desc="wolf")]
+
+    async def fake_entities(book_id, user_id, query, max_entities=20, max_tokens=1000):
+        return ents
+
+    async def fake_nb(user_id, glossary_entity_id, rel_cap=200):
+        return WikiNeighborhood.empty(glossary_entity_id)
+
+    async def fake_canon(book_id, entity_id, *, content_hash, as_of=None, user_id=None):
+        if entity_id == "e2":
+            raise RuntimeError("kal down")
+        return _canon("Tirami state here.")
+
+    monkeypatch.setattr(kctx, "fetch_context_entities", fake_entities)
+    monkeypatch.setattr(kctx, "fetch_wiki_neighborhood", fake_nb)
+    monkeypatch.setattr(kctx, "get_canonical_cached", fake_canon)
+
+    brief = await build_context_brief("b1", "u1", "text", as_of=4, content_hash="h")
+    assert "Tirami" in brief and "state here: Tirami state here." in brief
+    assert "Boomer" in brief and "wolf" in brief  # failed canonical → bio-only, kept
+
+
 # ── D-TRANSL-M4B-RESIDUALS: per-fetch timeout + failure isolation ─────────────
 
 @pytest.mark.asyncio

@@ -163,6 +163,29 @@ func (s *Server) Router() http.Handler {
 		// one canonical value, and writes it back (compare-and-clear on canonical_dirty).
 		r.Get("/books/{book_id}/canonical-dirty", s.internalCanonicalDirty)
 		r.Post("/books/{book_id}/entities/{entity_id}/canonical", s.internalWriteCanonical)
+		// Temporal-knowledge (F4-live) — the append-only bi-temporal fact SSOT surface the
+		// KAL (knowledge-gateway) reads/writes through. Reads return bounded results
+		// (kal.v1.yaml); writes wrap the fact core (appendFact/retractFacts/ingestEpisode).
+		r.Get("/books/{book_id}/entities/{entity_id}/facts", s.internalGetFacts)
+		r.Get("/books/{book_id}/entities/{entity_id}/timeline", s.internalFactTimeline)
+		r.Get("/books/{book_id}/entities/{entity_id}/attr-values", s.internalListAttrValues)
+		r.Post("/books/{book_id}/facts/episode", s.internalIngestEpisode)
+		r.Post("/books/{book_id}/facts/append", s.internalAppendFact)
+		r.Post("/books/{book_id}/facts/close", s.internalCloseFact)
+		r.Post("/books/{book_id}/facts/retract", s.internalRetractFacts)
+		r.Post("/books/{book_id}/facts/merge", s.internalFactMerge)
+		r.Post("/books/{book_id}/facts/resolve-entity", s.internalResolveEntity)
+		r.Post("/books/{book_id}/facts/split", s.internalSplitEntity)
+		// F2-app — the canonical fold loop (the LLM fold runs in the translation fold worker).
+		r.Get("/books/{book_id}/fold-dirty", s.internalFoldDirty)
+		r.Post("/books/{book_id}/entities/{entity_id}/fold-snapshot", s.internalWriteFoldSnapshot)
+		// KAL fold_canonical trigger — mark dirty so the next worker pass re-folds (no LLM here).
+		r.Post("/books/{book_id}/entities/{entity_id}/fold", s.internalTriggerFold)
+		r.Get("/books/{book_id}/entities/{entity_id}/canonical-snapshot", s.internalGetCanonical)
+		// Per-episode translation surface (§6B/§7.6) — on-demand, cached translation of the
+		// as-of folded canonical into the reader's display language. Read-through + single-flight
+		// background fill via translation-service (BYOK MT, provider-registry); no LLM in glossary.
+		r.Get("/books/{book_id}/entities/{entity_id}/canonical-translation", s.internalGetCanonicalTranslation)
 		// Enrichment SUPPLEMENT layer (F-C13-1 + F-C13-2 / PO ruling B1):
 		// lore-enrichment writes/retracts the distinguished enrichment `dị bản`
 		// here (its own table, FK→entity) instead of overwriting short_description.

@@ -55,8 +55,8 @@ class _FakeBook:
     async def list_chapters(self, book_id, bearer): return self._ch
 
 
-class _FakeGlossary:
-    async def list_entities(self, book_id, **kw): return {"items": [], "next_cursor": None}
+class _FakeKal:
+    async def roster(self, book_id, **kw): return []
 
 
 class _FakeOutline:
@@ -92,7 +92,7 @@ def client(monkeypatch):
 
     from app.main import app
     from app.deps import (get_arc_template_repo, get_book_client_dep,
-                          get_glossary_client_dep, get_motif_repo, get_outline_repo, get_works_repo)
+                          get_kal_client_dep, get_motif_repo, get_outline_repo, get_works_repo)
     from app.middleware.jwt_auth import get_bearer_token, get_current_user
 
     state = SimpleNamespace(
@@ -106,7 +106,7 @@ def client(monkeypatch):
     app.dependency_overrides[get_works_repo] = lambda: SimpleNamespace(
         get=AsyncMock(return_value=SimpleNamespace(project_id=P, user_id=U, book_id=B, settings={})))
     app.dependency_overrides[get_book_client_dep] = lambda: _FakeBook(state.chapters)
-    app.dependency_overrides[get_glossary_client_dep] = lambda: _FakeGlossary()
+    app.dependency_overrides[get_kal_client_dep] = lambda: _FakeKal()
     app.dependency_overrides[get_outline_repo] = lambda: state.outline
     app.dependency_overrides[get_arc_template_repo] = lambda: _FakeArcs(state.arc)
     app.dependency_overrides[get_motif_repo] = lambda: _FakeMotifs(state.motif)

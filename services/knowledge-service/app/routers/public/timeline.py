@@ -388,6 +388,15 @@ async def list_world_timeline(
             "(undated events sink last)."
         ),
     ),
+    q: str | None = Query(
+        default=None,
+        max_length=200,
+        description=(
+            "Free-text search over the event title + summary (case-insensitive "
+            "substring, SOURCE text). Empty/whitespace ignored. Applied per member "
+            "book before the union — matches the per-book timeline filter."
+        ),
+    ),
     limit: int = Query(50, ge=1, le=EVENTS_MAX_LIMIT),
     user_id: UUID = Depends(get_current_user),
     repo: ProjectsRepo = Depends(get_projects_repo),

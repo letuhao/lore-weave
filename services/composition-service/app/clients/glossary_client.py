@@ -76,24 +76,11 @@ class GlossaryClient:
             logger.warning("glossary select-for-context unavailable: %s", exc)
             return []
 
-    async def list_entities(
-        self, book_id: UUID, *, limit: int = 100, cursor: str | None = None,
-    ) -> dict[str, Any] | None:
-        """Internal cursor-paginated entity list (carries `aliases`). Returns
-        `{items, next_cursor}` or None on failure."""
-        url = f"{self._base_url}/internal/books/{book_id}/entities"
-        params: dict[str, Any] = {"limit": limit}
-        if cursor:
-            params["cursor"] = cursor
-        try:
-            resp = await self._http.get(url, params=params, headers=self._headers())
-            if resp.status_code != 200:
-                logger.warning("glossary list-entities → %d", resp.status_code)
-                return None
-            return resp.json()
-        except (httpx.HTTPError, ValueError, AttributeError) as exc:
-            logger.warning("glossary list-entities unavailable: %s", exc)
-            return None
+    # NOTE: the book's full cast roster (the old `list_entities` → glossary
+    # `/internal/books/{id}/entities`) moved to the KAL (`KalClient.roster`) under
+    # INV-KAL — composition reads the cast through the knowledge-gateway, which
+    # owns + drains that bounded-but-complete list (X1 / D4). The direct glossary
+    # entity-list read was removed here so it can't be reintroduced as a bypass.
 
 
     async def seed_entities(

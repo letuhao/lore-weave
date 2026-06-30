@@ -39,7 +39,11 @@ async function bootstrap() {
   // PUBLIC MCP edge — optional (the public surface is itself flag-gated in the edge),
   // so a default internal URL avoids forcing a new mandatory env on every deployment.
   const mcpPublicGatewayUrl = process.env.MCP_PUBLIC_GATEWAY_URL ?? 'http://mcp-public-gateway:8211';
-  configureGatewayApp(app, { authUrl, bookUrl, sharingUrl, catalogUrl, providerRegistryUrl, usageBillingUrl, translationUrl, glossaryUrl, chatUrl, roleplayUrl, videoGenUrl, statisticsUrl, notificationUrl, knowledgeUrl, campaignUrl, loreEnrichmentUrl, learningUrl, compositionUrl, jobsUrl, mcpPublicGatewayUrl });
+  // KAL (knowledge-gateway) — the temporal-knowledge read boundary for the FE. Optional +
+  // defaulted so existing deployments need no new mandatory env. The KAL dual-auths the
+  // passed-through user JWT (validate + grant-check), so the BFF stays a dumb proxy here.
+  const kalUrl = process.env.KNOWLEDGE_GATEWAY_URL ?? 'http://knowledge-gateway:3000';
+  configureGatewayApp(app, { authUrl, bookUrl, sharingUrl, catalogUrl, providerRegistryUrl, usageBillingUrl, translationUrl, glossaryUrl, chatUrl, roleplayUrl, videoGenUrl, statisticsUrl, notificationUrl, knowledgeUrl, campaignUrl, loreEnrichmentUrl, learningUrl, compositionUrl, jobsUrl, mcpPublicGatewayUrl, kalUrl });
 
   app.enableShutdownHooks();
   const port = parseInt(process.env.PORT || '3000', 10);

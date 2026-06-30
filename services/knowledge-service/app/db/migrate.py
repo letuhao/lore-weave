@@ -827,6 +827,71 @@ CREATE TABLE IF NOT EXISTS summary_books (
   UNIQUE (book_id, embedding_model_uuid)
 );
 
+-- ═══════════════════════════════════════════════════════════════
+-- entity_canonical_snapshots  (F3 — Incremental Temporal Knowledge, §12.1)
+-- A PER-ENTITY, ordinal-stamped canonical snapshot — the bounded "who is this
+-- entity as of chapter N" prose. DISTINCT from the book-STRUCTURAL summary tree
+-- above (summary_chapters/parts/books), which is chapter->part->book, not
+-- per-entity. Aligned to the glossary `canonical_snapshot` versioned-cache model.
+--
+-- It is a LAZY, VERSIONED, REGENERABLE CACHE — NEVER truth (INV-FACTS: the facts
+-- in Neo4j are the only source of truth; this is a rebuildable projection).
+-- Keyed by (entity_id, attr_scope, as_of_ordinal, fold_algo_version):
+--   * as_of_ordinal     — the chapter ordinal this snapshot projects (the head,
+--                         or any explicitly-pinned N). A fresh re-ground at a new
+--                         ordinal mints a NEW row (the row IS the version).
+--   * fold_algo_version — bumped when the fold prompt/model/strategy changes; a
+--                         stale-version row is invalid -> rebuild-on-read (B0/F6).
+--   * fact_coverage_at  — the max fact `updated_at` (story-time) the snapshot
+--                         folded in. A snapshot is VALID iff fold_algo_version ==
+--                         current AND no fact with valid_from_ordinal <=
+--                         as_of_ordinal has an updated_at newer than this. A late /
+--                         back-filled fact bumps the entity's max updated_at ->
+--                         every snapshot@>=that ordinal goes stale -> next read
+--                         rebuilds (self-healing per B3). (Neo4j has no PG txid, so
+--                         we use the fact updated_at timestamp as the coverage key.)
+--   * content_hash      — sha256 of `content`; the translation cache + diff view
+--                         key on THIS (re-ground that changes content => new hash
+--                         => cache miss; identical content => hit) (D8).
+-- B4 — fold failure has explicit state so a poison fact can't wedge an entity
+-- forever: fold_attempts + fold_failed_at + canonical_status; after N fails the
+-- item is 'unbuildable' (FE shows the structured facts instead of a broken card).
+-- ═══════════════════════════════════════════════════════════════
+CREATE TABLE IF NOT EXISTS entity_canonical_snapshots (
+  id                  UUID PRIMARY KEY DEFAULT uuidv7(),
+  user_id             UUID NOT NULL,                  -- no FK (cross-DB) — tenant
+  project_id          UUID,                           -- no FK (cross-DB)
+  -- The Neo4j :Entity canonical id (TEXT, content-hashed). No FK (Neo4j-side).
+  entity_id           TEXT NOT NULL,
+  -- 'narrative' folded prose. Multi-valued attrs (aliases/tags) are NOT folded
+  -- here — they are structured facts queried directly (§12.1 D9). attr_scope
+  -- leaves room for a future per-attribute scope without a migration.
+  attr_scope          TEXT NOT NULL DEFAULT 'narrative',
+  as_of_ordinal       BIGINT NOT NULL,                -- the chapter ordinal projected
+  content             TEXT NOT NULL DEFAULT '',       -- the bounded prose (<= canonicalMaxRunes)
+  content_hash        TEXT NOT NULL,                  -- sha256(content) — translation/diff key
+  fold_algo_version   INT  NOT NULL DEFAULT 1,        -- bumped on prompt/model/strategy change
+  fact_coverage_at    TIMESTAMPTZ,                    -- max fact updated_at folded in (staleness key)
+  -- B4 — fold failure state (mirrors the KG RETRY_BUDGET=3 + backoff).
+  canonical_status    TEXT NOT NULL DEFAULT 'ready'
+    CHECK (canonical_status IN ('ready','dirty','building','unbuildable')),
+  fold_attempts       INT  NOT NULL DEFAULT 0,
+  fold_failed_at      TIMESTAMPTZ,
+  built_at            TIMESTAMPTZ NOT NULL DEFAULT now(),
+  updated_at          TIMESTAMPTZ NOT NULL DEFAULT now(),
+  -- The cache identity: a (entity, scope, ordinal, algo_version) tuple is ONE
+  -- regenerable row. A re-ground at a new algo_version or ordinal is a new row.
+  UNIQUE (entity_id, attr_scope, as_of_ordinal, fold_algo_version)
+);
+-- The hot "current head" / pinned-ordinal lookup: newest snapshot per
+-- (user, entity, scope) at or below a queried ordinal.
+CREATE INDEX IF NOT EXISTS idx_entity_canon_snap_lookup
+  ON entity_canonical_snapshots(user_id, entity_id, attr_scope, as_of_ordinal DESC);
+-- Re-fold queue: find dirty / unbuildable snapshots to (re)build.
+CREATE INDEX IF NOT EXISTS idx_entity_canon_snap_status
+  ON entity_canonical_snapshots(user_id, canonical_status)
+  WHERE canonical_status IN ('dirty','building');
+
 -- M1 (Cycle 10 reconcile): the AUTHORITATIVE extraction_jobs.status vocabulary.
 -- The status values the code EMITS must stay in sync with
 -- `app.jobs.state_machine.JobStatus` + the repo guards

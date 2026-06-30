@@ -62,11 +62,13 @@ class FakeApps:
         return rows
 
 
-class FakeGlossary:
+class FakeKal:
+    """KAL roster stub — returns the fully-drained cast `[{entity_id, name}]`."""
     def __init__(self, items):
-        self._items = items
-    async def list_entities(self, book_id, **kw):
-        return {"items": self._items, "next_cursor": None}
+        self._items = [{"entity_id": str(i["entity_id"]), "name": i["name"]}
+                       for i in items if i.get("name") and i.get("entity_id")]
+    async def roster(self, book_id, **kw):
+        return list(self._items)
 
 
 def _fake_motif(mid, *, roles=None, name="Auction-House Treasure", version=3):
@@ -88,7 +90,7 @@ def _patch_motifrepo(monkeypatch, motif):
 async def test_clear_deletes_the_nodes_binding():
     apps = FakeApps()
     out = await _bind_scene_motif(
-        pool=FakePool(), apps=apps, glossary=FakeGlossary([]),
+        pool=FakePool(), apps=apps, kal=FakeKal([]),
         user_id=U, project_id=P, book_id=B, node_id=N, motif_id=None)
     assert out["cleared"] is True and out["node_id"] == str(N)
     assert apps.deleted == [[N]] and apps.inserted == []
@@ -102,7 +104,7 @@ async def test_bind_writes_one_application_replacing_prior(monkeypatch):
     apps = FakeApps()
     out = await _bind_scene_motif(
         pool=FakePool(), apps=apps,
-        glossary=FakeGlossary([{"entity_id": str(eid), "name": "the bidder"}]),
+        kal=FakeKal([{"entity_id": str(eid), "name": "the bidder"}]),
         user_id=U, project_id=P, book_id=B, node_id=N, motif_id=M)
     assert out["bound"] is True and out["motif_id"] == str(M)
     assert out["motif_name"] == "Auction-House Treasure"
@@ -124,7 +126,7 @@ async def test_motif_not_visible_is_404_and_writes_nothing(monkeypatch):
     apps = FakeApps()
     with pytest.raises(HTTPException) as ei:
         await _bind_scene_motif(
-            pool=FakePool(), apps=apps, glossary=FakeGlossary([]),
+            pool=FakePool(), apps=apps, kal=FakeKal([]),
             user_id=U, project_id=P, book_id=B, node_id=N, motif_id=M)
     assert ei.value.status_code == 404
     assert apps.inserted == [] and apps.deleted == []  # H13: no write on a rejected motif
@@ -141,7 +143,7 @@ def client(monkeypatch):
     monkeypatch.setattr("app.routers.plan.get_pool", lambda: FakePool())  # route Tx
 
     from app.main import app
-    from app.deps import (get_book_client_dep, get_glossary_client_dep,
+    from app.deps import (get_book_client_dep, get_kal_client_dep,
                           get_outline_repo, get_works_repo)
     from app.middleware.jwt_auth import get_bearer_token, get_current_user
 
@@ -159,7 +161,7 @@ def client(monkeypatch):
     app.dependency_overrides[get_bearer_token] = lambda: "jwt"
     app.dependency_overrides[get_works_repo] = lambda: _Works()
     app.dependency_overrides[get_book_client_dep] = lambda: object()
-    app.dependency_overrides[get_glossary_client_dep] = lambda: object()
+    app.dependency_overrides[get_kal_client_dep] = lambda: object()
     app.dependency_overrides[get_outline_repo] = lambda: _Outline()
     with TestClient(app) as c:
         yield c, outline

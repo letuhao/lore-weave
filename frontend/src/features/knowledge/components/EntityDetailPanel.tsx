@@ -27,6 +27,7 @@ import { TOUCH_TARGET_SQUARE_MOBILE_ONLY_CLASS } from '../lib/touchTarget';
 import { EntityEditDialog } from './EntityEditDialog';
 import { EntityMergeDialog } from './EntityMergeDialog';
 import { RelationEditDialog } from './RelationEditDialog';
+import { TemporalTab } from '../../knowledge-temporal/components/TemporalTab';
 
 // K19d.3 — slide-over entity detail panel (read-only MVP).
 // Opens when EntitiesTab sets `selectedEntityId`; closes via X,
@@ -134,6 +135,12 @@ export function EntityDetailPanel({
   const { facts } = useEntityFacts(open ? entityId : null);
   const [showEdit, setShowEdit] = useState(false);
   const [showMerge, setShowMerge] = useState(false);
+  // X6c — the "Temporal" tab (knowledge-temporal surfaces). Lazy-mounted on first open so its
+  // KAL reads don't fire until viewed; once opened it stays mounted (CSS hidden on switch-back)
+  // so the as-of slider state survives a Current↔Temporal toggle (no-conditional-unmount rule).
+  const [panelTab, setPanelTab] = useState<'current' | 'temporal'>('current');
+  const [temporalOpened, setTemporalOpened] = useState(false);
+  const canTemporal = !!entityId && !!bookId;
   // Phase B C-FE — ONE relation-edit dialog at panel scope (not one per row),
   // keyed by the relation the user clicked. Mirrors the entity edit/merge
   // single-dialog pattern below.
@@ -287,7 +294,42 @@ export function EntityDetailPanel({
             </div>
           </div>
 
-          <div className="flex-1 space-y-5 px-5 py-4">
+          <div className="flex-1 overflow-y-auto px-5 py-4">
+            {canTemporal && (
+              <div className="mb-4 flex gap-3 border-b text-[12px]" data-testid="entity-detail-tabs">
+                <button
+                  type="button"
+                  onClick={() => setPanelTab('current')}
+                  className={cn(
+                    '-mb-px border-b-2 pb-2 transition-colors',
+                    panelTab === 'current'
+                      ? 'border-foreground font-medium text-foreground'
+                      : 'border-transparent text-muted-foreground hover:text-foreground',
+                  )}
+                  data-testid="entity-detail-tab-current"
+                >
+                  {t('entities.detail.tabs.current', 'Current')}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setPanelTab('temporal');
+                    setTemporalOpened(true);
+                  }}
+                  className={cn(
+                    '-mb-px border-b-2 pb-2 transition-colors',
+                    panelTab === 'temporal'
+                      ? 'border-foreground font-medium text-foreground'
+                      : 'border-transparent text-muted-foreground hover:text-foreground',
+                  )}
+                  data-testid="entity-detail-tab-temporal"
+                >
+                  {t('entities.detail.tabs.temporal', 'Temporal')}
+                </button>
+              </div>
+            )}
+
+            <div hidden={panelTab !== 'current'} className="space-y-5">
             {isLoading && (
               <div
                 className="text-[12px] text-muted-foreground"
@@ -534,6 +576,15 @@ export function EntityDetailPanel({
                   )}
                 </section>
               </>
+            )}
+            </div>
+
+            {/* X6c Temporal tab — lazy-mounted on first open, then kept mounted (hidden) so the
+                as-of slider state survives a tab toggle. Keyed by entityId to reset on switch. */}
+            {canTemporal && temporalOpened && (
+              <div hidden={panelTab !== 'temporal'} data-testid="entity-detail-temporal">
+                <TemporalTab key={entityId} bookId={bookId!} entityId={entityId!} />
+              </div>
             )}
           </div>
         </Dialog.Content>

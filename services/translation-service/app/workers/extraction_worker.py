@@ -775,6 +775,23 @@ async def _run_extraction_job(msg: dict, job_id: UUID, user_id: str, pool, publi
             log.warning("extraction_worker: job %s resummarize pass failed (non-fatal): %s",
                         job_id, exc)
 
+        # F2-app — the canonical FOLD pass (temporal-knowledge §12.1): fold each entity's
+        # bi-temporal FACTS into one bounded canonical, regenerable from the SSOT. Same
+        # provider-registry path; BEST-EFFORT + decoupled, exactly like resummarize above.
+        try:
+            from .fold import run_fold_pass
+
+            fold_summary = await run_fold_pass(
+                book_id=book_id, owner_user_id=str(user_id),
+                model_source=model_source, model_ref=model_ref,
+                source_language=source_language, llm_client=llm_client,
+            )
+            if fold_summary.get("dirty"):
+                log.info("extraction_worker: job %s canonical fold — %s", job_id, fold_summary)
+        except Exception as exc:  # noqa: BLE001 — fold must never fail the job
+            log.warning("extraction_worker: job %s canonical fold pass failed (non-fatal): %s",
+                        job_id, exc)
+
 
 async def _process_extraction_chapter(
     job_id: UUID,
@@ -1324,6 +1341,9 @@ async def _process_extraction_chapter(
         content_hash=content_hash,
         writeback_key=writeback_key,
         owner_user_id=str(owner_user_id) if owner_user_id else None,
+        # Temporal-knowledge Path A (§12): pass the chapter's story-time ordinal so glossary
+        # opens append-only bi-temporal facts valid-from this chapter (the SSOT producer).
+        chapter_ordinal=chapter_index,
     )
 
     if upsert_result is None:

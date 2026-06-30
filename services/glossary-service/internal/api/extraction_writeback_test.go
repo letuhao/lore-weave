@@ -163,6 +163,104 @@ func TestBulkExtract_DefaultTagsAppliedOnCreate(t *testing.T) {
 	}
 }
 
+// TestBulkExtract_EmitsTemporalFacts proves Path A (F1d): a writeback carrying
+// chapter_ordinal ingests the immutable episode and opens append-only bi-temporal facts
+// for the written attributes, valid-from that ordinal, citing the episode — and a re-run
+// (same content) is idempotent (0 new fact rows). Without chapter_ordinal, no facts emit.
+func TestBulkExtract_EmitsTemporalFacts(t *testing.T) {
+	pool := openTestDB(t)
+	ctx := context.Background()
+	runK2aMigrations(t, pool)
+	if err := migrate.RunChain(ctx, pool); err != nil { // ensure 0044-0047 (entity_facts/episodes)
+		t.Fatalf("migrate chain: %v", err)
+	}
+
+	bookID := "00000000-0000-0000-0001-0000000a1f1d"
+	bid := uuid.MustParse(bookID)
+	adoptTestBook(t, pool, bid)
+	chapterID := uuid.New()
+	t.Cleanup(func() {
+		pool.Exec(ctx, `DELETE FROM entity_facts WHERE book_id=$1`, bid)                       //nolint:errcheck
+		pool.Exec(ctx, `DELETE FROM episodes WHERE book_id=$1`, bid)                           //nolint:errcheck
+		pool.Exec(ctx, `DELETE FROM extraction_writeback_log WHERE book_id=$1`, bid)           //nolint:errcheck
+		pool.Exec(ctx, `DELETE FROM entity_attribute_values WHERE entity_id IN
+			(SELECT entity_id FROM glossary_entities WHERE book_id=$1)`, bid)                  //nolint:errcheck
+		pool.Exec(ctx, `DELETE FROM glossary_entities WHERE book_id=$1`, bid)                  //nolint:errcheck
+	})
+
+	srv, token := newEntitiesListServer(t)
+	srv.pool = pool
+
+	body := map[string]any{
+		"source_language": "zh",
+		"chapter_id":      chapterID.String(),
+		"content_hash":    "hash-ch7",
+		"writeback_key":   "wbk-ch7",
+		"chapter_ordinal": 7,
+		"entities": []map[string]any{
+			{"kind_code": "character", "name": "张若尘", "attributes": map[string]any{"境界": "武者"}},
+		},
+	}
+	resp := postExtract(t, srv, token, bookID, body)
+	if resp["created"] != float64(1) {
+		t.Fatalf("want created=1, got %v", resp)
+	}
+
+	// episode minted + reconciled
+	var epStatus string
+	var epOrdinal int64
+	if err := pool.QueryRow(ctx,
+		`SELECT status, chapter_ordinal FROM episodes WHERE chapter_id=$1 AND content_hash='hash-ch7'`,
+		chapterID).Scan(&epStatus, &epOrdinal); err != nil {
+		t.Fatalf("episode lookup: %v", err)
+	}
+	if epStatus != "reconciled" || epOrdinal != 7 {
+		t.Fatalf("episode status=%q ordinal=%d, want reconciled/7", epStatus, epOrdinal)
+	}
+
+	// facts opened for name + 境界, valid_from=7, open, citing the episode
+	rows, err := pool.Query(ctx, `
+		SELECT ef.attr_or_predicate, ef.value, ef.valid_from_ordinal, ef.valid_to_ordinal,
+		       (ef.source_episode_id IS NOT NULL) AS cited
+		FROM entity_facts ef JOIN glossary_entities ge ON ge.entity_id=ef.entity_id
+		WHERE ge.book_id=$1 AND ef.valid_from_ordinal=7 ORDER BY ef.attr_or_predicate`, bid)
+	if err != nil {
+		t.Fatalf("facts query: %v", err)
+	}
+	got := map[string]string{}
+	for rows.Next() {
+		var attr, val string
+		var vf int64
+		var vt *int64
+		var cited bool
+		if err := rows.Scan(&attr, &val, &vf, &vt, &cited); err != nil {
+			rows.Close()
+			t.Fatalf("scan: %v", err)
+		}
+		if vt != nil {
+			t.Fatalf("fact %s should be OPEN (valid_to NULL), got %d", attr, *vt)
+		}
+		if !cited {
+			t.Fatalf("fact %s must cite its episode", attr)
+		}
+		got[attr] = val
+	}
+	rows.Close()
+	if got["name"] != "张若尘" || got["境界"] != "武者" {
+		t.Fatalf("emitted facts = %v, want name=张若尘 & 境界=武者", got)
+	}
+
+	// idempotent re-run (same content + writeback_key) → 0 NEW fact rows
+	var before int
+	pool.QueryRow(ctx, `SELECT count(*) FROM entity_facts WHERE book_id=$1`, bid).Scan(&before) //nolint:errcheck
+	postExtract(t, srv, token, bookID, body)
+	var after int
+	pool.QueryRow(ctx, `SELECT count(*) FROM entity_facts WHERE book_id=$1`, bid).Scan(&after) //nolint:errcheck
+	if after != before {
+		t.Fatalf("re-run emitted %d new fact rows, want 0 (idempotent)", after-before)
+	}
+}
+
 // TestBulkExtract_TombstoneSkipsRejectedName proves a name the user rejected
 // (tag ai-rejected) is not re-proposed by an AI writeback — skipped, untouched.
 func TestBulkExtract_TombstoneSkipsRejectedName(t *testing.T) {

@@ -1,7 +1,12 @@
 #!/usr/bin/env sh
-# LoreWeave pre-commit — enforce AI provider invariants (CLAUDE.md › Key Rules):
+# LoreWeave pre-commit — enforce key invariants (CLAUDE.md › Key Rules):
 #   • Provider gateway invariant: no direct provider-SDK usage outside the gateway
 #   • No hardcoded model names in runtime code
+#   • INV-KAL (table-read half): no direct glossary-EAV / Neo4j read outside the owning
+#     services — read entity/KG knowledge through the knowledge-gateway (KAL).
+#   • INV-KAL (HTTP-surface half): no consumer hits the owning services' bi-temporal
+#     knowledge /internal endpoints (facts/canonical/timeline/attr-values/search/
+#     neighborhood/retrieve) — read them through the KAL. (Both halves now ENFORCED.)
 # Checks only STAGED files (fast). Bypass in a true emergency with `git commit --no-verify`.
 #
 # Activate (per checkout):  git config core.hooksPath .githooks
@@ -10,3 +15,5 @@ ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 PY=python
 command -v python >/dev/null 2>&1 || PY=python3
 "$PY" "$ROOT/scripts/ai-provider-gate.py" --staged
+"$PY" "$ROOT/scripts/knowledge-access-gate.py" --staged
+"$PY" "$ROOT/scripts/knowledge-http-surface-gate.py" --staged
