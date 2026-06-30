@@ -10,372 +10,524 @@
       {
         "chapter_id": "019f1783-ebd4-7ad6-bca6-618e9209b59b",
         "title": "Chương 1",
-        "intent": "Lâm Uyển bị gia tộc ruồng bỏ và đứng trước bờ vực cái chết trong một cuộc truy sát đầy tàn khốc.",
+        "intent": "Lâm Uyển bị gia tộc ruồng bỏ và rơi vào tình cảnh cận kề cái chết sau một cuộc tấn công đầy oan khuất.",
         "beat_role": "hook",
         "scenes": [
           {
-            "title": "Sự Sỉ Nhục Tại Đại Sảnh",
-            "synopsis": "Lâm Uyển đối mặt với sự ghẻ lạnh của phụ mẫu và sự khinh miệt của huynh trưởng khi nàng bị tước đi tư cách đệ tử gia tộc. Xung đột nảy sinh khi Lâm Chấn Nhạc quyết định trục xuất nàng để bảo vệ danh tiếng gia tộc sau khi biết nàng không thể tu luyện. Kết quả là Lâm Uyển bị đẩy ra khỏi tộc đàn, bị tước bỏ mọi tài nguyên và bị ném vào khu rừng cấm để tự sinh tự diệt.",
+            "title": "Sự Sỉ Nhục Tại Đại Điện",
+            "synopsis": "Mục tiêu là thiết lập sự ghẻ lạnh của gia tộc khi Lâm Uyển bị buộc tội làm mất linh thạch của Lâm gia. Xung đột nảy sinh khi Lâm Chấn Nhạc công khai tước bỏ tư cách đệ tử của nàng trước sự chứng kiến của Tô Yến và Lâm Tử Hàn. Kết quả là Lâm Uyển bị trục xuất khỏi chính điện, bị đẩy ra ranh giới giữa sự sống và cái chết của gia tộc.",
             "tension": 65,
-            "present_entity_ids": []
+            "present_entity_ids": [
+              "019f1840-cc8a-747a-a624-cdf143d2c7cd",
+              "019f1840-cc98-7440-8fb8-409ee7eda422",
+              "019f1840-cc9c-746e-b8d4-5b5bfe1f74c9",
+              "019f1840-cca0-7201-8867-8d14adf622d9"
+            ]
           },
           {
-            "title": "Cuộc Truy Sát Trong Rừng Cấm",
-            "synopsis": "Tiếp nối sự ruồng bỏ, Lâm Uyển chạy trốn vào rừng sâu nhưng bị các đệ tử của gia tộc truy đuổi nhằm tiêu hủy chứng cứ về sự 'phế vật' của nàng. Nàng phải dùng chút sức tàn để né tránh các đòn tấn công pháp bảo, dẫn đến việc bị dồn vào một hang động tử thần. Kết quả là nàng kiệt sức, trọng thương và rơi xuống vực sâu khi bị dồn vào đường cùng.",
+            "title": "Sự Phản Bội Của Huynh Trưởng",
+            "synopsis": "Tiếp nối từ việc bị trục xuất, Lâm Uyển cố gắng cầu xin sự giúp đỡ từ Lâm Tử Hàn nhưng bị hắn dùng Trúc Cơ Đan để uy hiếp và đẩy nàng vào cấm địa. Xung đột xảy ra khi Lâm Tử Hàn chọn danh tiếng của bản thân thay vì tình thân để che giấu sự thật về việc linh thạch bị mất. Kết quả là Lâm Uyển bị truy đuổi bởi hộ vệ gia tộc khi chạy trốn vào rừng sâu.",
+            "tension": 80,
+            "present_entity_ids": [
+              "019f1840-cc8a-747a-a624-cdf143d2c7cd",
+              "019f1840-cca0-7201-8867-8d14adf622d9"
+            ]
+          },
+          {
+            "title": "Huyết Chiến Trong Rừng Sương",
+            "synopsis": "Sau khi chạy trốn vào rừng, Lâm Uyển bị nhóm hộ vệ do Lâm Chấn Nhạc phái đi truy sát vì cho rằng nàng đã trộm bảo vật. Xung đột đạt đỉnh điểm khi nàng bị dồn vào vách đá, trọng thương và bị đâm trọng thương. Kết quả là Lâm Uyển rơi xuống vực sâu, cận kề cái chết, nơi ý thức nàng dần tan biến.",
+            "tension": 95,
+            "present_entity_ids": [
+              "019f1840-cc8a-747a-a624-cdf143d2c7cd"
+            ]
+          },
+          {
+            "title": "Tiếng Gọi Từ Cửu U",
+            "synopsis": "Dưới đáy vực, trong trạng thái hấp hối, linh hồn Lâm Uyển chạm phải tàn niệm của Cửu U Ma Cơ. Xung đột giữa sự sống mong manh và sức mạnh ma đạo tà ác diễn ra khi nàng phải lựa chọn giữa cái chết hoặc chấp nhận ma công. Kết quả là nàng bắt đầu quá trình cải tạo kinh mạch bằng ma khí, đặt nền móng cho sự lột xác.",
             "tension": 85,
-            "present_entity_ids": []
-          },
-          {
-            "title": "Giao Ước Ma Đạo",
-            "synopsis": "Sau khi rơi xuống vực, Lâm Uyển trong trạng thái cận kề cái chết đã vô tình chạm vào một luồng ma khí cổ xưa. Nàng phải đấu tranh giữa ý chí sinh tồn và sự sợ hãi trước ý niệm của Cửu U Ma Cơ đang trỗi dậy. Kết quả là nàng chấp nhận sự đánh đổi, ký kết khế ước với cổ thư, đánh đổi linh căn phàm trần để lấy ma công, chuẩn bị cho sự tái sinh.",
-            "tension": 100,
-            "present_entity_ids": []
+            "present_entity_ids": [
+              "019f1840-cc8a-747a-a624-cdf143d2c7cd",
+              "019f1840-cca4-7437-8e37-e49de8655eb4"
+            ]
           }
         ]
       },
       {
         "chapter_id": "019f1783-ebee-7703-8b79-95b4ac605231",
         "title": "Chương 2",
-        "intent": "Trong khoảnh khắc sinh tử, Lâm Uyển vô tình kích hoạt cổ thư của Cửu U Ma Cơ để tìm kiếm cơ hội sống sót.",
+        "intent": "Trong lằn ranh sinh tử, Lâm Uyển vô tình tìm thấy cuốn cổ thư của Cửu U Ma Cơ.",
         "beat_role": "hook",
         "scenes": [
           {
-            "title": "Huyết Lệ Hóa Ma",
-            "synopsis": "Tiếp nối từ trạng thái trọng thương tại vực thẳm, Lâm Uyển cố gắng dùng chút linh lực tàn dư để vá lại vết thương nhưng chỉ khiến ma khí trong cơ thể cuộn trào dữ dội hơn. Nàng phải đối mặt với nỗi đau xé rách kinh mạch khi cơ thể không chịu nổi sự xung đột giữa linh lực chính đạo và ma khí vừa hấp thụ. Kết quả là nàng rơi vào trạng thái cận kề cái chết, ý chí sinh tồn đẩy nàng chạm tay vào bìa cuốn cổ thư đang tỏa ra hắc khí.",
+            "title": "Độc hành giữa rừng sương",
+            "synopsis": "Tiếp nối từ trạng thái trọng thương sau khi bị trục xuất, Lâm Uyển phải chống chọi với cơn đau thể xác và sự cô độc khi bị cả thế giới quay lưng. Nàng cố gắng tìm nơi ẩn náu để ngăn chặn vết thương đang rỉ máu trong khi bị truy đuổi bởi những linh thú rừng sâu. Kết quả là nàng kiệt sức và ngã xuống bên mép vực thẳm Cửu U.",
+            "tension": 50,
+            "present_entity_ids": [
+              "019f1840-cc8a-747a-a624-cdf143d2c7cd"
+            ]
+          },
+          {
+            "title": "Tiếng gọi từ vực thẳm",
+            "synopsis": "Sau khi ngã xuống vực, Lâm Uyển rơi vào trạng thái cận kề cái chết, nơi ý thức nàng bắt đầu giao thoa với tàn hồn của Cửu U Ma Cơ. Sự tuyệt vọng tột cùng trở thành chất xúc tác khiến linh căn phế vật của nàng phản ứng dữ dội với ma khí đang rò rỉ từ đáy vực. Kết quả là nàng không chết mà bị cuốn vào một luồng hắc khí vô tận, lọt vào không gian tâm thức kỳ bí.",
             "tension": 75,
-            "present_entity_ids": []
+            "present_entity_ids": [
+              "019f1840-cc8a-747a-a624-cdf143d2c7cd",
+              "019f1840-cca4-7437-8e37-e49de8655eb4"
+            ]
           },
           {
-            "title": "Cửu U Triệu Hồi",
-            "synopsis": "Từ khoảnh khắc chạm vào cổ thư, một luồng ý niệm cổ xưa từ Cửu U Ma Cơ tràn vào đại não Lâm Uyển, ép nàng phải thực hiện một nghi thức hiến tế máu để duy trì sự sống. Nàng phải lựa chọn giữa việc chết trong thanh thản hoặc chấp nhận sự biến đổi vĩnh viễn về bản chất để sống sót. Kết quả là dòng máu của nàng hòa quyện với ma khí, kích hoạt một vòng xoáy hắc ám nuốt chửng lấy cả bóng tối của vực thẳm.",
-            "tension": 90,
-            "present_entity_ids": []
-          },
-          {
-            "title": "Tái Sinh Trong Bóng Tối",
-            "synopsis": "Sau cơn chấn động, Lâm Uyển tỉnh dậy trong sự tĩnh lặng đáng sợ của vực thẳm, cơ thể đã được tái tạo nhưng mang theo dấu vết của ma đạo. Nàng nhận ra mình không còn cảm nhận được linh khí của thiên địa theo cách thông thường mà thay vào đó là sự thèm khát hắc khí. Kết quả là nàng chính thức hoàn tất bước chuyển đổi đầu tiên, trở thành vật chứa của ma công, sẵn sàng cho hành trình phục thù.",
-            "tension": 60,
-            "present_entity_ids": []
+            "title": "Khế ước sinh tử",
+            "synopsis": "Trong không gian u tối, Lâm Uyển đối mặt với ý chí của Cửu U Ma Cơ, người đưa ra lựa chọn giữa cái chết thanh thản hoặc con đường tu ma đầy khổ ải. Nàng chấp nhận đánh đổi bản tính để lấy sức mạnh nhằm quay lại báo thù, dẫn đến việc cuốn cổ thư hòa làm một với linh hồn nàng. Kết quả là Lâm Uyển thức tỉnh với một luồng ma khí lạnh lẽo, bắt đầu quá trình cải tạo kinh mạch.",
+            "tension": 95,
+            "present_entity_ids": [
+              "019f1840-cc8a-747a-a624-cdf143d2c7cd",
+              "019f1840-cca4-7437-8e37-e49de8655eb4"
+            ]
           }
         ]
       },
       {
         "chapter_id": "019f1783-ec01-7b1a-8639-ec0ffac6d87d",
         "title": "Chương 3",
-        "intent": "Lâm Uyển bắt đầu tu luyện ma công, nhận ra sự khác biệt giữa linh căn phế vật và sức mạnh ma đạo.",
+        "intent": "Lâm Uyển bắt đầu tu luyện ma công, cảm nhận sự thay đổi từ phế vật trở thành kẻ mang sức mạnh tà mị.",
         "beat_role": "establishment",
         "scenes": [
           {
             "title": "Ma Khí Nhập Thể",
-            "synopsis": "Tiếp nối trạng thái cơ thể đang biến đổi tại Vực thẳm vô danh, Lâm Uyển bắt đầu vận hành công pháp của Cửu U Ma Cơ để hấp thụ ma khí xung quanh. Nàng phải đối mặt với sự xung đột dữ dội giữa tàn dư linh căn phế vật và dòng ma khí cuồn cuộn nhằm tránh việc cơ thể bị xé nát. Kết quả là nàng thành công chuyển hóa ma khí thành sức mạnh nguyên thủy, cảm nhận được sự khác biệt hoàn toàn so với linh khí chính đạo.",
-            "tension": 65,
-            "present_entity_ids": []
+            "synopsis": "Tiếp nối từ trạng thái vừa ký khế ước, Lâm Uyển phải chịu đựng sự đau đớn tột cùng khi ma khí tràn vào kinh mạch để thay thế linh căn phế vật. Mục tiêu là sự sống sót trước sự tàn phá của ma lực; xung đột là sự giằng xé giữa ý chí con người và bản năng ma tính. Kết quả là kinh mạch nàng được tái tạo, mang theo sắc tím u ám thay vì màu trắng thuần khiết.",
+            "tension": 75,
+            "present_entity_ids": [
+              "019f1840-cc8a-747a-a624-cdf143d2c7cd",
+              "019f1840-cca4-7437-8e37-e49de8655eb4"
+            ]
           },
           {
-            "title": "Sự Thức Tỉnh Của Ý Niệm",
-            "synopsis": "Sau khi đã ổn định dòng chảy ma lực, Lâm Uyển chìm vào trạng thái nửa tỉnh nửa mê, nơi ý niệm của Cửu U Ma Cơ bắt đầu dẫn dắt nàng đi sâu vào bí mật của công pháp. Nàng phải chống lại sự xâm lấn ý thức của Ma Cơ để không bị nuốt chửng hoàn toàn, đồng thời tìm ra cách điều tiết ma khí để không bị phát hiện bởi các cảm quan của tu sĩ chính đạo. Kết thúc bằng việc nàng nhận ra ma đạo không cần linh căn, mà cần sự tàn khốc để thôn tính thiên địa.",
-            "tension": 80,
-            "present_entity_ids": []
+            "title": "Ảo Ảnh Tâm Ma",
+            "synopsis": "Sau khi kinh mạch ổn định, Cửu U Ma Cơ dùng ma khí tạo ra ảo giác về sự ghẻ lạnh của Lâm gia để thử thách tâm tính. Lâm Uyển phải đối mặt với hình bóng của Lâm Chấn Nhạc và Tô Yến đang sỉ nhục mình để rèn luyện ý chí. Kết quả là nàng vượt qua ảo ảnh, sự thù hận được chuyển hóa thành động lực tu luyện thay vì sự tuyệt vọng.",
+            "tension": 60,
+            "present_entity_ids": [
+              "019f1840-cc8a-747a-a624-cdf143d2c7cd",
+              "019f1840-cca4-7437-8e37-e49de8655eb4"
+            ]
+          },
+          {
+            "title": "Tái Sinh Trong Bóng Tối",
+            "synopsis": "Khi quá trình cải tạo hoàn tất, Lâm Uyển lần đầu tiên cảm nhận được sức mạnh thực sự của ma công. Nàng thử nghiệm một chiêu thức nhỏ và nhận ra vẻ ngoài của mình đang dần thay đổi theo hướng tà mị, thoát ly khỏi hình hài phế vật cũ. Kết thúc bằng việc nàng đứng dậy trong sương mù, sẵn sàng cho hành trình phục thù.",
+            "tension": 40,
+            "present_entity_ids": [
+              "019f1840-cc8a-747a-a624-cdf143d2c7cd"
+            ]
           }
         ]
       },
       {
         "chapter_id": "019f1783-ec14-774d-8d2d-ed689a26f3de",
         "title": "Chương 4",
-        "intent": "Nàng âm thầm cải tạo cơ thể, nuôi dưỡng ý chí trở thành kẻ mạnh để đối mặt với sự ghẻ lạnh của Lâm gia.",
+        "intent": "Nàng âm thầm cải tạo cơ thể, nuôi dưỡng ý chí trở thành cường giả bất chấp sự ghẻ lạnh của Lâm Chấn Nhạc.",
         "beat_role": "establishment",
         "scenes": [
           {
-            "title": "Thôn Phệ Ma Khí",
-            "synopsis": "Tiếp nối từ trạng thái vừa hoàn tất tái tạo cơ thể tại Vực thẳm vô danh, Lâm Uyển bắt đầu thực hiện quá trình hấp thụ ma khí đậm đặc để củng cố nền tảng mới. Dù cơ thể chịu áp lực kinh khủng từ sự xung đột giữa ma khí và tàn dư linh lực cũ, nàng vẫn kiên trì nuốt chửng mọi sự biến dạng để chuyển hóa thành sức mạnh thuần khiết. Kết quả là nàng hoàn tất việc xây dựng một 'Ma Đan' kỳ dị, không dựa trên linh căn mà dựa trên sự cô đặc của ma khí.",
-            "tension": 45,
-            "present_entity_ids": []
+            "title": "Ma Khí Tẩy Tủy",
+            "synopsis": "Tiếp nối trạng thái sau khi hoàn tất cải tạo cơ thể, Lâm Uyển phải chịu đựng sự đau đớn tột cùng khi ma mạch bắt đầu vận hành để nuốt chửng ma khí trong vực thẳm. Mục tiêu là ổn định ma mạch mới, nhưng trở ngại là sự phản kháng của linh hồn nguyên bản. Kết quả là nàng hoàn thành việc cấy ghép ma mạch, đạt đến tầng thứ nhất của ma công nhưng cơ thể trở nên cực kỳ nhạy cảm với linh khí chính đạo.",
+            "tension": 65,
+            "present_entity_ids": [
+              "019f1840-cc8a-747a-a624-cdf143d2c7cd",
+              "019f1840-cca4-7437-8e37-e49de8655eb4"
+            ]
           },
           {
-            "title": "Ảo Ảnh Tâm Ma",
-            "synopsis": "Sau khi ma lực tăng tiến, sự liên kết với Cửu U Ma Cơ khiến những mảnh vỡ ký ức của Ma nữ tràn vào tâm trí Lâm Uyển như một hình phạt. Nàng phải chiến đấu với ảo giác về sự ruồng bỏ của Lâm gia và sự khinh miệt của cha mẹ để giữ vững ý chí vô tình, tránh bị ma tính nuốt chửng hoàn toàn. Cuối cùng, nàng không chỉ vượt qua mà còn hấp thụ luôn cả sự oán hận đó, biến nó thành một phần của ý chí tu luyện.",
-            "tension": 70,
-            "present_entity_ids": []
+            "title": "Thử Thách Ý Chí",
+            "synopsis": "Sau khi ổn định ma mạch, Lâm Uyển phải đối mặt với những mảnh vỡ ký ức tàn khốc từ Cửu U Ma Cơ để rèn luyện thần thức. Sự xung đột giữa ý chí của nàng và sự áp chế của Ma nữ tạo ra một cuộc chiến tâm linh dữ dội. Kết quả là ý chí của nàng trở nên sắt đá, không còn bị dao động bởi nỗi đau thể xác, chuẩn bị cho việc rời khỏi vực thẳm.",
+            "tension": 80,
+            "present_entity_ids": [
+              "019f1840-cc8a-747a-a624-cdf143d2c7cd",
+              "019f1840-cca4-7437-8e37-e49de8655eb4"
+            ]
           },
           {
-            "title": "Trở Về Trong Bóng Tối",
-            "synopsis": "Rời khỏi Vực thẳm vô danh với sức mạnh mới, Lâm Uyển âm thầm tìm đường trở lại biên giới Lâm gia để quan sát tình hình. Nàng nhận ra sự thay đổi trong khí vận của gia tộc sau khi nàng biến mất, đồng thời nhận ra mình cần một nơi có linh khí và ma khí giao thoa để đột phá cảnh giới tiếp theo. Nàng quyết định ẩn danh, bắt đầu hành trình trở thành một kẻ đứng ngoài vòng pháp luật của chính gia tộc mình.",
-            "tension": 30,
-            "present_entity_ids": []
+            "title": "Trở Lại Phàm Thế",
+            "synopsis": "Rời khỏi đáy vực sau nhiều ngày tu luyện, Lâm Uyển ẩn mình dưới một lớp sương mù ma khí để tránh sự dò xét của các tu sĩ xung quanh. Nàng phải tìm cách tiếp cận vùng biên giới của Lâm gia để thu thập thông tin về sự thay đổi của gia tộc sau khi nàng bị trục xuất. Kết quả là nàng nhận ra sự khinh miệt của thế gian đối với kẻ bị ruồng bỏ, đồng thời xác định được mục tiêu tiếp theo là đoạt lấy tài nguyên để nuôi dưỡng ma mạch.",
+            "tension": 40,
+            "present_entity_ids": [
+              "019f1840-cc8a-747a-a624-cdf143d2c7cd"
+            ]
           }
         ]
       },
       {
         "chapter_id": "019f1783-ec27-7181-9c22-d838c21af334",
         "title": "Chương 5",
-        "intent": "Lâm Tử Hàn và các thiên tài trong tộc bắt đầu chú ý đến sự thay đổi bất thường của Lâm Uyển.",
+        "intent": "Sự trỗi dậy kỳ lạ của Lâm Uyển khiến Lâm Tử Hàn và các trưởng lão bắt đầu nghi ngờ.",
         "beat_role": "rising_conflict",
         "scenes": [
           {
-            "title": "Ma Khí Loạn Lưu",
-            "synopsis": "Tiếp nối trạng thái ẩn danh của Lâm Uyển, nàng thực hiện chuyến săn lùng đầu tiên tại một khu rừng cấm gần biên giới để hấp thụ ma khí từ một linh thú biến dị. Sự xuất hiện của luồng ma khí đậm đặc này vô tình tạo ra một chấn động linh áp nhỏ, khiến các tu sĩ cấp thấp xung quanh cảm thấy bất an. Kết quả là Lâm Uyển củng cố thêm độ thuần khiết của Ma Đan nhưng đồng thời để lại một dấu vết năng lượng không thể xóa nhòa trong không gian.",
-            "tension": 30,
-            "present_entity_ids": []
-          },
-          {
-            "title": "Dấu Vết Bất Thường",
-            "synopsis": "Sau khi hấp thụ xong, Lâm Uyển rời đi, nhưng sự biến động ma khí từ cảnh trước đã lọt vào tầm mắt của Lâm Tử Hàn khi hắn đang thực hiện nhiệm vụ săn tìm linh dược. Hắn cảm nhận được một luồng khí tức vừa quen thuộc vừa tà ác, gợi nhắc về sự biến mất của muội muội hắn. Kết quả là Lâm Tử Hàn bắt đầu nảy sinh nghi hoặc và quyết định điều tra kỹ hơn về những biến động tại biên giới Vực thẳm.",
-            "tension": 50,
-            "present_entity_ids": []
+            "title": "Ma Khí Thể Luyện",
+            "synopsis": "Tiếp nối từ trạng thái nuôi dưỡng ma mạch, Lâm Uyển phải chịu đựng nỗi đau xé rách kinh mạch khi ma khí bắt đầu càn quét cơ thể để tái tạo linh căn. Mục tiêu là ổn định sự chuyển hóa này trước khi bị phát hiện, nhưng sự biến đổi khí chất tà mị khiến nàng không thể che giấu hoàn toàn. Kết quả là nàng hoàn thành bước rèn luyện thể chất đầu tiên nhưng để lại một luồng khí tức bất thường.",
+            "tension": 45,
+            "present_entity_ids": [
+              "019f1840-cc8a-747a-a624-cdf143d2c7cd",
+              "019f1840-cca4-7437-8e37-e49de8655eb4"
+            ]
           },
           {
             "title": "Sự Nghi Ngờ Của Thiên Tài",
-            "synopsis": "Tiếp nối sự nghi ngờ của Lâm Tử Hàn, hắn quay trở về Lâm gia và tìm cách kiểm tra các trận pháp hộ tộc để xem có sự xâm nhập của ma đạo hay không. Trong quá trình tra xét, hắn phát hiện ra một mảnh linh hồn vụn vỡ mang hơi hướng của Lâm Uyển còn sót lại tại hiện trường biến động ma khí. Kết quả là Lâm Tử Hàn không còn coi sự biến mất của nàng là một tai nạn, mà bắt đầu nghi ngờ về một sự tồn tại tà ác đang trỗi dậy ngay trong lòng tộc.",
+            "synopsis": "Sau khi thoát khỏi quá trình tu luyện, Lâm Uyển di chuyển về phía ngoại vi để tìm kiếm linh dược, nhưng vô tình chạm trán Lâm Tử Hàn đang thực hiện chuyến đi săn linh thú. Lâm Tử Hàn cảm nhận được một luồng ma khí lạ lùng phát ra từ phía nàng, dẫn đến một cuộc đối đầu căng thẳng về khí tức. Kết quả là Lâm Tử Hàn bắt đầu nảy sinh sự nghi ngờ về sự thay đổi của muội muội mà hắn vốn coi là phế vật.",
             "tension": 65,
-            "present_entity_ids": []
+            "present_entity_ids": [
+              "019f1840-cc8a-747a-a624-cdf143d2c7cd",
+              "019f1840-cca0-7201-8867-8d14adf622d9"
+            ]
+          },
+          {
+            "title": "Áp Lực Từ Trưởng Lão",
+            "synopsis": "Từ sự nghi ngờ của Lâm Tử Hàn, tin tức về sự biến đổi khí tức của Lâm Uyển lan đến tai các trưởng lão trong gia tộc. Các trưởng lão triệu tập một cuộc họp khẩn cấp để xem xét xem liệu có kẻ nào đã lén lút truyền công pháp tà đạo cho nàng. Kết quả là sự giám sát của Lâm gia đối với Lâm Uyển được thắt chặt, đẩy nàng vào thế phải lựa chọn giữa việc ẩn nhẫn hoặc bộc phát sức mạnh.",
+            "tension": 80,
+            "present_entity_ids": [
+              "019f1840-cc8a-747a-a624-cdf143d2c7cd",
+              "019f1840-cca0-7201-8867-8d14adf622d9"
+            ]
           }
         ]
       },
       {
         "chapter_id": "019f1783-ec39-738d-8b57-febd8eed75bf",
         "title": "Chương 6",
-        "intent": "Những xung đột về tài nguyên tu luyện giữa các tiểu thư, công tử trong gia tộc ngày càng gay gắt.",
+        "intent": "Những cuộc xung đột giữa các thiên tài trong Lâm gia đẩy Lâm Uyển vào thế phải lộ diện sức mạnh.",
         "beat_role": "rising_conflict",
         "scenes": [
           {
-            "title": "Hội nghị Linh Thạch",
-            "synopsis": "Tiếp nối sự biến động ma khí tại biên giới, Lâm Uyển (dưới danh tính giả) quan sát sự hỗn loạn của các thế lực xung quanh. Mục tiêu là thiết lập bối cảnh tài nguyên đang cạn kiệt, khiến các tiểu thư, công tử từ các gia tộc lân cận đổ dồn về khu vực này. Kết quả là sự căng thẳng giữa các thiên tài trẻ tuổi bắt đầu leo thang khi họ tranh giành các linh thạch cấp cao.",
-            "tension": 40,
-            "present_entity_ids": []
+            "title": "Áp lực từ thiên kiêu",
+            "synopsis": "Tiếp nối sự cô lập của Lâm Uyển tại bìa rừng, nàng bị Lục Trường Phong và các đệ tử thiên tài của Lâm gia chặn đường để chất vấn về khí tức ma đạo vừa phát tán. Dù cố gắng che giấu bằng cách sử dụng ma khí để giả dạng linh lực, sự khác biệt trong hơi thở khiến nàng bị khiêu khích trực tiếp. Kết quả là Lâm Uyển bị dồn vào thế bí, buộc phải dùng tốc độ để thoát thân thay vì đối đầu trực diện.",
+            "tension": 45,
+            "present_entity_ids": [
+              "019f1840-cc8a-747a-a624-cdf143d2c7cd",
+              "019f1840-ccb9-71f8-a3c2-324c375ec4a5"
+            ]
           },
           {
-            "title": "Áp lực từ Thiên Kiêu",
-            "synopsis": "Từ sự hỗn loạn tại hội nghị, một nhóm thiên tài từ các gia tộc lân cận (đại diện cho phe chính đạo) bắt đầu dùng uy thế để chèn ép những kẻ yếu hơn nhằm chiếm đoạt tài nguyên. Mục tiêu là tạo ra sự đối lập giữa sức mạnh chính thống và sự trỗi dậy âm thầm của ma đạo. Kết quả là một cuộc đụng độ nhỏ xảy ra, để lại sự bất mãn và khát khao sức mạnh mãnh liệt trong lòng các tu sĩ trẻ.",
-            "tension": 65,
-            "present_entity_ids": []
+            "title": "Sự truy sát của thiên tài",
+            "synopsis": "Sau khi chạy trốn khỏi Lục Trường Phong, Lâm Uyển bị Mộ Dung Tuyết và Diệp Phàm (những thiên tài trẻ tuổi của gia tộc) vây khốn tại một thung lũng hẹp. Sự truy đuổi này là hệ quả từ việc khí tức ma mạch của nàng rò rỉ quá mạnh ở cảnh trước. Cuộc đối đầu nổ ra khi Diệp Phàm sử dụng linh bảo để ép nàng lộ diện, buộc Lâm Uyển phải giải phóng một phần ma lực để tự vệ, khiến sự hiện diện của nàng trở nên không thể chối cãi.",
+            "tension": 70,
+            "present_entity_ids": [
+              "019f1840-cc8a-747a-a624-cdf143d2c7cd",
+              "019f1840-ccad-7fa9-b81b-6850994426ac",
+              "019f1840-ccb1-7995-9bd6-b3ec0e99e116"
+            ]
           },
           {
-            "title": "Sự trỗi dậy của tham vọng",
-            "synopsis": "Hệ quả từ cuộc đụng độ, các quy tắc phân chia tài nguyên bị phá vỡ, dẫn đến việc các tiểu thư, công tử bắt đầu lập liên minh hoặc đối đầu trực diện. Mục tiêu là đẩy mâu thuẫn lên đỉnh điểm, nơi sự tu luyện không còn là sự thăng tiến đơn thuần mà là một cuộc chiến sinh tử để giành giật tài nguyên. Kết quả là sự cạnh tranh trở nên cực kỳ gay gắt, báo hiệu một cuộc thanh trừng tài nguyên sắp diễn ra.",
-            "tension": 85,
-            "present_entity_ids": []
+            "title": "Lộ diện giữa huyết chiến",
+            "synopsis": "Từ sự kiện bộc phát ma lực ở cảnh trước, Lâm Tử Hàn xuất hiện với tư cách là người thực thi công lý của gia tộc, ép Lâm Uyển phải đứng trước sự lựa chọn giữa việc bị bắt giữ hoặc chiến đấu sinh tử. Cuộc xung đột lên đến đỉnh điểm khi Lâm Uyển không còn che giấu, nàng hoàn toàn bộc phát ma khí Cửu U để đánh bại sự áp chế của các thiên tài. Kết thúc bằng việc nàng chính thức lộ diện trước sự chứng kiến của các trưởng lão đang ẩn nấp, đánh dấu sự đoạn tuyệt hoàn toàn với danh phận tiểu thư Lâm gia.",
+            "tension": 95,
+            "present_entity_ids": [
+              "019f1840-cc8a-747a-a624-cdf143d2c7cd",
+              "019f1840-cca0-7201-8867-8d14adf622d9",
+              "019f1840-ccad-7fa9-b81b-6850994426ac",
+              "019f1840-ccb1-7995-9bd6-b3ec0e99e116"
+            ]
           }
         ]
       },
       {
         "chapter_id": "019f1783-ec4a-75ef-b612-3622a9637785",
         "title": "Chương 7",
-        "intent": "Lâm Uyển phải đối mặt với sự khinh miệt công khai từ các trưởng lão khi nàng tham gia thử thách gia tộc.",
+        "intent": "Tô Yến tìm cách ngăn cản con gái vì lo sợ danh dự gia tộc bị vấy bẩn bởi ma khí.",
         "beat_role": "rising_conflict",
         "scenes": [
           {
-            "title": "Ám Ảnh Biên Giới",
-            "synopsis": "Tiếp nối từ trạng thái quan sát trong bóng tối, Lâm Uyển tận dụng sự hỗn loạn của các thiên tài tại Vực thẳm để lén lút hấp thụ tàn dư ma khí nhằm bồi đắp Ma Đan. Sự xuất hiện của một luồng ma khí cực lớn do một thiên tài bị giết để lại đã khiến nàng phải liều lĩnh tiến gần hơn ranh giới nguy hiểm. Kết quả là Ma Đan của nàng tiến thêm một bước, nhưng đồng thời cũng để lại một dấu vết dao động năng lượng khiến các tu sĩ xung quanh bắt đầu nghi hoặc.",
-            "tension": 45,
-            "present_entity_ids": []
-          },
-          {
-            "title": "Thử Thách Gia Tộc",
-            "synopsis": "Sau khi thu thập đủ tài nguyên từ Vực thẳm, Lâm Uyển quay trở lại Lâm gia dưới danh nghĩa một tu sĩ ẩn danh để tham gia Đại hội Thử thách của gia tộc nhằm lấy lại danh dự/tài nguyên. Nàng phải đối mặt với sự soi xét gắt gao từ các trưởng lão khi cảm nhận được sự khác biệt trong hơi thở tu luyện của nàng. Kết quả là nàng vượt qua vòng sơ khảo một cách dễ dàng bằng sức mạnh ma hóa, khiến sự chú ý của các trưởng lão đổ dồn vào nàng.",
+            "title": "Áp lực từ Danh dự",
+            "synopsis": "Tiếp nối sự bùng nổ ma khí của Lâm Uyển, các trưởng lão Lâm gia bắt đầu gây áp lực lên Lâm Chấn Nhạc về việc xử lý 'mầm mống ma đạo'. Mục tiêu là tạo ra sự chia rẽ trong nội bộ gia tộc giữa việc bảo vệ huyết thống và bảo vệ danh dự. Kết quả là Lâm Chấn Nhạc buộc phải ra lệnh phong tỏa thung lũng, gián tiếp cô lập Lâm Uyển.",
             "tension": 65,
-            "present_entity_ids": []
+            "present_entity_ids": [
+              "019f1840-cc8a-747a-a624-cdf143d2c7cd",
+              "019f1840-cc98-7440-8fb8-409ee7eda422",
+              "019f1840-cca0-7201-8867-8d14adf622d9"
+            ]
           },
           {
-            "title": "Sỉ Nhục Công Khai",
-            "synopsis": "Tiếp nối sự chú ý từ vòng sơ khảo, Lâm Uyển đối mặt trực tiếp với các trưởng lão và Lâm Tử Hàn trong vòng thi đấu chính thức. Các trưởng lão dùng uy áp của tu sĩ chính đạo để ép buộc nàng phải lộ diện linh căn, đồng thời buông lời mỉa mai về việc nàng là kẻ mang tạp chất ma đạo. Kết thúc bằng việc Lâm Uyển bị công khai sỉ nhục là 'phế vật mang mầm mống tà tu', đẩy nàng vào thế đối đầu trực diện với danh dự của Lâm gia.",
-            "tension": 90,
-            "present_entity_ids": []
+            "title": "Sự phẫn nộ của Chính thất",
+            "synopsis": "Sau khi biết tin về ma khí, Tô Yến xuất hiện tại hiện trường với sự kinh hãi và khinh miệt tột độ. Nàng tìm cách dùng uy nghiêm của mẫu thân để ép Lâm Uyển tự phế tu vi hoặc chịu tội, nhằm cứu vãn thanh danh Lâm gia trước khi các thế lực bên ngoài phát hiện. Kết quả là sự đối đầu trực diện giữa tình mẫu tử đã mất và sự tàn khốc của quy tắc gia tộc.",
+            "tension": 80,
+            "present_entity_ids": [
+              "019f1840-cc8a-747a-a624-cdf143d2c7cd",
+              "019f1840-cc9c-746e-b8d4-5b5bfe1f74c9",
+              "019f1840-cc98-7440-8fb8-409ee7eda422"
+            ]
+          },
+          {
+            "title": "Lựa chọn của Ma đạo",
+            "synopsis": "Dưới áp lực tấn công từ Tô Yến và sự ngăn cản của các trưởng lão, Lâm Uyển đứng trước ranh giới giữa việc phục tùng để giữ lại chút nhân tính cuối cùng hoặc chấp nhận trở thành ma tu hoàn toàn. Nàng nhận ra sự bảo hộ của gia tộc chỉ là xiềng xích. Kết quả là Lâm Uyển chính thức cắt đứt mọi sự liên hệ, dùng ma khí bùng nổ để đẩy lùi sự ngăn cản của Tô Yến, chính thức bước vào con đường ma tu không lối thoát.",
+            "tension": 95,
+            "present_entity_ids": [
+              "019f1840-cc8a-747a-a624-cdf143d2c7cd",
+              "019f1840-cc9c-746e-b8d4-5b5bfe1f74c9",
+              "019f1840-cc98-7440-8fb8-409ee7eda422",
+              "019f1840-cca0-7201-8867-8d14adf622d9"
+            ]
           }
         ]
       },
       {
         "chapter_id": "019f1783-ec5b-7406-a9ed-8baae662ce89",
         "title": "Chương 8",
-        "intent": "Một âm mưu từ người thân trong tộc khiến Lâm Uyển bị trúng độc, suýt chút nữa làm lộ bí mật ma công.",
+        "intent": "Lâm Uyển bị rơi vào một cạm bẫy của gia tộc, suýt chút nữa bị tước đoạt tu vi.",
         "beat_role": "setback",
         "scenes": [
           {
-            "title": "Yến tiệc của sự giả tạo",
-            "synopsis": "Tiếp nối sự căng thẳng từ việc Lâm Uyển trở thành mục tiêu bị săn đuổi, nàng bí mật trở lại Lâm gia dưới danh nghĩa một tu sĩ ẩn danh để thu thập thông tin về tài nguyên. Mục tiêu là tiếp cận buổi yến tiệc mừng công của Lâm Tử Hàn, nhưng nàng bị rơi vào tầm ngắm của các trưởng lão do sự biến động ma khí trước đó. Kết quả là nàng nhận ra sự hiện diện của một loại dược hương lạ trong không khí, báo hiệu một cái bẫy đã được giăng sẵn.",
-            "tension": 40,
-            "present_entity_ids": []
+            "title": "Linh Trận Vây Hãm",
+            "synopsis": "Tiếp nối sự kiện Lâm Uyển vừa đoạn tuyệt tâm lý với gia tộc, nàng đang tìm cách rời khỏi vùng ngoại vi Lâm gia. Tuy nhiên, sự rò rỉ ma khí quá lớn đã kích hoạt trận pháp hộ tông được thiết lập sẵn, khiến nàng bị vây khốn trong một không gian giam cầm linh lực. Mục tiêu là thiết lập sự bế tắc về không gian và áp lực từ sự truy đuổi của gia tộc.",
+            "tension": 65,
+            "present_entity_ids": [
+              "019f1840-cc8a-747a-a624-cdf143d2c7cd",
+              "019f1840-cca0-7201-8867-8d14adf622d9"
+            ]
           },
           {
-            "title": "Bẫy rập trong bóng tối",
-            "synopsis": "Sau khi rời khỏi đại sảnh, Lâm Uyển bị một nhóm hộ vệ bí mật vây hãm tại hậu viên khi đang cố gắng thu thập linh dược. Sự việc bắt nguồn từ việc Lâm Tử Hàn đã âm thầm dùng lệnh bài gia tộc để điều động lực lượng truy quét 'nguồn sức mạnh lạ'. Kết quả là Lâm Uyển bị trúng phải 'Tịch Linh Tán' – một loại độc dược chuyên dụng để phong tỏa tu vi, khiến ma khí trong cơ thể nàng bắt đầu xung đột dữ dội với kinh mạch.",
-            "tension": 70,
-            "present_entity_ids": []
+            "title": "Áp Chế Của Thiên Kiêu",
+            "synopsis": "Từ trong trận pháp, Lâm Tử Hàn xuất hiện với tư cách là người thực thi mệnh lệnh của gia tộc để 'trấn áp ma khí'. Hắn sử dụng Trúc Cơ Đan vừa nhận được để thi triển cấm thuật, nhằm cưỡng ép ép buộc ma mạch của Lâm Uyển phải tạm thời đình trệ. Kết quả là Lâm Uyển bị chấn động thần thức, khiến ma mạch suýt bị phá vỡ.",
+            "tension": 80,
+            "present_entity_ids": [
+              "019f1840-cc8a-747a-a624-cdf143d2c7cd",
+              "019f1840-cca0-7201-8867-8d14adf622d9"
+            ]
           },
           {
-            "title": "Sự phản bội của huyết mạch",
-            "synopsis": "Trong cơn đau đớn do độc tính phát tác, Lâm Uyển phát hiện ra kẻ chủ mưu đứng sau không phải là trưởng lão mà là một người thân cận mà nàng từng tin tưởng (hoặc một người có quan hệ máu mủ gián tiếp). Mục tiêu của kẻ này là dùng nàng làm vật thí nghiệm để tìm ra nguồn gốc ma khí. Kết quả là Lâm Uyển buộc phải cưỡng ép vận hành Cửu U Ma Công để trấn áp độc tố, suýt chút nữa khiến ma khí bùng phát làm lộ hoàn toàn thân phận thực sự trước sự chứng kiến của kẻ thủ ác.",
+            "title": "Cạm Bẫy Tước Đoạt",
+            "synopsis": "Khi Lâm Uyển đang ở trạng thái yếu nhất sau đòn tấn công của Lâm Tử Hàn, Tô Yến xuất hiện cùng các trưởng lão, không phải để ngăn cản mà để kích hoạt 'Tâm Ma Trận' nhằm hút cạn ma khí trong cơ thể nàng để bảo vệ danh dự Lâm gia. Lâm Uyển nhận ra sự tàn nhẫn của mẫu thân khi bà sẵn sàng hy sinh tu vi của con gái để che đậy sự thật về ma đạo. Kết thúc cảnh, Lâm Uyển bị tước đoạt một phần tu vi vừa mới tu luyện được, rơi vào tình trạng cận kề cái chết.",
             "tension": 95,
-            "present_entity_ids": []
+            "present_entity_ids": [
+              "019f1840-cc8a-747a-a624-cdf143d2c7cd",
+              "019f1840-cc9c-746e-b8d4-5b5bfe1f74c9",
+              "019f1840-cc98-7440-8fb8-409ee7eda422"
+            ]
           }
         ]
       },
       {
         "chapter_id": "019f1783-ec6c-7dfe-aa99-71ef40dfd121",
         "title": "Chương 9",
-        "intent": "Lâm Uyển bị Thanh Vân Tông trục xuất hoặc gây khó dễ, khiến nàng rơi vào tình cảnh bị cả chính đạo vây hãm.",
+        "intent": "Sự phản bội của người thân khiến Lâm Uyển nhận ra con đường ma đạo là con đường cô độc.",
         "beat_role": "setback",
         "scenes": [
           {
-            "title": "Thanh Vân Tông Giám Sát",
-            "synopsis": "Tiếp nối từ sự biến động ma khí tại biên giới Lâm gia, Lâm Uyển tìm cách thâm nhập vào một đợt tuyển chọn của Thanh Vân Tông để tìm kiếm dược liệu. Mục tiêu của nàng là che giấu ma khí dưới lớp vỏ linh khí giả tạo, nhưng sự hiện diện của nàng đã vô tình kích hoạt các trận pháp dò tìm của tông môn. Kết quả là nàng bị một trưởng lão của Thanh Vân Tông chú ý vì sự bất thường trong khí tức.",
-            "tension": 45,
-            "present_entity_ids": []
-          },
-          {
-            "title": "Bẫy Linh Áp",
-            "synopsis": "Ngay sau khi bị chú ý, Lâm Uyển bị một nhóm đệ tử Thanh Vân Tông vây quanh dưới danh nghĩa kiểm tra tư chất. Sự xung đột nổ ra khi nàng từ chối tiết lộ nguồn gốc sức mạnh, dẫn đến việc bị các đệ tử dùng Linh Áp ép buộc phải bộc lộ tu vi. Kết quả là Lâm Uyển buộc phải tiêu hao một lượng lớn ma khí để giả lập linh khí, khiến nàng bị lộ ra một vết nứt nhỏ trong sự hoàn hảo của công pháp Cửu U.",
-            "tension": 65,
-            "present_entity_ids": []
-          },
-          {
-            "title": "Công Lý Chính Đạo",
-            "synopsis": "Từ vết nứt khí tức vừa lộ ra, một vị Trưởng lão Thanh Vân Tông xuất hiện và trực tiếp chất vấn Lâm Uyển về sự tạp loạn trong linh lực. Cuộc đối đầu lên đến đỉnh điểm khi vị Trưởng lão dùng uy áp của tu vi cao thâm để ép nàng phải thừa nhận việc tu luyện tà thuật. Kết quả là Lâm Uyển bị kết tội 'tâm thuật bất chính', bị tước bỏ tư cách tham gia tuyển chọn và bị trục xuất khỏi phạm vi kiểm soát của tông môn, chính thức bị liệt vào danh sách đen của chính đạo.",
+            "title": "Huyết Lệ Phụ Mẫu",
+            "synopsis": "Tiếp nối từ việc Lâm Tử Hàn tấn công, Lâm Uyển cố gắng dùng ma khí để phòng thủ nhưng bị cạm bẫy linh lực của gia tộc kích hoạt khiến ma mạch bị chấn động. Mục tiêu là cho thấy sự tàn nhẫn của huyết thống khi Tô Yến trực tiếp dùng cấm thuật phong ấn để hỗ trợ con trai tiêu diệt nàng. Kết quả là Lâm Uyển bị đẩy vào đường cùng, nhận ra tình thân chỉ là vật cản cho danh dự gia tộc.",
             "tension": 85,
-            "present_entity_ids": []
+            "present_entity_ids": [
+              "019f1840-cc8a-747a-a624-cdf143d2c7cd",
+              "019f1840-cc9c-746e-b8d4-5b5bfe1f74c9",
+              "019f1840-cca0-7201-8867-8d14adf622d9"
+            ]
+          },
+          {
+            "title": "Độc Hành Ma Đạo",
+            "synopsis": "Sau khi bị đánh trọng thương và mất đi một phần tu vi do cạm bẫy, Lâm Uyển tháo chạy vào vùng cấm địa ngoại vi đầy ma khí. Nàng phải đấu tranh giữa việc dùng tàn lực cuối cùng để chống trả hay chấp nhận sự cô độc để bảo toàn mạng sống. Kết quả là nàng quyết định từ bỏ mọi hy vọng về sự cứu rỗi từ chính đạo, chấp nhận sự dẫn dắt của Cửu U Ma Cơ để bước vào con đường đơn độc.",
+            "tension": 70,
+            "present_entity_ids": [
+              "019f1840-cc8a-747a-a624-cdf143d2c7cd",
+              "019f1840-cca4-7437-8e37-e49de8655eb4"
+            ]
+          },
+          {
+            "title": "Tuyệt Đối Cô Độc",
+            "synopsis": "Đứng giữa ranh giới sinh tử tại vách đá vực thẳm, Lâm Uyển nhìn lại phía sau nơi ánh sáng của Lâm gia đang dần lùi xa, chỉ còn lại bóng tối của ma khí bao trùm. Nàng nhận ra rằng từ nay về sau, không còn ai có thể hiểu hay đồng hành cùng nàng ngoài bóng ma của chính mình. Kết thúc bằng việc nàng chính thức bước vào bóng tối, hoàn toàn tách biệt khỏi thế giới tu tiên.",
+            "tension": 60,
+            "present_entity_ids": [
+              "019f1840-cc8a-747a-a624-cdf143d2c7cd",
+              "019f1840-cca4-7437-8e37-e49de8655eb4"
+            ]
           }
         ]
       },
       {
         "chapter_id": "019f1783-ec7d-7f5e-85ed-1c42c52fb9f0",
         "title": "Chương 10",
-        "intent": "Lâm Uyển bộc phát ma uy, một mình đối đầu với các cường giả để đòi lại công bằng cho bản thân.",
+        "intent": "Lâm Uyển đại náo Lâm gia, dùng ma công hoàn chỉnh để vả mặt những kẻ từng khinh miệt mình.",
         "beat_role": "climax",
         "scenes": [
           {
-            "title": "Ma Khí Bộc Phát",
-            "synopsis": "Tiếp nối sự khó khăn trong việc che giấu ma khí, Lâm Uyển bị dồn vào thế bí khi các trận pháp của Thanh Vân Tông quét qua khu vực ẩn náu. Nàng buộc phải quyết định giữa việc tiếp tục lẩn trốn trong nhục nhã hoặc bộc phát toàn bộ tu vi để phá vỡ vòng vây. Kết quả là nàng quyết định giải phóng ma uy, chính thức công khai sự hiện diện của một Ma tu cấp cao.",
+            "title": "Ma Khí Đột Phá",
+            "synopsis": "Tiếp nối trạng thái 'Ma tâm bất biến' sau khi bị tước đoạt tu vi, Lâm Uyển sử dụng tàn dư ma khí cuối cùng để cưỡng ép đột phá cảnh giới mới ngay tại ranh giới phong tỏa. Nàng phải chống chọi với sự phản phệ của ma mạch trong khi các hộ vệ Lâm gia đang áp sát. Kết quả là nàng không chỉ khôi phục tu vi mà còn đạt đến một tầng thứ ma công hoàn chỉnh hơn, chuẩn bị cho cuộc đối đầu.",
             "tension": 75,
-            "present_entity_ids": []
+            "present_entity_ids": [
+              "019f1840-cc8a-747a-a624-cdf143d2c7cd",
+              "019f1840-cca4-7437-8e37-e49de8655eb4"
+            ]
           },
           {
-            "title": "Thanh Vân Áp Chế",
-            "synopsis": "Ngay sau khi ma khí bộc phát, các cường giả của Thanh Vân Tông ập đến hiện hình từ trong trận pháp. Mục tiêu của chúng là trấn áp và bắt giữ 'ma đầu' để lấy công chuộc tội, tạo ra sự xung đột trực diện giữa lý tưởng chính đạo và sự sinh tồn của Lâm Uyển. Kết quả là Lâm Uyển bị bao vây bởi nhiều tầng áp lực từ các đạo sĩ cấp cao.",
+            "title": "Phá Vỡ Phong Ấn",
+            "synopsis": "Sau khi đột phá, Lâm Uyển dùng sức mạnh mới phá tan trận pháp phong tỏa của Lâm gia, trực tiếp xông thẳng vào đại điện. Nàng đối mặt với sự ngăn cản của các trưởng lão, dùng uy áp của Ma đạo khiến họ kinh hãi. Kết quả là sự hiện diện của nàng khiến toàn bộ Lâm gia chấn động, sự thật về Ma tu không còn là tin đồn mà là nỗi kinh hoàng hiện hữu.",
             "tension": 85,
-            "present_entity_ids": []
+            "present_entity_ids": [
+              "019f1840-cc8a-747a-a624-cdf143d2c7cd",
+              "019f1840-cc98-7440-8fb8-409ee7eda422",
+              "019f1840-cc9c-746e-b8d4-5b5bfe1f74c9"
+            ]
           },
           {
-            "title": "Nghịch Chuyển Càn Khôn",
-            "synopsis": "Trong lúc bị dồn vào đường cùng, Lâm Uyển sử dụng Ma Đan đã luyện thành để nuốt chửng chính áp lực từ trận pháp của đối phương. Nàng biến sức mạnh của chính đạo thành chất xúc tác để đẩy mạnh quá trình ma hóa cơ thể lên tầm cao mới, khiến các cường giả kinh hãi. Kết quả là nàng không những không bị áp chế mà còn tạo ra một vùng cấm địa ma khí, thách thức trực diện các quy tắc tu tiên.",
+            "title": "Huyết Tế Đại Điện",
+            "synopsis": "Tại đại điện, Lâm Uyển đối đầu trực diện với Tô Yến và Lâm Tử Hàn. Nàng không còn dùng chiêu thức thông thường mà sử dụng ma công Cửu U để áp chế hoàn toàn thiên kiêu Lâm gia, khiến Lâm Tử Hàn phải dùng đến cấm thuật mới có thể chống đỡ. Kết quả là Lâm Uyển đánh bại sự kiêu ngạo của huynh trưởng, để lại một vết sẹo tâm lý không thể xóa nhòa cho thiên tài Lâm gia.",
             "tension": 95,
-            "present_entity_ids": []
+            "present_entity_ids": [
+              "019f1840-cc8a-747a-a624-cdf143d2c7cd",
+              "019f1840-cca0-7201-8867-8d14adf622d9",
+              "019f1840-cc9c-746e-b8d4-5b5bfe1f74c9",
+              "019f1840-cc98-7440-8fb8-409ee7eda422"
+            ]
           },
           {
-            "title": "Độc Hành Ma Đạo",
-            "synopsis": "Sau khi quét sạch các đệ tử cấp thấp, Lâm Uyển đứng giữa trung tâm của sự hỗn loạn, đối mặt với ánh mắt kinh hoàng của các trưởng lão Thanh Vân Tông. Nàng tuyên bố sự tồn tại của mình không còn là kẻ trốn chạy mà là kẻ thách thức trật tự cũ. Kết thúc cảnh quay, nàng bước đi trong sự kinh hãi của thế gian, chính thức bắt đầu hành trình đòi lại nợ máu.",
+            "title": "Đoạn Tuyệt Vĩnh Viễn",
+            "synopsis": "Trong đỉnh điểm của trận chiến, Lâm Uyển đối mặt với Lâm Chấn Nhạc để đưa ra lựa chọn cuối cùng: hoặc là gia tộc, hoặc là con đường Ma đạo. Nàng dùng ma công quét sạch sảnh chính, phá hủy linh đài của những kẻ dám ngăn cản mình, chính thức tuyên bố đoạn tuyệt với Lâm gia. Kết quả là Lâm Uyển rời đi trong sự kinh hoàng của gia tộc, để lại một Lâm gia tan hoang và một danh hiệu Ma nữ mới bắt đầu lan truyền.",
             "tension": 100,
-            "present_entity_ids": []
+            "present_entity_ids": [
+              "019f1840-cc8a-747a-a624-cdf143d2c7cd",
+              "019f1840-cc98-7440-8fb8-409ee7eda422",
+              "019f1840-cc9c-746e-b8d4-5b5bfe1f74c9",
+              "019f1840-cca0-7201-8867-8d14adf622d9"
+            ]
           }
         ]
       },
       {
         "chapter_id": "019f1783-ec8f-7d80-ad2b-370cc6f2ae61",
         "title": "Chương 11",
-        "intent": "Sự thật về sức mạnh của Cửu U Ma Cơ được hé lộ, Lâm Uyển hoàn toàn lột xác thành ma tu đáng sợ.",
+        "intent": "Nàng chính thức thoát ly khỏi sự kìm kẹp của Lâm gia, khẳng định vị thế của một ma tu.",
         "beat_role": "climax",
         "scenes": [
           {
-            "title": "Huyết Nguyệt Thôn Phệ",
-            "synopsis": "Tiếp nối từ sự biến động ma khí tại biên giới, Lâm Uyển đối mặt với sự bao vây của các tu sĩ Thanh Vân Tông. Nàng phải sử dụng Ma công Cửu U để nuốt chửng một đợt tấn công bằng linh lực cực mạnh, từ đó nhận ra bản chất thực sự của sức mạnh này là sự đồng hóa hoàn toàn linh khí đối phương thành ma khí thuần khiết. Kết quả là nàng không chỉ sống sót mà còn đột phá cảnh giới, khiến ma khí bùng phát mạnh mẽ hơn.",
+            "title": "Huyết Tế Lâm Gia",
+            "synopsis": "Tiếp nối từ sự hỗn loạn tại đại điện, Lâm Uyển sử dụng tàn dư ma khí để cưỡng ép bộc phát tu vi, phá vỡ trận pháp phong tỏa của gia tộc. Nàng đối mặt với sự ngăn cản cuối cùng của Tô Yến bằng một ánh mắt vô cảm, khiến Tô Yến hoàn toàn sụp đổ. Kết quả là Lâm Uyển phá tan vòng vây, để lại một Lâm gia tan hoang và đầy rẫy sự kinh hoàng.",
             "tension": 85,
-            "present_entity_ids": []
+            "present_entity_ids": [
+              "019f1840-cc8a-747a-a624-cdf143d2c7cd",
+              "019f1840-cc98-7440-8fb8-409ee7eda422",
+              "019f1840-cc9c-746e-b8d4-5b5bfe1f74c9",
+              "019f1840-cca0-7201-8867-8d14adf622d9"
+            ]
           },
           {
-            "title": "Di Sản Của Ma Nữ",
-            "synopsis": "Sau khi nuốt chửng linh lực, cơ thể Lâm Uyển chịu sự phản phệ dữ dội từ Ma công. Trong cơn mê sảng giữa dòng chảy ma khí, nàng tiếp cận được tàn niệm của Cửu U Ma Cơ trong cổ thư, người tiết lộ rằng sức mạnh này không chỉ là tu luyện mà là quá trình tái cấu trúc linh hồn để trở thành vật chứa cho Ma thần. Kết quả là Lâm Uyển không còn bị tâm ma chi phối mà bắt đầu kiểm soát được sự biến đổi của linh hồn.",
-            "tension": 70,
-            "present_entity_ids": []
-          },
-          {
-            "title": "Lột Xác Trong Hắc Ám",
-            "synopsis": "Dưới sự dẫn dắt của tàn niệm Ma Cơ, Lâm Uyển thực hiện quá trình lột xác cuối cùng ngay tại chiến trường. Nàng phá bỏ hoàn toàn các kinh mạch cũ vốn bị coi là phế vật, thay thế bằng Ma mạch của Cửu U, khiến diện mạo và khí chất thay đổi hoàn toàn từ một phế vật xấu xí thành một Ma nữ mang vẻ đẹp đầy tà mị và áp chế. Kết thúc cảnh, nàng đứng dậy giữa đống đổ nát, hoàn toàn trở thành một Ma tu thực thụ với sức mạnh kinh thiên.",
+            "title": "Thần Thức Ma Ảnh",
+            "synopsis": "Sau khi thoát khỏi đại điện, Lâm Uyển bị sự truy kích của các trưởng lão chặn lại, buộc nàng phải triệu hồi một phần ý chí của Cửu U Ma Cơ. Sự hiện diện của Ma ảnh khiến không gian xung quanh vặn xoắn, khiến những kẻ truy đuổi phải kinh hãi lùi bước. Kết quả là danh tiếng 'Ma nữ tái thế' được khắc sâu vào tâm khảm những người sống sót tại Lâm gia.",
             "tension": 95,
-            "present_entity_ids": []
+            "present_entity_ids": [
+              "019f1840-cc8a-747a-a624-cdf143d2c7cd",
+              "019f1840-cca4-7437-8e37-e49de8655eb4",
+              "019f1840-cc98-7440-8fb8-409ee7eda422"
+            ]
+          },
+          {
+            "title": "Độc Hành Vô Tận",
+            "synopsis": "Rời khỏi lãnh địa Lâm gia khi bình minh vừa hé rạng, Lâm Uyển đứng trên đỉnh núi cao, nhìn lại sự sụp đổ của quá khứ. Nàng nhận ra sự cô độc là con đường duy nhất để tiến tới đỉnh phong, đồng thời cảm nhận được sự trỗi dậy mạnh mẽ hơn của ma mạch trong cơ thể. Kết quả là nàng chính thức bước vào hành trình lang thang của một Ma tu, không còn là con gái của bất kỳ ai.",
+            "tension": 40,
+            "present_entity_ids": [
+              "019f1840-cc8a-747a-a624-cdf143d2c7cd"
+            ]
           }
         ]
       },
       {
         "chapter_id": "019f1783-eca0-7bc9-ae29-d2cefc452a37",
         "title": "Chương 12",
-        "intent": "Lâm Uyển rời khỏi Lâm gia, bước vào hành trình chinh phục thế giới tu tiên rộng lớn hơn.",
+        "intent": "Lâm Uyển bước vào thế giới rộng lớn hơn, đối mặt với sự khinh miệt từ Thanh Vân Tông.",
         "beat_role": "resolution",
         "scenes": [
           {
-            "title": "Độc Hành Qua Vùng Cấm Địa",
-            "synopsis": "Tiếp nối từ sự kiện Lâm Uyển vừa hoàn tất lột xác linh hồn, nàng phải vượt qua ranh giới của Lâm gia để tiến vào vùng biên viễn. Mục tiêu là sử dụng Ma mạch để hấp thụ tàn dư ma khí nhằm che giấu sự hiện diện trước các cao thủ đang rình rập. Kết quả là nàng thoát khỏi sự phong tỏa của các trận pháp hộ tộc nhưng nhận ra mình đã trở thành mục tiêu bị săn đuổi toàn cầu.",
-            "tension": 45,
-            "present_entity_ids": []
+            "title": "Huyết Lệ Tế Đàn",
+            "synopsis": "Tiếp nối sự kiện Lâm Uyển vừa cắt đứt huyết thống, nàng phải đối mặt với sự truy sát cuối cùng của Lâm gia trong nỗ lực tuyệt vọng nhằm thu hồi ma khí. Lâm Uyển sử dụng tàn dư ma công để trấn áp sự truy đuổi, từ đó khẳng định sự tách biệt hoàn toàn với quá khứ. Kết quả là nàng thoát khỏi sự bao vây của Lâm gia nhưng bị thương tổn linh căn nghiêm trọng.",
+            "tension": 75,
+            "present_entity_ids": [
+              "019f1840-cc8a-747a-a624-cdf143d2c7cd",
+              "019f1840-cc98-7440-8fb8-409ee7eda422",
+              "019f1840-cc9c-746e-b8d4-5b5bfe1f74c9"
+            ]
           },
           {
-            "title": "Cuộc Chạm Trán Tại Khởi Nguyên Lộ",
-            "synopsis": "Sau khi thoát khỏi ranh giới, Lâm Uyển tiến vào con đường giao thương chính đạo tại Khởi Nguyên Lộ. Nàng đối mặt với một nhóm tu sĩ Thanh Vân Tông đang kiểm tra linh áp; mục tiêu là dùng kỹ năng ngụy trang linh khí để vượt qua mà không bị phát hiện Ma mạch. Kết quả là nàng suýt bị lộ do sự biến động của tàn niệm Cửu U Ma Cơ, buộc nàng phải bỏ lại một phần linh lực để đánh lạc hướng.",
-            "tension": 70,
-            "present_entity_ids": []
+            "title": "Linh Khí Hỗn Loạn",
+            "synopsis": "Sau khi thoát khỏi Lâm gia, Lâm Uyển di chuyển đến bìa rừng nơi có linh khí đậm đặc để chữa trị, nhưng sự biến đổi ma khí trong cơ thể nàng đã vô tình phát ra tín hiệu thu hút các tu sĩ chính đạo. Sự xuất hiện của các tu sĩ Thanh Vân Tông tạo ra xung đột giữa việc che giấu thân phận và việc cần tìm nơi ẩn náu. Kết quả là nàng nhận ra rằng sự tồn tại của mình giờ đây là mục tiêu của cả chính và tà.",
+            "tension": 55,
+            "present_entity_ids": [
+              "019f1840-cc8a-747a-a624-cdf143d2c7cd"
+            ]
           },
           {
-            "title": "Bản Đồ Ma Giới Và Lời Triệu Hồi",
-            "synopsis": "Sau khi vượt qua trạm kiểm soát, Lâm Uyển tìm đến một tử quán hẻo lánh để nghỉ ngơi và tiêu hóa linh lực vừa thu thập. Nàng sử dụng tàn niệm của Cửu U Ma Cơ để truy tìm manh mối về mảnh vỡ Ma giới đầu tiên. Kết quả là nàng tìm thấy một bản đồ cổ ẩn giấu trong một mảnh vỡ linh hồn, xác định điểm đến tiếp theo là một di tích cấm địa của Chính đạo.",
-            "tension": 30,
-            "present_entity_ids": []
+            "title": "Thanh Vân Áp Chế",
+            "synopsis": "Lâm Uyển cố gắng tiếp cận một trấn nhỏ để tìm hiểu về tình hình thế giới, nhưng bị một nhóm đệ tử Thanh Vân Tông chặn lại vì nghi ngờ khí tức ma đạo. Cuộc đối đầu không dẫn đến tử chiến nhưng sự khinh miệt và ánh mắt phán xét của họ đã khắc sâu sự thù địch giữa nàng và giới tu tiên chính đạo. Kết quả là Lâm Uyển chính thức bị đưa vào danh sách 'Ma tu cần tiêu diệt' của Thanh Vân Tông.",
+            "tension": 65,
+            "present_entity_ids": [
+              "019f1840-cc8a-747a-a624-cdf143d2c7cd",
+              "019f1840-ccb9-71f8-a3c2-324c375ec4a5"
+            ]
+          },
+          {
+            "title": "Ma Ảnh Trầm Luân",
+            "synopsis": "Trong lúc trốn chạy khỏi sự truy quét của Thanh Vân Tông, ý chí của Cửu U Ma Cơ trỗi dậy mạnh mẽ hơn để giúp nàng vượt qua hiểm cảnh. Sự can thiệp này khiến Lâm Uyển nhận ra cái giá của sức mạnh là sự tha hóa không thể vãn hồi của linh hồn. Kết quả là nàng bước vào một vùng cấm địa để bắt đầu hành trình tu luyện mới nhằm đối đầu với sự truy sát quy mô lớn.",
+            "tension": 85,
+            "present_entity_ids": [
+              "019f1840-cc8a-747a-a624-cdf143d2c7cd",
+              "019f1840-cca4-7437-8e37-e49de8655eb4"
+            ]
           }
         ]
       }
     ],
     "replace": true,
-    "idempotency_key": "f871ed2f-34f2-479c-8606-473f23d043b2"
+    "idempotency_key": "4b9ec5a7-edeb-4c9c-90a4-bb5d2e4efde9"
   },
   "response": {
-    "arc_id": "019f17b3-f275-79a1-99a6-22ded7b0edff",
+    "arc_id": "019f1843-520e-7dac-8f37-e9d9f5a0dd41",
     "chapter_ids": [
-      "019f17b3-f276-7736-a160-a77e96e1c5eb",
-      "019f17b3-f279-72bb-b683-ce4efb118dbd",
-      "019f17b3-f27a-7b67-b338-32a5c1c3a228",
-      "019f17b3-f27b-7aa6-90c3-ac2a8bbd6573",
-      "019f17b3-f27c-7c6b-8498-ae75ad4f596e",
-      "019f17b3-f27d-7eff-a8a4-ba11df894ae7",
-      "019f17b3-f27f-76ac-b3ff-6d85f6b6d084",
-      "019f17b3-f280-7951-ac12-85f9a1c55606",
-      "019f17b3-f282-737c-8cc2-f3d31a8b0786",
-      "019f17b3-f283-7940-802d-36801c8b99ca",
-      "019f17b3-f285-728e-935d-da8fe663d577",
-      "019f17b3-f286-783e-ad07-6f673981d1f7"
+      "019f1843-520f-7a03-8afe-35d11a0e5acd",
+      "019f1843-5212-7bc8-8741-2ee19742635b",
+      "019f1843-5214-7769-af62-139255a8f156",
+      "019f1843-5215-7b43-a2a5-d5f83ee246d6",
+      "019f1843-5217-747d-be14-9890bfc9509d",
+      "019f1843-5218-78ac-9562-c94d1eb40451",
+      "019f1843-521a-7009-9edd-e1b3f64f4b60",
+      "019f1843-521b-73c9-9e97-3a21c1bdfd30",
+      "019f1843-521c-7a45-84ce-290dda24eccf",
+      "019f1843-521d-7c5f-9b78-c49370452e47",
+      "019f1843-521f-74ce-b4e3-916f9849603a",
+      "019f1843-5220-775b-b05b-255b87d39484"
     ],
     "scene_ids": [
-      "019f17b3-f277-73fa-b4ca-0751d3baf4c9",
-      "019f17b3-f277-7f29-99a6-8844844ce1de",
-      "019f17b3-f278-795b-85b3-2dfbfe1edac8",
-      "019f17b3-f279-79e9-a396-4a82a17e6a15",
-      "019f17b3-f27a-70d9-abf6-457525ded66a",
-      "019f17b3-f27a-763a-b53f-807da79cf027",
-      "019f17b3-f27b-7000-957e-5cc1438db6fd",
-      "019f17b3-f27b-75fd-aef8-d6b09146dc87",
-      "019f17b3-f27b-7efb-a2b4-f6ac03d134bf",
-      "019f17b3-f27c-73b7-9f82-6b64db8a6232",
-      "019f17b3-f27c-7808-896a-40ca29c982dc",
-      "019f17b3-f27d-70a4-aac3-9a4583f997fe",
-      "019f17b3-f27d-7557-ac50-4663cfd9284a",
-      "019f17b3-f27d-79f1-8d87-e941333553ca",
-      "019f17b3-f27e-73d2-a79e-e419ac8a2b8a",
-      "019f17b3-f27e-788d-9f9b-b67994f9d482",
-      "019f17b3-f27f-7011-b01f-f79fa0a00ec5",
-      "019f17b3-f27f-7b6c-b4a9-50c940188774",
-      "019f17b3-f280-7051-8217-562830daf777",
-      "019f17b3-f280-74eb-a1a9-3a70e97732b1",
-      "019f17b3-f280-7da8-8145-816ba2ad121b",
-      "019f17b3-f281-75a6-afd4-ff179445d0ee",
-      "019f17b3-f281-7c74-a6dc-0d2634b7e4d1",
-      "019f17b3-f282-78cf-acc7-17f8286c85d3",
-      "019f17b3-f282-7dde-8f67-5d500287ce94",
-      "019f17b3-f283-745e-abbc-7c2d72921ff8",
-      "019f17b3-f283-7dd3-bc64-ccc6e1092cd5",
-      "019f17b3-f284-72c1-ae73-1f902ee1689a",
-      "019f17b3-f284-774d-8006-2baaf34d43d6",
-      "019f17b3-f284-7d37-8f25-7b9a6e553d6f",
-      "019f17b3-f285-7717-8031-d65968205b65",
-      "019f17b3-f285-7bdb-b946-3e6babf91a3d",
-      "019f17b3-f286-7278-8af3-163e59ebc830",
-      "019f17b3-f286-7ce8-8221-451245187a9e",
-      "019f17b3-f287-7213-97c0-2db2752925a1",
-      "019f17b3-f287-782e-8e6f-31f18c89e437"
+      "019f1843-5210-758c-aae3-21b63838f3fb",
+      "019f1843-5211-708d-9288-c73971db7fef",
+      "019f1843-5211-7a40-b1c7-aa7f1cd6c11d",
+      "019f1843-5212-74b4-8b18-b6ccda977ebe",
+      "019f1843-5213-74b3-8b05-4231b7f4cbb5",
+      "019f1843-5213-7d29-bd3e-7407de5bb37f",
+      "019f1843-5214-72ad-94e3-24792209f19c",
+      "019f1843-5214-7be3-b359-e451689b896a",
+      "019f1843-5215-70ba-939c-a7f0ae91e9be",
+      "019f1843-5215-768f-9ac6-c761c9ab1c62",
+      "019f1843-5216-7090-8e63-19245c3f89d1",
+      "019f1843-5216-7787-b5f6-3d15fc40b69c",
+      "019f1843-5216-7dfd-ad5d-778d8ea3bfff",
+      "019f1843-5217-7a98-94d7-1134cdd95399",
+      "019f1843-5217-7f8b-b8bd-bca738a49852",
+      "019f1843-5218-7432-a9d8-5a8eada95984",
+      "019f1843-5218-7ef3-9719-aad2371b7f41",
+      "019f1843-5219-73eb-a4ef-6b8d1a74738e",
+      "019f1843-5219-7976-afbd-6d4ec4ef4ee7",
+      "019f1843-521a-762c-af5c-72c0c7a7e4a9",
+      "019f1843-521a-7abd-90ed-de6ddc1510ae",
+      "019f1843-521a-7f63-89c9-0c7ee38ca259",
+      "019f1843-521b-7814-b4ad-4a65fa40759c",
+      "019f1843-521b-7c8c-a197-70df56f26f79",
+      "019f1843-521c-75ad-877a-63a3fd6ecbf4",
+      "019f1843-521c-7e94-b08d-44edcae9308b",
+      "019f1843-521d-73c2-96fb-c1d5c6825783",
+      "019f1843-521d-781e-ab62-4d797d97522d",
+      "019f1843-521e-70a6-a1e1-1bd91f561478",
+      "019f1843-521e-75ef-853a-51b3785ffc8b",
+      "019f1843-521e-7ad2-86eb-5fcd26d88d14",
+      "019f1843-521f-7019-a579-4c4c2fd7de36",
+      "019f1843-521f-791f-b4e1-6736babc07d9",
+      "019f1843-521f-7e25-ac7c-47b640053424",
+      "019f1843-5220-72d7-b576-aebfdf1a39ec",
+      "019f1843-5220-7c62-8dda-577f40c7cc5c",
+      "019f1843-5221-7267-a1d5-29b37a446741",
+      "019f1843-5221-76e8-8e50-3d23bc6995d6",
+      "019f1843-5222-709a-ae80-71a5d04ab478"
     ],
     "motif_applications": 0,
     "replay": false

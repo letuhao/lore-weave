@@ -39,8 +39,14 @@ build new judges; we re-target existing ones from "post-prose verification" to "
   cast (Mộ Dung Tuyết foil, Hắc Sát/Tử Yên Nhi allies, Diệp Phàm rival) fill the exact gap the plan
   review found (anonymous new figures), with proper Hán-Việt names + role/archetype/traits/relationships.
   Fixed an intermittent truncation (cast JSON is verbose → `max_tokens` 2000→4000 + a salvage-truncated-
-  array parse). **Remaining for Stage 0:** seed the (PO-approved) cast into the glossary, then re-decompose
-  to confirm `present_entity_ids` populate.
+  array parse).
+- **STATUS — Stage 0 CLOSED end-to-end 2026-06-30.** Added `GlossaryClient.seed_entities` (bulk
+  write-through via `/internal/.../extract-entities`; needs the book ontology adopted first —
+  `GLOSS_BOOK_NOT_SCAFFOLDED` otherwise). Seeded the 10-cast into the POC book's glossary (all created),
+  then re-ran the threaded decompose: **39/39 scenes now carry `present_entity_ids`** (CH1 S1 = Lâm Uyển
+  + parents + brother; CH1 S4 = Lâm Uyển + Cửu U Ma Cơ) — the grounding loop is proven: propose_cast →
+  seed → roster → scene presence. Bonus: CH1 spread to 4 scenes (less telescoped). ⇒ grounded drafting
+  (the packer pulls present entities' KG state) is unblocked.
 
 ### Stage 1 — Motif selection  *(make the theme explicit)*
 - **Reuse:** `composition_motif_search` / `MotifRetriever` / `motif_select` (all built, W2).

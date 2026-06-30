@@ -9,9 +9,9 @@
     "password": "Claude@Test2026"
   },
   "response": {
-    "access_token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzaWQiOiI5YzRhMzVjYS05MmY4LTQ2ZmQtOGQ0Ni0xZDRjOWZlYmZjMjYiLCJzdWIiOiIwMTlkNWUzYy03Y2M1LTdlNmEtOGIyNy0xMzQ0ZTE0OGJmN2MiLCJleHAiOjE3ODI4MjA3MDIsImlhdCI6MTc4MjgxMzUwMn0.qyGUBR1rjMD3dMgdMs7X8GwAm8F90jDaViYs2Avoctk",
+    "access_token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzaWQiOiJiZWM2Mjc2Ny02MDM2LTQzOTItODMyYS1hMThiNTJlY2Y0YTciLCJzdWIiOiIwMTlkNWUzYy03Y2M1LTdlNmEtOGIyNy0xMzQ0ZTE0OGJmN2MiLCJleHAiOjE3ODI4MjU1OTcsImlhdCI6MTc4MjgxODM5N30.qb1N0nCjPGz3e_W7mvz9TndCTvFY4BaXcX2Z6EwdlTk",
     "expires_in_seconds": 7200,
-    "refresh_token": "eTzqgN3lRZjfqgUURxINOMjRPI5wN3VJIbwwiijS78o",
+    "refresh_token": "onzzHBLuHNPDGzhwQMhG1213znRn1MKrJ5QHwBNM1JU",
     "user_profile": {
       "display_name": "Claude Test",
       "email": "claude-test@loreweave.dev",

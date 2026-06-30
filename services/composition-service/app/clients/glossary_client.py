@@ -96,6 +96,36 @@ class GlossaryClient:
             return None
 
 
+    async def seed_entities(
+        self, book_id: UUID, *, source_language: str, entities: list[dict[str, Any]],
+    ) -> list[dict[str, Any]]:
+        """Bulk create/upsert glossary entities via the canonical write-through
+        (`extract-entities`, the same path extraction uses). `entities` =
+        [{kind_code, name, attributes?, evidence?}]. An unknown kind is PARKED (the
+        entity is still created), so a planning-time cast seed always lands. Returns the
+        created entities (each with `entity_id`), or [] on failure."""
+        if not entities:
+            return []
+        url = f"{self._base_url}/internal/books/{book_id}/extract-entities"
+        payload = {
+            "source_language": source_language,
+            "default_tags": ["ai-suggested"],
+            "entities": [
+                {"kind_code": e.get("kind_code") or "character", "name": e["name"]}
+                for e in entities if e.get("name")
+            ],
+        }
+        try:
+            resp = await self._http.post(url, json=payload, headers=self._headers())
+            if resp.status_code != 200:
+                logger.warning("glossary seed-entities → %d", resp.status_code)
+                return []
+            return resp.json().get("entities", [])
+        except (httpx.HTTPError, ValueError, AttributeError) as exc:
+            logger.warning("glossary seed-entities unavailable: %s", exc)
+            return []
+
+
 def init_glossary_client() -> GlossaryClient:
     global _client
     if _client is None:

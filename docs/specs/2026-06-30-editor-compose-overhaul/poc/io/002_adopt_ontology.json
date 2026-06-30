@@ -2,7 +2,7 @@
   "seq": 2,
   "name": "adopt_ontology",
   "method": "POST",
-  "url": "http://localhost:3123/v1/glossary/books/019f173a-dfb8-768e-a5e9-89c90ad9bed1/adopt",
+  "url": "http://localhost:3123/v1/glossary/books/019f1783-ebb4-78de-ac9d-0dfba6539b7c/adopt",
   "status": 200,
   "request": {
     "genres": [
@@ -24,10 +24,10 @@
     ]
   },
   "response": {
-    "book_id": "019f173a-dfb8-768e-a5e9-89c90ad9bed1",
+    "book_id": "019f1783-ebb4-78de-ac9d-0dfba6539b7c",
     "genres": [
       {
-        "genre_id": "40fc151b-8dda-4206-b7ec-8cc712ad21fb",
+        "genre_id": "845833e7-6bec-4813-a041-77eafaa93949",
         "code": "universal",
         "name": "Universal",
         "icon": "🌐",
@@ -37,7 +37,7 @@
         "source_ref": "system:300ac6cc-080d-4b5c-8e1a-92f4e229d6dc"
       },
       {
-        "genre_id": "10832b86-2bca-41ea-94dd-95f1b5d926b7",
+        "genre_id": "e6fb1525-1742-4961-a4c7-94cf07c265a6",
         "code": "xianxia",
         "name": "Xianxia",
         "icon": "⚔️",
@@ -49,7 +49,7 @@
     ],
     "kinds": [
       {
-        "book_kind_id": "509c950f-4fa7-4cd7-ae57-7d9a88379638",
+        "book_kind_id": "fd3ad22d-1f88-473a-8418-f3beb33a812d",
         "code": "character",
         "name": "Character",
         "icon": "👤",
@@ -59,7 +59,7 @@
         "source_ref": "user:be6a4590-1a5e-4616-8c9c-d9d1317ccc07"
       },
       {
-        "book_kind_id": "1f272345-f10b-432a-9803-1f6770c72bfd",
+        "book_kind_id": "4b89f827-40bc-4ea9-b018-6e583aaea866",
         "code": "location",
         "name": "Location",
         "icon": "📍",
@@ -69,7 +69,7 @@
         "source_ref": "system:019ee288-e968-7877-8215-60d9b7d1f974"
       },
       {
-        "book_kind_id": "3d2baeb9-c66f-48ad-bfba-b414da5f843c",
+        "book_kind_id": "f3b11520-104d-4630-b9c0-6e56435e47f9",
         "code": "item",
         "name": "Item / Prop",
         "icon": "🎁",
@@ -79,7 +79,7 @@
         "source_ref": "system:019ee288-e96b-70ac-ad29-22658a073476"
       },
       {
-        "book_kind_id": "7aab2234-2ef0-4557-8f99-95201a4d1bb6",
+        "book_kind_id": "f6ba1a88-6111-4844-9d0d-0d1a0a2c64d4",
         "code": "event",
         "name": "Event",
         "icon": "📅",
@@ -89,7 +89,7 @@
         "source_ref": "system:019ee288-e96c-7edc-b0c8-2b313a44c0c0"
       },
       {
-        "book_kind_id": "f81bb0ae-d1b2-4925-ab7c-3aa8b1a235b9",
+        "book_kind_id": "623c9ca5-637c-47f5-a03a-9c4a236f055b",
         "code": "terminology",
         "name": "Terminology",
         "icon": "📖",
@@ -99,7 +99,7 @@
         "source_ref": "system:019ee288-e96f-7556-81cf-46113c2c4932"
       },
       {
-        "book_kind_id": "d8a6f4d5-2d10-4df0-8735-23c63474a140",
+        "book_kind_id": "d8cb1b71-466c-4a6e-93c3-c59f7a99d5d5",
         "code": "power_system",
         "name": "Power System",
         "icon": "✨",
@@ -109,7 +109,7 @@
         "source_ref": "system:019ee288-e970-77c7-822c-66e666a414c1"
       },
       {
-        "book_kind_id": "64433bb4-3fb8-4f99-a85f-5f9fead5029b",
+        "book_kind_id": "59b155be-8d98-444e-bc45-268828f50765",
         "code": "organization",
         "name": "Organization",
         "icon": "🏛",
@@ -119,7 +119,7 @@
         "source_ref": "system:019ee288-e972-77ee-9938-ffecfffb1e0b"
       },
       {
-        "book_kind_id": "eeb3c99e-2e5e-4683-b02b-068f0df64d1c",
+        "book_kind_id": "2a2ce39b-b9cf-497d-bebe-c48ce3bd1f8f",
         "code": "species",
         "name": "Species / Race",
         "icon": "🧬",
@@ -129,7 +129,7 @@
         "source_ref": "system:019ee288-e974-769c-bb86-e08ec98a3272"
       },
       {
-        "book_kind_id": "4fff1aff-39b9-4e25-89c7-b60a371e3512",
+        "book_kind_id": "e0ea8b6d-0dea-4946-80e0-24c78fc3c1ab",
         "code": "relationship",
         "name": "Relationship",
         "icon": "💕",
@@ -139,7 +139,7 @@
         "source_ref": "system:019ee288-e976-74aa-966f-1e30372c19a3"
       },
       {
-        "book_kind_id": "237e74ce-dd84-4978-a1e2-11fb7df76508",
+        "book_kind_id": "189268ba-d7c4-4625-b556-af0bd5e0923e",
         "code": "plot_arc",
         "name": "Plot Arc",
         "icon": "📈",
@@ -149,7 +149,7 @@
         "source_ref": "system:019ee288-e978-7c53-824e-072720acf9fc"
       },
       {
-        "book_kind_id": "0a0900e0-9850-4144-9f64-d60652588f50",
+        "book_kind_id": "81858ca8-7610-4a5e-b801-399f6255efd7",
         "code": "trope",
         "name": "Trope",
         "icon": "🎭",
@@ -159,7 +159,7 @@
         "source_ref": "system:019ee288-e97b-760c-9965-50b92f3dc30d"
       },
       {
-        "book_kind_id": "df82409a-4356-4784-9f5d-7adb4a0c1195",
+        "book_kind_id": "a9a8ac9b-c2d1-4708-a1f2-d1cb4c10eaab",
         "code": "social_setting",
         "name": "Social Setting",
         "icon": "🏫",
@@ -169,7 +169,7 @@
         "source_ref": "system:019ee288-e97d-76a7-9445-b309d305ee4b"
       },
       {
-        "book_kind_id": "df7e8503-793f-4fb5-96de-e91328b46436",
+        "book_kind_id": "6e921269-f6d1-4787-9134-76cd6f1914c1",
         "code": "unknown",
         "name": "Unknown",
         "icon": "❓",
@@ -181,63 +181,63 @@
     ],
     "kind_genres": [
       {
-        "kind_id": "509c950f-4fa7-4cd7-ae57-7d9a88379638",
-        "genre_id": "40fc151b-8dda-4206-b7ec-8cc712ad21fb"
+        "kind_id": "fd3ad22d-1f88-473a-8418-f3beb33a812d",
+        "genre_id": "845833e7-6bec-4813-a041-77eafaa93949"
       },
       {
-        "kind_id": "df7e8503-793f-4fb5-96de-e91328b46436",
-        "genre_id": "40fc151b-8dda-4206-b7ec-8cc712ad21fb"
+        "kind_id": "6e921269-f6d1-4787-9134-76cd6f1914c1",
+        "genre_id": "845833e7-6bec-4813-a041-77eafaa93949"
       },
       {
-        "kind_id": "1f272345-f10b-432a-9803-1f6770c72bfd",
-        "genre_id": "40fc151b-8dda-4206-b7ec-8cc712ad21fb"
+        "kind_id": "4b89f827-40bc-4ea9-b018-6e583aaea866",
+        "genre_id": "845833e7-6bec-4813-a041-77eafaa93949"
       },
       {
-        "kind_id": "3d2baeb9-c66f-48ad-bfba-b414da5f843c",
-        "genre_id": "40fc151b-8dda-4206-b7ec-8cc712ad21fb"
+        "kind_id": "f3b11520-104d-4630-b9c0-6e56435e47f9",
+        "genre_id": "845833e7-6bec-4813-a041-77eafaa93949"
       },
       {
-        "kind_id": "7aab2234-2ef0-4557-8f99-95201a4d1bb6",
-        "genre_id": "40fc151b-8dda-4206-b7ec-8cc712ad21fb"
+        "kind_id": "f6ba1a88-6111-4844-9d0d-0d1a0a2c64d4",
+        "genre_id": "845833e7-6bec-4813-a041-77eafaa93949"
       },
       {
-        "kind_id": "f81bb0ae-d1b2-4925-ab7c-3aa8b1a235b9",
-        "genre_id": "40fc151b-8dda-4206-b7ec-8cc712ad21fb"
+        "kind_id": "623c9ca5-637c-47f5-a03a-9c4a236f055b",
+        "genre_id": "845833e7-6bec-4813-a041-77eafaa93949"
       },
       {
-        "kind_id": "d8a6f4d5-2d10-4df0-8735-23c63474a140",
-        "genre_id": "40fc151b-8dda-4206-b7ec-8cc712ad21fb"
+        "kind_id": "d8cb1b71-466c-4a6e-93c3-c59f7a99d5d5",
+        "genre_id": "845833e7-6bec-4813-a041-77eafaa93949"
       },
       {
-        "kind_id": "64433bb4-3fb8-4f99-a85f-5f9fead5029b",
-        "genre_id": "40fc151b-8dda-4206-b7ec-8cc712ad21fb"
+        "kind_id": "59b155be-8d98-444e-bc45-268828f50765",
+        "genre_id": "845833e7-6bec-4813-a041-77eafaa93949"
       },
       {
-        "kind_id": "eeb3c99e-2e5e-4683-b02b-068f0df64d1c",
-        "genre_id": "40fc151b-8dda-4206-b7ec-8cc712ad21fb"
+        "kind_id": "2a2ce39b-b9cf-497d-bebe-c48ce3bd1f8f",
+        "genre_id": "845833e7-6bec-4813-a041-77eafaa93949"
       },
       {
-        "kind_id": "4fff1aff-39b9-4e25-89c7-b60a371e3512",
-        "genre_id": "40fc151b-8dda-4206-b7ec-8cc712ad21fb"
+        "kind_id": "e0ea8b6d-0dea-4946-80e0-24c78fc3c1ab",
+        "genre_id": "845833e7-6bec-4813-a041-77eafaa93949"
       },
       {
-        "kind_id": "237e74ce-dd84-4978-a1e2-11fb7df76508",
-        "genre_id": "40fc151b-8dda-4206-b7ec-8cc712ad21fb"
+        "kind_id": "189268ba-d7c4-4625-b556-af0bd5e0923e",
+        "genre_id": "845833e7-6bec-4813-a041-77eafaa93949"
       },
       {
-        "kind_id": "0a0900e0-9850-4144-9f64-d60652588f50",
-        "genre_id": "40fc151b-8dda-4206-b7ec-8cc712ad21fb"
+        "kind_id": "81858ca8-7610-4a5e-b801-399f6255efd7",
+        "genre_id": "845833e7-6bec-4813-a041-77eafaa93949"
       },
       {
-        "kind_id": "df82409a-4356-4784-9f5d-7adb4a0c1195",
-        "genre_id": "40fc151b-8dda-4206-b7ec-8cc712ad21fb"
+        "kind_id": "a9a8ac9b-c2d1-4708-a1f2-d1cb4c10eaab",
+        "genre_id": "845833e7-6bec-4813-a041-77eafaa93949"
       }
     ],
     "attributes": [
       {
-        "attr_id": "f794803a-b393-4358-9294-fbe84ea5c347",
-        "kind_id": "509c950f-4fa7-4cd7-ae57-7d9a88379638",
-        "genre_id": "40fc151b-8dda-4206-b7ec-8cc712ad21fb",
+        "attr_id": "0078192f-b4f8-4dea-9e0d-158ec4a13826",
+        "kind_id": "fd3ad22d-1f88-473a-8418-f3beb33a812d",
+        "genre_id": "845833e7-6bec-4813-a041-77eafaa93949",
         "code": "name",
         "name": "Name",
         "field_type": "text",
@@ -248,9 +248,9 @@
         "merge_strategy": "fill_if_empty"
       },
       {
-        "attr_id": "42872032-5b13-45a2-b7cc-6c85dd8c33a0",
-        "kind_id": "df82409a-4356-4784-9f5d-7adb4a0c1195",
-        "genre_id": "40fc151b-8dda-4206-b7ec-8cc712ad21fb",
+        "attr_id": "a36d28c8-5493-4c41-9425-894d19ee4384",
+        "kind_id": "a9a8ac9b-c2d1-4708-a1f2-d1cb4c10eaab",
+        "genre_id": "845833e7-6bec-4813-a041-77eafaa93949",
         "code": "name",
         "name": "Name",
         "field_type": "text",
@@ -261,9 +261,9 @@
         "merge_strategy": "fill_if_empty"
       },
       {
-        "attr_id": "c8c9cae1-6473-4e38-b0c1-b9c9545e6b39",
-        "kind_id": "d8a6f4d5-2d10-4df0-8735-23c63474a140",
-        "genre_id": "40fc151b-8dda-4206-b7ec-8cc712ad21fb",
+        "attr_id": "d2cc8622-fdae-43c3-b91e-5d6f4609a652",
+        "kind_id": "d8cb1b71-466c-4a6e-93c3-c59f7a99d5d5",
+        "genre_id": "845833e7-6bec-4813-a041-77eafaa93949",
         "code": "name",
         "name": "Name",
         "field_type": "text",
@@ -274,9 +274,9 @@
         "merge_strategy": "fill_if_empty"
       },
       {
-        "attr_id": "597c3e01-e40b-4afc-9289-f66b6224b263",
-        "kind_id": "0a0900e0-9850-4144-9f64-d60652588f50",
-        "genre_id": "40fc151b-8dda-4206-b7ec-8cc712ad21fb",
+        "attr_id": "b74ae674-6bf6-49f0-986f-ca4c64ae182b",
+        "kind_id": "81858ca8-7610-4a5e-b801-399f6255efd7",
+        "genre_id": "845833e7-6bec-4813-a041-77eafaa93949",
         "code": "name",
         "name": "Name",
         "field_type": "text",
@@ -287,9 +287,9 @@
         "merge_strategy": "fill_if_empty"
       },
       {
-        "attr_id": "ba4a0f30-69f3-43e2-b800-fa934522353f",
-        "kind_id": "7aab2234-2ef0-4557-8f99-95201a4d1bb6",
-        "genre_id": "40fc151b-8dda-4206-b7ec-8cc712ad21fb",
+        "attr_id": "6579ea02-74b8-4694-bbfe-47248bb32827",
+        "kind_id": "f6ba1a88-6111-4844-9d0d-0d1a0a2c64d4",
+        "genre_id": "845833e7-6bec-4813-a041-77eafaa93949",
         "code": "name",
         "name": "Name",
         "field_type": "text",
@@ -300,9 +300,9 @@
         "merge_strategy": "fill_if_empty"
       },
       {
-        "attr_id": "786569dd-c1e9-44f3-a8ab-0496f3e5473d",
-        "kind_id": "237e74ce-dd84-4978-a1e2-11fb7df76508",
-        "genre_id": "40fc151b-8dda-4206-b7ec-8cc712ad21fb",
+        "attr_id": "482381b1-b917-4cf0-aaa7-7fa69f6bacda",
+        "kind_id": "189268ba-d7c4-4625-b556-af0bd5e0923e",
+        "genre_id": "845833e7-6bec-4813-a041-77eafaa93949",
         "code": "name",
         "name": "Name",
         "field_type": "text",
@@ -313,9 +313,9 @@
         "merge_strategy": "fill_if_empty"
       },
       {
-        "attr_id": "3a5072d1-fbc6-4797-811a-f5e3709968f1",
-        "kind_id": "64433bb4-3fb8-4f99-a85f-5f9fead5029b",
-        "genre_id": "40fc151b-8dda-4206-b7ec-8cc712ad21fb",
+        "attr_id": "03884798-e42d-4fa9-aa0a-d4fbca1dfa05",
+        "kind_id": "59b155be-8d98-444e-bc45-268828f50765",
+        "genre_id": "845833e7-6bec-4813-a041-77eafaa93949",
         "code": "name",
         "name": "Name",
         "field_type": "text",
@@ -326,9 +326,9 @@
         "merge_strategy": "fill_if_empty"
       },
       {
-        "attr_id": "c7dede3e-f127-4e6a-9935-1efc1860311a",
-        "kind_id": "1f272345-f10b-432a-9803-1f6770c72bfd",
-        "genre_id": "40fc151b-8dda-4206-b7ec-8cc712ad21fb",
+        "attr_id": "c34994d5-fdbc-48ca-bbe6-4f9a28ba1b8a",
+        "kind_id": "4b89f827-40bc-4ea9-b018-6e583aaea866",
+        "genre_id": "845833e7-6bec-4813-a041-77eafaa93949",
         "code": "name",
         "name": "Name",
         "field_type": "text",
@@ -339,9 +339,9 @@
         "merge_strategy": "fill_if_empty"
       },
       {
-        "attr_id": "d02ab63f-1c6f-4e6d-866c-81d0e3e990b9",
-        "kind_id": "4fff1aff-39b9-4e25-89c7-b60a371e3512",
-        "genre_id": "40fc151b-8dda-4206-b7ec-8cc712ad21fb",
+        "attr_id": "893453de-8464-440b-b816-0b447abb1974",
+        "kind_id": "e0ea8b6d-0dea-4946-80e0-24c78fc3c1ab",
+        "genre_id": "845833e7-6bec-4813-a041-77eafaa93949",
         "code": "name",
         "name": "Name",
         "field_type": "text",
@@ -352,9 +352,9 @@
         "merge_strategy": "fill_if_empty"
       },
       {
-        "attr_id": "4c6698e6-4b65-42d4-8f41-b887b8a74c2a",
-        "kind_id": "eeb3c99e-2e5e-4683-b02b-068f0df64d1c",
-        "genre_id": "40fc151b-8dda-4206-b7ec-8cc712ad21fb",
+        "attr_id": "21e484eb-1ad8-49a6-a214-84367c364c23",
+        "kind_id": "2a2ce39b-b9cf-497d-bebe-c48ce3bd1f8f",
+        "genre_id": "845833e7-6bec-4813-a041-77eafaa93949",
         "code": "name",
         "name": "Name",
         "field_type": "text",
@@ -365,9 +365,9 @@
         "merge_strategy": "fill_if_empty"
       },
       {
-        "attr_id": "c981caea-f967-4bff-a164-445e5a89a19f",
-        "kind_id": "3d2baeb9-c66f-48ad-bfba-b414da5f843c",
-        "genre_id": "40fc151b-8dda-4206-b7ec-8cc712ad21fb",
+        "attr_id": "03b46f34-0d12-4a56-a5f8-5750aecd91b7",
+        "kind_id": "f3b11520-104d-4630-b9c0-6e56435e47f9",
+        "genre_id": "845833e7-6bec-4813-a041-77eafaa93949",
         "code": "name",
         "name": "Name",
         "field_type": "text",
@@ -378,9 +378,9 @@
         "merge_strategy": "fill_if_empty"
       },
       {
-        "attr_id": "063d314d-9bfa-41d8-a4f3-26437b27a424",
-        "kind_id": "f81bb0ae-d1b2-4925-ab7c-3aa8b1a235b9",
-        "genre_id": "40fc151b-8dda-4206-b7ec-8cc712ad21fb",
+        "attr_id": "f4f77048-4eae-4937-8b3b-bad669eb747e",
+        "kind_id": "623c9ca5-637c-47f5-a03a-9c4a236f055b",
+        "genre_id": "845833e7-6bec-4813-a041-77eafaa93949",
         "code": "term",
         "name": "Term",
         "field_type": "text",
@@ -391,9 +391,9 @@
         "merge_strategy": "fill_if_empty"
       },
       {
-        "attr_id": "6ab241cf-79df-49f5-96fc-fd69a219bf2f",
-        "kind_id": "64433bb4-3fb8-4f99-a85f-5f9fead5029b",
-        "genre_id": "40fc151b-8dda-4206-b7ec-8cc712ad21fb",
+        "attr_id": "508442ec-f794-4e04-bab4-883482594385",
+        "kind_id": "59b155be-8d98-444e-bc45-268828f50765",
+        "genre_id": "845833e7-6bec-4813-a041-77eafaa93949",
         "code": "aliases",
         "name": "Aliases",
         "description": "Other names the organization is known by.",
@@ -405,9 +405,9 @@
         "merge_strategy": "append"
       },
       {
-        "attr_id": "5f6e1ad1-9641-4593-a1e3-844ecd1eaac5",
-        "kind_id": "eeb3c99e-2e5e-4683-b02b-068f0df64d1c",
-        "genre_id": "40fc151b-8dda-4206-b7ec-8cc712ad21fb",
+        "attr_id": "78b00aa2-7a4a-4571-86dc-80192754cd66",
+        "kind_id": "2a2ce39b-b9cf-497d-bebe-c48ce3bd1f8f",
+        "genre_id": "845833e7-6bec-4813-a041-77eafaa93949",
         "code": "aliases",
         "name": "Aliases",
         "description": "Other names the species or race is known by.",
@@ -419,9 +419,9 @@
         "merge_strategy": "append"
       },
       {
-        "attr_id": "f28c54f7-0bc4-4fe2-acfc-b763052e8bac",
-        "kind_id": "3d2baeb9-c66f-48ad-bfba-b414da5f843c",
-        "genre_id": "40fc151b-8dda-4206-b7ec-8cc712ad21fb",
+        "attr_id": "1724e879-6e6b-40b2-96c2-808ec74292c0",
+        "kind_id": "f3b11520-104d-4630-b9c0-6e56435e47f9",
+        "genre_id": "845833e7-6bec-4813-a041-77eafaa93949",
         "code": "aliases",
         "name": "Aliases",
         "description": "Other names or titles the item is known by.",
@@ -433,9 +433,9 @@
         "merge_strategy": "append"
       },
       {
-        "attr_id": "1517fa95-7b05-4a61-9f55-f88a0317166d",
-        "kind_id": "d8a6f4d5-2d10-4df0-8735-23c63474a140",
-        "genre_id": "40fc151b-8dda-4206-b7ec-8cc712ad21fb",
+        "attr_id": "112aa64f-2e27-463e-ba48-465ed00b9633",
+        "kind_id": "d8cb1b71-466c-4a6e-93c3-c59f7a99d5d5",
+        "genre_id": "845833e7-6bec-4813-a041-77eafaa93949",
         "code": "aliases",
         "name": "Aliases",
         "description": "Other names the power/system is known by.",
@@ -447,9 +447,9 @@
         "merge_strategy": "append"
       },
       {
-        "attr_id": "e33c938e-e631-4796-8892-f1c95b135d7d",
-        "kind_id": "509c950f-4fa7-4cd7-ae57-7d9a88379638",
-        "genre_id": "40fc151b-8dda-4206-b7ec-8cc712ad21fb",
+        "attr_id": "4aef3166-c7d8-4047-9082-0344d3d570de",
+        "kind_id": "fd3ad22d-1f88-473a-8418-f3beb33a812d",
+        "genre_id": "845833e7-6bec-4813-a041-77eafaa93949",
         "code": "aliases",
         "name": "Aliases",
         "description": "Other names, titles, epithets, or nicknames the character is known by.",
@@ -461,9 +461,9 @@
         "merge_strategy": "append"
       },
       {
-        "attr_id": "9578a7e5-9668-4d7b-8e3d-3999a66addc3",
-        "kind_id": "1f272345-f10b-432a-9803-1f6770c72bfd",
-        "genre_id": "40fc151b-8dda-4206-b7ec-8cc712ad21fb",
+        "attr_id": "f39b28aa-29a2-4580-aeee-68b95858e8e2",
+        "kind_id": "4b89f827-40bc-4ea9-b018-6e583aaea866",
+        "genre_id": "845833e7-6bec-4813-a041-77eafaa93949",
         "code": "aliases",
         "name": "Aliases",
         "description": "Other names the place is known by.",
@@ -475,9 +475,9 @@
         "merge_strategy": "append"
       },
       {
-        "attr_id": "eea9fdb7-5420-4c20-b05f-69bad7f97414",
-        "kind_id": "237e74ce-dd84-4978-a1e2-11fb7df76508",
-        "genre_id": "40fc151b-8dda-4206-b7ec-8cc712ad21fb",
+        "attr_id": "5dc0fea6-d84f-43e5-b1ce-a5be29bb6289",
+        "kind_id": "189268ba-d7c4-4625-b556-af0bd5e0923e",
+        "genre_id": "845833e7-6bec-4813-a041-77eafaa93949",
         "code": "arc_type",
         "name": "Arc Type",
         "description": "The kind of arc (redemption, revenge, coming-of-age, mystery, …).",
@@ -489,9 +489,9 @@
         "merge_strategy": "overwrite"
       },
       {
-        "attr_id": "95fc16a4-bf64-44be-b1ae-1a1b6ca8abc6",
-        "kind_id": "0a0900e0-9850-4144-9f64-d60652588f50",
-        "genre_id": "40fc151b-8dda-4206-b7ec-8cc712ad21fb",
+        "attr_id": "d3239484-6f9f-40e9-be15-d8e4ad9a4409",
+        "kind_id": "81858ca8-7610-4a5e-b801-399f6255efd7",
+        "genre_id": "845833e7-6bec-4813-a041-77eafaa93949",
         "code": "category",
         "name": "Category",
         "description": "The category of trope (character, plot, romance, setting, …).",
@@ -503,9 +503,9 @@
         "merge_strategy": "overwrite"
       },
       {
-        "attr_id": "91bca1ba-6de6-4bbe-b356-211dcf7508c3",
-        "kind_id": "f81bb0ae-d1b2-4925-ab7c-3aa8b1a235b9",
-        "genre_id": "40fc151b-8dda-4206-b7ec-8cc712ad21fb",
+        "attr_id": "0a1470fb-072e-4e92-a011-7db440e05b90",
+        "kind_id": "623c9ca5-637c-47f5-a03a-9c4a236f055b",
+        "genre_id": "845833e7-6bec-4813-a041-77eafaa93949",
         "code": "category",
         "name": "Category",
         "description": "The category the term belongs to (magic, politics, technology, …).",
@@ -517,9 +517,9 @@
         "merge_strategy": "overwrite"
       },
       {
-        "attr_id": "e74066d0-bf57-4e53-8217-72bcea01157b",
-        "kind_id": "df82409a-4356-4784-9f5d-7adb4a0c1195",
-        "genre_id": "40fc151b-8dda-4206-b7ec-8cc712ad21fb",
+        "attr_id": "47f8c6c3-c1ae-47da-9d33-00a9d218b862",
+        "kind_id": "a9a8ac9b-c2d1-4708-a1f2-d1cb4c10eaab",
+        "genre_id": "845833e7-6bec-4813-a041-77eafaa93949",
         "code": "era",
         "name": "Era",
         "description": "The time period or era of the setting.",
@@ -531,9 +531,9 @@
         "merge_strategy": "overwrite"
       },
       {
-        "attr_id": "5f27296e-e906-4884-8662-6e1759ebc6c9",
-        "kind_id": "4fff1aff-39b9-4e25-89c7-b60a371e3512",
-        "genre_id": "40fc151b-8dda-4206-b7ec-8cc712ad21fb",
+        "attr_id": "2ac055ab-01dd-4b5c-9875-06fc355e3ffe",
+        "kind_id": "e0ea8b6d-0dea-4946-80e0-24c78fc3c1ab",
+        "genre_id": "845833e7-6bec-4813-a041-77eafaa93949",
         "code": "parties",
         "name": "Parties",
         "description": "The characters or groups in the relationship.",
@@ -545,9 +545,9 @@
         "merge_strategy": "append"
       },
       {
-        "attr_id": "5c77fe12-5104-44e4-b6d3-9ceca1becd57",
-        "kind_id": "7aab2234-2ef0-4557-8f99-95201a4d1bb6",
-        "genre_id": "40fc151b-8dda-4206-b7ec-8cc712ad21fb",
+        "attr_id": "32ea8a69-044a-49d8-8738-31ff75076bf2",
+        "kind_id": "f6ba1a88-6111-4844-9d0d-0d1a0a2c64d4",
+        "genre_id": "845833e7-6bec-4813-a041-77eafaa93949",
         "code": "type",
         "name": "Type",
         "description": "The kind of event (battle, betrayal, wedding, death, revelation, …).",
@@ -559,9 +559,9 @@
         "merge_strategy": "overwrite"
       },
       {
-        "attr_id": "ac8f84e4-a2f4-4432-93cb-649d92b8dcb1",
-        "kind_id": "7aab2234-2ef0-4557-8f99-95201a4d1bb6",
-        "genre_id": "40fc151b-8dda-4206-b7ec-8cc712ad21fb",
+        "attr_id": "11d6805f-7237-4db3-96a4-bd6407e5f15e",
+        "kind_id": "f6ba1a88-6111-4844-9d0d-0d1a0a2c64d4",
+        "genre_id": "845833e7-6bec-4813-a041-77eafaa93949",
         "code": "date_in_story",
         "name": "Date in Story",
         "description": "When the event occurs in the story's timeline (in-world date or chapter).",
@@ -573,9 +573,9 @@
         "merge_strategy": "overwrite"
       },
       {
-        "attr_id": "e0541da3-04b8-441e-b07b-ab1bbc3114d4",
-        "kind_id": "f81bb0ae-d1b2-4925-ab7c-3aa8b1a235b9",
-        "genre_id": "40fc151b-8dda-4206-b7ec-8cc712ad21fb",
+        "attr_id": "bef8761c-a7ac-4b58-837c-2400c9833127",
+        "kind_id": "623c9ca5-637c-47f5-a03a-9c4a236f055b",
+        "genre_id": "845833e7-6bec-4813-a041-77eafaa93949",
         "code": "definition",
         "name": "Definition",
         "description": "What the term means in this story's world.",
@@ -587,9 +587,9 @@
         "merge_strategy": "overwrite"
       },
       {
-        "attr_id": "d493a5f2-5781-4ad1-bbd6-f67c1a8751e9",
-        "kind_id": "0a0900e0-9850-4144-9f64-d60652588f50",
-        "genre_id": "40fc151b-8dda-4206-b7ec-8cc712ad21fb",
+        "attr_id": "3d692168-95f1-4b32-be46-26fa36ba0151",
+        "kind_id": "81858ca8-7610-4a5e-b801-399f6255efd7",
+        "genre_id": "845833e7-6bec-4813-a041-77eafaa93949",
         "code": "definition",
         "name": "Definition",
         "description": "What the trope is.",
@@ -601,9 +601,9 @@
         "merge_strategy": "overwrite"
       },
       {
-        "attr_id": "3b753098-dbec-419a-a66f-78307efd32bb",
-        "kind_id": "509c950f-4fa7-4cd7-ae57-7d9a88379638",
-        "genre_id": "40fc151b-8dda-4206-b7ec-8cc712ad21fb",
+        "attr_id": "59895d30-196f-4e47-9484-bc7265595404",
+        "kind_id": "fd3ad22d-1f88-473a-8418-f3beb33a812d",
+        "genre_id": "845833e7-6bec-4813-a041-77eafaa93949",
         "code": "gender",
         "name": "Gender",
         "description": "The character's gender or how the text presents it.",
@@ -615,9 +615,9 @@
         "merge_strategy": "overwrite"
       },
       {
-        "attr_id": "9bd8860c-3a0d-4a2c-9ffa-6c5b7ced39a7",
-        "kind_id": "df82409a-4356-4784-9f5d-7adb4a0c1195",
-        "genre_id": "40fc151b-8dda-4206-b7ec-8cc712ad21fb",
+        "attr_id": "23c92dad-bdbb-48ff-b5da-96f71f6ac85c",
+        "kind_id": "a9a8ac9b-c2d1-4708-a1f2-d1cb4c10eaab",
+        "genre_id": "845833e7-6bec-4813-a041-77eafaa93949",
         "code": "location",
         "name": "Location",
         "description": "The place or region the social setting covers.",
@@ -629,9 +629,9 @@
         "merge_strategy": "overwrite"
       },
       {
-        "attr_id": "6a1a4e00-ef80-4575-a585-bb5766219e6f",
-        "kind_id": "237e74ce-dd84-4978-a1e2-11fb7df76508",
-        "genre_id": "40fc151b-8dda-4206-b7ec-8cc712ad21fb",
+        "attr_id": "0a303814-d5a0-4700-9870-b46244d2ca29",
+        "kind_id": "189268ba-d7c4-4625-b556-af0bd5e0923e",
+        "genre_id": "845833e7-6bec-4813-a041-77eafaa93949",
         "code": "parties",
         "name": "Parties",
         "description": "The characters or groups the arc centers on.",
@@ -643,9 +643,9 @@
         "merge_strategy": "append"
       },
       {
-        "attr_id": "d0157966-c9b5-404b-87eb-29ae0da9aacc",
-        "kind_id": "4fff1aff-39b9-4e25-89c7-b60a371e3512",
-        "genre_id": "40fc151b-8dda-4206-b7ec-8cc712ad21fb",
+        "attr_id": "f1a6c787-3b30-4c7a-819f-42a37921ec1f",
+        "kind_id": "e0ea8b6d-0dea-4946-80e0-24c78fc3c1ab",
+        "genre_id": "845833e7-6bec-4813-a041-77eafaa93949",
         "code": "relationship_type",
         "name": "Relationship Type",
         "description": "The kind of relationship (rivals, lovers, family, allies, …).",
@@ -657,9 +657,9 @@
         "merge_strategy": "overwrite"
       },
       {
-        "attr_id": "74fd78d7-a56b-4f77-ace1-d954381bee73",
-        "kind_id": "eeb3c99e-2e5e-4683-b02b-068f0df64d1c",
-        "genre_id": "40fc151b-8dda-4206-b7ec-8cc712ad21fb",
+        "attr_id": "560b887d-6582-4b8c-aceb-8691216a1412",
+        "kind_id": "2a2ce39b-b9cf-497d-bebe-c48ce3bd1f8f",
+        "genre_id": "845833e7-6bec-4813-a041-77eafaa93949",
         "code": "traits",
         "name": "Traits",
         "description": "Defining physical or innate traits of the species.",
@@ -671,9 +671,9 @@
         "merge_strategy": "overwrite"
       },
       {
-        "attr_id": "6b4c3359-d669-467f-b325-9581a771d51c",
-        "kind_id": "3d2baeb9-c66f-48ad-bfba-b414da5f843c",
-        "genre_id": "40fc151b-8dda-4206-b7ec-8cc712ad21fb",
+        "attr_id": "98d58c84-83fe-45ba-b56e-b55d1a0b6905",
+        "kind_id": "f3b11520-104d-4630-b9c0-6e56435e47f9",
+        "genre_id": "845833e7-6bec-4813-a041-77eafaa93949",
         "code": "type",
         "name": "Type",
         "description": "The kind of item (weapon, artifact, relic, document, tool, …).",
@@ -685,9 +685,9 @@
         "merge_strategy": "overwrite"
       },
       {
-        "attr_id": "9ba76e38-28ff-4641-b656-67d4b2ac3208",
-        "kind_id": "1f272345-f10b-432a-9803-1f6770c72bfd",
-        "genre_id": "40fc151b-8dda-4206-b7ec-8cc712ad21fb",
+        "attr_id": "7757cefa-97fc-47c8-af13-7fb0d4581577",
+        "kind_id": "4b89f827-40bc-4ea9-b018-6e583aaea866",
+        "genre_id": "845833e7-6bec-4813-a041-77eafaa93949",
         "code": "type",
         "name": "Type",
         "description": "The kind of place (city, castle, region, realm, building, …).",
@@ -699,9 +699,9 @@
         "merge_strategy": "overwrite"
       },
       {
-        "attr_id": "985535f3-d69d-46ed-a46f-58eb0711cdb2",
-        "kind_id": "d8a6f4d5-2d10-4df0-8735-23c63474a140",
-        "genre_id": "40fc151b-8dda-4206-b7ec-8cc712ad21fb",
+        "attr_id": "93538240-326e-45cc-ac87-44f096f73738",
+        "kind_id": "d8cb1b71-466c-4a6e-93c3-c59f7a99d5d5",
+        "genre_id": "845833e7-6bec-4813-a041-77eafaa93949",
         "code": "type",
         "name": "Type",
         "description": "The kind of power system (magic, cultivation, technology, psionics, …).",
@@ -713,9 +713,9 @@
         "merge_strategy": "overwrite"
       },
       {
-        "attr_id": "7055183e-4fe0-45c1-80ae-849a12309431",
-        "kind_id": "64433bb4-3fb8-4f99-a85f-5f9fead5029b",
-        "genre_id": "40fc151b-8dda-4206-b7ec-8cc712ad21fb",
+        "attr_id": "79310be7-6027-4964-83a0-ed089b09698e",
+        "kind_id": "59b155be-8d98-444e-bc45-268828f50765",
+        "genre_id": "845833e7-6bec-4813-a041-77eafaa93949",
         "code": "type",
         "name": "Type",
         "description": "The kind of organization (guild, house, cult, government, army, …).",
@@ -727,9 +727,9 @@
         "merge_strategy": "overwrite"
       },
       {
-        "attr_id": "cc9a9541-d180-46d6-9e4b-401fc1dc2fde",
-        "kind_id": "eeb3c99e-2e5e-4683-b02b-068f0df64d1c",
-        "genre_id": "40fc151b-8dda-4206-b7ec-8cc712ad21fb",
+        "attr_id": "d1749b33-7ad0-46fb-a29a-9df5becb6277",
+        "kind_id": "2a2ce39b-b9cf-497d-bebe-c48ce3bd1f8f",
+        "genre_id": "845833e7-6bec-4813-a041-77eafaa93949",
         "code": "abilities",
         "name": "Abilities",
         "description": "Special abilities or powers the species possesses.",
@@ -741,9 +741,9 @@
         "merge_strategy": "overwrite"
       },
       {
-        "attr_id": "e1a7d9f2-e9f5-4487-9d4f-a4fde4296310",
-        "kind_id": "df82409a-4356-4784-9f5d-7adb4a0c1195",
-        "genre_id": "40fc151b-8dda-4206-b7ec-8cc712ad21fb",
+        "attr_id": "ba57dba7-a6aa-4ab4-bb29-869ae4370328",
+        "kind_id": "a9a8ac9b-c2d1-4708-a1f2-d1cb4c10eaab",
+        "genre_id": "845833e7-6bec-4813-a041-77eafaa93949",
         "code": "class_hierarchy",
         "name": "Class Hierarchy",
         "description": "The social classes or hierarchy and how they relate.",
@@ -755,9 +755,9 @@
         "merge_strategy": "overwrite"
       },
       {
-        "attr_id": "c5f88401-d84a-462f-8904-12f7b308aaea",
-        "kind_id": "0a0900e0-9850-4144-9f64-d60652588f50",
-        "genre_id": "40fc151b-8dda-4206-b7ec-8cc712ad21fb",
+        "attr_id": "890b8c99-56e8-4a0d-9ed3-781465ed6f53",
+        "kind_id": "81858ca8-7610-4a5e-b801-399f6255efd7",
+        "genre_id": "845833e7-6bec-4813-a041-77eafaa93949",
         "code": "how_manifested",
         "name": "How Manifested",
         "description": "How this trope shows up in the story specifically.",
@@ -769,9 +769,9 @@
         "merge_strategy": "overwrite"
       },
       {
-        "attr_id": "72084a3a-0a69-4ba2-b721-fb3b7d72565a",
-        "kind_id": "64433bb4-3fb8-4f99-a85f-5f9fead5029b",
-        "genre_id": "40fc151b-8dda-4206-b7ec-8cc712ad21fb",
+        "attr_id": "e898a4ab-6505-4257-a5cd-d7f37a207d87",
+        "kind_id": "59b155be-8d98-444e-bc45-268828f50765",
+        "genre_id": "845833e7-6bec-4813-a041-77eafaa93949",
         "code": "leader",
         "name": "Leader",
         "description": "Who leads or heads the organization.",
@@ -783,9 +783,9 @@
         "merge_strategy": "overwrite"
       },
       {
-        "attr_id": "1ccc17a0-f68a-4ef9-8d32-c14984dae6ca",
-        "kind_id": "7aab2234-2ef0-4557-8f99-95201a4d1bb6",
-        "genre_id": "40fc151b-8dda-4206-b7ec-8cc712ad21fb",
+        "attr_id": "87594844-dc66-49aa-b896-09eb7186c8ae",
+        "kind_id": "f6ba1a88-6111-4844-9d0d-0d1a0a2c64d4",
+        "genre_id": "845833e7-6bec-4813-a041-77eafaa93949",
         "code": "location",
         "name": "Location",
         "description": "Where the event takes place.",
@@ -797,9 +797,9 @@
         "merge_strategy": "overwrite"
       },
       {
-        "attr_id": "76f80767-801f-4a78-9ade-ae7c1f361a76",
-        "kind_id": "3d2baeb9-c66f-48ad-bfba-b414da5f843c",
-        "genre_id": "40fc151b-8dda-4206-b7ec-8cc712ad21fb",
+        "attr_id": "1757ac5e-3b1f-47d9-a7b1-23da386cca58",
+        "kind_id": "f3b11520-104d-4630-b9c0-6e56435e47f9",
+        "genre_id": "845833e7-6bec-4813-a041-77eafaa93949",
         "code": "owner",
         "name": "Owner",
         "description": "Who currently holds or is associated with the item.",
@@ -811,9 +811,9 @@
         "merge_strategy": "overwrite"
       },
       {
-        "attr_id": "1bba5792-03f9-4520-8d70-479a728a6b86",
-        "kind_id": "1f272345-f10b-432a-9803-1f6770c72bfd",
-        "genre_id": "40fc151b-8dda-4206-b7ec-8cc712ad21fb",
+        "attr_id": "55afd4b4-f0e1-4e93-b1af-5880ca4634ec",
+        "kind_id": "4b89f827-40bc-4ea9-b018-6e583aaea866",
+        "genre_id": "845833e7-6bec-4813-a041-77eafaa93949",
         "code": "parent_location",
         "name": "Parent Location",
         "description": "The larger place this one belongs to (region, country, world).",
@@ -825,9 +825,9 @@
         "merge_strategy": "overwrite"
       },
       {
-        "attr_id": "0cf133ae-7cdb-4841-885f-fb693ff0a7f1",
-        "kind_id": "d8a6f4d5-2d10-4df0-8735-23c63474a140",
-        "genre_id": "40fc151b-8dda-4206-b7ec-8cc712ad21fb",
+        "attr_id": "7b3e64df-20e2-4edc-b6b1-dac684d65dcd",
+        "kind_id": "d8cb1b71-466c-4a6e-93c3-c59f7a99d5d5",
+        "genre_id": "845833e7-6bec-4813-a041-77eafaa93949",
         "code": "rank",
         "name": "Rank / Tier",
         "description": "The tier, rank, or level scheme within the system.",
@@ -839,9 +839,9 @@
         "merge_strategy": "overwrite"
       },
       {
-        "attr_id": "e59ed6a7-9d43-4f06-a482-767ae44f1447",
-        "kind_id": "509c950f-4fa7-4cd7-ae57-7d9a88379638",
-        "genre_id": "40fc151b-8dda-4206-b7ec-8cc712ad21fb",
+        "attr_id": "aafef087-4fb3-4a85-9510-9621cce0896a",
+        "kind_id": "fd3ad22d-1f88-473a-8418-f3beb33a812d",
+        "genre_id": "845833e7-6bec-4813-a041-77eafaa93949",
         "code": "role",
         "name": "Role",
         "description": "The character's narrative role (protagonist, antagonist, mentor, foil, …).",
@@ -853,9 +853,9 @@
         "merge_strategy": "overwrite"
       },
       {
-        "attr_id": "8245a247-7160-4554-83cf-00dc146c9a37",
-        "kind_id": "4fff1aff-39b9-4e25-89c7-b60a371e3512",
-        "genre_id": "40fc151b-8dda-4206-b7ec-8cc712ad21fb",
+        "attr_id": "8ad31e75-d586-4a3c-ac77-9478b04f342f",
+        "kind_id": "e0ea8b6d-0dea-4946-80e0-24c78fc3c1ab",
+        "genre_id": "845833e7-6bec-4813-a041-77eafaa93949",
         "code": "status",
         "name": "Status",
         "description": "The current state of the relationship (estranged, growing, broken, …).",
@@ -867,9 +867,9 @@
         "merge_strategy": "overwrite"
       },
       {
-        "attr_id": "0115045d-a9c6-4674-b575-8e48b2da574f",
-        "kind_id": "237e74ce-dd84-4978-a1e2-11fb7df76508",
-        "genre_id": "40fc151b-8dda-4206-b7ec-8cc712ad21fb",
+        "attr_id": "e52278d1-4646-418d-87dc-4dfdfacdf32f",
+        "kind_id": "189268ba-d7c4-4625-b556-af0bd5e0923e",
+        "genre_id": "845833e7-6bec-4813-a041-77eafaa93949",
         "code": "trigger",
         "name": "Trigger",
         "description": "The event or condition that sets the arc in motion.",
@@ -881,9 +881,9 @@
         "merge_strategy": "overwrite"
       },
       {
-        "attr_id": "d835be08-c6b1-4235-bdc6-ee13f4fdfef3",
-        "kind_id": "f81bb0ae-d1b2-4925-ab7c-3aa8b1a235b9",
-        "genre_id": "40fc151b-8dda-4206-b7ec-8cc712ad21fb",
+        "attr_id": "b160c921-6e72-4578-bd6a-f3514d26111e",
+        "kind_id": "623c9ca5-637c-47f5-a03a-9c4a236f055b",
+        "genre_id": "845833e7-6bec-4813-a041-77eafaa93949",
         "code": "usage_note",
         "name": "Usage Note",
         "description": "How and when the term is used, and any nuance.",
@@ -895,9 +895,9 @@
         "merge_strategy": "overwrite"
       },
       {
-        "attr_id": "900f41be-a86b-446c-afdc-5940190c271a",
-        "kind_id": "1f272345-f10b-432a-9803-1f6770c72bfd",
-        "genre_id": "40fc151b-8dda-4206-b7ec-8cc712ad21fb",
+        "attr_id": "f35441d9-b86e-4ea0-a698-e57ea5ded88e",
+        "kind_id": "4b89f827-40bc-4ea9-b018-6e583aaea866",
+        "genre_id": "845833e7-6bec-4813-a041-77eafaa93949",
         "code": "atmosphere",
         "name": "Atmosphere",
         "description": "The mood, tone, or sensory feel of the place as the text describes it.",
@@ -909,9 +909,9 @@
         "merge_strategy": "overwrite"
       },
       {
-        "attr_id": "2c6379fc-2f28-445a-81cb-46072556f541",
-        "kind_id": "eeb3c99e-2e5e-4683-b02b-068f0df64d1c",
-        "genre_id": "40fc151b-8dda-4206-b7ec-8cc712ad21fb",
+        "attr_id": "40165be0-d2a3-4b2a-9437-2338194c8da5",
+        "kind_id": "2a2ce39b-b9cf-497d-bebe-c48ce3bd1f8f",
+        "genre_id": "845833e7-6bec-4813-a041-77eafaa93949",
         "code": "habitat",
         "name": "Habitat",
         "description": "Where the species lives.",
@@ -923,9 +923,9 @@
         "merge_strategy": "overwrite"
       },
       {
-        "attr_id": "7c59808f-1114-41a2-9189-716e367629b6",
-        "kind_id": "64433bb4-3fb8-4f99-a85f-5f9fead5029b",
-        "genre_id": "40fc151b-8dda-4206-b7ec-8cc712ad21fb",
+        "attr_id": "a5988c3b-88ac-4b52-a9f2-525b30f93c56",
+        "kind_id": "59b155be-8d98-444e-bc45-268828f50765",
+        "genre_id": "845833e7-6bec-4813-a041-77eafaa93949",
         "code": "headquarters",
         "name": "Headquarters",
         "description": "The organization's base, seat, or primary location.",
@@ -937,9 +937,9 @@
         "merge_strategy": "overwrite"
       },
       {
-        "attr_id": "822bd6fa-b335-400d-8ac7-7b17c755140c",
-        "kind_id": "509c950f-4fa7-4cd7-ae57-7d9a88379638",
-        "genre_id": "40fc151b-8dda-4206-b7ec-8cc712ad21fb",
+        "attr_id": "22fd20ec-958d-47f1-bd93-d7a4201d90c3",
+        "kind_id": "fd3ad22d-1f88-473a-8418-f3beb33a812d",
+        "genre_id": "845833e7-6bec-4813-a041-77eafaa93949",
         "code": "occupation",
         "name": "Occupation",
         "description": "The character's job, profession, or primary activity in the story.",
@@ -951,9 +951,9 @@
         "merge_strategy": "overwrite"
       },
       {
-        "attr_id": "50fa035a-33b8-4605-b4e7-06397adf3f5c",
-        "kind_id": "7aab2234-2ef0-4557-8f99-95201a4d1bb6",
-        "genre_id": "40fc151b-8dda-4206-b7ec-8cc712ad21fb",
+        "attr_id": "d2791c5d-2208-4a11-b997-8870c7b39005",
+        "kind_id": "f6ba1a88-6111-4844-9d0d-0d1a0a2c64d4",
+        "genre_id": "845833e7-6bec-4813-a041-77eafaa93949",
         "code": "participants",
         "name": "Participants",
         "description": "The characters or groups involved in the event.",
@@ -965,9 +965,9 @@
         "merge_strategy": "append"
       },
       {
-        "attr_id": "1789dc5d-ebb4-49a2-a21c-18a4ad4d9d4c",
-        "kind_id": "df82409a-4356-4784-9f5d-7adb4a0c1195",
-        "genre_id": "40fc151b-8dda-4206-b7ec-8cc712ad21fb",
+        "attr_id": "22188031-d64d-4e3f-b91e-d0f90b61b915",
+        "kind_id": "a9a8ac9b-c2d1-4708-a1f2-d1cb4c10eaab",
+        "genre_id": "845833e7-6bec-4813-a041-77eafaa93949",
         "code": "rules_norms",
         "name": "Rules & Norms",
         "description": "The customs, laws, and social norms that govern behavior.",
@@ -979,9 +979,9 @@
         "merge_strategy": "overwrite"
       },
       {
-        "attr_id": "d68f7eeb-5491-4187-ad4e-844a41bd096a",
-        "kind_id": "237e74ce-dd84-4978-a1e2-11fb7df76508",
-        "genre_id": "40fc151b-8dda-4206-b7ec-8cc712ad21fb",
+        "attr_id": "cbcb67d5-bd74-4b23-8e43-6f969207567b",
+        "kind_id": "189268ba-d7c4-4625-b556-af0bd5e0923e",
+        "genre_id": "845833e7-6bec-4813-a041-77eafaa93949",
         "code": "stakes",
         "name": "Stakes",
         "description": "What is at risk or to be gained in the arc.",
@@ -993,9 +993,9 @@
         "merge_strategy": "overwrite"
       },
       {
-        "attr_id": "8b04274a-efa2-47dd-b507-bd807bd6b85f",
-        "kind_id": "0a0900e0-9850-4144-9f64-d60652588f50",
-        "genre_id": "40fc151b-8dda-4206-b7ec-8cc712ad21fb",
+        "attr_id": "f1e19868-1f5c-4f31-a2a3-62d3c083cdbd",
+        "kind_id": "81858ca8-7610-4a5e-b801-399f6255efd7",
+        "genre_id": "845833e7-6bec-4813-a041-77eafaa93949",
         "code": "subverted",
         "name": "Subverted?",
         "description": "Whether and how the story subverts or plays against the trope.",
@@ -1007,9 +1007,9 @@
         "merge_strategy": "overwrite"
       },
       {
-        "attr_id": "ed44cdac-73a7-4c6d-872a-a6edbb03c805",
-        "kind_id": "3d2baeb9-c66f-48ad-bfba-b414da5f843c",
-        "genre_id": "40fc151b-8dda-4206-b7ec-8cc712ad21fb",
+        "attr_id": "9dbe0915-ca58-4760-be53-ac72f04da4f3",
+        "kind_id": "f3b11520-104d-4630-b9c0-6e56435e47f9",
+        "genre_id": "845833e7-6bec-4813-a041-77eafaa93949",
         "code": "symbolic_meaning",
         "name": "Symbolic Meaning",
         "description": "What the item represents thematically or symbolically in the story.",
@@ -1021,9 +1021,9 @@
         "merge_strategy": "overwrite"
       },
       {
-        "attr_id": "62955fb0-c6fa-434d-b176-c54c38918702",
-        "kind_id": "4fff1aff-39b9-4e25-89c7-b60a371e3512",
-        "genre_id": "40fc151b-8dda-4206-b7ec-8cc712ad21fb",
+        "attr_id": "40310739-175c-4d61-aaba-efe95cc1e2fa",
+        "kind_id": "e0ea8b6d-0dea-4946-80e0-24c78fc3c1ab",
+        "genre_id": "845833e7-6bec-4813-a041-77eafaa93949",
         "code": "tropes",
         "name": "Tropes",
         "description": "Romance/relationship tropes that characterize it (if any).",
@@ -1035,9 +1035,9 @@
         "merge_strategy": "append"
       },
       {
-        "attr_id": "f17c0736-567e-4f3c-80fd-dd9d2438a4f8",
-        "kind_id": "d8a6f4d5-2d10-4df0-8735-23c63474a140",
-        "genre_id": "40fc151b-8dda-4206-b7ec-8cc712ad21fb",
+        "attr_id": "8202117d-d0f3-417b-874a-27cd8afe458b",
+        "kind_id": "d8cb1b71-466c-4a6e-93c3-c59f7a99d5d5",
+        "genre_id": "845833e7-6bec-4813-a041-77eafaa93949",
         "code": "user",
         "name": "User",
         "description": "Who wields or has access to this power.",
@@ -1049,9 +1049,9 @@
         "merge_strategy": "overwrite"
       },
       {
-        "attr_id": "2b472927-36e7-46c0-b572-44efa7b90abd",
-        "kind_id": "237e74ce-dd84-4978-a1e2-11fb7df76508",
-        "genre_id": "40fc151b-8dda-4206-b7ec-8cc712ad21fb",
+        "attr_id": "9eb44789-55df-42bd-ad20-5a00c402df7f",
+        "kind_id": "189268ba-d7c4-4625-b556-af0bd5e0923e",
+        "genre_id": "845833e7-6bec-4813-a041-77eafaa93949",
         "code": "chapters_span",
         "name": "Chapters Span",
         "description": "The chapter range the arc covers.",
@@ -1063,9 +1063,9 @@
         "merge_strategy": "overwrite"
       },
       {
-        "attr_id": "f35c3079-7015-498b-a54e-0d557caee451",
-        "kind_id": "eeb3c99e-2e5e-4683-b02b-068f0df64d1c",
-        "genre_id": "40fc151b-8dda-4206-b7ec-8cc712ad21fb",
+        "attr_id": "f83de568-4c66-4275-ad04-fca441cac61e",
+        "kind_id": "2a2ce39b-b9cf-497d-bebe-c48ce3bd1f8f",
+        "genre_id": "845833e7-6bec-4813-a041-77eafaa93949",
         "code": "culture",
         "name": "Culture",
         "description": "The species' culture, customs, or social organization.",
@@ -1077,9 +1077,9 @@
         "merge_strategy": "overwrite"
       },
       {
-        "attr_id": "02874483-f4c4-41b5-ad67-94614df44038",
-        "kind_id": "3d2baeb9-c66f-48ad-bfba-b414da5f843c",
-        "genre_id": "40fc151b-8dda-4206-b7ec-8cc712ad21fb",
+        "attr_id": "1414bab2-e393-4186-8b74-3feb9d934d42",
+        "kind_id": "f3b11520-104d-4630-b9c0-6e56435e47f9",
+        "genre_id": "845833e7-6bec-4813-a041-77eafaa93949",
         "code": "description",
         "name": "Description",
         "description": "What the item is, its properties, and its role.",
@@ -1091,9 +1091,9 @@
         "merge_strategy": "overwrite"
       },
       {
-        "attr_id": "90579a4f-cf1d-4d7d-bac6-74ac6d75b8ef",
-        "kind_id": "4fff1aff-39b9-4e25-89c7-b60a371e3512",
-        "genre_id": "40fc151b-8dda-4206-b7ec-8cc712ad21fb",
+        "attr_id": "d7773536-4ca3-4afc-ae8c-06b7ea22a6e1",
+        "kind_id": "e0ea8b6d-0dea-4946-80e0-24c78fc3c1ab",
+        "genre_id": "845833e7-6bec-4813-a041-77eafaa93949",
         "code": "dynamic",
         "name": "Dynamic",
         "description": "How the parties interact and the push-pull between them.",
@@ -1105,9 +1105,9 @@
         "merge_strategy": "overwrite"
       },
       {
-        "attr_id": "2c1f8bc8-1e52-4a2c-9b04-8c9a2643444f",
-        "kind_id": "d8a6f4d5-2d10-4df0-8735-23c63474a140",
-        "genre_id": "40fc151b-8dda-4206-b7ec-8cc712ad21fb",
+        "attr_id": "b0fe5367-3038-4988-931b-5305f73ae393",
+        "kind_id": "d8cb1b71-466c-4a6e-93c3-c59f7a99d5d5",
+        "genre_id": "845833e7-6bec-4813-a041-77eafaa93949",
         "code": "effects",
         "name": "Effects",
         "description": "What the power does and its capabilities or limits.",
@@ -1119,9 +1119,9 @@
         "merge_strategy": "overwrite"
       },
       {
-        "attr_id": "069aaac4-73f5-4805-b25a-59234f7431b8",
-        "kind_id": "7aab2234-2ef0-4557-8f99-95201a4d1bb6",
-        "genre_id": "40fc151b-8dda-4206-b7ec-8cc712ad21fb",
+        "attr_id": "25556de7-a5b5-4aae-b6b5-d2d653ca90e5",
+        "kind_id": "f6ba1a88-6111-4844-9d0d-0d1a0a2c64d4",
+        "genre_id": "845833e7-6bec-4813-a041-77eafaa93949",
         "code": "emotional_impact",
         "name": "Emotional Impact",
         "description": "The emotional weight or fallout the event carries for those involved.",
@@ -1133,9 +1133,9 @@
         "merge_strategy": "overwrite"
       },
       {
-        "attr_id": "3c845639-7482-49f0-818b-d54f88f30319",
-        "kind_id": "64433bb4-3fb8-4f99-a85f-5f9fead5029b",
-        "genre_id": "40fc151b-8dda-4206-b7ec-8cc712ad21fb",
+        "attr_id": "3c661b5e-87f7-4432-b690-7ea87d9e03e4",
+        "kind_id": "59b155be-8d98-444e-bc45-268828f50765",
+        "genre_id": "845833e7-6bec-4813-a041-77eafaa93949",
         "code": "members",
         "name": "Members",
         "description": "Notable members or the makeup of the organization.",
@@ -1147,9 +1147,9 @@
         "merge_strategy": "append"
       },
       {
-        "attr_id": "310db397-8d1e-49ce-9963-df542cc43fa0",
-        "kind_id": "0a0900e0-9850-4144-9f64-d60652588f50",
-        "genre_id": "40fc151b-8dda-4206-b7ec-8cc712ad21fb",
+        "attr_id": "a8fb3b74-df3e-4fdb-a1c7-7ff5922b08ba",
+        "kind_id": "81858ca8-7610-4a5e-b801-399f6255efd7",
+        "genre_id": "845833e7-6bec-4813-a041-77eafaa93949",
         "code": "related_characters",
         "name": "Related Characters",
         "description": "Characters who embody or are involved with the trope.",
@@ -1161,9 +1161,9 @@
         "merge_strategy": "append"
       },
       {
-        "attr_id": "9ebde4c6-bb9c-4771-a830-adecdb46095b",
-        "kind_id": "df82409a-4356-4784-9f5d-7adb4a0c1195",
-        "genre_id": "40fc151b-8dda-4206-b7ec-8cc712ad21fb",
+        "attr_id": "3d6c5d8f-7cf4-47fc-94e2-d0e811a346e8",
+        "kind_id": "a9a8ac9b-c2d1-4708-a1f2-d1cb4c10eaab",
+        "genre_id": "845833e7-6bec-4813-a041-77eafaa93949",
         "code": "romance_obstacles",
         "name": "Romance Obstacles",
         "description": "Social barriers to romance the setting imposes (if relevant).",
@@ -1175,9 +1175,9 @@
         "merge_strategy": "overwrite"
       },
       {
-        "attr_id": "c59763d5-87e6-485a-aa30-5f0d7aa96c8c",
-        "kind_id": "1f272345-f10b-432a-9803-1f6770c72bfd",
-        "genre_id": "40fc151b-8dda-4206-b7ec-8cc712ad21fb",
+        "attr_id": "02f00936-9d4d-4a99-815d-1a0e9e275739",
+        "kind_id": "4b89f827-40bc-4ea9-b018-6e583aaea866",
+        "genre_id": "845833e7-6bec-4813-a041-77eafaa93949",
         "code": "significance",
         "name": "Significance",
         "description": "Why the place matters to the story or its characters.",
@@ -1189,9 +1189,9 @@
         "merge_strategy": "overwrite"
       },
       {
-        "attr_id": "a86a01e7-4248-402c-b228-4a35b230a41f",
-        "kind_id": "509c950f-4fa7-4cd7-ae57-7d9a88379638",
-        "genre_id": "40fc151b-8dda-4206-b7ec-8cc712ad21fb",
+        "attr_id": "2531cbf5-5014-4bdf-af6a-55d10cd6a93a",
+        "kind_id": "fd3ad22d-1f88-473a-8418-f3beb33a812d",
+        "genre_id": "845833e7-6bec-4813-a041-77eafaa93949",
         "code": "social_class",
         "name": "Social Class",
         "description": "The character's social standing or rank (noble, commoner, outcast, …).",
@@ -1203,9 +1203,9 @@
         "merge_strategy": "overwrite"
       },
       {
-        "attr_id": "fb550cf8-2ccb-445d-a4d6-b707a80f7856",
-        "kind_id": "509c950f-4fa7-4cd7-ae57-7d9a88379638",
-        "genre_id": "40fc151b-8dda-4206-b7ec-8cc712ad21fb",
+        "attr_id": "ea0638a0-dc60-462d-8e5f-c86bd32cff23",
+        "kind_id": "fd3ad22d-1f88-473a-8418-f3beb33a812d",
+        "genre_id": "845833e7-6bec-4813-a041-77eafaa93949",
         "code": "affiliation",
         "name": "Affiliation",
         "description": "The faction, house, organization, or side the character belongs to.",
@@ -1217,9 +1217,9 @@
         "merge_strategy": "overwrite"
       },
       {
-        "attr_id": "118fc791-3b2b-4a64-b1b1-7b48380e5c37",
-        "kind_id": "d8a6f4d5-2d10-4df0-8735-23c63474a140",
-        "genre_id": "40fc151b-8dda-4206-b7ec-8cc712ad21fb",
+        "attr_id": "49360183-15f7-4939-ac46-ae681724469d",
+        "kind_id": "d8cb1b71-466c-4a6e-93c3-c59f7a99d5d5",
+        "genre_id": "845833e7-6bec-4813-a041-77eafaa93949",
         "code": "description",
         "name": "Description",
         "description": "How the power system works, concisely.",
@@ -1231,9 +1231,9 @@
         "merge_strategy": "overwrite"
       },
       {
-        "attr_id": "51afa90a-fb1a-4b3a-b86a-1eb65a00112e",
-        "kind_id": "64433bb4-3fb8-4f99-a85f-5f9fead5029b",
-        "genre_id": "40fc151b-8dda-4206-b7ec-8cc712ad21fb",
+        "attr_id": "f75991b8-5111-4c6e-9962-f14c99a08cd7",
+        "kind_id": "59b155be-8d98-444e-bc45-268828f50765",
+        "genre_id": "845833e7-6bec-4813-a041-77eafaa93949",
         "code": "description",
         "name": "Description",
         "description": "What the organization is, its purpose, and its role in the story.",
@@ -1245,9 +1245,9 @@
         "merge_strategy": "overwrite"
       },
       {
-        "attr_id": "a409a7f7-f792-42f6-877c-11df5d6d423e",
-        "kind_id": "1f272345-f10b-432a-9803-1f6770c72bfd",
-        "genre_id": "40fc151b-8dda-4206-b7ec-8cc712ad21fb",
+        "attr_id": "530606c3-1fa4-4a0e-bada-a46c6f96c258",
+        "kind_id": "4b89f827-40bc-4ea9-b018-6e583aaea866",
+        "genre_id": "845833e7-6bec-4813-a041-77eafaa93949",
         "code": "description",
         "name": "Description",
         "description": "What the place is and its notable features.",
@@ -1259,9 +1259,9 @@
         "merge_strategy": "overwrite"
       },
       {
-        "attr_id": "869f4e28-c577-46bb-9342-4e59d5247dd4",
-        "kind_id": "eeb3c99e-2e5e-4683-b02b-068f0df64d1c",
-        "genre_id": "40fc151b-8dda-4206-b7ec-8cc712ad21fb",
+        "attr_id": "6bad93df-58ac-43a7-bf10-12fb7a5e9f2a",
+        "kind_id": "2a2ce39b-b9cf-497d-bebe-c48ce3bd1f8f",
+        "genre_id": "845833e7-6bec-4813-a041-77eafaa93949",
         "code": "description",
         "name": "Description",
         "description": "What the species is, concisely.",
@@ -1273,9 +1273,9 @@
         "merge_strategy": "overwrite"
       },
       {
-        "attr_id": "f7400a9a-64de-4f74-960d-464d7f411c88",
-        "kind_id": "237e74ce-dd84-4978-a1e2-11fb7df76508",
-        "genre_id": "40fc151b-8dda-4206-b7ec-8cc712ad21fb",
+        "attr_id": "1ea3d957-bb80-4ce4-bb92-6646a576070e",
+        "kind_id": "189268ba-d7c4-4625-b556-af0bd5e0923e",
+        "genre_id": "845833e7-6bec-4813-a041-77eafaa93949",
         "code": "emotional_beats",
         "name": "Emotional Beats",
         "description": "The key emotional turning points along the arc.",
@@ -1287,9 +1287,9 @@
         "merge_strategy": "overwrite"
       },
       {
-        "attr_id": "27d9f4c5-067b-4b32-9d61-1a5d1a3215dd",
-        "kind_id": "4fff1aff-39b9-4e25-89c7-b60a371e3512",
-        "genre_id": "40fc151b-8dda-4206-b7ec-8cc712ad21fb",
+        "attr_id": "693bc952-ca44-4af6-a2b7-ac2284e98849",
+        "kind_id": "e0ea8b6d-0dea-4946-80e0-24c78fc3c1ab",
+        "genre_id": "845833e7-6bec-4813-a041-77eafaa93949",
         "code": "key_conflict",
         "name": "Key Conflict",
         "description": "The central tension or obstacle in the relationship.",
@@ -1301,9 +1301,9 @@
         "merge_strategy": "overwrite"
       },
       {
-        "attr_id": "5188fc31-d54f-4dba-9bba-18d6f039b0d6",
-        "kind_id": "7aab2234-2ef0-4557-8f99-95201a4d1bb6",
-        "genre_id": "40fc151b-8dda-4206-b7ec-8cc712ad21fb",
+        "attr_id": "ca3d47ad-983e-48b2-9687-f38d5c83ede8",
+        "kind_id": "f6ba1a88-6111-4844-9d0d-0d1a0a2c64d4",
+        "genre_id": "845833e7-6bec-4813-a041-77eafaa93949",
         "code": "outcome",
         "name": "Outcome",
         "description": "What results or changes because of the event.",
@@ -1315,9 +1315,9 @@
         "merge_strategy": "overwrite"
       },
       {
-        "attr_id": "4ee08009-9b25-44d6-b40d-11422c70941c",
-        "kind_id": "df82409a-4356-4784-9f5d-7adb4a0c1195",
-        "genre_id": "40fc151b-8dda-4206-b7ec-8cc712ad21fb",
+        "attr_id": "720553ff-79a5-4e32-92d6-483820793516",
+        "kind_id": "a9a8ac9b-c2d1-4708-a1f2-d1cb4c10eaab",
+        "genre_id": "845833e7-6bec-4813-a041-77eafaa93949",
         "code": "significance",
         "name": "Significance",
         "description": "Why this social setting matters to the story.",
@@ -1329,9 +1329,9 @@
         "merge_strategy": "overwrite"
       },
       {
-        "attr_id": "3d8cba21-980b-4173-94b4-36c4539ed3b9",
-        "kind_id": "0a0900e0-9850-4144-9f64-d60652588f50",
-        "genre_id": "40fc151b-8dda-4206-b7ec-8cc712ad21fb",
+        "attr_id": "82184abb-47d7-47d8-8cd0-2f2039991375",
+        "kind_id": "81858ca8-7610-4a5e-b801-399f6255efd7",
+        "genre_id": "845833e7-6bec-4813-a041-77eafaa93949",
         "code": "usage_note",
         "name": "Usage Note",
         "description": "Notes on how the trope functions in the story.",
@@ -1343,9 +1343,9 @@
         "merge_strategy": "overwrite"
       },
       {
-        "attr_id": "c1090373-7b7c-499b-a3f4-3bc547b85279",
-        "kind_id": "509c950f-4fa7-4cd7-ae57-7d9a88379638",
-        "genre_id": "40fc151b-8dda-4206-b7ec-8cc712ad21fb",
+        "attr_id": "331c1a76-0ff1-424d-91b3-60de7e6ad8f0",
+        "kind_id": "fd3ad22d-1f88-473a-8418-f3beb33a812d",
+        "genre_id": "845833e7-6bec-4813-a041-77eafaa93949",
         "code": "appearance",
         "name": "Appearance",
         "description": "Physical appearance: build, face, clothing, and any distinguishing or supernatural features described in the text.",
@@ -1357,9 +1357,9 @@
         "merge_strategy": "overwrite"
       },
       {
-        "attr_id": "1530b2a0-b864-4d84-b909-50de228e2602",
-        "kind_id": "7aab2234-2ef0-4557-8f99-95201a4d1bb6",
-        "genre_id": "40fc151b-8dda-4206-b7ec-8cc712ad21fb",
+        "attr_id": "95583f0f-4fc5-4199-af9f-fbfd2b399304",
+        "kind_id": "f6ba1a88-6111-4844-9d0d-0d1a0a2c64d4",
+        "genre_id": "845833e7-6bec-4813-a041-77eafaa93949",
         "code": "description",
         "name": "Description",
         "description": "What happens in the event, concisely.",
@@ -1371,9 +1371,9 @@
         "merge_strategy": "overwrite"
       },
       {
-        "attr_id": "2a7673ea-359a-48ec-bf8d-c71a7e3e05e0",
-        "kind_id": "df82409a-4356-4784-9f5d-7adb4a0c1195",
-        "genre_id": "40fc151b-8dda-4206-b7ec-8cc712ad21fb",
+        "attr_id": "3d2c405e-c31e-4019-8d85-39d999fe29d9",
+        "kind_id": "a9a8ac9b-c2d1-4708-a1f2-d1cb4c10eaab",
+        "genre_id": "845833e7-6bec-4813-a041-77eafaa93949",
         "code": "description",
         "name": "Description",
         "description": "A concise overview of the social setting.",
@@ -1385,9 +1385,9 @@
         "merge_strategy": "overwrite"
       },
       {
-        "attr_id": "ae27c8ad-5445-4f2e-9860-26bd83d64eff",
-        "kind_id": "237e74ce-dd84-4978-a1e2-11fb7df76508",
-        "genre_id": "40fc151b-8dda-4206-b7ec-8cc712ad21fb",
+        "attr_id": "f3579c33-d82b-45bb-8e3d-be12d3c21cde",
+        "kind_id": "189268ba-d7c4-4625-b556-af0bd5e0923e",
+        "genre_id": "845833e7-6bec-4813-a041-77eafaa93949",
         "code": "resolution",
         "name": "Resolution",
         "description": "How the arc concludes or is left.",
@@ -1399,9 +1399,9 @@
         "merge_strategy": "overwrite"
       },
       {
-        "attr_id": "7b0cd299-3340-4c74-9afe-c82c3483a810",
-        "kind_id": "4fff1aff-39b9-4e25-89c7-b60a371e3512",
-        "genre_id": "40fc151b-8dda-4206-b7ec-8cc712ad21fb",
+        "attr_id": "997b2320-bb8c-4790-b9d8-9bded1add0a5",
+        "kind_id": "e0ea8b6d-0dea-4946-80e0-24c78fc3c1ab",
+        "genre_id": "845833e7-6bec-4813-a041-77eafaa93949",
         "code": "turning_points",
         "name": "Turning Points",
         "description": "Moments that shift the relationship.",
@@ -1413,9 +1413,9 @@
         "merge_strategy": "overwrite"
       },
       {
-        "attr_id": "79550697-be9e-4516-bdcf-aa2354faea2b",
-        "kind_id": "237e74ce-dd84-4978-a1e2-11fb7df76508",
-        "genre_id": "40fc151b-8dda-4206-b7ec-8cc712ad21fb",
+        "attr_id": "b8878823-e03f-410b-90bc-ed817817024f",
+        "kind_id": "189268ba-d7c4-4625-b556-af0bd5e0923e",
+        "genre_id": "845833e7-6bec-4813-a041-77eafaa93949",
         "code": "description",
         "name": "Description",
         "description": "A concise summary of the arc.",
@@ -1427,9 +1427,9 @@
         "merge_strategy": "overwrite"
       },
       {
-        "attr_id": "296af948-1095-4d16-8a66-7a7592d4b1fd",
-        "kind_id": "509c950f-4fa7-4cd7-ae57-7d9a88379638",
-        "genre_id": "40fc151b-8dda-4206-b7ec-8cc712ad21fb",
+        "attr_id": "7865253a-303a-4158-b37c-434bdb322b50",
+        "kind_id": "fd3ad22d-1f88-473a-8418-f3beb33a812d",
+        "genre_id": "845833e7-6bec-4813-a041-77eafaa93949",
         "code": "personality",
         "name": "Personality",
         "description": "Temperament, core traits, virtues and flaws as shown through actions and speech.",
@@ -1441,9 +1441,9 @@
         "merge_strategy": "overwrite"
       },
       {
-        "attr_id": "dc977b7e-c894-46fa-be5f-e819d8501c84",
-        "kind_id": "4fff1aff-39b9-4e25-89c7-b60a371e3512",
-        "genre_id": "40fc151b-8dda-4206-b7ec-8cc712ad21fb",
+        "attr_id": "119bfba0-1c3d-492c-87ed-cd5e09565e38",
+        "kind_id": "e0ea8b6d-0dea-4946-80e0-24c78fc3c1ab",
+        "genre_id": "845833e7-6bec-4813-a041-77eafaa93949",
         "code": "resolution",
         "name": "Resolution",
         "description": "How the relationship resolves or is left.",
@@ -1455,9 +1455,9 @@
         "merge_strategy": "overwrite"
       },
       {
-        "attr_id": "4f6cd78e-c73b-44d5-9995-b7db60ad35b9",
-        "kind_id": "4fff1aff-39b9-4e25-89c7-b60a371e3512",
-        "genre_id": "40fc151b-8dda-4206-b7ec-8cc712ad21fb",
+        "attr_id": "72bc5b5f-8f3f-4f3f-ad5f-8302364226cd",
+        "kind_id": "e0ea8b6d-0dea-4946-80e0-24c78fc3c1ab",
+        "genre_id": "845833e7-6bec-4813-a041-77eafaa93949",
         "code": "description",
         "name": "Description",
         "description": "A concise summary of the relationship.",
@@ -1469,9 +1469,9 @@
         "merge_strategy": "overwrite"
       },
       {
-        "attr_id": "058ba711-2fa0-45eb-a91e-bf9324d2bd71",
-        "kind_id": "509c950f-4fa7-4cd7-ae57-7d9a88379638",
-        "genre_id": "40fc151b-8dda-4206-b7ec-8cc712ad21fb",
+        "attr_id": "c2456197-b869-4d3b-865b-965ce3336745",
+        "kind_id": "fd3ad22d-1f88-473a-8418-f3beb33a812d",
+        "genre_id": "845833e7-6bec-4813-a041-77eafaa93949",
         "code": "emotional_wound",
         "name": "Emotional Wound",
         "description": "The past hurt, loss, or trauma that drives the character's behavior.",
@@ -1483,9 +1483,9 @@
         "merge_strategy": "overwrite"
       },
       {
-        "attr_id": "3e40150b-7752-4374-8d74-09506d838c0d",
-        "kind_id": "509c950f-4fa7-4cd7-ae57-7d9a88379638",
-        "genre_id": "40fc151b-8dda-4206-b7ec-8cc712ad21fb",
+        "attr_id": "9984c1a8-ba79-4de3-acd8-6632a0dde5fc",
+        "kind_id": "fd3ad22d-1f88-473a-8418-f3beb33a812d",
+        "genre_id": "845833e7-6bec-4813-a041-77eafaa93949",
         "code": "love_language",
         "name": "Love Language",
         "description": "How the character expresses or receives affection (if relevant to the story).",
@@ -1497,9 +1497,9 @@
         "merge_strategy": "overwrite"
       },
       {
-        "attr_id": "81ce158f-d44d-4ba0-a025-fbb238bb05ce",
-        "kind_id": "509c950f-4fa7-4cd7-ae57-7d9a88379638",
-        "genre_id": "40fc151b-8dda-4206-b7ec-8cc712ad21fb",
+        "attr_id": "cbb97aa0-1f1f-4f3e-9853-6578ad8ba454",
+        "kind_id": "fd3ad22d-1f88-473a-8418-f3beb33a812d",
+        "genre_id": "845833e7-6bec-4813-a041-77eafaa93949",
         "code": "relationships",
         "name": "Relationships",
         "description": "Key relationships to other characters and how they connect.",
@@ -1511,9 +1511,9 @@
         "merge_strategy": "overwrite"
       },
       {
-        "attr_id": "639fafb9-4f70-453b-bb0b-da8779c47422",
-        "kind_id": "509c950f-4fa7-4cd7-ae57-7d9a88379638",
-        "genre_id": "40fc151b-8dda-4206-b7ec-8cc712ad21fb",
+        "attr_id": "6b1bce77-dcbd-4a9f-a9d0-21ff540fc1b5",
+        "kind_id": "fd3ad22d-1f88-473a-8418-f3beb33a812d",
+        "genre_id": "845833e7-6bec-4813-a041-77eafaa93949",
         "code": "description",
         "name": "Description",
         "description": "A concise overview of who the character is and their significance in the story.",

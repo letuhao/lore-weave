@@ -2,11 +2,11 @@
   "seq": 33,
   "name": "decompose_poll29",
   "method": "GET",
-  "url": "http://localhost:3123/v1/composition/jobs/019f17b2-7ddb-7b4e-a271-cf03decbafa2",
+  "url": "http://localhost:3123/v1/composition/jobs/019f1841-dd68-73a0-8cf3-8d02d4483ca1",
   "status": 200,
   "request": null,
   "response": {
-    "id": "019f17b2-7ddb-7b4e-a271-cf03decbafa2",
+    "id": "019f1841-dd68-73a0-8cf3-8d02d4483ca1",
     "user_id": "019d5e3c-7cc5-7e6a-8b27-1344e148bf7c",
     "project_id": "019f1783-ecca-7331-afab-9543762a8b68",
     "outline_node_id": null,
@@ -15,7 +15,48 @@
     "status": "running",
     "llm_job_id": null,
     "input": {
-      "cast": [],
+      "cast": [
+        {
+          "name": "Lâm Uyển",
+          "entity_id": "019f1840-cc8a-747a-a624-cdf143d2c7cd"
+        },
+        {
+          "name": "Lâm Chấn Nhạc",
+          "entity_id": "019f1840-cc98-7440-8fb8-409ee7eda422"
+        },
+        {
+          "name": "Tô Yến",
+          "entity_id": "019f1840-cc9c-746e-b8d4-5b5bfe1f74c9"
+        },
+        {
+          "name": "Lâm Tử Hàn",
+          "entity_id": "019f1840-cca0-7201-8867-8d14adf622d9"
+        },
+        {
+          "name": "Cửu U Ma Cơ",
+          "entity_id": "019f1840-cca4-7437-8e37-e49de8655eb4"
+        },
+        {
+          "name": "Thanh Vân Tông",
+          "entity_id": "019f1840-cca9-773f-b64f-21c8aaa6551f"
+        },
+        {
+          "name": "Mộ Dung Tuyết",
+          "entity_id": "019f1840-ccad-7fa9-b81b-6850994426ac"
+        },
+        {
+          "name": "Diệp Phàm",
+          "entity_id": "019f1840-ccb1-7995-9bd6-b3ec0e99e116"
+        },
+        {
+          "name": "Hắc Sát",
+          "entity_id": "019f1840-ccb5-775e-abc9-314e65b067cc"
+        },
+        {
+          "name": "Lục Trường Phong",
+          "entity_id": "019f1840-ccb9-71f8-a3c2-324c375ec4a5"
+        }
+      ],
       "beats": [
         {
           "key": "hook",
@@ -162,7 +203,7 @@
     "target_revision_id": null,
     "cost_usd": "0.0000",
     "idempotency_key": null,
-    "created_at": "2026-06-30T08:43:21.434554Z",
-    "updated_at": "2026-06-30T08:43:21.447442Z"
+    "created_at": "2026-06-30T11:19:57.543619Z",
+    "updated_at": "2026-06-30T11:19:57.556940Z"
   }
 }

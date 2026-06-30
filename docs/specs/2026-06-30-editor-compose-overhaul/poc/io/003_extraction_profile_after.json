@@ -2,13 +2,13 @@
   "seq": 3,
   "name": "extraction_profile_after",
   "method": "GET",
-  "url": "http://localhost:3123/v1/glossary/books/019f173a-dfb8-768e-a5e9-89c90ad9bed1/extraction-profile",
+  "url": "http://localhost:3123/v1/glossary/books/019f1783-ebb4-78de-ac9d-0dfba6539b7c/extraction-profile",
   "status": 200,
   "request": null,
   "response": {
     "kinds": [
       {
-        "kind_id": "509c950f-4fa7-4cd7-ae57-7d9a88379638",
+        "kind_id": "fd3ad22d-1f88-473a-8418-f3beb33a812d",
         "code": "character",
         "name": "Character",
         "description": null,
@@ -135,7 +135,7 @@
         ]
       },
       {
-        "kind_id": "1f272345-f10b-432a-9803-1f6770c72bfd",
+        "kind_id": "4b89f827-40bc-4ea9-b018-6e583aaea866",
         "code": "location",
         "name": "Location",
         "description": null,
@@ -208,7 +208,7 @@
         ]
       },
       {
-        "kind_id": "3d2baeb9-c66f-48ad-bfba-b414da5f843c",
+        "kind_id": "f3b11520-104d-4630-b9c0-6e56435e47f9",
         "code": "item",
         "name": "Item / Prop",
         "description": null,
@@ -272,7 +272,7 @@
         ]
       },
       {
-        "kind_id": "7aab2234-2ef0-4557-8f99-95201a4d1bb6",
+        "kind_id": "f6ba1a88-6111-4844-9d0d-0d1a0a2c64d4",
         "code": "event",
         "name": "Event",
         "description": null,
@@ -354,7 +354,7 @@
         ]
       },
       {
-        "kind_id": "f81bb0ae-d1b2-4925-ab7c-3aa8b1a235b9",
+        "kind_id": "623c9ca5-637c-47f5-a03a-9c4a236f055b",
         "code": "terminology",
         "name": "Terminology",
         "description": null,
@@ -400,7 +400,7 @@
         ]
       },
       {
-        "kind_id": "d8a6f4d5-2d10-4df0-8735-23c63474a140",
+        "kind_id": "d8cb1b71-466c-4a6e-93c3-c59f7a99d5d5",
         "code": "power_system",
         "name": "Power System",
         "description": null,
@@ -473,7 +473,7 @@
         ]
       },
       {
-        "kind_id": "64433bb4-3fb8-4f99-a85f-5f9fead5029b",
+        "kind_id": "59b155be-8d98-444e-bc45-268828f50765",
         "code": "organization",
         "name": "Organization",
         "description": null,
@@ -546,7 +546,7 @@
         ]
       },
       {
-        "kind_id": "eeb3c99e-2e5e-4683-b02b-068f0df64d1c",
+        "kind_id": "2a2ce39b-b9cf-497d-bebe-c48ce3bd1f8f",
         "code": "species",
         "name": "Species / Race",
         "description": null,
@@ -619,7 +619,7 @@
         ]
       },
       {
-        "kind_id": "4fff1aff-39b9-4e25-89c7-b60a371e3512",
+        "kind_id": "e0ea8b6d-0dea-4946-80e0-24c78fc3c1ab",
         "code": "relationship",
         "name": "Relationship",
         "description": null,
@@ -719,7 +719,7 @@
         ]
       },
       {
-        "kind_id": "237e74ce-dd84-4978-a1e2-11fb7df76508",
+        "kind_id": "189268ba-d7c4-4625-b556-af0bd5e0923e",
         "code": "plot_arc",
         "name": "Plot Arc",
         "description": null,
@@ -810,7 +810,7 @@
         ]
       },
       {
-        "kind_id": "0a0900e0-9850-4144-9f64-d60652588f50",
+        "kind_id": "81858ca8-7610-4a5e-b801-399f6255efd7",
         "code": "trope",
         "name": "Trope",
         "description": null,
@@ -883,7 +883,7 @@
         ]
       },
       {
-        "kind_id": "df82409a-4356-4784-9f5d-7adb4a0c1195",
+        "kind_id": "a9a8ac9b-c2d1-4708-a1f2-d1cb4c10eaab",
         "code": "social_setting",
         "name": "Social Setting",
         "description": null,
