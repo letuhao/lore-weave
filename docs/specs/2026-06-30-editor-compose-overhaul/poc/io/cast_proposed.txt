@@ -1,0 +1,51 @@
+CAST proposed: 10  (named=6, new=4)
+
+  [named] Lâm Uyển  — protagonist / Kẻ nghịch thiên cải mệnh
+          Đích nữ bị ruồng bỏ của Lâm gia, dùng ma công để nghịch thiên cải mệnh.
+          rel: Con gái của Lâm Chấn Nhạc và Tô Yến; Muội muội của Lâm Tử Hàn; Truyền nhân của C
+          traits: Kiên cường, Quyết đoán, Lạnh lùng, Nghịch cảnh
+
+  [named] Lâm Chấn Nhạc  — antagonist / Phụ thân vô tình
+          Gia chủ Lâm gia, người coi trọng lợi ích gia tộc hơn tình thâm cốt nhục.
+          rel: Gia chủ Lâm gia; Phụ thân của Lâm Uyển, Lâm Tử Hàn
+          traits: Lạnh lùng, Thực dụng, Trọng danh dự
+
+  [named] Tô Yến  — antagonist / Mẫu thân sắc sảo
+          Người mẹ coi trọng danh tiếng gia tộc, ghẻ lạnh con gái vì sự yếu kém.
+          rel: Chính thất Lâm gia; Mẫu thân của Lâm Uyển, Lâm Tử Hàn
+          traits: Sắc sảo, Tàn nhẫn, Thực dụng
+
+  [named] Lâm Tử Hàn  — rival / Thiên tài chính đạo
+          Thiên tài của Lâm gia, người luôn đứng trên đỉnh cao và là đối trọng của Lâm Uyể
+          rel: Huynh trưởng của Lâm Uyển; Con trai của Lâm Chấn Nhạc và Tô Yến
+          traits: Thiên tài, Cao ngạo, Áp chế
+
+  [named] Cửu U Ma Cơ  — mentor / Ma tôn thượng cổ
+          Ma nữ thượng cổ, người để lại ma công cải tạo cơ thể cho Lâm Uyển.
+          rel: Chủ nhân cuốn cổ thư; Người dẫn dắt tâm linh cho Lâm Uyển
+          traits: Thần bí, Mạnh mẽ, Tàn bạo
+
+  [named] Thanh Vân Tông  — antagonist / Chính đạo giả tạo
+          Thế lực chính đạo luôn dùng danh nghĩa công lý để bài trừ ma đạo.
+          rel: Tông môn chính đạo khinh miệt Lâm Uyển
+          traits: Đạo đức giả, Khắt khe, Hào nhoáng
+
+  [  NEW] Mộ Dung Tuyết  — foil / Thiên kim đài các
+          Một thiên tài chính đạo hoàn hảo, đại diện cho những gì Lâm Uyển từng bị tước đo
+          rel: Đối thủ tiềm năng của Lâm Uyển; Đệ tử ưu tú của Thanh Vân Tông
+          traits: Kiêu kỳ, Thanh cao, Bề ngoài hoàn mỹ
+
+  [  NEW] Hắc Sát  — ally / Sát thủ bóng đêm
+          Một tu sĩ ma đạo ẩn danh, hỗ trợ Lâm Uyển trong những cuộc ám sát.
+          rel: Thuộc hạ trung thành của Lâm Uyển
+          traits: Lặng lẽ, Trung thành, Sát khí
+
+  [  NEW] Diệp Phàm  — rival / Công tử kiêu ngạo
+          Một thiên tài chính đạo có tư tưởng cực đoan, luôn tìm cách tiêu diệt mầm mống m
+          rel: Thiếu chủ của một đại tông môn; Kẻ thù của Lâm Uyển trên con đường tranh đoạt tà
+          traits: Ngông cuồng, Thâm hiểm, Thừa kế
+
+  [  NEW] Tử Yên Nhi  — ally / Tiểu sư muội
+          Một tu sĩ cấp thấp giúp Lâm Uyển thu thập thông tin về các bí cảnh.
+          rel: Bạn đồng hành của Lâm Uyển tại một khu chợ đen
+          traits: Lanh lợi, Thông minh, Trung thực
