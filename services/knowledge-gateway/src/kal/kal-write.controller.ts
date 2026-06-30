@@ -5,11 +5,12 @@ import { InternalTokenGuard } from '../auth/internal-token.guard.js';
 
 /**
  * KAL writes (the only mutators) — encode the two write paths (A append / B retract) +
- * merge/split + fold (§4, §12.4). Each delegates to a glossary-service `/internal/facts/*`
- * route that wraps the Go fact core (appendFact / retractFacts / mergeFactChains /
- * splitFactsByEpisode / fold). Those internal routes are the F4-follow-on (the fact core
- * exists as Go functions today, F1c/F1f); until a route is exposed the KAL forwards and
- * surfaces the downstream status (a 404 "route not yet exposed"), never a silent success.
+ * close/merge/split/resolve/episode/fold (§4, §12.4). Each delegates to a glossary-service
+ * `/internal/*` route that wraps the Go fact core (ingestEpisode / appendFact / closeFact /
+ * retractFacts / mergeFactChains / splitFactsByEpisode / resolveEntity / triggerFold). ALL of
+ * these routes are backed (F4 + close_fact); the KAL forwards and surfaces the downstream status
+ * faithfully (a 4xx is the caller's to see), never a silent success. The WRITE surface is
+ * internal-token-only — the FE never writes facts directly (those are the producer/service path).
  */
 @UseGuards(InternalTokenGuard)
 @Controller('v1/kal/books/:bookId')
@@ -31,10 +32,10 @@ export class KalWriteController {
 
   @Post('facts/close')
   closeFact(@Param('bookId') bookId: string, @Body() body: unknown, @Headers() h: Record<string, string>) {
-    // → /internal/books/{id}/facts/close (the natural URL). NOTE: the glossary backing for an
-    // explicit valid-time close (§12.3.2) is NOT yet implemented — it touches the LOCKED
-    // single-writer (maintain_chain) invariant and needs a design decision; until then this
-    // surfaces the downstream 404 (route-not-yet-backed), never a silent success.
+    // → /internal/books/{id}/facts/close (internalCloseFact). Explicit valid-time close (§12.3.2):
+    // glossary pins the fact's valid_to via the pin-aware maintain_chain (migration 0049) so the
+    // close survives chain re-derivation — the LOCKED single-writer invariant holds (a pinned close
+    // is an authored INPUT the deriver respects, not a competing writer). Backed + live-smoked.
     return this.forward(bookId, 'close', body, h);
   }
 
@@ -69,8 +70,8 @@ export class KalWriteController {
     );
   }
 
-  /** Forward to the glossary fact-core internal route under /facts/. A downstream 404 surfaces
-   *  faithfully as "route not yet backed" (downstream.ts maps 4xx through), never a silent success. */
+  /** Forward to the glossary fact-core internal route under /facts/. downstream.ts maps a 4xx
+   *  through faithfully (the caller's to see) and 5xx → 502 — never a silent success. */
   private async forward(bookId: string, verb: string, body: unknown, h: Record<string, string>) {
     return glossary.post(`/internal/books/${bookId}/facts/${verb}`, body, ctxFromHeaders(h));
   }
