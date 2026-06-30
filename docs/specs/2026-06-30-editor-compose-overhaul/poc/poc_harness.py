@@ -215,6 +215,42 @@ def _rep_metrics(text):
         "ma_co": low.count("cửu u ma cơ"),               # foreshadow over-repetition
     }
 
+def phase_drive(token, s):
+    """Task C — draft EVERY scene of all 12 chapters (grounded /generate) and save the
+    assembled raw prose per chapter (drive_chNN_raw.txt) + persist the chapter draft.
+    Assembles from the JUST-drafted current nodes (not chapter_scene_drafts) so stale
+    archived-node drafts never pollute the prose. Self-heal is a separate in-container pass."""
+    by_ch = scenes_by_chapter(token, s)
+    cids = s["chapter_ids"]
+    start = int(os.environ.get("POC_DRIVE_FROM", "1"))
+    for ci, cid in enumerate(cids, 1):
+        if ci < start:
+            continue
+        scenes = by_ch.get(cid, [])
+        pairs = []
+        for si, node in enumerate(scenes, 1):
+            print(f"  CH{ci:02d} scene{si}/{len(scenes)}: {node.get('title')}", flush=True)
+            text = gen_scene(token, s, node, f"drive_ch{ci:02d}_sc{si:02d}")
+            if text:
+                pairs.append((node.get("title", ""), text))
+        raw = "\n\n".join(t for _, t in pairs)
+        (IO / f"drive_ch{ci:02d}_raw.txt").write_text(raw, encoding="utf-8")
+        if pairs:
+            doc = to_tiptap_doc(pairs)
+            st, _ = call("PATCH", f"/v1/books/{s['book_id']}/chapters/{cid}/draft", token=token,
+                         name=f"drive_persist_ch{ci:02d}",
+                         json_body={"body": doc, "body_format": "json", "commit_message": "drive draft"},
+                         expect={200, 409})
+            if st == 409:
+                _, dft = call("GET", f"/v1/books/{s['book_id']}/chapters/{cid}/draft", token=token,
+                              name=f"drive_get_ch{ci:02d}")
+                call("PATCH", f"/v1/books/{s['book_id']}/chapters/{cid}/draft", token=token,
+                     name=f"drive_persist_ch{ci:02d}_retry",
+                     json_body={"body": doc, "body_format": "json", "commit_message": "drive draft",
+                                "expected_draft_version": dft.get("draft_version")}, expect={200})
+        print(f"  CH{ci:02d} drafted: {len(raw)} chars, {len(pairs)} scenes", flush=True)
+    print("DRIVE DRAFT done")
+
 def phase_pipeline(token, s):
     """Task C drive — run the MULTI-STEP planning pipeline through the real endpoint
     (pipeline=true → worker job), then commit the grounded+healed plan to the outline.
@@ -439,6 +475,7 @@ def main():
     if phase == "stitch": phase_stitch(token, s)
     if phase == "satellite": phase_satellite(token, s)
     if phase == "pipeline": phase_pipeline(token, s)
+    if phase == "drive": phase_drive(token, s)
     if phase == "grounding": phase_grounding(token, s)
     save_state(s)
 

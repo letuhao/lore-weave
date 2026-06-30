@@ -1,0 +1,13 @@
+CH01: 4662->4662 chars | findings=0 edits=0 ()
+CH02: 6575->6575 chars | findings=0 edits=0 ()
+CH03: 5120->5171 chars | findings=6 edits=3 (repeated imagery/motif, emotion loops, logic / cause-effect holes)
+CH04: 7483->7489 chars | findings=6 edits=2 (repeated information already stated, pacing)
+CH05: 8395->8395 chars | findings=0 edits=0 ()
+CH06: 9211->9211 chars | findings=0 edits=0 ()
+CH07: 9986->10034 chars | findings=7 edits=4 (repeated information already stated, emotion loops, repeated imagery/motif, repeated imagery/motif)
+CH08: 7827->7850 chars | findings=6 edits=2 (repeated imagery/motif, logic / cause-effect holes)
+CH09: 7475->7500 chars | findings=6 edits=4 (emotion loops, one-note characters, repeated imagery/motif, pacing)
+CH10: 8334->8382 chars | findings=6 edits=4 (repeated imagery/motif, repeated information, emotion loops, pacing)
+CH11: 6724->6724 chars | findings=0 edits=0 ()
+CH12: 7414->7541 chars | findings=6 edits=3 (emotion loops, repeated imagery/motif, logic / cause-effect holes)
+HEAL ALL done
