@@ -17,8 +17,15 @@ type Config struct {
 	// place provider HTTP lives — provider-gateway invariant; this is just the service
 	// URL, like BookServiceURL, NOT a model/key). Unset → glossary_deep_research returns a
 	// clear "web search is not configured" error; the rest of the service is unaffected.
-	ProviderRegistryURL  string
-	InternalServiceToken string
+	ProviderRegistryURL string
+	// TranslationServiceURL is optional. When set, the per-episode translation surface
+	// (canonical-snapshot translation cache, spec §6B/§7.6) fills a cache miss by calling
+	// translation-service's /internal/translation/translate-text (which runs the BYOK MT via
+	// provider-registry — the ONLY place provider HTTP lives; this is just the service URL,
+	// like BookServiceURL, NOT a model/key). Unset → snapshot translation returns a clear
+	// `failed/unconfigured` status; the rest of the service is unaffected.
+	TranslationServiceURL string
+	InternalServiceToken  string
 	// RedisURL is optional. When set, glossary-service runs the revision-projection
 	// consumer (VG-1) that materializes entity_revisions off the
 	// loreweave:events:glossary stream. Unset → the consumer is disabled (dev/test
@@ -44,8 +51,9 @@ func Load() (*Config, error) {
 		// the renderer degrades gracefully to a minimal (attribute-only)
 		// body — wiki generation never hard-depends on the KG being up.
 		KnowledgeServiceURL:  os.Getenv("KNOWLEDGE_SERVICE_URL"),
-		ProviderRegistryURL:  os.Getenv("PROVIDER_REGISTRY_URL"),
-		InternalServiceToken: os.Getenv("INTERNAL_SERVICE_TOKEN"),
+		ProviderRegistryURL:   os.Getenv("PROVIDER_REGISTRY_URL"),
+		TranslationServiceURL: os.Getenv("TRANSLATION_SERVICE_URL"),
+		InternalServiceToken:  os.Getenv("INTERNAL_SERVICE_TOKEN"),
 		RedisURL:             os.Getenv("REDIS_URL"),
 		AdminJWTPublicKeyPEM: os.Getenv("ADMIN_JWT_PUBLIC_KEY_PEM"),
 	}

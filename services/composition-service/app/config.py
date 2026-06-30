@@ -39,6 +39,11 @@ class Settings(BaseSettings):
     glossary_internal_url: str = "http://glossary-service:8088"
     book_internal_url: str = "http://book-service:8082"
     llm_gateway_internal_url: str = "http://provider-registry-service:8085"
+    # KAL — the single versioned knowledge read/write boundary (INV-KAL). Reads the
+    # KAL exposes (roster, facts, canonical, search, timeline, neighborhood) MUST go
+    # through here, never the owning services' /internal/* knowledge routes directly.
+    # Env KNOWLEDGE_GATEWAY_URL; auth is X-Internal-Token + a forwarded X-User-Id.
+    knowledge_gateway_url: str = "http://knowledge-gateway:3000"
 
     # Packer budget knobs (M4) — declared here so config is stable across
     # milestones; unused until the packer lands.

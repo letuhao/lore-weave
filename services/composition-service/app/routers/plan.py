@@ -27,7 +27,7 @@ from pydantic import BaseModel, Field
 
 from app.clients.book_client import BookClient, BookClientError
 from app.db.repositories import AlreadyPlannedError, ReferenceViolationError
-from app.clients.glossary_client import GlossaryClient
+from app.clients.kal_client import KalClient, RosterIncomplete
 from app.clients.llm_client import LLMClient
 from app.config import settings
 from app.db.pool import get_pool
@@ -37,7 +37,7 @@ from app.db.repositories.outline import OutlineRepo
 from app.db.repositories.structure_templates import StructureTemplatesRepo
 from app.db.repositories.works import WorksRepo
 from app.deps import (
-    get_book_client_dep, get_generation_jobs_repo, get_glossary_client_dep,
+    get_book_client_dep, get_generation_jobs_repo, get_kal_client_dep,
     get_llm_client_dep, get_outline_repo, get_structure_templates_repo, get_works_repo,
 )
 from app.engine.motif_select import (
@@ -136,15 +136,22 @@ async def _book_chapter_ids(book: BookClient, book_id: UUID, bearer: str) -> lis
                                                      "detail": str(exc)}) from exc
 
 
-async def _cast_roster(glossary: GlossaryClient, book_id: UUID) -> list[dict]:
-    """The book's glossary entities as `{entity_id, name}`. Empty on outage (the
-    planner just gets no roster; commit-time entity validation degrades to skip —
-    present_entity_ids are non-FK display hints, packer-tolerant)."""
-    resp = await glossary.list_entities(book_id)
-    if not resp:
-        return []
-    return [{"entity_id": str(i["entity_id"]), "name": i["name"]}
-            for i in resp.get("items", []) if i.get("name") and i.get("entity_id")]
+async def _cast_roster(
+    kal: KalClient, book_id: UUID, user_id: UUID, *, strict: bool = False
+) -> list[dict]:
+    """The book's full cast as `{entity_id, name}`, read through the KAL (INV-KAL).
+
+    Drains the KAL `roster` keyset cursor to completion (D4 / §12.5.2): the prior
+    glossary `list_entities` path read only the first page and ignored `next_cursor`,
+    silently truncating the cast at ~100 — so a deep book's planner saw an incomplete
+    roster. The KAL roster is bounded-per-page, COMPLETE-in-aggregate; the client
+    follows `next_cursor` until null.
+
+    Default (non-strict): empty/partial on outage (the packer just gets a thin/no roster).
+    `strict=True` raises `RosterIncomplete` on a truncated drain so a caller that treats the
+    cast as AUTHORITATIVE (commit-time entity validation) can skip instead of false-rejecting
+    a valid id in a dropped page. `user_id` is forwarded as the KAL tenancy identity."""
+    return await kal.roster(book_id, user_id=user_id, strict=strict)
 
 
 def _decompose_response(result) -> dict:
@@ -210,7 +217,7 @@ async def decompose_preview(
     bearer: str = Depends(get_bearer_token),
     works: WorksRepo = Depends(get_works_repo),
     book: BookClient = Depends(get_book_client_dep),
-    glossary: GlossaryClient = Depends(get_glossary_client_dep),
+    kal: KalClient = Depends(get_kal_client_dep),
     llm: LLMClient = Depends(get_llm_client_dep),
     templates: StructureTemplatesRepo = Depends(get_structure_templates_repo),
 ):
@@ -235,7 +242,7 @@ async def decompose_preview(
             "code": "TOO_MANY_CHAPTERS", "count": len(chapters_raw),
             "max": settings.plan_max_chapters})
 
-    cast = await _cast_roster(glossary, work.book_id)
+    cast = await _cast_roster(kal, work.book_id, user_id)
     profile = from_settings(work.settings)
     chapters_in = [
         ChapterPlan(chapter_id=str(c["chapter_id"]), title=c["title"],
@@ -325,7 +332,7 @@ async def decompose_commit(
     bearer: str = Depends(get_bearer_token),
     works: WorksRepo = Depends(get_works_repo),
     book: BookClient = Depends(get_book_client_dep),
-    glossary: GlossaryClient = Depends(get_glossary_client_dep),
+    kal: KalClient = Depends(get_kal_client_dep),
     outline: OutlineRepo = Depends(get_outline_repo),
 ):
     """Persist the accepted tree (arc→chapter→scene) atomically. Validates every
@@ -357,11 +364,16 @@ async def decompose_commit(
             "detail": "the plan has no scenes for any chapter — the planner likely "
                       "degraded (try again, or use a different model). Nothing was committed."})
 
-    # present_entity validation against the glossary cast. Best-effort: on a
-    # glossary outage (empty roster) we SKIP rather than false-reject valid ids
-    # (present_entity_ids are non-FK, packer-tolerant). Only validate when we have
-    # a roster to validate against.
-    cast = await _cast_roster(glossary, work.book_id)
+    # present_entity validation against the glossary cast. Best-effort: on a glossary outage
+    # OR an INCOMPLETE drain we SKIP rather than false-reject valid ids (present_entity_ids are
+    # non-FK, packer-tolerant). strict=True ⇒ a truncated cast raises RosterIncomplete, so we
+    # only validate against a COMPLETE cast — never against a partial set that would 400 a valid
+    # entity whose roster page failed to load.
+    try:
+        cast = await _cast_roster(kal, work.book_id, user_id, strict=True)
+    except RosterIncomplete as exc:
+        logger.warning("cast roster incomplete (%s) — skipping present_entity validation", exc)
+        cast = []
     if cast:
         cast_ids = {c["entity_id"] for c in cast}
         bad_ents = sorted({
@@ -463,7 +475,7 @@ class MotifSwapRequest(BaseModel):
 
 
 async def _bind_scene_motif(
-    *, pool: Any, apps: MotifApplicationRepo, glossary: GlossaryClient,
+    *, pool: Any, apps: MotifApplicationRepo, kal: KalClient,
     user_id: UUID, project_id: UUID, book_id: UUID, node_id: UUID,
     motif_id: UUID | None, bound_via: str = "manual_scene",
 ) -> dict[str, Any]:
@@ -487,7 +499,7 @@ async def _bind_scene_motif(
     if motif is None:
         # H13 uniform — no existence oracle for a foreign/missing motif.
         raise HTTPException(status_code=404, detail={"code": "NOT_FOUND"})
-    cast = await _cast_roster(glossary, book_id)
+    cast = await _cast_roster(kal, book_id, user_id)
     cast_index = {e["name"].strip().casefold(): e["entity_id"] for e in cast}
     sel = SelectedMotif(motif=motif, score=1.0, match_reason={})
     # bind_motif ignores its ChapterPlan arg (only resolves roles→cast) → throwaway.
@@ -524,7 +536,7 @@ async def swap_node_motif(
     bearer: str = Depends(get_bearer_token),
     works: WorksRepo = Depends(get_works_repo),
     book: BookClient = Depends(get_book_client_dep),
-    glossary: GlossaryClient = Depends(get_glossary_client_dep),
+    kal: KalClient = Depends(get_kal_client_dep),
     outline: OutlineRepo = Depends(get_outline_repo),
 ):
     """Bind / swap / clear a node's motif — NODE-KIND-AWARE (one URL, the FE's seam):
@@ -555,7 +567,7 @@ async def swap_node_motif(
     # SCENE node → the lightweight per-scene ledger bind (no scene regeneration).
     if node.kind == "scene":
         return await _bind_scene_motif(
-            pool=pool, apps=apps, glossary=glossary, user_id=user_id,
+            pool=pool, apps=apps, kal=kal, user_id=user_id,
             project_id=project_id, book_id=work.book_id, node_id=node_id,
             motif_id=body.motif_id,
         )
@@ -570,7 +582,7 @@ async def swap_node_motif(
         if motif is None:
             # H13 uniform — no existence oracle for a foreign/missing motif.
             raise HTTPException(status_code=404, detail={"code": "NOT_FOUND"})
-        cast = await _cast_roster(glossary, work.book_id)
+        cast = await _cast_roster(kal, work.book_id, user_id)
         cast_index = {e["name"].strip().casefold(): e["entity_id"] for e in cast}
         cast_names = {e["entity_id"]: e["name"] for e in cast}
         new_sel = SelectedMotif(motif=motif, score=1.0, match_reason={})
@@ -673,7 +685,7 @@ async def rebind_node_motif_role(
     user_id: UUID = Depends(get_current_user),
     bearer: str = Depends(get_bearer_token),
     works: WorksRepo = Depends(get_works_repo),
-    glossary: GlossaryClient = Depends(get_glossary_client_dep),
+    kal: KalClient = Depends(get_kal_client_dep),
     outline: OutlineRepo = Depends(get_outline_repo),
 ):
     """Rebind ONE role of a node's bound motif → a cast entity (or null = unresolve) —
@@ -699,7 +711,7 @@ async def rebind_node_motif_role(
         raise HTTPException(status_code=404, detail={"code": "NOT_FOUND"})
     # the target entity must be in the book's own cast (tenant-scoped; no foreign entity).
     if body.entity_id is not None:
-        cast = await _cast_roster(glossary, work.book_id)
+        cast = await _cast_roster(kal, work.book_id, user_id)
         if str(body.entity_id) not in {e["entity_id"] for e in cast}:
             raise HTTPException(status_code=404, detail={"code": "NOT_FOUND"})
 
@@ -724,7 +736,7 @@ async def chain_node_motif(
     user_id: UUID = Depends(get_current_user),
     bearer: str = Depends(get_bearer_token),
     works: WorksRepo = Depends(get_works_repo),
-    glossary: GlossaryClient = Depends(get_glossary_client_dep),
+    kal: KalClient = Depends(get_kal_client_dep),
     outline: OutlineRepo = Depends(get_outline_repo),
 ):
     """Pre-seed a node with a legal-succession motif resolved BY CODE — the FE
@@ -747,7 +759,7 @@ async def chain_node_motif(
 
     apps = MotifApplicationRepo(get_pool())
     out = await _bind_scene_motif(
-        pool=get_pool(), apps=apps, glossary=glossary, user_id=user_id,
+        pool=get_pool(), apps=apps, kal=kal, user_id=user_id,
         project_id=project_id, book_id=work.book_id, node_id=node_id,
         motif_id=motif.id, bound_via="chain",
     )
@@ -832,7 +844,7 @@ async def get_motif_bindings(
     user_id: UUID = Depends(get_current_user),
     works: WorksRepo = Depends(get_works_repo),
     outline: OutlineRepo = Depends(get_outline_repo),
-    glossary: GlossaryClient = Depends(get_glossary_client_dep),
+    kal: KalClient = Depends(get_kal_client_dep),
 ) -> dict[str, Any]:
     """D-MOTIF-FE-PLANNERVIEW-WIRING (Shape A) — the POST-commit per-scene motif
     binding for a chapter's committed scene nodes, so the FE renders
@@ -865,7 +877,7 @@ async def get_motif_bindings(
             m = await mrepo.get_visible(user_id, mid)
             if m is not None:
                 motif_by_id[mid] = m
-        cast = await _cast_roster(glossary, work.book_id)
+        cast = await _cast_roster(kal, work.book_id, user_id)
         cast_names = {e["entity_id"]: e["name"] for e in cast}
         # the legal-succession edges for the bound motifs → the ChainIt hints.
         successors = await mrepo.successors_by_ids(list(bound_ids))
@@ -921,7 +933,7 @@ async def materialize_arc(
     bearer: str = Depends(get_bearer_token),
     works: WorksRepo = Depends(get_works_repo),
     book: BookClient = Depends(get_book_client_dep),
-    glossary: GlossaryClient = Depends(get_glossary_client_dep),
+    kal: KalClient = Depends(get_kal_client_dep),
     outline: OutlineRepo = Depends(get_outline_repo),
     arcs: ArcTemplateRepo = Depends(get_arc_template_repo),
     motifs: MotifRepo = Depends(get_motif_repo),
@@ -959,7 +971,7 @@ async def materialize_arc(
 
     resolved = await _resolve_plan_motifs(motifs, user_id, plan.placements)
 
-    cast = await _cast_roster(glossary, work.book_id)
+    cast = await _cast_roster(kal, work.book_id, user_id)
     cast_index = {c["name"].strip().casefold(): c["entity_id"] for c in cast if c.get("name")}
     cast_names = {c["entity_id"]: c["name"] for c in cast}
 

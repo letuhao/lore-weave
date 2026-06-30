@@ -102,6 +102,33 @@ var chain = []Step{
 	// #26/#7 — the `summarize` merge-rewrite mode's canonical layer on the EAV
 	// (canonical_value + canonical_dirty + canonical_synced_at).
 	{"0043_canonical_summary", UpCanonicalSummary},
+	// Temporal-knowledge F1a — the append-only bi-temporal fact SSOT (entity_facts
+	// + episodes) + merge_journal fact/episode-move columns. Spec
+	// docs/specs/2026-06-29-incremental-temporal-knowledge-architecture.md §12.0/§12.2/§12.3.
+	{"0044_entity_facts", UpEntityFacts},
+	// Temporal-knowledge F1b — maintain_chain(entity, attr): the single writer of
+	// entity_facts.valid_to_ordinal (ordinal-aware interval-split + retract restitch
+	// + merge reconcile, one routine). Spec §12.3.3 (LOCKED).
+	{"0045_maintain_chain", UpMaintainChain},
+	// Temporal-knowledge F1h — cold-start seed: every flat EAV value becomes one open
+	// bi-temporal fact so the derived projection is byte-identical to the pre-migration
+	// flat store on day one. Spec §12.5.4 / dec-5.
+	{"0046_facts_cold_start", UpFactsColdStart},
+	// Temporal-knowledge F2 — the canonical as a lazy, versioned, regenerable CACHE
+	// (canonical_snapshot rows + per-entity canonical_fold_state). Spec §12.1 (B0 LOCKED).
+	{"0047_canonical_snapshot", UpCanonicalSnapshot},
+	// Temporal-knowledge F1g — name/aliases as first-class bi-temporal fact kinds
+	// (name single, alias multi); reconciles the cold-start/F1d attribute representation.
+	// Spec §12.4.3.
+	{"0048_bitemporal_names", UpBitemporalNames},
+	// Temporal-knowledge close_fact — explicit valid-time close: `valid_to_pinned` column +
+	// pin-aware maintain_chain (the manual close is an authored input the single deriver
+	// respects, never overwrites). Spec §12.3.2.
+	{"0049_fact_close_pin", UpFactClosePin},
+	// Per-episode translation surface — on-demand, immutable canonical translation cache
+	// (mirror of KG-TL M3 event_text_translations); the LLM runs in translation-service via
+	// provider-registry, glossary only stores + single-flights the fill. Spec §6B/§7.6.
+	{"0050_canonical_snapshot_translations", UpCanonicalSnapshotTranslations},
 }
 
 // EnsureLedger creates the schema_migrations bookkeeping table. Idempotent; must run

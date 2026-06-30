@@ -32,9 +32,12 @@ export function configureGatewayApp(
     jobsUrl: string;
     /** PUBLIC MCP edge; optional + defaulted so existing callers/tests need no change. */
     mcpPublicGatewayUrl?: string;
+    /** KAL (knowledge-gateway) temporal-knowledge read surface; optional + defaulted. */
+    kalUrl?: string;
   },
 ): void {
   const mcpPublicGatewayUrl = urls.mcpPublicGatewayUrl ?? 'http://mcp-public-gateway:8211';
+  const kalUrl = urls.kalUrl ?? 'http://knowledge-gateway:3000';
   app.enableCors({
     origin: true,
     credentials: true,
@@ -284,6 +287,50 @@ export function configureGatewayApp(
     pathFilter: (pathname: string) => pathname.startsWith('/v1/learning'),
   });
 
+  // Temporal-knowledge X6 — KAL (knowledge-gateway). The FE's temporal read surface
+  // (canonical/facts/timeline/diff/retrieval). Dumb passthrough: the user's Bearer JWT flows
+  // through unchanged; the KAL dual-auths it (validate + book grant-check) and pins X-User-Id
+  // from the token — the BFF adds no internal token here. 503-on-down mirrors knowledgeProxy so
+  // the FE can show a degraded temporal panel vs a hard error.
+  const kalProxy = createProxyMiddleware({
+    target: kalUrl,
+    changeOrigin: true,
+    pathFilter: (pathname: string) => pathname.startsWith('/v1/kal'),
+    on: {
+      error: (err: NodeJS.ErrnoException, req: Request, res: Response | Socket) => {
+        if (!('status' in res) || typeof res.status !== 'function') {
+          try {
+            (res as Socket).destroy?.();
+          } catch {
+            // ignore
+          }
+          return;
+        }
+        const httpRes = res as Response;
+        if (httpRes.headersSent) {
+          try {
+            httpRes.end();
+          } catch {
+            // socket likely already destroyed
+          }
+          return;
+        }
+        const traceId = (req.headers['x-trace-id'] as string | undefined) ?? null;
+        httpRes.status(503).set('Content-Type', 'application/json');
+        if (traceId) {
+          httpRes.set('X-Trace-Id', traceId);
+        }
+        httpRes.end(
+          JSON.stringify({
+            detail: 'knowledge_gateway_unavailable',
+            code: err?.code ?? 'ECONNREFUSED',
+            trace_id: traceId,
+          }),
+        );
+      },
+    },
+  });
+
   // LOOM M7 — composition-service (co-writer). `selfHandleResponse:false` so the
   // POST /v1/composition/works/{id}/generate SSE stream passes through
   // un-buffered (chat precedent). 503-on-down mirrors knowledgeProxy so the FE
@@ -451,6 +498,11 @@ export function configureGatewayApp(
     res: Response,
     next: NextFunction,
   ) => void;
+  const kalProxyFn = kalProxy as unknown as (
+    req: Request,
+    res: Response,
+    next: NextFunction,
+  ) => void;
   const compositionProxyFn = compositionProxy as unknown as (
     req: Request,
     res: Response,
@@ -546,6 +598,9 @@ export function configureGatewayApp(
     }
     if (req.path.startsWith('/v1/learning')) {
       return learningProxyFn(req, res, next);
+    }
+    if (req.path.startsWith('/v1/kal')) {
+      return kalProxyFn(req, res, next);
     }
     if (req.path.startsWith('/v1/composition')) {
       return compositionProxyFn(req, res, next);

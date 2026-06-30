@@ -38,6 +38,16 @@ class Settings(BaseSettings):
     # degrades to an empty neighbourhood and makes no HTTP call. Set in the live
     # stack to enable. Internal-token auth (shared internal_service_token).
     knowledge_service_internal_url: str = ""
+    # X5 (temporal-knowledge): the KAL — the single versioned read/write boundary
+    # for entity/lore knowledge (contracts/api/knowledge-gateway/kal.v1.yaml).
+    # Translation reads the entity-knowledge the KAL covers (facts/canonical) THROUGH
+    # this gateway (INV-KAL), passing an `as_of` chapter ordinal so the context for
+    # chapter N reflects the story state AS OF N (spoiler-free) instead of the latest
+    # head. Empty by default = feature off (Null port): the KAL client degrades to an
+    # empty result and makes NO HTTP call, so default behavior is byte-identical to
+    # today. Set KNOWLEDGE_GATEWAY_URL in the live stack to enable. Internal-token auth
+    # + forwarded X-User-Id (service-to-service).
+    knowledge_gateway_url: str = ""
     rabbitmq_url: str
     # M5c: Redis Streams — consume glossary change events to flag stale translations.
     redis_url: str = "redis://redis:6379"

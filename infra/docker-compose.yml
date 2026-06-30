@@ -716,6 +716,11 @@ services:
       # /internal/web-search (the outward search call lives only there — provider-gateway
       # invariant). This is the SERVICE URL (like BOOK_SERVICE_URL), NOT a model/key.
       PROVIDER_REGISTRY_URL: http://provider-registry-service:8085
+      # Per-episode translation surface (§6B/§7.6): the canonical-snapshot translation cache
+      # fills a miss by calling translation-service's /internal/translation/translate-text (BYOK
+      # MT via provider-registry — no LLM in glossary). SERVICE URL (like BOOK_SERVICE_URL), NOT a
+      # model/key. Unset → the surface returns a clear `failed/unconfigured`; rest of svc unaffected.
+      TRANSLATION_SERVICE_URL: http://translation-service:8087
       # VG-1: glossary entity versioning. When set, glossary-service runs the
       # revision-projection consumer on loreweave:events:glossary (whole-entity
       # snapshots into entity_revisions — the recovery/undo substrate). Unset =
@@ -1035,6 +1040,48 @@ services:
       interval: 5s
       timeout: 3s
       start_period: 20s
+      retries: 5
+    restart: unless-stopped
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "50m"
+        max-file: "5"
+
+  # KAL — the Knowledge Access Layer gateway (temporal-knowledge F4). The single typed
+  # read/write boundary over entity_facts (glossary SSOT) + the KG (knowledge-service).
+  # Consumers reach it via KNOWLEDGE_GATEWAY_URL; it federates the owning services'
+  # /internal/* knowledge routes (INV-KAL). Internal-token guarded.
+  knowledge-gateway:
+    build:
+      context: ../services/knowledge-gateway
+      dockerfile: Dockerfile
+      labels: *build-labels
+    environment:
+      PORT: "3000"
+      INTERNAL_SERVICE_TOKEN: ${INTERNAL_SERVICE_TOKEN:-dev_internal_token}
+      # Dual-auth user mode (FE via the BFF): validate the platform HS256 JWT (same secret
+      # glossary/knowledge use) + grant-check the book against book-service before forwarding.
+      JWT_SECRET: ${JWT_SECRET:-loreweave_local_dev_jwt_secret_change_me_32chars}
+      BOOK_SERVICE_URL: http://book-service:8082
+      GLOSSARY_SERVICE_URL: http://glossary-service:8088
+      KNOWLEDGE_SERVICE_URL: http://knowledge-service:8092
+      KG_TEMPORAL_ENABLED: ${KG_TEMPORAL_ENABLED:-true}
+      LOG_LEVEL: INFO
+    depends_on:
+      glossary-service:
+        condition: service_healthy
+      knowledge-service:
+        condition: service_healthy
+      book-service:
+        condition: service_healthy
+    ports:
+      - "3210:3000"
+    healthcheck:
+      test: ["CMD-SHELL", "node -e \"require('http').get('http://127.0.0.1:3000/health',r=>process.exit(r.statusCode===200?0:1)).on('error',()=>process.exit(1))\""]
+      interval: 10s
+      timeout: 5s
+      start_period: 15s
       retries: 5
     restart: unless-stopped
     logging:

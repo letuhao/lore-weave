@@ -42,11 +42,23 @@ class StubBook:
         return self.chapters
 
 
-class StubGlossary:
+class StubKal:
+    """Stub for the KAL client's `roster` drain (X1: the planner reads the cast
+    through the KAL, not glossary directly). `roster` returns the fully-drained cast
+    list (`[{entity_id, name}]`); `resp=None` simulates a KAL outage → empty cast."""
     def __init__(self):
-        self.resp = {"items": [{"entity_id": str(ENT), "name": "Alice"}], "next_cursor": None}
-    async def list_entities(self, book_id, *, limit=100, cursor=None):
-        return self.resp
+        self.resp: dict | None = {"items": [{"entity_id": str(ENT), "name": "Alice"}], "next_cursor": None}
+    async def roster(self, book_id, *, user_id=None, strict=False):
+        if not self.resp:
+            # Outage: a strict caller (the commit path) gets RosterIncomplete so it SKIPS
+            # validation rather than treating a truncated/empty cast as authoritative; a
+            # non-strict caller (the packer) gets the empty partial. Mirrors the real client.
+            if strict:
+                from app.clients.kal_client import RosterIncomplete
+                raise RosterIncomplete("stub outage")
+            return []
+        return [{"entity_id": str(i["entity_id"]), "name": i["name"]}
+                for i in self.resp.get("items", []) if i.get("name") and i.get("entity_id")]
 
 
 class StubOutline:
@@ -94,22 +106,22 @@ def ctx(monkeypatch):
     monkeypatch.setattr("app.main.get_pool", lambda: object())
 
     from app.main import app
-    from app.deps import (get_book_client_dep, get_glossary_client_dep, get_llm_client_dep,
+    from app.deps import (get_book_client_dep, get_kal_client_dep, get_llm_client_dep,
                           get_outline_repo, get_structure_templates_repo, get_works_repo)
     from app.middleware.jwt_auth import get_bearer_token, get_current_user
 
-    works, book, glossary, outline, templates = (
-        StubWorks(), StubBook(), StubGlossary(), StubOutline(), StubTemplates())
+    works, book, kal, outline, templates = (
+        StubWorks(), StubBook(), StubKal(), StubOutline(), StubTemplates())
     app.dependency_overrides[get_current_user] = lambda: USER
     app.dependency_overrides[get_bearer_token] = lambda: "jwt"
     app.dependency_overrides[get_works_repo] = lambda: works
     app.dependency_overrides[get_book_client_dep] = lambda: book
-    app.dependency_overrides[get_glossary_client_dep] = lambda: glossary
+    app.dependency_overrides[get_kal_client_dep] = lambda: kal
     app.dependency_overrides[get_outline_repo] = lambda: outline
     app.dependency_overrides[get_structure_templates_repo] = lambda: templates
     app.dependency_overrides[get_llm_client_dep] = lambda: object()
     with TestClient(app) as c:
-        yield c, works, book, glossary, outline, templates
+        yield c, works, book, kal, outline, templates
     app.dependency_overrides.clear()
 
 
@@ -429,9 +441,9 @@ def test_decompose_commit_rejects_out_of_range_tension_422(ctx):
 
 
 def test_decompose_commit_entity_validation_skipped_on_glossary_outage(ctx):
-    # glossary down (None) → empty roster → skip entity validation (don't false-reject)
-    c, _, _, glossary, _, _ = ctx
-    glossary.resp = None
+    # KAL down (None) → empty roster → skip entity validation (don't false-reject)
+    c, _, _, kal, _, _ = ctx
+    kal.resp = None
     body = _commit_body()
     body["chapters"][0]["scenes"][0]["present_entity_ids"] = [str(uuid.uuid4())]
     r = c.post(f"/v1/composition/works/{PROJECT}/outline/decompose/commit", json=body)

@@ -404,6 +404,13 @@ type bulkUpsertRequest struct {
 	// OwnerUserID stamps the writeback-log row for tenancy/redaction (INV-6). The
 	// worker resolves it from extraction_jobs; omitted → NULL (book_id still scopes).
 	OwnerUserID string `json:"owner_user_id"`
+	// ChapterOrdinal is the chapter's story-time position (0-based chapter_index). When
+	// present (with ChapterID + ContentHash), the writeback ALSO emits append-only
+	// bi-temporal facts into entity_facts (the temporal-knowledge SSOT, §12 Path A):
+	// it ingests the immutable episode for this chapter revision and opens one fact per
+	// written attribute valid-from this ordinal, citing the episode. Omitted (legacy
+	// caller) → no fact emission, today's flat EAV behavior unchanged (additive).
+	ChapterOrdinal *int64 `json:"chapter_ordinal"`
 }
 
 type extractedEntity struct {
@@ -664,6 +671,21 @@ func (s *Server) bulkExtractEntities(w http.ResponseWriter, r *http.Request) {
 		skipped int
 	)
 
+	// Temporal-knowledge Path A (§12): when the caller supplies the chapter ordinal, ingest
+	// the immutable episode for this chapter revision ONCE (UNIQUE(chapter_id, content_hash)
+	// → resumes, never re-mints) so the per-entity fact emission below can cite it. Sealed
+	// 'pending'; reconciled after the entity loop commits the facts (§12.2.5).
+	var factEpisodeID *uuid.UUID
+	if req.ChapterOrdinal != nil && chapterID != uuid.Nil && req.ContentHash != "" {
+		epID, _, eerr := ingestEpisode(ctx, tx, bookID, chapterID, *req.ChapterOrdinal, req.ContentHash, req.WritebackKey)
+		if eerr != nil {
+			BulkExtractTotal.WithLabelValues(OutcomeQueryFailed).Inc()
+			writeError(w, http.StatusInternalServerError, "GLOSS_INTERNAL", "failed to ingest episode: "+eerr.Error())
+			return
+		}
+		factEpisodeID = &epID
+	}
+
 	for _, ent := range req.Entities {
 		kindID, kindOK := kindMap[ent.KindCode]
 		sourceKindCode := "" // non-empty only when parked under 'unknown'
@@ -801,6 +823,20 @@ func (s *Server) bulkExtractEntities(w http.ResponseWriter, r *http.Request) {
 			} else {
 				result.Status = "skipped"
 				skipped++
+			}
+		}
+
+		// 3b. Temporal-knowledge Path A: emit one append-only fact per WRITTEN attribute,
+		// valid-from this chapter ordinal, citing the episode. Additive — the EAV write above
+		// stays the live "current" projection; entity_facts accumulates as the SSOT (§12).
+		if factEpisodeID != nil && result.EntityID != "" {
+			entID, perr := uuid.Parse(result.EntityID)
+			if perr == nil {
+				if ferr := s.emitChapterFacts(ctx, tx, bookID, entID, ent, result.AttributesWritten, *req.ChapterOrdinal, *factEpisodeID); ferr != nil {
+					BulkExtractTotal.WithLabelValues(OutcomeQueryFailed).Inc()
+					writeError(w, http.StatusInternalServerError, "GLOSS_INTERNAL", "failed to emit facts: "+ferr.Error())
+					return
+				}
 			}
 		}
 
@@ -983,6 +1019,17 @@ func (s *Server) bulkExtractEntities(w http.ResponseWriter, r *http.Request) {
 
 	if results == nil {
 		results = []entityResult{}
+	}
+
+	// Temporal-knowledge Path A: the chapter's facts have landed → flip the episode
+	// pending→reconciled in the same tx (§12.2.5 tx-2). A crash before here leaves a
+	// resumable 'pending' episode, never a phantom sealed-empty one polluting retrieval.
+	if factEpisodeID != nil {
+		if err := reconcileEpisode(ctx, tx, *factEpisodeID); err != nil {
+			BulkExtractTotal.WithLabelValues(OutcomeQueryFailed).Inc()
+			writeError(w, http.StatusInternalServerError, "GLOSS_INTERNAL", "failed to reconcile episode: "+err.Error())
+			return
+		}
 	}
 
 	// ── M1: record the WRITEBACK ledger row (INV-C3) + commit the chapter atomically.

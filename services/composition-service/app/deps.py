@@ -13,6 +13,7 @@ from __future__ import annotations
 from app.clients.book_client import BookClient, get_book_client
 from app.clients.embedding_client import EmbeddingClient, get_embedding_client
 from app.clients.glossary_client import GlossaryClient, get_glossary_client
+from app.clients.kal_client import KalClient, get_kal_client
 from app.clients.knowledge_client import KnowledgeClient, get_knowledge_client
 from app.clients.llm_client import LLMClient, get_llm_client
 from app.db.pool import get_pool
@@ -165,6 +166,12 @@ async def get_grant_client_dep():
 async def get_glossary_client_dep() -> GlossaryClient:
     """Wired for the M4 packer L0 lens (built in M3)."""
     return get_glossary_client()
+
+
+async def get_kal_client_dep() -> KalClient:
+    """The KAL (knowledge-gateway) read boundary — the planner's roster source
+    (INV-KAL). Overridable in tests."""
+    return get_kal_client()
 
 
 async def get_llm_client_dep() -> LLMClient:

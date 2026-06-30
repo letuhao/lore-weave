@@ -720,6 +720,37 @@ async def persist_pass2(body: PersistPass2Request) -> ExtractItemResponse:
                     "source_id=%s entities=%d events=%d facts=%d",
                     body.source_id, swept.entities, swept.events, swept.facts,
                 )
+            # F3 (§12.3.3 step B.3.5, A3) — re-stitch the story-time interval
+            # chains after the retract. A swept fact/relation leaves its
+            # predecessor's valid_to_ordinal dangling at the now-deleted
+            # instance's valid_from_ordinal (an as-of read between them would
+            # return nothing). Re-running the ordinal-aware chain-maintenance over
+            # the survivors re-extends each predecessor to the next surviving
+            # instance, so retract auto-restitches and never leaves a dangling
+            # close. Gated on removed > 0 (same as the sweep) so it stays off the
+            # first-extract hot path. Best-effort: a re-stitch failure must not
+            # 500 a successful write — the repair job is the INV-FACTS backstop.
+            try:
+                from app.db.neo4j_repos.temporal import (
+                    restitch_chains_after_retract,
+                )
+                restitched = await restitch_chains_after_retract(
+                    session,
+                    user_id=str(body.user_id),
+                    project_id=project_id_str,
+                )
+                if restitched:
+                    logger.info(
+                        "F3-RESTITCH: persist-pass2 re-derived %d story-time "
+                        "interval(s) after retract source_id=%s",
+                        restitched, body.source_id,
+                    )
+            except Exception:
+                logger.warning(
+                    "F3-RESTITCH: chain re-stitch after retract failed "
+                    "(non-fatal) source_id=%s",
+                    body.source_id, exc_info=True,
+                )
 
     elapsed = time.perf_counter() - started
 

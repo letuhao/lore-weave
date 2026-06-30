@@ -36,6 +36,10 @@ from pydantic import BaseModel, Field
 
 from app.db.neo4j_helpers import CypherSession, run_read, run_write
 from app.db.neo4j_repos.canonical import canonicalize_text
+from app.db.neo4j_repos.temporal import (
+    MAINTAIN_FACT_CHAIN_CYPHER,
+    ORDINAL_OPEN_CEILING,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -50,6 +54,7 @@ __all__ = [
     "list_facts_for_entity",
     "invalidate_fact",
     "delete_facts_with_zero_evidence",
+    "fact_coverage_for_entity",
 ]
 
 # Closed enum per KSA §5.1. New types require both a code change
@@ -110,6 +115,33 @@ class Fact(BaseModel):
     # was established in. NULL on legacy facts + chat-tool facts (no chapter) → those
     # are excluded under any finite window (NULL <= X is null/false in Cypher).
     from_order: int | None = None
+    # F3 — story (valid) time axis (chapter ordinals), UNIFIED with from_order.
+    # Half-open interval [valid_from_ordinal, valid_to_ordinal); open = NULL =
+    # +∞. valid_from_ordinal defaults to from_order at write time (the same
+    # reading-axis ordinal the fact was established at); valid_to_ordinal is set
+    # ONLY by temporal.maintain_chain (the single chain-maintenance writer) when
+    # a later fact on the same (subject, type) chain supersedes it. The wall-
+    # clock valid_from/valid_until above stay the TRANSACTION-time axis. NULL on
+    # legacy / positionless facts (chat-tool facts with no chapter).
+    # See app.db.neo4j_repos.temporal + spec §12.3.
+    valid_from_ordinal: int | None = None
+    valid_to_ordinal: int | None = None
+    # Indexable null-sink ceiling for open intervals (= INT64_MAX when open);
+    # maintained in lockstep with valid_to_ordinal by maintain_chain.
+    valid_to_ordinal_eff: int | None = None
+    # dec-3 (D-KG-INSTORY-EVENTDATE) — detected in-story (narrative) time as a
+    # truncated ISO string: "YYYY" / "YYYY-MM" / "YYYY-MM-DD". This is an
+    # ADDITIONAL, optional valid-time REFINEMENT alongside the chapter-ordinal
+    # axis (valid_from_ordinal) — NOT a replacement. The chapter ordinal stays the
+    # PRIMARY / spoiler-safe story-time axis (it is always present for a positioned
+    # fact and drives the interval chain); event_date_iso is a SECONDARY,
+    # descriptive sort/filter key that the extractor supplies only when the prose
+    # carries an explicit in-story date. NULL is the dominant case (most facts have
+    # no calendar date) and NEVER breaks the ordinal axis. Mirrors :Event's
+    # event_date_iso (C18): same truncated-ISO shape, sort-stable lexicographically,
+    # precision-preferring on re-mention. String (not date) so partial-precision
+    # ("summer 1880" → "1880-06") keeps the "day unknown" signal.
+    event_date_iso: str | None = None
     evidence_count: int = 0
     archived_at: datetime | None = None
     created_at: datetime | None = None
@@ -146,6 +178,17 @@ ON CREATE SET
   f.provenances = [$provenance],
   f.source_chapter = $source_chapter,
   f.from_order = $from_order,
+  // F3 — story valid-time axis. valid_from_ordinal is the ordinal the fact was
+  // established at (unified with from_order); a fresh fact opens its interval
+  // (valid_to_ordinal NULL → eff = +∞ null-sink). The interval CLOSE is done
+  // by temporal.maintain_chain after the merge, never here.
+  f.valid_from_ordinal = $valid_from_ordinal,
+  f.valid_to_ordinal = NULL,
+  f.valid_to_ordinal_eff = $open_ceiling,
+  // dec-3 — detected in-story date (optional valid-time refinement). NULL when the
+  // prose carried no explicit calendar date (the dominant case). Additive: it
+  // never participates in the ordinal chain, only annotates/sorts.
+  f.event_date_iso = $event_date_iso,
   f.evidence_count = 0,
   f.archived_at = NULL,
   f.created_at = datetime(),
@@ -155,6 +198,27 @@ ON MATCH SET
   // seen via a positionless source keeps NULL until a positioned source re-mentions
   // it); never overwrite an existing order.
   f.from_order = coalesce(f.from_order, $from_order),
+  // F3 — backfill the story-time lower bound on a later positioned re-extraction
+  // (a fact first seen positionless keeps NULL until a positioned source
+  // re-mentions it); never overwrite an existing one. valid_to_ordinal is owned
+  // by maintain_chain, so it is NOT touched on MATCH here.
+  f.valid_from_ordinal = coalesce(f.valid_from_ordinal, $valid_from_ordinal),
+  f.valid_to_ordinal_eff = coalesce(
+    f.valid_to_ordinal_eff,
+    CASE WHEN f.valid_to_ordinal IS NULL THEN $open_ceiling ELSE f.valid_to_ordinal END
+  ),
+  // dec-3 — prefer the MORE precise (longer truncated-ISO) in-story date when both
+  // non-null, mirroring :Event's C18 HIGH-1 semantic: a fact re-mentioned with a
+  // less-precise date ("1880" vs an earlier "1880-06-15") must not downgrade the
+  // stored precision. NULL new value leaves the stored one; NULL stored adopts the
+  // new. Backfill-friendly: a fact first seen dateless gains a date on a later
+  // re-extraction that carries one.
+  f.event_date_iso = CASE
+    WHEN $event_date_iso IS NULL THEN f.event_date_iso
+    WHEN f.event_date_iso IS NULL THEN $event_date_iso
+    WHEN size($event_date_iso) > size(f.event_date_iso) THEN $event_date_iso
+    ELSE f.event_date_iso
+  END,
   f.source_types = CASE
     WHEN $source_type IN f.source_types THEN f.source_types
     ELSE f.source_types + $source_type
@@ -194,6 +258,9 @@ async def merge_fact(
     provenance: str = "human_authored",
     subject_id: str | None = None,
     from_order: int | None = None,
+    valid_from_ordinal: int | None = None,
+    event_date_iso: str | None = None,
+    maintain_chain: bool = False,
 ) -> Fact:
     """Idempotent upsert. Same (user, project, type, normalized
     content) returns the same node. K17 Pass 2 promotion
@@ -205,6 +272,27 @@ async def merge_fact(
     the fact `id` stays content-keyed (idempotency unchanged), so two same-wording
     facts about different subjects share ONE node with multiple ABOUT edges.
     `from_order` is the reading-axis order (for spoiler-windowing).
+
+    F3 — `valid_from_ordinal` is the STORY-time lower bound (chapter ordinal) the
+    fact was established at, unified with `from_order`: when not given it defaults
+    to `from_order`, so a positioned fact opens a story interval automatically.
+    `maintain_chain=True` (the extraction path) re-derives the `valid_to_ordinal`
+    chain for this fact's `(subject, type)` AFTER the merge via the ordinal-aware
+    `temporal.maintain_chain` — the prior containing fact closes at this ordinal,
+    this fact closes at the next strictly-greater one (open only if none later),
+    correct under out-of-order/backfill arrival. Default `False` preserves the
+    legacy byte-identical single-MERGE behaviour for callers (chat tools, L2)
+    that don't drive the story-time chain.
+
+    dec-3 (D-KG-INSTORY-EVENTDATE) — `event_date_iso` is the OPTIONAL detected
+    in-story (narrative) date, a truncated ISO string ("YYYY" / "YYYY-MM" /
+    "YYYY-MM-DD"). It is an ADDITIVE valid-time refinement ALONGSIDE
+    `valid_from_ordinal` (the primary chapter-ordinal axis), never a replacement:
+    chapter-ordinal stays the spoiler-safe primary, the in-story date is a
+    secondary descriptive sort/filter key. `None` (the dominant case — most facts
+    carry no calendar date) is fully null-safe and never affects the ordinal
+    chain. Empty string normalizes to `None`. On re-mention the MORE precise date
+    wins (mirrors :Event's C18 precision-preferring merge).
     """
     if type not in FACT_TYPES:
         raise ValueError(f"type must be one of {FACT_TYPES}, got {type!r}")
@@ -221,6 +309,14 @@ async def merge_fact(
     canonical_content = canonicalize_text(content)
     # K11.7-R1/R4: empty string → None for optional text fields.
     normalized_source_chapter = source_chapter or None
+    # dec-3 — empty string → None so the Cypher's "NULL = no new value" precision
+    # merge treats a blank date as absent (never clobbers a stored one on MATCH).
+    normalized_event_date_iso = event_date_iso or None
+    # F3 — unify the story-time lower bound with the reading axis: an explicit
+    # valid_from_ordinal wins, else fall back to from_order (the same ordinal).
+    effective_valid_from_ordinal = (
+        valid_from_ordinal if valid_from_ordinal is not None else from_order
+    )
     result = await run_write(
         session,
         _MERGE_FACT_CYPHER,
@@ -236,6 +332,9 @@ async def merge_fact(
         source_type=source_type,
         source_chapter=normalized_source_chapter,
         from_order=from_order,
+        valid_from_ordinal=effective_valid_from_ordinal,
+        open_ceiling=ORDINAL_OPEN_CEILING,
+        event_date_iso=normalized_event_date_iso,
         provenance=provenance,
     )
     record = await result.single()
@@ -250,6 +349,20 @@ async def merge_fact(
             _LINK_FACT_SUBJECT_CYPHER,
             user_id=user_id, fact_id=fid, subject_id=subject_id,
         )
+        # F3 — drive the ordinal-aware interval-split close ONLY when the
+        # extraction path asks for it AND we have both a subject to scope the
+        # chain and a story-time position. maintain_chain re-derives valid_to
+        # over the (subject, type) chain from valid_from_ordinal order, so a
+        # back-filled out-of-order fact never inverts a later interval (A2).
+        if maintain_chain and effective_valid_from_ordinal is not None:
+            await run_write(
+                session,
+                MAINTAIN_FACT_CHAIN_CYPHER,
+                user_id=user_id,
+                entity_id=subject_id,
+                attr=type,
+                open_ceiling=ORDINAL_OPEN_CEILING,
+            )
     return _node_to_fact(record["f"])
 
 
@@ -363,7 +476,28 @@ async def list_facts_by_type(
 # window is INCLUSIVE: `f.from_order <= before_order`; a NULL from_order (legacy
 # / chat-tool facts) never passes a finite window — they stay hidden until a
 # positioned re-extraction stamps an order.
-_LIST_FACTS_FOR_ENTITY_CYPHER = """
+# dec-3 — the in-story-date variant ORDER BY. The chapter-ordinal `from_order`
+# stays the PRIMARY (spoiler-safe) key; `event_date_iso` is the SECONDARY tiebreak,
+# so facts established in the same chapter window are presented in in-story
+# chronological order when they carry a date. Undated facts (NULL event_date_iso)
+# sort BEFORE dated ones within a from_order group via the `coalesce(…, '')`
+# null-sink (empty string < any "YYYY…"), keeping the order deterministic. The
+# coalesce is required because Neo4j sorts NULLs last under ASC, which would
+# scatter undated facts to the end of each group; the sentinel groups them first
+# instead. Keyed by a closed boolean → the fragment is never user text.
+_LIST_FACTS_FOR_ENTITY_ORDER_ORDINAL = (
+    "f.from_order ASC, f.confidence DESC, f.created_at DESC"
+)
+_LIST_FACTS_FOR_ENTITY_ORDER_EVENT_DATE = (
+    "f.from_order ASC, coalesce(f.event_date_iso, '') ASC, "
+    "f.confidence DESC, f.created_at DESC"
+)
+
+# WHERE/RETURN body shared by both order variants. The ORDER BY fragment is
+# appended from the CLOSED pair above (never user text) — concatenated, NOT
+# str.format()'d, because the Cypher contains literal `{id: $entity_id}` braces
+# that format() would misparse (KeyError: 'id'). Mirrors events.py `_page_cypher`.
+_LIST_FACTS_FOR_ENTITY_BODY = """
 MATCH (f:Fact)-[:ABOUT]->(e:Entity {id: $entity_id})
 WHERE f.user_id = $user_id
   AND e.user_id = $user_id
@@ -373,9 +507,18 @@ WHERE f.user_id = $user_id
   AND ($include_archived OR f.archived_at IS NULL)
   AND ($before_order IS NULL OR f.from_order <= $before_order)
 RETURN DISTINCT f
-ORDER BY f.from_order ASC, f.confidence DESC, f.created_at DESC
-LIMIT $limit
-"""
+ORDER BY """
+
+
+def _list_facts_for_entity_cypher(order_by_event_date: bool) -> str:
+    """Assemble the list query with the chosen ORDER BY fragment (from the closed
+    pair). Concatenation, not format() — the body has literal `{...}` braces."""
+    order_by = (
+        _LIST_FACTS_FOR_ENTITY_ORDER_EVENT_DATE
+        if order_by_event_date
+        else _LIST_FACTS_FOR_ENTITY_ORDER_ORDINAL
+    )
+    return _LIST_FACTS_FOR_ENTITY_BODY + order_by + "\nLIMIT $limit\n"
 
 
 async def list_facts_for_entity(
@@ -387,12 +530,21 @@ async def list_facts_for_entity(
     min_confidence: float = 0.8,
     exclude_pending: bool = True,
     include_archived: bool = False,
+    order_by_event_date: bool = False,
     limit: int = 100,
 ) -> list[Fact]:
     """T2.1 — the known-facts list for one entity (`(:Fact)-[:ABOUT]->(:Entity)`),
     spoiler-windowed by `from_order <= before_order`. `before_order=None` = no
     window (all linked facts). Filters default to the L2 loader so quarantine /
-    low-confidence candidates don't surface as established "known facts"."""
+    low-confidence candidates don't surface as established "known facts".
+
+    dec-3 (D-KG-INSTORY-EVENTDATE) — `order_by_event_date=True` adds the optional
+    in-story `event_date_iso` as a SECONDARY sort key (chapter-ordinal `from_order`
+    stays the spoiler-safe PRIMARY), so facts established in the same chapter window
+    are ordered by in-story chronology when they carry a date. Default `False`
+    preserves the legacy `(from_order, confidence, created_at)` ordering exactly.
+    Undated facts sort first within their from_order group (deterministic), so the
+    refinement is purely additive and null-safe."""
     if not entity_id:
         raise ValueError("entity_id must be a non-empty string")
     if min_confidence < 0.0 or min_confidence > 1.0:
@@ -401,7 +553,7 @@ async def list_facts_for_entity(
         raise ValueError(f"limit must be positive, got {limit}")
     result = await run_read(
         session,
-        _LIST_FACTS_FOR_ENTITY_CYPHER,
+        _list_facts_for_entity_cypher(order_by_event_date),
         user_id=user_id,
         entity_id=entity_id,
         before_order=before_order,
@@ -487,3 +639,58 @@ async def delete_facts_with_zero_evidence(
     if record is None:
         return 0
     return int(record["deleted"])
+
+
+# ── fact_coverage_for_entity (F3 — canonical-snapshot staleness key) ───
+
+
+# The max `updated_at` over the entity's STORY-time facts valid at/under an
+# ordinal — the §12.1 staleness key for the per-entity canonical snapshot cache.
+# A late / back-filled fact under `as_of_ordinal` bumps this max, so a snapshot
+# whose stored `fact_coverage_at` is older is stale -> rebuild-on-read (B3 self-
+# heal). Scopes to the same (subject, type) chains the canonical folds: facts
+# ABOUT the entity, valid (TRANSACTION-time open) and positioned at/under the
+# ordinal. NULL when the entity has no such facts (nothing to fold yet).
+_FACT_COVERAGE_FOR_ENTITY_CYPHER = """
+MATCH (f:Fact)-[:ABOUT]->(e:Entity {id: $entity_id})
+WHERE f.user_id = $user_id
+  AND e.user_id = $user_id
+  AND f.valid_until IS NULL
+  AND f.valid_from_ordinal IS NOT NULL
+  AND f.valid_from_ordinal <= $as_of_ordinal
+RETURN max(f.updated_at) AS coverage
+"""
+
+
+async def fact_coverage_for_entity(
+    session: CypherSession,
+    *,
+    user_id: str,
+    entity_id: str,
+    as_of_ordinal: int,
+) -> datetime | None:
+    """F3 — the canonical-snapshot staleness key for one entity at an ordinal.
+
+    Returns ``max(updated_at)`` over the entity's story-time facts valid at/under
+    ``as_of_ordinal``. The snapshot cache compares its stored ``fact_coverage_at``
+    against this: a newer value means a late/back-filled fact arrived after the
+    snapshot was built -> the snapshot is stale -> rebuild-on-read (§12.1, B3).
+    ``None`` when the entity has no positioned facts under the ordinal.
+    """
+    if not entity_id:
+        raise ValueError("entity_id must be a non-empty string")
+    result = await run_read(
+        session,
+        _FACT_COVERAGE_FOR_ENTITY_CYPHER,
+        user_id=user_id,
+        entity_id=entity_id,
+        as_of_ordinal=as_of_ordinal,
+    )
+    record = await result.single()
+    if record is None or record["coverage"] is None:
+        return None
+    coverage = record["coverage"]
+    # neo4j temporal -> native datetime (mirrors _node_to_fact's to_native).
+    if hasattr(coverage, "to_native"):
+        return coverage.to_native()
+    return coverage
