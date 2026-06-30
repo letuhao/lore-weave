@@ -114,6 +114,15 @@ class Relation(BaseModel):
     valid_from_ordinal: int | None = None
     valid_to_ordinal: int | None = None
     valid_to_ordinal_eff: int | None = None
+    # dec-3 (D-KG-INSTORY-EVENTDATE) — detected in-story (narrative) time as a
+    # truncated ISO string: "YYYY" / "YYYY-MM" / "YYYY-MM-DD". An ADDITIONAL,
+    # optional valid-time REFINEMENT alongside the chapter-ordinal axis
+    # (valid_from_ordinal) — chapter-ordinal stays the PRIMARY / spoiler-safe
+    # story-time axis; event_date_iso is a SECONDARY descriptive sort/filter key
+    # supplied only when the prose carries an explicit in-story date. NULL is the
+    # dominant case and never affects the ordinal chain. Mirrors :Event /
+    # :Fact event_date_iso (same truncated-ISO shape, precision-preferring merge).
+    event_date_iso: str | None = None
     pending_validation: bool = False
     created_at: datetime | None = None
     updated_at: datetime | None = None
@@ -251,6 +260,10 @@ ON CREATE SET
   r.valid_from_ordinal = $valid_from_ordinal,
   r.valid_to_ordinal = NULL,
   r.valid_to_ordinal_eff = $open_ceiling,
+  // dec-3 — detected in-story date (optional valid-time refinement). NULL when the
+  // prose carried no explicit calendar date. Additive: never participates in the
+  // ordinal chain, only annotates/sorts.
+  r.event_date_iso = $event_date_iso,
   r.pending_validation = $pending_validation,
   // KG customizable-ontology (L7) — stamp the resolved-schema version this edge
   // was written under (M3) + the layer-4 partition seam (M2, NULL at v1). Both
@@ -292,6 +305,16 @@ ON MATCH SET
     r.valid_to_ordinal_eff,
     CASE WHEN r.valid_to_ordinal IS NULL THEN $open_ceiling ELSE r.valid_to_ordinal END
   ),
+  // dec-3 — prefer the MORE precise (longer truncated-ISO) in-story date on
+  // re-mention (mirrors :Event/:Fact): a less-precise re-mention never downgrades
+  // the stored precision; NULL new leaves the stored one; NULL stored adopts the
+  // new (backfill on a later positioned re-extraction).
+  r.event_date_iso = CASE
+    WHEN $event_date_iso IS NULL THEN r.event_date_iso
+    WHEN r.event_date_iso IS NULL THEN $event_date_iso
+    WHEN size($event_date_iso) > size(r.event_date_iso) THEN $event_date_iso
+    ELSE r.event_date_iso
+  END,
   r.updated_at = datetime()
 RETURN properties(r) AS rel,
        properties(subj) AS subj,
@@ -316,6 +339,7 @@ async def create_relation(
     cardinality: str | None = None,
     job_id: str | None = None,
     valid_from_ordinal: int | None = None,
+    event_date_iso: str | None = None,
     maintain_chain: bool = False,
 ) -> Relation | None:
     """Idempotent edge upsert. Re-running with the same
@@ -354,6 +378,13 @@ async def create_relation(
     and inverts intervals, A2). `single_active` and `maintain_chain` are distinct
     mechanisms: use `single_active` for monotonic L7/user edits, `maintain_chain`
     for extraction. Both default off ⇒ byte-identical legacy behaviour.
+
+    dec-3 (D-KG-INSTORY-EVENTDATE) — `event_date_iso` is the OPTIONAL detected
+    in-story (narrative) date, a truncated ISO string ("YYYY" / "YYYY-MM" /
+    "YYYY-MM-DD"). It is an ADDITIVE valid-time refinement ALONGSIDE
+    `valid_from_ordinal` (the primary chapter-ordinal axis), never a replacement.
+    `None` (the dominant case) is null-safe and never affects the ordinal chain.
+    Empty string normalizes to `None`; on re-mention the MORE precise date wins.
     """
     if not predicate:
         raise ValueError("predicate must be a non-empty string")
@@ -367,6 +398,9 @@ async def create_relation(
         predicate=predicate,
         object_id=object_id,
     )
+    # dec-3 — empty string → None so the Cypher's "NULL = no new value" precision
+    # merge treats a blank date as absent (never clobbers a stored one on MATCH).
+    normalized_event_date_iso = event_date_iso or None
     # L7 single_active auto-close — close the prior OPEN instance (same tenant,
     # same endpoints+predicate) before the MERGE of the new one. multi_active /
     # None ⇒ skip entirely (legacy path is byte-identical: no extra query).
@@ -393,6 +427,7 @@ async def create_relation(
         valid_from=valid_from,
         valid_from_ordinal=valid_from_ordinal,
         open_ceiling=ORDINAL_OPEN_CEILING,
+        event_date_iso=normalized_event_date_iso,
         pending_validation=pending_validation,
         schema_version=schema_version,
         graph_id=graph_id,
