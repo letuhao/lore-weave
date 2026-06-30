@@ -734,6 +734,13 @@ async def write_pass2_extraction(
             # in STORY time, correct under out-of-order/backfill arrival.
             # chapter_base=None (chat) ⇒ no ordinal ⇒ chain maintenance skipped.
             valid_from_ordinal=chapter_base,
+            # dec-3 (D-KG-INSTORY-EVENTDATE) — OPTIONAL detected in-story date,
+            # additive valid-time refinement alongside the chapter ordinal (which
+            # stays primary). `getattr(..., None)` reads it WHEN the relation
+            # candidate carries one (forward-compatible with an SDK revision that
+            # adds the field) and is None otherwise — no SDK change required here,
+            # null-safe by construction. The same truncated-ISO shape :Event uses.
+            event_date_iso=getattr(rel, "event_date", None),
             maintain_chain=True,
         )
         if result is not None:
@@ -949,6 +956,11 @@ async def write_pass2_extraction(
             provenance=provenance,
             subject_id=fact_subject_id,
             from_order=chapter_base,
+            # dec-3 (D-KG-INSTORY-EVENTDATE) — OPTIONAL detected in-story date,
+            # additive valid-time refinement alongside the chapter ordinal (which
+            # stays primary). Read it WHEN the fact candidate carries one
+            # (forward-compatible getattr); None otherwise → null-safe legacy path.
+            event_date_iso=getattr(fact, "event_date", None),
             # F3 — drive the ordinal-aware interval-split close over this fact's
             # (subject, type) chain (Path A close-prior). merge_fact internally
             # no-ops the chain when there's no subject or no story ordinal, so a
