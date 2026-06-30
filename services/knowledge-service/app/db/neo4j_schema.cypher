@@ -151,6 +151,14 @@ FOR (f:Fact) ON (f.user_id, f.evidence_count);
 CREATE INDEX fact_user_from_order IF NOT EXISTS
 FOR (f:Fact) ON (f.user_id, f.from_order);
 
+// F3 — story (valid) time axis index. The as-of-N read is the half-open range
+// `valid_from_ordinal <= N AND N < valid_to_ordinal_eff` (§12.3.1). The composite
+// `(user_id, valid_from_ordinal, valid_to_ordinal_eff)` lets the range query be
+// index-served; valid_to_ordinal_eff is the null-sink ceiling (INT64_MAX) for
+// open intervals so an open fact is included without an OR-NULL branch.
+CREATE INDEX fact_user_valid_ordinal IF NOT EXISTS
+FOR (f:Fact) ON (f.user_id, f.valid_from_ordinal, f.valid_to_ordinal_eff);
+
 // ─────────────────────────────────────────────────────────────────
 // A2-S1 :EntityStatus — coarse entity status timeline (active|gone) for the
 // composition canon guard. One node per (entity, status, from_order) transition;
@@ -343,3 +351,10 @@ FOR ()-[r:RELATES_TO]-() ON (r.schema_version);
 
 CREATE INDEX relates_to_graph_id IF NOT EXISTS
 FOR ()-[r:RELATES_TO]-() ON (r.graph_id);
+
+// F3 — story (valid) time axis index for the RELATES_TO edge. Mirrors
+// fact_user_valid_ordinal: the as-of-N read filters
+// `valid_from_ordinal <= N AND N < valid_to_ordinal_eff` (§12.3.1). Relationship
+// property indexes accelerate the temporal as-of-chapter graph read.
+CREATE INDEX relates_to_valid_ordinal IF NOT EXISTS
+FOR ()-[r:RELATES_TO]-() ON (r.valid_from_ordinal, r.valid_to_ordinal_eff);
