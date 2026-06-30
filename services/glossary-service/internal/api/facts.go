@@ -204,16 +204,17 @@ func maintainChain(ctx context.Context, q pgxRWQuerier, entityID uuid.UUID, attr
 // ('retract' for a Path-B text-edit drop, 'split' for split_entity, 'merge_tiebreak'
 // for a merge overlap loser). Returns the affected chains so a caller on the cutover
 // path can refresh their EAV projections (refreshEAVProjection).
-func retractFacts(ctx context.Context, q pgxRWQuerier, factIDs []uuid.UUID, reason string) ([]FactChain, error) {
+func retractFacts(ctx context.Context, q pgxRWQuerier, bookID uuid.UUID, factIDs []uuid.UUID, reason string) ([]FactChain, error) {
 	if len(factIDs) == 0 {
 		return nil, nil
 	}
+	// book_id scopes the retract (tenancy, LOCKED) — a caller can only close THIS book's facts.
 	rows, err := q.Query(ctx, `
 		UPDATE entity_facts
 		   SET invalidated_at = now(), invalidated_reason = $2
-		 WHERE fact_id = ANY($1) AND invalidated_at IS NULL
+		 WHERE fact_id = ANY($1) AND book_id = $3 AND invalidated_at IS NULL
 		RETURNING entity_id, attr_or_predicate`,
-		factIDs, reason,
+		factIDs, reason, bookID,
 	)
 	if err != nil {
 		return nil, fmt.Errorf("retract: close facts: %w", err)

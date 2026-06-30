@@ -156,4 +156,21 @@ func TestFactsHTTP(t *testing.T) {
 	if code != http.StatusOK || rsv3["created"] != false || rsv3["entity_id"] != rsv2["entity_id"] {
 		t.Fatalf("re-resolve new: code=%d resp=%v (want same id, created=false)", code, rsv3)
 	}
+
+	// TENANCY (HIGH-1): a WRONG book_id in the path must not read or write this entity's facts.
+	otherBook := uuid.NewString()
+	if leaked := get("/internal/books/" + otherBook + "/entities/" + entityID + "/facts"); len(leaked) != 0 {
+		t.Fatalf("cross-book read leaked %d facts (book scoping broken)", len(leaked))
+	}
+	code, _ = post("/internal/books/"+otherBook+"/facts/append", map[string]any{
+		"entity_id": entityID, "fact_kind": "attribute", "attr_or_predicate": "x", "value": "y", "valid_from_ordinal": 1,
+	})
+	if code != http.StatusNotFound {
+		t.Fatalf("cross-book append: want 404 (entity not in book), got %d", code)
+	}
+	// cross-book retract of this book's fact must close nothing
+	code, rr2 := post("/internal/books/"+otherBook+"/facts/retract", map[string]any{"fact_ids": []string{appendedID}})
+	if code == http.StatusOK && rr2["chains_restitched"] != float64(0) {
+		t.Fatalf("cross-book retract restitched %v chains (should be 0 — wrong book)", rr2["chains_restitched"])
+	}
 }

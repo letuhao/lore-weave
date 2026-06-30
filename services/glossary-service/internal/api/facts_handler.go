@@ -1,7 +1,6 @@
 package api
 
 import (
-	"context"
 	"net/http"
 	"strconv"
 
@@ -30,22 +29,26 @@ type factDTO struct {
 // internalGetFacts — GET /internal/books/{book_id}/entities/{entity_id}/facts?as_of=&attrs=
 // Latest-valid (or valid-at-N) facts for an entity (current belief, invalidated_at IS NULL).
 func (s *Server) internalGetFacts(w http.ResponseWriter, r *http.Request) {
+	bookID, ok := parsePathUUID(w, r, "book_id")
+	if !ok {
+		return
+	}
 	entityID, ok := parsePathUUID(w, r, "entity_id")
 	if !ok {
 		return
 	}
 	asOf, hasAsOf := parseOptionalInt(r.URL.Query().Get("as_of"))
-	args := []any{entityID}
+	args := []any{entityID, bookID} // book_id scopes the read (tenancy, LOCKED)
 	pred := "valid_to_ordinal IS NULL" // current head
 	if hasAsOf {
 		args = append(args, asOf)
-		pred = "valid_from_ordinal <= $2 AND (valid_to_ordinal IS NULL OR $2 < valid_to_ordinal)"
+		pred = "valid_from_ordinal <= $3 AND (valid_to_ordinal IS NULL OR $3 < valid_to_ordinal)"
 	}
 	rows, err := s.pool.Query(r.Context(), `
 		SELECT fact_id, entity_id, fact_kind, attr_or_predicate, value, valid_from_ordinal,
 		       valid_to_ordinal, cardinality, source_episode_id
 		FROM entity_facts
-		WHERE entity_id = $1 AND invalidated_at IS NULL AND `+pred+`
+		WHERE entity_id = $1 AND book_id = $2 AND invalidated_at IS NULL AND `+pred+`
 		ORDER BY attr_or_predicate, valid_from_ordinal DESC`, args...)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "GLOSS_INTERNAL", "facts query failed")
@@ -59,13 +62,17 @@ func (s *Server) internalGetFacts(w http.ResponseWriter, r *http.Request) {
 // internalFactTimeline — GET .../timeline?before_order=&after_order=&limit=
 // The per-entity change feed (every fact version incl. invalidated), newest-first.
 func (s *Server) internalFactTimeline(w http.ResponseWriter, r *http.Request) {
+	bookID, ok := parsePathUUID(w, r, "book_id")
+	if !ok {
+		return
+	}
 	entityID, ok := parsePathUUID(w, r, "entity_id")
 	if !ok {
 		return
 	}
 	limit := parseLimit(r.URL.Query().Get("limit"), 50, 200)
-	args := []any{entityID}
-	where := "entity_id = $1"
+	args := []any{entityID, bookID} // book_id scopes the read (tenancy, LOCKED)
+	where := "entity_id = $1 AND book_id = $2"
 	if before, ok := parseOptionalInt(r.URL.Query().Get("before_order")); ok {
 		args = append(args, before)
 		where += " AND valid_from_ordinal < $" + strconv.Itoa(len(args))
@@ -87,12 +94,22 @@ func (s *Server) internalFactTimeline(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	defer rows.Close()
-	writeJSON(w, http.StatusOK, map[string]any{"items": scanFacts(rows)})
+	items := scanFacts(rows)
+	// next_cursor = the oldest ordinal on this page; the caller pages older via before_order.
+	resp := map[string]any{"items": items}
+	if len(items) == limit {
+		resp["next_cursor"] = strconv.FormatInt(items[len(items)-1].ValidFrom, 10)
+	}
+	writeJSON(w, http.StatusOK, resp)
 }
 
 // internalListAttrValues — GET .../attr-values?attr=&as_of=
 // Paginated STRUCTURED multi-valued facts for one attr (aliases/tags/appears_in, §12.5.3).
 func (s *Server) internalListAttrValues(w http.ResponseWriter, r *http.Request) {
+	bookID, ok := parsePathUUID(w, r, "book_id")
+	if !ok {
+		return
+	}
 	entityID, ok := parsePathUUID(w, r, "entity_id")
 	if !ok {
 		return
@@ -102,11 +119,11 @@ func (s *Server) internalListAttrValues(w http.ResponseWriter, r *http.Request) 
 		writeError(w, http.StatusBadRequest, "GLOSS_BAD_REQUEST", "attr query param required")
 		return
 	}
-	args := []any{entityID, attr}
+	args := []any{entityID, attr, bookID} // book_id scopes the read (tenancy, LOCKED)
 	pred := ""
 	if asOf, ok := parseOptionalInt(r.URL.Query().Get("as_of")); ok {
 		args = append(args, asOf)
-		pred = " AND valid_from_ordinal <= $3 AND (valid_to_ordinal IS NULL OR $3 < valid_to_ordinal)"
+		pred = " AND valid_from_ordinal <= $4 AND (valid_to_ordinal IS NULL OR $4 < valid_to_ordinal)"
 	} else {
 		pred = " AND valid_to_ordinal IS NULL"
 	}
@@ -114,7 +131,7 @@ func (s *Server) internalListAttrValues(w http.ResponseWriter, r *http.Request) 
 		SELECT fact_id, entity_id, fact_kind, attr_or_predicate, value, valid_from_ordinal,
 		       valid_to_ordinal, cardinality, source_episode_id
 		FROM entity_facts
-		WHERE entity_id = $1 AND attr_or_predicate = $2 AND invalidated_at IS NULL`+pred+`
+		WHERE entity_id = $1 AND attr_or_predicate = $2 AND book_id = $3 AND invalidated_at IS NULL`+pred+`
 		ORDER BY value`, args...)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "GLOSS_INTERNAL", "attr-values query failed")
@@ -193,6 +210,11 @@ func (s *Server) internalAppendFact(w http.ResponseWriter, r *http.Request) {
 			epPtr = &ep
 		}
 	}
+	// Tenancy (LOCKED): the entity MUST belong to the path book, else a caller for book A
+	// could write a fact onto a book-B entity stamped book_id=A (corrupt scope key).
+	if !s.entityInBook(w, r, entityID, bookID) {
+		return
+	}
 	tx, err := s.pool.Begin(r.Context())
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "GLOSS_INTERNAL", "tx begin failed")
@@ -220,7 +242,8 @@ func (s *Server) internalAppendFact(w http.ResponseWriter, r *http.Request) {
 
 // internalRetractFacts — POST .../facts/retract  {fact_ids:[], reason}
 func (s *Server) internalRetractFacts(w http.ResponseWriter, r *http.Request) {
-	if _, ok := parsePathUUID(w, r, "book_id"); !ok {
+	bookID, ok := parsePathUUID(w, r, "book_id")
+	if !ok {
 		return
 	}
 	var body struct {
@@ -236,6 +259,10 @@ func (s *Server) internalRetractFacts(w http.ResponseWriter, r *http.Request) {
 			ids = append(ids, id)
 		}
 	}
+	if len(body.FactIDs) > 0 && len(ids) == 0 {
+		writeError(w, http.StatusBadRequest, "GLOSS_BAD_REQUEST", "no valid fact_ids")
+		return
+	}
 	reason := body.Reason
 	if reason == "" {
 		reason = "retract"
@@ -246,7 +273,7 @@ func (s *Server) internalRetractFacts(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	defer tx.Rollback(r.Context()) //nolint:errcheck
-	chains, err := retractFacts(r.Context(), tx, ids, reason)
+	chains, err := retractFacts(r.Context(), tx, bookID, ids, reason)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "GLOSS_INTERNAL", "retract failed: "+err.Error())
 		return
@@ -313,25 +340,48 @@ func (s *Server) internalResolveEntity(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusUnprocessableEntity, "GLOSS_UNKNOWN_KIND", "unknown kind: "+body.Kind)
 		return
 	}
-	existing, err := s.findEntityByNameOrAlias(r.Context(), s.pool, bookID, kindID, body.Name)
+	// One tx under the per-book advisory lock so resolve+create can't race a concurrent
+	// resolve-create of the same name (§12.7.8 — the lock is the primary guard, the
+	// uq_entity_dedup index the backstop). Mirrors the extraction writeback.
+	tx, err := s.pool.Begin(r.Context())
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "GLOSS_INTERNAL", "tx begin failed")
+		return
+	}
+	defer tx.Rollback(r.Context()) //nolint:errcheck
+	if _, err := tx.Exec(r.Context(), `SELECT pg_advisory_xact_lock($1, hashtext($2))`,
+		extractionWritebackLockNS, bookID.String()); err != nil {
+		writeError(w, http.StatusInternalServerError, "GLOSS_INTERNAL", "book lock failed")
+		return
+	}
+	existing, err := s.findEntityByNameOrAlias(r.Context(), tx, bookID, kindID, body.Name)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "GLOSS_INTERNAL", "resolve failed")
 		return
 	}
 	if existing == uuid.Nil {
-		if cross, _, cerr := s.findEntityCrossKind(r.Context(), s.pool, bookID, body.Name); cerr == nil {
+		if cross, _, cerr := s.findEntityCrossKind(r.Context(), tx, bookID, body.Name); cerr == nil {
 			existing = cross
 		}
 	}
 	created := false
 	if existing == uuid.Nil {
-		newID, cerr := s.createMinimalEntity(r.Context(), bookID, kindID, body.Name)
+		attrDefMap, aerr := s.loadAttrDefMap(r.Context(), bookID)
+		if aerr != nil {
+			writeError(w, http.StatusInternalServerError, "GLOSS_INTERNAL", "attr def map failed")
+			return
+		}
+		newID, cerr := s.createExtractedEntity(r.Context(), tx, bookID, kindID, extractedEntity{Name: body.Name}, map[string]string{}, attrDefMap, "zh", nil)
 		if cerr != nil {
 			writeError(w, http.StatusInternalServerError, "GLOSS_INTERNAL", "create failed: "+cerr.Error())
 			return
 		}
 		existing = newID
 		created = true
+	}
+	if err := tx.Commit(r.Context()); err != nil {
+		writeError(w, http.StatusInternalServerError, "GLOSS_INTERNAL", "commit failed")
+		return
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"entity_id": existing.String(), "created": created})
 }
@@ -379,6 +429,12 @@ func (s *Server) internalSplitEntity(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	defer tx.Rollback(r.Context()) //nolint:errcheck
+	// Per-book lock serializes the new-entity create (resolver-create race, §12.7.8).
+	if _, err := tx.Exec(r.Context(), `SELECT pg_advisory_xact_lock($1, hashtext($2))`,
+		extractionWritebackLockNS, bookID.String()); err != nil {
+		writeError(w, http.StatusInternalServerError, "GLOSS_INTERNAL", "book lock failed")
+		return
+	}
 	attrDefMap, err := s.loadAttrDefMap(r.Context(), bookID)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "GLOSS_INTERNAL", "attr def map failed")
@@ -399,28 +455,6 @@ func (s *Server) internalSplitEntity(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"new_entity_id": newID.String(), "moved_facts": moved})
-}
-
-// createMinimalEntity creates a bare entity (name only) in its own tx — the resolver
-// cold-start (§12.7.4) for a name with no prior entity.
-func (s *Server) createMinimalEntity(ctx context.Context, bookID, kindID uuid.UUID, name string) (uuid.UUID, error) {
-	tx, err := s.pool.Begin(ctx)
-	if err != nil {
-		return uuid.Nil, err
-	}
-	defer tx.Rollback(ctx) //nolint:errcheck
-	attrDefMap, err := s.loadAttrDefMap(ctx, bookID)
-	if err != nil {
-		return uuid.Nil, err
-	}
-	id, err := s.createExtractedEntity(ctx, tx, bookID, kindID, extractedEntity{Name: name}, map[string]string{}, attrDefMap, "zh", nil)
-	if err != nil {
-		return uuid.Nil, err
-	}
-	if err := tx.Commit(ctx); err != nil {
-		return uuid.Nil, err
-	}
-	return id, nil
 }
 
 // ── helpers ─────────────────────────────────────────────────────────────────

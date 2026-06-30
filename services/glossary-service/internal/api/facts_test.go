@@ -126,7 +126,7 @@ func TestFactCore(t *testing.T) {
 
 	// ── retract V2 → restitch → V1 reopens; projection re-points to V1 (A3) ──
 	v2id := factID(t, ctx, tx, entityID, attr, "V2")
-	chains, err := retractFacts(ctx, tx, []uuid.UUID{v2id}, "retract")
+	chains, err := retractFacts(ctx, tx, bookID, []uuid.UUID{v2id}, "retract")
 	if err != nil {
 		t.Fatalf("retract V2: %v", err)
 	}
