@@ -1043,6 +1043,42 @@ services:
         max-size: "50m"
         max-file: "5"
 
+  # KAL — the Knowledge Access Layer gateway (temporal-knowledge F4). The single typed
+  # read/write boundary over entity_facts (glossary SSOT) + the KG (knowledge-service).
+  # Consumers reach it via KNOWLEDGE_GATEWAY_URL; it federates the owning services'
+  # /internal/* knowledge routes (INV-KAL). Internal-token guarded.
+  knowledge-gateway:
+    build:
+      context: ../services/knowledge-gateway
+      dockerfile: Dockerfile
+      labels: *build-labels
+    environment:
+      PORT: "3000"
+      INTERNAL_SERVICE_TOKEN: ${INTERNAL_SERVICE_TOKEN:-dev_internal_token}
+      GLOSSARY_SERVICE_URL: http://glossary-service:8088
+      KNOWLEDGE_SERVICE_URL: http://knowledge-service:8092
+      KG_TEMPORAL_ENABLED: ${KG_TEMPORAL_ENABLED:-true}
+      LOG_LEVEL: INFO
+    depends_on:
+      glossary-service:
+        condition: service_healthy
+      knowledge-service:
+        condition: service_healthy
+    ports:
+      - "3210:3000"
+    healthcheck:
+      test: ["CMD-SHELL", "node -e \"require('http').get('http://127.0.0.1:3000/health',r=>process.exit(r.statusCode===200?0:1)).on('error',()=>process.exit(1))\""]
+      interval: 10s
+      timeout: 5s
+      start_period: 15s
+      retries: 5
+    restart: unless-stopped
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "50m"
+        max-file: "5"
+
   lore-enrichment-service:
     build:
       # Repo-root context so a later cycle can COPY sdks/python (loreweave_llm).
