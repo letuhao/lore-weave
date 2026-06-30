@@ -1,4 +1,23 @@
-# ▶▶ NEXT SESSION STARTS HERE — **Temporal Knowledge Architecture — full foundation structure LANDED (substrate + merge/split + KG + KAL service + INV-KAL lint)** · branch `feat/temporal-knowledge-architecture` · HEAD `434894d8`+ · 2026-06-30
+# ▶▶ NEXT SESSION STARTS HERE — **Temporal Knowledge — foundation ~95% (producer + full KAL read/write surface + in-story dates LIVE); remaining: F2-fold, F1g, then fanout X1–X7** · branch `feat/temporal-knowledge-architecture` · HEAD `41070247`+ · 2026-06-30
+
+> **▶ Shipped this run (production-ready, all verified on real DB / build / tests):**
+> - **F1d (producer)** `d5662b64` — facts FLOW from extraction: translation worker passes `chapter_ordinal`,
+>   glossary writeback ingests the episode + opens append-only facts per written attr, idempotent. (`TestBulkExtract_EmitsTemporalFacts`)
+> - **F4-live core** `c13d11bb` — glossary `/internal/facts/*`: GET facts/timeline/attr-values (bounded, as-of) + POST
+>   episode/append/retract; KAL paths aligned. (`TestFactsHTTP`: append supersedes, retract restitches over the router)
+> - **F4-writes** `41070247` — internal merge/resolve-entity/split routes + KAL wiring (resolve-or-create idempotent).
+> - **in-story dates** `a5d0d80e` (merged) — `event_date_iso` additive valid-time on KG facts/relations (19 tests; chapter-ordinal stays primary).
+> - **prod bugfix** `94caea91` — world-timeline `NameError: q` (pre-existing crash) fixed.
+>
+> **▶ Remaining foundation (then fanout):**
+> - **F2-app — fold handler:** dirty queue + canonical_snapshot write + lazy rebuild-on-read + ordinal-bucketed re-ground
+>   (B1) + compare-and-clear + backoff. LLM via provider-registry (likely a worker/knowledge pass like #26/#7 summarize).
+>   Makes `get_canonical` return the FOLDED canonical (today it serves canon-content). Adds the KAL `fold` route.
+> - **F1g — bi-temporal names:** name as `fact_kind='name'` (single) + aliases as `'alias'` (multi); as-of-name; resolver
+>   matches the across-time alias set. RECONCILE: migration 0048 converts the cold-start/F1d `attribute` name/aliases
+>   facts → name/alias kind, and `refreshEAVProjection` + the D5 check must project name-kind facts to the name EAV.
+> - then **fanout X1–X7** (parallel worktree agents per the locked strategy).
+
 
 > **What this branch is:** implementing the Incremental Temporal Knowledge Architecture
 > ([spec](../specs/2026-06-29-incremental-temporal-knowledge-architecture.md) §12/§12.7.8 govern;
@@ -56,14 +75,21 @@
 >    reconciles `D-TK-F1G-NAME-RECONCILE`.
 > 4. **CHECKPOINT** → then parallel **fanout** X1–X7 (consumer migrations onto the KAL, FE temporal surfaces).
 >
-> **▶ Deferred Items (temporal-knowledge):**
-> - **`D-TK-WRITEBACK-ORDINAL` (F1d)** — gate #1/#2 (cross-service contract): wire additive Path-A fact emission into the
->   glossary writeback. Needs the extraction caller (translation-service) to pass `chapter_ordinal` in the bulk-extract
->   request (currently absent — only chapter_id+content_hash). Glossary side accepts it optionally; caller update is a fanout item. Target: F1d.
-> - **`D-KAL-HTTP-SURFACE-LINT` (D6)** — gate #2: the HTTP-surface INV-KAL lint (no consumer client hits owning-svc
->   `/internal/*` knowledge endpoints). Table-read grep ships in F4; HTTP-surface tracked-for-migration. Target: X7.
-> - **`D-KG-INSTORY-EVENTDATE`** — gate #2: detected in-story time (`event_date_iso`) as a valid-time source (spec §9 dec-3). Target: post-foundation.
-> - **`D-TK-F1G-NAME-RECONCILE`** (from /review-impl LOW-1) — gate #3 (naturally-next-phase): the cold-start seeds `name`/`aliases` as single-valued `attribute` facts (D5 projection depends on it). When **F1g** lands name/aliases as `fact_kind IN ('name','alias')` multi-valued bi-temporal facts (§12.4.3), it MUST supersede those cold-start attribute-facts so an entity carries one representation. No interim corruption (maintain_chain matches fact_kind). Target: F1g.
+> **▶ SCOPE (locked 2026-06-30): this branch is the PRODUCTION-READY refactor — NO deferrals.** Everything below is
+> in-branch work to COMPLETE (the repo adopts the KAL immediately after merge, so nothing core may be stubbed/parked).
+> Includes the full consumer + FE fanout (X1–X7) and both INV-KAL lints flipped to ENFORCING. The items that were
+> "deferred" are now must-complete work:
+> - **F1d — writeback Path-A emission (must complete):** wire fact emission into the glossary writeback; extend the
+>   bulk-extract request with `chapter_ordinal` and update the translation-service extraction caller to pass it.
+> - **F4-live — glossary `/internal/facts/*` HTTP routes** wrapping the Go fact core (append/close/retract/merge/split/
+>   fold/ingest_episode/resolve_entity) so the KAL writes are real; cross-service KAL→glossary→DB live-smoke.
+> - **F2-app — fold handler:** lazy rebuild-on-read + ordinal-bucketed re-ground (B1) + compare-and-clear + backoff (LLM via provider-registry).
+> - **F1g — bi-temporal name/aliases** (§12.4.3) + as-of-name + RECONCILE the cold-start name/aliases representation
+>   (supersede the cold-start `attribute` name/alias facts → `name`/`alias` kind facts; the old `D-TK-F1G-NAME-RECONCILE`).
+> - **In-story dates (must build — user pulled into v1):** detected in-story time (`event_date_iso`) as an additional KG
+>   valid-time source (spec §9 dec-3). Knowledge-service.
+> - **Fanout X1–X7 (in-branch):** migrate composition, chat, lore-enrichment, translation, wiki, FE to read/write through
+>   the KAL; kill every direct EAV/KG read; flip BOTH INV-KAL lints (table-read + HTTP-surface) to ENFORCING.
 >
 > **▶ /review-impl (2026-06-30) — 7 findings, ALL FIXED (no HIGH):** MED-1 same-ordinal single-valued conflict → last-write-wins supersede + deterministic projection tiebreak (`TestFactSameOrdinalConflict`); MED-2 unenforced chain-lock → strengthened contract doc + `TestFactChainLockSerializes` (same-chain blocks, disjoint free); LOW-2 cold-start ordinal `0→-1` (chapter_index is 0-based); LOW-5 targeted `ON CONFLICT` on the natural-key expression index; LOW-3 `refreshEAVProjection` attr_def_id-coupling doc; LOW-4 `reconcileEpisode` F1d-obligation doc + now exercised; LOW-1 → `D-TK-F1G-NAME-RECONCILE` above. All 3 facts tests green on real DB; cold-start re-verified `projection==flat_eav` 0 mismatches with the `-1` sentinel.
 
