@@ -191,12 +191,21 @@ def test_build_judge_messages_grounds_only_with_canon():
 
 def test_code_mechanical_edits_collapses_consecutive_dup_word():
     text = "He ran ran fast and the wind was was cold."
-    edits = code_mechanical_edits(text)
+    edits = code_mechanical_edits(text, "en")
     healed = text
     for s, e, new in sorted(edits, key=lambda x: x[0], reverse=True):
         healed = healed[:s] + new + healed[e:]
     assert healed == "He ran fast and the wind was cold."
-    assert code_mechanical_edits("no repeats at all here") == []
+    assert code_mechanical_edits("no repeats at all here", "en") == []
+
+
+def test_code_mechanical_edits_skips_reduplication_languages():
+    # Vietnamese reduplication ('chằm chằm' = staring intently) must NOT be collapsed
+    text = "Nàng nhìn chằm chằm vào hư không, tiếng rắc rắc vang lên."
+    assert code_mechanical_edits(text, "vi") == []
+    assert code_mechanical_edits(text, "zh") == []
+    # a genuinely reduplication-free language still gets the fix
+    assert code_mechanical_edits("the the cat", "en")
 
 
 class FakeStackLLM:

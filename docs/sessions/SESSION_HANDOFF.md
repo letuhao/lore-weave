@@ -59,8 +59,17 @@
 > **x0.997**, incl. the canon contradiction (`từng dốc lòng che chở`→`luôn khinh miệt`) fixed by the grounded
 > editor; remaining = 1 cosmetic + 1 borderline repetition left for the human/stronger gate. **Tests:**
 > self_heal **21** (12 legacy + 9 new) green; full composition unit suite green. Result file:
-> `poc/io/ch01_healed_cheapstack.txt`. Spec §"Cheap quality stack". **NEXT:** drive the new stack over
-> CH2–12 (per-book canon from the planning pipeline's cast bible); wire `canon` from `PipelineResult`.
+> `poc/io/ch01_healed_cheapstack.txt`. Spec §"Cheap quality stack".
+>   - **Full-book drive (CH1–12, book-level canon of all 9 cast) — `story-export-v2/` + `poc/io/heal_v2_summary.json`:**
+>     **modern pronouns `ông/bà/ông ta/bà ta` = 0 real residuals book-wide** (deterministic prefilter is the
+>     reliable workhorse); **no inflation anywhere** (x0.998–1.005). Two honest findings: (1) **verify is
+>     stochastic + fail-toward-refute → occasionally drops a real finding** (CH01 `mẫu thân ngươi` regressed
+>     vs the dedicated run; refuted=5/5 on CH03) — a precision/recall knob to tune (lower aggression, or vote
+>     the verify), the human gate still matters most for the *semantic* findings. (2) **bug FIXED this commit:**
+>     the dup-word collapser would flatten VALID Vietnamese reduplication (`chằm chằm`, `rắc rắc`) — now gated
+>     OFF for `_REDUP_LANGS` (vi/zh/ja/ko/th/id/ms); only NFD-diacritic luck spared the v2 corpus, so the
+>     exported v2 prose is unaffected. **NEXT:** tune verify recall (vote-the-verify or lower its bar); wire
+>     `canon` from the planning pipeline's `PipelineResult` cast bible (instead of a hand-written bible).
 >
 > **▶ Deferred (this track):**
 > - **D-THREAD-MOTIF-COMBINED** — `thread_state` + `motifs_enabled` together: typed-state threading is skipped on the motif path (motif `prev_effects` carry used; warned, not silent). Gate #2 (needs interleaving the motif sequential select with the threaded invent loop). Target: when motifs + threading are both wanted in one run.

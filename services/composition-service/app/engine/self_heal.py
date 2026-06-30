@@ -318,11 +318,19 @@ async def _verify(
 _DUP_WORD = re.compile(r"\b([^\W\d_]+)(\s+)\1\b", re.IGNORECASE | re.UNICODE)
 
 
-def code_mechanical_edits(chapter: str) -> list[tuple[int, int, str]]:
-    """Deterministic mechanical fixes that need no LLM judgement — currently the
-    consecutive duplicate-word slip ('từng từng' → 'từng'). Returns (start, end, replacement)
-    spans, spliced alongside the satellite edits. Cheap, exact, zero false positives on this
-    class."""
+# Languages where a doubled word is overwhelmingly a VALID reduplication (từ láy:
+# 'chằm chằm', 'rắc rắc', 'xa xa'), NOT a typo — deterministic collapse would corrupt prose.
+# In these, dup-word collapsing is OFF; a genuine slip is left to the LLM judge instead.
+_REDUP_LANGS = frozenset({"vi", "zh", "ja", "ko", "th", "id", "ms"})
+
+
+def code_mechanical_edits(chapter: str, source_language: str = "auto") -> list[tuple[int, int, str]]:
+    """Deterministic mechanical fixes that need no LLM judgement — the consecutive
+    duplicate-word slip ('ran ran' → 'ran'). Returns (start, end, replacement) spans,
+    spliced alongside the satellite edits. SKIPPED for reduplication-heavy languages
+    (`_REDUP_LANGS`), where a doubled word is almost always intentional."""
+    if source_language in _REDUP_LANGS:
+        return []
     return [(m.start(), m.end(), m.group(1)) for m in _DUP_WORD.finditer(chapter)]
 
 
@@ -413,7 +421,7 @@ async def run_self_heal(
         findings = survivors
 
     # L1 — deterministic edits (no LLM): dup-word splice + full-recall pronoun findings.
-    mech = code_mechanical_edits(chapter) if prefilter else []
+    mech = code_mechanical_edits(chapter, source_language) if prefilter else []
     if prefilter and source_language == "vi":
         pron = code_pronoun_findings(chapter)
         findings = findings + pron
