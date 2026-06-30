@@ -68,8 +68,17 @@
 >     the verify), the human gate still matters most for the *semantic* findings. (2) **bug FIXED this commit:**
 >     the dup-word collapser would flatten VALID Vietnamese reduplication (`chằm chằm`, `rắc rắc`) — now gated
 >     OFF for `_REDUP_LANGS` (vi/zh/ja/ko/th/id/ms); only NFD-diacritic luck spared the v2 corpus, so the
->     exported v2 prose is unaffected. **NEXT:** tune verify recall (vote-the-verify or lower its bar); wire
->     `canon` from the planning pipeline's `PipelineResult` cast bible (instead of a hand-written bible).
+>     exported v2 prose is unaffected.
+>   - **(A) verify-recall + (B) canon-from-pipeline — SHIPPED 2026-07-01:**
+>     **(A)** `run_self_heal(verify_k=…)` VOTES the verify (`_verify_vote`, majority-refute, tie→keep) so a
+>     stochastic single refute can't drop a real finding. **(B)** new `engine/heal_canon.py`
+>     (`render_canon` / `convention_for` / `canon_from_proposed`) builds the heal bible from the SAME
+>     designed cast drafting grounds on; `PipelineResult.canon` now carries it (rendered in
+>     `run_planning_pipeline`). **Live-validated on CH1** ($0 local, canon auto-rendered 2701 chars,
+>     `verify_k=3`): the CH01 `mẫu thân ngươi` false-refute is **GONE** (residual=False; refuted 4→1), and
+>     the rendered canon enabled a new canon catch (Hắc Sát Lão Nhân's role). Tests: self_heal 24 +
+>     heal_canon 5. **NEXT:** re-drive CH1–12 with `verify_k=3` + pipeline canon to refresh `story-export-v2/`;
+>     then M6 (expose heal as MCP propose→confirm + the review-gate UI, story C7).
 >
 > **▶ Deferred (this track):**
 > - **D-THREAD-MOTIF-COMBINED** — `thread_state` + `motifs_enabled` together: typed-state threading is skipped on the motif path (motif `prev_effects` carry used; warned, not silent). Gate #2 (needs interleaving the motif sequential select with the threaded invent loop). Target: when motifs + threading are both wanted in one run.

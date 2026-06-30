@@ -30,6 +30,7 @@ from app.clients.llm_client import LLMClient
 from app.engine.cast_plan import cast_attributes, propose_cast
 from app.engine.character_plan import plan_character_arcs
 from app.engine.grounded_plan import grounded_decompose
+from app.engine.heal_canon import canon_from_proposed, convention_for
 from app.engine.motif_plan import select_arc_motifs
 from app.engine.plan import (
     ChapterPlan, DecomposeResult, _llm_json,
@@ -47,6 +48,7 @@ class PipelineResult:
     motifs: list[dict[str, str]] = field(default_factory=list)      # {name, arc_role}
     char_arcs: list[dict[str, Any]] = field(default_factory=list)   # {name, introduce_at_chapter}
     heal_report: PlanHealReport | None = None
+    canon: str = ""   # story bible (convention + per-character canon) for grounding self-heal
 
 
 async def run_planning_pipeline(
@@ -68,6 +70,10 @@ async def run_planning_pipeline(
     cast_objs = await propose_cast(llm, premise=premise, source_language=source_language,
                                    genre_tags=genre_tags, **mk)
     cast_chars = [{"name": c.name, "role": c.role, "is_new": c.is_new} for c in cast_objs]
+    # Build the self-heal CANON from the SAME designed cast that drafting grounds on, so a
+    # later heal needs no hand-written bible (convention is genre/language-selected).
+    canon = canon_from_proposed(
+        cast_objs, convention=convention_for(genre_tags, source_language))
     if seed_cast and cast_objs:
         # D-PLAN-CAST-ATTRS — persist DEPTH (role/personality/relationships/description),
         # not just the name, so drafting can ground on the designed cast.
@@ -116,4 +122,4 @@ async def run_planning_pipeline(
             llm, result, source_language=source_language, **mk)
 
     return PipelineResult(decompose=result, cast=cast_chars, motifs=motifs,
-                          char_arcs=arc_dicts, heal_report=heal_report)
+                          char_arcs=arc_dicts, heal_report=heal_report, canon=canon)

@@ -21,6 +21,7 @@ from app.engine.self_heal import (
     _judge_vote,
     _snap_to_sentence,
     _verify,
+    _verify_vote,
 )
 
 # async tests are collected via pytest.ini asyncio auto-mode.
@@ -320,3 +321,29 @@ async def test_verify_fail_open_on_degrade_keeps_finding():
     assert await _verify(Resp('{"verdict":"REFUTED"}'), "ch", f, canon=None, **_KW) is False
     assert await _verify(Resp('{"verdict":"CONFIRMED"}'), "ch", f, canon=None, **_KW) is True
     assert await _verify(Resp("no verdict here"), "ch", f, canon=None, **_KW) is True
+
+
+class _VerdictQueue:
+    """Verify-only fake: replays a queue of CONFIRMED/REFUTED verdicts by call order."""
+    def __init__(self, verdicts):
+        self.verdicts = list(verdicts)
+        self.i = 0
+
+    async def submit_and_wait(self, **kw):
+        v = self.verdicts[min(self.i, len(self.verdicts) - 1)]
+        self.i += 1
+        return SimpleNamespace(status="completed",
+                               result={"messages": [{"content": json.dumps({"verdict": v})}]})
+
+
+async def test_verify_vote_refutes_only_on_strict_majority():
+    f = Finding(type="t", span="s", issue="i", fix="f")
+    C, R = "CONFIRMED", "REFUTED"
+    # k=3: a single stochastic refute must NOT drop the finding (the CH01 false-refute fix)
+    assert await _verify_vote(_VerdictQueue([C, R, R]), "ch", f, canon=None, k=3, **_KW) is False  # 1/3 confirm → drop
+    assert await _verify_vote(_VerdictQueue([C, C, R]), "ch", f, canon=None, k=3, **_KW) is True   # 2/3 confirm → keep
+    # tie keeps (recall-biased)
+    assert await _verify_vote(_VerdictQueue([C, R]), "ch", f, canon=None, k=2, **_KW) is True
+    # k<=1 is plain single-shot
+    assert await _verify_vote(_VerdictQueue([R]), "ch", f, canon=None, k=1, **_KW) is False
+    assert await _verify_vote(_VerdictQueue([C]), "ch", f, canon=None, k=1, **_KW) is True

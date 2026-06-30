@@ -313,6 +313,20 @@ async def _verify(
     return not ("REFUT" in up and "CONFIRM" not in up)
 
 
+async def _verify_vote(
+    llm: LLMClient, chapter: str, finding: Finding, *, canon: str | None, k: int, **kw,
+) -> bool:
+    """Vote the verify (the POC found single-shot verify is stochastic + fail-toward-refute,
+    so it occasionally drops a REAL finding — CH01 'mẫu thân ngươi'). Run `_verify` k times
+    and REFUTE only on a strict majority; a tie keeps the finding (recall-biased — a clear
+    error is confirmed in most runs, a true confab is refuted in most). k≤1 ⇒ single-shot."""
+    if k <= 1:
+        return await _verify(llm, chapter, finding, canon=canon, **kw)
+    votes = await asyncio.gather(*[_verify(llm, chapter, finding, canon=canon, **kw) for _ in range(k)])
+    confirms = sum(1 for v in votes if v)
+    return confirms * 2 >= k   # keep unless a STRICT majority refutes (tie → keep)
+
+
 # ── code mechanical edits (L1 — deterministic, no LLM) ─────────────────
 
 _DUP_WORD = re.compile(r"\b([^\W\d_]+)(\s+)\1\b", re.IGNORECASE | re.UNICODE)
@@ -381,7 +395,7 @@ async def run_self_heal(
     max_edit_expansion: float = 1.6, judge_max_tokens: int = 2200,
     edit_max_tokens: int = 1200, rejudge: bool = True,
     canon: str | None = None, vote_k: int = 1, min_votes: int = 2,
-    verify: bool = False, prefilter: bool = False, vote_temperature: float = 0.7,
+    verify: bool = False, verify_k: int = 1, prefilter: bool = False, vote_temperature: float = 0.7,
     trace_id: str | None = None,
     cancel_check: Callable[[], Awaitable[bool]] | None = None,
 ) -> tuple[str, SelfHealReport]:
@@ -396,8 +410,10 @@ async def run_self_heal(
                         catches convention/canon errors and stops confabulating;
       • `vote_k`/`min_votes` — run the grounded judge K× and keep only findings recurring
                         in ≥min_votes runs (cleans random noise; pair with `canon`);
-      • `verify`      — a skeptical refute-or-confirm pass drops survivors that are
+      • `verify`/`verify_k` — a skeptical refute-or-confirm pass drops survivors that are
                         explained-in-text or out-of-text inference (fail-open on degrade);
+                        verify_k>1 VOTES the verify (majority-refute) so a stochastic single
+                        refute can't drop a real finding;
       • `prefilter`   — deterministic mechanical edits (dup-word) with no LLM.
     Recall/precision measured on CH1: 5/5 real defects caught, 0 confabulations, on a $0
     local model that previously returned 0 findings ungrounded."""
@@ -410,11 +426,13 @@ async def run_self_heal(
         canon=canon, k=vote_k, min_votes=min_votes, temperature=vote_temperature, **kw) or []
     report = SelfHealReport(findings=findings, rejudge_before=len(findings))
 
-    # L5 — skeptical verify drops refuted findings (kept in report w/ skip_reason).
+    # L5 — skeptical verify drops refuted findings (kept in report w/ skip_reason). When
+    # verify_k>1 the verify is itself VOTED (majority-refute) to stop a stochastic single
+    # refute from dropping a real finding (the CH01 'mẫu thân ngươi' false-refute).
     if verify and findings:
         survivors: list[Finding] = []
         for f in findings:
-            if await _verify(llm, chapter, f, canon=canon, **kw):
+            if await _verify_vote(llm, chapter, f, canon=canon, k=verify_k, **kw):
                 survivors.append(f)
             else:
                 f.skip_reason = "refuted"
