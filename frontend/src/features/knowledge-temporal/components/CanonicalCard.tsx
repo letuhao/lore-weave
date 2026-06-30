@@ -67,7 +67,7 @@ export function CanonicalCard({ bookId, entityId }: TemporalSurfaceProps) {
           data-testid="canonical-asof-label"
         >
           {hasOrdinal
-            ? t('temporal.canonical.asOfChapter', { ordinal })
+            ? t('temporal.canonical.asOfChapter', { ordinal, defaultValue: 'As of chapter {{ordinal}}' })
             : t('temporal.canonical.current', 'current')}
         </span>
         {isDegradeSource && !isUnbuildable && (

@@ -78,7 +78,7 @@ export function TimeSlider({ bookId, entityId }: TemporalSurfaceProps) {
         <span className="tabular-nums text-muted-foreground" data-testid="time-slider-value">
           {atHead
             ? t('temporal.slider.head', 'Head (latest)')
-            : t('temporal.slider.atChapter', { ordinal: sliderValue })}
+            : t('temporal.slider.atChapter', { ordinal: sliderValue, defaultValue: 'Chapter {{ordinal}}' })}
         </span>
       </div>
 
