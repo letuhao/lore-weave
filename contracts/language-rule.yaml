@@ -75,6 +75,7 @@ services:
   game-server: typescript
   ai-gateway: typescript          # MCP federation gateway (MCP-first invariant)
   mcp-public-gateway: typescript  # PUBLIC MCP security edge (auth/scope/spend/audit → mints internal envelope → ai-gateway). Sibling of api-gateway-bff.
+  knowledge-gateway: typescript   # KAL — single typed read/write boundary federating glossary (Go) + knowledge (Python) behind kal.v1.yaml (NestJS). Spec §6D.
 
   # ── Not yet scaffolded (directory absent; lint allows while truly missing).
   #    Promote to a real language the moment the scaffold lands.
@@ -83,4 +84,3 @@ services:
   chaos-engine: missing                # V1+30d (Q-L4-4)
   oncall-bot: missing                  # V1+30d
   session-cost-rollup-worker: missing  # PRR-17: never scaffolded — empty meta sink
-  knowledge-gateway: missing           # KAL gateway — contract frozen (contracts/api/knowledge-gateway/kal.v1.yaml, F0); promote to `typescript` when the F4 scaffold lands. Spec §6D.
