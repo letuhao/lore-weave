@@ -34,7 +34,10 @@ async function call(base: string, path: string, init: RequestInit, ctx: Downstre
   }
   if (!res.ok) {
     const body = await res.text().catch(() => '');
-    throw new HttpException(`downstream ${res.status}: ${body.slice(0, 200)}`, res.status === 404 ? 404 : 502);
+    // Forward a downstream 4xx faithfully (bad request / unauthorized / not-found /
+    // conflict are the caller's to see), map 5xx → 502 (the backend is broken, not the call).
+    const status = res.status >= 400 && res.status < 500 ? res.status : 502;
+    throw new HttpException(`downstream ${res.status}: ${body.slice(0, 200)}`, status);
   }
   return res.status === 204 ? null : res.json();
 }

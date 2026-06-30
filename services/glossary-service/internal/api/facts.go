@@ -384,24 +384,34 @@ func mergeFactChains(ctx context.Context, q pgxRWQuerier, winnerID, loserID uuid
 		}
 	}
 
-	// Repoint ALL loser facts → winner (no NOT IN dodge).
+	// Repoint ALL loser facts → winner (no NOT IN dodge). RETURNING the attr too so the
+	// tiebreak + maintain_chain operate on the ACTUAL moved set (MED-1): a chain added to the
+	// loser after distinctFactAttrs was read is still repointed here, so deriving the set from
+	// the repoint (not the pre-lock read) guarantees its valid_to is re-derived.
+	movedAttrSet := map[string]struct{}{}
 	rows, err := q.Query(ctx,
-		`UPDATE entity_facts SET entity_id = $1 WHERE entity_id = $2 RETURNING fact_id`,
+		`UPDATE entity_facts SET entity_id = $1 WHERE entity_id = $2 RETURNING fact_id, attr_or_predicate`,
 		winnerID, loserID)
 	if err != nil {
 		return nil, nil, fmt.Errorf("merge facts: repoint: %w", err)
 	}
 	for rows.Next() {
 		var id uuid.UUID
-		if err := rows.Scan(&id); err != nil {
+		var a string
+		if err := rows.Scan(&id, &a); err != nil {
 			rows.Close()
 			return nil, nil, fmt.Errorf("merge facts: scan moved: %w", err)
 		}
 		moved = append(moved, id)
+		movedAttrSet[a] = struct{}{}
 	}
 	rows.Close()
 	if err := rows.Err(); err != nil {
 		return nil, nil, fmt.Errorf("merge facts: moved rows: %w", err)
+	}
+	movedAttrs := make([]string, 0, len(movedAttrSet))
+	for a := range movedAttrSet {
+		movedAttrs = append(movedAttrs, a)
 	}
 
 	// Same-ordinal tiebreak across the affected single-valued chains: invalidate any fact
@@ -420,7 +430,7 @@ func mergeFactChains(ctx context.Context, q pgxRWQuerier, winnerID, loserID uuid
 		       AND (o.created_at > e.created_at OR (o.created_at = e.created_at AND o.fact_id > e.fact_id))
 		   )
 		RETURNING fact_id`,
-		winnerID, attrs)
+		winnerID, movedAttrs)
 	if err != nil {
 		return nil, nil, fmt.Errorf("merge facts: tiebreak: %w", err)
 	}
@@ -437,7 +447,7 @@ func mergeFactChains(ctx context.Context, q pgxRWQuerier, winnerID, loserID uuid
 		return nil, nil, fmt.Errorf("merge facts: tiebreak rows: %w", err)
 	}
 
-	for _, a := range attrs {
+	for _, a := range movedAttrs {
 		if err := maintainChain(ctx, q, winnerID, a); err != nil {
 			return nil, nil, err
 		}
@@ -550,16 +560,34 @@ func splitFactsByEpisode(ctx context.Context, q pgxRWQuerier, sourceID, newEntit
 	}
 	moved := int(ct.RowsAffected())
 
-	// INVALIDATE the originals on source (invalidate-not-delete, reason 'split').
-	if _, err := q.Exec(ctx, `
+	// INVALIDATE the originals on source (invalidate-not-delete, reason 'split'), RETURNING
+	// the actual touched attrs (MED-1) — both copy + invalidate are episode-scoped, so a
+	// chain added after the pre-lock read is still moved; deriving the maintain_chain set from
+	// the actual invalidated rows (not the pre-read attrs) re-derives every touched chain.
+	touchedSet := map[string]struct{}{}
+	irows, err := q.Query(ctx, `
 		UPDATE entity_facts SET invalidated_at = now(), invalidated_reason = 'split'
-		WHERE entity_id = $1 AND source_episode_id = ANY($2) AND invalidated_at IS NULL`,
-		sourceID, episodeIDs); err != nil {
+		WHERE entity_id = $1 AND source_episode_id = ANY($2) AND invalidated_at IS NULL
+		RETURNING attr_or_predicate`,
+		sourceID, episodeIDs)
+	if err != nil {
 		return 0, fmt.Errorf("split: invalidate originals: %w", err)
+	}
+	for irows.Next() {
+		var a string
+		if err := irows.Scan(&a); err != nil {
+			irows.Close()
+			return 0, fmt.Errorf("split: scan invalidated attr: %w", err)
+		}
+		touchedSet[a] = struct{}{}
+	}
+	irows.Close()
+	if err := irows.Err(); err != nil {
+		return 0, fmt.Errorf("split: invalidate rows: %w", err)
 	}
 
 	for _, e := range []uuid.UUID{sourceID, newEntityID} {
-		for _, a := range attrs {
+		for a := range touchedSet {
 			if err := maintainChain(ctx, q, e, a); err != nil {
 				return 0, err
 			}

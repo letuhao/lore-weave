@@ -63,7 +63,11 @@ ALLOWLIST_PREFIXES = (
 
 # ── detection patterns ────────────────────────────────────────────────
 # The glossary EAV table by name (a direct query reference). The KAL + consumers
-# must not name it; glossary itself (the owner) may.
+# must not name it; glossary itself (the owner) may. The match is intentionally BROAD
+# (any mention, incl. a comment) — over-matching is the safe default for an invariant gate:
+# a missed ORM/query-builder read is a silent INV-KAL breach, whereas a comment false
+# positive is fixed by rewording or an ALLOWLIST_PREFIXES entry. (frontend is excluded —
+# it is HTTP-only and only ever names the table in docs.)
 EAV_READ = re.compile(r"\bentity_attribute_values\b")
 
 # Neo4j driver usage: import or session/GraphDatabase access.

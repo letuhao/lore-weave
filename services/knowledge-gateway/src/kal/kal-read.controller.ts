@@ -1,6 +1,7 @@
-import { Controller, Get, Headers, Param, Post, Query, Body } from '@nestjs/common';
+import { Controller, Get, Headers, Param, Post, Query, Body, UseGuards } from '@nestjs/common';
 import { ctxFromHeaders, glossary, knowledge } from './downstream.js';
 import { kgAsOfOrDrop, temporalCapability } from './temporal.js';
+import { InternalTokenGuard } from '../auth/internal-token.guard.js';
 
 /**
  * KAL bounded reads (contracts/api/knowledge-gateway/kal.v1.yaml). Every result is bounded;
@@ -11,6 +12,7 @@ import { kgAsOfOrDrop, temporalCapability } from './temporal.js';
  * downstream (roster → glossary list_entities) are wired; the rest forward to their documented
  * downstream path and are confirmed by a cross-service live-smoke when the full stack is up.
  */
+@UseGuards(InternalTokenGuard)
 @Controller('v1/kal/books/:bookId')
 export class KalReadController {
   // get_canonical — bounded canonical snapshot (current or as-of N).
