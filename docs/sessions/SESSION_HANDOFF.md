@@ -40,6 +40,9 @@
 > - **`D-KAL-HTTP-SURFACE-LINT` (D6)** — gate #2: the HTTP-surface INV-KAL lint (no consumer client hits owning-svc
 >   `/internal/*` knowledge endpoints). Table-read grep ships in F4; HTTP-surface tracked-for-migration. Target: X7.
 > - **`D-KG-INSTORY-EVENTDATE`** — gate #2: detected in-story time (`event_date_iso`) as a valid-time source (spec §9 dec-3). Target: post-foundation.
+> - **`D-TK-F1G-NAME-RECONCILE`** (from /review-impl LOW-1) — gate #3 (naturally-next-phase): the cold-start seeds `name`/`aliases` as single-valued `attribute` facts (D5 projection depends on it). When **F1g** lands name/aliases as `fact_kind IN ('name','alias')` multi-valued bi-temporal facts (§12.4.3), it MUST supersede those cold-start attribute-facts so an entity carries one representation. No interim corruption (maintain_chain matches fact_kind). Target: F1g.
+>
+> **▶ /review-impl (2026-06-30) — 7 findings, ALL FIXED (no HIGH):** MED-1 same-ordinal single-valued conflict → last-write-wins supersede + deterministic projection tiebreak (`TestFactSameOrdinalConflict`); MED-2 unenforced chain-lock → strengthened contract doc + `TestFactChainLockSerializes` (same-chain blocks, disjoint free); LOW-2 cold-start ordinal `0→-1` (chapter_index is 0-based); LOW-5 targeted `ON CONFLICT` on the natural-key expression index; LOW-3 `refreshEAVProjection` attr_def_id-coupling doc; LOW-4 `reconcileEpisode` F1d-obligation doc + now exercised; LOW-1 → `D-TK-F1G-NAME-RECONCILE` above. All 3 facts tests green on real DB; cold-start re-verified `projection==flat_eav` 0 mismatches with the `-1` sentinel.
 
 ---
 

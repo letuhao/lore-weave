@@ -84,6 +84,9 @@ func TestFactCore(t *testing.T) {
 	if minted2 || ep2 != ep1 {
 		t.Fatalf("episode should RESUME (same id, minted=false): id1=%v id2=%v minted2=%v", ep1, ep2, minted2)
 	}
+	if err := reconcileEpisode(ctx, tx, ep1); err != nil {
+		t.Fatalf("reconcile episode: %v", err)
+	}
 
 	// ── appendFact: idempotent natural key (C2) ──
 	_, ins1, err := appendFact(ctx, tx, appendFactParams{
@@ -141,6 +144,109 @@ func TestFactCore(t *testing.T) {
 	// rebuildProjectionForEntity is the repair backstop — exercise it for coverage.
 	if err := rebuildProjectionForEntity(ctx, tx, entityID); err != nil {
 		t.Fatalf("rebuild projection: %v", err)
+	}
+}
+
+// TestFactSameOrdinalConflict verifies MED-1: two DIFFERENT values for one single-valued
+// attr at the SAME chapter ordinal resolve last-write-wins (the prior is invalidated, not
+// left as a second open fact), so exactly one fact is open and the projection is
+// deterministic. The SAME value re-appended is idempotent (no spurious invalidation).
+func TestFactSameOrdinalConflict(t *testing.T) {
+	ctx := context.Background()
+	pool := openFactsTestDB(t)
+	tx, err := pool.Begin(ctx)
+	if err != nil {
+		t.Fatalf("begin: %v", err)
+	}
+	defer tx.Rollback(ctx) //nolint:errcheck
+
+	var entityID, bookID uuid.UUID
+	var attr string
+	err = tx.QueryRow(ctx, `
+		SELECT ge.entity_id, ge.book_id, ba.code
+		FROM glossary_entities ge
+		JOIN book_attributes ba ON ba.book_id = ge.book_id AND ba.kind_id = ge.kind_id AND ba.deprecated_at IS NULL
+		JOIN book_genres g ON g.genre_id = ba.genre_id
+		WHERE ge.deleted_at IS NULL AND ba.code <> 'name'
+		ORDER BY ge.entity_id, (g.code = 'universal') DESC
+		LIMIT 1`).Scan(&entityID, &bookID, &attr)
+	if err == pgx.ErrNoRows {
+		t.Skip("no seeded entity with a book_attribute — skipping")
+	}
+	if err != nil {
+		t.Fatalf("pick entity: %v", err)
+	}
+	if err := acquireFactChainLock(ctx, tx, entityID, attr); err != nil {
+		t.Fatalf("chain lock: %v", err)
+	}
+
+	mk := func(val string) {
+		if _, _, err := appendFact(ctx, tx, appendFactParams{
+			BookID: bookID, EntityID: entityID, FactKind: "attribute", Attr: attr,
+			Value: val, ValidFrom: 100,
+		}); err != nil {
+			t.Fatalf("append %s@100: %v", val, err)
+		}
+	}
+	mk("AAA") // first value at ch.100
+	mk("BBB") // conflicting different value at the SAME ordinal → must supersede AAA
+
+	// exactly ONE open fact, and it is the last writer (BBB)
+	assertChain(t, ctx, tx, entityID, attr, []chainRow{{"BBB", 100, nil}})
+	if err := refreshEAVProjection(ctx, tx, entityID, attr); err != nil {
+		t.Fatalf("refresh: %v", err)
+	}
+	if got := currentProjection(t, ctx, tx, entityID, attr); got != "BBB" {
+		t.Fatalf("projection = %q, want BBB (last-write-wins, deterministic)", got)
+	}
+
+	// re-appending the SAME current value is idempotent — does not invalidate BBB.
+	mk("BBB")
+	assertChain(t, ctx, tx, entityID, attr, []chainRow{{"BBB", 100, nil}})
+}
+
+// TestFactChainLockSerializes verifies MED-2: the per-(entity,attr) advisory lock
+// SERIALIZES the same chain (a second holder is blocked) while leaving a DISJOINT chain
+// free (the within-book parallelism the §12.7.8 lock model restores).
+func TestFactChainLockSerializes(t *testing.T) {
+	ctx := context.Background()
+	pool := openFactsTestDB(t)
+	entityID := uuid.New()
+	attr := "lockcheck"
+
+	tx1, err := pool.Begin(ctx)
+	if err != nil {
+		t.Fatalf("begin tx1: %v", err)
+	}
+	defer tx1.Rollback(ctx) //nolint:errcheck
+	if err := acquireFactChainLock(ctx, tx1, entityID, attr); err != nil {
+		t.Fatalf("tx1 acquire: %v", err)
+	}
+
+	tx2, err := pool.Begin(ctx) // a DIFFERENT pooled connection → real lock contention
+	if err != nil {
+		t.Fatalf("begin tx2: %v", err)
+	}
+	defer tx2.Rollback(ctx) //nolint:errcheck
+
+	var gotSame bool
+	if err := tx2.QueryRow(ctx,
+		`SELECT pg_try_advisory_xact_lock($1, hashtext($2))`,
+		factChainLockNS, entityID.String()+":"+attr).Scan(&gotSame); err != nil {
+		t.Fatalf("tx2 try same: %v", err)
+	}
+	if gotSame {
+		t.Fatal("second tx acquired the SAME chain lock while held — not serialized")
+	}
+
+	var gotOther bool
+	if err := tx2.QueryRow(ctx,
+		`SELECT pg_try_advisory_xact_lock($1, hashtext($2))`,
+		factChainLockNS, entityID.String()+":other_attr").Scan(&gotOther); err != nil {
+		t.Fatalf("tx2 try disjoint: %v", err)
+	}
+	if !gotOther {
+		t.Fatal("disjoint chain lock should be FREE (within-book parallelism)")
 	}
 }
 

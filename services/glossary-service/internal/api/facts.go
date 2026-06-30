@@ -31,6 +31,16 @@ import (
 // key (§12.2.2) + the ordinal-aware maintain_chain (§12.3.3) make disjoint appends
 // safe without book-global serialization. Acquire chain locks in sorted composite
 // (entity_id, attr) order to stay deadlock-free (§12.7.8 global lock order).
+//
+// CALLER CONTRACT (UNENFORCED — appendFact/retractFacts do NOT self-acquire, because
+// the global lock order requires ALL chain locks taken in sorted order BEFORE any write
+// across chains; self-acquiring per call would reorder and deadlock). Every caller MUST
+// hold acquireFactChainLock for each (entity, attr) it writes. The natural key keeps
+// concurrent appends idempotent, but two unlocked writers can still interleave their
+// maintain_chain valid_to rewrites. The lock is verified to serialize same-chain / free
+// disjoint-chain by TestFactChainLockSerializes; F1d wiring MUST add a live two-writer
+// smoke. reconcileEpisode MUST be called after the facts commit (else episodes pollute
+// retrieval as permanent 'pending', the C6 trap).
 
 // factChainLockNS namespaces the per-(entity, attr) advisory xact lock around a
 // fact-chain write (§12.7.8). Distinct from extractionWritebackLockNS so the two
@@ -119,11 +129,15 @@ func appendFact(ctx context.Context, q pgxRWQuerier, p appendFactParams) (uuid.U
 	}
 	var factID uuid.UUID
 	inserted := true
+	// Targeted ON CONFLICT on the content-addressed natural key (NOT a bare DO NOTHING),
+	// so a future unique constraint on entity_facts can't be silently swallowed.
 	err := q.QueryRow(ctx, `
 		INSERT INTO entity_facts
 		  (book_id, entity_id, fact_kind, attr_or_predicate, value, valid_from_ordinal, cardinality, source_episode_id)
 		VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
-		ON CONFLICT DO NOTHING
+		ON CONFLICT (entity_id, fact_kind, attr_or_predicate, value_hash, valid_from_ordinal,
+		             coalesce(source_episode_id, '00000000-0000-0000-0000-000000000000'::uuid))
+		DO NOTHING
 		RETURNING fact_id`,
 		p.BookID, p.EntityID, p.FactKind, p.Attr, p.Value, p.ValidFrom, p.Card, p.SourceEpisodeID,
 	).Scan(&factID)
@@ -144,6 +158,27 @@ func appendFact(ctx context.Context, q pgxRWQuerier, p appendFactParams) (uuid.U
 		}
 	} else if err != nil {
 		return uuid.Nil, false, fmt.Errorf("append_fact: insert: %w", err)
+	}
+
+	// Same-ordinal supersede (last-write-wins) for single-valued chains. Two DIFFERENT
+	// values for one single-valued attr at the SAME chapter ordinal would otherwise both
+	// stay open (maintain_chain leaves the latest-valid_from facts open, and here they
+	// share valid_from) → two open facts → a nondeterministic projection. The just-opened
+	// fact wins: transaction-time-close (invalidate-not-delete, kept for audit) every OTHER
+	// open single-valued fact on this chain at this valid_from with a DIFFERENT value. The
+	// SAME value from a different episode is NOT a conflict — it coexists harmlessly.
+	if p.Card == "single" {
+		if _, err := q.Exec(ctx, `
+			UPDATE entity_facts
+			   SET invalidated_at = now(), invalidated_reason = 'superseded_same_ordinal'
+			 WHERE entity_id = $1 AND fact_kind = $2 AND attr_or_predicate = $3
+			   AND cardinality = 'single' AND valid_from_ordinal = $4
+			   AND fact_id <> $5 AND value_hash <> md5($6)
+			   AND invalidated_at IS NULL`,
+			p.EntityID, p.FactKind, p.Attr, p.ValidFrom, factID, p.Value,
+		); err != nil {
+			return uuid.Nil, false, fmt.Errorf("append_fact: same-ordinal supersede: %w", err)
+		}
 	}
 
 	if err := maintainChain(ctx, q, p.EntityID, p.Attr); err != nil {
@@ -221,9 +256,16 @@ type FactChain struct {
 // after every append/retract; it is NOT wired as a live double-writer during the
 // additive-SSOT transition (it would clash with the EAV merge strategies).
 //
-// Keyed per-(entity, attr_def_id) row (§12.7.8 Probe-4). If the chain has no open
-// fact (e.g. fully retracted) or the attr has no book_attribute definition, no upsert
-// happens (the row is left as-is — the empty-chain edge is a documented repair concern).
+// INVARIANT (do not break): the attr_def_id resolution here MUST match loadAttrDefMap's
+// (the same DISTINCT-ON universal-preferred selection). If it ever diverged, the upsert
+// would target a different attr_def_id than the writeback uses and FORK a second EAV row
+// for the same logical attribute. The shared selection logic is the contract.
+//
+// Keyed per-(entity, attr_def_id) row (§12.7.8 Probe-4). The open fact is chosen with a
+// fully DETERMINISTIC order (valid_from, then created_at, then fact_id) so a same-ordinal
+// tie can never make the projection nondeterministic. If the chain has no open fact (e.g.
+// fully retracted) or the attr has no book_attribute definition, no upsert happens (the
+// row is left as-is — the empty-chain edge is a documented repair concern).
 func refreshEAVProjection(ctx context.Context, q pgxRWQuerier, entityID uuid.UUID, attr string) error {
 	_, err := q.Exec(ctx, `
 		WITH target AS (
@@ -241,7 +283,7 @@ func refreshEAVProjection(ctx context.Context, q pgxRWQuerier, entityID uuid.UUI
 		  FROM entity_facts ef
 		  WHERE ef.entity_id = $1 AND ef.attr_or_predicate = $2 AND ef.fact_kind = 'attribute'
 		    AND ef.cardinality = 'single' AND ef.invalidated_at IS NULL AND ef.valid_to_ordinal IS NULL
-		  ORDER BY ef.valid_from_ordinal DESC
+		  ORDER BY ef.valid_from_ordinal DESC, ef.created_at DESC, ef.fact_id DESC
 		  LIMIT 1
 		)
 		INSERT INTO entity_attribute_values (entity_id, attr_def_id, original_language, original_value)
