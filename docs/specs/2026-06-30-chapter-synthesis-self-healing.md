@@ -412,6 +412,31 @@ handoff risk is REAL but mitigated: **the locate step must use fuzzy/shingle mat
 (×1.01, surgical, proven) → splice`. The remaining work is the ORCHESTRATOR (glue + a re-judge loop),
 not any unproven capability.
 
+## Phase 2 — ORCHESTRATOR built + live-validated — 2026-06-30
+`engine/self_heal.py` (`run_self_heal`): judge → fuzzy-`locate_span` → satellite-edit (via
+`build_selection_messages`, mech-2) → splice (rightmost-first, non-overlapping) → re-judge. Advisory:
+a finding that won't locate / overlaps / whose edit runs away in length is SKIPPED (original kept).
+12 unit tests (locate exact/ws/ellipsis/shingle/miss; tolerant parse; splice; the 3 skip guards;
+degraded-rejudge→None).
+
+**Live run on ch1 (Gemma, in-container):** judge=6 findings, **located 6/6**, **4 edits applied**, 2
+runaway expansions correctly guard-rejected. **Whole-chapter length ratio = 1.014** (vs the stitch's
+1.68 — the satellite approach holds at chapter scale). Diff shows surgical on-target edits — the best:
+the "abrupt one-note villain" finding → added *"bỗng thoáng qua một tia đau đớn xót xa trước khi trở
+lại vẻ lạnh lùng"* (a flicker of pain before the coldness). Artifacts: `poc/io/healed_ch1.txt`.
+
+**Honest caveats (found by verifying, not assuming):**
+- The in-run `rejudge_after=0` was a **false zero** — an independent re-judge of the healed text found
+  **6** findings. Root cause: a degraded re-judge call parsed to `[]`. **Fixed:** `_judge` returns
+  `None` on a degraded call so `rejudge_after` stays `None`, never a false 0.
+- **Re-judge is NOT a clean convergence metric** — the judge is non-deterministic + demanding, so it
+  always surfaces ~6 things. Self-heal is **iterative** (one pass fixes specific spans, doesn't zero
+  the chapter). The real quality gate is the human read + per-edit inspection.
+- Minor: an edit occasionally leaves a punctuation artifact (".,") at the splice boundary — a cheap
+  cleanup nicety, deferred.
+- Not yet wired to an endpoint/worker — validated via the in-container script; HTTP/worker exposure is
+  the hardening step after the PO evaluates output quality.
+
 ## Open questions for PO
 - [ ] **SH-D1** — build this as a new **engine track** (composition-service) prioritized ahead of
   GUI slices? (GUI continues after / in parallel as smaller slices.)
