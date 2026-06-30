@@ -526,26 +526,138 @@ def apply_self_heal_edits(
     return healed
 
 
-async def propose_self_heal(
-    llm: LLMClient, *, user_id: str, model_source: str, model_ref: str,
-    chapter: str, source_language: str = "auto", profile: BookProfile | None = None,
-    max_edit_expansion: float = 1.6, judge_max_tokens: int = 2200, edit_max_tokens: int = 1200,
-    canon: str | None = None, vote_k: int = 1, min_votes: int = 2,
-    verify: bool = False, verify_k: int = 1, prefilter: bool = False, vote_temperature: float = 0.7,
-    trace_id: str | None = None,
+# ── DIRECT high-recall propose (the human-gated path) ──────────────────
+#
+# Diagnosis (PO, 2026-07-01): the conservative judge→vote→verify→satellite chain OVER-FILTERED
+# — `verify` defaults to REFUTED and dropped real edits (e.g. 'mẫu thân ngươi' refuted 3/3),
+# so v2≈v3 barely changed. A bare prompt on the SAME model finds 7 splice-ready edits where the
+# pipeline kept ~4. For a HUMAN-gated flow the filter is the human, not verify — so propose uses
+# a single high-recall judge that emits the replacement directly, no vote/verify pre-filter.
+_DIRECT_JUDGE_SYSTEM = (
+    "You are a demanding fiction editor. Find EVERY concrete anomaly in the CHAPTER: logic / "
+    "cause-effect holes, abrupt scene cuts, awkward or unclear phrasing, repeated information, "
+    "ADDRESS/HONORIFIC errors (modern pronouns, third-person self-reference, wrong name/role), "
+    "character contradictions vs the story bible, and typos. For EACH anomaly return a JSON object: "
+    '{"type": the defect kind, '
+    '"original": a SHORT 4-20 word excerpt COPIED CHARACTER-FOR-CHARACTER from the chapter so it can '
+    'be found and replaced, '
+    '"replacement": the corrected span at a SIMILAR length — do NOT rewrite the whole passage, '
+    '"explanation": a short reason}. '
+    "List ALL anomalies you find — do NOT pre-filter or self-censor; a human reviews each before it "
+    'applies. Write "replacement" and "explanation" in the chapter\'s language. Return ONLY a JSON '
+    "array: [{\"type\":...,\"original\":...,\"replacement\":...,\"explanation\":...}]. No prose around it."
+)
+
+
+def build_direct_judge_messages(
+    chapter: str, source_language: str = "auto", canon: str | None = None,
+) -> tuple[str, str]:
+    """(system, user) for the one-pass DIRECT judge — it proposes the replacement inline. The
+    `canon` is CONTEXT (flag anything inconsistent with it), NOT a suppression filter — the old
+    'do not infer / already-explained' guardrails were what muted recall."""
+    system = _DIRECT_JUDGE_SYSTEM
+    if canon and canon.strip():
+        system = system + "\n\nSTORY BIBLE (context — flag anything inconsistent with it):\n" + canon.strip()
+    return system, "CHAPTER:\n\n" + chapter
+
+
+def parse_direct_findings(content: str) -> list[dict[str, str]]:
+    """Tolerant parse of the direct judge's array → [{type, original, replacement, explanation}].
+    Drops a row with no usable `original`/`replacement`. Salvages a truncated array. Never raises."""
+    if not content:
+        return []
+    arr: list = []
+    m = re.search(r"\[.*\]", content, re.DOTALL)
+    if m:
+        try:
+            parsed = json.loads(m.group(0))
+            if isinstance(parsed, list):
+                arr = parsed
+        except (json.JSONDecodeError, ValueError):
+            arr = []
+    if not arr:  # salvage a token-capped array — parse each complete {...}
+        for obj in re.findall(r"\{[^{}]*\}", content, re.DOTALL):
+            try:
+                row = json.loads(obj)
+                if isinstance(row, dict):
+                    arr.append(row)
+            except (json.JSONDecodeError, ValueError):
+                continue
+    out: list[dict[str, str]] = []
+    for row in arr:
+        if not isinstance(row, dict):
+            continue
+        orig, repl = row.get("original"), row.get("replacement")
+        if not isinstance(orig, str) or not orig.strip() or not isinstance(repl, str):
+            continue
+        out.append({"type": str(row.get("type", "")).strip(), "original": orig.strip(),
+                    "replacement": repl.strip(), "explanation": str(row.get("explanation", "")).strip()})
+    return out
+
+
+async def propose_edits_direct(
+    llm: LLMClient, chapter: str, *, user_id: str, model_source: str, model_ref: str,
+    canon: str | None = None, source_language: str = "auto", prefilter: bool = True,
+    max_tokens: int = 3000, temperature: float = 0.4, trace_id: str | None = None,
     cancel_check: Callable[[], Awaitable[bool]] | None = None,
 ) -> tuple[list[EditProposal], SelfHealReport]:
-    """Run the cheap-stack and return per-edit PROPOSALS (before/after + tier) WITHOUT
-    splicing — the M6 review-gate path. The human accepts a subset; `apply_self_heal_edits`
-    splices only those. Same knobs as `run_self_heal`."""
-    profile = profile or BookProfile(source_language=source_language)
+    """One-pass HIGH-RECALL propose: the direct judge finds anomalies + proposes each replacement;
+    code locates each `original` (must-quote, fuzzy) and merges the deterministic dup-word fix.
+    No vote/verify (the human gate filters). Returns offset-ascending `EditProposal`s + a report."""
     kw = dict(user_id=user_id, model_source=model_source, model_ref=model_ref,
               trace_id=trace_id, cancel_check=cancel_check)
-    return await _compute_edits(
-        llm, chapter, source_language=source_language, profile=profile,
-        max_edit_expansion=max_edit_expansion, judge_max_tokens=judge_max_tokens,
-        edit_max_tokens=edit_max_tokens, canon=canon, vote_k=vote_k, min_votes=min_votes,
-        verify=verify, verify_k=verify_k, prefilter=prefilter, vote_temperature=vote_temperature, **kw)
+    system, user = build_direct_judge_messages(chapter, source_language, canon)
+    content = await _chat(llm, system=system, user=user, max_tokens=max_tokens,
+                          purpose="self_heal_direct", temperature=temperature, **kw)
+    raw = parse_direct_findings(content or "")
+    report = SelfHealReport(rejudge_before=len(raw))
+
+    cands: list[tuple[int, int, str, str, str, str]] = []  # start, end, after, type, issue, tier
+    for r in raw:
+        f = Finding(type=r["type"], span=r["original"], issue=r["explanation"], fix=r["replacement"])
+        report.findings.append(f)
+        loc = locate_span(r["original"], chapter)
+        if loc is None:
+            f.skip_reason = "not_located"   # must-quote: can't splice an unanchorable edit
+            continue
+        f.located = loc
+        report.located += 1
+        cands.append((loc[0], loc[1], r["replacement"], r["type"] or "edit", r["explanation"], "semantic"))
+    if prefilter:   # dup-word is deterministic + carries its own replacement; pronouns the judge already proposes
+        for s, e, new in code_mechanical_edits(chapter, source_language):
+            cands.append((s, e, new, "dup-word", "Từ bị lặp liên tiếp.", "deterministic"))
+
+    # overlap-dedup (left-to-right; a later span overlapping an accepted one is skipped)
+    cands.sort(key=lambda c: c[0])
+    proposals: list[EditProposal] = []
+    last_end = -1
+    for s, e, after, typ, issue, tier in cands:
+        if s < last_end:
+            continue
+        proposals.append(EditProposal(id="", type=typ, tier=tier, start=s, end=e,
+                                      before=chapter[s:e], after=after, issue=issue, fix=after))
+        last_end = e
+    report.edits_applied = len(proposals)
+    for i, p in enumerate(proposals):
+        p.id = f"e{i}"
+    return proposals, report
+
+
+async def propose_self_heal(
+    llm: LLMClient, *, user_id: str, model_source: str, model_ref: str,
+    chapter: str, source_language: str = "auto", canon: str | None = None,
+    prefilter: bool = True, max_tokens: int = 3000, trace_id: str | None = None,
+    cancel_check: Callable[[], Awaitable[bool]] | None = None,
+    **_legacy: object,   # absorbs the old vote_k/verify/verify_k/etc. knobs (no longer used here)
+) -> tuple[list[EditProposal], SelfHealReport]:
+    """The M6 review-gate path — return per-edit PROPOSALS WITHOUT splicing for the human to
+    accept/reject. Uses the HIGH-RECALL direct judge (find + propose in one pass); the human is
+    the filter, so there is NO verify/vote pre-filter that would mute real edits (the diagnosis
+    that v2≈v3). `apply_self_heal_edits` splices the accepted subset."""
+    return await propose_edits_direct(
+        llm, chapter, user_id=user_id, model_source=model_source, model_ref=model_ref,
+        canon=canon, source_language=source_language, prefilter=prefilter,
+        max_tokens=max_tokens, trace_id=trace_id, cancel_check=cancel_check)
 
 
 async def run_self_heal(

@@ -352,15 +352,22 @@ async def test_verify_vote_drops_only_on_unanimous_refute():
     assert await _verify_vote(_VerdictQueue([C]), "ch", f, canon=None, k=1, **_KW) is True
 
 
-# ── propose / apply review-gate (M6.1) ──
+# ── propose / apply review-gate — DIRECT high-recall judge (find + propose in one pass) ──
 
 _PA_CH = "the quick brown fox jumps. the lazy dog sleeps soundly now."
 
 
+def _dj(*items):
+    # each item: (original, replacement, explanation, type) — the direct judge's emit shape
+    return json.dumps([{"type": t, "original": o, "replacement": r, "explanation": e}
+                       for (o, r, e, t) in items])
+
+
 def _pa_llm():
-    a, b = "the quick brown fox jumps", "the lazy dog sleeps soundly"
-    return FakeStackLLM([_fj((a, "iA"), (b, "iB")), "[]"],
-                        edit_fn=lambda sel: "E<" + sel[:6] + ">")
+    # the direct judge routes on "demanding fiction editor" in FakeStackLLM → returns this array
+    return FakeStackLLM([_dj(
+        ("the quick brown fox jumps", "THE RED FOX LEAPS", "tighten", "style"),
+        ("the lazy dog sleeps soundly", "the hound dozes", "vary", "style"))])
 
 
 async def test_propose_returns_unspliced_proposals():
@@ -368,11 +375,21 @@ async def test_propose_returns_unspliced_proposals():
         _pa_llm(), user_id="u", model_source="user_model", model_ref="m",
         chapter=_PA_CH, source_language="en")
     assert [p.id for p in proposals] == ["e0", "e1"]            # offset-ascending stable ids
-    assert rep.edits_applied == 2
+    assert rep.edits_applied == 2 and rep.located == 2
     p0 = proposals[0]
-    assert p0.before == "the quick brown fox jumps."           # SNAPPED to the sentence
+    assert p0.before == "the quick brown fox jumps"            # the EXACT located span (not snapped)
     assert _PA_CH[p0.start:p0.end] == p0.before                # offsets address the real span
-    assert p0.after == "E<the qu>" and p0.tier == "semantic"   # judge-driven ⇒ semantic
+    assert p0.after == "THE RED FOX LEAPS" and p0.tier == "semantic"
+
+
+async def test_propose_drops_unlocatable_original():
+    # an `original` not present in the chapter is dropped (must-quote — can't splice it)
+    llm = FakeStackLLM([_dj(("absent phrase not here at all", "X", "y", "z"))])
+    proposals, rep = await propose_self_heal(
+        llm, user_id="u", model_source="user_model", model_ref="m",
+        chapter=_PA_CH, source_language="en")
+    assert proposals == []
+    assert rep.findings[0].skip_reason == "not_located"
 
 
 async def test_apply_self_heal_edits_accepts_subset():
@@ -381,18 +398,8 @@ async def test_apply_self_heal_edits_accepts_subset():
         chapter=_PA_CH, source_language="en")
     assert apply_self_heal_edits(_PA_CH, proposals, accepted_ids=[]) == _PA_CH   # reject all → no-op
     only0 = apply_self_heal_edits(_PA_CH, proposals, accepted_ids=["e0"])        # accept first only
-    assert only0.startswith("E<the qu>") and "the lazy dog sleeps soundly" in only0
+    assert only0.startswith("THE RED FOX LEAPS") and "the lazy dog sleeps soundly" in only0
     assert "the quick brown fox jumps" not in only0
-
-
-async def test_run_self_heal_equals_propose_plus_apply_all():
-    proposals, _ = await propose_self_heal(
-        _pa_llm(), user_id="u", model_source="user_model", model_ref="m",
-        chapter=_PA_CH, source_language="en")
-    healed, _ = await run_self_heal(
-        _pa_llm(), user_id="u", model_source="user_model", model_ref="m",
-        chapter=_PA_CH, source_language="en")
-    assert apply_self_heal_edits(_PA_CH, proposals) == healed   # autonomous == accept-all
 
 
 def test_edit_proposal_is_serializable():
