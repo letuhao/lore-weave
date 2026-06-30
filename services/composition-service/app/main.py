@@ -22,6 +22,7 @@ from loreweave_obs import current_otel_trace_id, setup_tracing
 from app.clients.book_client import close_book_client
 from app.clients.embedding_client import close_embedding_client
 from app.clients.glossary_client import close_glossary_client
+from app.clients.kal_client import close_kal_client
 from app.clients.knowledge_client import close_knowledge_client
 from app.clients.llm_client import close_llm_client
 from app.clients.web_search_client import close_web_search_client
@@ -130,6 +131,7 @@ async def lifespan(app: FastAPI):
         await close_knowledge_client()
         await close_book_client()
         await close_glossary_client()
+        await close_kal_client()
         await close_embedding_client()
         await close_web_search_client()
         await close_llm_client()
