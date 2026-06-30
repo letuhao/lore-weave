@@ -61,6 +61,13 @@ build new judges; we re-target existing ones from "post-prose verification" to "
 - **New:** a discrete "select motifs for this premise/arc" step + a human approve/swap checkpoint; carry
   the bound motifs forward.
 - **POC:** premise → N selected library motifs (xấu→hoàn mỹ, ma công phản phệ…) shown for approval.
+- **STATUS — `select_arc_motifs` validated 2026-06-30** (`engine/motif_plan.py`, 5 unit tests). Reuses
+  `MotifRetriever.retrieve` with NO beat/query (the degrade path = full in-genre pool, no min-score
+  floor) → the LLM picks BY CODE (drops invented/unknown codes). Live on the Lâm Uyển premise: **4 arc
+  motifs with distributed roles** — Kỳ-Ngộ→Truyền-Thừa (central spine), Xấu-hóa-mỹ (recurring), Ma-công-
+  phản-phệ (foil), Phục-thù (climax payoff). Turns `motif_coverage={}` into a deliberate thematic
+  structure. **Next-stage integration:** feed the selected motifs into the scene decompose (Stage 4) as
+  thematic guidance + the arc-role placement.
 
 ### Stage 2 — Arc & beat shaping (deliberate tension curve)
 - **Reuse:** structure templates + `arc_apply`/`arc_materialize` (arc-scale decompose) + L1 beat-map.

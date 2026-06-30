@@ -1,0 +1,17 @@
+SELECTED arc motifs: 4
+
+  [cultivation.fortuitous_encounter] Kỳ Ngộ → Truyền Thừa
+      role: central spine
+      why:  Lâm Uyển từ phế vật bị ruồng bỏ đã tìm thấy cổ thư của Cửu U Ma Cơ để thay đổi vận mệnh.
+
+  [xau_hoa_my] Xấu hóa mỹ (Ugliness → Perfection)
+      role: recurring
+      why:  Nàng đi từ một kẻ xấu xí, bị ghẻ lạnh đến khi đạt tới sự hoàn mỹ về cả dung mạo lẫn tu vi.
+
+  [ma_cong_phan_phe] Ma công phản phệ (Forbidden Power, Corrupting Price)
+      role: foil
+      why:  Việc tu luyện ma công của Cửu U Ma Cơ luôn đi kèm với những đánh đổi nghiệt ngã về nhân tính.
+
+  [phuc_thu_khinh_miet] Phục thù kẻ khinh miệt (Revenge on Those Who Scorned Her)
+      role: climax payoff
+      why:  Mục tiêu tối thượng là sự trả thù đối với Lâm gia và Thanh Vân Tông đã khinh miệt nàng.
