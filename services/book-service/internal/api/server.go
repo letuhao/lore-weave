@@ -1634,6 +1634,11 @@ func (s *Server) patchDraft(w http.ResponseWriter, r *http.Request) {
 	if in.BodyFormat == "" {
 		in.BodyFormat = "json"
 	}
+	// Universal formatter: normalize a plain/markdown body into canonical Tiptap
+	// blocks (read mode + the chapter_blocks trigger + glossary extraction all read
+	// the doc via JSON_TABLE). A 'json' body is passed through. Without this, a
+	// markdown/plain string is stored verbatim and renders blank / crashes extraction.
+	in.Body, in.BodyFormat = normalizeBodyToTiptap(in.Body, in.BodyFormat)
 	tx, err := s.pool.Begin(r.Context())
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "BOOK_CONFLICT", "failed to patch draft")
