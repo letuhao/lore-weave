@@ -1,4 +1,19 @@
-# ▶▶ NEXT SESSION STARTS HERE — **Temporal Knowledge — foundation ~95% (producer + full KAL read/write surface + in-story dates LIVE); remaining: F2-fold, F1g, then fanout X1–X7** · branch `feat/temporal-knowledge-architecture` · HEAD `41070247`+ · 2026-06-30
+# ▶▶ NEXT SESSION STARTS HERE — **Temporal Knowledge — FOUNDATION COMPLETE (substrate + producer + KAL read/write + fold + names + KG/in-story); remaining = the FANOUT X1–X7** · branch `feat/temporal-knowledge-architecture` · HEAD `79f81924`+ · 2026-06-30
+
+> **▶ FOUNDATION COMPLETE — all verified (real DB / build / tests):** F0 KAL contract · F1a-h substrate
+> (entity_facts/maintain_chain/episodes/cold-start) · F1d producer (facts flow from extraction, idempotent) ·
+> F1f fact-chain merge + split · F1g bi-temporal name/aliases + as-of-name (0048 reconcile) · F2 canonical
+> versioned-cache + the **fold loop** (glossary dirty/fetch/snapshot/degrade + the translation fold worker, LLM via
+> provider-registry) · F3 KG ordinal valid-time + in-story dates · F4 KAL NestJS service (auth-guarded) with the full
+> read surface (facts/timeline/attr-values/roster/canonical) + write surface (episode/append/close/retract/merge/
+> resolve/split/fold) + the INV-KAL table-read lint (pre-commit). Three /review-impl passes, all HIGH/MED fixed
+> (security: KAL inbound auth; tenancy: fact book-scoping; correctness: same-ordinal supersede, merge attr-set).
+>
+> **▶ REMAINING = the consumer/FE FANOUT (parallel worktree agents, the locked strategy):**
+> X1 composition→KAL (+fix `_cast_roster` cursor drain) · X2 lore-enrichment→KAL · X3 wiki→KAL (kill direct-EAV) ·
+> X4 chat→KAL · X5 translation→KAL (as-of inject + immutable-once cache) · X6 FE temporal surfaces (canonical card,
+> time slider, change timeline, diff, retrieval) + migrate FE reads to KAL · X7 flip BOTH INV-KAL lints (table-read +
+> the new HTTP-surface lint) to ENFORCING. Each binds ONLY to the frozen `kal.v1.yaml` → provably disjoint, parallel-safe.
 
 > **▶ Shipped this run (production-ready, all verified on real DB / build / tests):**
 > - **F1d (producer)** `d5662b64` — facts FLOW from extraction: translation worker passes `chapter_ordinal`,
