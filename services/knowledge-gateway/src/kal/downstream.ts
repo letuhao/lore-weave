@@ -85,9 +85,13 @@ export function ctxFromHeaders(headers: Record<string, string | undefined>): Dow
  */
 export function ctxFromReq(req: {
   headers?: Record<string, string | undefined>;
+  kalUserId?: string;
   on?: (ev: string, cb: () => void) => void;
 }): DownstreamCtx {
-  const ctx: DownstreamCtx = { userId: req?.headers?.['x-user-id'] };
+  // In user mode KalAuthGuard pins req.kalUserId from the validated JWT — prefer it over the
+  // x-user-id header so a FE client cannot spoof the tenancy identity. In service mode kalUserId
+  // is unset and the forwarded x-user-id header (set by a trusted caller) is used.
+  const ctx: DownstreamCtx = { userId: req?.kalUserId ?? req?.headers?.['x-user-id'] };
   try {
     if (typeof req?.on === 'function') {
       const ac = new AbortController();

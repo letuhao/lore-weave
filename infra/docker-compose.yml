@@ -1055,6 +1055,10 @@ services:
     environment:
       PORT: "3000"
       INTERNAL_SERVICE_TOKEN: ${INTERNAL_SERVICE_TOKEN:-dev_internal_token}
+      # Dual-auth user mode (FE via the BFF): validate the platform HS256 JWT (same secret
+      # glossary/knowledge use) + grant-check the book against book-service before forwarding.
+      JWT_SECRET: ${JWT_SECRET:-loreweave_local_dev_jwt_secret_change_me_32chars}
+      BOOK_SERVICE_URL: http://book-service:8082
       GLOSSARY_SERVICE_URL: http://glossary-service:8088
       KNOWLEDGE_SERVICE_URL: http://knowledge-service:8092
       KG_TEMPORAL_ENABLED: ${KG_TEMPORAL_ENABLED:-true}
@@ -1063,6 +1067,8 @@ services:
       glossary-service:
         condition: service_healthy
       knowledge-service:
+        condition: service_healthy
+      book-service:
         condition: service_healthy
     ports:
       - "3210:3000"

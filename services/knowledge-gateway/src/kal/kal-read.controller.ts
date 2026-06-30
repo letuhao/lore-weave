@@ -1,7 +1,7 @@
 import { Controller, Get, Param, Post, Query, Body, Req, UseGuards } from '@nestjs/common';
 import { ctxFromReq, glossary, knowledge } from './downstream.js';
 import { kgAsOfOrDrop, temporalCapability } from './temporal.js';
-import { InternalTokenGuard } from '../auth/internal-token.guard.js';
+import { KalAuthGuard } from '../auth/kal-auth.guard.js';
 
 /** The inbound request shape ctxFromReq needs (identity headers + connection close event). */
 type InboundReq = Parameters<typeof ctxFromReq>[0];
@@ -15,7 +15,7 @@ type InboundReq = Parameters<typeof ctxFromReq>[0];
  * downstream (roster → glossary list_entities) are wired; the rest forward to their documented
  * downstream path and are confirmed by a cross-service live-smoke when the full stack is up.
  */
-@UseGuards(InternalTokenGuard)
+@UseGuards(KalAuthGuard)
 @Controller('v1/kal/books/:bookId')
 export class KalReadController {
   // get_canonical — bounded canonical snapshot (current or as-of N).
