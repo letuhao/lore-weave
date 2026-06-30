@@ -11,11 +11,14 @@ from types import SimpleNamespace
 
 from app.engine import self_heal
 from app.engine.self_heal import (
+    EditProposal,
     Finding,
+    apply_self_heal_edits,
     build_judge_messages,
     code_mechanical_edits,
     locate_span,
     parse_findings,
+    propose_self_heal,
     run_self_heal,
     code_pronoun_findings,
     _judge_vote,
@@ -347,3 +350,53 @@ async def test_verify_vote_refutes_only_on_strict_majority():
     # k<=1 is plain single-shot
     assert await _verify_vote(_VerdictQueue([R]), "ch", f, canon=None, k=1, **_KW) is False
     assert await _verify_vote(_VerdictQueue([C]), "ch", f, canon=None, k=1, **_KW) is True
+
+
+# ── propose / apply review-gate (M6.1) ──
+
+_PA_CH = "the quick brown fox jumps. the lazy dog sleeps soundly now."
+
+
+def _pa_llm():
+    a, b = "the quick brown fox jumps", "the lazy dog sleeps soundly"
+    return FakeStackLLM([_fj((a, "iA"), (b, "iB")), "[]"],
+                        edit_fn=lambda sel: "E<" + sel[:6] + ">")
+
+
+async def test_propose_returns_unspliced_proposals():
+    proposals, rep = await propose_self_heal(
+        _pa_llm(), user_id="u", model_source="user_model", model_ref="m",
+        chapter=_PA_CH, source_language="en")
+    assert [p.id for p in proposals] == ["e0", "e1"]            # offset-ascending stable ids
+    assert rep.edits_applied == 2
+    p0 = proposals[0]
+    assert p0.before == "the quick brown fox jumps."           # SNAPPED to the sentence
+    assert _PA_CH[p0.start:p0.end] == p0.before                # offsets address the real span
+    assert p0.after == "E<the qu>" and p0.tier == "semantic"   # judge-driven ⇒ semantic
+
+
+async def test_apply_self_heal_edits_accepts_subset():
+    proposals, _ = await propose_self_heal(
+        _pa_llm(), user_id="u", model_source="user_model", model_ref="m",
+        chapter=_PA_CH, source_language="en")
+    assert apply_self_heal_edits(_PA_CH, proposals, accepted_ids=[]) == _PA_CH   # reject all → no-op
+    only0 = apply_self_heal_edits(_PA_CH, proposals, accepted_ids=["e0"])        # accept first only
+    assert only0.startswith("E<the qu>") and "the lazy dog sleeps soundly" in only0
+    assert "the quick brown fox jumps" not in only0
+
+
+async def test_run_self_heal_equals_propose_plus_apply_all():
+    proposals, _ = await propose_self_heal(
+        _pa_llm(), user_id="u", model_source="user_model", model_ref="m",
+        chapter=_PA_CH, source_language="en")
+    healed, _ = await run_self_heal(
+        _pa_llm(), user_id="u", model_source="user_model", model_ref="m",
+        chapter=_PA_CH, source_language="en")
+    assert apply_self_heal_edits(_PA_CH, proposals) == healed   # autonomous == accept-all
+
+
+def test_edit_proposal_is_serializable():
+    import dataclasses
+    p = EditProposal(id="e0", type="t", tier="semantic", start=0, end=3, before="abc", after="xyz")
+    d = dataclasses.asdict(p)
+    assert d["id"] == "e0" and d["tier"] == "semantic" and d["after"] == "xyz"

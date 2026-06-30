@@ -65,6 +65,22 @@ class SelfHealReport:
     rejudge_after: int | None = None        # None when re-judge skipped (no edits / disabled)
 
 
+@dataclass
+class EditProposal:
+    """One PROPOSED span edit — the unit of the human review-gate (M6). `tier` drives the
+    UI default: `deterministic` (closed-class lexical, high-confidence) is pre-checked,
+    `semantic` (judge-driven) is shown unchecked. Splice via `apply_self_heal_edits`."""
+    id: str          # stable within a proposal set ("e0","e1",… by ascending offset)
+    type: str
+    tier: str        # "deterministic" | "semantic"
+    start: int
+    end: int
+    before: str
+    after: str
+    issue: str = ""
+    fix: str = ""
+
+
 # ── JUDGE (detector) ───────────────────────────────────────────────────
 
 # Appended to the judge system prompt when a STORY BIBLE (canon + naming/honorific
@@ -389,38 +405,16 @@ def code_pronoun_findings(chapter: str) -> list[Finding]:
     return out
 
 
-async def run_self_heal(
-    llm: LLMClient, *, user_id: str, model_source: str, model_ref: str,
-    chapter: str, source_language: str = "auto", profile: BookProfile | None = None,
-    max_edit_expansion: float = 1.6, judge_max_tokens: int = 2200,
-    edit_max_tokens: int = 1200, rejudge: bool = True,
-    canon: str | None = None, vote_k: int = 1, min_votes: int = 2,
-    verify: bool = False, verify_k: int = 1, prefilter: bool = False, vote_temperature: float = 0.7,
-    trace_id: str | None = None,
-    cancel_check: Callable[[], Awaitable[bool]] | None = None,
-) -> tuple[str, SelfHealReport]:
-    """Judge the chapter, satellite-edit each locatable finding's span, splice, and
-    (optionally) re-judge. Returns ``(healed_chapter, report)``. Degrade-safe: a judge
-    failure returns the chapter unchanged with an empty report; every per-finding
-    failure is skipped (original prose kept).
-
-    The cheap-quality stack (all default-OFF ⇒ legacy single-shot behavior) layers, in
-    the order proven by the POC (docs/specs/2026-06-30-chapter-synthesis-self-healing.md):
-      • `canon`       — ground the judge AND the satellite editor in a story bible so it
-                        catches convention/canon errors and stops confabulating;
-      • `vote_k`/`min_votes` — run the grounded judge K× and keep only findings recurring
-                        in ≥min_votes runs (cleans random noise; pair with `canon`);
-      • `verify`/`verify_k` — a skeptical refute-or-confirm pass drops survivors that are
-                        explained-in-text or out-of-text inference (fail-open on degrade);
-                        verify_k>1 VOTES the verify (majority-refute) so a stochastic single
-                        refute can't drop a real finding;
-      • `prefilter`   — deterministic mechanical edits (dup-word) with no LLM.
-    Recall/precision measured on CH1: 5/5 real defects caught, 0 confabulations, on a $0
-    local model that previously returned 0 findings ungrounded."""
-    profile = profile or BookProfile(source_language=source_language)
-    kw = dict(user_id=user_id, model_source=model_source, model_ref=model_ref,
-              trace_id=trace_id, cancel_check=cancel_check)
-
+async def _compute_edits(
+    llm: LLMClient, chapter: str, *, source_language: str, profile: BookProfile,
+    max_edit_expansion: float, judge_max_tokens: int, edit_max_tokens: int,
+    canon: str | None, vote_k: int, min_votes: int, verify: bool, verify_k: int,
+    prefilter: bool, vote_temperature: float, **kw,
+) -> tuple[list[EditProposal], SelfHealReport]:
+    """The shared cheap-stack pipeline up to (but NOT including) the splice: judge-vote →
+    verify-vote → locate+snap → overlap-dedup → satellite-edit → merge mechanical edits.
+    Returns the computed `EditProposal`s (offset-ascending, stable ids) + the report.
+    `run_self_heal` splices all of them; `propose_self_heal` hands them to the review-gate."""
     findings = await _judge_vote(
         llm, chapter, source_language=source_language, max_tokens=judge_max_tokens,
         canon=canon, k=vote_k, min_votes=min_votes, temperature=vote_temperature, **kw) or []
@@ -446,7 +440,7 @@ async def run_self_heal(
         report.findings.extend(pron)
 
     if not findings and not mech:
-        return chapter, report
+        return [], report
 
     # locate every finding's span (code findings arrive pre-located), then SNAP each to its
     # enclosing sentence so the satellite editor rewrites a coherent unit (no orphaned tail).
@@ -473,7 +467,8 @@ async def run_self_heal(
         last_end = e
 
     # satellite-edit each chosen span (mechanism-2 isolation), reject runaway expansion
-    edits: list[tuple[int, int, str]] = []
+    proposals: list[EditProposal] = []
+    occupied: list[tuple[int, int]] = []
     for f in chosen:
         s, e = f.located  # type: ignore[misc]
         original = chapter[s:e]
@@ -493,26 +488,107 @@ async def run_self_heal(
         if len(new) > max(40, len(original)) * max_edit_expansion:
             f.skip_reason = "edit_expanded"   # the satellite guard — a span edit must stay local
             continue
-        edits.append((s, e, new))
         f.edited = True
         report.edits_applied += 1
+        occupied.append((s, e))
+        tier = "deterministic" if "(code)" in f.type else "semantic"
+        proposals.append(EditProposal(id="", type=f.type, tier=tier, start=s, end=e,
+                                      before=original, after=new, issue=f.issue, fix=f.fix))
 
     # merge the deterministic mechanical edits — satellite edits keep priority (a semantic
     # rewrite of a clause already subsumes any dup-word inside it), so a mechanical edit is
     # applied only where it does NOT overlap a satellite edit.
-    final_edits = list(edits)
-    occupied: list[tuple[int, int]] = [(s, e) for s, e, _ in edits]
     for s, e, new in mech:
         if any(s < oe and os < e for os, oe in occupied):
             continue
-        final_edits.append((s, e, new))
         occupied.append((s, e))
         report.edits_applied += 1
+        proposals.append(EditProposal(id="", type="dup-word", tier="deterministic", start=s,
+                                      end=e, before=chapter[s:e], after=new,
+                                      issue="Từ bị lặp liên tiếp.", fix="Xóa từ bị lặp."))
 
-    # splice rightmost-first so earlier offsets stay valid
+    proposals.sort(key=lambda p: p.start)
+    for i, p in enumerate(proposals):
+        p.id = f"e{i}"
+    return proposals, report
+
+
+def apply_self_heal_edits(
+    chapter: str, proposals: list[EditProposal], accepted_ids: list[str] | None = None,
+) -> str:
+    """Splice the accepted proposals into the chapter (default: ALL), rightmost-first so
+    earlier offsets stay valid. The review-gate's apply step — no LLM, no re-judge."""
+    keep = proposals if accepted_ids is None else [p for p in proposals if p.id in set(accepted_ids)]
     healed = chapter
-    for s, e, new in sorted(final_edits, key=lambda x: x[0], reverse=True):
-        healed = healed[:s] + new + healed[e:]
+    for p in sorted(keep, key=lambda p: p.start, reverse=True):
+        healed = healed[:p.start] + p.after + healed[p.end:]
+    return healed
+
+
+async def propose_self_heal(
+    llm: LLMClient, *, user_id: str, model_source: str, model_ref: str,
+    chapter: str, source_language: str = "auto", profile: BookProfile | None = None,
+    max_edit_expansion: float = 1.6, judge_max_tokens: int = 2200, edit_max_tokens: int = 1200,
+    canon: str | None = None, vote_k: int = 1, min_votes: int = 2,
+    verify: bool = False, verify_k: int = 1, prefilter: bool = False, vote_temperature: float = 0.7,
+    trace_id: str | None = None,
+    cancel_check: Callable[[], Awaitable[bool]] | None = None,
+) -> tuple[list[EditProposal], SelfHealReport]:
+    """Run the cheap-stack and return per-edit PROPOSALS (before/after + tier) WITHOUT
+    splicing — the M6 review-gate path. The human accepts a subset; `apply_self_heal_edits`
+    splices only those. Same knobs as `run_self_heal`."""
+    profile = profile or BookProfile(source_language=source_language)
+    kw = dict(user_id=user_id, model_source=model_source, model_ref=model_ref,
+              trace_id=trace_id, cancel_check=cancel_check)
+    return await _compute_edits(
+        llm, chapter, source_language=source_language, profile=profile,
+        max_edit_expansion=max_edit_expansion, judge_max_tokens=judge_max_tokens,
+        edit_max_tokens=edit_max_tokens, canon=canon, vote_k=vote_k, min_votes=min_votes,
+        verify=verify, verify_k=verify_k, prefilter=prefilter, vote_temperature=vote_temperature, **kw)
+
+
+async def run_self_heal(
+    llm: LLMClient, *, user_id: str, model_source: str, model_ref: str,
+    chapter: str, source_language: str = "auto", profile: BookProfile | None = None,
+    max_edit_expansion: float = 1.6, judge_max_tokens: int = 2200,
+    edit_max_tokens: int = 1200, rejudge: bool = True,
+    canon: str | None = None, vote_k: int = 1, min_votes: int = 2,
+    verify: bool = False, verify_k: int = 1, prefilter: bool = False, vote_temperature: float = 0.7,
+    trace_id: str | None = None,
+    cancel_check: Callable[[], Awaitable[bool]] | None = None,
+) -> tuple[str, SelfHealReport]:
+    """Judge the chapter, satellite-edit each locatable finding's span, splice ALL edits,
+    and (optionally) re-judge. Returns ``(healed_chapter, report)`` — the autonomous path
+    (applies every proposal). For a human review-gate, use `propose_self_heal` +
+    `apply_self_heal_edits` instead. Degrade-safe: a judge failure returns the chapter
+    unchanged with an empty report; every per-finding failure is skipped.
+
+    The cheap-quality stack (all default-OFF ⇒ legacy single-shot behavior) layers, in
+    the order proven by the POC (docs/specs/2026-06-30-chapter-synthesis-self-healing.md):
+      • `canon`       — ground the judge AND the satellite editor in a story bible so it
+                        catches convention/canon errors and stops confabulating;
+      • `vote_k`/`min_votes` — run the grounded judge K× and keep only findings recurring
+                        in ≥min_votes runs (cleans random noise; pair with `canon`);
+      • `verify`/`verify_k` — a skeptical refute-or-confirm pass drops survivors that are
+                        explained-in-text or out-of-text inference (fail-open on degrade);
+                        verify_k>1 VOTES the verify (majority-refute) so a stochastic single
+                        refute can't drop a real finding;
+      • `prefilter`   — deterministic mechanical edits (dup-word) with no LLM.
+    Recall/precision measured on CH1: 5/5 real defects caught, 0 confabulations, on a $0
+    local model that previously returned 0 findings ungrounded."""
+    profile = profile or BookProfile(source_language=source_language)
+    kw = dict(user_id=user_id, model_source=model_source, model_ref=model_ref,
+              trace_id=trace_id, cancel_check=cancel_check)
+
+    proposals, report = await _compute_edits(
+        llm, chapter, source_language=source_language, profile=profile,
+        max_edit_expansion=max_edit_expansion, judge_max_tokens=judge_max_tokens,
+        edit_max_tokens=edit_max_tokens, canon=canon, vote_k=vote_k, min_votes=min_votes,
+        verify=verify, verify_k=verify_k, prefilter=prefilter, vote_temperature=vote_temperature, **kw)
+    if not proposals:
+        return chapter, report
+
+    healed = apply_self_heal_edits(chapter, proposals)   # autonomous: apply every proposal
 
     if rejudge and report.edits_applied:
         after = await _judge(llm, healed, source_language=source_language,
