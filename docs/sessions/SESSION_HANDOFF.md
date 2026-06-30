@@ -20,8 +20,15 @@
 >   model_ref skip / cancelled≠backoff / prompt-injection delimiting. (The summary's `_cast_roster` drain bug = phantom.)
 > - Verify: Go build/vet + 12 temporal Go tests (real DB) · jest 5/5 · fold pytest 3/3 · KG 15/15. E2E: KAL→glossary
 >   forwards incl. the new fold write route + 401 auth guard, as-of reads, degrade-to-canon — all green.
-> - **IN PROGRESS:** building `close_fact` backing (PO: build-now) — model-consistent valid-time close (touches the
->   LOCKED maintain_chain single-writer); then a /review-impl pass on it (PO: commit-then-review-impl), then fanout.
+> - **close_fact — DONE** `1e80637e` (PO: build-now): the frozen KAL close verb is now backed. Migration 0049 adds
+>   `valid_to_pinned` + a pin-aware maintain_chain (CREATE OR REPLACE) — a manual close is an authored INPUT the single
+>   deriver RESPECTS, never a competing deriver (the LOCKED §12.3.3 invariant holds). closeFact core + internalCloseFact
+>   (book-scoped, validates in-book + valid_to > valid_from). Live-smoked: as-of 30 present, as-of 60 absent, 422/404 guards.
+> - **/review-impl on close_fact — DONE** `fb3a34ed` (PO: commit-then-review): 3 MED found + fixed — overlap guard
+>   (close past a successor → 422, was a double-value hole), split now PRESERVES the pin (`valid_to_ordinal`+`valid_to_pinned`
+>   copied), and TestFactsHTTP regression-locks close half-open + overlap-422 + cross-book-404.
+>
+> **▶ FOUNDATION NOW FULLY HARDENED + COMPLETE (incl. close_fact). The ONLY remaining work is the FANOUT X1–X7.**
 >
 > **▶ REMAINING = the consumer/FE FANOUT (parallel worktree agents, the locked strategy):**
 > X1 composition→KAL (+fix `_cast_roster` cursor drain) · X2 lore-enrichment→KAL · X3 wiki→KAL (kill direct-EAV) ·
