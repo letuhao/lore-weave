@@ -215,6 +215,41 @@ def _rep_metrics(text):
         "ma_co": low.count("cửu u ma cơ"),               # foreshadow over-repetition
     }
 
+def phase_pipeline(token, s):
+    """Task C drive — run the MULTI-STEP planning pipeline through the real endpoint
+    (pipeline=true → worker job), then commit the grounded+healed plan to the outline.
+    Dumps cast/motifs/intros + the plan-heal findings + per-chapter scenes."""
+    tmpl_id = s.get("template", {}).get("id")
+    st, dec = call("POST", f"/v1/composition/works/{s['project_id']}/outline/decompose", token=token,
+                   name="pipeline", json_body={"structure_template_id": tmpl_id, "premise": PREMISE_VI,
+                   "model_source": MODEL_SOURCE, "model_ref": MODEL_REF, "pipeline": True})
+    if isinstance(dec, dict) and dec.get("job_id") and dec.get("status") in ("pending", "running"):
+        job = poll_job(token, dec["job_id"], "pipeline", max_polls=1400, interval=5.0); dec = job.get("result")
+    d = dec.get("decompose", dec) if isinstance(dec, dict) else {}
+    chs = d.get("chapters", [])
+    hr = dec.get("heal_report") or {}
+    print("\nPIPELINE PLAN: cast=%d motifs=%d arcs=%d | %d ch, %d scenes | heal edits=%s/%s findings" % (
+        len(dec.get("cast", [])), len(dec.get("motifs", [])), len(dec.get("char_arcs", [])),
+        len(chs), sum(len(c.get("scenes", [])) for c in chs),
+        hr.get("edits_applied"), len(hr.get("findings", []))))
+    print("motifs:", [m.get("name", "")[:24] for m in dec.get("motifs", [])])
+    print("intros:", {a.get("name"): a.get("introduce_at_chapter") for a in dec.get("char_arcs", [])
+                      if a.get("introduce_at_chapter") and a["introduce_at_chapter"] > 1})
+    # commit the plan to the outline (so scenes become nodes the drafter can target)
+    commit_chapters = [{"chapter_id": c["chapter"]["chapter_id"], "title": c["chapter"].get("title", ""),
+                        "intent": c["chapter"].get("intent", ""), "beat_role": c["chapter"].get("beat_role"),
+                        "scenes": [{"title": sc.get("title", ""), "synopsis": sc.get("synopsis", ""),
+                                    "tension": sc.get("tension"), "present_entity_ids": sc.get("present_entity_ids", [])}
+                                   for sc in c.get("scenes", [])]} for c in chs]
+    call("POST", f"/v1/composition/works/{s['project_id']}/outline/decompose/commit", token=token,
+         name="pipeline_commit", json_body={"arc_title": d.get("arc_title", "Arc 1"),
+         "chapters": commit_chapters, "replace": True, "idempotency_key": str(uuid.uuid4())}, expect={200, 201})
+    save_state(s)
+    print("\nPIPELINE committed. Per-chapter (first 4):")
+    for i, c in enumerate(chs[:4], 1):
+        print("  CH%02d [%s] scenes=%d tensions=%s" % (i, c["chapter"].get("beat_role"),
+              len(c.get("scenes", [])), [sc.get("tension") for sc in c.get("scenes", [])]))
+
 def phase_satellite(token, s):
     """Satellite-edit POC — does the SMALL model do a SURGICAL span edit well via
     mechanism (2) (only the span is sent + returned)? Pick a 'lạnh'-dense window from
@@ -403,6 +438,7 @@ def main():
     if phase == "mdtest": phase_mdtest(token, s)
     if phase == "stitch": phase_stitch(token, s)
     if phase == "satellite": phase_satellite(token, s)
+    if phase == "pipeline": phase_pipeline(token, s)
     if phase == "grounding": phase_grounding(token, s)
     save_state(s)
 
