@@ -31,9 +31,17 @@
 >
 > **▶ PIVOT (PO) — re-architect PLANNING before drafting.** Reviewing the committed 12-ch plan surfaced many holes at once (no motif binding, empty cast / scene-presence, anonymous new characters, ch1 telescoped). Root cause = `decompose` is **one-shot** (same anti-pattern as whole-chapter stitch). Fix = a multi-step planning pipeline (decompose-and-refine, ONE arc). Spec: [`docs/specs/2026-06-30-planning-pipeline-architecture.md`](../specs/2026-06-30-planning-pipeline-architecture.md) · Build plan + **capability audit** (planning uses ~2/30 engines — the judge constellation promise_audit/succession_entailment/arc_conformance is idle): [`docs/plans/2026-06-30-planning-pipeline.md`](../plans/2026-06-30-planning-pipeline.md). Stages: 0 cast/world · 1 motif-select · 2 arc+tension · 3 char-arc/intro · 4 grounded decompose · 5 plan self-heal · 6 orchestration+checkpoints. Reuse-heavy (motif retriever, templates, arc_apply, self_heal pattern, the idle judges).
 >
-> **▶ Stage 0 `propose_cast` BUILT + validated** — `engine/cast_plan.py` (6 unit tests). Live on the Lâm Uyển premise: **10 cast = 6 named (extracted) + 4 NEW (proposed)** — fills the anonymous-new-character gap with proper Hán-Việt names + roles. (`max_tokens` 4000 + salvage-truncated parse.)
+> **▶ PLANNING PIPELINE COMPLETE (Stages 0–6, all live-validated)** — replaced the one-shot decompose with a multi-step planner, each stage committed + unit-tested + live-POC'd on the Lâm Uyển premise:
+> - **0 cast** (`cast_plan.py` propose_cast + `glossary_client.seed_entities`) — 10 cast (6 named + 4 new), seeded → roster → present_entity_ids.
+> - **1 motifs** (`motif_plan.py` select_arc_motifs) — 4 arc motifs with roles (spine/recurring/foil/climax).
+> - **2 tension** (`arc_plan.py` shape_tension_curve, deterministic) — fixes ch1=100; 100 only at climax.
+> - **3 char-arcs** (`character_plan.py` plan_character_arcs) — arcs + introduction schedule (new chars @ fitting beats).
+> - **4 grounded decompose** (`grounded_plan.py` + grounding block in `plan.py`) — feeds cast/motifs/tension/intros into the threaded L2.
+> - **5 plan self-heal** (`plan_heal.py`) — plan-judge → satellite-edit a scene synopsis by (chapter,scene).
+> - **6 orchestration** (`planning_pipeline.py` run_planning_pipeline) — chains 0→1→L1(once)→3→4→5.
+> - **Capstone live POC** (`poc/io/full_pipeline.txt`): cast=10 · motifs=4 · arcs=10 · 12ch/30sc/30-with-present · **plan-heal 7/7 findings edited** (4× cross-chapter repetition, a character-before-introduction, a tension-vs-beat, a dangling setup — all real, all fixed).
 >
-> **▶ NEXT:** finish Stage 0 — **seed the PO-approved cast into the glossary** (via the `/internal/.../extract-entities` bulk path; `GlossaryClient` needs a create/bulk method), then **re-decompose** to confirm `present_entity_ids` populate. Then Stages 1→5 (each POC-validated, PO checkpoint), then 6 wires the human-in-the-loop. THEN drive the full 12-chapter story (plan → draft → chapter self-heal) for PO evaluation. (The draft→chapter-self-heal half is already proven: `engine/self_heal.py`.)
+> **▶ NEXT — production hardening + the drive:** (a) wire `run_planning_pipeline` to a composition endpoint/worker (replace the one-shot decompose route); (b) `D-PLAN-CAST-ATTRS` — persist cast traits/role/relationships, not just names (extract-entities no-ops on unmatched attr_defs → needs the attr codes / canon-content endpoint); (c) the world/faction step is folded into cast for now. THEN drive the full 12-chapter story (plan → draft → chapter self-heal `engine/self_heal.py`) for PO evaluation.
 >
 > **▶ Deferred (this track):**
 > - **D-THREAD-MOTIF-COMBINED** — `thread_state` + `motifs_enabled` together: typed-state threading is skipped on the motif path (motif `prev_effects` carry used; warned, not silent). Gate #2 (needs interleaving the motif sequential select with the threaded invent loop). Target: when motifs + threading are both wanted in one run.

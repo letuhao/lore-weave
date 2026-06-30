@@ -132,8 +132,22 @@ build new judges; we re-target existing ones from "post-prose verification" to "
   by name), Stage 1 motifs, L1 beat-map ONCE (feeds both Stage 3 char-arcs and Stage 4), Stage 4 grounded
   decompose (pre-mapped ⇒ skips its own L1), Stage 5 plan self-heal. Returns the healed plan + all
   intermediates (cast / motifs / arcs / heal report) so a UI can checkpoint between stages; end-to-end for
-  the autonomous path. Each stage degrades independently (never hard-fails). Live full Stage 0→5 POC
-  running.
+  the autonomous path. Each stage degrades independently (never hard-fails).
+- **CAPSTONE — full Stage 0→5 pipeline live-validated 2026-06-30** (`poc/io/full_pipeline.txt`):
+  `cast=10 · motifs=4 · arcs=10 · 12 ch / 30 scenes / 30-30 with present cast · plan-heal 7/7 findings
+  EDITED`. The plan-judge caught GENUINELY REAL defects and fixed all 7 — 4× cross-chapter repetition,
+  a **character acting before introduction** (Diệp Phàm used before establishment — the exact slip the
+  intro-schedule guards), a **tension fighting its beat** (anticlimactic after the climax), a **dangling
+  setup**. ⇒ **the multi-step planning pipeline is COMPLETE and end-to-end validated**, replacing the
+  one-shot decompose with a grounded, paced, populated, self-healed plan.
+
+## Pipeline status — COMPLETE (Stages 0–6, all live-validated)
+Cast (0) → motifs (1) → tension curve (2) → char-arcs/intros (3) → grounded decompose (4) → plan
+self-heal (5) → orchestration (6). All committed + unit-tested + live-POC'd on the Lâm Uyển premise.
+**Remaining (production hardening, not pipeline design):** wire `run_planning_pipeline` to a
+composition endpoint/worker (replacing the one-shot decompose route); persist cast ATTRIBUTES not just
+names (D-PLAN-CAST-ATTRS); the world/faction step (3) is folded into cast for now. Then drive the full
+12-chapter story (plan → draft → chapter self-heal) for PO evaluation.
 
 ## Sequencing & rationale
 Start with **Stage 0** — empty cast is the root that starves every later step (motif binding, presence,
