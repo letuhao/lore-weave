@@ -477,6 +477,97 @@ func revertFactChains(ctx context.Context, q pgxRWQuerier, winnerID, loserID uui
 	return nil
 }
 
+// splitFactsByEpisode is the fact-level core of split_entity (§12.4.2 / D2) — the inverse
+// of merge, which makes a wrong (e.g. CJK-name) merge corrigible even though the store is
+// append-only. Facts on `source` cited to any of `episodeIDs` are RE-ATTRIBUTED to
+// `newEntity` as a NEW transaction-time event: the originals are invalidate-not-deleted
+// (invalidated_reason='split', kept for audit/time-travel) and fresh open facts are opened
+// on newEntity carrying the same value/valid_from/episode/cardinality. Both sides' affected
+// chains are re-derived. The caller supplies an already-created newEntity (same book) and
+// holds it + source under FOR UPDATE; this takes the per-(entity,attr) chain locks for both.
+//
+// Returns the number of facts moved. Order matters: COPY (from still-open source facts)
+// before INVALIDATE, so the copy SELECT still sees them.
+func splitFactsByEpisode(ctx context.Context, q pgxRWQuerier, sourceID, newEntityID uuid.UUID, episodeIDs []uuid.UUID) (int, error) {
+	if len(episodeIDs) == 0 {
+		return 0, nil
+	}
+	// Affected attrs = the source attrs cited to those episodes (open facts only).
+	rows, err := q.Query(ctx, `
+		SELECT DISTINCT attr_or_predicate FROM entity_facts
+		WHERE entity_id = $1 AND source_episode_id = ANY($2) AND invalidated_at IS NULL`,
+		sourceID, episodeIDs)
+	if err != nil {
+		return 0, fmt.Errorf("split: affected attrs: %w", err)
+	}
+	var attrs []string
+	for rows.Next() {
+		var a string
+		if err := rows.Scan(&a); err != nil {
+			rows.Close()
+			return 0, fmt.Errorf("split: scan attr: %w", err)
+		}
+		attrs = append(attrs, a)
+	}
+	rows.Close()
+	if err := rows.Err(); err != nil {
+		return 0, fmt.Errorf("split: attr rows: %w", err)
+	}
+	if len(attrs) == 0 {
+		return 0, nil
+	}
+	// §12.7.8 chain locks: both entities × affected attrs, sorted composite-key order.
+	type lk struct {
+		entity uuid.UUID
+		attr   string
+	}
+	locks := make([]lk, 0, len(attrs)*2)
+	for _, a := range attrs {
+		locks = append(locks, lk{sourceID, a}, lk{newEntityID, a})
+	}
+	sort.Slice(locks, func(i, j int) bool {
+		return locks[i].entity.String()+":"+locks[i].attr < locks[j].entity.String()+":"+locks[j].attr
+	})
+	for _, l := range locks {
+		if err := acquireFactChainLock(ctx, q, l.entity, l.attr); err != nil {
+			return 0, err
+		}
+	}
+
+	// COPY the source's cited open facts onto newEntity (fresh fact_id/created_at/coverage_xid).
+	ct, err := q.Exec(ctx, `
+		INSERT INTO entity_facts
+		  (book_id, entity_id, fact_kind, attr_or_predicate, value, valid_from_ordinal, cardinality, source_episode_id)
+		SELECT book_id, $1, fact_kind, attr_or_predicate, value, valid_from_ordinal, cardinality, source_episode_id
+		FROM entity_facts
+		WHERE entity_id = $2 AND source_episode_id = ANY($3) AND invalidated_at IS NULL
+		ON CONFLICT (entity_id, fact_kind, attr_or_predicate, value_hash, valid_from_ordinal,
+		             coalesce(source_episode_id, '00000000-0000-0000-0000-000000000000'::uuid))
+		DO NOTHING`,
+		newEntityID, sourceID, episodeIDs)
+	if err != nil {
+		return 0, fmt.Errorf("split: copy to new entity: %w", err)
+	}
+	moved := int(ct.RowsAffected())
+
+	// INVALIDATE the originals on source (invalidate-not-delete, reason 'split').
+	if _, err := q.Exec(ctx, `
+		UPDATE entity_facts SET invalidated_at = now(), invalidated_reason = 'split'
+		WHERE entity_id = $1 AND source_episode_id = ANY($2) AND invalidated_at IS NULL`,
+		sourceID, episodeIDs); err != nil {
+		return 0, fmt.Errorf("split: invalidate originals: %w", err)
+	}
+
+	for _, e := range []uuid.UUID{sourceID, newEntityID} {
+		for _, a := range attrs {
+			if err := maintainChain(ctx, q, e, a); err != nil {
+				return 0, err
+			}
+		}
+	}
+	return moved, nil
+}
+
 // distinctFactAttrs returns an entity's distinct fact attr/predicate codes (any kind).
 func distinctFactAttrs(ctx context.Context, q pgxRWQuerier, entityID uuid.UUID) ([]string, error) {
 	rows, err := q.Query(ctx,

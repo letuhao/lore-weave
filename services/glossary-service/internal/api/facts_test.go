@@ -335,6 +335,96 @@ func TestMergeFactChains(t *testing.T) {
 	assertChain(t, ctx, tx, loser, "mtk2", []chainRow{{"X", 5, nil}})
 }
 
+// TestSplitFactsByEpisode verifies F1f split (§12.4.2): facts cited to the split-off
+// episode move to the new entity as a NEW transaction-time event (originals invalidated
+// with reason 'split', fresh facts opened on the new entity), and facts from other
+// episodes stay on the source.
+func TestSplitFactsByEpisode(t *testing.T) {
+	ctx := context.Background()
+	pool := openFactsTestDB(t)
+	tx, err := pool.Begin(ctx)
+	if err != nil {
+		t.Fatalf("begin: %v", err)
+	}
+	defer tx.Rollback(ctx) //nolint:errcheck
+
+	var bookID, source, newEntity uuid.UUID
+	rows, err := tx.Query(ctx, `
+		SELECT book_id, entity_id FROM glossary_entities
+		WHERE deleted_at IS NULL
+		  AND book_id = (SELECT book_id FROM glossary_entities WHERE deleted_at IS NULL
+		                 GROUP BY book_id HAVING count(*) >= 2 LIMIT 1)
+		LIMIT 2`)
+	if err != nil {
+		t.Fatalf("pick entities: %v", err)
+	}
+	var ids []uuid.UUID
+	for rows.Next() {
+		var b, e uuid.UUID
+		if err := rows.Scan(&b, &e); err != nil {
+			rows.Close()
+			t.Fatalf("scan: %v", err)
+		}
+		bookID = b
+		ids = append(ids, e)
+	}
+	rows.Close()
+	if len(ids) < 2 {
+		t.Skip("need a book with >=2 live entities")
+	}
+	source, newEntity = ids[0], ids[1]
+
+	ep1, _, err := ingestEpisode(ctx, tx, bookID, uuid.New(), 10, "spE1", "")
+	if err != nil {
+		t.Fatalf("ep1: %v", err)
+	}
+	ep2, _, err := ingestEpisode(ctx, tx, bookID, uuid.New(), 20, "spE2", "")
+	if err != nil {
+		t.Fatalf("ep2: %v", err)
+	}
+	app := func(attr, val string, vf int64, ep uuid.UUID) {
+		_ = acquireFactChainLock(ctx, tx, source, attr)
+		if _, _, err := appendFact(ctx, tx, appendFactParams{
+			BookID: bookID, EntityID: source, FactKind: "attribute", Attr: attr, Value: val, ValidFrom: vf,
+			SourceEpisodeID: &ep,
+		}); err != nil {
+			t.Fatalf("append %s: %v", attr, err)
+		}
+	}
+	app("spa1", "V1", 10, ep1) // cited to ep1 → will split out
+	app("spa2", "V2", 20, ep2) // cited to ep2 → stays on source
+
+	moved, err := splitFactsByEpisode(ctx, tx, source, newEntity, []uuid.UUID{ep1})
+	if err != nil {
+		t.Fatalf("split: %v", err)
+	}
+	if moved != 1 {
+		t.Fatalf("moved = %d, want 1", moved)
+	}
+	// new entity now owns spa1; source no longer has spa1 live but keeps spa2
+	assertChain(t, ctx, tx, newEntity, "spa1", []chainRow{{"V1", 10, nil}})
+	assertChain(t, ctx, tx, source, "spa2", []chainRow{{"V2", 20, nil}})
+	var srcA1Live int
+	if err := tx.QueryRow(ctx, `
+		SELECT count(*) FROM entity_facts
+		WHERE entity_id=$1 AND attr_or_predicate='spa1' AND invalidated_at IS NULL`, source).Scan(&srcA1Live); err != nil {
+		t.Fatalf("src spa1 live: %v", err)
+	}
+	if srcA1Live != 0 {
+		t.Fatalf("source should have 0 live spa1 facts after split, has %d", srcA1Live)
+	}
+	// the original is invalidate-not-deleted with reason 'split' (audit intact)
+	var splitReason int
+	if err := tx.QueryRow(ctx, `
+		SELECT count(*) FROM entity_facts
+		WHERE entity_id=$1 AND attr_or_predicate='spa1' AND invalidated_reason='split'`, source).Scan(&splitReason); err != nil {
+		t.Fatalf("split reason: %v", err)
+	}
+	if splitReason != 1 {
+		t.Fatalf("expected 1 invalidated-with-reason-split original, got %d", splitReason)
+	}
+}
+
 type chainRow struct {
 	value string
 	vf    int64
