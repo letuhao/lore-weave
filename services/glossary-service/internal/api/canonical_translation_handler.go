@@ -127,8 +127,12 @@ func (s *Server) internalGetCanonicalTranslation(w http.ResponseWriter, r *http.
 			writeCanonicalTranslation(w, entityID, lang, content, false, "translating", "", asOf, canonStatus, false)
 			return
 		case "failed":
-			// Re-claim a failed row while attempts remain AND a fill is actually possible.
-			if cAttempts < foldRetryBudget && userID != "" && s.cfg.TranslationServiceURL != "" {
+			// Re-claim a failed row when a fill is actually possible. Config errors
+			// (no_model/no_user) are CALLER-specific — not a broken (content,lang) pair — and cost
+			// no LLM call, so a properly-configured viewer ALWAYS heals the shared book-tier row
+			// without burning the retry budget, which is meant to bound genuine provider failures.
+			configErr := cErr == "no_model" || cErr == "no_user"
+			if (configErr || cAttempts < foldRetryBudget) && userID != "" && s.cfg.TranslationServiceURL != "" {
 				tag, uerr := s.pool.Exec(ctx, `
 					UPDATE canonical_snapshot_translations
 					   SET status='pending', error_code='', attempts=attempts+1, updated_at=now()
@@ -191,7 +195,7 @@ func (s *Server) launchSnapshotFill(entityID uuid.UUID, lang, hash, content, use
 		_, _ = s.pool.Exec(ctx, `
 			UPDATE canonical_snapshot_translations
 			   SET status='ready', value=$4, error_code='', updated_at=now()
-			 WHERE entity_id=$1 AND attr_scope='narrative' AND language_code=$2 AND source_content_hash=$3`,
-			entityID, lang, hash, out)
+			 WHERE entity_id=$1 AND attr_scope='narrative' AND language_code=$2 AND source_content_hash=$3
+			   AND status='pending'`, entityID, lang, hash, out)
 	}()
 }

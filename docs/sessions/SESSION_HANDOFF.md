@@ -12,6 +12,11 @@
 > 19 · FE 45 + tsc clean · both INV-KAL lints + provider-gate PASS · **live-smoke** FE→BFF→KAL→glossary→translation
 > →provider-registry→lm_studio: zh canonical → `ready/translated/cached` real EN translation, single-flight = 1 call.
 > Plan: `docs/plans/2026-06-30-per-episode-translation-surface.md`.
+> **/review-impl pass (1 MED + 2 LOW, all fixed):** a per-user config error (no_model/no_user) no longer poisons the
+> shared book-tier row / exhausts the retry budget — it's caller-specific + costs no LLM, so a configured viewer
+> always heals it (provider/quota failures still respect `foldRetryBudget`); success-UPDATE got the `status='pending'`
+> guard; added a heal-path integration test. **User-mode e2e through the BFF** (real login JWT → KAL dual-auth + book
+> grant): owned book → `ready` real EN translation, no-auth → 401, non-granted book → 403.
 
 > **▶▶ ENTIRE EFFORT COMPLETE — the Incremental Temporal Knowledge Architecture is built, verified, and
 > committed end-to-end (F0–F4 foundation + close_fact + X1–X7 fanout + X6 FE). The branch is production-ready

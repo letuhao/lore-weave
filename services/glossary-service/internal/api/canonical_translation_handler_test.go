@@ -216,4 +216,37 @@ func TestCanonicalTranslation_StateMachine(t *testing.T) {
 	if calls != 1 {
 		t.Fatalf("expected exactly 1 translation-service call (single-flight), got %d", calls)
 	}
+
+	// 8) HEAL: a config-error (no_model) failed row — even AT the retry-budget cap — is re-claimable
+	// by a configured viewer (config errors cost no LLM + are caller-specific, so they must not
+	// poison the shared book-tier row). Force the row to failed/no_model/attempts=budget, then view.
+	if _, err := pool.Exec(ctx, `
+		UPDATE canonical_snapshot_translations
+		   SET status='failed', error_code='no_model', attempts=$3, value=''
+		 WHERE entity_id=$1 AND attr_scope='narrative' AND language_code='en' AND source_content_hash=$2`,
+		entityID, hash, foldRetryBudget); err != nil {
+		t.Fatalf("seed failed/no_model row: %v", err)
+	}
+	if r := getTr("en", userID); r["status"] != "translating" {
+		t.Fatalf("heal view of a capped no_model row = %v, want re-claim → translating", r)
+	}
+	deadline = time.Now().Add(5 * time.Second)
+	healed := false
+	for time.Now().Before(deadline) {
+		var status, value string
+		if err := pool.QueryRow(ctx, `
+			SELECT status, value FROM canonical_snapshot_translations
+			WHERE entity_id=$1 AND attr_scope='narrative' AND language_code='en' AND source_content_hash=$2`,
+			entityID, hash).Scan(&status, &value); err == nil && status == "ready" && value == translated {
+			healed = true
+			break
+		}
+		time.Sleep(50 * time.Millisecond)
+	}
+	if !healed {
+		t.Fatalf("a capped no_model row was not healed to ready by a configured viewer")
+	}
+	if calls != 2 {
+		t.Fatalf("heal should have made exactly 1 more LLM call (total 2), got %d", calls)
+	}
 }
