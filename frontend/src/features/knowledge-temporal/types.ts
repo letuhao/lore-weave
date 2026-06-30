@@ -73,7 +73,11 @@ export interface RetrievedSegment {
   id?: string;
   text?: string;
   score?: number;
+  // Citation: the live runtime returns `chapter_id`; the frozen contract declares
+  // `chapter_ordinal` (+ `episode_id`). Carry both so the chapter label survives either shape.
   chapter_id?: string | null;
+  chapter_ordinal?: number | null;
+  episode_id?: string | null;
   [k: string]: unknown;
 }
 

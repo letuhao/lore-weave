@@ -48,8 +48,14 @@ class StubKal:
     list (`[{entity_id, name}]`); `resp=None` simulates a KAL outage → empty cast."""
     def __init__(self):
         self.resp: dict | None = {"items": [{"entity_id": str(ENT), "name": "Alice"}], "next_cursor": None}
-    async def roster(self, book_id, *, user_id=None):
+    async def roster(self, book_id, *, user_id=None, strict=False):
         if not self.resp:
+            # Outage: a strict caller (the commit path) gets RosterIncomplete so it SKIPS
+            # validation rather than treating a truncated/empty cast as authoritative; a
+            # non-strict caller (the packer) gets the empty partial. Mirrors the real client.
+            if strict:
+                from app.clients.kal_client import RosterIncomplete
+                raise RosterIncomplete("stub outage")
             return []
         return [{"entity_id": str(i["entity_id"]), "name": i["name"]}
                 for i in self.resp.get("items", []) if i.get("name") and i.get("entity_id")]

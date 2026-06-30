@@ -52,9 +52,12 @@ function SegmentRow({ seg }: { seg: RetrievedSegment }) {
         </span>
         {typeof seg.score === 'number' && <ScoreChip score={seg.score} />}
       </div>
-      {seg.chapter_id && (
+      {(seg.chapter_id ?? seg.chapter_ordinal) != null && (
         <p className="text-[10px] text-muted-foreground" data-testid="retrieval-chapter">
-          {t('temporal.retrieval.chapter', 'Chapter {{chapter}}', { chapter: seg.chapter_id })}
+          {t('temporal.retrieval.chapter', {
+            chapter: seg.chapter_id ?? seg.chapter_ordinal,
+            defaultValue: 'Chapter {{chapter}}',
+          })}
         </p>
       )}
     </li>

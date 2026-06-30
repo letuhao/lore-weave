@@ -24,12 +24,19 @@ interface DiffRow {
   headValue: string | null; // current value at head (null when removed since)
 }
 
-/** Last-write-wins per attr for single-valued facts, so a sparse multi-row read still folds to one value. */
+/** Fold single-valued facts to one value per attr. If the read carries multiple rows for an attr
+ *  (the KAL may return history, not a strict as-of fold), pick the one with the GREATEST
+ *  valid_from_ordinal — the interval-correct "current at this ordinal" value, not array order. */
 function foldSingle(facts: Fact[]): Map<string, string> {
   const m = new Map<string, string>();
+  const fromByAttr = new Map<string, number>();
   for (const f of facts) {
     if (f.cardinality !== 'single') continue;
-    m.set(f.attr_or_predicate, f.value);
+    const prevFrom = fromByAttr.get(f.attr_or_predicate);
+    if (prevFrom === undefined || f.valid_from_ordinal >= prevFrom) {
+      m.set(f.attr_or_predicate, f.value);
+      fromByAttr.set(f.attr_or_predicate, f.valid_from_ordinal);
+    }
   }
   return m;
 }

@@ -27,7 +27,7 @@ from pydantic import BaseModel, Field
 
 from app.clients.book_client import BookClient, BookClientError
 from app.db.repositories import AlreadyPlannedError, ReferenceViolationError
-from app.clients.kal_client import KalClient
+from app.clients.kal_client import KalClient, RosterIncomplete
 from app.clients.llm_client import LLMClient
 from app.config import settings
 from app.db.pool import get_pool
@@ -136,7 +136,9 @@ async def _book_chapter_ids(book: BookClient, book_id: UUID, bearer: str) -> lis
                                                      "detail": str(exc)}) from exc
 
 
-async def _cast_roster(kal: KalClient, book_id: UUID, user_id: UUID) -> list[dict]:
+async def _cast_roster(
+    kal: KalClient, book_id: UUID, user_id: UUID, *, strict: bool = False
+) -> list[dict]:
     """The book's full cast as `{entity_id, name}`, read through the KAL (INV-KAL).
 
     Drains the KAL `roster` keyset cursor to completion (D4 / §12.5.2): the prior
@@ -145,10 +147,11 @@ async def _cast_roster(kal: KalClient, book_id: UUID, user_id: UUID) -> list[dic
     roster. The KAL roster is bounded-per-page, COMPLETE-in-aggregate; the client
     follows `next_cursor` until null.
 
-    Empty/partial on outage (the planner just gets a thin/no roster; commit-time
-    entity validation degrades to skip — present_entity_ids are non-FK display hints,
-    packer-tolerant). `user_id` is forwarded as the KAL tenancy identity."""
-    return await kal.roster(book_id, user_id=user_id)
+    Default (non-strict): empty/partial on outage (the packer just gets a thin/no roster).
+    `strict=True` raises `RosterIncomplete` on a truncated drain so a caller that treats the
+    cast as AUTHORITATIVE (commit-time entity validation) can skip instead of false-rejecting
+    a valid id in a dropped page. `user_id` is forwarded as the KAL tenancy identity."""
+    return await kal.roster(book_id, user_id=user_id, strict=strict)
 
 
 def _decompose_response(result) -> dict:
@@ -361,11 +364,16 @@ async def decompose_commit(
             "detail": "the plan has no scenes for any chapter — the planner likely "
                       "degraded (try again, or use a different model). Nothing was committed."})
 
-    # present_entity validation against the glossary cast. Best-effort: on a
-    # glossary outage (empty roster) we SKIP rather than false-reject valid ids
-    # (present_entity_ids are non-FK, packer-tolerant). Only validate when we have
-    # a roster to validate against.
-    cast = await _cast_roster(kal, work.book_id, user_id)
+    # present_entity validation against the glossary cast. Best-effort: on a glossary outage
+    # OR an INCOMPLETE drain we SKIP rather than false-reject valid ids (present_entity_ids are
+    # non-FK, packer-tolerant). strict=True ⇒ a truncated cast raises RosterIncomplete, so we
+    # only validate against a COMPLETE cast — never against a partial set that would 400 a valid
+    # entity whose roster page failed to load.
+    try:
+        cast = await _cast_roster(kal, work.book_id, user_id, strict=True)
+    except RosterIncomplete as exc:
+        logger.warning("cast roster incomplete (%s) — skipping present_entity validation", exc)
+        cast = []
     if cast:
         cast_ids = {c["entity_id"] for c in cast}
         bad_ents = sorted({

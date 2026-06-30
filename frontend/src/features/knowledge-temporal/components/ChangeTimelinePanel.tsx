@@ -138,7 +138,9 @@ function TimelinePage({
       {items.map((entry) => (
         <TimelineRow key={entry.fact_id} entry={entry} />
       ))}
-      {isTail && nextCursor ? (
+      {/* Stop at the tail when there's no next cursor OR the server echoed our own cursor back
+          (a stuck/buggy cursor) — otherwise "load more" would re-fetch this same page forever. */}
+      {isTail && nextCursor && nextCursor !== cursor ? (
         <li className="px-3 py-2 text-center" data-testid="timeline-load-more-wrap">
           <button
             type="button"
@@ -194,7 +196,9 @@ export function ChangeTimelinePanel({ bookId, entityId }: TemporalSurfaceProps) 
               entityId={entityId}
               cursor={cursor}
               isTail={i === cursors.length - 1}
-              onLoadMore={(next) => setCursors((prev) => [...prev, next])}
+              // Dedupe: never append a cursor we've already fetched (a repeated/self-referential
+              // next_cursor would otherwise duplicate rows + loop the "load more" indefinitely).
+              onLoadMore={(next) => setCursors((prev) => (prev.includes(next) ? prev : [...prev, next]))}
             />
           ))}
         </ul>

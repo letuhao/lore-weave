@@ -34,6 +34,11 @@ __all__ = [
 ]
 
 
+# Safety cap on the field-map drain: 500 pages × ≤200/page = 100k entities, far past any real
+# book's cast — bounds a pathological never-null cursor without truncating a real cast.
+_MAX_FIELDMAP_PAGES = 500
+
+
 class GlossaryServiceError(Exception):
     def __init__(self, message: str, *, retryable: bool = False, status_code: int | None = None) -> None:
         super().__init__(message)
@@ -156,29 +161,49 @@ class GlossaryClient:
     async def _list_entities_glossary(
         self, *, book_id: UUID, limit: int
     ) -> list[GlossaryEntity]:
-        """Direct glossary entity-list read (the legacy projection carrying
-        `kind` + authored `short_description`)."""
+        """Direct glossary entity-list read (the legacy projection carrying `kind` + authored
+        `short_description`), DRAINED to completion via the keyset cursor.
+
+        The endpoint is bounded-per-page (server clamps `limit` ≤ 200) + cursor-paginated, so a
+        single page would only carry the FIRST ~100-200 entities' fields — leaving the tail of a
+        large cast with empty `kind`/`description` (the silent-truncation gap that re-introduces
+        the bug the roster drain fixed: complete cast, but incomplete fields). We follow
+        `next_cursor` to completion so the field map covers the WHOLE cast. `limit` becomes the
+        page size; a safety cap bounds a pathological never-null cursor."""
         url = f"{self._base}/internal/books/{book_id}/entities"
-        resp = await self._get(
-            url,
-            headers={"X-Internal-Token": self._internal_token},
-            params={"limit": str(limit)},
-        )
-        rows = _as_rows(resp.json())
-        return [
-            GlossaryEntity(
-                entity_id=str(r.get("id") or r.get("entity_id") or ""),
-                name=neutralize_injection(r.get("name") or r.get("canonical_name")),
-                kind=str(r.get("kind") or r.get("kind_code") or r.get("kind_name") or ""),
-                # The internal entities endpoint returns the authored canon under
-                # `short_description` (the column, F-C12-1) — fall back to the
-                # legacy `description` key. The contradiction check reads this.
-                description=neutralize_injection(
-                    r.get("short_description") or r.get("description")
-                ),
+        page_size = max(1, min(limit, 200))
+        out: list[GlossaryEntity] = []
+        cursor: str | None = None
+        for _ in range(_MAX_FIELDMAP_PAGES):
+            params = {"limit": str(page_size)}
+            if cursor:
+                params["cursor"] = cursor
+            resp = await self._get(
+                url,
+                headers={"X-Internal-Token": self._internal_token},
+                params=params,
             )
-            for r in rows
-        ]
+            payload = resp.json()
+            for r in _as_rows(payload):
+                out.append(
+                    GlossaryEntity(
+                        entity_id=str(r.get("id") or r.get("entity_id") or ""),
+                        name=neutralize_injection(r.get("name") or r.get("canonical_name")),
+                        kind=str(r.get("kind") or r.get("kind_code") or r.get("kind_name") or ""),
+                        # The internal entities endpoint returns the authored canon under
+                        # `short_description` (the column, F-C12-1) — fall back to the legacy
+                        # `description` key. The contradiction check reads this.
+                        description=neutralize_injection(
+                            r.get("short_description") or r.get("description")
+                        ),
+                    )
+                )
+            nxt = payload.get("next_cursor") if isinstance(payload, dict) else None
+            # Stop at the end, or if the server echoes the same cursor (stuck) — no re-fetch loop.
+            if not nxt or nxt == cursor:
+                break
+            cursor = nxt
+        return out
 
     async def list_enrichment_coverage(
         self, *, book_id: UUID, limit: int = 200

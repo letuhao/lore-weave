@@ -13,6 +13,7 @@ import json as _json
 import uuid
 
 import httpx
+import pytest
 import respx
 
 from app.clients.kal_client import KalClient
@@ -122,9 +123,30 @@ async def test_roster_skips_malformed_items_and_omits_user_id_when_absent():
 
 @respx.mock
 async def test_roster_safety_cap_stops_an_endless_cursor():
-    """A pathological never-null cursor is bounded by the page cap (no infinite loop)."""
+    """A pathological never-null cursor that keeps ADVANCING (distinct each page) is bounded by
+    the page cap (no infinite loop). Distinct cursors so the stuck-cursor guard doesn't fire first."""
     from app.clients import kal_client
 
+    def _resp(_request):
+        return httpx.Response(
+            200,
+            json={"items": [{"entity_id": str(uuid.uuid4()), "name": "X"}],
+                  "next_cursor": str(uuid.uuid4())},  # distinct each call → never "stuck"
+        )
+
+    route = respx.get(_roster_url()).mock(side_effect=_resp)
+    c = _client()
+    try:
+        cast = await c.roster(BOOK, user_id=USER)
+    finally:
+        await c.aclose()
+    assert route.call_count == kal_client._ROSTER_MAX_PAGES
+    assert len(cast) == kal_client._ROSTER_MAX_PAGES
+
+
+@respx.mock
+async def test_roster_stuck_cursor_stops_immediately():
+    """A REPEATED (stuck) next_cursor is caught after the 2nd page — not re-fetched to the cap."""
     route = respx.get(_roster_url()).mock(
         return_value=httpx.Response(200, json={"items": [{"entity_id": str(uuid.uuid4()), "name": "X"}],
                                                "next_cursor": "always"})
@@ -134,5 +156,27 @@ async def test_roster_safety_cap_stops_an_endless_cursor():
         cast = await c.roster(BOOK, user_id=USER)
     finally:
         await c.aclose()
-    assert route.call_count == kal_client._ROSTER_MAX_PAGES
-    assert len(cast) == kal_client._ROSTER_MAX_PAGES
+    assert route.call_count == 2  # page 1 gets "always"; page 2 detects the stuck cursor → stop
+    assert len(cast) == 2
+
+
+@respx.mock
+async def test_roster_strict_raises_on_incomplete_drain():
+    """strict=True surfaces a truncated drain as RosterIncomplete (the commit path skips on it)."""
+    from app.clients.kal_client import RosterIncomplete
+
+    respx.get(_roster_url()).mock(
+        return_value=httpx.Response(200, json={"items": [{"entity_id": str(uuid.uuid4()), "name": "X"}],
+                                               "next_cursor": "always"})
+    )
+    c = _client()
+    try:
+        with pytest.raises(RosterIncomplete):
+            await c.roster(BOOK, user_id=USER, strict=True)
+        # A COMPLETE drain (next_cursor null) never raises, even strict.
+        respx.get(_roster_url()).mock(
+            return_value=httpx.Response(200, json={"items": [], "next_cursor": None})
+        )
+        assert await c.roster(BOOK, user_id=USER, strict=True) == []
+    finally:
+        await c.aclose()

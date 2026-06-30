@@ -47,6 +47,15 @@ _ROSTER_PAGE_LIMIT = 200
 _client: "KalClient | None" = None
 
 
+class RosterIncomplete(Exception):
+    """Raised by ``roster(strict=True)`` when the keyset drain could NOT complete (a mid-drain
+    transport/HTTP failure, a stuck cursor, or the page cap). A COMPLETE drain — even an empty
+    cast — never raises. Callers that validate against the cast as authoritative (the commit
+    path) use strict mode so a TRUNCATED cast can't false-reject a valid entity in a dropped
+    page; degrade-tolerant callers (the packer's thin-roster hints) use the default non-strict
+    mode and accept the partial-so-far list."""
+
+
 class KalClient:
     def __init__(self, base_url: str, internal_token: str, timeout_s: float = 5.0) -> None:
         self._base_url = base_url.rstrip("/")
@@ -66,20 +75,29 @@ class KalClient:
         return headers
 
     async def roster(
-        self, book_id: UUID, *, user_id: UUID | str | None = None,
+        self, book_id: UUID, *, user_id: UUID | str | None = None, strict: bool = False,
     ) -> list[dict[str, Any]]:
         """The book's full cast — ``[{entity_id, name}, ...]`` — drained across the
         keyset cursor to completion (D4 fix: the old ``list_entities`` path read only
         the first page and ignored ``next_cursor``, truncating the cast).
 
         Bounded-but-complete (§12.5.2): each page is bounded; we follow ``next_cursor``
-        until it is null (or the safety cap). Degrades to the partial-so-far list on
-        any transport/HTTP failure — never raises (the planner tolerates a thin/empty
-        roster: commit-time entity validation degrades to skip rather than false-reject).
+        until it is null (or the safety cap). In the default (``strict=False``) mode a
+        mid-drain failure degrades to the partial-so-far list — never raises (the packer
+        tolerates a thin roster). In ``strict=True`` mode an INCOMPLETE drain raises
+        ``RosterIncomplete`` so a caller that treats the cast as authoritative (commit-time
+        entity validation) skips rather than validating against a TRUNCATED set (which would
+        false-reject a valid entity in a dropped page). A complete-but-empty cast never raises.
         """
         url = f"{self._base_url}/v1/kal/books/{book_id}/roster"
         out: list[dict[str, Any]] = []
         cursor: str | None = None
+
+        def _partial(reason: str) -> list[dict[str, Any]]:
+            if strict:
+                raise RosterIncomplete(reason)
+            return out
+
         for _ in range(_ROSTER_MAX_PAGES):
             params: dict[str, Any] = {"limit": _ROSTER_PAGE_LIMIT}
             if cursor:
@@ -88,28 +106,34 @@ class KalClient:
                 resp = await self._http.get(url, params=params, headers=self._headers(user_id))
             except httpx.HTTPError as exc:
                 logger.warning("kal roster unavailable (partial drain): %s", exc)
-                return out
+                return _partial(f"transport: {exc}")
             if resp.status_code != 200:
                 logger.warning("kal roster → %d (partial drain)", resp.status_code)
-                return out
+                return _partial(f"status {resp.status_code}")
             try:
                 data = resp.json()
             except (ValueError, AttributeError) as exc:
                 logger.warning("kal roster bad JSON: %s", exc)
-                return out
+                return _partial("bad json")
             items = data.get("items", []) if isinstance(data, dict) else []
             for e in items:
                 eid, name = e.get("entity_id"), e.get("name")
                 if eid and name:
                     out.append({"entity_id": str(eid), "name": name})
-            cursor = data.get("next_cursor") if isinstance(data, dict) else None
-            if not cursor:
-                return out
+            nxt = data.get("next_cursor") if isinstance(data, dict) else None
+            if not nxt:
+                return out  # COMPLETE drain (even if out is empty)
+            if nxt == cursor:
+                # Server echoed the same cursor — a stuck/buggy cursor. Stop rather than
+                # re-fetch the same page forever; an incomplete drain in strict mode.
+                logger.warning("kal roster stuck cursor for book %s — stopping", book_id)
+                return _partial("stuck cursor")
+            cursor = nxt
         logger.warning(
             "kal roster drain hit the %d-page safety cap for book %s (cast may be incomplete)",
             _ROSTER_MAX_PAGES, book_id,
         )
-        return out
+        return _partial("page cap")
 
 
 def init_kal_client() -> KalClient:

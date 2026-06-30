@@ -299,7 +299,13 @@ async def get_canonical_cached(
     if hit is not None:
         return hit  # type: ignore[return-value]
     snap = await get_canonical(book_id, entity_id, as_of=as_of, user_id=user_id)
-    if snap.found:
+    # Capability guard for the as_of path: the snapshot carries no temporal_capability, but a
+    # DEGRADE (status != 'current' — the canon-content fallback) is the CURRENT authored canon,
+    # NOT the as-of-N fold. Caching that under an as_of key would pin current-state content (a
+    # spoiler) at a past ordinal. So for an as_of read, cache only a real fold ('current'); a
+    # head read (as_of is None) caches regardless (current-state is correct there).
+    cacheable = as_of is None or snap.canonical_status == "current"
+    if snap.found and cacheable:
         _cache_put(key, snap)
     return snap
 
@@ -324,6 +330,12 @@ async def get_facts_cached(
     if hit is not None:
         return hit  # type: ignore[return-value]
     res = await get_facts(book_id, entity_id, as_of=as_of, user_id=user_id, attrs=attrs)
-    if res.found:
+    # Capability guard: a result keyed by as_of=N is only IMMUTABLE if the substrate actually
+    # HONORED the as_of. If the glossary substrate fell back to the current projection (capability
+    # != ordinal_valid_time), the value is the HEAD facts, NOT the as-of-N facts — caching it under
+    # the as_of key would serve a spoiler/stale snapshot once the substrate becomes temporal. Cache
+    # only an honored as_of (or a head read, as_of is None).
+    honored = as_of is None or res.temporal_capability.get("glossary") == "ordinal_valid_time"
+    if res.found and honored:
         _cache_put(key, res)
     return res

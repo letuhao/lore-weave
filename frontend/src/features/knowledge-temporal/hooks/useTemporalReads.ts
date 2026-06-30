@@ -9,8 +9,21 @@ import type {
   CanonicalSnapshot,
   FactsResponse,
   TimelineResponse,
+  TimelineEntry,
   RetrieveResponse,
 } from '../types';
+
+/**
+ * Normalize a timeline row to the FLAT shape the components read. The live KAL returns flat
+ * fact-like rows, but the frozen contract (kal.v1.yaml) declares a NESTED `{kind, fact, at_ordinal}`.
+ * Tolerate both so a spec-conformant deployment doesn't render `undefined` fields + colliding keys.
+ */
+function normalizeTimelineRow(row: unknown): TimelineEntry {
+  const r = (row ?? {}) as Record<string, unknown>;
+  const nested = (r.fact ?? null) as Record<string, unknown> | null;
+  const base = nested ? { ...nested, ...r } : r; // nested fact fields, with row-level kind/at_ordinal kept
+  return base as unknown as TimelineEntry;
+}
 
 export function useCanonical(bookId: string | null, entityId: string | null, asOf?: number) {
   const { accessToken, user } = useAuth();
@@ -62,8 +75,9 @@ export function useTimeline(
     enabled: !!accessToken && !!bookId && !!entityId,
     staleTime: 10_000,
   });
+  const raw = (q.data as TimelineResponse | undefined)?.items ?? [];
   return {
-    items: (q.data as TimelineResponse | undefined)?.items ?? [],
+    items: raw.map(normalizeTimelineRow),
     nextCursor: (q.data as TimelineResponse | undefined)?.next_cursor ?? null,
     isLoading: q.isLoading,
     error: (q.error as Error | null) ?? null,
