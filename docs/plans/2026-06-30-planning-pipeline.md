@@ -85,6 +85,14 @@ build new judges; we re-target existing ones from "post-prose verification" to "
 - **New:** per-main-character trajectory across the beats; decide WHERE each new character is introduced
   (named, flagged for glossary add). `succession_entailment` can check the causal legality of the ordering.
 - **POC:** each main char's arc + the introduction points for new figures.
+- **STATUS — `plan_character_arcs` validated 2026-06-30** (`engine/character_plan.py`, 4 unit tests).
+  Given the cast (Stage 0, `is_new`) + the beat sequence, the LLM emits each character's ARC + an
+  `introduce_at_chapter` (parse maps by name — drops invented names; clamps the chapter to range; carries
+  role through). Live (chained Stage 0→3 on the Lâm Uyển premise): MC + family "from start"; **scheduled
+  introductions at fitting beats** — Cửu U Ma Cơ (mentor) @ch2, an ally @ch4, Thanh Vân Tông @ch5, a foil
+  @ch7, an assassin @ch9, a final mentor @ch10. Fixes the "anonymous new characters" defect (names + arcs
+  + entry points). Gemma even scheduled premise-named entities sensibly (Ma Cơ @ch2, not ch1).
+  **Next-stage integration:** the decompose stages each new character's introduction at its chapter.
 
 ### Stage 4 — Grounded scene decomposition
 - **Reuse:** `decompose` L2 + the cross-chapter threading (already shipped).
