@@ -171,6 +171,7 @@ func (s *Server) Router() http.Handler {
 		r.Get("/books/{book_id}/entities/{entity_id}/attr-values", s.internalListAttrValues)
 		r.Post("/books/{book_id}/facts/episode", s.internalIngestEpisode)
 		r.Post("/books/{book_id}/facts/append", s.internalAppendFact)
+		r.Post("/books/{book_id}/facts/close", s.internalCloseFact)
 		r.Post("/books/{book_id}/facts/retract", s.internalRetractFacts)
 		r.Post("/books/{book_id}/facts/merge", s.internalFactMerge)
 		r.Post("/books/{book_id}/facts/resolve-entity", s.internalResolveEntity)

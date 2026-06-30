@@ -1,10 +1,12 @@
 package api
 
 import (
+	"errors"
 	"net/http"
 	"strconv"
 
 	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5"
 )
 
 // facts_handler.go — the glossary /internal/facts/* HTTP surface (F4-live). It exposes the
@@ -299,6 +301,88 @@ func (s *Server) internalRetractFacts(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"retracted": len(ids), "chains_restitched": len(chains)})
+}
+
+// internalCloseFact — POST .../facts/close {fact_id, valid_to_ordinal}
+// Explicit valid-time close (§12.3.2 / close_fact): pin the fact's valid_to so its value stops
+// holding at the given ordinal even with no successor. Book-scoped; validates the fact is in the
+// book + open and valid_to_ordinal > the fact's valid_from_ordinal; a close is a belief change → re-fold.
+func (s *Server) internalCloseFact(w http.ResponseWriter, r *http.Request) {
+	bookID, ok := parsePathUUID(w, r, "book_id")
+	if !ok {
+		return
+	}
+	var body struct {
+		FactID  string `json:"fact_id"`
+		ValidTo *int64 `json:"valid_to_ordinal"`
+	}
+	if !decodeJSON(w, r, &body) {
+		return
+	}
+	factID, ferr := uuid.Parse(body.FactID)
+	if ferr != nil || body.ValidTo == nil {
+		writeError(w, http.StatusBadRequest, "GLOSS_BAD_REQUEST", "fact_id + valid_to_ordinal required")
+		return
+	}
+	// Look up the fact in THIS book (tenancy) and fetch its chain key + lower bound.
+	var entityID uuid.UUID
+	var attr string
+	var validFrom int64
+	err := s.pool.QueryRow(r.Context(), `
+		SELECT entity_id, attr_or_predicate, valid_from_ordinal
+		FROM entity_facts WHERE fact_id = $1 AND book_id = $2 AND invalidated_at IS NULL`,
+		factID, bookID).Scan(&entityID, &attr, &validFrom)
+	if errors.Is(err, pgx.ErrNoRows) {
+		writeError(w, http.StatusNotFound, "GLOSS_NOT_FOUND", "fact not found in this book")
+		return
+	} else if err != nil {
+		writeError(w, http.StatusInternalServerError, "GLOSS_INTERNAL", "fact lookup failed")
+		return
+	}
+	if *body.ValidTo <= validFrom {
+		writeError(w, http.StatusUnprocessableEntity, "GLOSS_INVALID",
+			"valid_to_ordinal must be greater than the fact's valid_from_ordinal")
+		return
+	}
+	tx, err := s.pool.Begin(r.Context())
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "GLOSS_INTERNAL", "tx begin failed")
+		return
+	}
+	defer tx.Rollback(r.Context()) //nolint:errcheck
+	if err := acquireFactChainLock(r.Context(), tx, entityID, attr); err != nil {
+		writeError(w, http.StatusInternalServerError, "GLOSS_INTERNAL", "chain lock failed")
+		return
+	}
+	if _, err := closeFact(r.Context(), tx, bookID, factID, *body.ValidTo); err != nil {
+		writeError(w, http.StatusInternalServerError, "GLOSS_INTERNAL", "close failed: "+err.Error())
+		return
+	}
+	if err := markFoldDirty(r.Context(), tx, entityID, true); err != nil {
+		writeError(w, http.StatusInternalServerError, "GLOSS_INTERNAL", "mark fold dirty failed")
+		return
+	}
+	if err := tx.Commit(r.Context()); err != nil {
+		writeError(w, http.StatusInternalServerError, "GLOSS_INTERNAL", "commit failed")
+		return
+	}
+	// Return the updated fact (the contract's Fact schema).
+	var f factDTO
+	var ep *uuid.UUID
+	if err := s.pool.QueryRow(r.Context(), `
+		SELECT fact_id, entity_id, fact_kind, attr_or_predicate, value, valid_from_ordinal,
+		       valid_to_ordinal, cardinality, source_episode_id
+		FROM entity_facts WHERE fact_id = $1`, factID).Scan(
+		&f.FactID, &f.EntityID, &f.FactKind, &f.Attr, &f.Value, &f.ValidFrom, &f.ValidTo,
+		&f.Cardinality, &ep); err != nil {
+		writeError(w, http.StatusInternalServerError, "GLOSS_INTERNAL", "reload failed")
+		return
+	}
+	if ep != nil {
+		s := ep.String()
+		f.SourceEpisode = &s
+	}
+	writeJSON(w, http.StatusOK, f)
 }
 
 // internalFactMerge — POST .../facts/merge {winner, loser, cross_kind}

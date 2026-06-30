@@ -147,6 +147,75 @@ func TestFactCore(t *testing.T) {
 	}
 }
 
+// TestCloseFact verifies close_fact (§12.3.2): an explicit valid-time close PINS a fact's
+// valid_to so it survives maintain_chain (which skips pinned facts), and a later append after
+// the close opens a fresh interval — the closed gap stays absent (the value really ended).
+func TestCloseFact(t *testing.T) {
+	ctx := context.Background()
+	pool := openFactsTestDB(t)
+	tx, err := pool.Begin(ctx)
+	if err != nil {
+		t.Fatalf("begin: %v", err)
+	}
+	defer tx.Rollback(ctx) //nolint:errcheck
+
+	var entityID, bookID uuid.UUID
+	var attr string
+	err = tx.QueryRow(ctx, `
+		SELECT ge.entity_id, ge.book_id, ba.code
+		FROM glossary_entities ge
+		JOIN book_attributes ba ON ba.book_id = ge.book_id AND ba.kind_id = ge.kind_id AND ba.deprecated_at IS NULL
+		JOIN book_genres g ON g.genre_id = ba.genre_id
+		WHERE ge.deleted_at IS NULL AND ba.code <> 'name'
+		ORDER BY ge.entity_id, (g.code = 'universal') DESC
+		LIMIT 1`).Scan(&entityID, &bookID, &attr)
+	if err == pgx.ErrNoRows {
+		t.Skip("no seeded entity with a book_attribute — skipping")
+	}
+	if err != nil {
+		t.Fatalf("pick entity: %v", err)
+	}
+	if err := acquireFactChainLock(ctx, tx, entityID, attr); err != nil {
+		t.Fatalf("chain lock: %v", err)
+	}
+
+	// Append an open fact A@10.
+	if _, _, err := appendFact(ctx, tx, appendFactParams{
+		BookID: bookID, EntityID: entityID, FactKind: "attribute", Attr: attr, Value: "A", ValidFrom: 10,
+	}); err != nil {
+		t.Fatalf("append A: %v", err)
+	}
+	assertChain(t, ctx, tx, entityID, attr, []chainRow{{"A", 10, nil}})
+
+	// Close A at ordinal 50 → A becomes [10, 50), pinned.
+	aid := factID(t, ctx, tx, entityID, attr, "A")
+	if _, err := closeFact(ctx, tx, bookID, aid, 50); err != nil {
+		t.Fatalf("close A: %v", err)
+	}
+	assertChain(t, ctx, tx, entityID, attr, []chainRow{{"A", 10, ptr(50)}})
+	var pinned bool
+	if err := tx.QueryRow(ctx, `SELECT valid_to_pinned FROM entity_facts WHERE fact_id=$1`, aid).Scan(&pinned); err != nil {
+		t.Fatalf("read pin: %v", err)
+	}
+	if !pinned {
+		t.Fatalf("A should be pinned after close_fact")
+	}
+
+	// maintain_chain must NOT reset the pinned close back to open (the single-writer respects the pin).
+	if err := maintainChain(ctx, tx, entityID, attr); err != nil {
+		t.Fatalf("maintain: %v", err)
+	}
+	assertChain(t, ctx, tx, entityID, attr, []chainRow{{"A", 10, ptr(50)}})
+
+	// A later append B@60 (after the close) opens a fresh interval; the closed gap [50,60) stays.
+	if _, _, err := appendFact(ctx, tx, appendFactParams{
+		BookID: bookID, EntityID: entityID, FactKind: "attribute", Attr: attr, Value: "B", ValidFrom: 60,
+	}); err != nil {
+		t.Fatalf("append B: %v", err)
+	}
+	assertChain(t, ctx, tx, entityID, attr, []chainRow{{"A", 10, ptr(50)}, {"B", 60, nil}})
+}
+
 // TestFactSameOrdinalConflict verifies MED-1: two DIFFERENT values for one single-valued
 // attr at the SAME chapter ordinal resolve last-write-wins (the prior is invalidated, not
 // left as a second open fact), so exactly one fact is open and the projection is

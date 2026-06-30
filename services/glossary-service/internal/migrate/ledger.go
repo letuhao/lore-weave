@@ -121,6 +121,10 @@ var chain = []Step{
 	// (name single, alias multi); reconciles the cold-start/F1d attribute representation.
 	// Spec §12.4.3.
 	{"0048_bitemporal_names", UpBitemporalNames},
+	// Temporal-knowledge close_fact — explicit valid-time close: `valid_to_pinned` column +
+	// pin-aware maintain_chain (the manual close is an authored input the single deriver
+	// respects, never overwrites). Spec §12.3.2.
+	{"0049_fact_close_pin", UpFactClosePin},
 }
 
 // EnsureLedger creates the schema_migrations bookkeeping table. Idempotent; must run

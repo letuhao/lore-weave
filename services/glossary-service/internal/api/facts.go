@@ -190,6 +190,30 @@ func appendFact(ctx context.Context, q pgxRWQuerier, p appendFactParams) (uuid.U
 	return factID, inserted, nil
 }
 
+// closeFact applies an EXPLICIT valid-time close (§12.3.2 / close_fact): pin the chosen fact's
+// valid_to to `validTo` so its value stops holding at that ordinal even with no successor (the
+// open last-in-chain fact maintain_chain alone can only leave open). The pin (valid_to_pinned)
+// makes the manual close survive every subsequent maintain_chain run (which skips pinned facts),
+// so it is NOT a second competing deriver — it is an authored input the single deriver respects.
+// The caller holds the (entity, attr) chain lock and has validated the fact is in-book + open and
+// validTo > valid_from. Returns the affected chain so the caller can refresh the EAV projection.
+func closeFact(ctx context.Context, q pgxRWQuerier, bookID, factID uuid.UUID, validTo int64) (FactChain, error) {
+	var c FactChain
+	if err := q.QueryRow(ctx, `
+		UPDATE entity_facts
+		   SET valid_to_ordinal = $3, valid_to_pinned = true
+		 WHERE fact_id = $1 AND book_id = $2 AND invalidated_at IS NULL
+		RETURNING entity_id, attr_or_predicate`,
+		factID, bookID, validTo).Scan(&c.EntityID, &c.Attr); err != nil {
+		return FactChain{}, fmt.Errorf("close fact: %w", err)
+	}
+	// Re-derive the rest of the chain (the pinned fact is skipped; its siblings stay correct).
+	if err := maintainChain(ctx, q, c.EntityID, c.Attr); err != nil {
+		return FactChain{}, err
+	}
+	return c, nil
+}
+
 // maintainChain invokes the single valid_to writer (migration 0045, §12.3.3).
 func maintainChain(ctx context.Context, q pgxRWQuerier, entityID uuid.UUID, attr string) error {
 	if _, err := q.Exec(ctx, `SELECT maintain_chain($1, $2)`, entityID, attr); err != nil {
