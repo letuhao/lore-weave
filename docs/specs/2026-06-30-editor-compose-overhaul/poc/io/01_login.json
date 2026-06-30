@@ -1,0 +1,23 @@
+{
+  "seq": 1,
+  "name": "login",
+  "method": "POST",
+  "url": "http://localhost:3123/v1/auth/login",
+  "status": 200,
+  "note": "",
+  "request": {
+    "email": "claude-test@loreweave.dev",
+    "password": "Claude@Test2026"
+  },
+  "response": {
+    "access_token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzaWQiOiJiYWRkNzM2Ny1iYjE5LTRjYmYtYmJmZS1kNGE4NzQ4MzYxNzgiLCJzdWIiOiIwMTlkNWUzYy03Y2M1LTdlNmEtOGIyNy0xMzQ0ZTE0OGJmN2MiLCJleHAiOjE3ODI4MDE3MDcsImlhdCI6MTc4Mjc5NDUwN30.mcdo9cNV2ll8wnZORbeNbUPFDWQSFhhG9jmPRE5AJA0",
+    "expires_in_seconds": 7200,
+    "refresh_token": "3k9fTKRX6tnRGviaGDTxm3mO_-EPfViUBi2by5tf4jQ",
+    "user_profile": {
+      "display_name": "Claude Test",
+      "email": "claude-test@loreweave.dev",
+      "email_verified": false,
+      "user_id": "019d5e3c-7cc5-7e6a-8b27-1344e148bf7c"
+    }
+  }
+}

@@ -1,0 +1,264 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>LoreWeave Compose — Ideal Story Journey</title>
+<style>
+  :root{
+    --bg:#0e0f13; --panel:#16181f; --panel2:#1c1f28; --line:#2a2e3a;
+    --ink:#e7e9ee; --muted:#9aa1b1; --faint:#6b7280;
+    --idea:#e0b15a; --structure:#5fb0e8; --bible:#9b7ce0; --draft:#3dba6a;
+    --refine:#e07a7a; --assemble:#3da692; --core:#c2a36b;
+    --radius:14px; --maxw:1280px;
+    font-synthesis:none;
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0;background:var(--bg);color:var(--ink);
+    font-family:'Inter',system-ui,-apple-system,'Segoe UI',sans-serif;line-height:1.5}
+  a{color:var(--structure)}
+  .wrap{max-width:var(--maxw);margin:0 auto;padding:40px 28px 80px}
+  h1{font-size:30px;margin:0 0 6px;letter-spacing:-.02em;font-weight:700}
+  h1 .em{color:var(--idea)}
+  .sub{color:var(--muted);font-size:15px;max-width:760px}
+  .tag{display:inline-block;font-size:11px;letter-spacing:.08em;text-transform:uppercase;
+    color:var(--faint);border:1px solid var(--line);border-radius:999px;padding:3px 10px;margin-bottom:14px}
+
+  /* problem banner */
+  .problem{margin:26px 0 8px;background:linear-gradient(180deg,#1a1410,#16181f);
+    border:1px solid #3a2c1c;border-radius:var(--radius);padding:18px 20px;display:flex;gap:16px;align-items:flex-start}
+  .problem .q{font-size:15px;font-style:italic;color:#e9d9b8}
+  .problem .who{color:var(--muted);font-size:12.5px;margin-top:6px}
+  .problem .big{font-size:26px;line-height:1}
+
+  /* always-on bar */
+  .alwayson{margin:34px 0 10px;display:grid;grid-template-columns:1fr 1fr;gap:14px}
+  .ao{background:var(--panel);border:1px solid var(--line);border-radius:var(--radius);padding:16px 18px}
+  .ao h3{margin:0 0 4px;font-size:14px;display:flex;align-items:center;gap:8px}
+  .ao p{margin:0;color:var(--muted);font-size:13px}
+  .dot{width:9px;height:9px;border-radius:50%;display:inline-block}
+  .legendline{color:var(--faint);font-size:12px;margin:30px 0 8px;letter-spacing:.04em;text-transform:uppercase}
+
+  /* journey */
+  .journey{position:relative;margin-top:8px}
+  .phase{position:relative;background:var(--panel);border:1px solid var(--line);
+    border-radius:var(--radius);padding:18px 20px 18px 22px;margin:0 0 14px;
+    display:grid;grid-template-columns:54px 1fr;gap:18px;transition:border-color .15s, transform .15s}
+  .phase:hover{border-color:var(--accent,#3a4154);transform:translateX(2px)}
+  .phase::before{content:"";position:absolute;left:0;top:0;bottom:0;width:4px;border-radius:4px 0 0 4px;background:var(--accent)}
+  .num{width:54px;height:54px;border-radius:14px;display:flex;align-items:center;justify-content:center;
+    font-size:22px;background:var(--panel2);border:1px solid var(--line)}
+  .pmain h2{margin:0 0 2px;font-size:18px;letter-spacing:-.01em}
+  .pmain h2 .ph{color:var(--accent);font-weight:700}
+  .feel{font-size:12.5px;color:var(--accent);font-weight:600;margin-bottom:8px;letter-spacing:.02em}
+  .grid{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-top:8px}
+  .cell .k{font-size:10.5px;letter-spacing:.06em;text-transform:uppercase;color:var(--faint);margin-bottom:3px}
+  .cell .v{font-size:13px;color:var(--ink)}
+  .cell .v.t{color:var(--accent);font-weight:600}
+  .next{margin-top:12px;font-size:12.5px;color:var(--muted)}
+  .next b{color:var(--ink)}
+  .arrow{height:20px;display:flex;align-items:center;justify-content:center;color:var(--faint)}
+  .loop{margin:6px 0 0;text-align:center;color:var(--assemble);font-size:13px}
+
+  /* fix callout inside a phase */
+  .fix{margin-top:10px;font-size:12.5px;border-left:2px solid var(--idea);padding:4px 0 4px 10px;color:#e9d9b8;background:#1a14100f}
+
+  /* tool map */
+  .toolmap{margin-top:40px}
+  .cols{display:grid;grid-template-columns:repeat(3,1fr);gap:14px}
+  .tcol{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:14px 16px}
+  .tcol h4{margin:0 0 8px;font-size:13px;display:flex;align-items:center;gap:8px}
+  .chips{display:flex;flex-wrap:wrap;gap:6px}
+  .chip{font-size:11.5px;padding:3px 9px;border-radius:999px;background:var(--panel2);border:1px solid var(--line);color:var(--muted)}
+  .muted{color:var(--muted)} .small{font-size:12px}
+
+  .foot{margin-top:42px;background:var(--panel);border:1px dashed var(--line);border-radius:var(--radius);padding:18px 20px}
+  .foot h3{margin:0 0 6px;font-size:15px}
+  .foot ol{margin:6px 0 0;padding-left:20px;color:var(--muted);font-size:13.5px}
+  .foot li{margin:3px 0}
+  @media(max-width:880px){.grid{grid-template-columns:1fr 1fr}.cols{grid-template-columns:1fr}.alwayson{grid-template-columns:1fr}}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <span class="tag">Ideal target · not the current code</span>
+  <h1>Compose — the <span class="em">ideal</span> story journey</h1>
+  <p class="sub">How a person who <em>can't write</em> goes from a blank page to a finished chapter — guided, never lost. This is the experience we design toward; we then POC the current source against it to find the missing pieces.</p>
+
+  <div class="problem">
+    <div class="big">😶‍🌫️</div>
+    <div>
+      <div class="q">"I tried Gemma-4 26B to help me brainstorm, but it didn't really help. I still feel empty and don't know how to start."</div>
+      <div class="who">— the user (an engineer, not a novelist)</div>
+      <div class="who" style="margin-top:8px;color:#e9d9b8">Why a raw chat fails: brainstorming with <b>no destination</b> just makes floating ideas. The ideal journey gives every idea somewhere to <b>go</b> — straight into structure, then prose.</div>
+    </div>
+  </div>
+
+  <!-- always present -->
+  <div class="legendline">Always present — the two things that hold the journey together</div>
+  <div class="alwayson">
+    <div class="ao" style="border-color:#3a3324">
+      <h3><span class="dot" style="background:var(--core)"></span> The AI Assistant (the core)</h3>
+      <p>A persistent chat — your co-writer and guide. Not a blank box: it runs <b>ideation skills</b>, can call tools, and at every phase knows what you're doing and what's next. It's the front door (Idea) and your companion through Draft.</p>
+    </div>
+    <div class="ao" style="border-color:#243a33">
+      <h3><span class="dot" style="background:var(--assemble)"></span> The Journey rail (where am I / what next)</h3>
+      <p>A small always-visible progress path showing the 6 phases, your current step, and a single <b>"do this next"</b> action. The 24 tools live in the toolbox grouped by these same phases — so the map and the guidance are one thing.</p>
+    </div>
+  </div>
+
+  <div class="legendline">The journey — six phases, each a toolbox group</div>
+  <div class="journey">
+
+    <!-- 0 -->
+    <div class="phase" style="--accent:var(--faint)">
+      <div class="num">📄</div>
+      <div class="pmain">
+        <h2><span class="ph">START</span> · The blank page</h2>
+        <div class="feel">FEELING: empty, intimidated, "where do I even begin?"</div>
+        <p class="muted small">Instead of 24 tabs, Compose opens on a <b>command center</b>: one warm greeting from the assistant and one button — <b>"Let's find your story."</b> No jargon, no panels yet.</p>
+        <div class="fix">FIX vs today: today you land in an empty studio with 24 tabs and three empty dropdowns. The ideal opens on a single guided entry.</div>
+      </div>
+    </div>
+    <div class="arrow">↓</div>
+
+    <!-- 1 -->
+    <div class="phase" style="--accent:var(--idea)">
+      <div class="num" style="background:#1a1410;border-color:#3a2c1c">💡</div>
+      <div class="pmain">
+        <h2><span class="ph">① IDEA</span> · Find the spark</h2>
+        <div class="feel">FEELING: curious — "oh, it's asking ME the questions."</div>
+        <div class="grid">
+          <div class="cell"><div class="k">You do</div><div class="v">Answer a few guided prompts: a genre, a "what if", a character you like.</div></div>
+          <div class="cell"><div class="k">AI role</div><div class="v">Runs a <b>Brainstorm-a-premise skill</b>: proposes loglines, sharpens the hook, names a protagonist.</div></div>
+          <div class="cell"><div class="k">Tool</div><div class="v t">AI chat (CoWriter)</div></div>
+          <div class="cell"><div class="k">Output</div><div class="v">A saved <b>premise / logline</b> + a few characters.</div></div>
+        </div>
+        <div class="fix">FIX vs raw Gemma: this isn't a blank chat. It's a structured, skill-driven interview whose output is a <b>concrete premise</b> the next phase consumes.</div>
+        <div class="next">NEXT → <b>"Turn this into a structure."</b></div>
+      </div>
+    </div>
+    <div class="arrow">↓</div>
+
+    <!-- 2 -->
+    <div class="phase" style="--accent:var(--structure)">
+      <div class="num" style="background:#101820;border-color:#1c3142">🏗️</div>
+      <div class="pmain">
+        <h2><span class="ph">② STRUCTURE</span> · Give it a skeleton</h2>
+        <div class="feel">FEELING: oriented — "I can see the shape now."</div>
+        <div class="grid">
+          <div class="cell"><div class="k">You do</div><div class="v">Pick a structure template (3-Act, Hero's Journey…) explained in plain words; review the proposed outline.</div></div>
+          <div class="cell"><div class="k">AI role</div><div class="v">Decomposes <b>premise + template</b> into chapters → scenes, with beats, tension, and cast.</div></div>
+          <div class="cell"><div class="k">Tool</div><div class="v t">Planner (+ Beats, Scene Graph)</div></div>
+          <div class="cell"><div class="k">Output</div><div class="v">An <b>outline</b> of scenes you can edit/reorder.</div></div>
+        </div>
+        <div class="fix">FIX (engine gotcha): the Planner can't mint chapters — so the journey <b>auto-creates the first chapter</b> for a fresh book before decomposing. The user never sees the seam.</div>
+        <div class="next">NEXT → <b>"Write your opening scene"</b> (Bible is optional and can wait).</div>
+      </div>
+    </div>
+    <div class="arrow">↓</div>
+
+    <!-- 3 -->
+    <div class="phase" style="--accent:var(--bible)">
+      <div class="num" style="background:#16101f;border-color:#2c2342">🌍</div>
+      <div class="pmain">
+        <h2><span class="ph">③ STORY BIBLE</span> · Your cast &amp; world <span class="muted small">(optional · grows itself)</span></h2>
+        <div class="feel">FEELING: reassured — "it remembers my world so I don't have to."</div>
+        <div class="grid">
+          <div class="cell"><div class="k">You do</div><div class="v">Optionally jot a canon rule ("magic has a cost"). Otherwise: nothing.</div></div>
+          <div class="cell"><div class="k">AI role</div><div class="v">Fills the bible from your prose (extraction): cast, places, relationships, timeline.</div></div>
+          <div class="cell"><div class="k">Tools</div><div class="v t">Cast · World · Timeline · Arc · Canon · References</div></div>
+          <div class="cell"><div class="k">Output</div><div class="v">Grounding the draft stays consistent with — auto-maintained.</div></div>
+        </div>
+        <div class="next">Non-blocking — you can draft now and let the bible build as you go.</div>
+      </div>
+    </div>
+    <div class="arrow">↓</div>
+
+    <!-- 4 -->
+    <div class="phase" style="--accent:var(--draft)">
+      <div class="num" style="background:#0f1a13;border-color:#1c3a28">✍️</div>
+      <div class="pmain">
+        <h2><span class="ph">④ DRAFT</span> · Write, scene by scene</h2>
+        <div class="feel">FEELING: flowing — "I'm actually writing a book."</div>
+        <div class="grid">
+          <div class="cell"><div class="k">You do</div><div class="v">Pick a scene, optionally steer with a guide, hit Generate; Accept / edit / regenerate.</div></div>
+          <div class="cell"><div class="k">AI role</div><div class="v">Drafts the scene grounded in premise + outline + bible; the chat is right there to discuss & re-steer.</div></div>
+          <div class="cell"><div class="k">Tool</div><div class="v t">Compose (+ AI chat)</div></div>
+          <div class="cell"><div class="k">Output</div><div class="v">Scene <b>prose</b> you own — accept or rewrite.</div></div>
+        </div>
+        <div class="next">NEXT → repeat per scene; the rail tracks "3 of 8 scenes drafted."</div>
+      </div>
+    </div>
+    <div class="arrow">↓</div>
+
+    <!-- 5 -->
+    <div class="phase" style="--accent:var(--refine)">
+      <div class="num" style="background:#1a1012;border-color:#3a1c1f">🔍</div>
+      <div class="pmain">
+        <h2><span class="ph">⑤ REFINE</span> · Make it good</h2>
+        <div class="feel">FEELING: in control — "it catches what I'd miss."</div>
+        <div class="grid">
+          <div class="cell"><div class="k">You do</div><div class="v">Review flagged issues; tune voice/density; dismiss or fix.</div></div>
+          <div class="cell"><div class="k">AI role</div><div class="v">Judges coherence, voice, pacing, canon; suggests next moves.</div></div>
+          <div class="cell"><div class="k">Tools</div><div class="v t">Critic · Style/Voice · Quality · Motifs</div></div>
+          <div class="cell"><div class="k">Output</div><div class="v">A scene that holds together with the rest of the book.</div></div>
+        </div>
+        <div class="next">NEXT → mark scenes done.</div>
+      </div>
+    </div>
+    <div class="arrow">↓</div>
+
+    <!-- 6 -->
+    <div class="phase" style="--accent:var(--assemble)">
+      <div class="num" style="background:#0f1a18;border-color:#1c3a33">📕</div>
+      <div class="pmain">
+        <h2><span class="ph">⑥ ASSEMBLE</span> · Become a chapter</h2>
+        <div class="feel">FEELING: accomplished — "I finished a chapter."</div>
+        <div class="grid">
+          <div class="cell"><div class="k">You do</div><div class="v">Assemble/stitch the done scenes; publish past the chapter gate.</div></div>
+          <div class="cell"><div class="k">AI role</div><div class="v">Stitches scenes seamlessly; final canon check.</div></div>
+          <div class="cell"><div class="k">Tool</div><div class="v t">Assemble / Stitch</div></div>
+          <div class="cell"><div class="k">Output</div><div class="v">A published chapter — and momentum.</div></div>
+        </div>
+        <div class="next">NEXT → <b>"Start the next chapter"</b> — now with a premise, a world, and a rhythm.</div>
+      </div>
+    </div>
+    <div class="loop">⟲ the journey loops — chapter 2 starts at Structure, not the blank page</div>
+
+  </div>
+
+  <!-- tool map -->
+  <div class="toolmap">
+    <div class="legendline">The 24 tools, grouped by phase (the toolbox = the journey)</div>
+    <div class="cols">
+      <div class="tcol"><h4><span class="dot" style="background:var(--idea)"></span> ① Idea</h4>
+        <div class="chips"><span class="chip">AI chat / CoWriter</span></div></div>
+      <div class="tcol"><h4><span class="dot" style="background:var(--structure)"></span> ② Structure</h4>
+        <div class="chips"><span class="chip">Planner</span><span class="chip">Beats</span><span class="chip">Scene Graph</span></div></div>
+      <div class="tcol"><h4><span class="dot" style="background:var(--bible)"></span> ③ Story Bible</h4>
+        <div class="chips"><span class="chip">Cast</span><span class="chip">Relationships</span><span class="chip">Timeline</span><span class="chip">Arc</span><span class="chip">World Map</span><span class="chip">Canon rules</span><span class="chip">Canon view</span><span class="chip">References</span><span class="chip">Grounding</span></div></div>
+      <div class="tcol"><h4><span class="dot" style="background:var(--draft)"></span> ④ Draft</h4>
+        <div class="chips"><span class="chip">Compose</span><span class="chip">Assemble (draft side)</span></div></div>
+      <div class="tcol"><h4><span class="dot" style="background:var(--refine)"></span> ⑤ Refine</h4>
+        <div class="chips"><span class="chip">Critic</span><span class="chip">Style/Voice</span><span class="chip">Quality</span><span class="chip">Threads</span><span class="chip">Motifs</span><span class="chip">Conformance</span><span class="chip">Flywheel</span></div></div>
+      <div class="tcol"><h4><span class="dot" style="background:var(--assemble)"></span> ⑥ Assemble + meta</h4>
+        <div class="chips"><span class="chip">Assemble / Stitch</span><span class="chip">Progress</span><span class="chip">Settings</span></div></div>
+    </div>
+    <p class="muted small" style="margin-top:10px">Power users can open any tool anytime (the Photoshop-style dockable toolbox). Beginners just follow the rail — the tools reveal themselves phase by phase.</p>
+  </div>
+
+  <div class="foot">
+    <h3>Next: POC the current source against this ideal</h3>
+    <p class="muted small">This graph is the target. Each phase already maps to real engine capability (see <code>stories/06-compose-journey.md</code>). The POC will walk the current code phase-by-phase and mark each step:</p>
+    <ol>
+      <li><b>✅ exists & wired</b> — e.g. Compose generation, Planner decompose, extraction-fed bible.</li>
+      <li><b>🟡 exists but hidden / not sequenced</b> — e.g. the brainstorm→Planner handoff, "next step" guidance.</li>
+      <li><b>🔴 missing</b> — e.g. the command-center entry, the ideation skill, auto-create-first-chapter, the journey rail.</li>
+    </ol>
+  </div>
+
+</div>
+</body>
+</html>

@@ -243,8 +243,15 @@ async def create_work_for_book(
     existing = await works.get(user_id, project_id)  # type: ignore[arg-type]
     if existing is not None:
         return existing.model_dump(mode="json")
+    # Seed the Work's source language from the book so the drafter writes in the
+    # book's language BY DEFAULT. Without this, BookProfile.source_language stays
+    # 'auto' (from_settings) → build_messages adds no language directive → the model
+    # defaults to English for a non-English book (the POC's Vietnamese-draft bug).
+    # De-bias §2.6: source_language lives in the Work's settings profile.
+    _book_lang = (book_obj.get("original_language") or "").strip()
+    _init_settings = {"source_language": _book_lang} if _book_lang else None
     try:
-        work = await works.create(user_id, project_id, book_id)  # type: ignore[arg-type]
+        work = await works.create(user_id, project_id, book_id, settings=_init_settings)  # type: ignore[arg-type]
     except asyncpg.UniqueViolationError:
         racey = await works.get(user_id, project_id)  # type: ignore[arg-type]
         if racey is None:

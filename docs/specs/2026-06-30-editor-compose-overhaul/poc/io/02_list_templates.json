@@ -1,0 +1,355 @@
+{
+  "seq": 2,
+  "name": "list_templates",
+  "method": "GET",
+  "url": "http://localhost:3123/v1/composition/templates",
+  "status": 200,
+  "note": "",
+  "request": null,
+  "response": {
+    "templates": [
+      {
+        "id": "0190ce00-0000-7000-8000-000000000002",
+        "owner_user_id": null,
+        "name": "Hero's Journey",
+        "kind": "hero_journey",
+        "beats": [
+          {
+            "key": "ordinary_world",
+            "label": "Ordinary World",
+            "order": 1,
+            "purpose": "Hero's normal life before the adventure."
+          },
+          {
+            "key": "call_to_adventure",
+            "label": "Call to Adventure",
+            "order": 2,
+            "purpose": "A problem or challenge presents itself."
+          },
+          {
+            "key": "refusal_of_the_call",
+            "label": "Refusal of the Call",
+            "order": 3,
+            "purpose": "Hero hesitates or refuses out of fear."
+          },
+          {
+            "key": "meeting_the_mentor",
+            "label": "Meeting the Mentor",
+            "order": 4,
+            "purpose": "Hero gains guidance or a tool."
+          },
+          {
+            "key": "crossing_the_threshold",
+            "label": "Crossing the Threshold",
+            "order": 5,
+            "purpose": "Hero commits to the special world."
+          },
+          {
+            "key": "tests_allies_enemies",
+            "label": "Tests, Allies, Enemies",
+            "order": 6,
+            "purpose": "Hero learns the rules of the new world."
+          },
+          {
+            "key": "approach",
+            "label": "Approach to the Inmost Cave",
+            "order": 7,
+            "purpose": "Preparations for the major challenge."
+          },
+          {
+            "key": "ordeal",
+            "label": "Ordeal",
+            "order": 8,
+            "purpose": "The central crisis — a brush with death."
+          },
+          {
+            "key": "reward",
+            "label": "Reward (Seizing the Sword)",
+            "order": 9,
+            "purpose": "Hero takes the prize after surviving."
+          },
+          {
+            "key": "the_road_back",
+            "label": "The Road Back",
+            "order": 10,
+            "purpose": "Consequences chase the hero home."
+          },
+          {
+            "key": "resurrection",
+            "label": "Resurrection",
+            "order": 11,
+            "purpose": "Final test; hero is reborn transformed."
+          },
+          {
+            "key": "return_with_elixir",
+            "label": "Return with the Elixir",
+            "order": 12,
+            "purpose": "Hero returns changed, with a boon."
+          }
+        ],
+        "created_at": "2026-06-04T08:42:28.423657Z"
+      },
+      {
+        "id": "0190ce00-0000-7000-8000-000000000004",
+        "owner_user_id": null,
+        "name": "Kishōtenketsu",
+        "kind": "kishotenketsu",
+        "beats": [
+          {
+            "key": "ki",
+            "label": "Ki (起) — Introduction",
+            "order": 1,
+            "purpose": "Introduce characters, era, and setting."
+          },
+          {
+            "key": "sho",
+            "label": "Shō (承) — Development",
+            "order": 2,
+            "purpose": "Develop the situation; no dramatic turns yet."
+          },
+          {
+            "key": "ten",
+            "label": "Ten (転) — Twist",
+            "order": 3,
+            "purpose": "An unforeseen turn recontextualizes everything."
+          },
+          {
+            "key": "ketsu",
+            "label": "Ketsu (結) — Conclusion",
+            "order": 4,
+            "purpose": "Reconcile the twist into a harmonious close."
+          }
+        ],
+        "created_at": "2026-06-04T08:42:28.428577Z"
+      },
+      {
+        "id": "0190ce00-0000-7000-8000-000000000001",
+        "owner_user_id": null,
+        "name": "Save the Cat",
+        "kind": "save_the_cat",
+        "beats": [
+          {
+            "key": "opening_image",
+            "label": "Opening Image",
+            "order": 1,
+            "purpose": "A snapshot of the hero's world + tone before change."
+          },
+          {
+            "key": "theme_stated",
+            "label": "Theme Stated",
+            "order": 2,
+            "purpose": "Someone states what the story is really about."
+          },
+          {
+            "key": "setup",
+            "label": "Setup",
+            "order": 3,
+            "purpose": "Hero's status quo, flaws, and what's missing."
+          },
+          {
+            "key": "catalyst",
+            "label": "Catalyst",
+            "order": 4,
+            "purpose": "The inciting incident that upends the status quo."
+          },
+          {
+            "key": "debate",
+            "label": "Debate",
+            "order": 5,
+            "purpose": "Hero hesitates — should they go?"
+          },
+          {
+            "key": "break_into_two",
+            "label": "Break into Two",
+            "order": 6,
+            "purpose": "Hero commits and enters the new world."
+          },
+          {
+            "key": "b_story",
+            "label": "B Story",
+            "order": 7,
+            "purpose": "The relationship/theme subplot begins."
+          },
+          {
+            "key": "fun_and_games",
+            "label": "Fun and Games",
+            "order": 8,
+            "purpose": "The promise of the premise — set-pieces."
+          },
+          {
+            "key": "midpoint",
+            "label": "Midpoint",
+            "order": 9,
+            "purpose": "A false victory or false defeat raises stakes."
+          },
+          {
+            "key": "bad_guys_close_in",
+            "label": "Bad Guys Close In",
+            "order": 10,
+            "purpose": "Pressure mounts internally and externally."
+          },
+          {
+            "key": "all_is_lost",
+            "label": "All Is Lost",
+            "order": 11,
+            "purpose": "The lowest point; a 'whiff of death'."
+          },
+          {
+            "key": "dark_night",
+            "label": "Dark Night of the Soul",
+            "order": 12,
+            "purpose": "Hero wallows before the breakthrough."
+          },
+          {
+            "key": "break_into_three",
+            "label": "Break into Three",
+            "order": 13,
+            "purpose": "The solution synthesizing A and B stories."
+          },
+          {
+            "key": "finale",
+            "label": "Finale",
+            "order": 14,
+            "purpose": "Hero executes the plan; world is set right."
+          },
+          {
+            "key": "final_image",
+            "label": "Final Image",
+            "order": 15,
+            "purpose": "Mirror of the opening — proof of change."
+          }
+        ],
+        "created_at": "2026-06-04T08:42:28.420314Z"
+      },
+      {
+        "id": "0190ce00-0000-7000-8000-000000000003",
+        "owner_user_id": null,
+        "name": "Story Circle",
+        "kind": "story_circle",
+        "beats": [
+          {
+            "key": "you",
+            "label": "You",
+            "order": 1,
+            "purpose": "A character in a zone of comfort."
+          },
+          {
+            "key": "need",
+            "label": "Need",
+            "order": 2,
+            "purpose": "But they want something."
+          },
+          {
+            "key": "go",
+            "label": "Go",
+            "order": 3,
+            "purpose": "They enter an unfamiliar situation."
+          },
+          {
+            "key": "search",
+            "label": "Search",
+            "order": 4,
+            "purpose": "Adapt to it."
+          },
+          {
+            "key": "find",
+            "label": "Find",
+            "order": 5,
+            "purpose": "Get what they wanted."
+          },
+          {
+            "key": "take",
+            "label": "Take",
+            "order": 6,
+            "purpose": "Pay a heavy price for it."
+          },
+          {
+            "key": "return",
+            "label": "Return",
+            "order": 7,
+            "purpose": "Then return to their familiar situation."
+          },
+          {
+            "key": "change",
+            "label": "Change",
+            "order": 8,
+            "purpose": "Having changed."
+          }
+        ],
+        "created_at": "2026-06-04T08:42:28.426139Z"
+      },
+      {
+        "id": "0190ce00-0000-7000-8000-000000000006",
+        "owner_user_id": null,
+        "name": "Three-Act (Generic)",
+        "kind": "generic",
+        "beats": [
+          {
+            "key": "setup",
+            "label": "Act I — Setup",
+            "order": 1,
+            "purpose": "Establish world, characters, and the inciting incident."
+          },
+          {
+            "key": "confrontation",
+            "label": "Act II — Confrontation",
+            "order": 2,
+            "purpose": "Rising action, midpoint, and the low point."
+          },
+          {
+            "key": "resolution",
+            "label": "Act III — Resolution",
+            "order": 3,
+            "purpose": "Climax and dénouement."
+          }
+        ],
+        "created_at": "2026-06-04T08:42:28.437160Z"
+      },
+      {
+        "id": "0190ce00-0000-7000-8000-000000000005",
+        "owner_user_id": null,
+        "name": "Web Novel Arc",
+        "kind": "web_novel",
+        "beats": [
+          {
+            "key": "hook",
+            "label": "Hook",
+            "order": 1,
+            "purpose": "Open mid-tension; promise the arc's payoff fast."
+          },
+          {
+            "key": "establishment",
+            "label": "World / Power Establishment",
+            "order": 2,
+            "purpose": "Stakes, the protagonist's edge, and the goal."
+          },
+          {
+            "key": "rising_conflict",
+            "label": "Rising Conflict",
+            "order": 3,
+            "purpose": "Escalating obstacles and rival pressure."
+          },
+          {
+            "key": "setback",
+            "label": "Setback / Crisis",
+            "order": 4,
+            "purpose": "A hard loss or trap that raises the cost."
+          },
+          {
+            "key": "climax",
+            "label": "Climax / Payoff",
+            "order": 5,
+            "purpose": "The earned turnaround — the chapter the readers waited for."
+          },
+          {
+            "key": "resolution",
+            "label": "Resolution & Next-Arc Seed",
+            "order": 6,
+            "purpose": "Bank the win; plant the hook for the next arc."
+          }
+        ],
+        "created_at": "2026-06-04T08:42:28.432584Z"
+      }
+    ]
+  }
+}

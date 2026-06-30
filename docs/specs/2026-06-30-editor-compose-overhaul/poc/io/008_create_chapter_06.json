@@ -1,0 +1,32 @@
+{
+  "seq": 8,
+  "name": "create_chapter_06",
+  "method": "POST",
+  "url": "http://localhost:3123/v1/books/019f173a-dfb8-768e-a5e9-89c90ad9bed1/chapters",
+  "status": 201,
+  "request": {
+    "original_language": "vi",
+    "title": "Chương 6",
+    "sort_order": 6,
+    "body": ""
+  },
+  "response": {
+    "book_id": "019f173a-dfb8-768e-a5e9-89c90ad9bed1",
+    "byte_size": 0,
+    "chapter_id": "019f173a-e031-7c6f-8ac7-747a721af548",
+    "content_type": "text/plain",
+    "created_at": "2026-06-30T06:32:42.289652Z",
+    "draft_revision_count": 1,
+    "draft_updated_at": "2026-06-30T06:32:42.289652Z",
+    "editorial_status": "draft",
+    "lifecycle_state": "active",
+    "original_filename": "editor-69d7ea1e-08c7-4de6-8965-22713762d47a.txt",
+    "original_language": "vi",
+    "published_revision_id": null,
+    "purge_eligible_at": null,
+    "sort_order": 6,
+    "title": "Chương 6",
+    "trashed_at": null,
+    "updated_at": "2026-06-30T06:32:42.289652Z"
+  }
+}

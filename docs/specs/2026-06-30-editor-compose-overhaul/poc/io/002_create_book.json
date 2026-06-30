@@ -1,0 +1,40 @@
+{
+  "seq": 2,
+  "name": "create_book",
+  "method": "POST",
+  "url": "http://localhost:3123/v1/books",
+  "status": 201,
+  "request": {
+    "title": "Ma Nữ Nghịch Thiên (POC)",
+    "original_language": "vi",
+    "description": "POC — dark cultivation, ugly MC + succubus grimoire",
+    "summary": "Truyện tu tiên (tiên hiệp) HẮC ÁM, nhiều drama và phản chuyển. Trọng tâm là tu luyện và chiến đấu; tình cảm chỉ là yếu tố phụ.\n\nNỮ CHÍNH: Lâm Uyển — đích nữ Lâm gia (một tu tiên thế gia). Nàng xấu xí, bị cả nhà ghẻ lạnh kể cả cha mẹ ruột, lại mang linh căn kém cỏi nên bị xem là phế vật. Trong một lần cận kề cái chết, nàng có được cuốn cổ thư công pháp của Ma nữ thượng cổ Cửu U Ma Cơ và quyết tu luyện ma công đó, từng bước cải tạo bản thân, quyết một ngày đạt tới sự hoàn mỹ.\n\nDÀN NHÂN VẬT (giữ tên CỐ ĐỊNH, đúng phong cách tiên hiệp):\n- Lâm Uyển — nữ chính.\n- Lâm Chấn Nhạc — gia chủ Lâm gia, phụ thân lạnh lùng.\n- Tô Yến — mẫu thân (chính thất), sắc sảo, coi trọng danh dự gia tộc.\n- Lâm Tử Hàn — huynh trưởng, thiên tài được sủng ái, người được ban Trúc Cơ Đan.\n- Cửu U Ma Cơ — Ma nữ thượng cổ, chủ nhân cuốn cổ thư.\n- Thanh Vân Tông — tông môn chính đạo về sau khinh miệt Lâm Uyển.\n\nQUY ƯỚC ĐẶT TÊN: dùng tên Hán-Việt kiểu tiên hiệp (họ + tên kép); xưng hô tu tiên (gia chủ, trưởng lão, công tử, tiểu thư, đạo hữu, tiền bối). TUYỆT ĐỐI tránh cách gọi hiện đại như \"ông Lâm\", \"bà Lý\"."
+  },
+  "response": {
+    "access_level": "owner",
+    "book_id": "019f173a-dfb8-768e-a5e9-89c90ad9bed1",
+    "chapter_count": 0,
+    "cover": null,
+    "created_at": "2026-06-30T06:32:42.168284Z",
+    "description": "POC — dark cultivation, ugly MC + succubus grimoire",
+    "extraction_profile": null,
+    "genre_tags": [],
+    "lifecycle_state": "active",
+    "original_language": "vi",
+    "owner_user_id": "019d5e3c-7cc5-7e6a-8b27-1344e148bf7c",
+    "purge_eligible_at": null,
+    "summary": "Truyện tu tiên (tiên hiệp) HẮC ÁM, nhiều drama và phản chuyển. Trọng tâm là tu luyện và chiến đấu; tình cảm chỉ là yếu tố phụ.\n\nNỮ CHÍNH: Lâm Uyển — đích nữ Lâm gia (một tu tiên thế gia). Nàng xấu xí, bị cả nhà ghẻ lạnh kể cả cha mẹ ruột, lại mang linh căn kém cỏi nên bị xem là phế vật. Trong một lần cận kề cái chết, nàng có được cuốn cổ thư công pháp của Ma nữ thượng cổ Cửu U Ma Cơ và quyết tu luyện ma công đó, từng bước cải tạo bản thân, quyết một ngày đạt tới sự hoàn mỹ.\n\nDÀN NHÂN VẬT (giữ tên CỐ ĐỊNH, đúng phong cách tiên hiệp):\n- Lâm Uyển — nữ chính.\n- Lâm Chấn Nhạc — gia chủ Lâm gia, phụ thân lạnh lùng.\n- Tô Yến — mẫu thân (chính thất), sắc sảo, coi trọng danh dự gia tộc.\n- Lâm Tử Hàn — huynh trưởng, thiên tài được sủng ái, người được ban Trúc Cơ Đan.\n- Cửu U Ma Cơ — Ma nữ thượng cổ, chủ nhân cuốn cổ thư.\n- Thanh Vân Tông — tông môn chính đạo về sau khinh miệt Lâm Uyển.\n\nQUY ƯỚC ĐẶT TÊN: dùng tên Hán-Việt kiểu tiên hiệp (họ + tên kép); xưng hô tu tiên (gia chủ, trưởng lão, công tử, tiểu thư, đạo hữu, tiền bối). TUYỆT ĐỐI tránh cách gọi hiện đại như \"ông Lâm\", \"bà Lý\".",
+    "title": "Ma Nữ Nghịch Thiên (POC)",
+    "trashed_at": null,
+    "updated_at": "2026-06-30T06:32:42.168284Z",
+    "visibility": "private",
+    "wiki_settings": {
+      "ai_assist": false,
+      "visibility": "off",
+      "auto_generate": false,
+      "community_mode": "off",
+      "glossary_exposure": "names"
+    },
+    "world_id": null
+  }
+}

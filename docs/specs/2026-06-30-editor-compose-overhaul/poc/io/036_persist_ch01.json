@@ -1,0 +1,1006 @@
+{
+  "seq": 36,
+  "name": "persist_ch01",
+  "method": "PATCH",
+  "url": "http://localhost:3123/v1/books/019f173a-dfb8-768e-a5e9-89c90ad9bed1/chapters/019f173a-dfcf-7b92-ad2e-cfc90c193847/draft",
+  "status": 200,
+  "request": {
+    "body": {
+      "type": "doc",
+      "content": [
+        {
+          "type": "heading",
+          "attrs": {
+            "level": 3
+          },
+          "content": [
+            {
+              "type": "text",
+              "text": "Sự Ruồng Bỏ Của Gia Tộc"
+            }
+          ]
+        },
+        {
+          "type": "paragraph",
+          "content": [
+            {
+              "type": "text",
+              "text": "Tuyết đầu mùa lất phất rơi trên đỉnh Linh Vân, phủ trắng xóa những bậc thang đá dẫn vào đại sảnh Lâm gia. Giữa không gian tĩnh mịch ấy, bầu không khí còn lạnh lẽo hơn cả sương giá, đặc biệt là khi Lâm Uyển đang quỳ giữa sân, thân hình gầy gò run rẩy dưới lớp y phục mỏng manh."
+            }
+          ]
+        },
+        {
+          "type": "paragraph",
+          "content": [
+            {
+              "type": "text",
+              "text": "\"Ngươi còn muốn thanh minh điều gì nữa?\""
+            }
+          ]
+        },
+        {
+          "type": "paragraph",
+          "content": [
+            {
+              "type": "text",
+              "text": "Giọng nói của Lâm Chấn Nhạc vang lên, trầm đục và lạnh lùng như sấm rền từ trên cao cao xuống. Ông đứng trên bậc thềm, bóng dáng uy nghiêm của một Gia chủ che khuất cả ánh sáng yếu ớt của buổi sớm. Ánh mắt ông nhìn xuống nàng, không hề có chút thương xót của một người phụ thân, mà chỉ tràn ngập sự thất vọng tột cùng."
+            }
+          ]
+        },
+        {
+          "type": "paragraph",
+          "content": [
+            {
+              "type": "text",
+              "text": "Lâm Uyển mím chặt môi, móng tay bấu chặt vào nền đá lạnh lẽo. Nàng ngước nhìn, hy vọng tìm thấy một tia ấm áp nơi người cha, nhưng đáp lại chỉ là sự im lặng đến đáng sợ của các trưởng lão đang đứng phía sau."
+            }
+          ]
+        },
+        {
+          "type": "paragraph",
+          "content": [
+            {
+              "type": "text",
+              "text": "\"Lâm Uyển, ngươi đã làm nhục gia môn.\" Tô Yến từ phía sau bước tới, tà váy lụa thướt tha lướt trên tuyết, nhưng lời nói thốt ra lại sắc lẹm như dao găm. \"Linh căn bị phế, tu vi mất sạch, lại còn dám kết giao với những kẻ không ra gì... Ngươi còn mặt mũi nào để đứng trong Lâm gia này nữa?\""
+            }
+          ]
+        },
+        {
+          "type": "paragraph",
+          "content": [
+            {
+              "type": "text",
+              "text": "Nước mắt chực trào nơi khóe mắt, Lâm Uyển nhìn về phía Lâm Tử Hàn. Vị huynh trưởng vốn luôn bao bọc nàng, người từng hứa sẽ bảo vệ nàng suốt đời, nay lại chỉ đứng đó, ánh mắt lảng tránh, gương mặt lạnh nhạt như một người xa lạ. Sự quay lưng của người thân còn đau đớn hơn cả vết thương do linh lực phản phệ."
+            }
+          ]
+        },
+        {
+          "type": "paragraph",
+          "content": [
+            {
+              "type": "text",
+              "text": "\"Phụ thân... mẫu thân...\" Giọng nàng khàn đặc, lạc đi trong tiếng gió rít. \"Con không có...\""
+            }
+          ]
+        },
+        {
+          "type": "paragraph",
+          "content": [
+            {
+              "type": "text",
+              "text": "\"Câm miệng!\" Lâm Chấn Nhạc lạnh lùng ngắt lời. \"Từ nay về sau, Lâm gia không có loại phế vật như ngươi. Lệnh bài gia tộc, thu hồi! Ngươi bị trục xuất khỏi Lâm gia, vĩnh viễn không được bước chân vào Thanh Vân Tông nửa bước!\""
+            }
+          ]
+        },
+        {
+          "type": "paragraph",
+          "content": [
+            {
+              "type": "text",
+              "text": "Từng chữ, từng chữ như những nhát búa nện thẳng vào tâm can nàng. Mệnh lệnh đã ban, không thể vãn hồi. Giữa màn tuyết trắng xóa, bóng dáng một người phụ nữ xinh đẹp nhưng đầy tà khí thoáng hiện lên trong tiềm thức nàng—hình ảnh về Cửu U Ma Cơ, người duy nhất từng nói rằng nàng không phải là phế vật."
+            }
+          ]
+        },
+        {
+          "type": "paragraph",
+          "content": [
+            {
+              "type": "text",
+              "text": "Lâm Uyển cúi đầu, mái tóc đen xõa tung che khuất gương mặt nhạt nhòa nước mắt. Nàng không gào thét, không van nài thêm nữa. Trong khoảnh khắc ấy, chút tình nghĩa cuối cùng với Lâm gia đã tan biến theo những bông tuyết đang dần lịm tắt dưới chân mình."
+            }
+          ]
+        },
+        {
+          "type": "heading",
+          "attrs": {
+            "level": 3
+          },
+          "content": [
+            {
+              "type": "text",
+              "text": "Sự Phản Bội Của Huynh Trưởng"
+            }
+          ]
+        },
+        {
+          "type": "paragraph",
+          "content": [
+            {
+              "type": "text",
+              "text": "Lâm Tử Hàn đứng đó, tà áo trắng tinh khôi như tuyết không một vết gợn, nhưng trong mắt Lâm Uyển, sắc trắng ấy lại lạnh lẽo đến rợn người. Hắn không nhìn nàng, đôi mắt chỉ chăm chăm hướng về phía dãy núi mờ mịt phía sau, như thể đang nhìn vào một khoảng không vô định nào đó, thay vì người muội muội đang quỳ lấm lem giữa sân."
+            }
+          ]
+        },
+        {
+          "type": "paragraph",
+          "content": [
+            {
+              "type": "text",
+              "text": "\"Tử Hàn...\" Lâm Uyển khàn giọng gọi, một tia hy vọng cuối cùng bám víu lấy thanh âm run rẩy của nàng. \"Huynh thật sự muốn để họ... đối xử với muội như thế này sao?\""
+            }
+          ]
+        },
+        {
+          "type": "paragraph",
+          "content": [
+            {
+              "type": "text",
+              "text": "Lâm Tử Hàn khẽ nhíu mày, một tia ái ngại thoáng qua nhưng nhanh chóng bị sự lý trí tàn khốc đè nén. Hắn thu lại ánh nhìn, giọng nói bình thản đến mức vô tình: \"Gia tộc có gia quy, danh tiếng của Lâm gia là trên hết. Ngươi đã phá vỡ đại cục, nếu không có sự quyết liệt của Gia chủ, e rằng uy tín của chúng ta tại Thanh Vân Tông sẽ bị lung lay.\""
+            }
+          ]
+        },
+        {
+          "type": "paragraph",
+          "content": [
+            {
+              "type": "text",
+              "text": "Sự vô tình ấy như một gáo nước lạnh dội thẳng vào trái tim đang rỉ máu của Lâm Uyển. Hóa ra, thứ mà hắn trân trọng không phải là muội muội, mà là cái danh xưng \"Thiên tài Lâm gia\" mà hắn đang gánh vác."
+            }
+          ]
+        },
+        {
+          "type": "paragraph",
+          "content": [
+            {
+              "type": "text",
+              "text": "Tô Yến tiến lại gần hơn, tà váy lụa lướt qua lớp tuyết mỏng, phát ra tiếng sột soạt khô khốc. Bà nhìn đứa con gái đang thảm hại trước mắt bằng ánh mắt đầy sự ghê tởm, không chút luyến lưu tình mẫu tử. \"Đừng gọi tên nó bằng cái giọng đó. Ngươi nghĩ một phế vật không có tương lai như ngươi, có tư cách đứng chung hàng ngũ với con nhà người ta sao? Sự tồn tại của ngươi lúc này chỉ là vết nhơ cho dòng dõi Lâm gia mà thôi.\""
+            }
+          ]
+        },
+        {
+          "type": "paragraph",
+          "content": [
+            {
+              "type": "text",
+              "text": "Lâm Chấn Nhạc phất tay, một luồng kình khí vô hình quét qua, đẩy mạnh thân hình gầy gò của Lâm Uyển lùi lại phía sau."
+            }
+          ]
+        },
+        {
+          "type": "paragraph",
+          "content": [
+            {
+              "type": "text",
+              "text": "\"Lệnh đã ban, không cần nói thêm một lời nào nữa.\" Giọng nói của Gia chủ vang lên, mang theo uy áp của một cường giả, khiến không gian xung quanh như đặc quánh lại. \"Từ giây phút này, ngươi không còn là tiểu thư của Lâm gia. Thu hồi lệnh bài, đưa nàng đi ra khỏi cổng chính ngay lập tức!\""
+            }
+          ]
+        },
+        {
+          "type": "paragraph",
+          "content": [
+            {
+              "type": "text",
+              "text": "Các trưởng lão xung quanh bắt đầu xì xào, những ánh mắt khinh miệt, thương hại và cả cả sự lạnh lùng đổ dồn về phía nàng. Lâm Uyển cảm nhận được sự cô độc tột cùng, một cảm giác trống rỗng đang nuốt chửng lấy linh hồn nàng."
+            }
+          ]
+        },
+        {
+          "type": "paragraph",
+          "content": [
+            {
+              "type": "text",
+              "text": "Nàng chậm rãi đứng dậy, đôi tay run rẩy nhặt lấy mảnh lệnh bài đã vỡ vụn dưới chân—thứ từng là niềm tự hào, nay chỉ là một miếng ngọc lạnh lẽo không còn chút linh lực. Nàng không nhìn về phía Lâm gia thêm một lần nào nữa, cũng không nhìn lấy một ánh mắt từ người huynh trưởng đang đứng bất động kia."
+            }
+          ]
+        },
+        {
+          "type": "paragraph",
+          "content": [
+            {
+              "type": "text",
+              "text": "Khi bóng dáng đơn độc của nàng khuất dần sau cổng lớn, để lại sau lưng sự tĩnh lặng chết chóc của phủ đệ lộng lẫy, trong tâm thức của Lâm Uyển, một luồng khí tức u tối và mãnh liệt chợt lóe lên. Hình ảnh Cửu U Ma Cơ lại hiện về, nụ cười tà mị của người đàn bà ấy như đang vang vọng bên tai nàng: *\"Nếu thế gian này không có chỗ cho ngươi, vậy hãy để ta đưa ngươi đến nơi thuộc về mình.\"*"
+            }
+          ]
+        },
+        {
+          "type": "heading",
+          "attrs": {
+            "level": 3
+          },
+          "content": [
+            {
+              "type": "text",
+              "text": "Hang Động Tử Thần"
+            }
+          ]
+        },
+        {
+          "type": "paragraph",
+          "content": [
+            {
+              "type": "text",
+              "text": "Bóng tối nuốt chửng lấy tầm nhìn của Lâm Uyển khi nàng lao đi trong vô định, hơi thở đứt quãng hòa lẫn vào tiếng sấm rền rĩ từ xa xăm. Đôi chân trần rướm máu vì va quẹt vào đá sỏi, nhưng nỗi đau thể xác chẳng thấm tháp gì so với sự lạnh lẽo đang đóng băng tâm mạch."
+            }
+          ]
+        },
+        {
+          "type": "paragraph",
+          "content": [
+            {
+              "type": "text",
+              "text": "Nàng đang chạy. Chạy trốn khỏi sự khinh miệt của gia tộc, chạy trốn khỏi ánh mắt vô tình của Lâm Tử Hàn, và chạy trốn cả cái danh xưng \"phế vật\" đang bủa vây lấy đời nàng."
+            }
+          ]
+        },
+        {
+          "type": "paragraph",
+          "content": [
+            {
+              "type": "text",
+              "text": "Phía sau, những tiếng bước chân dồn dập của đám đệ tử truy quét vang lên, cùng với đó là những luồng linh lực sắc lẹm xé toạc màn đêm."
+            }
+          ]
+        },
+        {
+          "type": "paragraph",
+          "content": [
+            {
+              "type": "text",
+              "text": "\"Đừng để nàng ta chạy thoát! Nếu để phế vật của Lâm gia lọt vào tay ngoại tộc, danh tiếng của gia tộc sẽ bị hủy hoại hoàn toàn!\""
+            }
+          ]
+        },
+        {
+          "type": "paragraph",
+          "content": [
+            {
+              "type": "text",
+              "text": "Tiếng quát tháo vang vọng giữa vách đá, lạnh lùng và tàn nhẫn như chính những lời của mẫu thân nàng lúc ban trưa. Lâm Uyển không còn sức để khóc, nàng chỉ cảm thấy linh lực trong đan điền trống rỗng đến đáng sợ, giống như một cái hố đen không đáy đang hút cạn sinh mệnh của chính mình."
+            }
+          ]
+        },
+        {
+          "type": "paragraph",
+          "content": [
+            {
+              "type": "text",
+              "text": "*Rầm!*"
+            }
+          ]
+        },
+        {
+          "type": "paragraph",
+          "content": [
+            {
+              "type": "text",
+              "text": "Một luồng kình khí từ phía sau đánh trúng lưng nàng, hất văng thân hình gầy gò vào vách đá ẩm ướt. Cơn đau xé tâm can khiến nàng lảo đảo, trước mắt hoa lên, chỉ còn thấy một màu đen đặc quánh. Nàng lảo đảo lùi lại, cho đến khi cảm nhận được hơi lạnh thấu xương từ một khe nứt dưới chân."
+            }
+          ]
+        },
+        {
+          "type": "paragraph",
+          "content": [
+            {
+              "type": "text",
+              "text": "Bóng tối dưới kia như một cái miệng khổng lồ của ma thú, nuốt chửng lấy nàng."
+            }
+          ]
+        },
+        {
+          "type": "paragraph",
+          "content": [
+            {
+              "type": "text",
+              "text": "Không còn đường lui."
+            }
+          ]
+        },
+        {
+          "type": "paragraph",
+          "content": [
+            {
+              "type": "text",
+              "text": "Lâm Uyển ngã nhào xuống hố sâu, thân hình rơi tự do trong sự im lặng đến rợn người. Cảm giác rơi rụng khiến lồng ngực nàng thắt lại, một sự giải thoát đầy cay đắng đang chờ đợi phía dưới vực thẳm."
+            }
+          ]
+        },
+        {
+          "type": "paragraph",
+          "content": [
+            {
+              "type": "text",
+              "text": "*Bịch.*"
+            }
+          ]
+        },
+        {
+          "type": "paragraph",
+          "content": [
+            {
+              "type": "text",
+              "text": "Khi tỉnh lại, thứ đầu tiên nàng cảm nhận được không phải là sự chết chóc, mà là một sự u uất đến nghẹt thở. Nàng đang nằm trên nền đá ẩm thấp của một hang động u tối, nơi ánh sáng mặt trời không thể len lỏi tới. Không khí nồng nặc mùi rêu phong và một loại khí tức cổ xưa, tà mị."
+            }
+          ]
+        },
+        {
+          "type": "paragraph",
+          "content": [
+            {
+              "type": "text",
+              "text": "Nàng cố gắng cử động, nhưng một cơn đau nhói từ kinh mạch khiến nàng phải nghiến răng chịu đựng. Linh lực... hoàn toàn không có một chút linh lực nào. Nàng thực sự đã trở thành một kẻ phế vật thực thụ, một con cá nằm trên thớt giữa vực thẳm u minh."
+            }
+          ]
+        },
+        {
+          "type": "paragraph",
+          "content": [
+            {
+              "type": "text",
+              "text": "\"Ngươi thật sự là một kẻ đáng thương...\""
+            }
+          ]
+        },
+        {
+          "type": "paragraph",
+          "content": [
+            {
+              "type": "text",
+              "text": "Một giọng nói trầm thấp, ma mị vang lên từ góc tối nhất của hang động, khiến da gà nàng nổi lên từng hồi. Lâm Uyển cố gắng ngước mắt lên, nhưng bóng tối quá dày đặc, chỉ thấy một đôi mắt đỏ rực như máu đang lấp ló phía sau làn sương đen mờ ảo."
+            }
+          ]
+        },
+        {
+          "type": "paragraph",
+          "content": [
+            {
+              "type": "text",
+              "text": "Tim nàng đập liên hồi, bản năng sinh tồn yếu ớt thúc giục nàng phải chạy, nhưng đôi chân nàng đã hoàn toàn tê liệt. Giữa ranh giới của sự sống và cái chết, giữa sự ruồng bỏ của nhân thế và sự u ám của vực thẳm, Lâm Uyển chỉ còn biết nín thở chờ đợi sự phán xét cuối cùng."
+            }
+          ]
+        },
+        {
+          "type": "heading",
+          "attrs": {
+            "level": 3
+          },
+          "content": [
+            {
+              "type": "text",
+              "text": "Duyên Định Ma Công"
+            }
+          ]
+        },
+        {
+          "type": "paragraph",
+          "content": [
+            {
+              "type": "text",
+              "text": "Cơn đau từ những vết thương rách toạc khiến ý thức của Lâm Uyển chập chờn như ngọn đèn trước gió. Nàng cố gắng hít một hơi thật sâu, nhưng không khí trong hang động này đặc quánh, mang theo mùi của đất ẩm và một loại tà khí lạnh lẽo len lỏi vào tận tủy xương."
+            }
+          ]
+        },
+        {
+          "type": "paragraph",
+          "content": [
+            {
+              "type": "text",
+              "text": "\"Ngươi muốn chết ở đây sao?\""
+            }
+          ]
+        },
+        {
+          "type": "paragraph",
+          "content": [
+            {
+              "type": "text",
+              "text": "Giọng nói ấy không phải phát ra từ không gian, mà như trực tiếp vang vọng từ trong linh hồn nàng, trầm đục và đầy vẻ cợt nhả. Đôi mắt đỏ rực kia không hề rời khỏi nàng, sự hiện diện của nó khiến không gian xung quanh như bị bóp nghẹt. Lâm Uyển muốn hét lên, nhưng cổ họng nàng khô khốc, chỉ có những tiếng khò khè đứt quãng."
+            }
+          ]
+        },
+        {
+          "type": "paragraph",
+          "content": [
+            {
+              "type": "text",
+              "text": "Trong cơn mê sảng, hình ảnh gương mặt lạnh lùng của phụ thân - Lâm Chấn Nhạc - khi ông tàn nhẫn thu hồi lệnh bài, cùng ánh mắt ghê tởm của mẫu thân Tô Yến khi nhìn nàng như một vết nhơ của gia tộc, cứ thế ùa về. Nàng thấy cả bóng lưng xa cách của huynh trưởng Lâm Tử Hàn, người đã đứng yên dưới bóng cây, để mặc nàng bị đẩy xuống vực sâu để bảo toàn thanh danh cho Lâm gia. Sự phản bội ấy còn đau đớn hơn cả những vết thương trên cơ thể."
+            }
+          ]
+        },
+        {
+          "type": "paragraph",
+          "content": [
+            {
+              "type": "text",
+              "text": "\"Lâm gia... không cần ta...\" Nàng thầm thì, nước mắt trào ra, nóng hổi giữa cái lạnh thấu xương của hang động."
+            }
+          ]
+        },
+        {
+          "type": "paragraph",
+          "content": [
+            {
+              "type": "text",
+              "text": "\"Thật nực cười. Một kẻ bị chính người thân ruồng bỏ, linh căn tan vỡ, ngay cả việc đứng vững cũng không làm nổi, mà lại dám mang trong mình dòng máu của ta?\""
+            }
+          ]
+        },
+        {
+          "type": "paragraph",
+          "content": [
+            {
+              "type": "text",
+              "text": "Bóng tối từ góc hang động bắt đầu cuộn xoáy, kết lại thành một hình hài nửa thực nửa hư. Đó là Cửu U Ma Cơ. Nàng ta tiến lại gần, tà áo đen tuyền như nuốt chửng lấy chút ánh sáng yếu ớt cuối cùng còn sót lại trong hang. Một bàn tay với những móng tay dài sắc lẹm nâng cằm Lâm Uyển lên, ép nàng phải đối diện với sự tàn khốc của thực tại."
+            }
+          ]
+        },
+        {
+          "type": "paragraph",
+          "content": [
+            {
+              "type": "text",
+              "text": "\"Ngươi có cam tâm chết tại đây, làm một phế vật bị thế gian chối bỏ không?\""
+            }
+          ]
+        },
+        {
+          "type": "paragraph",
+          "content": [
+            {
+              "type": "text",
+              "text": "Lâm Uyển nhìn sâu vào đôi mắt đỏ rực ấy, sự uất ức dâng lên tận đỉnh đầu, lấn át cả nỗi sợ hãi cái chết. Nàng không còn gì để mất, không còn gì để luyến tiếc. Nếu nhân thế đã khước từ nàng, nếu gia tộc đã đẩy nàng vào đường cùng, vậy thì nàng sẽ trở thành thứ gì đó đáng sợ hơn cả cái chết."
+            }
+          ]
+        },
+        {
+          "type": "paragraph",
+          "content": [
+            {
+              "type": "text",
+              "text": "\"Nếu có cơ hội... ta muốn họ phải trả giá...\" Lâm Uyển nghiến răng, giọng nói khản đặc nhưng chứa đựng một sự kiên định điên cuồng."
+            }
+          ]
+        },
+        {
+          "type": "paragraph",
+          "content": [
+            {
+              "type": "text",
+              "text": "Một nụ cười ma mị nở trên môi Cửu U Ma Cơ. Ánh sáng đỏ rực từ đôi mắt nàng ta bùng lên, tràn vào trong đan điền trống rỗng của Lâm Uyển như một dòng nham thạch nóng bỏng."
+            }
+          ]
+        },
+        {
+          "type": "paragraph",
+          "content": [
+            {
+              "type": "text",
+              "text": "\"Tốt! Vậy thì hãy dùng chính sự căm hận này để nuôi dưỡng con đường ma đạo của ngươi!\""
+            }
+          ]
+        },
+        {
+          "type": "paragraph",
+          "content": [
+            {
+              "type": "text",
+              "text": "Cuốn cổ thư trong ngực áo Lâm Uyển đột ngột phát ra luồng hắc quang mãnh liệt, bao phủ lấy cả hai, nuốt chửng lấy thân ảnh nhỏ bé của nàng vào trong vòng xoáy của sự tái sinh đầy tà mị."
+            }
+          ]
+        }
+      ]
+    },
+    "body_format": "json",
+    "commit_message": "POC draft"
+  },
+  "response": {
+    "body": {
+      "type": "doc",
+      "content": [
+        {
+          "type": "heading",
+          "attrs": {
+            "level": 3
+          },
+          "content": [
+            {
+              "text": "Sự Ruồng Bỏ Của Gia Tộc",
+              "type": "text"
+            }
+          ]
+        },
+        {
+          "type": "paragraph",
+          "content": [
+            {
+              "text": "Tuyết đầu mùa lất phất rơi trên đỉnh Linh Vân, phủ trắng xóa những bậc thang đá dẫn vào đại sảnh Lâm gia. Giữa không gian tĩnh mịch ấy, bầu không khí còn lạnh lẽo hơn cả sương giá, đặc biệt là khi Lâm Uyển đang quỳ giữa sân, thân hình gầy gò run rẩy dưới lớp y phục mỏng manh.",
+              "type": "text"
+            }
+          ]
+        },
+        {
+          "type": "paragraph",
+          "content": [
+            {
+              "text": "\"Ngươi còn muốn thanh minh điều gì nữa?\"",
+              "type": "text"
+            }
+          ]
+        },
+        {
+          "type": "paragraph",
+          "content": [
+            {
+              "text": "Giọng nói của Lâm Chấn Nhạc vang lên, trầm đục và lạnh lùng như sấm rền từ trên cao cao xuống. Ông đứng trên bậc thềm, bóng dáng uy nghiêm của một Gia chủ che khuất cả ánh sáng yếu ớt của buổi sớm. Ánh mắt ông nhìn xuống nàng, không hề có chút thương xót của một người phụ thân, mà chỉ tràn ngập sự thất vọng tột cùng.",
+              "type": "text"
+            }
+          ]
+        },
+        {
+          "type": "paragraph",
+          "content": [
+            {
+              "text": "Lâm Uyển mím chặt môi, móng tay bấu chặt vào nền đá lạnh lẽo. Nàng ngước nhìn, hy vọng tìm thấy một tia ấm áp nơi người cha, nhưng đáp lại chỉ là sự im lặng đến đáng sợ của các trưởng lão đang đứng phía sau.",
+              "type": "text"
+            }
+          ]
+        },
+        {
+          "type": "paragraph",
+          "content": [
+            {
+              "text": "\"Lâm Uyển, ngươi đã làm nhục gia môn.\" Tô Yến từ phía sau bước tới, tà váy lụa thướt tha lướt trên tuyết, nhưng lời nói thốt ra lại sắc lẹm như dao găm. \"Linh căn bị phế, tu vi mất sạch, lại còn dám kết giao với những kẻ không ra gì... Ngươi còn mặt mũi nào để đứng trong Lâm gia này nữa?\"",
+              "type": "text"
+            }
+          ]
+        },
+        {
+          "type": "paragraph",
+          "content": [
+            {
+              "text": "Nước mắt chực trào nơi khóe mắt, Lâm Uyển nhìn về phía Lâm Tử Hàn. Vị huynh trưởng vốn luôn bao bọc nàng, người từng hứa sẽ bảo vệ nàng suốt đời, nay lại chỉ đứng đó, ánh mắt lảng tránh, gương mặt lạnh nhạt như một người xa lạ. Sự quay lưng của người thân còn đau đớn hơn cả vết thương do linh lực phản phệ.",
+              "type": "text"
+            }
+          ]
+        },
+        {
+          "type": "paragraph",
+          "content": [
+            {
+              "text": "\"Phụ thân... mẫu thân...\" Giọng nàng khàn đặc, lạc đi trong tiếng gió rít. \"Con không có...\"",
+              "type": "text"
+            }
+          ]
+        },
+        {
+          "type": "paragraph",
+          "content": [
+            {
+              "text": "\"Câm miệng!\" Lâm Chấn Nhạc lạnh lùng ngắt lời. \"Từ nay về sau, Lâm gia không có loại phế vật như ngươi. Lệnh bài gia tộc, thu hồi! Ngươi bị trục xuất khỏi Lâm gia, vĩnh viễn không được bước chân vào Thanh Vân Tông nửa bước!\"",
+              "type": "text"
+            }
+          ]
+        },
+        {
+          "type": "paragraph",
+          "content": [
+            {
+              "text": "Từng chữ, từng chữ như những nhát búa nện thẳng vào tâm can nàng. Mệnh lệnh đã ban, không thể vãn hồi. Giữa màn tuyết trắng xóa, bóng dáng một người phụ nữ xinh đẹp nhưng đầy tà khí thoáng hiện lên trong tiềm thức nàng—hình ảnh về Cửu U Ma Cơ, người duy nhất từng nói rằng nàng không phải là phế vật.",
+              "type": "text"
+            }
+          ]
+        },
+        {
+          "type": "paragraph",
+          "content": [
+            {
+              "text": "Lâm Uyển cúi đầu, mái tóc đen xõa tung che khuất gương mặt nhạt nhòa nước mắt. Nàng không gào thét, không van nài thêm nữa. Trong khoảnh khắc ấy, chút tình nghĩa cuối cùng với Lâm gia đã tan biến theo những bông tuyết đang dần lịm tắt dưới chân mình.",
+              "type": "text"
+            }
+          ]
+        },
+        {
+          "type": "heading",
+          "attrs": {
+            "level": 3
+          },
+          "content": [
+            {
+              "text": "Sự Phản Bội Của Huynh Trưởng",
+              "type": "text"
+            }
+          ]
+        },
+        {
+          "type": "paragraph",
+          "content": [
+            {
+              "text": "Lâm Tử Hàn đứng đó, tà áo trắng tinh khôi như tuyết không một vết gợn, nhưng trong mắt Lâm Uyển, sắc trắng ấy lại lạnh lẽo đến rợn người. Hắn không nhìn nàng, đôi mắt chỉ chăm chăm hướng về phía dãy núi mờ mịt phía sau, như thể đang nhìn vào một khoảng không vô định nào đó, thay vì người muội muội đang quỳ lấm lem giữa sân.",
+              "type": "text"
+            }
+          ]
+        },
+        {
+          "type": "paragraph",
+          "content": [
+            {
+              "text": "\"Tử Hàn...\" Lâm Uyển khàn giọng gọi, một tia hy vọng cuối cùng bám víu lấy thanh âm run rẩy của nàng. \"Huynh thật sự muốn để họ... đối xử với muội như thế này sao?\"",
+              "type": "text"
+            }
+          ]
+        },
+        {
+          "type": "paragraph",
+          "content": [
+            {
+              "text": "Lâm Tử Hàn khẽ nhíu mày, một tia ái ngại thoáng qua nhưng nhanh chóng bị sự lý trí tàn khốc đè nén. Hắn thu lại ánh nhìn, giọng nói bình thản đến mức vô tình: \"Gia tộc có gia quy, danh tiếng của Lâm gia là trên hết. Ngươi đã phá vỡ đại cục, nếu không có sự quyết liệt của Gia chủ, e rằng uy tín của chúng ta tại Thanh Vân Tông sẽ bị lung lay.\"",
+              "type": "text"
+            }
+          ]
+        },
+        {
+          "type": "paragraph",
+          "content": [
+            {
+              "text": "Sự vô tình ấy như một gáo nước lạnh dội thẳng vào trái tim đang rỉ máu của Lâm Uyển. Hóa ra, thứ mà hắn trân trọng không phải là muội muội, mà là cái danh xưng \"Thiên tài Lâm gia\" mà hắn đang gánh vác.",
+              "type": "text"
+            }
+          ]
+        },
+        {
+          "type": "paragraph",
+          "content": [
+            {
+              "text": "Tô Yến tiến lại gần hơn, tà váy lụa lướt qua lớp tuyết mỏng, phát ra tiếng sột soạt khô khốc. Bà nhìn đứa con gái đang thảm hại trước mắt bằng ánh mắt đầy sự ghê tởm, không chút luyến lưu tình mẫu tử. \"Đừng gọi tên nó bằng cái giọng đó. Ngươi nghĩ một phế vật không có tương lai như ngươi, có tư cách đứng chung hàng ngũ với con nhà người ta sao? Sự tồn tại của ngươi lúc này chỉ là vết nhơ cho dòng dõi Lâm gia mà thôi.\"",
+              "type": "text"
+            }
+          ]
+        },
+        {
+          "type": "paragraph",
+          "content": [
+            {
+              "text": "Lâm Chấn Nhạc phất tay, một luồng kình khí vô hình quét qua, đẩy mạnh thân hình gầy gò của Lâm Uyển lùi lại phía sau.",
+              "type": "text"
+            }
+          ]
+        },
+        {
+          "type": "paragraph",
+          "content": [
+            {
+              "text": "\"Lệnh đã ban, không cần nói thêm một lời nào nữa.\" Giọng nói của Gia chủ vang lên, mang theo uy áp của một cường giả, khiến không gian xung quanh như đặc quánh lại. \"Từ giây phút này, ngươi không còn là tiểu thư của Lâm gia. Thu hồi lệnh bài, đưa nàng đi ra khỏi cổng chính ngay lập tức!\"",
+              "type": "text"
+            }
+          ]
+        },
+        {
+          "type": "paragraph",
+          "content": [
+            {
+              "text": "Các trưởng lão xung quanh bắt đầu xì xào, những ánh mắt khinh miệt, thương hại và cả cả sự lạnh lùng đổ dồn về phía nàng. Lâm Uyển cảm nhận được sự cô độc tột cùng, một cảm giác trống rỗng đang nuốt chửng lấy linh hồn nàng.",
+              "type": "text"
+            }
+          ]
+        },
+        {
+          "type": "paragraph",
+          "content": [
+            {
+              "text": "Nàng chậm rãi đứng dậy, đôi tay run rẩy nhặt lấy mảnh lệnh bài đã vỡ vụn dưới chân—thứ từng là niềm tự hào, nay chỉ là một miếng ngọc lạnh lẽo không còn chút linh lực. Nàng không nhìn về phía Lâm gia thêm một lần nào nữa, cũng không nhìn lấy một ánh mắt từ người huynh trưởng đang đứng bất động kia.",
+              "type": "text"
+            }
+          ]
+        },
+        {
+          "type": "paragraph",
+          "content": [
+            {
+              "text": "Khi bóng dáng đơn độc của nàng khuất dần sau cổng lớn, để lại sau lưng sự tĩnh lặng chết chóc của phủ đệ lộng lẫy, trong tâm thức của Lâm Uyển, một luồng khí tức u tối và mãnh liệt chợt lóe lên. Hình ảnh Cửu U Ma Cơ lại hiện về, nụ cười tà mị của người đàn bà ấy như đang vang vọng bên tai nàng: *\"Nếu thế gian này không có chỗ cho ngươi, vậy hãy để ta đưa ngươi đến nơi thuộc về mình.\"*",
+              "type": "text"
+            }
+          ]
+        },
+        {
+          "type": "heading",
+          "attrs": {
+            "level": 3
+          },
+          "content": [
+            {
+              "text": "Hang Động Tử Thần",
+              "type": "text"
+            }
+          ]
+        },
+        {
+          "type": "paragraph",
+          "content": [
+            {
+              "text": "Bóng tối nuốt chửng lấy tầm nhìn của Lâm Uyển khi nàng lao đi trong vô định, hơi thở đứt quãng hòa lẫn vào tiếng sấm rền rĩ từ xa xăm. Đôi chân trần rướm máu vì va quẹt vào đá sỏi, nhưng nỗi đau thể xác chẳng thấm tháp gì so với sự lạnh lẽo đang đóng băng tâm mạch.",
+              "type": "text"
+            }
+          ]
+        },
+        {
+          "type": "paragraph",
+          "content": [
+            {
+              "text": "Nàng đang chạy. Chạy trốn khỏi sự khinh miệt của gia tộc, chạy trốn khỏi ánh mắt vô tình của Lâm Tử Hàn, và chạy trốn cả cái danh xưng \"phế vật\" đang bủa vây lấy đời nàng.",
+              "type": "text"
+            }
+          ]
+        },
+        {
+          "type": "paragraph",
+          "content": [
+            {
+              "text": "Phía sau, những tiếng bước chân dồn dập của đám đệ tử truy quét vang lên, cùng với đó là những luồng linh lực sắc lẹm xé toạc màn đêm.",
+              "type": "text"
+            }
+          ]
+        },
+        {
+          "type": "paragraph",
+          "content": [
+            {
+              "text": "\"Đừng để nàng ta chạy thoát! Nếu để phế vật của Lâm gia lọt vào tay ngoại tộc, danh tiếng của gia tộc sẽ bị hủy hoại hoàn toàn!\"",
+              "type": "text"
+            }
+          ]
+        },
+        {
+          "type": "paragraph",
+          "content": [
+            {
+              "text": "Tiếng quát tháo vang vọng giữa vách đá, lạnh lùng và tàn nhẫn như chính những lời của mẫu thân nàng lúc ban trưa. Lâm Uyển không còn sức để khóc, nàng chỉ cảm thấy linh lực trong đan điền trống rỗng đến đáng sợ, giống như một cái hố đen không đáy đang hút cạn sinh mệnh của chính mình.",
+              "type": "text"
+            }
+          ]
+        },
+        {
+          "type": "paragraph",
+          "content": [
+            {
+              "text": "*Rầm!*",
+              "type": "text"
+            }
+          ]
+        },
+        {
+          "type": "paragraph",
+          "content": [
+            {
+              "text": "Một luồng kình khí từ phía sau đánh trúng lưng nàng, hất văng thân hình gầy gò vào vách đá ẩm ướt. Cơn đau xé tâm can khiến nàng lảo đảo, trước mắt hoa lên, chỉ còn thấy một màu đen đặc quánh. Nàng lảo đảo lùi lại, cho đến khi cảm nhận được hơi lạnh thấu xương từ một khe nứt dưới chân.",
+              "type": "text"
+            }
+          ]
+        },
+        {
+          "type": "paragraph",
+          "content": [
+            {
+              "text": "Bóng tối dưới kia như một cái miệng khổng lồ của ma thú, nuốt chửng lấy nàng.",
+              "type": "text"
+            }
+          ]
+        },
+        {
+          "type": "paragraph",
+          "content": [
+            {
+              "text": "Không còn đường lui.",
+              "type": "text"
+            }
+          ]
+        },
+        {
+          "type": "paragraph",
+          "content": [
+            {
+              "text": "Lâm Uyển ngã nhào xuống hố sâu, thân hình rơi tự do trong sự im lặng đến rợn người. Cảm giác rơi rụng khiến lồng ngực nàng thắt lại, một sự giải thoát đầy cay đắng đang chờ đợi phía dưới vực thẳm.",
+              "type": "text"
+            }
+          ]
+        },
+        {
+          "type": "paragraph",
+          "content": [
+            {
+              "text": "*Bịch.*",
+              "type": "text"
+            }
+          ]
+        },
+        {
+          "type": "paragraph",
+          "content": [
+            {
+              "text": "Khi tỉnh lại, thứ đầu tiên nàng cảm nhận được không phải là sự chết chóc, mà là một sự u uất đến nghẹt thở. Nàng đang nằm trên nền đá ẩm thấp của một hang động u tối, nơi ánh sáng mặt trời không thể len lỏi tới. Không khí nồng nặc mùi rêu phong và một loại khí tức cổ xưa, tà mị.",
+              "type": "text"
+            }
+          ]
+        },
+        {
+          "type": "paragraph",
+          "content": [
+            {
+              "text": "Nàng cố gắng cử động, nhưng một cơn đau nhói từ kinh mạch khiến nàng phải nghiến răng chịu đựng. Linh lực... hoàn toàn không có một chút linh lực nào. Nàng thực sự đã trở thành một kẻ phế vật thực thụ, một con cá nằm trên thớt giữa vực thẳm u minh.",
+              "type": "text"
+            }
+          ]
+        },
+        {
+          "type": "paragraph",
+          "content": [
+            {
+              "text": "\"Ngươi thật sự là một kẻ đáng thương...\"",
+              "type": "text"
+            }
+          ]
+        },
+        {
+          "type": "paragraph",
+          "content": [
+            {
+              "text": "Một giọng nói trầm thấp, ma mị vang lên từ góc tối nhất của hang động, khiến da gà nàng nổi lên từng hồi. Lâm Uyển cố gắng ngước mắt lên, nhưng bóng tối quá dày đặc, chỉ thấy một đôi mắt đỏ rực như máu đang lấp ló phía sau làn sương đen mờ ảo.",
+              "type": "text"
+            }
+          ]
+        },
+        {
+          "type": "paragraph",
+          "content": [
+            {
+              "text": "Tim nàng đập liên hồi, bản năng sinh tồn yếu ớt thúc giục nàng phải chạy, nhưng đôi chân nàng đã hoàn toàn tê liệt. Giữa ranh giới của sự sống và cái chết, giữa sự ruồng bỏ của nhân thế và sự u ám của vực thẳm, Lâm Uyển chỉ còn biết nín thở chờ đợi sự phán xét cuối cùng.",
+              "type": "text"
+            }
+          ]
+        },
+        {
+          "type": "heading",
+          "attrs": {
+            "level": 3
+          },
+          "content": [
+            {
+              "text": "Duyên Định Ma Công",
+              "type": "text"
+            }
+          ]
+        },
+        {
+          "type": "paragraph",
+          "content": [
+            {
+              "text": "Cơn đau từ những vết thương rách toạc khiến ý thức của Lâm Uyển chập chờn như ngọn đèn trước gió. Nàng cố gắng hít một hơi thật sâu, nhưng không khí trong hang động này đặc quánh, mang theo mùi của đất ẩm và một loại tà khí lạnh lẽo len lỏi vào tận tủy xương.",
+              "type": "text"
+            }
+          ]
+        },
+        {
+          "type": "paragraph",
+          "content": [
+            {
+              "text": "\"Ngươi muốn chết ở đây sao?\"",
+              "type": "text"
+            }
+          ]
+        },
+        {
+          "type": "paragraph",
+          "content": [
+            {
+              "text": "Giọng nói ấy không phải phát ra từ không gian, mà như trực tiếp vang vọng từ trong linh hồn nàng, trầm đục và đầy vẻ cợt nhả. Đôi mắt đỏ rực kia không hề rời khỏi nàng, sự hiện diện của nó khiến không gian xung quanh như bị bóp nghẹt. Lâm Uyển muốn hét lên, nhưng cổ họng nàng khô khốc, chỉ có những tiếng khò khè đứt quãng.",
+              "type": "text"
+            }
+          ]
+        },
+        {
+          "type": "paragraph",
+          "content": [
+            {
+              "text": "Trong cơn mê sảng, hình ảnh gương mặt lạnh lùng của phụ thân - Lâm Chấn Nhạc - khi ông tàn nhẫn thu hồi lệnh bài, cùng ánh mắt ghê tởm của mẫu thân Tô Yến khi nhìn nàng như một vết nhơ của gia tộc, cứ thế ùa về. Nàng thấy cả bóng lưng xa cách của huynh trưởng Lâm Tử Hàn, người đã đứng yên dưới bóng cây, để mặc nàng bị đẩy xuống vực sâu để bảo toàn thanh danh cho Lâm gia. Sự phản bội ấy còn đau đớn hơn cả những vết thương trên cơ thể.",
+              "type": "text"
+            }
+          ]
+        },
+        {
+          "type": "paragraph",
+          "content": [
+            {
+              "text": "\"Lâm gia... không cần ta...\" Nàng thầm thì, nước mắt trào ra, nóng hổi giữa cái lạnh thấu xương của hang động.",
+              "type": "text"
+            }
+          ]
+        },
+        {
+          "type": "paragraph",
+          "content": [
+            {
+              "text": "\"Thật nực cười. Một kẻ bị chính người thân ruồng bỏ, linh căn tan vỡ, ngay cả việc đứng vững cũng không làm nổi, mà lại dám mang trong mình dòng máu của ta?\"",
+              "type": "text"
+            }
+          ]
+        },
+        {
+          "type": "paragraph",
+          "content": [
+            {
+              "text": "Bóng tối từ góc hang động bắt đầu cuộn xoáy, kết lại thành một hình hài nửa thực nửa hư. Đó là Cửu U Ma Cơ. Nàng ta tiến lại gần, tà áo đen tuyền như nuốt chửng lấy chút ánh sáng yếu ớt cuối cùng còn sót lại trong hang. Một bàn tay với những móng tay dài sắc lẹm nâng cằm Lâm Uyển lên, ép nàng phải đối diện với sự tàn khốc của thực tại.",
+              "type": "text"
+            }
+          ]
+        },
+        {
+          "type": "paragraph",
+          "content": [
+            {
+              "text": "\"Ngươi có cam tâm chết tại đây, làm một phế vật bị thế gian chối bỏ không?\"",
+              "type": "text"
+            }
+          ]
+        },
+        {
+          "type": "paragraph",
+          "content": [
+            {
+              "text": "Lâm Uyển nhìn sâu vào đôi mắt đỏ rực ấy, sự uất ức dâng lên tận đỉnh đầu, lấn át cả nỗi sợ hãi cái chết. Nàng không còn gì để mất, không còn gì để luyến tiếc. Nếu nhân thế đã khước từ nàng, nếu gia tộc đã đẩy nàng vào đường cùng, vậy thì nàng sẽ trở thành thứ gì đó đáng sợ hơn cả cái chết.",
+              "type": "text"
+            }
+          ]
+        },
+        {
+          "type": "paragraph",
+          "content": [
+            {
+              "text": "\"Nếu có cơ hội... ta muốn họ phải trả giá...\" Lâm Uyển nghiến răng, giọng nói khản đặc nhưng chứa đựng một sự kiên định điên cuồng.",
+              "type": "text"
+            }
+          ]
+        },
+        {
+          "type": "paragraph",
+          "content": [
+            {
+              "text": "Một nụ cười ma mị nở trên môi Cửu U Ma Cơ. Ánh sáng đỏ rực từ đôi mắt nàng ta bùng lên, tràn vào trong đan điền trống rỗng của Lâm Uyển như một dòng nham thạch nóng bỏng.",
+              "type": "text"
+            }
+          ]
+        },
+        {
+          "type": "paragraph",
+          "content": [
+            {
+              "text": "\"Tốt! Vậy thì hãy dùng chính sự căm hận này để nuôi dưỡng con đường ma đạo của ngươi!\"",
+              "type": "text"
+            }
+          ]
+        },
+        {
+          "type": "paragraph",
+          "content": [
+            {
+              "text": "Cuốn cổ thư trong ngực áo Lâm Uyển đột ngột phát ra luồng hắc quang mãnh liệt, bao phủ lấy cả hai, nuốt chửng lấy thân ảnh nhỏ bé của nàng vào trong vòng xoáy của sự tái sinh đầy tà mị.",
+              "type": "text"
+            }
+          ]
+        }
+      ]
+    },
+    "chapter_id": "019f173a-dfcf-7b92-ad2e-cfc90c193847",
+    "draft_format": "json",
+    "draft_updated_at": "2026-06-30T06:56:40.447257Z",
+    "draft_version": 3,
+    "text_content": "\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n"
+  }
+}

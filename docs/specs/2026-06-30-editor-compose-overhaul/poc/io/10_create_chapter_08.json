@@ -1,0 +1,33 @@
+{
+  "seq": 10,
+  "name": "create_chapter_08",
+  "method": "POST",
+  "url": "http://localhost:3123/v1/books/019f16d0-10a8-71f6-abb6-303708b9cf1c/chapters",
+  "status": 201,
+  "note": "",
+  "request": {
+    "original_language": "vi",
+    "title": "Chương 8",
+    "sort_order": 8,
+    "body": ""
+  },
+  "response": {
+    "book_id": "019f16d0-10a8-71f6-abb6-303708b9cf1c",
+    "byte_size": 0,
+    "chapter_id": "019f16d0-1161-7aca-9040-08994278b318",
+    "content_type": "text/plain",
+    "created_at": "2026-06-30T04:36:02.529586Z",
+    "draft_revision_count": 1,
+    "draft_updated_at": "2026-06-30T04:36:02.529586Z",
+    "editorial_status": "draft",
+    "lifecycle_state": "active",
+    "original_filename": "editor-a87994b4-0984-41de-b65b-e1da03c8bd6f.txt",
+    "original_language": "vi",
+    "published_revision_id": null,
+    "purge_eligible_at": null,
+    "sort_order": 8,
+    "title": "Chương 8",
+    "trashed_at": null,
+    "updated_at": "2026-06-30T04:36:02.529586Z"
+  }
+}

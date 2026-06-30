@@ -1,0 +1,760 @@
+{
+  "_run_at": "2026-06-30T13:56:40.968185",
+  "book_id": "019f173a-dfb8-768e-a5e9-89c90ad9bed1",
+  "chapter_ids": [
+    "019f173a-dfcf-7b92-ad2e-cfc90c193847",
+    "019f173a-dfe8-799f-b9e8-5dd8a03bf7d0",
+    "019f173a-dffc-712f-8e38-83dd109f25d7",
+    "019f173a-e00f-78ba-9558-13f87f4f6fba",
+    "019f173a-e020-7c7a-93fc-afef107e81f6",
+    "019f173a-e031-7c6f-8ac7-747a721af548",
+    "019f173a-e043-7279-a89c-b3fe76762650",
+    "019f173a-e053-7e36-8b4f-742559735f68",
+    "019f173a-e064-749e-bcb5-8ee39e10eda9",
+    "019f173a-e074-7a6c-92e4-65c9df823860",
+    "019f173a-e085-707c-b489-fcc3952233d6",
+    "019f173a-e096-7809-bcd5-46a7b56e2532"
+  ],
+  "project_id": "019f173a-e0b5-786c-bd47-1c151af2801a",
+  "work_raw": {
+    "project_id": "019f16d0-11db-739b-9b14-f29b0f20a791",
+    "user_id": "019d5e3c-7cc5-7e6a-8b27-1344e148bf7c",
+    "book_id": "019f16d0-10a8-71f6-abb6-303708b9cf1c",
+    "id": "019f16d0-11e1-78e1-80a1-6fca65f4a286",
+    "pending_project_backfill": false,
+    "source_work_id": null,
+    "branch_point": null,
+    "active_template_id": null,
+    "status": "active",
+    "settings": {},
+    "version": 1,
+    "created_at": "2026-06-30T04:36:02.657169Z",
+    "updated_at": "2026-06-30T04:36:02.657169Z"
+  },
+  "template": {
+    "id": "0190ce00-0000-7000-8000-000000000005",
+    "name": "Web Novel Arc"
+  },
+  "decompose_preview": {
+    "chapters": [
+      {
+        "motif": null,
+        "scenes": [
+          {
+            "title": "Sự ghẻ lạnh trong bữa tối",
+            "tension": 40,
+            "synopsis": "Thiết lập sự cô lập của nữ chính thông qua thái độ khinh miệt của cha mẹ và sự thiếu thốn về điều kiện sống.",
+            "suggested_k": 2,
+            "present_entity_ids": [],
+            "present_entity_names_unresolved": []
+          },
+          {
+            "title": "Áp lực từ thử thách tu luyện",
+            "tension": 60,
+            "synopsis": "Nữ chính đối mặt với sự thất bại trong việc cảm nhận linh khí, làm nổi bật tư chất kém cỏi và sự vô dụng trong mắt gia tộc.",
+            "suggested_k": 2,
+            "present_entity_ids": [],
+            "present_entity_names_unresolved": []
+          },
+          {
+            "title": "Ranh giới sinh tồn",
+            "tension": 90,
+            "synopsis": "Nữ chính bị đẩy vào tình huống nguy hiểm (có thể là bị xua đuổi hoặc bị tấn công) dẫn đến khoảnh khắc cận kề cái chết.",
+            "suggested_k": 3,
+            "present_entity_ids": [],
+            "present_entity_names_unresolved": []
+          }
+        ],
+        "binding": null,
+        "chapter": {
+          "title": "Chương 1",
+          "intent": "Nữ chính đối mặt với sự ghẻ lạnh và áp lực sinh tồn khắc nghiệt ngay từ đầu câu chuyện.",
+          "beat_role": "hook",
+          "chapter_id": "019f16d0-10cc-794e-9f96-1cbe6ee56d3b",
+          "sort_order": 1
+        },
+        "warning": null,
+        "application_rows": []
+      },
+      {
+        "motif": null,
+        "scenes": [
+          {
+            "title": "Sự ghẻ lạnh của gia tộc",
+            "tension": 40,
+            "synopsis": "Khắc họa sự tương phản giữa vẻ ngoài xấu xí của nữ chính và sự tàn nhẫn, khinh miệt của cha mẹ ruột trước sự yếu kém của nàng.",
+            "suggested_k": 2,
+            "present_entity_ids": [],
+            "present_entity_names_unresolved": []
+          },
+          {
+            "title": "Nỗi đau bị ruồng bỏ",
+            "tension": 70,
+            "synopsis": "Đẩy cao kịch tính khi nữ chính bị đuổi khỏi sảnh chính hoặc bị đối xử tệ bạc vì không thể tu luyện, nhấn mạnh sự cô độc tuyệt vọng.",
+            "suggested_k": 3,
+            "present_entity_ids": [],
+            "present_entity_names_unresolved": []
+          },
+          {
+            "title": "Ranh giới sinh tử",
+            "tension": 90,
+            "synopsis": "Nữ chính rơi vào tình cảnh nguy hiểm (bị bỏ mặc trong rừng hoặc bị truy đuổi) dẫn đến sự xuất hiện của cơ duyên định mệnh.",
+            "suggested_k": 3,
+            "present_entity_ids": [],
+            "present_entity_names_unresolved": []
+          }
+        ],
+        "binding": null,
+        "chapter": {
+          "title": "Chương 2",
+          "intent": "Giới thiệu sự yếu kém về tư chất và nỗi đau bị gia đình ruột bỏ.",
+          "beat_role": "establishment",
+          "chapter_id": "019f16d0-10f2-7452-b02e-e603eed18c65",
+          "sort_order": 2
+        },
+        "warning": null,
+        "application_rows": []
+      },
+      {
+        "motif": null,
+        "scenes": [
+          {
+            "title": "Sự Ruồng Bỏ Đau Đớn",
+            "tension": 40,
+            "synopsis": "Thiết lập sự cô độc và tuyệt vọng của nữ chính khi bị chính gia đình và người đời xua đuổi, đẩy nàng vào tình thế không còn đường lui.",
+            "suggested_k": 2,
+            "present_entity_ids": [],
+            "present_entity_names_unresolved": []
+          },
+          {
+            "title": "Ranh Giới Sinh Tử",
+            "tension": 85,
+            "synopsis": "Nữ chính bị dồn vào đường cùng trong một cuộc tấn công hoặc tai nạn, đối mặt với cái chết cận kề trong sự bất lực của một kẻ tu luyện kém cỏi.",
+            "suggested_k": 3,
+            "present_entity_ids": [],
+            "present_entity_names_unresolved": []
+          },
+          {
+            "title": "Tiếng Gọi Từ Vực Thẳm",
+            "tension": 95,
+            "synopsis": "Trong khoảnh khắc linh hồn sắp tan biến, nàng vô tình chạm vào một luồng khí đen tà mị và tìm thấy cuốn cổ thư của Ma nữ.",
+            "suggested_k": 3,
+            "present_entity_ids": [],
+            "present_entity_names_unresolved": []
+          },
+          {
+            "title": "Giao Ước Hắc Ám",
+            "tension": 100,
+            "synopsis": "Nữ chính lựa chọn chấp nhận sức mạnh của Ma nữ để đổi lấy sự sống, đánh dấu bước ngoặt thay đổi vận mệnh từ kẻ yếu đuối thành kẻ tu luyện ma đạo.",
+            "suggested_k": 3,
+            "present_entity_ids": [],
+            "present_entity_names_unresolved": []
+          }
+        ],
+        "binding": null,
+        "chapter": {
+          "title": "Chương 3",
+          "intent": "Nàng tìm thấy cuốn cổ thư của Ma nữ trong khoảnh khắc cận kề cái chết.",
+          "beat_role": "establishment",
+          "chapter_id": "019f16d0-1106-7eb9-95b8-b317427a4c3f",
+          "sort_order": 3
+        },
+        "warning": null,
+        "application_rows": []
+      },
+      {
+        "motif": null,
+        "scenes": [
+          {
+            "title": "Nghi thức trong tuyệt vọng",
+            "tension": 85,
+            "synopsis": "Nữ chính hấp thụ linh khí từ cuốn cổ thư Ma nữ trong tình trạng cận kề cái chết để sinh tồn.",
+            "suggested_k": 3,
+            "present_entity_ids": [],
+            "present_entity_names_unresolved": []
+          },
+          {
+            "title": "Sự tái sinh đau đớn",
+            "tension": 70,
+            "synopsis": "Mô tả quá trình kinh mạch bị phá vỡ và tái tạo bởi sức mạnh Ma nữ, đánh dấu sự bắt đầu của quá trình cải tạo thể chất.",
+            "suggested_k": 3,
+            "present_entity_ids": [],
+            "present_entity_names_unresolved": []
+          },
+          {
+            "title": "Dấu vết của bóng tối",
+            "tension": 40,
+            "synopsis": "Nữ chính nhận ra những thay đổi kỳ lạ trên làn da và khí chất của mình, đồng thời cảm nhận được sự trừng phạt từ thiên đạo.",
+            "suggested_k": 2,
+            "present_entity_ids": [],
+            "present_entity_names_unresolved": []
+          },
+          {
+            "title": "Áp lực từ kẻ thù",
+            "tension": 55,
+            "synopsis": "Sự xuất hiện của các thế lực xung quanh bắt đầu nhận ra sự thay đổi bất thường, tạo ra áp lực vô hình lên nàng.",
+            "suggested_k": 2,
+            "present_entity_ids": [],
+            "present_entity_names_unresolved": []
+          }
+        ],
+        "binding": null,
+        "chapter": {
+          "title": "Chương 4",
+          "intent": "Bắt đầu quá trình tu luyện công pháp Ma nữ và những biến đổi thể chất đầu tiên.",
+          "beat_role": "rising_conflict",
+          "chapter_id": "019f16d0-111a-772b-a17d-7a6d2b6f94a5",
+          "sort_order": 4
+        },
+        "warning": null,
+        "application_rows": []
+      },
+      {
+        "motif": null,
+        "scenes": [
+          {
+            "title": "Dấu vết của sự lột xác",
+            "tension": 30,
+            "synopsis": "Nữ chính hoàn thành giai đoạn đầu của công pháp, khí chất thay đổi khiến những người hầu cận bắt đầu xì xào bàn tán.",
+            "suggested_k": 1,
+            "present_entity_ids": [],
+            "present_entity_names_unresolved": []
+          },
+          {
+            "title": "Ánh mắt đầy ác ý",
+            "tension": 55,
+            "synopsis": "Sự thay đổi nhan sắc và khí chất của nàng lọt vào tầm ngắm của những kẻ từng coi thường nàng, nảy sinh sự đố kỵ lộ liễu.",
+            "suggested_k": 2,
+            "present_entity_ids": [],
+            "present_entity_names_unresolved": []
+          }
+        ],
+        "binding": null,
+        "chapter": {
+          "title": "Chương 5",
+          "intent": "Sự thay đổi của nàng bắt đầu thu hút sự chú ý và đố kỵ từ những kẻ xung quanh.",
+          "beat_role": "rising_conflict",
+          "chapter_id": "019f16d0-112d-7125-8182-46718f9012ae",
+          "sort_order": 5
+        },
+        "warning": null,
+        "application_rows": []
+      },
+      {
+        "motif": null,
+        "scenes": [
+          {
+            "title": "Nỗi đau từ sự đào thải",
+            "tension": 45,
+            "synopsis": "Nữ chính phải chịu đựng sự sỉ nhục của gia tộc khi quá trình tu luyện Ma công khiến khí chất nàng thay đổi, khiến mọi người xung quanh cảm thấy bất an và ghê tởm.",
+            "suggested_k": 2,
+            "present_entity_ids": [],
+            "present_entity_names_unresolved": []
+          },
+          {
+            "title": "Cơn khát linh khí",
+            "tension": 65,
+            "synopsis": "Quá trình hấp thụ công pháp Succubus đòi hỏi nguồn năng lượng cực lớn, đẩy cơ thể nàng vào trạng thái cận kề sự sụp đổ nếu không tìm được linh thạch chất lượng cao.",
+            "suggested_k": 2,
+            "present_entity_ids": [],
+            "present_entity_names_unresolved": []
+          },
+          {
+            "title": "Cuộc săn trong bóng tối",
+            "tension": 85,
+            "synopsis": "Nữ chính phải dấn thân vào khu vực cấm địa để tìm kiếm dược liệu, đối mặt với những yêu thú cấp cao và sự truy sát của các thiên tài cùng thế hệ.",
+            "suggested_k": 3,
+            "present_entity_ids": [],
+            "present_entity_names_unresolved": []
+          },
+          {
+            "title": "Sự thức tỉnh tàn khốc",
+            "tension": 100,
+            "synopsis": "Trong khoảnh khắc sinh tử, nàng buộc phải lựa chọn giữa việc giữ lại nhân tính hoặc hoàn toàn nuốt chửng sức mạnh Ma tộc để vượt qua nghịch cảnh.",
+            "suggested_k": 3,
+            "present_entity_ids": [],
+            "present_entity_names_unresolved": []
+          }
+        ],
+        "binding": null,
+        "chapter": {
+          "title": "Chương 6",
+          "intent": "Những thử thách tu luyện ngày càng khắc nghiệt và đầy rẫy nguy hiểm.",
+          "beat_role": "rising_conflict",
+          "chapter_id": "019f16d0-113e-7844-92df-892741a0cbb0",
+          "sort_order": 6
+        },
+        "warning": null,
+        "application_rows": []
+      },
+      {
+        "motif": null,
+        "scenes": [
+          {
+            "title": "Sự sỉ nhục tại quảng trường",
+            "tension": 45,
+            "synopsis": "Nữ chính bị các đệ tử tông môn chính đạo công khai chế giễu và khinh miệt về tư chất và ngoại hình ngay trước đám đông.",
+            "suggested_k": 2,
+            "present_entity_ids": [],
+            "present_entity_names_unresolved": []
+          },
+          {
+            "title": "Áp lực từ trưởng lão",
+            "tension": 70,
+            "synopsis": "Một trưởng lão có uy tín của thế lực chính đạo ra tay trấn áp, dùng áp lực linh hồn để cảnh cáo nàng không được phép làm loạn.",
+            "suggested_k": 3,
+            "present_entity_ids": [],
+            "present_entity_names_unresolved": []
+          },
+          {
+            "title": "Cuộc chạm trán đẫm máu",
+            "tension": 90,
+            "synopsis": "Một thiên tài của phe chính đạo cố tình gây hấn để thử thách sức mạnh mới của nàng, dẫn đến một cuộc giao tranh ngắn nhưng quyết liệt.",
+            "suggested_k": 3,
+            "present_entity_ids": [],
+            "present_entity_names_unresolved": []
+          },
+          {
+            "title": "Sự thức tỉnh của Ma công",
+            "tension": 100,
+            "synopsis": "Trong cơn nguy kịch, sức mạnh của cuốn cổ thư Ma nữ trỗi dậy, khiến nàng nhận ra sự tàn khốc của con đường tu luyện hắc ám.",
+            "suggested_k": 3,
+            "present_entity_ids": [],
+            "present_entity_names_unresolved": []
+          }
+        ],
+        "binding": null,
+        "chapter": {
+          "title": "Chương 7",
+          "intent": "Đối mặt với sự chèn ép trực tiếp từ các thế lực tu tiên chính thống.",
+          "beat_role": "rising_conflict",
+          "chapter_id": "019f16d0-1151-7126-94c5-5be44b08bd38",
+          "sort_order": 7
+        },
+        "warning": null,
+        "application_rows": []
+      },
+      {
+        "motif": null,
+        "scenes": [
+          {
+            "title": "Bẫy Trong Ánh Sáng",
+            "tension": 40,
+            "synopsis": "Nữ chính tin tưởng vào một cơ hội tu luyện hiếm có nhưng thực chất là một cái bẫy được giăng sẵn bởi người thân cận.",
+            "suggested_k": 3,
+            "present_entity_ids": [],
+            "present_entity_names_unresolved": []
+          },
+          {
+            "title": "Sự Phản Bội Đau Đớn",
+            "tension": 85,
+            "synopsis": "Kẻ phản bội lộ diện, tước đoạt đi tài nguyên hoặc công pháp mà nàng vừa mới đạt được, đẩy nàng vào ranh giới sinh tử.",
+            "suggested_k": 3,
+            "present_entity_ids": [],
+            "present_entity_names_unresolved": []
+          },
+          {
+            "title": "Vực Thẳm Tuyệt Vọng",
+            "tension": 100,
+            "synopsis": "Nữ chính bị dồn vào đường cùng, mất đi sự tự tin và đối mặt với thực tại nghiệt ngã về sự yếu ớt của bản thân.",
+            "suggested_k": 3,
+            "present_entity_ids": [],
+            "present_entity_names_unresolved": []
+          }
+        ],
+        "binding": null,
+        "chapter": {
+          "title": "Chương 8",
+          "intent": "Một âm mưu phản bội khiến nàng rơi vào tình cảnh hiểm nghèo, mất đi lợi thế tạm thời.",
+          "beat_role": "setback",
+          "chapter_id": "019f16d0-1161-7aca-9040-08994278b318",
+          "sort_order": 8
+        },
+        "warning": null,
+        "application_rows": []
+      },
+      {
+        "motif": null,
+        "scenes": [
+          {
+            "title": "Sự nghi kỵ trỗi dậy",
+            "tension": 30,
+            "synopsis": "Nữ chính nhận thấy sự thay đổi trong khí chất và vẻ ngoài của mình đang lọt vào tầm mắt của những người xung quanh, tạo ra sự bất an.",
+            "suggested_k": 2,
+            "present_entity_ids": [],
+            "present_entity_names_unresolved": []
+          },
+          {
+            "title": "Cuộc truy tìm dấu vết",
+            "tension": 60,
+            "synopsis": "Một kẻ có linh giác nhạy bén phát hiện ra sự bất thường trong dòng chảy linh lực của nàng, dẫn đến một cuộc đối đầu ngầm.",
+            "suggested_k": 3,
+            "present_entity_ids": [],
+            "present_entity_names_unresolved": []
+          },
+          {
+            "title": "Cái giá của sự im lặng",
+            "tension": 85,
+            "synopsis": "Để che giấu nguồn gốc sức mạnh, nàng buộc phải hy sinh một vật phẩm hộ mệnh quan trọng hoặc một cơ hội tu luyện quý giá để đánh lạc hướng sự chú ý.",
+            "suggested_k": 3,
+            "present_entity_ids": [],
+            "present_entity_names_unresolved": []
+          },
+          {
+            "title": "Vết sẹo tâm hồn",
+            "tension": 50,
+            "synopsis": "Nàng nhận ra rằng con đường tu luyện Ma nữ không chỉ lấy đi sức mạnh mà còn dần tước đoạt đi những thứ thuộc về nhân tính hoặc sự bình yên của nàng.",
+            "suggested_k": 3,
+            "present_entity_ids": [],
+            "present_entity_names_unresolved": []
+          }
+        ],
+        "binding": null,
+        "chapter": {
+          "title": "Chương 9",
+          "intent": "Nàng phải trả giá đắt để bảo vệ bí mật về công pháp Ma nữ của mình.",
+          "beat_role": "setback",
+          "chapter_id": "019f16d0-1173-7d7c-b364-c41f1bee556e",
+          "sort_order": 9
+        },
+        "warning": null,
+        "application_rows": []
+      },
+      {
+        "motif": null,
+        "scenes": [
+          {
+            "title": "Tuyệt vọng trong vũng bùn",
+            "tension": 75,
+            "synopsis": "Nữ chính bị dồn vào đường cùng bởi sự khinh miệt và đòn tấn công chí mạng, buộc phải lựa chọn giữa cái chết hoặc sự đánh đổi linh hồn.",
+            "suggested_k": 3,
+            "present_entity_ids": [],
+            "present_entity_names_unresolved": []
+          },
+          {
+            "title": "Sự trỗi dậy của Ma khí",
+            "tension": 90,
+            "synopsis": "Nữ chính kích hoạt cuốn cổ thư, sức mạnh Succubus bùng nổ làm thay đổi hoàn toàn khí chất và áp lực lên kẻ thù.",
+            "suggested_k": 3,
+            "present_entity_ids": [],
+            "present_entity_names_unresolved": []
+          },
+          {
+            "title": "Nghịch chuyển sinh tử",
+            "tension": 100,
+            "synopsis": "Nữ chính sử dụng sức mạnh mới để phản công, khiến những kẻ từng khinh rẻ nàng phải kinh hoàng trước sự biến đổi.",
+            "suggested_k": 3,
+            "present_entity_ids": [],
+            "present_entity_names_unresolved": []
+          }
+        ],
+        "binding": null,
+        "chapter": {
+          "title": "Chương 10",
+          "intent": "Nàng bộc phát sức mạnh Ma nữ để lật ngược thế cờ trong trận chiến sinh tử.",
+          "beat_role": "climax",
+          "chapter_id": "019f16d0-1185-72b0-b059-574a5702e2d4",
+          "sort_order": 10
+        },
+        "warning": null,
+        "application_rows": []
+      },
+      {
+        "motif": null,
+        "scenes": [
+          {
+            "title": "Nghi lễ lột xác trong bóng tối",
+            "tension": 85,
+            "synopsis": "Nữ chính sử dụng công pháp Ma nữ để thanh tẩy cơ thể, chịu đựng nỗi đau tột cùng khi thay đổi cấu trúc gân cốt và diện mạo.",
+            "suggested_k": 3,
+            "present_entity_ids": [],
+            "present_entity_names_unresolved": []
+          },
+          {
+            "title": "Sự thức tỉnh của vẻ đẹp ma mị",
+            "tension": 30,
+            "synopsis": "Nàng soi mình dưới ánh trăng, nhận ra sự thay đổi kinh ngạc về nhan sắc và luồng linh lực hắc ám đang cuộn trào trong cơ thể.",
+            "suggested_k": 2,
+            "present_entity_ids": [],
+            "present_entity_names_unresolved": []
+          },
+          {
+            "title": "Thử thách thực lực đầu tiên",
+            "tension": 65,
+            "synopsis": "Nàng thực hiện một bài kiểm tra sức mạnh nhỏ để kiểm chứng sự thăng tiến vượt bậc của tu vi so với trước đây.",
+            "suggested_k": 3,
+            "present_entity_ids": [],
+            "present_entity_names_unresolved": []
+          },
+          {
+            "title": "Sự trở lại đầy ngạo nghễ",
+            "tension": 75,
+            "synopsis": "Nàng bước ra khỏi mật thất, đối mặt với những ánh nhìn khinh miệt cũ bằng một phong thái hoàn toàn mới, báo hiệu một sự thay đổi không thể đảo ngược.",
+            "suggested_k": 3,
+            "present_entity_ids": [],
+            "present_entity_names_unresolved": []
+          }
+        ],
+        "binding": null,
+        "chapter": {
+          "title": "Chương 11",
+          "intent": "Sự hoàn mỹ bước đầu được hình thành, đánh dấu sự lột xác hoàn toàn về diện mạo và thực lực.",
+          "beat_role": "climax",
+          "chapter_id": "019f16d0-1197-702e-9a8c-f6e6e50dfa32",
+          "sort_order": 11
+        },
+        "warning": null,
+        "application_rows": []
+      },
+      {
+        "motif": null,
+        "scenes": [
+          {
+            "title": "Đỉnh Cao Tạm Thời",
+            "tension": 30,
+            "synopsis": "Nữ chính thu hoạch thành quả sau một trận chiến lớn, cảm nhận được sức mạnh mới từ công pháp Ma nữ nhưng nhận ra sự trống rỗng của chiến thắng.",
+            "suggested_k": 1,
+            "present_entity_ids": [],
+            "present_entity_names_unresolved": []
+          },
+          {
+            "title": "Thế Giới Mở Ra",
+            "tension": 50,
+            "synopsis": "Nàng vô tình tiếp cận một bí mật hoặc một bản đồ dẫn đến vùng đất mới, nơi những kẻ mạnh thực sự đang thống trị.",
+            "suggested_k": 2,
+            "present_entity_ids": [],
+            "present_entity_names_unresolved": []
+          },
+          {
+            "title": "Cơn Sóng Ngầm",
+            "tension": 85,
+            "synopsis": "Một sự kiện hoặc một kẻ thù cấp cao xuất hiện, cho thấy sự chênh lệch sức mạnh khủng khiếp giữa nàng và trật tự thế giới hiện tại.",
+            "suggested_k": 3,
+            "present_entity_ids": [],
+            "present_entity_names_unresolved": []
+          }
+        ],
+        "binding": null,
+        "chapter": {
+          "title": "Chương 12",
+          "intent": "Nàng đứng trên đỉnh cao mới nhưng nhận ra một thế giới rộng lớn và nguy hiểm hơn đang chờ đợi.",
+          "beat_role": "resolution",
+          "chapter_id": "019f16d0-11a7-7b0b-8905-b3f0f508bba0",
+          "sort_order": 12
+        },
+        "warning": null,
+        "application_rows": []
+      }
+    ],
+    "arc_title": "Web Novel Arc",
+    "motif_coverage": {},
+    "unmapped_beats": []
+  },
+  "scene_nodes": [
+    {
+      "id": "019f16d0-b301-7fd8-a465-fd45ac22b86d",
+      "title": "Sự ghẻ lạnh trong bữa tối",
+      "chapter_id": "019f16d0-10cc-794e-9f96-1cbe6ee56d3b"
+    },
+    {
+      "id": "019f16d0-b303-7218-86f3-b22d7a442030",
+      "title": "Áp lực từ thử thách tu luyện",
+      "chapter_id": "019f16d0-10cc-794e-9f96-1cbe6ee56d3b"
+    },
+    {
+      "id": "019f16d0-b303-7a55-9b39-ffa91b40b356",
+      "title": "Ranh giới sinh tồn",
+      "chapter_id": "019f16d0-10cc-794e-9f96-1cbe6ee56d3b"
+    },
+    {
+      "id": "019f16d0-b304-780c-9242-68f3c3e9a179",
+      "title": "Sự ghẻ lạnh của gia tộc",
+      "chapter_id": "019f16d0-10f2-7452-b02e-e603eed18c65"
+    },
+    {
+      "id": "019f16d0-b304-7fd4-8277-00f01d51b6eb",
+      "title": "Nỗi đau bị ruồng bỏ",
+      "chapter_id": "019f16d0-10f2-7452-b02e-e603eed18c65"
+    },
+    {
+      "id": "019f16d0-b305-7601-b469-5dcaf475cf6c",
+      "title": "Ranh giới sinh tử",
+      "chapter_id": "019f16d0-10f2-7452-b02e-e603eed18c65"
+    },
+    {
+      "id": "019f16d0-b305-7f8b-b0a4-e038230ad7c5",
+      "title": "Sự Ruồng Bỏ Đau Đớn",
+      "chapter_id": "019f16d0-1106-7eb9-95b8-b317427a4c3f"
+    },
+    {
+      "id": "019f16d0-b306-7469-a5eb-bf0a7c69177f",
+      "title": "Ranh Giới Sinh Tử",
+      "chapter_id": "019f16d0-1106-7eb9-95b8-b317427a4c3f"
+    },
+    {
+      "id": "019f16d0-b306-7e53-8cbd-6f3268a3413b",
+      "title": "Tiếng Gọi Từ Vực Thẳm",
+      "chapter_id": "019f16d0-1106-7eb9-95b8-b317427a4c3f"
+    },
+    {
+      "id": "019f16d0-b307-75cf-9caf-3eeae743905f",
+      "title": "Giao Ước Hắc Ám",
+      "chapter_id": "019f16d0-1106-7eb9-95b8-b317427a4c3f"
+    },
+    {
+      "id": "019f16d0-b308-705f-a276-19f4d0bdd6a5",
+      "title": "Nghi thức trong tuyệt vọng",
+      "chapter_id": "019f16d0-111a-772b-a17d-7a6d2b6f94a5"
+    },
+    {
+      "id": "019f16d0-b308-74f6-b424-c36377068c54",
+      "title": "Sự tái sinh đau đớn",
+      "chapter_id": "019f16d0-111a-772b-a17d-7a6d2b6f94a5"
+    },
+    {
+      "id": "019f16d0-b308-7ac2-9109-b8bfdb1f6a04",
+      "title": "Dấu vết của bóng tối",
+      "chapter_id": "019f16d0-111a-772b-a17d-7a6d2b6f94a5"
+    },
+    {
+      "id": "019f16d0-b308-7f4e-b09d-91b668d7a233",
+      "title": "Áp lực từ kẻ thù",
+      "chapter_id": "019f16d0-111a-772b-a17d-7a6d2b6f94a5"
+    },
+    {
+      "id": "019f16d0-b30a-711b-86d7-8ca3e70fbda5",
+      "title": "Dấu vết của sự lột xác",
+      "chapter_id": "019f16d0-112d-7125-8182-46718f9012ae"
+    },
+    {
+      "id": "019f16d0-b30a-7842-aae3-f0ac1688764a",
+      "title": "Ánh mắt đầy ác ý",
+      "chapter_id": "019f16d0-112d-7125-8182-46718f9012ae"
+    },
+    {
+      "id": "019f16d0-b30b-7641-b4f0-c0c42de245e1",
+      "title": "Nỗi đau từ sự đào thải",
+      "chapter_id": "019f16d0-113e-7844-92df-892741a0cbb0"
+    },
+    {
+      "id": "019f16d0-b30b-7c9f-89f9-2d497b820d14",
+      "title": "Cơn khát linh khí",
+      "chapter_id": "019f16d0-113e-7844-92df-892741a0cbb0"
+    },
+    {
+      "id": "019f16d0-b30c-736e-9303-0a19997616f8",
+      "title": "Cuộc săn trong bóng tối",
+      "chapter_id": "019f16d0-113e-7844-92df-892741a0cbb0"
+    },
+    {
+      "id": "019f16d0-b30c-7964-b0bb-a40b884d63e3",
+      "title": "Sự thức tỉnh tàn khốc",
+      "chapter_id": "019f16d0-113e-7844-92df-892741a0cbb0"
+    },
+    {
+      "id": "019f16d0-b30d-74d3-b5f0-c7ca1fa1e939",
+      "title": "Sự sỉ nhục tại quảng trường",
+      "chapter_id": "019f16d0-1151-7126-94c5-5be44b08bd38"
+    },
+    {
+      "id": "019f16d0-b30d-79c3-b122-e27e2ed98da2",
+      "title": "Áp lực từ trưởng lão",
+      "chapter_id": "019f16d0-1151-7126-94c5-5be44b08bd38"
+    },
+    {
+      "id": "019f16d0-b30d-7f48-91ee-94f27843daa7",
+      "title": "Cuộc chạm trán đẫm máu",
+      "chapter_id": "019f16d0-1151-7126-94c5-5be44b08bd38"
+    },
+    {
+      "id": "019f16d0-b30e-7606-9934-abfd9fee27ba",
+      "title": "Sự thức tỉnh của Ma công",
+      "chapter_id": "019f16d0-1151-7126-94c5-5be44b08bd38"
+    },
+    {
+      "id": "019f16d0-b30f-755f-b3d3-7e3c7ebb7501",
+      "title": "Bẫy Trong Ánh Sáng",
+      "chapter_id": "019f16d0-1161-7aca-9040-08994278b318"
+    },
+    {
+      "id": "019f16d0-b30f-7c29-9353-284365f25240",
+      "title": "Sự Phản Bội Đau Đớn",
+      "chapter_id": "019f16d0-1161-7aca-9040-08994278b318"
+    },
+    {
+      "id": "019f16d0-b310-721f-b6f9-7c621d42ed07",
+      "title": "Vực Thẳm Tuyệt Vọng",
+      "chapter_id": "019f16d0-1161-7aca-9040-08994278b318"
+    },
+    {
+      "id": "019f16d0-b311-70e8-be7f-9c1a69a0837e",
+      "title": "Sự nghi kỵ trỗi dậy",
+      "chapter_id": "019f16d0-1173-7d7c-b364-c41f1bee556e"
+    },
+    {
+      "id": "019f16d0-b311-79db-8acb-5458f16f2f65",
+      "title": "Cuộc truy tìm dấu vết",
+      "chapter_id": "019f16d0-1173-7d7c-b364-c41f1bee556e"
+    },
+    {
+      "id": "019f16d0-b312-70e5-9cf3-a8e9a7acae1f",
+      "title": "Cái giá của sự im lặng",
+      "chapter_id": "019f16d0-1173-7d7c-b364-c41f1bee556e"
+    },
+    {
+      "id": "019f16d0-b312-79a7-88bd-f31f871dd389",
+      "title": "Vết sẹo tâm hồn",
+      "chapter_id": "019f16d0-1173-7d7c-b364-c41f1bee556e"
+    },
+    {
+      "id": "019f16d0-b313-7b3e-bae3-a37c406cc0ad",
+      "title": "Tuyệt vọng trong vũng bùn",
+      "chapter_id": "019f16d0-1185-72b0-b059-574a5702e2d4"
+    },
+    {
+      "id": "019f16d0-b314-7304-a275-82c821a9c53b",
+      "title": "Sự trỗi dậy của Ma khí",
+      "chapter_id": "019f16d0-1185-72b0-b059-574a5702e2d4"
+    },
+    {
+      "id": "019f16d0-b314-7b32-98c1-4e85cbfe7509",
+      "title": "Nghịch chuyển sinh tử",
+      "chapter_id": "019f16d0-1185-72b0-b059-574a5702e2d4"
+    },
+    {
+      "id": "019f16d0-b315-791b-8954-f2655f1ba40d",
+      "title": "Nghi lễ lột xác trong bóng tối",
+      "chapter_id": "019f16d0-1197-702e-9a8c-f6e6e50dfa32"
+    },
+    {
+      "id": "019f16d0-b316-709a-a57d-cdabd04c6225",
+      "title": "Sự thức tỉnh của vẻ đẹp ma mị",
+      "chapter_id": "019f16d0-1197-702e-9a8c-f6e6e50dfa32"
+    },
+    {
+      "id": "019f16d0-b316-762e-a0a6-208b60c9be50",
+      "title": "Thử thách thực lực đầu tiên",
+      "chapter_id": "019f16d0-1197-702e-9a8c-f6e6e50dfa32"
+    },
+    {
+      "id": "019f16d0-b316-7cb0-a98b-ff5070173e43",
+      "title": "Sự trở lại đầy ngạo nghễ",
+      "chapter_id": "019f16d0-1197-702e-9a8c-f6e6e50dfa32"
+    },
+    {
+      "id": "019f16d0-b317-7bbd-b07b-23b016c5d287",
+      "title": "Đỉnh Cao Tạm Thời",
+      "chapter_id": "019f16d0-11a7-7b0b-8905-b3f0f508bba0"
+    },
+    {
+      "id": "019f16d0-b318-72df-b646-d0e95ce73795",
+      "title": "Thế Giới Mở Ra",
+      "chapter_id": "019f16d0-11a7-7b0b-8905-b3f0f508bba0"
+    },
+    {
+      "id": "019f16d0-b318-7925-802b-6633be6cab87",
+      "title": "Cơn Sóng Ngầm",
+      "chapter_id": "019f16d0-11a7-7b0b-8905-b3f0f508bba0"
+    }
+  ]
+}

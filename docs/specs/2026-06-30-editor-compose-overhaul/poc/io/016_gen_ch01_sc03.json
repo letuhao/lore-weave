@@ -1,0 +1,23 @@
+{
+  "seq": 16,
+  "name": "gen_ch01_sc03",
+  "method": "POST",
+  "url": "http://localhost:3123/v1/composition/works/019f16e4-1d9f-70db-9fd3-9e40168f35d5/generate",
+  "status": 202,
+  "request": {
+    "mode": "auto",
+    "outline_node_id": "019f16e4-c3cd-739f-8d67-5752b259c2a7",
+    "model_source": "user_model",
+    "model_ref": "019ebb72-27a2-72f3-a42d-d2d0e0ded179",
+    "operation": "draft_scene",
+    "guide": "",
+    "reasoning": "auto"
+  },
+  "response": {
+    "job_id": "019f16e5-7291-7911-bed2-a5e52a56aa42",
+    "status": "pending",
+    "mode": "auto",
+    "assembly_mode": "per_scene",
+    "enqueued": "ok"
+  }
+}

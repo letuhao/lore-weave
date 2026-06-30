@@ -1,0 +1,65 @@
+# Editor & Compose UX/UI Overhaul — Track Index
+
+> **Started:** 2026-06-30 · **Status:** CLARIFY/DESIGN (discussing user stories one by one) ·
+> **Branch (when BUILD starts):** TBD · **Owner:** letuhao1994 (PO) + Claude
+> **Supersedes:** [`../2026-06-02-composition-studio-ux.md`](../2026-06-02-composition-studio-ux.md)
+
+This is a **huge, multi-story** effort (re-arrange + wire the chapter editor, compose studio, and
+translation into one coherent workspace). It is tracked as a folder so the investigation is written
+down **once** and never re-explored — read these before doing any new code-spelunking.
+
+## Visual artifacts
+- **[`compose-ideal-journey.html`](compose-ideal-journey.html)** — the IDEAL compose user-story graph
+  (design target, not current code). Open in a browser. Next: POC current source vs this to find gaps.
+
+## Read order (new session: start here)
+
+1. **[`00_INVESTIGATION.md`](00_INVESTIGATION.md)** — canonical current-state inventory (file:line
+   evidence for the editor shell, the 24 compose panels, scenes, translation, backend/MCP surface,
+   and the dock infra). **Don't re-grep what's already here.**
+2. **[`01_USER_STORIES.md`](01_USER_STORIES.md)** — the epics/stories + per-story status.
+3. **[`02_DESIGN.md`](02_DESIGN.md)** — recommended IA, the Workmode model, milestones M0–M5,
+   verification, out-of-scope.
+4. **[`stories/`](stories/)** — one file per story, holding the discussion + locked decisions.
+
+## Status tracker
+
+### User stories (discussion → decision)
+| Story | Title | Status | Decision file |
+|---|---|---|---|
+| A1 | Single Write/Translate/Compose switch | ⬜ not discussed | — |
+| A2 | Context preserved across mode switch | ⬜ not discussed | — |
+| **(manual)** | **Manual "Classic" mode — definition & quality** | ✅ **decided (QoL-only)** | [`stories/01-manual-write.md`](stories/01-manual-write.md) |
+| B1–B4 | Translate as a real mode (+ manual/human-first) | ✅ **decided** | [`stories/02-translation.md`](stories/02-translation.md) |
+| C (re-frame) | Talk / Build / (Produce→toolbox) frame | 🟡 discussing | [`stories/03-compose-reframe.md`](stories/03-compose-reframe.md) |
+| C6 | **AI chat as core** ("Claude Code in VS Code") — tool curation, skills, model settings | 🟡 discussing | [`stories/04-ai-chat-core.md`](stories/04-ai-chat-core.md) |
+| C2/C5 | Compose panels = toolbox; Media tool | 🟡 toolbox open / **Media deferred** | [`stories/05-compose-toolbox.md`](stories/05-compose-toolbox.md) |
+| **C1 ★** | **The compose journey (process, not tools)** — CORE PROBLEM | 🟡 **investigating** | [`stories/06-compose-journey.md`](stories/06-compose-journey.md) |
+| D1–D3 | Scenes I can organize | ⬜ not discussed | — |
+
+### Milestones (build) — sequenced after stories are locked
+| M | Goal | Status |
+|---|---|---|
+| M0 | Workmode switch | ⬜ planned |
+| M1 | Translate mode **(FS)** — incl. manual/human-first + seed-from-source BE endpoint | ⬜ planned |
+| M2 | Re-group 24 panels into 5 sections | ⬜ planned |
+| M3 | Scenes panel (add/reorder/archive/restore) | ⬜ planned |
+| M4 | Compose command-center | ⬜ planned |
+| M5 | BookAssistantDock → compose bridge (stretch) | ⬜ planned |
+
+## Decision log (append-only — newest last)
+- _2026-06-30_ — PO confirmed: **re-arrange + wire, no re-architecture**; mental model = "recommend
+  optimal"; first milestone = "recommend after mapping". → recommended **M0+M1** first.
+- _2026-06-30_ — Effort moved into this tracked folder; investigation persisted to avoid re-explore.
+- _2026-06-30_ — **Manual mode decided:** keep **Classic** as designed (ticks original design),
+  QoL-only — idle autosave (L2) + ungate media/callouts (L3). Folds into M0. See
+  [`stories/01-manual-write.md`](stories/01-manual-write.md).
+- _2026-06-30_ — **Translation decided:** persistent Translate mode (extract `ChapterTranslationsPanel`)
+  + **manual/human-first translation (B4)** seeded from source, AI kept as a peer option, center
+  side-by-side. **M1 becomes full-stack** (one small translation-service seed-from-source endpoint).
+  See [`stories/02-translation.md`](stories/02-translation.md).
+- _2026-06-30_ — **Compose re-frame:** AI chat = the CORE (story 04, "Claude Code in VS Code" — tool
+  curation + skills + model settings, the one place we add NEW build). Panels = a Photoshop/AE
+  **toolbox that already exists** behind flag `loom.workspace.enabled` (story 05). **Media tool
+  DEFERRED** (classic books have no media). **Core problem identified:** the compose GUI encodes no
+  creative PROCESS — need a **guided journey** ordering the 24 tools (story 06, investigating).

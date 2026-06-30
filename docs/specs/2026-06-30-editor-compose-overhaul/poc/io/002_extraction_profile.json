@@ -1,0 +1,970 @@
+{
+  "seq": 2,
+  "name": "extraction_profile",
+  "method": "GET",
+  "url": "http://localhost:3123/v1/glossary/books/019f173a-dfb8-768e-a5e9-89c90ad9bed1/extraction-profile",
+  "status": 200,
+  "request": null,
+  "response": {
+    "kinds": [
+      {
+        "kind_id": "509c950f-4fa7-4cd7-ae57-7d9a88379638",
+        "code": "character",
+        "name": "Character",
+        "description": null,
+        "icon": "👤",
+        "auto_selected": true,
+        "attributes": [
+          {
+            "code": "name",
+            "name": "Name",
+            "field_type": "text",
+            "description": null,
+            "auto_fill_prompt": null,
+            "is_required": true,
+            "auto_selected": true
+          },
+          {
+            "code": "aliases",
+            "name": "Aliases",
+            "field_type": "tags",
+            "description": "Other names, titles, epithets, or nicknames the character is known by.",
+            "auto_fill_prompt": null,
+            "is_required": false,
+            "auto_selected": true
+          },
+          {
+            "code": "gender",
+            "name": "Gender",
+            "field_type": "text",
+            "description": "The character's gender or how the text presents it.",
+            "auto_fill_prompt": null,
+            "is_required": false,
+            "auto_selected": true
+          },
+          {
+            "code": "role",
+            "name": "Role",
+            "field_type": "text",
+            "description": "The character's narrative role (protagonist, antagonist, mentor, foil, …).",
+            "auto_fill_prompt": null,
+            "is_required": false,
+            "auto_selected": true
+          },
+          {
+            "code": "occupation",
+            "name": "Occupation",
+            "field_type": "text",
+            "description": "The character's job, profession, or primary activity in the story.",
+            "auto_fill_prompt": null,
+            "is_required": false,
+            "auto_selected": true
+          },
+          {
+            "code": "social_class",
+            "name": "Social Class",
+            "field_type": "text",
+            "description": "The character's social standing or rank (noble, commoner, outcast, …).",
+            "auto_fill_prompt": null,
+            "is_required": false,
+            "auto_selected": true
+          },
+          {
+            "code": "affiliation",
+            "name": "Affiliation",
+            "field_type": "text",
+            "description": "The faction, house, organization, or side the character belongs to.",
+            "auto_fill_prompt": null,
+            "is_required": false,
+            "auto_selected": true
+          },
+          {
+            "code": "appearance",
+            "name": "Appearance",
+            "field_type": "textarea",
+            "description": "Physical appearance: build, face, clothing, and any distinguishing or supernatural features described in the text.",
+            "auto_fill_prompt": null,
+            "is_required": false,
+            "auto_selected": true
+          },
+          {
+            "code": "personality",
+            "name": "Personality",
+            "field_type": "textarea",
+            "description": "Temperament, core traits, virtues and flaws as shown through actions and speech.",
+            "auto_fill_prompt": null,
+            "is_required": false,
+            "auto_selected": true
+          },
+          {
+            "code": "emotional_wound",
+            "name": "Emotional Wound",
+            "field_type": "textarea",
+            "description": "The past hurt, loss, or trauma that drives the character's behavior.",
+            "auto_fill_prompt": null,
+            "is_required": false,
+            "auto_selected": true
+          },
+          {
+            "code": "love_language",
+            "name": "Love Language",
+            "field_type": "text",
+            "description": "How the character expresses or receives affection (if relevant to the story).",
+            "auto_fill_prompt": null,
+            "is_required": false,
+            "auto_selected": true
+          },
+          {
+            "code": "relationships",
+            "name": "Relationships",
+            "field_type": "textarea",
+            "description": "Key relationships to other characters and how they connect.",
+            "auto_fill_prompt": null,
+            "is_required": false,
+            "auto_selected": true
+          },
+          {
+            "code": "description",
+            "name": "Description",
+            "field_type": "textarea",
+            "description": "A concise overview of who the character is and their significance in the story.",
+            "auto_fill_prompt": null,
+            "is_required": false,
+            "auto_selected": true
+          }
+        ]
+      },
+      {
+        "kind_id": "1f272345-f10b-432a-9803-1f6770c72bfd",
+        "code": "location",
+        "name": "Location",
+        "description": null,
+        "icon": "📍",
+        "auto_selected": true,
+        "attributes": [
+          {
+            "code": "name",
+            "name": "Name",
+            "field_type": "text",
+            "description": null,
+            "auto_fill_prompt": null,
+            "is_required": true,
+            "auto_selected": true
+          },
+          {
+            "code": "aliases",
+            "name": "Aliases",
+            "field_type": "tags",
+            "description": "Other names the place is known by.",
+            "auto_fill_prompt": null,
+            "is_required": false,
+            "auto_selected": true
+          },
+          {
+            "code": "type",
+            "name": "Type",
+            "field_type": "text",
+            "description": "The kind of place (city, castle, region, realm, building, …).",
+            "auto_fill_prompt": null,
+            "is_required": false,
+            "auto_selected": true
+          },
+          {
+            "code": "parent_location",
+            "name": "Parent Location",
+            "field_type": "text",
+            "description": "The larger place this one belongs to (region, country, world).",
+            "auto_fill_prompt": null,
+            "is_required": false,
+            "auto_selected": true
+          },
+          {
+            "code": "atmosphere",
+            "name": "Atmosphere",
+            "field_type": "textarea",
+            "description": "The mood, tone, or sensory feel of the place as the text describes it.",
+            "auto_fill_prompt": null,
+            "is_required": false,
+            "auto_selected": true
+          },
+          {
+            "code": "significance",
+            "name": "Significance",
+            "field_type": "textarea",
+            "description": "Why the place matters to the story or its characters.",
+            "auto_fill_prompt": null,
+            "is_required": false,
+            "auto_selected": true
+          },
+          {
+            "code": "description",
+            "name": "Description",
+            "field_type": "textarea",
+            "description": "What the place is and its notable features.",
+            "auto_fill_prompt": null,
+            "is_required": false,
+            "auto_selected": true
+          }
+        ]
+      },
+      {
+        "kind_id": "3d2baeb9-c66f-48ad-bfba-b414da5f843c",
+        "code": "item",
+        "name": "Item / Prop",
+        "description": null,
+        "icon": "🎁",
+        "auto_selected": true,
+        "attributes": [
+          {
+            "code": "name",
+            "name": "Name",
+            "field_type": "text",
+            "description": null,
+            "auto_fill_prompt": null,
+            "is_required": true,
+            "auto_selected": true
+          },
+          {
+            "code": "aliases",
+            "name": "Aliases",
+            "field_type": "tags",
+            "description": "Other names or titles the item is known by.",
+            "auto_fill_prompt": null,
+            "is_required": false,
+            "auto_selected": true
+          },
+          {
+            "code": "type",
+            "name": "Type",
+            "field_type": "text",
+            "description": "The kind of item (weapon, artifact, relic, document, tool, …).",
+            "auto_fill_prompt": null,
+            "is_required": false,
+            "auto_selected": true
+          },
+          {
+            "code": "owner",
+            "name": "Owner",
+            "field_type": "text",
+            "description": "Who currently holds or is associated with the item.",
+            "auto_fill_prompt": null,
+            "is_required": false,
+            "auto_selected": true
+          },
+          {
+            "code": "symbolic_meaning",
+            "name": "Symbolic Meaning",
+            "field_type": "textarea",
+            "description": "What the item represents thematically or symbolically in the story.",
+            "auto_fill_prompt": null,
+            "is_required": false,
+            "auto_selected": true
+          },
+          {
+            "code": "description",
+            "name": "Description",
+            "field_type": "textarea",
+            "description": "What the item is, its properties, and its role.",
+            "auto_fill_prompt": null,
+            "is_required": false,
+            "auto_selected": true
+          }
+        ]
+      },
+      {
+        "kind_id": "7aab2234-2ef0-4557-8f99-95201a4d1bb6",
+        "code": "event",
+        "name": "Event",
+        "description": null,
+        "icon": "📅",
+        "auto_selected": true,
+        "attributes": [
+          {
+            "code": "name",
+            "name": "Name",
+            "field_type": "text",
+            "description": null,
+            "auto_fill_prompt": null,
+            "is_required": true,
+            "auto_selected": true
+          },
+          {
+            "code": "type",
+            "name": "Type",
+            "field_type": "text",
+            "description": "The kind of event (battle, betrayal, wedding, death, revelation, …).",
+            "auto_fill_prompt": null,
+            "is_required": false,
+            "auto_selected": true
+          },
+          {
+            "code": "date_in_story",
+            "name": "Date in Story",
+            "field_type": "text",
+            "description": "When the event occurs in the story's timeline (in-world date or chapter).",
+            "auto_fill_prompt": null,
+            "is_required": false,
+            "auto_selected": true
+          },
+          {
+            "code": "location",
+            "name": "Location",
+            "field_type": "text",
+            "description": "Where the event takes place.",
+            "auto_fill_prompt": null,
+            "is_required": false,
+            "auto_selected": true
+          },
+          {
+            "code": "participants",
+            "name": "Participants",
+            "field_type": "tags",
+            "description": "The characters or groups involved in the event.",
+            "auto_fill_prompt": null,
+            "is_required": false,
+            "auto_selected": true
+          },
+          {
+            "code": "emotional_impact",
+            "name": "Emotional Impact",
+            "field_type": "textarea",
+            "description": "The emotional weight or fallout the event carries for those involved.",
+            "auto_fill_prompt": null,
+            "is_required": false,
+            "auto_selected": true
+          },
+          {
+            "code": "outcome",
+            "name": "Outcome",
+            "field_type": "textarea",
+            "description": "What results or changes because of the event.",
+            "auto_fill_prompt": null,
+            "is_required": false,
+            "auto_selected": true
+          },
+          {
+            "code": "description",
+            "name": "Description",
+            "field_type": "textarea",
+            "description": "What happens in the event, concisely.",
+            "auto_fill_prompt": null,
+            "is_required": false,
+            "auto_selected": true
+          }
+        ]
+      },
+      {
+        "kind_id": "f81bb0ae-d1b2-4925-ab7c-3aa8b1a235b9",
+        "code": "terminology",
+        "name": "Terminology",
+        "description": null,
+        "icon": "📖",
+        "auto_selected": true,
+        "attributes": [
+          {
+            "code": "term",
+            "name": "Term",
+            "field_type": "text",
+            "description": null,
+            "auto_fill_prompt": null,
+            "is_required": true,
+            "auto_selected": true
+          },
+          {
+            "code": "category",
+            "name": "Category",
+            "field_type": "text",
+            "description": "The category the term belongs to (magic, politics, technology, …).",
+            "auto_fill_prompt": null,
+            "is_required": false,
+            "auto_selected": true
+          },
+          {
+            "code": "definition",
+            "name": "Definition",
+            "field_type": "textarea",
+            "description": "What the term means in this story's world.",
+            "auto_fill_prompt": null,
+            "is_required": true,
+            "auto_selected": true
+          },
+          {
+            "code": "usage_note",
+            "name": "Usage Note",
+            "field_type": "textarea",
+            "description": "How and when the term is used, and any nuance.",
+            "auto_fill_prompt": null,
+            "is_required": false,
+            "auto_selected": true
+          }
+        ]
+      },
+      {
+        "kind_id": "d8a6f4d5-2d10-4df0-8735-23c63474a140",
+        "code": "power_system",
+        "name": "Power System",
+        "description": null,
+        "icon": "✨",
+        "auto_selected": true,
+        "attributes": [
+          {
+            "code": "name",
+            "name": "Name",
+            "field_type": "text",
+            "description": null,
+            "auto_fill_prompt": null,
+            "is_required": true,
+            "auto_selected": true
+          },
+          {
+            "code": "aliases",
+            "name": "Aliases",
+            "field_type": "tags",
+            "description": "Other names the power/system is known by.",
+            "auto_fill_prompt": null,
+            "is_required": false,
+            "auto_selected": true
+          },
+          {
+            "code": "type",
+            "name": "Type",
+            "field_type": "text",
+            "description": "The kind of power system (magic, cultivation, technology, psionics, …).",
+            "auto_fill_prompt": null,
+            "is_required": false,
+            "auto_selected": true
+          },
+          {
+            "code": "rank",
+            "name": "Rank / Tier",
+            "field_type": "text",
+            "description": "The tier, rank, or level scheme within the system.",
+            "auto_fill_prompt": null,
+            "is_required": false,
+            "auto_selected": true
+          },
+          {
+            "code": "user",
+            "name": "User",
+            "field_type": "text",
+            "description": "Who wields or has access to this power.",
+            "auto_fill_prompt": null,
+            "is_required": false,
+            "auto_selected": true
+          },
+          {
+            "code": "effects",
+            "name": "Effects",
+            "field_type": "textarea",
+            "description": "What the power does and its capabilities or limits.",
+            "auto_fill_prompt": null,
+            "is_required": false,
+            "auto_selected": true
+          },
+          {
+            "code": "description",
+            "name": "Description",
+            "field_type": "textarea",
+            "description": "How the power system works, concisely.",
+            "auto_fill_prompt": null,
+            "is_required": false,
+            "auto_selected": true
+          }
+        ]
+      },
+      {
+        "kind_id": "64433bb4-3fb8-4f99-a85f-5f9fead5029b",
+        "code": "organization",
+        "name": "Organization",
+        "description": null,
+        "icon": "🏛",
+        "auto_selected": true,
+        "attributes": [
+          {
+            "code": "name",
+            "name": "Name",
+            "field_type": "text",
+            "description": null,
+            "auto_fill_prompt": null,
+            "is_required": true,
+            "auto_selected": true
+          },
+          {
+            "code": "aliases",
+            "name": "Aliases",
+            "field_type": "tags",
+            "description": "Other names the organization is known by.",
+            "auto_fill_prompt": null,
+            "is_required": false,
+            "auto_selected": true
+          },
+          {
+            "code": "type",
+            "name": "Type",
+            "field_type": "text",
+            "description": "The kind of organization (guild, house, cult, government, army, …).",
+            "auto_fill_prompt": null,
+            "is_required": false,
+            "auto_selected": true
+          },
+          {
+            "code": "leader",
+            "name": "Leader",
+            "field_type": "text",
+            "description": "Who leads or heads the organization.",
+            "auto_fill_prompt": null,
+            "is_required": false,
+            "auto_selected": true
+          },
+          {
+            "code": "headquarters",
+            "name": "Headquarters",
+            "field_type": "text",
+            "description": "The organization's base, seat, or primary location.",
+            "auto_fill_prompt": null,
+            "is_required": false,
+            "auto_selected": true
+          },
+          {
+            "code": "members",
+            "name": "Members",
+            "field_type": "tags",
+            "description": "Notable members or the makeup of the organization.",
+            "auto_fill_prompt": null,
+            "is_required": false,
+            "auto_selected": true
+          },
+          {
+            "code": "description",
+            "name": "Description",
+            "field_type": "textarea",
+            "description": "What the organization is, its purpose, and its role in the story.",
+            "auto_fill_prompt": null,
+            "is_required": false,
+            "auto_selected": true
+          }
+        ]
+      },
+      {
+        "kind_id": "eeb3c99e-2e5e-4683-b02b-068f0df64d1c",
+        "code": "species",
+        "name": "Species / Race",
+        "description": null,
+        "icon": "🧬",
+        "auto_selected": true,
+        "attributes": [
+          {
+            "code": "name",
+            "name": "Name",
+            "field_type": "text",
+            "description": null,
+            "auto_fill_prompt": null,
+            "is_required": true,
+            "auto_selected": true
+          },
+          {
+            "code": "aliases",
+            "name": "Aliases",
+            "field_type": "tags",
+            "description": "Other names the species or race is known by.",
+            "auto_fill_prompt": null,
+            "is_required": false,
+            "auto_selected": true
+          },
+          {
+            "code": "traits",
+            "name": "Traits",
+            "field_type": "textarea",
+            "description": "Defining physical or innate traits of the species.",
+            "auto_fill_prompt": null,
+            "is_required": false,
+            "auto_selected": true
+          },
+          {
+            "code": "abilities",
+            "name": "Abilities",
+            "field_type": "textarea",
+            "description": "Special abilities or powers the species possesses.",
+            "auto_fill_prompt": null,
+            "is_required": false,
+            "auto_selected": true
+          },
+          {
+            "code": "habitat",
+            "name": "Habitat",
+            "field_type": "text",
+            "description": "Where the species lives.",
+            "auto_fill_prompt": null,
+            "is_required": false,
+            "auto_selected": true
+          },
+          {
+            "code": "culture",
+            "name": "Culture",
+            "field_type": "textarea",
+            "description": "The species' culture, customs, or social organization.",
+            "auto_fill_prompt": null,
+            "is_required": false,
+            "auto_selected": true
+          },
+          {
+            "code": "description",
+            "name": "Description",
+            "field_type": "textarea",
+            "description": "What the species is, concisely.",
+            "auto_fill_prompt": null,
+            "is_required": false,
+            "auto_selected": true
+          }
+        ]
+      },
+      {
+        "kind_id": "4fff1aff-39b9-4e25-89c7-b60a371e3512",
+        "code": "relationship",
+        "name": "Relationship",
+        "description": null,
+        "icon": "💕",
+        "auto_selected": true,
+        "attributes": [
+          {
+            "code": "name",
+            "name": "Name",
+            "field_type": "text",
+            "description": null,
+            "auto_fill_prompt": null,
+            "is_required": true,
+            "auto_selected": true
+          },
+          {
+            "code": "parties",
+            "name": "Parties",
+            "field_type": "tags",
+            "description": "The characters or groups in the relationship.",
+            "auto_fill_prompt": null,
+            "is_required": false,
+            "auto_selected": true
+          },
+          {
+            "code": "relationship_type",
+            "name": "Relationship Type",
+            "field_type": "text",
+            "description": "The kind of relationship (rivals, lovers, family, allies, …).",
+            "auto_fill_prompt": null,
+            "is_required": false,
+            "auto_selected": true
+          },
+          {
+            "code": "status",
+            "name": "Status",
+            "field_type": "text",
+            "description": "The current state of the relationship (estranged, growing, broken, …).",
+            "auto_fill_prompt": null,
+            "is_required": false,
+            "auto_selected": true
+          },
+          {
+            "code": "tropes",
+            "name": "Tropes",
+            "field_type": "tags",
+            "description": "Romance/relationship tropes that characterize it (if any).",
+            "auto_fill_prompt": null,
+            "is_required": false,
+            "auto_selected": true
+          },
+          {
+            "code": "dynamic",
+            "name": "Dynamic",
+            "field_type": "textarea",
+            "description": "How the parties interact and the push-pull between them.",
+            "auto_fill_prompt": null,
+            "is_required": false,
+            "auto_selected": true
+          },
+          {
+            "code": "key_conflict",
+            "name": "Key Conflict",
+            "field_type": "textarea",
+            "description": "The central tension or obstacle in the relationship.",
+            "auto_fill_prompt": null,
+            "is_required": false,
+            "auto_selected": true
+          },
+          {
+            "code": "turning_points",
+            "name": "Turning Points",
+            "field_type": "textarea",
+            "description": "Moments that shift the relationship.",
+            "auto_fill_prompt": null,
+            "is_required": false,
+            "auto_selected": true
+          },
+          {
+            "code": "resolution",
+            "name": "Resolution",
+            "field_type": "textarea",
+            "description": "How the relationship resolves or is left.",
+            "auto_fill_prompt": null,
+            "is_required": false,
+            "auto_selected": true
+          },
+          {
+            "code": "description",
+            "name": "Description",
+            "field_type": "textarea",
+            "description": "A concise summary of the relationship.",
+            "auto_fill_prompt": null,
+            "is_required": false,
+            "auto_selected": true
+          }
+        ]
+      },
+      {
+        "kind_id": "237e74ce-dd84-4978-a1e2-11fb7df76508",
+        "code": "plot_arc",
+        "name": "Plot Arc",
+        "description": null,
+        "icon": "📈",
+        "auto_selected": true,
+        "attributes": [
+          {
+            "code": "name",
+            "name": "Name",
+            "field_type": "text",
+            "description": null,
+            "auto_fill_prompt": null,
+            "is_required": true,
+            "auto_selected": true
+          },
+          {
+            "code": "arc_type",
+            "name": "Arc Type",
+            "field_type": "text",
+            "description": "The kind of arc (redemption, revenge, coming-of-age, mystery, …).",
+            "auto_fill_prompt": null,
+            "is_required": false,
+            "auto_selected": true
+          },
+          {
+            "code": "parties",
+            "name": "Parties",
+            "field_type": "tags",
+            "description": "The characters or groups the arc centers on.",
+            "auto_fill_prompt": null,
+            "is_required": false,
+            "auto_selected": true
+          },
+          {
+            "code": "trigger",
+            "name": "Trigger",
+            "field_type": "textarea",
+            "description": "The event or condition that sets the arc in motion.",
+            "auto_fill_prompt": null,
+            "is_required": false,
+            "auto_selected": true
+          },
+          {
+            "code": "stakes",
+            "name": "Stakes",
+            "field_type": "textarea",
+            "description": "What is at risk or to be gained in the arc.",
+            "auto_fill_prompt": null,
+            "is_required": false,
+            "auto_selected": true
+          },
+          {
+            "code": "chapters_span",
+            "name": "Chapters Span",
+            "field_type": "text",
+            "description": "The chapter range the arc covers.",
+            "auto_fill_prompt": null,
+            "is_required": false,
+            "auto_selected": true
+          },
+          {
+            "code": "emotional_beats",
+            "name": "Emotional Beats",
+            "field_type": "textarea",
+            "description": "The key emotional turning points along the arc.",
+            "auto_fill_prompt": null,
+            "is_required": false,
+            "auto_selected": true
+          },
+          {
+            "code": "resolution",
+            "name": "Resolution",
+            "field_type": "textarea",
+            "description": "How the arc concludes or is left.",
+            "auto_fill_prompt": null,
+            "is_required": false,
+            "auto_selected": true
+          },
+          {
+            "code": "description",
+            "name": "Description",
+            "field_type": "textarea",
+            "description": "A concise summary of the arc.",
+            "auto_fill_prompt": null,
+            "is_required": false,
+            "auto_selected": true
+          }
+        ]
+      },
+      {
+        "kind_id": "0a0900e0-9850-4144-9f64-d60652588f50",
+        "code": "trope",
+        "name": "Trope",
+        "description": null,
+        "icon": "🎭",
+        "auto_selected": true,
+        "attributes": [
+          {
+            "code": "name",
+            "name": "Name",
+            "field_type": "text",
+            "description": null,
+            "auto_fill_prompt": null,
+            "is_required": true,
+            "auto_selected": true
+          },
+          {
+            "code": "category",
+            "name": "Category",
+            "field_type": "text",
+            "description": "The category of trope (character, plot, romance, setting, …).",
+            "auto_fill_prompt": null,
+            "is_required": false,
+            "auto_selected": true
+          },
+          {
+            "code": "definition",
+            "name": "Definition",
+            "field_type": "textarea",
+            "description": "What the trope is.",
+            "auto_fill_prompt": null,
+            "is_required": true,
+            "auto_selected": true
+          },
+          {
+            "code": "how_manifested",
+            "name": "How Manifested",
+            "field_type": "textarea",
+            "description": "How this trope shows up in the story specifically.",
+            "auto_fill_prompt": null,
+            "is_required": false,
+            "auto_selected": true
+          },
+          {
+            "code": "subverted",
+            "name": "Subverted?",
+            "field_type": "textarea",
+            "description": "Whether and how the story subverts or plays against the trope.",
+            "auto_fill_prompt": null,
+            "is_required": false,
+            "auto_selected": true
+          },
+          {
+            "code": "related_characters",
+            "name": "Related Characters",
+            "field_type": "tags",
+            "description": "Characters who embody or are involved with the trope.",
+            "auto_fill_prompt": null,
+            "is_required": false,
+            "auto_selected": true
+          },
+          {
+            "code": "usage_note",
+            "name": "Usage Note",
+            "field_type": "textarea",
+            "description": "Notes on how the trope functions in the story.",
+            "auto_fill_prompt": null,
+            "is_required": false,
+            "auto_selected": true
+          }
+        ]
+      },
+      {
+        "kind_id": "df82409a-4356-4784-9f5d-7adb4a0c1195",
+        "code": "social_setting",
+        "name": "Social Setting",
+        "description": null,
+        "icon": "🏫",
+        "auto_selected": true,
+        "attributes": [
+          {
+            "code": "name",
+            "name": "Name",
+            "field_type": "text",
+            "description": null,
+            "auto_fill_prompt": null,
+            "is_required": true,
+            "auto_selected": true
+          },
+          {
+            "code": "era",
+            "name": "Era",
+            "field_type": "text",
+            "description": "The time period or era of the setting.",
+            "auto_fill_prompt": null,
+            "is_required": false,
+            "auto_selected": true
+          },
+          {
+            "code": "location",
+            "name": "Location",
+            "field_type": "text",
+            "description": "The place or region the social setting covers.",
+            "auto_fill_prompt": null,
+            "is_required": false,
+            "auto_selected": true
+          },
+          {
+            "code": "class_hierarchy",
+            "name": "Class Hierarchy",
+            "field_type": "textarea",
+            "description": "The social classes or hierarchy and how they relate.",
+            "auto_fill_prompt": null,
+            "is_required": false,
+            "auto_selected": true
+          },
+          {
+            "code": "rules_norms",
+            "name": "Rules & Norms",
+            "field_type": "textarea",
+            "description": "The customs, laws, and social norms that govern behavior.",
+            "auto_fill_prompt": null,
+            "is_required": false,
+            "auto_selected": true
+          },
+          {
+            "code": "romance_obstacles",
+            "name": "Romance Obstacles",
+            "field_type": "textarea",
+            "description": "Social barriers to romance the setting imposes (if relevant).",
+            "auto_fill_prompt": null,
+            "is_required": false,
+            "auto_selected": true
+          },
+          {
+            "code": "significance",
+            "name": "Significance",
+            "field_type": "textarea",
+            "description": "Why this social setting matters to the story.",
+            "auto_fill_prompt": null,
+            "is_required": false,
+            "auto_selected": true
+          },
+          {
+            "code": "description",
+            "name": "Description",
+            "field_type": "textarea",
+            "description": "A concise overview of the social setting.",
+            "auto_fill_prompt": null,
+            "is_required": false,
+            "auto_selected": true
+          }
+        ]
+      }
+    ],
+    "saved_profile": null
+  }
+}

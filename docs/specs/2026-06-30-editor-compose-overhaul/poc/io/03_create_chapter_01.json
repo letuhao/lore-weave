@@ -1,0 +1,33 @@
+{
+  "seq": 3,
+  "name": "create_chapter_01",
+  "method": "POST",
+  "url": "http://localhost:3123/v1/books/019f16d0-10a8-71f6-abb6-303708b9cf1c/chapters",
+  "status": 201,
+  "note": "",
+  "request": {
+    "original_language": "vi",
+    "title": "Chương 1",
+    "sort_order": 1,
+    "body": ""
+  },
+  "response": {
+    "book_id": "019f16d0-10a8-71f6-abb6-303708b9cf1c",
+    "byte_size": 0,
+    "chapter_id": "019f16d0-10cc-794e-9f96-1cbe6ee56d3b",
+    "content_type": "text/plain",
+    "created_at": "2026-06-30T04:36:02.380227Z",
+    "draft_revision_count": 1,
+    "draft_updated_at": "2026-06-30T04:36:02.380227Z",
+    "editorial_status": "draft",
+    "lifecycle_state": "active",
+    "original_filename": "editor-1c0bf9dc-a8ad-4121-81ef-5d38b1c6676d.txt",
+    "original_language": "vi",
+    "published_revision_id": null,
+    "purge_eligible_at": null,
+    "sort_order": 1,
+    "title": "Chương 1",
+    "trashed_at": null,
+    "updated_at": "2026-06-30T04:36:02.380227Z"
+  }
+}

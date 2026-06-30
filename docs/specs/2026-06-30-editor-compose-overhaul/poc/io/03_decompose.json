@@ -1,0 +1,19 @@
+{
+  "seq": 3,
+  "name": "decompose",
+  "method": "POST",
+  "url": "http://localhost:3123/v1/composition/works/019f16d0-11db-739b-9b14-f29b0f20a791/outline/decompose",
+  "status": 202,
+  "note": "",
+  "request": {
+    "structure_template_id": "0190ce00-0000-7000-8000-000000000005",
+    "premise": "Nữ chính là một thiếu nữ xấu xí, bị tất cả mọi người ghét bỏ — kể cả cha mẹ ruột — lại mang tư chất tu luyện kém cỏi. Trong một lần cận kề cái chết, nàng có được cuốn cổ thư công pháp của một Ma nữ (Succubus) và quyết định tu luyện nó. Từ đó nàng từng bước cải tạo bản thân, quyết tâm một ngày kia đạt tới sự hoàn mỹ. Đây là truyện tu tiên hắc ám, nhiều drama, nhiều phản chuyển. Trọng tâm là tu luyện và chiến đấu; tình cảm chỉ là yếu tố phụ. Viết bằng tiếng Việt.",
+    "model_source": "user_model",
+    "model_ref": "019ebb72-27a2-72f3-a42d-d2d0e0ded179"
+  },
+  "response": {
+    "job_id": "019f16d0-53f9-70cd-834b-b487e57926f9",
+    "status": "pending",
+    "enqueued": "ok"
+  }
+}

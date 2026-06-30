@@ -1,0 +1,830 @@
+{
+  "seq": 17,
+  "name": "decompose_poll13",
+  "method": "GET",
+  "url": "http://localhost:3123/v1/composition/jobs/019f173a-e19a-778f-be04-77fb5f400bf4",
+  "status": 200,
+  "request": null,
+  "response": {
+    "id": "019f173a-e19a-778f-be04-77fb5f400bf4",
+    "user_id": "019d5e3c-7cc5-7e6a-8b27-1344e148bf7c",
+    "project_id": "019f173a-e0b5-786c-bd47-1c151af2801a",
+    "outline_node_id": null,
+    "operation": "decompose_preview",
+    "mode": "auto",
+    "status": "completed",
+    "llm_job_id": null,
+    "input": {
+      "cast": [],
+      "beats": [
+        {
+          "key": "hook",
+          "label": "Hook",
+          "order": 1,
+          "purpose": "Open mid-tension; promise the arc's payoff fast."
+        },
+        {
+          "key": "establishment",
+          "label": "World / Power Establishment",
+          "order": 2,
+          "purpose": "Stakes, the protagonist's edge, and the goal."
+        },
+        {
+          "key": "rising_conflict",
+          "label": "Rising Conflict",
+          "order": 3,
+          "purpose": "Escalating obstacles and rival pressure."
+        },
+        {
+          "key": "setback",
+          "label": "Setback / Crisis",
+          "order": 4,
+          "purpose": "A hard loss or trap that raises the cost."
+        },
+        {
+          "key": "climax",
+          "label": "Climax / Payoff",
+          "order": 5,
+          "purpose": "The earned turnaround — the chapter the readers waited for."
+        },
+        {
+          "key": "resolution",
+          "label": "Resolution & Next-Arc Seed",
+          "order": 6,
+          "purpose": "Bank the win; plant the hook for the next arc."
+        }
+      ],
+      "book_id": "019f173a-dfb8-768e-a5e9-89c90ad9bed1",
+      "premise": "Truyện tu tiên (tiên hiệp) HẮC ÁM, nhiều drama và phản chuyển. Trọng tâm là tu luyện và chiến đấu; tình cảm chỉ là yếu tố phụ.\n\nNỮ CHÍNH: Lâm Uyển — đích nữ Lâm gia (một tu tiên thế gia). Nàng xấu xí, bị cả nhà ghẻ lạnh kể cả cha mẹ ruột, lại mang linh căn kém cỏi nên bị xem là phế vật. Trong một lần cận kề cái chết, nàng có được cuốn cổ thư công pháp của Ma nữ thượng cổ Cửu U Ma Cơ và quyết tu luyện ma công đó, từng bước cải tạo bản thân, quyết một ngày đạt tới sự hoàn mỹ.\n\nDÀN NHÂN VẬT (giữ tên CỐ ĐỊNH, đúng phong cách tiên hiệp):\n- Lâm Uyển — nữ chính.\n- Lâm Chấn Nhạc — gia chủ Lâm gia, phụ thân lạnh lùng.\n- Tô Yến — mẫu thân (chính thất), sắc sảo, coi trọng danh dự gia tộc.\n- Lâm Tử Hàn — huynh trưởng, thiên tài được sủng ái, người được ban Trúc Cơ Đan.\n- Cửu U Ma Cơ — Ma nữ thượng cổ, chủ nhân cuốn cổ thư.\n- Thanh Vân Tông — tông môn chính đạo về sau khinh miệt Lâm Uyển.\n\nQUY ƯỚC ĐẶT TÊN: dùng tên Hán-Việt kiểu tiên hiệp (họ + tên kép); xưng hô tu tiên (gia chủ, trưởng lão, công tử, tiểu thư, đạo hữu, tiền bối). TUYỆT ĐỐI tránh cách gọi hiện đại như \"ông Lâm\", \"bà Lý\".",
+      "chapters": [
+        {
+          "title": "Chương 1",
+          "intent": "",
+          "beat_role": null,
+          "chapter_id": "019f173a-dfcf-7b92-ad2e-cfc90c193847",
+          "sort_order": 1
+        },
+        {
+          "title": "Chương 2",
+          "intent": "",
+          "beat_role": null,
+          "chapter_id": "019f173a-dfe8-799f-b9e8-5dd8a03bf7d0",
+          "sort_order": 2
+        },
+        {
+          "title": "Chương 3",
+          "intent": "",
+          "beat_role": null,
+          "chapter_id": "019f173a-dffc-712f-8e38-83dd109f25d7",
+          "sort_order": 3
+        },
+        {
+          "title": "Chương 4",
+          "intent": "",
+          "beat_role": null,
+          "chapter_id": "019f173a-e00f-78ba-9558-13f87f4f6fba",
+          "sort_order": 4
+        },
+        {
+          "title": "Chương 5",
+          "intent": "",
+          "beat_role": null,
+          "chapter_id": "019f173a-e020-7c7a-93fc-afef107e81f6",
+          "sort_order": 5
+        },
+        {
+          "title": "Chương 6",
+          "intent": "",
+          "beat_role": null,
+          "chapter_id": "019f173a-e031-7c6f-8ac7-747a721af548",
+          "sort_order": 6
+        },
+        {
+          "title": "Chương 7",
+          "intent": "",
+          "beat_role": null,
+          "chapter_id": "019f173a-e043-7279-a89c-b3fe76762650",
+          "sort_order": 7
+        },
+        {
+          "title": "Chương 8",
+          "intent": "",
+          "beat_role": null,
+          "chapter_id": "019f173a-e053-7e36-8b4f-742559735f68",
+          "sort_order": 8
+        },
+        {
+          "title": "Chương 9",
+          "intent": "",
+          "beat_role": null,
+          "chapter_id": "019f173a-e064-749e-bcb5-8ee39e10eda9",
+          "sort_order": 9
+        },
+        {
+          "title": "Chương 10",
+          "intent": "",
+          "beat_role": null,
+          "chapter_id": "019f173a-e074-7a6c-92e4-65c9df823860",
+          "sort_order": 10
+        },
+        {
+          "title": "Chương 11",
+          "intent": "",
+          "beat_role": null,
+          "chapter_id": "019f173a-e085-707c-b489-fcc3952233d6",
+          "sort_order": 11
+        },
+        {
+          "title": "Chương 12",
+          "intent": "",
+          "beat_role": null,
+          "chapter_id": "019f173a-e096-7809-bcd5-46a7b56e2532",
+          "sort_order": 12
+        }
+      ],
+      "arc_title": "Web Novel Arc",
+      "k_ceiling": 3,
+      "model_ref": "019ebb72-27a2-72f3-a42d-d2d0e0ded179",
+      "worker_op": "decompose_preview",
+      "max_scenes": 6,
+      "min_scenes": 1,
+      "model_source": "user_model",
+      "high_threshold": 70,
+      "motifs_enabled": false,
+      "source_language": "vi",
+      "motif_genre_tags": []
+    },
+    "result": {
+      "chapters": [
+        {
+          "motif": null,
+          "scenes": [
+            {
+              "title": "Sự Ruồng Bỏ Của Gia Tộc",
+              "tension": 65,
+              "synopsis": "Lâm Uyển bị trục xuất khỏi Lâm gia sau khi bị coi là phế vật, đối mặt với sự lạnh lùng của phụ thân và sự khinh miệt của mẫu thân.",
+              "suggested_k": 2,
+              "present_entity_ids": [],
+              "present_entity_names_unresolved": [
+                "Lâm Uyển",
+                "Lâm Chấn Nhạc",
+                "Tô Yến"
+              ]
+            },
+            {
+              "title": "Sự Phản Bội Của Huynh Trưởng",
+              "tension": 75,
+              "synopsis": "Lâm Tử Hàn thể hiện sự xa cách và vô tình khi chứng kiến muội muội bị đẩy vào nguy hiểm để bảo vệ danh tiếng gia tộc.",
+              "suggested_k": 3,
+              "present_entity_ids": [],
+              "present_entity_names_unresolved": [
+                "Lâm Uyển",
+                "Lâm Tử Hàn"
+              ]
+            },
+            {
+              "title": "Hang Động Tử Thần",
+              "tension": 90,
+              "synopsis": "Lâm Uyển bị truy đuổi đến đường cùng trong hang động u tối, đối mặt với cái chết cận kề khi linh lực cạn kiệt.",
+              "suggested_k": 3,
+              "present_entity_ids": [],
+              "present_entity_names_unresolved": [
+                "Lâm Uyển"
+              ]
+            },
+            {
+              "title": "Duyên Định Ma Công",
+              "tension": 100,
+              "synopsis": "Trong khoảnh khắc sinh tử, Lâm Uyển vô tình kích hoạt cuốn cổ thư và gặp được ý thức của Cửu U Ma Cơ.",
+              "suggested_k": 3,
+              "present_entity_ids": [],
+              "present_entity_names_unresolved": [
+                "Lâm Uyển",
+                "Cửu U Ma Cơ"
+              ]
+            }
+          ],
+          "binding": null,
+          "chapter": {
+            "title": "Chương 1",
+            "intent": "Lâm Uyển bị gia tộc ruồng bỏ và rơi vào tình cảnh cận kề cái chết trong hang động u tối.",
+            "beat_role": "hook",
+            "chapter_id": "019f173a-dfcf-7b92-ad2e-cfc90c193847",
+            "sort_order": 1
+          },
+          "warning": null,
+          "application_rows": []
+        },
+        {
+          "motif": null,
+          "scenes": [
+            {
+              "title": "Bị Ruồng Bỏ Giữa Rừng Sâu",
+              "tension": 65,
+              "synopsis": "Lâm Uyển bị đẩy vào khu vực nguy hiểm trong rừng để chịu tội, thể hiện sự tuyệt vọng và cô độc của nàng.",
+              "suggested_k": 2,
+              "present_entity_ids": [],
+              "present_entity_names_unresolved": [
+                "Lâm Uyển"
+              ]
+            },
+            {
+              "title": "Lằn Ranh Sinh Tử",
+              "tension": 90,
+              "synopsis": "Lâm Uyển bị yêu thú tấn công, trong cơn hấp hối, linh hồn nàng chạm vào một luồng ma khí cổ xưa.",
+              "suggested_k": 3,
+              "present_entity_ids": [],
+              "present_entity_names_unresolved": [
+                "Lâm Uyển"
+              ]
+            },
+            {
+              "title": "Cổ Thư Ma Đạo",
+              "tension": 80,
+              "synopsis": "Cuốn cổ thư của Cửu U Ma Cơ xuất hiện, mở ra cơ hội nghịch thiên cải mệnh cho Lâm Uyển.",
+              "suggested_k": 3,
+              "present_entity_ids": [],
+              "present_entity_names_unresolved": [
+                "Lâm Uyển",
+                "Cửu U Ma Cơ"
+              ]
+            }
+          ],
+          "binding": null,
+          "chapter": {
+            "title": "Chương 2",
+            "intent": "Trong lằn ranh sinh tử, Lâm Uyển vô tình tìm thấy cuốn cổ thư của Cửu U Ma Cơ.",
+            "beat_role": "hook",
+            "chapter_id": "019f173a-dfe8-799f-b9e8-5dd8a03bf7d0",
+            "sort_order": 2
+          },
+          "warning": null,
+          "application_rows": []
+        },
+        {
+          "motif": null,
+          "scenes": [
+            {
+              "title": "Ma Công Thức Tỉnh",
+              "tension": 85,
+              "synopsis": "Lâm Uyển trong cơn hấp hối đã vô tình kích hoạt cuốn cổ thư, bắt đầu tiếp nhận sức mạnh tà ác của Cửu U Ma Cơ.",
+              "suggested_k": 3,
+              "present_entity_ids": [],
+              "present_entity_names_unresolved": [
+                "Lâm Uyển",
+                "Cửu U Ma Cơ"
+              ]
+            },
+            {
+              "title": "Nghịch Chuyển Linh Căn",
+              "tension": 70,
+              "synopsis": "Lâm Uyển cảm nhận sự đau đớn khi kinh mạch bị phá bỏ để tái tạo lại theo ma công, linh lực bắt đầu biến đổi mạnh mẽ.",
+              "suggested_k": 3,
+              "present_entity_ids": [],
+              "present_entity_names_unresolved": [
+                "Lâm Uyển"
+              ]
+            },
+            {
+              "title": "Sự Thay Đổi Đáng Sợ",
+              "tension": 40,
+              "synopsis": "Lâm Uyển nhận ra sức mạnh vượt xa tu vi trước đây nhưng đi kèm với sự lạnh lẽo và tà tính trong tâm trí.",
+              "suggested_k": 2,
+              "present_entity_ids": [],
+              "present_entity_names_unresolved": [
+                "Lâm Uyển"
+              ]
+            }
+          ],
+          "binding": null,
+          "chapter": {
+            "title": "Chương 3",
+            "intent": "Lâm Uyển bắt đầu tu luyện ma công, cảm nhận sự thay đổi kinh người trong linh lực của bản thân.",
+            "beat_role": "establishment",
+            "chapter_id": "019f173a-dffc-712f-8e38-83dd109f25d7",
+            "sort_order": 3
+          },
+          "warning": null,
+          "application_rows": []
+        },
+        {
+          "motif": null,
+          "scenes": [
+            {
+              "title": "Ma Công Tẩy Tủy",
+              "tension": 65,
+              "synopsis": "Lâm Uyển sử dụng cổ thư của Cửu U Ma Cơ để hấp thụ linh khí ma đạo, chịu đựng nỗi đau thể xác để cải tạo kinh mạch và nhan sắc.",
+              "suggested_k": 2,
+              "present_entity_ids": [],
+              "present_entity_names_unresolved": [
+                "Lâm Uyển",
+                "Cửu U Ma Cơ"
+              ]
+            },
+            {
+              "title": "Sự Lạnh Lùng Của Lâm Gia",
+              "tension": 40,
+              "synopsis": "Lâm Uyển cố gắng tìm kiếm tài nguyên tu luyện nhưng bị Lâm Chấn Nhạc và Tô Yến xua đuổi, khinh miệt vì cho rằng nàng là phế vật làm nhục gia môn.",
+              "suggested_k": 2,
+              "present_entity_ids": [],
+              "present_entity_names_unresolved": [
+                "Lâm Uyển",
+                "Lâm Chấn Nhạc",
+                "Tô Yến"
+              ]
+            },
+            {
+              "title": "Ánh Nhìn Khinh Khi",
+              "tension": 55,
+              "synopsis": "Lâm Tử Hàn phô diễn tài năng với Trúc Cơ Đan, vô tình (hoặc hữu ý) sỉ nhục sự yếu kém của Lâm Uyển trước mặt mọi người.",
+              "suggested_k": 2,
+              "present_entity_ids": [],
+              "present_entity_names_unresolved": [
+                "Lâm Uyển",
+                "Lâm Tử Hàn"
+              ]
+            },
+            {
+              "title": "Lộ Diện Ánh Sáng Ma Mị",
+              "tension": 75,
+              "synopsis": "Sau khi hoàn tất quá trình cải tạo, Lâm Uyển xuất hiện với vẻ đẹp đầy ma mị, chuẩn bị tâm thế đối đầu với sự phán xét của gia tộc.",
+              "suggested_k": 3,
+              "present_entity_ids": [],
+              "present_entity_names_unresolved": [
+                "Lâm Uyển"
+              ]
+            }
+          ],
+          "binding": null,
+          "chapter": {
+            "title": "Chương 4",
+            "intent": "Nàng âm thầm cải tạo nhan sắc và tu vi, chuẩn bị đối mặt với sự khinh miệt của Lâm gia.",
+            "beat_role": "establishment",
+            "chapter_id": "019f173a-e00f-78ba-9558-13f87f4f6fba",
+            "sort_order": 4
+          },
+          "warning": null,
+          "application_rows": []
+        },
+        {
+          "motif": null,
+          "scenes": [
+            {
+              "title": "Sự khác biệt kỳ lạ",
+              "tension": 30,
+              "synopsis": "Lâm Tử Hàn nhận thấy linh lực trong cơ thể Lâm Uyển có sự biến chuyển bất thường, không còn là phế vật yếu ớt như trước.",
+              "suggested_k": 1,
+              "present_entity_ids": [],
+              "present_entity_names_unresolved": [
+                "Lâm Uyển",
+                "Lâm Tử Hàn"
+              ]
+            },
+            {
+              "title": "Ánh mắt nghi kỵ",
+              "tension": 55,
+              "synopsis": "Tô Yến quan sát sự thay đổi của con gái và cảm thấy bất an, lo sợ danh tiếng của Lâm gia bị ảnh hưởng bởi sự biến đổi kỳ quái này.",
+              "suggested_k": 2,
+              "present_entity_ids": [],
+              "present_entity_names_unresolved": [
+                "Lâm Uyển",
+                "Tô Yến"
+              ]
+            },
+            {
+              "title": "Áp lực từ thiên tài",
+              "tension": 75,
+              "synopsis": "Các thiên tài trong tộc vây quanh chất vấn Lâm Uyển về nguồn gốc sức mạnh mới, tạo ra sự căng thẳng về mặt tâm lý.",
+              "suggested_k": 3,
+              "present_entity_ids": [],
+              "present_entity_names_unresolved": [
+                "Lâm Uyển",
+                "Lâm Tử Hàn"
+              ]
+            },
+            {
+              "title": "Sự cảnh cáo của Gia chủ",
+              "tension": 85,
+              "synopsis": "Lâm Chấn Nhạc lên tiếng cảnh cáo Lâm Uyển về việc không được để lộ sự bất thường, tạo ra áp lực vô hình lên con đường tu luyện của nàng.",
+              "suggested_k": 3,
+              "present_entity_ids": [],
+              "present_entity_names_unresolved": [
+                "Lâm Uyển",
+                "Lâm Chấn Nhạc",
+                "Tô Yến"
+              ]
+            }
+          ],
+          "binding": null,
+          "chapter": {
+            "title": "Chương 5",
+            "intent": "Lâm Tử Hàn và các thiên tài trong tộc bắt đầu chú ý đến sự thay đổi bất thường của phế vật Lâm Uyển.",
+            "beat_role": "rising_conflict",
+            "chapter_id": "019f173a-e020-7c7a-93fc-afef107e81f6",
+            "sort_order": 5
+          },
+          "warning": null,
+          "application_rows": []
+        },
+        {
+          "motif": null,
+          "scenes": [
+            {
+              "title": "Sự sỉ nhục tại đại sảnh",
+              "tension": 65,
+              "synopsis": "Tô Yến công khai chỉ trích sự kém cỏi của Lâm Uyển trước mặt gia nhân để bảo vệ danh tiếng gia tộc.",
+              "suggested_k": 2,
+              "present_entity_ids": [],
+              "present_entity_names_unresolved": [
+                "Lâm Uyển",
+                "Tô Yến",
+                "Lâm Chấn Nhạc"
+              ]
+            },
+            {
+              "title": "Áp lực từ thiên tài",
+              "tension": 45,
+              "synopsis": "Lâm Tử Hàn thể hiện sự xa cách và coi thường đối với muội muội, làm tăng thêm sự cô lập của Lâm Uyển.",
+              "suggested_k": 2,
+              "present_entity_ids": [],
+              "present_entity_names_unresolved": [
+                "Lâm Uyển",
+                "Lâm Tử Hàn"
+              ]
+            },
+            {
+              "title": "Lời tuyên bố tàn nhẫn",
+              "tension": 85,
+              "synopsis": "Tô Yến đưa ra tối hậu thư buộc Lâm Uyển phải rời khỏi gia tộc nếu không thể chứng minh giá trị, đẩy mâu thuẫn lên đỉnh điểm.",
+              "suggested_k": 3,
+              "present_entity_ids": [],
+              "present_entity_names_unresolved": [
+                "Lâm Uyển",
+                "Tô Yến",
+                "Lâm Chấn Nhạc"
+              ]
+            }
+          ],
+          "binding": null,
+          "chapter": {
+            "title": "Chương 6",
+            "intent": "Sự mâu thuẫn giữa Lâm Uyển và Tô Yến lên đến đỉnh điểm khi danh dự gia tộc bị đe dọa.",
+            "beat_role": "rising_conflict",
+            "chapter_id": "019f173a-e031-7c6f-8ac7-747a721af548",
+            "sort_order": 6
+          },
+          "warning": null,
+          "application_rows": []
+        },
+        {
+          "motif": null,
+          "scenes": [
+            {
+              "title": "Sự sỉ nhục tại quảng trường",
+              "tension": 45,
+              "synopsis": "Lâm Uyển bước vào đấu trường nhưng bị các trưởng lão dùng lời lẽ mỉa mai về linh căn phế vật của nàng.",
+              "suggested_k": 2,
+              "present_entity_ids": [],
+              "present_entity_names_unresolved": [
+                "Lâm Uyển",
+                "Lâm Chấn Nhạc",
+                "Tô Yến"
+              ]
+            },
+            {
+              "title": "Áp lực từ thiên tài",
+              "tension": 65,
+              "synopsis": "Lâm Tử Hàn phô diễn tu vi vượt trội, tạo ra sự tương phản nghiệt ngã với sự yếu ớt của Lâm Uyển trước mặt mọi người.",
+              "suggested_k": 2,
+              "present_entity_ids": [],
+              "present_entity_names_unresolved": [
+                "Lâm Uyển",
+                "Lâm Tử Hàn"
+              ]
+            },
+            {
+              "title": "Đòn chí mạng của trưởng lão",
+              "tension": 85,
+              "synopsis": "Một trưởng lão đưa ra quy định khắc nghiệt nhằm tước bỏ quyền tham gia của Lâm Uyển, đẩy nàng vào bước đường cùng.",
+              "suggested_k": 3,
+              "present_entity_ids": [],
+              "present_entity_names_unresolved": [
+                "Lâm Uyển",
+                "Lâm Chấn Nhạc",
+                "Tô Yến"
+              ]
+            },
+            {
+              "title": "Tiếng gọi từ bóng tối",
+              "tension": 95,
+              "synopsis": "Trong lúc tuyệt vọng nhất, ý thức của Lâm Uyển thoáng chạm vào tàn hồn của Cửu U Ma Cơ, khởi đầu cho sự chuyển biến.",
+              "suggested_k": 3,
+              "present_entity_ids": [],
+              "present_entity_names_unresolved": [
+                "Lâm Uyển",
+                "Cửu U Ma Cơ"
+              ]
+            }
+          ],
+          "binding": null,
+          "chapter": {
+            "title": "Chương 7",
+            "intent": "Lâm Uyển đối mặt với sự chèn ép từ các trưởng lão khi nàng tham gia vào cuộc tranh tài của gia tộc.",
+            "beat_role": "rising_conflict",
+            "chapter_id": "019f173a-e043-7279-a89c-b3fe76762650",
+            "sort_order": 7
+          },
+          "warning": null,
+          "application_rows": []
+        },
+        {
+          "motif": null,
+          "scenes": [
+            {
+              "title": "Bẫy Rập Tại Linh Động",
+              "tension": 45,
+              "synopsis": "Lâm Uyển bị kẻ xấu dẫn dụ vào một linh động đầy sát khí, nơi ma khí trong cơ thể nàng bắt đầu dao động dữ dội.",
+              "suggested_k": 3,
+              "present_entity_ids": [],
+              "present_entity_names_unresolved": []
+            },
+            {
+              "title": "Ma Khí Bộc Phát",
+              "tension": 75,
+              "synopsis": "Trong cơn nguy kịch, Lâm Uyển buộc phải vận hành ma công để sinh tồn, khiến khí tức tà ác thoát ra ngoài không thể che giấu.",
+              "suggested_k": 3,
+              "present_entity_ids": [],
+              "present_entity_names_unresolved": [
+                "Lâm Uyển"
+              ]
+            },
+            {
+              "title": "Sự Thật Phơi Bày",
+              "tension": 95,
+              "synopsis": "Lâm Chấn Nhạc xuất hiện đúng lúc, chứng kiến cảnh tượng kinh hoàng khi ma khí bao trùm lấy con gái mình.",
+              "suggested_k": 3,
+              "present_entity_ids": [],
+              "present_entity_names_unresolved": [
+                "Lâm Uyển",
+                "Lâm Chấn Nhạc"
+              ]
+            },
+            {
+              "title": "Sự Ruồng Bỏ Tuyệt Đối",
+              "tension": 85,
+              "synopsis": "Lâm Chấn Nhạc nhìn con gái với ánh mắt ghê tởm, tuyên bố nàng là mầm mống tai họa cho gia tộc thay vì cứu giúp.",
+              "suggested_k": 3,
+              "present_entity_ids": [],
+              "present_entity_names_unresolved": [
+                "Lâm Uyển",
+                "Lâm Chấn Nhạc",
+                "Tô Yến"
+              ]
+            }
+          ],
+          "binding": null,
+          "chapter": {
+            "title": "Chương 8",
+            "intent": "Lâm Uyển bị gài bẫy, suýt bị phơi bày tu vi ma công trước sự chứng kiến của Lâm Chấn Nhạc.",
+            "beat_role": "setback",
+            "chapter_id": "019f173a-e053-7e36-8b4f-742559735f68",
+            "sort_order": 8
+          },
+          "warning": null,
+          "application_rows": []
+        },
+        {
+          "motif": null,
+          "scenes": [
+            {
+              "title": "Mất đi linh bảo",
+              "tension": 65,
+              "synopsis": "Lâm Uyển bị kẻ xấu đánh tráo hoặc cướp mất vật phẩm quan trọng ngay trước mắt các trưởng lão Thanh Vân Tông.",
+              "suggested_k": 3,
+              "present_entity_ids": [],
+              "present_entity_names_unresolved": [
+                "Lâm Uyển"
+              ]
+            },
+            {
+              "title": "Sự khinh miệt của chính đạo",
+              "tension": 80,
+              "synopsis": "Các trưởng lão Thanh Vân Tông đổ lỗi cho sự yếu kém của Lâm Uyển, dùng lời lẽ nhục mạ và coi thường nàng.",
+              "suggested_k": 3,
+              "present_entity_ids": [],
+              "present_entity_names_unresolved": [
+                "Lâm Uyển"
+              ]
+            },
+            {
+              "title": "Lệnh trục xuất",
+              "tension": 90,
+              "synopsis": "Thanh Vân Tông chính thức ra lệnh xua đuổi Lâm Uyển, cắt đứt mọi liên hệ với nàng.",
+              "suggested_k": 3,
+              "present_entity_ids": [],
+              "present_entity_names_unresolved": [
+                "Lâm Uyển"
+              ]
+            },
+            {
+              "title": "Sự lạnh lùng của gia tộc",
+              "tension": 75,
+              "synopsis": "Lâm Chấn Nhạc và Tô Yến đứng ngoài cuộc, không hề bảo vệ nàng mà còn coi nàng là vết nhơ của gia tộc.",
+              "suggested_k": 3,
+              "present_entity_ids": [],
+              "present_entity_names_unresolved": [
+                "Lâm Uyển",
+                "Lâm Chấn Nhạc",
+                "Tô Yến"
+              ]
+            }
+          ],
+          "binding": null,
+          "chapter": {
+            "title": "Chương 9",
+            "intent": "Mất đi một bảo vật quan trọng, Lâm Uyển bị Thanh Vân Tông khinh miệt và xua đuổi.",
+            "beat_role": "setback",
+            "chapter_id": "019f173a-e064-749e-bcb5-8ee39e10eda9",
+            "sort_order": 9
+          },
+          "warning": null,
+          "application_rows": []
+        },
+        {
+          "motif": null,
+          "scenes": [
+            {
+              "title": "Ma Uy Bộc Phát",
+              "tension": 60,
+              "synopsis": "Lâm Uyển vận hành ma công từ cổ thư, khí chất thay đổi hoàn toàn khiến mọi người kinh hãi.",
+              "suggested_k": 3,
+              "present_entity_ids": [],
+              "present_entity_names_unresolved": [
+                "Lâm Uyển",
+                "Lâm Chấn Nhạc",
+                "Tô Yến",
+                "Lâm Tử Hàn"
+              ]
+            },
+            {
+              "title": "Đấu Trận Với Thiên Tài",
+              "tension": 85,
+              "synopsis": "Lâm Uyển dùng sức mạnh ma đạo áp đảo Lâm Tử Hàn, phá vỡ sự kiêu ngạo của thiên tài Lâm gia.",
+              "suggested_k": 3,
+              "present_entity_ids": [],
+              "present_entity_names_unresolved": [
+                "Lâm Uyển",
+                "Lâm Tử Hàn"
+              ]
+            },
+            {
+              "title": "Sự Kinh Hãi Của Lâm Gia",
+              "tension": 95,
+              "synopsis": "Sau khi đánh bại huynh trưởng, Lâm Uyển đứng giữa sự bàng hoàng và sợ hãi của phụ mẫu và gia tộc.",
+              "suggested_k": 3,
+              "present_entity_ids": [],
+              "present_entity_names_unresolved": [
+                "Lâm Uyển",
+                "Lâm Chấn Nhạc",
+                "Tô Yến"
+              ]
+            }
+          ],
+          "binding": null,
+          "chapter": {
+            "title": "Chương 10",
+            "intent": "Lâm Uyển bộc phát ma uy, đánh bại Lâm Tử Hàn và khiến cả Lâm gia phải kinh hãi.",
+            "beat_role": "climax",
+            "chapter_id": "019f173a-e074-7a6c-92e4-65c9df823860",
+            "sort_order": 10
+          },
+          "warning": null,
+          "application_rows": []
+        },
+        {
+          "motif": null,
+          "scenes": [
+            {
+              "title": "Sự sỉ nhục tại đại sảnh",
+              "tension": 65,
+              "synopsis": "Lâm Uyển bị Tô Yến và Lâm Chấn Nhạc công kích công khai vì sự kém cỏi, đẩy nàng đến giới hạn cuối cùng của sự chịu đựng.",
+              "suggested_k": 3,
+              "present_entity_ids": [],
+              "present_entity_names_unresolved": [
+                "Lâm Uyển",
+                "Lâm Chấn Nhạc",
+                "Tô Yến",
+                "Lâm Tử Hàn"
+              ]
+            },
+            {
+              "title": "Áp lực từ thiên tài",
+              "tension": 50,
+              "synopsis": "Lâm Tử Hàn phô diễn sức mạnh từ Trúc Cơ Đan, tạo ra sự tương phản nghiệt ngã giữa thiên tài và phế vật.",
+              "suggested_k": 3,
+              "present_entity_ids": [],
+              "present_entity_names_unresolved": [
+                "Lâm Uyển",
+                "Lâm Tử Hàn"
+              ]
+            },
+            {
+              "title": "Ma công thức tỉnh",
+              "tension": 85,
+              "synopsis": "Trong cơn tuyệt vọng, Lâm Uyển kích hoạt sức mạnh từ cuốn cổ thư, khí tức ma đạo bắt đầu trỗi dậy mạnh mẽ.",
+              "suggested_k": 3,
+              "present_entity_ids": [],
+              "present_entity_names_unresolved": [
+                "Lâm Uyển",
+                "Cửu U Ma Cơ"
+              ]
+            },
+            {
+              "title": "Nghịch chuyển thiên mệnh",
+              "tension": 100,
+              "synopsis": "Lâm Uyển dùng uy áp ma công trấn áp sự khinh miệt của gia tộc, chính thức tuyên bố đoạn tuyệt với Lâm gia.",
+              "suggested_k": 3,
+              "present_entity_ids": [],
+              "present_entity_names_unresolved": [
+                "Lâm Uyển",
+                "Lâm Chấn Nhạc",
+                "Tô Yến",
+                "Lâm Tử Hàn"
+              ]
+            }
+          ],
+          "binding": null,
+          "chapter": {
+            "title": "Chương 11",
+            "intent": "Nàng chính thức bước ra khỏi sự kìm kẹp của gia tộc, khẳng định vị thế của một ma tu tiềm năng.",
+            "beat_role": "climax",
+            "chapter_id": "019f173a-e085-707c-b489-fcc3952233d6",
+            "sort_order": 11
+          },
+          "warning": null,
+          "application_rows": []
+        },
+        {
+          "motif": null,
+          "scenes": [
+            {
+              "title": "Lâm Gia Tuyệt Tình",
+              "tension": 65,
+              "synopsis": "Lâm Uyển đối mặt với sự ghẻ lạnh của phụ mẫu và sự khinh miệt của huynh trưởng trước khi rời khỏi gia tộc.",
+              "suggested_k": 2,
+              "present_entity_ids": [],
+              "present_entity_names_unresolved": [
+                "Lâm Uyển",
+                "Lâm Chấn Nhạc",
+                "Tô Yến",
+                "Lâm Tử Hàn"
+              ]
+            },
+            {
+              "title": "Ma Công Thức Tỉnh",
+              "tension": 45,
+              "synopsis": "Lâm Uyển sử dụng sức mạnh từ cuốn cổ thư để tự chữa trị thương thế và củng cố căn cơ ma công trước khi bước vào hành trình mới.",
+              "suggested_k": 2,
+              "present_entity_ids": [],
+              "present_entity_names_unresolved": [
+                "Lâm Uyển",
+                "Cửu U Ma Cơ"
+              ]
+            },
+            {
+              "title": "Dấn Thân Vào Thế Giới",
+              "tension": 30,
+              "synopsis": "Lâm Uyển rời khỏi biên giới Lâm gia, bắt đầu hành trình tìm kiếm tài nguyên tu luyện trong sự canh chừng của các thế lực.",
+              "suggested_k": 1,
+              "present_entity_ids": [],
+              "present_entity_names_unresolved": [
+                "Lâm Uyển"
+              ]
+            }
+          ],
+          "binding": null,
+          "chapter": {
+            "title": "Chương 12",
+            "intent": "Lâm Uyển rời đi để tìm kiếm tài nguyên, hướng tới cảnh giới cao hơn trong thế giới tu tiên rộng lớn.",
+            "beat_role": "resolution",
+            "chapter_id": "019f173a-e096-7809-bcd5-46a7b56e2532",
+            "sort_order": 12
+          },
+          "warning": null,
+          "application_rows": []
+        }
+      ],
+      "arc_title": "Web Novel Arc",
+      "motif_coverage": {},
+      "unmapped_beats": []
+    },
+    "critic": null,
+    "target_chapter_id": null,
+    "base_revision_id": null,
+    "target_revision_id": null,
+    "cost_usd": "0.0000",
+    "idempotency_key": null,
+    "created_at": "2026-06-30T06:32:42.649924Z",
+    "updated_at": "2026-06-30T06:33:13.033619Z"
+  }
+}

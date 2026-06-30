@@ -1,0 +1,24 @@
+{
+  "seq": 7,
+  "name": "gen_019f16d0",
+  "method": "POST",
+  "url": "http://localhost:3123/v1/composition/works/019f16d0-11db-739b-9b14-f29b0f20a791/generate",
+  "status": 202,
+  "note": "",
+  "request": {
+    "mode": "auto",
+    "outline_node_id": "019f16d0-b303-7218-86f3-b22d7a442030",
+    "model_source": "user_model",
+    "model_ref": "019ebb72-27a2-72f3-a42d-d2d0e0ded179",
+    "operation": "draft_scene",
+    "guide": "Viết HOÀN TOÀN bằng tiếng Việt, văn phong tiểu thuyết tu tiên (xianxia) hắc ám, nhiều kịch tính. Bám sát synopsis của cảnh.",
+    "reasoning": "auto"
+  },
+  "response": {
+    "job_id": "019f16d5-78f7-7fb1-ab38-5af4bf0b0023",
+    "status": "pending",
+    "mode": "auto",
+    "assembly_mode": "per_scene",
+    "enqueued": "ok"
+  }
+}

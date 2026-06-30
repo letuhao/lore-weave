@@ -1,0 +1,60 @@
+{
+  "seq": 5,
+  "name": "motif_tiem_long_tai_uyen",
+  "method": "POST",
+  "url": "http://localhost:3123/v1/composition/motifs",
+  "status": 201,
+  "request": {
+    "code": "tiem_long_tai_uyen",
+    "name": "Tiềm long tại uyên (Underestimated Hidden Potential)",
+    "kind": "sequence",
+    "summary": "Tư chất 'kém cỏi' chỉ là vỏ bọc; căn cơ thật sự của nàng phi thường, bị cả thiên hạ đánh giá thấp.",
+    "genre_tags": [
+      "xianxia",
+      "cultivation",
+      "dark"
+    ],
+    "language": "vi",
+    "visibility": "private"
+  },
+  "response": {
+    "id": "019f173a-ded9-7b35-9520-a45f1b6b8616",
+    "owner_user_id": "019d5e3c-7cc5-7e6a-8b27-1344e148bf7c",
+    "book_id": null,
+    "book_shared": false,
+    "code": "tiem_long_tai_uyen",
+    "language": "vi",
+    "visibility": "private",
+    "kind": "sequence",
+    "category": null,
+    "name": "Tiềm long tại uyên (Underestimated Hidden Potential)",
+    "summary": "Tư chất 'kém cỏi' chỉ là vỏ bọc; căn cơ thật sự của nàng phi thường, bị cả thiên hạ đánh giá thấp.",
+    "genre_tags": [
+      "xianxia",
+      "cultivation",
+      "dark"
+    ],
+    "roles": [],
+    "beats": [],
+    "preconditions": [],
+    "effects": [],
+    "info_asymmetry": null,
+    "annotations": {},
+    "tension_target": null,
+    "emotion_target": null,
+    "examples": [],
+    "abstraction_confidence": null,
+    "source": "authored",
+    "imported_derived": false,
+    "source_ref": null,
+    "source_version": null,
+    "embedding_model": "",
+    "embedding_dim": null,
+    "judge_score": null,
+    "mining_support": null,
+    "status": "active",
+    "version": 1,
+    "created_at": "2026-06-30T06:32:41.945569Z",
+    "updated_at": "2026-06-30T06:32:41.945569Z"
+  }
+}
