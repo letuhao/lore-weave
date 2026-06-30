@@ -27,6 +27,7 @@ from ..glossary_client import fetch_context_entities, ContextEntity
 from ..knowledge_client import (
     fetch_wiki_neighborhood, WikiNeighborhood, fetch_timeline, TimelineEvent,
 )
+from ..kal_client import get_canonical_cached, CanonicalSnapshot
 from ..chunk_splitter import estimate_tokens
 
 log = logging.getLogger(__name__)
@@ -40,6 +41,10 @@ _TOKEN_BUDGET = 600
 _TRUST_CONFIDENCE = 0.8  # ≥ this and not pending_validation ⇒ stated as fact
 _MAX_RELATIONS_PER_ENTITY = 4
 _FIELD_MAX = 200
+# X5: how much of an entity's as-of-N canonical snapshot to fold into its brief line.
+# Bounded — the canonical is already ≤ canonicalMaxRunes from the KAL, but the brief
+# is per-entity-line budgeted, so keep the injected slice tight.
+_CANONICAL_MAX = 240
 
 _HEADER = (
     "CHARACTER & RELATION CONTEXT — use the EXACT names below and let the "
@@ -72,8 +77,18 @@ def _is_trusted(rel) -> bool:
     return (not rel.pending_validation) and rel.confidence >= _TRUST_CONFIDENCE
 
 
-def _format_entity(entity: ContextEntity, nb: WikiNeighborhood) -> str | None:
-    """One brief line per entity: name (kind): bio · relations. None if empty."""
+def _format_entity(
+    entity: ContextEntity,
+    nb: WikiNeighborhood,
+    canonical: CanonicalSnapshot | None = None,
+) -> str | None:
+    """One brief line per entity: name (kind): bio · as-of-N state · relations. None if empty.
+
+    ``canonical`` (X5) is the entity's as-of-N canonical snapshot from the KAL —
+    the story state valid AS OF the chapter being translated (spoiler-free). When
+    present + buildable it is folded in as a "state here" clause; absent/unbuildable
+    it is simply omitted (degrade-safe — the bio + relations line is unchanged, so
+    the default no-KAL path is byte-identical to pre-X5)."""
     name = _sanitize(entity.name)
     if not name:
         return None
@@ -84,6 +99,13 @@ def _format_entity(entity: ContextEntity, nb: WikiNeighborhood) -> str | None:
     bio = _sanitize(entity.short_description)
     if bio:
         parts.append(bio)
+
+    # X5: as-of-N canonical state. Only when buildable + non-empty; sanitized like
+    # every other cross-service field that lands in an LLM prompt (§11.4).
+    if canonical is not None and canonical.found and canonical.canonical_status != "unbuildable":
+        state = _sanitize(canonical.content, _CANONICAL_MAX)
+        if state:
+            parts.append(f"state here: {state}")
 
     rel_strs: list[str] = []
     for rel in nb.relations:
@@ -135,6 +157,45 @@ async def _fetch_all_neighborhoods(
     return await asyncio.gather(*(_one(e) for e in entities))
 
 
+async def _fetch_all_canonicals(
+    book_id: str,
+    user_id: str,
+    entities: list[ContextEntity],
+    concurrency: int,
+    *,
+    content_hash: str,
+    as_of: int | None,
+) -> list[CanonicalSnapshot]:
+    """X5 — fetch every entity's as-of-N canonical snapshot via the KAL, in parallel
+    (bounded), immutable-once cached. Once per chapter.
+
+    Mirrors ``_fetch_all_neighborhoods``: each fetch is timeout-bounded + failure-
+    isolated to an EMPTY snapshot (the entity keeps its bio/relations line), and a
+    job cancel still propagates (``except Exception`` doesn't catch CancelledError).
+    The KAL client's own Null gate makes this a no-op (all-empty) when the feature is
+    off — so the result list is always index-aligned with ``entities``."""
+    sem = asyncio.Semaphore(concurrency)
+
+    async def _one(e: ContextEntity) -> CanonicalSnapshot:
+        async with sem:
+            try:
+                return await asyncio.wait_for(
+                    get_canonical_cached(
+                        book_id, e.entity_id,
+                        content_hash=content_hash, as_of=as_of, user_id=user_id,
+                    ),
+                    _FETCH_TIMEOUT_S,
+                )
+            except Exception as exc:  # noqa: BLE001 — best-effort; cancel still propagates
+                log.debug(
+                    "knowledge_context: canonical fetch failed for %s (%s) — empty",
+                    e.entity_id, exc,
+                )
+                return CanonicalSnapshot.empty()
+
+    return await asyncio.gather(*(_one(e) for e in entities))
+
+
 async def build_context_brief(
     book_id: str,
     user_id: str,
@@ -143,18 +204,40 @@ async def build_context_brief(
     max_entities: int = _MAX_ENTITIES,
     concurrency: int = _FETCH_CONCURRENCY,
     token_budget: int = _TOKEN_BUDGET,
+    as_of: int | None = None,
+    content_hash: str | None = None,
 ) -> str:
-    """Build the per-chapter pronoun/honorific brief (empty string on no data)."""
+    """Build the per-chapter pronoun/honorific brief (empty string on no data).
+
+    X5 (temporal-knowledge): when ``as_of`` (the chapter's story-time ordinal) AND
+    ``content_hash`` (the chapter's bounded-unit content hash) are supplied, each
+    entity's brief line is augmented with its KAL canonical snapshot valid AS OF that
+    ordinal — the story state at chapter N, not the latest head (spoiler-free, §6B).
+    That as-of knowledge is immutable-once cached on ``content_hash`` + ``as_of`` so a
+    re-translation of unchanged content reuses it (§12.1 / D8). Both are additive and
+    opt-in: omitted (or the KAL feature off) ⇒ NO canonical fetch and the brief is
+    byte-identical to pre-X5."""
     entities = await fetch_context_entities(book_id, user_id, chapter_text, max_entities)
     if not entities:
         return ""
 
     neighborhoods = await _fetch_all_neighborhoods(user_id, entities, concurrency)
 
+    # X5: as-of-N canonical state, only when the caller opted in (content_hash present).
+    # The KAL client's Null gate additionally no-ops this when the feature is off.
+    canonicals: list[CanonicalSnapshot | None]
+    if content_hash is not None:
+        canonicals = await _fetch_all_canonicals(
+            book_id, user_id, entities, concurrency,
+            content_hash=content_hash, as_of=as_of,
+        )
+    else:
+        canonicals = [None] * len(entities)
+
     lines: list[str] = []
     used = estimate_tokens(_HEADER)
-    for entity, nb in zip(entities, neighborhoods):
-        line = _format_entity(entity, nb)
+    for entity, nb, canon in zip(entities, neighborhoods, canonicals):
+        line = _format_entity(entity, nb, canon)
         if not line:
             continue
         cost = estimate_tokens(line) + 1
