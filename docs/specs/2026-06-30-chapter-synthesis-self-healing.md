@@ -279,6 +279,139 @@ Qi3→Qi4); the system applies it = **event sourcing for characters** (ResNet-st
 fits this exactly** — this is more promising than merely growing the context window. ⇒ refines Phase 0
 slice 2 (cross-chapter threading): the "running state" is **typed state + deltas**, not a flat summary.
 
+## Phase 2 — stitch baseline measured (self-heal step 1) — 2026-06-30
+Ran the EXISTING 1-pass `stitch` on ch1 (3 fresh scene drafts, Gemma) and diffed vs raw concat
+(`poc/io/stitch_ch01_{raw_concat,stitched}.txt`, harness `phase_stitch`):
+
+| metric | raw concat | stitched | read |
+|---|---|---|---|
+| chars | 7921 | 13305 | stitch **expands ~68%**, does NOT tighten/merge-down |
+| scene_title_markers | **0** | **0** | the drafts are title-less prose |
+| "phế vật" | 2 | 3 | ~flat density (0.25→0.23/1k) — **not deduped** |
+| "lạnh" | 9 | 14 | still ~1.1/1k — motif overuse **not reduced** |
+| "Cửu U Ma Cơ" | 1 | 2 | foreshadow **not thinned** |
+
+**Finding A — the "scene-titles mid-chapter" complaint (reviewer #1's top defect, planned as pass L1)
+was a POC HARNESS ARTIFACT, not a pipeline defect.** The drafter emits title-less prose; the titles
+were injected by the harness `to_tiptap_doc` (heading-per-scene). ⇒ **L1 is dropped from Phase 2** —
+the fix is a one-line harness change (don't insert per-scene headings), not a self-heal pass.
+
+**Finding C — `stitch` has a LENGTH-INFLATION weakness (the 68% expansion is real, not a bug in our
+code).** Verified: NOT slice-2 (threading doesn't touch stitch), NOT a measurement artifact (raw + the
+stitch input are the same 3 drafts), and **0 duplicate paragraphs** — the model wrote genuinely NEW
+prose (35 → 61 distinct paragraphs), un-truncated (`finish_reason≠length`, max_out=2100 tok). Root
+cause is `engine/stitch.py`'s prompt: it states a merge+dedup intent BUT the dial-guard is one-sidedly
+anti-shortening ("do NOT flatten… do not shorten or blandify") with **no length-preservation / no-new-
+content constraint**, so a capable model (Gemma) re-writes a fuller chapter instead of joining +
+de-duplicating. Net: stitch **fails 2 of its 3 jobs** — dedup ✗ (motif counts UP), length-neutral ✗
+(+68%); only transitions ✓. ⇒ **the first self-heal fix is to REPAIR stitch** (add a length-band +
+"join & de-duplicate only, add no new events/description" constraint; rebalance the guard; make the
+seam-dedup actually bite), higher-leverage than bolting on a new L3 — re-measure for ratio→~1.0 and
+"lạnh" density down. THEN the targeted L2/L4 passes for what stitch still can't do.
+
+**Finding C-2 — the prompt fix did NOT work; root cause is deeper (the LLM rewrites, it doesn't
+merge).** Applied a sound prompt cleanup to `engine/stitch.py` (length-band + "add no new content";
+rebalanced the one-sided anti-shorten guard; dropped the `style_directive` "write lush prose" — wrong
+for a merge; made seam-dedup directive). **Controlled A/B (identical DB drafts, only the stitch prompt
+changed): 13305 → 13294 chars — essentially UNCHANGED** (the 11-char delta proves a real re-gen, not a
+cache). Ground truth from the job: `finish_reason=stop` (NOT truncated), max_out = 3×700 = 2100 tok;
+Gemma turned ~1,220 input tokens into ~2,050 output tokens and stopped on its own. ⇒ **the model
+rewrites-and-expands by nature and ignores the length/no-new-content instruction.** The output token
+cap is NOT a clean lever either: it's already ≈input-sized, and lowering it to force brevity just
+TRUNCATES (finish=length → degrade to raw concat), not a graceful shorter chapter. (Note: per-word
+repetition DENSITY was ~flat, not worse — lạnh 1.14→1.05/1k; stitch added prose without deduping.)
+
+⇒ **Fixing stitch needs a STRUCTURAL change, not prompt tuning (gate #2 — a design decision for the
+PO). Options:**
+- **(A) Seam-only stitch** — keep each scene body VERBATIM, have the model rewrite ONLY the ~600-char
+  boundary windows between scenes (transitions). Bounds length by construction; biggest change to
+  `stitch.py`.
+- **(B) In-code deterministic dedup** — apply `repetition_findings` deletions in code (like the
+  `_DedupLLM` test models) + a tiny transition-insert; reliable, less "smooth", no rewrite.
+- **(C) Two-pass** — keep stitch for transitions, add a separate "compress/tighten" pass with a hard
+  length target measured against the input.
+- **(D) Accept it** — if a fuller chapter at flat repetition-density is acceptable, the only real
+  defect left is logic/continuity (L4), and we skip length control.
+
+**Finding B — `stitch` covers TRANSITIONS/FLOW but is NOT a dedup/repair pass.** The stitched head
+reads as continuous prose (no concatenation seams) and even *adds* foreshadow (the black qi seeping
+into Lâm Tử Hàn's meridians). But it preserves/expands the over-used motifs, re-explained facts, and
+repeated foreshadow — it does not reduce them. ⇒ the multi-pass layers **L2 (info/emotion dedup),
+L3 (prose-motif dedup), L4 (continuity/logic repair)** are GENUINELY missing; only the
+"hard scene break" defect is already handled by stitch. **Next POC pass: L3 prose-motif-dedup** (the
+"lạnh" overuse — most measurable: density target) or **L2 info-repetition dedup** ("phế vật").
+
+## Phase 2 — SATELLITE EDITING is the answer (POC validated) — 2026-06-30
+PO insight: don't rewrite the whole text — **edit only a tiny region** ("sửa vệ tinh"), which big
+models do well; can a SMALL model? Two mechanisms, and model size matters differently:
+- **(1) Trust the model** (whole doc in + "change only X" instruction): big models comply; **small
+  models DON'T** — already proven by the stitch test (whole chapter in, "change nothing but dedup" →
+  Gemma rewrote + inflated 1.68×).
+- **(2) Structural isolation** (send ONLY the span [+ read-only grounding], get back ONLY the span,
+  splice in code): the rest is untouched BY CONSTRUCTION — works at any model size.
+
+**POC (mechanism 2, `selection-edit` on an isolated 446-char `lạnh`-dense span of ch1, Gemma):**
+
+| | whole-chapter stitch (mech 1) | isolated span edit (mech 2) |
+|---|---|---|
+| length | 7921 → 13294 (**×1.68**) | 446 → 449 (**×1.01**) |
+| motif "lạnh" | 9 → 14 (not reduced) | 2 → **0** (clean: "cái lạnh"→"cái buốt giá", "lạnh lẽo"→"tê tái") |
+| meaning/voice | rewritten | preserved |
+
+**Same model.** Structure makes the difference. ⇒ **VERDICT: a small model DOES satellite editing well —
+via mechanism (2) only.** `selection-edit(rewrite/expand/describe, selection, guide)` already implements
+it. This **unifies the whole self-heal design**:
+
+> **Every self-heal pass = an LLM JUDGE that reads the chapter and LOCATES the defective span(s) +
+> `selection-edit` (satellite) with a per-defect `guide` + splice back.** Not 5 separate whole-chapter
+> rewrite passes.
+
+**⚠ The DETECTOR must be an LLM, NOT rule-based code (PO correction).** Literature is open-ended — code
+rules (n-gram repetition, keyword motif-density) only catch the tiny *enumerable* slice. The real
+defects (logic holes, flat characters, pacing, tonal drift, over-used foreshadow) need **semantic
+reading** → an LLM judge. So the pipeline has **TWO LLM roles**, and the asymmetry is the whole point:
+
+| Role | Input | Output | Mechanism | Expansion risk |
+|---|---|---|---|---|
+| **JUDGE** (detector) | WHOLE chapter | a small structured findings list — each `{defect_type, VERBATIM span to fix, fix instruction}` | reads everything (mech-1 input) but emits only findings | none (output is tiny) |
+| **EDITOR** (fixer) | ONE isolated span + guide | the edited span only | mech-2 (isolation) | none (×1.01 proven) |
+
+Code's ONLY remaining jobs: (1) **locate** the judge's verbatim span in the text (string/fuzzy match
+→ offsets) and (2) **splice** the edited span back. Cheap rule detectors (n-gram repetition) are an
+optional *add-on* pre-filter, never the main detector.
+
+- **A (seam-only stitch)** = satellite-edit the SEAM spans (tail of A + head of B), bodies verbatim.
+- **C (tighten)** = judge flags verbose/repetitive spans → satellite-edit each (no whole-doc rewrite).
+- **L2/L3/L4** = the JUDGE locates the spans (semantic), satellite-edit fixes each. L3 (motif-dedup
+  EDITOR step) is already proven; the JUDGE step is the next unproven half.
+- The orchestrator = judge → locate → satellite-edit each finding (confidence-gated, advisory) →
+  re-judge loop. Whole-chapter `stitch` rewrite is RETIRED as the assembly primitive.
+
+**⚠ Key handoff risk to POC next:** the judge must return **verbatim** span quotes (or offsets) so code
+can locate them — LLMs often paraphrase quotes. POC the JUDGE: can Gemma read ch1 and return real
+defects each with a locatable verbatim span?
+
+### JUDGE POC RESULT — validated 2026-06-30 (the pipeline is now proven end-to-end)
+Ran a judge prompt on ch1 raw_concat via the composition `LLMClient` (Gemma, in-container). **7 findings,
+valid JSON, and the defects are REAL — they match the reviewer critiques and then some:**
+1. motif repetition (bóng tối/nuốt chửng) — L3 · 2. info-repetition (expulsion re-stated) — L2 ·
+3. flat/abrupt villain (huynh trưởng ôn nhu→khinh miệt) — L5 · 4. **logic hole** (why destroy an
+expellee's linh thạch?) — L4 · 5. emotion-loop ("đau đớn/tuyệt vọng" sáo rỗng) — L2 (the "tua băng
+cảm xúc") · 6. pacing (chuyển cảnh dàn trải) · 7. **the fall-physics logic hole** (kình lực from where?
+— the EXACT defect reviewers flagged) — L4, with a concrete fix (tie it to a pursuer's strike).
+
+The L4 logic holes (#4, #7) are precisely what rule-based code could NEVER find — the LLM judge is
+essential. Each finding came with an actionable `fix` (the satellite-edit guide, for free).
+
+**LOCATE-RATE: 7/7 — but only 3/7 EXACT; 4/7 needed FUZZY (whitespace-norm + 5-word shingle).** ⇒ the
+handoff risk is REAL but mitigated: **the locate step must use fuzzy/shingle matching, not exact**
+(the judge abbreviates with "…" and tweaks spacing). With fuzzy match, every span located.
+
+⇒ **The full pipeline is now proven end-to-end on a small model:**
+`LLM JUDGE (real defects + fixes, 7/7 locatable fuzzy) → fuzzy-locate (code) → satellite-edit
+(×1.01, surgical, proven) → splice`. The remaining work is the ORCHESTRATOR (glue + a re-judge loop),
+not any unproven capability.
+
 ## Open questions for PO
 - [ ] **SH-D1** — build this as a new **engine track** (composition-service) prioritized ahead of
   GUI slices? (GUI continues after / in parallel as smaller slices.)

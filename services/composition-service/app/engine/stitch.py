@@ -39,7 +39,7 @@ from loreweave_llm.errors import LLMError
 from app.clients.eval_client import extract_judge_content
 from app.clients.llm_client import LLMClient
 from app.engine.select import _NO_THINK
-from app.packer.profile import BookProfile, style_directive
+from app.packer.profile import BookProfile
 
 logger = logging.getLogger(__name__)
 
@@ -205,8 +205,8 @@ def _format_seam_notes(
     if not rep and not over:
         return ""
     lines = [
-        "SEAM NOTES (advisory — apply only where it improves flow; preserve voice "
-        "and deliberate motifs):"
+        "SEAM NOTES (apply these de-duplications; preserve voice and deliberate "
+        "motifs, but DO remove the flagged cross-boundary repetition):"
     ]
     for f in rep:
         lines.append(
@@ -246,14 +246,26 @@ async def stitch_chapter(
         f" Write the prose in the language with code '{profile.source_language}'."
     )
     voice = f" Match this voice: {profile.voice}." if profile.voice else ""
-    style = style_directive(profile)  # T3.5 — chapter-scoped density/pace
-    # Dial-respect / over-stitching guard (§17.4): the stitch smooths SEAMS only —
-    # it must preserve the book's voice + deliberate motifs, never homogenize prose.
+    # Length-preservation + no-new-content. Stitch is a STRUCTURAL merge, NOT a
+    # rewrite: without this guard a capable model elaborates a fuller chapter (a
+    # measured +68% length while dedup did NOT happen). The density/pace `style`
+    # directive is deliberately NOT applied here — it's a DRAFTING dial ("write lush,
+    # richly textured prose") that actively drove the inflation; a merge adds no prose.
+    length_guard = (
+        " Keep the merged chapter CLOSE TO the combined length of the input scenes and "
+        "NEVER longer — add NO new events, characters, descriptions, or dialogue. Only "
+        "join the existing scenes and remove duplication, so the result is the SAME "
+        "content read as one chapter (typically a little SHORTER after de-duplication, "
+        "never padded or expanded)."
+    )
+    # Dial-respect / over-stitching guard (§17.4): preserve voice + deliberate motifs,
+    # but de-duplication MAY (and should) shorten — the old one-sided 'do not shorten /
+    # blandify' guard drove the length inflation, so it is rebalanced here.
     dial_guard = (
-        " Smooth only the seams between scenes; preserve the established voice, "
-        "tone, and any deliberate repeated imagery or motif — do NOT flatten or "
-        "homogenize the prose, and do not shorten or blandify scenes that are "
-        "already distinct."
+        " Preserve the established voice, tone, and any deliberate repeated imagery or "
+        "motif — do NOT flatten or homogenize the prose. But DO cut repeated "
+        "introductions, echoed descriptions, and re-explained facts even though that "
+        "shortens the chapter; smooth only the seams between scenes."
     )
     system = (
         "You are a fiction editor merging consecutive scene drafts of ONE chapter "
@@ -261,7 +273,7 @@ async def stitch_chapter(
         "descriptions, smooth the transitions between scenes, and keep one "
         "continuous narrative. Change NO plot facts, events, or dialogue meaning — "
         "only restructure and de-duplicate the prose. Output ONLY the chapter prose."
-        + lang + voice + style + dial_guard
+        + lang + voice + length_guard + dial_guard
     )
     # Cross-scene repetition + over-resolve signals computed over `kept` so the
     # 1-based scene indices line up with the [SCENE n] blocks below. Advisory: a

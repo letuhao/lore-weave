@@ -1,0 +1,46 @@
+```json
+[
+  {
+    "type": "lặp motif/hình ảnh",
+    "span": "bóng tối đặc quánh như mực tàu nuốt chửng",
+    "issue": "Sử dụng hình ảnh 'nuốt chửng' và 'bóng tối đặc quánh' lặp lại quá nhiều lần trong thời gian ngắn.",
+    "fix": "Thay đổi cách diễn đạt ở đoạn rơi xuống vực để tránh trùng lặp với đoạn trước."
+  },
+  {
+    "type": "lặp thông tin đã nói",
+    "span": "không còn là người của Lâm gia",
+    "issue": "Thông tin về việc bị trục xuất đã được thể hiện qua hành động, việc lặp lại lời thoại khiến nhịp văn bị trì trệ.",
+    "fix": "Lược bỏ lời thoại thừa, tập trung vào sự tàn nhẫn qua ánh mắt/cử chỉ."
+  },
+  {
+    "type": "nhân vật một chiều",
+    "span": "gương mặt thanh tú vốn dĩ luôn tràn đầy sự ôn nhu",
+    "issue": "Nhân vật huynh trưởng thay đổi thái độ quá đột ngột và cực đoan (từ ôn nhu sang khinh miệt) mà thiếu sự chuyển biến tâm lý.",
+    "fix": "Thêm một chi tiết cho thấy sự thất vọng tích tụ hoặc áp lực từ gia tộc lên hắn."
+  },
+  {
+    "type": "lỗ hổng logic/nhân quả",
+    "span": "phải tiêu hủy hết những mảnh vỡ linh thạch mà nó lén lút thu thập",
+    "issue": "Tại sao đệ tử lại phải đi tiêu hủy linh thạch của một kẻ vừa bị tước bỏ tư cách và bị đuổi đi?",
+    "fix": "Chuyển thành việc tiêu hủy 'chứng cứ tu luyện lén lút' để hợp lý hóa việc truy sát."
+  },
+  {
+    "type": "vòng lặp cảm xúc",
+    "span": "nỗi đau đã vượt quá giới hạn của nước mắt",
+    "issue": "Cảm xúc nhân vật bị mô tả bằng các cụm từ sáo rỗng, lặp lại trạng thái 'đau đớn/tuyệt vọng' quá nhiều.",
+    "fix": "Thay bằng các phản ứng vật lý cụ thể hoặc sự tê liệt cảm giác để tăng sức nặng."
+  },
+  {
+    "type": "nhịp văn",
+    "span": "Lâm Uyển lảo đảo đứng dậy... Nàng không khóc... Nàng bước đi một mình",
+    "issue": "Nhịp văn ở đoạn chuyển giao giữa đại sảnh và rừng cấm bị dàn trải, thiếu sự dồn dập của một cuộc trốn chạy.",
+    "fix": "Sử dụng câu ngắn, dồn dập để đẩy nhanh tốc độ hành động."
+  },
+  {
+    "type": "lỗ hổng logic/nhân quả",
+    "span": "một cú đẩy mạnh từ một luồng kình lực cuồng bạo",
+    "issue": "Chưa rõ nguồn gốc kình lực từ đâu (do đệ tử đẩy hay do địa hình), khiến sự kiện rơi xuống vực bị khiên cưỡng.",
+    "fix": "Gắn kình lực này với một chiêu thức tấn công của đệ tử đang đuổi theo."
+  }
+]
+```

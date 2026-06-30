@@ -199,6 +199,105 @@ def phase_write(token, s):
         print(f"  ch{ci} persisted ({chars} chars, {len(pairs)} scenes, {len(to_tiptap_doc(pairs)['content'])} blocks)")
     print("WRITE done")
 
+def _rep_metrics(text):
+    """Cheap baseline detectors the self-heal passes target — so we can diff
+    before/after a stitch (or a future pass)."""
+    import re
+    low = text.lower()
+    # scene-title leakage: a short ALL-or-Title line surrounded by blank lines / a md heading
+    titles = len(re.findall(r"(?m)^\s{0,3}#{1,3}\s+\S", text)) + \
+             len(re.findall(r"(?m)^(?:Cảnh|Scene)\s+\d", text))
+    return {
+        "chars": len(text),
+        "scene_title_markers": titles,
+        "phe_vat": low.count("phế vật"),                 # the re-explained "trash/no-root" fact
+        "lanh": low.count("lạnh"),                       # the over-used cold-motif stem
+        "ma_co": low.count("cửu u ma cơ"),               # foreshadow over-repetition
+    }
+
+def phase_satellite(token, s):
+    """Satellite-edit POC — does the SMALL model do a SURGICAL span edit well via
+    mechanism (2) (only the span is sent + returned)? Pick a 'lạnh'-dense window from
+    the stitched ch1, run selection-edit(rewrite) with a guide to thin that motif,
+    and check: (a) the motif drops IN the span, (b) the span stays ~same length (no
+    expansion when isolated), (c) meaning preserved. Tests whether structural
+    isolation makes a small model behave surgically."""
+    ci = int(os.environ.get("POC_STITCH_CH", "1"))
+    src = (IO / f"stitch_ch{ci:02d}_stitched.txt")
+    text = src.read_text(encoding="utf-8") if src.exists() else \
+           (IO / f"stitch_ch{ci:02d}_raw_concat.txt").read_text(encoding="utf-8")
+    # find the ~450-char window with the most "lạnh" occurrences (the motif to thin)
+    W = 450; low = text.lower(); best_i, best_n = 0, -1
+    for i in range(0, max(1, len(text) - W), 50):
+        n = low[i:i + W].count("lạnh")
+        if n > best_n: best_i, best_n = i, n
+    # snap to paragraph-ish boundaries (avoid mid-word)
+    span = text[best_i:best_i + W]
+    span = span[span.find(" ") + 1:]  # drop a leading partial word
+    print(f"SATELLITE: span={len(span)} chars, 'lạnh' x{span.lower().count('lạnh')} (most-dense window)")
+    print(f"\n--- BEFORE ---\n{span}\n")
+    guide = ("Chỉ viết lại đúng đoạn này. GIẢM lặp từ 'lạnh/lạnh lẽo/lạnh lùng' — đa dạng hóa "
+             "hình ảnh (giữ tối đa 1 lần). GIỮ NGUYÊN nghĩa, sự kiện, giọng văn và ĐỘ DÀI tương đương; "
+             "KHÔNG thêm tình tiết mới.")
+    st, res = call("POST", f"/v1/composition/works/{s['project_id']}/selection-edit", token=token,
+                   name=f"satellite_ch{ci:02d}",
+                   json_body={"operation": "rewrite", "selection": span, "guide": guide,
+                              "model_source": MODEL_SOURCE, "model_ref": MODEL_REF,
+                              "reasoning": "off"}, expect={200, 202})
+    if isinstance(res, dict) and res.get("job_id") and res.get("status") in ("pending", "running"):
+        job = poll_job(token, res["job_id"], f"satellite_ch{ci:02d}", max_polls=300, interval=2.0)
+        res = job.get("result") or {}
+    out = (res or {}).get("text", "") if isinstance(res, dict) else ""
+    (IO / f"satellite_ch{ci:02d}_before.txt").write_text(span, encoding="utf-8")
+    (IO / f"satellite_ch{ci:02d}_after.txt").write_text(out, encoding="utf-8")
+    print(f"--- AFTER ({len(out)} chars, 'lạnh' x{out.lower().count('lạnh')}) ---\n{out}\n")
+    print(f"SATELLITE RESULT: len {len(span)}→{len(out)} (ratio {len(out)/max(1,len(span)):.2f})  "
+          f"lạnh {span.lower().count('lạnh')}→{out.lower().count('lạnh')}")
+
+def phase_stitch(token, s):
+    """Self-heal POC step 1 — measure the EXISTING 1-pass `stitch` baseline.
+    The prior POC raw-concatenated scenes (never stitched); this drafts ch1's scenes
+    onto the CURRENT nodes, marks them done (the stitch gate), runs stitch, and diffs
+    the stitched chapter vs the raw concat so we can see how much the existing advisory
+    pass already fixes before building NEW self-heal passes. POC_STITCH_CH=1-based."""
+    ci = int(os.environ.get("POC_STITCH_CH", "1"))
+    redraft = os.environ.get("POC_STITCH_REDRAFT", "1") != "0"  # 0 = reuse the DB drafts (isolate the stitch variable)
+    cid = s["chapter_ids"][ci - 1]
+    raw_path = IO / f"stitch_ch{ci:02d}_raw_concat.txt"
+    if redraft:
+        scenes = scenes_by_chapter(token, s).get(cid, [])
+        print(f"STITCH baseline: ch{ci} {cid} — {len(scenes)} scenes (redraft)")
+        texts = []
+        for si, node in enumerate(scenes, 1):
+            print(f"  draft ch{ci} scene{si}/{len(scenes)}: {node.get('title')}")
+            text = gen_scene(token, s, node, f"stitch_gen_ch{ci:02d}_sc{si:02d}")
+            if text:
+                texts.append(text)
+            # mark the scene done so the stitch trigger-gate (all scenes done) passes
+            call("PATCH", f"/v1/composition/outline/nodes/{node['id']}",
+                 token=token, name=f"stitch_done_ch{ci:02d}_sc{si:02d}",
+                 json_body={"status": "done"}, expect={200})
+        raw_concat = "\n\n".join(texts)
+        raw_path.write_text(raw_concat, encoding="utf-8")
+    else:
+        raw_concat = raw_path.read_text(encoding="utf-8")  # the prior run's drafts == what's in the DB
+        print(f"STITCH A/B: ch{ci} {cid} — reusing {len(raw_concat)} chars of existing DB drafts")
+    st, res = call("POST", f"/v1/composition/works/{s['project_id']}/chapters/{cid}/stitch",
+                   token=token, name=f"stitch_ch{ci:02d}",
+                   json_body={"model_source": MODEL_SOURCE, "model_ref": MODEL_REF}, expect={200, 202})
+    if isinstance(res, dict) and res.get("job_id") and res.get("status") in ("pending", "running"):
+        job = poll_job(token, res["job_id"], f"stitch_ch{ci:02d}", max_polls=600, interval=3.0)
+        res = job.get("result") or {}
+    stitched = (res or {}).get("text", "")
+    (IO / f"stitch_ch{ci:02d}_stitched.txt").write_text(stitched, encoding="utf-8")
+    rm_raw, rm_st = _rep_metrics(raw_concat), _rep_metrics(stitched)
+    print(f"\nSTITCH BASELINE ch{ci} — stitched={(res or {}).get('stitched')} "
+          f"assembly={(res or {}).get('assembly_mode')} truncated={(res or {}).get('truncated')}")
+    print(f"  {'metric':<22}{'raw_concat':>12}{'stitched':>12}")
+    for k in rm_raw:
+        print(f"  {k:<22}{rm_raw[k]:>12}{rm_st[k]:>12}")
+    print(f"\n  --- stitched head (600 chars) ---\n{stitched[:600]}")
+
 # Xianxia ontology: the System genre is already seeded; adopt it + its kinds onto the
 # book so the extraction profile resolves (the per-book ontology persists in the DB → reusable).
 XIANXIA_KINDS = ["character", "location", "organization", "power_system", "item", "event",
@@ -302,6 +401,8 @@ def main():
     if phase == "profile": phase_profile(token, s)
     if phase in ("extract", "all"): phase_extract(token, s)
     if phase == "mdtest": phase_mdtest(token, s)
+    if phase == "stitch": phase_stitch(token, s)
+    if phase == "satellite": phase_satellite(token, s)
     if phase == "grounding": phase_grounding(token, s)
     save_state(s)
 

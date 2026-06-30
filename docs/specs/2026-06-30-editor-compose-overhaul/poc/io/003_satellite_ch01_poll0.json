@@ -1,0 +1,51 @@
+{
+  "seq": 3,
+  "name": "satellite_ch01_poll0",
+  "method": "GET",
+  "url": "http://localhost:3123/v1/composition/jobs/019f17f7-3d8c-74ed-9544-43ced01a2b85",
+  "status": 200,
+  "request": null,
+  "response": {
+    "id": "019f17f7-3d8c-74ed-9544-43ced01a2b85",
+    "user_id": "019d5e3c-7cc5-7e6a-8b27-1344e148bf7c",
+    "project_id": "019f1783-ecca-7331-afab-9543762a8b68",
+    "outline_node_id": null,
+    "operation": "rewrite",
+    "mode": "cowrite",
+    "status": "running",
+    "llm_job_id": null,
+    "input": {
+      "max_out": 1024,
+      "messages": [
+        {
+          "role": "system",
+          "content": "You are a co-writer editing a specific passage of a novel. Use any provided canon, characters, and lore as grounding; never contradict the canon and never introduce facts beyond what is given. Output ONLY the revised passage — no preamble, no quotation marks, no commentary. Write the prose in the language with code 'vi'."
+        },
+        {
+          "role": "user",
+          "content": "Rewrite the SELECTED PASSAGE below, preserving its events and meaning but improving the prose. Keep roughly the same length.\n\nSELECTED PASSAGE:\nrít qua khe đá, mang theo cái lạnh thấu xương của vực thẳm vạn trượng. Lâm Uyển quỳ trên nền đá lởm chởm, tà áo trắng đã nhuốm đầy bụi trần và máu tươi, nhưng đôi mắt nàng vẫn trong vắt, phản chiếu bóng dáng uy nghiêm của gia tộc đang đứng trước miệng vực.\n\n\"Uyển nhi, đây là mệnh của nàng.\"\n\nGiọng nói của Lâm Chấn Nhạc trầm đục, lạnh lẽo như băng ngàn năm. Gia chủ Lâm gia đứng đó, bóng lưng cao ngạo nhưng run rẩy trước áp lực của thiên đạo. P\n\nAuthor guidance: Chỉ viết lại đúng đoạn này. GIẢM lặp từ 'lạnh/lạnh lẽo/lạnh lùng' — đa dạng hóa hình ảnh (giữ tối đa 1 lần). GIỮ NGUYÊN nghĩa, sự kiện, giọng văn và ĐỘ DÀI tương đương; KHÔNG thêm tình tiết mới."
+        }
+      ],
+      "model_ref": "019ebb72-27a2-72f3-a42d-d2d0e0ded179",
+      "operation": "rewrite",
+      "reasoning": "user",
+      "worker_op": "selection_edit",
+      "model_source": "user_model",
+      "scene_context": null,
+      "selection_edit": true,
+      "prompt_estimate": 445,
+      "reasoning_effort": "none",
+      "grounding_available": false,
+      "reasoning_passthrough": false
+    },
+    "result": null,
+    "critic": null,
+    "target_chapter_id": null,
+    "base_revision_id": null,
+    "target_revision_id": null,
+    "cost_usd": "0.0000",
+    "idempotency_key": null,
+    "created_at": "2026-06-30T09:58:26.955722Z",
+    "updated_at": "2026-06-30T09:58:26.963952Z"
+  }
+}

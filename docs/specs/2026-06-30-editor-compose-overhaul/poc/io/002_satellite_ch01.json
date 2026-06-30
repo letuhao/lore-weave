@@ -1,0 +1,21 @@
+{
+  "seq": 2,
+  "name": "satellite_ch01",
+  "method": "POST",
+  "url": "http://localhost:3123/v1/composition/works/019f1783-ecca-7331-afab-9543762a8b68/selection-edit",
+  "status": 202,
+  "request": {
+    "operation": "rewrite",
+    "selection": "rít qua khe đá, mang theo cái lạnh thấu xương của vực thẳm vạn trượng. Lâm Uyển quỳ trên nền đá lởm chởm, tà áo trắng đã nhuốm đầy bụi trần và máu tươi, nhưng đôi mắt nàng vẫn trong vắt, phản chiếu bóng dáng uy nghiêm của gia tộc đang đứng trước miệng vực.\n\n\"Uyển nhi, đây là mệnh của nàng.\"\n\nGiọng nói của Lâm Chấn Nhạc trầm đục, lạnh lẽo như băng ngàn năm. Gia chủ Lâm gia đứng đó, bóng lưng cao ngạo nhưng run rẩy trước áp lực của thiên đạo. P",
+    "guide": "Chỉ viết lại đúng đoạn này. GIẢM lặp từ 'lạnh/lạnh lẽo/lạnh lùng' — đa dạng hóa hình ảnh (giữ tối đa 1 lần). GIỮ NGUYÊN nghĩa, sự kiện, giọng văn và ĐỘ DÀI tương đương; KHÔNG thêm tình tiết mới.",
+    "model_source": "user_model",
+    "model_ref": "019ebb72-27a2-72f3-a42d-d2d0e0ded179",
+    "reasoning": "off"
+  },
+  "response": {
+    "job_id": "019f17f7-3d8c-74ed-9544-43ced01a2b85",
+    "status": "pending",
+    "selection_edit": true,
+    "enqueued": "ok"
+  }
+}

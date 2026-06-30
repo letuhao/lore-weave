@@ -1,0 +1,32 @@
+{
+  "seq": 10,
+  "name": "stitch_done_ch01_sc01",
+  "method": "PATCH",
+  "url": "http://localhost:3123/v1/composition/outline/nodes/019f17b3-f277-73fa-b4ca-0751d3baf4c9",
+  "status": 200,
+  "request": {
+    "status": "done"
+  },
+  "response": {
+    "id": "019f17b3-f277-73fa-b4ca-0751d3baf4c9",
+    "user_id": "019d5e3c-7cc5-7e6a-8b27-1344e148bf7c",
+    "project_id": "019f1783-ecca-7331-afab-9543762a8b68",
+    "parent_id": "019f17b3-f276-7736-a160-a77e96e1c5eb",
+    "kind": "scene",
+    "rank": "i",
+    "title": "Sự Sỉ Nhục Tại Đại Sảnh",
+    "pov_entity_id": null,
+    "present_entity_ids": [],
+    "goal": "",
+    "beat_role": "hook",
+    "status": "done",
+    "chapter_id": "019f1783-ebd4-7ad6-bca6-618e9209b59b",
+    "tension": 65,
+    "story_order": 1000,
+    "synopsis": "Lâm Uyển đối mặt với sự ghẻ lạnh của phụ mẫu và sự khinh miệt của huynh trưởng khi nàng bị tước đi tư cách đệ tử gia tộc. Xung đột nảy sinh khi Lâm Chấn Nhạc quyết định trục xuất nàng để bảo vệ danh tiếng gia tộc sau khi biết nàng không thể tu luyện. Kết quả là Lâm Uyển bị đẩy ra khỏi tộc đàn, bị tước bỏ mọi tài nguyên và bị ném vào khu rừng cấm để tự sinh tự diệt.",
+    "version": 1,
+    "is_archived": false,
+    "created_at": "2026-06-30T08:44:56.811080Z",
+    "updated_at": "2026-06-30T09:14:55.975800Z"
+  }
+}

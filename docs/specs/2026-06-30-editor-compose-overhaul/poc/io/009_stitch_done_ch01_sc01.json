@@ -1,0 +1,13 @@
+{
+  "seq": 9,
+  "name": "stitch_done_ch01_sc01",
+  "method": "PATCH",
+  "url": "http://localhost:3123/v1/composition/works/019f1783-ecca-7331-afab-9543762a8b68/outline/nodes/019f17b3-f277-73fa-b4ca-0751d3baf4c9",
+  "status": 404,
+  "request": {
+    "status": "done"
+  },
+  "response": {
+    "detail": "Not Found"
+  }
+}
