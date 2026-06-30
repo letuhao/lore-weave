@@ -29,6 +29,13 @@ def test_motifs_for_beat_by_role():
     assert climax == ["Xấu hóa mỹ", "Phục thù"]          # spine + climax payoff
 
 
+def test_motifs_for_beat_unrecognised_role_is_always_offered():
+    # an off-vocabulary arc_role must NOT be silently dropped from every chapter
+    odd = [{"name": "Subplot motif", "arc_role": "thematic undercurrent"}]
+    assert [m["name"] for m in motifs_for_beat(odd, "establishment")] == ["Subplot motif"]
+    assert [m["name"] for m in motifs_for_beat(odd, "climax")] == ["Subplot motif"]
+
+
 def test_intros_by_chapter_filters_range_and_from_start():
     arcs = [
         {"name": "MC", "introduce_at_chapter": 1},           # from start → not staged
@@ -101,3 +108,23 @@ async def test_grounded_decompose_threads_all_inputs_into_l2():
     assert "100/100" in ch2_prompt
     assert "STORY SO FAR" in ch2_prompt and "a1" in ch2_prompt   # threaded from ch1's exit
     assert res.chapters[1].exit_state.advances == ["a1"]
+
+
+async def test_grounded_decompose_skip_l1_does_not_run_l1_on_all_none():
+    # skip_l1=True with all-None chapters must NOT re-run L1 (the orchestrator owns it) —
+    # the fake would raise on an L1 call, proving none was made.
+    l2 = json.dumps({"scenes": [{"title": "s", "intent": "do", "tension": 40, "present": []}]})
+
+    class _NoL1LLM:
+        async def submit_and_wait(self, **kw):
+            user = kw["input"]["messages"][1]["content"]
+            assert "STRUCTURE BEATS" not in user, "L1 must be skipped"
+            return SimpleNamespace(status="completed", result={"messages": [{"content": l2}]})
+
+    chapters = [ChapterPlan(chapter_id="c1", title="Ch1", sort_order=1, beat_role=None, intent="")]
+    res = await grounded_decompose(
+        _NoL1LLM(), user_id="u", model_source="user_model", model_ref="m",
+        premise="p", arc_title="A", beats=[{"key": "hook", "purpose": ""}], chapters=chapters,
+        cast=[], motifs=[], char_arcs=[], skip_l1=True,
+        k_ceiling=3, high_threshold=70, min_scenes=1, max_scenes=4, source_language="vi")
+    assert len(res.chapters) == 1 and res.chapters[0].chapter.beat_role is None

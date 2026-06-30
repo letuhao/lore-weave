@@ -97,10 +97,12 @@ async def run_planning_pipeline(
                                      beat_roles=beat_roles, source_language=source_language, **mk)
     arc_dicts = [{"name": a.name, "introduce_at_chapter": a.introduce_at_chapter} for a in arcs]
 
-    # ── Stage 4 — grounded decompose (pre-mapped chapters ⇒ skips its own L1).
+    # ── Stage 4 — grounded decompose. skip_l1=True: L1 already ran ONCE above (its result
+    # fed Stage 3's char arcs), so grounded reuses `mapped` as-is — even on an L1 degrade
+    # (all-None) — instead of re-running and drifting the beats out of sync with the arcs.
     result = await grounded_decompose(
         llm, arc_title="Arc 1", premise=premise, beats=beats, chapters=mapped,
-        cast=cast_decompose, motifs=motifs, char_arcs=arc_dicts,
+        cast=cast_decompose, motifs=motifs, char_arcs=arc_dicts, skip_l1=True,
         k_ceiling=k_ceiling, high_threshold=high_threshold,
         min_scenes=min_scenes, max_scenes=max_scenes, source_language=source_language, **mk)
 

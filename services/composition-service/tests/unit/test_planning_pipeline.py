@@ -80,6 +80,7 @@ async def test_pipeline_chains_all_stages(monkeypatch):
     assert captured["char_arcs"][0]["introduce_at_chapter"] == 5
     # the SAME L1 result feeds Stage 3's beats and Stage 4's chapters (one map)
     assert captured["arcs_beats"] == [None]      # L1 degraded → beat_role None, reused
+    assert captured["skip_l1"] is True           # orchestrator owns L1 → grounded never re-runs it
     # Stage 5 ran; intermediates surfaced
     assert res.heal_report.edits_applied == 2
     assert res.cast[0]["name"] == "Lâm Uyển" and res.motifs[0]["code"] == "m"

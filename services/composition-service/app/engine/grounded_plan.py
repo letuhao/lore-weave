@@ -43,17 +43,24 @@ _CLIMAX_BEATS = {"climax", "crisis", "setback"}
 def motifs_for_beat(
     motifs: list[dict[str, str]], beat_role: str | None,
 ) -> list[dict[str, str]]:
-    """Filter the selected arc motifs down to the ones that fit THIS chapter's beat."""
+    """Filter the selected arc motifs down to the ones that fit THIS chapter's beat. A
+    role-SPECIFIC motif (foil / climax-payoff) is gated to its phase; everything else —
+    spine/recurring/empty AND any UNRECOGNISED role — is always offered, so a selected
+    motif is never silently dropped from the whole plan by an off-vocabulary role string."""
     role = (beat_role or "").strip().lower()
     out: list[dict[str, str]] = []
     for m in motifs:
         ar = (m.get("arc_role") or "").strip().lower()
-        if not ar or "spine" in ar or "central" in ar or "recurring" in ar:
-            out.append(m)
-        elif "foil" in ar and role in _CONFLICT_BEATS:
-            out.append(m)
-        elif ("climax" in ar or "payoff" in ar) and role in _CLIMAX_BEATS:
-            out.append(m)
+        is_foil = "foil" in ar
+        is_climax = "climax" in ar or "payoff" in ar
+        if is_foil:
+            if role in _CONFLICT_BEATS:
+                out.append(m)
+        elif is_climax:
+            if role in _CLIMAX_BEATS:
+                out.append(m)
+        else:
+            out.append(m)  # spine / recurring / empty / UNRECOGNISED → always offered
     return out
 
 
@@ -80,7 +87,7 @@ async def grounded_decompose(
     motifs: list[dict[str, str]], char_arcs: list[dict[str, Any]],
     k_ceiling: int, high_threshold: int, min_scenes: int, max_scenes: int,
     source_language: str = "auto", trace_id: str | None = None,
-    l1_max_tokens: int = 2048, l2_max_tokens: int = 2560,
+    l1_max_tokens: int = 2048, l2_max_tokens: int = 2560, skip_l1: bool = False,
     cancel_check: Callable[[], Awaitable[bool]] | None = None,
 ) -> DecomposeResult:
     """L1 map → tension curve → SEQUENTIAL grounded L2 (cast/motifs/tension/intros + the
@@ -98,12 +105,14 @@ async def grounded_decompose(
     _llm_kw = dict(user_id=user_id, model_source=model_source, model_ref=model_ref,
                    trace_id=trace_id, cancel_check=cancel_check)
 
-    # L1 — beat map. SKIP it when the chapters arrive PRE-MAPPED (any beat_role set) — in
-    # the full pipeline L1 runs once (its result also feeds Stage 3's char arcs), so we
-    # reuse it here instead of re-mapping (which could drift under non-determinism).
+    # L1 — beat map. SKIP it when chapters arrive PRE-MAPPED (any beat_role set) OR when the
+    # caller asserts `skip_l1` — in the full pipeline L1 runs ONCE (its result also feeds
+    # Stage 3's char arcs), so the orchestrator passes skip_l1=True to keep that invariant
+    # even when its L1 DEGRADED to all-None (re-running here would drift the beats out of
+    # sync with the intro schedule char arcs were planned against).
     mapped, unmapped = chapters, []
-    if any(ch.beat_role for ch in chapters):
-        logger.info("grounded_decompose: chapters pre-mapped — reusing beat roles (no L1)")
+    if skip_l1 or any(ch.beat_role for ch in chapters):
+        logger.info("grounded_decompose: chapters pre-mapped / skip_l1 — reusing beat roles (no L1)")
     else:
         sys1, usr1 = build_chapter_map_messages(premise, beats, chapters, source_language)
         l1 = await _llm_json(llm, system=sys1, user=usr1, max_tokens=l1_max_tokens, **_llm_kw)
