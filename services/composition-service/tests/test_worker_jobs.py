@@ -506,3 +506,42 @@ async def test_run_plan_pipeline_reconstructs_and_serializes(monkeypatch):
     # inputs reconstructed + threaded
     assert captured["premise"] == "a hero falls" and captured["genre_tags"] == ["xianxia"]
     assert captured["chapters"][0].chapter_id == "c1"   # dict → ChapterPlan
+
+
+async def test_run_job_dispatches_self_heal_propose(monkeypatch):
+    job = _job(operation="self_heal_propose", input={"worker_op": "self_heal_propose"})
+    repo = _FakeRepo(job)
+    monkeypatch.setattr(jc, "GenerationJobsRepo", lambda pool: repo)
+
+    async def _rshp(llm, *, user_id, input, cancel_check=None):
+        return {"proposals": [{"id": "e0"}], "stats": {"edits": 1}}
+
+    monkeypatch.setattr(jc, "run_self_heal_propose", _rshp)
+    out = await jc.run_job(object(), object(), job_id=str(job.id), user_id=str(job.user_id))
+    assert out == "completed"
+    assert repo.updates[-1][1]["stats"]["edits"] == 1
+
+
+async def test_run_self_heal_propose_serializes(monkeypatch):
+    import app.engine.self_heal as sh
+    from app.engine.self_heal import EditProposal, Finding, SelfHealReport
+    from app.worker.operations import run_self_heal_propose
+
+    async def _fake_propose(llm, *, user_id, model_source, model_ref, chapter, source_language,
+                            canon, vote_k, min_votes, verify, verify_k, prefilter, cancel_check=None):
+        props = [EditProposal(id="e0", type="xưng hô (code)", tier="deterministic", start=0,
+                              end=3, before="ông", after="lão", issue="i", fix="f")]
+        rep = SelfHealReport(
+            findings=[Finding(type="t", span="s", issue="i", fix="f", skip_reason="refuted")],
+            located=1, edits_applied=1, rejudge_before=2)
+        return props, rep
+
+    monkeypatch.setattr(sh, "propose_self_heal", _fake_propose)
+    out = await run_self_heal_propose(
+        object(), user_id="u",
+        input={"chapter_text": "ông đi.", "model_source": "user_model", "model_ref": "m",
+               "chapter_id": "c1", "draft_version": 7, "source_language": "vi"})
+    assert out["proposals"][0]["after"] == "lão"
+    assert out["proposals"][0]["tier"] == "deterministic"
+    assert out["source_text"] == "ông đi." and out["draft_version"] == 7
+    assert out["stats"] == {"findings": 2, "located": 1, "edits": 1, "refuted": 1}

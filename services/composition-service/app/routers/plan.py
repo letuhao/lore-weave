@@ -53,6 +53,8 @@ from app.db.repositories.arc_template_repo import ArcTemplateRepo
 from app.db.repositories.motif_repo import MotifRepo
 from app.deps import get_arc_template_repo, get_motif_repo
 from app.middleware.jwt_auth import get_bearer_token, get_current_user
+from app.engine.heal_canon import convention_for, render_canon
+from app.engine.prose_doc import tiptap_doc_to_text
 from app.packer.profile import from_settings
 from app.worker.events import enqueue_job
 from fastapi import status as http_status
@@ -161,6 +163,80 @@ async def _cast_roster(
     cast as AUTHORITATIVE (commit-time entity validation) can skip instead of false-rejecting
     a valid id in a dropped page. `user_id` is forwarded as the KAL tenancy identity."""
     return await kal.roster(book_id, user_id=user_id, strict=strict)
+
+
+class SelfHealProposeRequest(BaseModel):
+    chapter_id: UUID
+    model_source: str = Field(min_length=1, max_length=50)
+    model_ref: str = Field(min_length=1, max_length=200)
+    # Optional canon override — a caller (e.g. the planner) can pass the PipelineResult.canon
+    # bible directly; otherwise the endpoint best-effort renders it from the cast roster +
+    # a genre/language convention (the dominant xưng-hô grounding).
+    canon: str | None = Field(default=None, max_length=20000)
+    verify: bool = True
+    verify_k: int = Field(default=3, ge=1, le=7)
+    vote_k: int = Field(default=5, ge=1, le=7)
+    prefilter: bool = True
+
+
+@router.post("/projects/{project_id}/self-heal/propose")
+async def self_heal_propose_endpoint(
+    project_id: UUID,
+    body: SelfHealProposeRequest,
+    user_id: UUID = Depends(get_current_user),
+    bearer: str = Depends(get_bearer_token),
+    works: WorksRepo = Depends(get_works_repo),
+    book: BookClient = Depends(get_book_client_dep),
+    kal: KalClient = Depends(get_kal_client_dep),
+    llm: LLMClient = Depends(get_llm_client_dep),
+):
+    """M6 Polish — PROPOSE self-heal edits for a chapter draft (the review-gate). Resolves the
+    draft text (Tiptap→prose) + a canon (override via `body.canon`, else best-effort from the
+    cast roster + genre/language convention), runs the cheap-stack in PROPOSE mode, and returns
+    EditProposals — NOT applied. The human accepts a subset; the accepted edits are spliced +
+    saved by the caller (composition_write_prose). Worker when enabled (202 + job_id), else
+    inline. Never auto-writes (do-no-harm: the imperfect pass is gated by the human)."""
+    work = await _require_work(works, user_id, project_id)
+    try:
+        draft = await book.get_draft(work.book_id, body.chapter_id, bearer)
+    except BookClientError as exc:
+        raise HTTPException(status_code=502, detail={"code": "BOOK_SERVICE_UNAVAILABLE",
+                                                     "detail": str(exc)}) from exc
+    text = tiptap_doc_to_text(draft.get("body") or draft.get("doc") or draft.get("content"))
+    if not text.strip():
+        raise HTTPException(status_code=400, detail={
+            "code": "EMPTY_DRAFT", "detail": "chapter draft has no prose to heal"})
+
+    profile = from_settings(work.settings)
+    canon = body.canon
+    if not canon:
+        genre_tags = await _book_genre_tags(book, work.book_id, bearer)
+        roster = await _cast_roster(kal, work.book_id, user_id)
+        canon = render_canon(roster, convention=convention_for(genre_tags, profile.source_language))
+
+    heal_input = {
+        "worker_op": "self_heal_propose", "chapter_text": text, "canon": canon,
+        "chapter_id": str(body.chapter_id), "draft_version": draft.get("draft_version"),
+        "book_id": str(work.book_id), "project_id": str(project_id),
+        "model_source": str(body.model_source), "model_ref": str(body.model_ref),
+        "source_language": profile.source_language,
+        "vote_k": body.vote_k, "verify": body.verify, "verify_k": body.verify_k,
+        "prefilter": body.prefilter,
+    }
+    if settings.composition_worker_enabled:
+        jobs = await get_generation_jobs_repo()
+        job, _created = await jobs.create(
+            user_id, project_id, operation="self_heal_propose", mode="auto",
+            status="pending", input=heal_input)
+        enqueued = await enqueue_job(settings.redis_url, job_id=str(job.id),
+                                     user_id=str(user_id), project_id=str(project_id))
+        return JSONResponse(
+            status_code=http_status.HTTP_202_ACCEPTED,
+            content={"job_id": str(job.id), "status": "pending",
+                     "enqueued": "ok" if enqueued else "retriggerable"})
+    # inline (worker-off / tests) — blocks for the full propose pass.
+    from app.worker.operations import run_self_heal_propose
+    return await run_self_heal_propose(llm, user_id=str(user_id), input=heal_input)
 
 
 def _decompose_response(result) -> dict:

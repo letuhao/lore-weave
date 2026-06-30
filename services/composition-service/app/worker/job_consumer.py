@@ -32,6 +32,7 @@ from app.worker.operations import (
     run_generate,
     run_plan_pipeline,
     run_selection_edit,
+    run_self_heal_propose,
     run_stitch,
 )
 
@@ -151,6 +152,13 @@ async def _run_operation(
         inp = dict(job.input or {})
         inp.setdefault("user_id", str(job.user_id))
         return await run_selection_edit(llm, input=inp)
+    if op == "self_heal_propose":
+        # No pool/knowledge — the endpoint persisted the chapter text + canon; this just
+        # runs the cheap-stack in propose mode (the human review-gate consumes the result).
+        inp = dict(job.input or {})
+        inp.setdefault("user_id", str(job.user_id))
+        return await run_self_heal_propose(
+            llm, user_id=str(job.user_id), input=inp, cancel_check=cancel_check)
     # ── Wave-2 motif ops (W2-F0 frozen dispatch seam) ─────────────────────────────
     # The Tier-W confirm effects (routers/actions.py) already stamp the full input
     # envelope; each handler lives in its WS-owned engine module (lazy import keeps

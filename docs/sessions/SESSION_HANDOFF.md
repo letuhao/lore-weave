@@ -77,8 +77,23 @@
 >     `run_planning_pipeline`). **Live-validated on CH1** ($0 local, canon auto-rendered 2701 chars,
 >     `verify_k=3`): the CH01 `mẫu thân ngươi` false-refute is **GONE** (residual=False; refuted 4→1), and
 >     the rendered canon enabled a new canon catch (Hắc Sát Lão Nhân's role). Tests: self_heal 24 +
->     heal_canon 5. **NEXT:** re-drive CH1–12 with `verify_k=3` + pipeline canon to refresh `story-export-v2/`;
->     then M6 (expose heal as MCP propose→confirm + the review-gate UI, story C7).
+>     heal_canon 5.
+>   - **M6 Polish — BE done (M6.1 engine + M6.2 wiring), 2026-07-01:**
+>     **M6.1** (`c4db3792`) — `_compute_edits` shared step ⇒ `propose_self_heal` returns `EditProposal[]`
+>     (id/tier deterministic|semantic/start/end/before/after) WITHOUT splicing; `apply_self_heal_edits(accepted_ids)`
+>     splices the accepted subset; `run_self_heal` = propose+apply-all (byte-identical).
+>     **M6.2** — worker op `self_heal_propose` (+ SUPPORTED_OPERATIONS + dispatch) + REST endpoint
+>     `POST /v1/composition/projects/{id}/self-heal/propose` (resolve draft Tiptap→text + canon [override
+>     or roster+convention] → propose → proposals; worker/inline like `plan_pipeline`). **Apply reuses the
+>     existing `composition_write_prose`** — no new write tool / no confirm-token surgery. **Live-smoke:**
+>     resolve path proven on the stack (get_draft `body` key + draft_version=2 → 7473-char prose; KAL roster
+>     12 cast → 823-char canon); propose engine separately live-validated. Tests: self_heal 27 + worker_jobs
+>     (dispatch + serialize). **NEXT:** **M6.3 FE** — `PolishPanel` + accept/reject diff pane (Quality group,
+>     story C7); then re-drive CH1–12 with `verify_k=3` to refresh `story-export-v2/`.
+>   - **Deferred D-SELFHEAL-CANON-ATTRS** (gate #2, structural) — heal canon is currently convention +
+>     roster NAMES (KAL roster is names-only); rich per-character canon (descriptions → catches canon
+>     contradictions like Tô Yến "che chở") needs a glossary "full cast WITH attributes" read. The
+>     convention already grounds the dominant xưng-hô class; attribute-canon is the enrichment follow-up.
 >
 > **▶ Deferred (this track):**
 > - **D-THREAD-MOTIF-COMBINED** — `thread_state` + `motifs_enabled` together: typed-state threading is skipped on the motif path (motif `prev_effects` carry used; warned, not silent). Gate #2 (needs interleaving the motif sequential select with the threaded invent loop). Target: when motifs + threading are both wanted in one run.

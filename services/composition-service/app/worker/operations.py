@@ -133,6 +133,41 @@ async def run_plan_pipeline(
     return dataclasses.asdict(result)
 
 
+async def run_self_heal_propose(
+    llm: LLMClient, *, user_id: str, input: dict[str, Any],
+    cancel_check: Callable[[], Awaitable[bool]] | None = None,
+) -> dict[str, Any]:
+    """Run the cheap-stack self-heal in PROPOSE mode (M6 review-gate) on the persisted
+    chapter text + canon (resolved at the endpoint, which has the bearer/roster). Returns
+    the EditProposals + stats for the poll; the accepted subset is spliced + written by the
+    caller via the existing draft-write — this NEVER auto-writes (the human is the gate)."""
+    from app.engine.self_heal import propose_self_heal
+
+    text = input["chapter_text"]
+    proposals, report = await propose_self_heal(
+        llm, user_id=user_id,
+        model_source=input["model_source"], model_ref=input["model_ref"],
+        chapter=text, source_language=input.get("source_language", "auto"),
+        canon=input.get("canon") or None,
+        vote_k=int(input.get("vote_k", 5)), min_votes=int(input.get("min_votes", 2)),
+        verify=bool(input.get("verify", True)), verify_k=int(input.get("verify_k", 3)),
+        prefilter=bool(input.get("prefilter", True)),
+        cancel_check=cancel_check,
+    )
+    return {
+        "proposals": [dataclasses.asdict(p) for p in proposals],
+        "source_text": text,
+        "chapter_id": input.get("chapter_id"),
+        "draft_version": input.get("draft_version"),
+        "stats": {
+            "findings": report.rejudge_before,
+            "located": report.located,
+            "edits": report.edits_applied,
+            "refuted": sum(1 for f in report.findings if f.skip_reason == "refuted"),
+        },
+    }
+
+
 async def run_stitch(
     pool: asyncpg.Pool, llm: LLMClient, knowledge, *, input: dict[str, Any],
     cancel_check: Callable[[], Awaitable[bool]] | None = None,
