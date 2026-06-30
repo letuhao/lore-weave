@@ -233,6 +233,10 @@ func (s *Server) internalAppendFact(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusInternalServerError, "GLOSS_INTERNAL", "append failed: "+err.Error())
 		return
 	}
+	if err := markFoldDirty(r.Context(), tx, entityID, false); err != nil {
+		writeError(w, http.StatusInternalServerError, "GLOSS_INTERNAL", "mark fold dirty failed")
+		return
+	}
 	if err := tx.Commit(r.Context()); err != nil {
 		writeError(w, http.StatusInternalServerError, "GLOSS_INTERNAL", "commit failed")
 		return
@@ -277,6 +281,18 @@ func (s *Server) internalRetractFacts(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "GLOSS_INTERNAL", "retract failed: "+err.Error())
 		return
+	}
+	// Mark each affected entity's canonical dirty (an invalidation → bumps the re-ground counter).
+	seenEnt := map[uuid.UUID]struct{}{}
+	for _, c := range chains {
+		if _, dup := seenEnt[c.EntityID]; dup {
+			continue
+		}
+		seenEnt[c.EntityID] = struct{}{}
+		if err := markFoldDirty(r.Context(), tx, c.EntityID, true); err != nil {
+			writeError(w, http.StatusInternalServerError, "GLOSS_INTERNAL", "mark fold dirty failed")
+			return
+		}
 	}
 	if err := tx.Commit(r.Context()); err != nil {
 		writeError(w, http.StatusInternalServerError, "GLOSS_INTERNAL", "commit failed")

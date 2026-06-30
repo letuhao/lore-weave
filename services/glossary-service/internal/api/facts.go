@@ -387,6 +387,12 @@ func (s *Server) emitChapterFacts(ctx context.Context, q pgxRWQuerier, bookID, e
 			}
 		}
 	}
+	// Flag the entity's canonical for re-fold (debounced; the fold worker consumes it).
+	if len(writtenCodes) > 0 {
+		if err := markFoldDirty(ctx, q, entityID, false); err != nil {
+			return err
+		}
+	}
 	return nil
 }
 

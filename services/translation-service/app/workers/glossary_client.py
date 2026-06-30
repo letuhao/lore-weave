@@ -522,6 +522,73 @@ async def post_canonical(
         return None
 
 
+async def fetch_fold_dirty(book_id: str, limit: int = 100) -> list[dict]:
+    """F2-app — fetch entities whose canonical needs a re-fold (temporal-knowledge §12.1).
+
+    Calls: GET /internal/books/{book_id}/fold-dirty
+
+    Returns work items {entity_id, entity_name, facts:[{attr,value}], head_ordinal,
+    fold_fingerprint}, or [] on any failure (best-effort).
+    """
+    try:
+        async with httpx.AsyncClient(timeout=_GLOSSARY_FETCH_TIMEOUT) as client:
+            resp = await client.get(
+                f"{settings.glossary_service_internal_url}"
+                f"/internal/books/{book_id}/fold-dirty",
+                params={"limit": str(limit)},
+                headers={"X-Internal-Token": settings.internal_service_token},
+            )
+            if resp.status_code != 200:
+                log.warning("fold-dirty fetch returned %d for book=%s", resp.status_code, book_id)
+                return []
+            return resp.json().get("items", [])
+    except Exception as exc:  # noqa: BLE001 — best-effort
+        log.warning("fold-dirty fetch failed for book=%s: %s", book_id, exc)
+        return []
+
+
+async def post_fold_snapshot(
+    book_id: str,
+    entity_id: str,
+    *,
+    content: str,
+    as_of_ordinal: int,
+    fold_fingerprint: str,
+    fold_algo_version: int = 1,
+    failed: bool = False,
+) -> dict | None:
+    """Write a folded canonical snapshot (or report a fold failure for backoff).
+
+    Calls: POST /internal/books/{book_id}/entities/{entity_id}/fold-snapshot
+
+    fold_fingerprint (from fetch_fold_dirty) drives compare-and-clear: dirty clears only if
+    no fact arrived during the fold. failed=True increments the backoff counter (B4).
+    Best-effort — never raises.
+    """
+    try:
+        async with httpx.AsyncClient(timeout=30.0) as client:
+            resp = await client.post(
+                f"{settings.glossary_service_internal_url}"
+                f"/internal/books/{book_id}/entities/{entity_id}/fold-snapshot",
+                json={
+                    "content": content,
+                    "as_of_ordinal": as_of_ordinal,
+                    "fold_algo_version": fold_algo_version,
+                    "fold_fingerprint": fold_fingerprint,
+                    "failed": failed,
+                },
+                headers={"X-Internal-Token": settings.internal_service_token},
+            )
+            if resp.status_code != 200:
+                log.warning("post_fold_snapshot returned %d for book=%s entity=%s",
+                            resp.status_code, book_id, entity_id)
+                return None
+            return resp.json()
+    except Exception as exc:  # noqa: BLE001 — best-effort
+        log.warning("post_fold_snapshot failed book=%s entity=%s: %s", book_id, entity_id, exc)
+        return None
+
+
 def auto_correct_glossary(
     translated_text: str,
     correction_map: dict[str, str],

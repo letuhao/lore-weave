@@ -23,10 +23,12 @@ export class KalReadController {
     @Query('as_of') asOf: string | undefined,
     @Headers() headers: Record<string, string>,
   ) {
-    // The canonical snapshot (F2-app) is served as canon-content today; as_of projection
-    // arrives with the fold handler. Returns the bounded current canonical text.
+    // The folded canonical snapshot (F2-app), degrade-safe to canon-content when no fresh
+    // snapshot exists. `as_of` below the fold head projects from facts (get_facts) — the
+    // snapshot is the head cache.
+    const q = asOf ? `?as_of=${encodeURIComponent(asOf)}` : '';
     const data = await glossary.get(
-      `/internal/books/${bookId}/entities/${entityId}/canon-content`,
+      `/internal/books/${bookId}/entities/${entityId}/canonical-snapshot${q}`,
       ctxFromHeaders(headers),
     );
     return data;
