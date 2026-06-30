@@ -195,8 +195,10 @@ func appendFact(ctx context.Context, q pgxRWQuerier, p appendFactParams) (uuid.U
 // open last-in-chain fact maintain_chain alone can only leave open). The pin (valid_to_pinned)
 // makes the manual close survive every subsequent maintain_chain run (which skips pinned facts),
 // so it is NOT a second competing deriver — it is an authored input the single deriver respects.
-// The caller holds the (entity, attr) chain lock and has validated the fact is in-book + open and
-// validTo > valid_from. Returns the affected chain so the caller can refresh the EAV projection.
+// The caller holds the (entity, attr) chain lock and has validated the fact is in-book and
+// validTo > valid_from (and, for single chains, ≤ the next successor — no overlap). Returns the
+// affected chain for an optional EAV-projection refresh (the cutover-path repair; the live
+// handler leaves the EAV to the merge-strategy writer during the transition, as append/retract do).
 func closeFact(ctx context.Context, q pgxRWQuerier, bookID, factID uuid.UUID, validTo int64) (FactChain, error) {
 	var c FactChain
 	if err := q.QueryRow(ctx, `
@@ -667,10 +669,15 @@ func splitFactsByEpisode(ctx context.Context, q pgxRWQuerier, bookID, sourceID, 
 	}
 
 	// COPY the source's cited open facts onto newEntity (fresh fact_id/created_at/coverage_xid).
+	// Carry valid_to_ordinal + valid_to_pinned: a PINNED explicit close (§12.3.2) is authored, not
+	// derivable, so maintain_chain can't reconstruct it on the new entity — copying it preserves the
+	// close. For unpinned facts the copied valid_to is harmless (maintain_chain re-derives it below).
 	ct, err := q.Exec(ctx, `
 		INSERT INTO entity_facts
-		  (book_id, entity_id, fact_kind, attr_or_predicate, value, valid_from_ordinal, cardinality, source_episode_id)
-		SELECT book_id, $1, fact_kind, attr_or_predicate, value, valid_from_ordinal, cardinality, source_episode_id
+		  (book_id, entity_id, fact_kind, attr_or_predicate, value, valid_from_ordinal, valid_to_ordinal,
+		   valid_to_pinned, cardinality, source_episode_id)
+		SELECT book_id, $1, fact_kind, attr_or_predicate, value, valid_from_ordinal, valid_to_ordinal,
+		       valid_to_pinned, cardinality, source_episode_id
 		FROM entity_facts
 		WHERE entity_id = $2 AND book_id = $4 AND source_episode_id = ANY($3) AND invalidated_at IS NULL
 		ON CONFLICT (entity_id, fact_kind, attr_or_predicate, value_hash, valid_from_ordinal,

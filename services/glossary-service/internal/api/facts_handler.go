@@ -324,14 +324,14 @@ func (s *Server) internalCloseFact(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "GLOSS_BAD_REQUEST", "fact_id + valid_to_ordinal required")
 		return
 	}
-	// Look up the fact in THIS book (tenancy) and fetch its chain key + lower bound.
+	// Look up the fact in THIS book (tenancy) and fetch its chain key + lower bound + kind.
 	var entityID uuid.UUID
-	var attr string
+	var attr, factKind, card string
 	var validFrom int64
 	err := s.pool.QueryRow(r.Context(), `
-		SELECT entity_id, attr_or_predicate, valid_from_ordinal
+		SELECT entity_id, attr_or_predicate, fact_kind, cardinality, valid_from_ordinal
 		FROM entity_facts WHERE fact_id = $1 AND book_id = $2 AND invalidated_at IS NULL`,
-		factID, bookID).Scan(&entityID, &attr, &validFrom)
+		factID, bookID).Scan(&entityID, &attr, &factKind, &card, &validFrom)
 	if errors.Is(err, pgx.ErrNoRows) {
 		writeError(w, http.StatusNotFound, "GLOSS_NOT_FOUND", "fact not found in this book")
 		return
@@ -343,6 +343,26 @@ func (s *Server) internalCloseFact(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusUnprocessableEntity, "GLOSS_INVALID",
 			"valid_to_ordinal must be greater than the fact's valid_from_ordinal")
 		return
+	}
+	// Overlap guard (single-valued chains only): a close must not extend PAST a later value's
+	// start, or the as-of read would return two values at once. Closing AT or BEFORE the
+	// successor's valid_from is fine (it shortens the interval / opens a gap). Multi-valued
+	// facts have no chain successor, so they are exempt.
+	if card == "single" {
+		var nextFrom *int64
+		if err := s.pool.QueryRow(r.Context(), `
+			SELECT min(valid_from_ordinal) FROM entity_facts
+			WHERE entity_id = $1 AND attr_or_predicate = $2 AND fact_kind = $3
+			  AND cardinality = 'single' AND invalidated_at IS NULL AND valid_from_ordinal > $4`,
+			entityID, attr, factKind, validFrom).Scan(&nextFrom); err != nil {
+			writeError(w, http.StatusInternalServerError, "GLOSS_INTERNAL", "successor lookup failed")
+			return
+		}
+		if nextFrom != nil && *body.ValidTo > *nextFrom {
+			writeError(w, http.StatusUnprocessableEntity, "GLOSS_INVALID",
+				"valid_to_ordinal would overlap a later value on this chain")
+			return
+		}
 	}
 	tx, err := s.pool.Begin(r.Context())
 	if err != nil {

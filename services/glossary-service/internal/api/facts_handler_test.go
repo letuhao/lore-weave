@@ -173,4 +173,49 @@ func TestFactsHTTP(t *testing.T) {
 	if code == http.StatusOK && rr2["chains_restitched"] != float64(0) {
 		t.Fatalf("cross-book retract restitched %v chains (should be 0 — wrong book)", rr2["chains_restitched"])
 	}
+
+	// CLOSE (§12.3.2): an explicit valid-time close ends a value at a chosen ordinal — half-open.
+	if code, _ := post("/internal/books/"+bookID+"/facts/append", map[string]any{
+		"entity_id": entityID, "fact_kind": "attribute", "attr_or_predicate": "状态",
+		"value": "活着", "valid_from_ordinal": 100,
+	}); code != http.StatusOK {
+		t.Fatalf("append 状态: %d", code)
+	}
+	var stateID string
+	pool.QueryRow(ctx, `SELECT fact_id FROM entity_facts WHERE entity_id=$1 AND value='活着'`, uuid.MustParse(entityID)).Scan(&stateID) //nolint:errcheck
+	code, cf := post("/internal/books/"+bookID+"/facts/close", map[string]any{"fact_id": stateID, "valid_to_ordinal": 200})
+	if code != http.StatusOK || cf["valid_to_ordinal"].(float64) != 200 {
+		t.Fatalf("close 状态: code=%d resp=%v", code, cf)
+	}
+	// half-open: present as-of 150 ([100,200)), absent as-of 250 (closed at 200)
+	presentAt := func(asOf string) bool {
+		for _, f := range get("/internal/books/" + bookID + "/entities/" + entityID + "/facts?as_of=" + asOf) {
+			if f["attr_or_predicate"] == "状态" {
+				return true
+			}
+		}
+		return false
+	}
+	if !presentAt("150") {
+		t.Fatalf("状态 should be present as-of 150 (within [100,200))")
+	}
+	if presentAt("250") {
+		t.Fatalf("状态 should be ABSENT as-of 250 (closed at 200)")
+	}
+	// overlap guard: a later value at 300, then closing 活着 PAST 300 → 422 (would double-value)
+	post("/internal/books/"+bookID+"/facts/append", map[string]any{ //nolint:errcheck
+		"entity_id": entityID, "fact_kind": "attribute", "attr_or_predicate": "状态",
+		"value": "死了", "valid_from_ordinal": 300,
+	})
+	if code, _ := post("/internal/books/"+bookID+"/facts/close", map[string]any{
+		"fact_id": stateID, "valid_to_ordinal": 400,
+	}); code != http.StatusUnprocessableEntity {
+		t.Fatalf("close past successor: want 422 (overlap), got %d", code)
+	}
+	// tenancy: cross-book close of this book's fact → 404
+	if code, _ := post("/internal/books/"+otherBook+"/facts/close", map[string]any{
+		"fact_id": stateID, "valid_to_ordinal": 999,
+	}); code != http.StatusNotFound {
+		t.Fatalf("cross-book close: want 404, got %d", code)
+	}
 }
