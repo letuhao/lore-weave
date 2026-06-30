@@ -116,6 +116,12 @@ build new judges; we re-target existing ones from "post-prose verification" to "
 - **New:** a plan-judge that returns located plan-findings + a plan-satellite-edit (edit one scene synopsis).
 - **POC:** the plan-judge flags real plan holes (pacing, unplanned character, unused motif, dangling setup)
   → satellite-fixes the offending synopsis → re-judge.
+- **STATUS — `run_plan_self_heal` built 2026-06-30** (`engine/plan_heal.py`, 5 unit tests). The chapter
+  self-heal pattern (judge→locate→satellite→splice) applied to the PLAN — simpler because scenes are
+  discrete + INDEX-addressable: the plan-judge points at a scene by `(chapter, scene)` (no fuzzy locate),
+  each flagged scene's synopsis is satellite-edited in isolation (+ neighbor context) and written back.
+  Advisory + degrade-safe (skip out-of-range address / runaway expansion / judge fail). **Live POC folds
+  into the Stage 6 full-pipeline run.**
 
 ### Stage 6 — Orchestration + human checkpoints
 - Chain 0–5; checkpoints **blocking** at 1, 2, 4 (motif / cast / arc shape — wait for approval),
