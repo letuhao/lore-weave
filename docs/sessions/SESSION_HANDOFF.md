@@ -99,6 +99,15 @@
 >   - **Deferred D-POLISH-FE-BROWSER-SMOKE** (gate #4, needs FE image rebuild) — full click-through (open
 >     chapter → Polish tab → Run → proposals → Apply) on a rebuilt FE image (running infra-frontend is the
 >     old baked build). BE resolve-path + propose engine already live-smoked; FE↔BE call is typed + unit-tested.
+>   - **/review-impl on M6 (2026-07-01):** **HIGH fixed** — stale cross-chapter proposals would Apply onto the
+>     wrong chapter; fixed by `key={chapterId}` on PolishPanel (remount resets the snapshot). **MED fixed** —
+>     FE `applySelfHealEdits` UTF-16-sliced Python code-point offsets; added a fail-safe (skip when
+>     `slice≠before`). Tests: PolishPanel 7 + tsc clean. **Two MED deferred for a PO decision (snapshot
+>     tradeoffs of whole-doc replace):** **D-POLISH-OCC** — Apply uses the propose-time `source_text` +
+>     ignores `draft_version`, so edits made after Run (incl. unsaved buffer) are lost → compare version &
+>     warn, or apply spans to the live doc. **D-POLISH-MARKS** — Apply rebuilds plain paragraphs ⇒ strips
+>     inline marks (AI-provenance/bold) chapter-wide (same shape as handleTranslate). Plus LOW: no router
+>     test for the propose endpoint.
 >   - **Deferred D-SELFHEAL-CANON-ATTRS** (gate #2, structural) — heal canon is currently convention +
 >     roster NAMES (KAL roster is names-only); rich per-character canon (descriptions → catches canon
 >     contradictions like Tô Yến "che chở") needs a glossary "full cast WITH attributes" read. The

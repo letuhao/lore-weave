@@ -840,7 +840,10 @@ export function CompositionPanel({ bookId, chapterId, token, onAccept, onApplyPo
           <QualityPanel projectId={work.project_id} token={token} />
         </DockSlot>
         <DockSlot {...slot('polish')}>
+          {/* keyed by chapterId so proposals (offsets into THIS chapter's text) reset on a
+              chapter switch — else stale Ch-A edits would Apply onto Ch-B (corruption). */}
           <PolishPanel
+            key={chapterId}
             projectId={work.project_id}
             chapterId={chapterId}
             token={token}

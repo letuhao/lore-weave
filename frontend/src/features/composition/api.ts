@@ -520,8 +520,13 @@ export interface SelfHealProposalResponse {
 
 /**
  * Splice the accepted proposals (default: ALL) into the source text, rightmost-first so
- * earlier offsets stay valid — the JS mirror of the engine's `apply_self_heal_edits`, so the
- * editor preview byte-matches what the backend would have produced.
+ * earlier offsets stay valid — the JS mirror of the engine's `apply_self_heal_edits`.
+ *
+ * Fail-safe: an edit is applied only when `sourceText.slice(start,end)` still equals its
+ * `before`. The offsets are computed in Python (Unicode code points) but spliced here in JS
+ * (UTF-16 code units), so an astral char (emoji / rare CJK-ext) before an edit would shift
+ * it — and a stale source would drift too. On any mismatch we SKIP the edit rather than
+ * corrupt the prose.
  */
 export function applySelfHealEdits(
   sourceText: string,
@@ -531,6 +536,7 @@ export function applySelfHealEdits(
   const keep = acceptedIds ? proposals.filter((p) => acceptedIds.has(p.id)) : proposals;
   let out = sourceText;
   for (const p of [...keep].sort((a, b) => b.start - a.start)) {
+    if (sourceText.slice(p.start, p.end) !== p.before) continue; // offsets drifted → skip
     out = out.slice(0, p.start) + p.after + out.slice(p.end);
   }
   return out;

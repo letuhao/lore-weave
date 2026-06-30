@@ -84,4 +84,12 @@ describe('applySelfHealEdits', () => {
     expect(applySelfHealEdits(src, proposals, new Set(['e1']))).toBe('AAA xx YY');
     expect(applySelfHealEdits(src, proposals, new Set())).toBe(src);
   });
+
+  it('skips an edit whose offsets no longer address its `before` (fail-safe)', () => {
+    const drift: SelfHealProposal[] = [
+      { id: 'e0', type: 't', tier: 'deterministic', start: 0, end: 3, before: 'XXX', after: 'ZZ', issue: '', fix: '' },
+    ];
+    // before 'XXX' != source.slice(0,3) 'AAA' → skipped, prose untouched
+    expect(applySelfHealEdits(src, drift)).toBe(src);
+  });
 });
