@@ -165,6 +165,7 @@ async def build_live_runner(
         glossary_client = GlossaryClient(
             base_url=settings.glossary_service_url,
             internal_token=settings.internal_service_token,
+            kal_base_url=settings.knowledge_gateway_url,  # X2: cast via KAL roster (INV-KAL)
         )
     canon_lookup = make_glossary_canon_lookup(
         glossary_client, book_id=UUID(book_id) if book_id is not None else None

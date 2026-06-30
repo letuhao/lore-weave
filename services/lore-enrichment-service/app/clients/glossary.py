@@ -22,6 +22,7 @@ from uuid import UUID
 
 import httpx
 
+from app.clients.kal import KalClient, KalServiceError
 from app.clients.sanitize import neutralize_injection
 
 __all__ = [
@@ -74,17 +75,89 @@ class GlossaryClient:
         base_url: str,
         internal_token: str,
         timeout_s: float = 10.0,
+        kal_base_url: str | None = None,
     ) -> None:
         self._base = base_url.rstrip("/")
         self._internal_token = internal_token
         self._http = httpx.AsyncClient(timeout=httpx.Timeout(timeout_s, connect=5.0))
+        # X2 (INV-KAL): when a KAL base URL is configured, the full-book CAST
+        # enumeration (`list_entities`' id+name set) is read through the KAL
+        # roster — drained to completion — instead of this service's own glossary
+        # `/internal/.../entities` page. The KAL roster is projection-restricted to
+        # id+name by its FROZEN contract, so the legacy `kind`/`short_description`
+        # fields (which live on glossary's entity-list projection, NOT on the new
+        # `entity_facts` substrate the KAL's facts/canonical reads surface) are
+        # merged in from the glossary entity-list — see `list_entities` below.
+        self._kal: KalClient | None = (
+            KalClient(base_url=kal_base_url, internal_token=internal_token, timeout_s=timeout_s)
+            if kal_base_url
+            else None
+        )
 
     async def aclose(self) -> None:
         await self._http.aclose()
+        if self._kal is not None:
+            await self._kal.aclose()
 
     # ── internal entity read (X-Internal-Token, book-scoped) ─────────────────
 
     async def list_entities(self, *, book_id: UUID, limit: int = 100) -> list[GlossaryEntity]:
+        """Full-book cast read.
+
+        INV-KAL (X2): when a KAL is configured, the COMPLETE id+name cast is read
+        through the KAL `roster` endpoint, DRAINED to completion (the contract's
+        bounded-per-page / complete-in-aggregate read) — this fixes the prior
+        silent `limit`-truncation of the cast. The KAL roster is projection-
+        restricted to id+name by its frozen contract; the legacy `kind` +
+        authored `short_description` fields are NOT on the KAL roster (nor on the
+        new `entity_facts` substrate the KAL's facts/canonical reads surface — that
+        substrate is sparse on the current corpus, so reading description from it
+        would NOT be behavior-preserving). They are merged from glossary's own
+        entity-list projection, keyed by entity_id, preserving every field the
+        consumers (canon contradiction check, grounding canon provider, intent
+        resolver hint) read today.
+
+        With no KAL configured, falls back to the direct glossary entity-list
+        (unchanged legacy behavior)."""
+        # Legacy projection: glossary's entity-list still owns the authored
+        # `short_description` + `kind` (not yet exposed by the KAL roster). Read it
+        # for the field map regardless; it is the kind/description source.
+        rows = await self._list_entities_glossary(book_id=book_id, limit=limit)
+        if self._kal is None:
+            return rows
+
+        # KAL roster = the authoritative, COMPLETE, drained id+name cast.
+        try:
+            roster = await self._kal.roster(book_id=book_id, limit=200)
+        except KalServiceError as exc:
+            # KAL read failure must surface as a glossary read failure so the
+            # caller's existing degrade path (verify_degraded / empty grounding)
+            # fires — never a silent false-green.
+            raise GlossaryServiceError(
+                str(exc), retryable=exc.retryable, status_code=exc.status_code
+            )
+
+        fields_by_id: dict[str, GlossaryEntity] = {r.entity_id: r for r in rows if r.entity_id}
+        out: list[GlossaryEntity] = []
+        for entry in roster:
+            extra = fields_by_id.get(entry.entity_id)
+            out.append(
+                GlossaryEntity(
+                    entity_id=entry.entity_id,
+                    # Prefer the roster's name (the KAL-authoritative projection);
+                    # fall back to the glossary-projection name for parity.
+                    name=neutralize_injection(entry.name) or (extra.name if extra else ""),
+                    kind=(extra.kind if extra else "") or entry.kind,
+                    description=(extra.description if extra else ""),
+                )
+            )
+        return out
+
+    async def _list_entities_glossary(
+        self, *, book_id: UUID, limit: int
+    ) -> list[GlossaryEntity]:
+        """Direct glossary entity-list read (the legacy projection carrying
+        `kind` + authored `short_description`)."""
         url = f"{self._base}/internal/books/{book_id}/entities"
         resp = await self._get(
             url,
