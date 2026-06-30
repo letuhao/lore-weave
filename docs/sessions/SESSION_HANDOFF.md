@@ -1,4 +1,4 @@
-# ▶▶ NEXT SESSION STARTS HERE — **Temporal Knowledge Architecture — foundation spine LANDED (F0–F2 schema)** · branch `feat/temporal-knowledge-architecture` · HEAD `fdf6c0d8`+ · 2026-06-30
+# ▶▶ NEXT SESSION STARTS HERE — **Temporal Knowledge Architecture — substrate + merge/split + KG side DONE; F4 KAL service NEXT** · branch `feat/temporal-knowledge-architecture` · HEAD `f52e50f7`+ · 2026-06-30
 
 > **What this branch is:** implementing the Incremental Temporal Knowledge Architecture
 > ([spec](../specs/2026-06-29-incremental-temporal-knowledge-architecture.md) §12/§12.7.8 govern;
@@ -26,12 +26,25 @@
 > close (A2 on the KG side), extraction-driven invalidate/retract, quote-on-citation, per-entity ordinal snapshot.
 > **Merge its worktree branch at the integration node before F4.**
 >
+> **▶ F3 — KG ordinal valid-time unify — MERGED `f2d5ca3e`** (was a parallel worktree agent); 24 F3 unit tests
+> re-verified green post-merge. All under `services/knowledge-service/` (disjoint from glossary).
+>
+> **▶ F1f — fact-chain merge + split (DONE):** `ecc7e587` **merge** (§12.4.1, `mergeFactChains`/`revertFactChains`,
+> journal `repointed_fact_ids`+`invalidated_fact_ids`, same-ordinal tiebreak, chain locks both sides) +
+> `f52e50f7` **split** (§12.4.2, `splitFactsByEpisode` re-attribute-by-provenance, originals reason='split').
+> `TestMergeFactChains`/`TestSplitFactsByEpisode` green; existing Merge/Revert/Dedup suites green (no regression).
+>
 > **▶ NEXT (remaining foundation, then fanout):**
-> 1. **Integrate F3** (merge the worktree branch).
-> 2. **F1f/g** — fact-chain merge + `split_entity` (extend `mergeOne` to repoint/journal entity_facts+episodes, §12.4) + bi-temporal name/aliases (§12.4.3).
-> 3. **F2 app** — the fold handler: lazy rebuild-on-read + ordinal-bucketed re-ground (B1) + compare-and-clear + backoff.
-> 4. **F4** — the **KAL TypeScript service** (`services/knowledge-gateway`) implementing `kal.v1.yaml` + per-substrate `as_of` gating + bounded-complete `roster` + the 2 INV-KAL lints; flip `language-rule.yaml` row to `typescript`.
-> 5. **CHECKPOINT** → then parallel **fanout** X1–X7 (consumer migrations onto the KAL, FE temporal surfaces).
+> 1. **F4 — the KAL TypeScript service** (`services/knowledge-gateway`, NestJS like mcp-public-gateway) implementing
+>    `kal.v1.yaml`: current-projection reads delegating to glossary + KG, write verbs delegating to the new fact core,
+>    per-substrate `as_of` gating (KG `temporal_unsupported`→`ordinal_valid_time` now that F3 landed), bounded-complete
+>    `roster`, `list_attr_values`; the **2 INV-KAL lints**; flip `language-rule.yaml` `missing`→`typescript`. Needs an
+>    npm install/build/test cycle — a focused effort.
+> 2. **F2 app** — the fold handler: lazy rebuild-on-read + ordinal-bucketed re-ground (B1) + compare-and-clear + backoff
+>    (needs a provider-registry LLM call). Enhances `get_canonical` behind the frozen contract.
+> 3. **F1g** — bi-temporal name/aliases (§12.4.3) + as-of-name. **Value partly gated on F1d** (deferred writeback wiring);
+>    reconciles `D-TK-F1G-NAME-RECONCILE`.
+> 4. **CHECKPOINT** → then parallel **fanout** X1–X7 (consumer migrations onto the KAL, FE temporal surfaces).
 >
 > **▶ Deferred Items (temporal-knowledge):**
 > - **`D-TK-WRITEBACK-ORDINAL` (F1d)** — gate #1/#2 (cross-service contract): wire additive Path-A fact emission into the
