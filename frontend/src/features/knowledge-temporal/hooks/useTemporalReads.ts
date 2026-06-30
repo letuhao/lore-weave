@@ -7,6 +7,7 @@ import { useAuth } from '@/auth';
 import { kalApi } from '../api';
 import type {
   CanonicalSnapshot,
+  CanonicalTranslation,
   FactsResponse,
   TimelineResponse,
   TimelineEntry,
@@ -36,6 +37,35 @@ export function useCanonical(bookId: string | null, entityId: string | null, asO
   });
   return {
     canonical: (q.data ?? null) as CanonicalSnapshot | null,
+    isLoading: q.isLoading,
+    error: (q.error as Error | null) ?? null,
+  };
+}
+
+/**
+ * On-demand canonical translation (§6B/§7.6). Enabled only when a real target `lang` is set (the
+ * panel renders the original canonical when the reader picks the source/as-authored language).
+ * Polls every 2.5s while the single-flight background fill runs (`status==='translating'`), then
+ * settles on the immutable cached result. userId-prefixed key for cross-tenant isolation.
+ */
+export function useCanonicalTranslation(
+  bookId: string | null,
+  entityId: string | null,
+  lang: string | undefined,
+  asOf?: number,
+) {
+  const { accessToken, user } = useAuth();
+  const userId = user?.user_id ?? 'anon';
+  const q = useQuery({
+    queryKey: ['kal-canonical-tr', userId, bookId, entityId, lang ?? '', asOf ?? 'head'] as const,
+    queryFn: () => kalApi.getCanonicalTranslation(bookId!, entityId!, lang!, accessToken!, asOf),
+    enabled: !!accessToken && !!bookId && !!entityId && !!lang,
+    staleTime: 10_000,
+    refetchInterval: (query) =>
+      (query.state.data as CanonicalTranslation | undefined)?.status === 'translating' ? 2500 : false,
+  });
+  return {
+    translation: (q.data ?? null) as CanonicalTranslation | null,
     isLoading: q.isLoading,
     error: (q.error as Error | null) ?? null,
   };

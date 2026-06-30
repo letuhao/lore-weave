@@ -1,4 +1,17 @@
-# ▶▶ NEXT SESSION STARTS HERE — **Temporal Knowledge — COMPLETE (foundation + close_fact + full fanout X1–X7 + FE temporal surfaces); branch ready for review/merge** · branch `feat/temporal-knowledge-architecture` · HEAD `cb7de1f0` · 2026-06-30
+# ▶▶ NEXT SESSION STARTS HERE — **Temporal Knowledge — COMPLETE (foundation + close_fact + full fanout X1–X7 + FE temporal surfaces + REAL per-episode translation); branch ready for review/merge** · branch `feat/temporal-knowledge-architecture` · HEAD `pending` · 2026-06-30
+
+> **▶ PER-EPISODE TRANSLATION — now a REAL feature (this run), not a degrade.** The §7.6 surface translates the
+> entity's as-of folded canonical into the reader's display language, on-demand + cached immutable per (content,
+> language) — mirror of KG-TL M3. NEW: glossary migration **0050** `canonical_snapshot_translations` (single-flight
+> claim + background fill), `translation_client.go` (→ translation-service `/internal/translation/translate-text`,
+> BYOK via provider-registry — no LLM in glossary), `canonical_translation_handler.go`; KAL read
+> `GET …/canonical-translation?lang=&as_of=` + contract `CanonicalTranslation`; FE `useCanonicalTranslation` (polls
+> while `translating`) + rewritten `EpisodeTranslationPanel` (language selector reuses the shared per-book
+> `useGlossaryDisplayLanguage` → lockstep with the glossary browser; picks original ⇒ shows original, no LLM).
+> **Verified:** glossary go tests (incl. state-machine integration on the real `loreweave_glossary` DB) · KAL jest
+> 19 · FE 45 + tsc clean · both INV-KAL lints + provider-gate PASS · **live-smoke** FE→BFF→KAL→glossary→translation
+> →provider-registry→lm_studio: zh canonical → `ready/translated/cached` real EN translation, single-flight = 1 call.
+> Plan: `docs/plans/2026-06-30-per-episode-translation-surface.md`.
 
 > **▶▶ ENTIRE EFFORT COMPLETE — the Incremental Temporal Knowledge Architecture is built, verified, and
 > committed end-to-end (F0–F4 foundation + close_fact + X1–X7 fanout + X6 FE). The branch is production-ready
@@ -13,10 +26,9 @@
 >   200/403/401); **6 temporal surfaces** (canonical card, time slider, change timeline, diff, retrieval,
 >   per-episode translation) — 45 tests, tsc clean, real-KAL shapes validated, mounted in the entity panel's
 >   "Temporal" tab.
-> - **Honest limitations (not bugs, future enhancements):** the per-episode-translation surface degrades to the
->   as-of canonical (no translation READ endpoint exists yet — a new feature, not this refactor); KG `as_of`
->   honored (F3 landed). A full browser/Playwright smoke of the Temporal tab is the one remaining nice-to-have
->   (shapes + the FE→BFF→KAL path + 45 component tests are verified).
+> - **Honest limitations (not bugs, future enhancements):** per-episode translation is now REAL (built this run —
+>   see the block above); KG `as_of` honored (F3 landed). A full browser/Playwright smoke of the Temporal tab is the
+>   one remaining nice-to-have (shapes + the FE→BFF→KAL path + 45 component tests + the HTTP-chain live-smoke are verified).
 
 
 

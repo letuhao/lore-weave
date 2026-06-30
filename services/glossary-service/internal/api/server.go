@@ -182,6 +182,10 @@ func (s *Server) Router() http.Handler {
 		// KAL fold_canonical trigger — mark dirty so the next worker pass re-folds (no LLM here).
 		r.Post("/books/{book_id}/entities/{entity_id}/fold", s.internalTriggerFold)
 		r.Get("/books/{book_id}/entities/{entity_id}/canonical-snapshot", s.internalGetCanonical)
+		// Per-episode translation surface (§6B/§7.6) — on-demand, cached translation of the
+		// as-of folded canonical into the reader's display language. Read-through + single-flight
+		// background fill via translation-service (BYOK MT, provider-registry); no LLM in glossary.
+		r.Get("/books/{book_id}/entities/{entity_id}/canonical-translation", s.internalGetCanonicalTranslation)
 		// Enrichment SUPPLEMENT layer (F-C13-1 + F-C13-2 / PO ruling B1):
 		// lore-enrichment writes/retracts the distinguished enrichment `dị bản`
 		// here (its own table, FK→entity) instead of overwriting short_description.

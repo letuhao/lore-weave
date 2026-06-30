@@ -84,6 +84,40 @@ paths:
         '403': { $ref: '#/components/responses/Forbidden' }
         '404': { $ref: '#/components/responses/NotFound' }
 
+  /v1/kal/books/{book_id}/entities/{entity_id}/canonical-translation:
+    parameters:
+      - { name: book_id, in: path, required: true, schema: { type: string, format: uuid } }
+      - { name: entity_id, in: path, required: true, schema: { type: string, format: uuid } }
+      - name: lang
+        in: query
+        required: true
+        description: Target display language (BCP-47 primary subtag). A REAL target — the FE shows the original canonical when the reader picks the source/as-authored language, so this never gets source==target.
+        schema: { type: string }
+      - name: as_of
+        in: query
+        required: false
+        description: Chapter ordinal (parity with get_canonical; the underlying read returns the fold head today).
+        schema: { type: integer, format: int64 }
+    get:
+      tags: [reads]
+      summary: get_canonical_translation — the as-of canonical translated into `lang`, on-demand + cached (§6B/§7.6)
+      description: |
+        On-demand, immutable per (content, language) translation of the entity's folded canonical
+        (mirror of KG-TL M3). Read-through with a single-flight background fill that calls
+        translation-service (BYOK MT via provider-registry — no LLM in glossary). The FE polls while
+        `status='translating'`. Degrade-safe: `unbuildable` (no canonical), `failed` (+ error_code:
+        no_model | quota | provider | no_user | unconfigured).
+      responses:
+        '200':
+          description: The translated canonical (or its translating/failed/unbuildable state)
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/CanonicalTranslation' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '422': { description: "Missing required `lang` query param" }
+
   /v1/kal/books/{book_id}/entities/{entity_id}/facts:
     parameters:
       - { name: book_id, in: path, required: true, schema: { type: string, format: uuid } }
@@ -459,6 +493,25 @@ components:
         fold_algo_version: { type: integer }
         fact_coverage_txid: { type: string, nullable: true }
         canonical_status: { type: string, enum: [current, stale, unbuildable], description: degrade-safe (§12.1 B4) }
+    CanonicalTranslation:
+      type: object
+      description: |
+        On-demand translation of the folded canonical into `language_code`. `status` drives the FE:
+        ready (translated `content`, `cached`), translating (original `content`; FE polls), failed
+        (original `content` + `error_code`), unbuildable (no canonical), original (selected lang is
+        the source — the FE renders the original canonical and never calls this).
+      required: [entity_id, language_code, content, translated, status]
+      properties:
+        entity_id: { type: string, format: uuid }
+        language_code: { type: string }
+        content: { type: string, description: Translated prose when ready; the original canonical otherwise }
+        translated: { type: boolean, description: true only when status=ready }
+        status: { type: string, enum: [ready, translating, failed, unbuildable] }
+        error_code: { type: string, enum: ["", no_model, quota, provider, no_user, unconfigured], description: Set only when status=failed }
+        cached: { type: boolean, description: true when served from the immutable cache }
+        as_of_ordinal: { type: integer, format: int64, nullable: true }
+        canonical_status: { type: string, enum: [current, stale, unbuildable] }
+        source: { type: string, description: 'snapshot-translation' }
     Fact:
       type: object
       required: [fact_id, entity_id, fact_kind, attr_or_predicate, value, valid_from_ordinal, cardinality]

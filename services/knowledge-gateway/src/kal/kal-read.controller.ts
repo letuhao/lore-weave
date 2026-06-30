@@ -37,6 +37,27 @@ export class KalReadController {
     return data;
   }
 
+  // get_canonical_translation — the as-of folded canonical translated into `lang`, on-demand +
+  // cached immutable per (content, language) (§6B/§7.6). Read-through: status `translating` while
+  // the single-flight background fill runs (the FE polls); `ready` carries the translated content;
+  // `failed`/`unbuildable` degrade. The LLM runs in translation-service (BYOK, provider-registry).
+  @Get('entities/:entityId/canonical-translation')
+  async getCanonicalTranslation(
+    @Param('bookId') bookId: string,
+    @Param('entityId') entityId: string,
+    @Query('lang') lang: string | undefined,
+    @Query('as_of') asOf: string | undefined,
+    @Req() req: InboundReq,
+  ) {
+    const qs = new URLSearchParams();
+    if (lang) qs.set('lang', lang);
+    if (asOf) qs.set('as_of', asOf);
+    return glossary.get(
+      `/internal/books/${bookId}/entities/${entityId}/canonical-translation?${qs.toString()}`,
+      ctxFromReq(req),
+    );
+  }
+
   // get_facts — latest-valid (or valid-at-N) facts, per-attribute bounded + temporal capability.
   @Get('entities/:entityId/facts')
   async getFacts(

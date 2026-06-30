@@ -716,6 +716,11 @@ services:
       # /internal/web-search (the outward search call lives only there — provider-gateway
       # invariant). This is the SERVICE URL (like BOOK_SERVICE_URL), NOT a model/key.
       PROVIDER_REGISTRY_URL: http://provider-registry-service:8085
+      # Per-episode translation surface (§6B/§7.6): the canonical-snapshot translation cache
+      # fills a miss by calling translation-service's /internal/translation/translate-text (BYOK
+      # MT via provider-registry — no LLM in glossary). SERVICE URL (like BOOK_SERVICE_URL), NOT a
+      # model/key. Unset → the surface returns a clear `failed/unconfigured`; rest of svc unaffected.
+      TRANSLATION_SERVICE_URL: http://translation-service:8087
       # VG-1: glossary entity versioning. When set, glossary-service runs the
       # revision-projection consumer on loreweave:events:glossary (whole-entity
       # snapshots into entity_revisions — the recovery/undo substrate). Unset =

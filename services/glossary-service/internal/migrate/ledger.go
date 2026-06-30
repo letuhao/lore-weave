@@ -125,6 +125,10 @@ var chain = []Step{
 	// pin-aware maintain_chain (the manual close is an authored input the single deriver
 	// respects, never overwrites). Spec §12.3.2.
 	{"0049_fact_close_pin", UpFactClosePin},
+	// Per-episode translation surface — on-demand, immutable canonical translation cache
+	// (mirror of KG-TL M3 event_text_translations); the LLM runs in translation-service via
+	// provider-registry, glossary only stores + single-flights the fill. Spec §6B/§7.6.
+	{"0050_canonical_snapshot_translations", UpCanonicalSnapshotTranslations},
 }
 
 // EnsureLedger creates the schema_migrations bookkeeping table. Idempotent; must run

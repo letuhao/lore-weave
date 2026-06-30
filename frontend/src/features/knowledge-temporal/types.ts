@@ -19,6 +19,23 @@ export interface CanonicalSnapshot {
   source?: 'snapshot' | 'canon-content' | string;
 }
 
+/** On-demand translation of the folded canonical into `language_code` (§6B/§7.6). `status`
+ *  drives the FE: ready (translated `content`, `cached`) | translating (original `content`, poll) |
+ *  failed (original `content` + `error_code`) | unbuildable (no canonical). */
+export interface CanonicalTranslation {
+  entity_id: string;
+  language_code: string;
+  content: string;
+  translated: boolean;
+  status: 'ready' | 'translating' | 'failed' | 'unbuildable' | string;
+  /** Set only when status=failed: no_model | quota | provider | no_user | unconfigured. */
+  error_code?: string;
+  cached?: boolean;
+  as_of_ordinal?: number | null;
+  canonical_status?: string;
+  source?: string;
+}
+
 /** One bi-temporal fact. valid_to_ordinal null = open (+∞). */
 export interface Fact {
   fact_id: string;

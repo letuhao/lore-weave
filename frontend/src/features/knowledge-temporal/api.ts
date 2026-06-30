@@ -5,6 +5,7 @@
 import { apiJson } from '../../api';
 import type {
   CanonicalSnapshot,
+  CanonicalTranslation,
   FactsResponse,
   TimelineResponse,
   AttrValuesResponse,
@@ -28,6 +29,13 @@ export const kalApi = {
   getCanonical(bookId: string, entityId: string, token: string, asOf?: number) {
     return apiJson<CanonicalSnapshot>(
       `${BASE}/${bookId}/entities/${entityId}/canonical${qs({ as_of: asOf })}`,
+      { token },
+    );
+  },
+
+  getCanonicalTranslation(bookId: string, entityId: string, lang: string, token: string, asOf?: number) {
+    return apiJson<CanonicalTranslation>(
+      `${BASE}/${bookId}/entities/${entityId}/canonical-translation${qs({ lang, as_of: asOf })}`,
       { token },
     );
   },
