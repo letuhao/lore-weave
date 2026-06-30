@@ -73,6 +73,13 @@ build new judges; we re-target existing ones from "post-prose verification" to "
 - **Reuse:** structure templates + `arc_apply`/`arc_materialize` (arc-scale decompose) + L1 beat-map.
 - **New:** a tension-curve / beat-budget intent so CH1 doesn't telescope to 100 (the review defect).
 - **POC:** one arc, beats with a sane rising curve.
+- **STATUS — `shape_tension_curve` validated 2026-06-30** (`engine/arc_plan.py`, 5 unit tests). DETERMINISTIC
+  (pure, no LLM): beat-role → (base, peak) band; consecutive same-role chapters ramp base→peak. On the
+  POC's 12-ch beats it turns the chaotic free-run (`95,95,85,65,85,85,0,100,100,100,100,95` — ch1
+  telescoped to 95, flat 100-plateau, no resolution drop) into a textbook rising arc
+  `45,65,35,58,55,68,82,66,90,88,100,52` — **ch1 capped at 45, 100 ONLY at the climax, resolution drops
+  to 52**. Directly fixes the review's "ch1 telescopes to 100" + "limited dynamic range" defects.
+  **Next-stage integration:** feed `tension_target` into the L2 decompose so scenes aim for the band.
 
 ### Stage 3 — Character arcs + introduction schedule  *(the second missing piece)*
 - **New:** per-main-character trajectory across the beats; decide WHERE each new character is introduced
