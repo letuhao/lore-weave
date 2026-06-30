@@ -2,9 +2,11 @@ package api
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"sort"
+	"strings"
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
@@ -283,7 +285,8 @@ func refreshEAVProjection(ctx context.Context, q pgxRWQuerier, entityID uuid.UUI
 		cur AS (
 		  SELECT ef.value
 		  FROM entity_facts ef
-		  WHERE ef.entity_id = $1 AND ef.attr_or_predicate = $2 AND ef.fact_kind = 'attribute'
+		  WHERE ef.entity_id = $1 AND ef.attr_or_predicate = $2
+		    AND ef.fact_kind IN ('attribute', 'name')  -- name is a first-class single fact (F1g)
 		    AND ef.cardinality = 'single' AND ef.invalidated_at IS NULL AND ef.valid_to_ordinal IS NULL
 		  ORDER BY ef.valid_from_ordinal DESC, ef.created_at DESC, ef.fact_id DESC
 		  LIMIT 1
@@ -343,31 +346,72 @@ func rebuildProjectionForEntity(ctx context.Context, q pgxRWQuerier, entityID uu
 // Runs inside the per-chapter writeback tx, under the per-book advisory lock the handler
 // already holds; appendFact additionally takes the per-(entity, attr) chain lock.
 func (s *Server) emitChapterFacts(ctx context.Context, q pgxRWQuerier, bookID, entityID uuid.UUID, ent extractedEntity, writtenCodes []string, ordinal int64, episodeID uuid.UUID) error {
+	emit := func(kind, attr, value, card string) error {
+		if value == "" {
+			return nil
+		}
+		if err := acquireFactChainLock(ctx, q, entityID, attr); err != nil {
+			return err
+		}
+		_, _, err := appendFact(ctx, q, appendFactParams{
+			BookID: bookID, EntityID: entityID, FactKind: kind, Attr: attr,
+			Value: value, ValidFrom: ordinal, Card: card, SourceEpisodeID: &episodeID,
+		})
+		return err
+	}
 	for _, code := range writtenCodes {
-		var value string
-		if code == "name" {
-			value = ent.Name
-		} else {
+		switch code {
+		case "name":
+			// name is a first-class single-valued bi-temporal fact (F1g) → as-of-name.
+			if err := emit("name", "name", ent.Name, "single"); err != nil {
+				return err
+			}
+		case "aliases":
+			// aliases are multi-valued bi-temporal facts (F1g) — one per element; coexist.
 			val, ok := ent.Attributes[code]
 			if !ok {
 				continue
 			}
-			value = serializeValue(val)
-		}
-		if value == "" {
-			continue
-		}
-		if err := acquireFactChainLock(ctx, q, entityID, code); err != nil {
-			return err
-		}
-		if _, _, err := appendFact(ctx, q, appendFactParams{
-			BookID: bookID, EntityID: entityID, FactKind: "attribute", Attr: code,
-			Value: value, ValidFrom: ordinal, SourceEpisodeID: &episodeID,
-		}); err != nil {
-			return err
+			for _, a := range parseListValues(serializeValue(val)) {
+				if err := emit("alias", "aliases", a, "multi"); err != nil {
+					return err
+				}
+			}
+		default:
+			val, ok := ent.Attributes[code]
+			if !ok {
+				continue
+			}
+			if err := emit("attribute", code, serializeValue(val), "single"); err != nil {
+				return err
+			}
 		}
 	}
 	return nil
+}
+
+// parseListValues extracts the elements of a serializeValue() output: a JSON array →
+// its string elements; anything else → the single trimmed value (or empty).
+func parseListValues(serialized string) []string {
+	t := strings.TrimSpace(serialized)
+	if t == "" {
+		return nil
+	}
+	if strings.HasPrefix(t, "[") {
+		var arr []any
+		if err := json.Unmarshal([]byte(t), &arr); err == nil {
+			out := make([]string, 0, len(arr))
+			for _, e := range arr {
+				if s, ok := e.(string); ok {
+					if s = strings.TrimSpace(s); s != "" {
+						out = append(out, s)
+					}
+				}
+			}
+			return out
+		}
+	}
+	return []string{t}
 }
 
 // nullStr returns nil for an empty string so an absent writeback_key stores SQL NULL.

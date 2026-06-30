@@ -117,6 +117,10 @@ var chain = []Step{
 	// Temporal-knowledge F2 — the canonical as a lazy, versioned, regenerable CACHE
 	// (canonical_snapshot rows + per-entity canonical_fold_state). Spec §12.1 (B0 LOCKED).
 	{"0047_canonical_snapshot", UpCanonicalSnapshot},
+	// Temporal-knowledge F1g — name/aliases as first-class bi-temporal fact kinds
+	// (name single, alias multi); reconciles the cold-start/F1d attribute representation.
+	// Spec §12.4.3.
+	{"0048_bitemporal_names", UpBitemporalNames},
 }
 
 // EnsureLedger creates the schema_migrations bookkeeping table. Idempotent; must run
