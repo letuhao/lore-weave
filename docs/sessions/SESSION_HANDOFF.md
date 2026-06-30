@@ -28,7 +28,28 @@
 >   (close past a successor → 422, was a double-value hole), split now PRESERVES the pin (`valid_to_ordinal`+`valid_to_pinned`
 >   copied), and TestFactsHTTP regression-locks close half-open + overlap-422 + cross-book-404.
 >
-> **▶ FOUNDATION NOW FULLY HARDENED + COMPLETE (incl. close_fact). The ONLY remaining work is the FANOUT X1–X7.**
+> **▶ FOUNDATION FULLY HARDENED + COMPLETE (incl. close_fact).**
+>
+> **▶ BACKEND FANOUT COMPLETE (X1–X5, X7) — consumers now read bi-temporal knowledge through the KAL; both
+> INV-KAL lints ENFORCED:**
+> - **X1 composition** `ae4016ea` — `KalClient.roster` DRAINS `next_cursor` (fixes the D4 truncation-at-100 bug);
+>   `_cast_roster` migrated; dead `list_entities` removed. 1181 tests green.
+> - **X2 lore-enrichment** `9af1c255` — `KalClient` (roster drain + facts/canonical/search); full-book cast from
+>   the drained roster. Residual: `kind`/`short_description` supplemented from the authored entity-list (catalog,
+>   not bi-temporal — out of INV-KAL scope, like the table-read gate's `glossary_entities` exemption).
+> - **X5 translation** `0471b48c` — `KalClient` (get_facts/get_canonical) with **as-of-N inject** (threads
+>   `chapter_sort_order`) + **immutable-once cache** (keyed on chapter content-hash + as-of). Default (no
+>   `KNOWLEDGE_GATEWAY_URL`) byte-identical to today.
+> - **X3 wiki / X4 chat — verified NO-OPs:** wiki is owner-side (glossary, lint-exempt); chat's entity reads are
+>   MCP tools federated by name through ai-gateway (MCP-first invariant — must stay that way). No dead code added.
+> - **X7** `7fb6e692` — built the INV-KAL **HTTP-surface lint** (was DEFERRED `D-KAL-HTTP-SURFACE-LINT`); BOTH
+>   halves now ENFORCED in pre-commit. Both lints PASS full-scan (zero direct bi-temporal knowledge reads in consumers).
+> - **KAL in docker-compose** `b695ab7d` — built + healthy in-stack; cross-service smoke: composition container →
+>   `knowledge-gateway:3000` roster returns the contract shape.
+>
+> **▶ ONLY REMAINING: X6 FE (in this branch, PO-directed)** — BFF→KAL auth design (the KAL is internal-token-only;
+> the FE path needs a user-JWT mode or a public-route bridge) + the net-new temporal UI surfaces (canonical card,
+> time/version slider, change timeline w/ citations, diff view, retrieval-not-scroll, per-episode translation §7).
 >
 > **▶ REMAINING = the consumer/FE FANOUT (parallel worktree agents, the locked strategy):**
 > X1 composition→KAL (+fix `_cast_roster` cursor drain) · X2 lore-enrichment→KAL · X3 wiki→KAL (kill direct-EAV) ·
