@@ -87,6 +87,9 @@ class _FakeOutline:
         self.search_calls.append({"q": q, "limit": limit})
         return self.search_items
 
+    async def outline_stats(self, user_id, project_id):
+        return {"arcs": 1, "chapters": 12, "scenes": 35}
+
 
 class _StubWorks:
     async def get(self, user_id, project_id):
@@ -191,3 +194,11 @@ def test_search_limit_is_clamped(client):
     holder["repo"] = _FakeOutline([], search_items=[])
     c.get(f"/v1/composition/works/{PROJECT}/outline/search?q=a&limit=999")
     assert holder["repo"].search_calls[0]["limit"] == 50  # clamped to max
+
+
+def test_stats_returns_kind_totals(client):
+    c, holder = client
+    holder["repo"] = _FakeOutline([])
+    r = c.get(f"/v1/composition/works/{PROJECT}/outline/stats")
+    assert r.status_code == 200
+    assert r.json() == {"arcs": 1, "chapters": 12, "scenes": 35}

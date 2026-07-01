@@ -176,6 +176,19 @@ async def search_outline(
     return {"items": items}
 
 
+@router.get("/works/{project_id}/outline/stats")
+async def outline_stats(
+    project_id: UUID,
+    user_id: UUID = Depends(get_current_user),
+    works: WorksRepo = Depends(get_works_repo),
+    outline: OutlineRepo = Depends(get_outline_repo),
+) -> dict[str, int]:
+    """Whole-book totals for the navigator footer: {arcs, chapters, scenes} (non-archived).
+    Not derivable from the lazy-loaded tree window — a single GROUP BY over the outline."""
+    await _require_work(works, user_id, project_id)
+    return await outline.outline_stats(user_id, project_id)
+
+
 @router.get("/works/{project_id}/chapters/{chapter_id}/publish-gate")
 async def get_publish_gate(
     project_id: UUID,

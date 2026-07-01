@@ -56,6 +56,9 @@
     "empty": "まだ章がありません。",
     "loadingMore": "さらに読み込み中…",
     "count": "{{n}} 章",
+    "statArcs": "{{n}} 編",
+    "statChapters": "{{n}} 章",
+    "statScenes": "{{n}} シーン",
     "window": "win {{a}}–{{b}} / {{n}}"
   }
 }

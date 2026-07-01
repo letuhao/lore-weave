@@ -495,6 +495,29 @@ class OutlineRepo:
             rows = await c.fetch(query, *args)
         return [_row_to_node(r) for r in rows]
 
+    async def outline_stats(
+        self, user_id: UUID, project_id: UUID,
+    ) -> dict[str, int]:
+        """Whole-book totals per kind (non-archived) for the navigator footer — arcs / chapters
+        / scenes. A single GROUP BY (not derivable from the lazy-loaded tree window). Kinds with
+        no rows report 0; 'beat' is excluded (structural, not navigable)."""
+        async with self._pool.acquire() as c:
+            rows = await c.fetch(
+                """
+                SELECT kind, count(*) AS n FROM outline_node
+                WHERE user_id = $1 AND project_id = $2 AND NOT is_archived AND kind <> 'beat'
+                GROUP BY kind
+                """,
+                user_id, project_id,
+            )
+        out = {"arcs": 0, "chapters": 0, "scenes": 0}
+        key = {"arc": "arcs", "chapter": "chapters", "scene": "scenes"}
+        for r in rows:
+            mapped = key.get(r["kind"])
+            if mapped:
+                out[mapped] = r["n"]
+        return out
+
     async def search_nodes(
         self, user_id: UUID, project_id: UUID, q: str, *, limit: int = 30,
     ) -> list[dict[str, Any]]:

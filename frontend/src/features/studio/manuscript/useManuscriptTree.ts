@@ -60,6 +60,7 @@ export function useManuscriptTree(bookId: string, token: string | null) {
 
   const [tree, setTree] = useState<TreeState>(emptyTree);
   const [total, setTotal] = useState<number | null>(null);
+  const [outlineCounts, setOutlineCounts] = useState<{ arcs: number; chapters: number; scenes: number } | null>(null);
   const [error, setError] = useState<string | null>(null);
   const treeRef = useRef(tree);
   treeRef.current = tree;
@@ -118,6 +119,27 @@ export function useManuscriptTree(bookId: string, token: string | null) {
     resetAndLoadRoot();
   }, [source, projectId, bookId, resetAndLoadRoot]);
 
+  // Whole-book totals for the footer. Outline → one GROUP BY (arcs/chapters/scenes); the flat
+  // chapters source has no scenes/arcs, so its chapter total comes from the page-1 `total`.
+  useEffect(() => {
+    if (source !== 'outline' || !projectId || !token) {
+      setOutlineCounts(null);
+      return;
+    }
+    let alive = true;
+    compositionApi.outlineStats(projectId, token)
+      .then((s) => { if (alive) setOutlineCounts(s); })
+      .catch(() => { if (alive) setOutlineCounts(null); });
+    return () => { alive = false; };
+  }, [source, projectId, bookId, token]);
+
+  const counts = useMemo(
+    () => (source === 'outline'
+      ? { arcs: outlineCounts?.arcs ?? null, chapters: outlineCounts?.chapters ?? null, scenes: outlineCounts?.scenes ?? null }
+      : { arcs: null, chapters: total, scenes: null }),
+    [source, outlineCounts, total],
+  );
+
   // Collapse every expanded node back to the root level (VS Code "Collapse All"). Loaded
   // child pages stay in the store (cheap re-expand); only the expanded flags clear.
   const collapseAll = useCallback(() => {
@@ -141,5 +163,5 @@ export function useManuscriptTree(bookId: string, token: string | null) {
 
   const rows = useMemo(() => flatten(tree), [tree]);
 
-  return { source, rows, total, error, toggleExpand, loadMore, collapseAll, reload: resetAndLoadRoot };
+  return { source, rows, total, counts, error, toggleExpand, loadMore, collapseAll, reload: resetAndLoadRoot };
 }

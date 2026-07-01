@@ -164,6 +164,11 @@ export const compositionApi = {
     if (opts.limit) p.set('limit', String(opts.limit));
     return apiJson(`${BASE}/works/${projectId}/outline/search?${p.toString()}`, { token });
   },
+  // #02 navigator footer — whole-book totals per kind (non-archived). One GROUP BY; not
+  // derivable from the lazy-loaded tree window.
+  outlineStats(projectId: string, token: string): Promise<{ arcs: number; chapters: number; scenes: number }> {
+    return apiJson(`${BASE}/works/${projectId}/outline/stats`, { token });
+  },
   // D-MOTIF-FE-PLANNERVIEW-WIRING (Shape A) — the POST-commit per-scene motif binding
   // for a committed chapter: { node_id: BoundMotif | null } (null = free-form). The
   // planner renders MotifBindingCard per committed scene from this map.

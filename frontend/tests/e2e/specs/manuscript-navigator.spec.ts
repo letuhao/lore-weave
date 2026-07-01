@@ -49,7 +49,8 @@ test.describe('Manuscript Navigator — chapters path (no Work)', () => {
     await expect(page.getByTestId('manuscript-reload')).toBeVisible();
     await expect(page.getByTestId('manuscript-new')).toBeDisabled();
     await expect(page.getByTestId('manuscript-collapse-sidebar')).toBeVisible();
-    // Footer window readout is present once rows render.
+    // Footer: whole-book totals (a flat import → chapter count) + window readout.
+    await expect(page.getByTestId('manuscript-totals')).toContainText('ch');
     await expect(page.getByTestId('manuscript-window')).toBeVisible();
   });
 

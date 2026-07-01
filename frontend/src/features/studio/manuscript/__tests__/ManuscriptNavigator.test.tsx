@@ -37,6 +37,7 @@ const skeletonRow = (over: Partial<Extract<ManuscriptRow, { type: 'skeleton' }>>
 
 const base = (over: Record<string, unknown> = {}) => ({
   source: 'chapters', rows: [] as ManuscriptRow[], total: null, error: null,
+  counts: { arcs: null, chapters: null, scenes: null },
   toggleExpand: vi.fn(), loadMore: vi.fn(), collapseAll: vi.fn(), reload: vi.fn(), ...over,
 });
 const render_ = () => render(<ManuscriptNavigator bookId="b1" token="t" />);
@@ -50,13 +51,25 @@ describe('ManuscriptNavigator', () => {
     expect(screen.getByTestId('manuscript-nav').textContent).toContain('manuscript.loading');
   });
 
-  it('renders chapter rows + the total', () => {
-    hook.value = base({ rows: [nodeRow(n('c1')), nodeRow(n('c2'))], total: 42 });
+  it('renders chapter rows + the footer chapter total (flat import → ch only)', () => {
+    hook.value = base({ rows: [nodeRow(n('c1')), nodeRow(n('c2'))], counts: { arcs: null, chapters: 42, scenes: null } });
     render_();
     expect(screen.getByTestId('manuscript-row-c1')).toBeTruthy();
     expect(screen.getByTestId('manuscript-row-c2')).toBeTruthy();
-    // count uses the interpolation key (global i18n mock returns keys)
-    expect(screen.getByTestId('manuscript-nav').textContent).toContain('manuscript.count');
+    // footer stat uses the interpolation key (global i18n mock returns keys); no arc/scene for a flat book
+    const totals = screen.getByTestId('manuscript-totals').textContent!;
+    expect(totals).toContain('manuscript.statChapters');
+    expect(totals).not.toContain('manuscript.statArcs');
+    expect(totals).not.toContain('manuscript.statScenes');
+  });
+
+  it('outline book footer shows arc · ch · sc totals', () => {
+    hook.value = base({ source: 'outline', rows: [nodeRow(n('arc1', 'arc'))], counts: { arcs: 1, chapters: 12, scenes: 35 } });
+    render_();
+    const totals = screen.getByTestId('manuscript-totals').textContent!;
+    expect(totals).toContain('manuscript.statArcs');
+    expect(totals).toContain('manuscript.statChapters');
+    expect(totals).toContain('manuscript.statScenes');
   });
 
   it('selecting a chapter row calls onSelect (not toggle)', () => {

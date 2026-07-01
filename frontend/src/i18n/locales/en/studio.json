@@ -56,6 +56,9 @@
     "empty": "No chapters yet.",
     "loadingMore": "Loading more…",
     "count": "{{n}} chapters",
+    "statArcs": "{{n}} arc",
+    "statChapters": "{{n}} ch",
+    "statScenes": "{{n}} sc",
     "window": "win {{a}}–{{b}} / {{n}}"
   }
 }

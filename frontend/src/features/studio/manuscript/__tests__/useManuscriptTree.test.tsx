@@ -7,8 +7,12 @@ vi.mock('@/features/composition/hooks/useWork', () => ({ useWorkResolution: () =
 
 const listChaptersPage = vi.fn();
 const listOutlineChildren = vi.fn();
+const outlineStats = vi.fn(() => Promise.resolve({ arcs: 0, chapters: 0, scenes: 0 }));
 vi.mock('@/features/books/api', () => ({ booksApi: { listChaptersPage: (...a: unknown[]) => listChaptersPage(...a) } }));
-vi.mock('@/features/composition/api', () => ({ compositionApi: { listOutlineChildren: (...a: unknown[]) => listOutlineChildren(...a) } }));
+vi.mock('@/features/composition/api', () => ({ compositionApi: {
+  listOutlineChildren: (...a: unknown[]) => listOutlineChildren(...a),
+  outlineStats: (...a: unknown[]) => outlineStats(...a),
+} }));
 
 import { useManuscriptTree } from '../useManuscriptTree';
 import type { ManuscriptRow } from '../types';

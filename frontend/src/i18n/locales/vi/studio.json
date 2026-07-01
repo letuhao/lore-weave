@@ -56,6 +56,9 @@
     "empty": "Chưa có chương nào.",
     "loadingMore": "Đang tải thêm…",
     "count": "{{n}} chương",
+    "statArcs": "{{n}} hồi",
+    "statChapters": "{{n}} chương",
+    "statScenes": "{{n}} cảnh",
     "window": "win {{a}}–{{b}} / {{n}}"
   }
 }

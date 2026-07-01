@@ -52,7 +52,7 @@ function toRoman(n: number): string {
 
 export function ManuscriptNavigator({ bookId, token, selectedId, onSelect, onNewChapter, onCollapseSidebar }: Props) {
   const { t } = useTranslation('studio');
-  const { source, rows, total, error, toggleExpand, loadMore, collapseAll, reload } = useManuscriptTree(bookId, token);
+  const { source, rows, total, counts, error, toggleExpand, loadMore, collapseAll, reload } = useManuscriptTree(bookId, token);
   const jump = useManuscriptJump(bookId, token);
   const parentRef = useRef<HTMLDivElement>(null);
 
@@ -88,6 +88,14 @@ export function ManuscriptNavigator({ bookId, token, selectedId, onSelect, onNew
   // Footer window readout (VS Code "win 100–140 / N"). 1-based, from the virtual range.
   const winStart = vItems.length ? vItems[0].index + 1 : 0;
   const winEnd = vItems.length ? vItems[vItems.length - 1].index + 1 : 0;
+
+  // Footer totals (mockup .nav-foot: "10,342 ch · 48,120 sc"). Outline → arc·ch·sc; a flat
+  // import → chapters only (no arcs/scenes). Localized thousands separators.
+  const fmt = (n: number) => n.toLocaleString();
+  const statParts: string[] = [];
+  if (counts.arcs != null && counts.arcs > 0) statParts.push(t('manuscript.statArcs', { n: fmt(counts.arcs), defaultValue: '{{n}} arc' }));
+  if (counts.chapters != null) statParts.push(t('manuscript.statChapters', { n: fmt(counts.chapters), defaultValue: '{{n}} ch' }));
+  if (counts.scenes != null && counts.scenes > 0) statParts.push(t('manuscript.statScenes', { n: fmt(counts.scenes), defaultValue: '{{n}} sc' }));
 
   if (source === 'pending') {
     return <div data-testid="manuscript-nav" className="flex flex-1 items-center justify-center p-4 text-[11px] text-muted-foreground">
@@ -313,9 +321,9 @@ export function ManuscriptNavigator({ bookId, token, selectedId, onSelect, onNew
         )}
       </div>
 
-      {/* Footer: chapter total + virtual window position (mockup .nav-foot) */}
+      {/* Footer: whole-book totals (arc·ch·sc) + virtual window position (mockup .nav-foot) */}
       <div className="flex h-6 flex-shrink-0 items-center gap-2 border-t px-3 font-mono text-[10px] text-muted-foreground">
-        {total != null && <span>{t('manuscript.count', { defaultValue: '{{n}} chapters', n: total })}</span>}
+        {statParts.length > 0 && <span data-testid="manuscript-totals">{statParts.join(' · ')}</span>}
         {!jump.active && rows.length > 0 && (
           <span className="ml-auto text-muted-foreground/50" data-testid="manuscript-window">
             {t('manuscript.window', { defaultValue: 'win {{a}}–{{b}} / {{n}}', a: winStart, b: winEnd, n: rows.length })}
