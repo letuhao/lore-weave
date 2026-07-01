@@ -16,7 +16,12 @@
     "voice_settings": "音声設定",
     "export": "エクスポート",
     "rename": "名前を変更",
-    "session_settings": "セッション設定"
+    "session_settings": "セッション設定",
+    "context_meter": {
+      "label": "使用中のコンテキスト",
+      "unknown": "このモデルのコンテキストウィンドウ使用量は不明です",
+      "tokens": "{{used}} / {{limit}} トークン"
+    }
   },
   "input": {
     "format": "形式:",

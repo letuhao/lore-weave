@@ -144,6 +144,7 @@ export function ChatView({ className, composeMode, footerSlot, headerSlot }: Cha
         session={activeSession}
         modelNameMap={modelNameMap}
         messageCount={chat.messages.length}
+        contextBudget={chat.contextBudget}
         sessionSwitcher={headerSlot}
         onRename={promptRename}
         onOpenSettings={() => setSettingsOpen(true)}

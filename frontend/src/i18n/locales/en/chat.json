@@ -16,7 +16,12 @@
     "voice_settings": "Voice Settings",
     "export": "Export",
     "rename": "Rename",
-    "session_settings": "Session Settings"
+    "session_settings": "Session Settings",
+    "context_meter": {
+      "label": "Context used",
+      "unknown": "Context window usage unknown for this model",
+      "tokens": "{{used}} / {{limit}} tokens"
+    }
   },
   "input": {
     "format": "Format:",

@@ -16,7 +16,12 @@
     "voice_settings": "Cài đặt giọng nói",
     "export": "Xuất",
     "rename": "Đổi tên",
-    "session_settings": "Cài đặt phiên"
+    "session_settings": "Cài đặt phiên",
+    "context_meter": {
+      "label": "Ngữ cảnh đã dùng",
+      "unknown": "Không rõ mức sử dụng cửa sổ ngữ cảnh cho mô hình này",
+      "tokens": "{{used}} / {{limit}} token"
+    }
   },
   "input": {
     "format": "Định dạng:",

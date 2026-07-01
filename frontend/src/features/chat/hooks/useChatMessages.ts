@@ -2,7 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import type { MutableRefObject } from 'react';
 import { useAuth } from '@/auth';
 import { chatApi } from '../api';
-import type { ChatMessage, AgentSurfaceState } from '../types';
+import type { ChatMessage, AgentSurfaceState, ContextBudget } from '../types';
 import { runChatStream, assembleAssistantMessage } from './runChatStream';
 import type { ChatStreamArgs, StreamPhase } from './runChatStream';
 import type { StreamPins } from './useContextRack';
@@ -77,6 +77,10 @@ export function useChatMessages(
   // A2A phase-2: true while the in-turn composer model is drafting prose
   // (compose_prose). Drives a transient "✍️ Drafting…" indicator.
   const [isComposing, setIsComposing] = useState(false);
+  // RAID Wave A3: the last turn-finish context-budget snapshot (chat header
+  // meter). Local state (not persisted server-side); mirrored from the worker
+  // snapshot on the windowing path so it survives dock float/close.
+  const [contextBudget, setContextBudget] = useState<ContextBudget | null>(null);
   const abortRef = useRef<AbortController | null>(null);
   const thinkingTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const thinkingStartRef = useRef<number>(0);
@@ -222,6 +226,7 @@ export function useChatMessages(
             onComposing: (active) => setIsComposing(active),
             onMemoryMode: (mode) => onMemoryModeRef.current?.(mode),
             onAgentSurface: (payload) => onAgentSurfaceRef.current?.(payload),
+            onContextBudget: (budget) => setContextBudget(budget),
             onAbort: () => { aborted = true; },
             // onToolCall / onActivity accumulate inside runChatStream and arrive
             // on the terminal result; nothing extra to mirror per-event here.
@@ -343,6 +348,11 @@ export function useChatMessages(
     if (worker.agentSurface) {
       onAgentSurfaceRef.current?.(worker.agentSurface);
     }
+    // RAID Wave A3: mirror the worker's context-budget snapshot (source of truth
+    // on the windowing path) into local state so the header meter renders identically.
+    if (worker.contextBudget) {
+      setContextBudget(worker.contextBudget);
+    }
 
     // Terminal handling — ONCE per turn per window, deduped on the worker's turnId.
     // Two facets, with DIFFERENT scoping:
@@ -393,7 +403,7 @@ export function useChatMessages(
   }, [
     useWorker, worker?.turnId, worker?.initiatedTurnId, worker?.streamingText, worker?.streamingReasoning,
     worker?.streamPhase, worker?.thinkingElapsed, worker?.streamStatus, worker?.isComposing,
-    worker?.memoryMode, worker?.ended, sessionId,
+    worker?.memoryMode, worker?.contextBudget, worker?.ended, sessionId,
   ]);
 
   /** Build the per-turn ChatStreamArgs (worker path) from the hook's props. */
@@ -516,6 +526,8 @@ export function useChatMessages(
     isStreaming: streamStatus === 'streaming',
     /** A2A phase-2: composer model is drafting prose this turn. */
     isComposing,
+    /** RAID Wave A3: last turn-finish context-budget snapshot (header meter). */
+    contextBudget,
     send,
     edit,
     regenerate,

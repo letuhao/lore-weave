@@ -16,7 +16,12 @@
     "voice_settings": "語音設定",
     "export": "匯出",
     "rename": "重新命名",
-    "session_settings": "工作階段設定"
+    "session_settings": "工作階段設定",
+    "context_meter": {
+      "label": "已使用的脈絡",
+      "unknown": "無法得知此模型的脈絡視窗使用量",
+      "tokens": "{{used}} / {{limit}} 個 token"
+    }
   },
   "input": {
     "format": "格式：",

@@ -27,7 +27,7 @@ import type {
   ToolCallResultEvent,
   ToolCallStartEvent,
 } from './agUiEvents';
-import type { ActivityEvent, ChatMessage, ToolCallRecord, AgentSurfaceState } from '../types';
+import type { ActivityEvent, ChatMessage, ToolCallRecord, AgentSurfaceState, ContextBudget } from '../types';
 
 export type StreamPhase = 'idle' | 'thinking' | 'responding';
 
@@ -89,6 +89,8 @@ export type ChatCallbacks = {
   onComposing?: (active: boolean) => void;
   /** Story 04: CUSTOM agentSurface → runtime inspector reducer. */
   onAgentSurface?: (state: AgentSurfaceState) => void;
+  /** RAID Wave A3: CUSTOM contextBudget → the chat header context-used meter. */
+  onContextBudget?: (budget: ContextBudget) => void;
   /** A run-level error (RUN_ERROR, or a non-OK response). */
   onError?: (message: string) => void;
   /** Terminal — the assembled assistant turn. Fired on a clean stream end. */
@@ -310,7 +312,7 @@ export async function runChatStream(
               cb.onToolCall?.(record);
               break;
             }
-            // ── 6. CUSTOM — 4 sub-events: memoryMode/persisted/composing/activity
+            // ── 6. CUSTOM — memoryMode/persisted/composing/activity/agentSurface/contextBudget
             case AgUiEventType.CUSTOM: {
               const e = event as AgUiCustomEvent;
               if (e.name === 'memoryMode') {
@@ -340,6 +342,19 @@ export async function runChatStream(
                 const payload = e.value as unknown as AgentSurfaceState;
                 if (payload && typeof payload.phase === 'string') {
                   cb.onAgentSurface?.(payload);
+                }
+              } else if (e.name === 'contextBudget') {
+                // RAID Wave A3: turn-finish context usage → header meter. Guard on
+                // used_tokens being a number so a malformed frame can't crash the
+                // meter; pct/limits may legitimately be null (unregistered model).
+                const v = e.value as unknown as ContextBudget;
+                if (v && typeof v.used_tokens === 'number') {
+                  cb.onContextBudget?.({
+                    used_tokens: v.used_tokens,
+                    context_length: typeof v.context_length === 'number' ? v.context_length : null,
+                    effective_limit: typeof v.effective_limit === 'number' ? v.effective_limit : null,
+                    pct: typeof v.pct === 'number' ? v.pct : null,
+                  });
                 }
               }
               break;

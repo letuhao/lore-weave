@@ -5,8 +5,9 @@ import { SPEECH_RECOGNITION_SUPPORTED } from '@/hooks/useSpeechRecognition';
 import { MEDIA_RECORDER_SUPPORTED } from '@/hooks/useBackendSTT';
 import { cn } from '@/lib/utils';
 import { MemoryIndicator } from '@/features/knowledge/components/MemoryIndicator';
+import { ContextMeter } from './ContextMeter';
 import { chatApi } from '../api';
-import type { ChatSession } from '../types';
+import type { ChatSession, ContextBudget } from '../types';
 
 interface ChatHeaderProps {
   session: ChatSession;
@@ -23,9 +24,12 @@ interface ChatHeaderProps {
   /** Embedded hosts inject a compact session switcher here; when present it
    *  replaces the static title (the switcher renders the title itself). */
   sessionSwitcher?: React.ReactNode;
+  /** RAID Wave A3: last turn-finish context-budget snapshot → the header meter.
+   *  Null before the first turn finishes (meter renders nothing). */
+  contextBudget?: ContextBudget | null;
 }
 
-export function ChatHeader({ session, modelNameMap, messageCount, onRename, onOpenSettings, isVoiceModeActive, onToggleVoiceMode, onOpenVoiceSettings, onOpenSidebar, sessionSwitcher }: ChatHeaderProps) {
+export function ChatHeader({ session, modelNameMap, messageCount, onRename, onOpenSettings, isVoiceModeActive, onToggleVoiceMode, onOpenVoiceSettings, onOpenSidebar, sessionSwitcher, contextBudget }: ChatHeaderProps) {
   const { t } = useTranslation('chat');
   // Self-measure: when the header (its container) is narrow — e.g. the editor
   // AI panel at ~300px — collapse the memory chip to icon-only so the action
@@ -76,6 +80,7 @@ export function ChatHeader({ session, modelNameMap, messageCount, onRename, onOp
       </div>
       <div className="flex min-w-0 shrink-0 items-center gap-1">
         <MemoryIndicator projectId={session.project_id} memoryMode={session.memory_mode} compact={compact} />
+        <ContextMeter budget={contextBudget ?? null} compact={compact} />
         {(SPEECH_RECOGNITION_SUPPORTED || MEDIA_RECORDER_SUPPORTED) && onToggleVoiceMode && session.status !== 'archived' && (
           <button
             type="button"
