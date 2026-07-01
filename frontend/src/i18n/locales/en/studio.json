@@ -9,7 +9,15 @@
   },
   "panels": {
     "compose": { "title": "Compose", "desc": "AI co-writer chat" },
-    "editor": { "title": "Editor", "desc": "Manuscript editor" }
+    "editor": { "title": "Editor", "desc": "Manuscript editor" },
+    "planner": { "title": "Planner", "desc": "Plan the novel's system" }
+  },
+  "planner": {
+    "sourcePlaceholder": "Paste the novel-system markdown…",
+    "propose": "Propose",
+    "model": "Model",
+    "empty": "Paste your novel-system markdown and Propose to start a plan run.",
+    "mode": { "rules": "Rules", "llm": "LLM" }
   },
   "editor": {
     "empty": "Select a chapter in the manuscript navigator to edit it here.",

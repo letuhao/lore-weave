@@ -9,7 +9,15 @@
   },
   "panels": {
     "compose": { "title": "Compose", "desc": "Chat đồng sáng tác AI" },
-    "editor": { "title": "Editor", "desc": "Trình soạn bản thảo" }
+    "editor": { "title": "Editor", "desc": "Trình soạn bản thảo" },
+    "planner": { "title": "Trình lập kế hoạch", "desc": "Lập kế hoạch hệ thống truyện" }
+  },
+  "planner": {
+    "sourcePlaceholder": "Dán markdown hệ thống truyện…",
+    "propose": "Đề xuất",
+    "model": "Model",
+    "empty": "Dán markdown hệ thống truyện và bấm Đề xuất để bắt đầu.",
+    "mode": { "rules": "Quy tắc", "llm": "LLM" }
   },
   "editor": {
     "empty": "Chọn một chương trong navigator để soạn ở đây.",

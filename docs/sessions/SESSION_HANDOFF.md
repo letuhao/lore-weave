@@ -1,4 +1,15 @@
-# ▶▶ NEXT SESSION STARTS HERE — **Writing Studio (v2) FOUNDATION COMPLETE + PROVEN on `feat/writing-studio` → PR to `main`. NEXT TRACK = deep-dive on the AGENTIC CHAT (the load-bearing part) to an industry-strength standard BEFORE scaling more panels.** · 2026-07-02**
+# ▶▶ NEXT SESSION STARTS HERE — **STUDIO AGENT RAID executing on `feat/studio-agent-raid` (autonomous, sequential). Spec [`07S`](../specs/2026-07-01-writing-studio/07S_studio_agent_standard.md) + plan [`studio-agent-raid`](../plans/2026-07-02-studio-agent-raid.md). Waves P(PlanForge takeover)→A(context spine)→C→B→D.** · 2026-07-02**
+
+> **▶ STUDIO AGENT RAID — IN PROGRESS 2026-07-02 (`feat/studio-agent-raid`, autonomous run).** Big RAID: agentic
+> chat to industry standard (context meter+compaction, plan-mode, steering, MCP resources/prompts, HITL modes,
+> checkpoints, memory-for-canon, autonomy dial). **Wave P (PlanForge takeover) — DONE through M4:** P0 committed
+> inherited M3 checkpoint (38 tests); **P1 review-impl** fixed patch no-spec 409→422 (+tests); **M4** shipped 8 MCP
+> `plan_*` tools + chat `plan_forge` skill + D-PF-APPLY-HONESTY (`no_change` on unchanged refine) + review_checkpoint
+> / handoff_autofix service methods (73 composition MCP + 9 chat skill + 50 plan_forge + provider-gate green).
+> composition-service rebuilt. **NEXT in-wave: M5 Studio planner dock** (FE, in progress) + gemma-4-26b browser
+> smoke, then **Wave A** (script-aware tokenizer → budget event → FE meter → hybrid compaction → Anthropic overlay →
+> manual compact). Grounding facts (verified vs code) in the RAID plan §1. Reconciliations: gateway forwards
+> X-Project-Id (memory `gateway-drops-xprojectid-envelope` stale); saga breaker is probe-reconcile not XADD.
 
 > **▶ Writing Studio foundation SHIPPED + PROVEN + PR'd 2026-07-02 (`feat/writing-studio`, 130 commits → `main`).**
 > Frame + palette (⌘P/⌘⇧P) + share-data (StudioHost/bus/registry #08) + navigator (#02 search/totals) + Compose

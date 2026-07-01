@@ -9,7 +9,15 @@
   },
   "panels": {
     "compose": { "title": "Compose", "desc": "AI 共同創作對話" },
-    "editor": { "title": "Editor", "desc": "手稿編輯器" }
+    "editor": { "title": "Editor", "desc": "手稿編輯器" },
+    "planner": { "title": "規劃器", "desc": "規劃小說系統" }
+  },
+  "planner": {
+    "sourcePlaceholder": "貼上小說系統的 Markdown…",
+    "propose": "提出",
+    "model": "模型",
+    "empty": "貼上小說系統的 Markdown 並按「提出」開始規劃執行。",
+    "mode": { "rules": "規則", "llm": "LLM" }
   },
   "editor": {
     "empty": "在導覽列選擇章節即可在此編輯。",
