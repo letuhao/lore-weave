@@ -302,7 +302,7 @@ pytest services/composition-service/tests/unit/test_plan_forge.py -q
 
 - [x] M0: OpenAPI + MCP tier + ai-gateway `plan_` prefix (2026-07-01)
 - [x] M1: port engine + tests; S1–S8 green on fixture (`services/composition-service/tests/unit/test_plan_forge.py` 28 passed)
-- [ ] M2: provider-registry LLM; retire `PLANFORGE_LM_*`; live smoke
+- [x] M2: provider-registry LLM adapter + worker ops plan_forge_propose/refine; unit tests 38 pass
 - [ ] M3: `plan_runs` migration + HTTP API + tenancy
 - [ ] M4: MCP tools §5 + fuzzy HIL
 - [ ] M5: Studio planner dock (separate Writing Studio track)

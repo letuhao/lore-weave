@@ -16,7 +16,15 @@ from app.engine.plan_forge.prompts import (
     repair_user_prompt,
 )
 from app.engine.plan_forge.propose_llm import normalize_spec
+from app.engine.plan_forge.spec_index import spec_slice_for_paths
 from app.engine.plan_forge.validate import run_rules
+
+
+def _artifact_json_for_refine(spec: dict[str, Any], revision: dict[str, Any]) -> str:
+    paths = revision.get("focus_paths") or []
+    if paths:
+        return spec_slice_for_paths(spec, paths, max_chars=12000)
+    return json.dumps(spec, ensure_ascii=False, indent=2)
 
 
 @dataclass
@@ -317,7 +325,7 @@ def refine_spec(
     analyze: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     revision = {**revision, "target": "spec"}
-    payload = refine_user_prompt(json.dumps(spec, ensure_ascii=False, indent=2), revision)
+    payload = refine_user_prompt(_artifact_json_for_refine(spec, revision), revision)
     out = _parse_with_repair(client, "refine_spec", REFINE_SPEC_SYSTEM, payload, "refine_spec_repair")
     return normalize_spec(out, source_checksum, analyze=analyze)
 

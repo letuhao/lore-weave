@@ -36,7 +36,7 @@ __all__ = ["SUPPORTED_OPERATIONS", "worker_op_of", "is_worker_drivable"]
 SUPPORTED_OPERATIONS: frozenset[str] = frozenset(
     {"decompose_preview", "plan_pipeline", "stitch_chapter", "generate", "chapter_generate",
      "selection_edit", "mine_motifs", "analyze_reference", "conformance_run", "self_heal_propose",
-     "quality_report", "promise_coverage"}
+     "quality_report", "promise_coverage", "plan_forge_propose", "plan_forge_refine"}
 )
 
 

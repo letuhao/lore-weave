@@ -31,6 +31,8 @@ from app.worker.operations import (
     run_decompose,
     run_generate,
     run_plan_pipeline,
+    run_plan_forge_propose,
+    run_plan_forge_refine,
     run_promise_coverage,
     run_quality_report,
     run_selection_edit,
@@ -175,6 +177,12 @@ async def _run_operation(
         inp.setdefault("user_id", str(job.user_id))
         return await run_promise_coverage(
             llm, user_id=str(job.user_id), input=inp, cancel_check=cancel_check)
+    if op == "plan_forge_propose":
+        return await run_plan_forge_propose(
+            llm, user_id=str(job.user_id), input=job.input or {}, cancel_check=cancel_check)
+    if op == "plan_forge_refine":
+        return await run_plan_forge_refine(
+            llm, user_id=str(job.user_id), input=job.input or {}, cancel_check=cancel_check)
     # ── Wave-2 motif ops (W2-F0 frozen dispatch seam) ─────────────────────────────
     # The Tier-W confirm effects (routers/actions.py) already stamp the full input
     # envelope; each handler lives in its WS-owned engine module (lazy import keeps

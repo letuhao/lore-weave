@@ -52,6 +52,7 @@ Fidelity requirements:
 - character name: use "Nữ chính" or source name — never "Female Protagonist" or "TBD"
 - mechanics: at least 3 entries with >=2 rules each from §2–§3; >=50% rules in Vietnamese; planner_secrets for THR/tiền kiếp
 - arc_2 events: keep Vietnamese titles; synopsis >=80 chars as condensed bullet list from source (not meta summaries)
+- Arc 2 MUST include exactly these 7 events (titles in Vietnamese): Nhập Môn, Biến Hóa Đầu Tiên, Thử Nghiệm, Dị Thường Đầu Tiên, Tiểu Thành, Tác Dụng Phụ Đầu Tiên, Quyết Định Tiếp Tục
 - Event 3 Thử Nghiệm: must mention tốc độ, linh thạch, âm dương, logic nhân vật
 - Do NOT translate event titles to English
 
