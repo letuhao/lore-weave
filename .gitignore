@@ -298,3 +298,5 @@ services/migration-orchestrator/cdrill
 services/migration-orchestrator/migrate
 services/migration-orchestrator/migrate-drill
 tests/perf/roleplay-load/rpload
+
+docs/specs/2026-06-30-editor-compose-overhaul/poc/io/
