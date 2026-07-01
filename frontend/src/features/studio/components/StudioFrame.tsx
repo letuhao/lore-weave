@@ -5,6 +5,7 @@
 // correct keys. Without the remount, book B would render book A's chrome/layout/registry (the
 // review-impl HIGH #1/#2 root cause).
 import { useCallback, useEffect, useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import { useAuth } from '@/auth';
 import { booksApi } from '@/features/books/api';
 import { useStudioChrome } from '../hooks/useStudioChrome';
@@ -13,6 +14,7 @@ import { QuickOpen } from '../palette/QuickOpen';
 import { CommandPalette } from '../palette/CommandPalette';
 import { usePaletteHotkeys, type PaletteKind } from '../palette/usePaletteHotkeys';
 import { revealManuscript } from '../palette/reveal';
+import { OPENABLE_STUDIO_PANELS, getStudioPanelDef } from '../panels/catalog';
 import type { JumpResult } from '../manuscript/types';
 import { StudioTopBar } from './StudioTopBar';
 import { StudioActivityBar } from './StudioActivityBar';
@@ -30,6 +32,7 @@ export function StudioFrame({ bookId }: { bookId: string }) {
 }
 
 function StudioFrameInner({ bookId }: { bookId: string }) {
+  const { t } = useTranslation('studio');
   const { accessToken } = useAuth();
   const host = useStudioHost();
   const [bookTitle, setBookTitle] = useState('');
@@ -49,6 +52,13 @@ function StudioFrameInner({ bookId }: { bookId: string }) {
       .catch(() => { /* title/lang are cosmetic */ });
     return () => { mounted = false; };
   }, [accessToken, bookId]);
+
+  // Command Palette "Studio: Open <panel>" → host.openPanel with the catalog title (a CLOSED
+  // panel isn't registered yet, so the title comes from the catalog, not a live registration).
+  const openStudioPanel = useCallback((panelId: string) => {
+    const def = getStudioPanelDef(panelId);
+    host.openPanel(panelId, { title: def ? t(def.titleKey, { defaultValue: panelId }) : undefined });
+  }, [host, t]);
 
   // Quick Open resolve (v1): reveal the Manuscript navigator (without toggling it shut if we're
   // already there — review-impl MED), highlight the hit, publish the active chapter to the bus via
@@ -101,8 +111,9 @@ function StudioFrameInner({ bookId }: { bookId: string }) {
         open={palette === 'command'}
         onClose={() => setPalette(null)}
         chrome={chrome}
+        panels={OPENABLE_STUDIO_PANELS}
         onOpenQuickOpen={() => setPalette('quick')}
-        onOpenPanel={host.openPanel}
+        onOpenPanel={openStudioPanel}
       />
     </div>
   );

@@ -7,7 +7,11 @@
     "title": "Writing Studio",
     "body": "A dockable workspace for this book. Panels (compose, planner, cast, quality…) will be added here one at a time. Drag tabs to split, stack, float, or pop out into their own window."
   },
+  "panels": {
+    "compose": { "title": "Compose", "desc": "AI co-writer chat" }
+  },
   "palette": {
+    "openPanel": "Studio: Open {{name}}",
     "placeholder": "Go to chapter, scene, arc…",
     "quickOpenTitle": "Go to chapter, scene, arc",
     "quickOpenPlaceholder": "Go to chapter, scene, arc…",

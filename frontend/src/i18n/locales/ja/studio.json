@@ -7,7 +7,11 @@
     "title": "執筆スタジオ",
     "body": "この本のためのドッキング可能なワークスペース。パネル（執筆・プロット・キャスト・品質…）は一つずつここに追加されます。タブをドラッグして分割・スタック・フロート・別ウィンドウへ切り離せます。"
   },
+  "panels": {
+    "compose": { "title": "Compose", "desc": "AI 共同執筆チャット" }
+  },
   "palette": {
+    "openPanel": "Studio: {{name}} を開く",
     "placeholder": "章・シーン・編へ移動…",
     "quickOpenTitle": "章・シーン・編へ移動",
     "quickOpenPlaceholder": "章・シーン・編へ移動…",

@@ -1,23 +1,39 @@
 import { fireEvent, render, screen } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
-import type { ReactNode } from 'react';
-import { StudioHostProvider } from '../../host/StudioHostProvider';
 import { CommandPalette } from '../CommandPalette';
+import type { StudioPanelDef } from '../../panels/catalog';
 
-const wrap = (ui: ReactNode) => render(<StudioHostProvider bookId="b1">{ui}</StudioHostProvider>);
 const chrome = () => ({ setActiveView: vi.fn(), toggleSidebar: vi.fn(), toggleBottom: vi.fn() });
+const panel = (id: string): StudioPanelDef =>
+  ({ id, component: (() => null) as unknown as StudioPanelDef['component'], titleKey: `panels.${id}.title`, descKey: `panels.${id}.desc` });
+
+const setup = (over: Partial<React.ComponentProps<typeof CommandPalette>> = {}) => {
+  const props: React.ComponentProps<typeof CommandPalette> = {
+    open: true, onClose: vi.fn(), chrome: chrome(), panels: [], onOpenQuickOpen: vi.fn(), onOpenPanel: vi.fn(), ...over,
+  };
+  render(<CommandPalette {...props} />);
+  return props;
+};
 
 describe('CommandPalette', () => {
-  it('renders chrome commands (no registered panels yet)', () => {
-    wrap(<CommandPalette open onClose={vi.fn()} chrome={chrome()} onOpenQuickOpen={vi.fn()} onOpenPanel={vi.fn()} />);
+  it('renders chrome commands; no Panels group when the catalog is empty', () => {
+    setup();
     expect(screen.getByTestId('palette-entry-view.toggleBottom')).toBeTruthy();
     expect(screen.getByTestId('palette-entry-view.showManuscript')).toBeTruthy();
-    // no Panels group commands (registry empty)
-    expect(screen.queryByTestId('palette-entry-studio.openPanel.cast')).toBeNull();
+    expect(screen.queryByTestId('palette-entry-studio.openPanel.compose')).toBeNull();
+  });
+
+  it('lists a "Studio: Open …" command per catalog panel; selecting opens it', () => {
+    const onOpenPanel = vi.fn();
+    const onClose = vi.fn();
+    setup({ panels: [panel('compose')], onOpenPanel, onClose });
+    fireEvent.click(screen.getByTestId('palette-entry-studio.openPanel.compose'));
+    expect(onOpenPanel).toHaveBeenCalledWith('compose');
+    expect(onClose).toHaveBeenCalledOnce();
   });
 
   it('filters commands by the typed query', () => {
-    wrap(<CommandPalette open onClose={vi.fn()} chrome={chrome()} onOpenQuickOpen={vi.fn()} onOpenPanel={vi.fn()} />);
+    setup();
     fireEvent.change(screen.getByTestId('palette-input'), { target: { value: 'bottom' } });
     expect(screen.getByTestId('palette-entry-view.toggleBottom')).toBeTruthy();
     expect(screen.queryByTestId('palette-entry-view.showManuscript')).toBeNull();
@@ -26,7 +42,7 @@ describe('CommandPalette', () => {
   it('selecting a command runs it and closes the palette', () => {
     const c = chrome();
     const onClose = vi.fn();
-    wrap(<CommandPalette open onClose={onClose} chrome={c} onOpenQuickOpen={vi.fn()} onOpenPanel={vi.fn()} />);
+    setup({ chrome: c, onClose });
     fireEvent.click(screen.getByTestId('palette-entry-view.showQuality'));
     expect(c.setActiveView).toHaveBeenCalledWith('quality');
     expect(onClose).toHaveBeenCalledOnce();
@@ -34,22 +50,20 @@ describe('CommandPalette', () => {
 
   it('"Go to Chapter…" opens Quick Open', () => {
     const onOpenQuickOpen = vi.fn();
-    wrap(<CommandPalette open onClose={vi.fn()} chrome={chrome()} onOpenQuickOpen={onOpenQuickOpen} onOpenPanel={vi.fn()} />);
+    setup({ onOpenQuickOpen });
     fireEvent.click(screen.getByTestId('palette-entry-view.goToChapter'));
     expect(onOpenQuickOpen).toHaveBeenCalledOnce();
   });
 
   it('renders a command description as the muted sublabel (i18n key from the mock)', () => {
-    wrap(<CommandPalette open onClose={vi.fn()} chrome={chrome()} onOpenQuickOpen={vi.fn()} onOpenPanel={vi.fn()} />);
+    setup();
     expect(screen.getByTestId('palette-entry-view.toggleBottom').textContent).toContain('palette.desc.toggleBottom');
   });
 
   it('a run command surfaces in a Recent group on the (empty-query) list', () => {
-    wrap(<CommandPalette open onClose={vi.fn()} chrome={chrome()} onOpenQuickOpen={vi.fn()} onOpenPanel={vi.fn()} />);
-    // no Recent entry before anything runs
+    setup();
     expect(screen.queryByTestId('palette-entry-recent:view.toggleBottom')).toBeNull();
     fireEvent.click(screen.getByTestId('palette-entry-view.toggleBottom'));
-    // now it appears under Recent (prefixed id so it doesn't collide with its own group)
     expect(screen.getByTestId('palette-entry-recent:view.toggleBottom')).toBeTruthy();
   });
 });

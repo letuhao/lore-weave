@@ -1,7 +1,7 @@
 // #06b Command Palette — the command set. Static chrome commands (View: …) + one "Studio: Open …"
-// per REGISTERED dock tool (labels come from the registration, never hardcoded — C3). The Panels
-// group is empty until panels register (incremental port); chrome commands ship on their own.
-import type { StudioToolRegistration } from '../host/types';
+// per catalog panel (STUDIO_PANELS — every buildable panel, so a CLOSED panel is still openable;
+// the mount-scoped registry drives the agent rack, not this list). Chrome commands ship on their own.
+import type { StudioPanelDef } from '../panels/catalog';
 import type { ActivityView } from '../types';
 
 export interface StudioCommand {
@@ -22,21 +22,28 @@ type TFn = (key: string, opts?: Record<string, unknown>) => string;
 
 export function buildStudioCommands(opts: {
   chrome: ChromeActions;
-  tools: StudioToolRegistration[];
+  panels: StudioPanelDef[];
   onOpenPanel: (panelId: string) => void;
   onOpenQuickOpen: () => void;
   t: TFn;
 }): StudioCommand[] {
-  const { chrome, tools, onOpenPanel, onOpenQuickOpen, t } = opts;
+  const { chrome, panels, onOpenPanel, onOpenQuickOpen, t } = opts;
   const group = (k: string, dflt: string) => t(`palette.group.${k}`, { defaultValue: dflt });
   const cmd = (key: string, dflt: string) => t(`palette.cmd.${key}`, { defaultValue: dflt });
   const desc = (key: string, dflt: string) => t(`palette.desc.${key}`, { defaultValue: dflt });
 
   const cmds: StudioCommand[] = [];
 
-  // Panels — dynamic, from the registry (empty until panels register). Description from the reg.
-  for (const tool of tools) {
-    cmds.push({ id: tool.commandId, label: tool.paletteCommand, description: tool.description, group: group('panels', 'Panels'), run: () => onOpenPanel(tool.panelId) });
+  // Panels — from the static catalog (all buildable panels). Label "Studio: Open <name>".
+  for (const p of panels) {
+    const name = t(p.titleKey, { defaultValue: p.id });
+    cmds.push({
+      id: `studio.openPanel.${p.id}`,
+      label: t('palette.openPanel', { name, defaultValue: `Studio: Open ${name}` }),
+      description: t(p.descKey, { defaultValue: '' }),
+      group: group('panels', 'Panels'),
+      run: () => onOpenPanel(p.id),
+    });
   }
 
   // Navigate — switch the active navigator + jump to a location.

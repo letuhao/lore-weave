@@ -3,7 +3,7 @@
 // until panels register). Empty query surfaces a Recent group (last 5 run). Reuses StudioPaletteShell.
 import { useEffect, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { useRegisteredTools } from '../host/StudioHostProvider';
+import type { StudioPanelDef } from '../panels/catalog';
 import type { ActivityView } from '../types';
 import { StudioPaletteShell } from './StudioPaletteShell';
 import { buildStudioCommands, filterCommands, type StudioCommand } from './useStudioCommands';
@@ -17,6 +17,8 @@ interface Props {
     toggleSidebar: () => void;
     toggleBottom: () => void;
   };
+  /** Buildable panels (catalog) for the "Studio: Open …" commands. */
+  panels: StudioPanelDef[];
   onOpenQuickOpen: () => void;
   onOpenPanel: (panelId: string) => void;
 }
@@ -28,17 +30,16 @@ const toEntry = (c: StudioCommand, idPrefix = ''): PaletteEntry => ({
   id: `${idPrefix}${c.id}`, label: c.label, sublabel: c.description, group: c.group,
 });
 
-export function CommandPalette({ open, onClose, chrome, onOpenQuickOpen, onOpenPanel }: Props) {
+export function CommandPalette({ open, onClose, chrome, panels, onOpenQuickOpen, onOpenPanel }: Props) {
   const { t } = useTranslation('studio');
   const [query, setQuery] = useState('');
   const [recentIds, setRecentIds] = useState<string[]>([]);
-  const tools = useRegisteredTools();
 
   useEffect(() => { if (open) setQuery(''); }, [open]);
 
   const commands = useMemo(
-    () => buildStudioCommands({ chrome, tools, onOpenPanel, onOpenQuickOpen, t }),
-    [chrome, tools, onOpenPanel, onOpenQuickOpen, t],
+    () => buildStudioCommands({ chrome, panels, onOpenPanel, onOpenQuickOpen, t }),
+    [chrome, panels, onOpenPanel, onOpenQuickOpen, t],
   );
 
   const entries: PaletteEntry[] = useMemo(() => {

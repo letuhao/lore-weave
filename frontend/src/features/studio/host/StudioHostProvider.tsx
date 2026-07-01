@@ -41,7 +41,7 @@ export interface StudioHost {
   getSnapshot: () => StudioBusSnapshot;
   subscribe: (listener: (s: StudioBusSnapshot) => void, selector?: (s: StudioBusSnapshot) => unknown) => () => void;
   // Dock actions (#08 §StudioHostValue) — the single home for Lane-A ui tools + the palette.
-  openPanel: (panelId: string, opts?: { focus?: boolean }) => void;
+  openPanel: (panelId: string, opts?: { focus?: boolean; title?: string }) => void;
   focusManuscriptUnit: (chapterId: string, panelId?: string) => void;
   // Internals for the reactive hooks + the dock wiring (not part of the public contract).
   _regStore: Store<StudioToolRegistration[]>;
@@ -62,15 +62,17 @@ export function StudioHostProvider({ bookId, children }: { bookId: string; child
     const rebuild = () => regStore.set(Array.from(regMap.values()));
     const busStore = createStore<StudioBusSnapshot>({ revision: 0, bookId, activePanelIds: [] });
 
-    const openPanel = (panelId: string, opts?: { focus?: boolean }) => {
+    const openPanel = (panelId: string, opts?: { focus?: boolean; title?: string }) => {
       const api = dockApiRef.current;
       if (!api) return;
       const existing = api.getPanel(panelId);
       if (existing) { if (opts?.focus !== false) existing.api.setActive(); return; }
-      const tool = regMap.get(panelId);
-      // component id must be a built dockview component; unknown ⇒ no-op (dormant until #03).
-      try { api.addPanel({ id: panelId, component: panelId, title: tool?.label ?? panelId }); }
-      catch { /* panel not built yet */ }
+      // Title from the caller (catalog), else a live registration, else the id. A CLOSED panel
+      // isn't registered yet (registers on mount) so the caller supplies the title.
+      const title = opts?.title ?? regMap.get(panelId)?.label ?? panelId;
+      // component id must be a built dockview component (STUDIO_PANEL_COMPONENTS); unknown ⇒ no-op.
+      try { api.addPanel({ id: panelId, component: panelId, title }); }
+      catch { /* panel not in the catalog */ }
     };
 
     return {
