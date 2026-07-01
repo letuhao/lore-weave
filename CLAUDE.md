@@ -70,6 +70,16 @@ features/<name>/
 - **Hooks must be self-contained** — a custom hook should own its state, effects, and cleanup. It should not require the parent component to manage its lifecycle via useEffect.
 - **Max ~100 lines per component, ~200 per hook** — if larger, split. A component with 12+ concerns is a code smell.
 
+### Frontend-Tool Contract (agent→GUI tools — LOCKED)
+
+A *frontend tool* (the LLM calls it; the browser executes it: `ui_open_studio_panel`, `ui_navigate`, `propose_edit`, `confirm_action`, …) is a contract that spans **two services in two languages** — the schema lives in `services/chat-service/app/services/frontend_tools.py`, the executor lives in `frontend/src/features/**` — with **the LLM as the only thing joining them**. So a drift (arg-name mismatch, a free-string arg a weak model guesses wrong, a silent no-op) passes every isolated unit test yet kills the live loop. This shipped once (`ui_open_studio_panel`: `panel_id` had no enum, gemma-26b sent `panel:"editor"`, the resolver silently no-op'd, the model hallucinated success — fixed f1f9e9966). Every new frontend tool MUST follow:
+
+- **Closed-set arg ⇒ `enum` (never a bare `string`).** A finite value set (panel ids, modes, domains, operations) is always an enum — it pins the value AND reinforces the arg name for weak local models. Register the arg in `CLOSED_SET_ARGS` in `test_frontend_tools_contract.py`.
+- **Resolver never silently no-ops.** Every reject path returns a `result.error` string the model can self-correct from — not a bare `{opened:false}`.
+- **One name for one concept across tools.** Don't have `panel`/`page`/`panel_id` mean the same thing in three tools (that collision is what confused the model). Tolerating an alias is a band-aid, not the fix.
+- **The contract is machine-checked, both sides.** `contracts/frontend-tools.contract.json` is the committed cross-language SoT: `test_frontend_tools_contract.py` (BE) snapshots every schema + enforces the enum rule; `frontendToolContract.test.ts` (FE) proves each pure resolver reads every required arg (Proxy-access) + rejects with an error; `panelCatalogContract.test.ts` keeps the studio panel enum ⊆ the dock catalog. **Change a schema → regenerate the JSON (`WRITE_FRONTEND_CONTRACT=1 pytest …`) AND update the matching resolver**, or a test goes red.
+- **Verify an agent→GUI loop by its EFFECT, not the tool call.** A raw-stream smoke that sees `TOOL_CALL_START`/`RUN_FINISHED{suspended}` only proves the model *called* the tool — it never runs the resolver. Prove the loop with a **live browser smoke** (the GUI actually reacted) or its deterministic form (inject a suspended tool-call, assert the host effect).
+
 ### Data Persistence Rules
 - **Server is the source of truth** — all user data in Postgres, all files in S3/MinIO
 - **No localStorage for user data** — localStorage is ONLY a fast cache for preferences that are also synced to server via `/v1/me/preferences`

@@ -54,7 +54,8 @@ describe('useUiToolExecutor', () => {
     streamMessages = [msgWith({ ...navRecord, args: { path: '/evil' } })];
     renderHook(() => useUiToolExecutor());
     expect(navigate).not.toHaveBeenCalled();
-    expect(submitToolResolve).toHaveBeenCalledWith('r1', 'c1', { navigated: false });
+    // reject carries a corrective error too (no-silent-no-op); assert the flag, allow the error.
+    expect(submitToolResolve).toHaveBeenCalledWith('r1', 'c1', expect.objectContaining({ navigated: false }));
   });
 
   it('ui_watch_job opens the focused jobs route', () => {

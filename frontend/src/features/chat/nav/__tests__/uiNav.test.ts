@@ -21,13 +21,13 @@ describe('resolveUiTool', () => {
     });
   });
 
-  it('ui_navigate rejects a disallowed path (navigated:false, no path)', () => {
-    expect(resolveUiTool('ui_navigate', { path: '/evil/route' })).toEqual({
-      path: null,
-      result: { navigated: false },
-    });
+  it('ui_navigate rejects a disallowed path (navigated:false + corrective error, no path)', () => {
+    const r = resolveUiTool('ui_navigate', { path: '/evil/route' });
+    expect(r.path).toBeNull();
+    expect(r.result.navigated).toBe(false);
+    expect(r.result.error).toBeTruthy(); // no-silent-no-op: the model is told why
     // also rejects a non-absolute path
-    expect(resolveUiTool('ui_navigate', { path: 'books' }).result).toEqual({ navigated: false });
+    expect(resolveUiTool('ui_navigate', { path: 'books' }).result.navigated).toBe(false);
   });
 
   it('ui_navigate rejects open-redirect / scheme-injection attempts', () => {
@@ -43,7 +43,8 @@ describe('resolveUiTool', () => {
       '\\\\evil.com',
     ]) {
       const r = resolveUiTool('ui_navigate', { path: evil });
-      expect(r).toEqual({ path: null, result: { navigated: false } });
+      expect(r.path).toBeNull();
+      expect(r.result.navigated).toBe(false);
     }
   });
 
@@ -70,8 +71,11 @@ describe('resolveUiTool', () => {
     expect(resolveUiTool('ui_open_book', { book_id: 'b1', tab: 'overview' }).path).toBe('/books/b1');
   });
 
-  it('ui_open_book missing id → opened:false', () => {
-    expect(resolveUiTool('ui_open_book', {})).toEqual({ path: null, result: { opened: false } });
+  it('ui_open_book missing id → opened:false + error', () => {
+    const r = resolveUiTool('ui_open_book', {});
+    expect(r.path).toBeNull();
+    expect(r.result).toMatchObject({ opened: false });
+    expect(r.result.error).toBeTruthy();
   });
 
   it('ui_open_chapter builds edit/read routes', () => {
@@ -101,7 +105,10 @@ describe('resolveUiTool', () => {
     expect(r.path).toContain('entity=e9');
   });
 
-  it('ui_show_panel with no panel → shown:false', () => {
-    expect(resolveUiTool('ui_show_panel', {})).toEqual({ path: null, result: { shown: false } });
+  it('ui_show_panel with no panel → shown:false + error', () => {
+    const r = resolveUiTool('ui_show_panel', {});
+    expect(r.path).toBeNull();
+    expect(r.result).toMatchObject({ shown: false });
+    expect(r.result.error).toBeTruthy();
   });
 });

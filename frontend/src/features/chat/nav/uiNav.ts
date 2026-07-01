@@ -92,21 +92,23 @@ function isAllowed(path: string): boolean {
 export function resolveUiTool(tool: string, args: Record<string, unknown>): UiNavResolution {
   switch (tool) {
     case 'ui_navigate': {
+      // Reject payloads carry a short `error` so a weak model self-corrects instead of
+      // spinning on a silent flag (CLAUDE.md → Frontend-tool contract, no-silent-no-op).
       const path = typeof args.path === 'string' ? args.path : '';
       if (path && isAllowed(path)) return { path, result: { navigated: true } };
-      return { path: null, result: { navigated: false } };
+      return { path: null, result: { navigated: false, error: 'path is not an allowed in-app route' } };
     }
     case 'ui_open_book': {
       const bookId = typeof args.book_id === 'string' ? args.book_id : '';
       const tab = typeof args.tab === 'string' ? args.tab : undefined;
-      if (!bookId) return { path: null, result: { opened: false } };
+      if (!bookId) return { path: null, result: { opened: false, error: 'missing book_id' } };
       return { path: bookTabPath(bookId, tab), result: { opened: true } };
     }
     case 'ui_open_chapter': {
       const bookId = typeof args.book_id === 'string' ? args.book_id : '';
       const chapterId = typeof args.chapter_id === 'string' ? args.chapter_id : '';
       const mode = args.mode === 'read' ? 'read' : 'edit';
-      if (!bookId || !chapterId) return { path: null, result: { opened: false } };
+      if (!bookId || !chapterId) return { path: null, result: { opened: false, error: 'missing book_id or chapter_id' } };
       const path = `/books/${encodeURIComponent(bookId)}/chapters/${encodeURIComponent(chapterId)}/${mode}`;
       return { path, result: { opened: true } };
     }
@@ -115,7 +117,7 @@ export function resolveUiTool(tool: string, args: Record<string, unknown>): UiNa
       // page reads (?panel=...&...). Resolve relative to the current location so
       // we don't navigate away from the page the user is on.
       const panel = typeof args.panel === 'string' ? args.panel : '';
-      if (!panel) return { path: null, result: { shown: false } };
+      if (!panel) return { path: null, result: { shown: false, error: 'missing panel' } };
       const params = new URLSearchParams();
       params.set('panel', panel);
       const extra = args.args;
@@ -129,7 +131,7 @@ export function resolveUiTool(tool: string, args: Record<string, unknown>): UiNa
     }
     case 'ui_watch_job': {
       const jobId = typeof args.job_id === 'string' ? args.job_id : '';
-      if (!jobId) return { path: null, result: { watching: false } };
+      if (!jobId) return { path: null, result: { watching: false, error: 'missing job_id' } };
       return { path: `/jobs?focus=${encodeURIComponent(jobId)}`, result: { watching: true } };
     }
     default:

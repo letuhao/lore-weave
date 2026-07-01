@@ -35,7 +35,7 @@ export function resolveStudioUiTool(tool: string, args: Record<string, unknown>)
     }
     case 'ui_focus_manuscript_unit': {
       const chapterId = typeof args.chapter_id === 'string' ? args.chapter_id : '';
-      if (!chapterId) return { result: { focused: false } };
+      if (!chapterId) return { result: { focused: false, error: 'missing chapter_id' } };
       return { result: { focused: true }, effect: (host) => host.focusManuscriptUnit(chapterId) };
     }
     default:
