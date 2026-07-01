@@ -28,6 +28,7 @@
     "@tanstack/query-sync-storage-persister": "^5.96.1",
     "@tanstack/react-query": "^5.96.1",
     "@tanstack/react-query-persist-client": "^5.96.1",
+    "@tanstack/react-virtual": "^3.14.5",
     "@tiptap/extension-code-block-lowlight": "^3.22.1",
     "@tiptap/extension-highlight": "^3.22.2",
     "@tiptap/extension-link": "^3.22.2",

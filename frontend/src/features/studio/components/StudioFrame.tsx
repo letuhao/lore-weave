@@ -43,7 +43,12 @@ export function StudioFrame({ bookId }: { bookId: string }) {
           onSelect={chrome.setActiveView}
         />
         {!chrome.sidebarCollapsed && (
-          <StudioSideBar activeView={chrome.activeView} onCollapse={chrome.toggleSidebar} />
+          <StudioSideBar
+            activeView={chrome.activeView}
+            onCollapse={chrome.toggleSidebar}
+            bookId={bookId}
+            token={accessToken}
+          />
         )}
 
         <div className="flex min-w-0 flex-1 flex-col">

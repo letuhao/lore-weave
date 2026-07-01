@@ -42,5 +42,13 @@
   "status": {
     "wordsPlaceholder": "— 字",
     "modelPlaceholder": "尚無模型"
+  },
+  "manuscript": {
+    "loading": "載入中…",
+    "filter": "前往章節 / 場景…",
+    "noMatch": "沒有符合的已載入章節。",
+    "empty": "尚無章節。",
+    "loadingMore": "載入更多…",
+    "count": "{{n}} 章"
   }
 }

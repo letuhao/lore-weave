@@ -42,5 +42,13 @@
   "status": {
     "wordsPlaceholder": "— 語",
     "modelPlaceholder": "モデルなし"
+  },
+  "manuscript": {
+    "loading": "読み込み中…",
+    "filter": "章・シーンへ移動…",
+    "noMatch": "一致する読み込み済みの章はありません。",
+    "empty": "まだ章がありません。",
+    "loadingMore": "さらに読み込み中…",
+    "count": "{{n}} 章"
   }
 }

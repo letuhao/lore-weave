@@ -42,5 +42,13 @@
   "status": {
     "wordsPlaceholder": "— từ",
     "modelPlaceholder": "chưa có model"
+  },
+  "manuscript": {
+    "loading": "Đang tải…",
+    "filter": "Đến chương / cảnh…",
+    "noMatch": "Không có chương đã tải nào khớp.",
+    "empty": "Chưa có chương nào.",
+    "loadingMore": "Đang tải thêm…",
+    "count": "{{n}} chương"
   }
 }

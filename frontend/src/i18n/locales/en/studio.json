@@ -42,5 +42,13 @@
   "status": {
     "wordsPlaceholder": "— words",
     "modelPlaceholder": "no model"
+  },
+  "manuscript": {
+    "loading": "Loading…",
+    "filter": "Jump to chapter / scene…",
+    "noMatch": "No loaded chapters match.",
+    "empty": "No chapters yet.",
+    "loadingMore": "Loading more…",
+    "count": "{{n}} chapters"
   }
 }

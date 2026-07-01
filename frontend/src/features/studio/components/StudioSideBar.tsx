@@ -1,16 +1,23 @@
-// Side bar (fixed slot, collapsible) — hosts the active navigator. In the skeleton the body
-// is a per-view STUB; real navigators (Manuscript tree first) are separate later components.
+// Side bar (fixed slot, collapsible) — hosts the active navigator. Manuscript is a real
+// navigator (#02); the other views are still per-view stubs (built as later components).
+import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { PanelLeftClose } from 'lucide-react';
 import type { ActivityView } from '../types';
+import { ManuscriptNavigator } from '../manuscript/ManuscriptNavigator';
 
 interface Props {
   activeView: ActivityView;
   onCollapse: () => void;
+  bookId: string;
+  token: string | null;
 }
 
-export function StudioSideBar({ activeView, onCollapse }: Props) {
+export function StudioSideBar({ activeView, onCollapse, bookId, token }: Props) {
   const { t } = useTranslation('studio');
+  // Highlight-only selection for now; opening the selected unit in the dock is #03 (Debt #1).
+  const [selectedId, setSelectedId] = useState<string | null>(null);
+
   return (
     <div
       data-testid="studio-sidebar"
@@ -30,15 +37,24 @@ export function StudioSideBar({ activeView, onCollapse }: Props) {
         </button>
       </div>
 
-      {/* Per-view stub — the real navigator for each view is a later component. */}
-      <div className="flex flex-1 flex-col items-center justify-center gap-1.5 p-6 text-center">
-        <p className="text-xs font-medium text-foreground/70">
-          {t(`navStub.${activeView}.title`, { defaultValue: activeView })}
-        </p>
-        <p className="max-w-[200px] text-[11px] leading-relaxed text-muted-foreground">
-          {t(`navStub.${activeView}.body`, { defaultValue: 'Built next.' })}
-        </p>
-      </div>
+      {activeView === 'manuscript' ? (
+        <ManuscriptNavigator
+          bookId={bookId}
+          token={token}
+          selectedId={selectedId}
+          onSelect={(node) => setSelectedId(node.id)}
+        />
+      ) : (
+        // Per-view stub — the real navigator for each view is a later component.
+        <div className="flex flex-1 flex-col items-center justify-center gap-1.5 p-6 text-center">
+          <p className="text-xs font-medium text-foreground/70">
+            {t(`navStub.${activeView}.title`, { defaultValue: activeView })}
+          </p>
+          <p className="max-w-[200px] text-[11px] leading-relaxed text-muted-foreground">
+            {t(`navStub.${activeView}.body`, { defaultValue: 'Built next.' })}
+          </p>
+        </div>
+      )}
     </div>
   );
 }

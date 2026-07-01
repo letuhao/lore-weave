@@ -137,6 +137,21 @@ export const compositionApi = {
     const qs = includeArchived ? '?include_archived=true' : '';
     return apiJson(`${BASE}/works/${projectId}/outline${qs}`, { token });
   },
+  // #02 manuscript navigator — the lazy-tree primitive: direct children of `parentId`
+  // (null/omitted → top-level arcs; under an arc → chapters; under a chapter → scenes),
+  // keyset-paged so a giant outline loads one level a page at a time.
+  listOutlineChildren(
+    projectId: string,
+    token: string,
+    opts: { parentId?: string | null; cursor?: string | null; limit?: number } = {},
+  ): Promise<{ items: OutlineNode[]; next_cursor: string | null }> {
+    const p = new URLSearchParams();
+    if (opts.parentId) p.set('parent_id', opts.parentId);
+    if (opts.cursor) p.set('cursor', opts.cursor);
+    if (opts.limit) p.set('limit', String(opts.limit));
+    const qs = p.toString();
+    return apiJson(`${BASE}/works/${projectId}/outline/children${qs ? `?${qs}` : ''}`, { token });
+  },
   // D-MOTIF-FE-PLANNERVIEW-WIRING (Shape A) — the POST-commit per-scene motif binding
   // for a committed chapter: { node_id: BoundMotif | null } (null = free-form). The
   // planner renders MotifBindingCard per committed scene from this map.
