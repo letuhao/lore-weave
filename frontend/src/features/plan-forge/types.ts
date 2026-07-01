@@ -55,8 +55,8 @@ export interface PlanValidateRule {
 export interface PlanValidateReport {
   passed: boolean;
   rules: PlanValidateRule[];
-  fidelity_score: number;
-  fidelity_report_id: string;
+  fidelity_score: number | null; // null when the fidelity config is absent (v1 fixture-based)
+  fidelity_report_id: string | null;
 }
 
 // POST /runs/{runId}/self-check
@@ -68,7 +68,7 @@ export interface PlanGap {
 }
 export interface PlanSelfCheck {
   gaps: PlanGap[];
-  fidelity_score: number;
+  fidelity_score: number | null; // null when the fidelity config is absent (v1 fixture-based)
 }
 
 // POST /runs/{runId}/refine

@@ -69,7 +69,7 @@ export function PlanRunView({
       {selfCheck && (
         <div data-testid="plan-selfcheck">
           <p className="mb-1 text-[10px] uppercase text-muted-foreground">
-            Self-check · fidelity {selfCheck.fidelity_score.toFixed(2)}
+            Self-check · fidelity {selfCheck.fidelity_score != null ? selfCheck.fidelity_score.toFixed(2) : '—'}
           </p>
           {selfCheck.gaps.length === 0 ? (
             <p className="text-muted-foreground">No gaps.</p>
@@ -89,7 +89,7 @@ export function PlanRunView({
       {validation && (
         <div data-testid="plan-validation">
           <p className="mb-1 text-[10px] uppercase text-muted-foreground">
-            Validate · {validation.passed ? 'passed' : 'failed'} · fidelity {validation.fidelity_score.toFixed(2)}
+            Validate · {validation.passed ? 'passed' : 'failed'} · fidelity {validation.fidelity_score != null ? validation.fidelity_score.toFixed(2) : '—'}
           </p>
           <ul className="space-y-0.5">
             {validation.rules.map((r) => (
