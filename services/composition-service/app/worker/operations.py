@@ -150,9 +150,10 @@ async def run_self_heal_propose(
         chapter=text, source_language=input.get("source_language", "auto"),
         canon=input.get("canon") or None,
         prefilter=bool(input.get("prefilter", True)),
-        # comparative re-ranker ON by default — it pre-checks the semantic edits it approves
-        # (never drops), cutting what the human must review. Legacy vote/verify knobs ignored.
-        rerank=bool(input.get("rerank", True)),
+        # comparative re-ranker is OPT-IN (default OFF) — it costs one extra LLM call PER
+        # semantic proposal (pre-checking the ones it approves; it never drops). The FE exposes
+        # a toggle; without it the cheap one-call auditor runs. Legacy vote/verify knobs ignored.
+        rerank=bool(input.get("rerank", False)),
         cancel_check=cancel_check,
     )
     return {

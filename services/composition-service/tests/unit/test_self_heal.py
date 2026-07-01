@@ -400,6 +400,19 @@ async def test_propose_drops_unlocatable_original():
     assert rep.findings[0].skip_reason == "not_located"
 
 
+async def test_propose_drops_noop_edits():
+    # the direct auditor emits ~25% no-ops (replacement == original) — dropped in CODE (free),
+    # so neither the human nor the re-ranker ever wastes attention on them
+    llm = FakeStackLLM([_dj(
+        ("the quick brown fox jumps", "the quick brown fox jumps", "no change", "noop"),
+        ("the lazy dog sleeps soundly", "the hound dozes", "vary", "style"))])
+    proposals, rep = await propose_self_heal(
+        llm, user_id="u", model_source="user_model", model_ref="m",
+        chapter=_PA_CH, source_language="en")
+    assert [p.after for p in proposals] == ["the hound dozes"]   # only the substantive edit survives
+    assert any(f.skip_reason == "noop" for f in rep.findings)
+
+
 async def test_apply_self_heal_edits_accepts_subset():
     proposals, _ = await propose_self_heal(
         _pa_llm(), user_id="u", model_source="user_model", model_ref="m",

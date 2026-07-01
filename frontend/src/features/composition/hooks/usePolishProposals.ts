@@ -13,13 +13,6 @@ import {
   type SelfHealProposalResponse,
 } from '../api';
 
-export interface PolishOptions {
-  verify?: boolean;
-  verifyK?: number;
-  voteK?: number;
-  prefilter?: boolean;
-}
-
 export function usePolishProposals(
   projectId: string | null,
   chapterId: string | null,
@@ -34,16 +27,19 @@ export function usePolishProposals(
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [ran, setRan] = useState(false);
+  // opt-in comparative re-ranker (extra LLM cost) — pre-checks the semantic edits it approves.
+  // OFF by default; the panel toggles it.
+  const [rerank, setRerank] = useState(false);
 
   const run = useCallback(
-    async (opts?: PolishOptions) => {
+    async () => {
       if (!projectId || !chapterId || !token || !modelRef) return;
       setLoading(true);
       setError(null);
       try {
         const r = await compositionApi.proposeSelfHeal(
           projectId,
-          { chapterId, modelRef, ...opts },
+          { chapterId, modelRef, rerank },
           token,
         );
         const props = r.proposals ?? [];
@@ -62,7 +58,7 @@ export function usePolishProposals(
         setLoading(false);
       }
     },
-    [projectId, chapterId, token, modelRef],
+    [projectId, chapterId, token, modelRef, rerank],
   );
 
   const toggle = useCallback((id: string) => {
@@ -104,6 +100,8 @@ export function usePolishProposals(
     loading,
     error,
     ran,
+    rerank,
+    setRerank,
     run,
     toggle,
     bulk,

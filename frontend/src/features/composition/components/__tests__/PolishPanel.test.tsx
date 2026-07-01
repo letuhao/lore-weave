@@ -1,4 +1,4 @@
-import { fireEvent, render, screen } from '@testing-library/react';
+import { fireEvent, render, screen, within } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
 
 import { applySelfHealEdits, type SelfHealProposal } from '../../api';
@@ -19,6 +19,8 @@ function base(over: Record<string, unknown> = {}) {
     ran: false,
     stats: undefined,
     healedText: '',
+    rerank: false,
+    setRerank: vi.fn(),
     run: vi.fn(),
     toggle: vi.fn(),
     bulk: vi.fn(),
@@ -44,6 +46,16 @@ describe('PolishPanel', () => {
     expect((screen.getByTestId('polish-run') as HTMLButtonElement).disabled).toBe(true);
   });
 
+  it('re-ranker toggle is off by default and flips setRerank', () => {
+    const setRerank = vi.fn();
+    state.value = base({ setRerank });
+    render_();
+    const box = screen.getByTestId('polish-rerank-toggle') as HTMLInputElement;
+    expect(box.checked).toBe(false);                 // opt-in — off by default (cost)
+    fireEvent.click(box);
+    expect(setRerank).toHaveBeenCalledWith(true);
+  });
+
   it('shows no edit rows / no apply when the chapter is clean', () => {
     state.value = base({ ran: true });
     render_();
@@ -58,12 +70,12 @@ describe('PolishPanel', () => {
     ];
     state.value = base({ ran: true, proposals, acceptedIds: new Set(['e0']), healedText: 'HEALED' });
     render_(onApply);
-    expect(screen.getByTestId('polish-edit-e0')).toBeTruthy();
-    expect(screen.getByTestId('polish-edit-e1')).toBeTruthy();
-    // deterministic e0 is checked, semantic e1 is not
-    const boxes = screen.getAllByRole('checkbox') as HTMLInputElement[];
-    expect(boxes[0].checked).toBe(true);
-    expect(boxes[1].checked).toBe(false);
+    // deterministic e0 is checked, semantic e1 is not (scope to each row — the rerank
+    // toggle is also a checkbox on the panel)
+    const box0 = within(screen.getByTestId('polish-edit-e0')).getByRole('checkbox') as HTMLInputElement;
+    const box1 = within(screen.getByTestId('polish-edit-e1')).getByRole('checkbox') as HTMLInputElement;
+    expect(box0.checked).toBe(true);
+    expect(box1.checked).toBe(false);
     fireEvent.click(screen.getByTestId('polish-apply'));
     expect(onApply).toHaveBeenCalledWith('HEALED');
   });

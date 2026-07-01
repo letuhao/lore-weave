@@ -545,7 +545,9 @@ _DIRECT_JUDGE_SYSTEM = (
     '{"type": the defect kind, '
     '"original": a SHORT 4-20 word excerpt COPIED CHARACTER-FOR-CHARACTER from the chapter so it can '
     'be found and replaced, '
-    '"replacement": the corrected span at a SIMILAR length — do NOT rewrite the whole passage, '
+    '"replacement": the corrected span at a SIMILAR length — do NOT rewrite the whole passage, and it '
+    "MUST DIFFER from the original (NEVER echo the original text back as the replacement; if a span needs "
+    'no change, do not report it), '
     '"explanation": a short reason}. '
     "List ALL anomalies you find — do NOT pre-filter or self-censor; a human reviews each before it "
     'applies. Write "replacement" and "explanation" in the chapter\'s language. Return ONLY a JSON '
@@ -665,6 +667,9 @@ async def propose_edits_direct(
         if loc is None:
             f.skip_reason = "not_located"   # must-quote: can't splice an unanchorable edit
             continue
+        if r["replacement"].strip() == chapter[loc[0]:loc[1]].strip():
+            f.skip_reason = "noop"   # the "fix" equals the text — the auditor emits ~25% of these;
+            continue                 # drop them in CODE (free) so the human/re-ranker never sees a no-op
         f.located = loc
         report.located += 1
         cands.append((loc[0], loc[1], r["replacement"], r["type"] or "edit", r["explanation"], "semantic"))

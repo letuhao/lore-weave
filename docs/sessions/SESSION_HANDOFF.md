@@ -115,8 +115,18 @@
 >     proposals — 3 PRE-CHECKED (`mẫu thân ngươi`→`ta` "violates third-person self-reference"; `che chở`→
 >     `khinh miệt` "contradicts the canon Tô Yến never protected her"; dup-`từng`) + 1 UN-checked (a weak edit
 >     "emotional weight is lost") — i.e. it RANKS, never vetoes, and each carries a cited reason. The exact case
->     the old verify pipeline refused 3/3 is now pre-checked with the rule cited. **NEXT:** consider stronger-model
->     escalate for the rare TRUE blind spot (D-VERIFY-BLINDSPOT-ESCALATE); expose a rerank on/off toggle in the FE.
+>     the old verify pipeline refused 3/3 is now pre-checked with the rule cited.
+>   - **Re-ranker made OPT-IN (default OFF) + 12-ch compare + no-op filter (2026-07-01).** Cost concern: rerank =
+>     one extra LLM call PER semantic edit. **(A)** FE toggle "auto-tick (AI, costs more)", default OFF; worker/
+>     endpoint default `rerank=False`; hook holds the toggle. **(B)** 12-ch compare (`poc/compare_rerank.py` +
+>     `poc/io/compare_rerank_summary.json`): 55 splice-ready proposals, re-ranker approved 41 / declined 14 — and
+>     **~all 14 declines are NO-OPs** (`replacement == original`; the direct auditor emits ~25% of these). The 41
+>     approvals are real (pronouns, `mẫu thân ngươi`, canon: CH09 Lâm Tử Hàn/ma công, CH05 `Uyển nhi`-tone,
+>     redundancy trims, CH04 bloat-delete x0.827). **(C) Cheap win found → shipped:** `propose_edits_direct` now
+>     drops no-op edits (`after==located span`) in CODE (free) — so the human/re-ranker never sees the ~25% no-ops;
+>     even without the paid re-ranker the human gets ~41 clean proposals not 55. Tests: self_heal 31 (+noop) + FE
+>     PolishPanel 8 (+toggle). **NEXT:** stronger-model escalate for the rare true blind spot; auditor prompt could
+>     be told "only propose an edit if the replacement DIFFERS" to cut no-ops at the source.
 >   - **M6 Polish — BE done (M6.1 engine + M6.2 wiring), 2026-07-01:**
 >     **M6.1** (`c4db3792`) — `_compute_edits` shared step ⇒ `propose_self_heal` returns `EditProposal[]`
 >     (id/tier deterministic|semantic/start/end/before/after) WITHOUT splicing; `apply_self_heal_edits(accepted_ids)`

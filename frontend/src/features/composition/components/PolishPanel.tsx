@@ -42,6 +42,16 @@ export function PolishPanel({ projectId, chapterId, token, modelRef, onApply }: 
               ? t('polishRerun', { defaultValue: 'Re-run Polish' })
               : t('polishRun', { defaultValue: 'Run Polish' })}
         </button>
+        <label className="flex items-center gap-1 text-[11px] text-neutral-500" title={t('polishRerankHint', { defaultValue: 'Uses one extra AI call per edit to auto-tick the good ones (slower, costs more).' })}>
+          <input
+            type="checkbox"
+            data-testid="polish-rerank-toggle"
+            checked={p.rerank}
+            disabled={p.loading}
+            onChange={(e) => p.setRerank(e.target.checked)}
+          />
+          {t('polishRerank', { defaultValue: 'auto-tick (AI, costs more)' })}
+        </label>
         {!modelRef && (
           <span className="text-xs text-amber-600">
             {t('polishNoModel', { defaultValue: 'Pick a model first.' })}

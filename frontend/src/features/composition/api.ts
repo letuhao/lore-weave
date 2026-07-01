@@ -440,7 +440,7 @@ export const compositionApi = {
     body: {
       chapterId: string; modelRef: string;
       modelSource?: 'user_model' | 'platform_model';
-      verify?: boolean; verifyK?: number; voteK?: number; prefilter?: boolean;
+      prefilter?: boolean; rerank?: boolean;
     },
     token: string,
   ): Promise<SelfHealProposalResponse> {
@@ -451,8 +451,8 @@ export const compositionApi = {
         body: JSON.stringify({
           chapter_id: body.chapterId,
           model_source: body.modelSource ?? 'user_model', model_ref: body.modelRef,
-          verify: body.verify ?? true, verify_k: body.verifyK ?? 3,
-          vote_k: body.voteK ?? 5, prefilter: body.prefilter ?? true,
+          prefilter: body.prefilter ?? true,
+          rerank: body.rerank ?? false,   // opt-in (extra cost); default OFF
         }),
       },
     );

@@ -173,10 +173,10 @@ class SelfHealProposeRequest(BaseModel):
     # bible directly; otherwise the endpoint best-effort renders it from the cast roster +
     # a genre/language convention (the dominant xưng-hô grounding).
     canon: str | None = Field(default=None, max_length=20000)
-    verify: bool = True
-    verify_k: int = Field(default=3, ge=1, le=7)
-    vote_k: int = Field(default=5, ge=1, le=7)
     prefilter: bool = True
+    # OPT-IN comparative re-ranker — one extra LLM call per semantic edit to pre-check the ones
+    # it approves (it never drops). Default OFF (cost); the FE exposes a toggle.
+    rerank: bool = False
 
 
 @router.post("/works/{project_id}/self-heal/propose")
@@ -220,8 +220,7 @@ async def self_heal_propose_endpoint(
         "book_id": str(work.book_id), "project_id": str(project_id),
         "model_source": str(body.model_source), "model_ref": str(body.model_ref),
         "source_language": profile.source_language,
-        "vote_k": body.vote_k, "verify": body.verify, "verify_k": body.verify_k,
-        "prefilter": body.prefilter,
+        "prefilter": body.prefilter, "rerank": body.rerank,
     }
     if settings.composition_worker_enabled:
         jobs = await get_generation_jobs_repo()
