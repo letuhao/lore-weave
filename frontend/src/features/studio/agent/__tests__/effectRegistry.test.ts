@@ -13,6 +13,7 @@ const ctx = (over: Partial<EffectContext> = {}): EffectContext => ({
   bookId: 'b1',
   host: { publish: vi.fn() } as unknown as StudioHost,
   queryClient: { invalidateQueries: vi.fn() } as unknown as EffectContext['queryClient'],
+  reloadChapter: vi.fn(),
   ...over,
 });
 
@@ -38,23 +39,26 @@ describe('effect registry matching', () => {
 });
 
 describe('bookDraftEffect (Lane B v1 handler)', () => {
-  it('invalidates the chapter query + publishes the chapter to the bus', () => {
+  it('invalidates the chapter query + reloads the Tier-4 hoist (does NOT publish a chapter — no editor hijack)', () => {
     const c = ctx();
     bookDraftEffect(c);
     expect(c.queryClient.invalidateQueries).toHaveBeenCalledWith({ queryKey: ['chapter', 'b1', 'ch1'] });
-    expect(c.host.publish).toHaveBeenCalledWith({ type: 'chapter', chapterId: 'ch1', bookId: 'b1' });
+    expect(c.reloadChapter).toHaveBeenCalledWith('ch1');
+    expect(c.host.publish).not.toHaveBeenCalled(); // reconcile must not switch the user's editor
   });
 
-  it('G7: skips reload when the chapter hoist is DIRTY (never clobbers unsaved edits)', () => {
-    const c = ctx({ isChapterDirty: () => true });
+  it('G7: skips the reload when the hoist is DIRTY (never clobbers unsaved edits); still invalidates cache', () => {
+    const reloadChapter = vi.fn();
+    const c = ctx({ isChapterDirty: () => true, reloadChapter });
     bookDraftEffect(c);
-    expect(c.queryClient.invalidateQueries).not.toHaveBeenCalled();
-    expect(c.host.publish).not.toHaveBeenCalled();
+    expect(c.queryClient.invalidateQueries).toHaveBeenCalled();
+    expect(reloadChapter).not.toHaveBeenCalled();
   });
 
   it('no chapter id in the result → no-op (never guesses)', () => {
     const c = ctx({ result: { ok: true } });
     bookDraftEffect(c);
     expect(c.queryClient.invalidateQueries).not.toHaveBeenCalled();
+    expect(c.reloadChapter).not.toHaveBeenCalled();
   });
 });

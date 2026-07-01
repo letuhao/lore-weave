@@ -10,14 +10,19 @@ import { useQueryClient } from '@tanstack/react-query';
 import { useChatStream } from '@/features/chat/providers';
 import type { ToolCallRecord } from '@/features/chat/types';
 import { useStudioHost } from '../host/StudioHostProvider';
+import { useManuscriptUnit } from '../manuscript/unit/ManuscriptUnitProvider';
 import { runEffectHandlers } from './effectRegistry';
 import { registerDefaultEffectHandlers } from './handlers/bookEffects';
 
 export function useStudioEffectReconciler(): void {
   const host = useStudioHost();
+  const unit = useManuscriptUnit();
   const { messages } = useChatStream();
   const queryClient = useQueryClient();
   const handledRef = useRef<Set<string>>(new Set());
+  // Keep a live ref so the messages-effect always reads the CURRENT unit (dirty state, active id).
+  const unitRef = useRef(unit);
+  unitRef.current = unit;
 
   // Register the default handlers once (idempotent).
   useEffect(() => { registerDefaultEffectHandlers(); }, []);
@@ -32,7 +37,16 @@ export function useStudioEffectReconciler(): void {
         const key = tc.toolCallId ?? `${m.message_id}:${tc.tool}:${tc.iteration ?? i}`;
         if (handledRef.current.has(key)) return;
         handledRef.current.add(key);
-        void runEffectHandlers({ tool: tc.tool, result: tc.result, bookId: host.bookId, host, queryClient });
+        const u = unitRef.current;
+        void runEffectHandlers({
+          tool: tc.tool, result: tc.result, bookId: host.bookId, host, queryClient,
+          isChapterDirty: u ? u.isChapterDirty : undefined,
+          // Reload only when the affected chapter IS the active unit (else the hoist holds a
+          // different chapter — a no-op, never a hijack).
+          reloadChapter: u
+            ? (chapterId) => { if (u.state.chapterId === chapterId) void u.reload(); }
+            : undefined,
+        });
       });
     }
   }, [messages, host, queryClient]);

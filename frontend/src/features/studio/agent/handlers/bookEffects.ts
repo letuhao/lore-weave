@@ -15,14 +15,17 @@ function chapterIdFromResult(result: unknown): string | null {
   return null;
 }
 
-/** After a book/composition draft-or-save write: refresh the active chapter. */
+/** After a book/composition draft-or-save write: refresh the affected chapter. Invalidates the
+ * query cache always; reloads the Tier-4 editor hoist ONLY if that chapter is the ACTIVE unit and
+ * NOT dirty (G7). It deliberately does NOT publish a `chapter` bus event — that would hijack the
+ * user's editor to the agent-saved chapter (the bus `chapter` slice is user-intent focus only). */
 export function bookDraftEffect(ctx: EffectContext): void {
   const chapterId = chapterIdFromResult(ctx.result);
   if (!chapterId) return;
-  // G7: never clobber a dirty hoist. No Tier-4 hoist yet (#04) → guard undefined ⇒ clean.
-  if (ctx.isChapterDirty?.(chapterId)) return;
   ctx.queryClient.invalidateQueries({ queryKey: ['chapter', ctx.bookId, chapterId] });
-  ctx.host.publish({ type: 'chapter', chapterId, bookId: ctx.bookId });
+  // G7: never clobber a dirty hoist. reloadChapter is a no-op unless this IS the active unit.
+  if (ctx.isChapterDirty?.(chapterId)) return;
+  ctx.reloadChapter?.(chapterId);
 }
 
 /** Idempotent — register the default studio effect handlers once. */

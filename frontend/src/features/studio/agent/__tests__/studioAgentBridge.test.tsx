@@ -48,15 +48,16 @@ describe('useStudioUiToolExecutor (Lane A)', () => {
 describe('useStudioEffectReconciler (Lane B)', () => {
   beforeEach(() => { host.value = { bookId: 'b1', publish: vi.fn() }; qc.invalidateQueries.mockClear(); });
 
-  it('runs the effect handlers for a COMPLETED MCP draft write', async () => {
+  it('runs the effect handlers for a COMPLETED MCP draft write (invalidates cache; no editor hijack)', async () => {
     stream.value = {
       messages: [{ message_id: 'm1', tool_calls: [
         { tool: 'book_save_chapter_draft', ok: true, pending: false, result: { chapter_id: 'ch1' } },
       ] }],
     };
     renderHook(() => useStudioEffectReconciler());
-    await waitFor(() => expect(host.value.publish).toHaveBeenCalledWith({ type: 'chapter', chapterId: 'ch1', bookId: 'b1' }));
-    expect(qc.invalidateQueries).toHaveBeenCalledWith({ queryKey: ['chapter', 'b1', 'ch1'] });
+    await waitFor(() => expect(qc.invalidateQueries).toHaveBeenCalledWith({ queryKey: ['chapter', 'b1', 'ch1'] }));
+    // reconcile must NOT publish a chapter event (would switch the user's editor).
+    expect(host.value.publish).not.toHaveBeenCalled();
   });
 
   it('ignores a still-pending (suspended) tool call', async () => {

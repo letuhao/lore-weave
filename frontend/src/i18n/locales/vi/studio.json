@@ -8,7 +8,13 @@
     "body": "Không gian làm việc dạng bảng ghép cho cuốn sách này. Các bảng (sáng tác, dàn ý, nhân vật, chất lượng…) sẽ được thêm vào đây từng cái một. Kéo thẻ để chia đôi, xếp chồng, thả nổi, hoặc tách ra cửa sổ riêng."
   },
   "panels": {
-    "compose": { "title": "Compose", "desc": "Chat đồng sáng tác AI" }
+    "compose": { "title": "Compose", "desc": "Chat đồng sáng tác AI" },
+    "editor": { "title": "Editor", "desc": "Trình soạn bản thảo" }
+  },
+  "editor": {
+    "empty": "Chọn một chương trong navigator để soạn ở đây.",
+    "unsaved": "● chưa lưu",
+    "save": "Lưu"
   },
   "palette": {
     "openPanel": "Studio: Mở {{name}}",

@@ -8,7 +8,13 @@
     "body": "本書的可停靠工作區。面板（寫作、大綱、角色、品質…）將逐一加入此處。拖曳分頁即可分割、堆疊、浮動，或彈出為獨立視窗。"
   },
   "panels": {
-    "compose": { "title": "Compose", "desc": "AI 共同創作對話" }
+    "compose": { "title": "Compose", "desc": "AI 共同創作對話" },
+    "editor": { "title": "Editor", "desc": "手稿編輯器" }
+  },
+  "editor": {
+    "empty": "在導覽列選擇章節即可在此編輯。",
+    "unsaved": "● 未儲存",
+    "save": "儲存"
   },
   "palette": {
     "openPanel": "Studio：開啟 {{name}}",

@@ -9,6 +9,7 @@ import type { FunctionComponent } from 'react';
 import type { IDockviewPanelProps } from 'dockview-react';
 import { WelcomePanel } from '../components/panels/WelcomePanel';
 import { ComposePanel } from './ComposePanel';
+import { EditorPanel } from './EditorPanel';
 
 export interface StudioPanelDef {
   id: string;
@@ -22,6 +23,7 @@ export interface StudioPanelDef {
 
 export const STUDIO_PANELS: StudioPanelDef[] = [
   { id: 'compose', component: ComposePanel, titleKey: 'panels.compose.title', descKey: 'panels.compose.desc' },
+  { id: 'editor', component: EditorPanel, titleKey: 'panels.editor.title', descKey: 'panels.editor.desc' },
   { id: 'welcome', component: WelcomePanel, titleKey: 'welcome.tab', descKey: 'welcome.tab', hiddenFromPalette: true },
 ];
 

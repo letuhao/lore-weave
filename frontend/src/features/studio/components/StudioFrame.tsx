@@ -15,7 +15,8 @@ import { CommandPalette } from '../palette/CommandPalette';
 import { usePaletteHotkeys, type PaletteKind } from '../palette/usePaletteHotkeys';
 import { revealManuscript } from '../palette/reveal';
 import { OPENABLE_STUDIO_PANELS, getStudioPanelDef } from '../panels/catalog';
-import type { JumpResult } from '../manuscript/types';
+import { ManuscriptUnitProvider } from '../manuscript/unit/ManuscriptUnitProvider';
+import type { JumpResult, ManuscriptNode } from '../manuscript/types';
 import { StudioTopBar } from './StudioTopBar';
 import { StudioActivityBar } from './StudioActivityBar';
 import { StudioSideBar } from './StudioSideBar';
@@ -69,6 +70,13 @@ function StudioFrameInner({ bookId }: { bookId: string }) {
     if (r.chapterId) host.focusManuscriptUnit(r.chapterId);
   }, [chrome, host]);
 
+  // Navigator select (Debt #1 navigator→dock): highlight + drive the editor via the one seam
+  // (publish chapter → the Tier-4 hoist loads it; open the editor dock). Arc rows have no chapterId.
+  const onSelectNode = useCallback((node: ManuscriptNode) => {
+    setSelectedNodeId(node.id);
+    if (node.chapterId) host.focusManuscriptUnit(node.chapterId);
+  }, [host]);
+
   return (
     <div className="flex h-screen w-full flex-col overflow-hidden bg-background">
       <StudioTopBar bookId={bookId} bookTitle={bookTitle} onOpenQuickOpen={() => setPalette('quick')} />
@@ -87,16 +95,20 @@ function StudioFrameInner({ bookId }: { bookId: string }) {
             bookId={bookId}
             token={accessToken}
             selectedId={selectedNodeId}
-            onSelectNode={setSelectedNodeId}
+            onSelectNode={onSelectNode}
           />
         )}
 
-        <div className="flex min-w-0 flex-1 flex-col">
-          {/* The dock stays mounted regardless of the bottom panel / sidebar (D4 no-remount:
-              in-flight panels must never be dropped by a chrome toggle). */}
-          <StudioDock bookId={bookId} apiRef={host._dockApiRef} />
-          {chrome.bottomOpen && <StudioBottomPanel onClose={chrome.toggleBottom} />}
-        </div>
+        {/* Tier-4 manuscript unit hoisted ABOVE dockview (#08) so the editor's in-flight edits
+            survive a dock float / close, and the Lane-B reconciler + editor read one owner store. */}
+        <ManuscriptUnitProvider bookId={bookId}>
+          <div className="flex min-w-0 flex-1 flex-col">
+            {/* The dock stays mounted regardless of the bottom panel / sidebar (D4 no-remount:
+                in-flight panels must never be dropped by a chrome toggle). */}
+            <StudioDock bookId={bookId} apiRef={host._dockApiRef} />
+            {chrome.bottomOpen && <StudioBottomPanel onClose={chrome.toggleBottom} />}
+          </div>
+        </ManuscriptUnitProvider>
       </div>
 
       <StudioStatusBar

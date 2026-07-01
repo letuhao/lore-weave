@@ -93,10 +93,12 @@ export function StudioHostProvider({ bookId, children }: { bookId: string; child
         });
       },
       openPanel,
-      focusManuscriptUnit: (chapterId) => {
-        // v1: publish the active chapter to the bus. Opening/focusing the editor dock panel is
-        // #04 (`openPanel('editor')` once that component + Tier-4 unit exist).
+      focusManuscriptUnit: (chapterId, panelId = 'editor') => {
+        // Publish the active chapter to the bus (the Tier-4 ManuscriptUnitProvider watches it and
+        // loads the unit) AND open/focus the editor dock panel. The navigator, Quick Open, and the
+        // agent's ui_focus_manuscript_unit all drive the editor through this one seam.
         busStore.set(applyBusEvent(busStore.get(), { type: 'chapter', chapterId, bookId }));
+        openPanel(panelId);
       },
       _regStore: regStore,
       _busStore: busStore,

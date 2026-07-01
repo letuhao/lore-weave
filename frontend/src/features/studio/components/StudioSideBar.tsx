@@ -4,15 +4,17 @@ import { useTranslation } from 'react-i18next';
 import { PanelLeftClose } from 'lucide-react';
 import type { ActivityView } from '../types';
 import { ManuscriptNavigator } from '../manuscript/ManuscriptNavigator';
+import type { ManuscriptNode } from '../manuscript/types';
 
 interface Props {
   activeView: ActivityView;
   onCollapse: () => void;
   bookId: string;
   token: string | null;
-  // Selection is HOISTED to the frame so Quick Open (#06a) can drive the highlight too.
+  // Selection is HOISTED to the frame so Quick Open (#06a) can drive the highlight too. The full
+  // node is passed (the frame needs chapterId to open the editor — Debt #1 navigator→dock).
   selectedId: string | null;
-  onSelectNode: (id: string) => void;
+  onSelectNode: (node: ManuscriptNode) => void;
 }
 
 export function StudioSideBar({ activeView, onCollapse, bookId, token, selectedId, onSelectNode }: Props) {
@@ -30,7 +32,7 @@ export function StudioSideBar({ activeView, onCollapse, bookId, token, selectedI
           bookId={bookId}
           token={token}
           selectedId={selectedId}
-          onSelect={(node) => onSelectNode(node.id)}
+          onSelect={(node) => onSelectNode(node)}
           onCollapseSidebar={onCollapse}
         />
       ) : (

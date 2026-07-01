@@ -12,9 +12,11 @@ export interface EffectContext {
   host: StudioHost;
   queryClient: QueryClient;
   /** G7 DIRTY-GUARD — is this chapter's Tier-4 hoist dirty (unsaved user edits)? A reconciler
-   * MUST NOT blind-reload a dirty hoist (that clobbers keystrokes). No Tier-4 hoist exists yet
-   * (#04) so this is undefined → treated as clean; #04 wires the real check. */
+   * MUST NOT blind-reload a dirty hoist (that clobbers keystrokes). */
   isChapterDirty?: (chapterId: string) => boolean;
+  /** Reload the Tier-4 unit for this chapter IF it is the active unit (else a no-op). The
+   * reconciler supplies it from useManuscriptUnit; absent when no editor is mounted. */
+  reloadChapter?: (chapterId: string) => void;
 }
 
 export type EffectHandler = (ctx: EffectContext) => void | Promise<void>;

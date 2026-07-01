@@ -8,7 +8,13 @@
     "body": "A dockable workspace for this book. Panels (compose, planner, cast, quality…) will be added here one at a time. Drag tabs to split, stack, float, or pop out into their own window."
   },
   "panels": {
-    "compose": { "title": "Compose", "desc": "AI co-writer chat" }
+    "compose": { "title": "Compose", "desc": "AI co-writer chat" },
+    "editor": { "title": "Editor", "desc": "Manuscript editor" }
+  },
+  "editor": {
+    "empty": "Select a chapter in the manuscript navigator to edit it here.",
+    "unsaved": "● unsaved",
+    "save": "Save"
   },
   "palette": {
     "openPanel": "Studio: Open {{name}}",

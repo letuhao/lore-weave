@@ -8,7 +8,13 @@
     "body": "この本のためのドッキング可能なワークスペース。パネル（執筆・プロット・キャスト・品質…）は一つずつここに追加されます。タブをドラッグして分割・スタック・フロート・別ウィンドウへ切り離せます。"
   },
   "panels": {
-    "compose": { "title": "Compose", "desc": "AI 共同執筆チャット" }
+    "compose": { "title": "Compose", "desc": "AI 共同執筆チャット" },
+    "editor": { "title": "Editor", "desc": "原稿エディタ" }
+  },
+  "editor": {
+    "empty": "ナビゲーターで章を選ぶとここで編集できます。",
+    "unsaved": "● 未保存",
+    "save": "保存"
   },
   "palette": {
     "openPanel": "Studio: {{name}} を開く",
