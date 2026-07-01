@@ -193,3 +193,146 @@ async def test_decompose_l2_degraded_yields_warning():
     )
     assert res.chapters[0].scenes == []
     assert res.chapters[0].warning == "scene_decompose_degraded"
+
+
+# ── Phase-0 slice-2: cross-chapter threading (typed exit-state) ──
+
+def test_parse_chapter_exit_tolerant():
+    full = json.dumps({"scenes": [], "chapter_exit": {
+        "characters": "Lâm Uyển: hận → quyết tâm", "world": "đêm; vực sâu",
+        "plot": "mở: cuốn ma điển", "advances": ["nhặt ma điển", "  ", 3]}})
+    ex = plan.parse_chapter_exit(full)
+    assert ex is not None
+    assert ex.characters.startswith("Lâm Uyển")
+    assert ex.world == "đêm; vực sâu"
+    assert ex.advances == ["nhặt ma điển"]  # blank + non-str dropped
+    # missing / all-empty / non-dict → None (degrade-safe)
+    assert plan.parse_chapter_exit(json.dumps({"scenes": []})) is None
+    assert plan.parse_chapter_exit(json.dumps({"chapter_exit": {
+        "characters": "", "world": "", "plot": "", "advances": []}})) is None
+    assert plan.parse_chapter_exit("not json") is None
+
+
+def test_render_story_so_far():
+    assert plan.render_story_so_far(None, []) == ""
+    ex = plan.ChapterExitState(characters="c", world="w", plot="p", advances=["A1", "A2"])
+    out = plan.render_story_so_far(ex, ["A1", "A2"])
+    assert "Characters: c" in out and "World: w" in out and "Plot: p" in out
+    assert "ALREADY-USED DEVELOPMENTS" in out and "- A1" in out and "- A2" in out
+
+
+def test_build_scene_decompose_threading_switches():
+    ch = ChapterPlan(chapter_id="c1", title="t", sort_order=1, beat_role="setup", intent="i")
+    # default: no exit emission, no story-so-far conditioning
+    sys0, usr0 = plan.build_scene_decompose_messages("p", ch, "bp", [], 1, 6, "vi")
+    assert "chapter_exit" not in sys0 and "STORY SO FAR" not in usr0 and "CONTINUE THE STORY" not in sys0
+    # emit_exit only (chapter 1 of a threaded run): asks for the delta, still no continue-from
+    sys1, usr1 = plan.build_scene_decompose_messages("p", ch, "bp", [], 1, 6, "vi", "", emit_exit=True)
+    assert "chapter_exit" in sys1 and "STORY SO FAR" not in usr1 and "CONTINUE THE STORY" not in sys1
+    # both (chapter 2+): emit + continue-from conditioning
+    sys2, usr2 = plan.build_scene_decompose_messages(
+        "p", ch, "bp", [], 1, 6, "vi", "Characters: prior", emit_exit=True)
+    assert "chapter_exit" in sys2 and "CONTINUE THE STORY" in sys2
+    assert "STORY SO FAR" in usr2 and "Characters: prior" in usr2
+
+
+class CapturingLLM:
+    """Records (system, user) per L2 call and replays a queue of L2 responses in
+    order — so a sequential threaded decompose can be inspected call-by-call."""
+
+    def __init__(self, *, l1, l2_queue):
+        self._l1 = l1
+        self._l2_queue = list(l2_queue)
+        self.l2_prompts: list[tuple[str, str]] = []
+        self.l1_calls = self.l2_calls = 0
+
+    async def submit_and_wait(self, **kw):
+        msgs = kw["input"]["messages"]
+        system, user = msgs[0]["content"], msgs[1]["content"]
+        if "STRUCTURE BEATS" in user:
+            self.l1_calls += 1
+            return SimpleNamespace(status="completed", result={"messages": [{"content": self._l1}]})
+        self.l2_calls += 1
+        self.l2_prompts.append((system, user))
+        nxt = self._l2_queue.pop(0)
+        if nxt is None:  # simulate a degraded L2 (non-completion → _llm_json returns None)
+            return SimpleNamespace(status="failed", result={})
+        return SimpleNamespace(status="completed", result={"messages": [{"content": nxt}]})
+
+
+def _l2_with_exit(scene_intent, advances):
+    return json.dumps({
+        "scenes": [{"title": "s", "intent": scene_intent, "tension": 50, "present": []}],
+        "chapter_exit": {"characters": "c", "world": "w", "plot": "p", "advances": advances},
+    })
+
+
+async def test_decompose_thread_state_threads_exit_forward():
+    l1 = json.dumps({"chapters": [
+        {"index": 1, "beat": "setup", "intent": "open"},
+        {"index": 2, "beat": "midpoint", "intent": "rise"},
+    ]})
+    llm = CapturingLLM(l1=l1, l2_queue=[
+        _l2_with_exit("ch1 scene", ["expulsion"]),
+        _l2_with_exit("ch2 scene", ["new alliance"]),
+    ])
+    res = await plan.decompose(
+        llm, user_id="u", model_source="user_model", model_ref="m",
+        premise="p", arc_title="A", beats=BEATS, chapters=_chapters(2), cast=[],
+        k_ceiling=3, high_threshold=70, min_scenes=1, max_scenes=6,
+        thread_state=True,
+    )
+    # sequential: 2 L2 calls, in order
+    assert llm.l2_calls == 2
+    # chapter 1 prompt: emit_exit on, no continue-from
+    sys1, usr1 = llm.l2_prompts[0]
+    assert "chapter_exit" in sys1 and "STORY SO FAR" not in usr1
+    # chapter 2 prompt: threaded with chapter 1's exit + spent development
+    sys2, usr2 = llm.l2_prompts[1]
+    assert "STORY SO FAR" in usr2 and "expulsion" in usr2 and "Characters: c" in usr2
+    # both chapters captured their typed exit-state
+    assert res.chapters[0].exit_state.advances == ["expulsion"]
+    assert res.chapters[1].exit_state.advances == ["new alliance"]
+
+
+async def test_decompose_thread_state_degrade_retains_prev_exit():
+    # ch2's L2 degrades (None) → its scenes empty + exit_state None, but the chain must
+    # keep threading from ch1's exit into ch3 (degrade-safe invariant), and ch3 sees BOTH
+    # ch1's and (only) ch1's spent advances (ch2 contributed none).
+    l1 = json.dumps({"chapters": [
+        {"index": 1, "beat": "setup", "intent": "a"},
+        {"index": 2, "beat": "midpoint", "intent": "b"},
+        {"index": 3, "beat": "climax", "intent": "c"},
+    ]})
+    llm = CapturingLLM(l1=l1, l2_queue=[
+        _l2_with_exit("ch1", ["A1"]),
+        None,                              # ch2 degrades
+        _l2_with_exit("ch3", ["A3"]),
+    ])
+    res = await plan.decompose(
+        llm, user_id="u", model_source="user_model", model_ref="m",
+        premise="p", arc_title="A", beats=BEATS, chapters=_chapters(3), cast=[],
+        k_ceiling=3, high_threshold=70, min_scenes=1, max_scenes=6,
+        thread_state=True,
+    )
+    assert llm.l2_calls == 3
+    # ch2 degraded cleanly
+    assert res.chapters[1].scenes == [] and res.chapters[1].warning == "scene_decompose_degraded"
+    assert res.chapters[1].exit_state is None
+    # ch3 still threaded — from ch1's retained exit + only ch1's advance (ch2 added none)
+    _sys3, usr3 = llm.l2_prompts[2]
+    assert "STORY SO FAR" in usr3 and "A1" in usr3 and "A3" not in usr3
+    assert res.chapters[2].exit_state.advances == ["A3"]
+
+
+async def test_decompose_thread_state_off_is_unthreaded():
+    l1 = json.dumps({"chapters": [{"index": 1, "beat": "setup", "intent": "open"}]})
+    llm = CapturingLLM(l1=l1, l2_queue=[_l2_with_exit("ch1", ["x"])])
+    res = await plan.decompose(
+        llm, user_id="u", model_source="user_model", model_ref="m",
+        premise="p", arc_title="A", beats=BEATS, chapters=_chapters(1), cast=[],
+        k_ceiling=3, high_threshold=70, min_scenes=1, max_scenes=6,
+    )  # thread_state defaults False
+    sys1, usr1 = llm.l2_prompts[0]
+    assert "chapter_exit" not in sys1 and "STORY SO FAR" not in usr1
+    assert res.chapters[0].exit_state is None  # not parsed when threading off

@@ -2,7 +2,7 @@
 // The pure publishGateMessages function is tested in usePublishGate.test.tsx;
 // this file covers only the page-level render path: hook result → conditional chip.
 import { forwardRef } from 'react';
-import { render, screen, waitFor } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
@@ -73,6 +73,11 @@ vi.mock('@/features/chat/Chat', () => ({ Chat: () => null }));
 vi.mock('@/features/composition/components/CompositionPanel', () => ({
   CompositionPanel: () => null,
 }));
+// The Translate workmode embeds the full translation workspace; stub it so the page test
+// doesn't pull the translation feature's deps (it only asserts the centre swaps to it).
+vi.mock('@/features/translation/components/ChapterTranslationsPanel', () => ({
+  ChapterTranslationsPanel: () => <div data-testid="xl-panel-stub" />,
+}));
 vi.mock('@/features/chat/context/sendToChat', () => ({ fireSendToChat: vi.fn() }));
 vi.mock('@/features/chat/context/editorBridge', () => ({ registerEditorTarget: vi.fn() }));
 // T3.2: the page resolves the co-writer Work for the editor Selection Tools; stub
@@ -105,7 +110,7 @@ const baseGate: ChapterPublishGate = {
   canonBlocked: false, canonUnresolvedScenes: 0, canonUncheckedScenes: 0,
 };
 
-beforeEach(() => { mockUseGate.mockReset(); mockGuardedNavigate.mockReset(); });
+beforeEach(() => { mockUseGate.mockReset(); mockGuardedNavigate.mockReset(); localStorage.clear(); });
 
 describe('A2-S4b — ChapterEditorPage: publish-gate unchecked chip', () => {
   it('renders the amber chip when canonUncheckedScenes > 0', async () => {
@@ -125,15 +130,39 @@ describe('A2-S4b — ChapterEditorPage: publish-gate unchecked chip', () => {
   });
 });
 
-describe('ChapterEditorPage: View-translations affordance', () => {
-  // Regression-lock the wiring of the canonical ChapterTranslationsPage into the
-  // editor toolbar — previously the translated version was only reachable from the
-  // translation matrix / published reader.
-  it('navigates to the chapter translations page when clicked', async () => {
+describe('ChapterEditorPage: Workmode switch', () => {
+  // The old scatter (classic/AI toggle, Co-write bridge, one-off Translate + Translations
+  // buttons) is folded into one Write/Translate/Read/Compose dropdown.
+  it('opening Read guarded-navigates to the reader route', async () => {
     mockUseGate.mockReturnValue(baseGate);
     renderPage();
-    const btn = await screen.findByTestId('editor-view-translations');
-    btn.click();
-    expect(mockGuardedNavigate).toHaveBeenCalledWith('/books/b1/chapters/c1/translations');
+    fireEvent.click(await screen.findByTestId('workmode-switcher'));
+    fireEvent.click(screen.getByTestId('workmode-item-read'));
+    expect(mockGuardedNavigate).toHaveBeenCalledWith('/books/b1/chapters/c1/read');
+  });
+
+  it('switching to Translate swaps the centre to the translation workspace', async () => {
+    mockUseGate.mockReturnValue(baseGate);
+    renderPage();
+    // Default workmode is Write → the editor is shown, not the translation panel.
+    await screen.findByTestId('tiptap-stub');
+    expect(screen.queryByTestId('xl-panel-stub')).toBeNull();
+    fireEvent.click(screen.getByTestId('workmode-switcher'));
+    fireEvent.click(screen.getByTestId('workmode-item-translate'));
+    expect(await screen.findByTestId('xl-panel-stub')).toBeTruthy();
+    // The manuscript editor is no longer mounted in Translate mode.
+    expect(screen.queryByTestId('tiptap-stub')).toBeNull();
+  });
+
+  it('keeps the manuscript editor mounted in Compose mode', async () => {
+    // Regression guard: the co-writer studio inserts generated prose into the editor via
+    // its ref (onAccept / onApplyPolish). If Compose unmounted the editor, those writes
+    // would silently no-op — so the editor must stay mounted beside the studio.
+    mockUseGate.mockReturnValue(baseGate);
+    renderPage();
+    await screen.findByTestId('tiptap-stub');
+    fireEvent.click(screen.getByTestId('workmode-switcher'));
+    fireEvent.click(screen.getByTestId('workmode-item-compose'));
+    expect(screen.getByTestId('tiptap-stub')).toBeTruthy();
   });
 });

@@ -22,6 +22,16 @@
     "ai": "AI",
     "ai_title": "Chế độ trợ lý AI — đầy đủ tính năng"
   },
+  "workmode": {
+    "write": "Viết",
+    "write_desc": "Chỉnh sửa bản thảo",
+    "translate": "Dịch",
+    "translate_desc": "Phiên bản, so sánh & dịch",
+    "read": "Đọc",
+    "read_desc": "Mở trình đọc (TTS, giao diện)",
+    "compose": "Sáng tác",
+    "compose_desc": "Xưởng đồng sáng tác AI"
+  },
   "grammar_title": "Bật/tắt kiểm tra ngữ pháp & chính tả (LanguageTool)",
   "translate_title": "Dịch nội dung bằng AI (chế độ khối)",
   "translating": "Đang dịch...",

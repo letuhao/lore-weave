@@ -4,10 +4,9 @@ import { useTranslation } from 'react-i18next';
 import { toast } from 'sonner';
 import {
   Save, PanelLeft, PanelRight, Clock, ChevronRight, ChevronLeft, ChevronRight as ChevronRightNav, SpellCheck,
-  BookOpen, FileText, BookMarked, ListTree, Pen, Sparkles, Languages, AlertTriangle, Eye, Focus,
+  BookOpen, FileText, BookMarked, ListTree, Pen, Sparkles, AlertTriangle, Focus,
 } from 'lucide-react';
 import { useAuth } from '@/auth';
-import { apiBase } from '@/api';
 import { booksApi, type Chapter } from '@/features/books/api';
 import { useEditorPanels } from '@/hooks/useEditorPanels';
 import { useEditorDirty } from '@/contexts/EditorDirtyContext';
@@ -20,6 +19,9 @@ import { PublishControl } from '@/features/books/components/PublishControl';
 import { cn } from '@/lib/utils';
 import { useGrammarEnabled } from '@/hooks/useGrammarCheck';
 import { useEditorMode } from '@/hooks/useEditorMode';
+import { useWorkmode, type Workmode } from '@/hooks/useWorkmode';
+import { WorkmodeSwitcher } from '@/components/editor/WorkmodeSwitcher';
+import { ChapterTranslationsPanel } from '@/features/translation/components/ChapterTranslationsPanel';
 import { setImageUploadContext, setOnOpenHistory } from '@/components/editor/ImageBlockNode';
 import { setOnOpenVideoHistory } from '@/components/editor/VideoBlockNode';
 import { VersionHistoryPanel } from '@/components/editor/VersionHistoryPanel';
@@ -35,7 +37,6 @@ import { CompositionPanel } from '@/features/composition/components/CompositionP
 import { WorkspaceShell } from '@/features/composition/components/workspace/WorkspaceShell';
 import { MobileEditorShell, type MobileGroup } from '@/components/editor/MobileEditorShell';
 import { useIsMobile } from '@/hooks/useIsMobile';
-import { CowriteBridgeButton } from '@/features/composition/components/CowriteBridgeButton';
 import { SelectionToolbar } from '@/features/composition/components/SelectionToolbar';
 import { InlineAiLayer } from '@/features/composition/components/InlineAiLayer';
 import { useWorkResolution, useChapterScenes } from '@/features/composition/hooks/useWork';
@@ -168,8 +169,12 @@ export function ChapterEditorPage() {
   const [editorMode, setEditorMode] = useEditorMode();
   const [grammarEnabled, setGrammarEnabled] = useGrammarEnabled();
 
+  // The chapter's primary Workmode — Write (manuscript) / Translate (versions panel) /
+  // Compose (co-writer studio). "Read" is not a mode: it opens the full ReaderPage route.
+  const [workmode, setWorkmode] = useWorkmode();
+
   // Panels
-  const [rightTab, setRightTab] = useState<'history' | 'ai' | 'compose'>('history');
+  const [rightTab, setRightTab] = useState<'history' | 'ai'>('history');
   const [revKey, setRevKey] = useState(0);
 
   // T3.2 — resolve the co-writer Work (for the editor Selection Tools' projectId)
@@ -518,42 +523,24 @@ export function ChapterEditorPage() {
     return () => { if (autoSaveTimer.current) clearTimeout(autoSaveTimer.current); };
   }, [isDirty, tiptapJson, title]);
 
-  // ── Translate (block mode) ───────────────────────────────────────────────
-  const [translating, setTranslating] = useState(false);
+  // Translation is now a first-class Workmode (the embedded ChapterTranslationsPanel with
+  // versions / compare / set-active / jobs), not a one-shot toolbar button that overwrote
+  // the doc. The old `handleTranslate` (POST /translate-text → setContent) was removed with
+  // the button; the reader/translate lifecycle lives in the panel.
 
-  const handleTranslate = useCallback(async () => {
-    if (!accessToken || !tiptapJson) return;
-    const blocks = (tiptapJson as any)?.content;
-    if (!Array.isArray(blocks) || blocks.length === 0) {
-      toast.error(t('no_content'));
-      return;
-    }
-    setTranslating(true);
-    try {
-      const API_BASE = apiBase();
-      const res = await fetch(`${API_BASE}/v1/translation/translate-text`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${accessToken}` },
-        body: JSON.stringify({ blocks }),
-      });
-      const data = await res.json();
-      if (!res.ok) {
-        toast.error(data?.detail?.message || data?.detail || t('translation_failed'));
-        return;
-      }
-      if (data.translated_blocks && Array.isArray(data.translated_blocks)) {
-        const newDoc = { type: 'doc', content: data.translated_blocks };
-        tiptapEditorRef.current?.setContent(newDoc);
-        toast.success(t('translated_blocks', { count: data.translated_blocks.length }));
-      } else if (data.translated_text) {
-        toast.info(t('text_translation_received'));
-      }
-    } catch (e) {
-      toast.error((e as Error).message || t('translation_failed'));
-    } finally {
-      setTranslating(false);
-    }
-  }, [accessToken, tiptapJson]);
+  // ── M6 Polish — replace the doc with the self-heal-accepted prose ──────────
+  // Builds the same Tiptap paragraph shape book-service writes (a `_text` snapshot per
+  // block) from the healed plain text, then swaps the whole doc.
+  const handleApplyPolish = useCallback((healedText: string) => {
+    const content = healedText.split(/\n\n+/).map((para) => {
+      const tx = para.trim();
+      return tx
+        ? { type: 'paragraph', _text: tx, content: [{ type: 'text', text: tx }] }
+        : { type: 'paragraph', _text: '' };
+    });
+    tiptapEditorRef.current?.setContent({ type: 'doc', content });
+    toast.success(t('polish_applied', { defaultValue: 'Applied polish edits' }));
+  }, [t]);
 
   // ── Leave-page guard ──────────────────────────────────────────────────────
 
@@ -584,6 +571,20 @@ export function ChapterEditorPage() {
     if (targetId === chapterId) return;
     guardedNavigate(`/books/${bookId}/chapters/${targetId}/edit`);
   };
+
+  // "Read" workmode entry — open the full ReaderPage (TTS / theme / TOC / language switch)
+  // over the current draft. It's a route, not an in-editor pane; guarded so an unsaved
+  // draft prompts to save first.
+  const openReader = useCallback(() => {
+    guardedNavigate(`/books/${bookId}/chapters/${chapterId}/read`);
+  }, [guardedNavigate, bookId, chapterId]);
+
+  // Compose surfaces its studio in the right companion panel — opening the mode with the
+  // panel collapsed would hide the whole point, so ensure it's open on entry.
+  const changeWorkmode = useCallback((m: Workmode) => {
+    setWorkmode(m);
+    if (m === 'compose' && !panels.right) panels.toggleRight();
+  }, [setWorkmode, panels]);
 
   // ── Stats ─────────────────────────────────────────────────────────────────
 
@@ -718,6 +719,7 @@ export function ChapterEditorPage() {
             ts: new Date().toISOString(),
           })
         }
+        onApplyPolish={handleApplyPolish}
         sceneId={activeSceneId}
         onSceneChange={setActiveSceneId}
         heatmapEnabled={heatmapEnabled}
@@ -812,97 +814,66 @@ export function ChapterEditorPage() {
 
         {/* Right controls */}
         <div className="flex flex-shrink-0 items-center gap-2">
-          {/* Editor mode toggle */}
-          <div className="flex items-center rounded-md border bg-muted/30 p-0.5">
-            <button
-              onClick={() => handleModeSwitch('classic')}
-              className={cn(
-                'flex items-center gap-1 rounded px-2 py-1 text-[10px] font-medium transition-colors',
-                editorMode === 'classic'
-                  ? 'bg-background text-foreground shadow-sm'
-                  : 'text-muted-foreground hover:text-foreground',
-              )}
-              title={t('mode.classic_title')}
-            >
-              <Pen className="h-3 w-3" />
-              {t('mode.classic')}
-            </button>
-            <button
-              onClick={() => handleModeSwitch('ai')}
-              className={cn(
-                'flex items-center gap-1 rounded px-2 py-1 text-[10px] font-medium transition-colors',
-                editorMode === 'ai'
-                  ? 'bg-background text-foreground shadow-sm'
-                  : 'text-muted-foreground hover:text-foreground',
-              )}
-              title={t('mode.ai_title')}
-            >
-              <Sparkles className="h-3 w-3" />
-              {t('mode.ai')}
-            </button>
-          </div>
+          {/* Primary workmode switch — Write / Translate / Read / Compose. Replaces the
+              old Pen/Sparkles toggle, the Co-write bridge, and the one-off Translate +
+              Translations buttons: one obvious dropdown for "what am I doing to this
+              chapter". Read opens the full reader route; the rest swap the centre pane. */}
+          <WorkmodeSwitcher mode={workmode} onChange={changeWorkmode} onOpenReader={openReader} />
+
+          {/* Write-only sub-controls — the classic/AI editor toggle + grammar check only
+              affect the manuscript surface, so they hide outside Write mode. */}
+          {workmode === 'write' && (
+            <>
+              <div className="mx-1 h-4 w-px bg-border" />
+              <div className="flex items-center rounded-md border bg-muted/30 p-0.5">
+                <button
+                  onClick={() => handleModeSwitch('classic')}
+                  className={cn(
+                    'flex items-center gap-1 rounded px-2 py-1 text-[10px] font-medium transition-colors',
+                    editorMode === 'classic'
+                      ? 'bg-background text-foreground shadow-sm'
+                      : 'text-muted-foreground hover:text-foreground',
+                  )}
+                  title={t('mode.classic_title')}
+                >
+                  <Pen className="h-3 w-3" />
+                  {t('mode.classic')}
+                </button>
+                <button
+                  onClick={() => handleModeSwitch('ai')}
+                  className={cn(
+                    'flex items-center gap-1 rounded px-2 py-1 text-[10px] font-medium transition-colors',
+                    editorMode === 'ai'
+                      ? 'bg-background text-foreground shadow-sm'
+                      : 'text-muted-foreground hover:text-foreground',
+                  )}
+                  title={t('mode.ai_title')}
+                >
+                  <Sparkles className="h-3 w-3" />
+                  {t('mode.ai')}
+                </button>
+              </div>
+
+              {/* Grammar check toggle */}
+              <label
+                className={cn(
+                  'flex cursor-pointer items-center gap-1.5 rounded px-2 py-1 text-[10px] font-medium transition-colors',
+                  grammarEnabled ? 'text-warning' : 'text-muted-foreground hover:text-foreground',
+                )}
+                title={t('grammar_title')}
+              >
+                <input
+                  type="checkbox"
+                  checked={grammarEnabled}
+                  onChange={(e) => setGrammarEnabled(e.target.checked)}
+                  className="sr-only"
+                />
+                <SpellCheck className="h-3.5 w-3.5" />
+              </label>
+            </>
+          )}
 
           <div className="mx-1 h-4 w-px bg-border" />
-
-          {/* C15 (WG-6) — plain-editor → AI bridge. A visible, inline hand-off from
-              plain prose into the AI co-writer: open the (always-mounted) Compose
-              panel. Direct handler (no useEffect-for-events). Ensures the right panel
-              is open AND selects the compose tab. Writing needs only a chat model;
-              the Compose panel surfaces the register CTA + ready-to-draft cue (C15). */}
-          <CowriteBridgeButton
-            active={panels.right && rightTab === 'compose'}
-            onActivate={() => {
-              setRightTab('compose');
-              if (!panels.right) panels.toggleRight();
-            }}
-          />
-
-          <div className="mx-1 h-4 w-px bg-border" />
-
-          {/* Grammar check toggle */}
-          <label
-            className={cn(
-              'flex cursor-pointer items-center gap-1.5 rounded px-2 py-1 text-[10px] font-medium transition-colors',
-              grammarEnabled ? 'text-warning' : 'text-muted-foreground hover:text-foreground',
-            )}
-            title={t('grammar_title')}
-          >
-            <input
-              type="checkbox"
-              checked={grammarEnabled}
-              onChange={(e) => setGrammarEnabled(e.target.checked)}
-              className="sr-only"
-            />
-            <SpellCheck className="h-3.5 w-3.5" />
-          </label>
-
-          {/* Translate (block mode) */}
-          <button
-            onClick={handleTranslate}
-            disabled={translating || !tiptapJson}
-            className={cn(
-              'flex items-center gap-1 rounded px-2 py-1 text-[10px] font-medium transition-colors',
-              translating ? 'text-primary animate-pulse' : 'text-muted-foreground hover:text-foreground',
-            )}
-            title={t('translate_title')}
-          >
-            <Languages className="h-3.5 w-3.5" />
-            {translating ? t('translating') : t('translate')}
-          </button>
-
-          {/* View saved translation versions (language switcher, version history,
-              side-by-side compare) — the canonical ChapterTranslationsPage, which
-              was previously only reachable from the translation matrix. Guarded so
-              an unsaved draft prompts to save before leaving. */}
-          <button
-            data-testid="editor-view-translations"
-            onClick={() => guardedNavigate(`/books/${bookId}/chapters/${chapterId}/translations`)}
-            className="flex items-center gap-1 rounded px-2 py-1 text-[10px] font-medium text-muted-foreground transition-colors hover:text-foreground"
-            title={t('view_translations_title')}
-          >
-            <Eye className="h-3.5 w-3.5" />
-            {t('view_translations')}
-          </button>
 
           <button
             onClick={panels.toggleLeft}
@@ -911,23 +882,30 @@ export function ChapterEditorPage() {
           >
             <PanelLeft className="h-3.5 w-3.5" />
           </button>
-          <button
-            onClick={panels.toggleRight}
-            className={cn('rounded p-1.5 transition-colors', panels.right ? 'bg-primary/15 text-primary' : 'text-muted-foreground hover:bg-secondary')}
-            title={t('toggle_history')}
-          >
-            <PanelRight className="h-3.5 w-3.5" />
-          </button>
-          {/* T5.1 — focus/typewriter mode: hides both side panels + dims non-current prose */}
-          <button
-            data-testid="editor-focus-toggle"
-            onClick={toggleFocus}
-            aria-pressed={focusMode}
-            className={cn('rounded p-1.5 transition-colors', focusMode ? 'bg-primary/15 text-primary' : 'text-muted-foreground hover:bg-secondary')}
-            title={t('focus.toggle', { defaultValue: 'Focus mode' })}
-          >
-            <Focus className="h-3.5 w-3.5" />
-          </button>
+          {/* The right companion panel toggles the history/AI chat (Write) or the studio
+              (Compose); Translate has its own sidebar so no companion there. */}
+          {workmode !== 'translate' && (
+            <button
+              onClick={panels.toggleRight}
+              className={cn('rounded p-1.5 transition-colors', panels.right ? 'bg-primary/15 text-primary' : 'text-muted-foreground hover:bg-secondary')}
+              title={t('toggle_history')}
+            >
+              <PanelRight className="h-3.5 w-3.5" />
+            </button>
+          )}
+          {/* T5.1 — focus/typewriter mode: hides side panels + dims non-current prose. Only
+              meaningful over the Write editor surface. */}
+          {workmode === 'write' && (
+            <button
+              data-testid="editor-focus-toggle"
+              onClick={toggleFocus}
+              aria-pressed={focusMode}
+              className={cn('rounded p-1.5 transition-colors', focusMode ? 'bg-primary/15 text-primary' : 'text-muted-foreground hover:bg-secondary')}
+              title={t('focus.toggle', { defaultValue: 'Focus mode' })}
+            >
+              <Focus className="h-3.5 w-3.5" />
+            </button>
+          )}
           <div className="mx-1 h-4 w-px bg-border" />
 
           {/* Save status */}
@@ -1149,11 +1127,40 @@ export function ChapterEditorPage() {
           </div>
         )}
 
-        {/* Center — editor (shared with the mobile Editor group via editorMain) */}
-        {editorMain}
+        {/* Center — driven by the Workmode switch. Write AND Compose both keep the
+            manuscript editor mounted in the centre (shared with the mobile Editor group
+            via editorMain) — Compose's studio inserts generated prose into it via the
+            editor ref, so unmounting the editor would silently drop those writes.
+            Translate swaps the centre for the embedded translation workspace. */}
+        {workmode !== 'translate' && editorMain}
+        {workmode === 'translate' && (
+          <ChapterTranslationsPanel
+            key={`xl-${chapterId}`}
+            bookId={bookId}
+            chapterId={chapterId}
+            showBreadcrumb={false}
+            className="flex flex-1 overflow-hidden bg-background"
+          />
+        )}
 
-        {/* Right panel */}
-        {panels.right && (
+        {/* Right panel companion. Write = history / AI chat tabs; Compose = the co-writer
+            studio (promoted from the old right-panel tab into the Workmode). Translate has
+            its own sidebar, so no companion there. */}
+        {panels.right && workmode === 'compose' && (
+          <div className={cn('relative flex flex-shrink-0 flex-col border-l bg-card', focusMode && 'hidden')} style={{ width: rightWidth }}>
+            <div
+              onMouseDown={startRightResize}
+              role="separator"
+              aria-orientation="vertical"
+              title={t('resize_panel', { defaultValue: 'Drag to resize' })}
+              className="group absolute left-0 top-0 z-20 h-full w-1.5 -translate-x-1/2 cursor-col-resize"
+            >
+              <div className="mx-auto h-full w-px bg-transparent transition-colors group-hover:bg-primary/50" />
+            </div>
+            <div className="min-h-0 flex-1 overflow-hidden">{studioMain}</div>
+          </div>
+        )}
+        {panels.right && workmode === 'write' && (
           <div className={cn('relative flex flex-shrink-0 flex-col border-l bg-card', focusMode && 'hidden')} style={{ width: rightWidth }}>
             {/* Drag handle — resize the panel by dragging its left edge. */}
             <div
@@ -1177,13 +1184,6 @@ export function ChapterEditorPage() {
                 className={cn('flex-1 px-3 py-2 text-xs font-medium', rightTab === 'ai' ? 'border-b-2 border-primary text-primary' : 'text-muted-foreground hover:text-foreground')}
               >
                 <Sparkles className="mr-1.5 inline h-3 w-3" />{t('ai_chat')}
-              </button>
-              <button
-                data-testid="chapter-righttab-compose"
-                onClick={() => setRightTab('compose')}
-                className={cn('flex-1 px-3 py-2 text-xs font-medium', rightTab === 'compose' ? 'border-b-2 border-primary text-primary' : 'text-muted-foreground hover:text-foreground')}
-              >
-                <Pen className="mr-1.5 inline h-3 w-3" />{t('composition:compose', { defaultValue: 'Co-write' })}
               </button>
             </div>
             <div className="flex-1 overflow-hidden">
@@ -1231,13 +1231,6 @@ export function ChapterEditorPage() {
                   />
                 </div>
               )}
-              {/* LOOM M8 — the lore-grounded co-writer Power panel. Accepted prose
-                  inserts at the cursor via insertAtCursor (which dirties + autosaves
-                  the EDITOR doc); the streaming ghost stays FE-local until then. */}
-              {/* T5.4 — WorkspaceShell hoists the live co-writer stream ABOVE the studio
-                  panels (survives a dock/float/popout move). Shared with the mobile
-                  Studio group via studioMain. */}
-              {rightTab === 'compose' && studioMain}
             </div>
           </div>
         )}

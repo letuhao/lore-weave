@@ -53,6 +53,8 @@ from app.db.repositories.arc_template_repo import ArcTemplateRepo
 from app.db.repositories.motif_repo import MotifRepo
 from app.deps import get_arc_template_repo, get_motif_repo
 from app.middleware.jwt_auth import get_bearer_token, get_current_user
+from app.engine.heal_canon import convention_for, render_canon
+from app.engine.prose_doc import tiptap_doc_to_text
 from app.packer.profile import from_settings
 from app.worker.events import enqueue_job
 from fastapi import status as http_status
@@ -71,6 +73,15 @@ class DecomposeRequest(BaseModel):
     # cleanly and A3's default behavior is unchanged until A≥B is proven. Genres for
     # retrieval come from the book object; language from the work's source profile.
     motifs_enabled: bool = False
+    # Phase-0 slice-2 — cross-chapter sequential threading. Default OFF ⇒ today's
+    # concurrent per-chapter decompose. ON ⇒ chapters are decomposed in order, each
+    # conditioned on the prior chapters' typed exit-state so they don't repeat the arc.
+    thread_state: bool = False
+    # Planning-pipeline — when true, run the multi-step planner (cast → motifs → tension →
+    # char-arcs/intros → grounded decompose → plan self-heal) instead of the one-shot
+    # decompose. Default OFF (opt-in rollout). Long-running ⇒ always via the worker when
+    # COMPOSITION_WORKER_ENABLED. NOTE: this SEEDS the proposed cast into the glossary.
+    pipeline: bool = False
 
 
 class CommitScene(BaseModel):
@@ -154,6 +165,248 @@ async def _cast_roster(
     return await kal.roster(book_id, user_id=user_id, strict=strict)
 
 
+class SelfHealProposeRequest(BaseModel):
+    chapter_id: UUID
+    model_source: str = Field(min_length=1, max_length=50)
+    model_ref: str = Field(min_length=1, max_length=200)
+    # Optional canon override — a caller (e.g. the planner) can pass the PipelineResult.canon
+    # bible directly; otherwise the endpoint best-effort renders it from the cast roster +
+    # a genre/language convention (the dominant xưng-hô grounding).
+    canon: str | None = Field(default=None, max_length=20000)
+    prefilter: bool = True
+    # OPT-IN comparative re-ranker — one extra LLM call per semantic edit to pre-check the ones
+    # it approves (it never drops). Default OFF (cost); the FE exposes a toggle.
+    rerank: bool = False
+
+
+@router.post("/works/{project_id}/self-heal/propose")
+async def self_heal_propose_endpoint(
+    project_id: UUID,
+    body: SelfHealProposeRequest,
+    user_id: UUID = Depends(get_current_user),
+    bearer: str = Depends(get_bearer_token),
+    works: WorksRepo = Depends(get_works_repo),
+    book: BookClient = Depends(get_book_client_dep),
+    kal: KalClient = Depends(get_kal_client_dep),
+    llm: LLMClient = Depends(get_llm_client_dep),
+):
+    """M6 Polish — PROPOSE self-heal edits for a chapter draft (the review-gate). Resolves the
+    draft text (Tiptap→prose) + a canon (override via `body.canon`, else best-effort from the
+    cast roster + genre/language convention), runs the cheap-stack in PROPOSE mode, and returns
+    EditProposals — NOT applied. The human accepts a subset; the accepted edits are spliced +
+    saved by the caller (composition_write_prose). Worker when enabled (202 + job_id), else
+    inline. Never auto-writes (do-no-harm: the imperfect pass is gated by the human)."""
+    work = await _require_work(works, user_id, project_id)
+    try:
+        draft = await book.get_draft(work.book_id, body.chapter_id, bearer)
+    except BookClientError as exc:
+        raise HTTPException(status_code=502, detail={"code": "BOOK_SERVICE_UNAVAILABLE",
+                                                     "detail": str(exc)}) from exc
+    text = tiptap_doc_to_text(draft.get("body") or draft.get("doc") or draft.get("content"))
+    if not text.strip():
+        raise HTTPException(status_code=400, detail={
+            "code": "EMPTY_DRAFT", "detail": "chapter draft has no prose to heal"})
+
+    profile = from_settings(work.settings)
+    canon = body.canon
+    if not canon:
+        genre_tags = await _book_genre_tags(book, work.book_id, bearer)
+        roster = await _cast_roster(kal, work.book_id, user_id)
+        canon = render_canon(roster, convention=convention_for(genre_tags, profile.source_language))
+
+    heal_input = {
+        "worker_op": "self_heal_propose", "chapter_text": text, "canon": canon,
+        "chapter_id": str(body.chapter_id), "draft_version": draft.get("draft_version"),
+        "book_id": str(work.book_id), "project_id": str(project_id),
+        "model_source": str(body.model_source), "model_ref": str(body.model_ref),
+        "source_language": profile.source_language,
+        "prefilter": body.prefilter, "rerank": body.rerank,
+    }
+    if settings.composition_worker_enabled:
+        jobs = await get_generation_jobs_repo()
+        job, _created = await jobs.create(
+            user_id, project_id, operation="self_heal_propose", mode="auto",
+            status="pending", input=heal_input)
+        enqueued = await enqueue_job(settings.redis_url, job_id=str(job.id),
+                                     user_id=str(user_id), project_id=str(project_id))
+        return JSONResponse(
+            status_code=http_status.HTTP_202_ACCEPTED,
+            content={"job_id": str(job.id), "status": "pending",
+                     "enqueued": "ok" if enqueued else "retriggerable"})
+    # inline (worker-off / tests) — blocks for the full propose pass.
+    from app.worker.operations import run_self_heal_propose
+    return await run_self_heal_propose(llm, user_id=str(user_id), input=heal_input)
+
+
+class QualityReportRequest(BaseModel):
+    chapter_id: UUID
+    model_source: str = Field(min_length=1, max_length=50)
+    model_ref: str = Field(min_length=1, max_length=200)
+    # Optional canon override (same as self-heal) — grounds the critic's canon dimension.
+    canon: str | None = Field(default=None, max_length=20000)
+
+
+@router.post("/works/{project_id}/quality-report")
+async def quality_report_endpoint(
+    project_id: UUID,
+    body: QualityReportRequest,
+    user_id: UUID = Depends(get_current_user),
+    bearer: str = Depends(get_bearer_token),
+    works: WorksRepo = Depends(get_works_repo),
+    book: BookClient = Depends(get_book_client_dep),
+    kal: KalClient = Depends(get_kal_client_dep),
+    llm: LLMClient = Depends(get_llm_client_dep),
+):
+    """Q1+Q2 Quality Report — surface the planner's advisory judges for a chapter draft as a
+    READ-ONLY report (M6 Polish gate). Resolves the draft text (Tiptap→prose) + a canon (override
+    else best-effort from the cast roster), then runs the 4-dim critic + the promise audit. Unlike
+    self-heal this produces NO applyable edits — it is diagnostic (the author reads it and decides).
+    Worker when enabled (202 + job_id), else inline."""
+    work = await _require_work(works, user_id, project_id)
+    try:
+        draft = await book.get_draft(work.book_id, body.chapter_id, bearer)
+    except BookClientError as exc:
+        raise HTTPException(status_code=502, detail={"code": "BOOK_SERVICE_UNAVAILABLE",
+                                                     "detail": str(exc)}) from exc
+    text = tiptap_doc_to_text(draft.get("body") or draft.get("doc") or draft.get("content"))
+    if not text.strip():
+        raise HTTPException(status_code=400, detail={
+            "code": "EMPTY_DRAFT", "detail": "chapter draft has no prose to analyze"})
+
+    profile = from_settings(work.settings)
+    canon = body.canon
+    if not canon:
+        genre_tags = await _book_genre_tags(book, work.book_id, bearer)
+        roster = await _cast_roster(kal, work.book_id, user_id)
+        canon = render_canon(roster, convention=convention_for(genre_tags, profile.source_language))
+
+    qr_input = {
+        "worker_op": "quality_report", "chapter_text": text, "canon": canon,
+        "chapter_id": str(body.chapter_id), "draft_version": draft.get("draft_version"),
+        "book_id": str(work.book_id), "project_id": str(project_id),
+        "model_source": str(body.model_source), "model_ref": str(body.model_ref),
+        "source_language": profile.source_language,
+    }
+    if settings.composition_worker_enabled:
+        jobs = await get_generation_jobs_repo()
+        job, _created = await jobs.create(
+            user_id, project_id, operation="quality_report", mode="auto",
+            status="pending", input=qr_input)
+        enqueued = await enqueue_job(settings.redis_url, job_id=str(job.id),
+                                     user_id=str(user_id), project_id=str(project_id))
+        return JSONResponse(
+            status_code=http_status.HTTP_202_ACCEPTED,
+            content={"job_id": str(job.id), "status": "pending",
+                     "enqueued": "ok" if enqueued else "retriggerable"})
+    # inline (worker-off / tests)
+    from app.worker.operations import run_quality_report
+    return await run_quality_report(llm, user_id=str(user_id), input=qr_input)
+
+
+def _render_outline_plan(nodes: list[Any]) -> str:
+    """Render the outline tree into a compact plan_text — the SPEC the promise set is
+    derived from: each chapter header followed by ITS scenes, in reading order.
+
+    `list_tree` returns a FLAT list ordered by (parent_id, rank), so the scene groups
+    are ordered by their parent chapter's UUID — NOT reading order. Iterating the flat
+    list would emit every chapter header first, then scene clusters in arbitrary order,
+    detached from their chapters. So we WALK the tree (arc → chapters → scenes) via a
+    parent→children map; children within a parent stay rank-ordered (list_tree's order),
+    which is the correct sibling order."""
+    by_parent: dict[Any, list[Any]] = {}
+    for n in nodes:
+        by_parent.setdefault(n.parent_id, []).append(n)
+    lines: list[str] = []
+
+    def walk(parent_id: Any) -> None:
+        for n in by_parent.get(parent_id, []):
+            if n.kind == "chapter":
+                head = (n.title or "").strip() or "(chapter)"
+                if n.beat_role:
+                    head += f" [{n.beat_role}]"
+                if (n.goal or "").strip():
+                    head += f": {n.goal.strip()}"
+                lines.append(f"## {head}")
+            elif n.kind == "scene":
+                body = (n.synopsis or "").strip() or (n.title or "").strip()
+                if body:
+                    lines.append(f"- {body}")
+            walk(n.id)  # descend: arc → chapters, chapter → scenes (tree order)
+
+    walk(None)
+    return "\n".join(lines)
+
+
+class PromiseCoverageRequest(BaseModel):
+    model_source: str = Field(min_length=1, max_length=50)
+    model_ref: str = Field(min_length=1, max_length=200)
+
+
+@router.post("/works/{project_id}/promise-coverage")
+async def promise_coverage_endpoint(
+    project_id: UUID,
+    body: PromiseCoverageRequest,
+    user_id: UUID = Depends(get_current_user),
+    bearer: str = Depends(get_bearer_token),
+    works: WorksRepo = Depends(get_works_repo),
+    book: BookClient = Depends(get_book_client_dep),
+    outline: OutlineRepo = Depends(get_outline_repo),
+    llm: LLMClient = Depends(get_llm_client_dep),
+):
+    """Q3 Book-level promise coverage — does the finished book pay off what the outline
+    promised? Renders the outline tree as the plan spec, assembles every ACTIVE chapter's
+    prose, derives a STABLE tracked-promise set from the spec, and scores the book against it
+    (paid/progressing/abandoned/absent + rates). READ-ONLY (book-scoped; no per-chapter edits).
+    Worker when enabled (202 + job_id), else inline."""
+    work = await _require_work(works, user_id, project_id)
+    nodes = await outline.list_tree(user_id, project_id)
+    plan_text = _render_outline_plan(nodes)
+
+    # Assemble every active chapter's prose in reading order (skip empty/failed — degrade).
+    chapters = await _book_chapter_ids(book, work.book_id, bearer)
+    parts: list[str] = []
+    n_ok = 0
+    for ch in chapters:
+        cid = ch.get("chapter_id")
+        if not cid:
+            continue
+        try:
+            draft = await book.get_draft(work.book_id, UUID(str(cid)), bearer)
+        except BookClientError:
+            continue
+        txt = tiptap_doc_to_text(draft.get("body") or draft.get("doc") or draft.get("content"))
+        if txt.strip():
+            parts.append(txt.strip())
+            n_ok += 1
+    book_text = "\n\n".join(parts)
+    if not book_text.strip():
+        raise HTTPException(status_code=400, detail={
+            "code": "EMPTY_BOOK", "detail": "no chapter prose to analyze"})
+
+    profile = from_settings(work.settings)
+    cov_input = {
+        "worker_op": "promise_coverage", "premise": "", "plan_text": plan_text,
+        "book_text": book_text, "chapters": n_ok,
+        "book_id": str(work.book_id), "project_id": str(project_id),
+        "model_source": str(body.model_source), "model_ref": str(body.model_ref),
+        "source_language": profile.source_language,
+    }
+    if settings.composition_worker_enabled:
+        jobs = await get_generation_jobs_repo()
+        job, _created = await jobs.create(
+            user_id, project_id, operation="promise_coverage", mode="auto",
+            status="pending", input=cov_input)
+        enqueued = await enqueue_job(settings.redis_url, job_id=str(job.id),
+                                     user_id=str(user_id), project_id=str(project_id))
+        return JSONResponse(
+            status_code=http_status.HTTP_202_ACCEPTED,
+            content={"job_id": str(job.id), "status": "pending",
+                     "enqueued": "ok" if enqueued else "retriggerable"})
+    # inline (worker-off / tests)
+    from app.worker.operations import run_promise_coverage
+    return await run_promise_coverage(llm, user_id=str(user_id), input=cov_input)
+
+
 def _decompose_response(result) -> dict:
     """Serialize a DecomposeResult for the preview. Plain dataclasses.asdict can't
     serialize the SelectedMotif/MotifBinding (they hold a Pydantic Motif), so the
@@ -176,6 +429,9 @@ def _decompose_response(result) -> dict:
             "scenes": [dataclasses.asdict(s) for s in cs.scenes],
             "warning": cs.warning,
             "motif": None,
+            # Phase-0 slice-2 — surface the threaded exit-state so the inline preview
+            # matches the worker path's asdict shape (None when threading is off).
+            "exit_state": dataclasses.asdict(cs.exit_state) if cs.exit_state else None,
         }
         if cs.motif is not None:
             sel: SelectedMotif = cs.motif
@@ -250,6 +506,47 @@ async def decompose_preview(
         for c in chapters_raw
     ]
 
+    # ── Planning pipeline (multi-step) — opt-in via `pipeline=true`. Long-running ⇒ worker
+    # when enabled (202 + job_id); else inline (tests / worker-off). Seeds the cast glossary.
+    if body.pipeline:
+        genre_tags = await _book_genre_tags(book, work.book_id, bearer)
+        pipe_input = {
+            "model_source": str(body.model_source), "model_ref": str(body.model_ref),
+            "worker_op": "plan_pipeline", "premise": body.premise, "beats": tmpl.beats,
+            "chapters": [dataclasses.asdict(c) for c in chapters_in],
+            "genre_tags": genre_tags, "book_id": str(work.book_id), "project_id": str(project_id),
+            "k_ceiling": settings.compose_diverge_k,
+            "high_threshold": settings.plan_high_tension_threshold,
+            "min_scenes": settings.plan_min_scenes_per_chapter,
+            "max_scenes": settings.plan_max_scenes_per_chapter,
+            "source_language": profile.source_language, "self_heal": True,
+        }
+        if settings.composition_worker_enabled:
+            jobs = await get_generation_jobs_repo()
+            job, _created = await jobs.create(
+                user_id, project_id, operation="plan_pipeline", mode="auto",
+                status="pending", input=pipe_input)
+            enqueued = await enqueue_job(
+                settings.redis_url, job_id=str(job.id),
+                user_id=str(user_id), project_id=str(project_id))
+            return JSONResponse(
+                status_code=http_status.HTTP_202_ACCEPTED,
+                content={"job_id": str(job.id), "status": "pending",
+                         "enqueued": "ok" if enqueued else "retriggerable"})
+        # inline (worker-off / tests) — blocks for the full pipeline.
+        from app.clients.glossary_client import get_glossary_client
+        from app.engine.planning_pipeline import run_planning_pipeline
+        res = await run_planning_pipeline(
+            llm, MotifRetriever(get_pool()), get_glossary_client(), kal,
+            user_id=str(user_id), book_id=work.book_id, project_id=project_id,
+            premise=body.premise, beats=tmpl.beats, chapters=chapters_in, genre_tags=genre_tags,
+            model_source=body.model_source, model_ref=body.model_ref,
+            k_ceiling=settings.compose_diverge_k, high_threshold=settings.plan_high_tension_threshold,
+            min_scenes=settings.plan_min_scenes_per_chapter,
+            max_scenes=settings.plan_max_scenes_per_chapter,
+            source_language=profile.source_language, self_heal=True)
+        return JSONResponse(content=dataclasses.asdict(res))
+
     # W2 motif select+bind context (only resolved when the toggle is on — default
     # OFF in P1, so the inline/worker paths are byte-identical to today when off).
     motif_genres: list[str] = []
@@ -281,6 +578,7 @@ async def decompose_preview(
             "min_scenes": settings.plan_min_scenes_per_chapter,
             "max_scenes": settings.plan_max_scenes_per_chapter,
             "source_language": profile.source_language,
+            "thread_state": body.thread_state,  # Phase-0 slice-2 (worker reads via input.get)
             # W2 — persisted so the worker can bind motifs off-request once
             # operations.run_decompose is wired (worker-path motif binding is a
             # cross-track follow-up; default-OFF in P1 means the worker ignores these
@@ -311,6 +609,7 @@ async def decompose_preview(
         min_scenes=settings.plan_min_scenes_per_chapter,
         max_scenes=settings.plan_max_scenes_per_chapter,
         source_language=profile.source_language,
+        thread_state=body.thread_state,
         motifs_enabled=body.motifs_enabled,
         retriever=MotifRetriever(get_pool()) if body.motifs_enabled else None,
         book_id=work.book_id if body.motifs_enabled else None,

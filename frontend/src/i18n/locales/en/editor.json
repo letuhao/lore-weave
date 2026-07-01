@@ -22,6 +22,16 @@
     "ai": "AI",
     "ai_title": "AI Assistant mode — full features"
   },
+  "workmode": {
+    "write": "Write",
+    "write_desc": "Edit the manuscript",
+    "translate": "Translate",
+    "translate_desc": "Versions, compare & translate",
+    "read": "Read",
+    "read_desc": "Open the reader (TTS, themes)",
+    "compose": "Compose",
+    "compose_desc": "AI co-writer studio"
+  },
   "grammar_title": "Toggle grammar & spell check (LanguageTool)",
   "translate_title": "Translate content using AI (block mode)",
   "translating": "Translating...",

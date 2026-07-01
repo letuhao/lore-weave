@@ -22,6 +22,16 @@
     "ai": "AI",
     "ai_title": "AI 助手模式 — 完整功能"
   },
+  "workmode": {
+    "write": "寫作",
+    "write_desc": "編輯稿件",
+    "translate": "翻譯",
+    "translate_desc": "版本、比較與翻譯",
+    "read": "閱讀",
+    "read_desc": "開啟閱讀器（TTS、主題）",
+    "compose": "創作",
+    "compose_desc": "AI 協作寫作工作室"
+  },
   "grammar_title": "切換文法與拼字檢查（LanguageTool）",
   "translate_title": "使用 AI 翻譯內容（區塊模式）",
   "translating": "翻譯中...",

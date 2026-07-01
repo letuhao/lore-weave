@@ -432,6 +432,76 @@ export const compositionApi = {
   getCorrectionStats(projectId: string, token: string): Promise<CorrectionStats> {
     return apiJson(`${BASE}/works/${projectId}/correction-stats`, { token });
   },
+  // M6 Polish — PROPOSE self-heal edits for a chapter draft (the review-gate). Returns the
+  // proposals (NOT applied) for accept/reject; the accepted subset is spliced client-side
+  // (applySelfHealEdits) + saved by the editor. 202+poll when the worker is on, else inline.
+  async proposeSelfHeal(
+    projectId: string,
+    body: {
+      chapterId: string; modelRef: string;
+      modelSource?: 'user_model' | 'platform_model';
+      prefilter?: boolean; rerank?: boolean;
+    },
+    token: string,
+  ): Promise<SelfHealProposalResponse> {
+    const resp = await apiJson<SelfHealProposalResponse>(
+      `${BASE}/works/${projectId}/self-heal/propose`,
+      {
+        method: 'POST', token,
+        body: JSON.stringify({
+          chapter_id: body.chapterId,
+          model_source: body.modelSource ?? 'user_model', model_ref: body.modelRef,
+          prefilter: body.prefilter ?? true,
+          rerank: body.rerank ?? false,   // opt-in (extra cost); default OFF
+        }),
+      },
+    );
+    return _resolveJob(resp, token, (job) => ({
+      job_id: job.id, status: job.status, ...(job.result as Record<string, unknown>),
+    }) as SelfHealProposalResponse);
+  },
+  // Q1+Q2 Quality Report — surface the planner's advisory judges (4-dim critic + promise
+  // audit) for a chapter as a READ-ONLY report. Diagnostic, not applyable (no accept/apply).
+  // 202+poll when the worker is on, else inline — same resolve path as proposeSelfHeal.
+  async qualityReport(
+    projectId: string,
+    body: { chapterId: string; modelRef: string; modelSource?: 'user_model' | 'platform_model' },
+    token: string,
+  ): Promise<QualityReportResponse> {
+    const resp = await apiJson<QualityReportResponse>(
+      `${BASE}/works/${projectId}/quality-report`,
+      {
+        method: 'POST', token,
+        body: JSON.stringify({
+          chapter_id: body.chapterId,
+          model_source: body.modelSource ?? 'user_model', model_ref: body.modelRef,
+        }),
+      },
+    );
+    return _resolveJob(resp, token, (job) => ({
+      job_id: job.id, status: job.status, ...(job.result as Record<string, unknown>),
+    }) as QualityReportResponse);
+  },
+  // Q3 Book-level promise coverage — does the finished book pay off what the outline
+  // promised? Read-only, book-scoped (no chapter). 202+poll or inline, same resolve path.
+  async promiseCoverage(
+    projectId: string,
+    body: { modelRef: string; modelSource?: 'user_model' | 'platform_model' },
+    token: string,
+  ): Promise<PromiseCoverageResponse> {
+    const resp = await apiJson<PromiseCoverageResponse>(
+      `${BASE}/works/${projectId}/promise-coverage`,
+      {
+        method: 'POST', token,
+        body: JSON.stringify({
+          model_source: body.modelSource ?? 'user_model', model_ref: body.modelRef,
+        }),
+      },
+    );
+    return _resolveJob(resp, token, (job) => ({
+      job_id: job.id, status: job.status, ...(job.result as Record<string, unknown>),
+    }) as PromiseCoverageResponse);
+  },
   critique(jobId: string, passage: string, token: string): Promise<{ critic: GenerationJob['critic']; warning?: string }> {
     return apiJson(`${BASE}/jobs/${jobId}/critique`, {
       method: 'POST', body: JSON.stringify({ passage }), token,
@@ -467,3 +537,110 @@ export const compositionApi = {
     return apiJson(`${BASE}/works/${projectId}/narrative-threads?status=${status}`, { token });
   },
 };
+
+// ── M6 Polish / self-heal ──────────────────────────────────────────────
+export interface SelfHealProposal {
+  id: string;
+  type: string;
+  tier: 'deterministic' | 'semantic';
+  start: number;
+  end: number;
+  before: string;
+  after: string;
+  issue: string;
+  fix: string;
+  // recommended = pre-checked in the UI (deterministic always; semantic when the comparative
+  // re-ranker approves). The human still sees + can toggle every proposal — recommended never drops.
+  recommended?: boolean;
+  rerank_reason?: string;
+}
+
+export interface SelfHealProposalResponse {
+  job_id: string;
+  status: string;
+  proposals: SelfHealProposal[];
+  source_text: string;
+  draft_version: number | null;
+  stats?: { findings: number; located: number; edits: number; refuted: number };
+}
+
+// ── Q1+Q2 Quality Report (read-only diagnostics) ───────────────────────
+export interface QualityCritic {
+  coherence: number | null;
+  voice_match: number | null;
+  pacing: number | null;
+  canon_consistency: number | null;
+  violations: { rule_id: string; violated: boolean; span: string; why: string }[];
+  error?: string;
+}
+// Per-chapter narrative threads (reframed from the promise audit — D-QUALITY-DROPPED-FP):
+// the threads the chapter RAISES + any RESOLVED within it. No misleading per-chapter "dropped"
+// (that was a false positive on serialized fiction); the book-level coverage owns abandoned.
+export interface QualityThreads {
+  raised: string[];
+  resolved: string[];
+  raised_count: number;
+  resolved_count: number;
+  error?: string;
+}
+export interface QualityReport {
+  critic: QualityCritic;
+  threads: QualityThreads;
+}
+export interface QualityReportResponse {
+  job_id: string;
+  status: string;
+  report: QualityReport;
+  chapter_id: string | null;
+  draft_version: number | null;
+}
+
+// ── Q3 Book-level promise coverage (read-only) ─────────────────────────
+export type PromiseVerdict = 'paid' | 'progressing' | 'abandoned' | 'absent';
+export interface PromiseCoverageItem {
+  promise: string;
+  verdict: PromiseVerdict;
+}
+export interface PromiseCoverage {
+  coverage: PromiseCoverageItem[];
+  tracked_count: number;
+  introduced_count: number;
+  paid_count: number;
+  progressing_count: number;
+  abandoned_count: number;
+  absent_count: number;
+  pay_rate: number;
+  sustained_rate: number;
+  abandon_rate: number;
+  error?: string;
+}
+export interface PromiseCoverageResponse {
+  job_id: string;
+  status: string;
+  coverage: PromiseCoverage;
+  chapters: number | null;
+}
+
+/**
+ * Splice the accepted proposals (default: ALL) into the source text, rightmost-first so
+ * earlier offsets stay valid — the JS mirror of the engine's `apply_self_heal_edits`.
+ *
+ * Fail-safe: an edit is applied only when `sourceText.slice(start,end)` still equals its
+ * `before`. The offsets are computed in Python (Unicode code points) but spliced here in JS
+ * (UTF-16 code units), so an astral char (emoji / rare CJK-ext) before an edit would shift
+ * it — and a stale source would drift too. On any mismatch we SKIP the edit rather than
+ * corrupt the prose.
+ */
+export function applySelfHealEdits(
+  sourceText: string,
+  proposals: SelfHealProposal[],
+  acceptedIds?: Set<string>,
+): string {
+  const keep = acceptedIds ? proposals.filter((p) => acceptedIds.has(p.id)) : proposals;
+  let out = sourceText;
+  for (const p of [...keep].sort((a, b) => b.start - a.start)) {
+    if (sourceText.slice(p.start, p.end) !== p.before) continue; // offsets drifted → skip
+    out = out.slice(0, p.start) + p.after + out.slice(p.end);
+  }
+  return out;
+}

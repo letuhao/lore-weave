@@ -83,6 +83,50 @@ class GlossaryClient:
     # entity-list read was removed here so it can't be reintroduced as a bypass.
 
 
+    async def seed_entities(
+        self, book_id: UUID, *, source_language: str, entities: list[dict[str, Any]],
+    ) -> list[dict[str, Any]]:
+        """Bulk create/upsert glossary entities via the canonical write-through
+        (`extract-entities`, the same path extraction uses). `entities` =
+        [{kind_code, name, attributes?}] where `attributes` = {attr_code: value} (mapped
+        to the kind's registered attr_defs; an UNMATCHED code is silently no-op'd by the
+        glossary). An unknown kind is PARKED (the entity is still created), so a
+        planning-time cast seed always lands. Returns the created entities (each with
+        `entity_id`), or [] on failure.
+
+        D-PLAN-CAST-ATTRS: `attribute_actions` (auto-built as `fill` for every attr code
+        sent) declares the write so the glossary persists the cast's DEPTH (role,
+        personality, relationships, description) — not just the name."""
+        if not entities:
+            return []
+        url = f"{self._base_url}/internal/books/{book_id}/extract-entities"
+        actions: dict[str, dict[str, str]] = {}
+        for e in entities:
+            kc = e.get("kind_code") or "character"
+            for ac in (e.get("attributes") or {}):
+                actions.setdefault(kc, {})[ac] = "fill"
+        payload: dict[str, Any] = {
+            "source_language": source_language,
+            "default_tags": ["ai-suggested"],
+            "entities": [
+                {"kind_code": e.get("kind_code") or "character", "name": e["name"],
+                 "attributes": e.get("attributes") or {}}
+                for e in entities if e.get("name")
+            ],
+        }
+        if actions:
+            payload["attribute_actions"] = actions
+        try:
+            resp = await self._http.post(url, json=payload, headers=self._headers())
+            if resp.status_code != 200:
+                logger.warning("glossary seed-entities → %d", resp.status_code)
+                return []
+            return resp.json().get("entities", [])
+        except (httpx.HTTPError, ValueError, AttributeError) as exc:
+            logger.warning("glossary seed-entities unavailable: %s", exc)
+            return []
+
+
 def init_glossary_client() -> GlossaryClient:
     global _client
     if _client is None:

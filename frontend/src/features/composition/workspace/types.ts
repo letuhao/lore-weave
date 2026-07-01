@@ -9,13 +9,13 @@
 export type WorkspacePanelId =
   | 'compose' | 'cowriter' | 'assemble' | 'planner' | 'beats' | 'graph' | 'cast'
   | 'relmap' | 'timeline' | 'arc' | 'worldmap' | 'grounding' | 'canonview' | 'references'
-  | 'style' | 'canon' | 'critic' | 'threads' | 'progress' | 'quality' | 'flywheel'
-  | 'motifs' | 'conformance' | 'settings';   // canonview (origin/main) + W6 motifs/conformance — additive
+  | 'style' | 'canon' | 'critic' | 'threads' | 'progress' | 'quality' | 'polish' | 'flywheel'
+  | 'motifs' | 'conformance' | 'settings';   // polish (M6 self-heal) + canonview + W6 motifs/conformance — additive
 
 const PANEL_IDS: WorkspacePanelId[] = [
   'compose', 'cowriter', 'assemble', 'planner', 'beats', 'graph', 'cast', 'relmap',
   'timeline', 'arc', 'worldmap', 'grounding', 'canonview', 'references', 'style', 'canon', 'critic',
-  'threads', 'progress', 'quality', 'flywheel', 'motifs', 'conformance', 'settings',
+  'threads', 'progress', 'quality', 'polish', 'flywheel', 'motifs', 'conformance', 'settings',
 ];
 
 /** Narrow an untrusted string (e.g. a popout URL param) to a known panel id. */
@@ -45,7 +45,7 @@ export type WorkspaceLayout = {
 const DOCK_ORDER: WorkspacePanelId[] = [
   'compose', 'cowriter', 'assemble', 'planner', 'beats', 'graph', 'cast', 'relmap',
   'timeline', 'arc', 'worldmap', 'grounding', 'canonview', 'references', 'style', 'canon', 'critic',
-  'threads', 'progress', 'quality', 'flywheel', 'motifs', 'conformance', 'settings',
+  'threads', 'progress', 'quality', 'polish', 'flywheel', 'motifs', 'conformance', 'settings',
 ];
 
 export function defaultLayout(): WorkspaceLayout {

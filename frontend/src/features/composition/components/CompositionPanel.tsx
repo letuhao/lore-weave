@@ -48,6 +48,7 @@ import { CanonRulesPanel } from './CanonRulesPanel';
 import { CriticPanel } from './CriticPanel';
 import { ThreadsPanel } from './ThreadsPanel';
 import { QualityPanel } from './QualityPanel';
+import { PolishPanel } from './PolishPanel';
 import { ProgressPanel } from './ProgressPanel';
 import { StyleVoicePanel } from './StyleVoicePanel';
 import { CompositionSettingsView } from './CompositionSettingsView';
@@ -65,6 +66,9 @@ type Props = {
   // insert accepted prose into the editor; `meta.model` attributes the AI
   // provenance mark (T5.3) with the model that wrote it.
   onAccept: (text: string, meta?: { model?: string }) => void;
+  /** M6 Polish — replace the chapter doc with the self-heal-accepted text. Owned by
+   *  ChapterEditorPage (it holds the Tiptap editor ref). Omitted ⇒ Apply is a no-op. */
+  onApplyPolish?: (healedText: string) => void;
   /** T3.2: the active scene can be lifted to ChapterEditorPage so the editor's
    *  Selection Tools ground on it. Controlled-or-internal — omitted → own state. */
   sceneId?: string;
@@ -79,9 +83,9 @@ type Props = {
   soloPanel?: WorkspacePanelId;
 };
 
-type SubTab = 'compose' | 'cowriter' | 'assemble' | 'planner' | 'beats' | 'graph' | 'cast' | 'relmap' | 'timeline' | 'arc' | 'worldmap' | 'grounding' | 'canonview' | 'references' | 'style' | 'canon' | 'critic' | 'threads' | 'progress' | 'quality' | 'flywheel' | 'motifs' | 'conformance' | 'settings';
+type SubTab = 'compose' | 'cowriter' | 'assemble' | 'planner' | 'beats' | 'graph' | 'cast' | 'relmap' | 'timeline' | 'arc' | 'worldmap' | 'grounding' | 'canonview' | 'references' | 'style' | 'canon' | 'critic' | 'threads' | 'progress' | 'quality' | 'polish' | 'flywheel' | 'motifs' | 'conformance' | 'settings';
 
-export function CompositionPanel({ bookId, chapterId, token, onAccept, sceneId: sceneIdProp, onSceneChange, heatmapEnabled, onToggleHeatmap, soloPanel }: Props) {
+export function CompositionPanel({ bookId, chapterId, token, onAccept, onApplyPolish, sceneId: sceneIdProp, onSceneChange, heatmapEnabled, onToggleHeatmap, soloPanel }: Props) {
   const solo = soloPanel != null;
   const { t } = useTranslation('composition');
   const qc = useQueryClient();
@@ -436,7 +440,7 @@ export function CompositionPanel({ bookId, chapterId, token, onAccept, sceneId: 
 
   // The fixed sub-tab order (the `threads` gate applied) — shared by the flag-OFF
   // TabScrollStrip and the mobile switcher's flag-OFF list.
-  const stripIds: SubTab[] = ['compose', 'cowriter', 'assemble', 'planner', 'beats', 'graph', 'cast', 'relmap', 'timeline', 'arc', 'worldmap', 'grounding', 'canonview', 'references', 'style', 'canon', 'critic', ...(threadsEnabled ? ['threads' as const] : []), 'progress', 'quality', 'flywheel', 'motifs', 'conformance', 'settings'];
+  const stripIds: SubTab[] = ['compose', 'cowriter', 'assemble', 'planner', 'beats', 'graph', 'cast', 'relmap', 'timeline', 'arc', 'worldmap', 'grounding', 'canonview', 'references', 'style', 'canon', 'critic', ...(threadsEnabled ? ['threads' as const] : []), 'progress', 'quality', 'polish', 'flywheel', 'motifs', 'conformance', 'settings'];
   // M5a — the mobile switcher's panel list: the dock's visible ids when the windowing
   // flag is ON (respects hide + reorder + the threads gate), else the fixed strip order.
   const mobileIds: SubTab[] = dockOn ? (dockVisible as SubTab[]) : stripIds;
@@ -833,7 +837,19 @@ export function CompositionPanel({ bookId, chapterId, token, onAccept, sceneId: 
           <ProgressPanel projectId={work.project_id} bookId={bookId} settings={work.settings} token={token} />
         </DockSlot>
         <DockSlot {...slot('quality')}>
-          <QualityPanel projectId={work.project_id} token={token} />
+          <QualityPanel projectId={work.project_id} token={token} modelRef={effectiveModelRef} />
+        </DockSlot>
+        <DockSlot {...slot('polish')}>
+          {/* keyed by chapterId so proposals (offsets into THIS chapter's text) reset on a
+              chapter switch — else stale Ch-A edits would Apply onto Ch-B (corruption). */}
+          <PolishPanel
+            key={chapterId}
+            projectId={work.project_id}
+            chapterId={chapterId}
+            token={token}
+            modelRef={effectiveModelRef}
+            onApply={onApplyPolish ?? (() => {})}
+          />
         </DockSlot>
         <DockSlot {...slot('flywheel')}>
           <FlywheelPanel

@@ -33,6 +33,8 @@ __all__ = [
     "run_generate",
     "run_chapter_generate",
     "run_selection_edit",
+    "run_quality_report",
+    "run_promise_coverage",
 ]
 
 logger = logging.getLogger("composition.worker.operations")
@@ -98,9 +100,121 @@ async def run_decompose(
         min_scenes=input["min_scenes"],
         max_scenes=input["max_scenes"],
         source_language=input["source_language"],
+        thread_state=input.get("thread_state", False),  # Phase-0 slice-2 (default off ⇒ today's behavior)
         cancel_check=cancel_check,
     )
     return dataclasses.asdict(result)
+
+
+async def run_plan_pipeline(
+    pool: asyncpg.Pool, llm: LLMClient, *, user_id: str, input: dict[str, Any],
+    cancel_check: Callable[[], Awaitable[bool]] | None = None,
+) -> dict[str, Any]:
+    """Run the multi-step planning pipeline (Stages 0-6) from the persisted input. The
+    endpoint resolved book/chapters/genres into ``input``; the worker builds the
+    retriever (pool) + glossary/KAL singletons (internal-auth) and runs end-to-end.
+    Returns ``dataclasses.asdict(PipelineResult)`` for the poll."""
+    from app.clients.glossary_client import get_glossary_client
+    from app.clients.kal_client import get_kal_client
+    from app.db.repositories.motif_retrieve import MotifRetriever
+    from app.engine.plan import ChapterPlan
+    from app.engine.planning_pipeline import run_planning_pipeline
+
+    chapters = [ChapterPlan(**c) for c in input["chapters"]]
+    result = await run_planning_pipeline(
+        llm, MotifRetriever(pool), get_glossary_client(), get_kal_client(),
+        user_id=user_id, book_id=UUID(input["book_id"]), project_id=UUID(input["project_id"]),
+        premise=input["premise"], beats=input["beats"], chapters=chapters,
+        genre_tags=input.get("genre_tags", []),
+        model_source=input["model_source"], model_ref=input["model_ref"],
+        k_ceiling=input["k_ceiling"], high_threshold=input["high_threshold"],
+        min_scenes=input["min_scenes"], max_scenes=input["max_scenes"],
+        source_language=input["source_language"], self_heal=input.get("self_heal", True),
+        cancel_check=cancel_check,
+    )
+    return dataclasses.asdict(result)
+
+
+async def run_self_heal_propose(
+    llm: LLMClient, *, user_id: str, input: dict[str, Any],
+    cancel_check: Callable[[], Awaitable[bool]] | None = None,
+) -> dict[str, Any]:
+    """Run the cheap-stack self-heal in PROPOSE mode (M6 review-gate) on the persisted
+    chapter text + canon (resolved at the endpoint, which has the bearer/roster). Returns
+    the EditProposals + stats for the poll; the accepted subset is spliced + written by the
+    caller via the existing draft-write — this NEVER auto-writes (the human is the gate)."""
+    from app.engine.self_heal import propose_self_heal
+
+    text = input["chapter_text"]
+    proposals, report = await propose_self_heal(
+        llm, user_id=user_id,
+        model_source=input["model_source"], model_ref=input["model_ref"],
+        chapter=text, source_language=input.get("source_language", "auto"),
+        canon=input.get("canon") or None,
+        prefilter=bool(input.get("prefilter", True)),
+        # comparative re-ranker is OPT-IN (default OFF) — it costs one extra LLM call PER
+        # semantic proposal (pre-checking the ones it approves; it never drops). The FE exposes
+        # a toggle; without it the cheap one-call auditor runs. Legacy vote/verify knobs ignored.
+        rerank=bool(input.get("rerank", False)),
+        cancel_check=cancel_check,
+    )
+    return {
+        "proposals": [dataclasses.asdict(p) for p in proposals],
+        "source_text": text,
+        "chapter_id": input.get("chapter_id"),
+        "draft_version": input.get("draft_version"),
+        "stats": {
+            "findings": report.rejudge_before,
+            "located": report.located,
+            "edits": report.edits_applied,
+            "refuted": sum(1 for f in report.findings if f.skip_reason == "refuted"),
+        },
+    }
+
+
+async def run_quality_report(
+    llm: LLMClient, *, user_id: str, input: dict[str, Any],
+    cancel_check: Callable[[], Awaitable[bool]] | None = None,
+) -> dict[str, Any]:
+    """Run the read-only Quality Report over the persisted chapter text + canon (both
+    resolved at the endpoint). Surfaces the planner's advisory judges — the 4-dim critic
+    (coherence/voice/pacing/canon) + the chapter's narrative THREADS (raised/resolved,
+    reframed from the promise audit — the misleading per-chapter "dropped" is gone) — to
+    the author. Diagnostic only: NOT applyable edits, so there is nothing to write back."""
+    from app.engine.quality_report import build_quality_report
+
+    report = await build_quality_report(
+        llm, user_id=user_id,
+        model_source=input["model_source"], model_ref=input["model_ref"],
+        chapter=input["chapter_text"], source_language=input.get("source_language", "auto"),
+        canon=input.get("canon") or None,
+        cancel_check=cancel_check,
+    )
+    return {
+        "report": report,
+        "chapter_id": input.get("chapter_id"),
+        "draft_version": input.get("draft_version"),
+    }
+
+
+async def run_promise_coverage(
+    llm: LLMClient, *, user_id: str, input: dict[str, Any],
+    cancel_check: Callable[[], Awaitable[bool]] | None = None,
+) -> dict[str, Any]:
+    """Run the book-level promise coverage (Q3) over the persisted plan_text + book_text
+    (the endpoint rendered the outline plan + assembled every chapter's prose — it has the
+    bearer/pool). Derives the tracked-promise set from the SPEC and scores the book against
+    it. Diagnostic only — read-only counts/verdicts, nothing to write back."""
+    from app.engine.quality_report import build_promise_coverage
+
+    coverage = await build_promise_coverage(
+        llm, user_id=user_id,
+        model_source=input["model_source"], model_ref=input["model_ref"],
+        premise=input.get("premise", ""), plan_text=input.get("plan_text", ""),
+        book_text=input["book_text"], source_language=input.get("source_language", "auto"),
+        cancel_check=cancel_check,
+    )
+    return {"coverage": coverage, "chapters": input.get("chapters")}
 
 
 async def run_stitch(

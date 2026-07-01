@@ -74,6 +74,22 @@ class ScenePlan:
 
 
 @dataclass
+class ChapterExitState:
+    """Phase-0 slice-2 — the typed state a chapter leaves behind, emitted by the L2
+    call as a delta and threaded into the NEXT chapter so chapters don't repeat the
+    same arc (the event-sourcing refinement: carry the CHANGE, not the whole prose).
+    Three typed buckets (Character / World / Plot) kept as compact strings — typed
+    enough to steer, robust enough to parse without brittle cross-chapter merge."""
+    characters: str = ""        # per-entity emotion/goal/relationship/power at chapter end
+    world: str = ""             # location + time at chapter end
+    plot: str = ""              # open threads / secrets / what's now revealed
+    advances: list[str] = field(default_factory=list)  # NEW developments (global anti-repeat signal)
+
+    def is_empty(self) -> bool:
+        return not (self.characters or self.world or self.plot or self.advances)
+
+
+@dataclass
 class ChapterScenes:
     chapter: ChapterPlan
     scenes: list[ScenePlan]
@@ -84,6 +100,9 @@ class ChapterScenes:
     motif: Any = None                       # SelectedMotif | None  (kept loose to avoid an import cycle)
     binding: Any = None                     # MotifBinding | None
     application_rows: list[dict[str, Any]] = field(default_factory=list)
+    # ── Phase-0 slice-2 — the chapter's exit state (None when threading is off or the
+    # model omitted it); surfaced in the preview for inspection, not committed to nodes.
+    exit_state: ChapterExitState | None = None
 
 
 @dataclass
@@ -168,22 +187,105 @@ def parse_chapter_map(
 def build_scene_decompose_messages(
     premise: str, chapter: ChapterPlan, beat_purpose: str, cast_names: list[str],
     min_scenes: int, max_scenes: int, source_language: str,
+    story_so_far: str = "", emit_exit: bool = False,
+    *, tension_target: int | None = None,
+    motifs: list[dict[str, str]] | None = None,
+    new_intros: list[str] | None = None,
 ) -> tuple[str, str]:
-    """(system, user) for one chapter's scene decomposition."""
+    """(system, user) for one chapter's scene decomposition.
+
+    Phase-0 (scene connectivity): the scenes must form a CONNECTED, causal chain that
+    is ending-guided toward the chapter's target — not independent vignettes. The
+    enriched `intent` (goal·conflict·outcome + how it continues from the prior scene +
+    what changes + when) becomes the scene synopsis the drafter grounds on, so scenes
+    connect BY CONSTRUCTION rather than being stitched after the fact.
+
+    Phase-0 slice-2 (cross-chapter threading) — two INDEPENDENT switches:
+    - `emit_exit`: ask the chapter to emit its typed `chapter_exit` delta (on for EVERY
+      threaded chapter incl. chapter 1, so the chain has a starting state).
+    - `story_so_far`: the prior chapters' exit state + spent-developments list (empty for
+      chapter 1) — when present the chapter must CONTINUE FROM it and NOT repeat a spent arc.
+    """
+    threaded = bool(story_so_far.strip())
+    exit_clause = (
+        " Also emit `chapter_exit`: the typed state this chapter LEAVES BEHIND for the "
+        "next chapter — `characters` (each key figure's emotion/goal/relationship/power "
+        "at chapter end), `world` (location + time reached), `plot` (open threads / "
+        "secrets / what is now revealed), and `advances` (a short list of the NEW "
+        "developments this chapter introduced — used so later chapters do not repeat them)."
+    )
+    cross_clause = (
+        "\n- CONTINUE THE STORY: this is NOT chapter 1 — begin from the STORY SO FAR "
+        "state below and move it FORWARD. Do NOT re-stage an arc or development already "
+        "listed under ALREADY-USED DEVELOPMENTS (no re-doing the expulsion, the fall, the "
+        "grimoire-find, etc.); escalate to genuinely new ground."
+        if threaded else ""
+    )
     system = (
-        "You are a story architect breaking ONE chapter into scenes. For each scene "
-        "give a short title, a one-to-two sentence intent, a tension level from 0 "
-        "(calm/connective) to 100 (climactic/crisis), and which of the listed cast "
-        "members are actively present. Use ONLY cast names from the provided roster; "
-        "omit a scene's cast entry if none apply. Produce between "
-        f"{min_scenes} and {max_scenes} scenes that together fulfil the chapter "
-        'intent. Return ONLY a JSON object {"scenes":[{"title":str,"intent":str,'
-        '"tension":int,"present":[str]}]}.' + _lang_clause(source_language)
+        "You are a story architect breaking ONE chapter into a CONNECTED SEQUENCE of "
+        "scenes that read as one continuous chapter — NOT independent vignettes. For each "
+        "scene, write `intent` as 2-4 sentences covering: the scene GOAL, the CONFLICT/"
+        "obstacle, and the OUTCOME (what concretely CHANGES by the end). Enforce:\n"
+        "- CONTINUITY: each scene begins from the state the PREVIOUS scene left off "
+        "(emotional, physical, who-has-what, location); say how it follows (e.g. 'Picking "
+        "up from…', 'As a result…') and advance time/place deliberately with a marker "
+        "(e.g. 'moments later', 'by nightfall', 'after fleeing to the ridge').\n"
+        "- CAUSALITY: every major turn (a pursuit, an item appearing, a betrayal) MUST "
+        "have a cause set up in an earlier scene's outcome — never introduce it from "
+        "nowhere.\n"
+        "- NO REPETITION: do not re-explain facts already established by earlier scenes.\n"
+        "- ENDING-GUIDED: the scenes together START from the chapter's opening situation "
+        "and must END at the chapter's TARGET end-state (the CHAPTER INTENT below); each "
+        "scene moves the protagonist measurably closer to it."
+        + cross_clause + "\n"
+        "Also give a tension level 0 (calm/connective) to 100 (climactic/crisis) and which "
+        "roster cast are actively present (roster names ONLY; omit if none). Produce between "
+        f"{min_scenes} and {max_scenes} scenes. Return ONLY a JSON object "
+        '{"scenes":[{"title":str,"intent":str,"tension":int,"present":[str]}]'
+        + (',"chapter_exit":{"characters":str,"world":str,"plot":str,"advances":[str]}'
+           if emit_exit else "")
+        + "}."
+        + (exit_clause if emit_exit else "")
+        + _lang_clause(source_language)
     )
     roster = ", ".join(cast_names) if cast_names else "(none provided)"
+    so_far = (
+        f"STORY SO FAR (continue FROM this state; do NOT repeat its developments):\n"
+        f"{story_so_far.strip()}\n\n" if threaded else ""
+    )
+    # Stage-4 grounding directives — the planning-pipeline inputs (tension curve, selected
+    # motifs + their arc roles, scheduled new-character introductions) that make the scenes
+    # grounded rather than free-run. All optional → omitted blocks keep the prompt unchanged.
+    ground: list[str] = []
+    if tension_target is not None:
+        ground.append(
+            f"TENSION TARGET: shape this chapter's scenes toward a PEAK around "
+            f"{tension_target}/100 — do not exceed it; reserve 90-100 for the climax. "
+            "Set each scene's tension within this chapter's band."
+        )
+    if motifs:
+        names = "; ".join(
+            f"{m.get('name', '')}" + (f" ({m['arc_role']})" if m.get("arc_role") else "")
+            for m in motifs if m.get("name")
+        )
+        if names:
+            ground.append(
+                f"WEAVE THESE MOTIFS where they fit naturally (do not force every one into "
+                f"every scene): {names}."
+            )
+    if new_intros:
+        ground.append(
+            "INTRODUCE THIS CHAPTER (first on-page appearance — establish who they are and "
+            f"why they matter, at a fitting scene): {', '.join(new_intros)}."
+        )
+    grounding = ("\n\nGROUNDING DIRECTIVES:\n- " + "\n- ".join(ground)) if ground else ""
     user = (
-        f"PREMISE:\n{premise}\n\nCHAPTER INTENT:\n{chapter.intent or chapter.title}\n\n"
+        f"PREMISE:\n{premise}\n\n"
+        + so_far
+        + f"CHAPTER INTENT (= the TARGET end-state the scene chain must reach):\n"
+        f"{chapter.intent or chapter.title}\n\n"
         f"STRUCTURAL PURPOSE OF THIS CHAPTER:\n{beat_purpose}\n\nCAST ROSTER:\n{roster}"
+        + grounding
     )
     return system, user
 
@@ -246,6 +348,49 @@ def parse_scenes(
     return out
 
 
+def parse_chapter_exit(content: str) -> ChapterExitState | None:
+    """Tolerant parse of the L2 `chapter_exit` delta (Phase-0 slice-2). Returns None
+    when the model omitted it or the buckets are all empty — threading then carries
+    nothing for this chapter (degrade-safe, never raises)."""
+    obj = parse_critique_json(content) or {}
+    raw = obj.get("chapter_exit")
+    if not isinstance(raw, dict):
+        return None
+
+    def _s(key: str) -> str:
+        v = raw.get(key)
+        return v.strip() if isinstance(v, str) else ""
+
+    adv_raw = raw.get("advances")
+    advances = [a.strip() for a in adv_raw
+                if isinstance(a, str) and a.strip()] if isinstance(adv_raw, list) else []
+    exit_state = ChapterExitState(
+        characters=_s("characters"), world=_s("world"), plot=_s("plot"), advances=advances,
+    )
+    return None if exit_state.is_empty() else exit_state
+
+
+def render_story_so_far(
+    prev_exit: ChapterExitState | None, used_advances: list[str], *, max_advances: int = 24,
+) -> str:
+    """Build the threaded conditioning block: the PREVIOUS chapter's full exit state
+    (fine-grained backbone) + the cumulative list of developments already spent (the
+    coarse global anti-repeat signal). Empty string when there is nothing to thread
+    (chapter 1), which switches the L2 prompt back to the non-threaded shape."""
+    parts: list[str] = []
+    if prev_exit is not None and not prev_exit.is_empty():
+        if prev_exit.characters:
+            parts.append(f"Characters: {prev_exit.characters}")
+        if prev_exit.world:
+            parts.append(f"World: {prev_exit.world}")
+        if prev_exit.plot:
+            parts.append(f"Plot: {prev_exit.plot}")
+    if used_advances:
+        bullets = "\n".join(f"- {a}" for a in used_advances[-max_advances:])
+        parts.append(f"ALREADY-USED DEVELOPMENTS (do NOT repeat these):\n{bullets}")
+    return "\n".join(parts)
+
+
 # ── orchestration ──────────────────────────────────────────────────────
 
 async def _llm_json(
@@ -284,7 +429,13 @@ async def decompose(
     cast: list[dict[str, Any]],
     k_ceiling: int, high_threshold: int, min_scenes: int, max_scenes: int,
     source_language: str = "auto", trace_id: str | None = None,
-    l1_max_tokens: int = 2048, l2_max_tokens: int = 1536,
+    l1_max_tokens: int = 2048, l2_max_tokens: int = 2560,  # Phase-0: richer chained intents need more budget
+    # ── Phase-0 slice-2 — cross-chapter sequential threading. OFF ⇒ today's concurrent
+    # invent fan-out, byte-identical. ON ⇒ the invent path runs SEQUENTIALLY in chapter
+    # order, threading each chapter's typed exit-state into the next so chapters don't
+    # repeat the same arc. (Currently wired for the non-motif path; the motif path keeps
+    # its own prev_effects carry — combined threading is a follow-up.)
+    thread_state: bool = False,
     # ── W2 motif select+bind (all OPTIONAL → strict back-compat: motifs disabled
     # ⇒ the invent path runs VERBATIM; the worker/router that don't pass these get
     # exactly today's behavior). motifs_enabled gates the whole new branch.
@@ -328,6 +479,12 @@ async def decompose(
     if motifs_enabled and not motif_active:
         logger.warning("decompose: motifs_enabled but retriever/book/project missing "
                        "→ invent path (no motif binding this run)")
+    if thread_state and motif_active:
+        # Both flags on: the motif path keeps its own prev_effects carry, so cross-chapter
+        # typed-state threading is NOT applied here (combined threading is a follow-up).
+        # Warn so the no-op is observable rather than a silent surprise.
+        logger.warning("decompose: thread_state + motifs both active → typed-state threading "
+                       "skipped on the motif path (motif prev_effects carry used instead)")
 
     # L1 — map beats onto existing chapters.
     mapped, unmapped = chapters, []
@@ -343,14 +500,20 @@ async def decompose(
     # L2 — decompose each chapter into scenes (bounded fan-out).
     sem = asyncio.Semaphore(_L2_CONCURRENCY)
 
-    async def _invent_chapter(ch: ChapterPlan, *, warning: str | None = None) -> ChapterScenes:
-        """Today's invent path VERBATIM (used on a no-match fallback OR motifs off).
+    async def _invent_chapter(
+        ch: ChapterPlan, *, warning: str | None = None,
+        story_so_far: str = "", emit_exit: bool = False,
+    ) -> ChapterScenes:
+        """Today's invent path (used on a no-match fallback OR motifs off).
         `warning` overrides the default warning to record WHY the motif path was not
-        taken (the F1 fallback tokens) while still producing invented scenes."""
+        taken (the F1 fallback tokens) while still producing invented scenes.
+        Phase-0 slice-2: `story_so_far` threads the prior chapters' exit-state in
+        (continue-from conditioning); `emit_exit` requests + parses this chapter's own
+        `chapter_exit` delta onto ChapterScenes.exit_state."""
         async with sem:
             sys2, usr2 = build_scene_decompose_messages(
                 premise, ch, beat_purpose.get(ch.beat_role, "") if ch.beat_role else "",
-                cast_names, min_scenes, max_scenes, source_language,
+                cast_names, min_scenes, max_scenes, source_language, story_so_far, emit_exit,
             )
             c = await _llm_json(llm, user_id=user_id, model_source=model_source,
                                 model_ref=model_ref, system=sys2, user=usr2,
@@ -364,7 +527,27 @@ async def decompose(
                               high_threshold=high_threshold)
         # a motif-fallback token wins; else the existing no-scenes token.
         eff_warning = warning if warning is not None else (None if scenes else "no_scenes_parsed")
-        return ChapterScenes(chapter=ch, scenes=scenes, warning=eff_warning)
+        exit_state = parse_chapter_exit(c) if emit_exit else None
+        return ChapterScenes(chapter=ch, scenes=scenes, warning=eff_warning,
+                             exit_state=exit_state)
+
+    # Phase-0 slice-2 — cross-chapter threading (non-motif path). Run sequentially so
+    # chapter N is conditioned on the exit-state of chapters 1..N-1, accumulating the
+    # typed exit + the global list of spent developments. Chapter 1 threads nothing
+    # (empty story_so_far ⇒ the L2 prompt falls back to its non-threaded shape).
+    if not motif_active and thread_state:
+        threaded: list[ChapterScenes] = []
+        prev_exit: ChapterExitState | None = None
+        used_advances: list[str] = []
+        for ch in mapped:
+            so_far = render_story_so_far(prev_exit, used_advances)
+            cs = await _invent_chapter(ch, story_so_far=so_far, emit_exit=True)
+            threaded.append(cs)
+            if cs.exit_state is not None:
+                prev_exit = cs.exit_state
+                used_advances.extend(cs.exit_state.advances)
+        return DecomposeResult(arc_title=arc_title, chapters=threaded,
+                               unmapped_beats=unmapped)
 
     # The motif path mutates a carry of the previously-bound motif's effects, for
     # legal-succession. The L2 fan-out is concurrent; to keep the prev-effects carry
