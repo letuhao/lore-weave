@@ -30,11 +30,28 @@ from app.db.repositories.motif_repo import MotifRepo
 from app.db.repositories.motif_retrieve import MotifRetriever
 from app.db.repositories.narrative_thread import NarrativeThreadRepo
 from app.db.repositories.outline import OutlineRepo
+from app.db.repositories.plan_runs import PlanRunsRepo
 from app.db.repositories.references import ReferencesRepo
 from app.db.repositories.scene_links import SceneLinksRepo
 from app.db.repositories.structure_templates import StructureTemplatesRepo
 from app.db.repositories.style_voice import StyleProfileRepo, VoiceProfileRepo
 from app.db.repositories.works import WorksRepo
+from app.services.plan_forge_service import PlanForgeService
+
+
+async def get_plan_runs_repo() -> PlanRunsRepo:
+    return PlanRunsRepo(get_pool())
+
+
+async def get_plan_forge_service() -> PlanForgeService:
+    from app.clients.llm_client import get_llm_client
+
+    return PlanForgeService(
+        PlanRunsRepo(get_pool()),
+        GenerationJobsRepo(get_pool()),
+        WorksRepo(get_pool()),
+        llm=get_llm_client(),
+    )
 
 
 async def get_works_repo() -> WorksRepo:

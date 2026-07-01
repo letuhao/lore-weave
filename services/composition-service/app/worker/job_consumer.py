@@ -57,6 +57,34 @@ _BUSINESS_ERRORS = (UnsupportedOperationError, ValueError, KeyError, PlanForgeLL
 _ACTIVE = ("pending", "running")
 
 
+async def _finalize_plan_forge_job(
+    pool: asyncpg.Pool, job, result: dict, terminal_status: str,
+) -> None:
+    run_id_raw = (job.input or {}).get("run_id")
+    book_id_raw = (job.input or {}).get("book_id")
+    if not run_id_raw or not book_id_raw:
+        return
+    op = (job.input or {}).get("worker_op") or job.operation
+    if op not in ("plan_forge_propose", "plan_forge_refine"):
+        return
+    from app.db.repositories.plan_runs import PlanRunsRepo
+    from app.db.repositories.works import WorksRepo
+    from app.services.plan_forge_service import PlanForgeService
+
+    svc = PlanForgeService(
+        PlanRunsRepo(pool), GenerationJobsRepo(pool), WorksRepo(pool),
+    )
+    job_for_apply = job
+    if terminal_status == "failed":
+        job_for_apply = job.model_copy(update={"status": "failed", "result": result})
+    else:
+        job_for_apply = job.model_copy(update={"status": "completed", "result": result})
+    await svc.apply_job_outcome(
+        job.user_id, UUID(str(book_id_raw)), UUID(str(run_id_raw)),
+        job_for_apply, result,
+    )
+
+
 async def run_job(
     pool: asyncpg.Pool, llm: LLMClient, *, job_id: str, user_id: str
 ) -> str:
@@ -96,6 +124,7 @@ async def run_job(
             uid, UUID(job_id), "failed",
             result={"error": str(exc)},
         )
+        await _finalize_plan_forge_job(pool, job, {"error": str(exc)}, "failed")
         return "failed"
 
     # W5 (D-MOTIF-CONFORMANCE-ENGINE-WIRING): an op may return a critic-merge patch
@@ -106,6 +135,7 @@ async def run_job(
     await repo.update_status(
         uid, UUID(job_id), "completed", result=result, critic=critic_patch,
     )
+    await _finalize_plan_forge_job(pool, job, result, "completed")
     return "completed"
 
 

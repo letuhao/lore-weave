@@ -38,7 +38,7 @@ from app.middleware.trace_id import TraceIdMiddleware
 from app.routers import (
     actions, approve, arc, canon, conformance, engine, grounding, health, import_source,
     internal_eval, internal_job_control, metrics, motif, motif_sync, narrative_threads,
-    outline, ping, plan, progress, prose, references, style_voice, works,
+    outline, ping, plan, plan_forge, progress, prose, references, style_voice, works,
 )
 
 logger = logging.getLogger(__name__)
@@ -188,6 +188,7 @@ app.include_router(import_source.router)  # W9 — import_source CRUD (per-user 
 app.include_router(engine.router)
 app.include_router(outline.router)
 app.include_router(plan.router)
+app.include_router(plan_forge.router)
 app.include_router(internal_eval.router)
 app.include_router(internal_job_control.router)  # Unified Job Control Plane P3
 app.include_router(canon.router)

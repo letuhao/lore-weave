@@ -481,6 +481,39 @@ class ImportSource(BaseModel):
     created_at: datetime | None = None
 
 
+PlanRunStatus = Literal["pending", "proposed", "checkpoint", "validated", "compiled", "failed"]
+PlanRunMode = Literal["rules", "llm"]
+PlanArtifactKind = Literal[
+    "document", "analyze", "spec", "graph", "package", "llm_io", "validation_report",
+]
+
+
+class PlanRun(BaseModel):
+    id: UUID
+    owner_user_id: UUID
+    book_id: UUID
+    work_id: UUID | None = None
+    status: PlanRunStatus = "pending"
+    mode: PlanRunMode
+    model_ref: UUID | None = None
+    source_checksum: str = ""
+    source_markdown: str = ""
+    active_job_id: UUID | None = None
+    error_detail: str | None = None
+    checkpoint_state: dict[str, Any] = Field(default_factory=dict)
+    created_at: datetime | None = None
+    updated_at: datetime | None = None
+
+
+class PlanArtifact(BaseModel):
+    id: UUID
+    run_id: UUID
+    owner_user_id: UUID
+    kind: PlanArtifactKind
+    content: dict[str, Any]
+    created_at: datetime | None = None
+
+
 # ── retrieval result (the FROZEN contract W3 produces / W2 + the MCP suggest consume)
 class MotifCandidate(BaseModel):
     motif: Motif

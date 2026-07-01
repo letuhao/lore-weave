@@ -929,6 +929,47 @@ BEGIN
       FOR EACH ROW EXECUTE FUNCTION arc_template_publish_strip();
   END IF;
 END $$;
+
+-- ── plan_run / plan_artifact (PlanForge M3): per-user/per-book planning runs.
+-- Tenancy: every query filters owner_user_id + book_id; E0 grants gate HTTP.
+CREATE TABLE IF NOT EXISTS plan_run (
+  id                UUID PRIMARY KEY DEFAULT uuidv7(),
+  owner_user_id     UUID NOT NULL,
+  book_id           UUID NOT NULL,
+  work_id           UUID,
+  status            TEXT NOT NULL DEFAULT 'pending',
+  mode              TEXT NOT NULL,
+  model_ref         UUID,
+  source_checksum   TEXT NOT NULL DEFAULT '',
+  source_markdown   TEXT NOT NULL DEFAULT '',
+  active_job_id     UUID,
+  error_detail      TEXT,
+  checkpoint_state  JSONB NOT NULL DEFAULT '{}'::jsonb,
+  created_at        TIMESTAMPTZ NOT NULL DEFAULT now(),
+  updated_at        TIMESTAMPTZ NOT NULL DEFAULT now(),
+  CONSTRAINT plan_run_status_chk CHECK (
+    status IN ('pending', 'proposed', 'checkpoint', 'validated', 'compiled', 'failed')
+  ),
+  CONSTRAINT plan_run_mode_chk CHECK (mode IN ('rules', 'llm'))
+);
+CREATE INDEX IF NOT EXISTS idx_plan_run_owner_book
+  ON plan_run(owner_user_id, book_id, created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_plan_run_checksum
+  ON plan_run(owner_user_id, book_id, source_checksum);
+
+CREATE TABLE IF NOT EXISTS plan_artifact (
+  id              UUID PRIMARY KEY DEFAULT uuidv7(),
+  run_id          UUID NOT NULL REFERENCES plan_run(id) ON DELETE CASCADE,
+  owner_user_id   UUID NOT NULL,
+  kind            TEXT NOT NULL,
+  content         JSONB NOT NULL,
+  created_at      TIMESTAMPTZ NOT NULL DEFAULT now(),
+  CONSTRAINT plan_artifact_kind_chk CHECK (
+    kind IN ('document', 'analyze', 'spec', 'graph', 'package', 'llm_io', 'validation_report')
+  )
+);
+CREATE INDEX IF NOT EXISTS idx_plan_artifact_run_kind
+  ON plan_artifact(run_id, kind, created_at DESC);
 """
 
 
