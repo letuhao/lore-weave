@@ -31,6 +31,19 @@ export function QuickOpen({ open, onClose, bookId, token, onResolve }: Props) {
     sublabel: r.path.length ? r.path.join(' › ') : undefined,
     icon: <span className={cn('h-1.5 w-1.5 rounded-full',
       r.kind === 'arc' ? 'bg-accent' : r.kind === 'scene' ? 'bg-border' : 'bg-muted-foreground/60')} />,
+    meta: (
+      <>
+        {r.number != null && <span className="font-mono text-[10px] text-muted-foreground/50">{String(r.number).padStart(4, '0')}</span>}
+        {r.status && (
+          <span className={cn('font-mono text-[9px] uppercase',
+            r.status === 'done' ? 'text-success'
+              : r.status === 'drafting' ? 'text-warning'
+              : 'text-muted-foreground/60')}>
+            {r.status}
+          </span>
+        )}
+      </>
+    ),
   })), [jump.results]);
 
   const onSelect = (e: PaletteEntry) => {

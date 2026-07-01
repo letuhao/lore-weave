@@ -18,14 +18,20 @@ describe('buildStudioCommands', () => {
     expect(cmds.some((x) => x.group === 'Panels')).toBe(false);
   });
 
-  it('adds one "Studio: Open …" per registered tool, label FROM the registration', () => {
-    const tool: StudioToolRegistration = { panelId: 'cast', label: 'Cast', paletteCommand: 'Studio: Open Cast', commandId: 'studio.openPanel.cast' };
+  it('adds one "Studio: Open …" per registered tool, label + description FROM the registration', () => {
+    const tool: StudioToolRegistration = { panelId: 'cast', label: 'Cast', paletteCommand: 'Studio: Open Cast', commandId: 'studio.openPanel.cast', description: 'Cast & relationships' };
     const onOpenPanel = vi.fn();
     const cmds = buildStudioCommands({ chrome: chrome(), tools: [tool], onOpenPanel, onOpenQuickOpen: vi.fn(), t });
     const panel = cmds.find((x) => x.id === 'studio.openPanel.cast');
     expect(panel?.label).toBe('Studio: Open Cast');
+    expect(panel?.description).toBe('Cast & relationships');
     panel?.run();
     expect(onOpenPanel).toHaveBeenCalledWith('cast');
+  });
+
+  it('chrome commands carry a description (the palette sublabel)', () => {
+    const cmds = buildStudioCommands({ chrome: chrome(), tools: [], onOpenPanel: vi.fn(), onOpenQuickOpen: vi.fn(), t });
+    expect(cmds.find((x) => x.id === 'view.toggleBottom')?.description).toBe('Jobs · Generation · Issues');
   });
 
   it('command run() dispatches the right chrome action', () => {

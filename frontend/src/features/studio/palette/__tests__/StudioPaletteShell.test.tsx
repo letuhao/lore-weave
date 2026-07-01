@@ -1,6 +1,6 @@
 import { fireEvent, render, screen } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
-import { StudioPaletteShell } from '../StudioPaletteShell';
+import { StudioPaletteShell, highlightMatch } from '../StudioPaletteShell';
 import type { PaletteEntry } from '../types';
 
 const entries: PaletteEntry[] = [
@@ -74,6 +74,24 @@ describe('StudioPaletteShell', () => {
     const { onQueryChange } = setup();
     fireEvent.change(screen.getByTestId('palette-input'), { target: { value: 'be' } });
     expect(onQueryChange).toHaveBeenCalledWith('be');
+  });
+
+  it('highlightMatch underlines the matched substring, else returns the plain label', () => {
+    const { container } = render(<div>{highlightMatch('Toggle Bottom Panel', 'bottom')}</div>);
+    const mark = container.querySelector('span.underline');
+    expect(mark?.textContent).toBe('Bottom'); // original casing preserved
+    // no query / no match → no underline span
+    expect(render(<div>{highlightMatch('Alpha', '')}</div>).container.querySelector('span.underline')).toBeNull();
+    expect(render(<div>{highlightMatch('Alpha', 'zzz')}</div>).container.querySelector('span.underline')).toBeNull();
+  });
+
+  it('renders the meta slot (Quick Open trailing number/status)', () => {
+    const withMeta: PaletteEntry[] = [{ id: 'x', label: 'Scene', meta: <span data-testid="m">0007</span> }];
+    render(
+      <StudioPaletteShell open onClose={vi.fn()} query="" onQueryChange={vi.fn()}
+        placeholder="" entries={withMeta} onSelect={vi.fn()} emptyText="none" />,
+    );
+    expect(screen.getByTestId('m').textContent).toBe('0007');
   });
 
   it('resets the highlight to the top when reopened (even with an unchanged empty query)', () => {

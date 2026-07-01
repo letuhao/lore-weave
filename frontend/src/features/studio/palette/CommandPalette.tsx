@@ -1,12 +1,12 @@
 // #06b Command Palette (⌘⇧P) — runs studio actions: switch view, toggle chrome, open a dock
 // tool. Commands = static chrome (View: …) + one per registered dock tool (Panels group, empty
-// until panels register). Reuses StudioPaletteShell.
+// until panels register). Empty query surfaces a Recent group (last 5 run). Reuses StudioPaletteShell.
 import { useEffect, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useRegisteredTools } from '../host/StudioHostProvider';
 import type { ActivityView } from '../types';
 import { StudioPaletteShell } from './StudioPaletteShell';
-import { buildStudioCommands, filterCommands } from './useStudioCommands';
+import { buildStudioCommands, filterCommands, type StudioCommand } from './useStudioCommands';
 import type { PaletteEntry } from './types';
 
 interface Props {
@@ -21,23 +21,48 @@ interface Props {
   onOpenPanel: (panelId: string) => void;
 }
 
+const RECENT_MAX = 5;
+const RECENT_PREFIX = 'recent:';
+
+const toEntry = (c: StudioCommand, idPrefix = ''): PaletteEntry => ({
+  id: `${idPrefix}${c.id}`, label: c.label, sublabel: c.description, group: c.group,
+});
+
 export function CommandPalette({ open, onClose, chrome, onOpenQuickOpen, onOpenPanel }: Props) {
   const { t } = useTranslation('studio');
   const [query, setQuery] = useState('');
+  const [recentIds, setRecentIds] = useState<string[]>([]);
   const tools = useRegisteredTools();
 
-  // Fresh query each time the palette opens.
   useEffect(() => { if (open) setQuery(''); }, [open]);
 
   const commands = useMemo(
     () => buildStudioCommands({ chrome, tools, onOpenPanel, onOpenQuickOpen, t }),
     [chrome, tools, onOpenPanel, onOpenQuickOpen, t],
   );
-  const filtered = useMemo(() => filterCommands(commands, query), [commands, query]);
-  const entries: PaletteEntry[] = filtered.map((c) => ({ id: c.id, label: c.label, group: c.group }));
+
+  const entries: PaletteEntry[] = useMemo(() => {
+    if (query.trim()) {
+      return filterCommands(commands, query).map((c) => toEntry(c));
+    }
+    // Empty query → a Recent group (last-run, resolved against the live command set) on top of
+    // the full grouped list. Recent entries carry a prefixed id so they don't collide with the
+    // same command in its own group.
+    const recentGroup = t('palette.group.recent', { defaultValue: 'Recent' });
+    const recent = recentIds
+      .map((id) => commands.find((c) => c.id === id))
+      .filter((c): c is StudioCommand => !!c)
+      .map((c) => ({ ...toEntry(c, RECENT_PREFIX), group: recentGroup }));
+    return [...recent, ...commands.map((c) => toEntry(c))];
+  }, [commands, query, recentIds, t]);
 
   const onSelect = (e: PaletteEntry) => {
-    filtered.find((c) => c.id === e.id)?.run();
+    const id = e.id.startsWith(RECENT_PREFIX) ? e.id.slice(RECENT_PREFIX.length) : e.id;
+    const command = commands.find((c) => c.id === id);
+    if (command) {
+      setRecentIds((prev) => [id, ...prev.filter((x) => x !== id)].slice(0, RECENT_MAX));
+      command.run();
+    }
     onClose();
   };
 

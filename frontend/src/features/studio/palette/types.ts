@@ -7,6 +7,7 @@ export interface PaletteEntry {
   id: string;
   label: string;
   sublabel?: string;   // breadcrumb (Quick Open) / description (Command Palette)
+  meta?: ReactNode;    // right-aligned trailing slot (Quick Open: chapter number + status badge)
   group?: string;      // group header label (Command Palette)
   icon?: ReactNode;
 }

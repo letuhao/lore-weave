@@ -4,9 +4,25 @@
 //
 // Not virtualized: both callers cap their lists (Quick Open ≤30 server hits, Command Palette a
 // bounded command set), so the >50-row virtualization the spec allows for isn't needed yet.
-import { useEffect, useLayoutEffect, useRef, useState } from 'react';
+import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from 'react';
 import { cn } from '@/lib/utils';
 import type { PaletteEntry } from './types';
+
+/** Underline the (case-insensitive) query substring in a label — the VS Code match hint.
+ * First occurrence only; no-match → the plain label. */
+export function highlightMatch(label: string, query: string): ReactNode {
+  const q = query.trim();
+  if (!q) return label;
+  const i = label.toLowerCase().indexOf(q.toLowerCase());
+  if (i < 0) return label;
+  return (
+    <>
+      {label.slice(0, i)}
+      <span className="text-primary underline decoration-primary/60 underline-offset-2">{label.slice(i, i + q.length)}</span>
+      {label.slice(i + q.length)}
+    </>
+  );
+}
 
 interface Props {
   open: boolean;
@@ -116,10 +132,11 @@ export function StudioPaletteShell({
                     )}
                   >
                     {entry.icon && <span className="flex h-4 w-4 flex-shrink-0 items-center justify-center">{entry.icon}</span>}
-                    <span className="min-w-0 flex-1 truncate">{entry.label}</span>
+                    <span className="min-w-0 flex-1 truncate">{highlightMatch(entry.label, query)}</span>
                     {entry.sublabel && (
-                      <span className="flex-shrink-0 truncate text-[11px] text-muted-foreground">{entry.sublabel}</span>
+                      <span className="max-w-[45%] flex-shrink truncate text-[11px] text-muted-foreground">{entry.sublabel}</span>
                     )}
+                    {entry.meta && <span className="flex flex-shrink-0 items-center gap-1.5">{entry.meta}</span>}
                   </button>
                 </div>
               );

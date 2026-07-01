@@ -31,7 +31,9 @@ export function StudioStatusBar({ bookLanguage, bottomOpen, onToggleBottom }: Pr
       <div className="flex-1" />
       <span>{t('status.wordsPlaceholder', { defaultValue: '— words' })}</span>
       <span>{t('status.modelPlaceholder', { defaultValue: 'no model' })}</span>
-      <span className="font-mono">⌘P</span>
+      {/* Palette hints (VS Code): ⌘P Quick Open · ⌘⇧P Command Palette. */}
+      <span className="font-mono" title={t('palette.quickOpenTitle', { defaultValue: 'Go to chapter, scene, arc' })}>⌘P</span>
+      <span className="font-mono" title={t('palette.commandPlaceholder', { defaultValue: 'Type a command…' })}>⌘⇧P</span>
     </div>
   );
 }

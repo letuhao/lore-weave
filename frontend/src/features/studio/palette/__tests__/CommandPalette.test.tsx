@@ -38,4 +38,18 @@ describe('CommandPalette', () => {
     fireEvent.click(screen.getByTestId('palette-entry-view.goToChapter'));
     expect(onOpenQuickOpen).toHaveBeenCalledOnce();
   });
+
+  it('renders a command description as the muted sublabel (i18n key from the mock)', () => {
+    wrap(<CommandPalette open onClose={vi.fn()} chrome={chrome()} onOpenQuickOpen={vi.fn()} onOpenPanel={vi.fn()} />);
+    expect(screen.getByTestId('palette-entry-view.toggleBottom').textContent).toContain('palette.desc.toggleBottom');
+  });
+
+  it('a run command surfaces in a Recent group on the (empty-query) list', () => {
+    wrap(<CommandPalette open onClose={vi.fn()} chrome={chrome()} onOpenQuickOpen={vi.fn()} onOpenPanel={vi.fn()} />);
+    // no Recent entry before anything runs
+    expect(screen.queryByTestId('palette-entry-recent:view.toggleBottom')).toBeNull();
+    fireEvent.click(screen.getByTestId('palette-entry-view.toggleBottom'));
+    // now it appears under Recent (prefixed id so it doesn't collide with its own group)
+    expect(screen.getByTestId('palette-entry-recent:view.toggleBottom')).toBeTruthy();
+  });
 });

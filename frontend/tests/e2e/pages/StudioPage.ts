@@ -9,6 +9,10 @@ export class StudioPage {
   readonly dockview: Locator;
   readonly bottom: Locator;
   readonly toggleBottom: Locator;
+  // Palettes (#06a / #06b) + the shared shell input.
+  readonly quickOpen: Locator;
+  readonly commandPaletteModal: Locator;
+  readonly paletteInput: Locator;
 
   constructor(page: Page) {
     this.page = page;
@@ -19,6 +23,9 @@ export class StudioPage {
     this.dockview = page.getByTestId('studio-dock');
     this.bottom = page.getByTestId('studio-bottom');
     this.toggleBottom = page.getByTestId('studio-toggle-bottom');
+    this.quickOpen = page.getByTestId('quick-open');
+    this.commandPaletteModal = page.getByTestId('command-palette');
+    this.paletteInput = page.getByTestId('palette-input');
   }
 
   activity(view: ActivityView): Locator {

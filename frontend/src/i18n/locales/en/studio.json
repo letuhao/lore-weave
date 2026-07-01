@@ -14,7 +14,7 @@
     "quickOpenHint": "Type to search chapters, scenes & arcs",
     "commandPlaceholder": "Type a command…",
     "noCommands": "No matching commands.",
-    "group": { "panels": "Panels", "navigate": "Navigate", "layout": "Layout" },
+    "group": { "recent": "Recent", "panels": "Panels", "navigate": "Navigate", "layout": "Layout" },
     "cmd": {
       "showManuscript": "View: Show Manuscript",
       "showBible": "View: Show Story Bible",
@@ -23,6 +23,15 @@
       "goToChapter": "View: Go to Chapter…",
       "toggleSidebar": "View: Toggle Side Bar",
       "toggleBottom": "View: Toggle Bottom Panel"
+    },
+    "desc": {
+      "showManuscript": "Chapters & scenes",
+      "showBible": "Cast, world & canon",
+      "showSearch": "Full-text & semantic",
+      "showQuality": "Critic, promises & canon",
+      "goToChapter": "Open Quick Open",
+      "toggleSidebar": "Show or hide the side bar",
+      "toggleBottom": "Jobs · Generation · Issues"
     }
   },
   "activity": {

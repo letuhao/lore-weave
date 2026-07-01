@@ -11,6 +11,7 @@ export interface StudioToolRegistration {
   label: string;
   paletteCommand: string;   // "Studio: Open Cast" (#06b label — comes from here, never hardcoded)
   commandId: string;        // "studio.openPanel.cast"
+  description?: string;      // #06b muted subtitle ("Cast & relationships")
   mcpToolPrefixes?: string[];
   mcpTools?: string[];
   frontendTools?: string[];

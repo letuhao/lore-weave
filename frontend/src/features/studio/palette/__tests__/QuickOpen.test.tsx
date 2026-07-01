@@ -25,6 +25,16 @@ describe('QuickOpen', () => {
     expect(hit.textContent).toContain('Arc I › Ch 0003');
   });
 
+  it('shows a chapter number (zero-padded) + status badge in the meta slot', () => {
+    jump.value = base({
+      results: [{ id: 'ch7', kind: 'chapter', title: 'Huyết chiến', number: 7, status: 'done', chapterId: 'ch7', path: ['Arc I'] }],
+    });
+    render(<QuickOpen open onClose={vi.fn()} bookId="b1" token="t" onResolve={vi.fn()} />);
+    const hit = screen.getByTestId('palette-entry-ch7').textContent!;
+    expect(hit).toContain('0007');
+    expect(hit).toContain('done');
+  });
+
   it('selecting a hit resolves it and closes', () => {
     jump.value = base();
     const onResolve = vi.fn();

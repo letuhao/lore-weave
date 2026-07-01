@@ -14,7 +14,7 @@
     "quickOpenHint": "輸入以搜尋章節、場景與卷",
     "commandPlaceholder": "輸入命令…",
     "noCommands": "沒有符合的命令。",
-    "group": { "panels": "面板", "navigate": "導覽", "layout": "版面" },
+    "group": { "recent": "最近", "panels": "面板", "navigate": "導覽", "layout": "版面" },
     "cmd": {
       "showManuscript": "檢視：手稿",
       "showBible": "檢視：故事聖經",
@@ -23,6 +23,15 @@
       "goToChapter": "檢視：前往章節…",
       "toggleSidebar": "檢視：切換側邊欄",
       "toggleBottom": "檢視：切換底部面板"
+    },
+    "desc": {
+      "showManuscript": "章節與場景",
+      "showBible": "角色、世界與 canon",
+      "showSearch": "全文與語意",
+      "showQuality": "評論、伏筆與 canon",
+      "goToChapter": "開啟 Quick Open",
+      "toggleSidebar": "顯示或隱藏側邊欄",
+      "toggleBottom": "工作 · 生成 · 問題"
     }
   },
   "activity": {

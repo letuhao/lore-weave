@@ -14,7 +14,7 @@
     "quickOpenHint": "Gõ để tìm chương, cảnh & hồi",
     "commandPlaceholder": "Nhập một lệnh…",
     "noCommands": "Không có lệnh phù hợp.",
-    "group": { "panels": "Bảng công cụ", "navigate": "Điều hướng", "layout": "Bố cục" },
+    "group": { "recent": "Gần đây", "panels": "Bảng công cụ", "navigate": "Điều hướng", "layout": "Bố cục" },
     "cmd": {
       "showManuscript": "Xem: Bản thảo",
       "showBible": "Xem: Story Bible",
@@ -23,6 +23,15 @@
       "goToChapter": "Xem: Đến chương…",
       "toggleSidebar": "Xem: Bật/tắt thanh bên",
       "toggleBottom": "Xem: Bật/tắt bảng dưới"
+    },
+    "desc": {
+      "showManuscript": "Chương & cảnh",
+      "showBible": "Nhân vật, thế giới & canon",
+      "showSearch": "Toàn văn & ngữ nghĩa",
+      "showQuality": "Critic, lời hứa & canon",
+      "goToChapter": "Mở Quick Open",
+      "toggleSidebar": "Hiện/ẩn thanh bên",
+      "toggleBottom": "Jobs · Sinh · Vấn đề"
     }
   },
   "activity": {
