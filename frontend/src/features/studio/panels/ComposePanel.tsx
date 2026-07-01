@@ -11,6 +11,7 @@ import { useTranslation } from 'react-i18next';
 import type { IDockviewPanelProps } from 'dockview-react';
 import { Chat } from '@/features/chat/Chat';
 import { useStudioHost, useRegisterStudioTool } from '../host/StudioHostProvider';
+import { StudioAgentBridge } from '../agent/StudioAgentBridge';
 import type { StudioToolRegistration } from '../host/types';
 
 export function ComposePanel(_props: IDockviewPanelProps) {
@@ -32,7 +33,9 @@ export function ComposePanel(_props: IDockviewPanelProps) {
 
   return (
     <div data-testid="studio-compose-panel" className="h-full min-h-0">
-      <Chat bookId={bookId} windowingEnabled className="h-full" />
+      {/* The agent↔GUI bridge (Lane A/B #09) rides the actionBar slot — Chat renders it INSIDE its
+          providers, so it reads the live chat stream (useChatStream). It renders nothing visible. */}
+      <Chat bookId={bookId} windowingEnabled actionBar={<StudioAgentBridge />} className="h-full" />
     </div>
   );
 }
