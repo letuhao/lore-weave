@@ -110,6 +110,11 @@ export function App() {
           {/* Translation review — full screen, auth required */}
           <Route path="/books/:bookId/chapters/:chapterId/review/:versionId" element={<RequireAuth><TranslationReviewPage /></RequireAuth>} />
 
+          {/* Writing Studio (v2) — book-level VS Code-style docking workspace (dockview).
+              Full screen, auth required — deliberately NOT under EditorLayout: the studio has
+              its own Activity Bar chrome, so the app sidebar would be a redundant second rail. */}
+          <Route path="/books/:bookId/studio" element={<RequireAuth><WritingStudioPage /></RequireAuth>} />
+
           {/* Public reader — unlisted/public books readable without login */}
           <Route element={<FullBleedLayout />}>
             <Route path="/s/:accessToken" element={<SharedBookPage />} />
@@ -120,8 +125,6 @@ export function App() {
           {/* Editor (collapsed sidebar) */}
           <Route element={<RequireAuth><EditorLayout /></RequireAuth>}>
             <Route path="/books/:bookId/chapters/:chapterId/edit" element={<ChapterEditorPage />} />
-            {/* Writing Studio (v2) — book-level VS Code-style docking workspace (dockview). */}
-            <Route path="/books/:bookId/studio" element={<WritingStudioPage />} />
             <Route path="/books/:bookId/chapters/:chapterId/compare" element={<ChapterComparePage />} />
             <Route path="/books/:bookId/chapters/:chapterId/translations" element={<ChapterTranslationsPage />} />
             <Route path="/books/:bookId/wiki/:articleId/edit" element={<WikiEditorPage />} />

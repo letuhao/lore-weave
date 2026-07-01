@@ -32,7 +32,7 @@ export function StudioFrame({ bookId }: { bookId: string }) {
   }, [accessToken, bookId]);
 
   return (
-    <div className="flex h-full w-full flex-col overflow-hidden bg-background">
+    <div className="flex h-screen w-full flex-col overflow-hidden bg-background">
       <StudioTopBar bookId={bookId} bookTitle={bookTitle} />
 
       <div className="flex min-h-0 flex-1">

@@ -81,8 +81,11 @@ the stack before adding new rows.
 | ▲ | From | Debt | Clears when |
 |---|---|---|---|
 | 1 | 01 skeleton | **navigator→dock "open in group" link** — data wiring + its E2E deferred | #02 Manuscript navigator + #03 a dock panel exist → build the link + E2E it |
-| 2 | 01 skeleton | Studio inherits `EditorLayout`'s collapsed app rail → **two left rails**; give the studio a chrome-less layout | a polish pass (before/with #02) |
-| 3 | 01 skeleton | Top-bar **Generate / Save / model** controls not built | the first panel that needs them (#03 Compose) |
+| 2 | 01 skeleton | Top-bar **Generate / Save / model** controls not built | the first panel that needs them (#03 Compose) |
+
+**Recently cleared:** ~~Studio inherited `EditorLayout`'s app rail → two left rails~~ → **fixed
+2026-07-01**: studio moved to a standalone full-screen `RequireAuth` route (out of `EditorLayout`);
+`StudioFrame` root is `h-screen`. The Activity Bar is now the only left rail.
 
 *(Pop the top when starting the next component; push any new deferral on top. Nothing leaves
 this table silently — it's cleared by building, not by forgetting.)*
