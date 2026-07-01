@@ -77,7 +77,7 @@ async def run() -> dict:
                 rep = {"error": repr(exc)}
 
             critic = rep.get("critic", {}) if isinstance(rep, dict) else {}
-            promises = rep.get("promises", {}) if isinstance(rep, dict) else {}
+            threads = rep.get("threads", {}) if isinstance(rep, dict) else {}
             results["chapters"].append({
                 "sort_order": ch.get("sort_order"), "chapter_id": cid,
                 "self_heal": heal, "quality_report": rep,
@@ -87,7 +87,7 @@ async def run() -> dict:
             print(f"ch{ch.get('sort_order'):>2} | heal={heal.get('n_proposals', 'ERR')} "
                   f"| critic(coh/voice/pace/canon)={critic.get('coherence')}/{critic.get('voice_match')}/"
                   f"{critic.get('pacing')}/{critic.get('canon_consistency')} viol={len(critic.get('violations', []))} "
-                  f"| dropped={len(promises.get('dropped', []))}", flush=True)
+                  f"| threads_raised={len(threads.get('raised', []))}", flush=True)
 
         try:
             results["promise_coverage"] = await qh.promise_coverage(c, ct, headers=headers)

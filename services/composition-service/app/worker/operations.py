@@ -178,7 +178,8 @@ async def run_quality_report(
 ) -> dict[str, Any]:
     """Run the read-only Quality Report over the persisted chapter text + canon (both
     resolved at the endpoint). Surfaces the planner's advisory judges — the 4-dim critic
-    (coherence/voice/pacing/canon) + the promise audit (introduced/resolved/DROPPED) — to
+    (coherence/voice/pacing/canon) + the chapter's narrative THREADS (raised/resolved,
+    reframed from the promise audit — the misleading per-chapter "dropped" is gone) — to
     the author. Diagnostic only: NOT applyable edits, so there is nothing to write back."""
     from app.engine.quality_report import build_quality_report
 

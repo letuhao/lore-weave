@@ -568,7 +568,7 @@ async def test_run_quality_report_serializes(monkeypatch):
     async def _fake_report(llm, *, user_id, model_source, model_ref, chapter, source_language,
                            canon, cancel_check=None):
         return {"critic": {"coherence": 5, "violations": []},
-                "promises": {"dropped": ["the debt"], "dropped_count": 1}}
+                "threads": {"raised": ["the debt"], "raised_count": 1}}
 
     monkeypatch.setattr(qr, "build_quality_report", _fake_report)
     out = await run_quality_report(
@@ -577,7 +577,7 @@ async def test_run_quality_report_serializes(monkeypatch):
                "chapter_id": "c1", "draft_version": 7, "source_language": "vi",
                "canon": "CANON"})
     assert out["report"]["critic"]["coherence"] == 5
-    assert out["report"]["promises"]["dropped"] == ["the debt"]
+    assert out["report"]["threads"]["raised"] == ["the debt"]
     assert out["chapter_id"] == "c1" and out["draft_version"] == 7
 
 

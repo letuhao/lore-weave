@@ -59,33 +59,34 @@ async def test_report_both_ok():
     assert rep["critic"]["coherence"] == 4
     assert rep["critic"]["canon_consistency"] == 2
     assert len(rep["critic"]["violations"]) == 1
-    assert rep["promises"]["dropped"] == ["the debt to the sect"]
-    assert rep["promises"]["introduced_count"] == 2
-    assert rep["promises"]["dropped_count"] == 1
+    # reframed (D-QUALITY-DROPPED-FP): threads RAISED (= introduced) + RESOLVED, no "dropped"
+    assert rep["threads"]["raised"] == ["the sealed grimoire", "the debt to the sect"]
+    assert rep["threads"]["resolved"] == ["the sealed grimoire"]
+    assert rep["threads"]["raised_count"] == 2 and rep["threads"]["resolved_count"] == 1
+    assert "dropped" not in rep["threads"]  # the false-positive verdict is gone
     # both judges ran (2 concurrent calls)
     assert len(llm.calls) == 2
 
 
-async def test_critic_degrades_promise_survives():
+async def test_critic_degrades_threads_survive():
     llm = FakeQRLLM(critic="fail")
     rep = await build_quality_report(
         llm, user_id="u", model_source="s", model_ref="m", chapter="prose")
     assert rep["critic"]["error"].startswith("critic_")
     assert rep["critic"]["coherence"] is None
-    # the promise audit is unaffected by the critic's failure
-    assert rep["promises"]["dropped"] == ["the debt to the sect"]
-    assert "error" not in rep["promises"]
+    # the thread audit is unaffected by the critic's failure
+    assert rep["threads"]["raised"] == ["the sealed grimoire", "the debt to the sect"]
+    assert "error" not in rep["threads"]
 
 
-async def test_promise_degrades_critic_survives():
+async def test_threads_degrade_critic_survives():
     llm = FakeQRLLM(promise="fail")
     rep = await build_quality_report(
         llm, user_id="u", model_source="s", model_ref="m", chapter="prose")
     assert rep["critic"]["coherence"] == 4
-    # a failed audit returns the empty shape + error, rate 0.0 (no fabricated count)
-    assert rep["promises"]["error"].startswith("audit_")
-    assert rep["promises"]["dropped"] == []
-    assert rep["promises"]["dropped_rate"] == 0.0
+    # a failed audit returns the empty threads shape + error (no fabricated raised list)
+    assert rep["threads"]["error"].startswith("audit_")
+    assert rep["threads"]["raised"] == [] and rep["threads"]["raised_count"] == 0
 
 
 async def test_unexpected_raise_in_one_judge_does_not_sink_the_other():
@@ -96,9 +97,9 @@ async def test_unexpected_raise_in_one_judge_does_not_sink_the_other():
         llm, user_id="u", model_source="s", model_ref="m", chapter="prose")
     assert rep["critic"]["error"] == "critic_error"
     assert rep["critic"]["coherence"] is None
-    # the promise audit still completed normally
-    assert rep["promises"]["dropped"] == ["the debt to the sect"]
-    assert "error" not in rep["promises"]
+    # the thread audit still completed normally
+    assert rep["threads"]["raised"] == ["the sealed grimoire", "the debt to the sect"]
+    assert "error" not in rep["threads"]
 
 
 async def test_canon_grounds_the_critic():

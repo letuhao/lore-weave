@@ -23,7 +23,7 @@ export function QualityReportSection({ projectId, chapterId, token, modelRef }: 
   const { t } = useTranslation('composition');
   const q = useQualityReport(projectId, chapterId, token, modelRef);
   const critic = q.report?.critic;
-  const promises = q.report?.promises;
+  const threads = q.report?.threads;
 
   return (
     <div data-testid="composition-quality-report" className="mt-3 flex flex-col gap-2 border-t border-neutral-100 pt-3 dark:border-neutral-800">
@@ -77,31 +77,33 @@ export function QualityReportSection({ projectId, chapterId, token, modelRef }: 
         </ul>
       )}
 
-      {promises?.error && (
-        <span data-testid="quality-promises-na" className="text-[11px] text-neutral-400">
-          {t('qualityPromisesNa', { defaultValue: 'Promise audit unavailable.' })}
+      {threads?.error && (
+        <span data-testid="quality-threads-na" className="text-[11px] text-neutral-400">
+          {t('qualityThreadsNa', { defaultValue: 'Thread audit unavailable.' })}
         </span>
       )}
 
-      {promises && !promises.error && (
-        <div className="flex flex-col gap-1" data-testid="quality-promises">
-          {promises.dropped.length > 0 ? (
+      {threads && !threads.error && (
+        <div className="flex flex-col gap-1" data-testid="quality-threads">
+          {/* Informational: the threads this chapter opens (NOT a defect — a setup paid off
+              later is normal; the book-level coverage flags anything actually abandoned). */}
+          {threads.raised.length > 0 ? (
             <>
-              <span className="text-[11px] font-medium text-rose-600">
-                {t('qualityDropped', { defaultValue: '{{n}} dropped promise(s) — set up but never paid off:', n: promises.dropped_count })}
+              <span className="text-[11px] font-medium text-neutral-600 dark:text-neutral-300">
+                {t('qualityThreadsRaised', { defaultValue: '{{n}} thread(s) raised in this chapter:', n: threads.raised_count })}
               </span>
               <ul className="flex flex-col gap-0.5">
-                {promises.dropped.map((p, i) => (
-                  <li key={i} className="text-[11px] text-rose-500">• {p}</li>
+                {threads.raised.map((p, i) => (
+                  <li key={i} className="text-[11px] text-neutral-500">• {p}</li>
                 ))}
               </ul>
             </>
           ) : (
-            q.ran && <span className="text-[11px] text-emerald-600">{t('qualityNoDrop', { defaultValue: 'No dropped promises — setups are paid off.' })}</span>
+            q.ran && <span className="text-[11px] text-neutral-400">{t('qualityNoThreads', { defaultValue: 'No new threads raised in this chapter.' })}</span>
           )}
-          {promises.resolved.length > 0 && (
-            <span className="text-[10px] text-neutral-400">
-              {t('qualityResolved', { defaultValue: '{{r}}/{{i}} promises resolved', r: promises.resolved_count, i: promises.introduced_count })}
+          {threads.resolved.length > 0 && (
+            <span className="text-[10px] text-emerald-600">
+              {t('qualityThreadsResolved', { defaultValue: '{{r}} paid off here', r: threads.resolved_count })}
             </span>
           )}
         </div>

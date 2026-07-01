@@ -49,9 +49,36 @@ def _empty_critic(err: str = "critic_error") -> dict[str, Any]:
     return {**{d: None for d in _CRITIC_DIMS}, "violations": [], "error": err}
 
 
-def _empty_promises(err: str = "audit_error") -> dict[str, Any]:
-    return {"introduced": [], "resolved": [], "dropped": [], "introduced_count": 0,
-            "resolved_count": 0, "dropped_count": 0, "dropped_rate": 0.0, "error": err}
+def _empty_threads(err: str = "threads_error") -> dict[str, Any]:
+    return {"raised": [], "resolved": [], "raised_count": 0, "resolved_count": 0, "error": err}
+
+
+async def _chapter_threads(
+    llm: LLMClient, *, user_id: str, model_source: str, model_ref: str,
+    chapter: str, source_language: str, max_tokens: int,
+    trace_id: str | None, cancel_check: Callable[[], Awaitable[bool]] | None,
+) -> dict[str, Any]:
+    """Per-chapter narrative-thread signal, reframed from the raw promise audit
+    (D-QUALITY-DROPPED-FP). The v1 `audit_promises` "dropped" list ("introduced but
+    not paid off WITHIN this chapter") is a false-positive machine on serialized
+    fiction — a chapter opening a thread to be paid LATER is not a defect (the eval
+    saw 30 false "dropped" vs 0 truly abandoned book-wide). So we present the threads
+    the chapter RAISES (informational) + any RESOLVED within it, and DROP the misleading
+    "dropped" verdict: the book-level promise-coverage (v2 paid/progressing/abandoned)
+    owns whether a thread is actually abandoned."""
+    a = await audit_promises(
+        llm, user_id=user_id, model_source=model_source, model_ref=model_ref,
+        arc_text=chapter, source_language=source_language, max_tokens=max_tokens,
+        trace_id=trace_id, cancel_check=cancel_check)
+    out = {
+        "raised": a.get("introduced", []),
+        "resolved": a.get("resolved", []),
+        "raised_count": a.get("introduced_count", 0),
+        "resolved_count": a.get("resolved_count", 0),
+    }
+    if a.get("error"):
+        out["error"] = a["error"]
+    return out
 
 
 async def _degrade_safe(coro: Awaitable[dict[str, Any]], fallback: dict[str, Any],
@@ -76,7 +103,11 @@ async def build_quality_report(
     trace_id: str | None = None,
     cancel_check: Callable[[], Awaitable[bool]] | None = None,
 ) -> dict[str, Any]:
-    """Run the two chapter-level advisory judges concurrently and shape one report.
+    """Run the two chapter-level advisory judges concurrently and shape one report:
+    `{critic, threads}`. `critic` = the 4-dim craft/continuity judge (+ violations);
+    `threads` = the narrative threads this chapter RAISES + any RESOLVED within it
+    (reframed from the raw promise audit — see `_chapter_threads`; the misleading
+    per-chapter "dropped" verdict is gone, the book-level coverage owns abandoned).
 
     `canon` (the rendered story bible) grounds the critic's `canon_consistency`
     dimension as an established-facts block. Both judges are degrade-safe: this
@@ -87,7 +118,7 @@ async def build_quality_report(
     # established-fact so `canon_consistency` has grounding (no structured rules here).
     present_facts = [canon.strip()] if canon and canon.strip() else []
 
-    critic, promises = await asyncio.gather(
+    critic, threads = await asyncio.gather(
         _degrade_safe(
             judge_prose(
                 llm, user_id=user_id, model_source=model_source, model_ref=model_ref,
@@ -98,15 +129,15 @@ async def build_quality_report(
             _empty_critic(), "critic",
         ),
         _degrade_safe(
-            audit_promises(
+            _chapter_threads(
                 llm, user_id=user_id, model_source=model_source, model_ref=model_ref,
-                arc_text=chapter, source_language=source_language,
+                chapter=chapter, source_language=source_language,
                 max_tokens=max_tokens_promise, trace_id=trace_id, cancel_check=cancel_check,
             ),
-            _empty_promises(), "promises",
+            _empty_threads(), "threads",
         ),
     )
-    return {"critic": critic, "promises": promises}
+    return {"critic": critic, "threads": threads}
 
 
 def _empty_coverage(err: str = "coverage_error") -> dict[str, Any]:

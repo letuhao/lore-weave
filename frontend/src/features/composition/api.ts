@@ -573,19 +573,19 @@ export interface QualityCritic {
   violations: { rule_id: string; violated: boolean; span: string; why: string }[];
   error?: string;
 }
-export interface QualityPromises {
-  introduced: string[];
+// Per-chapter narrative threads (reframed from the promise audit — D-QUALITY-DROPPED-FP):
+// the threads the chapter RAISES + any RESOLVED within it. No misleading per-chapter "dropped"
+// (that was a false positive on serialized fiction); the book-level coverage owns abandoned.
+export interface QualityThreads {
+  raised: string[];
   resolved: string[];
-  dropped: string[];
-  introduced_count: number;
+  raised_count: number;
   resolved_count: number;
-  dropped_count: number;
-  dropped_rate: number;
   error?: string;
 }
 export interface QualityReport {
   critic: QualityCritic;
-  promises: QualityPromises;
+  threads: QualityThreads;
 }
 export interface QualityReportResponse {
   job_id: string;

@@ -19,7 +19,7 @@ const render_ = (modelRef = 'm') =>
 
 const fullReport: QualityReport = {
   critic: { coherence: 4, voice_match: 3, pacing: 5, canon_consistency: 2, violations: [{ rule_id: 'R1', violated: true, span: 'he said', why: 'wrong pronoun' }] },
-  promises: { introduced: ['a', 'b'], resolved: ['a'], dropped: ['b'], introduced_count: 2, resolved_count: 1, dropped_count: 1, dropped_rate: 0.5 },
+  threads: { raised: ['thread-a', 'thread-b'], resolved: ['thread-a'], raised_count: 2, resolved_count: 1 },
 };
 
 describe('QualityReportSection', () => {
@@ -39,31 +39,34 @@ describe('QualityReportSection', () => {
 
   // NOTE: the global react-i18next mock returns KEYS (with interpolation), not English
   // defaultValues — repo test convention. So translated labels assert on keys; data on values.
-  it('renders critic dims, violations and dropped promises', () => {
+  it('renders critic dims, violations and the threads raised (informational, not a defect)', () => {
     state.value = base({ report: fullReport, ran: true });
     render_();
     expect(screen.getByTestId('quality-critic').textContent).toContain('4/5');       // data
     expect(screen.getByTestId('quality-violations').textContent).toContain('wrong pronoun'); // data
-    expect(screen.getByTestId('quality-promises').textContent).toContain('b');        // dropped promise (data)
+    const threads = screen.getByTestId('quality-threads');
+    expect(threads.textContent).toContain('thread-b');        // raised thread (data)
+    expect(threads.textContent).toContain('qualityThreadsRaised'); // neutral "raised" label, not "dropped"
+    expect(threads.textContent).not.toContain('dropped');     // the false-positive alarm is gone
   });
 
-  it('shows a clean state when nothing is dropped', () => {
+  it('shows a clean state when no threads are raised', () => {
     state.value = base({
       ran: true,
-      report: { ...fullReport, promises: { ...fullReport.promises, dropped: [], dropped_count: 0 } },
+      report: { ...fullReport, threads: { ...fullReport.threads, raised: [], raised_count: 0 } },
     });
     render_();
-    expect(screen.getByTestId('quality-promises').textContent).toContain('qualityNoDrop');
+    expect(screen.getByTestId('quality-threads').textContent).toContain('qualityNoThreads');
   });
 
-  it('shows a hint when the promise audit is unavailable (not silent)', () => {
+  it('shows a hint when the thread audit is unavailable (not silent)', () => {
     state.value = base({
       ran: true,
-      report: { ...fullReport, promises: { ...fullReport.promises, error: 'audit_error' } },
+      report: { ...fullReport, threads: { ...fullReport.threads, error: 'audit_error' } },
     });
     render_();
-    expect(screen.getByTestId('quality-promises-na')).toBeTruthy();
-    expect(screen.queryByTestId('quality-promises')).toBeNull();
+    expect(screen.getByTestId('quality-threads-na')).toBeTruthy();
+    expect(screen.queryByTestId('quality-threads')).toBeNull();
   });
 
   it('degrades gracefully when the critic is unavailable', () => {

@@ -89,12 +89,15 @@ async def test_quality_report_e2e(ctx):
     """Per-chapter Quality Report through the real endpoint: 4-dim critic + promise audit."""
     client, headers, t = ctx
     rep = await qh.quality_report(client, t, headers=headers)
-    assert "critic" in rep and "promises" in rep, f"unexpected report shape: {rep}"
+    assert "critic" in rep and "threads" in rep, f"unexpected report shape: {rep}"
     critic = rep["critic"]
     # either it scored (dims present) or it degraded with an explicit error — never silent
     assert "error" in critic or any(critic.get(d) is not None
                                     for d in ("coherence", "voice_match", "pacing", "canon_consistency"))
-    assert "dropped" in rep["promises"] or "error" in rep["promises"]
+    # reframed (D-QUALITY-DROPPED-FP): the per-chapter signal is "threads raised", never a
+    # misleading "dropped" verdict (the book-level coverage owns abandoned).
+    assert "raised" in rep["threads"] or "error" in rep["threads"]
+    assert "dropped" not in rep["threads"]
 
 
 @pytest.mark.asyncio
