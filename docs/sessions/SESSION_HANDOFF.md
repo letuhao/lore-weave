@@ -110,10 +110,13 @@
 >     default-APPLY, surfaced rules) that sets each semantic proposal's `EditProposal.recommended` (UI pre-check)
 >     — it **RANKS, never vetoes** (every proposal still shown; recall preserved). `propose_edits_direct(rerank=)`,
 >     worker op defaults rerank ON; FE pre-checks `recommended` (+ `rerank_reason`). Tests: self_heal+heal_canon+worker
->     57 + FE 142 vitest, tsc clean. Live rerank e2e blocked by a transient infra DB drift (composition container
->     crash-looping on `create_pool`/Postgres — env, not code); both halves proven live separately (direct propose
->     + comparative judge). **NEXT:** re-confirm rerank live once infra recovers; consider stronger-model escalate
->     for the rare true blind spot (D-VERIFY-BLINDSPOT-ESCALATE).
+>     57 + FE 142 vitest, tsc clean. **Live e2e CONFIRMED** (after a `docker compose up` recovered a cascading
+>     Postgres→provider-registry/ai-gateway/composition drift): on v3-healed CH1 the direct+rerank returned 4
+>     proposals — 3 PRE-CHECKED (`mẫu thân ngươi`→`ta` "violates third-person self-reference"; `che chở`→
+>     `khinh miệt` "contradicts the canon Tô Yến never protected her"; dup-`từng`) + 1 UN-checked (a weak edit
+>     "emotional weight is lost") — i.e. it RANKS, never vetoes, and each carries a cited reason. The exact case
+>     the old verify pipeline refused 3/3 is now pre-checked with the rule cited. **NEXT:** consider stronger-model
+>     escalate for the rare TRUE blind spot (D-VERIFY-BLINDSPOT-ESCALATE); expose a rerank on/off toggle in the FE.
 >   - **M6 Polish — BE done (M6.1 engine + M6.2 wiring), 2026-07-01:**
 >     **M6.1** (`c4db3792`) — `_compute_edits` shared step ⇒ `propose_self_heal` returns `EditProposal[]`
 >     (id/tier deterministic|semantic/start/end/before/after) WITHOUT splicing; `apply_self_heal_edits(accepted_ids)`
