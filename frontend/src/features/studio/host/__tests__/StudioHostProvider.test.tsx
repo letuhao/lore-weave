@@ -1,8 +1,9 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { act, render, renderHook, screen } from '@testing-library/react';
+import { useRef } from 'react';
 import type { ReactNode } from 'react';
 import {
-  StudioHostProvider, useRegisteredTools, useRegisterStudioTool, useStudioBus, useStudioHost,
+  StudioHostProvider, useRegisteredTools, useRegisterStudioTool, useStudioBus, useStudioBusSelector, useStudioHost,
 } from '../StudioHostProvider';
 import { applyBusEvent, type StudioBusSnapshot, type StudioToolRegistration } from '../types';
 
@@ -27,16 +28,16 @@ describe('applyBusEvent (pure reducer)', () => {
   });
 });
 
-describe('StudioHost registry', () => {
-  it('register / getTool / list; unregister removes; re-register is idempotent (no dup)', () => {
+describe('StudioHost registry (#08 contract names)', () => {
+  it('registerStudioTool / getRegisteredTool / list; unregister removes; re-register replaces (no dup)', () => {
     const { result } = renderHook(() => useStudioHost(), { wrapper: wrapper() });
-    act(() => result.current.register(reg('compose')));
-    act(() => result.current.register(reg('compose', { label: 'Compose v2' }))); // same id → replace, not add
-    expect(result.current.listTools()).toHaveLength(1);
-    expect(result.current.getTool('compose')?.label).toBe('Compose v2');
-    act(() => result.current.unregister('compose'));
-    expect(result.current.listTools()).toHaveLength(0);
-    expect(result.current.getTool('compose')).toBeNull();
+    act(() => result.current.registerStudioTool(reg('compose')));
+    act(() => result.current.registerStudioTool(reg('compose', { label: 'Compose v2' }))); // same id → replace
+    expect(result.current.listRegisteredStudioTools()).toHaveLength(1);
+    expect(result.current.getRegisteredTool('compose')?.label).toBe('Compose v2');
+    act(() => result.current.unregisterStudioTool('compose'));
+    expect(result.current.listRegisteredStudioTools()).toHaveLength(0);
+    expect(result.current.getRegisteredTool('compose')).toBeNull();
   });
 
   it('useRegisteredTools re-renders when a tool (un)registers', () => {
@@ -45,15 +46,15 @@ describe('StudioHost registry', () => {
       { wrapper: wrapper() },
     );
     expect(result.current.tools).toHaveLength(0);
-    act(() => result.current.host.register(reg('cast')));
+    act(() => result.current.host.registerStudioTool(reg('cast')));
     expect(result.current.tools.map((t) => t.panelId)).toEqual(['cast']);
-    act(() => result.current.host.unregister('cast'));
+    act(() => result.current.host.unregisterStudioTool('cast'));
     expect(result.current.tools).toHaveLength(0);
   });
 });
 
 describe('StudioContextBus', () => {
-  it('publish updates the snapshot + bumps revision, reactively', () => {
+  it('publish + getSnapshot bump revision; useStudioBus is reactive', () => {
     const { result } = renderHook(
       () => ({ host: useStudioHost(), snap: useStudioBus() }),
       { wrapper: wrapper() },
@@ -61,8 +62,46 @@ describe('StudioContextBus', () => {
     expect(result.current.snap).toMatchObject({ revision: 0, bookId: 'b1', activePanelIds: [] });
     act(() => result.current.host.publish({ type: 'chapter', chapterId: 'c9', bookId: 'b1' }));
     expect(result.current.snap).toMatchObject({ revision: 1, activeChapterId: 'c9' });
-    // imperative getBusSnapshot agrees with the reactive value
-    expect(result.current.host.getBusSnapshot().activeChapterId).toBe('c9');
+    expect(result.current.host.getSnapshot().activeChapterId).toBe('c9');
+  });
+
+  it('focusManuscriptUnit publishes the active chapter to the bus', () => {
+    const { result } = renderHook(() => ({ host: useStudioHost(), snap: useStudioBus() }), { wrapper: wrapper() });
+    act(() => result.current.host.focusManuscriptUnit('ch42'));
+    expect(result.current.snap.activeChapterId).toBe('ch42');
+  });
+
+  it('openPanel is a safe no-op before the dock api is ready', () => {
+    const { result } = renderHook(() => useStudioHost(), { wrapper: wrapper() });
+    expect(() => result.current.openPanel('editor')).not.toThrow();
+  });
+
+  it('subscribe(selector) fires only when the SELECTED slice changes', () => {
+    const { result } = renderHook(() => useStudioHost(), { wrapper: wrapper() });
+    const onChapter = vi.fn();
+    act(() => { result.current.subscribe(onChapter, (s) => s.activeChapterId); });
+    act(() => result.current.publish({ type: 'panels', activePanelIds: ['x'] })); // not the chapter slice
+    expect(onChapter).not.toHaveBeenCalled();
+    act(() => result.current.publish({ type: 'chapter', chapterId: 'c1', bookId: 'b1' }));
+    expect(onChapter).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe('useStudioBusSelector (S4/D21 slice subscription)', () => {
+  it('re-renders only when the selected slice changes, not on every publish', () => {
+    const renders = { n: 0 };
+    function Probe() {
+      const host = useStudioHost();
+      const hostRef = useRef(host);
+      hostRef.current = host;
+      const chapter = useStudioBusSelector((s) => s.activeChapterId);
+      renders.n += 1;
+      return <button data-testid="pub-panels" onClick={() => hostRef.current.publish({ type: 'panels', activePanelIds: ['a'] })}>{chapter ?? 'none'}</button>;
+    }
+    render(<StudioHostProvider bookId="b1"><Probe /></StudioHostProvider>);
+    const before = renders.n;
+    act(() => { screen.getByTestId('pub-panels').click(); }); // publishes a NON-chapter slice
+    expect(renders.n).toBe(before); // selector value unchanged → no re-render
   });
 });
 
@@ -78,7 +117,7 @@ describe('useRegisterStudioTool lifecycle', () => {
       <StudioHostProvider bookId="b1"><Probe /><Panel id="editor" /></StudioHostProvider>,
     );
     expect(tools.map((t) => t.panelId)).toEqual(['editor']);
-    rerender(<StudioHostProvider bookId="b1"><Probe /></StudioHostProvider>); // Panel unmounts
+    rerender(<StudioHostProvider bookId="b1"><Probe /></StudioHostProvider>);
     expect(tools).toHaveLength(0);
   });
 });
@@ -86,11 +125,9 @@ describe('useRegisterStudioTool lifecycle', () => {
 describe('guard', () => {
   it('useStudioHost throws outside a provider', () => {
     function Bad() { useStudioHost(); return null; }
-    // Swallow the expected error boundary noise.
-    const spy = { error: console.error };
+    const orig = console.error;
     console.error = () => {};
     expect(() => render(<Bad />)).toThrow(/StudioHostProvider/);
-    console.error = spy.error;
-    expect(screen.queryByTestId('x')).toBeNull();
+    console.error = orig;
   });
 });
