@@ -1,0 +1,48 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://loreweave.dev/contracts/plan-forge/plan_revision.schema.json",
+  "title": "PlanRevisionRequest",
+  "description": "Structured human-in-the-loop revision request for PlanAnalyze or NovelSystemSpec.",
+  "type": "object",
+  "required": ["version", "target", "instruction"],
+  "additionalProperties": false,
+  "properties": {
+    "version": { "type": "integer", "const": 1 },
+    "target": { "type": "string", "enum": ["analyze", "spec"] },
+    "instruction": { "type": "string", "minLength": 1 },
+    "scope": {
+      "type": "array",
+      "items": { "type": "string" },
+      "description": "Top-level or dotted fields the revision may change (e.g. events, links)."
+    },
+    "frozen_paths": {
+      "type": "array",
+      "items": { "type": "string" },
+      "description": "Paths that must remain unchanged after refine."
+    },
+    "constraint_ledger": {
+      "type": "array",
+      "items": { "type": "string" },
+      "description": "Append-only constraints accumulated across HIL rounds."
+    },
+    "source_excerpt": {
+      "type": "string",
+      "description": "Optional short quote from source document supporting the revision."
+    },
+    "expect_contains": {
+      "type": "array",
+      "items": { "type": "string" },
+      "description": "Strings that must appear in the refined artifact (accept gate)."
+    },
+    "intent": {
+      "type": "string",
+      "description": "completeness|complaint|recheck|handoff"
+    },
+    "confidence": { "type": "number", "minimum": 0, "maximum": 1 },
+    "user_quote": { "type": "string" },
+    "apply_mode": {
+      "type": "string",
+      "enum": ["confirm", "auto", "needs_clarification"]
+    }
+  }
+}
