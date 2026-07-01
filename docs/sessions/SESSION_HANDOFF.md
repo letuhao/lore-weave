@@ -11,7 +11,14 @@
 > toggle). Hooks: `useStudioChrome` (activeView/sidebar/bottom, per-book `lw_studio_chrome_<bookId>`) +
 > `useStudioLayout` (dockview onReady+persist). **Verified:** tsc+eslint clean, studio i18n ×4 parity-clean,
 > **browser-smoke** — all regions render, activity-switch + sidebar-collapse + bottom-toggle work, **dock never
-> remounts** through chrome changes, chrome+layout persist & restore on reload, 0 console errors. **NEXT (#02):**
+> remounts** through chrome changes, chrome+layout persist & restore on reload, 0 console errors.
+> **Solid (this track's stricter no-defer rule — unit+E2E per component):** 30 unit tests + 7 Playwright E2E
+> (frame regions · activity-switch · collapse · bottom-toggle · persistence · **per-book isolation** ·
+> **dock-no-remount**) all green; **`/review-impl`** (cold-start) found 2 HIGH — per-book state was frozen to the
+> first `bookId` (in-session book switch corrupts the other book's storage) → fixed via a **keyed `StudioFrame`**
+> remount — plus MED/LOW (persist-after-seed to dodge the upgrade trap; dropped a misleading disposable; stable
+> `studio-dock` testid; removed dead `persist`), all fixed & re-verified. Debt tracked **LIFO** in the spec
+> (nav→dock link · two-left-rails · top-bar Generate/Save). **NEXT (#02):**
 > Manuscript navigator — real chapters→scenes tree in the Side Bar that opens/focuses a unit in the dock (the
 > navigator→dock "wiring"); then #03 Compose panel (first stateful dock panel → wires the D4 state-hoist rule).
 > See memory `[[editor-workmode-and-compose-must-keep-editor-mounted]]`.

@@ -18,12 +18,6 @@ export function useStudioLayout(bookId: string) {
     const api = event.api;
     apiRef.current = api;
 
-    // Persist on every layout change (add/move/split/resize/close). Registered BEFORE the
-    // initial restore/seed so even the default layout is captured on first load.
-    const disposable = api.onDidLayoutChange(() => {
-      try { localStorage.setItem(layoutKey(bookId), JSON.stringify(api.toJSON())); } catch { /* quota */ }
-    });
-
     // Restore the saved layout; fall back to a single Welcome panel. A saved layout that
     // references a panel no longer in the registry throws on fromJSON — guarded so a stale
     // layout degrades to the blank default instead of a crash.
@@ -34,10 +28,19 @@ export function useStudioLayout(bookId: string) {
     } catch { restored = false; }
 
     if (!restored) {
+      // Seed is idempotent (re-added on any fresh load with no saved layout), so it is
+      // deliberately NOT persisted — persisting it would freeze today's default and never
+      // reach a "opened-once" user if the default seed changes later (review-impl MED #4).
       api.addPanel({ id: 'welcome', component: 'welcome', title: t('welcome.tab', { defaultValue: 'Welcome' }) });
     }
 
-    return () => disposable.dispose();
+    // Persist on every USER layout change (move/split/resize/close/add). Registered AFTER
+    // the restore/seed so the seed above doesn't auto-write. dockview owns the listener's
+    // lifecycle — it's disposed with the dock via api.dispose() on unmount (this hook remounts
+    // per book via the keyed StudioFrame, so onReady fires exactly once per api).
+    api.onDidLayoutChange(() => {
+      try { localStorage.setItem(layoutKey(bookId), JSON.stringify(api.toJSON())); } catch { /* quota */ }
+    });
   }, [bookId, t]);
 
   return { onReady, apiRef };

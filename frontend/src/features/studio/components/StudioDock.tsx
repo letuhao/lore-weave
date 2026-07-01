@@ -13,7 +13,7 @@ const PANEL_COMPONENTS: Record<string, React.FunctionComponent<IDockviewPanelPro
 export function StudioDock({ bookId }: { bookId: string }) {
   const { onReady } = useStudioLayout(bookId);
   return (
-    <div className="relative min-h-0 flex-1">
+    <div data-testid="studio-dock" className="relative min-h-0 flex-1">
       <DockviewReact
         onReady={onReady}
         components={PANEL_COMPONENTS}

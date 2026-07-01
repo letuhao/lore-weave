@@ -61,6 +61,32 @@ dock group (Explorer → editor-group analogue).
 
 *(Rows are added/promoted as we go. Order is a guide, not a contract — the human directs which is next.)*
 
+## Testing discipline (LOCKED — this track is stricter than the rest)
+
+**Build-to-solid, no defer.** Every component ships with tests before we move on:
+
+1. **Unit tests** for each component + hook (states, branches, persistence, guards).
+2. **E2E** for each component's user-visible behaviour, via a Playwright spec + page object.
+3. **Inter-component links:** build the **data link first** (the wiring in code + unit tests).
+   **Defer only the E2E of that link** until the *other* component exists — then add it. Record
+   the deferred E2E-link on the **Debt stack** below.
+4. Each milestone ends with **`/review-impl`** (adversarial) → fix → re-run all tests.
+
+**Debt is a STACK, not a queue — newest debt is paid FIRST (LIFO).** Every deferral is
+recorded here the moment it's created; when we start the next component we clear the top of
+the stack before adding new rows.
+
+## Debt stack (LIFO — top = paid next)
+
+| ▲ | From | Debt | Clears when |
+|---|---|---|---|
+| 1 | 01 skeleton | **navigator→dock "open in group" link** — data wiring + its E2E deferred | #02 Manuscript navigator + #03 a dock panel exist → build the link + E2E it |
+| 2 | 01 skeleton | Studio inherits `EditorLayout`'s collapsed app rail → **two left rails**; give the studio a chrome-less layout | a polish pass (before/with #02) |
+| 3 | 01 skeleton | Top-bar **Generate / Save / model** controls not built | the first panel that needs them (#03 Compose) |
+
+*(Pop the top when starting the next component; push any new deferral on top. Nothing leaves
+this table silently — it's cleared by building, not by forgetting.)*
+
 ## Out of scope (for now)
 
 Mobile (the studio is desktop-first; small screens fall back to the existing editor); server

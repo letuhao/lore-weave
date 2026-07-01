@@ -29,11 +29,6 @@ function load(bookId: string): StudioChromeState {
 export function useStudioChrome(bookId: string) {
   const [state, setState] = useState<StudioChromeState>(() => load(bookId));
 
-  const persist = useCallback((next: StudioChromeState) => {
-    setState(next);
-    try { localStorage.setItem(chromeKey(bookId), JSON.stringify(next)); } catch { /* quota */ }
-  }, [bookId]);
-
   const setActiveView = useCallback((activeView: ActivityView) => {
     setState((s) => {
       // Clicking the already-active navigator toggles the side bar (VS Code behaviour).
@@ -66,6 +61,5 @@ export function useStudioChrome(bookId: string) {
     setActiveView,
     toggleSidebar,
     toggleBottom,
-    persist,
   };
 }
