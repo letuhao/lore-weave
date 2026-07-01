@@ -18,8 +18,7 @@ from app.engine.plan_forge.prompts import (
     refine_user_prompt,
     repair_user_prompt,
 )
-from app.engine.plan_forge.refine import accept_refine
-from app.engine.plan_forge.spec_index import spec_slice_for_paths
+from app.engine.plan_forge.refine import accept_refine, artifact_json_for_refine, merge_refine_output
 
 
 async def _parse_with_repair(
@@ -94,13 +93,6 @@ async def propose_spec_llm_async(
     return spec, analyze, client.io_log
 
 
-def _spec_json_for_refine(spec: dict[str, Any], revision: dict[str, Any]) -> str:
-    paths = revision.get("focus_paths") or []
-    if paths:
-        return spec_slice_for_paths(spec, paths, max_chars=12000)
-    return json.dumps(spec, ensure_ascii=False, indent=2)
-
-
 async def refine_spec_async(
     spec: dict[str, Any],
     revision: dict[str, Any],
@@ -110,7 +102,7 @@ async def refine_spec_async(
     analyze: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     revision = {**revision, "target": "spec"}
-    payload = refine_user_prompt(_spec_json_for_refine(spec, revision), revision)
+    payload = refine_user_prompt(artifact_json_for_refine(spec, revision), revision)
     out = await _parse_with_repair(
         client,
         "refine_spec",
@@ -119,7 +111,8 @@ async def refine_spec_async(
         "refine_spec_repair",
         temperature=0.1,
     )
-    return normalize_spec(out, source_checksum, analyze=analyze)
+    merged = merge_refine_output(spec, out, revision)
+    return normalize_spec(merged, source_checksum, analyze=analyze)
 
 
 async def refine_and_accept_async(

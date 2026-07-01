@@ -20,11 +20,65 @@ from app.engine.plan_forge.spec_index import spec_slice_for_paths
 from app.engine.plan_forge.validate import run_rules
 
 
-def _artifact_json_for_refine(spec: dict[str, Any], revision: dict[str, Any]) -> str:
+def artifact_json_for_refine(spec: dict[str, Any], revision: dict[str, Any]) -> str:
     paths = revision.get("focus_paths") or []
     if paths:
         return spec_slice_for_paths(spec, paths, max_chars=12000)
     return json.dumps(spec, ensure_ascii=False, indent=2)
+
+
+def _is_full_novel_system_spec(doc: dict[str, Any]) -> bool:
+    return isinstance(doc.get("layers"), dict) and "events" in doc and "arcs" in doc
+
+
+def merge_refine_output(before: dict[str, Any], patch: dict[str, Any], revision: dict[str, Any]) -> dict[str, Any]:
+    """Merge a slice-shaped LLM patch into the full spec when focus_paths is set."""
+    paths = revision.get("focus_paths") or []
+    if not paths or _is_full_novel_system_spec(patch):
+        return patch
+    out = copy.deepcopy(before)
+    for p in paths:
+        if p.startswith("events["):
+            eid = p.split("[", 1)[1].rstrip("]")
+            new_ev = patch.get(p)
+            if new_ev is None and isinstance(patch.get("events"), list):
+                new_ev = next((e for e in patch["events"] if e.get("id") == eid), None)
+            if new_ev is None:
+                continue
+            events = out.setdefault("events", [])
+            for i, e in enumerate(events):
+                if e.get("id") == eid:
+                    events[i] = new_ev
+                    break
+        elif p == "layers.characters[0]":
+            val = patch.get(p)
+            if val is None:
+                chars = (patch.get("layers") or {}).get("characters") or []
+                val = chars[0] if chars else None
+            if val is None:
+                continue
+            layers = out.setdefault("layers", {})
+            chars = layers.setdefault("characters", [])
+            if chars:
+                chars[0] = val
+            else:
+                chars.append(val)
+        elif p.startswith("layers.mechanics"):
+            mid = p.split("[", 1)[1].rstrip("]") if "[" in p else ""
+            new_m = patch.get(p)
+            if new_m is None:
+                for m in (patch.get("layers") or {}).get("mechanics") or []:
+                    if m.get("id") == mid:
+                        new_m = m
+                        break
+            if new_m is None:
+                continue
+            mechanics = out.setdefault("layers", {}).setdefault("mechanics", [])
+            for i, m in enumerate(mechanics):
+                if m.get("id") == mid:
+                    mechanics[i] = new_m
+                    break
+    return out
 
 
 @dataclass
@@ -325,9 +379,10 @@ def refine_spec(
     analyze: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     revision = {**revision, "target": "spec"}
-    payload = refine_user_prompt(_artifact_json_for_refine(spec, revision), revision)
+    payload = refine_user_prompt(artifact_json_for_refine(spec, revision), revision)
     out = _parse_with_repair(client, "refine_spec", REFINE_SPEC_SYSTEM, payload, "refine_spec_repair")
-    return normalize_spec(out, source_checksum, analyze=analyze)
+    merged = merge_refine_output(spec, out, revision)
+    return normalize_spec(merged, source_checksum, analyze=analyze)
 
 
 def apply_refine_if_accepted(

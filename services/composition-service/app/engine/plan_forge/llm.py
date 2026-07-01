@@ -88,8 +88,7 @@ class ProviderPlanForgeLLM:
         content = extract_judge_content(job.result)
         if not content.strip():
             raise PlanForgeLLMError("empty LLM response")
-        if self._io_log is not None:
-            self._io_log.append(
+        self._io_log.append(
                 {
                     "step": step,
                     "prompt_sha256": hashlib.sha256(user.encode("utf-8")).hexdigest(),

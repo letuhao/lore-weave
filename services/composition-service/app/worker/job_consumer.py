@@ -23,6 +23,7 @@ from loreweave_jobs import BaseTerminalConsumer
 from app.clients.knowledge_client import get_knowledge_client
 from app.clients.llm_client import LLMClient, get_llm_client
 from app.db.repositories.generation_jobs import GenerationJobsRepo
+from app.engine.plan_forge.llm import PlanForgeLLMError
 from app.worker.events import COMPOSITION_JOBS_STREAM, COMPOSITION_WORKER_GROUP
 from app.worker.operations import (
     SUPPORTED_OPERATIONS,
@@ -51,7 +52,7 @@ logger = logging.getLogger("composition.worker.job_consumer")
 
 #: business failures the compute raises — a bad LLM output / upstream error is a
 #: TERMINAL job outcome (mark failed + ACK), NOT an infra error to redeliver.
-_BUSINESS_ERRORS = (UnsupportedOperationError, ValueError, KeyError)
+_BUSINESS_ERRORS = (UnsupportedOperationError, ValueError, KeyError, PlanForgeLLMError)
 
 _ACTIVE = ("pending", "running")
 

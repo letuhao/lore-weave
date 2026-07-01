@@ -571,7 +571,7 @@ async def run_plan_forge_propose(
     cancel_check: Callable[[], Awaitable[bool]] | None = None,
 ) -> dict[str, Any]:
     """LLM ingest→analyze→materialize for PlanForge (async worker op)."""
-    from app.engine.plan_forge.llm import PlanForgeLLMError, ProviderPlanForgeLLM
+    from app.engine.plan_forge.llm import ProviderPlanForgeLLM
     from app.engine.plan_forge.propose_llm_async import propose_spec_llm_async
 
     source = input.get("source_markdown") or ""
@@ -584,15 +584,12 @@ async def run_plan_forge_propose(
     client = ProviderPlanForgeLLM(
         llm,
         user_id=user_id,
-        model_source=input.get("model_source", "byok"),
+        model_source=input.get("model_source", "user_model"),
         model_ref=model_ref,
         io_log=io_log,
         cancel_check=cancel_check,
     )
-    try:
-        spec, analyze, logged = await propose_spec_llm_async(source, client)
-    except PlanForgeLLMError as exc:
-        return {"status": "failed", "error": str(exc), "llm_io": io_log}
+    spec, analyze, logged = await propose_spec_llm_async(source, client)
     return {
         "status": "completed",
         "novel_system_spec": spec,
@@ -621,7 +618,7 @@ async def run_plan_forge_refine(
     client = ProviderPlanForgeLLM(
         llm,
         user_id=user_id,
-        model_source=input.get("model_source", "byok"),
+        model_source=input.get("model_source", "user_model"),
         model_ref=model_ref,
         io_log=io_log,
         cancel_check=cancel_check,
