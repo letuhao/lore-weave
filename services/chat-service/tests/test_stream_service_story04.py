@@ -84,6 +84,77 @@ class TestGlossaryOnlySkillInject:
         assert "Knowledge & graph assistant" not in content
 
 
+class TestStudioSurface:
+    @pytest.mark.asyncio
+    async def test_studio_context_advertises_studio_nav_tools(self):
+        """#09 Lane A — closing the loop: a request carrying studio_context makes the REAL
+        stream path advertise the studio dock-nav frontend tools (ui_open_studio_panel /
+        ui_focus_manuscript_unit) into the tool loop, so the agent can call them."""
+        pool, conn = _make_pool_with_conn()
+        pool.fetchrow.return_value = _session_row()
+        pool.fetch.return_value = []
+        conn.fetchval.return_value = 1
+
+        kc = _patched_knowledge(
+            stable="", volatile="", mode="static",
+            tool_defs=[{"type": "function", "function": {"name": "book_get_chapter"}}],
+        )
+
+        async def fake_tool_loop(**kwargs):
+            yield {"content": "ok", "reasoning_content": "", "finish_reason": "stop", "usage": _Usage(1, 1)}
+
+        with patch("app.services.stream_service.get_knowledge_client", return_value=kc), \
+             patch("app.services.stream_service._stream_with_tools", side_effect=fake_tool_loop) as loop_mock, \
+             patch("app.services.stream_service._stream_via_gateway"):
+            async for _ in stream_response(
+                session_id=TEST_SESSION_ID,
+                user_message_content="open the compose panel please",
+                user_id=TEST_USER_ID,
+                model_source="user_model",
+                model_ref=TEST_MODEL_REF,
+                creds=_make_creds(),
+                pool=pool,
+                billing=AsyncMock(),
+                stream_format="agui",
+                book_context={"book_id": "b1"},
+                studio_context={"book_id": "b1"},
+            ):
+                pass
+
+        extra_fe = loop_mock.call_args.kwargs["discovery_extra_frontend"]
+        names = {t["function"]["name"] for t in extra_fe}
+        assert "ui_open_studio_panel" in names
+        assert "ui_focus_manuscript_unit" in names
+
+    @pytest.mark.asyncio
+    async def test_no_studio_context_does_not_advertise_studio_tools(self):
+        """Control: a non-studio chat never advertises the studio tools (so it never suspends)."""
+        pool, conn = _make_pool_with_conn()
+        pool.fetchrow.return_value = _session_row()
+        pool.fetch.return_value = []
+        conn.fetchval.return_value = 1
+        kc = _patched_knowledge(
+            stable="", volatile="", mode="static",
+            tool_defs=[{"type": "function", "function": {"name": "book_get_chapter"}}],
+        )
+
+        async def fake_tool_loop(**kwargs):
+            yield {"content": "ok", "reasoning_content": "", "finish_reason": "stop", "usage": _Usage(1, 1)}
+
+        with patch("app.services.stream_service.get_knowledge_client", return_value=kc), \
+             patch("app.services.stream_service._stream_with_tools", side_effect=fake_tool_loop) as loop_mock, \
+             patch("app.services.stream_service._stream_via_gateway"):
+            async for _ in stream_response(
+                session_id=TEST_SESSION_ID, user_message_content="hi", user_id=TEST_USER_ID,
+                model_source="user_model", model_ref=TEST_MODEL_REF, creds=_make_creds(),
+                pool=pool, billing=AsyncMock(), stream_format="agui", book_context={"book_id": "b1"},
+            ):
+                pass
+
+        names = {t["function"]["name"] for t in loop_mock.call_args.kwargs["discovery_extra_frontend"]}
+        assert "ui_open_studio_panel" not in names
+
+
 class TestTopPForward:
     @pytest.mark.asyncio
     async def test_top_p_forwarded_on_plain_gateway_path(self):
