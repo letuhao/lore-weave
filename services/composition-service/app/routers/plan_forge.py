@@ -130,7 +130,10 @@ async def patch_novel_system_spec(
     try:
         detail = await svc.patch_spec(user_id, book_id, run_id, body.model_dump(exclude_unset=True))
     except ValueError as exc:
-        raise HTTPException(status_code=409, detail=str(exc)) from exc
+        # patch is an edit-merge (last-write-wins, no OCC) — the only failure is
+        # "the run has no spec artifact to patch yet", an unprocessable state, NOT a
+        # 409 conflict (which would wrongly signal the client to refetch-and-retry).
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
     if detail is None:
         raise HTTPException(status_code=404, detail="run not found")
     return detail

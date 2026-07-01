@@ -122,3 +122,30 @@ def test_create_llm_requires_model_ref(client):
         json={"source_markdown": "x", "mode": "llm"},
     )
     assert r.status_code == 400
+
+
+def test_patch_novel_system_spec_200(client):
+    r = client.patch(
+        f"/v1/composition/books/{BOOK}/plan/runs/{RUN}/novel-system-spec",
+        json={"title": "New title"},
+    )
+    assert r.status_code == 200
+    assert r.json()["id"] == str(RUN)
+
+
+def test_patch_no_spec_maps_to_422_not_409(client):
+    # patch_spec raises ValueError ONLY for the no-spec-yet state — an edit-merge
+    # (last-write-wins) has no OCC conflict, so the router must return 422
+    # (unprocessable), never 409 (which would wrongly tell the client to
+    # refetch-and-retry a conflict that doesn't exist). Review-impl fix (Wave P1).
+    async def _raise(*a, **k):
+        raise ValueError("no spec artifact to patch")
+
+    stub = app.dependency_overrides[get_plan_forge_service]()
+    stub.patch_spec = _raise
+    r = client.patch(
+        f"/v1/composition/books/{BOOK}/plan/runs/{RUN}/novel-system-spec",
+        json={"title": "x"},
+    )
+    assert r.status_code == 422
+    assert "spec" in r.json()["detail"]
