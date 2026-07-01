@@ -1,7 +1,12 @@
 """Tests for skill_registry (story 04)."""
 from __future__ import annotations
 
-from app.services.skill_registry import resolve_skills_to_inject, catalog_items, skill_prompts
+from app.services.skill_registry import (
+    catalog_items,
+    resolve_skills_to_inject,
+    skill_metadata_block,
+    skill_prompts,
+)
 
 
 class TestResolveSkillsToInject:
@@ -95,3 +100,23 @@ class TestPlanForgeSkill:
         prompts = skill_prompts(["plan_forge"])
         assert "plan_forge" in prompts
         assert "plan_propose_spec" in prompts["plan_forge"]
+
+
+class TestSkillMetadataL1:
+    def test_book_surface_lists_visible_skills(self):
+        block = skill_metadata_block(editor=False, book_scoped=True, admin=False)
+        assert block is not None
+        assert "Available skills" in block
+        # book-surface skills present by their code; chat-only + admin absent
+        assert "`glossary`" in block and "`knowledge`" in block and "`plan_forge`" in block
+        assert "`admin`" not in block
+
+    def test_admin_surface_only_admin(self):
+        block = skill_metadata_block(editor=False, book_scoped=False, admin=True)
+        assert block is not None and "`admin`" in block
+        assert "`glossary`" not in block
+
+    def test_metadata_is_compact(self):
+        # L1 is cheap — the whole book-surface catalog is a handful of lines.
+        block = skill_metadata_block(editor=True, book_scoped=True, admin=False)
+        assert block.count("\n- ") <= 6

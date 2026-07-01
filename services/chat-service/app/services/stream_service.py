@@ -1069,7 +1069,11 @@ async def stream_response(
     # the plain-string path.
     # Glossary-assistant P5 + story 04 skill registry: inject selected or
     # surface-default system skills (static + cacheable).
-    from app.services.skill_registry import resolve_skills_to_inject, skill_prompts
+    from app.services.skill_registry import (
+        resolve_skills_to_inject,
+        skill_metadata_block,
+        skill_prompts,
+    )
 
     _editor = bool(editor_context)
     _book_scoped = bool(editor_context or book_context)
@@ -1105,6 +1109,14 @@ async def stream_response(
         glossary_skill = _skill_prompts["admin"]
     universal_skill: str | None = _skill_prompts.get("universal")
     knowledge_skill: str | None = _skill_prompts.get("knowledge")
+    # RAID C3 — L1 skill metadata: a compact "available skills" list injected always
+    # (cheap), so the model knows which skills exist on this surface even when only the
+    # relevant one's full body (L2) is loaded above.
+    skill_meta_block: str | None = None
+    if injected_skill_codes:  # only when skills are in play (agui + tools on)
+        skill_meta_block = skill_metadata_block(
+            editor=_editor, book_scoped=_book_scoped, admin=_admin,
+        )
 
     surface_tracker = (
         AgentSurfaceTracker()
@@ -1165,6 +1177,8 @@ async def stream_response(
             parts.append({"type": "text", "text": knowledge_skill, "cache_control": {"type": "ephemeral"}})
         if universal_skill:
             parts.append({"type": "text", "text": universal_skill, "cache_control": {"type": "ephemeral"}})
+        if skill_meta_block:  # RAID C3 — L1 available-skills catalog
+            parts.append({"type": "text", "text": skill_meta_block, "cache_control": {"type": "ephemeral"}})
         if book_context_note:
             parts.append({"type": "text", "text": book_context_note, "cache_control": {"type": "ephemeral"}})
         messages.insert(0, {"role": "system", "content": parts})
@@ -1186,6 +1200,8 @@ async def stream_response(
             system_parts.append(knowledge_skill)
         if universal_skill:
             system_parts.append(universal_skill)
+        if skill_meta_block:  # RAID C3 — L1 available-skills catalog
+            system_parts.append(skill_meta_block)
         if book_context_note:
             system_parts.append(book_context_note)
         if system_parts:
