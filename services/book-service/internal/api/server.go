@@ -2,6 +2,7 @@ package api
 
 import (
 	"context"
+	"encoding/base64"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -247,6 +248,9 @@ func (s *Server) Router() http.Handler {
 			// Bulk plain-text create (folder/large import). Static path — chi matches
 			// it before /chapters/{chapter_id} so "bulk" isn't taken as a chapter_id.
 			r.Post("/chapters/bulk", s.bulkCreateChapters)
+			// Keyset/cursor-paged chapter list for the manuscript navigator (10k+ chapters).
+			// Static path (before /chapters/{chapter_id}) — same reason as bulk.
+			r.Get("/chapters/page", s.listChaptersKeyset)
 
 			r.Route("/chapters/{chapter_id}", func(r chi.Router) {
 				r.Get("/", s.getChapter)
@@ -1117,6 +1121,146 @@ func (s *Server) listChapters(w http.ResponseWriter, r *http.Request) {
 		"total":  total,
 		"limit":  limit,
 		"offset": offset,
+	})
+}
+
+// ── keyset cursor pagination (manuscript navigator, 10k+ chapters) ───────────
+
+// encodeChapterCursor packs the keyset tuple (sort_order, chapter_id) into an opaque,
+// URL-safe token. The client treats it as a blob; only this service decodes it.
+func encodeChapterCursor(sortOrder int, id uuid.UUID) string {
+	return base64.RawURLEncoding.EncodeToString(fmt.Appendf(nil, "%d|%s", sortOrder, id.String()))
+}
+
+// parseChapterCursor decodes a token from encodeChapterCursor. A malformed token → ok=false
+// (caller returns 400); never a silent reset to page 1, which would loop the client.
+func parseChapterCursor(s string) (sortOrder int, id uuid.UUID, ok bool) {
+	raw, err := base64.RawURLEncoding.DecodeString(s)
+	if err != nil {
+		return 0, uuid.Nil, false
+	}
+	parts := strings.SplitN(string(raw), "|", 2)
+	if len(parts) != 2 {
+		return 0, uuid.Nil, false
+	}
+	n, err := strconv.Atoi(parts[0])
+	if err != nil {
+		return 0, uuid.Nil, false
+	}
+	pid, err := uuid.Parse(parts[1])
+	if err != nil {
+		return 0, uuid.Nil, false
+	}
+	return n, pid, true
+}
+
+// listChaptersKeyset is the cursor-paged chapter list for the manuscript navigator, ordered by
+// the strict keyset (sort_order, id). id is a UUIDv7 (time-ordered) so the tuple is a total
+// order with a stable, unique tiebreak — no offset drift as chapters are added/removed
+// mid-scroll. Response: {items, next_cursor, total}. next_cursor is null on the last page;
+// total is emitted only on the first page (no cursor) so the virtual scrollbar can size itself
+// without a COUNT on every page.
+func (s *Server) listChaptersKeyset(w http.ResponseWriter, r *http.Request) {
+	bookID, ok := parseUUIDParam(w, r, "book_id")
+	if !ok {
+		return
+	}
+	_, _, state, ok := s.authBook(w, r, bookID, GrantView)
+	if !ok {
+		return
+	}
+	lifecycle := r.URL.Query().Get("lifecycle_state")
+	if lifecycle == "" {
+		if state == "trashed" {
+			lifecycle = "trashed"
+		} else {
+			lifecycle = "active"
+		}
+	}
+	limit, _ := parseLimitOffset(r) // reuse the 1..100 clamp; offset is ignored in keyset mode
+
+	// Base filters (shared by the COUNT and the page query).
+	args := []any{bookID, lifecycle}
+	where := `book_id=$1 AND lifecycle_state=$2`
+	if v := r.URL.Query().Get("original_language"); v != "" {
+		args = append(args, v)
+		where += fmt.Sprintf(" AND original_language=$%d", len(args))
+	}
+	if q := strings.TrimSpace(r.URL.Query().Get("q")); q != "" {
+		if len([]rune(q)) > maxSearchQueryRunes {
+			writeError(w, http.StatusBadRequest, "BOOK_VALIDATION_ERROR", "query too long")
+			return
+		}
+		args = append(args, escapeLikePattern(q))
+		where += fmt.Sprintf(" AND (title ILIKE $%d OR original_filename ILIKE $%d)", len(args), len(args))
+	}
+
+	cursor := r.URL.Query().Get("cursor")
+	// total only on the first page (cursor absent) — a single COUNT, cached by the client.
+	var total any
+	if cursor == "" {
+		var n int
+		_ = s.pool.QueryRow(r.Context(), `SELECT COUNT(*) FROM chapters WHERE `+where, append([]any{}, args...)...).Scan(&n)
+		total = n
+	} else {
+		cursorSort, cursorID, valid := parseChapterCursor(cursor)
+		if !valid {
+			writeError(w, http.StatusBadRequest, "BOOK_VALIDATION_ERROR", "invalid cursor")
+			return
+		}
+		// Strictly after (cursorSort, cursorID) — row-value comparison, matching the ORDER BY.
+		args = append(args, cursorSort, cursorID)
+		where += fmt.Sprintf(" AND (sort_order, id) > ($%d, $%d)", len(args)-1, len(args))
+	}
+
+	// Fetch limit+1 to detect a further page without a second COUNT.
+	args = append(args, limit+1)
+	rows, err := s.pool.Query(r.Context(), `SELECT id,book_id,title,original_filename,original_language,content_type,byte_size,sort_order,draft_updated_at,draft_revision_count,lifecycle_state,trashed_at,purge_eligible_at,created_at,updated_at FROM chapters WHERE `+where+` ORDER BY sort_order, id LIMIT $`+strconv.Itoa(len(args)), args...)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "CHAPTER_NOT_FOUND", "failed to list chapters")
+		return
+	}
+	defer rows.Close()
+	items := make([]map[string]any, 0, limit)
+	for rows.Next() {
+		var id, bid uuid.UUID
+		var title, fn, lang, ctype, lstate string
+		var size int64
+		var order int
+		var draftUpdated, trashedAt, purgeAt, createdAt, updatedAt *time.Time
+		var revCount int
+		_ = rows.Scan(&id, &bid, &title, &fn, &lang, &ctype, &size, &order, &draftUpdated, &revCount, &lstate, &trashedAt, &purgeAt, &createdAt, &updatedAt)
+		items = append(items, map[string]any{
+			"chapter_id":           id,
+			"book_id":              bid,
+			"title":                nullableString(title),
+			"original_filename":    fn,
+			"original_language":    lang,
+			"content_type":         ctype,
+			"byte_size":            size,
+			"sort_order":           order,
+			"draft_updated_at":     draftUpdated,
+			"draft_revision_count": revCount,
+			"lifecycle_state":      lstate,
+			"trashed_at":           trashedAt,
+			"purge_eligible_at":    purgeAt,
+			"created_at":           createdAt,
+			"updated_at":           updatedAt,
+		})
+	}
+
+	// The extra (limit+1)th row means there IS a next page → drop it, emit the cursor of the
+	// last KEPT item so the next request starts strictly after it.
+	var nextCursor any
+	if len(items) > limit {
+		items = items[:limit]
+		last := items[limit-1]
+		nextCursor = encodeChapterCursor(last["sort_order"].(int), last["chapter_id"].(uuid.UUID))
+	}
+	writeJSON(w, http.StatusOK, map[string]any{
+		"items":       items,
+		"next_cursor": nextCursor,
+		"total":       total,
 	})
 }
 

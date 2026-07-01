@@ -3,6 +3,7 @@ package api
 import (
 	"bytes"
 	"context"
+	"encoding/base64"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
@@ -30,6 +31,39 @@ func TestParseLimitOffset(t *testing.T) {
 	limit2, offset2 := parseLimitOffset(req2)
 	if limit2 != 20 || offset2 != 0 {
 		t.Fatalf("expected defaults for invalid query, got %d/%d", limit2, offset2)
+	}
+}
+
+func TestEncodeParseChapterCursorRoundTrip(t *testing.T) {
+	t.Parallel()
+
+	id := uuid.New()
+	tok := encodeChapterCursor(42, id)
+	gotSort, gotID, ok := parseChapterCursor(tok)
+	if !ok || gotSort != 42 || gotID != id {
+		t.Fatalf("round-trip failed: ok=%v sort=%d id=%s (want 42/%s)", ok, gotSort, gotID, id)
+	}
+	// Negative/zero sort_order must survive too (sort_order is a plain INT).
+	if s, _, ok := parseChapterCursor(encodeChapterCursor(0, id)); !ok || s != 0 {
+		t.Fatalf("zero sort_order round-trip failed: ok=%v s=%d", ok, s)
+	}
+}
+
+func TestParseChapterCursorRejectsMalformed(t *testing.T) {
+	t.Parallel()
+
+	enc := func(s string) string { return base64.RawURLEncoding.EncodeToString([]byte(s)) }
+	cases := map[string]string{
+		"empty":       "",
+		"bad base64":  "!!!not-base64!!!",
+		"missing pipe": enc("nopipe"),
+		"bad int":     enc("notanint|" + uuid.NewString()),
+		"bad uuid":    enc("7|not-a-uuid"),
+	}
+	for name, tok := range cases {
+		if _, _, ok := parseChapterCursor(tok); ok {
+			t.Fatalf("%s: expected reject, got ok=true for %q", name, tok)
+		}
 	}
 }
 
