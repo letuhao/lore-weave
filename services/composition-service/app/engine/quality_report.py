@@ -33,6 +33,7 @@ from typing import Any
 from app.clients.llm_client import LLMClient
 from app.engine.critic import judge_prose
 from app.engine.promise_audit import (
+    _coverage_shape,
     audit_promises,
     extract_tracked_promises,
     score_promise_coverage,
@@ -114,9 +115,62 @@ def _empty_coverage(err: str = "coverage_error") -> dict[str, Any]:
             "pay_rate": 0.0, "sustained_rate": 0.0, "abandon_rate": 0.0, "error": err}
 
 
+# The whole assembled book overflows a single score call on a real multi-chapter book
+# (D-QUALITY-COVERAGE-CHUNK, confirmed by E2E: score returned `coverage_unavailable` → all
+# "absent" on the 12-ch book). So we WINDOW the prose and score each window against the SAME
+# fixed promise set, then merge per-promise by the STRONGEST engagement seen anywhere in the
+# book: paid (resolved somewhere) > progressing (still live) > abandoned (dropped) > absent.
+_COVERAGE_WINDOW_CHARS = 12000
+_VERDICT_RANK = {"absent": 0, "abandoned": 1, "progressing": 2, "paid": 3}
+
+
+def _split_windows(text: str, budget: int) -> list[str]:
+    """Split prose into ≤`budget`-char windows on paragraph boundaries (the endpoint joins
+    chapters with a blank line, so windows are chapter/paragraph-aligned). A single paragraph
+    larger than the budget becomes its own (over-budget) window rather than being cut mid-line."""
+    paras = text.split("\n\n")
+    windows: list[str] = []
+    cur: list[str] = []
+    cur_len = 0
+    for p in paras:
+        if cur and cur_len + len(p) > budget:
+            windows.append("\n\n".join(cur))
+            cur, cur_len = [], 0
+        cur.append(p)
+        cur_len += len(p) + 2
+    if cur:
+        windows.append("\n\n".join(cur))
+    return windows or [text]
+
+
+async def _score_windowed(llm, *, user_id, model_source, model_ref, promises, windows,
+                          source_language, trace_id, cancel_check) -> dict[str, Any]:
+    """Score the fixed promise set against each window and merge by strongest engagement.
+    A window that degrades (its own `error`) contributes nothing; if EVERY window degrades
+    the whole thing is `coverage_unavailable` (honest — no fabricated verdicts)."""
+    best: dict[str, str] = {p: "absent" for p in promises}
+    any_ok = False
+    for w in windows:
+        cov = await score_promise_coverage(
+            llm, user_id=user_id, model_source=model_source, model_ref=model_ref,
+            promises=promises, arc_text=w, source_language=source_language,
+            trace_id=trace_id, cancel_check=cancel_check)
+        if cov.get("error"):
+            continue
+        any_ok = True
+        for item in cov.get("coverage", []):
+            p, v = item.get("promise"), item.get("verdict")
+            if p in best and _VERDICT_RANK.get(v, 0) > _VERDICT_RANK[best[p]]:
+                best[p] = v
+    if not any_ok:
+        return _coverage_shape(promises, ["absent"] * len(promises), error="coverage_unavailable")
+    return _coverage_shape(promises, [best[p] for p in promises])
+
+
 async def build_promise_coverage(
     llm: LLMClient, *, user_id: str, model_source: str, model_ref: str,
     premise: str, plan_text: str, book_text: str, source_language: str = "auto",
+    window_chars: int = _COVERAGE_WINDOW_CHARS,
     trace_id: str | None = None,
     cancel_check: Callable[[], Awaitable[bool]] | None = None,
 ) -> dict[str, Any]:
@@ -136,9 +190,19 @@ async def build_promise_coverage(
             llm, user_id=user_id, model_source=model_source, model_ref=model_ref,
             premise=premise, plan_text=plan_text, source_language=source_language,
             trace_id=trace_id, cancel_check=cancel_check)
-        return await score_promise_coverage(
+        if not promises:
+            # no spec promises → the shape's no-tracked path (score handles [] the same way)
+            return _coverage_shape([], [], error="no_tracked_promises")
+        windows = _split_windows(book_text, window_chars)
+        if len(windows) <= 1:
+            # small book — one score call, no windowing overhead
+            return await score_promise_coverage(
+                llm, user_id=user_id, model_source=model_source, model_ref=model_ref,
+                promises=promises, arc_text=book_text, source_language=source_language,
+                trace_id=trace_id, cancel_check=cancel_check)
+        return await _score_windowed(
             llm, user_id=user_id, model_source=model_source, model_ref=model_ref,
-            promises=promises, arc_text=book_text, source_language=source_language,
+            promises=promises, windows=windows, source_language=source_language,
             trace_id=trace_id, cancel_check=cancel_check)
     except Exception:  # noqa: BLE001 — advisory; degrade, never raise (cancel still propagates)
         logger.warning("promise_coverage degraded (unexpected error)", exc_info=True)

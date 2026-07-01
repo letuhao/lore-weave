@@ -75,6 +75,13 @@ async def test_promise_coverage_e2e(ctx):
     verdicts = [c.get("verdict") for c in cov["coverage"]]
     assert cov["abandoned_count"] == verdicts.count("abandoned")
     assert cov["paid_count"] == verdicts.count("paid")
+    # D-QUALITY-COVERAGE-CHUNK regression guard: the windowing fix means the whole-book
+    # score no longer overflows to `coverage_unavailable`. With tracked promises present,
+    # a live model must yield real verdicts, not the all-absent degrade.
+    if cov["tracked_count"] > 0:
+        assert cov.get("error") != "coverage_unavailable", (
+            "coverage degraded on the real book — the score call overflowed again "
+            "(windowing regression?)")
 
 
 @pytest.mark.asyncio
