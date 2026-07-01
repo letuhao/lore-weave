@@ -153,6 +153,9 @@ class TestFrontendToolDefs:
         p = UI_OPEN_STUDIO_PANEL_TOOL["function"]
         assert p["name"] == "ui_open_studio_panel"
         assert set(p["parameters"]["required"]) == {"panel_id"}
+        # panel_id is enum-constrained so a weak model can't drift the value (or the arg name) —
+        # a live gemma-26b smoke otherwise sent the ui_show_panel `panel` arg + guessed a value.
+        assert p["parameters"]["properties"]["panel_id"]["enum"] == ["compose", "editor"]
         f = UI_FOCUS_MANUSCRIPT_UNIT_TOOL["function"]
         assert f["name"] == "ui_focus_manuscript_unit"
         assert set(f["parameters"]["required"]) == {"chapter_id"}

@@ -24,8 +24,13 @@ export interface StudioUiResolution {
 export function resolveStudioUiTool(tool: string, args: Record<string, unknown>): StudioUiResolution {
   switch (tool) {
     case 'ui_open_studio_panel': {
-      const panelId = typeof args.panel_id === 'string' ? args.panel_id : '';
-      if (!panelId) return { result: { opened: false } };
+      // Read `panel_id` (the contract), tolerating the `panel`/`page` aliases a weaker model
+      // reaches for by confusing this tool with ui_show_panel/ui_open_book (a live gemma-26b smoke
+      // sent `panel:"editor"` → an undefined panel_id silently no-op'd). Alias here so the loop
+      // still closes; the BE schema's `panel_id` enum steers competent models to the canonical name.
+      const raw = args.panel_id ?? args.panel ?? args.page;
+      const panelId = typeof raw === 'string' ? raw.trim() : '';
+      if (!panelId) return { result: { opened: false, error: 'missing panel_id (e.g. "compose" or "editor")' } };
       return { result: { opened: true }, effect: (host) => host.openPanel(panelId) };
     }
     case 'ui_focus_manuscript_unit': {

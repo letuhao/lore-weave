@@ -399,7 +399,11 @@ UI_OPEN_STUDIO_PANEL_TOOL: dict = {
             "properties": {
                 "panel_id": {
                     "type": "string",
-                    "description": "The studio panel to open, e.g. 'compose' or 'editor'.",
+                    "enum": ["compose", "editor"],
+                    "description": (
+                        "The studio panel to open. 'compose' = the AI co-writer chat; "
+                        "'editor' = the manuscript editor."
+                    ),
                 },
             },
             "required": ["panel_id"],

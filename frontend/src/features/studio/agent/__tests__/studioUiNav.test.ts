@@ -22,10 +22,23 @@ describe('resolveStudioUiTool', () => {
     expect(host.openPanel).toHaveBeenCalledWith('cast');
   });
 
-  it('ui_open_studio_panel without panel_id → rejected, no effect', () => {
+  it('ui_open_studio_panel without panel_id → rejected with a corrective error, no effect', () => {
     const { result, effect } = resolveStudioUiTool('ui_open_studio_panel', {});
-    expect(result).toEqual({ opened: false });
+    expect(result.opened).toBe(false);
+    expect(result.error).toMatch(/panel_id/);
     expect(effect).toBeUndefined();
+  });
+
+  // A live gemma-26b smoke sent `panel:"editor"` (the ui_show_panel/ui_open_book arg name) instead
+  // of `panel_id`; the loop must still close. `page` is tolerated for the same reason.
+  it('ui_open_studio_panel tolerates the `panel` / `page` aliases a weak model reaches for', () => {
+    for (const args of [{ panel: 'editor' }, { page: 'editor' }] as Record<string, unknown>[]) {
+      const host = mockHost();
+      const { result, effect } = resolveStudioUiTool('ui_open_studio_panel', args);
+      expect(result).toEqual({ opened: true });
+      effect!(host);
+      expect(host.openPanel).toHaveBeenCalledWith('editor');
+    }
   });
 
   it('ui_focus_manuscript_unit → focuses the chapter via the host', () => {

@@ -11,22 +11,30 @@ import { useStudioHost, useRegisterStudioTool } from '../host/StudioHostProvider
 import { useManuscriptUnit } from '../manuscript/unit/ManuscriptUnitProvider';
 import type { StudioToolRegistration } from '../host/types';
 
-export function EditorPanel(_props: IDockviewPanelProps) {
+export function EditorPanel(props: IDockviewPanelProps) {
   const { t } = useTranslation('studio');
   const { bookId } = useStudioHost();
   const unit = useManuscriptUnit();
   const localRef = useRef<TiptapEditorHandle | null>(null);
   const editorRef = unit?.editorRef ?? localRef;
 
+  const label = t('panels.editor.title', { defaultValue: 'Editor' });
   const registration = useMemo<StudioToolRegistration>(() => ({
     panelId: 'editor',
-    label: t('panels.editor.title', { defaultValue: 'Editor' }),
-    paletteCommand: t('palette.openPanel', { name: t('panels.editor.title', { defaultValue: 'Editor' }), defaultValue: 'Studio: Open Editor' }),
+    label,
+    paletteCommand: t('palette.openPanel', { name: label, defaultValue: 'Studio: Open Editor' }),
     commandId: 'studio.openPanel.editor',
     description: t('panels.editor.desc', { defaultValue: 'Manuscript editor' }),
     mcpToolPrefixes: ['book_'],
-  }), [t]);
+  }), [t, label]);
   useRegisterStudioTool(registration);
+
+  // Self-title the dock tab from the localized label. openPanel sets the title at addPanel time,
+  // before this panel mounts — so an agent/navigator open (no catalog title opt) shows the raw
+  // 'editor' id until the panel claims its own title here (also keeps it correct across a locale swap).
+  useEffect(() => {
+    props.api.setTitle(label);
+  }, [props.api, label]);
 
   const chapterId = unit?.state.chapterId ?? null;
 

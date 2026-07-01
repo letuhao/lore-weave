@@ -11,7 +11,7 @@ vi.mock('@/features/chat/Chat', () => ({
 
 import { ComposePanel } from '../ComposePanel';
 
-const dockProps = {} as IDockviewPanelProps;
+const dockProps = { api: { setTitle: vi.fn() } } as unknown as IDockviewPanelProps;
 
 describe('ComposePanel', () => {
   it('embeds <Chat> with the host bookId + windowing (turn survives dock float/close)', () => {
