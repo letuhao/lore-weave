@@ -444,6 +444,48 @@ class OutlineRepo:
             rows = await c.fetch(query, user_id, project_id)
         return [_row_to_node(r) for r in rows]
 
+    async def list_children(
+        self,
+        user_id: UUID,
+        project_id: UUID,
+        parent_id: UUID | None,
+        *,
+        after: tuple[str, UUID] | None = None,
+        limit: int = 100,
+        include_archived: bool = False,
+    ) -> list[OutlineNode]:
+        """Direct children of `parent_id` (NULL → top-level arcs), keyset-paged by
+        (rank, id). The lazy-tree primitive for the manuscript navigator: fetch one
+        level a page at a time instead of the whole outline. Returns up to limit+1
+        rows so the caller can detect a further page.
+
+        `parent_id IS NOT DISTINCT FROM $3` so NULL (top level) matches. rank COLLATE
+        "C" (byte order) matches the fractional-rank algorithm + list_tree's ordering,
+        so the keyset is a strict total order regardless of DB locale.
+        """
+        archived_pred = "" if include_archived else " AND NOT is_archived"
+        args: list[Any] = [user_id, project_id, parent_id]
+        keyset_pred = ""
+        if after is not None:
+            after_rank, after_id = after
+            args.extend([after_rank, after_id])
+            # strictly after (rank, id): rank byte-greater, or same rank + greater id.
+            keyset_pred = (
+                f' AND (rank COLLATE "C" > ${len(args) - 1}'
+                f' OR (rank = ${len(args) - 1} AND id > ${len(args)}))'
+            )
+        args.append(limit + 1)
+        query = f"""
+        SELECT {_SELECT_COLS} FROM outline_node
+        WHERE user_id = $1 AND project_id = $2
+          AND parent_id IS NOT DISTINCT FROM $3{archived_pred}{keyset_pred}
+        ORDER BY rank COLLATE "C", id
+        LIMIT ${len(args)}
+        """
+        async with self._pool.acquire() as c:
+            rows = await c.fetch(query, *args)
+        return [_row_to_node(r) for r in rows]
+
     async def get_node(
         self, user_id: UUID, node_id: UUID, *, conn: asyncpg.Connection | None = None,
     ) -> OutlineNode | None:
