@@ -62,6 +62,7 @@ from app.services.tool_discovery import (
 )
 from app.services.output_extractor import extract_outputs
 from app.services.stream_events import make_emitter
+from app.services.compaction import compact_messages
 from app.services.token_budget import compute_budget
 from app.services.working_memory import resolve_anchor
 
@@ -1429,6 +1430,29 @@ async def _emit_chat_turn(
         if payload is not None:
             for line in emitter.agent_surface(payload):
                 yield line
+
+    # RAID Wave A4 — provider-agnostic compaction: keep the assembled prompt under the
+    # model's window BEFORE sending (works for local lm_studio/Qwen/Gemma AND Claude; the
+    # Anthropic server-side overlay is A5). GUARDED — any error falls back to the
+    # un-compacted messages so a bug here can never break the turn. summarize=None →
+    # deterministic micro-evict of tool results + hard-truncate (no LLM in the path).
+    try:
+        _eff_limit = compute_budget(
+            used_tokens=0,
+            context_length=creds.context_length,
+            max_output_tokens=int(gen_params.get("max_tokens") or 0),
+        ).effective_limit
+        if _eff_limit:
+            messages, _compaction = compact_messages(messages, effective_limit=_eff_limit)
+            if _compaction.triggered:
+                logger.info(
+                    "compaction fired session=%s steps=%s tokens %d→%d overflow=%s",
+                    session_id, _compaction.steps,
+                    _compaction.tokens_before, _compaction.tokens_after,
+                    _compaction.overflowed,
+                )
+    except Exception:  # never let compaction break the turn
+        logger.warning("compaction skipped (error)", exc_info=True)
 
     turn_succeeded = False
     post_finish_state: dict | None = None
