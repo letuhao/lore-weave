@@ -72,13 +72,20 @@ EXPECTED_TOOLS = {
     # Tier W (motif)
     "composition_motif_adopt", "composition_motif_mine",
     "composition_arc_import_analyze", "composition_conformance_run",
+    # ── PlanForge (M4) plan_* tools ──
+    # Tier R
+    "plan_validate", "plan_self_check",
+    # Tier A
+    "plan_propose_spec", "plan_interpret_feedback", "plan_apply_revision",
+    "plan_review_checkpoint", "plan_handoff_autofix", "plan_compile",
 }
 TIER_R = {"composition_get_work", "composition_list_outline",
           "composition_get_prose", "composition_list_canon_rules",
           "composition_get_generation_job",
           "composition_motif_search", "composition_motif_get",
           "composition_motif_suggest_for_chapter", "composition_arc_suggest",
-          "composition_get_mine_job", "composition_motif_link_list"}
+          "composition_get_mine_job", "composition_motif_link_list",
+          "plan_validate", "plan_self_check"}
 TIER_W = {"composition_publish", "composition_generate",
           "composition_motif_adopt", "composition_motif_mine",
           "composition_arc_import_analyze", "composition_conformance_run"}

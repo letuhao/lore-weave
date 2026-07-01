@@ -36,6 +36,16 @@ _GOLDEN = _FIXTURES / "story-plan-v1.expectations.yaml"
 _FIDELITY = _FIXTURES / "story-plan-v1.fidelity.yaml"
 
 
+def _spec_checksum(spec: dict[str, Any] | None) -> str:
+    """Stable content hash of a spec — used to tell an actual edit from a no-op
+    refine (D-PF-APPLY-HONESTY). Key-order-independent via sort_keys."""
+    import json as _json
+
+    return hashlib.sha256(
+        _json.dumps(spec or {}, sort_keys=True, ensure_ascii=False).encode("utf-8")
+    ).hexdigest()
+
+
 def _work_project_id(work: CompositionWork) -> UUID:
     """generation_job.project_id is NOT NULL — knowledge project or surrogate work.id."""
     if work.project_id is not None:
@@ -419,6 +429,7 @@ class PlanForgeService:
 
         if self._llm is None:
             raise RuntimeError("LLM client required when worker disabled")
+        before_checksum = _spec_checksum(spec)
         result = await run_plan_forge_refine(
             self._llm, user_id=str(owner_user_id), input=pipe_input,
         )
@@ -428,14 +439,77 @@ class PlanForgeService:
             input=pipe_input, result=result,
         )
         await self.apply_job_outcome(owner_user_id, book_id, run_id, job, result)
-        new_spec = await self._runs.latest_artifact(owner_user_id, run_id, "spec")
-        status = "applied" if result.get("accepted") else "rejected"
+        new_spec_art = await self._runs.latest_artifact(owner_user_id, run_id, "spec")
+        # D-PF-APPLY-HONESTY: a refine the model "accepted" but that did NOT change
+        # the spec is a `no_change`, never `applied` — don't claim an edit that didn't
+        # land. Compare the actual spec content, not the model's self-report.
+        changed = (
+            result.get("accepted")
+            and new_spec_art is not None
+            and _spec_checksum(new_spec_art.content) != before_checksum
+        )
+        if changed:
+            status = "applied"
+        elif result.get("accepted"):
+            status = "no_change"
+        else:
+            status = "rejected"
         return "sync", {
             "status": status,
-            "spec_artifact_id": str(new_spec.id) if new_spec else str(spec_art.id),
+            "spec_artifact_id": str(new_spec_art.id) if new_spec_art else str(spec_art.id),
             "fidelity_delta": 0.0,
             "diagnosis": str(result.get("reasons")) if not result.get("accepted") else None,
         }
+
+    async def review_checkpoint(
+        self, owner_user_id: UUID, book_id: UUID, run_id: UUID, *, approved: bool,
+    ) -> dict[str, Any] | None:
+        """Advance/hold a checkpoint (M4 plan_review_checkpoint). approved=True →
+        the current spec becomes `validated` intent; approved=False keeps it at
+        `checkpoint` for further refinement. Idempotent, no LLM."""
+        run = await self._runs.get_for_owner(owner_user_id, book_id, run_id)
+        if run is None:
+            return None
+        spec_art = await self._runs.latest_artifact(owner_user_id, run_id, "spec")
+        if spec_art is None:
+            raise ValueError("no spec to review")
+        await self._runs.update_run(
+            owner_user_id, book_id, run_id,
+            status="validated" if approved else "checkpoint",
+        )
+        updated = await self._runs.get_for_owner(owner_user_id, book_id, run_id)
+        return await self._serialize_run(owner_user_id, updated) if updated else None
+
+    async def handoff_autofix(
+        self, owner_user_id: UUID, book_id: UUID, run_id: UUID,
+        *, model_ref: UUID, max_rounds: int = 3,
+    ) -> dict[str, Any] | None:
+        """Batch-apply the top self-check gaps as a bounded refine loop (M4
+        plan_handoff_autofix). Each round: self-check → take the ranked gaps →
+        refine toward them; stop when no gaps remain or max_rounds is hit. Runs the
+        refine synchronously (worker-off path); enqueues if the worker is on."""
+        run = await self._runs.get_for_owner(owner_user_id, book_id, run_id)
+        if run is None:
+            return None
+        rounds = max(1, min(int(max_rounds), 5))
+        applied: list[dict[str, Any]] = []
+        for i in range(rounds):
+            check = await self.self_check(owner_user_id, book_id, run_id)
+            gaps = (check or {}).get("gaps") or []
+            top = [g for g in gaps if g.get("severity") in ("error", "warn")][:5]
+            if not top:
+                break
+            revision = {"focus_paths": [g["path"] for g in top if g.get("path")]}
+            mode, payload = await self.refine(
+                owner_user_id, book_id, run_id,
+                model_ref=model_ref, revision=revision, focus_paths=None,
+            )
+            applied.append({"round": i + 1, "targets": len(top), "result": payload.get("status")})
+            if mode == "async" or payload.get("status") != "applied":
+                # async enqueued (can't loop synchronously) or no progress → stop.
+                break
+        detail = await self.get_run_detail(owner_user_id, book_id, run_id)
+        return {"rounds": applied, "run": detail}
 
     async def interpret(
         self,

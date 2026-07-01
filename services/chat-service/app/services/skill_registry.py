@@ -39,6 +39,11 @@ def _load_knowledge() -> str:
     return KNOWLEDGE_SKILL_PROMPT
 
 
+def _load_plan_forge() -> str:
+    from app.services.plan_forge_skill import PLAN_FORGE_SKILL_PROMPT
+    return PLAN_FORGE_SKILL_PROMPT
+
+
 SYSTEM_SKILLS: dict[str, SkillDef] = {
     "glossary": SkillDef(
         code="glossary",
@@ -63,6 +68,12 @@ SYSTEM_SKILLS: dict[str, SkillDef] = {
         label="CMS admin",
         surfaces=frozenset({"admin"}),
         prompt_loader=_load_admin,
+    ),
+    "plan_forge": SkillDef(
+        code="plan_forge",
+        label="PlanForge (novel planner)",
+        surfaces=frozenset({"book", "editor"}),
+        prompt_loader=_load_plan_forge,
     ),
 }
 
