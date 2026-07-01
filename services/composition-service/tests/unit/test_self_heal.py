@@ -228,9 +228,9 @@ class FakeStackLLM:
     async def submit_and_wait(self, **kw):
         system = kw["input"]["messages"][0]["content"]
         user = kw["input"]["messages"][1]["content"]
-        if "impartial fiction editor" in system:
+        if "AUTO-APPLY" in system:   # the type-routed re-ranker (RULE / CRAFT / BAD)
             self.rerank_calls += 1
-            v = self._rerank_fn(user) if self._rerank_fn else "APPLY"
+            v = self._rerank_fn(user) if self._rerank_fn else "RULE"
             return SimpleNamespace(status="completed",
                                    result={"messages": [{"content": json.dumps({"reasoning": "r", "verdict": v})}]})
         if "SKEPTICAL reviewer" in system:
@@ -431,16 +431,16 @@ async def test_propose_without_rerank_leaves_semantic_unrecommended():
 
 
 async def test_propose_rerank_ranks_semantic_without_dropping():
-    # the re-ranker APPLYs e0, DROPs e1 — but BOTH proposals are still returned (rank, not veto)
+    # type-routed: e0 = RULE (pre-check), e1 = CRAFT (author's call) — but BOTH still returned
     llm = FakeStackLLM([_dj(
-        ("the quick brown fox jumps", "THE RED FOX LEAPS", "improve", "style"),
-        ("the lazy dog sleeps soundly", "the hound naps", "confab", "style"))],
-        rerank_fn=lambda user: "DROP" if "hound naps" in user else "APPLY")
+        ("the quick brown fox jumps", "THE RED FOX LEAPS", "pronoun rule", "address"),
+        ("the lazy dog sleeps soundly", "the hound naps", "rephrase", "style"))],
+        rerank_fn=lambda user: "CRAFT" if "hound naps" in user else "RULE")
     proposals, _ = await propose_self_heal(
         llm, user_id="u", model_source="user_model", model_ref="m",
         chapter=_PA_CH, source_language="en", rerank=True)
     assert len(proposals) == 2 and llm.rerank_calls == 2
-    assert {p.id: p.recommended for p in proposals} == {"e0": True, "e1": False}
+    assert {p.id: p.recommended for p in proposals} == {"e0": True, "e1": False}   # RULE ticked, CRAFT not
 
 
 async def test_deterministic_edit_always_recommended():

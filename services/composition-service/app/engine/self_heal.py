@@ -601,42 +601,48 @@ def parse_direct_findings(content: str) -> list[dict[str, str]]:
     return out
 
 
-# The comparative RE-RANKER (optional precision layer) — it RANKS, it does NOT veto. Where the
-# old skeptical verify asked "is this a defect? default REFUTE" (and drowned in a verbose bible),
-# this asks the easier COMPARATIVE question "is the replacement better than the original?" with a
-# surfaced rules block + step reasoning + default-APPLY. The smart-judge POC: this confirms the
-# real edits (incl. 'mẫu thân ngươi') AND refutes confabs — the judge wasn't dumb, just underfed.
+# The TYPE-ROUTED RE-RANKER (optional precision layer) — it RANKS, it does NOT veto. The POC
+# (poc/typerouted_compare.py) showed a general "is it better?" judge is a rubber stamp on fiction
+# (94% APPLY — it would auto-DELETE passages), because prose quality isn't one "correctness" axis.
+# So this classifies each edit: RULE (an objective convention/canon/typo fix — safe to auto-tick) vs
+# CRAFT (a subjective prose choice — the AUTHOR decides) vs BAD. Only RULE pre-checks; CRAFT/BAD are
+# still SHOWN (recall preserved) but left for the human. Aligns the machine's confidence with what a
+# cheap model can actually judge in fiction.
 _RERANK_SYSTEM = (
-    "You are an impartial fiction editor comparing an ORIGINAL span with a PROPOSED replacement, "
-    "using the STORY BIBLE (convention + canon) as ground truth. Reason step by step: (1) does the "
-    "ORIGINAL violate a convention/canon rule — why or why not; (2) is the PROPOSED replacement more "
-    "correct than the original; (3) conclude APPLY if the replacement is a clear improvement, else "
-    "DROP (the original is already fine, or the replacement is wrong). DEFAULT to APPLY when the "
-    'replacement is clearly better. Reply ONLY JSON: {"reasoning":"<=25 words","verdict":"APPLY"|"DROP"}.'
+    "You decide whether a proposed fiction edit is safe to AUTO-APPLY or must be left for the human "
+    "author, using the STORY BIBLE (convention + canon) as ground truth. Classify into EXACTLY one: "
+    "RULE — the ORIGINAL clearly breaks a SPECIFIC OBJECTIVE rule (a modern pronoun; a third-person "
+    "self-reference; a fact contradicting the bible; a wrong name/role; a typo or duplicated word; a "
+    "grammar error) AND the replacement fixes it → safe to auto-apply. "
+    "CRAFT — a SUBJECTIVE prose choice (rephrasing, trimming, DELETING a passage, pacing, tone, word "
+    "choice) with NO objective rule broken → the AUTHOR must decide; do NOT auto-apply. "
+    "BAD — the replacement is wrong, worse, or a no-op. "
+    'Reply ONLY JSON {"reasoning":"<=20 words","verdict":"RULE"|"CRAFT"|"BAD"}.'
 )
 
 
 async def _rerank_edit(
     llm: LLMClient, proposal: EditProposal, *, canon: str | None, **kw,
 ) -> tuple[bool, str]:
-    """(recommended, reason) for ONE proposal — comparative, default-APPLY. Fail-toward-RECOMMEND
-    on degrade/ambiguous: the human still sees every proposal, so a re-ranker miss must not hide a
-    real edit (it only affects the pre-check, never drops)."""
+    """(recommended, reason) for ONE proposal — type-routed. `recommended` = the edit is a RULE fix
+    (objectively safe to auto-tick); CRAFT/BAD ⇒ not pre-checked (still shown; the author decides).
+    Fail-toward-NOT-recommended on degrade/ambiguous — this only affects the pre-check, never hides a
+    proposal, so uncertainty should default to 'let the human tick it', not auto-tick."""
     system = _RERANK_SYSTEM + (("\n\nSTORY BIBLE:\n" + canon.strip()) if canon and canon.strip() else "")
     user = f"ORIGINAL: «{proposal.before}»\nPROPOSED: «{proposal.after}»\nISSUE: {proposal.issue}"
     content = await _chat(llm, system=system, user=user, max_tokens=400,
                           purpose="self_heal_rerank", temperature=0.3, **kw)
     if content is None:
-        return True, ""   # degrade → recommend (fail toward showing it pre-checked)
+        return False, ""   # degrade → not pre-checked (human decides; nothing hidden)
     reason = ""
     rm = re.search(r'"reasoning"\s*:\s*"([^"]{0,200})', content)
     if rm:
         reason = rm.group(1)
-    m = re.search(r'"verdict"\s*:\s*"?\s*(APPLY|DROP)', content, re.IGNORECASE)
+    m = re.search(r'"verdict"\s*:\s*"?\s*(RULE|CRAFT|BAD)', content, re.IGNORECASE)
     if m:
-        return m.group(1).upper() == "APPLY", reason
-    up = content.upper()   # no JSON verdict → keyword read, ambiguous ⇒ recommend
-    return not ("DROP" in up and "APPLY" not in up), reason
+        return m.group(1).upper() == "RULE", reason
+    up = content.upper()   # no JSON verdict → only pre-check on an unambiguous RULE
+    return "RULE" in up and "CRAFT" not in up and "BAD" not in up, reason
 
 
 async def propose_edits_direct(
