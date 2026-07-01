@@ -60,34 +60,45 @@ export function useManuscriptTree(bookId: string, token: string | null) {
   treeRef.current = tree;
   // Per-key in-flight guard so a re-triggered load (scroll + click) never double-fetches.
   const inflight = useRef<Set<string>>(new Set());
+  // Generation token: bumped on every book/source reset. A load that resolves AFTER a reset
+  // is stale — it must not append the old book's rows into the new tree (review-impl M1).
+  const genRef = useRef(0);
 
   const loadPage = useCallback(async (parentKey: string, parentNodeId: string | null, cursor: string | null) => {
     if (!token || inflight.current.has(parentKey)) return;
     if (source === 'outline' && !projectId) return;
+    const gen = genRef.current;
     inflight.current.add(parentKey);
     setTree((t) => setLoading(t, parentKey, true));
     try {
       if (source === 'chapters') {
         const page = await booksApi.listChaptersPage(token, bookId, { cursor, limit: PAGE });
+        if (genRef.current !== gen) return; // a reset landed while we awaited → drop the result
         if (page.total != null) setTotal(page.total);
         setTree((t) => appendChildren(t, parentKey, page.items.map(chapterToNode), page.next_cursor));
       } else if (source === 'outline' && projectId) {
         const page = await compositionApi.listOutlineChildren(projectId, token, { parentId: parentNodeId, cursor, limit: PAGE });
+        if (genRef.current !== gen) return;
         // Keep only navigable kinds (arc/chapter/scene); structural 'beat' nodes are not shown.
         const nodes = page.items.filter((n) => n.kind !== 'beat').map(outlineToNode);
         setTree((t) => appendChildren(t, parentKey, nodes, page.next_cursor));
       }
     } catch (e) {
-      setError((e as Error).message);
+      if (genRef.current === gen) setError((e as Error).message);
     } finally {
-      inflight.current.delete(parentKey);
-      setTree((t) => setLoading(t, parentKey, false));
+      // Only touch the (current) tree if we're still the live generation — otherwise a stale
+      // load would clear the NEW generation's in-flight guard / loading flag.
+      if (genRef.current === gen) {
+        inflight.current.delete(parentKey);
+        setTree((t) => setLoading(t, parentKey, false));
+      }
     }
   }, [token, bookId, source, projectId]);
 
   // Load the root page once the source resolves; reset on book/source change.
   useEffect(() => {
     if (source === 'pending') return;
+    genRef.current += 1;       // invalidate any in-flight load from the previous book/source
     inflight.current.clear();
     setTree(emptyTree());
     setTotal(null);

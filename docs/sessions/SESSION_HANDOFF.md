@@ -1,4 +1,21 @@
-# ▶▶ NEXT SESSION STARTS HERE — **Writing Studio (v2) on `feat/writing-studio`: dockview VS Code-style workspace. Frame SKELETON built (all fixed regions + mechanics + persistence, browser-verified). NEXT = component #02 Manuscript navigator (chapters→scenes, drives the dock). Build-while-plan: spec each component just-in-time.** Compose-overhaul is on `feat/editor-compose-overhaul` (PR #52). · 2026-07-01**
+# ▶▶ NEXT SESSION STARTS HERE — **Writing Studio (v2) on `feat/writing-studio`: dockview VS Code-style workspace. Skeleton (#01) + Manuscript navigator (#02) BUILT + solid. NEXT = #03 Compose panel (first stateful dock panel → wires D4 hoist + Debt#1 navigator→dock link).** Compose-overhaul is on `feat/editor-compose-overhaul` (PR #52). · 2026-07-01**
+
+> **▶ #02 Manuscript Navigator — BUILT + solid 2026-07-01 (`feat/writing-studio`, full-stack).** An adaptive
+> **arc→chapter→scene** tree that scales to 10k+ chapters (VS Code Explorer recipe: virtualized rows + cursor
+> paging + lazy expand). **Chapters spine = book-service keyset cursor** endpoint `GET /chapters/page?cursor&limit`
+> (`(sort_order, id)` keyset, UUIDv7 tiebreak, `idx_chapters_keyset`, opaque base64 cursor, `402a92e1a`).
+> **Arc/scene overlay = composition lazy-children** `GET /works/{id}/outline/children?parent_id&cursor` (keyset on
+> `rank COLLATE "C", id`, `de893dae7`). **FE** `@tanstack/react-virtual` over a flattened row array; two data
+> sources behind `useManuscriptTree` (no Work → flat chapters; Work → outline tree); pure `tree.ts` flatten;
+> lazy expand + infinite paging + client filter; wired into `StudioSideBar` (`b21ed648e`). **`/review-impl`
+> (cold-start) found + fixed:** H1 composition keyset index missing collation → full Sort (added
+> `idx_outline_node_children_keyset (parent_id, rank COLLATE "C", id)`); M1 stale-response race on book switch
+> (generation guard); L2 collation-qualified the `rank =` equality; C1 keyset default limit 100. M2 adaptive
+> degenerate-collapse tracked as spec Debt #4. **Verified:** Go + Python unit tests, FE 19 manuscript unit
+> tests (incl. M1 stale-guard, beat-filter, lazy-expand), tsc+eslint+i18n clean, **live E2E through the gateway**
+> (rebuilt book+composition) — renders chapters, **keyset page-boundary no gap/dup**, filter. **Debt (spec 02):**
+> #1 navigator→dock link (needs #03), #2 server chapter-search (shared `useManuscriptJump`/#06a), #3
+> partial-outline merge, #4 adaptive collapse. Outline-path live E2E deferred (needs a parent-linked outline seed helper).
 
 > **▶ Writing Studio (v2) — FRAME SKELETON built 2026-07-01 (`feat/writing-studio`, FE-only).** Incremental
 > **build-while-plan** track (inverts plan-then-build): master spec + one file per component, written

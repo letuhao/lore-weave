@@ -60,6 +60,28 @@ describe('useManuscriptTree', () => {
     expect(listOutlineChildren).toHaveBeenLastCalledWith('p1', 't', expect.objectContaining({ parentId: 'arc1' }));
   });
 
+  it('drops a STALE page that resolves after a book switch (M1 guard)', async () => {
+    // b1's first page is deferred; b2's resolves immediately. We switch to b2, then resolve
+    // b1 late — its rows must NOT leak into b2's tree.
+    let resolveB1!: (v: unknown) => void;
+    const b1Page = new Promise((r) => { resolveB1 = r; });
+    listChaptersPage.mockImplementation((_t: unknown, bId: string) =>
+      bId === 'b1'
+        ? b1Page
+        : Promise.resolve({ items: [{ chapter_id: 'c-b2', sort_order: 1, title: 'B2', original_filename: 'b2' }], next_cursor: null, total: 1 }),
+    );
+    const { result, rerender } = renderHook(({ bookId }) => useManuscriptTree(bookId, 't'), { initialProps: { bookId: 'b1' } });
+    rerender({ bookId: 'b2' }); // switch before b1 resolves
+    await waitFor(() => expect(result.current.rows.some((r) => isNode(r, 'c-b2'))).toBe(true));
+    // now the stale b1 page arrives
+    await act(async () => {
+      resolveB1({ items: [{ chapter_id: 'c-b1', sort_order: 1, title: 'B1', original_filename: 'b1' }], next_cursor: null, total: 1 });
+      await Promise.resolve();
+    });
+    expect(result.current.rows.some((r) => isNode(r, 'c-b1'))).toBe(false); // no leak
+    expect(result.current.rows.some((r) => isNode(r, 'c-b2'))).toBe(true);
+  });
+
   it('filters structural `beat` nodes out of the outline', async () => {
     work.value = { data: { status: 'found', work: { project_id: 'p1' } }, isLoading: false };
     listOutlineChildren.mockResolvedValue({

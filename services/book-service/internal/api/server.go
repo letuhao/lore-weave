@@ -1178,6 +1178,9 @@ func (s *Server) listChaptersKeyset(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	limit, _ := parseLimitOffset(r) // reuse the 1..100 clamp; offset is ignored in keyset mode
+	if r.URL.Query().Get("limit") == "" {
+		limit = 100 // a keyset page defaults to a full page, not the list default of 20
+	}
 
 	// Base filters (shared by the COUNT and the page query).
 	args := []any{bookID, lifecycle}

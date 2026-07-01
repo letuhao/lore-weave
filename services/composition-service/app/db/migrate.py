@@ -181,6 +181,12 @@ CREATE TABLE IF NOT EXISTS outline_node (
 CREATE INDEX IF NOT EXISTS idx_outline_node_project ON outline_node(project_id) WHERE NOT is_archived;
 CREATE INDEX IF NOT EXISTS idx_outline_node_parent  ON outline_node(parent_id, rank);
 CREATE INDEX IF NOT EXISTS idx_outline_node_chapter ON outline_node(chapter_id) WHERE kind = 'scene';
+-- #02 manuscript navigator lazy-children: list_children ORDERs BY + keyset-compares
+-- `rank COLLATE "C"` (byte order), which a DEFAULT-collation index cannot serve (Postgres
+-- would Sort every page). Match the collation so the keyset is an index range-scan for a
+-- giant outlined book. `id` is the keyset tiebreak; the partial matches the default query.
+CREATE INDEX IF NOT EXISTS idx_outline_node_children_keyset
+  ON outline_node(parent_id, rank COLLATE "C", id) WHERE NOT is_archived;
 
 -- ── scene_link: ONLY non-derivable edges
 CREATE TABLE IF NOT EXISTS scene_link (

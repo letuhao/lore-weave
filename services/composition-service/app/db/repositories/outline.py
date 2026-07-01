@@ -472,7 +472,7 @@ class OutlineRepo:
             # strictly after (rank, id): rank byte-greater, or same rank + greater id.
             keyset_pred = (
                 f' AND (rank COLLATE "C" > ${len(args) - 1}'
-                f' OR (rank = ${len(args) - 1} AND id > ${len(args)}))'
+                f' OR (rank COLLATE "C" = ${len(args) - 1} AND id > ${len(args)}))'
             )
         args.append(limit + 1)
         query = f"""

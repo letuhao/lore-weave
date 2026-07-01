@@ -66,13 +66,37 @@ paged-outline work). Phases below are a build/verify order, not separate ships.
 - Replace the Side Bar manuscript stub; E2E (large-list virtualization + cursor paging + lazy
   expand on both paths); `/review-impl`; fix; run all.
 
+## Jump contract (shared with #06a Quick Open)
+
+The sidebar **jump box** and the global **⌘P Quick Open** modal ([#06a](06a_quick_open.md))
+share one hook — `useManuscriptJump(bookId)` — and one search/jump backend. **Do not** implement
+a second query path in #06a.
+
+### v1 (this milestone)
+
+| Capability | Mechanism |
+|---|---|
+| Jump to chapter **number** | `sort_order` seek via book-service keyset cursor |
+| Jump by **title** (loaded pages only) | Client filter over pages already in the navigator store |
+| Full-text over all 10k chapters | **Deferred** — book-service `GET /v1/books/{bookId}/manuscript/jump?q=` (Debt #2 below) |
+
+Sidebar jump box: **Enter** → `resolve(result, 'tree')` (+ `'tree_and_dock'` when Debt #1 clears).
+Quick Open (when built): **Enter** → `resolve(result, 'tree_and_dock')`.
+
+Target API shape when server jump ships: see [06a §Jump contract](06a_quick_open.md).
+
 ## Debt (pushed to the studio LIFO stack — newest paid first)
 
 1. **navigator→dock "open in group"** — data + E2E deferred until #03 (a dock panel to open into).
 2. **server-side chapter search/jump** (book-service) — v1 ships jump-to-#N (sort_order seek) +
    client-filter of loaded pages; full server search over all 10k is a later book-service add.
+   **Shared with #06a** — one `GET …/manuscript/jump?q=` unblocks both sidebar jump and ⌘P.
 3. **partial-outline merge** — a has-Work book with undecomposed chapters: v1 drives the tree from
    the outline (authored structure); reconciling with book-service's full chapter list is later.
+4. **adaptive degenerate-level collapse (outlined books)** — the two-source split already gives
+   *imports* a flat list, but an outlined book with exactly **1 arc** shows a lone arc row, and a
+   chapter with **≤1 scene** still shows the scene level. Collapse those in `flatten` (hide a
+   single-child level) as a UX polish. Not implemented in v1 (review-impl M2).
 
 ## Out of scope (02)
 
