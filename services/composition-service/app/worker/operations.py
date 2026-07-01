@@ -33,6 +33,7 @@ __all__ = [
     "run_generate",
     "run_chapter_generate",
     "run_selection_edit",
+    "run_quality_report",
 ]
 
 logger = logging.getLogger("composition.worker.operations")
@@ -167,6 +168,30 @@ async def run_self_heal_propose(
             "edits": report.edits_applied,
             "refuted": sum(1 for f in report.findings if f.skip_reason == "refuted"),
         },
+    }
+
+
+async def run_quality_report(
+    llm: LLMClient, *, user_id: str, input: dict[str, Any],
+    cancel_check: Callable[[], Awaitable[bool]] | None = None,
+) -> dict[str, Any]:
+    """Run the read-only Quality Report over the persisted chapter text + canon (both
+    resolved at the endpoint). Surfaces the planner's advisory judges — the 4-dim critic
+    (coherence/voice/pacing/canon) + the promise audit (introduced/resolved/DROPPED) — to
+    the author. Diagnostic only: NOT applyable edits, so there is nothing to write back."""
+    from app.engine.quality_report import build_quality_report
+
+    report = await build_quality_report(
+        llm, user_id=user_id,
+        model_source=input["model_source"], model_ref=input["model_ref"],
+        chapter=input["chapter_text"], source_language=input.get("source_language", "auto"),
+        canon=input.get("canon") or None,
+        cancel_check=cancel_check,
+    )
+    return {
+        "report": report,
+        "chapter_id": input.get("chapter_id"),
+        "draft_version": input.get("draft_version"),
     }
 
 

@@ -545,3 +545,37 @@ async def test_run_self_heal_propose_serializes(monkeypatch):
     assert out["proposals"][0]["tier"] == "deterministic"
     assert out["source_text"] == "ông đi." and out["draft_version"] == 7
     assert out["stats"] == {"findings": 2, "located": 1, "edits": 1, "refuted": 1}
+
+
+async def test_run_job_dispatches_quality_report(monkeypatch):
+    job = _job(operation="quality_report", input={"worker_op": "quality_report"})
+    repo = _FakeRepo(job)
+    monkeypatch.setattr(jc, "GenerationJobsRepo", lambda pool: repo)
+
+    async def _rqr(llm, *, user_id, input, cancel_check=None):
+        return {"report": {"critic": {"coherence": 4}, "promises": {"dropped": []}}}
+
+    monkeypatch.setattr(jc, "run_quality_report", _rqr)
+    out = await jc.run_job(object(), object(), job_id=str(job.id), user_id=str(job.user_id))
+    assert out == "completed"
+    assert repo.updates[-1][1]["report"]["critic"]["coherence"] == 4
+
+
+async def test_run_quality_report_serializes(monkeypatch):
+    import app.engine.quality_report as qr
+    from app.worker.operations import run_quality_report
+
+    async def _fake_report(llm, *, user_id, model_source, model_ref, chapter, source_language,
+                           canon, cancel_check=None):
+        return {"critic": {"coherence": 5, "violations": []},
+                "promises": {"dropped": ["the debt"], "dropped_count": 1}}
+
+    monkeypatch.setattr(qr, "build_quality_report", _fake_report)
+    out = await run_quality_report(
+        object(), user_id="u",
+        input={"chapter_text": "prose.", "model_source": "user_model", "model_ref": "m",
+               "chapter_id": "c1", "draft_version": 7, "source_language": "vi",
+               "canon": "CANON"})
+    assert out["report"]["critic"]["coherence"] == 5
+    assert out["report"]["promises"]["dropped"] == ["the debt"]
+    assert out["chapter_id"] == "c1" and out["draft_version"] == 7

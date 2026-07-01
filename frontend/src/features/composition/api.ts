@@ -460,6 +460,28 @@ export const compositionApi = {
       job_id: job.id, status: job.status, ...(job.result as Record<string, unknown>),
     }) as SelfHealProposalResponse);
   },
+  // Q1+Q2 Quality Report — surface the planner's advisory judges (4-dim critic + promise
+  // audit) for a chapter as a READ-ONLY report. Diagnostic, not applyable (no accept/apply).
+  // 202+poll when the worker is on, else inline — same resolve path as proposeSelfHeal.
+  async qualityReport(
+    projectId: string,
+    body: { chapterId: string; modelRef: string; modelSource?: 'user_model' | 'platform_model' },
+    token: string,
+  ): Promise<QualityReportResponse> {
+    const resp = await apiJson<QualityReportResponse>(
+      `${BASE}/works/${projectId}/quality-report`,
+      {
+        method: 'POST', token,
+        body: JSON.stringify({
+          chapter_id: body.chapterId,
+          model_source: body.modelSource ?? 'user_model', model_ref: body.modelRef,
+        }),
+      },
+    );
+    return _resolveJob(resp, token, (job) => ({
+      job_id: job.id, status: job.status, ...(job.result as Record<string, unknown>),
+    }) as QualityReportResponse);
+  },
   critique(jobId: string, passage: string, token: string): Promise<{ critic: GenerationJob['critic']; warning?: string }> {
     return apiJson(`${BASE}/jobs/${jobId}/critique`, {
       method: 'POST', body: JSON.stringify({ passage }), token,
@@ -520,6 +542,37 @@ export interface SelfHealProposalResponse {
   source_text: string;
   draft_version: number | null;
   stats?: { findings: number; located: number; edits: number; refuted: number };
+}
+
+// ── Q1+Q2 Quality Report (read-only diagnostics) ───────────────────────
+export interface QualityCritic {
+  coherence: number | null;
+  voice_match: number | null;
+  pacing: number | null;
+  canon_consistency: number | null;
+  violations: { rule_id: string; violated: boolean; span: string; why: string }[];
+  error?: string;
+}
+export interface QualityPromises {
+  introduced: string[];
+  resolved: string[];
+  dropped: string[];
+  introduced_count: number;
+  resolved_count: number;
+  dropped_count: number;
+  dropped_rate: number;
+  error?: string;
+}
+export interface QualityReport {
+  critic: QualityCritic;
+  promises: QualityPromises;
+}
+export interface QualityReportResponse {
+  job_id: string;
+  status: string;
+  report: QualityReport;
+  chapter_id: string | null;
+  draft_version: number | null;
 }
 
 /**

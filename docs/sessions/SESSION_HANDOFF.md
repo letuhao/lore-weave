@@ -1,4 +1,23 @@
-# ▶▶ NEXT SESSION STARTS HERE — **Compose synthesis: planning pipeline (0–6) done + self-heal cheap-stack judge upgrade shipped → next is drive the new stack over CH2–12** · branch `feat/editor-compose-overhaul` · 2026-07-01
+# ▶▶ NEXT SESSION STARTS HERE — **Compose synthesis: self-heal judge upgrades done + "planner exploits its judges" track STARTED (Q1+Q2 Quality Report shipped) → next is Q3 (arc-conformance auto) OR return to the GUI M0–M5 track** · branch `feat/editor-compose-overhaul` · 2026-07-01
+
+> **▶ Quality Report in the Polish gate (Q1+Q2) — SHIPPED 2026-07-01.** New track: make the **planner
+> exploit its own judges** (audit found the auto-loop runs critic/canon/narrative-thread/motif-conformance
+> as advisory-but-BURIED, and `promise_audit` never runs at all). Q1+Q2 surface them as a **read-only
+> Quality Report** in the M6 Polish gate: `engine/quality_report.py` runs the 4-dim **critic** +
+> **promise_audit** (introduced/resolved/**dropped**) concurrently, degrade-safe; worker op `quality_report`
+> (+ SUPPORTED_OPERATIONS + dispatch) + `POST /v1/composition/works/{id}/quality-report` (mirrors self-heal);
+> FE `qualityReport` api + `useQualityReport` + `QualityReportSection` mounted in `PolishPanel` (diagnostic,
+> NO accept/apply — do-no-harm). **Design:** promises are phrases not spans ⇒ read-only, not an EditProposal;
+> Q2 re-runs critic FRESH (stale per-scene `_critic` is wrong after edits) — documented. **Live smoke**
+> (composition→ai-gateway→provider-registry→LM Studio, Gemma-4-26b, vi CH1-style): critic scored 4 dims +
+> caught the planted pronoun violation; promise audit caught the planted Chekhov's-gun as a **dropped promise
+> (rate 1.0)**; both `err:None`. **Also fixed 3 PRE-EXISTING branch reds** (not mine, proven by stash):
+> `test_motif_repo_signatures_frozen` (create/patch grew additive kwargs vs its exact-`==` — aligned to the
+> file's own `[:N]`+`kw in` convention) + 2 `test_canon_reflect` (SimpleNamespace profile fake missing newer
+> `BookProfile` fields → use real `BookProfile`). Plan: `docs/plans/2026-07-01-quality-report-polish-gate.md`.
+> Tests: quality_report 4 + worker_jobs (dispatch+serialize) + FE QualityReportSection 5; full BE suite +
+> FE 747 green. **Deferred:** `D-QUALITY-MOTIF-ROLLUP` (motif beat-not-realized rollup, gate #2),
+> `D-QUALITY-ARC-LEVEL` (arc/book-level promise coverage v2, gate #1/#2).
 
 > **▶ MERGE 2026-06-30: `origin/main` (Temporal-Knowledge / KAL) merged in (55 commits).** The
 > knowledge-gateway (**KAL**) unifies glossary/KG reads under INV-KAL: composition's cast-roster read
@@ -173,6 +192,8 @@
 >     convention already grounds the dominant xưng-hô class; attribute-canon is the enrichment follow-up.
 >
 > **▶ Deferred (this track):**
+> - **D-QUALITY-MOTIF-ROLLUP** — surface `motif_conformance` beat-not-realized per chapter in the Quality Report (needs per-outline-node motif bindings aggregated across scenes). Gate #2 (structural). Target: a Q-follow-on to the Quality Report track.
+> - **D-QUALITY-ARC-LEVEL** — arc/book-level promise coverage (v2 `promise_audit.extract_tracked_promises` from premise+plan → `score_promise_coverage`) as a story-level report distinct from the per-chapter Polish gate. Gate #1/#2. Target: Q3.
 > - **D-THREAD-MOTIF-COMBINED** — `thread_state` + `motifs_enabled` together: typed-state threading is skipped on the motif path (motif `prev_effects` carry used; warned, not silent). Gate #2 (needs interleaving the motif sequential select with the threaded invent loop). Target: when motifs + threading are both wanted in one run.
 > - **Book-service universal formatter** (slice 01: `tiptap.go`/`server.go` markdown→Tiptap) — built, **uncommitted**, awaiting the PO's read-mode test before a separate commit.
 > - GUI milestones M0–M5 — paused behind the synthesis track (output quality first).

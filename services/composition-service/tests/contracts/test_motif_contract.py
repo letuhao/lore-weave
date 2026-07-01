@@ -36,11 +36,20 @@ def _params(fn) -> list[str]:
 
 # ── the frozen repo signatures (§3) ────────────────────────────────────────────
 def test_motif_repo_signatures_frozen():
-    assert _params(MotifRepo.create) == ["self", "user_id", "args"]
+    # The POSITIONAL contract is frozen (owner is NEVER a positional arg — it is
+    # server-stamped = user_id). W8/W9 added provenance/book kwargs ADDITIVELY (see
+    # MotifRepo.create docstring); assert the additive convention, matching
+    # list_for_caller/clone below — not an exact `==` that a documented additive
+    # follow-up must break.
+    create_params = _params(MotifRepo.create)
+    assert create_params[:3] == ["self", "user_id", "args"]
+    for kw in ("source", "imported_derived", "status", "book_id", "book_shared"):
+        assert kw in create_params, f"create missing kw '{kw}'"
     assert _params(MotifRepo.get_visible) == ["self", "caller_id", "motif_id"]
-    assert _params(MotifRepo.patch) == [
-        "self", "caller_id", "motif_id", "args", "expected_version",
-    ]
+    # patch: positional + required `expected_version` frozen; repin_* added additively.
+    patch_params = _params(MotifRepo.patch)
+    assert patch_params[:4] == ["self", "caller_id", "motif_id", "args"]
+    assert "expected_version" in patch_params
     assert _params(MotifRepo.archive) == ["self", "caller_id", "motif_id"]
     list_params = _params(MotifRepo.list_for_caller)
     assert list_params[:2] == ["self", "caller_id"]

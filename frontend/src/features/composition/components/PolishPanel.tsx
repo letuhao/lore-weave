@@ -6,6 +6,7 @@
 import { useTranslation } from 'react-i18next';
 
 import { usePolishProposals } from '../hooks/usePolishProposals';
+import { QualityReportSection } from './QualityReportSection';
 
 interface Props {
   projectId: string;
@@ -143,6 +144,13 @@ export function PolishPanel({ projectId, chapterId, token, modelRef, onApply }: 
           </button>
         </>
       )}
+
+      <QualityReportSection
+        projectId={projectId}
+        chapterId={chapterId}
+        token={token}
+        modelRef={modelRef}
+      />
     </div>
   );
 }

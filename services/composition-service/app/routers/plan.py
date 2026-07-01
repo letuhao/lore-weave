@@ -238,6 +238,71 @@ async def self_heal_propose_endpoint(
     return await run_self_heal_propose(llm, user_id=str(user_id), input=heal_input)
 
 
+class QualityReportRequest(BaseModel):
+    chapter_id: UUID
+    model_source: str = Field(min_length=1, max_length=50)
+    model_ref: str = Field(min_length=1, max_length=200)
+    # Optional canon override (same as self-heal) — grounds the critic's canon dimension.
+    canon: str | None = Field(default=None, max_length=20000)
+
+
+@router.post("/works/{project_id}/quality-report")
+async def quality_report_endpoint(
+    project_id: UUID,
+    body: QualityReportRequest,
+    user_id: UUID = Depends(get_current_user),
+    bearer: str = Depends(get_bearer_token),
+    works: WorksRepo = Depends(get_works_repo),
+    book: BookClient = Depends(get_book_client_dep),
+    kal: KalClient = Depends(get_kal_client_dep),
+    llm: LLMClient = Depends(get_llm_client_dep),
+):
+    """Q1+Q2 Quality Report — surface the planner's advisory judges for a chapter draft as a
+    READ-ONLY report (M6 Polish gate). Resolves the draft text (Tiptap→prose) + a canon (override
+    else best-effort from the cast roster), then runs the 4-dim critic + the promise audit. Unlike
+    self-heal this produces NO applyable edits — it is diagnostic (the author reads it and decides).
+    Worker when enabled (202 + job_id), else inline."""
+    work = await _require_work(works, user_id, project_id)
+    try:
+        draft = await book.get_draft(work.book_id, body.chapter_id, bearer)
+    except BookClientError as exc:
+        raise HTTPException(status_code=502, detail={"code": "BOOK_SERVICE_UNAVAILABLE",
+                                                     "detail": str(exc)}) from exc
+    text = tiptap_doc_to_text(draft.get("body") or draft.get("doc") or draft.get("content"))
+    if not text.strip():
+        raise HTTPException(status_code=400, detail={
+            "code": "EMPTY_DRAFT", "detail": "chapter draft has no prose to analyze"})
+
+    profile = from_settings(work.settings)
+    canon = body.canon
+    if not canon:
+        genre_tags = await _book_genre_tags(book, work.book_id, bearer)
+        roster = await _cast_roster(kal, work.book_id, user_id)
+        canon = render_canon(roster, convention=convention_for(genre_tags, profile.source_language))
+
+    qr_input = {
+        "worker_op": "quality_report", "chapter_text": text, "canon": canon,
+        "chapter_id": str(body.chapter_id), "draft_version": draft.get("draft_version"),
+        "book_id": str(work.book_id), "project_id": str(project_id),
+        "model_source": str(body.model_source), "model_ref": str(body.model_ref),
+        "source_language": profile.source_language,
+    }
+    if settings.composition_worker_enabled:
+        jobs = await get_generation_jobs_repo()
+        job, _created = await jobs.create(
+            user_id, project_id, operation="quality_report", mode="auto",
+            status="pending", input=qr_input)
+        enqueued = await enqueue_job(settings.redis_url, job_id=str(job.id),
+                                     user_id=str(user_id), project_id=str(project_id))
+        return JSONResponse(
+            status_code=http_status.HTTP_202_ACCEPTED,
+            content={"job_id": str(job.id), "status": "pending",
+                     "enqueued": "ok" if enqueued else "retriggerable"})
+    # inline (worker-off / tests)
+    from app.worker.operations import run_quality_report
+    return await run_quality_report(llm, user_id=str(user_id), input=qr_input)
+
+
 def _decompose_response(result) -> dict:
     """Serialize a DecomposeResult for the preview. Plain dataclasses.asdict can't
     serialize the SelectedMotif/MotifBinding (they hold a Pydantic Motif), so the

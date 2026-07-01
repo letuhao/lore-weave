@@ -35,7 +35,8 @@ __all__ = ["SUPPORTED_OPERATIONS", "worker_op_of", "is_worker_drivable"]
 #: their own engine modules (W8 motif_mine / W9 motif_deconstruct / W5 conformance).
 SUPPORTED_OPERATIONS: frozenset[str] = frozenset(
     {"decompose_preview", "plan_pipeline", "stitch_chapter", "generate", "chapter_generate",
-     "selection_edit", "mine_motifs", "analyze_reference", "conformance_run", "self_heal_propose"}
+     "selection_edit", "mine_motifs", "analyze_reference", "conformance_run", "self_heal_propose",
+     "quality_report"}
 )
 
 
