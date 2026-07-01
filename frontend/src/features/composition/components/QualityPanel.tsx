@@ -8,18 +8,35 @@
 import { useTranslation } from 'react-i18next';
 import { useCorrectionStats } from '../hooks/useCorrectionStats';
 import type { ModeCorrectionStats } from '../types';
+import { BookPromiseCoverageSection } from './BookPromiseCoverageSection';
 
 const pct = (r: number | null) => (r == null ? '—' : `${Math.round(r * 100)}%`);
 const num = (r: number | null) => (r == null ? '—' : r.toFixed(1));
 
-export function QualityPanel({ projectId, token }: { projectId: string; token: string | null }) {
+export function QualityPanel({ projectId, token, modelRef }: { projectId: string; token: string | null; modelRef: string }) {
   const { t } = useTranslation('composition');
   const stats = useCorrectionStats(projectId, token);
 
-  if (stats.isLoading) return <Hint>{t('loadingStats', { defaultValue: 'Loading quality…' })}</Hint>;
-  if (stats.isError || !stats.data) return <Hint>{t('statsUnavailable', { defaultValue: 'Quality stats unavailable.' })}</Hint>;
+  // The correction-stats table and the (independent) book-level promise coverage both live
+  // here; render the stats part into a node so a stats loading/error state doesn't hide the
+  // coverage section below it.
+  const statsContent = (stats.isLoading || stats.isError || !stats.data)
+    ? <Hint>{stats.isLoading
+        ? t('loadingStats', { defaultValue: 'Loading quality…' })
+        : t('statsUnavailable', { defaultValue: 'Quality stats unavailable.' })}</Hint>
+    : <CorrectionStatsTable stats={stats.data} />;
 
-  const byMode = stats.data.by_mode;
+  return (
+    <div data-testid="composition-quality" className="flex flex-col gap-2 p-3 text-sm">
+      {statsContent}
+      <BookPromiseCoverageSection projectId={projectId} token={token} modelRef={modelRef} />
+    </div>
+  );
+}
+
+function CorrectionStatsTable({ stats }: { stats: NonNullable<ReturnType<typeof useCorrectionStats>['data']> }) {
+  const { t } = useTranslation('composition');
+  const byMode = stats.by_mode;
   const auto = byMode.find((m) => m.mode === 'auto');
   const cowrite = byMode.find((m) => m.mode === 'cowrite');
   const cols: (ModeCorrectionStats | undefined)[] = [auto, cowrite];
@@ -37,7 +54,7 @@ export function QualityPanel({ projectId, token }: { projectId: string; token: s
   ];
 
   return (
-    <div data-testid="composition-quality" className="flex flex-col gap-2 p-3 text-sm">
+    <>
       <p className="text-xs text-neutral-500">
         {t('statsIntro', { defaultValue: 'Your corrections are the quality signal. Lower edit/regenerate/reject (and higher accept) in Diverge means the K-option reranker is earning its time.' })}
       </p>
@@ -70,7 +87,7 @@ export function QualityPanel({ projectId, token }: { projectId: string; token: s
           </tbody>
         </table>
       )}
-    </div>
+    </>
   );
 }
 

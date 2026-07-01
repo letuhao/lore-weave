@@ -448,3 +448,39 @@ def test_decompose_commit_entity_validation_skipped_on_glossary_outage(ctx):
     body["chapters"][0]["scenes"][0]["present_entity_ids"] = [str(uuid.uuid4())]
     r = c.post(f"/v1/composition/works/{PROJECT}/outline/decompose/commit", json=body)
     assert r.status_code == 201  # not rejected — validation skipped on outage
+
+
+def test_render_outline_plan_walks_tree_in_reading_order():
+    """_render_outline_plan must WALK the tree, not iterate list_tree's flat (parent_id,
+    rank) order. list_tree groups scene clusters by their parent chapter's UUID — NOT
+    reading order — so a naive iteration detaches scenes from their chapters and orders
+    the clusters arbitrarily. Here the flat list deliberately puts Ch2's scene BEFORE
+    Ch1's scene (simulating the UUID sort); the render must still be Ch1→its scene→Ch2→its
+    scene."""
+    from types import SimpleNamespace
+
+    from app.routers.plan import _render_outline_plan
+
+    def node(nid, parent, kind, *, title="", goal="", beat_role=None, synopsis=""):
+        return SimpleNamespace(id=nid, parent_id=parent, kind=kind, title=title,
+                               goal=goal, beat_role=beat_role, synopsis=synopsis)
+
+    arc, c1, c2 = "arc", "c1", "c2"
+    # FLAT list as list_tree returns it: roots first, then children grouped by parent —
+    # with Ch2's scene group BEFORE Ch1's (the UUID-ordering the bug depends on).
+    nodes = [
+        node(arc, None, "arc", title="Arc"),
+        node(c1, arc, "chapter", title="Ch1", beat_role="hook", goal="a debt is owed"),
+        node(c2, arc, "chapter", title="Ch2", goal="the reckoning"),
+        node("s2", c2, "scene", synopsis="scene two body"),
+        node("s1", c1, "scene", synopsis="scene one body"),
+    ]
+    out = _render_outline_plan(nodes)
+    assert out == (
+        "## Ch1 [hook]: a debt is owed\n"
+        "- scene one body\n"
+        "## Ch2: the reckoning\n"
+        "- scene two body"
+    )
+    # each scene sits under ITS chapter, and Ch1 precedes Ch2 despite the flat mis-order.
+    assert out.index("scene one body") < out.index("## Ch2")

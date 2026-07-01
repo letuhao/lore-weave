@@ -8,7 +8,7 @@ failure in one returns its empty shape + `error` and never sinks the other).
 import json
 from types import SimpleNamespace
 
-from app.engine.quality_report import build_quality_report
+from app.engine.quality_report import build_promise_coverage, build_quality_report
 
 # async tests are collected via pytest.ini asyncio auto-mode.
 
@@ -111,3 +111,78 @@ async def test_canon_grounds_the_critic():
     critic_system = next(c for c in llm.calls if "craft critic" in c)
     assert "craft critic" in critic_system  # critic ran with grounding present
     assert rep["critic"]["coherence"] == 4
+
+
+# ── Q3 — book-level promise coverage (v2 extract → score) ─────────────────────
+
+_EXTRACT_JSON = json.dumps({"promises": ["the sealed grimoire", "the debt to the sect"]})
+_COVERAGE_JSON = json.dumps({"verdicts": [{"index": 0, "verdict": "paid"},
+                                          {"index": 1, "verdict": "abandoned"}]})
+
+
+class FakeCoverageLLM:
+    """Routes by SYSTEM prompt: the extract system says 'PREMISE and OUTLINE', the
+    coverage system says 'fixed list of narrative PROMISES'. Each side can be forced
+    to a non-completed status (or a raise) to exercise the degrade paths."""
+
+    def __init__(self, *, extract="ok", coverage="ok"):
+        self._extract = extract
+        self._coverage = coverage
+        self.calls = []
+
+    async def submit_and_wait(self, **kw):
+        system = kw["input"]["messages"][0]["content"]
+        self.calls.append(system)
+        if "PREMISE and OUTLINE" in system:
+            mode, payload = self._extract, _EXTRACT_JSON
+        else:  # coverage
+            mode, payload = self._coverage, _COVERAGE_JSON
+        if mode == "fail":
+            return SimpleNamespace(status="failed", result={})
+        if mode == "raise":
+            raise RuntimeError("unexpected boom")
+        return SimpleNamespace(status="completed", result={"messages": [{"content": payload}]})
+
+
+async def test_coverage_both_ok():
+    llm = FakeCoverageLLM()
+    cov = await build_promise_coverage(
+        llm, user_id="u", model_source="s", model_ref="m",
+        premise="", plan_text="## Ch1: a debt is owed\n- she finds a grimoire",
+        book_text="the whole book prose ...", source_language="vi")
+    assert cov["tracked_count"] == 2
+    assert cov["introduced_count"] == 2          # paid + abandoned engaged
+    assert cov["paid_count"] == 1 and cov["abandoned_count"] == 1
+    assert cov["pay_rate"] == 0.5 and cov["abandon_rate"] == 0.5
+    assert len(llm.calls) == 2                    # extract then score
+
+
+async def test_coverage_extract_degrade_yields_no_tracked_promises():
+    # extract fails → empty promise set → score returns the no-tracked shape (never a phantom).
+    llm = FakeCoverageLLM(extract="fail")
+    cov = await build_promise_coverage(
+        llm, user_id="u", model_source="s", model_ref="m",
+        premise="", plan_text="plan", book_text="prose")
+    assert cov["tracked_count"] == 0
+    assert cov["error"] == "no_tracked_promises"
+    # the coverage LLM is never asked to score an empty set (short-circuit in the engine).
+    assert len(llm.calls) == 1
+
+
+async def test_coverage_score_degrade_marks_all_absent():
+    # extract ok, score fails → the fixed set is all-'absent' + error (no fabricated pays).
+    llm = FakeCoverageLLM(coverage="fail")
+    cov = await build_promise_coverage(
+        llm, user_id="u", model_source="s", model_ref="m",
+        premise="", plan_text="plan", book_text="prose")
+    assert cov["tracked_count"] == 2
+    assert cov["absent_count"] == 2 and cov["paid_count"] == 0
+    assert cov["error"] == "coverage_unavailable"
+
+
+async def test_coverage_unexpected_raise_degrades_to_empty():
+    llm = FakeCoverageLLM(extract="raise")
+    cov = await build_promise_coverage(
+        llm, user_id="u", model_source="s", model_ref="m",
+        premise="", plan_text="plan", book_text="prose")
+    assert cov["tracked_count"] == 0 and cov["error"] == "coverage_error"

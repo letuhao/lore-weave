@@ -1,4 +1,26 @@
-# ▶▶ NEXT SESSION STARTS HERE — **Compose synthesis: self-heal judge upgrades done + "planner exploits its judges" track STARTED (Q1+Q2 Quality Report shipped) → next is Q3 (arc-conformance auto) OR return to the GUI M0–M5 track** · branch `feat/editor-compose-overhaul` · 2026-07-01
+# ▶▶ NEXT SESSION STARTS HERE — **Compose synthesis: "planner exploits its judges" track Q1+Q2+Q3 shipped (Quality Report + book-level promise coverage) → next is the GUI M0–M5 track (Workmode + Translate-as-a-mode), OR the arc-template/motif CRUD-GUI features (big, discuss first)** · branch `feat/editor-compose-overhaul` · 2026-07-01
+
+> **▶ Q3 Book-level promise coverage — SHIPPED 2026-07-01.** Reframed from "auto arc-conformance":
+> verified `compute_arc_report` hard-requires an `arc_template_id`, and arc templates come ONLY from the
+> reference-import (`motif_deconstruct`) / authored path — the mainstream premise→pipeline flow creates
+> none (no `work→arc_template` link), so auto arc-conformance is a **no-op for mainstream works** (already
+> has a manual Tier-W path). The GUI-free, mainstream-valuable Q3 is the **book-level escalation of the
+> promise audit** (v2 API): `quality_report.build_promise_coverage` = `extract_tracked_promises(premise,
+> plan_text)` (STABLE set from the SPEC, not the prose) → `score_promise_coverage(full_book)` →
+> **paid/progressing/abandoned/absent** + rates. Worker op `promise_coverage` (+ SUPPORTED_OPERATIONS +
+> dispatch) + `POST /v1/composition/works/{id}/promise-coverage` (renders `plan_text` from the outline tree
+> + assembles every ACTIVE chapter's prose — the ENDPOINT resolves, the worker runs). FE `promiseCoverage`
+> api + `useBookPromiseCoverage` + `BookPromiseCoverageSection` in the **project-scoped `QualityPanel`**
+> (threaded `modelRef`; NOT the per-chapter Polish gate). Read-only. Also fixed a duplicate `composition-quality`
+> testid (QualityReportSection → `composition-quality-report`). **Live smoke** (Gemma-4-26b, vi plan+book):
+> 4 tracked promises from the outline; 3 paid + **1 ABSENT** = the outline-promised "missing brother" thread
+> the book never delivers — exactly the "does the book pay off the outline?" signal. `err:None`. Tests:
+> quality_report 9 + worker_jobs (dispatch+serialize) + FE BookPromiseCoverageSection 5; FE 735 green.
+> **Deferred:** `D-QUALITY-COVERAGE-CHUNK` (very long books overflow one score call — window it; gate #4).
+> **★ Ceiling note (user):** the rest of the constellation (arc templates, motif library) each need a whole
+> **CRUD GUI** — big features to plan separately, not just "wiring". See memory `constellation-wiring-ceiling-crud-guis`.
+
+> **▶ Quality Report in the Polish gate (Q1+Q2) — SHIPPED 2026-07-01.** New track: make the **planner
 
 > **▶ Quality Report in the Polish gate (Q1+Q2) — SHIPPED 2026-07-01.** New track: make the **planner
 > exploit its own judges** (audit found the auto-loop runs critic/canon/narrative-thread/motif-conformance
@@ -193,7 +215,9 @@
 >
 > **▶ Deferred (this track):**
 > - **D-QUALITY-MOTIF-ROLLUP** — surface `motif_conformance` beat-not-realized per chapter in the Quality Report (needs per-outline-node motif bindings aggregated across scenes). Gate #2 (structural). Target: a Q-follow-on to the Quality Report track.
-> - **D-QUALITY-ARC-LEVEL** — arc/book-level promise coverage (v2 `promise_audit.extract_tracked_promises` from premise+plan → `score_promise_coverage`) as a story-level report distinct from the per-chapter Polish gate. Gate #1/#2. Target: Q3.
+> - **D-QUALITY-COVERAGE-CHUNK** — book-level promise coverage assembles the WHOLE book into one `score_promise_coverage` call; a very long book overflows the model context. Window/chunk it (score per-arc, merge). Gate #4 (fix when a real book hits the limit — profiling). Target: when a large book is driven.
+> - **D-ARC-TEMPLATE-CRUD-GUI / D-MOTIF-LIBRARY-CRUD-GUI** — auto arc-conformance + the motif-library judges are gated on GUI-managed artifacts (arc templates only from reference-import/authored; no `work→arc_template` link). Making them useful needs whole CRUD GUIs — big features. Gate #2 (structural). Target: discuss + plan as their own features.
+> - **Recently cleared:** ~~D-QUALITY-ARC-LEVEL~~ — SHIPPED as Q3 (book-level promise coverage, 2026-07-01).
 > - **D-THREAD-MOTIF-COMBINED** — `thread_state` + `motifs_enabled` together: typed-state threading is skipped on the motif path (motif `prev_effects` carry used; warned, not silent). Gate #2 (needs interleaving the motif sequential select with the threaded invent loop). Target: when motifs + threading are both wanted in one run.
 > - **Book-service universal formatter** (slice 01: `tiptap.go`/`server.go` markdown→Tiptap) — built, **uncommitted**, awaiting the PO's read-mode test before a separate commit.
 > - GUI milestones M0–M5 — paused behind the synthesis track (output quality first).

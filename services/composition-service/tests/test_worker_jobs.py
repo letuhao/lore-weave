@@ -579,3 +579,36 @@ async def test_run_quality_report_serializes(monkeypatch):
     assert out["report"]["critic"]["coherence"] == 5
     assert out["report"]["promises"]["dropped"] == ["the debt"]
     assert out["chapter_id"] == "c1" and out["draft_version"] == 7
+
+
+async def test_run_job_dispatches_promise_coverage(monkeypatch):
+    job = _job(operation="promise_coverage", input={"worker_op": "promise_coverage"})
+    repo = _FakeRepo(job)
+    monkeypatch.setattr(jc, "GenerationJobsRepo", lambda pool: repo)
+
+    async def _rpc(llm, *, user_id, input, cancel_check=None):
+        return {"coverage": {"tracked_count": 3, "abandoned_count": 1}, "chapters": 12}
+
+    monkeypatch.setattr(jc, "run_promise_coverage", _rpc)
+    out = await jc.run_job(object(), object(), job_id=str(job.id), user_id=str(job.user_id))
+    assert out == "completed"
+    assert repo.updates[-1][1]["coverage"]["tracked_count"] == 3
+
+
+async def test_run_promise_coverage_serializes(monkeypatch):
+    import app.engine.quality_report as qr
+    from app.worker.operations import run_promise_coverage
+
+    async def _fake_cov(llm, *, user_id, model_source, model_ref, premise, plan_text,
+                        book_text, source_language, cancel_check=None):
+        assert premise == "" and "Ch1" in plan_text and book_text
+        return {"tracked_count": 2, "paid_count": 1, "abandoned_count": 1, "abandon_rate": 0.5}
+
+    monkeypatch.setattr(qr, "build_promise_coverage", _fake_cov)
+    out = await run_promise_coverage(
+        object(), user_id="u",
+        input={"premise": "", "plan_text": "## Ch1: a debt", "book_text": "the book prose",
+               "chapters": 12, "model_source": "user_model", "model_ref": "m",
+               "source_language": "vi"})
+    assert out["coverage"]["abandon_rate"] == 0.5
+    assert out["chapters"] == 12

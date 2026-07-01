@@ -482,6 +482,26 @@ export const compositionApi = {
       job_id: job.id, status: job.status, ...(job.result as Record<string, unknown>),
     }) as QualityReportResponse);
   },
+  // Q3 Book-level promise coverage — does the finished book pay off what the outline
+  // promised? Read-only, book-scoped (no chapter). 202+poll or inline, same resolve path.
+  async promiseCoverage(
+    projectId: string,
+    body: { modelRef: string; modelSource?: 'user_model' | 'platform_model' },
+    token: string,
+  ): Promise<PromiseCoverageResponse> {
+    const resp = await apiJson<PromiseCoverageResponse>(
+      `${BASE}/works/${projectId}/promise-coverage`,
+      {
+        method: 'POST', token,
+        body: JSON.stringify({
+          model_source: body.modelSource ?? 'user_model', model_ref: body.modelRef,
+        }),
+      },
+    );
+    return _resolveJob(resp, token, (job) => ({
+      job_id: job.id, status: job.status, ...(job.result as Record<string, unknown>),
+    }) as PromiseCoverageResponse);
+  },
   critique(jobId: string, passage: string, token: string): Promise<{ critic: GenerationJob['critic']; warning?: string }> {
     return apiJson(`${BASE}/jobs/${jobId}/critique`, {
       method: 'POST', body: JSON.stringify({ passage }), token,
@@ -573,6 +593,32 @@ export interface QualityReportResponse {
   report: QualityReport;
   chapter_id: string | null;
   draft_version: number | null;
+}
+
+// ── Q3 Book-level promise coverage (read-only) ─────────────────────────
+export type PromiseVerdict = 'paid' | 'progressing' | 'abandoned' | 'absent';
+export interface PromiseCoverageItem {
+  promise: string;
+  verdict: PromiseVerdict;
+}
+export interface PromiseCoverage {
+  coverage: PromiseCoverageItem[];
+  tracked_count: number;
+  introduced_count: number;
+  paid_count: number;
+  progressing_count: number;
+  abandoned_count: number;
+  absent_count: number;
+  pay_rate: number;
+  sustained_rate: number;
+  abandon_rate: number;
+  error?: string;
+}
+export interface PromiseCoverageResponse {
+  job_id: string;
+  status: string;
+  coverage: PromiseCoverage;
+  chapters: number | null;
 }
 
 /**

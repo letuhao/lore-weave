@@ -34,6 +34,7 @@ __all__ = [
     "run_chapter_generate",
     "run_selection_edit",
     "run_quality_report",
+    "run_promise_coverage",
 ]
 
 logger = logging.getLogger("composition.worker.operations")
@@ -193,6 +194,26 @@ async def run_quality_report(
         "chapter_id": input.get("chapter_id"),
         "draft_version": input.get("draft_version"),
     }
+
+
+async def run_promise_coverage(
+    llm: LLMClient, *, user_id: str, input: dict[str, Any],
+    cancel_check: Callable[[], Awaitable[bool]] | None = None,
+) -> dict[str, Any]:
+    """Run the book-level promise coverage (Q3) over the persisted plan_text + book_text
+    (the endpoint rendered the outline plan + assembled every chapter's prose — it has the
+    bearer/pool). Derives the tracked-promise set from the SPEC and scores the book against
+    it. Diagnostic only — read-only counts/verdicts, nothing to write back."""
+    from app.engine.quality_report import build_promise_coverage
+
+    coverage = await build_promise_coverage(
+        llm, user_id=user_id,
+        model_source=input["model_source"], model_ref=input["model_ref"],
+        premise=input.get("premise", ""), plan_text=input.get("plan_text", ""),
+        book_text=input["book_text"], source_language=input.get("source_language", "auto"),
+        cancel_check=cancel_check,
+    )
+    return {"coverage": coverage, "chapters": input.get("chapters")}
 
 
 async def run_stitch(

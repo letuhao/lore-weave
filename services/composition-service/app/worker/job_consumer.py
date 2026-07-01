@@ -31,6 +31,7 @@ from app.worker.operations import (
     run_decompose,
     run_generate,
     run_plan_pipeline,
+    run_promise_coverage,
     run_quality_report,
     run_selection_edit,
     run_self_heal_propose,
@@ -166,6 +167,13 @@ async def _run_operation(
         inp = dict(job.input or {})
         inp.setdefault("user_id", str(job.user_id))
         return await run_quality_report(
+            llm, user_id=str(job.user_id), input=inp, cancel_check=cancel_check)
+    if op == "promise_coverage":
+        # No pool/knowledge — the endpoint rendered the outline plan + assembled the book prose;
+        # this scores the book against the spec's tracked-promise set (read-only coverage).
+        inp = dict(job.input or {})
+        inp.setdefault("user_id", str(job.user_id))
+        return await run_promise_coverage(
             llm, user_id=str(job.user_id), input=inp, cancel_check=cancel_check)
     # ── Wave-2 motif ops (W2-F0 frozen dispatch seam) ─────────────────────────────
     # The Tier-W confirm effects (routers/actions.py) already stamp the full input

@@ -25,7 +25,7 @@ beforeEach(() => {
 describe('QualityPanel (eval-gate dashboard — slice 5)', () => {
   it('shows the cold-start hint when there are no generations', () => {
     mockStats.data = { project_id: 'p', by_mode: [mode({ mode: 'auto' }), mode({ mode: 'cowrite' })] };
-    render(<QualityPanel projectId="p" token="t" />);
+    render(<QualityPanel projectId="p" token="t" modelRef="m" />);
     expect(screen.getByTestId('composition-quality-coldstart')).toBeTruthy();
   });
 
@@ -37,7 +37,7 @@ describe('QualityPanel (eval-gate dashboard — slice 5)', () => {
       mode({ mode: 'cowrite', generations: 2, corrected_jobs: 1, accept_rate: 0.5,
              edit_rate: 0, pick_different_rate: 0, regenerate_rate: 0.5, reject_rate: 0 }),
     ] };
-    render(<QualityPanel projectId="p" token="t" />);
+    render(<QualityPanel projectId="p" token="t" modelRef="m" />);
     expect(screen.queryByTestId('composition-quality-coldstart')).toBeNull();
     const autoCells = screen.getAllByTestId('stat-auto').map((c) => c.textContent);
     expect(autoCells).toContain('50%'); // accept_rate
@@ -49,7 +49,7 @@ describe('QualityPanel (eval-gate dashboard — slice 5)', () => {
 
   it('shows an error state when the query fails', () => {
     mockStats.isError = true;
-    render(<QualityPanel projectId="p" token="t" />);
+    render(<QualityPanel projectId="p" token="t" modelRef="m" />);
     expect(screen.getByText('statsUnavailable')).toBeTruthy();
   });
 });

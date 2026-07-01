@@ -837,7 +837,7 @@ export function CompositionPanel({ bookId, chapterId, token, onAccept, onApplyPo
           <ProgressPanel projectId={work.project_id} bookId={bookId} settings={work.settings} token={token} />
         </DockSlot>
         <DockSlot {...slot('quality')}>
-          <QualityPanel projectId={work.project_id} token={token} />
+          <QualityPanel projectId={work.project_id} token={token} modelRef={effectiveModelRef} />
         </DockSlot>
         <DockSlot {...slot('polish')}>
           {/* keyed by chapterId so proposals (offsets into THIS chapter's text) reset on a

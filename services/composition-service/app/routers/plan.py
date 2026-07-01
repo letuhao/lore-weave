@@ -303,6 +303,110 @@ async def quality_report_endpoint(
     return await run_quality_report(llm, user_id=str(user_id), input=qr_input)
 
 
+def _render_outline_plan(nodes: list[Any]) -> str:
+    """Render the outline tree into a compact plan_text — the SPEC the promise set is
+    derived from: each chapter header followed by ITS scenes, in reading order.
+
+    `list_tree` returns a FLAT list ordered by (parent_id, rank), so the scene groups
+    are ordered by their parent chapter's UUID — NOT reading order. Iterating the flat
+    list would emit every chapter header first, then scene clusters in arbitrary order,
+    detached from their chapters. So we WALK the tree (arc → chapters → scenes) via a
+    parent→children map; children within a parent stay rank-ordered (list_tree's order),
+    which is the correct sibling order."""
+    by_parent: dict[Any, list[Any]] = {}
+    for n in nodes:
+        by_parent.setdefault(n.parent_id, []).append(n)
+    lines: list[str] = []
+
+    def walk(parent_id: Any) -> None:
+        for n in by_parent.get(parent_id, []):
+            if n.kind == "chapter":
+                head = (n.title or "").strip() or "(chapter)"
+                if n.beat_role:
+                    head += f" [{n.beat_role}]"
+                if (n.goal or "").strip():
+                    head += f": {n.goal.strip()}"
+                lines.append(f"## {head}")
+            elif n.kind == "scene":
+                body = (n.synopsis or "").strip() or (n.title or "").strip()
+                if body:
+                    lines.append(f"- {body}")
+            walk(n.id)  # descend: arc → chapters, chapter → scenes (tree order)
+
+    walk(None)
+    return "\n".join(lines)
+
+
+class PromiseCoverageRequest(BaseModel):
+    model_source: str = Field(min_length=1, max_length=50)
+    model_ref: str = Field(min_length=1, max_length=200)
+
+
+@router.post("/works/{project_id}/promise-coverage")
+async def promise_coverage_endpoint(
+    project_id: UUID,
+    body: PromiseCoverageRequest,
+    user_id: UUID = Depends(get_current_user),
+    bearer: str = Depends(get_bearer_token),
+    works: WorksRepo = Depends(get_works_repo),
+    book: BookClient = Depends(get_book_client_dep),
+    outline: OutlineRepo = Depends(get_outline_repo),
+    llm: LLMClient = Depends(get_llm_client_dep),
+):
+    """Q3 Book-level promise coverage — does the finished book pay off what the outline
+    promised? Renders the outline tree as the plan spec, assembles every ACTIVE chapter's
+    prose, derives a STABLE tracked-promise set from the spec, and scores the book against it
+    (paid/progressing/abandoned/absent + rates). READ-ONLY (book-scoped; no per-chapter edits).
+    Worker when enabled (202 + job_id), else inline."""
+    work = await _require_work(works, user_id, project_id)
+    nodes = await outline.list_tree(user_id, project_id)
+    plan_text = _render_outline_plan(nodes)
+
+    # Assemble every active chapter's prose in reading order (skip empty/failed — degrade).
+    chapters = await _book_chapter_ids(book, work.book_id, bearer)
+    parts: list[str] = []
+    n_ok = 0
+    for ch in chapters:
+        cid = ch.get("chapter_id")
+        if not cid:
+            continue
+        try:
+            draft = await book.get_draft(work.book_id, UUID(str(cid)), bearer)
+        except BookClientError:
+            continue
+        txt = tiptap_doc_to_text(draft.get("body") or draft.get("doc") or draft.get("content"))
+        if txt.strip():
+            parts.append(txt.strip())
+            n_ok += 1
+    book_text = "\n\n".join(parts)
+    if not book_text.strip():
+        raise HTTPException(status_code=400, detail={
+            "code": "EMPTY_BOOK", "detail": "no chapter prose to analyze"})
+
+    profile = from_settings(work.settings)
+    cov_input = {
+        "worker_op": "promise_coverage", "premise": "", "plan_text": plan_text,
+        "book_text": book_text, "chapters": n_ok,
+        "book_id": str(work.book_id), "project_id": str(project_id),
+        "model_source": str(body.model_source), "model_ref": str(body.model_ref),
+        "source_language": profile.source_language,
+    }
+    if settings.composition_worker_enabled:
+        jobs = await get_generation_jobs_repo()
+        job, _created = await jobs.create(
+            user_id, project_id, operation="promise_coverage", mode="auto",
+            status="pending", input=cov_input)
+        enqueued = await enqueue_job(settings.redis_url, job_id=str(job.id),
+                                     user_id=str(user_id), project_id=str(project_id))
+        return JSONResponse(
+            status_code=http_status.HTTP_202_ACCEPTED,
+            content={"job_id": str(job.id), "status": "pending",
+                     "enqueued": "ok" if enqueued else "retriggerable"})
+    # inline (worker-off / tests)
+    from app.worker.operations import run_promise_coverage
+    return await run_promise_coverage(llm, user_id=str(user_id), input=cov_input)
+
+
 def _decompose_response(result) -> dict:
     """Serialize a DecomposeResult for the preview. Plain dataclasses.asdict can't
     serialize the SelectedMotif/MotifBinding (they hold a Pydantic Motif), so the

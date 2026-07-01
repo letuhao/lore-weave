@@ -26,7 +26,7 @@ export function QualityReportSection({ projectId, chapterId, token, modelRef }: 
   const promises = q.report?.promises;
 
   return (
-    <div data-testid="composition-quality" className="mt-3 flex flex-col gap-2 border-t border-neutral-100 pt-3 dark:border-neutral-800">
+    <div data-testid="composition-quality-report" className="mt-3 flex flex-col gap-2 border-t border-neutral-100 pt-3 dark:border-neutral-800">
       <div className="flex items-center justify-between">
         <span className="text-xs font-medium text-neutral-600 dark:text-neutral-300">
           {t('qualityTitle', { defaultValue: 'Quality report' })}

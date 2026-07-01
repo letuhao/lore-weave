@@ -95,5 +95,36 @@ quality judgment to the author as a **read-only Quality Report inside the existi
 ## Deferred created
 - `D-QUALITY-MOTIF-ROLLUP` — surface `motif_conformance` beat-not-realized per chapter (needs
   per-node bindings aggregation). Gate #2 (structural). Target: Q-follow-on.
-- `D-QUALITY-ARC-LEVEL` — arc/book-level promise coverage (v2 `score_promise_coverage` vs the
-  premise+plan tracked set) as a story-level report. Gate #1/#2. Target: Q3.
+
+---
+
+# Q3 — Book-level promise coverage (2026-07-01)
+
+**Reframed from "auto arc-conformance":** verified `compute_arc_report` hard-requires an
+`arc_template_id`, and arc templates exist ONLY via the reference-import (`motif_deconstruct`) /
+authored path — the mainstream premise→pipeline flow creates none, so auto arc-conformance is a
+no-op for mainstream works (already has a manual Tier-W path). The buildable, mainstream-valuable
+Q3 is the **book-level escalation of the promise audit** (v2 API), needing only data every work has
+(plan + prose). See memory `constellation-wiring-ceiling-crud-guis`.
+
+**What:** answer *"does the finished book pay off what the outline promised?"* via `promise_audit`
+v2: `extract_tracked_promises(premise, plan_text)` derives a STABLE promise set from the SPEC (not
+the prose), then `score_promise_coverage` scores the assembled book → **paid / progressing /
+abandoned / absent** per promise + rates. Read-only, book-scoped — the arc-level sibling of Q1.
+
+**Design:** `premise` isn't persisted → render `plan_text` from the outline tree
+(`OutlineRepo.list_tree`: chapter title/beat_role/goal + scene synopsis), pass `premise=""`.
+`book_text` = all ACTIVE chapters' prose (`list_chapters` reading order → `get_draft` →
+`tiptap_doc_to_text`, skip empty/failed). The ENDPOINT resolves plan_text + book_text (has the
+bearer) into the job input; the worker just runs the engine. Home = the project-scoped
+`QualityPanel` (thread `modelRef` in, currently omitted), NOT the per-chapter Polish gate.
+
+**BUILD:** BE `build_promise_coverage` (extract→score, degrade-safe `_empty_coverage`) + worker op
+`promise_coverage` (+ SUPPORTED_OPERATIONS + dispatch) + endpoint `POST .../promise-coverage`
+(`_render_outline_plan` + book assembly). FE `promiseCoverage` api + `useBookPromiseCoverage` +
+`BookPromiseCoverageSection` in `QualityPanel`. Tests: engine (ok / extract-degrade / score-degrade
+/ unexpected raise) + worker dispatch+serialize + FE section.
+
+**VERIFY:** pytest + full BE suite; FE build + tests; **live smoke** book coverage on the CH1–12 POC.
+**Deferred:** `D-QUALITY-COVERAGE-CHUNK` — very long books may overflow one score call (window it);
+gate #4 (fix when a real book hits the limit).

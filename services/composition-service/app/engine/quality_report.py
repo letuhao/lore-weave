@@ -32,7 +32,11 @@ from typing import Any
 
 from app.clients.llm_client import LLMClient
 from app.engine.critic import judge_prose
-from app.engine.promise_audit import audit_promises
+from app.engine.promise_audit import (
+    audit_promises,
+    extract_tracked_promises,
+    score_promise_coverage,
+)
 from app.packer.profile import BookProfile
 
 logger = logging.getLogger(__name__)
@@ -102,3 +106,40 @@ async def build_quality_report(
         ),
     )
     return {"critic": critic, "promises": promises}
+
+
+def _empty_coverage(err: str = "coverage_error") -> dict[str, Any]:
+    return {"coverage": [], "tracked_count": 0, "introduced_count": 0, "paid_count": 0,
+            "progressing_count": 0, "abandoned_count": 0, "absent_count": 0,
+            "pay_rate": 0.0, "sustained_rate": 0.0, "abandon_rate": 0.0, "error": err}
+
+
+async def build_promise_coverage(
+    llm: LLMClient, *, user_id: str, model_source: str, model_ref: str,
+    premise: str, plan_text: str, book_text: str, source_language: str = "auto",
+    trace_id: str | None = None,
+    cancel_check: Callable[[], Awaitable[bool]] | None = None,
+) -> dict[str, Any]:
+    """Book/arc-level promise coverage (promise_audit v2). Derives a STABLE tracked-promise
+    set from the SPEC (premise + rendered outline plan — NOT the prose, so it doesn't reward
+    a book for merely surfacing more promises), then scores the assembled book prose against
+    that fixed set: paid / progressing / abandoned / absent per promise + pay/sustained/abandon
+    rates. Answers "does the finished book pay off what the outline promised?" — the book-level
+    sibling of the per-chapter dropped-promise audit.
+
+    Degrade-safe: `extract_tracked_promises` returns [] on failure ⇒ `score_promise_coverage`
+    returns its no-tracked-promises shape; an unexpected raise (the narrow parse window the
+    underlying `_chat` leaves) degrades to the empty-coverage shape. `CancelledError`
+    (BaseException) still propagates, so a real cancel aborts."""
+    try:
+        promises = await extract_tracked_promises(
+            llm, user_id=user_id, model_source=model_source, model_ref=model_ref,
+            premise=premise, plan_text=plan_text, source_language=source_language,
+            trace_id=trace_id, cancel_check=cancel_check)
+        return await score_promise_coverage(
+            llm, user_id=user_id, model_source=model_source, model_ref=model_ref,
+            promises=promises, arc_text=book_text, source_language=source_language,
+            trace_id=trace_id, cancel_check=cancel_check)
+    except Exception:  # noqa: BLE001 — advisory; degrade, never raise (cancel still propagates)
+        logger.warning("promise_coverage degraded (unexpected error)", exc_info=True)
+        return _empty_coverage()
