@@ -1,4 +1,20 @@
-# ▶▶ NEXT SESSION STARTS HERE — **Compose synthesis: "planner exploits its judges" track Q1+Q2+Q3 shipped (Quality Report + book-level promise coverage) → next is the GUI M0–M5 track (Workmode + Translate-as-a-mode), OR the arc-template/motif CRUD-GUI features (big, discuss first)** · branch `feat/editor-compose-overhaul` · 2026-07-01
+# ▶▶ NEXT SESSION STARTS HERE — **GUI track: Workmode switch (Write·Translate·Read·Compose) + Translate-as-an-embedded-mode SHIPPED. Next: browser-smoke the 4 modes on a live stack, then the remaining GUI menu (Scenes panel M3, Compose command-center M4) OR the compose redesign (per-tool, user-driven)** · branch `feat/editor-compose-overhaul` · 2026-07-01**
+
+> **▶ GUI Workmode overhaul (M0 + M1 + Read) — SHIPPED 2026-07-01 (FE-only).** The chapter editor's
+> "three overlapping hidden mode systems" collapse into ONE dropdown: **Write · Translate · Read · Compose**
+> (`hooks/useWorkmode.ts` persisted `lw_editor_workmode`; `components/editor/WorkmodeSwitcher.tsx`). Folded
+> away the scattered Pen/Sparkles toggle (now a Write-only sub-control), the Co-write bridge, the one-shot
+> `handleTranslate` button (deleted), the view-translations Eye button, and the compose right-panel tab.
+> **Center swaps by mode:** Write/Compose keep the manuscript editor mounted (Compose shows the studio in the
+> right companion panel — the editor MUST stay mounted or the studio's insert/applyPolish ref no-ops:
+> regression-tested); Translate embeds the full **`ChapterTranslationsPanel`** (extracted from
+> `ChapterTranslationsPage`, which is now a thin wrapper seeding `?lang=`/`?vid=`); **Read** opens the
+> existing full `ReaderPage` route (guarded) — reader already reads the draft with TTS/theme/TOC/lang-switch,
+> so it's reused, not rebuilt. i18n `editor.workmode.*` × en/vi/ja/zh-TW. E2E page-object `openComposeTab`
+> updated to drive the dropdown. **Tests:** useWorkmode 4 + WorkmodeSwitcher 4 + ChapterEditorPage 5 (incl.
+> the Compose-keeps-editor-mounted regression guard); translation/composition/editor/pages/hooks **853 green**,
+> tsc + eslint clean. **Not done:** live browser-smoke (mocked heavy components ≠ visual proof — do next);
+> mobile still uses its own group shell (workmode switch is desktop-only, conscious).
 
 > **▶ Q3 Book-level promise coverage — SHIPPED 2026-07-01.** Reframed from "auto arc-conformance":
 > verified `compute_arc_report` hard-requires an `arc_template_id`, and arc templates come ONLY from the

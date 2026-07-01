@@ -22,6 +22,16 @@
     "ai": "AI",
     "ai_title": "AIアシスタントモード — 全機能"
   },
+  "workmode": {
+    "write": "執筆",
+    "write_desc": "原稿を編集",
+    "translate": "翻訳",
+    "translate_desc": "バージョン・比較・翻訳",
+    "read": "読む",
+    "read_desc": "リーダーを開く（TTS・テーマ）",
+    "compose": "創作",
+    "compose_desc": "AI共同執筆スタジオ"
+  },
   "grammar_title": "文法・スペルチェックの切り替え（LanguageTool）",
   "translate_title": "AIでコンテンツを翻訳（ブロックモード）",
   "translating": "翻訳中...",
