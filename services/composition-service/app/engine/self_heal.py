@@ -645,6 +645,21 @@ async def _rerank_edit(
     return "RULE" in up and "CRAFT" not in up and "BAD" not in up, reason
 
 
+# The objective CONVENTION classes the auditor labels in an edit's `type` — xưng-hô/address
+# (a modern pronoun, wrong honorific, third-person self-reference) + typos. These are closed,
+# objective RULE fixes, so we pre-check them DETERMINISTICALLY + FREE (D-QUALITY-HONORIFIC-PRECHECK):
+# the eval showed the LLM re-ranker only classifies ~half the honorific fixes as RULE (8/15) at the
+# cost of an extra call each, whereas the auditor's own type label catches all 15 reliably. Matches
+# the category label (language-agnostic — the auditor categorizes the edit), NOT prose content.
+_CONVENTION_FIX_MARKERS = ("address", "honorif", "xưng", "pronoun", "ngôi kể", "typo")
+
+
+def _is_convention_fix(edit_type: str) -> bool:
+    """True for an objective xưng-hô/address/typo fix — pre-checked for free, no re-ranker."""
+    t = (edit_type or "").lower()
+    return any(m in t for m in _CONVENTION_FIX_MARKERS)
+
+
 async def propose_edits_direct(
     llm: LLMClient, chapter: str, *, user_id: str, model_source: str, model_ref: str,
     canon: str | None = None, source_language: str = "auto", prefilter: bool = True,
@@ -705,6 +720,12 @@ async def propose_edits_direct(
     for p in proposals:
         if p.tier == "deterministic":
             p.recommended = True
+        elif _is_convention_fix(p.type):
+            # objective xưng-hô/address/typo fix (a closed convention class) — pre-check it
+            # deterministically + FREE, instead of paying an LLM re-ranker call that catches only
+            # ~half the honorific class (eval: 8/15). D-QUALITY-HONORIFIC-PRECHECK.
+            p.recommended = True
+            p.rerank_reason = "objective xưng-hô/address/typo convention fix (code-detected)"
         elif rerank:
             p.recommended, p.rerank_reason = await _rerank_edit(llm, p, canon=canon, **kw)
         else:

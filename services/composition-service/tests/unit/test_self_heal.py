@@ -431,9 +431,11 @@ async def test_propose_without_rerank_leaves_semantic_unrecommended():
 
 
 async def test_propose_rerank_ranks_semantic_without_dropping():
-    # type-routed: e0 = RULE (pre-check), e1 = CRAFT (author's call) — but BOTH still returned
+    # type-routed: e0 = RULE (pre-check), e1 = CRAFT (author's call) — but BOTH still returned.
+    # (Non-convention types so both go through the re-ranker — the convention short-circuit is
+    # covered separately in test_convention_fix_prechecked_without_reranker.)
     llm = FakeStackLLM([_dj(
-        ("the quick brown fox jumps", "THE RED FOX LEAPS", "pronoun rule", "address"),
+        ("the quick brown fox jumps", "THE RED FOX LEAPS", "logic fix", "logic"),
         ("the lazy dog sleeps soundly", "the hound naps", "rephrase", "style"))],
         rerank_fn=lambda user: "CRAFT" if "hound naps" in user else "RULE")
     proposals, _ = await propose_self_heal(
@@ -441,6 +443,46 @@ async def test_propose_rerank_ranks_semantic_without_dropping():
         chapter=_PA_CH, source_language="en", rerank=True)
     assert len(proposals) == 2 and llm.rerank_calls == 2
     assert {p.id: p.recommended for p in proposals} == {"e0": True, "e1": False}   # RULE ticked, CRAFT not
+
+
+def test_is_convention_fix():
+    from app.engine.self_heal import _is_convention_fix
+    assert _is_convention_fix("ADDRESS/HONORIFIC")
+    assert _is_convention_fix("address/honorific error")
+    assert _is_convention_fix("xưng hô (code)")
+    assert _is_convention_fix("typo / spelling")
+    assert not _is_convention_fix("repeated information")
+    assert not _is_convention_fix("logic / cause-effect hole")
+    assert not _is_convention_fix("")
+
+
+async def test_convention_fix_prechecked_without_reranker():
+    # An objective xưng-hô/address edit is pre-checked by CODE (free) — the re-ranker is NOT
+    # called for it, even with rerank=ON. The eval showed the LLM re-ranker only classifies
+    # ~half the honorific class as RULE (8/15); the type label catches them all reliably + free.
+    llm = FakeStackLLM([_dj(
+        ("the quick brown fox jumps", "THE RED FOX LEAPS", "modern pronoun", "ADDRESS/HONORIFIC"),
+        ("the lazy dog sleeps soundly", "the hound naps", "rephrase", "style"))],
+        rerank_fn=lambda user: "CRAFT")
+    proposals, _ = await propose_self_heal(
+        llm, user_id="u", model_source="user_model", model_ref="m",
+        chapter=_PA_CH, source_language="en", rerank=True)
+    by = {p.id: p for p in proposals}
+    assert by["e0"].recommended is True and "code-detected" in by["e0"].rerank_reason
+    assert by["e1"].recommended is False          # style → CRAFT via the re-ranker
+    assert llm.rerank_calls == 1                  # ONLY e1 paid the re-ranker; e0 short-circuited
+
+
+async def test_convention_fix_prechecked_even_without_rerank():
+    # rerank OFF (default): the address fix is STILL pre-checked (code), the style edit is not.
+    llm = FakeStackLLM([_dj(
+        ("the quick brown fox jumps", "THE RED FOX LEAPS", "modern pronoun", "address/honorific"),
+        ("the lazy dog sleeps soundly", "the hound naps", "rephrase", "style"))])
+    proposals, _ = await propose_self_heal(
+        llm, user_id="u", model_source="user_model", model_ref="m",
+        chapter=_PA_CH, source_language="en")   # rerank defaults OFF
+    by = {p.id: p.recommended for p in proposals}
+    assert by == {"e0": True, "e1": False}
 
 
 async def test_deterministic_edit_always_recommended():
