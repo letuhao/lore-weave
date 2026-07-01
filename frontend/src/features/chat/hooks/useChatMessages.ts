@@ -62,6 +62,9 @@ export function useChatMessages(
   enabledTools?: string[],
   enabledSkills?: string[],
   streamPinsRef?: MutableRefObject<StreamPins>,
+  /** #09 Lane A: present in the Writing Studio compose panel — enables the studio
+   *  dock-nav frontend tools (open panel / focus manuscript unit). */
+  studioContext?: { book_id?: string; active_panel_ids?: string[]; context_revision?: number },
 ) {
   const { accessToken } = useAuth();
   const [messages, setMessages] = useState<ChatMessage[]>([]);
@@ -187,6 +190,7 @@ export function useChatMessages(
             ...(editFromSequence != null ? { editFromSequence } : {}),
             ...(thinking != null ? { thinking } : {}),
             ...(editorContext ? { editorContext } : {}),
+            ...(studioContext ? { studioContext } : {}),
             ...(composeMode != null ? { composeMode } : {}),
             ...(bookContext ? { bookContext } : {}),
             ...(displayLanguage ? { displayLanguage } : {}),
@@ -269,7 +273,7 @@ export function useChatMessages(
         setIsComposing(false);  // never leave the drafting indicator stuck on
       }
     },
-    [accessToken, sessionId, fetchMessages, editorContext, composeMode, bookContext, displayLanguage, resolveStreamPins, messages.length],
+    [accessToken, sessionId, fetchMessages, editorContext, studioContext, composeMode, bookContext, displayLanguage, resolveStreamPins, messages.length],
   );
 
   // ── ARCH-1 C6: resume a suspended run after a frontend-tool decision ──────────
@@ -402,6 +406,7 @@ export function useChatMessages(
         ...(editFromSequence != null ? { editFromSequence } : {}),
         ...(thinking != null ? { thinking } : {}),
         ...(editorContext ? { editorContext } : {}),
+        ...(studioContext ? { studioContext } : {}),
         ...(composeMode != null ? { composeMode } : {}),
         ...(bookContext ? { bookContext } : {}),
         ...(displayLanguage ? { displayLanguage } : {}),
@@ -409,7 +414,7 @@ export function useChatMessages(
         ...(pins.enabledSkills?.length ? { enabledSkills: pins.enabledSkills } : {}),
       };
     },
-    [sessionId, editorContext, composeMode, bookContext, displayLanguage, resolveStreamPins],
+    [sessionId, editorContext, studioContext, composeMode, bookContext, displayLanguage, resolveStreamPins],
   );
 
   // ── Public API ────────────────────────────────────────────────────────────────

@@ -34,8 +34,15 @@ export function ComposePanel(_props: IDockviewPanelProps) {
   return (
     <div data-testid="studio-compose-panel" className="h-full min-h-0">
       {/* The agent↔GUI bridge (Lane A/B #09) rides the actionBar slot — Chat renders it INSIDE its
-          providers, so it reads the live chat stream (useChatStream). It renders nothing visible. */}
-      <Chat bookId={bookId} windowingEnabled actionBar={<StudioAgentBridge />} className="h-full" />
+          providers, so it reads the live chat stream (useChatStream). It renders nothing visible.
+          studioContext (presence) makes chat-service advertise the studio dock-nav tools (Lane A). */}
+      <Chat
+        bookId={bookId}
+        studioContext={{ book_id: bookId }}
+        windowingEnabled
+        actionBar={<StudioAgentBridge />}
+        className="h-full"
+      />
     </div>
   );
 }

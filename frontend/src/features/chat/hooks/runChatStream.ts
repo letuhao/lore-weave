@@ -40,6 +40,8 @@ export type ChatStreamArgs = {
   editFromSequence?: number;
   thinking?: boolean;
   editorContext?: { book_id: string; chapter_id: string };
+  // #09 Lane A — presence tells chat-service to advertise the studio dock-nav frontend tools.
+  studioContext?: { book_id?: string; active_panel_ids?: string[]; context_revision?: number };
   composeMode?: boolean;
   bookContext?: { book_id: string };
   displayLanguage?: string;
@@ -108,6 +110,7 @@ function buildRequest(args: ChatStreamArgs): { url: string; body: Record<string,
   // ARCH-1 C6: editor panel → advertise the write-back frontend tool + carry
   // which chapter the assistant is editing.
   if (args.editorContext) body.editor_context = args.editorContext;
+  if (args.studioContext) body.studio_context = args.studioContext;
   // Glossary-assistant P3: book-scoped (non-editor) chat → advertise the
   // glossary edit-existing frontend tool.
   if (args.bookContext) body.book_context = args.bookContext;

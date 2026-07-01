@@ -15,6 +15,9 @@ interface ChatProps {
   /** ARCH-1 C6: editor panel context — enables the write-back frontend tool
    *  (propose_edit) and carries the chapter the assistant can edit. */
   editorContext?: { book_id: string; chapter_id: string };
+  /** #09 Lane A: present in the Writing Studio compose panel — enables the studio
+   *  dock-nav frontend tools (ui_open_studio_panel / ui_focus_manuscript_unit). */
+  studioContext?: { book_id?: string; active_panel_ids?: string[]; context_revision?: number };
   /** Editor "Compose" mode — when true, turns advertise no tools (prose-only;
    *  the model drafts and the user Applies manually). Best for reasoning models. */
   composeMode?: boolean;
@@ -41,7 +44,7 @@ interface ChatProps {
  * hook owns which session is active and binds it to the book's knowledge
  * project so the assistant has the book's lore/memory.
  */
-export function Chat({ bookId, editorContext, composeMode, actionBar, windowingEnabled, forceShared, className }: ChatProps) {
+export function Chat({ bookId, editorContext, studioContext, composeMode, actionBar, windowingEnabled, forceShared, className }: ChatProps) {
   // Glossary-assistant P3: any book-scoped chat (incl. the editor) advertises the
   // glossary edit-existing tool. The editor also passes editorContext (chapter
   // prose tool); a glossary-page/reader chat passes only bookContext.
@@ -60,6 +63,7 @@ export function Chat({ bookId, editorContext, composeMode, actionBar, windowingE
       <ChatLiveStateProvider token={accessToken ?? null} windowingEnabled={windowingEnabled} forceShared={forceShared}>
         <ChatStreamProvider
           editorContext={editorContext}
+          studioContext={studioContext}
           composeMode={composeMode}
           bookContext={bookContext}
           displayLanguage={apiDisplayLanguage}
