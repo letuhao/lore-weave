@@ -50,6 +50,43 @@ export interface ChatSession {
   // The SSE stream emits a `memory-mode` event on every turn so the
   // FE can flip to `degraded` when the upstream call falls back.
   memory_mode?: 'no_project' | 'static' | 'degraded';
+  // Story 04: session-scoped tool/skill curation (empty = auto-discovery).
+  enabled_tools?: string[];
+  enabled_skills?: string[];
+  activated_tools?: string[];
+}
+
+/** Story 04 / #07b — agentSurface SSE payload (inspector state machine). */
+export type AgentSurfacePhase =
+  | 'Idle'
+  | 'Curated'
+  | 'SkillInjected'
+  | 'Discovering'
+  | 'Activated'
+  | 'ToolRunning';
+
+export interface AgentSurfaceState {
+  phase: AgentSurfacePhase;
+  pinned_count: number;
+  hot_seed_count: number;
+  activated_count: number;
+  injected_skills: string[];
+  running_tool: string | null;
+  last_find_tools_query: string | null;
+  find_tools_call_count: number;
+}
+
+export interface ToolCatalogItem {
+  name: string;
+  domain: string;
+  tier: string;
+  description: string;
+}
+
+export interface SkillCatalogItem {
+  id: string;
+  label: string;
+  surfaces: string[];
 }
 
 // MCP fan-out (C-ACTIVITY) — one auto-applied (Tier-A) op the agent ran this
@@ -186,4 +223,7 @@ export interface PatchSessionPayload {
   // D-PLAN-PLANNER-DEFAULT-FE phase 2: set/clear the per-session planner model.
   planner_model_source?: string | null;
   planner_model_ref?: string | null;
+  enabled_tools?: string[];
+  enabled_skills?: string[];
+  activated_tools?: string[] | null;
 }

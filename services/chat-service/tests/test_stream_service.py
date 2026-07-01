@@ -1486,11 +1486,13 @@ class TestStreamFormatNegotiation:
         assert types[0] == "RUN_STARTED"
         assert types[1] == "CUSTOM"  # memoryMode
         assert types == [
-            "RUN_STARTED", "CUSTOM",
+            "RUN_STARTED", "CUSTOM",  # memoryMode
+            "CUSTOM", "CUSTOM",  # agentSurface: Curated + SkillInjected
             "REASONING_START", "REASONING_MESSAGE_START", "REASONING_MESSAGE_CONTENT",
             "REASONING_MESSAGE_END", "REASONING_END",
             "TEXT_MESSAGE_START", "TEXT_MESSAGE_CONTENT", "TEXT_MESSAGE_END",
             "CUSTOM",  # persisted — emitted AFTER the message is framed closed
+            "CUSTOM",  # agentSurface: Idle
             "RUN_FINISHED",
         ]
         assert "[DONE]" not in types

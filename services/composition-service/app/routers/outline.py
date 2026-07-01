@@ -8,6 +8,7 @@ the Work exists (user-scoped 404) before mutating its tree.
 
 from __future__ import annotations
 
+import base64
 from typing import Any
 from uuid import UUID
 
@@ -99,6 +100,93 @@ async def get_outline(
         "nodes": [n.model_dump(mode="json") for n in nodes],
         "scene_links": [l.model_dump(mode="json") for l in links],
     }
+
+
+def _encode_child_cursor(rank: str, node_id: UUID) -> str:
+    """Opaque keyset cursor for the lazy-children endpoint: (rank, id). id is a UUID
+    with no '|', so rpartition('|') recovers it even if a rank ever contained '|'."""
+    return base64.urlsafe_b64encode(f"{rank}|{node_id}".encode()).decode()
+
+
+def _decode_child_cursor(cursor: str) -> tuple[str, UUID]:
+    """Decode a token from _encode_child_cursor. Malformed → 400 (never a silent
+    reset to page 1, which would loop the client)."""
+    try:
+        raw = base64.urlsafe_b64decode(cursor.encode()).decode()
+        rank, sep, id_str = raw.rpartition("|")
+        if not sep or not rank or not id_str:
+            raise ValueError("missing separator")
+        return rank, UUID(id_str)
+    except ValueError:
+        raise HTTPException(status_code=400, detail="invalid cursor") from None
+
+
+@router.get("/works/{project_id}/outline/children")
+async def list_outline_children(
+    project_id: UUID,
+    parent_id: UUID | None = None,
+    cursor: str | None = None,
+    limit: int = 100,
+    include_archived: bool = False,
+    user_id: UUID = Depends(get_current_user),
+    works: WorksRepo = Depends(get_works_repo),
+    outline: OutlineRepo = Depends(get_outline_repo),
+) -> dict[str, Any]:
+    """Lazy-tree primitive for the manuscript navigator (#02): the direct children of
+    `parent_id` (omitted → top-level arcs), keyset-paged by (rank, id). Fetch one level
+    a page at a time so a 10k-chapter outline scales like the book-service chapter spine
+    instead of the whole-tree `GET /outline`. Response: {items, next_cursor}."""
+    await _require_work(works, user_id, project_id)
+    limit = max(1, min(limit, 200))
+    after = _decode_child_cursor(cursor) if cursor else None
+    nodes = await outline.list_children(
+        user_id, project_id, parent_id,
+        after=after, limit=limit, include_archived=include_archived,
+    )
+    next_cursor: str | None = None
+    if len(nodes) > limit:
+        nodes = nodes[:limit]
+        last = nodes[-1]
+        next_cursor = _encode_child_cursor(last.rank, last.id)
+    return {
+        "items": [n.model_dump(mode="json") for n in nodes],
+        "next_cursor": next_cursor,
+    }
+
+
+@router.get("/works/{project_id}/outline/search")
+async def search_outline(
+    project_id: UUID,
+    q: str = "",
+    limit: int = 30,
+    user_id: UUID = Depends(get_current_user),
+    works: WorksRepo = Depends(get_works_repo),
+    outline: OutlineRepo = Depends(get_outline_repo),
+) -> dict[str, Any]:
+    """Manuscript jump/search (#02 nav jump box + #06a Quick Open): title substring match
+    across the WHOLE outline (arc/chapter/scene), not just the lazy-loaded tree window.
+    Empty query → no items (the client shows the tree instead). Response: {items} where each
+    item is {id, kind, title, chapter_id, status, story_order, path[]}."""
+    await _require_work(works, user_id, project_id)
+    q = q.strip()
+    if not q:
+        return {"items": []}
+    limit = max(1, min(limit, 50))
+    items = await outline.search_nodes(user_id, project_id, q, limit=limit)
+    return {"items": items}
+
+
+@router.get("/works/{project_id}/outline/stats")
+async def outline_stats(
+    project_id: UUID,
+    user_id: UUID = Depends(get_current_user),
+    works: WorksRepo = Depends(get_works_repo),
+    outline: OutlineRepo = Depends(get_outline_repo),
+) -> dict[str, int]:
+    """Whole-book totals for the navigator footer: {arcs, chapters, scenes} (non-archived).
+    Not derivable from the lazy-loaded tree window — a single GROUP BY over the outline."""
+    await _require_work(works, user_id, project_id)
+    return await outline.outline_stats(user_id, project_id)
 
 
 @router.get("/works/{project_id}/chapters/{chapter_id}/publish-gate")

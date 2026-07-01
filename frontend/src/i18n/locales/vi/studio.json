@@ -1,0 +1,97 @@
+{
+  "title": "Xưởng Sáng Tác",
+  "back": "Quay lại sách",
+  "settings": "Cài đặt sách",
+  "welcome": {
+    "tab": "Chào mừng",
+    "title": "Xưởng Sáng Tác",
+    "body": "Không gian làm việc dạng bảng ghép cho cuốn sách này. Các bảng (sáng tác, dàn ý, nhân vật, chất lượng…) sẽ được thêm vào đây từng cái một. Kéo thẻ để chia đôi, xếp chồng, thả nổi, hoặc tách ra cửa sổ riêng."
+  },
+  "panels": {
+    "compose": { "title": "Compose", "desc": "Chat đồng sáng tác AI" },
+    "editor": { "title": "Editor", "desc": "Trình soạn bản thảo" }
+  },
+  "editor": {
+    "empty": "Chọn một chương trong navigator để soạn ở đây.",
+    "unsaved": "● chưa lưu",
+    "save": "Lưu"
+  },
+  "palette": {
+    "openPanel": "Studio: Mở {{name}}",
+    "placeholder": "Đến chương, cảnh, hồi…",
+    "quickOpenTitle": "Đến chương, cảnh, hồi",
+    "quickOpenPlaceholder": "Đến chương, cảnh, hồi…",
+    "quickOpenHint": "Gõ để tìm chương, cảnh & hồi",
+    "commandPlaceholder": "Nhập một lệnh…",
+    "noCommands": "Không có lệnh phù hợp.",
+    "group": { "recent": "Gần đây", "panels": "Bảng công cụ", "navigate": "Điều hướng", "layout": "Bố cục" },
+    "cmd": {
+      "showManuscript": "Xem: Bản thảo",
+      "showBible": "Xem: Story Bible",
+      "showSearch": "Xem: Tìm kiếm",
+      "showQuality": "Xem: Chất lượng",
+      "goToChapter": "Xem: Đến chương…",
+      "toggleSidebar": "Xem: Bật/tắt thanh bên",
+      "toggleBottom": "Xem: Bật/tắt bảng dưới"
+    },
+    "desc": {
+      "showManuscript": "Chương & cảnh",
+      "showBible": "Nhân vật, thế giới & canon",
+      "showSearch": "Toàn văn & ngữ nghĩa",
+      "showQuality": "Critic, lời hứa & canon",
+      "goToChapter": "Mở Quick Open",
+      "toggleSidebar": "Hiện/ẩn thanh bên",
+      "toggleBottom": "Jobs · Sinh · Vấn đề"
+    }
+  },
+  "activity": {
+    "manuscript": "Bản thảo",
+    "bible": "Sổ tay truyện",
+    "search": "Tìm kiếm",
+    "quality": "Chất lượng"
+  },
+  "navStub": {
+    "manuscript": { "title": "Bản thảo", "body": "Chương & cảnh — bộ điều hướng dẫn dắt khu dock. Sẽ làm tiếp theo." },
+    "bible": { "title": "Sổ tay truyện", "body": "Nhân vật, thế giới & canon. Sắp có." },
+    "search": { "title": "Tìm kiếm", "body": "Tìm toàn văn & ngữ nghĩa trong cả cuốn sách. Sắp có." },
+    "quality": { "title": "Chất lượng", "body": "Điểm phê bình, mạch lời hứa & vấn đề canon. Sắp có." }
+  },
+  "sidebar": {
+    "collapse": "Thu gọn"
+  },
+  "bottom": {
+    "jobs": "Tác vụ",
+    "generation": "Sinh nội dung",
+    "issues": "Vấn đề",
+    "collapse": "Thu gọn bảng",
+    "toggle": "Bật/tắt bảng dưới",
+    "label": "Bảng"
+  },
+  "bottomStub": {
+    "jobs": "Tác vụ nền sẽ hiển thị ở đây khi được nối.",
+    "generation": "Tiến độ sinh nội dung trực tiếp sẽ hiển thị ở đây khi được nối.",
+    "issues": "Vấn đề chất lượng sẽ hiển thị ở đây khi được nối."
+  },
+  "status": {
+    "wordsPlaceholder": "— từ",
+    "modelPlaceholder": "chưa có model"
+  },
+  "manuscript": {
+    "title": "Bản thảo",
+    "newChapter": "Chương mới",
+    "collapseAll": "Thu gọn tất cả",
+    "reload": "Tải lại",
+    "arc": "HỒI",
+    "loading": "Đang tải…",
+    "filter": "Đến chương / cảnh…",
+    "searching": "Đang tìm…",
+    "noMatch": "Không có kết quả.",
+    "empty": "Chưa có chương nào.",
+    "loadingMore": "Đang tải thêm…",
+    "count": "{{n}} chương",
+    "statArcs": "{{n}} hồi",
+    "statChapters": "{{n}} chương",
+    "statScenes": "{{n}} cảnh",
+    "window": "win {{a}}–{{b}} / {{n}}"
+  }
+}

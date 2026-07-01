@@ -444,6 +444,122 @@ class OutlineRepo:
             rows = await c.fetch(query, user_id, project_id)
         return [_row_to_node(r) for r in rows]
 
+    async def list_children(
+        self,
+        user_id: UUID,
+        project_id: UUID,
+        parent_id: UUID | None,
+        *,
+        after: tuple[str, UUID] | None = None,
+        limit: int = 100,
+        include_archived: bool = False,
+    ) -> list[OutlineNode]:
+        """Direct children of `parent_id` (NULL → top-level arcs), keyset-paged by
+        (rank, id). The lazy-tree primitive for the manuscript navigator: fetch one
+        level a page at a time instead of the whole outline. Returns up to limit+1
+        rows so the caller can detect a further page.
+
+        `parent_id IS NOT DISTINCT FROM $3` so NULL (top level) matches. rank COLLATE
+        "C" (byte order) matches the fractional-rank algorithm + list_tree's ordering,
+        so the keyset is a strict total order regardless of DB locale.
+        """
+        archived_pred = "" if include_archived else " AND NOT is_archived"
+        args: list[Any] = [user_id, project_id, parent_id]
+        keyset_pred = ""
+        if after is not None:
+            after_rank, after_id = after
+            args.extend([after_rank, after_id])
+            # strictly after (rank, id): rank byte-greater, or same rank + greater id.
+            keyset_pred = (
+                f' AND (rank COLLATE "C" > ${len(args) - 1}'
+                f' OR (rank COLLATE "C" = ${len(args) - 1} AND id > ${len(args)}))'
+            )
+        args.append(limit + 1)
+        # child_count: non-archived DIRECT children of each row (scene-count badge for a
+        # chapter, chapter-count for an arc). Correlated scalar subquery on the
+        # (parent_id, …) WHERE-NOT-archived keyset index — one page = `limit` cheap
+        # index counts, so it scales with the page, not the 10k tree.
+        query = f"""
+        SELECT {_SELECT_COLS},
+          (SELECT count(*) FROM outline_node c
+             WHERE c.user_id = outline_node.user_id
+               AND c.parent_id = outline_node.id
+               AND NOT c.is_archived) AS child_count
+        FROM outline_node
+        WHERE user_id = $1 AND project_id = $2
+          AND parent_id IS NOT DISTINCT FROM $3{archived_pred}{keyset_pred}
+        ORDER BY rank COLLATE "C", id
+        LIMIT ${len(args)}
+        """
+        async with self._pool.acquire() as c:
+            rows = await c.fetch(query, *args)
+        return [_row_to_node(r) for r in rows]
+
+    async def outline_stats(
+        self, user_id: UUID, project_id: UUID,
+    ) -> dict[str, int]:
+        """Whole-book totals per kind (non-archived) for the navigator footer — arcs / chapters
+        / scenes. A single GROUP BY (not derivable from the lazy-loaded tree window). Kinds with
+        no rows report 0; 'beat' is excluded (structural, not navigable)."""
+        async with self._pool.acquire() as c:
+            rows = await c.fetch(
+                """
+                SELECT kind, count(*) AS n FROM outline_node
+                WHERE user_id = $1 AND project_id = $2 AND NOT is_archived AND kind <> 'beat'
+                GROUP BY kind
+                """,
+                user_id, project_id,
+            )
+        out = {"arcs": 0, "chapters": 0, "scenes": 0}
+        key = {"arc": "arcs", "chapter": "chapters", "scene": "scenes"}
+        for r in rows:
+            mapped = key.get(r["kind"])
+            if mapped:
+                out[mapped] = r["n"]
+        return out
+
+    async def search_nodes(
+        self, user_id: UUID, project_id: UUID, q: str, *, limit: int = 30,
+    ) -> list[dict[str, Any]]:
+        """Title substring search across the outline (arc/chapter/scene), user+project
+        scoped, non-archived. The navigator jump box + Quick Open (#06a) share this — it's
+        the server leg that reaches nodes NOT yet lazy-loaded into the tree. Each hit carries
+        a breadcrumb `path` (ancestor titles, top-first) so a scene shows which chapter/arc
+        it lives in. Bounded LIMIT; the ILIKE runs on a per-project table.
+        """
+        # Escape LIKE metacharacters so the user's query is a literal substring (default
+        # backslash escape); a bare `%`/`_` would otherwise act as a wildcard.
+        like = "%" + q.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_") + "%"
+        query = """
+        SELECT n.id, n.kind, n.title, n.chapter_id, n.status, n.story_order,
+               p.title  AS parent_title,
+               gp.title AS grandparent_title
+        FROM outline_node n
+        LEFT JOIN outline_node p  ON p.id  = n.parent_id AND p.user_id  = n.user_id
+        LEFT JOIN outline_node gp ON gp.id = p.parent_id AND gp.user_id = n.user_id
+        WHERE n.user_id = $1 AND n.project_id = $2 AND NOT n.is_archived
+          AND n.kind <> 'beat' AND n.title ILIKE $3
+        ORDER BY n.kind, n.story_order NULLS LAST, n.rank COLLATE "C"
+        LIMIT $4
+        """
+        async with self._pool.acquire() as c:
+            rows = await c.fetch(query, user_id, project_id, like, limit)
+        out: list[dict[str, Any]] = []
+        for r in rows:
+            # path top-first: grandparent (arc) → parent (chapter); Nones dropped so an arc
+            # yields [], a chapter [arc], a scene [arc, chapter].
+            path = [t for t in (r["grandparent_title"], r["parent_title"]) if t]
+            out.append({
+                "id": str(r["id"]),
+                "kind": r["kind"],
+                "title": r["title"],
+                "chapter_id": str(r["chapter_id"]) if r["chapter_id"] else None,
+                "status": r["status"],
+                "story_order": r["story_order"],
+                "path": path,
+            })
+        return out
+
     async def get_node(
         self, user_id: UUID, node_id: UUID, *, conn: asyncpg.Connection | None = None,
     ) -> OutlineNode | None:

@@ -24,6 +24,7 @@ import { ChatPage } from '@/pages/ChatPage';
 import { RoleplayPage } from '@/features/roleplay/pages/RoleplayPage';
 import { BookDetailPage } from '@/pages/BookDetailPage';
 import { ChapterEditorPage } from '@/pages/ChapterEditorPage';
+import { WritingStudioPage } from '@/pages/WritingStudioPage';
 import { PopoutHost } from '@/features/composition/components/workspace/PopoutHost';
 import { ChapterComparePage } from '@/pages/ChapterComparePage';
 import { WikiEditorPage } from '@/pages/WikiEditorPage';
@@ -108,6 +109,11 @@ export function App() {
 
           {/* Translation review — full screen, auth required */}
           <Route path="/books/:bookId/chapters/:chapterId/review/:versionId" element={<RequireAuth><TranslationReviewPage /></RequireAuth>} />
+
+          {/* Writing Studio (v2) — book-level VS Code-style docking workspace (dockview).
+              Full screen, auth required — deliberately NOT under EditorLayout: the studio has
+              its own Activity Bar chrome, so the app sidebar would be a redundant second rail. */}
+          <Route path="/books/:bookId/studio" element={<RequireAuth><WritingStudioPage /></RequireAuth>} />
 
           {/* Public reader — unlisted/public books readable without login */}
           <Route element={<FullBleedLayout />}>

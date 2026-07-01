@@ -50,6 +50,8 @@ Every tool a service exposes is classified into exactly one tier. The tier decid
 
 **Money guard (carry-over from billing invariants):** any tool that can incur provider spend is **minimum Tier-W** and surfaces an **estimate** in the confirm card. **Estimate availability is NOT uniform (verified 2026-06-20):** campaigns has `/v1/campaigns/estimate` ✓; **translation-service has NO cost-estimate endpoint** (only a `token_estimate` field) → `translation_start_job` needs a **new** estimate built (or derived from the campaign estimator) before it can satisfy this guard — see P3 DoD. The agent never silently spends.
 
+**User lifecycle hooks (Writing Studio #10):** Per-user / per-book `.loreweave/hooks.json` scripts may **deny** or **modify_args** on Tier R/A tools via `preToolUse`, but **cannot downgrade Tier-W/S** to auto-commit — platform human-gate and [`09_agent_gui_reconciliation`](../2026-07-01-writing-studio/09_agent_gui_reconciliation.md) reconciler ordering are authoritative. See [`10_agent_lifecycle_hooks.md`](../2026-07-01-writing-studio/10_agent_lifecycle_hooks.md).
+
 ## 5. Architecture additions
 
 ### P0 — Tool-scaling foundation (KEYSTONE)

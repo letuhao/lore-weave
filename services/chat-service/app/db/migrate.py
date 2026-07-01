@@ -279,6 +279,19 @@ DO $$ BEGIN
   END IF;
 END $$;
 
+-- Story 04 / skills tool state machine — session-scoped tool/skill curation
+DO $$ BEGIN
+  IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='chat_sessions' AND column_name='enabled_tools') THEN
+    ALTER TABLE chat_sessions ADD COLUMN enabled_tools TEXT[] NOT NULL DEFAULT '{}';
+  END IF;
+  IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='chat_sessions' AND column_name='enabled_skills') THEN
+    ALTER TABLE chat_sessions ADD COLUMN enabled_skills TEXT[] NOT NULL DEFAULT '{}';
+  END IF;
+  IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='chat_sessions' AND column_name='activated_tools') THEN
+    ALTER TABLE chat_sessions ADD COLUMN activated_tools TEXT[] NOT NULL DEFAULT '{}';
+  END IF;
+END $$;
+
 -- ══════════════════════════════════════════════════════════════════════
 -- M7 — System-tier seed templates (the admin/platform path). These are the
 -- shared defaults every tenant sees read-only; a user clones one (POST

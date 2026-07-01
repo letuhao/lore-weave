@@ -87,6 +87,23 @@ describe('useChatMessages — C6 frontend tool (propose_edit)', () => {
     expect(body.editor_context).toEqual({ book_id: 'b1', chapter_id: 'ch1' });
   });
 
+  it('sends studio_context in the request body (studio compose panel → Lane A tools)', async () => {
+    const fetchMock = vi.fn().mockResolvedValue(
+      sseResponse([JSON.stringify({ type: 'RUN_FINISHED', result: {} })]),
+    );
+    vi.stubGlobal('fetch', fetchMock);
+    // studioContext is the 9th positional arg (after streamPinsRef).
+    const { result } = renderHook(() =>
+      useChatMessages('s-1', undefined, undefined, undefined, undefined, undefined, undefined, undefined, { book_id: 'b1' }),
+    );
+    await waitFor(() => expect(result.current.isLoading).toBe(false));
+    await act(async () => {
+      await result.current.send('open the editor for chapter 3');
+    });
+    const body = JSON.parse((fetchMock.mock.calls[0][1] as RequestInit).body as string);
+    expect(body.studio_context).toEqual({ book_id: 'b1' });
+  });
+
   it('sends book_context (not editor_context) for a glossary-page chat', async () => {
     // Glossary-assistant P3: a book-scoped, non-editor chat advertises the
     // glossary edit tool via book_context.

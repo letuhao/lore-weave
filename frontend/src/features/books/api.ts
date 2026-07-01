@@ -55,6 +55,14 @@ export type ChapterListResponse = {
   offset?: number;
 };
 
+// Keyset/cursor page (GET /chapters/page). `next_cursor` null on the last page;
+// `total` present only on the first page (no cursor) — see #02 navigator.
+export type ChapterPage = {
+  items: Chapter[];
+  next_cursor: string | null;
+  total: number | null;
+};
+
 async function apiForm<T>(path: string, form: FormData, token: string): Promise<T> {
   const res = await fetch(`${base()}${path}`, {
     method: 'POST',
@@ -140,6 +148,22 @@ export const booksApi = {
     if (params?.offset !== undefined) qs.set('offset', String(params.offset));
     const query = qs.toString();
     return apiJson<ChapterListResponse>(`/v1/books/${bookId}/chapters${query ? `?${query}` : ''}`, { token });
+  },
+
+  // #02 manuscript navigator — keyset/cursor page of chapters (scales to 10k+).
+  // First page (no cursor) also returns `total` so the virtual scrollbar can size itself.
+  listChaptersPage(
+    token: string,
+    bookId: string,
+    opts: { cursor?: string | null; limit?: number; q?: string; original_language?: string } = {},
+  ) {
+    const qs = new URLSearchParams();
+    if (opts.cursor) qs.set('cursor', opts.cursor);
+    if (opts.limit !== undefined) qs.set('limit', String(opts.limit));
+    if (opts.q) qs.set('q', opts.q);
+    if (opts.original_language) qs.set('original_language', opts.original_language);
+    const query = qs.toString();
+    return apiJson<ChapterPage>(`/v1/books/${bookId}/chapters/page${query ? `?${query}` : ''}`, { token });
   },
   createChapterUpload(
     token: string,

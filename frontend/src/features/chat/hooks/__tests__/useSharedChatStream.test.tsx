@@ -36,6 +36,7 @@ const EMPTY: ChatLiveState = {
   turnId: 0, streamingText: '', streamingReasoning: '', streamPhase: 'idle', thinkingElapsed: 0,
   streamStatus: 'idle', isComposing: false, toolCalls: [], activities: [], memoryMode: null,
   messageId: null, usage: {}, timing: {}, suspendedRun: null, initiatorNonce: null, ended: false, result: null, error: null,
+  agentSurface: null,
 };
 const snap = (over: Partial<ChatLiveState> = {}): ChatLiveState => ({ ...EMPTY, ...over });
 const emit = (s: ChatLiveState) => act(() => lastPort.onmessage!({ data: { type: 'state', state: s } }));

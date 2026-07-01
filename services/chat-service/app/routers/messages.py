@@ -269,6 +269,10 @@ async def send_message(
             admin_token=x_admin_token,
             disable_tools=body.disable_tools,
             display_language=body.display_language,
+            enabled_tools=body.enabled_tools,
+            enabled_skills=body.enabled_skills,
+            # #09 Lane A — presence enables the studio dock-nav frontend tools.
+            studio_context=body.studio_context.model_dump() if body.studio_context else None,
         ),
         media_type="text/event-stream",
         headers=headers,

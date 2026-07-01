@@ -147,6 +147,11 @@ class OutlineNode(BaseModel):
     is_archived: bool = False
     created_at: datetime | None = None
     updated_at: datetime | None = None
+    # Non-archived direct-child count — populated ONLY by list_children (the lazy-tree
+    # navigator uses it for the sidebar badge: a chapter's scene count, an arc's chapter
+    # count). None (not 0) on every other query, so a consumer can tell "not computed" from
+    # "genuinely childless" (the field is absent from _SELECT_COLS → default None).
+    child_count: int | None = None
 
 
 class SceneLink(BaseModel):

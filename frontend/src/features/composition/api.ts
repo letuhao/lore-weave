@@ -4,7 +4,7 @@
 import { apiBase, apiJson } from '../../api';
 import type {
   AutoGeneration, CanonRule, ChapterGeneration, CommitDecomposePayload, CorrectionBody, CorrectionStats,
-  DecomposePreview, DeriveBody, DerivativeContextResponse, GenerationJob, Grounding, GroundingItemType, NarrativeThread, OutlineNode, PinAction, ProgressStats, PublishGate, ReferenceList, ReferenceSearch, ReferenceSource, SceneLink, SceneLinkKind, StructureTemplate, StyleProfile, StyleScope, VoiceProfile, Work, WorkResolution,
+  DecomposePreview, DeriveBody, DerivativeContextResponse, GenerationJob, Grounding, GroundingItemType, NarrativeThread, OutlineNode, OutlineSearchHit, PinAction, ProgressStats, PublishGate, ReferenceList, ReferenceSearch, ReferenceSource, SceneLink, SceneLinkKind, StructureTemplate, StyleProfile, StyleScope, VoiceProfile, Work, WorkResolution,
 } from './types';
 import type { MotifBindingsResponse } from './motif/types';
 
@@ -136,6 +136,38 @@ export const compositionApi = {
   getOutline(projectId: string, token: string, includeArchived = false): Promise<{ nodes: OutlineNode[]; scene_links: SceneLink[] }> {
     const qs = includeArchived ? '?include_archived=true' : '';
     return apiJson(`${BASE}/works/${projectId}/outline${qs}`, { token });
+  },
+  // #02 manuscript navigator — the lazy-tree primitive: direct children of `parentId`
+  // (null/omitted → top-level arcs; under an arc → chapters; under a chapter → scenes),
+  // keyset-paged so a giant outline loads one level a page at a time.
+  listOutlineChildren(
+    projectId: string,
+    token: string,
+    opts: { parentId?: string | null; cursor?: string | null; limit?: number } = {},
+  ): Promise<{ items: OutlineNode[]; next_cursor: string | null }> {
+    const p = new URLSearchParams();
+    if (opts.parentId) p.set('parent_id', opts.parentId);
+    if (opts.cursor) p.set('cursor', opts.cursor);
+    if (opts.limit) p.set('limit', String(opts.limit));
+    const qs = p.toString();
+    return apiJson(`${BASE}/works/${projectId}/outline/children${qs ? `?${qs}` : ''}`, { token });
+  },
+  // #02 nav jump box / #06a Quick Open — title substring search across the WHOLE outline
+  // (arc/chapter/scene), reaching nodes not yet lazy-loaded into the tree. Each hit carries
+  // a breadcrumb `path` (ancestor titles, top-first).
+  searchOutline(
+    projectId: string,
+    token: string,
+    opts: { q: string; limit?: number },
+  ): Promise<{ items: OutlineSearchHit[] }> {
+    const p = new URLSearchParams({ q: opts.q });
+    if (opts.limit) p.set('limit', String(opts.limit));
+    return apiJson(`${BASE}/works/${projectId}/outline/search?${p.toString()}`, { token });
+  },
+  // #02 navigator footer — whole-book totals per kind (non-archived). One GROUP BY; not
+  // derivable from the lazy-loaded tree window.
+  outlineStats(projectId: string, token: string): Promise<{ arcs: number; chapters: number; scenes: number }> {
+    return apiJson(`${BASE}/works/${projectId}/outline/stats`, { token });
   },
   // D-MOTIF-FE-PLANNERVIEW-WIRING (Shape A) — the POST-commit per-scene motif binding
   // for a committed chapter: { node_id: BoundMotif | null } (null = free-form). The

@@ -1,0 +1,233 @@
+{
+  "confirm_action": {
+    "args": {
+      "confirm_token": {
+        "type": "string"
+      },
+      "descriptor": {
+        "type": "string"
+      },
+      "domain": {
+        "enum": [
+          "glossary",
+          "book",
+          "composition",
+          "translation",
+          "settings"
+        ],
+        "type": "string"
+      },
+      "items": {
+        "type": "array"
+      },
+      "title": {
+        "type": "string"
+      }
+    },
+    "required": [
+      "confirm_token",
+      "descriptor",
+      "domain",
+      "title"
+    ]
+  },
+  "glossary_confirm_action": {
+    "args": {
+      "confirm_token": {
+        "type": "string"
+      },
+      "descriptor": {
+        "type": "string"
+      },
+      "title": {
+        "type": "string"
+      }
+    },
+    "required": [
+      "confirm_token",
+      "descriptor",
+      "title"
+    ]
+  },
+  "glossary_propose_entity_edit": {
+    "args": {
+      "base_version": {
+        "type": "string"
+      },
+      "book_id": {
+        "type": "string"
+      },
+      "changes": {
+        "type": "array"
+      },
+      "entity_id": {
+        "type": "string"
+      },
+      "rationale": {
+        "type": "string"
+      }
+    },
+    "required": [
+      "base_version",
+      "book_id",
+      "changes",
+      "entity_id"
+    ]
+  },
+  "propose_edit": {
+    "args": {
+      "operation": {
+        "enum": [
+          "insert_at_cursor",
+          "replace_selection"
+        ],
+        "type": "string"
+      },
+      "rationale": {
+        "type": "string"
+      },
+      "text": {
+        "type": "string"
+      }
+    },
+    "required": [
+      "operation",
+      "text"
+    ]
+  },
+  "propose_record_edit": {
+    "args": {
+      "base_version": {
+        "type": "string"
+      },
+      "changes": {
+        "type": "array"
+      },
+      "domain": {
+        "enum": [
+          "glossary",
+          "book",
+          "composition",
+          "translation",
+          "settings"
+        ],
+        "type": "string"
+      },
+      "rationale": {
+        "type": "string"
+      },
+      "resource_ref": {
+        "type": "object"
+      }
+    },
+    "required": [
+      "base_version",
+      "changes",
+      "domain",
+      "resource_ref"
+    ]
+  },
+  "ui_focus_manuscript_unit": {
+    "args": {
+      "chapter_id": {
+        "type": "string"
+      },
+      "scene_id": {
+        "type": "string"
+      }
+    },
+    "required": [
+      "chapter_id"
+    ]
+  },
+  "ui_navigate": {
+    "args": {
+      "path": {
+        "type": "string"
+      }
+    },
+    "required": [
+      "path"
+    ]
+  },
+  "ui_open_book": {
+    "args": {
+      "book_id": {
+        "type": "string"
+      },
+      "tab": {
+        "enum": [
+          "overview",
+          "translation",
+          "glossary",
+          "enrichment",
+          "wiki",
+          "settings"
+        ],
+        "type": "string"
+      }
+    },
+    "required": [
+      "book_id"
+    ]
+  },
+  "ui_open_chapter": {
+    "args": {
+      "book_id": {
+        "type": "string"
+      },
+      "chapter_id": {
+        "type": "string"
+      },
+      "mode": {
+        "enum": [
+          "edit",
+          "read"
+        ],
+        "type": "string"
+      }
+    },
+    "required": [
+      "book_id",
+      "chapter_id",
+      "mode"
+    ]
+  },
+  "ui_open_studio_panel": {
+    "args": {
+      "panel_id": {
+        "enum": [
+          "compose",
+          "editor"
+        ],
+        "type": "string"
+      }
+    },
+    "required": [
+      "panel_id"
+    ]
+  },
+  "ui_show_panel": {
+    "args": {
+      "args": {
+        "type": "object"
+      },
+      "panel": {
+        "type": "string"
+      }
+    },
+    "required": [
+      "panel"
+    ]
+  },
+  "ui_watch_job": {
+    "args": {
+      "job_id": {
+        "type": "string"
+      }
+    },
+    "required": [
+      "job_id"
+    ]
+  }
+}

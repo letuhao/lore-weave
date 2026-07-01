@@ -1,0 +1,201 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://loreweave.dev/contracts/plan-forge/novel_system_spec.schema.json",
+  "title": "NovelSystemSpec",
+  "description": "Proposed novel system design — layers, variables, arcs, traceability, compile targets.",
+  "type": "object",
+  "required": ["version", "meta", "charter", "layers", "arcs", "events", "links"],
+  "additionalProperties": false,
+  "properties": {
+    "version": { "type": "integer", "const": 1 },
+    "meta": { "$ref": "#/definitions/Meta" },
+    "charter": { "$ref": "#/definitions/Charter" },
+    "layers": { "$ref": "#/definitions/Layers" },
+    "arcs": {
+      "type": "array",
+      "items": { "$ref": "#/definitions/Arc" }
+    },
+    "events": {
+      "type": "array",
+      "items": { "$ref": "#/definitions/Event" }
+    },
+    "links": {
+      "type": "array",
+      "items": { "$ref": "#/definitions/Link" }
+    },
+    "compile_targets": { "$ref": "#/definitions/CompileTargets" }
+  },
+  "definitions": {
+    "Meta": {
+      "type": "object",
+      "required": ["title", "source_checksum", "open_questions"],
+      "additionalProperties": false,
+      "properties": {
+        "title": { "type": "string" },
+        "version_label": { "type": "string" },
+        "source_checksum": { "type": "string" },
+        "open_questions": {
+          "type": "array",
+          "items": { "type": "string" }
+        }
+      }
+    },
+    "Charter": {
+      "type": "object",
+      "required": ["consistency_anchors", "forbids", "style_constraints"],
+      "additionalProperties": false,
+      "properties": {
+        "consistency_anchors": {
+          "type": "array",
+          "items": { "type": "string" },
+          "minItems": 1
+        },
+        "forbids": {
+          "type": "array",
+          "items": { "type": "string" }
+        },
+        "style_constraints": {
+          "type": "array",
+          "items": { "type": "string" }
+        }
+      }
+    },
+    "Layers": {
+      "type": "object",
+      "required": ["characters", "mechanics", "variables"],
+      "additionalProperties": false,
+      "properties": {
+        "characters": {
+          "type": "array",
+          "items": { "$ref": "#/definitions/CharacterLayer" }
+        },
+        "mechanics": {
+          "type": "array",
+          "items": { "$ref": "#/definitions/MechanicLayer" }
+        },
+        "variables": {
+          "type": "array",
+          "items": { "$ref": "#/definitions/VariableDef" },
+          "minItems": 1
+        }
+      }
+    },
+    "CharacterLayer": {
+      "type": "object",
+      "required": ["id", "name", "role", "traits"],
+      "additionalProperties": false,
+      "properties": {
+        "id": { "type": "string" },
+        "name": { "type": "string" },
+        "role": { "type": "string" },
+        "traits": { "type": "array", "items": { "type": "string" } },
+        "baseline_notes": { "type": "string" },
+        "behavioral_rules": { "type": "array", "items": { "type": "string" } },
+        "relationship_seeds": { "type": "array", "items": { "type": "string" } },
+        "recognition_tiers": { "type": "array", "items": { "type": "string" } }
+      }
+    },
+    "MechanicLayer": {
+      "type": "object",
+      "required": ["id", "name", "rules"],
+      "additionalProperties": false,
+      "properties": {
+        "id": { "type": "string" },
+        "name": { "type": "string" },
+        "rules": { "type": "array", "items": { "type": "string" } },
+        "planner_secrets": { "type": "array", "items": { "type": "string" } }
+      }
+    },
+    "VariableDef": {
+      "type": "object",
+      "required": ["code", "name", "range", "transition_rules"],
+      "additionalProperties": false,
+      "properties": {
+        "code": { "type": "string", "pattern": "^[A-Z]{2,4}$" },
+        "name": { "type": "string" },
+        "range": { "type": "string" },
+        "transition_rules": { "type": "array", "items": { "type": "string" } },
+        "not_coupled_to": {
+          "type": "array",
+          "items": { "type": "string" }
+        }
+      }
+    },
+    "Arc": {
+      "type": "object",
+      "required": ["id", "title", "theme", "arc_kind"],
+      "additionalProperties": false,
+      "properties": {
+        "id": { "type": "string" },
+        "title": { "type": "string" },
+        "theme": { "type": "string" },
+        "arc_kind": {
+          "type": "string",
+          "enum": ["setup", "discovery", "power", "transition", "other"]
+        },
+        "summary": { "type": "string" },
+        "exit_state": { "$ref": "planner_state.schema.json" }
+      }
+    },
+    "Event": {
+      "type": "object",
+      "required": ["id", "arc_id", "title", "synopsis"],
+      "additionalProperties": false,
+      "properties": {
+        "id": { "type": "string" },
+        "arc_id": { "type": "string" },
+        "title": { "type": "string" },
+        "synopsis": { "type": "string" },
+        "goal": { "type": "string" },
+        "planner_notes": {
+          "type": "array",
+          "items": { "type": "string" }
+        },
+        "var_deltas": {
+          "type": "array",
+          "items": { "$ref": "#/definitions/VarDelta" }
+        }
+      }
+    },
+    "VarDelta": {
+      "type": "object",
+      "required": ["variable", "delta", "reason"],
+      "additionalProperties": false,
+      "properties": {
+        "variable": { "type": "string", "pattern": "^[A-Z]{2,4}$" },
+        "delta": { "type": "string" },
+        "reason": { "type": "string" },
+        "coupled_to_realm": { "type": "boolean", "const": false }
+      }
+    },
+    "Link": {
+      "type": "object",
+      "required": ["from", "to", "kind"],
+      "additionalProperties": false,
+      "properties": {
+        "from": { "type": "string" },
+        "to": { "type": "string" },
+        "kind": {
+          "type": "string",
+          "enum": [
+            "event_constrains_variable",
+            "event_preserves_anchor",
+            "event_foreshadows",
+            "arc_depends_on_mechanic",
+            "variable_governs_tier"
+          ]
+        },
+        "note": { "type": "string" }
+      }
+    },
+    "CompileTargets": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "glossary_seeds": { "type": "array", "items": { "type": "object" } },
+        "outline_skeleton": { "type": "array", "items": { "type": "object" } },
+        "planner_state_init": { "$ref": "planner_state.schema.json" }
+      }
+    }
+  }
+}

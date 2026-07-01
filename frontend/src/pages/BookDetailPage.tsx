@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { Link, useParams, useLocation } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { Settings, Plus, Trash2, Search } from 'lucide-react';
+import { Settings, Plus, Trash2, Search, LayoutDashboard } from 'lucide-react';
 import { useBookViewTracker } from '@/hooks/useBookViewTracker';
 import { useAuth } from '@/auth';
 import { booksApi, type Book } from '@/features/books/api';
@@ -107,6 +107,16 @@ export function BookDetailPage() {
         actions={
           <div className="flex items-center gap-2">
             {book.visibility && <StatusBadge variant={book.visibility} />}
+            {/* Writing Studio (v2) — book-level dockable workspace. Opens directly, no
+                chapter needed. Primary CTA so the new surface is discoverable. */}
+            <Link
+              to={`/books/${bookId}/studio`}
+              data-testid="book-open-studio"
+              className="inline-flex items-center gap-1.5 rounded-md bg-primary px-3 py-2 text-sm font-medium text-primary-foreground transition-colors hover:bg-primary/90"
+            >
+              <LayoutDashboard className="h-3.5 w-3.5" />
+              {t('detail.open_studio', { defaultValue: 'Studio' })}
+            </Link>
             <Link
               to={`/books/${bookId}/search`}
               aria-label={t('rawSearch:title')}

@@ -1,0 +1,97 @@
+{
+  "title": "執筆スタジオ",
+  "back": "本に戻る",
+  "settings": "本の設定",
+  "welcome": {
+    "tab": "ようこそ",
+    "title": "執筆スタジオ",
+    "body": "この本のためのドッキング可能なワークスペース。パネル（執筆・プロット・キャスト・品質…）は一つずつここに追加されます。タブをドラッグして分割・スタック・フロート・別ウィンドウへ切り離せます。"
+  },
+  "panels": {
+    "compose": { "title": "Compose", "desc": "AI 共同執筆チャット" },
+    "editor": { "title": "Editor", "desc": "原稿エディタ" }
+  },
+  "editor": {
+    "empty": "ナビゲーターで章を選ぶとここで編集できます。",
+    "unsaved": "● 未保存",
+    "save": "保存"
+  },
+  "palette": {
+    "openPanel": "Studio: {{name}} を開く",
+    "placeholder": "章・シーン・編へ移動…",
+    "quickOpenTitle": "章・シーン・編へ移動",
+    "quickOpenPlaceholder": "章・シーン・編へ移動…",
+    "quickOpenHint": "章・シーン・編を検索",
+    "commandPlaceholder": "コマンドを入力…",
+    "noCommands": "該当するコマンドがありません。",
+    "group": { "recent": "最近", "panels": "パネル", "navigate": "移動", "layout": "レイアウト" },
+    "cmd": {
+      "showManuscript": "表示: 原稿",
+      "showBible": "表示: ストーリーバイブル",
+      "showSearch": "表示: 検索",
+      "showQuality": "表示: 品質",
+      "goToChapter": "表示: 章へ移動…",
+      "toggleSidebar": "表示: サイドバー切替",
+      "toggleBottom": "表示: 下部パネル切替"
+    },
+    "desc": {
+      "showManuscript": "章とシーン",
+      "showBible": "登場人物・世界・canon",
+      "showSearch": "全文・意味検索",
+      "showQuality": "批評・約束・canon",
+      "goToChapter": "Quick Open を開く",
+      "toggleSidebar": "サイドバーの表示切替",
+      "toggleBottom": "ジョブ · 生成 · 問題"
+    }
+  },
+  "activity": {
+    "manuscript": "原稿",
+    "bible": "ストーリーバイブル",
+    "search": "検索",
+    "quality": "品質"
+  },
+  "navStub": {
+    "manuscript": { "title": "原稿", "body": "章とシーン — ドックを操作するナビゲーター。次に実装。" },
+    "bible": { "title": "ストーリーバイブル", "body": "キャスト・世界・カノン。近日公開。" },
+    "search": { "title": "検索", "body": "本全体の全文・意味検索。近日公開。" },
+    "quality": { "title": "品質", "body": "批評スコア・約束の伏線・カノン問題。近日公開。" }
+  },
+  "sidebar": {
+    "collapse": "折りたたむ"
+  },
+  "bottom": {
+    "jobs": "ジョブ",
+    "generation": "生成",
+    "issues": "問題",
+    "collapse": "パネルを折りたたむ",
+    "toggle": "下部パネルの切替",
+    "label": "パネル"
+  },
+  "bottomStub": {
+    "jobs": "バックグラウンドジョブは接続後にここに表示されます。",
+    "generation": "ライブ生成の進捗は接続後にここに表示されます。",
+    "issues": "品質の問題は接続後にここに表示されます。"
+  },
+  "status": {
+    "wordsPlaceholder": "— 語",
+    "modelPlaceholder": "モデルなし"
+  },
+  "manuscript": {
+    "title": "原稿",
+    "newChapter": "新しい章",
+    "collapseAll": "すべて折りたたむ",
+    "reload": "再読み込み",
+    "arc": "編",
+    "loading": "読み込み中…",
+    "filter": "章・シーンへ移動…",
+    "searching": "検索中…",
+    "noMatch": "一致する結果がありません。",
+    "empty": "まだ章がありません。",
+    "loadingMore": "さらに読み込み中…",
+    "count": "{{n}} 章",
+    "statArcs": "{{n}} 編",
+    "statChapters": "{{n}} 章",
+    "statScenes": "{{n}} シーン",
+    "window": "win {{a}}–{{b}} / {{n}}"
+  }
+}

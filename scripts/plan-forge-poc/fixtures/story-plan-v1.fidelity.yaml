@@ -1,0 +1,111 @@
+# Fidelity rubric for story-plan-v1.md — supplements story-plan-v1.expectations.yaml
+# Gate Phase A: fidelity_score >= 0.85 AND S1-S8 PASS AND arc2_events == 7
+
+gate:
+  min_fidelity_score: 0.90
+  min_arc2_events: 7
+
+polish:
+  baseline_notes_must_be_vn: true
+  min_baseline_notes_vn_ratio: 0.35
+  character_name_blocked:
+    - Female Protagonist
+    - TBD
+    - protagonist
+  mechanic_rules_min_vn_ratio: 0.5
+  event_bullet_coverage:
+    - title_match: Thử Nghiệm
+      min_keyword_hits: 3
+      keywords:
+        - tốc độ
+        - linh thạch
+        - âm dương
+        - logic
+        - thử nghiệm
+
+character:
+  min_trait_count: 5
+  required_trait_keywords:
+    - thực dụng
+    - bình dị
+    - giới hạn
+    - lý trí
+    - hài hước
+  min_baseline_notes_chars: 200
+  required_mundane_mentions:
+    - mì
+    - mùi
+    - cửa sổ
+
+mechanics:
+  min_mechanic_count: 3
+  min_rules_per_mechanic: 2
+  required_mechanic_name_keywords:
+    - đạo hóa
+    - perfection
+    - humanity
+    - anchor
+  required_secret_keywords:
+    - secret
+    - tiền kiếp
+    - THR
+
+arc2_events:
+  required_count: 7
+  required_event_titles_vn:
+    - Nhập Môn
+    - Biến Hóa Đầu Tiên
+    - Thử Nghiệm
+    - Dị Thường Đầu Tiên
+    - Tiểu Thành
+    - Tác Dụng Phụ Đầu Tiên
+    - Quyết Định Tiếp Tục
+  min_synopsis_chars: 80
+  title_must_contain_vn: true
+  event_synopsis_checks:
+    - title_match: Nhập Môn
+      must_contain_any:
+        - nghiên cứu
+        - thất bại
+        - hy vọng
+    - title_match: Biến Hóa Đầu Tiên
+      must_contain_any:
+        - cảm quan
+        - linh khí
+        - tích cực
+    - title_match: Thử Nghiệm
+      must_contain_any:
+        - thử nghiệm
+        - logic nhân vật
+        - giới hạn
+      must_not_contain_only:
+        - lore weave generates
+    - title_match: Dị Thường Đầu Tiên
+      must_contain_any:
+        - mơ
+        - tiền kiếp
+        - mystery
+    - title_match: Tiểu Thành
+      must_contain_any:
+        - cảnh giới
+        - đột phá
+    - title_match: Tác Dụng Phụ Đầu Tiên
+      must_contain_any:
+        - bạo động
+        - tỉnh giác
+        - CD
+    - title_match: Quyết Định Tiếp Tục
+      must_contain_any:
+        - tiếp tục
+        - luyện
+
+analyze:
+  min_consistency_anchors: 4
+  require_source_refs_on_events: false
+  min_arc2_events_in_analyze: 7
+
+elaboration:
+  min_behavioral_rules: 3
+  min_relationship_seeds: 2
+  min_recognition_tiers: 4
+  max_audit_critical: 0

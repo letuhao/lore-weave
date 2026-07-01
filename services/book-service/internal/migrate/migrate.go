@@ -70,6 +70,10 @@ CREATE TABLE IF NOT EXISTS chapters (
 CREATE UNIQUE INDEX IF NOT EXISTS idx_chapters_unique_slot_lang_active
   ON chapters(book_id, sort_order, original_language)
   WHERE lifecycle_state = 'active';
+-- Keyset pagination for the manuscript navigator: ORDER BY sort_order, id per book
+-- (the cursor endpoint scans (book_id, sort_order, id) for 10k+ chapter books).
+CREATE INDEX IF NOT EXISTS idx_chapters_keyset
+  ON chapters(book_id, sort_order, id);
 
 CREATE TABLE IF NOT EXISTS chapter_raw_objects (
   chapter_id UUID PRIMARY KEY REFERENCES chapters(id) ON DELETE CASCADE,

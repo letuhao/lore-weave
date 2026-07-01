@@ -1,0 +1,390 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>LoreWeave — Command Palette (#06a + #06b)</title>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+  <style>
+    /* ══════════════════════════════════════════════════════════════════════
+       COMMAND PALETTE DESIGN (#06a Quick Open + #06b Command Palette)
+
+       Two VS Code–faithful modals sharing one shell pattern:
+         ⌘P / Ctrl+P       → Quick Open (arc · chapter · scene · read/edit)
+         ⌘⇧P / Ctrl+Shift+P → Command Palette (Studio: Open … · View: …)
+
+       Spec: docs/specs/2026-07-01-writing-studio/06a_quick_open.md
+             docs/specs/2026-07-01-writing-studio/06b_command_palette.md
+    ═══════════════════════════════════════════════════════════════════════ */
+    :root {
+      --background: #181412; --background-alt: #1e1a17; --foreground: #f5efe8;
+      --card: #1e1a17; --card-hover: #272220; --border: #332d28; --border-hover: #4a423b;
+      --primary: #e8a832; --primary-fg: #141010; --primary-muted: #3d2e12;
+      --secondary: #282320; --muted-fg: #9e9488;
+      --accent: #3da692; --accent-muted: #1a2e2a; --accent-fg: #c8ede6;
+      --success: #3dba6a; --warning: #e8a832; --info: #5496e8;
+      --overlay: rgba(8, 6, 5, 0.72);
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: 'Inter', system-ui, sans-serif; background: #0f0c0b; color: var(--foreground);
+      -webkit-font-smoothing: antialiased; min-height: 100vh;
+    }
+    .mono { font-family: 'JetBrains Mono', monospace; }
+    svg { display: block; flex-shrink: 0; }
+
+    h1 { font-size: 18px; font-weight: 600; margin-bottom: 4px; padding: 24px 24px 0; }
+    .sub { font-size: 12px; color: var(--muted-fg); margin-bottom: 16px; padding: 0 24px; line-height: 1.5; }
+
+    /* Toggle between demo states */
+    .tabs { display: flex; gap: 8px; padding: 0 24px 20px; }
+    .tab {
+      height: 30px; padding: 0 14px; border-radius: 7px; font-size: 12px; font-weight: 500;
+      border: 1px solid var(--border); background: var(--card); color: var(--muted-fg); cursor: pointer;
+    }
+    .tab:hover { border-color: var(--border-hover); color: var(--foreground); }
+    .tab.active { background: var(--primary-muted); border-color: var(--primary); color: var(--primary); }
+    .tab kbd { font-family: 'JetBrains Mono'; font-size: 10px; margin-left: 6px; opacity: .85; }
+
+    .stage { display: flex; gap: 28px; padding: 0 24px 24px; align-items: flex-start; }
+
+    /* Fake studio backdrop */
+    .studio-bg {
+      flex: 1; min-width: 520px; height: 520px; border-radius: 10px; border: 1px solid var(--border);
+      background: var(--background); position: relative; overflow: hidden;
+    }
+    .studio-bg .top { height: 44px; background: var(--card); border-bottom: 1px solid var(--border); display: flex; align-items: center; padding: 0 12px; gap: 10px; font-size: 12px; color: var(--muted-fg); }
+    .studio-bg .cmd-affordance {
+      margin-left: auto; display: flex; align-items: center; gap: 8px; width: 260px; height: 28px;
+      padding: 0 10px; border-radius: 7px; background: var(--background-alt); border: 1px solid var(--border);
+      font-size: 11px; color: var(--muted-fg);
+    }
+    .studio-bg .cmd-affordance kbd { margin-left: auto; font-size: 9px; border: 1px solid var(--border-hover); border-radius: 3px; padding: 1px 4px; }
+    .studio-bg .body { display: flex; height: calc(100% - 44px - 22px); }
+    .studio-bg .act { width: 52px; background: var(--card); border-right: 1px solid var(--border); }
+    .studio-bg .side { width: 220px; background: var(--background-alt); border-right: 1px solid var(--border); }
+    .studio-bg .dock { flex: 1; background: var(--background); display: flex; align-items: center; justify-content: center; color: var(--border-hover); font-size: 11px; }
+    .studio-bg .status { position: absolute; bottom: 0; left: 0; right: 0; height: 22px; background: var(--primary); color: var(--primary-fg); font-size: 10px; display: flex; align-items: center; padding: 0 10px; gap: 12px; font-family: 'JetBrains Mono'; }
+
+    /* Overlay + modal */
+    .overlay {
+      position: absolute; inset: 0; background: var(--overlay); display: flex;
+      align-items: flex-start; justify-content: center; padding-top: 72px;
+    }
+    .palette {
+      width: min(560px, 92%); background: var(--card); border: 1px solid var(--border-hover);
+      border-radius: 10px; box-shadow: 0 16px 48px rgba(0,0,0,.55); overflow: hidden;
+    }
+    .palette-input {
+      display: flex; align-items: center; gap: 10px; padding: 12px 14px; border-bottom: 1px solid var(--border);
+    }
+    .palette-input input {
+      flex: 1; background: transparent; border: none; outline: none; color: var(--foreground);
+      font-size: 14px; font-family: inherit;
+    }
+    .palette-input input::placeholder { color: var(--muted-fg); }
+    .palette-input .hint { font-size: 10px; color: var(--muted-fg); font-family: 'JetBrains Mono'; }
+
+    .results { max-height: 320px; overflow-y: auto; padding: 4px 0; }
+    .group-hd {
+      padding: 6px 14px 4px; font-size: 10px; font-weight: 700; letter-spacing: .05em;
+      text-transform: uppercase; color: var(--muted-fg);
+    }
+    .item {
+      display: flex; align-items: center; gap: 10px; padding: 7px 14px; font-size: 13px; cursor: pointer;
+    }
+    .item:hover { background: var(--secondary); }
+    .item.sel { background: rgba(232,168,50,.12); }
+    .item .ico-wrap {
+      width: 22px; height: 22px; border-radius: 5px; display: flex; align-items: center; justify-content: center;
+      background: var(--secondary); color: var(--muted-fg); font-size: 10px; font-weight: 700;
+    }
+    .item.arc .ico-wrap { background: var(--accent-muted); color: var(--accent-fg); }
+    .item.chapter .ico-wrap { color: var(--primary); }
+    .item.scene .ico-wrap { background: transparent; }
+    .item.scene .dot { width: 6px; height: 6px; border-radius: 50%; background: var(--success); }
+    .item .main { flex: 1; min-width: 0; }
+    .item .label { font-weight: 500; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .item .label em { font-style: normal; color: var(--primary); text-decoration: underline; text-underline-offset: 2px; }
+    .item .crumb { font-size: 11px; color: var(--muted-fg); margin-top: 1px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .item .meta { font-size: 10px; color: var(--muted-fg); font-family: 'JetBrains Mono'; flex-shrink: 0; }
+    .item .badge { font-size: 9px; padding: 2px 6px; border-radius: 4px; background: var(--secondary); color: var(--muted-fg); }
+    .item .badge.done { background: rgba(61,186,106,.15); color: var(--success); }
+    .item .badge.read { background: rgba(84,150,232,.15); color: var(--info); }
+    .item .desc { font-size: 11px; color: var(--muted-fg); margin-left: auto; flex-shrink: 0; max-width: 140px; text-align: right; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
+    .palette-foot {
+      padding: 8px 14px; border-top: 1px solid var(--border); font-size: 10px; color: var(--muted-fg);
+      display: flex; gap: 14px; font-family: 'JetBrains Mono';
+    }
+    .palette-foot span { display: flex; align-items: center; gap: 4px; }
+    .palette-foot kbd { border: 1px solid var(--border-hover); border-radius: 3px; padding: 1px 4px; font-size: 9px; }
+
+    .hidden { display: none !important; }
+
+    /* Annotations */
+    .notes { flex: 1; max-width: 400px; }
+    .note { display: flex; gap: 12px; margin-bottom: 16px; }
+    .note .n { width: 24px; height: 24px; flex-shrink: 0; border-radius: 50%; background: var(--primary-muted); color: var(--primary); border: 1px solid var(--primary); display: flex; align-items: center; justify-content: center; font-weight: 700; font-size: 12px; }
+    .note h3 { font-size: 13px; font-weight: 600; margin-bottom: 3px; }
+    .note p { font-size: 12px; line-height: 1.6; color: var(--muted-fg); }
+    .note code { font-family: 'JetBrains Mono'; font-size: 11px; background: var(--secondary); padding: 1px 5px; border-radius: 4px; color: var(--accent-fg); }
+    .why { margin-top: 12px; padding: 12px 14px; border-radius: 8px; background: var(--secondary); border-left: 3px solid var(--accent); font-size: 12px; line-height: 1.6; color: var(--muted-fg); }
+  </style>
+</head>
+<body>
+  <h1>Command Palette <span style="font-size:13px;color:var(--muted-fg);font-weight:400">— #06a + #06b</span></h1>
+  <p class="sub">VS Code–faithful <strong>Quick Open</strong> (manuscript locations) and <strong>Command Palette</strong> (dock tools + chrome). Design only — toggle states below.</p>
+
+  <div class="tabs">
+    <button type="button" class="tab active" data-mode="quick">Quick Open <kbd>⌘P</kbd></button>
+    <button type="button" class="tab" data-mode="command">Command Palette <kbd>⌘⇧P</kbd></button>
+  </div>
+
+  <div class="stage">
+    <!-- Studio backdrop with modal -->
+    <div class="studio-bg">
+      <div class="top">
+        <span>Writing Studio / Ma Nữ Nghịch Thiên</span>
+        <div class="cmd-affordance">
+          <svg width="12" height="12" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="M21 21l-4-4"/></svg>
+          <span id="affordance-text">Go to chapter, scene, arc…</span>
+          <kbd>⌘P</kbd>
+        </div>
+      </div>
+      <div class="body">
+        <div class="act"></div>
+        <div class="side"></div>
+        <div class="dock">dockview area (dimmed)</div>
+      </div>
+      <div class="status">
+        <span>vi</span>
+        <span>⌘P</span>
+        <span>⌘⇧P</span>
+        <span style="margin-left:auto">Saved</span>
+      </div>
+
+      <div class="overlay">
+        <!-- 06a Quick Open -->
+        <div class="palette" id="palette-quick">
+          <div class="palette-input">
+            <svg width="16" height="16" fill="none" stroke="var(--muted-fg)" stroke-width="2" viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="M21 21l-4-4"/></svg>
+            <input type="text" value="nghịch" placeholder="Go to chapter, scene, arc…" aria-label="Quick Open" />
+            <span class="hint">⌘P</span>
+          </div>
+          <div class="results">
+            <div class="group-hd">Chapters &amp; scenes</div>
+            <div class="item chapter sel">
+              <div class="ico-wrap">Ch</div>
+              <div class="main">
+                <div class="label"><em>Nghịch</em> thiên</div>
+                <div class="crumb">Arc I › Ch 0001</div>
+              </div>
+              <span class="badge done">done</span>
+              <span class="meta">0001</span>
+            </div>
+            <div class="item chapter">
+              <div class="ico-wrap">Ed</div>
+              <div class="main">
+                <div class="label">Ch 0042 · <em>Edit</em></div>
+                <div class="crumb">Arc II › Ma Đạo Truy Sát</div>
+              </div>
+              <span class="meta">0042</span>
+            </div>
+            <div class="item chapter">
+              <div class="ico-wrap mono" style="font-size:9px">{}</div>
+              <div class="main">
+                <div class="label">Ch 0042 · <em>Raw</em></div>
+                <div class="crumb">Arc II › Ma Đạo Truy Sát · JSON</div>
+              </div>
+              <span class="meta">0042</span>
+            </div>
+            <div class="item chapter">
+              <div class="ico-wrap">Rd</div>
+              <div class="main">
+                <div class="label">Ch 0042 · Read</div>
+                <div class="crumb">Arc II › Ma Đạo Truy Sát</div>
+              </div>
+              <span class="badge read">read</span>
+              <span class="meta">0042</span>
+            </div>
+            <div class="item scene">
+              <div class="ico-wrap"><span class="dot"></span></div>
+              <div class="main">
+                <div class="label">Cảnh 1 — Bị phản bội</div>
+                <div class="crumb">Arc I › Ch 0001 › Scene 1</div>
+              </div>
+              <span class="badge done">done</span>
+            </div>
+            <div class="group-hd">Arcs</div>
+            <div class="item arc">
+              <div class="ico-wrap">I</div>
+              <div class="main">
+                <div class="label">Arc I — Nghịch Thiên Lộ</div>
+                <div class="crumb">ch 1–40 · expands tree, no dock tab</div>
+              </div>
+              <span class="meta">40 ch</span>
+            </div>
+          </div>
+          <div class="palette-foot">
+            <span><kbd>↑↓</kbd> navigate</span>
+            <span><kbd>↵</kbd> open</span>
+            <span><kbd>esc</kbd> close</span>
+          </div>
+        </div>
+
+        <!-- 06b Command Palette -->
+        <div class="palette hidden" id="palette-command">
+          <div class="palette-input">
+            <svg width="16" height="16" fill="none" stroke="var(--muted-fg)" stroke-width="2" viewBox="0 0 24 24"><path d="M4 6h16M4 12h16M4 18h7"/></svg>
+            <input type="text" value="cast" placeholder="Type a command…" aria-label="Command Palette" />
+            <span class="hint">⌘⇧P</span>
+          </div>
+          <div class="results">
+            <div class="group-hd">Panels</div>
+            <div class="item sel">
+              <div class="ico-wrap">◇</div>
+              <div class="main">
+                <div class="label">Studio: Open <em>Cast</em></div>
+              </div>
+              <span class="desc">Cast &amp; relationships</span>
+            </div>
+            <div class="item">
+              <div class="ico-wrap">◇</div>
+              <div class="main">
+                <div class="label">Studio: Open Compose</div>
+              </div>
+              <span class="desc">Co-writer studio</span>
+            </div>
+            <div class="item">
+              <div class="ico-wrap">◇</div>
+              <div class="main">
+                <div class="label">Studio: Open Quality</div>
+              </div>
+              <span class="desc">Book promise coverage</span>
+            </div>
+            <div class="group-hd">Layout</div>
+            <div class="item">
+              <div class="ico-wrap">⊞</div>
+              <div class="main">
+                <div class="label">View: Toggle Bottom Panel</div>
+              </div>
+              <span class="desc">Jobs · Issues</span>
+            </div>
+            <div class="item">
+              <div class="ico-wrap">⊞</div>
+              <div class="main">
+                <div class="label">View: Toggle Side Bar</div>
+              </div>
+            </div>
+            <div class="group-hd">Navigate</div>
+            <div class="item">
+              <div class="ico-wrap">◎</div>
+              <div class="main">
+                <div class="label">View: Show Manuscript</div>
+              </div>
+            </div>
+            <div class="item">
+              <div class="ico-wrap">◎</div>
+              <div class="main">
+                <div class="label">View: Go to Chapter…</div>
+              </div>
+              <span class="desc">opens ⌘P</span>
+            </div>
+          </div>
+          <div class="palette-foot">
+            <span><kbd>↑↓</kbd> navigate</span>
+            <span><kbd>↵</kbd> run</span>
+            <span><kbd>esc</kbd> close</span>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Annotations -->
+    <div class="notes" id="notes-quick">
+      <div class="note">
+        <div class="n">1</div>
+        <div>
+          <h3>Locations only</h3>
+          <p>⌘P searches arc / chapter / scene. Tools are <strong>not</strong> mixed in — use ⌘⇧P. Top-bar affordance opens this modal only.</p>
+        </div>
+      </div>
+      <div class="note">
+        <div class="n">2</div>
+        <div>
+          <h3>Edit vs Read vs Raw rows</h3>
+          <p>Same chapter can appear multiple times when dock panels exist — <code>editor</code>, <code>raw</code> ([#04b](docs)), <code>reader</code> — distinct tabs, same <code>chapterId</code>.</p>
+        </div>
+      </div>
+      <div class="note">
+        <div class="n">3</div>
+        <div>
+          <h3>Shared jump layer</h3>
+          <p>Same <code>useManuscriptJump</code> hook as the Manuscript navigator jump box ([#02](docs)). Server <code>GET …/jump?q=</code> deferred; v1 uses sort_order seek + client filter on loaded pages.</p>
+        </div>
+      </div>
+      <div class="note">
+        <div class="n">4</div>
+        <div>
+          <h3>Arc selection</h3>
+          <p>Selecting an arc expands the sidebar tree and scrolls — <em>no</em> dock tab. Chapter/scene opens or focuses a dock panel.</p>
+        </div>
+      </div>
+      <div class="why">
+        <strong>Build order:</strong> implement after #02 jump hook + #03 dock panel. Debt #1 (navigator→dock) clears the E2E for "⌘P opens chapter tab".
+      </div>
+    </div>
+
+    <div class="notes hidden" id="notes-command">
+      <div class="note">
+        <div class="n">1</div>
+        <div>
+          <h3>Tools + chrome</h3>
+          <p>⌘⇧P runs commands — open dock panels (<code>Studio: Open …</code>) and layout actions (<code>View: …</code>). Activity bar stays 4 high-level navigators only.</p>
+        </div>
+      </div>
+      <div class="note">
+        <div class="n">2</div>
+        <div>
+          <h3>Panel registry</h3>
+          <p>Commands generated from opted-in <code>WorkspacePanelId</code> entries as studio ports each legacy co-writer panel. Ship when ≥3 dock tools exist.</p>
+        </div>
+      </div>
+      <div class="note">
+        <div class="n">3</div>
+        <div>
+          <h3>Chrome-only v1 slice</h3>
+          <p>Toggle bottom/sidebar + switch activity view can ship before any tool panel — palette is useful immediately.</p>
+        </div>
+      </div>
+      <div class="note">
+        <div class="n">4</div>
+        <div>
+          <h3>Deferred</h3>
+          <p><code>Studio: Generate</code> · <code>Save All</code> · model picker — Debt #2 on overview; wire when top bar controls land.</p>
+        </div>
+      </div>
+      <div class="why">
+        <strong>Same shell</strong> as Quick Open — one shared modal component when built; only the result list + dispatch differ.
+      </div>
+    </div>
+  </div>
+
+  <script>
+    document.querySelectorAll('.tab').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const quick = btn.dataset.mode === 'quick';
+        document.querySelectorAll('.tab').forEach(t => t.classList.toggle('active', t === btn));
+        document.getElementById('palette-quick').classList.toggle('hidden', !quick);
+        document.getElementById('palette-command').classList.toggle('hidden', quick);
+        document.getElementById('notes-quick').classList.toggle('hidden', !quick);
+        document.getElementById('notes-command').classList.toggle('hidden', quick);
+        document.getElementById('affordance-text').textContent = quick
+          ? 'Go to chapter, scene, arc…'
+          : 'Type a command… (⌘⇧P)';
+      });
+    });
+  </script>
+</body>
+</html>

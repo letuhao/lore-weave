@@ -134,6 +134,20 @@ class TestAgUiEmitter:
         ev = _parse(self._em().activity(payload)[0])
         assert ev == {"type": "CUSTOM", "name": "activity", "value": payload}
 
+    def test_agent_surface_is_custom_event(self):
+        payload = {
+            "phase": "Curated",
+            "pinned_count": 2,
+            "hot_seed_count": 0,
+            "activated_count": 0,
+            "injected_skills": ["universal"],
+            "running_tool": None,
+            "last_find_tools_query": None,
+            "find_tools_call_count": 0,
+        }
+        ev = _parse(self._em().agent_surface(payload)[0])
+        assert ev == {"type": "CUSTOM", "name": "agentSurface", "value": payload}
+
     def test_text_happy_path_frames_once(self):
         em = self._em()
         first = em.text_delta("Hi ")

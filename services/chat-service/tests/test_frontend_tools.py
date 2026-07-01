@@ -24,6 +24,8 @@ from app.services.frontend_tools import (
     GLOSSARY_CONFIRM_ACTION_TOOL,
     GLOSSARY_PROPOSE_EDIT_TOOL,
     PROPOSE_EDIT_TOOL,
+    UI_FOCUS_MANUSCRIPT_UNIT_TOOL,
+    UI_OPEN_STUDIO_PANEL_TOOL,
     frontend_tool_defs,
     is_frontend_tool,
 )
@@ -133,6 +135,30 @@ class TestFrontendToolDefs:
         ]
         # neither surface → nothing
         assert frontend_tool_defs() == []
+
+    def test_studio_ui_tools_are_frontend_tools(self):
+        # #09 Lane A — the studio dock-nav tools are client-executed frontend tools.
+        assert is_frontend_tool("ui_open_studio_panel")
+        assert is_frontend_tool("ui_focus_manuscript_unit")
+        assert "ui_open_studio_panel" in FRONTEND_TOOL_NAMES
+        assert "ui_focus_manuscript_unit" in FRONTEND_TOOL_NAMES
+
+    def test_studio_surface_advertises_only_the_studio_nav_tools(self):
+        # studio flag adds ONLY the two dock-nav tools; independent of editor/book_scoped.
+        assert frontend_tool_defs(studio=True) == [UI_OPEN_STUDIO_PANEL_TOOL, UI_FOCUS_MANUSCRIPT_UNIT_TOOL]
+        # not advertised without the studio flag (a non-studio chat never suspends on them)
+        assert UI_OPEN_STUDIO_PANEL_TOOL not in frontend_tool_defs(editor=True, book_scoped=True)
+
+    def test_studio_ui_tool_schemas_are_wire_standard(self):
+        p = UI_OPEN_STUDIO_PANEL_TOOL["function"]
+        assert p["name"] == "ui_open_studio_panel"
+        assert set(p["parameters"]["required"]) == {"panel_id"}
+        # panel_id is enum-constrained so a weak model can't drift the value (or the arg name) —
+        # a live gemma-26b smoke otherwise sent the ui_show_panel `panel` arg + guessed a value.
+        assert p["parameters"]["properties"]["panel_id"]["enum"] == ["compose", "editor"]
+        f = UI_FOCUS_MANUSCRIPT_UNIT_TOOL["function"]
+        assert f["name"] == "ui_focus_manuscript_unit"
+        assert set(f["parameters"]["required"]) == {"chapter_id"}
 
 
 # ── the suspend in the tool loop ─────────────────────────────────────────────

@@ -111,6 +111,20 @@ class TestGetSession:
         assert body["project_id"] == project_id
         assert body["memory_mode"] == "static"
 
+    @pytest.mark.asyncio
+    async def test_get_session_returns_enabled_tool_arrays(self, client, mock_pool):
+        mock_pool.fetchrow.return_value = make_session_record(
+            enabled_tools=["find_tools"],
+            enabled_skills=["glossary"],
+            activated_tools=["book_list"],
+        )
+        resp = await client.get(f"/v1/chat/sessions/{TEST_SESSION_ID}")
+        assert resp.status_code == 200
+        body = resp.json()
+        assert body["enabled_tools"] == ["find_tools"]
+        assert body["enabled_skills"] == ["glossary"]
+        assert body["activated_tools"] == ["book_list"]
+
 
 class TestPatchSession:
     @pytest.mark.asyncio
@@ -144,6 +158,18 @@ class TestPatchSession:
         })
         assert resp.status_code == 200
         assert resp.json()["status"] == "archived"
+
+    @pytest.mark.asyncio
+    async def test_patch_session_enabled_tools(self, client, mock_pool):
+        original = make_session_record()
+        updated = make_session_record(enabled_tools=["book_get_chapter"])
+        mock_pool.fetchrow.side_effect = [original, updated]
+
+        resp = await client.patch(f"/v1/chat/sessions/{TEST_SESSION_ID}", json={
+            "enabled_tools": ["book_get_chapter"],
+        })
+        assert resp.status_code == 200
+        assert resp.json()["enabled_tools"] == ["book_get_chapter"]
 
 
 class TestDeleteSession:
