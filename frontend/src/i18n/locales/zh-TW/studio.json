@@ -1,9 +1,46 @@
 {
   "title": "寫作工作室",
   "back": "返回書籍",
+  "settings": "書籍設定",
   "welcome": {
     "tab": "歡迎",
     "title": "寫作工作室",
     "body": "本書的可停靠工作區。面板（寫作、大綱、角色、品質…）將逐一加入此處。拖曳分頁即可分割、堆疊、浮動，或彈出為獨立視窗。"
+  },
+  "palette": {
+    "placeholder": "前往章節、場景、工具…",
+    "soon": "命令面板 — 即將推出"
+  },
+  "activity": {
+    "manuscript": "稿件",
+    "bible": "故事聖經",
+    "search": "搜尋",
+    "quality": "品質"
+  },
+  "navStub": {
+    "manuscript": { "title": "稿件", "body": "章節與場景 — 驅動停靠區的導覽器。接下來實作。" },
+    "bible": { "title": "故事聖經", "body": "角色、世界與正史。即將推出。" },
+    "search": { "title": "搜尋", "body": "全書全文與語意搜尋。即將推出。" },
+    "quality": { "title": "品質", "body": "評審分數、伏筆線與正史問題。即將推出。" }
+  },
+  "sidebar": {
+    "collapse": "收合"
+  },
+  "bottom": {
+    "jobs": "工作",
+    "generation": "生成",
+    "issues": "問題",
+    "collapse": "收合面板",
+    "toggle": "切換底部面板",
+    "label": "面板"
+  },
+  "bottomStub": {
+    "jobs": "背景工作接上後會顯示於此。",
+    "generation": "即時生成進度接上後會顯示於此。",
+    "issues": "品質問題接上後會顯示於此。"
+  },
+  "status": {
+    "wordsPlaceholder": "— 字",
+    "modelPlaceholder": "尚無模型"
   }
 }

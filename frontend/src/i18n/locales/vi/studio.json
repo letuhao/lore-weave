@@ -1,9 +1,46 @@
 {
   "title": "Xưởng Sáng Tác",
   "back": "Quay lại sách",
+  "settings": "Cài đặt sách",
   "welcome": {
     "tab": "Chào mừng",
     "title": "Xưởng Sáng Tác",
     "body": "Không gian làm việc dạng bảng ghép cho cuốn sách này. Các bảng (sáng tác, dàn ý, nhân vật, chất lượng…) sẽ được thêm vào đây từng cái một. Kéo thẻ để chia đôi, xếp chồng, thả nổi, hoặc tách ra cửa sổ riêng."
+  },
+  "palette": {
+    "placeholder": "Đến chương, cảnh, công cụ…",
+    "soon": "Bảng lệnh — sắp có"
+  },
+  "activity": {
+    "manuscript": "Bản thảo",
+    "bible": "Sổ tay truyện",
+    "search": "Tìm kiếm",
+    "quality": "Chất lượng"
+  },
+  "navStub": {
+    "manuscript": { "title": "Bản thảo", "body": "Chương & cảnh — bộ điều hướng dẫn dắt khu dock. Sẽ làm tiếp theo." },
+    "bible": { "title": "Sổ tay truyện", "body": "Nhân vật, thế giới & canon. Sắp có." },
+    "search": { "title": "Tìm kiếm", "body": "Tìm toàn văn & ngữ nghĩa trong cả cuốn sách. Sắp có." },
+    "quality": { "title": "Chất lượng", "body": "Điểm phê bình, mạch lời hứa & vấn đề canon. Sắp có." }
+  },
+  "sidebar": {
+    "collapse": "Thu gọn"
+  },
+  "bottom": {
+    "jobs": "Tác vụ",
+    "generation": "Sinh nội dung",
+    "issues": "Vấn đề",
+    "collapse": "Thu gọn bảng",
+    "toggle": "Bật/tắt bảng dưới",
+    "label": "Bảng"
+  },
+  "bottomStub": {
+    "jobs": "Tác vụ nền sẽ hiển thị ở đây khi được nối.",
+    "generation": "Tiến độ sinh nội dung trực tiếp sẽ hiển thị ở đây khi được nối.",
+    "issues": "Vấn đề chất lượng sẽ hiển thị ở đây khi được nối."
+  },
+  "status": {
+    "wordsPlaceholder": "— từ",
+    "modelPlaceholder": "chưa có model"
   }
 }

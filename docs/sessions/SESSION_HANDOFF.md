@@ -1,4 +1,20 @@
-# ▶▶ NEXT SESSION STARTS HERE — **Writing Studio (v2) STARTED on branch `feat/writing-studio`: dockview-based VS Code-style docking workspace, book-level, from scratch. Blank shell shipped; next is adding panels ONE AT A TIME (user-directed).** Compose-overhaul work is on `feat/editor-compose-overhaul` (PR #52). · 2026-07-01**
+# ▶▶ NEXT SESSION STARTS HERE — **Writing Studio (v2) on `feat/writing-studio`: dockview VS Code-style workspace. Frame SKELETON built (all fixed regions + mechanics + persistence, browser-verified). NEXT = component #02 Manuscript navigator (chapters→scenes, drives the dock). Build-while-plan: spec each component just-in-time.** Compose-overhaul is on `feat/editor-compose-overhaul` (PR #52). · 2026-07-01**
+
+> **▶ Writing Studio (v2) — FRAME SKELETON built 2026-07-01 (`feat/writing-studio`, FE-only).** Incremental
+> **build-while-plan** track (inverts plan-then-build): master spec + one file per component, written
+> just-in-time — `docs/specs/2026-07-01-writing-studio/` (`00_OVERVIEW.md` + `01_skeleton.md`); frame mockup
+> `design-drafts/screens/studio/screen-writing-studio-frame.html`. Shipped the full **fixed frame** as
+> `features/studio/` (MVC): `StudioTopBar` (back·title·⌘P palette placeholder·settings), `StudioActivityBar`
+> (icon rail: Manuscript/Bible/Search/Quality — switches the navigator; re-click active = collapse),
+> `StudioSideBar` (active navigator, **content STUBBED**), `StudioDock` (dockview + Welcome + per-book layout
+> persistence), `StudioBottomPanel` (toggle; Jobs/Generation/Issues stubs), `StudioStatusBar` (lang·⌘P·bottom
+> toggle). Hooks: `useStudioChrome` (activeView/sidebar/bottom, per-book `lw_studio_chrome_<bookId>`) +
+> `useStudioLayout` (dockview onReady+persist). **Verified:** tsc+eslint clean, studio i18n ×4 parity-clean,
+> **browser-smoke** — all regions render, activity-switch + sidebar-collapse + bottom-toggle work, **dock never
+> remounts** through chrome changes, chrome+layout persist & restore on reload, 0 console errors. **NEXT (#02):**
+> Manuscript navigator — real chapters→scenes tree in the Side Bar that opens/focuses a unit in the dock (the
+> navigator→dock "wiring"); then #03 Compose panel (first stateful dock panel → wires the D4 state-hoist rule).
+> See memory `[[editor-workmode-and-compose-must-keep-editor-mounted]]`.
 
 > **▶ Writing Studio (v2) — BLANK SHELL shipped 2026-07-01 (branch `feat/writing-studio`, FE-only).** A NEW,
 > from-scratch surface — does NOT touch `ChapterEditorPage`. **Build-vs-buy decided:** our in-house dock layer

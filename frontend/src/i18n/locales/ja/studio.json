@@ -1,9 +1,46 @@
 {
   "title": "執筆スタジオ",
   "back": "本に戻る",
+  "settings": "本の設定",
   "welcome": {
     "tab": "ようこそ",
     "title": "執筆スタジオ",
     "body": "この本のためのドッキング可能なワークスペース。パネル（執筆・プロット・キャスト・品質…）は一つずつここに追加されます。タブをドラッグして分割・スタック・フロート・別ウィンドウへ切り離せます。"
+  },
+  "palette": {
+    "placeholder": "章・シーン・ツールへ移動…",
+    "soon": "コマンドパレット — 近日公開"
+  },
+  "activity": {
+    "manuscript": "原稿",
+    "bible": "ストーリーバイブル",
+    "search": "検索",
+    "quality": "品質"
+  },
+  "navStub": {
+    "manuscript": { "title": "原稿", "body": "章とシーン — ドックを操作するナビゲーター。次に実装。" },
+    "bible": { "title": "ストーリーバイブル", "body": "キャスト・世界・カノン。近日公開。" },
+    "search": { "title": "検索", "body": "本全体の全文・意味検索。近日公開。" },
+    "quality": { "title": "品質", "body": "批評スコア・約束の伏線・カノン問題。近日公開。" }
+  },
+  "sidebar": {
+    "collapse": "折りたたむ"
+  },
+  "bottom": {
+    "jobs": "ジョブ",
+    "generation": "生成",
+    "issues": "問題",
+    "collapse": "パネルを折りたたむ",
+    "toggle": "下部パネルの切替",
+    "label": "パネル"
+  },
+  "bottomStub": {
+    "jobs": "バックグラウンドジョブは接続後にここに表示されます。",
+    "generation": "ライブ生成の進捗は接続後にここに表示されます。",
+    "issues": "品質の問題は接続後にここに表示されます。"
+  },
+  "status": {
+    "wordsPlaceholder": "— 語",
+    "modelPlaceholder": "モデルなし"
   }
 }

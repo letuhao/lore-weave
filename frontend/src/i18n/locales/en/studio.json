@@ -1,9 +1,46 @@
 {
   "title": "Writing Studio",
   "back": "Back to book",
+  "settings": "Book settings",
   "welcome": {
     "tab": "Welcome",
     "title": "Writing Studio",
     "body": "A dockable workspace for this book. Panels (compose, planner, cast, quality…) will be added here one at a time. Drag tabs to split, stack, float, or pop out into their own window."
+  },
+  "palette": {
+    "placeholder": "Go to chapter, scene, tool…",
+    "soon": "Command palette — coming soon"
+  },
+  "activity": {
+    "manuscript": "Manuscript",
+    "bible": "Story Bible",
+    "search": "Search",
+    "quality": "Quality"
+  },
+  "navStub": {
+    "manuscript": { "title": "Manuscript", "body": "Chapters & scenes — the navigator that drives the dock. Built next." },
+    "bible": { "title": "Story Bible", "body": "Cast, world & canon entries. Coming soon." },
+    "search": { "title": "Search", "body": "Full-text & semantic search across the book. Coming soon." },
+    "quality": { "title": "Quality", "body": "Critic scores, promise threads & canon issues. Coming soon." }
+  },
+  "sidebar": {
+    "collapse": "Collapse"
+  },
+  "bottom": {
+    "jobs": "Jobs",
+    "generation": "Generation",
+    "issues": "Issues",
+    "collapse": "Collapse panel",
+    "toggle": "Toggle bottom panel",
+    "label": "Panel"
+  },
+  "bottomStub": {
+    "jobs": "Background jobs appear here once wired.",
+    "generation": "Live generation progress appears here once wired.",
+    "issues": "Quality issues appear here once wired."
+  },
+  "status": {
+    "wordsPlaceholder": "— words",
+    "modelPlaceholder": "no model"
   }
 }
