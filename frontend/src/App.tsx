@@ -24,6 +24,7 @@ import { ChatPage } from '@/pages/ChatPage';
 import { RoleplayPage } from '@/features/roleplay/pages/RoleplayPage';
 import { BookDetailPage } from '@/pages/BookDetailPage';
 import { ChapterEditorPage } from '@/pages/ChapterEditorPage';
+import { WritingStudioPage } from '@/pages/WritingStudioPage';
 import { PopoutHost } from '@/features/composition/components/workspace/PopoutHost';
 import { ChapterComparePage } from '@/pages/ChapterComparePage';
 import { WikiEditorPage } from '@/pages/WikiEditorPage';
@@ -119,6 +120,8 @@ export function App() {
           {/* Editor (collapsed sidebar) */}
           <Route element={<RequireAuth><EditorLayout /></RequireAuth>}>
             <Route path="/books/:bookId/chapters/:chapterId/edit" element={<ChapterEditorPage />} />
+            {/* Writing Studio (v2) — book-level VS Code-style docking workspace (dockview). */}
+            <Route path="/books/:bookId/studio" element={<WritingStudioPage />} />
             <Route path="/books/:bookId/chapters/:chapterId/compare" element={<ChapterComparePage />} />
             <Route path="/books/:bookId/chapters/:chapterId/translations" element={<ChapterTranslationsPage />} />
             <Route path="/books/:bookId/wiki/:articleId/edit" element={<WikiEditorPage />} />

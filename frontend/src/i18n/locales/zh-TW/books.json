@@ -30,6 +30,7 @@
     "no_language": "未設定語言"
   },
   "detail": {
+    "open_studio": "工作室",
     "not_found": "找不到書籍",
     "updated": "更新於 {{date}}",
     "readers": "{{count}} 位讀者",

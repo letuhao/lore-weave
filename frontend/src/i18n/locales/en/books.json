@@ -30,6 +30,7 @@
     "no_language": "No language set"
   },
   "detail": {
+    "open_studio": "Studio",
     "not_found": "Book not found",
     "updated": "Updated {{date}}",
     "readers": "{{count}} reader",

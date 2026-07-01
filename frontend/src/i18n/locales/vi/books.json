@@ -30,6 +30,7 @@
     "no_language": "Chưa đặt ngôn ngữ"
   },
   "detail": {
+    "open_studio": "Xưởng",
     "not_found": "Không tìm thấy sách",
     "updated": "Cập nhật {{date}}",
     "readers": "{{count}} độc giả",

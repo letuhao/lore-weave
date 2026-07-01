@@ -41,6 +41,7 @@
     "@tiptap/starter-kit": "^3.21.0",
     "clsx": "^2.1.1",
     "diff": "^9.0.0",
+    "dockview-react": "^7.0.2",
     "i18next": "^26.0.2",
     "i18next-browser-languagedetector": "^8.2.1",
     "lowlight": "^3.3.0",

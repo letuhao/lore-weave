@@ -30,6 +30,7 @@
     "no_language": "言語未設定"
   },
   "detail": {
+    "open_studio": "スタジオ",
     "not_found": "書籍が見つかりません",
     "updated": "更新 {{date}}",
     "readers": "{{count}}人の読者",

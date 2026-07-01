@@ -1,4 +1,20 @@
-# ▶▶ NEXT SESSION STARTS HERE — **GUI track: Workmode switch (Write·Translate·Read·Compose) + Translate-as-an-embedded-mode SHIPPED. Next: browser-smoke the 4 modes on a live stack, then the remaining GUI menu (Scenes panel M3, Compose command-center M4) OR the compose redesign (per-tool, user-driven)** · branch `feat/editor-compose-overhaul` · 2026-07-01**
+# ▶▶ NEXT SESSION STARTS HERE — **Writing Studio (v2) STARTED on branch `feat/writing-studio`: dockview-based VS Code-style docking workspace, book-level, from scratch. Blank shell shipped; next is adding panels ONE AT A TIME (user-directed).** Compose-overhaul work is on `feat/editor-compose-overhaul` (PR #52). · 2026-07-01**
+
+> **▶ Writing Studio (v2) — BLANK SHELL shipped 2026-07-01 (branch `feat/writing-studio`, FE-only).** A NEW,
+> from-scratch surface — does NOT touch `ChapterEditorPage`. **Build-vs-buy decided:** our in-house dock layer
+> (`WorkspaceLayoutProvider`/`DockRail`/`FloatingWindow`/`PopoutBridge`) is a single linear tab-rail — it CANNOT
+> do VS Code-style multi-region docking (splits, tab groups, nested regions, drag-split-merge). Adopted
+> **`dockview-react` v7.0.2** (zero-dep, MIT, React-18, real tab-groups + split grids + floating groups + pop-out
+> windows + `toJSON/fromJSON`). **Shipped:** `pages/WritingStudioPage.tsx` (empty dockview shell, `themeAbyss`,
+> single Welcome panel, **per-book layout persistence** via `localStorage` `lw_studio_layout_<bookId>` on
+> `onDidLayoutChange`); route `/books/:bookId/studio` under `EditorLayout`; **book-level** "Studio" CTA in
+> `BookDetailPage` header (opens directly, no chapter needed); new i18n `studio` ns × en/vi/ja/zh-TW +
+> `books.detail.open_studio`. **Verified:** tsc + eslint clean, production `vite build` OK (dockview bundles),
+> browser-smoke — studio renders, welcome panel, layout persists (1 panel saved), 0 console errors, CTA links
+> correctly. **Architecture rule carried forward:** live/in-flight state (co-writer streams, editor docs) must
+> live ABOVE dockview; panels are thin views over hoisted state so closing/moving a panel never drops work —
+> wire when the first stateful panel lands. **Next:** user directs which panel to add first (compose, planner,
+> cast, quality…), one at a time. See memory `[[editor-workmode-and-compose-must-keep-editor-mounted]]`.
 
 > **▶ GUI Workmode overhaul (M0 + M1 + Read) — SHIPPED 2026-07-01 (FE-only).** The chapter editor's
 > "three overlapping hidden mode systems" collapse into ONE dropdown: **Write · Translate · Read · Compose**

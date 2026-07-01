@@ -1,0 +1,9 @@
+{
+  "title": "Writing Studio",
+  "back": "Back to book",
+  "welcome": {
+    "tab": "Welcome",
+    "title": "Writing Studio",
+    "body": "A dockable workspace for this book. Panels (compose, planner, cast, quality…) will be added here one at a time. Drag tabs to split, stack, float, or pop out into their own window."
+  }
+}
