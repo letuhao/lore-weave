@@ -1,25 +1,42 @@
 // LOOM Composition · Q1+Q2 Quality Report (view) — read-only advisory panel in the Polish gate.
 //
 // Surfaces the planner's own judges to the author: the 4-dim critic (coherence / voice / pacing /
-// canon) and the promise audit (what the chapter sets up vs. what it DROPS). Diagnostic only —
-// no accept/reject, no apply. It informs; the author decides what to rewrite.
+// canon + violations) and the chapter's narrative threads (raised / resolved). Diagnostic only —
+// no accept/reject, no apply. It informs; the author decides what to rewrite. When self-heal
+// proposals are present it LINKS each critic canon violation to a matching proposed fix
+// (D-QUALITY-CRITIC-HEAL-LINK) so the author doesn't double-count the same issue.
 import { useTranslation } from 'react-i18next';
 
 import { useQualityReport } from '../hooks/useQualityReport';
-import type { QualityCritic } from '../api';
+import type { QualityCritic, SelfHealProposal } from '../api';
 
 interface Props {
   projectId: string;
   chapterId: string;
   token: string | null;
   modelRef: string;
+  // The current self-heal proposals (if the author has run Polish) — used to mark which critic
+  // violations already have a proposed fix. Optional: the report stands alone without them.
+  proposals?: SelfHealProposal[];
 }
 
 const DIMS: (keyof Pick<QualityCritic, 'coherence' | 'voice_match' | 'pacing' | 'canon_consistency'>)[] = [
   'coherence', 'voice_match', 'pacing', 'canon_consistency',
 ];
 
-export function QualityReportSection({ projectId, chapterId, token, modelRef }: Props) {
+// A critic violation and a self-heal proposal describe the SAME issue when their spans overlap
+// (the critic's `span` excerpt vs the proposal's located `before`). Normalize + substring-either-way,
+// with a min length so a trivial shared word doesn't false-match.
+function _hasProposedFix(span: string, proposals: SelfHealProposal[]): boolean {
+  const s = (span || '').trim().toLowerCase();
+  if (s.length < 6) return false;
+  return proposals.some((p) => {
+    const b = (p.before || '').trim().toLowerCase();
+    return b.length >= 6 && (b.includes(s) || s.includes(b));
+  });
+}
+
+export function QualityReportSection({ projectId, chapterId, token, modelRef, proposals = [] }: Props) {
   const { t } = useTranslation('composition');
   const q = useQualityReport(projectId, chapterId, token, modelRef);
   const critic = q.report?.critic;
@@ -69,11 +86,19 @@ export function QualityReportSection({ projectId, chapterId, token, modelRef }: 
 
       {critic && critic.violations.length > 0 && (
         <ul className="flex flex-col gap-0.5" data-testid="quality-violations">
-          {critic.violations.map((v, i) => (
-            <li key={i} className="text-[11px] text-rose-500">
-              ⚠ {v.why}{v.span ? ` — “${v.span}”` : ''}
-            </li>
-          ))}
+          {critic.violations.map((v, i) => {
+            const fixed = _hasProposedFix(v.span, proposals);
+            return (
+              <li key={i} className="text-[11px] text-rose-500">
+                ⚠ {v.why}{v.span ? ` — “${v.span}”` : ''}
+                {fixed && (
+                  <span data-testid="violation-has-fix" className="ml-1 rounded bg-emerald-100 px-1 text-[9px] text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-300">
+                    {t('qualityHasFix', { defaultValue: 'fix proposed ↓' })}
+                  </span>
+                )}
+              </li>
+            );
+          })}
         </ul>
       )}
 

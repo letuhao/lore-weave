@@ -150,6 +150,7 @@ export function PolishPanel({ projectId, chapterId, token, modelRef, onApply }: 
         chapterId={chapterId}
         token={token}
         modelRef={modelRef}
+        proposals={p.proposals}
       />
     </div>
   );

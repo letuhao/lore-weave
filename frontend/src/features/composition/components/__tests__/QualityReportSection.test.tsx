@@ -69,6 +69,25 @@ describe('QualityReportSection', () => {
     expect(screen.queryByTestId('quality-threads')).toBeNull();
   });
 
+  const _prop = (over: Record<string, unknown> = {}) => ({
+    id: 'e0', type: 'address', tier: 'semantic' as const, start: 0, end: 7,
+    before: '', after: 'y', issue: '', fix: '', ...over,
+  });
+
+  it('links a critic violation to a matching self-heal proposal (D-QUALITY-CRITIC-HEAL-LINK)', () => {
+    state.value = base({ report: fullReport, ran: true });   // violation span = 'he said'
+    render(<QualityReportSection projectId="p" chapterId="c" token="t" modelRef="m"
+      proposals={[_prop({ before: 'He said the words' })]} />);  // before ⊃ span → linked
+    expect(screen.getByTestId('violation-has-fix')).toBeTruthy();
+  });
+
+  it('shows no fix-link when no proposal matches the violation span', () => {
+    state.value = base({ report: fullReport, ran: true });
+    render(<QualityReportSection projectId="p" chapterId="c" token="t" modelRef="m"
+      proposals={[_prop({ before: 'a completely unrelated span' })]} />);
+    expect(screen.queryByTestId('violation-has-fix')).toBeNull();
+  });
+
   it('degrades gracefully when the critic is unavailable', () => {
     state.value = base({
       ran: true,
