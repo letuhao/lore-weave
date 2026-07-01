@@ -53,6 +53,10 @@ FRONTEND_TOOL_NAMES: frozenset[str] = frozenset(
         "ui_watch_job",
         "confirm_action",
         "propose_record_edit",
+        # Writing Studio surface (#09 Lane A) — advertised only when the request carries
+        # studio_context; the FE executes them against the StudioHost (resolve-immediately).
+        "ui_open_studio_panel",
+        "ui_focus_manuscript_unit",
     }
 )
 
@@ -376,6 +380,58 @@ UI_WATCH_JOB_TOOL: dict = {
 }
 
 
+# ── Writing Studio surface (#09 Lane A) — dock navigation, resolve-immediately ──
+# Advertised ONLY when the request carries studio_context (mirrors editor_context →
+# propose_edit). The FE executes them against the StudioHost (open a dock panel / focus a
+# chapter's editor) and POSTs the resolve — no human gate.
+
+UI_OPEN_STUDIO_PANEL_TOOL: dict = {
+    "type": "function",
+    "function": {
+        "name": "ui_open_studio_panel",
+        "description": (
+            "Open a Writing Studio dock panel for the user (e.g. the AI compose chat, the "
+            "manuscript editor). Use to bring a studio tool into view. Opens immediately — "
+            "no confirmation."
+        ),
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "panel_id": {
+                    "type": "string",
+                    "description": "The studio panel to open, e.g. 'compose' or 'editor'.",
+                },
+            },
+            "required": ["panel_id"],
+            "additionalProperties": False,
+        },
+    },
+}
+
+UI_FOCUS_MANUSCRIPT_UNIT_TOOL: dict = {
+    "type": "function",
+    "function": {
+        "name": "ui_focus_manuscript_unit",
+        "description": (
+            "Open and focus a specific chapter in the Writing Studio manuscript editor. Use "
+            "when the user wants to write or see a particular chapter in the studio. Opens "
+            "immediately — no confirmation."
+        ),
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "chapter_id": {"type": "string", "description": "The chapter to open in the editor (UUID)."},
+                "scene_id": {"type": "string", "description": "Optional scene to focus within the chapter (UUID)."},
+            },
+            "required": ["chapter_id"],
+            "additionalProperties": False,
+        },
+    },
+}
+
+_STUDIO_UI_TOOLS: list[dict] = [UI_OPEN_STUDIO_PANEL_TOOL, UI_FOCUS_MANUSCRIPT_UNIT_TOOL]
+
+
 # ── MCP-fanout C-CONFIRM — generic Tier-W/S confirm (generalizes glossary) ────
 # The `domain` selects which /v1/<domain>/actions/confirm endpoint commits; the
 # optional `items[]` array renders ONE batch card with a single Apply (H2 — so
@@ -522,6 +578,8 @@ _GENERIC_FRONTEND_TOOLS_BY_NAME: dict[str, dict] = {
     "confirm_action": CONFIRM_ACTION_TOOL,
     "propose_record_edit": PROPOSE_RECORD_EDIT_TOOL,
     "propose_edit": PROPOSE_EDIT_TOOL,
+    "ui_open_studio_panel": UI_OPEN_STUDIO_PANEL_TOOL,
+    "ui_focus_manuscript_unit": UI_FOCUS_MANUSCRIPT_UNIT_TOOL,
 }
 
 
@@ -530,15 +588,17 @@ def generic_frontend_tool_def(name: str) -> dict | None:
     return _GENERIC_FRONTEND_TOOLS_BY_NAME.get(name)
 
 
-def frontend_tool_defs(*, editor: bool = False, book_scoped: bool = False) -> list[dict]:
+def frontend_tool_defs(*, editor: bool = False, book_scoped: bool = False, studio: bool = False) -> list[dict]:
     """Frontend tool schemas to advertise, by surface.
 
     ``editor`` — the chapter editor panel (book_id + chapter_id): adds the prose
     write-back ``propose_edit``.
     ``book_scoped`` — any book-scoped chat (editor OR a glossary-page/reader chat
     carrying a book context): adds ``glossary_propose_entity_edit``.
+    ``studio`` — the Writing Studio compose panel (studio_context): adds the studio
+    dock-navigation tools (open panel / focus manuscript unit — #09 Lane A).
 
-    The two are independent: a glossary-page chat is book_scoped but not editor.
+    The flags are independent: a glossary-page chat is book_scoped but not editor.
     """
     defs: list[dict] = []
     if editor:
@@ -546,6 +606,8 @@ def frontend_tool_defs(*, editor: bool = False, book_scoped: bool = False) -> li
     if book_scoped:
         defs.append(GLOSSARY_PROPOSE_EDIT_TOOL)
         defs.append(GLOSSARY_CONFIRM_ACTION_TOOL)
+    if studio:
+        defs.extend(_STUDIO_UI_TOOLS)
     return defs
 
 

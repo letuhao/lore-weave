@@ -914,6 +914,7 @@ async def stream_response(
     display_language: str | None = None,
     enabled_tools: list[str] | None = None,
     enabled_skills: list[str] | None = None,
+    studio_context: dict | None = None,
 ) -> AsyncGenerator[str, None]:
     """Async generator that yields chat-turn SSE lines.
 
@@ -1260,7 +1261,7 @@ async def stream_response(
                 book_scoped = bool(editor_context or book_context)
                 discovery_catalog = catalog
                 discovery_extra_frontend = frontend_tool_defs(
-                    editor=editor, book_scoped=book_scoped
+                    editor=editor, book_scoped=book_scoped, studio=bool(studio_context)
                 )
                 from app.services.tool_surface import discovery_seed_for_surface
                 discovery_seed_names = discovery_seed_for_surface(
@@ -1279,14 +1280,15 @@ async def stream_response(
                 # No discovery: a legacy non-agui tool-calling client (full catalog —
                 # it has no find_tools loop), or an agui surface with the gateway down.
                 tool_defs = catalog
-                if stream_format == "agui" and (editor_context or book_context):
+                if stream_format == "agui" and (editor_context or book_context or studio_context):
                     # Gateway down but still agui: re-advertise the frontend
-                    # write-back tools so the surface can still propose/confirm
-                    # (mirrors the resume path's catalog-down branch).
+                    # write-back / studio-nav tools so the surface can still
+                    # propose/confirm/navigate (mirrors the resume path's catalog-down branch).
                     from app.services.frontend_tools import frontend_tool_defs
                     tool_defs = tool_defs + frontend_tool_defs(
                         editor=bool(editor_context),
                         book_scoped=bool(editor_context or book_context),
+                        studio=bool(studio_context),
                     )
         # A2A phase-2: advertise compose_prose only when a composer model is
         # configured for this session (orchestrator → writer delegation).
