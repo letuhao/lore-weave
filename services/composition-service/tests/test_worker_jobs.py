@@ -528,7 +528,7 @@ async def test_run_self_heal_propose_serializes(monkeypatch):
     from app.worker.operations import run_self_heal_propose
 
     async def _fake_propose(llm, *, user_id, model_source, model_ref, chapter, source_language,
-                            canon, vote_k, min_votes, verify, verify_k, prefilter, cancel_check=None):
+                            canon, prefilter, rerank, cancel_check=None):
         props = [EditProposal(id="e0", type="xưng hô (code)", tier="deterministic", start=0,
                               end=3, before="ông", after="lão", issue="i", fix="f")]
         rep = SelfHealReport(

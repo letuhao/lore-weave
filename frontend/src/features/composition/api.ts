@@ -507,6 +507,10 @@ export interface SelfHealProposal {
   after: string;
   issue: string;
   fix: string;
+  // recommended = pre-checked in the UI (deterministic always; semantic when the comparative
+  // re-ranker approves). The human still sees + can toggle every proposal — recommended never drops.
+  recommended?: boolean;
+  rerank_reason?: string;
 }
 
 export interface SelfHealProposalResponse {

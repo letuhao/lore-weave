@@ -21,7 +21,10 @@ DEFAULT_VI_TIENHIEP_CONVENTION = (
     '- Người đang TRỰC TIẾP nói không được tự xưng ngôi ba (mẫu thân nói "lệnh của mẫu thân ngươi" '
     'là SAI, phải là "lệnh của ta").\n'
     "- Xưng hô tu tiên: gia chủ, trưởng lão, công tử, tiểu thư, đạo hữu, tiền bối, tông chủ. "
-    'TRÁNH cách gọi hiện đại ("ông Lâm", "bà Tô").'
+    'TRÁNH cách gọi hiện đại ("ông Lâm", "bà Tô").\n'
+    # A NEGATIVE example — so a verifier/judge doesn't confab these valid pronouns into "errors"
+    # (the 'lão → Y' false-positive the smart-judge POC caught).
+    "- HỢP LỆ (KHÔNG phải lỗi): hắn / y (nam), nàng / thị (nữ), lão (bậc cao niên), người nọ."
 )
 
 _TIENHIEP_TAGS = frozenset({
@@ -43,7 +46,12 @@ def render_canon(cast: Sequence[Mapping], *, convention: str = "") -> str:
     """Build a self-heal STORY BIBLE from the designed cast (the same attributes persisted
     to the glossary: `name` + `role`/`personality`/`relationships`/`description`) plus an
     optional genre/address `convention`. Empty cast + empty convention → "" (heal stays
-    ungrounded ⇒ legacy behavior)."""
+    ungrounded ⇒ legacy behavior).
+
+    TERSE by design — one line per character (role + the key `description` fact, + a short
+    relationship). The POC found a verbose bible BURIED the convention rule a verifier needed
+    (it refuted 'mẫu thân ngươi' when the rule was drowned; confirmed it when surfaced), so we
+    keep the per-character noise low and let the convention rules stand out."""
     lines: list[str] = []
     for c in cast:
         name = str(c.get("name", "")).strip()
@@ -54,12 +62,10 @@ def render_canon(cast: Sequence[Mapping], *, convention: str = "") -> str:
         parts: list[str] = []
         if (desc := str(c.get("description", "")).strip()):
             parts.append(desc)
-        if (pers := str(c.get("personality", "")).strip()):
-            parts.append("Tính cách: " + pers)
-        if (rel := str(c.get("relationships", "")).strip()):
+        if (rel := str(c.get("relationships", "")).strip()):   # vai-vế matters; personality dropped (bloat)
             parts.append("Quan hệ: " + rel)
         lines.append(head + " " + " · ".join(parts) if parts else head)
-    body = ("CANON NHÂN VẬT (hành vi & mô tả phải khớp):\n" + "\n".join(lines)) if lines else ""
+    body = ("CANON NHÂN VẬT (chỉ nêu sự thật cốt lõi):\n" + "\n".join(lines)) if lines else ""
     return "\n\n".join(b for b in (convention.strip(), body) if b)
 
 

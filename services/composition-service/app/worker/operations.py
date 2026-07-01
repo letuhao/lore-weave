@@ -149,9 +149,10 @@ async def run_self_heal_propose(
         model_source=input["model_source"], model_ref=input["model_ref"],
         chapter=text, source_language=input.get("source_language", "auto"),
         canon=input.get("canon") or None,
-        vote_k=int(input.get("vote_k", 5)), min_votes=int(input.get("min_votes", 2)),
-        verify=bool(input.get("verify", True)), verify_k=int(input.get("verify_k", 3)),
         prefilter=bool(input.get("prefilter", True)),
+        # comparative re-ranker ON by default — it pre-checks the semantic edits it approves
+        # (never drops), cutting what the human must review. Legacy vote/verify knobs ignored.
+        rerank=bool(input.get("rerank", True)),
         cancel_check=cancel_check,
     )
     return {

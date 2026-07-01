@@ -213,18 +213,26 @@ def test_code_mechanical_edits_skips_reduplication_languages():
 
 
 class FakeStackLLM:
-    """Routes verify ('SKEPTICAL reviewer') / judge ('demanding fiction editor') / editor.
-    Judge replays a queue; verify_fn(user)->'CONFIRMED'|'REFUTED'; edit via edit_fn."""
+    """Routes rerank ('impartial fiction editor') / verify ('SKEPTICAL reviewer') /
+    judge ('demanding fiction editor') / editor. Judge replays a queue; verify_fn/rerank_fn
+    map (user)->verdict; edit via edit_fn."""
 
-    def __init__(self, judge_responses, *, edit_fn=lambda s: f"<<{len(s)}>>", verify_fn=None):
+    def __init__(self, judge_responses, *, edit_fn=lambda s: f"<<{len(s)}>>",
+                 verify_fn=None, rerank_fn=None):
         self._judge = list(judge_responses)
         self._edit_fn = edit_fn
         self._verify_fn = verify_fn
-        self.judge_calls = self.edit_calls = self.verify_calls = 0
+        self._rerank_fn = rerank_fn
+        self.judge_calls = self.edit_calls = self.verify_calls = self.rerank_calls = 0
 
     async def submit_and_wait(self, **kw):
         system = kw["input"]["messages"][0]["content"]
         user = kw["input"]["messages"][1]["content"]
+        if "impartial fiction editor" in system:
+            self.rerank_calls += 1
+            v = self._rerank_fn(user) if self._rerank_fn else "APPLY"
+            return SimpleNamespace(status="completed",
+                                   result={"messages": [{"content": json.dumps({"reasoning": "r", "verdict": v})}]})
         if "SKEPTICAL reviewer" in system:
             self.verify_calls += 1
             v = self._verify_fn(user) if self._verify_fn else "CONFIRMED"
@@ -400,6 +408,36 @@ async def test_apply_self_heal_edits_accepts_subset():
     only0 = apply_self_heal_edits(_PA_CH, proposals, accepted_ids=["e0"])        # accept first only
     assert only0.startswith("THE RED FOX LEAPS") and "the lazy dog sleeps soundly" in only0
     assert "the quick brown fox jumps" not in only0
+
+
+async def test_propose_without_rerank_leaves_semantic_unrecommended():
+    proposals, _ = await propose_self_heal(
+        _pa_llm(), user_id="u", model_source="user_model", model_ref="m",
+        chapter=_PA_CH, source_language="en")   # rerank defaults OFF
+    assert all(p.recommended is False for p in proposals)   # semantic + no rerank → unchecked
+
+
+async def test_propose_rerank_ranks_semantic_without_dropping():
+    # the re-ranker APPLYs e0, DROPs e1 — but BOTH proposals are still returned (rank, not veto)
+    llm = FakeStackLLM([_dj(
+        ("the quick brown fox jumps", "THE RED FOX LEAPS", "improve", "style"),
+        ("the lazy dog sleeps soundly", "the hound naps", "confab", "style"))],
+        rerank_fn=lambda user: "DROP" if "hound naps" in user else "APPLY")
+    proposals, _ = await propose_self_heal(
+        llm, user_id="u", model_source="user_model", model_ref="m",
+        chapter=_PA_CH, source_language="en", rerank=True)
+    assert len(proposals) == 2 and llm.rerank_calls == 2
+    assert {p.id: p.recommended for p in proposals} == {"e0": True, "e1": False}
+
+
+async def test_deterministic_edit_always_recommended():
+    # a dup-word (deterministic) is pre-checked regardless of rerank
+    llm = FakeStackLLM([_dj()])   # no judge findings; prefilter catches the dup
+    proposals, _ = await propose_self_heal(
+        llm, user_id="u", model_source="user_model", model_ref="m",
+        chapter="He ran ran fast.", source_language="en")
+    assert len(proposals) == 1 and proposals[0].tier == "deterministic"
+    assert proposals[0].recommended is True
 
 
 def test_edit_proposal_is_serializable():

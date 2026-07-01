@@ -67,9 +67,11 @@ class SelfHealReport:
 
 @dataclass
 class EditProposal:
-    """One PROPOSED span edit — the unit of the human review-gate (M6). `tier` drives the
-    UI default: `deterministic` (closed-class lexical, high-confidence) is pre-checked,
-    `semantic` (judge-driven) is shown unchecked. Splice via `apply_self_heal_edits`."""
+    """One PROPOSED span edit — the unit of the human review-gate (M6). `recommended` drives the
+    UI pre-check (the human still sees + can toggle ALL of them — the re-ranker RANKS, never
+    vetoes): deterministic edits are always recommended; semantic edits are recommended when the
+    optional comparative re-ranker approves (`rerank_reason` explains why). Splice via
+    `apply_self_heal_edits`."""
     id: str          # stable within a proposal set ("e0","e1",… by ascending offset)
     type: str
     tier: str        # "deterministic" | "semantic"
@@ -79,6 +81,8 @@ class EditProposal:
     after: str
     issue: str = ""
     fix: str = ""
+    recommended: bool = False   # pre-checked in the UI (deterministic always; semantic per re-ranker)
+    rerank_reason: str = ""     # the re-ranker's one-line rationale (advisory)
 
 
 # ── JUDGE (detector) ───────────────────────────────────────────────────
@@ -595,15 +599,56 @@ def parse_direct_findings(content: str) -> list[dict[str, str]]:
     return out
 
 
+# The comparative RE-RANKER (optional precision layer) — it RANKS, it does NOT veto. Where the
+# old skeptical verify asked "is this a defect? default REFUTE" (and drowned in a verbose bible),
+# this asks the easier COMPARATIVE question "is the replacement better than the original?" with a
+# surfaced rules block + step reasoning + default-APPLY. The smart-judge POC: this confirms the
+# real edits (incl. 'mẫu thân ngươi') AND refutes confabs — the judge wasn't dumb, just underfed.
+_RERANK_SYSTEM = (
+    "You are an impartial fiction editor comparing an ORIGINAL span with a PROPOSED replacement, "
+    "using the STORY BIBLE (convention + canon) as ground truth. Reason step by step: (1) does the "
+    "ORIGINAL violate a convention/canon rule — why or why not; (2) is the PROPOSED replacement more "
+    "correct than the original; (3) conclude APPLY if the replacement is a clear improvement, else "
+    "DROP (the original is already fine, or the replacement is wrong). DEFAULT to APPLY when the "
+    'replacement is clearly better. Reply ONLY JSON: {"reasoning":"<=25 words","verdict":"APPLY"|"DROP"}.'
+)
+
+
+async def _rerank_edit(
+    llm: LLMClient, proposal: EditProposal, *, canon: str | None, **kw,
+) -> tuple[bool, str]:
+    """(recommended, reason) for ONE proposal — comparative, default-APPLY. Fail-toward-RECOMMEND
+    on degrade/ambiguous: the human still sees every proposal, so a re-ranker miss must not hide a
+    real edit (it only affects the pre-check, never drops)."""
+    system = _RERANK_SYSTEM + (("\n\nSTORY BIBLE:\n" + canon.strip()) if canon and canon.strip() else "")
+    user = f"ORIGINAL: «{proposal.before}»\nPROPOSED: «{proposal.after}»\nISSUE: {proposal.issue}"
+    content = await _chat(llm, system=system, user=user, max_tokens=400,
+                          purpose="self_heal_rerank", temperature=0.3, **kw)
+    if content is None:
+        return True, ""   # degrade → recommend (fail toward showing it pre-checked)
+    reason = ""
+    rm = re.search(r'"reasoning"\s*:\s*"([^"]{0,200})', content)
+    if rm:
+        reason = rm.group(1)
+    m = re.search(r'"verdict"\s*:\s*"?\s*(APPLY|DROP)', content, re.IGNORECASE)
+    if m:
+        return m.group(1).upper() == "APPLY", reason
+    up = content.upper()   # no JSON verdict → keyword read, ambiguous ⇒ recommend
+    return not ("DROP" in up and "APPLY" not in up), reason
+
+
 async def propose_edits_direct(
     llm: LLMClient, chapter: str, *, user_id: str, model_source: str, model_ref: str,
     canon: str | None = None, source_language: str = "auto", prefilter: bool = True,
-    max_tokens: int = 3000, temperature: float = 0.4, trace_id: str | None = None,
+    rerank: bool = False, max_tokens: int = 3000, temperature: float = 0.4,
+    trace_id: str | None = None,
     cancel_check: Callable[[], Awaitable[bool]] | None = None,
 ) -> tuple[list[EditProposal], SelfHealReport]:
     """One-pass HIGH-RECALL propose: the direct judge finds anomalies + proposes each replacement;
     code locates each `original` (must-quote, fuzzy) and merges the deterministic dup-word fix.
-    No vote/verify (the human gate filters). Returns offset-ascending `EditProposal`s + a report."""
+    No vote/verify (the human gate filters). When `rerank`, a comparative re-ranker sets each
+    semantic edit's `recommended` (pre-check) — it never drops. Returns offset-ascending
+    `EditProposal`s + a report."""
     kw = dict(user_id=user_id, model_source=model_source, model_ref=model_ref,
               trace_id=trace_id, cancel_check=cancel_check)
     system, user = build_direct_judge_messages(chapter, source_language, canon)
@@ -640,23 +685,38 @@ async def propose_edits_direct(
     report.edits_applied = len(proposals)
     for i, p in enumerate(proposals):
         p.id = f"e{i}"
+
+    # pre-check defaults: deterministic always recommended; semantic recommended only if the
+    # comparative re-ranker approves (when enabled). The re-ranker RANKS — every proposal is
+    # still returned + shown; `recommended` only drives the UI's initial checkbox.
+    kw = dict(user_id=user_id, model_source=model_source, model_ref=model_ref,
+              trace_id=trace_id, cancel_check=cancel_check)
+    for p in proposals:
+        if p.tier == "deterministic":
+            p.recommended = True
+        elif rerank:
+            p.recommended, p.rerank_reason = await _rerank_edit(llm, p, canon=canon, **kw)
+        else:
+            p.recommended = False
     return proposals, report
 
 
 async def propose_self_heal(
     llm: LLMClient, *, user_id: str, model_source: str, model_ref: str,
     chapter: str, source_language: str = "auto", canon: str | None = None,
-    prefilter: bool = True, max_tokens: int = 3000, trace_id: str | None = None,
+    prefilter: bool = True, rerank: bool = False, max_tokens: int = 3000,
+    trace_id: str | None = None,
     cancel_check: Callable[[], Awaitable[bool]] | None = None,
     **_legacy: object,   # absorbs the old vote_k/verify/verify_k/etc. knobs (no longer used here)
 ) -> tuple[list[EditProposal], SelfHealReport]:
     """The M6 review-gate path — return per-edit PROPOSALS WITHOUT splicing for the human to
     accept/reject. Uses the HIGH-RECALL direct judge (find + propose in one pass); the human is
     the filter, so there is NO verify/vote pre-filter that would mute real edits (the diagnosis
-    that v2≈v3). `apply_self_heal_edits` splices the accepted subset."""
+    that v2≈v3). When `rerank`, a comparative re-ranker sets each semantic edit's `recommended`
+    pre-check (it never drops). `apply_self_heal_edits` splices the accepted subset."""
     return await propose_edits_direct(
         llm, chapter, user_id=user_id, model_source=model_source, model_ref=model_ref,
-        canon=canon, source_language=source_language, prefilter=prefilter,
+        canon=canon, source_language=source_language, prefilter=prefilter, rerank=rerank,
         max_tokens=max_tokens, trace_id=trace_id, cancel_check=cancel_check)
 
 

@@ -100,6 +100,20 @@
 >     **Live CH1:** 5 splice-ready edits incl. `mẫu thân ngươi`→`của ta` AND the canon contradiction
 >     `dốc lòng che chở`→`khinh miệt` — the two cases the old pipeline never fixed — in 1 call (vs vote×5+verify×3).
 >     Autonomous `run_self_heal` keeps the conservative `_compute_edits`. Tests: self_heal+worker 49 passed.
+>   - **★ "Make the judge smart" — (1) surface rules + (2) comparative re-ranker (2026-07-01).** Smart-judge
+>     POC pinned the root cause: the verifier wasn't dumb, it was **UNDERFED** — the rule was BURIED in an
+>     800–2700-char bible. Fed the SAME rule concisely + with the example, EVEN the old skeptical judge
+>     confirms `mẫu thân ngươi` 3/3 AND refutes the `lão` confab 3/3 (`poc/smart_judge_poc.py`). Two fixes:
+>     **(1)** `heal_canon` — terser `render_canon` (description + relationship only, personality dropped) +
+>     a NEGATIVE-example line in the convention (`hắn/y/lão/nàng/thị are VALID`) so the rule stands out + confabs
+>     are pre-empted. **(2)** `_rerank_edit` — a COMPARATIVE re-ranker ("is the replacement better?", CoT,
+>     default-APPLY, surfaced rules) that sets each semantic proposal's `EditProposal.recommended` (UI pre-check)
+>     — it **RANKS, never vetoes** (every proposal still shown; recall preserved). `propose_edits_direct(rerank=)`,
+>     worker op defaults rerank ON; FE pre-checks `recommended` (+ `rerank_reason`). Tests: self_heal+heal_canon+worker
+>     57 + FE 142 vitest, tsc clean. Live rerank e2e blocked by a transient infra DB drift (composition container
+>     crash-looping on `create_pool`/Postgres — env, not code); both halves proven live separately (direct propose
+>     + comparative judge). **NEXT:** re-confirm rerank live once infra recovers; consider stronger-model escalate
+>     for the rare true blind spot (D-VERIFY-BLINDSPOT-ESCALATE).
 >   - **M6 Polish — BE done (M6.1 engine + M6.2 wiring), 2026-07-01:**
 >     **M6.1** (`c4db3792`) — `_compute_edits` shared step ⇒ `propose_self_heal` returns `EditProposal[]`
 >     (id/tier deterministic|semantic/start/end/before/after) WITHOUT splicing; `apply_self_heal_edits(accepted_ids)`

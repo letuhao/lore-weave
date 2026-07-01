@@ -51,8 +51,10 @@ export function usePolishProposals(
         setSourceText(r.source_text ?? '');
         setDraftVersion(r.draft_version ?? null);
         setStats(r.stats);
-        // deterministic edits pre-checked (high-confidence); semantic shown unchecked
-        setAcceptedIds(new Set(props.filter((p) => p.tier === 'deterministic').map((p) => p.id)));
+        // pre-check the edits the backend recommends — deterministic always, plus the semantic
+        // edits the comparative re-ranker approved (falls back to tier when `recommended` absent).
+        setAcceptedIds(new Set(
+          props.filter((p) => p.recommended ?? p.tier === 'deterministic').map((p) => p.id)));
         setRan(true);
       } catch (e) {
         setError((e as Error).message || 'Polish failed');

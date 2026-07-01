@@ -21,9 +21,9 @@ def test_render_canon_builds_bible_from_cast():
     assert "CONV-BLOCK" in out
     assert "CANON NHÂN VẬT" in out
     assert "Tô Yến (antagonist):" in out
-    assert "luôn khinh miệt đứa con gái phế vật" in out
-    assert "Tính cách: Thủ đoạn; Khắt khe" in out
-    assert "Quan hệ: mẫu thân của Lâm Uyển" in out
+    assert "luôn khinh miệt đứa con gái phế vật" in out          # description (the key fact)
+    assert "Quan hệ: mẫu thân của Lâm Uyển" in out               # relationship (vai-vế)
+    assert "Tính cách" not in out                                # personality dropped (terse — anti-burial)
 
 
 def test_render_canon_empty_yields_empty():
@@ -33,7 +33,7 @@ def test_render_canon_empty_yields_empty():
 
 def test_render_canon_skips_blank_fields():
     out = render_canon([{"name": "X"}], convention="")
-    assert out.strip() == "CANON NHÂN VẬT (hành vi & mô tả phải khớp):\n- X:"
+    assert out.strip() == "CANON NHÂN VẬT (chỉ nêu sự thật cốt lõi):\n- X:"
 
 
 def test_convention_for_selects_tienhiep_for_vi_or_genre():
@@ -52,6 +52,6 @@ def test_canon_from_proposed_maps_attributes():
     out = canon_from_proposed([c], convention=DEFAULT_VI_TIENHIEP_CONVENTION)
     assert "QUY ƯỚC XƯNG HÔ" in out                       # convention block present
     assert "Lâm Uyển (protagonist):" in out
-    assert "phế vật thành ma tu" in out                   # summary → description
-    assert "Kiên cường" in out and "nghịch thiên" in out  # traits + archetype → personality
-    assert "đích nữ Lâm gia" in out                       # relationships
+    assert "phế vật thành ma tu" in out                   # summary → description (the key fact)
+    assert "đích nữ Lâm gia" in out                       # relationships (vai-vế)
+    assert "Kiên cường" not in out                        # personality dropped (terse render)
