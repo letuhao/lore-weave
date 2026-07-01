@@ -44,11 +44,17 @@
     "modelPlaceholder": "no model"
   },
   "manuscript": {
+    "title": "Manuscript",
+    "newChapter": "New chapter",
+    "collapseAll": "Collapse all",
+    "reload": "Reload",
+    "arc": "ARC",
     "loading": "Loading…",
     "filter": "Jump to chapter / scene…",
     "noMatch": "No loaded chapters match.",
     "empty": "No chapters yet.",
     "loadingMore": "Loading more…",
-    "count": "{{n}} chapters"
+    "count": "{{n}} chapters",
+    "window": "win {{a}}–{{b}} / {{n}}"
   }
 }

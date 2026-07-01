@@ -14,10 +14,24 @@ import pytest
 from fastapi import HTTPException
 from fastapi.testclient import TestClient
 
+from app.db.models import OutlineNode
 from app.routers.outline import _decode_child_cursor, _encode_child_cursor
 
 USER = UUID("00000000-0000-0000-0000-0000000000aa")
 PROJECT = UUID("00000000-0000-0000-0000-0000000000bb")
+
+
+# ── child_count badge field (navigator scene/chapter counts) ─────────────────
+
+def test_outline_node_child_count_maps_and_defaults():
+    base = dict(
+        id=uuid4(), user_id=USER, project_id=PROJECT, parent_id=None,
+        kind="chapter", rank="a0",
+    )
+    # a row FROM list_children carries child_count → it maps onto the model.
+    assert OutlineNode.model_validate({**base, "child_count": 7}).child_count == 7
+    # a row from any other query (no child_count column) is None — "not computed", not 0.
+    assert OutlineNode.model_validate(base).child_count is None
 
 
 # ── pure cursor helpers ──────────────────────────────────────────────────────
@@ -49,12 +63,13 @@ def test_child_cursor_rejects_malformed(bad):
 # ── endpoint paging (fake repo) ──────────────────────────────────────────────
 
 class _StubNode:
-    def __init__(self, rank: str, nid: UUID) -> None:
+    def __init__(self, rank: str, nid: UUID, child_count: int = 0) -> None:
         self.rank = rank
         self.id = nid
+        self.child_count = child_count
 
     def model_dump(self, mode: str = "json") -> dict:
-        return {"id": str(self.id), "rank": self.rank}
+        return {"id": str(self.id), "rank": self.rank, "child_count": self.child_count}
 
 
 class _FakeOutline:
@@ -105,6 +120,14 @@ def test_first_page_emits_next_cursor(client):
     call = holder["repo"].calls[0]
     assert call["parent_id"] is None  # omitted → top-level arcs
     assert call["limit"] == 3
+
+
+def test_child_count_flows_to_response(client):
+    c, holder = client
+    nodes = [_StubNode("a0", uuid4(), child_count=3), _StubNode("a1", uuid4(), child_count=0)]
+    holder["repo"] = _FakeOutline(nodes)
+    body = c.get(f"/v1/composition/works/{PROJECT}/outline/children?limit=10").json()
+    assert [it["child_count"] for it in body["items"]] == [3, 0]
 
 
 def test_last_page_has_no_next_cursor(client):

@@ -18,12 +18,14 @@ function chapterToNode(c: Chapter): ManuscriptNode {
     status: null,
     chapterId: c.chapter_id,
     hasChildren: false,
+    childCount: null, // flat chapters carry no scene structure
   };
 }
 
 /** composition outline node → a tree node. Arcs + chapters can expand; scenes are leaves. */
 function outlineToNode(n: OutlineNode): ManuscriptNode {
   const kind = n.kind === 'arc' ? 'arc' : n.kind === 'scene' ? 'scene' : 'chapter';
+  const childCount = n.child_count ?? 0;
   return {
     id: n.id,
     kind,
@@ -31,7 +33,10 @@ function outlineToNode(n: OutlineNode): ManuscriptNode {
     number: null,
     status: n.status ?? null,
     chapterId: n.chapter_id,
-    hasChildren: kind !== 'scene',
+    // Trust child_count over kind: an outlined chapter with 0 scenes has nothing to lazy-load,
+    // so it's a leaf (no caret) — matches the mockup's "≤1 scene ⇒ chapter is the leaf".
+    hasChildren: kind !== 'scene' && childCount > 0,
+    childCount: kind === 'scene' ? null : childCount,
   };
 }
 
@@ -95,16 +100,29 @@ export function useManuscriptTree(bookId: string, token: string | null) {
     }
   }, [token, bookId, source, projectId]);
 
-  // Load the root page once the source resolves; reset on book/source change.
-  useEffect(() => {
-    if (source === 'pending') return;
-    genRef.current += 1;       // invalidate any in-flight load from the previous book/source
+  // Reset to an empty tree + reload the root page. Shared by the mount/source-change
+  // effect and the manual Reload action; bumps the generation so any in-flight load from
+  // the prior tree is dropped (review-impl M1 stale-guard).
+  const resetAndLoadRoot = useCallback(() => {
+    genRef.current += 1;
     inflight.current.clear();
     setTree(emptyTree());
     setTotal(null);
     setError(null);
     void loadPage(ROOT_KEY, null, null);
-  }, [source, projectId, bookId, loadPage]);
+  }, [loadPage]);
+
+  // Load the root page once the source resolves; reset on book/source change.
+  useEffect(() => {
+    if (source === 'pending') return;
+    resetAndLoadRoot();
+  }, [source, projectId, bookId, resetAndLoadRoot]);
+
+  // Collapse every expanded node back to the root level (VS Code "Collapse All"). Loaded
+  // child pages stay in the store (cheap re-expand); only the expanded flags clear.
+  const collapseAll = useCallback(() => {
+    setTree((t) => ({ ...t, expanded: {} }));
+  }, []);
 
   const toggleExpand = useCallback((nodeId: string) => {
     const t = treeRef.current;
@@ -123,5 +141,5 @@ export function useManuscriptTree(bookId: string, token: string | null) {
 
   const rows = useMemo(() => flatten(tree), [tree]);
 
-  return { source, rows, total, error, toggleExpand, loadMore };
+  return { source, rows, total, error, toggleExpand, loadMore, collapseAll, reload: resetAndLoadRoot };
 }

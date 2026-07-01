@@ -15,14 +15,21 @@ export function hasMore(state: TreeState, parentKey: string): boolean {
 export function flatten(state: TreeState): ManuscriptRow[] {
   const rows: ManuscriptRow[] = [];
   const walk = (parentKey: string, parentNodeId: string | null, depth: number) => {
-    for (const id of state.childrenOf[parentKey] ?? []) {
+    const loaded = state.childrenOf[parentKey] ?? [];
+    for (const id of loaded) {
       const node = state.nodes[id];
       if (!node) continue;
       const expanded = !!state.expanded[id];
       rows.push({ type: 'node', node, depth, expanded, loading: !!state.loading[id] });
       if (expanded) walk(id, id, depth + 1);
     }
-    if (hasMore(state, parentKey)) {
+    // First-page load (nothing loaded yet) → shimmer skeletons; a parent that already has a
+    // page and a further cursor → a "load more" affordance instead (its own spinner). The two
+    // are mutually exclusive: you never shimmer over rows that are already on screen.
+    if (loaded.length === 0 && state.loading[parentKey]) {
+      rows.push({ type: 'skeleton', depth, key: `sk-${parentKey || 'root'}-0` });
+      rows.push({ type: 'skeleton', depth, key: `sk-${parentKey || 'root'}-1` });
+    } else if (hasMore(state, parentKey)) {
       rows.push({ type: 'more', parentKey, parentNodeId, depth });
     }
   };

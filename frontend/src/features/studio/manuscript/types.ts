@@ -16,12 +16,17 @@ export interface ManuscriptNode {
   status: string | null;      // outline status (scene/chapter); null otherwise
   chapterId: string | null;   // the BOOK chapter this row opens (arc → null). Dock target.
   hasChildren: boolean;       // can be expanded to lazy-load children
+  childCount: number | null;  // sidebar badge: a chapter's scene count / an arc's chapter count. null = unknown (flat chapters).
 }
 
-/** A flattened render row: either a tree node, or a "load more" affordance for a parent
- * that has an unfetched next page (root or an expanded node's children). */
+/** A flattened render row. Four kinds:
+ *  - `node`      — a real tree node.
+ *  - `skeleton`  — a shimmer placeholder while a parent's FIRST page is loading (nothing yet).
+ *  - `more`      — a "load next page" affordance for a parent that already has ≥1 page loaded.
+ * (`skeleton` and `more` are mutually exclusive per parent — first load shimmers, later pages page.) */
 export type ManuscriptRow =
   | { type: 'node'; node: ManuscriptNode; depth: number; expanded: boolean; loading: boolean }
+  | { type: 'skeleton'; depth: number; key: string }
   | { type: 'more'; parentKey: string; parentNodeId: string | null; depth: number };
 
 /** childrenOf / childCursor key for the top level (arcs, or flat chapters). */

@@ -4,16 +4,21 @@
 // Chapters page in via cursor; a Work's arcs/scenes lazy-load on expand. Selecting a chapter/
 // scene calls onSelect — the dock wiring lands with #03 (Debt #1); until then it highlights.
 //
+// Visual parity with design-drafts/screens/studio/screen-manuscript-navigator.html: a header
+// with New/Collapse-all/Reload actions, roman-numeral arcs + child-count badges, zero-padded
+// chapter numbers, a selected-row accent bar, scene status dots, a shimmer skeleton on lazy
+// load, and a footer window-position readout.
+//
 // Jump v1: a client-side filter over the LOADED rows (+ chapter number). Full server search
 // over all 10k is Debt #2 (the shared `useManuscriptJump` / GET …/manuscript/jump backend that
 // #06a Quick Open will also use — deliberately NOT a second query path).
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useVirtualizer } from '@tanstack/react-virtual';
-import { ChevronRight, Loader2, Search } from 'lucide-react';
+import { ChevronRight, ChevronsDownUp, Loader2, PanelLeftClose, Plus, RotateCw, Search } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useManuscriptTree } from './useManuscriptTree';
-import type { ManuscriptNode } from './types';
+import type { ManuscriptNode, ManuscriptRow } from './types';
 
 interface Props {
   bookId: string;
@@ -22,6 +27,11 @@ interface Props {
   selectedId?: string | null;
   /** Called when a chapter/scene row is chosen. Dock wiring is #03 (Debt #1). */
   onSelect?: (node: ManuscriptNode) => void;
+  /** New-chapter action (header +). When absent the button renders disabled (create flow = Debt). */
+  onNewChapter?: () => void;
+  /** Collapse the whole Side Bar (studio chrome). When provided the navigator's own header hosts
+   * the button, so the Side Bar doesn't render a duplicate header above it. */
+  onCollapseSidebar?: () => void;
 }
 
 const ROW_H = 26;
@@ -30,19 +40,42 @@ function matchesFilter(node: ManuscriptNode, f: string): boolean {
   return node.title.toLowerCase().includes(f) || (node.number != null && String(node.number).includes(f));
 }
 
-export function ManuscriptNavigator({ bookId, token, selectedId, onSelect }: Props) {
+/** 1→I, 4→IV, … (arcs never exceed a few dozen, but the full converter is trivial + safe). */
+function toRoman(n: number): string {
+  if (n <= 0) return String(n);
+  const table: Array<[number, string]> = [
+    [1000, 'M'], [900, 'CM'], [500, 'D'], [400, 'CD'], [100, 'C'], [90, 'XC'],
+    [50, 'L'], [40, 'XL'], [10, 'X'], [9, 'IX'], [5, 'V'], [4, 'IV'], [1, 'I'],
+  ];
+  let out = '';
+  for (const [v, sym] of table) while (n >= v) { out += sym; n -= v; }
+  return out;
+}
+
+export function ManuscriptNavigator({ bookId, token, selectedId, onSelect, onNewChapter, onCollapseSidebar }: Props) {
   const { t } = useTranslation('studio');
-  const { source, rows, total, error, toggleExpand, loadMore } = useManuscriptTree(bookId, token);
+  const { source, rows, total, error, toggleExpand, loadMore, collapseAll, reload } = useManuscriptTree(bookId, token);
   const [filter, setFilter] = useState('');
   const parentRef = useRef<HTMLDivElement>(null);
 
-  // When filtering, show only loaded node rows (drop the paging `more` rows) so a filter never
+  // When filtering, show only loaded node rows (drop paging/skeleton rows) so a filter never
   // auto-pages the whole 10k book — client filter is honestly "loaded so far" (Debt #2).
-  const visible = useMemo(() => {
+  const visible = useMemo<ManuscriptRow[]>(() => {
     const f = filter.trim().toLowerCase();
     if (!f) return rows;
     return rows.filter((r) => r.type === 'node' && matchesFilter(r.node, f));
   }, [rows, filter]);
+
+  // 1-based ordinal per top-level arc → roman numeral label (ARC I / II / …). Computed over the
+  // full loaded row list (not the virtual window) so it's stable as you scroll.
+  const arcOrdinal = useMemo(() => {
+    const map = new Map<string, number>();
+    let n = 0;
+    for (const r of rows) {
+      if (r.type === 'node' && r.depth === 0 && r.node.kind === 'arc') map.set(r.node.id, ++n);
+    }
+    return map;
+  }, [rows]);
 
   const virtualizer = useVirtualizer({
     count: visible.length,
@@ -61,6 +94,10 @@ export function ManuscriptNavigator({ bookId, token, selectedId, onSelect }: Pro
     }
   }, [vItems, visible, loadMore]);
 
+  // Footer window readout (VS Code "win 100–140 / N"). 1-based, from the virtual range.
+  const winStart = vItems.length ? vItems[0].index + 1 : 0;
+  const winEnd = vItems.length ? vItems[vItems.length - 1].index + 1 : 0;
+
   if (source === 'pending') {
     return <div data-testid="manuscript-nav" className="flex flex-1 items-center justify-center p-4 text-[11px] text-muted-foreground">
       <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" />{t('manuscript.loading', { defaultValue: 'Loading…' })}
@@ -69,6 +106,55 @@ export function ManuscriptNavigator({ bookId, token, selectedId, onSelect }: Pro
 
   return (
     <div data-testid="manuscript-nav" className="flex min-h-0 flex-1 flex-col">
+      {/* Header: title + actions (mockup .nav-head) */}
+      <div className="flex h-[34px] flex-shrink-0 items-center justify-between border-b pl-3 pr-2 text-[10px] font-bold uppercase tracking-[0.06em] text-muted-foreground">
+        <span>{t('manuscript.title', { defaultValue: 'Manuscript' })}</span>
+        <div className="flex items-center gap-0.5">
+          <button
+            type="button"
+            data-testid="manuscript-new"
+            onClick={onNewChapter}
+            disabled={!onNewChapter}
+            title={t('manuscript.newChapter', { defaultValue: 'New chapter' })}
+            className="flex h-5 w-5 items-center justify-center rounded text-muted-foreground hover:bg-secondary hover:text-foreground disabled:pointer-events-none disabled:opacity-40"
+          >
+            <Plus className="h-3.5 w-3.5" />
+          </button>
+          <button
+            type="button"
+            data-testid="manuscript-collapse"
+            onClick={collapseAll}
+            title={t('manuscript.collapseAll', { defaultValue: 'Collapse all' })}
+            className="flex h-5 w-5 items-center justify-center rounded text-muted-foreground hover:bg-secondary hover:text-foreground"
+          >
+            <ChevronsDownUp className="h-3.5 w-3.5" />
+          </button>
+          <button
+            type="button"
+            data-testid="manuscript-reload"
+            onClick={reload}
+            title={t('manuscript.reload', { defaultValue: 'Reload' })}
+            className="flex h-5 w-5 items-center justify-center rounded text-muted-foreground hover:bg-secondary hover:text-foreground"
+          >
+            <RotateCw className="h-3.5 w-3.5" />
+          </button>
+          {onCollapseSidebar && (
+            <>
+              <span className="mx-0.5 h-3.5 w-px bg-border" />
+              <button
+                type="button"
+                data-testid="manuscript-collapse-sidebar"
+                onClick={onCollapseSidebar}
+                title={t('sidebar.collapse', { defaultValue: 'Collapse' })}
+                className="flex h-5 w-5 items-center justify-center rounded text-muted-foreground hover:bg-secondary hover:text-foreground"
+              >
+                <PanelLeftClose className="h-3.5 w-3.5" />
+              </button>
+            </>
+          )}
+        </div>
+      </div>
+
       {/* Jump / filter box */}
       <div className="flex-shrink-0 border-b p-2">
         <div className="flex h-7 items-center gap-1.5 rounded-md border bg-background px-2 text-xs text-muted-foreground">
@@ -80,6 +166,7 @@ export function ManuscriptNavigator({ bookId, token, selectedId, onSelect }: Pro
             placeholder={t('manuscript.filter', { defaultValue: 'Jump to chapter / scene…' })}
             className="min-w-0 flex-1 bg-transparent text-foreground outline-none placeholder:text-muted-foreground/60"
           />
+          <span className="rounded border border-border px-1 font-mono text-[9px] leading-normal">↵</span>
         </div>
       </div>
 
@@ -100,6 +187,19 @@ export function ManuscriptNavigator({ bookId, token, selectedId, onSelect }: Pro
                 position: 'absolute', top: 0, left: 0, right: 0, height: ROW_H,
                 transform: `translateY(${vi.start}px)`,
               };
+
+              if (row.type === 'skeleton') {
+                return (
+                  <div key={row.key} data-testid="manuscript-skeleton" style={{ ...style, paddingLeft: 10 + row.depth * 16 }}
+                    className="flex items-center pr-3">
+                    <span
+                      className="h-2 animate-pulse rounded bg-secondary"
+                      style={{ width: `${58 - (vi.index % 3) * 10}%` }}
+                    />
+                  </div>
+                );
+              }
+
               if (row.type === 'more') {
                 return (
                   <button
@@ -115,8 +215,11 @@ export function ManuscriptNavigator({ bookId, token, selectedId, onSelect }: Pro
                   </button>
                 );
               }
+
               const { node, depth, expanded, loading } = row;
               const selected = selectedId === node.id;
+              const isArc = node.kind === 'arc';
+              const isScene = node.kind === 'scene';
               return (
                 <div
                   key={node.id}
@@ -124,22 +227,27 @@ export function ManuscriptNavigator({ bookId, token, selectedId, onSelect }: Pro
                   role="treeitem"
                   aria-expanded={node.hasChildren ? expanded : undefined}
                   aria-selected={selected}
-                  onClick={() => (node.kind === 'arc' ? toggleExpand(node.id) : onSelect?.(node))}
+                  onClick={() => (isArc ? (node.hasChildren && toggleExpand(node.id)) : onSelect?.(node))}
                   style={{ ...style, paddingLeft: 4 + depth * 16 }}
                   className={cn(
                     'flex cursor-pointer items-center gap-1 pr-2 text-xs',
                     selected ? 'bg-primary/10 text-primary' : 'hover:bg-secondary',
-                    node.kind === 'arc' && 'font-semibold text-accent-foreground',
+                    isArc && 'font-bold',
+                    isArc && !selected && 'text-accent-foreground',
                     node.kind === 'chapter' && 'font-medium',
-                    node.kind === 'scene' && 'text-muted-foreground',
+                    isScene && !selected && 'text-muted-foreground',
                   )}
                 >
+                  {/* selected-row accent bar (mockup .row.active::before) */}
+                  {selected && <span className="pointer-events-none absolute left-0 top-0 h-full w-[2px] bg-primary" />}
+
+                  {/* caret (expandable) / leaf spacer / scene dot */}
                   {node.hasChildren ? (
                     <button
                       type="button"
                       data-testid={`manuscript-caret-${node.id}`}
                       onClick={(e) => { e.stopPropagation(); toggleExpand(node.id); }}
-                      className="flex h-4 w-4 flex-shrink-0 items-center justify-center text-muted-foreground"
+                      className={cn('flex h-4 w-4 flex-shrink-0 items-center justify-center', isArc ? 'text-accent' : 'text-muted-foreground')}
                       aria-label={expanded ? 'collapse' : 'expand'}
                     >
                       {loading
@@ -148,17 +256,33 @@ export function ManuscriptNavigator({ bookId, token, selectedId, onSelect }: Pro
                     </button>
                   ) : (
                     <span className="flex h-4 w-4 flex-shrink-0 items-center justify-center">
-                      {node.kind === 'scene' && (
-                        <span className={cn('h-1.5 w-1.5 rounded-full', node.status === 'done' ? 'bg-success' : 'bg-border')} />
+                      {isScene && (
+                        <span className={cn('h-1.5 w-1.5 rounded-full',
+                          node.status === 'done' ? 'bg-success' : selected ? 'bg-primary' : 'bg-border')} />
                       )}
                     </span>
                   )}
-                  {node.number != null && (
-                    <span className="w-8 flex-shrink-0 text-right font-mono text-[10px] text-muted-foreground/60">
-                      {node.number}
+
+                  {/* arc roman numeral / chapter number */}
+                  {isArc && (
+                    <span className="flex-shrink-0 font-mono text-[9px] text-accent">
+                      {t('manuscript.arc', { defaultValue: 'ARC' })} {toRoman(arcOrdinal.get(node.id) ?? 0)}
                     </span>
                   )}
+                  {node.kind === 'chapter' && node.number != null && (
+                    <span className="w-9 flex-shrink-0 text-left font-mono text-[10px] text-muted-foreground/50">
+                      {String(node.number).padStart(4, '0')}
+                    </span>
+                  )}
+
                   <span className="truncate">{node.title}</span>
+
+                  {/* child-count badge: chapter → scenes, arc → chapters */}
+                  {node.childCount != null && node.childCount > 0 && (
+                    <span className={cn('ml-auto flex-shrink-0 font-mono text-[9px]', isArc ? 'text-accent' : 'text-muted-foreground')}>
+                      {node.childCount}
+                    </span>
+                  )}
                 </div>
               );
             })}
@@ -166,8 +290,14 @@ export function ManuscriptNavigator({ bookId, token, selectedId, onSelect }: Pro
         )}
       </div>
 
-      <div className="flex h-6 flex-shrink-0 items-center gap-2 border-t px-3 text-[10px] text-muted-foreground">
+      {/* Footer: chapter total + virtual window position (mockup .nav-foot) */}
+      <div className="flex h-6 flex-shrink-0 items-center gap-2 border-t px-3 font-mono text-[10px] text-muted-foreground">
         {total != null && <span>{t('manuscript.count', { defaultValue: '{{n}} chapters', n: total })}</span>}
+        {visible.length > 0 && (
+          <span className="ml-auto text-muted-foreground/50" data-testid="manuscript-window">
+            {t('manuscript.window', { defaultValue: 'win {{a}}–{{b}} / {{n}}', a: winStart, b: winEnd, n: visible.length })}
+          </span>
+        )}
       </div>
     </div>
   );

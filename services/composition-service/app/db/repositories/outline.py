@@ -475,8 +475,17 @@ class OutlineRepo:
                 f' OR (rank COLLATE "C" = ${len(args) - 1} AND id > ${len(args)}))'
             )
         args.append(limit + 1)
+        # child_count: non-archived DIRECT children of each row (scene-count badge for a
+        # chapter, chapter-count for an arc). Correlated scalar subquery on the
+        # (parent_id, …) WHERE-NOT-archived keyset index — one page = `limit` cheap
+        # index counts, so it scales with the page, not the 10k tree.
         query = f"""
-        SELECT {_SELECT_COLS} FROM outline_node
+        SELECT {_SELECT_COLS},
+          (SELECT count(*) FROM outline_node c
+             WHERE c.user_id = outline_node.user_id
+               AND c.parent_id = outline_node.id
+               AND NOT c.is_archived) AS child_count
+        FROM outline_node
         WHERE user_id = $1 AND project_id = $2
           AND parent_id IS NOT DISTINCT FROM $3{archived_pred}{keyset_pred}
         ORDER BY rank COLLATE "C", id

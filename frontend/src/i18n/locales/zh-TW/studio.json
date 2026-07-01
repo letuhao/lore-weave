@@ -44,11 +44,17 @@
     "modelPlaceholder": "尚無模型"
   },
   "manuscript": {
+    "title": "手稿",
+    "newChapter": "新增章節",
+    "collapseAll": "全部收合",
+    "reload": "重新載入",
+    "arc": "卷",
     "loading": "載入中…",
     "filter": "前往章節 / 場景…",
     "noMatch": "沒有符合的已載入章節。",
     "empty": "尚無章節。",
     "loadingMore": "載入更多…",
-    "count": "{{n}} 章"
+    "count": "{{n}} 章",
+    "window": "win {{a}}–{{b}} / {{n}}"
   }
 }

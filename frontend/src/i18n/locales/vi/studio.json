@@ -44,11 +44,17 @@
     "modelPlaceholder": "chưa có model"
   },
   "manuscript": {
+    "title": "Bản thảo",
+    "newChapter": "Chương mới",
+    "collapseAll": "Thu gọn tất cả",
+    "reload": "Tải lại",
+    "arc": "HỒI",
     "loading": "Đang tải…",
     "filter": "Đến chương / cảnh…",
     "noMatch": "Không có chương đã tải nào khớp.",
     "empty": "Chưa có chương nào.",
     "loadingMore": "Đang tải thêm…",
-    "count": "{{n}} chương"
+    "count": "{{n}} chương",
+    "window": "win {{a}}–{{b}} / {{n}}"
   }
 }

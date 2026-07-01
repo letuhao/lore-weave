@@ -18,16 +18,19 @@ vi.mock('../useManuscriptTree', () => ({ useManuscriptTree: () => hook.value }))
 import { ManuscriptNavigator } from '../ManuscriptNavigator';
 
 const n = (id: string, kind: ManuscriptNode['kind'] = 'chapter', over: Partial<ManuscriptNode> = {}): ManuscriptNode => ({
-  id, kind, title: `T-${id}`, number: kind === 'chapter' ? 5 : null, status: null, chapterId: id, hasChildren: kind !== 'scene', ...over,
+  id, kind, title: `T-${id}`, number: kind === 'chapter' ? 5 : null, status: null, chapterId: id,
+  hasChildren: kind !== 'scene', childCount: null, ...over,
 });
 const nodeRow = (node: ManuscriptNode, over: Partial<Extract<ManuscriptRow, { type: 'node' }>> = {}): ManuscriptRow =>
   ({ type: 'node', node, depth: 0, expanded: false, loading: false, ...over });
 const moreRow = (over: Partial<Extract<ManuscriptRow, { type: 'more' }>> = {}): ManuscriptRow =>
   ({ type: 'more', parentKey: '', parentNodeId: null, depth: 0, ...over });
+const skeletonRow = (over: Partial<Extract<ManuscriptRow, { type: 'skeleton' }>> = {}): ManuscriptRow =>
+  ({ type: 'skeleton', depth: 0, key: 'sk-root-0', ...over });
 
 const base = (over: Record<string, unknown> = {}) => ({
   source: 'chapters', rows: [] as ManuscriptRow[], total: null, error: null,
-  toggleExpand: vi.fn(), loadMore: vi.fn(), ...over,
+  toggleExpand: vi.fn(), loadMore: vi.fn(), collapseAll: vi.fn(), reload: vi.fn(), ...over,
 });
 const render_ = () => render(<ManuscriptNavigator bookId="b1" token="t" />);
 
@@ -94,5 +97,54 @@ describe('ManuscriptNavigator', () => {
     // `more` dropped while filtering → no auto-paging of the whole book
     expect(screen.queryByTestId('manuscript-more')).toBeNull();
     expect(loadMore).not.toHaveBeenCalled();
+  });
+
+  // ── header actions ──────────────────────────────────────────────────────────
+  it('Collapse-all and Reload header buttons call the hook actions', () => {
+    const collapseAll = vi.fn();
+    const reload = vi.fn();
+    hook.value = base({ rows: [nodeRow(n('c1'))], collapseAll, reload });
+    render_();
+    fireEvent.click(screen.getByTestId('manuscript-collapse'));
+    fireEvent.click(screen.getByTestId('manuscript-reload'));
+    expect(collapseAll).toHaveBeenCalledOnce();
+    expect(reload).toHaveBeenCalledOnce();
+  });
+
+  it('New-chapter is disabled without a handler, fires it when provided', () => {
+    hook.value = base({ rows: [nodeRow(n('c1'))] });
+    const { rerender } = render_();
+    expect((screen.getByTestId('manuscript-new') as HTMLButtonElement).disabled).toBe(true);
+    const onNewChapter = vi.fn();
+    rerender(<ManuscriptNavigator bookId="b1" token="t" onNewChapter={onNewChapter} />);
+    fireEvent.click(screen.getByTestId('manuscript-new'));
+    expect(onNewChapter).toHaveBeenCalledOnce();
+  });
+
+  // ── visual data (mockup parity) ──────────────────────────────────────────────
+  it('renders an arc as a roman numeral + its child-count badge', () => {
+    hook.value = base({
+      source: 'outline',
+      rows: [nodeRow(n('arc1', 'arc', { childCount: 12 })), nodeRow(n('arc2', 'arc'))],
+    });
+    render_();
+    // first arc → I, second → II (ordinal over the loaded list). `arc` is the i18n key.
+    expect(screen.getByTestId('manuscript-row-arc1').textContent).toContain('arc I');
+    expect(screen.getByTestId('manuscript-row-arc1').textContent).not.toContain('arc II');
+    expect(screen.getByTestId('manuscript-row-arc2').textContent).toContain('arc II');
+    expect(screen.getByTestId('manuscript-row-arc1').textContent).toContain('12'); // child badge
+  });
+
+  it('zero-pads a chapter number to 4 digits', () => {
+    hook.value = base({ source: 'outline', rows: [nodeRow(n('c1', 'chapter', { number: 5 }))] });
+    render_();
+    expect(screen.getByTestId('manuscript-row-c1').textContent).toContain('0005');
+  });
+
+  it('renders shimmer skeleton rows and a window-position footer', () => {
+    hook.value = base({ rows: [nodeRow(n('c1')), skeletonRow()], total: 10 });
+    render_();
+    expect(screen.getByTestId('manuscript-skeleton')).toBeTruthy();
+    expect(screen.getByTestId('manuscript-window')).toBeTruthy();
   });
 });

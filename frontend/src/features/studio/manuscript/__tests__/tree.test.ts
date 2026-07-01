@@ -1,9 +1,9 @@
 import { describe, expect, it } from 'vitest';
-import { appendChildren, flatten, hasMore, setExpanded } from '../tree';
+import { appendChildren, flatten, hasMore, setExpanded, setLoading } from '../tree';
 import { ROOT_KEY, emptyTree, type ManuscriptNode } from '../types';
 
 const node = (id: string, kind: ManuscriptNode['kind'] = 'chapter', over: Partial<ManuscriptNode> = {}): ManuscriptNode => ({
-  id, kind, title: id, number: null, status: null, chapterId: id, hasChildren: kind !== 'scene', ...over,
+  id, kind, title: id, number: null, status: null, chapterId: id, hasChildren: kind !== 'scene', childCount: null, ...over,
 });
 
 describe('manuscript tree', () => {
@@ -55,5 +55,27 @@ describe('manuscript tree', () => {
     // arc, ch1, then a `more` for arc's children
     expect(rows.map((r) => r.type)).toEqual(['node', 'node', 'more']);
     expect((rows[2] as { parentKey: string }).parentKey).toBe('arc');
+  });
+
+  it('emits shimmer skeletons while a parent’s FIRST page is loading (nothing loaded yet)', () => {
+    // root loading, no children yet → two skeleton rows, no `more`.
+    const t = setLoading(emptyTree(), ROOT_KEY, true);
+    expect(flatten(t).map((r) => r.type)).toEqual(['skeleton', 'skeleton']);
+  });
+
+  it('a newly-expanded node that is loading shimmers under itself (depth+1)', () => {
+    let t = appendChildren(emptyTree(), ROOT_KEY, [node('arc', 'arc')], null);
+    t = setExpanded(t, 'arc', true);
+    t = setLoading(t, 'arc', true); // expanded, children not loaded yet
+    const rows = flatten(t);
+    expect(rows.map((r) => r.type)).toEqual(['node', 'skeleton', 'skeleton']);
+    expect((rows[1] as { depth: number }).depth).toBe(1);
+  });
+
+  it('once a page is loaded, a further cursor shows `more` NOT a skeleton (even mid second-page load)', () => {
+    let t = appendChildren(emptyTree(), ROOT_KEY, [node('a')], 'cursor2');
+    t = setLoading(t, ROOT_KEY, true); // loading the SECOND page
+    // a row is already on screen → we page, not shimmer over it.
+    expect(flatten(t).map((r) => r.type)).toEqual(['node', 'more']);
   });
 });

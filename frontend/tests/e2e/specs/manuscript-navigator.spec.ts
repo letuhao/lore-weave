@@ -39,6 +39,20 @@ test.describe('Manuscript Navigator — chapters path (no Work)', () => {
     }
   });
 
+  test('shows the view header actions + window-position footer', async ({ page }) => {
+    const studio = new StudioPage(page);
+    await studio.goto(bookId);
+    await expect(page.getByTestId(`manuscript-row-${chapterIds[0]}`)).toBeVisible();
+    // Header actions (mockup .nav-head): Collapse-all + Reload always available; New disabled
+    // (create flow is Debt); the Side-Bar collapse moved into the navigator header.
+    await expect(page.getByTestId('manuscript-collapse')).toBeVisible();
+    await expect(page.getByTestId('manuscript-reload')).toBeVisible();
+    await expect(page.getByTestId('manuscript-new')).toBeDisabled();
+    await expect(page.getByTestId('manuscript-collapse-sidebar')).toBeVisible();
+    // Footer window readout is present once rows render.
+    await expect(page.getByTestId('manuscript-window')).toBeVisible();
+  });
+
   // The keyset boundary invariant: paging with a small limit (forcing multiple pages) must
   // return every chapter exactly once, no gap, no duplicate across the page boundary.
   test('keyset paging crosses page boundaries with no gap or duplicate', async ({ request }) => {

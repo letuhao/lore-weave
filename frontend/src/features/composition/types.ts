@@ -144,6 +144,9 @@ export type OutlineNode = {
   version: number;
   is_archived: boolean; // T1.1b — archived nodes are hidden unless the tree's "show archived" view is on
   beat_role: string | null; // T1.2 — the structure-template beat key this node fills (or null)
+  // #02 navigator badge — non-archived DIRECT child count. Populated only by the
+  // lazy-children endpoint (list_children); null/absent from whole-tree/other reads.
+  child_count?: number | null;
 };
 
 // T1.3 Scene Graph — a non-derivable scene edge (a causal/structural dependency
