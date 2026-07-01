@@ -28,8 +28,9 @@ export function StudioPaletteShell({
   const inputRef = useRef<HTMLInputElement>(null);
   const listRef = useRef<HTMLDivElement>(null);
 
-  // Autofocus the input whenever the palette opens.
-  useEffect(() => { if (open) inputRef.current?.focus(); }, [open]);
+  // Autofocus + reset the highlight to the top whenever the palette opens (a stale highlight
+  // from the previous session must not carry over, even if the query is unchanged/empty).
+  useEffect(() => { if (open) { inputRef.current?.focus(); setActive(0); } }, [open]);
   // A new query re-ranks the list → reset the highlight to the top.
   useEffect(() => { setActive(0); }, [query]);
   // Keep the active row in view during keyboard nav.

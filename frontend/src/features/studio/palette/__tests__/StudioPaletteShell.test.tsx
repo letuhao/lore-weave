@@ -75,4 +75,19 @@ describe('StudioPaletteShell', () => {
     fireEvent.change(screen.getByTestId('palette-input'), { target: { value: 'be' } });
     expect(onQueryChange).toHaveBeenCalledWith('be');
   });
+
+  it('resets the highlight to the top when reopened (even with an unchanged empty query)', () => {
+    const onSelect = vi.fn();
+    const props = {
+      onClose: vi.fn(), query: '', onQueryChange: vi.fn(), placeholder: 'x',
+      entries, onSelect, emptyText: 'none',
+    };
+    const { rerender } = render(<StudioPaletteShell open {...props} />);
+    const input = screen.getByTestId('palette-input');
+    fireEvent.keyDown(input, { key: 'ArrowDown' }); // active → b
+    rerender(<StudioPaletteShell open={false} {...props} />); // close (query stays '')
+    rerender(<StudioPaletteShell open {...props} />);          // reopen
+    fireEvent.keyDown(screen.getByTestId('palette-input'), { key: 'Enter' });
+    expect(onSelect).toHaveBeenCalledWith(expect.objectContaining({ id: 'a' })); // top, not 'b'
+  });
 });

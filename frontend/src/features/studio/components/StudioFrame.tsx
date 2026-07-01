@@ -13,6 +13,7 @@ import { StudioHostProvider, useStudioHost } from '../host/StudioHostProvider';
 import { QuickOpen } from '../palette/QuickOpen';
 import { CommandPalette } from '../palette/CommandPalette';
 import { usePaletteHotkeys, type PaletteKind } from '../palette/usePaletteHotkeys';
+import { revealManuscript } from '../palette/reveal';
 import type { JumpResult } from '../manuscript/types';
 import { StudioTopBar } from './StudioTopBar';
 import { StudioActivityBar } from './StudioActivityBar';
@@ -64,10 +65,11 @@ function StudioFrameInner({ bookId }: { bookId: string }) {
     catch { /* component not registered (panel not built yet) — no-op */ }
   }, [host]);
 
-  // Quick Open resolve (v1): switch to Manuscript + highlight the hit + publish to the bus.
-  // Tree reveal (expand ancestors + scroll) and dock-open land with #03 (tracked debt).
+  // Quick Open resolve (v1): reveal the Manuscript navigator (without toggling it shut if we're
+  // already there — review-impl MED), highlight the hit, publish to the bus. Tree reveal (expand
+  // ancestors + scroll) and dock-open land with #03 (tracked debt).
   const resolveJump = useCallback((r: JumpResult) => {
-    chrome.setActiveView('manuscript');
+    revealManuscript(chrome);
     setSelectedNodeId(r.id);
     if (r.chapterId) host.publish({ type: 'chapter', chapterId: r.chapterId, bookId });
   }, [chrome, host, bookId]);
