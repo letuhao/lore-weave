@@ -7,9 +7,11 @@ import { ArrowLeft, LayoutDashboard, Search, Settings } from 'lucide-react';
 interface Props {
   bookId: string;
   bookTitle: string;
+  /** Opens Quick Open (#06a). The affordance shows locations only — tools live in ⌘⇧P. */
+  onOpenQuickOpen?: () => void;
 }
 
-export function StudioTopBar({ bookId, bookTitle }: Props) {
+export function StudioTopBar({ bookId, bookTitle, onOpenQuickOpen }: Props) {
   const { t } = useTranslation('studio');
   return (
     <div className="flex h-11 flex-shrink-0 items-center gap-2 border-b bg-card px-3">
@@ -33,17 +35,16 @@ export function StudioTopBar({ bookId, bookTitle }: Props) {
 
       <div className="flex-1" />
 
-      {/* Command palette affordance — behaviour lands in a later component (#06). Disabled
-          so it reads as "coming", never a dead button that looks live. */}
+      {/* Quick Open affordance (#06a) — locations only (chapters/scenes/arcs); tools live in ⌘⇧P. */}
       <button
         type="button"
-        disabled
+        onClick={onOpenQuickOpen}
         data-testid="studio-command-palette"
-        title={t('palette.soon', { defaultValue: 'Command palette — coming soon' })}
-        className="flex h-7 w-[280px] max-w-[32vw] cursor-default items-center gap-2 rounded-md border bg-background/60 px-2.5 text-xs text-muted-foreground/70"
+        title={t('palette.quickOpenTitle', { defaultValue: 'Go to chapter, scene, arc' })}
+        className="flex h-7 w-[280px] max-w-[32vw] items-center gap-2 rounded-md border bg-background/60 px-2.5 text-xs text-muted-foreground/70 hover:bg-secondary/50 hover:text-muted-foreground"
       >
         <Search className="h-3 w-3" />
-        <span className="truncate">{t('palette.placeholder', { defaultValue: 'Go to chapter, scene, tool…' })}</span>
+        <span className="truncate">{t('palette.placeholder', { defaultValue: 'Go to chapter, scene, arc…' })}</span>
         <kbd className="ml-auto rounded border border-border px-1.5 py-px font-mono text-[10px]">⌘P</kbd>
       </button>
 

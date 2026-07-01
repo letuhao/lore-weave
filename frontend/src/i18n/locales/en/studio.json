@@ -8,8 +8,22 @@
     "body": "A dockable workspace for this book. Panels (compose, planner, cast, quality…) will be added here one at a time. Drag tabs to split, stack, float, or pop out into their own window."
   },
   "palette": {
-    "placeholder": "Go to chapter, scene, tool…",
-    "soon": "Command palette — coming soon"
+    "placeholder": "Go to chapter, scene, arc…",
+    "quickOpenTitle": "Go to chapter, scene, arc",
+    "quickOpenPlaceholder": "Go to chapter, scene, arc…",
+    "quickOpenHint": "Type to search chapters, scenes & arcs",
+    "commandPlaceholder": "Type a command…",
+    "noCommands": "No matching commands.",
+    "group": { "panels": "Panels", "navigate": "Navigate", "layout": "Layout" },
+    "cmd": {
+      "showManuscript": "View: Show Manuscript",
+      "showBible": "View: Show Story Bible",
+      "showSearch": "View: Show Search",
+      "showQuality": "View: Show Quality",
+      "goToChapter": "View: Go to Chapter…",
+      "toggleSidebar": "View: Toggle Side Bar",
+      "toggleBottom": "View: Toggle Bottom Panel"
+    }
   },
   "activity": {
     "manuscript": "Manuscript",

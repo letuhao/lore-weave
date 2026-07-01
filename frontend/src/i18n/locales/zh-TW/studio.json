@@ -8,8 +8,22 @@
     "body": "本書的可停靠工作區。面板（寫作、大綱、角色、品質…）將逐一加入此處。拖曳分頁即可分割、堆疊、浮動，或彈出為獨立視窗。"
   },
   "palette": {
-    "placeholder": "前往章節、場景、工具…",
-    "soon": "命令面板 — 即將推出"
+    "placeholder": "前往章節、場景、卷…",
+    "quickOpenTitle": "前往章節、場景、卷",
+    "quickOpenPlaceholder": "前往章節、場景、卷…",
+    "quickOpenHint": "輸入以搜尋章節、場景與卷",
+    "commandPlaceholder": "輸入命令…",
+    "noCommands": "沒有符合的命令。",
+    "group": { "panels": "面板", "navigate": "導覽", "layout": "版面" },
+    "cmd": {
+      "showManuscript": "檢視：手稿",
+      "showBible": "檢視：故事聖經",
+      "showSearch": "檢視：搜尋",
+      "showQuality": "檢視：品質",
+      "goToChapter": "檢視：前往章節…",
+      "toggleSidebar": "檢視：切換側邊欄",
+      "toggleBottom": "檢視：切換底部面板"
+    }
   },
   "activity": {
     "manuscript": "稿件",

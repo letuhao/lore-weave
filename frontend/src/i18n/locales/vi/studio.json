@@ -8,8 +8,22 @@
     "body": "Không gian làm việc dạng bảng ghép cho cuốn sách này. Các bảng (sáng tác, dàn ý, nhân vật, chất lượng…) sẽ được thêm vào đây từng cái một. Kéo thẻ để chia đôi, xếp chồng, thả nổi, hoặc tách ra cửa sổ riêng."
   },
   "palette": {
-    "placeholder": "Đến chương, cảnh, công cụ…",
-    "soon": "Bảng lệnh — sắp có"
+    "placeholder": "Đến chương, cảnh, hồi…",
+    "quickOpenTitle": "Đến chương, cảnh, hồi",
+    "quickOpenPlaceholder": "Đến chương, cảnh, hồi…",
+    "quickOpenHint": "Gõ để tìm chương, cảnh & hồi",
+    "commandPlaceholder": "Nhập một lệnh…",
+    "noCommands": "Không có lệnh phù hợp.",
+    "group": { "panels": "Bảng công cụ", "navigate": "Điều hướng", "layout": "Bố cục" },
+    "cmd": {
+      "showManuscript": "Xem: Bản thảo",
+      "showBible": "Xem: Story Bible",
+      "showSearch": "Xem: Tìm kiếm",
+      "showQuality": "Xem: Chất lượng",
+      "goToChapter": "Xem: Đến chương…",
+      "toggleSidebar": "Xem: Bật/tắt thanh bên",
+      "toggleBottom": "Xem: Bật/tắt bảng dưới"
+    }
   },
   "activity": {
     "manuscript": "Bản thảo",

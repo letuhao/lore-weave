@@ -1,12 +1,12 @@
-import { render, screen } from '@testing-library/react';
+import { fireEvent, render, screen } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { StudioTopBar } from '../StudioTopBar';
 
-const setup = (bookTitle = 'My Book') =>
+const setup = (bookTitle = 'My Book', onOpenQuickOpen = vi.fn()) =>
   render(
     <MemoryRouter>
-      <StudioTopBar bookId="b1" bookTitle={bookTitle} />
+      <StudioTopBar bookId="b1" bookTitle={bookTitle} onOpenQuickOpen={onOpenQuickOpen} />
     </MemoryRouter>,
   );
 
@@ -24,9 +24,12 @@ describe('StudioTopBar', () => {
     expect(hrefs).toContain('/books/b1/settings');
   });
 
-  it('renders the command-palette affordance DISABLED (not a live/dead button)', () => {
-    setup();
+  it('the Quick Open affordance is live and opens Quick Open on click', () => {
+    const onOpenQuickOpen = vi.fn();
+    setup('My Book', onOpenQuickOpen);
     const palette = screen.getByTestId('studio-command-palette') as HTMLButtonElement;
-    expect(palette.disabled).toBe(true);
+    expect(palette.disabled).toBe(false);
+    fireEvent.click(palette);
+    expect(onOpenQuickOpen).toHaveBeenCalledOnce();
   });
 });

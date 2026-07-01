@@ -14,7 +14,7 @@ vi.mock('../../manuscript/ManuscriptNavigator', () => ({
 
 import { StudioSideBar } from '../StudioSideBar';
 
-const props = { onCollapse: vi.fn(), bookId: 'b1', token: 't' as string | null };
+const props = { onCollapse: vi.fn(), bookId: 'b1', token: 't' as string | null, selectedId: null, onSelectNode: vi.fn() };
 
 describe('StudioSideBar', () => {
   it('shows a stub navigator header + body for a not-yet-built view (keys)', () => {

@@ -1,6 +1,5 @@
 // Side bar (fixed slot, collapsible) — hosts the active navigator. Manuscript is a real
 // navigator (#02); the other views are still per-view stubs (built as later components).
-import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { PanelLeftClose } from 'lucide-react';
 import type { ActivityView } from '../types';
@@ -11,12 +10,13 @@ interface Props {
   onCollapse: () => void;
   bookId: string;
   token: string | null;
+  // Selection is HOISTED to the frame so Quick Open (#06a) can drive the highlight too.
+  selectedId: string | null;
+  onSelectNode: (id: string) => void;
 }
 
-export function StudioSideBar({ activeView, onCollapse, bookId, token }: Props) {
+export function StudioSideBar({ activeView, onCollapse, bookId, token, selectedId, onSelectNode }: Props) {
   const { t } = useTranslation('studio');
-  // Highlight-only selection for now; opening the selected unit in the dock is #03 (Debt #1).
-  const [selectedId, setSelectedId] = useState<string | null>(null);
 
   return (
     <div
@@ -30,7 +30,7 @@ export function StudioSideBar({ activeView, onCollapse, bookId, token }: Props) 
           bookId={bookId}
           token={token}
           selectedId={selectedId}
-          onSelect={(node) => setSelectedId(node.id)}
+          onSelect={(node) => onSelectNode(node.id)}
           onCollapseSidebar={onCollapse}
         />
       ) : (

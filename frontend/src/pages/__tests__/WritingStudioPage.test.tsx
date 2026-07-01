@@ -20,6 +20,11 @@ vi.mock('@/features/studio/manuscript/ManuscriptNavigator', () => ({
   ManuscriptNavigator: () => <div data-testid="manuscript-nav-stub" />,
 }));
 
+// Palettes are covered by their own suites; stub them here (QuickOpen pulls react-query via the
+// shared jump hook — out of scope for this chrome-only frame test).
+vi.mock('@/features/studio/palette/QuickOpen', () => ({ QuickOpen: () => null }));
+vi.mock('@/features/studio/palette/CommandPalette', () => ({ CommandPalette: () => null }));
+
 // The dock is mocked to COUNT mounts — D4: chrome changes must never remount it (a remount
 // drops in-flight panel state); a book switch, conversely, MUST remount it (fresh per-book).
 const dockMounts = vi.hoisted(() => ({ n: 0 }));

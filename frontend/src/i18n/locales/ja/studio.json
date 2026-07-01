@@ -8,8 +8,22 @@
     "body": "この本のためのドッキング可能なワークスペース。パネル（執筆・プロット・キャスト・品質…）は一つずつここに追加されます。タブをドラッグして分割・スタック・フロート・別ウィンドウへ切り離せます。"
   },
   "palette": {
-    "placeholder": "章・シーン・ツールへ移動…",
-    "soon": "コマンドパレット — 近日公開"
+    "placeholder": "章・シーン・編へ移動…",
+    "quickOpenTitle": "章・シーン・編へ移動",
+    "quickOpenPlaceholder": "章・シーン・編へ移動…",
+    "quickOpenHint": "章・シーン・編を検索",
+    "commandPlaceholder": "コマンドを入力…",
+    "noCommands": "該当するコマンドがありません。",
+    "group": { "panels": "パネル", "navigate": "移動", "layout": "レイアウト" },
+    "cmd": {
+      "showManuscript": "表示: 原稿",
+      "showBible": "表示: ストーリーバイブル",
+      "showSearch": "表示: 検索",
+      "showQuality": "表示: 品質",
+      "goToChapter": "表示: 章へ移動…",
+      "toggleSidebar": "表示: サイドバー切替",
+      "toggleBottom": "表示: 下部パネル切替"
+    }
   },
   "activity": {
     "manuscript": "原稿",
