@@ -1,6 +1,7 @@
 # 01 · Frame Skeleton
 
 > Component of [Writing Studio (v2)](00_OVERVIEW.md). Status: ✅ built 2026-07-01 (browser-verified).
+> State tier: **Tier 2** (chrome + layout) in [`08_studio_state_architecture.md`](08_studio_state_architecture.md).
 
 ## Scope
 
@@ -50,3 +51,6 @@ real tools are separate later components. This is the shell everything else plug
 Real navigator content (Manuscript tree → #02), any real dock tool (→ #03+), command-palette
 behaviour (→ #06), Generate/Save/model wiring (with the panels that need them), the
 navigator→dock "open in group" interaction (with #02/#03).
+
+**#08 host wrap:** [`StudioHostProvider`](08_studio_state_architecture.md) wraps `StudioFrame`
+when #03 Compose lands (Tier 3 above Tier 2 chrome/layout). Skeleton ships without it.

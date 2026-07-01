@@ -1,0 +1,468 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>LoreWeave — Raw Editor (#04b)</title>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+  <style>
+    /* ══════════════════════════════════════════════════════════════════════
+       RAW EDITOR (#04b) — structured JSON dock panel
+
+       States:
+         1. Valid split — Rich | Raw side by side
+         2. Parse error — invalid JSON, save blocked
+         3. Import book — scenes: [] (no composition Work)
+         4. Raw only — single tab full width
+
+       Spec: docs/specs/2026-07-01-writing-studio/04b_raw_editor.md
+             docs/specs/2026-07-01-writing-studio/04_manuscript_editor.md
+    ═══════════════════════════════════════════════════════════════════════ */
+    :root {
+      --background: #181412; --background-alt: #1e1a17; --foreground: #f5efe8;
+      --card: #1e1a17; --card-hover: #272220; --border: #332d28; --border-hover: #4a423b;
+      --primary: #e8a832; --primary-fg: #141010; --primary-muted: #3d2e12;
+      --secondary: #282320; --muted-fg: #9e9488;
+      --accent: #3da692; --accent-muted: #1a2e2a; --accent-fg: #c8ede6;
+      --success: #3dba6a; --warning: #e8a832; --info: #5496e8;
+      --error: #e85a5a; --error-muted: #3d1a1a;
+      --json-key: #7eb8e8; --json-str: #c8e6a0; --json-num: #e8b87e; --json-bool: #b89ee8;
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: 'Inter', system-ui, sans-serif; background: #0f0c0b; color: var(--foreground); -webkit-font-smoothing: antialiased; }
+    .mono { font-family: 'JetBrains Mono', monospace; }
+    svg { display: block; flex-shrink: 0; }
+
+    h1 { font-size: 18px; font-weight: 600; padding: 24px 24px 4px; }
+    .sub { font-size: 12px; color: var(--muted-fg); padding: 0 24px 16px; line-height: 1.5; }
+
+    .tabs { display: flex; gap: 8px; padding: 0 24px 20px; flex-wrap: wrap; }
+    .tab {
+      height: 30px; padding: 0 14px; border-radius: 7px; font-size: 12px; font-weight: 500;
+      border: 1px solid var(--border); background: var(--card); color: var(--muted-fg); cursor: pointer;
+    }
+    .tab:hover { border-color: var(--border-hover); color: var(--foreground); }
+    .tab.active { background: var(--primary-muted); border-color: var(--primary); color: var(--primary); }
+
+    .stage { display: flex; gap: 28px; padding: 0 24px 24px; align-items: flex-start; }
+
+    /* Studio frame */
+    .frame {
+      flex: 1; min-width: 720px; height: 560px; border: 1px solid var(--border); border-radius: 10px;
+      background: var(--background); display: flex; flex-direction: column; overflow: hidden;
+    }
+    .frame-top { height: 40px; background: var(--card); border-bottom: 1px solid var(--border); display: flex; align-items: center; padding: 0 12px; font-size: 11px; color: var(--muted-fg); }
+    .frame-body { flex: 1; display: flex; min-height: 0; }
+    .act { width: 48px; background: var(--card); border-right: 1px solid var(--border); }
+    .side { width: 180px; background: var(--background-alt); border-right: 1px solid var(--border); font-size: 10px; color: var(--border-hover); padding: 8px; }
+    .dock { flex: 1; display: flex; flex-direction: column; min-width: 0; }
+    .tab-bar { height: 32px; display: flex; background: var(--card); border-bottom: 1px solid var(--border); flex-shrink: 0; }
+    .dock-tab {
+      padding: 0 12px; font-size: 11px; display: flex; align-items: center; gap: 6px;
+      border-right: 1px solid var(--border); color: var(--muted-fg); white-space: nowrap;
+    }
+    .dock-tab.active { background: var(--background); color: var(--primary); border-bottom: 2px solid var(--primary); margin-bottom: -1px; }
+    .dock-tab .badge-warn { font-size: 8px; padding: 1px 5px; border-radius: 3px; background: var(--error-muted); color: var(--error); }
+    .dock-tab .badge-dirty { width: 6px; height: 6px; border-radius: 50%; background: var(--primary); }
+
+    .dock-split { flex: 1; display: flex; min-height: 0; }
+    .dock-split.hidden { display: none; }
+    .panel { flex: 1; display: flex; flex-direction: column; min-width: 0; border-right: 1px solid var(--border); }
+    .panel:last-child { border-right: none; }
+    .panel.full { flex: 1; border-right: none; }
+
+    /* Rich editor stub */
+    .rich { background: var(--background); }
+    .rich-toolbar { height: 32px; display: flex; align-items: center; gap: 6px; padding: 0 8px; border-bottom: 1px solid var(--border); font-size: 10px; color: var(--muted-fg); }
+    .rich-toolbar span { padding: 2px 6px; border-radius: 4px; border: 1px solid var(--border); }
+    .rich-body { flex: 1; padding: 16px; font-size: 13px; line-height: 1.7; color: var(--foreground); overflow-y: auto; }
+    .rich-body h2 { font-size: 16px; margin-bottom: 10px; color: var(--primary); }
+    .rich-body p { color: var(--muted-fg); margin-bottom: 8px; }
+
+    /* Raw editor */
+    .raw { background: var(--background-alt); }
+    .raw-toolbar {
+      height: 34px; display: flex; align-items: center; gap: 6px; padding: 0 8px;
+      border-bottom: 1px solid var(--border); flex-shrink: 0;
+    }
+    .raw-btn {
+      font-size: 10px; padding: 3px 8px; border-radius: 5px; border: 1px solid var(--border);
+      background: var(--secondary); color: var(--muted-fg); cursor: default;
+    }
+    .raw-btn.primary { background: var(--primary-muted); border-color: var(--primary); color: var(--primary); }
+    .raw-btn.disabled { opacity: .4; cursor: not-allowed; }
+    .raw-btn kbd { font-family: 'JetBrains Mono'; font-size: 9px; margin-left: 4px; opacity: .7; }
+
+    .error-banner {
+      flex-shrink: 0; padding: 6px 10px; background: var(--error-muted); border-bottom: 1px solid var(--error);
+      font-size: 11px; color: var(--error); display: flex; align-items: center; gap: 8px;
+    }
+    .error-banner.hidden { display: none; }
+
+    .code-area { flex: 1; display: flex; min-height: 0; overflow: hidden; }
+    .gutter {
+      width: 36px; flex-shrink: 0; background: var(--card); border-right: 1px solid var(--border);
+      padding: 10px 0; text-align: right; font-family: 'JetBrains Mono'; font-size: 11px;
+      line-height: 1.55; color: var(--border-hover); user-select: none;
+    }
+    .gutter .err-line { color: var(--error); background: var(--error-muted); }
+    .gutter .err-marker { color: var(--error); margin-right: 4px; }
+
+    .code-scroll { flex: 1; overflow: auto; padding: 10px 12px; }
+    .code {
+      font-family: 'JetBrains Mono'; font-size: 11px; line-height: 1.55; white-space: pre;
+      color: var(--foreground);
+    }
+    .code .k { color: var(--json-key); }
+    .code .s { color: var(--json-str); }
+    .code .n { color: var(--json-num); }
+    .code .b { color: var(--json-bool); }
+    .code .err { background: rgba(232,90,90,.18); border-bottom: 2px wavy var(--error); }
+
+    .raw-status {
+      height: 24px; flex-shrink: 0; display: flex; align-items: center; gap: 12px; padding: 0 10px;
+      border-top: 1px solid var(--border); font-size: 10px; font-family: 'JetBrains Mono'; color: var(--muted-fg);
+      background: var(--card);
+    }
+    .raw-status .ok { color: var(--success); }
+    .raw-status .bad { color: var(--error); }
+    .raw-status .dirty { color: var(--primary); margin-left: auto; }
+
+    .import-note {
+      flex-shrink: 0; padding: 5px 10px; background: var(--accent-muted); border-bottom: 1px solid var(--accent);
+      font-size: 10px; color: var(--accent-fg);
+    }
+    .import-note.hidden { display: none; }
+
+    .frame-status { height: 20px; background: var(--primary); color: var(--primary-fg); font-size: 9px; font-family: 'JetBrains Mono'; display: flex; align-items: center; padding: 0 10px; gap: 10px; }
+
+    .hidden { display: none !important; }
+
+    /* Annotations */
+    .notes { flex: 1; max-width: 380px; }
+    .note { display: flex; gap: 10px; margin-bottom: 14px; }
+    .note .n { width: 22px; height: 22px; flex-shrink: 0; border-radius: 50%; background: var(--primary-muted); color: var(--primary); border: 1px solid var(--primary); display: flex; align-items: center; justify-content: center; font-weight: 700; font-size: 11px; }
+    .note h3 { font-size: 12px; font-weight: 600; margin-bottom: 2px; }
+    .note p { font-size: 11px; line-height: 1.55; color: var(--muted-fg); }
+    .note code { font-family: 'JetBrains Mono'; font-size: 10px; background: var(--secondary); padding: 1px 4px; border-radius: 3px; color: var(--accent-fg); }
+    .why { margin-top: 10px; padding: 10px 12px; border-radius: 8px; background: var(--secondary); border-left: 3px solid var(--accent); font-size: 11px; line-height: 1.55; color: var(--muted-fg); }
+  </style>
+</head>
+<body>
+  <h1>Raw Editor <span style="font-size:13px;color:var(--muted-fg);font-weight:400">— #04b</span></h1>
+  <p class="sub">Dock panel for <code>loreweave.manuscript-unit.v1</code> — chapter Tiptap body + scene outline metadata. Pairs with Rich (#04a) via <code>useManuscriptUnit</code>. Design only.</p>
+
+  <div class="tabs">
+    <button type="button" class="tab active" data-mode="valid">Valid · split</button>
+    <button type="button" class="tab" data-mode="error">Parse error</button>
+    <button type="button" class="tab" data-mode="import">Import book</button>
+    <button type="button" class="tab" data-mode="rawonly">Raw only</button>
+  </div>
+
+  <div class="stage">
+    <div class="frame">
+      <div class="frame-top">
+        <span>Writing Studio / Ma Nữ Nghịch Thiên</span>
+        <span style="margin-left:auto" class="mono">⌘S save · ⌘⇧F format</span>
+      </div>
+      <div class="frame-body">
+        <div class="act"></div>
+        <div class="side">Manuscript navigator<br><br>Ch 0001 selected</div>
+        <div class="dock">
+          <div class="tab-bar" id="tab-bar">
+            <div class="dock-tab active" id="tab-rich">Ch 0001 · Editor</div>
+            <div class="dock-tab active" id="tab-raw">Ch 0001 · Raw <span class="badge-dirty" id="dirty-dot"></span></div>
+          </div>
+
+          <div class="dock-split" id="dock-split">
+            <div class="panel rich" id="panel-rich">
+              <div class="rich-toolbar">
+                <span>B</span><span>I</span><span>H1</span><span>¶</span>
+                <span style="margin-left:auto;font-size:9px">Tiptap WYSIWYG (#04a)</span>
+              </div>
+              <div class="rich-body">
+                <h2>Nghịch thiên</h2>
+                <p>Tiểu Yên đứng trên đỉnh núi, gió lạnh thổi qua mái tóc đen. Nàng không ngờ người bạn thân nhất lại phản bội trong đêm tối ấy.</p>
+                <p>「Ngươi… tại sao?」</p>
+              </div>
+            </div>
+            <div class="panel raw" id="panel-raw">
+              <div class="raw-toolbar">
+                <span class="raw-btn">Format <kbd>⌘⇧F</kbd></span>
+                <span class="raw-btn">Validate</span>
+                <span class="raw-btn">Copy</span>
+                <span class="raw-btn">Revert</span>
+                <span class="raw-btn" id="btn-rich">Open Rich</span>
+                <span class="raw-btn primary" id="btn-save">Save <kbd>⌘S</kbd></span>
+              </div>
+              <div class="error-banner hidden" id="error-banner">
+                <svg width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 8v4M12 16h.01"/></svg>
+                <span>Parse error at line 18, column 7 — unexpected token</span>
+              </div>
+              <div class="import-note hidden" id="import-note">
+                Import-only book — no composition Work. <code>scenes: []</code> is valid.
+              </div>
+              <div class="code-area">
+                <div class="gutter" id="gutter">
+                  <div>1</div><div>2</div><div>3</div><div>4</div><div>5</div><div>6</div><div>7</div><div>8</div>
+                  <div>9</div><div>10</div><div>11</div><div>12</div><div>13</div><div>14</div><div>15</div><div>16</div>
+                  <div>17</div><div class="err-line hidden" id="err-gutter"><span class="err-marker">⨯</span>18</div>
+                </div>
+                <div class="code-scroll">
+                  <pre class="code" id="code-block">{
+  <span class="k">"format"</span>: <span class="s">"loreweave.manuscript-unit.v1"</span>,
+  <span class="k">"chapter"</span>: {
+    <span class="k">"id"</span>: <span class="s">"019d5e3c-7cc5-7e6a-8b27-1344e148bf7c"</span>,
+    <span class="k">"title"</span>: <span class="s">"Nghịch thiên"</span>,
+    <span class="k">"sort_order"</span>: <span class="n">1</span>,
+    <span class="k">"draft_version"</span>: <span class="n">7</span>,
+    <span class="k">"body"</span>: {
+      <span class="k">"type"</span>: <span class="s">"doc"</span>,
+      <span class="k">"content"</span>: [
+        {
+          <span class="k">"type"</span>: <span class="s">"paragraph"</span>,
+          <span class="k">"_text"</span>: <span class="s">"Tiểu Yên đứng trên đỉnh núi…"</span>,
+          <span class="k">"content"</span>: [{ <span class="k">"type"</span>: <span class="s">"text"</span>, <span class="k">"text"</span>: <span class="s">"Tiểu Yên đứng trên đỉnh núi…"</span> }]
+        }
+      ]
+    }
+  },
+  <span class="k">"scenes"</span>: [
+    {
+      <span class="k">"id"</span>: <span class="s">"019e…"</span>,
+      <span class="k">"title"</span>: <span class="s">"Cảnh 1 — Bị phản bội"</span>,
+      <span class="k">"synopsis"</span>: <span class="s">"Tiểu Yên phản bội tại đỉnh núi…"</span>,
+      <span class="k">"status"</span>: <span class="s">"drafting"</span>,
+      <span class="k">"beat_role"</span>: <span class="s">"inciting"</span>,
+      <span class="k">"story_order"</span>: <span class="n">1</span>,
+      <span class="k">"version"</span>: <span class="n">3</span>
+    }
+  ]
+}</pre>
+                </div>
+              </div>
+              <div class="raw-status" id="raw-status">
+                <span>draft v7</span>
+                <span id="scene-count">3 scenes</span>
+                <span class="ok" id="status-valid">JSON valid</span>
+                <span class="bad hidden" id="status-error">Parse error L18</span>
+                <span class="dirty" id="status-dirty">● unsaved</span>
+              </div>
+            </div>
+          </div>
+
+          <!-- Raw-only full width -->
+          <div class="panel raw full hidden" id="panel-raw-only">
+            <div class="raw-toolbar">
+              <span class="raw-btn">Format <kbd>⌘⇧F</kbd></span>
+              <span class="raw-btn">Validate</span>
+              <span class="raw-btn">Copy</span>
+              <span class="raw-btn">Revert</span>
+              <span class="raw-btn primary">Save <kbd>⌘S</kbd></span>
+            </div>
+            <div class="code-area" style="flex:1">
+              <div class="gutter"><div>1</div><div>2</div><div>3</div><div>…</div></div>
+              <div class="code-scroll">
+                <pre class="code">{ <span class="k">"format"</span>: <span class="s">"loreweave.manuscript-unit.v1"</span>, … }</pre>
+              </div>
+            </div>
+            <div class="raw-status">
+              <span>draft v7</span><span>3 scenes</span><span class="ok">JSON valid</span>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div class="frame-status">
+        <span>vi</span><span>⌘P</span><span>⌘⇧P</span><span style="margin-left:auto">draft v7 · synced</span>
+      </div>
+    </div>
+
+    <div class="notes" id="notes-valid">
+      <div class="note">
+        <div class="n">1</div>
+        <div>
+          <h3>Split dock group</h3>
+          <p>Rich (#04a) and Raw (#04b) share <code>useManuscriptUnit</code> — edit either side; valid parse applies to hoist state.</p>
+        </div>
+      </div>
+      <div class="note">
+        <div class="n">2</div>
+        <div>
+          <h3>ManuscriptUnitDocument</h3>
+          <p>Single buffer: <code>chapter.body</code> (Tiptap + <code>_text</code>) + <code>scenes[]</code> outline metadata. Scene prose stays in body (D17).</p>
+        </div>
+      </div>
+      <div class="note">
+        <div class="n">3</div>
+        <div>
+          <h3>vs SourceView</h3>
+          <p>Legacy toggle is read-only, body-only, strips <code>_text</code>. Raw dock is editable, full unit, studio-only.</p>
+        </div>
+      </div>
+      <div class="why">
+        <strong>Build:</strong> after #04a hoist + #02 navigator→dock. CodeMirror 6 or Monaco at implementation time.
+      </div>
+    </div>
+
+    <div class="notes hidden" id="notes-error">
+      <div class="note">
+        <div class="n">1</div>
+        <div>
+          <h3>Save blocked</h3>
+          <p>Invalid JSON disables Save. Rich tab shows <code>out of sync</code> badge until Revert or fix.</p>
+        </div>
+      </div>
+      <div class="note">
+        <div class="n">2</div>
+        <div>
+          <h3>Error UX</h3>
+          <p>Red gutter marker, banner with line/col, status strip <code>Parse error L18</code>.</p>
+        </div>
+      </div>
+    </div>
+
+    <div class="notes hidden" id="notes-import">
+      <div class="note">
+        <div class="n">1</div>
+        <div>
+          <h3>No composition Work</h3>
+          <p>Import books have <code>scenes: []</code> — buffer still valid; only chapter draft body editable.</p>
+        </div>
+      </div>
+      <div class="note">
+        <div class="n">2</div>
+        <div>
+          <h3>Info strip</h3>
+          <p>Accent banner explains empty scenes array — not an error.</p>
+        </div>
+      </div>
+    </div>
+
+    <div class="notes hidden" id="notes-rawonly">
+      <div class="note">
+        <div class="n">1</div>
+        <div>
+          <h3>Raw-only tab</h3>
+          <p>User pref or ⌘P <em>Ch N · Raw</em> opens single Raw tab full width — no Rich split required.</p>
+        </div>
+      </div>
+      <div class="note">
+        <div class="n">2</div>
+        <div>
+          <h3>Registry</h3>
+          <p><code>registerStudioTool({ panelId: 'raw', … })</code> per #07c; palette <code>Studio: Open Raw</code>.</p>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    const importCode = `{
+  <span class="k">"format"</span>: <span class="s">"loreweave.manuscript-unit.v1"</span>,
+  <span class="k">"chapter"</span>: {
+    <span class="k">"id"</span>: <span class="s">"019d…"</span>,
+    <span class="k">"title"</span>: <span class="s">"Chương nhập khẩu"</span>,
+    <span class="k">"sort_order"</span>: <span class="n">42</span>,
+    <span class="k">"draft_version"</span>: <span class="n">1</span>,
+    <span class="k">"body"</span>: { <span class="k">"type"</span>: <span class="s">"doc"</span>, <span class="k">"content"</span>: [] }
+  },
+  <span class="k">"scenes"</span>: []
+}`;
+
+    const errorCode = `{
+  <span class="k">"format"</span>: <span class="s">"loreweave.manuscript-unit.v1"</span>,
+  <span class="k">"chapter"</span>: {
+    <span class="k">"title"</span>: <span class="s">"Nghịch thiên"</span>,
+    <span class="k">"body"</span>: {
+      <span class="k">"type"</span>: <span class="s">"doc"</span>,
+      <span class="k">"content"</span>: [
+        { <span class="k">"type"</span>: <span class="s">"paragraph"</span>
+          <span class="err">"missing comma"</span>
+        }
+      ]
+    }
+  },
+  <span class="k">"scenes"</span>: []
+}`;
+
+    document.querySelectorAll('.tab').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const mode = btn.dataset.mode;
+        document.querySelectorAll('.tab').forEach(t => t.classList.toggle('active', t === btn));
+
+        const split = document.getElementById('dock-split');
+        const rawOnly = document.getElementById('panel-raw-only');
+        const tabRich = document.getElementById('tab-rich');
+        const tabRaw = document.getElementById('tab-raw');
+        const errorBanner = document.getElementById('error-banner');
+        const importNote = document.getElementById('import-note');
+        const codeBlock = document.getElementById('code-block');
+        const btnSave = document.getElementById('btn-save');
+        const statusValid = document.getElementById('status-valid');
+        const statusError = document.getElementById('status-error');
+        const sceneCount = document.getElementById('scene-count');
+        const errGutter = document.getElementById('err-gutter');
+        const dirtyDot = document.getElementById('dirty-dot');
+        const statusDirty = document.getElementById('status-dirty');
+
+        ['notes-valid','notes-error','notes-import','notes-rawonly'].forEach(id => {
+          document.getElementById(id).classList.toggle('hidden', id !== 'notes-' + mode);
+        });
+
+        if (mode === 'rawonly') {
+          split.classList.add('hidden');
+          rawOnly.classList.remove('hidden');
+          tabRich.classList.add('hidden');
+          tabRaw.classList.add('active');
+          tabRaw.innerHTML = 'Ch 0001 · Raw';
+          return;
+        }
+
+        rawOnly.classList.add('hidden');
+        split.classList.remove('hidden');
+        tabRich.classList.remove('hidden');
+
+        if (mode === 'valid') {
+          tabRich.classList.remove('hidden');
+          tabRich.classList.add('active');
+          tabRaw.innerHTML = 'Ch 0001 · Raw <span class="badge-dirty" id="dirty-dot"></span>';
+          errorBanner.classList.add('hidden');
+          importNote.classList.add('hidden');
+          btnSave.classList.remove('disabled');
+          statusValid.classList.remove('hidden');
+          statusError.classList.add('hidden');
+          sceneCount.textContent = '3 scenes';
+          errGutter.classList.add('hidden');
+          statusDirty.classList.remove('hidden');
+        } else if (mode === 'error') {
+          tabRich.classList.add('active');
+          tabRich.innerHTML = 'Ch 0001 · Editor <span class="badge-warn">out of sync</span>';
+          tabRaw.innerHTML = 'Ch 0001 · Raw <span class="badge-dirty"></span>';
+          codeBlock.innerHTML = errorCode;
+          errorBanner.classList.remove('hidden');
+          importNote.classList.add('hidden');
+          btnSave.classList.add('disabled');
+          statusValid.classList.add('hidden');
+          statusError.classList.remove('hidden');
+          sceneCount.textContent = '0 scenes';
+          errGutter.classList.remove('hidden');
+          statusDirty.classList.remove('hidden');
+        } else if (mode === 'import') {
+          tabRich.classList.add('active');
+          tabRich.textContent = 'Ch 0042 · Editor';
+          tabRaw.textContent = 'Ch 0042 · Raw';
+          codeBlock.innerHTML = importCode;
+          errorBanner.classList.add('hidden');
+          importNote.classList.remove('hidden');
+          btnSave.classList.remove('disabled');
+          statusValid.classList.remove('hidden');
+          statusError.classList.add('hidden');
+          sceneCount.textContent = '0 scenes';
+          errGutter.classList.add('hidden');
+          statusDirty.classList.add('hidden');
+        }
+      });
+    });
+  </script>
+</body>
+</html>

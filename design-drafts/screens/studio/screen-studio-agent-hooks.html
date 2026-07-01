@@ -1,0 +1,385 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>LoreWeave — Agent Lifecycle Hooks (#10)</title>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+  <style>
+    /* ══════════════════════════════════════════════════════════════════════
+       AGENT LIFECYCLE HOOKS (#10)
+
+       Tabs: Bundle editor · Test invoke · Audit log
+       Scope: per-user / per-book
+
+       Spec: docs/specs/2026-07-01-writing-studio/10_agent_lifecycle_hooks.md
+    ═══════════════════════════════════════════════════════════════════════ */
+    :root {
+      --background: #181412; --background-alt: #1e1a17; --foreground: #f5efe8;
+      --card: #1e1a17; --border: #332d28; --border-hover: #4a423b;
+      --primary: #e8a832; --primary-muted: #3d2e12;
+      --secondary: #282320; --muted-fg: #9e9488;
+      --accent: #3da692; --accent-muted: #1a2e2a; --accent-fg: #c8ede6;
+      --success: #3dba6a; --danger: #e85a5a; --warn: #e8b87e;
+      --hook-pre: #5496e8; --hook-post: #b89ee8; --hook-sandbox: #e8a832;
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: 'Inter', system-ui, sans-serif; background: #0f0c0b; color: var(--foreground); min-height: 100vh; }
+    .mono { font-family: 'JetBrains Mono', monospace; }
+
+    h1 { font-size: 18px; font-weight: 600; padding: 24px 24px 4px; }
+    .sub { font-size: 12px; color: var(--muted-fg); padding: 0 24px 16px; line-height: 1.5; }
+    .sub a { color: var(--accent-fg); }
+
+    .toolbar {
+      display: flex; align-items: center; gap: 12px; padding: 0 24px 16px; flex-wrap: wrap;
+    }
+    .scope-toggle {
+      display: flex; border: 1px solid var(--border); border-radius: 8px; overflow: hidden;
+    }
+    .scope-btn {
+      padding: 6px 14px; font-size: 11px; font-weight: 500; border: none; cursor: pointer;
+      background: var(--card); color: var(--muted-fg);
+    }
+    .scope-btn.active { background: var(--primary-muted); color: var(--primary); }
+    .badge-rev { font-size: 10px; color: var(--muted-fg); padding: 4px 8px; border: 1px solid var(--border); border-radius: 6px; }
+
+    .tabs { display: flex; gap: 8px; padding: 0 24px 20px; flex-wrap: wrap; }
+    .tab {
+      height: 30px; padding: 0 14px; border-radius: 7px; font-size: 12px; font-weight: 500;
+      border: 1px solid var(--border); background: var(--card); color: var(--muted-fg); cursor: pointer;
+    }
+    .tab.active { background: var(--accent-muted); border-color: var(--accent); color: var(--accent-fg); }
+
+    .stage { display: flex; gap: 24px; padding: 0 24px 32px; align-items: flex-start; }
+    .main { flex: 1; min-width: 520px; }
+    .sidebar { width: 300px; flex-shrink: 0; }
+
+    .panel {
+      border: 1px solid var(--border); border-radius: 10px; background: var(--background);
+      padding: 16px; margin-bottom: 16px;
+    }
+    .panel h2 { font-size: 12px; font-weight: 600; margin-bottom: 12px; text-transform: uppercase; letter-spacing: .04em; color: var(--muted-fg); }
+    .hidden { display: none !important; }
+
+    /* Manifest editor */
+    .editor-wrap {
+      border: 1px solid var(--border); border-radius: 8px; background: #12100e; overflow: hidden;
+    }
+    .editor-bar {
+      display: flex; justify-content: space-between; align-items: center; padding: 8px 12px;
+      border-bottom: 1px solid var(--border); font-size: 10px; color: var(--muted-fg);
+    }
+    .editor-pre {
+      padding: 12px; font-size: 11px; line-height: 1.55; color: var(--accent-fg); overflow-x: auto;
+      max-height: 280px;
+    }
+    .hook-list { margin-top: 12px; }
+    .hook-row {
+      display: flex; align-items: center; gap: 10px; padding: 10px 12px; border: 1px solid var(--border);
+      border-radius: 8px; margin-bottom: 8px; background: var(--card); font-size: 11px;
+    }
+    .hook-row.disabled { opacity: .5; }
+    .hook-ev {
+      font-size: 9px; font-weight: 700; padding: 2px 6px; border-radius: 4px; text-transform: uppercase;
+    }
+    .hook-ev.pre { background: rgba(84,150,232,.2); color: var(--hook-pre); }
+    .hook-ev.post { background: rgba(184,158,232,.2); color: var(--hook-post); }
+    .hook-name { font-weight: 600; flex: 1; }
+    .hook-matcher { font-size: 10px; color: var(--muted-fg); }
+    .toggle {
+      width: 36px; height: 20px; border-radius: 10px; background: var(--border); position: relative; cursor: pointer;
+    }
+    .toggle.on { background: var(--accent); }
+    .toggle::after {
+      content: ''; position: absolute; width: 16px; height: 16px; border-radius: 50%; background: #fff;
+      top: 2px; left: 2px; transition: left .15s;
+    }
+    .toggle.on::after { left: 18px; }
+
+    .btn {
+      height: 28px; padding: 0 12px; border-radius: 6px; font-size: 11px; font-weight: 500; cursor: pointer;
+      border: 1px solid var(--border); background: var(--secondary); color: var(--foreground);
+    }
+    .btn.primary { background: var(--primary-muted); border-color: var(--primary); color: var(--primary); }
+    .btn-row { display: flex; gap: 8px; margin-top: 12px; }
+
+    /* Test invoke */
+    .split { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+    @media (max-width: 900px) { .split { grid-template-columns: 1fr; } .sidebar { width: 100%; } .stage { flex-direction: column; } }
+    .io-box {
+      border: 1px solid var(--border); border-radius: 8px; background: #12100e; padding: 10px;
+      font-size: 10px; line-height: 1.5; color: var(--muted-fg); min-height: 120px;
+    }
+    .io-box strong { display: block; font-size: 9px; text-transform: uppercase; color: var(--foreground); margin-bottom: 6px; }
+    .result-ok { color: var(--success); margin-top: 10px; font-size: 11px; }
+    .result-deny { color: var(--danger); }
+
+    /* Audit log */
+    .audit-table { width: 100%; font-size: 10px; border-collapse: collapse; }
+    .audit-table th {
+      text-align: left; padding: 8px 10px; border-bottom: 1px solid var(--border);
+      color: var(--muted-fg); font-weight: 500;
+    }
+    .audit-table td { padding: 8px 10px; border-bottom: 1px solid var(--border); }
+    .decision-allow { color: var(--success); }
+    .decision-deny { color: var(--danger); }
+
+    /* Sidebar diagram */
+    .flow-step {
+      display: flex; gap: 10px; margin-bottom: 10px; font-size: 10px; line-height: 1.5;
+    }
+    .flow-num {
+      width: 20px; height: 20px; flex-shrink: 0; border-radius: 50%; background: var(--secondary);
+      border: 1px solid var(--border); display: flex; align-items: center; justify-content: center;
+      font-weight: 700; font-size: 9px; color: var(--primary);
+    }
+    .flow-box { flex: 1; padding: 8px; border-radius: 6px; border: 1px solid var(--border); background: var(--card); }
+    .flow-box code { font-size: 9px; color: var(--accent-fg); background: var(--secondary); padding: 1px 4px; border-radius: 3px; }
+    .rule-box {
+      margin-top: 12px; padding: 10px; border-radius: 8px; background: var(--secondary);
+      border-left: 3px solid var(--hook-sandbox); font-size: 10px; line-height: 1.55; color: var(--muted-fg);
+    }
+    .rule-box strong { color: var(--foreground); }
+  </style>
+</head>
+<body>
+  <h1>Agent Lifecycle Hooks <span style="font-size:13px;color:var(--muted-fg);font-weight:400">— #10</span></h1>
+  <p class="sub">
+    Server-side <code class="mono">.loreweave/hooks.json</code> in sandbox — extends agent loop like VS Code/Kiro.
+    Reconciler ([#09](<a href="../../../docs/specs/2026-07-01-writing-studio/09_agent_gui_reconciliation.md">09</a>)) always runs <strong>before</strong> user postToolUse.
+  </p>
+
+  <div class="toolbar">
+    <div class="scope-toggle">
+      <button type="button" class="scope-btn active" data-scope="user">My hooks</button>
+      <button type="button" class="scope-btn" data-scope="book">This book</button>
+    </div>
+    <span class="badge-rev mono" id="rev-label">revision 3 · per-user</span>
+    <button type="button" class="btn" id="btn-upload">Upload script</button>
+    <button type="button" class="btn primary" id="btn-save">Save bundle</button>
+  </div>
+
+  <div class="tabs">
+    <button type="button" class="tab active" data-tab="bundle">Bundle editor</button>
+    <button type="button" class="tab" data-tab="test">Test invoke</button>
+    <button type="button" class="tab" data-tab="audit">Audit log</button>
+  </div>
+
+  <div class="stage">
+    <div class="main">
+      <!-- Bundle -->
+      <div id="panel-bundle">
+        <div class="panel">
+          <h2>hooks.json</h2>
+          <div class="editor-wrap">
+            <div class="editor-bar">
+              <span class="mono">.loreweave/hooks.json</span>
+              <span>version 1</span>
+            </div>
+            <pre class="editor-pre mono" id="manifest-preview"></pre>
+          </div>
+          <div class="hook-list" id="hook-list"></div>
+          <div class="btn-row">
+            <button type="button" class="btn" id="btn-add-hook">+ Add hook entry</button>
+            <button type="button" class="btn">Rollback to rev 2</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- Test invoke -->
+      <div id="panel-test" class="hidden">
+        <div class="panel">
+          <h2>Dry-run (no agent turn)</h2>
+          <p style="font-size:11px;color:var(--muted-fg);margin-bottom:12px;">
+            Select hook <strong>block-purge</strong> · event <code class="mono">preToolUse</code>
+          </p>
+          <div class="split">
+            <div class="io-box mono">
+              <strong>stdin payload</strong>
+              <span id="test-input"></span>
+            </div>
+            <div class="io-box mono">
+              <strong>stdout + exit</strong>
+              <span id="test-output"></span>
+            </div>
+          </div>
+          <div class="btn-row">
+            <button type="button" class="btn primary" id="btn-run-test">Run in sandbox</button>
+          </div>
+          <div class="result-deny" id="test-result"></div>
+        </div>
+      </div>
+
+      <!-- Audit -->
+      <div id="panel-audit" class="hidden">
+        <div class="panel">
+          <h2>Last invocations</h2>
+          <table class="audit-table">
+            <thead>
+              <tr><th>Time</th><th>Hook</th><th>Event</th><th>Tool</th><th>Decision</th><th>ms</th></tr>
+            </thead>
+            <tbody id="audit-body"></tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+
+    <div class="sidebar">
+      <div class="panel">
+        <h2>Execution order</h2>
+        <div class="flow-step">
+          <span class="flow-num">1</span>
+          <span class="flow-box">Platform tier W/S gate — hooks <strong>cannot</strong> skip</span>
+        </div>
+        <div class="flow-step">
+          <span class="flow-num">2</span>
+          <span class="flow-box"><code>beforeMCPExecution</code> + <code>preToolUse</code> → sandbox</span>
+        </div>
+        <div class="flow-step">
+          <span class="flow-num">3</span>
+          <span class="flow-box">MCP / FE tool executes</span>
+        </div>
+        <div class="flow-step">
+          <span class="flow-num">4</span>
+          <span class="flow-box"><code>StudioEffectReconciler</code> (#09) — GUI reload</span>
+        </div>
+        <div class="flow-step">
+          <span class="flow-num">5</span>
+          <span class="flow-box">User <code>postToolUse</code> — audit / LLM context only</span>
+        </div>
+        <div class="rule-box">
+          <strong>H2:</strong> Forbidden hook output: <code>gui_patch</code>, <code>body</code>, <code>set_panel</code>.
+          <br><strong>H9:</strong> Bundle mounted read-only in sandbox.
+        </div>
+      </div>
+      <div class="panel">
+        <h2>Merge (D29)</h2>
+        <p style="font-size:10px;line-height:1.55;color:var(--muted-fg);">
+          System admin → per-user → per-book. All matching hooks run.
+          <strong style="color:var(--foreground)">deny &gt; ask &gt; allow</strong>
+        </p>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    const hooksUser = [
+      { name: 'block-purge', event: 'pre', matcher: 'book_.*_purge', enabled: true, failClosed: true },
+      { name: 'notify-draft', event: 'post', matcher: '^book_chapter_save_draft', enabled: true, failClosed: false },
+      { name: 'log-all-mcp', event: 'pre', matcher: '@mcp', enabled: false, failClosed: false },
+    ];
+    const hooksBook = [
+      { name: 'discord-job', event: 'post', matcher: '^translation_start_job', enabled: true, failClosed: false },
+      { name: 'block-purge', event: 'pre', matcher: 'book_.*_purge', enabled: true, failClosed: true },
+    ];
+
+    let scope = 'user';
+
+    const manifestUser = `{
+  "version": 1,
+  "hooks": {
+    "preToolUse": [{
+      "name": "block-purge",
+      "command": ".loreweave/hooks/block-purge.sh",
+      "matcher": "book_.*_purge",
+      "failClosed": true
+    }],
+    "postToolUse": [{
+      "name": "notify-draft",
+      "command": ".loreweave/hooks/notify-draft.sh",
+      "matcher": "^book_chapter_save_draft"
+    }]
+  }
+}`;
+
+    const manifestBook = `{
+  "version": 1,
+  "hooks": {
+    "postToolUse": [{
+      "name": "discord-job",
+      "command": ".loreweave/hooks/discord-webhook.sh",
+      "matcher": "^translation_start_job",
+      "allow_network": true
+    }]
+  }
+}`;
+
+    function renderHooks() {
+      const list = scope === 'user' ? hooksUser : hooksBook;
+      const el = document.getElementById('hook-list');
+      el.innerHTML = list.map(h => `
+        <div class="hook-row ${h.enabled ? '' : 'disabled'}">
+          <span class="hook-ev ${h.event}">${h.event === 'pre' ? 'pre' : 'post'}</span>
+          <span class="hook-name">${h.name}</span>
+          <span class="hook-matcher mono">${h.matcher}</span>
+          <div class="toggle ${h.enabled ? 'on' : ''}" data-name="${h.name}" title="enabled"></div>
+        </div>
+      `).join('');
+      document.getElementById('manifest-preview').textContent = scope === 'user' ? manifestUser : manifestBook;
+      document.getElementById('rev-label').textContent = scope === 'user' ? 'revision 3 · per-user' : 'revision 1 · per-book';
+      el.querySelectorAll('.toggle').forEach(t => {
+        t.addEventListener('click', () => t.classList.toggle('on'));
+      });
+    }
+
+    const auditRows = [
+      ['12:04:02', 'block-purge', 'preToolUse', 'book_chapter_purge', 'deny', '84'],
+      ['12:03:41', 'notify-draft', 'postToolUse', 'book_chapter_save_draft', 'allow', '120'],
+      ['12:02:18', 'log-all-mcp', 'beforeMCPExecution', 'composition_list_outline', 'allow', '45'],
+      ['11:58:03', 'block-purge', 'preToolUse', 'book_delete', 'deny', '91'],
+    ];
+
+    document.getElementById('audit-body').innerHTML = auditRows.map(r => `
+      <tr>
+        <td class="mono">${r[0]}</td>
+        <td>${r[1]}</td>
+        <td class="mono">${r[2]}</td>
+        <td class="mono">${r[3]}</td>
+        <td class="decision-${r[4]}">${r[4]}</td>
+        <td>${r[5]}</td>
+      </tr>
+    `).join('');
+
+    document.getElementById('test-input').textContent = JSON.stringify({
+      hook_event_name: 'preToolUse',
+      tool_name: 'book_chapter_purge',
+      tier: 'W',
+      book_id: '019d…',
+      tool_args: { chapter_id: '019e…' }
+    }, null, 2);
+
+    document.getElementById('test-output').textContent = JSON.stringify({
+      permission: 'deny',
+      hookSpecificOutput: {
+        permissionDecisionReason: 'Purge blocked by book policy hook'
+      }
+    }, null, 2) + '\n\nexit_code: 2';
+
+    document.querySelectorAll('.scope-btn').forEach(btn => {
+      btn.addEventListener('click', () => {
+        scope = btn.dataset.scope;
+        document.querySelectorAll('.scope-btn').forEach(b => b.classList.toggle('active', b === btn));
+        renderHooks();
+      });
+    });
+
+    document.querySelectorAll('.tab').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const tab = btn.dataset.tab;
+        document.querySelectorAll('.tab').forEach(t => t.classList.toggle('active', t === btn));
+        ['bundle', 'test', 'audit'].forEach(id => {
+          document.getElementById('panel-' + id).classList.toggle('hidden', id !== tab);
+        });
+      });
+    });
+
+    document.getElementById('btn-run-test').addEventListener('click', () => {
+      document.getElementById('test-result').textContent =
+        'Sandbox result: DENY — tool would be blocked (failClosed: true). Duration 84ms.';
+    });
+
+    renderHooks();
+  </script>
+</body>
+</html>

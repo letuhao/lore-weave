@@ -1,0 +1,182 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>LoreWeave — Agent GUI Bridge (#09)</title>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+  <style>
+    /* ══════════════════════════════════════════════════════════════════════
+       AGENT GUI RECONCILIATION (#09) — 3-lane model
+
+       Lanes:
+         A — ui_* intent (navigate / focus panel) — IDs only
+         B — MCP write → StudioEffectReconciler → reload SSOT
+         C — propose_edit / confirm_action — human Apply → hoist
+
+       Spec: docs/specs/2026-07-01-writing-studio/09_agent_gui_reconciliation.md
+    ═══════════════════════════════════════════════════════════════════════ */
+    :root {
+      --background: #181412; --background-alt: #1e1a17; --foreground: #f5efe8;
+      --card: #1e1a17; --border: #332d28; --border-hover: #4a423b;
+      --primary: #e8a832; --primary-muted: #3d2e12;
+      --secondary: #282320; --muted-fg: #9e9488;
+      --accent: #3da692; --accent-muted: #1a2e2a; --accent-fg: #c8ede6;
+      --success: #3dba6a; --info: #5496e8; --lane-a: #5496e8; --lane-b: #e8b87e; --lane-c: #b89ee8;
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: 'Inter', system-ui, sans-serif; background: #0f0c0b; color: var(--foreground); }
+    .mono { font-family: 'JetBrains Mono', monospace; }
+
+    h1 { font-size: 18px; font-weight: 600; padding: 24px 24px 4px; }
+    .sub { font-size: 12px; color: var(--muted-fg); padding: 0 24px 16px; line-height: 1.5; }
+
+    .tabs { display: flex; gap: 8px; padding: 0 24px 20px; flex-wrap: wrap; }
+    .tab {
+      height: 30px; padding: 0 14px; border-radius: 7px; font-size: 12px; font-weight: 500;
+      border: 1px solid var(--border); background: var(--card); color: var(--muted-fg); cursor: pointer;
+    }
+    .tab.active { background: var(--primary-muted); border-color: var(--primary); color: var(--primary); }
+    .tab .lane { font-size: 9px; opacity: .8; margin-left: 4px; }
+
+    .stage { display: flex; gap: 28px; padding: 0 24px 24px; align-items: flex-start; }
+
+    .diagram {
+      flex: 1; min-width: 540px; border: 1px solid var(--border); border-radius: 10px;
+      background: var(--background); padding: 16px; min-height: 460px;
+    }
+    .lane-badge {
+      display: inline-block; font-size: 9px; font-weight: 700; letter-spacing: .04em;
+      padding: 2px 8px; border-radius: 4px; margin-bottom: 10px; text-transform: uppercase;
+    }
+    .lane-badge.a { background: rgba(84,150,232,.2); color: var(--lane-a); }
+    .lane-badge.b { background: rgba(232,184,126,.2); color: var(--lane-b); }
+    .lane-badge.c { background: rgba(184,158,232,.2); color: var(--lane-c); }
+
+    .seq { font-size: 11px; line-height: 1.6; }
+    .seq-row {
+      display: flex; gap: 10px; margin-bottom: 6px; align-items: flex-start;
+    }
+    .seq-actor {
+      width: 88px; flex-shrink: 0; font-size: 9px; font-weight: 600; text-transform: uppercase;
+      color: var(--muted-fg); padding-top: 2px; text-align: right;
+    }
+    .seq-box {
+      flex: 1; padding: 8px 10px; border-radius: 6px; border: 1px solid var(--border);
+      background: var(--card); color: var(--foreground);
+    }
+    .seq-box code { font-size: 10px; color: var(--accent-fg); background: var(--secondary); padding: 1px 4px; border-radius: 3px; }
+    .seq-arrow { text-align: center; color: var(--border-hover); font-size: 12px; margin: 2px 0 2px 98px; }
+    .forbidden {
+      margin-top: 12px; padding: 8px 10px; border-radius: 6px; border: 1px dashed var(--border-hover);
+      font-size: 10px; color: var(--muted-fg);
+    }
+    .forbidden strong { color: #e85a5a; }
+
+    .mini-split { display: flex; gap: 8px; margin-top: 12px; min-height: 90px; }
+    .mini-panel {
+      flex: 1; border: 1px solid var(--border); border-radius: 6px; padding: 8px; font-size: 10px;
+    }
+    .mini-panel h4 { font-size: 9px; text-transform: uppercase; color: var(--muted-fg); margin-bottom: 6px; }
+
+    .hidden { display: none !important; }
+
+    .notes { flex: 1; max-width: 360px; }
+    .note { display: flex; gap: 10px; margin-bottom: 14px; }
+    .note .n { width: 22px; height: 22px; flex-shrink: 0; border-radius: 50%; background: var(--primary-muted); color: var(--primary); border: 1px solid var(--primary); display: flex; align-items: center; justify-content: center; font-weight: 700; font-size: 11px; }
+    .note h3 { font-size: 12px; font-weight: 600; margin-bottom: 2px; }
+    .note p { font-size: 11px; line-height: 1.55; color: var(--muted-fg); }
+    .note code { font-family: 'JetBrains Mono'; font-size: 10px; background: var(--secondary); padding: 1px 4px; border-radius: 3px; color: var(--accent-fg); }
+    .why { margin-top: 10px; padding: 10px 12px; border-radius: 8px; background: var(--secondary); border-left: 3px solid var(--accent); font-size: 11px; line-height: 1.55; color: var(--muted-fg); }
+  </style>
+</head>
+<body>
+  <h1>Agent GUI Bridge <span style="font-size:13px;color:var(--muted-fg);font-weight:400">— #09</span></h1>
+  <p class="sub">Agent affects GUI via <strong>code</strong> — not by pushing draft JSON through tools. Three lanes built on <a href="../../../docs/specs/2026-07-01-writing-studio/08_studio_state_architecture.md" style="color:var(--accent-fg)">#08</a> tiers.</p>
+
+  <div class="tabs">
+    <button type="button" class="tab active" data-lane="a">Lane A — Navigate<span class="lane">ui_*</span></button>
+    <button type="button" class="tab" data-lane="b">Lane B — MCP reload<span class="lane">reconciler</span></button>
+    <button type="button" class="tab" data-lane="c">Lane C — Human gate<span class="lane">Apply</span></button>
+  </div>
+
+  <div class="stage">
+    <div class="diagram">
+      <!-- Lane A -->
+      <div id="panel-a">
+        <span class="lane-badge a">Lane A — Intent only (IDs)</span>
+        <div class="seq">
+          <div class="seq-row"><span class="seq-actor">Agent</span><span class="seq-box">calls <code>ui_focus_manuscript_unit</code> { chapter_id }</span></div>
+          <div class="seq-arrow">↓ suspend → resolve immediately</div>
+          <div class="seq-row"><span class="seq-actor">Executor</span><span class="seq-box"><code>useStudioUiToolExecutor</code> → <code>host.openPanel('editor')</code> + bus.publish</span></div>
+          <div class="seq-arrow">↓</div>
+          <div class="seq-row"><span class="seq-actor">GUI</span><span class="seq-box">Editor tab focused · navigator scrolls · <strong>no draft in tool args</strong></span></div>
+        </div>
+        <div class="forbidden"><strong>Forbidden:</strong> <code>ui_set_draft</code>, prose blobs, Tiptap JSON in ui_* tools</div>
+      </div>
+
+      <!-- Lane B -->
+      <div id="panel-b" class="hidden">
+        <span class="lane-badge b">Lane B — MCP → code reload</span>
+        <div class="seq">
+          <div class="seq-row"><span class="seq-actor">Agent</span><span class="seq-box">calls <code>book_save_chapter_draft</code> (MCP → book-service)</span></div>
+          <div class="seq-arrow">↓</div>
+          <div class="seq-row"><span class="seq-actor">BE</span><span class="seq-box">PATCH draft · returns { chapter_id, draft_version }</span></div>
+          <div class="seq-arrow">↓ TOOL_RESULT ok</div>
+          <div class="seq-row"><span class="seq-actor">Reconciler</span><span class="seq-box"><code>StudioEffectReconciler</code> → <code>manuscript.reload()</code> + invalidate query</span></div>
+          <div class="seq-arrow">↓ Tier 5 → Tier 4</div>
+          <div class="seq-row"><span class="seq-actor">Editor</span><span class="seq-box">Rich panel re-renders from hoist — <strong>not</strong> from tool result body</span></div>
+        </div>
+        <div class="mini-split">
+          <div class="mini-panel"><h4>Compose</h4>sees tool chip only</div>
+          <div class="mini-panel"><h4>ManuscriptUnit</h4>reload from API</div>
+          <div class="mini-panel"><h4>Bus</h4>revision++</div>
+        </div>
+      </div>
+
+      <!-- Lane C -->
+      <div id="panel-c" class="hidden">
+        <span class="lane-badge c">Lane C — Human Apply</span>
+        <div class="seq">
+          <div class="seq-row"><span class="seq-actor">Agent</span><span class="seq-box">calls <code>propose_edit</code> { diff } — turn suspends</span></div>
+          <div class="seq-arrow">↓</div>
+          <div class="seq-row"><span class="seq-actor">User</span><span class="seq-box">clicks <strong>Apply</strong> on ProposeEditCard</span></div>
+          <div class="seq-arrow">↓</div>
+          <div class="seq-row"><span class="seq-actor">Code</span><span class="seq-box"><code>manuscript.applyProposedEdit</code> → hoist dirty → PATCH (save FSM)</span></div>
+          <div class="seq-arrow">↓</div>
+          <div class="seq-row"><span class="seq-actor">Agent</span><span class="seq-box">resume { applied: true } — <strong>no</strong> content in resolve payload</span></div>
+        </div>
+        <div class="forbidden"><strong>Studio:</strong> deprecates <code>editorBridge</code> write path · legacy editor keeps bridge</div>
+      </div>
+    </div>
+
+    <div class="notes" id="notes-a">
+      <div class="note"><div class="n">1</div><div><h3>IDs only</h3><p>Lane A moves focus and opens panels. Same pattern as legacy C-NAV <code>ui_navigate</code>.</p></div></div>
+      <div class="note"><div class="n">2</div><div><h3>Bus publish</h3><p>Focus publishes <code>chapter</code> event; compose reads snapshot — does not read editor hoist directly (D19).</p></div></div>
+      <div class="why"><strong>Build:</strong> <code>useStudioUiToolExecutor</code> with #03 + #07c.</div>
+    </div>
+    <div class="notes hidden" id="notes-b">
+      <div class="note"><div class="n">1</div><div><h3>No setBody from tool</h3><p>Reconciler handlers registered in code — <code>effectRegistry.ts</code>. Never parse prose from RESULT into React state.</p></div></div>
+      <div class="note"><div class="n">2</div><div><h3>Token savings</h3><p>Agent does not re-send full chapter JSON to “sync UI” — server already has truth.</p></div></div>
+      <div class="why"><strong>E2E:</strong> agent MCP-saves → editor shows new text without manual refresh.</div>
+    </div>
+    <div class="notes hidden" id="notes-c">
+      <div class="note"><div class="n">1</div><div><h3>Human gate</h3><p><code>confirm_action</code> same pattern — server confirm → reconciler on success.</p></div></div>
+      <div class="note"><div class="n">2</div><div><h3>Apply = code</h3><p>User click triggers hoist action; LLM does not apply the edit.</p></div></div>
+    </div>
+  </div>
+
+  <script>
+    document.querySelectorAll('.tab').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const lane = btn.dataset.lane;
+        document.querySelectorAll('.tab').forEach(t => t.classList.toggle('active', t === btn));
+        ['a','b','c'].forEach(l => {
+          document.getElementById('panel-' + l).classList.toggle('hidden', l !== lane);
+          document.getElementById('notes-' + l).classList.toggle('hidden', l !== lane);
+        });
+      });
+    });
+  </script>
+</body>
+</html>
