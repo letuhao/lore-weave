@@ -148,6 +148,13 @@ class TestAgUiEmitter:
         ev = _parse(self._em().agent_surface(payload)[0])
         assert ev == {"type": "CUSTOM", "name": "agentSurface", "value": payload}
 
+    def test_context_budget_is_custom_event(self):
+        # RAID A2 — the FE meter reads this CUSTOM event.
+        payload = {"used_tokens": 10_000, "context_length": 40_000,
+                   "effective_limit": 35_488, "pct": 0.2818}
+        ev = _parse(self._em().context_budget(payload)[0])
+        assert ev == {"type": "CUSTOM", "name": "contextBudget", "value": payload}
+
     def test_text_happy_path_frames_once(self):
         em = self._em()
         first = em.text_delta("Hi ")

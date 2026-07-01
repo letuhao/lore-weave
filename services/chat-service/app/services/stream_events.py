@@ -244,6 +244,16 @@ class AgUiEmitter:
             "value": payload,
         })]
 
+    def context_budget(self, payload: dict) -> list[str]:
+        # RAID Wave A2 — context-window usage vs the model's context_length. The FE
+        # meter (studio status bar + chat header) reads {used_tokens, context_length,
+        # effective_limit, pct}; NULL context_length → the meter shows "—".
+        return [_sse({
+            "type": "CUSTOM",
+            "name": "contextBudget",
+            "value": payload,
+        })]
+
     def reasoning_delta(self, delta: str) -> list[str]:
         lines: list[str] = []
         if self._open != "reasoning":

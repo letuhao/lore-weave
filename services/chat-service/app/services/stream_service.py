@@ -62,6 +62,7 @@ from app.services.tool_discovery import (
 )
 from app.services.output_extractor import extract_outputs
 from app.services.stream_events import make_emitter
+from app.services.token_budget import compute_budget
 from app.services.working_memory import resolve_anchor
 
 logger = logging.getLogger(__name__)
@@ -1703,6 +1704,19 @@ async def _emit_chat_turn(
                 "timeToFirstTokenMs": round(time_to_first_token) if time_to_first_token is not None else None,
             },
         }
+        # RAID Wave A2 — emit the context budget (measured input tokens vs the model's
+        # window) so the FE meter can warn before the next turn. Advisory; NULL
+        # context_length → the event carries pct=None and the meter shows "—".
+        try:
+            _budget = compute_budget(
+                used_tokens=int(input_tok or 0),
+                context_length=creds.context_length,
+                max_output_tokens=int(gen_params.get("max_tokens") or 0),
+            )
+            for line in emitter.context_budget(_budget.to_event()):
+                yield line
+        except Exception:  # never let budget accounting break the finish path
+            pass
         for line in emitter.finish(finish):
             yield line
 
