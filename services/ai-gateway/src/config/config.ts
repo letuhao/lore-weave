@@ -85,6 +85,8 @@ export const DEFAULT_PREFIX_MAP: Record<string, string> = {
  */
 export const EXTRA_PREFIX_MAP: Record<string, string[]> = {
   knowledge: ['kg_'],
+  // PlanForge MCP tools (composition-service) — federated alongside composition_*
+  composition: ['plan_'],
 };
 
 /** Back-compat default registry: P0 knowledge + P1 glossary. */
