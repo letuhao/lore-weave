@@ -27,7 +27,7 @@ import type {
   ToolCallResultEvent,
   ToolCallStartEvent,
 } from './agUiEvents';
-import type { ActivityEvent, ChatMessage, ToolCallRecord } from '../types';
+import type { ActivityEvent, ChatMessage, ToolCallRecord, AgentSurfaceState } from '../types';
 
 export type StreamPhase = 'idle' | 'thinking' | 'responding';
 
@@ -43,6 +43,8 @@ export type ChatStreamArgs = {
   composeMode?: boolean;
   bookContext?: { book_id: string };
   displayLanguage?: string;
+  enabledTools?: string[];
+  enabledSkills?: string[];
   // ARCH-1 C6: when set, POST this descriptor instead of the messages endpoint
   // (the resume / tool-result path). The consume loop is identical, so send +
   // resume share all stream handling.
@@ -83,6 +85,8 @@ export type ChatCallbacks = {
   onMemoryMode?: (mode: MemoryMode) => void;
   /** CUSTOM composing on/off → the transient "✍️ Drafting…" indicator. */
   onComposing?: (active: boolean) => void;
+  /** Story 04: CUSTOM agentSurface → runtime inspector reducer. */
+  onAgentSurface?: (state: AgentSurfaceState) => void;
   /** A run-level error (RUN_ERROR, or a non-OK response). */
   onError?: (message: string) => void;
   /** Terminal — the assembled assistant turn. Fired on a clean stream end. */
@@ -110,6 +114,8 @@ function buildRequest(args: ChatStreamArgs): { url: string; body: Record<string,
   // S6: forward the per-book display language so knowledge composes entity
   // aliases in it (omitted when not viewing a translation → source aliases).
   if (args.displayLanguage) body.display_language = args.displayLanguage;
+  if (args.enabledTools?.length) body.enabled_tools = args.enabledTools;
+  if (args.enabledSkills?.length) body.enabled_skills = args.enabledSkills;
   // Compose mode: prose-only turn, no tool advertising (server-side gate).
   if (args.composeMode) body.disable_tools = true;
 
@@ -326,6 +332,11 @@ export async function runChatStream(
                   };
                   accumulatedActivities.push(activity);
                   cb.onActivity?.(activity);
+                }
+              } else if (e.name === 'agentSurface') {
+                const payload = e.value as unknown as AgentSurfaceState;
+                if (payload && typeof payload.phase === 'string') {
+                  cb.onAgentSurface?.(payload);
                 }
               }
               break;

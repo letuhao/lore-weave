@@ -133,6 +133,9 @@ class LegacyEmitter:
         # the Undo strip → no-op (the tool-call event still conveys the write).
         return []
 
+    def agent_surface(self, payload: dict) -> list[str]:
+        return []
+
     def reasoning_delta(self, delta: str) -> list[str]:
         return [_sse({"type": "reasoning-delta", "delta": delta})]
 
@@ -230,6 +233,14 @@ class AgUiEmitter:
         return [_sse({
             "type": "CUSTOM",
             "name": "activity",
+            "value": payload,
+        })]
+
+    def agent_surface(self, payload: dict) -> list[str]:
+        # Story 04 / #07b — inspector state machine; emitted on phase transitions only.
+        return [_sse({
+            "type": "CUSTOM",
+            "name": "agentSurface",
             "value": payload,
         })]
 

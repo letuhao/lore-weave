@@ -194,6 +194,8 @@ async def _stream_via_gateway(
         }
         if gen_params.get("temperature") is not None:
             request_kwargs["temperature"] = gen_params["temperature"]
+        if gen_params.get("top_p") is not None:
+            request_kwargs["top_p"] = gen_params["top_p"]
         if max_tokens is not None:
             request_kwargs["max_tokens"] = max_tokens
         # M3 — mint a job id so the gateway persists a billing-neutral
@@ -430,6 +432,9 @@ async def _stream_with_tools(
     discovery_catalog: list[dict] | None = None,
     discovery_extra_frontend: list[dict] | None = None,
     discovery_seed_names: set[str] | None = None,
+    curated: bool = False,
+    activation_state: dict | None = None,
+    surface_tracker=None,
 ) -> AsyncGenerator[dict, None]:
     """K21-B — the tool-calling loop.
 
@@ -504,6 +509,8 @@ async def _stream_with_tools(
             }
             if gen_params.get("temperature") is not None:
                 request_kwargs["temperature"] = gen_params["temperature"]
+            if gen_params.get("top_p") is not None:
+                request_kwargs["top_p"] = gen_params["top_p"]
             if max_tokens is not None:
                 request_kwargs["max_tokens"] = max_tokens
             # Offer tools unless the provider rejected them (D8) or this
@@ -609,6 +616,10 @@ async def _stream_with_tools(
                 if discovery and c["name"] == FIND_TOOLS_NAME:
                     args_obj = _parse_tool_args(c["arguments"])
                     intent = str(args_obj.get("intent", "") or "")
+                    if surface_tracker is not None:
+                        payload_as = surface_tracker.discovering(intent)
+                        if payload_as is not None:
+                            yield {"agent_surface": payload_as}
                     limit = args_obj.get("limit") or FIND_TOOLS_DEFAULT_LIMIT
                     try:
                         limit = int(limit)
@@ -620,6 +631,21 @@ async def _stream_with_tools(
                         catalog_meta=knowledge_client.get_catalog_meta(),
                     )
                     active_tool_names.update(matched)
+                    if curated and activation_state is not None:
+                        from app.services.tool_surface import merge_activated_tools
+                        activation_state["activated_tools"] = merge_activated_tools(
+                            activation_state["activated_tools"], matched,
+                        )
+                        activation_state["dirty"] = True
+                    if surface_tracker is not None:
+                        act_count = (
+                            len(activation_state["activated_tools"])
+                            if activation_state is not None
+                            else len(active_tool_names)
+                        )
+                        payload_as = surface_tracker.activated(act_count)
+                        if payload_as is not None:
+                            yield {"agent_surface": payload_as}
                     working.append({
                         "role": "tool", "tool_call_id": c["id"],
                         "content": json.dumps(payload),
@@ -630,6 +656,10 @@ async def _stream_with_tools(
                         "result": payload, "error": None,
                     }}
                     continue
+                if surface_tracker is not None:
+                    payload_as = surface_tracker.tool_running(c["name"])
+                    if payload_as is not None:
+                        yield {"agent_surface": payload_as}
                 if is_frontend_tool(c["name"]):
                     suspended_call = {
                         "id": c["id"],
@@ -805,6 +835,24 @@ async def _stream_with_tools(
                         }
                 yield {"tool_call": tool_chunk}
 
+            if (
+                surface_tracker is not None
+                and tool_frags
+                and suspended_call is None
+            ):
+                act_count = (
+                    len(activation_state["activated_tools"])
+                    if activation_state is not None
+                    else len(active_tool_names)
+                )
+                payload_as = surface_tracker.curated(
+                    pinned_count=surface_tracker.pinned_count,
+                    hot_seed_count=surface_tracker.hot_seed_count,
+                    activated_count=act_count,
+                )
+                if payload_as is not None:
+                    yield {"agent_surface": payload_as}
+
             if suspended_call is not None:
                 # Hand the full conversation + the pending frontend call back to
                 # the caller, which persists the suspended run and emits the
@@ -864,6 +912,8 @@ async def stream_response(
     admin_token: str | None = None,
     disable_tools: bool = False,
     display_language: str | None = None,
+    enabled_tools: list[str] | None = None,
+    enabled_skills: list[str] | None = None,
 ) -> AsyncGenerator[str, None]:
     """Async generator that yields chat-turn SSE lines.
 
@@ -896,7 +946,7 @@ async def stream_response(
     # ── Load session settings ───────────────────────────────────────────────
     session_row = await pool.fetchrow(
         "SELECT system_prompt, generation_params, project_id, composer_model_source, composer_model_ref, "
-        "planner_model_ref, working_memory_seed "
+        "planner_model_ref, working_memory_seed, enabled_tools, enabled_skills, activated_tools "
         "FROM chat_sessions WHERE session_id = $1",
         session_id,
     )
@@ -1014,77 +1064,52 @@ async def stream_response(
     #     → cached; stable per-session, doesn't change between turns
     # Non-Anthropic providers and the degraded / unsplit fallback take
     # the plain-string path.
-    # Glossary-assistant P5 (OD-5 / INV-6): on a book-scoped surface where the
-    # glossary tools are advertised, prepend-as-system the static glossary skill —
-    # tool workflow + human-gated tiers + the data-not-instructions trust boundary
-    # + the canonical glossary_search (H7). Static + cacheable; the kind/attr list
-    # is fetched on demand, never baked per turn.
-    inject_glossary_skill = (
-        stream_format == "agui"
-        and bool(editor_context or book_context)
-        and not disable_tools
-        and kctx.tool_calling_enabled
-    )
-    glossary_skill: str | None = None
-    if inject_glossary_skill:
-        from app.services.glossary_skill import GLOSSARY_SKILL_PROMPT
-        glossary_skill = GLOSSARY_SKILL_PROMPT
-    # T4c — the admin (cms) surface gets the System-tier admin skill instead:
-    # propose-by-code → always human-confirm → never claim a write before
-    # `action_done`. Mutually exclusive with the book/user glossary skill (a
-    # request is one surface or the other).
-    inject_admin_skill = (
-        stream_format == "agui"
-        and bool(admin_context)
-        and not disable_tools
-        and kctx.tool_calling_enabled
-    )
-    if inject_admin_skill:
-        from app.services.glossary_skill import GLOSSARY_ADMIN_SKILL_PROMPT
-        glossary_skill = GLOSSARY_ADMIN_SKILL_PROMPT
-    # MCP-fanout H5/H17: on the UNIVERSAL /chat surface (agui, no book/editor
-    # context) inject the discovery + capability-honesty skill so the agent
-    # searches with find_tools, answers "what can you do" by category, and is
-    # honest about async jobs + partial failures. Mutually exclusive with the
-    # glossary skill (book-scoped) AND the admin skill (cms surface).
-    inject_universal_skill = (
-        stream_format == "agui"
-        and not bool(editor_context or book_context)
-        and not bool(admin_context)
-        and not disable_tools
-        and kctx.tool_calling_enabled
-    )
-    universal_skill: str | None = None
-    if inject_universal_skill:
-        from app.services.universal_skill import UNIVERSAL_SKILL_PROMPT
-        # S-WORKFLOW (Wave 3): append the cross-service ORDERING fragment. The
-        # universal skill teaches how to act; this teaches the required sequence
-        # (chapters -> translate -> glossary -> wiki) + async-dependency waits +
-        # H4 scope honesty. Composes by concatenation, shares the same cache slot.
-        from app.services.workflow_skill import WORKFLOW_SKILL_PROMPT
-        universal_skill = UNIVERSAL_SKILL_PROMPT + "\n\n" + WORKFLOW_SKILL_PROMPT
+    # Glossary-assistant P5 + story 04 skill registry: inject selected or
+    # surface-default system skills (static + cacheable).
+    from app.services.skill_registry import resolve_skills_to_inject, skill_prompts
 
-    # KM5-M4a (knowledge skill): on the agentic surface where knowledge/graph tools
-    # are advertised, prepend-as-system the static knowledge skill — the memory-vs-
-    # graph split, as-of-chapter reads, the propose→review human gate, the ontology
-    # confirm-token flow, triage, and the INV-6 data-not-instructions boundary.
-    # Gated like the toolset itself (agui + tools enabled); static + cacheable, the
-    # actual schema is fetched on demand via kg_schema_read, never baked per turn.
-    # Not on the CMS/admin surface — that surface advertises the System-tier admin
-    # tools (glossary admin skill), not the project knowledge/graph tools, so the
-    # knowledge skill would be guidance for tools that aren't there.
-    inject_knowledge_skill = (
-        stream_format == "agui"
-        and not bool(admin_context)
-        and not disable_tools
-        and kctx.tool_calling_enabled
-    )
-    knowledge_skill: str | None = None
-    if inject_knowledge_skill:
-        from app.services.knowledge_skill import KNOWLEDGE_SKILL_PROMPT
-        knowledge_skill = KNOWLEDGE_SKILL_PROMPT
+    _editor = bool(editor_context)
+    _book_scoped = bool(editor_context or book_context)
+    _admin = bool(admin_context)
+    _session_enabled = list(session_row.get("enabled_tools") or []) if session_row else []
+    _session_skills = list(session_row.get("enabled_skills") or []) if session_row else []
 
-    # Surface the book/chapter ids the chat is scoped to so book-scoped tools
+    from app.services.tool_surface import resolve_session_tool_pins
+    from app.services.agent_surface import AgentSurfaceTracker
+
+    tool_pins = resolve_session_tool_pins(
+        session_row,
+        enabled_tools_override=enabled_tools,
+        enabled_skills_override=enabled_skills,
+    )
+    curated_mode = tool_pins.curated_mode
+    activation_state = tool_pins.activation_state
+    effective_enabled = tool_pins.effective_enabled
+    effective_skills = tool_pins.effective_skills
+
+    injected_skill_codes = resolve_skills_to_inject(
+        enabled_skills=effective_skills,
+        stream_format=stream_format,
+        disable_tools=disable_tools,
+        tool_calling_enabled=kctx.tool_calling_enabled,
+        editor=_editor,
+        book_scoped=_book_scoped,
+        admin=_admin,
+    )
+    _skill_prompts = skill_prompts(injected_skill_codes)
+    glossary_skill: str | None = _skill_prompts.get("glossary")
+    if "admin" in _skill_prompts:
+        glossary_skill = _skill_prompts["admin"]
+    universal_skill: str | None = _skill_prompts.get("universal")
+    knowledge_skill: str | None = _skill_prompts.get("knowledge")
+
+    surface_tracker = (
+        AgentSurfaceTracker()
+        if stream_format == "agui" and not disable_tools
+        else None
+    )
+
+    # Surface the book/chapter ids
     # (glossary ontology adopt/propose, deep-research, propose-edit) fill book_id /
     # chapter_id without a placeholder or asking the user. The FE sends these via
     # editor_context/book_context, but their VALUE was never given to the model —
@@ -1237,10 +1262,12 @@ async def stream_response(
                 discovery_extra_frontend = frontend_tool_defs(
                     editor=editor, book_scoped=book_scoped
                 )
-                # Hot set: the surface's own domains, seeded so their full schemas
-                # are advertised on pass 1 (no find_tools round-trip). universal → ∅.
-                discovery_seed_names = hot_tool_names(
-                    catalog, surface_hot_domains(editor=editor, book_scoped=book_scoped)
+                from app.services.tool_surface import discovery_seed_for_surface
+                discovery_seed_names = discovery_seed_for_surface(
+                    catalog,
+                    pins=tool_pins,
+                    editor=editor,
+                    book_scoped=book_scoped,
                 )
                 # `tool_defs` is the FIRST-pass advertisement when discovery is on;
                 # _stream_with_tools recomputes it each pass (core ∪ extra_fe ∪
@@ -1309,6 +1336,12 @@ async def stream_response(
         discovery_catalog=discovery_catalog,
         discovery_extra_frontend=discovery_extra_frontend,
         discovery_seed_names=discovery_seed_names,
+        curated=curated_mode,
+        activation_state=activation_state,
+        surface_tracker=surface_tracker,
+        injected_skills=injected_skill_codes,
+        effective_enabled_count=len(effective_enabled) if curated_mode else 0,
+        hot_seed_count=len(discovery_seed_names or ()),
     ):
         yield line
 
@@ -1343,6 +1376,12 @@ async def _emit_chat_turn(
     discovery_catalog: list[dict] | None = None,
     discovery_extra_frontend: list[dict] | None = None,
     discovery_seed_names: set[str] | None = None,
+    curated: bool = False,
+    activation_state: dict | None = None,
+    surface_tracker=None,
+    injected_skills: list[str] | None = None,
+    effective_enabled_count: int = 0,
+    hot_seed_count: int = 0,
 ) -> AsyncGenerator[str, None]:
     """Shared Stream→persist→finish body for a chat turn (fresh OR C6 resume).
 
@@ -1374,6 +1413,20 @@ async def _emit_chat_turn(
         for line in emitter.memory_mode(fe_memory_mode):
             yield line
 
+    if surface_tracker is not None:
+        payload = surface_tracker.curated(
+            pinned_count=effective_enabled_count,
+            hot_seed_count=hot_seed_count,
+            activated_count=len(activation_state["activated_tools"]) if activation_state else 0,
+        )
+        if payload is not None:
+            for line in emitter.agent_surface(payload):
+                yield line
+        payload = surface_tracker.skill_injected(injected_skills or [])
+        if payload is not None:
+            for line in emitter.agent_surface(payload):
+                yield line
+
     turn_succeeded = False
     post_finish_state: dict | None = None
 
@@ -1398,6 +1451,9 @@ async def _emit_chat_turn(
                 discovery_catalog=discovery_catalog,
                 discovery_extra_frontend=discovery_extra_frontend,
                 discovery_seed_names=discovery_seed_names,
+                curated=curated,
+                activation_state=activation_state,
+                surface_tracker=surface_tracker,
             )
         else:
             chunk_stream = _stream_via_gateway(
@@ -1433,6 +1489,11 @@ async def _emit_chat_turn(
             composing = chunk_data.get("composing")
             if composing is not None:
                 for line in emitter.composing(composing["active"]):
+                    yield line
+                continue
+            agent_surface = chunk_data.get("agent_surface")
+            if agent_surface is not None:
+                for line in emitter.agent_surface(agent_surface):
                     yield line
                 continue
             reasoning = chunk_data["reasoning_content"]
@@ -1603,6 +1664,30 @@ async def _emit_chat_turn(
         for line in emitter.persisted_data(data_payload):
             yield line
 
+        if activation_state and activation_state.get("dirty"):
+            try:
+                await pool.execute(
+                    """
+                    UPDATE chat_sessions
+                    SET activated_tools = $2::text[], updated_at = now()
+                    WHERE session_id = $1
+                    """,
+                    session_id,
+                    activation_state["activated_tools"],
+                )
+            except Exception:
+                logger.warning(
+                    "failed to persist activated_tools for session %s",
+                    session_id,
+                    exc_info=True,
+                )
+
+        if surface_tracker is not None:
+            payload = surface_tracker.idle()
+            if payload is not None:
+                for line in emitter.agent_surface(payload):
+                    yield line
+
         # Finish event — includes timing metrics
         finish = {
             "type": "finish-message",
@@ -1763,7 +1848,8 @@ async def resume_stream_response(
 
     # Re-derive session gen_params + tool defs for the 2nd pass.
     session_row = await pool.fetchrow(
-        "SELECT generation_params, project_id, system_prompt, composer_model_source, composer_model_ref, planner_model_ref "
+        "SELECT generation_params, project_id, system_prompt, composer_model_source, composer_model_ref, "
+        "planner_model_ref, enabled_tools, enabled_skills, activated_tools "
         "FROM chat_sessions WHERE session_id = $1",
         session_id,
     )
@@ -1780,6 +1866,24 @@ async def resume_stream_response(
     composer_system_prompt = session_row.get("system_prompt") if session_row else None
     planner_resume_ref = session_row.get("planner_model_ref") if session_row else None
     planner_model_ref = str(planner_resume_ref) if planner_resume_ref else None
+
+    from app.services.skill_registry import resolve_skills_to_inject
+    from app.services.tool_surface import resolve_session_tool_pins, discovery_seed_for_surface
+    from app.services.agent_surface import AgentSurfaceTracker
+
+    tool_pins = resolve_session_tool_pins(session_row)
+    resume_surface_tracker = (
+        AgentSurfaceTracker() if stream_format == "agui" else None
+    )
+    resume_injected_skills = resolve_skills_to_inject(
+        enabled_skills=tool_pins.effective_skills,
+        stream_format=stream_format,
+        disable_tools=False,
+        tool_calling_enabled=True,
+        editor=True,
+        book_scoped=True,
+        admin=bool(admin_token),
+    )
 
     knowledge_client = get_knowledge_client()
     resume_discovery_catalog: list[dict] | None = None
@@ -1827,12 +1931,13 @@ async def resume_stream_response(
                 frontend_tool_defs(editor=False, book_scoped=False)
                 + frontend_tool_defs(editor=True, book_scoped=True)
             )
-            # The resume surface isn't known precisely (a book-scoped OR editor
-            # suspend both resume here), so seed the editor SUPERSET hot domains —
-            # matching the conservative frontend-tools choice above — so the
-            # post-Apply/Confirm follow-up has its domain tools without a re-search.
-            resume_seed_names = hot_tool_names(
-                catalog, surface_hot_domains(editor=True, book_scoped=True)
+            # Resume uses editor superset for frontend tools; discovery seed respects
+            # session curated pins when enabled_tools is non-empty (story 04 S2).
+            resume_seed_names = discovery_seed_for_surface(
+                catalog,
+                pins=tool_pins,
+                editor=True,
+                book_scoped=True,
             )
             tool_defs = _advertise_discovery_tools(
                 _catalog_index(catalog), resume_seed_names, resume_extra_frontend
@@ -1889,6 +1994,12 @@ async def resume_stream_response(
         discovery_catalog=resume_discovery_catalog,
         discovery_extra_frontend=resume_extra_frontend,
         discovery_seed_names=resume_seed_names,
+        curated=tool_pins.curated_mode,
+        activation_state=tool_pins.activation_state,
+        surface_tracker=resume_surface_tracker,
+        injected_skills=resume_injected_skills,
+        effective_enabled_count=len(tool_pins.effective_enabled) if tool_pins.curated_mode else 0,
+        hot_seed_count=len(resume_seed_names or ()),
     ):
         yield line
 

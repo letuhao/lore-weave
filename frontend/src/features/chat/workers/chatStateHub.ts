@@ -23,7 +23,7 @@ import type {
   MemoryMode,
   StreamPhase,
 } from '../hooks/runChatStream';
-import type { ActivityEvent, ToolCallRecord } from '../types';
+import type { ActivityEvent, ToolCallRecord, AgentSurfaceState } from '../types';
 
 export type StreamStatus = 'idle' | 'streaming' | 'error';
 
@@ -51,6 +51,7 @@ export type ChatLiveState = {
   toolCalls: ToolCallRecord[];
   activities: ActivityEvent[];
   memoryMode: MemoryMode | null;
+  agentSurface: AgentSurfaceState | null;
   messageId: string | null;
   usage: { promptTokens?: number; completionTokens?: number };
   timing: { responseTimeMs?: number; timeToFirstTokenMs?: number };
@@ -108,6 +109,7 @@ const EMPTY: ChatLiveState = {
   toolCalls: [],
   activities: [],
   memoryMode: null,
+  agentSurface: null,
   messageId: null,
   usage: {},
   timing: {},
@@ -188,6 +190,7 @@ export function createChatStateHub(run: RunFn) {
       },
       onComposing: (active) => { if (isCurrent()) set({ isComposing: active }); },
       onMemoryMode: (mode) => { if (isCurrent()) set({ memoryMode: mode }); },
+      onAgentSurface: (payload) => { if (isCurrent()) set({ agentSurface: payload }); },
       onAbort: (partial) => {
         if (!isCurrent()) return;
         stopThinkingTimer();

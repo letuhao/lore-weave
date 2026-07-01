@@ -1,6 +1,9 @@
 import { createContext, useContext, useEffect } from 'react';
+import { useAuth } from '@/auth';
 import { useChatMessages } from '../hooks/useChatMessages';
 import { usePendingFacts } from '../hooks/usePendingFacts';
+import { useAgentSurface } from '../hooks/useAgentSurface';
+import { useContextRack } from '../hooks/useContextRack';
 import { useChatSession } from './ChatSessionContext';
 
 // ── Types ──────────────────────────────────────────────────────────────────────
@@ -13,6 +16,8 @@ import { useChatSession } from './ChatSessionContext';
 // pending-facts refetch without clobbering.
 export type ChatStreamValue = ReturnType<typeof useChatMessages> & {
   pendingFacts: ReturnType<typeof usePendingFacts>;
+  agentSurface: ReturnType<typeof useAgentSurface>;
+  rack: ReturnType<typeof useContextRack>;
 };
 
 const ChatStreamCtx = createContext<ChatStreamValue | null>(null);
@@ -56,9 +61,24 @@ export function ChatStreamProvider({
   // aliases in it. Undefined → source-language aliases.
   displayLanguage?: string;
 }) {
+  const { accessToken } = useAuth();
   const { activeSession, refreshSessions, updateActiveSession } = useChatSession();
+  const agentSurface = useAgentSurface(activeSession);
+  const rack = useContextRack({
+    session: activeSession,
+    accessToken,
+    onSessionUpdate: updateActiveSession,
+    hidden: !!composeMode,
+  });
   const chat = useChatMessages(
-    activeSession?.session_id ?? null, editorContext, composeMode, bookContext, displayLanguage,
+    activeSession?.session_id ?? null,
+    editorContext,
+    composeMode,
+    bookContext,
+    displayLanguage,
+    activeSession?.enabled_tools,
+    activeSession?.enabled_skills,
+    rack.streamPinsRef,
   );
   // K21-C (D8): pending-facts review for the active session. A turn
   // may have queued a fact (knowledge-service design D6); the FE
@@ -94,8 +114,13 @@ export function ChatStreamProvider({
     return () => { chat.onMemoryModeRef.current = null; };
   }, [chat.onMemoryModeRef, activeSession, updateActiveSession]);
 
+  useEffect(() => {
+    chat.onAgentSurfaceRef.current = agentSurface.applyEvent;
+    return () => { chat.onAgentSurfaceRef.current = null; };
+  }, [chat.onAgentSurfaceRef, agentSurface.applyEvent]);
+
   return (
-    <ChatStreamCtx.Provider value={{ ...chat, pendingFacts }}>
+    <ChatStreamCtx.Provider value={{ ...chat, pendingFacts, agentSurface, rack }}>
       {children}
     </ChatStreamCtx.Provider>
   );

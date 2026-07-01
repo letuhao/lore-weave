@@ -108,6 +108,56 @@ describe('useChatMessages — AG-UI protocol', () => {
     expect(seen).toEqual(['degraded']);
   });
 
+  it('fires onAgentSurfaceRef from CUSTOM agentSurface events', async () => {
+    const payload = {
+      phase: 'Discovering',
+      pinned_count: 1,
+      hot_seed_count: 3,
+      activated_count: 0,
+      injected_skills: ['glossary'],
+      running_tool: null,
+      last_find_tools_query: 'translate',
+      find_tools_call_count: 1,
+    };
+    stubFetch([
+      JSON.stringify({ type: 'RUN_STARTED', threadId: 's-1', runId: 'r1' }),
+      JSON.stringify({ type: 'CUSTOM', name: 'agentSurface', value: payload }),
+      JSON.stringify({ type: 'TEXT_MESSAGE_CONTENT', messageId: 'm', delta: 'hi' }),
+      JSON.stringify({ type: 'RUN_FINISHED', result: {} }),
+    ]);
+    const seen: unknown[] = [];
+    const { result } = renderHook(() => useChatMessages('s-1'));
+    await waitFor(() => expect(result.current.isLoading).toBe(false));
+    act(() => {
+      result.current.onAgentSurfaceRef.current = (state) => seen.push(state);
+    });
+    await act(async () => {
+      await result.current.send('hello');
+    });
+    expect(seen).toHaveLength(1);
+    expect(seen[0]).toMatchObject({ phase: 'Discovering', last_find_tools_query: 'translate' });
+  });
+
+  it('uses streamPinsRef for POST body when session arrays are stale', async () => {
+    const fetchMock = stubFetch([
+      JSON.stringify({ type: 'TEXT_MESSAGE_CONTENT', messageId: 'm', delta: 'hi' }),
+      JSON.stringify({ type: 'RUN_FINISHED', result: {} }),
+    ]);
+    const streamPinsRef = {
+      current: { enabledTools: ['find_tools'], enabledSkills: ['glossary'] as string[] | undefined },
+    };
+    const { result } = renderHook(() =>
+      useChatMessages('s-1', undefined, undefined, undefined, undefined, [], [], streamPinsRef),
+    );
+    await waitFor(() => expect(result.current.isLoading).toBe(false));
+    await act(async () => {
+      await result.current.send('hello');
+    });
+    const body = JSON.parse(String((fetchMock.mock.calls[0][1] as RequestInit).body));
+    expect(body.enabled_tools).toEqual(['find_tools']);
+    expect(body.enabled_skills).toEqual(['glossary']);
+  });
+
   it('maps RUN_ERROR to the error path', async () => {
     stubFetch([
       JSON.stringify({ type: 'RUN_STARTED', threadId: 's-1', runId: 'r1' }),

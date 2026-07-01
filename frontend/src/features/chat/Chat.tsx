@@ -64,14 +64,14 @@ export function Chat({ bookId, editorContext, composeMode, actionBar, windowingE
           bookContext={bookContext}
           displayLanguage={apiDisplayLanguage}
         >
-          <EmbeddedChat bookId={bookId} actionBar={actionBar} className={className} />
+          <EmbeddedChat bookId={bookId} actionBar={actionBar} className={className} composeMode={composeMode} />
         </ChatStreamProvider>
       </ChatLiveStateProvider>
     </ChatSessionProvider>
   );
 }
 
-function EmbeddedChat({ bookId, actionBar, className }: ChatProps) {
+function EmbeddedChat({ bookId, actionBar, className, composeMode }: ChatProps) {
   const {
     sessions,
     sessionsLoading,
@@ -105,6 +105,7 @@ function EmbeddedChat({ bookId, actionBar, className }: ChatProps) {
     <div className={`flex h-full flex-col overflow-hidden ${className ?? ''}`}>
       <ChatView
         className={!activeSession ? 'hidden' : 'flex-1'}
+        composeMode={composeMode}
         footerSlot={actionBar}
         headerSlot={<SessionSwitcher scopeProjectId={projectId} />}
       />

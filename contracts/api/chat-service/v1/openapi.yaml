@@ -1,0 +1,130 @@
+openapi: 3.0.3
+info:
+  title: LoreWeave Chat Service
+  version: 0.1.0-v1
+  description: >
+    chat-service v1 — sessions, messages (AG-UI SSE), tool/skill catalog.
+    Proxied by api-gateway-bff under /v1/chat.
+servers:
+  - url: /v1/chat
+security:
+  - bearerAuth: []
+paths:
+  /sessions/{session_id}:
+    get:
+      summary: Get session
+      parameters:
+        - name: session_id
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        '200':
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ChatSession' }
+    patch:
+      summary: Patch session (tool/skill pins, generation params, etc.)
+      parameters:
+        - name: session_id
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+      requestBody:
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/PatchSessionRequest' }
+      responses:
+        '200':
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ChatSession' }
+  /sessions/{session_id}/messages:
+    post:
+      summary: Send message (SSE stream)
+      parameters:
+        - name: session_id
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+      requestBody:
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/SendMessageRequest' }
+      responses:
+        '200':
+          description: AG-UI SSE stream
+  /tools/catalog:
+    get:
+      summary: Federated tool metadata for context rack
+      responses:
+        '200':
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ToolCatalogResponse' }
+  /skills/catalog:
+    get:
+      summary: System skill catalog
+      responses:
+        '200':
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/SkillCatalogResponse' }
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+  schemas:
+    ChatSession:
+      type: object
+      properties:
+        session_id: { type: string, format: uuid }
+        enabled_tools: { type: array, items: { type: string } }
+        enabled_skills: { type: array, items: { type: string } }
+        activated_tools: { type: array, items: { type: string } }
+    PatchSessionRequest:
+      type: object
+      properties:
+        enabled_tools:
+          type: array
+          items: { type: string }
+          maxItems: 32
+        enabled_skills:
+          type: array
+          items: { type: string }
+          maxItems: 16
+        activated_tools:
+          type: array
+          items: { type: string }
+    SendMessageRequest:
+      type: object
+      required: [content]
+      properties:
+        content: { type: string }
+        enabled_tools: { type: array, items: { type: string } }
+        enabled_skills: { type: array, items: { type: string } }
+        disable_tools: { type: boolean, default: false }
+    ToolCatalogResponse:
+      type: object
+      properties:
+        items:
+          type: array
+          items:
+            type: object
+            properties:
+              name: { type: string }
+              domain: { type: string }
+              tier: { type: string }
+              description: { type: string }
+    SkillCatalogResponse:
+      type: object
+      properties:
+        items:
+          type: array
+          items:
+            type: object
+            properties:
+              id: { type: string }
+              label: { type: string }
+              surfaces: { type: array, items: { type: string } }

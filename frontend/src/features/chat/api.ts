@@ -172,4 +172,18 @@ export const chatApi = {
   toolResultsUrl(sessionId: string) {
     return `${base()}/v1/chat/sessions/${sessionId}/tool-results`;
   },
+
+  listToolsCatalog(token: string) {
+    return apiJson<{ items: import('./types').ToolCatalogItem[] }>(
+      '/v1/chat/tools/catalog',
+      { token },
+    );
+  },
+
+  listSkillsCatalog(token: string) {
+    return apiJson<{ items: import('./types').SkillCatalogItem[] }>(
+      '/v1/chat/skills/catalog',
+      { token },
+    );
+  },
 };

@@ -236,6 +236,10 @@ class PatchSessionRequest(BaseModel):
     status: str | None = None
     generation_params: GenerationParams | None = None
     is_pinned: bool | None = None
+    # Story 04: session-scoped tool/skill pins (empty = auto-discovery mode).
+    enabled_tools: list[str] | None = Field(default=None, max_length=32)
+    enabled_skills: list[str] | None = Field(default=None, max_length=16)
+    activated_tools: list[str] | None = None  # write: clear discovered tools via []
     # K5: PATCH can set or clear project_id. Use Pydantic's model_dump
     # exclude_unset semantics — explicit `null` clears, omitted leaves alone.
     project_id: UUID | None = None
@@ -274,6 +278,9 @@ class ChatSession(BaseModel):
     # FE consumes both: the GET response sets the initial badge, the
     # SSE stream updates it on each turn.
     memory_mode: str = "no_project"
+    enabled_tools: list[str] = Field(default_factory=list)
+    enabled_skills: list[str] = Field(default_factory=list)
+    activated_tools: list[str] = Field(default_factory=list)
 
 
 class SessionListResponse(BaseModel):
@@ -292,6 +299,29 @@ class SearchResult(BaseModel):
 
 class SearchResponse(BaseModel):
     items: list[SearchResult]
+
+
+# ── Story 04: tool/skill catalog (rack browser) ─────────────────────────────
+
+class ToolCatalogItem(BaseModel):
+    name: str
+    domain: str
+    tier: str
+    description: str
+
+
+class ToolCatalogResponse(BaseModel):
+    items: list[ToolCatalogItem]
+
+
+class SkillCatalogItem(BaseModel):
+    id: str
+    label: str
+    surfaces: list[str]
+
+
+class SkillCatalogResponse(BaseModel):
+    items: list[SkillCatalogItem]
 
 
 # ── Messages ──────────────────────────────────────────────────────────────────
@@ -323,6 +353,18 @@ class AdminContext(BaseModel):
     label: str | None = None
 
 
+class StudioContext(BaseModel):
+    """Studio compose context — API-ready; validation deferred to studio phase."""
+    book_id: UUID | None = None
+    active_panel_ids: list[str] = Field(default_factory=list)
+    context_revision: int | None = None
+
+
+class ConsumerCapabilities(BaseModel):
+    """Studio consumer capabilities stub — reconciler track #09."""
+    pass
+
+
 class SendMessageRequest(BaseModel):
     content: str
     edit_from_sequence: int | None = None
@@ -333,6 +375,11 @@ class SendMessageRequest(BaseModel):
     admin_context: AdminContext | None = None  # T4c: cms admin chat → advertise System-tier admin tools (token via X-Admin-Token header)
     disable_tools: bool = False  # Editor "Compose" mode: advertise no tools this turn (prose-only; reasoning model drafts, user Applies)
     display_language: str | None = None  # S6: the user's display language → knowledge composes entity aliases in this language (omit = source-language)
+    # Story 04: per-turn ephemeral overrides (do not PATCH session).
+    enabled_tools: list[str] | None = None
+    enabled_skills: list[str] | None = None
+    studio_context: StudioContext | None = None
+    consumer_capabilities: ConsumerCapabilities | None = None
 
 
 class ToolResultRequest(BaseModel):

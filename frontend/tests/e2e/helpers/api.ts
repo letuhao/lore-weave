@@ -162,6 +162,35 @@ export async function deleteChatSession(
   await request.delete(`/v1/chat/sessions/${sessionId}`, auth(token));
 }
 
+export async function patchChatSession(
+  request: APIRequestContext,
+  token: string,
+  sessionId: string,
+  body: { enabled_tools?: string[]; enabled_skills?: string[]; activated_tools?: string[]; title?: string },
+): Promise<Record<string, unknown>> {
+  return ok(
+    request.patch(`/v1/chat/sessions/${sessionId}`, { ...auth(token), data: body }),
+  );
+}
+
+export async function getChatSession(
+  request: APIRequestContext, token: string, sessionId: string,
+): Promise<Record<string, unknown>> {
+  return ok(request.get(`/v1/chat/sessions/${sessionId}`, auth(token)));
+}
+
+export async function getToolsCatalog(
+  request: APIRequestContext, token: string,
+): Promise<{ items: Array<{ name: string }> }> {
+  return ok(request.get('/v1/chat/tools/catalog', auth(token)));
+}
+
+export async function getSkillsCatalog(
+  request: APIRequestContext, token: string,
+): Promise<{ items: Array<{ id: string }> }> {
+  return ok(request.get('/v1/chat/skills/catalog', auth(token)));
+}
+
 /** Create a chapter and save `text` as its draft body (one revision) — a content-
  * rich chapter the extractor can pull entities from. Returns the chapter id. */
 export async function seedRichChapter(

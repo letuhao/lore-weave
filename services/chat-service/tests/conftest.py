@@ -92,6 +92,14 @@ def make_session_record(
         "last_message_at": None,
         "created_at": now,
         "updated_at": now,
+        "project_id": None,
+        "composer_model_source": None,
+        "composer_model_ref": None,
+        "planner_model_source": None,
+        "planner_model_ref": None,
+        "enabled_tools": [],
+        "enabled_skills": [],
+        "activated_tools": [],
     }
     base.update(overrides)
     return FakeRecord(base)

@@ -50,6 +50,7 @@ function collectingCallbacks() {
     activities: [] as unknown[],
     memoryModes: [] as string[],
     composing: [] as boolean[],
+    agentSurfaces: [] as unknown[],
     end: undefined as ChatStreamResult | undefined,
     aborted: undefined as ChatStreamResult | undefined,
     error: undefined as string | undefined,
@@ -62,6 +63,7 @@ function collectingCallbacks() {
     onActivity: (a) => calls.activities.push(a),
     onMemoryMode: (m) => calls.memoryModes.push(m),
     onComposing: (a) => calls.composing.push(a),
+    onAgentSurface: (s) => calls.agentSurfaces.push(s),
     onError: (m) => { calls.error = m; },
     onEnd: (r) => { calls.end = r; },
     onAbort: (r) => { calls.aborted = r; },
@@ -140,6 +142,26 @@ describe('runChatStream — every AG-UI event case is preserved', () => {
     const { calls, cb } = collectingCallbacks();
     await runChatStream(ARGS, 't', cb, new AbortController().signal);
     expect(calls.memoryModes).toEqual(['degraded']);
+  });
+
+  it('6b. CUSTOM agentSurface → onAgentSurface', async () => {
+    const payload = {
+      phase: 'Curated',
+      pinned_count: 1,
+      hot_seed_count: 0,
+      activated_count: 0,
+      injected_skills: [],
+      running_tool: null,
+      last_find_tools_query: null,
+      find_tools_call_count: 0,
+    };
+    stubFetch([
+      j({ type: 'CUSTOM', name: 'agentSurface', value: payload }),
+      j({ type: 'RUN_FINISHED', result: {} }),
+    ]);
+    const { calls, cb } = collectingCallbacks();
+    await runChatStream(ARGS, 't', cb, new AbortController().signal);
+    expect(calls.agentSurfaces).toEqual([payload]);
   });
 
   it('6. CUSTOM persisted → messageId on result', async () => {

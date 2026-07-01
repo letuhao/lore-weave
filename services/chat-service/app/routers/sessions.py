@@ -50,6 +50,9 @@ def _row_to_session(r: asyncpg.Record) -> ChatSession:
         composer_model_ref=r.get("composer_model_ref"),
         planner_model_source=r.get("planner_model_source"),
         planner_model_ref=r.get("planner_model_ref"),
+        enabled_tools=list(r.get("enabled_tools") or []),
+        enabled_skills=list(r.get("enabled_skills") or []),
+        activated_tools=list(r.get("activated_tools") or []),
     )
 
 
@@ -200,6 +203,10 @@ async def patch_session(
     planner_source_value = body.planner_model_source
     planner_ref_value = str(body.planner_model_ref) if body.planner_model_ref else None
 
+    set_enabled_tools = "enabled_tools" in body.model_fields_set
+    set_enabled_skills = "enabled_skills" in body.model_fields_set
+    set_activated_tools = "activated_tools" in body.model_fields_set
+
     row = await pool.fetchrow(
         """
         UPDATE chat_sessions SET
@@ -215,6 +222,9 @@ async def patch_session(
           composer_model_ref    = CASE WHEN $12::boolean THEN $14::uuid ELSE composer_model_ref END,
           planner_model_source  = CASE WHEN $15::boolean THEN $16 ELSE planner_model_source END,
           planner_model_ref     = CASE WHEN $15::boolean THEN $17::uuid ELSE planner_model_ref END,
+          enabled_tools         = CASE WHEN $18::boolean THEN $19::text[] ELSE enabled_tools END,
+          enabled_skills        = CASE WHEN $20::boolean THEN $21::text[] ELSE enabled_skills END,
+          activated_tools       = CASE WHEN $22::boolean THEN $23::text[] ELSE activated_tools END,
           updated_at            = now()
         WHERE session_id=$1 AND owner_user_id=$2
         RETURNING *
@@ -226,6 +236,9 @@ async def patch_session(
         set_project, project_id_value,
         set_composer, composer_source_value, composer_ref_value,
         set_planner, planner_source_value, planner_ref_value,
+        set_enabled_tools, body.enabled_tools or [],
+        set_enabled_skills, body.enabled_skills or [],
+        set_activated_tools, body.activated_tools or [],
     )
     return _row_to_session(row)
 

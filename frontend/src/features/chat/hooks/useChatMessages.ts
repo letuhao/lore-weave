@@ -1,9 +1,11 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
+import type { MutableRefObject } from 'react';
 import { useAuth } from '@/auth';
 import { chatApi } from '../api';
-import type { ChatMessage } from '../types';
+import type { ChatMessage, AgentSurfaceState } from '../types';
 import { runChatStream, assembleAssistantMessage } from './runChatStream';
 import type { ChatStreamArgs, StreamPhase } from './runChatStream';
+import type { StreamPins } from './useContextRack';
 import { useChatLiveStateOptional } from '../providers/ChatLiveStateContext';
 
 type StreamStatus = 'idle' | 'streaming' | 'error';
@@ -57,6 +59,9 @@ export function useChatMessages(
    *  translation). Forwarded so knowledge-service composes entity aliases in
    *  this language for the chat context. Omitted → source-language aliases. */
   displayLanguage?: string,
+  enabledTools?: string[],
+  enabledSkills?: string[],
+  streamPinsRef?: MutableRefObject<StreamPins>,
 ) {
   const { accessToken } = useAuth();
   const [messages, setMessages] = useState<ChatMessage[]>([]);
@@ -79,6 +84,18 @@ export function useChatMessages(
   /** K-CLEAN-5 (D-K8-04): settable callback for the per-turn
    *  memory-mode SSE event from chat-service. */
   const onMemoryModeRef = useRef<OnMemoryMode | null>(null);
+  const onAgentSurfaceRef = useRef<((state: AgentSurfaceState) => void) | null>(null);
+
+  const resolveStreamPins = useCallback((): StreamPins => {
+    const fromRef = streamPinsRef?.current;
+    if (fromRef?.enabledTools?.length || fromRef?.enabledSkills?.length) {
+      return fromRef;
+    }
+    return {
+      enabledTools: enabledTools?.length ? enabledTools : undefined,
+      enabledSkills: enabledSkills?.length ? enabledSkills : undefined,
+    };
+  }, [streamPinsRef, enabledTools, enabledSkills]);
 
   // M2 (D-T5.4-CHAT-HOIST): when chat windowing is on AND the browser has
   // SharedWorker, ChatLiveStateProvider owns the turn in the worker and exposes
@@ -162,6 +179,7 @@ export function useChatMessages(
       // setState + the settable refs — every observable behavior is preserved.
       let aborted = false;
       try {
+        const pins = resolveStreamPins();
         const result = await runChatStream(
           {
             sessionId,
@@ -172,6 +190,8 @@ export function useChatMessages(
             ...(composeMode != null ? { composeMode } : {}),
             ...(bookContext ? { bookContext } : {}),
             ...(displayLanguage ? { displayLanguage } : {}),
+            ...(pins.enabledTools?.length ? { enabledTools: pins.enabledTools } : {}),
+            ...(pins.enabledSkills?.length ? { enabledSkills: pins.enabledSkills } : {}),
             ...(override ? { override } : {}),
           },
           accessToken,
@@ -197,6 +217,7 @@ export function useChatMessages(
             },
             onComposing: (active) => setIsComposing(active),
             onMemoryMode: (mode) => onMemoryModeRef.current?.(mode),
+            onAgentSurface: (payload) => onAgentSurfaceRef.current?.(payload),
             onAbort: () => { aborted = true; },
             // onToolCall / onActivity accumulate inside runChatStream and arrive
             // on the terminal result; nothing extra to mirror per-event here.
@@ -248,7 +269,7 @@ export function useChatMessages(
         setIsComposing(false);  // never leave the drafting indicator stuck on
       }
     },
-    [accessToken, sessionId, fetchMessages, editorContext, composeMode, bookContext, displayLanguage, messages.length],
+    [accessToken, sessionId, fetchMessages, editorContext, composeMode, bookContext, displayLanguage, resolveStreamPins, messages.length],
   );
 
   // ── ARCH-1 C6: resume a suspended run after a frontend-tool decision ──────────
@@ -315,6 +336,9 @@ export function useChatMessages(
       lastMemoryModeTurnRef.current = worker.turnId;
       onMemoryModeRef.current?.(worker.memoryMode);
     }
+    if (worker.agentSurface) {
+      onAgentSurfaceRef.current?.(worker.agentSurface);
+    }
 
     // Terminal handling — ONCE per turn per window, deduped on the worker's turnId.
     // Two facets, with DIFFERENT scoping:
@@ -370,17 +394,22 @@ export function useChatMessages(
 
   /** Build the per-turn ChatStreamArgs (worker path) from the hook's props. */
   const buildArgs = useCallback(
-    (content: string, editFromSequence?: number, thinking?: boolean): ChatStreamArgs => ({
-      sessionId: sessionId ?? '',
-      content,
-      ...(editFromSequence != null ? { editFromSequence } : {}),
-      ...(thinking != null ? { thinking } : {}),
-      ...(editorContext ? { editorContext } : {}),
-      ...(composeMode != null ? { composeMode } : {}),
-      ...(bookContext ? { bookContext } : {}),
-      ...(displayLanguage ? { displayLanguage } : {}),
-    }),
-    [sessionId, editorContext, composeMode, bookContext, displayLanguage],
+    (content: string, editFromSequence?: number, thinking?: boolean): ChatStreamArgs => {
+      const pins = resolveStreamPins();
+      return {
+        sessionId: sessionId ?? '',
+        content,
+        ...(editFromSequence != null ? { editFromSequence } : {}),
+        ...(thinking != null ? { thinking } : {}),
+        ...(editorContext ? { editorContext } : {}),
+        ...(composeMode != null ? { composeMode } : {}),
+        ...(bookContext ? { bookContext } : {}),
+        ...(displayLanguage ? { displayLanguage } : {}),
+        ...(pins.enabledTools?.length ? { enabledTools: pins.enabledTools } : {}),
+        ...(pins.enabledSkills?.length ? { enabledSkills: pins.enabledSkills } : {}),
+      };
+    },
+    [sessionId, editorContext, composeMode, bookContext, displayLanguage, resolveStreamPins],
   );
 
   // ── Public API ────────────────────────────────────────────────────────────────
@@ -499,5 +528,6 @@ export function useChatMessages(
     /** K-CLEAN-5 (D-K8-04): set a callback for the per-turn
      *  memory-mode SSE event from chat-service. */
     onMemoryModeRef,
+    onAgentSurfaceRef,
   };
 }
