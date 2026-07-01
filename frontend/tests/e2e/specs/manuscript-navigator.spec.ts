@@ -73,13 +73,18 @@ test.describe('Manuscript Navigator — chapters path (no Work)', () => {
     expect(seen.length).toBe(chapterIds.length);
   });
 
-  test('filter narrows to matching loaded chapters', async ({ page }) => {
+  // Server-backed search (Debt #2 cleared): the box queries book-service (title ILIKE) across
+  // the WHOLE book, not a client-filter of loaded rows. Typing swaps the tree for a result list.
+  test('search queries the server and shows a result list', async ({ page }) => {
     const studio = new StudioPage(page);
     await studio.goto(bookId);
-    await expect(page.getByTestId(`manuscript-row-${chapterIds[0]}`)).toBeVisible();
+    await expect(page.getByTestId(`manuscript-row-${chapterIds[0]}`)).toBeVisible(); // tree first
     await page.getByTestId('manuscript-filter').fill('Beta');
-    await expect(page.getByTestId(`manuscript-row-${chapterIds[1]}`)).toBeVisible(); // Beta
-    await expect(page.getByTestId(`manuscript-row-${chapterIds[0]}`)).toHaveCount(0); // Alpha hidden
-    await expect(page.getByTestId(`manuscript-row-${chapterIds[2]}`)).toHaveCount(0); // Gamma hidden
+    await expect(page.getByTestId(`manuscript-result-${chapterIds[1]}`)).toBeVisible(); // Beta hit
+    await expect(page.getByTestId(`manuscript-result-${chapterIds[0]}`)).toHaveCount(0); // Alpha not
+    await expect(page.getByTestId(`manuscript-result-${chapterIds[2]}`)).toHaveCount(0); // Gamma not
+    // clearing returns to the tree
+    await page.getByTestId('manuscript-filter').fill('');
+    await expect(page.getByTestId(`manuscript-row-${chapterIds[0]}`)).toBeVisible();
   });
 });

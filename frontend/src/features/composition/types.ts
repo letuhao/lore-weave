@@ -149,6 +149,19 @@ export type OutlineNode = {
   child_count?: number | null;
 };
 
+// #02 nav jump / #06a Quick Open — one outline search hit (title match across the whole
+// outline). `path` is the ancestor-title breadcrumb (top-first): arc → [], chapter → [arc],
+// scene → [arc, chapter]. Mirrors composition-service search_nodes.
+export type OutlineSearchHit = {
+  id: string;
+  kind: 'arc' | 'chapter' | 'scene';
+  title: string;
+  chapter_id: string | null;
+  status: string | null;
+  story_order: number | null;
+  path: string[];
+};
+
 // T1.3 Scene Graph — a non-derivable scene edge (a causal/structural dependency
 // the linear outline can't express). `setup_payoff` is the planted-payoff axis
 // (solid arrow); `custom` is a free author-defined relation (dashed). Mirrors the

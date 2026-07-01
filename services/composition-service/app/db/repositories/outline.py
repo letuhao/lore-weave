@@ -495,6 +495,48 @@ class OutlineRepo:
             rows = await c.fetch(query, *args)
         return [_row_to_node(r) for r in rows]
 
+    async def search_nodes(
+        self, user_id: UUID, project_id: UUID, q: str, *, limit: int = 30,
+    ) -> list[dict[str, Any]]:
+        """Title substring search across the outline (arc/chapter/scene), user+project
+        scoped, non-archived. The navigator jump box + Quick Open (#06a) share this — it's
+        the server leg that reaches nodes NOT yet lazy-loaded into the tree. Each hit carries
+        a breadcrumb `path` (ancestor titles, top-first) so a scene shows which chapter/arc
+        it lives in. Bounded LIMIT; the ILIKE runs on a per-project table.
+        """
+        # Escape LIKE metacharacters so the user's query is a literal substring (default
+        # backslash escape); a bare `%`/`_` would otherwise act as a wildcard.
+        like = "%" + q.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_") + "%"
+        query = """
+        SELECT n.id, n.kind, n.title, n.chapter_id, n.status, n.story_order,
+               p.title  AS parent_title,
+               gp.title AS grandparent_title
+        FROM outline_node n
+        LEFT JOIN outline_node p  ON p.id  = n.parent_id AND p.user_id  = n.user_id
+        LEFT JOIN outline_node gp ON gp.id = p.parent_id AND gp.user_id = n.user_id
+        WHERE n.user_id = $1 AND n.project_id = $2 AND NOT n.is_archived
+          AND n.kind <> 'beat' AND n.title ILIKE $3
+        ORDER BY n.kind, n.story_order NULLS LAST, n.rank COLLATE "C"
+        LIMIT $4
+        """
+        async with self._pool.acquire() as c:
+            rows = await c.fetch(query, user_id, project_id, like, limit)
+        out: list[dict[str, Any]] = []
+        for r in rows:
+            # path top-first: grandparent (arc) → parent (chapter); Nones dropped so an arc
+            # yields [], a chapter [arc], a scene [arc, chapter].
+            path = [t for t in (r["grandparent_title"], r["parent_title"]) if t]
+            out.append({
+                "id": str(r["id"]),
+                "kind": r["kind"],
+                "title": r["title"],
+                "chapter_id": str(r["chapter_id"]) if r["chapter_id"] else None,
+                "status": r["status"],
+                "story_order": r["story_order"],
+                "path": path,
+            })
+        return out
+
     async def get_node(
         self, user_id: UUID, node_id: UUID, *, conn: asyncpg.Connection | None = None,
     ) -> OutlineNode | None:

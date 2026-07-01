@@ -9,16 +9,18 @@
 // chapter numbers, a selected-row accent bar, scene status dots, a shimmer skeleton on lazy
 // load, and a footer window-position readout.
 //
-// Jump v1: a client-side filter over the LOADED rows (+ chapter number). Full server search
-// over all 10k is Debt #2 (the shared `useManuscriptJump` / GET …/manuscript/jump backend that
-// #06a Quick Open will also use — deliberately NOT a second query path).
-import { useEffect, useMemo, useRef, useState } from 'react';
+// Jump/search: the box is SERVER-BACKED (useManuscriptJump) — it queries the whole book
+// (outline search for a Work, book-service chapter search for imports), so it reaches nodes
+// NOT yet lazy-loaded into the tree (the v1 client-filter's blind spot). Typing switches the
+// body from the tree to a flat result list; clearing returns to the tree.
+import { useEffect, useMemo, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useVirtualizer } from '@tanstack/react-virtual';
 import { ChevronRight, ChevronsDownUp, Loader2, PanelLeftClose, Plus, RotateCw, Search } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useManuscriptTree } from './useManuscriptTree';
-import type { ManuscriptNode, ManuscriptRow } from './types';
+import { useManuscriptJump } from './useManuscriptJump';
+import { jumpResultToNode, type ManuscriptNode } from './types';
 
 interface Props {
   bookId: string;
@@ -36,10 +38,6 @@ interface Props {
 
 const ROW_H = 26;
 
-function matchesFilter(node: ManuscriptNode, f: string): boolean {
-  return node.title.toLowerCase().includes(f) || (node.number != null && String(node.number).includes(f));
-}
-
 /** 1→I, 4→IV, … (arcs never exceed a few dozen, but the full converter is trivial + safe). */
 function toRoman(n: number): string {
   if (n <= 0) return String(n);
@@ -55,16 +53,8 @@ function toRoman(n: number): string {
 export function ManuscriptNavigator({ bookId, token, selectedId, onSelect, onNewChapter, onCollapseSidebar }: Props) {
   const { t } = useTranslation('studio');
   const { source, rows, total, error, toggleExpand, loadMore, collapseAll, reload } = useManuscriptTree(bookId, token);
-  const [filter, setFilter] = useState('');
+  const jump = useManuscriptJump(bookId, token);
   const parentRef = useRef<HTMLDivElement>(null);
-
-  // When filtering, show only loaded node rows (drop paging/skeleton rows) so a filter never
-  // auto-pages the whole 10k book — client filter is honestly "loaded so far" (Debt #2).
-  const visible = useMemo<ManuscriptRow[]>(() => {
-    const f = filter.trim().toLowerCase();
-    if (!f) return rows;
-    return rows.filter((r) => r.type === 'node' && matchesFilter(r.node, f));
-  }, [rows, filter]);
 
   // 1-based ordinal per top-level arc → roman numeral label (ARC I / II / …). Computed over the
   // full loaded row list (not the virtual window) so it's stable as you scroll.
@@ -78,7 +68,7 @@ export function ManuscriptNavigator({ bookId, token, selectedId, onSelect, onNew
   }, [rows]);
 
   const virtualizer = useVirtualizer({
-    count: visible.length,
+    count: rows.length,
     getScrollElement: () => parentRef.current,
     estimateSize: () => ROW_H,
     overscan: 12,
@@ -86,13 +76,14 @@ export function ManuscriptNavigator({ bookId, token, selectedId, onSelect, onNew
   const vItems = virtualizer.getVirtualItems();
 
   // Infinite paging: when a `more` row is rendered, fetch its next page (guarded in the hook so
-  // it never double-fetches). Only fires when NOT filtering (filter drops `more` rows).
+  // it never double-fetches). Skipped while searching (the tree isn't the visible body then).
   useEffect(() => {
+    if (jump.active) return;
     for (const vi of vItems) {
-      const row = visible[vi.index];
+      const row = rows[vi.index];
       if (row?.type === 'more') loadMore(row.parentKey, row.parentNodeId);
     }
-  }, [vItems, visible, loadMore]);
+  }, [vItems, rows, loadMore, jump.active]);
 
   // Footer window readout (VS Code "win 100–140 / N"). 1-based, from the virtual range.
   const winStart = vItems.length ? vItems[0].index + 1 : 0;
@@ -155,14 +146,14 @@ export function ManuscriptNavigator({ bookId, token, selectedId, onSelect, onNew
         </div>
       </div>
 
-      {/* Jump / filter box */}
+      {/* Jump / search box (server-backed) */}
       <div className="flex-shrink-0 border-b p-2">
         <div className="flex h-7 items-center gap-1.5 rounded-md border bg-background px-2 text-xs text-muted-foreground">
-          <Search className="h-3 w-3" />
+          {jump.searching ? <Loader2 className="h-3 w-3 animate-spin" /> : <Search className="h-3 w-3" />}
           <input
             data-testid="manuscript-filter"
-            value={filter}
-            onChange={(e) => setFilter(e.target.value)}
+            value={jump.query}
+            onChange={(e) => jump.setQuery(e.target.value)}
             placeholder={t('manuscript.filter', { defaultValue: 'Jump to chapter / scene…' })}
             className="min-w-0 flex-1 bg-transparent text-foreground outline-none placeholder:text-muted-foreground/60"
           />
@@ -170,19 +161,51 @@ export function ManuscriptNavigator({ bookId, token, selectedId, onSelect, onNew
         </div>
       </div>
 
-      {error && <div className="px-3 py-1.5 text-[11px] text-amber-600">{error}</div>}
+      {error && !jump.active && <div className="px-3 py-1.5 text-[11px] text-amber-600">{error}</div>}
 
       <div ref={parentRef} data-testid="manuscript-scroll" className="min-h-0 flex-1 overflow-y-auto">
-        {visible.length === 0 && !error ? (
+        {jump.active ? (
+          /* ── Server search results (flat list across the WHOLE book) ─────────── */
+          jump.results.length === 0 ? (
+            <div className="p-4 text-center text-[11px] text-muted-foreground" data-testid="manuscript-results-empty">
+              {jump.searching
+                ? t('manuscript.searching', { defaultValue: 'Searching…' })
+                : t('manuscript.noMatch', { defaultValue: 'No matches.' })}
+            </div>
+          ) : (
+            <div data-testid="manuscript-results" className="py-1">
+              {jump.results.map((r) => (
+                <button
+                  key={r.id}
+                  type="button"
+                  data-testid={`manuscript-result-${r.id}`}
+                  onClick={() => onSelect?.(jumpResultToNode(r))}
+                  className={cn(
+                    'flex w-full items-center gap-2 px-3 py-1 text-left text-xs hover:bg-secondary',
+                    selectedId === r.id && 'bg-primary/10 text-primary',
+                  )}
+                >
+                  <span className={cn('h-1.5 w-1.5 flex-shrink-0 rounded-full',
+                    r.kind === 'arc' ? 'bg-accent' : r.kind === 'scene' ? 'bg-border' : 'bg-muted-foreground/60')} />
+                  <span className="flex min-w-0 flex-col">
+                    <span className="truncate">{r.title}</span>
+                    {r.path.length > 0 && (
+                      <span className="truncate text-[10px] text-muted-foreground">{r.path.join(' › ')}</span>
+                    )}
+                  </span>
+                </button>
+              ))}
+            </div>
+          )
+        ) : rows.length === 0 && !error ? (
           <div className="p-4 text-center text-[11px] text-muted-foreground">
-            {filter
-              ? t('manuscript.noMatch', { defaultValue: 'No loaded chapters match.' })
-              : t('manuscript.empty', { defaultValue: 'No chapters yet.' })}
+            {t('manuscript.empty', { defaultValue: 'No chapters yet.' })}
           </div>
         ) : (
+          /* ── Virtualized tree ───────────────────────────────────────────────── */
           <div style={{ height: virtualizer.getTotalSize(), position: 'relative' }}>
             {vItems.map((vi) => {
-              const row = visible[vi.index];
+              const row = rows[vi.index];
               const style: React.CSSProperties = {
                 position: 'absolute', top: 0, left: 0, right: 0, height: ROW_H,
                 transform: `translateY(${vi.start}px)`,
@@ -293,9 +316,9 @@ export function ManuscriptNavigator({ bookId, token, selectedId, onSelect, onNew
       {/* Footer: chapter total + virtual window position (mockup .nav-foot) */}
       <div className="flex h-6 flex-shrink-0 items-center gap-2 border-t px-3 font-mono text-[10px] text-muted-foreground">
         {total != null && <span>{t('manuscript.count', { defaultValue: '{{n}} chapters', n: total })}</span>}
-        {visible.length > 0 && (
+        {!jump.active && rows.length > 0 && (
           <span className="ml-auto text-muted-foreground/50" data-testid="manuscript-window">
-            {t('manuscript.window', { defaultValue: 'win {{a}}–{{b}} / {{n}}', a: winStart, b: winEnd, n: visible.length })}
+            {t('manuscript.window', { defaultValue: 'win {{a}}–{{b}} / {{n}}', a: winStart, b: winEnd, n: rows.length })}
           </span>
         )}
       </div>

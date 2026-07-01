@@ -4,7 +4,7 @@
 import { apiBase, apiJson } from '../../api';
 import type {
   AutoGeneration, CanonRule, ChapterGeneration, CommitDecomposePayload, CorrectionBody, CorrectionStats,
-  DecomposePreview, DeriveBody, DerivativeContextResponse, GenerationJob, Grounding, GroundingItemType, NarrativeThread, OutlineNode, PinAction, ProgressStats, PublishGate, ReferenceList, ReferenceSearch, ReferenceSource, SceneLink, SceneLinkKind, StructureTemplate, StyleProfile, StyleScope, VoiceProfile, Work, WorkResolution,
+  DecomposePreview, DeriveBody, DerivativeContextResponse, GenerationJob, Grounding, GroundingItemType, NarrativeThread, OutlineNode, OutlineSearchHit, PinAction, ProgressStats, PublishGate, ReferenceList, ReferenceSearch, ReferenceSource, SceneLink, SceneLinkKind, StructureTemplate, StyleProfile, StyleScope, VoiceProfile, Work, WorkResolution,
 } from './types';
 import type { MotifBindingsResponse } from './motif/types';
 
@@ -151,6 +151,18 @@ export const compositionApi = {
     if (opts.limit) p.set('limit', String(opts.limit));
     const qs = p.toString();
     return apiJson(`${BASE}/works/${projectId}/outline/children${qs ? `?${qs}` : ''}`, { token });
+  },
+  // #02 nav jump box / #06a Quick Open — title substring search across the WHOLE outline
+  // (arc/chapter/scene), reaching nodes not yet lazy-loaded into the tree. Each hit carries
+  // a breadcrumb `path` (ancestor titles, top-first).
+  searchOutline(
+    projectId: string,
+    token: string,
+    opts: { q: string; limit?: number },
+  ): Promise<{ items: OutlineSearchHit[] }> {
+    const p = new URLSearchParams({ q: opts.q });
+    if (opts.limit) p.set('limit', String(opts.limit));
+    return apiJson(`${BASE}/works/${projectId}/outline/search?${p.toString()}`, { token });
   },
   // D-MOTIF-FE-PLANNERVIEW-WIRING (Shape A) — the POST-commit per-scene motif binding
   // for a committed chapter: { node_id: BoundMotif | null } (null = free-form). The

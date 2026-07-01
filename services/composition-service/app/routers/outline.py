@@ -154,6 +154,28 @@ async def list_outline_children(
     }
 
 
+@router.get("/works/{project_id}/outline/search")
+async def search_outline(
+    project_id: UUID,
+    q: str = "",
+    limit: int = 30,
+    user_id: UUID = Depends(get_current_user),
+    works: WorksRepo = Depends(get_works_repo),
+    outline: OutlineRepo = Depends(get_outline_repo),
+) -> dict[str, Any]:
+    """Manuscript jump/search (#02 nav jump box + #06a Quick Open): title substring match
+    across the WHOLE outline (arc/chapter/scene), not just the lazy-loaded tree window.
+    Empty query → no items (the client shows the tree instead). Response: {items} where each
+    item is {id, kind, title, chapter_id, status, story_order, path[]}."""
+    await _require_work(works, user_id, project_id)
+    q = q.strip()
+    if not q:
+        return {"items": []}
+    limit = max(1, min(limit, 50))
+    items = await outline.search_nodes(user_id, project_id, q, limit=limit)
+    return {"items": items}
+
+
 @router.get("/works/{project_id}/chapters/{chapter_id}/publish-gate")
 async def get_publish_gate(
     project_id: UUID,

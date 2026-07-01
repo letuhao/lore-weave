@@ -1,6 +1,6 @@
 import { fireEvent, render, screen } from '@testing-library/react';
-import { describe, expect, it, vi } from 'vitest';
-import type { ManuscriptNode, ManuscriptRow } from '../types';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
+import type { JumpResult, ManuscriptNode, ManuscriptRow } from '../types';
 
 // Virtualizer needs a measured scroll element (0-sized in jsdom) — stub it to render every row.
 vi.mock('@tanstack/react-virtual', () => ({
@@ -11,11 +11,18 @@ vi.mock('@tanstack/react-virtual', () => ({
   }),
 }));
 
-// Mock the data hook — the view is tested in isolation from fetching.
+// Mock the data hooks — the view is tested in isolation from fetching.
 const hook = vi.hoisted(() => ({ value: {} as Record<string, unknown> }));
 vi.mock('../useManuscriptTree', () => ({ useManuscriptTree: () => hook.value }));
+// The jump box is server-backed via useManuscriptJump; stub it (inactive by default).
+const jump = vi.hoisted(() => ({ value: {} as Record<string, unknown> }));
+vi.mock('../useManuscriptJump', () => ({ useManuscriptJump: () => jump.value }));
 
 import { ManuscriptNavigator } from '../ManuscriptNavigator';
+
+const jumpBase = (over: Record<string, unknown> = {}) => ({
+  query: '', setQuery: vi.fn(), results: [], searching: false, active: false, ...over,
+});
 
 const n = (id: string, kind: ManuscriptNode['kind'] = 'chapter', over: Partial<ManuscriptNode> = {}): ManuscriptNode => ({
   id, kind, title: `T-${id}`, number: kind === 'chapter' ? 5 : null, status: null, chapterId: id,
@@ -33,6 +40,8 @@ const base = (over: Record<string, unknown> = {}) => ({
   toggleExpand: vi.fn(), loadMore: vi.fn(), collapseAll: vi.fn(), reload: vi.fn(), ...over,
 });
 const render_ = () => render(<ManuscriptNavigator bookId="b1" token="t" />);
+
+beforeEach(() => { jump.value = jumpBase(); });
 
 describe('ManuscriptNavigator', () => {
   it('shows a loading state while the source resolves', () => {
@@ -83,20 +92,49 @@ describe('ManuscriptNavigator', () => {
     expect(loadMore).toHaveBeenCalledWith('', null);
   });
 
-  it('filtering shows only matching LOADED rows and drops `more` (no auto-page-all)', () => {
-    const loadMore = vi.fn();
-    hook.value = base({
-      rows: [nodeRow(n('c1', 'chapter', { title: 'Dragon' })), nodeRow(n('c2', 'chapter', { title: 'Phoenix' })), moreRow()],
-      loadMore,
-    });
+  it('typing drives the shared jump hook (server-backed search, not a client filter)', () => {
+    const setQuery = vi.fn();
+    hook.value = base({ rows: [nodeRow(n('c1'))] });
+    jump.value = jumpBase({ setQuery });
     render_();
-    loadMore.mockClear();
     fireEvent.change(screen.getByTestId('manuscript-filter'), { target: { value: 'phoenix' } });
+    expect(setQuery).toHaveBeenCalledWith('phoenix');
+  });
+
+  it('an active search REPLACES the tree with the server result list; the tree is hidden', () => {
+    const results: JumpResult[] = [
+      { id: 's9', kind: 'scene', title: 'Bị phản bội', number: null, status: 'done', chapterId: 'ch3', path: ['Arc I', 'Ch 0003'] },
+    ];
+    const loadMore = vi.fn();
+    hook.value = base({ rows: [nodeRow(n('c1')), moreRow()], loadMore });
+    jump.value = jumpBase({ query: 'phản', active: true, results });
+    render_();
+    // tree rows + auto-paging suppressed while searching…
     expect(screen.queryByTestId('manuscript-row-c1')).toBeNull();
-    expect(screen.getByTestId('manuscript-row-c2')).toBeTruthy();
-    // `more` dropped while filtering → no auto-paging of the whole book
-    expect(screen.queryByTestId('manuscript-more')).toBeNull();
     expect(loadMore).not.toHaveBeenCalled();
+    // …and the server hit (a scene NOT in the loaded tree) shows with its breadcrumb.
+    const hit = screen.getByTestId('manuscript-result-s9');
+    expect(hit.textContent).toContain('Bị phản bội');
+    expect(hit.textContent).toContain('Arc I › Ch 0003');
+  });
+
+  it('selecting a search result calls onSelect with the hit as a node', () => {
+    const onSelect = vi.fn();
+    hook.value = base({ rows: [] });
+    jump.value = jumpBase({
+      query: 'x', active: true,
+      results: [{ id: 'ch7', kind: 'chapter', title: 'Huyết chiến', number: 7, status: null, chapterId: 'ch7', path: ['Arc I'] }],
+    });
+    render(<ManuscriptNavigator bookId="b1" token="t" onSelect={onSelect} />);
+    fireEvent.click(screen.getByTestId('manuscript-result-ch7'));
+    expect(onSelect).toHaveBeenCalledWith(expect.objectContaining({ id: 'ch7', kind: 'chapter' }));
+  });
+
+  it('an active search with no results shows the empty/searching state', () => {
+    hook.value = base({ rows: [nodeRow(n('c1'))] });
+    jump.value = jumpBase({ query: 'zzz', active: true, results: [], searching: false });
+    render_();
+    expect(screen.getByTestId('manuscript-results-empty').textContent).toContain('manuscript.noMatch');
   });
 
   // ── header actions ──────────────────────────────────────────────────────────

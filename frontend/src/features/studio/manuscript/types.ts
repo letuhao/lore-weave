@@ -47,3 +47,23 @@ export const emptyTree = (): TreeState => ({
   expanded: {},
   loading: {},
 });
+
+/** One server jump/search hit (shared by the nav jump box + #06a Quick Open). Unified across
+ * the two sources: outline (arc/chapter/scene, with a breadcrumb `path`) and flat chapters. */
+export interface JumpResult {
+  id: string;
+  kind: ManuscriptRowKind;
+  title: string;
+  number: number | null;    // chapter display number (book sort_order / outline story_order)
+  status: string | null;
+  chapterId: string | null;
+  path: string[];           // ancestor-title breadcrumb (outline); [] for flat chapters
+}
+
+/** A jump hit → a minimal node for the existing onSelect(node) contract (highlight / #03 dock). */
+export function jumpResultToNode(r: JumpResult): ManuscriptNode {
+  return {
+    id: r.id, kind: r.kind, title: r.title, number: r.number, status: r.status,
+    chapterId: r.chapterId, hasChildren: false, childCount: null,
+  };
+}

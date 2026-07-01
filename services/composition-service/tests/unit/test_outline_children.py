@@ -73,13 +73,19 @@ class _StubNode:
 
 
 class _FakeOutline:
-    def __init__(self, nodes: list[_StubNode]) -> None:
+    def __init__(self, nodes: list[_StubNode], search_items: list[dict] | None = None) -> None:
         self.nodes = nodes
+        self.search_items = search_items or []
         self.calls: list[dict] = []
+        self.search_calls: list[dict] = []
 
     async def list_children(self, user_id, project_id, parent_id, *, after=None, limit=100, include_archived=False):
         self.calls.append({"parent_id": parent_id, "after": after, "limit": limit})
         return self.nodes
+
+    async def search_nodes(self, user_id, project_id, q, *, limit=30):
+        self.search_calls.append({"q": q, "limit": limit})
+        return self.search_items
 
 
 class _StubWorks:
@@ -153,3 +159,35 @@ def test_parent_id_and_cursor_passed_through(client):
     call = holder["repo"].calls[0]
     assert call["parent_id"] == pid
     assert call["after"] == ("m5", nid)
+
+
+# ── outline search (jump box / #06a) ─────────────────────────────────────────
+
+def test_search_returns_items_and_passes_trimmed_query(client):
+    c, holder = client
+    hit = {"id": str(uuid4()), "kind": "scene", "title": "Bị phản bội",
+           "chapter_id": str(uuid4()), "status": "done", "story_order": 1,
+           "path": ["Arc I", "Ch 0001"]}
+    holder["repo"] = _FakeOutline([], search_items=[hit])
+    r = c.get(f"/v1/composition/works/{PROJECT}/outline/search?q=%20phản%20&limit=10")
+    assert r.status_code == 200
+    assert r.json()["items"] == [hit]
+    call = holder["repo"].search_calls[0]
+    assert call["q"] == "phản"   # trimmed
+    assert call["limit"] == 10
+
+
+def test_search_empty_query_short_circuits(client):
+    c, holder = client
+    holder["repo"] = _FakeOutline([], search_items=[{"id": "x"}])
+    r = c.get(f"/v1/composition/works/{PROJECT}/outline/search?q=%20%20")
+    assert r.status_code == 200
+    assert r.json()["items"] == []
+    assert holder["repo"].search_calls == []  # never hit the repo for an empty query
+
+
+def test_search_limit_is_clamped(client):
+    c, holder = client
+    holder["repo"] = _FakeOutline([], search_items=[])
+    c.get(f"/v1/composition/works/{PROJECT}/outline/search?q=a&limit=999")
+    assert holder["repo"].search_calls[0]["limit"] == 50  # clamped to max
