@@ -36,6 +36,7 @@ from uuid import UUID
 from app.clients.embedding_client import EmbeddingClient
 from app.clients.glossary_client import GlossaryClient
 from app.clients.llm_client import LLMClient
+from app.clients.reranker_client import get_reranker_client
 from app.config import settings
 from app.context.formatters.dedup import (
     filter_entities_not_in_summary,
@@ -119,6 +120,8 @@ async def _safe_l3_passages(
     intent: IntentResult,
     llm_client: LLMClient | None = None,
     rerank_model: str | None = None,
+    reranker_client=None,
+    cross_encoder_model: str | None = None,
 ) -> list[L3Passage]:
     """Run the L3 selector under a Neo4j session with a timeout.
 
@@ -162,6 +165,8 @@ async def _safe_l3_passages(
                     user_uuid=user_id,
                     llm_client=llm_client,
                     rerank_model=rerank_model,
+                    reranker_client=reranker_client,
+                    cross_encoder_model=cross_encoder_model,
                 ),
                 timeout=settings.context_l3_timeout_s,
             )
@@ -608,6 +613,11 @@ async def build_full_mode(
     # D-K18.3-02: opt-in generative rerank via extraction_config. Absent
     # key or empty string = skip the LLM rerank hop, MMR order stands.
     rerank_model = (project.extraction_config or {}).get("rerank_model") or None
+    # Track 4 P2: opt-in cross-encoder rerank via extraction_config. Absent/empty →
+    # skip (no reranker client resolved), MMR order stands. Preferred over the
+    # generative rerank when set. Provider-registry BYOK model_ref (no hardcode).
+    cross_encoder_model = (project.extraction_config or {}).get("cross_encoder_rerank_model") or None
+    reranker_client = get_reranker_client() if cross_encoder_model else None
     # P3 D5: glossary-entity names feed `is_abstract_query` inside the
     # summary_blend wrapper so a long query mentioning a known proper
     # noun stays specific (no abstract-blend trigger).
@@ -624,6 +634,8 @@ async def build_full_mode(
             message=message, intent=intent_obj,
             llm_client=llm_client,
             rerank_model=rerank_model,
+            reranker_client=reranker_client,
+            cross_encoder_model=cross_encoder_model,
         ),
         _safe_summary_blend(
             embedding_client,

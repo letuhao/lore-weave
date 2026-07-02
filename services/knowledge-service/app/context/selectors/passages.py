@@ -39,7 +39,7 @@ import asyncio
 import json
 import logging
 import math
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from typing import Iterable
 from uuid import UUID
 
@@ -151,6 +151,8 @@ async def select_l3_passages(
     current_chapter_index: int | None = None,
     llm_client: LLMClient | None = None,
     rerank_model: str | None = None,
+    reranker_client=None,
+    cross_encoder_model: str | None = None,
 ) -> list[L3Passage]:
     """Run K18.3 semantic retrieval.
 
@@ -264,6 +266,27 @@ async def select_l3_passages(
         )
         for score, hit in final
     ]
+
+    # 7b. Cross-encoder rerank (Track 4 P2) — a purpose-built reranker (BYOK via
+    #     provider-registry, e.g. bge-reranker-v2-m3) reorders the final cut by true
+    #     query↔passage relevance. Opt-in via extraction_config["cross_encoder_rerank_model"];
+    #     PREFERRED over the generative rerank (cheaper + purpose-built). Degrades to
+    #     the MMR order on any failure (rerank() returns None). When it succeeds we
+    #     return immediately — no need to also run the generative rerank.
+    if reranker_client is not None and cross_encoder_model and len(passages) >= 2:
+        reranked = await _cross_encoder_rerank(
+            reranker_client,
+            query=message,
+            passages=passages,
+            model_ref=cross_encoder_model,
+            user_id=user_uuid,
+            model_source=model_source,
+        )
+        if reranked is not None:
+            logger.info(
+                "K18.3/P2: cross-encoder reranked final cut (%d passages)", len(reranked)
+            )
+            return reranked
 
     # 8. Optional generative rerank (D-K18.3-02). Opt-in via
     #    project.extraction_config["rerank_model"]; skipped when the
@@ -415,6 +438,52 @@ def _mmr_rerank(
         selected.append(candidates.pop(best_idx))
 
     return selected
+
+
+# ── cross-encoder rerank (Track 4 P2) ───────────────────────────────
+
+
+async def _cross_encoder_rerank(
+    reranker_client,
+    *,
+    query: str,
+    passages: list[L3Passage],
+    model_ref: str,
+    user_id: UUID,
+    model_source: str,
+) -> list[L3Passage] | None:
+    """Reorder `passages` by a cross-encoder reranker's relevance scores.
+
+    Calls provider-registry `/internal/rerank` (BYOK `model_ref`) via the
+    reranker client, which returns ``[{"index", "relevance_score"}, …]`` sorted
+    desc (or None on ANY failure). Returns the reordered list with each passage's
+    ``score`` replaced by the cross-encoder relevance, or **None** on any degrade
+    (service down, empty/malformed result) so the caller keeps the MMR order.
+    Pure w.r.t. the input list — builds a new list via dataclasses.replace.
+    """
+    results = await reranker_client.rerank(
+        query,
+        [p.text for p in passages],
+        user_id=str(user_id),
+        model_source=model_source,
+        model_ref=model_ref,
+    )
+    if not results:  # None (failure) or [] (nothing) → degrade to MMR order
+        return None
+    reordered: list[L3Passage] = []
+    seen: set[int] = set()
+    for r in results:
+        idx = r.get("index")
+        if not isinstance(idx, int) or not (0 <= idx < len(passages)) or idx in seen:
+            return None  # malformed / out-of-range / duplicate index → degrade
+        seen.add(idx)
+        score = r.get("relevance_score")
+        p = passages[idx]
+        reordered.append(replace(p, score=float(score)) if isinstance(score, (int, float)) else p)
+    # A partial result (reranker dropped some docs) is fine — but never fabricate:
+    # if it returned FEWER than we sent, keep only what it ranked (it judged the
+    # rest irrelevant). Empty-after-filter is impossible here (results non-empty).
+    return reordered
 
 
 # ── generative rerank (D-K18.3-02) ──────────────────────────────────
