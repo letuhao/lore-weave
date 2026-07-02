@@ -42,6 +42,13 @@ class Settings(BaseSettings):
     book_service_url: str = "http://book-service:8082"
     book_steering_timeout_s: float = 2.0
 
+    # Agent Extensibility Registry (P1) — user/book prompt-only skills. chat-service
+    # reads /internal/skills and injects them alongside the built-in SYSTEM_SKILLS,
+    # honouring per-user disable + shadow. EVERY failure degrades to "constants only"
+    # (the built-in skills still work), so a registry outage never breaks a turn.
+    agent_registry_url: str = "http://agent-registry-service:8099"
+    agent_registry_timeout_s: float = 2.0
+
     # ARCH-1 C3 — default stream event format when a request sends no
     # x-loreweave-stream-format header. "legacy" (LoreWeave SSE vocabulary) or
     # "agui" (AG-UI protocol). Per-request header overrides this; the default

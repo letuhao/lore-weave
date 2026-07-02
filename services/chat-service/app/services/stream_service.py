@@ -1468,6 +1468,46 @@ async def stream_response(
             )
             steering_block = None
 
+    # ── Agent Extensibility Registry (P1, REG-P1-05) — user/book prompt-only skills ──
+    # Fetch the caller's + book's registry skills and inject them alongside the
+    # built-in SYSTEM_SKILLS: their L1 lines extend the metadata block, their bodies
+    # become a system part, and a per-user disable/shadow drops the matching built-in
+    # body. Guarded end-to-end — a registry outage degrades to the built-in skills
+    # only (the turn is never affected).
+    user_skills_block: str | None = None
+    if stream_format == "agui" and not disable_tools and kctx.tool_calling_enabled:
+        try:
+            from app.client.user_skills_client import get_user_skills_client
+
+            _us_surface = "admin" if _admin else ("editor" if _editor else ("book" if _book_scoped else "chat"))
+            _uskills = await get_user_skills_client().get_skills(
+                str(user_id), book_id=str(_ctx_book_id or ""), surface=_us_surface,
+            )
+            if _uskills.skills:
+                _u_l1 = "\n".join(f"- {s['slug']}: {s.get('description', '')}" for s in _uskills.skills)
+                if skill_meta_block:
+                    skill_meta_block = skill_meta_block + "\n" + _u_l1
+                else:
+                    skill_meta_block = "## Available skills\n" + _u_l1
+                _u_bodies = [
+                    f"## Skill: {s['slug']}\n{s['body_md']}"
+                    for s in _uskills.skills if s.get("body_md")
+                ]
+                if _u_bodies:
+                    user_skills_block = "\n\n".join(_u_bodies)
+            # Honour per-user disable + shadow of the built-in System skills.
+            if _uskills.system_disabled("glossary") or _uskills.shadows("glossary"):
+                glossary_skill = None
+            if _uskills.system_disabled("universal") or _uskills.shadows("universal"):
+                universal_skill = None
+            if _uskills.system_disabled("knowledge") or _uskills.shadows("knowledge"):
+                knowledge_skill = None
+            if _uskills.system_disabled("plan_forge") or _uskills.shadows("plan_forge"):
+                plan_forge_skill = None
+        except Exception:
+            logger.warning("user skills fetch/inject failed — built-in skills only", exc_info=True)
+            user_skills_block = None
+
     use_anthropic_cache = (
         creds.provider_kind == "anthropic"
         and kctx.stable_context.strip() != ""
@@ -1506,6 +1546,8 @@ async def stream_response(
             parts.append({"type": "text", "text": universal_skill, "cache_control": {"type": "ephemeral"}})
         if plan_forge_skill:  # RAID B2 — PlanForge flow (pinned or plan-mode)
             parts.append({"type": "text", "text": plan_forge_skill, "cache_control": {"type": "ephemeral"}})
+        if user_skills_block:  # REG-P1-05 — user/book registry skills (L2 bodies)
+            parts.append({"type": "text", "text": user_skills_block, "cache_control": {"type": "ephemeral"}})
         if plan_mode_block:  # RAID B2 — plan-mode nudge (no prose until Write)
             parts.append({"type": "text", "text": plan_mode_block, "cache_control": {"type": "ephemeral"}})
         if skill_meta_block:  # RAID C3 — L1 available-skills catalog
@@ -1535,6 +1577,8 @@ async def stream_response(
             system_parts.append(universal_skill)
         if plan_forge_skill:  # RAID B2 — PlanForge flow (pinned or plan-mode)
             system_parts.append(plan_forge_skill)
+        if user_skills_block:  # REG-P1-05 — user/book registry skills (L2 bodies)
+            system_parts.append(user_skills_block)
         if plan_mode_block:  # RAID B2 — plan-mode nudge (no prose until Write)
             system_parts.append(plan_mode_block)
         if skill_meta_block:  # RAID C3 — L1 available-skills catalog
@@ -1574,7 +1618,7 @@ async def stream_response(
                 estimate_tokens(s)
                 for s in (
                     glossary_skill, knowledge_skill, universal_skill,
-                    plan_forge_skill, skill_meta_block,
+                    plan_forge_skill, skill_meta_block, user_skills_block,
                 )
                 if s
             ),
