@@ -28,6 +28,17 @@ export function bookDraftEffect(ctx: EffectContext): void {
   ctx.reloadChapter?.(chapterId);
 }
 
+/** #12 M-D — after an agent outline write (composition_outline_node_update, _create, _delete,
+ * _restore, scene_link_*): refresh every outline consumer. The scenes[] hoist reload is
+ * scene-only (dirty-safe, R6 — no G7 guard needed); react-query invalidation covers the
+ * navigator tree + Scene Rail sources + publish-gate. */
+export function outlineEffect(ctx: EffectContext): void {
+  // Outline queries are keyed ['composition','outline',projectId] — prefix-invalidate them all.
+  ctx.queryClient.invalidateQueries({ queryKey: ['composition', 'outline'] });
+  const chapterId = chapterIdFromResult(ctx.result);
+  if (chapterId) ctx.reloadScenes?.(chapterId);
+}
+
 /** Idempotent — register the default studio effect handlers once. */
 export function registerDefaultEffectHandlers(): void {
   if (registered) return;
@@ -35,4 +46,6 @@ export function registerDefaultEffectHandlers(): void {
   // book_save_chapter_draft, book_update_chapter, composition_* prose writes (proxied draft).
   registerEffectHandler(/^book_.*(draft|chapter)/, bookDraftEffect);
   registerEffectHandler(/^composition_.*(prose|draft)/, bookDraftEffect);
+  // #12 M-D — agent outline/scene-metadata writes → Scene Rail + navigator + json-editor refresh.
+  registerEffectHandler(/^composition_(outline_node|scene_link)_/, outlineEffect);
 }

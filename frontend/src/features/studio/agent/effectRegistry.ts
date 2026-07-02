@@ -17,6 +17,9 @@ export interface EffectContext {
   /** Reload the Tier-4 unit for this chapter IF it is the active unit (else a no-op). The
    * reconciler supplies it from useManuscriptUnit; absent when no editor is mounted. */
   reloadChapter?: (chapterId: string) => void;
+  /** #12 M-D — reload ONLY the unit's scenes[] buffer for this chapter (active unit only).
+   * Dirty-safe by construction (never touches the body buffers — R6), so no G7 guard. */
+  reloadScenes?: (chapterId: string) => void;
 }
 
 export type EffectHandler = (ctx: EffectContext) => void | Promise<void>;

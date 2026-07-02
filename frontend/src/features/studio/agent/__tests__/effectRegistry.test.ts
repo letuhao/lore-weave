@@ -2,7 +2,7 @@ import { describe, expect, it, vi, beforeEach } from 'vitest';
 import {
   registerEffectHandler, matchEffectHandlers, runEffectHandlers, clearEffectHandlers, type EffectContext,
 } from '../effectRegistry';
-import { bookDraftEffect } from '../handlers/bookEffects';
+import { bookDraftEffect, outlineEffect, registerDefaultEffectHandlers } from '../handlers/bookEffects';
 import type { StudioHost } from '../../host/StudioHostProvider';
 
 beforeEach(() => clearEffectHandlers());
@@ -60,5 +60,32 @@ describe('bookDraftEffect (Lane B v1 handler)', () => {
     bookDraftEffect(c);
     expect(c.queryClient.invalidateQueries).not.toHaveBeenCalled();
     expect(c.reloadChapter).not.toHaveBeenCalled();
+  });
+});
+
+describe('outlineEffect (#12 M-D — agent scene-metadata writes)', () => {
+  it('invalidates outline queries AND reloads the active unit scenes for the node chapter', () => {
+    const reloadScenes = vi.fn();
+    const c = ctx({ tool: 'composition_outline_node_update', result: { id: 'n1', chapter_id: 'ch1' }, reloadScenes });
+    outlineEffect(c);
+    expect(c.queryClient.invalidateQueries).toHaveBeenCalledWith({ queryKey: ['composition', 'outline'] });
+    expect(reloadScenes).toHaveBeenCalledWith('ch1');
+  });
+
+  it('no chapter_id (scene_link results, arc nodes) → still invalidates, never guesses a reload', () => {
+    const reloadScenes = vi.fn();
+    const c = ctx({ tool: 'composition_scene_link_create', result: { id: 'l1' }, reloadScenes });
+    outlineEffect(c);
+    expect(c.queryClient.invalidateQueries).toHaveBeenCalledWith({ queryKey: ['composition', 'outline'] });
+    expect(reloadScenes).not.toHaveBeenCalled();
+  });
+
+  it('default registration routes composition_outline_node_update → outlineEffect (wiring proof)', async () => {
+    registerDefaultEffectHandlers();
+    const reloadScenes = vi.fn();
+    await runEffectHandlers(ctx({
+      tool: 'composition_outline_node_update', result: { chapter_id: 'ch9' }, reloadScenes,
+    }));
+    expect(reloadScenes).toHaveBeenCalledWith('ch9');
   });
 });

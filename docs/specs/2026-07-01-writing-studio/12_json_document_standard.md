@@ -78,7 +78,7 @@ chapter-editing unit ON the standard:
 | Provider #1 | `loreweave.manuscript-unit.v1` — the 04b document: `{ body (Tiptap JSON), scenes[] (outline metadata: synopsis/status/beat_role — D17: prose stays in body) }`. `open()` WRAPS the Tier-4 `ManuscriptUnitProvider` (one owner store — D13); `save()` = draft PATCH (`draft_version` = etag) + scene-metadata writes. Clears Debt #6 (04b raw editor) as a provider of the generic panel |
 | Hoist extension | `ManuscriptUnitState` gains `scenes[]` (loaded with the unit; composition outline is the source) |
 | Scene support (rich) | **Scene Rail** (see R1 below): navigator scene click → focus chapter + open/highlight the scene's row in a metadata rail beside the editor (consume the existing-but-unused bus `scene` event); synopsis/status editable in the rail |
-| MCP tools (gate item 2) | **Must be created** — composition MCP has no outline/scene write tools (audited): add `outline_update_scene` (synopsis/status/title, wraps `PATCH /outline/nodes/{node_id}`) on composition-service per MCP-first |
+| MCP tools (gate item 2) | **Already exist** (corrected at build): `composition_outline_node_update` + siblings cover scene metadata with OCC/tenancy/undo — no new BE tool this cycle |
 | Lane B | `book_*draft` handler exists; add an `outline_*`/scene handler → invalidate outline queries + reload hoist `scenes[]` |
 | LIVE gate | agent: "đổi synopsis scene 2 chương 3" → MCP → DB → navigator + Scene Rail + json-editor all reflect it realtime |
 
@@ -94,7 +94,10 @@ chapter-editing unit ON the standard:
   is a **future composition-pipeline change**, tracked, out of cycle-1 scope.
 - **(b) Scenes R/W API: EXISTS** — composition `PATCH /outline/nodes/{node_id}` (+ create /
   reorder / restore / children / search / stats). The navigator already consumes the reads.
-- **(c) Scene-metadata MCP tools: MISSING** — created in this cycle (row above).
+- **(c) Scene-metadata MCP tools: ~~MISSING~~ EXIST** — corrected at build (the audit grep missed
+  the naming): `composition_outline_node_update` (+create/delete/restore, scene_link_*) already
+  covers title/goal/synopsis/status with OCC `expected_version`, tenancy project-scoping and undo
+  hints. Cycle 1 therefore adds NO BE tool — only the Lane-B handler wiring.
 
 ### Spec-review resolutions (adversarial pass 2026-07-02)
 

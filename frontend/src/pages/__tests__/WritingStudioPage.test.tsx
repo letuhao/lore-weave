@@ -25,6 +25,10 @@ vi.mock('@/features/studio/manuscript/ManuscriptNavigator', () => ({
 vi.mock('@/features/studio/palette/QuickOpen', () => ({ QuickOpen: () => null }));
 vi.mock('@/features/studio/palette/CommandPalette', () => ({ CommandPalette: () => null }));
 
+// #12 — the hoist resolves the composition Work (react-query) for scenes[]; chrome-only test →
+// no Work, no QueryClient needed.
+vi.mock('@/features/composition/hooks/useWork', () => ({ useWorkResolution: () => ({ data: null }) }));
+
 // The dock is mocked to COUNT mounts — D4: chrome changes must never remount it (a remount
 // drops in-flight panel state); a book switch, conversely, MUST remount it (fresh per-book).
 const dockMounts = vi.hoisted(() => ({ n: 0 }));
