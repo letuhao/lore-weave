@@ -12,6 +12,40 @@ def _tool(name: str, size: int = 400) -> dict:
     return {"role": "tool", "name": name, "tool_call_id": f"c_{name}", "content": _big(size)}
 
 
+def _asst_call(call_id: str, name: str = "propose_edit", args: str = "{}") -> dict:
+    """An assistant turn that made a tool call (OpenAI/Anthropic shape)."""
+    return {
+        "role": "assistant",
+        "content": None,
+        "tool_calls": [{"id": call_id, "type": "function",
+                        "function": {"name": name, "arguments": args}}],
+    }
+
+
+def _tool_result(call_id: str, size: int = 400) -> dict:
+    """A tool result answering a specific tool_call id (resume-path shape)."""
+    return {"role": "tool", "tool_call_id": call_id, "content": _big(size)}
+
+
+def _has_orphan_tool(msgs: list[dict]) -> bool:
+    """A provider (OpenAI/Anthropic) rejects a messages array where a tool result
+    has no preceding assistant tool_call of the same id, OR an assistant tool_call
+    has no following tool result. Either is an orphan."""
+    call_ids = {tc.get("id") for m in msgs for tc in (m.get("tool_calls") or [])}
+    result_ids = {m.get("tool_call_id") for m in msgs
+                  if m.get("role") == "tool" or "tool_call_id" in m}
+    # orphan tool result (no matching call)
+    for m in msgs:
+        if (m.get("role") == "tool" or "tool_call_id" in m) and m.get("tool_call_id") not in call_ids:
+            return True
+    # orphan tool call (no matching result)
+    for m in msgs:
+        for tc in (m.get("tool_calls") or []):
+            if tc.get("id") not in result_ids:
+                return True
+    return False
+
+
 class TestNoTrigger:
     def test_under_trigger_is_unchanged(self):
         msgs = [{"role": "user", "content": "hi"}]
@@ -112,3 +146,51 @@ class TestHardTruncateAndOverflow:
         ]
         out, rep = compact_messages(msgs, effective_limit=1_000, keep_recent=1)
         assert rep.overflowed is True
+
+
+class TestToolPairSafety:
+    """The resume path (agent→GUI 2nd pass) feeds a `working` array that CONTAINS
+    assistant `tool_calls` + `role:tool` results into compaction. Structural
+    truncation (hard-truncate, and the summarize tail-slice) must never split a
+    tool-call/tool-result pair — an orphan makes the provider reject the turn 400."""
+
+    def _resume_shaped(self) -> list[dict]:
+        # system (pinned) + several tool exchanges + a trailing pending→answered pair.
+        return [
+            {"role": "system", "content": "sys"},
+            {"role": "user", "content": _big(600)},
+            _asst_call("c_1"), _tool_result("c_1", 600),
+            {"role": "assistant", "content": _big(600)},
+            {"role": "user", "content": _big(600)},
+            _asst_call("c_2"), _tool_result("c_2", 600),
+            _asst_call("c_3"), _tool_result("c_3", 600),  # most recent exchange
+        ]
+
+    def test_hard_truncate_never_orphans_a_tool_pair(self):
+        # keep_recent=1 would slice the tail to a lone tool result (orphan) pre-fix;
+        # keep_tool_results high so microcompact clears nothing → hard-truncate runs.
+        msgs = self._resume_shaped()
+        out, rep = compact_messages(
+            msgs, effective_limit=1_500, keep_recent=1, keep_tool_results=99,
+        )
+        assert rep.triggered and rep.turns_truncated > 0
+        assert "hard_truncate" in rep.steps
+        assert not _has_orphan_tool(out), f"orphaned tool pair after truncate: {[m.get('role') for m in out]}"
+
+    def test_summarize_tail_slice_never_orphans(self):
+        # summarize succeeds → work = pinned + summary + tail[-keep_recent:];
+        # that slice must also land on a safe boundary.
+        msgs = self._resume_shaped()
+        out, rep = compact_messages(
+            msgs, effective_limit=1_500, keep_recent=1, keep_tool_results=99,
+            summarize=lambda _m: "the story so far",
+        )
+        assert rep.triggered
+        assert not _has_orphan_tool(out), f"orphaned after summarize slice: {[m.get('role') for m in out]}"
+
+    def test_microcompact_preserves_pairing(self):
+        # microcompact only blanks tool CONTENT (keeps the message + tool_call_id),
+        # so pairing is intact even when it clears old results.
+        msgs = self._resume_shaped()
+        out, rep = compact_messages(msgs, effective_limit=2_000, keep_tool_results=1)
+        assert not _has_orphan_tool(out)

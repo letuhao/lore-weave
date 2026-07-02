@@ -11,15 +11,27 @@ Deterministic tiers (no LLM in the base):
      ``keep_tool_results``, never evict an excluded tool e.g. web_search), replacing
      each with a short placeholder. Cheapest; tool results are the biggest/stalest
      bucket (07R §2).
-  2. **full-compact (optional)** — an injected ``summarize`` callback (the LLM path,
-     wired by stream_service / A5). Its FAILURE falls through to (3) — never draft on
-     a poisoned summary (edge #2).
+  2. **full-compact (optional)** — an injected ``summarize`` callback (the LLM path).
+     Its FAILURE falls through to (3) — never draft on a poisoned summary (edge #2).
   3. **hard-truncate** — if still over, drop the oldest non-pinned conversation turns,
-     keeping the system/steering/anchor/pinned messages + the last ``keep_recent``
-     turns verbatim. Deterministic, no model call.
+     keeping the system/steering/anchor/pinned messages + the most recent
+     ``keep_recent`` turns. Deterministic, no model call.
 
 If even the non-evictable messages exceed the budget (edge #4) the result carries
 ``overflowed=True`` so the caller can surface it / trip a breaker (autonomous runs).
+
+**What actually fires today (be honest — RAID A4 wiring):**
+  * The cross-turn send path loads history as ``{role, content}`` only (tool_calls /
+    tool_call_id are NOT rehydrated), so tiers 1 has nothing to evict there and the
+    effective behaviour is tier 3 (truncate oldest turns) — safe, no pairs to split.
+  * The **resume** path (agent→GUI 2nd pass) feeds the live ``working`` array, which
+    DOES contain assistant ``tool_calls`` + ``role:tool`` results. Tier 1 fires there,
+    and tier 3 must never split a call/result pair (a provider 400). That is why
+    truncation operates on whole *tool-exchange atoms* (``_atoms`` / ``_recent_tail``),
+    not raw message slices — dropping/keeping a whole exchange can't orphan.
+  * ``stream_service`` currently calls this with ``summarize=None`` — so on genuine
+    overflow we DROP the oldest turns rather than compress them. Wiring a real
+    summarizer (compress instead of drop) is a tracked follow-up.
 """
 from __future__ import annotations
 
@@ -90,14 +102,46 @@ def _microcompact(messages: list[dict], keep: int, exclude: frozenset[str]) -> i
     return len(to_clear)
 
 
+def _atoms(convo: list[dict]) -> list[list[dict]]:
+    """Group a non-pinned conversation into indivisible *atoms*: a tool-result
+    message binds to the atom it answers (the nearest preceding message), so an
+    assistant `tool_calls` turn and its `role:tool` results are never split. Any
+    structural truncation keeps/drops whole atoms — that is what keeps the array
+    provider-valid (an orphan tool result / tool call is a 400)."""
+    atoms: list[list[dict]] = []
+    for m in convo:
+        if (m.get("role") == "tool" or "tool_call_id" in m) and atoms:
+            atoms[-1].append(m)  # attach the result to the exchange that made the call
+        else:
+            atoms.append([m])
+    return atoms
+
+
+def _recent_tail(convo: list[dict], keep_recent: int) -> list[dict]:
+    """The most-recent messages, but never breaking a tool exchange: accumulate
+    whole atoms from the end until at least `keep_recent` messages are kept. This
+    preserves recency (incl. the just-answered pair on the resume path) AND keeps
+    tool-call/result pairs intact."""
+    if keep_recent <= 0:
+        return []
+    tail: list[dict] = []
+    count = 0
+    for atom in reversed(_atoms(convo)):
+        tail = atom + tail
+        count += len(atom)
+        if count >= keep_recent:
+            break
+    return tail
+
+
 def _hard_truncate(messages: list[dict], keep_recent: int) -> tuple[list[dict], int]:
-    """Keep every pinned message (in order) + the last `keep_recent` non-pinned
-    messages; drop the middle. Returns (messages, dropped_count)."""
+    """Keep every pinned message (in order) + the most-recent non-pinned messages
+    (whole tool exchanges only); drop the middle. Returns (messages, dropped_count)."""
     pinned = [m for m in messages if _is_pinned(m)]
     convo = [m for m in messages if not _is_pinned(m)]
     if len(convo) <= keep_recent:
         return messages, 0
-    kept_tail = convo[-keep_recent:] if keep_recent > 0 else []
+    kept_tail = _recent_tail(convo, keep_recent)
     dropped = len(convo) - len(kept_tail)
     # Preserve original ordering: pinned messages first (they lead the prompt), then
     # the recent tail. Pinned are system/anchor which by construction precede convo.
@@ -147,7 +191,7 @@ def compact_messages(
             summary = summarize(work)
             if summary and summary.strip():
                 pinned = [m for m in work if _is_pinned(m)]
-                tail = [m for m in work if not _is_pinned(m)][-keep_recent:]
+                tail = _recent_tail([m for m in work if not _is_pinned(m)], keep_recent)
                 summary_msg = {"role": "system", "content": f"<summary>\n{summary.strip()}\n</summary>"}
                 work = pinned + [summary_msg] + tail
                 report.summarized = True
