@@ -65,12 +65,22 @@
 > with the fresh token; refresh-fail → idle. No more infinite dead-token reconnect loop in idle studio tabs. +3 tests.
 > LM Studio wedge stays an external-tool recipe (memory); a chat-service first-token timeout guard belongs to RAID
 > Wave-A's LLM seam if wanted. FE suite 3092/3092.
-> **NEXT (this track): spec [`12_json_document_standard.md`](../specs/2026-07-01-writing-studio/12_json_document_standard.md)
-> — JSON Document Standard (4th registry + generic json-editor panel, CM6+schema, model–view DocumentHandle) + the
-> per-tool CYCLE model (waves retired: one cycle = ONE tool, 6-point gate incl. live agent→MCP→DB→panel-realtime).
-> Cycle 1 = CHAPTER EDITOR: `loreweave.manuscript-unit.v1` provider (absorbs Debt #6/04b) + scene support (hoist
-> gains scenes[]; navigator scene click → scroll/highlight — the scene layer is dead UI today). Blocking CLARIFY
-> audits: scene→body anchoring (does composition stitch emit markers?), scenes R/W API, scene-metadata MCP tools.
+> **▶ #12 CYCLE 1 (chapter editor) — BUILT + partial live proof; gate retest needs a QUIET WINDOW · 2026-07-02.**
+> Shipped: M-A JSON substrate (registry #4, DocumentHandle, CM6 json-editor panel) `849e5fa1e` · M-B manuscript-unit
+> provider + hoist scenes[] + `GET /works/{pid}/chapters/{cid}/scenes` `c4e0dbf27` · M-C **Scene Rail** (navigator
+> scene click finally does something) `b268ade0e` · M-D Lane-B outline handler `c60ad95b8` (the MCP tool
+> `composition_outline_node_update` already existed — audit corrected) · **`story_search` universal manuscript
+> search** `3b3ac9263` (AS1–AS4 research-locked in spec 12: ONE simple tool over `run_hybrid_search`; NO temp-file
+> workspace — the DB indexes ARE the engine, GitHub-Blackbird evidence; ZERO required location args via ambient
+> ToolContext; knowledge suites 216/216; image rebuilt). **Browser-verified:** Scene Rail renders real scenes;
+> json-editor shows the full envelope; two live-caught bugs fixed (resolveWork ENVELOPE `{status,work}` — a bare
+> `.project_id` read returns undefined; EditorPanel missing `host` ref).
+> **M-E LIVE GATE deferred `D-C1-GATE-QUIET-WINDOW`** (gate #4 — genuinely external): the RAID agent was deploying
+> C2 per-tool approval + Plan mode onto the SAME compose surface mid-test (its approval card appeared for
+> `composition_outline_node_update` with perfect args; approve→resume died mid-deploy; mode buttons changed between
+> probes). Retest after the RAID chat wave stabilizes, per **AS4: natural-language prompts only** — and the gate now
+> legitimately INCLUDES the C2 Approve step for Tier-A writes. Follow-up (CTX, RAID-coordinated): composition MCP
+> tools still REQUIRE `project_id` args — extend the knowledge-style ambient default to them.
 > **⚠️ Parallel-run lesson (live hit):** Track-4 commit `ab0523df6` swept this track's STAGED F1/F3 files into its
 > own commit (shared working tree) — protocol now: `git add … && git commit -- <explicit paths>` in ONE invocation.
 

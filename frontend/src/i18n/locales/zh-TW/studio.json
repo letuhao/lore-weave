@@ -15,7 +15,7 @@
     "notifications": { "title": "通知", "desc": "工作完成與提醒" },
     "settings": { "title": "設定", "desc": "帳戶、供應商與翻譯" },
     "trash": { "title": "垃圾桶", "desc": "還原已刪除的書籍、章節等" },
-    "jsonEditor": { "title": "JSON", "desc": "資源的原始 JSON 檢視" }
+    "json-editor": { "title": "JSON", "desc": "資源的原始 JSON 檢視" }
   },
   "sceneRail": {
     "title": "場景",

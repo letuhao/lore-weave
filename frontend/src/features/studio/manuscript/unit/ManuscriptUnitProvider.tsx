@@ -80,8 +80,15 @@ export function ManuscriptUnitProvider({ bookId, children }: { bookId: string; c
   stateRef.current = state;
 
   // #12 — the book's composition Work (scenes[] source). No Work → scenes stay [].
+  // resolveWork returns an ENVELOPE {status, work, candidates} — same extraction as
+  // useManuscriptTree (the live gate caught a bare `.project_id` read returning undefined).
   const work = useWorkResolution(bookId, accessToken);
-  const projectId = work.data?.project_id ?? null;
+  const projectId = useMemo(() => {
+    const d = work.data;
+    if (d?.status === 'found') return d.work?.project_id ?? null;
+    if (d?.status === 'candidates') return d.candidates[0]?.project_id ?? null;
+    return null;
+  }, [work.data]);
   const projectIdRef = useRef<string | null>(projectId);
   projectIdRef.current = projectId;
 

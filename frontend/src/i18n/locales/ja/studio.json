@@ -15,7 +15,7 @@
     "notifications": { "title": "通知", "desc": "ジョブ完了とアラート" },
     "settings": { "title": "設定", "desc": "アカウント・プロバイダー・翻訳" },
     "trash": { "title": "ゴミ箱", "desc": "削除した本・章などを復元" },
-    "jsonEditor": { "title": "JSON", "desc": "リソースの生 JSON ビュー" }
+    "json-editor": { "title": "JSON", "desc": "リソースの生 JSON ビュー" }
   },
   "sceneRail": {
     "title": "シーン",

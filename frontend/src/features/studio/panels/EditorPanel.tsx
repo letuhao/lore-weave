@@ -15,7 +15,8 @@ import type { StudioToolRegistration } from '../host/types';
 
 export function EditorPanel(props: IDockviewPanelProps) {
   const { t } = useTranslation('studio');
-  const { bookId } = useStudioHost();
+  const host = useStudioHost();
+  const { bookId } = host;
   const unit = useManuscriptUnit();
   const localRef = useRef<TiptapEditorHandle | null>(null);
   const editorRef = unit?.editorRef ?? localRef;
@@ -98,7 +99,7 @@ export function EditorPanel(props: IDockviewPanelProps) {
           type="button"
           data-testid="studio-editor-open-json"
           onClick={() => host.openPanel('json-editor', {
-            title: t('panels.jsonEditor.title', { defaultValue: 'JSON' }),
+            title: t('panels.json-editor.title', { defaultValue: 'JSON' }),
             params: { docType: 'loreweave.manuscript-unit.v1', resourceId: chapterId },
           })}
           className="rounded px-1.5 py-0.5 hover:bg-secondary hover:text-foreground"

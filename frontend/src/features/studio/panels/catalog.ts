@@ -38,7 +38,7 @@ export const STUDIO_PANELS: StudioPanelDef[] = [
   { id: 'trash', component: TrashPanel, titleKey: 'panels.trash.title', descKey: 'panels.trash.desc' },
   // #12 R3/R4 — singleton, retargets via params {docType, resourceId}; opened by "Open as JSON"
   // affordances only (hidden from palette ⇒ outside the agent enum, no contract change this cycle).
-  { id: 'json-editor', component: JsonEditorPanel, titleKey: 'panels.jsonEditor.title', descKey: 'panels.jsonEditor.desc', hiddenFromPalette: true },
+  { id: 'json-editor', component: JsonEditorPanel, titleKey: 'panels.json-editor.title', descKey: 'panels.json-editor.desc', hiddenFromPalette: true },
   { id: 'welcome', component: WelcomePanel, titleKey: 'welcome.tab', descKey: 'welcome.tab', hiddenFromPalette: true },
 ];
 

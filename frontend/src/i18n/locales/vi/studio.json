@@ -15,7 +15,7 @@
     "notifications": { "title": "Thông báo", "desc": "Job hoàn tất & cảnh báo" },
     "settings": { "title": "Cài đặt", "desc": "Tài khoản, nhà cung cấp & dịch thuật" },
     "trash": { "title": "Thùng rác", "desc": "Khôi phục sách, chương đã xoá & hơn nữa" },
-    "jsonEditor": { "title": "JSON", "desc": "Xem JSON thô của một resource" }
+    "json-editor": { "title": "JSON", "desc": "Xem JSON thô của một resource" }
   },
   "sceneRail": {
     "title": "Cảnh",
