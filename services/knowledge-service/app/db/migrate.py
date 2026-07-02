@@ -1328,8 +1328,9 @@ CREATE INDEX IF NOT EXISTS idx_event_text_translations_user
 
 -- ═══════════════════════════════════════════════════════════════
 -- entity_access_log (Track 4 P0 — salience substrate)
--- Records how often / how recently each KG entity is SURFACED into a
--- user's context block, so retrieval salience can be LEARNED (R-T4-01)
+-- Records how often / how recently each GLOSSARY entity is SURFACED into a
+-- user's context block (L2-fact / L3-passage entities are not tracked here —
+-- glossary entities are the unit of "importance"), so salience can be LEARNED (R-T4-01)
 -- instead of guessed by static tier. Tenancy: scoped per (user, project) —
 -- NEVER a shared/global signal (a UNIQUE(entity_id) without the scope key
 -- would be the tenancy bug the project guards against). Purged with the

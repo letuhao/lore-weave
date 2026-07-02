@@ -47,6 +47,11 @@ from app.middleware.internal_auth import require_internal_token
 
 logger = logging.getLogger(__name__)
 
+# Track 4 P0 — strong refs to in-flight fire-and-forget telemetry tasks. asyncio
+# only keeps WEAK references to tasks, so a bare create_task() can be GC'd before it
+# runs (sporadic salience-write loss under load). Hold the ref until the task is done.
+_bg_tasks: set = set()
+
 # Re-exported for back-compat with existing test dependency_overrides
 # that reference `app.routers.context.get_*_repo`. The canonical home
 # is `app.deps`.
@@ -158,11 +163,13 @@ async def build(
     # salience telemetry write is off the request latency path and can never fail
     # the build. Only when a project is scoped and something was surfaced.
     if req.project_id is not None and built.surfaced_entity_ids:
-        asyncio.create_task(
+        _task = asyncio.create_task(
             entity_access_repo.record_accesses(
                 req.user_id, req.project_id, built.surfaced_entity_ids
             )
         )
+        _bg_tasks.add(_task)
+        _task.add_done_callback(_bg_tasks.discard)
 
     resp = ContextBuildResponse.model_validate(built)
     # Interview-roleplay (M4): attach the session's working_memory block (charter
