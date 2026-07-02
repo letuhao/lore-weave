@@ -108,9 +108,10 @@ in-flight work.
 - Contract regen hotspot is cleared by W1-7 (this wave regens first, during the Track-4 window).
 - No RAID item depends on Wave 1 and vice-versa; remaining textual-merge risk is i18n keys only.
 
-## Later waves (inventory backlog — not this spec)
+## Later waves — SUPERSEDED by the per-tool cycle model
 
-Strong candidates from the writing loop, to be specced per-wave: GlossaryTab,
-KnowledgeOntologyTab, WikiTab/WikiEditorPage, TranslationTab/ChapterTranslationsPage/
-TranslationReviewPage, ChapterComparePage, EnrichmentTab, ReaderPage, KnowledgePage,
-RawSearchPage. Stay pages: auth, Browse/Home/PublicBookDetail, Profile, ReadingHistory.
+~~Wave-batching the writing-loop tabs~~ — replaced 2026-07-02 by
+[`12_json_document_standard.md`](12_json_document_standard.md): **one cycle = one tool**, each
+with the 6-point gate (incl. the mandatory live agent→MCP→DB→panel-realtime pass). The candidate
+inventory (Glossary, Wiki, Knowledge/Ontology, Translation, Reader/Compare, …) lives there as the
+cycle queue. Stay pages: auth, Browse/Home/PublicBookDetail, Profile, ReadingHistory.

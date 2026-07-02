@@ -46,6 +46,12 @@
 > with the fresh token; refresh-fail → idle. No more infinite dead-token reconnect loop in idle studio tabs. +3 tests.
 > LM Studio wedge stays an external-tool recipe (memory); a chat-service first-token timeout guard belongs to RAID
 > Wave-A's LLM seam if wanted. FE suite 3092/3092.
+> **NEXT (this track): spec [`12_json_document_standard.md`](../specs/2026-07-01-writing-studio/12_json_document_standard.md)
+> — JSON Document Standard (4th registry + generic json-editor panel, CM6+schema, model–view DocumentHandle) + the
+> per-tool CYCLE model (waves retired: one cycle = ONE tool, 6-point gate incl. live agent→MCP→DB→panel-realtime).
+> Cycle 1 = CHAPTER EDITOR: `loreweave.manuscript-unit.v1` provider (absorbs Debt #6/04b) + scene support (hoist
+> gains scenes[]; navigator scene click → scroll/highlight — the scene layer is dead UI today). Blocking CLARIFY
+> audits: scene→body anchoring (does composition stitch emit markers?), scenes R/W API, scene-metadata MCP tools.
 > **⚠️ Parallel-run lesson (live hit):** Track-4 commit `ab0523df6` swept this track's STAGED F1/F3 files into its
 > own commit (shared working tree) — protocol now: `git add … && git commit -- <explicit paths>` in ONE invocation.
 

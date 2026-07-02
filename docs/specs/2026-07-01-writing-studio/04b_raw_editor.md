@@ -1,7 +1,10 @@
 # 04b · Raw Editor
 
 > Component of [Writing Studio (v2)](00_OVERVIEW.md) · parent [`04_manuscript_editor.md`](04_manuscript_editor.md).
-> Status: 📐 specced 2026-07-01 (design only).
+> Status: 📐 specced 2026-07-01 (design only). **2026-07-02: build path GENERALIZED — ships as the
+> `loreweave.manuscript-unit.v1` provider of the generic json-editor panel, per
+> [`12_json_document_standard.md`](12_json_document_standard.md) (cycle 1). The document shape,
+> UX rules (format/validate/⌘S) and D13–D17 in this file remain the authoritative design.**
 > Draft: [`design-drafts/screens/studio/screen-studio-raw-editor.html`](../../../design-drafts/screens/studio/screen-studio-raw-editor.html).
 
 ## What it is
