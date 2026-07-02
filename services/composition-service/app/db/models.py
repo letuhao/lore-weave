@@ -535,6 +535,14 @@ class AuthoringRun(BaseModel):
     status: AuthoringRunStatus = "draft"
     current_unit: int = 0
     error_message: str | None = None
+    # D4 durable driver: which driver process owns the run + its per-unit
+    # heartbeat (stale heartbeat on a 'running' run = no live driver → the
+    # periodic sweep re-claims and resumes from current_unit). `background` is
+    # the FE-facing fg/bg flag (v1: display/filter only — sweep durability
+    # applies to BOTH fg and bg runs).
+    driver_id: str | None = None
+    driver_heartbeat_at: datetime | None = None
+    background: bool = False
     created_at: datetime | None = None
     updated_at: datetime | None = None
 

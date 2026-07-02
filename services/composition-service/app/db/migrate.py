@@ -1003,7 +1003,20 @@ CREATE TABLE IF NOT EXISTS authoring_runs (
   current_unit    INT NOT NULL DEFAULT 0,
   error_message   TEXT,
   created_at      TIMESTAMPTZ NOT NULL DEFAULT now(),
-  updated_at      TIMESTAMPTZ NOT NULL DEFAULT now()
+  updated_at      TIMESTAMPTZ NOT NULL DEFAULT now(),
+  -- ── D4 durable-driver columns (RAID Wave D4). `driver_id` = the process id of
+  -- the driver task currently driving this run; `driver_heartbeat_at` is bumped
+  -- once per unit (the per-unit guarded claim). A `running` run whose heartbeat
+  -- is older than authoring_heartbeat_stale_secs has NO live driver (service
+  -- restarted / task died) and is re-claimable by the periodic sweep — the
+  -- stale threshold MUST exceed the worst-case single-unit wall-clock
+  -- (authoring_job_poll_timeout_secs) or the sweep would steal a run mid-unit.
+  -- `background` is the fg/bg toggle SURFACED to the FE (v1: purely a display/
+  -- filter flag — sweep-resume durability applies to BOTH fg and bg runs; the
+  -- real fg/bg UX is FE-side later).
+  driver_id           TEXT,
+  driver_heartbeat_at TIMESTAMPTZ,
+  background          BOOLEAN NOT NULL DEFAULT false
 );
 -- Scope fence (edge #11): ONE active run per book — across users too (two runs
 -- over the same chapters conflict regardless of who started them). The gate's
@@ -1012,6 +1025,15 @@ CREATE UNIQUE INDEX IF NOT EXISTS uq_authoring_runs_active_book
   ON authoring_runs(book_id) WHERE status IN ('gated','running','paused');
 CREATE INDEX IF NOT EXISTS idx_authoring_runs_owner_book
   ON authoring_runs(owner_user_id, book_id, created_at DESC);
+-- D4 additive columns for DBs that created authoring_runs before D4 (the
+-- CREATE TABLE above is IF NOT EXISTS — it does not evolve an existing table).
+ALTER TABLE authoring_runs ADD COLUMN IF NOT EXISTS driver_id TEXT;
+ALTER TABLE authoring_runs ADD COLUMN IF NOT EXISTS driver_heartbeat_at TIMESTAMPTZ;
+ALTER TABLE authoring_runs ADD COLUMN IF NOT EXISTS background BOOLEAN NOT NULL DEFAULT false;
+-- Sweep scan: 'running' runs ordered by heartbeat age (partial — the fleet of
+-- non-running runs never pollutes it).
+CREATE INDEX IF NOT EXISTS idx_authoring_runs_running_heartbeat
+  ON authoring_runs(driver_heartbeat_at) WHERE status = 'running';
 
 -- ── authoring_run_units (RAID Wave D3, DR-D end-gate): the per-unit ledger the
 -- driver writes as it drafts — one row per ATTEMPTED scope unit (un-attempted

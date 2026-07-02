@@ -56,6 +56,10 @@ class AuthoringRunCreate(BaseModel):
     # Drafting-seam inputs: {model_source, model_ref (user-model UUID), guide?}.
     # Models resolve via provider-registry from the ref — never a literal.
     params: dict[str, Any] = Field(default_factory=dict)
+    # D4 fg/bg toggle — v1 semantics: a pure display/filter flag surfaced in
+    # GET/list (the FE's fg/bg UX comes later). Durable sweep-resume applies to
+    # BOTH foreground and background runs.
+    background: bool = False
 
 
 def _serialize(run: Any) -> dict[str, Any]:
@@ -73,6 +77,7 @@ def _serialize(run: Any) -> dict[str, Any]:
         "status": run.status,
         "current_unit": run.current_unit,
         "error_message": run.error_message,
+        "background": run.background,  # D4 fg/bg flag (FE filter)
         "created_at": run.created_at.isoformat() if run.created_at else None,
         "updated_at": run.updated_at.isoformat() if run.updated_at else None,
     }
@@ -95,6 +100,7 @@ async def create_authoring_run(
             budget_usd=body.budget_usd,
             tool_allowlist=body.tool_allowlist,
             params=body.params,
+            background=body.background,
         )
     except LookupError:
         raise HTTPException(status_code=404, detail="plan run not found")

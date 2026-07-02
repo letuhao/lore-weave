@@ -28,7 +28,8 @@ from app.db.models import (
 _SELECT = """
   run_id, owner_user_id, book_id, plan_run_id, level, scope, budget_usd,
   spent_usd, tool_allowlist, params, breaker_state, status, current_unit,
-  error_message, created_at, updated_at
+  error_message, driver_id, driver_heartbeat_at, background,
+  created_at, updated_at
 """
 
 _UNIT_SELECT = """
@@ -61,12 +62,13 @@ class AuthoringRunsRepo:
         budget_usd: Decimal,
         tool_allowlist: list[str],
         params: dict[str, Any] | None = None,
+        background: bool = False,
     ) -> AuthoringRun:
         query = f"""
         INSERT INTO authoring_runs
           (owner_user_id, book_id, plan_run_id, level, scope, budget_usd,
-           tool_allowlist, params)
-        VALUES ($1, $2, $3, $4, $5::jsonb, $6, $7::jsonb, $8::jsonb)
+           tool_allowlist, params, background)
+        VALUES ($1, $2, $3, $4, $5::jsonb, $6, $7::jsonb, $8::jsonb, $9)
         RETURNING {_SELECT}
         """
         async with self._pool.acquire() as c:
@@ -80,6 +82,7 @@ class AuthoringRunsRepo:
                 budget_usd,
                 json.dumps(tool_allowlist),
                 json.dumps(params or {}),
+                background,
             )
         return _row(row)
 
@@ -126,11 +129,15 @@ class AuthoringRunsRepo:
         to_status: AuthoringRunStatus,
         breaker_state: dict[str, Any] | None = None,
         error_message: str | None = None,
+        claim_driver_id: str | None = None,
     ) -> AuthoringRun | None:
         """Guarded FSM transition. Returns the updated run, or None when the
         row is missing / not owned / not in a `from` status (lost race — the
         caller decides whether that is a 404 or a 409). May raise
-        asyncpg.UniqueViolationError on →gated (active-book scope fence)."""
+        asyncpg.UniqueViolationError on →gated (active-book scope fence).
+        `claim_driver_id` (D4): a →running transition additionally CLAIMS the
+        run for that driver (driver_id + fresh heartbeat) in the SAME guarded
+        UPDATE — no window where a run is running but unclaimed."""
         sets = ["status = $3", "updated_at = now()"]
         args: list[Any] = [run_id, owner_user_id, to_status]
         if breaker_state is not None:
@@ -139,6 +146,10 @@ class AuthoringRunsRepo:
         if error_message is not None:
             args.append(error_message)
             sets.append(f"error_message = ${len(args)}")
+        if claim_driver_id is not None:
+            args.append(claim_driver_id)
+            sets.append(f"driver_id = ${len(args)}")
+            sets.append("driver_heartbeat_at = now()")
         args.append(list(from_statuses))
         query = f"""
         UPDATE authoring_runs SET {", ".join(sets)}
@@ -171,6 +182,57 @@ class AuthoringRunsRepo:
                 query, run_id, owner_user_id, add_spent_usd, current_unit,
             )
         return _row(row) if row else None
+
+    # ── D4 durable driver — guarded claims + sweep ─────────────────────────
+
+    async def heartbeat_claim(
+        self, owner_user_id: UUID, run_id: UUID, driver_id: str,
+    ) -> AuthoringRun | None:
+        """Per-unit guarded claim (D4): ONE guarded UPDATE that both re-checks
+        the run is still `running` AND owned by THIS driver, and bumps the
+        heartbeat (the bump doubles as the claim). Returns the fresh row, or
+        None → the driver must STOP (paused/failed/closed externally, or the
+        sweep re-claimed the run for another driver after a stale heartbeat)."""
+        query = f"""
+        UPDATE authoring_runs
+        SET driver_heartbeat_at = now(), updated_at = now()
+        WHERE run_id = $1 AND owner_user_id = $2
+          AND status = 'running' AND driver_id = $3
+        RETURNING {_SELECT}
+        """
+        async with self._pool.acquire() as c:
+            row = await c.fetchrow(query, run_id, owner_user_id, driver_id)
+        return _row(row) if row else None
+
+    async def claim_stale_running(
+        self, *, driver_id: str, stale_secs: int, limit: int,
+    ) -> list[AuthoringRun]:
+        """Sweep claim (D4, campaign claim_active_campaigns pattern): atomically
+        claim up to `limit` `running` runs with NO live driver — heartbeat NULL
+        or older than `stale_secs` (which must exceed the worst-case single-unit
+        wall-clock, or a slow unit's run would be stolen mid-unit). Deliberately
+        UNSCOPED by owner: the sweep is a system-level durability backstop — each
+        resumed drive still runs AS the row's owner_user_id (tenancy preserved).
+        FOR UPDATE SKIP LOCKED gives disjoint claims across concurrent sweepers;
+        a run whose driver died in THIS process is also re-claimable (same
+        driver_id, stale heartbeat) — the in-process task registry dedupes."""
+        query = f"""
+        UPDATE authoring_runs
+        SET driver_id = $1, driver_heartbeat_at = now(), updated_at = now()
+        WHERE run_id IN (
+            SELECT run_id FROM authoring_runs
+            WHERE status = 'running'
+              AND (driver_heartbeat_at IS NULL
+                   OR driver_heartbeat_at < now() - make_interval(secs => $2::int))
+            ORDER BY created_at ASC
+            FOR UPDATE SKIP LOCKED
+            LIMIT $3::int
+        )
+        RETURNING {_SELECT}
+        """
+        async with self._pool.acquire() as c:
+            rows = await c.fetch(query, driver_id, stale_secs, limit)
+        return [_row(r) for r in rows]
 
 
 def _unit_row(row: asyncpg.Record) -> AuthoringRunUnit:
@@ -226,11 +288,17 @@ class AuthoringRunUnitsRepo:
         *,
         post_revision_id: UUID | None,
         cost_usd: Decimal,
+        run_statuses: tuple[AuthoringRunStatus, ...] | None = None,
     ) -> AuthoringRunUnit | None:
+        """`run_statuses` (D4 late-result guard): the driver passes
+        ('running','paused') so a seam result landing AFTER the run was closed/
+        failed cannot mint a drafted row — the caller then marks the unit failed
+        ('run closed mid-flight') instead."""
         return await self.transition_unit(
             owner_user_id, run_id, unit_index,
             from_statuses=("pending",), to_status="drafted",
             post_revision_id=post_revision_id, cost_usd=cost_usd,
+            run_statuses=run_statuses,
         )
 
     async def mark_failed(
@@ -258,9 +326,12 @@ class AuthoringRunUnitsRepo:
         post_revision_id: UUID | None = None,
         cost_usd: Decimal | None = None,
         error_message: str | None = None,
+        run_statuses: tuple[AuthoringRunStatus, ...] | None = None,
     ) -> AuthoringRunUnit | None:
         """Guarded unit transition (OCC, mirrors the run FSM). Returns None when
-        the unit is missing / foreign / not in a `from` status (lost race)."""
+        the unit is missing / foreign / not in a `from` status (lost race).
+        `run_statuses` (D4) additionally guards on the PARENT run's status in
+        the same statement — the late-result-after-close fence."""
         sets = ["status = $4", "updated_at = now()"]
         args: list[Any] = [run_id, owner_user_id, unit_index, to_status]
         if post_revision_id is not None:
@@ -272,12 +343,16 @@ class AuthoringRunUnitsRepo:
         if error_message is not None:
             args.append(error_message)
             sets.append(f"error_message = ${len(args)}")
+        run_guard = ""
+        if run_statuses is not None:
+            args.append(list(run_statuses))
+            run_guard = f" AND r.status = ANY(${len(args)})"
         args.append(list(from_statuses))
         query = f"""
         UPDATE authoring_run_units u SET {", ".join(sets)}
         FROM authoring_runs r
         WHERE u.run_id = $1 AND r.run_id = u.run_id AND r.owner_user_id = $2
-          AND u.unit_index = $3 AND u.status = ANY(${len(args)})
+          AND u.unit_index = $3 AND u.status = ANY(${len(args)}){run_guard}
         RETURNING {_UNIT_SELECT}
         """
         async with self._pool.acquire() as c:

@@ -61,10 +61,13 @@ async def get_plan_forge_service() -> PlanForgeService:
 
 
 async def get_authoring_run_service() -> "AuthoringRunService":
-    """RAID Wave D2+D3 — the autonomous authoring-run FSM + start-gate + v1
-    sequential driver (wired to the REAL in-process engine drafting seam) plus
-    the D3 per-unit ledger + Run Report + accept/reject/Revert-All (real
-    book-service revision capture). Tests inject a fake seam + fake capture."""
+    """RAID Wave D2+D3+D4 — the autonomous authoring-run FSM + start-gate +
+    DURABLE sequential driver (wired to the REAL in-process engine drafting
+    seam) plus the D3 per-unit ledger + Run Report + accept/reject/Revert-All
+    (real book-service revision capture). D4 defaults: notify=None → the real
+    NotificationClient (lazy), driver_id=None → the process identity; the
+    per-request instances share the module-level driver-task registry, so the
+    inflight cap and sweep see one another. Tests inject fakes."""
     from app.services.authoring_run_service import (
         AuthoringRunService,
         BookRevisionCapture,

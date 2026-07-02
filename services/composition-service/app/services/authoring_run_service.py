@@ -19,6 +19,31 @@ Driver (v1, in-process asyncio task — the plan_forge worker-off spirit):
   estimate constant); unit failure → breaker reason='unit_failed' + failed.
   All units done → report_ready (D3 builds the Run Report over it).
 
+D4 durable background execution (campaign-service saga-driver pattern):
+  * Restart durability — the run row carries driver_id + driver_heartbeat_at
+    (bumped once per unit). A service restart kills the in-process task and
+    leaves the run 'running' with a stale heartbeat; the startup + periodic
+    SWEEP (`sweep_stale_runs`, campaign claim_active_campaigns spirit) does a
+    guarded claim (UPDATE … WHERE status='running' AND heartbeat stale
+    RETURNING, setting driver_id + heartbeat) and resumes from current_unit —
+    the ledger's upsert_pending resets the cursor unit's row on re-run.
+  * Per-unit guarded claim — each loop iteration re-claims via ONE guarded
+    UPDATE (status='running' AND driver_id=mine; the heartbeat bump doubles as
+    the claim), so an external pause/close or a sweep steal stops the driver
+    BEFORE the next seam call.
+  * Late-result fence — the post-seam drafted write is guarded on the run
+    still being running-or-paused; a run closed/failed mid-flight swallows the
+    late result (the unit lands failed: 'run closed mid-flight', never drafted
+    — a Revert-All must not race a fresh drafted row).
+  * Completion notification — on terminal transition (report_ready | failed) a
+    best-effort notification goes out via notification-service HTTP ingest
+    (operation="autonomous_authoring"); notify failure NEVER affects the run.
+  * DRIVER_MAX_INFLIGHT — at most authoring_driver_max_inflight concurrent
+    driver tasks per process; start/resume beyond the cap leaves the run
+    running-unclaimed for the sweep to pick up once a slot frees.
+  * fg/bg toggle — `background` is accepted at create and surfaced in GET/list
+    (v1: a pure FE display/filter flag; sweep durability applies to BOTH).
+
 D3 end-gate (Run Report + review, DR-D / 07S §10 edge #3 + #12):
   the driver additionally writes a per-unit LEDGER row (authoring_run_units):
   BEFORE the seam it pins the chapter's pre-run revision baseline
@@ -42,7 +67,7 @@ import logging
 from dataclasses import dataclass
 from decimal import Decimal
 from typing import Any, Awaitable, Callable, Protocol
-from uuid import UUID
+from uuid import UUID, uuid4
 
 import asyncpg
 
@@ -59,8 +84,35 @@ logger = logging.getLogger(__name__)
 _APPROVED_PLAN_STATUSES = ("validated", "compiled")
 
 # Keep strong references to in-flight driver tasks (create_task alone is
-# GC-collectable) + let tests/ops introspect. Keyed by run_id.
+# GC-collectable) + let tests/ops introspect. Keyed by run_id. Module-level on
+# purpose: services are constructed per-request (deps.py) but the driver-task
+# registry and the process identity below must span them.
 _DRIVER_TASKS: dict[UUID, asyncio.Task] = {}
+
+# D4: this PROCESS's driver identity (campaign SagaDriver's uuid4().hex —
+# unique per process). The per-unit heartbeat claim checks driver_id = mine, so
+# after a restart the new process cannot be confused with the dead one's claim;
+# a stale-heartbeat run is then re-claimable by the sweep.
+_PROCESS_DRIVER_ID: str = uuid4().hex
+
+# D4 late-result fence: the post-seam drafted write is valid only while the run
+# is still stopped-at-worst-paused; a closed/failed run swallows the result.
+_LATE_RESULT_RUN_STATUSES = ("running", "paused")
+
+
+class Notifier(Protocol):
+    """Best-effort completion notifier (notification-service HTTP ingest).
+    Implementations SHOULD swallow their own failures; the service wraps every
+    call defensively regardless — notify must never affect a run."""
+
+    async def notify(
+        self,
+        user_id: UUID,
+        *,
+        title: str,
+        metadata: dict[str, Any] | None = None,
+        category: str = "system",
+    ) -> Any: ...
 
 # Run statuses whose per-unit outcomes may be REVIEWED (accept/reject/revert-all)
 # — the run is stopped at a unit boundary, so the ledger is stable. Edge #12:
@@ -302,12 +354,21 @@ class AuthoringRunService:
         seam: DraftingSeam,
         units: AuthoringRunUnitsRepo,
         revisions: RevisionCapture,
+        *,
+        notify: Notifier | None = None,
+        driver_id: str | None = None,
     ) -> None:
         self._runs = runs
         self._plan_runs = plan_runs
         self._seam = seam
         self._units = units
         self._revisions = revisions
+        # D4: terminal-notification producer (None → the real NotificationClient,
+        # lazily — keeps unit tests httpx-free) + this driver's identity (tests
+        # override to simulate a second process; defaults to the process id so
+        # per-request service instances share one identity).
+        self._notify_impl = notify
+        self._driver_id = driver_id or _PROCESS_DRIVER_ID
 
     # ── lifecycle ──────────────────────────────────────────────────────────
 
@@ -322,10 +383,14 @@ class AuthoringRunService:
         budget_usd: Decimal,
         tool_allowlist: list[str],
         params: dict[str, Any] | None = None,
+        background: bool = False,
     ) -> AuthoringRun:
         """Create the run in `draft`. Deliberately permissive — ALL semantic
         validation happens at gate() (the start-gate is the enforcement point);
-        only the referenced plan_run must exist+be owned (FK + tenancy)."""
+        only the referenced plan_run must exist+be owned (FK + tenancy).
+        `background` (D4): a pure FE display/filter flag surfaced in GET/list —
+        sweep-resume durability applies to BOTH fg and bg runs; the real fg/bg
+        UX is FE-side later."""
         plan = await self._plan_runs.get_for_owner(owner_user_id, book_id, plan_run_id)
         if plan is None:
             raise LookupError("plan run not found")
@@ -333,7 +398,7 @@ class AuthoringRunService:
             owner_user_id, book_id,
             plan_run_id=plan_run_id, level=level, scope=scope,
             budget_usd=budget_usd, tool_allowlist=tool_allowlist,
-            params=params or {},
+            params=params or {}, background=background,
         )
 
     async def gate(
@@ -401,8 +466,11 @@ class AuthoringRunService:
 
     async def start(self, owner_user_id: UUID, run_id: UUID) -> AuthoringRun:
         run = await self._require(owner_user_id, run_id)
+        # D4: the →running transition CLAIMS the run for this driver (driver_id
+        # + heartbeat) in the same guarded UPDATE — no running-but-unclaimed gap.
         started = await self._runs.transition(
             owner_user_id, run_id, from_statuses=("gated",), to_status="running",
+            claim_driver_id=self._driver_id,
         )
         if started is None:
             raise TransitionConflictError(f"start requires status=gated, run is {run.status}")
@@ -422,6 +490,7 @@ class AuthoringRunService:
         run = await self._require(owner_user_id, run_id)
         resumed = await self._runs.transition(
             owner_user_id, run_id, from_statuses=("paused",), to_status="running",
+            claim_driver_id=self._driver_id,
         )
         if resumed is None:
             raise TransitionConflictError(f"resume requires status=paused, run is {run.status}")
@@ -621,14 +690,55 @@ class AuthoringRunService:
             "closed": closed is not None,
         }
 
-    # ── driver (v1 minimal sequential — D4 upgrades to the durable saga) ───
+    # ── driver (D4 durable: sweep-resumable, per-unit guarded claim) ────────
 
-    def _spawn_driver(self, owner_user_id: UUID, run_id: UUID) -> None:
+    @staticmethod
+    def _live_driver_count() -> int:
+        return sum(1 for t in _DRIVER_TASKS.values() if not t.done())
+
+    def _spawn_driver(self, owner_user_id: UUID, run_id: UUID) -> bool:
+        """Spawn the per-run driver task, respecting DRIVER_MAX_INFLIGHT.
+        Returns False when the cap is hit — the run stays `running` unclaimed
+        (its heartbeat goes stale) and the periodic sweep resumes it once a
+        slot frees; durability, not loss."""
         if run_id in _DRIVER_TASKS and not _DRIVER_TASKS[run_id].done():
-            return  # already driving (resume raced a live task)
+            return True  # already driving (resume raced a live task)
+        if self._live_driver_count() >= settings.authoring_driver_max_inflight:
+            logger.info(
+                "authoring driver for run %s deferred: %d/%d driver slots busy "
+                "(sweep resumes it when a slot frees)",
+                run_id, self._live_driver_count(),
+                settings.authoring_driver_max_inflight,
+            )
+            return False
         task = asyncio.create_task(self._drive_safe(owner_user_id, run_id))
         _DRIVER_TASKS[run_id] = task
         task.add_done_callback(lambda _t: _DRIVER_TASKS.pop(run_id, None))
+        return True
+
+    async def sweep_stale_runs(self) -> list[AuthoringRun]:
+        """D4 restart-durability sweep (campaign claim_active_campaigns spirit;
+        run at startup + every authoring_sweep_secs). Guarded-claims up to the
+        free driver-slot count of `running` runs whose heartbeat is stale (no
+        live driver anywhere — a restart killed the task, or a start was
+        deferred at the inflight cap) and resumes each from current_unit. Both
+        foreground AND background runs are swept (durability applies to both;
+        `background` is a display flag). Returns the claimed runs."""
+        capacity = settings.authoring_driver_max_inflight - self._live_driver_count()
+        if capacity <= 0:
+            return []
+        claimed = await self._runs.claim_stale_running(
+            driver_id=self._driver_id,
+            stale_secs=settings.authoring_heartbeat_stale_secs,
+            limit=capacity,
+        )
+        for run in claimed:
+            logger.info(
+                "authoring sweep: re-claimed stale run %s (unit %d/%d) — resuming",
+                run.run_id, run.current_unit, len(run.scope),
+            )
+            self._spawn_driver(run.owner_user_id, run.run_id)
+        return claimed
 
     async def _drive_safe(self, owner_user_id: UUID, run_id: UUID) -> None:
         try:
@@ -637,26 +747,34 @@ class AuthoringRunService:
             raise
         except Exception:  # noqa: BLE001 — a driver crash must land as failed, not vanish
             logger.exception("authoring driver crashed for run %s", run_id)
-            await self._runs.transition(
+            failed = await self._runs.transition(
                 owner_user_id, run_id,
                 from_statuses=("running",), to_status="failed",
                 breaker_state={"reason": "driver_crashed"},
                 error_message="driver crashed — see service logs",
             )
+            if failed is not None:
+                await self._notify_terminal(failed)
 
     async def run_driver(self, owner_user_id: UUID, run_id: UUID) -> None:
-        """Sequential per-unit loop. Re-reads the row each unit so an external
-        pause/fail/close is honored at the next unit boundary."""
+        """Sequential per-unit loop. Each iteration re-CLAIMS the row (D4:
+        guarded heartbeat bump — status='running' AND driver_id=mine) so an
+        external pause/fail/close, or a sweep steal after a stale heartbeat,
+        stops the driver at the unit boundary BEFORE the next seam call."""
         while True:
-            run = await self._runs.get_for_owner(owner_user_id, run_id)
-            if run is None or run.status != "running":
-                return  # paused/failed/closed externally — stop silently
+            run = await self._runs.heartbeat_claim(
+                owner_user_id, run_id, self._driver_id,
+            )
+            if run is None:
+                return  # paused/failed/closed externally, or claimed away — stop
             scope = run.scope
             if run.current_unit >= len(scope):
-                await self._runs.transition(
+                ready = await self._runs.transition(
                     owner_user_id, run_id,
                     from_statuses=("running",), to_status="report_ready",
                 )
+                if ready is not None:  # terminal for the driver → notify (D4)
+                    await self._notify_terminal(ready)
                 return
             if run.spent_usd >= run.budget_usd:
                 await self._runs.transition(
@@ -721,14 +839,34 @@ class AuthoringRunService:
                     "post-revision capture failed for run %s unit %d",
                     run_id, run.current_unit, exc_info=True,
                 )
-            await self._units.mark_drafted(
+            # D4 late-result fence: the drafted write is guarded on the run
+            # still being running-or-paused. A run closed/failed mid-flight
+            # (e.g. pause→close→Revert-All raced the seam) must SWALLOW the
+            # late result — mark the unit failed, never drafted (a fresh
+            # drafted row after Revert-All would be unreverted content).
+            drafted = await self._units.mark_drafted(
                 owner_user_id, run_id, run.current_unit,
                 post_revision_id=post_rev, cost_usd=cost,
+                run_statuses=_LATE_RESULT_RUN_STATUSES,
             )
+            # Spend is REAL either way (the seam did run) — record it before
+            # anything else so accounting never loses a late unit's cost
+            # (record_unit_progress is deliberately status-agnostic).
             await self._runs.record_unit_progress(
                 owner_user_id, run_id,
                 add_spent_usd=cost, current_unit=run.current_unit + 1,
             )
+            if drafted is None:
+                await self._units.mark_failed(
+                    owner_user_id, run_id, run.current_unit,
+                    error="run closed mid-flight",
+                )
+                logger.warning(
+                    "authoring run %s unit %d: late seam result after close/fail "
+                    "— unit marked failed, draft not accounted",
+                    run_id, run.current_unit,
+                )
+                return
 
     async def _fail_unit(
         self,
@@ -740,7 +878,7 @@ class AuthoringRunService:
     ) -> None:
         """Fail-stop: mark the ledger row failed + trip the run breaker."""
         await self._units.mark_failed(owner_user_id, run_id, unit_index, error=error)
-        await self._runs.transition(
+        failed = await self._runs.transition(
             owner_user_id, run_id,
             from_statuses=("running",), to_status="failed",
             breaker_state={
@@ -751,3 +889,51 @@ class AuthoringRunService:
             },
             error_message=error,
         )
+        if failed is not None:  # terminal transition won → notify (D4)
+            await self._notify_terminal(failed)
+
+    # ── D4 completion notification (best-effort, never affects the run) ─────
+
+    async def _notify_terminal(self, run: AuthoringRun) -> None:
+        """Best-effort notification on a terminal transition the driver WON
+        (report_ready | failed) — notification-service HTTP ingest, mirroring
+        translation-service's chapter_worker producer. Every failure (including
+        a broken injected notifier) is swallowed: notify must never affect the
+        run's outcome."""
+        try:
+            units = await self._units.list_for_run(run.run_id)
+            units_drafted = sum(
+                1 for u in units if u.status in ("drafted", "accepted")
+            )
+            if run.status == "report_ready":
+                title = (
+                    f"Autonomous authoring run complete — "
+                    f"{units_drafted} chapter(s) drafted"
+                )
+            else:
+                title = (
+                    f"Autonomous authoring run failed — "
+                    f"{units_drafted} chapter(s) drafted before the stop"
+                )
+            notify = self._notify_impl
+            if notify is None:  # lazy real client (keeps unit tests httpx-free)
+                from app.clients.notification_client import NotificationClient
+
+                notify = NotificationClient()
+            await notify.notify(
+                run.owner_user_id,
+                title=title,
+                metadata={
+                    "operation": "autonomous_authoring",
+                    "run_id": str(run.run_id),
+                    "book_id": str(run.book_id),
+                    "status": run.status,
+                    "units_drafted": units_drafted,
+                    "spent_usd": str(run.spent_usd),
+                },
+            )
+        except Exception:  # noqa: BLE001 — best-effort by contract
+            logger.warning(
+                "authoring run %s terminal notification failed (ignored)",
+                run.run_id, exc_info=True,
+            )

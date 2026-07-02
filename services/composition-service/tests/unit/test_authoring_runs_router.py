@@ -88,6 +88,7 @@ class StubService:
         }
 
     async def create(self, owner_user_id, book_id, **kwargs):
+        self.create_kwargs = kwargs
         if kwargs.get("plan_run_id") != PLAN:
             raise LookupError("plan run not found")
         return self.runs[RUN]
@@ -192,6 +193,30 @@ def test_create_201(client):
     assert r.status_code == 201
     assert r.json()["status"] == "draft"
     assert r.json()["run_id"] == str(RUN)
+
+
+def test_create_background_flag_passthrough_and_surfaced(client, stub):
+    """D4 fg/bg toggle: `background` is accepted at create (passed through to
+    the service) and surfaced in the serialized run for the FE to filter."""
+    r = client.post(
+        "/v1/composition/authoring-runs",
+        json=_create_body(background=True), headers=AUTH,
+    )
+    assert r.status_code == 201
+    assert stub.create_kwargs["background"] is True
+    assert "background" in r.json()  # surfaced (stub run defaults to False)
+    # default omitted → False
+    client.post("/v1/composition/authoring-runs", json=_create_body(), headers=AUTH)
+    assert stub.create_kwargs["background"] is False
+
+
+def test_list_surfaces_background_flag(client, stub):
+    stub.runs[RUN] = _run(background=True)
+    r = client.get(
+        f"/v1/composition/authoring-runs?book_id={BOOK}", headers=AUTH,
+    )
+    assert r.status_code == 200
+    assert r.json()["items"][0]["background"] is True
 
 
 def test_create_unknown_plan_404(client):

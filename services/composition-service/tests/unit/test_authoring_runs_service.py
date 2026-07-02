@@ -10,7 +10,10 @@ FAKE revision capture (the book-service revisions-list seam).
 
 from __future__ import annotations
 
+import asyncio
+import contextlib
 import uuid
+from datetime import datetime, timedelta, timezone
 from decimal import Decimal
 from typing import Any
 
@@ -39,12 +42,13 @@ class FakeRunsRepo:
         self.rows: dict[uuid.UUID, AuthoringRun] = {}
 
     async def create(self, owner_user_id, book_id, *, plan_run_id, level, scope,
-                     budget_usd, tool_allowlist, params=None) -> AuthoringRun:
+                     budget_usd, tool_allowlist, params=None,
+                     background=False) -> AuthoringRun:
         run = AuthoringRun(
             run_id=uuid.uuid4(), owner_user_id=owner_user_id, book_id=book_id,
             plan_run_id=plan_run_id, level=level, scope=[str(c) for c in scope],
             budget_usd=Decimal(str(budget_usd)), tool_allowlist=tool_allowlist,
-            params=params or {},
+            params=params or {}, background=background,
         )
         self.rows[run.run_id] = run
         return run
@@ -63,7 +67,8 @@ class FakeRunsRepo:
         ][:limit]
 
     async def transition(self, owner_user_id, run_id, *, from_statuses, to_status,
-                         breaker_state=None, error_message=None) -> AuthoringRun | None:
+                         breaker_state=None, error_message=None,
+                         claim_driver_id=None) -> AuthoringRun | None:
         r = await self.get_for_owner(owner_user_id, run_id)
         if r is None or r.status not in from_statuses:
             return None
@@ -77,9 +82,42 @@ class FakeRunsRepo:
             update["breaker_state"] = breaker_state
         if error_message is not None:
             update["error_message"] = error_message
+        if claim_driver_id is not None:  # D4: →running claims in the same UPDATE
+            update["driver_id"] = claim_driver_id
+            update["driver_heartbeat_at"] = datetime.now(timezone.utc)
         updated = r.model_copy(update=update)
         self.rows[run_id] = updated
         return updated
+
+    # ── D4 durable driver (mirrors the repo's guarded claims exactly) ────
+
+    async def heartbeat_claim(self, owner_user_id, run_id, driver_id) -> AuthoringRun | None:
+        r = await self.get_for_owner(owner_user_id, run_id)
+        if r is None or r.status != "running" or r.driver_id != driver_id:
+            return None
+        updated = r.model_copy(update={
+            "driver_heartbeat_at": datetime.now(timezone.utc),
+        })
+        self.rows[run_id] = updated
+        return updated
+
+    async def claim_stale_running(self, *, driver_id, stale_secs, limit) -> list[AuthoringRun]:
+        cutoff = datetime.now(timezone.utc) - timedelta(seconds=stale_secs)
+        claimed: list[AuthoringRun] = []
+        for rid, r in sorted(self.rows.items(), key=lambda kv: kv[0].hex):
+            if len(claimed) >= limit:
+                break
+            if r.status != "running":
+                continue
+            if r.driver_heartbeat_at is not None and r.driver_heartbeat_at >= cutoff:
+                continue  # fresh heartbeat — a live driver owns it
+            updated = r.model_copy(update={
+                "driver_id": driver_id,
+                "driver_heartbeat_at": datetime.now(timezone.utc),
+            })
+            self.rows[rid] = updated
+            claimed.append(updated)
+        return claimed
 
     async def record_unit_progress(self, owner_user_id, run_id, *, add_spent_usd,
                                    current_unit) -> AuthoringRun | None:
@@ -146,10 +184,11 @@ class FakeUnitsRepo:
         return unit
 
     async def mark_drafted(self, owner, run_id, unit_index, *, post_revision_id,
-                           cost_usd) -> AuthoringRunUnit | None:
+                           cost_usd, run_statuses=None) -> AuthoringRunUnit | None:
         return await self.transition_unit(
             owner, run_id, unit_index, from_statuses=("pending",),
             to_status="drafted", post_revision_id=post_revision_id, cost_usd=cost_usd,
+            run_statuses=run_statuses,
         )
 
     async def mark_failed(self, owner, run_id, unit_index, *, error) -> AuthoringRunUnit | None:
@@ -160,9 +199,14 @@ class FakeUnitsRepo:
 
     async def transition_unit(self, owner, run_id, unit_index, *, from_statuses,
                               to_status, post_revision_id=None, cost_usd=None,
-                              error_message=None) -> AuthoringRunUnit | None:
+                              error_message=None,
+                              run_statuses=None) -> AuthoringRunUnit | None:
         if not self._owned(owner, run_id):
             return None
+        if run_statuses is not None:  # D4 late-result fence (parent-run guard)
+            parent = self._runs.rows.get(run_id)
+            if parent is None or parent.status not in run_statuses:
+                return None
         u = self.rows.get((run_id, unit_index))
         if u is None or u.status not in from_statuses:
             return None
@@ -218,13 +262,53 @@ class FakeRevisionCapture:
         return rid
 
 
-def make_svc(seam=None, plan_status="validated", revisions=None):
+class NotifyRecorder:
+    """Stands in for the notification-service ingest client (D4). Records the
+    calls; `raise_on_call=True` models an ingest outage — the run must be
+    unaffected (best-effort contract)."""
+
+    def __init__(self, *, raise_on_call: bool = False) -> None:
+        self.calls: list[dict[str, Any]] = []
+        self.raise_on_call = raise_on_call
+
+    async def notify(self, user_id, *, title, metadata=None, category="system"):
+        self.calls.append(dict(
+            user_id=user_id, title=title, metadata=metadata, category=category,
+        ))
+        if self.raise_on_call:
+            raise RuntimeError("notification-service down")
+
+
+@pytest.fixture(autouse=True)
+async def _drain_driver_tasks():
+    """D4: driver tasks + the process driver-id live module-level (they span
+    per-request service instances) — drain them between tests so a leaked task
+    can't bleed into another test's inflight count."""
+    yield
+    from app.services import authoring_run_service as mod
+
+    tasks = list(mod._DRIVER_TASKS.values())
+    for t in tasks:
+        if not t.done():
+            t.cancel()
+    for t in tasks:
+        with contextlib.suppress(BaseException):
+            await t
+    mod._DRIVER_TASKS.clear()
+
+
+def make_svc(seam=None, plan_status="validated", revisions=None, notify=None,
+             driver_id=None):
     runs = FakeRunsRepo()
     plans = FakePlanRuns()
     plans.add(OWNER, BOOK, PLAN, plan_status)
     units = FakeUnitsRepo(runs)
     svc = AuthoringRunService(
         runs, plans, seam or FakeSeam(), units, revisions or FakeRevisionCapture(),
+        # Always inject a recorder (never the real httpx client) — terminal
+        # transitions notify, and unit tests must stay network-free.
+        notify=notify or NotifyRecorder(),
+        driver_id=driver_id,
     )
     return svc, runs, plans
 
@@ -393,7 +477,12 @@ async def test_repo_guarded_transition_wrong_from_noops():
 async def _running_run(svc, runs, **kw):
     run = await make_run(svc, **kw)
     await svc.gate(OWNER, run.run_id, book_chapter_ids=BOOK_CHAPTERS)
-    await runs.transition(OWNER, run.run_id, from_statuses=("gated",), to_status="running")
+    # →running CLAIMS for the service's driver (D4) — like svc.start, without
+    # spawning the background task (tests drive run_driver synchronously).
+    await runs.transition(
+        OWNER, run.run_id, from_statuses=("gated",), to_status="running",
+        claim_driver_id=svc._driver_id,
+    )
     return run
 
 
@@ -812,3 +901,297 @@ async def test_revert_all_foreign_owner_404():
     run = await _completed_run(svc, runs)
     with pytest.raises(LookupError):
         await svc.revert_all(uuid.uuid4(), run.run_id, restore=RestoreRecorder())
+
+
+# ── D4: durable background execution ────────────────────────────────────────
+# Restart durability (sweep + guarded claims), the late-result-after-close
+# fence, terminal notifications, DRIVER_MAX_INFLIGHT, and the fg/bg flag.
+
+
+BOOK2 = uuid.uuid4()
+PLAN2 = uuid.uuid4()
+
+
+def _age_heartbeat(runs: FakeRunsRepo, run_id, *, secs: int) -> None:
+    """Backdate the run's driver heartbeat (simulates a driver task a restart
+    killed: the row stays 'running' but nothing bumps the heartbeat)."""
+    r = runs.rows[run_id]
+    runs.rows[run_id] = r.model_copy(update={
+        "driver_heartbeat_at": datetime.now(timezone.utc) - timedelta(seconds=secs),
+    })
+
+
+async def _drain(run_id) -> None:
+    """Await the run's spawned driver task, if any."""
+    from app.services import authoring_run_service as mod
+
+    task = mod._DRIVER_TASKS.get(run_id)
+    if task is not None:
+        await task
+
+
+async def test_create_background_flag_persisted_and_default_false():
+    svc, _, _ = make_svc()
+    fg = await make_run(svc)
+    assert fg.background is False
+    bg = await svc.create(
+        OWNER, BOOK, plan_run_id=PLAN, level=3, scope=[str(CH1)],
+        budget_usd=Decimal("1"), tool_allowlist=["t"], background=True,
+    )
+    assert bg.background is True
+
+
+async def test_sweep_claims_stale_and_skips_fresh_heartbeat():
+    from app.config import settings
+
+    svc, runs, plans = make_svc()
+    plans.add(OWNER, BOOK2, PLAN2, "validated")
+    # Stale: 'running' on BOOK, heartbeat far older than the threshold (its
+    # driver died with a restart).
+    stale = await _running_run(svc, runs, scope=[CH1, CH2])
+    _age_heartbeat(runs, stale.run_id, secs=settings.authoring_heartbeat_stale_secs + 60)
+    # Fresh: 'running' on BOOK2 with a just-bumped heartbeat (live driver
+    # elsewhere — e.g. another replica).
+    fresh = await svc.create(
+        OWNER, BOOK2, plan_run_id=PLAN2, level=3, scope=[str(CH3)],
+        budget_usd=Decimal("1"), tool_allowlist=["t"],
+    )
+    await svc.gate(OWNER, fresh.run_id, book_chapter_ids={str(CH3)})
+    await runs.transition(
+        OWNER, fresh.run_id, from_statuses=("gated",), to_status="running",
+        claim_driver_id="other-replica",
+    )
+
+    claimed = await svc.sweep_stale_runs()
+    assert [r.run_id for r in claimed] == [stale.run_id]
+    await _drain(stale.run_id)
+    # the stale run resumed and completed; the fresh one was left alone
+    assert (await runs.get_for_owner(OWNER, stale.run_id)).status == "report_ready"
+    untouched = await runs.get_for_owner(OWNER, fresh.run_id)
+    assert untouched.status == "running"
+    assert untouched.driver_id == "other-replica"
+
+
+async def test_claim_race_two_claimants_one_wins():
+    svc, runs, _ = make_svc()
+    run = await _running_run(svc, runs)
+    _age_heartbeat(runs, run.run_id, secs=10_000)
+    # Two sweepers race the same stale run: the first guarded claim sets
+    # driver_id + a fresh heartbeat, so the second finds nothing stale.
+    a = await runs.claim_stale_running(driver_id="driver-A", stale_secs=3600, limit=10)
+    b = await runs.claim_stale_running(driver_id="driver-B", stale_secs=3600, limit=10)
+    assert [r.run_id for r in a] == [run.run_id]
+    assert b == []
+    assert (await runs.get_for_owner(OWNER, run.run_id)).driver_id == "driver-A"
+
+
+async def test_per_unit_claim_stops_paused_run_before_seam():
+    seam = FakeSeam()
+    svc, runs, _ = make_svc(seam=seam)
+    run = await _running_run(svc, runs)
+    await runs.transition(OWNER, run.run_id, from_statuses=("running",), to_status="paused")
+    await svc.run_driver(OWNER, run.run_id)
+    assert seam.calls == []  # the guarded per-unit claim failed BEFORE the seam
+
+
+async def test_per_unit_claim_stops_stolen_run_at_unit_boundary():
+    """A sweep steal (another driver claimed after a stale heartbeat) stops the
+    old driver at the next unit boundary — no second seam call."""
+    holder: dict[str, Any] = {}
+
+    async def steal_during_first_unit(call_no, kw):
+        if call_no == 1:
+            runs = holder["runs"]
+            _age_heartbeat(runs, holder["run_id"], secs=10_000)
+            await runs.claim_stale_running(
+                driver_id="thief-driver", stale_secs=3600, limit=10,
+            )
+
+    seam = FakeSeam(on_call=steal_during_first_unit)
+    svc, runs, _ = make_svc(seam=seam)
+    run = await _running_run(svc, runs)
+    holder.update(runs=runs, run_id=run.run_id)
+    await svc.run_driver(OWNER, run.run_id)
+    assert len(seam.calls) == 1  # unit 2 never started under the old driver
+    final = await runs.get_for_owner(OWNER, run.run_id)
+    assert final.status == "running"           # the thief now owns the run
+    assert final.driver_id == "thief-driver"
+    assert final.current_unit == 1             # unit 1's progress recorded
+
+
+async def test_late_result_after_close_lands_failed_not_drafted():
+    """The known race: the run is paused+closed (e.g. before a Revert-All)
+    while the seam is mid-flight — the late drafted result must be swallowed
+    (unit failed 'run closed mid-flight'), never a fresh drafted row."""
+    holder: dict[str, Any] = {}
+
+    async def close_mid_flight(call_no, kw):
+        await holder["runs"].transition(
+            OWNER, holder["run_id"], from_statuses=("running",), to_status="paused",
+        )
+        await holder["svc"].close(OWNER, holder["run_id"])
+
+    seam = FakeSeam(
+        on_call=close_mid_flight,
+        default=DraftOutcome(ok=True, cost_usd=Decimal("0.03")),
+    )
+    svc, runs, _ = make_svc(seam=seam)
+    run = await _running_run(svc, runs)
+    holder.update(svc=svc, runs=runs, run_id=run.run_id)
+    await svc.run_driver(OWNER, run.run_id)
+    assert len(seam.calls) == 1
+    units = await svc._units.list_for_run(run.run_id)
+    assert [u.status for u in units] == ["failed"]  # NOT drafted
+    assert units[0].error_message == "run closed mid-flight"
+    final = await runs.get_for_owner(OWNER, run.run_id)
+    assert final.status == "closed"                 # the close stands
+    assert final.spent_usd == Decimal("0.03")       # the real spend still lands
+
+
+async def test_late_result_while_paused_still_drafts():
+    """Pause (without close) mid-seam is NOT a swallow: paused is a resumable
+    stop, the drafted row is the resume point."""
+    holder: dict[str, Any] = {}
+
+    async def pause_mid_flight(call_no, kw):
+        if call_no == 1:
+            await holder["runs"].transition(
+                OWNER, holder["run_id"], from_statuses=("running",), to_status="paused",
+            )
+
+    seam = FakeSeam(on_call=pause_mid_flight)
+    svc, runs, _ = make_svc(seam=seam)
+    run = await _running_run(svc, runs)
+    holder.update(runs=runs, run_id=run.run_id)
+    await svc.run_driver(OWNER, run.run_id)
+    units = await svc._units.list_for_run(run.run_id)
+    assert [u.status for u in units] == ["drafted"]
+
+
+async def test_notification_fired_on_report_ready():
+    notify = NotifyRecorder()
+    svc, runs, _ = make_svc(notify=notify)
+    run = await _completed_run(svc, runs)
+    assert run.status == "report_ready"
+    assert len(notify.calls) == 1
+    call = notify.calls[0]
+    assert call["user_id"] == OWNER
+    assert call["category"] == "system"
+    meta = call["metadata"]
+    assert meta["operation"] == "autonomous_authoring"
+    assert meta["run_id"] == str(run.run_id)
+    assert meta["book_id"] == str(BOOK)
+    assert meta["status"] == "report_ready"
+    assert meta["units_drafted"] == 2
+    assert meta["spent_usd"] == str(run.spent_usd)
+
+
+async def test_notification_fired_on_failed():
+    notify = NotifyRecorder()
+    seam = FakeSeam(outcomes=[
+        DraftOutcome(ok=True, cost_usd=Decimal("0.01")),
+        DraftOutcome(ok=False, error="engine 502"),
+    ])
+    svc, runs, _ = make_svc(seam=seam, notify=notify)
+    run = await _completed_run(svc, runs)
+    assert run.status == "failed"
+    assert len(notify.calls) == 1
+    meta = notify.calls[0]["metadata"]
+    assert meta["status"] == "failed"
+    assert meta["units_drafted"] == 1  # unit 0 drafted before the stop
+
+
+async def test_notification_failure_swallowed_run_unaffected():
+    notify = NotifyRecorder(raise_on_call=True)
+    svc, runs, _ = make_svc(notify=notify)
+    run = await _completed_run(svc, runs)   # must not raise
+    assert run.status == "report_ready"     # terminal state stands
+    assert len(notify.calls) == 1           # the notify WAS attempted
+
+
+async def test_notification_not_fired_on_pause():
+    notify = NotifyRecorder()
+    seam = FakeSeam(default=DraftOutcome(ok=True, cost_usd=Decimal("0.06")))
+    svc, runs, _ = make_svc(seam=seam, notify=notify)
+    run = await _running_run(svc, runs, budget="0.05")
+    await svc.run_driver(OWNER, run.run_id)
+    assert (await runs.get_for_owner(OWNER, run.run_id)).status == "paused"
+    assert notify.calls == []  # budget-pause is not a terminal
+
+
+async def test_max_inflight_start_defers_and_sweep_respects_cap(monkeypatch):
+    from app.config import settings
+    from app.services import authoring_run_service as mod
+
+    monkeypatch.setattr(settings, "authoring_driver_max_inflight", 1)
+    gate_evt = asyncio.Event()
+
+    async def block_until_released(call_no, kw):
+        await gate_evt.wait()
+
+    seam = FakeSeam(on_call=block_until_released)
+    svc, runs, plans = make_svc(seam=seam)
+    plans.add(OWNER, BOOK2, PLAN2, "validated")
+
+    # Run A occupies the single driver slot (its seam blocks).
+    run_a = await make_run(svc, scope=[CH1])
+    await svc.gate(OWNER, run_a.run_id, book_chapter_ids=BOOK_CHAPTERS)
+    await svc.start(OWNER, run_a.run_id)
+    assert run_a.run_id in mod._DRIVER_TASKS
+    await asyncio.sleep(0)  # let the driver reach the blocking seam
+
+    # Run B starts (transition succeeds) but the spawn is DEFERRED at the cap.
+    run_b = await svc.create(
+        OWNER, BOOK2, plan_run_id=PLAN2, level=3, scope=[str(CH3)],
+        budget_usd=Decimal("1"), tool_allowlist=["t"],
+    )
+    await svc.gate(OWNER, run_b.run_id, book_chapter_ids={str(CH3)})
+    started_b = await svc.start(OWNER, run_b.run_id)
+    assert started_b.status == "running"
+    assert run_b.run_id not in mod._DRIVER_TASKS  # no task — slot busy
+
+    # Sweep respects the cap: B's heartbeat is stale but there is no capacity.
+    _age_heartbeat(runs, run_b.run_id, secs=10_000)
+    assert await svc.sweep_stale_runs() == []
+
+    # A finishes → slot frees → the next sweep resumes B from its cursor.
+    gate_evt.set()
+    await _drain(run_a.run_id)
+    assert (await runs.get_for_owner(OWNER, run_a.run_id)).status == "report_ready"
+    claimed = await svc.sweep_stale_runs()
+    assert [r.run_id for r in claimed] == [run_b.run_id]
+    await _drain(run_b.run_id)
+    assert (await runs.get_for_owner(OWNER, run_b.run_id)).status == "report_ready"
+
+
+async def test_sweep_resume_from_cursor_e2e():
+    """Restart durability e2e: a run 'orphaned' mid-scope (driver task gone,
+    heartbeat stale, unit 0 already drafted) is swept, resumed from
+    current_unit, and completes — without re-drafting unit 0."""
+    from app.config import settings
+
+    seam = FakeSeam(default=DraftOutcome(ok=True, cost_usd=Decimal("0.01")))
+    svc, runs, _ = make_svc(seam=seam)
+    run = await _running_run(svc, runs, scope=[CH1, CH2, CH3])
+    # Simulate the pre-restart driver's progress: unit 0 drafted + cursor at 1,
+    # then the process died (stale heartbeat, no task).
+    await svc._units.upsert_pending(OWNER, run.run_id, 0, CH1, pre_revision_id=uuid.uuid4())
+    await svc._units.mark_drafted(
+        OWNER, run.run_id, 0, post_revision_id=uuid.uuid4(), cost_usd=Decimal("0.01"),
+    )
+    await runs.record_unit_progress(
+        OWNER, run.run_id, add_spent_usd=Decimal("0.01"), current_unit=1,
+    )
+    _age_heartbeat(runs, run.run_id, secs=settings.authoring_heartbeat_stale_secs + 60)
+
+    claimed = await svc.sweep_stale_runs()
+    assert [r.run_id for r in claimed] == [run.run_id]
+    await _drain(run.run_id)
+
+    final = await runs.get_for_owner(OWNER, run.run_id)
+    assert final.status == "report_ready"
+    assert final.current_unit == 3
+    # only the remaining units were drafted on resume — unit 0 untouched
+    assert [c["chapter_id"] for c in seam.calls] == [CH2, CH3]
+    units = await svc._units.list_for_run(run.run_id)
+    assert [u.status for u in units] == ["drafted", "drafted", "drafted"]
