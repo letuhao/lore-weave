@@ -23,6 +23,19 @@
     "empty": "この章にはシーンがありません（コンポーザーでアウトラインを作成）。",
     "synopsisPlaceholder": "あらすじ…",
     "stale": "他所で変更 — 再読込しました",
+    "notAnchored": "シーンはまだ本文にアンカーされていません — ⚓ で見出しをリンク。",
+    "anchored": "{{count}} シーンをアンカー、{{unmatched}} 件は不一致 — ⌘S で保存。",
+    "anchorNoop": "{{count}} 件はアンカー済み、{{unmatched}} 件は一致する見出しなし。",
+    "anchorTitle": "シーンを本文の見出しにリンク",
+    "add": "シーンを追加",
+    "addDisabled": "章にアウトラインがありません（コンポーザーで作成）",
+    "newTitlePlaceholder": "シーン名…",
+    "create": "追加",
+    "deleted": "「{{title}}」を削除しました。",
+    "undo": "元に戻す",
+    "moveUp": "上へ",
+    "moveDown": "下へ",
+    "delete": "シーンを削除",
     "status": { "empty": "空", "outline": "アウトライン", "drafting": "執筆中", "done": "完了" }
   },
   "jsonEditor": {
@@ -103,6 +116,7 @@
   },
   "status": {
     "wordsPlaceholder": "— 語",
+    "words": "{{count}} 語",
     "modelPlaceholder": "モデルなし",
     "notifications": "通知",
     "cost24h": "過去24時間の支出"

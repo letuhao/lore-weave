@@ -23,6 +23,19 @@
     "empty": "本章尚無場景（請在編排器建立大綱）。",
     "synopsisPlaceholder": "場景摘要…",
     "stale": "已在他處變更 — 已重新載入",
+    "notAnchored": "場景尚未錨定到內文 — 按 ⚓ 連結標題。",
+    "anchored": "已錨定 {{count}} 個場景，{{unmatched}} 個不符 — ⌘S 儲存。",
+    "anchorNoop": "{{count}} 個已錨定，{{unmatched}} 個沒有相符標題。",
+    "anchorTitle": "將場景錨定到內文標題",
+    "add": "新增場景",
+    "addDisabled": "本章尚無大綱（請在編排器建立）",
+    "newTitlePlaceholder": "場景名稱…",
+    "create": "新增",
+    "deleted": "已刪除「{{title}}」。",
+    "undo": "復原",
+    "moveUp": "上移",
+    "moveDown": "下移",
+    "delete": "刪除場景",
     "status": { "empty": "空", "outline": "大綱", "drafting": "撰寫中", "done": "完成" }
   },
   "jsonEditor": {
@@ -103,6 +116,7 @@
   },
   "status": {
     "wordsPlaceholder": "— 字",
+    "words": "{{count}} 字",
     "modelPlaceholder": "尚無模型",
     "notifications": "通知",
     "cost24h": "過去 24 小時花費"

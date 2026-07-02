@@ -23,6 +23,19 @@
     "empty": "Chương này chưa có cảnh (lập dàn ý trong composer).",
     "synopsisPlaceholder": "Tóm tắt cảnh…",
     "stale": "đã đổi ở nơi khác — tải lại",
+    "notAnchored": "Cảnh chưa được neo vào văn bản — bấm ⚓ để liên kết các heading.",
+    "anchored": "Đã neo {{count}} cảnh, {{unmatched}} không khớp — ⌘S để lưu.",
+    "anchorNoop": "{{count}} đã neo sẵn, {{unmatched}} không có heading khớp.",
+    "anchorTitle": "Neo các cảnh vào heading trong văn bản",
+    "add": "Thêm cảnh",
+    "addDisabled": "Chương chưa có dàn ý (tạo trong composer)",
+    "newTitlePlaceholder": "Tên cảnh…",
+    "create": "Thêm",
+    "deleted": "Đã xóa \"{{title}}\".",
+    "undo": "Hoàn tác",
+    "moveUp": "Chuyển lên",
+    "moveDown": "Chuyển xuống",
+    "delete": "Xóa cảnh",
     "status": { "empty": "trống", "outline": "dàn ý", "drafting": "đang viết", "done": "xong" }
   },
   "jsonEditor": {
@@ -103,6 +116,7 @@
   },
   "status": {
     "wordsPlaceholder": "— từ",
+    "words": "{{count}} từ",
     "modelPlaceholder": "chưa có model",
     "notifications": "Thông báo",
     "cost24h": "Chi phí 24h qua"

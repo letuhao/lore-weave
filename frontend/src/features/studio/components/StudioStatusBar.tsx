@@ -36,7 +36,7 @@ export function StudioStatusBar({ bookLanguage, bottomOpen, onToggleBottom }: Pr
       {leftItems.map((i) => <i.component key={i.id} />)}
       <div className="flex-1" />
       {rightItems.map((i) => <i.component key={i.id} />)}
-      <span>{t('status.wordsPlaceholder', { defaultValue: '— words' })}</span>
+      {/* #12 M-H — word count is now a registered F2 item (WordCountStatusItem). */}
       <span>{t('status.modelPlaceholder', { defaultValue: 'no model' })}</span>
       {/* Palette hints (VS Code): ⌘P Quick Open · ⌘⇧P Command Palette. */}
       <span className="font-mono" title={t('palette.quickOpenTitle', { defaultValue: 'Go to chapter, scene, arc' })}>⌘P</span>

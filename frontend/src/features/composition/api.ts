@@ -154,7 +154,11 @@ export const compositionApi = {
   },
   // #12 cycle-1 — the active scene nodes of one BOOK chapter in reading order (the
   // manuscript-unit document's scenes[] source; same ordering the assembly path uses).
-  listChapterScenes(projectId: string, chapterId: string, token: string): Promise<{ items: OutlineNode[] }> {
+  // M-G: `chapter_node_id` = the outline chapter node scenes parent under (the rail's
+  // Create needs it when the chapter has 0 scenes); null = chapter never outlined.
+  listChapterScenes(
+    projectId: string, chapterId: string, token: string,
+  ): Promise<{ items: OutlineNode[]; chapter_node_id: string | null }> {
     return apiJson(`${BASE}/works/${projectId}/chapters/${chapterId}/scenes`, { token });
   },
   // #02 nav jump box / #06a Quick Open — title substring search across the WHOLE outline

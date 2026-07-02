@@ -23,6 +23,19 @@
     "empty": "No scenes for this chapter (outline it in the composer).",
     "synopsisPlaceholder": "Synopsis…",
     "stale": "changed elsewhere — reloaded",
+    "notAnchored": "Scene not anchored in the text yet — use ⚓ to link headings.",
+    "anchored": "Anchored {{count}} scene(s), {{unmatched}} unmatched — ⌘S to save.",
+    "anchorNoop": "{{count}} already anchored, {{unmatched}} without a matching heading.",
+    "anchorTitle": "Link scenes to their headings in the text",
+    "add": "Add scene",
+    "addDisabled": "Chapter has no outline yet (create it in the composer)",
+    "newTitlePlaceholder": "Scene title…",
+    "create": "Add",
+    "deleted": "Deleted \"{{title}}\".",
+    "undo": "Undo",
+    "moveUp": "Move up",
+    "moveDown": "Move down",
+    "delete": "Delete scene",
     "status": { "empty": "empty", "outline": "outline", "drafting": "drafting", "done": "done" }
   },
   "jsonEditor": {
@@ -103,6 +116,7 @@
   },
   "status": {
     "wordsPlaceholder": "— words",
+    "words": "{{count}} words",
     "modelPlaceholder": "no model",
     "notifications": "Notifications",
     "cost24h": "Spend, last 24h"

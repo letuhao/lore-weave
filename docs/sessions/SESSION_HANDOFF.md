@@ -141,6 +141,27 @@
 > surface still unmounts that page mid-run (same orphaned-resume class — chat-service persists nothing for the
 > continuation); intermediate multi-tool turns render "No response generated" chips (cosmetic); knowledge indicator
 > flashes "Degraded" occasionally during heavy runs.
+
+> **▶ #12 CYCLE-1b EDITOR COMPLETENESS (M-F…M-I) — SHIPPED + LIVE-SMOKED 2026-07-03** (plan
+> [`2026-07-02-chapter-editor-completeness.md`](../plans/2026-07-02-chapter-editor-completeness.md); PO sign-off:
+> sceneMarker NOW not later, ▲/▼ reorder, all 4 milestones). **M-F sceneMarker:** marker = `sceneId` ATTR on the
+> heading node (`SceneAnchorExtension` GlobalAttributes — load-bearing: without it Tiptap's schema STRIPS markers
+> on load→save); `jumpToScene` (rail title click / navigator / ⌘P via the bus scene slice) scrolls + sets the
+> cursor; ⚓ backfill anchors headings↔scenes by unique normalized-title match in ONE transaction (explicit action
+> → dirty → user ⌘S; diacritics preserved — VN tone marks are significant). LIVE: ⚓ 2/2 on Chương 1, markers
+> persisted in the draft body (psql `sceneId` grep), jump scroll 0→856 with the cursor inside
+> `h3[data-scene-id=<node id>]`. **`D-SCENEMARKER-EMIT` deferred (gate #1/#4):** emit `heading{sceneId}` at
+> generation-persist time — that seam is RAID D-wave's actively-moving code; the F1 attr + F3 matcher are the
+> reusable pieces. **M-G rail CRUD:** ＋ create (uses the NEW `chapter_node_id` the scenes endpoint returns — works
+> at 0 scenes), ✕ soft-archive with Undo (restore), ▲/▼ reorder (after_id + If-Match; BE renumbers story_order) —
+> LIVE round-trip verified vs composition DB. **M-H word count:** real F2 status item (`\p{L}` NOT `\w` — JS \w is
+> ASCII-only even under /u and shreds Vietnamese; CJK per-char); ManuscriptUnitProvider moved ABOVE the status bar
+> (still above every chrome conditional → no remount on sidebar/bottom toggles); hoist derives textContent from the
+> body when the server projection is empty ("1046 words" live). **M-I:** dirty-on-mount KILLED (setBody equality
+> guard on the first update) — "Maximum update depth" went 8+→0 live; residual: ONE setState-in-render warning from
+> mount-normalize (cosmetic; a real fix = microtask-defer inside the SHARED TiptapEditor — not worth it now);
+> languagetool 500s on :5199 are a dev-proxy issue, not studio scope. Tests: FE +22 (SceneAnchor 5, SceneRail 15,
+> WordCount 5), composition outline 19/19 + full 1459 unit green, image rebuilt.
 > **⚠️ Parallel-run lesson (live hit):** Track-4 commit `ab0523df6` swept this track's STAGED F1/F3 files into its
 > own commit (shared working tree) — protocol now: `git add … && git commit -- <explicit paths>` in ONE invocation.
 

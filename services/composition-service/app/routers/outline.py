@@ -165,10 +165,16 @@ async def list_chapter_scenes(
     """Studio #12 cycle-1 — the active scene nodes of one BOOK chapter in reading
     order (the manuscript-unit document's `scenes[]` source). Thin wrapper over the
     same `scenes_for_chapter` the assembly path uses, so the editor and the composer
-    read one ordering."""
+    read one ordering. M-G: also returns `chapter_node_id` (the outline chapter node
+    scenes parent under — the rail's Create needs it when the chapter has 0 scenes;
+    null when the chapter was never outlined)."""
     await _require_work(works, user_id, project_id)
     scenes = await outline.scenes_for_chapter(user_id, project_id, chapter_id)
-    return {"items": [n.model_dump(mode="json") for n in scenes]}
+    node_id = await outline.chapter_node_id(user_id, project_id, chapter_id)
+    return {
+        "items": [n.model_dump(mode="json") for n in scenes],
+        "chapter_node_id": str(node_id) if node_id else None,
+    }
 
 
 @router.get("/works/{project_id}/outline/search")

@@ -90,43 +90,45 @@ function StudioFrameInner({ bookId }: { bookId: string }) {
     <div className="flex h-screen w-full flex-col overflow-hidden bg-background">
       <StudioTopBar bookId={bookId} bookTitle={bookTitle} onOpenQuickOpen={() => setPalette('quick')} />
 
-      <div className="flex min-h-0 flex-1">
-        <StudioActivityBar
-          bookId={bookId}
-          activeView={chrome.activeView}
-          sidebarCollapsed={chrome.sidebarCollapsed}
-          onSelect={chrome.setActiveView}
-        />
-        {!chrome.sidebarCollapsed && (
-          <StudioSideBar
-            activeView={chrome.activeView}
-            onCollapse={chrome.toggleSidebar}
+      {/* Tier-4 manuscript unit hoisted ABOVE dockview (#08) so the editor's in-flight edits
+          survive a dock float / close, and the Lane-B reconciler + editor read one owner store.
+          #12 M-H moved it above the STATUS BAR too (the word-count item reads the hoist) — it
+          sits above every chrome conditional, so a sidebar/bottom toggle never remounts it. */}
+      <ManuscriptUnitProvider bookId={bookId}>
+        <div className="flex min-h-0 flex-1">
+          <StudioActivityBar
             bookId={bookId}
-            token={accessToken}
-            selectedId={selectedNodeId}
-            onSelectNode={onSelectNode}
+            activeView={chrome.activeView}
+            sidebarCollapsed={chrome.sidebarCollapsed}
+            onSelect={chrome.setActiveView}
           />
-        )}
+          {!chrome.sidebarCollapsed && (
+            <StudioSideBar
+              activeView={chrome.activeView}
+              onCollapse={chrome.toggleSidebar}
+              bookId={bookId}
+              token={accessToken}
+              selectedId={selectedNodeId}
+              onSelectNode={onSelectNode}
+            />
+          )}
 
-        {/* Tier-4 manuscript unit hoisted ABOVE dockview (#08) so the editor's in-flight edits
-            survive a dock float / close, and the Lane-B reconciler + editor read one owner store. */}
-        <ManuscriptUnitProvider bookId={bookId}>
           <div className="flex min-w-0 flex-1 flex-col">
             {/* The dock stays mounted regardless of the bottom panel / sidebar (D4 no-remount:
                 in-flight panels must never be dropped by a chrome toggle). */}
             <StudioDock bookId={bookId} apiRef={host._dockApiRef} />
             {chrome.bottomOpen && <StudioBottomPanel onClose={chrome.toggleBottom} />}
           </div>
-        </ManuscriptUnitProvider>
-      </div>
+        </div>
 
-      {/* #11 F2 — ambient status items (badge/meter) live at frame level, not in panels. */}
-      <StudioStatusContributions />
-      <StudioStatusBar
-        bookLanguage={bookLanguage}
-        bottomOpen={chrome.bottomOpen}
-        onToggleBottom={chrome.toggleBottom}
-      />
+        {/* #11 F2 — ambient status items (badge/meter) live at frame level, not in panels. */}
+        <StudioStatusContributions />
+        <StudioStatusBar
+          bookLanguage={bookLanguage}
+          bottomOpen={chrome.bottomOpen}
+          onToggleBottom={chrome.toggleBottom}
+        />
+      </ManuscriptUnitProvider>
 
       {/* Palettes (always mounted so the shared jump layer persists; visibility via `open`). */}
       <QuickOpen open={palette === 'quick'} onClose={() => setPalette(null)} bookId={bookId} token={accessToken} onResolve={resolveJump} />
