@@ -248,22 +248,23 @@ The PO has authorized a **continuous, no-human-in-loop implementation**: the hum
 - [x] **E2E slice green: E2E-P0-A, E2E-P0-B** (`tests/e2e/registry/p0_smoke.ps1` — 20/20 vs live Postgres)
 - Note: through-the-BFF-container E2E bundled into P1 stack rebuild (service-level + BFF typecheck done; DL-3).
 
-### P1 — Skills + agent self-registration
-- [ ] REG-P1-01 parser/validator + fixtures
-- [ ] REG-P1-02 CRUD + import/export
-- [ ] REG-P1-03 seed 5 System skills (checksum vs constants)
-- [ ] REG-P1-04 /internal/skills merge+shadow
-- [ ] REG-P1-05 chat-service dual-read + fallback + enabled_skills back-compat
-- [ ] REG-P1-06 proposal store + confirm spine
-- [ ] REG-P1-07 registry MCP server federated (`registry_` prefix, tiers, enums)
-- [ ] REG-P1-08 SkillProposalCard (no silent no-op)
-- [ ] REG-P1-09 Skills management UI (browser-standard shell)
-- [ ] REG-P1-10 "Save as skill" affordance
-- [ ] REG-P1-11 live-LLM E2E (next-session injection proven)
-- [ ] REG-P1-12 Proposals inbox (U2)
-- [ ] REG-P1-13 Studio shells: extensions+proposals panels, skill-editor singleton, enum+contract regen, live browser smoke (§13b)
-- [ ] **E2E slice green: E2E-P1-A…G, E2E-X-B(skills)**
-- [ ] **GUI checklist ticked: §0, §1, §4, §6, §7, §9, §10(P1 rows)**
+### P1 — Skills + agent self-registration  (BACKEND ✅ 2026-07-03 · FE/chat pending)
+- [x] REG-P1-01 parser/validator + fixtures (slug regex, 64KB cap, scripts/ reject — E2E green)
+- [x] REG-P1-02 CRUD + import/export (SKILL.md parse/render, draft/published, revisions-on-publish)
+- [x] REG-P1-03 seed 5 System skills (slugs byte-identical; bodies stay in chat-service — DL-4)
+- [x] REG-P1-04 /internal/skills merge+shadow (+ system_overrides + shadowed_system)
+- [ ] REG-P1-05 chat-service dual-read + fallback + enabled_skills back-compat (PENDING — Python)
+- [x] REG-P1-06 proposal store + approve/reject/expiry spine (JWT-owner approve — DL-5)
+- [x] REG-P1-07 registry MCP server federated (`registry_` prefix in DEFAULT_PREFIX_MAP + compose; 5 tools; tool-meta valid at boot; propose call → DB row proven)
+- [ ] REG-P1-08 SkillProposalCard (no silent no-op) (PENDING — FE)
+- [ ] REG-P1-09 Skills management UI (browser-standard shell) (PENDING — FE)
+- [ ] REG-P1-10 "Save as skill" affordance (PENDING — FE)
+- [ ] REG-P1-11 live-LLM E2E (next-session injection proven) (PENDING — needs stack rebuild)
+- [ ] REG-P1-12 Proposals inbox (U2) (PENDING — FE)
+- [ ] REG-P1-13 Studio shells: extensions+proposals panels, skill-editor singleton, enum+contract regen, live browser smoke (§13b) (PENDING — FE)
+- [x] **E2E slice (backend): p1_rest_smoke.ps1 25/25 vs live PG + MCP propose call verified**
+- [ ] **E2E slice remaining: E2E-P1-E/G (live-LLM + browser), E2E-X-B(skills-quota)**
+- [ ] **GUI checklist ticked: §0, §1, §4, §6, §7, §9, §10(P1 rows)** (FE pending)
 
 ### P2 — Per-user federation
 - [ ] REG-P2-01 registrations table

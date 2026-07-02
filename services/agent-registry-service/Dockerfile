@@ -7,6 +7,10 @@ RUN apk add --no-cache git
 # resolves in-container. Compose sets context: .. and dockerfile:
 # services/agent-registry-service/Dockerfile.
 COPY sdks/go/observability /src/sdks/go/observability
+# The agent-facing MCP server depends on the shared Go MCP kit, which itself
+# replaces github.com/loreweave/grantclient. Both must be in the build context.
+COPY sdks/go/loreweave_mcp /src/sdks/go/loreweave_mcp
+COPY sdks/go/grantclient /src/sdks/go/grantclient
 COPY services/agent-registry-service /src/services/agent-registry-service
 
 WORKDIR /src/services/agent-registry-service

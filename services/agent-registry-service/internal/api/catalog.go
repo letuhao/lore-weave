@@ -128,8 +128,9 @@ func (s *Server) countProposalsIfExists(r *http.Request, uid uuid.UUID) int {
 // introspection.
 func tableExists(name string) bool {
 	switch name {
-	// P0 tables only; later phases flip these on when their migration lands.
-	case "plugins", "plugin_enablement", "registry_audit", "registry_meta":
+	// P0 + P1 tables; later phases flip on their own as migrations land.
+	case "plugins", "plugin_enablement", "registry_audit", "registry_meta",
+		"skills", "skill_proposals":
 		return true
 	}
 	return false

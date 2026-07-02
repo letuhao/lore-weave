@@ -84,6 +84,96 @@ CREATE TABLE IF NOT EXISTS registry_meta (
   catalog_version BIGINT NOT NULL DEFAULT 1
 );
 INSERT INTO registry_meta (id) VALUES (TRUE) ON CONFLICT (id) DO NOTHING;
+
+-- P1: user-authored Skills (SKILL.md — prompt-only, no executable scripts).
+CREATE TABLE IF NOT EXISTS skills (
+  skill_id UUID PRIMARY KEY DEFAULT uuidv7(),
+  plugin_id UUID REFERENCES plugins(plugin_id) ON DELETE CASCADE,
+  tier TEXT NOT NULL CHECK (tier IN ('system','user','book')),
+  owner_user_id UUID,
+  book_id UUID,
+  slug TEXT NOT NULL,
+  description TEXT NOT NULL DEFAULT '',
+  frontmatter JSONB NOT NULL DEFAULT '{}',
+  body_md TEXT NOT NULL DEFAULT '',
+  surfaces TEXT[] NOT NULL DEFAULT '{}',
+  triggers JSONB NOT NULL DEFAULT '{}',
+  book_scoped BOOLEAN NOT NULL DEFAULT false,
+  status TEXT NOT NULL DEFAULT 'published' CHECK (status IN ('draft','published','archived')),
+  source TEXT NOT NULL DEFAULT 'user' CHECK (source IN ('user','agent','system','import')),
+  used_count BIGINT NOT NULL DEFAULT 0,
+  last_triggered_at TIMESTAMPTZ,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  CONSTRAINT skills_scope_key CHECK (
+    (tier = 'system' AND owner_user_id IS NULL AND book_id IS NULL) OR
+    (tier = 'user'   AND owner_user_id IS NOT NULL AND book_id IS NULL) OR
+    (tier = 'book'   AND book_id IS NOT NULL)
+  )
+);
+CREATE INDEX IF NOT EXISTS idx_skills_owner ON skills(owner_user_id);
+CREATE INDEX IF NOT EXISTS idx_skills_book ON skills(book_id);
+CREATE UNIQUE INDEX IF NOT EXISTS uq_skills_system ON skills(slug) WHERE tier = 'system';
+CREATE UNIQUE INDEX IF NOT EXISTS uq_skills_user   ON skills(owner_user_id, slug) WHERE tier = 'user';
+CREATE UNIQUE INDEX IF NOT EXISTS uq_skills_book   ON skills(book_id, slug) WHERE tier = 'book';
+
+-- P1: agent skill proposals (propose→confirm HITL spine). The agent submits via
+-- the registry_propose_skill MCP tool; a human approves via the confirm route.
+CREATE TABLE IF NOT EXISTS skill_proposals (
+  proposal_id UUID PRIMARY KEY DEFAULT uuidv7(),
+  owner_user_id UUID NOT NULL,
+  action TEXT NOT NULL CHECK (action IN ('create','update')),
+  target_skill_id UUID REFERENCES skills(skill_id) ON DELETE CASCADE,
+  slug TEXT NOT NULL,
+  description TEXT NOT NULL DEFAULT '',
+  frontmatter JSONB NOT NULL DEFAULT '{}',
+  body_md TEXT NOT NULL DEFAULT '',
+  surfaces TEXT[] NOT NULL DEFAULT '{}',
+  confirm_token TEXT NOT NULL,
+  status TEXT NOT NULL DEFAULT 'pending' CHECK (status IN ('pending','approved','rejected','expired')),
+  reject_reason TEXT NOT NULL DEFAULT '',
+  from_session_id TEXT NOT NULL DEFAULT '',
+  from_session_label TEXT NOT NULL DEFAULT '',
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  expires_at TIMESTAMPTZ NOT NULL DEFAULT now() + interval '7 days'
+);
+CREATE INDEX IF NOT EXISTS idx_skill_proposals_owner ON skill_proposals(owner_user_id, status, created_at DESC);
+CREATE UNIQUE INDEX IF NOT EXISTS uq_skill_proposals_token ON skill_proposals(confirm_token);
+
+-- P1: skill revision history (append a snapshot on each publish; restore = new draft).
+CREATE TABLE IF NOT EXISTS skill_revisions (
+  revision_id UUID PRIMARY KEY DEFAULT uuidv7(),
+  skill_id UUID NOT NULL REFERENCES skills(skill_id) ON DELETE CASCADE,
+  description TEXT NOT NULL DEFAULT '',
+  frontmatter JSONB NOT NULL DEFAULT '{}',
+  body_md TEXT NOT NULL DEFAULT '',
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS idx_skill_revisions_skill ON skill_revisions(skill_id, created_at DESC);
+
+-- P1: per-user per-skill enablement toggle (GUI §4). System skills default-on;
+-- a user disable stores an override here (never mutates the System row). For a
+-- user's own skill this coexists with 'status' (draft = never injected).
+CREATE TABLE IF NOT EXISTS skill_enablement (
+  skill_id UUID NOT NULL REFERENCES skills(skill_id) ON DELETE CASCADE,
+  owner_user_id UUID NOT NULL,
+  enabled BOOLEAN NOT NULL DEFAULT true,
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  PRIMARY KEY (skill_id, owner_user_id)
+);
+
+-- REG-P1-03: seed the 5 hardcoded chat-service skills as System-tier rows so the
+-- FE can list + toggle them and enablement resolves. Their BODIES remain authored
+-- in chat-service skill_registry (single source; DECISION_LOG DL-4) — these rows
+-- carry only catalog metadata. Slugs are byte-identical to SYSTEM_SKILLS keys.
+INSERT INTO skills (tier, slug, description, source, body_md) VALUES
+  ('system','glossary','Glossary/lore entity workflows — search, propose, confirm entity edits.','system','(System skill — body served by chat-service skill_registry)'),
+  ('system','universal','Cross-domain manuscript workflows — the default universal agent surface.','system','(System skill — body served by chat-service skill_registry)'),
+  ('system','knowledge','Knowledge-graph + memory grounding and story search.','system','(System skill — body served by chat-service skill_registry)'),
+  ('system','admin','Admin/CMS system-tier operations (admin surface only).','system','(System skill — body served by chat-service skill_registry)'),
+  ('system','plan_forge','PlanForge novel-system planning workflows.','system','(System skill — body served by chat-service skill_registry)')
+ON CONFLICT (slug) WHERE tier = 'system' DO NOTHING;
 `
 
 // Up applies the schema. Idempotent; safe to run on every boot.

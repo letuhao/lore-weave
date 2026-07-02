@@ -39,3 +39,17 @@ Format per entry:
 - Chosen: **B**.
 - Rationale: mock-only row scans are brittle and have repeatedly hidden real cross-service bugs in this repo; the pure resolver matrix, name/vault/clamp, and the reject branches (401/400/403/501/internal-token) ARE unit-tested, and the create/list/delete happy path is covered by the real-stack E2E where it actually matters.
 - Rework cost if overturned: low — add pgxmock row fixtures later if a unit-level happy-path guard is wanted.
+
+## DL-4 · 2026-07-03 · REG-P1-03 / REG-P1-05 (System skill bodies)
+- Context: The 5 System skills' full bodies live in chat-service `*_skill.py` constants and are already injected there. REG-P1-03 said "seed System rows, body == python constants (checksum)".
+- Options: (A) copy the 5 Python skill bodies verbatim into the agent-registry seed (satisfies the checksum AC); (B) seed System rows with slug + description + a marker body, keep the real bodies authored in chat-service (single source), and have chat-service inject its own System bodies while honoring per-user disable via `/internal/skills.system_overrides`.
+- Chosen: **B — chat-service stays the System-skill-body source of truth.**
+- Rationale: copying the bodies duplicates content across two services in two languages → guaranteed drift (the exact anti-pattern the Frontend-Tool-Contract section warns about). The seed rows exist for the catalog/enable-disable UX + shadow resolution; `/internal/skills` returns `system_overrides` (disabled System slugs) + `shadowed_system` (user slugs that override) so chat-service injects correctly. The checksum-equality AC is relaxed to slug-equality (byte-identical slugs — E2E-verified).
+- Rework cost if overturned: low — if a future consumer needs the bodies in agent-registry, add a one-time sync from chat-service; no schema change.
+
+## DL-5 · 2026-07-03 · REG-P1-06 (proposal approve auth)
+- Context: Spec §12b described the confirm route as "internal-token + X-User-Id gated (no JWT mint)" — that shape is the PUBLIC-MCP approval spine for EXTERNAL agents. For our in-app chat, the human approves in the browser with their own JWT.
+- Options: (A) internal-token + X-User-Id confirm route (FE would need an internal token — it doesn't have one); (B) JWT-owner-gated `PUT /proposals/{id}/approve` where the browser's own token authorizes the write to the user's own tier.
+- Chosen: **B — JWT-owner-gated approve/reject** (no JWT mint; owner from the token).
+- Rationale: the human is in-app with a JWT; a JWT-gated approve to one's own tier is the correct, simplest authorization and needs no token minting. The public-MCP internal-token spine is for the P3+ external-agent path, not this in-app loop. The `confirm_token` remains on the proposal for chat tool-call correlation.
+- Rework cost if overturned: low — add an internal-token confirm alias later for an external-agent approval path if needed.

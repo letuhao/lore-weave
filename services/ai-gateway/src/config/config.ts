@@ -73,6 +73,7 @@ export const DEFAULT_PREFIX_MAP: Record<string, string> = {
   settings: 'settings_',
   jobs: 'jobs_',
   catalog: 'catalog_',
+  registry: 'registry_',
 };
 
 /**

@@ -104,14 +104,38 @@ func (s *Server) Router() http.Handler {
 		r.Get("/plugins/{plugin_id}/cascade-preview", s.cascadePreview)
 		r.Put("/plugins/{plugin_id}/enablement", s.putEnablement)
 
+		// Skills (P1, prompt-only)
+		r.Get("/skills", s.listSkills)
+		r.Post("/skills", s.createSkill)
+		r.Post("/skills/import", s.importSkill)
+		r.Get("/skills/shadow-check", s.shadowCheck)
+		r.Get("/skills/{skill_id}", s.getSkill)
+		r.Patch("/skills/{skill_id}", s.patchSkill)
+		r.Delete("/skills/{skill_id}", s.deleteSkill)
+		r.Get("/skills/{skill_id}/export", s.exportSkill)
+		r.Get("/skills/{skill_id}/revisions", s.listSkillRevisions)
+		r.Put("/skills/{skill_id}/enablement", s.setSkillEnabled)
+
+		// Proposals (P1 agent self-registration — propose→approve/reject)
+		r.Get("/proposals", s.listProposals)
+		r.Get("/proposals/{proposal_id}", s.getProposal)
+		r.Put("/proposals/{proposal_id}/approve", s.approveProposal)
+		r.Post("/proposals/{proposal_id}/reject", s.rejectProposal)
+
 		r.Get("/usage", s.getUsage)
 		r.Get("/audit", s.listAudit)
 	})
 
-	// Internal API — X-Internal-Token gated; consumers (ai-gateway) pass user_id.
+	// Agent-facing MCP server (spec §12b) — federated through ai-gateway with the
+	// "registry_" prefix. Identity from the envelope (X-User-Id), never a tool arg.
+	r.Handle("/mcp", s.mcpHandler())
+	r.Handle("/mcp/*", s.mcpHandler())
+
+	// Internal API — X-Internal-Token gated; consumers (ai-gateway, chat) pass user_id.
 	r.Route("/internal", func(r chi.Router) {
 		r.Use(s.requireInternalToken)
 		r.Get("/effective-catalog", s.effectiveCatalog)
+		r.Get("/skills", s.internalSkills)
 	})
 
 	return r
