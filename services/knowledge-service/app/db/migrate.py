@@ -322,6 +322,14 @@ ALTER TABLE extraction_jobs
 -- filters extraction_jobs by updated_at — index it so the periodic sweep isn't a seq-scan.
 CREATE INDEX IF NOT EXISTS idx_extraction_jobs_updated_at ON extraction_jobs(updated_at);
 
+-- D-WORKER-SKIP-FALSE-GREEN: items that advanced the cursor WITHOUT doing any
+-- work (text unavailable, retry-exhausted). A drain that skipped every chapter
+-- used to read "complete N/N" — an indistinguishable success that masked the
+-- book-service `_text` extraction bug. worker-ai increments this alongside
+-- items_processed, and _complete_job stamps error_message when skipped >= total.
+ALTER TABLE extraction_jobs
+  ADD COLUMN IF NOT EXISTS items_skipped INT NOT NULL DEFAULT 0;
+
 -- E0-3 Phase 2a (D-E0-3-CALLER-PAYS-EXTRACTION): BYOK dual-identity billing.
 -- A collaborator's extraction must charge the COLLABORATOR's key, never the
 -- owner's (only a key's owner may cause it to be charged). These three columns

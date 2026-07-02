@@ -425,7 +425,7 @@ def _build_run_config(job: JobRow) -> tuple[ResolvedConfig, str, str]:
 
 async def _advance_cursor_and_emit_run(
     pool: asyncpg.Pool, user_id: UUID, job_id: UUID, cursor: dict, payload: dict,
-    *, chapter_extracted: dict | None = None,
+    *, chapter_extracted: dict | None = None, skipped_delta: int = 0,
 ) -> None:
     """Advance the cursor + emit the extraction_run ATOMICALLY (B2-A), and — when
     `chapter_extracted` is supplied (a chapter's successful extraction) — emit the
@@ -447,7 +447,7 @@ async def _advance_cursor_and_emit_run(
     try:
         async with pool.acquire() as conn:
             async with conn.transaction():
-                await _advance_cursor(conn, user_id, job_id, cursor)
+                await _advance_cursor(conn, user_id, job_id, cursor, skipped_delta=skipped_delta)
                 await emit_extraction_run(conn, payload)
                 if chapter_extracted is not None:
                     await emit_chapter_extracted(conn, **chapter_extracted)
@@ -457,7 +457,7 @@ async def _advance_cursor_and_emit_run(
             "best-effort (run telemetry lost for this item, non-fatal)",
             job_id, exc_info=True,
         )
-        await _advance_cursor(pool, user_id, job_id, cursor)
+        await _advance_cursor(pool, user_id, job_id, cursor, skipped_delta=skipped_delta)
         if chapter_extracted is not None:
             await emit_chapter_extracted_best_effort(pool, **chapter_extracted)
 
@@ -814,7 +814,7 @@ async def _try_spend(
 
 async def _advance_cursor(
     executor: Any, user_id: UUID, job_id: UUID,
-    cursor: dict, items_delta: int = 1,
+    cursor: dict, items_delta: int = 1, skipped_delta: int = 0,
 ) -> None:
     """Persist progress so a restart can resume from here.
 
@@ -822,17 +822,23 @@ async def _advance_cursor(
     the chapter-success/skip path advance the cursor AND emit the
     extraction_run in ONE transaction (B2-A): the run row is guaranteed iff the
     cursor advanced, and an emit failure rolls back the advance (chapter
-    re-processed, never a silently-missing run)."""
+    re-processed, never a silently-missing run).
+
+    D-WORKER-SKIP-FALSE-GREEN: `skipped_delta` counts items that advanced the
+    cursor WITHOUT doing any work (text unavailable, retry-exhausted) into
+    `items_skipped`, so a job whose items were all skipped no longer reads as
+    an indistinguishable "complete N/N" success."""
     await executor.execute(
         """
         UPDATE extraction_jobs
         SET current_cursor = $3::jsonb,
             items_processed = items_processed + $4,
+            items_skipped = items_skipped + $5,
             updated_at = now()
         WHERE user_id = $1 AND job_id = $2
           AND status IN ('running', 'paused')
         """,
-        user_id, job_id, json.dumps(cursor), items_delta,
+        user_id, job_id, json.dumps(cursor), items_delta, skipped_delta,
     )
 
 
@@ -931,13 +937,30 @@ async def _complete_job(pool: asyncpg.Pool, user_id: UUID, job_id: UUID) -> None
         row = await conn.fetchrow(
             """
             UPDATE extraction_jobs
-            SET status = 'complete', completed_at = now(), updated_at = now()
+            SET status = 'complete', completed_at = now(), updated_at = now(),
+                -- D-WORKER-SKIP-FALSE-GREEN: a job whose EVERY item was skipped
+                -- must not read as an indistinguishable success ("complete N/N"
+                -- masked the _text extraction bug). Status stays 'complete'
+                -- (skips are per-item terminal by design; 'failed' would trip
+                -- campaign breakers), but the row now says so out loud.
+                error_message = CASE
+                  WHEN items_skipped > 0 AND items_total > 0 AND items_skipped >= items_total
+                    THEN 'completed with ALL ' || items_total || ' items skipped — no work performed (see job logs)'
+                  ELSE error_message
+                END
             WHERE user_id = $1 AND job_id = $2
               AND status NOT IN ('complete', 'cancelled', 'failed')
-            RETURNING job_id, cost_spent_usd
+            RETURNING job_id, cost_spent_usd, items_skipped, items_total
             """,
             user_id, job_id,
         )
+        _skipped = row.get("items_skipped") if row is not None else None
+        _total = row.get("items_total") if row is not None else None
+        if _skipped and _total and _skipped >= _total:
+            logger.warning(
+                "Job %s completed but ALL %d items were skipped — no work performed",
+                job_id, _total,
+            )
         if row is not None:
             # P4 — carry the final cumulative cost on the terminal event (the changing
             # field); model + params were set on 'running' and kept via the projection's
@@ -1959,6 +1982,7 @@ async def process_job(
                         pool, job.user_id, job.job_id,
                         {"last_chapter_id": ch.chapter_id, "scope": "chapters"},
                         unavail_payload,
+                        skipped_delta=1,  # D-WORKER-SKIP-FALSE-GREEN
                     )
                     # P5 — this chapter did no LLM work; free its slot before the next
                     # iteration (which re-acquires). No-op when P5 off / token None.
@@ -2187,6 +2211,7 @@ async def process_job(
                             pool, job.user_id, job.job_id,
                             {"last_chapter_id": ch.chapter_id, "scope": "chapters"},
                             skip_payload,
+                            skipped_delta=1,  # D-WORKER-SKIP-FALSE-GREEN
                         )
                         # CM3b: retry-exhausted is terminal — clear the queue row
                         # so the drainer doesn't re-process it forever. Mark-by-
