@@ -117,6 +117,19 @@ needs the job-terminal→refresh path) → Reader/Compare (read-only — gate = 
 agent chapter edits, mostly free via the existing `book_*` handler). Order re-confirmable per
 cycle; queue lives here, detail specs land per-cycle (build-while-plan).
 
+## Agent search & ambient context (research-locked 2026-07-02, mid-cycle-1)
+
+The first live-gate attempt was invalidated by methodology: the prompt hand-fed UUIDs no human
+knows. Root causes + market research (GitHub Blackbird, Sourcegraph/Zoekt, Cursor/Claude-Code
+tooling, MCP Roots, LangChain ToolRuntime) locked these:
+
+| # | Decision | Why |
+|---|---|---|
+| AS1 | **ONE universal search tool `story_search`** on knowledge-service (`{query, mode: hybrid\|exact\|semantic, granularity: chapter\|block, limit}`) wrapping the existing `run_hybrid_search` (book-service FTS/trigram + Neo4j CJK fulltext + passage vectors + RRF + CE rerank, per-leg degrade) | Tool sprawl confuses agents (user rule). The Cursor/Claude model: simple schema, powerful engine. Granularity mirrors Claude-Code's grep funnel — `chapter` ≈ `files_with_matches`, `block` ≈ `content`; `book_get_chapter` = Read |
+| AS2 | **NO temp filesystem workspace** for search — the DB indexes ARE the search engine | Market: nobody greps raw content at query time at scale (GitHub: grep = 0.01 QPS → Blackbird n-gram index = 640 QPS; Zoekt trigram). A disk mirror = IO disaster + stale-vs-DB truth + tenancy bypass. pg_trgm's "one giant index" caveat doesn't bite: every query is book-scoped |
+| AS3 | **Zero required location args** — project resolves from the ambient ToolContext (envelope `X-Project-Id`), book from the project link; `project_id` stays optional+ownership-checked | Users don't know ids (MCP Roots / ToolRuntime server-side injection pattern). knowledge tools already had the seam; story_search rides it. Extending the same ambient default to composition/book tool args = chat-service work — **RAID-coordinated (their C2 territory), tracked, not this cycle** |
+| AS4 | **Gate methodology: natural-language prompts only** — the agent must locate targets via the context pointer + story_search; hand-feeding ids voids the gate | The user-mandated realism rule |
+
 ## Out of scope (this spec)
 
 Agent-driven json-editor opening (needs a params-bearing ui tool — revisit after two consumers);

@@ -47,7 +47,9 @@ from mcp.server.fastmcp import FastMCP
 from mcp.server.transport_security import TransportSecuritySettings
 from pydantic import Field
 
+from app.clients.book_client import get_book_client
 from app.clients.embedding_client import get_embedding_client
+from app.clients.reranker_client import get_reranker_client
 from app.clients.grant_client import get_grant_client
 from app.config import settings
 from app.db.neo4j import neo4j_session
@@ -233,6 +235,10 @@ def _build_tool_context(ctx: MCPContext) -> ToolContext:
         pending_facts_repo=PendingFactsRepo(pool),
         embedding_client=get_embedding_client(),
         redis=get_tools_redis(),
+        # #12 story_search (universal manuscript search) deps — the raw-search
+        # hybrid engine's lexical leg (book-service) + BYOK reranker.
+        book_client=get_book_client(),
+        reranker_client=get_reranker_client(),
         # Lane LF (KG ontology MCP tools) deps — same process-singleton pool +
         # grant-client getter the HTTP routers/deps.py use, constructed directly
         # (the repos take a sync pool positional; the grant client is a process
@@ -278,6 +284,44 @@ async def _dispatch(ctx: MCPContext, tool_name: str, tool_args: dict) -> dict:
 # Descriptions mirror app/tools/definitions.py verbatim (the OpenAI
 # function-calling schemas) so the LLM gets the same call guidance on
 # both the bespoke and MCP paths.
+
+
+@mcp_server.tool(
+    name="story_search",
+    description=(
+        "Search the book's manuscript for text or ideas — the universal find "
+        "tool. Use it to LOCATE where something appears before reading or "
+        "editing: an exact phrase/name (mode=exact), a concept described in "
+        "your own words (mode=semantic), or both fused (mode=hybrid, default, "
+        "best for most queries). granularity=chapter tells you WHICH chapters "
+        "match; granularity=block drills into the matching passages with "
+        "snippets. Follow up with book_get_chapter to read."
+    ),
+)
+async def story_search(
+    ctx: MCPContext,
+    query: Annotated[str, "The text or idea to find — an exact phrase, a character/place name, or a natural-language description."],
+    mode: Annotated[
+        Literal["hybrid", "exact", "semantic"],
+        "hybrid (default) = exact + semantic fused and reranked; exact = literal text match only; semantic = meaning match only.",
+    ] = "hybrid",
+    granularity: Annotated[
+        Literal["chapter", "block"],
+        "chapter (default) = which chapters match; block = the matching passages with snippets.",
+    ] = "chapter",
+    limit: Annotated[
+        int,
+        Field(ge=1, le=SEARCH_LIMIT_MAX),
+        f"Max hits to return (default {SEARCH_LIMIT_DEFAULT}, max {SEARCH_LIMIT_MAX}).",
+    ] = SEARCH_LIMIT_DEFAULT,
+    project_id: _PROJECT_ID_ARG = None,
+) -> dict:
+    args: dict[str, Any] = {
+        "query": query, "mode": mode, "granularity": granularity, "limit": limit,
+    }
+    if project_id is not None:
+        args["project_id"] = project_id
+    return await _dispatch(ctx, "story_search", args)
 
 
 @mcp_server.tool(
