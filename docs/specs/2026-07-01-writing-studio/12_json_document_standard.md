@@ -77,10 +77,35 @@ chapter-editing unit ON the standard:
 |---|---|
 | Provider #1 | `loreweave.manuscript-unit.v1` — the 04b document: `{ body (Tiptap JSON), scenes[] (outline metadata: synopsis/status/beat_role — D17: prose stays in body) }`. `open()` WRAPS the Tier-4 `ManuscriptUnitProvider` (one owner store — D13); `save()` = draft PATCH (`draft_version` = etag) + scene-metadata writes. Clears Debt #6 (04b raw editor) as a provider of the generic panel |
 | Hoist extension | `ManuscriptUnitState` gains `scenes[]` (loaded with the unit; composition outline is the source) |
-| Scene support (rich) | Navigator scene click → focus chapter AND scroll/highlight the scene (consume the existing-but-unused bus `scene` event); scene boundaries visible in the editor |
-| CLARIFY audits (blocking, first step) | (a) **scene→body anchoring**: does the composition stitch emit markers into the Tiptap body, or must a scene-marker node be introduced? (b) scenes read/write API surface on composition-service; (c) whether scene-metadata writes have MCP tools (gate item 2) |
-| Lane B | `book_*draft` handler exists; extend for scene-metadata writes |
-| LIVE gate | agent: "đổi synopsis scene 2 chương 3" → MCP → DB → navigator + editor + json-editor all reflect it realtime |
+| Scene support (rich) | **Scene Rail** (see R1 below): navigator scene click → focus chapter + open/highlight the scene's row in a metadata rail beside the editor (consume the existing-but-unused bus `scene` event); synopsis/status editable in the rail |
+| MCP tools (gate item 2) | **Must be created** — composition MCP has no outline/scene write tools (audited): add `outline_update_scene` (synopsis/status/title, wraps `PATCH /outline/nodes/{node_id}`) on composition-service per MCP-first |
+| Lane B | `book_*draft` handler exists; add an `outline_*`/scene handler → invalidate outline queries + reload hoist `scenes[]` |
+| LIVE gate | agent: "đổi synopsis scene 2 chương 3" → MCP → DB → navigator + Scene Rail + json-editor all reflect it realtime |
+
+### CLARIFY audit results (2026-07-02 — resolved against code, pre-build)
+
+- **(a) Scene→body anchoring: DOES NOT EXIST and is not recoverable retroactively.** The final
+  chapter body is either LLM-stitched (`per_scene_stitch` — seams are *smoothed*, boundaries
+  destroyed) or one-shot (`chapter`); no marker survives into the Tiptap body. Per-scene prose
+  exists only PRE-stitch (`promoted_scene_prose` artifacts).
+  **R1 (resolution):** cycle-1 scene support is **metadata-first — no prose anchoring**: the
+  Scene Rail + json-editor `scenes[]` make the navigator's scene layer real without touching
+  prose. Prose anchoring (a `sceneMarker` Tiptap node emitted by the compose/assembly path)
+  is a **future composition-pipeline change**, tracked, out of cycle-1 scope.
+- **(b) Scenes R/W API: EXISTS** — composition `PATCH /outline/nodes/{node_id}` (+ create /
+  reorder / restore / children / search / stats). The navigator already consumes the reads.
+- **(c) Scene-metadata MCP tools: MISSING** — created in this cycle (row above).
+
+### Spec-review resolutions (adversarial pass 2026-07-02)
+
+| # | Gap found | Resolution |
+|---|---|---|
+| R1 | Scene anchoring absent (audit a) | Metadata-first Scene Rail; prose markers = future pipeline work |
+| R2 | **Hoist is a single-unit singleton but `open(resourceId)` implies any chapter** — a json-editor on a non-active chapter would need a second document store, breaking D13 | v1: the manuscript provider serves the **ACTIVE unit only**; `open(otherChapter)` first `focusManuscriptUnit(otherChapter)` (single-unit studio semantics). Multi-unit handles = future, revisit with split-editor demand |
+| R3 | **json-editor multi-instance collides with dockview `id === component`** (openPanel maps id→component 1:1) | v1: `json-editor` is a **singleton panel that retargets via `updateParameters`** (VS Code settings-tab UX). Multi-instance needs an `openPanel` `component` opt — deferred until two-docs-side-by-side is a real ask |
+| R4 | **`panelCatalogContract` enforces enum == palette-openable set** — cataloguing json-editor would force it into the agent enum, but agent-open needs params (out of scope) | json-editor ships `hiddenFromPalette: true`; opened only via "Open as JSON" affordances + F1 params. No enum change, no contract regen this cycle |
+| R5 | **Composite etag** — body (`draft_version`) and scenes (node `updated_at`) are two save paths with independent OCC | `save()` is sequential two-phase (draft PATCH → changed-node PATCHes); conflicts surface PER PART on the handle (`conflict: 'body' \| 'scenes'`); no fake atomicity claimed |
+| R6 | **G7 × scenes[]**: may Lane-B reload scenes while the body buffer is dirty? | Yes — body and scenes are separate buffers on the handle; a scenes-only reload never touches the dirty body (G7 applies per-buffer) |
 
 ## Cycle queue (each = one tool, re-scoped at its own CLARIFY)
 
