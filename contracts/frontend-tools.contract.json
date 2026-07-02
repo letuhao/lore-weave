@@ -203,7 +203,9 @@
           "usage",
           "notifications",
           "settings",
-          "trash"
+          "trash",
+          "extensions",
+          "proposals"
         ],
         "type": "string"
       }

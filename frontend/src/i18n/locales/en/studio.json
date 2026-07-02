@@ -15,7 +15,10 @@
     "notifications": { "title": "Notifications", "desc": "Job completions & alerts" },
     "settings": { "title": "Settings", "desc": "Account, providers & translation" },
     "trash": { "title": "Trash", "desc": "Restore deleted books, chapters & more" },
-    "json-editor": { "title": "JSON", "desc": "Raw JSON view of a resource" }
+    "json-editor": { "title": "JSON", "desc": "Raw JSON view of a resource" },
+    "extensions": { "title": "Extensions", "desc": "Manage plugins, skills, MCP servers, commands & hooks" },
+    "proposals": { "title": "Proposals", "desc": "Review skills the agent proposed" },
+    "skill-editor": { "title": "Skill", "desc": "Edit a SKILL.md" }
   },
   "sceneRail": {
     "title": "Scenes",

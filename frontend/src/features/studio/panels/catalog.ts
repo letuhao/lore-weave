@@ -16,6 +16,9 @@ import { NotificationsPanel } from './NotificationsPanel';
 import { SettingsPanel } from './SettingsPanel';
 import { TrashPanel } from './TrashPanel';
 import { JsonEditorPanel } from './JsonEditorPanel';
+import { ExtensionsPanel } from './ExtensionsPanel';
+import { ProposalsPanel } from './ProposalsPanel';
+import { SkillEditorPanel } from './SkillEditorPanel';
 
 export interface StudioPanelDef {
   id: string;
@@ -36,6 +39,12 @@ export const STUDIO_PANELS: StudioPanelDef[] = [
   { id: 'notifications', component: NotificationsPanel, titleKey: 'panels.notifications.title', descKey: 'panels.notifications.desc' },
   { id: 'settings', component: SettingsPanel, titleKey: 'panels.settings.title', descKey: 'panels.settings.desc' },
   { id: 'trash', component: TrashPanel, titleKey: 'panels.trash.title', descKey: 'panels.trash.desc' },
+  // Agent Extensibility Registry (§13b) — extensions hub + proposals inbox are
+  // palette-openable + in the agent enum; skill-editor is a params-retargeting
+  // singleton (json-editor precedent), hidden from palette + outside the enum.
+  { id: 'extensions', component: ExtensionsPanel, titleKey: 'panels.extensions.title', descKey: 'panels.extensions.desc' },
+  { id: 'proposals', component: ProposalsPanel, titleKey: 'panels.proposals.title', descKey: 'panels.proposals.desc' },
+  { id: 'skill-editor', component: SkillEditorPanel, titleKey: 'panels.skill-editor.title', descKey: 'panels.skill-editor.desc', hiddenFromPalette: true },
   // #12 R3/R4 — singleton, retargets via params {docType, resourceId}; opened by "Open as JSON"
   // affordances only (hidden from palette ⇒ outside the agent enum, no contract change this cycle).
   { id: 'json-editor', component: JsonEditorPanel, titleKey: 'panels.json-editor.title', descKey: 'panels.json-editor.desc', hiddenFromPalette: true },
