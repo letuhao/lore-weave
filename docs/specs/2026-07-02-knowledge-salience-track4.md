@@ -125,12 +125,18 @@ As built:
   demotes), saturating (~3 net thumbs ≈ 0.76; an enthusiastic user can't pin forever).
   `salience_feedback_weight` default **0.0** = inert (measure-before-flip unchanged).
 
-### P4 — Hierarchical pointer retrieval (R-T4-05) + iterative-retry-on-miss (R-T4-06). **[buildable now]**
-- When the glossary/entity block would dominate the budget, emit **pointers** (`id + name +
-  short_description`) instead of full EAV; add an MCP tool `expand_entity(entity_id)` the agent
-  calls to pull the full bundle on demand (MCP-first).
-- On empty/low-quality L2+L3, auto-retry once with a widened query (no filter / stemmed / +1 graph
-  hop from the anchor) before returning "no memory."
+### P4 — Hierarchical pointer retrieval (R-T4-05) + iterative-retry-on-miss (R-T4-06). **[BUILT]**
+- **R-T4-05 (as built):** the Mode-3 budget enforcer's glossary trim (Pass 4) now DEMOTES
+  tail entities to one-line `<entity_refs>` pointers (name + kind + an inline hint naming
+  the expand affordance) instead of dropping them; a new Pass 5 drops refs only if still
+  over budget. **No new MCP tool was needed** — verification showed `memory_recall_entity`
+  already IS the expand tool (recall-by-name); the pointer hint names it. Fires only on
+  the over-budget path (no behavior change under budget).
+- **R-T4-06 (as built):** when the intent names entities but the first L2 pass returns
+  ZERO facts, ONE widened retry (relational, 2-hop, recency-neutral, signal-tagged
+  `l2_retry_widened`) runs before concluding "no memory". Strictly additive recall on the
+  empty path only — never re-ranks a non-empty result. Kill-switch
+  `context_l2_retry_widened` (default ON — a miss-path fallback, not a re-ranker).
 
 ### P5 — Consolidation (R-T4-04) + metadata filters (R-T4-08) + conversation-layer LFU (R-T4-09). **[larger / partly deferred]**
 - **R-T4-04** nightly "sleep": merge near-duplicate entities, refresh `cached_name`, discover

@@ -85,6 +85,10 @@ class Settings(BaseSettings):
     # Track 4 P3b — thumbs-feedback attribution term (chat.message_feedback →
     # entity_access_log.feedback_score). Same discipline; default 0.0 = inert.
     salience_feedback_weight: float = 0.0
+    # Track 4 P4 (R-T4-06) — ONE widened (relational, 2-hop) L2 retry when the
+    # intent names entities but the first pass found ZERO facts. Additive recall
+    # on the empty path only; default ON (a miss-path fallback, not a re-ranker).
+    context_l2_retry_widened: bool = True
 
     # K16.2 — book-service HTTP client for chapter counts in cost estimation.
     book_service_url: str = "http://book-service:8082"

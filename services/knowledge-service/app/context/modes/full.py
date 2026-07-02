@@ -45,7 +45,7 @@ from app.context.formatters.dedup import (
 from app.context.formatters.instructions import build_instructions_block
 from app.context.formatters.token_counter import estimate_tokens
 from app.context.formatters.xml_escape import sanitize_for_xml
-from app.context.intent.classifier import IntentResult, classify
+from app.context.intent.classifier import Intent, IntentResult, classify
 from app.context.modes.no_project import BuiltContext, split_at_boundary
 from app.context.selectors.absence import detect_absences
 from app.context.selectors.facts import L2FactResult, select_l2_facts
@@ -300,6 +300,7 @@ def _render_mode3(
     summary_hits: list[LevelSummaryHit],
     absences: list[str],
     intent_obj: IntentResult,
+    entity_refs: list | None = None,
 ) -> tuple[str, str, str]:
     """Pure render of Mode 3 pieces → (stable, volatile, context).
 
@@ -354,6 +355,21 @@ def _render_mode3(
                 )
             lines.append("    </entity>")
         lines.append("  </glossary>")
+
+    # Track 4 P4 (R-T4-05) — pointer tier: entities the budget enforcer demoted
+    # out of the full glossary block. One compact line each keeps BREADTH (the
+    # model knows they exist and can expand any of them via the existing
+    # memory_recall_entity tool) at a fraction of the full-EAV token cost.
+    if entity_refs:
+        lines.append(
+            '  <entity_refs hint="more known entities; expand any with the '
+            'memory_recall_entity tool">'
+        )
+        for e in entity_refs:
+            name = sanitize_for_xml(e.cached_name or "")
+            kind = sanitize_for_xml(e.kind_code)
+            lines.append(f'    <ref name="{name}" kind="{kind}"/>')
+        lines.append("  </entity_refs>")
 
     lines.extend(_render_facts_block(l2_facts))
 
@@ -441,6 +457,7 @@ def _enforce_budget(
     summaries = list(summary_hits)
     abs_list = list(absences)
     ent_list = list(entities)
+    ent_refs: list = []  # P4 — entities demoted to one-line pointers
     facts = L2FactResult(
         current=list(l2_facts.current),
         recent=list(l2_facts.recent),
@@ -454,6 +471,7 @@ def _enforce_budget(
             entities=ent_list, l2_facts=facts,
             l3_passages=passages, summary_hits=summaries,
             absences=abs_list, intent_obj=intent_obj,
+            entity_refs=ent_refs,
         )
         return stable, volatile, context, estimate_tokens(context)
 
@@ -514,17 +532,32 @@ def _enforce_budget(
             )
             return stable, volatile, rendered, tokens
 
-    # Pass 4: trim glossary from the tail until under budget.
-    # Assume entities arrive in rank order; pop from the end.
+    # Pass 4 (P4 / R-T4-05): DEMOTE glossary tail entities to one-line pointers
+    # instead of dropping them — breadth survives (the model can expand any ref
+    # via memory_recall_entity) at a fraction of the token cost. Entities arrive
+    # in rank order; demote from the end.
     if ent_list:
         while ent_list and tokens > budget_tokens:
-            ent_list.pop()
+            ent_refs.insert(0, ent_list.pop())  # keep rank order within refs
             stable, volatile, rendered, tokens = render_and_count()
         if tokens <= budget_tokens:
             logger.info(
-                "K18.7: budget enforced by trimming glossary "
-                "(final=%d, tokens=%d/%d)",
-                len(ent_list), tokens, budget_tokens,
+                "K18.7: budget enforced by demoting glossary to refs "
+                "(full=%d, refs=%d, tokens=%d/%d)",
+                len(ent_list), len(ent_refs), tokens, budget_tokens,
+            )
+            return stable, volatile, rendered, tokens
+
+    # Pass 5: still over — drop the pointer refs themselves from the tail.
+    if ent_refs:
+        while ent_refs and tokens > budget_tokens:
+            ent_refs.pop()
+            stable, volatile, rendered, tokens = render_and_count()
+        if tokens <= budget_tokens:
+            logger.info(
+                "K18.7: budget enforced by dropping entity refs "
+                "(final refs=%d, tokens=%d/%d)",
+                len(ent_refs), tokens, budget_tokens,
             )
             return stable, volatile, rendered, tokens
 
@@ -660,6 +693,35 @@ async def build_full_mode(
         ),
     )
     mentioned_entities = list(intent_obj.entities)
+
+    # Track 4 P4 (R-T4-06) — widened retry on a fact MISS. When the intent names
+    # entities but the L2 selector came back EMPTY (e.g. a SPECIFIC_ENTITY query
+    # whose 1-hop found nothing), retry ONCE with a relational 2-hop walk over the
+    # same entities before concluding "no memory". Strictly additive recall on the
+    # empty path only (never re-ranks a non-empty result); one bounded extra Neo4j
+    # query; kill-switch via settings.context_l2_retry_widened.
+    if (
+        settings.context_l2_retry_widened
+        and l2_facts.total() == 0
+        and intent_obj.entities
+        and intent_obj.hop_count < 2
+    ):
+        widened = IntentResult(
+            intent=Intent.RELATIONAL,
+            entities=intent_obj.entities,
+            signals=intent_obj.signals + ("l2_retry_widened",),
+            hop_count=2,
+            recency_weight=0.0,
+        )
+        l2_retry = await _safe_l2_facts(
+            user_id=user_id, project=project, intent=widened,
+        )
+        if l2_retry.total():
+            logger.info(
+                "P4/R-T4-06: widened L2 retry recovered %d facts (project=%s)",
+                l2_retry.total(), project.project_id,
+            )
+            l2_facts = l2_retry
 
     # K18.4: drop L2 rows already expressed by the L1 summary so the
     # graph doesn't duplicate authored prose.
