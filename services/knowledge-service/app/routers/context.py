@@ -141,6 +141,7 @@ async def build(
             embedding_client=embedding_client,
             llm_client=llm_client,
             language=req.language,
+            entity_access_repo=entity_access_repo,
         )
         _mode_label = built.mode
     except ProjectNotFound:

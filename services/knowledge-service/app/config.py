@@ -70,6 +70,15 @@ class Settings(BaseSettings):
     # instructions block are protected.
     mode3_token_budget: int = 6000
 
+    # Track 4 P1 — salience-weighted retrieval (R-T4-01). Blends the P0
+    # entity_access_log signal (recency-decayed retrieval frequency) into the
+    # glossary entity ranking so entities THIS user keeps returning to rank higher
+    # (and survive budget-trim longer). Read-time Ebbinghaus decay — no cron.
+    # WEIGHT DEFAULTS TO 0.0 (byte-identical to today) — measure-before-flip: only
+    # raise it once the POC eval shows the learned signal beats static ranking.
+    salience_access_weight: float = 0.0
+    salience_half_life_days: float = 14.0
+
     # K16.2 — book-service HTTP client for chapter counts in cost estimation.
     book_service_url: str = "http://book-service:8082"
     book_client_timeout_s: float = 5.0

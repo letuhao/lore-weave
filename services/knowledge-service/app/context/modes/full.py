@@ -51,6 +51,7 @@ from app.context.selectors.absence import detect_absences
 from app.context.selectors.facts import L2FactResult, select_l2_facts
 from app.context.query_embedding import embed_query_cached
 from app.context.selectors.glossary import select_glossary_for_context
+from app.context.selectors.salience import apply_salience
 from app.context.intent.abstract_query import is_abstract_query
 from app.context.selectors.passages import L3Passage  # select_l3_passages is lazy-imported in _safe_l3_passages for test-patchability
 from app.context.selectors.summary_blend import LevelSummaryHit  # select_summary_blend is lazy-imported in _safe_summary_blend
@@ -547,6 +548,7 @@ async def build_full_mode(
     embedding_client: EmbeddingClient | None = None,
     llm_client: LLMClient | None = None,
     language: str | None = None,
+    entity_access_repo=None,
 ) -> BuiltContext:
     """Build the Mode 3 memory block.
 
@@ -605,6 +607,10 @@ async def build_full_mode(
             l1_summary.content,
             min_overlap=settings.dedup_min_overlap,
         )
+
+    # Track 4 P1 — re-rank by learned salience (recency-decayed access frequency).
+    # Weight-guarded: default 0.0 → no DB read, no re-order (byte-identical).
+    entities = await apply_salience(entity_access_repo, entities, user_id, project.project_id)
 
     # ── L2 facts + L3 passages + summary blend (Neo4j, parallel) ────────
     # Classify once: the same IntentResult drives both the L2 selector's

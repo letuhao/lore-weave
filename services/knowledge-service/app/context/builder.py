@@ -53,6 +53,7 @@ async def build_context(
     embedding_client: EmbeddingClient | None = None,
     llm_client: LLMClient | None = None,
     language: str | None = None,
+    entity_access_repo=None,
 ) -> BuiltContext:
     if project_id is None:
         return await build_no_project_mode(summaries_repo, user_id)
@@ -71,6 +72,7 @@ async def build_context(
             embedding_client=embedding_client,
             llm_client=llm_client,
             language=language,
+            entity_access_repo=entity_access_repo,
         )
 
     return await build_static_mode(
@@ -80,4 +82,5 @@ async def build_context(
         project=project,
         message=message,
         language=language,
+        entity_access_repo=entity_access_repo,
     )
