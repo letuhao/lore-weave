@@ -34,7 +34,8 @@ _SELECT = """
 
 _UNIT_SELECT = """
   u.run_id, u.unit_index, u.chapter_id, u.status, u.pre_revision_id,
-  u.post_revision_id, u.cost_usd, u.error_message, u.created_at, u.updated_at
+  u.post_revision_id, u.cost_usd, u.error_message, u.critic_verdict,
+  u.created_at, u.updated_at
 """
 
 
@@ -236,7 +237,11 @@ class AuthoringRunsRepo:
 
 
 def _unit_row(row: asyncpg.Record) -> AuthoringRunUnit:
-    return AuthoringRunUnit.model_validate(dict(row))
+    data = dict(row)
+    v = data.get("critic_verdict")
+    if isinstance(v, str):  # jsonb comes back as text without a codec
+        data["critic_verdict"] = json.loads(v)
+    return AuthoringRunUnit.model_validate(data)
 
 
 class AuthoringRunUnitsRepo:
@@ -271,7 +276,7 @@ class AuthoringRunUnitsRepo:
           chapter_id = EXCLUDED.chapter_id,
           pre_revision_id = EXCLUDED.pre_revision_id,
           status = 'pending', post_revision_id = NULL, cost_usd = 0,
-          error_message = NULL, updated_at = now()
+          error_message = NULL, critic_verdict = NULL, updated_at = now()
         RETURNING {_UNIT_SELECT.replace("u.", "")}
         """
         async with self._pool.acquire() as c:
@@ -300,6 +305,32 @@ class AuthoringRunUnitsRepo:
             post_revision_id=post_revision_id, cost_usd=cost_usd,
             run_statuses=run_statuses,
         )
+
+    async def set_critic_verdict(
+        self,
+        owner_user_id: UUID,
+        run_id: UUID,
+        unit_index: int,
+        *,
+        verdict: dict[str, Any],
+    ) -> AuthoringRunUnit | None:
+        """D5: land the continuity-critic verdict on a DRAFTED unit row (the
+        critic runs post-draft; the status guard is the same OCC fence as the
+        review transitions — a row raced away from `drafted` loses cleanly and
+        returns None). Tenancy via the parent-run join, like every unit write."""
+        query = f"""
+        UPDATE authoring_run_units u
+        SET critic_verdict = $4::jsonb, updated_at = now()
+        FROM authoring_runs r
+        WHERE u.run_id = $1 AND r.run_id = u.run_id AND r.owner_user_id = $2
+          AND u.unit_index = $3 AND u.status = 'drafted'
+        RETURNING {_UNIT_SELECT}
+        """
+        async with self._pool.acquire() as c:
+            row = await c.fetchrow(
+                query, run_id, owner_user_id, unit_index, json.dumps(verdict),
+            )
+        return _unit_row(row) if row else None
 
     async def mark_failed(
         self,

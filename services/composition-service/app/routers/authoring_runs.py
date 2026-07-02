@@ -202,6 +202,7 @@ def _serialize_unit(unit: Any) -> dict[str, Any]:
         "post_revision_id": str(unit.post_revision_id) if unit.post_revision_id else None,
         "cost_usd": str(unit.cost_usd),
         "error_message": unit.error_message,
+        "critic_verdict": unit.critic_verdict,  # D5 (None = not critiqued)
         "created_at": unit.created_at.isoformat() if unit.created_at else None,
         "updated_at": unit.updated_at.isoformat() if unit.updated_at else None,
     }

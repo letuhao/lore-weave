@@ -563,6 +563,10 @@ class AuthoringRunUnit(BaseModel):
     post_revision_id: UUID | None = None  # the run's draft revision (best-effort)
     cost_usd: Decimal = Decimal("0")      # this unit's share of the run's spent_usd
     error_message: str | None = None
+    # D5: the continuity-critic verdict — {severity: ok|warn|severe, summary,
+    # cost_usd[, detail]}. None = not critiqued (critic disabled / unit never
+    # drafted / run paused-or-stolen at the boundary before the critique).
+    critic_verdict: dict[str, Any] | None = None
     created_at: datetime | None = None
     updated_at: datetime | None = None
 

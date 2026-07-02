@@ -1,11 +1,13 @@
 """Authoring-run FSM + start-gate + v1 driver unit tests (RAID Wave D2, DR-D)
-+ the D3 per-unit ledger / Run Report / accept-reject / Revert-All.
++ the D3 per-unit ledger / Run Report / accept-reject / Revert-All
++ the D5 per-unit continuity critic (verdict ledger + critic_severe breaker).
 
 Fakes mirror the repo's OCC semantics exactly: transition() is a guarded
 compare-and-set (wrong-from → None) and →gated raises UniqueViolationError
 when another run is active on the same book (the partial-index scope fence).
-The driver is exercised directly (run_driver) with a FAKE drafting seam and a
-FAKE revision capture (the book-service revisions-list seam).
+The driver is exercised directly (run_driver) with a FAKE drafting seam, a
+FAKE revision capture (the book-service revisions-list seam) and a FAKE
+critic seam (the engine judge_prose seam).
 """
 
 from __future__ import annotations
@@ -24,8 +26,10 @@ from app.db.models import AuthoringRun, AuthoringRunUnit, PlanRun
 from app.services.authoring_run_service import (
     ActiveRunOverlapError,
     AuthoringRunService,
+    CriticVerdict,
     DraftOutcome,
     TransitionConflictError,
+    verdict_from_critique,
 )
 
 OWNER = uuid.uuid4()
@@ -197,6 +201,19 @@ class FakeUnitsRepo:
             to_status="failed", error_message=error,
         )
 
+    async def set_critic_verdict(self, owner, run_id, unit_index, *,
+                                 verdict) -> AuthoringRunUnit | None:
+        # D5: mirrors the repo — tenancy via the parent run, guarded on the
+        # unit still being 'drafted' (a raced-away row loses cleanly → None).
+        if not self._owned(owner, run_id):
+            return None
+        u = self.rows.get((run_id, unit_index))
+        if u is None or u.status != "drafted":
+            return None
+        updated = u.model_copy(update={"critic_verdict": verdict})
+        self.rows[(run_id, unit_index)] = updated
+        return updated
+
     async def transition_unit(self, owner, run_id, unit_index, *, from_statuses,
                               to_status, post_revision_id=None, cost_usd=None,
                               error_message=None,
@@ -262,6 +279,26 @@ class FakeRevisionCapture:
         return rid
 
 
+class FakeCriticSeam:
+    """Mirrors the CriticSeam contract (D5). `verdicts` are consumed in call
+    order (then `default`); `raise_on_call` (1-based) raises there — the driver
+    must degrade to a warn verdict, never fail the run."""
+
+    def __init__(self, verdicts=None,
+                 default=CriticVerdict(severity="ok", summary="all dims clear"),
+                 raise_on_call: set[int] | None = None) -> None:
+        self.calls: list[dict[str, Any]] = []
+        self.verdicts = list(verdicts or [])
+        self.default = default
+        self.raise_on_call = raise_on_call or set()
+
+    async def critique(self, **kw) -> CriticVerdict:
+        self.calls.append(kw)
+        if len(self.calls) in self.raise_on_call:
+            raise RuntimeError("judge model unavailable")
+        return self.verdicts.pop(0) if self.verdicts else self.default
+
+
 class NotifyRecorder:
     """Stands in for the notification-service ingest client (D4). Records the
     calls; `raise_on_call=True` models an ingest outage — the run must be
@@ -298,7 +335,7 @@ async def _drain_driver_tasks():
 
 
 def make_svc(seam=None, plan_status="validated", revisions=None, notify=None,
-             driver_id=None):
+             driver_id=None, critic=None):
     runs = FakeRunsRepo()
     plans = FakePlanRuns()
     plans.add(OWNER, BOOK, PLAN, plan_status)
@@ -309,16 +346,22 @@ def make_svc(seam=None, plan_status="validated", revisions=None, notify=None,
         # transitions notify, and unit tests must stay network-free.
         notify=notify or NotifyRecorder(),
         driver_id=driver_id,
+        # D5: always inject a fake critic (never the real EngineCriticSeam —
+        # it fetches the draft over HTTP). Default: 'ok' verdicts, zero cost,
+        # so pre-D5 driver assertions (spend, statuses) are unaffected.
+        critic=critic or FakeCriticSeam(),
     )
     return svc, runs, plans
 
 
-async def make_run(svc, *, scope=None, budget="1.00", allowlist=None, level=3):
+async def make_run(svc, *, scope=None, budget="1.00", allowlist=None, level=3,
+                   params=None):
     return await svc.create(
         OWNER, BOOK, plan_run_id=PLAN, level=level,
         scope=[str(c) for c in (scope if scope is not None else [CH1, CH2])],
         budget_usd=Decimal(budget),
         tool_allowlist=allowlist if allowlist is not None else ["book_write_draft"],
+        params=params,
     )
 
 
@@ -1195,3 +1238,251 @@ async def test_sweep_resume_from_cursor_e2e():
     assert [c["chapter_id"] for c in seam.calls] == [CH2, CH3]
     units = await svc._units.list_for_run(run.run_id)
     assert [u.status for u in units] == ["drafted", "drafted", "drafted"]
+
+
+# ── D5: per-unit continuity critic ──────────────────────────────────────────
+# Critic runs post-draft (default ON), verdict lands on the unit row, cost
+# accumulates into spent_usd, severe pauses with the breaker, warn/ok and
+# critic FAILURE continue, disabled/stolen skip.
+
+
+async def test_critic_invoked_post_draft_verdict_lands_and_cost_accumulates():
+    critic = FakeCriticSeam(
+        default=CriticVerdict(severity="ok", summary="clean",
+                              cost_usd=Decimal("0.005")),
+    )
+    seam = FakeSeam(default=DraftOutcome(ok=True, cost_usd=Decimal("0.01")))
+    svc, runs, _ = make_svc(seam=seam, critic=critic)
+    run = await _completed_run(svc, runs)
+    assert run.status == "report_ready"
+    # invoked once per drafted unit, with the unit's chapter + the run's params
+    assert [c["chapter_id"] for c in critic.calls] == [CH1, CH2]
+    assert all(c["book_id"] == BOOK and c["plan_run_id"] == PLAN
+               for c in critic.calls)
+    units = await svc._units.list_for_run(run.run_id)
+    assert [u.critic_verdict for u in units] == [
+        {"severity": "ok", "summary": "clean", "cost_usd": "0.005"},
+    ] * 2
+    # spend: 2 drafts (0.01) + 2 critiques (0.005) — critic cost is real spend
+    assert run.spent_usd == Decimal("0.03")
+
+
+async def test_critic_severe_pauses_run_with_breaker_and_stops_downstream():
+    critic = FakeCriticSeam(verdicts=[
+        CriticVerdict(severity="severe",
+                      summary="1 canon violation(s) [r1]; coherence=1",
+                      cost_usd=Decimal("0.005")),
+    ])
+    seam = FakeSeam(default=DraftOutcome(ok=True, cost_usd=Decimal("0.01")))
+    notify = NotifyRecorder()
+    svc, runs, _ = make_svc(seam=seam, critic=critic, notify=notify)
+    run = await _completed_run(svc, runs)
+    # interrupt on severe = PAUSE (07S), never fail — resumable after review
+    assert run.status == "paused"
+    assert run.breaker_state == {
+        "reason": "critic_severe", "unit_index": 0, "chapter_id": str(CH1),
+        "summary": "1 canon violation(s) [r1]; coherence=1",
+    }
+    assert len(seam.calls) == 1          # unit 2 never drafted
+    assert len(critic.calls) == 1
+    assert run.current_unit == 1         # unit 0's progress stands (resume point)
+    units = await svc._units.list_for_run(run.run_id)
+    assert [u.status for u in units] == ["drafted"]   # the draft itself stands
+    assert units[0].critic_verdict["severity"] == "severe"
+    assert notify.calls == []            # pause is not a terminal — no notify
+
+
+async def test_critic_warn_and_ok_continue_run():
+    critic = FakeCriticSeam(verdicts=[
+        CriticVerdict(severity="warn", summary="continuity concerns; pacing=2"),
+        CriticVerdict(severity="ok", summary="all dims clear"),
+    ])
+    svc, runs, _ = make_svc(critic=critic)
+    run = await _completed_run(svc, runs)
+    assert run.status == "report_ready"
+    units = await svc._units.list_for_run(run.run_id)
+    assert [u.critic_verdict["severity"] for u in units] == ["warn", "ok"]
+
+
+async def test_critic_exception_degrades_to_warn_and_run_continues():
+    critic = FakeCriticSeam(raise_on_call={1})
+    seam = FakeSeam(default=DraftOutcome(ok=True, cost_usd=Decimal("0.01")))
+    svc, runs, _ = make_svc(seam=seam, critic=critic)
+    run = await _completed_run(svc, runs)
+    assert run.status == "report_ready"      # critic failure is NEVER fatal
+    units = await svc._units.list_for_run(run.run_id)
+    assert units[0].critic_verdict == {
+        "severity": "warn", "summary": "critic unavailable", "cost_usd": "0",
+    }
+    assert units[1].critic_verdict["severity"] == "ok"  # unit 2 judged normally
+    assert run.spent_usd == Decimal("0.02")   # no critic cost billed for a raise
+
+
+async def test_critic_off_contract_severity_demoted_to_warn():
+    critic = FakeCriticSeam(default=CriticVerdict(severity="catastrophic",
+                                                  summary="typo'd severity"))
+    svc, runs, _ = make_svc(critic=critic)
+    run = await _completed_run(svc, runs)
+    assert run.status == "report_ready"       # never trips the breaker
+    units = await svc._units.list_for_run(run.run_id)
+    assert all(u.critic_verdict["severity"] == "warn" for u in units)
+
+
+async def test_critic_disabled_skips_entirely():
+    critic = FakeCriticSeam()
+    svc, runs, _ = make_svc(critic=critic)
+    run = await _running_run(svc, runs, params={"critic_enabled": False})
+    await svc.run_driver(OWNER, run.run_id)
+    final = await runs.get_for_owner(OWNER, run.run_id)
+    assert final.status == "report_ready"
+    assert critic.calls == []                  # explicit false disables
+    units = await svc._units.list_for_run(run.run_id)
+    assert all(u.critic_verdict is None for u in units)
+
+
+async def test_critic_cost_feeds_budget_breaker():
+    # draft 0.01 + critique 0.005 = 0.015 >= budget 0.012 → the pre-unit-2
+    # budget check pauses: critic spend is real spend.
+    critic = FakeCriticSeam(
+        default=CriticVerdict(severity="ok", summary="clean",
+                              cost_usd=Decimal("0.005")),
+    )
+    seam = FakeSeam(default=DraftOutcome(ok=True, cost_usd=Decimal("0.01")))
+    svc, runs, _ = make_svc(seam=seam, critic=critic)
+    run = await _running_run(svc, runs, budget="0.012")
+    await svc.run_driver(OWNER, run.run_id)
+    final = await runs.get_for_owner(OWNER, run.run_id)
+    assert final.status == "paused"
+    assert final.breaker_state["reason"] == "budget"
+    assert len(seam.calls) == 1
+    assert final.spent_usd == Decimal("0.015")
+
+
+async def test_critic_skipped_when_run_stolen_mid_unit():
+    """A sweep steal while the seam drafts: the draft lands (status fence
+    allows it) but the critic's guarded claim fails → critique SKIPPED, old
+    driver stops — the thief's resume re-runs the cursor unit (upsert resets
+    the row, verdict included)."""
+    holder: dict[str, Any] = {}
+
+    async def steal_during_first_unit(call_no, kw):
+        if call_no == 1:
+            runs = holder["runs"]
+            _age_heartbeat(runs, holder["run_id"], secs=10_000)
+            await runs.claim_stale_running(
+                driver_id="thief-driver", stale_secs=3600, limit=10,
+            )
+
+    critic = FakeCriticSeam()
+    seam = FakeSeam(on_call=steal_during_first_unit)
+    svc, runs, _ = make_svc(seam=seam, critic=critic)
+    run = await _running_run(svc, runs)
+    holder.update(runs=runs, run_id=run.run_id)
+    await svc.run_driver(OWNER, run.run_id)
+    assert critic.calls == []                  # never critiqued under a lost claim
+    units = await svc._units.list_for_run(run.run_id)
+    assert [u.status for u in units] == ["drafted"]
+    assert units[0].critic_verdict is None     # the report shows the gap
+
+
+async def test_critic_skipped_when_paused_mid_unit():
+    holder: dict[str, Any] = {}
+
+    async def pause_mid_flight(call_no, kw):
+        if call_no == 1:
+            await holder["runs"].transition(
+                OWNER, holder["run_id"], from_statuses=("running",),
+                to_status="paused",
+            )
+
+    critic = FakeCriticSeam()
+    seam = FakeSeam(on_call=pause_mid_flight)
+    svc, runs, _ = make_svc(seam=seam, critic=critic)
+    run = await _running_run(svc, runs)
+    holder.update(runs=runs, run_id=run.run_id)
+    await svc.run_driver(OWNER, run.run_id)
+    assert critic.calls == []                  # paused at the boundary — skipped
+    units = await svc._units.list_for_run(run.run_id)
+    assert [u.status for u in units] == ["drafted"]  # the drafted row stands
+    assert units[0].critic_verdict is None
+
+
+async def test_unit_report_includes_critic_verdict():
+    critic = FakeCriticSeam(verdicts=[
+        CriticVerdict(severity="warn", summary="pacing dips",
+                      detail={"pacing": 2}),
+    ])
+    svc, runs, _ = make_svc(critic=critic)
+    run = await _completed_run(svc, runs)
+    rows = await svc.unit_report(run)
+    assert rows[0]["critic_verdict"] == {
+        "severity": "warn", "summary": "pacing dips", "cost_usd": "0",
+        "detail": {"pacing": 2},
+    }
+    assert rows[1]["critic_verdict"]["severity"] == "ok"
+
+
+# ── D5: severity mapping (pure — the judge_prose critique → verdict rules) ──
+
+
+def _critique(**over):
+    base = {"coherence": 4, "voice_match": 4, "pacing": 4,
+            "canon_consistency": 4, "violations": []}
+    base.update(over)
+    return base
+
+
+def test_verdict_all_dims_clear_is_ok():
+    severity, summary = verdict_from_critique(_critique())
+    assert severity == "ok"
+    assert "coherence=4" in summary
+
+
+def test_verdict_affirmed_violation_is_severe():
+    severity, summary = verdict_from_critique(_critique(violations=[
+        {"rule_id": "r1", "violated": True, "span": "…", "why": "…"},
+    ]))
+    assert severity == "severe"
+    assert "r1" in summary
+
+
+def test_verdict_refuted_violation_does_not_escalate():
+    severity, _ = verdict_from_critique(_critique(violations=[
+        {"rule_id": "r1", "violated": False},
+    ]))
+    assert severity == "ok"
+
+
+def test_verdict_critically_low_dim_is_severe():
+    severity, summary = verdict_from_critique(_critique(coherence=1))
+    assert severity == "severe"
+    assert "coherence=1" in summary
+
+
+def test_verdict_low_dim_is_warn():
+    severity, _ = verdict_from_critique(_critique(pacing=2))
+    assert severity == "warn"
+
+
+def test_verdict_error_marker_is_warn_unavailable():
+    severity, summary = verdict_from_critique(
+        {"coherence": None, "voice_match": None, "pacing": None,
+         "canon_consistency": None, "violations": [], "error": "critic_failed"},
+    )
+    assert severity == "warn"
+    assert "critic unavailable" in summary
+
+
+def test_verdict_no_usable_scores_is_warn():
+    severity, summary = verdict_from_critique(
+        {"coherence": None, "voice_match": None, "pacing": None,
+         "canon_consistency": None, "violations": []},
+    )
+    assert severity == "warn"
+    assert "no usable scores" in summary
+
+
+def test_verdict_bool_scores_excluded_not_judged():
+    # bool is an int subclass — must not read as a 0/1 score (severe)
+    severity, _ = verdict_from_critique(_critique(coherence=True))
+    assert severity == "ok"  # judged on the remaining 3 real dims

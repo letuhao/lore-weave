@@ -241,6 +241,20 @@ class Settings(BaseSettings):
     # translation-service chapter_worker producer; X-Internal-Token via
     # internal_service_token). Best-effort: a notify failure never affects a run.
     notification_service_internal_url: str = "http://notification-service:8091"
+    # ── D5 per-unit continuity critic (RAID Wave D5, DR-D / 07S §10 — "interrupt
+    # on severe; else Run Report"). The enable flag rides run params, NOT config:
+    # params.critic_enabled defaults TRUE (an autonomous run needs the net); an
+    # explicit falsy value disables. Severity thresholds map the 4-dim judge_prose
+    # scores (0-5, engine/critic.py): any affirmed canon violation OR any judged
+    # dim <= severe_score → 'severe' (breaker: the run PAUSES — not fails — for
+    # human review); else any dim <= warn_score → 'warn' (lands on the Run Report
+    # only); else 'ok'. Cost: the LLM SDK Job carries no cost field (same reason
+    # the drafting seam falls back to authoring_unit_estimate_usd), so a COMPLETED
+    # critique bills authoring_critic_estimate_usd into spent_usd; a degraded one
+    # ('critic unavailable') bills 0 — the spend may never have reached a model.
+    authoring_critic_severe_score: int = 1
+    authoring_critic_warn_score: int = 2
+    authoring_critic_estimate_usd: float = 0.01
 
 
 settings = Settings()  # type: ignore[call-arg]

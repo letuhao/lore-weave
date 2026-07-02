@@ -67,7 +67,9 @@ async def get_authoring_run_service() -> "AuthoringRunService":
     (real book-service revision capture). D4 defaults: notify=None → the real
     NotificationClient (lazy), driver_id=None → the process identity; the
     per-request instances share the module-level driver-task registry, so the
-    inflight cap and sweep see one another. Tests inject fakes."""
+    inflight cap and sweep see one another. D5 default: critic=None → the real
+    EngineCriticSeam (in-process judge_prose over the drafted chapter). Tests
+    inject fakes."""
     from app.services.authoring_run_service import (
         AuthoringRunService,
         BookRevisionCapture,

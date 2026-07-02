@@ -44,6 +44,22 @@ D4 durable background execution (campaign-service saga-driver pattern):
   * fg/bg toggle — `background` is accepted at create and surfaced in GET/list
     (v1: a pure FE display/filter flag; sweep durability applies to BOTH).
 
+D5 per-unit continuity critic (DR-D / 07S §10 — "interrupt on severe; else
+Run Report"):
+  after a unit lands drafted, and when the run's params.critic_enabled is on
+  (DEFAULT TRUE — an autonomous run needs the net; an explicit falsy value
+  disables), the driver invokes the CriticSeam under the same guarded-claim
+  discipline as the drafting seam (heartbeat bump first — a paused/closed/
+  stolen run skips the critique and stops at the boundary). The verdict
+  ({severity: ok|warn|severe, summary, cost_usd[, detail]}) lands on the unit
+  row (critic_verdict jsonb, surfaced by the D3 Run Report); the critique's
+  cost adds to spent_usd via record_unit_progress (so it feeds the budget
+  breaker). severity='severe' trips the breaker: the run PAUSES (breaker
+  reason critic_severe — NOT failed; the human reviews the report and
+  resumes/reverts, 07S "interrupt on severe"). A critic FAILURE is never
+  fatal: any seam exception degrades to a {severity:'warn', summary:'critic
+  unavailable…'} verdict and the run continues — the report shows the gap.
+
 D3 end-gate (Run Report + review, DR-D / 07S §10 edge #3 + #12):
   the driver additionally writes a per-unit LEDGER row (authoring_run_units):
   BEFORE the seam it pins the chapter's pre-run revision baseline
@@ -66,7 +82,7 @@ import json
 import logging
 from dataclasses import dataclass
 from decimal import Decimal
-from typing import Any, Awaitable, Callable, Protocol
+from typing import Any, Awaitable, Callable, Literal, Protocol
 from uuid import UUID, uuid4
 
 import asyncpg
@@ -346,6 +362,213 @@ class EngineDraftingSeam:
         return DraftOutcome(ok=False, error=f"generation job {job_id} timed out")
 
 
+# ── D5 continuity critic ─────────────────────────────────────────────────────
+
+CriticSeverity = Literal["ok", "warn", "severe"]
+_CRITIC_SEVERITIES = ("ok", "warn", "severe")
+# The 4 judge_prose dimensions (engine/critic.py _DIMENSIONS — re-declared here
+# so the severity mapper stays importable without pulling the engine module in).
+_CRITIC_DIMS = ("coherence", "voice_match", "pacing", "canon_consistency")
+
+
+@dataclass
+class CriticVerdict:
+    """What the critic seam reports back per drafted unit."""
+
+    severity: str  # 'ok' | 'warn' | 'severe' (CriticSeverity)
+    summary: str
+    cost_usd: Decimal = Decimal("0")
+    detail: dict[str, Any] | None = None  # the raw critique (report drill-down)
+
+    def as_row(self) -> dict[str, Any]:
+        """The jsonb shape stored on authoring_run_units.critic_verdict."""
+        row: dict[str, Any] = {
+            # defensive: an off-contract severity from an implementation is
+            # demoted to 'warn' (never let a typo'd severity trip the breaker
+            # or read as a clean 'ok').
+            "severity": self.severity if self.severity in _CRITIC_SEVERITIES else "warn",
+            "summary": self.summary,
+            "cost_usd": str(self.cost_usd),
+        }
+        if self.detail is not None:
+            row["detail"] = self.detail
+        return row
+
+
+class CriticSeam(Protocol):
+    """ONE callable per drafted chapter unit (mirrors DraftingSeam): judge the
+    continuity/craft of chapter C of book B for owner U under the run's params.
+    Implementations must never raise — report failure via a 'warn' verdict
+    ('critic unavailable'); the driver additionally guards (a critic failure is
+    NEVER fatal to the run — 07S: the report just shows the gap)."""
+
+    async def critique(
+        self,
+        *,
+        owner_user_id: UUID,
+        book_id: UUID,
+        chapter_id: UUID,
+        plan_run_id: UUID,
+        params: dict[str, Any],
+    ) -> CriticVerdict: ...
+
+
+def verdict_from_critique(critique: dict[str, Any]) -> tuple[str, str]:
+    """Map a judge_prose critique (4 dims 0-5 + violations[], engine/critic.py
+    contract) to (severity, summary). Pure — unit-tested directly.
+
+    severe  — any AFFIRMED canon violation, or any judged dim <=
+              authoring_critic_severe_score (a 0/1 on coherence or canon is a
+              continuity break, not a style nit);
+    warn    — degraded critique (`error` marker), no usable scores, or any
+              judged dim <= authoring_critic_warn_score;
+    ok      — everything judged above the warn threshold."""
+    err = critique.get("error")
+    if err:
+        return "warn", f"critic unavailable ({err})"
+    judged = {
+        d: critique.get(d)
+        for d in _CRITIC_DIMS
+        if isinstance(critique.get(d), int) and not isinstance(critique.get(d), bool)
+    }
+    score_part = " ".join(f"{d}={s}" for d, s in judged.items())
+    violations = [
+        v for v in (critique.get("violations") or [])
+        if isinstance(v, dict) and v.get("violated", True)
+    ]
+    if violations:
+        rules = ", ".join(str(v.get("rule_id")) for v in violations[:5])
+        return "severe", (
+            f"{len(violations)} canon violation(s) [{rules}]"
+            + (f"; {score_part}" if score_part else "")
+        )
+    if not judged:
+        return "warn", "critic returned no usable scores"
+    low = min(judged.values())
+    if low <= settings.authoring_critic_severe_score:
+        return "severe", f"continuity score critically low; {score_part}"
+    if low <= settings.authoring_critic_warn_score:
+        return "warn", f"continuity concerns; {score_part}"
+    return "ok", score_part
+
+
+class EngineCriticSeam:
+    """The REAL critic seam: the M6/Q1 quality machinery's chapter-level 4-dim
+    judge (engine/critic.judge_prose — coherence / voice_match / pacing /
+    canon_consistency + per-rule canon violations; the same judge the Quality
+    Report endpoint runs, routers/plan.py quality_report_endpoint) invoked
+    IN-PROCESS the way EngineDraftingSeam invokes the chapter engine: deferred
+    imports, a minted service bearer for the run OWNER (book-service still
+    enforces the real grant boundary on the JWT `sub`), the chapter's CURRENT
+    draft fetched via BookClient.get_draft → tiptap_doc_to_text.
+
+    Model: params.critic_model_ref when set — anti-self-reinforcement (§4,
+    engine/critic.py header: the critic model SHOULD differ from the drafter) —
+    else the run's params.model_ref (same-model critique is weaker but better
+    than no net; the caller opts into a distinct judge via critic_model_ref).
+
+    Honest v1 gaps (stubbed, by design not omission):
+    * canon grounding — the Quality Report endpoint renders a canon block from
+      the kal cast roster + genre convention (bearer-side helpers private to
+      that router); this headless seam passes empty active_rules/present_facts,
+      so `canon_consistency` judges from the passage alone. Wiring the roster
+      canon is a follow-up (needs those helpers extracted).
+    * cost — the LLM SDK Job carries no cost field (the exact reason the
+      drafting seam falls back to authoring_unit_estimate_usd), so a COMPLETED
+      critique reports authoring_critic_estimate_usd and a degraded one 0.
+
+    Never raises — every failure degrades to a 'warn' verdict (07S: critic
+    failure is never fatal; the Run Report shows the gap)."""
+
+    async def critique(
+        self,
+        *,
+        owner_user_id: UUID,
+        book_id: UUID,
+        chapter_id: UUID,
+        plan_run_id: UUID,
+        params: dict[str, Any],
+    ) -> CriticVerdict:
+        try:
+            return await self._critique(
+                owner_user_id=owner_user_id, book_id=book_id,
+                chapter_id=chapter_id, params=params,
+            )
+        except Exception as exc:  # noqa: BLE001 — seam contract: never raise
+            logger.warning(
+                "authoring critic seam failed for chapter %s", chapter_id,
+                exc_info=True,
+            )
+            return CriticVerdict(severity="warn", summary=f"critic unavailable ({exc})")
+
+    async def _critique(
+        self,
+        *,
+        owner_user_id: UUID,
+        book_id: UUID,
+        chapter_id: UUID,
+        params: dict[str, Any],
+    ) -> CriticVerdict:
+        # Deferred imports (EngineDraftingSeam precedent) — keep module light.
+        from app.clients.book_client import get_book_client
+        from app.clients.llm_client import get_llm_client
+        from app.db.pool import get_pool
+        from app.db.repositories.works import WorksRepo
+        from app.engine.critic import judge_prose
+        from app.engine.prose_doc import tiptap_doc_to_text
+        from app.mcp.service_bearer import mint_service_bearer
+        from app.packer.profile import BookProfile, from_settings
+
+        model_ref = params.get("critic_model_ref") or params.get("model_ref")
+        if not model_ref:
+            return CriticVerdict(
+                severity="warn",
+                summary="critic unavailable (params.model_ref required)",
+            )
+        model_source = str(
+            params.get("critic_model_source") or params.get("model_source")
+            or "user_model"
+        )
+
+        bearer = mint_service_bearer(owner_user_id, settings.jwt_secret)
+        draft = await get_book_client().get_draft(book_id, chapter_id, bearer)
+        text = tiptap_doc_to_text(
+            draft.get("body") or draft.get("doc") or draft.get("content")
+        )
+        if not text.strip():
+            return CriticVerdict(
+                severity="warn",
+                summary="critic skipped (chapter draft has no prose)",
+            )
+
+        # Best-effort source_language (de-bias §2.6: judge in the book's
+        # language) from the book's marked Work — 'auto' when unresolvable.
+        profile = BookProfile()
+        try:
+            marked = await WorksRepo(get_pool()).resolve_by_book(owner_user_id, book_id)
+            if len(marked) == 1:
+                profile = from_settings(marked[0].settings)
+        except Exception:  # noqa: BLE001 — language resolve is best-effort
+            logger.debug("critic source-language resolve failed (using auto)",
+                         exc_info=True)
+
+        critique = await judge_prose(
+            get_llm_client(), user_id=str(owner_user_id),
+            model_source=model_source, model_ref=str(model_ref),
+            passage=text, active_rules=[], present_facts=[], profile=profile,
+        )
+        severity, summary = verdict_from_critique(critique)
+        # judge_prose degrades internally (error marker) — spend unknown there,
+        # bill 0; a completed critique bills the estimate (no SDK cost field).
+        cost = (
+            Decimal("0") if critique.get("error")
+            else Decimal(str(settings.authoring_critic_estimate_usd))
+        )
+        return CriticVerdict(
+            severity=severity, summary=summary, cost_usd=cost, detail=critique,
+        )
+
+
 class AuthoringRunService:
     def __init__(
         self,
@@ -357,12 +580,16 @@ class AuthoringRunService:
         *,
         notify: Notifier | None = None,
         driver_id: str | None = None,
+        critic: CriticSeam | None = None,
     ) -> None:
         self._runs = runs
         self._plan_runs = plan_runs
         self._seam = seam
         self._units = units
         self._revisions = revisions
+        # D5: the per-unit continuity critic (None → the real in-process
+        # engine seam; tests inject a fake, like the drafting seam).
+        self._critic: CriticSeam = critic if critic is not None else EngineCriticSeam()
         # D4: terminal-notification producer (None → the real NotificationClient,
         # lazily — keeps unit tests httpx-free) + this driver's identity (tests
         # override to simulate a second process; defaults to the process id so
@@ -561,6 +788,9 @@ class AuthoringRunService:
                 "post_revision_id": str(u.post_revision_id) if u and u.post_revision_id else None,
                 "cost_usd": str(u.cost_usd) if u else "0",
                 "error_message": u.error_message if u else None,
+                # D5: {severity, summary, cost_usd[, detail]} — None when the
+                # unit was never critiqued (disabled / failed / boundary skip).
+                "critic_verdict": u.critic_verdict if u else None,
                 "downstream_unit_indexes": [
                     j for j in range(i + 1, len(run.scope))
                     if statuses[j] in ("drafted", "accepted")
@@ -867,6 +1097,80 @@ class AuthoringRunService:
                     run_id, run.current_unit,
                 )
                 return
+            # D5 continuity critic — post-draft, per-unit, same guarded-claim
+            # discipline as the seam. False → stop at the unit boundary
+            # (paused/closed/stolen while drafting, or a severe verdict paused
+            # the run). params.critic_enabled defaults TRUE; explicit falsy
+            # disables (an autonomous run keeps the net unless told otherwise).
+            if run.params.get("critic_enabled", True):
+                if not await self._critique_unit(owner_user_id, run_id, run,
+                                                 chapter_id):
+                    return
+
+    async def _critique_unit(
+        self,
+        owner_user_id: UUID,
+        run_id: UUID,
+        run: AuthoringRun,
+        chapter_id: UUID,
+    ) -> bool:
+        """Critique the just-drafted unit `run.current_unit` (D5). Returns
+        False when the driver must STOP at this unit boundary:
+        * the guarded heartbeat claim failed (run paused/failed/closed
+          externally, or a sweep stole it while the seam ran) — the critique
+          is SKIPPED (verdict stays NULL; the report shows the gap), or
+        * the verdict is 'severe' — the breaker pauses the run
+          (reason critic_severe; 07S: interrupt on severe — pause, NOT fail,
+          the human reviews the report and resumes/reverts).
+        A critic exception is never fatal: it lands as a 'warn' verdict
+        ('critic unavailable') and the run continues."""
+        claim = await self._runs.heartbeat_claim(
+            owner_user_id, run_id, self._driver_id,
+        )
+        if claim is None:
+            return False  # stopped/stolen at the boundary — skip the critique
+        try:
+            verdict = await self._critic.critique(
+                owner_user_id=owner_user_id, book_id=run.book_id,
+                chapter_id=chapter_id, plan_run_id=run.plan_run_id,
+                params=run.params,
+            )
+        except Exception:  # noqa: BLE001 — critic failure is NEVER fatal (07S)
+            logger.warning(
+                "authoring critic failed for run %s unit %d (non-fatal)",
+                run_id, run.current_unit, exc_info=True,
+            )
+            verdict = CriticVerdict(severity="warn", summary="critic unavailable")
+        row = verdict.as_row()  # sanitizes an off-contract severity to 'warn'
+        stored = await self._units.set_critic_verdict(
+            owner_user_id, run_id, run.current_unit, verdict=row,
+        )
+        if stored is None:  # unit raced away from drafted — verdict dropped
+            logger.warning(
+                "authoring run %s unit %d: critic verdict not stored "
+                "(unit no longer drafted)", run_id, run.current_unit,
+            )
+        # Critique spend is real — add it to the run's spend so it feeds the
+        # budget breaker (cursor already sits at current_unit + 1; re-passing
+        # it is idempotent, record_unit_progress is status-agnostic).
+        if verdict.cost_usd and verdict.cost_usd > 0:
+            await self._runs.record_unit_progress(
+                owner_user_id, run_id,
+                add_spent_usd=verdict.cost_usd, current_unit=run.current_unit + 1,
+            )
+        if row["severity"] == "severe":
+            await self._runs.transition(
+                owner_user_id, run_id,
+                from_statuses=("running",), to_status="paused",
+                breaker_state={
+                    "reason": "critic_severe",
+                    "unit_index": run.current_unit,
+                    "chapter_id": str(chapter_id),
+                    "summary": verdict.summary,
+                },
+            )
+            return False
+        return True
 
     async def _fail_unit(
         self,

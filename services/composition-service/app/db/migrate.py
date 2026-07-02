@@ -1061,10 +1061,22 @@ CREATE TABLE IF NOT EXISTS authoring_run_units (
   post_revision_id UUID,
   cost_usd         NUMERIC(10,4) NOT NULL DEFAULT 0,
   error_message    TEXT,
+  -- D5 (RAID Wave D5): the per-unit continuity-critic verdict, written by the
+  -- driver AFTER the unit drafts — {severity: ok|warn|severe, summary, cost_usd
+  -- [, detail: the raw 4-dim judge_prose critique]}. NULL = not critiqued
+  -- (critic disabled via params.critic_enabled=false, unit failed before
+  -- drafting, or the run was paused/stolen at the boundary before the critique
+  -- — the Run Report shows the gap). severity='severe' also trips the run
+  -- breaker (run PAUSED, breaker reason critic_severe — 07S: interrupt on
+  -- severe; the human reviews the report and resumes/reverts).
+  critic_verdict   JSONB,
   created_at       TIMESTAMPTZ NOT NULL DEFAULT now(),
   updated_at       TIMESTAMPTZ NOT NULL DEFAULT now(),
   PRIMARY KEY (run_id, unit_index)
 );
+-- D5 additive column for DBs that created authoring_run_units before D5 (the
+-- CREATE TABLE above is IF NOT EXISTS — it does not evolve an existing table).
+ALTER TABLE authoring_run_units ADD COLUMN IF NOT EXISTS critic_verdict JSONB;
 """
 
 
