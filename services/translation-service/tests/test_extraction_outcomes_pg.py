@@ -19,6 +19,10 @@ _DSN = os.environ.get(
     "postgresql://loreweave:loreweave_dev@localhost:5555/loreweave_translation",
 )
 
+# Shared-dev-Postgres tests - serialize onto one xdist worker
+# (`-n auto --dist loadgroup`) so concurrent workers cannot interleave.
+pytestmark = pytest.mark.xdist_group("pg")
+
 _INSERT = """INSERT INTO extraction_batch_outcomes
     (job_id, owner_user_id, book_id, chapter_id, batch_idx, status, finish_reason, kinds,
      entities_found, entities_written, validation_rejected_count, input_tokens, output_tokens,

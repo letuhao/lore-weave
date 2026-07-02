@@ -117,6 +117,20 @@ A *frontend tool* (the LLM calls it; the browser executes it: `ui_open_studio_pa
 
 ---
 
+## Test Parallelization (dev speed — adopted 2026-07-03)
+
+Python suites run under **pytest-xdist**: `python -m pytest tests -q -n auto --dist loadgroup`
+(install once per machine: `python -m pip install pytest-xdist`). Measured: composition
+1472 tests 418s→55s; translation full suite 37s. Rules:
+- **Always pass `--dist loadgroup`** — tests hitting the shared dev Postgres carry
+  `pytestmark = pytest.mark.xdist_group("pg")` (serialized onto one worker). A NEW test file
+  that touches a real DB/port MUST add that mark, or parallel workers interleave and counts lie.
+- Iterating during BUILD: run `-k` subsets serially; the full `-n auto` suite is the VERIFY gate.
+- Cross-service: run each service's suite as a parallel background task; ONE combined verify
+  before commit when multiple services changed.
+
+---
+
 ## Session Protocol
 
 ### Session Start (every session)
