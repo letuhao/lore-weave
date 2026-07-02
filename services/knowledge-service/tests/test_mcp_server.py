@@ -363,6 +363,139 @@ async def test_mcp_server_rejects_bad_user_id_uuid(mcp_base_url):
     assert "x-user-id" in _error_text(result)
 
 
+# ── RAID Wave C5 — MCP resources + prompts ─────────────────────────────
+# The resource URIs are TEMPLATES ({project_id}), advertised via
+# resources/templates/list. What is covered WITHOUT a live DB mirrors the tool
+# tests above: listings (static per process) and the auth/validation failures
+# that reject inside _require_owned_project BEFORE any repo access. A live-DB
+# summary/entities read belongs to the cross-service smoke gate, not here.
+
+EXPECTED_RESOURCE_TEMPLATES = {
+    "knowledge://project/{project_id}/summary",
+    "knowledge://project/{project_id}/entities",
+}
+EXPECTED_PROMPTS = {"recap_story_so_far", "entity_dossier"}
+
+# Valid-shape ids for the auth-failure reads (rejected before any repo touch,
+# so they never need to exist).
+_PROJ_UUID = "22222222-2222-2222-2222-222222222222"
+_SUMMARY_URI = f"knowledge://project/{_PROJ_UUID}/summary"
+_ENTITIES_URI = f"knowledge://project/{_PROJ_UUID}/entities"
+
+
+async def test_mcp_resource_templates_list(mcp_base_url):
+    """resources/templates/list must advertise exactly the two project-scoped
+    resource templates, each with the right MIME type and a description."""
+    headers = {"X-Internal-Token": _GOOD_TOKEN}
+    async with _mcp_client(mcp_base_url, headers) as session:
+        listing = await session.list_resource_templates()
+    by_uri = {t.uriTemplate: t for t in listing.resourceTemplates}
+    assert set(by_uri) == EXPECTED_RESOURCE_TEMPLATES
+    assert by_uri["knowledge://project/{project_id}/summary"].mimeType == "text/plain"
+    assert by_uri["knowledge://project/{project_id}/entities"].mimeType == "application/json"
+    for tpl in listing.resourceTemplates:
+        assert tpl.name, f"template {tpl.uriTemplate!r} is missing a name"
+        assert tpl.description, f"template {tpl.uriTemplate!r} is missing a description"
+
+
+async def test_mcp_prompts_list(mcp_base_url):
+    """prompts/list must advertise both canned prompts, each with exactly its
+    one semantic argument (required) — the injected ctx must never leak into
+    the advertised argument list (same D3 guarantee the tool schemas carry)."""
+    headers = {"X-Internal-Token": _GOOD_TOKEN}
+    async with _mcp_client(mcp_base_url, headers) as session:
+        listing = await session.list_prompts()
+    prompts = {p.name: p for p in listing.prompts}
+    assert set(prompts) == EXPECTED_PROMPTS
+    recap_args = {a.name: a for a in prompts["recap_story_so_far"].arguments}
+    assert set(recap_args) == {"project_id"}
+    assert recap_args["project_id"].required is True
+    dossier_args = {a.name: a for a in prompts["entity_dossier"].arguments}
+    assert set(dossier_args) == {"entity_name"}
+    assert dossier_args["entity_name"].required is True
+    for p in listing.prompts:
+        assert p.description, f"prompt {p.name!r} is missing a description"
+
+
+async def test_mcp_prompt_get_renders_recap(mcp_base_url):
+    """prompts/get renders the recap instructions with the project id embedded
+    and points the model at the memory tools (grounding, not invention)."""
+    headers = {"X-Internal-Token": _GOOD_TOKEN}
+    async with _mcp_client(mcp_base_url, headers) as session:
+        res = await session.get_prompt("recap_story_so_far", {"project_id": _PROJ_UUID})
+    assert res.messages, "prompt rendered no messages"
+    text = res.messages[0].content.text
+    assert _PROJ_UUID in text
+    assert "memory_timeline" in text
+    assert "memory_search" in text
+
+
+async def test_mcp_prompt_get_renders_entity_dossier(mcp_base_url):
+    headers = {"X-Internal-Token": _GOOD_TOKEN}
+    async with _mcp_client(mcp_base_url, headers) as session:
+        res = await session.get_prompt("entity_dossier", {"entity_name": "Mira"})
+    text = res.messages[0].content.text
+    assert "Mira" in text
+    assert "memory_recall_entity" in text
+    assert "kg_graph_query" in text
+
+
+async def test_mcp_resource_read_rejects_missing_token(mcp_base_url):
+    """A resource read without X-Internal-Token is rejected before any repo
+    access — same envelope gate as the tool path (_require_envelope_user)."""
+    from mcp.shared.exceptions import McpError
+
+    async with _mcp_client(mcp_base_url, headers={}) as session:
+        with pytest.raises(McpError) as exc:
+            await session.read_resource(_SUMMARY_URI)
+    assert "x-internal-token" in str(exc.value).lower()
+
+
+async def test_mcp_resource_read_rejects_wrong_token(mcp_base_url):
+    from mcp.shared.exceptions import McpError
+
+    headers = {
+        "X-Internal-Token": "not-the-real-token",
+        "X-User-Id": "11111111-1111-1111-1111-111111111111",
+        "X-Session-Id": "sess-1",
+    }
+    async with _mcp_client(mcp_base_url, headers) as session:
+        with pytest.raises(McpError) as exc:
+            await session.read_resource(_ENTITIES_URI)
+    assert "invalid internal token" in str(exc.value).lower()
+
+
+async def test_mcp_resource_read_rejects_bad_user_id_uuid(mcp_base_url):
+    from mcp.shared.exceptions import McpError
+
+    headers = {
+        "X-Internal-Token": _GOOD_TOKEN,
+        "X-User-Id": "not-a-uuid",
+        "X-Session-Id": "sess-1",
+    }
+    async with _mcp_client(mcp_base_url, headers) as session:
+        with pytest.raises(McpError) as exc:
+            await session.read_resource(_SUMMARY_URI)
+    assert "x-user-id" in str(exc.value).lower()
+
+
+async def test_mcp_resource_read_rejects_malformed_project_uuid(mcp_base_url):
+    """A well-authenticated read of a malformed {project_id} is rejected by the
+    UUID parse in _require_owned_project — BEFORE the ownership lookup, so no
+    DB is touched (which is what makes this testable here)."""
+    from mcp.shared.exceptions import McpError
+
+    headers = {
+        "X-Internal-Token": _GOOD_TOKEN,
+        "X-User-Id": "11111111-1111-1111-1111-111111111111",
+        "X-Session-Id": "sess-1",
+    }
+    async with _mcp_client(mcp_base_url, headers) as session:
+        with pytest.raises(McpError) as exc:
+            await session.read_resource("knowledge://project/not-a-uuid/summary")
+    assert "project_id" in str(exc.value).lower()
+
+
 # P4/Wave-C slice D — knowledge builds its OWN ToolContext, so it must run the
 # spend-carrier hook itself (the loreweave_mcp universal hook is bypassed). The
 # header parse is the local helper; the contextvar set mirrors the proven kit

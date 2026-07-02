@@ -714,6 +714,294 @@ class TestGetToolDefinitions:
 
 
 # ════════════════════════════════════════════════════════════════════════════
+# Wave C5 — MCP resources + prompts (federated via ai-gateway)
+# ════════════════════════════════════════════════════════════════════════════
+#
+# Same degrade contract as get_tool_definitions / mcp_execute_tool: every
+# failure path returns []/None, never raises into the turn. The transport +
+# ClientSession are the same module-level symbols, patched where they are used.
+
+
+def _patch_mcp_session(session_methods: dict, *, transport_side_effect=None):
+    """Generalisation of _patch_list_tools for the Wave C5 methods: wires the
+    async-with transport + ClientSession chain against a mock session whose
+    methods come from `session_methods` (name → AsyncMock/return value).
+    Returns (transport_patch, session_patch, transport_factory, mock_session)."""
+    transport_cm = MagicMock()
+    if transport_side_effect is not None:
+        transport_cm.__aenter__ = AsyncMock(side_effect=transport_side_effect)
+    else:
+        transport_cm.__aenter__ = AsyncMock(return_value=(MagicMock(), MagicMock(), None))
+    transport_cm.__aexit__ = AsyncMock(return_value=False)
+    transport_factory = MagicMock(return_value=transport_cm)
+
+    mock_session = AsyncMock()
+    mock_session.initialize = AsyncMock()
+    for method, value in session_methods.items():
+        setattr(mock_session, method, value)
+    session_cm = MagicMock()
+    session_cm.__aenter__ = AsyncMock(return_value=mock_session)
+    session_cm.__aexit__ = AsyncMock(return_value=False)
+    session_factory = MagicMock(return_value=session_cm)
+
+    return (
+        patch("app.client.knowledge_client.streamablehttp_client", transport_factory),
+        patch("app.client.knowledge_client.ClientSession", session_factory),
+        transport_factory,
+        mock_session,
+    )
+
+
+def _mcp_resource(uri: str, name: str = "", description: str = "", mime: str = "text/plain"):
+    r = MagicMock()
+    r.uri = uri
+    r.name = name
+    r.description = description
+    r.mimeType = mime
+    return r
+
+
+def _mcp_template(uri_template: str, name: str = "", mime: str = "text/plain"):
+    t = MagicMock()
+    t.uriTemplate = uri_template
+    t.name = name
+    t.description = ""
+    t.mimeType = mime
+    return t
+
+
+def _mcp_prompt(name: str, description: str = "", args: list | None = None):
+    p = MagicMock()
+    p.name = name
+    p.description = description
+    p.arguments = args or []
+    return p
+
+
+class TestListMcpResources:
+    @pytest.mark.asyncio
+    async def test_merges_concrete_resources_and_templates(self):
+        listed = MagicMock()
+        listed.resources = [_mcp_resource("knowledge://static", "static", "a static one")]
+        templates = MagicMock()
+        templates.resourceTemplates = [
+            _mcp_template(
+                "knowledge://project/{project_id}/summary", "project_summary", "text/plain",
+            ),
+        ]
+        tpatch, spatch, _, _ = _patch_mcp_session({
+            "list_resources": AsyncMock(return_value=listed),
+            "list_resource_templates": AsyncMock(return_value=templates),
+        })
+        client = _make_client()
+        with tpatch, spatch:
+            out = await client.list_mcp_resources()
+        assert out == [
+            {"uri": "knowledge://static", "name": "static",
+             "description": "a static one", "mime_type": "text/plain"},
+            {"uri_template": "knowledge://project/{project_id}/summary",
+             "name": "project_summary", "description": "", "mime_type": "text/plain"},
+        ]
+        await client.aclose()
+
+    @pytest.mark.asyncio
+    async def test_transport_error_returns_empty(self):
+        tpatch, spatch, _, _ = _patch_mcp_session(
+            {}, transport_side_effect=httpx.ConnectError("refused"),
+        )
+        client = _make_client()
+        with tpatch, spatch:
+            assert await client.list_mcp_resources() == []
+        await client.aclose()
+
+    @pytest.mark.asyncio
+    async def test_templates_failure_still_returns_concrete_list(self):
+        """A gateway that lists concrete resources but errors the templates
+        sub-list still contributes the concrete entries (partial tolerance)."""
+        listed = MagicMock()
+        listed.resources = [_mcp_resource("knowledge://static")]
+        tpatch, spatch, _, _ = _patch_mcp_session({
+            "list_resources": AsyncMock(return_value=listed),
+            "list_resource_templates": AsyncMock(side_effect=RuntimeError("no templates")),
+        })
+        client = _make_client()
+        with tpatch, spatch:
+            out = await client.list_mcp_resources()
+        assert [e["uri"] for e in out] == ["knowledge://static"]
+        await client.aclose()
+
+    @pytest.mark.asyncio
+    async def test_targets_gateway_mcp_url_with_internal_token(self):
+        listed = MagicMock()
+        listed.resources = []
+        templates = MagicMock()
+        templates.resourceTemplates = []
+        tpatch, spatch, factory, _ = _patch_mcp_session({
+            "list_resources": AsyncMock(return_value=listed),
+            "list_resource_templates": AsyncMock(return_value=templates),
+        })
+        client = _make_client()
+        with tpatch, spatch:
+            await client.list_mcp_resources()
+        assert factory.call_args.args[0] == "http://knowledge-service:8092/mcp"
+        assert factory.call_args.kwargs["headers"]["X-Internal-Token"] == "unit-test-token"
+        await client.aclose()
+
+
+class TestReadMcpResource:
+    _URI = "knowledge://project/p-1/summary"
+
+    @pytest.mark.asyncio
+    async def test_success_maps_first_text_contents(self):
+        content = MagicMock()
+        content.uri = self._URI
+        content.mimeType = "text/plain"
+        content.text = "the story so far"
+        result = MagicMock()
+        result.contents = [content]
+        tpatch, spatch, factory, session = _patch_mcp_session({
+            "read_resource": AsyncMock(return_value=result),
+        })
+        client = _make_client()
+        with tpatch, spatch:
+            out = await client.read_mcp_resource(
+                self._URI, user_id="u-1", session_id="s-1", project_id="p-1",
+            )
+        assert out == {"uri": self._URI, "mime_type": "text/plain", "text": "the story so far"}
+        session.read_resource.assert_awaited_once_with(self._URI)
+        # D3 — identity rides the envelope headers, never a tool/LLM arg.
+        headers = factory.call_args.kwargs["headers"]
+        assert headers["X-User-Id"] == "u-1"
+        assert headers["X-Session-Id"] == "s-1"
+        assert headers["X-Project-Id"] == "p-1"
+        await client.aclose()
+
+    @pytest.mark.asyncio
+    async def test_transport_error_returns_none(self):
+        tpatch, spatch, _, _ = _patch_mcp_session(
+            {}, transport_side_effect=httpx.ConnectError("refused"),
+        )
+        client = _make_client()
+        with tpatch, spatch:
+            assert await client.read_mcp_resource(
+                self._URI, user_id="u-1", session_id="s-1",
+            ) is None
+        await client.aclose()
+
+    @pytest.mark.asyncio
+    async def test_read_error_returns_none(self):
+        """A downstream tenancy rejection (e.g. 'project not found') surfaces
+        as an McpError from read_resource — degraded to None, never a raise."""
+        tpatch, spatch, _, _ = _patch_mcp_session({
+            "read_resource": AsyncMock(side_effect=RuntimeError("project not found")),
+        })
+        client = _make_client()
+        with tpatch, spatch:
+            assert await client.read_mcp_resource(
+                self._URI, user_id="u-1", session_id="s-1",
+            ) is None
+        await client.aclose()
+
+    @pytest.mark.asyncio
+    async def test_empty_or_textless_contents_returns_none(self):
+        empty = MagicMock()
+        empty.contents = []
+        tpatch, spatch, _, _ = _patch_mcp_session({
+            "read_resource": AsyncMock(return_value=empty),
+        })
+        client = _make_client()
+        with tpatch, spatch:
+            assert await client.read_mcp_resource(
+                self._URI, user_id="u-1", session_id="s-1",
+            ) is None
+        # A blob-only (no .text) contents item degrades the same way.
+        blob = MagicMock(spec=[])  # no attributes at all → getattr(..., 'text', None) is None
+        blob_result = MagicMock()
+        blob_result.contents = [blob]
+        tpatch2, spatch2, _, _ = _patch_mcp_session({
+            "read_resource": AsyncMock(return_value=blob_result),
+        })
+        with tpatch2, spatch2:
+            assert await client.read_mcp_resource(
+                self._URI, user_id="u-1", session_id="s-1",
+            ) is None
+        await client.aclose()
+
+
+class TestListMcpPrompts:
+    @pytest.mark.asyncio
+    async def test_success_maps_prompts_with_arguments(self):
+        arg = MagicMock()
+        arg.name = "project_id"
+        arg.description = "the project"
+        arg.required = True
+        listed = MagicMock()
+        listed.prompts = [_mcp_prompt("recap_story_so_far", "recap it", [arg])]
+        tpatch, spatch, _, _ = _patch_mcp_session({
+            "list_prompts": AsyncMock(return_value=listed),
+        })
+        client = _make_client()
+        with tpatch, spatch:
+            out = await client.list_mcp_prompts()
+        assert out == [{
+            "name": "recap_story_so_far",
+            "description": "recap it",
+            "arguments": [
+                {"name": "project_id", "description": "the project", "required": True},
+            ],
+        }]
+        await client.aclose()
+
+    @pytest.mark.asyncio
+    async def test_failure_returns_empty(self):
+        tpatch, spatch, _, _ = _patch_mcp_session({
+            "list_prompts": AsyncMock(side_effect=RuntimeError("boom")),
+        })
+        client = _make_client()
+        with tpatch, spatch:
+            assert await client.list_mcp_prompts() == []
+        await client.aclose()
+
+
+class TestGetMcpPrompt:
+    @pytest.mark.asyncio
+    async def test_success_maps_description_and_messages(self):
+        msg = MagicMock()
+        msg.role = "user"
+        msg.content = MagicMock()
+        msg.content.text = "Recap the story so far…"
+        result = MagicMock()
+        result.description = "recap"
+        result.messages = [msg]
+        tpatch, spatch, _, session = _patch_mcp_session({
+            "get_prompt": AsyncMock(return_value=result),
+        })
+        client = _make_client()
+        with tpatch, spatch:
+            out = await client.get_mcp_prompt(
+                "recap_story_so_far", {"project_id": "p-1"},
+            )
+        assert out == {
+            "description": "recap",
+            "messages": [{"role": "user", "text": "Recap the story so far…"}],
+        }
+        session.get_prompt.assert_awaited_once_with(
+            "recap_story_so_far", {"project_id": "p-1"},
+        )
+        await client.aclose()
+
+    @pytest.mark.asyncio
+    async def test_failure_returns_none(self):
+        tpatch, spatch, _, _ = _patch_mcp_session({
+            "get_prompt": AsyncMock(side_effect=RuntimeError("unknown prompt")),
+        })
+        client = _make_client()
+        with tpatch, spatch:
+            assert await client.get_mcp_prompt("nope", {}) is None
+        await client.aclose()
+
+
+# ════════════════════════════════════════════════════════════════════════════
 # K21-B — KnowledgeContext.tool_calling_enabled default (D9)
 # ════════════════════════════════════════════════════════════════════════════
 
