@@ -1,4 +1,23 @@
-# ▶▶ NEXT SESSION STARTS HERE — **AUTONOMOUS RUN (user-mandated, fable-5): ✅ Track 4 salience COMPLETE (P0–P4 shipped flag-gated + eval executed; P5 = trigger-gated decision records, spec §5). NEXT: RAID remainder C5→C4→C1→C2→C6→Wave D (load-bearing ones get Decision Records) → OSS wave (scrub/license/CI/docs; publish button = user's). Contract: local LLM only (LM Studio BYOK; NEVER the gpt-4o probe), push/PR = normal delivery, hard-stops = destructive-ops-outside-test-account + 3-strike. ⚠️ CONCURRENT human-in-loop agent on the same checkout (dockable migration) — stage exact files, check `git status` before every commit.** Spec [`salience-track4`](../specs/2026-07-02-knowledge-salience-track4.md) + [`07S`](../specs/2026-07-01-writing-studio/07S_studio_agent_standard.md) + plan [`studio-agent-raid`](../plans/2026-07-02-studio-agent-raid.md). · 2026-07-02**
+# ▶▶ NEXT SESSION STARTS HERE — **AUTONOMOUS RUN CLOSED 2026-07-02: ✅ Track 4 COMPLETE · ✅ RAID C5+C4+C1+C2+B2 shipped (sub-agent-built, orchestrator fresh-verified, live-smoked where the substrate allowed). NEXT RUN (in order): (1) live-smoke B2+C2 browser loops once the dockable FE track lands (D-B2-LIVE-SMOKE, D-RAID-C2-LIVE-SMOKE), (2) C6 FE wiring (D-RAID-C6-FE-WIRING — restore spine EXISTS, pure FE; deferred by collision with the dockable track's editor seam), (3) Wave D build per DR-D (D2 FSM in composition-service → D3/D4/D5), (4) C1 FE steering panel (D-RAID-C1-FE-PANEL). All designs fixed in [`raid-loadbearing-decision-records`](../specs/2026-07-02-raid-loadbearing-decision-records.md). Contract stands: local LLM only, exact-file staging (concurrent agent!), hard-stops = destructive-ops-outside-test-account + 3-strike.** Spec [`salience-track4`](../specs/2026-07-02-knowledge-salience-track4.md) + [`07S`](../specs/2026-07-01-writing-studio/07S_studio_agent_standard.md) + plan [`studio-agent-raid`](../plans/2026-07-02-studio-agent-raid.md). · 2026-07-02**
+
+> **▶ AUTONOMOUS RUN — RAID waves C5/C4/C1/C2/B2 SHIPPED 2026-07-02 (sub-agent build + orchestrator verify pattern).**
+> **C5 MCP resources+prompts** (`99bc63215`, LIVE-PROVEN): knowledge exposes 2 project resource templates
+> (summary/entities) + 2 prompts (recap/dossier); ai-gateway federates resources/templates/prompts (scheme==provider
+> gate; -32601-tolerant); chat client list/read/get (degrade pattern). Live: chat→gateway→knowledge real entity data.
+> **C4 @-mention** (`554373f33`): inline mention popover in the chat input (books/chapters/entities, startsWith>
+> contains, keyboard nav) attaching through the SAME ContextBar seam; useContextCandidates extracted (ContextPicker
+> adopted); chat i18n parity test added. **C1 steering store** (`e7917a72d`, LIVE-PROVEN, DR-C1): book_steering in
+> book-service (scope UNIQUE(book_id,name), owner+E0-EDIT writes, VIEW reads, 20-row/8000-char caps, execGuarded
+> migration); chat renders <steering> after the system prompt on both paths (always ∪ #name ∪ scene_match(title),
+> 2000-token soft cap, degrade-to-skip). Live: gateway-create→internal→select→render with real VN entry. **C2 HITL
+> modes** (`a0b926dab`, DR-C2): permission_mode ask|write; ask = tier-R+frontend surface (advertise-chokepoint filter
+> + defense-in-depth); write gains the Tier-A prompt-once approval via the EXISTING suspend/resume machinery
+> ({kind:tool_approval} rides pending args — NO new frontend tool); user_tool_approvals (fail-open reads);
+> suspended-run carries the mode (no escalation); surface snapshot test pins write==pre-C2. FE toggle + ToolApprovalCard.
+> **B2 Plan mode** (`28a275ced`): permission_mode 'plan' = ask surface + plan_* tools (no C2 prompt for plan_*, pinned
+> write-only); plan_forge skill auto-injects on book/editor; PLAN nudge on both paths; 3-way FE toggle. Sub-agent
+> FIXED an M4 bug: plan_forge L2 body was silently dropped even when pinned. **Suites at close:** chat-service 631 ·
+> knowledge 3349 · book-service green (DB-gated) · ai-gateway 103 · FE chat 287+parity. All services rebuilt live.
 
 > **▶ Track 4 SALIENCE — COMPLETE 2026-07-02 (autonomous run).** All buildable phases shipped flag-gated (defaults =
 > byte-identical): **P0** access telemetry (live-proven) · **P1** access blend (eval verdict: KEEP w=0 — explicit-query

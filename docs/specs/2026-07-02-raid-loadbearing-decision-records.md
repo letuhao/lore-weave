@@ -126,3 +126,44 @@ human-in-loop dockable track is actively editing the exact seam (dirty:
 `ManuscriptUnitProvider.tsx`, `EditorPanel.tsx`) — parallel edits on the load-bearing
 apply seam violate the disjoint-files rule. Build lands right after their wave.
 Tracked: `D-RAID-C6-FE-WIRING` (design above is the plan; ~a day of FE work).
+
+---
+
+## DR-D — Wave D autonomy dial (07S §10, plan D1–D5) · 2026-07-02 — DESIGN; BUILD = NEXT RUN
+
+**Why the build stops here (the honest boundary, not a punt):** D2 stacks directly on
+B2 (Plan mode) and C2 (tool allowlist), which landed THIS run **without their live
+browser smokes** — the smoke substrate (FE image rebuild + browser loop) is owned by
+the concurrent dockable track mid-flight. Building the L-sized autonomy FSM on two
+unproven layers is exactly the stacked-risk this project's lessons forbid
+(agent-gui-loop-needs-live-browser-smoke). Order of operations for the next run:
+**live-smoke B2+C2 (D-B2-LIVE-SMOKE, D-RAID-C2-LIVE-SMOKE) → build D2 → D3/D4/D5.**
+
+**D2 — the dial (L). Decisions fixed now:**
+- **Run entity lives in composition-service** (`authoring_runs`): it dispatches
+  composition drafting and already hosts PlanForge plan_runs (the plan the run
+  executes) + the campaign-saga reference implementation lives one service over —
+  reuse its driver pattern (guarded claim, per-unit fan-out, DRIVER_MAX_INFLIGHT,
+  probe-reconcile breaker), do NOT invent a second saga.
+- Schema: `authoring_runs(run_id, owner_user_id, book_id, plan_run_id FK, level
+  CHECK (3|4), scope jsonb (chapter list — the per-unit lock fence), budget_usd cap,
+  tool_allowlist jsonb (from C2's store snapshot at start), breaker_state, status FSM
+  (draft→gated→running→paused→report_ready→closed), created/updated)`. Tenancy: owner
+  + E0 EDIT (same tier as steering writes).
+- **Start-gate** (all-or-nothing, server-enforced): approved plan (plan_runs row
+  status), scope fence (reject overlap with an active run — unique partial index on
+  (book_id) WHERE active, per edge #11), budget cap set, breaker armed, tool allowlist
+  DECLARED (edge #5: an autonomous run may only call allowlisted side-effecting tools;
+  hitting a non-allowlisted one trips the breaker, never prompts — there is no human).
+- **During:** headless compaction already proven (A4); per-unit terminal events reuse
+  the llm_job_terminal stream; breaker on compaction_failed / budget / critic-severe.
+- **End-gate (D3):** Run Report artifact = Quality Report + per-chapter draft diffs +
+  dependency-ordered accept/reject (edge #3: rejecting an upstream chapter cascade-warns
+  its threaded downstream) + Revert-All via the C6 checkpoint spine.
+- **D1 memory-for-canon (M):** the AGNOSTIC slice only (route pre-eviction facts through
+  the existing `memory_remember_confirm` pending-facts path) — the A5 Anthropic overlay
+  half stays deferred with A5 itself.
+- **D4 durable/background (L):** reuse notification-service completion
+  (`operation="autonomous_authoring"`) + the multi-device runs list (server-side rows,
+  never localStorage). **D5 critic (L):** parallel continuity critic feeding the breaker
+  (severe) or the Run Report (else) — reuse the composition verify-voting judges.
