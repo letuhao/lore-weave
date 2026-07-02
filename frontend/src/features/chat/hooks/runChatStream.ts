@@ -47,6 +47,10 @@ export type ChatStreamArgs = {
   displayLanguage?: string;
   enabledTools?: string[];
   enabledSkills?: string[];
+  // RAID C2 (DR-C2): HITL permission mode — 'ask' filters the server-tool
+  // surface to reads; 'write' (default, omitted) is today's behavior + the
+  // Tier-A prompt-once approval gate. Distinct from composeMode (disable_tools).
+  permissionMode?: 'ask' | 'write';
   // ARCH-1 C6: when set, POST this descriptor instead of the messages endpoint
   // (the resume / tool-result path). The consume loop is identical, so send +
   // resume share all stream handling.
@@ -123,6 +127,9 @@ function buildRequest(args: ChatStreamArgs): { url: string; body: Record<string,
   if (args.enabledSkills?.length) body.enabled_skills = args.enabledSkills;
   // Compose mode: prose-only turn, no tool advertising (server-side gate).
   if (args.composeMode) body.disable_tools = true;
+  // RAID C2: only send a non-default mode — omitting means 'write' server-side,
+  // keeping the wire byte-identical for existing behavior.
+  if (args.permissionMode === 'ask') body.permission_mode = 'ask';
 
   return { url: chatApi.messagesUrl(args.sessionId), body };
 }

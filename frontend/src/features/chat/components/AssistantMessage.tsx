@@ -22,6 +22,7 @@ import { ConfirmCard } from './ConfirmCard';
 import { ConfirmActionCard, descriptorDomain } from './ConfirmActionCard';
 import { BatchConfirmCard, type BatchChild } from './BatchConfirmCard';
 import { RecordDiffCard } from './RecordDiffCard';
+import { ToolApprovalCard, isToolApprovalRecord } from './ToolApprovalCard';
 import { TranslationReviewCard, isTranslationProposeCall, summarizeTranslationReview } from './TranslationReviewCard';
 import { ActivityStrip } from './ActivityStrip';
 import { useMessageFeedback } from '../hooks/useMessageFeedback';
@@ -207,7 +208,14 @@ export function AssistantMessage({
         ];
         const isPendingFrontend = (tc: ToolCallRecord) =>
           tc.pending === true && FRONTEND_TOOLS.includes(tc.tool);
-        const proposals = toolCalls.filter(isPendingFrontend);
+        // RAID C2 — a pending Tier-A `tool_approval` suspension (args.kind
+        // marker; the record's `tool` is the SERVER tool name, e.g.
+        // book_create, so it can't route by name). Approve once / Always allow
+        // / Deny resume the run via the standard tool-results endpoint.
+        const approvals = toolCalls.filter(isToolApprovalRecord);
+        const proposals = toolCalls.filter(
+          (tc) => isPendingFrontend(tc) && !isToolApprovalRecord(tc),
+        );
         // S4: completed class-W translation/alias proposals render as a review card
         // (visible drafts), not a passive chip — but ONLY when the record carries
         // something renderable. A sparse record (e.g. replayed {tool, ok} with no
@@ -217,7 +225,7 @@ export function AssistantMessage({
           isTranslationProposeCall(tc) && summarizeTranslationReview(tc) !== null;
         const translationCards = toolCalls.filter(isRenderableTranslation);
         const rest = toolCalls.filter(
-          (tc) => !isPendingFrontend(tc) && !isRenderableTranslation(tc),
+          (tc) => !isPendingFrontend(tc) && !isRenderableTranslation(tc) && !isToolApprovalRecord(tc),
         );
         // Model-independent human gate: auto-render a confirm card for any completed
         // propose result that minted a LIVE confirm_token, unless an explicit (pending)
@@ -268,6 +276,10 @@ export function AssistantMessage({
         return (
           <>
             {rest.length > 0 && <ToolCallIndicator toolCalls={rest} />}
+            {/* RAID C2 — Tier-A approval cards (Approve once / Always / Deny). */}
+            {approvals.map((tc) => (
+              <ToolApprovalCard key={tc.toolCallId ?? `${tc.tool}-approval`} record={tc} />
+            ))}
             {translationCards.map((tc) => (
               <TranslationReviewCard key={tc.toolCallId ?? `${tc.tool}-${tc.iteration ?? 0}`} record={tc} />
             ))}

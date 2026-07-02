@@ -42,6 +42,7 @@ from app.db.suspended_runs import (
     load_suspended_run,
     save_suspended_run,
 )
+from app.db.tool_approvals import approve_tool, is_tool_approved
 from app.models import ProviderCredentials
 from app.services.composer import build_composer_messages, is_composer_tool
 from app.services.frontend_tools import (
@@ -377,6 +378,7 @@ def _advertise_discovery_tools(
     catalog_index: dict[str, dict],
     active_tool_names: set[str],
     extra_frontend: list[dict],
+    permission_mode: str = "write",
 ) -> list[dict]:
     """MCP-fanout C-FT — the tools advertised on a universal /chat pass:
     ``{always-on core} ∪ {full schemas of active_tool_names}``, with the
@@ -384,7 +386,14 @@ def _advertise_discovery_tools(
 
     ``extra_frontend`` carries surface-specific frontend tools (e.g. propose_edit
     on an editor surface) that are always advertised alongside the core.
+
+    RAID C2 (DR-C2) — this is the single ADVERTISE chokepoint for the discovery
+    path: in ``ask`` mode, catalog-sourced (server) tools filter to tier R only;
+    find_tools + the frontend core + extra_frontend are unaffected (frontend
+    tools are human-executed by construction). ``write`` (default) is a strict
+    no-op — the surface is byte-identical to pre-C2 (pinned by contract test).
     """
+    ask = permission_mode == "ask"
     out: list[dict] = []
     seen: set[str] = set()
 
@@ -410,8 +419,33 @@ def _advertise_discovery_tools(
     for td in extra_frontend:
         _add(td)
     # Discovered tools — full schemas now that find_tools matched them.
+    # Ask mode: only tier-R server tools are advertised (untiered defaults R —
+    # inert by the C-TOOL convention); discovery still works, but a discovered
+    # non-R tool is NOT advertised (DR-C2).
     for name in active_tool_names:
-        _add(catalog_index.get(name))
+        td = catalog_index.get(name)
+        if ask and td is not None and tool_tier(td) != "R":
+            continue
+        _add(td)
+    return out
+
+
+def _filter_tools_for_ask(tools: list[dict]) -> list[dict]:
+    """RAID C2 (DR-C2) — the ask-mode filter for the NON-discovery paths (legacy
+    full-catalog clients, admin, gateway-down agui). Keeps find_tools, frontend
+    tools (human-executed by construction), and tier-R server tools; drops every
+    tiered A/W/S server tool. Untiered defaults R (inert — C-TOOL convention)."""
+    out: list[dict] = []
+    for td in tools:
+        fn = td.get("function") if isinstance(td, dict) else None
+        name = fn.get("name") if isinstance(fn, dict) else None
+        if not name:
+            continue
+        if name == FIND_TOOLS_NAME or is_frontend_tool(name):
+            out.append(td)
+            continue
+        if tool_tier(td) == "R":
+            out.append(td)
     return out
 
 
@@ -438,6 +472,8 @@ async def _stream_with_tools(
     activation_state: dict | None = None,
     surface_tracker=None,
     effective_limit: int | None = None,
+    permission_mode: str = "write",
+    approval_check=None,
 ) -> AsyncGenerator[dict, None]:
     """K21-B — the tool-calling loop.
 
@@ -453,6 +489,15 @@ async def _stream_with_tools(
     so the model must answer in text, making the loop self-terminating
     (design D7). A provider that rejects tools triggers a one-shot
     tool-free retry (design D8).
+
+    RAID C2 (DR-C2) — ``permission_mode`` ('ask'|'write', default 'write'):
+    * ask — the advertised server-tool surface filters to tier R (+find_tools);
+      frontend tools stay. Defense-in-depth: a non-R server tool call that slips
+      through returns a tool-result error, never executes.
+    * write — today's surface, PLUS the prompt-once gate: a Tier-A server tool
+      not on the user's allowlist suspends the run with a ``tool_approval``
+      pending card. ``approval_check`` is an async ``(tool_name) -> bool``;
+      a raising check fails OPEN (a DB blip must not brick tool calling).
     """
     client = Client(
         base_url=settings.provider_registry_internal_url,
@@ -481,6 +526,9 @@ async def _stream_with_tools(
         discovery = discovery_catalog is not None
         cat_index = _catalog_index(discovery_catalog) if discovery else {}
         extra_fe = discovery_extra_frontend or []
+        # RAID C2 — name→def index for the NON-discovery path, so ask-mode
+        # defense-in-depth can read a called tool's tier from the caller's defs.
+        plain_index = {} if discovery else _catalog_index(tools)
         # C-FT hot set: the surface's own domains are seeded into the active set so
         # their full schemas are advertised on pass 1 (no find_tools round-trip) —
         # the long tail is still discovered on demand. find_tools unions more names
@@ -542,11 +590,27 @@ async def _stream_with_tools(
             # is the forced-final pass (D7 — must answer in text).
             offered_tools = tools_supported and not last_iter
             if offered_tools:
-                request_kwargs["tools"] = (
-                    _advertise_discovery_tools(cat_index, active_tool_names, extra_fe)
-                    if discovery else tools
-                )
-                request_kwargs["tool_choice"] = "auto"
+                # RAID C2 (DR-C2) — ask-mode filtering happens HERE, at the single
+                # per-pass advertise chokepoint: discovery filters inside
+                # _advertise_discovery_tools; the plain path through
+                # _filter_tools_for_ask. Write mode is a byte-identical no-op.
+                if discovery:
+                    advertised = _advertise_discovery_tools(
+                        cat_index, active_tool_names, extra_fe,
+                        permission_mode=permission_mode,
+                    )
+                else:
+                    advertised = (
+                        _filter_tools_for_ask(tools)
+                        if permission_mode == "ask" else tools
+                    )
+                if advertised:
+                    request_kwargs["tools"] = advertised
+                    request_kwargs["tool_choice"] = "auto"
+                else:
+                    # Ask mode filtered everything out — run the pass tool-free
+                    # (an empty tools array 400s on some providers).
+                    offered_tools = False
             # M3 — one observability/cancel job id PER pass (each pass is a
             # separate gateway stream; the active pass is what a disconnect aborts).
             stream_job_id = str(uuid4())
@@ -718,6 +782,32 @@ async def _stream_with_tools(
                         "result": {"prose": prose}, "error": None,
                     }}
                     continue
+                # RAID C2 (DR-C2) — ask-mode defense-in-depth BEHIND the surface
+                # filter: a non-R server tool call that somehow reaches execution
+                # in ask mode returns a tool-result error the model can
+                # self-correct from — it NEVER executes. Tier is read from the
+                # def itself (discovery catalog or the caller's plain defs);
+                # unknown/untiered tools default R (inert) and pass through.
+                if permission_mode == "ask":
+                    _ask_td = (cat_index if discovery else plain_index).get(c["name"])
+                    _ask_tier = tool_tier(_ask_td) if _ask_td is not None else "R"
+                    if _ask_tier != "R":
+                        ask_err = (
+                            f"read-only mode — {c['name']} is a tier-{_ask_tier} "
+                            "write tool and cannot run in Ask mode. Switch to "
+                            "Write mode to run it, or answer from reads only."
+                        )
+                        working.append({
+                            "role": "tool", "tool_call_id": c["id"],
+                            "content": json.dumps({"error": ask_err}),
+                        })
+                        yield {"tool_call": {
+                            "id": c["id"], "iteration": iteration, "tool": c["name"],
+                            "args": args_obj, "ok": False,
+                            "result": None, "error": ask_err,
+                        }}
+                        continue
+
                 # MCP-fanout C-TOOL: read the tool's tier (R|A|W|S) from the
                 # discovery catalog. Legacy/untiered tools default to R (inert) —
                 # they never auto-emit an activity/undo and never count as a write.
@@ -808,6 +898,38 @@ async def _stream_with_tools(
                         args_obj["model_ref"] = planner_model_ref
                     else:
                         args_obj.pop("model_ref", None)
+
+                # RAID C2 (DR-C2 §4) — Write-mode prompt-once approval gate: a
+                # Tier-A server tool NOT on the user's allowlist suspends the run
+                # with a `tool_approval` pending card (reusing the frontend-tool
+                # suspend/resume machinery — no new transport). The resume path
+                # executes on approve (+persists the row on "always"), or feeds
+                # a "denied by user" tool result. An allowlist READ failure fails
+                # OPEN (a DB blip must not brick tool calling); only the specific
+                # un-allowlisted call gates. Tier-S/W propose/confirm + Tier-A
+                # undo are untouched — approval is additive.
+                if tier == "A" and permission_mode == "write" and approval_check is not None:
+                    _allowed = True
+                    try:
+                        _allowed = bool(await approval_check(c["name"]))
+                    except Exception:
+                        logger.warning(
+                            "tool-approval allowlist read failed for %s — failing open",
+                            c["name"], exc_info=True,
+                        )
+                        _allowed = True
+                    if not _allowed:
+                        suspended_call = {
+                            "id": c["id"],
+                            "name": c["name"],
+                            "args": {
+                                "kind": "tool_approval",
+                                "tool": c["name"],
+                                "args": args_obj,
+                                "tier": tier,
+                            },
+                        }
+                        break
 
                 # backend tool — execute via the ai-gateway over MCP (ai-gateway
                 # P0: the only tool transport). Tier-A auto-commits here (the
@@ -940,6 +1062,7 @@ async def stream_response(
     enabled_tools: list[str] | None = None,
     enabled_skills: list[str] | None = None,
     studio_context: dict | None = None,
+    permission_mode: str = "write",
 ) -> AsyncGenerator[str, None]:
     """Async generator that yields chat-turn SSE lines.
 
@@ -956,7 +1079,10 @@ async def stream_response(
     user wants the model to write prose to Apply manually, not call tools. Lore
     still reaches the model via the injected context (build_context), only
     tool-*calling* is off — which lets a reasoning model (Qwen 3.5/3.6) draft
-    without spending its budget deciding whether to call a tool."""
+    without spending its budget deciding whether to call a tool.
+
+    RAID C2 (DR-C2): ``permission_mode`` ('ask'|'write', default 'write') — see
+    _stream_with_tools. Compose (disable_tools) is NOT a third enum value."""
 
     # ── RE-3: parse + STRIP a chat-only inline reasoning command (/no_think etc.)
     # before the message reaches the model or is persisted. The inline override is
@@ -1418,6 +1544,7 @@ async def stream_response(
         injected_skills=injected_skill_codes,
         effective_enabled_count=len(effective_enabled) if curated_mode else 0,
         hot_seed_count=len(discovery_seed_names or ()),
+        permission_mode=permission_mode,
     ):
         yield line
 
@@ -1509,6 +1636,8 @@ async def _emit_chat_turn(
     injected_skills: list[str] | None = None,
     effective_enabled_count: int = 0,
     hot_seed_count: int = 0,
+    permission_mode: str = "write",
+    pre_tool_chunks: list[dict] | None = None,
 ) -> AsyncGenerator[str, None]:
     """Shared Stream→persist→finish body for a chat turn (fresh OR C6 resume).
 
@@ -1516,7 +1645,12 @@ async def _emit_chat_turn(
     persists the assistant message, and runs post-turn best-effort work. When the
     tool loop yields a ``suspend`` chunk (a frontend tool awaiting client
     execution), this persists the suspended run instead and emits a "suspended"
-    finish — NO assistant message is written (the turn isn't done yet)."""
+    finish — NO assistant message is written (the turn isn't done yet).
+
+    RAID C2: ``pre_tool_chunks`` — tool_call chunks a resume path already
+    executed BEFORE re-entering the loop (an approved Tier-A tool). Emitted +
+    persisted here so the FE sees the tool_call/activity events with full
+    C-ACTIVITY parity (approval is additive; undo unchanged)."""
     full_content: list[str] = []
     full_reasoning: list[str] = []
     tool_calls_history: list[dict] = []
@@ -1554,6 +1688,18 @@ async def _emit_chat_turn(
             for line in emitter.agent_surface(payload):
                 yield line
 
+    # RAID C2 — a resume path may have executed an approved Tier-A tool before
+    # re-entering the loop: surface those calls (tool_call + activity events)
+    # and record them for the persisted tool_calls history.
+    for _pre_tc in (pre_tool_chunks or []):
+        tool_calls_history.append(_pre_tc)
+        for line in emitter.tool_call(_pre_tc):
+            yield line
+        _pre_activity = _pre_tc.get("activity")
+        if _pre_activity is not None:
+            for line in emitter.activity(_pre_activity):
+                yield line
+
     # RAID Wave A4 — provider-agnostic compaction: keep the assembled prompt under the
     # model's window BEFORE sending (works for local lm_studio/Qwen/Gemma AND Claude; the
     # Anthropic server-side overlay is A5). GUARDED — any error falls back to the
@@ -1588,6 +1734,12 @@ async def _emit_chat_turn(
     turn_succeeded = False
     post_finish_state: dict | None = None
 
+    # RAID C2 (DR-C2 §4) — the per-user Tier-A allowlist read, handed to the
+    # loop as a callable so _stream_with_tools stays DB-free. The loop wraps it
+    # fail-OPEN (a read error must not brick tool calling).
+    async def _approval_check(tool_name: str) -> bool:
+        return await is_tool_approved(pool, user_id, tool_name)
+
     try:
         if use_tools:
             chunk_stream = _stream_with_tools(
@@ -1613,6 +1765,8 @@ async def _emit_chat_turn(
                 activation_state=activation_state,
                 surface_tracker=surface_tracker,
                 effective_limit=_eff_limit,
+                permission_mode=permission_mode,
+                approval_check=_approval_check,
             )
         else:
             chunk_stream = _stream_via_gateway(
@@ -1694,6 +1848,7 @@ async def _emit_chat_turn(
                 model_ref=model_ref,
                 parent_message_id=parent_message_id,
                 user_message_content=user_message_content,
+                permission_mode=permission_mode,
             )
             # close any open assistant/reasoning message first
             for line in emitter.close_message():
@@ -2004,19 +2159,29 @@ async def resume_stream_response(
     # Append the frontend tool's result (the human's apply decision) so the
     # agent can acknowledge it in the 2nd pass.
     working = list(susp.working)
-    if result is not None:
-        # MCP fan-out (C-NAV): a ui_* nav resolve — feed the structured result
-        # (e.g. {"navigated": true}) back verbatim as the tool result.
-        result_payload: dict = result
-    else:
-        result_payload = {"outcome": outcome if outcome is not None else "dismissed"}
-        if applied_text is not None:
-            result_payload["applied_text"] = applied_text
-    working.append({
-        "role": "tool",
-        "tool_call_id": tool_call_id,
-        "content": json.dumps(result_payload),
-    })
+    # RAID C2 (DR-C2 §4) — a `tool_approval` suspend resumes with
+    # approved_once | approved_always | denied; its tool result is the REAL
+    # server execution (or the denial), computed below once knowledge_client +
+    # project_id are in scope — NOT the generic outcome echo.
+    _approval_args = susp.pending_tool_call.get("args")
+    is_approval = (
+        isinstance(_approval_args, dict)
+        and _approval_args.get("kind") == "tool_approval"
+    )
+    if not is_approval:
+        if result is not None:
+            # MCP fan-out (C-NAV): a ui_* nav resolve — feed the structured result
+            # (e.g. {"navigated": true}) back verbatim as the tool result.
+            result_payload: dict = result
+        else:
+            result_payload = {"outcome": outcome if outcome is not None else "dismissed"}
+            if applied_text is not None:
+                result_payload["applied_text"] = applied_text
+        working.append({
+            "role": "tool",
+            "tool_call_id": tool_call_id,
+            "content": json.dumps(result_payload),
+        })
 
     # Re-derive session gen_params + tool defs for the 2nd pass.
     session_row = await pool.fetchrow(
@@ -2058,6 +2223,79 @@ async def resume_stream_response(
     )
 
     knowledge_client = get_knowledge_client()
+
+    # RAID C2 (DR-C2 §4) — act on the approval outcome BEFORE the 2nd pass:
+    #   approved_once   → execute the tool now; feed its REAL result back.
+    #   approved_always → persist the allowlist row, then execute.
+    #   denied          → feed {"error": "denied by user"} so the model
+    #                     self-corrects (no execution).
+    # The executed call is surfaced via pre_tool_chunks (tool_call + activity
+    # events + persisted history) — C-ACTIVITY parity, undo unchanged.
+    pre_tool_chunks: list[dict] | None = None
+    if is_approval:
+        _appr = _approval_args if isinstance(_approval_args, dict) else {}
+        _tool_name = str(_appr.get("tool") or susp.pending_tool_call.get("name") or "")
+        _tool_args = _appr.get("args") if isinstance(_appr.get("args"), dict) else {}
+        _decision = outcome if outcome in ("approved_once", "approved_always", "denied") else "denied"
+        if _decision == "approved_always":
+            try:
+                await approve_tool(pool, user_id, _tool_name)
+            except Exception:
+                # The human approved THIS call; a failed allowlist write only
+                # means they may be prompted again — still execute.
+                logger.warning(
+                    "always-allow persist failed for %s — executing anyway",
+                    _tool_name, exc_info=True,
+                )
+        if _decision in ("approved_once", "approved_always"):
+            envelope = await knowledge_client.mcp_execute_tool(
+                user_id=user_id, session_id=session_id,
+                project_id=str(project_id) if project_id else None,
+                tool_name=_tool_name, tool_args=_tool_args,
+                admin_token=admin_token,
+            )
+            _ok = bool(envelope.get("success"))
+            _tool_payload = envelope.get("result") if _ok else {"error": envelope.get("error")}
+            working.append({
+                "role": "tool", "tool_call_id": tool_call_id,
+                "content": json.dumps(_tool_payload),
+            })
+            _chunk: dict = {
+                "id": tool_call_id, "iteration": 0, "tool": _tool_name,
+                "args": _tool_args, "ok": _ok,
+                "result": envelope.get("result") if _ok else None,
+                "error": None if _ok else envelope.get("error"),
+            }
+            if _ok:
+                # C-ACTIVITY (H16) parity with the in-loop Tier-A path: the
+                # approved write is visible + undoable, never a silent surprise.
+                _result = envelope.get("result") or {}
+                _result_meta = _result.get("_meta") if isinstance(_result, dict) else None
+                _undo = tool_undo_hint(_result_meta)
+                _summary = ""
+                if isinstance(_result_meta, dict):
+                    _summary = str(_result_meta.get("summary", "") or "")
+                _chunk["activity"] = {
+                    "op": _tool_name,
+                    "summary": _summary or f"Did {_tool_name}",
+                    "undo": (
+                        {"available": True, "tool": _undo.get("tool"),
+                         "args": _undo.get("args", {})}
+                        if _undo else {"available": False}
+                    ),
+                }
+            pre_tool_chunks = [_chunk]
+        else:
+            working.append({
+                "role": "tool", "tool_call_id": tool_call_id,
+                "content": json.dumps({"error": "denied by user"}),
+            })
+            pre_tool_chunks = [{
+                "id": tool_call_id, "iteration": 0, "tool": _tool_name,
+                "args": _tool_args, "ok": False,
+                "result": None, "error": "denied by user",
+            }]
+
     resume_discovery_catalog: list[dict] | None = None
     resume_extra_frontend: list[dict] | None = None
     resume_seed_names: set[str] | None = None
@@ -2172,6 +2410,10 @@ async def resume_stream_response(
         injected_skills=resume_injected_skills,
         effective_enabled_count=len(tool_pins.effective_enabled) if tool_pins.curated_mode else 0,
         hot_seed_count=len(resume_seed_names or ()),
+        # RAID C2 — the resume continues under the mode the turn started with;
+        # the approved/denied tool result (if any) is surfaced first.
+        permission_mode=susp.permission_mode,
+        pre_tool_chunks=pre_tool_chunks,
     ):
         yield line
 

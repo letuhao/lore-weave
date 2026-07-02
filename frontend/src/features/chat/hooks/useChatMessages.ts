@@ -43,7 +43,27 @@ export type FrontendToolOutcome =
   // change, not a stale token.
   | 'reprice_required'
   | 'action_error'
-  | 'cancelled';
+  | 'cancelled'
+  // RAID C2 (DR-C2 §4) — the tool_approval card (Write-mode Tier-A prompt-once):
+  // approved_once executes; approved_always also persists the per-user allowlist
+  // row; denied feeds "denied by user" so the agent self-corrects.
+  | 'approved_once'
+  | 'approved_always'
+  | 'denied';
+
+// RAID C2 — HITL permission mode. Persisted per-device in localStorage
+// (mirrors the editor's lw_editor_compose_mode pattern): a UI preference,
+// sent per-request as `permission_mode` on the message POST.
+export type PermissionMode = 'ask' | 'write';
+const PERMISSION_MODE_KEY = 'lw_chat_permission_mode';
+
+function loadPermissionMode(): PermissionMode {
+  try {
+    return localStorage.getItem(PERMISSION_MODE_KEY) === 'ask' ? 'ask' : 'write';
+  } catch {
+    return 'write';
+  }
+}
 
 export function useChatMessages(
   sessionId: string | null,
@@ -69,6 +89,13 @@ export function useChatMessages(
   const { accessToken } = useAuth();
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [isLoading, setIsLoading] = useState(false);
+  // RAID C2 — Ask/Write permission mode (lazy-init from localStorage, setter
+  // writes through — mirrors the editor's composeMode persistence).
+  const [permissionMode, setPermissionModeState] = useState<PermissionMode>(loadPermissionMode);
+  const setPermissionMode = useCallback((mode: PermissionMode) => {
+    setPermissionModeState(mode);
+    try { localStorage.setItem(PERMISSION_MODE_KEY, mode); } catch { /* ignore */ }
+  }, []);
   const [streamingText, setStreamingText] = useState('');
   const [streamingReasoning, setStreamingReasoning] = useState('');
   const [streamPhase, setStreamPhase] = useState<StreamPhase>('idle');
@@ -200,6 +227,7 @@ export function useChatMessages(
             ...(displayLanguage ? { displayLanguage } : {}),
             ...(pins.enabledTools?.length ? { enabledTools: pins.enabledTools } : {}),
             ...(pins.enabledSkills?.length ? { enabledSkills: pins.enabledSkills } : {}),
+            permissionMode,
             ...(override ? { override } : {}),
           },
           accessToken,
@@ -278,7 +306,7 @@ export function useChatMessages(
         setIsComposing(false);  // never leave the drafting indicator stuck on
       }
     },
-    [accessToken, sessionId, fetchMessages, editorContext, studioContext, composeMode, bookContext, displayLanguage, resolveStreamPins, messages.length],
+    [accessToken, sessionId, fetchMessages, editorContext, studioContext, composeMode, bookContext, displayLanguage, resolveStreamPins, messages.length, permissionMode],
   );
 
   // ── ARCH-1 C6: resume a suspended run after a frontend-tool decision ──────────
@@ -422,9 +450,10 @@ export function useChatMessages(
         ...(displayLanguage ? { displayLanguage } : {}),
         ...(pins.enabledTools?.length ? { enabledTools: pins.enabledTools } : {}),
         ...(pins.enabledSkills?.length ? { enabledSkills: pins.enabledSkills } : {}),
+        permissionMode,
       };
     },
-    [sessionId, editorContext, studioContext, composeMode, bookContext, displayLanguage, resolveStreamPins],
+    [sessionId, editorContext, studioContext, composeMode, bookContext, displayLanguage, resolveStreamPins, permissionMode],
   );
 
   // ── Public API ────────────────────────────────────────────────────────────────
@@ -528,6 +557,9 @@ export function useChatMessages(
     isComposing,
     /** RAID Wave A3: last turn-finish context-budget snapshot (header meter). */
     contextBudget,
+    /** RAID C2: HITL permission mode (ask|write) + persisted setter. */
+    permissionMode,
+    setPermissionMode,
     send,
     edit,
     regenerate,

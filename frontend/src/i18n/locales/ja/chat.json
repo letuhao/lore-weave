@@ -52,7 +52,11 @@
     "send": "送信 (Enter)",
     "context_attached": "コンテキスト添付済み · ",
     "hint": "Enterで送信 · Shift+Enterで改行",
-    "hint_thinking": " · Ctrl+Shift+Enterで熟考 · Ctrl+Enterで高速"
+    "hint_thinking": " · Ctrl+Shift+Enterで熟考 · Ctrl+Enterで高速",
+    "mode_ask": "確認",
+    "mode_write": "書込",
+    "mode_ask_hint": "読み取り専用モード — エージェントは調査できますが変更はできません",
+    "mode_write_hint": "書き込みモード — エージェントは取り消し可能な変更を実行できます（新しいツールごとに一度確認）"
   },
   "new": {
     "preset": {
@@ -308,5 +312,17 @@
     "delete_failed": "削除に失敗しました: {{error}}",
     "chat_error": "チャットエラー: {{error}}",
     "context_load_failed": "「{{label}}」のコンテキストを読み込めませんでした — それなしで送信します"
+  },
+  "toolApproval": {
+    "label": "エージェントにこのツールの実行を許可しますか？",
+    "tier": "ティア {{tier}}",
+    "tier_hint": "ティア {{tier}} — 取り消し可能な書き込み",
+    "hint": "この書き込みは取り消せます。「常に許可」を選ぶとこのツールについて今後確認しません。",
+    "approve_once": "今回のみ許可",
+    "always_allow": "常に許可",
+    "deny": "拒否",
+    "approved": "許可しました — 実行中 ✓",
+    "always_allowed": "常に許可 — 実行中 ✓",
+    "denied": "拒否しました"
   }
 }

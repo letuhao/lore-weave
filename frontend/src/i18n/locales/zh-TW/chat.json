@@ -52,7 +52,11 @@
     "send": "傳送 (Enter)",
     "context_attached": "已附加情境 · ",
     "hint": "Enter 傳送 · Shift+Enter 換行",
-    "hint_thinking": " · Ctrl+Shift+Enter 思考 · Ctrl+Enter 快速"
+    "hint_thinking": " · Ctrl+Shift+Enter 思考 · Ctrl+Enter 快速",
+    "mode_ask": "詢問",
+    "mode_write": "寫入",
+    "mode_ask_hint": "唯讀模式 — 代理可以查詢但不能變更任何內容",
+    "mode_write_hint": "寫入模式 — 代理可以進行可復原的變更（每個新工具只詢問一次）"
   },
   "new": {
     "preset": {
@@ -308,5 +312,17 @@
     "delete_failed": "刪除失敗：{{error}}",
     "chat_error": "聊天錯誤：{{error}}",
     "context_load_failed": "無法載入「{{label}}」的脈絡 — 將不附帶傳送"
+  },
+  "toolApproval": {
+    "label": "允許代理執行此工具嗎？",
+    "tier": "層級 {{tier}}",
+    "tier_hint": "層級 {{tier}} — 可復原的寫入",
+    "hint": "此寫入可以復原。「一律允許」後此工具將不再詢問。",
+    "approve_once": "允許一次",
+    "always_allow": "一律允許",
+    "deny": "拒絕",
+    "approved": "已允許 — 執行中 ✓",
+    "always_allowed": "一律允許 — 執行中 ✓",
+    "denied": "已拒絕"
   }
 }

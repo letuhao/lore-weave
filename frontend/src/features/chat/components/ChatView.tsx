@@ -220,6 +220,8 @@ export function ChatView({ className, composeMode, footerSlot, headerSlot }: Cha
         onToggleVoiceAssist={toggleVoiceAssist}
         ttsPlaying={autoTTS.isPlaying}
         onStopTTS={autoTTS.stop}
+        permissionMode={chat.permissionMode}
+        onPermissionModeChange={chat.setPermissionMode}
         supportsThinking={true}
         thinkingDefault={activeSession.generation_params?.thinking ?? false}
         onThinkingModeChange={(thinking) => {

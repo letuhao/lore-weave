@@ -52,7 +52,11 @@
     "send": "Gửi (Enter)",
     "context_attached": "Đã đính kèm ngữ cảnh · ",
     "hint": "Enter để gửi · Shift+Enter để xuống dòng",
-    "hint_thinking": " · Ctrl+Shift+Enter suy nghĩ · Ctrl+Enter nhanh"
+    "hint_thinking": " · Ctrl+Shift+Enter suy nghĩ · Ctrl+Enter nhanh",
+    "mode_ask": "Hỏi",
+    "mode_write": "Ghi",
+    "mode_ask_hint": "Chế độ chỉ đọc — trợ lý có thể tra cứu nhưng không thay đổi gì",
+    "mode_write_hint": "Chế độ ghi — trợ lý có thể thực hiện thay đổi hoàn tác được (hỏi một lần cho mỗi công cụ mới)"
   },
   "new": {
     "preset": {
@@ -308,5 +312,17 @@
     "delete_failed": "Xóa thất bại: {{error}}",
     "chat_error": "Lỗi trò chuyện: {{error}}",
     "context_load_failed": "Không thể tải ngữ cảnh cho \"{{label}}\" — gửi mà không có nó"
+  },
+  "toolApproval": {
+    "label": "Cho phép trợ lý chạy công cụ này?",
+    "tier": "Bậc {{tier}}",
+    "tier_hint": "Bậc {{tier}} — thao tác ghi có thể hoàn tác",
+    "hint": "Thao tác ghi này có thể hoàn tác. \"Luôn cho phép\" sẽ không hỏi lại với công cụ này.",
+    "approve_once": "Cho phép một lần",
+    "always_allow": "Luôn cho phép",
+    "deny": "Từ chối",
+    "approved": "Đã cho phép — đang chạy ✓",
+    "always_allowed": "Luôn cho phép — đang chạy ✓",
+    "denied": "Đã từ chối"
   }
 }

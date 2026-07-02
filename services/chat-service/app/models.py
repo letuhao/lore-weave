@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from datetime import datetime
-from typing import Any
+from typing import Any, Literal
 from uuid import UUID
 
 from pydantic import BaseModel, Field
@@ -384,6 +384,11 @@ class SendMessageRequest(BaseModel):
     enabled_skills: list[str] | None = None
     studio_context: StudioContext | None = None
     consumer_capabilities: ConsumerCapabilities | None = None
+    # RAID Wave C2 (DR-C2) — HITL permission mode. 'write' (default) = today's
+    # behavior + the Tier-A prompt-once approval gate; 'ask' = read-only research
+    # surface (server tools filter to tier R; frontend tools stay — they are
+    # human-executed by construction). Compose stays the disable_tools seam above.
+    permission_mode: Literal["ask", "write"] = "write"
 
 
 class ToolResultRequest(BaseModel):

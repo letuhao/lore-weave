@@ -52,7 +52,11 @@
     "send": "Send (Enter)",
     "context_attached": "Context attached · ",
     "hint": "Enter to send · Shift+Enter for new line",
-    "hint_thinking": " · Ctrl+Shift+Enter think · Ctrl+Enter fast"
+    "hint_thinking": " · Ctrl+Shift+Enter think · Ctrl+Enter fast",
+    "mode_ask": "Ask",
+    "mode_write": "Write",
+    "mode_ask_hint": "Read-only mode — the agent can research but not change anything",
+    "mode_write_hint": "Write mode — the agent can make undoable changes (asks once per new tool)"
   },
   "new": {
     "preset": {
@@ -308,5 +312,17 @@
     "delete_failed": "Delete failed: {{error}}",
     "chat_error": "Chat error: {{error}}",
     "context_load_failed": "Could not load context for \"{{label}}\" — sending without it"
+  },
+  "toolApproval": {
+    "label": "Allow the agent to run this tool?",
+    "tier": "Tier {{tier}}",
+    "tier_hint": "Tier {{tier}} — an undoable write",
+    "hint": "This write is undoable. \"Always allow\" stops asking for this tool.",
+    "approve_once": "Approve once",
+    "always_allow": "Always allow",
+    "deny": "Deny",
+    "approved": "Approved — running ✓",
+    "always_allowed": "Always allowed — running ✓",
+    "denied": "Denied"
   }
 }

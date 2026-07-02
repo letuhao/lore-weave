@@ -60,3 +60,45 @@ the feature = dropping the render block; no data migration risk.
 **FE:** deferred ONE step (a steering editor panel touches the dock catalog, which the
 concurrent dockable-migration track owns right now — collision risk). The REST API is
 the contract the panel will consume; tracked as `D-RAID-C1-FE-PANEL`.
+
+---
+
+## DR-C2 — HITL permission modes + per-tool approval (07S §5 + §4) · 2026-07-02
+
+**Governing rule (07S):** *reversibility determines autonomy.* Today: Tier-R reads +
+Tier-A (undoable writes) execute silently; Tier-S/W go through propose/confirm; FE
+tools suspend for the human. The gap: (a) no **Ask** mode (read-only research surface),
+(b) Tier-A server tools run with NO prompt ever (silent-write gap, 07R MED #6).
+
+**Modes (BE contract):** a per-request `permission_mode: 'ask' | 'write'` (default
+`write` = today's behavior, byte-identical for existing clients; Compose remains the
+existing `disable_tools` path — NOT a third enum value, no migration of that seam).
+- **Ask:** the advertised/executable server-tool surface filters to tier R only
+  (+ `find_tools`; discovery still works — discovered non-R tools are NOT advertised).
+  Frontend tools stay available (they are human-executed by construction — a
+  `propose_edit` card's Apply IS the human gate). A tier A/W/S server tool that
+  somehow gets called in Ask returns a tool-result error ("read-only mode"), never
+  executes — defense in depth behind the surface filter.
+- **Write:** today's surface, PLUS the §4 gate: a **Tier-A server tool not on the
+  user's allowlist prompts once** (below). Tier-S/W stay on their existing
+  propose/confirm — unchanged.
+
+**Per-tool approval (the prompt-once):**
+- Store: chat DB `user_tool_approvals(user_id, tool_name, created_at,
+  PK(user_id, tool_name))` — per-USER tier (CLAUDE.md), no book scope (a tool's
+  trustworthiness is not book-specific), no global rows.
+- Flow: in Write mode, tool loop hits Tier-A server tool ∉ allowlist → **reuse the
+  existing frontend-tool suspend/resume machinery** (ARCH-1 C6): suspend the run with
+  a pending approval card `{tool, args, tier}`; FE renders approve-once / always-allow
+  / deny; resume with the outcome → execute (+"always" writes the allowlist row) or
+  feed a "denied by user" tool result so the model self-corrects. NO new transport.
+- **Tier-A tools keep their undo** — approval is additive, undo unchanged.
+- **Availability regression guard (the flagged risk):** mode filtering happens at
+  ADVERTISE time in ONE chokepoint; a contract test pins that `write` mode advertises
+  the identical surface as before the change (snapshot), so the filter cannot silently
+  shrink the default surface.
+
+**Reversibility:** `permission_mode` defaults to write; allowlist misses in ask/write
+paths degrade to today's behavior on any store failure (fail-open on READS of the
+allowlist — a DB blip must not brick tool calling; the suspend gate itself fails
+closed only for the specific un-allowlisted call).

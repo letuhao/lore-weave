@@ -1,6 +1,6 @@
 import { useState, useCallback, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
-import { ArrowUp, Brain, Square, Zap, Mic, MicOff, Loader2, Volume2, VolumeX } from 'lucide-react';
+import { ArrowUp, Brain, Eye, Pencil, Square, Zap, Mic, MicOff, Loader2, Volume2, VolumeX } from 'lucide-react';
 import { loadVoicePrefs } from '../voicePrefs';
 import { useVoiceAssistMic } from '../hooks/useVoiceAssistMic';
 import { useMentionPicker } from '../hooks/useMentionPicker';
@@ -35,6 +35,10 @@ interface ChatInputBarProps {
   /** Auto-TTS is playing — show stop button */
   ttsPlaying?: boolean;
   onStopTTS?: () => void;
+  /** RAID C2 — HITL permission mode (Ask = read-only tools, Write = full).
+   *  Rendered only when both are provided (embedded surfaces may omit). */
+  permissionMode?: 'ask' | 'write';
+  onPermissionModeChange?: (mode: 'ask' | 'write') => void;
 }
 
 export function ChatInputBar({
@@ -55,6 +59,8 @@ export function ChatInputBar({
   onToggleVoiceAssist,
   ttsPlaying,
   onStopTTS,
+  permissionMode,
+  onPermissionModeChange,
 }: ChatInputBarProps) {
   const { t } = useTranslation('chat');
   const [value, setValue] = useState('');
@@ -276,6 +282,41 @@ export function ChatInputBar({
                 >
                   {t('input.stop_audio')}
                 </button>
+              )}
+              {/* RAID C2 — Ask/Write permission-mode toggle. Ask = read-only
+                  research surface (server tools filter to reads); Write = full
+                  surface + the Tier-A approval prompt. Sent per message POST. */}
+              {permissionMode !== undefined && onPermissionModeChange && (
+                <div className="inline-flex rounded-md bg-secondary p-0.5 gap-0.5" data-testid="permission-mode-toggle">
+                  <button
+                    type="button"
+                    onClick={() => onPermissionModeChange('ask')}
+                    aria-pressed={permissionMode === 'ask'}
+                    title={t('input.mode_ask_hint')}
+                    className={`flex items-center gap-1 rounded px-2.5 py-1 text-[11px] font-medium transition-colors ${
+                      permissionMode === 'ask'
+                        ? 'bg-sky-500/10 text-sky-400 border border-sky-500/30'
+                        : 'text-muted-foreground'
+                    }`}
+                  >
+                    <Eye className="h-2.5 w-2.5" />
+                    {t('input.mode_ask')}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => onPermissionModeChange('write')}
+                    aria-pressed={permissionMode === 'write'}
+                    title={t('input.mode_write_hint')}
+                    className={`flex items-center gap-1 rounded px-2.5 py-1 text-[11px] font-medium transition-colors ${
+                      permissionMode === 'write'
+                        ? 'bg-accent/10 text-accent border border-accent/30'
+                        : 'text-muted-foreground'
+                    }`}
+                  >
+                    <Pencil className="h-2.5 w-2.5" />
+                    {t('input.mode_write')}
+                  </button>
+                </div>
               )}
               {/* Think/Fast toggle */}
               {supportsThinking && (
