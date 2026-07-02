@@ -2067,11 +2067,21 @@ WHERE rv.id=$1 AND rv.chapter_id=$2 AND c.book_id=$3
 		writeError(w, http.StatusInternalServerError, "REVISION_NOT_FOUND", "failed to get revision")
 		return
 	}
-	// Extract text_content from revision JSONB body (_text fields)
+	// Extract text_content from the revision body — `_text` projection when
+	// present, else nested standard-tiptap text leaves (same union as the publish
+	// guard / revision-text endpoint). Also drops the old `t::text` quirk that
+	// kept JSON quotes around each segment (compare already extracted unquoted).
 	var textContent *string
 	_ = s.pool.QueryRow(r.Context(), `
-SELECT string_agg(t::text, E'\n\n' ORDER BY ordinality)
-FROM jsonb_path_query(($1)::jsonb, '$.content[*]._text') WITH ORDINALITY AS x(t, ordinality)
+SELECT string_agg(node_text, E'\n\n' ORDER BY ord)
+FROM (
+  SELECT x.ord, COALESCE(
+    x.elem->>'_text',
+    NULLIF((SELECT string_agg(t #>> '{}', '') FROM jsonb_path_query(x.elem, '$.**.text') AS y(t)), '')
+  ) AS node_text
+  FROM jsonb_array_elements(($1)::jsonb -> 'content') WITH ORDINALITY AS x(elem, ord)
+) n
+WHERE node_text IS NOT NULL
 `, body).Scan(&textContent)
 	writeJSON(w, http.StatusOK, map[string]any{
 		"revision_id":    rid,
@@ -2120,13 +2130,19 @@ WHERE rv.id=$1 AND rv.chapter_id=$2 AND c.book_id=$3
 	if err != nil {
 		return compareSide{}, false, err
 	}
-	// text_content projection. Unlike getRevision (which uses t::text and so
-	// keeps the JSON quotes around each _text string), the compare diffs this
-	// text, so we extract the raw string via `#>> '{}'` — no surrounding quotes
-	// to show up as noise in the diff.
+	// text_content projection (unquoted — the compare diffs this text). Union of
+	// the `_text` projection and nested standard-tiptap text leaves, same as the
+	// publish guard / revision-text / getRevision extraction.
 	_ = s.pool.QueryRow(r.Context(), `
-SELECT string_agg(t #>> '{}', E'\n\n' ORDER BY ordinality)
-FROM jsonb_path_query(($1)::jsonb, '$.content[*]._text') WITH ORDINALITY AS x(t, ordinality)
+SELECT string_agg(node_text, E'\n\n' ORDER BY ord)
+FROM (
+  SELECT x.ord, COALESCE(
+    x.elem->>'_text',
+    NULLIF((SELECT string_agg(t #>> '{}', '') FROM jsonb_path_query(x.elem, '$.**.text') AS y(t)), '')
+  ) AS node_text
+  FROM jsonb_array_elements(($1)::jsonb -> 'content') WITH ORDINALITY AS x(elem, ord)
+) n
+WHERE node_text IS NOT NULL
 `, side.Body).Scan(&side.TextContent)
 	return side, true, nil
 }
@@ -2592,11 +2608,21 @@ WHERE rv.id=$1 AND rv.chapter_id=$2 AND c.book_id=$3 AND c.lifecycle_state='acti
 		writeError(w, http.StatusInternalServerError, "REVISION_NOT_FOUND", "failed to load revision")
 		return
 	}
+	// Per-node text: prefer the editor's `_text` projection, else join the node's
+	// nested standard-tiptap text leaves ($.**.text). The `_text`-only extraction
+	// returned NULL for standard tiptap bodies → the CM3b extraction runner skipped
+	// every such chapter as "text unavailable" (same class as the publish guard fix).
 	var textContent *string
 	_ = s.pool.QueryRow(r.Context(), `
-SELECT string_agg(elem->>'_text', E'\n\n' ORDER BY ord)
-FROM jsonb_array_elements(($1)::jsonb -> 'content') WITH ORDINALITY AS x(elem, ord)
-WHERE elem->>'_text' IS NOT NULL
+SELECT string_agg(node_text, E'\n\n' ORDER BY ord)
+FROM (
+  SELECT x.ord, COALESCE(
+    x.elem->>'_text',
+    NULLIF((SELECT string_agg(t #>> '{}', '') FROM jsonb_path_query(x.elem, '$.**.text') AS y(t)), '')
+  ) AS node_text
+  FROM jsonb_array_elements(($1)::jsonb -> 'content') WITH ORDINALITY AS x(elem, ord)
+) n
+WHERE node_text IS NOT NULL
 `, body).Scan(&textContent)
 	// body JSONB intentionally NOT returned (review-impl LOW-2): the extraction
 	// consumer (CM3b) needs only text_content; the full doc would be dead weight.

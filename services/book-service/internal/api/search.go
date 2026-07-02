@@ -79,18 +79,27 @@ LIMIT $4`
 // the draft SQLs so buildLexicalHit/runLexicalSQL are shared.
 //
 //	$1 = book_id   $2 = raw query   $3 = escaped ILIKE pattern   $4 = limit
+// Per-node text = the `_text` projection when present, else the node's nested
+// standard-tiptap text leaves ($.**.text) — the `_text`-only read silently
+// excluded standard-tiptap canon from search (same class as the publish guard fix).
 const lexicalSearchCanonSQL = `
 SELECT c.id, c.title, c.sort_order, (x.ord - 1)::int AS block_index,
-       NULL::text AS heading_context, (x.elem ->> '_text') AS text_content,
-       similarity(x.elem ->> '_text', $2) AS sim, c.original_language
+       NULL::text AS heading_context, nt.node_text AS text_content,
+       similarity(nt.node_text, $2) AS sim, c.original_language
 FROM chapters c
 JOIN chapter_revisions rv ON rv.id = c.published_revision_id
 CROSS JOIN LATERAL jsonb_array_elements(rv.body -> 'content') WITH ORDINALITY AS x(elem, ord)
+CROSS JOIN LATERAL (
+  SELECT COALESCE(
+    x.elem ->> '_text',
+    NULLIF((SELECT string_agg(t #>> '{}', '') FROM jsonb_path_query(x.elem, '$.**.text') AS y(t)), '')
+  ) AS node_text
+) nt
 WHERE c.book_id = $1
   AND c.lifecycle_state = 'active'
-  AND (x.elem ->> '_text') IS NOT NULL
-  AND ((x.elem ->> '_text') ILIKE $3 OR (x.elem ->> '_text') % $2)
-ORDER BY ((x.elem ->> '_text') ILIKE $3) DESC, sim DESC, c.sort_order, x.ord
+  AND nt.node_text IS NOT NULL
+  AND (nt.node_text ILIKE $3 OR nt.node_text % $2)
+ORDER BY (nt.node_text ILIKE $3) DESC, sim DESC, c.sort_order, x.ord
 LIMIT $4`
 
 // validateSearchQuery trims ?q= and enforces presence + the length cap (SP5).

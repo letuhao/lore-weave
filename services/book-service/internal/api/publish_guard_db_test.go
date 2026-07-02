@@ -13,8 +13,11 @@ import (
 	"context"
 	"encoding/json"
 	"net/http"
+	"net/http/httptest"
+	"strings"
 	"testing"
 
+	"github.com/go-chi/chi/v5"
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgxpool"
 
@@ -87,6 +90,55 @@ func TestPublishGuard_TextProjectionShape_StillPublishes_DB(t *testing.T) {
 	}
 	if code := publishViaConfirm(t, s, owner, bookID, chID); code != http.StatusOK {
 		t.Fatalf("_text-projection publish = %d, want 200 (back-compat regressed)", code)
+	}
+}
+
+// After publishing a standard-tiptap chapter, the internal revision-text
+// endpoint (the CM3b extraction read) must return real text_content — the
+// `_text`-only extraction returned NULL here, so the runner skipped every
+// standard-tiptap chapter as "text unavailable" and the KG stayed empty.
+func TestRevisionText_StandardTiptap_ExtractsProse_DB(t *testing.T) {
+	s, pool := dbTestServer(t)
+	ctx := context.Background()
+	owner := uuid.New()
+	body := json.RawMessage(`{"type":"doc","content":[
+	  {"type":"paragraph","content":[{"type":"text","text":"Ánh trăng lạnh lẽo."}]},
+	  {"type":"paragraph","content":[{"type":"text","text":"Lâm Uyển lặng lẽ."}]}
+	]}`)
+	bookID, chID := seedChapterWithBody(t, ctx, pool, owner, body)
+	s.resolveBook = func(_ context.Context, _, _ uuid.UUID) (GrantLevel, uuid.UUID, string, error) {
+		return GrantOwner, owner, "active", nil
+	}
+	if code := publishViaConfirm(t, s, owner, bookID, chID); code != http.StatusOK {
+		t.Fatalf("publish = %d, want 200", code)
+	}
+	var revID uuid.UUID
+	if err := pool.QueryRow(ctx, `SELECT published_revision_id FROM chapters WHERE id=$1`, chID).Scan(&revID); err != nil {
+		t.Fatalf("read published_revision_id: %v", err)
+	}
+
+	req := httptest.NewRequest(http.MethodGet, "/internal/x", nil)
+	rctx := chi.NewRouteContext()
+	rctx.URLParams.Add("book_id", bookID.String())
+	rctx.URLParams.Add("chapter_id", chID.String())
+	rctx.URLParams.Add("revision_id", revID.String())
+	req = req.WithContext(context.WithValue(req.Context(), chi.RouteCtxKey, rctx))
+	rr := httptest.NewRecorder()
+	s.getInternalChapterRevisionText(rr, req)
+
+	if rr.Code != http.StatusOK {
+		t.Fatalf("revision-text = %d, want 200; body=%s", rr.Code, rr.Body.String())
+	}
+	var out struct {
+		TextContent *string `json:"text_content"`
+	}
+	_ = json.Unmarshal(rr.Body.Bytes(), &out)
+	if out.TextContent == nil || !strings.Contains(*out.TextContent, "Ánh trăng lạnh lẽo.") {
+		t.Fatalf("text_content = %v, want the chapter prose (extraction reads this)", out.TextContent)
+	}
+	// paragraph separation preserved (two nodes joined by blank line)
+	if !strings.Contains(*out.TextContent, "\n\n") {
+		t.Errorf("text_content lost paragraph separation: %q", *out.TextContent)
 	}
 }
 
