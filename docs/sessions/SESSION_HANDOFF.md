@@ -1,4 +1,4 @@
-# ▶▶ NEXT SESSION STARTS HERE — **STUDIO AGENT RAID executing on `feat/studio-agent-raid` (autonomous, sequential). Spec [`07S`](../specs/2026-07-01-writing-studio/07S_studio_agent_standard.md) + plan [`studio-agent-raid`](../plans/2026-07-02-studio-agent-raid.md). Waves P(PlanForge takeover)→A(context spine)→C→B→D.** · 2026-07-02**
+# ▶▶ NEXT SESSION STARTS HERE — **STUDIO AGENT RAID on `feat/studio-agent-raid`. CHECKPOINT: solidifying shipped waves before new work — Wave A (context spine) HARDENED (HIGH tool-pair bug fixed + summarizer wired + live-proven). Next candidates: C5/C4 (safe-additive) or C1/C2/C6/D (load-bearing, human POST-REVIEW).** Spec [`07S`](../specs/2026-07-01-writing-studio/07S_studio_agent_standard.md) + plan [`studio-agent-raid`](../plans/2026-07-02-studio-agent-raid.md). · 2026-07-02**
 
 > **▶ STUDIO AGENT RAID — IN PROGRESS 2026-07-02 (`feat/studio-agent-raid`, autonomous run).** Big RAID: agentic
 > chat to industry standard (context meter+compaction, plan-mode, steering, MCP resources/prompts, HITL modes,
@@ -41,6 +41,25 @@
 > + `steering` bucket render), **C2** HITL modes + per-server-tool approval (tool-surface filter — can regress tool
 > availability), **C6** turn checkpoints (book-service revision-restore endpoint + hunk review). **Wave D autonomy dial**
 > (D2 start/end-gate FSM + guardrails) is the biggest load-bearing piece — reuse campaign-saga + PlanForge + Quality Report.
+
+> **▶ CHECKPOINT — Wave A (context spine) SOLIDIFIED 2026-07-02 (user: "make previous implement solid before we
+> continue").** Ran `/review-impl` over the whole context spine (token_budget, compaction, wiring, ContextMeter).
+> **Caught + fixed a stale test first:** the A2 `contextBudget` CUSTOM frame was never added to the AG-UI happy-path
+> exact-sequence assertion → the FULL chat-service suite was RED (prior "green" was a subset). Fixed (`128941136`),
+> full suite now 525. **HIGH bug found + fixed (`42d003f42`):** compaction on the **resume path** (agent→GUI 2nd pass,
+> `resume_stream_response` passes the live `working` array w/ assistant `tool_calls` + `role:tool` results) could
+> orphan a tool-call/result pair on hard-truncate / summarize tail-slice → provider **400**. Unit tests missed it
+> (plain user/assistant msgs). Fix: truncate on whole tool-exchange **atoms** (`_atoms`/`_recent_tail`) — keep/drop
+> whole exchanges, never split. +3 TestToolPairSafety. **Summarizer WIRED (`356527c26`, per user decision "wire now"):**
+> `compact_messages` now async; tier-2 compresses the droppable MIDDLE via the session's own model
+> (`_summarize_for_compaction`, provider-agnostic gateway); failure → hard-truncate (edge #2). Cross-turn history is
+> flattened `{role,content}` (no pairs there — safe); memory [[compaction-resume-path-carries-tool-pairs]].
+> **LIVE SMOKE PASS (per user decision "do the live smoke"):** in-container against real gemma QAT (200K) — forced
+> compaction (10034→~2880 tok), asserted **no orphan**, sent the compacted tool-containing array back to gemma →
+> **provider accepted on BOTH paths** (run1 summarize-success w/ real synopsis; run2 summarize-fail→truncate fallback,
+> both orphan-free + accepted). chat-service **525 passed**; compaction 13 tests. **Wave A is now solid.** LOW items
+> left un-fixed (noted, optional): intra-turn tool-loop `working` isn't re-compacted per iteration (bounded by
+> max_iterations); `estimate_messages_tokens` ignores assistant `tool_calls` args (no cross-turn impact).
 
 > **▶ Writing Studio foundation SHIPPED + PROVEN + PR'd 2026-07-02 (`feat/writing-studio`, 130 commits → `main`).**
 > Frame + palette (⌘P/⌘⇧P) + share-data (StudioHost/bus/registry #08) + navigator (#02 search/totals) + Compose
