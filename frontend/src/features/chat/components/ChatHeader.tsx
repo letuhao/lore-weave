@@ -27,9 +27,12 @@ interface ChatHeaderProps {
   /** RAID Wave A3: last turn-finish context-budget snapshot → the header meter.
    *  Null before the first turn finishes (meter renders nothing). */
   contextBudget?: ContextBudget | null;
+  /** W2: opens the tool/skill manager from the context breakdown panel's tool
+   *  rows. Omitted on surfaces without the rack. */
+  onManageContextTools?: () => void;
 }
 
-export function ChatHeader({ session, modelNameMap, messageCount, onRename, onOpenSettings, isVoiceModeActive, onToggleVoiceMode, onOpenVoiceSettings, onOpenSidebar, sessionSwitcher, contextBudget }: ChatHeaderProps) {
+export function ChatHeader({ session, modelNameMap, messageCount, onRename, onOpenSettings, isVoiceModeActive, onToggleVoiceMode, onOpenVoiceSettings, onOpenSidebar, sessionSwitcher, contextBudget, onManageContextTools }: ChatHeaderProps) {
   const { t } = useTranslation('chat');
   // Self-measure: when the header (its container) is narrow — e.g. the editor
   // AI panel at ~300px — collapse the memory chip to icon-only so the action
@@ -80,7 +83,7 @@ export function ChatHeader({ session, modelNameMap, messageCount, onRename, onOp
       </div>
       <div className="flex min-w-0 shrink-0 items-center gap-1">
         <MemoryIndicator projectId={session.project_id} memoryMode={session.memory_mode} compact={compact} />
-        <ContextMeter budget={contextBudget ?? null} compact={compact} />
+        <ContextMeter budget={contextBudget ?? null} compact={compact} onManageTools={onManageContextTools} />
         {(SPEECH_RECOGNITION_SUPPORTED || MEDIA_RECORDER_SUPPORTED) && onToggleVoiceMode && session.status !== 'archived' && (
           <button
             type="button"

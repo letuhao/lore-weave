@@ -27,9 +27,14 @@ import type {
   ToolCallResultEvent,
   ToolCallStartEvent,
 } from './agUiEvents';
-import type { ActivityEvent, ChatMessage, ToolCallRecord, AgentSurfaceState, ContextBudget } from '../types';
+import type { ActivityEvent, ChatMessage, ToolCallRecord, AgentSurfaceState, ContextBudget, CompactionEvent } from '../types';
 
 export type StreamPhase = 'idle' | 'thinking' | 'responding';
+
+/** W4 — the effort dropdown's wire value. Only 'deep' rides the request today
+ *  (Fast/Standard map onto the legacy `thinking` boolean), but the type carries
+ *  all three so the arg is self-documenting. */
+export type ReasoningEffortLevel = 'fast' | 'standard' | 'deep';
 
 /** The per-turn request inputs lifted out of the hook's closure. Everything
  *  streamPost read from props/args is now an explicit field, so the core is a
@@ -39,6 +44,9 @@ export type ChatStreamArgs = {
   content: string;
   editFromSequence?: number;
   thinking?: boolean;
+  // W4 — granular effort from the input-bar dropdown. Sent as `reasoning_effort`
+  // on the message POST (chat-service maps it to the model's reasoning knob).
+  reasoningEffort?: ReasoningEffortLevel;
   editorContext?: { book_id: string; chapter_id: string };
   // #09 Lane A — presence tells chat-service to advertise the studio dock-nav frontend tools.
   studioContext?: { book_id?: string; project_id?: string; active_chapter_id?: string; active_panel_ids?: string[]; context_revision?: number };
@@ -97,6 +105,9 @@ export type ChatCallbacks = {
   onAgentSurface?: (state: AgentSurfaceState) => void;
   /** RAID Wave A3: CUSTOM contextBudget → the chat header context-used meter. */
   onContextBudget?: (budget: ContextBudget) => void;
+  /** W2: CUSTOM compaction → the "earlier turns compacted" toast. Fired only
+   *  when the backend's in-loop compaction actually changed the prompt. */
+  onCompaction?: (event: CompactionEvent) => void;
   /** A run-level error (RUN_ERROR, or a non-OK response). */
   onError?: (message: string) => void;
   /** Terminal — the assembled assistant turn. Fired on a clean stream end. */
@@ -115,6 +126,10 @@ function buildRequest(args: ChatStreamArgs): { url: string; body: Record<string,
   const body: Record<string, unknown> = { content: args.content };
   if (args.editFromSequence != null) body.edit_from_sequence = args.editFromSequence;
   if (args.thinking != null) body.thinking = args.thinking;
+  // W4: only sent when the user picked a granular effort (today: Deep). Fast /
+  // Standard stay on the legacy `thinking` boolean so the wire is unchanged
+  // for existing behavior.
+  if (args.reasoningEffort != null) body.reasoning_effort = args.reasoningEffort;
   // ARCH-1 C6: editor panel → advertise the write-back frontend tool + carry
   // which chapter the assistant is editing.
   if (args.editorContext) body.editor_context = args.editorContext;
@@ -323,7 +338,7 @@ export async function runChatStream(
               cb.onToolCall?.(record);
               break;
             }
-            // ── 6. CUSTOM — memoryMode/persisted/composing/activity/agentSurface/contextBudget
+            // ── 6. CUSTOM — memoryMode/persisted/composing/activity/agentSurface/contextBudget/compaction
             case AgUiEventType.CUSTOM: {
               const e = event as AgUiCustomEvent;
               if (e.name === 'memoryMode') {
@@ -358,6 +373,9 @@ export async function runChatStream(
                 // RAID Wave A3: turn-finish context usage → header meter. Guard on
                 // used_tokens being a number so a malformed frame can't crash the
                 // meter; pct/limits may legitimately be null (unregistered model).
+                // W1/W2 additive fields (breakdown / baseline_tokens /
+                // until_compact_pct) pass through when present — an older backend
+                // omits them and the meter renders exactly as before.
                 const v = e.value as unknown as ContextBudget;
                 if (v && typeof v.used_tokens === 'number') {
                   cb.onContextBudget?.({
@@ -365,6 +383,27 @@ export async function runChatStream(
                     context_length: typeof v.context_length === 'number' ? v.context_length : null,
                     effective_limit: typeof v.effective_limit === 'number' ? v.effective_limit : null,
                     pct: typeof v.pct === 'number' ? v.pct : null,
+                    ...(v.breakdown && typeof v.breakdown === 'object' ? { breakdown: v.breakdown } : {}),
+                    ...(typeof v.baseline_tokens === 'number' ? { baseline_tokens: v.baseline_tokens } : {}),
+                    ...(typeof v.until_compact_pct === 'number' ? { until_compact_pct: v.until_compact_pct } : {}),
+                  });
+                }
+              } else if (e.name === 'compaction') {
+                // W2: in-loop compaction did work this turn → toast. Guard on the
+                // token counters being numbers so a malformed frame is dropped
+                // instead of crashing the stream.
+                const v = e.value as unknown as CompactionEvent;
+                if (v && typeof v.tokens_before === 'number' && typeof v.tokens_after === 'number') {
+                  cb.onCompaction?.({
+                    triggered: !!v.triggered,
+                    tool_results_cleared: typeof v.tool_results_cleared === 'number' ? v.tool_results_cleared : 0,
+                    turns_truncated: typeof v.turns_truncated === 'number' ? v.turns_truncated : 0,
+                    summarized: !!v.summarized,
+                    summarize_failed: !!v.summarize_failed,
+                    overflowed: !!v.overflowed,
+                    tokens_before: v.tokens_before,
+                    tokens_after: v.tokens_after,
+                    ...(Array.isArray(v.steps) ? { steps: v.steps } : {}),
                   });
                 }
               }

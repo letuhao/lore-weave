@@ -137,12 +137,33 @@ def parse_inline_effort(text: str) -> tuple[str, str | None]:
     return stripped, pref
 
 
-def _thinking_pref(thinking: bool | None, gen_params: dict) -> str:
-    """Map the per-request `thinking` toggle (+ the session generation_params
-    default) to a UserReasoningPref for resolve_reasoning. True → explicit
-    "medium" (matches the legacy thinking_llm_fields enabled→medium), False →
-    "off"; None falls back to a session-stored `reasoning_effort`/`thinking`
-    default, else the platform default "off" (RE-1: thinking is opt-in)."""
+# W4 — the input-bar effort dropdown's request vocabulary → UserReasoningPref.
+# fast ≙ the old Fast pill (off), standard ≙ Think (medium), deep = high.
+# This reuses the existing resolve_reasoning/reasoning_fields provider mapping
+# (Anthropic adaptive → omit; effort models → reasoning_effort; local template
+# models → chat_template_kwargs) — no new provider knob is invented here.
+_REQUEST_EFFORT_TO_PREF: dict[str, str] = {
+    "fast": "off",
+    "standard": "medium",
+    "deep": "high",
+}
+
+
+def _thinking_pref(
+    thinking: bool | None,
+    gen_params: dict,
+    reasoning_effort: str | None = None,
+) -> str:
+    """Map the per-request reasoning signals (+ the session generation_params
+    default) to a UserReasoningPref for resolve_reasoning.
+
+    Precedence (highest first): per-msg `reasoning_effort`
+    (fast|standard|deep — the W4 dropdown) > per-msg `thinking` toggle
+    (True → "medium", False → "off") > session-stored
+    `reasoning_effort`/`thinking` default > platform default "off"
+    (RE-1: thinking is opt-in)."""
+    if reasoning_effort in _REQUEST_EFFORT_TO_PREF:
+        return _REQUEST_EFFORT_TO_PREF[reasoning_effort]
     if thinking is True:
         return "medium"
     if thinking is False:
@@ -1144,6 +1165,7 @@ async def stream_response(
     parent_message_id: str | None = None,
     context: str | None = None,
     thinking: bool | None = None,
+    reasoning_effort: str | None = None,
     stream_format: str = "legacy",
     editor_context: dict | None = None,
     book_context: dict | None = None,
@@ -1208,8 +1230,9 @@ async def stream_response(
     # reasoning-control style (adaptive Anthropic → omit & self-decide; effort
     # models → send reasoning_effort; non-reasoning → omit), and stash the wire
     # fields so both _stream_via_gateway and _stream_with_tools forward them.
-    # Precedence: inline /command > per-msg `thinking` toggle > session > platform.
-    _user_pref = _inline_effort or _thinking_pref(thinking, gen_params)
+    # Precedence: inline /command > per-msg `reasoning_effort` (W4 dropdown) >
+    # per-msg `thinking` toggle > session > platform.
+    _user_pref = _inline_effort or _thinking_pref(thinking, gen_params, reasoning_effort)
     _directive = resolve_reasoning(
         user_pref=_user_pref,  # type: ignore[arg-type]
         model_control=infer_reasoning_control(creds.provider_kind, creds.provider_model_name),

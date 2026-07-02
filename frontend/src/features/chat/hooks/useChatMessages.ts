@@ -2,9 +2,9 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import type { MutableRefObject } from 'react';
 import { useAuth } from '@/auth';
 import { chatApi } from '../api';
-import type { ChatMessage, AgentSurfaceState, ContextBudget } from '../types';
+import type { ChatMessage, AgentSurfaceState, ContextBudget, CompactionEvent } from '../types';
 import { runChatStream, assembleAssistantMessage } from './runChatStream';
-import type { ChatStreamArgs, StreamPhase } from './runChatStream';
+import type { ChatStreamArgs, StreamPhase, ReasoningEffortLevel } from './runChatStream';
 import type { StreamPins } from './useContextRack';
 import { useChatLiveStateOptional } from '../providers/ChatLiveStateContext';
 
@@ -122,6 +122,9 @@ export function useChatMessages(
    *  memory-mode SSE event from chat-service. */
   const onMemoryModeRef = useRef<OnMemoryMode | null>(null);
   const onAgentSurfaceRef = useRef<((state: AgentSurfaceState) => void) | null>(null);
+  /** W2: settable callback for the per-turn `compaction` CUSTOM frame —
+   *  ChatStreamProvider registers a toast here ("earlier turns compacted"). */
+  const onCompactionRef = useRef<((event: CompactionEvent) => void) | null>(null);
 
   const resolveStreamPins = useCallback((): StreamPins => {
     const fromRef = streamPinsRef?.current;
@@ -147,6 +150,9 @@ export function useChatMessages(
   // separate concern handled at the M2 browser-smoke finalize — D-T5.4-CHAT-MULTIWINDOW.)
   const lastTerminalTurnRef = useRef(0);
   const lastMemoryModeTurnRef = useRef(0);
+  // W2: compaction fires at most once per turn; the snapshot rebroadcasts many
+  // times, so the toast is deduped on turnId exactly like memoryMode.
+  const lastCompactionTurnRef = useRef(0);
 
   // ── Fetch messages on session change ──────────────────────────────────────────
 
@@ -181,6 +187,9 @@ export function useChatMessages(
       // endpoint (used by the resume / tool-result path). The consume loop is
       // identical, so send + resume share all stream handling.
       override?: { url: string; body: Record<string, unknown> },
+      // W4: granular effort from the input-bar dropdown (today only 'deep'
+      // rides the wire — Fast/Standard stay on the `thinking` boolean).
+      reasoningEffort?: ReasoningEffortLevel,
     ): Promise<string> => {
       if (!accessToken || !sessionId) throw new Error('Not ready');
 
@@ -223,6 +232,7 @@ export function useChatMessages(
             content,
             ...(editFromSequence != null ? { editFromSequence } : {}),
             ...(thinking != null ? { thinking } : {}),
+            ...(reasoningEffort != null ? { reasoningEffort } : {}),
             ...(editorContext ? { editorContext } : {}),
             ...(studioContext ? { studioContext } : {}),
             ...(composeMode != null ? { composeMode } : {}),
@@ -258,6 +268,7 @@ export function useChatMessages(
             onMemoryMode: (mode) => onMemoryModeRef.current?.(mode),
             onAgentSurface: (payload) => onAgentSurfaceRef.current?.(payload),
             onContextBudget: (budget) => setContextBudget(budget),
+            onCompaction: (event) => onCompactionRef.current?.(event),
             onAbort: () => { aborted = true; },
             // onToolCall / onActivity accumulate inside runChatStream and arrive
             // on the terminal result; nothing extra to mirror per-event here.
@@ -384,6 +395,12 @@ export function useChatMessages(
     if (worker.contextBudget) {
       setContextBudget(worker.contextBudget);
     }
+    // W2: compaction toast — fire once per turn it occurred in (dedupe on turnId,
+    // mirroring memoryMode; the snapshot rebroadcasts many times per turn).
+    if (worker.compaction && worker.turnId !== lastCompactionTurnRef.current) {
+      lastCompactionTurnRef.current = worker.turnId;
+      onCompactionRef.current?.(worker.compaction);
+    }
 
     // Terminal handling — ONCE per turn per window, deduped on the worker's turnId.
     // Two facets, with DIFFERENT scoping:
@@ -434,18 +451,19 @@ export function useChatMessages(
   }, [
     useWorker, worker?.turnId, worker?.initiatedTurnId, worker?.streamingText, worker?.streamingReasoning,
     worker?.streamPhase, worker?.thinkingElapsed, worker?.streamStatus, worker?.isComposing,
-    worker?.memoryMode, worker?.contextBudget, worker?.ended, sessionId,
+    worker?.memoryMode, worker?.contextBudget, worker?.compaction, worker?.ended, sessionId,
   ]);
 
   /** Build the per-turn ChatStreamArgs (worker path) from the hook's props. */
   const buildArgs = useCallback(
-    (content: string, editFromSequence?: number, thinking?: boolean): ChatStreamArgs => {
+    (content: string, editFromSequence?: number, thinking?: boolean, reasoningEffort?: ReasoningEffortLevel): ChatStreamArgs => {
       const pins = resolveStreamPins();
       return {
         sessionId: sessionId ?? '',
         content,
         ...(editFromSequence != null ? { editFromSequence } : {}),
         ...(thinking != null ? { thinking } : {}),
+        ...(reasoningEffort != null ? { reasoningEffort } : {}),
         ...(editorContext ? { editorContext } : {}),
         ...(studioContext ? { studioContext } : {}),
         ...(composeMode != null ? { composeMode } : {}),
@@ -461,9 +479,10 @@ export function useChatMessages(
 
   // ── Public API ────────────────────────────────────────────────────────────────
 
-  /** Send a new message (normal flow) */
+  /** Send a new message (normal flow). `reasoningEffort` (W4) is the granular
+   *  effort from the input-bar dropdown — only 'deep' rides the wire today. */
   const send = useCallback(
-    (content: string, thinking?: boolean) => {
+    (content: string, thinking?: boolean, reasoningEffort?: ReasoningEffortLevel) => {
       // Optimistically add user message to the list
       const optimistic: ChatMessage = {
         message_id: `opt-${Date.now()}`,
@@ -487,8 +506,8 @@ export function useChatMessages(
       // Worker path: hand the turn to the SharedWorker (returns void; the
       // assembled assistant message arrives via the snapshot bridge). Inline
       // path: own the stream as before.
-      if (useWorker && worker) { worker.start(buildArgs(content, undefined, thinking)); return Promise.resolve(''); }
-      return streamPost(content, undefined, thinking);
+      if (useWorker && worker) { worker.start(buildArgs(content, undefined, thinking, reasoningEffort)); return Promise.resolve(''); }
+      return streamPost(content, undefined, thinking, undefined, reasoningEffort);
     },
     [sessionId, messages.length, streamPost, useWorker, worker, buildArgs],
   );
@@ -581,5 +600,7 @@ export function useChatMessages(
      *  memory-mode SSE event from chat-service. */
     onMemoryModeRef,
     onAgentSurfaceRef,
+    /** W2: set a callback for the per-turn `compaction` CUSTOM frame. */
+    onCompactionRef,
   };
 }

@@ -49,8 +49,14 @@ interface ChatSessionContextValue {
   mobileSidebarOpen: boolean;
   setMobileSidebarOpen: (v: boolean) => void;
 
-  // Send with context resolution
-  resolveAndSend: (content: string, sendFn: (content: string, thinking?: boolean) => Promise<string>, thinking?: boolean) => void;
+  // Send with context resolution. `reasoningEffort` (W4) is the input-bar
+  // effort dropdown's granular value — forwarded verbatim to sendFn.
+  resolveAndSend: (
+    content: string,
+    sendFn: (content: string, thinking?: boolean, reasoningEffort?: 'fast' | 'standard' | 'deep') => Promise<string>,
+    thinking?: boolean,
+    reasoningEffort?: 'fast' | 'standard' | 'deep',
+  ) => void;
 }
 
 const ChatSessionCtx = createContext<ChatSessionContextValue | null>(null);
@@ -232,10 +238,15 @@ export function ChatSessionProvider({ children, embedded = false }: ChatSessionP
   contextItemsRef.current = contextItems;
 
   const resolveAndSend = useCallback(
-    (content: string, sendFn: (content: string, thinking?: boolean) => Promise<string>, thinking?: boolean) => {
+    (
+      content: string,
+      sendFn: (content: string, thinking?: boolean, reasoningEffort?: 'fast' | 'standard' | 'deep') => Promise<string>,
+      thinking?: boolean,
+      reasoningEffort?: 'fast' | 'standard' | 'deep',
+    ) => {
       const items = contextItemsRef.current;
       if (items.length === 0) {
-        sendFn(content, thinking).catch((err) => {
+        sendFn(content, thinking, reasoningEffort).catch((err) => {
           toast.error(t('session_toast.chat_error', { error: (err as Error).message }));
         });
         return;
@@ -272,7 +283,7 @@ export function ChatSessionProvider({ children, embedded = false }: ChatSessionP
         const contextBlock = buildContextBlock(items, resolvedData);
         const finalContent = contextBlock ? contextBlock + content : content;
 
-        sendFn(finalContent, thinking).catch((err) => {
+        sendFn(finalContent, thinking, reasoningEffort).catch((err) => {
           toast.error(t('session_toast.chat_error', { error: (err as Error).message }));
         });
       })();

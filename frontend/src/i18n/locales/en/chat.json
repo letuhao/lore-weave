@@ -20,8 +20,37 @@
     "context_meter": {
       "label": "Context used",
       "unknown": "Context window usage unknown for this model",
-      "tokens": "{{used}} / {{limit}} tokens"
+      "tokens": "{{used}} / {{limit}} tokens",
+      "until_compact": "until auto-compact: {{pct}}%",
+      "baseline": "system + tools: {{tokens}} tok before your first word"
     }
+  },
+  "context_panel": {
+    "title": "Context breakdown",
+    "free": "free space: {{tokens}} tok",
+    "compact_at": "auto-compact triggers at {{pct}}% of the window",
+    "zero": "zero",
+    "manage": "Manage tools & skills",
+    "coming_soon": "panel soon",
+    "cat": {
+      "system_prompt": "Persona",
+      "memory_knowledge": "Story memory",
+      "working_memory": "Working memory",
+      "steering": "Steering rules",
+      "skills": "Skills",
+      "plan_nudge": "Plan nudge",
+      "book_note": "Book note",
+      "attached_context": "Attached context",
+      "history": "Conversation",
+      "tool_results": "Tool results",
+      "frontend_tool_schemas": "UI tools",
+      "mcp_tool_schemas": "MCP tools"
+    }
+  },
+  "compaction": {
+    "toast": "Earlier turns compacted — {{before}}→{{after}} tok",
+    "summarize_failed": "Summarizing failed — older turns were trimmed instead",
+    "overflowed": "Still over the context limit after compacting — replies may lose detail"
   },
   "input": {
     "format": "Format:",
@@ -48,6 +77,13 @@
     "stop_audio": "Stop Audio",
     "think": "Think",
     "fast": "Fast",
+    "effort_fast": "Fast",
+    "effort_standard": "Standard",
+    "effort_deep": "Deep",
+    "effort_fast_hint": "No hidden thinking — quickest replies",
+    "effort_standard_hint": "Thinks before answering — balanced speed and depth",
+    "effort_deep_hint": "Maximum reasoning budget — slowest, most thorough",
+    "mode_cycle_hint": "Ctrl+. cycles Ask → Plan → Write",
     "stop_generating": "Stop generating (Esc)",
     "send": "Send (Enter)",
     "context_attached": "Context attached · ",

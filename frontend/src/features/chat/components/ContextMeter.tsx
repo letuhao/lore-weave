@@ -1,11 +1,19 @@
+import { useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Gauge } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import { ContextBreakdownPanel } from './ContextBreakdownPanel';
 import type { ContextBudget } from '../types';
 
 // RAID Wave A3 — the chat header context-budget meter (industry-standard
 // "context used %" indicator). Pure render component: the event→state wiring
 // lives in useChatMessages / the stream hub; this only renders the snapshot.
+//
+// Chat Quality Wave W2 — the terse % chip STAYS (market anti-pattern: never
+// hide it, no chunky bars). Additions: the hover tooltip now leads with the
+// Claude-Code "until auto-compact: X%" phrasing + the Copilot-style baseline
+// transparency line, and clicking the chip opens the ContextBreakdownPanel
+// drill-down (per-category stacked bar + rows).
 //
 // Tiered warning bands (pct = used / effective_limit):
 //   < 0.70  → normal  (muted)
@@ -27,10 +35,26 @@ interface Props {
   budget: ContextBudget | null;
   /** Narrow host: render the gauge icon + % without extra chrome. */
   compact?: boolean;
+  /** W2: opens the tool/skill manager from the breakdown panel's tool rows.
+   *  Omitted on surfaces without the rack (the action is hidden there). */
+  onManageTools?: () => void;
 }
 
-export function ContextMeter({ budget, compact }: Props) {
+export function ContextMeter({ budget, compact, onManageTools }: Props) {
   const { t } = useTranslation('chat');
+  const [panelOpen, setPanelOpen] = useState(false);
+  const rootRef = useRef<HTMLDivElement>(null);
+
+  // Close the drill-down on outside click (same pattern as the message "more"
+  // dropdown — no portal, the panel is absolutely positioned in this wrapper).
+  useEffect(() => {
+    if (!panelOpen) return;
+    function handleClick(e: MouseEvent) {
+      if (rootRef.current && !rootRef.current.contains(e.target as Node)) setPanelOpen(false);
+    }
+    window.addEventListener('mousedown', handleClick);
+    return () => window.removeEventListener('mousedown', handleClick);
+  }, [panelOpen]);
 
   // No snapshot yet (before the first turn finishes) → render nothing rather
   // than a placeholder chip that would just be visual noise.
@@ -42,18 +66,38 @@ export function ContextMeter({ budget, compact }: Props) {
 
   const label = known ? `${Math.round((pct as number) * 100)}%` : '—';
 
-  const title = known
-    ? t('header.context_meter.tokens', {
-        used: budget.used_tokens,
-        limit: budget.effective_limit ?? budget.context_length ?? '?',
-      })
-    : t('header.context_meter.unknown');
+  // W2 tooltip — primary phrasing is "until auto-compact: X%" (Claude Code),
+  // then used/limit, then the baseline transparency line (Copilot) when the
+  // backend measured it. Multi-line via \n in the native title.
+  const titleLines: string[] = [];
+  if (budget.until_compact_pct != null) {
+    titleLines.push(
+      t('header.context_meter.until_compact', { pct: Math.round(budget.until_compact_pct * 100) }),
+    );
+  }
+  titleLines.push(
+    known
+      ? t('header.context_meter.tokens', {
+          used: budget.used_tokens,
+          limit: budget.effective_limit ?? budget.context_length ?? '?',
+        })
+      : t('header.context_meter.unknown'),
+  );
+  if (budget.baseline_tokens != null) {
+    titleLines.push(
+      t('header.context_meter.baseline', { tokens: budget.baseline_tokens.toLocaleString() }),
+    );
+  }
+  const title = titleLines.join('\n');
 
   return (
-    <div className="relative min-w-0">
-      <div
+    <div ref={rootRef} className="relative min-w-0">
+      <button
+        type="button"
+        onClick={() => setPanelOpen((v) => !v)}
         title={title}
         aria-label={t('header.context_meter.label')}
+        aria-expanded={panelOpen}
         data-testid="context-meter"
         data-band={band}
         className={cn(
@@ -69,7 +113,8 @@ export function ContextMeter({ budget, compact }: Props) {
       >
         <Gauge className="h-3 w-3 shrink-0" />
         {!compact && <span className="tabular-nums">{label}</span>}
-      </div>
+      </button>
+      {panelOpen && <ContextBreakdownPanel budget={budget} onManageTools={onManageTools} />}
     </div>
   );
 }

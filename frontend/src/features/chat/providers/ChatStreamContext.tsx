@@ -1,4 +1,6 @@
 import { createContext, useContext, useEffect } from 'react';
+import { useTranslation } from 'react-i18next';
+import { toast } from 'sonner';
 import { useAuth } from '@/auth';
 import { useChatMessages } from '../hooks/useChatMessages';
 import { usePendingFacts } from '../hooks/usePendingFacts';
@@ -65,6 +67,7 @@ export function ChatStreamProvider({
   displayLanguage?: string;
 }) {
   const { accessToken } = useAuth();
+  const { t } = useTranslation('chat');
   const { activeSession, refreshSessions, updateActiveSession } = useChatSession();
   const agentSurface = useAgentSurface(activeSession);
   const rack = useContextRack({
@@ -122,6 +125,27 @@ export function ChatStreamProvider({
     chat.onAgentSurfaceRef.current = agentSurface.applyEvent;
     return () => { chat.onAgentSurfaceRef.current = null; };
   }, [chat.onAgentSurfaceRef, agentSurface.applyEvent]);
+
+  // W2: the per-turn `compaction` CUSTOM frame → a small toast so the user
+  // knows earlier turns were summarized/trimmed (and it wasn't silent context
+  // loss). Warn variant when the summarizer failed or the prompt still
+  // overflowed after compaction — the model genuinely lost detail then.
+  useEffect(() => {
+    chat.onCompactionRef.current = (event) => {
+      const msg = t('compaction.toast', {
+        before: event.tokens_before.toLocaleString(),
+        after: event.tokens_after.toLocaleString(),
+      });
+      if (event.summarize_failed || event.overflowed) {
+        toast.warning(msg, {
+          description: t(event.overflowed ? 'compaction.overflowed' : 'compaction.summarize_failed'),
+        });
+      } else {
+        toast.info(msg);
+      }
+    };
+    return () => { chat.onCompactionRef.current = null; };
+  }, [chat.onCompactionRef, t]);
 
   return (
     <ChatStreamCtx.Provider value={{ ...chat, pendingFacts, agentSurface, rack }}>

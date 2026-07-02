@@ -260,6 +260,8 @@ async def send_message(
             parent_message_id=parent_message_id,
             context=body.context,
             thinking=body.thinking,
+            # W4 — granular effort from the input-bar dropdown (fast|standard|deep).
+            reasoning_effort=body.reasoning_effort,
             stream_format=stream_format,
             editor_context=body.editor_context.model_dump() if body.editor_context else None,
             book_context=body.book_context.model_dump() if body.book_context else None,

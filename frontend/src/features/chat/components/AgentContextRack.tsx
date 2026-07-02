@@ -13,6 +13,10 @@ interface AgentContextRackProps {
   onRemoveSkill: (id: string) => void;
   onClearDiscovered: () => void;
   disabled?: boolean;
+  /** W2: external "open the add modal" signal (the context breakdown panel's
+   *  manage action). Controlled OR-ed with the rack's own + button state. */
+  externalAddOpen?: boolean;
+  onExternalAddClose?: () => void;
 }
 
 export function AgentContextRack({
@@ -26,6 +30,8 @@ export function AgentContextRack({
   onRemoveSkill,
   onClearDiscovered,
   disabled,
+  externalAddOpen,
+  onExternalAddClose,
 }: AgentContextRackProps) {
   const { t } = useTranslation('chat');
   const [modalOpen, setModalOpen] = useState(false);
@@ -110,8 +116,8 @@ export function AgentContextRack({
         </div>
       </div>
       <ToolSkillAddModal
-        open={modalOpen}
-        onClose={() => setModalOpen(false)}
+        open={modalOpen || !!externalAddOpen}
+        onClose={() => { setModalOpen(false); onExternalAddClose?.(); }}
         token={token}
         onAddTool={onAddTool}
         onAddSkill={onAddSkill}

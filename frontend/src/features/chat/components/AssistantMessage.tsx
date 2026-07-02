@@ -342,12 +342,15 @@ export function AssistantMessage({
         <AudioReplayPlayer sessionId={sessionId} messageId={messageId} />
       )}
 
-      {/* Token footer + action buttons */}
+      {/* Token footer + action buttons. W2 (Windsurf pattern): the per-message
+          token one-liner (↑in ↓out · timing) is ALWAYS visible — a muted
+          text-[10px] line, no layout shift; only the action buttons stay
+          hover-revealed. */}
       {!isStreaming && (
-        <div className="mt-1.5 flex flex-wrap items-center justify-between gap-y-1 opacity-0 transition-opacity group-hover:opacity-100 max-md:opacity-100">
+        <div className="mt-1.5 flex flex-wrap items-center justify-between gap-y-1">
           {/* Token counts + timing */}
           {hasMetrics && (
-            <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5 font-mono text-[10px] text-muted-foreground">
+            <div data-testid="message-token-footer" className="flex flex-wrap items-center gap-x-2 gap-y-0.5 font-mono text-[10px] text-muted-foreground">
               {hasReasoning ? (
                 <span className="flex items-center gap-0.5 text-[#a78bfa]">
                   <Brain className="h-2.5 w-2.5" />
@@ -370,9 +373,9 @@ export function AssistantMessage({
             </div>
           )}
 
-          {/* Action buttons */}
+          {/* Action buttons — hover-revealed (the metrics line above stays). */}
           {!disabled && (
-            <div className="flex items-center gap-1">
+            <div className="flex items-center gap-1 opacity-0 transition-opacity group-hover:opacity-100 max-md:opacity-100">
               {messageId && (
                 <>
                   <button

@@ -39,6 +39,34 @@ def test_thinking_pref_mapping():
     assert _thinking_pref(None, {"thinking": True}) == "medium"
 
 
+def test_thinking_pref_request_effort_precedence():
+    # W4 — the per-message reasoning_effort (fast|standard|deep) beats the
+    # legacy thinking boolean AND the session default.
+    assert _thinking_pref(None, {}, "fast") == "off"
+    assert _thinking_pref(None, {}, "standard") == "medium"
+    assert _thinking_pref(None, {}, "deep") == "high"
+    # beats thinking=True/False when both ride the request
+    assert _thinking_pref(True, {}, "fast") == "off"
+    assert _thinking_pref(False, {}, "deep") == "high"
+    # beats the session default
+    assert _thinking_pref(None, {"reasoning_effort": "low"}, "deep") == "high"
+    # unknown/None value → falls through to the legacy path
+    assert _thinking_pref(True, {}, None) == "medium"
+    assert _thinking_pref(None, {"reasoning_effort": "high"}, None) == "high"
+
+
+def test_send_message_request_reasoning_effort_field():
+    # W4 — SendMessageRequest carries the closed-set reasoning_effort.
+    from pydantic import ValidationError
+
+    from app.models import SendMessageRequest
+
+    assert SendMessageRequest(content="hi").reasoning_effort is None
+    assert SendMessageRequest(content="hi", reasoning_effort="deep").reasoning_effort == "deep"
+    with pytest.raises(ValidationError):
+        SendMessageRequest(content="hi", reasoning_effort="max")  # not in the enum
+
+
 def test_apply_reasoning_kwargs_forwards_only_when_present():
     # The wiring that was missing: stashed reasoning fields reach the request kwargs.
     rk: dict = {}

@@ -20,8 +20,37 @@
     "context_meter": {
       "label": "使用中のコンテキスト",
       "unknown": "このモデルのコンテキストウィンドウ使用量は不明です",
-      "tokens": "{{used}} / {{limit}} トークン"
+      "tokens": "{{used}} / {{limit}} トークン",
+      "until_compact": "自動コンパクトまで残り {{pct}}%",
+      "baseline": "システム + ツール: 入力前に {{tokens}} トークン"
     }
+  },
+  "context_panel": {
+    "title": "コンテキスト内訳",
+    "free": "空き容量: {{tokens}} トークン",
+    "compact_at": "ウィンドウの {{pct}}% で自動コンパクトが作動",
+    "zero": "ゼロ",
+    "manage": "ツールとスキルを管理",
+    "coming_soon": "近日対応",
+    "cat": {
+      "system_prompt": "ペルソナ",
+      "memory_knowledge": "ストーリー記憶",
+      "working_memory": "ワーキングメモリ",
+      "steering": "ステアリングルール",
+      "skills": "スキル",
+      "plan_nudge": "プラン誘導",
+      "book_note": "ブックノート",
+      "attached_context": "添付コンテキスト",
+      "history": "会話履歴",
+      "tool_results": "ツール結果",
+      "frontend_tool_schemas": "UIツール",
+      "mcp_tool_schemas": "MCPツール"
+    }
+  },
+  "compaction": {
+    "toast": "以前のターンをコンパクト化 — {{before}}→{{after}} トークン",
+    "summarize_failed": "要約に失敗 — 代わりに古いターンを削除しました",
+    "overflowed": "コンパクト後もコンテキスト上限を超過 — 応答の詳細が失われる可能性があります"
   },
   "input": {
     "format": "形式:",
@@ -48,6 +77,13 @@
     "stop_audio": "音声を停止",
     "think": "熟考",
     "fast": "高速",
+    "effort_fast": "高速",
+    "effort_standard": "標準",
+    "effort_deep": "深思",
+    "effort_fast_hint": "内部思考なし — 最速の応答",
+    "effort_standard_hint": "回答前に思考 — 速度と深さのバランス",
+    "effort_deep_hint": "推論バジェット最大 — 最も遅く、最も徹底的",
+    "mode_cycle_hint": "Ctrl+. で確認 → 計画 → 書込を切り替え",
     "stop_generating": "生成を停止 (Esc)",
     "send": "送信 (Enter)",
     "context_attached": "コンテキスト添付済み · ",

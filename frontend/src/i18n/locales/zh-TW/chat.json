@@ -20,8 +20,37 @@
     "context_meter": {
       "label": "已使用的脈絡",
       "unknown": "無法得知此模型的脈絡視窗使用量",
-      "tokens": "{{used}} / {{limit}} 個 token"
+      "tokens": "{{used}} / {{limit}} 個 token",
+      "until_compact": "距自動壓縮還有 {{pct}}%",
+      "baseline": "系統 + 工具：您輸入第一個字前已佔 {{tokens}} 個 token"
     }
+  },
+  "context_panel": {
+    "title": "脈絡明細",
+    "free": "剩餘空間：{{tokens}} 個 token",
+    "compact_at": "自動壓縮於視窗 {{pct}}% 時觸發",
+    "zero": "為零",
+    "manage": "管理工具與技能",
+    "coming_soon": "即將推出",
+    "cat": {
+      "system_prompt": "角色設定",
+      "memory_knowledge": "故事記憶",
+      "working_memory": "工作記憶",
+      "steering": "引導規則",
+      "skills": "技能",
+      "plan_nudge": "規劃提示",
+      "book_note": "書籍筆記",
+      "attached_context": "附加情境",
+      "history": "對話紀錄",
+      "tool_results": "工具結果",
+      "frontend_tool_schemas": "介面工具",
+      "mcp_tool_schemas": "MCP 工具"
+    }
+  },
+  "compaction": {
+    "toast": "先前的回合已壓縮 — {{before}}→{{after}} 個 token",
+    "summarize_failed": "摘要失敗 — 改以裁剪較舊的回合",
+    "overflowed": "壓縮後仍超過脈絡上限 — 回應可能遺失細節"
   },
   "input": {
     "format": "格式：",
@@ -48,6 +77,13 @@
     "stop_audio": "停止音訊",
     "think": "思考",
     "fast": "快速",
+    "effort_fast": "快速",
+    "effort_standard": "標準",
+    "effort_deep": "深度",
+    "effort_fast_hint": "不做隱藏思考 — 回應最快",
+    "effort_standard_hint": "回答前先思考 — 兼顧速度與深度",
+    "effort_deep_hint": "最大推理預算 — 最慢、最徹底",
+    "mode_cycle_hint": "Ctrl+. 循環切換 詢問 → 規劃 → 寫入",
     "stop_generating": "停止生成 (Esc)",
     "send": "傳送 (Enter)",
     "context_attached": "已附加情境 · ",

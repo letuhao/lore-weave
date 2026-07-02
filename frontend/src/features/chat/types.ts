@@ -80,11 +80,65 @@ export interface AgentSurfaceState {
 // CUSTOM event (`name:"contextBudget"`) on every turn finish. Drives the chat
 // header ContextMeter. `pct` = used/effective; null when the model has no
 // registered context_length (so we render "—" instead of a bogus %).
+//
+// Chat Quality Wave W1/W2 — STRICTLY ADDITIVE fields: `breakdown` (per-category
+// token map, fixed 12-key vocabulary mirroring chat-service
+// token_budget.BREAKDOWN_CATEGORIES), `baseline_tokens` (fixed overhead before
+// the first user word) and `until_compact_pct` (headroom to the auto-compact
+// trigger, in pct-of-effective-limit points). All optional — an older backend
+// (or the resume path, which doesn't re-measure parts) omits them and the
+// meter renders exactly as before.
+
+/** The one nested breakdown entry: knowledge memory total + per-section split
+ *  (glossary_entities / facts / passages / summaries / instructions / …). */
+export interface MemoryKnowledgeBreakdown {
+  total: number;
+  sections: Record<string, number>;
+}
+
+/** Per-category context tokens. Keys mirror the backend BREAKDOWN_CATEGORIES
+ *  vocabulary; every key is present (0 when absent this turn) on a W1 backend. */
+export interface ContextBreakdownMap {
+  system_prompt?: number;
+  memory_knowledge?: MemoryKnowledgeBreakdown;
+  working_memory?: number;
+  steering?: number;
+  skills?: number;
+  plan_nudge?: number;
+  book_note?: number;
+  attached_context?: number;
+  history?: number;
+  tool_results?: number;
+  frontend_tool_schemas?: number;
+  mcp_tool_schemas?: number;
+}
+
 export interface ContextBudget {
   used_tokens: number;
   context_length: number | null;
   effective_limit: number | null;
   pct: number | null;
+  /** W1 additive — per-category token breakdown (drill-down panel). */
+  breakdown?: ContextBreakdownMap | null;
+  /** W1 additive — tokens present before the first user word (system + tools). */
+  baseline_tokens?: number | null;
+  /** W1 additive — pct-points of headroom until the auto-compact trigger. */
+  until_compact_pct?: number | null;
+}
+
+// Chat Quality Wave W1/W2 — the `compaction` CUSTOM frame, emitted when
+// in-loop compaction actually changed the prompt (CompactionReport.to_event()).
+// Feeds the "earlier turns compacted" toast.
+export interface CompactionEvent {
+  triggered: boolean;
+  tool_results_cleared: number;
+  turns_truncated: number;
+  summarized: boolean;
+  summarize_failed: boolean;
+  overflowed: boolean;
+  tokens_before: number;
+  tokens_after: number;
+  steps?: string[];
 }
 
 export interface ToolCatalogItem {

@@ -54,6 +54,8 @@ export function ChatView({ className, composeMode, footerSlot, headerSlot }: Cha
 
   const { settingsOpen, setSettingsOpen, voiceSettingsOpen, setVoiceSettingsOpen } = usePanelState();
   const isArchived = activeSession?.status === 'archived';
+  // W2: the context breakdown panel's tool rows open the rack's add modal.
+  const [rackAddOpen, setRackAddOpen] = useState(false);
 
   // MCP fan-out (C-NAV): resolve any suspended `ui_*` nav tool the agent calls —
   // perform the router action + POST the resolve immediately (no human gate).
@@ -114,8 +116,8 @@ export function ChatView({ className, composeMode, footerSlot, headerSlot }: Cha
     );
   }
 
-  function handleSend(content: string, thinking?: boolean) {
-    resolveAndSend(content, chat.send, thinking);
+  function handleSend(content: string, thinking?: boolean, reasoningEffort?: 'fast' | 'standard' | 'deep') {
+    resolveAndSend(content, chat.send, thinking, reasoningEffort);
   }
 
   function handleEdit(content: string, sequenceNum: number) {
@@ -145,6 +147,7 @@ export function ChatView({ className, composeMode, footerSlot, headerSlot }: Cha
         modelNameMap={modelNameMap}
         messageCount={chat.messages.length}
         contextBudget={chat.contextBudget}
+        onManageContextTools={!rackHidden ? () => setRackAddOpen(true) : undefined}
         sessionSwitcher={headerSlot}
         onRename={promptRename}
         onOpenSettings={() => setSettingsOpen(true)}
@@ -207,6 +210,8 @@ export function ChatView({ className, composeMode, footerSlot, headerSlot }: Cha
           onRemoveSkill={rack.removeSkill}
           onClearDiscovered={rack.clearDiscovered}
           disabled={!!isArchived || chat.isStreaming}
+          externalAddOpen={rackAddOpen}
+          onExternalAddClose={() => setRackAddOpen(false)}
         />
       )}
 

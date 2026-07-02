@@ -34,6 +34,7 @@ const EMPTY: ChatLiveState = {
   error: null,
   agentSurface: null,
   contextBudget: null,
+  compaction: null,
 };
 
 /** A window-unique, monotonic nonce source for writer election. The random prefix

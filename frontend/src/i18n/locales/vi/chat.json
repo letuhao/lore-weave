@@ -20,8 +20,37 @@
     "context_meter": {
       "label": "Ngữ cảnh đã dùng",
       "unknown": "Không rõ mức sử dụng cửa sổ ngữ cảnh cho mô hình này",
-      "tokens": "{{used}} / {{limit}} token"
+      "tokens": "{{used}} / {{limit}} token",
+      "until_compact": "còn {{pct}}% đến khi tự động nén",
+      "baseline": "hệ thống + công cụ: {{tokens}} token trước từ đầu tiên của bạn"
     }
+  },
+  "context_panel": {
+    "title": "Phân tích ngữ cảnh",
+    "free": "còn trống: {{tokens}} token",
+    "compact_at": "tự động nén kích hoạt ở {{pct}}% cửa sổ",
+    "zero": "bằng 0",
+    "manage": "Quản lý công cụ & kỹ năng",
+    "coming_soon": "sắp có",
+    "cat": {
+      "system_prompt": "Nhân cách",
+      "memory_knowledge": "Ký ức truyện",
+      "working_memory": "Bộ nhớ làm việc",
+      "steering": "Quy tắc định hướng",
+      "skills": "Kỹ năng",
+      "plan_nudge": "Nhắc kế hoạch",
+      "book_note": "Ghi chú sách",
+      "attached_context": "Ngữ cảnh đính kèm",
+      "history": "Hội thoại",
+      "tool_results": "Kết quả công cụ",
+      "frontend_tool_schemas": "Công cụ giao diện",
+      "mcp_tool_schemas": "Công cụ MCP"
+    }
+  },
+  "compaction": {
+    "toast": "Các lượt trước đã được nén — {{before}}→{{after}} token",
+    "summarize_failed": "Tóm tắt thất bại — các lượt cũ bị cắt bớt thay thế",
+    "overflowed": "Vẫn vượt giới hạn ngữ cảnh sau khi nén — phản hồi có thể mất chi tiết"
   },
   "input": {
     "format": "Định dạng:",
@@ -48,6 +77,13 @@
     "stop_audio": "Dừng âm thanh",
     "think": "Suy nghĩ",
     "fast": "Nhanh",
+    "effort_fast": "Nhanh",
+    "effort_standard": "Chuẩn",
+    "effort_deep": "Sâu",
+    "effort_fast_hint": "Không suy nghĩ ẩn — trả lời nhanh nhất",
+    "effort_standard_hint": "Suy nghĩ trước khi trả lời — cân bằng tốc độ và độ sâu",
+    "effort_deep_hint": "Ngân sách suy luận tối đa — chậm nhất, kỹ lưỡng nhất",
+    "mode_cycle_hint": "Ctrl+. chuyển vòng Hỏi → Kế hoạch → Ghi",
     "stop_generating": "Dừng tạo (Esc)",
     "send": "Gửi (Enter)",
     "context_attached": "Đã đính kèm ngữ cảnh · ",
