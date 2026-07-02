@@ -1,4 +1,17 @@
-# ▶▶ NEXT SESSION STARTS HERE — **AUTONOMOUS RUN (user-mandated, fable-5): Track 4 salience (P0/P1/P2 shipped+reviewed; eval KG standing up — publish `_text` bug class fixed 5 sites) → P3/P4/P5 → RAID C5/C4/C1/C2/C6/D (decision records) → OSS wave. Contract: local LLM only (LM Studio BYOK; NEVER the gpt-4o probe), push/PR = normal delivery, hard-stops = destructive-ops-outside-test-account + 3-strike.** Spec [`salience-track4`](../specs/2026-07-02-knowledge-salience-track4.md) + [`07S`](../specs/2026-07-01-writing-studio/07S_studio_agent_standard.md) + plan [`studio-agent-raid`](../plans/2026-07-02-studio-agent-raid.md). · 2026-07-02**
+# ▶▶ NEXT SESSION STARTS HERE — **AUTONOMOUS RUN (user-mandated, fable-5): ✅ Track 4 salience COMPLETE (P0–P4 shipped flag-gated + eval executed; P5 = trigger-gated decision records, spec §5). NEXT: RAID remainder C5→C4→C1→C2→C6→Wave D (load-bearing ones get Decision Records) → OSS wave (scrub/license/CI/docs; publish button = user's). Contract: local LLM only (LM Studio BYOK; NEVER the gpt-4o probe), push/PR = normal delivery, hard-stops = destructive-ops-outside-test-account + 3-strike. ⚠️ CONCURRENT human-in-loop agent on the same checkout (dockable migration) — stage exact files, check `git status` before every commit.** Spec [`salience-track4`](../specs/2026-07-02-knowledge-salience-track4.md) + [`07S`](../specs/2026-07-01-writing-studio/07S_studio_agent_standard.md) + plan [`studio-agent-raid`](../plans/2026-07-02-studio-agent-raid.md). · 2026-07-02**
+
+> **▶ Track 4 SALIENCE — COMPLETE 2026-07-02 (autonomous run).** All buildable phases shipped flag-gated (defaults =
+> byte-identical): **P0** access telemetry (live-proven) · **P1** access blend (eval verdict: KEEP w=0 — explicit-query
+> REGRESSION, spec §8b) · **P2** cross-encoder L3 rerank (live-proven e2e via local bge-reranker; per-project opt-in)
+> · **P3a** graph-native promotion (evidence/mention/edit-recency) · **P3b** thumbs→entity attribution (user
+> challenged the deferral; verification DISPROVED it — consumer existed, 1 additive column sufficed; `4635f3dfb`) ·
+> **P4** pointer demotion instead of glossary drop (+`memory_recall_entity` as the expand affordance — no new tool
+> needed) + widened 2-hop L2 retry on fact-miss (default ON, kill-switch; `d535293fd`). **P5 = 4 decision records**
+> (R-T4-03 prune / 04 auto-merge / 08 metadata / 09 compaction-LFU-bridge), each verified + trigger-gated in spec §5
+> — unlike P3b these survive scrutiny (data-safety / no-signal / hot-path-cost reasons, not effort). Salience flip
+> gate = ambiguous-query eval (P1's explicit-query set penalizes re-ranking by construction). Eval CLI:
+> `python -m eval.run_salience_eval`. Also cleared en route: book `_text` bug class (5 sites), worker skip
+> false-green, config write-path, FE PUT-replace clobber.
 
 > **▶ STUDIO DOCKABLE MIGRATION — WAVE 1 SHIPPED 2026-07-02** (spec [`11_dockable_migration.md`](../specs/2026-07-01-writing-studio/11_dockable_migration.md),
 > human-in-loop track running IN PARALLEL with the autonomous run — conflict-first ordering per W1-5). Foundation

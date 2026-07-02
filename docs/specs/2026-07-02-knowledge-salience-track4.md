@@ -1,6 +1,6 @@
 # Track 4 — Salience-Aware Knowledge Retrieval (spec)
 
-**Status:** DESIGN (awaiting review) · **Owner track:** knowledge-service · **Date:** 2026-07-02
+**Status:** P0–P4 SHIPPED (all flag-gated/opt-in; eval executed §8b); P5 = trigger-gated decision records · **Owner track:** knowledge-service · **Date:** 2026-07-02
 **Source research:** `docs/03_planning/KNOWLEDGE_SERVICE_TRACK4_RESEARCH.md` (R-T4-01…09)
 **Related:** `07S_studio_agent_standard.md` (context buckets), Wave A compaction (chat-service),
 `KNOWLEDGE_SERVICE_ARCHITECTURE.md` §4 (L0–L3 memory stack).
@@ -138,14 +138,34 @@ As built:
   empty path only — never re-ranks a non-empty result. Kill-switch
   `context_l2_retry_widened` (default ON — a miss-path fallback, not a re-ranker).
 
-### P5 — Consolidation (R-T4-04) + metadata filters (R-T4-08) + conversation-layer LFU (R-T4-09). **[larger / partly deferred]**
-- **R-T4-04** nightly "sleep": merge near-duplicate entities, refresh `cached_name`, discover
-  co-occurrence edges. Batch job; depends on extraction volume.
-- **R-T4-08** structured metadata filter alongside K2b text (location/topic tags). Depends on user
-  tagging uptake — spec now, gate on the tagging signal.
-- **R-T4-09 (the compaction bridge)**: chat-service records which past messages the user
-  referenced/scrolled-back-to; Wave A compaction weights those to *keep* (not pure recency). This is
-  the one item that feeds the **conversation** layer — connects Track 4 to Wave A.
+### P5 — Consolidation (R-T4-04) + metadata (R-T4-08) + LFU bridge (R-T4-09) + prune (R-T4-03). **[DECISION RECORDS 2026-07-02 — each verified, trigger-gated]**
+
+All four were re-verified against code (the P3b lesson); unlike P3b, these deferrals
+SURVIVE scrutiny — each has a concrete reason and a concrete trigger:
+
+- **R-T4-03 prune (cold rows):** read-time Ebbinghaus decay (P1) already demotes cold
+  entities in ranking — the only remaining piece is deleting stale `entity_access_log`
+  rows, pure housekeeping on a table currently measured in dozens of rows. Building a
+  cron for it now is ceremony. **Trigger:** table growth to ~10⁵ rows / measurable
+  `load_salience` latency. The prune is one SQL:
+  `DELETE FROM entity_access_log WHERE last_retrieved_at < now()-interval '90 days' AND feedback_score = 0`.
+- **R-T4-04 consolidation ("sleep" merges):** the KG ALREADY consolidates on explicit
+  merges — `glossary.entity_merged` → `handle_glossary_entity_merged` folds the loser
+  into the winner + `entity_alias_map` (anti-resurrection). What's missing is only
+  UNSUPERVISED similarity auto-merge, whose failure mode is silent canon corruption
+  (false merges) — a data-safety risk, not an effort question. **Trigger:** observed
+  duplicate-entity rate on real books; then build as PROPOSE-to-triage (kg_triage
+  exists), never silent auto-merge.
+- **R-T4-08 metadata filters:** gated on user tagging uptake, unchanged — the filter
+  has nothing to filter ON until entities carry structured tags at some volume.
+- **R-T4-09 conversation-LFU (the Wave-A compaction bridge):** the buildable slice
+  identified: protect thumbs-up'd turns during chat compaction (the feedback signal
+  EXISTS via message_feedback). NOT built now because it costs a JOIN on the hot
+  history-load of EVERY turn to protect an event (compaction) that rarely fires at
+  200K-context local models, and thumbs are sparse. **Trigger:** compaction firing
+  frequently in practice (e.g. small-window local models) — then thread a keep-flag
+  from a feedback JOIN into the compaction atom logic (design sketched here so the
+  build is a day, not a spec).
 
 ## 6. Tenancy & security checklist (per feature)
 
