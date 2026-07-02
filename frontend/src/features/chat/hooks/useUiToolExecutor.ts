@@ -2,6 +2,7 @@ import { useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useChatStream } from '../providers';
 import { isUiTool, resolveUiTool } from '../nav/uiNav';
+import { useUiNavInterceptor } from '../nav/uiNavScope';
 import type { ToolCallRecord } from '../types';
 
 // MCP fan-out (C-NAV) — the browser-side executor for `ui_*` navigation tools.
@@ -33,6 +34,9 @@ function pendingUiToolCalls(records: ToolCallRecord[] | null | undefined): ToolC
 export function useUiToolExecutor(): void {
   const navigate = useNavigate();
   const { messages, submitToolResolve } = useChatStream();
+  // Nav-scope seam: an embedding surface (the studio) may claim a call and run a
+  // surface-internal effect instead of an SPA navigation (see uiNavScope.ts).
+  const intercept = useUiNavInterceptor();
   // toolCallIds we have already executed — never act on the same suspend twice.
   const handledRef = useRef<Set<string>>(new Set());
 
@@ -47,7 +51,11 @@ export function useUiToolExecutor(): void {
       handledRef.current.add(id);
 
       const args = (tc.args ?? {}) as Record<string, unknown>;
-      const { path, result } = resolveUiTool(tc.tool, args);
+      const interception = intercept?.(tc.tool, args) ?? null;
+      const { path, result, effect } = interception ?? { ...resolveUiTool(tc.tool, args), effect: undefined };
+      if (effect) {
+        try { effect(); } catch { /* surface action can throw if its host isn't ready */ }
+      }
       if (path) {
         try {
           navigate(path);
@@ -59,5 +67,5 @@ export function useUiToolExecutor(): void {
       // Resolve the suspended run with the (navigated|opened|shown|watching) flag.
       void submitToolResolve(tc.runId!, id, result);
     }
-  }, [messages, navigate, submitToolResolve]);
+  }, [messages, navigate, submitToolResolve, intercept]);
 }

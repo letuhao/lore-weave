@@ -1350,13 +1350,30 @@ async def stream_response(
     # only their PRESENCE gated tool advertising — so the agent passed
     # "YOUR_BOOK_ID_HERE"/"none" and the tool 400'd ("book_id must be a UUID").
     # Carried inside the system message alongside the skills.
-    _ctx_book_id = (editor_context or {}).get("book_id") or (book_context or {}).get("book_id")
-    _ctx_chapter_id = (editor_context or {}).get("chapter_id")
+    _ctx_book_id = (
+        (editor_context or {}).get("book_id")
+        or (book_context or {}).get("book_id")
+        or (studio_context or {}).get("book_id")
+    )
+    _ctx_chapter_id = (
+        (editor_context or {}).get("chapter_id")
+        or (studio_context or {}).get("active_chapter_id")
+    )
+    # CTX-1 — the studio position pointer: the FE hoist already resolved the book's
+    # composition Work, so the model is TOLD the project_id instead of foraging for it
+    # (a live M-E gate run dead-ended retrying the book_id AS a project_id).
+    _ctx_project_id = (studio_context or {}).get("project_id")
     book_context_note: str | None = None
     if _ctx_book_id:
         book_context_note = f"You are working inside book_id={_ctx_book_id}."
         if _ctx_chapter_id:
             book_context_note += f" The active chapter is chapter_id={_ctx_chapter_id}."
+        if _ctx_project_id:
+            book_context_note += (
+                f" This book's composition/knowledge project is project_id={_ctx_project_id}"
+                " — pass it verbatim to any tool that requires a project_id"
+                " (a book_id is NOT a project_id)."
+            )
         book_context_note += (
             " Use these exact ids for any tool that requires a book_id or chapter_id."
             " Never ask the user for the book_id and never pass a placeholder."
@@ -1547,6 +1564,7 @@ async def stream_response(
                     pins=tool_pins,
                     editor=editor,
                     book_scoped=book_scoped,
+                    studio=bool(studio_context),
                 )
                 # `tool_defs` is the FIRST-pass advertisement when discovery is on;
                 # _stream_with_tools recomputes it each pass (core ∪ extra_fe ∪
@@ -2423,11 +2441,14 @@ async def resume_stream_response(
             )
             # Resume uses editor superset for frontend tools; discovery seed respects
             # session curated pins when enabled_tools is non-empty (story 04 S2).
+            # Resume superset includes the studio hot domains — a suspend raised on the
+            # studio compose surface must resume with its composition family still hot.
             resume_seed_names = discovery_seed_for_surface(
                 catalog,
                 pins=tool_pins,
                 editor=True,
                 book_scoped=True,
+                studio=True,
             )
             tool_defs = _advertise_discovery_tools(
                 _catalog_index(catalog), resume_seed_names, resume_extra_frontend

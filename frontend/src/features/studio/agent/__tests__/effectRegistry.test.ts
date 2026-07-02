@@ -88,4 +88,41 @@ describe('outlineEffect (#12 M-D — agent scene-metadata writes)', () => {
     }));
     expect(reloadScenes).toHaveBeenCalledWith('ch9');
   });
+
+  // M-E live-caught: the live stream wraps the domain payload in the chat-service
+  // TOOL_CALL_RESULT envelope {ok, result} (and `result` can itself be a JSON string —
+  // MCP text content). The bare top-level read returned null → Lane B never reloaded
+  // the Scene Rail while the DB was already updated.
+  it('unwraps the live-stream {ok, result} envelope (object payload)', () => {
+    const reloadScenes = vi.fn();
+    const c = ctx({
+      tool: 'composition_outline_node_update',
+      result: { ok: true, result: { id: 'n1', chapter_id: 'ch1' } },
+      reloadScenes,
+    });
+    outlineEffect(c);
+    expect(reloadScenes).toHaveBeenCalledWith('ch1');
+  });
+
+  it('unwraps the envelope when the inner result is a JSON STRING (MCP text content)', () => {
+    const reloadScenes = vi.fn();
+    const c = ctx({
+      tool: 'composition_outline_node_update',
+      result: { ok: true, result: JSON.stringify({ id: 'n1', chapter_id: 'ch2' }) },
+      reloadScenes,
+    });
+    outlineEffect(c);
+    expect(reloadScenes).toHaveBeenCalledWith('ch2');
+  });
+
+  it('envelope with a non-JSON string result → no reload, no throw', () => {
+    const reloadScenes = vi.fn();
+    const c = ctx({
+      tool: 'composition_outline_node_update',
+      result: { ok: true, result: 'plain text outcome' },
+      reloadScenes,
+    });
+    outlineEffect(c);
+    expect(reloadScenes).not.toHaveBeenCalled();
+  });
 });

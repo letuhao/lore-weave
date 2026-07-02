@@ -224,21 +224,43 @@ def _mine_estimate(*, scope: str) -> dict[str, Any]:
     description=(
         "Get the composition Work for a book/project (its status, active template, "
         "and authoring settings). The Work is the per-user authoring context layered "
-        "over a book. Owner/grant-filtered — VIEW on the book required."
+        "over a book. Pass project_id when you know it; otherwise pass book_id — the "
+        "caller's Work for that book is resolved, which is ALSO how you discover the "
+        "project_id every other composition_* tool requires (a book_id is NOT a "
+        "project_id). Owner/grant-filtered — VIEW on the book required."
     ),
     meta=require_meta(
         "R", "book",
-        synonyms=["composition work", "writing project", "authoring context", "get work", "compose"],
+        synonyms=[
+            "composition work", "writing project", "authoring context", "get work",
+            "compose", "resolve project id", "project id for book",
+        ],
         tool_name="composition_get_work",
     ),
 )
 async def composition_get_work(
     ctx: MCPContext,
-    project_id: Annotated[str, "The Work's project_id (= the knowledge project id, the Work PK)."],
+    project_id: Annotated[str | None, "The Work's project_id (= the knowledge project id, the Work PK)."] = None,
+    book_id: Annotated[str | None, "Alternative lookup: resolve the caller's Work by book_id (use when you only know the book)."] = None,
 ) -> dict:
     tc = _ctx(ctx)
     works = WorksRepo(get_pool())
-    work = await _work_or_deny(works, tc, UUID(project_id))
+    if project_id:
+        work = await _work_or_deny(works, tc, UUID(project_id))
+    elif book_id:
+        # book→Work resolution (M-E live-caught): the agent naturally knows the book_id
+        # (studio context) but every composition tool keys on project_id, and no tool
+        # bridged the two — the model retried book_id AS project_id and dead-ended.
+        # resolve_by_book is user-scoped (marked works only); 0 → the H13 uniform deny.
+        marked = await works.resolve_by_book(tc.user_id, UUID(book_id))
+        if not marked:
+            raise uniform_not_accessible()
+        if len(marked) > 1:
+            # All the caller's own rows — return them so the model can pick.
+            return {"candidates": [w.model_dump(mode="json") for w in marked]}
+        work = marked[0]
+    else:
+        raise ValueError("pass project_id or book_id")
     await _gate(tc, work.book_id, GrantLevel.VIEW)
     return work.model_dump(mode="json")
 

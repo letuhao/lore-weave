@@ -67,6 +67,18 @@ export interface ManuscriptUnitApi {
 
 const ManuscriptUnitContext = createContext<ManuscriptUnitApi | null>(null);
 
+/** The STABLE identity slice of the unit — changes only when the active chapter or the book's
+ * composition project changes, never per keystroke. Split from ManuscriptUnitApi (which carries
+ * the volatile body buffers) so low-frequency consumers — the Compose panel's studio_context
+ * position pointer (CTX-1) — don't re-render the whole chat subtree on every edit. */
+export interface ManuscriptUnitMeta {
+  /** The book's composition/knowledge project id (null until the Work resolves / none marked). */
+  projectId: string | null;
+  activeChapterId: string | null;
+}
+
+const ManuscriptUnitMetaContext = createContext<ManuscriptUnitMeta | null>(null);
+
 function isDirtyState(s: ManuscriptUnitState): boolean {
   return s.workingBody != null && JSON.stringify(s.workingBody) !== JSON.stringify(s.savedBody);
 }
@@ -220,11 +232,25 @@ export function ManuscriptUnitProvider({ bookId, children }: { bookId: string; c
   }, [api, accessToken, projectId]);
   useEffect(() => () => { _setManuscriptUnitBinding(null); emitManuscriptUnitChange(); }, []);
 
-  return <ManuscriptUnitContext.Provider value={api}>{children}</ManuscriptUnitContext.Provider>;
+  const meta = useMemo<ManuscriptUnitMeta>(
+    () => ({ projectId, activeChapterId: state.chapterId }),
+    [projectId, state.chapterId],
+  );
+
+  return (
+    <ManuscriptUnitMetaContext.Provider value={meta}>
+      <ManuscriptUnitContext.Provider value={api}>{children}</ManuscriptUnitContext.Provider>
+    </ManuscriptUnitMetaContext.Provider>
+  );
 }
 
 /** The Tier-4 manuscript unit. Returns null outside the provider (a panel may render before the
  * provider in tests) — callers guard. */
 export function useManuscriptUnit(): ManuscriptUnitApi | null {
   return useContext(ManuscriptUnitContext);
+}
+
+/** The stable identity slice (projectId + activeChapterId) — safe for low-frequency consumers. */
+export function useManuscriptUnitMeta(): ManuscriptUnitMeta | null {
+  return useContext(ManuscriptUnitMetaContext);
 }

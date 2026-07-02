@@ -358,8 +358,15 @@ class AdminContext(BaseModel):
 
 
 class StudioContext(BaseModel):
-    """Studio compose context — API-ready; validation deferred to studio phase."""
+    """Studio compose context — API-ready; validation deferred to studio phase.
+
+    CTX-1 (the position pointer): project_id/active_chapter_id let the system message
+    TELL the model the composition project + active chapter it is standing in, instead
+    of forcing tool-forage (a live M-E gate run dead-ended retrying the book_id AS a
+    project_id against composition_* tools)."""
     book_id: UUID | None = None
+    project_id: UUID | None = None
+    active_chapter_id: UUID | None = None
     active_panel_ids: list[str] = Field(default_factory=list)
     context_revision: int | None = None
 

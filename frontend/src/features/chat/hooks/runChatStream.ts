@@ -41,7 +41,7 @@ export type ChatStreamArgs = {
   thinking?: boolean;
   editorContext?: { book_id: string; chapter_id: string };
   // #09 Lane A — presence tells chat-service to advertise the studio dock-nav frontend tools.
-  studioContext?: { book_id?: string; active_panel_ids?: string[]; context_revision?: number };
+  studioContext?: { book_id?: string; project_id?: string; active_chapter_id?: string; active_panel_ids?: string[]; context_revision?: number };
   composeMode?: boolean;
   bookContext?: { book_id: string };
   displayLanguage?: string;

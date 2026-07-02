@@ -87,7 +87,7 @@ export function useChatMessages(
   streamPinsRef?: MutableRefObject<StreamPins>,
   /** #09 Lane A: present in the Writing Studio compose panel — enables the studio
    *  dock-nav frontend tools (open panel / focus manuscript unit). */
-  studioContext?: { book_id?: string; active_panel_ids?: string[]; context_revision?: number },
+  studioContext?: { book_id?: string; project_id?: string; active_chapter_id?: string; active_panel_ids?: string[]; context_revision?: number },
 ) {
   const { accessToken } = useAuth();
   const [messages, setMessages] = useState<ChatMessage[]>([]);

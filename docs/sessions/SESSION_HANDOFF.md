@@ -94,12 +94,35 @@
 > ToolContext; knowledge suites 216/216; image rebuilt). **Browser-verified:** Scene Rail renders real scenes;
 > json-editor shows the full envelope; two live-caught bugs fixed (resolveWork ENVELOPE `{status,work}` — a bare
 > `.project_id` read returns undefined; EditorPanel missing `host` ref).
-> **M-E LIVE GATE deferred `D-C1-GATE-QUIET-WINDOW`** (gate #4 — genuinely external): the RAID agent was deploying
-> C2 per-tool approval + Plan mode onto the SAME compose surface mid-test (its approval card appeared for
-> `composition_outline_node_update` with perfect args; approve→resume died mid-deploy; mode buttons changed between
-> probes). Retest after the RAID chat wave stabilizes, per **AS4: natural-language prompts only** — and the gate now
-> legitimately INCLUDES the C2 Approve step for Tier-A writes. Follow-up (CTX, RAID-coordinated): composition MCP
-> tools still REQUIRE `project_id` args — extend the knowledge-style ambient default to them.
+> **M-E LIVE GATE ✅ PASSED 2026-07-02 — `D-C1-GATE-QUIET-WINDOW` CLEARED** (retest after the RAID chat wave, per
+> AS4 natural-language-only). Full loop proven in the browser on gemma-4-26b, NO hand-fed ids: VN prompt → agent
+> `composition_get_work(book_id)` → `composition_list_outline(project_id)` → self-located the right scene node →
+> **C2 Tier-A Approve** → DB `outline_node` synopsis v1→2 + status→drafting v2→3 (psql-verified) → truthful
+> confirmation → **Scene Rail updated REALTIME (Lane B, no reload)**. Model even self-corrected an arg-name miss AND
+> an OCC stale-version conflict (refetch→retry) — the schema/error-message contracts held. **5 live-caught fixes
+> shipped en route (each unit-regression-tested):**
+> 1. **Studio nav-kill** — the chat's generic C-NAV executor ran inside the Compose panel; an agent `ui_open_book`
+>    on the CURRENT book navigated the SPA to `/books/{id}`, unmounting the WHOLE studio and orphaning the agent's
+>    own resumed run (response lost). Fix: `UiNavInterceptorContext` seam in `useUiToolExecutor` +
+>    `makeStudioNavInterceptor` (same-book `ui_open_chapter`→`focusManuscriptUnit`, same-book `ui_open_book`/
+>    `ui_navigate`→already-here success; cross-book falls through) provided by ComposePanel.
+> 2. **book→project bridge** — `composition_get_work` now also accepts `book_id` (resolve_by_book, 0→H13 deny,
+>    >1→candidates); the model had dead-ended retrying the book_id AS a project_id (no tool bridged them).
+> 3. **CTX-1 position pointer** — `studio_context` now carries `project_id` + `active_chapter_id` (FE: stable
+>    `ManuscriptUnitMeta` context — no per-keystroke chat re-render; BE: `StudioContext` model + the system-message
+>    note "this book's project is project_id=… (a book_id is NOT a project_id)").
+> 4. **composition hot-domain** — the studio compose surface now seeds `composition_*` HOT (`_STUDIO_HOT_DOMAINS`,
+>    fresh + resume paths); before, the family was find_tools-lazy and the local model spun in memory/glossary
+>    searches concluding "no list_scenes tool exists".
+> 5. **Lane-B envelope unwrap** — `chapterIdFromResult` read `chapter_id` top-level but the live stream delivers the
+>    chat-service `{ok, result}` TOOL_CALL_RESULT envelope (inner result may be a JSON string) → Scene Rail never
+>    reloaded while the DB was already updated (unit tests fed the payload unwrapped — the
+>    cross-boundary-normalization bug class, again).
+> Also: `manuscriptUnitDocument` TS narrow fix; json-editor empty-buffer-seed commit that was missed from
+> `c8906f07a` landed as `a92f10217`. Residual (tracked, not studio-scoped): C-NAV navigation on the PLAIN /chat
+> surface still unmounts that page mid-run (same orphaned-resume class — chat-service persists nothing for the
+> continuation); intermediate multi-tool turns render "No response generated" chips (cosmetic); knowledge indicator
+> flashes "Degraded" occasionally during heavy runs.
 > **⚠️ Parallel-run lesson (live hit):** Track-4 commit `ab0523df6` swept this track's STAGED F1/F3 files into its
 > own commit (shared working tree) — protocol now: `git add … && git commit -- <explicit paths>` in ONE invocation.
 

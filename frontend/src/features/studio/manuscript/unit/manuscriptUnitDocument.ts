@@ -154,7 +154,7 @@ function createManuscriptUnitHandle(chapterId: string): DocumentHandle {
         for (const raw of d.scenes as Array<Record<string, unknown>>) {
           const id = typeof raw?.node_id === 'string' ? raw.node_id : null;
           const node = id ? byId.get(id) : undefined;
-          if (!node) continue;
+          if (!id || !node) continue;
           const edit: Partial<Record<EditableSceneField, unknown>> = {};
           for (const f of EDITABLE_SCENE_FIELDS) {
             if (f in raw && raw[f] !== (node as unknown as Record<string, unknown>)[f]) edit[f] = raw[f];

@@ -119,14 +119,25 @@ ALWAYS_ON_CORE_NAMES: tuple[str, ...] = (
 # tools are therefore lazy-by-default — they only enter a surface's hot set when
 # that surface's domain list opts them in here.
 _BOOK_SCOPED_HOT_DOMAINS: frozenset[str] = frozenset({"glossary"})
+# The Writing Studio compose panel IS the composition surface — its own tool family
+# (outline/scene/canon reads + writes) must be hot, not find_tools-lazy. Live M-E
+# gate evidence: with composition_* lazy, a local model spun for minutes in
+# memory/glossary searches concluding "I don't see a list_scenes tool" and never
+# discovered the family it was standing on.
+_STUDIO_HOT_DOMAINS: frozenset[str] = frozenset({"glossary", "composition"})
 
 
-def surface_hot_domains(*, editor: bool = False, book_scoped: bool = False) -> set[str]:
+def surface_hot_domains(
+    *, editor: bool = False, book_scoped: bool = False, studio: bool = False
+) -> set[str]:
     """The domain prefixes whose tools are HOT (advertised every turn) for a
     surface. Any book-scoped surface (the glossary page/reader OR the chapter
     editor — both inject the glossary skill) gets the glossary domain hot; the
     editor adds no extra backend domain (its prose write-back is a frontend tool).
-    Universal (neither flag) returns ∅ — pure discovery."""
+    The STUDIO compose surface adds the composition domain (its own tool family).
+    Universal (no flag) returns ∅ — pure discovery."""
+    if studio:
+        return set(_STUDIO_HOT_DOMAINS)
     if book_scoped or editor:
         return set(_BOOK_SCOPED_HOT_DOMAINS)
     return set()
