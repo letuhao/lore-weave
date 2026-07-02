@@ -1,6 +1,37 @@
 """Pure metric helpers of the Track 4 salience eval CLI (eval/run_salience_eval.py)."""
 
-from eval.run_salience_eval import ArmReport, build_queries, rank_of
+from eval.run_salience_eval import ArmReport, build_queries, passages_mention, rank_of
+
+
+class TestPassagesMention:
+    def test_hit_inside_block(self):
+        xml = "<memory><passages><passage>Lâm Uyển xuất hiện</passage></passages></memory>"
+        assert passages_mention(xml, "Lâm Uyển") is True
+
+    def test_miss_inside_block(self):
+        xml = "<memory><passages><passage>khác</passage></passages></memory>"
+        assert passages_mention(xml, "Lâm Uyển") is False
+
+    def test_name_outside_block_does_not_count(self):
+        xml = "<memory><glossary>Lâm Uyển</glossary><passages><passage>x</passage></passages></memory>"
+        assert passages_mention(xml, "Lâm Uyển") is False
+
+    def test_no_block_is_none(self):
+        assert passages_mention("<memory></memory>", "X") is None
+
+
+class TestPassageHitRate:
+    def test_none_entries_excluded(self):
+        arm = ArmReport(label="x", ranks=[1, 1, 1], passage_hits=[True, None, False])
+        assert arm.passage_hit_rate == 0.5
+
+    def test_all_none_is_none(self):
+        arm = ArmReport(label="x", ranks=[1], passage_hits=[None])
+        assert arm.passage_hit_rate is None
+
+    def test_unset_is_none(self):
+        arm = ArmReport(label="x", ranks=[1])
+        assert arm.passage_hit_rate is None
 
 
 class TestRankOf:

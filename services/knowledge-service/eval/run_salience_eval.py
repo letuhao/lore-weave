@@ -44,10 +44,32 @@ def rank_of(entity_id: str, surfaced: list[str]) -> int | None:
         return None
 
 
+def passages_mention(context_xml: str, name: str) -> bool | None:
+    """P2 proxy — does the rendered <passages> block mention `name`?
+    None when the block is absent entirely (L3 off / no embeddings), so a
+    passage-less build doesn't count against either arm."""
+    start = context_xml.find("<passages>")
+    if start == -1:
+        return None
+    end = context_xml.find("</passages>", start)
+    block = context_xml[start:end if end != -1 else None]
+    return name in block
+
+
 @dataclass
 class ArmReport:
     label: str
     ranks: list[int | None]
+    passage_hits: list[bool | None] = None  # P2 proxy; None entries = no <passages> block
+
+    @property
+    def passage_hit_rate(self) -> float | None:
+        if not self.passage_hits:
+            return None
+        judged = [h for h in self.passage_hits if h is not None]
+        if not judged:
+            return None
+        return sum(1 for h in judged if h) / len(judged)
 
     @property
     def mrr(self) -> float:
@@ -73,6 +95,9 @@ class ArmReport:
             "mrr": round(self.mrr, 4),
             "mean_rank": round(self.mean_rank, 2) if self.mean_rank else None,
             "hit_rate": round(self.hit_rate, 4),
+            "passage_hit_rate": (
+                round(self.passage_hit_rate, 4) if self.passage_hit_rate is not None else None
+            ),
         }
 
 
@@ -182,9 +207,12 @@ async def _measure(args) -> int:
         print("no queries buildable — empty graph?", file=sys.stderr)
         return 1
 
+    name_by_id = {e["entity_id"]: e["name"] for e in entities}
+
     async def run_arm(label: str, weight: float) -> ArmReport:
         settings.salience_access_weight = weight  # in-process flip; restored by next arm
         ranks: list[int | None] = []
+        p_hits: list[bool | None] = []
         for q in all_queries:
             built = await build_context(
                 summaries, projects, glossary,
@@ -193,7 +221,8 @@ async def _measure(args) -> int:
                 entity_access_repo=access_repo,
             )
             ranks.append(rank_of(q["expect"], built.surfaced_entity_ids))
-        return ArmReport(label=label, ranks=ranks)
+            p_hits.append(passages_mention(built.context, name_by_id[q["expect"]]))
+        return ArmReport(label=label, ranks=ranks, passage_hits=p_hits)
 
     baseline = await run_arm("baseline w=0", 0.0)
     candidate = await run_arm(f"salience w={args.weight}", args.weight)
