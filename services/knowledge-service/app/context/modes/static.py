@@ -203,4 +203,9 @@ async def build_static_mode(
         volatile_context=volatile,
         # K21.12-BE (design D9): surface the project's tool-calling toggle.
         tool_calling_enabled=project.tool_calling_enabled,
+        # Track 4 P0 — glossary entities the selector judged relevant (for
+        # entity_access_log salience telemetry; recorded by the router).
+        surfaced_entity_ids=[
+            e.entity_id for e in entities if getattr(e, "entity_id", None)
+        ],
     )

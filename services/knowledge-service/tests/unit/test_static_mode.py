@@ -137,6 +137,24 @@ async def test_full_block_with_l0_l1_and_glossary():
 
 
 @pytest.mark.asyncio
+async def test_surfaced_entity_ids_populated_for_salience_telemetry():
+    # Track 4 P0 — the builder exposes the entities it selected so the router
+    # can record salience access. The ids match the selected glossary entities.
+    summaries = AsyncMock(spec=SummariesRepo)
+    summaries.get = AsyncMock(side_effect=[None, None])
+    e1 = _entity(entity_id="ent-1")
+    e2 = _entity(entity_id="ent-2", cached_name="Bob")
+    glossary_client = AsyncMock(spec=GlossaryClient)
+    glossary_client.select_for_context = AsyncMock(return_value=[e1, e2])
+
+    built = await build_static_mode(
+        summaries, glossary_client,
+        user_id=uuid4(), project=_project(), message="who?",
+    )
+    assert sorted(built.surfaced_entity_ids) == ["ent-1", "ent-2"]
+
+
+@pytest.mark.asyncio
 async def test_no_l0_omits_user_element():
     summaries = AsyncMock(spec=SummariesRepo)
     summaries.get = AsyncMock(side_effect=[None, None])  # no L0, no L1

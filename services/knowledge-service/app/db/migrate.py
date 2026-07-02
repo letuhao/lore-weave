@@ -1325,6 +1325,35 @@ CREATE INDEX IF NOT EXISTS idx_event_text_translations_project
   ON event_text_translations(project_id);
 CREATE INDEX IF NOT EXISTS idx_event_text_translations_user
   ON event_text_translations(user_id);
+
+-- ═══════════════════════════════════════════════════════════════
+-- entity_access_log (Track 4 P0 — salience substrate)
+-- Records how often / how recently each KG entity is SURFACED into a
+-- user's context block, so retrieval salience can be LEARNED (R-T4-01)
+-- instead of guessed by static tier. Tenancy: scoped per (user, project) —
+-- NEVER a shared/global signal (a UNIQUE(entity_id) without the scope key
+-- would be the tenancy bug the project guards against). Purged with the
+-- project (project_id scope). Written fire-and-forget AFTER the context
+-- block renders (off the latency path); read by the P1 salience blend.
+-- `decayed_score` is refreshed by the nightly Ebbinghaus decay job (P1);
+-- `retrieval_count` is the raw lifetime counter.
+-- ═══════════════════════════════════════════════════════════════
+CREATE TABLE IF NOT EXISTS entity_access_log (
+  user_id           UUID NOT NULL,                       -- tenant scope (no cross-DB FK)
+  project_id        UUID NOT NULL,                       -- purge + tenant scope
+  entity_id         TEXT NOT NULL,                       -- Neo4j :Entity id / glossary_entity_id
+  retrieval_count   BIGINT NOT NULL DEFAULT 0,           -- raw lifetime surface count
+  decayed_score     DOUBLE PRECISION NOT NULL DEFAULT 0, -- Ebbinghaus-decayed (nightly, P1)
+  last_retrieved_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  created_at        TIMESTAMPTZ NOT NULL DEFAULT now(),
+  PRIMARY KEY (user_id, project_id, entity_id)
+);
+-- Read path: the salience blend loads a project's rows for the current user.
+CREATE INDEX IF NOT EXISTS idx_entity_access_log_scope
+  ON entity_access_log(user_id, project_id);
+-- Decay job scans by recency.
+CREATE INDEX IF NOT EXISTS idx_entity_access_log_last_retrieved
+  ON entity_access_log(last_retrieved_at);
 """
 
 

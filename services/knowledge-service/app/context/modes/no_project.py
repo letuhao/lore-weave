@@ -13,7 +13,7 @@ replays the last N messages as usual.
 
 import asyncio
 import logging
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from uuid import UUID
 
 from app.config import settings
@@ -68,6 +68,11 @@ class BuiltContext:
     # also keeps any degraded path tool-enabled rather than silently
     # disabling tools.
     tool_calling_enabled: bool = True
+    # Track 4 P0 — the glossary entity ids that actually reached the rendered
+    # block (post-budget-trim). The router records these to `entity_access_log`
+    # fire-and-forget (off the latency path) so retrieval salience can be
+    # LEARNED (P1). Empty for Mode 1 (no project → no entities).
+    surfaced_entity_ids: list[str] = field(default_factory=list)
 
 
 def split_at_boundary(lines: list[str], stable_line_count: int) -> tuple[str, str, str]:

@@ -673,4 +673,10 @@ async def build_full_mode(
         volatile_context=volatile_context,
         # K21.12-BE (design D9): surface the project's tool-calling toggle.
         tool_calling_enabled=project.tool_calling_enabled,
+        # Track 4 P0 — the entities the selector judged relevant to this query
+        # (pre-budget-trim: budget trimming is a space artifact, not a relevance
+        # signal). The router records these to entity_access_log fire-and-forget.
+        surfaced_entity_ids=[
+            e.entity_id for e in entities if getattr(e, "entity_id", None)
+        ],
     )
