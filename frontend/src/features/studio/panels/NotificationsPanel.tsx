@@ -14,7 +14,6 @@ import { notificationLink } from '@/features/notifications/link';
 import type { Notification } from '@/features/notifications/api';
 import { useStudioHost } from '../host/StudioHostProvider';
 import { followStudioLink } from '../host/studioLinks';
-import { getStudioPanelDef } from './catalog';
 import { useStudioPanel } from './useStudioPanel';
 
 export function NotificationsPanel(props: IDockviewPanelProps) {
@@ -23,15 +22,16 @@ export function NotificationsPanel(props: IDockviewPanelProps) {
   const { t: tStudio } = useTranslation('studio');
   const host = useStudioHost();
   const {
-    category, setCategory, items, loading, loadingMore, hasMore, hasUnread, unreadCount,
+    category, setCategory, items, loading, loadingMore, hasMore, hasUnread, unreadCount, unreadLoaded,
     loadMore, markOne, markAll,
   } = useNotificationList();
 
   // Sync the authoritative count onto the bus (F2 badge reads it) — mark-read here corrects
-  // the badge immediately, no route-change resync exists in the studio.
+  // the badge immediately, no route-change resync exists in the studio. Only once the fetch
+  // resolved: the pre-fetch 0 must not clobber the badge's own seeded value (/review-impl LOW).
   useEffect(() => {
-    host.publish({ type: 'notificationsUnread', count: unreadCount });
-  }, [host, unreadCount]);
+    if (unreadLoaded) host.publish({ type: 'notificationsUnread', count: unreadCount });
+  }, [host, unreadCount, unreadLoaded]);
 
   const onItemClick = (n: Notification) => {
     if (!n.read) markOne(n.id);
@@ -39,10 +39,9 @@ export function NotificationsPanel(props: IDockviewPanelProps) {
     if (!link) return;
     followStudioLink(link, host, {
       bookId: host.bookId,
-      titleFor: (panelId) => {
-        const def = getStudioPanelDef(panelId);
-        return def ? tStudio(def.titleKey, { defaultValue: panelId }) : undefined;
-      },
+      // Title by the `panels.<id>.title` key convention — importing the catalog here would be
+      // a module cycle (catalog imports this panel); panels self-title on mount anyway.
+      titleFor: (panelId) => tStudio(`panels.${panelId}.title`, { defaultValue: panelId }),
     });
   };
 

@@ -35,7 +35,9 @@ const PATH_PANELS: Record<string, string> = {
 
 export function resolveStudioLink(link: string, ctx: StudioLinkContext): StudioLinkResolution {
   if (/^https?:\/\//i.test(link)) return { kind: 'external', url: link };
-  if (!link.startsWith('/')) return { kind: 'blocked' };
+  // '//' is protocol-relative — window.open would resolve it to an EXTERNAL origin. Not an
+  // app path, not declared-external → blocked (defense in depth with notificationLink).
+  if (!link.startsWith('/') || link.startsWith('//')) return { kind: 'blocked' };
 
   // Match on the pathname only; the full link (query/hash intact) is what an external open gets.
   const path = link.split(/[?#]/, 1)[0]!.replace(/\/+$/, '') || '/';

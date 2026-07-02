@@ -68,6 +68,11 @@ describe('resolveStudioLink', () => {
     expect(resolveStudioLink('books/b1', ctx).kind).toBe('blocked');
   });
 
+  it('protocol-relative "//" is blocked — window.open would hit an EXTERNAL origin', () => {
+    expect(resolveStudioLink('//evil.example/x', ctx).kind).toBe('blocked');
+    expect(resolveStudioLink('//usage', ctx).kind).toBe('blocked');
+  });
+
   it('works without titleFor (panels self-title on mount)', () => {
     const host = fakeHost();
     const r = resolveStudioLink('/usage', { bookId: 'b1' });

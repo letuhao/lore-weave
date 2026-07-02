@@ -22,6 +22,9 @@ export function useNotificationList() {
   const [items, setItems] = useState<Notification[]>([]);
   const [total, setTotal] = useState(0);
   const [unreadCount, setUnreadCount] = useState(0);
+  // True once the authoritative unread fetch resolved — consumers syncing the count elsewhere
+  // (studio bus, #11) must not publish the pre-fetch 0 over an already-correct value.
+  const [unreadLoaded, setUnreadLoaded] = useState(false);
   const [loading, setLoading] = useState(false);
   const [loadingMore, setLoadingMore] = useState(false);
 
@@ -71,7 +74,7 @@ export function useNotificationList() {
   useEffect(() => {
     if (!accessToken) return;
     fetchUnreadCount(accessToken)
-      .then((r) => setUnreadCount(r.count))
+      .then((r) => { setUnreadCount(r.count); setUnreadLoaded(true); })
       .catch(() => {});
   }, [accessToken]);
 
@@ -119,6 +122,7 @@ export function useNotificationList() {
     hasMore: items.length < total,
     hasUnread: unreadCount > 0,
     unreadCount,
+    unreadLoaded,
     loadMore,
     markOne,
     markAll,

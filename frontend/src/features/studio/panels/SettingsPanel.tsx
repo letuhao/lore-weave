@@ -3,7 +3,7 @@
 // state: route (`/settings/:tab`) becomes internal state seeded/updated by dock `params.tab`
 // (the F1 deep-link seam — the palette or the link resolver can open straight to a tab).
 // Keeps the Q-GATE: the public-MCP tab only exists when the platform flag is on.
-import { useRef, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { User, Cpu, Languages, BookOpen, Globe, KeyRound } from 'lucide-react';
 import type { IDockviewPanelProps } from 'dockview-react';
@@ -39,18 +39,21 @@ export function SettingsPanel(props: IDockviewPanelProps) {
     ? [...BASE_TABS, { id: 'mcp' as Tab, icon: KeyRound }]
     : BASE_TABS;
 
-  // dockview re-renders with new props.params on updateParameters — derive the deep-linked tab
-  // at render time (no effect): a NEW params.tab value switches the tab; local clicks still win
-  // until the next deep-link.
+  // Deep-linked tab (F1): seed from the addPanel params, then follow EVERY updateParameters via
+  // the dockview event — it fires on each call, so a repeat deep-link to the SAME tab after the
+  // user clicked elsewhere still lands (/review-impl MED — a render-derivation comparing values
+  // would swallow it). Local clicks win between deep-links.
   const paramTab = isTab((props.params as { tab?: unknown } | undefined)?.tab)
     ? ((props.params as { tab: Tab }).tab)
     : null;
   const [tab, setTab] = useState<Tab>(paramTab ?? 'account');
-  const lastParamTab = useRef(paramTab);
-  if (paramTab !== lastParamTab.current) {
-    lastParamTab.current = paramTab;
-    if (paramTab && paramTab !== tab) setTab(paramTab);
-  }
+  useEffect(() => {
+    const d = props.api.onDidParametersChange?.((p: Record<string, unknown> | undefined) => {
+      const next = (p as { tab?: unknown } | undefined)?.tab;
+      if (isTab(next)) setTab(next);
+    });
+    return () => d?.dispose?.();
+  }, [props.api]);
 
   // The Q-GATE can hide 'mcp' after a deep-link raced the user flag — fall back visibly.
   const activeTab = tabs.some((tb) => tb.id === tab) ? tab : 'account';

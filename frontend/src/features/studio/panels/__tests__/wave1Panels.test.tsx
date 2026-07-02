@@ -31,7 +31,7 @@ vi.mock('@/features/settings/McpAccessTab', () => ({ McpAccessTab: () => <div da
 const markOne = vi.fn();
 const listFixture = {
   category: 'all', setCategory: vi.fn(), total: 2, loading: false, loadingMore: false,
-  hasMore: false, hasUnread: true, unreadCount: 2, loadMore: vi.fn(), markOne, markAll: vi.fn(),
+  hasMore: false, hasUnread: true, unreadCount: 2, unreadLoaded: true, loadMore: vi.fn(), markOne, markAll: vi.fn(),
   items: [
     { id: 'n1', read: false, category: 'jobs', title: 'done', metadata: { link: '/books/b1/chapters/c3/edit' } },
     { id: 'n2', read: false, category: 'jobs', title: 'ext', metadata: { link: 'https://example.com/r' } },
@@ -49,8 +49,23 @@ vi.mock('@/features/notifications/components/NotificationItem', () => ({
 let hostRef: StudioHost | null = null;
 function HostProbe() { hostRef = useStudioHost(); return null; }
 
-const dockProps = (params?: Record<string, unknown>) =>
-  ({ api: { setTitle: vi.fn() }, params } as unknown as IDockviewPanelProps);
+// Stub of the dockview panel api: setTitle + a working onDidParametersChange emitter (dockview
+// fires it on EVERY updateParameters call — the settings same-value repeat depends on that).
+function dockStub(params?: Record<string, unknown>) {
+  const listeners = new Set<(p: Record<string, unknown>) => void>();
+  const props = {
+    api: {
+      setTitle: vi.fn(),
+      onDidParametersChange: (cb: (p: Record<string, unknown>) => void) => {
+        listeners.add(cb);
+        return { dispose: () => listeners.delete(cb) };
+      },
+    },
+    params,
+  } as unknown as IDockviewPanelProps;
+  return { props, fireParams: (p: Record<string, unknown>) => listeners.forEach((l) => l(p)) };
+}
+const dockProps = (params?: Record<string, unknown>) => dockStub(params).props;
 
 const withHost = (ui: ReactNode) =>
   render(<StudioHostProvider bookId="b1"><HostProbe />{ui}</StudioHostProvider>);
@@ -89,6 +104,19 @@ describe('NotificationsPanel', () => {
     expect(hostRef!.getSnapshot().notificationsUnread).toBe(2);
   });
 
+  it('does NOT publish the pre-fetch 0 over an already-seeded badge value', () => {
+    listFixture.unreadLoaded = false;
+    listFixture.unreadCount = 0;
+    try {
+      withHost(<NotificationsPanel {...dockProps()} />);
+      act(() => { hostRef!.publish({ type: 'notificationsUnread', count: 3 }); }); // badge's seed
+      expect(hostRef!.getSnapshot().notificationsUnread).toBe(3); // panel stayed silent
+    } finally {
+      listFixture.unreadLoaded = true;
+      listFixture.unreadCount = 2;
+    }
+  });
+
   it('same-book chapter link → focusManuscriptUnit (never navigate)', () => {
     withHost(<NotificationsPanel {...dockProps()} />);
     const focus = vi.spyOn(hostRef!, 'focusManuscriptUnit');
@@ -115,20 +143,21 @@ describe('SettingsPanel', () => {
     expect(screen.getByTestId('tab-providers')).toBeTruthy();
   });
 
-  it('a NEW params.tab (updateParameters re-render) switches; local clicks still work', () => {
-    const props = dockProps({ tab: 'translation' });
-    const { rerender } = withHost(<SettingsPanel {...props} />);
-    expect(screen.getByTestId('tab-translation')).toBeTruthy();
+  it('updateParameters event switches the tab; a SAME-value repeat after a local click still lands', () => {
+    const { props, fireParams } = dockStub({ tab: 'providers' });
+    withHost(<SettingsPanel {...props} />);
+    expect(screen.getByTestId('tab-providers')).toBeTruthy();
 
     act(() => { screen.getByTestId('studio-settings-tab-reading').click(); });
     expect(screen.getByTestId('tab-reading')).toBeTruthy();
 
-    rerender(
-      <StudioHostProvider bookId="b1"><HostProbe />
-        <SettingsPanel {...dockProps({ tab: 'providers' })} />
-      </StudioHostProvider>,
-    );
+    // Repeat deep-link to the SAME tab as before — dockview fires the event on every
+    // updateParameters call, so this must land (/review-impl MED).
+    act(() => { fireParams({ tab: 'providers' }); });
     expect(screen.getByTestId('tab-providers')).toBeTruthy();
+
+    act(() => { fireParams({ tab: 'language' }); });
+    expect(screen.getByTestId('tab-language')).toBeTruthy();
   });
 
   it('Q-GATE: no mcp tab without the platform flag; an mcp deep-link falls back visibly', () => {

@@ -7,5 +7,7 @@ import type { Notification } from './api';
 export function notificationLink(n: Notification): string | null {
   const meta = n.metadata as Record<string, unknown> | undefined;
   const l = typeof meta?.link === 'string' ? meta.link : typeof meta?.url === 'string' ? meta.url : null;
-  return l && (/^https?:\/\//.test(l) || l.startsWith('/')) ? l : null;
+  // '//' is protocol-relative (resolves to an EXTERNAL origin in window.open) — an "app path"
+  // must be exactly one leading slash.
+  return l && (/^https?:\/\//.test(l) || (l.startsWith('/') && !l.startsWith('//'))) ? l : null;
 }
