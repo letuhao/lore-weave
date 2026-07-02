@@ -1,4 +1,4 @@
-# ▶▶ NEXT SESSION STARTS HERE — **RAID ✅ COMPLETE 2026-07-02: Track 4 + C5/C4/C1/C2/B2 + WAVE D (D2 FSM `ecf0d410c` · D3 report/accept-reject `004d49ad9` · D4 durable sweep/claim/notify `037831e1d` · D5 real-judge critic `1d6f2960b`). B2 browser-smoked PASS (real gemma plan-mode, wire `permission_mode:plan` proven). REMAINING (small tail): full C2 approval-card browser loop (D-RAID-C2-LIVE-SMOKE — needs a clean session + tool-strong model; card surface itself proven live via the frontend-tool loop), C6 FE wiring + C1 FE panel (both wait for the dockable track to release the editor/panel seams), end-to-end autonomous-run live drive (create→gate→start→report on the POC book — all layers live-DB-proven separately; ⚠️ FE tsc is BROKEN at HEAD in the dockable track's committed studio files — manuscriptUnitDocument/ManuscriptUnitProvider/EditorPanel — their track owns the fix; smoke images build from a patched worktree meanwhile). Draft PR #54 open. Contract stands: local LLM only, exact-file staging, hard-stops = destructive-ops-outside-test-account + 3-strike.** Spec [`salience-track4`](../specs/2026-07-02-knowledge-salience-track4.md) + [`07S`](../specs/2026-07-01-writing-studio/07S_studio_agent_standard.md) + DRs [`raid-loadbearing-decision-records`](../specs/2026-07-02-raid-loadbearing-decision-records.md). · 2026-07-02**
+# ▶▶ NEXT SESSION STARTS HERE — **RAID ✅ COMPLETE 2026-07-02: Track 4 + C5/C4/C1/C2/B2 + WAVE D (D2 FSM `ecf0d410c` · D3 report/accept-reject `004d49ad9` · D4 durable sweep/claim/notify `037831e1d` · D5 real-judge critic `1d6f2960b` · post-RAID /review-impl hardening: HIGH >100-chapter gate false-reject `6c2ba94e0` + 4 MED fixes, see block below). B2 browser-smoked PASS (real gemma plan-mode, wire `permission_mode:plan` proven). REMAINING (small tail): full C2 approval-card browser loop (D-RAID-C2-LIVE-SMOKE — needs a clean session + tool-strong model; card surface itself proven live via the frontend-tool loop), C6 FE wiring + C1 FE panel (both wait for the dockable track to release the editor/panel seams), end-to-end autonomous-run live drive (create→gate→start→report on the POC book — all layers live-DB-proven separately; ⚠️ FE tsc is BROKEN at HEAD in the dockable track's committed studio files — manuscriptUnitDocument/ManuscriptUnitProvider/EditorPanel — their track owns the fix; smoke images build from a patched worktree meanwhile). Draft PR #54 open. Contract stands: local LLM only, exact-file staging, hard-stops = destructive-ops-outside-test-account + 3-strike.** Spec [`salience-track4`](../specs/2026-07-02-knowledge-salience-track4.md) + [`07S`](../specs/2026-07-01-writing-studio/07S_studio_agent_standard.md) + DRs [`raid-loadbearing-decision-records`](../specs/2026-07-02-raid-loadbearing-decision-records.md). · 2026-07-02**
 
 > **▶ WAVE D — COMPLETE 2026-07-02 (autonomous run, sub-agent build + orchestrator verify).** The autonomy dial's
 > full backbone in composition-service: **D2** `authoring_runs` FSM (7 states, OCC-guarded transitions, all-or-nothing
@@ -18,6 +18,24 @@
 > **Suites:** composition tests/unit **1516** green (fresh tails per milestone; +105 across D2-D5). Honest stubs
 > recorded in-code: canon grounding headless (empty rules), unit+critic costs are estimates (SDK exposes no metered
 > cost — real cost only where generation_job.cost_usd populates).
+
+> **▶ /review-impl over Wave D — 1 HIGH + 4 MED found, ALL FIXED 2026-07-02 (user: "fix all").**
+> **HIGH `6c2ba94e0`:** start-gate false-rejected books >100 chapters — `BookClient.list_chapters` asked limit=200 but
+> book-service clamps every page to 100 (chapter-list-limit100 bug class); client now PAGINATES (100/page, 2000 cap),
+> all 3 call sites (gate, planner A3, plan verify) see the whole book. **MED fixes (same follow-up commit):**
+> (1) late writes driver-fenced — `mark_drafted` gains `run_driver_id`, `record_unit_progress` cursor is CASE-fenced
+> (spend always lands); a sweep-STOLEN run's superseded driver can no longer double-draft or rewind the cursor
+> (plausible here: worker-off inline has no poll timeout, slow local model >40min → steal). (2) late-swallow now
+> RESTORES content — close/fail mid-flight already swallowed the row, but the engine had PATCHed the draft;
+> the driver now best-effort restores the pinned pre_revision (honest error_message either way). (3) breaker pauses
+> NOTIFY (budget | critic_severe) — 07S "interrupt on severe" now actually reaches the human (same ingest channel).
+> (4) book-OWNER-grant may pause/close a collaborator's run (acts AS the run owner; scope fence is per-book, so an
+> abandoned grantee run used to lock the book forever; start/resume stay owner-only — they spend the owner's budget).
+> **LOW fixes:** deferred-at-cap claim now RELEASED (NULL heartbeat → next sweep picks it up; was a 40-min stall);
+> gate maps book-service 401/403 → 403 (was 502 "outage"). New SQL live-proven on real PG (CASE fence, release_claim,
+> driver guard). Deferred: `D-RAID-ALLOWLIST-ENFORCE` — tool_allowlist is gate-validated+snapshotted but the v1
+> driver never consults it (v1 seam calls no agent tools — vacuously safe; enforcement gate #3 naturally-next-phase,
+> lands with agentic tools riding runs). COSMETIC accepted: `level` 3|4 stored, runtime-indistinguishable in v1.
 
 > **▶ AUTONOMOUS RUN — RAID waves C5/C4/C1/C2/B2 SHIPPED 2026-07-02 (sub-agent build + orchestrator verify pattern).**
 > **C5 MCP resources+prompts** (`99bc63215`, LIVE-PROVEN): knowledge exposes 2 project resource templates

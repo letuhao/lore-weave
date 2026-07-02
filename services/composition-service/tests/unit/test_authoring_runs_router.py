@@ -44,17 +44,23 @@ def _run(status="draft", **over) -> AuthoringRun:
 
 
 class StubGrant:
+    def __init__(self, level_name: str = "EDIT"):
+        self._level_name = level_name
+
     async def resolve_grant(self, book_id, caller):
         from app.grant_client import GrantLevel
 
-        return GrantLevel.EDIT
+        return getattr(GrantLevel, self._level_name)
 
 
 class StubBook:
     def __init__(self):
         self.restores: list[tuple] = []
+        self.chapters_error: Exception | None = None
 
-    async def list_chapters(self, book_id, bearer, *, limit=200):
+    async def list_chapters(self, book_id, bearer, *, limit=2000):
+        if self.chapters_error is not None:
+            raise self.chapters_error
         return [
             {"chapter_id": str(CH1), "title": "", "sort_order": 1},
             {"chapter_id": str(CH2), "title": "", "sort_order": 2},
@@ -94,7 +100,10 @@ class StubService:
         return self.runs[RUN]
 
     async def get(self, owner_user_id, run_id):
-        return self.runs.get(run_id)
+        run = self.runs.get(run_id)
+        if run is not None and run.owner_user_id != owner_user_id:
+            return None  # owner-scoped, like the real repo
+        return run
 
     async def list(self, owner_user_id, book_id, *, limit=20):
         return list(self.runs.values())
@@ -106,6 +115,9 @@ class StubService:
         return _run(status="gated")
 
     async def start(self, owner_user_id, run_id):
+        run = self.runs.get(run_id)
+        if run is None or run.owner_user_id != owner_user_id:
+            raise LookupError("run not found")  # owner-only, like the real svc
         return _run(status="running")
 
     async def pause(self, owner_user_id, run_id):
@@ -115,6 +127,8 @@ class StubService:
         return _run(status="running")
 
     async def close(self, owner_user_id, run_id):
+        self.close_calls = getattr(self, "close_calls", [])
+        self.close_calls.append((owner_user_id, run_id))
         return _run(status="closed")
 
     # ── D3 — report + review ────────────────────────────────────────────
@@ -285,6 +299,50 @@ def test_resume_and_close(client):
     r = client.post(f"/v1/composition/authoring-runs/{RUN}/close", headers=AUTH)
     assert r.status_code == 200
     assert r.json()["status"] == "closed"
+
+
+def test_gate_maps_revoked_access_403_not_502(client, stub, book):
+    """A 401/403 from book-service is the CALLER's revoked/expired access, not
+    an outage — the gate must say 403, not BOOK_SERVICE_UNAVAILABLE."""
+    book.chapters_error = BookClientError(403, "FORBIDDEN")
+    r = client.post(f"/v1/composition/authoring-runs/{RUN}/gate", headers=AUTH)
+    assert r.status_code == 403
+    book.chapters_error = BookClientError(502, "BOOK_SERVICE_UNAVAILABLE")
+    r = client.post(f"/v1/composition/authoring-runs/{RUN}/gate", headers=AUTH)
+    assert r.status_code == 502
+
+
+def test_book_owner_can_close_collaborators_run(client, stub):
+    """The scope fence is per-BOOK across users — the book's OWNER-grant holder
+    must be able to clear a collaborator's abandoned run (else the book is
+    locked out of autonomous runs forever). The action executes AS the run's
+    owner (row tenancy preserved)."""
+    other = uuid.uuid4()
+    stub.runs[RUN] = _run(owner_user_id=other, status="paused")
+    app.dependency_overrides[get_grant_client_dep] = lambda: StubGrant("OWNER")
+    r = client.post(f"/v1/composition/authoring-runs/{RUN}/close", headers=AUTH)
+    assert r.status_code == 200
+    assert stub.close_calls == [(other, RUN)]  # acted AS the run's owner
+
+
+def test_non_owner_grant_cannot_close_foreign_run(client, stub):
+    stub.runs[RUN] = _run(owner_user_id=uuid.uuid4(), status="paused")
+    # EDIT grantee (default stub) — knows the book exists → 403, never executes
+    r = client.post(f"/v1/composition/authoring-runs/{RUN}/close", headers=AUTH)
+    assert r.status_code == 403
+    # no grant at all → 404 (no existence oracle)
+    app.dependency_overrides[get_grant_client_dep] = lambda: StubGrant("NONE")
+    r = client.post(f"/v1/composition/authoring-runs/{RUN}/close", headers=AUTH)
+    assert r.status_code == 404
+
+
+def test_start_stays_run_owner_only(client, stub):
+    """start (and resume) spend the run owner's budget/models — a book OWNER
+    grant must NOT be able to start someone else's run."""
+    stub.runs[RUN] = _run(owner_user_id=uuid.uuid4(), status="gated")
+    app.dependency_overrides[get_grant_client_dep] = lambda: StubGrant("OWNER")
+    r = client.post(f"/v1/composition/authoring-runs/{RUN}/start", headers=AUTH)
+    assert r.status_code == 404  # foreign run invisible on the owner-only path
 
 
 def test_get_200_and_foreign_404(client):

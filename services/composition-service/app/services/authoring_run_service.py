@@ -11,6 +11,11 @@ Start-gate (all-or-nothing, server-enforced, 07S §10):
   chapters all belong to the book · budget_usd > 0 · non-empty tool allowlist
   (edge #5 — declared UP FRONT, snapshotted on the run row) · no active-run
   overlap on the book (uq_authoring_runs_active_book → 409, edge #11).
+  v1 honesty: the allowlist is declared+snapshotted but not yet CONSULTED —
+  the v1 drafting seam invokes no agent tools, so there is nothing to gate.
+  When agentic tools ride the run, the driver MUST check each side-effecting
+  call against the snapshot and trip the breaker on a miss (edge #5's second
+  half; tracked D-RAID-ALLOWLIST-ENFORCE).
 
 Driver (v1, in-process asyncio task — the plan_forge worker-off spirit):
   iterate scope sequentially; per unit re-check status (pause/fail stops) and
@@ -32,12 +37,19 @@ D4 durable background execution (campaign-service saga-driver pattern):
     the claim), so an external pause/close or a sweep steal stops the driver
     BEFORE the next seam call.
   * Late-result fence — the post-seam drafted write is guarded on the run
-    still being running-or-paused; a run closed/failed mid-flight swallows the
-    late result (the unit lands failed: 'run closed mid-flight', never drafted
-    — a Revert-All must not race a fresh drafted row).
-  * Completion notification — on terminal transition (report_ready | failed) a
-    best-effort notification goes out via notification-service HTTP ingest
-    (operation="autonomous_authoring"); notify failure NEVER affects the run.
+    still being running-or-paused AND still driven by THIS driver. A run
+    closed/failed mid-flight swallows the late result: the unit lands failed
+    ('run closed mid-flight') and the engine-persisted draft is best-effort
+    RESTORED to the pinned pre_revision_id (the engine PATCHed content before
+    the fence could swallow the row — a Revert-All must not leave it behind).
+    A run sweep-STOLEN mid-flight leaves the unit row entirely to the new
+    driver (spend still recorded; the cursor write is driver-fenced so the
+    superseded driver can never rewind it).
+  * Stop notification — on terminal transition (report_ready | failed) AND on
+    breaker pauses (budget | critic_severe) a best-effort notification goes
+    out via notification-service HTTP ingest (operation=
+    "autonomous_authoring"); notify failure NEVER affects the run. 07S's
+    "interrupt on severe" only interrupts if it reaches the human.
   * DRIVER_MAX_INFLIGHT — at most authoring_driver_max_inflight concurrent
     driver tasks per process; start/resume beyond the cap leaves the run
     running-unclaimed for the sweep to pick up once a slot frees.
@@ -581,12 +593,19 @@ class AuthoringRunService:
         notify: Notifier | None = None,
         driver_id: str | None = None,
         critic: CriticSeam | None = None,
+        late_restore: RestoreFn | None = None,
     ) -> None:
         self._runs = runs
         self._plan_runs = plan_runs
         self._seam = seam
         self._units = units
         self._revisions = revisions
+        # D4 late-swallow content restore (None → the real book-service restore
+        # with a minted service bearer; tests inject a spy): when a seam result
+        # lands after close/fail, the engine ALREADY persisted the draft into
+        # book-service — swallowing the row is not enough, the content must be
+        # rolled back to the unit's pinned pre_revision_id (best-effort).
+        self._late_restore_impl = late_restore
         # D5: the per-unit continuity critic (None → the real in-process
         # engine seam; tests inject a fake, like the drafting seam).
         self._critic: CriticSeam = critic if critic is not None else EngineCriticSeam()
@@ -701,7 +720,11 @@ class AuthoringRunService:
         )
         if started is None:
             raise TransitionConflictError(f"start requires status=gated, run is {run.status}")
-        self._spawn_driver(owner_user_id, run_id)
+        if not self._spawn_driver(owner_user_id, run_id):
+            # Deferred at the inflight cap: NULL the just-claimed heartbeat so
+            # the NEXT sweep can pick the run up — a fresh heartbeat would make
+            # it invisible to sweepers for the whole stale window.
+            await self._runs.release_claim(run_id, self._driver_id)
         return started
 
     async def pause(self, owner_user_id: UUID, run_id: UUID) -> AuthoringRun:
@@ -721,7 +744,8 @@ class AuthoringRunService:
         )
         if resumed is None:
             raise TransitionConflictError(f"resume requires status=paused, run is {run.status}")
-        self._spawn_driver(owner_user_id, run_id)
+        if not self._spawn_driver(owner_user_id, run_id):
+            await self._runs.release_claim(run_id, self._driver_id)  # see start()
         return resumed
 
     async def close(self, owner_user_id: UUID, run_id: UUID) -> AuthoringRun:
@@ -967,7 +991,10 @@ class AuthoringRunService:
                 "authoring sweep: re-claimed stale run %s (unit %d/%d) — resuming",
                 run.run_id, run.current_unit, len(run.scope),
             )
-            self._spawn_driver(run.owner_user_id, run.run_id)
+            if not self._spawn_driver(run.owner_user_id, run.run_id):
+                # Lost a capacity race since the claim — hand the run back
+                # (NULL heartbeat) so the next sweep retries immediately.
+                await self._runs.release_claim(run.run_id, self._driver_id)
         return claimed
 
     async def _drive_safe(self, owner_user_id: UUID, run_id: UUID) -> None:
@@ -1007,7 +1034,7 @@ class AuthoringRunService:
                     await self._notify_terminal(ready)
                 return
             if run.spent_usd >= run.budget_usd:
-                await self._runs.transition(
+                paused = await self._runs.transition(
                     owner_user_id, run_id,
                     from_statuses=("running",), to_status="paused",
                     breaker_state={
@@ -1017,6 +1044,10 @@ class AuthoringRunService:
                         "unit": run.current_unit,
                     },
                 )
+                if paused is not None:
+                    # A breaker pause on a headless run NEEDS a human — the
+                    # interrupt must reach them (07S), same channel as terminal.
+                    await self._notify_terminal(paused)
                 return
             chapter_id = UUID(str(scope[run.current_unit]))
             # D3 ledger — pin the pre-run revision baseline BEFORE the seam.
@@ -1070,26 +1101,62 @@ class AuthoringRunService:
                     run_id, run.current_unit, exc_info=True,
                 )
             # D4 late-result fence: the drafted write is guarded on the run
-            # still being running-or-paused. A run closed/failed mid-flight
-            # (e.g. pause→close→Revert-All raced the seam) must SWALLOW the
-            # late result — mark the unit failed, never drafted (a fresh
-            # drafted row after Revert-All would be unreverted content).
+            # still being running-or-paused AND still driven by THIS driver.
+            # A run closed/failed mid-flight (e.g. pause→close→Revert-All raced
+            # the seam) must SWALLOW the late result — mark the unit failed and
+            # roll the engine-persisted content back, never drafted. A run
+            # sweep-STOLEN mid-flight must leave the unit row entirely to the
+            # new driver (its re-run owns it).
             drafted = await self._units.mark_drafted(
                 owner_user_id, run_id, run.current_unit,
                 post_revision_id=post_rev, cost_usd=cost,
                 run_statuses=_LATE_RESULT_RUN_STATUSES,
+                run_driver_id=self._driver_id,
             )
             # Spend is REAL either way (the seam did run) — record it before
-            # anything else so accounting never loses a late unit's cost
-            # (record_unit_progress is deliberately status-agnostic).
+            # anything else so accounting never loses a late unit's cost. The
+            # cursor half is driver-fenced (a superseded driver must not rewind
+            # the new driver's cursor); the spend half always lands.
             await self._runs.record_unit_progress(
                 owner_user_id, run_id,
                 add_spent_usd=cost, current_unit=run.current_unit + 1,
+                driver_id=self._driver_id,
             )
             if drafted is None:
+                fresh = await self._runs.get_for_owner(owner_user_id, run_id)
+                stolen = (
+                    fresh is not None
+                    and fresh.status in _LATE_RESULT_RUN_STATUSES
+                    and fresh.driver_id != self._driver_id
+                )
+                if stolen:
+                    # The new driver owns the unit row (its upsert re-pinned the
+                    # baseline) — touching it here would clobber its attempt.
+                    logger.warning(
+                        "authoring run %s unit %d: seam result superseded by a "
+                        "sweep steal — spend recorded, unit left to the new driver",
+                        run_id, run.current_unit,
+                    )
+                    return
+                # Closed/failed mid-flight: the engine already PATCHed the draft
+                # into book-service — best-effort restore of the pinned pre-run
+                # revision, then land the unit as failed with an honest message.
+                error = "run closed mid-flight"
+                if pre_rev is not None:
+                    try:
+                        await self._late_restore(
+                            owner_user_id, run.book_id, chapter_id, pre_rev,
+                        )
+                        error += "; draft reverted to pre-run revision"
+                    except Exception as exc:  # noqa: BLE001 — best-effort
+                        logger.warning(
+                            "authoring run %s unit %d: late-swallow restore "
+                            "failed — chapter draft left mutated",
+                            run_id, run.current_unit, exc_info=True,
+                        )
+                        error += f"; pre-run restore FAILED ({exc}) — draft left in place"
                 await self._units.mark_failed(
-                    owner_user_id, run_id, run.current_unit,
-                    error="run closed mid-flight",
+                    owner_user_id, run_id, run.current_unit, error=error,
                 )
                 logger.warning(
                     "authoring run %s unit %d: late seam result after close/fail "
@@ -1157,9 +1224,10 @@ class AuthoringRunService:
             await self._runs.record_unit_progress(
                 owner_user_id, run_id,
                 add_spent_usd=verdict.cost_usd, current_unit=run.current_unit + 1,
+                driver_id=self._driver_id,
             )
         if row["severity"] == "severe":
-            await self._runs.transition(
+            paused = await self._runs.transition(
                 owner_user_id, run_id,
                 from_statuses=("running",), to_status="paused",
                 breaker_state={
@@ -1169,6 +1237,10 @@ class AuthoringRunService:
                     "summary": verdict.summary,
                 },
             )
+            if paused is not None:
+                # 07S "interrupt on severe": the interrupt must actually reach
+                # the human — a silent pause on a background run never would.
+                await self._notify_terminal(paused)
             return False
         return True
 
@@ -1196,11 +1268,36 @@ class AuthoringRunService:
         if failed is not None:  # terminal transition won → notify (D4)
             await self._notify_terminal(failed)
 
+    async def _late_restore(
+        self,
+        owner_user_id: UUID,
+        book_id: UUID,
+        chapter_id: UUID,
+        revision_id: UUID,
+    ) -> None:
+        """Roll a late-swallowed unit's chapter back to its pinned pre-run
+        revision. Headless (no caller request in flight) — the real path mints
+        a service bearer for the run OWNER exactly like BookRevisionCapture
+        (book-service still enforces the grant boundary on the JWT `sub`).
+        Tests inject a 3-arg RestoreFn spy via the ctor's `late_restore`."""
+        if self._late_restore_impl is not None:
+            await self._late_restore_impl(book_id, chapter_id, revision_id)
+            return
+        from app.clients.book_client import get_book_client
+        from app.mcp.service_bearer import mint_service_bearer
+
+        bearer = mint_service_bearer(owner_user_id, settings.jwt_secret)
+        await get_book_client().restore_revision(
+            book_id, chapter_id, revision_id, bearer,
+        )
+
     # ── D4 completion notification (best-effort, never affects the run) ─────
 
     async def _notify_terminal(self, run: AuthoringRun) -> None:
-        """Best-effort notification on a terminal transition the driver WON
-        (report_ready | failed) — notification-service HTTP ingest, mirroring
+        """Best-effort notification on a driver stop the human must hear about:
+        terminal transitions (report_ready | failed) AND breaker pauses
+        (budget | critic_severe — 07S "interrupt on severe" only interrupts if
+        it reaches the human). notification-service HTTP ingest, mirroring
         translation-service's chapter_worker producer. Every failure (including
         a broken injected notifier) is swallowed: notify must never affect the
         run's outcome."""
@@ -1213,6 +1310,12 @@ class AuthoringRunService:
                 title = (
                     f"Autonomous authoring run complete — "
                     f"{units_drafted} chapter(s) drafted"
+                )
+            elif run.status == "paused":
+                reason = (run.breaker_state or {}).get("reason", "breaker")
+                title = (
+                    f"Autonomous authoring run paused ({reason}) — "
+                    f"{units_drafted} chapter(s) drafted; review needed"
                 )
             else:
                 title = (

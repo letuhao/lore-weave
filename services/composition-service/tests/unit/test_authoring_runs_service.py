@@ -124,15 +124,27 @@ class FakeRunsRepo:
         return claimed
 
     async def record_unit_progress(self, owner_user_id, run_id, *, add_spent_usd,
-                                   current_unit) -> AuthoringRun | None:
+                                   current_unit,
+                                   driver_id=None) -> AuthoringRun | None:
         r = await self.get_for_owner(owner_user_id, run_id)
         if r is None:
             return None
+        # Mirrors the repo's CASE fence: spend always lands; the cursor write
+        # is driver-fenced (a superseded driver must not move it).
+        cursor_ok = driver_id is None or r.driver_id == driver_id
         updated = r.model_copy(update={
-            "spent_usd": r.spent_usd + add_spent_usd, "current_unit": current_unit,
+            "spent_usd": r.spent_usd + add_spent_usd,
+            "current_unit": current_unit if cursor_ok else r.current_unit,
         })
         self.rows[run_id] = updated
         return updated
+
+    async def release_claim(self, run_id, driver_id) -> bool:
+        r = self.rows.get(run_id)
+        if r is None or r.status != "running" or r.driver_id != driver_id:
+            return False
+        self.rows[run_id] = r.model_copy(update={"driver_heartbeat_at": None})
+        return True
 
 
 class FakePlanRuns:
@@ -188,11 +200,12 @@ class FakeUnitsRepo:
         return unit
 
     async def mark_drafted(self, owner, run_id, unit_index, *, post_revision_id,
-                           cost_usd, run_statuses=None) -> AuthoringRunUnit | None:
+                           cost_usd, run_statuses=None,
+                           run_driver_id=None) -> AuthoringRunUnit | None:
         return await self.transition_unit(
             owner, run_id, unit_index, from_statuses=("pending",),
             to_status="drafted", post_revision_id=post_revision_id, cost_usd=cost_usd,
-            run_statuses=run_statuses,
+            run_statuses=run_statuses, run_driver_id=run_driver_id,
         )
 
     async def mark_failed(self, owner, run_id, unit_index, *, error) -> AuthoringRunUnit | None:
@@ -216,13 +229,17 @@ class FakeUnitsRepo:
 
     async def transition_unit(self, owner, run_id, unit_index, *, from_statuses,
                               to_status, post_revision_id=None, cost_usd=None,
-                              error_message=None,
-                              run_statuses=None) -> AuthoringRunUnit | None:
+                              error_message=None, run_statuses=None,
+                              run_driver_id=None) -> AuthoringRunUnit | None:
         if not self._owned(owner, run_id):
             return None
         if run_statuses is not None:  # D4 late-result fence (parent-run guard)
             parent = self._runs.rows.get(run_id)
             if parent is None or parent.status not in run_statuses:
+                return None
+        if run_driver_id is not None:  # D4 sweep-steal fence (parent driver)
+            parent = self._runs.rows.get(run_id)
+            if parent is None or parent.driver_id != run_driver_id:
                 return None
         u = self.rows.get((run_id, unit_index))
         if u is None or u.status not in from_statuses:
@@ -335,7 +352,7 @@ async def _drain_driver_tasks():
 
 
 def make_svc(seam=None, plan_status="validated", revisions=None, notify=None,
-             driver_id=None, critic=None):
+             driver_id=None, critic=None, late_restore=None):
     runs = FakeRunsRepo()
     plans = FakePlanRuns()
     plans.add(OWNER, BOOK, PLAN, plan_status)
@@ -350,6 +367,8 @@ def make_svc(seam=None, plan_status="validated", revisions=None, notify=None,
         # it fetches the draft over HTTP). Default: 'ok' verdicts, zero cost,
         # so pre-D5 driver assertions (spend, statuses) are unaffected.
         critic=critic or FakeCriticSeam(),
+        # Late-swallow restore spy (never the real book-service call).
+        late_restore=late_restore or RestoreRecorder(),
     )
     return svc, runs, plans
 
@@ -1059,13 +1078,21 @@ async def test_per_unit_claim_stops_stolen_run_at_unit_boundary():
     final = await runs.get_for_owner(OWNER, run.run_id)
     assert final.status == "running"           # the thief now owns the run
     assert final.driver_id == "thief-driver"
-    assert final.current_unit == 1             # unit 1's progress recorded
+    # Driver-fenced late writes: the superseded driver's result must not move
+    # the cursor (the thief re-runs unit 0) nor mint a drafted row — but its
+    # spend IS real and lands.
+    assert final.current_unit == 0
+    assert final.spent_usd == Decimal("0.01")
+    units = await svc._units.list_for_run(run.run_id)
+    assert [u.status for u in units] == ["pending"]  # left to the new driver
 
 
-async def test_late_result_after_close_lands_failed_not_drafted():
+async def test_late_result_after_close_lands_failed_and_restores_content():
     """The known race: the run is paused+closed (e.g. before a Revert-All)
     while the seam is mid-flight — the late drafted result must be swallowed
-    (unit failed 'run closed mid-flight'), never a fresh drafted row."""
+    (unit failed, never a fresh drafted row) AND the engine-persisted chapter
+    content rolled back to the pinned pre-run revision (the engine PATCHed the
+    draft before the fence could swallow the row)."""
     holder: dict[str, Any] = {}
 
     async def close_mid_flight(call_no, kw):
@@ -1078,17 +1105,47 @@ async def test_late_result_after_close_lands_failed_not_drafted():
         on_call=close_mid_flight,
         default=DraftOutcome(ok=True, cost_usd=Decimal("0.03")),
     )
-    svc, runs, _ = make_svc(seam=seam)
+    cap = FakeRevisionCapture()
+    late_restore = RestoreRecorder()
+    svc, runs, _ = make_svc(seam=seam, revisions=cap, late_restore=late_restore)
     run = await _running_run(svc, runs)
     holder.update(svc=svc, runs=runs, run_id=run.run_id)
     await svc.run_driver(OWNER, run.run_id)
     assert len(seam.calls) == 1
     units = await svc._units.list_for_run(run.run_id)
     assert [u.status for u in units] == ["failed"]  # NOT drafted
-    assert units[0].error_message == "run closed mid-flight"
+    assert units[0].error_message == (
+        "run closed mid-flight; draft reverted to pre-run revision"
+    )
+    # the restore targeted the unit's pinned pre-run baseline
+    assert late_restore.calls == [(BOOK, CH1, cap.issued[0])]
     final = await runs.get_for_owner(OWNER, run.run_id)
     assert final.status == "closed"                 # the close stands
     assert final.spent_usd == Decimal("0.03")       # the real spend still lands
+
+
+async def test_late_result_restore_failure_swallowed_and_reported():
+    """A failing late-swallow restore must never raise out of the driver — the
+    unit's error message reports the chapter draft was left mutated."""
+    holder: dict[str, Any] = {}
+
+    async def close_mid_flight(call_no, kw):
+        await holder["runs"].transition(
+            OWNER, holder["run_id"], from_statuses=("running",), to_status="paused",
+        )
+        await holder["svc"].close(OWNER, holder["run_id"])
+
+    seam = FakeSeam(on_call=close_mid_flight)
+    svc, runs, _ = make_svc(
+        seam=seam, late_restore=RestoreRecorder(fail_on_call={1}),
+    )
+    run = await _running_run(svc, runs)
+    holder.update(svc=svc, runs=runs, run_id=run.run_id)
+    await svc.run_driver(OWNER, run.run_id)  # must not raise
+    units = await svc._units.list_for_run(run.run_id)
+    assert [u.status for u in units] == ["failed"]
+    assert "restore FAILED" in units[0].error_message
+    assert "draft left in place" in units[0].error_message
 
 
 async def test_late_result_while_paused_still_drafts():
@@ -1152,14 +1209,20 @@ async def test_notification_failure_swallowed_run_unaffected():
     assert len(notify.calls) == 1           # the notify WAS attempted
 
 
-async def test_notification_not_fired_on_pause():
+async def test_notification_fired_on_budget_pause():
+    """A breaker pause on a headless run needs a human — the interrupt must
+    reach them (07S), same best-effort channel as the terminal notify."""
     notify = NotifyRecorder()
     seam = FakeSeam(default=DraftOutcome(ok=True, cost_usd=Decimal("0.06")))
     svc, runs, _ = make_svc(seam=seam, notify=notify)
     run = await _running_run(svc, runs, budget="0.05")
     await svc.run_driver(OWNER, run.run_id)
     assert (await runs.get_for_owner(OWNER, run.run_id)).status == "paused"
-    assert notify.calls == []  # budget-pause is not a terminal
+    assert len(notify.calls) == 1
+    call = notify.calls[0]
+    assert "paused (budget)" in call["title"]
+    assert call["metadata"]["status"] == "paused"
+    assert call["metadata"]["operation"] == "autonomous_authoring"
 
 
 async def test_max_inflight_start_defers_and_sweep_respects_cap(monkeypatch):
@@ -1192,9 +1255,11 @@ async def test_max_inflight_start_defers_and_sweep_respects_cap(monkeypatch):
     started_b = await svc.start(OWNER, run_b.run_id)
     assert started_b.status == "running"
     assert run_b.run_id not in mod._DRIVER_TASKS  # no task — slot busy
+    # The deferred start RELEASED its claim (heartbeat NULLed) so the next
+    # sweep with capacity can pick B up immediately — no stale-window stall.
+    assert (await runs.get_for_owner(OWNER, run_b.run_id)).driver_heartbeat_at is None
 
-    # Sweep respects the cap: B's heartbeat is stale but there is no capacity.
-    _age_heartbeat(runs, run_b.run_id, secs=10_000)
+    # Sweep respects the cap: B is sweep-visible but there is no capacity.
     assert await svc.sweep_stale_runs() == []
 
     # A finishes → slot frees → the next sweep resumes B from its cursor.
@@ -1289,7 +1354,10 @@ async def test_critic_severe_pauses_run_with_breaker_and_stops_downstream():
     units = await svc._units.list_for_run(run.run_id)
     assert [u.status for u in units] == ["drafted"]   # the draft itself stands
     assert units[0].critic_verdict["severity"] == "severe"
-    assert notify.calls == []            # pause is not a terminal — no notify
+    # 07S "interrupt on severe" — the interrupt must actually reach the human
+    assert len(notify.calls) == 1
+    assert "paused (critic_severe)" in notify.calls[0]["title"]
+    assert notify.calls[0]["metadata"]["status"] == "paused"
 
 
 async def test_critic_warn_and_ok_continue_run():
@@ -1359,10 +1427,9 @@ async def test_critic_cost_feeds_budget_breaker():
 
 
 async def test_critic_skipped_when_run_stolen_mid_unit():
-    """A sweep steal while the seam drafts: the draft lands (status fence
-    allows it) but the critic's guarded claim fails → critique SKIPPED, old
-    driver stops — the thief's resume re-runs the cursor unit (upsert resets
-    the row, verdict included)."""
+    """A sweep steal while the seam drafts: the driver-fenced late write leaves
+    the unit row to the thief (pending) and the old driver stops BEFORE the
+    critique — the thief's re-run of the cursor unit drafts + critiques it."""
     holder: dict[str, Any] = {}
 
     async def steal_during_first_unit(call_no, kw):
@@ -1381,7 +1448,7 @@ async def test_critic_skipped_when_run_stolen_mid_unit():
     await svc.run_driver(OWNER, run.run_id)
     assert critic.calls == []                  # never critiqued under a lost claim
     units = await svc._units.list_for_run(run.run_id)
-    assert [u.status for u in units] == ["drafted"]
+    assert [u.status for u in units] == ["pending"]  # left to the new driver
     assert units[0].critic_verdict is None     # the report shows the gap
 
 

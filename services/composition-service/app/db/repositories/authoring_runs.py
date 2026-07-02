@@ -168,19 +168,30 @@ class AuthoringRunsRepo:
         *,
         add_spent_usd: Decimal,
         current_unit: int,
+        driver_id: str | None = None,
     ) -> AuthoringRun | None:
         """Accumulate spend + advance the unit cursor after a unit completes.
-        Deliberately status-agnostic: the unit DID run and its cost is real
-        even if the run was paused mid-unit — never lose spend accounting."""
+        The SPEND add is deliberately status/driver-agnostic: the unit DID run
+        and its cost is real even if the run was paused or sweep-stolen
+        mid-unit — never lose spend accounting. The CURSOR write is
+        driver-fenced when `driver_id` is given (D4 late-write fence): a
+        superseded driver landing after a sweep steal must not rewind the new
+        driver's cursor and trigger a duplicate generation."""
         query = f"""
         UPDATE authoring_runs
-        SET spent_usd = spent_usd + $3, current_unit = $4, updated_at = now()
+        SET spent_usd = spent_usd + $3,
+            current_unit = CASE
+              WHEN $5::text IS NULL OR driver_id = $5 THEN $4
+              ELSE current_unit
+            END,
+            updated_at = now()
         WHERE run_id = $1 AND owner_user_id = $2
         RETURNING {_SELECT}
         """
         async with self._pool.acquire() as c:
             row = await c.fetchrow(
                 query, run_id, owner_user_id, add_spent_usd, current_unit,
+                driver_id,
             )
         return _row(row) if row else None
 
@@ -204,6 +215,23 @@ class AuthoringRunsRepo:
         async with self._pool.acquire() as c:
             row = await c.fetchrow(query, run_id, owner_user_id, driver_id)
         return _row(row) if row else None
+
+    async def release_claim(self, run_id: UUID, driver_id: str) -> bool:
+        """D4: give a claimed-but-undriven run straight back to the sweep by
+        NULLing its heartbeat (a start/resume/sweep claim whose driver-task
+        spawn was deferred at DRIVER_MAX_INFLIGHT would otherwise sit
+        claimed-with-a-fresh-heartbeat for the whole stale window before any
+        sweeper could touch it). Guarded on driver_id=mine so a release can
+        never yank a run another driver claimed in between."""
+        query = """
+        UPDATE authoring_runs
+        SET driver_heartbeat_at = NULL, updated_at = now()
+        WHERE run_id = $1 AND status = 'running' AND driver_id = $2
+        RETURNING run_id
+        """
+        async with self._pool.acquire() as c:
+            row = await c.fetchrow(query, run_id, driver_id)
+        return row is not None
 
     async def claim_stale_running(
         self, *, driver_id: str, stale_secs: int, limit: int,
@@ -294,16 +322,19 @@ class AuthoringRunUnitsRepo:
         post_revision_id: UUID | None,
         cost_usd: Decimal,
         run_statuses: tuple[AuthoringRunStatus, ...] | None = None,
+        run_driver_id: str | None = None,
     ) -> AuthoringRunUnit | None:
         """`run_statuses` (D4 late-result guard): the driver passes
         ('running','paused') so a seam result landing AFTER the run was closed/
         failed cannot mint a drafted row — the caller then marks the unit failed
-        ('run closed mid-flight') instead."""
+        ('run closed mid-flight') instead. `run_driver_id` extends the fence to
+        sweep steals: a superseded driver's late result cannot mint a drafted
+        row over the new driver's in-progress re-run of the same unit."""
         return await self.transition_unit(
             owner_user_id, run_id, unit_index,
             from_statuses=("pending",), to_status="drafted",
             post_revision_id=post_revision_id, cost_usd=cost_usd,
-            run_statuses=run_statuses,
+            run_statuses=run_statuses, run_driver_id=run_driver_id,
         )
 
     async def set_critic_verdict(
@@ -358,11 +389,13 @@ class AuthoringRunUnitsRepo:
         cost_usd: Decimal | None = None,
         error_message: str | None = None,
         run_statuses: tuple[AuthoringRunStatus, ...] | None = None,
+        run_driver_id: str | None = None,
     ) -> AuthoringRunUnit | None:
         """Guarded unit transition (OCC, mirrors the run FSM). Returns None when
         the unit is missing / foreign / not in a `from` status (lost race).
-        `run_statuses` (D4) additionally guards on the PARENT run's status in
-        the same statement — the late-result-after-close fence."""
+        `run_statuses` (D4) additionally guards on the PARENT run's status, and
+        `run_driver_id` on the parent's current driver, in the same statement —
+        the late-result fence (close/fail AND sweep-steal variants)."""
         sets = ["status = $4", "updated_at = now()"]
         args: list[Any] = [run_id, owner_user_id, unit_index, to_status]
         if post_revision_id is not None:
@@ -378,6 +411,9 @@ class AuthoringRunUnitsRepo:
         if run_statuses is not None:
             args.append(list(run_statuses))
             run_guard = f" AND r.status = ANY(${len(args)})"
+        if run_driver_id is not None:
+            args.append(run_driver_id)
+            run_guard += f" AND r.driver_id = ${len(args)}"
         args.append(list(from_statuses))
         query = f"""
         UPDATE authoring_run_units u SET {", ".join(sets)}

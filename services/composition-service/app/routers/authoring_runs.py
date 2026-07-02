@@ -147,7 +147,9 @@ async def gate_authoring_run(
         raise HTTPException(status_code=404, detail="run not found")
     try:
         chapters = await book.list_chapters(run.book_id, bearer)
-    except BookClientError:
+    except BookClientError as exc:
+        if exc.status in (401, 403):  # revoked/expired caller access, not an outage
+            raise HTTPException(status_code=403, detail="insufficient access")
         raise HTTPException(status_code=502, detail={"code": "BOOK_SERVICE_UNAVAILABLE"})
     chapter_ids = {str(c["chapter_id"]) for c in chapters if c.get("chapter_id")}
     try:
@@ -165,14 +167,29 @@ async def gate_authoring_run(
     return _serialize(gated)
 
 
-def _transition_route(action: str):
+def _transition_route(action: str, *, book_owner_may_act: bool = False):
+    """`book_owner_may_act` (pause/close only): the scope fence is per-BOOK
+    across users, so a collaborator's abandoned gated/paused run would lock the
+    book's owner out of autonomous runs forever if only the run owner could
+    clear it. The book's OWNER-grant holder may therefore pause/close ANY run
+    on their book — the action executes AS the run's owner (row tenancy
+    preserved). No-grant callers still 404 (no existence oracle)."""
+
     async def _run(
         run_id: UUID,
         user_id: UUID = Depends(get_current_user),
+        grant: GrantClient = Depends(get_grant_client_dep),
         svc: AuthoringRunService = Depends(get_authoring_run_service),
     ):
+        acting_owner = user_id
+        if book_owner_may_act and await svc.get(user_id, run_id) is None:
+            foreign = await svc.get_any(run_id)
+            if foreign is None:
+                raise HTTPException(status_code=404, detail="run not found")
+            await _gate_book(grant, foreign.book_id, user_id, GrantLevel.OWNER)
+            acting_owner = foreign.owner_user_id
         try:
-            run = await getattr(svc, action)(user_id, run_id)
+            run = await getattr(svc, action)(acting_owner, run_id)
         except LookupError:
             raise HTTPException(status_code=404, detail="run not found")
         except TransitionConflictError as exc:
@@ -184,9 +201,15 @@ def _transition_route(action: str):
 
 
 router.add_api_route("/{run_id}/start", _transition_route("start"), methods=["POST"])
-router.add_api_route("/{run_id}/pause", _transition_route("pause"), methods=["POST"])
+router.add_api_route(
+    "/{run_id}/pause", _transition_route("pause", book_owner_may_act=True),
+    methods=["POST"],
+)
 router.add_api_route("/{run_id}/resume", _transition_route("resume"), methods=["POST"])
-router.add_api_route("/{run_id}/close", _transition_route("close"), methods=["POST"])
+router.add_api_route(
+    "/{run_id}/close", _transition_route("close", book_owner_may_act=True),
+    methods=["POST"],
+)
 
 
 # ── D3 — Run Report + dependency-ordered accept/reject + Revert-All ─────────
