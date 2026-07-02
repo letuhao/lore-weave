@@ -2,6 +2,7 @@ package api
 
 import (
 	"encoding/json"
+	"errors"
 	"net/http"
 	"regexp"
 	"strconv"
@@ -9,6 +10,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5/pgconn"
 )
 
 // Reverse-DNS-ish plugin name: `namespace/name` (spec §11).
@@ -344,6 +346,10 @@ func actorKindOf(role string) string {
 	return "user"
 }
 
+// isUniqueViolation checks the Postgres SQLSTATE via the typed error rather than
+// a fragile substring match (a driver error-format change must not silently turn
+// a 409 DUPLICATE into a 500). 23505 = unique_violation.
 func isUniqueViolation(err error) bool {
-	return err != nil && strings.Contains(err.Error(), "23505")
+	var pgErr *pgconn.PgError
+	return errors.As(err, &pgErr) && pgErr.Code == "23505"
 }

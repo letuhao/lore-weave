@@ -85,6 +85,15 @@ Check ($r.StatusCode -eq 201) "create user skill shadowing System slug 201"
 $r = Req GET "/internal/skills?user_id=$userA&surface=chat" $null $null $hdr
 $body = $r.Content | ConvertFrom-Json
 Check ($body.shadowed_system -contains "glossary") "shadowed_system reports the override"
+# /review-impl fix: shadowed_system must EXCLUDE a user slug with no System counterpart
+Check (-not ($body.shadowed_system -contains $slug)) "shadowed_system excludes non-colliding user slug"
+
+# /review-impl fix: duplicate user slug → 409 (robust SQLSTATE detection, was untested)
+$dup = "dupe-$([DateTimeOffset]::UtcNow.ToUnixTimeMilliseconds() % 100000)"
+$r = Req POST "/v1/agent-registry/skills" $tokA @{ slug = $dup; description = "d"; body_md = "b" } $null
+Check ($r.StatusCode -eq 201) "create skill for dup test 201"
+$r = Req POST "/v1/agent-registry/skills" $tokA @{ slug = $dup; description = "d"; body_md = "b" } $null
+Check ($r.StatusCode -eq 409) "duplicate slug → 409 DUPLICATE"
 
 # validation: oversize body + bad slug + scripts smuggle
 $big = "x" * 70000

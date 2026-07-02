@@ -54,7 +54,7 @@ func (s *Server) internalSkills(w http.ResponseWriter, r *http.Request) {
 		Source      string   `json:"source"`
 	}
 	skills := []outSkill{}
-	shadows := map[string]bool{} // user slug that shadows a System skill of the same slug
+	userSlugs := []string{}
 	for rows.Next() {
 		var slug, desc, body, tier, source, status string
 		var surfaces []string
@@ -72,7 +72,7 @@ func (s *Server) internalSkills(w http.ResponseWriter, r *http.Request) {
 			Slug: slug, Description: desc, BodyMD: body, L1Line: l1MetadataLine(slug, desc),
 			Surfaces: surfaces, Tier: tier, Source: source,
 		})
-		shadows[slug] = true
+		userSlugs = append(userSlugs, slug)
 	}
 	rows.Close()
 
@@ -94,9 +94,23 @@ func (s *Server) internalSkills(w http.ResponseWriter, r *http.Request) {
 		orows.Close()
 	}
 
+	// shadowed_system = ONLY the user slugs that actually collide with a System
+	// skill (so chat-service skips the built-in body of exactly those). A user
+	// slug with no System counterpart must NOT appear here.
 	shadowList := []string{}
-	for slug := range shadows {
-		shadowList = append(shadowList, slug)
+	if len(userSlugs) > 0 {
+		srows, err := s.db.Query(r.Context(),
+			`SELECT slug FROM skills WHERE tier = 'system' AND slug = ANY($1::text[])`, userSlugs)
+		if err == nil {
+			defer srows.Close()
+			for srows.Next() {
+				var slug string
+				if err := srows.Scan(&slug); err == nil {
+					shadowList = append(shadowList, slug)
+				}
+			}
+			srows.Close()
+		}
 	}
 
 	writeJSON(w, http.StatusOK, map[string]any{
