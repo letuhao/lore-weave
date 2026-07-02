@@ -48,8 +48,11 @@ export function JsonEditorPanel(props: IDockviewPanelProps) {
   );
   useEffect(() => {
     // External identity change → reseed buffer unless the user has local edits pending
-    // (dirty ⇒ the buffer IS the working copy; never clobber it — G7 spirit).
-    if (!snapshot?.dirty) { setText(docJson); setParseError(null); }
+    // (dirty ⇒ the buffer IS the working copy; never clobber it — G7 spirit). An EMPTY buffer
+    // always seeds — the shared hoist can be dirty before this view ever opened (the rich
+    // editor's mount-normalize marks it), and an empty editor is never worth protecting.
+    setText((cur) => (cur === '' || !snapshot?.dirty ? docJson : cur));
+    if (!snapshot?.dirty) setParseError(null);
   }, [docJson]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const onChange = useCallback((value: string) => {
