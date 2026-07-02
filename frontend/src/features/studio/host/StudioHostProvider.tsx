@@ -44,7 +44,9 @@ export interface StudioHost {
   getSnapshot: () => StudioBusSnapshot;
   subscribe: (listener: (s: StudioBusSnapshot) => void, selector?: (s: StudioBusSnapshot) => unknown) => () => void;
   // Dock actions (#08 §StudioHostValue) — the single home for Lane-A ui tools + the palette.
-  openPanel: (panelId: string, opts?: { focus?: boolean; title?: string }) => void;
+  // `params` (#11 F1) is the deep-link seam: passed to addPanel on open, updateParameters when
+  // the panel is already open. Panels read props.params / api.onDidParametersChange.
+  openPanel: (panelId: string, opts?: { focus?: boolean; title?: string; params?: Record<string, unknown> }) => void;
   focusManuscriptUnit: (chapterId: string, panelId?: string) => void;
   // Internals for the reactive hooks + the dock wiring (not part of the public contract).
   _regStore: Store<StudioToolRegistration[]>;
@@ -69,16 +71,21 @@ export function StudioHostProvider({ bookId, children }: { bookId: string; child
     const statusStore = createStore<StudioStatusBarItem[]>([]);
     const rebuildStatus = () => statusStore.set(Array.from(statusMap.values()));
 
-    const openPanel = (panelId: string, opts?: { focus?: boolean; title?: string }) => {
+    const openPanel = (panelId: string, opts?: { focus?: boolean; title?: string; params?: Record<string, unknown> }) => {
       const api = dockApiRef.current;
       if (!api) return;
       const existing = api.getPanel(panelId);
-      if (existing) { if (opts?.focus !== false) existing.api.setActive(); return; }
+      if (existing) {
+        // Already open — deep-link params still land (#11 F1), then focus.
+        if (opts?.params) existing.api.updateParameters(opts.params);
+        if (opts?.focus !== false) existing.api.setActive();
+        return;
+      }
       // Title from the caller (catalog), else a live registration, else the id. A CLOSED panel
       // isn't registered yet (registers on mount) so the caller supplies the title.
       const title = opts?.title ?? regMap.get(panelId)?.label ?? panelId;
       // component id must be a built dockview component (STUDIO_PANEL_COMPONENTS); unknown ⇒ no-op.
-      try { api.addPanel({ id: panelId, component: panelId, title }); }
+      try { api.addPanel({ id: panelId, component: panelId, title, params: opts?.params }); }
       catch { /* panel not in the catalog */ }
     };
 

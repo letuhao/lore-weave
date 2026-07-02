@@ -77,6 +77,41 @@ describe('StudioContextBus', () => {
     expect(() => result.current.openPanel('editor')).not.toThrow();
   });
 
+  it('openPanel passes params to addPanel; re-open updates parameters + focuses (#11 F1)', () => {
+    const { result } = renderHook(() => useStudioHost(), { wrapper: wrapper() });
+    const addPanel = vi.fn();
+    const updateParameters = vi.fn();
+    const setActive = vi.fn();
+    let existing: unknown = null;
+    result.current._dockApiRef.current = {
+      getPanel: () => existing,
+      addPanel,
+    } as never;
+
+    act(() => result.current.openPanel('settings', { title: 'Settings', params: { tab: 'providers' } }));
+    expect(addPanel).toHaveBeenCalledWith({
+      id: 'settings', component: 'settings', title: 'Settings', params: { tab: 'providers' },
+    });
+
+    existing = { api: { updateParameters, setActive } };
+    act(() => result.current.openPanel('settings', { params: { tab: 'account' } }));
+    expect(updateParameters).toHaveBeenCalledWith({ tab: 'account' });
+    expect(setActive).toHaveBeenCalledTimes(1);
+  });
+
+  it('openPanel focus:false updates params without stealing focus', () => {
+    const { result } = renderHook(() => useStudioHost(), { wrapper: wrapper() });
+    const updateParameters = vi.fn();
+    const setActive = vi.fn();
+    result.current._dockApiRef.current = {
+      getPanel: () => ({ api: { updateParameters, setActive } }),
+      addPanel: vi.fn(),
+    } as never;
+    act(() => result.current.openPanel('settings', { focus: false, params: { tab: 'mcp' } }));
+    expect(updateParameters).toHaveBeenCalledWith({ tab: 'mcp' });
+    expect(setActive).not.toHaveBeenCalled();
+  });
+
   it('subscribe(selector) fires only when the SELECTED slice changes', () => {
     const { result } = renderHook(() => useStudioHost(), { wrapper: wrapper() });
     const onChapter = vi.fn();
