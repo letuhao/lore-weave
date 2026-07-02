@@ -1,12 +1,14 @@
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
 import { ArrowUp, Brain, Square, Zap, Mic, MicOff, Loader2, Volume2, VolumeX } from 'lucide-react';
 import { loadVoicePrefs } from '../voicePrefs';
 import { useVoiceAssistMic } from '../hooks/useVoiceAssistMic';
+import { useMentionPicker } from '../hooks/useMentionPicker';
 import TextareaAutosize from 'react-textarea-autosize';
 import { ContextBar } from '../context/ContextBar';
 import type { ContextItem } from '../context/types';
 import { PromptTemplatePicker, type PromptTemplate } from './PromptTemplates';
+import { MentionPopover } from './MentionPopover';
 
 interface ChatInputBarProps {
   onSend: (content: string, thinking?: boolean) => void;
@@ -61,6 +63,15 @@ export function ChatInputBar({
   const [showTemplates, setShowTemplates] = useState(false);
   const [templateFilter, setTemplateFilter] = useState('');
   const [attachPickerOpen, setAttachPickerOpen] = useState(false);
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
+
+  // Inline @-mention context attach — reuses the ContextPicker's attach seam.
+  const mention = useMentionPicker({
+    value,
+    onAttach: onAttachContext,
+    onValueChange: setValue,
+    textareaRef,
+  });
 
   // Push-to-talk mic — uses same VAD + backend STT pipeline as Voice Mode.
   // Captures speech via Silero VAD → WAV → backend STT → inserts transcript into textarea.
@@ -139,6 +150,15 @@ export function ChatInputBar({
             onClose={() => { setShowTemplates(false); setTemplateFilter(''); }}
           />
 
+          {/* Inline @-mention context popover (triggered by "@") */}
+          <MentionPopover
+            open={mention.open}
+            items={mention.filtered}
+            selectedIndex={mention.selectedIndex}
+            onSelect={mention.attachCandidate}
+            onHighlight={mention.setSelectedIndex}
+          />
+
           {/* Context bar (pills + attach button) */}
           <ContextBar
             items={contextItems}
@@ -151,13 +171,17 @@ export function ChatInputBar({
 
           {/* Textarea */}
           <TextareaAutosize
+            ref={textareaRef}
             value={value}
-            onChange={(e) => handleValueChange(e.target.value)}
+            onChange={(e) => { handleValueChange(e.target.value); mention.syncFromInput(e.target); }}
+            onSelect={(e) => mention.syncFromInput(e.currentTarget)}
             placeholder={t('input.placeholder')}
             minRows={3}
             maxRows={8}
             disabled={disabled || isStreaming || voiceModeActive}
             onKeyDown={(e) => {
+              // @-mention popover consumes navigation/attach keys (Enter must NOT send)
+              if (mention.handleKeyDown(e)) return;
               if (e.key === 'Enter' && !e.shiftKey && !e.ctrlKey) {
                 e.preventDefault();
                 handleSubmit();

@@ -263,7 +263,11 @@
     "words": "{{count}} words",
     "unnamed": "(unnamed)",
     "no_matches": "No matches found.",
-    "no_items": "No items available."
+    "no_items": "No items available.",
+    "mention": {
+      "title": "Attach context",
+      "aria": "Context suggestions"
+    }
   },
   "settings": {
     "title": "Session Settings",

@@ -263,7 +263,11 @@
     "words": "{{count}} từ",
     "unnamed": "(chưa đặt tên)",
     "no_matches": "Không tìm thấy kết quả.",
-    "no_items": "Không có mục nào."
+    "no_items": "Không có mục nào.",
+    "mention": {
+      "title": "Đính kèm ngữ cảnh",
+      "aria": "Gợi ý ngữ cảnh"
+    }
   },
   "settings": {
     "title": "Cài đặt phiên",

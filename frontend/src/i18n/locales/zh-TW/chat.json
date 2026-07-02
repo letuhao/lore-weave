@@ -263,7 +263,11 @@
     "words": "{{count}} 字",
     "unnamed": "(未命名)",
     "no_matches": "找不到符合項目。",
-    "no_items": "沒有可用項目。"
+    "no_items": "沒有可用項目。",
+    "mention": {
+      "title": "附加上下文",
+      "aria": "上下文建議"
+    }
   },
   "settings": {
     "title": "工作階段設定",
