@@ -149,6 +149,41 @@ class TestPromotionP3a:
         assert out[0].entity_id == "pin"
 
 
+class TestFeedbackP3b:
+    def _sal(self, eid, feedback, count=1, age_days=0.0):
+        from app.db.repositories.entity_access import EntitySalience
+        return EntitySalience(eid, count, 0.0, NOW - timedelta(days=age_days), feedback_score=feedback)
+
+    def test_positive_feedback_boosts(self):
+        ents = [_e("a", 0.5), _e("b", 0.45)]
+        out = blend_entity_salience(
+            ents, {"b": self._sal("b", feedback=5.0)},
+            weight=0.0, half_life_days=14.0, now=NOW, feedback_weight=0.3,
+        )
+        assert [e.entity_id for e in out] == ["b", "a"]  # tanh(5/3)≈0.93 → +0.28
+
+    def test_negative_feedback_demotes(self):
+        ents = [_e("a", 0.5), _e("b", 0.5)]
+        out = blend_entity_salience(
+            ents, {"a": self._sal("a", feedback=-5.0)},
+            weight=0.0, half_life_days=14.0, now=NOW, feedback_weight=0.3,
+        )
+        assert [e.entity_id for e in out] == ["b", "a"]  # a demoted below b
+
+    def test_feedback_saturates(self):
+        import math
+        # 1000 thumbs isn't meaningfully stronger than 10 — tanh squash.
+        assert abs(math.tanh(1000 / 3.0) - math.tanh(10 / 3.0)) < 0.01
+
+    def test_feedback_weight_zero_is_identity(self):
+        ents = [_e("a", 0.5)]
+        out = blend_entity_salience(
+            ents, {"a": self._sal("a", feedback=5.0)},
+            weight=0.0, half_life_days=14.0, now=NOW, feedback_weight=0.0,
+        )
+        assert out is ents
+
+
 @pytest.mark.asyncio
 async def test_apply_salience_promotion_only_loads_neo4j_not_repo(monkeypatch):
     # w_access=0 + w_promote>0 → no access-log read; Neo4j promotion load runs.

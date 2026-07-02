@@ -114,11 +114,12 @@ async def apply_salience(
     caught here) — salience must never break a context build."""
     w_access = settings.salience_access_weight
     w_promote = settings.salience_promote_weight
-    if (w_access <= 0 and w_promote <= 0) or not entities:
+    w_feedback = settings.salience_feedback_weight
+    if (w_access <= 0 and w_promote <= 0 and w_feedback <= 0) or not entities:
         return entities
 
     access: dict[str, EntitySalience] = {}
-    if w_access > 0 and entity_access_repo is not None:
+    if (w_access > 0 or w_feedback > 0) and entity_access_repo is not None:
         access = await entity_access_repo.load_salience(user_id, project_id)
 
     promotion: dict[str, PromotionSignals] = {}
@@ -141,6 +142,7 @@ async def apply_salience(
         promotion=promotion,
         promote_weight=w_promote,
         promote_half_life_days=settings.salience_promote_half_life_days,
+        feedback_weight=w_feedback,
     )
 
 
@@ -154,9 +156,11 @@ def blend_entity_salience(
     promotion: dict[str, PromotionSignals] | None = None,
     promote_weight: float = 0.0,
     promote_half_life_days: float = 30.0,
+    feedback_weight: float = 0.0,
 ):
-    """Return `entities` re-sorted by
-    `rank_score + weight·norm(access) + promote_weight·promotion` (each term [0,1]).
+    """Return `entities` re-sorted by `rank_score + weight·norm(access)
+    + promote_weight·promotion + feedback_weight·tanh(feedback/3)` (terms in [0,1];
+    the P3b feedback term is signed — a net-negative thumbs history DEMOTES).
 
     - all weights <= 0 (or nothing to blend) → the input list, unchanged.
     - access = `retrieval_count * 0.5 ** (age_days / half_life_days)` (P1,
@@ -170,7 +174,10 @@ def blend_entity_salience(
     """
     have_access = weight > 0 and bool(salience)
     have_promo = promote_weight > 0 and bool(promotion)
-    if not entities or (not have_access and not have_promo):
+    have_feedback = feedback_weight > 0 and any(
+        s.feedback_score for s in salience.values()
+    )
+    if not entities or (not have_access and not have_promo and not have_feedback):
         return entities
 
     decayed: dict[str, float] = {}
@@ -183,7 +190,7 @@ def blend_entity_salience(
         max_d = max(decayed.values(), default=0.0)
         if max_d <= 0:
             have_access = False  # all rows decayed to ~0 → no usable access signal
-    if not have_access and not have_promo:
+    if not have_access and not have_promo and not have_feedback:
         return entities
 
     max_log_ev = max_log_mn = 0.0
@@ -202,6 +209,11 @@ def blend_entity_salience(
                 max_log_evidence=max_log_ev, max_log_mention=max_log_mn,
                 half_life_days=promote_half_life_days, now=now,
             )
+        if eid and have_feedback and eid in salience:
+            # tanh(x/3) squashes the accumulated ±1 thumbs into (-1, 1): ~3 net
+            # thumbs ≈ 0.76, saturating ~1 — one enthusiastic user can't pin an
+            # entity forever, and net-negative history demotes symmetrically.
+            score += feedback_weight * math.tanh(salience[eid].feedback_score / 3.0)
         return score
 
     # PINS LEAD, ALWAYS. A user-pinned entity is "always in context" — it must never

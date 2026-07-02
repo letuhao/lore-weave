@@ -44,7 +44,9 @@ async def test_records_surfaced_entities_when_project_scoped():
     await _call(req, ["e1", "e2"], repo)
     await asyncio.sleep(0)  # let the fire-and-forget task run
 
-    repo.record_accesses.assert_awaited_once_with(user_id, project_id, ["e1", "e2"])
+    repo.record_accesses.assert_awaited_once_with(
+        user_id, project_id, ["e1", "e2"], session_id=None,
+    )
 
 
 @pytest.mark.asyncio

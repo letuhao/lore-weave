@@ -109,15 +109,21 @@ second flag-weighted term (`salience_promote_weight`, default **0.0** = no Neo4j
 byte-identical). Full mode only (static mode has no graph). Pins still lead. Degrades to
 identity on any Neo4j failure.
 
-**P3b (feedback slice — SPEC'D, deferred behind the eval gate):** the thumbs signal
-(`chat.message_feedback` on `loreweave:events:chat`) carries `{user_id, session_id,
-message_id, rating}` but **no entity attribution** — knowledge-service would need
-(1) a new consumer group on the chat stream and (2) a turn→surfaced-entities attribution
-record (e.g. stamping `session_id`+timestamp onto P0 access rows, or a per-turn context
-snapshot). That is a structural build (defer gate #2), and its value is unproven while
-BOTH blend weights sit at 0 (the P1 eval showed explicit-query re-ranking regresses).
-**Trigger to build P3b:** an ambiguous-query eval shows the blended signals lift, making
-finer per-turn attribution worth the new consumer + schema.
+**P3b (feedback slice — BUILT after verification; the deferral claim was WRONG).**
+Verified against code (anti-laziness rule): knowledge-service **already consumes**
+`loreweave:events:chat` (group `knowledge-extractor`), so no new consumer was needed —
+just a handler; and attribution needed **one additive column**, not a new table.
+As built:
+- chat-service enriches the `chat.message_feedback` payload with `project_id` +
+  `message_created_at` (additive keys).
+- `entity_access_log` gains `last_session_id` (stamped by the router's P0 recording —
+  `ContextBuildRequest` already carried `session_id`) + `feedback_score`.
+- `handle_chat_message_feedback` (registered on the existing dispatcher) attributes the
+  thumbs (±1) to rows with `last_session_id = session` within ±10 min of the turn;
+  legacy payloads without the P3b keys silently skip.
+- Blend term: `feedback_weight · tanh(feedback_score / 3)` — signed (net-negative
+  demotes), saturating (~3 net thumbs ≈ 0.76; an enthusiastic user can't pin forever).
+  `salience_feedback_weight` default **0.0** = inert (measure-before-flip unchanged).
 
 ### P4 — Hierarchical pointer retrieval (R-T4-05) + iterative-retry-on-miss (R-T4-06). **[buildable now]**
 - When the glossary/entity block would dominate the budget, emit **pointers** (`id + name +

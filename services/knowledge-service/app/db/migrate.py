@@ -1363,6 +1363,15 @@ CREATE INDEX IF NOT EXISTS idx_entity_access_log_scope
 -- Decay job scans by recency.
 CREATE INDEX IF NOT EXISTS idx_entity_access_log_last_retrieved
   ON entity_access_log(last_retrieved_at);
+
+-- Track 4 P3b — feedback attribution. last_session_id = the chat session whose
+-- context build most recently surfaced this entity (stamped by the router's P0
+-- recording); feedback_score accumulates thumbs (±1) attributed to entities the
+-- session surfaced within the turn's time window. Additive; both unused until
+-- salience_feedback_weight > 0.
+ALTER TABLE entity_access_log
+  ADD COLUMN IF NOT EXISTS last_session_id UUID,
+  ADD COLUMN IF NOT EXISTS feedback_score DOUBLE PRECISION NOT NULL DEFAULT 0;
 """
 
 

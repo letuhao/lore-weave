@@ -166,7 +166,8 @@ async def build(
     if req.project_id is not None and built.surfaced_entity_ids:
         _task = asyncio.create_task(
             entity_access_repo.record_accesses(
-                req.user_id, req.project_id, built.surfaced_entity_ids
+                req.user_id, req.project_id, built.surfaced_entity_ids,
+                session_id=req.session_id,  # P3b — feedback attribution stamp
             )
         )
         _bg_tasks.add(_task)

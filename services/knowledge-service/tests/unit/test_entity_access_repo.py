@@ -72,11 +72,58 @@ async def test_load_salience_maps_rows():
     pool, conn = _pool_with_conn()
     now = datetime.now(timezone.utc)
     conn.fetch = AsyncMock(return_value=[
-        {"entity_id": "e1", "retrieval_count": 7, "decayed_score": 3.5, "last_retrieved_at": now},
+        {"entity_id": "e1", "retrieval_count": 7, "decayed_score": 3.5,
+         "last_retrieved_at": now, "feedback_score": 2.0},
     ])
     repo = EntityAccessRepo(pool)
     out = await repo.load_salience(uuid4(), uuid4())
-    assert out == {"e1": EntitySalience("e1", 7, 3.5, now)}
+    assert out == {"e1": EntitySalience("e1", 7, 3.5, now, feedback_score=2.0)}
+
+
+@pytest.mark.asyncio
+async def test_record_accesses_stamps_session_id():
+    # P3b — the session stamp rides the upsert params for feedback attribution.
+    pool, conn = _pool_with_conn()
+    repo = EntityAccessRepo(pool)
+    sid = uuid4()
+    await repo.record_accesses(uuid4(), uuid4(), ["a"], session_id=sid)
+    args = conn.execute.await_args.args
+    assert "last_session_id" in args[0]
+    assert args[4] == sid  # $4 = session stamp
+
+
+@pytest.mark.asyncio
+async def test_apply_feedback_scopes_by_tenant_session_and_window():
+    pool, conn = _pool_with_conn()
+    conn.execute = AsyncMock(return_value="UPDATE 3")
+    repo = EntityAccessRepo(pool)
+    user, proj, sid = uuid4(), uuid4(), uuid4()
+    turn_at = datetime.now(timezone.utc)
+
+    n = await repo.apply_feedback(user, proj, sid, 1, turn_at)
+
+    assert n == 3
+    sql, *params = conn.execute.await_args.args
+    assert "user_id = $1 AND project_id = $2" in sql      # tenancy scope
+    assert "last_session_id = $3" in sql                   # session attribution
+    assert "BETWEEN" in sql                                # time window
+    assert params[:4] == [user, proj, sid, 1.0]
+
+
+@pytest.mark.asyncio
+async def test_apply_feedback_never_raises():
+    pool = AsyncMock()
+
+    @asynccontextmanager
+    async def _boom():
+        raise RuntimeError("pg down")
+        yield  # pragma: no cover
+
+    pool.acquire = _boom
+    repo = EntityAccessRepo(pool)
+    assert await repo.apply_feedback(
+        uuid4(), uuid4(), uuid4(), -1, datetime.now(timezone.utc)
+    ) == 0
 
 
 @pytest.mark.asyncio
