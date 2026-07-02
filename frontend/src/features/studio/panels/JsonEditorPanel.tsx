@@ -15,6 +15,7 @@ import { json } from '@codemirror/lang-json';
 import { jsonSchema } from 'codemirror-json-schema';
 import { getJsonDocumentProvider } from '../documents/registry';
 import { useJsonDocument } from '../documents/useJsonDocument';
+import { jsonEditorTheme } from './jsonEditorTheme';
 
 interface JsonEditorParams { docType?: unknown; resourceId?: unknown }
 
@@ -97,9 +98,12 @@ export function JsonEditorPanel(props: IDockviewPanelProps) {
     return () => window.removeEventListener('keydown', onKey);
   }, [onSave]);
 
+  // J2 — theme from the app's CSS variables (follows dark/light/sepia/oled live);
+  // paired with theme="none" below so @uiw's hard-coded light default never applies.
   const extensions = useMemo(() => {
     const schema = provider?.schema;
-    return schema ? [json(), jsonSchema(schema as never)] : [json()];
+    const lang = schema ? [json(), jsonSchema(schema as never)] : [json()];
+    return [...lang, ...jsonEditorTheme];
   }, [provider]);
 
   if (!target.docType || !target.resourceId) {
@@ -160,6 +164,7 @@ export function JsonEditorPanel(props: IDockviewPanelProps) {
         <CodeMirror
           value={text}
           height="100%"
+          theme="none"
           extensions={extensions}
           onChange={onChange}
           basicSetup={{ lineNumbers: true, foldGutter: true }}
