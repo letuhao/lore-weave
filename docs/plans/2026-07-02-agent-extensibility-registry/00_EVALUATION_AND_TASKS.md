@@ -262,8 +262,10 @@ The PO has authorized a **continuous, no-human-in-loop implementation**: the hum
 - [ ] REG-P1-11 live-LLM E2E (next-session injection proven) (PENDING — stack rebuild)
 - [~] REG-P1-12 Proposals inbox — ProposalsView (approve/reject/filter) built + mounted in ProposalsPanel; standalone route PENDING
 - [x] REG-P1-13 Studio shells: extensions+proposals panels + skill-editor singleton registered; `ui_open_studio_panel` enum extended + contract regen; **panelCatalogContract 3/3 + BE contract 20 pass + FE tsc clean**. Live browser smoke rides stack rebuild.
-- [x] **E2E slice (backend): p1_rest_smoke.ps1 25/25 vs live PG + MCP propose call verified**
-- [ ] **E2E slice remaining: E2E-P1-E/G (live-LLM + browser), E2E-X-B(skills-quota)**
+- [x] **E2E slice (backend): p1_rest_smoke.ps1 29/29 vs live PG + MCP propose call verified**
+- [x] **E2E stack-rebuild (2026-07-03, live full stack): `p1_edge_smoke.ps1` 6/6 — BFF proxy CRUD, ai-gateway federates all 5 `registry_` tools (prefix), agent-propose THROUGH gateway → proposal row (envelope owner survived federation).**
+- [x] **E2E-P1-B/D/E full-turn injection (live LLM): published skill (real test account) → `/internal/skills` (chat-container fetch) → `user_skills_block` → Qwen-7B turn EMITTED the skill's marker `XYZZY-INJECTED` (asst content == marker; breakdown persisted). Agent-propose loop proven through the gateway.**
+- [ ] **E2E-P1-G browser panel-open (Playwright): remaining — deterministic contract chain already green (panelCatalogContract 3/3).**
 - [ ] **GUI checklist ticked: §0, §1, §4, §6, §7, §9, §10(P1 rows)** (FE pending)
 
 ### P2 — Per-user federation

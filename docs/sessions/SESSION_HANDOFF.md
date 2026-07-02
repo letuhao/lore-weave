@@ -18,11 +18,15 @@
 > call real /v1/agent-registry) + 3 studio panels (ExtensionsPanel hub, ProposalsPanel, SkillEditorPanel singleton) +
 > `ui_open_studio_panel` enum(extensions,proposals) + contract regen. Verified: **panelCatalogContract 3/3 + BE contract 20
 > + FE tsc clean (all NEW files; pre-existing common.json errors are the OTHER track's uncommitted ModelPicker i18n, not ours)**.
-> **NEXT (P1 remaining):** SkillProposalCard (chat render of registry_propose_skill result — REG-P1-08), "Save as skill"
-> affordance (P1-10), standalone /extensions route (two-shells for P1-09/12); then the **P1 stack rebuild** (rebuild
-> agent-registry + ai-gateway + chat + BFF images → through-the-edge E2E + full-turn skill injection E2E-P1-B/D + live-LLM
-> agent-propose loop E2E-P1-E + browser panel-open E2E-P1-G all ride this). Then P2 (per-user federation) → P3 (external
-> MCP+security) → P4 → P5.
+> **STACK-REBUILD E2E DONE ✅ (2026-07-03, full live stack):** `p1_edge_smoke.ps1` 6/6 — BFF proxy CRUD + ai-gateway
+> federates all 5 `registry_` tools (prefix) + agent-propose THROUGH the gateway → proposal row (envelope owner survived
+> federation). **Full-turn injection PROVEN LIVE:** published user skill (real test account) → `/internal/skills` (fetched
+> INSIDE the chat container) → `user_skills_block` → a real **Qwen-7B** turn EMITTED the skill's marker `XYZZY-INJECTED`
+> (assistant content == the marker). Post-rebuild /review-impl fixes committed (`02f2a3bbd`: robust `errors.As` dup-detection
+> + precise `shadowed_system`; p1_rest_smoke 29/29). **NEXT (P1 tail):** browser panel-open smoke (E2E-P1-G, Playwright —
+> contract chain already green), deferred FE (SkillProposalCard `D-REG-SKILLPROPOSAL-CARD` waits for chat-quality track
+> quiescence, "Save as skill", standalone /extensions route). Then **P2 (per-user federation)** → P3 (external MCP+security)
+> → P4 → P5.
 > **Deferred:** `D-REG-BOOK-GRANT` (book-tier writes 501 until E0 grant client; DL-2). **Decisions:** see
 > `docs/plans/2026-07-02-agent-extensibility-registry/DECISION_LOG.md` (DL-1..5).
 >
