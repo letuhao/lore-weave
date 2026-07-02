@@ -233,36 +233,48 @@ class BookClient:
         )
         return self._raise_for_status(resp)
 
+    # book-service parseLimitOffset CLAMPS limit to 100 (server.go) — asking for
+    # more silently returns 100, so a full listing must paginate by offset.
+    _CHAPTERS_PAGE_LIMIT = 100
+
     async def list_chapters(
-        self, book_id: UUID, bearer: str, *, limit: int = 200,
+        self, book_id: UUID, bearer: str, *, limit: int = 2000,
     ) -> list[dict[str, Any]]:
-        """A3 decompose — the book's ACTIVE chapters in reading order
-        (`sort_order, created_at`), each `{chapter_id, title, sort_order}`. The
-        planner maps the structure template's beats onto these existing chapters
-        (it never mints chapters). `get_chapter_sort_orders` is insufficient — it
-        needs the ids first; this is the enumerate-then-map source.
+        """The book's ACTIVE chapters in reading order (`sort_order,
+        created_at`), each `{chapter_id, title, sort_order}` — the A3 planner's
+        enumerate-then-map source AND the authoring-run gate's scope-membership
+        truth. Paginates in 100-chapter pages (book-service clamps any larger
+        page limit to 100 — a single request can NEVER see a >100-chapter book
+        whole) until a short page or `limit` total rows.
 
         404 (book missing / not owned) → `[]` (the endpoint already gated on the
         Work, so this is effectively "no chapters"); 5xx / transport →
-        BookClientError. `title` may be null (untitled chapter) → coerced to ''.
-        `limit` defaults to 200 (book-service's page max); a book with more
-        chapters than `plan_max_chapters` is refused by the planner, so a single
-        page suffices for A3."""
-        resp = await self._request(
-            "GET", f"/v1/books/{book_id}/chapters", bearer,
-            params={"limit": limit, "lifecycle_state": "active"},
-        )
-        if resp.status_code == 404:
-            return []
-        body = self._raise_for_status(resp)
+        BookClientError. `title` may be null (untitled chapter) → coerced to ''."""
         out: list[dict[str, Any]] = []
-        for it in body.get("items", []) or []:
-            out.append({
-                "chapter_id": it.get("chapter_id"),
-                "title": it.get("title") or "",
-                "sort_order": it.get("sort_order"),
-            })
-        return out
+        offset = 0
+        while len(out) < limit:
+            resp = await self._request(
+                "GET", f"/v1/books/{book_id}/chapters", bearer,
+                params={
+                    "limit": self._CHAPTERS_PAGE_LIMIT,
+                    "offset": offset,
+                    "lifecycle_state": "active",
+                },
+            )
+            if resp.status_code == 404:
+                return []
+            body = self._raise_for_status(resp)
+            items = body.get("items", []) or []
+            for it in items:
+                out.append({
+                    "chapter_id": it.get("chapter_id"),
+                    "title": it.get("title") or "",
+                    "sort_order": it.get("sort_order"),
+                })
+            if len(items) < self._CHAPTERS_PAGE_LIMIT:
+                break
+            offset += len(items)
+        return out[:limit]
 
 
 def init_book_client() -> BookClient:
