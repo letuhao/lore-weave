@@ -18,8 +18,8 @@ from app.db.repositories.entity_access import EntitySalience
 NOW = datetime(2026, 7, 2, tzinfo=timezone.utc)
 
 
-def _e(eid: str, rank: float):
-    return SimpleNamespace(entity_id=eid, rank_score=rank)
+def _e(eid: str, rank: float, is_pinned: bool = False):
+    return SimpleNamespace(entity_id=eid, rank_score=rank, is_pinned=is_pinned)
 
 
 def _s(eid: str, count: int, age_days: float) -> EntitySalience:
@@ -66,6 +66,21 @@ def test_stable_order_on_equal_blended_rank():
     sal = {"a": _s("a", 10, 0), "b": _s("b", 10, 0)}  # identical → order preserved
     out = _blend(ents, sal)
     assert [e.entity_id for e in out] == ["a", "b"]
+
+
+def test_pinned_entity_always_leads_even_vs_high_salience():
+    # a is pinned but never accessed; b is a heavily-accessed non-pin. The pin MUST
+    # stay first (else full-mode budget-trim, which pops the tail, could drop it).
+    ents = [_e("a_pin", 0.3, is_pinned=True), _e("b_hot", 0.9)]
+    out = _blend(ents, {"b_hot": _s("b_hot", 1000, 0)}, weight=0.6)
+    assert [e.entity_id for e in out] == ["a_pin", "b_hot"]
+
+
+def test_pins_ordered_among_themselves_by_salience():
+    ents = [_e("p_cold", 0.5, is_pinned=True), _e("p_hot", 0.5, is_pinned=True), _e("n", 0.4)]
+    out = _blend(ents, {"p_hot": _s("p_hot", 100, 0)}, weight=0.3)
+    # both pins lead the non-pin; the accessed pin leads the cold pin.
+    assert [e.entity_id for e in out] == ["p_hot", "p_cold", "n"]
 
 
 def test_rank_score_left_untouched():

@@ -77,5 +77,13 @@ def blend_entity_salience(
         norm = (decayed.get(eid, 0.0) / max_d) if eid else 0.0
         return getattr(e, "rank_score", 0.0) + weight * norm
 
-    # Python's sort is stable → equal blended ranks preserve the incoming order.
-    return sorted(entities, key=_blended, reverse=True)
+    # PINS LEAD, ALWAYS. A user-pinned entity is "always in context" — it must never
+    # be re-ranked below a high-salience non-pinned one, or the full-mode budget-trim
+    # (which pops from the tail) could drop the pin. Sort key = (is_pinned, blended),
+    # reverse → all pins first (blended-ordered among themselves), then the rest.
+    # Python's sort is stable → equal keys preserve the incoming order.
+    return sorted(
+        entities,
+        key=lambda e: (bool(getattr(e, "is_pinned", False)), _blended(e)),
+        reverse=True,
+    )
