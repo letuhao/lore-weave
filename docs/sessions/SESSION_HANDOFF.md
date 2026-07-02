@@ -57,9 +57,13 @@
 > **LIVE SMOKE PASS (per user decision "do the live smoke"):** in-container against real gemma QAT (200K) — forced
 > compaction (10034→~2880 tok), asserted **no orphan**, sent the compacted tool-containing array back to gemma →
 > **provider accepted on BOTH paths** (run1 summarize-success w/ real synopsis; run2 summarize-fail→truncate fallback,
-> both orphan-free + accepted). chat-service **525 passed**; compaction 13 tests. **Wave A is now solid.** LOW items
-> left un-fixed (noted, optional): intra-turn tool-loop `working` isn't re-compacted per iteration (bounded by
-> max_iterations); `estimate_messages_tokens` ignores assistant `tool_calls` args (no cross-turn impact).
+> both orphan-free + accepted). chat-service **525 passed**; compaction 13 tests. **Wave A is now solid.**
+> **LOW items CLEARED (`2b25bd923`):** (1) the tool loop now re-compacts `working` at the top of EVERY pass
+> (atom-grouped, guarded, summarizer=session model; `effective_limit` threaded into `_stream_with_tools`) so a long
+> multi-tool turn can't overflow mid-turn — +2 wiring tests (fires per pass with limit / skips when None); (2)
+> `estimate_messages_tokens` now counts assistant `tool_calls` (name + arguments JSON) — +1 test. In-loop compaction
+> reuses the already-live-proven `compact_messages` (provider-accepts the compacted tool array) — covered transitively,
+> not separately live-smoked. **chat-service 528 passed; provider-gate green. Wave A fully closed.**
 
 > **▶ Writing Studio foundation SHIPPED + PROVEN + PR'd 2026-07-02 (`feat/writing-studio`, 130 commits → `main`).**
 > Frame + palette (⌘P/⌘⇧P) + share-data (StudioHost/bus/registry #08) + navigator (#02 search/totals) + Compose
