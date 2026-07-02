@@ -332,6 +332,10 @@ class EditorContext(BaseModel):
     which chapter the assistant is editing (for the proposal's chapter guard)."""
     book_id: str
     chapter_id: str
+    # RAID C1 (DR-C1) — optional active chapter/scene title, matched by
+    # scene_match steering entries (case-insensitive substring). Additive:
+    # older FEs simply never send it and scene_match entries stay dormant.
+    chapter_title: str | None = None
 
 
 class BookContext(BaseModel):

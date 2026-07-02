@@ -36,6 +36,12 @@ class Settings(BaseSettings):
     # knowledge_service_url (gateway grounding is P6, not P0).
     ai_gateway_url: str = "http://ai-gateway:8210"
 
+    # RAID C1 (DR-C1) — per-book steering. book-service serves the enabled
+    # entries via GET /internal/books/{id}/steering; failures degrade to []
+    # (the turn proceeds steering-free), so the timeout stays tight.
+    book_service_url: str = "http://book-service:8082"
+    book_steering_timeout_s: float = 2.0
+
     # ARCH-1 C3 — default stream event format when a request sends no
     # x-loreweave-stream-format header. "legacy" (LoreWeave SSE vocabulary) or
     # "agui" (AG-UI protocol). Per-request header overrides this; the default

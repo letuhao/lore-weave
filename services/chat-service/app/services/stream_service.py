@@ -1166,6 +1166,35 @@ async def stream_response(
             " Never ask the user for the book_id and never pass a placeholder."
         )
 
+    # ── RAID C1 (DR-C1) — per-book steering ─────────────────────────────────
+    # Book-scoped turn → fetch the ENABLED steering entries from book-service,
+    # select the ones matching this turn (always ∪ #name-mentioned manual/auto
+    # ∪ title-matched scene_match), render ONE <steering> system part placed
+    # right after the main system prompt on BOTH assembly paths below.
+    # Guarded end-to-end: the client degrades to [] and this block swallows
+    # everything else — a steering failure never affects the turn.
+    steering_block: str | None = None
+    if _ctx_book_id:
+        try:
+            from app.client.book_steering_client import get_book_steering_client
+            from app.services.steering import render_steering_block, select_steering
+
+            _steering_entries = await get_book_steering_client().get_steering(str(_ctx_book_id))
+            if _steering_entries:
+                _active_title = (editor_context or {}).get("chapter_title")
+                _steering_selected = select_steering(
+                    _steering_entries,
+                    message=user_message_content,
+                    active_title=_active_title,
+                )
+                steering_block = render_steering_block(_steering_selected) or None
+        except Exception:
+            logger.warning(
+                "steering fetch/render failed for book %s — turn proceeds without steering",
+                _ctx_book_id, exc_info=True,
+            )
+            steering_block = None
+
     use_anthropic_cache = (
         creds.provider_kind == "anthropic"
         and kctx.stable_context.strip() != ""
@@ -1194,6 +1223,8 @@ async def stream_response(
                 "text": system_prompt.strip(),
                 "cache_control": {"type": "ephemeral"},
             })
+        if steering_block:  # RAID C1 — per-book steering, right after the system prompt
+            parts.append({"type": "text", "text": steering_block, "cache_control": {"type": "ephemeral"}})
         if glossary_skill:
             parts.append({"type": "text", "text": glossary_skill, "cache_control": {"type": "ephemeral"}})
         if knowledge_skill:
@@ -1217,6 +1248,8 @@ async def stream_response(
             stripped = system_prompt.strip()
             if stripped:
                 system_parts.append(stripped)
+        if steering_block:  # RAID C1 — per-book steering, right after the system prompt
+            system_parts.append(steering_block)
         if glossary_skill:
             system_parts.append(glossary_skill)
         if knowledge_skill:

@@ -177,6 +177,9 @@ func (s *Server) Router() http.Handler {
 		r.Get("/books/{book_id}/access", s.getBookAccess)
 		// KG-ML M3 (DD3) — cross-service reader-language resolver (M4/M7).
 		r.Get("/books/{book_id}/reader-language", s.getInternalReaderLanguage)
+		// RAID C1 (DR-C1) — chat-service fetches the ENABLED steering entries
+		// to render the <steering> system part on book-scoped turns.
+		r.Get("/books/{book_id}/steering", s.getInternalBookSteering)
 		// G4 (W2) — world membership for the knowledge-service world-rollup
 		// subgraph. Owner-scoped by the ?user_id param (404 if not owned).
 		r.Get("/worlds/{world_id}/books", s.internalListWorldBooks)
@@ -232,6 +235,14 @@ func (s *Server) Router() http.Handler {
 			// readable book), so NOT in the mutating-routes grant table.
 			r.Get("/reader-language", s.getReaderLanguage)
 			r.Put("/reader-language", s.setReaderLanguage)
+
+			// RAID C1 (DR-C1) — per-book steering store. List is VIEW-gated
+			// (steering renders into any collaborator's chat on this book);
+			// writes are EDIT-gated (same tier as editing chapters).
+			r.Get("/steering", s.listSteering)
+			r.Post("/steering", s.createSteering)
+			r.Put("/steering/{steering_id}", s.updateSteering)
+			r.Delete("/steering/{steering_id}", s.deleteSteering)
 
 			r.Get("/cover", s.getCover)
 			r.Post("/cover", s.uploadCover)

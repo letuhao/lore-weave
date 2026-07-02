@@ -87,6 +87,11 @@ func mutatingRoutes() []grantRoute {
 		{http.MethodPost, "/v1/books/{b}/chapters/{c}/media-versions", GrantEdit, `{}`},
 		{http.MethodPost, "/v1/books/{b}/chapters/{c}/audio/generate", GrantEdit, `{}`},
 		{http.MethodPost, "/v1/books/{b}/import", GrantEdit, ``},
+		// RAID C1 — steering writes are edit-tier (DR-C1: an edit-collaborator
+		// CAN author steering; a VIEW grantee cannot).
+		{http.MethodPost, "/v1/books/{b}/steering", GrantEdit, `{"name":"tone","body":"x"}`},
+		{http.MethodPut, "/v1/books/{b}/steering/" + uuid.NewString(), GrantEdit, `{"name":"tone","body":"x"}`},
+		{http.MethodDelete, "/v1/books/{b}/steering/" + uuid.NewString(), GrantEdit, ``},
 		// manage-tier
 		{http.MethodDelete, "/v1/books/{b}/chapters/{c}/purge", GrantManage, ``},
 		{http.MethodDelete, "/v1/books/{b}/chapters/{c}/media-versions/" + uuid.NewString(), GrantManage, ``},
@@ -121,6 +126,9 @@ func readRoutes() []grantRoute {
 		// KG-ML M3 — reader-language read is view-gated (canViewOrPublic): a
 		// non-grantee on a private book gets 404 (no existence oracle).
 		{http.MethodGet, "/v1/books/{b}/reader-language", GrantView, ``},
+		// RAID C1 — steering list is view-gated (renders into any
+		// collaborator's chat on the book).
+		{http.MethodGet, "/v1/books/{b}/steering", GrantView, ``},
 	}
 }
 
