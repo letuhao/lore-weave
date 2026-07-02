@@ -118,6 +118,7 @@ export function useNotificationList() {
     loadingMore,
     hasMore: items.length < total,
     hasUnread: unreadCount > 0,
+    unreadCount,
     loadMore,
     markOne,
     markAll,

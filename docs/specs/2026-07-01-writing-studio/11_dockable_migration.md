@@ -1,6 +1,6 @@
 # 11 · Dockable Migration — Wave 1 (foundation seams + user-scoped panels)
 
-> **Status:** 🔨 EXECUTING · 2026-07-02 · branch `feat/studio-agent-raid`
+> **Status:** ✅ W1 SHIPPED 2026-07-02 (F1+F2+F3 + 4 panels + enum/contract; live browser smoke deferred `D-DOCKW1-LIVE-SMOKE`) · branch `feat/studio-agent-raid`
 > **Type:** FE (+1 BE touch: `ui_open_studio_panel` enum + contract regen)
 
 ## Why

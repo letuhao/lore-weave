@@ -1,5 +1,20 @@
 # ▶▶ NEXT SESSION STARTS HERE — **AUTONOMOUS RUN (user-mandated, fable-5): Track 4 salience (P0/P1/P2 shipped+reviewed; eval KG standing up — publish `_text` bug class fixed 5 sites) → P3/P4/P5 → RAID C5/C4/C1/C2/C6/D (decision records) → OSS wave. Contract: local LLM only (LM Studio BYOK; NEVER the gpt-4o probe), push/PR = normal delivery, hard-stops = destructive-ops-outside-test-account + 3-strike.** Spec [`salience-track4`](../specs/2026-07-02-knowledge-salience-track4.md) + [`07S`](../specs/2026-07-01-writing-studio/07S_studio_agent_standard.md) + plan [`studio-agent-raid`](../plans/2026-07-02-studio-agent-raid.md). · 2026-07-02**
 
+> **▶ STUDIO DOCKABLE MIGRATION — WAVE 1 SHIPPED 2026-07-02** (spec [`11_dockable_migration.md`](../specs/2026-07-01-writing-studio/11_dockable_migration.md),
+> human-in-loop track running IN PARALLEL with the autonomous run — conflict-first ordering per W1-5). Foundation
+> seams: **F2 status-bar contribution API** (`registerStatusBarItem`/`useStatusBarItems` — ⚠️ **RAID A3 status-bar
+> meter MUST register through this, never edit `StudioStatusBar.tsx` directly**; first consumers shipped: unread
+> badge + 24h cost meter, bus-owned `notificationsUnread`), **F1 `openPanel(…, {params})`** deep-link (+
+> `updateParameters` when open), **F3 `resolveStudioLink`/`followStudioLink`** (same-book chapter→focus, panel
+> paths→openPanel, fallback = NEW TAB — `navigate()` in panels is a defect). Panels: `usage`/`trash` thin wraps
+> (TrashPage `embedded` prop), `notifications` (resolver + bus unread sync), `settings` (route tab → `params.tab`).
+> `ui_open_studio_panel` enum +4 + contract JSON regen done INSIDE the Track-4 window (W1-7 — later RAID B/C waves
+> regen on top, no race). VERIFY: FE 3085/3085 + chat-service frontend-tools 43 green.
+> **Deferred `D-DOCKW1-LIVE-SMOKE`** (gate #4, needs stack+LLM): live agent→panel browser smoke for the 4 new enum
+> values — the loop itself was live-proven pre-wave; the extension is enum-only + contract-tested both sides.
+> **⚠️ Parallel-run lesson (live hit):** Track-4 commit `ab0523df6` swept this track's STAGED F1/F3 files into its
+> own commit (shared working tree) — protocol now: `git add … && git commit -- <explicit paths>` in ONE invocation.
+
 > **▶ Track 4 SALIENCE (knowledge) — P0+P1+P2 SHIPPED + REVIEWED 2026-07-02.** Spec `85a0fb961`. **P0 substrate**
 > (`20cf1e626` + review `e7e96fa13`): `entity_access_log` (tenancy PK user+project+entity), `EntityAccessRepo`
 > (fire-and-forget, never raises), `BuiltContext.surfaced_entity_ids`, router records off-latency-path (strong task
@@ -25,9 +40,11 @@
 > or P3 per-entity signals. **P2 LIVE-PROVEN** e2e (build → /internal/rerank 200 local bge-reranker → reorder logged;
 > passage-hit .75→.80 n=12) — stays per-project opt-in. Spec §8b has the table. **Review fixes:** config write-path
 > was unreachable (extra=forbid) → added; FE editor PUT-replace would silently CLEAR the rerank keys → preserved-on-
-> omit/clear-on-explicit-empty (+2 tests). **Deferred `D-WORKER-SKIP-FALSE-GREEN` (gate #1 out-of-module):** worker-ai
-> marks a job complete N/N even when EVERY item was skipped ("text unavailable") — the false-green that masked the
-> `_text` bug; needs a skipped-vs-processed distinction in the runner + job row.
+> omit/clear-on-explicit-empty (+2 tests). **`D-WORKER-SKIP-FALSE-GREEN` CLEARED (`b24143d2f`, user fix-now):**
+> `extraction_jobs.items_skipped` column + `skipped_delta` threaded through `_advance_cursor(_and_emit_run)` (both
+> skip sites, tx-fallback preserved) + `_complete_job` stamps error_message when skipped ≥ total ("no work
+> performed") — status stays complete (failed would trip campaign breakers). +4 tests, worker-ai 299 green, DDL
+> applied live, worker-ai rebuilt.
 
 > **▶ STUDIO AGENT RAID — IN PROGRESS 2026-07-02 (`feat/studio-agent-raid`, autonomous run).** Big RAID: agentic
 > chat to industry standard (context meter+compaction, plan-mode, steering, MCP resources/prompts, HITL modes,

@@ -11,6 +11,10 @@ import { WelcomePanel } from '../components/panels/WelcomePanel';
 import { ComposePanel } from './ComposePanel';
 import { EditorPanel } from './EditorPanel';
 import { PlannerPanel } from '@/features/plan-forge/components/PlannerPanel';
+import { UsagePanel } from './UsagePanel';
+import { NotificationsPanel } from './NotificationsPanel';
+import { SettingsPanel } from './SettingsPanel';
+import { TrashPanel } from './TrashPanel';
 
 export interface StudioPanelDef {
   id: string;
@@ -26,6 +30,11 @@ export const STUDIO_PANELS: StudioPanelDef[] = [
   { id: 'compose', component: ComposePanel, titleKey: 'panels.compose.title', descKey: 'panels.compose.desc' },
   { id: 'editor', component: EditorPanel, titleKey: 'panels.editor.title', descKey: 'panels.editor.desc' },
   { id: 'planner', component: PlannerPanel, titleKey: 'panels.planner.title', descKey: 'panels.planner.desc' },
+  // #11 W2 — user-scoped panels (dockable migration wave 1).
+  { id: 'usage', component: UsagePanel, titleKey: 'panels.usage.title', descKey: 'panels.usage.desc' },
+  { id: 'notifications', component: NotificationsPanel, titleKey: 'panels.notifications.title', descKey: 'panels.notifications.desc' },
+  { id: 'settings', component: SettingsPanel, titleKey: 'panels.settings.title', descKey: 'panels.settings.desc' },
+  { id: 'trash', component: TrashPanel, titleKey: 'panels.trash.title', descKey: 'panels.trash.desc' },
   { id: 'welcome', component: WelcomePanel, titleKey: 'welcome.tab', descKey: 'welcome.tab', hiddenFromPalette: true },
 ];
 
