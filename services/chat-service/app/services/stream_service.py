@@ -64,7 +64,13 @@ from app.services.tool_discovery import (
 from app.services.output_extractor import extract_outputs
 from app.services.stream_events import make_emitter
 from app.services.compaction import compact_messages
-from app.services.token_budget import compute_budget
+from app.services.token_budget import (
+    ContextBreakdown,
+    compute_budget,
+    context_budget_event,
+    estimate_messages_tokens,
+    estimate_tokens,
+)
 from app.services.working_memory import resolve_anchor
 
 logger = logging.getLogger(__name__)
@@ -577,6 +583,11 @@ async def _stream_with_tools(
         # in as the agent searches.
         active_tool_names: set[str] = set(discovery_seed_names or ())
         write_passes = 0  # H9 — budget is counted in write passes, not all passes
+        # W1 — the advertised tool schemas are token-measured ONCE per turn, on
+        # the first pass that offers tools (the advertise chokepoint), split
+        # frontend-tools vs server/MCP tools; the consumer folds the chunk into
+        # the contextBudget frame at finish.
+        schema_tokens_reported = False
         # H7 — same-op Tier-A auto-write counter (resets never within a turn).
         tier_a_op_counts: dict[str, int] = {}
         # #18 — per-turn planner-call counter (mechanical hard-stop on the self-recheck loop).
@@ -601,6 +612,7 @@ async def _stream_with_tools(
             # turn overflows the window mid-turn. Atom-grouped truncation keeps
             # tool-call/result pairs intact; guarded so it can never break the pass.
             if effective_limit:
+                _rc = None
                 try:
                     working, _rc = await compact_messages(
                         working, effective_limit=effective_limit, summarize=_loop_summarizer,
@@ -613,6 +625,11 @@ async def _stream_with_tools(
                         )
                 except Exception:
                     logger.warning("in-loop compaction skipped (error)", exc_info=True)
+                # W1 — surface the compaction to the client (only when it DID
+                # something). Yielded outside the guard try so a consumer-side
+                # throw is never swallowed as a "compaction error".
+                if _rc is not None and _rc.did_work:
+                    yield {"compaction": _rc.to_event()}
             # The write budget — NOT the total-pass count — decides the forced
             # tool-free final pass (D7). Once the write budget is spent, the next
             # pass must answer in text.
@@ -649,6 +666,22 @@ async def _stream_with_tools(
                 if advertised:
                     request_kwargs["tools"] = advertised
                     request_kwargs["tool_choice"] = "auto"
+                    if not schema_tokens_reported:
+                        schema_tokens_reported = True
+                        _fe_tok = 0
+                        _mcp_tok = 0
+                        for _td in advertised:
+                            _fn = _td.get("function") if isinstance(_td, dict) else None
+                            _nm = _fn.get("name") if isinstance(_fn, dict) else None
+                            _tok = estimate_tokens(json.dumps(_td))
+                            if _nm and is_frontend_tool(_nm):
+                                _fe_tok += _tok
+                            else:
+                                _mcp_tok += _tok
+                        yield {"schema_tokens": {
+                            "frontend_tool_schemas": _fe_tok,
+                            "mcp_tool_schemas": _mcp_tok,
+                        }}
                 else:
                     # Ask mode filtered everything out — run the pass tool-free
                     # (an empty tools array 400s on some providers).
@@ -1253,6 +1286,10 @@ async def stream_response(
         session_id, history_limit,
     )
     messages: list[dict] = [{"role": r["role"], "content": r["content"]} for r in reversed(rows)]
+    # W1 — measure the replayed history NOW, before the system parts are inserted
+    # below, so the breakdown's `history` bucket is exactly the prior turns
+    # (includes the just-persisted latest user message).
+    _history_tokens = estimate_messages_tokens(messages)
 
     # ── Compose the system message ──────────────────────────────────────────
     # Order: memory block → session-level system prompt → user's per-message
@@ -1493,6 +1530,45 @@ async def stream_response(
     if wm_tail:
         messages.insert(-1, {"role": "system", "content": wm_tail})
 
+    # ── W1: per-category context breakdown ───────────────────────────────────
+    # Measured ONCE per turn, at assembly, over the EXACT strings injected above
+    # (cheap — estimate_tokens is a linear char scan). The tool-schema buckets are
+    # measured later at the advertise chokepoint and the tool-result bucket at
+    # finish; both are folded into this object before the frame is emitted.
+    if use_anthropic_cache:
+        _mem_tokens = estimate_tokens(kctx.stable_context.strip()) + estimate_tokens(
+            kctx.volatile_context.strip()
+        )
+    else:
+        _mem_tokens = estimate_tokens((kctx.context or "").strip())
+    context_breakdown = ContextBreakdown(
+        categories={
+            "system_prompt": estimate_tokens(system_prompt.strip() if system_prompt else ""),
+            "memory_knowledge": _mem_tokens,
+            "working_memory": estimate_tokens(wm_pinned) + estimate_tokens(wm_tail),
+            "steering": estimate_tokens(steering_block),
+            "skills": sum(
+                estimate_tokens(s)
+                for s in (
+                    glossary_skill, knowledge_skill, universal_skill,
+                    plan_forge_skill, skill_meta_block,
+                )
+                if s
+            ),
+            "plan_nudge": estimate_tokens(plan_mode_block),
+            "book_note": estimate_tokens(book_context_note),
+            "attached_context": (
+                estimate_tokens(
+                    f"The user has attached the following context:\n\n{context}"
+                )
+                if context
+                else 0
+            ),
+            "history": _history_tokens,
+        },
+        knowledge_sections=dict(kctx.sections or {}),
+    )
+
     # ── Phase 1c-ii: gateway resolves api_key / base_url / model_string
     # internally; service no longer needs them. We keep `creds.provider_kind`
     # for the Anthropic cache_control branch above.
@@ -1641,6 +1717,7 @@ async def stream_response(
         effective_enabled_count=len(effective_enabled) if curated_mode else 0,
         hot_seed_count=len(discovery_seed_names or ()),
         permission_mode=permission_mode,
+        context_breakdown=context_breakdown,
     ):
         yield line
 
@@ -1734,6 +1811,7 @@ async def _emit_chat_turn(
     hot_seed_count: int = 0,
     permission_mode: str = "write",
     pre_tool_chunks: list[dict] | None = None,
+    context_breakdown: ContextBreakdown | None = None,
 ) -> AsyncGenerator[str, None]:
     """Shared Stream→persist→finish body for a chat turn (fresh OR C6 resume).
 
@@ -1750,6 +1828,11 @@ async def _emit_chat_turn(
     full_content: list[str] = []
     full_reasoning: list[str] = []
     tool_calls_history: list[dict] = []
+    # W1 — advertised tool-schema tokens, reported once by the tool loop's
+    # first pass ({"schema_tokens": ...} chunk); folded into the contextBudget
+    # frame + the persisted context_breakdown at finish.
+    _fe_schema_tok = 0
+    _mcp_schema_tok = 0
     last_usage = None
     import time as _time
     stream_start = _time.monotonic()
@@ -1802,6 +1885,7 @@ async def _emit_chat_turn(
     # un-compacted messages so a bug here can never break the turn. summarize=None →
     # deterministic micro-evict of tool results + hard-truncate (no LLM in the path).
     _eff_limit: int | None = None
+    _compaction = None
     try:
         _eff_limit = compute_budget(
             used_tokens=0,
@@ -1826,6 +1910,12 @@ async def _emit_chat_turn(
                 )
     except Exception:  # never let compaction break the turn
         logger.warning("compaction skipped (error)", exc_info=True)
+    # W1 — surface pre-send compaction to the client when it DID something
+    # (previously log-only). Outside the guard try so a consumer-side throw
+    # is never mis-swallowed as a compaction error.
+    if _compaction is not None and _compaction.did_work:
+        for line in emitter.compaction(_compaction.to_event()):
+            yield line
 
     turn_succeeded = False
     post_finish_state: dict | None = None
@@ -1893,6 +1983,18 @@ async def _emit_chat_turn(
                 if activity is not None:
                     for line in emitter.activity(activity):
                         yield line
+                continue
+            # W1 — tool-schema token measurement from the loop's first pass.
+            schema_tokens = chunk_data.get("schema_tokens")
+            if schema_tokens is not None:
+                _fe_schema_tok = int(schema_tokens.get("frontend_tool_schemas", 0))
+                _mcp_schema_tok = int(schema_tokens.get("mcp_tool_schemas", 0))
+                continue
+            # W1 — in-loop (mid-turn) compaction did work → surface it.
+            compaction_ev = chunk_data.get("compaction")
+            if compaction_ev is not None:
+                for line in emitter.compaction(compaction_ev):
+                    yield line
                 continue
             # A2A phase-2: composer drafting on/off → transient UI indicator.
             composing = chunk_data.get("composing")
@@ -2004,15 +2106,46 @@ async def _emit_chat_turn(
                     json.dumps(tool_calls_history) if tool_calls_history else None
                 )
 
+                # ── W1: finalize the per-turn context frame payload ─────────
+                # Fold the runtime-measured buckets (tool schemas from the
+                # advertise chokepoint, this turn's tool RESULTS) into the
+                # assembly-time breakdown, then build the ONE payload that is
+                # both persisted (context_breakdown JSONB) and emitted as the
+                # contextBudget CUSTOM frame below. Old keys stay byte-identical.
+                _tool_results_tok = 0
+                for _tc in tool_calls_history:
+                    if _tc.get("ok"):
+                        _tool_results_tok += estimate_tokens(
+                            json.dumps(_tc.get("result"), default=str)
+                        )
+                    else:
+                        _tool_results_tok += estimate_tokens(
+                            json.dumps({"error": _tc.get("error")}, default=str)
+                        )
+                if context_breakdown is not None:
+                    context_breakdown.categories["frontend_tool_schemas"] = _fe_schema_tok
+                    context_breakdown.categories["mcp_tool_schemas"] = _mcp_schema_tok
+                    context_breakdown.categories["tool_results"] = _tool_results_tok
+                _ctx_payload = context_budget_event(
+                    compute_budget(
+                        used_tokens=int(input_tok or 0),
+                        context_length=creds.context_length,
+                        max_output_tokens=int(gen_params.get("max_tokens") or 0),
+                    ),
+                    context_breakdown,
+                )
+
                 await conn.execute(
                     """
                     INSERT INTO chat_messages
                       (message_id, session_id, owner_user_id, role, content, content_parts,
-                       sequence_num, input_tokens, output_tokens, model_ref, parent_message_id, branch_id, tool_calls)
-                    VALUES ($1,$2,$3,'assistant',$4,$5::jsonb,$6,$7,$8,$9,$10, 0, $11::jsonb)
+                       sequence_num, input_tokens, output_tokens, model_ref, parent_message_id, branch_id, tool_calls,
+                       context_breakdown)
+                    VALUES ($1,$2,$3,'assistant',$4,$5::jsonb,$6,$7,$8,$9,$10, 0, $11::jsonb, $12::jsonb)
                     """,
                     msg_id, session_id, user_id, final_text, content_parts, seq,
                     input_tok, output_tok, model_ref, parent_message_id, tool_calls_json,
+                    json.dumps(_ctx_payload),
                 )
 
                 # Extract and persist output artifacts
@@ -2111,19 +2244,14 @@ async def _emit_chat_turn(
                 "timeToFirstTokenMs": round(time_to_first_token) if time_to_first_token is not None else None,
             },
         }
-        # RAID Wave A2 — emit the context budget (measured input tokens vs the model's
-        # window) so the FE meter can warn before the next turn. Advisory; NULL
-        # context_length → the event carries pct=None and the meter shows "—".
-        try:
-            _budget = compute_budget(
-                used_tokens=int(input_tok or 0),
-                context_length=creds.context_length,
-                max_output_tokens=int(gen_params.get("max_tokens") or 0),
-            )
-            for line in emitter.context_budget(_budget.to_event()):
-                yield line
-        except Exception:  # never let budget accounting break the finish path
-            pass
+        # RAID Wave A2 + W1 — emit the per-turn context frame (the SAME payload
+        # persisted to chat_messages.context_breakdown above): measured input
+        # tokens vs the model's window + the per-category breakdown. Advisory;
+        # NULL context_length → pct=None and the meter shows "—". No try/except:
+        # both emitters implement context_budget (legacy no-ops) and the payload
+        # was already built on the persist path.
+        for line in emitter.context_budget(_ctx_payload):
+            yield line
         for line in emitter.finish(finish):
             yield line
 

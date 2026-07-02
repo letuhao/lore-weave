@@ -85,6 +85,19 @@ class StreamEmitter(Protocol):
         low-blast auto-commit is visible, not a silent surprise."""
         ...
 
+    def context_budget(self, payload: dict) -> list[str]:
+        """RAID A2 / W1 — the per-turn context-window frame ({used_tokens,
+        context_length, effective_limit, pct} + W1's breakdown / baseline_tokens /
+        until_compact_pct). Legacy clients have no meter → no-op there, but the
+        method MUST exist so the Protocol is honest (no try/except at call sites)."""
+        ...
+
+    def compaction(self, payload: dict) -> list[str]:
+        """W1 — compaction actually changed the prompt this turn. ``payload`` is
+        CompactionReport.to_event(). Feeds the W2 "earlier turns summarized"
+        toast; legacy clients no-op."""
+        ...
+
     def close_message(self) -> list[str]:
         """Close the open assistant/reasoning message — called once the token
         stream ends, before persistence/finish, so the message END frames the
@@ -134,6 +147,15 @@ class LegacyEmitter:
         return []
 
     def agent_surface(self, payload: dict) -> list[str]:
+        return []
+
+    def context_budget(self, payload: dict) -> list[str]:
+        # W1 — legacy clients have no context meter → no-op, but the method
+        # exists so emit sites need no defensive try/except (Protocol parity).
+        return []
+
+    def compaction(self, payload: dict) -> list[str]:
+        # W1 — compaction visibility is an agui affordance; legacy no-op.
         return []
 
     def reasoning_delta(self, delta: str) -> list[str]:
@@ -251,6 +273,17 @@ class AgUiEmitter:
         return [_sse({
             "type": "CUSTOM",
             "name": "contextBudget",
+            "value": payload,
+        })]
+
+    def compaction(self, payload: dict) -> list[str]:
+        # W1 — emitted only when compaction DID something (CompactionReport
+        # .did_work): {triggered, tool_results_cleared, turns_truncated,
+        # summarized, summarize_failed, overflowed, tokens_before, tokens_after,
+        # steps}. The FE shows the "earlier turns summarized/trimmed" toast.
+        return [_sse({
+            "type": "CUSTOM",
+            "name": "compaction",
             "value": payload,
         })]
 

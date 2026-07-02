@@ -121,6 +121,7 @@ app.include_router(voice.router)
 app.include_router(voice.voice_mgmt_router)
 app.include_router(feedback.router)
 app.include_router(internal.router)  # FD-2: chat-turn text fetch for KG extraction
+app.include_router(internal.telemetry_router)  # W1: /internal/tool-health telemetry
 
 
 @app.get("/health", response_class=PlainTextResponse)

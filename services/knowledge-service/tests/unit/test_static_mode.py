@@ -359,3 +359,43 @@ async def test_mode2_split_with_empty_glossary_still_holds_invariant():
     assert built.context == built.stable_context + built.volatile_context
     assert built.stable_context != ""
     assert built.volatile_context != ""
+
+
+# ── W1 — per-section token map (additive) ───────────────────────────────────
+
+
+@pytest.mark.asyncio
+async def test_mode2_sections_cover_rendered_blocks():
+    summaries = AsyncMock(spec=SummariesRepo)
+    summaries.get = AsyncMock(side_effect=[
+        _summary("I am a fantasy novelist."),
+        _summary("Book 1 of 5.", "project", uuid4()),
+    ])
+    glossary_client = AsyncMock(spec=GlossaryClient)
+    glossary_client.select_for_context = AsyncMock(return_value=[_entity()])
+
+    built = await build_static_mode(
+        summaries, glossary_client,
+        user_id=uuid4(), project=_project(), message="who is Alice?",
+    )
+    assert set(built.sections) == {"user", "project", "glossary_entities", "instructions"}
+    assert all(v > 0 for v in built.sections.values())
+    # each section is counted once; the split can't exceed the whole block.
+    assert sum(built.sections.values()) <= built.token_count
+
+
+@pytest.mark.asyncio
+async def test_mode2_sections_omit_absent_blocks():
+    summaries = AsyncMock(spec=SummariesRepo)
+    summaries.get = AsyncMock(side_effect=[None, None])  # no L0, no L1
+    glossary_client = AsyncMock(spec=GlossaryClient)
+    glossary_client.select_for_context = AsyncMock(return_value=[])
+
+    built = await build_static_mode(
+        summaries, glossary_client,
+        user_id=uuid4(), project=_project(), message="hello",
+    )
+    assert "user" not in built.sections
+    assert "glossary_entities" not in built.sections
+    assert built.sections["project"] > 0  # project wrapper always renders
+    assert built.sections["instructions"] > 0

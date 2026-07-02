@@ -73,6 +73,13 @@ class BuiltContext:
     # fire-and-forget (off the latency path) so retrieval salience can be
     # LEARNED (P1). Empty for Mode 1 (no project → no entities).
     surfaced_entity_ids: list[str] = field(default_factory=list)
+    # Chat Quality Wave W1 — per-section token split of `context` (estimate_tokens
+    # over each rendered section, POST-budget-trim), e.g. {"user": ..,
+    # "project": .., "glossary_entities": .., "facts": .., "passages": ..,
+    # "summaries": .., "instructions": ..}. Additive: older callers ignore it;
+    # chat-service nests it under the contextBudget frame's memory_knowledge.
+    # Section keys are omitted when the section wasn't rendered.
+    sections: dict[str, int] = field(default_factory=dict)
 
 
 def split_at_boundary(lines: list[str], stable_line_count: int) -> tuple[str, str, str]:
@@ -128,10 +135,15 @@ async def build_no_project_mode(
         summary = None
     has_bio = summary is not None and summary.content.strip() != ""
     lines = ['<memory mode="no_project">']
+    sections: dict[str, int] = {}  # W1 — per-section token split
     if has_bio:
-        lines.append(f"  <user>{sanitize_for_xml(summary.content)}</user>")
+        user_line = f"  <user>{sanitize_for_xml(summary.content)}</user>"
+        lines.append(user_line)
+        sections["user"] = estimate_tokens(user_line)
     instructions = _INSTRUCTIONS_WITH_BIO if has_bio else _INSTRUCTIONS_NO_BIO
-    lines.append(f"  <instructions>{sanitize_for_xml(instructions)}</instructions>")
+    instructions_line = f"  <instructions>{sanitize_for_xml(instructions)}</instructions>"
+    lines.append(instructions_line)
+    sections["instructions"] = estimate_tokens(instructions_line)
     lines.append("</memory>")
     # K18.9: Mode 1 has no message-dependent content, so the whole block
     # is cacheable. stable carries everything; volatile stays "".
@@ -143,4 +155,5 @@ async def build_no_project_mode(
         token_count=estimate_tokens(context),
         stable_context=stable,
         volatile_context=volatile,
+        sections=sections,
     )

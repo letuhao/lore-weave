@@ -111,6 +111,12 @@ class ContextBuildResponse(BaseModel):
     # older builder that doesn't set it, both stay backward-compatible. Populated
     # by the working_memory selector (M4). See contracts/interview/README.md.
     working_memory: str = ""
+    # Chat Quality Wave W1 — per-section token split of `context` (e.g.
+    # {"glossary_entities": .., "facts": .., "passages": .., "summaries": ..,
+    # "instructions": ..}), read off BuiltContext.sections. ADDITIVE: default {}
+    # so an older builder / degraded path stays backward-compatible; chat-service
+    # nests it under the contextBudget frame's memory_knowledge category.
+    sections: dict[str, int] = {}
 
 
 @router.post("/build", response_model=ContextBuildResponse)

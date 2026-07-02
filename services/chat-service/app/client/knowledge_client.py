@@ -91,6 +91,11 @@ class KnowledgeContext(BaseModel):
     token_count: int = 0
     stable_context: str = ""
     volatile_context: str = ""
+    # W1 — per-section token split of `context` (glossary_entities / facts /
+    # passages / summaries / instructions / ...), the nested detail of the
+    # contextBudget frame's memory_knowledge category. Defaults {} when talking
+    # to an older knowledge-service build (additive contract).
+    sections: dict[str, int] = {}
     # K21-B — per-project tool-calling opt-out, surfaced from
     # knowledge-service `projects.tool_calling_enabled`. Defaults True so
     # an older knowledge-service that omits the field, the no-project

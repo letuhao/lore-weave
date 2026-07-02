@@ -956,3 +956,49 @@ class TestPlannerHardStop:
         with _patch_client(scripts):
             await _drain(_run(scripts, knowledge_client=kc))
         kc.mcp_execute_tool.assert_awaited_once()
+
+
+# ════════════════════════════════════════════════════════════════════════════
+# W1 — tool-schema token measurement at the advertise chokepoint
+# ════════════════════════════════════════════════════════════════════════════
+
+
+class TestW1SchemaTokens:
+    """The first pass that OFFERS tools yields exactly one
+    {"schema_tokens": {frontend_tool_schemas, mcp_tool_schemas}} chunk —
+    the previously-unmeasured hidden bucket of the context breakdown."""
+
+    @pytest.mark.asyncio
+    async def test_first_pass_reports_split_schema_tokens(self):
+        kc = AsyncMock()
+        tools = [
+            {"type": "function", "function": {
+                "name": "memory_search",
+                "parameters": {"type": "object", "properties": {"query": {"type": "string"}}},
+            }},
+            # propose_edit is in FRONTEND_TOOL_NAMES → the frontend bucket.
+            {"type": "function", "function": {
+                "name": "propose_edit",
+                "parameters": {"type": "object", "properties": {"replacement": {"type": "string"}}},
+            }},
+        ]
+        scripts = [[tok("hi"), usage(1, 1), done()]]
+        with _patch_client(scripts):
+            out = await _drain(_run(scripts, knowledge_client=kc, tools=tools))
+        st = [c for c in out if "schema_tokens" in c]
+        assert len(st) == 1, "measured once per turn, at the first advertise"
+        split = st[0]["schema_tokens"]
+        assert set(split) == {"frontend_tool_schemas", "mcp_tool_schemas"}
+        assert split["frontend_tool_schemas"] > 0
+        assert split["mcp_tool_schemas"] > 0
+        # It is the FIRST chunk (before any token), so a consumer can fold it
+        # into the finish-time frame regardless of how the turn ends.
+        assert "schema_tokens" in out[0]
+
+    @pytest.mark.asyncio
+    async def test_no_tools_no_schema_chunk(self):
+        kc = AsyncMock()
+        scripts = [[tok("hi"), usage(1, 1), done()]]
+        with _patch_client(scripts):
+            out = await _drain(_run(scripts, knowledge_client=kc, tools=[]))
+        assert [c for c in out if "schema_tokens" in c] == []

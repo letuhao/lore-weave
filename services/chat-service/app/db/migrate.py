@@ -170,6 +170,17 @@ DO $$ BEGIN
   END IF;
 END $$;
 
+-- Chat Quality Wave W1 — per-turn context-breakdown frame persisted on the
+-- assistant message ({used_tokens, context_length, effective_limit, pct,
+-- until_compact_pct, breakdown:{category: tokens}, baseline_tokens}) so the
+-- per-category context history of a session is traceable after the fact.
+-- NULL on rows written before W1 (and user rows).
+DO $$ BEGIN
+  IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='chat_messages' AND column_name='context_breakdown') THEN
+    ALTER TABLE chat_messages ADD COLUMN context_breakdown JSONB;
+  END IF;
+END $$;
+
 -- ARCH-1 C6 — suspended runs for AG-UI frontend-tool-calls. When the model
 -- calls a frontend tool (e.g. propose_edit), the turn pauses: the in-flight
 -- conversation `working` list + the dangling assistant tool-call cannot be

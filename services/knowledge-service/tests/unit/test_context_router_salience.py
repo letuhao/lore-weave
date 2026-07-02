@@ -69,3 +69,41 @@ async def test_no_record_when_nothing_surfaced():
     await asyncio.sleep(0)
 
     repo.record_accesses.assert_not_called()
+
+
+# ── W1 — sections pass through the response contract (additive) ─────────────
+
+
+@pytest.mark.asyncio
+async def test_sections_pass_through_response():
+    req = ContextBuildRequest(user_id=uuid4(), project_id=uuid4(), message="hi")
+    built = BuiltContext(
+        mode="static", context="<memory/>", recent_message_count=20,
+        token_count=1, sections={"glossary_entities": 42, "instructions": 7},
+    )
+    with patch("app.routers.context.build_context", AsyncMock(return_value=built)):
+        resp = await build(
+            req,
+            summaries_repo=AsyncMock(), projects_repo=AsyncMock(),
+            glossary_client=AsyncMock(), embedding_client=AsyncMock(),
+            llm_client=AsyncMock(), working_memory_repo=AsyncMock(),
+            entity_access_repo=AsyncMock(),
+        )
+    assert resp.sections == {"glossary_entities": 42, "instructions": 7}
+    # existing fields untouched (additive contract)
+    assert resp.mode == "static" and resp.token_count == 1
+
+
+@pytest.mark.asyncio
+async def test_sections_default_empty_for_older_builder():
+    req = ContextBuildRequest(user_id=uuid4(), project_id=uuid4(), message="hi")
+    with patch("app.routers.context.build_context",
+               AsyncMock(return_value=_built([]))):
+        resp = await build(
+            req,
+            summaries_repo=AsyncMock(), projects_repo=AsyncMock(),
+            glossary_client=AsyncMock(), embedding_client=AsyncMock(),
+            llm_client=AsyncMock(), working_memory_repo=AsyncMock(),
+            entity_access_repo=AsyncMock(),
+        )
+    assert resp.sections == {}

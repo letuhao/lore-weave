@@ -1242,3 +1242,49 @@ async def test_glossary_timeout_increments_intent_classifier_metric(monkeypatch)
     assert after_intent == before_intent + 1, (
         "Mode-3-specific intent classifier degradation counter must also fire"
     )
+
+
+# ── W1 — per-section token map (additive) ────────────────────────────────────
+
+
+@pytest.mark.asyncio
+async def test_mode3_sections_cover_rendered_blocks(monkeypatch):
+    l2 = L2FactResult(current=["Arthur — trusts — Lancelot"])
+    _patch_mode3_pieces(
+        monkeypatch,
+        l0_summary=_summary("I am a novelist."),
+        l1_summary=_summary("Book 1 of 5.", scope_type="project"),
+        l2_result=l2,
+    )
+    result = await build_full_mode(
+        summaries_repo=MagicMock(),
+        glossary_client=MagicMock(),
+        user_id=USER_ID,
+        project=_project(instructions="Be terse."),
+        message="Tell me about Arthur",
+    )
+    # rendered blocks each get a positive per-section entry
+    assert result.sections["user"] > 0
+    assert result.sections["project"] > 0
+    assert result.sections["facts"] > 0
+    assert result.sections["instructions"] > 0
+    # blocks that did NOT render are absent, not zero
+    assert "passages" not in result.sections
+    assert "summaries" not in result.sections
+    assert "glossary_entities" not in result.sections
+    # each section counted once → the split never exceeds the whole block
+    assert sum(result.sections.values()) <= result.token_count
+
+
+@pytest.mark.asyncio
+async def test_mode3_sections_empty_everything_still_has_project_and_instructions(monkeypatch):
+    _patch_mode3_pieces(monkeypatch)
+    result = await build_full_mode(
+        summaries_repo=MagicMock(),
+        glossary_client=MagicMock(),
+        user_id=USER_ID,
+        project=_project(),
+        message="greetings",
+    )
+    assert set(result.sections) >= {"project", "instructions"}
+    assert "facts" not in result.sections

@@ -10,7 +10,7 @@ shows (the compaction trigger keys off measured tokens post-turn).
 """
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
 # tokens-per-character factors by script class (empirical BPE approximations; the goal
 # is "not 4-8x wrong for CJK/VN", not exactness — the provider usage is ground truth).
@@ -114,3 +114,102 @@ def compute_budget(
     effective = max(1, context_length - max(0, max_output_tokens) - _SAFETY_TOKENS)
     pct = used_tokens / effective
     return ContextBudget(used_tokens, context_length, max_output_tokens, effective, pct)
+
+
+# ── per-category context breakdown (Chat Quality Wave W1) ─────────────────────
+
+# The fixed category vocabulary of the `contextBudget` frame's `breakdown` map.
+# Every category is always present in the payload (0 when the part is absent this
+# turn) so the FE drill-down renders a stable row set. `memory_knowledge` is the
+# one nested entry: {"total": N, "sections": {...}} — the per-section split comes
+# from knowledge-service build_context (glossary_entities / facts / passages /
+# summaries / instructions / ...).
+BREAKDOWN_CATEGORIES: tuple[str, ...] = (
+    "system_prompt",           # session persona (chat_sessions.system_prompt)
+    "memory_knowledge",        # knowledge-service memory block (total + sections)
+    "working_memory",          # interview-roleplay anchor (pinned + tail)
+    "steering",                # per-book <steering> block (RAID C1)
+    "skills",                  # skill L2 bodies + the L1 metadata block (RAID C3)
+    "plan_nudge",              # plan-mode system nudge (RAID B2)
+    "book_note",               # book/chapter/project id note
+    "attached_context",        # per-message attached context
+    "history",                 # replayed prior turns
+    "tool_results",            # mid-turn role:tool results (this turn)
+    "frontend_tool_schemas",   # advertised frontend-tool schemas (FRONTEND_TOOL_NAMES)
+    "mcp_tool_schemas",        # advertised server/MCP tool schemas (the rest)
+)
+
+# Everything that is in the prompt BEFORE the first user word — the fixed
+# overhead the user pays per turn regardless of what they type.
+_BASELINE_CATEGORIES: frozenset[str] = frozenset({
+    "system_prompt", "memory_knowledge", "working_memory", "steering",
+    "skills", "plan_nudge", "book_note",
+    "frontend_tool_schemas", "mcp_tool_schemas",
+})
+
+
+@dataclass
+class ContextBreakdown:
+    """Per-category token map for ONE turn, measured at assembly time.
+
+    ``categories`` maps a BREAKDOWN_CATEGORIES key → estimated tokens (script-aware
+    ``estimate_tokens``, same heuristic as the budget). ``knowledge_sections`` is the
+    per-section split of the ``memory_knowledge`` category, passed through from
+    knowledge-service build_context. Mutable on purpose: the tool-schema and
+    tool-result buckets are only known later in the turn (advertise chokepoint /
+    finish) and are folded in before the frame is emitted."""
+
+    categories: dict[str, int] = field(default_factory=dict)
+    knowledge_sections: dict[str, int] = field(default_factory=dict)
+
+    @property
+    def baseline_tokens(self) -> int:
+        """Tokens present before the first user message: system parts + tool schemas."""
+        return sum(
+            int(self.categories.get(cat, 0) or 0) for cat in _BASELINE_CATEGORIES
+        )
+
+    def to_payload(self) -> dict:
+        """The `breakdown` value of the contextBudget frame. Fixed key set —
+        every category is present (0 when absent) so the FE row set is stable."""
+        out: dict = {}
+        for cat in BREAKDOWN_CATEGORIES:
+            val = int(self.categories.get(cat, 0) or 0)
+            if cat == "memory_knowledge":
+                out[cat] = {
+                    "total": val,
+                    "sections": {k: int(v) for k, v in self.knowledge_sections.items()},
+                }
+            else:
+                out[cat] = val
+        return out
+
+
+def until_compact_pct(pct: float | None) -> float | None:
+    """Distance (in pct-of-effective-limit points) from the current usage to the
+    compaction trigger — "how much headroom until auto-compact". Reuses the
+    trigger ratio from compaction.py (single source for the 0.75). None when the
+    budget is unknown; 0.0 once the trigger is reached/passed."""
+    if pct is None:
+        return None
+    # Lazy import: compaction.py imports estimate_messages_tokens from this
+    # module, so a top-level import here would be a cycle.
+    from app.services.compaction import COMPACT_TRIGGER_RATIO
+
+    return round(max(0.0, COMPACT_TRIGGER_RATIO - pct), 4)
+
+
+def context_budget_event(
+    budget: ContextBudget, breakdown: ContextBreakdown | None = None
+) -> dict:
+    """The full contextBudget frame payload — STRICTLY ADDITIVE over
+    ContextBudget.to_event(): the original {used_tokens, context_length,
+    effective_limit, pct} keys are byte-identical (FE meter contract); W1 adds
+    until_compact_pct always, and breakdown + baseline_tokens when the caller
+    measured the parts (the fresh-turn assembly path)."""
+    payload = budget.to_event()
+    payload["until_compact_pct"] = until_compact_pct(budget.pct)
+    if breakdown is not None:
+        payload["breakdown"] = breakdown.to_payload()
+        payload["baseline_tokens"] = breakdown.baseline_tokens
+    return payload

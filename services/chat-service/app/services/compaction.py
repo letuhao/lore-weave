@@ -46,6 +46,11 @@ from app.services.token_budget import estimate_messages_tokens
 DEFAULT_EXCLUDE_TOOLS = frozenset({"web_search"})
 _PLACEHOLDER = "[tool result cleared to save context]"
 
+# Compaction fires when estimated tokens exceed trigger_ratio × effective_limit.
+# Named so consumers (token_budget.until_compact_pct — the meter's "until
+# auto-compact" distance) reuse THE constant instead of duplicating 0.75.
+COMPACT_TRIGGER_RATIO = 0.75
+
 
 def _is_pinned(msg: dict) -> bool:
     """system / steering / anchor / developer messages are never dropped."""
@@ -71,6 +76,17 @@ class CompactionReport:
     tokens_before: int = 0
     tokens_after: int = 0
     steps: list[str] = field(default_factory=list)
+
+    @property
+    def did_work(self) -> bool:
+        """True when compaction actually CHANGED the prompt (evicted tool results,
+        summarized the middle, or truncated turns) — the W1 `compaction` frame is
+        only emitted then; a triggered-but-no-op pass stays silent."""
+        return (
+            self.tool_results_cleared > 0
+            or self.summarized
+            or self.turns_truncated > 0
+        )
 
     def to_event(self) -> dict:
         return {
@@ -156,7 +172,7 @@ async def compact_messages(
     messages: list[dict],
     *,
     effective_limit: int | None,
-    trigger_ratio: float = 0.75,
+    trigger_ratio: float = COMPACT_TRIGGER_RATIO,
     keep_tool_results: int = 3,
     keep_recent: int = 8,
     exclude_tools: frozenset[str] = DEFAULT_EXCLUDE_TOOLS,

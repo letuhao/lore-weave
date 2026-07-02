@@ -167,12 +167,16 @@ async def build_static_mode(
     entities = await apply_salience(entity_access_repo, entities, user_id, project.project_id)
 
     lines: list[str] = ['<memory mode="static">']
+    sections: dict[str, int] = {}  # W1 — per-section token split
+    _mark = len(lines)
 
     # ── L0 (optional) ───────────────────────────────────────────────────
     if l0 is not None and l0.content.strip():
         lines.append(f"  <user>{sanitize_for_xml(l0.content)}</user>")
+        sections["user"] = estimate_tokens("\n".join(lines[_mark:]))
 
     # ── project block ──────────────────────────────────────────────────
+    _mark = len(lines)
     proj_attrs = f'name="{sanitize_for_xml(project.name)}"'
     lines.append(f"  <project {proj_attrs}>")
     if project.instructions and project.instructions.strip():
@@ -184,6 +188,7 @@ async def build_static_mode(
             f"    <summary>{sanitize_for_xml(l1_summary.content)}</summary>"
         )
     lines.append("  </project>")
+    sections["project"] = estimate_tokens("\n".join(lines[_mark:]))
     # K18.9: snapshot the line count right after </project>. Everything
     # up to here (memory opening, <user>, <project>...</project>) is
     # message-independent → cacheable. Everything after (glossary
@@ -192,13 +197,17 @@ async def build_static_mode(
 
     # ── glossary (optional) ────────────────────────────────────────────
     if entities:
+        _mark = len(lines)
         lines.append("  <glossary>")
         for e in entities:
             lines.append(_indent(_render_entity(e), 4))
         lines.append("  </glossary>")
+        sections["glossary_entities"] = estimate_tokens("\n".join(lines[_mark:]))
 
     # ── mode-level instructions (always) ───────────────────────────────
+    _mark = len(lines)
     lines.append(f"  <instructions>{sanitize_for_xml(_INSTRUCTIONS)}</instructions>")
+    sections["instructions"] = estimate_tokens("\n".join(lines[_mark:]))
     lines.append("</memory>")
 
     stable, volatile, context = split_at_boundary(lines, stable_line_count)
@@ -209,6 +218,7 @@ async def build_static_mode(
         token_count=estimate_tokens(context),
         stable_context=stable,
         volatile_context=volatile,
+        sections=sections,
         # K21.12-BE (design D9): surface the project's tool-calling toggle.
         tool_calling_enabled=project.tool_calling_enabled,
         # Track 4 P0 — glossary entities the selector judged relevant (for

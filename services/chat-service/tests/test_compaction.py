@@ -3,9 +3,33 @@ from __future__ import annotations
 
 import pytest
 
-from app.services.compaction import compact_messages, _PLACEHOLDER
+from app.services.compaction import (
+    COMPACT_TRIGGER_RATIO,
+    CompactionReport,
+    compact_messages,
+    _PLACEHOLDER,
+)
 
 pytestmark = pytest.mark.asyncio
+
+
+class TestW1ReportSurface:
+    async def test_trigger_ratio_named_constant_is_the_default(self):
+        # W1 — until_compact_pct reuses THIS constant; the default trigger must
+        # be the same number (no duplicated 0.75 anywhere).
+        import inspect
+
+        sig = inspect.signature(compact_messages)
+        assert sig.parameters["trigger_ratio"].default == COMPACT_TRIGGER_RATIO == 0.75
+
+    async def test_did_work_false_when_nothing_changed(self):
+        assert CompactionReport().did_work is False
+        assert CompactionReport(triggered=True).did_work is False  # no-op pass
+
+    async def test_did_work_true_per_tier(self):
+        assert CompactionReport(tool_results_cleared=1).did_work is True
+        assert CompactionReport(summarized=True).did_work is True
+        assert CompactionReport(turns_truncated=3).did_work is True
 
 
 def _big(n: int) -> str:
