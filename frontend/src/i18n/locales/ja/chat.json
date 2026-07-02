@@ -370,5 +370,51 @@
     "approved": "許可しました — 実行中 ✓",
     "always_allowed": "常に許可 — 実行中 ✓",
     "denied": "拒否しました"
+  },
+  "rack": {
+    "label": "コンテキスト",
+    "add": "追加",
+    "add_title": "ツールまたはスキルを追加",
+    "discovered": "{{count}} 件検出",
+    "clear_discovered": "検出したツールをクリア",
+    "search_placeholder": "検索…",
+    "tools_tab": "ツール",
+    "skills_tab": "スキル",
+    "summary": "ツール {{tools}} · スキル {{skills}} · {{tokens}} トークン",
+    "summary_no_tokens": "ツール {{tools}} · スキル {{skills}}",
+    "summary_tooltip": "コンテキスト内訳を開く",
+    "server_live": "ツールカタログからライブ取得",
+    "server_pins_only": "セッションのピン留めのみ",
+    "more": "他 {{count}} 件",
+    "server": {
+      "knowledge": "ナレッジ",
+      "glossary": "用語集",
+      "book": "ブック",
+      "composition": "コンポジション",
+      "translation": "翻訳",
+      "jobs": "ジョブ",
+      "ui": "UI",
+      "chat": "チャット",
+      "other": "その他"
+    }
+  },
+  "inspector": {
+    "title": "エージェントランタイム",
+    "pinned": "ピン留めツール",
+    "hot": "ホットシード",
+    "activated": "アクティブ化済み",
+    "skills": "スキル",
+    "last_search": "直近の find_tools",
+    "advertised": "提供中のツール",
+    "advertised_sizes": "コア {{core}} · フロントエンド {{frontend}} · アクティブ {{activated}}",
+    "trail": "フェーズ遷移",
+    "phase": {
+      "idle": "待機",
+      "curated": "キュレート済み",
+      "skills": "スキル",
+      "discovering": "探索中…",
+      "activated": "アクティブ化",
+      "tool_running": "ツール実行中"
+    }
   }
 }

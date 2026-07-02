@@ -1,7 +1,9 @@
-import { useCallback, useEffect, useState } from 'react';
-import type { AgentSurfaceState, ChatSession } from '../types';
+import { useCallback, useEffect, useRef, useState } from 'react';
+import type { AgentSurfacePhase, AgentSurfaceState, ChatSession } from '../types';
 
 const INSPECTOR_EXPANDED_KEY = 'lw_chat_inspector_expanded';
+// W6 — phase-transition trail cap (display-only; oldest entries drop).
+const TRAIL_CAP = 8;
 
 export function degradedSurfaceFromSession(session: ChatSession | null | undefined): AgentSurfaceState {
   return {
@@ -18,6 +20,8 @@ export function degradedSurfaceFromSession(session: ChatSession | null | undefin
 
 export function useAgentSurface(session: ChatSession | null | undefined) {
   const [state, setState] = useState<AgentSurfaceState>(() => degradedSurfaceFromSession(session));
+  // W6 — this turn's phase transitions (display-only trail for the inspector).
+  const [trail, setTrail] = useState<AgentSurfacePhase[]>([]);
   const [expanded, setExpanded] = useState(() => {
     try {
       return localStorage.getItem(INSPECTOR_EXPANDED_KEY) === '1';
@@ -26,11 +30,24 @@ export function useAgentSurface(session: ChatSession | null | undefined) {
     }
   });
 
+  const lastPhaseRef = useRef<AgentSurfacePhase>('Idle');
+
   useEffect(() => {
     setState(degradedSurfaceFromSession(session));
+    setTrail([]);
+    lastPhaseRef.current = 'Idle';
   }, [session?.session_id, session?.enabled_tools, session?.enabled_skills, session?.activated_tools]);
 
   const applyEvent = useCallback((payload: AgentSurfaceState) => {
+    const prevPhase = lastPhaseRef.current;
+    if (payload.phase !== prevPhase) {
+      lastPhaseRef.current = payload.phase;
+      setTrail((prevTrail) => {
+        // a transition out of Idle starts a new turn → reset the trail.
+        const base = prevPhase === 'Idle' ? [] : prevTrail;
+        return [...base, payload.phase].slice(-TRAIL_CAP);
+      });
+    }
     setState(payload);
   }, []);
 
@@ -46,5 +63,5 @@ export function useAgentSurface(session: ChatSession | null | undefined) {
     });
   }, []);
 
-  return { state, applyEvent, expanded, toggleExpanded };
+  return { state, trail, applyEvent, expanded, toggleExpanded };
 }

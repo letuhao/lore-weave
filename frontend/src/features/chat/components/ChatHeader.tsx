@@ -33,9 +33,12 @@ interface ChatHeaderProps {
   onManageContextTools?: () => void;
   /** W3: the context breakdown panel's "Compact now" controls. */
   compactControls?: CompactControls;
+  /** W6: external "open the breakdown panel" signal (the rack's summary chip). */
+  breakdownOpen?: boolean;
+  onBreakdownClose?: () => void;
 }
 
-export function ChatHeader({ session, modelNameMap, messageCount, onRename, onOpenSettings, isVoiceModeActive, onToggleVoiceMode, onOpenVoiceSettings, onOpenSidebar, sessionSwitcher, contextBudget, onManageContextTools, compactControls }: ChatHeaderProps) {
+export function ChatHeader({ session, modelNameMap, messageCount, onRename, onOpenSettings, isVoiceModeActive, onToggleVoiceMode, onOpenVoiceSettings, onOpenSidebar, sessionSwitcher, contextBudget, onManageContextTools, compactControls, breakdownOpen, onBreakdownClose }: ChatHeaderProps) {
   const { t } = useTranslation('chat');
   // Self-measure: when the header (its container) is narrow — e.g. the editor
   // AI panel at ~300px — collapse the memory chip to icon-only so the action
@@ -86,7 +89,7 @@ export function ChatHeader({ session, modelNameMap, messageCount, onRename, onOp
       </div>
       <div className="flex min-w-0 shrink-0 items-center gap-1">
         <MemoryIndicator projectId={session.project_id} memoryMode={session.memory_mode} compact={compact} />
-        <ContextMeter budget={contextBudget ?? null} compact={compact} onManageTools={onManageContextTools} compactControls={compactControls} />
+        <ContextMeter budget={contextBudget ?? null} compact={compact} onManageTools={onManageContextTools} compactControls={compactControls} externalPanelOpen={breakdownOpen} onExternalPanelClose={onBreakdownClose} />
         {(SPEECH_RECOGNITION_SUPPORTED || MEDIA_RECORDER_SUPPORTED) && onToggleVoiceMode && session.status !== 'archived' && (
           <button
             type="button"

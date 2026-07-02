@@ -370,5 +370,51 @@
     "approved": "Approved — running ✓",
     "always_allowed": "Always allowed — running ✓",
     "denied": "Denied"
+  },
+  "rack": {
+    "label": "Context",
+    "add": "Add",
+    "add_title": "Add tools or skills",
+    "discovered": "{{count}} discovered",
+    "clear_discovered": "Clear discovered tools",
+    "search_placeholder": "Search…",
+    "tools_tab": "Tools",
+    "skills_tab": "Skills",
+    "summary": "{{tools}} tools · {{skills}} skills · {{tokens}} tok",
+    "summary_no_tokens": "{{tools}} tools · {{skills}} skills",
+    "summary_tooltip": "Open the context breakdown",
+    "server_live": "Live from the tool catalog",
+    "server_pins_only": "From session pins only",
+    "more": "+{{count}} more",
+    "server": {
+      "knowledge": "Knowledge",
+      "glossary": "Glossary",
+      "book": "Books",
+      "composition": "Composition",
+      "translation": "Translation",
+      "jobs": "Jobs",
+      "ui": "UI",
+      "chat": "Chat",
+      "other": "Other"
+    }
+  },
+  "inspector": {
+    "title": "Agent runtime",
+    "pinned": "Pinned tools",
+    "hot": "Hot seed",
+    "activated": "Activated",
+    "skills": "Skills",
+    "last_search": "Last find_tools",
+    "advertised": "Advertised",
+    "advertised_sizes": "core {{core}} · frontend {{frontend}} · activated {{activated}}",
+    "trail": "Phase trail",
+    "phase": {
+      "idle": "Idle",
+      "curated": "Curated",
+      "skills": "Skills",
+      "discovering": "Discovering…",
+      "activated": "Activated",
+      "tool_running": "Running tool"
+    }
   }
 }

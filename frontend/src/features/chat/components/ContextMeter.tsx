@@ -42,23 +42,39 @@ interface Props {
   /** W3: the breakdown panel's "Compact now" controls (useCompactSession).
    *  Omitted → the compact section is hidden. */
   compactControls?: CompactControls;
+  /** W6: external "open the breakdown panel" signal (the rack's summary chip).
+   *  Controlled OR-ed with the meter's own click state — the same pattern as
+   *  the rack add modal's externalAddOpen. */
+  externalPanelOpen?: boolean;
+  onExternalPanelClose?: () => void;
 }
 
-export function ContextMeter({ budget, compact, onManageTools, compactControls }: Props) {
+export function ContextMeter({
+  budget, compact, onManageTools, compactControls, externalPanelOpen, onExternalPanelClose,
+}: Props) {
   const { t } = useTranslation('chat');
   const [panelOpen, setPanelOpen] = useState(false);
   const rootRef = useRef<HTMLDivElement>(null);
+  const effectiveOpen = panelOpen || !!externalPanelOpen;
+
+  function closePanel() {
+    setPanelOpen(false);
+    onExternalPanelClose?.();
+  }
 
   // Close the drill-down on outside click (same pattern as the message "more"
   // dropdown — no portal, the panel is absolutely positioned in this wrapper).
   useEffect(() => {
-    if (!panelOpen) return;
+    if (!effectiveOpen) return;
     function handleClick(e: MouseEvent) {
-      if (rootRef.current && !rootRef.current.contains(e.target as Node)) setPanelOpen(false);
+      if (rootRef.current && !rootRef.current.contains(e.target as Node)) {
+        setPanelOpen(false);
+        onExternalPanelClose?.();
+      }
     }
     window.addEventListener('mousedown', handleClick);
     return () => window.removeEventListener('mousedown', handleClick);
-  }, [panelOpen]);
+  }, [effectiveOpen, onExternalPanelClose]);
 
   // No snapshot yet (before the first turn finishes) → render nothing rather
   // than a placeholder chip that would just be visual noise.
@@ -98,10 +114,10 @@ export function ContextMeter({ budget, compact, onManageTools, compactControls }
     <div ref={rootRef} className="relative min-w-0">
       <button
         type="button"
-        onClick={() => setPanelOpen((v) => !v)}
+        onClick={() => (effectiveOpen ? closePanel() : setPanelOpen(true))}
         title={title}
         aria-label={t('header.context_meter.label')}
-        aria-expanded={panelOpen}
+        aria-expanded={effectiveOpen}
         data-testid="context-meter"
         data-band={band}
         className={cn(
@@ -118,7 +134,7 @@ export function ContextMeter({ budget, compact, onManageTools, compactControls }
         <Gauge className="h-3 w-3 shrink-0" />
         {!compact && <span className="tabular-nums">{label}</span>}
       </button>
-      {panelOpen && <ContextBreakdownPanel budget={budget} onManageTools={onManageTools} compact={compactControls} />}
+      {effectiveOpen && <ContextBreakdownPanel budget={budget} onManageTools={onManageTools} compact={compactControls} />}
     </div>
   );
 }

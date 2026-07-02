@@ -691,6 +691,7 @@ async def _stream_with_tools(
                 if advertised:
                     request_kwargs["tools"] = advertised
                     request_kwargs["tool_choice"] = "auto"
+                    _schema_split: dict[str, int] | None = None
                     if not schema_tokens_reported:
                         schema_tokens_reported = True
                         _fe_tok = 0
@@ -703,10 +704,40 @@ async def _stream_with_tools(
                                 _fe_tok += _tok
                             else:
                                 _mcp_tok += _tok
+                        _schema_split = {"frontend": _fe_tok, "mcp": _mcp_tok}
                         yield {"schema_tokens": {
                             "frontend_tool_schemas": _fe_tok,
                             "mcp_tool_schemas": _mcp_tok,
                         }}
+                    # W6 — advertised-surface snapshot at the SAME chokepoint:
+                    # split the advertised names core/frontend/activated, group
+                    # by owning MCP server, and reuse the W1 token measurement
+                    # (never re-estimated — None keeps the tracker's split).
+                    # Emits only when the surface actually changed (first pass,
+                    # or a later pass after find_tools grew the active set).
+                    if surface_tracker is not None:
+                        _adv_core: list[str] = []
+                        _adv_frontend: list[str] = []
+                        _adv_activated: list[str] = []
+                        for _td in advertised:
+                            _fn = _td.get("function") if isinstance(_td, dict) else None
+                            _nm = _fn.get("name") if isinstance(_fn, dict) else None
+                            if not _nm:
+                                continue
+                            if _nm in ALWAYS_ON_CORE_NAMES:
+                                _adv_core.append(_nm)
+                            elif is_frontend_tool(_nm):
+                                _adv_frontend.append(_nm)
+                            else:
+                                _adv_activated.append(_nm)
+                        payload_as = surface_tracker.advertised_pass(
+                            core=_adv_core,
+                            frontend=_adv_frontend,
+                            activated=_adv_activated,
+                            schema_tokens=_schema_split,
+                        )
+                        if payload_as is not None:
+                            yield {"agent_surface": payload_as}
                 else:
                     # Ask mode filtered everything out — run the pass tool-free
                     # (an empty tools array 400s on some providers).

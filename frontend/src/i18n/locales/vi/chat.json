@@ -370,5 +370,51 @@
     "approved": "Đã cho phép — đang chạy ✓",
     "always_allowed": "Luôn cho phép — đang chạy ✓",
     "denied": "Đã từ chối"
+  },
+  "rack": {
+    "label": "Ngữ cảnh",
+    "add": "Thêm",
+    "add_title": "Thêm công cụ hoặc kỹ năng",
+    "discovered": "Đã khám phá {{count}}",
+    "clear_discovered": "Xóa công cụ đã khám phá",
+    "search_placeholder": "Tìm kiếm…",
+    "tools_tab": "Công cụ",
+    "skills_tab": "Kỹ năng",
+    "summary": "{{tools}} công cụ · {{skills}} kỹ năng · {{tokens}} tok",
+    "summary_no_tokens": "{{tools}} công cụ · {{skills}} kỹ năng",
+    "summary_tooltip": "Mở bảng phân tích ngữ cảnh",
+    "server_live": "Trực tiếp từ danh mục công cụ",
+    "server_pins_only": "Chỉ từ ghim của phiên",
+    "more": "+{{count}} nữa",
+    "server": {
+      "knowledge": "Tri thức",
+      "glossary": "Thuật ngữ",
+      "book": "Sách",
+      "composition": "Sáng tác",
+      "translation": "Dịch thuật",
+      "jobs": "Tác vụ",
+      "ui": "Giao diện",
+      "chat": "Trò chuyện",
+      "other": "Khác"
+    }
+  },
+  "inspector": {
+    "title": "Trạng thái agent",
+    "pinned": "Công cụ đã ghim",
+    "hot": "Nạp sẵn",
+    "activated": "Đã kích hoạt",
+    "skills": "Kỹ năng",
+    "last_search": "find_tools gần nhất",
+    "advertised": "Đang cung cấp",
+    "advertised_sizes": "lõi {{core}} · giao diện {{frontend}} · kích hoạt {{activated}}",
+    "trail": "Chuỗi pha",
+    "phase": {
+      "idle": "Nghỉ",
+      "curated": "Đã chọn lọc",
+      "skills": "Kỹ năng",
+      "discovering": "Đang khám phá…",
+      "activated": "Đã kích hoạt",
+      "tool_running": "Đang chạy công cụ"
+    }
   }
 }

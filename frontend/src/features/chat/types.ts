@@ -80,6 +80,15 @@ export type AgentSurfacePhase =
   | 'Activated'
   | 'ToolRunning';
 
+/** W6 additive — the advertised tool surface of the last provider pass,
+ *  split core (always-on) / frontend (surface extras) / activated (discovered
+ *  or hot-seeded server tools with full schemas). */
+export interface AgentSurfaceAdvertised {
+  core: string[];
+  frontend: string[];
+  activated: string[];
+}
+
 export interface AgentSurfaceState {
   phase: AgentSurfacePhase;
   pinned_count: number;
@@ -89,6 +98,14 @@ export interface AgentSurfaceState {
   running_tool: string | null;
   last_find_tools_query: string | null;
   find_tools_call_count: number;
+  // W6 — STRICTLY ADDITIVE (an older backend omits them; render degrades):
+  /** advertised names per bucket on the last provider pass. */
+  advertised?: AgentSurfaceAdvertised;
+  /** per-MCP-server grouping of the advertised surface: key → {tools: N}.
+   *  Keys mirror chat-service agent_surface.server_key_for_tool. */
+  servers?: Record<string, { tools: number }>;
+  /** W1 schema-token measurement split (frontend vs server/MCP schemas). */
+  schema_tokens?: { frontend: number; mcp: number };
 }
 
 // RAID Wave A3 — the context-budget snapshot the backend emits as an AG-UI

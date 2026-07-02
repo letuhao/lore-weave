@@ -370,5 +370,51 @@
     "approved": "已允許 — 執行中 ✓",
     "always_allowed": "一律允許 — 執行中 ✓",
     "denied": "已拒絕"
+  },
+  "rack": {
+    "label": "情境",
+    "add": "新增",
+    "add_title": "新增工具或技能",
+    "discovered": "已探索 {{count}} 個",
+    "clear_discovered": "清除已探索的工具",
+    "search_placeholder": "搜尋…",
+    "tools_tab": "工具",
+    "skills_tab": "技能",
+    "summary": "{{tools}} 個工具 · {{skills}} 個技能 · {{tokens}} tok",
+    "summary_no_tokens": "{{tools}} 個工具 · {{skills}} 個技能",
+    "summary_tooltip": "開啟情境細目",
+    "server_live": "即時來自工具目錄",
+    "server_pins_only": "僅來自工作階段釘選",
+    "more": "還有 {{count}} 個",
+    "server": {
+      "knowledge": "知識",
+      "glossary": "詞彙表",
+      "book": "書籍",
+      "composition": "創作",
+      "translation": "翻譯",
+      "jobs": "工作",
+      "ui": "介面",
+      "chat": "聊天",
+      "other": "其他"
+    }
+  },
+  "inspector": {
+    "title": "代理執行狀態",
+    "pinned": "已釘選工具",
+    "hot": "熱種子",
+    "activated": "已啟用",
+    "skills": "技能",
+    "last_search": "最近的 find_tools",
+    "advertised": "已提供工具",
+    "advertised_sizes": "核心 {{core}} · 前端 {{frontend}} · 已啟用 {{activated}}",
+    "trail": "階段軌跡",
+    "phase": {
+      "idle": "閒置",
+      "curated": "已精選",
+      "skills": "技能",
+      "discovering": "探索中…",
+      "activated": "已啟用",
+      "tool_running": "執行工具中"
+    }
   }
 }

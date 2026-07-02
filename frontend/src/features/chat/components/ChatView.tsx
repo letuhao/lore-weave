@@ -59,6 +59,8 @@ export function ChatView({ className, composeMode, footerSlot, headerSlot }: Cha
   const isArchived = activeSession?.status === 'archived';
   // W2: the context breakdown panel's tool rows open the rack's add modal.
   const [rackAddOpen, setRackAddOpen] = useState(false);
+  // W6: the rack's summary chip opens the header's context breakdown panel.
+  const [breakdownOpen, setBreakdownOpen] = useState(false);
 
   // MCP fan-out (C-NAV): resolve any suspended `ui_*` nav tool the agent calls —
   // perform the router action + POST the resolve immediately (no human gate).
@@ -152,6 +154,8 @@ export function ChatView({ className, composeMode, footerSlot, headerSlot }: Cha
         contextBudget={chat.contextBudget}
         onManageContextTools={!rackHidden ? () => setRackAddOpen(true) : undefined}
         compactControls={!isArchived ? compactControls : undefined}
+        breakdownOpen={breakdownOpen}
+        onBreakdownClose={() => setBreakdownOpen(false)}
         sessionSwitcher={headerSlot}
         onRename={promptRename}
         onOpenSettings={() => setSettingsOpen(true)}
@@ -170,6 +174,7 @@ export function ChatView({ className, composeMode, footerSlot, headerSlot }: Cha
           expanded={chat.agentSurface.expanded}
           onToggle={chat.agentSurface.toggleExpanded}
           isStreaming={chat.isStreaming}
+          trail={chat.agentSurface.trail}
         />
       )}
 
@@ -206,7 +211,9 @@ export function ChatView({ className, composeMode, footerSlot, headerSlot }: Cha
         <AgentContextRack
           enabledTools={rack.enabledTools}
           enabledSkills={rack.enabledSkills}
-          activatedCount={rack.activatedTools.length}
+          activatedTools={rack.activatedTools}
+          surface={chat.agentSurface.state}
+          onOpenBreakdown={chat.contextBudget ? () => setBreakdownOpen(true) : undefined}
           token={accessToken}
           onAddTool={rack.addTool}
           onAddSkill={rack.addSkill}
