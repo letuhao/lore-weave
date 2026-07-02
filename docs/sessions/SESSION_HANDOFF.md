@@ -1,4 +1,23 @@
-# ▶▶ NEXT SESSION STARTS HERE — **AUTONOMOUS RUN CLOSED 2026-07-02: ✅ Track 4 COMPLETE · ✅ RAID C5+C4+C1+C2+B2 shipped (sub-agent-built, orchestrator fresh-verified, live-smoked where the substrate allowed). NEXT RUN (in order): (1) live-smoke B2+C2 browser loops once the dockable FE track lands (D-B2-LIVE-SMOKE, D-RAID-C2-LIVE-SMOKE), (2) C6 FE wiring (D-RAID-C6-FE-WIRING — restore spine EXISTS, pure FE; deferred by collision with the dockable track's editor seam), (3) Wave D build per DR-D (D2 FSM in composition-service → D3/D4/D5), (4) C1 FE steering panel (D-RAID-C1-FE-PANEL). All designs fixed in [`raid-loadbearing-decision-records`](../specs/2026-07-02-raid-loadbearing-decision-records.md). Contract stands: local LLM only, exact-file staging (concurrent agent!), hard-stops = destructive-ops-outside-test-account + 3-strike.** Spec [`salience-track4`](../specs/2026-07-02-knowledge-salience-track4.md) + [`07S`](../specs/2026-07-01-writing-studio/07S_studio_agent_standard.md) + plan [`studio-agent-raid`](../plans/2026-07-02-studio-agent-raid.md). · 2026-07-02**
+# ▶▶ NEXT SESSION STARTS HERE — **RAID ✅ COMPLETE 2026-07-02: Track 4 + C5/C4/C1/C2/B2 + WAVE D (D2 FSM `ecf0d410c` · D3 report/accept-reject `004d49ad9` · D4 durable sweep/claim/notify `037831e1d` · D5 real-judge critic `1d6f2960b`). B2 browser-smoked PASS (real gemma plan-mode, wire `permission_mode:plan` proven). REMAINING (small tail): full C2 approval-card browser loop (D-RAID-C2-LIVE-SMOKE — needs a clean session + tool-strong model; card surface itself proven live via the frontend-tool loop), C6 FE wiring + C1 FE panel (both wait for the dockable track to release the editor/panel seams), end-to-end autonomous-run live drive (create→gate→start→report on the POC book — all layers live-DB-proven separately; ⚠️ FE tsc is BROKEN at HEAD in the dockable track's committed studio files — manuscriptUnitDocument/ManuscriptUnitProvider/EditorPanel — their track owns the fix; smoke images build from a patched worktree meanwhile). Draft PR #54 open. Contract stands: local LLM only, exact-file staging, hard-stops = destructive-ops-outside-test-account + 3-strike.** Spec [`salience-track4`](../specs/2026-07-02-knowledge-salience-track4.md) + [`07S`](../specs/2026-07-01-writing-studio/07S_studio_agent_standard.md) + DRs [`raid-loadbearing-decision-records`](../specs/2026-07-02-raid-loadbearing-decision-records.md). · 2026-07-02**
+
+> **▶ WAVE D — COMPLETE 2026-07-02 (autonomous run, sub-agent build + orchestrator verify).** The autonomy dial's
+> full backbone in composition-service: **D2** `authoring_runs` FSM (7 states, OCC-guarded transitions, all-or-nothing
+> start-gate: validated plan + scope-fence unique-index (1 active run/book) + budget + allowlist snapshot; sequential
+> driver over the REAL drafting seam — EngineDraftingSeam mirrors actions.py's in-process generate_chapter, worker-off
+> inline + worker-on 202-poll). **D3** `authoring_run_units` ledger (pre_revision pinned BEFORE each draft — no draft
+> without a rollback spine; book-service snapshots every PATCH so latest revision = a TRUE pre-run restore point);
+> Run Report (partial-reviewable, downstream indexes); accept/reject (reject restores with the CALLER's bearer,
+> restore-failure leaves drafted, cascade_warning); Revert-All (reverse order, closes the run). **D4** durability:
+> driver_id+heartbeat, startup+periodic sweep (FOR UPDATE SKIP LOCKED claim — live-proven on real PG), per-unit
+> heartbeat-claim closes the late-result race (late draft lands failed "run closed mid-flight", spend kept);
+> completion notify via notification-service HTTP ingest (category=system, operation=autonomous_authoring in
+> metadata — mirrors the translation producer); background flag + DRIVER_MAX_INFLIGHT. **D5** per-unit critic wired
+> to the REAL M6/Q1 judge (judge_prose 4-dim + canon violations; critic_model_ref anti-self-reinforcement); severe →
+> PAUSE with breaker {critic_severe, unit, summary} (human reviews report); critic failure → warn "critic
+> unavailable", never breaks a run; verdict on the unit row + in the report; params.critic_enabled default TRUE.
+> **Suites:** composition tests/unit **1516** green (fresh tails per milestone; +105 across D2-D5). Honest stubs
+> recorded in-code: canon grounding headless (empty rules), unit+critic costs are estimates (SDK exposes no metered
+> cost — real cost only where generation_job.cost_usd populates).
 
 > **▶ AUTONOMOUS RUN — RAID waves C5/C4/C1/C2/B2 SHIPPED 2026-07-02 (sub-agent build + orchestrator verify pattern).**
 > **C5 MCP resources+prompts** (`99bc63215`, LIVE-PROVEN): knowledge exposes 2 project resource templates
