@@ -1882,15 +1882,21 @@ FOR UPDATE OF d
 
 	// Empty-prose guard (B1.1) — canon must carry real text. Publishing a chapter
 	// with no extractable prose would canonize nothing and run KG extraction on an
-	// empty body. Reuse the same `_text` projection getRevision/compare read; a
-	// chapter with no text blocks (or whitespace-only) → 422, not a silent no-op
-	// publish. (Image/media-only chapters carry no `_text` and are blocked too —
-	// V0 is a prose co-writer; tracked as a known edge if media-only canon is
-	// ever needed.)
+	// empty body. A chapter with no text (or whitespace-only) → 422, not a silent
+	// no-op publish. Bodies come in TWO legitimate shapes: the editor save path
+	// writes a top-level `_text` projection per node, while other writers (compose
+	// POC import, plain tiptap PATCH) store standard tiptap with nested
+	// `{"type":"text","text":…}` leaves and NO `_text` — the old `_text`-only
+	// selector false-rejected those with CHAPTER_EMPTY_PUBLISH, blocking canon/KG
+	// for every chapter not written through the editor. Union both extractions:
+	// `_text` projections + any-depth `text` leaves ($.**.text).
 	var prose string
 	_ = tx.QueryRow(r.Context(), `
-SELECT COALESCE(string_agg(t #>> '{}', '' ORDER BY ordinality), '')
-FROM jsonb_path_query(($1)::jsonb, '$.content[*]._text') WITH ORDINALITY AS x(t, ordinality)
+SELECT COALESCE((
+  SELECT string_agg(t #>> '{}', '') FROM jsonb_path_query(($1)::jsonb, '$.content[*]._text') AS x(t)
+), '') || COALESCE((
+  SELECT string_agg(t #>> '{}', '') FROM jsonb_path_query(($1)::jsonb, '$.**.text') AS y(t)
+), '')
 `, body).Scan(&prose)
 	if strings.TrimSpace(prose) == "" {
 		writeError(w, http.StatusUnprocessableEntity, "CHAPTER_EMPTY_PUBLISH", "cannot publish a chapter with no content")
