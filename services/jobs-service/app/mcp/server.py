@@ -32,7 +32,8 @@ import logging
 from typing import Annotated, Any, Literal
 
 from mcp.server.fastmcp import Context as MCPContext
-from pydantic import Field
+from mcp.server.fastmcp.exceptions import ToolError
+from pydantic import Field, ValidationError
 
 from loreweave_mcp import (
     ForbidExtra,
@@ -55,6 +56,76 @@ __all__ = ["mcp_server", "build_mcp_app"]
 # path="/" so the mount at "/mcp" yields the endpoint at "/mcp", DNS-rebinding
 # protection disabled for this internal token-authed endpoint).
 mcp_server = make_stateless_fastmcp("jobs")
+
+
+# ── W0 #4b — model-directed validation errors ─────────────────────────────────
+# FastMCP surfaces a pydantic arg-validation failure as the RAW multi-line dump
+# (with the errors.pydantic.dev URL) — noise a model cannot act on. Intercept at
+# the per-server tool-dispatch chokepoint and rewrite to a ONE-LINE directive
+# (arg name + what pydantic expected + what was sent) the model can self-correct
+# from. Duplicated verbatim in knowledge/translation-service until the
+# loreweave_mcp kit absorbs it (kit is outside the W0 change surface).
+
+
+def _validation_directive(tool_name: str, exc: ValidationError) -> str:
+    """One line: every failing arg with pydantic's expectation + the sent shape."""
+    parts = []
+    errs = exc.errors(include_url=False)
+    for err in errs[:3]:
+        loc = ".".join(str(p) for p in err.get("loc", ())) or "arguments"
+        msg = err.get("msg", "invalid value")
+        sent = err.get("input")
+        parts.append(f"`{loc}`: {msg} (you sent a {type(sent).__name__})")
+    if len(errs) > 3:
+        parts.append(f"(+{len(errs) - 3} more)")
+    return (
+        f"invalid arguments for {tool_name} — "
+        + "; ".join(parts)
+        + ". Fix the argument and call the tool again."
+    )
+
+
+def _install_validation_error_rewriter(server) -> None:
+    """Wrap the FastMCP tool manager's dispatch so a ToolError caused by a
+    pydantic ValidationError re-raises with the one-line directive instead of
+    the raw dump. Non-validation errors pass through untouched."""
+    manager = server._tool_manager
+    original = manager.call_tool
+
+    async def call_tool(name, arguments, *args, **kwargs):
+        try:
+            return await original(name, arguments, *args, **kwargs)
+        except ToolError as e:
+            cause = e.__cause__
+            if isinstance(cause, ValidationError):
+                raise ToolError(_validation_directive(name, cause)) from cause
+            raise
+
+    manager.call_tool = call_tool
+
+
+_install_validation_error_rewriter(mcp_server)
+
+
+# The projection store's closed status set (mirrors store._ACTIVE_STATUSES +
+# store._TERMINAL_STATUSES) — advertised as a real JSON-schema enum (W0 #2).
+JobStatus = Literal[
+    "pending", "running", "paused", "cancelling", "completed", "failed", "cancelled"
+]
+
+
+def _single_value(arg_name: str, value: str | list[str] | None) -> str | None:
+    """W0 #3 — models routinely send `[\"running\"]` for filter args. Accept a
+    one-element list (coerce to its value); reject a multi-element list with a
+    directive naming the fix. None/str pass through."""
+    if isinstance(value, list):
+        if len(value) == 1:
+            return value[0]
+        raise ValueError(
+            f"`{arg_name}` must be a single value, not a list of {len(value)} — "
+            f"pick one and call the tool again"
+        )
+    return value
 
 
 def _retryable_flag(job: dict[str, Any]) -> bool | None:
@@ -109,9 +180,9 @@ def _with_caps(job: dict[str, Any]) -> dict[str, Any]:
 async def jobs_list(
     ctx: MCPContext,
     status: Annotated[
-        str | None,
-        "Optional — only jobs in this status (e.g. 'running', 'pending', "
-        "'paused', 'completed', 'failed', 'cancelled').",
+        JobStatus | list[JobStatus] | None,
+        "Optional — only jobs in this status. Pass ONE status value as a plain "
+        "string (a one-element list is tolerated and unwrapped).",
     ] = None,
     kind: Annotated[
         str | None,
@@ -146,7 +217,7 @@ async def jobs_list(
     items, next_cursor = await store.list_jobs(
         get_pool(),
         str(tool_ctx.user_id),
-        status=status,
+        status=_single_value("status", status),
         kind=kind,
         parent=parent,
         q=search,

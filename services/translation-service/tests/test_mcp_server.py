@@ -444,6 +444,29 @@ def _mint(descriptor, payload, *, user=TEST_USER, ttl=600, now=None):
     )
 
 
+def _confirm_auth(user: str = TEST_USER) -> dict:
+    """confirm_action resolves its caller from HEADERS now (dual-mode auth,
+    D-PMCP-WORKER-CARRIER) — there is no caller_user_id parameter anymore.
+    Mint the FE-path JWT (Authorization: Bearer) for the given user, mirroring
+    test_actions_confirm_auth.py."""
+    import jwt as pyjwt
+
+    from app.config import settings
+
+    tok = pyjwt.encode({"sub": user}, settings.jwt_secret, algorithm="HS256")
+    # Direct route-function calls bypass FastAPI DI, so every Header/Query
+    # param must be passed explicitly — an omitted one defaults to the
+    # truthy Header()/Query() marker object, not None.
+    return {
+        "authorization": f"Bearer {tok}",
+        "token": None,
+        "x_internal_token": None,
+        "x_user_id": None,
+        "x_mcp_key_id": None,
+        "x_mcp_spend_cap_usd": None,
+    }
+
+
 def _bound_est():
     from app.mcp.estimate import CostEstimate
     return CostEstimate(
@@ -512,7 +535,7 @@ async def test_confirm_token_round_trip_within_tolerance_starts_job():
             with patch.object(actions, "_resolve_and_create_job",
                               AsyncMock(return_value=_Job())) as create_mock:
                 res = await actions.confirm_action(
-                    actions.ConfirmRequest(confirm_token=token), db=pool, caller_user_id=TEST_USER,
+                    actions.ConfirmRequest(confirm_token=token), db=pool, **_confirm_auth(),
                 )
     create_mock.assert_awaited_once()
     assert res["status"] == "action_done"
@@ -552,7 +575,7 @@ async def test_confirm_reprices_against_bound_model_not_current_settings():
             with patch.object(actions, "_resolve_and_create_job",
                               AsyncMock(return_value=_Job())):
                 await actions.confirm_action(
-                    actions.ConfirmRequest(confirm_token=token), db=pool, caller_user_id=TEST_USER,
+                    actions.ConfirmRequest(confirm_token=token), db=pool, **_confirm_auth(),
                 )
     # The re-price priced the model the user APPROVED (bound), not re-resolved.
     _, kwargs = est_mock.call_args
@@ -585,7 +608,7 @@ async def test_confirm_reprice_over_threshold_refuses_and_does_not_start():
                               AsyncMock()) as create_mock:
                 with pytest.raises(HTTPException) as exc:
                     await actions.confirm_action(
-                        actions.ConfirmRequest(confirm_token=token), db=pool, caller_user_id=TEST_USER,
+                        actions.ConfirmRequest(confirm_token=token), db=pool, **_confirm_auth(),
                     )
     assert exc.value.status_code == 409
     assert exc.value.detail["code"] == "TRANSL_REPRICE_REQUIRED"
@@ -616,7 +639,7 @@ async def test_confirm_refuses_when_grant_revoked_in_ttl():
                               AsyncMock()) as create_mock:
                 with pytest.raises(HTTPException) as exc:
                     await actions.confirm_action(
-                        actions.ConfirmRequest(confirm_token=token), db=pool, caller_user_id=TEST_USER,
+                        actions.ConfirmRequest(confirm_token=token), db=pool, **_confirm_auth(),
                     )
     assert exc.value.status_code == 403
     assert exc.value.detail["code"] == "TRANSL_FORBIDDEN"
@@ -644,7 +667,7 @@ async def test_confirm_refuses_when_chapter_not_under_bound_book():
                               AsyncMock()) as create_mock:
                 with pytest.raises(HTTPException) as exc:
                     await actions.confirm_action(
-                        actions.ConfirmRequest(confirm_token=token), db=pool, caller_user_id=TEST_USER,
+                        actions.ConfirmRequest(confirm_token=token), db=pool, **_confirm_auth(),
                     )
     assert exc.value.status_code == 403
     assert exc.value.detail["code"] == "TRANSL_FORBIDDEN"
@@ -661,7 +684,7 @@ async def test_confirm_rejects_expired_token():
     pool = AsyncMock()
     with pytest.raises(HTTPException) as exc:
         await actions.confirm_action(
-            actions.ConfirmRequest(confirm_token=token), db=pool, caller_user_id=TEST_USER,
+            actions.ConfirmRequest(confirm_token=token), db=pool, **_confirm_auth(),
         )
     assert exc.value.status_code == 410
     assert exc.value.detail["code"] == "TRANSL_CONFIRM_EXPIRED"
@@ -675,7 +698,7 @@ async def test_confirm_rejects_forged_token():
     with pytest.raises(HTTPException) as exc:
         await actions.confirm_action(
             actions.ConfirmRequest(confirm_token="garbage.token"), db=pool,
-            caller_user_id=TEST_USER,
+            **_confirm_auth(),
         )
     assert exc.value.status_code == 400
     assert exc.value.detail["code"] == "TRANSL_CONFIRM_INVALID"
@@ -700,7 +723,7 @@ async def test_confirm_rejects_token_bound_to_a_different_user():
     with pytest.raises(HTTPException) as exc:
         await actions.confirm_action(
             actions.ConfirmRequest(confirm_token=token), db=pool,
-            caller_user_id=other_user,
+            **_confirm_auth(other_user),
         )
     assert exc.value.status_code == 403
     assert exc.value.detail["code"] == "TRANSL_FORBIDDEN"
@@ -723,7 +746,7 @@ async def test_confirm_rejects_token_signed_with_envelope_secret():
     pool = AsyncMock()
     with pytest.raises(HTTPException) as exc:
         await actions.confirm_action(
-            actions.ConfirmRequest(confirm_token=token), db=pool, caller_user_id=TEST_USER,
+            actions.ConfirmRequest(confirm_token=token), db=pool, **_confirm_auth(),
         )
     assert exc.value.status_code == 400
     assert exc.value.detail["code"] == "TRANSL_CONFIRM_INVALID"
@@ -796,8 +819,11 @@ async def test_start_extraction_derives_profile_and_uses_user_model_when_omitted
     claims = verify_confirm_token(settings.confirm_token_signing_secret, res["confirm_token"])
     payload = claims.payload
     assert payload["model_source"] == "user_model"
-    assert payload["extraction_profile"]["character"] == {"name": "fill", "aliases": "fill"}
-    assert payload["extraction_profile"]["location"] == {"name": "fill"}
+    # Derived attrs use "default" — defer to each attribute's authored
+    # merge_strategy (D-EXTRACT-ATTR-MERGE-DEFAULTS); "fill" was the old
+    # freeze-on-re-extraction semantic this test predates.
+    assert payload["extraction_profile"]["character"] == {"name": "default", "aliases": "default"}
+    assert payload["extraction_profile"]["location"] == {"name": "default"}
 
 
 async def test_start_extraction_non_owner_rejected():
@@ -835,7 +861,7 @@ async def test_confirm_start_extraction_creates_job():
                                     "status": "pending"}),
         ) as core_mock:
             res = await actions.confirm_action(
-                actions.ConfirmRequest(confirm_token=token), db=pool, caller_user_id=TEST_USER,
+                actions.ConfirmRequest(confirm_token=token), db=pool, **_confirm_auth(),
             )
     core_mock.assert_awaited_once()
     assert res["status"] == "action_done"
@@ -862,8 +888,103 @@ async def test_confirm_start_extraction_refuses_chapter_not_under_bound_book():
                           AsyncMock()) as core_mock:
             with pytest.raises(HTTPException) as exc:
                 await actions.confirm_action(
-                    actions.ConfirmRequest(confirm_token=token), db=pool, caller_user_id=TEST_USER,
+                    actions.ConfirmRequest(confirm_token=token), db=pool, **_confirm_auth(),
                 )
     assert exc.value.status_code == 403
     assert exc.value.detail["code"] == "TRANSL_FORBIDDEN"
     core_mock.assert_not_called()
+
+
+# ── W0 MCP reliability contract ────────────────────────────────────────────────
+# Mirrors chat-service's FE-tools CLOSED_SET_ARGS rule for MCP: closed-set args
+# are real enums; single-valued args tolerate the observed one-element list
+# shape; pydantic validation failures reach the model as ONE-LINE directives
+# (never the raw dump with the errors.pydantic.dev URL).
+
+# tool → args whose valid values are a finite, code-known set.
+CLOSED_SET_ARGS = {"translation_job_control": ["action"]}
+
+# tool → args that must accept `str | list[str]` (the observed ["<uuid>"] shape).
+LIST_TOLERANT_ARGS = {
+    "translation_update_settings": ["model_ref"],
+    "translation_start_extraction": ["model_ref"],
+}
+
+
+def _closed_set_enum(spec: dict) -> set:
+    values: set = set()
+    for branch in (spec, *spec.get("anyOf", [])):
+        if "enum" in branch:
+            values |= set(branch["enum"])
+        items = branch.get("items")
+        if isinstance(items, dict) and "enum" in items:
+            values |= set(items["enum"])
+    return values
+
+
+def _accepts_list_of_strings(spec: dict) -> bool:
+    for branch in (spec, *spec.get("anyOf", [])):
+        if branch.get("type") == "array":
+            return True
+    return False
+
+
+async def test_closed_set_args_are_enums(mcp_base_url):
+    headers = {"X-Internal-Token": _GOOD_TOKEN}
+    async with _mcp_client(mcp_base_url, headers) as session:
+        listing = await session.list_tools()
+    by_name = {t.name: t for t in listing.tools}
+    for tool_name, args in CLOSED_SET_ARGS.items():
+        props = by_name[tool_name].inputSchema.get("properties", {})
+        for arg in args:
+            assert _closed_set_enum(props.get(arg, {})), (
+                f"{tool_name}.{arg}: closed-set arg MUST declare an enum"
+            )
+
+
+async def test_model_ref_args_accept_the_list_shape(mcp_base_url):
+    """W0 #3 — the advertised schema itself must admit the one-element-list
+    shape (so the call reaches the coercion shim instead of dying in pydantic)."""
+    headers = {"X-Internal-Token": _GOOD_TOKEN}
+    async with _mcp_client(mcp_base_url, headers) as session:
+        listing = await session.list_tools()
+    by_name = {t.name: t for t in listing.tools}
+    for tool_name, args in LIST_TOLERANT_ARGS.items():
+        props = by_name[tool_name].inputSchema.get("properties", {})
+        for arg in args:
+            assert _accepts_list_of_strings(props.get(arg, {})), (
+                f"{tool_name}.{arg}: must accept str | list[str]"
+            )
+
+
+def test_single_value_unwraps_and_rejects():
+    from app.mcp.server import _single_value
+
+    assert _single_value("model_ref", None) is None
+    assert _single_value("model_ref", "abc") == "abc"
+    assert _single_value("model_ref", ["abc"]) == "abc"
+    with pytest.raises(ValueError) as exc:
+        _single_value("model_ref", ["a", "b"])
+    msg = str(exc.value)
+    assert "model_ref" in msg and "single value" in msg
+
+
+async def test_validation_error_reaches_model_as_one_line_directive(mcp_base_url):
+    """W0 #4b — a bad enum value surfaces as the rewritten one-line directive
+    (arg + expectation), never the pydantic multi-line dump / docs URL."""
+    headers = {
+        "X-Internal-Token": _GOOD_TOKEN,
+        "X-User-Id": TEST_USER,
+        "X-Session-Id": "sess-1",
+    }
+    async with _mcp_client(mcp_base_url, headers) as session:
+        result = await session.call_tool(
+            "translation_job_control",
+            {"job_id": "eeeeeeee-eeee-eeee-eeee-eeeeeeeeeeee", "action": "bogus"},
+        )
+    assert result.isError is True
+    text = result.content[0].text
+    assert "errors.pydantic.dev" not in text
+    assert "\n" not in text.strip(), f"directive must be one line, got: {text!r}"
+    assert "invalid arguments for translation_job_control" in text
+    assert "action" in text

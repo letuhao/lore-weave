@@ -810,7 +810,11 @@ async def _resolve_project_owner(ctx: "ToolContext", need: GrantLevel) -> UUID:
     from app.tools.executor import ToolExecutionError
 
     if ctx.project_id is None:
-        raise ToolExecutionError("a project must be in scope for this tool")
+        raise ToolExecutionError(
+            "no project in scope — pass the optional `project_id` argument "
+            "(list your projects with kg_project_list), or open this chat from "
+            "a project"
+        )
     meta = await ctx.projects_repo.project_meta(ctx.project_id)
     if meta is None:
         raise ToolExecutionError("project not found")
@@ -844,7 +848,11 @@ async def _resolve_project_owner_and_level(
     from app.tools.executor import ToolExecutionError
 
     if ctx.project_id is None:
-        raise ToolExecutionError("a project must be in scope for this tool")
+        raise ToolExecutionError(
+            "no project in scope — pass the optional `project_id` argument "
+            "(list your projects with kg_project_list), or open this chat from "
+            "a project"
+        )
     meta = await ctx.projects_repo.project_meta(ctx.project_id)
     if meta is None:
         raise ToolExecutionError("project not found")

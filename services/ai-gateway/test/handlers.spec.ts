@@ -1,4 +1,5 @@
 import {
+  classifyCallToolError,
   extractEnvelope,
   handleCallTool,
   handleGetPrompt,
@@ -8,6 +9,7 @@ import {
   handleListTools,
   handleReadResource,
   headerValue,
+  sanitizeUpstreamErrorText,
 } from '../src/mcp/handlers.js';
 import type { FederationService } from '../src/federation/federation.service.js';
 
@@ -187,7 +189,7 @@ describe('handleCallTool', () => {
     expect(res.content[0].type).toBe('text');
   });
 
-  it('turns a provider failure into an MCP tool error (isError), not a throw', async () => {
+  it('turns an unclassifiable provider failure into the generic MCP tool error (isError), not a throw', async () => {
     const fed = fakeFederation({
       executeTool: async () => {
         throw new Error('provider down');
@@ -199,7 +201,7 @@ describe('handleCallTool', () => {
     expect(res.content[0].text).toBe("tool 'memory_search' failed: provider error");
   });
 
-  it('does NOT leak the internal provider URL into the LLM-visible tool-error text', async () => {
+  it('W0 #5: classifies a transport failure as retryable, without leaking the internal URL', async () => {
     const fed = fakeFederation({
       executeTool: async () => {
         // A real transport failure embeds the internal endpoint in its message.
@@ -212,7 +214,88 @@ describe('handleCallTool', () => {
     expect(text).not.toContain('book-service');
     expect(text).not.toContain('8082');
     expect(text).not.toContain('ECONNREFUSED');
-    expect(text).toBe("tool 'book_create' failed: provider error");
+    expect(text).toBe(
+      "tool 'book_create' failed: backend temporarily unreachable — retry may succeed",
+    );
+  });
+
+  it('W0 #5: an unknown tool tells the model to use find_tools (not "provider error")', async () => {
+    const fed = fakeFederation({
+      executeTool: async () => {
+        throw new Error("unknown tool 'book_lst'");
+      },
+    });
+    const res = await handleCallTool(fed, 'book_lst', {}, {});
+    expect(res.isError).toBe(true);
+    const text = res.content[0].text as string;
+    expect(text).toContain('unknown tool');
+    expect(text).toContain('find_tools');
+  });
+
+  it('W0 #5: an upstream JSON-RPC rejection passes its (sanitized) message through', async () => {
+    const fed = fakeFederation({
+      executeTool: async () => {
+        // The TS SDK's McpError message shape for a JSON-RPC error response.
+        throw new Error('MCP error -32602: book_id must be a UUID (see http://glossary-service:8085/mcp)');
+      },
+    });
+    const res = await handleCallTool(fed, 'glossary_book_patch', {}, {});
+    expect(res.isError).toBe(true);
+    const text = res.content[0].text as string;
+    // The actionable upstream text survives…
+    expect(text).toContain('book_id must be a UUID');
+    // …but nothing address-shaped does.
+    expect(text).not.toContain('glossary-service');
+    expect(text).not.toContain('8085');
+    expect(text).not.toContain('http://');
+  });
+
+  it('W0 #5: the SDK request-timeout JSON-RPC code (-32001) reads as retryable transport', async () => {
+    const fed = fakeFederation({
+      executeTool: async () => {
+        throw new Error('MCP error -32001: Request timed out');
+      },
+    });
+    const res = await handleCallTool(fed, 'glossary_plan', {}, {});
+    expect(res.content[0].text).toBe(
+      "tool 'glossary_plan' failed: backend temporarily unreachable — retry may succeed",
+    );
+  });
+});
+
+describe('classifyCallToolError / sanitizeUpstreamErrorText', () => {
+  it('classifies an aborted in-flight call as retryable', () => {
+    const abort = new Error('This operation was aborted');
+    (abort as any).name = 'AbortError';
+    expect(classifyCallToolError(abort)).toBe(
+      'backend temporarily unreachable — retry may succeed',
+    );
+  });
+
+  it('classifies a 4xx Streamable-HTTP error as an upstream rejection with sanitized text', () => {
+    const e = new Error('Streamable HTTP error: Error POSTing to endpoint: invalid internal token');
+    (e as any).code = 401;
+    const text = classifyCallToolError(e);
+    expect(text).toContain('rejected by the owning service');
+    expect(text).toContain('invalid internal token');
+  });
+
+  it('classifies a 5xx Streamable-HTTP error as retryable', () => {
+    const e = new Error('Streamable HTTP error: Error POSTing to endpoint: upstream exploded');
+    (e as any).code = 503;
+    expect(classifyCallToolError(e)).toBe(
+      'backend temporarily unreachable — retry may succeed',
+    );
+  });
+
+  it('sanitizes URLs, service hosts, and IPs out of upstream text', () => {
+    const raw =
+      'call http://book-service:8082/mcp failed via 10.0.3.17:5432 (see also knowledge-service:8092)';
+    const clean = sanitizeUpstreamErrorText(raw);
+    expect(clean).not.toContain('book-service');
+    expect(clean).not.toContain('8082');
+    expect(clean).not.toContain('10.0.3.17');
+    expect(clean).not.toContain('8092');
   });
 });
 

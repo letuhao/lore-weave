@@ -188,13 +188,80 @@ export async function handleCallTool(
     // headers, §20) so a provider that reads req.Params.Meta still receives it.
     return await federation.executeTool(name, args, env, meta, signal);
   } catch (e) {
-    // Full detail stays server-side only. The LLM-visible text is GENERIC: a
-    // transport failure's `String(e)` includes the internal provider URL (e.g.
-    // http://book-service:8082/mcp), which must never leak to the model.
+    // Full detail stays server-side only; the LLM-visible text is CLASSIFIED
+    // (W0 #5): retryable transport vs upstream rejection vs unknown tool — a
+    // flat "provider error" gave the model nothing to act on (5x book_list
+    // dead-ended in the live audit). URL-leak protection is preserved: any
+    // passed-through upstream text is sanitized of URLs/hosts first.
     log.warn(`tool '${name}' execution failed: ${e}`);
     return {
       isError: true,
-      content: [{ type: 'text', text: `tool '${name}' failed: provider error` }],
+      content: [{ type: 'text', text: `tool '${name}' failed: ${classifyCallToolError(e)}` }],
     };
   }
+}
+
+// ── W0 #5 — LLM-facing tool-error classification ────────────────────────
+
+/** Strips anything address-shaped from upstream error text before it reaches
+ * the model: URLs, internal `<svc>-service:port` hosts, bare host:port pairs,
+ * and IPv4s. The redaction keeps the rest of the upstream's (self-authored,
+ * model-actionable) message intact. */
+export function sanitizeUpstreamErrorText(raw: string): string {
+  return raw
+    .replace(/[a-z][a-z0-9+.-]*:\/\/[^\s"'()<>]+/gi, '[redacted]') // scheme://…
+    .replace(/\b[\w.-]*\b(?:service|gateway|api|db|host)\b[\w.-]*:\d{2,5}\b/gi, '[redacted]')
+    .replace(/\b\d{1,3}(?:\.\d{1,3}){3}(?::\d{2,5})?\b/g, '[redacted]')
+    .replace(/\b[\w-]+\.(?:local|internal|svc|cluster)[\w.]*(?::\d{2,5})?\b/gi, '[redacted]')
+    .trim();
+}
+
+const TRANSPORT_ERROR_RE =
+  /fetch failed|ECONNREFUSED|ECONNRESET|ETIMEDOUT|ENOTFOUND|EAI_AGAIN|EPIPE|socket hang up|network|terminated|abort|timed? ?out/i;
+
+/**
+ * Classify an executeTool failure into an LLM-actionable one-liner:
+ *  - unknown tool          → say so + point at find_tools (the model mistyped);
+ *  - transport/timeout/5xx → "backend temporarily unreachable — retry may succeed";
+ *  - upstream JSON-RPC / HTTP-4xx rejection → pass the upstream's message
+ *    through, sanitized of URLs/hosts (it is server-authored and usually says
+ *    exactly what to fix);
+ *  - anything else         → the old generic "provider error".
+ */
+export function classifyCallToolError(e: unknown): string {
+  const msg = e instanceof Error ? e.message : String(e ?? '');
+  const code = (e as { code?: unknown })?.code;
+
+  // federation.executeTool throws this BEFORE any network call: no provider owns the name.
+  if (/^unknown tool /.test(msg)) {
+    return `unknown tool — it is not in the tool catalog; call find_tools to discover valid tool names`;
+  }
+
+  // JSON-RPC error relayed from the owning provider (the TS SDK's McpError
+  // formats as "MCP error <code>: <message>"). -32001 is the SDK's request
+  // timeout → retryable; other codes are upstream rejections whose text is
+  // server-authored and actionable.
+  const mcpErr = /^MCP error (-?\d+): ([\s\S]*)$/.exec(msg);
+  if (mcpErr) {
+    if (mcpErr[1] === '-32001') {
+      return 'backend temporarily unreachable — retry may succeed';
+    }
+    const text = sanitizeUpstreamErrorText(mcpErr[2]);
+    return text ? `rejected by the owning service: ${text}` : 'provider error';
+  }
+
+  // Streamable-HTTP transport error carrying the upstream HTTP status: 4xx is a
+  // rejection (pass sanitized text through), 5xx/undefined is retryable.
+  if (typeof code === 'number' && code >= 400 && code < 500 && msg.startsWith('Streamable HTTP error:')) {
+    const text = sanitizeUpstreamErrorText(msg.replace(/^Streamable HTTP error:\s*/, ''));
+    return text ? `rejected by the owning service: ${text}` : 'provider error';
+  }
+
+  // Transport-level failures (connect refused, DNS, reset, abort, timeout, 5xx).
+  if (TRANSPORT_ERROR_RE.test(msg) || (e as { name?: string })?.name === 'AbortError' ||
+      (typeof code === 'number' && code >= 500)) {
+    return 'backend temporarily unreachable — retry may succeed';
+  }
+
+  return 'provider error';
 }

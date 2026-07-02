@@ -52,6 +52,9 @@ func (s *Server) RegisterUserTools(srv *mcp.Server) {
 			"takes effect immediately). level=genre|kind|attribute + name (+ code, derived from name if " +
 			"omitted). For an attribute: kind_code & genre_code identify which of YOUR kind×genre cells it " +
 			"attaches to (both must already be your user-tier rows).",
+		InputSchema: closedSetSchemaFor[userCreateToolIn](map[string][]any{
+			"level": enumLevels, "field_type": enumFieldTypes,
+		}),
 	}, s.toolUserCreate)
 
 	mcp.AddTool(srv, &mcp.Tool{
@@ -59,6 +62,9 @@ func (s *Server) RegisterUserTools(srv *mcp.Server) {
 		Description: "Edit one of YOUR user-tier genre/kind/attributes in place. level + code identify the " +
 			"row (attribute also needs kind_code + genre_code). Pass the base_version you read from " +
 			"glossary_user_standards_read so a concurrent edit is detected (409 on drift). Only supplied fields change.",
+		InputSchema: closedSetSchemaFor[userPatchToolIn](map[string][]any{
+			"level": enumLevels, "field_type": enumFieldTypes,
+		}),
 	}, s.toolUserPatch)
 
 	mcp.AddTool(srv, &mcp.Tool{
@@ -66,12 +72,14 @@ func (s *Server) RegisterUserTools(srv *mcp.Server) {
 		Description: "Move one of YOUR user-tier genre/kind/attributes to the trash (soft-delete, REVERSIBLE " +
 			"via glossary_user_restore). level + code (attribute also needs kind_code + genre_code). A genre " +
 			"still linked to a kind or carrying attributes can't be trashed until those are removed.",
+		InputSchema: closedSetSchemaFor[userDeleteToolIn](map[string][]any{"level": enumLevels}),
 	}, s.toolUserDelete)
 
 	mcp.AddTool(srv, &mcp.Tool{
 		Name: "glossary_user_restore",
 		Description: "Restore one of YOUR user-tier genre/kind/attributes from the trash (undo a " +
 			"glossary_user_delete). level + code (attribute also needs kind_code + genre_code).",
+		InputSchema: closedSetSchemaFor[userDeleteToolIn](map[string][]any{"level": enumLevels}),
 	}, s.toolUserRestore)
 }
 
@@ -447,7 +455,7 @@ func (s *Server) patchUserGenreTool(ctx context.Context, userID uuid.UUID, code 
 		return nil, userWriteOut{}, errors.New("the target no longer exists")
 	}
 	if cverr := compareBaseVersion(curHash, strings.TrimSpace(in.BaseVersion)); cverr != nil {
-		return nil, userWriteOut{}, errUserPatchConflict
+		return nil, userWriteOut{}, errUserPatchConflict(curHash)
 	}
 	fields := []updateField{}
 	if in.Name != nil {
@@ -491,7 +499,7 @@ func (s *Server) patchUserKindTool(ctx context.Context, userID uuid.UUID, code s
 		return nil, userWriteOut{}, errors.New("the target no longer exists")
 	}
 	if cverr := compareBaseVersion(curUpdated.UTC().Format(time.RFC3339Nano), strings.TrimSpace(in.BaseVersion)); cverr != nil {
-		return nil, userWriteOut{}, errUserPatchConflict
+		return nil, userWriteOut{}, errUserPatchConflict(curUpdated.UTC().Format(time.RFC3339Nano))
 	}
 	fields := []updateField{}
 	if in.Name != nil {
@@ -539,7 +547,7 @@ func (s *Server) patchUserAttrTool(ctx context.Context, userID uuid.UUID, code s
 		return nil, userWriteOut{}, errors.New("the target no longer exists")
 	}
 	if cverr := compareBaseVersion(curHash, strings.TrimSpace(in.BaseVersion)); cverr != nil {
-		return nil, userWriteOut{}, errUserPatchConflict
+		return nil, userWriteOut{}, errUserPatchConflict(curHash)
 	}
 	fields := []updateField{}
 	if in.Name != nil {
@@ -588,7 +596,14 @@ func (s *Server) patchUserAttrTool(ctx context.Context, userID uuid.UUID, code s
 	return nil, userWriteOut{Level: userLevelAttr, ID: id.String(), Code: code, BaseVersion: newHash, Status: "patched"}, nil
 }
 
-var errUserPatchConflict = errors.New("the row changed since you read it (409) — re-read glossary_user_standards_read and retry")
+// errUserPatchConflict builds the user-tier 409 with the row's CURRENT
+// base_version embedded, so the model retries in ONE step (W0 #1a) instead of
+// re-reading the whole standards library (or looping a hallucinated value).
+func errUserPatchConflict(current string) error {
+	return fmt.Errorf(
+		"the row changed since you read it (409) — its current base_version is %s; retry the same patch with base_version=%q",
+		current, current)
+}
 
 // applyUserUpdate runs an owner-scoped UPDATE of the validated fields. table/idCol are
 // internal constants (never request input) → no injection; owner_user_id in the WHERE

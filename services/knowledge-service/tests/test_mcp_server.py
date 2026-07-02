@@ -510,3 +510,131 @@ def test_parse_spend_cap():
     assert _parse_spend_cap("") is None
     assert _parse_spend_cap("not-a-number") is None  # fails open → no per-key cap
     assert _parse_spend_cap("-1") is None  # negative rejected
+
+
+# ── W0 MCP reliability contract ────────────────────────────────────────
+# Mirrors chat-service's FE-tools CLOSED_SET_ARGS rule for MCP: closed-set
+# args are real enums; the observed one-element-list filter shape is
+# tolerated; pydantic validation failures reach the model as ONE-LINE
+# directives (never the raw dump with the errors.pydantic.dev URL).
+
+# tool → args whose valid values are a finite, code-known set.
+CLOSED_SET_ARGS = {
+    "kg_list_templates": ["scope"],
+    "kg_triage_list": ["status"],
+    "kg_propose_fact": ["fact_type"],
+    "kg_schema_edit": ["verb", "level"],
+    "kg_triage_resolve": ["action"],
+    "kg_triage_schema_write": ["action"],
+}
+
+
+def _closed_set_enum(spec: dict) -> set:
+    """Collect enum values from a property spec, descending anyOf unions and
+    array item schemas (the `X | list[X] | None` rendering)."""
+    values: set = set()
+    for branch in (spec, *spec.get("anyOf", [])):
+        if "enum" in branch:
+            values |= set(branch["enum"])
+        items = branch.get("items")
+        if isinstance(items, dict) and "enum" in items:
+            values |= set(items["enum"])
+    return values
+
+
+async def test_closed_set_args_are_enums(mcp_base_url):
+    headers = {"X-Internal-Token": _GOOD_TOKEN}
+    async with _mcp_client(mcp_base_url, headers) as session:
+        listing = await session.list_tools()
+    by_name = {t.name: t for t in listing.tools}
+    for tool_name, args in CLOSED_SET_ARGS.items():
+        props = by_name[tool_name].inputSchema.get("properties", {})
+        for arg in args:
+            assert _closed_set_enum(props.get(arg, {})), (
+                f"{tool_name}.{arg}: closed-set arg MUST declare an enum"
+            )
+
+
+async def test_kg_list_templates_scope_accepts_one_element_list(monkeypatch):
+    """W0 #3 — the observed `scope: [\"system\"]` shape must dispatch exactly
+    like `scope: \"system\"` (unwrap, not error)."""
+    import app.mcp.server as srv
+
+    calls = []
+
+    async def _fake_dispatch(ctx, tool_name, tool_args):
+        calls.append((tool_name, tool_args))
+        return {"templates": []}
+
+    monkeypatch.setattr(srv, "_dispatch", _fake_dispatch)
+    fn = srv.mcp_server._tool_manager._tools["kg_list_templates"].fn
+    await fn(None, scope=["system"])
+    await fn(None, scope="system")
+    assert calls[0] == calls[1] == ("kg_list_templates", {"scope": "system"})
+
+
+async def test_kg_list_templates_scope_multi_list_errors_with_directive(monkeypatch):
+    import app.mcp.server as srv
+
+    async def _fake_dispatch(ctx, tool_name, tool_args):  # pragma: no cover
+        raise AssertionError("must not dispatch")
+
+    monkeypatch.setattr(srv, "_dispatch", _fake_dispatch)
+    fn = srv.mcp_server._tool_manager._tools["kg_list_templates"].fn
+    with pytest.raises(ValueError) as exc:
+        await fn(None, scope=["system", "user"])
+    msg = str(exc.value)
+    assert "scope" in msg and "single value" in msg
+
+
+async def test_validation_error_reaches_model_as_one_line_directive(mcp_base_url):
+    """W0 #4b — a bad enum value surfaces as the rewritten one-line directive:
+    names the arg, states what pydantic expected, never the pydantic-docs URL
+    or the multi-line dump. Validation fails BEFORE auth/repo access."""
+    headers = {
+        "X-Internal-Token": _GOOD_TOKEN,
+        "X-User-Id": "11111111-1111-1111-1111-111111111111",
+        "X-Session-Id": "sess-1",
+    }
+    async with _mcp_client(mcp_base_url, headers) as session:
+        result = await session.call_tool("kg_list_templates", {"scope": "bogus"})
+    assert result.isError is True
+    text = result.content[0].text
+    assert "errors.pydantic.dev" not in text
+    assert "\n" not in text.strip(), f"directive must be one line, got: {text!r}"
+    assert "invalid arguments for kg_list_templates" in text
+    assert "scope" in text
+
+
+async def test_project_in_scope_error_is_a_directive():
+    """W0 #4a — the grant gate's no-project error must tell the model HOW to
+    fix it: name the `project_id` arg + the kg_project_list discovery tool."""
+    from uuid import uuid4
+
+    from app.tools.executor import ToolExecutionError
+    from app.tools.graph_schema_tools import _resolve_project_owner
+
+    class _Ctx:
+        project_id = None
+        user_id = uuid4()
+        mcp_key_id = None
+
+    from loreweave_grants import GrantLevel
+
+    with pytest.raises(ToolExecutionError) as exc:
+        await _resolve_project_owner(_Ctx(), GrantLevel.VIEW)
+    msg = str(exc.value)
+    assert "project_id" in msg
+    assert "kg_project_list" in msg
+
+
+async def test_kg_project_list_is_advertised_with_no_scope_leak(mcp_base_url):
+    """The discovery tool the #4a directive points at must exist on the MCP
+    surface, owner-scoped via the envelope (no user_id/project_id args)."""
+    headers = {"X-Internal-Token": _GOOD_TOKEN}
+    async with _mcp_client(mcp_base_url, headers) as session:
+        listing = await session.list_tools()
+    by_name = {t.name: t for t in listing.tools}
+    assert "kg_project_list" in by_name
+    props = set(by_name["kg_project_list"].inputSchema.get("properties", {}))
+    assert props == {"include_archived", "limit"}

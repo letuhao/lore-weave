@@ -126,21 +126,50 @@ func TestBookTool_PatchBaseVersion409(t *testing.T) {
 		t.Fatalf("seed kind: %v", err)
 	}
 
-	// stale base_version → 409-style error
+	// opt-out (empty base_version) → patches, returning the fresh version
 	nm := "Realm v2"
-	if _, _, err := f.srv.toolBookPatch(octx, nil, bookPatchToolIn{
-		BookID: f.bookID.String(), Level: "kind", Code: "t1_realm",
-		BaseVersion: "2000-01-01T00:00:00Z", Name: &nm,
-	}); err == nil || !strings.Contains(err.Error(), "changed since") {
-		t.Fatalf("stale base_version: want 409, got %v", err)
-	}
-
-	// opt-out (empty base_version) → patches
 	_, out, err := f.srv.toolBookPatch(octx, nil, bookPatchToolIn{
 		BookID: f.bookID.String(), Level: "kind", Code: "t1_realm", Name: &nm,
 	})
 	if err != nil || out.Status != "patched" || out.Version == "" {
 		t.Fatalf("opt-out patch: %v %+v", err, out)
+	}
+	v1 := out.Version
+
+	// rotate the row's version once more so v1 becomes a PLAUSIBLE-but-stale base
+	_, out2, err := f.srv.toolBookPatch(octx, nil, bookPatchToolIn{
+		BookID: f.bookID.String(), Level: "kind", Code: "t1_realm", Name: &nm,
+	})
+	if err != nil || out2.Version == "" || out2.Version == v1 {
+		t.Fatalf("rotate patch: %v %+v", err, out2)
+	}
+
+	// plausible-but-stale base_version → 409, and the error carries the CURRENT
+	// version so the model can retry in ONE step (W0 #1a).
+	if _, _, err := f.srv.toolBookPatch(octx, nil, bookPatchToolIn{
+		BookID: f.bookID.String(), Level: "kind", Code: "t1_realm",
+		BaseVersion: v1, Name: &nm,
+	}); err == nil || !strings.Contains(err.Error(), "changed since") {
+		t.Fatalf("stale base_version: want 409, got %v", err)
+	} else if !strings.Contains(err.Error(), out2.Version) {
+		t.Fatalf("409 must embed the current version %q, got %v", out2.Version, err)
+	}
+
+	// IMPLAUSIBLE base_version (before the row existed — the model hallucinated it,
+	// never read it) → treated as not-read: the patch APPLIES (W0 #1b, the
+	// hallucination shim; a fabricated timestamp must not start a 409 retry storm).
+	if _, hout, err := f.srv.toolBookPatch(octx, nil, bookPatchToolIn{
+		BookID: f.bookID.String(), Level: "kind", Code: "t1_realm",
+		BaseVersion: "2000-01-01T00:00:00Z", Name: &nm,
+	}); err != nil || hout.Status != "patched" {
+		t.Fatalf("hallucinated base_version must be tolerated as not-read: %v %+v", err, hout)
+	}
+	// … and so is an unparseable one.
+	if _, hout, err := f.srv.toolBookPatch(octx, nil, bookPatchToolIn{
+		BookID: f.bookID.String(), Level: "kind", Code: "t1_realm",
+		BaseVersion: "latest", Name: &nm,
+	}); err != nil || hout.Status != "patched" {
+		t.Fatalf("unparseable base_version must be tolerated as not-read: %v %+v", err, hout)
 	}
 	var got string
 	pool.QueryRow(context.Background(), `SELECT name FROM book_kinds WHERE book_id=$1 AND code='t1_realm'`, f.bookID).Scan(&got)
@@ -238,19 +267,28 @@ func TestBookTool_PatchAttributeLevel(t *testing.T) {
 	}); err != nil {
 		t.Fatalf("seed attr: %v", err)
 	}
-	// stale base_version → 409
+	// opt-out → patches the right (kind×genre×code) row, returning its version
 	nm := "Title v2"
+	_, out, err := f.srv.toolBookPatch(octx, nil, bookPatchToolIn{
+		BookID: f.bookID.String(), Level: "attribute", Code: "t1_title", KindCode: "character", GenreCode: "universal", Name: &nm,
+	})
+	if err != nil || out.Status != "patched" {
+		t.Fatalf("attr patch: %v %+v", err, out)
+	}
+	v1 := out.Version
+	// rotate once more so v1 is plausible-but-stale
+	_, out2, err := f.srv.toolBookPatch(octx, nil, bookPatchToolIn{
+		BookID: f.bookID.String(), Level: "attribute", Code: "t1_title", KindCode: "character", GenreCode: "universal", Name: &nm,
+	})
+	if err != nil || out2.Version == v1 {
+		t.Fatalf("rotate attr patch: %v %+v", err, out2)
+	}
+	// plausible-but-stale base_version → 409 (real OCC conflict, kept)
 	if _, _, err := f.srv.toolBookPatch(octx, nil, bookPatchToolIn{
 		BookID: f.bookID.String(), Level: "attribute", Code: "t1_title", KindCode: "character", GenreCode: "universal",
-		BaseVersion: "2000-01-01T00:00:00Z", Name: &nm,
+		BaseVersion: v1, Name: &nm,
 	}); err == nil || !strings.Contains(err.Error(), "changed since") {
 		t.Fatalf("stale attr patch: want 409, got %v", err)
-	}
-	// opt-out → patches the right (kind×genre×code) row
-	if _, out, err := f.srv.toolBookPatch(octx, nil, bookPatchToolIn{
-		BookID: f.bookID.String(), Level: "attribute", Code: "t1_title", KindCode: "character", GenreCode: "universal", Name: &nm,
-	}); err != nil || out.Status != "patched" {
-		t.Fatalf("attr patch: %v %+v", err, out)
 	}
 	var got string
 	pool.QueryRow(context.Background(),
@@ -265,7 +303,7 @@ func TestBookTool_PatchAttributeLevel(t *testing.T) {
 	// patchable) must NOT return the misleading generic "no live row with that code"
 	// message; it must explain the (kind, genre, code) identity + the delete+recreate
 	// path so the agent doesn't blindly retry.
-	_, _, err := f.srv.toolBookPatch(octx, nil, bookPatchToolIn{
+	_, _, err = f.srv.toolBookPatch(octx, nil, bookPatchToolIn{
 		BookID: f.bookID.String(), Level: "attribute", Code: "t1_title",
 		KindCode: "character", GenreCode: "xianxia", Name: &nm,
 	})

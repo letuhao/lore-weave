@@ -96,6 +96,9 @@ func (s *Server) mcpHandler() http.Handler {
 			"anything; it returns a confirm_token + preview that a human must explicitly confirm. Pass the " +
 			"confirm_token to glossary_confirm_action. Use sparingly, only when no existing kind " +
 			"(glossary_book_ontology_read) fits.",
+		InputSchema: closedSetSchemaFor[proposeKindToolIn](map[string][]any{
+			"attributes[].field_type": enumFieldTypes,
+		}),
 	}, s.toolProposeNewKind)
 
 	mcp.AddTool(srv, &mcp.Tool{
@@ -107,6 +110,9 @@ func (s *Server) mcpHandler() http.Handler {
 			"instruction). Returns ONE confirm_token + a preview listing all kinds; the human confirms once via " +
 			"glossary_confirm_action and they are all created (idempotent — an existing kind is skipped). High-impact; " +
 			"creates nothing until confirmed.",
+		InputSchema: closedSetSchemaFor[proposeKindsToolIn](map[string][]any{
+			"kinds[].attributes[].field_type": enumFieldTypes,
+		}),
 	}, s.toolProposeKinds)
 
 	mcp.AddTool(srv, &mcp.Tool{
@@ -138,7 +144,20 @@ func (s *Server) mcpHandler() http.Handler {
 			"Every attribute needs a clear `description` (extraction uses it as the instruction). Slug codes only " +
 			"(^[a-z0-9_]+$). The human confirms once; a deterministic executor applies the whole batch idempotently " +
 			"(existing rows are skipped, destructive ops are per-op opt-in). Creates nothing until confirmed. Pass " +
-			"the returned confirm_token to glossary_confirm_action.",
+			"the returned confirm_token to glossary_confirm_action. " +
+			// W0 #6: a worked example of the batch envelope — 4/4 live calls failed
+			// because models nested the payload wrong ("op create_kinds: at least one
+			// kind is required"); showing one full envelope fixes the shape.
+			`Worked example: {"book_id":"<uuid>","goal":"add two kinds","ops":[` +
+			`{"type":"create_kinds","params":{"kinds":[{"code":"sect","name":"Sect","description":"An organization of cultivators",` +
+			`"attributes":[{"code":"leader","name":"Leader","description":"Who leads this sect","field_type":"text"}]}]},` +
+			`"rationale":"the book has none"},` +
+			`{"type":"delete_kind","params":{"kind_code":"unused_kind"},"rationale":"user asked to remove it"}]} ` +
+			"— note each op's payload goes INSIDE its `params` object (create_kinds params MUST contain a non-empty `kinds` array).",
+		InputSchema: closedSetSchemaFor[proposeBatchToolIn](map[string][]any{
+			"ops[].type": {"adopt_genres", "create_kinds", "add_attributes", "edit_attribute",
+				"delete_genre", "delete_kind", "delete_attribute", "merge_candidate", "dismiss_candidate"},
+		}),
 	}, s.toolProposeBatch)
 
 	mcp.AddTool(srv, &mcp.Tool{
@@ -147,6 +166,9 @@ func (s *Server) mcpHandler() http.Handler {
 			"character kind). Schema-level and high-impact — it does NOT write; it returns a confirm_token + " +
 			"preview a human must confirm via glossary_confirm_action. Call glossary_book_ontology_read first to pick " +
 			"the kind_code and avoid duplicating an existing attribute.",
+		InputSchema: closedSetSchemaFor[proposeAttrToolIn](map[string][]any{
+			"field_type": enumFieldTypes,
+		}),
 	}, s.toolProposeNewAttribute)
 	// glossary_book_delete + glossary_book_* tools are registered in RegisterBookTools (T1).
 

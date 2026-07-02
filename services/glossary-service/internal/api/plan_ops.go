@@ -728,7 +728,9 @@ func validateCreateKinds(params json.RawMessage) error {
 		return err
 	}
 	if len(p.Kinds) == 0 {
-		return errors.New("create_kinds: at least one kind is required")
+		// W0 #6: name the expected shape — models put the kinds at the wrong nesting
+		// level, so "at least one kind is required" alone sent them in circles.
+		return errors.New(`create_kinds: at least one kind is required — params must be {"kinds":[{"code","name","description","attributes":[...]}]} (the kinds array goes INSIDE params)`)
 	}
 	if len(p.Kinds) > maxKindsPerOp {
 		return fmt.Errorf("create_kinds: at most %d kinds per op (got %d) — split the goal into a smaller plan", maxKindsPerOp, len(p.Kinds))

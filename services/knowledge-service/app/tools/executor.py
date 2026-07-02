@@ -319,8 +319,9 @@ async def _handle_memory_search(ctx: ToolContext, args: MemorySearchArgs) -> dic
         # surface to the user as an alarming red "failed" step. The note guides both the
         # agent (fall back to other tools) and the user (link a project to enable memory).
         return {"hits": [], "count": 0,
-                "note": "no knowledge project is linked to this chat — link one in session "
-                        "settings to enable memory search"}
+                "note": "no knowledge project is linked to this chat — pass the optional "
+                        "`project_id` argument (list your projects with kg_project_list), "
+                        "or link one in session settings to enable memory search"}
     # H-U: projects_repo.get is OWNER-keyed (user_id + project_id), so this IS the
     # owner check for memory_search — a project the caller doesn't own returns None
     # → "project not found" (anti-oracle), same as the explicit

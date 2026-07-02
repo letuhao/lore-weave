@@ -89,10 +89,47 @@ async def _handle_kg_project_create(ctx: "ToolContext", args: KgProjectCreateArg
     }
 
 
+class KgProjectListArgs(BaseModel):
+    """`kg_project_list` — Tier R. List the caller's OWN knowledge projects, so an
+    agent can discover a `project_id` when no project is in scope (W0 #4a: the
+    "no project in scope" error directs the model here)."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    include_archived: bool = False
+    limit: int = Field(default=20, ge=1, le=50)
+
+
+async def _handle_kg_project_list(ctx: "ToolContext", args: KgProjectListArgs) -> dict:
+    """R (read). Owner-scoped by the envelope identity — the repo filters
+    `user_id = ctx.user_id`, so the caller only ever sees their own projects
+    (public MCP keys included: owned-only, no grant traversal)."""
+    projects = await ctx.projects_repo.list(
+        ctx.user_id, include_archived=args.include_archived, limit=args.limit
+    )
+    more = len(projects) > args.limit  # the repo fetches limit+1 to signal more
+    return {
+        "projects": [
+            {
+                "project_id": str(p.project_id),
+                "name": p.name,
+                "project_type": p.project_type,
+                "book_id": str(p.book_id) if p.book_id else None,
+                "is_archived": p.is_archived,
+            }
+            for p in projects[: args.limit]
+        ],
+        "more": more,
+        "note": "pass a project_id to a project-scoped kg_* tool to act on that project",
+    }
+
+
 PROJECT_TOOL_ARG_MODELS: dict[str, type[BaseModel]] = {
     "kg_project_create": KgProjectCreateArgs,
+    "kg_project_list": KgProjectListArgs,
 }
 
 PROJECT_TOOL_HANDLERS = {
     "kg_project_create": _handle_kg_project_create,
+    "kg_project_list": _handle_kg_project_list,
 }

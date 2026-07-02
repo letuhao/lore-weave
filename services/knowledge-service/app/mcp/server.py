@@ -44,8 +44,9 @@ from uuid import UUID
 
 from mcp.server.fastmcp import Context as MCPContext
 from mcp.server.fastmcp import FastMCP
+from mcp.server.fastmcp.exceptions import ToolError
 from mcp.server.transport_security import TransportSecuritySettings
-from pydantic import Field
+from pydantic import Field, ValidationError
 
 from app.clients.book_client import get_book_client
 from app.clients.embedding_client import get_embedding_client
@@ -117,6 +118,55 @@ mcp_server = FastMCP(
     # Host header (which matters for browser-facing servers, not this one).
     transport_security=TransportSecuritySettings(enable_dns_rebinding_protection=False),
 )
+
+
+# ── W0 #4b — model-directed validation errors ─────────────────────────
+# FastMCP surfaces a pydantic arg-validation failure as the RAW multi-line
+# dump (with the errors.pydantic.dev URL) — noise a model cannot act on.
+# Intercept at the per-server tool-dispatch chokepoint and rewrite to a
+# ONE-LINE directive (arg name + what pydantic expected + what was sent).
+# Mirrors jobs-service/translation-service; the loreweave_mcp kit will
+# absorb the shared copy later (kit is outside the W0 change surface).
+
+
+def _validation_directive(tool_name: str, exc: ValidationError) -> str:
+    """One line: every failing arg with pydantic's expectation + the sent shape."""
+    parts = []
+    errs = exc.errors(include_url=False)
+    for err in errs[:3]:
+        loc = ".".join(str(p) for p in err.get("loc", ())) or "arguments"
+        msg = err.get("msg", "invalid value")
+        sent = err.get("input")
+        parts.append(f"`{loc}`: {msg} (you sent a {type(sent).__name__})")
+    if len(errs) > 3:
+        parts.append(f"(+{len(errs) - 3} more)")
+    return (
+        f"invalid arguments for {tool_name} — "
+        + "; ".join(parts)
+        + ". Fix the argument and call the tool again."
+    )
+
+
+def _install_validation_error_rewriter(server: FastMCP) -> None:
+    """Wrap the FastMCP tool manager's dispatch so a ToolError caused by a
+    pydantic ValidationError re-raises with the one-line directive instead of
+    the raw dump. Non-validation errors pass through untouched."""
+    manager = server._tool_manager
+    original = manager.call_tool
+
+    async def call_tool(name, arguments, *args, **kwargs):
+        try:
+            return await original(name, arguments, *args, **kwargs)
+        except ToolError as e:
+            cause = e.__cause__
+            if isinstance(cause, ValidationError):
+                raise ToolError(_validation_directive(name, cause)) from cause
+            raise
+
+    manager.call_tool = call_tool
+
+
+_install_validation_error_rewriter(mcp_server)
 
 # H-I: the optional project_id parameter shared by project-scoped tools. The
 # public edge mints no X-Project-Id, so a public agent supplies the project here;
@@ -504,6 +554,28 @@ async def kg_project_create(
     return await _dispatch(ctx, "kg_project_create", args)
 
 
+@mcp_server.tool(
+    name="kg_project_list",
+    description=(
+        "List YOUR OWN knowledge projects (id, name, type, linked book). Use this "
+        "to find the `project_id` to pass to a project-scoped kg_* tool when no "
+        "project is in scope. Owner-scoped: only the caller's projects are returned."
+    ),
+)
+async def kg_project_list(
+    ctx: MCPContext,
+    include_archived: Annotated[
+        bool, "Also include archived projects (default false)."
+    ] = False,
+    limit: Annotated[
+        int, Field(ge=1, le=50), "Max projects to return (default 20)."
+    ] = 20,
+) -> dict:
+    return await _dispatch(
+        ctx, "kg_project_list", {"include_archived": include_archived, "limit": limit}
+    )
+
+
 # ── KG ontology tools (lane LF; KM1/KM2 + R-class KM3/KM4) ─────────────
 # Descriptions mirror app/tools/graph_schema_tools.py verbatim. R (read) +
 # reversible W tiers below; the class-C ontology tools (adopt / schema-edit /
@@ -611,10 +683,22 @@ async def kg_schema_read(
 async def kg_list_templates(
     ctx: MCPContext,
     scope: Annotated[
-        Literal["system", "user"] | None,
-        "Optional — restrict to 'system' or 'user' templates. Omit for both.",
+        Literal["system", "user"] | list[Literal["system", "user"]] | None,
+        "Optional — restrict to 'system' or 'user' templates. Pass ONE value as a "
+        "plain string (a one-element list is tolerated and unwrapped). Omit for both.",
     ] = None,
 ) -> dict:
+    # W0 #3 — models routinely send ["system"] for this filter arg. Unwrap a
+    # one-element list; reject a multi-element list with a directive (omitting
+    # scope already returns both, so a 2-element list means "omit").
+    if isinstance(scope, list):
+        if len(scope) == 1:
+            scope = scope[0]
+        else:
+            raise ValueError(
+                "`scope` must be a single value ('system' or 'user'), not a list — "
+                "omit it entirely to get both"
+            )
     args: dict[str, Any] = {}
     if scope is not None:
         args["scope"] = scope

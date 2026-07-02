@@ -391,6 +391,26 @@ TOOL_DEFINITIONS: list[dict] = [
         },
         ["name"],
     ),
+    # Project discovery — the answer to "no project in scope" (W0 #4a).
+    _tool(
+        "kg_project_list",
+        "List YOUR OWN knowledge projects (id, name, type, linked book). Use this "
+        "to find the `project_id` to pass to a project-scoped kg_* tool when no "
+        "project is in scope. Owner-scoped: only the caller's projects are returned.",
+        {
+            "include_archived": {
+                "type": "boolean",
+                "description": "Also include archived projects (default false).",
+            },
+            "limit": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 50,
+                "description": "Max projects to return (default 20).",
+            },
+        },
+        [],
+    ),
     # Cost-gated job trigger — build the knowledge graph (propose→confirm).
     _tool(
         "kg_build_graph",

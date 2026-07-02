@@ -113,3 +113,48 @@ async def test_smuggled_scope_arg_rejected():
         ctx, "kg_project_create", {"name": "X", "user_id": "smuggled"}
     )
     assert not res.success
+
+
+# ── kg_project_list (W0 #4a — the "no project in scope" discovery tool) ────────
+
+
+def _fake_listed_project(*, name="P", archived=False):
+    return SimpleNamespace(
+        project_id=uuid4(),
+        name=name,
+        project_type="book",
+        book_id=None,
+        is_archived=archived,
+    )
+
+
+@pytest.mark.asyncio
+async def test_project_list_is_owner_scoped_and_shaped():
+    """kg_project_list serves the caller's OWN projects through the repo's
+    user_id-filtered list, returning the compact discovery shape (id/name/
+    type/book) the #4a error directive points the model at."""
+    repo = AsyncMock()
+    p1, p2 = _fake_listed_project(name="A"), _fake_listed_project(name="B")
+    repo.list = AsyncMock(return_value=[p1, p2])
+    ctx = _mk_ctx(projects_repo=repo)
+    res = await execute_tool(ctx, "kg_project_list", {})
+    assert res.success, res.error
+    # the repo was queried for THIS caller only (identity from the envelope ctx)
+    assert repo.list.await_args.args[0] == _USER
+    names = [p["name"] for p in res.result["projects"]]
+    assert names == ["A", "B"]
+    assert res.result["projects"][0]["project_id"] == str(p1.project_id)
+    assert res.result["more"] is False
+
+
+@pytest.mark.asyncio
+async def test_project_list_signals_overflow_and_respects_limit():
+    """The repo fetches limit+1 to signal more pages — the tool must slice to
+    `limit` and set more=True."""
+    repo = AsyncMock()
+    repo.list = AsyncMock(return_value=[_fake_listed_project() for _ in range(3)])
+    ctx = _mk_ctx(projects_repo=repo)
+    res = await execute_tool(ctx, "kg_project_list", {"limit": 2})
+    assert res.success, res.error
+    assert len(res.result["projects"]) == 2
+    assert res.result["more"] is True
