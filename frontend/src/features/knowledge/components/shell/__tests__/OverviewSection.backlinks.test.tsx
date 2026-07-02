@@ -1,13 +1,30 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen } from '@testing-library/react';
+import { fireEvent, render, screen } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
 
 vi.mock('react-i18next', () => ({
   useTranslation: () => ({ t: (k: string, o?: { defaultValue?: string }) => o?.defaultValue ?? k }),
 }));
 
-// ProjectRow has heavy dialog deps; stub it — this test is about the backlinks.
-vi.mock('../../ProjectRow', () => ({ ProjectRow: () => <div data-testid="stub-project-row" /> }));
+// ProjectRow has heavy dialog deps; stub it — but expose an edit trigger so the
+// KN pen-button wiring (onEdit opens the form modal in the detail shell) is testable.
+vi.mock('../../ProjectRow', () => ({
+  ProjectRow: ({ onEdit }: { onEdit: () => void }) => (
+    <button data-testid="stub-row-edit" onClick={onEdit}>edit</button>
+  ),
+}));
+
+// ProjectFormModal is stubbed to a marker that echoes its open/mode props.
+vi.mock('../../ProjectFormModal', () => ({
+  ProjectFormModal: ({ open, mode }: { open: boolean; mode: string }) =>
+    open ? <div data-testid="stub-form-modal">{mode}</div> : null,
+}));
+
+const updateProject = vi.fn();
+const createProject = vi.fn();
+vi.mock('../../../hooks/useProjects', () => ({
+  useProjects: () => ({ createProject, updateProject }),
+}));
 
 const backlinks = vi.fn();
 vi.mock('../../../hooks/useProjectBacklinks', () => ({
@@ -52,5 +69,22 @@ describe('OverviewSection backlinks (D-WORLD-PROJECT-BACKLINK)', () => {
     backlinks.mockReturnValue({ bookTitle: null, worldId: null, worldName: null, isLoading: true });
     renderOverview(project);
     expect(screen.getByTestId('overview-book-link')).toHaveTextContent('b1');
+  });
+});
+
+describe('OverviewSection edit affordance (KN — dead pen button fix)', () => {
+  beforeEach(() => {
+    backlinks.mockReturnValue({ bookTitle: 'Cradle', worldId: null, worldName: null, isLoading: false });
+    updateProject.mockReset();
+    createProject.mockReset();
+  });
+
+  it('the pen (onEdit) opens the project form modal in edit mode — no longer a no-op', () => {
+    renderOverview(project);
+    expect(screen.queryByTestId('stub-form-modal')).toBeNull();
+    fireEvent.click(screen.getByTestId('stub-row-edit'));
+    const modal = screen.getByTestId('stub-form-modal');
+    expect(modal).toBeInTheDocument();
+    expect(modal).toHaveTextContent('edit');
   });
 });
