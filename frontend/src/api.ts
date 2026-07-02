@@ -35,7 +35,9 @@ function readAuth(): { accessToken?: string | null; refreshToken?: string | null
 // the 2nd request reads the same (already-rotated) refresh token and gets logged out.
 let refreshInFlight: Promise<string | null> | null = null;
 
-function refreshAccessToken(): Promise<string | null> {
+// Exported for long-lived streams (SSE) that must proactively refresh when the token
+// expires while the tab is idle — no apiJson 401 ever fires there (#11 side-finding).
+export function refreshAccessToken(): Promise<string | null> {
   if (refreshInFlight) return refreshInFlight;
   const p = (async (): Promise<string | null> => {
     try {

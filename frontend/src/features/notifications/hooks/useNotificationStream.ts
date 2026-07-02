@@ -16,7 +16,20 @@
 
 import { useEffect, useRef, useState } from 'react';
 
-import { apiBase } from '@/api';
+import { apiBase, refreshAccessToken } from '@/api';
+
+/** True when the JWT's exp is within `skewMs` of now. Fail-OPEN on anything unparseable
+ * (opaque/test tokens) — expiry handling is an optimization, never a gate. */
+function tokenExpired(jwt: string, skewMs = 30_000): boolean {
+  try {
+    const seg = jwt.split('.')[1];
+    if (!seg) return false;
+    const payload = JSON.parse(atob(seg.replace(/-/g, '+').replace(/_/g, '/'))) as { exp?: unknown };
+    return typeof payload.exp === 'number' && payload.exp * 1000 <= Date.now() + skewMs;
+  } catch {
+    return false;
+  }
+}
 
 /**
  * Shape of the SSE event body. Matches the gateway's wire format
@@ -109,6 +122,18 @@ export function useNotificationStream(
         es?.close();
         es = null;
         setState('reconnecting');
+        // An idle tab never hits apiJson's 401→refresh path, so once the JWT expires every
+        // reconnect would be rejected with the SAME dead token forever (the gateway logs
+        // "SSE rejected: jwt expired"). Trigger the single-flight refresh instead of blind
+        // retry: lw-auth-refreshed → AuthProvider updates accessToken → this effect re-runs
+        // and connects with the fresh token. Refresh failed (revoked/offline) → idle; the
+        // next user interaction goes through apiJson's normal refresh-or-logout path.
+        if (tokenExpired(accessToken)) {
+          void refreshAccessToken().then((t) => {
+            if (!cancelled && !t) setState('idle');
+          });
+          return;
+        }
         reconnectTimer = setTimeout(connect, backoff);
         backoff = Math.min(backoff * 2, MAX_BACKOFF_MS);
       };

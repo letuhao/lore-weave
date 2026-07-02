@@ -41,9 +41,11 @@ async function deleteChatSession(token: string, sessionId: string): Promise<void
   });
 }
 
-// Inline glossary trash API (missing from v2 glossaryApi)
+// Inline glossary recycle-bin API (glossary-service `/v1/glossary/books/{id}/recycle-bin` —
+// the FIXED paths; this hook originally guessed `/v1/books/{id}/glossary/entities…`, a route
+// that never existed, so the glossary trash tab silently listed nothing and restore/purge 404'd).
 async function listGlossaryTrash(token: string, bookId: string): Promise<{ items: EntityTrashItem[] }> {
-  const res = await fetch(`${API_BASE()}/v1/books/${bookId}/glossary/entities?lifecycle_state=trashed&limit=100`, {
+  const res = await fetch(`${API_BASE()}/v1/glossary/books/${bookId}/recycle-bin?limit=100`, {
     headers: { Authorization: `Bearer ${token}` },
   });
   if (!res.ok) return { items: [] };
@@ -51,14 +53,14 @@ async function listGlossaryTrash(token: string, bookId: string): Promise<{ items
 }
 
 async function restoreGlossaryEntity(token: string, bookId: string, entityId: string): Promise<void> {
-  await fetch(`${API_BASE()}/v1/books/${bookId}/glossary/entities/${entityId}/restore`, {
+  await fetch(`${API_BASE()}/v1/glossary/books/${bookId}/recycle-bin/${entityId}/restore`, {
     method: 'POST',
     headers: { Authorization: `Bearer ${token}` },
   });
 }
 
 async function purgeGlossaryEntity(token: string, bookId: string, entityId: string): Promise<void> {
-  await fetch(`${API_BASE()}/v1/books/${bookId}/glossary/entities/${entityId}/purge`, {
+  await fetch(`${API_BASE()}/v1/glossary/books/${bookId}/recycle-bin/${entityId}`, {
     method: 'DELETE',
     headers: { Authorization: `Bearer ${token}` },
   });
