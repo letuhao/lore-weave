@@ -1493,6 +1493,7 @@ class TestStreamFormatNegotiation:
             "TEXT_MESSAGE_START", "TEXT_MESSAGE_CONTENT", "TEXT_MESSAGE_END",
             "CUSTOM",  # persisted — emitted AFTER the message is framed closed
             "CUSTOM",  # agentSurface: Idle
+            "CUSTOM",  # contextBudget (RAID A2) — emitted just before finish
             "RUN_FINISHED",
         ]
         assert "[DONE]" not in types
