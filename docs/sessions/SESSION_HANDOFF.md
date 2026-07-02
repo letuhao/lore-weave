@@ -1,4 +1,22 @@
-# ▶▶ NEXT SESSION STARTS HERE — **STUDIO AGENT RAID on `feat/studio-agent-raid`. CHECKPOINT: solidifying shipped waves before new work — Wave A (context spine) HARDENED (HIGH tool-pair bug fixed + summarizer wired + live-proven). Next candidates: C5/C4 (safe-additive) or C1/C2/C6/D (load-bearing, human POST-REVIEW).** Spec [`07S`](../specs/2026-07-01-writing-studio/07S_studio_agent_standard.md) + plan [`studio-agent-raid`](../plans/2026-07-02-studio-agent-raid.md). · 2026-07-02**
+# ▶▶ NEXT SESSION STARTS HERE — **AUTONOMOUS RUN (user-mandated, fable-5): Track 4 salience (P0/P1/P2 shipped+reviewed; eval KG standing up — publish `_text` bug class fixed 5 sites) → P3/P4/P5 → RAID C5/C4/C1/C2/C6/D (decision records) → OSS wave. Contract: local LLM only (LM Studio BYOK; NEVER the gpt-4o probe), push/PR = normal delivery, hard-stops = destructive-ops-outside-test-account + 3-strike.** Spec [`salience-track4`](../specs/2026-07-02-knowledge-salience-track4.md) + [`07S`](../specs/2026-07-01-writing-studio/07S_studio_agent_standard.md) + plan [`studio-agent-raid`](../plans/2026-07-02-studio-agent-raid.md). · 2026-07-02**
+
+> **▶ Track 4 SALIENCE (knowledge) — P0+P1+P2 SHIPPED + REVIEWED 2026-07-02.** Spec `85a0fb961`. **P0 substrate**
+> (`20cf1e626` + review `e7e96fa13`): `entity_access_log` (tenancy PK user+project+entity), `EntityAccessRepo`
+> (fire-and-forget, never raises), `BuiltContext.surfaced_entity_ids`, router records off-latency-path (strong task
+> ref — GC footgun fixed), 19 tests. **P2 cross-encoder rerank** (`b514f6282`): step 7b in `select_l3_passages` via
+> existing `RerankerClient` (BYOK `extraction_config["cross_encoder_rerank_model"]`), degrade→MMR on any bad shape,
+> +8 tests. **P1 salience blend** (`a66f27bd8` + review `b53ed5de0`): `rank' = rank + w·norm(decayed_access)`,
+> read-time Ebbinghaus (no cron), `salience_access_weight=0.0` default = byte-identical (no DB read), **pins ALWAYS
+> lead** (review caught pin-vs-budget-trim drop), +12 tests. 483 context unit tests green.
+> **Eval standup (in progress):** POC book = `019f1783-ebb4` (12ch VN, ~118K chars), knowledge project
+> `019f1783-ecca`, embed bge-m3 `019eeb08-8bff` (dim 1024, benchmark PASS r@3=1.0), extraction LLM gemma QAT
+> `019ebb72-27a2`. **Found+fixed a HIGH book-service bug class live:** publish guard + revision-text + getRevision +
+> compare + canon-search all extracted ONLY the editor `_text` projection → standard-tiptap chapters false-rejected
+> from publish AND silently skipped by extraction ("text unavailable") AND invisible to canon search. Fixed with
+> `_text ∪ $.**.text` union (`12a702b2d`, `7b9cd4fda`; +4 DB-gated tests vs real PG18, BOOK_TEST_DATABASE_URL).
+> Also: worker-ai image was STALE (cancel_check SDK drift — chat-scope job failed) → rebuilt worker-ai +
+> knowledge-service. **Eval CLI** `python -m eval.run_salience_eval` seed/measure (`0170a414c`, +9 tests).
+> **NEXT: extraction completes → seed (5 passes × 4 focus) → measure → P1/P2 flip decision by data → P3.**
 
 > **▶ STUDIO AGENT RAID — IN PROGRESS 2026-07-02 (`feat/studio-agent-raid`, autonomous run).** Big RAID: agentic
 > chat to industry standard (context meter+compaction, plan-mode, steering, MCP resources/prompts, HITL modes,
