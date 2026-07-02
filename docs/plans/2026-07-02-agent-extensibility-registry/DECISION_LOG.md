@@ -53,3 +53,10 @@ Format per entry:
 - Chosen: **B — JWT-owner-gated approve/reject** (no JWT mint; owner from the token).
 - Rationale: the human is in-app with a JWT; a JWT-gated approve to one's own tier is the correct, simplest authorization and needs no token minting. The public-MCP internal-token spine is for the P3+ external-agent path, not this in-app loop. The `confirm_token` remains on the proposal for chat tool-call correlation.
 - Rework cost if overturned: low — add an internal-token confirm alias later for an external-agent approval path if needed.
+
+## DL-6 · 2026-07-03 · REG-P1-08 (SkillProposalCard) — deferred on concurrent-work collision
+- Context: `registry_propose_skill` is a SERVER MCP tool, so its result renders as a normal tool result inside the chat assistant message — i.e. in `frontend/src/features/chat/components/AssistantMessage.tsx`. That file (and the whole `features/chat/**` tree) is currently MID-FLIGHT with the chat-quality-ux-wave track's UNCOMMITTED changes.
+- Options: (A) edit AssistantMessage.tsx now (collides with the other track's uncommitted diff — can't cleanly stage just our part, high conflict risk); (B) defer SkillProposalCard until the chat-quality track's changes land, then add the card render on a clean base.
+- Chosen: **B — defer (`D-REG-SKILLPROPOSAL-CARD`)**, gate #1 (out-of-scope collision with a concurrent track's uncommitted work).
+- Rationale: editing another track's actively-modified files mid-flight is the exact "shared file hazard" the repo warns about; the proposal loop is already fully functional headless (MCP propose → DB row → Proposals inbox → approve), so the card is a chat-surface convenience, not a blocker. The ProposalsPanel/ProposalsView already give the human an approve/reject surface outside chat.
+- Rework cost if overturned: low — the card is one component reading a tool-result shape we already emit; add it once `features/chat` is quiescent.

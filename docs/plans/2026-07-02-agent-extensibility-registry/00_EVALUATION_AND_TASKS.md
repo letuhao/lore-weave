@@ -253,15 +253,15 @@ The PO has authorized a **continuous, no-human-in-loop implementation**: the hum
 - [x] REG-P1-02 CRUD + import/export (SKILL.md parse/render, draft/published, revisions-on-publish)
 - [x] REG-P1-03 seed 5 System skills (slugs byte-identical; bodies stay in chat-service — DL-4)
 - [x] REG-P1-04 /internal/skills merge+shadow (+ system_overrides + shadowed_system)
-- [ ] REG-P1-05 chat-service dual-read + fallback + enabled_skills back-compat (PENDING — Python)
+- [x] REG-P1-05 chat-service dual-read + fallback + enabled_skills back-compat (user_skills_client + stream_service inject; 6 unit tests)
 - [x] REG-P1-06 proposal store + approve/reject/expiry spine (JWT-owner approve — DL-5)
 - [x] REG-P1-07 registry MCP server federated (`registry_` prefix in DEFAULT_PREFIX_MAP + compose; 5 tools; tool-meta valid at boot; propose call → DB row proven)
-- [ ] REG-P1-08 SkillProposalCard (no silent no-op) (PENDING — FE)
-- [ ] REG-P1-09 Skills management UI (browser-standard shell) (PENDING — FE)
+- [ ] REG-P1-08 SkillProposalCard (chat render of registry_propose_skill result) (PENDING — FE, chat pipeline)
+- [~] REG-P1-09 Skills management UI — SkillsView (browser-standard) built + mounted in ExtensionsPanel; standalone /extensions route PENDING
 - [ ] REG-P1-10 "Save as skill" affordance (PENDING — FE)
-- [ ] REG-P1-11 live-LLM E2E (next-session injection proven) (PENDING — needs stack rebuild)
-- [ ] REG-P1-12 Proposals inbox (U2) (PENDING — FE)
-- [ ] REG-P1-13 Studio shells: extensions+proposals panels, skill-editor singleton, enum+contract regen, live browser smoke (§13b) (PENDING — FE)
+- [ ] REG-P1-11 live-LLM E2E (next-session injection proven) (PENDING — stack rebuild)
+- [~] REG-P1-12 Proposals inbox — ProposalsView (approve/reject/filter) built + mounted in ProposalsPanel; standalone route PENDING
+- [x] REG-P1-13 Studio shells: extensions+proposals panels + skill-editor singleton registered; `ui_open_studio_panel` enum extended + contract regen; **panelCatalogContract 3/3 + BE contract 20 pass + FE tsc clean**. Live browser smoke rides stack rebuild.
 - [x] **E2E slice (backend): p1_rest_smoke.ps1 25/25 vs live PG + MCP propose call verified**
 - [ ] **E2E slice remaining: E2E-P1-E/G (live-LLM + browser), E2E-X-B(skills-quota)**
 - [ ] **GUI checklist ticked: §0, §1, §4, §6, §7, §9, §10(P1 rows)** (FE pending)

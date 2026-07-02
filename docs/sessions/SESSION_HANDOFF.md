@@ -4,13 +4,27 @@
 > plugins/skills/MCP-servers + agent self-registration. Spec [`agent-extensibility-registry`](../specs/2026-07-02-agent-extensibility-registry.md),
 > plan+tasks+E2E+GUI-checklist in [`docs/plans/2026-07-02-agent-extensibility-registry/`](../plans/2026-07-02-agent-extensibility-registry/).
 > Design SEALED; running continuously to completion, human gate at final release only; mid-run forks → `DECISION_LOG.md`.
-> **P0 SHIPPED ✅:** new Go svc `agent-registry-service` (:8099, DB `loreweave_agent_registry`) — plugins CRUD +
-> enablement (D1) + effective-catalog v0 + audit + quotas; BFF proxy `/v1/agent-registry/*`; OpenAPI frozen; go tests
-> green + **real-stack E2E 20/20** (`tests/e2e/registry/p0_smoke.ps1` vs live Postgres — tenancy 404 anti-oracle,
-> System-admin gate, per-user catalog override isolation, version-bump). NEXT: P1 skills (prompt-only) + agent
-> self-registration MCP tools + studio panels + Proposals inbox. **Deferred:** `D-REG-BOOK-GRANT` (book-tier plugin
-> creation + book-scope enablement writes → 501 until the E0 book-grant client is wired; resolver already honors book
-> overrides; gate #2 structural — see DECISION_LOG DL-2); through-the-BFF-container E2E bundled into the P1 stack rebuild.
+> **P0 + P1-backend + chat-injector SHIPPED ✅ (3 commits):**
+> **P0** (`512cedfda`): Go svc `agent-registry-service` (:8099, DB `loreweave_agent_registry`) — plugins CRUD +
+> enablement (D1) + effective-catalog v0 + audit + quotas; BFF proxy `/v1/agent-registry/*`; OpenAPI frozen; real-stack
+> E2E 20/20 (`p0_smoke.ps1`). **P1 backend**: skills (prompt-only) CRUD + SKILL.md import/export + draft/publish +
+> revisions + shadow-check + per-user toggle; 5 System skills seeded (slugs byte-identical; bodies stay in chat-service
+> — DL-4); `/internal/skills` (merge/shadow/surface + system_overrides + shadowed_system); proposals propose→approve/
+> reject/expiry (JWT-owner approve — DL-5); registry MCP server (/mcp, 5 tools: list/get/propose/update/set_enabled)
+> federated via ai-gateway `registry_` prefix. E2E 25/25 (`p1_rest_smoke.ps1`) + MCP `registry_propose_skill` call →
+> pending proposal row proven. **chat-injector** (`c61fac319`): `user_skills_client` (degrade→built-ins) + stream_service
+> injects user/book skill L1+L2 alongside SYSTEM_SKILLS, honours disable/shadow; 6 unit tests.
+> **FE panels SHIPPED** (`+1 commit`): `features/extensions` (api/types/hooks + SkillsView + ProposalsView, browser-standard,
+> call real /v1/agent-registry) + 3 studio panels (ExtensionsPanel hub, ProposalsPanel, SkillEditorPanel singleton) +
+> `ui_open_studio_panel` enum(extensions,proposals) + contract regen. Verified: **panelCatalogContract 3/3 + BE contract 20
+> + FE tsc clean (all NEW files; pre-existing common.json errors are the OTHER track's uncommitted ModelPicker i18n, not ours)**.
+> **NEXT (P1 remaining):** SkillProposalCard (chat render of registry_propose_skill result — REG-P1-08), "Save as skill"
+> affordance (P1-10), standalone /extensions route (two-shells for P1-09/12); then the **P1 stack rebuild** (rebuild
+> agent-registry + ai-gateway + chat + BFF images → through-the-edge E2E + full-turn skill injection E2E-P1-B/D + live-LLM
+> agent-propose loop E2E-P1-E + browser panel-open E2E-P1-G all ride this). Then P2 (per-user federation) → P3 (external
+> MCP+security) → P4 → P5.
+> **Deferred:** `D-REG-BOOK-GRANT` (book-tier writes 501 until E0 grant client; DL-2). **Decisions:** see
+> `docs/plans/2026-07-02-agent-extensibility-registry/DECISION_LOG.md` (DL-1..5).
 >
 > **▶ CHAT QUALITY WAVE — W0 + W1 SHIPPED + LIVE-SMOKED 2026-07-03 (parallel sub-agent build, disjoint files,
 > combined verify).** Trigger: user's 8-item quality pass (plan + 5-investigation evidence base incl. a LIVE MCP
