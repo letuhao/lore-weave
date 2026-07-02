@@ -514,6 +514,31 @@ class PlanArtifact(BaseModel):
     created_at: datetime | None = None
 
 
+# ── authoring run (RAID Wave D2, DR-D — the §10 autonomy-dial level-3/4 run)
+AuthoringRunStatus = Literal[
+    "draft", "gated", "running", "paused", "failed", "report_ready", "closed",
+]
+
+
+class AuthoringRun(BaseModel):
+    run_id: UUID
+    owner_user_id: UUID
+    book_id: UUID
+    plan_run_id: UUID
+    level: int
+    scope: list[str] = Field(default_factory=list)          # ordered chapter-id strings
+    budget_usd: Decimal = Decimal("0")
+    spent_usd: Decimal = Decimal("0")
+    tool_allowlist: list[str] = Field(default_factory=list)  # C2 snapshot (caller-provided)
+    params: dict[str, Any] = Field(default_factory=dict)     # drafting-seam inputs (model ref)
+    breaker_state: dict[str, Any] = Field(default_factory=dict)
+    status: AuthoringRunStatus = "draft"
+    current_unit: int = 0
+    error_message: str | None = None
+    created_at: datetime | None = None
+    updated_at: datetime | None = None
+
+
 # ── retrieval result (the FROZEN contract W3 produces / W2 + the MCP suggest consume)
 class MotifCandidate(BaseModel):
     motif: Motif

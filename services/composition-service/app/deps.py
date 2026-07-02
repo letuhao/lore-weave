@@ -18,6 +18,7 @@ from app.clients.knowledge_client import KnowledgeClient, get_knowledge_client
 from app.clients.llm_client import LLMClient, get_llm_client
 from app.db.pool import get_pool
 from app.db.repositories.arc_template_repo import ArcTemplateRepo
+from app.db.repositories.authoring_runs import AuthoringRunsRepo
 from app.db.repositories.canon_rules import CanonRulesRepo
 from app.db.repositories.daily_progress import DailyProgressRepo
 from app.db.repositories.derivatives import DerivativesRepo
@@ -51,6 +52,19 @@ async def get_plan_forge_service() -> PlanForgeService:
         GenerationJobsRepo(get_pool()),
         WorksRepo(get_pool()),
         llm=get_llm_client(),
+    )
+
+
+async def get_authoring_run_service() -> "AuthoringRunService":
+    """RAID Wave D2 — the autonomous authoring-run FSM + start-gate + v1
+    sequential driver, wired to the REAL in-process engine drafting seam
+    (EngineDraftingSeam; tests inject a fake seam)."""
+    from app.services.authoring_run_service import AuthoringRunService, EngineDraftingSeam
+
+    return AuthoringRunService(
+        AuthoringRunsRepo(get_pool()),
+        PlanRunsRepo(get_pool()),
+        EngineDraftingSeam(),
     )
 
 

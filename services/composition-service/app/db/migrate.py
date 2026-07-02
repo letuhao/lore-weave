@@ -970,6 +970,48 @@ CREATE TABLE IF NOT EXISTS plan_artifact (
 );
 CREATE INDEX IF NOT EXISTS idx_plan_artifact_run_kind
   ON plan_artifact(run_id, kind, created_at DESC);
+
+-- ── authoring_runs (RAID Wave D2, DR-D): the autonomous authoring-run entity —
+-- the §10 dial's level-3/4 run row. One row per gated autonomous drafting run
+-- over an approved PlanForge plan. Tenancy: owner_user_id on every query (E0
+-- EDIT grant gated at the HTTP layer, plan_forge house style). `scope` is the
+-- ORDERED chapter-id list (jsonb array of uuid strings — cross-DB book ids, no
+-- FK per §1.4); `tool_allowlist` is the C2-allowlist SNAPSHOT declared by the
+-- caller at gate time (edge #5 — provenance is the caller's; chat DB is not
+-- composition's, see DR-D deviation note); `budget_usd`/`spent_usd` mirror
+-- extraction_jobs' max_spend semantics (checked before each unit — the last
+-- unit may overshoot by its own cost, like atomic_try_spend's last estimate).
+-- `params` carries the drafting-seam inputs (model_source + model_ref user-model
+-- UUID — models resolve via provider-registry from the ref, never a literal).
+-- `breaker_state` records WHY the run stopped ({reason: budget|unit_failed}).
+-- FSM: draft→gated→running→(paused⇄running)→report_ready→closed, running→failed.
+CREATE TABLE IF NOT EXISTS authoring_runs (
+  run_id          UUID PRIMARY KEY DEFAULT uuidv7(),
+  owner_user_id   UUID NOT NULL,
+  book_id         UUID NOT NULL,
+  plan_run_id     UUID NOT NULL REFERENCES plan_run(id),
+  level           SMALLINT NOT NULL CHECK (level IN (3, 4)),
+  scope           JSONB NOT NULL DEFAULT '[]'::jsonb,
+  budget_usd      NUMERIC(10,4) NOT NULL DEFAULT 0,
+  spent_usd       NUMERIC(10,4) NOT NULL DEFAULT 0,
+  tool_allowlist  JSONB NOT NULL DEFAULT '[]'::jsonb,
+  params          JSONB NOT NULL DEFAULT '{}'::jsonb,
+  breaker_state   JSONB NOT NULL DEFAULT '{}'::jsonb,
+  status          TEXT NOT NULL DEFAULT 'draft' CHECK (
+    status IN ('draft','gated','running','paused','failed','report_ready','closed')
+  ),
+  current_unit    INT NOT NULL DEFAULT 0,
+  error_message   TEXT,
+  created_at      TIMESTAMPTZ NOT NULL DEFAULT now(),
+  updated_at      TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+-- Scope fence (edge #11): ONE active run per book — across users too (two runs
+-- over the same chapters conflict regardless of who started them). The gate's
+-- draft→gated transition maps a violation to 409.
+CREATE UNIQUE INDEX IF NOT EXISTS uq_authoring_runs_active_book
+  ON authoring_runs(book_id) WHERE status IN ('gated','running','paused');
+CREATE INDEX IF NOT EXISTS idx_authoring_runs_owner_book
+  ON authoring_runs(owner_user_id, book_id, created_at DESC);
 """
 
 

@@ -210,5 +210,19 @@ class Settings(BaseSettings):
     motif_deconstruct_verbatim_shingle: int = 6     # shingle size (consecutive words)
     motif_deconstruct_verbatim_max_overlap: float = 0.50  # max share of source shingles allowed
 
+    # ── Autonomous authoring runs (RAID Wave D2, DR-D / 07S §10). The v1 driver's
+    # per-unit spend fallback when the engine didn't meter a cost (inline path
+    # leaves generation_job.cost_usd at 0) — budget accounting must still move or
+    # the cap never trips. Poll knobs cover the worker (202) path: the seam polls
+    # the generation_job to terminal; timeout must exceed the worst-case chapter
+    # generation wall-clock (mirror chapter_inflight_stale_secs).
+    authoring_unit_estimate_usd: float = 0.05
+    authoring_job_poll_secs: float = 2.0
+    authoring_job_poll_timeout_secs: int = 1800
+    # The seam's minted service-bearer TTL: generation runs for minutes and the
+    # engine REUSES the bearer to persist the draft afterwards (actions.py
+    # _GENERATE_BEARER_TTL_S precedent) — cover generation + persist.
+    authoring_draft_bearer_ttl_secs: int = 1800
+
 
 settings = Settings()  # type: ignore[call-arg]
