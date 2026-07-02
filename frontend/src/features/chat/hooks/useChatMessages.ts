@@ -54,12 +54,15 @@ export type FrontendToolOutcome =
 // RAID C2 — HITL permission mode. Persisted per-device in localStorage
 // (mirrors the editor's lw_editor_compose_mode pattern): a UI preference,
 // sent per-request as `permission_mode` on the message POST.
-export type PermissionMode = 'ask' | 'write';
+// RAID B2 (07S §5b) — 'plan': the ask (read-only) surface PLUS the PlanForge
+// plan_* tools — research + plan, no prose until the user switches to Write.
+export type PermissionMode = 'ask' | 'plan' | 'write';
 const PERMISSION_MODE_KEY = 'lw_chat_permission_mode';
 
 function loadPermissionMode(): PermissionMode {
   try {
-    return localStorage.getItem(PERMISSION_MODE_KEY) === 'ask' ? 'ask' : 'write';
+    const stored = localStorage.getItem(PERMISSION_MODE_KEY);
+    return stored === 'ask' || stored === 'plan' ? stored : 'write';
   } catch {
     return 'write';
   }

@@ -54,8 +54,10 @@
     "hint": "Enter to send · Shift+Enter for new line",
     "hint_thinking": " · Ctrl+Shift+Enter think · Ctrl+Enter fast",
     "mode_ask": "Ask",
+    "mode_plan": "Plan",
     "mode_write": "Write",
     "mode_ask_hint": "Read-only mode — the agent can research but not change anything",
+    "mode_plan_hint": "Plan mode — the agent researches and builds a plan with the planning tools; no prose until you switch to Write",
     "mode_write_hint": "Write mode — the agent can make undoable changes (asks once per new tool)"
   },
   "new": {

@@ -1,9 +1,10 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, fireEvent } from '@testing-library/react';
 
-// RAID C2 — the Ask/Write segmented toggle in the input bar: clicking a segment
-// fires onPermissionModeChange with the mode (the hook persists + sends it on
-// the next message POST). Hidden when the host surface doesn't wire the props.
+// RAID C2/B2 — the Ask/Plan/Write segmented toggle in the input bar: clicking a
+// segment fires onPermissionModeChange with the mode (the hook persists + sends
+// it on the next message POST). Hidden when the host surface doesn't wire the
+// props.
 
 vi.mock('../../voicePrefs', () => ({
   loadVoicePrefs: () => ({ voiceAssistEnabled: false, voiceAssistAppend: false }),
@@ -43,14 +44,16 @@ function renderBar(overrides: Record<string, unknown> = {}) {
   return { onPermissionModeChange };
 }
 
-describe('ChatInputBar — Ask/Write permission toggle', () => {
+describe('ChatInputBar — Ask/Plan/Write permission toggle', () => {
   beforeEach(() => vi.clearAllMocks());
 
-  it('renders the toggle and fires the mode change', () => {
+  it('renders all three segments and fires each mode change', () => {
     const { onPermissionModeChange } = renderBar();
     expect(screen.getByTestId('permission-mode-toggle')).toBeInTheDocument();
     fireEvent.click(screen.getByText('input.mode_ask'));
     expect(onPermissionModeChange).toHaveBeenCalledWith('ask');
+    fireEvent.click(screen.getByText('input.mode_plan'));
+    expect(onPermissionModeChange).toHaveBeenCalledWith('plan');
     fireEvent.click(screen.getByText('input.mode_write'));
     expect(onPermissionModeChange).toHaveBeenCalledWith('write');
   });
@@ -58,6 +61,14 @@ describe('ChatInputBar — Ask/Write permission toggle', () => {
   it('marks the active segment via aria-pressed', () => {
     renderBar({ permissionMode: 'ask' });
     expect(screen.getByText('input.mode_ask').closest('button')!.getAttribute('aria-pressed')).toBe('true');
+    expect(screen.getByText('input.mode_plan').closest('button')!.getAttribute('aria-pressed')).toBe('false');
+    expect(screen.getByText('input.mode_write').closest('button')!.getAttribute('aria-pressed')).toBe('false');
+  });
+
+  it('marks Plan active via aria-pressed (RAID B2)', () => {
+    renderBar({ permissionMode: 'plan' });
+    expect(screen.getByText('input.mode_plan').closest('button')!.getAttribute('aria-pressed')).toBe('true');
+    expect(screen.getByText('input.mode_ask').closest('button')!.getAttribute('aria-pressed')).toBe('false');
     expect(screen.getByText('input.mode_write').closest('button')!.getAttribute('aria-pressed')).toBe('false');
   });
 

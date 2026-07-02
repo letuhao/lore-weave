@@ -1,6 +1,6 @@
 import { useState, useCallback, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
-import { ArrowUp, Brain, Eye, Pencil, Square, Zap, Mic, MicOff, Loader2, Volume2, VolumeX } from 'lucide-react';
+import { ArrowUp, Brain, Eye, ListTodo, Pencil, Square, Zap, Mic, MicOff, Loader2, Volume2, VolumeX } from 'lucide-react';
 import { loadVoicePrefs } from '../voicePrefs';
 import { useVoiceAssistMic } from '../hooks/useVoiceAssistMic';
 import { useMentionPicker } from '../hooks/useMentionPicker';
@@ -35,10 +35,11 @@ interface ChatInputBarProps {
   /** Auto-TTS is playing — show stop button */
   ttsPlaying?: boolean;
   onStopTTS?: () => void;
-  /** RAID C2 — HITL permission mode (Ask = read-only tools, Write = full).
-   *  Rendered only when both are provided (embedded surfaces may omit). */
-  permissionMode?: 'ask' | 'write';
-  onPermissionModeChange?: (mode: 'ask' | 'write') => void;
+  /** RAID C2/B2 — HITL permission mode (Ask = read-only tools, Plan = reads +
+   *  PlanForge plan_* tools, Write = full). Rendered only when both are
+   *  provided (embedded surfaces may omit). */
+  permissionMode?: 'ask' | 'plan' | 'write';
+  onPermissionModeChange?: (mode: 'ask' | 'plan' | 'write') => void;
 }
 
 export function ChatInputBar({
@@ -283,9 +284,10 @@ export function ChatInputBar({
                   {t('input.stop_audio')}
                 </button>
               )}
-              {/* RAID C2 — Ask/Write permission-mode toggle. Ask = read-only
-                  research surface (server tools filter to reads); Write = full
-                  surface + the Tier-A approval prompt. Sent per message POST. */}
+              {/* RAID C2/B2 — Ask/Plan/Write permission-mode toggle. Ask =
+                  read-only research surface; Plan = reads + PlanForge plan_*
+                  tools (plan artifacts, no prose); Write = full surface + the
+                  Tier-A approval prompt. Sent per message POST. */}
               {permissionMode !== undefined && onPermissionModeChange && (
                 <div className="inline-flex rounded-md bg-secondary p-0.5 gap-0.5" data-testid="permission-mode-toggle">
                   <button
@@ -301,6 +303,20 @@ export function ChatInputBar({
                   >
                     <Eye className="h-2.5 w-2.5" />
                     {t('input.mode_ask')}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => onPermissionModeChange('plan')}
+                    aria-pressed={permissionMode === 'plan'}
+                    title={t('input.mode_plan_hint')}
+                    className={`flex items-center gap-1 rounded px-2.5 py-1 text-[11px] font-medium transition-colors ${
+                      permissionMode === 'plan'
+                        ? 'bg-violet-500/10 text-violet-400 border border-violet-500/30'
+                        : 'text-muted-foreground'
+                    }`}
+                  >
+                    <ListTodo className="h-2.5 w-2.5" />
+                    {t('input.mode_plan')}
                   </button>
                   <button
                     type="button"

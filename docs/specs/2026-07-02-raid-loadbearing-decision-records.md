@@ -102,3 +102,27 @@ existing `disable_tools` path — NOT a third enum value, no migration of that s
 paths degrade to today's behavior on any store failure (fail-open on READS of the
 allowlist — a DB blip must not brick tool calling; the suspend gate itself fails
 closed only for the specific un-allowlisted call).
+
+---
+
+## DR-C6 — Turn checkpoints + hunk review (07S §5c) · 2026-07-02 — DESIGN DONE, BUILD DEFERRED (collision)
+
+**Verified-first result:** the entire restore spine ALREADY EXISTS — `chapter_revisions`
+snapshots every draft PATCH, `POST /v1/books/{b}/chapters/{c}/revisions/{r}/restore`
+is live (server.go:279), and the FE already calls `booksApi.restoreRevision`
+(RevisionHistory). **No backend work is needed** (the old classification "needs a
+book-service restore endpoint" was stale).
+
+**What C6 actually is (pure FE wiring):**
+- *Turn checkpoint:* at the editor Apply seam (`tiptapEditorRef` accept/applyPolish —
+  the load-bearing seam per project memory), BEFORE mutating, pin the chapter's current
+  revision id and stash `{assistant_message_id → (chapter_id, revision_id)}`; render
+  "Restore checkpoint" on that assistant message → confirm → existing restoreRevision.
+- *Hunk review:* the `propose_edit` diff card gains per-hunk accept checkboxes; Apply
+  builds the merged text from accepted hunks only (client-side; no schema change).
+
+**Why deferred THIS run (gate #1 — collision, not effort):** the concurrent
+human-in-loop dockable track is actively editing the exact seam (dirty:
+`ManuscriptUnitProvider.tsx`, `EditorPanel.tsx`) — parallel edits on the load-bearing
+apply seam violate the disjoint-files rule. Build lands right after their wave.
+Tracked: `D-RAID-C6-FE-WIRING` (design above is the plan; ~a day of FE work).

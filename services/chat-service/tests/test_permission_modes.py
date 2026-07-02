@@ -94,6 +94,18 @@ ALL_CATALOG_NAMES = {
 }
 R_CATALOG_NAMES = {"glossary_search", "glossary_get_entity", "legacy_tool"}
 
+# RAID Wave B2 — the PlanForge `plan_*` tools (M4 federation) as they appear in
+# the discovery catalog: tiered A/W, yet part of the PLAN-mode surface.
+PLAN_TOOL_DEFS = [
+    ("plan_propose_spec", "A"),
+    ("plan_compile", "W"),
+]
+PLAN_TOOL_NAMES = {n for n, _ in PLAN_TOOL_DEFS}
+
+
+def _catalog_with_plan() -> list[dict]:
+    return _catalog() + [_tiered(n, t, f"PlanForge {n}") for n, t in PLAN_TOOL_DEFS]
+
 
 def _names(tool_defs: list[dict]) -> set[str]:
     return {t["function"]["name"] for t in tool_defs}
@@ -114,6 +126,12 @@ class TestAdvertiseSurfaceSnapshot:
     # a SNAPSHOT — if it shrinks, the filter leaked into write mode.
     EXPECTED_WRITE_SURFACE = set(ALWAYS_ON_CORE_NAMES) | {"propose_edit"} | ALL_CATALOG_NAMES
     EXPECTED_ASK_SURFACE = set(ALWAYS_ON_CORE_NAMES) | {"propose_edit"} | R_CATALOG_NAMES
+    # RAID Wave B2 — the PLAN surface pin: the ASK surface PLUS the `plan_*`
+    # tools (even though they're tiered A/W). If this shrinks, plan mode lost
+    # its planning tools; if it grows, a write tool leaked into plan mode.
+    EXPECTED_PLAN_SURFACE = (
+        set(ALWAYS_ON_CORE_NAMES) | {"propose_edit"} | R_CATALOG_NAMES | PLAN_TOOL_NAMES
+    )
 
     def test_write_mode_advertises_identical_pinned_surface(self):
         idx = _catalog_index(_catalog())
@@ -151,11 +169,53 @@ class TestAdvertiseSurfaceSnapshot:
 
     def test_meta_is_stripped_in_both_modes(self):
         idx = _catalog_index(_catalog())
-        for mode in ("write", "ask"):
+        for mode in ("write", "ask", "plan"):
             for td in _advertise_discovery_tools(
                 idx, ALL_CATALOG_NAMES, [], permission_mode=mode,
             ):
                 assert "_meta" not in td["function"]
+
+    # ── RAID Wave B2 — the PLAN surface pin ──────────────────────────────────
+
+    def test_plan_mode_advertises_ask_surface_plus_plan_tools(self):
+        idx = _catalog_index(_catalog_with_plan())
+        out = _advertise_discovery_tools(
+            idx, ALL_CATALOG_NAMES | PLAN_TOOL_NAMES, [PROPOSE_EDIT_TOOL],
+            permission_mode="plan",
+        )
+        assert _names(out) == self.EXPECTED_PLAN_SURFACE
+
+    def test_plan_mode_does_not_advertise_tiered_non_plan_tools(self):
+        """A tier-A/W/S server tool that is not `plan_*` stays OFF the plan
+        surface (the flagged risk: plan must not become write-lite)."""
+        idx = _catalog_index(_catalog_with_plan())
+        out = _names(_advertise_discovery_tools(
+            idx, ALL_CATALOG_NAMES | PLAN_TOOL_NAMES, [PROPOSE_EDIT_TOOL],
+            permission_mode="plan",
+        ))
+        assert "book_create" not in out
+        assert "translation_start_job" not in out
+        assert "settings_update" not in out
+
+    def test_write_surface_unchanged_when_plan_tools_present(self):
+        """Write mode with plan tools in the catalog advertises everything —
+        the plan filter must not leak into write."""
+        idx = _catalog_index(_catalog_with_plan())
+        out = _advertise_discovery_tools(
+            idx, ALL_CATALOG_NAMES | PLAN_TOOL_NAMES, [PROPOSE_EDIT_TOOL],
+            permission_mode="write",
+        )
+        assert _names(out) == self.EXPECTED_WRITE_SURFACE | PLAN_TOOL_NAMES
+
+    def test_ask_surface_excludes_plan_tools(self):
+        """Ask stays strictly read-only: the tiered plan_* tools are NOT part
+        of the ask surface (plan mode is the only mode that adds them)."""
+        idx = _catalog_index(_catalog_with_plan())
+        out = _names(_advertise_discovery_tools(
+            idx, ALL_CATALOG_NAMES | PLAN_TOOL_NAMES, [PROPOSE_EDIT_TOOL],
+            permission_mode="ask",
+        ))
+        assert out == self.EXPECTED_ASK_SURFACE
 
 
 class TestFilterToolsForAskPlain:
@@ -168,6 +228,12 @@ class TestFilterToolsForAskPlain:
 
     def test_empty_input_yields_empty(self):
         assert _filter_tools_for_ask([]) == []
+
+    def test_plan_mode_keeps_plan_tools_on_the_plain_path(self):
+        """RAID B2 — the non-discovery filter keeps R + frontend + plan_*."""
+        tools = _catalog_with_plan() + [PROPOSE_EDIT_TOOL]
+        out = _names(_filter_tools_for_ask(tools, "plan"))
+        assert out == R_CATALOG_NAMES | {"propose_edit"} | PLAN_TOOL_NAMES
 
 
 # ════════════════════════════════════════════════════════════════════════════

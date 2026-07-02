@@ -54,8 +54,10 @@
     "hint": "Enter 傳送 · Shift+Enter 換行",
     "hint_thinking": " · Ctrl+Shift+Enter 思考 · Ctrl+Enter 快速",
     "mode_ask": "詢問",
+    "mode_plan": "規劃",
     "mode_write": "寫入",
     "mode_ask_hint": "唯讀模式 — 代理可以查詢但不能變更任何內容",
+    "mode_plan_hint": "規劃模式 — 代理會研究並以規劃工具建立計畫；切換到寫入前不會撰寫正文",
     "mode_write_hint": "寫入模式 — 代理可以進行可復原的變更（每個新工具只詢問一次）"
   },
   "new": {

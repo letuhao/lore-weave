@@ -54,8 +54,10 @@
     "hint": "Enterで送信 · Shift+Enterで改行",
     "hint_thinking": " · Ctrl+Shift+Enterで熟考 · Ctrl+Enterで高速",
     "mode_ask": "確認",
+    "mode_plan": "計画",
     "mode_write": "書込",
     "mode_ask_hint": "読み取り専用モード — エージェントは調査できますが変更はできません",
+    "mode_plan_hint": "プランモード — エージェントは調査し、プランニングツールで計画を作成します。書込に切り替えるまで本文は書きません",
     "mode_write_hint": "書き込みモード — エージェントは取り消し可能な変更を実行できます（新しいツールごとに一度確認）"
   },
   "new": {

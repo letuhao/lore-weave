@@ -388,7 +388,10 @@ class SendMessageRequest(BaseModel):
     # behavior + the Tier-A prompt-once approval gate; 'ask' = read-only research
     # surface (server tools filter to tier R; frontend tools stay — they are
     # human-executed by construction). Compose stays the disable_tools seam above.
-    permission_mode: Literal["ask", "write"] = "write"
+    # RAID Wave B2 (07S §5b) — 'plan' = the ask surface PLUS the PlanForge
+    # `plan_*` server tools (they write plan artifacts, never prose); plan_forge
+    # skill auto-injects and a plan-mode system nudge is appended.
+    permission_mode: Literal["ask", "write", "plan"] = "write"
 
 
 class ToolResultRequest(BaseModel):

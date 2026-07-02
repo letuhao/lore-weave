@@ -130,6 +130,7 @@ def resolve_skills_to_inject(
     editor: bool,
     book_scoped: bool,
     admin: bool,
+    permission_mode: str = "write",
 ) -> list[str]:
     """Return skill codes to inject this turn (ordered, deduped)."""
     if stream_format != "agui" or disable_tools or not tool_calling_enabled:
@@ -138,23 +139,29 @@ def resolve_skills_to_inject(
     active = _surface_key(editor=editor, book_scoped=book_scoped, admin=admin)
 
     if enabled_skills:
-        out: list[str] = []
-        for code in enabled_skills:
-            skill = SYSTEM_SKILLS.get(code)
-            if skill and _skill_visible(skill, active):
-                out.append(code)
-        return out
-
-    # Legacy auto-inject (empty enabled_skills = surface-default).
-    out: list[str] = []
-    if admin:
-        out.append("admin")
-    elif editor or book_scoped:
-        out.append("glossary")
+        out = [
+            code for code in enabled_skills
+            if (skill := SYSTEM_SKILLS.get(code)) and _skill_visible(skill, active)
+        ]
     else:
-        out.append("universal")
-    if not admin:
-        out.append("knowledge")
+        # Legacy auto-inject (empty enabled_skills = surface-default).
+        out = []
+        if admin:
+            out.append("admin")
+        elif editor or book_scoped:
+            out.append("glossary")
+        else:
+            out.append("universal")
+        if not admin:
+            out.append("knowledge")
+
+    # RAID Wave B2 (07S §5b) — PLAN mode auto-injects the plan_forge skill on the
+    # surfaces that allow it (book/editor), even when not pinned, so the model
+    # knows the propose→validate→compile flow. Write/ask modes are unchanged.
+    if permission_mode == "plan" and "plan_forge" not in out:
+        pf = SYSTEM_SKILLS.get("plan_forge")
+        if pf and _skill_visible(pf, active):
+            out.append("plan_forge")
     return out
 
 

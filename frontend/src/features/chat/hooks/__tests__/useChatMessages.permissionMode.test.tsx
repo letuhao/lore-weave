@@ -77,6 +77,35 @@ describe('useChatMessages — RAID C2 permission mode', () => {
     expect(result.current.permissionMode).toBe('ask');
   });
 
+  // RAID B2 — plan mode rides the same seam as ask.
+  it('plan mode sends permission_mode:"plan" and persists the choice', async () => {
+    const fetchMock = vi.fn().mockResolvedValue(sseResponse([FINISH]));
+    vi.stubGlobal('fetch', fetchMock);
+    const { result } = renderHook(() => useChatMessages('s-1'));
+    await waitFor(() => expect(result.current.isLoading).toBe(false));
+    act(() => result.current.setPermissionMode('plan'));
+    await act(async () => { await result.current.send('plan the arc'); });
+    const body = JSON.parse(fetchMock.mock.calls[0][1].body as string);
+    expect(body.permission_mode).toBe('plan');
+    expect(localStorage.getItem('lw_chat_permission_mode')).toBe('plan');
+  });
+
+  it('rehydrates a persisted plan mode on mount', async () => {
+    localStorage.setItem('lw_chat_permission_mode', 'plan');
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(sseResponse([FINISH])));
+    const { result } = renderHook(() => useChatMessages('s-1'));
+    await waitFor(() => expect(result.current.isLoading).toBe(false));
+    expect(result.current.permissionMode).toBe('plan');
+  });
+
+  it('an unknown persisted value falls back to write', async () => {
+    localStorage.setItem('lw_chat_permission_mode', 'yolo');
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(sseResponse([FINISH])));
+    const { result } = renderHook(() => useChatMessages('s-1'));
+    await waitFor(() => expect(result.current.isLoading).toBe(false));
+    expect(result.current.permissionMode).toBe('write');
+  });
+
   it('captures a suspended tool_approval as a pending record (existing surface)', async () => {
     const approvalArgs = {
       kind: 'tool_approval',

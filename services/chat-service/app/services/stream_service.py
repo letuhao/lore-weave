@@ -286,6 +286,29 @@ TIER_A_AGGREGATE_CAP = 12
 PLANNER_TOOLS = frozenset({"glossary_plan"})
 PLANNER_CALLS_PER_TURN_CAP = 1
 
+# RAID Wave B2 (07S §5b) — PLAN mode. The executable server surface is the ASK
+# surface (tier R + find_tools + frontend tools) PLUS the PlanForge planning
+# tools, identified by this name prefix (they write plan artifacts — reversible
+# plan_runs rows — never prose). The prefix is the M4 federation contract:
+# every composition planning tool is `plan_*` through ai-gateway.
+PLAN_TOOL_PREFIX = "plan_"
+
+# The plan-mode system nudge — a small static block appended on BOTH system-part
+# assembly paths (mirrors skill_metadata_block) so any model in plan mode knows
+# the contract: research + plan, never draft prose.
+PLAN_MODE_NUDGE = (
+    "## Plan mode\n"
+    "You are in PLAN mode: research the book with read-only tools and "
+    "build/refine the plan via the `plan_*` tools. Do NOT write prose — no "
+    "drafting, no chapter text, no manuscript edits. When the user approves "
+    "the plan, tell them to switch to Write mode to draft."
+)
+
+
+def _is_plan_tool(name: str) -> bool:
+    """A PlanForge planning tool (allowed in PLAN mode on top of the R surface)."""
+    return name.startswith(PLAN_TOOL_PREFIX)
+
 
 def _is_tools_unsupported(exc: LLMError) -> bool:
     """True when an LLMError is the gateway's 'this provider does not
@@ -392,8 +415,12 @@ def _advertise_discovery_tools(
     find_tools + the frontend core + extra_frontend are unaffected (frontend
     tools are human-executed by construction). ``write`` (default) is a strict
     no-op — the surface is byte-identical to pre-C2 (pinned by contract test).
+
+    RAID B2 (07S §5b) — ``plan`` mode advertises the ask surface PLUS the
+    PlanForge ``plan_*`` server tools (plan artifacts, never prose).
     """
-    ask = permission_mode == "ask"
+    restricted = permission_mode in ("ask", "plan")
+    plan = permission_mode == "plan"
     out: list[dict] = []
     seen: set[str] = set()
 
@@ -421,20 +448,30 @@ def _advertise_discovery_tools(
     # Discovered tools — full schemas now that find_tools matched them.
     # Ask mode: only tier-R server tools are advertised (untiered defaults R —
     # inert by the C-TOOL convention); discovery still works, but a discovered
-    # non-R tool is NOT advertised (DR-C2).
+    # non-R tool is NOT advertised (DR-C2). Plan mode additionally advertises
+    # the `plan_*` PlanForge tools regardless of tier (RAID B2).
     for name in active_tool_names:
         td = catalog_index.get(name)
-        if ask and td is not None and tool_tier(td) != "R":
+        if (
+            restricted and td is not None and tool_tier(td) != "R"
+            and not (plan and _is_plan_tool(name))
+        ):
             continue
         _add(td)
     return out
 
 
-def _filter_tools_for_ask(tools: list[dict]) -> list[dict]:
+def _filter_tools_for_ask(
+    tools: list[dict], permission_mode: str = "ask"
+) -> list[dict]:
     """RAID C2 (DR-C2) — the ask-mode filter for the NON-discovery paths (legacy
     full-catalog clients, admin, gateway-down agui). Keeps find_tools, frontend
     tools (human-executed by construction), and tier-R server tools; drops every
-    tiered A/W/S server tool. Untiered defaults R (inert — C-TOOL convention)."""
+    tiered A/W/S server tool. Untiered defaults R (inert — C-TOOL convention).
+
+    RAID B2 (07S §5b) — ``permission_mode='plan'`` additionally keeps the
+    PlanForge ``plan_*`` server tools (plan artifacts, never prose)."""
+    plan = permission_mode == "plan"
     out: list[dict] = []
     for td in tools:
         fn = td.get("function") if isinstance(td, dict) else None
@@ -444,7 +481,7 @@ def _filter_tools_for_ask(tools: list[dict]) -> list[dict]:
         if name == FIND_TOOLS_NAME or is_frontend_tool(name):
             out.append(td)
             continue
-        if tool_tier(td) == "R":
+        if tool_tier(td) == "R" or (plan and _is_plan_tool(name)):
             out.append(td)
     return out
 
@@ -490,7 +527,7 @@ async def _stream_with_tools(
     (design D7). A provider that rejects tools triggers a one-shot
     tool-free retry (design D8).
 
-    RAID C2 (DR-C2) — ``permission_mode`` ('ask'|'write', default 'write'):
+    RAID C2 (DR-C2) — ``permission_mode`` ('ask'|'write'|'plan', default 'write'):
     * ask — the advertised server-tool surface filters to tier R (+find_tools);
       frontend tools stay. Defense-in-depth: a non-R server tool call that slips
       through returns a tool-result error, never executes.
@@ -498,6 +535,11 @@ async def _stream_with_tools(
       not on the user's allowlist suspends the run with a ``tool_approval``
       pending card. ``approval_check`` is an async ``(tool_name) -> bool``;
       a raising check fails OPEN (a DB blip must not brick tool calling).
+    * plan (RAID B2, 07S §5b) — the ask surface PLUS the PlanForge ``plan_*``
+      tools. ``plan_*`` tools run WITHOUT the C2 Tier-A approval prompt (the
+      gate is write-mode-only by design — planning artifacts are the mode's
+      whole point and are reversible plan_runs rows); any other non-R server
+      tool feeds a plan-mode tool-result error, never executes.
     """
     client = Client(
         base_url=settings.provider_registry_internal_url,
@@ -601,8 +643,8 @@ async def _stream_with_tools(
                     )
                 else:
                     advertised = (
-                        _filter_tools_for_ask(tools)
-                        if permission_mode == "ask" else tools
+                        _filter_tools_for_ask(tools, permission_mode)
+                        if permission_mode in ("ask", "plan") else tools
                     )
                 if advertised:
                     request_kwargs["tools"] = advertised
@@ -788,15 +830,28 @@ async def _stream_with_tools(
                 # self-correct from — it NEVER executes. Tier is read from the
                 # def itself (discovery catalog or the caller's plain defs);
                 # unknown/untiered tools default R (inert) and pass through.
-                if permission_mode == "ask":
+                # RAID B2 — plan mode mirrors ask, but the `plan_*` PlanForge
+                # tools are allowed through (they write plan artifacts, never
+                # prose); everything else non-R feeds the plan-mode error.
+                if permission_mode in ("ask", "plan"):
                     _ask_td = (cat_index if discovery else plain_index).get(c["name"])
                     _ask_tier = tool_tier(_ask_td) if _ask_td is not None else "R"
-                    if _ask_tier != "R":
-                        ask_err = (
-                            f"read-only mode — {c['name']} is a tier-{_ask_tier} "
-                            "write tool and cannot run in Ask mode. Switch to "
-                            "Write mode to run it, or answer from reads only."
-                        )
+                    if _ask_tier != "R" and not (
+                        permission_mode == "plan" and _is_plan_tool(c["name"])
+                    ):
+                        if permission_mode == "plan":
+                            ask_err = (
+                                f"plan mode — research and planning only; "
+                                f"{c['name']} is a tier-{_ask_tier} write tool and "
+                                "cannot run here. Build the plan with the plan_* "
+                                "tools; switch to Write mode to draft."
+                            )
+                        else:
+                            ask_err = (
+                                f"read-only mode — {c['name']} is a tier-{_ask_tier} "
+                                "write tool and cannot run in Ask mode. Switch to "
+                                "Write mode to run it, or answer from reads only."
+                            )
                         working.append({
                             "role": "tool", "tool_call_id": c["id"],
                             "content": json.dumps({"error": ask_err}),
@@ -907,7 +962,11 @@ async def _stream_with_tools(
                 # a "denied by user" tool result. An allowlist READ failure fails
                 # OPEN (a DB blip must not brick tool calling); only the specific
                 # un-allowlisted call gates. Tier-S/W propose/confirm + Tier-A
-                # undo are untouched — approval is additive.
+                # undo are untouched — approval is additive. RAID B2: the gate is
+                # write-mode-ONLY by design — in plan mode a Tier-A `plan_*` tool
+                # runs without the approval prompt (plan artifacts are reversible
+                # plan_runs rows; non-plan_* writes never reach here — the
+                # defense-in-depth block above already rejected them).
                 if tier == "A" and permission_mode == "write" and approval_check is not None:
                     _allowed = True
                     try:
@@ -1081,8 +1140,10 @@ async def stream_response(
     tool-*calling* is off — which lets a reasoning model (Qwen 3.5/3.6) draft
     without spending its budget deciding whether to call a tool.
 
-    RAID C2 (DR-C2): ``permission_mode`` ('ask'|'write', default 'write') — see
-    _stream_with_tools. Compose (disable_tools) is NOT a third enum value."""
+    RAID C2 (DR-C2): ``permission_mode`` ('ask'|'write'|'plan', default 'write')
+    — see _stream_with_tools. Compose (disable_tools) is NOT an enum value.
+    RAID B2: 'plan' also auto-injects the plan_forge skill (book/editor
+    surfaces) and appends the plan-mode system nudge on both assembly paths."""
 
     # ── RE-3: parse + STRIP a chat-only inline reasoning command (/no_think etc.)
     # before the message reaches the model or is persisted. The inline override is
@@ -1251,6 +1312,8 @@ async def stream_response(
         editor=_editor,
         book_scoped=_book_scoped,
         admin=_admin,
+        # RAID B2 — plan mode auto-injects plan_forge on book/editor surfaces.
+        permission_mode=permission_mode,
     )
     _skill_prompts = skill_prompts(injected_skill_codes)
     glossary_skill: str | None = _skill_prompts.get("glossary")
@@ -1258,6 +1321,13 @@ async def stream_response(
         glossary_skill = _skill_prompts["admin"]
     universal_skill: str | None = _skill_prompts.get("universal")
     knowledge_skill: str | None = _skill_prompts.get("knowledge")
+    # RAID B2 — the PlanForge skill body (pinned, or auto-injected in plan mode).
+    plan_forge_skill: str | None = _skill_prompts.get("plan_forge")
+    # RAID B2 — the plan-mode system nudge, appended on BOTH assembly paths
+    # below (mirrors skill_meta_block) whenever the turn runs in plan mode.
+    plan_mode_block: str | None = (
+        PLAN_MODE_NUDGE if permission_mode == "plan" else None
+    )
     # RAID C3 — L1 skill metadata: a compact "available skills" list injected always
     # (cheap), so the model knows which skills exist on this surface even when only the
     # relevant one's full body (L2) is loaded above.
@@ -1357,6 +1427,10 @@ async def stream_response(
             parts.append({"type": "text", "text": knowledge_skill, "cache_control": {"type": "ephemeral"}})
         if universal_skill:
             parts.append({"type": "text", "text": universal_skill, "cache_control": {"type": "ephemeral"}})
+        if plan_forge_skill:  # RAID B2 — PlanForge flow (pinned or plan-mode)
+            parts.append({"type": "text", "text": plan_forge_skill, "cache_control": {"type": "ephemeral"}})
+        if plan_mode_block:  # RAID B2 — plan-mode nudge (no prose until Write)
+            parts.append({"type": "text", "text": plan_mode_block, "cache_control": {"type": "ephemeral"}})
         if skill_meta_block:  # RAID C3 — L1 available-skills catalog
             parts.append({"type": "text", "text": skill_meta_block, "cache_control": {"type": "ephemeral"}})
         if book_context_note:
@@ -1382,6 +1456,10 @@ async def stream_response(
             system_parts.append(knowledge_skill)
         if universal_skill:
             system_parts.append(universal_skill)
+        if plan_forge_skill:  # RAID B2 — PlanForge flow (pinned or plan-mode)
+            system_parts.append(plan_forge_skill)
+        if plan_mode_block:  # RAID B2 — plan-mode nudge (no prose until Write)
+            system_parts.append(plan_mode_block)
         if skill_meta_block:  # RAID C3 — L1 available-skills catalog
             system_parts.append(skill_meta_block)
         if book_context_note:
@@ -2220,6 +2298,8 @@ async def resume_stream_response(
         editor=True,
         book_scoped=True,
         admin=bool(admin_token),
+        # RAID B2 — the resume continues under the suspended turn's mode.
+        permission_mode=susp.permission_mode,
     )
 
     knowledge_client = get_knowledge_client()
