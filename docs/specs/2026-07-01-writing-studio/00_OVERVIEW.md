@@ -91,6 +91,7 @@ dock group (Explorer → editor-group analogue).
 | 08 | **Studio state architecture** (5-tier model, host, bus rules, panel checklist) | [`08_studio_state_architecture.md`](08_studio_state_architecture.md) | 📐 specced |
 | 09 | **Agent GUI reconciliation** (3-lane: ui intent / MCP reload / human-gate) | [`09_agent_gui_reconciliation.md`](09_agent_gui_reconciliation.md) | 📐 specced |
 | 10 | **Agent lifecycle hooks** (sandbox scripts, pre/post tool events) | [`10_agent_lifecycle_hooks.md`](10_agent_lifecycle_hooks.md) | 📐 specced |
+| 11 | **Dockable migration wave 1** — foundation seams (openPanel params · status-bar contributions · link resolver) + usage/notifications/settings/trash panels | [`11_dockable_migration.md`](11_dockable_migration.md) | 📐 specced |
 | … | Search nav · Quality nav · Jobs/Generation/Issues bottom panels · Planner/Cast/Timeline/… | — | ⏳ |
 
 *(Rows are added/promoted as we go. Order is a guide, not a contract — the human directs which is next.)*

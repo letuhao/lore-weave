@@ -10,7 +10,11 @@
   "panels": {
     "compose": { "title": "Compose", "desc": "AI 共同創作對話" },
     "editor": { "title": "Editor", "desc": "手稿編輯器" },
-    "planner": { "title": "規劃器", "desc": "規劃小說系統" }
+    "planner": { "title": "規劃器", "desc": "規劃小說系統" },
+    "usage": { "title": "用量", "desc": "花費、Token 與請求紀錄" },
+    "notifications": { "title": "通知", "desc": "工作完成與提醒" },
+    "settings": { "title": "設定", "desc": "帳戶、供應商與翻譯" },
+    "trash": { "title": "垃圾桶", "desc": "還原已刪除的書籍、章節等" }
   },
   "planner": {
     "sourcePlaceholder": "貼上小說系統的 Markdown…",
@@ -82,7 +86,9 @@
   },
   "status": {
     "wordsPlaceholder": "— 字",
-    "modelPlaceholder": "尚無模型"
+    "modelPlaceholder": "尚無模型",
+    "notifications": "通知",
+    "cost24h": "過去 24 小時花費"
   },
   "manuscript": {
     "title": "手稿",

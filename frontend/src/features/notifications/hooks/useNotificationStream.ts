@@ -69,7 +69,8 @@ export function useNotificationStream(
   }, [onEvent]);
 
   useEffect(() => {
-    if (!accessToken) {
+    // No token, or no EventSource in this environment (jsdom tests, SSR) → stay idle.
+    if (!accessToken || typeof EventSource === 'undefined') {
       setState('idle');
       return;
     }

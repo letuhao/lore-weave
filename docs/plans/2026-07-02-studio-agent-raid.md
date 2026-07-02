@@ -84,7 +84,7 @@ Plan SSOT: [`2026-07-01-plan-forge-promote.md`](2026-07-01-plan-forge-promote.md
 |---|---|---|---|---|---|
 | **A1** | Script-aware token counter (NOT chars/4) | new `chat-service .../token_budget.py`; per-script factors (CJK≈1, VN-diacritic dense) or tokenizer; `count_tokens` when Claude | M | — | #1 |
 | **A2** | Budget accounting + `contextBudget` CUSTOM event | `stream_events.py` (mirror `memoryMode`); used% = promptTokens/(ctx_len−max_tokens−safety); bucket breakdown = *labeled estimate* | S | A1 | #6 #8 |
-| **A3** | FE meter | `StudioStatusBar.tsx` + chat header; `chatStateHub` snapshot; bands 70/85; NULL ctx→"—" | S | A2 | — |
+| **A3** | FE meter | **status-bar side MUST use `registerStatusBarItem` (spec [`11_dockable_migration.md`](../specs/2026-07-01-writing-studio/11_dockable_migration.md) F2 — ships first in parallel), do NOT edit `StudioStatusBar.tsx` directly** + chat header; `chatStateHub` snapshot; bands 70/85; NULL ctx→"—" | S | A2 | — |
 | **A4** | Agnostic compaction (micro→full→fail) | `stream_service.py` turn loop; evict tool_results keep-3+exclude; summarize-role; retry→hard-truncate→`compaction_failed`; non-evictable overflow guard | M–L | A2 | #2 #4 |
 | **A5** | Anthropic overlay | gate `provider_kind=="anthropic"`; `Extra`→`clear_tool_uses`+memory blocks (`adapters.go:1117`); beta header (`anthropic_streamer.go:251`) | M | A4 | — |
 | **A6** | Manual Compact + New-from-summary | FE button + chat-service endpoint; define carry-set (steering/tools/skills/pins/bindings) | S | A4 | LOW |

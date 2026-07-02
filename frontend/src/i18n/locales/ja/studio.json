@@ -10,7 +10,11 @@
   "panels": {
     "compose": { "title": "Compose", "desc": "AI 共同執筆チャット" },
     "editor": { "title": "Editor", "desc": "原稿エディタ" },
-    "planner": { "title": "プランナー", "desc": "小説システムを設計" }
+    "planner": { "title": "プランナー", "desc": "小説システムを設計" },
+    "usage": { "title": "使用状況", "desc": "支出・トークン・リクエストログ" },
+    "notifications": { "title": "通知", "desc": "ジョブ完了とアラート" },
+    "settings": { "title": "設定", "desc": "アカウント・プロバイダー・翻訳" },
+    "trash": { "title": "ゴミ箱", "desc": "削除した本・章などを復元" }
   },
   "planner": {
     "sourcePlaceholder": "小説システムの Markdown を貼り付け…",
@@ -82,7 +86,9 @@
   },
   "status": {
     "wordsPlaceholder": "— 語",
-    "modelPlaceholder": "モデルなし"
+    "modelPlaceholder": "モデルなし",
+    "notifications": "通知",
+    "cost24h": "過去24時間の支出"
   },
   "manuscript": {
     "title": "原稿",

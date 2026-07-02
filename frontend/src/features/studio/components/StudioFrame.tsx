@@ -23,6 +23,7 @@ import { StudioSideBar } from './StudioSideBar';
 import { StudioDock } from './StudioDock';
 import { StudioBottomPanel } from './StudioBottomPanel';
 import { StudioStatusBar } from './StudioStatusBar';
+import { StudioStatusContributions } from '../statusbar/StudioStatusContributions';
 
 export function StudioFrame({ bookId }: { bookId: string }) {
   return (
@@ -111,6 +112,8 @@ function StudioFrameInner({ bookId }: { bookId: string }) {
         </ManuscriptUnitProvider>
       </div>
 
+      {/* #11 F2 — ambient status items (badge/meter) live at frame level, not in panels. */}
+      <StudioStatusContributions />
       <StudioStatusBar
         bookLanguage={bookLanguage}
         bottomOpen={chrome.bottomOpen}

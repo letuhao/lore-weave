@@ -11,7 +11,7 @@
 import { createContext, useContext, useEffect, useMemo, useRef, useState, type MutableRefObject, type ReactNode } from 'react';
 import { useSyncExternalStore } from 'react';
 import type { DockviewApi } from 'dockview-react';
-import { applyBusEvent, type StudioBusEvent, type StudioBusSnapshot, type StudioToolRegistration } from './types';
+import { applyBusEvent, type StudioBusEvent, type StudioBusSnapshot, type StudioStatusBarItem, type StudioToolRegistration } from './types';
 
 interface Store<S> {
   get: () => S;
@@ -36,6 +36,9 @@ export interface StudioHost {
   unregisterStudioTool: (panelId: string) => void;
   getRegisteredTool: (panelId: string) => StudioToolRegistration | null;
   listRegisteredStudioTools: () => StudioToolRegistration[];
+  // Status-bar contributions (#11 F2) — same register/unregister shape as the tool registry.
+  registerStatusBarItem: (item: StudioStatusBarItem) => void;
+  unregisterStatusBarItem: (id: string) => void;
   // Bus (07c) — publish read-only snapshots; subscribe with an optional selector (S4).
   publish: (event: StudioBusEvent) => void;
   getSnapshot: () => StudioBusSnapshot;
@@ -46,6 +49,7 @@ export interface StudioHost {
   // Internals for the reactive hooks + the dock wiring (not part of the public contract).
   _regStore: Store<StudioToolRegistration[]>;
   _busStore: Store<StudioBusSnapshot>;
+  _statusStore: Store<StudioStatusBarItem[]>;
   _dockApiRef: MutableRefObject<DockviewApi | null>;
 }
 
@@ -61,6 +65,9 @@ export function StudioHostProvider({ bookId, children }: { bookId: string; child
     const regStore = createStore<StudioToolRegistration[]>([]);
     const rebuild = () => regStore.set(Array.from(regMap.values()));
     const busStore = createStore<StudioBusSnapshot>({ revision: 0, bookId, activePanelIds: [] });
+    const statusMap = new Map<string, StudioStatusBarItem>();
+    const statusStore = createStore<StudioStatusBarItem[]>([]);
+    const rebuildStatus = () => statusStore.set(Array.from(statusMap.values()));
 
     const openPanel = (panelId: string, opts?: { focus?: boolean; title?: string }) => {
       const api = dockApiRef.current;
@@ -81,6 +88,8 @@ export function StudioHostProvider({ bookId, children }: { bookId: string; child
       unregisterStudioTool: (panelId) => { if (regMap.delete(panelId)) rebuild(); },
       getRegisteredTool: (panelId) => regMap.get(panelId) ?? null,
       listRegisteredStudioTools: () => regStore.get(),
+      registerStatusBarItem: (item) => { statusMap.set(item.id, item); rebuildStatus(); },
+      unregisterStatusBarItem: (id) => { if (statusMap.delete(id)) rebuildStatus(); },
       publish: (event) => { busStore.set(applyBusEvent(busStore.get(), event)); },
       getSnapshot: () => busStore.get(),
       subscribe: (listener, selector) => {
@@ -102,6 +111,7 @@ export function StudioHostProvider({ bookId, children }: { bookId: string; child
       },
       _regStore: regStore,
       _busStore: busStore,
+      _statusStore: statusStore,
       _dockApiRef: dockApiRef,
     };
   }, [bookId]);
@@ -144,6 +154,29 @@ export function useStudioBusSelector<T>(selector: (s: StudioBusSnapshot) => T): 
     return _busStore.subscribe(check);
   }, [_busStore]);
   return value;
+}
+
+/** The live sorted status-bar items for one side (#11 F2) — re-renders on (un)register only;
+ * item DATA reactivity lives inside each item's own component. */
+export function useStatusBarItems(side: StudioStatusBarItem['side']): StudioStatusBarItem[] {
+  const { _statusStore } = useStudioHost();
+  const all = useSyncExternalStore(_statusStore.subscribe, _statusStore.get);
+  return useMemo(
+    () => all.filter((i) => i.side === side).sort((a, b) => (a.order ?? 0) - (b.order ?? 0)),
+    [all, side],
+  );
+}
+
+/** Register a status-bar item for the caller's lifetime (mount → register, unmount → unregister).
+ * Mirror of useRegisterStudioTool: re-registers only when the id changes. */
+export function useRegisterStatusBarItem(item: StudioStatusBarItem): void {
+  const { registerStatusBarItem, unregisterStatusBarItem } = useStudioHost();
+  const itemRef = useRef(item);
+  itemRef.current = item;
+  useEffect(() => {
+    registerStatusBarItem(itemRef.current);
+    return () => unregisterStatusBarItem(itemRef.current.id);
+  }, [registerStatusBarItem, unregisterStatusBarItem, item.id]);
 }
 
 /** Register a dock tool for this panel's lifetime (mount → register, unmount → unregister).

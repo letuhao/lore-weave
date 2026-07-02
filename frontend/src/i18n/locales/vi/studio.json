@@ -10,7 +10,11 @@
   "panels": {
     "compose": { "title": "Compose", "desc": "Chat đồng sáng tác AI" },
     "editor": { "title": "Editor", "desc": "Trình soạn bản thảo" },
-    "planner": { "title": "Trình lập kế hoạch", "desc": "Lập kế hoạch hệ thống truyện" }
+    "planner": { "title": "Trình lập kế hoạch", "desc": "Lập kế hoạch hệ thống truyện" },
+    "usage": { "title": "Sử dụng", "desc": "Chi phí, token & nhật ký yêu cầu" },
+    "notifications": { "title": "Thông báo", "desc": "Job hoàn tất & cảnh báo" },
+    "settings": { "title": "Cài đặt", "desc": "Tài khoản, nhà cung cấp & dịch thuật" },
+    "trash": { "title": "Thùng rác", "desc": "Khôi phục sách, chương đã xoá & hơn nữa" }
   },
   "planner": {
     "sourcePlaceholder": "Dán markdown hệ thống truyện…",
@@ -82,7 +86,9 @@
   },
   "status": {
     "wordsPlaceholder": "— từ",
-    "modelPlaceholder": "chưa có model"
+    "modelPlaceholder": "chưa có model",
+    "notifications": "Thông báo",
+    "cost24h": "Chi phí 24h qua"
   },
   "manuscript": {
     "title": "Bản thảo",
