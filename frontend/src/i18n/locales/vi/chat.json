@@ -32,6 +32,14 @@
     "zero": "bằng 0",
     "manage": "Quản lý công cụ & kỹ năng",
     "coming_soon": "sắp có",
+    "compact": {
+      "button": "Nén ngay",
+      "pending": "Đang nén…",
+      "placeholder": "Giữ lại tên nhân vật và các lời hứa cốt truyện…",
+      "success": "Đã nén — {{before}} → {{after}} token",
+      "failed": "Nén thất bại: {{error}}",
+      "compacted_through": "đã nén đến tin nhắn {{seq}}"
+    },
     "cat": {
       "system_prompt": "Nhân cách",
       "memory_knowledge": "Ký ức truyện",

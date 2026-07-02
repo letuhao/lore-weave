@@ -63,7 +63,11 @@ from app.services.tool_discovery import (
 )
 from app.services.output_extractor import extract_outputs
 from app.services.stream_events import make_emitter
-from app.services.compaction import compact_messages
+from app.services.compaction import compact_messages, summary_message
+# W3 — compaction tier 2 (compress instead of drop) shares its summarizer with
+# the manual /compact route; the factored impl lives in compact_service. Bound
+# to the old private name so both in-file call sites stay unchanged.
+from app.services.compact_service import summarize_for_compaction as _summarize_for_compaction
 from app.services.token_budget import (
     ContextBreakdown,
     compute_budget,
@@ -1214,7 +1218,8 @@ async def stream_response(
     # ── Load session settings ───────────────────────────────────────────────
     session_row = await pool.fetchrow(
         "SELECT system_prompt, generation_params, project_id, composer_model_source, composer_model_ref, "
-        "planner_model_ref, working_memory_seed, enabled_tools, enabled_skills, activated_tools "
+        "planner_model_ref, working_memory_seed, enabled_tools, enabled_skills, activated_tools, "
+        "compact_summary, compacted_before_seq "
         "FROM chat_sessions WHERE session_id = $1",
         session_id,
     )
@@ -1298,17 +1303,40 @@ async def stream_response(
     fe_memory_mode = kctx.mode
 
     # ── Build message history (size from knowledge_service) ─────────────────
+    # W3 — persisted manual compact: when the session carries a compact point
+    # (compacted_before_seq), everything before it is represented by the stored
+    # compact_summary — fetch only messages AT/after the point and prepend the
+    # summary as a synthetic pinned prior-context message (same `<summary>`
+    # system-message convention the auto-compaction summarize tier uses). The
+    # recent_message_count window still applies to the fetched set.
     history_limit = max(1, kctx.recent_message_count)
-    rows = await pool.fetch(
-        """
-        SELECT role, content FROM chat_messages
-        WHERE session_id = $1 AND is_error = false AND branch_id = 0
-        ORDER BY sequence_num DESC
-        LIMIT $2
-        """,
-        session_id, history_limit,
-    )
+    _compact_summary = session_row.get("compact_summary") if session_row else None
+    _compacted_before_seq = session_row.get("compacted_before_seq") if session_row else None
+    if _compacted_before_seq is not None:
+        rows = await pool.fetch(
+            """
+            SELECT role, content FROM chat_messages
+            WHERE session_id = $1 AND is_error = false AND branch_id = 0
+              AND sequence_num >= $3
+            ORDER BY sequence_num DESC
+            LIMIT $2
+            """,
+            session_id, history_limit, _compacted_before_seq,
+        )
+    else:
+        rows = await pool.fetch(
+            """
+            SELECT role, content FROM chat_messages
+            WHERE session_id = $1 AND is_error = false AND branch_id = 0
+            ORDER BY sequence_num DESC
+            LIMIT $2
+            """,
+            session_id, history_limit,
+        )
     messages: list[dict] = [{"role": r["role"], "content": r["content"]} for r in reversed(rows)]
+    if _compacted_before_seq is not None and _compact_summary:
+        # Pinned (role=system) → the auto-compaction tiers can never drop it.
+        messages.insert(0, summary_message(_compact_summary))
     # W1 — measure the replayed history NOW, before the system parts are inserted
     # below, so the breakdown's `history` bucket is exactly the prior turns
     # (includes the just-persisted latest user message).
@@ -1787,57 +1815,6 @@ async def stream_response(
         context_breakdown=context_breakdown,
     ):
         yield line
-
-
-async def _summarize_for_compaction(
-    messages: list[dict], *, model_source: str, model_ref: str, user_id: str,
-) -> str:
-    """Compaction tier 2 — compress a run of OLDER turns into a dense synopsis so the
-    prompt fits the window (compress instead of drop). Provider-agnostic via the LLM
-    gateway (works for local lm_studio / Qwen / Gemma AND Claude). A failure RAISES —
-    ``compact_messages`` catches it and falls back to deterministic truncation so a
-    flaky summarizer can never poison the turn (edge #2)."""
-    lines: list[str] = []
-    for m in messages:
-        role = m.get("role", "?")
-        content = m.get("content")
-        if isinstance(content, list):  # content parts
-            content = " ".join(p.get("text", "") for p in content if isinstance(p, dict))
-        if not content:  # a tool-call turn with no prose — represent it compactly
-            tcs = m.get("tool_calls") or []
-            names = ", ".join(tc.get("function", {}).get("name", "tool") for tc in tcs)
-            content = f"(called {names})" if names else ""
-        lines.append(f"{role}: {content}")
-    transcript = "\n".join(lines)
-
-    summary_messages = [
-        {"role": "system", "content": (
-            "You compress the EARLIER part of an ongoing conversation into a dense, "
-            "factual synopsis so it fits in context. Preserve named entities, decisions "
-            "made, facts established, open threads, and any state the assistant must "
-            "keep. Omit pleasantries. Output ONLY the synopsis prose — no preamble, no "
-            "headers, and do NOT reason aloud."
-        )},
-        {"role": "user", "content": f"Conversation excerpt to compress:\n\n{transcript}\n\nSynopsis:"},
-    ]
-    client = Client(
-        base_url=settings.provider_registry_internal_url,
-        auth_mode="internal",
-        internal_token=settings.internal_service_token,
-        user_id=user_id,
-    )
-    try:
-        request = StreamRequest(
-            model_source=model_source, model_ref=model_ref,
-            messages=summary_messages, temperature=0.2, max_tokens=700,
-        )
-        parts: list[str] = []
-        async for ev in client.stream(request):
-            if isinstance(ev, TokenEvent):
-                parts.append(ev.delta)
-    finally:
-        await client.aclose()
-    return "".join(parts).strip()
 
 
 async def _emit_chat_turn(

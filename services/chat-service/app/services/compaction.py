@@ -52,6 +52,15 @@ _PLACEHOLDER = "[tool result cleared to save context]"
 COMPACT_TRIGGER_RATIO = 0.75
 
 
+def summary_message(summary: str) -> dict:
+    """THE one summary-message convention (W3): a compacted-away stretch of
+    conversation is represented as a pinned system message wrapping the synopsis
+    in ``<summary>`` tags. Used by the in-turn summarize tier below, by the
+    persisted-compact history splice (stream_service) and by the manual
+    /compact route's re-compact fold — one shape everywhere."""
+    return {"role": "system", "content": f"<summary>\n{summary.strip()}\n</summary>"}
+
+
 def _is_pinned(msg: dict) -> bool:
     """system / steering / anchor / developer messages are never dropped."""
     return msg.get("role") in ("system", "developer")
@@ -222,8 +231,7 @@ async def compact_messages(
                 if inspect.isawaitable(summary):
                     summary = await summary
                 if summary and summary.strip():
-                    summary_msg = {"role": "system", "content": f"<summary>\n{summary.strip()}\n</summary>"}
-                    work = pinned + [summary_msg] + tail
+                    work = pinned + [summary_message(summary)] + tail
                     report.summarized = True
                     report.steps.append("summarize")
                 else:

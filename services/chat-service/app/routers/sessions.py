@@ -1,4 +1,5 @@
 import json
+import logging
 from uuid import UUID
 
 import asyncpg
@@ -7,12 +8,19 @@ from fastapi import APIRouter, Depends, HTTPException, Query, status
 from app.deps import get_current_user, get_db
 from app.models import (
     ChatSession,
+    CompactSessionRequest,
+    CompactSessionResponse,
     CreateSessionRequest,
     PatchSessionRequest,
     SearchResponse,
     SearchResult,
     SessionListResponse,
 )
+from app.services.compact_service import summarize_for_compaction
+from app.services.compaction import summary_message
+from app.services.token_budget import estimate_messages_tokens, estimate_tokens
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/v1/chat/sessions", tags=["sessions"])
 
@@ -53,6 +61,8 @@ def _row_to_session(r: asyncpg.Record) -> ChatSession:
         enabled_tools=list(r.get("enabled_tools") or []),
         enabled_skills=list(r.get("enabled_skills") or []),
         activated_tools=list(r.get("activated_tools") or []),
+        # W3 — the FE "compacted through message N" indicator.
+        compacted_before_seq=r.get("compacted_before_seq"),
     )
 
 
@@ -241,6 +251,103 @@ async def patch_session(
         set_activated_tools, body.activated_tools or [],
     )
     return _row_to_session(row)
+
+
+@router.post("/{session_id}/compact", response_model=CompactSessionResponse)
+async def compact_session(
+    session_id: UUID,
+    body: CompactSessionRequest,
+    user_id: str = Depends(get_current_user),
+    pool: asyncpg.Pool = Depends(get_db),
+) -> CompactSessionResponse:
+    """W3 — manual steerable compact, PERSISTED on the session.
+
+    Summarizes every message older than the last ``keep_recent`` with the
+    session's OWN model (the user's ``instructions`` steer what survives) and
+    stores {compact_summary, compacted_before_seq} on chat_sessions, so every
+    later turn — on every device — loads the summary instead of the old turns.
+
+    Re-compact is idempotent-ish: messages already covered by a previous
+    compact are NOT re-read; the previous summary is folded in as the first
+    "message" of the new summarizer input, so nothing is lost twice.
+    """
+    row = await pool.fetchrow(
+        "SELECT model_source, model_ref, compact_summary, compacted_before_seq "
+        "FROM chat_sessions WHERE session_id=$1 AND owner_user_id=$2",
+        str(session_id), user_id,
+    )
+    if not row:
+        raise HTTPException(status_code=404, detail="session not found")
+
+    prev_summary = row.get("compact_summary")
+    prev_before_seq = row.get("compacted_before_seq")
+
+    # Everything already covered by a previous compact is represented by
+    # prev_summary — load only what that compact did NOT cover.
+    if prev_before_seq is not None:
+        msg_rows = await pool.fetch(
+            """
+            SELECT sequence_num, role, content FROM chat_messages
+            WHERE session_id = $1 AND is_error = false AND branch_id = 0
+              AND sequence_num >= $2
+            ORDER BY sequence_num ASC
+            """,
+            str(session_id), prev_before_seq,
+        )
+    else:
+        msg_rows = await pool.fetch(
+            """
+            SELECT sequence_num, role, content FROM chat_messages
+            WHERE session_id = $1 AND is_error = false AND branch_id = 0
+            ORDER BY sequence_num ASC
+            """,
+            str(session_id),
+        )
+
+    # Split: droppable = everything except the last keep_recent messages.
+    if len(msg_rows) <= body.keep_recent:
+        raise HTTPException(status_code=409, detail="nothing to compact")
+    droppable_rows = msg_rows[: len(msg_rows) - body.keep_recent]
+    kept_rows = msg_rows[len(msg_rows) - body.keep_recent:]
+
+    droppable: list[dict] = [{"role": r["role"], "content": r["content"]} for r in droppable_rows]
+    kept: list[dict] = [{"role": r["role"], "content": r["content"]} for r in kept_rows]
+    # Re-compact folds the previous summary in as the first "message" so the
+    # new summary covers ALL compacted history (lossless-ish, idempotent).
+    if prev_summary:
+        droppable.insert(0, summary_message(prev_summary))
+
+    tokens_before = estimate_messages_tokens(droppable + kept)
+
+    try:
+        summary = await summarize_for_compaction(
+            droppable,
+            model_source=row["model_source"],
+            model_ref=str(row["model_ref"]),
+            user_id=user_id,
+            instructions=body.instructions,
+        )
+    except Exception as exc:  # session unchanged — the user asked for a summary,
+        # never persist a truncation-only manual compact.
+        logger.warning("manual compact summarizer failed session=%s", session_id, exc_info=True)
+        raise HTTPException(status_code=502, detail="summarizer failed — session unchanged") from exc
+    if not summary:
+        raise HTTPException(status_code=502, detail="summarizer returned empty — session unchanged")
+
+    new_before_seq = int(kept_rows[0]["sequence_num"])  # seq of the first KEPT message
+    await pool.execute(
+        "UPDATE chat_sessions SET compact_summary=$3, compacted_before_seq=$4, updated_at=now() "
+        "WHERE session_id=$1 AND owner_user_id=$2",
+        str(session_id), user_id, summary, new_before_seq,
+    )
+
+    return CompactSessionResponse(
+        summary_tokens=estimate_tokens(summary),
+        compacted_message_count=len(droppable_rows),
+        compacted_before_seq=new_before_seq,
+        tokens_before_estimate=tokens_before,
+        tokens_after_estimate=estimate_messages_tokens([summary_message(summary)] + kept),
+    )
 
 
 @router.delete("/{session_id}", status_code=status.HTTP_204_NO_CONTENT)

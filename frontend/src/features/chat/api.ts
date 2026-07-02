@@ -6,6 +6,7 @@ import type {
   ChatMessage,
   ChatOutput,
   ChatSession,
+  CompactSessionResult,
   CreateSessionPayload,
   PatchSessionPayload,
   PendingFact,
@@ -49,6 +50,22 @@ export const chatApi = {
     return apiJson<void>(`/v1/chat/sessions/${sessionId}`, {
       method: 'DELETE',
       token,
+    });
+  },
+
+  // W3 — manual steerable compact: summarize everything but the recent turns
+  // with the session's own model and PERSIST it on the session (multi-device).
+  // `instructions` steer what must survive ("keep all plot promises and
+  // character names"); omit for the default synopsis.
+  compactSession(
+    token: string,
+    sessionId: string,
+    payload: { instructions?: string; keep_recent?: number } = {},
+  ) {
+    return apiJson<CompactSessionResult>(`/v1/chat/sessions/${sessionId}/compact`, {
+      method: 'POST',
+      token,
+      body: JSON.stringify(payload),
     });
   },
 

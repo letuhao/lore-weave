@@ -32,6 +32,14 @@
     "zero": "ゼロ",
     "manage": "ツールとスキルを管理",
     "coming_soon": "近日対応",
+    "compact": {
+      "button": "今すぐコンパクト",
+      "pending": "コンパクト中…",
+      "placeholder": "登場人物の名前とプロットの伏線を保持…",
+      "success": "コンパクト完了 — {{before}} → {{after}} トークン",
+      "failed": "コンパクトに失敗しました: {{error}}",
+      "compacted_through": "メッセージ {{seq}} までコンパクト済み"
+    },
     "cat": {
       "system_prompt": "ペルソナ",
       "memory_knowledge": "ストーリー記憶",

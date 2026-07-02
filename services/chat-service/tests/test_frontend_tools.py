@@ -157,6 +157,7 @@ class TestFrontendToolDefs:
         # a live gemma-26b smoke otherwise sent the ui_show_panel `panel` arg + guessed a value.
         assert p["parameters"]["properties"]["panel_id"]["enum"] == [
             "compose", "editor", "planner", "usage", "notifications", "settings", "trash",
+            "extensions", "proposals",  # added by e292d1ee2 (extensions/studio track)
         ]
         f = UI_FOCUS_MANUSCRIPT_UNIT_TOOL["function"]
         assert f["name"] == "ui_focus_manuscript_unit"

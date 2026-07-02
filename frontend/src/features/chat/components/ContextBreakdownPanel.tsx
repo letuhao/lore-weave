@@ -1,7 +1,8 @@
 import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { ChevronDown, ChevronRight, Plus } from 'lucide-react';
+import { Archive, ChevronDown, ChevronRight, Loader2, Plus } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import type { CompactControls } from '../hooks/useCompactSession';
 import type { ContextBudget, MemoryKnowledgeBreakdown } from '../types';
 
 // Chat Quality Wave W2 — the /context-style drill-down panel behind a click on
@@ -131,11 +132,15 @@ interface Props {
   /** Opens the tool/skill manager (the rack's add modal). Omitted on surfaces
    *  without the rack — the manage action is hidden then. */
   onManageTools?: () => void;
+  /** W3 — the "Compact now" controls (useCompactSession). Omitted on surfaces
+   *  without a compactable session — the section is hidden then. */
+  compact?: CompactControls;
 }
 
-export function ContextBreakdownPanel({ budget, onManageTools }: Props) {
+export function ContextBreakdownPanel({ budget, onManageTools, compact }: Props) {
   const { t } = useTranslation('chat');
   const [memoryOpen, setMemoryOpen] = useState(false);
+  const [instructions, setInstructions] = useState('');
   const c = computeBreakdown(budget);
 
   // Bar segments are sized against the LIMIT when known (free space stays
@@ -256,6 +261,42 @@ export function ContextBreakdownPanel({ budget, onManageTools }: Props) {
           </span>
         )}
       </div>
+
+      {/* W3 — manual steerable compact: optional preserve-these instructions +
+          the button; persisted server-side so every later turn (any device)
+          loads the summary instead of the old turns. */}
+      {compact && (
+        <div className="mt-2 flex flex-col gap-1.5 border-t border-border pt-2" data-testid="context-compact-section">
+          <input
+            type="text"
+            value={instructions}
+            onChange={(e) => setInstructions(e.target.value)}
+            maxLength={500}
+            placeholder={t('context_panel.compact.placeholder')}
+            disabled={compact.pending}
+            data-testid="context-compact-instructions"
+            className="w-full rounded-md border border-border bg-background px-2 py-1 text-[11px] text-foreground placeholder:text-muted-foreground/60 focus:outline-none focus:ring-1 focus:ring-accent disabled:opacity-50"
+          />
+          <button
+            type="button"
+            onClick={() => compact.onCompact(instructions)}
+            disabled={compact.pending}
+            data-testid="context-compact-now"
+            className="flex items-center justify-center gap-1.5 rounded-md border border-border bg-secondary/60 px-2 py-1 text-[11px] font-medium text-foreground transition-colors hover:bg-secondary disabled:cursor-not-allowed disabled:opacity-50"
+          >
+            {compact.pending
+              ? <Loader2 className="h-3 w-3 animate-spin" />
+              : <Archive className="h-3 w-3" />}
+            {compact.pending ? t('context_panel.compact.pending') : t('context_panel.compact.button')}
+          </button>
+          {compact.compactedBeforeSeq != null && (
+            <span className="text-[10px] text-muted-foreground" data-testid="context-compacted-through">
+              {/* compacted_before_seq = first KEPT message → compacted THROUGH the one before it */}
+              {t('context_panel.compact.compacted_through', { seq: compact.compactedBeforeSeq - 1 })}
+            </span>
+          )}
+        </div>
+      )}
     </div>
   );
 }

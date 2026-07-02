@@ -181,6 +181,20 @@ DO $$ BEGIN
   END IF;
 END $$;
 
+-- Chat Quality Wave W3 — manual steerable compact, PERSISTED on the session
+-- (PO decision #2: multi-device consistent, unlike the per-turn ephemeral
+-- auto-compaction). `compact_summary` is the LLM synopsis of every message
+-- with sequence_num < `compacted_before_seq`; the history loader splices
+-- summary + post-seq messages. NULL compacted_before_seq = never compacted.
+DO $$ BEGIN
+  IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='chat_sessions' AND column_name='compact_summary') THEN
+    ALTER TABLE chat_sessions ADD COLUMN compact_summary TEXT;
+  END IF;
+  IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='chat_sessions' AND column_name='compacted_before_seq') THEN
+    ALTER TABLE chat_sessions ADD COLUMN compacted_before_seq INT;
+  END IF;
+END $$;
+
 -- ARCH-1 C6 — suspended runs for AG-UI frontend-tool-calls. When the model
 -- calls a frontend tool (e.g. propose_edit), the turn pauses: the in-flight
 -- conversation `working` list + the dangling assistant tool-call cannot be

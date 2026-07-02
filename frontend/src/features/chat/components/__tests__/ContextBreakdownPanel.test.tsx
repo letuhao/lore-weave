@@ -124,3 +124,55 @@ describe('ContextBreakdownPanel', () => {
     expect(screen.getByTestId('context-zero-line')).toBeInTheDocument();
   });
 });
+
+// W3 — the "Compact now" footer section (steerable persisted compact).
+describe('ContextBreakdownPanel compact section', () => {
+  const controls = (overrides: Partial<{ pending: boolean; compactedBeforeSeq: number | null }> = {}) => ({
+    pending: false,
+    compactedBeforeSeq: null as number | null,
+    onCompact: vi.fn(),
+    ...overrides,
+  });
+
+  it('is hidden when no controls are wired (embedded/archived surfaces)', () => {
+    render(<ContextBreakdownPanel budget={fullBudget} />);
+    expect(screen.queryByTestId('context-compact-section')).toBeNull();
+  });
+
+  it('calls onCompact with the typed preservation instructions', () => {
+    const c = controls();
+    render(<ContextBreakdownPanel budget={fullBudget} compact={c} />);
+    fireEvent.change(screen.getByTestId('context-compact-instructions'), {
+      target: { value: 'keep all plot promises' },
+    });
+    fireEvent.click(screen.getByTestId('context-compact-now'));
+    expect(c.onCompact).toHaveBeenCalledTimes(1);
+    expect(c.onCompact).toHaveBeenCalledWith('keep all plot promises');
+  });
+
+  it('calls onCompact with empty instructions when none typed', () => {
+    const c = controls();
+    render(<ContextBreakdownPanel budget={fullBudget} compact={c} />);
+    fireEvent.click(screen.getByTestId('context-compact-now'));
+    expect(c.onCompact).toHaveBeenCalledTimes(1);
+    expect(c.onCompact).toHaveBeenCalledWith('');
+  });
+
+  it('disables the button + input while pending', () => {
+    const c = controls({ pending: true });
+    render(<ContextBreakdownPanel budget={fullBudget} compact={c} />);
+    const button = screen.getByTestId('context-compact-now');
+    expect(button).toBeDisabled();
+    expect(screen.getByTestId('context-compact-instructions')).toBeDisabled();
+    expect(button.textContent).toContain('context_panel.compact.pending');
+    fireEvent.click(button);
+    expect(c.onCompact).not.toHaveBeenCalled();
+  });
+
+  it('shows the compacted-through marker only when the session was compacted', () => {
+    const { rerender } = render(<ContextBreakdownPanel budget={fullBudget} compact={controls()} />);
+    expect(screen.queryByTestId('context-compacted-through')).toBeNull();
+    rerender(<ContextBreakdownPanel budget={fullBudget} compact={controls({ compactedBeforeSeq: 9 })} />);
+    expect(screen.getByTestId('context-compacted-through')).toBeInTheDocument();
+  });
+});

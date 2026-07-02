@@ -15,6 +15,7 @@ import { VoiceSettingsPanel } from './VoiceSettingsPanel';
 import { useVoiceChat } from '../hooks/useVoiceChat';
 import { useAutoTTS } from '../hooks/useAutoTTS';
 import { useUiToolExecutor } from '../hooks/useUiToolExecutor';
+import { useCompactSession } from '../hooks/useCompactSession';
 import { usePanelState } from '../hooks/usePanelState';
 import { AgentContextRack } from './AgentContextRack';
 import { AgentRuntimeInspector } from './AgentRuntimeInspector';
@@ -53,6 +54,8 @@ export function ChatView({ className, composeMode, footerSlot, headerSlot }: Cha
   const rack = chat.rack;
 
   const { settingsOpen, setSettingsOpen, voiceSettingsOpen, setVoiceSettingsOpen } = usePanelState();
+  // W3 — the "Compact now" controller for the context breakdown panel.
+  const compactControls = useCompactSession();
   const isArchived = activeSession?.status === 'archived';
   // W2: the context breakdown panel's tool rows open the rack's add modal.
   const [rackAddOpen, setRackAddOpen] = useState(false);
@@ -148,6 +151,7 @@ export function ChatView({ className, composeMode, footerSlot, headerSlot }: Cha
         messageCount={chat.messages.length}
         contextBudget={chat.contextBudget}
         onManageContextTools={!rackHidden ? () => setRackAddOpen(true) : undefined}
+        compactControls={!isArchived ? compactControls : undefined}
         sessionSwitcher={headerSlot}
         onRename={promptRename}
         onOpenSettings={() => setSettingsOpen(true)}

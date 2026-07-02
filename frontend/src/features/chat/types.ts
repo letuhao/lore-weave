@@ -54,6 +54,21 @@ export interface ChatSession {
   enabled_tools?: string[];
   enabled_skills?: string[];
   activated_tools?: string[];
+  // W3 — manual steerable compact: messages with sequence_num below this are
+  // represented server-side by a stored summary on every later turn.
+  // null/absent = never manually compacted. Drives the panel's
+  // "compacted through message N" line.
+  compacted_before_seq?: number | null;
+}
+
+// W3 — POST /v1/chat/sessions/{id}/compact response (all token counts are the
+// backend's script-aware estimates, not provider-measured).
+export interface CompactSessionResult {
+  summary_tokens: number;
+  compacted_message_count: number;
+  compacted_before_seq: number;
+  tokens_before_estimate: number;
+  tokens_after_estimate: number;
 }
 
 /** Story 04 / #07b — agentSurface SSE payload (inspector state machine). */

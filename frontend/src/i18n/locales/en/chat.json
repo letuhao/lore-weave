@@ -32,6 +32,14 @@
     "zero": "zero",
     "manage": "Manage tools & skills",
     "coming_soon": "panel soon",
+    "compact": {
+      "button": "Compact now",
+      "pending": "Compacting…",
+      "placeholder": "Keep character names and plot promises…",
+      "success": "Compacted — {{before}} → {{after}} tok",
+      "failed": "Compact failed: {{error}}",
+      "compacted_through": "compacted through message {{seq}}"
+    },
     "cat": {
       "system_prompt": "Persona",
       "memory_knowledge": "Story memory",

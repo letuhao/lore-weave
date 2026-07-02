@@ -7,6 +7,7 @@ import { cn } from '@/lib/utils';
 import { MemoryIndicator } from '@/features/knowledge/components/MemoryIndicator';
 import { ContextMeter } from './ContextMeter';
 import { chatApi } from '../api';
+import type { CompactControls } from '../hooks/useCompactSession';
 import type { ChatSession, ContextBudget } from '../types';
 
 interface ChatHeaderProps {
@@ -30,9 +31,11 @@ interface ChatHeaderProps {
   /** W2: opens the tool/skill manager from the context breakdown panel's tool
    *  rows. Omitted on surfaces without the rack. */
   onManageContextTools?: () => void;
+  /** W3: the context breakdown panel's "Compact now" controls. */
+  compactControls?: CompactControls;
 }
 
-export function ChatHeader({ session, modelNameMap, messageCount, onRename, onOpenSettings, isVoiceModeActive, onToggleVoiceMode, onOpenVoiceSettings, onOpenSidebar, sessionSwitcher, contextBudget, onManageContextTools }: ChatHeaderProps) {
+export function ChatHeader({ session, modelNameMap, messageCount, onRename, onOpenSettings, isVoiceModeActive, onToggleVoiceMode, onOpenVoiceSettings, onOpenSidebar, sessionSwitcher, contextBudget, onManageContextTools, compactControls }: ChatHeaderProps) {
   const { t } = useTranslation('chat');
   // Self-measure: when the header (its container) is narrow — e.g. the editor
   // AI panel at ~300px — collapse the memory chip to icon-only so the action
@@ -83,7 +86,7 @@ export function ChatHeader({ session, modelNameMap, messageCount, onRename, onOp
       </div>
       <div className="flex min-w-0 shrink-0 items-center gap-1">
         <MemoryIndicator projectId={session.project_id} memoryMode={session.memory_mode} compact={compact} />
-        <ContextMeter budget={contextBudget ?? null} compact={compact} onManageTools={onManageContextTools} />
+        <ContextMeter budget={contextBudget ?? null} compact={compact} onManageTools={onManageContextTools} compactControls={compactControls} />
         {(SPEECH_RECOGNITION_SUPPORTED || MEDIA_RECORDER_SUPPORTED) && onToggleVoiceMode && session.status !== 'archived' && (
           <button
             type="button"

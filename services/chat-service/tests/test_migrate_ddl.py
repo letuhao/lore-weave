@@ -21,6 +21,23 @@ def test_context_breakdown_column_is_guarded_additive_alter():
     assert guard, "context_breakdown ALTER must be IF-NOT-EXISTS guarded"
 
 
+def test_w3_compact_columns_are_guarded_additive_alters():
+    # W3 — chat_sessions.compact_summary + compacted_before_seq follow the same
+    # DO-block IF-NOT-EXISTS convention (re-runnable at every boot).
+    assert re.search(
+        r"IF NOT EXISTS \(SELECT 1 FROM information_schema\.columns "
+        r"WHERE table_name='chat_sessions' AND column_name='compact_summary'\) THEN\s*"
+        r"ALTER TABLE chat_sessions ADD COLUMN compact_summary TEXT;",
+        DDL,
+    ), "compact_summary ALTER must be IF-NOT-EXISTS guarded"
+    assert re.search(
+        r"IF NOT EXISTS \(SELECT 1 FROM information_schema\.columns "
+        r"WHERE table_name='chat_sessions' AND column_name='compacted_before_seq'\) THEN\s*"
+        r"ALTER TABLE chat_sessions ADD COLUMN compacted_before_seq INT;",
+        DDL,
+    ), "compacted_before_seq ALTER must be IF-NOT-EXISTS guarded"
+
+
 def test_ddl_has_no_unguarded_alter_add_column():
     # every ALTER ... ADD COLUMN in the boot DDL must live inside a DO-block
     # guard — a bare one would crash the second boot. Cheap structural pin.

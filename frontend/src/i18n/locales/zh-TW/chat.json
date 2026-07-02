@@ -32,6 +32,14 @@
     "zero": "為零",
     "manage": "管理工具與技能",
     "coming_soon": "即將推出",
+    "compact": {
+      "button": "立即壓縮",
+      "pending": "壓縮中…",
+      "placeholder": "保留角色名稱與劇情伏筆…",
+      "success": "已壓縮 — {{before}} → {{after}} 個 token",
+      "failed": "壓縮失敗：{{error}}",
+      "compacted_through": "已壓縮至第 {{seq}} 則訊息"
+    },
     "cat": {
       "system_prompt": "角色設定",
       "memory_knowledge": "故事記憶",

@@ -3,6 +3,7 @@ import { useTranslation } from 'react-i18next';
 import { Gauge } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { ContextBreakdownPanel } from './ContextBreakdownPanel';
+import type { CompactControls } from '../hooks/useCompactSession';
 import type { ContextBudget } from '../types';
 
 // RAID Wave A3 — the chat header context-budget meter (industry-standard
@@ -38,9 +39,12 @@ interface Props {
   /** W2: opens the tool/skill manager from the breakdown panel's tool rows.
    *  Omitted on surfaces without the rack (the action is hidden there). */
   onManageTools?: () => void;
+  /** W3: the breakdown panel's "Compact now" controls (useCompactSession).
+   *  Omitted → the compact section is hidden. */
+  compactControls?: CompactControls;
 }
 
-export function ContextMeter({ budget, compact, onManageTools }: Props) {
+export function ContextMeter({ budget, compact, onManageTools, compactControls }: Props) {
   const { t } = useTranslation('chat');
   const [panelOpen, setPanelOpen] = useState(false);
   const rootRef = useRef<HTMLDivElement>(null);
@@ -114,7 +118,7 @@ export function ContextMeter({ budget, compact, onManageTools }: Props) {
         <Gauge className="h-3 w-3 shrink-0" />
         {!compact && <span className="tabular-nums">{label}</span>}
       </button>
-      {panelOpen && <ContextBreakdownPanel budget={budget} onManageTools={onManageTools} />}
+      {panelOpen && <ContextBreakdownPanel budget={budget} onManageTools={onManageTools} compact={compactControls} />}
     </div>
   );
 }

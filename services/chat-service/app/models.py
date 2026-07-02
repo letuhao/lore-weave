@@ -281,6 +281,29 @@ class ChatSession(BaseModel):
     enabled_tools: list[str] = Field(default_factory=list)
     enabled_skills: list[str] = Field(default_factory=list)
     activated_tools: list[str] = Field(default_factory=list)
+    # W3 — manual steerable compact: messages with sequence_num < this are
+    # represented by the session's stored compact_summary on every later turn.
+    # NULL/None = never manually compacted. (The summary text itself is not
+    # exposed on the session payload — the FE only needs the marker.)
+    compacted_before_seq: int | None = None
+
+
+# ── Chat Quality Wave W3 — manual steerable compact ─────────────────────────
+
+class CompactSessionRequest(BaseModel):
+    """POST /v1/chat/sessions/{id}/compact body. ``instructions`` steer WHAT
+    survives the summary ("keep all plot promises and character names");
+    ``keep_recent`` = how many most-recent messages stay verbatim."""
+    instructions: str | None = Field(default=None, max_length=500)
+    keep_recent: int = Field(default=8, ge=1, le=100)
+
+
+class CompactSessionResponse(BaseModel):
+    summary_tokens: int
+    compacted_message_count: int
+    compacted_before_seq: int
+    tokens_before_estimate: int
+    tokens_after_estimate: int
 
 
 class SessionListResponse(BaseModel):
