@@ -12,6 +12,9 @@
 > regen on top, no race). VERIFY: FE 3085/3085 + chat-service frontend-tools 43 green.
 > **Deferred `D-DOCKW1-LIVE-SMOKE`** (gate #4, needs stack+LLM): live agent→panel browser smoke for the 4 new enum
 > values — the loop itself was live-proven pre-wave; the extension is enum-only + contract-tested both sides.
+> **/review-impl (b1dca941b): 2 MED + 2 LOW found + FIXED** — protocol-relative `//` external-origin escape
+> (notificationLink + resolver both hardened), settings same-value deep-link swallowed (now `onDidParametersChange`),
+> badge pre-fetch-0 clobber (`unreadLoaded` gate), catalog⇄panel import cycle (i18n-convention titleFor). 3089/3089.
 > **⚠️ Parallel-run lesson (live hit):** Track-4 commit `ab0523df6` swept this track's STAGED F1/F3 files into its
 > own commit (shared working tree) — protocol now: `git add … && git commit -- <explicit paths>` in ONE invocation.
 
