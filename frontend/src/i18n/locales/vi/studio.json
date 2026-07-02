@@ -14,7 +14,16 @@
     "usage": { "title": "Sử dụng", "desc": "Chi phí, token & nhật ký yêu cầu" },
     "notifications": { "title": "Thông báo", "desc": "Job hoàn tất & cảnh báo" },
     "settings": { "title": "Cài đặt", "desc": "Tài khoản, nhà cung cấp & dịch thuật" },
-    "trash": { "title": "Thùng rác", "desc": "Khôi phục sách, chương đã xoá & hơn nữa" }
+    "trash": { "title": "Thùng rác", "desc": "Khôi phục sách, chương đã xoá & hơn nữa" },
+    "jsonEditor": { "title": "JSON", "desc": "Xem JSON thô của một resource" }
+  },
+  "jsonEditor": {
+    "empty": "Mở một resource dạng JSON từ panel của nó (\"Open as JSON\").",
+    "invalid": "JSON không hợp lệ",
+    "conflict": "xung đột: {{part}}",
+    "format": "Định dạng",
+    "revert": "Hoàn tác",
+    "openAs": "Mở dạng JSON"
   },
   "planner": {
     "sourcePlaceholder": "Dán markdown hệ thống truyện…",

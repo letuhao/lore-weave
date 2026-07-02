@@ -14,7 +14,16 @@
     "usage": { "title": "用量", "desc": "花費、Token 與請求紀錄" },
     "notifications": { "title": "通知", "desc": "工作完成與提醒" },
     "settings": { "title": "設定", "desc": "帳戶、供應商與翻譯" },
-    "trash": { "title": "垃圾桶", "desc": "還原已刪除的書籍、章節等" }
+    "trash": { "title": "垃圾桶", "desc": "還原已刪除的書籍、章節等" },
+    "jsonEditor": { "title": "JSON", "desc": "資源的原始 JSON 檢視" }
+  },
+  "jsonEditor": {
+    "empty": "從資源面板的「以 JSON 開啟」開啟資源。",
+    "invalid": "無效的 JSON",
+    "conflict": "衝突: {{part}}",
+    "format": "格式化",
+    "revert": "還原",
+    "openAs": "以 JSON 開啟"
   },
   "planner": {
     "sourcePlaceholder": "貼上小說系統的 Markdown…",

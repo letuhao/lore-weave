@@ -15,6 +15,7 @@ import { UsagePanel } from './UsagePanel';
 import { NotificationsPanel } from './NotificationsPanel';
 import { SettingsPanel } from './SettingsPanel';
 import { TrashPanel } from './TrashPanel';
+import { JsonEditorPanel } from './JsonEditorPanel';
 
 export interface StudioPanelDef {
   id: string;
@@ -35,6 +36,9 @@ export const STUDIO_PANELS: StudioPanelDef[] = [
   { id: 'notifications', component: NotificationsPanel, titleKey: 'panels.notifications.title', descKey: 'panels.notifications.desc' },
   { id: 'settings', component: SettingsPanel, titleKey: 'panels.settings.title', descKey: 'panels.settings.desc' },
   { id: 'trash', component: TrashPanel, titleKey: 'panels.trash.title', descKey: 'panels.trash.desc' },
+  // #12 R3/R4 — singleton, retargets via params {docType, resourceId}; opened by "Open as JSON"
+  // affordances only (hidden from palette ⇒ outside the agent enum, no contract change this cycle).
+  { id: 'json-editor', component: JsonEditorPanel, titleKey: 'panels.jsonEditor.title', descKey: 'panels.jsonEditor.desc', hiddenFromPalette: true },
   { id: 'welcome', component: WelcomePanel, titleKey: 'welcome.tab', descKey: 'welcome.tab', hiddenFromPalette: true },
 ];
 

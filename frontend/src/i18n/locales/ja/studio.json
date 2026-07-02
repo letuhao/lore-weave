@@ -14,7 +14,16 @@
     "usage": { "title": "使用状況", "desc": "支出・トークン・リクエストログ" },
     "notifications": { "title": "通知", "desc": "ジョブ完了とアラート" },
     "settings": { "title": "設定", "desc": "アカウント・プロバイダー・翻訳" },
-    "trash": { "title": "ゴミ箱", "desc": "削除した本・章などを復元" }
+    "trash": { "title": "ゴミ箱", "desc": "削除した本・章などを復元" },
+    "jsonEditor": { "title": "JSON", "desc": "リソースの生 JSON ビュー" }
+  },
+  "jsonEditor": {
+    "empty": "各パネルの「JSON として開く」からリソースを開いてください。",
+    "invalid": "不正な JSON",
+    "conflict": "競合: {{part}}",
+    "format": "整形",
+    "revert": "破棄",
+    "openAs": "JSON として開く"
   },
   "planner": {
     "sourcePlaceholder": "小説システムの Markdown を貼り付け…",

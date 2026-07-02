@@ -14,7 +14,16 @@
     "usage": { "title": "Usage", "desc": "Spend, tokens & request log" },
     "notifications": { "title": "Notifications", "desc": "Job completions & alerts" },
     "settings": { "title": "Settings", "desc": "Account, providers & translation" },
-    "trash": { "title": "Trash", "desc": "Restore deleted books, chapters & more" }
+    "trash": { "title": "Trash", "desc": "Restore deleted books, chapters & more" },
+    "jsonEditor": { "title": "JSON", "desc": "Raw JSON view of a resource" }
+  },
+  "jsonEditor": {
+    "empty": "Open a resource as JSON from its panel (\"Open as JSON\").",
+    "invalid": "invalid JSON",
+    "conflict": "conflict: {{part}}",
+    "format": "Format",
+    "revert": "Revert",
+    "openAs": "Open as JSON"
   },
   "planner": {
     "sourcePlaceholder": "Paste the novel-system markdown…",
