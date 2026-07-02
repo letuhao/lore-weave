@@ -9,7 +9,49 @@
   },
   "panels": {
     "compose": { "title": "Compose", "desc": "AI co-writer chat" },
-    "editor": { "title": "Editor", "desc": "Manuscript editor" }
+    "editor": { "title": "Editor", "desc": "Manuscript editor" },
+    "planner": { "title": "Planner", "desc": "Plan the novel's system" },
+    "usage": { "title": "Usage", "desc": "Spend, tokens & request log" },
+    "notifications": { "title": "Notifications", "desc": "Job completions & alerts" },
+    "settings": { "title": "Settings", "desc": "Account, providers & translation" },
+    "trash": { "title": "Trash", "desc": "Restore deleted books, chapters & more" },
+    "json-editor": { "title": "JSON", "desc": "Raw JSON view of a resource" }
+  },
+  "sceneRail": {
+    "title": "Scenes",
+    "toggle": "Scenes",
+    "empty": "No scenes for this chapter (outline it in the composer).",
+    "synopsisPlaceholder": "Synopsis…",
+    "stale": "changed elsewhere — reloaded",
+    "notAnchored": "Scene not anchored in the text yet — use ⚓ to link headings.",
+    "anchored": "Anchored {{count}} scene(s), {{unmatched}} unmatched — ⌘S to save.",
+    "anchorNoop": "{{count}} already anchored, {{unmatched}} without a matching heading.",
+    "anchorTitle": "Link scenes to their headings in the text",
+    "add": "Add scene",
+    "addDisabled": "Chapter has no outline yet (create it in the composer)",
+    "newTitlePlaceholder": "Scene title…",
+    "create": "Add",
+    "deleted": "Deleted \"{{title}}\".",
+    "undo": "Undo",
+    "moveUp": "Move up",
+    "moveDown": "Move down",
+    "delete": "Delete scene",
+    "status": { "empty": "empty", "outline": "outline", "drafting": "drafting", "done": "done" }
+  },
+  "jsonEditor": {
+    "empty": "Open a resource as JSON from its panel (\"Open as JSON\").",
+    "invalid": "invalid JSON",
+    "conflict": "conflict: {{part}}",
+    "format": "Format",
+    "revert": "Revert",
+    "openAs": "Open as JSON"
+  },
+  "planner": {
+    "sourcePlaceholder": "Paste the novel-system markdown…",
+    "propose": "Propose",
+    "model": "Model",
+    "empty": "Paste your novel-system markdown and Propose to start a plan run.",
+    "mode": { "rules": "Rules", "llm": "LLM" }
   },
   "editor": {
     "empty": "Select a chapter in the manuscript navigator to edit it here.",
@@ -74,7 +116,10 @@
   },
   "status": {
     "wordsPlaceholder": "— words",
-    "modelPlaceholder": "no model"
+    "words": "{{count}} words",
+    "modelPlaceholder": "no model",
+    "notifications": "Notifications",
+    "cost24h": "Spend, last 24h"
   },
   "manuscript": {
     "title": "Manuscript",

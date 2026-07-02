@@ -860,6 +860,10 @@ services:
       # 500ms. execute_tool uses this longer per-call timeout instead of
       # the build_context budget above (D-K21B-06 live-smoke finding).
       KNOWLEDGE_TOOL_TIMEOUT_S: "30"
+      # RAID C1 (DR-C1) — per-book steering: fetched from book-service's
+      # /internal/books/{id}/steering; failures degrade to [] (turn unaffected).
+      BOOK_SERVICE_URL: http://book-service:8082
+      BOOK_STEERING_TIMEOUT_S: "2"
     depends_on:
       postgres:
         condition: service_healthy

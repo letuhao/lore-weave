@@ -127,6 +127,96 @@ class TestStudioSurface:
         assert "ui_focus_manuscript_unit" in names
 
     @pytest.mark.asyncio
+    async def test_studio_context_seeds_the_composition_domain_hot(self):
+        """M-E live-caught — the studio compose surface is the composition surface: its
+        composition_* family must be HOT (advertised pass 1), not find_tools-lazy (a
+        local model spun in memory/glossary searches and never discovered the family)."""
+        pool, conn = _make_pool_with_conn()
+        pool.fetchrow.return_value = _session_row()
+        pool.fetch.return_value = []
+        conn.fetchval.return_value = 1
+        kc = _patched_knowledge(
+            stable="", volatile="", mode="static",
+            tool_defs=[
+                {"type": "function", "function": {"name": "composition_list_outline"}},
+                {"type": "function", "function": {"name": "composition_outline_node_update"}},
+                {"type": "function", "function": {"name": "book_get_chapter"}},
+            ],
+        )
+
+        async def fake_tool_loop(**kwargs):
+            yield {"content": "ok", "reasoning_content": "", "finish_reason": "stop", "usage": _Usage(1, 1)}
+
+        with patch("app.services.stream_service.get_knowledge_client", return_value=kc), \
+             patch("app.services.stream_service._stream_with_tools", side_effect=fake_tool_loop) as loop_mock, \
+             patch("app.services.stream_service._stream_via_gateway"):
+            async for _ in stream_response(
+                session_id=TEST_SESSION_ID,
+                user_message_content="update the scene synopsis",
+                user_id=TEST_USER_ID,
+                model_source="user_model",
+                model_ref=TEST_MODEL_REF,
+                creds=_make_creds(),
+                pool=pool,
+                billing=AsyncMock(),
+                stream_format="agui",
+                book_context={"book_id": "b1"},
+                studio_context={"book_id": "b1", "project_id": "p1"},
+            ):
+                pass
+
+        seeds = loop_mock.call_args.kwargs["discovery_seed_names"]
+        assert "composition_list_outline" in seeds
+        assert "composition_outline_node_update" in seeds
+        # book_* stays lazy even on the studio surface.
+        assert "book_get_chapter" not in seeds
+
+    @pytest.mark.asyncio
+    async def test_studio_context_position_pointer_in_system_message(self):
+        """CTX-1 — a studio_context carrying project_id/active_chapter_id puts the position
+        pointer INTO the system message (book + chapter + project ids), so the model passes
+        project_id to composition_* tools instead of foraging for it (the live M-E gate run
+        dead-ended retrying the book_id AS a project_id)."""
+        pool, conn = _make_pool_with_conn()
+        pool.fetchrow.return_value = _session_row()
+        pool.fetch.return_value = []
+        conn.fetchval.return_value = 1
+        kc = _patched_knowledge(
+            stable="", volatile="", mode="static",
+            tool_defs=[{"type": "function", "function": {"name": "book_get_chapter"}}],
+        )
+
+        async def fake_tool_loop(**kwargs):
+            yield {"content": "ok", "reasoning_content": "", "finish_reason": "stop", "usage": _Usage(1, 1)}
+
+        with patch("app.services.stream_service.get_knowledge_client", return_value=kc), \
+             patch("app.services.stream_service._stream_with_tools", side_effect=fake_tool_loop) as loop_mock, \
+             patch("app.services.stream_service._stream_via_gateway"):
+            async for _ in stream_response(
+                session_id=TEST_SESSION_ID,
+                user_message_content="update the scene synopsis",
+                user_id=TEST_USER_ID,
+                model_source="user_model",
+                model_ref=TEST_MODEL_REF,
+                creds=_make_creds(),
+                pool=pool,
+                billing=AsyncMock(),
+                stream_format="agui",
+                studio_context={"book_id": "b1", "project_id": "p1", "active_chapter_id": "ch1"},
+            ):
+                pass
+
+        msgs = loop_mock.call_args.kwargs["messages"]
+        system = next((m for m in msgs if m["role"] == "system"), None)
+        assert system is not None
+        content = system["content"] if isinstance(system["content"], str) \
+            else " ".join(p["text"] for p in system["content"])
+        assert "book_id=b1" in content
+        assert "chapter_id=ch1" in content
+        assert "project_id=p1" in content
+        assert "a book_id is NOT a project_id" in content
+
+    @pytest.mark.asyncio
     async def test_no_studio_context_does_not_advertise_studio_tools(self):
         """Control: a non-studio chat never advertises the studio tools (so it never suspends)."""
         pool, conn = _make_pool_with_conn()

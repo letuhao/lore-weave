@@ -30,6 +30,7 @@ from app.events.gating import should_extract
 
 __all__ = [
     "handle_chat_turn",
+    "handle_chat_message_feedback",
     "handle_chapter_published",
     "handle_chapter_unpublished",
     "handle_chapter_deleted",
@@ -87,6 +88,47 @@ async def handle_chat_turn(event: EventData, *, pool: asyncpg.Pool) -> None:
             aggregate_id=_uuid(event.aggregate_id) or project_id,
         ),
     )
+
+
+async def handle_chat_message_feedback(event: EventData, *, pool: asyncpg.Pool) -> None:
+    """Track 4 P3b — chat.message_feedback handler (R-T4-02 feedback slice).
+
+    Attributes a thumbs (±1) to the entities the session's context build surfaced
+    around the rated turn: the P0 access rows stamped `last_session_id = session`
+    with recency inside a ±10-minute window of the message. Advisory telemetry —
+    every missing key degrades to a silent skip (old producers without the P3b
+    payload keys, sessions with no project, no stamped rows). The boost only
+    affects ranking once `salience_feedback_weight > 0` (measure-before-flip).
+    """
+    from datetime import datetime
+
+    from app.db.repositories.entity_access import EntityAccessRepo
+
+    payload = event.payload
+    user_id = _uuid(payload.get("user_id"))
+    project_id = _uuid(payload.get("project_id"))
+    session_id = _uuid(payload.get("session_id"))
+    rating = payload.get("rating")
+    turn_at_raw = payload.get("message_created_at")
+    if not (user_id and project_id and session_id) or rating not in (1, -1) or not turn_at_raw:
+        logger.debug(
+            "chat.message_feedback missing P3b keys — skipping (msg=%s)", event.message_id
+        )
+        return
+    try:
+        turn_at = datetime.fromisoformat(turn_at_raw)
+    except (ValueError, TypeError):
+        logger.debug("chat.message_feedback bad message_created_at — skipping")
+        return
+
+    boosted = await EntityAccessRepo(pool).apply_feedback(
+        user_id, project_id, session_id, int(rating), turn_at,
+    )
+    if boosted:
+        logger.info(
+            "P3b: feedback %+d attributed to %d entities (session=%s project=%s)",
+            rating, boosted, session_id, project_id,
+        )
 
 
 async def handle_chapter_published(event: EventData, *, pool: asyncpg.Pool) -> None:

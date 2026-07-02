@@ -1,0 +1,48 @@
+{
+  "version": 1,
+  "meta": {
+    "title": "Mock Story",
+    "version_label": "v1",
+    "open_questions": ["Name", "Title", "World", "Mị Đế", "Male lead", "Arc 1", "Linh căn", "PA thresholds"]
+  },
+  "charter": {
+    "consistency_anchors": ["Pragmatism", "Dry Humor", "Mundane Happiness", "Self-Awareness of Limits"],
+    "forbids": ["Do not explain THR early"],
+    "style_constraints": ["metaphor over exposition"]
+  },
+  "layers": {
+    "characters": [],
+    "mechanics": [{"id": "mech_1", "name": "Dao Assimilation", "rules": ["perfection"], "planner_secrets": []}],
+    "variables": [
+      {"code": "PA", "name": "Perfection Addiction", "range": "0-100", "transition_rules": ["increases"]},
+      {"code": "HA", "name": "Humanity Anchor", "range": "100-0", "transition_rules": ["decreases"]},
+      {"code": "CD", "name": "Corruption Debt", "range": "hidden", "transition_rules": ["accumulates"]},
+      {"code": "THR", "name": "Resonance", "range": "leaks", "transition_rules": ["leaks"]}
+    ]
+  },
+  "arcs": [
+    {"id": "arc_1", "title": "TBD", "theme": "Loss", "arc_kind": "setup", "summary": "setup"},
+    {"id": "arc_2", "title": "Bước Lên Tiên Lộ", "theme": "Discovery and Price", "arc_kind": "discovery", "summary": "discovery"}
+  ],
+  "events": [
+    {
+      "id": "ev_2_1",
+      "arc_id": "arc_2",
+      "title": "Nhập Môn",
+      "synopsis": "Starts cultivation",
+      "goal": "hope",
+      "planner_notes": "Dry humor present. HA = 100.",
+      "var_deltas": []
+    },
+    {
+      "id": "ev_2_4",
+      "arc_id": "arc_2",
+      "title": "Dị Thường Đầu Tiên",
+      "synopsis": "Dreams",
+      "goal": "THR seed",
+      "planner_notes": "THR leaks as pattern. Do not explain.",
+      "var_deltas": []
+    }
+  ],
+  "links": []
+}

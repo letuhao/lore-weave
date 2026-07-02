@@ -210,5 +210,51 @@ class Settings(BaseSettings):
     motif_deconstruct_verbatim_shingle: int = 6     # shingle size (consecutive words)
     motif_deconstruct_verbatim_max_overlap: float = 0.50  # max share of source shingles allowed
 
+    # ── Autonomous authoring runs (RAID Wave D2, DR-D / 07S §10). The v1 driver's
+    # per-unit spend fallback when the engine didn't meter a cost (inline path
+    # leaves generation_job.cost_usd at 0) — budget accounting must still move or
+    # the cap never trips. Poll knobs cover the worker (202) path: the seam polls
+    # the generation_job to terminal; timeout must exceed the worst-case chapter
+    # generation wall-clock (mirror chapter_inflight_stale_secs).
+    authoring_unit_estimate_usd: float = 0.05
+    authoring_job_poll_secs: float = 2.0
+    authoring_job_poll_timeout_secs: int = 1800
+    # The seam's minted service-bearer TTL: generation runs for minutes and the
+    # engine REUSES the bearer to persist the draft afterwards (actions.py
+    # _GENERATE_BEARER_TTL_S precedent) — cover generation + persist.
+    authoring_draft_bearer_ttl_secs: int = 1800
+    # ── D4 durable driver (RAID Wave D4). DRIVER_MAX_INFLIGHT: cap on concurrent
+    # per-run driver tasks in THIS process (campaign-service max_inflight spirit).
+    # A start/resume beyond the cap leaves the run `running` but unclaimed — the
+    # periodic sweep resumes it once a slot frees (durable by design).
+    authoring_driver_max_inflight: int = 2
+    # Sweep cadence: at startup + every N secs, re-claim `running` runs whose
+    # heartbeat is stale (a restart killed their in-process driver task) and
+    # resume them from current_unit. 0 disables the loop.
+    authoring_sweep_secs: float = 30.0
+    # Stale-heartbeat threshold. The heartbeat is bumped once per UNIT, so this
+    # MUST exceed the worst-case single-unit wall-clock
+    # (authoring_job_poll_timeout_secs = 1800) or the sweep would steal a run
+    # whose driver is alive but mid-unit.
+    authoring_heartbeat_stale_secs: int = 2400
+    # D4 completion notification — notification-service HTTP ingest (mirrors the
+    # translation-service chapter_worker producer; X-Internal-Token via
+    # internal_service_token). Best-effort: a notify failure never affects a run.
+    notification_service_internal_url: str = "http://notification-service:8091"
+    # ── D5 per-unit continuity critic (RAID Wave D5, DR-D / 07S §10 — "interrupt
+    # on severe; else Run Report"). The enable flag rides run params, NOT config:
+    # params.critic_enabled defaults TRUE (an autonomous run needs the net); an
+    # explicit falsy value disables. Severity thresholds map the 4-dim judge_prose
+    # scores (0-5, engine/critic.py): any affirmed canon violation OR any judged
+    # dim <= severe_score → 'severe' (breaker: the run PAUSES — not fails — for
+    # human review); else any dim <= warn_score → 'warn' (lands on the Run Report
+    # only); else 'ok'. Cost: the LLM SDK Job carries no cost field (same reason
+    # the drafting seam falls back to authoring_unit_estimate_usd), so a COMPLETED
+    # critique bills authoring_critic_estimate_usd into spent_usd; a degraded one
+    # ('critic unavailable') bills 0 — the spend may never have reached a model.
+    authoring_critic_severe_score: int = 1
+    authoring_critic_warn_score: int = 2
+    authoring_critic_estimate_usd: float = 0.01
+
 
 settings = Settings()  # type: ignore[call-arg]

@@ -307,6 +307,62 @@ func TestRawSearchTrigramMigration(t *testing.T) {
 // Regression lock for book_consumed_tokens (/review-impl HIGH). The confirm route
 // keys single-use on token_hash (PK); a replay hits the PK and is refused. Mirrors
 // provider-registry settings_consumed_tokens. Additive + idempotent (IF NOT EXISTS).
+// ── RAID C1 (per-book steering store) - 2026-07-02 ──────────────────────────
+// Regression lock for book_steering (DR-C1). Pure string check; real-PG
+// coverage runs in the api package's DB-gated steering tests. Additive +
+// idempotent — Up() re-run is the rollback story.
+
+func TestSchemaContainsBookSteeringTable(t *testing.T) {
+	if !strings.Contains(schemaSQL, "CREATE TABLE IF NOT EXISTS book_steering") {
+		t.Fatal("schemaSQL missing book_steering — RAID C1 steering store broke")
+	}
+	for _, frag := range []string{
+		"book_id         UUID NOT NULL REFERENCES books(id) ON DELETE CASCADE",
+		"body            TEXT NOT NULL CHECK (char_length(body) <= 8000)",
+		"CHECK (inclusion_mode IN ('always','scene_match','manual','auto'))",
+		"match_pattern   TEXT",
+		"enabled         BOOLEAN NOT NULL DEFAULT true",
+		"author_user_id  UUID NOT NULL",
+		"UNIQUE (book_id, name)",
+		"CREATE INDEX IF NOT EXISTS idx_book_steering_book",
+	} {
+		if !strings.Contains(schemaSQL, frag) {
+			t.Fatalf("book_steering missing fragment: %q", frag)
+		}
+	}
+	// Tenancy lock: the unique MUST be scoped to book_id — a bare UNIQUE(name)
+	// is the shared-mutable-row smell (CLAUDE.md kinds bug).
+	if strings.Contains(schemaSQL, "name            TEXT NOT NULL UNIQUE") {
+		t.Fatal("book_steering.name must be UNIQUE(book_id, name), never globally unique")
+	}
+}
+
+// Idempotency: every C1 CREATE in the steering region uses IF NOT EXISTS so an
+// Up() re-run is a no-op. No DO block / no backfill.
+func TestSchemaC1SteeringAdditionsAreIdempotent(t *testing.T) {
+	const sentinel = "RAID C1 (per-book steering store) - 2026-07-02"
+	idx := strings.Index(schemaSQL, sentinel)
+	if idx == -1 {
+		t.Fatal("C1 sentinel not found in schemaSQL")
+	}
+	region := schemaSQL[idx:]
+	for _, line := range strings.Split(region, "\n") {
+		trimmed := strings.TrimSpace(line)
+		if strings.HasPrefix(trimmed, "CREATE TABLE") && !strings.Contains(trimmed, "IF NOT EXISTS") {
+			t.Fatalf("C1 region has non-idempotent CREATE TABLE: %q", trimmed)
+		}
+		if strings.HasPrefix(trimmed, "ALTER TABLE") && !strings.Contains(trimmed, "IF NOT EXISTS") {
+			t.Fatalf("C1 region has non-idempotent ALTER TABLE: %q", trimmed)
+		}
+		if strings.HasPrefix(trimmed, "CREATE INDEX") && !strings.Contains(trimmed, "IF NOT EXISTS") {
+			t.Fatalf("C1 region has non-idempotent CREATE INDEX: %q", trimmed)
+		}
+	}
+	if strings.Contains(region, "DO $$") {
+		t.Fatal("C1 region must not contain a DO $$ block — no backfill")
+	}
+}
+
 func TestSchemaContainsConsumedTokensTable(t *testing.T) {
 	if !strings.Contains(schemaSQL, "CREATE TABLE IF NOT EXISTS book_consumed_tokens") {
 		t.Fatal("schemaSQL missing book_consumed_tokens — Tier-W single-use replay guard broke")

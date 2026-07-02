@@ -16,7 +16,12 @@
     "voice_settings": "Cài đặt giọng nói",
     "export": "Xuất",
     "rename": "Đổi tên",
-    "session_settings": "Cài đặt phiên"
+    "session_settings": "Cài đặt phiên",
+    "context_meter": {
+      "label": "Ngữ cảnh đã dùng",
+      "unknown": "Không rõ mức sử dụng cửa sổ ngữ cảnh cho mô hình này",
+      "tokens": "{{used}} / {{limit}} token"
+    }
   },
   "input": {
     "format": "Định dạng:",
@@ -47,7 +52,13 @@
     "send": "Gửi (Enter)",
     "context_attached": "Đã đính kèm ngữ cảnh · ",
     "hint": "Enter để gửi · Shift+Enter để xuống dòng",
-    "hint_thinking": " · Ctrl+Shift+Enter suy nghĩ · Ctrl+Enter nhanh"
+    "hint_thinking": " · Ctrl+Shift+Enter suy nghĩ · Ctrl+Enter nhanh",
+    "mode_ask": "Hỏi",
+    "mode_plan": "Kế hoạch",
+    "mode_write": "Ghi",
+    "mode_ask_hint": "Chế độ chỉ đọc — trợ lý có thể tra cứu nhưng không thay đổi gì",
+    "mode_plan_hint": "Chế độ lập kế hoạch — trợ lý tra cứu và xây dựng kế hoạch bằng công cụ lập kế hoạch; không viết văn cho đến khi bạn chuyển sang Ghi",
+    "mode_write_hint": "Chế độ ghi — trợ lý có thể thực hiện thay đổi hoàn tác được (hỏi một lần cho mỗi công cụ mới)"
   },
   "new": {
     "preset": {
@@ -258,7 +269,11 @@
     "words": "{{count}} từ",
     "unnamed": "(chưa đặt tên)",
     "no_matches": "Không tìm thấy kết quả.",
-    "no_items": "Không có mục nào."
+    "no_items": "Không có mục nào.",
+    "mention": {
+      "title": "Đính kèm ngữ cảnh",
+      "aria": "Gợi ý ngữ cảnh"
+    }
   },
   "settings": {
     "title": "Cài đặt phiên",
@@ -299,5 +314,17 @@
     "delete_failed": "Xóa thất bại: {{error}}",
     "chat_error": "Lỗi trò chuyện: {{error}}",
     "context_load_failed": "Không thể tải ngữ cảnh cho \"{{label}}\" — gửi mà không có nó"
+  },
+  "toolApproval": {
+    "label": "Cho phép trợ lý chạy công cụ này?",
+    "tier": "Bậc {{tier}}",
+    "tier_hint": "Bậc {{tier}} — thao tác ghi có thể hoàn tác",
+    "hint": "Thao tác ghi này có thể hoàn tác. \"Luôn cho phép\" sẽ không hỏi lại với công cụ này.",
+    "approve_once": "Cho phép một lần",
+    "always_allow": "Luôn cho phép",
+    "deny": "Từ chối",
+    "approved": "Đã cho phép — đang chạy ✓",
+    "always_allowed": "Luôn cho phép — đang chạy ✓",
+    "denied": "Đã từ chối"
   }
 }

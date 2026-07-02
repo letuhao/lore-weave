@@ -32,7 +32,9 @@ const TAB_DEFS: { value: TrashType; labelKey: string; icon: React.ReactNode }[] 
   { value: 'chat',    labelKey: 'trash.tabs.chat',     icon: <MessageSquare className="h-3.5 w-3.5" /> },
 ];
 
-export function TrashPage() {
+// `embedded` — rendered inside the Writing Studio trash dock panel (#11): drop the page-only
+// "back to books" breadcrumb; the studio must never navigate away from itself.
+export function TrashPage({ embedded = false }: { embedded?: boolean } = {}) {
   const { t } = useTranslation('books');
   const { items: allItems, counts, isLoading, restoreItem, purgeItem } = useTrashItems();
   const [activeTab, setActiveTab] = useState<TrashType>('book');
@@ -112,9 +114,11 @@ export function TrashPage() {
             {t('trash.subtitle')}
           </p>
         </div>
-        <Link to="/books" className="text-[13px] text-muted-foreground hover:text-foreground">
-          &larr; {t('trash.back')}
-        </Link>
+        {!embedded && (
+          <Link to="/books" className="text-[13px] text-muted-foreground hover:text-foreground">
+            &larr; {t('trash.back')}
+          </Link>
+        )}
       </div>
 
       {/* Tabs + Search */}

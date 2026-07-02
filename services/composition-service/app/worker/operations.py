@@ -35,6 +35,8 @@ __all__ = [
     "run_selection_edit",
     "run_quality_report",
     "run_promise_coverage",
+    "run_plan_forge_propose",
+    "run_plan_forge_refine",
 ]
 
 logger = logging.getLogger("composition.worker.operations")
@@ -562,3 +564,72 @@ async def run_selection_edit(llm: LLMClient, *, input: dict[str, Any]) -> dict[s
         "reasoning_source": input.get("reasoning"), "reasoning_effort": effort,
         "persisted": False,
     }
+
+
+async def run_plan_forge_propose(
+    llm: LLMClient, *, user_id: str, input: dict[str, Any],
+    cancel_check: Callable[[], Awaitable[bool]] | None = None,
+) -> dict[str, Any]:
+    """LLM ingest→analyze→materialize for PlanForge (async worker op)."""
+    from app.engine.plan_forge.llm import ProviderPlanForgeLLM
+    from app.engine.plan_forge.propose_llm_async import propose_spec_llm_async
+
+    source = input.get("source_markdown") or ""
+    if not source.strip():
+        raise ValueError("source_markdown required")
+    model_ref = input.get("model_ref") or ""
+    if not model_ref:
+        raise ValueError("model_ref required")
+    io_log: list[dict[str, Any]] = []
+    client = ProviderPlanForgeLLM(
+        llm,
+        user_id=user_id,
+        model_source=input.get("model_source", "user_model"),
+        model_ref=model_ref,
+        io_log=io_log,
+        cancel_check=cancel_check,
+    )
+    spec, analyze, logged = await propose_spec_llm_async(source, client)
+    return {
+        "status": "completed",
+        "novel_system_spec": spec,
+        "plan_analyze": analyze,
+        "llm_io": logged,
+        "source_checksum": spec.get("meta", {}).get("source_checksum"),
+    }
+
+
+async def run_plan_forge_refine(
+    llm: LLMClient, *, user_id: str, input: dict[str, Any],
+    cancel_check: Callable[[], Awaitable[bool]] | None = None,
+) -> dict[str, Any]:
+    """LLM surgical refine for PlanForge (async worker op)."""
+    from app.engine.plan_forge.llm import ProviderPlanForgeLLM
+    from app.engine.plan_forge.propose_llm_async import refine_and_accept_async
+
+    spec = input.get("spec")
+    revision = input.get("revision")
+    if not isinstance(spec, dict) or not isinstance(revision, dict):
+        raise ValueError("spec and revision required")
+    model_ref = input.get("model_ref") or ""
+    if not model_ref:
+        raise ValueError("model_ref required")
+    io_log: list[dict[str, Any]] = []
+    client = ProviderPlanForgeLLM(
+        llm,
+        user_id=user_id,
+        model_source=input.get("model_source", "user_model"),
+        model_ref=model_ref,
+        io_log=io_log,
+        cancel_check=cancel_check,
+    )
+    return await refine_and_accept_async(
+        spec,
+        revision,
+        client=client,
+        source_checksum=input.get("source_checksum") or spec.get("meta", {}).get("source_checksum", ""),
+        analyze=input.get("analyze"),
+        package=input.get("package"),
+        fidelity_before=input.get("fidelity_before"),
+        fidelity_after=input.get("fidelity_after"),
+    )

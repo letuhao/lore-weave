@@ -204,6 +204,31 @@ CREATE INDEX IF NOT EXISTS idx_chat_suspended_runs_session
 CREATE INDEX IF NOT EXISTS idx_chat_suspended_runs_sweep
   ON chat_suspended_runs(expires_at);
 
+-- RAID Wave C2 (DR-C2) — the permission mode the turn ran under, captured at
+-- suspend time so a resumed run continues under the SAME mode (an Ask-mode
+-- frontend-tool suspend must not resume into the full Write surface).
+DO $$ BEGIN
+  IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='chat_suspended_runs' AND column_name='permission_mode') THEN
+    ALTER TABLE chat_suspended_runs ADD COLUMN permission_mode VARCHAR(8) NOT NULL DEFAULT 'write';
+  END IF;
+END $$;
+
+-- ══════════════════════════════════════════════════════════════════════
+-- RAID Wave C2 (DR-C2) — per-tool approval allowlist ("Always allow").
+-- In Write mode a Tier-A server tool NOT on the user's allowlist suspends
+-- the run for a one-time approval card; "Always allow" inserts a row here
+-- so that tool never prompts again for this user. Per-USER tier (CLAUDE.md
+-- tenancy): a tool's trustworthiness is not book-specific, so no book
+-- scope; no global rows. Reads fail-OPEN (a DB blip must not brick tool
+-- calling — see DR-C2 reversibility).
+-- ══════════════════════════════════════════════════════════════════════
+CREATE TABLE IF NOT EXISTS user_tool_approvals (
+  user_id    UUID NOT NULL,
+  tool_name  TEXT NOT NULL,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  PRIMARY KEY (user_id, tool_name)
+);
+
 -- ══════════════════════════════════════════════════════════════════════
 -- Track "Production Eval + Feedback Flywheel" — Q3: chat-turn feedback.
 -- The only absent feedback primitive (chat-service had none). Captures

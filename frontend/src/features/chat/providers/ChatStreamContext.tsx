@@ -53,7 +53,7 @@ export function ChatStreamProvider({
   // carries the chapter the assistant is editing. Undefined for the chat page.
   editorContext?: { book_id: string; chapter_id: string };
   // #09 Lane A: Writing Studio compose panel → enables the studio dock-nav frontend tools.
-  studioContext?: { book_id?: string; active_panel_ids?: string[]; context_revision?: number };
+  studioContext?: { book_id?: string; project_id?: string; active_chapter_id?: string; active_panel_ids?: string[]; context_revision?: number };
   // Editor "Compose" mode — when true, turns advertise no tools (prose-only).
   composeMode?: boolean;
   // Glossary-assistant P3: book-scoped (non-editor) chat → enables the glossary

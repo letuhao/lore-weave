@@ -1603,6 +1603,52 @@ def test_put_extraction_config_no_change_no_emit(
     assert captured_emits == []
 
 
+def test_put_extraction_config_preserves_rerank_keys_when_omitted(
+    client: TestClient, repo: FakeProjectsRepo, auth_user_id: UUID, captured_emits
+):
+    # Track 4 P2 (review MED): the FE structural editor doesn't know the rerank
+    # knobs — a save that OMITS them must not silently clear them.
+    p = _make_project(auth_user_id, version=1)
+    p = p.model_copy(update={"extraction_config": {
+        "cross_encoder_rerank_model": "0" * 8, "rerank_model": "1" * 8,
+    }})
+    repo.seed(p)
+    resp = client.put(
+        f"/v1/knowledge/projects/{p.project_id}/extraction-config",
+        headers={"If-Match": '"1"'},
+        json={"entity_recovery": {"enabled": True}},  # editor save, no rerank keys
+    )
+    assert resp.status_code == 200
+    cfg = resp.json()["extraction_config"]
+    assert cfg["cross_encoder_rerank_model"] == "0" * 8  # preserved
+    assert cfg["rerank_model"] == "1" * 8                # preserved
+    assert cfg["entity_recovery"] == {"enabled": True}
+
+
+def test_put_extraction_config_sets_and_clears_rerank_keys_explicitly(
+    client: TestClient, repo: FakeProjectsRepo, auth_user_id: UUID, captured_emits
+):
+    p = _make_project(auth_user_id, version=1)
+    p = p.model_copy(update={"extraction_config": {"cross_encoder_rerank_model": "old"}})
+    repo.seed(p)
+    # explicit value → set
+    resp = client.put(
+        f"/v1/knowledge/projects/{p.project_id}/extraction-config",
+        headers={"If-Match": '"1"'},
+        json={"cross_encoder_rerank_model": "new-model-uuid"},
+    )
+    assert resp.status_code == 200
+    assert resp.json()["extraction_config"]["cross_encoder_rerank_model"] == "new-model-uuid"
+    # explicit empty string → clear (present in body ⇒ no carry-over)
+    resp2 = client.put(
+        f"/v1/knowledge/projects/{p.project_id}/extraction-config",
+        headers={"If-Match": '"2"'},
+        json={"cross_encoder_rerank_model": ""},
+    )
+    assert resp2.status_code == 200
+    assert "cross_encoder_rerank_model" not in resp2.json()["extraction_config"]
+
+
 def test_put_extraction_config_empty_subobject_dropped(
     client: TestClient, repo: FakeProjectsRepo, auth_user_id: UUID, captured_emits
 ):

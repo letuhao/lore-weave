@@ -737,3 +737,101 @@ async def test_infra_error_propagates(monkeypatch):
                         AsyncMock(side_effect=RuntimeError("neo4j connection lost")))
     with pytest.raises(RuntimeError, match="neo4j connection lost"):
         await execute_tool(_ctx(), "memory_forget", {"fact_id": "f1"})
+
+
+# ── #12 story_search (the universal manuscript search) ────────────────
+
+
+def _story_ctx(*, book_id=_BOOK, with_deps=True, project_owner=_USER):
+    """A ToolContext whose project carries a linked book + the hybrid-engine deps."""
+    from dataclasses import replace
+
+    repo = AsyncMock()
+    project = SimpleNamespace(
+        project_id=_PROJECT, book_id=book_id,
+        embedding_model="bge-m3", embedding_dimension=1024,
+    )
+    repo.get = AsyncMock(return_value=project if project_owner == _USER else None)
+    repo.project_meta = AsyncMock(return_value=(project_owner, book_id))
+    ctx = _ctx(projects_repo=repo)
+    if with_deps:
+        ctx = replace(ctx, book_client=AsyncMock(), reranker_client=AsyncMock())
+    return ctx
+
+
+def _patch_hybrid(monkeypatch, hits=None, degraded=None):
+    calls: list[dict] = []
+
+    async def _fake(**kwargs):
+        calls.append(kwargs)
+        return SimpleNamespace(hits=hits or [], degraded=degraded or {})
+
+    monkeypatch.setattr("app.search.retriever.run_hybrid_search", _fake)
+    return calls
+
+
+@pytest.mark.asyncio
+async def test_story_search_happy_path_resolves_book_from_ambient_project(monkeypatch):
+    calls = _patch_hybrid(monkeypatch, hits=[{"chapterId": "c1", "snippet": "x"}])
+    res = await execute_tool(_story_ctx(), "story_search", {"query": "rung truc"})
+    assert res.success
+    assert "success" not in res.result  # MCP success-key invariant
+    assert res.result["count"] == 1
+    # zero location args from the LLM — book + project came from the ambient context
+    assert calls[0]["book_id"] == _BOOK
+    assert calls[0]["mode"] == "hybrid"
+    assert calls[0]["granularity"] == "chapter"
+
+
+@pytest.mark.asyncio
+async def test_story_search_exact_maps_to_lexical(monkeypatch):
+    calls = _patch_hybrid(monkeypatch)
+    res = await execute_tool(
+        _story_ctx(), "story_search",
+        {"query": "phrase", "mode": "exact", "granularity": "block", "limit": 3},
+    )
+    assert res.success
+    assert calls[0]["mode"] == "lexical"
+    assert calls[0]["granularity"] == "block"
+    assert calls[0]["limit"] == 3
+    assert "no matches" in res.result["note"]  # empty-hits guidance for the agent
+
+
+@pytest.mark.asyncio
+async def test_story_search_degraded_legs_surface(monkeypatch):
+    _patch_hybrid(monkeypatch, hits=[{"chapterId": "c1"}], degraded={"semantic": "not_indexed"})
+    res = await execute_tool(_story_ctx(), "story_search", {"query": "q"})
+    assert res.success
+    assert res.result["degraded"] == {"semantic": "not_indexed"}
+
+
+@pytest.mark.asyncio
+async def test_story_search_no_project_returns_empty_note_not_error():
+    ctx = _story_ctx()
+    from dataclasses import replace
+
+    res = await execute_tool(replace(ctx, project_id=None), "story_search", {"query": "q"})
+    assert res.success
+    assert res.result["count"] == 0 and "no knowledge project" in res.result["note"]
+
+
+@pytest.mark.asyncio
+async def test_story_search_project_without_book_is_clean_empty(monkeypatch):
+    _patch_hybrid(monkeypatch)
+    res = await execute_tool(_story_ctx(book_id=None), "story_search", {"query": "q"})
+    assert res.success
+    assert res.result["count"] == 0 and "no linked book" in res.result["note"]
+
+
+@pytest.mark.asyncio
+async def test_story_search_unowned_project_is_tool_error():
+    res = await execute_tool(_story_ctx(project_owner=_OTHER_USER), "story_search", {"query": "q"})
+    assert not res.success
+    assert "project not found" in (res.error or "")
+
+
+@pytest.mark.asyncio
+async def test_story_search_missing_deps_is_tool_error():
+    res = await execute_tool(_story_ctx(with_deps=False), "story_search", {"query": "q"})
+    assert not res.success
+    assert "not available" in (res.error or "")

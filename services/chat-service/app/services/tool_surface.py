@@ -53,15 +53,18 @@ def discovery_seed_for_surface(
     pins: SessionToolPins,
     editor: bool,
     book_scoped: bool,
+    studio: bool = False,
 ) -> set[str]:
     """Discovery active-set seed: hot set (auto) or pins ∪ activated (curated)."""
-    hot_domains = surface_hot_domains(editor=editor, book_scoped=book_scoped)
+    hot_domains = surface_hot_domains(editor=editor, book_scoped=book_scoped, studio=studio)
     raw_hot_seed = hot_tool_names(catalog, hot_domains)
     eff_pins = pins.effective_enabled
     if pins.curated_mode:
+        # In curated mode the hot set only enters via this union; the studio surface's
+        # hot domains (glossary+composition) ride the same seam (M-E live-caught).
         glossary_in_skills = (
             "glossary" in pins.effective_skills
-            or (not pins.effective_skills and book_scoped)
+            or (not pins.effective_skills and (book_scoped or studio))
         )
         eff_pins = effective_enabled_tools(
             pins.effective_enabled,

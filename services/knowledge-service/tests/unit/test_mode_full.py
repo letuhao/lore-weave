@@ -445,6 +445,114 @@ async def test_budget_drops_lowest_score_passages_first(monkeypatch):
     assert "top-0" not in result.context
 
 
+def _p4_entity(name: str, desc_words: int = 40):
+    e = MagicMock()
+    e.cached_name = name
+    e.cached_aliases = []
+    e.short_description = "lore " * desc_words
+    e.kind_code = "character"
+    e.tier = "fts"
+    e.rank_score = 0.9
+    e.entity_id = f"gid-{name}"
+    e.is_pinned = False
+    return e
+
+
+@pytest.mark.asyncio
+async def test_budget_demotes_glossary_to_entity_refs_not_drop(monkeypatch):
+    """P4 (R-T4-05): when glossary must shrink to fit, tail entities are demoted
+    to one-line <entity_refs> pointers (expandable via memory_recall_entity),
+    NOT silently dropped — breadth survives the trim."""
+    entities = [_p4_entity(f"Hero{i}") for i in range(8)]
+    _patch_mode3_pieces(monkeypatch, glossary_entities=entities)
+
+    project = _project()
+    project.embedding_model = "bge-m3"; project.embedding_dimension = 1024
+    # Budget small enough to force glossary trimming, big enough for refs to fit.
+    monkeypatch.setattr("app.context.modes.full.settings.mode3_token_budget", 220)
+
+    result = await build_full_mode(
+        summaries_repo=MagicMock(), glossary_client=MagicMock(),
+        embedding_client=MagicMock(),
+        user_id=USER_ID, project=project, message="Tell me",
+    )
+    assert "<entity_refs" in result.context          # pointer tier rendered
+    assert "memory_recall_entity" in result.context  # expand affordance named
+    # every entity is present SOMEWHERE (full block or as a ref) — none vanished
+    for i in range(8):
+        assert f"Hero{i}" in result.context
+    # and it still fits the budget
+    assert result.token_count <= 220
+
+
+@pytest.mark.asyncio
+async def test_widened_l2_retry_recovers_facts_on_miss(monkeypatch):
+    """P4 (R-T4-06): SPECIFIC_ENTITY query + empty first-pass facts → ONE
+    relational 2-hop retry; recovered facts land in the block."""
+    _patch_mode3_pieces(monkeypatch)  # base: everything empty
+    calls: list = []
+
+    async def fake_l2(*, user_id, project, intent):
+        calls.append(intent)
+        if intent.hop_count >= 2:
+            return L2FactResult(current=["Alice rules the northern keep"])
+        return L2FactResult()
+
+    monkeypatch.setattr("app.context.modes.full._safe_l2_facts", fake_l2)
+
+    project = _project()
+    result = await build_full_mode(
+        summaries_repo=MagicMock(), glossary_client=MagicMock(),
+        embedding_client=MagicMock(),
+        user_id=USER_ID, project=project, message="Tell me about Alice",
+    )
+    assert len(calls) == 2                       # first pass + ONE widened retry
+    assert calls[1].hop_count == 2               # widened to relational 2-hop
+    assert "l2_retry_widened" in calls[1].signals
+    assert "northern keep" in result.context     # recovered facts rendered
+
+
+@pytest.mark.asyncio
+async def test_widened_retry_skipped_when_first_pass_has_facts(monkeypatch):
+    _patch_mode3_pieces(monkeypatch)
+    calls: list = []
+
+    async def fake_l2(*, user_id, project, intent):
+        calls.append(intent)
+        return L2FactResult(current=["Alice is here"])
+
+    monkeypatch.setattr("app.context.modes.full._safe_l2_facts", fake_l2)
+    project = _project()
+    await build_full_mode(
+        summaries_repo=MagicMock(), glossary_client=MagicMock(),
+        embedding_client=MagicMock(),
+        user_id=USER_ID, project=project, message="Tell me about Alice",
+    )
+    assert len(calls) == 1  # no retry when the first pass found facts
+
+
+@pytest.mark.asyncio
+async def test_widened_retry_kill_switch(monkeypatch):
+    _patch_mode3_pieces(monkeypatch)
+    monkeypatch.setattr(
+        "app.context.modes.full.settings.context_l2_retry_widened", False,
+    )
+    calls: list = []
+
+    async def fake_l2(*, user_id, project, intent):
+        calls.append(intent)
+        return L2FactResult()
+
+    monkeypatch.setattr("app.context.modes.full._safe_l2_facts", fake_l2)
+    project = _project()
+    await build_full_mode(
+        summaries_repo=MagicMock(), glossary_client=MagicMock(),
+        embedding_client=MagicMock(),
+        user_id=USER_ID, project=project, message="Tell me about Alice",
+    )
+    assert len(calls) == 1  # switch off → no retry even on a miss
+
+
 @pytest.mark.asyncio
 async def test_budget_token_count_respects_budget(monkeypatch):
     """K18.7 — the contract: after trimming, token_count <= budget.

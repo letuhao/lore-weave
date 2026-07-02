@@ -16,7 +16,12 @@
     "voice_settings": "Voice Settings",
     "export": "Export",
     "rename": "Rename",
-    "session_settings": "Session Settings"
+    "session_settings": "Session Settings",
+    "context_meter": {
+      "label": "Context used",
+      "unknown": "Context window usage unknown for this model",
+      "tokens": "{{used}} / {{limit}} tokens"
+    }
   },
   "input": {
     "format": "Format:",
@@ -47,7 +52,13 @@
     "send": "Send (Enter)",
     "context_attached": "Context attached · ",
     "hint": "Enter to send · Shift+Enter for new line",
-    "hint_thinking": " · Ctrl+Shift+Enter think · Ctrl+Enter fast"
+    "hint_thinking": " · Ctrl+Shift+Enter think · Ctrl+Enter fast",
+    "mode_ask": "Ask",
+    "mode_plan": "Plan",
+    "mode_write": "Write",
+    "mode_ask_hint": "Read-only mode — the agent can research but not change anything",
+    "mode_plan_hint": "Plan mode — the agent researches and builds a plan with the planning tools; no prose until you switch to Write",
+    "mode_write_hint": "Write mode — the agent can make undoable changes (asks once per new tool)"
   },
   "new": {
     "preset": {
@@ -258,7 +269,11 @@
     "words": "{{count}} words",
     "unnamed": "(unnamed)",
     "no_matches": "No matches found.",
-    "no_items": "No items available."
+    "no_items": "No items available.",
+    "mention": {
+      "title": "Attach context",
+      "aria": "Context suggestions"
+    }
   },
   "settings": {
     "title": "Session Settings",
@@ -299,5 +314,17 @@
     "delete_failed": "Delete failed: {{error}}",
     "chat_error": "Chat error: {{error}}",
     "context_load_failed": "Could not load context for \"{{label}}\" — sending without it"
+  },
+  "toolApproval": {
+    "label": "Allow the agent to run this tool?",
+    "tier": "Tier {{tier}}",
+    "tier_hint": "Tier {{tier}} — an undoable write",
+    "hint": "This write is undoable. \"Always allow\" stops asking for this tool.",
+    "approve_once": "Approve once",
+    "always_allow": "Always allow",
+    "deny": "Deny",
+    "approved": "Approved — running ✓",
+    "always_allowed": "Always allowed — running ✓",
+    "denied": "Denied"
   }
 }

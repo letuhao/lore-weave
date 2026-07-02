@@ -37,6 +37,7 @@ from app.db.repositories.projects import ProjectsRepo
 from app.db.repositories.working_memory import WorkingMemoryRepo
 from app.db.repositories.summaries import SummariesRepo
 from app.db.repositories.entity_alias_map import EntityAliasMapRepo
+from app.db.repositories.entity_access import EntityAccessRepo
 from app.db.repositories.event_text_translations import EventTextTranslationsRepo
 from app.db.repositories.summary_spending import SummarySpendingRepo
 from app.db.repositories.user_budgets import UserBudgetsRepo
@@ -99,6 +100,11 @@ async def get_entity_alias_map_repo() -> EntityAliasMapRepo:
 
 async def get_projects_repo() -> ProjectsRepo:
     return ProjectsRepo(get_knowledge_pool())
+
+
+async def get_entity_access_repo() -> EntityAccessRepo:
+    """Track 4 P0 — salience access-log recorder/reader."""
+    return EntityAccessRepo(get_knowledge_pool())
 
 
 async def get_working_memory_repo() -> "WorkingMemoryRepo":

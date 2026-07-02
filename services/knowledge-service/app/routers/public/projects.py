@@ -605,10 +605,17 @@ async def put_extraction_config(
         raise _not_found()
 
     # New config = the non-None, non-empty fields of the body (PUT replace).
-    new_config = {
-        k: v for k, v in body.model_dump(exclude_none=True).items() if v
-    }
+    raw = body.model_dump(exclude_none=True)
+    new_config = {k: v for k, v in raw.items() if v}
     old_config = current.extraction_config or {}
+    # Track 4 P2 (review MED): the L3 rerank knobs are managed by a DIFFERENT
+    # surface (model pickers / direct API), not the FE structural-config editor —
+    # so an editor save that simply doesn't know these keys must not silently
+    # clear them. PUT-replace applies to the sections the editor owns; these two
+    # are preserved when OMITTED, and cleared only by an explicit empty value.
+    for _k in ("rerank_model", "cross_encoder_rerank_model"):
+        if _k not in raw and _k in old_config:
+            new_config[_k] = old_config[_k]
 
     try:
         updated = await repo.update_extraction_config(

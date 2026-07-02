@@ -137,6 +137,53 @@ async def test_full_block_with_l0_l1_and_glossary():
 
 
 @pytest.mark.asyncio
+async def test_salience_reorders_glossary_when_weight_positive(monkeypatch):
+    # Wiring proof: with the flag on + a repo, the mode calls apply_salience and the
+    # heavily-accessed entity is re-ranked above the higher-static-rank one.
+    from datetime import datetime, timezone
+    from app.config import settings
+    from app.db.repositories.entity_access import EntitySalience
+
+    monkeypatch.setattr(settings, "salience_access_weight", 0.6)
+    summaries = AsyncMock(spec=SummariesRepo)
+    summaries.get = AsyncMock(side_effect=[None, None])
+    e_hi = _entity(entity_id="hi", rank_score=0.9, is_pinned=False, tier="fts")
+    e_lo = _entity(entity_id="lo", rank_score=0.4, is_pinned=False, tier="fts")
+    glossary_client = AsyncMock(spec=GlossaryClient)
+    glossary_client.select_for_context = AsyncMock(return_value=[e_hi, e_lo])
+    repo = AsyncMock()
+    repo.load_salience = AsyncMock(return_value={
+        "lo": EntitySalience("lo", 1000, 0.0, datetime.now(timezone.utc)),
+    })
+
+    built = await build_static_mode(
+        summaries, glossary_client, user_id=uuid4(), project=_project(),
+        message="q", entity_access_repo=repo,
+    )
+    repo.load_salience.assert_awaited_once()
+    # lo: 0.4 + 0.6*1.0 = 1.0 > hi: 0.9 → lo now leads.
+    assert built.surfaced_entity_ids == ["lo", "hi"]
+
+
+@pytest.mark.asyncio
+async def test_surfaced_entity_ids_populated_for_salience_telemetry():
+    # Track 4 P0 — the builder exposes the entities it selected so the router
+    # can record salience access. The ids match the selected glossary entities.
+    summaries = AsyncMock(spec=SummariesRepo)
+    summaries.get = AsyncMock(side_effect=[None, None])
+    e1 = _entity(entity_id="ent-1")
+    e2 = _entity(entity_id="ent-2", cached_name="Bob")
+    glossary_client = AsyncMock(spec=GlossaryClient)
+    glossary_client.select_for_context = AsyncMock(return_value=[e1, e2])
+
+    built = await build_static_mode(
+        summaries, glossary_client,
+        user_id=uuid4(), project=_project(), message="who?",
+    )
+    assert sorted(built.surfaced_entity_ids) == ["ent-1", "ent-2"]
+
+
+@pytest.mark.asyncio
 async def test_no_l0_omits_user_element():
     summaries = AsyncMock(spec=SummariesRepo)
     summaries.get = AsyncMock(side_effect=[None, None])  # no L0, no L1

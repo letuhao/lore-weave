@@ -44,6 +44,92 @@ export function handleListTools(federation: FederationService): {
   };
 }
 
+// ── Wave C5 — resources + prompts (aggregated like tools) ──────────────
+
+/** Shared `_meta` block: per-provider availability (H10), so a consumer can
+ * tell "no such resource/prompt" from "owning provider temporarily down". */
+function availabilityMeta(federation: FederationService): {
+  unavailable_providers: string[];
+  partial: boolean;
+} {
+  const unavailable = federation
+    .providerAvailability()
+    .filter((p) => !p.available)
+    .map((p) => p.name);
+  return { unavailable_providers: unavailable, partial: federation.isPartial() };
+}
+
+export function handleListResources(federation: FederationService): {
+  resources: any[];
+  _meta: { unavailable_providers: string[]; partial: boolean };
+} {
+  return { resources: federation.resourceCatalog(), _meta: availabilityMeta(federation) };
+}
+
+/** Templates ride their own list per the MCP spec (resources/templates/list) —
+ * the knowledge resources are `{project_id}` templates, so WITHOUT this list
+ * they would be invisible to clients (they never appear in resources/list). */
+export function handleListResourceTemplates(federation: FederationService): {
+  resourceTemplates: any[];
+  _meta: { unavailable_providers: string[]; partial: boolean };
+} {
+  return {
+    resourceTemplates: federation.resourceTemplateCatalog(),
+    _meta: availabilityMeta(federation),
+  };
+}
+
+export function handleListPrompts(federation: FederationService): {
+  prompts: any[];
+  _meta: { unavailable_providers: string[]; partial: boolean };
+} {
+  return { prompts: federation.promptCatalog(), _meta: availabilityMeta(federation) };
+}
+
+/**
+ * Route a resources/read to the owning provider with the per-call envelope
+ * (identity from headers, never the LLM — SEC-1; the provider enforces
+ * tenancy on the read). Unlike CallTool there is no `isError` result shape
+ * for reads, so a provider failure THROWS — the SDK surfaces it as a clean
+ * JSON-RPC error — but with a GENERIC message: the raw `String(e)` of a
+ * transport failure embeds the internal provider URL, which must never leak.
+ */
+export async function handleReadResource(
+  federation: FederationService,
+  uri: string,
+  headers: Headers,
+  signal?: AbortSignal,
+): Promise<any> {
+  const env = extractEnvelope(headers);
+  if (!env.userId) {
+    log.warn(`resource '${uri}' read with no X-User-Id envelope`);
+  }
+  try {
+    return await federation.readResource(uri, env, signal);
+  } catch (e) {
+    log.warn(`resource '${uri}' read failed: ${e}`);
+    throw new Error(`resource '${uri}' read failed: provider error`);
+  }
+}
+
+/** Route a prompts/get to the owning provider — same envelope + generic-error
+ * contract as {@link handleReadResource}. */
+export async function handleGetPrompt(
+  federation: FederationService,
+  name: string,
+  args: Record<string, unknown>,
+  headers: Headers,
+  signal?: AbortSignal,
+): Promise<any> {
+  const env = extractEnvelope(headers);
+  try {
+    return await federation.getPrompt(name, args, env, signal);
+  } catch (e) {
+    log.warn(`prompt '${name}' get failed: ${e}`);
+    throw new Error(`prompt '${name}' get failed: provider error`);
+  }
+}
+
 /**
  * Handle a local `find_tools` call (the lazy-discovery meta-tool). It is consumer-local (OD-1):
  * it searches ONLY the federation catalogue, never a provider — so it needs no envelope/ownership

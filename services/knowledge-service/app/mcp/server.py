@@ -36,6 +36,7 @@ Implementation notes (verified against the installed mcp SDK, 1.27.2):
 
 from __future__ import annotations
 
+import json
 import logging
 import secrets
 from typing import Annotated, Any, Literal
@@ -46,9 +47,13 @@ from mcp.server.fastmcp import FastMCP
 from mcp.server.transport_security import TransportSecuritySettings
 from pydantic import Field
 
+from app.clients.book_client import get_book_client
 from app.clients.embedding_client import get_embedding_client
+from app.clients.reranker_client import get_reranker_client
 from app.clients.grant_client import get_grant_client
 from app.config import settings
+from app.db.neo4j import neo4j_session
+from app.db.neo4j_repos.entities import list_entities_filtered
 from app.db.neo4j_repos.facts import FactType
 from app.db.pool import get_knowledge_pool
 from app.db.repositories.graph_schemas import GraphSchemasRepo
@@ -56,6 +61,7 @@ from app.db.repositories.graph_views import GraphViewsRepo
 from app.db.repositories.ontology_mutations import OntologyMutationsRepo
 from app.db.repositories.pending_facts import PendingFactsRepo
 from app.db.repositories.projects import ProjectsRepo
+from app.db.repositories.summaries import SummariesRepo
 from app.db.repositories.triage import TriageRepo
 from app.ontology.resolver import OntologyResolver
 from app.routers.public.ontology import get_glossary_ontology_client
@@ -155,6 +161,30 @@ def _parse_spend_cap(raw: str | None) -> float | None:
     return v if v >= 0 else None
 
 
+def _require_envelope_user(ctx: MCPContext) -> UUID:
+    """Authenticate the MCP envelope: internal-token check + caller identity.
+
+    Shared by the tool dispatch path (_build_tool_context) and the Wave C5
+    resource read path, so both surfaces apply byte-identical auth BEFORE any
+    repo access. Raises ValueError (FastMCP surfaces it as an MCP-level error,
+    not a 500) on a missing/wrong token or a malformed user id.
+    """
+    raw_token = _require_header(ctx, "x-internal-token")
+    # Constant-time comparison — mirrors app/middleware/internal_auth.py so the
+    # MCP path is byte-for-byte as strict as the bespoke /internal/tools/execute
+    # path on the shared service token (no timing side-channel). _require_header
+    # already guarantees raw_token is a non-empty str, so compare_digest never
+    # receives None.
+    if not secrets.compare_digest(raw_token, settings.internal_service_token):
+        raise ValueError("invalid internal token")
+
+    raw_user_id = _require_header(ctx, "x-user-id")
+    try:
+        return UUID(raw_user_id)
+    except ValueError:
+        raise ValueError(f"x-user-id is not a valid UUID: {raw_user_id!r}")
+
+
 def _build_tool_context(ctx: MCPContext) -> ToolContext:
     """Build a ToolContext from MCP request headers.
 
@@ -171,20 +201,7 @@ def _build_tool_context(ctx: MCPContext) -> ToolContext:
     take a pool positional, get_knowledge_pool() is a sync getter) to
     avoid a throwaway coroutine.
     """
-    raw_token = _require_header(ctx, "x-internal-token")
-    # Constant-time comparison — mirrors app/middleware/internal_auth.py so the
-    # MCP path is byte-for-byte as strict as the bespoke /internal/tools/execute
-    # path on the shared service token (no timing side-channel). _require_header
-    # already guarantees raw_token is a non-empty str, so compare_digest never
-    # receives None.
-    if not secrets.compare_digest(raw_token, settings.internal_service_token):
-        raise ValueError("invalid internal token")
-
-    raw_user_id = _require_header(ctx, "x-user-id")
-    try:
-        user_id = UUID(raw_user_id)
-    except ValueError:
-        raise ValueError(f"x-user-id is not a valid UUID: {raw_user_id!r}")
+    user_id = _require_envelope_user(ctx)
 
     raw_project_id = _optional_header(ctx, "x-project-id")
     project_id: UUID | None = None
@@ -218,6 +235,10 @@ def _build_tool_context(ctx: MCPContext) -> ToolContext:
         pending_facts_repo=PendingFactsRepo(pool),
         embedding_client=get_embedding_client(),
         redis=get_tools_redis(),
+        # #12 story_search (universal manuscript search) deps — the raw-search
+        # hybrid engine's lexical leg (book-service) + BYOK reranker.
+        book_client=get_book_client(),
+        reranker_client=get_reranker_client(),
         # Lane LF (KG ontology MCP tools) deps — same process-singleton pool +
         # grant-client getter the HTTP routers/deps.py use, constructed directly
         # (the repos take a sync pool positional; the grant client is a process
@@ -263,6 +284,44 @@ async def _dispatch(ctx: MCPContext, tool_name: str, tool_args: dict) -> dict:
 # Descriptions mirror app/tools/definitions.py verbatim (the OpenAI
 # function-calling schemas) so the LLM gets the same call guidance on
 # both the bespoke and MCP paths.
+
+
+@mcp_server.tool(
+    name="story_search",
+    description=(
+        "Search the book's manuscript for text or ideas — the universal find "
+        "tool. Use it to LOCATE where something appears before reading or "
+        "editing: an exact phrase/name (mode=exact), a concept described in "
+        "your own words (mode=semantic), or both fused (mode=hybrid, default, "
+        "best for most queries). granularity=chapter tells you WHICH chapters "
+        "match; granularity=block drills into the matching passages with "
+        "snippets. Follow up with book_get_chapter to read."
+    ),
+)
+async def story_search(
+    ctx: MCPContext,
+    query: Annotated[str, "The text or idea to find — an exact phrase, a character/place name, or a natural-language description."],
+    mode: Annotated[
+        Literal["hybrid", "exact", "semantic"],
+        "hybrid (default) = exact + semantic fused and reranked; exact = literal text match only; semantic = meaning match only.",
+    ] = "hybrid",
+    granularity: Annotated[
+        Literal["chapter", "block"],
+        "chapter (default) = which chapters match; block = the matching passages with snippets.",
+    ] = "chapter",
+    limit: Annotated[
+        int,
+        Field(ge=1, le=SEARCH_LIMIT_MAX),
+        f"Max hits to return (default {SEARCH_LIMIT_DEFAULT}, max {SEARCH_LIMIT_MAX}).",
+    ] = SEARCH_LIMIT_DEFAULT,
+    project_id: _PROJECT_ID_ARG = None,
+) -> dict:
+    args: dict[str, Any] = {
+        "query": query, "mode": mode, "granularity": granularity, "limit": limit,
+    }
+    if project_id is not None:
+        args["project_id"] = project_id
+    return await _dispatch(ctx, "story_search", args)
 
 
 @mcp_server.tool(
@@ -1053,6 +1112,172 @@ async def kg_run_benchmark(
     if project_id is not None:
         args["project_id"] = project_id
     return await _dispatch(ctx, "kg_run_benchmark", args)
+
+
+# ── MCP resources (RAID Wave C5) ──────────────────────────────────────
+# Read-only, project-scoped resources federated by ai-gateway (resources/read).
+# Both are URI TEMPLATES ({project_id}), so they are advertised via
+# resources/templates/list rather than resources/list — a project's ids are
+# per-user, so there is no global concrete list to enumerate.
+#
+# Tenancy: identity is envelope-only (design D3) — _require_envelope_user runs
+# the SAME internal-token + X-User-Id gate as the tool path BEFORE any repo
+# access, and project ownership is verified with the owner-keyed lookup the
+# memory tools use (ProjectsRepo.get is (user_id, project_id)-keyed, so a
+# non-owned project reads as "project not found" — anti-oracle, H13). The
+# {project_id} URI parameter is the resource-path analog of the H-I project_id
+# tool arg: the caller names a project, the owner gate confines it to its own.
+
+_ENTITIES_RESOURCE_CAP = 100
+
+
+async def _require_owned_project(ctx: MCPContext, project_id: str) -> tuple[UUID, UUID]:
+    """Envelope auth + project-ownership gate for the resource read path.
+
+    Mirrors _require_project_owner_memory (app/tools/executor.py): the project
+    named in the URI must be OWNED by the envelope user. Raises ValueError —
+    FastMCP surfaces it as a resource-read error, never a 500. Anti-oracle: a
+    non-owned and a missing project raise the SAME "project not found" (H13).
+    """
+    user_id = _require_envelope_user(ctx)
+    try:
+        pid = UUID(project_id)
+    except ValueError:
+        raise ValueError(f"project_id is not a valid UUID: {project_id!r}")
+    project = await ProjectsRepo(get_knowledge_pool()).get(user_id, pid)
+    if project is None:
+        raise ValueError("project not found")
+    return user_id, pid
+
+
+@mcp_server.resource(
+    "knowledge://project/{project_id}/summary",
+    name="project_summary",
+    title="Project summary (story so far)",
+    description=(
+        "The L1 project summary — the rolling story-so-far text knowledge-service "
+        "maintains for one knowledge project. Plain text; a project with no "
+        "summary yet returns a short note saying so."
+    ),
+    mime_type="text/plain",
+)
+async def project_summary_resource(project_id: str, ctx: MCPContext) -> str:
+    user_id, pid = await _require_owned_project(ctx, project_id)
+    summary = await SummariesRepo(get_knowledge_pool()).get(user_id, "project", pid)
+    if summary is None or not summary.content:
+        return (
+            "(no project summary yet — build the knowledge graph or edit the "
+            "Memory page to create one)"
+        )
+    return summary.content
+
+
+@mcp_server.resource(
+    "knowledge://project/{project_id}/entities",
+    name="project_entities",
+    title="Project entities (canonical cast)",
+    description=(
+        "Compact JSON list of the project's glossary-anchored (canonical) "
+        "entities from the knowledge graph — name, kind, and aliases per entry, "
+        f"capped at {_ENTITIES_RESOURCE_CAP} by anchor score. Use "
+        "memory_recall_entity for full details on any one of them."
+    ),
+    mime_type="application/json",
+)
+async def project_entities_resource(project_id: str, ctx: MCPContext) -> str:
+    user_id, pid = await _require_owned_project(ctx, project_id)
+    # status='canonical' = glossary-anchored (glossary_entity_id set, active);
+    # anchor_score ordering surfaces the strongest anchors first. Repo params
+    # are str ids (the Neo4j property space), unlike the UUID-typed Postgres
+    # repos above.
+    async with neo4j_session() as session:
+        rows, total = await list_entities_filtered(
+            session,
+            user_id=str(user_id),
+            project_id=str(pid),
+            kind=None,
+            search=None,
+            limit=_ENTITIES_RESOURCE_CAP,
+            offset=0,
+            status="canonical",
+            sort_by="anchor_score",
+        )
+    payload = {
+        "project_id": str(pid),
+        "count": len(rows),
+        "total": total,
+        "entities": [
+            # NOTE: :Entity nodes carry no description property (name / kind /
+            # aliases only — see app/db/neo4j_repos/entities.py Entity); the
+            # aliases stand in as the compact per-entity context.
+            {"name": e.name, "kind": e.kind, "aliases": e.aliases[:5]}
+            for e in rows
+        ],
+    }
+    return json.dumps(payload, ensure_ascii=False)
+
+
+# ── MCP prompts (RAID Wave C5) ────────────────────────────────────────
+# Canned prompt templates for a novel-writing agent, federated by ai-gateway
+# (prompts/list + prompts/get). They render INSTRUCTIONS ONLY — no stored data
+# is embedded at render time (the model fetches everything through the
+# tenancy-gated tools above), so rendering needs no envelope identity. Prompt
+# arguments are strings per the MCP spec; FastMCP strips an (unused here) ctx
+# param from the advertised argument list the same way tools do.
+
+
+@mcp_server.prompt(
+    name="recap_story_so_far",
+    title="Recap the story so far",
+    description=(
+        "Build a grounded recap of a knowledge project's story so far using the "
+        "memory tools. Argument: project_id — the knowledge project to recap."
+    ),
+)
+def recap_story_so_far(
+    project_id: Annotated[str, "The knowledge project id to recap."],
+) -> str:
+    return (
+        f"Recap the story so far for knowledge project {project_id}.\n\n"
+        "Ground every statement in stored knowledge — never invent events:\n"
+        f"1. Call memory_timeline (project_id={project_id}) for the ordered "
+        "narrative events.\n"
+        f"2. Call memory_search (project_id={project_id}) on any arc that needs "
+        "more detail, and kg_graph_query to see how the cast relates as of the "
+        "latest chapter.\n"
+        "3. Write the recap: 2-3 paragraphs, chronological, naming the key "
+        "characters, places, and unresolved threads.\n"
+        "If a tool returns nothing, say what is missing instead of guessing."
+    )
+
+
+@mcp_server.prompt(
+    name="entity_dossier",
+    title="Entity deep-dive dossier",
+    description=(
+        "Compile a deep-dive dossier on one story entity via memory_recall_entity "
+        "and kg_graph_query. Argument: entity_name — the entity's name as it "
+        "appears in the story."
+    ),
+)
+def entity_dossier(
+    entity_name: Annotated[str, "The entity's name as it appears in the story."],
+) -> str:
+    return (
+        f"Compile a deep-dive dossier on the entity {entity_name!r}.\n\n"
+        "Ground every claim in stored knowledge — never invent details:\n"
+        f"1. Call memory_recall_entity (entity_name={entity_name!r}) for the "
+        "stored details and direct relationships.\n"
+        "2. Call kg_graph_query to place the entity in the wider graph, and "
+        "kg_entity_edge_timeline (with an entity id + edge-type code from the "
+        "graph result) to trace how a key relationship evolved.\n"
+        f"3. Call memory_search (query={entity_name!r}) for supporting text "
+        "snippets.\n"
+        "4. Write the dossier: identity, role in the story, relationships, "
+        "timeline of significant changes, and open questions.\n"
+        "If the entity is unknown, say so and list the closest matches the "
+        "tools returned instead of inventing one."
+    )
 
 
 # ── ASGI factory ──────────────────────────────────────────────────────

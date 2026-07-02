@@ -36,6 +36,7 @@ from uuid import UUID
 from app.clients.embedding_client import EmbeddingClient
 from app.clients.glossary_client import GlossaryClient
 from app.clients.llm_client import LLMClient
+from app.clients.reranker_client import get_reranker_client
 from app.config import settings
 from app.context.formatters.dedup import (
     filter_entities_not_in_summary,
@@ -44,12 +45,13 @@ from app.context.formatters.dedup import (
 from app.context.formatters.instructions import build_instructions_block
 from app.context.formatters.token_counter import estimate_tokens
 from app.context.formatters.xml_escape import sanitize_for_xml
-from app.context.intent.classifier import IntentResult, classify
+from app.context.intent.classifier import Intent, IntentResult, classify
 from app.context.modes.no_project import BuiltContext, split_at_boundary
 from app.context.selectors.absence import detect_absences
 from app.context.selectors.facts import L2FactResult, select_l2_facts
 from app.context.query_embedding import embed_query_cached
 from app.context.selectors.glossary import select_glossary_for_context
+from app.context.selectors.salience import apply_salience
 from app.context.intent.abstract_query import is_abstract_query
 from app.context.selectors.passages import L3Passage  # select_l3_passages is lazy-imported in _safe_l3_passages for test-patchability
 from app.context.selectors.summary_blend import LevelSummaryHit  # select_summary_blend is lazy-imported in _safe_summary_blend
@@ -119,6 +121,8 @@ async def _safe_l3_passages(
     intent: IntentResult,
     llm_client: LLMClient | None = None,
     rerank_model: str | None = None,
+    reranker_client=None,
+    cross_encoder_model: str | None = None,
 ) -> list[L3Passage]:
     """Run the L3 selector under a Neo4j session with a timeout.
 
@@ -162,6 +166,8 @@ async def _safe_l3_passages(
                     user_uuid=user_id,
                     llm_client=llm_client,
                     rerank_model=rerank_model,
+                    reranker_client=reranker_client,
+                    cross_encoder_model=cross_encoder_model,
                 ),
                 timeout=settings.context_l3_timeout_s,
             )
@@ -294,6 +300,7 @@ def _render_mode3(
     summary_hits: list[LevelSummaryHit],
     absences: list[str],
     intent_obj: IntentResult,
+    entity_refs: list | None = None,
 ) -> tuple[str, str, str]:
     """Pure render of Mode 3 pieces → (stable, volatile, context).
 
@@ -348,6 +355,21 @@ def _render_mode3(
                 )
             lines.append("    </entity>")
         lines.append("  </glossary>")
+
+    # Track 4 P4 (R-T4-05) — pointer tier: entities the budget enforcer demoted
+    # out of the full glossary block. One compact line each keeps BREADTH (the
+    # model knows they exist and can expand any of them via the existing
+    # memory_recall_entity tool) at a fraction of the full-EAV token cost.
+    if entity_refs:
+        lines.append(
+            '  <entity_refs hint="more known entities; expand any with the '
+            'memory_recall_entity tool">'
+        )
+        for e in entity_refs:
+            name = sanitize_for_xml(e.cached_name or "")
+            kind = sanitize_for_xml(e.kind_code)
+            lines.append(f'    <ref name="{name}" kind="{kind}"/>')
+        lines.append("  </entity_refs>")
 
     lines.extend(_render_facts_block(l2_facts))
 
@@ -435,6 +457,7 @@ def _enforce_budget(
     summaries = list(summary_hits)
     abs_list = list(absences)
     ent_list = list(entities)
+    ent_refs: list = []  # P4 — entities demoted to one-line pointers
     facts = L2FactResult(
         current=list(l2_facts.current),
         recent=list(l2_facts.recent),
@@ -448,6 +471,7 @@ def _enforce_budget(
             entities=ent_list, l2_facts=facts,
             l3_passages=passages, summary_hits=summaries,
             absences=abs_list, intent_obj=intent_obj,
+            entity_refs=ent_refs,
         )
         return stable, volatile, context, estimate_tokens(context)
 
@@ -508,17 +532,32 @@ def _enforce_budget(
             )
             return stable, volatile, rendered, tokens
 
-    # Pass 4: trim glossary from the tail until under budget.
-    # Assume entities arrive in rank order; pop from the end.
+    # Pass 4 (P4 / R-T4-05): DEMOTE glossary tail entities to one-line pointers
+    # instead of dropping them — breadth survives (the model can expand any ref
+    # via memory_recall_entity) at a fraction of the token cost. Entities arrive
+    # in rank order; demote from the end.
     if ent_list:
         while ent_list and tokens > budget_tokens:
-            ent_list.pop()
+            ent_refs.insert(0, ent_list.pop())  # keep rank order within refs
             stable, volatile, rendered, tokens = render_and_count()
         if tokens <= budget_tokens:
             logger.info(
-                "K18.7: budget enforced by trimming glossary "
-                "(final=%d, tokens=%d/%d)",
-                len(ent_list), tokens, budget_tokens,
+                "K18.7: budget enforced by demoting glossary to refs "
+                "(full=%d, refs=%d, tokens=%d/%d)",
+                len(ent_list), len(ent_refs), tokens, budget_tokens,
+            )
+            return stable, volatile, rendered, tokens
+
+    # Pass 5: still over — drop the pointer refs themselves from the tail.
+    if ent_refs:
+        while ent_refs and tokens > budget_tokens:
+            ent_refs.pop()
+            stable, volatile, rendered, tokens = render_and_count()
+        if tokens <= budget_tokens:
+            logger.info(
+                "K18.7: budget enforced by dropping entity refs "
+                "(final refs=%d, tokens=%d/%d)",
+                len(ent_refs), tokens, budget_tokens,
             )
             return stable, volatile, rendered, tokens
 
@@ -542,6 +581,7 @@ async def build_full_mode(
     embedding_client: EmbeddingClient | None = None,
     llm_client: LLMClient | None = None,
     language: str | None = None,
+    entity_access_repo=None,
 ) -> BuiltContext:
     """Build the Mode 3 memory block.
 
@@ -601,6 +641,19 @@ async def build_full_mode(
             min_overlap=settings.dedup_min_overlap,
         )
 
+    # Track 4 P1+P3a — re-rank by learned salience (P1 access frequency) and/or
+    # graph-native promotion (P3a evidence/mention/edit-recency). Weight-guarded:
+    # defaults 0.0 → no DB read, no Neo4j fetch, no re-order (byte-identical).
+    # The Neo4j session is only opened when the promotion flag is on.
+    if settings.salience_promote_weight > 0:
+        async with neo4j_session() as _sal_session:
+            entities = await apply_salience(
+                entity_access_repo, entities, user_id, project.project_id,
+                neo4j_session=_sal_session,
+            )
+    else:
+        entities = await apply_salience(entity_access_repo, entities, user_id, project.project_id)
+
     # ── L2 facts + L3 passages + summary blend (Neo4j, parallel) ────────
     # Classify once: the same IntentResult drives both the L2 selector's
     # hop-count / recency gating AND the instruction-block hint text.
@@ -608,6 +661,11 @@ async def build_full_mode(
     # D-K18.3-02: opt-in generative rerank via extraction_config. Absent
     # key or empty string = skip the LLM rerank hop, MMR order stands.
     rerank_model = (project.extraction_config or {}).get("rerank_model") or None
+    # Track 4 P2: opt-in cross-encoder rerank via extraction_config. Absent/empty →
+    # skip (no reranker client resolved), MMR order stands. Preferred over the
+    # generative rerank when set. Provider-registry BYOK model_ref (no hardcode).
+    cross_encoder_model = (project.extraction_config or {}).get("cross_encoder_rerank_model") or None
+    reranker_client = get_reranker_client() if cross_encoder_model else None
     # P3 D5: glossary-entity names feed `is_abstract_query` inside the
     # summary_blend wrapper so a long query mentioning a known proper
     # noun stays specific (no abstract-blend trigger).
@@ -624,6 +682,8 @@ async def build_full_mode(
             message=message, intent=intent_obj,
             llm_client=llm_client,
             rerank_model=rerank_model,
+            reranker_client=reranker_client,
+            cross_encoder_model=cross_encoder_model,
         ),
         _safe_summary_blend(
             embedding_client,
@@ -633,6 +693,35 @@ async def build_full_mode(
         ),
     )
     mentioned_entities = list(intent_obj.entities)
+
+    # Track 4 P4 (R-T4-06) — widened retry on a fact MISS. When the intent names
+    # entities but the L2 selector came back EMPTY (e.g. a SPECIFIC_ENTITY query
+    # whose 1-hop found nothing), retry ONCE with a relational 2-hop walk over the
+    # same entities before concluding "no memory". Strictly additive recall on the
+    # empty path only (never re-ranks a non-empty result); one bounded extra Neo4j
+    # query; kill-switch via settings.context_l2_retry_widened.
+    if (
+        settings.context_l2_retry_widened
+        and l2_facts.total() == 0
+        and intent_obj.entities
+        and intent_obj.hop_count < 2
+    ):
+        widened = IntentResult(
+            intent=Intent.RELATIONAL,
+            entities=intent_obj.entities,
+            signals=intent_obj.signals + ("l2_retry_widened",),
+            hop_count=2,
+            recency_weight=0.0,
+        )
+        l2_retry = await _safe_l2_facts(
+            user_id=user_id, project=project, intent=widened,
+        )
+        if l2_retry.total():
+            logger.info(
+                "P4/R-T4-06: widened L2 retry recovered %d facts (project=%s)",
+                l2_retry.total(), project.project_id,
+            )
+            l2_facts = l2_retry
 
     # K18.4: drop L2 rows already expressed by the L1 summary so the
     # graph doesn't duplicate authored prose.
@@ -673,4 +762,10 @@ async def build_full_mode(
         volatile_context=volatile_context,
         # K21.12-BE (design D9): surface the project's tool-calling toggle.
         tool_calling_enabled=project.tool_calling_enabled,
+        # Track 4 P0 — the entities the selector judged relevant to this query
+        # (pre-budget-trim: budget trimming is a space artifact, not a relevance
+        # signal). The router records these to entity_access_log fire-and-forget.
+        surfaced_entity_ids=[
+            e.entity_id for e in entities if getattr(e, "entity_id", None)
+        ],
     )

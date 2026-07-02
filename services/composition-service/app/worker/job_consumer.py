@@ -23,6 +23,7 @@ from loreweave_jobs import BaseTerminalConsumer
 from app.clients.knowledge_client import get_knowledge_client
 from app.clients.llm_client import LLMClient, get_llm_client
 from app.db.repositories.generation_jobs import GenerationJobsRepo
+from app.engine.plan_forge.llm import PlanForgeLLMError
 from app.worker.events import COMPOSITION_JOBS_STREAM, COMPOSITION_WORKER_GROUP
 from app.worker.operations import (
     SUPPORTED_OPERATIONS,
@@ -31,6 +32,8 @@ from app.worker.operations import (
     run_decompose,
     run_generate,
     run_plan_pipeline,
+    run_plan_forge_propose,
+    run_plan_forge_refine,
     run_promise_coverage,
     run_quality_report,
     run_selection_edit,
@@ -49,9 +52,37 @@ logger = logging.getLogger("composition.worker.job_consumer")
 
 #: business failures the compute raises — a bad LLM output / upstream error is a
 #: TERMINAL job outcome (mark failed + ACK), NOT an infra error to redeliver.
-_BUSINESS_ERRORS = (UnsupportedOperationError, ValueError, KeyError)
+_BUSINESS_ERRORS = (UnsupportedOperationError, ValueError, KeyError, PlanForgeLLMError)
 
 _ACTIVE = ("pending", "running")
+
+
+async def _finalize_plan_forge_job(
+    pool: asyncpg.Pool, job, result: dict, terminal_status: str,
+) -> None:
+    run_id_raw = (job.input or {}).get("run_id")
+    book_id_raw = (job.input or {}).get("book_id")
+    if not run_id_raw or not book_id_raw:
+        return
+    op = (job.input or {}).get("worker_op") or job.operation
+    if op not in ("plan_forge_propose", "plan_forge_refine"):
+        return
+    from app.db.repositories.plan_runs import PlanRunsRepo
+    from app.db.repositories.works import WorksRepo
+    from app.services.plan_forge_service import PlanForgeService
+
+    svc = PlanForgeService(
+        PlanRunsRepo(pool), GenerationJobsRepo(pool), WorksRepo(pool),
+    )
+    job_for_apply = job
+    if terminal_status == "failed":
+        job_for_apply = job.model_copy(update={"status": "failed", "result": result})
+    else:
+        job_for_apply = job.model_copy(update={"status": "completed", "result": result})
+    await svc.apply_job_outcome(
+        job.user_id, UUID(str(book_id_raw)), UUID(str(run_id_raw)),
+        job_for_apply, result,
+    )
 
 
 async def run_job(
@@ -93,6 +124,7 @@ async def run_job(
             uid, UUID(job_id), "failed",
             result={"error": str(exc)},
         )
+        await _finalize_plan_forge_job(pool, job, {"error": str(exc)}, "failed")
         return "failed"
 
     # W5 (D-MOTIF-CONFORMANCE-ENGINE-WIRING): an op may return a critic-merge patch
@@ -103,6 +135,7 @@ async def run_job(
     await repo.update_status(
         uid, UUID(job_id), "completed", result=result, critic=critic_patch,
     )
+    await _finalize_plan_forge_job(pool, job, result, "completed")
     return "completed"
 
 
@@ -175,6 +208,12 @@ async def _run_operation(
         inp.setdefault("user_id", str(job.user_id))
         return await run_promise_coverage(
             llm, user_id=str(job.user_id), input=inp, cancel_check=cancel_check)
+    if op == "plan_forge_propose":
+        return await run_plan_forge_propose(
+            llm, user_id=str(job.user_id), input=job.input or {}, cancel_check=cancel_check)
+    if op == "plan_forge_refine":
+        return await run_plan_forge_refine(
+            llm, user_id=str(job.user_id), input=job.input or {}, cancel_check=cancel_check)
     # ── Wave-2 motif ops (W2-F0 frozen dispatch seam) ─────────────────────────────
     # The Tier-W confirm effects (routers/actions.py) already stamp the full input
     # envelope; each handler lives in its WS-owned engine module (lazy import keeps

@@ -32,6 +32,7 @@ from app.context.formatters.token_counter import estimate_tokens
 from app.context.formatters.xml_escape import sanitize_for_xml
 from app.context.modes.no_project import BuiltContext, split_at_boundary
 from app.context.selectors.glossary import select_glossary_for_context
+from app.context.selectors.salience import apply_salience
 from app.context.selectors.summaries import load_global_summary
 from app.context.selectors.projects import load_project_summary
 from app.db.models import Project
@@ -91,6 +92,7 @@ async def build_static_mode(
     project: Project,
     message: str,
     language: str | None = None,
+    entity_access_repo=None,
 ) -> BuiltContext:
     """Build a Mode 2 memory block for a user + project + current message.
 
@@ -158,6 +160,12 @@ async def build_static_mode(
             min_overlap=settings.dedup_min_overlap,
         )
 
+    # Track 4 P1 — re-rank by learned salience (recency-decayed access frequency).
+    # Guard on weight FIRST so the default (0.0) does no DB read and no re-order
+    # (byte-identical to pre-P1). Best-effort — a salience load failure is swallowed
+    # by the repo (returns {}) and the blend then no-ops.
+    entities = await apply_salience(entity_access_repo, entities, user_id, project.project_id)
+
     lines: list[str] = ['<memory mode="static">']
 
     # ── L0 (optional) ───────────────────────────────────────────────────
@@ -203,4 +211,9 @@ async def build_static_mode(
         volatile_context=volatile,
         # K21.12-BE (design D9): surface the project's tool-calling toggle.
         tool_calling_enabled=project.tool_calling_enabled,
+        # Track 4 P0 — glossary entities the selector judged relevant (for
+        # entity_access_log salience telemetry; recorded by the router).
+        surfaced_entity_ids=[
+            e.entity_id for e in entities if getattr(e, "entity_id", None)
+        ],
     )

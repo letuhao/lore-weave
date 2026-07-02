@@ -27,7 +27,7 @@ import type {
   ToolCallResultEvent,
   ToolCallStartEvent,
 } from './agUiEvents';
-import type { ActivityEvent, ChatMessage, ToolCallRecord, AgentSurfaceState } from '../types';
+import type { ActivityEvent, ChatMessage, ToolCallRecord, AgentSurfaceState, ContextBudget } from '../types';
 
 export type StreamPhase = 'idle' | 'thinking' | 'responding';
 
@@ -41,12 +41,18 @@ export type ChatStreamArgs = {
   thinking?: boolean;
   editorContext?: { book_id: string; chapter_id: string };
   // #09 Lane A — presence tells chat-service to advertise the studio dock-nav frontend tools.
-  studioContext?: { book_id?: string; active_panel_ids?: string[]; context_revision?: number };
+  studioContext?: { book_id?: string; project_id?: string; active_chapter_id?: string; active_panel_ids?: string[]; context_revision?: number };
   composeMode?: boolean;
   bookContext?: { book_id: string };
   displayLanguage?: string;
   enabledTools?: string[];
   enabledSkills?: string[];
+  // RAID C2 (DR-C2): HITL permission mode — 'ask' filters the server-tool
+  // surface to reads; 'write' (default, omitted) is today's behavior + the
+  // Tier-A prompt-once approval gate. Distinct from composeMode (disable_tools).
+  // RAID B2 (07S §5b): 'plan' = the ask surface + the PlanForge plan_* tools
+  // (plan artifacts, never prose).
+  permissionMode?: 'ask' | 'plan' | 'write';
   // ARCH-1 C6: when set, POST this descriptor instead of the messages endpoint
   // (the resume / tool-result path). The consume loop is identical, so send +
   // resume share all stream handling.
@@ -89,6 +95,8 @@ export type ChatCallbacks = {
   onComposing?: (active: boolean) => void;
   /** Story 04: CUSTOM agentSurface → runtime inspector reducer. */
   onAgentSurface?: (state: AgentSurfaceState) => void;
+  /** RAID Wave A3: CUSTOM contextBudget → the chat header context-used meter. */
+  onContextBudget?: (budget: ContextBudget) => void;
   /** A run-level error (RUN_ERROR, or a non-OK response). */
   onError?: (message: string) => void;
   /** Terminal — the assembled assistant turn. Fired on a clean stream end. */
@@ -121,6 +129,11 @@ function buildRequest(args: ChatStreamArgs): { url: string; body: Record<string,
   if (args.enabledSkills?.length) body.enabled_skills = args.enabledSkills;
   // Compose mode: prose-only turn, no tool advertising (server-side gate).
   if (args.composeMode) body.disable_tools = true;
+  // RAID C2/B2: only send a non-default mode — omitting means 'write'
+  // server-side, keeping the wire byte-identical for existing behavior.
+  if (args.permissionMode === 'ask' || args.permissionMode === 'plan') {
+    body.permission_mode = args.permissionMode;
+  }
 
   return { url: chatApi.messagesUrl(args.sessionId), body };
 }
@@ -310,7 +323,7 @@ export async function runChatStream(
               cb.onToolCall?.(record);
               break;
             }
-            // ── 6. CUSTOM — 4 sub-events: memoryMode/persisted/composing/activity
+            // ── 6. CUSTOM — memoryMode/persisted/composing/activity/agentSurface/contextBudget
             case AgUiEventType.CUSTOM: {
               const e = event as AgUiCustomEvent;
               if (e.name === 'memoryMode') {
@@ -340,6 +353,19 @@ export async function runChatStream(
                 const payload = e.value as unknown as AgentSurfaceState;
                 if (payload && typeof payload.phase === 'string') {
                   cb.onAgentSurface?.(payload);
+                }
+              } else if (e.name === 'contextBudget') {
+                // RAID Wave A3: turn-finish context usage → header meter. Guard on
+                // used_tokens being a number so a malformed frame can't crash the
+                // meter; pct/limits may legitimately be null (unregistered model).
+                const v = e.value as unknown as ContextBudget;
+                if (v && typeof v.used_tokens === 'number') {
+                  cb.onContextBudget?.({
+                    used_tokens: v.used_tokens,
+                    context_length: typeof v.context_length === 'number' ? v.context_length : null,
+                    effective_limit: typeof v.effective_limit === 'number' ? v.effective_limit : null,
+                    pct: typeof v.pct === 'number' ? v.pct : null,
+                  });
                 }
               }
               break;

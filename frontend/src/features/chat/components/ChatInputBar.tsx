@@ -1,12 +1,14 @@
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
-import { ArrowUp, Brain, Square, Zap, Mic, MicOff, Loader2, Volume2, VolumeX } from 'lucide-react';
+import { ArrowUp, Brain, Eye, ListTodo, Pencil, Square, Zap, Mic, MicOff, Loader2, Volume2, VolumeX } from 'lucide-react';
 import { loadVoicePrefs } from '../voicePrefs';
 import { useVoiceAssistMic } from '../hooks/useVoiceAssistMic';
+import { useMentionPicker } from '../hooks/useMentionPicker';
 import TextareaAutosize from 'react-textarea-autosize';
 import { ContextBar } from '../context/ContextBar';
 import type { ContextItem } from '../context/types';
 import { PromptTemplatePicker, type PromptTemplate } from './PromptTemplates';
+import { MentionPopover } from './MentionPopover';
 
 interface ChatInputBarProps {
   onSend: (content: string, thinking?: boolean) => void;
@@ -33,6 +35,11 @@ interface ChatInputBarProps {
   /** Auto-TTS is playing — show stop button */
   ttsPlaying?: boolean;
   onStopTTS?: () => void;
+  /** RAID C2/B2 — HITL permission mode (Ask = read-only tools, Plan = reads +
+   *  PlanForge plan_* tools, Write = full). Rendered only when both are
+   *  provided (embedded surfaces may omit). */
+  permissionMode?: 'ask' | 'plan' | 'write';
+  onPermissionModeChange?: (mode: 'ask' | 'plan' | 'write') => void;
 }
 
 export function ChatInputBar({
@@ -53,6 +60,8 @@ export function ChatInputBar({
   onToggleVoiceAssist,
   ttsPlaying,
   onStopTTS,
+  permissionMode,
+  onPermissionModeChange,
 }: ChatInputBarProps) {
   const { t } = useTranslation('chat');
   const [value, setValue] = useState('');
@@ -61,6 +70,15 @@ export function ChatInputBar({
   const [showTemplates, setShowTemplates] = useState(false);
   const [templateFilter, setTemplateFilter] = useState('');
   const [attachPickerOpen, setAttachPickerOpen] = useState(false);
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
+
+  // Inline @-mention context attach — reuses the ContextPicker's attach seam.
+  const mention = useMentionPicker({
+    value,
+    onAttach: onAttachContext,
+    onValueChange: setValue,
+    textareaRef,
+  });
 
   // Push-to-talk mic — uses same VAD + backend STT pipeline as Voice Mode.
   // Captures speech via Silero VAD → WAV → backend STT → inserts transcript into textarea.
@@ -139,6 +157,15 @@ export function ChatInputBar({
             onClose={() => { setShowTemplates(false); setTemplateFilter(''); }}
           />
 
+          {/* Inline @-mention context popover (triggered by "@") */}
+          <MentionPopover
+            open={mention.open}
+            items={mention.filtered}
+            selectedIndex={mention.selectedIndex}
+            onSelect={mention.attachCandidate}
+            onHighlight={mention.setSelectedIndex}
+          />
+
           {/* Context bar (pills + attach button) */}
           <ContextBar
             items={contextItems}
@@ -151,13 +178,17 @@ export function ChatInputBar({
 
           {/* Textarea */}
           <TextareaAutosize
+            ref={textareaRef}
             value={value}
-            onChange={(e) => handleValueChange(e.target.value)}
+            onChange={(e) => { handleValueChange(e.target.value); mention.syncFromInput(e.target); }}
+            onSelect={(e) => mention.syncFromInput(e.currentTarget)}
             placeholder={t('input.placeholder')}
             minRows={3}
             maxRows={8}
             disabled={disabled || isStreaming || voiceModeActive}
             onKeyDown={(e) => {
+              // @-mention popover consumes navigation/attach keys (Enter must NOT send)
+              if (mention.handleKeyDown(e)) return;
               if (e.key === 'Enter' && !e.shiftKey && !e.ctrlKey) {
                 e.preventDefault();
                 handleSubmit();
@@ -252,6 +283,56 @@ export function ChatInputBar({
                 >
                   {t('input.stop_audio')}
                 </button>
+              )}
+              {/* RAID C2/B2 — Ask/Plan/Write permission-mode toggle. Ask =
+                  read-only research surface; Plan = reads + PlanForge plan_*
+                  tools (plan artifacts, no prose); Write = full surface + the
+                  Tier-A approval prompt. Sent per message POST. */}
+              {permissionMode !== undefined && onPermissionModeChange && (
+                <div className="inline-flex rounded-md bg-secondary p-0.5 gap-0.5" data-testid="permission-mode-toggle">
+                  <button
+                    type="button"
+                    onClick={() => onPermissionModeChange('ask')}
+                    aria-pressed={permissionMode === 'ask'}
+                    title={t('input.mode_ask_hint')}
+                    className={`flex items-center gap-1 rounded px-2.5 py-1 text-[11px] font-medium transition-colors ${
+                      permissionMode === 'ask'
+                        ? 'bg-sky-500/10 text-sky-400 border border-sky-500/30'
+                        : 'text-muted-foreground'
+                    }`}
+                  >
+                    <Eye className="h-2.5 w-2.5" />
+                    {t('input.mode_ask')}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => onPermissionModeChange('plan')}
+                    aria-pressed={permissionMode === 'plan'}
+                    title={t('input.mode_plan_hint')}
+                    className={`flex items-center gap-1 rounded px-2.5 py-1 text-[11px] font-medium transition-colors ${
+                      permissionMode === 'plan'
+                        ? 'bg-violet-500/10 text-violet-400 border border-violet-500/30'
+                        : 'text-muted-foreground'
+                    }`}
+                  >
+                    <ListTodo className="h-2.5 w-2.5" />
+                    {t('input.mode_plan')}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => onPermissionModeChange('write')}
+                    aria-pressed={permissionMode === 'write'}
+                    title={t('input.mode_write_hint')}
+                    className={`flex items-center gap-1 rounded px-2.5 py-1 text-[11px] font-medium transition-colors ${
+                      permissionMode === 'write'
+                        ? 'bg-accent/10 text-accent border border-accent/30'
+                        : 'text-muted-foreground'
+                    }`}
+                  >
+                    <Pencil className="h-2.5 w-2.5" />
+                    {t('input.mode_write')}
+                  </button>
+                </div>
               )}
               {/* Think/Fast toggle */}
               {supportsThinking && (

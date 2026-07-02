@@ -5,6 +5,18 @@
 //   • StudioContextBus — a pub/sub of read-only context slices (active chapter/scene/selection/
 //     quality issue) so panels + chat exchange state without prop-drilling through dockview.
 
+/** A status-bar contribution (#11 F2 — VS Code StatusBarItem analogue). Items render INSIDE
+ * `StudioStatusBar` between its fixed chrome; each `component` is fully self-contained (owns its
+ * data hooks + click handlers) so a badge stays live while its panel is closed. Registered at
+ * StudioFrame level (StudioStatusContributions), NOT inside panels. */
+export interface StudioStatusBarItem {
+  id: string;
+  side: 'left' | 'right';
+  /** Lower = closer to the edge of its side. Ties keep registration order. */
+  order?: number;
+  component: import('react').FunctionComponent;
+}
+
 /** One dock tool's registration. `panelId` matches the dockview component id. */
 export interface StudioToolRegistration {
   panelId: string;
@@ -33,7 +45,11 @@ export type StudioBusEvent =
   | { type: 'scene'; sceneId: string; chapterId: string }
   | { type: 'selection'; range: { from: number; to: number }; chapterId: string }
   | { type: 'qualityIssue'; promiseId: string; chapterId?: string }
-  | { type: 'panels'; activePanelIds: string[] };
+  | { type: 'panels'; activePanelIds: string[] }
+  // #11 F2 — the authoritative unread count. Published by the status item (seed + SSE bump) AND
+  // by the notifications panel after mark-read, so badge ↔ panel never drift (the same MED-1
+  // class NotificationBell fixed with a route-change resync — no routes here, so it's bus-owned).
+  | { type: 'notificationsUnread'; count: number };
 
 /** The bus's current merged snapshot. `revision` increments on every publish (so a chat turn can
  * stamp `context_revision`). */
@@ -45,6 +61,7 @@ export interface StudioBusSnapshot {
   selectionRange?: { from: number; to: number };
   qualityIssueRef?: { promiseId: string; chapterId?: string };
   activePanelIds: string[];
+  notificationsUnread?: number;
 }
 
 /** Reduce a bus event onto the snapshot (pure — one new object, revision bumped). */
@@ -61,6 +78,8 @@ export function applyBusEvent(s: StudioBusSnapshot, e: StudioBusEvent): StudioBu
       return { ...base, qualityIssueRef: { promiseId: e.promiseId, chapterId: e.chapterId } };
     case 'panels':
       return { ...base, activePanelIds: e.activePanelIds };
+    case 'notificationsUnread':
+      return { ...base, notificationsUnread: Math.max(0, e.count) };
     default:
       return base;
   }

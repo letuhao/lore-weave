@@ -9,7 +9,49 @@
   },
   "panels": {
     "compose": { "title": "Compose", "desc": "AI 共同執筆チャット" },
-    "editor": { "title": "Editor", "desc": "原稿エディタ" }
+    "editor": { "title": "Editor", "desc": "原稿エディタ" },
+    "planner": { "title": "プランナー", "desc": "小説システムを設計" },
+    "usage": { "title": "使用状況", "desc": "支出・トークン・リクエストログ" },
+    "notifications": { "title": "通知", "desc": "ジョブ完了とアラート" },
+    "settings": { "title": "設定", "desc": "アカウント・プロバイダー・翻訳" },
+    "trash": { "title": "ゴミ箱", "desc": "削除した本・章などを復元" },
+    "json-editor": { "title": "JSON", "desc": "リソースの生 JSON ビュー" }
+  },
+  "sceneRail": {
+    "title": "シーン",
+    "toggle": "シーン",
+    "empty": "この章にはシーンがありません（コンポーザーでアウトラインを作成）。",
+    "synopsisPlaceholder": "あらすじ…",
+    "stale": "他所で変更 — 再読込しました",
+    "notAnchored": "シーンはまだ本文にアンカーされていません — ⚓ で見出しをリンク。",
+    "anchored": "{{count}} シーンをアンカー、{{unmatched}} 件は不一致 — ⌘S で保存。",
+    "anchorNoop": "{{count}} 件はアンカー済み、{{unmatched}} 件は一致する見出しなし。",
+    "anchorTitle": "シーンを本文の見出しにリンク",
+    "add": "シーンを追加",
+    "addDisabled": "章にアウトラインがありません（コンポーザーで作成）",
+    "newTitlePlaceholder": "シーン名…",
+    "create": "追加",
+    "deleted": "「{{title}}」を削除しました。",
+    "undo": "元に戻す",
+    "moveUp": "上へ",
+    "moveDown": "下へ",
+    "delete": "シーンを削除",
+    "status": { "empty": "空", "outline": "アウトライン", "drafting": "執筆中", "done": "完了" }
+  },
+  "jsonEditor": {
+    "empty": "各パネルの「JSON として開く」からリソースを開いてください。",
+    "invalid": "不正な JSON",
+    "conflict": "競合: {{part}}",
+    "format": "整形",
+    "revert": "破棄",
+    "openAs": "JSON として開く"
+  },
+  "planner": {
+    "sourcePlaceholder": "小説システムの Markdown を貼り付け…",
+    "propose": "提案",
+    "model": "モデル",
+    "empty": "小説システムの Markdown を貼り付けて「提案」でプラン実行を開始します。",
+    "mode": { "rules": "ルール", "llm": "LLM" }
   },
   "editor": {
     "empty": "ナビゲーターで章を選ぶとここで編集できます。",
@@ -74,7 +116,10 @@
   },
   "status": {
     "wordsPlaceholder": "— 語",
-    "modelPlaceholder": "モデルなし"
+    "words": "{{count}} 語",
+    "modelPlaceholder": "モデルなし",
+    "notifications": "通知",
+    "cost24h": "過去24時間の支出"
   },
   "manuscript": {
     "title": "原稿",

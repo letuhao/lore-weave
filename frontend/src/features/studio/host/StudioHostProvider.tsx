@@ -11,7 +11,7 @@
 import { createContext, useContext, useEffect, useMemo, useRef, useState, type MutableRefObject, type ReactNode } from 'react';
 import { useSyncExternalStore } from 'react';
 import type { DockviewApi } from 'dockview-react';
-import { applyBusEvent, type StudioBusEvent, type StudioBusSnapshot, type StudioToolRegistration } from './types';
+import { applyBusEvent, type StudioBusEvent, type StudioBusSnapshot, type StudioStatusBarItem, type StudioToolRegistration } from './types';
 
 interface Store<S> {
   get: () => S;
@@ -36,16 +36,22 @@ export interface StudioHost {
   unregisterStudioTool: (panelId: string) => void;
   getRegisteredTool: (panelId: string) => StudioToolRegistration | null;
   listRegisteredStudioTools: () => StudioToolRegistration[];
+  // Status-bar contributions (#11 F2) — same register/unregister shape as the tool registry.
+  registerStatusBarItem: (item: StudioStatusBarItem) => void;
+  unregisterStatusBarItem: (id: string) => void;
   // Bus (07c) — publish read-only snapshots; subscribe with an optional selector (S4).
   publish: (event: StudioBusEvent) => void;
   getSnapshot: () => StudioBusSnapshot;
   subscribe: (listener: (s: StudioBusSnapshot) => void, selector?: (s: StudioBusSnapshot) => unknown) => () => void;
   // Dock actions (#08 §StudioHostValue) — the single home for Lane-A ui tools + the palette.
-  openPanel: (panelId: string, opts?: { focus?: boolean; title?: string }) => void;
+  // `params` (#11 F1) is the deep-link seam: passed to addPanel on open, updateParameters when
+  // the panel is already open. Panels read props.params / api.onDidParametersChange.
+  openPanel: (panelId: string, opts?: { focus?: boolean; title?: string; params?: Record<string, unknown> }) => void;
   focusManuscriptUnit: (chapterId: string, panelId?: string) => void;
   // Internals for the reactive hooks + the dock wiring (not part of the public contract).
   _regStore: Store<StudioToolRegistration[]>;
   _busStore: Store<StudioBusSnapshot>;
+  _statusStore: Store<StudioStatusBarItem[]>;
   _dockApiRef: MutableRefObject<DockviewApi | null>;
 }
 
@@ -61,17 +67,25 @@ export function StudioHostProvider({ bookId, children }: { bookId: string; child
     const regStore = createStore<StudioToolRegistration[]>([]);
     const rebuild = () => regStore.set(Array.from(regMap.values()));
     const busStore = createStore<StudioBusSnapshot>({ revision: 0, bookId, activePanelIds: [] });
+    const statusMap = new Map<string, StudioStatusBarItem>();
+    const statusStore = createStore<StudioStatusBarItem[]>([]);
+    const rebuildStatus = () => statusStore.set(Array.from(statusMap.values()));
 
-    const openPanel = (panelId: string, opts?: { focus?: boolean; title?: string }) => {
+    const openPanel = (panelId: string, opts?: { focus?: boolean; title?: string; params?: Record<string, unknown> }) => {
       const api = dockApiRef.current;
       if (!api) return;
       const existing = api.getPanel(panelId);
-      if (existing) { if (opts?.focus !== false) existing.api.setActive(); return; }
+      if (existing) {
+        // Already open — deep-link params still land (#11 F1), then focus.
+        if (opts?.params) existing.api.updateParameters(opts.params);
+        if (opts?.focus !== false) existing.api.setActive();
+        return;
+      }
       // Title from the caller (catalog), else a live registration, else the id. A CLOSED panel
       // isn't registered yet (registers on mount) so the caller supplies the title.
       const title = opts?.title ?? regMap.get(panelId)?.label ?? panelId;
       // component id must be a built dockview component (STUDIO_PANEL_COMPONENTS); unknown ⇒ no-op.
-      try { api.addPanel({ id: panelId, component: panelId, title }); }
+      try { api.addPanel({ id: panelId, component: panelId, title, params: opts?.params }); }
       catch { /* panel not in the catalog */ }
     };
 
@@ -81,6 +95,8 @@ export function StudioHostProvider({ bookId, children }: { bookId: string; child
       unregisterStudioTool: (panelId) => { if (regMap.delete(panelId)) rebuild(); },
       getRegisteredTool: (panelId) => regMap.get(panelId) ?? null,
       listRegisteredStudioTools: () => regStore.get(),
+      registerStatusBarItem: (item) => { statusMap.set(item.id, item); rebuildStatus(); },
+      unregisterStatusBarItem: (id) => { if (statusMap.delete(id)) rebuildStatus(); },
       publish: (event) => { busStore.set(applyBusEvent(busStore.get(), event)); },
       getSnapshot: () => busStore.get(),
       subscribe: (listener, selector) => {
@@ -102,6 +118,7 @@ export function StudioHostProvider({ bookId, children }: { bookId: string; child
       },
       _regStore: regStore,
       _busStore: busStore,
+      _statusStore: statusStore,
       _dockApiRef: dockApiRef,
     };
   }, [bookId]);
@@ -144,6 +161,29 @@ export function useStudioBusSelector<T>(selector: (s: StudioBusSnapshot) => T): 
     return _busStore.subscribe(check);
   }, [_busStore]);
   return value;
+}
+
+/** The live sorted status-bar items for one side (#11 F2) — re-renders on (un)register only;
+ * item DATA reactivity lives inside each item's own component. */
+export function useStatusBarItems(side: StudioStatusBarItem['side']): StudioStatusBarItem[] {
+  const { _statusStore } = useStudioHost();
+  const all = useSyncExternalStore(_statusStore.subscribe, _statusStore.get);
+  return useMemo(
+    () => all.filter((i) => i.side === side).sort((a, b) => (a.order ?? 0) - (b.order ?? 0)),
+    [all, side],
+  );
+}
+
+/** Register a status-bar item for the caller's lifetime (mount → register, unmount → unregister).
+ * Mirror of useRegisterStudioTool: re-registers only when the id changes. */
+export function useRegisterStatusBarItem(item: StudioStatusBarItem): void {
+  const { registerStatusBarItem, unregisterStatusBarItem } = useStudioHost();
+  const itemRef = useRef(item);
+  itemRef.current = item;
+  useEffect(() => {
+    registerStatusBarItem(itemRef.current);
+    return () => unregisterStatusBarItem(itemRef.current.id);
+  }, [registerStatusBarItem, unregisterStatusBarItem, item.id]);
 }
 
 /** Register a dock tool for this panel's lifetime (mount → register, unmount → unregister).

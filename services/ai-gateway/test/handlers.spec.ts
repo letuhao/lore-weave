@@ -1,7 +1,12 @@
 import {
   extractEnvelope,
   handleCallTool,
+  handleGetPrompt,
+  handleListPrompts,
+  handleListResources,
+  handleListResourceTemplates,
   handleListTools,
+  handleReadResource,
   headerValue,
 } from '../src/mcp/handlers.js';
 import type { FederationService } from '../src/federation/federation.service.js';
@@ -12,6 +17,12 @@ function fakeFederation(over: Partial<FederationService>): FederationService {
     executeTool: async () => ({ ok: true }),
     providerAvailability: () => [],
     isPartial: () => false,
+    // Wave C5 — resources + prompts surfaces
+    resourceCatalog: () => [],
+    resourceTemplateCatalog: () => [],
+    promptCatalog: () => [],
+    readResource: async () => ({ contents: [] }),
+    getPrompt: async () => ({ messages: [] }),
     ...over,
   } as unknown as FederationService;
 }
@@ -202,5 +213,125 @@ describe('handleCallTool', () => {
     expect(text).not.toContain('8082');
     expect(text).not.toContain('ECONNREFUSED');
     expect(text).toBe("tool 'book_create' failed: provider error");
+  });
+});
+
+// ── Wave C5 — resources + prompts handlers ─────────────────────────────
+
+describe('handleListResources / handleListResourceTemplates / handleListPrompts', () => {
+  it('returns the federated resource catalog with the availability _meta (H10)', () => {
+    const fed = fakeFederation({
+      resourceCatalog: () => [{ uri: 'knowledge://static' }] as any,
+      providerAvailability: () => [
+        { name: 'knowledge', available: true },
+        { name: 'book', available: false },
+      ],
+      isPartial: () => true,
+    });
+    const res = handleListResources(fed);
+    expect(res.resources.map((r: any) => r.uri)).toEqual(['knowledge://static']);
+    expect(res._meta).toEqual({ unavailable_providers: ['book'], partial: true });
+  });
+
+  it('returns resource TEMPLATES on their own list (the knowledge resources are templates)', () => {
+    const fed = fakeFederation({
+      resourceTemplateCatalog: () =>
+        [{ uriTemplate: 'knowledge://project/{project_id}/summary' }] as any,
+    });
+    const res = handleListResourceTemplates(fed);
+    expect(res.resourceTemplates.map((t: any) => t.uriTemplate)).toEqual([
+      'knowledge://project/{project_id}/summary',
+    ]);
+    expect(res._meta).toEqual({ unavailable_providers: [], partial: false });
+  });
+
+  it('returns the federated prompt catalog with the availability _meta', () => {
+    const fed = fakeFederation({
+      promptCatalog: () => [{ name: 'recap_story_so_far' }] as any,
+    });
+    const res = handleListPrompts(fed);
+    expect(res.prompts.map((p: any) => p.name)).toEqual(['recap_story_so_far']);
+    expect(res._meta).toEqual({ unavailable_providers: [], partial: false });
+  });
+
+  it('a federation with nothing federated lists empty — never throws', () => {
+    const fed = fakeFederation({});
+    expect(handleListResources(fed).resources).toEqual([]);
+    expect(handleListResourceTemplates(fed).resourceTemplates).toEqual([]);
+    expect(handleListPrompts(fed).prompts).toEqual([]);
+  });
+});
+
+describe('handleReadResource', () => {
+  it('routes to federation.readResource with uri, envelope, and signal; returns the result verbatim', async () => {
+    const readResource = jest.fn().mockResolvedValue({
+      contents: [{ uri: 'knowledge://project/p1/summary', mimeType: 'text/plain', text: 'sum' }],
+    });
+    const fed = fakeFederation({ readResource });
+    const ac = new AbortController();
+    const res = await handleReadResource(
+      fed,
+      'knowledge://project/p1/summary',
+      { 'x-user-id': 'u1', 'x-session-id': 's1', 'x-project-id': 'p1' },
+      ac.signal,
+    );
+    expect(readResource).toHaveBeenCalledWith(
+      'knowledge://project/p1/summary',
+      { userId: 'u1', sessionId: 's1', traceId: undefined, projectId: 'p1' },
+      ac.signal,
+    );
+    expect(res.contents[0].text).toBe('sum');
+  });
+
+  it('a provider failure rejects with a GENERIC error — no internal URL leaks', async () => {
+    const fed = fakeFederation({
+      readResource: async () => {
+        throw new Error('fetch failed: ECONNREFUSED http://knowledge-service:8092/mcp');
+      },
+    });
+    await expect(
+      handleReadResource(fed, 'knowledge://project/p1/summary', { 'x-user-id': 'u1' }),
+    ).rejects.toThrow("resource 'knowledge://project/p1/summary' read failed: provider error");
+    // and specifically never the internal endpoint:
+    await handleReadResource(fed, 'knowledge://x', { 'x-user-id': 'u1' }).catch((e: Error) => {
+      expect(e.message).not.toContain('knowledge-service');
+      expect(e.message).not.toContain('8092');
+    });
+  });
+});
+
+describe('handleGetPrompt', () => {
+  it('routes to federation.getPrompt with name, args, envelope, and signal; returns the result verbatim', async () => {
+    const getPrompt = jest.fn().mockResolvedValue({
+      description: 'recap',
+      messages: [{ role: 'user', content: { type: 'text', text: 'Recap …' } }],
+    });
+    const fed = fakeFederation({ getPrompt });
+    const ac = new AbortController();
+    const res = await handleGetPrompt(
+      fed,
+      'recap_story_so_far',
+      { project_id: 'p1' },
+      { 'x-user-id': 'u1' },
+      ac.signal,
+    );
+    expect(getPrompt).toHaveBeenCalledWith(
+      'recap_story_so_far',
+      { project_id: 'p1' },
+      { userId: 'u1', sessionId: undefined, traceId: undefined },
+      ac.signal,
+    );
+    expect(res.messages[0].content.text).toBe('Recap …');
+  });
+
+  it('a provider failure rejects with a GENERIC error — no internal URL leaks', async () => {
+    const fed = fakeFederation({
+      getPrompt: async () => {
+        throw new Error('fetch failed: ECONNREFUSED http://knowledge-service:8092/mcp');
+      },
+    });
+    await expect(handleGetPrompt(fed, 'recap_story_so_far', {}, {})).rejects.toThrow(
+      "prompt 'recap_story_so_far' get failed: provider error",
+    );
   });
 });

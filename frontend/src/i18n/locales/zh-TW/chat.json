@@ -16,7 +16,12 @@
     "voice_settings": "語音設定",
     "export": "匯出",
     "rename": "重新命名",
-    "session_settings": "工作階段設定"
+    "session_settings": "工作階段設定",
+    "context_meter": {
+      "label": "已使用的脈絡",
+      "unknown": "無法得知此模型的脈絡視窗使用量",
+      "tokens": "{{used}} / {{limit}} 個 token"
+    }
   },
   "input": {
     "format": "格式：",
@@ -47,7 +52,13 @@
     "send": "傳送 (Enter)",
     "context_attached": "已附加情境 · ",
     "hint": "Enter 傳送 · Shift+Enter 換行",
-    "hint_thinking": " · Ctrl+Shift+Enter 思考 · Ctrl+Enter 快速"
+    "hint_thinking": " · Ctrl+Shift+Enter 思考 · Ctrl+Enter 快速",
+    "mode_ask": "詢問",
+    "mode_plan": "規劃",
+    "mode_write": "寫入",
+    "mode_ask_hint": "唯讀模式 — 代理可以查詢但不能變更任何內容",
+    "mode_plan_hint": "規劃模式 — 代理會研究並以規劃工具建立計畫；切換到寫入前不會撰寫正文",
+    "mode_write_hint": "寫入模式 — 代理可以進行可復原的變更（每個新工具只詢問一次）"
   },
   "new": {
     "preset": {
@@ -258,7 +269,11 @@
     "words": "{{count}} 字",
     "unnamed": "(未命名)",
     "no_matches": "找不到符合項目。",
-    "no_items": "沒有可用項目。"
+    "no_items": "沒有可用項目。",
+    "mention": {
+      "title": "附加上下文",
+      "aria": "上下文建議"
+    }
   },
   "settings": {
     "title": "工作階段設定",
@@ -299,5 +314,17 @@
     "delete_failed": "刪除失敗：{{error}}",
     "chat_error": "聊天錯誤：{{error}}",
     "context_load_failed": "無法載入「{{label}}」的脈絡 — 將不附帶傳送"
+  },
+  "toolApproval": {
+    "label": "允許代理執行此工具嗎？",
+    "tier": "層級 {{tier}}",
+    "tier_hint": "層級 {{tier}} — 可復原的寫入",
+    "hint": "此寫入可以復原。「一律允許」後此工具將不再詢問。",
+    "approve_once": "允許一次",
+    "always_allow": "一律允許",
+    "deny": "拒絕",
+    "approved": "已允許 — 執行中 ✓",
+    "always_allowed": "一律允許 — 執行中 ✓",
+    "denied": "已拒絕"
   }
 }

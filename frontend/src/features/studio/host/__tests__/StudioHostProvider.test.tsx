@@ -3,9 +3,10 @@ import { act, render, renderHook, screen } from '@testing-library/react';
 import { useRef } from 'react';
 import type { ReactNode } from 'react';
 import {
-  StudioHostProvider, useRegisteredTools, useRegisterStudioTool, useStudioBus, useStudioBusSelector, useStudioHost,
+  StudioHostProvider, useRegisteredTools, useRegisterStudioTool, useRegisterStatusBarItem,
+  useStatusBarItems, useStudioBus, useStudioBusSelector, useStudioHost,
 } from '../StudioHostProvider';
-import { applyBusEvent, type StudioBusSnapshot, type StudioToolRegistration } from '../types';
+import { applyBusEvent, type StudioBusSnapshot, type StudioStatusBarItem, type StudioToolRegistration } from '../types';
 
 const wrapper = (bookId = 'b1') => ({ children }: { children: ReactNode }) => (
   <StudioHostProvider bookId={bookId}>{children}</StudioHostProvider>
@@ -76,6 +77,41 @@ describe('StudioContextBus', () => {
     expect(() => result.current.openPanel('editor')).not.toThrow();
   });
 
+  it('openPanel passes params to addPanel; re-open updates parameters + focuses (#11 F1)', () => {
+    const { result } = renderHook(() => useStudioHost(), { wrapper: wrapper() });
+    const addPanel = vi.fn();
+    const updateParameters = vi.fn();
+    const setActive = vi.fn();
+    let existing: unknown = null;
+    result.current._dockApiRef.current = {
+      getPanel: () => existing,
+      addPanel,
+    } as never;
+
+    act(() => result.current.openPanel('settings', { title: 'Settings', params: { tab: 'providers' } }));
+    expect(addPanel).toHaveBeenCalledWith({
+      id: 'settings', component: 'settings', title: 'Settings', params: { tab: 'providers' },
+    });
+
+    existing = { api: { updateParameters, setActive } };
+    act(() => result.current.openPanel('settings', { params: { tab: 'account' } }));
+    expect(updateParameters).toHaveBeenCalledWith({ tab: 'account' });
+    expect(setActive).toHaveBeenCalledTimes(1);
+  });
+
+  it('openPanel focus:false updates params without stealing focus', () => {
+    const { result } = renderHook(() => useStudioHost(), { wrapper: wrapper() });
+    const updateParameters = vi.fn();
+    const setActive = vi.fn();
+    result.current._dockApiRef.current = {
+      getPanel: () => ({ api: { updateParameters, setActive } }),
+      addPanel: vi.fn(),
+    } as never;
+    act(() => result.current.openPanel('settings', { focus: false, params: { tab: 'mcp' } }));
+    expect(updateParameters).toHaveBeenCalledWith({ tab: 'mcp' });
+    expect(setActive).not.toHaveBeenCalled();
+  });
+
   it('subscribe(selector) fires only when the SELECTED slice changes', () => {
     const { result } = renderHook(() => useStudioHost(), { wrapper: wrapper() });
     const onChapter = vi.fn();
@@ -119,6 +155,51 @@ describe('useRegisterStudioTool lifecycle', () => {
     expect(tools.map((t) => t.panelId)).toEqual(['editor']);
     rerender(<StudioHostProvider bookId="b1"><Probe /></StudioHostProvider>);
     expect(tools).toHaveLength(0);
+  });
+});
+
+describe('status-bar contributions (#11 F2)', () => {
+  const item = (id: string, over: Partial<StudioStatusBarItem> = {}): StudioStatusBarItem => ({
+    id, side: 'right', component: () => <span data-testid={`sbi-${id}`} />, ...over,
+  });
+
+  it('register / replace-by-id / unregister', () => {
+    const { result } = renderHook(
+      () => ({ host: useStudioHost(), right: useStatusBarItems('right') }),
+      { wrapper: wrapper() },
+    );
+    act(() => result.current.host.registerStatusBarItem(item('meter')));
+    act(() => result.current.host.registerStatusBarItem(item('meter', { order: 5 }))); // same id → replace
+    expect(result.current.right).toHaveLength(1);
+    expect(result.current.right[0]!.order).toBe(5);
+    act(() => result.current.host.unregisterStatusBarItem('meter'));
+    expect(result.current.right).toHaveLength(0);
+  });
+
+  it('useStatusBarItems filters by side and sorts by order (lower = edge-most)', () => {
+    const { result } = renderHook(
+      () => ({ host: useStudioHost(), left: useStatusBarItems('left'), right: useStatusBarItems('right') }),
+      { wrapper: wrapper() },
+    );
+    act(() => {
+      result.current.host.registerStatusBarItem(item('b', { side: 'right', order: 2 }));
+      result.current.host.registerStatusBarItem(item('a', { side: 'right', order: 1 }));
+      result.current.host.registerStatusBarItem(item('l', { side: 'left' }));
+    });
+    expect(result.current.right.map((i) => i.id)).toEqual(['a', 'b']);
+    expect(result.current.left.map((i) => i.id)).toEqual(['l']);
+  });
+
+  it('useRegisterStatusBarItem registers on mount, unregisters on unmount', () => {
+    function Item({ id }: { id: string }) { useRegisterStatusBarItem(item(id)); return null; }
+    let items: StudioStatusBarItem[] = [];
+    function Probe() { items = useStatusBarItems('right'); return null; }
+    const { rerender } = render(
+      <StudioHostProvider bookId="b1"><Probe /><Item id="badge" /></StudioHostProvider>,
+    );
+    expect(items.map((i) => i.id)).toEqual(['badge']);
+    rerender(<StudioHostProvider bookId="b1"><Probe /></StudioHostProvider>);
+    expect(items).toHaveLength(0);
   });
 });
 

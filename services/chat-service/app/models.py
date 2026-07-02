@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from datetime import datetime
-from typing import Any
+from typing import Any, Literal
 from uuid import UUID
 
 from pydantic import BaseModel, Field
@@ -332,6 +332,10 @@ class EditorContext(BaseModel):
     which chapter the assistant is editing (for the proposal's chapter guard)."""
     book_id: str
     chapter_id: str
+    # RAID C1 (DR-C1) — optional active chapter/scene title, matched by
+    # scene_match steering entries (case-insensitive substring). Additive:
+    # older FEs simply never send it and scene_match entries stay dormant.
+    chapter_title: str | None = None
 
 
 class BookContext(BaseModel):
@@ -354,8 +358,15 @@ class AdminContext(BaseModel):
 
 
 class StudioContext(BaseModel):
-    """Studio compose context — API-ready; validation deferred to studio phase."""
+    """Studio compose context — API-ready; validation deferred to studio phase.
+
+    CTX-1 (the position pointer): project_id/active_chapter_id let the system message
+    TELL the model the composition project + active chapter it is standing in, instead
+    of forcing tool-forage (a live M-E gate run dead-ended retrying the book_id AS a
+    project_id against composition_* tools)."""
     book_id: UUID | None = None
+    project_id: UUID | None = None
+    active_chapter_id: UUID | None = None
     active_panel_ids: list[str] = Field(default_factory=list)
     context_revision: int | None = None
 
@@ -380,6 +391,14 @@ class SendMessageRequest(BaseModel):
     enabled_skills: list[str] | None = None
     studio_context: StudioContext | None = None
     consumer_capabilities: ConsumerCapabilities | None = None
+    # RAID Wave C2 (DR-C2) — HITL permission mode. 'write' (default) = today's
+    # behavior + the Tier-A prompt-once approval gate; 'ask' = read-only research
+    # surface (server tools filter to tier R; frontend tools stay — they are
+    # human-executed by construction). Compose stays the disable_tools seam above.
+    # RAID Wave B2 (07S §5b) — 'plan' = the ask surface PLUS the PlanForge
+    # `plan_*` server tools (they write plan artifacts, never prose); plan_forge
+    # skill auto-injects and a plan-mode system nudge is appended.
+    permission_mode: Literal["ask", "write", "plan"] = "write"
 
 
 class ToolResultRequest(BaseModel):

@@ -2,7 +2,17 @@ import { Injectable, Logger, OnModuleInit, OnModuleDestroy } from '@nestjs/commo
 import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import { StreamableHTTPClientTransport } from '@modelcontextprotocol/sdk/client/streamableHttp.js';
 import { AppConfig, ProviderConfig, loadConfig } from '../config/config.js';
-import { Catalog, computeCatalog, ProviderAvailability, ProviderResult } from './catalog.js';
+import {
+  AuxCatalog,
+  Catalog,
+  computeAuxCatalog,
+  computeCatalog,
+  EMPTY_AUX,
+  ProviderAuxResult,
+  ProviderAvailability,
+  ProviderResult,
+  uriScheme,
+} from './catalog.js';
 
 /** Per-call identity forwarded to a provider (SO-1 / INV-7). Never sourced from the LLM. */
 export interface Envelope {
@@ -84,6 +94,9 @@ export class FederationService implements OnModuleInit, OnModuleDestroy {
   private readonly log = new Logger(FederationService.name);
   private readonly cfg: AppConfig = loadConfig();
   private state: Catalog = EMPTY;
+  // Wave C5 — the federated resources + prompts registry, refreshed on the
+  // same cadence as the tool catalog.
+  private auxState: AuxCatalog = EMPTY_AUX;
   private timer?: NodeJS.Timeout;
 
   async onModuleInit(): Promise<void> {
@@ -122,9 +135,40 @@ export class FederationService implements OnModuleInit, OnModuleDestroy {
     return this.state.toolToProvider.get(tool);
   }
 
+  // ── Wave C5 — resources + prompts (federated like tools) ─────────────
+
+  resourceCatalog(): any[] {
+    return this.auxState.resourceList;
+  }
+  resourceTemplateCatalog(): any[] {
+    return this.auxState.resourceTemplateList;
+  }
+  promptCatalog(): any[] {
+    return this.auxState.promptList;
+  }
+  /** Owning provider for a resources/read URI. A concrete catalog hit wins;
+   * otherwise route by URI SCHEME (the C5 namespace rule: scheme == provider
+   * name), which is how a TEMPLATE-instantiated URI — never present in the
+   * concrete list — finds its provider. The final name-match fallback covers
+   * a scheme whose provider listed nothing cacheable yet. */
+  providerForResource(uri: string): ProviderConfig | undefined {
+    const direct = this.auxState.resourceToProvider.get(uri);
+    if (direct) return direct;
+    const scheme = uriScheme(uri);
+    if (!scheme) return undefined;
+    return (
+      this.auxState.schemeToProvider.get(scheme) ??
+      this.cfg.providers.find((p) => p.name === scheme)
+    );
+  }
+  providerForPrompt(name: string): ProviderConfig | undefined {
+    return this.auxState.promptToProvider.get(name);
+  }
+
   /** Re-list every provider and rebuild the catalog. Never throws (best-effort). */
   async refresh(): Promise<void> {
     const results: ProviderResult[] = [];
+    const auxResults: ProviderAuxResult[] = [];
     for (const provider of this.cfg.providers) {
       try {
         results.push({ provider, tools: await this.listProviderTools(provider) });
@@ -132,11 +176,23 @@ export class FederationService implements OnModuleInit, OnModuleDestroy {
         results.push({ provider, error });
         this.log.warn(`provider '${provider.name}' list-tools failed → PARTIAL: ${error}`);
       }
+      // Wave C5 — resources + prompts ride the same refresh cadence. A
+      // provider that errors (or lacks the capability — handled inside
+      // listProviderAux) contributes empty lists, never breaks the aggregate.
+      try {
+        auxResults.push({ provider, ...(await this.listProviderAux(provider)) });
+      } catch (error) {
+        auxResults.push({ provider, error });
+        this.log.warn(`provider '${provider.name}' list-resources/prompts failed → empty: ${error}`);
+      }
     }
     this.state = computeCatalog(results);
+    this.auxState = computeAuxCatalog(auxResults, (m) => this.log.warn(m));
     this.log.log(
       `catalog: ${this.state.toolList.length} tools / ${this.cfg.providers.length} providers ` +
-        `(version ${this.state.version || '∅'}${this.state.partial ? ' PARTIAL' : ''})`,
+        `(version ${this.state.version || '∅'}${this.state.partial ? ' PARTIAL' : ''}) · ` +
+        `${this.auxState.resourceList.length}+${this.auxState.resourceTemplateList.length} ` +
+        `resources(+templates) / ${this.auxState.promptList.length} prompts`,
     );
   }
 
@@ -151,6 +207,39 @@ export class FederationService implements OnModuleInit, OnModuleDestroy {
       await client.connect(transport);
       const res: any = await client.listTools();
       return res?.tools ?? [];
+    } finally {
+      await client.close().catch(() => undefined);
+    }
+  }
+
+  /** Wave C5 — list one provider's resources, resource templates, and prompts.
+   * Like tools/list, only the service token rides (identity is enforced on
+   * READ dispatch, provider side). Each capability is probed independently:
+   * a downstream that doesn't support it (the SDK's client-side capability
+   * assertion, or a -32601 method-not-found) contributes `[]` for that list —
+   * the aggregate never breaks. A connect failure throws to the caller. */
+  private async listProviderAux(
+    p: ProviderConfig,
+  ): Promise<{ resources: any[]; resourceTemplates: any[]; prompts: any[] }> {
+    const client = new Client({ name: 'ai-gateway-federation', version: '0.1.0' });
+    const transport = new StreamableHTTPClientTransport(new URL(p.mcpUrl), {
+      requestInit: { headers: { 'X-Internal-Token': this.cfg.internalToken } },
+    });
+    const tryList = async (fn: () => Promise<any[]>): Promise<any[]> => {
+      try {
+        return await fn();
+      } catch {
+        return []; // capability missing / method unsupported → empty, not fatal
+      }
+    };
+    try {
+      await client.connect(transport);
+      const resources = await tryList(async () => ((await client.listResources()) as any)?.resources ?? []);
+      const resourceTemplates = await tryList(
+        async () => ((await client.listResourceTemplates()) as any)?.resourceTemplates ?? [],
+      );
+      const prompts = await tryList(async () => ((await client.listPrompts()) as any)?.prompts ?? []);
+      return { resources, resourceTemplates, prompts };
     } finally {
       await client.close().catch(() => undefined);
     }
@@ -195,6 +284,61 @@ export class FederationService implements OnModuleInit, OnModuleDestroy {
       // Omit `resultSchema` (pass-through) but supply it explicitly since the
       // signal rides the 3rd `options` arg.
       return await client.callTool(params, undefined, signal ? { signal } : undefined);
+    } finally {
+      await client.close().catch(() => undefined);
+    }
+  }
+
+  /**
+   * Wave C5 — read a federated resource. Fresh per-call client carrying the
+   * envelope headers, exactly like {@link executeTool} (INV-7 — identity is
+   * never pinned to a shared connection; the provider enforces tenancy on the
+   * read). Returns the provider's ReadResourceResult verbatim.
+   */
+  async readResource(uri: string, env: Envelope, signal?: AbortSignal): Promise<unknown> {
+    const p = this.providerForResource(uri);
+    if (!p) {
+      throw new Error(`unknown resource '${uri}'`);
+    }
+    const headers = buildEnvelopeHeaders(this.cfg.internalToken, env);
+    const client = new Client({ name: 'ai-gateway', version: '0.1.0' });
+    const transport = new StreamableHTTPClientTransport(new URL(p.mcpUrl), {
+      requestInit: { headers },
+    });
+    try {
+      await client.connect(transport);
+      return await client.readResource({ uri }, signal ? { signal } : undefined);
+    } finally {
+      await client.close().catch(() => undefined);
+    }
+  }
+
+  /**
+   * Wave C5 — get (render) a federated prompt. Same per-call envelope client
+   * as {@link readResource}. Returns the provider's GetPromptResult verbatim.
+   */
+  async getPrompt(
+    name: string,
+    args: Record<string, unknown>,
+    env: Envelope,
+    signal?: AbortSignal,
+  ): Promise<unknown> {
+    const p = this.providerForPrompt(name);
+    if (!p) {
+      throw new Error(`unknown prompt '${name}'`);
+    }
+    const headers = buildEnvelopeHeaders(this.cfg.internalToken, env);
+    const client = new Client({ name: 'ai-gateway', version: '0.1.0' });
+    const transport = new StreamableHTTPClientTransport(new URL(p.mcpUrl), {
+      requestInit: { headers },
+    });
+    try {
+      await client.connect(transport);
+      return await client.getPrompt(
+        // MCP prompt arguments are string-valued on the wire.
+        { name, arguments: args as Record<string, string> },
+        signal ? { signal } : undefined,
+      );
     } finally {
       await client.close().catch(() => undefined);
     }

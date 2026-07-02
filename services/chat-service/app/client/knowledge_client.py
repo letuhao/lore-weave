@@ -672,6 +672,214 @@ class KnowledgeClient:
         # transports (the MCP server's _dispatch already does the same).
         return {"success": True, "result": payload if payload is not None else {}, "error": None}
 
+    # ── Wave C5 — MCP resources + prompts (federated via ai-gateway) ─────────
+    # Same degrade contract as get_tool_definitions / mcp_execute_tool: any
+    # transport or protocol failure returns empty/None — never raises into the
+    # chat turn. Listings need only the service token (like tools/list);
+    # read_mcp_resource carries the caller's envelope identity because the
+    # downstream resource read is tenancy-gated (project ownership).
+
+    async def list_mcp_resources(self) -> list[dict]:
+        """Wave C5 — list the federated MCP resources from the ai-gateway:
+        concrete resources (``resources/list``) plus resource TEMPLATES
+        (``resources/templates/list`` — knowledge's project-scoped resources
+        are ``{project_id}`` templates, so a concrete-only list would hide
+        them). Each entry is a plain dict carrying ``uri`` (concrete) or
+        ``uri_template`` (template) plus name/description/mime_type.
+
+        Returns ``[]`` on any failure. Not cached — the listing is cheap and
+        per-provider availability shifts between refreshes.
+        """
+        if streamablehttp_client is None or ClientSession is None:
+            logger.warning("list_mcp_resources called but the 'mcp' package is not installed")
+            return []
+
+        mcp_url = f"{self._tools_base_url}/mcp"
+        headers = {"X-Internal-Token": self._http.headers["X-Internal-Token"]}
+        tid = current_trace_id()
+        if tid:
+            headers["X-Trace-Id"] = tid
+        try:
+            async with streamablehttp_client(
+                mcp_url, headers=headers,
+                timeout=self._tool_timeout_s, sse_read_timeout=self._tool_timeout_s,
+            ) as (read, write, _):
+                async with ClientSession(read, write) as mcp_session:
+                    await mcp_session.initialize()
+                    listed = await mcp_session.list_resources()
+                    # Templates are tolerated independently: a gateway build
+                    # without templates support still yields the concrete list.
+                    try:
+                        templates = await mcp_session.list_resource_templates()
+                    except Exception as exc:  # noqa: BLE001 — degrade, don't raise
+                        logger.warning("list_mcp_resources templates sub-list failed: %s", exc)
+                        templates = None
+        except Exception as exc:
+            logger.warning("list_mcp_resources (mcp) failed: %s", exc)
+            return []
+
+        out: list[dict] = []
+        for r in getattr(listed, "resources", None) or []:
+            out.append({
+                "uri": str(r.uri),
+                "name": r.name or "",
+                "description": r.description or "",
+                "mime_type": r.mimeType or "",
+            })
+        for t in getattr(templates, "resourceTemplates", None) or []:
+            out.append({
+                "uri_template": t.uriTemplate,
+                "name": t.name or "",
+                "description": t.description or "",
+                "mime_type": t.mimeType or "",
+            })
+        return out
+
+    async def read_mcp_resource(
+        self,
+        uri: str,
+        *,
+        user_id: str,
+        session_id: str,
+        project_id: str | None = None,
+    ) -> dict | None:
+        """Wave C5 — read one federated MCP resource through the gateway.
+
+        Identity rides the SAME envelope headers as mcp_execute_tool (design
+        D3): the knowledge resources verify project ownership downstream, so
+        the caller's user/session identity is mandatory, never an LLM arg.
+
+        Returns ``{"uri", "mime_type", "text"}`` from the first contents item
+        on success, or ``None`` on ANY failure (transport, protocol, tenancy
+        rejection, blob-only content) — never raises into the turn.
+        """
+        if streamablehttp_client is None or ClientSession is None:
+            logger.warning("read_mcp_resource called but the 'mcp' package is not installed")
+            return None
+
+        mcp_url = f"{self._tools_base_url}/mcp"
+        headers = {
+            "X-Internal-Token": self._http.headers["X-Internal-Token"],
+            "X-User-Id": user_id,
+            "X-Session-Id": session_id,
+        }
+        if project_id:
+            headers["X-Project-Id"] = project_id
+        tid = current_trace_id()
+        if tid:
+            headers["X-Trace-Id"] = tid
+        try:
+            async with streamablehttp_client(
+                mcp_url, headers=headers,
+                timeout=self._tool_timeout_s, sse_read_timeout=self._tool_timeout_s,
+            ) as (read, write, _):
+                async with ClientSession(read, write) as mcp_session:
+                    await mcp_session.initialize()
+                    result = await mcp_session.read_resource(uri)
+        except Exception as exc:
+            logger.warning("read_mcp_resource failed for %s: %s", uri, exc)
+            return None
+
+        contents = getattr(result, "contents", None) or []
+        if not contents:
+            return None
+        first = contents[0]
+        text = getattr(first, "text", None)
+        if text is None:
+            # Blob (binary) resources have no text form — nothing usable for
+            # the chat loop; treat as a degrade, not an error.
+            return None
+        return {
+            "uri": str(getattr(first, "uri", uri)),
+            "mime_type": getattr(first, "mimeType", "") or "",
+            "text": text,
+        }
+
+    async def list_mcp_prompts(self) -> list[dict]:
+        """Wave C5 — list the federated MCP prompts from the ai-gateway
+        (``prompts/list``). Each entry is a plain dict: name, description, and
+        the argument specs (name/description/required).
+
+        Returns ``[]`` on any failure — the caller degrades prompt-free.
+        """
+        if streamablehttp_client is None or ClientSession is None:
+            logger.warning("list_mcp_prompts called but the 'mcp' package is not installed")
+            return []
+
+        mcp_url = f"{self._tools_base_url}/mcp"
+        headers = {"X-Internal-Token": self._http.headers["X-Internal-Token"]}
+        tid = current_trace_id()
+        if tid:
+            headers["X-Trace-Id"] = tid
+        try:
+            async with streamablehttp_client(
+                mcp_url, headers=headers,
+                timeout=self._tool_timeout_s, sse_read_timeout=self._tool_timeout_s,
+            ) as (read, write, _):
+                async with ClientSession(read, write) as mcp_session:
+                    await mcp_session.initialize()
+                    listed = await mcp_session.list_prompts()
+        except Exception as exc:
+            logger.warning("list_mcp_prompts (mcp) failed: %s", exc)
+            return []
+
+        return [
+            {
+                "name": p.name,
+                "description": p.description or "",
+                "arguments": [
+                    {
+                        "name": a.name,
+                        "description": a.description or "",
+                        "required": bool(a.required),
+                    }
+                    for a in (p.arguments or [])
+                ],
+            }
+            for p in getattr(listed, "prompts", None) or []
+        ]
+
+    async def get_mcp_prompt(
+        self, name: str, arguments: dict[str, str] | None = None
+    ) -> dict | None:
+        """Wave C5 — render one federated MCP prompt (``prompts/get``).
+
+        Prompts render canned instructions only (no stored data), so no
+        envelope identity is needed. Returns ``{"description", "messages"}``
+        — messages as ``[{"role", "text"}]`` — or ``None`` on any failure.
+        """
+        if streamablehttp_client is None or ClientSession is None:
+            logger.warning("get_mcp_prompt called but the 'mcp' package is not installed")
+            return None
+
+        mcp_url = f"{self._tools_base_url}/mcp"
+        headers = {"X-Internal-Token": self._http.headers["X-Internal-Token"]}
+        tid = current_trace_id()
+        if tid:
+            headers["X-Trace-Id"] = tid
+        try:
+            async with streamablehttp_client(
+                mcp_url, headers=headers,
+                timeout=self._tool_timeout_s, sse_read_timeout=self._tool_timeout_s,
+            ) as (read, write, _):
+                async with ClientSession(read, write) as mcp_session:
+                    await mcp_session.initialize()
+                    result = await mcp_session.get_prompt(name, arguments or {})
+        except Exception as exc:
+            logger.warning("get_mcp_prompt failed for %s: %s", name, exc)
+            return None
+
+        return {
+            "description": getattr(result, "description", "") or "",
+            "messages": [
+                {
+                    "role": str(m.role),
+                    "text": getattr(m.content, "text", "") or "",
+                }
+                for m in getattr(result, "messages", None) or []
+            ],
+        }
+
 
 # ── module-level singleton managed by lifespan ─────────────────────────────
 

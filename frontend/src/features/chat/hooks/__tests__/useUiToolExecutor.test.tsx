@@ -14,7 +14,9 @@ vi.mock('../../providers', () => ({
   useChatStream: () => ({ messages: streamMessages, submitToolResolve }),
 }));
 
+import type { ReactNode } from 'react';
 import { useUiToolExecutor } from '../useUiToolExecutor';
+import { UiNavInterceptorContext, type UiNavInterceptor } from '../../nav/uiNavScope';
 import type { ChatMessage, ToolCallRecord } from '../../types';
 
 function msgWith(tc: ToolCallRecord): ChatMessage {
@@ -65,6 +67,34 @@ describe('useUiToolExecutor', () => {
     renderHook(() => useUiToolExecutor());
     expect(navigate).toHaveBeenCalledWith('/jobs?focus=j9');
     expect(submitToolResolve).toHaveBeenCalledWith('r2', 'c2', { watching: true });
+  });
+
+  // Nav-scope seam (#12 M-E): an interceptor claiming the call runs its effect and
+  // resolves WITHOUT navigating; returning null falls through to the router navigate.
+  // This is the wiring proof — a dropped consult would silently restore the studio-killing nav.
+  it('consults the nav interceptor: claimed call runs effect, never navigates', () => {
+    const effect = vi.fn();
+    const interceptor: UiNavInterceptor = (tool) =>
+      tool === 'ui_navigate' ? { path: null, result: { navigated: true, note: 'in-surface' }, effect } : null;
+    const wrapper = ({ children }: { children: ReactNode }) => (
+      <UiNavInterceptorContext.Provider value={interceptor}>{children}</UiNavInterceptorContext.Provider>
+    );
+    streamMessages = [msgWith(navRecord)];
+    renderHook(() => useUiToolExecutor(), { wrapper });
+    expect(effect).toHaveBeenCalledTimes(1);
+    expect(navigate).not.toHaveBeenCalled();
+    expect(submitToolResolve).toHaveBeenCalledWith('r1', 'c1', { navigated: true, note: 'in-surface' });
+  });
+
+  it('falls through to the router navigate when the interceptor returns null', () => {
+    const interceptor: UiNavInterceptor = () => null;
+    const wrapper = ({ children }: { children: ReactNode }) => (
+      <UiNavInterceptorContext.Provider value={interceptor}>{children}</UiNavInterceptorContext.Provider>
+    );
+    streamMessages = [msgWith(navRecord)];
+    renderHook(() => useUiToolExecutor(), { wrapper });
+    expect(navigate).toHaveBeenCalledWith('/books/b1/glossary');
+    expect(submitToolResolve).toHaveBeenCalledWith('r1', 'c1', { navigated: true });
   });
 
   it('ignores non-pending and non-ui tool calls', () => {

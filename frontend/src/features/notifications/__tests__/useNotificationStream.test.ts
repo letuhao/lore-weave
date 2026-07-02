@@ -10,6 +10,18 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 
 import { useNotificationStream } from '../hooks/useNotificationStream';
 
+const refreshAccessToken = vi.fn(() => Promise.resolve<string | null>('fresh-token'));
+vi.mock('@/api', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@/api')>()),
+  refreshAccessToken: () => refreshAccessToken(),
+}));
+
+/** A structurally-valid JWT whose exp is `secFromNow` seconds from now. */
+function mkJwt(secFromNow: number): string {
+  const b64 = (o: object) => btoa(JSON.stringify(o)).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+  return `${b64({ alg: 'none' })}.${b64({ exp: Math.floor(Date.now() / 1000) + secFromNow })}.sig`;
+}
+
 type MockESInstance = {
   url: string;
   closed: boolean;
@@ -36,6 +48,7 @@ class MockEventSource implements MockESInstance {
 
 beforeEach(() => {
   created.length = 0;
+  refreshAccessToken.mockClear();
   vi.stubGlobal('EventSource', MockEventSource);
   vi.useFakeTimers();
 });
@@ -162,6 +175,37 @@ describe('useNotificationStream', () => {
     );
     unmount();
     expect(created[0].closed).toBe(true);
+  });
+
+  it('error with an EXPIRED jwt triggers a token refresh instead of blind reconnect', () => {
+    // token computed ONCE — mkJwt inside the render callback would mint a new string per
+    // re-render once the fake clock moves, re-running the effect and skewing the count.
+    const token = mkJwt(-60);
+    const { result } = renderHook(() => useNotificationStream(token, () => {}));
+    act(() => { created[0].onerror?.(new Event('error')); });
+    expect(refreshAccessToken).toHaveBeenCalledTimes(1);
+    expect(result.current).toBe('reconnecting');
+    // No blind retry with the dead token — reconnection happens via the accessToken
+    // prop changing (lw-auth-refreshed → AuthProvider), which re-runs the effect.
+    act(() => { vi.advanceTimersByTime(60_000); });
+    expect(created).toHaveLength(1);
+  });
+
+  it('refresh failure → idle (next user interaction handles refresh-or-logout)', async () => {
+    refreshAccessToken.mockResolvedValueOnce(null);
+    const token = mkJwt(-60);
+    const { result } = renderHook(() => useNotificationStream(token, () => {}));
+    await act(async () => { created[0].onerror?.(new Event('error')); });
+    expect(result.current).toBe('idle');
+  });
+
+  it('error with a still-valid jwt keeps the normal backoff reconnect', () => {
+    const token = mkJwt(3600);
+    renderHook(() => useNotificationStream(token, () => {}));
+    act(() => { created[0].onerror?.(new Event('error')); });
+    expect(refreshAccessToken).not.toHaveBeenCalled();
+    act(() => { vi.advanceTimersByTime(1000); });
+    expect(created).toHaveLength(2);
   });
 
   it('closes when accessToken transitions to null (logout)', () => {

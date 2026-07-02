@@ -227,6 +227,7 @@ async def lifespan(app: FastAPI):
             handle_chapter_published,
             handle_chapter_unpublished,
             handle_chapter_deleted,
+            handle_chat_message_feedback,
             handle_glossary_entity_updated,
             handle_glossary_entity_merged,
             handle_translation_published,
@@ -234,6 +235,9 @@ async def lifespan(app: FastAPI):
 
         dispatcher = EventDispatcher()
         dispatcher.register("chat.turn_completed", handle_chat_turn)
+        # Track 4 P3b — thumbs on a chat turn → salience feedback attribution
+        # (advisory; only affects ranking once salience_feedback_weight > 0).
+        dispatcher.register("chat.message_feedback", handle_chat_message_feedback)
         # KG-ML M2 — a chapter's translation became active → dual-index its vi
         # passages (index-only; never re-extracts Layer 1).
         dispatcher.register("translation.published", handle_translation_published)

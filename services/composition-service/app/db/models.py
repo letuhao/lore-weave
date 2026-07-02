@@ -481,6 +481,96 @@ class ImportSource(BaseModel):
     created_at: datetime | None = None
 
 
+PlanRunStatus = Literal["pending", "proposed", "checkpoint", "validated", "compiled", "failed"]
+PlanRunMode = Literal["rules", "llm"]
+PlanArtifactKind = Literal[
+    "document", "analyze", "spec", "graph", "package", "llm_io", "validation_report",
+]
+
+
+class PlanRun(BaseModel):
+    id: UUID
+    owner_user_id: UUID
+    book_id: UUID
+    work_id: UUID | None = None
+    status: PlanRunStatus = "pending"
+    mode: PlanRunMode
+    model_ref: UUID | None = None
+    source_checksum: str = ""
+    source_markdown: str = ""
+    active_job_id: UUID | None = None
+    error_detail: str | None = None
+    checkpoint_state: dict[str, Any] = Field(default_factory=dict)
+    created_at: datetime | None = None
+    updated_at: datetime | None = None
+
+
+class PlanArtifact(BaseModel):
+    id: UUID
+    run_id: UUID
+    owner_user_id: UUID
+    kind: PlanArtifactKind
+    content: dict[str, Any]
+    created_at: datetime | None = None
+
+
+# ── authoring run (RAID Wave D2, DR-D — the §10 autonomy-dial level-3/4 run)
+AuthoringRunStatus = Literal[
+    "draft", "gated", "running", "paused", "failed", "report_ready", "closed",
+]
+
+
+class AuthoringRun(BaseModel):
+    run_id: UUID
+    owner_user_id: UUID
+    book_id: UUID
+    plan_run_id: UUID
+    level: int
+    scope: list[str] = Field(default_factory=list)          # ordered chapter-id strings
+    budget_usd: Decimal = Decimal("0")
+    spent_usd: Decimal = Decimal("0")
+    tool_allowlist: list[str] = Field(default_factory=list)  # C2 snapshot (caller-provided)
+    params: dict[str, Any] = Field(default_factory=dict)     # drafting-seam inputs (model ref)
+    breaker_state: dict[str, Any] = Field(default_factory=dict)
+    status: AuthoringRunStatus = "draft"
+    current_unit: int = 0
+    error_message: str | None = None
+    # D4 durable driver: which driver process owns the run + its per-unit
+    # heartbeat (stale heartbeat on a 'running' run = no live driver → the
+    # periodic sweep re-claims and resumes from current_unit). `background` is
+    # the FE-facing fg/bg flag (v1: display/filter only — sweep durability
+    # applies to BOTH fg and bg runs).
+    driver_id: str | None = None
+    driver_heartbeat_at: datetime | None = None
+    background: bool = False
+    created_at: datetime | None = None
+    updated_at: datetime | None = None
+
+
+# ── authoring run unit (RAID Wave D3 — the per-unit ledger row the driver writes;
+# review FSM pending→drafted→(accepted|rejected), pending→failed)
+AuthoringRunUnitStatus = Literal[
+    "pending", "drafted", "failed", "accepted", "rejected",
+]
+
+
+class AuthoringRunUnit(BaseModel):
+    run_id: UUID
+    unit_index: int
+    chapter_id: UUID
+    status: AuthoringRunUnitStatus = "pending"
+    pre_revision_id: UUID | None = None   # pre-run restore point (NULL = no revisions yet)
+    post_revision_id: UUID | None = None  # the run's draft revision (best-effort)
+    cost_usd: Decimal = Decimal("0")      # this unit's share of the run's spent_usd
+    error_message: str | None = None
+    # D5: the continuity-critic verdict — {severity: ok|warn|severe, summary,
+    # cost_usd[, detail]}. None = not critiqued (critic disabled / unit never
+    # drafted / run paused-or-stolen at the boundary before the critique).
+    critic_verdict: dict[str, Any] | None = None
+    created_at: datetime | None = None
+    updated_at: datetime | None = None
+
+
 # ── retrieval result (the FROZEN contract W3 produces / W2 + the MCP suggest consume)
 class MotifCandidate(BaseModel):
     motif: Motif

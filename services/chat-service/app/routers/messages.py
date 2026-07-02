@@ -273,6 +273,8 @@ async def send_message(
             enabled_skills=body.enabled_skills,
             # #09 Lane A — presence enables the studio dock-nav frontend tools.
             studio_context=body.studio_context.model_dump() if body.studio_context else None,
+            # RAID Wave C2 (DR-C2) — HITL permission mode (ask|write, default write).
+            permission_mode=body.permission_mode,
         ),
         media_type="text/event-stream",
         headers=headers,

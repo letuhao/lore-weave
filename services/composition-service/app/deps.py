@@ -10,6 +10,8 @@ the active connection.
 
 from __future__ import annotations
 
+from typing import TYPE_CHECKING
+
 from app.clients.book_client import BookClient, get_book_client
 from app.clients.embedding_client import EmbeddingClient, get_embedding_client
 from app.clients.glossary_client import GlossaryClient, get_glossary_client
@@ -18,6 +20,7 @@ from app.clients.knowledge_client import KnowledgeClient, get_knowledge_client
 from app.clients.llm_client import LLMClient, get_llm_client
 from app.db.pool import get_pool
 from app.db.repositories.arc_template_repo import ArcTemplateRepo
+from app.db.repositories.authoring_runs import AuthoringRunsRepo, AuthoringRunUnitsRepo
 from app.db.repositories.canon_rules import CanonRulesRepo
 from app.db.repositories.daily_progress import DailyProgressRepo
 from app.db.repositories.derivatives import DerivativesRepo
@@ -30,11 +33,56 @@ from app.db.repositories.motif_repo import MotifRepo
 from app.db.repositories.motif_retrieve import MotifRetriever
 from app.db.repositories.narrative_thread import NarrativeThreadRepo
 from app.db.repositories.outline import OutlineRepo
+from app.db.repositories.plan_runs import PlanRunsRepo
 from app.db.repositories.references import ReferencesRepo
 from app.db.repositories.scene_links import SceneLinksRepo
 from app.db.repositories.structure_templates import StructureTemplatesRepo
 from app.db.repositories.style_voice import StyleProfileRepo, VoiceProfileRepo
 from app.db.repositories.works import WorksRepo
+from app.services.plan_forge_service import PlanForgeService
+
+if TYPE_CHECKING:  # runtime import stays deferred (the service pulls in the engine)
+    from app.services.authoring_run_service import AuthoringRunService
+
+
+async def get_plan_runs_repo() -> PlanRunsRepo:
+    return PlanRunsRepo(get_pool())
+
+
+async def get_plan_forge_service() -> PlanForgeService:
+    from app.clients.llm_client import get_llm_client
+
+    return PlanForgeService(
+        PlanRunsRepo(get_pool()),
+        GenerationJobsRepo(get_pool()),
+        WorksRepo(get_pool()),
+        llm=get_llm_client(),
+    )
+
+
+async def get_authoring_run_service() -> "AuthoringRunService":
+    """RAID Wave D2+D3+D4 — the autonomous authoring-run FSM + start-gate +
+    DURABLE sequential driver (wired to the REAL in-process engine drafting
+    seam) plus the D3 per-unit ledger + Run Report + accept/reject/Revert-All
+    (real book-service revision capture). D4 defaults: notify=None → the real
+    NotificationClient (lazy), driver_id=None → the process identity; the
+    per-request instances share the module-level driver-task registry, so the
+    inflight cap and sweep see one another. D5 default: critic=None → the real
+    EngineCriticSeam (in-process judge_prose over the drafted chapter). Tests
+    inject fakes."""
+    from app.services.authoring_run_service import (
+        AuthoringRunService,
+        BookRevisionCapture,
+        EngineDraftingSeam,
+    )
+
+    return AuthoringRunService(
+        AuthoringRunsRepo(get_pool()),
+        PlanRunsRepo(get_pool()),
+        EngineDraftingSeam(),
+        AuthoringRunUnitsRepo(get_pool()),
+        BookRevisionCapture(),
+    )
 
 
 async def get_works_repo() -> WorksRepo:

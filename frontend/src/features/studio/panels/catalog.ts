@@ -10,6 +10,12 @@ import type { IDockviewPanelProps } from 'dockview-react';
 import { WelcomePanel } from '../components/panels/WelcomePanel';
 import { ComposePanel } from './ComposePanel';
 import { EditorPanel } from './EditorPanel';
+import { PlannerPanel } from '@/features/plan-forge/components/PlannerPanel';
+import { UsagePanel } from './UsagePanel';
+import { NotificationsPanel } from './NotificationsPanel';
+import { SettingsPanel } from './SettingsPanel';
+import { TrashPanel } from './TrashPanel';
+import { JsonEditorPanel } from './JsonEditorPanel';
 
 export interface StudioPanelDef {
   id: string;
@@ -24,6 +30,15 @@ export interface StudioPanelDef {
 export const STUDIO_PANELS: StudioPanelDef[] = [
   { id: 'compose', component: ComposePanel, titleKey: 'panels.compose.title', descKey: 'panels.compose.desc' },
   { id: 'editor', component: EditorPanel, titleKey: 'panels.editor.title', descKey: 'panels.editor.desc' },
+  { id: 'planner', component: PlannerPanel, titleKey: 'panels.planner.title', descKey: 'panels.planner.desc' },
+  // #11 W2 — user-scoped panels (dockable migration wave 1).
+  { id: 'usage', component: UsagePanel, titleKey: 'panels.usage.title', descKey: 'panels.usage.desc' },
+  { id: 'notifications', component: NotificationsPanel, titleKey: 'panels.notifications.title', descKey: 'panels.notifications.desc' },
+  { id: 'settings', component: SettingsPanel, titleKey: 'panels.settings.title', descKey: 'panels.settings.desc' },
+  { id: 'trash', component: TrashPanel, titleKey: 'panels.trash.title', descKey: 'panels.trash.desc' },
+  // #12 R3/R4 — singleton, retargets via params {docType, resourceId}; opened by "Open as JSON"
+  // affordances only (hidden from palette ⇒ outside the agent enum, no contract change this cycle).
+  { id: 'json-editor', component: JsonEditorPanel, titleKey: 'panels.json-editor.title', descKey: 'panels.json-editor.desc', hiddenFromPalette: true },
   { id: 'welcome', component: WelcomePanel, titleKey: 'welcome.tab', descKey: 'welcome.tab', hiddenFromPalette: true },
 ];
 

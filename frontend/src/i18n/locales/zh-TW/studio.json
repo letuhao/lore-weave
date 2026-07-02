@@ -9,7 +9,49 @@
   },
   "panels": {
     "compose": { "title": "Compose", "desc": "AI 共同創作對話" },
-    "editor": { "title": "Editor", "desc": "手稿編輯器" }
+    "editor": { "title": "Editor", "desc": "手稿編輯器" },
+    "planner": { "title": "規劃器", "desc": "規劃小說系統" },
+    "usage": { "title": "用量", "desc": "花費、Token 與請求紀錄" },
+    "notifications": { "title": "通知", "desc": "工作完成與提醒" },
+    "settings": { "title": "設定", "desc": "帳戶、供應商與翻譯" },
+    "trash": { "title": "垃圾桶", "desc": "還原已刪除的書籍、章節等" },
+    "json-editor": { "title": "JSON", "desc": "資源的原始 JSON 檢視" }
+  },
+  "sceneRail": {
+    "title": "場景",
+    "toggle": "場景",
+    "empty": "本章尚無場景（請在編排器建立大綱）。",
+    "synopsisPlaceholder": "場景摘要…",
+    "stale": "已在他處變更 — 已重新載入",
+    "notAnchored": "場景尚未錨定到內文 — 按 ⚓ 連結標題。",
+    "anchored": "已錨定 {{count}} 個場景，{{unmatched}} 個不符 — ⌘S 儲存。",
+    "anchorNoop": "{{count}} 個已錨定，{{unmatched}} 個沒有相符標題。",
+    "anchorTitle": "將場景錨定到內文標題",
+    "add": "新增場景",
+    "addDisabled": "本章尚無大綱（請在編排器建立）",
+    "newTitlePlaceholder": "場景名稱…",
+    "create": "新增",
+    "deleted": "已刪除「{{title}}」。",
+    "undo": "復原",
+    "moveUp": "上移",
+    "moveDown": "下移",
+    "delete": "刪除場景",
+    "status": { "empty": "空", "outline": "大綱", "drafting": "撰寫中", "done": "完成" }
+  },
+  "jsonEditor": {
+    "empty": "從資源面板的「以 JSON 開啟」開啟資源。",
+    "invalid": "無效的 JSON",
+    "conflict": "衝突: {{part}}",
+    "format": "格式化",
+    "revert": "還原",
+    "openAs": "以 JSON 開啟"
+  },
+  "planner": {
+    "sourcePlaceholder": "貼上小說系統的 Markdown…",
+    "propose": "提出",
+    "model": "模型",
+    "empty": "貼上小說系統的 Markdown 並按「提出」開始規劃執行。",
+    "mode": { "rules": "規則", "llm": "LLM" }
   },
   "editor": {
     "empty": "在導覽列選擇章節即可在此編輯。",
@@ -74,7 +116,10 @@
   },
   "status": {
     "wordsPlaceholder": "— 字",
-    "modelPlaceholder": "尚無模型"
+    "words": "{{count}} 字",
+    "modelPlaceholder": "尚無模型",
+    "notifications": "通知",
+    "cost24h": "過去 24 小時花費"
   },
   "manuscript": {
     "title": "手稿",

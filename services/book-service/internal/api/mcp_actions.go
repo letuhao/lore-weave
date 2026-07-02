@@ -530,10 +530,16 @@ WHERE d.chapter_id=$1 AND c.book_id=$2 AND c.lifecycle_state='active' FOR UPDATE
 	if err != nil {
 		return uuid.Nil, err
 	}
+	// Empty-prose guard — union of the editor `_text` projection AND standard
+	// tiptap nested text leaves ($.**.text); see publishChapter for the rationale
+	// (the `_text`-only selector false-rejected standard tiptap bodies).
 	var prose string
 	_ = tx.QueryRow(ctx, `
-SELECT COALESCE(string_agg(t #>> '{}', '' ORDER BY ordinality), '')
-FROM jsonb_path_query(($1)::jsonb, '$.content[*]._text') WITH ORDINALITY AS x(t, ordinality)`, body).Scan(&prose)
+SELECT COALESCE((
+  SELECT string_agg(t #>> '{}', '') FROM jsonb_path_query(($1)::jsonb, '$.content[*]._text') AS x(t)
+), '') || COALESCE((
+  SELECT string_agg(t #>> '{}', '') FROM jsonb_path_query(($1)::jsonb, '$.**.text') AS y(t)
+), '')`, body).Scan(&prose)
 	if strings.TrimSpace(prose) == "" {
 		return uuid.Nil, errActionBadState
 	}

@@ -36,8 +36,10 @@ from uuid import UUID
 import redis.asyncio as aioredis
 from pydantic import BaseModel, ValidationError
 
-if TYPE_CHECKING:  # deps used only as ToolContext type hints (lane LF)
+if TYPE_CHECKING:  # deps used only as ToolContext type hints (lane LF + story_search)
+    from app.clients.book_client import BookClient
     from app.clients.grant_client import GrantClient
+    from app.clients.reranker_client import RerankerClient
     from app.db.repositories.graph_schemas import GraphSchemasRepo
     from app.db.repositories.graph_views import GraphViewsRepo
     from app.db.repositories.ontology_mutations import OntologyMutationsRepo
@@ -73,6 +75,7 @@ from app.tools.definitions import (
     MemoryRememberArgs,
     MemorySearchArgs,
     MemoryTimelineArgs,
+    StorySearchArgs,
 )
 from app.tools.build_tools import BUILD_TOOL_HANDLERS
 from app.tools.graph_schema_tools import GRAPH_SCHEMA_HANDLERS
@@ -137,6 +140,11 @@ class ToolContext:
     # None for first-party traffic. Carrier for per-key spend attribution (H-C) and
     # the owned-resources-only default (OD-8 — see loreweave_mcp.is_owner_only).
     mcp_key_id: str | None = None
+    # ── #12 story_search (universal manuscript search) — optional deps ─
+    # run_hybrid_search needs the book-service lexical leg + the BYOK
+    # reranker; same optional-with-None pattern as the lane-LF deps below.
+    book_client: "BookClient | None" = None
+    reranker_client: "RerankerClient | None" = None
     # ── lane LF (KG ontology MCP tools) — optional deps ───────────────
     grant_client: "GrantClient | None" = None
     graph_views_repo: "GraphViewsRepo | None" = None
@@ -254,6 +262,53 @@ async def _require_project_owner_memory(ctx: ToolContext) -> None:
 
 
 # ── handlers ──────────────────────────────────────────────────────────
+
+
+async def _handle_story_search(ctx: ToolContext, args: StorySearchArgs) -> dict:
+    """#12 — the universal manuscript search: one tool over the raw-search hybrid
+    engine (lexical FTS/trigram + CJK fulltext + semantic vectors + RRF +
+    cross-encoder rerank). Zero required location args: the project comes from the
+    ambient ToolContext (or the optional ownership-checked project_id), the book
+    from the project's link. Degraded legs surface in `degraded`, never an error."""
+    if ctx.project_id is None:
+        return {"hits": [], "count": 0,
+                "note": "no knowledge project is linked to this chat — link one in "
+                        "session settings to enable story search"}
+    project = await ctx.projects_repo.get(ctx.user_id, ctx.project_id)
+    if project is None:
+        raise ToolExecutionError("project not found")
+    if project.book_id is None:
+        return {"hits": [], "count": 0,
+                "note": "this project has no linked book to search"}
+    if ctx.book_client is None or ctx.reranker_client is None:
+        raise ToolExecutionError("story search is not available on this surface")
+
+    # Late import — retriever pulls heavy search deps; keep executor import light.
+    from app.search.retriever import run_hybrid_search
+
+    mode = "lexical" if args.mode == "exact" else args.mode
+    result = await run_hybrid_search(
+        user_id=ctx.user_id,
+        book_id=project.book_id,
+        query=args.query,
+        project=project,
+        book_client=ctx.book_client,
+        embedding_client=ctx.embedding_client,
+        reranker_client=ctx.reranker_client,
+        mode=mode,  # type: ignore[arg-type]
+        granularity=args.granularity,
+        limit=args.limit,
+    )
+    hits = result.hits[: args.limit]
+    out: dict = {"hits": hits, "count": len(hits)}
+    if result.degraded:
+        out["degraded"] = result.degraded
+    if not hits:
+        out["note"] = (
+            "no matches — try mode='semantic' for ideas described in your own "
+            "words, or a shorter exact phrase"
+        )
+    return out
 
 
 async def _handle_memory_search(ctx: ToolContext, args: MemorySearchArgs) -> dict:
@@ -509,6 +564,7 @@ async def _handle_memory_forget(
 
 _HANDLERS = {
     "memory_search": _handle_memory_search,
+    "story_search": _handle_story_search,
     "memory_recall_entity": _handle_memory_recall_entity,
     "memory_timeline": _handle_memory_timeline,
     "memory_remember": _handle_memory_remember,

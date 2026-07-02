@@ -322,6 +322,14 @@ ALTER TABLE extraction_jobs
 -- filters extraction_jobs by updated_at — index it so the periodic sweep isn't a seq-scan.
 CREATE INDEX IF NOT EXISTS idx_extraction_jobs_updated_at ON extraction_jobs(updated_at);
 
+-- D-WORKER-SKIP-FALSE-GREEN: items that advanced the cursor WITHOUT doing any
+-- work (text unavailable, retry-exhausted). A drain that skipped every chapter
+-- used to read "complete N/N" — an indistinguishable success that masked the
+-- book-service `_text` extraction bug. worker-ai increments this alongside
+-- items_processed, and _complete_job stamps error_message when skipped >= total.
+ALTER TABLE extraction_jobs
+  ADD COLUMN IF NOT EXISTS items_skipped INT NOT NULL DEFAULT 0;
+
 -- E0-3 Phase 2a (D-E0-3-CALLER-PAYS-EXTRACTION): BYOK dual-identity billing.
 -- A collaborator's extraction must charge the COLLABORATOR's key, never the
 -- owner's (only a key's owner may cause it to be charged). These three columns
@@ -1325,6 +1333,45 @@ CREATE INDEX IF NOT EXISTS idx_event_text_translations_project
   ON event_text_translations(project_id);
 CREATE INDEX IF NOT EXISTS idx_event_text_translations_user
   ON event_text_translations(user_id);
+
+-- ═══════════════════════════════════════════════════════════════
+-- entity_access_log (Track 4 P0 — salience substrate)
+-- Records how often / how recently each GLOSSARY entity is SURFACED into a
+-- user's context block (L2-fact / L3-passage entities are not tracked here —
+-- glossary entities are the unit of "importance"), so salience can be LEARNED (R-T4-01)
+-- instead of guessed by static tier. Tenancy: scoped per (user, project) —
+-- NEVER a shared/global signal (a UNIQUE(entity_id) without the scope key
+-- would be the tenancy bug the project guards against). Purged with the
+-- project (project_id scope). Written fire-and-forget AFTER the context
+-- block renders (off the latency path); read by the P1 salience blend.
+-- `decayed_score` is refreshed by the nightly Ebbinghaus decay job (P1);
+-- `retrieval_count` is the raw lifetime counter.
+-- ═══════════════════════════════════════════════════════════════
+CREATE TABLE IF NOT EXISTS entity_access_log (
+  user_id           UUID NOT NULL,                       -- tenant scope (no cross-DB FK)
+  project_id        UUID NOT NULL,                       -- purge + tenant scope
+  entity_id         TEXT NOT NULL,                       -- Neo4j :Entity id / glossary_entity_id
+  retrieval_count   BIGINT NOT NULL DEFAULT 0,           -- raw lifetime surface count
+  decayed_score     DOUBLE PRECISION NOT NULL DEFAULT 0, -- Ebbinghaus-decayed (nightly, P1)
+  last_retrieved_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  created_at        TIMESTAMPTZ NOT NULL DEFAULT now(),
+  PRIMARY KEY (user_id, project_id, entity_id)
+);
+-- Read path: the salience blend loads a project's rows for the current user.
+CREATE INDEX IF NOT EXISTS idx_entity_access_log_scope
+  ON entity_access_log(user_id, project_id);
+-- Decay job scans by recency.
+CREATE INDEX IF NOT EXISTS idx_entity_access_log_last_retrieved
+  ON entity_access_log(last_retrieved_at);
+
+-- Track 4 P3b — feedback attribution. last_session_id = the chat session whose
+-- context build most recently surfaced this entity (stamped by the router's P0
+-- recording); feedback_score accumulates thumbs (±1) attributed to entities the
+-- session surfaced within the turn's time window. Additive; both unused until
+-- salience_feedback_weight > 0.
+ALTER TABLE entity_access_log
+  ADD COLUMN IF NOT EXISTS last_session_id UUID,
+  ADD COLUMN IF NOT EXISTS feedback_score DOUBLE PRECISION NOT NULL DEFAULT 0;
 """
 
 

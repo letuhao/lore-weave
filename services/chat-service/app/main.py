@@ -8,6 +8,7 @@ from fastapi.responses import JSONResponse, PlainTextResponse
 
 from loreweave_obs import current_otel_trace_id, setup_tracing
 
+from app.client.book_steering_client import close_book_steering_client, init_book_steering_client
 from app.client.knowledge_client import close_knowledge_client, init_knowledge_client
 from app.config import settings
 from app.db.migrate import run_migrations
@@ -52,11 +53,14 @@ async def lifespan(app: FastAPI):
         pass  # MinIO may not be running in dev; don't block startup
     # K5: initialise the long-lived knowledge-service HTTP client.
     init_knowledge_client()
+    # RAID C1: long-lived book-service steering client (degrades to [] when down).
+    init_book_steering_client()
     # Start background cleanup task
     cleanup_task = asyncio.create_task(_audio_cleanup_loop())
     yield
     cleanup_task.cancel()
     await close_knowledge_client()
+    await close_book_steering_client()
     await close_pool()
 
 

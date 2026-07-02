@@ -1,0 +1,88 @@
+# Golden expectations for story-plan-v1.md acceptance test
+
+meta:
+  title_contains: "STORY PLAN"
+  min_open_questions: 6
+
+sections:
+  required_kinds:
+    - character_seed
+    - mechanics
+    - planner_variables
+    - arc_overview
+    - writing_principles
+    - open_questions
+  count: 7
+
+charter:
+  min_consistency_anchors: 4
+  required_anchor_keywords:
+    - bình dị
+    - hài hước
+    - dry humor
+  required_forbid_keywords:
+    - tiết lộ
+    - giải thích trực tiếp
+
+variables:
+  required_codes: [PA, HA, CD, THR]
+  transition_rules_must_include:
+    - cảnh giới
+    - experience
+  not_coupled_to:
+    - cultivation_realm
+    - cảnh giới
+
+arcs:
+  arc2:
+    id: arc_2
+    arc_kind: discovery
+    theme_must_not_contain:
+      - power fantasy
+      - sức mạnh arc
+    theme_should_contain:
+      - khám phá
+    min_events: 5
+    min_planner_notes_linked_ratio: 0.8
+
+arc2_events:
+  required_ids:
+    - arc_2_event_1
+    - arc_2_event_2
+    - arc_2_event_4
+    - arc_2_event_6
+    - arc_2_event_7
+
+planning_package:
+  arc_id: arc_2
+  max_premise_chars: 4000
+  required_constraints:
+    - HA
+    - hài hước
+
+negative_tests:
+  - id: thr_early_explain
+    patch:
+      events:
+        - id: arc_2_event_4
+          synopsis: "THR được giải thích là tiền kiếp với Mị Đế"
+    expect_fail_rules: [thr_no_early_explain]
+
+  - id: pa_realm_coupling
+    patch:
+      events:
+        - id: arc_2_event_5
+          var_deltas:
+            - variable: PA
+              delta: "+10"
+              coupled_to_realm: true
+              reason: "đột phá cảnh giới"
+    expect_fail_rules: [pa_not_realm]
+
+  - id: arc2_power_framing
+    patch:
+      arcs:
+        - id: arc_2
+          arc_kind: power
+          theme: "power fantasy arc về sức mạnh tối thượng"
+    expect_fail_rules: [arc2_discovery]

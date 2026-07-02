@@ -65,6 +65,9 @@ export default defineConfig({
   test: {
     environment: 'jsdom',
     setupFiles: ['./vitest.setup.ts'],
+    // codemirror-json-schema's ESM dist uses extensionless relative imports — node's resolver
+    // (vitest external deps) chokes; inlining lets vite's resolver handle it (build/dev already do).
+    server: { deps: { inline: ['codemirror-json-schema'] } },
     // Unit tests only. Playwright e2e specs live under tests/e2e and run via
     // their own runner — excluding them keeps vitest fast and its output clean
     // (they otherwise get swept in as "0 test" files).

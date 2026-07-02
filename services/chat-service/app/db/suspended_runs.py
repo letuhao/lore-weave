@@ -32,6 +32,9 @@ class SuspendedRun:
     model_ref: str
     parent_message_id: str | None
     user_message_content: str
+    # RAID Wave C2 (DR-C2) — the permission mode the turn ran under; the resume
+    # pass continues under the SAME mode (default keeps pre-C2 rows on 'write').
+    permission_mode: str = "write"
 
 
 async def save_suspended_run(
@@ -49,19 +52,20 @@ async def save_suspended_run(
     model_ref: str,
     parent_message_id: str | None,
     user_message_content: str,
+    permission_mode: str = "write",
 ) -> None:
     await pool.execute(
         """
         INSERT INTO chat_suspended_runs
           (run_id, session_id, owner_user_id, message_id, working,
            pending_tool_call, input_tokens, output_tokens, model_source,
-           model_ref, parent_message_id, user_message_content)
-        VALUES ($1,$2,$3,$4,$5::jsonb,$6::jsonb,$7,$8,$9,$10,$11,$12)
+           model_ref, parent_message_id, user_message_content, permission_mode)
+        VALUES ($1,$2,$3,$4,$5::jsonb,$6::jsonb,$7,$8,$9,$10,$11,$12,$13)
         """,
         run_id, session_id, owner_user_id, message_id,
         json.dumps(working), json.dumps(pending_tool_call),
         input_tokens, output_tokens, model_source, model_ref,
-        parent_message_id, user_message_content,
+        parent_message_id, user_message_content, permission_mode,
     )
 
 
@@ -78,7 +82,8 @@ async def load_suspended_run(
         """
         SELECT run_id, session_id, owner_user_id, message_id, working,
                pending_tool_call, input_tokens, output_tokens, model_source,
-               model_ref, parent_message_id, user_message_content
+               model_ref, parent_message_id, user_message_content,
+               permission_mode
         FROM chat_suspended_runs
         WHERE run_id = $1 AND owner_user_id = $2 AND expires_at > now()
         """,
@@ -99,6 +104,7 @@ async def load_suspended_run(
         model_ref=str(row["model_ref"]),
         parent_message_id=str(row["parent_message_id"]) if row["parent_message_id"] else None,
         user_message_content=row["user_message_content"],
+        permission_mode=str(row["permission_mode"] or "write"),
     )
 
 

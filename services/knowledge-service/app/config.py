@@ -70,6 +70,26 @@ class Settings(BaseSettings):
     # instructions block are protected.
     mode3_token_budget: int = 6000
 
+    # Track 4 P1 — salience-weighted retrieval (R-T4-01). Blends the P0
+    # entity_access_log signal (recency-decayed retrieval frequency) into the
+    # glossary entity ranking so entities THIS user keeps returning to rank higher
+    # (and survive budget-trim longer). Read-time Ebbinghaus decay — no cron.
+    # WEIGHT DEFAULTS TO 0.0 (byte-identical to today) — measure-before-flip: only
+    # raise it once the POC eval shows the learned signal beats static ranking.
+    salience_access_weight: float = 0.0
+    salience_half_life_days: float = 14.0
+    # Track 4 P3a — graph-native promotion (evidence/mention/edit-recency).
+    # Same measure-before-flip discipline; default 0.0 = no Neo4j fetch, no re-order.
+    salience_promote_weight: float = 0.0
+    salience_promote_half_life_days: float = 30.0
+    # Track 4 P3b — thumbs-feedback attribution term (chat.message_feedback →
+    # entity_access_log.feedback_score). Same discipline; default 0.0 = inert.
+    salience_feedback_weight: float = 0.0
+    # Track 4 P4 (R-T4-06) — ONE widened (relational, 2-hop) L2 retry when the
+    # intent names entities but the first pass found ZERO facts. Additive recall
+    # on the empty path only; default ON (a miss-path fallback, not a re-ranker).
+    context_l2_retry_widened: bool = True
+
     # K16.2 — book-service HTTP client for chapter counts in cost estimation.
     book_service_url: str = "http://book-service:8082"
     book_client_timeout_s: float = 5.0

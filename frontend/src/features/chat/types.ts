@@ -76,6 +76,17 @@ export interface AgentSurfaceState {
   find_tools_call_count: number;
 }
 
+// RAID Wave A3 — the context-budget snapshot the backend emits as an AG-UI
+// CUSTOM event (`name:"contextBudget"`) on every turn finish. Drives the chat
+// header ContextMeter. `pct` = used/effective; null when the model has no
+// registered context_length (so we render "—" instead of a bogus %).
+export interface ContextBudget {
+  used_tokens: number;
+  context_length: number | null;
+  effective_limit: number | null;
+  pct: number | null;
+}
+
 export interface ToolCatalogItem {
   name: string;
   domain: string;

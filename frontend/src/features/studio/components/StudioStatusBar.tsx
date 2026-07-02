@@ -1,8 +1,11 @@
 // Status bar (fixed) — ambient studio status + the bottom-panel toggle. Counts/model/save
 // are informational placeholders in the skeleton; real values land with their producers.
+// Contributed items (#11 F2 — registerStatusBarItem) render between the fixed chrome; each
+// item component is self-contained (data + click), the bar only places it.
 import { useTranslation } from 'react-i18next';
 import { PanelBottom } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import { useStatusBarItems } from '../host/StudioHostProvider';
 
 interface Props {
   bookLanguage?: string;
@@ -12,6 +15,8 @@ interface Props {
 
 export function StudioStatusBar({ bookLanguage, bottomOpen, onToggleBottom }: Props) {
   const { t } = useTranslation('studio');
+  const leftItems = useStatusBarItems('left');
+  const rightItems = useStatusBarItems('right');
   return (
     <div className="flex h-6 flex-shrink-0 items-center gap-3.5 border-t bg-card px-3 text-[11px] text-muted-foreground">
       <button
@@ -28,8 +33,10 @@ export function StudioStatusBar({ bookLanguage, bottomOpen, onToggleBottom }: Pr
         {t('bottom.label', { defaultValue: 'Panel' })}
       </button>
       {bookLanguage && <span className="font-mono text-primary">{bookLanguage}</span>}
+      {leftItems.map((i) => <i.component key={i.id} />)}
       <div className="flex-1" />
-      <span>{t('status.wordsPlaceholder', { defaultValue: '— words' })}</span>
+      {rightItems.map((i) => <i.component key={i.id} />)}
+      {/* #12 M-H — word count is now a registered F2 item (WordCountStatusItem). */}
       <span>{t('status.modelPlaceholder', { defaultValue: 'no model' })}</span>
       {/* Palette hints (VS Code): ⌘P Quick Open · ⌘⇧P Command Palette. */}
       <span className="font-mono" title={t('palette.quickOpenTitle', { defaultValue: 'Go to chapter, scene, arc' })}>⌘P</span>

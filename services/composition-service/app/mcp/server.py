@@ -224,21 +224,43 @@ def _mine_estimate(*, scope: str) -> dict[str, Any]:
     description=(
         "Get the composition Work for a book/project (its status, active template, "
         "and authoring settings). The Work is the per-user authoring context layered "
-        "over a book. Owner/grant-filtered — VIEW on the book required."
+        "over a book. Pass project_id when you know it; otherwise pass book_id — the "
+        "caller's Work for that book is resolved, which is ALSO how you discover the "
+        "project_id every other composition_* tool requires (a book_id is NOT a "
+        "project_id). Owner/grant-filtered — VIEW on the book required."
     ),
     meta=require_meta(
         "R", "book",
-        synonyms=["composition work", "writing project", "authoring context", "get work", "compose"],
+        synonyms=[
+            "composition work", "writing project", "authoring context", "get work",
+            "compose", "resolve project id", "project id for book",
+        ],
         tool_name="composition_get_work",
     ),
 )
 async def composition_get_work(
     ctx: MCPContext,
-    project_id: Annotated[str, "The Work's project_id (= the knowledge project id, the Work PK)."],
+    project_id: Annotated[str | None, "The Work's project_id (= the knowledge project id, the Work PK)."] = None,
+    book_id: Annotated[str | None, "Alternative lookup: resolve the caller's Work by book_id (use when you only know the book)."] = None,
 ) -> dict:
     tc = _ctx(ctx)
     works = WorksRepo(get_pool())
-    work = await _work_or_deny(works, tc, UUID(project_id))
+    if project_id:
+        work = await _work_or_deny(works, tc, UUID(project_id))
+    elif book_id:
+        # book→Work resolution (M-E live-caught): the agent naturally knows the book_id
+        # (studio context) but every composition tool keys on project_id, and no tool
+        # bridged the two — the model retried book_id AS project_id and dead-ended.
+        # resolve_by_book is user-scoped (marked works only); 0 → the H13 uniform deny.
+        marked = await works.resolve_by_book(tc.user_id, UUID(book_id))
+        if not marked:
+            raise uniform_not_accessible()
+        if len(marked) > 1:
+            # All the caller's own rows — return them so the model can pick.
+            return {"candidates": [w.model_dump(mode="json") for w in marked]}
+        work = marked[0]
+    else:
+        raise ValueError("pass project_id or book_id")
     await _gate(tc, work.book_id, GrantLevel.VIEW)
     return work.model_dump(mode="json")
 
@@ -2177,6 +2199,244 @@ async def composition_get_mine_job(
     if job is None or job.project_id != pid:
         raise uniform_not_accessible()
     return job.model_dump(mode="json")
+
+
+# ── PlanForge (M4) — plan_* tools ─────────────────────────────────────────────
+# Thin MCP wrappers over PlanForgeService (the SAME service the /v1/composition
+# .../plan/* router uses). Scope=book, envelope identity only, VIEW reads / EDIT
+# writes through the `_gate` chokepoint (mirrors the HTTP router's `_gate_book`).
+# The chat plan-forge skill drives the propose→checkpoint→validate→compile HIL flow.
+
+
+def _plan_svc():
+    from app.clients.llm_client import get_llm_client
+    from app.db.repositories.plan_runs import PlanRunsRepo
+    from app.services.plan_forge_service import PlanForgeService
+
+    pool = get_pool()
+    return PlanForgeService(
+        PlanRunsRepo(pool), GenerationJobsRepo(pool), WorksRepo(pool), llm=get_llm_client(),
+    )
+
+
+def _opt_uuid(v: str | None) -> UUID | None:
+    return UUID(v) if v else None
+
+
+@mcp_server.tool(
+    name="plan_propose_spec",
+    description=(
+        "PlanForge: turn a novel-system source document into a structured "
+        "NovelSystemSpec + analysis. mode='rules' proposes synchronously; mode='llm' "
+        "enqueues an async job (poll the run). model_ref is REQUIRED for mode='llm'. "
+        "EDIT on the book required."
+    ),
+    meta=require_meta(
+        "A", "book",
+        synonyms=["plan a novel", "propose spec", "novel system spec", "planforge", "story plan"],
+        tool_name="plan_propose_spec",
+    ),
+)
+async def plan_propose_spec(
+    ctx: MCPContext,
+    book_id: Annotated[str, "The book to plan (UUID)."],
+    source_markdown: Annotated[str, "The novel-system source document (markdown)."],
+    mode: Annotated[Literal["rules", "llm"], "rules = sync; llm = async job."] = "rules",
+    model_ref: Annotated[str | None, "user_model id — REQUIRED when mode='llm'."] = None,
+) -> dict:
+    tc = _ctx(ctx)
+    bid = UUID(book_id)
+    await _gate(tc, bid, GrantLevel.EDIT)
+    svc = _plan_svc()
+    run, is_async, job_id = await svc.create_run(
+        tc.user_id, bid, source_markdown=source_markdown, mode=mode,
+        model_ref=_opt_uuid(model_ref), force=False,
+    )
+    detail = await svc.get_run_detail(tc.user_id, bid, run.id)
+    return {
+        "run_id": str(run.id),
+        "async": is_async,
+        "job_id": str(job_id) if job_id else None,
+        "run": detail,
+    }
+
+
+@mcp_server.tool(
+    name="plan_validate",
+    description="PlanForge: run the S1–S8 golden linter (+ fidelity report) on a run's spec. VIEW required.",
+    meta=require_meta("R", "book", synonyms=["validate plan", "check spec", "golden rules"], tool_name="plan_validate"),
+)
+async def plan_validate(
+    ctx: MCPContext,
+    book_id: Annotated[str, "The book (UUID)."],
+    run_id: Annotated[str, "The plan run (UUID)."],
+) -> dict:
+    tc = _ctx(ctx)
+    bid = UUID(book_id)
+    await _gate(tc, bid, GrantLevel.VIEW)
+    report = await _plan_svc().validate(tc.user_id, bid, UUID(run_id))
+    if report is None:
+        raise uniform_not_accessible()
+    return report
+
+
+@mcp_server.tool(
+    name="plan_self_check",
+    description="PlanForge: ranked gaps + fidelity score for a run's spec (no user pointing to fields). VIEW required.",
+    meta=require_meta("R", "book", synonyms=["self check plan", "plan gaps", "what is missing"], tool_name="plan_self_check"),
+)
+async def plan_self_check(
+    ctx: MCPContext,
+    book_id: Annotated[str, "The book (UUID)."],
+    run_id: Annotated[str, "The plan run (UUID)."],
+) -> dict:
+    tc = _ctx(ctx)
+    bid = UUID(book_id)
+    await _gate(tc, bid, GrantLevel.VIEW)
+    out = await _plan_svc().self_check(tc.user_id, bid, UUID(run_id))
+    if out is None:
+        raise uniform_not_accessible()
+    return out
+
+
+@mcp_server.tool(
+    name="plan_interpret_feedback",
+    description=(
+        "PlanForge: interpret the user's free-text plan feedback into a structured "
+        "FeedbackInterpretation (intent + focus paths + suggested revision). "
+        "model_ref required. EDIT required."
+    ),
+    meta=require_meta("A", "book", synonyms=["interpret feedback", "understand my note", "plan feedback"], tool_name="plan_interpret_feedback"),
+)
+async def plan_interpret_feedback(
+    ctx: MCPContext,
+    book_id: Annotated[str, "The book (UUID)."],
+    run_id: Annotated[str, "The plan run (UUID)."],
+    user_message: Annotated[str, "The user's free-text feedback on the plan."],
+    model_ref: Annotated[str, "user_model id (required)."],
+    apply_mode_hint: Annotated[Literal["auto", "confirm", "diagnose_only"] | None, "Optional apply-mode hint."] = None,
+) -> dict:
+    tc = _ctx(ctx)
+    bid = UUID(book_id)
+    await _gate(tc, bid, GrantLevel.EDIT)
+    out = await _plan_svc().interpret(
+        tc.user_id, bid, UUID(run_id),
+        user_message=user_message, model_ref=UUID(model_ref), apply_mode_hint=apply_mode_hint,
+    )
+    if out is None:
+        raise uniform_not_accessible()
+    return out
+
+
+@mcp_server.tool(
+    name="plan_apply_revision",
+    description=(
+        "PlanForge: apply a draft revision to the spec (refine). Returns applied / "
+        "no_change / rejected — an accepted-but-unchanged refine is `no_change`, never "
+        "`applied` (D-PF-APPLY-HONESTY). model_ref required. EDIT required."
+    ),
+    meta=require_meta("A", "book", synonyms=["apply revision", "refine plan", "update spec"], tool_name="plan_apply_revision"),
+)
+async def plan_apply_revision(
+    ctx: MCPContext,
+    book_id: Annotated[str, "The book (UUID)."],
+    run_id: Annotated[str, "The plan run (UUID)."],
+    model_ref: Annotated[str, "user_model id (required)."],
+    draft_revision: Annotated[dict[str, Any] | None, "The revision to apply (fields/paths)."] = None,
+    focus_paths: Annotated[list[str] | None, "Optional spec paths to focus the refine."] = None,
+) -> dict:
+    tc = _ctx(ctx)
+    bid = UUID(book_id)
+    await _gate(tc, bid, GrantLevel.EDIT)
+    try:
+        mode, payload = await _plan_svc().refine(
+            tc.user_id, bid, UUID(run_id),
+            model_ref=UUID(model_ref), revision=draft_revision, focus_paths=focus_paths,
+        )
+    except LookupError:
+        raise uniform_not_accessible()
+    return {"mode": mode, **payload}
+
+
+@mcp_server.tool(
+    name="plan_review_checkpoint",
+    description=(
+        "PlanForge: approve or hold the current spec checkpoint. approved=true marks "
+        "the run validated-intent; approved=false keeps it at checkpoint for more "
+        "refinement. No LLM. EDIT required."
+    ),
+    meta=require_meta("A", "book", synonyms=["approve checkpoint", "accept plan", "hold plan"], tool_name="plan_review_checkpoint"),
+)
+async def plan_review_checkpoint(
+    ctx: MCPContext,
+    book_id: Annotated[str, "The book (UUID)."],
+    run_id: Annotated[str, "The plan run (UUID)."],
+    approved: Annotated[bool, "True to advance the checkpoint; False to hold."],
+) -> dict:
+    tc = _ctx(ctx)
+    bid = UUID(book_id)
+    await _gate(tc, bid, GrantLevel.EDIT)
+    out = await _plan_svc().review_checkpoint(tc.user_id, bid, UUID(run_id), approved=approved)
+    if out is None:
+        raise uniform_not_accessible()
+    return out
+
+
+@mcp_server.tool(
+    name="plan_handoff_autofix",
+    description=(
+        "PlanForge: batch-apply the top self-check gaps as a bounded refine loop "
+        "(max_rounds, default 3). Stops when no gaps remain or a round makes no change. "
+        "model_ref required. EDIT required."
+    ),
+    meta=require_meta("A", "book", synonyms=["autofix plan", "fix gaps", "handoff autofix", "auto refine"], tool_name="plan_handoff_autofix"),
+)
+async def plan_handoff_autofix(
+    ctx: MCPContext,
+    book_id: Annotated[str, "The book (UUID)."],
+    run_id: Annotated[str, "The plan run (UUID)."],
+    model_ref: Annotated[str, "user_model id (required)."],
+    max_rounds: Annotated[int, "Max refine rounds (1–5, default 3)."] = 3,
+) -> dict:
+    tc = _ctx(ctx)
+    bid = UUID(book_id)
+    await _gate(tc, bid, GrantLevel.EDIT)
+    out = await _plan_svc().handoff_autofix(
+        tc.user_id, bid, UUID(run_id), model_ref=UUID(model_ref), max_rounds=max_rounds,
+    )
+    if out is None:
+        raise uniform_not_accessible()
+    return out
+
+
+@mcp_server.tool(
+    name="plan_compile",
+    description=(
+        "PlanForge: compile a validated spec's arc into a PlanningPackage (blocks S1–S8 "
+        "failures with 422). run_pipeline=true also kicks the planning pipeline "
+        "(model_ref then required). EDIT required."
+    ),
+    meta=require_meta("A", "book", synonyms=["compile plan", "planning package", "build plan"], tool_name="plan_compile"),
+)
+async def plan_compile(
+    ctx: MCPContext,
+    book_id: Annotated[str, "The book (UUID)."],
+    run_id: Annotated[str, "The plan run (UUID)."],
+    arc_id: Annotated[str, "The arc to compile (e.g. 'arc_2')."],
+    run_pipeline: Annotated[bool, "Also start the planning pipeline job."] = False,
+    model_ref: Annotated[str | None, "user_model id — required when run_pipeline=true."] = None,
+) -> dict:
+    tc = _ctx(ctx)
+    bid = UUID(book_id)
+    await _gate(tc, bid, GrantLevel.EDIT)
+    try:
+        mode, payload = await _plan_svc().compile(
+            tc.user_id, bid, UUID(run_id),
+            arc_id=arc_id, run_pipeline=run_pipeline, model_ref=_opt_uuid(model_ref),
+        )
+    except LookupError:
+        raise uniform_not_accessible()
+    return {"mode": mode, **payload}
 
 
 # ── ASGI factory ──────────────────────────────────────────────────────────────

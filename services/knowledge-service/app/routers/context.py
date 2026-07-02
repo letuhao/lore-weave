@@ -14,6 +14,7 @@ them with `app.dependency_overrides[...]` instead of monkey-patching
 module globals.
 """
 
+import asyncio
 import json
 import logging
 import time
@@ -28,11 +29,13 @@ from app.clients.llm_client import LLMClient
 from app.context.builder import ProjectNotFound, build_context
 from app.context.selectors.glossary import select_glossary_semantic
 from app.db.neo4j import neo4j_session
+from app.db.repositories.entity_access import EntityAccessRepo
 from app.db.repositories.projects import ProjectsRepo
 from app.db.repositories.summaries import SummariesRepo
 from app.db.repositories.working_memory import WorkingMemoryRepo
 from app.deps import (
     get_embedding_client,
+    get_entity_access_repo,
     get_glossary_client,
     get_llm_client,
     get_projects_repo,
@@ -43,6 +46,11 @@ from app.metrics import context_build_duration_seconds
 from app.middleware.internal_auth import require_internal_token
 
 logger = logging.getLogger(__name__)
+
+# Track 4 P0 — strong refs to in-flight fire-and-forget telemetry tasks. asyncio
+# only keeps WEAK references to tasks, so a bare create_task() can be GC'd before it
+# runs (sporadic salience-write loss under load). Hold the ref until the task is done.
+_bg_tasks: set = set()
 
 # Re-exported for back-compat with existing test dependency_overrides
 # that reference `app.routers.context.get_*_repo`. The canonical home
@@ -114,6 +122,7 @@ async def build(
     embedding_client: EmbeddingClient = Depends(get_embedding_client),
     llm_client: LLMClient = Depends(get_llm_client),
     working_memory_repo: WorkingMemoryRepo = Depends(get_working_memory_repo),
+    entity_access_repo: EntityAccessRepo = Depends(get_entity_access_repo),
 ) -> ContextBuildResponse:
     # K6.5: observe end-to-end build duration. Label distinguishes
     # successful modes (no_project/static/full) from each error path
@@ -132,6 +141,7 @@ async def build(
             embedding_client=embedding_client,
             llm_client=llm_client,
             language=req.language,
+            entity_access_repo=entity_access_repo,
         )
         _mode_label = built.mode
     except ProjectNotFound:
@@ -150,6 +160,19 @@ async def build(
         context_build_duration_seconds.labels(mode=_mode_label).observe(
             time.monotonic() - _t0
         )
+    # Track 4 P0 — record which entities were surfaced, fire-and-forget so the
+    # salience telemetry write is off the request latency path and can never fail
+    # the build. Only when a project is scoped and something was surfaced.
+    if req.project_id is not None and built.surfaced_entity_ids:
+        _task = asyncio.create_task(
+            entity_access_repo.record_accesses(
+                req.user_id, req.project_id, built.surfaced_entity_ids,
+                session_id=req.session_id,  # P3b — feedback attribution stamp
+            )
+        )
+        _bg_tasks.add(_task)
+        _task.add_done_callback(_bg_tasks.discard)
+
     resp = ContextBuildResponse.model_validate(built)
     # Interview-roleplay (M4): attach the session's working_memory block (charter
     # + state) as JSON so chat-service can pin + tail-anchor it. Best-effort —

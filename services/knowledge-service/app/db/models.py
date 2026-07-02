@@ -251,6 +251,13 @@ class ProjectExtractionConfigUpdate(BaseModel):
     entity_recovery: EntityRecoveryOverride | None = None
     writer_autocreate: WriterAutocreateOverride | None = None
     prompts: dict[PromptOpLit, PromptOverride] | None = None
+    # D-K18.3-02 / Track 4 P2 — the two L3 rerank knobs read by Mode 3
+    # (`full.py`): a generative LLM rerank and the purpose-built cross-encoder
+    # (both provider-registry user_model UUIDs, BYOK). Were readable by the
+    # builder but had NO public write path (extra="forbid" rejected them) —
+    # unreachable-config gap found by the Track 4 eval run.
+    rerank_model: str | None = None
+    cross_encoder_rerank_model: str | None = None
 
 
 class Summary(BaseModel):

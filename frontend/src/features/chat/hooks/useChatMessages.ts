@@ -2,7 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import type { MutableRefObject } from 'react';
 import { useAuth } from '@/auth';
 import { chatApi } from '../api';
-import type { ChatMessage, AgentSurfaceState } from '../types';
+import type { ChatMessage, AgentSurfaceState, ContextBudget } from '../types';
 import { runChatStream, assembleAssistantMessage } from './runChatStream';
 import type { ChatStreamArgs, StreamPhase } from './runChatStream';
 import type { StreamPins } from './useContextRack';
@@ -43,7 +43,30 @@ export type FrontendToolOutcome =
   // change, not a stale token.
   | 'reprice_required'
   | 'action_error'
-  | 'cancelled';
+  | 'cancelled'
+  // RAID C2 (DR-C2 §4) — the tool_approval card (Write-mode Tier-A prompt-once):
+  // approved_once executes; approved_always also persists the per-user allowlist
+  // row; denied feeds "denied by user" so the agent self-corrects.
+  | 'approved_once'
+  | 'approved_always'
+  | 'denied';
+
+// RAID C2 — HITL permission mode. Persisted per-device in localStorage
+// (mirrors the editor's lw_editor_compose_mode pattern): a UI preference,
+// sent per-request as `permission_mode` on the message POST.
+// RAID B2 (07S §5b) — 'plan': the ask (read-only) surface PLUS the PlanForge
+// plan_* tools — research + plan, no prose until the user switches to Write.
+export type PermissionMode = 'ask' | 'plan' | 'write';
+const PERMISSION_MODE_KEY = 'lw_chat_permission_mode';
+
+function loadPermissionMode(): PermissionMode {
+  try {
+    const stored = localStorage.getItem(PERMISSION_MODE_KEY);
+    return stored === 'ask' || stored === 'plan' ? stored : 'write';
+  } catch {
+    return 'write';
+  }
+}
 
 export function useChatMessages(
   sessionId: string | null,
@@ -64,11 +87,18 @@ export function useChatMessages(
   streamPinsRef?: MutableRefObject<StreamPins>,
   /** #09 Lane A: present in the Writing Studio compose panel — enables the studio
    *  dock-nav frontend tools (open panel / focus manuscript unit). */
-  studioContext?: { book_id?: string; active_panel_ids?: string[]; context_revision?: number },
+  studioContext?: { book_id?: string; project_id?: string; active_chapter_id?: string; active_panel_ids?: string[]; context_revision?: number },
 ) {
   const { accessToken } = useAuth();
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [isLoading, setIsLoading] = useState(false);
+  // RAID C2 — Ask/Write permission mode (lazy-init from localStorage, setter
+  // writes through — mirrors the editor's composeMode persistence).
+  const [permissionMode, setPermissionModeState] = useState<PermissionMode>(loadPermissionMode);
+  const setPermissionMode = useCallback((mode: PermissionMode) => {
+    setPermissionModeState(mode);
+    try { localStorage.setItem(PERMISSION_MODE_KEY, mode); } catch { /* ignore */ }
+  }, []);
   const [streamingText, setStreamingText] = useState('');
   const [streamingReasoning, setStreamingReasoning] = useState('');
   const [streamPhase, setStreamPhase] = useState<StreamPhase>('idle');
@@ -77,6 +107,10 @@ export function useChatMessages(
   // A2A phase-2: true while the in-turn composer model is drafting prose
   // (compose_prose). Drives a transient "✍️ Drafting…" indicator.
   const [isComposing, setIsComposing] = useState(false);
+  // RAID Wave A3: the last turn-finish context-budget snapshot (chat header
+  // meter). Local state (not persisted server-side); mirrored from the worker
+  // snapshot on the windowing path so it survives dock float/close.
+  const [contextBudget, setContextBudget] = useState<ContextBudget | null>(null);
   const abortRef = useRef<AbortController | null>(null);
   const thinkingTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const thinkingStartRef = useRef<number>(0);
@@ -196,6 +230,7 @@ export function useChatMessages(
             ...(displayLanguage ? { displayLanguage } : {}),
             ...(pins.enabledTools?.length ? { enabledTools: pins.enabledTools } : {}),
             ...(pins.enabledSkills?.length ? { enabledSkills: pins.enabledSkills } : {}),
+            permissionMode,
             ...(override ? { override } : {}),
           },
           accessToken,
@@ -222,6 +257,7 @@ export function useChatMessages(
             onComposing: (active) => setIsComposing(active),
             onMemoryMode: (mode) => onMemoryModeRef.current?.(mode),
             onAgentSurface: (payload) => onAgentSurfaceRef.current?.(payload),
+            onContextBudget: (budget) => setContextBudget(budget),
             onAbort: () => { aborted = true; },
             // onToolCall / onActivity accumulate inside runChatStream and arrive
             // on the terminal result; nothing extra to mirror per-event here.
@@ -273,7 +309,7 @@ export function useChatMessages(
         setIsComposing(false);  // never leave the drafting indicator stuck on
       }
     },
-    [accessToken, sessionId, fetchMessages, editorContext, studioContext, composeMode, bookContext, displayLanguage, resolveStreamPins, messages.length],
+    [accessToken, sessionId, fetchMessages, editorContext, studioContext, composeMode, bookContext, displayLanguage, resolveStreamPins, messages.length, permissionMode],
   );
 
   // ── ARCH-1 C6: resume a suspended run after a frontend-tool decision ──────────
@@ -343,6 +379,11 @@ export function useChatMessages(
     if (worker.agentSurface) {
       onAgentSurfaceRef.current?.(worker.agentSurface);
     }
+    // RAID Wave A3: mirror the worker's context-budget snapshot (source of truth
+    // on the windowing path) into local state so the header meter renders identically.
+    if (worker.contextBudget) {
+      setContextBudget(worker.contextBudget);
+    }
 
     // Terminal handling — ONCE per turn per window, deduped on the worker's turnId.
     // Two facets, with DIFFERENT scoping:
@@ -393,7 +434,7 @@ export function useChatMessages(
   }, [
     useWorker, worker?.turnId, worker?.initiatedTurnId, worker?.streamingText, worker?.streamingReasoning,
     worker?.streamPhase, worker?.thinkingElapsed, worker?.streamStatus, worker?.isComposing,
-    worker?.memoryMode, worker?.ended, sessionId,
+    worker?.memoryMode, worker?.contextBudget, worker?.ended, sessionId,
   ]);
 
   /** Build the per-turn ChatStreamArgs (worker path) from the hook's props. */
@@ -412,9 +453,10 @@ export function useChatMessages(
         ...(displayLanguage ? { displayLanguage } : {}),
         ...(pins.enabledTools?.length ? { enabledTools: pins.enabledTools } : {}),
         ...(pins.enabledSkills?.length ? { enabledSkills: pins.enabledSkills } : {}),
+        permissionMode,
       };
     },
-    [sessionId, editorContext, studioContext, composeMode, bookContext, displayLanguage, resolveStreamPins],
+    [sessionId, editorContext, studioContext, composeMode, bookContext, displayLanguage, resolveStreamPins, permissionMode],
   );
 
   // ── Public API ────────────────────────────────────────────────────────────────
@@ -516,6 +558,11 @@ export function useChatMessages(
     isStreaming: streamStatus === 'streaming',
     /** A2A phase-2: composer model is drafting prose this turn. */
     isComposing,
+    /** RAID Wave A3: last turn-finish context-budget snapshot (header meter). */
+    contextBudget,
+    /** RAID C2: HITL permission mode (ask|write) + persisted setter. */
+    permissionMode,
+    setPermissionMode,
     send,
     edit,
     regenerate,

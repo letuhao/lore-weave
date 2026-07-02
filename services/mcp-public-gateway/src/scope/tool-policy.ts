@@ -107,6 +107,10 @@ export const TOOL_POLICY: Record<string, ToolPolicy> = {
   composition_motif_link_list: { tier: 'read', domains: ['composition'] },
   composition_motif_book_list: { tier: 'read', domains: ['composition'] },
   composition_get_mine_job: { tier: 'read', domains: ['composition'] },
+  // plan-forge (composition-service PlanForge MCP — extra prefix plan_ via ai-gateway)
+  plan_validate: { tier: 'read', domains: ['composition'] },
+  plan_self_check: { tier: 'read', domains: ['composition'] },
+  plan_interpret_feedback: { tier: 'paid_read', domains: ['composition'] },
   // jobs (own explicit domain — never implied; edge result-filtering is H-F/P-future)
   jobs_list: { tier: 'read', domains: ['jobs'] },
   jobs_summary: { tier: 'read', domains: ['jobs'] },
@@ -247,6 +251,12 @@ export const TOOL_POLICY: Record<string, ToolPolicy> = {
   // the thread/causal/realized-motif tags). H-F: list BOTH domains so the key needs knowledge too.
   composition_motif_mine: { tier: 'write_confirm', domains: ['composition', 'knowledge'] },
   composition_conformance_run: { tier: 'write_confirm', domains: ['composition', 'knowledge'] },
+  // plan-forge — LLM-heavy / mutating spec paths (composition domain confirm_action)
+  plan_propose_spec: { tier: 'write_confirm', domains: ['composition'] },
+  plan_review_checkpoint: { tier: 'write_confirm', domains: ['composition'] },
+  plan_apply_revision: { tier: 'write_confirm', domains: ['composition'] },
+  plan_handoff_autofix: { tier: 'write_confirm', domains: ['composition'] },
+  plan_compile: { tier: 'write_confirm', domains: ['composition'] },
   // lore-enrichment: reclassified priced+confirm for public (NOT write_auto — a paid
   // auto-tool violates the money model); cross-domain by tools-touched.
   lore_enrichment_auto_enrich: { tier: 'write_confirm', domains: ['lore_enrichment', 'glossary', 'knowledge'] },
