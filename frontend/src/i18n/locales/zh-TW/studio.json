@@ -17,6 +17,14 @@
     "trash": { "title": "垃圾桶", "desc": "還原已刪除的書籍、章節等" },
     "jsonEditor": { "title": "JSON", "desc": "資源的原始 JSON 檢視" }
   },
+  "sceneRail": {
+    "title": "場景",
+    "toggle": "場景",
+    "empty": "本章尚無場景（請在編排器建立大綱）。",
+    "synopsisPlaceholder": "場景摘要…",
+    "stale": "已在他處變更 — 已重新載入",
+    "status": { "empty": "空", "outline": "大綱", "drafting": "撰寫中", "done": "完成" }
+  },
   "jsonEditor": {
     "empty": "從資源面板的「以 JSON 開啟」開啟資源。",
     "invalid": "無效的 JSON",

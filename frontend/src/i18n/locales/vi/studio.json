@@ -17,6 +17,14 @@
     "trash": { "title": "Thùng rác", "desc": "Khôi phục sách, chương đã xoá & hơn nữa" },
     "jsonEditor": { "title": "JSON", "desc": "Xem JSON thô của một resource" }
   },
+  "sceneRail": {
+    "title": "Cảnh",
+    "toggle": "Cảnh",
+    "empty": "Chương này chưa có cảnh (lập dàn ý trong composer).",
+    "synopsisPlaceholder": "Tóm tắt cảnh…",
+    "stale": "đã đổi ở nơi khác — tải lại",
+    "status": { "empty": "trống", "outline": "dàn ý", "drafting": "đang viết", "done": "xong" }
+  },
   "jsonEditor": {
     "empty": "Mở một resource dạng JSON từ panel của nó (\"Open as JSON\").",
     "invalid": "JSON không hợp lệ",

@@ -65,17 +65,25 @@ function StudioFrameInner({ bookId }: { bookId: string }) {
   // Quick Open resolve (v1): reveal the Manuscript navigator (without toggling it shut if we're
   // already there — review-impl MED), highlight the hit, publish the active chapter to the bus via
   // the host. Tree reveal (expand ancestors + scroll) and dock-open land with #03 (tracked debt).
+  // #12 M-C: a SCENE hit additionally publishes the scene slice (AFTER the chapter focus — the
+  // chapter reducer clears activeSceneId) so the editor's Scene Rail highlights it.
   const resolveJump = useCallback((r: JumpResult) => {
     revealManuscript(chrome);
     setSelectedNodeId(r.id);
-    if (r.chapterId) host.focusManuscriptUnit(r.chapterId);
+    if (r.chapterId) {
+      host.focusManuscriptUnit(r.chapterId);
+      if (r.kind === 'scene') host.publish({ type: 'scene', sceneId: r.id, chapterId: r.chapterId });
+    }
   }, [chrome, host]);
 
   // Navigator select (Debt #1 navigator→dock): highlight + drive the editor via the one seam
   // (publish chapter → the Tier-4 hoist loads it; open the editor dock). Arc rows have no chapterId.
   const onSelectNode = useCallback((node: ManuscriptNode) => {
     setSelectedNodeId(node.id);
-    if (node.chapterId) host.focusManuscriptUnit(node.chapterId);
+    if (node.chapterId) {
+      host.focusManuscriptUnit(node.chapterId);
+      if (node.kind === 'scene') host.publish({ type: 'scene', sceneId: node.id, chapterId: node.chapterId });
+    }
   }, [host]);
 
   return (

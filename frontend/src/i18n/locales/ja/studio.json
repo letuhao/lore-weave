@@ -17,6 +17,14 @@
     "trash": { "title": "ゴミ箱", "desc": "削除した本・章などを復元" },
     "jsonEditor": { "title": "JSON", "desc": "リソースの生 JSON ビュー" }
   },
+  "sceneRail": {
+    "title": "シーン",
+    "toggle": "シーン",
+    "empty": "この章にはシーンがありません（コンポーザーでアウトラインを作成）。",
+    "synopsisPlaceholder": "あらすじ…",
+    "stale": "他所で変更 — 再読込しました",
+    "status": { "empty": "空", "outline": "アウトライン", "drafting": "執筆中", "done": "完了" }
+  },
   "jsonEditor": {
     "empty": "各パネルの「JSON として開く」からリソースを開いてください。",
     "invalid": "不正な JSON",

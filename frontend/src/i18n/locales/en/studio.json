@@ -17,6 +17,14 @@
     "trash": { "title": "Trash", "desc": "Restore deleted books, chapters & more" },
     "jsonEditor": { "title": "JSON", "desc": "Raw JSON view of a resource" }
   },
+  "sceneRail": {
+    "title": "Scenes",
+    "toggle": "Scenes",
+    "empty": "No scenes for this chapter (outline it in the composer).",
+    "synopsisPlaceholder": "Synopsis…",
+    "stale": "changed elsewhere — reloaded",
+    "status": { "empty": "empty", "outline": "outline", "drafting": "drafting", "done": "done" }
+  },
   "jsonEditor": {
     "empty": "Open a resource as JSON from its panel (\"Open as JSON\").",
     "invalid": "invalid JSON",
