@@ -46,8 +46,11 @@ class StubWorks:
 
 
 class StubOutline:
-    def __init__(self): self.node = _node()
+    def __init__(self):
+        self.node = _node()
+        self.chapter_scenes: list = []
     async def get_node(self, u, n): return self.node
+    async def scenes_for_chapter(self, u, p, ch): return self.chapter_scenes
 
 
 class StubCanon:
@@ -758,6 +761,7 @@ def test_get_job_404_and_happy(ctx):
 class _StubBook:
     def __init__(self):
         self.patched: list = []
+        self.bodies: list = []
 
     async def get_draft(self, book_id, chapter_id, bearer):
         return {"draft_version": 7}
@@ -765,6 +769,7 @@ class _StubBook:
     async def patch_draft(self, book_id, chapter_id, bearer, *, body,
                           expected_draft_version, body_format, commit_message):
         self.patched.append(commit_message)
+        self.bodies.append(body)
         return {"draft_version": 8}
 
 
@@ -790,6 +795,45 @@ def test_persist_job_writes_draft_and_stamps_result(ctx):
     # the result is re-stamped persisted=True (idempotent re-accept guard)
     last = jobs.updates[-1]
     assert last[1] == "completed" and last[2]["result"]["persisted"] is True
+
+
+def test_persist_job_emits_scene_markers(ctx):
+    """F4 wiring lock (nil-tolerant lesson): persist_job must PASS the chapter's
+    scenes into the doc build — dropping the `scenes=` kwarg keeps every other
+    test green (the fetch is fail-open), so this pins the marker actually landing."""
+    c, _, outline, _, jobs, _, _ = ctx
+    book = _StubBook()
+    _use_book(book)
+    CH = uuid.uuid4()
+    s1, s2 = uuid.uuid4(), uuid.uuid4()
+    outline.chapter_scenes = [SimpleNamespace(id=s1, title="Cuộc Truy Sát"),
+                              SimpleNamespace(id=s2, title="Bên Bờ Suối")]
+    jobs.job = _job(status="completed", result={
+        "text": "### Cuộc Truy Sát\n\nprose one\n\n### Bên Bờ Suối\n\nprose two",
+        "chapter_id": str(CH), "assembly_mode": "per_scene_stitch", "persisted": False})
+    r = c.post(f"/v1/composition/jobs/{JOB}/persist", json={})
+    assert r.status_code == 200 and r.json()["persisted"] is True
+    heads = [n for n in book.bodies[0]["content"] if n["type"] == "heading"]
+    assert [h["attrs"].get("sceneId") for h in heads] == [str(s1), str(s2)]
+
+
+def test_persist_job_survives_scene_fetch_failure(ctx):
+    """F4 fail-open: a broken outline read must never block the accept — the draft
+    persists WITHOUT markers (best-effort contract)."""
+    c, _, outline, _, jobs, _, _ = ctx
+    book = _StubBook()
+    _use_book(book)
+
+    async def boom(u, p, ch):
+        raise RuntimeError("outline down")
+    outline.scenes_for_chapter = boom
+    jobs.job = _job(status="completed", result={
+        "text": "### T\n\nprose", "chapter_id": str(uuid.uuid4()),
+        "assembly_mode": "chapter", "persisted": False})
+    r = c.post(f"/v1/composition/jobs/{JOB}/persist", json={})
+    assert r.status_code == 200 and r.json()["persisted"] is True
+    heads = [n for n in book.bodies[0]["content"] if n["type"] == "heading"]
+    assert heads and "sceneId" not in heads[0]["attrs"]  # heading kept, marker skipped
 
 
 def test_persist_job_idempotent_when_already_persisted(ctx):
