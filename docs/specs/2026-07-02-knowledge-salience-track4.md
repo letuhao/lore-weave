@@ -146,6 +146,34 @@ final_score = base_score                     # today: tier/similarity/recency (u
 - R-T4-08 metadata filter gated on user-tagging uptake.
 - R-T4-04 consolidation gated on extraction volume + observed duplicate rate.
 
+## 8b. Measurement results — 2026-07-02 (the flip decision, per §7)
+
+Eval KG: POC book `019f1783-ebb4` (12 ch VN), extracted with gemma QAT + bge-m3
+(40 entities / 125 events / 15 facts / 181 passages). Harness: `eval/run_salience_eval.py`
+(seed 5×4 focus via real HTTP → P0 telemetry confirmed landing; measure 12 explicit
+queries, in-process arms).
+
+| Arm | MRR | mean rank | hit@list | passage-hit |
+|---|---|---|---|---|
+| baseline `w=0` (rerank off) | 0.5307 | 4.50 | 1.0 | 0.75 |
+| salience `w=0.3` | 0.5126 | 4.67 | 1.0 | 0.75 |
+| baseline `w=0` (cross-encoder ON) | 0.5307 | 4.50 | 1.0 | **0.80** |
+
+**P1 verdict: KEEP `salience_access_weight = 0.0`.** REGRESSION on the explicit-query
+set — tier/FTS ranking is already near-optimal when the query names the entity, and
+the seed pattern boosts the whole co-surfaced cluster (no per-query discrimination).
+Revisit trigger: an ambiguous-query eval (queries that DON'T name the entity), or the
+P3 promotion signals which are per-entity rather than per-build.
+
+**P2 verdict: SHIPPED as per-project opt-in (its designed state) — chain live-proven.**
+Real HTTP build → L3 (pool 40 → final 10) → provider-registry `/internal/rerank` 200
+(local bge-reranker-v2-m3 BYOK) → reorder logged. Passage-hit +0.05 (1 query) — weakly
+positive, not significant at n=12; per-project opt-in stands, no default flip.
+
+Also fixed during measurement: `rerank_model` / `cross_encoder_rerank_model` were
+readable by the builder but UNREACHABLE via the public API (`extra="forbid"` on
+`ProjectExtractionConfigUpdate`) — write path added.
+
 ## 9. Rollout order
 
 `P0 (substrate) → P2 (rerank, independent quick win) → P1 (freq-weight) → P3 (promotion) → P4

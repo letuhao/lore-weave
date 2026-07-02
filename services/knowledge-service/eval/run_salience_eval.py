@@ -181,14 +181,12 @@ async def _measure(args) -> int:
     from app.clients.glossary_client import GlossaryClient
     from app.config import settings
     from app.context.builder import build_context
-    from app.db.pool import init_knowledge_pool
+    from app.db.pool import create_pools, get_knowledge_pool
     from app.db.repositories.entity_access import EntityAccessRepo
     from app.db.repositories.projects import ProjectsRepo
     from app.db.repositories.summaries import SummariesRepo
 
-    await init_knowledge_pool()
-    from app.db.pool import get_knowledge_pool
-
+    await create_pools(settings.knowledge_db_url, settings.glossary_db_url)
     pool = get_knowledge_pool()
     summaries = SummariesRepo(pool)
     projects = ProjectsRepo(pool)
@@ -196,6 +194,7 @@ async def _measure(args) -> int:
         base_url=settings.glossary_service_url,
         internal_token=settings.internal_service_token,
         timeout_s=settings.glossary_client_timeout_s,
+        retries=1,
     )
     embedding = init_embedding_client()
     access_repo = EntityAccessRepo(pool)
