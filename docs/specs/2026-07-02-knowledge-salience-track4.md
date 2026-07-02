@@ -100,11 +100,24 @@ final_score = base_score                     # today: tier/similarity/recency (u
   MMR order when rerank is unset/down. (Today only raw-search uses the client; L3 has only the
   optional *generative* rerank hook.)
 
-### P3 — Salience auto-promotion (R-T4-02). **[buildable — signals exist, cross-service]**
-- Consume the existing signals: thumbs-up turns (learning-service / `loreweave:events:chat`),
-  glossary entity edits (glossary events), `evidence_count`, recent-chapter mentions.
-- Aggregate into `promotion_salience`; blend via `w_promote` (§4), flag-gated.
-- Cross-service **read-only** of existing event streams — no new producer contracts.
+### P3 — Salience auto-promotion (R-T4-02). **[split P3a/P3b — decision record 2026-07-02]**
+
+**P3a (graph-native slice — BUILT):** promotion from signals already ON the KG Entity
+node: `evidence_count` + `mention_count` (log-damped, max-normalized) + edit recency
+(`updated_at`, 30d half-life), composed 0.5/0.3/0.2 in `promotion_score`. Blended as a
+second flag-weighted term (`salience_promote_weight`, default **0.0** = no Neo4j fetch,
+byte-identical). Full mode only (static mode has no graph). Pins still lead. Degrades to
+identity on any Neo4j failure.
+
+**P3b (feedback slice — SPEC'D, deferred behind the eval gate):** the thumbs signal
+(`chat.message_feedback` on `loreweave:events:chat`) carries `{user_id, session_id,
+message_id, rating}` but **no entity attribution** — knowledge-service would need
+(1) a new consumer group on the chat stream and (2) a turn→surfaced-entities attribution
+record (e.g. stamping `session_id`+timestamp onto P0 access rows, or a per-turn context
+snapshot). That is a structural build (defer gate #2), and its value is unproven while
+BOTH blend weights sit at 0 (the P1 eval showed explicit-query re-ranking regresses).
+**Trigger to build P3b:** an ambiguous-query eval shows the blended signals lift, making
+finer per-turn attribution worth the new consumer + schema.
 
 ### P4 — Hierarchical pointer retrieval (R-T4-05) + iterative-retry-on-miss (R-T4-06). **[buildable now]**
 - When the glossary/entity block would dominate the budget, emit **pointers** (`id + name +

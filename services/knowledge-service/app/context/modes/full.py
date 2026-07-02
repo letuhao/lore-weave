@@ -608,9 +608,18 @@ async def build_full_mode(
             min_overlap=settings.dedup_min_overlap,
         )
 
-    # Track 4 P1 — re-rank by learned salience (recency-decayed access frequency).
-    # Weight-guarded: default 0.0 → no DB read, no re-order (byte-identical).
-    entities = await apply_salience(entity_access_repo, entities, user_id, project.project_id)
+    # Track 4 P1+P3a — re-rank by learned salience (P1 access frequency) and/or
+    # graph-native promotion (P3a evidence/mention/edit-recency). Weight-guarded:
+    # defaults 0.0 → no DB read, no Neo4j fetch, no re-order (byte-identical).
+    # The Neo4j session is only opened when the promotion flag is on.
+    if settings.salience_promote_weight > 0:
+        async with neo4j_session() as _sal_session:
+            entities = await apply_salience(
+                entity_access_repo, entities, user_id, project.project_id,
+                neo4j_session=_sal_session,
+            )
+    else:
+        entities = await apply_salience(entity_access_repo, entities, user_id, project.project_id)
 
     # ── L2 facts + L3 passages + summary blend (Neo4j, parallel) ────────
     # Classify once: the same IntentResult drives both the L2 selector's

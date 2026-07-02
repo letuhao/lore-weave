@@ -78,6 +78,10 @@ class Settings(BaseSettings):
     # raise it once the POC eval shows the learned signal beats static ranking.
     salience_access_weight: float = 0.0
     salience_half_life_days: float = 14.0
+    # Track 4 P3a — graph-native promotion (evidence/mention/edit-recency).
+    # Same measure-before-flip discipline; default 0.0 = no Neo4j fetch, no re-order.
+    salience_promote_weight: float = 0.0
+    salience_promote_half_life_days: float = 30.0
 
     # K16.2 — book-service HTTP client for chapter counts in cost estimation.
     book_service_url: str = "http://book-service:8082"
