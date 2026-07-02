@@ -53,7 +53,7 @@ from app.db.models import CorrectionKind
 from app.engine.adaptive_k import adaptive_k
 from app.engine.chapter_gen import build_chapter_pack_node, union_cast
 from app.engine.prose_doc import text_to_tiptap_doc
-from app.engine.stitch import stitch_chapter
+from app.engine.stitch import prepend_scene_headings, stitch_chapter
 from app.engine.canon_reflect import run_canon_reflect
 from app.engine.narrative_thread import detect_and_update_threads
 from app.engine.compress import compress
@@ -259,9 +259,21 @@ async def _open_promise_count(work, *, repo, user_id, project_id) -> int | None:
         return None
 
 
+def _scene_marker_rows(scenes: Any) -> list[dict[str, Any]] | None:
+    """F4 — shape outline scene nodes into the `[{id, title}]` rows
+    `text_to_tiptap_doc` matches sceneId markers against. Best-effort: any
+    surprise shape returns None (persist proceeds without markers, never blocks)."""
+    try:
+        return [{"id": str(s.id), "title": s.title} for s in (scenes or [])] or None
+    except Exception:  # noqa: BLE001 — advisory; must never fail a persist
+        logger.warning("scene-marker shaping failed (advisory)", exc_info=True)
+        return None
+
+
 async def _persist_chapter_draft(
     book: BookClient, book_id: UUID, chapter_id: UUID, bearer: str,
     text: str, commit_message: str,
+    scenes: list[dict[str, Any]] | None = None,
 ) -> tuple[bool, int | None, str | None]:
     """B3/MED-2 — BEST-EFFORT write of an AI-assembled chapter into the
     book-service draft. Returns (persisted, draft_version, error_code) and NEVER
@@ -269,12 +281,14 @@ async def _persist_chapter_draft(
     generated text, which is already durable in generation_job.result (the
     cross-store best-effort rule). The body is a Tiptap doc built to match
     book-service's own shape (prose_doc.text_to_tiptap_doc) — book's PATCH stores
-    it verbatim with no text→doc conversion."""
+    it verbatim with no text→doc conversion. With `scenes` ([{id, title}]), a
+    `### <scene title>` line in the text becomes a heading node carrying
+    `attrs.sceneId` (F4 D-SCENEMARKER-EMIT) so the chapter lands pre-anchored."""
     try:
         current = await book.get_draft(book_id, chapter_id, bearer)
         updated = await book.patch_draft(
             book_id, chapter_id, bearer,
-            body=text_to_tiptap_doc(text),
+            body=text_to_tiptap_doc(text, scenes),
             expected_draft_version=current.get("draft_version"),
             body_format="json", commit_message=commit_message,
         )
@@ -1075,7 +1089,8 @@ async def generate_chapter(
     persisted, draft_version, persist_error = False, None, None
     if body.persist:
         persisted, draft_version, persist_error = await _persist_chapter_draft(
-            book, work.book_id, chapter_id, bearer, final_text, "AI chapter draft (chapter mode)")
+            book, work.book_id, chapter_id, bearer, final_text, "AI chapter draft (chapter mode)",
+            scenes=_scene_marker_rows(scenes))
 
     # NOTE (D-COMP-TRUNCATION-SURFACING): a reliable "was the output cut at the
     # cap?" flag needs the gateway's finish_reason — a char_estimate heuristic is
@@ -1135,10 +1150,13 @@ async def stitch_chapter_endpoint(
     if not (gate["scenes_total"] > 0 and gate["scenes_done"] == gate["scenes_total"]):
         raise HTTPException(status_code=409, detail={"code": "SCENES_NOT_DONE", "gate": gate})
 
-    drafts = await jobs.chapter_scene_drafts(user_id, project_id, chapter_id)
-    if not drafts:
+    draft_rows = await jobs.chapter_scene_drafts(user_id, project_id, chapter_id)
+    if not draft_rows:
         raise HTTPException(status_code=400, detail={
             "code": "NO_SCENE_DRAFTS", "detail": "no completed scene drafts to stitch"})
+    # F4 (D-SCENEMARKER-EMIT) — each draft opens with its `### <scene title>` line;
+    # the persist step (prose_doc) lifts these into sceneId-anchored heading nodes.
+    drafts = prepend_scene_headings(draft_rows)
 
     scenes = await outline.scenes_for_chapter(user_id, project_id, chapter_id)
     chapter_intent = ""
@@ -1284,7 +1302,8 @@ async def stitch_chapter_endpoint(
     persisted, draft_version, persist_error = False, None, None
     if body.persist:
         persisted, draft_version, persist_error = await _persist_chapter_draft(
-            book, work.book_id, chapter_id, bearer, final_text, "AI chapter draft (stitch)")
+            book, work.book_id, chapter_id, bearer, final_text, "AI chapter draft (stitch)",
+            scenes=_scene_marker_rows(scenes))
 
     await jobs.update_status(
         user_id, job.id, "completed",
@@ -1337,6 +1356,7 @@ async def persist_job(
     bearer: str = Depends(get_bearer_token),
     jobs: GenerationJobsRepo = Depends(get_generation_jobs_repo),
     works: WorksRepo = Depends(get_works_repo),
+    outline: OutlineRepo = Depends(get_outline_repo),
     book: BookClient = Depends(get_book_client_dep),
 ) -> dict[str, Any]:
     """M4 Option A — the accept/persist step for a WORKER-computed chapter result.
@@ -1395,8 +1415,17 @@ async def persist_job(
 
     assembly = result.get("assembly_mode", "chapter")
     msg = body.commit_message or f"AI chapter draft ({assembly}, accepted)"
+    # F4 (D-SCENEMARKER-EMIT) — best-effort scene fetch for sceneId marker matching;
+    # a fetch failure persists without markers, it never blocks the accept.
+    scene_rows: list[dict[str, Any]] | None = None
+    try:
+        scene_rows = _scene_marker_rows(await outline.scenes_for_chapter(
+            user_id, job.project_id, UUID(str(chapter_id))))
+    except Exception:  # noqa: BLE001 — advisory; the accept must proceed
+        logger.warning("scene-marker fetch failed (advisory) — persisting without markers",
+                       exc_info=True)
     persisted, draft_version, persist_error = await _persist_chapter_draft(
-        book, work.book_id, UUID(str(chapter_id)), bearer, text, msg)
+        book, work.book_id, UUID(str(chapter_id)), bearer, text, msg, scenes=scene_rows)
     if persisted:
         # Stamp the result so a re-accept is idempotent + the job reflects the write.
         await jobs.update_status(

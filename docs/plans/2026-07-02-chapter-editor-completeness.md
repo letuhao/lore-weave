@@ -71,3 +71,36 @@ Replaces the "— words" placeholder.
 Per-milestone unit tests + one live browser pass at the end: ⌘P → scene → prose jump;
 rail ＋/✕/▲▼ round-trip vs DB; backfill on Chương 1 (2 headings match 2 scenes); word
 count live. Cross-service surface = G0 only (composition) → live smoke covers it.
+
+## Cycle-1c (2026-07-03) — F4 wiring + J1 multi-instance JSON editor
+
+RAID reported COMPLETE (Wave D shipped, tree clean) → the quiet window opened; F4 is
+buildable now. Root finding: composition's `prose_doc.text_to_tiptap_doc` mirrors only
+book-service tiptap.go's *plain* variant — the *markdown* variant (ATX `###` → heading
+node) never got mirrored, so the server persist path flattens generated heading lines
+into paragraphs (the FE insert path converts them — that's where the live H3s came from).
+
+- **F4a `prose_doc.py`:** lift LEADING ATX heading lines (`^#{1,6}\s+…`) per block into
+  heading nodes (level clamp ≤3, `_text` + `content` — the byte-shape of tiptap.go's
+  `tiptapHeadingNode`); the block remainder keeps today's paragraph shape byte-identical
+  (intra-block newlines + empty-paragraph behavior preserved — deliberately NOT adopting
+  tiptap.go's line-join, which would reshape existing prose). New optional `scenes` param
+  (`[{id,title}]`): normalized unique-title match (NFC, casefold, collapse ws, strip
+  trailing punctuation, DIACRITICS KEPT — port of FE `normalizeTitle`) sets
+  `attrs.sceneId`. Ambiguous/unmatched → plain heading, never a wrong marker.
+- **F4b stitch boundaries (deterministic):** `chapter_scene_drafts` returns
+  `(node_id, title, text)`; stitch input becomes `### {title}\n\n{text}` per scene
+  (skip the prepend when the draft already starts with a heading); the stitch prompt
+  gains a "keep the `###` scene-heading lines verbatim" instruction; the degraded concat
+  path carries the headings for free. Model drops a heading → no marker there → ⚓
+  backfill remains the net. Chapter mode (B2 single-pass) gets parse+match only — no
+  drafting-prompt change this cycle.
+- **F4c persist wiring:** `_persist_chapter_draft` gains `scenes`; the 3 chapter-level
+  call sites (inline chapter-generate, inline stitch, `POST /jobs/{id}/persist`) fetch
+  `scenes_for_chapter` best-effort (fetch failure ⇒ persist without markers, never block).
+- **J1 multi-instance JSON editor:** `host.openPanel` gains `component?` (dock panel id
+  decouples from the catalog component id); "Open as JSON" opens
+  `json-editor:{docType}:{resourceId}` (re-opening the same resource focuses the existing
+  tab); the panel self-titles per instance instead of `useStudioPanel`'s singleton
+  registration (hiddenFromPalette — two instances would corrupt each other's
+  register/unregister in the host registry).

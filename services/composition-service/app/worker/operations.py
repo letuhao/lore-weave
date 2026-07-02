@@ -232,7 +232,7 @@ async def run_stitch(
     from app.db.repositories.generation_jobs import GenerationJobsRepo
     from app.db.repositories.works import WorksRepo
     from app.engine.canon_reflect import run_canon_reflect
-    from app.engine.stitch import stitch_chapter
+    from app.engine.stitch import prepend_scene_headings, stitch_chapter
     from app.packer.profile import from_settings
 
     user_id = input["user_id"]
@@ -243,11 +243,14 @@ async def run_stitch(
 
     work = await works.get(UUID(user_id), UUID(project_id))
     profile = from_settings(work.settings if work else None)
-    drafts = await jobs_repo.chapter_scene_drafts(
+    rows = await jobs_repo.chapter_scene_drafts(
         UUID(user_id), UUID(project_id), UUID(chapter_id)
     )
-    if not drafts:
+    if not rows:
         raise ValueError("no completed scene drafts to stitch")
+    # F4 — each draft opens with its `### <scene title>` line; the persist step
+    # (prose_doc) lifts these into sceneId-anchored heading nodes.
+    drafts = prepend_scene_headings(rows)
 
     max_out = input["max_out"]
     reasoning_effort = input.get("reasoning_effort")  # already None when passthrough

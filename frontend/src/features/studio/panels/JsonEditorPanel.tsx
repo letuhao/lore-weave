@@ -1,8 +1,12 @@
-// #12 S4/S5 · the generic json-editor dock panel — ONE singleton panel that retargets via
-// dock params {docType, resourceId} (R3, VS Code settings-tab UX). A THIN VIEW over the shared
-// DocumentHandle (S2): CM6 + JSON(-schema) tooling renders the doc; edits flow handle.update();
-// ⌘S saves THROUGH the domain API (S3). hiddenFromPalette (R4) — opened by "Open as JSON"
-// affordances and the F1 params seam, never the agent enum (this cycle).
+// #12 S4/S5/J1 · the generic json-editor dock panel — a MULTI-INSTANCE view opened per
+// resource (dock id `json-editor:{docType}:{resourceId}`, component 'json-editor'): each
+// resource keeps its own tab + CM6 buffer; re-opening the same resource focuses the existing
+// tab (openPanel dedup). A THIN VIEW over the shared DocumentHandle (S2): CM6 + JSON(-schema)
+// tooling renders the doc; edits flow handle.update(); ⌘S saves THROUGH the domain API (S3).
+// hiddenFromPalette (R4) — opened by "Open as JSON" affordances and the F1 params seam, never
+// the agent enum. NOT registered via useStudioPanel: two instances would corrupt each other's
+// register/unregister in the host registry (keyed by panelId), and the registry entry served
+// nothing for a palette-hidden panel — the tab self-titles per instance instead.
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import type { IDockviewPanelProps } from 'dockview-react';
@@ -11,14 +15,12 @@ import { json } from '@codemirror/lang-json';
 import { jsonSchema } from 'codemirror-json-schema';
 import { getJsonDocumentProvider } from '../documents/registry';
 import { useJsonDocument } from '../documents/useJsonDocument';
-import { useStudioPanel } from './useStudioPanel';
 
 interface JsonEditorParams { docType?: unknown; resourceId?: unknown }
 
 const str = (v: unknown): string | null => (typeof v === 'string' && v ? v : null);
 
 export function JsonEditorPanel(props: IDockviewPanelProps) {
-  useStudioPanel('json-editor', props.api);
   const { t } = useTranslation('studio');
 
   // Retarget on EVERY updateParameters (R3 singleton; same lesson as SettingsPanel — the
@@ -37,6 +39,16 @@ export function JsonEditorPanel(props: IDockviewPanelProps) {
 
   const { handle, snapshot, openError } = useJsonDocument(target.docType, target.resourceId);
   const provider = target.docType ? getJsonDocumentProvider(target.docType) : undefined;
+
+  // J1 — per-instance self-title (locale-correct across swaps): the provider's document label
+  // + a short resource discriminator so multiple JSON tabs are tellable apart.
+  const baseLabel = provider?.titleKey
+    ? t(provider.titleKey, { defaultValue: 'JSON' })
+    : t('panels.json-editor.title', { defaultValue: 'JSON' });
+  useEffect(() => {
+    const suffix = target.resourceId ? ` · ${target.resourceId.slice(0, 8)}` : '';
+    props.api.setTitle(`${baseLabel}${suffix}`);
+  }, [props.api, baseLabel, target.resourceId]);
 
   // The CM6 text buffer: re-seeded when the underlying doc identity changes (load/save/revert/
   // external reload), NOT on every keystroke (text is the source while typing).

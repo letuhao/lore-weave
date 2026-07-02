@@ -33,6 +33,10 @@ _REQUIRED_TOKENS = [
     '"paragraph"',                                 # paragraph node type
     '"text"',                                      # inner text node type
     '"doc"',                                       # wrapper type
+    # F4a also mirrors the markdown variant's heading handling:
+    '`^(#{1,6})\\s+(.*\\S)\\s*$`',                 # atxHeadingRe — leading ATX headings
+    '"heading"',                                   # heading node type
+    'if level > 3',                                # StarterKit level clamp (1-3)
 ]
 
 

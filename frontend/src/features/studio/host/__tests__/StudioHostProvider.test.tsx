@@ -99,6 +99,20 @@ describe('StudioContextBus', () => {
     expect(setActive).toHaveBeenCalledTimes(1);
   });
 
+  it('openPanel component opt decouples the panel id from the catalog component (J1 multi-instance)', () => {
+    const { result } = renderHook(() => useStudioHost(), { wrapper: wrapper() });
+    const addPanel = vi.fn();
+    result.current._dockApiRef.current = { getPanel: () => null, addPanel } as never;
+    act(() => result.current.openPanel('json-editor:loreweave.manuscript-unit.v1:ch1', {
+      component: 'json-editor', title: 'JSON · ch1',
+      params: { docType: 'loreweave.manuscript-unit.v1', resourceId: 'ch1' },
+    }));
+    expect(addPanel).toHaveBeenCalledWith({
+      id: 'json-editor:loreweave.manuscript-unit.v1:ch1', component: 'json-editor',
+      title: 'JSON · ch1', params: { docType: 'loreweave.manuscript-unit.v1', resourceId: 'ch1' },
+    });
+  });
+
   it('openPanel focus:false updates params without stealing focus', () => {
     const { result } = renderHook(() => useStudioHost(), { wrapper: wrapper() });
     const updateParameters = vi.fn();

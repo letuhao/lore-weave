@@ -93,13 +93,15 @@ export function EditorPanel(props: IDockviewPanelProps) {
         >
           {t('sceneRail.toggle', { defaultValue: 'Scenes' })} {hasScenes ? state.scenes.length : ''}
         </button>
-        {/* #12 S4 — the "option" editor duality: open THIS unit in the generic json-editor
-            (singleton; retargets via params). Same shared document — edits mirror live. */}
+        {/* #12 S4/J1 — the "option" editor duality: open THIS unit in the generic json-editor.
+            Per-resource dock id (J1 multi-instance): each chapter gets its OWN tab; re-opening
+            the same chapter focuses it. Same shared document — edits mirror live. */}
         <button
           type="button"
           data-testid="studio-editor-open-json"
-          onClick={() => host.openPanel('json-editor', {
-            title: t('panels.json-editor.title', { defaultValue: 'JSON' }),
+          onClick={() => host.openPanel(`json-editor:loreweave.manuscript-unit.v1:${chapterId}`, {
+            component: 'json-editor',
+            title: `${t('panels.json-editor.title', { defaultValue: 'JSON' })} · ${chapterId.slice(0, 8)}`,
             params: { docType: 'loreweave.manuscript-unit.v1', resourceId: chapterId },
           })}
           className="rounded px-1.5 py-0.5 hover:bg-secondary hover:text-foreground"

@@ -1,5 +1,26 @@
 # ▶▶ NEXT SESSION STARTS HERE — **RAID ✅ COMPLETE 2026-07-02: Track 4 + C5/C4/C1/C2/B2 + WAVE D (D2 FSM `ecf0d410c` · D3 report/accept-reject `004d49ad9` · D4 durable sweep/claim/notify `037831e1d` · D5 real-judge critic `1d6f2960b` · post-RAID /review-impl hardening: HIGH >100-chapter gate false-reject `6c2ba94e0` + 4 MED fixes, see block below). B2 browser-smoked PASS (real gemma plan-mode, wire `permission_mode:plan` proven). REMAINING (small tail): full C2 approval-card browser loop (D-RAID-C2-LIVE-SMOKE — needs a clean session + tool-strong model; card surface itself proven live via the frontend-tool loop), C6 FE wiring + C1 FE panel (both wait for the dockable track to release the editor/panel seams), end-to-end autonomous-run live drive (create→gate→start→report on the POC book — all layers live-DB-proven separately; ⚠️ FE tsc is BROKEN at HEAD in the dockable track's committed studio files — manuscriptUnitDocument/ManuscriptUnitProvider/EditorPanel — their track owns the fix; smoke images build from a patched worktree meanwhile). Draft PR #54 open. Contract stands: local LLM only, exact-file staging, hard-stops = destructive-ops-outside-test-account + 3-strike.** Spec [`salience-track4`](../specs/2026-07-02-knowledge-salience-track4.md) + [`07S`](../specs/2026-07-01-writing-studio/07S_studio_agent_standard.md) + DRs [`raid-loadbearing-decision-records`](../specs/2026-07-02-raid-loadbearing-decision-records.md). · 2026-07-02**
 
+> **▶ #12 CYCLE-1c — F4 SCENEMARKER-EMIT + J1 MULTI-INSTANCE JSON EDITOR — SHIPPED + LIVE-SMOKED 2026-07-03.**
+> `D-SCENEMARKER-EMIT` CLEARED (RAID quiet window opened): a generated chapter now lands **pre-anchored** — no ⚓
+> needed. Root finding: composition's `prose_doc.text_to_tiptap_doc` mirrored only tiptap.go's *plain* variant; the
+> *markdown* heading variant was never mirrored, so the server persist path flattened `###` lines into paragraphs.
+> **F4a** `prose_doc.py` lifts leading ATX headings into heading nodes (tiptap.go byte-shape, level≤3) and, given
+> `scenes`, sets `attrs.sceneId` on a normalized **unique**-title match (`normalize_title` = exact port of FE
+> `SceneAnchor.normalizeTitle`, diacritics significant; ambiguous/duplicate/unmatched → unmarked, never wrong);
+> canary extended to pin the Go heading tokens. **F4b** `chapter_scene_drafts` returns `{title,text}` rows; stitch
+> input becomes `### <title>\n\n<text>` per scene (`prepend_scene_headings`, skip when already headed); stitch
+> prompt gains a keep-headings-verbatim guard (injected only when headings present); the degraded concat carries
+> markers deterministically. **F4c** `_persist_chapter_draft(scenes=…)` wired at all 3 chapter persist sites
+> (inline chapter-generate, inline stitch, `POST /jobs/{id}/persist` — best-effort scene fetch, never blocks).
+> **LIVE E2E** (POC book, Qwen2.5-7B LM Studio): stitch job kept **3/3** `###` headings through the real merge →
+> persist → book draft v3 carries 3 heading nodes each with the EXACT outline sceneId (psql-verified, VN titles).
+> Caught live: `infra-composition-worker` is a **separate image** from `infra-composition-service` — rebuilding only
+> the service left the worker stale (first smoke ran old code). **J1** json-editor is now **multi-instance**:
+> `host.openPanel` gains `component` (dock id ≠ catalog component); "Open as JSON" opens
+> `json-editor:{docType}:{chapterId}` per chapter (re-open focuses); panel self-titles (`JSON · <id8>`) and no
+> longer registers in the host registry (two instances corrupted register/unregister). **Suites:** composition
+> **1526** unit green · FE studio+editor **272/272** + tsc clean. Plan: `docs/plans/2026-07-02-chapter-editor-completeness.md` §Cycle-1c.
+
 > **▶ WAVE D — COMPLETE 2026-07-02 (autonomous run, sub-agent build + orchestrator verify).** The autonomy dial's
 > full backbone in composition-service: **D2** `authoring_runs` FSM (7 states, OCC-guarded transitions, all-or-nothing
 > start-gate: validated plan + scope-fence unique-index (1 active run/book) + budget + allowlist snapshot; sequential
@@ -150,9 +171,8 @@
 > cursor; ⚓ backfill anchors headings↔scenes by unique normalized-title match in ONE transaction (explicit action
 > → dirty → user ⌘S; diacritics preserved — VN tone marks are significant). LIVE: ⚓ 2/2 on Chương 1, markers
 > persisted in the draft body (psql `sceneId` grep), jump scroll 0→856 with the cursor inside
-> `h3[data-scene-id=<node id>]`. **`D-SCENEMARKER-EMIT` deferred (gate #1/#4):** emit `heading{sceneId}` at
-> generation-persist time — that seam is RAID D-wave's actively-moving code; the F1 attr + F3 matcher are the
-> reusable pieces. **M-G rail CRUD:** ＋ create (uses the NEW `chapter_node_id` the scenes endpoint returns — works
+> `h3[data-scene-id=<node id>]`. **`D-SCENEMARKER-EMIT` — CLEARED 2026-07-03 (cycle-1c, see block above):** emit
+> at generation-persist time shipped once the RAID quiet window opened. **M-G rail CRUD:** ＋ create (uses the NEW `chapter_node_id` the scenes endpoint returns — works
 > at 0 scenes), ✕ soft-archive with Undo (restore), ▲/▼ reorder (after_id + If-Match; BE renumbers story_order) —
 > LIVE round-trip verified vs composition DB. **M-H word count:** real F2 status item (`\p{L}` NOT `\w` — JS \w is
 > ASCII-only even under /u and shreds Vietnamese; CJK per-char); ManuscriptUnitProvider moved ABOVE the status bar

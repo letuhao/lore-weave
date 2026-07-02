@@ -46,7 +46,10 @@ export interface StudioHost {
   // Dock actions (#08 §StudioHostValue) — the single home for Lane-A ui tools + the palette.
   // `params` (#11 F1) is the deep-link seam: passed to addPanel on open, updateParameters when
   // the panel is already open. Panels read props.params / api.onDidParametersChange.
-  openPanel: (panelId: string, opts?: { focus?: boolean; title?: string; params?: Record<string, unknown> }) => void;
+  // J1: `component` decouples the dock panel id from the catalog component id so ONE component
+  // can open per-resource instances (e.g. `json-editor:{docType}:{resourceId}`). Omitted ⇒ the
+  // panel id IS the component id (the singleton panels).
+  openPanel: (panelId: string, opts?: { focus?: boolean; title?: string; params?: Record<string, unknown>; component?: string }) => void;
   focusManuscriptUnit: (chapterId: string, panelId?: string) => void;
   // Internals for the reactive hooks + the dock wiring (not part of the public contract).
   _regStore: Store<StudioToolRegistration[]>;
@@ -71,7 +74,7 @@ export function StudioHostProvider({ bookId, children }: { bookId: string; child
     const statusStore = createStore<StudioStatusBarItem[]>([]);
     const rebuildStatus = () => statusStore.set(Array.from(statusMap.values()));
 
-    const openPanel = (panelId: string, opts?: { focus?: boolean; title?: string; params?: Record<string, unknown> }) => {
+    const openPanel = (panelId: string, opts?: { focus?: boolean; title?: string; params?: Record<string, unknown>; component?: string }) => {
       const api = dockApiRef.current;
       if (!api) return;
       const existing = api.getPanel(panelId);
@@ -85,7 +88,8 @@ export function StudioHostProvider({ bookId, children }: { bookId: string; child
       // isn't registered yet (registers on mount) so the caller supplies the title.
       const title = opts?.title ?? regMap.get(panelId)?.label ?? panelId;
       // component id must be a built dockview component (STUDIO_PANEL_COMPONENTS); unknown ⇒ no-op.
-      try { api.addPanel({ id: panelId, component: panelId, title, params: opts?.params }); }
+      // J1: `component` lets a per-resource panel id render the shared component.
+      try { api.addPanel({ id: panelId, component: opts?.component ?? panelId, title, params: opts?.params }); }
       catch { /* panel not in the catalog */ }
     };
 
