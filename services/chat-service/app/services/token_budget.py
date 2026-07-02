@@ -66,6 +66,13 @@ def estimate_messages_tokens(messages: list[dict] | None) -> int:
             for part in content:
                 if isinstance(part, dict) and isinstance(part.get("text"), str):
                     total += estimate_tokens(part["text"])
+        # Assistant tool-call turns carry the weight in tool_calls (function name +
+        # arguments JSON), often with content=None — count them or a tool-heavy turn
+        # is badly under-estimated (matters on the resume / tool-loop path).
+        for tc in (m.get("tool_calls") or []):
+            fn = tc.get("function") or {}
+            total += estimate_tokens(fn.get("name"))
+            total += estimate_tokens(fn.get("arguments"))
         total += 4  # per-message role/delimiter overhead (OpenAI-style)
     return total
 

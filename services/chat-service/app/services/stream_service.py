@@ -437,6 +437,7 @@ async def _stream_with_tools(
     curated: bool = False,
     activation_state: dict | None = None,
     surface_tracker=None,
+    effective_limit: int | None = None,
 ) -> AsyncGenerator[dict, None]:
     """K21-B — the tool-calling loop.
 
@@ -495,11 +496,33 @@ async def _stream_with_tools(
         # don't count against the write budget.
         max_total_passes = max_iterations * 3
 
+        async def _loop_summarizer(_middle: list[dict]) -> str:
+            return await _summarize_for_compaction(
+                _middle, model_source=model_source, model_ref=model_ref, user_id=user_id,
+            )
+
         iteration = -1
         while True:
             iteration += 1
             if iteration >= max_total_passes:
                 break
+            # A4 — the tool loop GROWS `working` each pass (assistant tool_calls +
+            # results), so re-compact before every provider call or a long multi-tool
+            # turn overflows the window mid-turn. Atom-grouped truncation keeps
+            # tool-call/result pairs intact; guarded so it can never break the pass.
+            if effective_limit:
+                try:
+                    working, _rc = await compact_messages(
+                        working, effective_limit=effective_limit, summarize=_loop_summarizer,
+                    )
+                    if _rc.triggered:
+                        logger.info(
+                            "in-loop compaction session=%s pass=%d steps=%s %d→%d overflow=%s",
+                            session_id, iteration, _rc.steps,
+                            _rc.tokens_before, _rc.tokens_after, _rc.overflowed,
+                        )
+                except Exception:
+                    logger.warning("in-loop compaction skipped (error)", exc_info=True)
             # The write budget — NOT the total-pass count — decides the forced
             # tool-free final pass (D7). Once the write budget is spent, the next
             # pass must answer in text.
@@ -1503,6 +1526,7 @@ async def _emit_chat_turn(
     # Anthropic server-side overlay is A5). GUARDED — any error falls back to the
     # un-compacted messages so a bug here can never break the turn. summarize=None →
     # deterministic micro-evict of tool results + hard-truncate (no LLM in the path).
+    _eff_limit: int | None = None
     try:
         _eff_limit = compute_budget(
             used_tokens=0,
@@ -1555,6 +1579,7 @@ async def _emit_chat_turn(
                 curated=curated,
                 activation_state=activation_state,
                 surface_tracker=surface_tracker,
+                effective_limit=_eff_limit,
             )
         else:
             chunk_stream = _stream_via_gateway(

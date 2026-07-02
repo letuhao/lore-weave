@@ -43,6 +43,19 @@ class TestScriptAwareEstimate:
         parts = [{"role": "user", "content": [{"type": "text", "text": "万古神帝"}]}]
         assert estimate_messages_tokens(parts) >= estimate_tokens("万古神帝")
 
+    def test_assistant_tool_calls_args_are_counted(self):
+        # a tool-call turn (content=None) carries its weight in the arguments JSON;
+        # ignoring it under-counts the resume / tool-loop path.
+        big_args = '{"selection": "' + ("x" * 2000) + '"}'
+        with_call = [{
+            "role": "assistant", "content": None,
+            "tool_calls": [{"id": "c1", "type": "function",
+                            "function": {"name": "propose_edit", "arguments": big_args}}],
+        }]
+        empty = [{"role": "assistant", "content": None}]
+        # the big arguments blob must dominate the estimate, not the +4 overhead.
+        assert estimate_messages_tokens(with_call) > estimate_messages_tokens(empty) + 100
+
 
 class TestComputeBudget:
     def test_pct_against_effective_limit(self):

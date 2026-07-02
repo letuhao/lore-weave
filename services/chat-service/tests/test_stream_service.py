@@ -1768,3 +1768,105 @@ class TestAnchorInjection:
 
         assert not any("[Director" in str(m.get("content", "")) for m in captured)
         assert not any("ROLEPLAY SESSION" in str(m.get("content", "")) for m in captured)
+
+
+class TestInLoopCompactionWiring:
+    """A4 — the tool loop grows `working` each pass; compaction must be re-invoked
+    at the top of EVERY pass with the effective_limit, or a long tool turn overflows
+    mid-turn. This guards the wire (a silent-no-op guard needs a wiring test)."""
+
+    @pytest.mark.asyncio
+    async def test_compaction_invoked_each_tool_pass_with_effective_limit(self):
+        import app.services.stream_service as ss
+        from loreweave_llm import TokenEvent, ToolCallEvent, DoneEvent
+
+        # find_tools is CONSUMER-LOCAL (no network) → drives a real 2-pass loop:
+        # pass 0 calls find_tools (executes in-memory, appends result, loops),
+        # pass 1 answers in text.
+        passes = {"n": 0}
+
+        class FakeClient:
+            def __init__(self, **kw):
+                pass
+
+            async def aclose(self):
+                pass
+
+            def stream(self, request):
+                i = passes["n"]
+                passes["n"] += 1
+
+                async def gen():
+                    if i == 0:
+                        yield ToolCallEvent(index=0, id="c1", name=ss.FIND_TOOLS_NAME,
+                                            arguments_delta='{"intent":"anything"}')
+                        yield DoneEvent(finish_reason="tool_calls")
+                    else:
+                        yield TokenEvent(delta="done")
+                        yield DoneEvent(finish_reason="stop")
+                return gen()
+
+        seen_limits: list = []
+        real_compact = ss.compact_messages
+
+        async def spy_compact(msgs, **kw):
+            seen_limits.append(kw.get("effective_limit"))
+            return await real_compact(msgs, **kw)
+
+        kc = AsyncMock()
+        kc.get_catalog_meta = MagicMock(return_value={})  # called sync in the loop
+
+        with patch.object(ss, "Client", FakeClient), \
+             patch.object(ss, "compact_messages", side_effect=spy_compact):
+            chunks = []
+            async for ch in ss._stream_with_tools(
+                model_source="user_model", model_ref=TEST_MODEL_REF, user_id="u",
+                messages=[{"role": "user", "content": "hi"}],
+                gen_params={"max_tokens": 100}, tools=[],
+                knowledge_client=kc, session_id="s", project_id=None,
+                discovery_catalog=[], discovery_seed_names=set(),
+                effective_limit=5000,
+            ):
+                chunks.append(ch)
+
+        # compaction ran on BOTH passes, always with the effective_limit forwarded.
+        assert len(seen_limits) >= 2, f"expected ≥2 in-loop compactions, got {seen_limits}"
+        assert all(lim == 5000 for lim in seen_limits)
+
+    @pytest.mark.asyncio
+    async def test_no_effective_limit_skips_in_loop_compaction(self):
+        import app.services.stream_service as ss
+        from loreweave_llm import TokenEvent, DoneEvent
+
+        class FakeClient:
+            def __init__(self, **kw):
+                pass
+
+            async def aclose(self):
+                pass
+
+            def stream(self, request):
+                async def gen():
+                    yield TokenEvent(delta="hi")
+                    yield DoneEvent(finish_reason="stop")
+                return gen()
+
+        seen = []
+        real_compact = ss.compact_messages
+
+        async def spy_compact(msgs, **kw):
+            seen.append(kw.get("effective_limit"))
+            return await real_compact(msgs, **kw)
+
+        with patch.object(ss, "Client", FakeClient), \
+             patch.object(ss, "compact_messages", side_effect=spy_compact):
+            async for _ in ss._stream_with_tools(
+                model_source="user_model", model_ref=TEST_MODEL_REF, user_id="u",
+                messages=[{"role": "user", "content": "hi"}],
+                gen_params={"max_tokens": 100}, tools=[],
+                knowledge_client=AsyncMock(), session_id="s", project_id=None,
+                effective_limit=None,
+            ):
+                pass
+
+        assert seen == [], "compaction must not run when effective_limit is None"
