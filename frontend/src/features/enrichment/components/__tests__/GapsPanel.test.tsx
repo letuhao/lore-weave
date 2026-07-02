@@ -40,12 +40,22 @@ vi.mock('../../hooks/useGaps', () => ({
   }),
 }));
 
-// GapsPanel reads chat + embedding models via providerApi.listUserModels.
+// GapsPanel reads chat + embedding models via the consolidated W5 hook, which
+// fetches through aiModelsApi.listUserModels (keep the actual module for types
+// + getUserModelMeta).
 const listModelsMock = vi.fn();
-vi.mock('@/features/settings/api', () => ({
-  providerApi: { listUserModels: (...a: unknown[]) => listModelsMock(...a) },
-}));
+vi.mock('@/features/ai-models/api', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('@/features/ai-models/api')>();
+  return {
+    ...actual,
+    aiModelsApi: {
+      listUserModels: (...a: unknown[]) => listModelsMock(...a),
+      patchFavorite: vi.fn(),
+    },
+  };
+});
 
+import { invalidateUserModelsCache } from '@/components/model-picker/useUserModels';
 import { GapsPanel } from '../GapsPanel';
 import type { Gap } from '../../types';
 
@@ -83,6 +93,7 @@ beforeEach(() => {
   detectMock.mockReset();
   autoEnrichMock.mockReset();
   listModelsMock.mockReset();
+  invalidateUserModelsCache(); // the shared hook keeps a short-TTL module cache
   gapsState.gaps = null;
   gapsState.needsExtraction = false;
   gapsState.detecting = false;

@@ -143,5 +143,22 @@
     "light": "Sáng",
     "sepia": "Nâu sepia",
     "oled": "OLED"
+  },
+  "modelPicker": {
+    "placeholder": "Chọn mô hình…",
+    "search": "Tìm mô hình…",
+    "favorites": "Yêu thích",
+    "recents": "Gần đây",
+    "none": "Không",
+    "empty": "Chưa có mô hình nào. Hãy đăng ký một mô hình để bắt đầu.",
+    "error": "Không tải được danh sách mô hình.",
+    "noResults": "Không có mô hình nào khớp với tìm kiếm.",
+    "orphan": "Mô hình đã chọn trước đó (không còn trong danh mục của bạn)",
+    "ctx": "{{n}}K",
+    "free": "$0 cục bộ",
+    "freeHint": "Chạy cục bộ — không tính phí theo token.",
+    "paidHint": "Tính phí theo mức sử dụng.",
+    "favorite": "Thêm vào yêu thích",
+    "unfavorite": "Bỏ khỏi yêu thích"
   }
 }

@@ -21,6 +21,9 @@ import (
 var defaultModelCapabilities = map[string]bool{
 	"rerank":    true,
 	"embedding": true,
+	// "chat" — the user's default conversation model (W5 shared ModelPicker wave):
+	// new chat sessions preselect it; settable from the Settings default-models card.
+	"chat": true,
 	// "planner" — the capable chat+tool model the glossary plan-and-execute planner
 	// (glossary_plan) uses; a per-user default so planning isn't stuck on the chat
 	// "Fast" model (D-1). Set from Settings; resolved via /internal/default-models.
@@ -109,11 +112,21 @@ func (s *Server) putDefaultModel(w http.ResponseWriter, r *http.Request) {
 		validateCap = "chat"
 	}
 	capJSON := fmt.Sprintf(`{"%s":true}`, validateCap)
-	var exists int
-	err = s.pool.QueryRow(r.Context(), `
+	// Mirror listUserModels' chat rule: undeclared '{}' flags count as chat-capable
+	// (most BYOK/local models never self-declare) — otherwise the picker offers a
+	// model this validation then rejects. Non-chat capabilities stay strict.
+	capQuery := `
 SELECT 1 FROM user_models
 WHERE user_model_id=$1 AND owner_user_id=$2 AND is_active=true
-  AND (capability_flags @> $3::jsonb OR capability_flags->>'_capability' = $4)`,
+  AND (capability_flags @> $3::jsonb OR capability_flags->>'_capability' = $4)`
+	if validateCap == "chat" {
+		capQuery = `
+SELECT 1 FROM user_models
+WHERE user_model_id=$1 AND owner_user_id=$2 AND is_active=true
+  AND (capability_flags @> $3::jsonb OR capability_flags->>'_capability' = $4 OR capability_flags = '{}'::jsonb)`
+	}
+	var exists int
+	err = s.pool.QueryRow(r.Context(), capQuery,
 		modelID, userID, capJSON, validateCap).Scan(&exists)
 	if err == pgx.ErrNoRows {
 		writeError(w, http.StatusBadRequest, "DEFAULT_MODELS_MODEL_INVALID", "model not found, inactive, or lacks the capability")

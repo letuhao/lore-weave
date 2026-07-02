@@ -8,11 +8,26 @@ vi.mock('@/auth', () => ({
   useAuth: () => ({ accessToken: 'tok-test' }),
 }));
 
+// W5 — the LLM dropdown is now the shared ModelPicker, which also imports
+// getUserModelMeta from this module: spread the actual module and only
+// override the API surface.
 const listUserModelsMock = vi.fn();
-vi.mock('../../../ai-models/api', () => ({
-  aiModelsApi: {
-    listUserModels: (...args: unknown[]) => listUserModelsMock(...args),
-  },
+vi.mock('@/features/ai-models/api', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('@/features/ai-models/api')>();
+  return {
+    ...actual,
+    aiModelsApi: {
+      listUserModels: (...args: unknown[]) => listUserModelsMock(...args),
+      patchFavorite: vi.fn(),
+    },
+  };
+});
+
+// ModelPicker persists recents via syncPrefs — stub the server round-trip.
+vi.mock('@/lib/syncPrefs', () => ({
+  loadPrefFromServer: vi.fn().mockResolvedValue(undefined),
+  savePrefToServer: vi.fn().mockResolvedValue(true),
+  syncPrefsToServer: vi.fn(),
 }));
 
 const estimateMock = vi.fn();
@@ -85,6 +100,7 @@ vi.mock('../../hooks/useUserCosts', () => ({
 
 // Import AFTER the mocks so the component picks them up.
 import { BuildGraphDialog, readBackendError } from '../BuildGraphDialog';
+import { invalidateUserModelsCache } from '@/components/model-picker';
 import type { Project } from '../../types';
 
 const sampleProject: Project = {
@@ -122,6 +138,20 @@ function renderDialog(onOpenChange = vi.fn(), onStarted = vi.fn(), open = true) 
     </QueryClientProvider>,
   );
   return { ...utils, onOpenChange, onStarted, qc };
+}
+
+/**
+ * W5 — the LLM control is the shared ModelPicker (combobox trigger +
+ * listbox). Picking a model = click the trigger (which appears once the
+ * models fetch resolves), then click the option row.
+ */
+async function pickLlmModel(name: string | RegExp = /GPT-5/) {
+  fireEvent.click(
+    await screen.findByRole('combobox', {
+      name: 'projects.buildDialog.llmModel.label',
+    }),
+  );
+  fireEvent.click(await screen.findByRole('option', { name }));
 }
 
 function sampleEstimate() {
@@ -167,6 +197,9 @@ describe('BuildGraphDialog', () => {
     startMock.mockReset();
     benchmarkMock.mockReset();
     toastErrorMock.mockReset();
+    // W5 — flush the shared fetch's module-level cache + recents cache.
+    invalidateUserModelsCache();
+    localStorage.clear();
     // Default useUserCosts → null costs so existing tests see no hint.
     useUserCostsMock.mockReset();
     useUserCostsMock.mockReturnValue({
@@ -184,6 +217,7 @@ describe('BuildGraphDialog', () => {
           alias: 'GPT-5',
           is_active: true,
           is_favorite: true,
+          capability_flags: { chat: true },
           tags: [],
           created_at: '2026-04-19T00:00:00Z',
         },
@@ -220,12 +254,7 @@ describe('BuildGraphDialog', () => {
   it('auto-fetches estimate after debounce when llm is picked', async () => {
     estimateMock.mockResolvedValue(sampleEstimate());
     renderDialog();
-    await waitFor(() => {
-      expect(screen.getByRole('option', { name: /GPT-5/ })).toBeDefined();
-    });
-    fireEvent.change(screen.getByRole('combobox', { name: 'projects.buildDialog.llmModel.label' }), {
-      target: { value: 'm1' },
-    });
+    await pickLlmModel();
     await new Promise((r) => setTimeout(r, 350));
     await waitFor(() => {
       expect(estimateMock).toHaveBeenCalledWith(
@@ -240,12 +269,7 @@ describe('BuildGraphDialog', () => {
     estimateMock.mockResolvedValue(sampleEstimate());
     startMock.mockResolvedValue(sampleJob());
     const { onStarted, onOpenChange } = renderDialog();
-    await waitFor(() => {
-      expect(screen.getByRole('option', { name: /GPT-5/ })).toBeDefined();
-    });
-    fireEvent.change(screen.getByRole('combobox', { name: 'projects.buildDialog.llmModel.label' }), {
-      target: { value: 'm1' },
-    });
+    await pickLlmModel();
     fireEvent.change(screen.getByTestId('embedding-picker'), {
       target: { value: 'bge-m3' },
     });
@@ -290,12 +314,7 @@ describe('BuildGraphDialog', () => {
     estimateMock.mockResolvedValue(sampleEstimate());
     startMock.mockResolvedValue(sampleJob());
     renderDialog();
-    await waitFor(() => {
-      expect(screen.getByRole('option', { name: /GPT-5/ })).toBeDefined();
-    });
-    fireEvent.change(screen.getByRole('combobox', { name: 'projects.buildDialog.llmModel.label' }), {
-      target: { value: 'm1' },
-    });
+    await pickLlmModel();
     fireEvent.change(screen.getByTestId('embedding-picker'), {
       target: { value: 'bge-m3' },
     });
@@ -340,12 +359,7 @@ describe('BuildGraphDialog', () => {
     estimateMock.mockResolvedValue(sampleEstimate());
     startMock.mockRejectedValue(new Error('boom'));
     const { onStarted, onOpenChange } = renderDialog();
-    await waitFor(() => {
-      expect(screen.getByRole('option', { name: /GPT-5/ })).toBeDefined();
-    });
-    fireEvent.change(screen.getByRole('combobox', { name: 'projects.buildDialog.llmModel.label' }), {
-      target: { value: 'm1' },
-    });
+    await pickLlmModel();
     fireEvent.change(screen.getByTestId('embedding-picker'), {
       target: { value: 'bge-m3' },
     });
@@ -362,12 +376,7 @@ describe('BuildGraphDialog', () => {
 
   it('flags an invalid max_spend and disables confirm', async () => {
     renderDialog();
-    await waitFor(() => {
-      expect(screen.getByRole('option', { name: /GPT-5/ })).toBeDefined();
-    });
-    fireEvent.change(screen.getByRole('combobox', { name: 'projects.buildDialog.llmModel.label' }), {
-      target: { value: 'm1' },
-    });
+    await pickLlmModel();
     fireEvent.change(screen.getByTestId('embedding-picker'), {
       target: { value: 'bge-m3' },
     });
@@ -388,12 +397,7 @@ describe('BuildGraphDialog', () => {
   it('renders estimate failure inline without blocking confirm', async () => {
     estimateMock.mockRejectedValue(new Error('429 rate limit'));
     renderDialog();
-    await waitFor(() => {
-      expect(screen.getByRole('option', { name: /GPT-5/ })).toBeDefined();
-    });
-    fireEvent.change(screen.getByRole('combobox', { name: 'projects.buildDialog.llmModel.label' }), {
-      target: { value: 'm1' },
-    });
+    await pickLlmModel();
     await new Promise((r) => setTimeout(r, 350));
     await waitFor(() => {
       expect(screen.getByText(/projects\.buildDialog\.estimate\.failed/)).toBeDefined();
@@ -420,12 +424,7 @@ describe('BuildGraphDialog', () => {
     });
     startMock.mockRejectedValue(apiErr);
     renderDialog();
-    await waitFor(() => {
-      expect(screen.getByRole('option', { name: /GPT-5/ })).toBeDefined();
-    });
-    fireEvent.change(screen.getByRole('combobox', { name: 'projects.buildDialog.llmModel.label' }), {
-      target: { value: 'm1' },
-    });
+    await pickLlmModel();
     fireEvent.change(screen.getByTestId('embedding-picker'), {
       target: { value: 'bge-m3' },
     });
@@ -480,18 +479,11 @@ describe('BuildGraphDialog', () => {
     startMock.mockResolvedValue(sampleJob());
     renderDialog();
 
-    await waitFor(() => {
-      expect(screen.getByRole('option', { name: /GPT-5/ })).toBeDefined();
-    });
-
     // Switch to glossary_sync, pick LLM + embedding.
     fireEvent.click(
       screen.getByRole('radio', { name: 'projects.buildDialog.scope.glossary_sync' }),
     );
-    fireEvent.change(
-      screen.getByRole('combobox', { name: 'projects.buildDialog.llmModel.label' }),
-      { target: { value: 'm1' } },
-    );
+    await pickLlmModel();
     fireEvent.change(screen.getByTestId('embedding-picker'), {
       target: { value: 'bge-m3' },
     });
@@ -533,13 +525,7 @@ describe('BuildGraphDialog', () => {
     estimateMock.mockResolvedValue(sampleEstimate());
     startMock.mockResolvedValue(sampleJob());
     renderDialog();
-    await waitFor(() => {
-      expect(screen.getByRole('option', { name: /GPT-5/ })).toBeDefined();
-    });
-    fireEvent.change(
-      screen.getByRole('combobox', { name: 'projects.buildDialog.llmModel.label' }),
-      { target: { value: 'm1' } },
-    );
+    await pickLlmModel();
     fireEvent.change(screen.getByTestId('embedding-picker'), {
       target: { value: 'bge-m3' },
     });
@@ -568,13 +554,7 @@ describe('BuildGraphDialog', () => {
   it('Confirm disabled + invalid hint shown on reversed chapter range', async () => {
     estimateMock.mockResolvedValue(sampleEstimate());
     renderDialog();
-    await waitFor(() => {
-      expect(screen.getByRole('option', { name: /GPT-5/ })).toBeDefined();
-    });
-    fireEvent.change(
-      screen.getByRole('combobox', { name: 'projects.buildDialog.llmModel.label' }),
-      { target: { value: 'm1' } },
-    );
+    await pickLlmModel();
     fireEvent.change(screen.getByTestId('build-graph-chapter-range-from'), {
       target: { value: '50' },
     });
@@ -594,13 +574,7 @@ describe('BuildGraphDialog', () => {
     estimateMock.mockResolvedValue(sampleEstimate());
     startMock.mockResolvedValue(sampleJob());
     renderDialog();
-    await waitFor(() => {
-      expect(screen.getByRole('option', { name: /GPT-5/ })).toBeDefined();
-    });
-    fireEvent.change(
-      screen.getByRole('combobox', { name: 'projects.buildDialog.llmModel.label' }),
-      { target: { value: 'm1' } },
-    );
+    await pickLlmModel();
     fireEvent.change(screen.getByTestId('embedding-picker'), {
       target: { value: 'bge-m3' },
     });
@@ -657,12 +631,7 @@ describe('BuildGraphDialog', () => {
     benchmarkMock.mockResolvedValue({ has_run: false, passed: false });
     estimateMock.mockResolvedValue(sampleEstimate());
     renderDialog();
-    await waitFor(() => {
-      expect(screen.getByRole('option', { name: /GPT-5/ })).toBeDefined();
-    });
-    fireEvent.change(screen.getByRole('combobox', { name: 'projects.buildDialog.llmModel.label' }), {
-      target: { value: 'm1' },
-    });
+    await pickLlmModel();
     fireEvent.change(screen.getByTestId('embedding-picker'), {
       target: { value: 'bge-m3' },
     });
@@ -680,9 +649,8 @@ describe('BuildGraphDialog', () => {
   // K19b.5: initialValues pre-fill for the retry flow.
   it('pre-fills form state from initialValues when the dialog opens', async () => {
     // beforeEach has already stubbed listUserModelsMock with a gpt-5
-    // model; use that so the <select>'s DOM value matches (a select
-    // with a value absent from its options silently falls back to empty,
-    // which would make this test unreliable).
+    // model; the ModelPicker trigger shows its display name once the
+    // fetch resolves and the saved id matches a listed model.
     const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
     render(
       <QueryClientProvider client={qc}>
@@ -707,13 +675,13 @@ describe('BuildGraphDialog', () => {
     }) as HTMLInputElement;
     expect(scopeAll.checked).toBe(true);
 
-    // LLM model is a real <select>; wait for the listUserModels mock
-    // to resolve so gpt-5 option exists before asserting the value.
-    const llmSelect = screen.getByRole('combobox', {
+    // LLM model is the shared ModelPicker; its trigger renders the picked
+    // model's display name once the listUserModels mock resolves.
+    const llmTrigger = await screen.findByRole('combobox', {
       name: 'projects.buildDialog.llmModel.label',
-    }) as HTMLSelectElement;
+    });
     await waitFor(() => {
-      expect(llmSelect.value).toBe('m1');
+      expect(llmTrigger).toHaveTextContent('GPT-5');
     });
 
     // Embedding picker stub renders a <select> with testid (see top-of-file mock).
@@ -835,6 +803,9 @@ describe('BuildGraphDialog gates (C5)', () => {
     benchmarkMock.mockReset();
     estimateMock.mockReset();
     startMock.mockReset();
+    // W5 — flush the shared fetch's module-level cache + recents cache.
+    invalidateUserModelsCache();
+    localStorage.clear();
     useUserCostsMock.mockReturnValue({ costs: null, isLoading: false, error: null });
   });
 
@@ -862,14 +833,11 @@ describe('BuildGraphDialog gates (C5)', () => {
 
   it('unbenchmarked embedding ⇒ Confirm disabled + benchmark disabled-reason', async () => {
     listUserModelsMock.mockResolvedValue({
-      items: [{ user_model_id: 'm1', provider_kind: 'openai', provider_model_name: 'gpt-5', alias: 'GPT-5', is_active: true, capability_flags: { chat: true } }],
+      items: [{ user_model_id: 'm1', provider_kind: 'openai', provider_model_name: 'gpt-5', alias: 'GPT-5', is_active: true, is_favorite: false, capability_flags: { chat: true }, tags: [], created_at: '2026-04-19T00:00:00Z' }],
     });
     benchmarkMock.mockResolvedValue({ has_run: false, passed: null, recall_at_3: null });
     renderGated();
-    // target the LLM <select> deterministically via its option (not by index)
-    const llmOption = await screen.findByText('GPT-5 (gpt-5)');
-    const llmSelect = llmOption.closest('select')!;
-    fireEvent.change(llmSelect, { target: { value: 'm1' } });
+    await pickLlmModel();
     fireEvent.change(screen.getByTestId('embedding-picker'), { target: { value: 'bge-m3' } });
     await waitFor(() => expect(benchmarkMock).toHaveBeenCalled());
     await waitFor(() =>
@@ -880,16 +848,13 @@ describe('BuildGraphDialog gates (C5)', () => {
 
   it('passing benchmark ⇒ Confirm enabled', async () => {
     listUserModelsMock.mockResolvedValue({
-      items: [{ user_model_id: 'm1', provider_kind: 'openai', provider_model_name: 'gpt-5', alias: 'GPT-5', is_active: true, capability_flags: { chat: true } }],
+      items: [{ user_model_id: 'm1', provider_kind: 'openai', provider_model_name: 'gpt-5', alias: 'GPT-5', is_active: true, is_favorite: false, capability_flags: { chat: true }, tags: [], created_at: '2026-04-19T00:00:00Z' }],
     });
     benchmarkMock.mockResolvedValue({ has_run: true, passed: true, recall_at_3: 0.9 });
     renderGated();
-    // wait for LLM options to load, then target the LLM <select> via its option.
-    const llmOption = await screen.findByText('GPT-5 (gpt-5)');
-    const llmSelect = llmOption.closest('select')!;
     fireEvent.change(screen.getByTestId('embedding-picker'), { target: { value: 'bge-m3' } });
     await waitFor(() => expect(benchmarkMock).toHaveBeenCalled());
-    fireEvent.change(llmSelect, { target: { value: 'm1' } });
+    await pickLlmModel();
     await waitFor(() => expect(confirm()).toBeEnabled(), { timeout: 4000 });
   });
 });

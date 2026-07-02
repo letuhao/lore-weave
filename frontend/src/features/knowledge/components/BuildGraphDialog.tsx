@@ -4,8 +4,8 @@ import { toast } from 'sonner';
 import { useTranslation } from 'react-i18next';
 import { FormDialog } from '@/components/shared';
 import { AddModelCta } from '@/components/shared/AddModelCta';
+import { ModelPicker } from '@/components/model-picker';
 import { useAuth } from '@/auth';
-import { aiModelsApi, type UserModel } from '../../ai-models/api';
 import {
   knowledgeApi,
   type EstimateExtractionPayload,
@@ -213,15 +213,6 @@ export function BuildGraphDialog({
     return () => window.clearTimeout(handle);
   }, [open, scope, llmModel]);
 
-  // Fetch the user's chat-capable models for the LLM dropdown.
-  const modelsQuery = useQuery<{ items: UserModel[] }>({
-    queryKey: ['ai-models', 'chat'],
-    queryFn: () =>
-      aiModelsApi.listUserModels(accessToken!, { capability: 'chat', include_inactive: false }),
-    enabled: open && !!accessToken,
-    staleTime: 60_000,
-  });
-
   // C12a — parse chapter-range inputs. Must be declared BEFORE the
   // estimate useQuery that references it. Both-empty = full scope
   // (no filter sent). Both-set + from ≤ to = valid bounded range.
@@ -322,7 +313,6 @@ export function BuildGraphDialog({
   // C5 (KN-1/BL-16): the golden-set benchmark is a VISIBLE gate — extraction
   // stays disabled until a passing benchmark exists (the EmbeddingModelPicker
   // renders the status badge + Run-benchmark button for this same project/model).
-  const llmEmpty = !modelsQuery.isLoading && (modelsQuery.data?.items?.length ?? 0) === 0;
 
   const canConfirm =
     !starting &&
@@ -455,7 +445,6 @@ export function BuildGraphDialog({
     }
   };
 
-  const chatModels = useMemo(() => modelsQuery.data?.items ?? [], [modelsQuery.data]);
   // review-impl F2 — BE estimate+start treat `chapters` scope as a
   // book-only code path; a project with `book_id=null` would run a
   // no-op job. Hide the radio option in that case so the UI can't
@@ -639,42 +628,27 @@ export function BuildGraphDialog({
           </fieldset>
         )}
 
-        {/* LLM model */}
-        <label className="flex flex-col gap-1">
+        {/* LLM model — W5 shared ModelPicker (capability=chat). */}
+        <div className="flex flex-col gap-1">
           <span className="text-xs font-medium text-muted-foreground">
             {t('projects.buildDialog.llmModel.label')}
           </span>
-          <select
-            value={llmModel}
-            onChange={(e) => setLlmModel(e.target.value)}
-            disabled={modelsQuery.isLoading}
-            className="rounded-md border bg-input px-3 py-2 text-sm outline-none focus:border-ring disabled:opacity-60"
-          >
-            <option value="">
-              {modelsQuery.isLoading
-                ? t('projects.buildDialog.llmModel.loading')
-                : t('projects.buildDialog.llmModel.placeholder')}
-            </option>
-            {chatModels.map((m) => {
-              const label = m.alias
-                ? `${m.alias} (${m.provider_model_name})`
-                : `${m.provider_kind}/${m.provider_model_name}`;
-              return (
-                <option key={m.user_model_id} value={m.user_model_id}>
-                  {label}
-                </option>
-              );
-            })}
-          </select>
-          {llmEmpty && (
-            // C5 (KN-1/BL-16): no chat model → in-flow AddModelCta (deep-link +
-            // return), not a dead-end. Resolved from provider-registry; no literal.
-            <span className="flex flex-col gap-1 text-[11px] text-muted-foreground">
-              {t('projects.buildDialog.llmModel.empty')}
-              <AddModelCta capability="chat" variant="link" />
-            </span>
-          )}
-        </label>
+          <ModelPicker
+            capability="chat"
+            value={llmModel || null}
+            onChange={(id) => setLlmModel(id ?? '')}
+            placeholder={t('projects.buildDialog.llmModel.placeholder')}
+            ariaLabel={t('projects.buildDialog.llmModel.label')}
+            emptyState={
+              // C5 (KN-1/BL-16): no chat model → in-flow AddModelCta (deep-link +
+              // return), not a dead-end. Resolved from provider-registry; no literal.
+              <span className="flex flex-col gap-1 text-[11px] text-muted-foreground">
+                {t('projects.buildDialog.llmModel.empty')}
+                <AddModelCta capability="chat" variant="link" />
+              </span>
+            }
+          />
+        </div>
 
         {/* Embedding model (reuse K12.4 picker). KG-EMB-PERSIST: persist a
             first-time selection through `handleEmbeddingChange` so benchmark +

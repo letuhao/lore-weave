@@ -1,4 +1,4 @@
-import { render, screen, fireEvent, waitFor } from '@testing-library/react';
+import { render, screen, fireEvent, waitFor, within } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { toast } from 'sonner';
@@ -30,13 +30,40 @@ vi.mock('../../../../components/editor/TrackedPositions', () => ({
     return { current: () => rangeNow.value, release: rangeRelease };
   },
 }));
-vi.mock('../../../ai-models/api', () => ({
-  aiModelsApi: {
-    listUserModels: vi.fn().mockResolvedValue({
-      items: [{ user_model_id: 'm1', is_active: true, alias: 'M1', provider_kind: 'openai', provider_model_name: 'gpt' }],
-    }),
-  },
+// W5 — spread the real module: the shared ModelPicker also imports getUserModelMeta.
+vi.mock('@/features/ai-models/api', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('@/features/ai-models/api')>();
+  return {
+    ...actual,
+    aiModelsApi: {
+      listUserModels: vi.fn().mockResolvedValue({
+        items: [{
+          user_model_id: 'm1', provider_credential_id: 'c1', is_active: true, is_favorite: false,
+          alias: 'M1', provider_kind: 'openai', provider_model_name: 'gpt',
+          capability_flags: {}, tags: [], created_at: '2026-01-01T00:00:00Z',
+        }],
+      }),
+      patchFavorite: vi.fn(),
+    },
+  };
+});
+// W5 — the shared useUserModels/ModelPicker read the token from useAuth.
+vi.mock('@/auth', () => ({ useAuth: () => ({ accessToken: 'tok' }) }));
+vi.mock('@/lib/syncPrefs', () => ({
+  loadPrefFromServer: vi.fn().mockResolvedValue(undefined),
+  savePrefToServer: vi.fn().mockResolvedValue(true),
+  syncPrefsToServer: vi.fn(),
 }));
+
+import { invalidateUserModelsCache } from '@/components/model-picker';
+
+// W5 — the picker is now the shared combobox; "the sole model is picked" shows as
+// its display name on the trigger (the old assert read the <select>'s value).
+const modelReady = async () =>
+  waitFor(() => {
+    const trigger = within(screen.getByTestId('selection-model')).getByRole('combobox');
+    expect(trigger).toHaveTextContent('M1');
+  });
 
 function fakeEditor(selText = 'the gate of ash', from = 5, to = 20, docSize = 100) {
   const chain: any = {};
@@ -67,12 +94,14 @@ describe('SelectionToolbar (T3.2)', () => {
     trackRangeMock.mockReset(); rangeRelease.mockReset(); rangeNow.value = null;
     (toast.error as ReturnType<typeof vi.fn>).mockReset();
     streamState.ghost = ''; streamState.streaming = false; streamState.error = null;
+    localStorage.clear();
+    invalidateUserModelsCache();  // W5 — shared fetch cache must not leak across tests
   });
 
   it('running an op streams the selection-edit + tracks the range for Accept', async () => {
     const editor = fakeEditor();
     renderTB(editor);
-    await waitFor(() => expect((screen.getByTestId('selection-model') as HTMLSelectElement).value).toBe('m1'));
+    await modelReady();
     fireEvent.click(screen.getByTestId('selection-rewrite'));
     expect(start).toHaveBeenCalledTimes(1);
     expect(start.mock.calls[0][0]).toMatchObject({
@@ -86,7 +115,7 @@ describe('SelectionToolbar (T3.2)', () => {
   it('Accept replaces the tracked range (remapped) with the ghost', async () => {
     const editor = fakeEditor('the gate of ash', 5, 20, 100);
     const { rerender } = renderTB(editor);
-    await waitFor(() => expect((screen.getByTestId('selection-model') as HTMLSelectElement).value).toBe('m1'));
+    await modelReady();
     fireEvent.click(screen.getByTestId('selection-expand'));
     // stream completes with a ghost; the tracked range reports its (remapped) span.
     streamState.ghost = 'EXPANDED PROSE';
@@ -105,7 +134,7 @@ describe('SelectionToolbar (T3.2)', () => {
   it('Accept aborts (no replace) when the tracked range was deleted (.current() null)', async () => {
     const editor = fakeEditor('the gate of ash', 5, 20, 10);
     const { rerender } = renderTB(editor);
-    await waitFor(() => expect((screen.getByTestId('selection-model') as HTMLSelectElement).value).toBe('m1'));
+    await modelReady();
     fireEvent.click(screen.getByTestId('selection-rewrite'));
     streamState.ghost = 'NEW';
     rangeNow.value = null;   // the span was deleted/collapsed mid-stream
@@ -122,7 +151,7 @@ describe('SelectionToolbar (T3.2)', () => {
 
   it('Discard stops the stream and clears the ghost', async () => {
     renderTB(fakeEditor());
-    await waitFor(() => expect((screen.getByTestId('selection-model') as HTMLSelectElement).value).toBe('m1'));
+    await modelReady();
     fireEvent.click(screen.getByTestId('selection-describe'));
     fireEvent.click(screen.getByTestId('selection-discard'));
     expect(stop).toHaveBeenCalled();

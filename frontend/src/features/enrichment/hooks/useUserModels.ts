@@ -1,18 +1,14 @@
-import { useQuery } from '@tanstack/react-query';
-import { useAuth } from '@/auth';
-import { providerApi } from '@/features/settings/api';
+import { useUserModels as useSharedUserModels } from '@/components/model-picker/useUserModels';
+import type { UserModel } from '@/features/ai-models/api';
 
 /** The caller's registered BYOK models for a capability (via provider-registry).
- *  Shared by the enrichment model-pickers (Gaps + Compose) — keyed by capability so
- *  the react-query cache is shared (no double fetch). Returns the items list (empty
- *  until loaded). The single seam for "which models can this user pick", so the two
- *  panels don't each re-implement the same useQuery. */
-export function useUserModels(capability: 'chat' | 'embedding') {
-  const { accessToken } = useAuth();
-  const { data } = useQuery({
-    queryKey: ['user-models', capability],
-    queryFn: () => providerApi.listUserModels(accessToken!, { capability }),
-    enabled: !!accessToken,
-  });
-  return data?.items ?? [];
+ *
+ *  W5 consolidation: this is now a thin adapter over the shared
+ *  `@/components/model-picker` useUserModels (one fetch path, shared short-TTL
+ *  cache across every picker of the same capability) that preserves the original
+ *  return shape for the enrichment consumers — the items list, empty until
+ *  loaded. */
+export function useUserModels(capability: 'chat' | 'embedding'): UserModel[] {
+  const { models } = useSharedUserModels({ capability });
+  return models ?? [];
 }

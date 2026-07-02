@@ -6,9 +6,9 @@
 import { useCallback, useRef, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
-import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { useQueryClient } from '@tanstack/react-query';
 import { AddModelCta } from '@/components/shared/AddModelCta';
-import { aiModelsApi } from '../../ai-models/api';
+import { ModelPicker, useUserModels } from '@/components/model-picker';
 import { compositionApi } from '../api';
 import { useChapterScenes, useCreateScene, useCreateWork, usePendingWorkResolver, useSetSceneStatus, useWorkResolution } from '../hooks/useWork';
 import { useGuidedFirstRun } from '../hooks/useGuidedFirstRun';
@@ -174,12 +174,10 @@ export function CompositionPanel({ bookId, chapterId, token, onAccept, onApplyPo
   const scenes = useChapterScenes(projectId, chapterId, token);
   const createScene = useCreateScene(projectId, token);
   const setSceneStatus = useSetSceneStatus(projectId, token);
-  const models = useQuery({
-    queryKey: ['composition', 'chat-models'],
-    queryFn: () => aiModelsApi.listUserModels(token!, { capability: 'chat' }),
-    enabled: !!token,
-    select: (d) => d.items.filter((m) => m.is_active),
-  });
+  // W5 — THE shared user-models fetch (active-only, capability=chat, server-side
+  // filter + 15s dedupe cache shared with the ModelPicker below and sibling panels).
+  const modelsQ = useUserModels({ capability: 'chat' });
+  const modelList = modelsQ.models;
 
   const guidedSceneTitle = t('firstSceneTitle', { defaultValue: 'Opening scene' });
   // C17 (WG-4) — guided first-run controller. Called BEFORE the early returns
@@ -191,8 +189,8 @@ export function CompositionPanel({ bookId, chapterId, token, onAccept, onApplyPo
     workReady: !!work,
     scenes: scenes.data ?? [],
     scenesLoading: scenes.isLoading,
-    models: models.data ?? [],
-    modelsLoading: models.isLoading,
+    models: modelList ?? [],
+    modelsLoading: modelsQ.loading,
     createScene: (payload) => createScene.mutate(payload),
     chapterId,
     newSceneTitle: guidedSceneTitle,
@@ -306,14 +304,14 @@ export function CompositionPanel({ bookId, chapterId, token, onAccept, onApplyPo
   // active list — else fall back to '' so the selector doesn't show a phantom value
   // and no hidden stale model_ref reaches generation.
   const defaultModelRef = typeof work.settings?.default_model_ref === 'string' ? work.settings.default_model_ref : '';
-  const defaultIsAvailable = !models.data || models.data.some((m) => m.user_model_id === defaultModelRef);
+  const defaultIsAvailable = !modelList || modelList.some((m) => m.user_model_id === defaultModelRef);
   // Precedence: an explicit session pick > the persisted per-Work default (if still
   // active) > the sole-registered model auto-pick. All DERIVED — no useEffect.
   const effectiveModelRef =
     modelRef || (defaultIsAvailable && defaultModelRef ? defaultModelRef : '') || (guided.soleModelId ?? '');
   // The selected model's metadata — hints for the server's auto-reasoning
   // strategy (adaptive pass-through vs our rule-based scorer).
-  const selectedModel = models.data?.find((m) => m.user_model_id === effectiveModelRef);
+  const selectedModel = modelList?.find((m) => m.user_model_id === effectiveModelRef);
   // Feed the hoisted acceptProse the current model name via its ref (plain assignment,
   // not a hook — safe after the early returns).
   modelNameRef.current = selectedModel?.provider_model_name;
@@ -326,8 +324,8 @@ export function CompositionPanel({ bookId, chapterId, token, onAccept, onApplyPo
   // (no useEffect): once the list resolves empty → offer an in-flow register CTA;
   // once a chat model exists → surface a positive "Ready to draft" cue that frames
   // knowledge as optional, never a precondition wall.
-  const hasChatModel = !!models.data?.length;
-  const noChatModel = !models.isLoading && !hasChatModel;
+  const hasChatModel = !!modelList?.length;
+  const noChatModel = !modelsQ.loading && !hasChatModel;
 
   // T5.4 M2 — dock windowing. When the WorkspaceShell flag is ON, the fixed strip is
   // replaced by a reorderable DockRail and the active panel is driven by the (per-
@@ -511,18 +509,21 @@ export function CompositionPanel({ bookId, chapterId, token, onAccept, onApplyPo
             />
           </span>
         ) : (
-          <select
-            data-testid="composition-model-select"
-            className="rounded border border-neutral-300 bg-transparent px-2 py-1 dark:border-neutral-600"
-            value={effectiveModelRef}
-            onChange={(e) => setModelRef(e.target.value)}
-            aria-label={t('model', { defaultValue: 'Model' })}
-          >
-            <option value="">{t('pickModel', { defaultValue: 'Pick a model…' })}</option>
-            {(models.data ?? []).map((m) => (
-              <option key={m.user_model_id} value={m.user_model_id}>{m.alias || m.provider_model_name}</option>
-            ))}
-          </select>
+          // W5 — the shared ModelPicker replaces the bespoke <select>. Choosing the
+          // "Pick a model…" (none) row emits null → modelRef '' → the effective ref
+          // falls back to the persisted default / sole-model auto-pick, exactly like
+          // the old empty <option>.
+          <div data-testid="composition-model-select" className="min-w-44">
+            <ModelPicker
+              capability="chat"
+              compact
+              value={effectiveModelRef || null}
+              onChange={(id) => setModelRef(id ?? '')}
+              allowNone
+              noneLabel={t('pickModel', { defaultValue: 'Pick a model…' })}
+              ariaLabel={t('model', { defaultValue: 'Model' })}
+            />
+          </div>
         )}
         {/* C24 (dị bản M0) — spawn a what-if derivative branching from this canon.
             The wizard mints a fresh Work + its own knowledge project (delta), persists
@@ -728,7 +729,7 @@ export function CompositionPanel({ bookId, chapterId, token, onAccept, onApplyPo
           />
         </DockSlot>
         <DockSlot {...slot('planner')}>
-          <PlannerView projectId={work.project_id} bookId={bookId} modelRef={effectiveModelRef} modelSource="user_model" models={models.data ?? []} token={token} />
+          <PlannerView projectId={work.project_id} bookId={bookId} modelRef={effectiveModelRef} modelSource="user_model" models={modelList ?? []} token={token} />
         </DockSlot>
         <DockSlot {...slot('beats')}>
           <BeatSheetView bookId={bookId} projectId={work.project_id} token={token} />
@@ -811,7 +812,7 @@ export function CompositionPanel({ bookId, chapterId, token, onAccept, onApplyPo
             projectId={work.project_id}
             sceneId={effectiveScene}
             token={token}
-            models={models.data ?? []}
+            models={modelList ?? []}
           />
         </DockSlot>
         <DockSlot {...slot('style')}>
@@ -882,7 +883,7 @@ export function CompositionPanel({ bookId, chapterId, token, onAccept, onApplyPo
             projectId={work.project_id}
             bookId={bookId}
             settings={work.settings}
-            models={models.data ?? []}
+            models={modelList ?? []}
             token={token}
           />
         </DockSlot>

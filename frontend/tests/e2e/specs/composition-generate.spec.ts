@@ -41,7 +41,7 @@ test.describe('Composition co-write generate + critic (U3/U4) [model-gated]', ()
 
       // pick the drafter model + disable hidden thinking (U3 setup)
       await expect(panel.modelSelect).toBeVisible();
-      await panel.modelSelect.selectOption(drafter.user_model_id);
+      await panel.selectModel(drafter.user_model_id);
       await panel.reasoningSelect.selectOption('off');
 
       // U3 — generate streams prose into the ghost (NOT empty — proves the

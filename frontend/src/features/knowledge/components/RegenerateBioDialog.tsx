@@ -1,18 +1,18 @@
-import { useMemo, useState } from 'react';
-import { useQuery } from '@tanstack/react-query';
+import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { toast } from 'sonner';
 import { Sparkles } from 'lucide-react';
 import { FormDialog } from '@/components/shared';
-import { useAuth } from '@/auth';
-import { aiModelsApi, type UserModel } from '@/features/ai-models/api';
+import { ModelPicker, useUserModels } from '@/components/model-picker';
 import { useRegenerateBio, type RegenerateError } from '../hooks/useRegenerateBio';
 
-// K20α — Regenerate dialog. Reads `aiModelsApi.listUserModels` with
-// capability='chat' to populate the model picker (same query as
-// BuildGraphDialog — keeps behaviour consistent). Calls the public
-// regenerate edge via useRegenerateBio and surfaces the 3 error
-// classes distinctly:
+// K20α — Regenerate dialog. W5: renders the shared ModelPicker
+// (capability='chat'); the raw model list (via useUserModels, which
+// shares the picker's fetch cache) is still read here because the
+// regenerate edge takes the model's `provider_model_name` as
+// `model_ref` — the picker binds `user_model_id`, so submit resolves
+// id → provider_model_name. Calls the public regenerate edge via
+// useRegenerateBio and surfaces the 3 error classes distinctly:
 //   - 409 user_edit_lock → inline warning banner (30-day protection)
 //   - 409 regen_concurrent_edit → toast + auto-close (refetch will
 //     pick up the newer row)
@@ -32,30 +32,17 @@ export interface RegenerateBioDialogProps {
 
 export function RegenerateBioDialog({ open, onOpenChange }: RegenerateBioDialogProps) {
   const { t } = useTranslation('knowledge');
-  const { accessToken } = useAuth();
-  const [modelRef, setModelRef] = useState('');
+  // The picker binds the user_model_id; submit resolves it to the
+  // model's provider_model_name (the regenerate edge's model_ref).
+  const [modelId, setModelId] = useState<string | null>(null);
   const [editLockMessage, setEditLockMessage] = useState<string | null>(null);
 
-  // Share the queryKey with BuildGraphDialog so opening the regen
-  // dialog after the build dialog (or vice versa) reuses the cache
-  // instead of issuing a duplicate GET /v1/ai-models/user call. The
-  // filter params on listUserModels are identical to BuildGraphDialog's
-  // — any divergence would create a stale-cache bug so they must stay
-  // in lock-step. Review-impl M1.
-  const modelsQuery = useQuery<{ items: UserModel[] }>({
-    queryKey: ['ai-models', 'chat'],
-    queryFn: () =>
-      aiModelsApi.listUserModels(accessToken!, {
-        capability: 'chat',
-        include_inactive: false,
-      }),
-    enabled: open && !!accessToken,
-  });
-
-  const chatModels = useMemo(
-    () => modelsQuery.data?.items ?? [],
-    [modelsQuery.data],
-  );
+  // useUserModels shares the ModelPicker's 15s fetch cache, so this is
+  // NOT a duplicate GET — it's the same in-flight promise the picker
+  // consumes (W5 replacement for the old shared react-query key).
+  const { models } = useUserModels({ capability: 'chat', enabled: open });
+  const selectedModel =
+    (modelId && models?.find((m) => m.user_model_id === modelId)) || null;
 
   const regen = useRegenerateBio({
     onSuccess: (resp) => {
@@ -107,11 +94,17 @@ export function RegenerateBioDialog({ open, onOpenChange }: RegenerateBioDialogP
   });
 
   const submit = () => {
+    if (!selectedModel) return;
     setEditLockMessage(null);
-    regen.mutate({ model_source: 'user_model', model_ref: modelRef });
+    // Payload contract unchanged by W5: model_ref is the model's
+    // provider_model_name (resolved from the picked user_model_id).
+    regen.mutate({
+      model_source: 'user_model',
+      model_ref: selectedModel.provider_model_name,
+    });
   };
 
-  const canSubmit = !!modelRef && !regen.isPending;
+  const canSubmit = !!selectedModel && !regen.isPending;
 
   return (
     <FormDialog
@@ -157,39 +150,25 @@ export function RegenerateBioDialog({ open, onOpenChange }: RegenerateBioDialogP
           {t('global.regenerate.editLockHint')}
         </p>
 
-        <label className="flex flex-col gap-1">
+        <div className="flex flex-col gap-1" data-testid="regenerate-bio-model">
           <span className="text-[11px] font-medium text-muted-foreground">
             {t('global.regenerate.modelLabel')}
           </span>
-          <select
-            value={modelRef}
-            onChange={(e) => setModelRef(e.target.value)}
-            disabled={modelsQuery.isLoading || regen.isPending}
-            className="rounded-md border bg-input px-3 py-2 text-xs outline-none focus:border-ring disabled:opacity-60"
-            data-testid="regenerate-bio-model"
-          >
-            <option value="">
-              {modelsQuery.isLoading
-                ? t('global.regenerate.modelLoading')
-                : t('global.regenerate.modelPlaceholder')}
-            </option>
-            {chatModels.map((m) => {
-              const label = m.alias
-                ? `${m.alias} (${m.provider_model_name})`
-                : `${m.provider_kind}/${m.provider_model_name}`;
-              return (
-                <option key={m.user_model_id} value={m.provider_model_name}>
-                  {label}
-                </option>
-              );
-            })}
-          </select>
-          {!modelsQuery.isLoading && chatModels.length === 0 && (
-            <span className="text-[11px] text-warning">
-              {t('global.regenerate.noModels')}
-            </span>
-          )}
-        </label>
+          <ModelPicker
+            capability="chat"
+            value={modelId}
+            onChange={setModelId}
+            disabled={regen.isPending}
+            compact
+            placeholder={t('global.regenerate.modelPlaceholder')}
+            ariaLabel={t('global.regenerate.modelLabel')}
+            emptyState={
+              <span className="text-[11px] text-warning">
+                {t('global.regenerate.noModels')}
+              </span>
+            }
+          />
+        </div>
 
         <p className="text-[11px] text-muted-foreground">
           {t('global.regenerate.costHint')}

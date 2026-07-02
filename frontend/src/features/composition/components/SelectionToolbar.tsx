@@ -5,11 +5,10 @@
 // picker (PO). Grounding couples to the compose panel's active scene (sceneContext).
 import { useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { useQuery } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import { BubbleMenu } from '@tiptap/react/menus';
 import type { Editor } from '@tiptap/react';
-import { aiModelsApi } from '../../ai-models/api';
+import { ModelPicker, useUserModels } from '@/components/model-picker';
 import { trackRange, type RangeHandle } from '../../../components/editor/TrackedPositions';
 import { useCompositionStream } from '../hooks/useCompositionStream';
 import type { SelectionOperation } from '../types';
@@ -42,13 +41,10 @@ export function SelectionToolbar({
   // so a stale entry doesn't linger in the shared editor's plugin state.
   useEffect(() => () => { savedRange.current?.release(); savedRange.current = null; }, []);
 
-  const models = useQuery({
-    queryKey: ['composition', 'chat-models'],
-    queryFn: () => aiModelsApi.listUserModels(token!, { capability: 'chat' }),
-    enabled: !!token,
-    select: (d) => d.items.filter((m) => m.is_active),
-  });
-  const modelList = models.data ?? [];
+  // W5 — the shared user-models fetch (active-only, capability=chat; dedupes with
+  // every other chat picker in the view via the module cache).
+  const models = useUserModels({ capability: 'chat' });
+  const modelList = models.models ?? [];
   const effectiveModel = modelRef || modelList[0]?.user_model_id || '';
   const selectedModel = modelList.find((m) => m.user_model_id === effectiveModel);
 
@@ -134,16 +130,17 @@ export function SelectionToolbar({
         ) : (
           <>
             <div className="flex items-center gap-1.5">
-              <select
-                data-testid="selection-model"
-                aria-label={t('sel.model', { defaultValue: 'Model' })}
-                className="min-w-0 flex-1 rounded border bg-background px-1 py-0.5"
-                value={effectiveModel}
-                onChange={(e) => setModelRef(e.target.value)}
-              >
-                {modelList.length === 0 && <option value="">{t('sel.no_model', { defaultValue: 'No model' })}</option>}
-                {modelList.map((m) => <option key={m.user_model_id} value={m.user_model_id}>{m.alias || m.provider_model_name}</option>)}
-              </select>
+              {/* W5 — shared ModelPicker (compact) replaces the bespoke <select>. */}
+              <div data-testid="selection-model" className="min-w-0 flex-1">
+                <ModelPicker
+                  capability="chat"
+                  compact
+                  value={effectiveModel || null}
+                  onChange={(id) => setModelRef(id ?? '')}
+                  ariaLabel={t('sel.model', { defaultValue: 'Model' })}
+                  placeholder={t('sel.no_model', { defaultValue: 'No model' })}
+                />
+              </div>
             </div>
             <input
               data-testid="selection-instruction"

@@ -1,7 +1,7 @@
 import { render, screen, waitFor } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { describe, expect, it, vi } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { CompositionPanel } from '../CompositionPanel';
 
 // C15 (WG-1/WG-2) — writer-unblock readiness affordances in the Compose container.
@@ -43,9 +43,28 @@ vi.mock('../../hooks/useWork', () => ({
 }));
 
 const listUserModels = vi.fn();
-vi.mock('../../../ai-models/api', () => ({
-  aiModelsApi: { listUserModels: (...args: unknown[]) => listUserModels(...args) },
+// W5 — spread the real module: the shared ModelPicker also imports getUserModelMeta.
+vi.mock('@/features/ai-models/api', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('@/features/ai-models/api')>();
+  return {
+    ...actual,
+    aiModelsApi: { listUserModels: (...args: unknown[]) => listUserModels(...args), patchFavorite: vi.fn() },
+  };
+});
+// W5 — the shared useUserModels/ModelPicker read the token from useAuth.
+vi.mock('@/auth', () => ({ useAuth: () => ({ accessToken: 'tok' }) }));
+vi.mock('@/lib/syncPrefs', () => ({
+  loadPrefFromServer: vi.fn().mockResolvedValue(undefined),
+  savePrefToServer: vi.fn().mockResolvedValue(true),
+  syncPrefsToServer: vi.fn(),
 }));
+
+import { invalidateUserModelsCache } from '@/components/model-picker';
+
+beforeEach(() => {
+  localStorage.clear();
+  invalidateUserModelsCache();  // W5 — shared fetch cache must not leak across tests
+});
 
 function renderPanel() {
   const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });

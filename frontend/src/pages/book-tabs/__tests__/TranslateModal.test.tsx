@@ -1,6 +1,5 @@
 import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { TranslateModal } from '../TranslateModal';
 
 // ── Mocks ──────────────────────────────────────────────────────────────────────
 vi.mock('@/auth', () => ({ useAuth: () => ({ accessToken: 'tok' }) }));
@@ -27,13 +26,41 @@ vi.mock('@/features/translation/api', () => ({
   },
 }));
 
-vi.mock('@/features/ai-models/api', () => ({
-  aiModelsApi: {
-    listUserModels: vi.fn().mockResolvedValue({
-      items: [{ user_model_id: 'm1', alias: 'Qwen3', provider_model_name: 'qwen3', provider_kind: 'lm_studio', is_active: true }],
-    }),
-  },
+// W5 — the model selects are the shared ModelPicker, which also imports
+// getUserModelMeta from this module → keep the actual exports around.
+vi.mock('@/features/ai-models/api', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('@/features/ai-models/api')>();
+  return {
+    ...actual,
+    aiModelsApi: {
+      listUserModels: vi.fn().mockResolvedValue({
+        items: [
+          {
+            user_model_id: 'm1',
+            provider_credential_id: 'cred-1',
+            provider_kind: 'lm_studio',
+            provider_model_name: 'qwen3',
+            alias: 'Qwen3',
+            is_active: true,
+            is_favorite: false,
+            capability_flags: {},
+            tags: [],
+            created_at: '2026-01-01T00:00:00Z',
+          },
+        ],
+      }),
+      patchFavorite: vi.fn(),
+    },
+  };
+});
+vi.mock('@/lib/syncPrefs', () => ({
+  loadPrefFromServer: vi.fn().mockResolvedValue(undefined),
+  savePrefToServer: vi.fn().mockResolvedValue(true),
+  syncPrefsToServer: vi.fn(),
 }));
+
+import { invalidateUserModelsCache } from '@/components/model-picker';
+import { TranslateModal } from '../TranslateModal';
 
 const baseProps = { open: true, onClose: vi.fn(), bookId: 'bk1', onJobCreated: vi.fn() };
 
@@ -51,6 +78,8 @@ beforeEach(() => {
   toastSuccess.mockClear();
   createJob.mockClear();
   putBookSettings.mockClear();
+  localStorage.clear();
+  invalidateUserModelsCache(); // the shared model fetch keeps a short-TTL module cache
   listChapters.mockReset();
   listChapters.mockResolvedValue({
     items: [{ chapter_id: 'ch1', title: 'Chapter 1', sort_order: 0 }],

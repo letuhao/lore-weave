@@ -10,7 +10,7 @@ import { useTranslation } from 'react-i18next';
 import { useNavigate } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { toast } from 'sonner';
-import { aiModelsApi } from '../../ai-models/api';
+import { ModelPicker, useUserModels } from '@/components/model-picker';
 import { booksApi } from '../../books/api';
 import { useOutline, useOutlineMutations, useSceneLinks } from '../hooks/useOutline';
 import { useSetWorkSettings } from '../hooks/useWork';
@@ -69,14 +69,11 @@ export function SceneGraphCanvas({ work, bookId, token, onPromoted }: {
   const whatIf = useSceneWhatIf();
   // M2 — self-contained model picker for take generation (SelectionToolbar precedent;
   // SceneGraphCanvas has no shared model ref). + the generate/judge orchestration.
+  // W5: the shared useUserModels fetch (active-only, capability=chat), gated on the
+  // what-if branch being open like the old lazy query.
   const [whatIfModelRef, setWhatIfModelRef] = useState('');
-  const whatIfModels = useQuery({
-    queryKey: ['composition', 'chat-models'],
-    queryFn: () => aiModelsApi.listUserModels(token!, { capability: 'chat' }),
-    enabled: !!token && whatIf.active,
-    select: (d) => d.items.filter((mm) => mm.is_active),
-  });
-  const whatIfModelList = whatIfModels.data ?? [];
+  const whatIfModels = useUserModels({ capability: 'chat', enabled: whatIf.active });
+  const whatIfModelList = whatIfModels.models ?? [];
   const effectiveWhatIfModel = whatIfModelRef || whatIfModelList[0]?.user_model_id || '';
   const selectedWhatIfModel = whatIfModelList.find((mm) => mm.user_model_id === effectiveWhatIfModel);
   const takes = useWhatIfTakes({ projectId, token, updateAlt: whatIf.updateAlt });
@@ -295,16 +292,17 @@ export function SceneGraphCanvas({ work, bookId, token, onPromoted }: {
         {whatIf.active && (
           <div className="ml-auto flex items-center gap-1" data-testid="scenegraph-whatif-bar">
             <span className="text-purple-700/80 dark:text-purple-300/80">{t('whatif.active', { defaultValue: 'What-if branch (unsaved)' })}</span>
-            <select
-              data-testid="scenegraph-whatif-model"
-              aria-label={t('whatif.model', { defaultValue: 'Take model' })}
-              className="rounded border bg-background px-1 py-0.5"
-              value={effectiveWhatIfModel}
-              onChange={(e) => setWhatIfModelRef(e.target.value)}
-            >
-              {whatIfModelList.length === 0 && <option value="">{t('whatif.noModel', { defaultValue: 'No model' })}</option>}
-              {whatIfModelList.map((mm) => <option key={mm.user_model_id} value={mm.user_model_id}>{mm.alias || mm.provider_model_name}</option>)}
-            </select>
+            {/* W5 — shared ModelPicker (compact) replaces the bespoke <select>. */}
+            <div data-testid="scenegraph-whatif-model" className="w-44">
+              <ModelPicker
+                capability="chat"
+                compact
+                value={effectiveWhatIfModel || null}
+                onChange={(id) => setWhatIfModelRef(id ?? '')}
+                ariaLabel={t('whatif.model', { defaultValue: 'Take model' })}
+                placeholder={t('whatif.noModel', { defaultValue: 'No model' })}
+              />
+            </div>
             <button
               type="button" data-testid="scenegraph-whatif-add"
               className="rounded border border-purple-300 px-2 py-0.5 text-purple-700 hover:bg-purple-50 dark:border-purple-700 dark:text-purple-300 dark:hover:bg-purple-950/30"

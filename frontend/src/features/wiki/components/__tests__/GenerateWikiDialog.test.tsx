@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen, fireEvent, waitFor } from '@testing-library/react';
+import { render, screen, fireEvent, waitFor, within } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import type { PropsWithChildren } from 'react';
 
@@ -11,9 +11,22 @@ vi.mock('react-i18next', () => ({
 }));
 vi.mock('@/auth', () => ({ useAuth: () => ({ accessToken: 'tok' }) }));
 
+// W5 — the model pickers are now the shared ModelPicker, which also imports
+// getUserModelMeta from this module: spread the actual module and only
+// override the API surface.
 const listUserModels = vi.fn();
-vi.mock('@/features/ai-models/api', () => ({
-  aiModelsApi: { listUserModels: (...a: unknown[]) => listUserModels(...a) },
+vi.mock('@/features/ai-models/api', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('@/features/ai-models/api')>();
+  return {
+    ...actual,
+    aiModelsApi: { listUserModels: (...a: unknown[]) => listUserModels(...a), patchFavorite: vi.fn() },
+  };
+});
+// ModelPicker persists recents via syncPrefs — stub the server round-trip.
+vi.mock('@/lib/syncPrefs', () => ({
+  loadPrefFromServer: vi.fn().mockResolvedValue(undefined),
+  savePrefToServer: vi.fn().mockResolvedValue(true),
+  syncPrefsToServer: vi.fn(),
 }));
 const getKinds = vi.fn();
 vi.mock('@/features/glossary/api', () => ({
@@ -37,6 +50,7 @@ vi.mock('@/features/usage/api', () => ({
 }));
 
 import { GenerateWikiDialog } from '../GenerateWikiDialog';
+import { invalidateUserModelsCache } from '@/components/model-picker';
 
 function wrap(ui: React.ReactElement) {
   const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
@@ -46,14 +60,28 @@ function wrap(ui: React.ReactElement) {
   return render(ui, { wrapper: Wrapper });
 }
 
+// W5 — the pickers are the shared ModelPicker (combobox trigger + listbox).
+// The trigger only renders once the models fetch resolves (loading skeleton
+// before that), so `findByRole` doubles as the readiness wait.
+function pickerTrigger(testId: string) {
+  return within(screen.getByTestId(testId)).findByRole('combobox');
+}
+async function pickModel(testId: string, name: string | RegExp = /Gemma/) {
+  fireEvent.click(await pickerTrigger(testId));
+  fireEvent.click(await screen.findByRole('option', { name }));
+}
+
 // W3 — switch the batch dialog into AI mode (the model picker only renders here).
 async function toAiMode() {
   fireEvent.click(screen.getByTestId('wiki-gen-mode-llm'));
-  await waitFor(() => expect(screen.getAllByRole('option', { name: /Gemma/ })[0]).toBeTruthy());
+  await pickerTrigger('wiki-gen-model');
 }
 
 beforeEach(() => {
   vi.clearAllMocks();
+  // W5 — flush the shared fetch's module-level cache + recents cache.
+  invalidateUserModelsCache();
+  localStorage.clear();
   listUserModels.mockResolvedValue({
     items: [
       { user_model_id: 'm1', provider_kind: 'lm_studio', provider_model_name: 'gemma', alias: 'Gemma', is_active: true, is_favorite: false, tags: [], created_at: '' },
@@ -114,8 +142,8 @@ describe('GenerateWikiDialog', () => {
     wrap(<GenerateWikiDialog open onClose={() => {}} onTrigger={onTrigger} busy={false} />);
     await waitFor(() => expect(screen.getByTestId('wiki-gen-mode-llm')).toBeTruthy());
     await toAiMode();
-    // picker present but empty → confirm disabled, AI confirm label
-    expect((screen.getByTestId('wiki-gen-model') as HTMLSelectElement).value).toBe('');
+    // picker present but nothing selected → confirm disabled, AI confirm label
+    expect(await pickerTrigger('wiki-gen-model')).toHaveTextContent('gen.model.pickRequired');
     expect((screen.getByTestId('wiki-gen-confirm') as HTMLButtonElement).disabled).toBe(true);
     expect(screen.getByTestId('wiki-gen-confirm').textContent).toContain('gen.confirmLlm');
     fireEvent.click(screen.getByTestId('wiki-gen-confirm'));
@@ -129,7 +157,7 @@ describe('GenerateWikiDialog', () => {
     await waitFor(() => expect(screen.getByTestId('wiki-gen-mode-llm')).toBeTruthy());
     await toAiMode();
 
-    fireEvent.change(screen.getByTestId('wiki-gen-model'), { target: { value: 'm1' } });
+    await pickModel('wiki-gen-model');
     expect(screen.getByTestId('wiki-gen-confirm').textContent).toContain('gen.confirmLlm');
     expect(screen.getByTestId('wiki-gen-maxspend')).toBeTruthy();
 
@@ -146,7 +174,7 @@ describe('GenerateWikiDialog', () => {
     wrap(<GenerateWikiDialog open onClose={() => {}} onTrigger={onTrigger} busy={false} />);
     await waitFor(() => expect(screen.getByTestId('wiki-gen-mode-llm')).toBeTruthy());
     await toAiMode();
-    fireEvent.change(screen.getByTestId('wiki-gen-model'), { target: { value: 'm1' } });
+    await pickModel('wiki-gen-model');
     fireEvent.change(screen.getByTestId('wiki-gen-maxspend'), { target: { value: '5.00' } });
     // back to stub — picker + spend gone, and a confirm runs deterministic
     fireEvent.click(screen.getByTestId('wiki-gen-mode-stub'));
@@ -162,8 +190,8 @@ describe('GenerateWikiDialog', () => {
     );
     await waitFor(() => expect(screen.getByTestId('wiki-gen-mode-llm')).toBeTruthy());
     await toAiMode();
-    fireEvent.change(screen.getByTestId('wiki-gen-model'), { target: { value: 'm1' } });
-    expect((screen.getByTestId('wiki-gen-model') as HTMLSelectElement).value).toBe('m1');
+    await pickModel('wiki-gen-model');
+    expect(await pickerTrigger('wiki-gen-model')).toHaveTextContent('Gemma');
     // close then reopen — the dialog stays mounted, so without the reset the
     // AI selection would persist
     rerender(<GenerateWikiDialog open={false} onClose={() => {}} onTrigger={vi.fn()} busy={false} />);
@@ -186,16 +214,15 @@ describe('GenerateWikiDialog', () => {
         regenName="Dracula"
       />,
     );
-    await waitFor(() => expect(screen.getAllByRole('option', { name: /Gemma/ })[0]).toBeTruthy());
+    await pickerTrigger('wiki-gen-model');
     // regen is always AI — no mode toggle, picker shown directly
     expect(screen.queryByTestId('wiki-gen-mode-stub')).toBeNull();
     // no model picked yet → confirm disabled (deterministic regen would be a no-op)
     expect((screen.getByTestId('wiki-gen-confirm') as HTMLButtonElement).disabled).toBe(true);
-    // the placeholder option is disabled
-    const placeholder = screen.getByRole('option', { name: 'gen.model.pickRequired' }) as HTMLOptionElement;
-    expect(placeholder.disabled).toBe(true);
+    // no selection yet — the trigger shows the pick-required placeholder
+    expect(await pickerTrigger('wiki-gen-model')).toHaveTextContent('gen.model.pickRequired');
 
-    fireEvent.change(screen.getByTestId('wiki-gen-model'), { target: { value: 'm1' } });
+    await pickModel('wiki-gen-model');
     fireEvent.click(screen.getByTestId('wiki-gen-confirm'));
     await waitFor(() =>
       expect(onTrigger).toHaveBeenCalledWith({ model_ref: 'm1', entity_ids: ['e-42'] }),
@@ -214,8 +241,8 @@ describe('GenerateWikiDialog', () => {
         regenName="Dracula"
       />,
     );
-    await waitFor(() => expect(screen.getAllByRole('option', { name: /Gemma/ })[0]).toBeTruthy());
-    fireEvent.change(screen.getByTestId('wiki-gen-model'), { target: { value: 'm1' } });
+    await pickerTrigger('wiki-gen-model');
+    await pickModel('wiki-gen-model');
     // 3 entities × $0.05 ≈ $0.15
     await waitFor(() => {
       const txt = screen.getByTestId('wiki-gen-estimate').textContent || '';
@@ -249,10 +276,10 @@ describe('GenerateWikiDialog', () => {
     wrap(<GenerateWikiDialog open onClose={() => {}} onTrigger={onTrigger} busy={false} />);
     await waitFor(() => expect(screen.getByTestId('wiki-gen-mode-llm')).toBeTruthy());
     await toAiMode();
-    fireEvent.change(screen.getByTestId('wiki-gen-model'), { target: { value: 'm1' } });
-    // the revise picker defaults to "same as generation" (value '') → no override sent
-    expect((screen.getByTestId('wiki-gen-revise-model') as HTMLSelectElement).value).toBe('');
-    fireEvent.change(screen.getByTestId('wiki-gen-revise-model'), { target: { value: 'm1' } });
+    await pickModel('wiki-gen-model');
+    // the revise picker defaults to "same as generation" (None) → no override sent
+    expect(await pickerTrigger('wiki-gen-revise-model')).toHaveTextContent('gen.reviseModel.same');
+    await pickModel('wiki-gen-revise-model');
     fireEvent.click(screen.getByTestId('wiki-gen-confirm'));
     await waitFor(() =>
       expect(onTrigger).toHaveBeenCalledWith({ model_ref: 'm1', revise_model_ref: 'm1' }),
@@ -272,9 +299,9 @@ describe('GenerateWikiDialog', () => {
       />,
     );
     // regen shows both pickers directly (always AI, no toggle)
-    await waitFor(() => expect(screen.getAllByRole('option', { name: /Gemma/ })[0]).toBeTruthy());
-    fireEvent.change(screen.getByTestId('wiki-gen-model'), { target: { value: 'm1' } });
-    fireEvent.change(screen.getByTestId('wiki-gen-revise-model'), { target: { value: 'm1' } });
+    await pickerTrigger('wiki-gen-model');
+    await pickModel('wiki-gen-model');
+    await pickModel('wiki-gen-revise-model');
     fireEvent.click(screen.getByTestId('wiki-gen-confirm'));
     await waitFor(() =>
       expect(onTrigger).toHaveBeenCalledWith({ model_ref: 'm1', entity_ids: ['e-42'], revise_model_ref: 'm1' }),
@@ -286,7 +313,7 @@ describe('GenerateWikiDialog', () => {
     wrap(<GenerateWikiDialog open onClose={() => {}} onTrigger={onTrigger} busy={false} />);
     await waitFor(() => expect(screen.getByTestId('wiki-gen-mode-llm')).toBeTruthy());
     await toAiMode();
-    fireEvent.change(screen.getByTestId('wiki-gen-model'), { target: { value: 'm1' } });
+    await pickModel('wiki-gen-model');
     fireEvent.click(screen.getByTestId('wiki-gen-confirm'));
     await waitFor(() => expect(onTrigger).toHaveBeenCalledWith({ model_ref: 'm1' }));
   });
@@ -302,7 +329,7 @@ describe('GenerateWikiDialog', () => {
     wrap(<GenerateWikiDialog open onClose={() => {}} onTrigger={onTrigger} busy={false} />);
     await waitFor(() => expect(screen.getByTestId('wiki-gen-mode-llm')).toBeTruthy());
     await toAiMode();
-    fireEvent.change(screen.getByTestId('wiki-gen-model'), { target: { value: 'm1' } });
+    await pickModel('wiki-gen-model');
     fireEvent.change(screen.getByTestId('wiki-gen-maxspend'), { target: { value: 'abc' } });
     expect((screen.getByTestId('wiki-gen-confirm') as HTMLButtonElement).disabled).toBe(true);
     fireEvent.click(screen.getByTestId('wiki-gen-confirm'));

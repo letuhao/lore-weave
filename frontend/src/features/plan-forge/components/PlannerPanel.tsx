@@ -6,11 +6,11 @@ import { useEffect, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import type { IDockviewPanelProps } from 'dockview-react';
 import { useAuth } from '@/auth';
+import { ModelPicker, useUserModels } from '@/components/model-picker';
 import { useStudioHost, useRegisterStudioTool } from '@/features/studio/host/StudioHostProvider';
 import type { StudioToolRegistration } from '@/features/studio/host/types';
 import { usePlanRun } from '../hooks/usePlanRun';
 import type { PlanRunMode } from '../types';
-import { ModelPicker } from './ModelPicker';
 import { PlanRunView } from './PlanRunView';
 
 export function PlannerPanel(props: IDockviewPanelProps) {
@@ -40,14 +40,25 @@ export function PlannerPanel(props: IDockviewPanelProps) {
     props.api.setTitle(label);
   }, [props.api, label]);
 
+  // W5 — shared user-models fetch (replaces the bespoke plan-forge ModelPicker's own
+  // effect); only fetched once the llm mode needs it. The old picker auto-selected
+  // the favorite/first model when nothing was chosen — preserved here as a DERIVED
+  // default (no useEffect-for-events).
+  const models = useUserModels({ capability: 'chat', enabled: mode === 'llm' });
+  const autoModelRef = useMemo(() => {
+    if (!models.models?.length) return '';
+    return (models.models.find((m) => m.is_favorite) ?? models.models[0]).user_model_id;
+  }, [models.models]);
+  const effectiveModelRef = modelRef || autoModelRef;
+
   const canPropose =
-    !plan.busy && !plan.polling && markdown.trim().length > 0 && (mode === 'rules' || modelRef.length > 0);
+    !plan.busy && !plan.polling && markdown.trim().length > 0 && (mode === 'rules' || effectiveModelRef.length > 0);
 
   const onPropose = () => {
     void plan.createRun({
       source_markdown: markdown,
       mode,
-      ...(mode === 'llm' ? { model_ref: modelRef } : {}),
+      ...(mode === 'llm' ? { model_ref: effectiveModelRef } : {}),
     });
   };
 
@@ -78,13 +89,17 @@ export function PlannerPanel(props: IDockviewPanelProps) {
           ))}
         </div>
         {mode === 'llm' && (
-          <div className="flex-1">
-            <ModelPicker
-              token={accessToken ?? null}
-              value={modelRef}
-              onChange={setModelRef}
-              label={t('planner.model', { defaultValue: 'Model' })}
-            />
+          <div className="flex-1 text-[11px] text-muted-foreground">
+            <span className="block">{t('planner.model', { defaultValue: 'Model' })}</span>
+            <div data-testid="plan-model-picker" className="mt-1">
+              <ModelPicker
+                capability="chat"
+                compact
+                value={effectiveModelRef || null}
+                onChange={(id) => setModelRef(id ?? '')}
+                ariaLabel={t('planner.model', { defaultValue: 'Model' })}
+              />
+            </div>
           </div>
         )}
         <button

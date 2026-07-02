@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen, waitFor, fireEvent } from '@testing-library/react';
+import { render, screen, waitFor, fireEvent, within } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import type { PropsWithChildren } from 'react';
 
@@ -28,11 +28,26 @@ vi.mock('sonner', () => ({
   toast: toastMocks,
 }));
 
+// W5 — the dialog now renders the shared ModelPicker, which also imports
+// getUserModelMeta from this module: spread the actual module and only
+// override the API surface.
 const listUserModelsMock = vi.fn();
-vi.mock('@/features/ai-models/api', () => ({
-  aiModelsApi: {
-    listUserModels: (...args: unknown[]) => listUserModelsMock(...args),
-  },
+vi.mock('@/features/ai-models/api', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('@/features/ai-models/api')>();
+  return {
+    ...actual,
+    aiModelsApi: {
+      listUserModels: (...args: unknown[]) => listUserModelsMock(...args),
+      patchFavorite: vi.fn(),
+    },
+  };
+});
+
+// ModelPicker persists recents via syncPrefs — stub the server round-trip.
+vi.mock('@/lib/syncPrefs', () => ({
+  loadPrefFromServer: vi.fn().mockResolvedValue(undefined),
+  savePrefToServer: vi.fn().mockResolvedValue(true),
+  syncPrefsToServer: vi.fn(),
 }));
 
 const regenerateGlobalBioMock = vi.fn();
@@ -48,6 +63,7 @@ vi.mock('../../api', async () => {
 });
 
 import { RegenerateBioDialog } from '../RegenerateBioDialog';
+import { invalidateUserModelsCache } from '@/components/model-picker';
 
 function Wrapper({ children }: PropsWithChildren) {
   const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
@@ -70,6 +86,9 @@ describe('RegenerateBioDialog', () => {
     toastMocks.success.mockReset();
     toastMocks.error.mockReset();
     toastMocks.info.mockReset();
+    // W5 — flush the shared fetch's module-level cache + recents cache.
+    invalidateUserModelsCache();
+    localStorage.clear();
     listUserModelsMock.mockResolvedValue({
       items: [
         {
@@ -77,16 +96,27 @@ describe('RegenerateBioDialog', () => {
           provider_kind: 'openai',
           provider_model_name: 'gpt-4o-mini',
           alias: 'Mini',
+          is_active: true,
+          is_favorite: false,
+          capability_flags: { chat: true },
+          tags: [],
+          created_at: '2026-04-22T00:00:00Z',
         },
       ],
     });
   });
 
+  // W5 — the model control is the shared ModelPicker (combobox trigger +
+  // listbox): click the trigger once the fetch resolves, click the option.
+  async function pickModel() {
+    const picker = await screen.findByTestId('regenerate-bio-model');
+    const { findByRole } = within(picker);
+    fireEvent.click(await findByRole('combobox'));
+    fireEvent.click(await screen.findByRole('option', { name: /Mini/ }));
+  }
+
   async function pickModelAndConfirm() {
-    await screen.findByRole('option', { name: /gpt-4o-mini/i });
-    fireEvent.change(await screen.findByTestId('regenerate-bio-model'), {
-      target: { value: 'gpt-4o-mini' },
-    });
+    await pickModel();
     fireEvent.click(screen.getByTestId('regenerate-bio-confirm'));
   }
 
@@ -95,16 +125,10 @@ describe('RegenerateBioDialog', () => {
     const confirm = await screen.findByTestId('regenerate-bio-confirm');
     expect(confirm).toBeDisabled();
 
+    await pickModel();
     await waitFor(() => {
       expect(listUserModelsMock).toHaveBeenCalledTimes(1);
     });
-    const select = await screen.findByTestId('regenerate-bio-model');
-    // Wait for the chat-model option to render after the query resolves
-    // — the select renders immediately but is empty until modelsQuery
-    // settles. Without this wait, fireEvent.change() below races the
-    // options and the state never flips.
-    await screen.findByRole('option', { name: /gpt-4o-mini/i });
-    fireEvent.change(select, { target: { value: 'gpt-4o-mini' } });
     expect(confirm).not.toBeDisabled();
     expect(onOpenChange).not.toHaveBeenCalled();
   });
@@ -126,15 +150,10 @@ describe('RegenerateBioDialog', () => {
       skipped_reason: null,
     });
     const { onOpenChange } = renderOpen();
-    const select = await screen.findByTestId('regenerate-bio-model');
-    // Wait for the chat-model option to render after the query resolves
-    // — the select renders immediately but is empty until modelsQuery
-    // settles. Without this wait, fireEvent.change() below races the
-    // options and the state never flips.
-    await screen.findByRole('option', { name: /gpt-4o-mini/i });
-    fireEvent.change(select, { target: { value: 'gpt-4o-mini' } });
-    fireEvent.click(screen.getByTestId('regenerate-bio-confirm'));
+    await pickModelAndConfirm();
 
+    // W5 payload contract: the picker binds user_model_id, but the
+    // regenerate edge still receives the model's provider_model_name.
     await waitFor(() => {
       expect(regenerateGlobalBioMock).toHaveBeenCalledWith(
         { model_source: 'user_model', model_ref: 'gpt-4o-mini' },
@@ -159,14 +178,7 @@ describe('RegenerateBioDialog', () => {
       }),
     );
     const { onOpenChange } = renderOpen();
-    const select = await screen.findByTestId('regenerate-bio-model');
-    // Wait for the chat-model option to render after the query resolves
-    // — the select renders immediately but is empty until modelsQuery
-    // settles. Without this wait, fireEvent.change() below races the
-    // options and the state never flips.
-    await screen.findByRole('option', { name: /gpt-4o-mini/i });
-    fireEvent.change(select, { target: { value: 'gpt-4o-mini' } });
-    fireEvent.click(screen.getByTestId('regenerate-bio-confirm'));
+    await pickModelAndConfirm();
 
     const banner = await screen.findByTestId('regenerate-bio-edit-lock');
     expect(banner.textContent).toContain('2026-04-21');

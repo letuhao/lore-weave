@@ -143,5 +143,22 @@
     "light": "Light",
     "sepia": "Sepia",
     "oled": "OLED"
+  },
+  "modelPicker": {
+    "placeholder": "Select a model…",
+    "search": "Search models…",
+    "favorites": "Favorites",
+    "recents": "Recent",
+    "none": "None",
+    "empty": "No models available. Register one to get started.",
+    "error": "Failed to load models.",
+    "noResults": "No models match your search.",
+    "orphan": "Previously selected model (no longer in your registry)",
+    "ctx": "{{n}}K",
+    "free": "$0 local",
+    "freeHint": "Runs locally — no per-token cost.",
+    "paidHint": "Priced per use.",
+    "favorite": "Add to favorites",
+    "unfavorite": "Remove from favorites"
   }
 }

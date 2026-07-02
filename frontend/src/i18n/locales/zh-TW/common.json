@@ -142,5 +142,22 @@
     "light": "淺色",
     "sepia": "棕褐色",
     "oled": "OLED"
+  },
+  "modelPicker": {
+    "placeholder": "選擇模型…",
+    "search": "搜尋模型…",
+    "favorites": "我的最愛",
+    "recents": "最近使用",
+    "none": "無",
+    "empty": "沒有可用的模型。請先註冊一個模型。",
+    "error": "無法載入模型清單。",
+    "noResults": "沒有符合搜尋的模型。",
+    "orphan": "先前選擇的模型（已不在您的清單中）",
+    "ctx": "{{n}}K",
+    "free": "$0 本機",
+    "freeHint": "在本機執行 — 不按 token 計費。",
+    "paidHint": "依用量計費。",
+    "favorite": "加入我的最愛",
+    "unfavorite": "從我的最愛移除"
   }
 }

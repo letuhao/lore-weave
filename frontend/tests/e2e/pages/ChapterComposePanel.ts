@@ -103,6 +103,13 @@ export class ChapterComposePanel {
     await this.page.goto(`/books/${bookId}/chapters/${chapterId}/edit`);
   }
 
+  /** Pick a model in the shared ModelPicker (W5) — the old native `<select>`
+   * became a combobox trigger; options carry `data-model-id`. */
+  async selectModel(userModelId: string): Promise<void> {
+    await this.modelSelect.locator('[role="combobox"], button').first().click();
+    await this.page.locator(`[role="option"][data-model-id="${userModelId}"]`).click();
+  }
+
   async openComposeTab(): Promise<void> {
     await this.workmodeSwitcher.click();
     await this.workmodeCompose.click();

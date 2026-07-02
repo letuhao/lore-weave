@@ -2,8 +2,7 @@ import { useState, useEffect, useRef } from 'react';
 import { X, Settings2, Mic, Volume2, Play, Square } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import { useAuth } from '@/auth';
-import { apiJson } from '@/api';
-import { aiModelsApi, type UserModel } from '@/features/ai-models/api';
+import { ModelPicker, useUserModels } from '@/components/model-picker';
 import { BrowserTTSEngine } from '@/hooks/engines/BrowserTTSEngine';
 import { type VoicePrefs, loadVoicePrefs, saveVoicePrefs, DEFAULT_VOICE_PREFS } from '../voicePrefs';
 import { cn } from '@/lib/utils';
@@ -45,8 +44,11 @@ export function VoiceSettingsPanel({ open, onClose }: VoiceSettingsPanelProps) {
   const { accessToken } = useAuth();
   const [prefs, setPrefs] = useState<VoicePrefs>(loadVoicePrefs);
   const [voices, setVoices] = useState<SpeechSynthesisVoice[]>([]);
-  const [sttModels, setSttModels] = useState<UserModel[]>([]);
-  const [ttsModels, setTtsModels] = useState<UserModel[]>([]);
+  // W5: model lists come from the shared useUserModels (capability-filtered
+  // server-side, incl. legacy `_capability` flags); pickers below are the
+  // shared ModelPicker.
+  const { models: sttModels } = useUserModels({ capability: 'stt', enabled: open });
+  const { models: ttsModels } = useUserModels({ capability: 'tts', enabled: open });
   const [providerVoices, setProviderVoices] = useState<ProviderVoice[]>([]);
   const [voicesLoading, setVoicesLoading] = useState(false);
   const previewAudioRef = useRef<HTMLAudioElement | null>(null);
@@ -62,18 +64,6 @@ export function VoiceSettingsPanel({ open, onClose }: VoiceSettingsPanelProps) {
     speechSynthesis?.addEventListener('voiceschanged', loadVoices);
     return () => speechSynthesis?.removeEventListener('voiceschanged', loadVoices);
   }, []);
-
-  // Load AI models (single call, filter client-side)
-  useEffect(() => {
-    if (!accessToken) return;
-    aiModelsApi.listUserModels(accessToken)
-      .then((r) => {
-        const active = r.items.filter((m) => m.is_active);
-        setSttModels(active.filter((m) => m.capability_flags?.stt));
-        setTtsModels(active.filter((m) => m.capability_flags?.tts));
-      })
-      .catch(() => { setSttModels([]); setTtsModels([]); });
-  }, [accessToken]);
 
   // Fetch voice analytics recommendation
   useEffect(() => {
@@ -182,26 +172,22 @@ export function VoiceSettingsPanel({ open, onClose }: VoiceSettingsPanelProps) {
         {/* STT Model (when ai_model) */}
         {prefs.sttSource === 'ai_model' && (
           <FieldGroup label={t('voice.sttModel', 'STT Model')}>
-            {sttModels.length === 0 ? (
-              <p className="text-[10px] text-muted-foreground">{t('voice.noModels', 'No STT models configured')}</p>
-            ) : (
-              <select
-                value={prefs.sttModelRef}
-                onChange={(e) => {
-                  update('sttModelRef', e.target.value);
-                  const model = sttModels.find((m) => m.user_model_id === e.target.value);
-                  update('sttModelName', model?.provider_model_name ?? '');
-                }}
-                className="h-8 w-full rounded-md border bg-background px-2 text-xs focus:border-ring focus:outline-none"
-              >
-                <option value="">{t('voice.selectModel', 'Select model...')}</option>
-                {sttModels.map((m) => (
-                  <option key={m.user_model_id} value={m.user_model_id}>
-                    {m.alias || m.provider_model_name}
-                  </option>
-                ))}
-              </select>
-            )}
+            <ModelPicker
+              capability="stt"
+              value={prefs.sttModelRef || null}
+              onChange={(id) => {
+                update('sttModelRef', id ?? '');
+                const model = (sttModels ?? []).find((m) => m.user_model_id === id);
+                update('sttModelName', model?.provider_model_name ?? '');
+              }}
+              allowNone
+              noneLabel={t('voice.selectModel', 'Select model...')}
+              ariaLabel={t('voice.sttModel', 'STT Model')}
+              compact
+              emptyState={
+                <p className="text-[10px] text-muted-foreground">{t('voice.noModels', 'No STT models configured')}</p>
+              }
+            />
           </FieldGroup>
         )}
 
@@ -267,26 +253,23 @@ export function VoiceSettingsPanel({ open, onClose }: VoiceSettingsPanelProps) {
         {/* TTS Model (when ai_model) */}
         {prefs.ttsSource === 'ai_model' && (
           <FieldGroup label={t('voice.ttsModel', 'TTS Model')}>
-            {ttsModels.length === 0 ? (
-              <p className="text-[10px] text-muted-foreground">{t('voice.noModels', 'No TTS models configured')}</p>
-            ) : (
-              <select
-                value={prefs.ttsModelRef}
-                onChange={(e) => {
-                  update('ttsModelRef', e.target.value);
-                  const model = ttsModels.find((m) => m.user_model_id === e.target.value);
-                  update('ttsModelName', model?.provider_model_name ?? '');
-                }}
-                className="h-8 w-full rounded-md border bg-background px-2 text-xs focus:border-ring focus:outline-none"
-              >
-                <option value="">{t('voice.selectModel', 'Select model...')}</option>
-                {ttsModels.map((m) => (
-                  <option key={m.user_model_id} value={m.user_model_id}>
-                    {m.alias || m.provider_model_name}
-                  </option>
-                ))}
-              </select>
-            )}
+            <ModelPicker
+              capability="tts"
+              value={prefs.ttsModelRef || null}
+              onChange={(id) => {
+                update('ttsModelRef', id ?? '');
+                const model = (ttsModels ?? []).find((m) => m.user_model_id === id);
+                update('ttsModelName', model?.provider_model_name ?? '');
+                if (!id) stopPreview();
+              }}
+              allowNone
+              noneLabel={t('voice.selectModel', 'Select model...')}
+              ariaLabel={t('voice.ttsModel', 'TTS Model')}
+              compact
+              emptyState={
+                <p className="text-[10px] text-muted-foreground">{t('voice.noModels', 'No TTS models configured')}</p>
+              }
+            />
           </FieldGroup>
         )}
 

@@ -1586,6 +1586,7 @@ type userModelRow struct {
 	IsActive             bool
 	IsFavorite           bool
 	CapabilityFlags      []byte
+	Pricing              []byte
 	Notes                string
 	CreatedAt            time.Time
 	UpdatedAt            time.Time
@@ -1651,7 +1652,9 @@ SELECT user_model_id FROM user_models WHERE owner_user_id=$1
 			argPos += 2
 		}
 	}
-	query += " ORDER BY created_at DESC"
+	// Favorites-first so every picker (FE shared ModelPicker) gets the pinned
+	// section for free server-side; newest-first within each group.
+	query += " ORDER BY is_favorite DESC, created_at DESC"
 	rows, err := s.pool.Query(r.Context(), query, args...)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "M03_USER_MODEL_QUERY_FAILED", "failed to list user models")
@@ -1680,10 +1683,10 @@ SELECT user_model_id FROM user_models WHERE owner_user_id=$1
 func (s *Server) readUserModel(ctx context.Context, userID, id uuid.UUID) (map[string]any, error) {
 	var row userModelRow
 	err := s.pool.QueryRow(ctx, `
-SELECT user_model_id, provider_credential_id, provider_kind, provider_model_name, context_length, alias, is_active, is_favorite, capability_flags, notes, created_at, updated_at
+SELECT user_model_id, provider_credential_id, provider_kind, provider_model_name, context_length, alias, is_active, is_favorite, capability_flags, pricing, notes, created_at, updated_at
 FROM user_models
 WHERE user_model_id=$1 AND owner_user_id=$2
-`, id, userID).Scan(&row.UserModelID, &row.ProviderCredentialID, &row.ProviderKind, &row.ProviderModelName, &row.ContextLength, &row.Alias, &row.IsActive, &row.IsFavorite, &row.CapabilityFlags, &row.Notes, &row.CreatedAt, &row.UpdatedAt)
+`, id, userID).Scan(&row.UserModelID, &row.ProviderCredentialID, &row.ProviderKind, &row.ProviderModelName, &row.ContextLength, &row.Alias, &row.IsActive, &row.IsFavorite, &row.CapabilityFlags, &row.Pricing, &row.Notes, &row.CreatedAt, &row.UpdatedAt)
 	if err == pgx.ErrNoRows {
 		return nil, nil
 	}
@@ -1692,6 +1695,10 @@ WHERE user_model_id=$1 AND owner_user_id=$2
 	}
 	flags := map[string]any{}
 	_ = json.Unmarshal(row.CapabilityFlags, &flags)
+	// pricing JSONB (input_per_mtok, output_per_mtok, per_image, …) — additive,
+	// read-only here; the FE ModelPicker renders the "$0 local"/"$" hint from it.
+	pricing := map[string]any{}
+	_ = json.Unmarshal(row.Pricing, &pricing)
 	tags, err := s.loadTags(ctx, row.UserModelID)
 	if err != nil {
 		return nil, err
@@ -1706,6 +1713,7 @@ WHERE user_model_id=$1 AND owner_user_id=$2
 		"is_active":              row.IsActive,
 		"is_favorite":            row.IsFavorite,
 		"capability_flags":       flags,
+		"pricing":                pricing,
 		"notes":                  row.Notes,
 		"tags":                   tags,
 		"created_at":             row.CreatedAt,

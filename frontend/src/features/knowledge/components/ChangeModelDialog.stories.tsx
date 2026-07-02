@@ -1,7 +1,7 @@
 import type { Meta, StoryObj } from '@storybook/react-vite';
 import { fn, userEvent, waitFor } from 'storybook/test';
 import { ChangeModelDialog } from './ChangeModelDialog';
-import { findConfirmButton, waitForSingleSelect } from '@sb/story-helpers';
+import { findConfirmButton } from '@sb/story-helpers';
 import {
   projectFixture,
   userModelsFixtureEmbedding,
@@ -47,6 +47,28 @@ const baseHandlers = [
   benchmarkStatusHandler(benchmarkStatusPassed()),
 ];
 
+/**
+ * W5 — EmbeddingModelPicker now renders the shared ModelPicker (combobox
+ * trigger button + listbox of role=option rows), not a native `<select>`.
+ * Query `document` because the Radix dialog portals outside `canvasElement`.
+ */
+async function pickEmbeddingModel(optionText: RegExp) {
+  const trigger = await waitFor(() => {
+    const dialog = document.querySelector('[role="dialog"]');
+    const btn = dialog?.querySelector<HTMLButtonElement>('[role="combobox"]');
+    if (!btn) throw new Error('ModelPicker trigger not rendered yet');
+    return btn;
+  });
+  await userEvent.click(trigger);
+  const option = await waitFor(() => {
+    const options = Array.from(document.querySelectorAll<HTMLElement>('[role="option"]'));
+    const hit = options.find((o) => optionText.test(o.textContent ?? ''));
+    if (!hit) throw new Error(`no option matching ${optionText} rendered yet`);
+    return hit;
+  });
+  await userEvent.click(option);
+}
+
 // 1. Same model selected — Confirm disabled, hint visible. Opens on
 // `project.embedding_model = 'bge-m3'` which matches the picker's
 // default option.
@@ -70,10 +92,9 @@ export const DifferentModelSelected: Story = {
     onChanged: fn(),
   },
   parameters: { msw: { handlers: baseHandlers } },
-  play: async ({ canvasElement }) => {
-    // ChangeModelDialog renders one <select> (the picker).
-    const select = await waitForSingleSelect(canvasElement, { withOptionValue: 'text-embedding-3-small' });
-    await userEvent.selectOptions(select, 'text-embedding-3-small');
+  play: async () => {
+    // ChangeModelDialog renders one ModelPicker (the embedding picker).
+    await pickEmbeddingModel(/text-embedding-3-small/);
   },
 };
 
@@ -95,8 +116,7 @@ export const Confirming: Story = {
     },
   },
   play: async ({ canvasElement }) => {
-    const select = await waitForSingleSelect(canvasElement, { withOptionValue: 'text-embedding-3-small' });
-    await userEvent.selectOptions(select, 'text-embedding-3-small');
+    await pickEmbeddingModel(/text-embedding-3-small/);
     // Confirm button text varies by i18n ("Change model and delete
     // graph"). findConfirmButton drops Cancel/Close and returns the
     // remaining footer button.
@@ -132,8 +152,7 @@ export const ConfirmError: Story = {
     },
   },
   play: async ({ canvasElement }) => {
-    const select = await waitForSingleSelect(canvasElement, { withOptionValue: 'text-embedding-3-small' });
-    await userEvent.selectOptions(select, 'text-embedding-3-small');
+    await pickEmbeddingModel(/text-embedding-3-small/);
     const confirm = await waitFor(() => {
       const btn = findConfirmButton(canvasElement);
       if (!btn || btn.disabled) throw new Error('confirm not ready');
@@ -164,8 +183,7 @@ export const NoOpResponse: Story = {
     },
   },
   play: async ({ canvasElement }) => {
-    const select = await waitForSingleSelect(canvasElement, { withOptionValue: 'text-embedding-3-small' });
-    await userEvent.selectOptions(select, 'text-embedding-3-small');
+    await pickEmbeddingModel(/text-embedding-3-small/);
     const confirm = await waitFor(() => {
       const btn = findConfirmButton(canvasElement);
       if (!btn || btn.disabled) throw new Error('confirm not ready');

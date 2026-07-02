@@ -1,10 +1,10 @@
-import { useState, useMemo, useEffect } from 'react';
+import { useState, useEffect } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { useTranslation } from 'react-i18next';
 import { Sparkles, CheckCircle2, AlertTriangle } from 'lucide-react';
 import { FormDialog } from '@/components/shared';
+import { ModelPicker } from '@/components/model-picker';
 import { useAuth } from '@/auth';
-import { aiModelsApi, type UserModel } from '@/features/ai-models/api';
 import { glossaryApi } from '@/features/glossary/api';
 import { booksApi } from '@/features/books/api';
 import { knowledgeApi } from '@/features/knowledge/api';
@@ -84,15 +84,6 @@ export function GenerateWikiDialog({
       setMaxSpend('');
     }
   };
-
-  const modelsQuery = useQuery<{ items: UserModel[] }>({
-    queryKey: ['ai-models', 'chat'],
-    queryFn: () =>
-      aiModelsApi.listUserModels(accessToken!, { capability: 'chat', include_inactive: false }),
-    enabled: open && !!accessToken,
-    staleTime: 60_000,
-  });
-  const chatModels = useMemo(() => modelsQuery.data?.items ?? [], [modelsQuery.data]);
 
   const kindsQuery = useQuery({
     queryKey: ['glossary-kinds'],
@@ -244,52 +235,39 @@ export function GenerateWikiDialog({
           </div>
         )}
 
-        {/* Model picker — AI mode (batch) or regen (always AI). The empty option
-            is a disabled placeholder; a real model must be chosen to confirm. */}
+        {/* Model picker — AI mode (batch) or regen (always AI). Shared W5
+            ModelPicker; no "none" choice — a real model must be chosen to
+            confirm (the placeholder is not selectable). */}
         {(isRegen || isLlm) && (
-          <label className="flex flex-col gap-1">
+          <div className="flex flex-col gap-1" data-testid="wiki-gen-model">
             <span className="text-xs font-medium text-muted-foreground">{t('gen.model.label')}</span>
-            <select
-              value={modelRef}
-              onChange={(e) => setModelRef(e.target.value)}
-              disabled={modelsQuery.isLoading}
-              data-testid="wiki-gen-model"
-              className="rounded-md border bg-input px-3 py-2 text-sm outline-none focus:border-ring disabled:opacity-60"
-            >
-              <option value="" disabled>
-                {t('gen.model.pickRequired')}
-              </option>
-              {chatModels.map((m) => (
-                <option key={m.user_model_id} value={m.user_model_id}>
-                  {m.alias ? `${m.alias} (${m.provider_model_name})` : `${m.provider_kind}/${m.provider_model_name}`}
-                </option>
-              ))}
-            </select>
+            <ModelPicker
+              capability="chat"
+              value={modelRef || null}
+              onChange={(id) => setModelRef(id ?? '')}
+              placeholder={t('gen.model.pickRequired')}
+              ariaLabel={t('gen.model.label')}
+            />
             {isRegen && <span className="text-[11px] text-muted-foreground">{t('gen.regenHint')}</span>}
-          </label>
+          </div>
         )}
 
-        {/* W5 — optional revise-model override (AI path). '' = same as generation;
-            only used for the corrective re-gen of canon-flagged articles. */}
+        {/* W5 — optional revise-model override (AI path). None ("same as
+            generation") emits null → no override sent; only used for the
+            corrective re-gen of canon-flagged articles. */}
         {(isRegen || isLlm) && (
-          <label className="flex flex-col gap-1">
+          <div className="flex flex-col gap-1" data-testid="wiki-gen-revise-model">
             <span className="text-xs font-medium text-muted-foreground">{t('gen.reviseModel.label')}</span>
-            <select
-              value={reviseModelRef}
-              onChange={(e) => setReviseModelRef(e.target.value)}
-              disabled={modelsQuery.isLoading}
-              data-testid="wiki-gen-revise-model"
-              className="rounded-md border bg-input px-3 py-2 text-sm outline-none focus:border-ring disabled:opacity-60"
-            >
-              <option value="">{t('gen.reviseModel.same')}</option>
-              {chatModels.map((m) => (
-                <option key={m.user_model_id} value={m.user_model_id}>
-                  {m.alias ? `${m.alias} (${m.provider_model_name})` : `${m.provider_kind}/${m.provider_model_name}`}
-                </option>
-              ))}
-            </select>
+            <ModelPicker
+              capability="chat"
+              value={reviseModelRef || null}
+              onChange={(id) => setReviseModelRef(id ?? '')}
+              allowNone
+              noneLabel={t('gen.reviseModel.same')}
+              ariaLabel={t('gen.reviseModel.label')}
+            />
             <span className="text-[11px] text-muted-foreground">{t('gen.reviseModel.hint')}</span>
-          </label>
+          </div>
         )}
 
         {/* W6a — grounding status: AI generation needs the book's knowledge graph

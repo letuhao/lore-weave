@@ -21,16 +21,43 @@ vi.mock('../../hooks/useOutline', () => ({
 vi.mock('../../hooks/useWork', () => ({ useSetWorkSettings: () => setSettings }));
 vi.mock('react-router-dom', () => ({ useNavigate: () => navigateFn }));
 vi.mock('sonner', () => ({ toast: { error: vi.fn(), success: vi.fn() } }));
-// M2 — self-contained model picker query + the take-generation orchestration. Mock the
+// M2 — self-contained model picker + the take-generation orchestration. Mock the
 // models API (so the picker has a model) and useWhatIfTakes (so Generate is a spy — the
 // hook itself is unit-tested in useWhatIfTakes.test).
-vi.mock('../../../ai-models/api', () => ({
-  aiModelsApi: {
-    listUserModels: vi.fn().mockResolvedValue({
-      items: [{ user_model_id: 'm1', is_active: true, alias: 'M1', provider_kind: 'openai', provider_model_name: 'gpt' }],
-    }),
-  },
+// W5 — spread the real module: the shared ModelPicker also imports getUserModelMeta.
+vi.mock('@/features/ai-models/api', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('@/features/ai-models/api')>();
+  return {
+    ...actual,
+    aiModelsApi: {
+      listUserModels: vi.fn().mockResolvedValue({
+        items: [{
+          user_model_id: 'm1', provider_credential_id: 'c1', is_active: true, is_favorite: false,
+          alias: 'M1', provider_kind: 'openai', provider_model_name: 'gpt',
+          capability_flags: {}, tags: [], created_at: '2026-01-01T00:00:00Z',
+        }],
+      }),
+      patchFavorite: vi.fn(),
+    },
+  };
+});
+// W5 — the shared useUserModels/ModelPicker read the token from useAuth.
+vi.mock('@/auth', () => ({ useAuth: () => ({ accessToken: 'tok' }) }));
+vi.mock('@/lib/syncPrefs', () => ({
+  loadPrefFromServer: vi.fn().mockResolvedValue(undefined),
+  savePrefToServer: vi.fn().mockResolvedValue(true),
+  syncPrefsToServer: vi.fn(),
 }));
+
+import { invalidateUserModelsCache } from '@/components/model-picker';
+
+// W5 — the picker is the shared combobox; "the sole model resolved" shows as its
+// display name on the trigger (the old assert read the <select>'s value).
+const whatIfModelReady = async () =>
+  waitFor(() => {
+    const trigger = within(screen.getByTestId('scenegraph-whatif-model')).getByRole('combobox');
+    expect(trigger).toHaveTextContent('M1');
+  });
 const { generateTakeSpy } = vi.hoisted(() => ({ generateTakeSpy: vi.fn() }));
 vi.mock('../../hooks/useWhatIfTakes', () => ({
   // generateTake also flips the alt to 'ready' (the real hook does this async) so the
@@ -126,6 +153,8 @@ describe('SceneGraphCanvas (T1.3)', () => {
   };
 
   beforeEach(() => {
+    localStorage.clear();
+    invalidateUserModelsCache();  // W5 — shared fetch cache must not leak across tests
     createSceneLink.mutate.mockReset(); deleteSceneLink.mutate.mockReset();
     setSettings.mutate.mockReset(); navigateFn.mockReset(); generateTakeSpy.mockReset();
     promoteSpy.mockReset(); onPromotedSpy.mockReset(); createNodeSpy.mockClear(); persistProseSpy.mockClear(); (toast.error as ReturnType<typeof vi.fn>).mockReset();
@@ -231,7 +260,7 @@ describe('SceneGraphCanvas (T1.3)', () => {
     clickNode('s1');
     fireEvent.click(screen.getByTestId('scenegraph-whatif-start'));
     // the self-contained model picker populates from the (mocked) models API
-    await waitFor(() => expect((screen.getByTestId('scenegraph-whatif-model') as HTMLSelectElement).value).toBe('m1'));
+    await whatIfModelReady();
     const altId = screen.getByTestId('whatif-alt-node').getAttribute('data-alt')!;
     fireEvent.click(screen.getByTestId(`whatif-alt-generate-${altId}`));
     expect(generateTakeSpy).toHaveBeenCalledWith(altId, 's1', expect.objectContaining({ modelRef: 'm1' }));
@@ -241,7 +270,7 @@ describe('SceneGraphCanvas (T1.3)', () => {
     render(<Graph />);
     clickNode('s1');
     fireEvent.click(screen.getByTestId('scenegraph-whatif-start'));
-    await waitFor(() => expect((screen.getByTestId('scenegraph-whatif-model') as HTMLSelectElement).value).toBe('m1'));
+    await whatIfModelReady();
     // before any take is ready, Promote is disabled
     expect((screen.getByTestId('scenegraph-whatif-promote') as HTMLButtonElement).disabled).toBe(true);
     const altId = screen.getByTestId('whatif-alt-node').getAttribute('data-alt')!;

@@ -2,6 +2,26 @@ import { apiJson } from '../../api';
 
 export type ProviderKind = 'openai' | 'anthropic' | 'ollama' | 'lm_studio' | (string & {});
 
+/**
+ * Model pricing table (mirrors provider-registry `user_models.pricing` JSONB).
+ * Empty object = unpriced (fails closed server-side); explicit zeros = priced-free
+ * (local/self-hosted). Dimensions are additive — keep this loose.
+ */
+export type ModelPricing = {
+  input_per_mtok?: number;
+  output_per_mtok?: number;
+  per_image?: number;
+  per_second?: number;
+  per_kchar?: number;
+} & Record<string, number | undefined>;
+
+/**
+ * THE canonical UserModel type (W5 consolidation) — the former duplicate in
+ * `features/settings/api.ts` re-exports this one. capability_flags carries TWO
+ * historical schemas: canonical `{"chat": true}` booleans and legacy
+ * `{"_capability": "chat", "_display_name": …}` metadata — use
+ * {@link getUserModelMeta} instead of reading it directly.
+ */
 export type UserModel = {
   user_model_id: string;
   provider_credential_id: string;
@@ -11,10 +31,59 @@ export type UserModel = {
   alias?: string | null;
   is_active: boolean;
   is_favorite: boolean;
-  capability_flags?: Record<string, boolean>;
+  capability_flags?: Record<string, unknown>;
+  pricing?: ModelPricing;
+  notes?: string;
   tags: Array<{ tag_name: string; note?: string }>;
   created_at: string;
 };
+
+/** Provider kinds that run on the user's own hardware — the "$0 local" hint. */
+export const LOCAL_PROVIDER_KINDS = new Set<string>(['lm_studio', 'ollama']);
+
+/** Capability keys that are real capabilities (not `_`-prefixed metadata). */
+const META_PREFIX = '_';
+
+export type UserModelMeta = {
+  /** alias > legacy `_display_name` > provider_model_name. */
+  displayName: string;
+  /** Declared capability tokens (canonical boolean keys + the legacy `_capability`). */
+  capabilities: string[];
+  /** True when the model runs on a local provider kind OR pricing is explicit-zero. */
+  isFree: boolean;
+  /** True when a non-empty pricing table is present. */
+  isPriced: boolean;
+};
+
+/**
+ * Single place that understands both capability_flags schemas + pricing.
+ * (Consolidates the legacy `getInventoryMeta` handling for user models.)
+ */
+export function getUserModelMeta(m: UserModel): UserModelMeta {
+  const flags = m.capability_flags ?? {};
+  const displayName =
+    (m.alias || undefined) ??
+    (typeof flags._display_name === 'string' && flags._display_name
+      ? (flags._display_name as string)
+      : undefined) ??
+    m.provider_model_name;
+
+  const capabilities: string[] = [];
+  for (const [k, v] of Object.entries(flags)) {
+    if (!k.startsWith(META_PREFIX) && v === true) capabilities.push(k);
+  }
+  if (typeof flags._capability === 'string' && !capabilities.includes(flags._capability)) {
+    capabilities.push(flags._capability);
+  }
+
+  const pricing = m.pricing ?? {};
+  const priceValues = Object.values(pricing).filter((v): v is number => typeof v === 'number');
+  const isPriced = priceValues.length > 0;
+  const isFree =
+    LOCAL_PROVIDER_KINDS.has(m.provider_kind) || (isPriced && priceValues.every((v) => v === 0));
+
+  return { displayName, capabilities, isFree, isPriced };
+}
 
 export const aiModelsApi = {
   listUserModels(token: string, params?: { only_favorites?: boolean; include_inactive?: boolean; provider_kind?: ProviderKind; capability?: string }) {
@@ -24,5 +93,11 @@ export const aiModelsApi = {
     if (params?.provider_kind) qs.set('provider_kind', params.provider_kind);
     if (params?.capability) qs.set('capability', params.capability);
     return apiJson<{ items: UserModel[] }>(`/v1/model-registry/user-models${qs.toString() ? `?${qs.toString()}` : ''}`, { token });
+  },
+
+  patchFavorite(token: string, modelId: string, isFavorite: boolean) {
+    return apiJson<UserModel>(`/v1/model-registry/user-models/${modelId}/favorite`, {
+      method: 'PATCH', token, body: JSON.stringify({ is_favorite: isFavorite }),
+    });
   },
 };
