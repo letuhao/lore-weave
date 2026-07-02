@@ -1,0 +1,189 @@
+openapi: 3.0.3
+info:
+  title: Agent Extensibility Registry API
+  version: 0.1.0
+  description: >
+    Domain API for user-registered agent capabilities (plugins, skills,
+    MCP-server registrations, commands, hooks, subagents). Contract-first;
+    frozen at P0 covering plugin CRUD + enablement + effective-catalog. Later
+    phases extend it (skills, mcp-servers, commands, hooks, proposals).
+    Reached by the FE through api-gateway-bff at /v1/agent-registry/*.
+servers:
+  - url: /v1/agent-registry
+    description: Public (JWT-gated) surface, via BFF
+security:
+  - bearerAuth: []
+paths:
+  /plugins:
+    get:
+      summary: List plugins visible to the caller (System ∪ own), server-paged.
+      parameters:
+        - { name: q, in: query, schema: { type: string } }
+        - { name: tier, in: query, schema: { type: string, enum: [system, user, book] } }
+        - { name: status, in: query, schema: { type: string, enum: [active, draft, suspended] } }
+        - { name: sort, in: query, schema: { type: string, enum: [updated, name, tier, status] } }
+        - { name: limit, in: query, schema: { type: integer, default: 20, maximum: 100 } }
+        - { name: offset, in: query, schema: { type: integer, default: 0 } }
+      responses:
+        '200':
+          description: Paged plugin list
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/PluginList' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+    post:
+      summary: Create a plugin (owner from token; System tier requires admin; book deferred).
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/CreatePluginReq' }
+      responses:
+        '201': { description: Created, content: { application/json: { schema: { $ref: '#/components/schemas/Plugin' } } } }
+        '400': { $ref: '#/components/responses/ValidationError' }
+        '403': { description: System-tier without admin role }
+        '409': { description: Duplicate name+version in scope }
+        '501': { description: book-tier deferred (D-REG-BOOK-GRANT) }
+  /plugins/{plugin_id}:
+    parameters:
+      - { name: plugin_id, in: path, required: true, schema: { type: string, format: uuid } }
+    get:
+      summary: Get one visible plugin.
+      responses:
+        '200': { description: Plugin, content: { application/json: { schema: { $ref: '#/components/schemas/Plugin' } } } }
+        '404': { $ref: '#/components/responses/NotFound' }
+    patch:
+      summary: Update own plugin (System requires admin).
+      requestBody:
+        content: { application/json: { schema: { $ref: '#/components/schemas/PatchPluginReq' } } }
+      responses:
+        '200': { description: Updated, content: { application/json: { schema: { $ref: '#/components/schemas/Plugin' } } } }
+        '404': { $ref: '#/components/responses/NotFound' }
+    delete:
+      summary: Delete own plugin (cascades members).
+      responses:
+        '204': { description: Deleted }
+        '404': { $ref: '#/components/responses/NotFound' }
+  /plugins/{plugin_id}/cascade-preview:
+    parameters:
+      - { name: plugin_id, in: path, required: true, schema: { type: string, format: uuid } }
+    get:
+      summary: Member counts a delete would remove (for the typed-confirm dialog).
+      responses:
+        '200':
+          description: Cascade counts
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  skills: { type: integer }
+                  mcp_servers: { type: integer }
+                  commands: { type: integer }
+                  hooks: { type: integer }
+                  subagents: { type: integer }
+                  pinned_sessions: { type: integer }
+        '404': { $ref: '#/components/responses/NotFound' }
+  /plugins/{plugin_id}/enablement:
+    parameters:
+      - { name: plugin_id, in: path, required: true, schema: { type: string, format: uuid } }
+    put:
+      summary: Set a per-user (or per-book) enablement override (D1). System rows never mutated.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [scope, enabled]
+              properties:
+                scope: { type: string, enum: [user, book] }
+                book_id: { type: string, format: uuid }
+                enabled: { type: boolean }
+      responses:
+        '200': { description: Override set }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '501': { description: book-scope deferred (D-REG-BOOK-GRANT) }
+  /usage:
+    get:
+      summary: Quota counters for the caller (D2 — feeds the FE quota strip).
+      responses:
+        '200':
+          description: Usage counters
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  plugins: { type: integer }
+                  skills: { $ref: '#/components/schemas/QuotaCounter' }
+                  mcp_servers: { $ref: '#/components/schemas/QuotaCounter' }
+                  commands: { $ref: '#/components/schemas/QuotaCounter' }
+                  proposals_pending: { type: integer }
+  /audit:
+    get:
+      summary: The caller's activity log (REG-X-01 read surface), paged.
+      parameters:
+        - { name: kind, in: query, schema: { type: string } }
+        - { name: range, in: query, schema: { type: string, enum: [7d, 30d] } }
+        - { name: limit, in: query, schema: { type: integer, default: 20, maximum: 100 } }
+        - { name: offset, in: query, schema: { type: integer, default: 0 } }
+      responses:
+        '200': { description: Paged audit list }
+components:
+  securitySchemes:
+    bearerAuth: { type: http, scheme: bearer, bearerFormat: JWT }
+  responses:
+    Unauthorized: { description: Missing/invalid token }
+    NotFound: { description: Not found (also returned for cross-tenant access — anti-oracle) }
+    ValidationError: { description: Bad request, content: { application/json: { schema: { $ref: '#/components/schemas/Error' } } } }
+  schemas:
+    Error:
+      type: object
+      properties:
+        code: { type: string }
+        message: { type: string }
+    QuotaCounter:
+      type: object
+      properties:
+        used: { type: integer }
+        limit: { type: integer }
+    Plugin:
+      type: object
+      properties:
+        plugin_id: { type: string, format: uuid }
+        tier: { type: string, enum: [system, user, book] }
+        owner_user_id: { type: string, format: uuid, nullable: true }
+        book_id: { type: string, format: uuid, nullable: true }
+        name: { type: string }
+        version: { type: string }
+        description: { type: string }
+        manifest: { type: object }
+        status: { type: string, enum: [active, draft, suspended, archived] }
+        created_at: { type: string }
+        updated_at: { type: string }
+    PluginList:
+      type: object
+      properties:
+        items: { type: array, items: { $ref: '#/components/schemas/Plugin' } }
+        total: { type: integer }
+        limit: { type: integer }
+        offset: { type: integer }
+    CreatePluginReq:
+      type: object
+      required: [name]
+      properties:
+        name: { type: string, description: "reverse-DNS 'namespace/name' (lowercase)" }
+        version: { type: string, default: '0.0.0' }
+        description: { type: string }
+        tier: { type: string, enum: [user, system, book], default: user }
+        book_id: { type: string, format: uuid }
+        manifest: { type: object }
+        status: { type: string, enum: [active, draft], default: active }
+    PatchPluginReq:
+      type: object
+      properties:
+        description: { type: string }
+        manifest: { type: object }
+        status: { type: string, enum: [active, draft, suspended] }
+        version: { type: string }

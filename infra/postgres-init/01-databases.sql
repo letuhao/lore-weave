@@ -91,3 +91,8 @@ WHERE NOT EXISTS (SELECT FROM pg_database WHERE datname = 'loreweave_jobs')\gexe
 -- created by roleplay-service sqlx::migrate! at startup, R1 onward)
 SELECT 'CREATE DATABASE loreweave_roleplay'
 WHERE NOT EXISTS (SELECT FROM pg_database WHERE datname = 'loreweave_roleplay')\gexec
+
+-- Agent Extensibility Registry (plugins/skills/MCP-server registrations; tables
+-- created by agent-registry-service migrate.go on startup)
+SELECT 'CREATE DATABASE loreweave_agent_registry'
+WHERE NOT EXISTS (SELECT FROM pg_database WHERE datname = 'loreweave_agent_registry')\gexec
