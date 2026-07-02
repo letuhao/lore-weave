@@ -75,12 +75,25 @@ export function EditorPanel(props: IDockviewPanelProps) {
         <span data-testid="studio-editor-dirty" className={isDirty ? 'text-warning' : 'text-muted-foreground/60'}>
           {isDirty ? t('editor.unsaved', { defaultValue: '● unsaved' }) : t(`editor.state.${state.saveState}`, { defaultValue: state.saveState })}
         </span>
+        {/* #12 S4 — the "option" editor duality: open THIS unit in the generic json-editor
+            (singleton; retargets via params). Same shared document — edits mirror live. */}
+        <button
+          type="button"
+          data-testid="studio-editor-open-json"
+          onClick={() => host.openPanel('json-editor', {
+            title: t('panels.jsonEditor.title', { defaultValue: 'JSON' }),
+            params: { docType: 'loreweave.manuscript-unit.v1', resourceId: chapterId },
+          })}
+          className="ml-auto rounded px-1.5 py-0.5 hover:bg-secondary hover:text-foreground"
+        >
+          {t('jsonEditor.openAs', { defaultValue: 'Open as JSON' })}
+        </button>
         <button
           type="button"
           data-testid="studio-editor-save"
           onClick={() => void save()}
           disabled={!isDirty || state.saveState === 'saving'}
-          className="ml-auto rounded px-1.5 py-0.5 hover:bg-secondary hover:text-foreground disabled:opacity-40"
+          className="rounded px-1.5 py-0.5 hover:bg-secondary hover:text-foreground disabled:opacity-40"
         >
           {t('editor.save', { defaultValue: 'Save' })} <span className="font-mono text-[10px]">⌘S</span>
         </button>

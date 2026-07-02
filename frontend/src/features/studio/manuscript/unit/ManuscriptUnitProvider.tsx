@@ -17,9 +17,13 @@ import {
 import type { JSONContent } from '@tiptap/react';
 import { useAuth } from '@/auth';
 import { booksApi } from '@/features/books/api';
+import { compositionApi } from '@/features/composition/api';
+import { useWorkResolution } from '@/features/composition/hooks/useWork';
+import type { OutlineNode } from '@/features/composition/types';
 import { addTextSnapshots } from '@/lib/tiptap-utils';
 import type { TiptapEditorHandle } from '@/components/editor/TiptapEditor';
 import { useStudioHost, useStudioBusSelector } from '../../host/StudioHostProvider';
+import { _setManuscriptUnitBinding, emitManuscriptUnitChange, registerManuscriptUnitDocumentProvider } from './manuscriptUnitDocument';
 
 const EMPTY_DOC: JSONContent = { type: 'doc', content: [] };
 
@@ -34,11 +38,14 @@ export interface ManuscriptUnitState {
   textContent: string;
   saveState: SaveState;
   error: string | null;
+  /** #12 cycle-1 — the chapter's composition scene nodes (outline metadata, D17). Loaded with
+   * the unit when the book has a Work; [] otherwise. A separate buffer from the body (R6). */
+  scenes: OutlineNode[];
 }
 
 const INITIAL: ManuscriptUnitState = {
   chapterId: null, loadedBody: EMPTY_DOC, savedBody: EMPTY_DOC, workingBody: null,
-  version: undefined, textContent: '', saveState: 'idle', error: null,
+  version: undefined, textContent: '', saveState: 'idle', error: null, scenes: [],
 };
 
 export interface ManuscriptUnitApi {
@@ -51,6 +58,9 @@ export interface ManuscriptUnitApi {
   save: () => Promise<void>;
   revert: () => void;
   reload: () => Promise<void>;
+  /** Re-fetch ONLY the scenes[] buffer (Lane-B after a scene-metadata MCP write — never
+   * touches the body buffers, so it is dirty-safe by construction, R6). */
+  reloadScenes: () => Promise<void>;
   /** G7 — is THIS chapter's hoist dirty? The reconciler asks before a blind reload. */
   isChapterDirty: (chapterId: string) => boolean;
 }
@@ -69,6 +79,21 @@ export function ManuscriptUnitProvider({ bookId, children }: { bookId: string; c
   const stateRef = useRef(state);
   stateRef.current = state;
 
+  // #12 — the book's composition Work (scenes[] source). No Work → scenes stay [].
+  const work = useWorkResolution(bookId, accessToken);
+  const projectId = work.data?.project_id ?? null;
+  const projectIdRef = useRef<string | null>(projectId);
+  projectIdRef.current = projectId;
+
+  const loadScenes = useCallback(async (chapterId: string) => {
+    const pid = projectIdRef.current;
+    if (!accessToken || !pid) return;
+    try {
+      const r = await compositionApi.listChapterScenes(pid, chapterId, accessToken);
+      setState((s) => (s.chapterId === chapterId ? { ...s, scenes: r.items } : s));
+    } catch { /* scenes are additive metadata — a fetch failure must never break the editor */ }
+  }, [accessToken]);
+
   const loadChapter = useCallback(async (chapterId: string, external: boolean) => {
     if (!accessToken) return;
     setState((s) => ({ ...s, chapterId, saveState: external ? s.saveState : 'loading', error: null }));
@@ -78,12 +103,19 @@ export function ManuscriptUnitProvider({ bookId, children }: { bookId: string; c
       setState({
         chapterId, loadedBody: body, savedBody: body, workingBody: null,
         version: draft.draft_version, textContent: draft.text_content ?? '',
-        saveState: 'idle', error: null,
+        saveState: 'idle', error: null, scenes: [],
       });
+      void loadScenes(chapterId);
     } catch (e) {
       setState((s) => ({ ...s, chapterId, saveState: 'error', error: (e as Error).message }));
     }
-  }, [accessToken, bookId]);
+  }, [accessToken, bookId, loadScenes]);
+
+  // Late Work resolution (the work query lands AFTER the first chapter opened) → backfill scenes.
+  useEffect(() => {
+    const chapterId = stateRef.current.chapterId;
+    if (projectId && chapterId && stateRef.current.scenes.length === 0) void loadScenes(chapterId);
+  }, [projectId, loadScenes]);
 
   // Open a chapter into the unit. Dirty-flush (S7/M2): a pending edit is SAVED before switching so
   // navigation never loses work (a prompt variant is a later UX polish).
@@ -144,6 +176,11 @@ export function ManuscriptUnitProvider({ bookId, children }: { bookId: string; c
     if (s.chapterId) await loadChapter(s.chapterId, true);
   }, [loadChapter]);
 
+  const reloadScenes = useCallback(async () => {
+    const chapterId = stateRef.current.chapterId;
+    if (chapterId) await loadScenes(chapterId);
+  }, [loadScenes]);
+
   const isChapterDirty = useCallback(
     (chapterId: string) => stateRef.current.chapterId === chapterId && isDirtyState(stateRef.current),
     [],
@@ -164,8 +201,17 @@ export function ManuscriptUnitProvider({ bookId, children }: { bookId: string; c
 
   const api = useMemo<ManuscriptUnitApi>(() => ({
     state, isDirty: isDirtyState(state), editorRef,
-    openUnit, setBody, save, revert, reload, isChapterDirty,
-  }), [state, openUnit, setBody, save, revert, reload, isChapterDirty]);
+    openUnit, setBody, save, revert, reload, reloadScenes, isChapterDirty,
+  }), [state, openUnit, setBody, save, revert, reload, reloadScenes, isChapterDirty]);
+
+  // #12 — bind the live api for the manuscript-unit DOCUMENT provider (S2 shared handle) and
+  // register the provider once. Every api change (i.e. every state change) notifies handle views.
+  useEffect(() => { registerManuscriptUnitDocumentProvider(); }, []);
+  useEffect(() => {
+    _setManuscriptUnitBinding({ api, token: accessToken, projectId });
+    emitManuscriptUnitChange();
+  }, [api, accessToken, projectId]);
+  useEffect(() => () => { _setManuscriptUnitBinding(null); emitManuscriptUnitChange(); }, []);
 
   return <ManuscriptUnitContext.Provider value={api}>{children}</ManuscriptUnitContext.Provider>;
 }

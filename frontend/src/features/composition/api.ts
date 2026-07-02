@@ -152,6 +152,11 @@ export const compositionApi = {
     const qs = p.toString();
     return apiJson(`${BASE}/works/${projectId}/outline/children${qs ? `?${qs}` : ''}`, { token });
   },
+  // #12 cycle-1 — the active scene nodes of one BOOK chapter in reading order (the
+  // manuscript-unit document's scenes[] source; same ordering the assembly path uses).
+  listChapterScenes(projectId: string, chapterId: string, token: string): Promise<{ items: OutlineNode[] }> {
+    return apiJson(`${BASE}/works/${projectId}/chapters/${chapterId}/scenes`, { token });
+  },
   // #02 nav jump box / #06a Quick Open — title substring search across the WHOLE outline
   // (arc/chapter/scene), reaching nodes not yet lazy-loaded into the tree. Each hit carries
   // a breadcrumb `path` (ancestor titles, top-first).

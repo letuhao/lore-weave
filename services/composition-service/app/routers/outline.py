@@ -154,6 +154,23 @@ async def list_outline_children(
     }
 
 
+@router.get("/works/{project_id}/chapters/{chapter_id}/scenes")
+async def list_chapter_scenes(
+    project_id: UUID,
+    chapter_id: UUID,
+    user_id: UUID = Depends(get_current_user),
+    works: WorksRepo = Depends(get_works_repo),
+    outline: OutlineRepo = Depends(get_outline_repo),
+) -> dict[str, Any]:
+    """Studio #12 cycle-1 — the active scene nodes of one BOOK chapter in reading
+    order (the manuscript-unit document's `scenes[]` source). Thin wrapper over the
+    same `scenes_for_chapter` the assembly path uses, so the editor and the composer
+    read one ordering."""
+    await _require_work(works, user_id, project_id)
+    scenes = await outline.scenes_for_chapter(user_id, project_id, chapter_id)
+    return {"items": [n.model_dump(mode="json") for n in scenes]}
+
+
 @router.get("/works/{project_id}/outline/search")
 async def search_outline(
     project_id: UUID,

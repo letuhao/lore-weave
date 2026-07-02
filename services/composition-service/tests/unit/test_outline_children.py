@@ -90,6 +90,10 @@ class _FakeOutline:
     async def outline_stats(self, user_id, project_id):
         return {"arcs": 1, "chapters": 12, "scenes": 35}
 
+    async def scenes_for_chapter(self, user_id, project_id, chapter_id):
+        self.calls.append({"scenes_for_chapter": chapter_id, "user_id": user_id, "project_id": project_id})
+        return self.nodes
+
 
 class _StubWorks:
     async def get(self, user_id, project_id):
@@ -150,6 +154,22 @@ def test_bad_cursor_is_400(client):
     c, holder = client
     holder["repo"] = _FakeOutline([])
     assert c.get(f"/v1/composition/works/{PROJECT}/outline/children?cursor=%21%21bad").status_code == 400
+
+
+# ── #12 cycle-1: chapter scenes (the manuscript-unit document's scenes[] source) ──
+
+def test_chapter_scenes_wraps_scenes_for_chapter(client):
+    c, holder = client
+    chapter_id = uuid4()
+    holder["repo"] = _FakeOutline([_StubNode("a0", uuid4()), _StubNode("a1", uuid4())])
+    r = c.get(f"/v1/composition/works/{PROJECT}/chapters/{chapter_id}/scenes")
+    assert r.status_code == 200
+    body = r.json()
+    assert len(body["items"]) == 2
+    # tenancy: the repo query is keyed by user + project + chapter (kinds-bug rule)
+    call = holder["repo"].calls[0]
+    assert call["scenes_for_chapter"] == chapter_id
+    assert call["user_id"] == USER and call["project_id"] == PROJECT
 
 
 def test_parent_id_and_cursor_passed_through(client):
