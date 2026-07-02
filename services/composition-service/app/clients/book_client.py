@@ -215,6 +215,24 @@ class BookClient:
         )
         return self._raise_for_status(resp)
 
+    async def restore_revision(
+        self, book_id: UUID, chapter_id: UUID, revision_id: UUID, bearer: str,
+    ) -> dict[str, Any]:
+        """RAID D3 reject/Revert-All — roll the chapter draft back to a prior
+        revision via book-service's public restore route (GrantEdit, JWT `sub`).
+        Non-destructive on their side: book-service first snapshots the CURRENT
+        draft as a new 'before restore' revision, then writes the target
+        revision's body to the draft (draft_version+1, chapter.saved emitted).
+        Same bearer discipline as the other public routes — the CALLER's bearer
+        (the owner clicked reject). Raises BookClientError on any non-2xx /
+        transport (the caller must NOT mark the unit rejected in that case)."""
+        resp = await self._request(
+            "POST",
+            f"/v1/books/{book_id}/chapters/{chapter_id}/revisions/{revision_id}/restore",
+            bearer,
+        )
+        return self._raise_for_status(resp)
+
     async def list_chapters(
         self, book_id: UUID, bearer: str, *, limit: int = 200,
     ) -> list[dict[str, Any]]:

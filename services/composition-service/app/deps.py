@@ -10,6 +10,8 @@ the active connection.
 
 from __future__ import annotations
 
+from typing import TYPE_CHECKING
+
 from app.clients.book_client import BookClient, get_book_client
 from app.clients.embedding_client import EmbeddingClient, get_embedding_client
 from app.clients.glossary_client import GlossaryClient, get_glossary_client
@@ -18,7 +20,7 @@ from app.clients.knowledge_client import KnowledgeClient, get_knowledge_client
 from app.clients.llm_client import LLMClient, get_llm_client
 from app.db.pool import get_pool
 from app.db.repositories.arc_template_repo import ArcTemplateRepo
-from app.db.repositories.authoring_runs import AuthoringRunsRepo
+from app.db.repositories.authoring_runs import AuthoringRunsRepo, AuthoringRunUnitsRepo
 from app.db.repositories.canon_rules import CanonRulesRepo
 from app.db.repositories.daily_progress import DailyProgressRepo
 from app.db.repositories.derivatives import DerivativesRepo
@@ -39,6 +41,9 @@ from app.db.repositories.style_voice import StyleProfileRepo, VoiceProfileRepo
 from app.db.repositories.works import WorksRepo
 from app.services.plan_forge_service import PlanForgeService
 
+if TYPE_CHECKING:  # runtime import stays deferred (the service pulls in the engine)
+    from app.services.authoring_run_service import AuthoringRunService
+
 
 async def get_plan_runs_repo() -> PlanRunsRepo:
     return PlanRunsRepo(get_pool())
@@ -56,15 +61,22 @@ async def get_plan_forge_service() -> PlanForgeService:
 
 
 async def get_authoring_run_service() -> "AuthoringRunService":
-    """RAID Wave D2 — the autonomous authoring-run FSM + start-gate + v1
-    sequential driver, wired to the REAL in-process engine drafting seam
-    (EngineDraftingSeam; tests inject a fake seam)."""
-    from app.services.authoring_run_service import AuthoringRunService, EngineDraftingSeam
+    """RAID Wave D2+D3 — the autonomous authoring-run FSM + start-gate + v1
+    sequential driver (wired to the REAL in-process engine drafting seam) plus
+    the D3 per-unit ledger + Run Report + accept/reject/Revert-All (real
+    book-service revision capture). Tests inject a fake seam + fake capture."""
+    from app.services.authoring_run_service import (
+        AuthoringRunService,
+        BookRevisionCapture,
+        EngineDraftingSeam,
+    )
 
     return AuthoringRunService(
         AuthoringRunsRepo(get_pool()),
         PlanRunsRepo(get_pool()),
         EngineDraftingSeam(),
+        AuthoringRunUnitsRepo(get_pool()),
+        BookRevisionCapture(),
     )
 
 

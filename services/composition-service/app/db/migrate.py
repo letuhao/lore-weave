@@ -1012,6 +1012,37 @@ CREATE UNIQUE INDEX IF NOT EXISTS uq_authoring_runs_active_book
   ON authoring_runs(book_id) WHERE status IN ('gated','running','paused');
 CREATE INDEX IF NOT EXISTS idx_authoring_runs_owner_book
   ON authoring_runs(owner_user_id, book_id, created_at DESC);
+
+-- ── authoring_run_units (RAID Wave D3, DR-D end-gate): the per-unit ledger the
+-- driver writes as it drafts — one row per ATTEMPTED scope unit (un-attempted
+-- units have no row; the Run Report synthesizes them as 'pending' from scope).
+-- `pre_revision_id` = the chapter's LATEST book-service revision captured BEFORE
+-- the drafting seam ran (book-service snapshots the NEW body into
+-- chapter_revisions on every draft PATCH, so "latest revision" == the pre-run
+-- draft content — the reject/Revert-All restore point; NULL = the chapter had no
+-- revisions yet, nothing to restore to). `post_revision_id` = the latest revision
+-- AFTER the seam (the run's draft — the report's diff anchor; best-effort, NULL
+-- when capture failed). `cost_usd` is the unit's contribution to
+-- authoring_runs.spent_usd (seam-metered, or the estimate fallback — per-unit
+-- costs sum to the run's spend). Review FSM: pending→drafted→(accepted|rejected),
+-- pending→failed; accept/reject are guarded OCC updates. Tenancy: no owner
+-- column — every read/write JOINs authoring_runs on owner_user_id (the parent
+-- run's tenancy is the units' tenancy).
+CREATE TABLE IF NOT EXISTS authoring_run_units (
+  run_id           UUID NOT NULL REFERENCES authoring_runs(run_id) ON DELETE CASCADE,
+  unit_index       INT NOT NULL,
+  chapter_id       UUID NOT NULL,
+  status           TEXT NOT NULL DEFAULT 'pending' CHECK (
+    status IN ('pending','drafted','failed','accepted','rejected')
+  ),
+  pre_revision_id  UUID,
+  post_revision_id UUID,
+  cost_usd         NUMERIC(10,4) NOT NULL DEFAULT 0,
+  error_message    TEXT,
+  created_at       TIMESTAMPTZ NOT NULL DEFAULT now(),
+  updated_at       TIMESTAMPTZ NOT NULL DEFAULT now(),
+  PRIMARY KEY (run_id, unit_index)
+);
 """
 
 

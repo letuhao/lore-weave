@@ -10,7 +10,8 @@ from decimal import Decimal
 import pytest
 from fastapi.testclient import TestClient
 
-from app.db.models import AuthoringRun
+from app.clients.book_client import BookClientError
+from app.db.models import AuthoringRun, AuthoringRunUnit
 from app.deps import get_authoring_run_service, get_book_client_dep, get_grant_client_dep
 from app.main import app
 from app.middleware.jwt_auth import get_current_user
@@ -50,17 +51,41 @@ class StubGrant:
 
 
 class StubBook:
+    def __init__(self):
+        self.restores: list[tuple] = []
+
     async def list_chapters(self, book_id, bearer, *, limit=200):
         return [
             {"chapter_id": str(CH1), "title": "", "sort_order": 1},
             {"chapter_id": str(CH2), "title": "", "sort_order": 2},
         ]
 
+    async def restore_revision(self, book_id, chapter_id, revision_id, bearer):
+        self.restores.append((book_id, chapter_id, revision_id, bearer))
+        return {"draft_version": 3}
+
+
+def _unit(unit_index=0, status="drafted", **over) -> AuthoringRunUnit:
+    base = dict(
+        run_id=RUN, unit_index=unit_index, chapter_id=CH1, status=status,
+        pre_revision_id=uuid.uuid4(), post_revision_id=uuid.uuid4(),
+        cost_usd=Decimal("0.02"),
+        created_at=datetime(2026, 7, 2, tzinfo=timezone.utc),
+        updated_at=datetime(2026, 7, 2, tzinfo=timezone.utc),
+    )
+    base.update(over)
+    return AuthoringRunUnit(**base)
+
 
 class StubService:
     def __init__(self):
         self.runs = {RUN: _run()}
         self.gate_error: Exception | None = None
+        self.review_error: Exception | None = None
+        self.revert_all_result: dict = {
+            "reverted_unit_indexes": [1, 0], "failed_unit_index": None,
+            "error": None, "run_status": "closed", "closed": True,
+        }
 
     async def create(self, owner_user_id, book_id, **kwargs):
         if kwargs.get("plan_run_id") != PLAN:
@@ -91,6 +116,45 @@ class StubService:
     async def close(self, owner_user_id, run_id):
         return _run(status="closed")
 
+    # ── D3 — report + review ────────────────────────────────────────────
+
+    async def get_any(self, run_id):
+        return self.runs.get(run_id)
+
+    async def unit_report(self, run):
+        if run.status not in ("report_ready", "failed", "paused", "closed"):
+            raise TransitionConflictError(f"report requires …, run is {run.status}")
+        return [
+            {"unit_index": 0, "chapter_id": str(CH1), "status": "drafted",
+             "pre_revision_id": str(uuid.uuid4()), "post_revision_id": str(uuid.uuid4()),
+             "cost_usd": "0.02", "error_message": None, "downstream_unit_indexes": [1]},
+            {"unit_index": 1, "chapter_id": str(CH2), "status": "drafted",
+             "pre_revision_id": str(uuid.uuid4()), "post_revision_id": str(uuid.uuid4()),
+             "cost_usd": "0.02", "error_message": None, "downstream_unit_indexes": []},
+        ]
+
+    async def accept_unit(self, owner_user_id, run_id, unit_index):
+        if self.review_error is not None:
+            raise self.review_error
+        return _unit(unit_index=unit_index, status="accepted")
+
+    async def reject_unit(self, owner_user_id, run_id, unit_index, *, restore):
+        if self.review_error is not None:
+            raise self.review_error
+        # exercise the router-bound restore closure (proves BookClient + the
+        # caller's bearer are wired through)
+        await restore(BOOK, CH1, PRE_REV)
+        return _unit(unit_index=unit_index, status="rejected"), [1], True
+
+    async def revert_all(self, owner_user_id, run_id, *, restore):
+        if self.review_error is not None:
+            raise self.review_error
+        await restore(BOOK, CH2, PRE_REV)
+        return self.revert_all_result
+
+
+PRE_REV = uuid.uuid4()
+
 
 @pytest.fixture
 def stub():
@@ -98,10 +162,15 @@ def stub():
 
 
 @pytest.fixture
-def client(stub):
+def book():
+    return StubBook()
+
+
+@pytest.fixture
+def client(stub, book):
     app.dependency_overrides[get_current_user] = lambda: USER
     app.dependency_overrides[get_grant_client_dep] = lambda: StubGrant()
-    app.dependency_overrides[get_book_client_dep] = lambda: StubBook()
+    app.dependency_overrides[get_book_client_dep] = lambda: book
     app.dependency_overrides[get_authoring_run_service] = lambda: stub
     yield TestClient(app)
     app.dependency_overrides.clear()
@@ -207,3 +276,108 @@ def test_list_requires_book_id_and_returns_items(client):
     r = client.get(f"/v1/composition/authoring-runs?book_id={BOOK}", headers=AUTH)
     assert r.status_code == 200
     assert len(r.json()["items"]) == 1
+
+
+# ── D3 — Run Report ─────────────────────────────────────────────────────────
+
+
+def test_report_200_with_units_and_dependency_note(client, stub):
+    stub.runs[RUN] = _run(status="report_ready")
+    r = client.get(f"/v1/composition/authoring-runs/{RUN}/report", headers=AUTH)
+    assert r.status_code == 200
+    body = r.json()
+    assert body["run"]["status"] == "report_ready"
+    assert [u["unit_index"] for u in body["units"]] == [0, 1]
+    assert body["units"][0]["downstream_unit_indexes"] == [1]
+    assert body["dependencies"]["model"] == "sequential_thread"
+
+
+def test_report_unknown_run_404(client):
+    r = client.get(
+        f"/v1/composition/authoring-runs/{uuid.uuid4()}/report", headers=AUTH,
+    )
+    assert r.status_code == 404
+
+
+def test_report_wrong_status_409(client, stub):
+    # default stub run is draft — not reportable yet
+    r = client.get(f"/v1/composition/authoring-runs/{RUN}/report", headers=AUTH)
+    assert r.status_code == 409
+
+
+# ── D3 — accept / reject ────────────────────────────────────────────────────
+
+
+def test_accept_unit_200(client):
+    r = client.post(
+        f"/v1/composition/authoring-runs/{RUN}/units/0/accept", headers=AUTH,
+    )
+    assert r.status_code == 200
+    assert r.json()["status"] == "accepted"
+
+
+def test_accept_unit_unknown_404_and_conflict_409(client, stub):
+    stub.review_error = LookupError("unit not found")
+    r = client.post(
+        f"/v1/composition/authoring-runs/{RUN}/units/9/accept", headers=AUTH,
+    )
+    assert r.status_code == 404
+    stub.review_error = TransitionConflictError("accept requires unit status=drafted")
+    r = client.post(
+        f"/v1/composition/authoring-runs/{RUN}/units/0/accept", headers=AUTH,
+    )
+    assert r.status_code == 409
+
+
+def test_reject_unit_200_restores_with_caller_bearer_and_warns_cascade(client, stub, book):
+    r = client.post(
+        f"/v1/composition/authoring-runs/{RUN}/units/0/reject", headers=AUTH,
+    )
+    assert r.status_code == 200
+    body = r.json()
+    assert body["status"] == "rejected"
+    assert body["reverted"] is True
+    assert body["cascade_warning"]["downstream_unit_indexes"] == [1]
+    # the router bound BookClient.restore_revision with the CALLER's bearer
+    assert book.restores == [(BOOK, CH1, PRE_REV, "test-jwt")]
+
+
+def test_reject_restore_failure_maps_502_unit_left_drafted(client, stub):
+    stub.review_error = BookClientError(502, "BOOK_SERVICE_UNAVAILABLE")
+    r = client.post(
+        f"/v1/composition/authoring-runs/{RUN}/units/0/reject", headers=AUTH,
+    )
+    assert r.status_code == 502
+    assert r.json()["detail"]["code"] == "RESTORE_FAILED"
+    assert "left drafted" in r.json()["detail"]["detail"]
+
+
+# ── D3 — Revert-All ─────────────────────────────────────────────────────────
+
+
+def test_revert_all_200_closes_run(client, stub, book):
+    r = client.post(f"/v1/composition/authoring-runs/{RUN}/revert-all", headers=AUTH)
+    assert r.status_code == 200
+    body = r.json()
+    assert body["reverted_unit_indexes"] == [1, 0]  # reverse unit order
+    assert body["closed"] is True
+    assert book.restores and book.restores[0][3] == "test-jwt"
+
+
+def test_revert_all_partial_failure_maps_502(client, stub):
+    stub.revert_all_result = {
+        "reverted_unit_indexes": [1], "failed_unit_index": 0,
+        "error": "book-service 502", "run_status": "report_ready", "closed": False,
+    }
+    r = client.post(f"/v1/composition/authoring-runs/{RUN}/revert-all", headers=AUTH)
+    assert r.status_code == 502
+    detail = r.json()["detail"]
+    assert detail["code"] == "REVERT_ALL_PARTIAL"
+    assert detail["reverted_unit_indexes"] == [1]
+    assert detail["failed_unit_index"] == 0
+
+
+def test_revert_all_wrong_status_409(client, stub):
+    stub.review_error = TransitionConflictError("revert-all requires run status in …")
+    r = client.post(f"/v1/composition/authoring-runs/{RUN}/revert-all", headers=AUTH)
+    assert r.status_code == 409

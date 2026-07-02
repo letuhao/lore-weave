@@ -539,6 +539,26 @@ class AuthoringRun(BaseModel):
     updated_at: datetime | None = None
 
 
+# ── authoring run unit (RAID Wave D3 — the per-unit ledger row the driver writes;
+# review FSM pending→drafted→(accepted|rejected), pending→failed)
+AuthoringRunUnitStatus = Literal[
+    "pending", "drafted", "failed", "accepted", "rejected",
+]
+
+
+class AuthoringRunUnit(BaseModel):
+    run_id: UUID
+    unit_index: int
+    chapter_id: UUID
+    status: AuthoringRunUnitStatus = "pending"
+    pre_revision_id: UUID | None = None   # pre-run restore point (NULL = no revisions yet)
+    post_revision_id: UUID | None = None  # the run's draft revision (best-effort)
+    cost_usd: Decimal = Decimal("0")      # this unit's share of the run's spent_usd
+    error_message: str | None = None
+    created_at: datetime | None = None
+    updated_at: datetime | None = None
+
+
 # ── retrieval result (the FROZEN contract W3 produces / W2 + the MCP suggest consume)
 class MotifCandidate(BaseModel):
     motif: Motif

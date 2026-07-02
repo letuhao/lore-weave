@@ -181,3 +181,149 @@ router.add_api_route("/{run_id}/start", _transition_route("start"), methods=["PO
 router.add_api_route("/{run_id}/pause", _transition_route("pause"), methods=["POST"])
 router.add_api_route("/{run_id}/resume", _transition_route("resume"), methods=["POST"])
 router.add_api_route("/{run_id}/close", _transition_route("close"), methods=["POST"])
+
+
+# ── D3 — Run Report + dependency-ordered accept/reject + Revert-All ─────────
+
+
+def _serialize_unit(unit: Any) -> dict[str, Any]:
+    return {
+        "run_id": str(unit.run_id),
+        "unit_index": unit.unit_index,
+        "chapter_id": str(unit.chapter_id),
+        "status": unit.status,
+        "pre_revision_id": str(unit.pre_revision_id) if unit.pre_revision_id else None,
+        "post_revision_id": str(unit.post_revision_id) if unit.post_revision_id else None,
+        "cost_usd": str(unit.cost_usd),
+        "error_message": unit.error_message,
+        "created_at": unit.created_at.isoformat() if unit.created_at else None,
+        "updated_at": unit.updated_at.isoformat() if unit.updated_at else None,
+    }
+
+
+@router.get("/{run_id}/report")
+async def get_run_report(
+    run_id: UUID,
+    user_id: UUID = Depends(get_current_user),
+    grant: GrantClient = Depends(get_grant_client_dep),
+    svc: AuthoringRunService = Depends(get_authoring_run_service),
+):
+    """Run Report — owner or E0 VIEW grantee (this is the ONE run-scoped route
+    that is grant- rather than owner-gated: the report is the run's reviewable
+    artifact, same read tier as the runs list). Available from report_ready and
+    from failed/paused (edge #12 — partial completion must be reviewable) +
+    closed (post-Revert-All audit)."""
+    run = await svc.get_any(run_id)
+    if run is None:
+        raise HTTPException(status_code=404, detail="run not found")
+    await _gate_book(grant, run.book_id, user_id, GrantLevel.VIEW)
+    try:
+        units = await svc.unit_report(run)
+    except TransitionConflictError as exc:
+        raise HTTPException(status_code=409, detail=str(exc))
+    return {
+        "run": _serialize(run),
+        "units": units,
+        "dependencies": {
+            "model": "sequential_thread",
+            "note": (
+                "units are drafted sequentially and each unit's prose threads into "
+                "every later unit; each unit's downstream_unit_indexes lists the "
+                "later drafted/accepted units that depend on it — rejecting an "
+                "upstream unit warns (does NOT auto-reject) its downstream (v1)"
+            ),
+        },
+    }
+
+
+@router.post("/{run_id}/units/{unit_index}/accept")
+async def accept_run_unit(
+    run_id: UUID,
+    unit_index: int,
+    user_id: UUID = Depends(get_current_user),
+    svc: AuthoringRunService = Depends(get_authoring_run_service),
+):
+    try:
+        unit = await svc.accept_unit(user_id, run_id, unit_index)
+    except LookupError as exc:
+        raise HTTPException(status_code=404, detail=str(exc))
+    except TransitionConflictError as exc:
+        raise HTTPException(status_code=409, detail=str(exc))
+    return _serialize_unit(unit)
+
+
+@router.post("/{run_id}/units/{unit_index}/reject")
+async def reject_run_unit(
+    run_id: UUID,
+    unit_index: int,
+    user_id: UUID = Depends(get_current_user),
+    bearer: str = Depends(get_bearer_token),
+    svc: AuthoringRunService = Depends(get_authoring_run_service),
+    book: BookClient = Depends(get_book_client_dep),
+):
+    """Reject = restore the chapter to its pre-run revision FIRST (book-service
+    public restore route, CALLER's bearer — the owner clicked it), then mark
+    rejected. Restore failure → 502 with the unit left drafted. The response
+    carries `cascade_warning` (edge #3): the downstream drafted/accepted units
+    this rejection invalidates (v1 warns, never auto-rejects)."""
+
+    async def _restore(book_id: UUID, chapter_id: UUID, revision_id: UUID) -> None:
+        await book.restore_revision(book_id, chapter_id, revision_id, bearer)
+
+    try:
+        unit, cascade, reverted = await svc.reject_unit(
+            user_id, run_id, unit_index, restore=_restore,
+        )
+    except BookClientError as exc:
+        raise HTTPException(
+            status_code=502,
+            detail={
+                "code": "RESTORE_FAILED",
+                "detail": f"book-service restore failed ({exc}); unit left drafted",
+            },
+        )
+    except LookupError as exc:
+        raise HTTPException(status_code=404, detail=str(exc))
+    except TransitionConflictError as exc:
+        raise HTTPException(status_code=409, detail=str(exc))
+    return {
+        **_serialize_unit(unit),
+        "reverted": reverted,
+        "cascade_warning": {
+            "downstream_unit_indexes": cascade,
+            "note": (
+                "these later drafted/accepted units were threaded on the rejected "
+                "chapter's prose — review or reject them too (not auto-rejected)"
+            ),
+        },
+    }
+
+
+@router.post("/{run_id}/revert-all")
+async def revert_all_run_units(
+    run_id: UUID,
+    user_id: UUID = Depends(get_current_user),
+    bearer: str = Depends(get_bearer_token),
+    svc: AuthoringRunService = Depends(get_authoring_run_service),
+    book: BookClient = Depends(get_book_client_dep),
+):
+    """Reject every drafted/accepted unit in REVERSE unit order (downstream
+    first — the threaded restores unwind cleanly). First restore failure stops
+    the sweep → 502 reporting which units DID revert (run left as-is); full
+    success closes the run."""
+
+    async def _restore(book_id: UUID, chapter_id: UUID, revision_id: UUID) -> None:
+        await book.restore_revision(book_id, chapter_id, revision_id, bearer)
+
+    try:
+        result = await svc.revert_all(user_id, run_id, restore=_restore)
+    except LookupError as exc:
+        raise HTTPException(status_code=404, detail=str(exc))
+    except TransitionConflictError as exc:
+        raise HTTPException(status_code=409, detail=str(exc))
+    if result["failed_unit_index"] is not None:
+        raise HTTPException(
+            status_code=502,
+            detail={"code": "REVERT_ALL_PARTIAL", **result},
+        )
+    return result

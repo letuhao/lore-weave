@@ -18,6 +18,20 @@ Driver (v1, in-process asyncio task — the plan_forge worker-off spirit):
   seam; accumulate spent from the seam's reported cost (else the per-unit
   estimate constant); unit failure → breaker reason='unit_failed' + failed.
   All units done → report_ready (D3 builds the Run Report over it).
+
+D3 end-gate (Run Report + review, DR-D / 07S §10 edge #3 + #12):
+  the driver additionally writes a per-unit LEDGER row (authoring_run_units):
+  BEFORE the seam it pins the chapter's pre-run revision baseline
+  (pre_revision_id — book-service snapshots the new body on every draft PATCH,
+  so "latest revision" == the pre-run draft, the restore point); AFTER the seam
+  it records the new latest revision (post_revision_id, best-effort) + the
+  unit's cost. Review: accept (drafted→accepted) · reject (drafted→rejected,
+  restoring pre_revision_id via book-service FIRST — never mark rejected
+  without the actual revert) · Revert-All (reject every drafted/accepted unit
+  in REVERSE unit order so the sequentially-threaded restores unwind cleanly;
+  full success closes the run). Units are sequentially threaded, so rejecting
+  an upstream unit only WARNS about its downstream (v1: cascade_warning, no
+  auto-reject — edge #3).
 """
 
 from __future__ import annotations
@@ -27,14 +41,14 @@ import json
 import logging
 from dataclasses import dataclass
 from decimal import Decimal
-from typing import Any, Protocol
+from typing import Any, Awaitable, Callable, Protocol
 from uuid import UUID
 
 import asyncpg
 
 from app.config import settings
-from app.db.models import AuthoringRun
-from app.db.repositories.authoring_runs import AuthoringRunsRepo
+from app.db.models import AuthoringRun, AuthoringRunUnit
+from app.db.repositories.authoring_runs import AuthoringRunsRepo, AuthoringRunUnitsRepo
 from app.db.repositories.plan_runs import PlanRunsRepo
 
 logger = logging.getLogger(__name__)
@@ -47,6 +61,17 @@ _APPROVED_PLAN_STATUSES = ("validated", "compiled")
 # Keep strong references to in-flight driver tasks (create_task alone is
 # GC-collectable) + let tests/ops introspect. Keyed by run_id.
 _DRIVER_TASKS: dict[UUID, asyncio.Task] = {}
+
+# Run statuses whose per-unit outcomes may be REVIEWED (accept/reject/revert-all)
+# — the run is stopped at a unit boundary, so the ledger is stable. Edge #12:
+# failed/paused runs expose PARTIAL reports (completed units stay reviewable).
+_REVIEWABLE_STATUSES = ("report_ready", "failed", "paused")
+# The report itself is also readable after close (post-Revert-All audit trail).
+_REPORTABLE_STATUSES = _REVIEWABLE_STATUSES + ("closed",)
+
+# reject/revert-all restore callback: (book_id, chapter_id, revision_id) →
+# raises (e.g. BookClientError) on failure — the unit is then LEFT drafted.
+RestoreFn = Callable[[UUID, UUID, UUID], Awaitable[Any]]
 
 
 class ActiveRunOverlapError(Exception):
@@ -80,6 +105,45 @@ class DraftingSeam(Protocol):
         plan_run_id: UUID,
         params: dict[str, Any],
     ) -> DraftOutcome: ...
+
+
+class RevisionCapture(Protocol):
+    """Resolve the chapter's CURRENT latest book-service revision id (None when
+    the chapter has no revisions yet). May raise (e.g. BookClientError) — the
+    driver treats a failed PRE capture as a unit failure (never draft a chapter
+    whose rollback spine could not be pinned) and a failed POST capture as
+    best-effort (the draft landed; the report just loses its diff anchor)."""
+
+    async def latest_revision_id(
+        self, *, owner_user_id: UUID, book_id: UUID, chapter_id: UUID,
+    ) -> UUID | None: ...
+
+
+class BookRevisionCapture:
+    """The REAL capture: book-service's public revisions LIST route (already
+    wrapped by BookClient.list_revisions), newest-first, limit=1 →
+    items[0].revision_id. Book-service snapshots the NEW body into
+    chapter_revisions on every draft PATCH, so the latest revision IS the
+    current draft content — captured before the seam it is the pre-run restore
+    point, captured after it is the run's own draft. The driver runs headless
+    (no caller request in flight), so we mint a short-lived service bearer for
+    the run OWNER (actions.py precedent — book-service still enforces the real
+    grant boundary on the JWT `sub`)."""
+
+    async def latest_revision_id(
+        self, *, owner_user_id: UUID, book_id: UUID, chapter_id: UUID,
+    ) -> UUID | None:
+        from app.clients.book_client import get_book_client
+        from app.mcp.service_bearer import mint_service_bearer
+
+        bearer = mint_service_bearer(owner_user_id, settings.jwt_secret)
+        body = await get_book_client().list_revisions(
+            book_id, chapter_id, bearer, limit=1,
+        )
+        items = body.get("items") or []
+        if not items or not items[0].get("revision_id"):
+            return None
+        return UUID(str(items[0]["revision_id"]))
 
 
 class EngineDraftingSeam:
@@ -236,10 +300,14 @@ class AuthoringRunService:
         runs: AuthoringRunsRepo,
         plan_runs: PlanRunsRepo,
         seam: DraftingSeam,
+        units: AuthoringRunUnitsRepo,
+        revisions: RevisionCapture,
     ) -> None:
         self._runs = runs
         self._plan_runs = plan_runs
         self._seam = seam
+        self._units = units
+        self._revisions = revisions
 
     # ── lifecycle ──────────────────────────────────────────────────────────
 
@@ -389,6 +457,170 @@ class AuthoringRunService:
             raise LookupError("run not found")
         return run
 
+    # ── D3 Run Report + dependency-ordered review ──────────────────────────
+
+    async def get_any(self, run_id: UUID) -> AuthoringRun | None:
+        """UNSCOPED — Run Report route only; the router grant-gates VIEW on
+        run.book_id before using it (OwnershipError → 404, no oracle)."""
+        return await self._runs.get_by_id(run_id)
+
+    async def unit_report(self, run: AuthoringRun) -> list[dict[str, Any]]:
+        """Per-unit report rows over the FULL scope (un-attempted units are
+        synthesized as 'pending' — edge #12: a failed/paused run's partial
+        ledger is still reviewable). Each row lists downstream_unit_indexes:
+        the LATER units currently drafted/accepted — the sequential thread's
+        dependency note (edge #3: rejecting this unit invalidates those).
+        Caller must have auth-gated the run; report readable from
+        report_ready/failed/paused (+closed, post-Revert-All audit)."""
+        if run.status not in _REPORTABLE_STATUSES:
+            raise TransitionConflictError(
+                f"report requires status in {_REPORTABLE_STATUSES}, run is {run.status}"
+            )
+        by_index = {u.unit_index: u for u in await self._units.list_for_run(run.run_id)}
+        statuses = {
+            i: (by_index[i].status if i in by_index else "pending")
+            for i in range(len(run.scope))
+        }
+        rows: list[dict[str, Any]] = []
+        for i, chapter_id in enumerate(run.scope):
+            u = by_index.get(i)
+            rows.append({
+                "unit_index": i,
+                "chapter_id": str(u.chapter_id) if u else str(chapter_id),
+                "status": statuses[i],
+                "pre_revision_id": str(u.pre_revision_id) if u and u.pre_revision_id else None,
+                "post_revision_id": str(u.post_revision_id) if u and u.post_revision_id else None,
+                "cost_usd": str(u.cost_usd) if u else "0",
+                "error_message": u.error_message if u else None,
+                "downstream_unit_indexes": [
+                    j for j in range(i + 1, len(run.scope))
+                    if statuses[j] in ("drafted", "accepted")
+                ],
+            })
+        return rows
+
+    async def accept_unit(
+        self, owner_user_id: UUID, run_id: UUID, unit_index: int,
+    ) -> AuthoringRunUnit:
+        """Owner-only guarded drafted→accepted."""
+        run = await self._require(owner_user_id, run_id)
+        if run.status not in _REVIEWABLE_STATUSES:
+            raise TransitionConflictError(
+                f"review requires run status in {_REVIEWABLE_STATUSES}, run is {run.status}"
+            )
+        unit = await self._units.transition_unit(
+            owner_user_id, run_id, unit_index,
+            from_statuses=("drafted",), to_status="accepted",
+        )
+        if unit is None:
+            existing = await self._units.get_for_owner(owner_user_id, run_id, unit_index)
+            if existing is None:
+                raise LookupError("unit not found")
+            raise TransitionConflictError(
+                f"accept requires unit status=drafted, unit is {existing.status}"
+            )
+        return unit
+
+    async def reject_unit(
+        self, owner_user_id: UUID, run_id: UUID, unit_index: int, *, restore: RestoreFn,
+    ) -> tuple[AuthoringRunUnit, list[int], bool]:
+        """Owner-only guarded drafted→rejected. When the unit pinned a
+        pre_revision_id, the chapter is FIRST rolled back via `restore` (the
+        router binds BookClient.restore_revision with the CALLER's bearer); a
+        restore failure propagates (→502) with the unit LEFT drafted — never
+        mark rejected without the actual revert. pre_revision_id=None (chapter
+        had no revisions before the run) → reject without a restore, flagged by
+        reverted=False. Returns (unit, downstream drafted/accepted indexes for
+        the cascade_warning — edge #3, v1 warns only, no auto-reject)."""
+        run = await self._require(owner_user_id, run_id)
+        if run.status not in _REVIEWABLE_STATUSES:
+            raise TransitionConflictError(
+                f"review requires run status in {_REVIEWABLE_STATUSES}, run is {run.status}"
+            )
+        unit = await self._units.get_for_owner(owner_user_id, run_id, unit_index)
+        if unit is None:
+            raise LookupError("unit not found")
+        if unit.status != "drafted":
+            raise TransitionConflictError(
+                f"reject requires unit status=drafted, unit is {unit.status}"
+            )
+        reverted = False
+        if unit.pre_revision_id is not None:
+            await restore(run.book_id, unit.chapter_id, unit.pre_revision_id)
+            reverted = True
+        rejected = await self._units.transition_unit(
+            owner_user_id, run_id, unit_index,
+            from_statuses=("drafted",), to_status="rejected",
+        )
+        if rejected is None:
+            raise TransitionConflictError("unit left drafted while rejecting (raced)")
+        cascade = [
+            u.unit_index
+            for u in await self._units.list_for_owner(owner_user_id, run_id)
+            if u.unit_index > unit_index and u.status in ("drafted", "accepted")
+        ]
+        return rejected, cascade, reverted
+
+    async def revert_all(
+        self, owner_user_id: UUID, run_id: UUID, *, restore: RestoreFn,
+    ) -> dict[str, Any]:
+        """Owner-only: reject EVERY drafted/accepted unit in REVERSE unit order
+        (downstream first — the sequentially-threaded restores unwind cleanly).
+        First restore failure STOPS the sweep; the result reports which units
+        reverted and which failed (run left as-is). Full success → run closed
+        (for a paused run that also releases the book's scope fence — the
+        partial index covers gated/running/paused)."""
+        run = await self._require(owner_user_id, run_id)
+        if run.status not in _REVIEWABLE_STATUSES:
+            raise TransitionConflictError(
+                f"revert-all requires run status in {_REVIEWABLE_STATUSES}, "
+                f"run is {run.status}"
+            )
+        targets = sorted(
+            (
+                u for u in await self._units.list_for_owner(owner_user_id, run_id)
+                if u.status in ("drafted", "accepted")
+            ),
+            key=lambda u: u.unit_index,
+            reverse=True,
+        )
+        reverted: list[int] = []
+        for u in targets:
+            if u.pre_revision_id is not None:
+                try:
+                    await restore(run.book_id, u.chapter_id, u.pre_revision_id)
+                except Exception as exc:  # noqa: BLE001 — collect + stop, report partial
+                    logger.warning(
+                        "revert-all restore failed for run %s unit %d: %s",
+                        run_id, u.unit_index, exc,
+                    )
+                    return {
+                        "reverted_unit_indexes": reverted,
+                        "failed_unit_index": u.unit_index,
+                        "error": str(exc),
+                        "run_status": run.status,
+                        "closed": False,
+                    }
+            updated = await self._units.transition_unit(
+                owner_user_id, run_id, u.unit_index,
+                from_statuses=("drafted", "accepted"), to_status="rejected",
+            )
+            if updated is not None:
+                reverted.append(u.unit_index)
+            # None = raced away (already rejected) — the restore was applied or
+            # already done; treat as unwound and continue.
+        closed = await self._runs.transition(
+            owner_user_id, run_id,
+            from_statuses=_REVIEWABLE_STATUSES, to_status="closed",
+        )
+        return {
+            "reverted_unit_indexes": reverted,
+            "failed_unit_index": None,
+            "error": None,
+            "run_status": closed.status if closed else run.status,
+            "closed": closed is not None,
+        }
+
     # ── driver (v1 minimal sequential — D4 upgrades to the durable saga) ───
 
     def _spawn_driver(self, owner_user_id: UUID, run_id: UUID) -> None:
@@ -439,6 +671,28 @@ class AuthoringRunService:
                 )
                 return
             chapter_id = UUID(str(scope[run.current_unit]))
+            # D3 ledger — pin the pre-run revision baseline BEFORE the seam.
+            # A failed PRE capture fails the unit: an autonomous run must never
+            # draft a chapter whose rollback spine could not be pinned.
+            try:
+                pre_rev = await self._revisions.latest_revision_id(
+                    owner_user_id=owner_user_id,
+                    book_id=run.book_id,
+                    chapter_id=chapter_id,
+                )
+            except Exception as exc:  # noqa: BLE001 — capture seam, fail the unit
+                error = f"pre-revision capture failed: {exc}"
+                await self._units.upsert_pending(
+                    owner_user_id, run_id, run.current_unit, chapter_id,
+                    pre_revision_id=None,
+                )
+                await self._fail_unit(owner_user_id, run_id, run.current_unit,
+                                      chapter_id, error)
+                return
+            await self._units.upsert_pending(
+                owner_user_id, run_id, run.current_unit, chapter_id,
+                pre_revision_id=pre_rev,
+            )
             outcome = await self._seam.draft_chapter(
                 owner_user_id=owner_user_id,
                 book_id=run.book_id,
@@ -447,22 +701,53 @@ class AuthoringRunService:
                 params=run.params,
             )
             if not outcome.ok:
-                await self._runs.transition(
-                    owner_user_id, run_id,
-                    from_statuses=("running",), to_status="failed",
-                    breaker_state={
-                        "reason": "unit_failed",
-                        "unit": run.current_unit,
-                        "chapter_id": str(chapter_id),
-                        "error": outcome.error or "",
-                    },
-                    error_message=outcome.error,
-                )
+                await self._fail_unit(owner_user_id, run_id, run.current_unit,
+                                      chapter_id, outcome.error or "")
                 return
             cost = outcome.cost_usd if outcome.cost_usd and outcome.cost_usd > 0 else (
                 Decimal(str(settings.authoring_unit_estimate_usd))
+            )
+            # POST capture is best-effort: the draft DID land (and its cost is
+            # real) — a capture blip only loses the report's diff anchor.
+            post_rev: UUID | None = None
+            try:
+                post_rev = await self._revisions.latest_revision_id(
+                    owner_user_id=owner_user_id,
+                    book_id=run.book_id,
+                    chapter_id=chapter_id,
+                )
+            except Exception:  # noqa: BLE001
+                logger.warning(
+                    "post-revision capture failed for run %s unit %d",
+                    run_id, run.current_unit, exc_info=True,
+                )
+            await self._units.mark_drafted(
+                owner_user_id, run_id, run.current_unit,
+                post_revision_id=post_rev, cost_usd=cost,
             )
             await self._runs.record_unit_progress(
                 owner_user_id, run_id,
                 add_spent_usd=cost, current_unit=run.current_unit + 1,
             )
+
+    async def _fail_unit(
+        self,
+        owner_user_id: UUID,
+        run_id: UUID,
+        unit_index: int,
+        chapter_id: UUID,
+        error: str,
+    ) -> None:
+        """Fail-stop: mark the ledger row failed + trip the run breaker."""
+        await self._units.mark_failed(owner_user_id, run_id, unit_index, error=error)
+        await self._runs.transition(
+            owner_user_id, run_id,
+            from_statuses=("running",), to_status="failed",
+            breaker_state={
+                "reason": "unit_failed",
+                "unit": unit_index,
+                "chapter_id": str(chapter_id),
+                "error": error,
+            },
+            error_message=error,
+        )
