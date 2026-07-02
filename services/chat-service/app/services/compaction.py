@@ -35,9 +35,10 @@ If even the non-evictable messages exceed the budget (edge #4) the result carrie
 """
 from __future__ import annotations
 
-from collections.abc import Callable
+import inspect
+from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, field
-from typing import Any
+from typing import Union
 
 from app.services.token_budget import estimate_messages_tokens
 
@@ -148,7 +149,10 @@ def _hard_truncate(messages: list[dict], keep_recent: int) -> tuple[list[dict], 
     return pinned + kept_tail, dropped
 
 
-def compact_messages(
+Summarizer = Callable[[list[dict]], Union[str, Awaitable[str]]]
+
+
+async def compact_messages(
     messages: list[dict],
     *,
     effective_limit: int | None,
@@ -156,12 +160,15 @@ def compact_messages(
     keep_tool_results: int = 3,
     keep_recent: int = 8,
     exclude_tools: frozenset[str] = DEFAULT_EXCLUDE_TOOLS,
-    summarize: Callable[[list[dict]], str] | None = None,
+    summarize: Summarizer | None = None,
 ) -> tuple[list[dict], CompactionReport]:
-    """Compact `messages` to fit under `effective_limit` tokens. Pure + deterministic
-    except for the optional `summarize` LLM callback (whose failure is caught and
-    downgraded to hard-truncate). Returns (new_messages, report). Never raises for a
-    summarize failure — that is reported, not thrown (edge #2)."""
+    """Compact `messages` to fit under `effective_limit` tokens. Deterministic except
+    for the optional `summarize` callback (sync OR async — an LLM call), whose failure
+    is caught and downgraded to hard-truncate. Returns (new_messages, report). Never
+    raises for a summarize failure — that is reported, not thrown (edge #2).
+
+    Async because the summarizer is an LLM call; with `summarize=None` it does no I/O
+    and is effectively the pure deterministic path."""
     report = CompactionReport()
     report.tokens_before = estimate_messages_tokens(messages)
     if not effective_limit or effective_limit <= 0:
@@ -186,21 +193,28 @@ def compact_messages(
         return work, report
 
     # 2. full-compact via the injected summarizer (LLM path). Failure → fall through.
+    # We compress the *droppable middle* (everything non-pinned except the recent tail),
+    # so the recent turns stay verbatim and aren't double-represented in the summary.
     if summarize is not None:
-        try:
-            summary = summarize(work)
-            if summary and summary.strip():
-                pinned = [m for m in work if _is_pinned(m)]
-                tail = _recent_tail([m for m in work if not _is_pinned(m)], keep_recent)
-                summary_msg = {"role": "system", "content": f"<summary>\n{summary.strip()}\n</summary>"}
-                work = pinned + [summary_msg] + tail
-                report.summarized = True
-                report.steps.append("summarize")
-            else:
+        pinned = [m for m in work if _is_pinned(m)]
+        non_pinned = [m for m in work if not _is_pinned(m)]
+        tail = _recent_tail(non_pinned, keep_recent)
+        middle = non_pinned[: len(non_pinned) - len(tail)]
+        if middle:
+            try:
+                summary = summarize(middle)
+                if inspect.isawaitable(summary):
+                    summary = await summary
+                if summary and summary.strip():
+                    summary_msg = {"role": "system", "content": f"<summary>\n{summary.strip()}\n</summary>"}
+                    work = pinned + [summary_msg] + tail
+                    report.summarized = True
+                    report.steps.append("summarize")
+                else:
+                    report.summarize_failed = True
+            except Exception:
                 report.summarize_failed = True
-        except Exception:
-            report.summarize_failed = True
-            report.steps.append("summarize_failed")
+                report.steps.append("summarize_failed")
     if estimate_messages_tokens(work) <= trigger:
         report.tokens_after = estimate_messages_tokens(work)
         return work, report

@@ -1366,6 +1366,57 @@ async def stream_response(
         yield line
 
 
+async def _summarize_for_compaction(
+    messages: list[dict], *, model_source: str, model_ref: str, user_id: str,
+) -> str:
+    """Compaction tier 2 — compress a run of OLDER turns into a dense synopsis so the
+    prompt fits the window (compress instead of drop). Provider-agnostic via the LLM
+    gateway (works for local lm_studio / Qwen / Gemma AND Claude). A failure RAISES —
+    ``compact_messages`` catches it and falls back to deterministic truncation so a
+    flaky summarizer can never poison the turn (edge #2)."""
+    lines: list[str] = []
+    for m in messages:
+        role = m.get("role", "?")
+        content = m.get("content")
+        if isinstance(content, list):  # content parts
+            content = " ".join(p.get("text", "") for p in content if isinstance(p, dict))
+        if not content:  # a tool-call turn with no prose — represent it compactly
+            tcs = m.get("tool_calls") or []
+            names = ", ".join(tc.get("function", {}).get("name", "tool") for tc in tcs)
+            content = f"(called {names})" if names else ""
+        lines.append(f"{role}: {content}")
+    transcript = "\n".join(lines)
+
+    summary_messages = [
+        {"role": "system", "content": (
+            "You compress the EARLIER part of an ongoing conversation into a dense, "
+            "factual synopsis so it fits in context. Preserve named entities, decisions "
+            "made, facts established, open threads, and any state the assistant must "
+            "keep. Omit pleasantries. Output ONLY the synopsis prose — no preamble, no "
+            "headers, and do NOT reason aloud."
+        )},
+        {"role": "user", "content": f"Conversation excerpt to compress:\n\n{transcript}\n\nSynopsis:"},
+    ]
+    client = Client(
+        base_url=settings.provider_registry_internal_url,
+        auth_mode="internal",
+        internal_token=settings.internal_service_token,
+        user_id=user_id,
+    )
+    try:
+        request = StreamRequest(
+            model_source=model_source, model_ref=model_ref,
+            messages=summary_messages, temperature=0.2, max_tokens=700,
+        )
+        parts: list[str] = []
+        async for ev in client.stream(request):
+            if isinstance(ev, TokenEvent):
+                parts.append(ev.delta)
+    finally:
+        await client.aclose()
+    return "".join(parts).strip()
+
+
 async def _emit_chat_turn(
     *,
     session_id: str,
@@ -1459,7 +1510,14 @@ async def _emit_chat_turn(
             max_output_tokens=int(gen_params.get("max_tokens") or 0),
         ).effective_limit
         if _eff_limit:
-            messages, _compaction = compact_messages(messages, effective_limit=_eff_limit)
+            async def _summarizer(_middle: list[dict]) -> str:
+                # tier 2 runs the session's OWN model to compress the old turns.
+                return await _summarize_for_compaction(
+                    _middle, model_source=model_source, model_ref=model_ref, user_id=user_id,
+                )
+            messages, _compaction = await compact_messages(
+                messages, effective_limit=_eff_limit, summarize=_summarizer,
+            )
             if _compaction.triggered:
                 logger.info(
                     "compaction fired session=%s steps=%s tokens %d→%d overflow=%s",

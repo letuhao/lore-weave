@@ -1,7 +1,11 @@
 """Wave A4 — provider-agnostic compaction (micro → full → fail)."""
 from __future__ import annotations
 
+import pytest
+
 from app.services.compaction import compact_messages, _PLACEHOLDER
+
+pytestmark = pytest.mark.asyncio
 
 
 def _big(n: int) -> str:
@@ -47,26 +51,26 @@ def _has_orphan_tool(msgs: list[dict]) -> bool:
 
 
 class TestNoTrigger:
-    def test_under_trigger_is_unchanged(self):
+    async def test_under_trigger_is_unchanged(self):
         msgs = [{"role": "user", "content": "hi"}]
-        out, rep = compact_messages(msgs, effective_limit=10_000)
+        out, rep = await compact_messages(msgs, effective_limit=10_000)
         assert out is msgs
         assert rep.triggered is False
 
-    def test_null_limit_is_noop(self):
+    async def test_null_limit_is_noop(self):
         msgs = [_tool("web_search"), {"role": "user", "content": _big(9999)}]
-        out, rep = compact_messages(msgs, effective_limit=None)
+        out, rep = await compact_messages(msgs, effective_limit=None)
         assert rep.triggered is False
 
 
 class TestMicrocompact:
-    def test_evicts_old_tool_results_keeps_last_n(self):
+    async def test_evicts_old_tool_results_keeps_last_n(self):
         msgs = [
             {"role": "system", "content": "sys"},
             _tool("a"), _tool("b"), _tool("c"), _tool("d"), _tool("e"),
             {"role": "user", "content": "now"},
         ]
-        out, rep = compact_messages(msgs, effective_limit=1_000, keep_tool_results=2)
+        out, rep = await compact_messages(msgs, effective_limit=1_000, keep_tool_results=2)
         assert rep.triggered and rep.tool_results_cleared == 3  # 5 tools - keep 2
         cleared = [m for m in out if m.get("role") == "tool" and m["content"] == _PLACEHOLDER]
         assert len(cleared) == 3
@@ -74,25 +78,25 @@ class TestMicrocompact:
         kept = [m for m in out if m.get("role") == "tool" and m["content"] != _PLACEHOLDER]
         assert len(kept) == 2
 
-    def test_never_evicts_excluded_tool(self):
+    async def test_never_evicts_excluded_tool(self):
         msgs = [
             _tool("web_search"), _tool("web_search"), _tool("web_search"),
             _tool("web_search"), {"role": "user", "content": "q"},
         ]
-        out, rep = compact_messages(msgs, effective_limit=500, keep_tool_results=1)
+        out, rep = await compact_messages(msgs, effective_limit=500, keep_tool_results=1)
         # web_search is excluded → none cleared even though 4 > keep 1
         assert rep.tool_results_cleared == 0
         assert all(m["content"] != _PLACEHOLDER for m in out if m.get("role") == "tool")
 
-    def test_does_not_mutate_caller_messages(self):
+    async def test_does_not_mutate_caller_messages(self):
         msgs = [_tool("a"), _tool("b"), _tool("c"), _tool("d"), {"role": "user", "content": "x"}]
         original_first = msgs[0]["content"]
-        compact_messages(msgs, effective_limit=500, keep_tool_results=1)
+        await compact_messages(msgs, effective_limit=500, keep_tool_results=1)
         assert msgs[0]["content"] == original_first  # caller's list untouched
 
 
 class TestFullCompactAndFailure:
-    def test_summarize_used_when_micro_insufficient(self):
+    async def test_summarize_used_when_micro_insufficient(self):
         # one huge non-tool turn micro-compact can't shrink → summarizer runs.
         msgs = [
             {"role": "system", "content": "sys"},
@@ -100,14 +104,31 @@ class TestFullCompactAndFailure:
             {"role": "assistant", "content": _big(4000)},
             {"role": "user", "content": "latest"},
         ]
-        out, rep = compact_messages(
+        out, rep = await compact_messages(
             msgs, effective_limit=2_000, keep_recent=1,
             summarize=lambda _m: "compressed summary of the discussion",
         )
         assert rep.summarized is True
         assert any("<summary>" in (m.get("content") or "") for m in out)
 
-    def test_summarize_failure_falls_through_to_truncate(self):
+    async def test_async_summarizer_is_awaited_and_used(self):
+        # the production summarizer is an async LLM call — prove the await path.
+        async def async_summarize(_m):
+            return "async-compressed synopsis"
+
+        msgs = [
+            {"role": "system", "content": "sys"},
+            {"role": "user", "content": _big(4000)},
+            {"role": "assistant", "content": _big(4000)},
+            {"role": "user", "content": "latest"},
+        ]
+        out, rep = await compact_messages(
+            msgs, effective_limit=2_000, keep_recent=1, summarize=async_summarize,
+        )
+        assert rep.summarized is True
+        assert any("async-compressed synopsis" in (m.get("content") or "") for m in out)
+
+    async def test_summarize_failure_falls_through_to_truncate(self):
         # edge #2: a broken summarizer must NOT poison context — fall to hard-truncate.
         def bad_summarize(_m):
             raise RuntimeError("local model timed out")
@@ -119,7 +140,7 @@ class TestFullCompactAndFailure:
             {"role": "user", "content": _big(4000)},
             {"role": "user", "content": "latest"},
         ]
-        out, rep = compact_messages(
+        out, rep = await compact_messages(
             msgs, effective_limit=2_000, keep_recent=1, summarize=bad_summarize,
         )
         assert rep.summarize_failed is True
@@ -129,22 +150,22 @@ class TestFullCompactAndFailure:
 
 
 class TestHardTruncateAndOverflow:
-    def test_hard_truncate_keeps_pinned_and_recent(self):
+    async def test_hard_truncate_keeps_pinned_and_recent(self):
         msgs = [{"role": "system", "content": "SYS"}] + [
             {"role": "user", "content": _big(2000)} for _ in range(6)
         ] + [{"role": "user", "content": "LAST"}]
-        out, rep = compact_messages(msgs, effective_limit=1_500, keep_recent=2)
+        out, rep = await compact_messages(msgs, effective_limit=1_500, keep_recent=2)
         assert out[0]["content"] == "SYS"           # pinned kept, leads the prompt
         assert out[-1]["content"] == "LAST"          # recent tail kept
         assert rep.turns_truncated > 0
 
-    def test_overflow_when_pinned_alone_exceed_budget(self):
+    async def test_overflow_when_pinned_alone_exceed_budget(self):
         # edge #4: non-evictable system messages alone blow the budget.
         msgs = [
             {"role": "system", "content": _big(5000)},
             {"role": "user", "content": "x"},
         ]
-        out, rep = compact_messages(msgs, effective_limit=1_000, keep_recent=1)
+        out, rep = await compact_messages(msgs, effective_limit=1_000, keep_recent=1)
         assert rep.overflowed is True
 
 
@@ -166,31 +187,31 @@ class TestToolPairSafety:
             _asst_call("c_3"), _tool_result("c_3", 600),  # most recent exchange
         ]
 
-    def test_hard_truncate_never_orphans_a_tool_pair(self):
+    async def test_hard_truncate_never_orphans_a_tool_pair(self):
         # keep_recent=1 would slice the tail to a lone tool result (orphan) pre-fix;
         # keep_tool_results high so microcompact clears nothing → hard-truncate runs.
         msgs = self._resume_shaped()
-        out, rep = compact_messages(
+        out, rep = await compact_messages(
             msgs, effective_limit=1_500, keep_recent=1, keep_tool_results=99,
         )
         assert rep.triggered and rep.turns_truncated > 0
         assert "hard_truncate" in rep.steps
         assert not _has_orphan_tool(out), f"orphaned tool pair after truncate: {[m.get('role') for m in out]}"
 
-    def test_summarize_tail_slice_never_orphans(self):
+    async def test_summarize_tail_slice_never_orphans(self):
         # summarize succeeds → work = pinned + summary + tail[-keep_recent:];
         # that slice must also land on a safe boundary.
         msgs = self._resume_shaped()
-        out, rep = compact_messages(
+        out, rep = await compact_messages(
             msgs, effective_limit=1_500, keep_recent=1, keep_tool_results=99,
             summarize=lambda _m: "the story so far",
         )
         assert rep.triggered
         assert not _has_orphan_tool(out), f"orphaned after summarize slice: {[m.get('role') for m in out]}"
 
-    def test_microcompact_preserves_pairing(self):
+    async def test_microcompact_preserves_pairing(self):
         # microcompact only blanks tool CONTENT (keeps the message + tool_call_id),
         # so pairing is intact even when it clears old results.
         msgs = self._resume_shaped()
-        out, rep = compact_messages(msgs, effective_limit=2_000, keep_tool_results=1)
+        out, rep = await compact_messages(msgs, effective_limit=2_000, keep_tool_results=1)
         assert not _has_orphan_tool(out)
