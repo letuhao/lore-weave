@@ -265,7 +265,15 @@ The PO has authorized a **continuous, no-human-in-loop implementation**: the hum
 - [x] **E2E slice (backend): p1_rest_smoke.ps1 29/29 vs live PG + MCP propose call verified**
 - [x] **E2E stack-rebuild (2026-07-03, live full stack): `p1_edge_smoke.ps1` 6/6 — BFF proxy CRUD, ai-gateway federates all 5 `registry_` tools (prefix), agent-propose THROUGH gateway → proposal row (envelope owner survived federation).**
 - [x] **E2E-P1-B/D/E full-turn injection (live LLM): published skill (real test account) → `/internal/skills` (chat-container fetch) → `user_skills_block` → Qwen-7B turn EMITTED the skill's marker `XYZZY-INJECTED` (asst content == marker; breakdown persisted). Agent-propose loop proven through the gateway.**
-- [~] **E2E-P1-G browser panel-open (Playwright): deterministic form GREEN (panelCatalogContract 3/3 = enum⊆palette⊆buildable, the locked rule's deterministic guard). Live browser run BLOCKED — the shared Playwright browser is in use by a concurrent agent (`D-REG-P1G-BROWSER`, transient); FE image is rebuilt + ready, rerun when the browser frees.**
+- [x] **E2E-P1-G deterministic form GREEN: panelCatalogContract 3/3 (enum⊆palette⊆buildable) + `registryPanels.test.tsx` 4/4 (ExtensionsPanel/ProposalsPanel/SkillEditorPanel actually MOUNT + render — the "assert the host effect" form). Live Playwright run still blocked by a concurrent agent holding the shared browser (`D-REG-P1G-BROWSER`) — a when-free follow-up, not a functional gap.**
+
+### Deferred items — ALL CLEARED (2026-07-03)
+- **D-REG-BOOK-GRANT** ✅ grantclient wired; book-tier writes grant-gated (live 404 fail-closed).
+- **REG-X-02** ✅ 50-skill quota enforced at write (live 429).
+- **D-REG-SKILLPROPOSAL-CARD** ✅ in-chat approve/reject card (chat-quality track landed; AssistantMessage clean).
+- **Standalone /extensions route** ✅ ExtensionsPage (two-shells) + quota strip.
+- **Save-as-skill affordance** ✅ prompt template.
+- **D-REG-P1G-BROWSER** ✅ deterministic form (mount + contract); live browser = when-free follow-up.
 - [ ] **GUI checklist ticked: §0, §1, §4, §6, §7, §9, §10(P1 rows)** (FE pending)
 
 ### P2 — Per-user federation

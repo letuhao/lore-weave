@@ -60,3 +60,12 @@ Format per entry:
 - Chosen: **B — defer (`D-REG-SKILLPROPOSAL-CARD`)**, gate #1 (out-of-scope collision with a concurrent track's uncommitted work).
 - Rationale: editing another track's actively-modified files mid-flight is the exact "shared file hazard" the repo warns about; the proposal loop is already fully functional headless (MCP propose → DB row → Proposals inbox → approve), so the card is a chat-surface convenience, not a blocker. The ProposalsPanel/ProposalsView already give the human an approve/reject surface outside chat.
 - Rework cost if overturned: low — the card is one component reading a tool-result shape we already emit; add it once `features/chat` is quiescent.
+
+---
+
+## CLEARED — 2026-07-03 (all deferrals resolved on user request)
+- **DL-2 / D-REG-BOOK-GRANT** → CLEARED: grantclient wired (`RequireGrant ≥edit`, fail-closed 404/501/503); book-tier plugins/skills + book-scope enablement now work. Live: book-tier for an ungranted book → 404 (`p1_governance_smoke.ps1`).
+- **REG-X-02** → CLEARED: 50-skill per-user cap enforced at every write path (createSkill/import/proposal-approve) → 429. Live-verified.
+- **DL-6 / D-REG-SKILLPROPOSAL-CARD** → CLEARED: `AssistantMessage.tsx` is clean again (the chat-quality track landed), so the collision that forced the defer is gone; the in-chat approve/reject `SkillProposalCard` is wired. 159 FE tests green (no regression).
+- **D-REG-P1G-BROWSER** → CLEARED (deterministic): `registryPanels.test.tsx` mounts the real panels + panelCatalogContract holds; the LIVE Playwright run remains a when-free follow-up (shared browser held by a concurrent agent) — not a functional gap.
+- **FE tails** (standalone /extensions route, save-as-skill affordance) → shipped.

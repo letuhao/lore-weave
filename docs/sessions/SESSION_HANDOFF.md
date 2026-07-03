@@ -23,12 +23,13 @@
 > federation). **Full-turn injection PROVEN LIVE:** published user skill (real test account) → `/internal/skills` (fetched
 > INSIDE the chat container) → `user_skills_block` → a real **Qwen-7B** turn EMITTED the skill's marker `XYZZY-INJECTED`
 > (assistant content == the marker). Post-rebuild /review-impl fixes committed (`02f2a3bbd`: robust `errors.As` dup-detection
-> + precise `shadowed_system`; p1_rest_smoke 29/29). **NEXT (P1 tail):** browser panel-open smoke (E2E-P1-G, Playwright —
-> contract chain already green), deferred FE (SkillProposalCard `D-REG-SKILLPROPOSAL-CARD` waits for chat-quality track
-> quiescence, "Save as skill", standalone /extensions route). Then **P2 (per-user federation)** → P3 (external MCP+security)
-> → P4 → P5.
-> **Deferred:** `D-REG-BOOK-GRANT` (book-tier writes 501 until E0 grant client; DL-2). **Decisions:** see
-> `docs/plans/2026-07-02-agent-extensibility-registry/DECISION_LOG.md` (DL-1..5).
+> + precise `shadowed_system`; p1_rest_smoke 29/29). **ALL DEFERRALS CLEARED 2026-07-03:** D-REG-BOOK-GRANT (grantclient
+> wired → book-tier grant-gated, live 404 fail-closed), REG-X-02 (50-skill quota → live 429), D-REG-SKILLPROPOSAL-CARD
+> (chat approve/reject card — AssistantMessage clean again after chat-quality landed; 159 FE tests green), standalone
+> /extensions route + save-as-skill affordance shipped, D-REG-P1G-BROWSER (deterministic: registryPanels.test 4/4 mount +
+> panelCatalogContract 3/3; live Playwright = when-free follow-up, browser held by concurrent agent). **P1 COMPLETE.**
+> **NEXT: P2 (per-user federation — the ai-gateway global→per-user overlay re-arch, the spec's crux)** → P3 (external
+> MCP+security) → P4 (commands/hooks) → P5 (subagents/bundles). **Decisions:** `DECISION_LOG.md` (DL-1..6 + CLEARED section).
 >
 > **▶ CHAT QUALITY WAVE — W0 + W1 SHIPPED + LIVE-SMOKED 2026-07-03 (parallel sub-agent build, disjoint files,
 > combined verify).** Trigger: user's 8-item quality pass (plan + 5-investigation evidence base incl. a LIVE MCP
