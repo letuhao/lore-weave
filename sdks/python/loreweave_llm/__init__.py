@@ -91,6 +91,7 @@ from .reasoning import (
 from .structured import (
     GenerateResult,
     StructuredGenerateError,
+    no_thinking_fields,
     parse_json_object,
     structured_generate,
 )
@@ -115,6 +116,7 @@ __all__ = [
     # AI-Task Standard — single-shot structured generate (shared plumbing)
     "structured_generate",
     "parse_json_object",
+    "no_thinking_fields",
     "GenerateResult",
     "StructuredGenerateError",
     "StreamEvent",

@@ -136,6 +136,29 @@ the divergent copies migrate to it opportunistically, not required this run).
 Each M: VERIFY evidence (unit + tsc) + cross-service live-smoke token; commit with explicit
 paths (parallel-agent index discipline — `git diff --cached --name-only` first, no `git add -A`).
 
+## Deferred (verified against code, gate-justified — NOT laziness)
+
+Two of the four footgun engines are **not** touched this run; each was verified real and
+scoped, then deferred for a specific reason:
+
+- **`D-WIKI-EFFORT-NONE-DISABLE`** — wiki `generate.py` keeps `"none"`=no-op. It is a
+  **deliberate, test-locked design** (`test_default_effort_omits_reasoning_wire_fields`
+  asserts byte-identical; D-KG-WIKI-WORKER-GRADED-EFFORT / W4 clamped-at-mint). Wiki output
+  is long-form **Markdown prose** (not strict JSON) and the path **degrades gracefully**
+  (empty→`_EMPTY_CORRECTIVE` retry→deterministic stub), so the footgun is self-recovering,
+  not a silent failure. Reversing a conscious design + inverting its test + worker live-smoke
+  is a focused decision for the human, not a drive-by. **Gate #5 (conscious won't-fix pending
+  a product call).**
+- **`D-ENRICH-COMPLETE-BUDGET`** — `lore-enrichment-service/app/generation/complete.py` sends
+  the `/internal/llm/stream` body with **no `max_tokens` and no reasoning-off**. It is a
+  **streaming** seam in a **different service** (direct httpx, not `submit_and_wait`); the fix
+  needs (a) verifying the stream endpoint threads `chat_template_kwargs`/`reasoning_effort`,
+  (b) a domain-safe `max_tokens` bound (enrichment prose can be long — too low truncates real
+  output), (c) an enrichment live-smoke. **Gate #2 (cross-service contract + budget choice).**
+
+Done this run: `schema_propose` (M1a), `working_memory/executive.py`, `summarize_level`
+(SDK) — all reasoning-off, unit-verified.
+
 ## Acceptance
 
 - No single-shot generate surface hand-rolls effort / spend-cap regex / json-extract /

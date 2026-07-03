@@ -22,11 +22,17 @@ from typing import Any, Literal
 
 from pydantic import BaseModel, Field, ValidationError
 
+from loreweave_llm import no_thinking_fields
+
 from loreweave_extraction._types import LLMClientProtocol
 from loreweave_extraction.errors import ExtractionError
 from loreweave_extraction.prompts import load_prompt
 
 logger = logging.getLogger(__name__)
+
+# A summarizer emits structured JSON — a reasoning model must NOT think out loud
+# (hidden reasoning would burn the 1024-token budget → empty → ExtractionError).
+_NO_THINKING = no_thinking_fields()
 
 __all__ = ["LevelSummary", "summarize_level"]
 
@@ -155,6 +161,9 @@ async def _call_llm(
                 # Pydantic max_length=2000 → 1024 tokens output is
                 # generous even with reasoning-capable judges.
                 "max_tokens": 1024,
+                # Disable hidden reasoning — a reasoning model would otherwise
+                # spend the 1024-token budget thinking and return empty prose.
+                **_NO_THINKING,
             },
             job_meta={
                 "extractor": "summarize_level",

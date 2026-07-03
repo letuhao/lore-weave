@@ -53,6 +53,15 @@ def _as_directive(reasoning: ReasoningEffort | ReasoningDirective) -> ReasoningD
     return ReasoningDirective(effort=reasoning, passthrough=False, source="user")
 
 
+def no_thinking_fields() -> dict[str, Any]:
+    """Wire fields that DISABLE hidden reasoning (the empty-prose footgun disable:
+    ``reasoning_effort="none"`` + ``chat_template_kwargs.{thinking:false}``) for a
+    structured / one-shot call. For call sites that build their OWN job ``input``
+    directly (not via ``structured_generate``) but still need the footgun closed —
+    spread ``**no_thinking_fields()`` into ``input``."""
+    return reasoning_fields(_as_directive("none"))
+
+
 def parse_json_object(raw: str) -> dict[str, Any]:
     """Pull a JSON object out of an LLM completion, tolerating ```json fences and
     leading/trailing prose. Raises StructuredGenerateError if nothing parses.

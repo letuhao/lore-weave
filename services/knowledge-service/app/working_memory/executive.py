@@ -21,7 +21,13 @@ import json
 import logging
 from uuid import UUID
 
+from loreweave_llm import no_thinking_fields
+
 logger = logging.getLogger(__name__)
+
+# The executive asks for JSON-only state; a reasoning model must NOT think out loud
+# (max_tokens=500 → hidden reasoning would eat the whole budget → empty → bad_json).
+_NO_THINKING = no_thinking_fields()
 
 # How many recent turns the prompt is bounded to (chat-service sends the window).
 EXECUTIVE_MAX_TURNS = 12
@@ -162,6 +168,7 @@ async def run_executive(
                 "messages": messages,
                 "temperature": 0.0,
                 "max_tokens": 500,
+                **_NO_THINKING,
             },
             chunking=None,
             job_meta={"usage_purpose": "working_memory", "extractor": "working_memory_executive"},
