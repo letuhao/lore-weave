@@ -184,6 +184,12 @@ func (s *Server) createMcpServer(w http.ResponseWriter, r *http.Request) {
 	s.audit(r.Context(), uid, actorKindOf(role), "mcp_server", "register", &row.McpServerID, row.DisplayName, tier, nil)
 	s.bumpCatalogVersion(r.Context())
 	registryWrites.WithLabelValues("mcp_server", "register").Inc()
+	// External servers register QUARANTINED (pending); kick a best-effort supply-chain
+	// scan that flips pending→active (clean) or suspended (flagged). The wizard also
+	// triggers a synchronous rescan on its Health & Scan step.
+	if class.IsExternal {
+		s.scanAsync(row.McpServerID)
+	}
 	writeJSON(w, http.StatusCreated, row)
 }
 

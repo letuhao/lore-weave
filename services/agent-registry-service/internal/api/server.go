@@ -186,8 +186,11 @@ func (s *Server) Router() http.Handler {
 		// MCP server registrations (P2 — internal-only; external+security = P3)
 		r.Get("/mcp-servers", s.listMcpServers)
 		r.Post("/mcp-servers", s.createMcpServer)
+		r.Get("/mcp-servers/{mcp_server_id}", s.getMcpServer)                     // P3 detail
 		r.Delete("/mcp-servers/{mcp_server_id}", s.deleteMcpServer)
 		r.Put("/mcp-servers/{mcp_server_id}/enablement", s.setMcpEnabled)
+		r.Post("/mcp-servers/{mcp_server_id}/rescan", s.rescanMcpServer)          // P3 supply-chain scan
+		r.Post("/mcp-servers/{mcp_server_id}/accept-risk", s.acceptRiskMcpServer) // P3 quarantine override
 
 		// Proposals (P1 agent self-registration — propose→approve/reject)
 		r.Get("/proposals", s.listProposals)
