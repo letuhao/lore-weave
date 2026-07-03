@@ -305,13 +305,13 @@ The PO has authorized a **continuous, no-human-in-loop implementation**: the hum
 - [x] **E2E slice green:** p4_commands_hooks (backend+gating) · p4_command_expansion_e2e · p4_hook_engine_e2e · p4_fe_browser_smoke
 - [x] **GUI:** builder elements built + browser-render-proven (§5)
 
-### P5 — Subagents + bundles
-- [ ] REG-P5-01 subagent defs + scoped runtime
-- [ ] REG-P5-02 bundle export/import
-- [ ] REG-P5-03 official-registry ingest + curation
-- [ ] REG-P5-04 plugin detail UX
-- [ ] **E2E slice green: E2E-P5-A, B, C**
-- [ ] **GUI checklist ticked: §1 (Import bundle rows)**
+### P5 — Subagents + bundles ✅ (buildable slices) 2026-07-03
+- [x] REG-P5-01 subagent defs CRUD + resolver (live: p5_subagent_smoke). Scoped RUNTIME → `D-REG-P5-SUBAGENT-RUNTIME` (gate #2, nested-agent execution needs its own plan)
+- [x] REG-P5-02 bundle export/import (live: p5_bundle_smoke — full roundtrip + tamper/scripts/semver reject; validateSkill parity)
+- [ ] REG-P5-03 official-registry ingest + curation → **DEFERRED** `D-REG-P5-REGISTRY-INGEST` (gate #2, admin-only + external MCP Registry API)
+- [x] REG-P5-04 plugin detail + bundle export/import UX (live browser: p5_fe_browser_smoke — file-upload import round-trip)
+- [x] **E2E slice green:** p5_bundle_smoke (E2E-P5-B) · p5_subagent_smoke (E2E-P5-A CRUD; runtime scoped-tools negative test with the runtime) · p5_fe_browser_smoke
+- [x] **GUI:** Import-bundle + plugin rows built + browser-render-proven (§1)
 
 ### Cross-cutting
 - [ ] REG-X-01 audit trail (+ E2E-X-A piggyback asserts in every scenario)

@@ -152,3 +152,18 @@ One reviewer. **Verified correct:** tenancy on every command/hook route + resolv
 - **LOW — no hook creation quota:** added `quotaHooks` (20/user), mirroring commands.
 - **Accepted+documented:** book-tier creates bypass the per-user quota (grant-gated; matches the skills/mcp pattern); a denied tool can spin the loop with an adversarial model (pre-existing class shared by `find_tools`/planner-cap — an absolute iteration cap is a separate cross-cutting change).
 - **Deferred (gate #1):** `D-REG-P4-SLASH-AUTOCOMPLETE` — the in-chat `/` autocomplete touches the chat-input component under a concurrent track's edits; the builder is the primary authoring surface.
+
+## DL-10 · 2026-07-03 · REG-P5 (bundle scope + two runtime/ingest defers)
+- Context: P5 = subagents (REG-P5-01) + bundles (REG-P5-02) + official-registry ingest (REG-P5-03) + FE (REG-P5-04).
+- Bundle scope: a bundle carries **skills + commands + hooks only** — MCP servers are DELIBERATELY excluded because they hold a vault secret + connection/scan state that isn't portable (the target must re-register + re-auth). Documented in-code.
+- Chosen defers (both gate #2 — large/structural, need their own plan):
+  - **`D-REG-P5-SUBAGENT-RUNTIME`** — the CRUD/resolver ship; the scoped-execution runtime (`registry_run_subagent` running an ISOLATED nested turn with ONLY the tool_scope subset + the persona system_prompt) is a nested agent tool-loop that must route through the provider gateway + isolate context — a serious feature, not a quick edit. The AC's negative test (subagent runs with only its scoped tools) belongs to the runtime.
+  - **`D-REG-P5-REGISTRY-INGEST`** — pulling the official MCP Registry API into an admin curation queue → approve → System rows is an admin-only feature + an external-API integration; large + lower-priority than the shipped user-facing system.
+- Rationale: both clear defer gate #2 (verified against the anti-laziness rule — they're not "missing infra" but genuinely large tracks needing a plan). The buildable foundations (subagent CRUD/resolver; the full user-facing bundle + extension system) are shipped + live-proven.
+
+## /review-impl round 6 — 2026-07-03 (adversarial pass on P5 — subagents + bundles)
+One reviewer. **Verified correct:** importBundle transaction (no partial-commit path — deferred Rollback fires on any member-insert error before Commit), no double-write, export excludes MCP-server secrets entirely, export/import tenancy (System∪own read; forced user-tier write), quota-before-Begin, validation-before-txn, subagent tool_scope validation (create+patch), subagent authz (anti-oracle 404), resolver book▷user▷system shadowing, and the FK ON DELETE CASCADE on every member table. **Fixed:**
+- **MED — bundle import bypassed the skill validators:** importBundle checked only the slug, so a bundle could smuggle a skill with executable `scripts/` content (defeating the prompt-only guard), a >64 KB body, or an empty description. → `validateBundle` now runs the SAME `validateSkill` on every skill (live-proven: a `scripts/` skill → 400 on import).
+- **MED — unvalidated plugin `version` → Content-Disposition filename injection:** only import validated semver; `createPlugin` stored any version verbatim and `exportBundle` interpolated it into the (quoted) filename — a `"` broke out. → `createPlugin` + `patchPlugin` require semver; `bundleFileName` strips every non-`[A-Za-z0-9._-]` char.
+- **LOW — `createSubagent` had no quota** → `quotaSubagents` (20/user). **LOW — `subagent_defs` was missing `uq_subagents_system`** → added.
+- **Accepted:** book-tier subagents creatable-but-not-listable — a SYSTEMIC gap shared by listSkills/listCommands (system+user base clause), not a P5 regression.

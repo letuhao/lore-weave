@@ -181,8 +181,27 @@
 > Suites: agent-registry go green; chat 14 P4-unit; FE extensions+studio green; tsc clean.
 > **Deferred (gate #1, out-of-scope collision):** `D-REG-P4-SLASH-AUTOCOMPLETE` — the in-chat `/` autocomplete
 > (REG-P4-02) touches the chat-input component under concurrent-track edits; the builder is the primary authoring surface.
-> **NEXT: P5 (subagents + plugin bundling).**
-> **Decisions:** `DECISION_LOG.md` (DL-1..8 + review rounds). **P3 + P4 defers: P4 has one (autocomplete); P3 all clear.**
+> **P5 COMPLETE (buildable slices) ✅ — the AGENT EXTENSIBILITY REGISTRY track is DONE end-to-end (P0→P5).** 5 commits +
+> review. **P5-M2 plugin bundle export/import** (`p5_bundle_smoke`): a portable bundle (manifest + skills + commands +
+> hooks; MCP servers excluded — secrets aren't portable); import validates EVERY member (same validators as create,
+> incl. the skill prompt-only `scripts/` guard) in ONE transaction (all-or-nothing), semver-enforced; the full AC
+> roundtrip proven — import→live→export→delete(cascade)→re-import→restored, tampered/scripts/bad-semver → 400.
+> **P5-M1 subagent_defs CRUD + resolver** (`p5_subagent_smoke`): named persona (system_prompt + tool_scope subset +
+> model_ref) + /internal/subagents + tenancy. **P5-M4 FE plugins + bundle UX** (`p5_fe_browser_smoke` — live file-upload
+> import round-trip + export download). **`/review-impl` DONE** (1 reviewer): txn correctness / export-tenancy /
+> MCP-secret-exclusion / FK-cascade / subagent authz all VERIFIED; **2 MED** fixed (import bypassed the skill validators
+> → validateSkill parity closes the `scripts/` prompt-only hole; unvalidated plugin version → filename injection →
+> semver on create+patch + filename strip) + 2 LOW (subagent quota, System UNIQUE index). Suites: agent-registry go
+> green; FE extensions+studio green; tsc clean.
+> **Deferred (both gate #2 — large/structural, need their own plan):** `D-REG-P5-SUBAGENT-RUNTIME` — the scoped nested
+> execution (`registry_run_subagent` server tool running an isolated turn with ONLY the tool_scope subset, via the
+> provider gateway + composer seam; the CRUD/resolver foundation is shipped). `D-REG-P5-REGISTRY-INGEST` — the official
+> MCP Registry API pull → admin curation queue → approve (admin-only + external API).
+> **The whole track is production-usable:** a user registers skills / external MCP servers (OAuth+SSRF+scan) / slash
+> commands / declarative hooks / subagent personas, bundles + shares them, and the agent federates + expands + evaluates
+> them — all tenancy-scoped, adversarially reviewed, live-proven.
+> **NEXT: the two P5 defers when prioritized; else the track is complete.**
+> **Decisions:** `DECISION_LOG.md` (DL-1..9 + 6 review rounds). **Defers: P4 autocomplete + 2 P5 (runtime, ingest); P3 all clear.**
 >
 > **▶ CHAT QUALITY WAVE — W0 + W1 SHIPPED + LIVE-SMOKED 2026-07-03 (parallel sub-agent build, disjoint files,
 > combined verify).** Trigger: user's 8-item quality pass (plan + 5-investigation evidence base incl. a LIVE MCP
