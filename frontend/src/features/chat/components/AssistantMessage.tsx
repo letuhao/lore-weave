@@ -24,6 +24,7 @@ import { BatchConfirmCard, type BatchChild } from './BatchConfirmCard';
 import { RecordDiffCard } from './RecordDiffCard';
 import { ToolApprovalCard, isToolApprovalRecord } from './ToolApprovalCard';
 import { TranslationReviewCard, isTranslationProposeCall, summarizeTranslationReview } from './TranslationReviewCard';
+import { SkillProposalCard, skillProposal, type SkillProposal } from './SkillProposalCard';
 import { ActivityStrip } from './ActivityStrip';
 import { useMessageFeedback } from '../hooks/useMessageFeedback';
 import { useActivityUndo } from '../hooks/useActivityUndo';
@@ -224,8 +225,13 @@ export function AssistantMessage({
         const isRenderableTranslation = (tc: ToolCallRecord) =>
           isTranslationProposeCall(tc) && summarizeTranslationReview(tc) !== null;
         const translationCards = toolCalls.filter(isRenderableTranslation);
+        // D-REG-SKILLPROPOSAL-CARD: a completed registry_propose_skill/update result
+        // renders as an approve/reject card (spec §12b), not a passive chip.
+        const skillProposals = toolCalls
+          .map(skillProposal)
+          .filter((p): p is SkillProposal => p !== null);
         const rest = toolCalls.filter(
-          (tc) => !isPendingFrontend(tc) && !isRenderableTranslation(tc) && !isToolApprovalRecord(tc),
+          (tc) => !isPendingFrontend(tc) && !isRenderableTranslation(tc) && !isToolApprovalRecord(tc) && !skillProposal(tc),
         );
         // Model-independent human gate: auto-render a confirm card for any completed
         // propose result that minted a LIVE confirm_token, unless an explicit (pending)
@@ -282,6 +288,10 @@ export function AssistantMessage({
             ))}
             {translationCards.map((tc) => (
               <TranslationReviewCard key={tc.toolCallId ?? `${tc.tool}-${tc.iteration ?? 0}`} record={tc} />
+            ))}
+            {/* D-REG-SKILLPROPOSAL-CARD — agent skill proposals (approve/reject). */}
+            {skillProposals.map((p) => (
+              <SkillProposalCard key={p.proposalId} proposal={p} />
             ))}
             {coalesce && (
               <BatchConfirmCard

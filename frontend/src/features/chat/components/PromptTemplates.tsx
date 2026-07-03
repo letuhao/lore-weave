@@ -18,6 +18,9 @@ const BUILT_IN_TEMPLATES: PromptTemplate[] = [
   { id: 'plot-hole', label: 'Find plot holes', icon: <Lightbulb className="h-3.5 w-3.5" />, prompt: 'Analyze the attached chapters for plot holes, logical inconsistencies, and unresolved threads. For each issue found, suggest a fix.', category: 'analysis' },
   { id: 'summarize-chapter', label: 'Summarize chapter', icon: <BookOpen className="h-3.5 w-3.5" />, prompt: 'Provide a concise summary of this chapter in 3-5 bullet points, highlighting key plot developments, character changes, and foreshadowing.', category: 'utility' },
   { id: 'expand-outline', label: 'Expand outline to prose', icon: <Pencil className="h-3.5 w-3.5" />, prompt: 'Expand the following outline into full prose. Write in third person past tense, maintaining a literary fiction style:\n\n', category: 'writing' },
+  // Save-as-skill affordance (§13b) — prompts the agent to distill this conversation
+  // into a reusable SKILL.md and propose it via registry_propose_skill (human approves).
+  { id: 'save-as-skill', label: 'Save this as a skill', icon: <Sparkles className="h-3.5 w-3.5" />, prompt: 'Distil the useful workflow from this conversation into a reusable skill and propose it with the registry_propose_skill tool. Pick a short lowercase slug, a one-line description, and a concise markdown body of instructions. I will review and approve it.', category: 'utility' },
 ];
 
 interface PromptTemplatePickerProps {
