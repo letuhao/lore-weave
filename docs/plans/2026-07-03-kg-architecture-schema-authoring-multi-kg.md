@@ -124,15 +124,91 @@ Defer B1(4).
 
 ---
 
-## Sequencing + open decisions
+## Edge cases + folded decisions (spec review 2026-07-03 — LOCKED)
 
-**Build order:** Track A first (the concrete, user-painful gap: humans can't author
-schemas; also realizes the KG-first principle), then Track B (agent multi-KG),
-starting with the world-rollup MCP tool.
+A grounded spec review against the code surfaced edge cases the naive plan missed;
+all four original open decisions are resolved here as the recommended path.
 
-**Open decisions to confirm before building the contracts:**
-- A2 clone target: **user-scoped reusable** schema (recommended) vs project-scoped one-off.
-- A4 delete semantics: hard-delete on draft only + deprecate on live (recommended) vs
-  always-deprecate.
-- B scope unit: **world** (grouping exists) vs **arbitrary project-id set**.
-- A3 book tab: redirect to the project surface vs keep both.
+### 🔴 must-honor invariants
+
+- **EC-A1 (schema-level) — child tables have a NON-partial `UNIQUE(schema_id, code)`**
+  (`kg_edge_types`/`kg_fact_types`/`kg_schema_node_kinds`/`kg_vocab_sets` +
+  `UNIQUE(vocab_set_id, code)` on `kg_vocab_values`; migrate.py ~1161–1203). A
+  deprecated row keeps occupying the slot, so **deprecate-then-recreate the same
+  code → 409 forever** (already a latent bug today; full-CRUD makes it central).
+  `kg_graph_schemas` was already fixed to a PARTIAL unique (`WHERE deprecated_at IS
+  NULL`, migrate.py ~1141) for exactly this. **DECISION:** ship **A0** — a partial-
+  unique migration on all 5 child tables, mirroring the schema-table fix. The
+  migration MUST use the serialized-DDL guard (`execGuarded` / `pg_advisory_xact_lock`)
+  or the shared-DB parallel test suite deadlocks (40P01). This makes deprecate-then-
+  recreate work and lets `add_*` INSERT cleanly after a soft-delete.
+- **EC-A2 — create-blank upholds replace-on-adopt + `_lock_project`.** `POST
+  /v1/kg/projects/{id}/schema` deprecates any active project schema under the same
+  advisory lock adopt uses, then inserts, so the one-active invariant holds (else
+  `resolve_for_project`'s `ORDER BY updated_at DESC LIMIT 1` silently orphans a row).
+  Note the semantic asymmetry with the existing `GET /projects/{id}/schema` (GET =
+  resolved/merged; POST = create a blank project row) — documented, acceptable.
+- **EC-A3 — clone reuses the adopt visibility gate.** `POST /v1/kg/graph-schemas`
+  (clone) MUST run `_assert_source_adoptable` on the source (System / caller's own
+  user template / a project the caller can read) — else clone becomes the exact
+  cross-tenant read oracle that gate was added to close. Clone target is
+  **user-scoped reusable** (original A2 decision, locked). A same-code collision on
+  the user tier auto-suffixes the name/code ("general (copy)", "…(copy 2)"), never a
+  bare 409.
+- **EC-B1 — world-rollup MCP tool takes `world_id` as an EXPLICIT body arg** (the
+  ai-gateway MCP federation drops `X-Project-Id`-style envelope scope), and reads
+  `user_id` from the tool context (`resolve_world_project_ids` needs it +
+  book-service `/internal/worlds/{id}/books`).
+- **EC-B2 — world rollup is OWNER-ONLY (skips `bp.user_id != user_id`, M0).** For a
+  collaborator on a shared world the union silently returns only their own
+  partitions. **DECISION (phase 1):** keep owner-only, but the tool MUST report
+  "N of M partitions unreadable" rather than drop silently. Cross-owner grant-gated
+  rollup is a separate later epic (gate #2 structural).
+
+### 🟡 build-shaping rules
+
+- **EC-A4 — the live-delete guard is NOT a mirror of adopt-preview.** Adopt-preview
+  is schema-vs-schema; "how many graph nodes use kind X" is a NEW count query against
+  the derived graph (Neo4j) / Postgres entity store. Scope it as new work in A4.
+- **EC-A5 — "draft" doesn't exist as a flag; use tier as the predicate.** Hard-delete
+  is allowed ONLY on a **user-tier template** (never adopted into a project);
+  **project-tier is always deprecate-only** (its project can extract at any time).
+  This is the original A4 decision, refined to a predicate that needs no new column.
+- **EC-A6 — `code` is IMMUTABLE; PATCH edits attributes only** (label/strength/
+  cardinality/target-kinds/…). A rename = deprecate + create-new (a rename would
+  orphan graph data keyed by the old code). Build A1's PATCH on the existing
+  attribute mutators (`widen_edge_target_kinds`, `set_edge_cardinality`).
+- **EC-A7 — every new PATCH/DELETE verb calls `_bump_and_rehash`** (skipping it
+  desyncs `content_hash`/`source_hash` → phantom Sync `has_updates`).
+- **EC-B3/B4 — multi-project union is real work, not a wrapper.** Member books can
+  carry different adopted schemas → structured graph queries across the union must
+  tolerate an edge-code present in one schema and absent in another. B1(2)
+  multi-project context needs a cross-project ranker + dedup (world-bible vs member
+  overlap) under a shared token budget; Track-4 salience/rerank is per-project today.
+
+### 🟢 low / documented
+
+- **EC-X1** — create-blank on an already-adopted project warns "discards template link
+  + customizations" (symmetric with the re-adopt loss gate).
+- **EC-A8** — System templates stay seed-only (501); create-blank authors project/user
+  tiers, which is the correct System=admin-only boundary.
+- **EC-B5** — the MCP tool maps `WorldNotFound`/`BookServiceUnavailable` to a
+  self-correcting `result.error` string (LLM-client-first), never a 500.
+
+## Sequencing (folded)
+
+**Build order — Track A first, starting with the migration:**
+
+- **A0** — partial-unique migration on the 5 child tables (EC-A1), serialized-DDL guard.
+- **A1** — complete CRUD (PATCH attribute-only + DELETE) on every schema component,
+  reusing `_writable_schema_for_caller` + `_bump_and_rehash`; project-tier
+  deprecate-only, user-tier hard-delete (EC-A5/A6/A7).
+- **A2** — create-blank (`POST /projects/{id}/schema`, EC-A2/X1) + clone
+  (`POST /graph-schemas`, user-scoped, gated, auto-suffix — EC-A3).
+- **A3** — move authoring to `ProjectSchemaSection` (project surface), enhance
+  `SchemaWorkbench` to full CRUD; **book tab `/books/{id}/kg-ontology` redirects** to
+  the project surface (original A3 decision, locked).
+- **A4** — live-delete orphan-count guard (EC-A4) as its own slice.
+
+**Then Track B:** B1(1) world-rollup MCP tool (EC-B1/B2/B5) → B1(2) multi-project
+context (EC-B3/B4) → B1(3) arbitrary project-id set. Defer B1(4) cross-partition merge.
