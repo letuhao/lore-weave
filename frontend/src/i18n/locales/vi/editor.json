@@ -360,5 +360,15 @@
     "same": "Hai bên là cùng một phiên bản — không có khác biệt.",
     "load_more": "Tải thêm ({{loaded}}/{{total}})",
     "load_more_hint": "Tải các phiên bản cũ hơn vào danh sách chọn"
+  },
+  "checkpoint": {
+    "header": "Điểm khôi phục chỉnh sửa AI",
+    "insert": "Đã chèn",
+    "polish": "Đã trau chuốt",
+    "restore": "Khôi phục",
+    "restored": "Đã khôi phục về trước khi AI chỉnh sửa",
+    "no_restore": "Không có phiên bản trước đó để khôi phục",
+    "confirm_title": "Khôi phục về trước lần chỉnh sửa AI này?",
+    "confirm_desc": "Bản nháp hiện tại được lưu ảnh trước, nên thao tác này có thể hoàn tác từ lịch sử phiên bản."
   }
 }

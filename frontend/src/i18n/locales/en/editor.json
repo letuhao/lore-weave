@@ -360,5 +360,15 @@
     "same": "Both sides are the same revision — no differences.",
     "load_more": "Load more ({{loaded}}/{{total}})",
     "load_more_hint": "Load older revisions into the picker"
+  },
+  "checkpoint": {
+    "header": "AI edit checkpoints",
+    "insert": "Inserted",
+    "polish": "Polished",
+    "restore": "Restore",
+    "restored": "Restored to before the AI edit",
+    "no_restore": "No earlier version to restore to",
+    "confirm_title": "Restore to before this AI edit?",
+    "confirm_desc": "The current draft is snapshotted first, so this is reversible from the revision history."
   }
 }

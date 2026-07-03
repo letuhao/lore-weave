@@ -360,5 +360,15 @@
     "same": "両側が同じリビジョンです — 差分はありません。",
     "load_more": "さらに読み込む ({{loaded}}/{{total}})",
     "load_more_hint": "古いリビジョンを選択肢に読み込む"
+  },
+  "checkpoint": {
+    "header": "AI編集チェックポイント",
+    "insert": "挿入済み",
+    "polish": "推敲済み",
+    "restore": "復元",
+    "restored": "AI編集前の状態に復元しました",
+    "no_restore": "復元できる以前のバージョンがありません",
+    "confirm_title": "このAI編集の前に復元しますか？",
+    "confirm_desc": "現在の下書きは先にスナップショットされるため、リビジョン履歴から元に戻せます。"
   }
 }
