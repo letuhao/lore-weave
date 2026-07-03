@@ -1223,17 +1223,18 @@ def test_kg_multi_query_advertises_project_ids_bounds():
 def test_unify_enum_matches_model_literal_on_both_tools():
     """B1(4)/EC-M6 — the machine-readable `unify` enum on kg_world_query AND
     kg_multi_query equals the arg-model Literal value-set (enum-locked for weak
-    models; drift-locked). T0 ships ['off','by_name']; T1 widens to add 'semantic'."""
+    models; drift-locked). T0+T1: ['off','by_name','semantic']."""
     from app.tools.graph_schema_tools import _UNIFY_MODES
 
     for name in ("kg_world_query", "kg_multi_query"):
         prop = _defn(name)["function"]["parameters"]["properties"]["unify"]
         assert prop["type"] == "string"
-        assert prop["enum"] == list(_UNIFY_MODES) == ["off", "by_name"]
+        assert prop["enum"] == list(_UNIFY_MODES) == ["off", "by_name", "semantic"]
     assert KgMultiQueryArgs(project_ids=["p1"]).unify == "off"  # default
     assert KgWorldQueryArgs(world_id="w").unify == "off"
+    assert KgMultiQueryArgs(project_ids=["p1"], unify="semantic").unify == "semantic"
     with pytest.raises(ValidationError):
-        KgMultiQueryArgs(project_ids=["p1"], unify="semantic")  # not in the T0 enum
+        KgMultiQueryArgs(project_ids=["p1"], unify="fuzzy")  # not a valid mode
     with pytest.raises(ValidationError):
         KgWorldQueryArgs(world_id="w", unify="nonsense")
 
@@ -1276,8 +1277,9 @@ async def test_kg_multi_query_unify_by_name_merges_unifier_result(monkeypatch):
     _patch_subgraph(monkeypatch, {})
     seen: dict = {}
 
-    async def _fake_unify(session, *, user_id, subgraph, method):
+    async def _fake_unify(session, *, user_id, subgraph, method, embedding_client=None):
         seen["method"] = method
+        seen["has_embed_client"] = embedding_client is not None
         return {
             "unification_clusters": [{"cluster_id": "uc_x"}],
             "bridge_edges": [],
@@ -1295,6 +1297,7 @@ async def test_kg_multi_query_unify_by_name_merges_unifier_result(monkeypatch):
     )
     assert res.success, res.error
     assert seen["method"] == "by_name"
+    assert seen["has_embed_client"] is True  # embedding_client threaded for Q1=b/semantic
     assert res.result["unification_clusters"] == [{"cluster_id": "uc_x"}]
     assert res.result["unify_method"] == "by_name"
     assert res.result["partitions_read"] == 2  # coverage keys survive the merge
@@ -1314,7 +1317,7 @@ async def test_kg_world_query_unify_by_name_wired(monkeypatch):
 
     seen: dict = {}
 
-    async def _fake_unify(session, *, user_id, subgraph, method):
+    async def _fake_unify(session, *, user_id, subgraph, method, embedding_client=None):
         seen["method"] = method
         return {"unification_clusters": [], "bridge_edges": [],
                 "unify_method": method, "unify_capped": False}

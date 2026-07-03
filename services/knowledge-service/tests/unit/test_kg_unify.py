@@ -9,6 +9,8 @@ deterministic cluster_id (EC-M22), singleton (EC-M12), N>2 pairwise bridges
 
 from __future__ import annotations
 
+from types import SimpleNamespace
+
 import pytest
 
 import app.tools.kg_unify as ku
@@ -24,6 +26,36 @@ def _seed(pid, eid, name, *, kind="character", canonical_name="", aliases=()):
         canonical_name=canonical_name,
         aliases=tuple(aliases),
     )
+
+
+def _vseed(pid, eid, name, vec, *, model="bge-m3", kind="character", aliases=()):
+    return UnifySeed(
+        project_id=pid,
+        entity_id=eid,
+        name=name,
+        kind=kind,
+        canonical_name="",
+        aliases=tuple(aliases),
+        embedding=tuple(float(x) for x in vec),
+        embedding_model=model,
+    )
+
+
+class _FakeEmbed:
+    """A spy EmbeddingClient: records calls, returns an identical unit vector per text
+    (so on-demand-embedded seeds cosine-match an anchored [1,0,0])."""
+
+    def __init__(self, fail=False):
+        self.calls = []
+        self._fail = fail
+
+    async def embed(self, *, user_id, model_source, model_ref, texts):
+        self.calls.append((model_ref, list(texts)))
+        if self._fail:
+            raise RuntimeError("boom")
+        return SimpleNamespace(
+            embeddings=[[1.0, 0.0, 0.0] for _ in texts], dimension=3, model=model_ref
+        )
 
 
 # ── happy path ─────────────────────────────────────────────────────────
@@ -189,3 +221,128 @@ def test_canonical_name_field_used_when_present():
     out = cluster_seeds(seeds, "by_name")
     assert len(out["unification_clusters"]) == 1
     assert out["unification_clusters"][0]["score"] == 1.0
+
+
+# ── T1: semantic signal ──────────────────────────────────────────────────
+
+
+def test_semantic_matches_renamed_recurrence():
+    """T1 gate — two SAME-model, near-identical-vector entities with DIFFERENT names
+    (a renamed recurrence lexical can't catch) cluster via semantic at the 'same' band."""
+    seeds = [_vseed("P1", "a1", "Aleks", [1, 0, 0]),
+             _vseed("P2", "a2", "The Wanderer", [1, 0, 0])]
+    out = cluster_seeds(seeds, "semantic")
+    assert len(out["unification_clusters"]) == 1
+    cl = out["unification_clusters"][0]
+    assert cl["method"] == "semantic" and cl["band"] == "same"
+    assert out["bridge_edges"][0]["method"] == "semantic"
+    assert out["unify_embed_skipped"] == 0
+
+
+def test_semantic_model_gate_blocks_cross_model():
+    """EC-M1 — identical vectors under DIFFERENT embedding_models are never compared;
+    with no lexical overlap no cluster forms."""
+    seeds = [_vseed("P1", "a1", "Aleks", [1, 0], model="bge-m3"),
+             _vseed("P2", "a2", "Wanderer", [1, 0], model="openai-3-small")]
+    out = cluster_seeds(seeds, "semantic")
+    assert out["unification_clusters"] == []
+
+
+def test_cross_model_falls_back_to_lexical():
+    """EC-M1 — cross-model pairs skip cosine but still match lexically by name."""
+    seeds = [_vseed("P1", "a1", "Aleks", [1, 0], model="bge-m3"),
+             _vseed("P2", "a2", "Aleks", [1, 0], model="openai-3-small")]
+    out = cluster_seeds(seeds, "semantic")
+    assert len(out["unification_clusters"]) == 1
+    assert out["unification_clusters"][0]["method"] == "by_name"  # semantic gated → lexical
+
+
+def test_zero_norm_vector_skipped():
+    """EC-M19 — a zero-norm vector yields no cosine (no NaN); differing names → no cluster."""
+    seeds = [_vseed("P1", "a1", "Zed", [0, 0]), _vseed("P2", "a2", "Qux", [0, 0])]
+    out = cluster_seeds(seeds, "semantic")
+    assert out["unification_clusters"] == []
+
+
+def test_semantic_is_primary_when_both_fire():
+    """D1 — when name AND vector both match, the recorded method is 'semantic' (primary)."""
+    seeds = [_vseed("P1", "a1", "Alice", [1, 0, 0]), _vseed("P2", "a2", "Alice", [1, 0, 0])]
+    out = cluster_seeds(seeds, "semantic")
+    assert out["unification_clusters"][0]["method"] == "semantic"
+
+
+# ── T1: Q1=b on-demand embed (in-memory, model-match, spend-cap) ─────────
+
+
+@pytest.mark.asyncio
+async def test_ondemand_embed_uses_anchored_model_in_memory():
+    """Q1=b/EC-M14/M16 — a discovered (vector-less) seed is embedded under the ANCHORED
+    model, IN MEMORY (only embedding_client.embed is called — no set_entity_embedding)."""
+    anchored = _vseed("P1", "a1", "Alice", [1, 0, 0], model="bge-m3")
+    discovered = _seed("P2", "a2", "Alice")  # no vector
+    client = _FakeEmbed()
+    out, skipped = await ku._ondemand_embed(
+        [anchored, discovered], embedding_client=client, user_id="u"
+    )
+    assert skipped == 0
+    d = next(s for s in out if s.entity_id == "a2")
+    assert d.embedding is not None and d.embedding_model == "bge-m3"
+    assert client.calls and client.calls[0][0] == "bge-m3"  # embedded under anchored model
+
+
+@pytest.mark.asyncio
+async def test_ondemand_embed_spend_cap(monkeypatch):
+    """EC-M15 — the on-demand embed count is capped; the overflow is reported."""
+    monkeypatch.setattr(ku, "UNIFY_ONDEMAND_EMBED_CAP", 1)
+    anchored = _vseed("P1", "a1", "Anchor", [1, 0, 0])
+    d1 = _seed("P2", "d1", "Bob")
+    d2 = _seed("P3", "d2", "Cy")
+    out, skipped = await ku._ondemand_embed(
+        [anchored, d1, d2], embedding_client=_FakeEmbed(), user_id="u"
+    )
+    assert skipped == 1  # 2 discovered, cap 1
+
+
+@pytest.mark.asyncio
+async def test_ondemand_embed_no_resolvable_model_degrades(monkeypatch):
+    """EC-M14 step 3 — no anchored vector + no user default embed model → skip embed
+    (never guess a model); seeds stay vector-less (semantic falls back to lexical)."""
+    import app.clients.default_model as dm
+
+    async def _none(user_id, capability="chat"):
+        return None
+
+    monkeypatch.setattr(dm, "resolve_user_default_model", _none)
+    d1 = _seed("P1", "d1", "Bob")
+    d2 = _seed("P2", "d2", "Bob")
+    client = _FakeEmbed()
+    out, skipped = await ku._ondemand_embed([d1, d2], embedding_client=client, user_id="u")
+    assert skipped == 0
+    assert all(s.embedding is None for s in out)
+    assert client.calls == []  # never embedded — no model to embed under
+
+
+@pytest.mark.asyncio
+async def test_ondemand_embed_failure_degrades_not_raises():
+    """EC-M15 — an embed failure degrades that batch to lexical; the tool never fails."""
+    anchored = _vseed("P1", "a1", "Anchor", [1, 0, 0])
+    d1 = _seed("P2", "d1", "Bob")
+    out, skipped = await ku._ondemand_embed(
+        [anchored, d1], embedding_client=_FakeEmbed(fail=True), user_id="u"
+    )
+    assert next(s for s in out if s.entity_id == "d1").embedding is None  # no crash
+
+
+@pytest.mark.asyncio
+async def test_ondemand_embed_then_cluster_matches_discovered():
+    """Q1=b end-to-end (pure) — after on-demand embed, a discovered recurrence that
+    lexical can't catch ('Al' vs 'Alice') clusters semantically with the anchored one."""
+    anchored = _vseed("P1", "a1", "Alice", [1, 0, 0], model="bge-m3")
+    discovered = _seed("P2", "a2", "Al")  # lexical: 'al' vs 'alice' → no match
+    seeds, skipped = await ku._ondemand_embed(
+        [anchored, discovered], embedding_client=_FakeEmbed(), user_id="u"
+    )
+    out = cluster_seeds(seeds, "semantic", embed_skipped=skipped)
+    assert len(out["unification_clusters"]) == 1
+    assert out["unification_clusters"][0]["method"] == "semantic"
+    assert out["unify_embed_skipped"] == 0

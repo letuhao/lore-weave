@@ -649,9 +649,10 @@ async def kg_world_query(
         "Max nodes in the union (default 200).",
     ] = 200,
     unify: Annotated[
-        Literal["off", "by_name"],
+        Literal["off", "by_name", "semantic"],
         "Cross-book entity unification. 'off' (default) = the raw per-book forest. "
-        "'by_name' recognizes the same entity across the different books and adds "
+        "'by_name' matches the same entity across books by name/alias; 'semantic' also "
+        "matches by meaning (embeddings, catching renames). Both add "
         "unification_clusters + inferred SAME_AS bridge_edges (one connected graph).",
     ] = "off",
 ) -> dict:
@@ -684,9 +685,10 @@ async def kg_multi_query(
         "Max nodes in the union (default 200).",
     ] = 200,
     unify: Annotated[
-        Literal["off", "by_name"],
+        Literal["off", "by_name", "semantic"],
         "Cross-book entity unification. 'off' (default) = the raw per-book forest. "
-        "'by_name' recognizes the same entity across the different books and adds "
+        "'by_name' matches the same entity across books by name/alias; 'semantic' also "
+        "matches by meaning (embeddings, catching renames). Both add "
         "unification_clusters + inferred SAME_AS bridge_edges (one connected graph).",
     ] = "off",
 ) -> dict:

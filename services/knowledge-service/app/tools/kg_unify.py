@@ -30,7 +30,8 @@ adds the semantic signal (in-Python pairwise cosine + Q1=b on-demand embed).
 from __future__ import annotations
 
 import hashlib
-from dataclasses import dataclass
+from collections import Counter
+from dataclasses import dataclass, replace
 
 from loreweave_extraction.canonical import canonicalize_entity_name
 
@@ -45,14 +46,17 @@ __all__ = [
 ]
 
 # ── thresholds + caps (module constants; conservative, tunable) ───────
-# Per-method bands (EC-M17 / D8): lexical and (T1) semantic scores are NOT on the
-# same scale, so each method carries its own (low, high) pair. A pair MATCHES
-# (unions) at score ≥ τ_low; a cluster's band is "same" at ≥ τ_high else "likely".
+# Per-method bands (EC-M17 / D8): lexical and semantic scores are NOT on the same
+# scale, so each method carries its own (low, high) pair. A pair MATCHES (unions)
+# at score ≥ τ_low; its band is "same" at ≥ τ_high else "likely".
 UNIFY_LEX_TAU_HIGH = 1.0    # exact canonical-name match → "same"
 UNIFY_LEX_TAU_LOW = 0.5     # alias-overlap ≥ this → "likely" candidate
+UNIFY_SEM_TAU_HIGH = 0.85   # cosine ≥ this → "same" (T1)
+UNIFY_SEM_TAU_LOW = 0.72    # cosine ≥ this → "likely" candidate (T1)
 
 UNIFY_MAX_CLUSTERS = 100        # EC-M11 — cap emitted clusters (confidence-desc, EC-M21)
 UNIFY_MAX_CLUSTER_SIZE = 16     # EC-M7 — a cluster spanning >16 partitions is suspect
+UNIFY_ONDEMAND_EMBED_CAP = 100  # EC-M15 — max discovered seeds embedded on demand per call
 
 # EC-M20 — generic names over-cluster lexically. For a "common" normalized key,
 # name-equality ALONE is not enough: we require an additional shared alias. A key is
@@ -85,6 +89,11 @@ class UnifySeed:
     canonical_name: str
     aliases: tuple[str, ...] = ()
     glossary_entity_id: str | None = None
+    # T1 semantic: the stored per-entity vector (only anchored entities carry one)
+    # + the model it was embedded under. `embedding_model` gates cosine (EC-M1) —
+    # a pair is compared semantically only when both share it.
+    embedding: tuple[float, ...] | None = None
+    embedding_model: str | None = None
 
     def norm_key(self) -> str:
         """The canonical match key — the stored `canonical_name` if present, else
@@ -127,7 +136,10 @@ RETURN n.id AS id,
        n.kind AS kind,
        coalesce(n.canonical_name, '') AS canonical_name,
        coalesce(n.aliases, []) AS aliases,
-       n.glossary_entity_id AS glossary_entity_id
+       n.glossary_entity_id AS glossary_entity_id,
+       n.embedding_model AS embedding_model,
+       coalesce(n.embedding_384, n.embedding_1024,
+                n.embedding_1536, n.embedding_3072) AS embedding
 """
 
 
@@ -153,6 +165,12 @@ async def load_seed_details(
     seeds: list[UnifySeed] = []
     async for record in result:
         aliases = record["aliases"] or []
+        raw_vec = record["embedding"]
+        embedding = (
+            tuple(float(x) for x in raw_vec)
+            if raw_vec is not None and len(raw_vec) > 0
+            else None
+        )
         seeds.append(
             UnifySeed(
                 project_id=project_id,
@@ -162,6 +180,8 @@ async def load_seed_details(
                 canonical_name=str(record["canonical_name"] or ""),
                 aliases=tuple(str(a) for a in aliases if a),
                 glossary_entity_id=record["glossary_entity_id"],
+                embedding=embedding,
+                embedding_model=record["embedding_model"],
             )
         )
     return seeds
@@ -225,8 +245,45 @@ def _lexical_score(a: UnifySeed, b: UnifySeed) -> float | None:
     return None
 
 
-def _band(score: float, tau_high: float) -> str:
+# ── semantic matching (T1) ─────────────────────────────────────────────
+
+
+def _cosine(a: tuple[float, ...], b: tuple[float, ...]) -> float | None:
+    """Cosine similarity, or None if either vector is zero-norm / length-mismatched
+    (EC-M19 — no divide-by-zero / NaN; such a pair falls back to lexical)."""
+    if len(a) != len(b) or not a:
+        return None
+    dot = na = nb = 0.0
+    for x, y in zip(a, b):
+        dot += x * y
+        na += x * x
+        nb += y * y
+    if na <= 0.0 or nb <= 0.0:
+        return None
+    return dot / ((na ** 0.5) * (nb ** 0.5))
+
+
+def _semantic_score(a: UnifySeed, b: UnifySeed) -> float | None:
+    """Cosine of two seeds' vectors, gated on a SHARED embedding_model (EC-M1 —
+    cross-model cosine is meaningless). None if either lacks a vector, the models
+    differ, or the cosine is below τ_sem_low."""
+    if a.embedding is None or b.embedding is None:
+        return None
+    if not a.embedding_model or a.embedding_model != b.embedding_model:
+        return None  # EC-M1 model-space gate
+    cos = _cosine(a.embedding, b.embedding)
+    if cos is None or cos < UNIFY_SEM_TAU_LOW:
+        return None
+    return cos
+
+
+def _band(score: float, method: str) -> str:
+    """Per-method band (EC-M17): the τ_high that applies depends on the method."""
+    tau_high = UNIFY_SEM_TAU_HIGH if method == "semantic" else UNIFY_LEX_TAU_HIGH
     return "same" if score >= tau_high else "likely"
+
+
+_BAND_RANK = {"same": 1, "likely": 0}
 
 
 def _cluster_id(member_ids: list[str]) -> str:
@@ -245,18 +302,20 @@ class _Pair:
     b: UnifySeed
     score: float
     method: str
+    band: str
 
 
 def _match_pairs(seeds: list[UnifySeed], method: str) -> list[_Pair]:
     """All cross-partition, same-kind matching pairs, deterministically ordered.
 
-    T0: `method="by_name"` (lexical only). Buckets by kind (EC-M3), compares only
-    seeds from DIFFERENT partitions (EC-M10), skips seeds with an empty norm key
-    AND empty alias set (EC-M18)."""
-    # bucket by kind
+    `method="by_name"` → lexical only. `method="semantic"` → semantic PRIMARY
+    (cosine, model-gated) blended with lexical FALLBACK (D1); each pair records the
+    winning signal in `.method` so the blend is visible. Buckets by kind (EC-M3),
+    compares only DIFFERENT-partition seeds (EC-M10), skips seeds with an empty norm
+    key AND empty alias set AND no vector (EC-M18)."""
     by_kind: dict[str, list[UnifySeed]] = {}
     for s in seeds:
-        if not s.norm_key() and not s.alias_keys():
+        if not s.norm_key() and not s.alias_keys() and s.embedding is None:
             continue  # EC-M18 — degenerate, nothing to match on
         by_kind.setdefault(s.kind, []).append(s)
 
@@ -268,17 +327,31 @@ def _match_pairs(seeds: list[UnifySeed], method: str) -> list[_Pair]:
                 a, b = bucket[i], bucket[j]
                 if a.project_id == b.project_id:
                     continue  # EC-M10 — cross-partition only
-                score = _lexical_score(a, b)  # T1 blends semantic here
-                if score is not None:
-                    pairs.append(_Pair(a=a, b=b, score=score, method="by_name"))
+
+                pair_method = pair_score = None
+                if method == "semantic":
+                    sem = _semantic_score(a, b)
+                    if sem is not None:
+                        pair_method, pair_score = "semantic", sem
+                if pair_method is None:  # by_name mode, or semantic fell through
+                    lex = _lexical_score(a, b)
+                    if lex is not None:
+                        pair_method, pair_score = "by_name", lex
+                if pair_method is not None:
+                    pairs.append(
+                        _Pair(
+                            a=a, b=b, score=pair_score, method=pair_method,
+                            band=_band(pair_score, pair_method),
+                        )
+                    )
     return pairs
 
 
-def _build_result(
-    seeds: list[UnifySeed], pairs: list[_Pair], method: str, tau_high: float
-) -> dict:
+def _build_result(seeds: list[UnifySeed], pairs: list[_Pair], method: str) -> dict:
     """Cluster the matched pairs (union-find), cap confidence-descending, and
-    emit `unification_clusters` + `bridge_edges`."""
+    emit `unification_clusters` + `bridge_edges`. A cluster's headline
+    score/band/method come from its STRONGEST pair (best band, then score) — scores
+    across methods aren't comparable, so band rank leads (EC-M17)."""
     seed_by_id = {s.entity_id: s for s in seeds}
     uf = _UnionFind()
     for s in seeds:
@@ -294,19 +367,31 @@ def _build_result(
         root for root, ids in members_by_root.items() if len(ids) >= 2
     }
 
-    # per-cluster max score (for banding + cap ordering)
-    cluster_score: dict[str, float] = {}
+    # per-cluster STRONGEST pair (band rank, then score) — the representative
+    def _pair_strength(p: _Pair) -> tuple[int, float]:
+        return (_BAND_RANK[p.band], p.score)
+
+    cluster_rep: dict[str, _Pair] = {}
     for p in pairs:
         root = uf.find(p.a.entity_id)
-        cluster_score[root] = max(cluster_score.get(root, 0.0), p.score)
+        cur = cluster_rep.get(root)
+        if cur is None or _pair_strength(p) > _pair_strength(cur):
+            cluster_rep[root] = p
 
     # EC-M7 — drop over-size clusters (a weak transitive chain gluing many books)
     surviving_roots = [
         r for r in clustered_roots
         if len(members_by_root[r]) <= UNIFY_MAX_CLUSTER_SIZE
     ]
-    # EC-M21 — sort confidence-descending, then id for determinism, THEN cap
-    surviving_roots.sort(key=lambda r: (-cluster_score.get(r, 0.0), r))
+    # EC-M21 — sort confidence-descending (band rank, then score), then id for
+    # determinism, THEN cap so the cap drops the WEAKEST, never a random tail.
+    surviving_roots.sort(
+        key=lambda r: (
+            -_BAND_RANK[cluster_rep[r].band] if r in cluster_rep else 0,
+            -(cluster_rep[r].score if r in cluster_rep else 0.0),
+            r,
+        )
+    )
     unify_capped = len(surviving_roots) > UNIFY_MAX_CLUSTERS
     surviving_roots = surviving_roots[:UNIFY_MAX_CLUSTERS]
     kept = set(surviving_roots)
@@ -315,7 +400,7 @@ def _build_result(
     for root in surviving_roots:
         member_ids = sorted(members_by_root[root])
         members = [seed_by_id[mid] for mid in member_ids]
-        score = cluster_score.get(root, 0.0)
+        rep = cluster_rep[root]
         clusters.append(
             {
                 "cluster_id": _cluster_id(member_ids),
@@ -324,9 +409,9 @@ def _build_result(
                     {"project_id": m.project_id, "entity_id": m.entity_id, "name": m.name}
                     for m in members
                 ],
-                "method": method,
-                "score": round(score, 4),
-                "band": _band(score, tau_high),
+                "method": rep.method,
+                "score": round(rep.score, 4),
+                "band": rep.band,
             }
         )
 
@@ -357,24 +442,107 @@ def _build_result(
 
 
 def _empty_result(method: str) -> dict:
-    return {
+    out = {
         "unification_clusters": [],
         "bridge_edges": [],
         "unify_method": method,
         "unify_capped": False,
     }
+    if method == "semantic":
+        out["unify_embed_skipped"] = 0  # contract-stable for the semantic path (EC-M15)
+    return out
 
 
-def cluster_seeds(seeds: list[UnifySeed], method: str = "by_name") -> dict:
+def cluster_seeds(
+    seeds: list[UnifySeed], method: str = "by_name", *, embed_skipped: int = 0
+) -> dict:
     """Pure clustering step (no Neo4j) — cluster already-loaded seeds and return the
     additive result keys. Split out so the engine is unit-testable without a session.
 
     Guards: fewer than 2 distinct partitions represented → nothing can bridge, so an
     honest empty result (a bridge is by definition cross-partition, EC-M10)."""
     if len({s.project_id for s in seeds}) < 2:
-        return _empty_result(method)
-    pairs = _match_pairs(seeds, method)
-    return _build_result(seeds, pairs, method, tau_high=UNIFY_LEX_TAU_HIGH)
+        result = _empty_result(method)
+    else:
+        pairs = _match_pairs(seeds, method)
+        result = _build_result(seeds, pairs, method)
+    if method == "semantic":
+        result["unify_embed_skipped"] = embed_skipped  # EC-M15
+    return result
+
+
+async def _ondemand_embed(
+    seeds: list[UnifySeed], *, embedding_client, user_id: str
+) -> tuple[list[UnifySeed], int]:
+    """Q1=b (§7.1; EC-M14/M15/M16) — embed DISCOVERED (unembedded) seeds ON DEMAND so
+    the semantic pass sees them, under the anchored `embedding_model`, IN MEMORY only
+    (never `set_entity_embedding` — the stored graph stays byte-identical, D3/EC-M16),
+    and spend-capped (EC-M15). Returns (seeds_with_vectors, embed_skipped).
+
+    Model resolution (EC-M14): (1) the dominant `embedding_model` among seeds that
+    already carry a vector; (2) else the user's default embed model; (3) else SKIP —
+    semantic degrades to lexical for the unembedded seeds (never guess a model)."""
+    if embedding_client is None:
+        return seeds, 0
+
+    model_counts = Counter(
+        s.embedding_model
+        for s in seeds
+        if s.embedding is not None and s.embedding_model
+    )
+    target_model = model_counts.most_common(1)[0][0] if model_counts else None
+    if target_model is None:  # EC-M14 step 2 — no anchored vector anywhere
+        try:
+            from app.clients.default_model import resolve_user_default_model
+
+            target_model = await resolve_user_default_model(user_id, capability="embed")
+        except Exception:  # noqa: BLE001 — best-effort; degrade to lexical
+            target_model = None
+    if target_model is None:
+        return seeds, 0  # EC-M14 step 3 — no resolvable model → lexical fallback
+
+    # discovered seeds needing a vector, deterministic order, capped (EC-M15)
+    todo = sorted(
+        (i for i, s in enumerate(seeds) if s.embedding is None),
+        key=lambda i: (seeds[i].project_id, seeds[i].entity_id),
+    )
+    embed_skipped = max(0, len(todo) - UNIFY_ONDEMAND_EMBED_CAP)
+    todo = todo[:UNIFY_ONDEMAND_EMBED_CAP]
+
+    from app.extraction.entity_embedder import build_embed_text
+
+    texts: list[str] = []
+    idxs: list[int] = []
+    for i in todo:
+        text = build_embed_text(seeds[i].name, list(seeds[i].aliases), None)
+        if text:
+            texts.append(text)
+            idxs.append(i)
+    if not texts:
+        return seeds, embed_skipped
+
+    try:
+        result = await embedding_client.embed(
+            user_id=user_id,
+            model_source="user_model",
+            model_ref=target_model,
+            texts=texts,
+        )
+    except Exception:  # noqa: BLE001 — embed failure degrades to lexical, never fails the tool
+        return seeds, embed_skipped
+
+    vectors = list(getattr(result, "embeddings", None) or [])
+    if len(vectors) != len(idxs):
+        return seeds, embed_skipped  # mismatch → don't risk misaligned vectors
+
+    out = list(seeds)
+    for i, vec in zip(idxs, vectors):
+        out[i] = replace(
+            seeds[i],
+            embedding=tuple(float(x) for x in vec),
+            embedding_model=target_model,
+        )
+    return out, embed_skipped
 
 
 async def unify_subgraph(
@@ -383,14 +551,16 @@ async def unify_subgraph(
     user_id: str,
     subgraph: Subgraph,
     method: str,
+    embedding_client=None,
 ) -> dict:
     """Run the cross-partition unification pass over an already-loaded forest
     subgraph and return the additive result keys (`unification_clusters`,
-    `bridge_edges`, `unify_method`, `unify_capped`).
+    `bridge_edges`, `unify_method`, `unify_capped`[, `unify_embed_skipped`]).
 
-    `method` is the tool's `unify` arg (`"by_name"` at T0). Groups the subgraph's
-    surviving nodes by `source_project_id`, loads each partition's seed detail
-    (aliases/canonical_name), clusters, and proposes bridges. NEVER mutates Neo4j."""
+    `method` is the tool's `unify` arg. Groups the subgraph's surviving nodes by
+    `source_project_id`, loads each partition's seed detail (aliases/canonical_name
+    /embedding), for `"semantic"` embeds discovered seeds on demand (Q1=b), clusters,
+    and proposes bridges. NEVER mutates Neo4j."""
     # group surviving nodes by partition (EC-M4 — per-partition, tenancy-bound reads)
     ids_by_partition: dict[str, list[str]] = {}
     for n in subgraph.nodes:
@@ -409,4 +579,10 @@ async def unify_subgraph(
                 session, user_id=user_id, project_id=pid, entity_ids=ids_by_partition[pid]
             )
         )
-    return cluster_seeds(seeds, method)
+
+    embed_skipped = 0
+    if method == "semantic":
+        seeds, embed_skipped = await _ondemand_embed(
+            seeds, embedding_client=embedding_client, user_id=user_id
+        )
+    return cluster_seeds(seeds, method, embed_skipped=embed_skipped)

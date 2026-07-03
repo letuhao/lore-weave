@@ -543,8 +543,8 @@ CLOSED_SET_VALUES = {
     ("kg_triage_schema_write", "action"): {
         "add_to_vocab", "add_to_schema", "widen_target_kinds", "set_multi_active",
     },
-    ("kg_world_query", "unify"): {"off", "by_name"},  # T1 widens to add "semantic"
-    ("kg_multi_query", "unify"): {"off", "by_name"},
+    ("kg_world_query", "unify"): {"off", "by_name", "semantic"},
+    ("kg_multi_query", "unify"): {"off", "by_name", "semantic"},
 }
 
 

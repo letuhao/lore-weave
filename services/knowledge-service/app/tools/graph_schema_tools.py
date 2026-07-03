@@ -121,9 +121,10 @@ _PROPOSE_FACT_TYPES = ("decision", "preference", "milestone", "negation")
 
 # B1(4) — cross-partition unification mode for the multi-KG read tools
 # (kg_world_query / kg_multi_query). "off" (default) = today's forest,
-# byte-identical (EC-M5). "by_name" = lexical unification (T0). "semantic" is
-# added in T1 (in-Python cosine + on-demand embed). Enum-locked (LLM-client-first).
-_UNIFY_MODES = ("off", "by_name")
+# byte-identical (EC-M5). "by_name" = lexical unification (T0). "semantic" = the
+# lexical⊕cosine blend with on-demand embedding of discovered entities (T1, Q1=b).
+# Enum-locked (LLM-client-first).
+_UNIFY_MODES = ("off", "by_name", "semantic")
 
 # KG-LOCAL triage actions this lane resolves directly (Edit-gated, reversible).
 # The schema-mutating + glossary-handoff actions are class-C (KM6) and rejected
@@ -158,7 +159,7 @@ class KgWorldQueryArgs(BaseModel):
 
     world_id: str = Field(min_length=1, max_length=200)
     limit: int = Field(default=200, ge=1, le=GRAPH_LIMIT_MAX)
-    unify: Literal["off", "by_name"] = "off"
+    unify: Literal["off", "by_name", "semantic"] = "off"
 
 
 class KgMultiQueryArgs(BaseModel):
@@ -176,7 +177,7 @@ class KgMultiQueryArgs(BaseModel):
 
     project_ids: list[str] = Field(min_length=1, max_length=16)
     limit: int = Field(default=200, ge=1, le=GRAPH_LIMIT_MAX)
-    unify: Literal["off", "by_name"] = "off"
+    unify: Literal["off", "by_name", "semantic"] = "off"
 
 
 class KgEntityEdgeTimelineArgs(BaseModel):
@@ -442,10 +443,12 @@ _UNIFY_PROP = {
     "enum": list(_UNIFY_MODES),
     "description": (
         "Cross-book entity unification. 'off' (default) returns the raw per-book "
-        "forest unchanged. 'by_name' recognizes the SAME entity appearing across "
-        "the different books (matching names/aliases) and adds unification_clusters "
-        "+ SAME_AS bridge_edges so you get one connected cross-book graph. Bridges "
-        "are inferred (confidence-scored), never asserted — cite the band."
+        "forest unchanged. 'by_name' recognizes the SAME entity appearing across the "
+        "different books by matching names/aliases; 'semantic' also matches by meaning "
+        "(embedding similarity, catching renamed/aliased recurrences). Both add "
+        "unification_clusters + SAME_AS bridge_edges so you get one connected "
+        "cross-book graph. Bridges are inferred (confidence-scored), never asserted — "
+        "cite the band."
     ),
 }
 
@@ -1096,7 +1099,11 @@ async def _handle_kg_world_query(ctx: "ToolContext", args: KgWorldQueryArgs) -> 
             from app.tools.kg_unify import unify_subgraph
 
             unify_extra = await unify_subgraph(
-                session, user_id=str(ctx.user_id), subgraph=subgraph, method=args.unify
+                session,
+                user_id=str(ctx.user_id),
+                subgraph=subgraph,
+                method=args.unify,
+                embedding_client=ctx.embedding_client,
             )
     out = subgraph.model_dump(mode="json")
     # EC-B2 — surface coverage so the agent knows the rollup is partial, not complete.
@@ -1170,7 +1177,11 @@ async def _handle_kg_multi_query(ctx: "ToolContext", args: KgMultiQueryArgs) -> 
             from app.tools.kg_unify import unify_subgraph
 
             unify_extra = await unify_subgraph(
-                session, user_id=str(ctx.user_id), subgraph=subgraph, method=args.unify
+                session,
+                user_id=str(ctx.user_id),
+                subgraph=subgraph,
+                method=args.unify,
+                embedding_client=ctx.embedding_client,
             )
     out = subgraph.model_dump(mode="json")
     # EC-B2 — surface coverage so the agent knows the union is partial, not complete.
