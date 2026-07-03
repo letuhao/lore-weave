@@ -653,6 +653,34 @@ async def kg_world_query(
 
 
 @mcp_server.tool(
+    name="kg_multi_query",
+    description=(
+        "Read the UNION knowledge graph across an ARBITRARY SET of your knowledge "
+        "projects as nodes + edges — e.g. compare a canon KG against a fan-theory KG, "
+        "or load two unrelated books at once. Unlike kg_world_query (a whole world), "
+        "you name the exact project_ids. Owner-only: ids you don't own are skipped and "
+        "reported in partitions_unreadable (the result also carries partitions_read)."
+    ),
+)
+async def kg_multi_query(
+    ctx: MCPContext,
+    project_ids: Annotated[
+        list[str],
+        "The project ids to union (1–16; you must own each). Pass them explicitly — this "
+        "loads an arbitrary set of your KGs, not the session's single project.",
+    ],
+    limit: Annotated[
+        int,
+        Field(ge=1, le=GRAPH_LIMIT_MAX),
+        "Max nodes in the union (default 200).",
+    ] = 200,
+) -> dict:
+    return await _dispatch(
+        ctx, "kg_multi_query", {"project_ids": project_ids, "limit": limit}
+    )
+
+
+@mcp_server.tool(
     name="kg_entity_edge_timeline",
     description=(
         "Retrieve the ordered temporal chain of one relationship type for a "

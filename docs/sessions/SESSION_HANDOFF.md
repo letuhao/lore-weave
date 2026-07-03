@@ -145,8 +145,25 @@
 > session doesn't LEARN salience yet; correct per-project write-back needs `BuiltContext.surfaced_entity_ids`
 > grouped by project (a Layer-1 contract change). **Optional remaining:** a full chat-TURN SSE
 > `memory-mode="multi"` smoke (both seams already proven directly; the turn adds only LM Studio + the
-> chat-side HTTP, and the chat→knowledge `project_ids` forwarding is unit-asserted). **▶ NEXT —** B1(3)
-> arbitrary project set + B1(4) cross-partition merge stay deferred.
+> chat-side HTTP, and the chat→knowledge `project_ids` forwarding is unit-asserted).
+>
+> **B1(3) DONE (knowledge-service) — `kg_multi_query` MCP tool (arbitrary owner-owned project
+> set).** The agent-tool analog of B1(2): loads the UNION knowledge graph across an ARBITRARY
+> set of the caller's own `project_ids` (canon KG + fan-theory KG, two unrelated books) — vs
+> `kg_world_query` (B1(1)) which rolls up one whole world. New `KgMultiQueryArgs`
+> (`project_ids` list 1–16, extra='forbid') + `_handle_kg_multi_query`: order-preserving UUID
+> dedup → owner-scope via `projects_repo.get` (foreign/stale skipped) → reuse
+> `get_world_subgraph` (already project_ids-generic; binds user_id+project_id per read so no
+> bleed) → EC-B2 `partitions_read`/`partitions_unreadable` reporting (never silent-drop);
+> invalid id → self-correcting tool-error; all-unreadable → empty-but-honest. Registered
+> across all 4 KG-tool sources + the FastMCP signature (`mcp/server.py`). NOT in the public
+> allowlist (follows kg_world_query's authenticated-only precedent — `tool-policy.ts` has only
+> graph_query/entity_edge_timeline). **VERIFY:** 148 graph/definition + 69 mcp/executor unit
+> green; drift-locks bumped 29→30 tools + `_LANE_LF_TOOLS` +1; the real loopback MCP server's
+> `tools/list` == EXPECTED_TOOLS advertises `kg_multi_query` (proves the FastMCP wiring, not
+> just the arg model). Single-service change → no cross-service smoke needed. **▶ NEXT —** B1(4)
+> cross-partition merge (edges spanning books) stays deferred (gate #2 — a separate epic;
+> union-of-islands covers synthesis first). Track B B1(1)–B1(3) COMPLETE.
 
 > **▶ KNOWLEDGE GUI FIXES + MODEL-ROLES SETTINGS — 2026-07-03 (3 items, all shipped).**
 > **#1 `cancel_check` extraction blocker (`591e54ad7`)** — bug #34 added `cancel_check` to the

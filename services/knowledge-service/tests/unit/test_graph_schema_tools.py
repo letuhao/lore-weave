@@ -26,6 +26,7 @@ from app.tools.graph_schema_tools import (
     GRAPH_SCHEMA_ARG_MODELS,
     GRAPH_SCHEMA_TOOL_DEFINITIONS,
     KgGraphQueryArgs,
+    KgMultiQueryArgs,
     KgProposeEdgeArgs,
     KgTriageResolveArgs,
     _resolve_project_owner,
@@ -49,10 +50,12 @@ _BOOK = uuid4()
 # owner gate confines it to the caller's own projects).
 _ENVELOPE_KEYS = {"user_id", "session_id"}
 
-# The 13 tools this lane builds (R + reversible W) — incl. Track-B kg_world_query.
+# The 14 tools this lane builds (R + reversible W) — incl. Track-B kg_world_query +
+# kg_multi_query (B1(3): arbitrary owner-owned project set).
 _LANE_LF_TOOLS = {
     "kg_graph_query",
     "kg_world_query",
+    "kg_multi_query",
     "kg_entity_edge_timeline",
     "kg_schema_read",
     "kg_list_templates",
@@ -95,12 +98,12 @@ def _defn(name: str) -> dict:
 
 
 def test_total_tool_count_is_memory_plus_lane_lf():
-    """5 memory + 1 story_search (#12 universal manuscript search) + 13 lane-LF
-    (incl. Track-B kg_world_query) + 5 live class-C + 2 project lifecycle
-    (kg_project_create + kg_project_list, the W0 #4a discovery tool) + 2 cost-gated
-    (kg_build_graph, kg_build_wiki) + 1 kg_run_benchmark (R4) = 29."""
+    """5 memory + 1 story_search (#12 universal manuscript search) + 14 lane-LF
+    (incl. Track-B kg_world_query + kg_multi_query) + 5 live class-C + 2 project
+    lifecycle (kg_project_create + kg_project_list, the W0 #4a discovery tool) + 2
+    cost-gated (kg_build_graph, kg_build_wiki) + 1 kg_run_benchmark (R4) = 30."""
     schema_names = {d["function"]["name"] for d in TOOL_DEFINITIONS}
-    assert len(TOOL_DEFINITIONS) == 29
+    assert len(TOOL_DEFINITIONS) == 30
     assert set(TOOL_NAMES) == set(ARG_MODELS) == schema_names
     assert len(set(TOOL_NAMES)) == len(TOOL_NAMES)  # no dupes
     assert {"kg_project_create", "kg_project_list", "kg_build_graph",
@@ -1077,3 +1080,128 @@ async def test_kg_world_query_no_readable_partitions_returns_empty_not_error(mon
     assert res.result["partitions_read"] == 0
     assert res.result["partitions_unreadable"] == 1
     assert res.result["nodes"] == []
+
+
+# ── Track B B1(3): kg_multi_query (arbitrary owner-owned project set) ─────
+
+
+def _multi_repo(owned: set):
+    """A projects_repo whose .get returns a Project only for an id in ``owned``
+    (owner-keyed), None otherwise — the ownership signal kg_multi_query reports on."""
+    repo = AsyncMock()
+    repo.project_meta = AsyncMock(return_value=(_OWNER, _BOOK))
+
+    async def _get(user_id, project_id):
+        return SimpleNamespace(project_id=project_id) if project_id in owned else None
+
+    repo.get = AsyncMock(side_effect=_get)
+    return repo
+
+
+def _patch_subgraph(monkeypatch, seen: dict):
+    import app.tools.graph_schema_tools as gst
+
+    async def _fake_subgraph(session, *, user_id, project_ids, limit):
+        seen["project_ids"] = list(project_ids)
+        seen["limit"] = limit
+        return SimpleNamespace(
+            model_dump=lambda mode="json": {"nodes": [{"id": "n1"}], "edges": []}
+        )
+
+    monkeypatch.setattr("app.db.neo4j_repos.relations.get_world_subgraph", _fake_subgraph)
+
+    class _CM:
+        async def __aenter__(self):
+            return MagicMock()
+
+        async def __aexit__(self, *a):
+            return False
+
+    monkeypatch.setattr(gst, "neo4j_session", lambda: _CM())
+
+
+@pytest.mark.asyncio
+async def test_kg_multi_query_unions_owned_and_reports_unreadable(monkeypatch):
+    """B1(3)/EC-B2: union ONLY the projects the caller owns from the requested set, and
+    report how many requested ids were skipped (foreign or stale) — never silently."""
+    owned_a, owned_b, foreign = uuid4(), uuid4(), uuid4()
+    repo = _multi_repo({owned_a, owned_b})
+    seen: dict = {}
+    _patch_subgraph(monkeypatch, seen)
+
+    ctx = _ctx(user_id=_OWNER, projects_repo=repo)
+    res = await execute_tool(
+        ctx, "kg_multi_query",
+        {"project_ids": [str(owned_a), str(foreign), str(owned_b)], "limit": 50},
+    )
+
+    assert res.success, res.error
+    out = res.result
+    assert out["partitions_read"] == 2
+    assert out["partitions_unreadable"] == 1
+    assert set(seen["project_ids"]) == {str(owned_a), str(owned_b)}
+    assert str(foreign) not in seen["project_ids"]   # never leak an unowned partition
+    assert seen["limit"] == 50
+    assert "skipped" in out["note"].lower()
+
+
+@pytest.mark.asyncio
+async def test_kg_multi_query_dedups_requested_ids(monkeypatch):
+    """A duplicate id must not double-count coverage nor be queried twice."""
+    owned_a, owned_b = uuid4(), uuid4()
+    repo = _multi_repo({owned_a, owned_b})
+    seen: dict = {}
+    _patch_subgraph(monkeypatch, seen)
+
+    ctx = _ctx(user_id=_OWNER, projects_repo=repo)
+    res = await execute_tool(
+        ctx, "kg_multi_query",
+        {"project_ids": [str(owned_a), str(owned_a), str(owned_b)]},
+    )
+    assert res.success, res.error
+    assert res.result["partitions_read"] == 2
+    assert res.result["partitions_unreadable"] == 0
+    assert sorted(seen["project_ids"]) == sorted({str(owned_a), str(owned_b)})
+    assert "note" not in res.result  # fully-readable → no partial-coverage note
+
+
+@pytest.mark.asyncio
+async def test_kg_multi_query_all_unreadable_returns_empty_not_error(monkeypatch):
+    """Naming only ids you don't own returns an empty-but-honest result (with the
+    unreadable count), not an error — a self-correctable state, not a failure."""
+    foreign = uuid4()
+    repo = _multi_repo(set())   # owns nothing requested
+    seen: dict = {}
+    _patch_subgraph(monkeypatch, seen)
+
+    ctx = _ctx(user_id=_OWNER, projects_repo=repo)
+    res = await execute_tool(ctx, "kg_multi_query", {"project_ids": [str(foreign)]})
+
+    assert res.success
+    assert res.result["partitions_read"] == 0
+    assert res.result["partitions_unreadable"] == 1
+    assert res.result["nodes"] == []
+    assert "project_ids" not in seen   # subgraph never queried when nothing readable
+
+
+@pytest.mark.asyncio
+async def test_kg_multi_query_invalid_id_is_self_correcting_error():
+    """EC-B5-style: a non-UUID id maps to a tool-error STRING (not a 500) so a weak
+    model can self-correct."""
+    repo = _multi_repo(set())
+    ctx = _ctx(user_id=_OWNER, projects_repo=repo)
+    res = await execute_tool(ctx, "kg_multi_query", {"project_ids": ["not-a-uuid"]})
+    assert not res.success
+    assert "valid id" in res.error.lower()
+
+
+def test_kg_multi_query_args_require_at_least_one_and_cap_at_16():
+    """The set must be non-empty (min_length=1) and capped at 16 (matches the B1(2)
+    chat-session multi-KG grounding cap)."""
+    assert KgMultiQueryArgs(project_ids=["p1"]).limit == 200
+    with pytest.raises(ValidationError):
+        KgMultiQueryArgs(project_ids=[])            # min_length=1
+    with pytest.raises(ValidationError):
+        KgMultiQueryArgs(project_ids=[f"p{i}" for i in range(17)])  # max_length=16
+    with pytest.raises(ValidationError):
+        KgMultiQueryArgs(project_ids=["p1"], user_id="smuggled")    # identity forbidden

@@ -154,6 +154,23 @@ class KgWorldQueryArgs(BaseModel):
     limit: int = Field(default=200, ge=1, le=GRAPH_LIMIT_MAX)
 
 
+class KgMultiQueryArgs(BaseModel):
+    """`kg_multi_query` (Track B B1(3)) — the union graph across an ARBITRARY SET of the
+    caller's own knowledge projects (NOT a world grouping): e.g. a canon KG + a fan-theory
+    KG for ad-hoc comparison, or two unrelated books at once.
+
+    NOT ProjectScopedArgs: the caller names the exact set via ``project_ids`` (the
+    ai-gateway MCP federation drops envelope scope — same EC-B1 reason kg_world_query
+    takes world_id explicitly). Owner-only (EC-B2): ids the caller doesn't own are skipped
+    and reported, never dropped silently. Capped at 16 to match the chat-session multi-KG
+    grounding cap (B1(2))."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    project_ids: list[str] = Field(min_length=1, max_length=16)
+    limit: int = Field(default=200, ge=1, le=GRAPH_LIMIT_MAX)
+
+
 class KgEntityEdgeTimelineArgs(BaseModel):
     """`kg_entity_edge_timeline` — the temporal instance chain for one
     entity + edge type (e.g. a drive arc).
@@ -352,6 +369,7 @@ GRAPH_SCHEMA_ARG_MODELS: dict[str, type[BaseModel]] = {
     # ── R (read) ──────────────────────────────────────────────────────
     "kg_graph_query": KgGraphQueryArgs,
     "kg_world_query": KgWorldQueryArgs,
+    "kg_multi_query": KgMultiQueryArgs,
     "kg_entity_edge_timeline": KgEntityEdgeTimelineArgs,
     "kg_schema_read": KgSchemaReadArgs,
     "kg_list_templates": KgListTemplatesArgs,
@@ -463,6 +481,29 @@ GRAPH_SCHEMA_TOOL_DEFINITIONS: list[dict] = [
             },
         },
         ["world_id"],
+    ),
+    _tool(
+        "kg_multi_query",
+        "Read the UNION knowledge graph across an ARBITRARY SET of YOUR knowledge "
+        "projects (as nodes + edges) — e.g. compare a canon KG against a fan-theory KG, "
+        "or load two unrelated books at once. Unlike kg_world_query (which rolls up one "
+        "whole world), you name the exact project_ids. Owner-only: ids you don't own are "
+        "skipped and counted in partitions_unreadable (the result also carries "
+        "partitions_read). Nodes are tagged with their source_project_id.",
+        {
+            "project_ids": {
+                "type": "array",
+                "items": {"type": "string"},
+                "description": "The project ids to union (1–16; you must own each).",
+            },
+            "limit": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": GRAPH_LIMIT_MAX,
+                "description": "Max nodes in the union (default 200).",
+            },
+        },
+        ["project_ids"],
     ),
     _tool(
         "kg_entity_edge_timeline",
@@ -1035,6 +1076,70 @@ async def _handle_kg_world_query(ctx: "ToolContext", args: KgWorldQueryArgs) -> 
     return out
 
 
+async def _handle_kg_multi_query(ctx: "ToolContext", args: KgMultiQueryArgs) -> dict:
+    """`kg_multi_query` (Track B B1(3)) — UNION the canon KGs of an ARBITRARY SET of the
+    caller's own projects (canon KG + fan-theory KG, two unrelated books, …) into one
+    nodes+edges result. Owner-only (EC-B2): requested ids the caller doesn't own (or that
+    don't exist) are SKIPPED but REPORTED via ``partitions_unreadable`` — never dropped
+    silently. Reuses the same per-partition union as kg_world_query
+    (``get_world_subgraph`` binds user_id + project_id per read, so an unowned id would
+    contribute nothing anyway — the ownership resolve here makes the report accurate)."""
+    from app.db.neo4j_repos.relations import get_world_subgraph
+    from app.tools.executor import ToolExecutionError
+
+    # Validate + order-preserving dedup (a duplicate id must not double-count coverage).
+    seen: set[UUID] = set()
+    requested: list[UUID] = []
+    for raw in args.project_ids:
+        try:
+            u = UUID(raw)
+        except (ValueError, TypeError):
+            raise ToolExecutionError(f"project_id is not a valid id: {raw!r}")
+        if u not in seen:
+            seen.add(u)
+            requested.append(u)
+
+    # Owner-scope: keep only the projects this caller owns; the rest (foreign OR stale)
+    # are the unreadable count. projects_repo.get is owner-keyed (user_id + project_id).
+    readable: list[str] = []
+    for u in requested:
+        project = await ctx.projects_repo.get(ctx.user_id, u)
+        if project is not None:
+            readable.append(str(u))
+
+    read = len(readable)
+    unreadable = len(requested) - read
+    if read == 0:
+        # Nothing readable — empty-but-honest (EC-B2 report), not an error: naming ids
+        # you no longer own is a routine self-correctable state, not a failure.
+        note = "none of the requested projects are readable by you (not owned or don't exist)"
+        return {
+            "nodes": [],
+            "edges": [],
+            "partitions_read": 0,
+            "partitions_unreadable": unreadable,
+            "note": note + ".",
+        }
+
+    async with neo4j_session() as session:
+        subgraph = await get_world_subgraph(
+            session,
+            user_id=str(ctx.user_id),
+            project_ids=readable,
+            limit=args.limit,
+        )
+    out = subgraph.model_dump(mode="json")
+    # EC-B2 — surface coverage so the agent knows the union is partial, not complete.
+    out["partitions_read"] = read
+    out["partitions_unreadable"] = unreadable
+    if unreadable:
+        out["note"] = (
+            f"{unreadable} requested project(s) are not yours (or don't exist) and were "
+            "skipped; this graph covers only your projects."
+        )
+    return out
+
+
 async def _handle_kg_entity_edge_timeline(
     ctx: "ToolContext", args: KgEntityEdgeTimelineArgs
 ) -> dict:
@@ -1584,6 +1689,7 @@ async def _handle_kg_triage_schema_write(
 GRAPH_SCHEMA_HANDLERS = {
     "kg_graph_query": _handle_kg_graph_query,
     "kg_world_query": _handle_kg_world_query,
+    "kg_multi_query": _handle_kg_multi_query,
     "kg_entity_edge_timeline": _handle_kg_entity_edge_timeline,
     "kg_schema_read": _handle_kg_schema_read,
     "kg_list_templates": _handle_kg_list_templates,
