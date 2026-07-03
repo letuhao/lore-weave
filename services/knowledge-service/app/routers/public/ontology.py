@@ -37,7 +37,7 @@ from app.clients.glossary_ontology_client import (
 from app.config import settings
 from app.db.ontology_models import GraphSchema
 from app.db.neo4j import neo4j_session
-from app.db.neo4j_repos.schema_usage import count_component_usage
+from app.db.neo4j_repos.schema_usage import count_component_usage, usage_summary
 from app.db.pool import get_knowledge_pool
 from app.db.repositories.graph_schemas import GraphSchemasRepo
 from app.db.repositories.ontology_mutations import (
@@ -429,6 +429,18 @@ async def get_schema_component_usage(
             node_type=node_type, code=code,
         )
     return {"node_type": node_type, "code": code, "count": count or 0, "counted": count is not None}
+
+
+@router.get("/projects/{project_id}/schema/usage-summary")
+async def get_schema_usage_summary(
+    project_id: UUID = Path(),
+    owner: UUID = Depends(require_project_grant(GrantLevel.VIEW)),
+):
+    """M1 — all node-kind + edge-type usage counts in ONE read (inline "· used by N"
+    badges). View-gated. `{node_kind: {code: n}, edge_type: {code: n}}`; an absent
+    code = 0 graph elements."""
+    async with neo4j_session() as session:
+        return await usage_summary(session, user_id=str(owner), project_id=str(project_id))
 
 
 @router.post(

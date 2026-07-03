@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { OntologyChip } from './OntologyChip';
+import { KindMultiSelect } from './KindMultiSelect';
 import type { Cardinality, EdgeType, EdgeTypePatch } from '../../types/ontology';
 
 // One edge-type row for the redesigned SchemaWorkbench: display + inline edit
@@ -10,20 +11,22 @@ import type { Cardinality, EdgeType, EdgeTypePatch } from '../../types/ontology'
 interface Props {
   edge: EdgeType;
   disabled?: boolean;
+  /** M1 — how many live relations use this edge type (inline badge). */
+  usageCount?: number;
+  /** M1 — node-kind codes defined in this schema (for the source/target pickers). */
+  availableKinds?: string[];
   onPatch: (patch: EdgeTypePatch) => void;
   onDelete: () => void;
 }
 
-const csv = (s: string) => s.split(',').map((x) => x.trim()).filter(Boolean);
-
-export function EdgeTypeRow({ edge, disabled, onPatch, onDelete }: Props) {
+export function EdgeTypeRow({ edge, disabled, usageCount, availableKinds, onPatch, onDelete }: Props) {
   const { t } = useTranslation('kgOntology');
   const [editing, setEditing] = useState(false);
   const [label, setLabel] = useState(edge.label);
   const [cardinality, setCardinality] = useState<Cardinality>(edge.cardinality);
   const [temporal, setTemporal] = useState(edge.temporal);
-  const [src, setSrc] = useState((edge.source_node_kinds ?? []).join(', '));
-  const [tgt, setTgt] = useState((edge.target_node_kinds ?? []).join(', '));
+  const [src, setSrc] = useState<string[]>(edge.source_node_kinds ?? []);
+  const [tgt, setTgt] = useState<string[]>(edge.target_node_kinds ?? []);
   const [description, setDescription] = useState(edge.description ?? '');
 
   const save = () => {
@@ -31,8 +34,8 @@ export function EdgeTypeRow({ edge, disabled, onPatch, onDelete }: Props) {
       label: label.trim() || edge.label,
       cardinality,
       temporal,
-      source_node_kinds: csv(src),
-      target_node_kinds: csv(tgt),
+      source_node_kinds: src,
+      target_node_kinds: tgt,
       description,
     });
     setEditing(false);
@@ -60,13 +63,13 @@ export function EdgeTypeRow({ edge, disabled, onPatch, onDelete }: Props) {
             </label>
             <label className="space-y-0.5">
               <span className="text-muted-foreground">{t('schema.sourceKinds')}</span>
-              <input value={src} onChange={(e) => setSrc(e.target.value)} placeholder="character, organization"
-                className="w-full rounded-md border bg-input px-2 py-1" />
+              <KindMultiSelect value={src} options={availableKinds ?? []} onChange={setSrc}
+                disabled={disabled} testid={`edge-src-${edge.code}`} />
             </label>
             <label className="space-y-0.5">
               <span className="text-muted-foreground">{t('schema.targetKinds')}</span>
-              <input value={tgt} onChange={(e) => setTgt(e.target.value)}
-                className="w-full rounded-md border bg-input px-2 py-1" />
+              <KindMultiSelect value={tgt} options={availableKinds ?? []} onChange={setTgt}
+                disabled={disabled} testid={`edge-tgt-${edge.code}`} />
             </label>
             <label className="flex items-center gap-1.5 sm:col-span-2">
               <input type="checkbox" checked={temporal} onChange={(e) => setTemporal(e.target.checked)} />
@@ -104,6 +107,11 @@ export function EdgeTypeRow({ edge, disabled, onPatch, onDelete }: Props) {
       <td className="py-1.5">
         {edge.temporal && <OntologyChip variant="temporal">{t('schema.temporal')}</OntologyChip>}
         <span className="ml-1 text-[10px] text-muted-foreground">{edge.cardinality}</span>
+        {!!usageCount && (
+          <span className="ml-1 text-[10px] text-muted-foreground" data-testid={`edge-usage-${edge.code}`}>
+            · {t('schema.usedBy', { count: usageCount })}
+          </span>
+        )}
       </td>
       <td className="py-1.5 text-right">
         {!edge.deprecated_at && (

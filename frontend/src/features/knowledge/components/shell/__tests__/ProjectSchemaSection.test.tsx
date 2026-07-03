@@ -20,6 +20,7 @@ const state = vi.hoisted(() => ({
 vi.mock('../../../hooks/useGraphSchema', () => ({
   useGraphSchemaList: () => ({ data: { items: state.items }, isLoading: state.listLoading }),
   useGraphSchema: () => ({ schema: state.controllerSchema }),
+  useSchemaUsageSummary: () => ({ data: { node_kind: {}, edge_type: {} } }),
   useSchemaAuthoring: () => ({
     createBlank: vi.fn(), clone: vi.fn(), isCreating: false, isCloning: false,
   }),

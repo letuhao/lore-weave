@@ -1,9 +1,12 @@
 import { useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
-import { useAuth } from '@/auth';
 import { Skeleton } from '@/components/shared';
-import { useGraphSchema, useGraphSchemaList, useSchemaAuthoring } from '../../hooks/useGraphSchema';
-import { ontologyApi } from '../../api/ontology';
+import {
+  useGraphSchema,
+  useGraphSchemaList,
+  useSchemaAuthoring,
+  useSchemaUsageSummary,
+} from '../../hooks/useGraphSchema';
 import { SchemaWorkbench } from '../ontology/SchemaWorkbench';
 import { CreateSchemaEntry } from '../ontology/CreateSchemaEntry';
 
@@ -19,7 +22,6 @@ export function ProjectSchemaSection({
   bookId: string | null;
 }) {
   const { t } = useTranslation('knowledge');
-  const { accessToken } = useAuth();
   const schemaList = useGraphSchemaList({ scope: 'all', project_id: projectId });
   const items = schemaList.data?.items ?? [];
 
@@ -34,6 +36,7 @@ export function ProjectSchemaSection({
 
   const controller = useGraphSchema(activeSchemaId, projectId);
   const authoring = useSchemaAuthoring(projectId);
+  const usage = useSchemaUsageSummary(activeSchemaId ? projectId : null).data;
   const busy = authoring.isCreating || authoring.isCloning;
 
   return (
@@ -45,8 +48,12 @@ export function ProjectSchemaSection({
       ) : activeSchemaId && controller.schema ? (
         <SchemaWorkbench
           controller={controller}
+          usage={usage}
           getUsage={(nodeType, code) =>
-            ontologyApi.schemaComponentUsage(projectId, nodeType, code, accessToken!)
+            Promise.resolve({
+              count: usage?.[nodeType as 'node_kind' | 'edge_type']?.[code] ?? 0,
+              counted: nodeType === 'node_kind' || nodeType === 'edge_type',
+            })
           }
         />
       ) : (

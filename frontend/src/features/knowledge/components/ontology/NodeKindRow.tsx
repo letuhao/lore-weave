@@ -8,11 +8,13 @@ import type { SchemaNodeKind, Strength } from '../../types/ontology';
 interface Props {
   nodeKind: SchemaNodeKind;
   disabled?: boolean;
+  /** M1 — how many entities of this kind exist (inline badge). */
+  usageCount?: number;
   onPatchStrength: (strength: Strength) => void;
   onDelete: () => void;
 }
 
-export function NodeKindRow({ nodeKind, disabled, onPatchStrength, onDelete }: Props) {
+export function NodeKindRow({ nodeKind, disabled, usageCount, onPatchStrength, onDelete }: Props) {
   const { t } = useTranslation('kgOntology');
   return (
     <li className="flex items-center gap-2 py-1" data-testid={`node-kind-row-${nodeKind.kind_code}`}>
@@ -27,6 +29,11 @@ export function NodeKindRow({ nodeKind, disabled, onPatchStrength, onDelete }: P
         <option value="required">required</option>
         <option value="optional">optional</option>
       </select>
+      {!!usageCount && (
+        <span className="text-[10px] text-muted-foreground" data-testid={`node-kind-usage-${nodeKind.kind_code}`}>
+          · {t('schema.usedBy', { count: usageCount })}
+        </span>
+      )}
       <button
         type="button"
         onClick={onDelete}

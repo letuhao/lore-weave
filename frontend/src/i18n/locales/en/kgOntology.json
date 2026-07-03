@@ -80,6 +80,12 @@
     "targetKinds": "Target kinds",
     "descriptionField": "Description",
     "addVocabSet": "Add vocab set",
+    "usedBy": "used by {{count}}",
+    "anyKind": "any kind",
+    "addKind": "add kind",
+    "otherKind": "other…",
+    "emptyTitle": "This schema is empty",
+    "emptyHelp": "Start by adding a node kind (a character, a place, an organization…), then connect them with an edge type.",
     "deleteConfirmTitle": "Delete this component?",
     "deleteConfirmBody": "\"{{code}}\" is referenced by {{count}} graph element(s). Deleting deprecates it — the data stays queryable. Delete anyway?"
   },

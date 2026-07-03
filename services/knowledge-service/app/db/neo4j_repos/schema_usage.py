@@ -59,3 +59,35 @@ async def count_component_usage(
     result = await run_read(session, cypher, user_id=user_id, project_id=project_id, code=code)
     record = await result.single()
     return int(record["total"] or 0) if record is not None else 0
+
+
+# M1 — one round-trip for ALL component counts (the inline "· used by N" badges),
+# instead of N per-row calls. GROUP BY the referencing property.
+_ALL_NODE_KINDS_CYPHER = """
+MATCH (e:Entity {user_id: $user_id})
+WHERE e.project_id = $project_id AND e.kind IS NOT NULL
+RETURN e.kind AS code, count(e) AS n
+"""
+_ALL_EDGE_TYPES_CYPHER = """
+MATCH (s:Entity {user_id: $user_id})-[r:RELATES_TO]->(:Entity)
+WHERE s.project_id = $project_id AND r.valid_until IS NULL AND r.predicate IS NOT NULL
+RETURN r.predicate AS code, count(r) AS n
+"""
+
+
+async def usage_summary(
+    session: CypherSession, *, user_id: str, project_id: str
+) -> dict[str, dict[str, int]]:
+    """All node-kind + edge-type usage counts for a project in ONE read:
+    ``{"node_kind": {kind_code: n, …}, "edge_type": {predicate: n, …}}``. A code
+    absent from a map has zero graph elements (the caller reads it as 0)."""
+    out: dict[str, dict[str, int]] = {"node_kind": {}, "edge_type": {}}
+    nk = await run_read(session, _ALL_NODE_KINDS_CYPHER, user_id=user_id, project_id=project_id)
+    async for rec in nk:
+        if rec["code"]:
+            out["node_kind"][rec["code"]] = int(rec["n"] or 0)
+    et = await run_read(session, _ALL_EDGE_TYPES_CYPHER, user_id=user_id, project_id=project_id)
+    async for rec in et:
+        if rec["code"]:
+            out["edge_type"][rec["code"]] = int(rec["n"] or 0)
+    return out

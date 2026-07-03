@@ -26,11 +26,14 @@ interface UsageResult {
 export function SchemaWorkbench({
   controller,
   getUsage,
+  usage,
 }: {
   controller: SchemaController;
   // A4 — resolve how many graph elements reference a component before deleting it.
   // Omitted (e.g. in tests / user-tier templates with no graph) → delete directly.
   getUsage?: (nodeType: string, code: string) => Promise<UsageResult>;
+  // M1 — preloaded usage counts for inline "· used by N" badges.
+  usage?: { node_kind: Record<string, number>; edge_type: Record<string, number> };
 }) {
   const { t } = useTranslation('kgOntology');
   const [editingName, setEditingName] = useState(false);
@@ -70,6 +73,7 @@ export function SchemaWorkbench({
   };
 
   const busy = controller.isMutating;
+  const kindCodes = (schema.node_kinds ?? []).map((k) => k.kind_code);
 
   return (
     <div className="space-y-4" data-testid="schema-workbench">
@@ -103,13 +107,22 @@ export function SchemaWorkbench({
         </label>
       </header>
 
+      {/* empty-state coaching (M1) — a brand-new blank schema */}
+      {kindCodes.length === 0 && (schema.edge_types ?? []).length === 0 && (
+        <div className="rounded-lg border border-dashed p-4 text-center" data-testid="schema-empty-coach">
+          <p className="text-sm font-medium">{t('schema.emptyTitle')}</p>
+          <p className="mt-1 text-[12px] text-muted-foreground">{t('schema.emptyHelp')}</p>
+        </div>
+      )}
+
       {/* edge types */}
       <section className="rounded-lg border p-3">
         <h3 className="mb-2 text-[11px] font-semibold uppercase text-muted-foreground">{t('schema.edgeTypes')}</h3>
         <table className="w-full text-left text-[12px]">
           <tbody>
             {(schema.edge_types ?? []).map((e) => (
-              <EdgeTypeRow key={e.code} edge={e} disabled={busy}
+              <EdgeTypeRow key={e.code} edge={e} disabled={busy} usageCount={usage?.edge_type[e.code]}
+                availableKinds={kindCodes}
                 onPatch={(patch) => void guard(() => controller.patchEdgeType({ code: e.code, patch }))}
                 onDelete={() => void requestDelete('edge_type', e.code,
                   () => void guard(() => controller.deleteEdgeType(e.code), t('common.deleted')))} />
@@ -130,7 +143,7 @@ export function SchemaWorkbench({
           <h3 className="mb-2 text-[11px] font-semibold uppercase text-muted-foreground">{t('schema.nodeKinds')}</h3>
           <ul>
             {(schema.node_kinds ?? []).map((k) => (
-              <NodeKindRow key={k.kind_code} nodeKind={k} disabled={busy}
+              <NodeKindRow key={k.kind_code} nodeKind={k} disabled={busy} usageCount={usage?.node_kind[k.kind_code]}
                 onPatchStrength={(strength) => void guard(() => controller.patchNodeKind({ code: k.kind_code, patch: { strength } }))}
                 onDelete={() => void requestDelete('node_kind', k.kind_code,
                   () => void guard(() => controller.deleteNodeKind(k.kind_code), t('common.deleted')))} />

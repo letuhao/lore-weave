@@ -80,6 +80,12 @@
     "targetKinds": "ターゲット種別",
     "descriptionField": "説明",
     "addVocabSet": "語彙セットを追加",
+    "usedBy": "{{count}} 件で使用",
+    "anyKind": "任意の種別",
+    "addKind": "種別を追加",
+    "otherKind": "その他…",
+    "emptyTitle": "このスキーマは空です",
+    "emptyHelp": "まずノード種別（キャラクター・場所・組織など）を追加し、エッジ種別でつなげましょう。",
     "deleteConfirmTitle": "このコンポーネントを削除しますか？",
     "deleteConfirmBody": "「{{code}}」は {{count}} 件のグラフ要素から参照されています。削除すると非推奨になります（データは引き続き参照可能）。削除しますか？"
   },

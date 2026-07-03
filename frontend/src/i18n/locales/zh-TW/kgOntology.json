@@ -80,6 +80,12 @@
     "targetKinds": "目標種類",
     "descriptionField": "說明",
     "addVocabSet": "新增詞彙集",
+    "usedBy": "{{count}} 處使用",
+    "anyKind": "任意種類",
+    "addKind": "新增種類",
+    "otherKind": "其他…",
+    "emptyTitle": "此綱要是空的",
+    "emptyHelp": "先新增節點種類（角色、地點、組織…），再用關係類型把它們連起來。",
     "deleteConfirmTitle": "刪除此元件？",
     "deleteConfirmBody": "「{{code}}」被 {{count}} 個圖譜元素引用。刪除會將其標記為棄用——資料仍可查詢。仍要刪除？"
   },

@@ -143,6 +143,15 @@ export const ontologyApi = {
     return apiJson<ResolvedSchema>(`${BASE}/projects/${projectId}/schema`, { token }).then(nestVocabValues);
   },
 
+  // M1 — all node-kind + edge-type usage counts in one read (inline badges +
+  // the delete-confirm gate; avoids N per-row calls).
+  schemaUsageSummary(
+    projectId: string,
+    token: string,
+  ): Promise<{ node_kind: Record<string, number>; edge_type: Record<string, number> }> {
+    return apiJson(`${BASE}/projects/${projectId}/schema/usage-summary`, { token });
+  },
+
   // A4 — how many graph elements reference a schema component (delete warning).
   // `counted=false` for fact_type/vocab_value (fuzzier usage → plain confirm).
   schemaComponentUsage(

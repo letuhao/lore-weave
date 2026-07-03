@@ -80,6 +80,12 @@
     "targetKinds": "Loại đích",
     "descriptionField": "Mô tả",
     "addVocabSet": "Thêm bộ từ vựng",
+    "usedBy": "{{count}} nơi dùng",
+    "anyKind": "mọi loại",
+    "addKind": "thêm loại",
+    "otherKind": "khác…",
+    "emptyTitle": "Schema này đang trống",
+    "emptyHelp": "Bắt đầu bằng cách thêm một node kind (nhân vật, địa điểm, tổ chức…), rồi nối chúng bằng một edge type.",
     "deleteConfirmTitle": "Xoá thành phần này?",
     "deleteConfirmBody": "\"{{code}}\" đang được {{count}} phần tử đồ thị tham chiếu. Xoá sẽ ngừng dùng nó — dữ liệu vẫn truy vấn được. Vẫn xoá?"
   },

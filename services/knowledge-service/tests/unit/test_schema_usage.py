@@ -62,6 +62,38 @@ async def test_no_rows_is_zero(monkeypatch):
     assert n == 0  # single() -> None => 0, NOT None (node_kind IS counted)
 
 
+class _FakeAsyncRows:
+    """Async-iterable stand-in for a Neo4j multi-row result (`async for rec in …`)."""
+
+    def __init__(self, rows: list[dict]) -> None:
+        self._rows = rows
+
+    def __aiter__(self):
+        self._it = iter(self._rows)
+        return self
+
+    async def __anext__(self):
+        try:
+            return next(self._it)
+        except StopIteration:
+            raise StopAsyncIteration
+
+
+@pytest.mark.asyncio
+async def test_usage_summary_groups_by_code(monkeypatch):
+    async def fake_run_read(session, cypher, **params):
+        if "e.kind AS code" in cypher:
+            return _FakeAsyncRows([{"code": "character", "n": 5}, {"code": "location", "n": 2}])
+        return _FakeAsyncRows([{"code": "LOVER_OF", "n": 3}, {"code": None, "n": 9}])
+
+    monkeypatch.setattr(schema_usage, "run_read", fake_run_read)
+    out = await schema_usage.usage_summary(None, user_id="u", project_id="p")
+    assert out == {
+        "node_kind": {"character": 5, "location": 2},
+        "edge_type": {"LOVER_OF": 3},  # the None-code row is dropped
+    }
+
+
 @pytest.mark.asyncio
 @pytest.mark.parametrize("node_type", ["fact_type", "vocab_value", "vocab_set", "bogus"])
 async def test_uncounted_types_return_none(monkeypatch, node_type):

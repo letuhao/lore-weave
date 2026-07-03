@@ -132,6 +132,17 @@ export function useGraphSchema(schemaId: string | null, projectId?: string | nul
   };
 }
 
+// M1 — all node-kind + edge-type usage counts for a project (inline "· used by N"
+// badges + the delete-confirm gate), one query, react-query cached.
+export function useSchemaUsageSummary(projectId: string | null) {
+  const { accessToken } = useAuth();
+  return useQuery({
+    queryKey: ['kg-schema-usage', projectId],
+    queryFn: () => ontologyApi.schemaUsageSummary(projectId!, accessToken!),
+    enabled: !!accessToken && !!projectId,
+  });
+}
+
 // ── create-from-scratch + clone (A2) — project/caller-scoped, not tied to one
 //    schema id. `createBlank` replaces the project's active schema (server-side
 //    one-active); `clone` mints a NEW user-scoped editable template. ──────────

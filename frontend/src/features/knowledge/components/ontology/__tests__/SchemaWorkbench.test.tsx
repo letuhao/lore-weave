@@ -104,6 +104,22 @@ describe('SchemaWorkbench — full-CRUD authoring (A3)', () => {
     );
   });
 
+  it('M1: edits source kinds via the typed picker (not free text)', async () => {
+    renderWB(ctrl);
+    fireEvent.click(screen.getByTestId('edit-edge-allied_with'));
+    // pick 'character' from the source-kinds picker (options = the schema's node kinds)
+    fireEvent.change(screen.getByTestId('edge-src-allied_with-add'), { target: { value: 'character' } });
+    fireEvent.click(screen.getByTestId('edge-save-allied_with'));
+    await waitFor(() =>
+      expect(ctrl.patchEdgeType).toHaveBeenCalledWith(
+        expect.objectContaining({
+          code: 'allied_with',
+          patch: expect.objectContaining({ source_node_kinds: ['character'] }),
+        }),
+      ),
+    );
+  });
+
   it('patches a node-kind strength', async () => {
     renderWB(ctrl);
     fireEvent.change(screen.getByTestId('node-kind-strength-character'), { target: { value: 'optional' } });
@@ -150,6 +166,17 @@ describe('SchemaWorkbench — full-CRUD authoring (A3)', () => {
     fireEvent.change(screen.getByTestId('schema-name-input'), { target: { value: 'Ten Realms' } });
     fireEvent.click(screen.getByTestId('save-schema-name'));
     await waitFor(() => expect(ctrl.patchMeta).toHaveBeenCalledWith({ name: 'Ten Realms' }));
+  });
+
+  it('M1: shows inline usage badges from the usage map', () => {
+    render(
+      <SchemaWorkbench
+        controller={ctrl as never}
+        usage={{ node_kind: { character: 4 }, edge_type: { allied_with: 7 } }}
+      />,
+    );
+    expect(screen.getByTestId('edge-usage-allied_with')).toBeInTheDocument();
+    expect(screen.getByTestId('node-kind-usage-character')).toBeInTheDocument();
   });
 
   it('toggling free edges patches schema meta', async () => {
