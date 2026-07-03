@@ -66,6 +66,7 @@ from app.services.subagent_runtime import (
     SUBAGENT_MAX_ITERATIONS,
     build_run_subagent_tool,
     cap_result,
+    clamp_permission_mode,
     resolve_scoped_tools,
     tool_name_of,
 )
@@ -976,6 +977,7 @@ async def _stream_with_tools(
                         hooks=hooks,
                         effective_limit=effective_limit,
                         subagent_depth=subagent_depth,
+                        caller_permission_mode=permission_mode,
                     )
                     total_input += sub_in
                     total_output += sub_out
@@ -1101,9 +1103,14 @@ async def _stream_with_tools(
                         continue
 
                 # MCP-fanout C-TOOL: read the tool's tier (R|A|W|S) from the
-                # discovery catalog. Legacy/untiered tools default to R (inert) —
-                # they never auto-emit an activity/undo and never count as a write.
-                tier = tool_tier(cat_index.get(c["name"], {})) if discovery else "R"
+                # discovery catalog (main turn) or the plain-defs index (a subagent
+                # runs off `tools=scoped`, non-discovery). Legacy/untiered tools
+                # default to R (inert) — they never auto-emit an activity/undo and
+                # never count as a write. NOTE: this MUST read the real tier in the
+                # plain path too — write-delegation (a write-mode subagent) relies on
+                # it so the Tier-A allowlist gate below actually fires; hardcoding "R"
+                # here would let a subagent auto-commit ANY Tier-A tool unchecked.
+                tier = tool_tier((cat_index if discovery else plain_index).get(c["name"], {}))
 
                 # H7 — Tier-A volume caps: STOP auto-applying and escalate to ONE
                 # batch confirm_action (the enforceable injection-damage bound) when
@@ -1168,6 +1175,25 @@ async def _stream_with_tools(
                         }}
                         continue
                     if _hk_action == "require_approval":
+                        # A subagent runs headless — it cannot surface an approval
+                        # suspend (no client to answer it). So a require_approval hook
+                        # inside a sub-run does NOT run the tool; it returns a
+                        # result.error the sub-model can adapt to (no silent no-op).
+                        if subagent_depth > 0:
+                            _hk_sub_err = (
+                                f"'{c['name']}' requires human approval (hook), which a "
+                                "subagent cannot request — it was NOT run. Skip it or use "
+                                "a tool that does not require approval."
+                            )
+                            working.append({
+                                "role": "tool", "tool_call_id": c["id"],
+                                "content": json.dumps({"error": _hk_sub_err}),
+                            })
+                            yield {"tool_call": {
+                                "id": c["id"], "iteration": iteration, "tool": c["name"],
+                                "args": args_obj, "ok": False, "result": None, "error": _hk_sub_err,
+                            }}
+                            continue
                         # Force the human approval gate for this call regardless of
                         # tier/mode/allowlist — reuse the same tool_approval suspend
                         # machinery as the C2 write-mode gate below (no new transport).
@@ -1250,6 +1276,30 @@ async def _stream_with_tools(
                         )
                         _allowed = True
                     if not _allowed:
+                        # Write-delegation (D-REG-P5-SUBAGENT-WRITE-DELEGATION): a
+                        # write-mode subagent may auto-commit an ALLOWLISTED Tier-A
+                        # tool (falls through to execute below), but an UN-allowlisted
+                        # one cannot — a headless sub-run can't raise the one-time
+                        # approval card. So it returns a result.error instead of
+                        # suspending (which the parent would otherwise swallow silently).
+                        # The write stays safe regardless: tenancy is enforced at the
+                        # tool layer and the sub-run is bounded by its tool_scope.
+                        if subagent_depth > 0:
+                            _sub_appr_err = (
+                                f"'{c['name']}' is not pre-approved, and a subagent cannot "
+                                "request one-time approval — it was NOT run. Delegate only "
+                                "tools the user has already allowlisted, or have the user "
+                                f"approve '{c['name']}' first."
+                            )
+                            working.append({
+                                "role": "tool", "tool_call_id": c["id"],
+                                "content": json.dumps({"error": _sub_appr_err}),
+                            })
+                            yield {"tool_call": {
+                                "id": c["id"], "iteration": iteration, "tool": c["name"],
+                                "args": args_obj, "ok": False, "result": None, "error": _sub_appr_err,
+                            }}
+                            continue
                         suspended_call = {
                             "id": c["id"],
                             "name": c["name"],
@@ -1388,6 +1438,7 @@ async def _run_subagent_call(
     hooks: list[dict] | None,
     effective_limit: int | None,
     subagent_depth: int,
+    caller_permission_mode: str,
 ) -> tuple[dict, int, int]:
     """P5 REG-P5-01 — run ONE subagent as a nested, isolated ``_stream_with_tools``
     turn and return ``(payload, input_tokens, output_tokens)``.
@@ -1398,10 +1449,15 @@ async def _run_subagent_call(
       parent ``working`` array (only this synthesized payload does).
     * The nested tool set is EXACTLY the persona's scoped set (advertise-time
       whitelist); ``allowed_tool_names`` re-enforces it at execute time.
-    * The nested run is clamped **read-only** (``permission_mode='ask'``) — a
-      subagent can never exceed the caller and never triggers a write-approval
-      suspend (write-delegation is a tracked follow-up). Non-R tools are dropped
-      from the advertised set AND rejected at execute time.
+    * The nested run's permission mode is ``clamp_permission_mode(caller)`` —
+      ``write`` ONLY when the caller's turn is a write turn, else read-only
+      (D-REG-P5-SUBAGENT-WRITE-DELEGATION). A subagent can never EXCEED the caller.
+      In write mode it may auto-commit an ALLOWLISTED Tier-A tool within its scope;
+      an un-allowlisted Tier-A or a require_approval hook returns a ``result.error``
+      (a headless sub-run can't raise the approval card) rather than suspending, and
+      Tier-W/S (mint→confirm) writes still cannot complete (confirm_action is a
+      frontend tool, excluded from the sub-run's scope). Safety is unchanged:
+      tenancy is enforced at the tool layer; consent is what this clamp governs.
     * Depth is bounded: the nested run gets ``subagent_depth+1`` and its scoped set
       excludes ``run_subagent`` — it cannot spawn another subagent.
     """
@@ -1443,7 +1499,7 @@ async def _run_subagent_call(
             session_id=session_id,
             project_id=project_id,
             max_iterations=min(caller_max_iterations, SUBAGENT_MAX_ITERATIONS),
-            permission_mode="ask",           # clamp read-only — no escalation
+            permission_mode=clamp_permission_mode(caller_permission_mode),
             approval_check=approval_check,
             hooks=hooks,                     # the caller's hooks still apply
             effective_limit=effective_limit,
@@ -1467,10 +1523,12 @@ async def _run_subagent_call(
                 sub_out = getattr(u, "completion_tokens", 0) or 0
             susp = ch.get("suspend")
             if susp is not None:
-                # A nested run cannot surface a suspend (no client to execute it);
-                # end with whatever it produced. This is rare (ask mode never hits
-                # the write-approval gate) — only a `require_approval` hook on a
-                # scoped tool can trigger it — but still attribute its tokens.
+                # A nested run cannot surface a suspend (no client to execute it).
+                # With write-delegation the sub-loop returns a result.error instead
+                # of suspending on an approval gate (un-allowlisted Tier-A or a
+                # require_approval hook), and frontend tools are scope-excluded — so
+                # reaching here is now a defensive last resort. End with whatever the
+                # sub-run produced, still attributing its tokens.
                 sub_in = susp.get("input_tokens", sub_in) or sub_in
                 sub_out = susp.get("output_tokens", sub_out) or sub_out
                 break

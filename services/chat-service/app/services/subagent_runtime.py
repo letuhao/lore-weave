@@ -30,7 +30,29 @@ __all__ = [
     "build_run_subagent_tool",
     "cap_result",
     "tool_name_of",
+    "clamp_permission_mode",
 ]
+
+
+def clamp_permission_mode(caller_mode: str) -> str:
+    """Write-delegation clamp (D-REG-P5-SUBAGENT-WRITE-DELEGATION).
+
+    A subagent runs in WRITE only when the *caller's* turn is a write turn; an
+    ``ask`` or ``plan`` caller keeps the sub-run read-only. This is ``min`` on the
+    read-only→write axis — a subagent can never EXCEED the caller's mode (no
+    privilege escalation), and ``plan`` collapses to ``ask`` because a subagent
+    never authors plan artifacts.
+
+    Safety note: write-delegation is safe *by construction* because tenancy is
+    enforced at the tool layer (each MCP tool re-authenticates the envelope +
+    grant-gates its scope) and the subagent stays bounded by its ``tool_scope``
+    whitelist + depth cap. This clamp governs CONSENT (does the caller's turn
+    permit writes at all), not the tenancy boundary. Un-allowlisted Tier-A tools
+    and Tier-W/S (mint→confirm) writes still cannot complete in a headless
+    sub-run — see ``_stream_with_tools`` (the subagent cannot surface an approval
+    suspend, so those return a ``result.error`` instead of executing).
+    """
+    return "write" if caller_mode == "write" else "ask"
 
 RUN_SUBAGENT_NAME = "run_subagent"
 

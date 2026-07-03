@@ -91,6 +91,7 @@ async def _run(**overrides):
         hooks=None,
         effective_limit=None,
         subagent_depth=0,
+        caller_permission_mode="ask",
     )
     base.update(overrides)
     return await ss._run_subagent_call(**base)
@@ -140,6 +141,25 @@ async def test_nested_run_is_clamped_and_scoped(monkeypatch):
     # book_write can never reach the sub-run
     assert "book_write" not in scoped_names
     assert "book_write" not in kw["allowed_tool_names"]
+
+
+@pytest.mark.asyncio
+async def test_write_delegation_clamp_write_caller(monkeypatch):
+    # D-REG-P5-SUBAGENT-WRITE-DELEGATION — a WRITE-turn caller lets the sub-run run
+    # in write mode (it may auto-commit ALLOWLISTED Tier-A tools within scope).
+    calls = _install_stub(monkeypatch, [{"content": "done"}, {"usage": _Usage(1, 1)}])
+    await _run(caller_permission_mode="write")
+    assert calls[0]["permission_mode"] == "write"
+
+
+@pytest.mark.asyncio
+async def test_write_delegation_clamp_never_exceeds_caller(monkeypatch):
+    # ask/plan callers keep the sub-run read-only — the clamp is min(caller, write),
+    # never an escalation. plan collapses to ask (a subagent never writes plans).
+    for caller, expected in (("ask", "ask"), ("plan", "ask")):
+        calls = _install_stub(monkeypatch, [{"content": "x"}, {"usage": _Usage(1, 1)}])
+        await _run(caller_permission_mode=caller)
+        assert calls[0]["permission_mode"] == expected, caller
 
 
 @pytest.mark.asyncio

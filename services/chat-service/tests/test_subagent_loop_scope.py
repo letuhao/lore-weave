@@ -114,6 +114,68 @@ class TestExecuteTimeWhitelist:
         kc.mcp_execute_tool.assert_awaited_once()
 
 
+class TestWriteDelegation:
+    """D-REG-P5-SUBAGENT-WRITE-DELEGATION — a WRITE-mode sub-run (subagent_depth>0)
+    may auto-commit an ALLOWLISTED Tier-A tool in its scope, but an UN-allowlisted
+    Tier-A returns a result.error instead of suspending (a headless sub-run can't
+    raise the approval card). Tenancy stays enforced at the tool layer regardless."""
+
+    @pytest.mark.asyncio
+    async def test_allowlisted_tier_a_executes_in_write_subrun(self):
+        kc = AsyncMock()
+        kc.get_catalog_meta = MagicMock(return_value={})
+        kc.mcp_execute_tool.return_value = _envelope(success=True, result={"book_id": "b1"})
+        check = AsyncMock(return_value=True)  # book_create IS allowlisted
+        scripts = [
+            [
+                tool_frag(index=0, id="c1", name="book_create"),
+                tool_frag(index=0, arguments_delta='{"title":"X"}'),
+                done("tool_calls"),
+            ],
+            [tok("made it"), done("stop")],
+        ]
+        with _patch_client(scripts):
+            chunks = await _drain(_run(
+                scripts, knowledge_client=kc, permission_mode="write",
+                approval_check=check,
+                allowed_tool_names={"book_create"}, subagent_depth=1,
+            ))
+        kc.mcp_execute_tool.assert_awaited_once()            # it really wrote
+        check.assert_awaited_once_with("book_create")
+        assert not [c for c in chunks if "suspend" in c]     # a sub-run never suspends
+        tc = [c["tool_call"] for c in chunks if "tool_call" in c][0]
+        assert tc["ok"] is True
+
+    @pytest.mark.asyncio
+    async def test_unallowlisted_tier_a_errors_not_suspends_in_write_subrun(self):
+        kc = AsyncMock()
+        kc.get_catalog_meta = MagicMock(return_value={})
+        check = AsyncMock(return_value=False)  # book_create NOT allowlisted
+        scripts = [
+            [
+                tool_frag(index=0, id="c1", name="book_create"),
+                tool_frag(index=0, arguments_delta='{"title":"X"}'),
+                done("tool_calls"),
+            ],
+            [tok("ok, skipping"), done("stop")],
+        ]
+        with _patch_client(scripts):
+            chunks = await _drain(_run(
+                scripts, knowledge_client=kc, permission_mode="write",
+                approval_check=check,
+                allowed_tool_names={"book_create"}, subagent_depth=1,
+            ))
+        kc.mcp_execute_tool.assert_not_awaited()             # never executed
+        assert not [c for c in chunks if "suspend" in c]     # NOT suspended (the fix)
+        tc = [c["tool_call"] for c in chunks if "tool_call" in c][0]
+        assert tc["ok"] is False
+        assert "not pre-approved" in tc["error"]
+        # the sub-model received a self-correctable error result (no silent no-op)
+        msgs = _FakeClient.instances[0].requests[1].messages
+        tool_msg = next(m for m in msgs if m.get("role") == "tool")
+        assert "not pre-approved" in json.loads(tool_msg["content"])["error"]
+
+
 class TestRunSubagentAdvertisement:
     @pytest.mark.asyncio
     async def test_subagent_tool_advertised_at_depth_0(self):
