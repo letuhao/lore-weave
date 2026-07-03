@@ -218,6 +218,11 @@ class CreateSessionRequest(BaseModel):
     # the source of truth and rejects unknown project_ids on context
     # build (returns 404 → graceful degrade to no memory).
     project_id: UUID | None = None
+    # Track B B1(2) — multi-KG: an optional SET of knowledge projects to union
+    # into one grounding context (world + member books). Takes precedence over
+    # `project_id` on context build; the single field stays for tool scope +
+    # back-compat. ≤16 (matches knowledge-service's ContextBuildRequest cap).
+    project_ids: list[UUID] | None = Field(default=None, max_length=16)
     # A2A phase-2: optional "composer" model. When set, the orchestrator
     # (model_ref) can call compose_prose, which streams THIS model for prose.
     composer_model_source: str | None = None
@@ -243,6 +248,10 @@ class PatchSessionRequest(BaseModel):
     # K5: PATCH can set or clear project_id. Use Pydantic's model_dump
     # exclude_unset semantics — explicit `null` clears, omitted leaves alone.
     project_id: UUID | None = None
+    # Track B B1(2) — multi-KG: set/replace the grounding project SET. Presence
+    # in the body drives the write (an explicit [] clears it back to the legacy
+    # single-project path); omitted leaves it alone. ≤16.
+    project_ids: list[UUID] | None = Field(default=None, max_length=16)
     # A2A phase-2: set/clear the composer model (same exclude_unset semantics).
     composer_model_source: str | None = None
     composer_model_ref: UUID | None = None
@@ -266,6 +275,10 @@ class ChatSession(BaseModel):
     created_at: datetime
     updated_at: datetime
     project_id: UUID | None = None  # K5
+    # Track B B1(2) — multi-KG grounding set. Empty list = the legacy
+    # single-project path. Default-empty so an older row / no-project session
+    # stays back-compatible.
+    project_ids: list[UUID] = Field(default_factory=list)
     composer_model_source: str | None = None  # A2A phase-2
     composer_model_ref: UUID | None = None
     planner_model_source: str | None = None  # D-PLAN-PLANNER-DEFAULT-FE phase 2

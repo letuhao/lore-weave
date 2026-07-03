@@ -124,12 +124,29 @@
 > tagged, ONE SHARED budget trimmed reverse-priority. `build_context` +`project_ids` (precedence over
 > single `project_id`, owner-scoped, ≥2→union / 1→single / all-stale→404); `ContextBuildRequest`
 > +`project_ids` (≤16). 55 tests (4 dispatch routing + 5 merge/dedup/budget + existing). Back-compat
-> preserved. **▶ NEXT — B1(2) Layers 2+3 (REMAINING plumbing, substantial):** L2 chat session carries
-> a SET — migration `chat_sessions +project_ids UUID[]` + Session model/CreateSession/PatchSession +
-> the session-load→`build_context` threading (stream_service.py ~1548/1590) + `knowledge_client.
-> build_context` +`project_ids` param. L3 FE session-settings multi-project picker. Then cross-service
-> live-smoke (2 KG-populated projects → a real chat turn → `mode="multi"` context). B1(3) arbitrary
-> project set + B1(4) cross-partition merge stay deferred.
+> preserved. **B1(2) Layers 2+3 DONE (chat-service + FE) —** L2: migration `chat_sessions
+> +project_ids UUID[]` (guarded additive, empty-default) + `project_ids` on Create/Patch/ChatSession
+> models + sessions router (INSERT/UPDATE set-via-`model_fields_set`, `memory_mode="multi"` when ≥2)
+> + `knowledge_client.build_context` +`project_ids` param + a shared `resolve_grounding_target` helper
+> threaded into BOTH the text (`stream_service`) and voice (`voice_stream_service`) build calls (≥2 →
+> union, sent WITHOUT a single `project_id` so the router's salience write-back can't misattribute the
+> union's surfaced entities; 1 → single so salience still learns; 0 → legacy `project_id`). L3 FE: new
+> `MultiProjectPicker` (multi-select sibling of `ProjectPicker`, chips + ≤16 cap + archived-fallback)
+> wired into `SessionSettingsPanel` (seeds from `project_ids` else the legacy `project_id`; writes
+> `project_ids` + keeps `project_id`=first as the tool-scope anchor); `MemoryIndicator` gains a `multi`
+> mode ("N knowledge graphs" chip + popover). **VERIFY:** chat-service 803 unit (grounding_target 6 +
+> sessions +7 + knowledge_client +2 + migrate +1) · FE tsc 0 + 14 picker tests. **LIVE-SMOKE (rebuilt
+> chat+knowledge images):** real chat API create with `project_ids=[A,B]` → the live asyncpg `uuid[]`
+> INSERT round-trips + `memory_mode="multi"` (the mock-hidden binding risk proven live); knowledge
+> `/internal/context/build` with `project_ids=[A,B]` → `HTTP 200 mode="multi"`, rendered
+> `<memory mode="multi" projects="2">` union block. Throwaway smoke projects+session cleaned up.
+> **DEFERRED D-MULTI-SALIENCE-WRITEBACK** (gate #2 structural): multi mode READS per-project salience
+> but the router's write-back keys on the single `req.project_id` — in multi we send none, so a multi
+> session doesn't LEARN salience yet; correct per-project write-back needs `BuiltContext.surfaced_entity_ids`
+> grouped by project (a Layer-1 contract change). **Optional remaining:** a full chat-TURN SSE
+> `memory-mode="multi"` smoke (both seams already proven directly; the turn adds only LM Studio + the
+> chat-side HTTP, and the chat→knowledge `project_ids` forwarding is unit-asserted). **▶ NEXT —** B1(3)
+> arbitrary project set + B1(4) cross-partition merge stay deferred.
 
 > **▶ KNOWLEDGE GUI FIXES + MODEL-ROLES SETTINGS — 2026-07-03 (3 items, all shipped).**
 > **#1 `cancel_check` extraction blocker (`591e54ad7`)** — bug #34 added `cancel_check` to the

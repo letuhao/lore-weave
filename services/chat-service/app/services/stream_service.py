@@ -394,6 +394,33 @@ def _is_plan_tool(name: str) -> bool:
     return name.startswith(PLAN_TOOL_PREFIX)
 
 
+def resolve_grounding_target(
+    session_row, project_id: str | None,
+) -> tuple[str | None, list[str] | None]:
+    """Track B B1(2) — resolve the effective ``(project_id, project_ids)`` for a
+    context build from the session's multi-KG grounding set.
+
+    A session may ground on a SET of knowledge projects (world + member books):
+      * ≥2 ids → the multi-project union. Returns ``(None, [ids…])`` — we send
+        NO single project_id because knowledge-service's salience write-back keys
+        on ``req.project_id``; attributing the multi-union's surfaced entities to
+        any single project would misattribute them. Per-project multi salience
+        write-back is tracked as D-MULTI-SALIENCE-WRITEBACK.
+      * exactly 1 id → a set of one is just the single-project path; returns
+        ``(that_id, None)`` so single-project salience still learns.
+      * 0 ids → the legacy single ``project_id`` column, unchanged:
+        ``(project_id, None)``.
+
+    ``project_id`` is the already-resolved legacy single value (str | None).
+    """
+    ids = [str(p) for p in (session_row.get("project_ids") or [])] if session_row else []
+    if len(ids) >= 2:
+        return None, ids
+    if len(ids) == 1:
+        return ids[0], None
+    return (str(project_id) if project_id else None), None
+
+
 def _is_tools_unsupported(exc: LLMError) -> bool:
     """True when an LLMError is the gateway's 'this provider does not
     support tools' rejection — the K21.11 / design-D8 capability
@@ -1622,7 +1649,7 @@ async def stream_response(
 
     # ── Load session settings ───────────────────────────────────────────────
     session_row = await pool.fetchrow(
-        "SELECT system_prompt, generation_params, project_id, composer_model_source, composer_model_ref, "
+        "SELECT system_prompt, generation_params, project_id, project_ids, composer_model_source, composer_model_ref, "
         "planner_model_ref, working_memory_seed, enabled_tools, enabled_skills, activated_tools, "
         "compact_summary, compacted_before_seq "
         "FROM chat_sessions WHERE session_id = $1",
@@ -1664,10 +1691,17 @@ async def stream_response(
     # full L0/L1/glossary block. Failures degrade silently inside the
     # client and return KnowledgeContext(mode="degraded", context="",
     # recent_message_count=50).
+    # Track B B1(2) — multi-KG: resolve the effective grounding target (a session
+    # may ground on a SET of projects; ≥2 → the union, sent WITHOUT a single
+    # project_id to avoid salience misattribution). See resolve_grounding_target.
+    _build_project_id, _build_project_ids = resolve_grounding_target(
+        session_row, str(project_id) if project_id else None,
+    )
     kctx = await knowledge_client.build_context(
         user_id=user_id,
         session_id=session_id,
-        project_id=str(project_id) if project_id else None,
+        project_id=_build_project_id,
+        project_ids=_build_project_ids,
         message=user_message_content,
         language=display_language,
     )

@@ -24,14 +24,17 @@ import { knowledgeApi } from '../api';
 
 interface Props {
   projectId: string | null;
-  memoryMode?: 'no_project' | 'static' | 'degraded';
+  memoryMode?: 'no_project' | 'static' | 'degraded' | 'multi';
+  /** Track B B1(2): number of knowledge graphs in the multi-KG union. Only
+   *  meaningful when memoryMode === 'multi'; drives the "N graphs" label. */
+  projectCount?: number;
   /** Narrow host (e.g. the editor AI panel): render icon-only so the chip
    *  doesn't crowd out the header action buttons. Full label stays in the
    *  popover. */
   compact?: boolean;
 }
 
-export function MemoryIndicator({ projectId, memoryMode, compact }: Props) {
+export function MemoryIndicator({ projectId, memoryMode, projectCount, compact }: Props) {
   const { t } = useTranslation('knowledge');
   const [open, setOpen] = useState(false);
   const { accessToken } = useAuth();
@@ -53,13 +56,21 @@ export function MemoryIndicator({ projectId, memoryMode, compact }: Props) {
   // Effective mode: explicit prop wins; otherwise derive from projectId
   // (matches the chat-service GET response computation, so SSR/initial
   // loads agree even before the first SSE event).
-  const effectiveMode: 'no_project' | 'static' | 'degraded' =
+  const effectiveMode: 'no_project' | 'static' | 'degraded' | 'multi' =
     memoryMode ?? (isProject ? 'static' : 'no_project');
   const isDegraded = effectiveMode === 'degraded';
+  // Track B B1(2) — a union of ≥2 knowledge graphs. The chip shows a count
+  // rather than one project name (the fetched name is still the FIRST/anchor).
+  const isMulti = effectiveMode === 'multi';
 
-  const label = isProject
-    ? projectQuery.data?.name ?? t('indicator.modes.project')
-    : t('indicator.modes.global');
+  const label = isMulti
+    ? t('indicator.modes.multi', {
+        count: projectCount ?? 2,
+        defaultValue: '{{count}} knowledge graphs',
+      })
+    : isProject
+      ? projectQuery.data?.name ?? t('indicator.modes.project')
+      : t('indicator.modes.global');
 
   return (
     <div className="relative min-w-0">
@@ -123,6 +134,16 @@ export function MemoryIndicator({ projectId, memoryMode, compact }: Props) {
                 t('indicator.popover.globalBody')
               )}
             </p>
+
+            {isMulti && (
+              <div className="mb-3 rounded-md border border-primary/30 bg-primary/5 px-2 py-1.5 text-[10px] leading-relaxed text-primary">
+                {t('indicator.popover.multiBody', {
+                  count: projectCount ?? 2,
+                  defaultValue:
+                    'This chat is grounded on {{count}} knowledge graphs at once — facts are tagged with their source.',
+                })}
+              </div>
+            )}
 
             {isDegraded && (
               <div className="mb-3 rounded-md border border-warning/30 bg-warning/5 px-2 py-1.5 text-[10px] leading-relaxed text-warning">

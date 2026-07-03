@@ -38,6 +38,18 @@ def test_w3_compact_columns_are_guarded_additive_alters():
     ), "compacted_before_seq ALTER must be IF-NOT-EXISTS guarded"
 
 
+def test_track_b_project_ids_column_is_guarded_additive_alter():
+    # Track B B1(2) — chat_sessions.project_ids (multi-KG grounding set) follows
+    # the same DO-block IF-NOT-EXISTS convention. UUID[] with a NOT NULL DEFAULT
+    # '{}' so existing rows back-fill to the empty (legacy single-project) set.
+    assert re.search(
+        r"IF NOT EXISTS \(SELECT 1 FROM information_schema\.columns "
+        r"WHERE table_name='chat_sessions' AND column_name='project_ids'\) THEN\s*"
+        r"ALTER TABLE chat_sessions ADD COLUMN project_ids UUID\[\] NOT NULL DEFAULT '\{\}';",
+        DDL,
+    ), "project_ids ALTER must be IF-NOT-EXISTS guarded with an empty-array default"
+
+
 def test_ddl_has_no_unguarded_alter_add_column():
     # every ALTER ... ADD COLUMN in the boot DDL must live inside a DO-block
     # guard — a bare one would crash the second boot. Cheap structural pin.

@@ -298,7 +298,7 @@ async def voice_stream_response(
     # ── Step 3: LLM stream + TTS pipeline ────────────────────────────
     # Load session settings (same as stream_response)
     session_row = await pool.fetchrow(
-        "SELECT system_prompt, generation_params, project_id, working_memory_seed FROM chat_sessions WHERE session_id = $1",
+        "SELECT system_prompt, generation_params, project_id, project_ids, working_memory_seed FROM chat_sessions WHERE session_id = $1",
         session_id,
     )
     system_prompt = session_row["system_prompt"] if session_row else None
@@ -313,6 +313,11 @@ async def voice_stream_response(
 
     _resolve_and_stash_reasoning(gen_params, None)
     project_id = session_row.get("project_id") if session_row else None
+    # Track B B1(2) — multi-KG: same effective-target resolution as the text path.
+    from app.services.stream_service import resolve_grounding_target
+    _build_project_id, _build_project_ids = resolve_grounding_target(
+        session_row, str(project_id) if project_id else None,
+    )
 
     # ── K5: build memory block via knowledge-service ────────────────────────
     # Voice mode benefits from memory just like text mode. Failures
@@ -321,7 +326,8 @@ async def voice_stream_response(
     kctx = await knowledge_client.build_context(
         user_id=user_id,
         session_id=session_id,
-        project_id=str(project_id) if project_id else None,
+        project_id=_build_project_id,
+        project_ids=_build_project_ids,
         message=transcript,
     )
 

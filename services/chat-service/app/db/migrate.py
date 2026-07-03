@@ -120,6 +120,18 @@ END $$;
 CREATE INDEX IF NOT EXISTS idx_chat_sessions_project
   ON chat_sessions(project_id) WHERE project_id IS NOT NULL;
 
+-- Track B B1(2) — multi-KG: a session may ground on a SET of knowledge projects
+-- (world + member books) unioned into one context block. `project_ids` is the
+-- ordered set; the legacy single `project_id` stays for back-compat + tool scope.
+-- No FK (knowledge_projects lives in loreweave_knowledge). Empty/NULL ⇒ the
+-- legacy single-project (or no-project) path. Validated by knowledge-service on
+-- context build (unknown ids are owner-scoped-filtered, not fatal).
+DO $$ BEGIN
+  IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='chat_sessions' AND column_name='project_ids') THEN
+    ALTER TABLE chat_sessions ADD COLUMN project_ids UUID[] NOT NULL DEFAULT '{}';
+  END IF;
+END $$;
+
 -- A2A phase-2 — optional "composer" model for in-turn prose delegation. When
 -- set, the orchestrator (session model) may call the server-side compose_prose
 -- tool, which streams THIS model to generate prose and returns it as the tool

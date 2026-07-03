@@ -340,6 +340,30 @@ class TestKnowledgeClientBodyNormalisation:
         assert body["message"] == ""
         await client.aclose()
 
+    @pytest.mark.asyncio
+    async def test_project_ids_forwarded_to_body(self):
+        """Track B B1(2): a non-empty project_ids set is forwarded verbatim so
+        knowledge-service's builder routes to the multi-KG union."""
+        captured: list = []
+        client = _make_client(_capture(captured))
+        await client.build_context(
+            user_id="u", project_ids=["p1", "p2"], message="hi",
+        )
+        body = self._json_body(captured[0])
+        assert body["project_ids"] == ["p1", "p2"]
+        await client.aclose()
+
+    @pytest.mark.asyncio
+    async def test_empty_project_ids_omitted_from_body(self):
+        """An empty/None set is omitted — only the single-project / no-project
+        path applies then."""
+        captured: list = []
+        client = _make_client(_capture(captured))
+        await client.build_context(user_id="u", project_ids=[], message="hi")
+        body = self._json_body(captured[0])
+        assert "project_ids" not in body
+        await client.aclose()
+
     @staticmethod
     def _json_body(request: httpx.Request) -> dict:
         import json as _json

@@ -33,6 +33,10 @@ export interface ChatSession {
   // (static project memory). Mirrors the backend column added
   // by chat-service's K5 migration.
   project_id: string | null;
+  // Track B B1(2) — multi-KG: the session's grounding project SET (world +
+  // member books) unioned into one memory block. Empty = the legacy
+  // single-project (project_id) path. ≥2 → the "multi" memory mode.
+  project_ids?: string[];
   // A2A phase-2: optional "composer" model. When set, the orchestrator
   // (model_ref) can call compose_prose, which streams THIS model for prose.
   composer_model_source?: string | null;
@@ -46,10 +50,11 @@ export interface ChatSession {
   //   static     — project linked, AI sees its summary + glossary
   //   degraded   — knowledge-service was unreachable on the last
   //                turn and chat-service fell back to recent-only
-  // GET responses populate from `project_id` (no_project | static).
+  // GET responses populate from `project_id` (no_project | static | multi).
   // The SSE stream emits a `memory-mode` event on every turn so the
   // FE can flip to `degraded` when the upstream call falls back.
-  memory_mode?: 'no_project' | 'static' | 'degraded';
+  //   multi — a set of ≥2 knowledge graphs unioned into one context.
+  memory_mode?: 'no_project' | 'static' | 'degraded' | 'multi';
   // Story 04: session-scoped tool/skill curation (empty = auto-discovery).
   enabled_tools?: string[];
   enabled_skills?: string[];
@@ -330,6 +335,10 @@ export interface PatchSessionPayload {
   // must emit `"project_id": null` for the clear case — keep this
   // explicitly nullable rather than `string | undefined`.
   project_id?: string | null;
+  // Track B B1(2) — multi-KG: set/replace the grounding project SET. Presence
+  // in the body drives the write (an explicit [] clears it back to the legacy
+  // single-project path); omitted leaves it alone.
+  project_ids?: string[];
   // A2A phase-2: set/clear the composer model. Same model_fields_set
   // semantics as project_id — emit explicit null to clear.
   composer_model_source?: string | null;

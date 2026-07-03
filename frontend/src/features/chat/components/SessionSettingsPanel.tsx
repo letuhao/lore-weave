@@ -5,7 +5,7 @@ import { useTranslation } from 'react-i18next';
 import { useAuth } from '@/auth';
 import { CHAT_CAPABILITY } from '@/features/settings/api';
 import { ModelPicker } from '@/components/model-picker';
-import { ProjectPicker } from '@/components/shared/ProjectPicker';
+import { MultiProjectPicker } from '@/components/shared/MultiProjectPicker';
 import { chatApi } from '../api';
 import type { ChatSession, GenerationParams, PatchSessionPayload, ReasoningEffort } from '../types';
 
@@ -54,12 +54,16 @@ export function SessionSettingsPanel({ session, onSessionUpdate, onClose }: Sess
   // (falls back to the per-user planner default / chat fallback).
   const [selectedPlannerRef, setSelectedPlannerRef] = useState(session.planner_model_ref ?? '');
 
-  // K9.1 / W4: project picker — drives knowledge-service memory mode for
-  // this session. The shared ProjectPicker self-loads active projects and
-  // resolves a linked-but-archived project by id, so the panel no longer
-  // owns a useProjects query or an archived-placeholder branch.
-  const [selectedProjectId, setSelectedProjectId] = useState<string | null>(
-    session.project_id,
+  // K9.1 / W4 + Track B B1(2): the memory link is now a SET of knowledge graphs
+  // (multi-KG union). Seed from project_ids when present, else the legacy single
+  // project_id (back-compat display for pre-B1(2) sessions). The first id doubles
+  // as the tool-scope anchor (project_id) — see handleProjectsChange.
+  const [selectedProjectIds, setSelectedProjectIds] = useState<string[]>(
+    session.project_ids?.length
+      ? session.project_ids
+      : session.project_id
+        ? [session.project_id]
+        : [],
   );
 
   // D-CHAT-01: debounce + accumulator. We coalesce all PATCHes that
@@ -223,11 +227,13 @@ export function SessionSettingsPanel({ session, onSessionUpdate, onClose }: Sess
     });
   }
 
-  function handleProjectChange(next: string | null) {
-    // ProjectPicker emits null on clear. Send explicit null so
-    // chat-service's model_fields_set sees the unlink.
-    setSelectedProjectId(next);
-    patchSession({ project_id: next });
+  function handleProjectsChange(next: string[]) {
+    // Track B B1(2): write the grounding SET. Keep the legacy single project_id
+    // in sync with the FIRST selected id — it's the tool-scope anchor
+    // (X-Project-Id) AND the back-compat single-grounding value when the set has
+    // ≤1 entry. Empty set → explicit null clears both (model_fields_set sees it).
+    setSelectedProjectIds(next);
+    patchSession({ project_ids: next, project_id: next[0] ?? null });
   }
 
   return (
@@ -302,18 +308,23 @@ export function SessionSettingsPanel({ session, onSessionUpdate, onClose }: Sess
           </p>
         </div>
 
-        {/* ── Project (memory link) ──────────────────────────────────── */}
+        {/* ── Knowledge graphs (memory link — multi-KG union) ────────── */}
         <div>
           <label className="mb-1.5 block text-xs font-medium text-muted-foreground">
             {tKnowledge('picker.label')}
           </label>
-          <ProjectPicker
-            value={selectedProjectId}
-            onChange={handleProjectChange}
+          <MultiProjectPicker
+            value={selectedProjectIds}
+            onChange={handleProjectsChange}
             placeholder={tKnowledge('picker.noProject')}
           />
           <p className="mt-1 text-[10px] text-muted-foreground">
-            {tKnowledge('picker.hint')}
+            {selectedProjectIds.length >= 2
+              ? t('settings.project_multi_hint', {
+                  defaultValue:
+                    'The AI is grounded on all selected knowledge graphs at once — facts from each are tagged with their source.',
+                })
+              : tKnowledge('picker.hint')}
           </p>
         </div>
 

@@ -39,6 +39,32 @@ class TestCreateSession:
         assert resp.json()["system_prompt"] == "You are a translator"
 
     @pytest.mark.asyncio
+    async def test_create_session_with_project_ids_persists_set(self, client, mock_pool):
+        """Track B B1(2): the multi-KG grounding set round-trips through create
+        and the UUID[] is bound as the last INSERT arg."""
+        pid_a, pid_b = str(uuid4()), str(uuid4())
+        mock_pool.fetchrow.return_value = make_session_record(project_ids=[pid_a, pid_b])
+        resp = await client.post("/v1/chat/sessions", json={
+            "model_source": "user_model",
+            "model_ref": TEST_MODEL_REF,
+            "project_ids": [pid_a, pid_b],
+        })
+        assert resp.status_code == 201
+        assert resp.json()["project_ids"] == [pid_a, pid_b]
+        # bound as the final INSERT positional (a list of the two id strings)
+        assert list(mock_pool.fetchrow.call_args.args[-1]) == [pid_a, pid_b]
+
+    @pytest.mark.asyncio
+    async def test_create_session_project_ids_over_cap_returns_422(self, client, mock_pool):
+        """The ≤16 cap mirrors knowledge-service's ContextBuildRequest."""
+        resp = await client.post("/v1/chat/sessions", json={
+            "model_source": "user_model",
+            "model_ref": TEST_MODEL_REF,
+            "project_ids": [str(uuid4()) for _ in range(17)],
+        })
+        assert resp.status_code == 422
+
+    @pytest.mark.asyncio
     async def test_create_session_missing_model_ref_returns_422(self, client, mock_pool):
         resp = await client.post("/v1/chat/sessions", json={
             "model_source": "user_model",
@@ -112,6 +138,27 @@ class TestGetSession:
         assert body["memory_mode"] == "static"
 
     @pytest.mark.asyncio
+    async def test_get_session_memory_mode_multi(self, client, mock_pool):
+        """Track B B1(2): a set of ≥2 grounding projects derives memory_mode
+        'multi' on GET (a single link stays 'static')."""
+        pids = [str(uuid4()), str(uuid4())]
+        mock_pool.fetchrow.return_value = make_session_record(project_ids=pids)
+        resp = await client.get(f"/v1/chat/sessions/{TEST_SESSION_ID}")
+        assert resp.status_code == 200
+        body = resp.json()
+        assert body["project_ids"] == pids
+        assert body["memory_mode"] == "multi"
+
+    @pytest.mark.asyncio
+    async def test_get_session_single_project_ids_is_static(self, client, mock_pool):
+        """A single-element set is not 'multi' — one KG is the static path."""
+        pids = [str(uuid4())]
+        mock_pool.fetchrow.return_value = make_session_record(project_ids=pids)
+        resp = await client.get(f"/v1/chat/sessions/{TEST_SESSION_ID}")
+        assert resp.status_code == 200
+        assert resp.json()["memory_mode"] == "static"
+
+    @pytest.mark.asyncio
     async def test_get_session_returns_enabled_tool_arrays(self, client, mock_pool):
         mock_pool.fetchrow.return_value = make_session_record(
             enabled_tools=["find_tools"],
@@ -170,6 +217,56 @@ class TestPatchSession:
         })
         assert resp.status_code == 200
         assert resp.json()["enabled_tools"] == ["book_get_chapter"]
+
+    @pytest.mark.asyncio
+    async def test_patch_session_set_project_ids(self, client, mock_pool):
+        """Track B B1(2): PATCH replaces the grounding set; the write flag is
+        True and the UUID[] value rides the UPDATE args."""
+        pids = [str(uuid4()), str(uuid4())]
+        original = make_session_record()
+        updated = make_session_record(project_ids=pids)
+        mock_pool.fetchrow.side_effect = [original, updated]
+
+        resp = await client.patch(f"/v1/chat/sessions/{TEST_SESSION_ID}", json={
+            "project_ids": pids,
+        })
+        assert resp.status_code == 200
+        assert resp.json()["project_ids"] == pids
+        # UPDATE args: (..., set_project_ids=True, project_ids_value=[pids])
+        args = mock_pool.fetchrow.call_args.args
+        assert args[-2] is True
+        assert list(args[-1]) == pids
+
+    @pytest.mark.asyncio
+    async def test_patch_session_clear_project_ids(self, client, mock_pool):
+        """An explicit [] clears the set back to the single-project path (write
+        flag True, empty value)."""
+        original = make_session_record(project_ids=[str(uuid4())])
+        updated = make_session_record(project_ids=[])
+        mock_pool.fetchrow.side_effect = [original, updated]
+
+        resp = await client.patch(f"/v1/chat/sessions/{TEST_SESSION_ID}", json={
+            "project_ids": [],
+        })
+        assert resp.status_code == 200
+        assert resp.json()["project_ids"] == []
+        args = mock_pool.fetchrow.call_args.args
+        assert args[-2] is True          # present in body → write
+        assert list(args[-1]) == []
+
+    @pytest.mark.asyncio
+    async def test_patch_session_omitted_project_ids_leaves_alone(self, client, mock_pool):
+        """Omitting project_ids leaves the column untouched (write flag False)."""
+        original = make_session_record(project_ids=[str(uuid4())])
+        updated = make_session_record(title="x")
+        mock_pool.fetchrow.side_effect = [original, updated]
+
+        resp = await client.patch(f"/v1/chat/sessions/{TEST_SESSION_ID}", json={
+            "title": "x",
+        })
+        assert resp.status_code == 200
+        args = mock_pool.fetchrow.call_args.args
+        assert args[-2] is False         # not in body → leave alone
 
 
 class TestDeleteSession:

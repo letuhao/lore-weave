@@ -30,12 +30,19 @@ def _row_to_session(r: asyncpg.Record) -> ChatSession:
     if isinstance(gp, str):
         gp = json.loads(gp)
     project_id = r.get("project_id")
-    # K-CLEAN-5 (D-K8-04): derive initial memory_mode from project_id.
+    project_ids = list(r.get("project_ids") or [])
+    # K-CLEAN-5 (D-K8-04): derive initial memory_mode from the project link.
     # `degraded` is intentionally NOT representable here — it's a
     # per-turn state that only the SSE stream knows. A fresh GET
     # always shows the project-derived state until the FE receives a
     # streaming `memory-mode` event with the actual value.
-    memory_mode = "static" if project_id else "no_project"
+    # Track B B1(2): a set of ≥2 → "multi"; a single link → "static".
+    if len(project_ids) >= 2:
+        memory_mode = "multi"
+    elif project_id or project_ids:
+        memory_mode = "static"
+    else:
+        memory_mode = "no_project"
     return ChatSession(
         session_id=r["session_id"],
         owner_user_id=r["owner_user_id"],
@@ -53,6 +60,7 @@ def _row_to_session(r: asyncpg.Record) -> ChatSession:
         # asyncpg.Record supports .get() (0.27+); matches the pattern used
         # by stream_service.py for test dict-mock compatibility.
         project_id=project_id,
+        project_ids=project_ids,
         memory_mode=memory_mode,
         composer_model_source=r.get("composer_model_source"),
         composer_model_ref=r.get("composer_model_ref"),
@@ -75,8 +83,8 @@ async def create_session(
     gp = json.dumps(body.generation_params.model_dump(exclude_unset=True)) if body.generation_params else "{}"
     row = await pool.fetchrow(
         """
-        INSERT INTO chat_sessions (owner_user_id, title, model_source, model_ref, system_prompt, generation_params, project_id, composer_model_source, composer_model_ref, planner_model_source, planner_model_ref)
-        VALUES ($1, $2, $3, $4, $5, $6::jsonb, $7, $8, $9, $10, $11)
+        INSERT INTO chat_sessions (owner_user_id, title, model_source, model_ref, system_prompt, generation_params, project_id, composer_model_source, composer_model_ref, planner_model_source, planner_model_ref, project_ids)
+        VALUES ($1, $2, $3, $4, $5, $6::jsonb, $7, $8, $9, $10, $11, $12::uuid[])
         RETURNING *
         """,
         user_id, body.title, body.model_source, str(body.model_ref), body.system_prompt, gp,
@@ -85,6 +93,7 @@ async def create_session(
         str(body.composer_model_ref) if body.composer_model_ref else None,
         body.planner_model_source,
         str(body.planner_model_ref) if body.planner_model_ref else None,
+        [str(p) for p in body.project_ids] if body.project_ids else [],
     )
     return _row_to_session(row)
 
@@ -217,6 +226,11 @@ async def patch_session(
     set_enabled_skills = "enabled_skills" in body.model_fields_set
     set_activated_tools = "activated_tools" in body.model_fields_set
 
+    # Track B B1(2) — multi-KG grounding set. Presence in the body drives the
+    # write (explicit [] clears back to single-project); omitted leaves alone.
+    set_project_ids = "project_ids" in body.model_fields_set
+    project_ids_value = [str(p) for p in body.project_ids] if body.project_ids else []
+
     row = await pool.fetchrow(
         """
         UPDATE chat_sessions SET
@@ -235,6 +249,7 @@ async def patch_session(
           enabled_tools         = CASE WHEN $18::boolean THEN $19::text[] ELSE enabled_tools END,
           enabled_skills        = CASE WHEN $20::boolean THEN $21::text[] ELSE enabled_skills END,
           activated_tools       = CASE WHEN $22::boolean THEN $23::text[] ELSE activated_tools END,
+          project_ids           = CASE WHEN $24::boolean THEN $25::uuid[] ELSE project_ids END,
           updated_at            = now()
         WHERE session_id=$1 AND owner_user_id=$2
         RETURNING *
@@ -249,6 +264,7 @@ async def patch_session(
         set_enabled_tools, body.enabled_tools or [],
         set_enabled_skills, body.enabled_skills or [],
         set_activated_tools, body.activated_tools or [],
+        set_project_ids, project_ids_value,
     )
     return _row_to_session(row)
 

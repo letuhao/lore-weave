@@ -207,6 +207,7 @@ class KnowledgeClient:
         user_id: str,
         session_id: str | None = None,
         project_id: str | None = None,
+        project_ids: list[str] | None = None,
         message: str = "",
         language: str | None = None,
     ) -> KnowledgeContext:
@@ -251,6 +252,12 @@ class KnowledgeClient:
             body["session_id"] = session_id
         if project_id:
             body["project_id"] = project_id
+        # Track B B1(2) — multi-KG: forward the project SET when present.
+        # knowledge-service's builder gives project_ids precedence over
+        # project_id (≥2 → the union mode, 1 → single, all-stale → 404). Empty
+        # ids are omitted (only the single-project / no-project path applies).
+        if project_ids:
+            body["project_ids"] = list(project_ids)
 
         # K7e: forward the caller's trace_id so knowledge-service (and
         # glossary-service, one hop further) can stitch their logs to
