@@ -121,8 +121,8 @@ Reuse the existing `frontend-tools.contract.json` machinery (record real output 
 
 | Tier | Scope | Isolated validation | GATE to pass |
 |---|---|---|---|
-| **T0 — Wire hygiene (L3)** | `ensure_ascii=False` + concise wire at all tool-result `json.dumps` sites; the L3 lint | Replay the 146K turn; measure token delta on VI/CJK content | ≥ target token cut proven on the replay; L3 lint green |
-| **T1 — Tool response contract (L1/L2)** | `detail/fields/limit` + reference-first on the worst offenders (`composition_list_outline` first) + cheap single-node version read; per-tool contract-snapshot tests; versioned default (compiler passes `summary`, federated keep `full`) | Per-call token delta; snapshot green; federated caller still gets `full` | outline-call token cut proven; **zero consumer regression** |
+| **T0 — Wire hygiene (L3)** | Funnel the ~14 `stream_service.py`/`voice_stream_service.py` tool-result `json.dumps` sites through ONE `_tool_result_content` helper (`ensure_ascii=False` + drop-empty) — 1 file, fixes all 94 tools (§14a); the L3 lint | Replay the 146K turn; measure token delta on VI/CJK content | ≥ target token cut proven on the replay; L3 lint green |
+| **T1 — Tool response contract (L1/L2)** | `detail/fields/limit` + reference-first on the **~32 SET-returning tools ranked by measured bytes×freq** (§14b; port the knowledge byte-histogram to composition/translation/jobs first), worst-first; per-tool contract-snapshot + one live-e2e each (§14c); versioned default (compiler passes `summary`, federated keep `full`); cheap single-node version read | Per-call token delta on the ranked offenders; snapshot green; federated caller still gets `full` | worst-offender token cut proven; **zero consumer regression** |
 | **T2 — Budget meter + target** | `compute_budget` vs an absolute target; GUI monitor upgrade. **Measure-only first**, then flip compaction to fire at target | Meter accuracy vs provider-reported tokens; does compaction fire at target (not window)? | meter within ±X%; compaction triggers at target |
 | **T3 — Planner/Compiler extraction (into shared kernel)** | Extract assembly into the shared **`sdks/python/loreweave_context`** kernel (§12), NOT a chat-local module; chat = first consumer wiring the ports; **behavior-preserving** (byte-identical, no policy yet); Planner owns the tool seed (D8) | Golden test: output identical to pre-refactor on a fixture set; full chat suite green; kernel imports no provider SDK | byte-identical + suite green + kernel provider-gate clean |
 | **T4 — Core Memory Blocks** | `chat_session_blocks` (`focus`,`story_state`) w/ `owner_user_id`+OCC (D9); always-on projection (D4); cadence+cache (D5). **No gating yet.** | Continuity: a follow-up turn still carries `story_state` lore; block token cost ≤ ceiling; refresh cadence works; OCC conflict → self-correcting | continuity proven **with blocks as the safety net**; block cost bounded |
@@ -333,4 +333,46 @@ A small script parses §11a and **FAILS the build if any non-`⊘manual` item la
 - **Tier GATES already force a subset:** a tier's *measured* GATE (§8) can't pass unless its items exist — e.g. T2's "meter within ±X% of provider-reported tokens" is impossible unless the telemetry fields (BE items) are actually emitted; T0's "≥ token cut on the 146K replay" is impossible unless `ensure_ascii=false` actually shipped. Bind each checklist item to the tier whose GATE exercises it, so the measurement is a second net under the per-item test.
 
 **Net:** the checklist stops being "did the agent tick the box?" and becomes "does a green test observe the effect, does the CI meta-check confirm every item has one, and did an adversary fail to refute it?" — three independent nets, none of which is a self-report.
+
+---
+
+## 14. MCP tool refactor — scope + targeted e2e live-test (do NOT refactor all)
+
+**Question (user):** with "hundreds" of MCP tools, does the Law force refactoring ALL of them, and if so live-test them all?
+**Answer: NO.** Grounded inventory (read-only sweep, 2026-07-03): there are **94 domain MCP tools**, not hundreds — 5 Python FastMCP services (**knowledge 30 + admin 2 · composition 44 · translation 12 · jobs 5 · lore-enrichment 1**), **0 in Go, 0 in the TS gateways** (ai-gateway/mcp-public/knowledge-gateway only *federate/relay*; glossary + book are Go and surface *through* knowledge tools). The refactor is **targeted, not all-94**:
+
+### 14a. L3 (ensure_ascii / concise wire) = ONE place, fixes all 94
+The bytes the model sees are NOT serialized by the 94 domain tools — FastMCP returns each tool's `dict` and chat-service **re-parses then re-dumps** it into the provider message at **~14 `json.dumps(payload)` sites in `stream_service.py` (+ `voice_stream_service.py`)**, every one at Python's default `ensure_ascii=True` (the `\uXXXX` tax). So L3 = **funnel those ~14 sites through one `_tool_result_content(payload)` helper with `ensure_ascii=False` + drop-empty** — **one file, one language, zero domain-tool edits, fixes CJK/VI escaping for all 94 tools at once.** (Corrects v2's earlier "one-liner at :907" — it's ~14 sites → 1 helper.) This is **T0**.
+
+### 14b. L1/L2 (reference-first / detail·fields·limit) = ~32 SET-returning tools, ranked by MEASURED bytes
+Only **SET-returning** tools (list_/search_/*_query/read-collection) bloat. The ~62 mutation/propose/confirm/single-read tools return small status/token/id payloads → **`@small_return` exempt or already compliant** (no edit). The **~32 targets** (many already carry a `limit` cap — partial plumbing):
+- **knowledge (13):** `story_search`, `memory_search`, `memory_timeline`, `memory_recall_entity`, `kg_graph_query`, `kg_world_query`, `kg_multi_query`, `kg_entity_edge_timeline`, `kg_schema_read`, `kg_list_templates`, `kg_view_read`, `kg_triage_list`, `kg_project_list`
+- **composition (~13):** `composition_list_outline`, `composition_get_prose`, `composition_get_work`, `composition_list_canon_rules`, `composition_motif_search`, `composition_motif_get`, `composition_motif_book_list`, `composition_motif_link_list`, `composition_motif_suggest_for_chapter`, `composition_arc_suggest`, `composition_arc_import_analyze`, `composition_motif_mine`, `composition_get_generation_job`
+- **translation (4):** `translation_coverage`, `translation_list_versions`, `translation_segment_status`, `translation_job_status`
+- **jobs (2):** `jobs_list`, `jobs_get`
+
+**Prerequisite (data-driven ranking, not guessing):** knowledge-service ALREADY has per-tool Prometheus `knowledge_tool_call_result_size_bytes{tool_name}` + call-count histograms (`app/metrics.py`, all 30 flow through `execute_tool`). composition/translation/jobs do **not** — so **port that histogram to their executors** (or mine the persisted `tool_calls_json` per message) → rank all 32 by **bytes × frequency** and refactor the worst first. Measured worst offenders to start: the `kg_*_query` graph tools, `story_search`/`memory_search`, `composition_get_prose`/`list_outline`/`motif_mine`, `translation_list_versions`.
+
+### 14c. Targeted e2e live-test checklist (NOT all 94; NOT even all 32 upfront)
+Live-e2e is expensive — the **contract-snapshot tests (§13) + byte histograms do the BULK coverage**; live-e2e is the **acceptance proof** for (i) the L3 chokepoint and (ii) each SET-tool actually refactored. Rows (each: `✓test:<live-e2e id>` per §13):
+
+**L3 chokepoint (prove once per distinct service path — CJK/VI content):**
+- [ ] live: `story_search` (VI passages) through chat→gateway→knowledge → bytes drop ≥40% vs ensure_ascii=true baseline
+- [ ] live: `composition_list_outline` (VI synopses) → same
+- [ ] live: `translation_list_versions` (VI text) → same
+- [ ] (one per remaining service path if its results carry CJK/VI)
+
+**Per REFACTORED SET-tool (only the ones actually refactored this pass — start with the ranked top offenders):**
+- [ ] live: `kg_graph_query` — `detail=summary`/`limit` returns bounded refs, not full node+edge tree; token drop measured; `get_by_id` fetches full on demand
+- [ ] live: `kg_world_query` / `kg_multi_query` — bounded cross-book union
+- [ ] live: `memory_search` — reference-first snippets, `limit` honored
+- [ ] live: `composition_get_prose` — `detail=summary` (no full chapter body unless asked)
+- [ ] live: `composition_list_outline` — `{id,title,status,version}` refs, no synopses at `summary`
+- [ ] live: `composition_motif_mine` — bounded output
+- [ ] live: `translation_list_versions` — no full translated bodies at `summary`
+- [ ] … one row per additional SET-tool as it is refactored (the 32-list above is the backlog; rows are added when the tool is picked up, gated by its measured rank)
+
+**Explicitly NOT live-tested:** the ~62 small/mutation tools (contract-snapshot + `@small_return` lint covers them) and any SET-tool not yet refactored (still covered by the byte histogram showing it's below the refactor threshold). Silent-cap rule (§CLAUDE.md): if a tool is deferred below the threshold, `log()` it in the refactor manifest so "not refactored" ≠ "forgotten".
+
+**Scope summary:** L3 = 1 file (all 94). L1/L2 = ~32 tools, ranked by measured bytes, worst-first. Live-e2e = the L3 chokepoint samples + one per refactored SET-tool. Everything else = lint + contract-snapshot + telemetry. This fits the existing tiers: **14a = T0, 14b = T1**, both already GATE-measured on the 146K replay + the byte histograms.
 ```
