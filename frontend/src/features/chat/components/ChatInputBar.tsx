@@ -8,6 +8,7 @@ import TextareaAutosize from 'react-textarea-autosize';
 import { ContextBar } from '../context/ContextBar';
 import type { ContextItem } from '../context/types';
 import { PromptTemplatePicker, type PromptTemplate } from './PromptTemplates';
+import { type SlashCommandItem } from '../hooks/useSlashCommands';
 import { MentionPopover } from './MentionPopover';
 
 // W4 — the effort types/helpers moved to the shared AI-Task Standard module
@@ -131,6 +132,15 @@ export function ChatInputBar({
     setTemplateFilter('');
   }
 
+  // D-REG-P4 — a registry command COMPLETES the `/name ` token (the server expands it
+  // on send); unlike a template, it doesn't replace the input with a prompt body.
+  function handleCommandSelect(cmd: SlashCommandItem) {
+    setValue(`/${cmd.name} `);
+    setShowTemplates(false);
+    setTemplateFilter('');
+    textareaRef.current?.focus();
+  }
+
   function handleValueChange(newValue: string) {
     setValue(newValue);
     // "/" at start of input triggers template picker
@@ -217,6 +227,7 @@ export function ChatInputBar({
           <PromptTemplatePicker
             open={showTemplates}
             filter={templateFilter}
+            onSelectCommand={handleCommandSelect}
             onSelect={handleTemplateSelect}
             onClose={() => { setShowTemplates(false); setTemplateFilter(''); }}
           />
