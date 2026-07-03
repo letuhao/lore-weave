@@ -45,6 +45,19 @@ describe('REG-P3-04 egress fetch policy', () => {
     const ef = makeEgressFetch({ allowlist: [], allowInternal: true, maxBytes: 10 }, base as any);
     await expect(ef('http://127.0.0.1/mcp')).rejects.toThrow(/cap/i);
   });
+  it('strips the Authorization credential on a cross-origin redirect', async () => {
+    const seen: Array<{ url: string; auth: string | null }> = [];
+    const base = async (url: any, init?: any) => {
+      seen.push({ url: String(url), auth: new Headers(init?.headers ?? {}).get('authorization') });
+      if (String(url).includes('a.example')) return new Response(null, { status: 302, headers: { location: 'https://b.example/x' } });
+      return new Response('ok');
+    };
+    const ef = makeEgressFetch({ allowlist: [], allowInternal: true, maxBytes: 1024 }, base as any);
+    await ef('https://a.example/start', { headers: { authorization: 'Bearer user-secret' } });
+    expect(seen[0].auth).toBe('Bearer user-secret'); // original request keeps it
+    expect(seen[1].auth).toBeNull(); // cross-origin redirect must NOT carry it
+  });
+
   it('re-validates a redirect target and blocks a redirect to an internal host', async () => {
     const base = jest.fn(async (url: any) => {
       if (String(url).includes('start')) {
@@ -94,5 +107,17 @@ describe('REG-P3-04 circuit breaker', () => {
     cb.onSuccess('s');
     expect(cb.isOpen('s')).toBe(false);
     expect(cb.canRequest('s')).toBe(true);
+  });
+
+  it('RE-OPENS when the half-open trial itself fails (does not stay half-open forever)', () => {
+    let now = 1000;
+    const cb = new CircuitBreaker(3, 500, () => now);
+    cb.onFailure('s'); cb.onFailure('s'); cb.onFailure('s'); // → open
+    expect(cb.isOpen('s')).toBe(true);
+    now += 600; // cooldown elapsed → half-open
+    expect(cb.canRequest('s')).toBe(true);
+    cb.onFailure('s'); // the trial FAILS → must immediately re-open
+    expect(cb.isOpen('s')).toBe(true);
+    expect(cb.canRequest('s')).toBe(false);
   });
 });

@@ -1,5 +1,7 @@
 import { lookup } from 'node:dns/promises';
+import { lookup as dnsLookupCb } from 'node:dns';
 import { isIP } from 'node:net';
+import { Agent } from 'undici';
 
 /**
  * REG-P3-04 — egress control for the per-user overlay's outbound calls to a user's
@@ -86,6 +88,31 @@ async function assertEgressAllowed(url: URL, opts: EgressOptions): Promise<void>
   }
 }
 
+/**
+ * makePinnedDispatcher returns an undici Agent whose connect-time DNS lookup filters
+ * out every internal address and PINS the socket to a validated one. This closes the
+ * DNS-rebind TOCTOU: the address undici connects to IS the one we validated (no second
+ * resolution between check and connect), mirroring the Go probe's safeDialContext. A
+ * pre-flight `lookup()` cannot be made safe because global fetch re-resolves at connect.
+ */
+function makePinnedDispatcher(allowInternal: boolean): Agent {
+  return new Agent({
+    connect: {
+      // net.LookupFunction — undici calls this at connect time and uses its result.
+      lookup: (hostname: string, options: any, callback: any) => {
+        dnsLookupCb(hostname, { all: true, family: options?.family ?? 0, hints: options?.hints }, (err, addresses) => {
+          if (err) return callback(err, '', 4);
+          const list = (Array.isArray(addresses) ? addresses : [{ address: String(addresses), family: 4 }])
+            .filter((a) => allowInternal || !isBlockedIp(a.address));
+          if (list.length === 0) return callback(new Error(`egress blocked: ${hostname} resolves only to internal addresses`), '', 4);
+          if (options?.all) return callback(null, list as any);
+          return callback(null, list[0].address, list[0].family);
+        });
+      },
+    },
+  });
+}
+
 /** capBody wraps a response so reading past maxBytes errors the stream (bounded memory). */
 function capBody(resp: Response, maxBytes: number): Response {
   const cl = resp.headers.get('content-length');
@@ -122,17 +149,28 @@ function capBody(resp: Response, maxBytes: number): Response {
  * the round-3 redirect-SSRF defer). */
 export function makeEgressFetch(opts: EgressOptions, base: FetchLike = fetch as any): FetchLike {
   const maxRedirects = opts.maxRedirects ?? 3;
+  // IP-pinning dispatcher (rebind-safe). Passed to global fetch via init.dispatcher.
+  const dispatcher = makePinnedDispatcher(opts.allowInternal);
   return async (input: any, init?: any): Promise<Response> => {
+    const origin0 = new URL(typeof input === 'string' ? input : input.url ?? String(input)).origin;
     let url = new URL(typeof input === 'string' ? input : input.url ?? String(input));
     let hops = 0;
-    // Never let the underlying fetch auto-follow — we re-validate each hop.
-    const reqInit = { ...(init ?? {}), redirect: 'manual' as const };
+    // Never let the underlying fetch auto-follow — we re-validate each hop. dispatcher
+    // pins the connection to a validated IP (undici honours init.dispatcher).
+    const reqInit: any = { ...(init ?? {}), redirect: 'manual' as const, dispatcher };
     while (true) {
       await assertEgressAllowed(url, opts);
       const resp = await base(url, reqInit);
       if (resp.status >= 300 && resp.status < 400 && resp.headers.get('location')) {
         if (hops++ >= maxRedirects) throw new Error('egress blocked: too many redirects');
         url = new URL(resp.headers.get('location')!, url);
+        // Do NOT carry the Authorization credential across an origin change (a 302 to
+        // a different host must not receive the user's bearer/oauth token).
+        if (url.origin !== origin0 && reqInit.headers) {
+          const h = new Headers(reqInit.headers as any);
+          h.delete('authorization');
+          reqInit.headers = Object.fromEntries(h.entries());
+        }
         continue; // re-validate the redirect target next loop
       }
       return capBody(resp, opts.maxBytes);
@@ -185,6 +223,14 @@ export class CircuitBreaker {
 
   onFailure(key: string): void {
     const s = this.state.get(key) ?? { failures: 0, openUntil: 0 };
+    // A failure during a half-open trial (breaker was open, cooldown elapsed) must
+    // RE-OPEN immediately — otherwise openUntil stays in the past and canRequest()
+    // returns true forever, defeating the breaker.
+    if (s.openUntil > 0 && this.now() >= s.openUntil) {
+      s.openUntil = this.now() + this.cooldownMs;
+      this.state.set(key, s);
+      return;
+    }
     s.failures += 1;
     if (s.failures >= this.threshold) {
       s.openUntil = this.now() + this.cooldownMs;

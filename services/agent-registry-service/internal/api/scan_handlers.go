@@ -157,8 +157,11 @@ func (s *Server) acceptRiskMcpServer(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusNotFound, "NOT_FOUND", "server not found")
 		return
 	}
-	if status != "suspended" && status != "pending" {
-		writeError(w, http.StatusConflict, "NOT_QUARANTINED", "only a quarantined (suspended/pending) server can be accept-risked")
+	// Only a SCANNED-and-flagged server (suspended) may be accept-risked. A 'pending'
+	// server hasn't been scanned yet — forcing it active would federate unscanned,
+	// attacker-controlled tool descriptions; the user must rescan (→ suspended) first.
+	if status != "suspended" {
+		writeError(w, http.StatusConflict, "NOT_QUARANTINED", "only a scanned+flagged (suspended) server can be accept-risked; run a scan first")
 		return
 	}
 	if _, err := s.db.Exec(r.Context(), `UPDATE mcp_server_registrations SET status='active', updated_at=now() WHERE mcp_server_id=$1`, mid); err != nil {

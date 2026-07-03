@@ -131,6 +131,10 @@ var modelCapabilityMarkers = []string{
 
 // looksLikeModelEndpoint returns the matched marker (or "") when the URL/name reads
 // as a model-capability endpoint that must go through provider-registry BYOK instead.
+// NOTE (accepted, /review-impl): this is a best-effort POLICY heuristic, not a security
+// boundary — a model proxy on a custom domain/path (e.g. https://proxy.x/infer) will
+// pass. It catches the common/honest cases; the provider-gateway invariant is enforced
+// structurally elsewhere (no provider SDK imports; ai-provider-gate). Not exploitable.
 func looksLikeModelEndpoint(rawURL, displayName string) string {
 	hay := strings.ToLower(rawURL + " " + displayName)
 	for _, m := range modelCapabilityMarkers {

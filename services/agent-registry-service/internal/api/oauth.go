@@ -8,6 +8,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"log/slog"
 	"net/http"
 	"net/url"
 	"strings"
@@ -353,6 +354,11 @@ func (s *Server) refreshExpiringTokens(ctx context.Context) {
 		if tok.RefreshToken == "" {
 			tok.RefreshToken = refresh // some AS omit a rotated refresh token
 		}
-		_ = s.storeOAuthTokens(ctx, j.mid, meta, tok)
+		if err := s.storeOAuthTokens(ctx, j.mid, meta, tok); err != nil {
+			// The AS may have rotated (invalidated) the old refresh token during the
+			// exchange; if the store failed we now hold a token we can't persist. Log
+			// it so the stuck connection is visible rather than silently dying at expiry.
+			slog.Error("oauth refresh store failed", "mcp_server_id", j.mid, "error", err)
+		}
 	}
 }

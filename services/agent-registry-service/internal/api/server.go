@@ -5,6 +5,7 @@ import (
 	"crypto/aes"
 	"crypto/cipher"
 	"crypto/rand"
+	"crypto/subtle"
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
@@ -223,7 +224,12 @@ func (s *Server) Router() http.Handler {
 
 func (s *Server) requireInternalToken(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if s.cfg.InternalServiceToken != "" && r.Header.Get("X-Internal-Token") != s.cfg.InternalServiceToken {
+		// Fail CLOSED: an empty configured token denies all /internal routes (never
+		// fail-open to an unauthenticated secret-decrypt oracle). Constant-time compare
+		// to avoid a timing side channel on the shared secret.
+		want := s.cfg.InternalServiceToken
+		got := r.Header.Get("X-Internal-Token")
+		if want == "" || subtle.ConstantTimeCompare([]byte(got), []byte(want)) != 1 {
 			writeError(w, http.StatusUnauthorized, "INTERNAL_UNAUTHORIZED", "invalid internal token")
 			return
 		}

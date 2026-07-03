@@ -68,12 +68,18 @@ func newProbeClient(allowInternal bool) *http.Client {
 			TLSHandshakeTimeout: 5 * time.Second,
 			DisableKeepAlives:   true,
 		},
-		// Do not follow redirects blindly — a 302 to an internal host is a classic
-		// SSRF bypass. Each hop is re-dialed through safeDialContext anyway, but we
-		// also cap the chain and re-validate the target host.
+		// Refuse ANY cross-host redirect. Each hop is already re-dialed through
+		// safeDialContext (so a 302→internal is blocked at dial), but Go only strips
+		// standard auth headers on a cross-host redirect — NOT our custom
+		// X-Internal-Token/X-User-Id envelope (sent when probing an internal server).
+		// A cross-host redirect must not carry those, so we reject it outright; a
+		// same-host redirect (path change) is capped at 3.
 		CheckRedirect: func(req *http.Request, via []*http.Request) error {
 			if len(via) >= 3 {
 				return fmt.Errorf("too many redirects")
+			}
+			if len(via) > 0 && req.URL.Host != via[0].URL.Host {
+				return fmt.Errorf("cross-host redirect refused (%s → %s)", via[0].URL.Host, req.URL.Host)
 			}
 			return nil
 		},
