@@ -107,6 +107,45 @@ run_subagent(subagent: <enum of the caller's enabled subagent names>, task: stri
 - **Recursion/DoS:** depth cap = 1; the sub-run has its own (smaller) iteration cap; the
   scoped set excludes `run_subagent`. A subagent cannot spawn another.
 
+## 7b. Edge cases & residual risks (from an industry-practice review)
+
+Grounded in Claude Code subagents + the 2025-26 multi-agent-security literature
+(isolated context / final-output-only, per-agent tool whitelisting, delegation-chain
+logging, indirect-prompt-injection). Each below is a MUST unless marked.
+
+1. **Frontend tools are excluded from `tool_scope`.** A frontend/UI tool (`propose_edit`,
+   `ui_open_studio_panel`, `confirm_action`, …) SUSPENDS for client execution — there is
+   no browser in a nested server-side loop, so it would hang/no-op. The scoped set
+   excludes frontend tools AND meta tools; a `tool_scope` glob that would match one is
+   silently dropped from the sub-run (documented in the def's UI: "subagents run
+   headless — UI tools don't apply").
+2. **Result-size cap.** The synthesized result returned to the main turn is capped
+   (e.g. ~4 KB / a token budget); a subagent that returns 50 KB would re-pollute the main
+   context and defeat the whole isolation benefit. Over-cap → truncate + a note.
+3. **Cancellation threads through.** The main turn's `cancel_check` is passed into the
+   nested `_stream_with_tools`; cancelling the main turn cancels the sub-run (no orphaned
+   background LLM spend). Mirrors the repo's existing cancel_check contract.
+4. **Empty scope is allowed (text-only).** If `tool_scope` resolves to zero tools (globs
+   match nothing / empty catalog), the sub-run still executes as a pure reasoning pass
+   (no tools advertised) rather than erroring — a "persona rewrite/summarize" subagent is
+   valid. `tool_scope=["*"]` is permitted but the builder WARNS ("this grants the subagent
+   your full tool access — scoping is the safety benefit").
+5. **Token/cost budget.** Industry note: subagent-heavy flows can cost ~7× a single
+   thread (each keeps its own context). The sub-run carries a smaller iteration cap AND
+   the nested tokens are debited against the SAME turn budget (`budget.remaining()` style)
+   so a subagent can't run the turn past its ceiling.
+6. **Indirect prompt injection (residual, mitigated not eliminated).** A scoped tool can
+   return attacker-controlled text that steers the sub-model to misuse another *in-scope*
+   tool. The `tool_scope` whitelist BOUNDS the blast radius (the whole point — a
+   `glossary_*` subagent can never be injected into `book_write`); the caller's permission
+   clamp bounds writes. Full injection defense (causal attribution / provenance) is out of
+   scope — documented as residual, same posture as the main loop.
+7. **model_ref fallback.** An invalid/deleted `model_ref` falls back to the turn's model
+   (never hard-fails the delegation); logged.
+8. **Delegation-chain audit.** The `subagent_run` event records the caller→subagent edge
+   (who delegated what, which tools ran) — the "delegation-chain logging" the multi-agent
+   access-control literature calls for.
+
 ## 8. Observability
 
 - Emit a `subagent_run` activity event (name, tools_used, ok, latency, tokens).

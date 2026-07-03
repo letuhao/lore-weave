@@ -100,6 +100,41 @@ check `createMcpServer`/`createPlugin` use for System writes). All under
 - **Egress:** the pull itself is one bounded outbound call to the known registry host;
   no user input drives the URL.
 
+## 7b. Edge cases & residual risks (from an industry-practice review)
+
+The official registry does namespace authentication (GitHub/DNS/HTTP challenges) but
+explicitly "relies on the broader ecosystem for security scanning of actual server code"
+and expects "aggregators to implement additional security checks, ratings, or curation."
+And **verification ≠ safety** — the official channel has shipped a backdoor (Postmark) and
+a verified marketplace leaked 3,000 credentials (Smithery). So our scan + admin gate is
+the correct second layer, and these edge cases are load-bearing:
+
+1. **Denylist / retroactive-removal sync (MUST).** The registry can denylist or remove a
+   server after we approved it (spam/malicious/impersonation). On each `pull`, an
+   already-`approved` `registry_id` that is now **absent or flagged deleted upstream** →
+   the linked System server is **suspended** (dropped from federation) + the queue row
+   marked `revoked_upstream`, audited. Without this we'd keep serving a rug-pulled server.
+2. **Rug-pull / tool-definition mutation (MUST for System tier).** A server can serve a
+   clean `tools/list` at approval and a poisoned one later (the "rug-pull" the 2026 MCP
+   literature + mcp-scan mutation-detection target). System-tier ingested servers get a
+   **periodic re-scan** (reuse the P3 `runScan`); a newly-HIGH finding → auto-`suspended`.
+   (This also retro-hardens P3: a scheduled rescan of external servers, not just on-demand.)
+3. **Endpoint dedup on approve (MUST).** Two registry entries can share an endpoint, or an
+   endpoint may already be a System server. Approve rejects/links a duplicate rather than
+   creating a second System row (System-tier currently has no `UNIQUE(endpoint)` — add a
+   `uq_mcp_reg_system` partial index or check-before-insert).
+4. **Refresh cadence.** Industry guidance: aggregators pull "on a regular but infrequent
+   basis (~once/hour)." v1 is manual admin pull; a **scheduled hourly pull worker** (+ the
+   denylist-sync + rescan of #1/#2) is the M-next target, off by default.
+5. **OAuth-required official servers.** An entry whose remote needs auth → the approval
+   scan probe 401s → the System server lands `error` (not federated), and the admin UI
+   surfaces "needs OAuth" so the admin runs the P3 `/oauth/start` flow before it activates.
+6. **Pull abuse / upstream courtesy.** A min-interval between pulls (admin-only, but avoid
+   hammering the upstream) + a page cap; a partial pull is fine (fail-soft, logged).
+7. **Namespace-auth trust is NOT sufficient.** We do not treat an official listing as
+   trusted — every approval still runs the full P3 SSRF guard + model-capability rejection
+   + scan. (This is the "verification ≠ safety" lesson made concrete.)
+
 ## 8. Testing
 
 - **Unit:** the upstream-entry → queue-row mapping (pick the streamable-http remote; skip
