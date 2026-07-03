@@ -29,6 +29,7 @@ from app.tools.graph_schema_tools import (
     KgMultiQueryArgs,
     KgProposeEdgeArgs,
     KgTriageResolveArgs,
+    KgWorldQueryArgs,
     _resolve_project_owner,
     _resolve_project_owner_and_level,
 )
@@ -1214,3 +1215,116 @@ def test_kg_multi_query_advertises_project_ids_bounds():
     assert prop["type"] == "array"
     assert prop["minItems"] == 1
     assert prop["maxItems"] == 16
+
+
+# ── Track B B1(4): cross-partition unification (`unify` enum + wiring) ────
+
+
+def test_unify_enum_matches_model_literal_on_both_tools():
+    """B1(4)/EC-M6 — the machine-readable `unify` enum on kg_world_query AND
+    kg_multi_query equals the arg-model Literal value-set (enum-locked for weak
+    models; drift-locked). T0 ships ['off','by_name']; T1 widens to add 'semantic'."""
+    from app.tools.graph_schema_tools import _UNIFY_MODES
+
+    for name in ("kg_world_query", "kg_multi_query"):
+        prop = _defn(name)["function"]["parameters"]["properties"]["unify"]
+        assert prop["type"] == "string"
+        assert prop["enum"] == list(_UNIFY_MODES) == ["off", "by_name"]
+    assert KgMultiQueryArgs(project_ids=["p1"]).unify == "off"  # default
+    assert KgWorldQueryArgs(world_id="w").unify == "off"
+    with pytest.raises(ValidationError):
+        KgMultiQueryArgs(project_ids=["p1"], unify="semantic")  # not in the T0 enum
+    with pytest.raises(ValidationError):
+        KgWorldQueryArgs(world_id="w", unify="nonsense")
+
+
+@pytest.mark.asyncio
+async def test_kg_multi_query_default_off_omits_unify_keys_and_skips_unifier(monkeypatch):
+    """EC-M5 — default unify='off' is byte-identical to the forest: no
+    unification_clusters / bridge_edges keys, and the unifier is NEVER called."""
+    import app.tools.kg_unify as ku
+
+    owned_a, owned_b = uuid4(), uuid4()
+    repo = _multi_repo({owned_a, owned_b})
+    _patch_subgraph(monkeypatch, {})
+    called = {"n": 0}
+
+    async def _boom(*a, **k):
+        called["n"] += 1
+        return {}
+
+    monkeypatch.setattr(ku, "unify_subgraph", _boom)
+
+    ctx = _ctx(user_id=_OWNER, projects_repo=repo)
+    res = await execute_tool(
+        ctx, "kg_multi_query", {"project_ids": [str(owned_a), str(owned_b)]}
+    )
+    assert res.success, res.error
+    assert "unification_clusters" not in res.result
+    assert "bridge_edges" not in res.result
+    assert called["n"] == 0  # off never touches the unifier
+
+
+@pytest.mark.asyncio
+async def test_kg_multi_query_unify_by_name_merges_unifier_result(monkeypatch):
+    """B1(4) wiring proof — unify='by_name' calls the unifier and MERGES its additive
+    keys into the result without clobbering the coverage keys."""
+    import app.tools.kg_unify as ku
+
+    owned_a, owned_b = uuid4(), uuid4()
+    repo = _multi_repo({owned_a, owned_b})
+    _patch_subgraph(monkeypatch, {})
+    seen: dict = {}
+
+    async def _fake_unify(session, *, user_id, subgraph, method):
+        seen["method"] = method
+        return {
+            "unification_clusters": [{"cluster_id": "uc_x"}],
+            "bridge_edges": [],
+            "unify_method": method,
+            "unify_capped": False,
+        }
+
+    monkeypatch.setattr(ku, "unify_subgraph", _fake_unify)
+
+    ctx = _ctx(user_id=_OWNER, projects_repo=repo)
+    res = await execute_tool(
+        ctx,
+        "kg_multi_query",
+        {"project_ids": [str(owned_a), str(owned_b)], "unify": "by_name"},
+    )
+    assert res.success, res.error
+    assert seen["method"] == "by_name"
+    assert res.result["unification_clusters"] == [{"cluster_id": "uc_x"}]
+    assert res.result["unify_method"] == "by_name"
+    assert res.result["partitions_read"] == 2  # coverage keys survive the merge
+
+
+@pytest.mark.asyncio
+async def test_kg_world_query_unify_by_name_wired(monkeypatch):
+    """B1(4) — the same unification wiring is present on kg_world_query."""
+    import app.tools.kg_unify as ku
+    import app.world_rollup as wr
+
+    async def _fake_resolve(*, world_id, user_id, repo, book):
+        return SimpleNamespace(project_ids=[str(uuid4()), str(uuid4())], unreadable_count=0)
+
+    monkeypatch.setattr(wr, "resolve_world_partitions", _fake_resolve)
+    _patch_subgraph(monkeypatch, {})
+
+    seen: dict = {}
+
+    async def _fake_unify(session, *, user_id, subgraph, method):
+        seen["method"] = method
+        return {"unification_clusters": [], "bridge_edges": [],
+                "unify_method": method, "unify_capped": False}
+
+    monkeypatch.setattr(ku, "unify_subgraph", _fake_unify)
+
+    ctx = _ctx(user_id=_OWNER, book_client=AsyncMock())
+    res = await execute_tool(
+        ctx, "kg_world_query", {"world_id": str(uuid4()), "unify": "by_name"}
+    )
+    assert res.success, res.error
+    assert seen["method"] == "by_name"
+    assert res.result["unify_method"] == "by_name"

@@ -119,6 +119,12 @@ _NAME_MAX = 200
 # Fact-types accepted by the pending-facts inbox (mirrors db.models.FactType).
 _PROPOSE_FACT_TYPES = ("decision", "preference", "milestone", "negation")
 
+# B1(4) — cross-partition unification mode for the multi-KG read tools
+# (kg_world_query / kg_multi_query). "off" (default) = today's forest,
+# byte-identical (EC-M5). "by_name" = lexical unification (T0). "semantic" is
+# added in T1 (in-Python cosine + on-demand embed). Enum-locked (LLM-client-first).
+_UNIFY_MODES = ("off", "by_name")
+
 # KG-LOCAL triage actions this lane resolves directly (Edit-gated, reversible).
 # The schema-mutating + glossary-handoff actions are class-C (KM6) and rejected
 # here with a clear tool error pointing the agent at the human-confirm surface.
@@ -152,6 +158,7 @@ class KgWorldQueryArgs(BaseModel):
 
     world_id: str = Field(min_length=1, max_length=200)
     limit: int = Field(default=200, ge=1, le=GRAPH_LIMIT_MAX)
+    unify: Literal["off", "by_name"] = "off"
 
 
 class KgMultiQueryArgs(BaseModel):
@@ -169,6 +176,7 @@ class KgMultiQueryArgs(BaseModel):
 
     project_ids: list[str] = Field(min_length=1, max_length=16)
     limit: int = Field(default=200, ge=1, le=GRAPH_LIMIT_MAX)
+    unify: Literal["off", "by_name"] = "off"
 
 
 class KgEntityEdgeTimelineArgs(BaseModel):
@@ -427,6 +435,20 @@ _PROJECT_ID_PROP = {
     ),
 }
 
+# B1(4) — the `unify` enum shared by kg_world_query + kg_multi_query. Enum-locked
+# so a weak model picks a valid mode; the 1..16-style bound discipline of #1.
+_UNIFY_PROP = {
+    "type": "string",
+    "enum": list(_UNIFY_MODES),
+    "description": (
+        "Cross-book entity unification. 'off' (default) returns the raw per-book "
+        "forest unchanged. 'by_name' recognizes the SAME entity appearing across "
+        "the different books (matching names/aliases) and adds unification_clusters "
+        "+ SAME_AS bridge_edges so you get one connected cross-book graph. Bridges "
+        "are inferred (confidence-scored), never asserted — cite the band."
+    ),
+}
+
 GRAPH_SCHEMA_TOOL_DEFINITIONS: list[dict] = [
     _tool(
         "kg_graph_query",
@@ -479,6 +501,7 @@ GRAPH_SCHEMA_TOOL_DEFINITIONS: list[dict] = [
                 "maximum": GRAPH_LIMIT_MAX,
                 "description": "Max nodes in the union (default 200).",
             },
+            "unify": _UNIFY_PROP,
         },
         ["world_id"],
     ),
@@ -504,6 +527,7 @@ GRAPH_SCHEMA_TOOL_DEFINITIONS: list[dict] = [
                 "maximum": GRAPH_LIMIT_MAX,
                 "description": "Max nodes in the union (default 200).",
             },
+            "unify": _UNIFY_PROP,
         },
         ["project_ids"],
     ),
@@ -1066,6 +1090,14 @@ async def _handle_kg_world_query(ctx: "ToolContext", args: KgWorldQueryArgs) -> 
             project_ids=partitions.project_ids,
             limit=args.limit,
         )
+        # B1(4) — cross-partition unification (opt-in; default-off byte-identical, EC-M5).
+        unify_extra = None
+        if args.unify != "off":
+            from app.tools.kg_unify import unify_subgraph
+
+            unify_extra = await unify_subgraph(
+                session, user_id=str(ctx.user_id), subgraph=subgraph, method=args.unify
+            )
     out = subgraph.model_dump(mode="json")
     # EC-B2 — surface coverage so the agent knows the rollup is partial, not complete.
     out["partitions_read"] = read
@@ -1075,6 +1107,8 @@ async def _handle_kg_world_query(ctx: "ToolContext", args: KgWorldQueryArgs) -> 
             f"{unreadable} member partition(s) are owned by another user and were "
             "skipped (owner-only world rollup); this graph covers only your partitions."
         )
+    if unify_extra is not None:
+        out.update(unify_extra)
     return out
 
 
@@ -1130,6 +1164,14 @@ async def _handle_kg_multi_query(ctx: "ToolContext", args: KgMultiQueryArgs) -> 
             project_ids=readable,
             limit=args.limit,
         )
+        # B1(4) — cross-partition unification (opt-in; default-off byte-identical, EC-M5).
+        unify_extra = None
+        if args.unify != "off":
+            from app.tools.kg_unify import unify_subgraph
+
+            unify_extra = await unify_subgraph(
+                session, user_id=str(ctx.user_id), subgraph=subgraph, method=args.unify
+            )
     out = subgraph.model_dump(mode="json")
     # EC-B2 — surface coverage so the agent knows the union is partial, not complete.
     out["partitions_read"] = read
@@ -1139,6 +1181,8 @@ async def _handle_kg_multi_query(ctx: "ToolContext", args: KgMultiQueryArgs) -> 
             f"{unreadable} requested project(s) are not yours (or don't exist) and were "
             "skipped; this graph covers only your projects."
         )
+    if unify_extra is not None:
+        out.update(unify_extra)
     return out
 
 

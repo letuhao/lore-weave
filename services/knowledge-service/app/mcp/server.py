@@ -648,8 +648,16 @@ async def kg_world_query(
         Field(ge=1, le=GRAPH_LIMIT_MAX),
         "Max nodes in the union (default 200).",
     ] = 200,
+    unify: Annotated[
+        Literal["off", "by_name"],
+        "Cross-book entity unification. 'off' (default) = the raw per-book forest. "
+        "'by_name' recognizes the same entity across the different books and adds "
+        "unification_clusters + inferred SAME_AS bridge_edges (one connected graph).",
+    ] = "off",
 ) -> dict:
-    return await _dispatch(ctx, "kg_world_query", {"world_id": world_id, "limit": limit})
+    return await _dispatch(
+        ctx, "kg_world_query", {"world_id": world_id, "limit": limit, "unify": unify}
+    )
 
 
 @mcp_server.tool(
@@ -675,9 +683,16 @@ async def kg_multi_query(
         Field(ge=1, le=GRAPH_LIMIT_MAX),
         "Max nodes in the union (default 200).",
     ] = 200,
+    unify: Annotated[
+        Literal["off", "by_name"],
+        "Cross-book entity unification. 'off' (default) = the raw per-book forest. "
+        "'by_name' recognizes the same entity across the different books and adds "
+        "unification_clusters + inferred SAME_AS bridge_edges (one connected graph).",
+    ] = "off",
 ) -> dict:
     return await _dispatch(
-        ctx, "kg_multi_query", {"project_ids": project_ids, "limit": limit}
+        ctx, "kg_multi_query",
+        {"project_ids": project_ids, "limit": limit, "unify": unify},
     )
 
 

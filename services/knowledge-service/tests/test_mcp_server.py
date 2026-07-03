@@ -526,6 +526,8 @@ CLOSED_SET_ARGS = {
     "kg_schema_edit": ["verb", "level"],
     "kg_triage_resolve": ["action"],
     "kg_triage_schema_write": ["action"],
+    "kg_world_query": ["unify"],   # B1(4) cross-partition unification mode
+    "kg_multi_query": ["unify"],
 }
 
 # (tool, arg) → the value set the advertised enum must COVER (>=, mirroring
@@ -541,6 +543,8 @@ CLOSED_SET_VALUES = {
     ("kg_triage_schema_write", "action"): {
         "add_to_vocab", "add_to_schema", "widen_target_kinds", "set_multi_active",
     },
+    ("kg_world_query", "unify"): {"off", "by_name"},  # T1 widens to add "semantic"
+    ("kg_multi_query", "unify"): {"off", "by_name"},
 }
 
 
