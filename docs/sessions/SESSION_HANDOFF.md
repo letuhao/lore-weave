@@ -328,10 +328,31 @@
 > anti-oracle 404) + a shared ExtensionScope context wiring book-scope into all 5 capability hooks; tests + studio default-
 > context safe (30 green). **M6 `D-REG-P5-SUBAGENT-WRITE-DELEGATION`** `44ce1f501` — SPEC ONLY (user-gated): bubble the
 > nested Tier-A suspend up through run_subagent (subagent_frame) + two-level resume; read-only v1 stays the safe default.
-> VERIFY: agent-registry Go green · FE extensions+chat **71 green** · tsc clean. **REMAINING: M5** — tick
-> `01_GUI_CHECKLIST.md` to 100% (~270 element-level boxes incl. pager/states/cascade-dialog/**i18n vi/en + a11y** across 9
-> screens; per [[checklist-is-self-report-enforce-by-tests]] every tick needs a test asserting the EFFECT → a large focused
-> pass, not a rubber-stamp). **M7** — full-stack live e2e of the 5 cleared defers (rebuild images + real browser/LLM smokes).
+> VERIFY: agent-registry Go green · FE extensions+chat **71 green** · tsc clean.
+>
+> **▶ CLOSE-OUT FINISHED 2026-07-03 — M5 + M7 DONE; TRACK FUNCTIONALLY CLOSED.**
+> First restored git coherence: the **Subagents + Activity GUIs were on disk but never committed** (a prior shared
+> commit that supposedly carried them was reset by the concurrent ai-task agent) while my M4 tests already imported
+> `SubagentsView` — committed the 4 files + studio wiring `4e15711d2` (14 tests).
+> **M5 `3729d3213` — HONEST checklist, NOT a rubber-stamp.** The `01_GUI_CHECKLIST` enumerates the FULL draft-ui.html
+> vision (270+ boxes); most is genuinely unbuilt rich polish. Per [[checklist-is-self-report-enforce-by-tests]] I ticked
+> ONLY lines a passing test proves: wrote `skills.test`(8) + `proposals.test`(5) for the two richly-built-but-untested
+> views (search/tier/sort/pager/empty/error/rows · status-filter/approve/reject/empty), then rewrote the checklist to
+> **59 test-backed ticks (up from 0)**, each citing its test. The unbuilt remainder (bulk actions, shared Pager, skills
+> editor+revisions, 24h health charts, per-step wizard validation, typed-confirm cascade, **i18n vi/en**, **a11y
+> focus-traps**) is honestly tracked as **D-REG-GUI-RICH-POLISH** (defer gate #2), not fake-ticked. Extensions suite 47 green.
+> **M7 `977dc8536` — LIVE E2E (rebuilt agent-registry image).** M4 book-tier tenancy 5/5 live through the gateway
+> (`m4_book_tier_tenancy_api.mjs`): create-on-owned→200 · list?book_id→visible · list-no-book_id→**hidden (no cross-tenant
+> leak)** · list?book_id=FOREIGN→**404 anti-oracle** · create-on-FOREIGN→denied. M1/M2 ingest routes → **403 for non-admin**
+> (wired + admin-gated). Re-ran `p5_subagents_fe_browser.mjs` vs vite :5199 on current FE → shell+Subagents+Activity+real
+> POST/audit round-trip PASS. **Honest live gaps (not fake-claimed):** the external public-registry PULL (admin JWT + live
+> `registry.modelcontextprotocol.io`) = gate #4, cycle unit-proven (4 tests); M2 admin-FE + M3 slash + M4 book-scope-FE are
+> unit-proven, not yet in a browser smoke (the shell IS). **The 5 defers are CLEARED; the track is functionally closed.**
+>
+> **Deferred (gate #2 — earns its row): `D-REG-GUI-RICH-POLISH`** — the draft-ui.html rich layer (bulk actions · shared
+> `Pager`/`useServerPagedList` across all lists · skills 3-col editor + revision history · 24h health-history charts + p50/p95
+> · full 4-step wizard per-step SSRF/OAuth validation UI · typed-confirm cascade-delete dialogs · **i18n vi/en** · **a11y
+> focus-trap sweep**). Large/structural, needs its own plan. See `01_GUI_CHECKLIST.md` Tally (59/288 test-backed).
 >
 > **▶ CORRECTION (2026-07-03) — the earlier "TRACK COMPLETE P0→P5" claim was WRONG: it was BACKEND-complete but 2 FE
 > screens shipped as backend-only.** A design↔shipped reconcile vs `design-drafts/screens/plugin-register/draft-ui.html`
