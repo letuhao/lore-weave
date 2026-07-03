@@ -79,7 +79,9 @@
     "sourceKinds": "Loại nguồn",
     "targetKinds": "Loại đích",
     "descriptionField": "Mô tả",
-    "addVocabSet": "Thêm bộ từ vựng"
+    "addVocabSet": "Thêm bộ từ vựng",
+    "deleteConfirmTitle": "Xoá thành phần này?",
+    "deleteConfirmBody": "\"{{code}}\" đang được {{count}} phần tử đồ thị tham chiếu. Xoá sẽ ngừng dùng nó — dữ liệu vẫn truy vấn được. Vẫn xoá?"
   },
   "sync": {
     "upToDate": "Đã cập nhật — không có thay đổi từ nguồn.",

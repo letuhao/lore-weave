@@ -1,7 +1,9 @@
 import { useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
+import { useAuth } from '@/auth';
 import { Skeleton } from '@/components/shared';
 import { useGraphSchema, useGraphSchemaList, useSchemaAuthoring } from '../../hooks/useGraphSchema';
+import { ontologyApi } from '../../api/ontology';
 import { SchemaWorkbench } from '../ontology/SchemaWorkbench';
 import { CreateSchemaEntry } from '../ontology/CreateSchemaEntry';
 
@@ -17,6 +19,7 @@ export function ProjectSchemaSection({
   bookId: string | null;
 }) {
   const { t } = useTranslation('knowledge');
+  const { accessToken } = useAuth();
   const schemaList = useGraphSchemaList({ scope: 'all', project_id: projectId });
   const items = schemaList.data?.items ?? [];
 
@@ -40,7 +43,12 @@ export function ProjectSchemaSection({
       {schemaList.isLoading ? (
         <Skeleton className="h-40 w-full" />
       ) : activeSchemaId && controller.schema ? (
-        <SchemaWorkbench controller={controller} />
+        <SchemaWorkbench
+          controller={controller}
+          getUsage={(nodeType, code) =>
+            ontologyApi.schemaComponentUsage(projectId, nodeType, code, accessToken!)
+          }
+        />
       ) : (
         <CreateSchemaEntry
           bookId={bookId}

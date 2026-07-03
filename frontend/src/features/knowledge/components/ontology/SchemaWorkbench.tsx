@@ -18,12 +18,28 @@ type SchemaController = ReturnType<typeof useGraphSchema>;
 // Node kinds / Fact types / Vocab sets, each with inline edit + delete + add.
 // All logic lives in useGraphSchema; this renders + wires the callbacks. `code`
 // is never editable (immutable — a rename = delete + re-create).
-export function SchemaWorkbench({ controller }: { controller: SchemaController }) {
+interface UsageResult {
+  count: number;
+  counted: boolean;
+}
+
+export function SchemaWorkbench({
+  controller,
+  getUsage,
+}: {
+  controller: SchemaController;
+  // A4 — resolve how many graph elements reference a component before deleting it.
+  // Omitted (e.g. in tests / user-tier templates with no graph) → delete directly.
+  getUsage?: (nodeType: string, code: string) => Promise<UsageResult>;
+}) {
   const { t } = useTranslation('kgOntology');
   const [editingName, setEditingName] = useState(false);
   const [name, setName] = useState('');
   const [newSetCode, setNewSetCode] = useState('');
   const [newSetLabel, setNewSetLabel] = useState('');
+  const [pending, setPending] = useState<
+    { nodeType: string; code: string; count: number; run: () => void } | null
+  >(null);
   const schema = controller.schema;
   if (!schema) return null;
 
@@ -36,6 +52,20 @@ export function SchemaWorkbench({ controller }: { controller: SchemaController }
     } catch (e) {
       const msg = (e as { status?: number }).status === 403 ? t('schema.forbidden') : (e as Error).message;
       toast.error(msg || t('schema.addFailed'));
+    }
+  };
+
+  // A4 — before deleting, check how many graph elements still reference the
+  // component; only ask to confirm when count > 0. A failed/absent check never
+  // blocks the delete (project DELETE only soft-deprecates — data stays safe).
+  const requestDelete = async (nodeType: string, code: string, run: () => void) => {
+    if (!getUsage) return run();
+    try {
+      const { count } = await getUsage(nodeType, code);
+      if (count > 0) setPending({ nodeType, code, count, run });
+      else run();
+    } catch {
+      run();
     }
   };
 
@@ -81,7 +111,8 @@ export function SchemaWorkbench({ controller }: { controller: SchemaController }
             {(schema.edge_types ?? []).map((e) => (
               <EdgeTypeRow key={e.code} edge={e} disabled={busy}
                 onPatch={(patch) => void guard(() => controller.patchEdgeType({ code: e.code, patch }))}
-                onDelete={() => void guard(() => controller.deleteEdgeType(e.code), t('common.deleted'))} />
+                onDelete={() => void requestDelete('edge_type', e.code,
+                  () => void guard(() => controller.deleteEdgeType(e.code), t('common.deleted')))} />
             ))}
             {(schema.edge_types ?? []).length === 0 && (
               <tr><td className="py-1.5 text-muted-foreground">{t('schema.noEdges')}</td></tr>
@@ -101,7 +132,8 @@ export function SchemaWorkbench({ controller }: { controller: SchemaController }
             {(schema.node_kinds ?? []).map((k) => (
               <NodeKindRow key={k.kind_code} nodeKind={k} disabled={busy}
                 onPatchStrength={(strength) => void guard(() => controller.patchNodeKind({ code: k.kind_code, patch: { strength } }))}
-                onDelete={() => void guard(() => controller.deleteNodeKind(k.kind_code), t('common.deleted'))} />
+                onDelete={() => void requestDelete('node_kind', k.kind_code,
+                  () => void guard(() => controller.deleteNodeKind(k.kind_code), t('common.deleted')))} />
             ))}
           </ul>
           <div className="mt-3">
@@ -115,7 +147,8 @@ export function SchemaWorkbench({ controller }: { controller: SchemaController }
             {(schema.fact_types ?? []).map((f) => (
               <FactTypeRow key={f.code} factType={f} disabled={busy}
                 onPatch={(patch) => void guard(() => controller.patchFactType({ code: f.code, patch }))}
-                onDelete={() => void guard(() => controller.deleteFactType(f.code), t('common.deleted'))} />
+                onDelete={() => void requestDelete('fact_type', f.code,
+                  () => void guard(() => controller.deleteFactType(f.code), t('common.deleted')))} />
             ))}
           </ul>
           <div className="mt-3">
@@ -130,10 +163,12 @@ export function SchemaWorkbench({ controller }: { controller: SchemaController }
         {(schema.vocab_sets ?? []).map((vs) => (
           <VocabSetCard key={vs.code} set={vs} disabled={busy}
             onPatchSet={(patch) => void guard(() => controller.patchVocabSet({ setCode: vs.code, patch }))}
-            onDeleteSet={() => void guard(() => controller.deleteVocabSet(vs.code), t('common.deleted'))}
+            onDeleteSet={() => void requestDelete('vocab_set', vs.code,
+              () => void guard(() => controller.deleteVocabSet(vs.code), t('common.deleted')))}
             onAddValue={(body) => void guard(() => controller.addVocabValue({ setCode: vs.code, body }))}
             onPatchValue={(code, patch) => void guard(() => controller.patchVocabValue({ setCode: vs.code, code, patch }))}
-            onDeleteValue={(code) => void guard(() => controller.deleteVocabValue({ setCode: vs.code, code }), t('common.deleted'))} />
+            onDeleteValue={(code) => void requestDelete('vocab_value', code,
+              () => void guard(() => controller.deleteVocabValue({ setCode: vs.code, code }), t('common.deleted')))} />
         ))}
         <div className="flex flex-wrap items-center gap-1.5 border-t pt-2">
           <input value={newSetCode} onChange={(e) => setNewSetCode(e.target.value)} placeholder={t('schema.code')}
@@ -146,6 +181,28 @@ export function SchemaWorkbench({ controller }: { controller: SchemaController }
             data-testid="add-vocab-set">{t('schema.addVocabSet')}</button>
         </div>
       </section>
+
+      {/* A4 — orphan-count delete confirm (only when graph elements reference it) */}
+      {pending && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4"
+          role="dialog" aria-modal="true" data-testid="delete-confirm">
+          <div className="w-full max-w-md space-y-3 rounded-lg border bg-card p-4 shadow-lg">
+            <h3 className="text-sm font-bold">{t('schema.deleteConfirmTitle')}</h3>
+            <p className="text-[12px] text-muted-foreground" data-testid="delete-confirm-message">
+              {t('schema.deleteConfirmBody', { code: pending.code, count: pending.count })}
+            </p>
+            <div className="flex justify-end gap-2">
+              <button type="button" onClick={() => setPending(null)}
+                className="rounded-md border px-3 py-1.5 text-[12px]"
+                data-testid="delete-confirm-cancel">{t('common.cancel')}</button>
+              <button type="button"
+                onClick={() => { pending.run(); setPending(null); }}
+                className="rounded-md bg-rose-600 px-3 py-1.5 text-[12px] font-medium text-white"
+                data-testid="delete-confirm-yes">{t('common.delete')}</button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

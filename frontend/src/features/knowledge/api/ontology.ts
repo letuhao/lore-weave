@@ -143,6 +143,20 @@ export const ontologyApi = {
     return apiJson<ResolvedSchema>(`${BASE}/projects/${projectId}/schema`, { token }).then(nestVocabValues);
   },
 
+  // A4 — how many graph elements reference a schema component (delete warning).
+  // `counted=false` for fact_type/vocab_value (fuzzier usage → plain confirm).
+  schemaComponentUsage(
+    projectId: string,
+    nodeType: string,
+    code: string,
+    token: string,
+  ): Promise<{ node_type: string; code: string; count: number; counted: boolean }> {
+    return apiJson(
+      `${BASE}/projects/${projectId}/schema/usage${qs({ node_type: nodeType, code })}`,
+      { token },
+    );
+  },
+
   // Create-from-scratch (A2) — a blank project schema (no template first).
   createBlankSchema(
     projectId: string,

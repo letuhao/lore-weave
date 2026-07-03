@@ -36,6 +36,8 @@ from app.clients.glossary_ontology_client import (
 )
 from app.config import settings
 from app.db.ontology_models import GraphSchema
+from app.db.neo4j import neo4j_session
+from app.db.neo4j_repos.schema_usage import count_component_usage
 from app.db.pool import get_knowledge_pool
 from app.db.repositories.graph_schemas import GraphSchemasRepo
 from app.db.repositories.ontology_mutations import (
@@ -407,6 +409,26 @@ async def get_resolved_schema(
     """The resolved effective schema for the project (system→user→project merge).
     View-gated on the project (resolve-to-owner)."""
     return await repo.resolve_for_project(str(project_id))
+
+
+@router.get("/projects/{project_id}/schema/usage")
+async def get_schema_component_usage(
+    project_id: UUID = Path(),
+    node_type: str = Query(),
+    code: str = Query(min_length=1, max_length=_CODE_MAX),
+    owner: UUID = Depends(require_project_grant(GrantLevel.VIEW)),
+):
+    """A4 — how many graph elements reference a schema component (before a delete
+    warns the human). View-gated (resolve-to-owner). `count`ed for node_kind /
+    edge_type (real graph elements); `counted=false` for the fuzzier fact/vocab
+    types (the caller shows a plain confirm). Project DELETE only soft-deprecates,
+    so this is an informational "N still reference it", not a data-loss gate."""
+    async with neo4j_session() as session:
+        count = await count_component_usage(
+            session, user_id=str(owner), project_id=str(project_id),
+            node_type=node_type, code=code,
+        )
+    return {"node_type": node_type, "code": code, "count": count or 0, "counted": count is not None}
 
 
 @router.post(

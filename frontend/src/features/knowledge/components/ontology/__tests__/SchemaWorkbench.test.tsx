@@ -57,10 +57,39 @@ describe('SchemaWorkbench — full-CRUD authoring (A3)', () => {
     expect(screen.getByTestId('vocab-set-status')).toBeInTheDocument();
   });
 
-  it('deletes an edge type through the controller', async () => {
+  it('deletes an edge type through the controller (no usage check)', async () => {
     renderWB(ctrl);
     fireEvent.click(screen.getByTestId('delete-edge-allied_with'));
     await waitFor(() => expect(ctrl.deleteEdgeType).toHaveBeenCalledWith('allied_with'));
+  });
+
+  it('A4: confirms before deleting when graph elements reference the component', async () => {
+    const getUsage = vi.fn().mockResolvedValue({ count: 3, counted: true });
+    render(<SchemaWorkbench controller={ctrl as never} getUsage={getUsage} />);
+    fireEvent.click(screen.getByTestId('delete-edge-allied_with'));
+    await waitFor(() => expect(screen.getByTestId('delete-confirm')).toBeInTheDocument());
+    expect(getUsage).toHaveBeenCalledWith('edge_type', 'allied_with');
+    expect(ctrl.deleteEdgeType).not.toHaveBeenCalled(); // gated on confirm
+    fireEvent.click(screen.getByTestId('delete-confirm-yes'));
+    await waitFor(() => expect(ctrl.deleteEdgeType).toHaveBeenCalledWith('allied_with'));
+  });
+
+  it('A4: deletes directly when nothing references the component (count 0)', async () => {
+    const getUsage = vi.fn().mockResolvedValue({ count: 0, counted: true });
+    render(<SchemaWorkbench controller={ctrl as never} getUsage={getUsage} />);
+    fireEvent.click(screen.getByTestId('delete-edge-allied_with'));
+    await waitFor(() => expect(ctrl.deleteEdgeType).toHaveBeenCalledWith('allied_with'));
+    expect(screen.queryByTestId('delete-confirm')).not.toBeInTheDocument();
+  });
+
+  it('A4: cancelling the confirm does not delete', async () => {
+    const getUsage = vi.fn().mockResolvedValue({ count: 2, counted: true });
+    render(<SchemaWorkbench controller={ctrl as never} getUsage={getUsage} />);
+    fireEvent.click(screen.getByTestId('delete-edge-allied_with'));
+    await waitFor(() => expect(screen.getByTestId('delete-confirm')).toBeInTheDocument());
+    fireEvent.click(screen.getByTestId('delete-confirm-cancel'));
+    await waitFor(() => expect(screen.queryByTestId('delete-confirm')).not.toBeInTheDocument());
+    expect(ctrl.deleteEdgeType).not.toHaveBeenCalled();
   });
 
   it('patches an edge type via inline edit (code immutable)', async () => {

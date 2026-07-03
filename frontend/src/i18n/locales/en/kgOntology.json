@@ -79,7 +79,9 @@
     "sourceKinds": "Source kinds",
     "targetKinds": "Target kinds",
     "descriptionField": "Description",
-    "addVocabSet": "Add vocab set"
+    "addVocabSet": "Add vocab set",
+    "deleteConfirmTitle": "Delete this component?",
+    "deleteConfirmBody": "\"{{code}}\" is referenced by {{count}} graph element(s). Deleting deprecates it — the data stays queryable. Delete anyway?"
   },
   "sync": {
     "upToDate": "Up to date — no upstream changes.",

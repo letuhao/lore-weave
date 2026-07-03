@@ -79,7 +79,9 @@
     "sourceKinds": "來源種類",
     "targetKinds": "目標種類",
     "descriptionField": "說明",
-    "addVocabSet": "新增詞彙集"
+    "addVocabSet": "新增詞彙集",
+    "deleteConfirmTitle": "刪除此元件？",
+    "deleteConfirmBody": "「{{code}}」被 {{count}} 個圖譜元素引用。刪除會將其標記為棄用——資料仍可查詢。仍要刪除？"
   },
   "sync": {
     "upToDate": "已是最新——上游沒有變更。",

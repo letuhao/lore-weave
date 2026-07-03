@@ -9,6 +9,8 @@ import type { GraphSchemaSummary } from '../../../types/ontology';
 // heavy children and assert the branching + that clone templates exclude the
 // project's own rows.
 
+vi.mock('@/auth', () => ({ useAuth: () => ({ accessToken: 'tok', user: { user_id: 'u1' } }) }));
+
 const state = vi.hoisted(() => ({
   items: [] as GraphSchemaSummary[],
   listLoading: false,
