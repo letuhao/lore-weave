@@ -93,9 +93,29 @@
 > sees NONE (cross-tenant isolation)**, System providers intact for both (9-provider regression); calling
 > `u_<hash>_registry_list_skills` through the gateway DISPATCHED to A's server + returned skills. **THE WHOLE SPEC now works
 > end-to-end: a user registers an MCP server / skill → it federates into THEIR catalog only → the agent calls it.**
-> **NEXT: P3 (external MCP + full security — arbitrary URL registration: OAuth 2.1+PKCE, SSRF guard, egress control,
-> supply-chain scan + quarantine; the `isInternalHost` P2 guard becomes the external path). `/review-impl` mandatory at P3.**
-> Then P4 (commands/hooks) → P5 (subagents/bundles). **Decisions:** `DECISION_LOG.md` (DL-1..6 + CLEARED + review-round-2).
+> **P3 BACKEND COMPLETE ✅ (M1–M4 of 6, 4 commits):** external arbitrary-URL MCP registration + full security.
+> **M1 SSRF+vault** (`…`): `classifyRegistrationURL` rejects loopback/RFC1918/ULA/link-local(169.254 metadata)/CGNAT/
+> unspecified incl. DNS-rebind (unit fixture suite); model-capability URLs → 400 (provider invariant); bearer secret
+> sealed in AES-GCM vault (public = `has_secret` only); `/internal/mcp-servers/{id}/credentials` sole decrypt path;
+> external server registers QUARANTINED (pending). Dev flag `AGENT_REGISTRY_ALLOW_INTERNAL_MCP=1` (compose) keeps
+> in-cluster targets smokeable; DEFAULT OFF = prod. **M2 scan+quarantine** (`…`): a Go streamable-http MCP probe
+> (`probe.go`, SSRF-safe dial + response cap) fetches tools/list; `scan.go` lints descriptions/schemas (OWASP-Agentic
+> injection markers + hidden-unicode) → status machine pending→active(clean)/suspended(flagged)/error(unreachable);
+> `POST …/rescan`, `GET …/{id}` detail, `POST …/accept-risk`. **M3 egress control** (`ad5bce682`): ai-gateway overlay
+> dispatch/list wrap a custom egress fetch (SSRF re-guard + per-server allowlist + 1 MiB cap + manual redirect
+> re-validation — closes the round-3 redirect-SSRF defer) + per-server circuit breaker (5-fail→open 30s). **M4 OAuth**
+> (`…`): OAuth 2.1 authorization-code + PKCE(S256) + RFC 8707 resource-scoped tokens; `/oauth/start` + PUBLIC
+> `/oauth/callback` (single-use state, replay-proof) + background refresh worker; tokens in vault. **SECURITY FIX:** the
+> overlay no longer sends the internal envelope (X-Internal-Token) to external servers (would leak our service token) —
+> `chooseOutboundHeaders` sends internal servers the envelope, external servers ONLY their own bearer/oauth token.
+> **Live-proven:** M1 (`p3_m1_ssrf_smoke` model/scheme reject + vault round-trip), M2 (`p3_m2_scan_smoke` Go probe scanned
+> the REAL registry /mcp 5 tools clean→active + down→error), M3 (overlay dispatch through egress fetch, isolation intact),
+> M4 (`p3_m4_oauth_smoke` FULL loop vs a host fake AS: start→callback→exchange→vault→decrypt→single-use replay-reject).
+> Suites: agent-registry go green; ai-gateway jest 129/129; tsc clean.
+> **NEXT: M5 (FE Add-MCP wizard 4-step + servers browser list + server detail page + studio panel tab — REG-P3-06/08/09)
+> → M6 (`/review-impl` MANDATORY + external-MCP E2E + OpenAPI mcp-servers contract).** Then P4 (commands/hooks) → P5.
+> **Decisions:** `DECISION_LOG.md` (DL-1..8 + CLEARED). **Defers:** `D-REG-P3-OAUTH-REAL` (live smoke vs a real
+> third-party OAuth MCP server — gate #4, no reference server in dev; full flow integration-proven vs a conformant fake AS).
 >
 > **▶ CHAT QUALITY WAVE — W0 + W1 SHIPPED + LIVE-SMOKED 2026-07-03 (parallel sub-agent build, disjoint files,
 > combined verify).** Trigger: user's 8-item quality pass (plan + 5-investigation evidence base incl. a LIVE MCP
