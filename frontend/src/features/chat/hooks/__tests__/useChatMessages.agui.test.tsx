@@ -210,7 +210,7 @@ describe('useChatMessages — AG-UI protocol', () => {
     expect(seen[0]).toMatchObject({ tokens_before: 9000, tokens_after: 4100, summarized: true });
   });
 
-  it('W4: send(content, thinking, "deep") puts reasoning_effort on the POST body', async () => {
+  it('send(content, thinking, "high") puts reasoning_effort on the POST body', async () => {
     const fetchMock = stubFetch([
       JSON.stringify({ type: 'TEXT_MESSAGE_CONTENT', messageId: 'm', delta: 'hi' }),
       JSON.stringify({ type: 'RUN_FINISHED', result: {} }),
@@ -218,10 +218,10 @@ describe('useChatMessages — AG-UI protocol', () => {
     const { result } = renderHook(() => useChatMessages('s-1'));
     await waitFor(() => expect(result.current.isLoading).toBe(false));
     await act(async () => {
-      await result.current.send('hello', true, 'deep');
+      await result.current.send('hello', true, 'high');
     });
     const body = JSON.parse(String((fetchMock.mock.calls[0][1] as RequestInit).body));
-    expect(body).toMatchObject({ content: 'hello', thinking: true, reasoning_effort: 'deep' });
+    expect(body).toMatchObject({ content: 'hello', thinking: true, reasoning_effort: 'high' });
   });
 
   it('maps RUN_ERROR to the error path', async () => {

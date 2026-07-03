@@ -28,13 +28,14 @@ import type {
   ToolCallStartEvent,
 } from './agUiEvents';
 import type { ActivityEvent, ChatMessage, ToolCallRecord, AgentSurfaceState, ContextBudget, CompactionEvent } from '../types';
+import type { EffortLevel } from '@/components/ai-task/effort';
 
 export type StreamPhase = 'idle' | 'thinking' | 'responding';
 
-/** W4 — the effort dropdown's wire value. Only 'deep' rides the request today
- *  (Fast/Standard map onto the legacy `thinking` boolean), but the type carries
- *  all three so the arg is self-documenting. */
-export type ReasoningEffortLevel = 'fast' | 'standard' | 'deep';
+/** The effort dropdown's wire value — the unified 5-level vocabulary (the same
+ *  `EffortLevel`) the message POST carries as `reasoning_effort`; chat-service maps
+ *  it into the reasoning pipeline (`auto` → adaptive/omit). */
+export type ReasoningEffortLevel = EffortLevel;
 
 /** The per-turn request inputs lifted out of the hook's closure. Everything
  *  streamPost read from props/args is now an explicit field, so the core is a

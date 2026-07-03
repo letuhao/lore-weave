@@ -1,6 +1,6 @@
 import { useState, useCallback, useEffect, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
-import { ArrowUp, Brain, ChevronDown, Eye, ListTodo, Pencil, Square, Zap, Mic, MicOff, Loader2, Volume2, VolumeX } from 'lucide-react';
+import { ArrowUp, ChevronDown, Eye, ListTodo, Pencil, Square, Mic, MicOff, Loader2, Volume2, VolumeX } from 'lucide-react';
 import { loadVoicePrefs } from '../voicePrefs';
 import { useVoiceAssistMic } from '../hooks/useVoiceAssistMic';
 import { useMentionPicker } from '../hooks/useMentionPicker';
@@ -15,6 +15,8 @@ import { MentionPopover } from './MentionPopover';
 // dialogs share ONE mapping. Re-exported here so existing importers
 // (useChatMessages, ChatView, runChatStream, the effort test) are unchanged.
 import type { EffortLevel } from '@/components/ai-task/effort';
+import { thinkingForLevel } from '@/components/ai-task/effort';
+import { EffortSelect } from '@/components/ai-task';
 export type { EffortLevel } from '@/components/ai-task/effort';
 export { effortLevelFromGenerationParams, reasoningEffortForLevel } from '@/components/ai-task/effort';
 
@@ -79,11 +81,11 @@ export function ChatInputBar({
   // sends reasoning_effort:"deep". Initialized from the session default and
   // re-synced when it changes (session switch / settings-panel edit) — the
   // "previous default" render-time pattern, not a useEffect.
-  const [effort, setEffort] = useState<EffortLevel>(effortDefault ?? 'fast');
+  const [effort, setEffort] = useState<EffortLevel>(effortDefault ?? 'off');
   const [prevEffortDefault, setPrevEffortDefault] = useState(effortDefault);
   if (effortDefault !== prevEffortDefault) {
     setPrevEffortDefault(effortDefault);
-    setEffort(effortDefault ?? 'fast');
+    setEffort(effortDefault ?? 'off');
   }
   const [responseFormat, setResponseFormat] = useState<string>('Auto');
   const [showTemplates, setShowTemplates] = useState(false);
@@ -152,17 +154,18 @@ export function ChatInputBar({
     const text = value.trim();
     if (!text || isStreaming) return;
     setValue('');
-    // W4: the keyboard force-shortcuts (Ctrl+Shift+Enter think / Ctrl+Enter
-    // fast) override the dropdown for this one send, mapping onto
-    // standard/fast (never deep — deep is an explicit dropdown pick).
+    // The keyboard force-shortcuts (Ctrl+Shift+Enter think / Ctrl+Enter fast)
+    // override the dropdown for this one send, mapping onto medium/off (never the
+    // max 'high' — that stays an explicit dropdown pick). The unified 5-level
+    // effort rides the wire directly (reasoning_effort); chat-service maps it.
     const effectiveEffort: EffortLevel | undefined = !supportsThinking
       ? undefined
       : forceThinking != null
-        ? (forceThinking ? 'standard' : 'fast')
+        ? (forceThinking ? 'medium' : 'off')
         : effort;
-    const thinking = effectiveEffort != null ? effectiveEffort !== 'fast' : undefined;
+    const thinking = effectiveEffort != null ? thinkingForLevel(effectiveEffort) : undefined;
     const formatSuffix = FORMAT_INSTRUCTIONS[responseFormat] ?? '';
-    onSend(text + formatSuffix, thinking, effectiveEffort === 'deep' ? 'deep' : undefined);
+    onSend(text + formatSuffix, thinking, effectiveEffort);
   }
 
   // W4: mode selection + Ctrl+. cycling (Claude Code shift-tab pattern —
@@ -405,66 +408,14 @@ export function ChatInputBar({
                     )}
                   </div>
                 )}
-                {/* W4 — effort dropdown (replaces the Think/Fast pill). Hidden
-                    when the model doesn't support thinking, exactly like the
-                    old pill — never forces thinking. */}
+                {/* Effort/reasoning — the shared AI-task EffortSelect (unified
+                    5-level vocab). Hidden when the model can't think, exactly like
+                    the old pill — never forces thinking. */}
                 {supportsThinking && (
-                  <div className="relative">
-                    <button
-                      type="button"
-                      data-testid="effort-dropdown"
-                      onClick={() => setOpenMenu((m) => (m === 'effort' ? null : 'effort'))}
-                      aria-haspopup="menu"
-                      aria-expanded={openMenu === 'effort'}
-                      title={t(`input.effort_${effort}_hint`)}
-                      className={`flex items-center gap-1 rounded-md border px-2.5 py-1 text-[11px] font-medium transition-colors ${
-                        effort === 'fast'
-                          ? 'border-accent/30 bg-accent/10 text-accent'
-                          : 'border-[#3b2d6b] bg-[#1e1633] text-[#a78bfa]'
-                      }`}
-                    >
-                      {effort === 'fast' ? <Zap className="h-2.5 w-2.5" /> : <Brain className="h-2.5 w-2.5" />}
-                      {t(`input.effort_${effort}`)}
-                      {effort === 'deep' && <span className="-ml-0.5 font-semibold">+</span>}
-                      <ChevronDown className="h-2.5 w-2.5 opacity-60" />
-                    </button>
-                    {openMenu === 'effort' && (
-                      <div role="menu" data-testid="effort-menu" className="absolute bottom-full left-0 z-20 mb-1 w-64 rounded-md border border-border bg-card py-1 shadow-lg">
-                        {([
-                          { level: 'fast' as const, Icon: Zap, color: 'text-accent', suffix: '' },
-                          { level: 'standard' as const, Icon: Brain, color: 'text-[#a78bfa]', suffix: '' },
-                          { level: 'deep' as const, Icon: Brain, color: 'text-[#a78bfa]', suffix: '+' },
-                        ]).map(({ level, Icon, color, suffix }) => (
-                          <button
-                            key={level}
-                            type="button"
-                            role="menuitemradio"
-                            aria-checked={effort === level}
-                            data-testid={`effort-opt-${level}`}
-                            onClick={() => {
-                              setEffort(level);
-                              // Session persistence: the parent writes the
-                              // granular reasoning_effort (Deep survives reload).
-                              onEffortChange?.(level);
-                              setOpenMenu(null);
-                            }}
-                            className={`flex w-full items-start gap-2 px-3 py-1.5 text-left hover:bg-secondary ${
-                              effort === level ? 'bg-secondary/60' : ''
-                            }`}
-                          >
-                            <Icon className={`mt-0.5 h-3 w-3 shrink-0 ${color}`} />
-                            <span className="min-w-0">
-                              <span className={`block text-[11px] font-medium ${color}`}>
-                                {t(`input.effort_${level}`)}
-                                {suffix}
-                              </span>
-                              <span className="block text-[10px] leading-snug text-muted-foreground">{t(`input.effort_${level}_hint`)}</span>
-                            </span>
-                          </button>
-                        ))}
-                      </div>
-                    )}
-                  </div>
+                  <EffortSelect
+                    value={effort}
+                    onChange={(level) => { setEffort(level); onEffortChange?.(level); }}
+                  />
                 )}
               </div>
             </div>

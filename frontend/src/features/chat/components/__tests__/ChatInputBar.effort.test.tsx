@@ -1,10 +1,10 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, fireEvent } from '@testing-library/react';
 
-// Chat Quality Wave W4 — the effort dropdown (replaces the Think/Fast pill).
-// Fast → onSend(..., thinking:false, no effort), Standard → thinking:true,
-// Deep → thinking:true + reasoning_effort:"deep". Hidden when the model does
-// not support thinking (never forces thinking — market anti-pattern).
+// AI-task standard — the effort dropdown is now the shared EffortSelect (unified
+// 5-level vocab off|low|medium|high|auto). off → onSend(..., thinking:false, 'off'),
+// medium/high/low → thinking:true + that reasoning_effort, auto → thinking:undefined
+// + 'auto'. Hidden when the model can't think (never forces thinking).
 
 vi.mock('../../voicePrefs', () => ({
   loadVoicePrefs: () => ({ voiceAssistEnabled: false, voiceAssistAppend: false }),
@@ -55,85 +55,92 @@ function typeAndSend(text = 'hello') {
   fireEvent.keyDown(textarea, { key: 'Enter' });
 }
 
-describe('ChatInputBar — effort dropdown', () => {
+describe('ChatInputBar — effort dropdown (EffortSelect)', () => {
   beforeEach(() => vi.clearAllMocks());
 
-  it('defaults to Fast (session default off) and sends thinking:false, no effort field', () => {
+  it('defaults to Off (session default off) and sends thinking:false + reasoning_effort "off"', () => {
     const { onSend } = renderBar();
-    expect(screen.getByTestId('effort-dropdown').textContent).toContain('input.effort_fast');
+    expect(screen.getByTestId('effort-select').textContent).toContain('input.effort_off');
     typeAndSend();
-    expect(onSend).toHaveBeenCalledWith('hello', false, undefined);
+    expect(onSend).toHaveBeenCalledWith('hello', false, 'off');
   });
 
-  it('initializes to Standard when the session default is standard', () => {
-    renderBar({ effortDefault: 'standard' });
-    expect(screen.getByTestId('effort-dropdown').textContent).toContain('input.effort_standard');
-  });
-
-  it('initializes to Deep from the session default and sends reasoning "deep" (reload keeps Deep)', () => {
-    const { onSend } = renderBar({ effortDefault: 'deep' });
-    expect(screen.getByTestId('effort-dropdown').textContent).toContain('input.effort_deep');
+  it('initializes to Medium when the session default is medium and sends thinking:true + "medium"', () => {
+    const { onSend } = renderBar({ effortDefault: 'medium' });
+    expect(screen.getByTestId('effort-select').textContent).toContain('input.effort_medium');
     typeAndSend();
-    expect(onSend).toHaveBeenCalledWith('hello', true, 'deep');
+    expect(onSend).toHaveBeenCalledWith('hello', true, 'medium');
   });
 
-  it('opens the menu and lists Fast / Standard / Deep with hints', () => {
+  it('initializes to High from the session default and sends reasoning "high"', () => {
+    const { onSend } = renderBar({ effortDefault: 'high' });
+    expect(screen.getByTestId('effort-select').textContent).toContain('input.effort_high');
+    typeAndSend();
+    expect(onSend).toHaveBeenCalledWith('hello', true, 'high');
+  });
+
+  it('Auto sends thinking:undefined + reasoning_effort "auto" (adaptive/passthrough)', () => {
+    const { onSend } = renderBar({ effortDefault: 'auto' });
+    typeAndSend();
+    expect(onSend).toHaveBeenCalledWith('hello', undefined, 'auto');
+  });
+
+  it('opens the menu and lists all 5 levels', () => {
     renderBar();
-    fireEvent.click(screen.getByTestId('effort-dropdown'));
-    expect(screen.getByTestId('effort-menu')).toBeInTheDocument();
-    expect(screen.getByTestId('effort-opt-fast')).toBeInTheDocument();
-    expect(screen.getByTestId('effort-opt-standard')).toBeInTheDocument();
-    expect(screen.getByTestId('effort-opt-deep')).toBeInTheDocument();
-    expect(screen.getByText('input.effort_deep_hint')).toBeInTheDocument();
+    fireEvent.click(screen.getByTestId('effort-select'));
+    expect(screen.getByTestId('effort-select-menu')).toBeInTheDocument();
+    for (const l of ['off', 'low', 'medium', 'high', 'auto']) {
+      expect(screen.getByTestId(`effort-select-opt-${l}`)).toBeInTheDocument();
+    }
   });
 
-  it('Standard → thinking:true, no effort field; persists via onEffortChange("standard")', () => {
+  it('picking Medium → thinking:true + "medium"; persists via onEffortChange("medium")', () => {
     const { onSend, onEffortChange } = renderBar();
-    fireEvent.click(screen.getByTestId('effort-dropdown'));
-    fireEvent.click(screen.getByTestId('effort-opt-standard'));
-    expect(onEffortChange).toHaveBeenCalledWith('standard');
+    fireEvent.click(screen.getByTestId('effort-select'));
+    fireEvent.click(screen.getByTestId('effort-select-opt-medium'));
+    expect(onEffortChange).toHaveBeenCalledWith('medium');
     typeAndSend();
-    expect(onSend).toHaveBeenCalledWith('hello', true, undefined);
+    expect(onSend).toHaveBeenCalledWith('hello', true, 'medium');
   });
 
-  it('Deep → thinking:true + reasoning_effort:"deep"; persists via onEffortChange("deep")', () => {
+  it('picking High → thinking:true + "high"; persists via onEffortChange("high")', () => {
     const { onSend, onEffortChange } = renderBar();
-    fireEvent.click(screen.getByTestId('effort-dropdown'));
-    fireEvent.click(screen.getByTestId('effort-opt-deep'));
-    expect(onEffortChange).toHaveBeenCalledWith('deep');
+    fireEvent.click(screen.getByTestId('effort-select'));
+    fireEvent.click(screen.getByTestId('effort-select-opt-high'));
+    expect(onEffortChange).toHaveBeenCalledWith('high');
     typeAndSend();
-    expect(onSend).toHaveBeenCalledWith('hello', true, 'deep');
+    expect(onSend).toHaveBeenCalledWith('hello', true, 'high');
   });
 
-  it('back to Fast → thinking:false; persists via onEffortChange("fast")', () => {
+  it('back to Off → thinking:false + "off"; persists via onEffortChange("off")', () => {
     const { onSend, onEffortChange } = renderBar();
-    fireEvent.click(screen.getByTestId('effort-dropdown'));
-    fireEvent.click(screen.getByTestId('effort-opt-deep'));
-    fireEvent.click(screen.getByTestId('effort-dropdown'));
-    fireEvent.click(screen.getByTestId('effort-opt-fast'));
-    expect(onEffortChange).toHaveBeenLastCalledWith('fast');
+    fireEvent.click(screen.getByTestId('effort-select'));
+    fireEvent.click(screen.getByTestId('effort-select-opt-high'));
+    fireEvent.click(screen.getByTestId('effort-select'));
+    fireEvent.click(screen.getByTestId('effort-select-opt-off'));
+    expect(onEffortChange).toHaveBeenLastCalledWith('off');
     typeAndSend();
-    expect(onSend).toHaveBeenCalledWith('hello', false, undefined);
+    expect(onSend).toHaveBeenCalledWith('hello', false, 'off');
   });
 
-  it('keyboard force-shortcuts override the dropdown for one send (never deep)', () => {
+  it('keyboard force-shortcuts override the dropdown for one send (never max high)', () => {
     const { onSend } = renderBar();
-    fireEvent.click(screen.getByTestId('effort-dropdown'));
-    fireEvent.click(screen.getByTestId('effort-opt-deep'));
+    fireEvent.click(screen.getByTestId('effort-select'));
+    fireEvent.click(screen.getByTestId('effort-select-opt-high'));
     const textarea = screen.getByPlaceholderText('input.placeholder');
-    // Ctrl+Enter = force fast
+    // Ctrl+Enter = force off
     fireEvent.change(textarea, { target: { value: 'quick' } });
     fireEvent.keyDown(textarea, { key: 'Enter', ctrlKey: true });
-    expect(onSend).toHaveBeenLastCalledWith('quick', false, undefined);
-    // Ctrl+Shift+Enter = force think (standard, not deep)
+    expect(onSend).toHaveBeenLastCalledWith('quick', false, 'off');
+    // Ctrl+Shift+Enter = force think (medium, not high)
     fireEvent.change(textarea, { target: { value: 'ponder' } });
     fireEvent.keyDown(textarea, { key: 'Enter', ctrlKey: true, shiftKey: true });
-    expect(onSend).toHaveBeenLastCalledWith('ponder', true, undefined);
+    expect(onSend).toHaveBeenLastCalledWith('ponder', true, 'medium');
   });
 
-  it('is hidden when the model does not support thinking; sends thinking undefined', () => {
+  it('is hidden when the model does not support thinking; sends thinking + effort undefined', () => {
     const { onSend } = renderBar({ supportsThinking: false });
-    expect(screen.queryByTestId('effort-dropdown')).toBeNull();
+    expect(screen.queryByTestId('effort-select')).toBeNull();
     typeAndSend();
     expect(onSend).toHaveBeenCalledWith('hello', undefined, undefined);
   });
@@ -141,29 +148,27 @@ describe('ChatInputBar — effort dropdown', () => {
 
 describe('effort ↔ session generation_params mapping', () => {
   it.each([
-    [{ reasoning_effort: 'high' }, 'deep'],
-    [{ reasoning_effort: 'off' }, 'fast'],
-    [{ reasoning_effort: 'low' }, 'standard'],
-    [{ reasoning_effort: 'medium' }, 'standard'],
-    [{ reasoning_effort: 'auto' }, 'standard'],
+    [{ reasoning_effort: 'high' }, 'high'],
+    [{ reasoning_effort: 'off' }, 'off'],
+    [{ reasoning_effort: 'low' }, 'low'],
+    [{ reasoning_effort: 'medium' }, 'medium'],
+    [{ reasoning_effort: 'auto' }, 'auto'],
     // no granular knob → legacy thinking boolean decides
-    [{ thinking: true }, 'standard'],
-    [{ thinking: false }, 'fast'],
-    [{}, 'fast'],
-    [null, 'fast'],
+    [{ thinking: true }, 'medium'],
+    [{ thinking: false }, 'off'],
+    [{}, 'off'],
+    [null, 'off'],
     // granular knob shadows a disagreeing legacy boolean
-    [{ reasoning_effort: 'off', thinking: true }, 'fast'],
+    [{ reasoning_effort: 'off', thinking: true }, 'off'],
   ] as const)('effortLevelFromGenerationParams(%j) → %s', (gp, level) => {
     expect(effortLevelFromGenerationParams(gp)).toBe(level);
   });
 
-  it.each([
-    ['fast', 'off'],
-    ['standard', 'medium'],
-    ['deep', 'high'],
-  ] as const)('reasoningEffortForLevel(%s) → %s (round-trips through the session)', (level, re) => {
-    expect(reasoningEffortForLevel(level)).toBe(re);
-    // the persisted value derives BACK to the same dropdown level on reload
-    expect(effortLevelFromGenerationParams({ reasoning_effort: re })).toBe(level);
-  });
+  it.each(['off', 'low', 'medium', 'high', 'auto'] as const)(
+    'reasoningEffortForLevel(%s) round-trips through the session (identity)',
+    (level) => {
+      expect(reasoningEffortForLevel(level)).toBe(level);
+      expect(effortLevelFromGenerationParams({ reasoning_effort: level })).toBe(level);
+    },
+  );
 });

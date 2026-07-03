@@ -12,6 +12,7 @@ import { buildContextBlock, tiptapDocToText } from '../context/formatContext';
 import { onSendToChat } from '../context/sendToChat';
 import type { ContextItem } from '../context/types';
 import type { ChatSession, CreateSessionPayload } from '../types';
+import type { EffortLevel } from '@/components/ai-task/effort';
 
 // ── Types ──────────────────────────────────────────────────────────────────────
 
@@ -53,9 +54,9 @@ interface ChatSessionContextValue {
   // effort dropdown's granular value — forwarded verbatim to sendFn.
   resolveAndSend: (
     content: string,
-    sendFn: (content: string, thinking?: boolean, reasoningEffort?: 'fast' | 'standard' | 'deep') => Promise<string>,
+    sendFn: (content: string, thinking?: boolean, reasoningEffort?: EffortLevel) => Promise<string>,
     thinking?: boolean,
-    reasoningEffort?: 'fast' | 'standard' | 'deep',
+    reasoningEffort?: EffortLevel,
   ) => void;
 }
 
@@ -240,9 +241,9 @@ export function ChatSessionProvider({ children, embedded = false }: ChatSessionP
   const resolveAndSend = useCallback(
     (
       content: string,
-      sendFn: (content: string, thinking?: boolean, reasoningEffort?: 'fast' | 'standard' | 'deep') => Promise<string>,
+      sendFn: (content: string, thinking?: boolean, reasoningEffort?: EffortLevel) => Promise<string>,
       thinking?: boolean,
-      reasoningEffort?: 'fast' | 'standard' | 'deep',
+      reasoningEffort?: EffortLevel,
     ) => {
       const items = contextItemsRef.current;
       if (items.length === 0) {

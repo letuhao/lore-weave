@@ -410,11 +410,15 @@ class SendMessageRequest(BaseModel):
     edit_from_sequence: int | None = None
     context: str | None = None  # Optional context block (book/chapter/glossary text) injected as system message
     thinking: bool | None = None  # Override session default: true=think, false=fast, None=use session default
-    # W4 (chat-quality wave) — granular per-message effort from the input-bar
-    # dropdown. Maps onto the reasoning pipeline's UserReasoningPref
-    # (fast→off, standard→medium, deep→high) in _thinking_pref; takes
-    # precedence over the legacy `thinking` boolean when both are sent.
-    reasoning_effort: Literal["fast", "standard", "deep"] | None = None
+    # AI-task standard — granular per-message effort from the input-bar dropdown,
+    # now the UNIFIED 5-level vocabulary (off|low|medium|high|auto) that matches the
+    # session-stored default; maps into UserReasoningPref in _thinking_pref (identity
+    # + auto→adaptive) and takes precedence over the legacy `thinking` boolean. The
+    # legacy 3-level (fast|standard|deep) is still accepted for back-compat during
+    # the FE convergence.
+    reasoning_effort: Literal[
+        "off", "low", "medium", "high", "auto", "fast", "standard", "deep"
+    ] | None = None
     editor_context: EditorContext | None = None  # ARCH-1 C6: editor panel → enable frontend write-back tool
     book_context: BookContext | None = None  # Glossary-assistant P3: book-scoped chat → enable glossary edit tool
     admin_context: AdminContext | None = None  # T4c: cms admin chat → advertise System-tier admin tools (token via X-Admin-Token header)

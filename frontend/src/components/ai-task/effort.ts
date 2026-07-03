@@ -1,27 +1,34 @@
 // AI-Task Standard — the effort/reasoning level primitive, single source of truth.
-// Moved out of features/chat/ChatInputBar so BOTH the chat composer and the
-// one-shot generate dialogs share ONE mapping (ChatInputBar re-exports these).
+// The canonical vocabulary is the UNIFIED 5-level set (off|low|medium|high|auto),
+// the SAME vocabulary chat-service stores per session and accepts per message — so
+// the FE dropdown, the wire, and the session default all speak one language (the
+// old fast|standard|deep was a lossy 3-level FE-only reskin of this). `auto` =
+// passthrough: let an adaptive model / policy self-decide (BE resolve_reasoning).
 
-/** The effort dropdown's values. fast → thinking:false, standard → thinking:true,
- *  deep → thinking:true + reasoning_effort:"high" on the wire. */
-export type EffortLevel = 'fast' | 'standard' | 'deep';
+export type EffortLevel = 'off' | 'low' | 'medium' | 'high' | 'auto';
 
-/** Derive the dropdown level from a session's granular reasoning_effort (the SSOT
- *  the settings panel writes), falling back to the legacy `thinking` boolean.
- *  high→deep, off→fast, low/medium/auto→standard. */
+export const EFFORT_LEVELS: readonly EffortLevel[] = ['off', 'low', 'medium', 'high', 'auto'];
+
+/** Derive the dropdown level from a session's stored reasoning_effort (already the
+ *  5-level vocab), falling back to the legacy `thinking` boolean. */
 export function effortLevelFromGenerationParams(
   gp?: { reasoning_effort?: string | null; thinking?: boolean | null } | null,
 ): EffortLevel {
   const re = gp?.reasoning_effort;
-  if (re === 'high') return 'deep';
-  if (re === 'off') return 'fast';
-  if (re === 'low' || re === 'medium' || re === 'auto') return 'standard';
-  return gp?.thinking ? 'standard' : 'fast';
+  if (re === 'off' || re === 'low' || re === 'medium' || re === 'high' || re === 'auto') return re;
+  return gp?.thinking ? 'medium' : 'off';
 }
 
-/** Session-persist mapping (the SAME generation_params key the settings panel
- *  writes, so the two surfaces can never disagree): fast→off, standard→medium,
- *  deep→high. */
-export function reasoningEffortForLevel(level: EffortLevel): 'off' | 'medium' | 'high' {
-  return level === 'fast' ? 'off' : level === 'deep' ? 'high' : 'medium';
+/** The value persisted on the session (`generation_params.reasoning_effort`). The
+ *  level IS the stored vocabulary now — identity, kept as a named seam so callers
+ *  read intent, not a bare passthrough. */
+export function reasoningEffortForLevel(level: EffortLevel): EffortLevel {
+  return level;
+}
+
+/** The legacy `thinking` boolean the wire still carries alongside reasoning_effort.
+ *  `auto` → undefined (let the model/policy decide); `off` → false; else true. */
+export function thinkingForLevel(level: EffortLevel): boolean | undefined {
+  if (level === 'auto') return undefined;
+  return level !== 'off';
 }

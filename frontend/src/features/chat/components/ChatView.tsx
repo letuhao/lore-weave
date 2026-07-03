@@ -6,7 +6,7 @@ import { chatApi } from '../api';
 import { useChatSession } from '../providers';
 import { useChatStream } from '../providers';
 import { ChatHeader } from './ChatHeader';
-import { ChatInputBar, effortLevelFromGenerationParams, reasoningEffortForLevel } from './ChatInputBar';
+import { ChatInputBar, effortLevelFromGenerationParams, reasoningEffortForLevel, type EffortLevel } from './ChatInputBar';
 import { MessageList } from './MessageList';
 import { PendingFactsCard } from './PendingFactsCard';
 import { SessionSettingsPanel } from './SessionSettingsPanel';
@@ -121,7 +121,7 @@ export function ChatView({ className, composeMode, footerSlot, headerSlot }: Cha
     );
   }
 
-  function handleSend(content: string, thinking?: boolean, reasoningEffort?: 'fast' | 'standard' | 'deep') {
+  function handleSend(content: string, thinking?: boolean, reasoningEffort?: EffortLevel) {
     resolveAndSend(content, chat.send, thinking, reasoningEffort);
   }
 

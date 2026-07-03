@@ -155,9 +155,17 @@ def parse_inline_effort(text: str) -> tuple[str, str | None]:
 # (Anthropic adaptive → omit; effort models → reasoning_effort; local template
 # models → chat_template_kwargs) — no new provider knob is invented here.
 _REQUEST_EFFORT_TO_PREF: dict[str, str] = {
+    # Legacy 3-level (kept for back-compat during the FE 5-level convergence).
     "fast": "off",
     "standard": "medium",
     "deep": "high",
+    # Unified 5-level effort vocabulary (matches the session-stored default) —
+    # identity into UserReasoningPref; resolve_reasoning maps auto→adaptive/omit.
+    "off": "off",
+    "low": "low",
+    "medium": "medium",
+    "high": "high",
+    "auto": "auto",
 }
 
 
