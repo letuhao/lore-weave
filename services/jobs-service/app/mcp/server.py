@@ -37,6 +37,7 @@ from pydantic import Field, ValidationError
 
 from loreweave_mcp import (
     ForbidExtra,
+    apply_response_contract,
     build_tool_context,
     make_stateless_fastmcp,
     require_meta,
@@ -134,6 +135,17 @@ def _retryable_flag(job: dict[str, Any]) -> bool | None:
     return (job.get("params") or {}).get("retryable")
 
 
+# L1/L2 reference-first (Context Budget Law §6b): at detail=summary a job row
+# collapses to these fields — the heavy accumulated `params` jsonb + long `error`
+# tracebacks (the measured jobs_list bloat) are dropped; fetch them via jobs_get.
+# Every scalar status field a "what's running" answer needs is kept.
+_JOB_REF_FIELDS = (
+    "service", "job_id", "kind", "status", "detail_status", "title", "progress",
+    "parent_job_id", "child_count", "control_caps", "job_created_at",
+    "job_updated_at", "model", "cost_usd", "tokens_in", "tokens_out",
+)
+
+
 def _with_caps(job: dict[str, Any]) -> dict[str, Any]:
     """Attach the state-aware `control_caps` derived from (status, kind), so an
     agent reading a job over MCP sees the SAME cap set the GUI does."""
@@ -160,7 +172,8 @@ def _with_caps(job: dict[str, Any]) -> dict[str, Any]:
         "Owner-scoped — only the caller's own jobs are ever returned. Supports "
         "filtering by status / kind / parent job + a free-text search, and cursor "
         "pagination via `cursor` (pass back the returned `next_cursor` for the next "
-        "page)."
+        "page). Pass `detail=summary` for a lightweight list that drops each job's "
+        "heavy `params`/`error` (default `full`); fetch those via jobs_get."
     ),
     meta=require_meta(
         "R",
@@ -212,6 +225,10 @@ async def jobs_list(
         Field(ge=1, le=store.MAX_LIMIT),
         f"Max jobs to return (default {store.DEFAULT_LIMIT}, max {store.MAX_LIMIT}).",
     ] = store.DEFAULT_LIMIT,
+    detail: Annotated[
+        Literal["summary", "full"],
+        "summary = drop each job's heavy params/error; full = every field.",
+    ] = "full",
 ) -> dict:
     tool_ctx = build_tool_context(ctx, settings.internal_service_token)
     items, next_cursor = await store.list_jobs(
@@ -225,9 +242,15 @@ async def jobs_list(
         cursor=cursor,
         limit=limit,
     )
+    # Cursor pagination already bounds the count → apply only the detail
+    # projection here (no second limit/truncation, which would confuse next_cursor).
+    projected, _ = apply_response_contract(
+        [_with_caps(j) for j in items], ref_fields=_JOB_REF_FIELDS, detail=detail,
+    )
     return {
-        "items": [_with_caps(j) for j in items],
+        "items": projected,
         "next_cursor": next_cursor,
+        "detail": detail,
     }
 
 
