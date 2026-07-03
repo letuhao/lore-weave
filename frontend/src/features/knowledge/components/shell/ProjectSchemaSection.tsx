@@ -52,6 +52,7 @@ export function ProjectSchemaSection({
           controller={controller}
           usage={usage}
           observed={observed}
+          projectId={projectId}
           getUsage={(nodeType, code) =>
             Promise.resolve({
               count: usage?.[nodeType as 'node_kind' | 'edge_type']?.[code] ?? 0,

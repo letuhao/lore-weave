@@ -36,6 +36,7 @@ from app.clients.glossary_ontology_client import (
 )
 from app.config import settings
 from app.db.ontology_models import GraphSchema
+from app.clients.llm_client import get_llm_client
 from app.db.neo4j import neo4j_session
 from app.db.neo4j_repos.schema_usage import (
     count_component_usage,
@@ -59,6 +60,7 @@ from app.ontology.glossary_gate import (
     adopt_with_autocreate_glossary,
     resolve_adopt_glossary_codes,
 )
+from app.schema_propose.engine import ProposeError, propose_schema
 
 logger = logging.getLogger(__name__)
 
@@ -139,6 +141,14 @@ class CloneSchemaRequest(BaseModel):
 
     source_schema_id: UUID
     name: str | None = Field(default=None, min_length=1, max_length=_NAME_MAX)
+
+
+class SchemaProposeRequest(BaseModel):
+    """M3b — generate a schema proposal from a premise (single-shot LLM)."""
+
+    premise: str = Field(min_length=1, max_length=4000)
+    genre: str | None = None
+    model_ref: str = Field(min_length=1)  # BYOK user_model id (no hardcoded model)
 
 
 class AdoptPreviewRequest(BaseModel):
@@ -458,6 +468,31 @@ async def get_schema_observed(
     hasn't been extracted."""
     async with neo4j_session() as session:
         return await observed_components(session, user_id=str(owner), project_id=str(project_id))
+
+
+@router.post("/projects/{project_id}/schema/propose")
+async def propose_schema_route(
+    body: SchemaProposeRequest,
+    project_id: UUID = Path(),
+    owner: UUID = Depends(require_project_grant(GrantLevel.MANAGE)),
+):
+    """M3b — propose a KG schema from a premise (single-shot LLM generate; nothing
+    written — the caller reviews + adopts via the add routes). Manage-gated. The
+    LLM runs as the project owner with the caller-supplied BYOK `model_ref`."""
+    try:
+        proposal = await propose_schema(
+            get_llm_client(),
+            user_id=str(owner),
+            premise=body.premise,
+            genre=body.genre,
+            model_ref=body.model_ref,
+        )
+    except ProposeError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail={"code": "KG_SCHEMA_PROPOSE_FAILED", "message": str(exc)},
+        )
+    return proposal.model_dump()
 
 
 @router.post(

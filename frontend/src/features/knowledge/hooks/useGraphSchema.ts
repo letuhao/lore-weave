@@ -143,6 +143,16 @@ export function useSchemaUsageSummary(projectId: string | null) {
   });
 }
 
+// M3b — generate a schema proposal from a premise (single-shot LLM, propose→confirm).
+export function useSchemaPropose(projectId: string) {
+  const { accessToken } = useAuth();
+  const mut = useMutation({
+    mutationFn: (body: import('../types/ontology').SchemaProposeRequest) =>
+      ontologyApi.schemaPropose(projectId, body, accessToken!),
+  });
+  return { propose: mut.mutateAsync, isProposing: mut.isPending };
+}
+
 // M3a — the node kinds + edge types the project's extracted graph already contains
 // (for one-click promotion into the schema).
 export function useSchemaObserved(projectId: string | null) {

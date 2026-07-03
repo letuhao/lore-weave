@@ -89,6 +89,20 @@
     "deleteConfirmTitle": "Delete this component?",
     "deleteConfirmBody": "\"{{code}}\" is referenced by {{count}} graph element(s). Deleting deprecates it — the data stays queryable. Delete anyway?"
   },
+  "generate": {
+    "cta": "Generate with AI",
+    "title": "Generate a schema from a description",
+    "premise": "Premise",
+    "premisePlaceholder": "A xianxia tale about a young cultivator who…",
+    "genre": "Genre (optional)",
+    "model": "Model",
+    "generateButton": "Generate",
+    "generating": "Generating…",
+    "reviewHelp": "Review the proposal and add what you want.",
+    "regenerate": "Back",
+    "adoptButton": "Add selected",
+    "failed": "Couldn't generate a schema"
+  },
   "infer": {
     "title": "Found in your graph",
     "help": "your book already extracted these — add the missing ones",

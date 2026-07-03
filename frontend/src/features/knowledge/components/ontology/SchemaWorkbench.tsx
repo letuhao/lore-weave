@@ -9,7 +9,9 @@ import { VocabSetCard } from './VocabSetCard';
 import { AddEdgeTypeForm } from './AddEdgeTypeForm';
 import { AddNodeKindForm } from './AddNodeKindForm';
 import { AddFactTypeForm } from './AddFactTypeForm';
+import { Sparkles } from 'lucide-react';
 import { InferFromGraphPanel, type InferEdgePick } from './InferFromGraphPanel';
+import { GenerateSchemaDialog, type ProposalPicks } from './GenerateSchemaDialog';
 import type { ObservedComponents } from '../../types/ontology';
 import type { useGraphSchema } from '../../hooks/useGraphSchema';
 
@@ -30,6 +32,7 @@ export function SchemaWorkbench({
   getUsage,
   usage,
   observed,
+  projectId,
 }: {
   controller: SchemaController;
   // A4 — resolve how many graph elements reference a component before deleting it.
@@ -39,9 +42,12 @@ export function SchemaWorkbench({
   usage?: { node_kind: Record<string, number>; edge_type: Record<string, number> };
   // M3a — what the extracted graph already contains (promote-to-schema panel).
   observed?: ObservedComponents;
+  // M3b — the project id enables the "Generate with AI" dialog (single-shot propose).
+  projectId?: string;
 }) {
   const { t } = useTranslation('kgOntology');
   const [editingName, setEditingName] = useState(false);
+  const [showGenerate, setShowGenerate] = useState(false);
   const [name, setName] = useState('');
   const [newSetCode, setNewSetCode] = useState('');
   const [newSetLabel, setNewSetLabel] = useState('');
@@ -98,6 +104,23 @@ export function SchemaWorkbench({
     }
   };
 
+  // M3b — adopt an AI proposal: kinds → edges → facts (order keeps edge endpoints valid).
+  const generateAdopt = async (picks: ProposalPicks) => {
+    try {
+      for (const k of picks.kinds) await controller.addNodeKind({ kind_code: k.code, strength: 'optional' });
+      for (const e of picks.edges)
+        await controller.addEdgeType({
+          code: e.code, label: e.label || e.code,
+          source_node_kinds: e.source_kinds, target_node_kinds: e.target_kinds,
+        });
+      for (const f of picks.facts) await controller.addFactType({ code: f.code, label: f.label || f.code });
+      toast.success(t('infer.added', { count: picks.kinds.length + picks.edges.length + picks.facts.length }));
+    } catch (e) {
+      const msg = (e as { status?: number }).status === 403 ? t('schema.forbidden') : (e as Error).message;
+      toast.error(msg || t('schema.addFailed'));
+    }
+  };
+
   return (
     <div className="space-y-4" data-testid="schema-workbench">
       {/* header */}
@@ -122,13 +145,28 @@ export function SchemaWorkbench({
               data-testid="edit-schema-name">{t('common.edit')}</button>
           </>
         )}
-        <label className="ml-auto flex items-center gap-2 text-[12px]">
+        {projectId && (
+          <button type="button" onClick={() => setShowGenerate(true)} disabled={busy}
+            className="ml-auto inline-flex items-center gap-1 rounded-md border px-2.5 py-1 text-[12px] font-medium hover:bg-muted/40"
+            data-testid="open-generate-schema">
+            <Sparkles className="h-3.5 w-3.5 text-primary" /> {t('generate.cta')}
+          </button>
+        )}
+        <label className={`${projectId ? '' : 'ml-auto'} flex items-center gap-2 text-[12px]`}>
           <input type="checkbox" checked={schema.allow_free_edges} disabled={busy}
             onChange={(e) => void guard(() => controller.patchMeta({ allow_free_edges: e.target.checked }))}
             data-testid="allow-free-edges-toggle" />
           {t('schema.allowFreeEdges')}
         </label>
       </header>
+
+      {showGenerate && projectId && (
+        <GenerateSchemaDialog
+          projectId={projectId}
+          onClose={() => setShowGenerate(false)}
+          onAdopt={generateAdopt}
+        />
+      )}
 
       {/* M3a — promote what the extracted graph already contains */}
       {observed && (

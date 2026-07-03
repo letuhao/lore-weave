@@ -89,6 +89,20 @@
     "deleteConfirmTitle": "このコンポーネントを削除しますか？",
     "deleteConfirmBody": "「{{code}}」は {{count}} 件のグラフ要素から参照されています。削除すると非推奨になります（データは引き続き参照可能）。削除しますか？"
   },
+  "generate": {
+    "cta": "AI で生成",
+    "title": "説明からスキーマを生成",
+    "premise": "設定",
+    "premisePlaceholder": "若き修行者が…という仙侠物語",
+    "genre": "ジャンル（任意）",
+    "model": "モデル",
+    "generateButton": "生成",
+    "generating": "生成中…",
+    "reviewHelp": "提案を確認し、必要なものを追加してください。",
+    "regenerate": "戻る",
+    "adoptButton": "選択を追加",
+    "failed": "スキーマを生成できませんでした"
+  },
   "infer": {
     "title": "グラフから検出",
     "help": "本から抽出済み — 未登録のものを追加",

@@ -183,6 +183,18 @@ export interface ObservedComponents {
   edge_types: { code: string; count: number; source_kinds: string[]; target_kinds: string[] }[];
 }
 
+/** M3b — a schema proposal generated from a premise (LLM, propose→confirm). */
+export interface SchemaProposeRequest {
+  premise: string;
+  genre?: string;
+  model_ref: string;
+}
+export interface SchemaProposal {
+  node_kinds: { code: string; label?: string }[];
+  edge_types: { code: string; label?: string; source_kinds: string[]; target_kinds: string[] }[];
+  fact_types: { code: string; label?: string }[];
+}
+
 export interface ResolvedSchema {
   project_id: string;
   schema_version: number;

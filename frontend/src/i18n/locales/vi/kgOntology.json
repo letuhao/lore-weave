@@ -89,6 +89,20 @@
     "deleteConfirmTitle": "Xoá thành phần này?",
     "deleteConfirmBody": "\"{{code}}\" đang được {{count}} phần tử đồ thị tham chiếu. Xoá sẽ ngừng dùng nó — dữ liệu vẫn truy vấn được. Vẫn xoá?"
   },
+  "generate": {
+    "cta": "Sinh bằng AI",
+    "title": "Sinh schema từ mô tả",
+    "premise": "Mô tả",
+    "premisePlaceholder": "Một truyện tiên hiệp về một tu sĩ trẻ…",
+    "genre": "Thể loại (tuỳ chọn)",
+    "model": "Model",
+    "generateButton": "Sinh",
+    "generating": "Đang sinh…",
+    "reviewHelp": "Xem đề xuất và thêm những gì bạn muốn.",
+    "regenerate": "Quay lại",
+    "adoptButton": "Thêm mục đã chọn",
+    "failed": "Không sinh được schema"
+  },
   "infer": {
     "title": "Tìm thấy trong đồ thị của bạn",
     "help": "truyện đã trích xuất sẵn — thêm những cái còn thiếu",

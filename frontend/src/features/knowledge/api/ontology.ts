@@ -152,6 +152,20 @@ export const ontologyApi = {
     return apiJson(`${BASE}/projects/${projectId}/schema/usage-summary`, { token });
   },
 
+  // M3b — generate a schema proposal from a premise (single-shot LLM; nothing
+  // written — the caller adopts the ticked components via the add routes).
+  schemaPropose(
+    projectId: string,
+    body: import('../types/ontology').SchemaProposeRequest,
+    token: string,
+  ): Promise<import('../types/ontology').SchemaProposal> {
+    return apiJson(`${BASE}/projects/${projectId}/schema/propose`, {
+      method: 'POST',
+      body: JSON.stringify(body),
+      token,
+    });
+  },
+
   // M3a — the node kinds + edge types the project's extracted graph already has.
   schemaObserved(
     projectId: string,
