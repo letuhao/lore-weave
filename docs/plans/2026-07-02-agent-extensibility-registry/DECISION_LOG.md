@@ -129,5 +129,9 @@ route, and the Go probe's IP-pinned dial (rebind-safe). **Findings fixed (`ba576
   on a custom domain/path passes) — the provider-gateway invariant is enforced structurally by `ai-provider-gate`, not
   this substring check; and the `/internal` routes trust the caller-supplied `user_id`/`book_id` by design (the shared-
   secret internal trust boundary; ai-gateway resolves the grant upstream). Neither is exploitable.
-- **Deferred (gate #4, genuinely external):** `D-REG-P3-EXTERNAL-LIVE` — a single live E2E vs a REAL third-party OAuth
-  MCP server; no reference server exists in the dev stack. Every constituent is live/unit-proven separately.
+- **~~Deferred~~ CLEARED (`p3_external_live_smoke.ps1`):** `D-REG-P3-EXTERNAL-LIVE` — the real external-MCP E2E was run
+  against a GENUINE public third-party server (**DeepWiki** `https://mcp.deepwiki.com/mcp`, no-auth streamable-http):
+  register → `is_external=true` + quarantined → probe scanned its 3 real tools → clean → active → federated → **tool
+  CALLED through the gateway's pinned egress dispatcher, real content returned** (external+no-auth ⇒ no internal token
+  sent) → cross-tenant isolation. Only OAuth-against-a-real-server is untaken (DeepWiki is no-auth; the OAuth loop is
+  live-proven vs a conformant fake AS in M4). P3 defers: all clear.

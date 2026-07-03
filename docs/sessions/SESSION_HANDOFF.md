@@ -134,12 +134,16 @@
 > store-failure logged). Re-verified live (rebuilt stack): M2 scan + overlay federation + an actual tool DISPATCH
 > through the new pinned-dispatcher egress path. Suites: agent-registry go green; ai-gateway jest 131/131; FE
 > extensions+studio 35/35; tsc clean.
+> **REAL EXTERNAL-MCP E2E DONE ✅ — `D-REG-P3-EXTERNAL-LIVE` CLEARED** (`p3_external_live_smoke.ps1`): registered a
+> GENUINE public third-party MCP server (**DeepWiki**, `https://mcp.deepwiki.com/mcp`, no-auth streamable-http) through
+> the real path → classified `is_external=true` + QUARANTINED (pending) → the Go probe scanned its 3 REAL tools
+> (`read_wiki_structure` etc.) → clean → active → federated into the user's overlay through ai-gateway → **CALLED
+> `read_wiki_structure` through the gateway and got real DeepWiki content back via the pinned egress dispatcher** (external
+> + no-auth ⇒ `{}` headers; the internal token is NOT sent) → cross-tenant isolation confirmed (user B saw nothing). The
+> only untaken variant is OAuth against a real server (DeepWiki is no-auth) — but the OAuth loop is live-proven vs a
+> conformant fake AS (`p3_m4_oauth_smoke`), so the full external path is now end-to-end proven on a real server.
 > **NEXT: P4 (slash commands + declarative hooks) → P5 (subagents + bundles).**
-> **Decisions:** `DECISION_LOG.md` (DL-1..8 + review rounds). **Defers (gate #4 — genuinely external, no reference
-> server in dev):** `D-REG-P3-EXTERNAL-LIVE` — the single live E2E vs a REAL third-party OAuth MCP server
-> (register→OAuth-consent→tool-call-in-a-chat-turn). Every constituent is proven separately: OAuth full loop live vs a
-> conformant fake AS (`p3_m4_oauth_smoke`), scan/probe live vs the real registry /mcp, egress dispatch live, the
-> external-credential/token-leak boundary unit-proven. Target: when a reference external MCP server is available.
+> **Decisions:** `DECISION_LOG.md` (DL-1..8 + review rounds). **P3 defers: all clear.**
 >
 > **▶ CHAT QUALITY WAVE — W0 + W1 SHIPPED + LIVE-SMOKED 2026-07-03 (parallel sub-agent build, disjoint files,
 > combined verify).** Trigger: user's 8-item quality pass (plan + 5-investigation evidence base incl. a LIVE MCP
