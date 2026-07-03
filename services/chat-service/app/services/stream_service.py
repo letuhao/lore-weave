@@ -577,6 +577,7 @@ async def _stream_with_tools(
     effective_limit: int | None = None,
     permission_mode: str = "write",
     approval_check=None,
+    hooks: list[dict] | None = None,
 ) -> AsyncGenerator[dict, None]:
     """K21-B — the tool-calling loop.
 
@@ -1034,6 +1035,26 @@ async def _stream_with_tools(
                             },
                         }
                         break
+
+                # P4 REG-P4-03 — pre_tool_call hook. A declarative `deny` hook blocks
+                # this call HERE (before the MCP transport) with a surfaced result.error
+                # the model can adapt to — same short-circuit shape as the planner cap
+                # below. Declarative only: no code runs, the hook just decides.
+                if hooks:
+                    from app.services.hook_engine import decide_pre_tool_call
+
+                    _hk_action, _hk_msg = decide_pre_tool_call(hooks, c["name"])
+                    if _hk_action == "deny":
+                        _denial = {"error": "blocked_by_hook", "message": _hk_msg}
+                        working.append({
+                            "role": "tool", "tool_call_id": c["id"],
+                            "content": json.dumps(_denial),
+                        })
+                        yield {"tool_call": {
+                            "id": c["id"], "iteration": iteration, "tool": c["name"],
+                            "args": args_obj, "ok": False, "result": None, "error": _hk_msg,
+                        }}
+                        continue
 
                 # #18 — planner hard-stop. The planner (glossary_plan) is a heavy ~39s
                 # model call with NO ReAct loop of its own; a weak model loops it in a
@@ -2024,6 +2045,25 @@ async def _emit_chat_turn(
     async def _approval_check(tool_name: str) -> bool:
         return await is_tool_approved(pool, user_id, tool_name)
 
+    # P4 REG-P4-03 — resolve the user's declarative hooks once per turn (degrade-safe
+    # []). pre_turn inject_text hooks are folded into the system prompt now (steering
+    # style); pre_tool_call deny/require_approval are evaluated inside the loop.
+    _turn_hooks: list[dict] = []
+    try:
+        from app.client.registry_hooks_client import get_hooks_client
+        from app.services.hook_engine import collect_injections
+
+        _turn_hooks = await get_hooks_client().get_hooks(str(user_id), book_id=str(project_id or ""))
+        _pre_injections = collect_injections(_turn_hooks, "pre_turn")
+        if _pre_injections and messages:
+            # Insert as a just-in-time system directive immediately BEFORE the final
+            # (user) message — higher salience than folding into a large system prompt.
+            _inj = {"role": "system", "content": "\n".join(_pre_injections)}
+            _pos = len(messages) - 1 if messages[-1].get("role") == "user" else len(messages)
+            messages.insert(_pos, _inj)
+    except Exception:  # noqa: BLE001 — hooks are a guardrail, never load-bearing
+        logger.warning("hook resolution failed (unhooked turn)", exc_info=False)
+
     try:
         if use_tools:
             chunk_stream = _stream_with_tools(
@@ -2051,6 +2091,7 @@ async def _emit_chat_turn(
                 effective_limit=_eff_limit,
                 permission_mode=permission_mode,
                 approval_check=_approval_check,
+                hooks=_turn_hooks,
             )
         else:
             chunk_stream = _stream_via_gateway(
