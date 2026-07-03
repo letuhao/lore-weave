@@ -1,6 +1,7 @@
 package api
 
 import (
+	"context"
 	"encoding/json"
 	"net/http"
 	"regexp"
@@ -13,6 +14,12 @@ import (
 var skillSlugRe = regexp.MustCompile(`^[a-z0-9][a-z0-9-]{1,63}$`)
 
 const maxSkillBodyBytes = 64 * 1024 // D2
+
+// skillQuotaExceeded reports whether the user is at/over the per-user skill cap
+// (REG-X-02 / D2). Counts only the user's own user-tier skills.
+func (s *Server) skillQuotaExceeded(ctx context.Context, uid uuid.UUID) bool {
+	return s.queryInt(ctx, `SELECT COUNT(*) FROM skills WHERE tier = 'user' AND owner_user_id = $1`, uid) >= quotaSkills
+}
 
 // scriptsMarkerRe flags an imported SKILL pack that smuggles executable content
 // (prompt-only decision — no scripts/ execution). We reject on a scripts/ path
@@ -125,10 +132,24 @@ func (s *Server) doCreateSkill(w http.ResponseWriter, r *http.Request, uid uuid.
 			return
 		}
 	case "book":
-		writeError(w, http.StatusNotImplemented, "NOT_IMPLEMENTED", "book-tier skills require grant wiring (deferred D-REG-BOOK-GRANT)")
-		return
+		// D-REG-BOOK-GRANT: book-tier skill creation requires ≥edit on the book.
+		if in.BookID == nil {
+			writeError(w, http.StatusBadRequest, "VALIDATION_ERROR", "book_id required for book tier")
+			return
+		}
+		if !s.requireBookGrant(w, r, *in.BookID, uid) {
+			return
+		}
+		bookArg = *in.BookID
 	default:
 		writeError(w, http.StatusBadRequest, "VALIDATION_ERROR", "invalid tier")
+		return
+	}
+
+	// REG-X-02 (D2): cap a user's own skills at quotaSkills. Book/System tiers
+	// are not counted against the per-user limit.
+	if tier == "user" && s.skillQuotaExceeded(r.Context(), uid) {
+		writeError(w, http.StatusTooManyRequests, "QUOTA_EXCEEDED", "skill limit reached (max 50 per user)")
 		return
 	}
 

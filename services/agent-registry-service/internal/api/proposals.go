@@ -189,6 +189,11 @@ func (s *Server) approveProposal(w http.ResponseWriter, r *http.Request) {
 			writeError(w, http.StatusBadRequest, "VALIDATION_ERROR", msg)
 			return
 		}
+		// REG-X-02 (D2): the per-user skill cap applies to agent-proposed skills too.
+		if s.skillQuotaExceeded(r.Context(), uid) {
+			writeError(w, http.StatusTooManyRequests, "QUOTA_EXCEEDED", "skill limit reached (max 50 per user)")
+			return
+		}
 		fm := in.Frontmatter
 		if len(fm) == 0 {
 			fm = json.RawMessage(`{}`)

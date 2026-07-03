@@ -354,6 +354,9 @@ services:
       # DECISION-1 — dedicated AES-GCM vault key for MCP-server secrets (blast-radius
       # split from JWT_SECRET). Optional in dev (falls back to JWT_SECRET).
       AGENT_REGISTRY_VAULT_KEY: ${AGENT_REGISTRY_VAULT_KEY:-loreweave_local_dev_agent_registry_vault_key_change_me_32}
+      # D-REG-BOOK-GRANT — book-service for E0 grant checks on book-tier writes.
+      # Empty disables book-tier (they 501); set it to enable grant-gated book tier.
+      BOOK_SERVICE_INTERNAL_URL: http://book-service:8082
       OTEL_EXPORTER_OTLP_ENDPOINT: ${OTEL_EXPORTER_OTLP_ENDPOINT:-}
     depends_on:
       postgres:

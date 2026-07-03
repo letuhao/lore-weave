@@ -84,11 +84,16 @@ func (s *Server) createPlugin(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	case "book":
-		// DL-2: book-tier creation requires an E0 grant check on book_id, which
-		// lands when the book-grant client is wired. Rejected until then so we
-		// never open an unguarded cross-tenant book write (tenancy rule).
-		writeError(w, http.StatusNotImplemented, "NOT_IMPLEMENTED", "book-tier plugins require grant wiring (deferred D-REG-BOOK-GRANT)")
-		return
+		// D-REG-BOOK-GRANT: book-tier creation requires the caller to hold ≥edit
+		// on the book (E0 grant), checked via book-service. Fail-closed.
+		if req.BookID == nil {
+			writeError(w, http.StatusBadRequest, "VALIDATION_ERROR", "book_id required for book tier")
+			return
+		}
+		if !s.requireBookGrant(w, r, *req.BookID, uid) {
+			return
+		}
+		bookArg = *req.BookID
 	default:
 		writeError(w, http.StatusBadRequest, "VALIDATION_ERROR", "tier must be 'user', 'system', or 'book'")
 		return

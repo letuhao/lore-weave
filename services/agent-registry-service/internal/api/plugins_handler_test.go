@@ -88,13 +88,16 @@ func TestCreatePlugin_SystemTierRequiresAdmin(t *testing.T) {
 	}
 }
 
-func TestCreatePlugin_BookTierDeferred(t *testing.T) {
-	s, mock := newMockServer(t)
+// With no BOOK_SERVICE_INTERNAL_URL (grants==nil), a book-tier write is refused
+// 501 — book-tier requires the grant client (D-REG-BOOK-GRANT, fail-closed). The
+// grant-wired path (404/503) is covered by the live governance smoke.
+func TestCreatePlugin_BookTierRequiresGrantClient(t *testing.T) {
+	s, mock := newMockServer(t) // testCfg has no BookServiceInternalURL → grants nil
 	defer mock.Close()
 	tok := mintJWT(t, uuid.NewString(), "")
 	rec := doJSON(s, http.MethodPost, "/v1/agent-registry/plugins", tok, `{"name":"io.x/y","tier":"book","book_id":"`+uuid.NewString()+`"}`)
 	if rec.Code != http.StatusNotImplemented {
-		t.Fatalf("want 501 (book deferred), got %d", rec.Code)
+		t.Fatalf("want 501 (no grant client), got %d", rec.Code)
 	}
 }
 

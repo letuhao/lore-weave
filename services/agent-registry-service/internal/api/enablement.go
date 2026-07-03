@@ -87,11 +87,24 @@ func (s *Server) putEnablement(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	case "book":
-		// DL-2: book-scope override write needs an E0 grant check on book_id.
-		// Deferred until the book-grant client is wired; the resolver already
-		// honors book overrides so no behavior is lost once writes land.
-		writeError(w, http.StatusNotImplemented, "NOT_IMPLEMENTED", "book-scope enablement requires grant wiring (deferred D-REG-BOOK-GRANT)")
-		return
+		// D-REG-BOOK-GRANT: a book-scope enablement override requires ≥edit on the book.
+		if req.BookID == nil {
+			writeError(w, http.StatusBadRequest, "VALIDATION_ERROR", "book_id required for book scope")
+			return
+		}
+		if !s.requireBookGrant(w, r, *req.BookID, uid) {
+			return
+		}
+		_, err := s.db.Exec(r.Context(),
+			`INSERT INTO plugin_enablement (plugin_id, scope, book_id, enabled)
+			 VALUES ($1,'book',$2,$3)
+			 ON CONFLICT (plugin_id, book_id) WHERE scope = 'book'
+			 DO UPDATE SET enabled = EXCLUDED.enabled, updated_at = now()`,
+			pid, *req.BookID, req.Enabled)
+		if err != nil {
+			writeError(w, http.StatusInternalServerError, "DB_ERROR", "could not set enablement")
+			return
+		}
 	default:
 		writeError(w, http.StatusBadRequest, "VALIDATION_ERROR", "scope must be 'user' or 'book'")
 		return

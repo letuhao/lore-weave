@@ -20,6 +20,12 @@ type Config struct {
 	// Defaults to JWTSecret-derived key when empty so a dev run boots; a distinct
 	// AGENT_REGISTRY_VAULT_KEY is recommended in prod for blast-radius isolation.
 	VaultKey string
+
+	// BookServiceInternalURL — book-service base URL for E0 grant checks
+	// (grantclient /internal/books/{id}/access). Optional: empty disables
+	// book-tier writes (they 501), matching the pre-grant behavior. Set it to
+	// enable book-tier plugins/skills + book-scope enablement (D-REG-BOOK-GRANT).
+	BookServiceInternalURL string
 }
 
 func Load() (*Config, error) {
@@ -29,6 +35,7 @@ func Load() (*Config, error) {
 		JWTSecret:            os.Getenv("JWT_SECRET"),
 		InternalServiceToken: os.Getenv("INTERNAL_SERVICE_TOKEN"),
 		VaultKey:             os.Getenv("AGENT_REGISTRY_VAULT_KEY"),
+		BookServiceInternalURL: os.Getenv("BOOK_SERVICE_INTERNAL_URL"),
 	}
 	if c.DatabaseURL == "" {
 		return nil, fmt.Errorf("DATABASE_URL is required")

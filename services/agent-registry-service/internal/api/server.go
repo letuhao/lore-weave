@@ -7,6 +7,7 @@ import (
 	"crypto/rand"
 	"encoding/base64"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
 	"strconv"
@@ -21,6 +22,7 @@ import (
 	"github.com/jackc/pgx/v5/pgconn"
 
 	"github.com/loreweave/agent-registry-service/internal/config"
+	"github.com/loreweave/grantclient"
 	"github.com/loreweave/observability"
 )
 
@@ -39,16 +41,54 @@ type Server struct {
 	cfg       *config.Config
 	jwtSecret []byte
 	vaultKey  []byte // 32 bytes for AES-256-GCM
+	// grants resolves E0 book grants for book-tier writes (D-REG-BOOK-GRANT).
+	// nil when BOOK_SERVICE_INTERNAL_URL is unset → book-tier writes 501.
+	grants *grantclient.Client
 }
 
 // NewServer constructs the HTTP server. db may be nil for router-only tests;
 // handlers return 503 when a DB op is attempted against a nil pool.
 func NewServer(db PgxDB, cfg *config.Config) *Server {
-	return &Server{
+	s := &Server{
 		db:        db,
 		cfg:       cfg,
 		jwtSecret: []byte(cfg.JWTSecret),
 		vaultKey:  deriveKey(cfg.VaultKey),
+	}
+	if cfg.BookServiceInternalURL != "" {
+		if gc, err := grantclient.NewClient(grantclient.Options{
+			BaseURL:       cfg.BookServiceInternalURL,
+			InternalToken: cfg.InternalServiceToken,
+		}); err == nil {
+			s.grants = gc
+		}
+	}
+	return s
+}
+
+// requireBookGrant gates a book-tier write on the caller holding ≥edit on the
+// book (E0). Fail-closed: no grant client → 501; forbidden → 404 (anti-oracle —
+// a book the user can't touch is indistinguishable from absent); authority
+// unavailable → 503. Returns true when the caller may proceed.
+func (s *Server) requireBookGrant(w http.ResponseWriter, r *http.Request, bookID, uid uuid.UUID) bool {
+	if s.grants == nil {
+		writeError(w, http.StatusNotImplemented, "NOT_IMPLEMENTED", "book-tier requires BOOK_SERVICE_INTERNAL_URL (grant wiring)")
+		return false
+	}
+	if bookID == uuid.Nil {
+		writeError(w, http.StatusBadRequest, "VALIDATION_ERROR", "book_id required for book tier")
+		return false
+	}
+	err := s.grants.RequireGrant(r.Context(), bookID, uid, grantclient.GrantEdit)
+	switch {
+	case err == nil:
+		return true
+	case errors.Is(err, grantclient.ErrForbidden):
+		writeError(w, http.StatusNotFound, "NOT_FOUND", "book not found")
+		return false
+	default: // ErrUnavailable — fail closed
+		writeError(w, http.StatusServiceUnavailable, "GRANT_UNAVAILABLE", "grant authority unavailable")
+		return false
 	}
 }
 
