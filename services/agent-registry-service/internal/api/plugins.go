@@ -328,8 +328,14 @@ func (s *Server) cascadePreview(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusNotFound, "NOT_FOUND", "plugin not found")
 		return
 	}
+	// Real member counts (a plugin delete cascades to these via the FK ON DELETE CASCADE).
 	writeJSON(w, http.StatusOK, map[string]any{
-		"skills": 0, "mcp_servers": 0, "commands": 0, "hooks": 0, "subagents": 0, "pinned_sessions": 0,
+		"skills":          s.queryInt(r.Context(), `SELECT COUNT(*) FROM skills WHERE plugin_id=$1`, pid),
+		"mcp_servers":     s.queryInt(r.Context(), `SELECT COUNT(*) FROM mcp_server_registrations WHERE plugin_id=$1`, pid),
+		"commands":        s.queryInt(r.Context(), `SELECT COUNT(*) FROM slash_commands WHERE plugin_id=$1`, pid),
+		"hooks":           s.queryInt(r.Context(), `SELECT COUNT(*) FROM hooks WHERE plugin_id=$1`, pid),
+		"subagents":       0,
+		"pinned_sessions": 0,
 	})
 }
 

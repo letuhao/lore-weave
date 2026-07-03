@@ -171,6 +171,8 @@ func (s *Server) Router() http.Handler {
 		r.Delete("/plugins/{plugin_id}", s.deletePlugin)
 		r.Get("/plugins/{plugin_id}/cascade-preview", s.cascadePreview)
 		r.Put("/plugins/{plugin_id}/enablement", s.putEnablement)
+		r.Post("/plugins/import", s.importBundle)              // P5 bundle import
+		r.Get("/plugins/{plugin_id}/export", s.exportBundle)   // P5 bundle export
 
 		// Skills (P1, prompt-only)
 		r.Get("/skills", s.listSkills)
