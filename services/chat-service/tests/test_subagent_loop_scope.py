@@ -175,6 +175,34 @@ class TestWriteDelegation:
         tool_msg = next(m for m in msgs if m.get("role") == "tool")
         assert "not pre-approved" in json.loads(tool_msg["content"])["error"]
 
+    @pytest.mark.asyncio
+    async def test_volume_cap_errors_not_suspends_in_write_subrun(self):
+        # /review-impl: with Tier-A now correctly tiered in a sub-run, the per-op
+        # auto-write cap (5) would fire a confirm_action SUSPEND that a headless
+        # sub-run swallows silently. It must instead return a result.error — the 6th
+        # same-op Tier-A call is capped, the first 5 execute.
+        kc = AsyncMock()
+        kc.get_catalog_meta = MagicMock(return_value={})
+        kc.mcp_execute_tool.return_value = _envelope(success=True, result={"book_id": "b"})
+        check = AsyncMock(return_value=True)  # all allowlisted → they auto-commit
+        frags = []
+        for i in range(6):  # TIER_A_SAME_OP_CAP=5 → the 6th trips the per-op cap
+            frags.append(tool_frag(index=i, id=f"c{i}", name="book_create"))
+            frags.append(tool_frag(index=i, arguments_delta='{"title":"X"}'))
+        frags.append(done("tool_calls"))
+        scripts = [frags, [tok("summarized"), done("stop")]]
+        with _patch_client(scripts):
+            chunks = await _drain(_run(
+                scripts, knowledge_client=kc, permission_mode="write",
+                approval_check=check,
+                allowed_tool_names={"book_create"}, subagent_depth=1,
+            ))
+        assert kc.mcp_execute_tool.await_count == 5          # first 5 wrote
+        assert not [c for c in chunks if "suspend" in c]     # capped call did NOT suspend
+        capped = [c["tool_call"] for c in chunks if "tool_call" in c and not c["tool_call"]["ok"]]
+        assert len(capped) == 1
+        assert "cannot request batch confirmation" in capped[0]["error"]
+
 
 class TestRunSubagentAdvertisement:
     @pytest.mark.asyncio

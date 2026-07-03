@@ -1141,6 +1141,25 @@ async def _stream_with_tools(
                                 f"Auto-apply cap reached: already ran {c['name']} "
                                 f"{TIER_A_SAME_OP_CAP}× this turn. Confirm to continue."
                             )
+                        # A headless sub-run can't raise the batch confirm card — so
+                        # instead of a silently-swallowed suspend, return the cap as a
+                        # result.error the sub-model can stop on (no-silent-no-op).
+                        # The writes already applied are all allowlisted + tenancy-safe;
+                        # the cap simply halts further auto-writes (the safe direction).
+                        if subagent_depth > 0:
+                            _cap_err = (
+                                f"{reason} A subagent cannot request batch confirmation — "
+                                "stopping further auto-writes. Summarize what was done."
+                            )
+                            working.append({
+                                "role": "tool", "tool_call_id": c["id"],
+                                "content": json.dumps({"error": _cap_err}),
+                            })
+                            yield {"tool_call": {
+                                "id": c["id"], "iteration": iteration, "tool": c["name"],
+                                "args": args_obj, "ok": False, "result": None, "error": _cap_err,
+                            }}
+                            continue
                         suspended_call = {
                             "id": c["id"],
                             "name": "confirm_action",
