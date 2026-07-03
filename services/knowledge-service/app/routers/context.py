@@ -76,6 +76,10 @@ class ContextBuildRequest(BaseModel):
     user_id: UUID
     session_id: UUID | None = None
     project_id: UUID | None = None
+    # Track B B1(2) — multi-KG: a SET of projects to UNION into one context (shared
+    # budget, cross-project dedup + rank). Takes precedence over project_id; the
+    # single field stays for back-compat + salience attribution.
+    project_ids: list[UUID] | None = Field(default=None, max_length=16)
     # User's current message — used as the glossary FTS query in Mode 2.
     # 4k char cap fits legitimate chat turns without giving callers a
     # silent DoS knob.
@@ -148,6 +152,7 @@ async def build(
             llm_client=llm_client,
             language=req.language,
             entity_access_repo=entity_access_repo,
+            project_ids=req.project_ids,
         )
         _mode_label = built.mode
     except ProjectNotFound:
