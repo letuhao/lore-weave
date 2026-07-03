@@ -72,6 +72,9 @@ from app.services.subagent_runtime import (
 )
 from app.services.output_extractor import extract_outputs
 from app.services.stream_events import make_emitter
+# T0 / L3 (Context Budget Law §6a, §14a) — the single concise-wire funnel for
+# every model-facing tool-result `content` string (ensure_ascii=False + drop-None).
+from app.services.tool_result_wire import tool_result_content
 from app.services.compaction import compact_messages, summary_message
 # W3 — compaction tier 2 (compress instead of drop) shares its summarizer with
 # the manual /compact route; the factored impl lives in compact_service. Bound
@@ -967,7 +970,7 @@ async def _stream_with_tools(
                             yield {"agent_surface": payload_as}
                     working.append({
                         "role": "tool", "tool_call_id": c["id"],
-                        "content": json.dumps(payload),
+                        "content": tool_result_content(payload),
                     })
                     yield {"tool_call": {
                         "id": c["id"], "iteration": iteration, "tool": c["name"],
@@ -1010,7 +1013,7 @@ async def _stream_with_tools(
                     total_output += sub_out
                     working.append({
                         "role": "tool", "tool_call_id": c["id"],
-                        "content": json.dumps(payload),
+                        "content": tool_result_content(payload),
                     })
                     _sub_ok = not payload.get("error")
                     tool_chunk = {
@@ -1045,7 +1048,7 @@ async def _stream_with_tools(
                     )
                     working.append({
                         "role": "tool", "tool_call_id": c["id"],
-                        "content": json.dumps({"error": scope_err}),
+                        "content": tool_result_content({"error": scope_err}),
                     })
                     yield {"tool_call": {
                         "id": c["id"], "iteration": iteration, "tool": c["name"],
@@ -1082,7 +1085,7 @@ async def _stream_with_tools(
                     total_output += c_out
                     working.append({
                         "role": "tool", "tool_call_id": c["id"],
-                        "content": json.dumps({"prose": prose}),
+                        "content": tool_result_content({"prose": prose}),
                     })
                     yield {"tool_call": {
                         "id": c["id"], "iteration": iteration, "tool": c["name"],
@@ -1120,7 +1123,7 @@ async def _stream_with_tools(
                             )
                         working.append({
                             "role": "tool", "tool_call_id": c["id"],
-                            "content": json.dumps({"error": ask_err}),
+                            "content": tool_result_content({"error": ask_err}),
                         })
                         yield {"tool_call": {
                             "id": c["id"], "iteration": iteration, "tool": c["name"],
@@ -1180,7 +1183,7 @@ async def _stream_with_tools(
                             )
                             working.append({
                                 "role": "tool", "tool_call_id": c["id"],
-                                "content": json.dumps({"error": _cap_err}),
+                                "content": tool_result_content({"error": _cap_err}),
                             })
                             yield {"tool_call": {
                                 "id": c["id"], "iteration": iteration, "tool": c["name"],
@@ -1213,7 +1216,7 @@ async def _stream_with_tools(
                         _denial = {"error": "blocked_by_hook", "message": _hk_msg}
                         working.append({
                             "role": "tool", "tool_call_id": c["id"],
-                            "content": json.dumps(_denial),
+                            "content": tool_result_content(_denial),
                         })
                         yield {"tool_call": {
                             "id": c["id"], "iteration": iteration, "tool": c["name"],
@@ -1233,7 +1236,7 @@ async def _stream_with_tools(
                             )
                             working.append({
                                 "role": "tool", "tool_call_id": c["id"],
-                                "content": json.dumps({"error": _hk_sub_err}),
+                                "content": tool_result_content({"error": _hk_sub_err}),
                             })
                             yield {"tool_call": {
                                 "id": c["id"], "iteration": iteration, "tool": c["name"],
@@ -1275,7 +1278,7 @@ async def _stream_with_tools(
                         }
                         working.append({
                             "role": "tool", "tool_call_id": c["id"],
-                            "content": json.dumps(guidance),
+                            "content": tool_result_content(guidance),
                         })
                         yield {"tool_call": {
                             "id": c["id"], "iteration": iteration, "tool": c["name"],
@@ -1339,7 +1342,7 @@ async def _stream_with_tools(
                             )
                             working.append({
                                 "role": "tool", "tool_call_id": c["id"],
-                                "content": json.dumps({"error": _sub_appr_err}),
+                                "content": tool_result_content({"error": _sub_appr_err}),
                             })
                             yield {"tool_call": {
                                 "id": c["id"], "iteration": iteration, "tool": c["name"],
@@ -1374,7 +1377,7 @@ async def _stream_with_tools(
                 tool_payload = envelope.get("result") if ok else {"error": envelope.get("error")}
                 working.append({
                     "role": "tool", "tool_call_id": c["id"],
-                    "content": json.dumps(tool_payload),
+                    "content": tool_result_content(tool_payload),
                 })
                 tool_chunk: dict = {
                     "id": c["id"], "iteration": iteration, "tool": c["name"],
@@ -2926,7 +2929,7 @@ async def resume_stream_response(
         working.append({
             "role": "tool",
             "tool_call_id": tool_call_id,
-            "content": json.dumps(result_payload),
+            "content": tool_result_content(result_payload),
         })
 
     # Re-derive session gen_params + tool defs for the 2nd pass.
@@ -3010,7 +3013,7 @@ async def resume_stream_response(
             _tool_payload = envelope.get("result") if _ok else {"error": envelope.get("error")}
             working.append({
                 "role": "tool", "tool_call_id": tool_call_id,
-                "content": json.dumps(_tool_payload),
+                "content": tool_result_content(_tool_payload),
             })
             _chunk: dict = {
                 "id": tool_call_id, "iteration": 0, "tool": _tool_name,
@@ -3040,7 +3043,7 @@ async def resume_stream_response(
         else:
             working.append({
                 "role": "tool", "tool_call_id": tool_call_id,
-                "content": json.dumps({"error": "denied by user"}),
+                "content": tool_result_content({"error": "denied by user"}),
             })
             pre_tool_chunks = [{
                 "id": tool_call_id, "iteration": 0, "tool": _tool_name,

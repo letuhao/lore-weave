@@ -133,6 +133,10 @@ Reuse the existing `frontend-tools.contract.json` machinery (record real output 
 
 **T0–T1 are shippable immediately and independent of the contested tiers.** T4 must land before T5 (the block safety net is what makes gating safe). Each GATE is a real measurement, not a checkbox.
 
+### 8a. Measured tier results (updated as tiers land)
+
+- **T0 — SHIPPED (2026-07-04).** L3 funnel `tool_result_content()` (`ensure_ascii=False` + drop-`None`) wired at all 14 model-facing tool-result `content` sites in `stream_service.py`; L3 lint (`scripts/context-budget-l3-lint.py`) green; helper unit-tested (`tests/test_tool_result_wire.py`, 10 tests). **GATE measurement** (`scripts/context-budget-t0-measure.py`, over 244 real persisted tool results in dev `loreweave_chat`): **−3.6% bytes / −3.6% est-tokens repo-wide** (24 KB unicode-unescape + 29 KB null-drop, ~even split). **Key finding:** the 146K bloat was dominated by response **structure** (the full outline dump), NOT unicode escaping — so T0 is the cheap zero-risk baseline (one file, all 94 tools) and the large reduction lives in **T1** (reference-first / `detail=summary` on the SET-returning tools). Unicode win scales to 30 %+ on VI-prose-dense results (unit-proven); diluted on the structural-JSON corpus. Voice path confirmed to have **no** tool-result funnel sites (its dumps are SSE/persistence).
+
 ---
 
 ## 9. Verification
