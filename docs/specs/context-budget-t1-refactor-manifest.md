@@ -44,6 +44,31 @@ Legend: ✅ done+proven · ⏳ tracked (worst-first backlog) · 🟢 exempt (`@s
   CI meta-check (todo: Inspector/enforcement). Until then each refactor carries its own
   deterministic guard test (e.g. `test_outline_response_contract.py`).
 
+## Family-B completion (2026-07-04) — parallel refactor, 18 SET tools
+
+Refactored via 3 disjoint-service subagents (fan-out build / serial integrate),
+each **review-gated** (cold-start diff review: default=`full` preserved, no
+security/gate line removed, meta surfaced) + independently re-verified:
+
+- **jobs** (`b…`): `jobs_list` ✅
+- **composition** (`60bd…`, `d856…`): `list_outline`✅ `get_outline_node`✅(new) `list_canon_rules`🟢
+  `motif_search`✅ `motif_book_list`✅ `motif_suggest_for_chapter`✅ `arc_suggest`✅ ·
+  🟢 `motif_get` `motif_link_list` `motif_mine` `arc_import_analyze` `get_prose` `get_generation_job`
+- **translation** (`d856…`): `list_versions`✅ `job_status`✅ · 🟢 `coverage` `segment_status`
+- **knowledge** (`b458…`): `story_search`✅ `memory_search`✅ `memory_timeline`✅ `kg_graph_query`✅
+  `kg_world_query`✅ `kg_multi_query`✅ `kg_entity_edge_timeline`✅ `kg_triage_list`✅ ·
+  🟢 `memory_recall_entity`(get-by-id) `kg_schema_read` `kg_list_templates` `kg_view_read`
+  `kg_sync_available` `kg_project_list`
+
+Each service added contract-guard tests (summary drops heavy body / keeps refs /
+materially smaller / default=full). Suites green: translation 1039 · composition
+1490 · knowledge 3496. **Remaining B:** (1) the response-shape contract-snapshot
+harness (§13b), (2) live-e2e per tool through ai-gateway federation — the
+composition/outline live drop is proven (−74%); knowledge/translation live-e2e is
+partly gated on **D-EVAL-BOOK** (need seeded data to show a real drop), tracked.
+A5 byte histograms remain deferred (production ranking; the persisted-corpus
+script + this manifest are the interim ranking).
+
 ## GATE (T1)
 
 Met when the worst offender's cut is proven live with zero consumer regression — **DONE**
