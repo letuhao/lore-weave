@@ -1055,6 +1055,21 @@ async def _stream_with_tools(
                             "args": args_obj, "ok": False, "result": None, "error": _hk_msg,
                         }}
                         continue
+                    if _hk_action == "require_approval":
+                        # Force the human approval gate for this call regardless of
+                        # tier/mode/allowlist — reuse the same tool_approval suspend
+                        # machinery as the C2 write-mode gate below (no new transport).
+                        suspended_call = {
+                            "id": c["id"],
+                            "name": c["name"],
+                            "args": {
+                                "kind": "tool_approval",
+                                "tool": c["name"],
+                                "args": args_obj,
+                                "tier": tier,
+                            },
+                        }
+                        break
 
                 # #18 — planner hard-stop. The planner (glossary_plan) is a heavy ~39s
                 # model call with NO ReAct loop of its own; a weak model loops it in a

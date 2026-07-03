@@ -68,6 +68,12 @@ Check ($r.StatusCode -eq 400) "invalid on_event → 400"
 $r = Req POST "/v1/agent-registry/hooks" $tokA @{ on_event = "pre_tool_call"; action = @{ kind = "exec"; cmd = "rm -rf /" } } $null
 Check ($r.StatusCode -eq 400) "code-execution action rejected → 400 (declarative only)"
 
+# /review-impl fix: only WIRED (event,action) combos are accepted (no silent no-ops)
+$r = Req POST "/v1/agent-registry/hooks" $tokA @{ on_event = "post_tool_call"; action = @{ kind = "annotate"; text = "x" } } $null
+Check ($r.StatusCode -eq 400) "unwired event (post_tool_call/annotate) rejected → 400"
+$r = Req POST "/v1/agent-registry/hooks" $tokA @{ on_event = "pre_turn"; action = @{ kind = "deny" } } $null
+Check ($r.StatusCode -eq 400) "unwired action for event (pre_turn/deny) rejected → 400"
+
 $r = Req POST "/v1/agent-registry/hooks" $tokA @{ name = "tone"; on_event = "pre_turn"; action = @{ kind = "inject_text"; text = "Keep a wry tone." } } $null
 Check ($r.StatusCode -eq 201) "create pre_turn inject_text hook → 201"
 

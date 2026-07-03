@@ -27,27 +27,29 @@ func TestCommandNameValidation(t *testing.T) {
 }
 
 func TestValidateHookAction(t *testing.T) {
-	good := map[string]string{
-		"deny":             `{"kind":"deny","message":"blocked"}`,
-		"require_approval": `{"kind":"require_approval"}`,
-		"inject_text":      `{"kind":"inject_text","text":"remember the tone"}`,
-		"annotate":         `{"kind":"annotate","text":"noted"}`,
+	// only WIRED (event, kind) pairs are valid (the engine implements exactly these).
+	good := []struct{ event, raw, kind string }{
+		{"pre_tool_call", `{"kind":"deny","message":"blocked"}`, "deny"},
+		{"pre_tool_call", `{"kind":"require_approval"}`, "require_approval"},
+		{"pre_turn", `{"kind":"inject_text","text":"remember the tone"}`, "inject_text"},
 	}
-	for want, raw := range good {
-		if kind, ok := validateHookAction(json.RawMessage(raw)); !ok || kind != want {
-			t.Errorf("action %s should be valid (got kind=%q ok=%v)", raw, kind, ok)
+	for _, g := range good {
+		if kind, ok := validateHookAction(g.event, json.RawMessage(g.raw)); !ok || kind != g.kind {
+			t.Errorf("%s/%s should be valid (got kind=%q ok=%v)", g.event, g.raw, kind, ok)
 		}
 	}
-	bad := []string{
-		`{"kind":"exec","cmd":"rm -rf"}`, // not an allowed kind (no code execution)
-		`{"kind":"inject_text"}`,          // missing text
-		`{"kind":"annotate","text":"  "}`, // blank text
-		`{}`,                              // no kind
-		`not json`,
+	bad := []struct{ event, raw string }{
+		{"pre_tool_call", `{"kind":"exec","cmd":"rm -rf"}`},      // no code execution
+		{"pre_tool_call", `{"kind":"inject_text","text":"x"}`},   // inject_text not wired for pre_tool_call
+		{"pre_turn", `{"kind":"deny"}`},                          // deny not wired for pre_turn
+		{"pre_turn", `{"kind":"inject_text"}`},                   // missing text
+		{"post_tool_call", `{"kind":"annotate","text":"noted"}`}, // event not wired at the API
+		{"post_turn", `{"kind":"inject_text","text":"x"}`},       // event not wired
+		{"pre_turn", `not json`},
 	}
-	for _, raw := range bad {
-		if _, ok := validateHookAction(json.RawMessage(raw)); ok {
-			t.Errorf("action %s should be INVALID", raw)
+	for _, b := range bad {
+		if _, ok := validateHookAction(b.event, json.RawMessage(b.raw)); ok {
+			t.Errorf("%s/%s should be INVALID", b.event, b.raw)
 		}
 	}
 }

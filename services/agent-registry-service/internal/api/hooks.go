@@ -12,11 +12,14 @@ import (
 
 // ── P4 REG-P4-03: declarative hooks (no code execution) ─────────────────────
 
-var validHookEvents = map[string]bool{
-	"pre_tool_call": true, "post_tool_call": true, "pre_turn": true, "post_turn": true,
-}
-var validHookActions = map[string]bool{
-	"deny": true, "require_approval": true, "annotate": true, "inject_text": true,
+// wiredHookActions is the matrix the chat-service hook engine ACTUALLY implements.
+// We reject any other (event, action) at create/patch rather than advertise a hook
+// that silently no-ops (the /review-impl HIGH-1/MED-2 fix). post_tool_call/post_turn
+// + annotate are storage-schema-valid (forward-compat CHECK) but not yet wired, so
+// they are refused at the API until the engine handles them.
+var wiredHookActions = map[string]map[string]bool{
+	"pre_tool_call": {"deny": true, "require_approval": true},
+	"pre_turn":      {"inject_text": true},
 }
 
 type hookRow struct {
@@ -42,13 +45,18 @@ func scanHook(row interface{ Scan(...any) error }, h *hookRow) error {
 		&h.OnEvent, &h.Match, &h.Action, &h.Priority, &h.Enabled, &h.CreatedAt, &h.UpdatedAt)
 }
 
-// validateHookAction checks the action JSON has a known kind + the fields that kind needs.
-func validateHookAction(raw json.RawMessage) (string, bool) {
+// validateHookAction checks the action JSON is a WIRED (event, kind) pair + carries
+// the fields that kind needs. Rejects any combination the engine doesn't implement.
+func validateHookAction(event string, raw json.RawMessage) (string, bool) {
+	allowed, ok := wiredHookActions[event]
+	if !ok {
+		return "", false
+	}
 	var a struct {
 		Kind string `json:"kind"`
 		Text string `json:"text"`
 	}
-	if err := json.Unmarshal(raw, &a); err != nil || !validHookActions[a.Kind] {
+	if err := json.Unmarshal(raw, &a); err != nil || !allowed[a.Kind] {
 		return "", false
 	}
 	// inject_text / annotate carry text; deny / require_approval need none.
@@ -78,12 +86,12 @@ func (s *Server) createHook(w http.ResponseWriter, r *http.Request) {
 	if !decodeJSON(w, r, &req) {
 		return
 	}
-	if !validHookEvents[req.OnEvent] {
-		writeError(w, http.StatusBadRequest, "VALIDATION_ERROR", "on_event must be pre_tool_call, post_tool_call, pre_turn, or post_turn")
+	if _, ok := wiredHookActions[req.OnEvent]; !ok {
+		writeError(w, http.StatusBadRequest, "VALIDATION_ERROR", "on_event must be pre_tool_call or pre_turn (post_tool_call/post_turn not yet supported)")
 		return
 	}
-	if _, ok := validateHookAction(req.Action); !ok {
-		writeError(w, http.StatusBadRequest, "VALIDATION_ERROR", "action.kind must be deny|require_approval|annotate|inject_text (annotate/inject_text need text)")
+	if _, ok := validateHookAction(req.OnEvent, req.Action); !ok {
+		writeError(w, http.StatusBadRequest, "VALIDATION_ERROR", "action.kind must be one the engine supports for this event: pre_tool_call→deny|require_approval, pre_turn→inject_text (inject_text needs text)")
 		return
 	}
 	matchJSON := "{}"
@@ -98,6 +106,10 @@ func (s *Server) createHook(w http.ResponseWriter, r *http.Request) {
 	switch tier {
 	case "user":
 		ownerArg = uid
+		if s.queryInt(r.Context(), `SELECT COUNT(*) FROM hooks WHERE tier='user' AND owner_user_id=$1`, uid) >= quotaHooks {
+			writeError(w, http.StatusTooManyRequests, "QUOTA_EXCEEDED", "hook limit reached (max 20 per user)")
+			return
+		}
 	case "system":
 		if role != "admin" {
 			writeError(w, http.StatusForbidden, "FORBIDDEN", "only admin may create System hooks")
@@ -167,22 +179,22 @@ func (s *Server) listHooks(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]any{"items": items, "total": total, "limit": limit, "offset": offset})
 }
 
-func (s *Server) loadHookForWrite(w http.ResponseWriter, r *http.Request, uid uuid.UUID, role string) (uuid.UUID, string, bool) {
+func (s *Server) loadHookForWrite(w http.ResponseWriter, r *http.Request, uid uuid.UUID, role string) (uuid.UUID, string, string, bool) {
 	hid, ok := parseUUIDParam(w, r, "hook_id")
 	if !ok {
-		return uuid.Nil, "", false
+		return uuid.Nil, "", "", false
 	}
-	var tier string
+	var tier, onEvent string
 	var owner, book *uuid.UUID
-	if err := s.db.QueryRow(r.Context(), `SELECT tier, owner_user_id, book_id FROM hooks WHERE hook_id=$1`, hid).Scan(&tier, &owner, &book); err != nil {
+	if err := s.db.QueryRow(r.Context(), `SELECT tier, owner_user_id, book_id, on_event FROM hooks WHERE hook_id=$1`, hid).Scan(&tier, &owner, &book, &onEvent); err != nil {
 		writeError(w, http.StatusNotFound, "NOT_FOUND", "hook not found")
-		return uuid.Nil, "", false
+		return uuid.Nil, "", "", false
 	}
 	if !s.authorizeRowWrite(r, tier, owner, book, uid, role) {
 		writeError(w, http.StatusNotFound, "NOT_FOUND", "hook not found")
-		return uuid.Nil, "", false
+		return uuid.Nil, "", "", false
 	}
-	return hid, tier, true
+	return hid, tier, onEvent, true
 }
 
 func (s *Server) patchHook(w http.ResponseWriter, r *http.Request) {
@@ -190,7 +202,7 @@ func (s *Server) patchHook(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	hid, tier, ok := s.loadHookForWrite(w, r, uid, role)
+	hid, tier, onEvent, ok := s.loadHookForWrite(w, r, uid, role)
 	if !ok {
 		return
 	}
@@ -221,8 +233,10 @@ func (s *Server) patchHook(w http.ResponseWriter, r *http.Request) {
 		add("match", string(req.Match))
 	}
 	if len(req.Action) > 0 {
-		if _, ok := validateHookAction(req.Action); !ok {
-			writeError(w, http.StatusBadRequest, "VALIDATION_ERROR", "invalid action")
+		// Re-validate against the hook's (immutable) event so a patch can't turn a
+		// wired hook into an unwired no-op.
+		if _, ok := validateHookAction(onEvent, req.Action); !ok {
+			writeError(w, http.StatusBadRequest, "VALIDATION_ERROR", "invalid action for this event")
 			return
 		}
 		add("action", string(req.Action))
@@ -249,7 +263,7 @@ func (s *Server) deleteHook(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	hid, tier, ok := s.loadHookForWrite(w, r, uid, role)
+	hid, tier, _, ok := s.loadHookForWrite(w, r, uid, role)
 	if !ok {
 		return
 	}

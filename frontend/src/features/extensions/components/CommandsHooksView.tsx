@@ -60,8 +60,13 @@ function CommandRow({ cmd, onToggle, onRemove }: { cmd: SlashCommand; onToggle: 
   );
 }
 
-const EVENTS: HookEvent[] = ['pre_tool_call', 'post_tool_call', 'pre_turn', 'post_turn'];
-const ACTION_KINDS: HookActionKind[] = ['deny', 'require_approval', 'annotate', 'inject_text'];
+// Only the (event → action) combos the chat-service engine actually implements are
+// offered — the backend rejects the rest, so the builder never lets you make a no-op.
+const EVENTS: HookEvent[] = ['pre_tool_call', 'pre_turn'];
+const ACTIONS_FOR_EVENT: Record<string, HookActionKind[]> = {
+  pre_tool_call: ['deny', 'require_approval'],
+  pre_turn: ['inject_text'],
+};
 
 function HooksSection() {
   const hk = useHooks();
@@ -71,8 +76,10 @@ function HooksSection() {
   const [text, setText] = useState('');
   const [err, setErr] = useState<string | null>(null);
 
+  const actionKinds = ACTIONS_FOR_EVENT[onEvent] ?? [];
+  const changeEvent = (ev: HookEvent) => { setOnEvent(ev); setKind((ACTIONS_FOR_EVENT[ev] ?? ['deny'])[0]); };
   const needsText = kind === 'inject_text' || kind === 'annotate';
-  const showMatch = onEvent === 'pre_tool_call' || onEvent === 'post_tool_call';
+  const showMatch = onEvent === 'pre_tool_call';
 
   const submit = async () => {
     setErr(null);
@@ -88,11 +95,11 @@ function HooksSection() {
       <h3 className="text-sm font-semibold">Hooks</h3>
       <p className="text-xs text-muted-foreground">Declarative rules that fire at agent-loop seams. No code — just an event, an optional tool match, and an action.</p>
       <div className="flex flex-wrap items-center gap-2">
-        <select value={onEvent} onChange={(e) => setOnEvent(e.target.value as HookEvent)} data-testid="hook-event" className={`${inputCls} max-w-[160px]`}>
+        <select value={onEvent} onChange={(e) => changeEvent(e.target.value as HookEvent)} data-testid="hook-event" className={`${inputCls} max-w-[160px]`}>
           {EVENTS.map((ev) => <option key={ev} value={ev}>{ev}</option>)}
         </select>
         <select value={kind} onChange={(e) => setKind(e.target.value as HookActionKind)} data-testid="hook-action" className={`${inputCls} max-w-[150px]`}>
-          {ACTION_KINDS.map((k) => <option key={k} value={k}>{k}</option>)}
+          {actionKinds.map((k) => <option key={k} value={k}>{k}</option>)}
         </select>
         {showMatch && <input value={toolPattern} onChange={(e) => setToolPattern(e.target.value)} placeholder="tool match (e.g. glossary_delete_*)" data-testid="hook-match" className={`${inputCls} max-w-[220px]`} />}
         {needsText && <input value={text} onChange={(e) => setText(e.target.value)} placeholder="text to inject / annotate" data-testid="hook-text" className={`${inputCls} min-w-[200px] flex-1`} />}
