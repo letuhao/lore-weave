@@ -26,8 +26,10 @@
 > PUT** (read-modify-write kept the rerank knob); A-wire image healthy. Runtime consumption
 > unit-proven (orchestrator threading test); a live rebuild re-dispatch wasn't observable on the dev
 > stack (worker-ai idle — rebuild-flow timing, NOT an A-wire regression: the only failed jobs are
-> pre-#1-fix). **Follow-ups (deferred):** wiki-gen LLM picker (separate feature); rebuild-with-model-
-> change (Rebuild reuses prior); `max_items_per_batch` not in the FE contract (env/default only).
+> pre-#1-fix). **Defer-clears (`10089586e`):** rebuild-with-model-change — a rebuild now uses the
+> project's persisted default LLM over the prior job's (pure `resolveRebuildModels`, unit-tested);
+> `max_items_per_batch` now in the FE contract (`EntityRecoveryOverride` bounded 1-20 + tuning-panel
+> batch input). **Still deferred:** wiki-gen LLM picker (separate `features/wiki`).
 
 > **▶ AGENT EXTENSIBILITY REGISTRY — AUTONOMOUS RUN IN FLIGHT (2026-07-03).** New track: user-registered
 > plugins/skills/MCP-servers + agent self-registration. Spec [`agent-extensibility-registry`](../specs/2026-07-02-agent-extensibility-registry.md),
