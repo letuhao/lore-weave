@@ -7,9 +7,11 @@ import { SkillsView } from '@/features/extensions/components/SkillsView';
 import { McpServersView } from '@/features/extensions/components/McpServersView';
 import { CommandsHooksView } from '@/features/extensions/components/CommandsHooksView';
 import { PluginsView } from '@/features/extensions/components/PluginsView';
+import { SubagentsView } from '@/features/extensions/components/SubagentsView';
+import { ActivityView } from '@/features/extensions/components/ActivityView';
 import { useStudioPanel } from './useStudioPanel';
 
-type Tab = 'skills' | 'plugins' | 'mcp' | 'commands';
+type Tab = 'skills' | 'plugins' | 'mcp' | 'commands' | 'subagents' | 'activity';
 
 export function ExtensionsPanel(props: IDockviewPanelProps) {
   useStudioPanel('extensions', props.api);
@@ -21,6 +23,8 @@ export function ExtensionsPanel(props: IDockviewPanelProps) {
         <TabBtn active={tab === 'plugins'} onClick={() => setTab('plugins')} label="Plugins" testid="ext-tab-plugins" />
         <TabBtn active={tab === 'mcp'} onClick={() => setTab('mcp')} label="MCP Servers" testid="ext-tab-mcp" />
         <TabBtn active={tab === 'commands'} onClick={() => setTab('commands')} label="Commands & Hooks" testid="ext-tab-commands" />
+        <TabBtn active={tab === 'subagents'} onClick={() => setTab('subagents')} label="Subagents" testid="ext-tab-subagents" />
+        <TabBtn active={tab === 'activity'} onClick={() => setTab('activity')} label="Activity" testid="ext-tab-activity" />
       </div>
       <div className="min-h-0 flex-1 overflow-auto">
         {/* Never-unmount: keep each tab's view mounted, hide inactive (wizard/detail
@@ -28,7 +32,9 @@ export function ExtensionsPanel(props: IDockviewPanelProps) {
         <div className={tab === 'skills' ? '' : 'hidden'}><SkillsView /></div>
         <div className={tab === 'mcp' ? '' : 'hidden'}><McpServersView /></div>
         <div className={tab === 'commands' ? '' : 'hidden'}><CommandsHooksView /></div>
+        <div className={tab === 'subagents' ? '' : 'hidden'}><SubagentsView /></div>
         <div className={tab === 'plugins' ? '' : 'hidden'}><PluginsView /></div>
+        <div className={tab === 'activity' ? '' : 'hidden'}><ActivityView /></div>
       </div>
     </div>
   );
