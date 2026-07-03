@@ -147,9 +147,11 @@
 > `(proj, e)` tuple (it was discarded) → new `BuiltContext.surfaced_by_project` maps entity→source
 > project; the `/internal/context/build` router now records salience PER SOURCE PROJECT in multi mode
 > (each entity attributed to its own book, no misattribution). 2 router wiring tests + full unit 3460
-> green. **Optional remaining:** a full chat-TURN SSE
-> `memory-mode="multi"` smoke (both seams already proven directly; the turn adds only LM Studio + the
-> chat-side HTTP, and the chat→knowledge `project_ids` forwarding is unit-asserted).
+> green. **LIVE-DB smoke (rebuilt knowledge-service):** drove the REAL
+> `/internal/context/build` handler with a real `EntityAccessRepo` over live Postgres + a multi
+> `surfaced_by_project={A:[e1,e2], B:[e3]}` → the fire-and-forget task wrote exactly those 3 rows to
+> `entity_access_log` attributed to each SOURCE project (test_context_salience_multi_integration.py,
+> self-cleaning). Multi-KG salience learning proven end-to-end on real DB.
 >
 > **B1(3) DONE (knowledge-service) — `kg_multi_query` MCP tool (arbitrary owner-owned project
 > set).** The agent-tool analog of B1(2): loads the UNION knowledge graph across an ARBITRARY
