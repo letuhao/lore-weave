@@ -5,6 +5,7 @@ import { useTranslation } from 'react-i18next';
 import { FormDialog } from '@/components/shared';
 import { AddModelCta } from '@/components/shared/AddModelCta';
 import { ModelPicker } from '@/components/model-picker';
+import { SpendCapField, isValidSpend } from '@/components/ai-task';
 import { useAuth } from '@/auth';
 import {
   knowledgeApi,
@@ -72,7 +73,6 @@ interface Props {
 // check; this filter is UX so the user never offers an option the BE
 // would reject.
 const ALL_SCOPES: ExtractionJobScopeWire[] = ['chapters', 'chat', 'glossary_sync', 'all'];
-const DECIMAL_REGEX = /^\d+(\.\d{1,2})?$/;
 const ESTIMATE_DEBOUNCE_MS = 300;
 
 // review-impl F7 (K19a.6) — `readBackendError` moved to a shared
@@ -294,7 +294,7 @@ export function BuildGraphDialog({
     retry: false,
   });
 
-  const maxSpendValid = maxSpend === '' || DECIMAL_REGEX.test(maxSpend);
+  const maxSpendValid = isValidSpend(maxSpend);
   // C12 — concurrency: blank ⇒ omit (default). Else an integer in [1, 64]
   // (matches the BE Field(ge=1, le=64)).
   const concurrencyValid = (() => {
@@ -729,23 +729,15 @@ export function BuildGraphDialog({
           className={`flex flex-col gap-4 ${wizardStep === 3 ? '' : 'hidden'}`}
           data-testid="build-wizard-body-3"
         >
-        {/* Max spend */}
-        <label className="flex flex-col gap-1">
-          <span className="text-xs font-medium text-muted-foreground">
-            {t('projects.buildDialog.maxSpend.label')}
-          </span>
-          <input
-            type="text"
-            inputMode="decimal"
+        {/* Max spend — shared AI-task SpendCapField (kills the local DECIMAL_REGEX) */}
+        <div className="flex flex-col gap-1">
+          <SpendCapField
             value={maxSpend}
-            onChange={(e) => setMaxSpend(e.target.value)}
-            placeholder="0.00"
-            aria-invalid={!maxSpendValid}
-            className="rounded-md border bg-input px-3 py-2 text-sm outline-none focus:border-ring aria-[invalid=true]:border-destructive"
+            onChange={setMaxSpend}
+            label={t('projects.buildDialog.maxSpend.label')}
+            hint={t('projects.buildDialog.maxSpend.hint')}
+            invalidLabel={t('projects.buildDialog.maxSpend.invalid')}
           />
-          <span className="text-[11px] text-muted-foreground">
-            {t('projects.buildDialog.maxSpend.hint')}
-          </span>
           {/* D-K19a.5-03: surface user-wide monthly remaining so the
               user can size this job's cap against their aggregate
               budget. Hidden when no user-wide cap is set (null). */}
@@ -759,12 +751,7 @@ export function BuildGraphDialog({
               })}
             </span>
           )}
-          {!maxSpendValid && (
-            <span className="text-[11px] text-destructive">
-              {t('projects.buildDialog.maxSpend.invalid')}
-            </span>
-          )}
-        </label>
+        </div>
 
         {/* Estimate preview */}
         <div className="rounded-md border border-dashed p-3">
