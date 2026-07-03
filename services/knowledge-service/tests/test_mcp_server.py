@@ -363,6 +363,139 @@ async def test_mcp_server_rejects_bad_user_id_uuid(mcp_base_url):
     assert "x-user-id" in _error_text(result)
 
 
+# ── RAID Wave C5 — MCP resources + prompts ─────────────────────────────
+# The resource URIs are TEMPLATES ({project_id}), advertised via
+# resources/templates/list. What is covered WITHOUT a live DB mirrors the tool
+# tests above: listings (static per process) and the auth/validation failures
+# that reject inside _require_owned_project BEFORE any repo access. A live-DB
+# summary/entities read belongs to the cross-service smoke gate, not here.
+
+EXPECTED_RESOURCE_TEMPLATES = {
+    "knowledge://project/{project_id}/summary",
+    "knowledge://project/{project_id}/entities",
+}
+EXPECTED_PROMPTS = {"recap_story_so_far", "entity_dossier"}
+
+# Valid-shape ids for the auth-failure reads (rejected before any repo touch,
+# so they never need to exist).
+_PROJ_UUID = "22222222-2222-2222-2222-222222222222"
+_SUMMARY_URI = f"knowledge://project/{_PROJ_UUID}/summary"
+_ENTITIES_URI = f"knowledge://project/{_PROJ_UUID}/entities"
+
+
+async def test_mcp_resource_templates_list(mcp_base_url):
+    """resources/templates/list must advertise exactly the two project-scoped
+    resource templates, each with the right MIME type and a description."""
+    headers = {"X-Internal-Token": _GOOD_TOKEN}
+    async with _mcp_client(mcp_base_url, headers) as session:
+        listing = await session.list_resource_templates()
+    by_uri = {t.uriTemplate: t for t in listing.resourceTemplates}
+    assert set(by_uri) == EXPECTED_RESOURCE_TEMPLATES
+    assert by_uri["knowledge://project/{project_id}/summary"].mimeType == "text/plain"
+    assert by_uri["knowledge://project/{project_id}/entities"].mimeType == "application/json"
+    for tpl in listing.resourceTemplates:
+        assert tpl.name, f"template {tpl.uriTemplate!r} is missing a name"
+        assert tpl.description, f"template {tpl.uriTemplate!r} is missing a description"
+
+
+async def test_mcp_prompts_list(mcp_base_url):
+    """prompts/list must advertise both canned prompts, each with exactly its
+    one semantic argument (required) — the injected ctx must never leak into
+    the advertised argument list (same D3 guarantee the tool schemas carry)."""
+    headers = {"X-Internal-Token": _GOOD_TOKEN}
+    async with _mcp_client(mcp_base_url, headers) as session:
+        listing = await session.list_prompts()
+    prompts = {p.name: p for p in listing.prompts}
+    assert set(prompts) == EXPECTED_PROMPTS
+    recap_args = {a.name: a for a in prompts["recap_story_so_far"].arguments}
+    assert set(recap_args) == {"project_id"}
+    assert recap_args["project_id"].required is True
+    dossier_args = {a.name: a for a in prompts["entity_dossier"].arguments}
+    assert set(dossier_args) == {"entity_name"}
+    assert dossier_args["entity_name"].required is True
+    for p in listing.prompts:
+        assert p.description, f"prompt {p.name!r} is missing a description"
+
+
+async def test_mcp_prompt_get_renders_recap(mcp_base_url):
+    """prompts/get renders the recap instructions with the project id embedded
+    and points the model at the memory tools (grounding, not invention)."""
+    headers = {"X-Internal-Token": _GOOD_TOKEN}
+    async with _mcp_client(mcp_base_url, headers) as session:
+        res = await session.get_prompt("recap_story_so_far", {"project_id": _PROJ_UUID})
+    assert res.messages, "prompt rendered no messages"
+    text = res.messages[0].content.text
+    assert _PROJ_UUID in text
+    assert "memory_timeline" in text
+    assert "memory_search" in text
+
+
+async def test_mcp_prompt_get_renders_entity_dossier(mcp_base_url):
+    headers = {"X-Internal-Token": _GOOD_TOKEN}
+    async with _mcp_client(mcp_base_url, headers) as session:
+        res = await session.get_prompt("entity_dossier", {"entity_name": "Mira"})
+    text = res.messages[0].content.text
+    assert "Mira" in text
+    assert "memory_recall_entity" in text
+    assert "kg_graph_query" in text
+
+
+async def test_mcp_resource_read_rejects_missing_token(mcp_base_url):
+    """A resource read without X-Internal-Token is rejected before any repo
+    access — same envelope gate as the tool path (_require_envelope_user)."""
+    from mcp.shared.exceptions import McpError
+
+    async with _mcp_client(mcp_base_url, headers={}) as session:
+        with pytest.raises(McpError) as exc:
+            await session.read_resource(_SUMMARY_URI)
+    assert "x-internal-token" in str(exc.value).lower()
+
+
+async def test_mcp_resource_read_rejects_wrong_token(mcp_base_url):
+    from mcp.shared.exceptions import McpError
+
+    headers = {
+        "X-Internal-Token": "not-the-real-token",
+        "X-User-Id": "11111111-1111-1111-1111-111111111111",
+        "X-Session-Id": "sess-1",
+    }
+    async with _mcp_client(mcp_base_url, headers) as session:
+        with pytest.raises(McpError) as exc:
+            await session.read_resource(_ENTITIES_URI)
+    assert "invalid internal token" in str(exc.value).lower()
+
+
+async def test_mcp_resource_read_rejects_bad_user_id_uuid(mcp_base_url):
+    from mcp.shared.exceptions import McpError
+
+    headers = {
+        "X-Internal-Token": _GOOD_TOKEN,
+        "X-User-Id": "not-a-uuid",
+        "X-Session-Id": "sess-1",
+    }
+    async with _mcp_client(mcp_base_url, headers) as session:
+        with pytest.raises(McpError) as exc:
+            await session.read_resource(_SUMMARY_URI)
+    assert "x-user-id" in str(exc.value).lower()
+
+
+async def test_mcp_resource_read_rejects_malformed_project_uuid(mcp_base_url):
+    """A well-authenticated read of a malformed {project_id} is rejected by the
+    UUID parse in _require_owned_project — BEFORE the ownership lookup, so no
+    DB is touched (which is what makes this testable here)."""
+    from mcp.shared.exceptions import McpError
+
+    headers = {
+        "X-Internal-Token": _GOOD_TOKEN,
+        "X-User-Id": "11111111-1111-1111-1111-111111111111",
+        "X-Session-Id": "sess-1",
+    }
+    async with _mcp_client(mcp_base_url, headers) as session:
+        with pytest.raises(McpError) as exc:
+            await session.read_resource("knowledge://project/not-a-uuid/summary")
+    assert "project_id" in str(exc.value).lower()
+
+
 # P4/Wave-C slice D — knowledge builds its OWN ToolContext, so it must run the
 # spend-carrier hook itself (the loreweave_mcp universal hook is bypassed). The
 # header parse is the local helper; the contextvar set mirrors the proven kit
@@ -377,3 +510,153 @@ def test_parse_spend_cap():
     assert _parse_spend_cap("") is None
     assert _parse_spend_cap("not-a-number") is None  # fails open → no per-key cap
     assert _parse_spend_cap("-1") is None  # negative rejected
+
+
+# ── W0 MCP reliability contract ────────────────────────────────────────
+# Mirrors chat-service's FE-tools CLOSED_SET_ARGS rule for MCP: closed-set
+# args are real enums; the observed one-element-list filter shape is
+# tolerated; pydantic validation failures reach the model as ONE-LINE
+# directives (never the raw dump with the errors.pydantic.dev URL).
+
+# tool → args whose valid values are a finite, code-known set.
+CLOSED_SET_ARGS = {
+    "kg_list_templates": ["scope"],
+    "kg_triage_list": ["status"],
+    "kg_propose_fact": ["fact_type"],
+    "kg_schema_edit": ["verb", "level"],
+    "kg_triage_resolve": ["action"],
+    "kg_triage_schema_write": ["action"],
+    "kg_world_query": ["unify"],   # B1(4) cross-partition unification mode
+    "kg_multi_query": ["unify"],
+}
+
+# (tool, arg) → the value set the advertised enum must COVER (>=, mirroring
+# jobs' JOB_STATUSES pattern) — enum PRESENCE alone lets a silently
+# dropped/renamed value ship unnoticed.
+CLOSED_SET_VALUES = {
+    ("kg_list_templates", "scope"): {"system", "user"},
+    ("kg_triage_list", "status"): {"pending", "pending_glossary", "resolved", "dismissed"},
+    ("kg_propose_fact", "fact_type"): {"decision", "preference", "milestone", "negation"},
+    ("kg_schema_edit", "verb"): {"add", "deprecate"},
+    ("kg_schema_edit", "level"): {"edge_type", "fact_type"},
+    ("kg_triage_resolve", "action"): {"map", "re_target", "drop_edge", "close_previous", "dismiss"},
+    ("kg_triage_schema_write", "action"): {
+        "add_to_vocab", "add_to_schema", "widen_target_kinds", "set_multi_active",
+    },
+    ("kg_world_query", "unify"): {"off", "by_name", "semantic"},
+    ("kg_multi_query", "unify"): {"off", "by_name", "semantic"},
+}
+
+
+def _closed_set_enum(spec: dict) -> set:
+    """Collect enum values from a property spec, descending anyOf unions and
+    array item schemas (the `X | list[X] | None` rendering)."""
+    values: set = set()
+    for branch in (spec, *spec.get("anyOf", [])):
+        if "enum" in branch:
+            values |= set(branch["enum"])
+        items = branch.get("items")
+        if isinstance(items, dict) and "enum" in items:
+            values |= set(items["enum"])
+    return values
+
+
+async def test_closed_set_args_are_enums(mcp_base_url):
+    headers = {"X-Internal-Token": _GOOD_TOKEN}
+    async with _mcp_client(mcp_base_url, headers) as session:
+        listing = await session.list_tools()
+    by_name = {t.name: t for t in listing.tools}
+    for tool_name, args in CLOSED_SET_ARGS.items():
+        props = by_name[tool_name].inputSchema.get("properties", {})
+        for arg in args:
+            values = _closed_set_enum(props.get(arg, {}))
+            assert values, f"{tool_name}.{arg}: closed-set arg MUST declare an enum"
+            want = CLOSED_SET_VALUES[(tool_name, arg)]
+            assert values >= want, (
+                f"{tool_name}.{arg}: enum {sorted(values)} must cover {sorted(want)}"
+            )
+
+
+async def test_kg_list_templates_scope_accepts_one_element_list(monkeypatch):
+    """W0 #3 — the observed `scope: [\"system\"]` shape must dispatch exactly
+    like `scope: \"system\"` (unwrap, not error)."""
+    import app.mcp.server as srv
+
+    calls = []
+
+    async def _fake_dispatch(ctx, tool_name, tool_args):
+        calls.append((tool_name, tool_args))
+        return {"templates": []}
+
+    monkeypatch.setattr(srv, "_dispatch", _fake_dispatch)
+    fn = srv.mcp_server._tool_manager._tools["kg_list_templates"].fn
+    await fn(None, scope=["system"])
+    await fn(None, scope="system")
+    assert calls[0] == calls[1] == ("kg_list_templates", {"scope": "system"})
+
+
+async def test_kg_list_templates_scope_multi_list_errors_with_directive(monkeypatch):
+    import app.mcp.server as srv
+
+    async def _fake_dispatch(ctx, tool_name, tool_args):  # pragma: no cover
+        raise AssertionError("must not dispatch")
+
+    monkeypatch.setattr(srv, "_dispatch", _fake_dispatch)
+    fn = srv.mcp_server._tool_manager._tools["kg_list_templates"].fn
+    with pytest.raises(ValueError) as exc:
+        await fn(None, scope=["system", "user"])
+    msg = str(exc.value)
+    assert "scope" in msg and "single value" in msg
+
+
+async def test_validation_error_reaches_model_as_one_line_directive(mcp_base_url):
+    """W0 #4b — a bad enum value surfaces as the rewritten one-line directive:
+    names the arg, states what pydantic expected, never the pydantic-docs URL
+    or the multi-line dump. Validation fails BEFORE auth/repo access."""
+    headers = {
+        "X-Internal-Token": _GOOD_TOKEN,
+        "X-User-Id": "11111111-1111-1111-1111-111111111111",
+        "X-Session-Id": "sess-1",
+    }
+    async with _mcp_client(mcp_base_url, headers) as session:
+        result = await session.call_tool("kg_list_templates", {"scope": "bogus"})
+    assert result.isError is True
+    text = result.content[0].text
+    assert "errors.pydantic.dev" not in text
+    assert "\n" not in text.strip(), f"directive must be one line, got: {text!r}"
+    assert "invalid arguments for kg_list_templates" in text
+    assert "scope" in text
+
+
+async def test_project_in_scope_error_is_a_directive():
+    """W0 #4a — the grant gate's no-project error must tell the model HOW to
+    fix it: name the `project_id` arg + the kg_project_list discovery tool."""
+    from uuid import uuid4
+
+    from app.tools.executor import ToolExecutionError
+    from app.tools.graph_schema_tools import _resolve_project_owner
+
+    class _Ctx:
+        project_id = None
+        user_id = uuid4()
+        mcp_key_id = None
+
+    from loreweave_grants import GrantLevel
+
+    with pytest.raises(ToolExecutionError) as exc:
+        await _resolve_project_owner(_Ctx(), GrantLevel.VIEW)
+    msg = str(exc.value)
+    assert "project_id" in msg
+    assert "kg_project_list" in msg
+
+
+async def test_kg_project_list_is_advertised_with_no_scope_leak(mcp_base_url):
+    """The discovery tool the #4a directive points at must exist on the MCP
+    surface, owner-scoped via the envelope (no user_id/project_id args)."""
+    headers = {"X-Internal-Token": _GOOD_TOKEN}
+    async with _mcp_client(mcp_base_url, headers) as session:
+        listing = await session.list_tools()
+    by_name = {t.name: t for t in listing.tools}
+    assert "kg_project_list" in by_name
+    props = set(by_name["kg_project_list"].inputSchema.get("properties", {}))
+    assert props == {"include_archived", "limit"}

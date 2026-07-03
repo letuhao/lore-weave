@@ -11,6 +11,7 @@ import pytest
 from app.events.dispatcher import EventData
 from app.events.handlers import (
     handle_chat_turn,
+    handle_chat_message_feedback,
     handle_chapter_published,
     handle_chapter_unpublished,
     handle_chapter_deleted,
@@ -67,6 +68,60 @@ async def test_chat_turn_queues_event_with_user_id(mock_gate):
     )
     await handle_chat_turn(event, pool=pool)
     assert conn.fetchrow.call_count >= 1
+
+
+# ── Track 4 P3b — chat.message_feedback ─────────────────────────────
+
+
+def _feedback_payload(**overrides):
+    from datetime import datetime, timezone
+    base = {
+        "user_id": str(_USER),
+        "project_id": str(_PROJECT),
+        "session_id": str(uuid4()),
+        "message_id": str(uuid4()),
+        "rating": 1,
+        "message_created_at": datetime.now(timezone.utc).isoformat(),
+    }
+    base.update(overrides)
+    return base
+
+
+@pytest.mark.asyncio
+@patch("app.db.repositories.entity_access.EntityAccessRepo.apply_feedback", new_callable=AsyncMock)
+async def test_feedback_applies_boost_with_full_payload(mock_apply):
+    mock_apply.return_value = 3
+    payload = _feedback_payload()
+    await handle_chat_message_feedback(_event("chat.message_feedback", payload=payload), pool=AsyncMock())
+    mock_apply.assert_awaited_once()
+    args = mock_apply.await_args.args
+    assert str(args[0]) == payload["user_id"]      # tenancy scope threaded
+    assert str(args[1]) == payload["project_id"]
+    assert str(args[2]) == payload["session_id"]
+    assert args[3] == 1
+
+
+@pytest.mark.asyncio
+@patch("app.db.repositories.entity_access.EntityAccessRepo.apply_feedback", new_callable=AsyncMock)
+async def test_feedback_skips_legacy_payload_without_p3b_keys(mock_apply):
+    # old producers (no project_id/message_created_at) → silent skip, never raise
+    await handle_chat_message_feedback(
+        _event("chat.message_feedback", payload={
+            "user_id": str(_USER), "session_id": str(uuid4()), "rating": 1,
+        }),
+        pool=AsyncMock(),
+    )
+    mock_apply.assert_not_called()
+
+
+@pytest.mark.asyncio
+@patch("app.db.repositories.entity_access.EntityAccessRepo.apply_feedback", new_callable=AsyncMock)
+async def test_feedback_rejects_out_of_range_rating(mock_apply):
+    await handle_chat_message_feedback(
+        _event("chat.message_feedback", payload=_feedback_payload(rating=5)),
+        pool=AsyncMock(),
+    )
+    mock_apply.assert_not_called()
 
 
 @pytest.mark.asyncio

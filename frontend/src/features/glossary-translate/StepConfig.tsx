@@ -1,9 +1,9 @@
-import { useEffect, useState, useMemo } from 'react';
+import { useEffect, useMemo } from 'react';
 import { Link } from 'react-router-dom';
 import { Loader2 } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
-import { useAuth } from '@/auth';
-import { aiModelsApi, type UserModel } from '@/features/ai-models/api';
+import { ModelPicker, useUserModels } from '@/components/model-picker';
+import { EffortSelect, type EffortLevel } from '@/components/ai-task';
 import { getLanguageName, LANGUAGE_NAMES } from '@/lib/languages';
 import type { OverwriteMode } from './types';
 
@@ -11,57 +11,41 @@ interface StepConfigProps {
   targetLanguage: string;
   overwriteMode: OverwriteMode;
   modelRef: string;
-  thinkingEnabled: boolean;
+  effort: EffortLevel;
   sourceLanguage?: string;
   onTargetLanguageChange: (lang: string) => void;
   onOverwriteModeChange: (mode: OverwriteMode) => void;
   onModelChange: (modelRef: string) => void;
   onModelNameChange: (name: string) => void;
-  onThinkingEnabledChange: (enabled: boolean) => void;
+  onEffortChange: (effort: EffortLevel) => void;
 }
 
 export function StepConfig({
   targetLanguage,
   overwriteMode,
   modelRef,
-  thinkingEnabled,
+  effort,
   sourceLanguage,
   onTargetLanguageChange,
   onOverwriteModeChange,
   onModelChange,
   onModelNameChange,
-  onThinkingEnabledChange,
+  onEffortChange,
 }: StepConfigProps) {
   const { t } = useTranslation('glossaryTranslate');
-  const { accessToken } = useAuth();
-  const [userModels, setUserModels] = useState<UserModel[]>([]);
-  const [loading, setLoading] = useState(true);
+  // Shared model fetch (W5) — glossary translation drives an LLM, so chat
+  // capability. Active-only is the shared hook's default (server-side filter).
+  const { models, loading } = useUserModels({ capability: 'chat' });
+  const userModels = models ?? [];
 
+  // Preserve the original default: auto-pick the first model once the list
+  // loads if the wizard doesn't carry a selection yet.
   useEffect(() => {
-    if (!accessToken) return;
-    setLoading(true);
-    aiModelsApi
-      .listUserModels(accessToken)
-      .then((resp) => {
-        const active = resp.items.filter((m) => m.is_active);
-        setUserModels(active);
-        if (!modelRef && active.length > 0) {
-          onModelChange(active[0].user_model_id);
-          onModelNameChange(active[0].alias || active[0].provider_model_name);
-        }
-      })
-      .catch(() => setUserModels([]))
-      .finally(() => setLoading(false));
-  }, [accessToken]); // eslint-disable-line react-hooks/exhaustive-deps
-
-  const modelsByProvider = useMemo(() => {
-    const map = new Map<string, UserModel[]>();
-    for (const m of userModels) {
-      if (!map.has(m.provider_kind)) map.set(m.provider_kind, []);
-      map.get(m.provider_kind)!.push(m);
+    if (!modelRef && models && models.length > 0) {
+      onModelChange(models[0].user_model_id);
+      onModelNameChange(models[0].alias || models[0].provider_model_name);
     }
-    return map;
-  }, [userModels]);
+  }, [models]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const languageOptions = useMemo(
     () =>
@@ -146,49 +130,38 @@ export function StepConfig({
       </div>
 
       <div>
-        <label htmlFor="gt-model" className="text-[10px] text-muted-foreground block mb-1">
+        <label className="text-[10px] text-muted-foreground block mb-1">
           {t('config.model')}
         </label>
-        {userModels.length === 0 ? (
-          <p className="text-xs text-muted-foreground">
-            {t('config.noModels')}{' '}
-            <Link to="/settings?tab=ai-models" className="text-primary hover:underline">
-              {t('config.addInSettings')}
-            </Link>
-          </p>
-        ) : (
-          <select
-            id="gt-model"
-            value={modelRef}
-            onChange={(e) => handleModelSelect(e.target.value)}
-            className="w-full rounded-md border bg-background px-3 py-2 text-sm focus:border-ring focus:outline-none"
-          >
-            <option value="">{t('config.selectModel')}</option>
-            {[...modelsByProvider.entries()].map(([provider, models]) => (
-              <optgroup key={provider} label={provider}>
-                {models.map((m) => (
-                  <option key={m.user_model_id} value={m.user_model_id}>
-                    {m.alias || m.provider_model_name}
-                  </option>
-                ))}
-              </optgroup>
-            ))}
-          </select>
-        )}
+        <ModelPicker
+          capability="chat"
+          value={modelRef || null}
+          onChange={(id) => handleModelSelect(id ?? '')}
+          placeholder={t('config.selectModel')}
+          ariaLabel={t('config.model')}
+          emptyState={
+            <p className="text-xs text-muted-foreground">
+              {t('config.noModels')}{' '}
+              <Link to="/settings?tab=ai-models" className="text-primary hover:underline">
+                {t('config.addInSettings')}
+              </Link>
+            </p>
+          }
+        />
       </div>
 
-      <label className="flex items-start gap-2 rounded-md border bg-card/30 px-3 py-2 cursor-pointer">
-        <input
-          type="checkbox"
-          checked={thinkingEnabled}
-          onChange={(e) => onThinkingEnabledChange(e.target.checked)}
-          className="mt-0.5 h-3.5 w-3.5 rounded border-border accent-primary"
-        />
-        <span>
+      {/* Reasoning effort — shared AI-task EffortSelect (was a thinking on/off
+          checkbox). Default 'off' (glossary translation is short structured JSON);
+          the BE clamps 'off'/'auto' → 'none'. */}
+      <div className="flex items-start gap-2 rounded-md border bg-card/30 px-3 py-2">
+        <span className="min-w-0">
           <span className="text-xs font-medium block">{t('config.thinkingEnabled')}</span>
           <span className="text-[10px] text-muted-foreground">{t('config.thinkingHint')}</span>
         </span>
-      </label>
+        <span className="ml-auto shrink-0">
+          <EffortSelect value={effort} onChange={onEffortChange} />
+        </span>
+      </div>
 
       <p className="text-[10px] text-muted-foreground rounded-md border border-primary/20 bg-primary/5 px-3 py-2">
         {t('config.allAttrsNote')}

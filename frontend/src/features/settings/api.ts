@@ -1,4 +1,10 @@
 import { apiJson } from '@/api';
+import { aiModelsApi, type UserModel } from '@/features/ai-models/api';
+
+// W5 consolidation: the canonical UserModel type + list client live in
+// features/ai-models/api.ts — re-exported here so existing settings imports
+// keep working without a second divergent definition.
+export type { UserModel, ModelPricing } from '@/features/ai-models/api';
 
 // ── Account / Profile ────────────────────────────────────────────────────────
 
@@ -67,21 +73,6 @@ export type ProviderCredential = {
   max_concurrency?: number | null;
   created_at: string;
   updated_at: string;
-};
-
-export type UserModel = {
-  user_model_id: string;
-  provider_credential_id: string;
-  provider_kind: ProviderKind;
-  provider_model_name: string;
-  context_length?: number | null;
-  alias?: string | null;
-  is_active: boolean;
-  is_favorite: boolean;
-  capability_flags?: Record<string, unknown>;
-  notes?: string;
-  tags: Array<{ tag_name: string; note?: string }>;
-  created_at: string;
 };
 
 export type InventoryModel = {
@@ -159,10 +150,12 @@ export const providerApi = {
     );
   },
 
+  // Delegates to the canonical ai-models client (W5 consolidation). Keeps this
+  // module's historical include_inactive=true default (the settings management
+  // list shows deactivated models too; pickers use the shared ModelPicker which
+  // defaults to active-only).
   listUserModels(token: string, opts?: { capability?: string }) {
-    const params = new URLSearchParams({ include_inactive: 'true' });
-    if (opts?.capability) params.set('capability', opts.capability);
-    return apiJson<{ items: UserModel[] }>(`/v1/model-registry/user-models?${params}`, { token });
+    return aiModelsApi.listUserModels(token, { include_inactive: true, capability: opts?.capability });
   },
 
   createUserModel(token: string, payload: {
@@ -310,6 +303,19 @@ export type McpKeyCreatePayload = {
   expires_at?: string | null;
 };
 
+// Partial edit of an existing key's SAFE metadata — name / limits / expiry /
+// self-confirm. Scopes and the secret are intentionally NOT editable here (a
+// credential's reach is fixed at issue; widen it by revoking + re-creating). Every
+// field is optional: only the ones sent are changed. `expires_at` is tri-state —
+// an RFC3339 string sets it, `''` clears it (no expiry), `undefined` leaves it.
+export type McpKeyUpdatePayload = {
+  name?: string;
+  spend_cap_usd?: number | null;
+  rate_limit_rpm?: number;
+  allow_self_confirm?: boolean;
+  expires_at?: string | null;
+};
+
 // One per-key call audit row (H-O) — the owner's view of what an agent did with a key.
 export type McpAuditRow = {
   audit_id: string;
@@ -327,6 +333,11 @@ export const mcpKeysApi = {
   create(token: string, payload: McpKeyCreatePayload) {
     return apiJson<McpKeyCreated>('/v1/account/mcp-keys', {
       method: 'POST', token, body: JSON.stringify(payload),
+    });
+  },
+  update(token: string, keyId: string, payload: McpKeyUpdatePayload) {
+    return apiJson<McpKey>(`/v1/account/mcp-keys/${keyId}`, {
+      method: 'PATCH', token, body: JSON.stringify(payload),
     });
   },
   revoke(token: string, keyId: string) {

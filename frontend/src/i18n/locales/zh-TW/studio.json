@@ -8,13 +8,133 @@
     "body": "本書的可停靠工作區。面板（寫作、大綱、角色、品質…）將逐一加入此處。拖曳分頁即可分割、堆疊、浮動，或彈出為獨立視窗。"
   },
   "panels": {
-    "compose": { "title": "Compose", "desc": "AI 共同創作對話" },
-    "editor": { "title": "Editor", "desc": "手稿編輯器" }
+    "compose": {
+      "title": "Compose",
+      "desc": "AI 共同創作對話"
+    },
+    "editor": {
+      "title": "Editor",
+      "desc": "手稿編輯器"
+    },
+    "planner": {
+      "title": "規劃器",
+      "desc": "規劃小說系統"
+    },
+    "usage": {
+      "title": "用量",
+      "desc": "花費、Token 與請求紀錄"
+    },
+    "notifications": {
+      "title": "通知",
+      "desc": "工作完成與提醒"
+    },
+    "settings": {
+      "title": "設定",
+      "desc": "帳戶、供應商與翻譯"
+    },
+    "trash": {
+      "title": "垃圾桶",
+      "desc": "還原已刪除的書籍、章節等"
+    },
+    "steering": {
+      "title": "引導規則",
+      "desc": "引導 AI 處理本書的作者規則"
+    },
+    "json-editor": {
+      "title": "JSON",
+      "desc": "資源的原始 JSON 檢視"
+    }
+  },
+  "sceneRail": {
+    "title": "場景",
+    "toggle": "場景",
+    "empty": "本章尚無場景（請在編排器建立大綱）。",
+    "synopsisPlaceholder": "場景摘要…",
+    "stale": "已在他處變更 — 已重新載入",
+    "notAnchored": "場景尚未錨定到內文 — 按 ⚓ 連結標題。",
+    "anchored": "已錨定 {{count}} 個場景，{{unmatched}} 個不符 — ⌘S 儲存。",
+    "anchorNoop": "{{count}} 個已錨定，{{unmatched}} 個沒有相符標題。",
+    "anchorTitle": "將場景錨定到內文標題",
+    "add": "新增場景",
+    "addDisabled": "本章尚無大綱（請在編排器建立）",
+    "newTitlePlaceholder": "場景名稱…",
+    "create": "新增",
+    "deleted": "已刪除「{{title}}」。",
+    "undo": "復原",
+    "moveUp": "上移",
+    "moveDown": "下移",
+    "delete": "刪除場景",
+    "status": {
+      "empty": "空",
+      "outline": "大綱",
+      "drafting": "撰寫中",
+      "done": "完成"
+    }
+  },
+  "jsonEditor": {
+    "empty": "從資源面板的「以 JSON 開啟」開啟資源。",
+    "invalid": "無效的 JSON",
+    "conflict": "衝突: {{part}}",
+    "format": "格式化",
+    "revert": "還原",
+    "openAs": "以 JSON 開啟"
+  },
+  "planner": {
+    "sourcePlaceholder": "貼上小說系統的 Markdown…",
+    "propose": "提出",
+    "model": "模型",
+    "empty": "貼上小說系統的 Markdown 並按「提出」開始規劃執行。",
+    "mode": {
+      "rules": "規則",
+      "llm": "LLM"
+    }
   },
   "editor": {
     "empty": "在導覽列選擇章節即可在此編輯。",
     "unsaved": "● 未儲存",
     "save": "儲存"
+  },
+  "steering": {
+    "heading": "引導規則",
+    "subheading": "作者的持續性指引，會插入本書的 AI 對話回合中。",
+    "loading": "正在載入引導規則…",
+    "loadError": "無法載入引導規則。",
+    "noBook": "請從書籍開啟此面板以編輯其引導規則。",
+    "count": "{{n}} / {{max}} 條規則",
+    "add": "新增規則",
+    "capReached": "已達規則上限（{{max}}）。刪除一條規則才能再新增。",
+    "empty": "尚無引導規則。新增一條以引導本書的 AI。",
+    "enable": "啟用",
+    "disable": "停用",
+    "confirmDelete": "要刪除引導規則「{{name}}」嗎？",
+    "autoNote": "注意：'auto' 目前的行為與 'manual' 相同——僅在你以 #name 引用時才會納入。自動選取將於日後推出。",
+    "charCount": "{{n}} / {{max}}",
+    "form": {
+      "name": "名稱",
+      "namePlaceholder": "例如：語氣與風格",
+      "body": "規則",
+      "bodyPlaceholder": "撰寫 AI 應遵循的指引…",
+      "mode": "何時納入",
+      "matchPattern": "場景比對樣式",
+      "matchPatternPlaceholder": "例如：第 3 章、戰鬥、浪漫…",
+      "enabled": "已啟用",
+      "save": "儲存",
+      "cancel": "取消",
+      "edit": "編輯規則",
+      "delete": "刪除規則"
+    },
+    "mode": {
+      "always": "總是",
+      "scene_match": "場景比對",
+      "manual": "手動 (#name)",
+      "auto": "自動"
+    },
+    "error": {
+      "duplicate": "本書已存在同名的規則。",
+      "cap": "超過限制（內容 ≤ 8000 字元、名稱 ≤ 200、規則 ≤ 20 條）或模式無效。",
+      "other": "無法儲存規則，請再試一次。",
+      "forbidden": "你沒有編輯這本書引導規則的權限。"
+    }
   },
   "palette": {
     "openPanel": "Studio：開啟 {{name}}",
@@ -24,7 +144,12 @@
     "quickOpenHint": "輸入以搜尋章節、場景與卷",
     "commandPlaceholder": "輸入命令…",
     "noCommands": "沒有符合的命令。",
-    "group": { "recent": "最近", "panels": "面板", "navigate": "導覽", "layout": "版面" },
+    "group": {
+      "recent": "最近",
+      "panels": "面板",
+      "navigate": "導覽",
+      "layout": "版面"
+    },
     "cmd": {
       "showManuscript": "檢視：手稿",
       "showBible": "檢視：故事聖經",
@@ -51,10 +176,22 @@
     "quality": "品質"
   },
   "navStub": {
-    "manuscript": { "title": "稿件", "body": "章節與場景 — 驅動停靠區的導覽器。接下來實作。" },
-    "bible": { "title": "故事聖經", "body": "角色、世界與正史。即將推出。" },
-    "search": { "title": "搜尋", "body": "全書全文與語意搜尋。即將推出。" },
-    "quality": { "title": "品質", "body": "評審分數、伏筆線與正史問題。即將推出。" }
+    "manuscript": {
+      "title": "稿件",
+      "body": "章節與場景 — 驅動停靠區的導覽器。接下來實作。"
+    },
+    "bible": {
+      "title": "故事聖經",
+      "body": "角色、世界與正史。即將推出。"
+    },
+    "search": {
+      "title": "搜尋",
+      "body": "全書全文與語意搜尋。即將推出。"
+    },
+    "quality": {
+      "title": "品質",
+      "body": "評審分數、伏筆線與正史問題。即將推出。"
+    }
   },
   "sidebar": {
     "collapse": "收合"
@@ -74,7 +211,10 @@
   },
   "status": {
     "wordsPlaceholder": "— 字",
-    "modelPlaceholder": "尚無模型"
+    "words": "{{count}} 字",
+    "modelPlaceholder": "尚無模型",
+    "notifications": "通知",
+    "cost24h": "過去 24 小時花費"
   },
   "manuscript": {
     "title": "手稿",

@@ -487,3 +487,25 @@ async def test_stream_per_call_user_id_overrides_construction_default():
     assert "user_id=11111111" in captured["url"], (
         f"per-call user_id must win over constructor default; got {captured['url']}"
     )
+
+
+def test_idle_read_timeout_le_zero_disables_the_read_cap():
+    """A slow reasoning model may think silently for minutes before its first
+    token; ``idle_read_timeout_s <= 0`` sets httpx ``read=None`` (no idle cap) so
+    the stream is never ReadTimeout'd mid-thought. A positive value caps the idle
+    wait; connect stays bounded and the whole-stream timeout stays unbounded."""
+
+    def _mk(idle=None):
+        kw = {} if idle is None else {"idle_read_timeout_s": idle}
+        return Client(base_url="http://x", auth_mode="internal", internal_token="t", **kw)
+
+    for idle in (0, 0.0, -1):
+        assert _mk(idle)._http.timeout.read is None
+    # a positive value is honoured as the read (idle) cap
+    assert _mk(45.0)._http.timeout.read == 45.0
+    # the default is still a positive cap (unchanged for callers that don't opt out)
+    assert _mk()._http.timeout.read == 120.0
+    # connect bounded (fail fast), whole-stream unbounded, regardless of idle
+    c = _mk(0)
+    assert c._http.timeout.connect == 5.0
+    assert c._http.timeout.write is None

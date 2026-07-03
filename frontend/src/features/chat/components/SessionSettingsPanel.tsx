@@ -3,8 +3,9 @@ import { Settings, X, Brain, Zap } from 'lucide-react';
 import { toast } from 'sonner';
 import { useTranslation } from 'react-i18next';
 import { useAuth } from '@/auth';
-import { aiModelsApi, type UserModel } from '@/features/ai-models/api';
-import { ProjectPicker } from '@/components/shared/ProjectPicker';
+import { CHAT_CAPABILITY } from '@/features/settings/api';
+import { ModelPicker } from '@/components/model-picker';
+import { MultiProjectPicker } from '@/components/shared/MultiProjectPicker';
 import { chatApi } from '../api';
 import type { ChatSession, GenerationParams, PatchSessionPayload, ReasoningEffort } from '../types';
 
@@ -44,22 +45,25 @@ export function SessionSettingsPanel({ session, onSessionUpdate, onClose }: Sess
   );
   const [selectedPreset, setSelectedPreset] = useState('Custom');
 
-  // Model selector
-  const [userModels, setUserModels] = useState<UserModel[]>([]);
+  // Model selector (fetch/search/grouping owned by the shared ModelPicker —
+  // capability="chat" keeps rerankers/embedders out of the chat picker).
   const [selectedModelRef, setSelectedModelRef] = useState(session.model_ref);
-  const [modelsLoading, setModelsLoading] = useState(false);
   // A2A phase-2: optional composer model (in-turn prose delegation). '' = none.
   const [selectedComposerRef, setSelectedComposerRef] = useState(session.composer_model_ref ?? '');
   // D-PLAN-PLANNER-DEFAULT-FE phase 2: optional per-session planner model. '' = none
   // (falls back to the per-user planner default / chat fallback).
   const [selectedPlannerRef, setSelectedPlannerRef] = useState(session.planner_model_ref ?? '');
 
-  // K9.1 / W4: project picker — drives knowledge-service memory mode for
-  // this session. The shared ProjectPicker self-loads active projects and
-  // resolves a linked-but-archived project by id, so the panel no longer
-  // owns a useProjects query or an archived-placeholder branch.
-  const [selectedProjectId, setSelectedProjectId] = useState<string | null>(
-    session.project_id,
+  // K9.1 / W4 + Track B B1(2): the memory link is now a SET of knowledge graphs
+  // (multi-KG union). Seed from project_ids when present, else the legacy single
+  // project_id (back-compat display for pre-B1(2) sessions). The first id doubles
+  // as the tool-scope anchor (project_id) — see handleProjectsChange.
+  const [selectedProjectIds, setSelectedProjectIds] = useState<string[]>(
+    session.project_ids?.length
+      ? session.project_ids
+      : session.project_id
+        ? [session.project_id]
+        : [],
   );
 
   // D-CHAT-01: debounce + accumulator. We coalesce all PATCHes that
@@ -73,17 +77,6 @@ export function SessionSettingsPanel({ session, onSessionUpdate, onClose }: Sess
   // Held in a ref so the unmount cleanup can call the latest closure
   // without the effect re-subscribing on every render of the parent.
   const flushPendingRef = useRef<() => void>(() => undefined);
-
-  // Load user models
-  useEffect(() => {
-    if (!accessToken) return;
-    setModelsLoading(true);
-    void aiModelsApi
-      .listUserModels(accessToken, { include_inactive: false })
-      .then((res) => setUserModels(res.items))
-      .catch(() => {})
-      .finally(() => setModelsLoading(false));
-  }, [accessToken]);
 
   // Close on ESC
   useEffect(() => {
@@ -234,20 +227,14 @@ export function SessionSettingsPanel({ session, onSessionUpdate, onClose }: Sess
     });
   }
 
-  function handleProjectChange(next: string | null) {
-    // ProjectPicker emits null on clear. Send explicit null so
-    // chat-service's model_fields_set sees the unlink.
-    setSelectedProjectId(next);
-    patchSession({ project_id: next });
+  function handleProjectsChange(next: string[]) {
+    // Track B B1(2): write the grounding SET. Keep the legacy single project_id
+    // in sync with the FIRST selected id — it's the tool-scope anchor
+    // (X-Project-Id) AND the back-compat single-grounding value when the set has
+    // ≤1 entry. Empty set → explicit null clears both (model_fields_set sees it).
+    setSelectedProjectIds(next);
+    patchSession({ project_ids: next, project_id: next[0] ?? null });
   }
-
-  // ── Group models by provider ──────────────────────────────────────────────
-  const groupedModels = userModels.reduce<Record<string, UserModel[]>>((acc, m) => {
-    const key = m.provider_kind;
-    if (!acc[key]) acc[key] = [];
-    acc[key].push(m);
-    return acc;
-  }, {});
 
   return (
     <div
@@ -275,25 +262,14 @@ export function SessionSettingsPanel({ session, onSessionUpdate, onClose }: Sess
         {/* ── Model Selector ─────────────────────────────────────────── */}
         <div>
           <label className="mb-1.5 block text-xs font-medium text-muted-foreground">{t('settings.model')}</label>
-          {modelsLoading ? (
-            <div className="h-9 animate-pulse rounded-md bg-muted" />
-          ) : (
-            <select
-              value={selectedModelRef}
-              onChange={(e) => handleModelChange(e.target.value)}
-              className="h-9 w-full rounded-md border border-border bg-background px-2 text-sm text-foreground outline-none focus:border-ring focus:shadow-[0_0_0_3px_rgba(212,149,42,0.2)]"
-            >
-              {Object.entries(groupedModels).map(([provider, models]) => (
-                <optgroup key={provider} label={provider}>
-                  {models.map((m) => (
-                    <option key={m.user_model_id} value={m.user_model_id}>
-                      {m.alias ?? m.provider_model_name}
-                    </option>
-                  ))}
-                </optgroup>
-              ))}
-            </select>
-          )}
+          <ModelPicker
+            capability={CHAT_CAPABILITY}
+            value={selectedModelRef || null}
+            onChange={(id) => {
+              if (id) handleModelChange(id);
+            }}
+            ariaLabel={t('settings.model')}
+          />
         </div>
 
         {/* ── Composer model (A2A phase-2: in-turn prose delegation) ───── */}
@@ -301,26 +277,14 @@ export function SessionSettingsPanel({ session, onSessionUpdate, onClose }: Sess
           <label className="mb-1.5 block text-xs font-medium text-muted-foreground">
             {t('settings.composer_model', { defaultValue: 'Composer model (optional)' })}
           </label>
-          {modelsLoading ? (
-            <div className="h-9 animate-pulse rounded-md bg-muted" />
-          ) : (
-            <select
-              value={selectedComposerRef}
-              onChange={(e) => handleComposerChange(e.target.value)}
-              className="h-9 w-full rounded-md border border-border bg-background px-2 text-sm text-foreground outline-none focus:border-ring focus:shadow-[0_0_0_3px_rgba(212,149,42,0.2)]"
-            >
-              <option value="">{t('settings.composer_none', { defaultValue: 'None — single model' })}</option>
-              {Object.entries(groupedModels).map(([provider, models]) => (
-                <optgroup key={provider} label={provider}>
-                  {models.map((m) => (
-                    <option key={m.user_model_id} value={m.user_model_id}>
-                      {m.alias ?? m.provider_model_name}
-                    </option>
-                  ))}
-                </optgroup>
-              ))}
-            </select>
-          )}
+          <ModelPicker
+            capability={CHAT_CAPABILITY}
+            value={selectedComposerRef || null}
+            onChange={(id) => handleComposerChange(id ?? '')}
+            allowNone
+            noneLabel={t('settings.composer_none', { defaultValue: 'None — single model' })}
+            ariaLabel={t('settings.composer_model', { defaultValue: 'Composer model (optional)' })}
+          />
           <p className="mt-1 text-[10px] text-muted-foreground">
             {t('settings.composer_hint', { defaultValue: 'When set, the AI can delegate prose-writing to this model via compose_prose (best: a reasoning model for writing + a tool-capable main model).' })}
           </p>
@@ -331,43 +295,36 @@ export function SessionSettingsPanel({ session, onSessionUpdate, onClose }: Sess
           <label className="mb-1.5 block text-xs font-medium text-muted-foreground">
             {t('settings.planner_model', { defaultValue: 'Planner model (optional)' })}
           </label>
-          {modelsLoading ? (
-            <div className="h-9 animate-pulse rounded-md bg-muted" />
-          ) : (
-            <select
-              value={selectedPlannerRef}
-              onChange={(e) => handlePlannerChange(e.target.value)}
-              className="h-9 w-full rounded-md border border-border bg-background px-2 text-sm text-foreground outline-none focus:border-ring focus:shadow-[0_0_0_3px_rgba(212,149,42,0.2)]"
-            >
-              <option value="">{t('settings.planner_none', { defaultValue: 'Use my default planner' })}</option>
-              {Object.entries(groupedModels).map(([provider, models]) => (
-                <optgroup key={provider} label={provider}>
-                  {models.map((m) => (
-                    <option key={m.user_model_id} value={m.user_model_id}>
-                      {m.alias ?? m.provider_model_name}
-                    </option>
-                  ))}
-                </optgroup>
-              ))}
-            </select>
-          )}
+          <ModelPicker
+            capability={CHAT_CAPABILITY}
+            value={selectedPlannerRef || null}
+            onChange={(id) => handlePlannerChange(id ?? '')}
+            allowNone
+            noneLabel={t('settings.planner_none', { defaultValue: 'Use my default planner' })}
+            ariaLabel={t('settings.planner_model', { defaultValue: 'Planner model (optional)' })}
+          />
           <p className="mt-1 text-[10px] text-muted-foreground">
             {t('settings.planner_hint', { defaultValue: 'The model the glossary assistant plans multi-step ontology changes with (overrides your Settings default for this session). Pick a strong, tool-capable model.' })}
           </p>
         </div>
 
-        {/* ── Project (memory link) ──────────────────────────────────── */}
+        {/* ── Knowledge graphs (memory link — multi-KG union) ────────── */}
         <div>
           <label className="mb-1.5 block text-xs font-medium text-muted-foreground">
             {tKnowledge('picker.label')}
           </label>
-          <ProjectPicker
-            value={selectedProjectId}
-            onChange={handleProjectChange}
+          <MultiProjectPicker
+            value={selectedProjectIds}
+            onChange={handleProjectsChange}
             placeholder={tKnowledge('picker.noProject')}
           />
           <p className="mt-1 text-[10px] text-muted-foreground">
-            {tKnowledge('picker.hint')}
+            {selectedProjectIds.length >= 2
+              ? t('settings.project_multi_hint', {
+                  defaultValue:
+                    'The AI is grounded on all selected knowledge graphs at once — facts from each are tagged with their source.',
+                })
+              : tKnowledge('picker.hint')}
           </p>
         </div>
 

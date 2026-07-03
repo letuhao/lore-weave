@@ -338,6 +338,42 @@ services:
     ports:
       - "8207:8084"
 
+  agent-registry-service:
+    # Agent Extensibility Registry (docs/specs/2026-07-02-agent-extensibility-registry.md).
+    # Repo-root build context so the Dockerfile can COPY sdks/go/observability
+    # for the go.mod replace directive.
+    build:
+      context: ..
+      dockerfile: services/agent-registry-service/Dockerfile
+      labels: *build-labels
+    environment:
+      HTTP_ADDR: ":8099"
+      DATABASE_URL: postgres://loreweave:loreweave_dev@postgres:5432/loreweave_agent_registry?sslmode=disable
+      JWT_SECRET: ${JWT_SECRET:-loreweave_local_dev_jwt_secret_change_me_32chars}
+      INTERNAL_SERVICE_TOKEN: ${INTERNAL_SERVICE_TOKEN:-dev_internal_token}
+      # DECISION-1 — dedicated AES-GCM vault key for MCP-server secrets (blast-radius
+      # split from JWT_SECRET). Optional in dev (falls back to JWT_SECRET).
+      AGENT_REGISTRY_VAULT_KEY: ${AGENT_REGISTRY_VAULT_KEY:-loreweave_local_dev_agent_registry_vault_key_change_me_32}
+      # D-REG-BOOK-GRANT — book-service for E0 grant checks on book-tier writes.
+      # Empty disables book-tier (they 501); set it to enable grant-gated book tier.
+      BOOK_SERVICE_INTERNAL_URL: http://book-service:8082
+      # REG-P3-01 — SSRF escape hatch. The P3 guard rejects user URLs that resolve
+      # to internal/loopback/metadata (prod posture). In the dev stack we register
+      # in-cluster MCP servers (agent-registry's own /mcp) to live-smoke the overlay/
+      # scan/egress paths, so allow internal targets here. DEFAULT OFF (prod-safe).
+      AGENT_REGISTRY_ALLOW_INTERNAL_MCP: ${AGENT_REGISTRY_ALLOW_INTERNAL_MCP:-1}
+      OTEL_EXPORTER_OTLP_ENDPOINT: ${OTEL_EXPORTER_OTLP_ENDPOINT:-}
+    depends_on:
+      postgres:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:8099/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+    ports:
+      - "8230:8099"
+
   provider-registry-service:
     # Phase 6c — repo-root build context so the Dockerfile can COPY
     # sdks/go/observability for the go.mod replace directive.
@@ -860,6 +896,10 @@ services:
       # 500ms. execute_tool uses this longer per-call timeout instead of
       # the build_context budget above (D-K21B-06 live-smoke finding).
       KNOWLEDGE_TOOL_TIMEOUT_S: "30"
+      # RAID C1 (DR-C1) — per-book steering: fetched from book-service's
+      # /internal/books/{id}/steering; failures degrade to [] (turn unaffected).
+      BOOK_SERVICE_URL: http://book-service:8082
+      BOOK_STEERING_TIMEOUT_S: "2"
     depends_on:
       postgres:
         condition: service_healthy
@@ -903,7 +943,12 @@ services:
       # Provider name `lore_enrichment` (underscore) → derived prefix `lore_enrichment_`
       # (no DEFAULT_PREFIX_MAP entry needed), which matches the tool `lore_enrichment_auto_enrich`.
       # Wave 3 (P5 OD-7): catalog — public-discovery read tools (catalog_*).
-      AI_GATEWAY_PROVIDERS: "knowledge=http://knowledge-service:8092/mcp,glossary=http://glossary-service:8088/mcp,jobs=http://jobs-service:8096/mcp,book=http://book-service:8082/mcp,composition=http://composition-service:8093/mcp,translation=http://translation-service:8087/mcp,settings=http://provider-registry-service:8085/mcp,lore_enrichment=http://lore-enrichment-service:8093/mcp,catalog=http://catalog-service:8084/mcp"
+      AI_GATEWAY_PROVIDERS: "knowledge=http://knowledge-service:8092/mcp,glossary=http://glossary-service:8088/mcp,jobs=http://jobs-service:8096/mcp,book=http://book-service:8082/mcp,composition=http://composition-service:8093/mcp,translation=http://translation-service:8087/mcp,settings=http://provider-registry-service:8085/mcp,lore_enrichment=http://lore-enrichment-service:8093/mcp,catalog=http://catalog-service:8084/mcp,registry=http://agent-registry-service:8099/mcp"
+      # REG-P2-03 — per-user federation overlay. Default OFF ⇒ the catalog is
+      # byte-identical to today; set true to merge a user's registered MCP servers
+      # (from agent-registry) over the static System catalog under a u_/b_ prefix.
+      REGISTRY_OVERLAY_ENABLED: ${REGISTRY_OVERLAY_ENABLED:-false}
+      AGENT_REGISTRY_INTERNAL_URL: http://agent-registry-service:8099
       OTEL_EXPORTER_OTLP_ENDPOINT: ${OTEL_EXPORTER_OTLP_ENDPOINT:-}
     depends_on:
       knowledge-service:

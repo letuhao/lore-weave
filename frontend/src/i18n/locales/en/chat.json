@@ -16,7 +16,60 @@
     "voice_settings": "Voice Settings",
     "export": "Export",
     "rename": "Rename",
-    "session_settings": "Session Settings"
+    "session_settings": "Session Settings",
+    "context_meter": {
+      "label": "Context used",
+      "unknown": "Context window usage unknown for this model",
+      "tokens": "{{used}} / {{limit}} tokens",
+      "until_compact": "until auto-compact: {{pct}}%",
+      "baseline": "system + tools: {{tokens}} tok before your first word"
+    }
+  },
+  "context_panel": {
+    "title": "Context breakdown",
+    "free": "free space: {{tokens}} tok",
+    "tok": "tok",
+    "compact_at": "auto-compact triggers at {{pct}}% of the window",
+    "zero": "zero",
+    "manage": "Manage tools & skills",
+    "coming_soon": "panel soon",
+    "compact": {
+      "button": "Compact now",
+      "pending": "Compacting…",
+      "placeholder": "Keep character names and plot promises…",
+      "success": "Compacted — {{before}} → {{after}} tok",
+      "failed": "Compact failed: {{error}}",
+      "compacted_through": "compacted through message {{seq}}",
+      "clear": "Clear compact",
+      "cleared": "Compact cleared — full history restored"
+    },
+    "cat": {
+      "system_prompt": "Persona",
+      "memory_knowledge": "Story memory",
+      "working_memory": "Working memory",
+      "steering": "Steering rules",
+      "skills": "Skills",
+      "plan_nudge": "Plan nudge",
+      "book_note": "Book note",
+      "attached_context": "Attached context",
+      "history": "Conversation",
+      "tool_results": "Tool results",
+      "frontend_tool_schemas": "UI tools",
+      "mcp_tool_schemas": "MCP tools"
+    },
+    "history": {
+      "tab_now": "Now",
+      "tab_history": "History",
+      "turn": "Turn",
+      "total": "Total",
+      "empty": "No turn history yet — send a message to start tracking token usage.",
+      "error": "Couldn't load context history."
+    }
+  },
+  "compaction": {
+    "toast": "Earlier turns compacted — {{before}}→{{after}} tok",
+    "summarize_failed": "Summarizing failed — older turns were trimmed instead",
+    "overflowed": "Still over the context limit after compacting — replies may lose detail"
   },
   "input": {
     "format": "Format:",
@@ -43,11 +96,34 @@
     "stop_audio": "Stop Audio",
     "think": "Think",
     "fast": "Fast",
+    "effort_fast": "Fast",
+    "effort_standard": "Standard",
+    "effort_deep": "Deep",
+    "effort_fast_hint": "No hidden thinking — quickest replies",
+    "effort_standard_hint": "Thinks before answering — balanced speed and depth",
+    "effort_deep_hint": "Maximum reasoning budget — slowest, most thorough",
+    "effort_off": "Off",
+    "effort_low": "Low",
+    "effort_medium": "Medium",
+    "effort_high": "High",
+    "effort_auto": "Auto",
+    "effort_off_hint": "No hidden thinking — quickest replies",
+    "effort_low_hint": "A little reasoning — fast, a bit more careful",
+    "effort_medium_hint": "Balanced reasoning before answering",
+    "effort_high_hint": "Maximum reasoning budget — slowest, most thorough",
+    "effort_auto_hint": "Let the model decide how much to think",
+    "mode_cycle_hint": "Ctrl+. cycles Ask → Plan → Write",
     "stop_generating": "Stop generating (Esc)",
     "send": "Send (Enter)",
     "context_attached": "Context attached · ",
     "hint": "Enter to send · Shift+Enter for new line",
-    "hint_thinking": " · Ctrl+Shift+Enter think · Ctrl+Enter fast"
+    "hint_thinking": " · Ctrl+Shift+Enter think · Ctrl+Enter fast",
+    "mode_ask": "Ask",
+    "mode_plan": "Plan",
+    "mode_write": "Write",
+    "mode_ask_hint": "Read-only mode — the agent can research but not change anything",
+    "mode_plan_hint": "Plan mode — the agent researches and builds a plan with the planning tools; no prose until you switch to Write",
+    "mode_write_hint": "Write mode — the agent can make undoable changes (asks once per new tool)"
   },
   "new": {
     "preset": {
@@ -258,7 +334,11 @@
     "words": "{{count}} words",
     "unnamed": "(unnamed)",
     "no_matches": "No matches found.",
-    "no_items": "No items available."
+    "no_items": "No items available.",
+    "mention": {
+      "title": "Attach context",
+      "aria": "Context suggestions"
+    }
   },
   "settings": {
     "title": "Session Settings",
@@ -299,5 +379,65 @@
     "delete_failed": "Delete failed: {{error}}",
     "chat_error": "Chat error: {{error}}",
     "context_load_failed": "Could not load context for \"{{label}}\" — sending without it"
+  },
+  "toolApproval": {
+    "label": "Allow the agent to run this tool?",
+    "tier": "Tier {{tier}}",
+    "tier_hint": "Tier {{tier}} — an undoable write",
+    "hint": "This write is undoable. \"Always allow\" stops asking for this tool.",
+    "approve_once": "Approve once",
+    "always_allow": "Always allow",
+    "deny": "Deny",
+    "approved": "Approved — running ✓",
+    "always_allowed": "Always allowed — running ✓",
+    "denied": "Denied"
+  },
+  "rack": {
+    "label": "Context",
+    "add": "Add",
+    "add_title": "Add tools or skills",
+    "discovered": "{{count}} discovered",
+    "clear_discovered": "Clear discovered tools",
+    "search_placeholder": "Search…",
+    "tools_tab": "Tools",
+    "skills_tab": "Skills",
+    "summary": "{{tools}} tools · {{skills}} skills · {{tokens}} tok",
+    "summary_no_tokens": "{{tools}} tools · {{skills}} skills",
+    "summary_tooltip": "Open the context breakdown",
+    "server_live": "Live from the tool catalog",
+    "server_pins_only": "From session pins only",
+    "more": "+{{count}} more",
+    "more_tooltip": "{{count}} more discovered tools not shown",
+    "remove": "Remove",
+    "server": {
+      "knowledge": "Knowledge",
+      "glossary": "Glossary",
+      "book": "Books",
+      "composition": "Composition",
+      "translation": "Translation",
+      "jobs": "Jobs",
+      "ui": "UI",
+      "chat": "Chat",
+      "other": "Other"
+    }
+  },
+  "inspector": {
+    "title": "Agent runtime",
+    "pinned": "Pinned tools",
+    "hot": "Hot seed",
+    "activated": "Activated",
+    "skills": "Skills",
+    "last_search": "Last find_tools",
+    "advertised": "Advertised",
+    "advertised_sizes": "core {{core}} · frontend {{frontend}} · activated {{activated}}",
+    "trail": "Phase trail",
+    "phase": {
+      "idle": "Idle",
+      "curated": "Curated",
+      "skills": "Skills",
+      "discovering": "Discovering…",
+      "activated": "Activated",
+      "tool_running": "Running tool"
+    }
   }
 }

@@ -6,7 +6,13 @@ const getDraft = vi.fn();
 const patchDraft = vi.fn();
 vi.mock('@/features/books/api', () => ({ booksApi: { getDraft: (...a: unknown[]) => getDraft(...a), patchDraft: (...a: unknown[]) => patchDraft(...a) } }));
 vi.mock('@/auth', () => ({ useAuth: () => ({ accessToken: 't' }) }));
-vi.mock('@/lib/tiptap-utils', () => ({ addTextSnapshots: (d: unknown) => d })); // identity for the test
+vi.mock('@/lib/tiptap-utils', () => ({ addTextSnapshots: (d: unknown) => d, extractText: () => '' })); // identity for the test
+// #12 — the hoist now resolves the composition Work for scenes[]; this suite exercises the
+// body path, so the book has NO Work (scenes stay []) and react-query is bypassed entirely.
+vi.mock('@/features/composition/hooks/useWork', () => ({ useWorkResolution: () => ({ data: null }) }));
+vi.mock('@/features/composition/api', () => ({
+  compositionApi: { listChapterScenes: vi.fn(async () => ({ items: [] })), patchNode: vi.fn() },
+}));
 const bus = vi.hoisted(() => ({ activeChapterId: undefined as string | undefined }));
 vi.mock('../../../host/StudioHostProvider', () => ({
   useStudioHost: () => ({ bookId: 'b1' }),

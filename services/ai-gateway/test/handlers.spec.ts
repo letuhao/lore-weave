@@ -1,8 +1,15 @@
 import {
+  classifyCallToolError,
   extractEnvelope,
   handleCallTool,
+  handleGetPrompt,
+  handleListPrompts,
+  handleListResources,
+  handleListResourceTemplates,
   handleListTools,
+  handleReadResource,
   headerValue,
+  sanitizeUpstreamErrorText,
 } from '../src/mcp/handlers.js';
 import type { FederationService } from '../src/federation/federation.service.js';
 
@@ -12,6 +19,16 @@ function fakeFederation(over: Partial<FederationService>): FederationService {
     executeTool: async () => ({ ok: true }),
     providerAvailability: () => [],
     isPartial: () => false,
+    // Wave C5 — resources + prompts surfaces
+    resourceCatalog: () => [],
+    resourceTemplateCatalog: () => [],
+    promptCatalog: () => [],
+    readResource: async () => ({ contents: [] }),
+    getPrompt: async () => ({ messages: [] }),
+    // REG-P2-03 — per-user overlay (default no-op: flag off / no registrations)
+    overlayTools: async () => [],
+    isOverlayTool: () => false,
+    executeOverlay: async () => ({ ok: true }),
     ...over,
   } as unknown as FederationService;
 }
@@ -65,16 +82,25 @@ describe('headerValue / extractEnvelope', () => {
 });
 
 describe('handleListTools', () => {
-  it('prepends find_tools, then the federated catalog, with an availability _meta (H10)', () => {
+  it('prepends find_tools, then the federated catalog, with an availability _meta (H10)', async () => {
     const fed = fakeFederation({ catalog: () => [{ name: 'memory_search' }] as any });
-    const res = handleListTools(fed);
+    const res = await handleListTools(fed);
     // find_tools is advertised FIRST (the lazy-discovery meta-tool), then the catalog.
     expect(res.tools[0].name).toBe('find_tools');
     expect(res.tools.map((t: any) => t.name)).toEqual(['find_tools', 'memory_search']);
     expect(res._meta).toEqual({ unavailable_providers: [], partial: false });
   });
 
-  it('reports a down provider in _meta.unavailable_providers (H10)', () => {
+  it('REG-P2-03: appends the per-user overlay tools after the System catalog', async () => {
+    const fed = fakeFederation({
+      catalog: () => [{ name: 'memory_search' }] as any,
+      overlayTools: async () => [{ name: 'u_deadbeef_search' }] as any,
+    });
+    const res = await handleListTools(fed, { 'x-user-id': 'u1' });
+    expect(res.tools.map((t: any) => t.name)).toEqual(['find_tools', 'memory_search', 'u_deadbeef_search']);
+  });
+
+  it('reports a down provider in _meta.unavailable_providers (H10)', async () => {
     const fed = fakeFederation({
       catalog: () => [] as any,
       providerAvailability: () => [
@@ -83,10 +109,20 @@ describe('handleListTools', () => {
       ],
       isPartial: () => true,
     });
-    expect(handleListTools(fed)._meta).toEqual({
+    expect((await handleListTools(fed))._meta).toEqual({
       unavailable_providers: ['book'],
       partial: true,
     });
+  });
+
+  it('REG-P2-03: routes a u_ prefixed tool to the overlay dispatch, not executeTool', async () => {
+    const executeTool = jest.fn().mockResolvedValue({ content: [] });
+    const executeOverlay = jest.fn().mockResolvedValue({ content: [{ type: 'text', text: 'overlay' }] });
+    const fed = fakeFederation({ executeTool, executeOverlay, isOverlayTool: (n: string) => /^u_/.test(n) });
+    const res = await handleCallTool(fed, 'u_deadbeef_search', { q: 'x' }, { 'x-user-id': 'u1' });
+    expect(executeOverlay).toHaveBeenCalledWith('u_deadbeef_search', { q: 'x' }, { userId: 'u1', sessionId: undefined, traceId: undefined, projectId: undefined, mcpKeyId: undefined, spendCapUsd: undefined }, undefined);
+    expect(executeTool).not.toHaveBeenCalled();
+    expect(res).toEqual({ content: [{ type: 'text', text: 'overlay' }] });
   });
 });
 
@@ -176,7 +212,7 @@ describe('handleCallTool', () => {
     expect(res.content[0].type).toBe('text');
   });
 
-  it('turns a provider failure into an MCP tool error (isError), not a throw', async () => {
+  it('turns an unclassifiable provider failure into the generic MCP tool error (isError), not a throw', async () => {
     const fed = fakeFederation({
       executeTool: async () => {
         throw new Error('provider down');
@@ -188,7 +224,7 @@ describe('handleCallTool', () => {
     expect(res.content[0].text).toBe("tool 'memory_search' failed: provider error");
   });
 
-  it('does NOT leak the internal provider URL into the LLM-visible tool-error text', async () => {
+  it('W0 #5: classifies a transport failure as retryable, without leaking the internal URL', async () => {
     const fed = fakeFederation({
       executeTool: async () => {
         // A real transport failure embeds the internal endpoint in its message.
@@ -201,6 +237,239 @@ describe('handleCallTool', () => {
     expect(text).not.toContain('book-service');
     expect(text).not.toContain('8082');
     expect(text).not.toContain('ECONNREFUSED');
-    expect(text).toBe("tool 'book_create' failed: provider error");
+    expect(text).toBe(
+      "tool 'book_create' failed: backend temporarily unreachable — retry may succeed",
+    );
+  });
+
+  it('W0 #5: an unknown tool tells the model to use find_tools (not "provider error")', async () => {
+    const fed = fakeFederation({
+      executeTool: async () => {
+        throw new Error("unknown tool 'book_lst'");
+      },
+    });
+    const res = await handleCallTool(fed, 'book_lst', {}, {});
+    expect(res.isError).toBe(true);
+    const text = res.content[0].text as string;
+    expect(text).toContain('unknown tool');
+    expect(text).toContain('find_tools');
+  });
+
+  it('W0 #5: an upstream JSON-RPC rejection passes its (sanitized) message through', async () => {
+    const fed = fakeFederation({
+      executeTool: async () => {
+        // The TS SDK's McpError message shape for a JSON-RPC error response.
+        throw new Error('MCP error -32602: book_id must be a UUID (see http://glossary-service:8085/mcp)');
+      },
+    });
+    const res = await handleCallTool(fed, 'glossary_book_patch', {}, {});
+    expect(res.isError).toBe(true);
+    const text = res.content[0].text as string;
+    // The actionable upstream text survives…
+    expect(text).toContain('book_id must be a UUID');
+    // …but nothing address-shaped does.
+    expect(text).not.toContain('glossary-service');
+    expect(text).not.toContain('8085');
+    expect(text).not.toContain('http://');
+  });
+
+  it('W0 #5: the SDK request-timeout JSON-RPC code (-32001) reads as retryable transport', async () => {
+    const fed = fakeFederation({
+      executeTool: async () => {
+        throw new Error('MCP error -32001: Request timed out');
+      },
+    });
+    const res = await handleCallTool(fed, 'glossary_plan', {}, {});
+    expect(res.content[0].text).toBe(
+      "tool 'glossary_plan' failed: backend temporarily unreachable — retry may succeed",
+    );
+  });
+});
+
+describe('classifyCallToolError / sanitizeUpstreamErrorText', () => {
+  it('classifies an aborted in-flight call as retryable', () => {
+    const abort = new Error('This operation was aborted');
+    (abort as any).name = 'AbortError';
+    expect(classifyCallToolError(abort)).toBe(
+      'backend temporarily unreachable — retry may succeed',
+    );
+  });
+
+  it('classifies a 4xx Streamable-HTTP error as an upstream rejection with sanitized text', () => {
+    const e = new Error('Streamable HTTP error: Error POSTing to endpoint: invalid internal token');
+    (e as any).code = 401;
+    const text = classifyCallToolError(e);
+    expect(text).toContain('rejected by the owning service');
+    expect(text).toContain('invalid internal token');
+  });
+
+  it('classifies a 5xx Streamable-HTTP error as retryable', () => {
+    const e = new Error('Streamable HTTP error: Error POSTing to endpoint: upstream exploded');
+    (e as any).code = 503;
+    expect(classifyCallToolError(e)).toBe(
+      'backend temporarily unreachable — retry may succeed',
+    );
+  });
+
+  it('classifies HTTP 429 (even with an empty body) as retryable, not a rejection', () => {
+    const e = new Error('Streamable HTTP error: ');
+    (e as any).code = 429;
+    expect(classifyCallToolError(e)).toBe(
+      'backend temporarily unreachable or rate-limited — retry may succeed',
+    );
+  });
+
+  it('classifies HTTP 408 as retryable, not a rejection', () => {
+    const e = new Error('Streamable HTTP error: Request Timeout');
+    (e as any).code = 408;
+    expect(classifyCallToolError(e)).toBe(
+      'backend temporarily unreachable or rate-limited — retry may succeed',
+    );
+  });
+
+  it('classifies the JSON-RPC internal-error code (-32603) as retryable transport', () => {
+    const e = new Error('MCP error -32603: internal error');
+    expect(classifyCallToolError(e)).toBe(
+      'backend temporarily unreachable — retry may succeed',
+    );
+  });
+
+  it('sanitizes URLs, service hosts, and IPs out of upstream text', () => {
+    const raw =
+      'call http://book-service:8082/mcp failed via 10.0.3.17:5432 (see also knowledge-service:8092)';
+    const clean = sanitizeUpstreamErrorText(raw);
+    expect(clean).not.toContain('book-service');
+    expect(clean).not.toContain('8082');
+    expect(clean).not.toContain('10.0.3.17');
+    expect(clean).not.toContain('8092');
+  });
+
+  it('sanitizes generic host:port pairs that no specific rule matches', () => {
+    const raw = 'dial tcp localhost:8082 refused; upstream postgres:5432 unavailable';
+    const clean = sanitizeUpstreamErrorText(raw);
+    expect(clean).not.toContain('localhost:8082');
+    expect(clean).not.toContain('postgres:5432');
+    expect(clean).not.toContain('8082');
+    expect(clean).not.toContain('5432');
+  });
+});
+
+// ── Wave C5 — resources + prompts handlers ─────────────────────────────
+
+describe('handleListResources / handleListResourceTemplates / handleListPrompts', () => {
+  it('returns the federated resource catalog with the availability _meta (H10)', () => {
+    const fed = fakeFederation({
+      resourceCatalog: () => [{ uri: 'knowledge://static' }] as any,
+      providerAvailability: () => [
+        { name: 'knowledge', available: true },
+        { name: 'book', available: false },
+      ],
+      isPartial: () => true,
+    });
+    const res = handleListResources(fed);
+    expect(res.resources.map((r: any) => r.uri)).toEqual(['knowledge://static']);
+    expect(res._meta).toEqual({ unavailable_providers: ['book'], partial: true });
+  });
+
+  it('returns resource TEMPLATES on their own list (the knowledge resources are templates)', () => {
+    const fed = fakeFederation({
+      resourceTemplateCatalog: () =>
+        [{ uriTemplate: 'knowledge://project/{project_id}/summary' }] as any,
+    });
+    const res = handleListResourceTemplates(fed);
+    expect(res.resourceTemplates.map((t: any) => t.uriTemplate)).toEqual([
+      'knowledge://project/{project_id}/summary',
+    ]);
+    expect(res._meta).toEqual({ unavailable_providers: [], partial: false });
+  });
+
+  it('returns the federated prompt catalog with the availability _meta', () => {
+    const fed = fakeFederation({
+      promptCatalog: () => [{ name: 'recap_story_so_far' }] as any,
+    });
+    const res = handleListPrompts(fed);
+    expect(res.prompts.map((p: any) => p.name)).toEqual(['recap_story_so_far']);
+    expect(res._meta).toEqual({ unavailable_providers: [], partial: false });
+  });
+
+  it('a federation with nothing federated lists empty — never throws', () => {
+    const fed = fakeFederation({});
+    expect(handleListResources(fed).resources).toEqual([]);
+    expect(handleListResourceTemplates(fed).resourceTemplates).toEqual([]);
+    expect(handleListPrompts(fed).prompts).toEqual([]);
+  });
+});
+
+describe('handleReadResource', () => {
+  it('routes to federation.readResource with uri, envelope, and signal; returns the result verbatim', async () => {
+    const readResource = jest.fn().mockResolvedValue({
+      contents: [{ uri: 'knowledge://project/p1/summary', mimeType: 'text/plain', text: 'sum' }],
+    });
+    const fed = fakeFederation({ readResource });
+    const ac = new AbortController();
+    const res = await handleReadResource(
+      fed,
+      'knowledge://project/p1/summary',
+      { 'x-user-id': 'u1', 'x-session-id': 's1', 'x-project-id': 'p1' },
+      ac.signal,
+    );
+    expect(readResource).toHaveBeenCalledWith(
+      'knowledge://project/p1/summary',
+      { userId: 'u1', sessionId: 's1', traceId: undefined, projectId: 'p1' },
+      ac.signal,
+    );
+    expect(res.contents[0].text).toBe('sum');
+  });
+
+  it('a provider failure rejects with a GENERIC error — no internal URL leaks', async () => {
+    const fed = fakeFederation({
+      readResource: async () => {
+        throw new Error('fetch failed: ECONNREFUSED http://knowledge-service:8092/mcp');
+      },
+    });
+    await expect(
+      handleReadResource(fed, 'knowledge://project/p1/summary', { 'x-user-id': 'u1' }),
+    ).rejects.toThrow("resource 'knowledge://project/p1/summary' read failed: provider error");
+    // and specifically never the internal endpoint:
+    await handleReadResource(fed, 'knowledge://x', { 'x-user-id': 'u1' }).catch((e: Error) => {
+      expect(e.message).not.toContain('knowledge-service');
+      expect(e.message).not.toContain('8092');
+    });
+  });
+});
+
+describe('handleGetPrompt', () => {
+  it('routes to federation.getPrompt with name, args, envelope, and signal; returns the result verbatim', async () => {
+    const getPrompt = jest.fn().mockResolvedValue({
+      description: 'recap',
+      messages: [{ role: 'user', content: { type: 'text', text: 'Recap …' } }],
+    });
+    const fed = fakeFederation({ getPrompt });
+    const ac = new AbortController();
+    const res = await handleGetPrompt(
+      fed,
+      'recap_story_so_far',
+      { project_id: 'p1' },
+      { 'x-user-id': 'u1' },
+      ac.signal,
+    );
+    expect(getPrompt).toHaveBeenCalledWith(
+      'recap_story_so_far',
+      { project_id: 'p1' },
+      { userId: 'u1', sessionId: undefined, traceId: undefined },
+      ac.signal,
+    );
+    expect(res.messages[0].content.text).toBe('Recap …');
+  });
+
+  it('a provider failure rejects with a GENERIC error — no internal URL leaks', async () => {
+    const fed = fakeFederation({
+      getPrompt: async () => {
+        throw new Error('fetch failed: ECONNREFUSED http://knowledge-service:8092/mcp');
+      },
+    });
+    await expect(handleGetPrompt(fed, 'recap_story_so_far', {}, {})).rejects.toThrow(
+      "prompt 'recap_story_so_far' get failed: provider error",
+    );
   });
 });

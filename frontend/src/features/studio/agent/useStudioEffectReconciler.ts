@@ -46,6 +46,9 @@ export function useStudioEffectReconciler(): void {
           reloadChapter: u
             ? (chapterId) => { if (u.state.chapterId === chapterId) void u.reload(); }
             : undefined,
+          reloadScenes: u
+            ? (chapterId) => { if (u.state.chapterId === chapterId) void u.reloadScenes(); }
+            : undefined,
         });
       });
     }

@@ -60,6 +60,11 @@ async def test_summarize_level_chapter_happy_path():
     # project_id rides on job_meta (not a top-level kwarg) per LLMClient
     # contract caught by session-67 cont.3 live smoke.
     assert call_kwargs["job_meta"]["project_id"] == "p-1"
+    # Footgun disable PINNED (no_thinking_fields): a reasoning model must not spend
+    # the 1024-token budget on hidden thinking → empty → ExtractionError. If this
+    # goes red, the **_NO_THINKING spread was dropped and the footgun re-opened.
+    assert call_kwargs["input"]["chat_template_kwargs"]["thinking"] is False
+    assert call_kwargs["input"]["reasoning_effort"] == "none"
     # Level substituted into the prompt — messages live under input[].
     sys_msg = _sys_msg_from_call(llm)
     assert "chapter" in sys_msg.lower()

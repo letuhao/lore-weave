@@ -1,0 +1,455 @@
+openapi: 3.0.3
+info:
+  title: LoreWeave Composition Service — PlanForge
+  version: 1.0.0
+  description: |
+    PlanForge: ingest NL planning documents → `NovelSystemSpec` → validate → compile
+    to `PlanningPackage` for the downstream `planning_pipeline`.
+
+    **SSOT:** `docs/specs/2026-07-01-plan-forge/09_PLANFORGE_BLUEPRINT.md`
+    **Implement plan:** `docs/plans/2026-07-01-plan-forge-promote.md`
+    **JSON schemas:** `contracts/plan-forge/` (import by `$ref`, do not fork)
+
+    ## Routing
+    Proxied by api-gateway-bff under `/v1/composition/books/{book_id}/plan/*`.
+    JWT user-scoped; tenancy via `book_id` + `owner_user_id` + E0 grants.
+
+    ## PO decisions (locked)
+    - `model_ref` (user_model UUID) **required** on every LLM path (`mode=llm`, refine, interpret).
+    - LLM propose/refine returns **202 Accepted** with `run_id` + optional `job_id`; poll `GET .../runs/{run_id}`.
+    - `mode=rules` propose may return **201** synchronously (fast path).
+    - Compile auto-creates lazy Work (`_ensure_pending_work`) when book has no `project_id`.
+
+servers:
+  - url: /v1/composition
+security:
+  - bearerAuth: []
+
+tags:
+  - name: plan-forge
+
+paths:
+  /books/{book_id}/plan/runs:
+    post:
+      tags: [plan-forge]
+      summary: Create a plan run and start ingest→propose
+      parameters:
+        - $ref: '#/components/parameters/BookId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PlanRunCreate'
+      responses:
+        '201':
+          description: Run created (rules mode — propose completed inline)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PlanRun'
+        '202':
+          description: Run accepted (llm mode — propose enqueued)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PlanRunAccepted'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+    get:
+      tags: [plan-forge]
+      summary: List plan runs for a book (paginated, owner-scoped)
+      parameters:
+        - $ref: '#/components/parameters/BookId'
+        - name: limit
+          in: query
+          schema: { type: integer, minimum: 1, maximum: 50, default: 20 }
+        - name: cursor
+          in: query
+          schema: { type: string }
+      responses:
+        '200':
+          description: Paginated run list
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PlanRunList'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /books/{book_id}/plan/runs/{run_id}:
+    get:
+      tags: [plan-forge]
+      summary: Get run status, job pointer, and artifact summaries
+      parameters:
+        - $ref: '#/components/parameters/BookId'
+        - $ref: '#/components/parameters/RunId'
+      responses:
+        '200':
+          description: Run detail
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PlanRun'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /books/{book_id}/plan/runs/{run_id}/novel-system-spec:
+    patch:
+      tags: [plan-forge]
+      summary: User edit-merge at checkpoint
+      parameters:
+        - $ref: '#/components/parameters/BookId'
+        - $ref: '#/components/parameters/RunId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/NovelSystemSpecPatch'
+      responses:
+        '200':
+          description: Updated spec
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PlanRun'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          description: Checkpoint state conflict
+
+  /books/{book_id}/plan/runs/{run_id}/validate:
+    post:
+      tags: [plan-forge]
+      summary: Run golden linter S1–S8 (+ optional fidelity report artifact)
+      parameters:
+        - $ref: '#/components/parameters/BookId'
+        - $ref: '#/components/parameters/RunId'
+      responses:
+        '200':
+          description: Validation report
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PlanValidationReport'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /books/{book_id}/plan/runs/{run_id}/refine:
+    post:
+      tags: [plan-forge]
+      summary: Apply a PlanRevisionRequest (LLM path async)
+      parameters:
+        - $ref: '#/components/parameters/BookId'
+        - $ref: '#/components/parameters/RunId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PlanRefineRequest'
+      responses:
+        '200':
+          description: Refine completed (rules / no-op path)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PlanRefineResult'
+        '202':
+          description: Refine enqueued
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PlanRunAccepted'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /books/{book_id}/plan/runs/{run_id}/interpret:
+    post:
+      tags: [plan-forge]
+      summary: Interpret vague user feedback → FeedbackInterpretation
+      parameters:
+        - $ref: '#/components/parameters/BookId'
+        - $ref: '#/components/parameters/RunId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PlanInterpretRequest'
+      responses:
+        '200':
+          description: Interpretation
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FeedbackInterpretation'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /books/{book_id}/plan/runs/{run_id}/self-check:
+    post:
+      tags: [plan-forge]
+      summary: Ranked gaps + fidelity score (rules, no LLM)
+      parameters:
+        - $ref: '#/components/parameters/BookId'
+        - $ref: '#/components/parameters/RunId'
+      responses:
+        '200':
+          description: Self-check report
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PlanSelfCheckReport'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /books/{book_id}/plan/runs/{run_id}/compile:
+    post:
+      tags: [plan-forge]
+      summary: Compile arc → PlanningPackage (+ optional pipeline job)
+      parameters:
+        - $ref: '#/components/parameters/BookId'
+        - $ref: '#/components/parameters/RunId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PlanCompileRequest'
+      responses:
+        '200':
+          description: Package compiled (pipeline not requested)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PlanCompileResult'
+        '202':
+          description: Pipeline job enqueued
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PlanCompileResult'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '422':
+          description: Validation failed — compile blocked
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+
+  parameters:
+    BookId:
+      name: book_id
+      in: path
+      required: true
+      schema: { type: string, format: uuid }
+    RunId:
+      name: run_id
+      in: path
+      required: true
+      schema: { type: string, format: uuid }
+
+  responses:
+    BadRequest:
+      description: Invalid request (e.g. missing model_ref on LLM path)
+    Forbidden:
+      description: Insufficient grant
+    NotFound:
+      description: Book or run not found for this user
+
+  schemas:
+    PlanRunCreate:
+      type: object
+      required: [source_markdown, mode]
+      properties:
+        source_markdown:
+          type: string
+          minLength: 1
+          description: NL planning document (tier A ≥5k chars recommended)
+        mode:
+          type: string
+          enum: [rules, llm]
+        model_ref:
+          type: string
+          format: uuid
+          description: Required when mode=llm
+        force:
+          type: boolean
+          default: false
+          description: Re-ingest even if source checksum matches existing run
+
+    PlanRunStatus:
+      type: string
+      enum: [pending, proposed, checkpoint, validated, compiled, failed]
+
+    PlanRun:
+      type: object
+      required: [id, book_id, status, mode, created_at, updated_at]
+      properties:
+        id: { type: string, format: uuid }
+        book_id: { type: string, format: uuid }
+        status: { $ref: '#/components/schemas/PlanRunStatus' }
+        mode: { type: string, enum: [rules, llm] }
+        model_ref: { type: string, format: uuid, nullable: true }
+        source_checksum: { type: string }
+        active_job_id: { type: string, format: uuid, nullable: true }
+        job_status:
+          type: string
+          nullable: true
+          enum: [pending, running, completed, failed]
+        error_detail: { type: string, nullable: true }
+        checkpoint_state: { type: object, additionalProperties: true }
+        artifacts:
+          type: array
+          items: { $ref: '#/components/schemas/PlanArtifactRef' }
+        created_at: { type: string, format: date-time }
+        updated_at: { type: string, format: date-time }
+
+    PlanRunAccepted:
+      type: object
+      required: [run_id, status]
+      properties:
+        run_id: { type: string, format: uuid }
+        job_id: { type: string, format: uuid, nullable: true }
+        status: { type: string, enum: [pending] }
+
+    PlanRunList:
+      type: object
+      required: [items]
+      properties:
+        items:
+          type: array
+          items: { $ref: '#/components/schemas/PlanRun' }
+        next_cursor: { type: string, nullable: true }
+
+    PlanArtifactRef:
+      type: object
+      required: [kind]
+      properties:
+        kind:
+          type: string
+          enum: [analyze, spec, graph, package, llm_io, validation_report]
+        artifact_id: { type: string, format: uuid }
+
+    NovelSystemSpecPatch:
+      type: object
+      description: Partial merge into persisted NovelSystemSpec at checkpoint
+      additionalProperties: true
+
+    PlanValidationReport:
+      type: object
+      required: [passed, rules]
+      properties:
+        passed: { type: boolean }
+        rules:
+          type: array
+          items:
+            type: object
+            properties:
+              id: { type: string }
+              passed: { type: boolean }
+              message: { type: string }
+        fidelity_score: { type: number, nullable: true }
+        fidelity_report_id: { type: string, format: uuid, nullable: true }
+
+    PlanRefineRequest:
+      type: object
+      required: [model_ref]
+      properties:
+        model_ref: { type: string, format: uuid }
+        revision:
+          description: PlanRevisionRequest — see contracts/plan-forge/plan_revision.schema.json
+          type: object
+          additionalProperties: true
+        focus_paths:
+          type: array
+          items: { type: string }
+
+    PlanRefineResult:
+      type: object
+      properties:
+        status: { type: string, enum: [applied, no_change, rejected] }
+        spec_artifact_id: { type: string, format: uuid }
+        fidelity_delta: { type: number }
+        diagnosis: { type: string, nullable: true }
+
+    PlanInterpretRequest:
+      type: object
+      required: [user_message, model_ref]
+      properties:
+        user_message: { type: string, minLength: 1 }
+        model_ref: { type: string, format: uuid }
+        apply_mode_hint:
+          type: string
+          enum: [auto, confirm, diagnose_only]
+
+    FeedbackInterpretation:
+      description: See contracts/plan-forge/feedback_interpretation.schema.json
+      type: object
+      additionalProperties: true
+
+    PlanSelfCheckReport:
+      type: object
+      properties:
+        gaps:
+          type: array
+          items:
+            type: object
+            properties:
+              path: { type: string }
+              severity: { type: string }
+              message: { type: string }
+        fidelity_score: { type: number }
+
+    PlanCompileRequest:
+      type: object
+      required: [arc_id]
+      properties:
+        arc_id: { type: string }
+        run_pipeline:
+          type: boolean
+          default: false
+        model_ref:
+          type: string
+          format: uuid
+          description: Required when run_pipeline=true
+
+    PlanCompileResult:
+      type: object
+      properties:
+        package:
+          description: PlanningPackage — see contracts/plan-forge/planning_package.schema.json
+          type: object
+          additionalProperties: true
+        pipeline_job_id: { type: string, format: uuid, nullable: true }
+        work_id: { type: string, format: uuid, nullable: true }

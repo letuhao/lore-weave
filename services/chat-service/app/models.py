@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from datetime import datetime
-from typing import Any
+from typing import Any, Literal
 from uuid import UUID
 
 from pydantic import BaseModel, Field
@@ -218,6 +218,11 @@ class CreateSessionRequest(BaseModel):
     # the source of truth and rejects unknown project_ids on context
     # build (returns 404 → graceful degrade to no memory).
     project_id: UUID | None = None
+    # Track B B1(2) — multi-KG: an optional SET of knowledge projects to union
+    # into one grounding context (world + member books). Takes precedence over
+    # `project_id` on context build; the single field stays for tool scope +
+    # back-compat. ≤16 (matches knowledge-service's ContextBuildRequest cap).
+    project_ids: list[UUID] | None = Field(default=None, max_length=16)
     # A2A phase-2: optional "composer" model. When set, the orchestrator
     # (model_ref) can call compose_prose, which streams THIS model for prose.
     composer_model_source: str | None = None
@@ -243,6 +248,10 @@ class PatchSessionRequest(BaseModel):
     # K5: PATCH can set or clear project_id. Use Pydantic's model_dump
     # exclude_unset semantics — explicit `null` clears, omitted leaves alone.
     project_id: UUID | None = None
+    # Track B B1(2) — multi-KG: set/replace the grounding project SET. Presence
+    # in the body drives the write (an explicit [] clears it back to the legacy
+    # single-project path); omitted leaves it alone. ≤16.
+    project_ids: list[UUID] | None = Field(default=None, max_length=16)
     # A2A phase-2: set/clear the composer model (same exclude_unset semantics).
     composer_model_source: str | None = None
     composer_model_ref: UUID | None = None
@@ -266,6 +275,10 @@ class ChatSession(BaseModel):
     created_at: datetime
     updated_at: datetime
     project_id: UUID | None = None  # K5
+    # Track B B1(2) — multi-KG grounding set. Empty list = the legacy
+    # single-project path. Default-empty so an older row / no-project session
+    # stays back-compatible.
+    project_ids: list[UUID] = Field(default_factory=list)
     composer_model_source: str | None = None  # A2A phase-2
     composer_model_ref: UUID | None = None
     planner_model_source: str | None = None  # D-PLAN-PLANNER-DEFAULT-FE phase 2
@@ -281,6 +294,35 @@ class ChatSession(BaseModel):
     enabled_tools: list[str] = Field(default_factory=list)
     enabled_skills: list[str] = Field(default_factory=list)
     activated_tools: list[str] = Field(default_factory=list)
+    # W3 — manual steerable compact: messages with sequence_num < this are
+    # represented by the session's stored compact_summary on every later turn.
+    # NULL/None = never manually compacted. (The summary text itself is not
+    # exposed on the session payload — the FE only needs the marker.)
+    compacted_before_seq: int | None = None
+
+
+# ── Chat Quality Wave W3 — manual steerable compact ─────────────────────────
+
+class CompactSessionRequest(BaseModel):
+    """POST /v1/chat/sessions/{id}/compact body. ``instructions`` steer WHAT
+    survives the summary ("keep all plot promises and character names");
+    ``keep_recent`` = how many most-recent messages stay verbatim.
+    ``clear`` = true wipes the stored compact (summary + marker) instead of
+    compacting — mutually exclusive with instructions/keep_recent."""
+    instructions: str | None = Field(default=None, max_length=500)
+    keep_recent: int = Field(default=8, ge=1, le=100)
+    clear: bool = False
+
+
+class CompactSessionResponse(BaseModel):
+    summary_tokens: int
+    compacted_message_count: int
+    # None only on a clear (cleared=True) — a compact always sets it.
+    compacted_before_seq: int | None
+    tokens_before_estimate: int
+    tokens_after_estimate: int
+    # True when the request cleared the stored compact instead of compacting.
+    cleared: bool = False
 
 
 class SessionListResponse(BaseModel):
@@ -332,6 +374,10 @@ class EditorContext(BaseModel):
     which chapter the assistant is editing (for the proposal's chapter guard)."""
     book_id: str
     chapter_id: str
+    # RAID C1 (DR-C1) — optional active chapter/scene title, matched by
+    # scene_match steering entries (case-insensitive substring). Additive:
+    # older FEs simply never send it and scene_match entries stay dormant.
+    chapter_title: str | None = None
 
 
 class BookContext(BaseModel):
@@ -354,8 +400,15 @@ class AdminContext(BaseModel):
 
 
 class StudioContext(BaseModel):
-    """Studio compose context — API-ready; validation deferred to studio phase."""
+    """Studio compose context — API-ready; validation deferred to studio phase.
+
+    CTX-1 (the position pointer): project_id/active_chapter_id let the system message
+    TELL the model the composition project + active chapter it is standing in, instead
+    of forcing tool-forage (a live M-E gate run dead-ended retrying the book_id AS a
+    project_id against composition_* tools)."""
     book_id: UUID | None = None
+    project_id: UUID | None = None
+    active_chapter_id: UUID | None = None
     active_panel_ids: list[str] = Field(default_factory=list)
     context_revision: int | None = None
 
@@ -370,6 +423,15 @@ class SendMessageRequest(BaseModel):
     edit_from_sequence: int | None = None
     context: str | None = None  # Optional context block (book/chapter/glossary text) injected as system message
     thinking: bool | None = None  # Override session default: true=think, false=fast, None=use session default
+    # AI-task standard — granular per-message effort from the input-bar dropdown,
+    # now the UNIFIED 5-level vocabulary (off|low|medium|high|auto) that matches the
+    # session-stored default; maps into UserReasoningPref in _thinking_pref (identity
+    # + auto→adaptive) and takes precedence over the legacy `thinking` boolean. The
+    # legacy 3-level (fast|standard|deep) is still accepted for back-compat during
+    # the FE convergence.
+    reasoning_effort: Literal[
+        "off", "low", "medium", "high", "auto", "fast", "standard", "deep"
+    ] | None = None
     editor_context: EditorContext | None = None  # ARCH-1 C6: editor panel → enable frontend write-back tool
     book_context: BookContext | None = None  # Glossary-assistant P3: book-scoped chat → enable glossary edit tool
     admin_context: AdminContext | None = None  # T4c: cms admin chat → advertise System-tier admin tools (token via X-Admin-Token header)
@@ -380,6 +442,14 @@ class SendMessageRequest(BaseModel):
     enabled_skills: list[str] | None = None
     studio_context: StudioContext | None = None
     consumer_capabilities: ConsumerCapabilities | None = None
+    # RAID Wave C2 (DR-C2) — HITL permission mode. 'write' (default) = today's
+    # behavior + the Tier-A prompt-once approval gate; 'ask' = read-only research
+    # surface (server tools filter to tier R; frontend tools stay — they are
+    # human-executed by construction). Compose stays the disable_tools seam above.
+    # RAID Wave B2 (07S §5b) — 'plan' = the ask surface PLUS the PlanForge
+    # `plan_*` server tools (they write plan artifacts, never prose); plan_forge
+    # skill auto-injects and a plan-mode system nudge is appended.
+    permission_mode: Literal["ask", "write", "plan"] = "write"
 
 
 class ToolResultRequest(BaseModel):
@@ -427,6 +497,39 @@ class ChatMessage(BaseModel):
 
 class MessageListResponse(BaseModel):
     items: list[ChatMessage]
+
+
+# ── Context history (per-turn token breakdown over the session) ────────────────
+# Chat Quality Wave W1 persisted chat_messages.context_breakdown (the full
+# contextBudget frame) per assistant turn; this surfaces the ordered SERIES so
+# the FE can chart how each category's token cost evolved across the conversation
+# (the "History" view of the ContextBreakdownPanel — not just the live "Now").
+
+class ContextHistoryPoint(BaseModel):
+    sequence_num: int
+    created_at: datetime
+    input_tokens: int | None
+    output_tokens: int | None
+    # The `breakdown` sub-map of the persisted contextBudget frame: fixed 12-key
+    # vocabulary (token_budget.BREAKDOWN_CATEGORIES). Every value is an int token
+    # count except `memory_knowledge`, which nests {total, sections}. Passed
+    # through verbatim so the FE reuses the same category color map + the
+    # `categoryTokens` flattening helper as the live panel.
+    breakdown: dict[str, Any]
+
+
+class ContextHistoryResponse(BaseModel):
+    items: list[ContextHistoryPoint]
+
+
+class LatestContextBudgetResponse(BaseModel):
+    # The LAST assistant turn's persisted contextBudget frame (the same shape the
+    # SSE `contextBudget` event carries: used_tokens / context_length /
+    # effective_limit / pct / breakdown / baseline_tokens / until_compact_pct).
+    # `None` when the session has no measured turn yet (a brand-new session). Lets
+    # the FE header meter render on session LOAD instead of only after the next
+    # live turn finishes — the meter's snapshot was previously live-only.
+    budget: dict[str, Any] | None
 
 
 # ── Outputs ───────────────────────────────────────────────────────────────────

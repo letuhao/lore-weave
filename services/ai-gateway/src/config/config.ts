@@ -51,6 +51,17 @@ export interface AppConfig {
   /** how often the federated catalog is refreshed from providers (H10) */
   catalogRefreshMs: number;
   /**
+   * REG-P2-03 — per-user federation overlay. When enabled, tools/list for a turn
+   * merges the caller's registered MCP servers (from agent-registry
+   * /internal/effective-mcp-servers) over the static System catalog, under a
+   * mandatory u_/b_ prefix so a user tool can never shadow a System tool. Default
+   * OFF ⇒ the catalog is byte-identical to today (feature-flag safety). Zero
+   * registrations ⇒ the static fast path (no overlay cost).
+   */
+  overlayEnabled: boolean;
+  /** agent-registry internal base for the overlay resolver + per-user MCP federation. */
+  agentRegistryInternalUrl: string;
+  /**
    * P6 grounding port: knowledge-service HTTP base for the grounding proxy
    * (`POST /internal/context/build`). Defaults to the knowledge provider's MCP
    * URL with `/mcp` stripped, so no new env is required; overridable.
@@ -73,6 +84,7 @@ export const DEFAULT_PREFIX_MAP: Record<string, string> = {
   settings: 'settings_',
   jobs: 'jobs_',
   catalog: 'catalog_',
+  registry: 'registry_',
 };
 
 /**
@@ -85,6 +97,8 @@ export const DEFAULT_PREFIX_MAP: Record<string, string> = {
  */
 export const EXTRA_PREFIX_MAP: Record<string, string[]> = {
   knowledge: ['kg_'],
+  // PlanForge MCP tools (composition-service) — federated alongside composition_*
+  composition: ['plan_'],
 };
 
 /** Back-compat default registry: P0 knowledge + P1 glossary. */
@@ -256,6 +270,10 @@ export function loadConfig(): AppConfig {
     adminProvider,
     catalogRefreshMs: parseInt(process.env.AI_GATEWAY_CATALOG_REFRESH_MS ?? '30000', 10),
     groundingUrl,
+    overlayEnabled: process.env.REGISTRY_OVERLAY_ENABLED === 'true',
+    agentRegistryInternalUrl: (
+      process.env.AGENT_REGISTRY_INTERNAL_URL ?? 'http://agent-registry-service:8099'
+    ).replace(/\/$/, ''),
   };
   return cached;
 }

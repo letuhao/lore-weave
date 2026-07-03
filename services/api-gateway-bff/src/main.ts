@@ -27,6 +27,10 @@ async function bootstrap() {
   const glossaryUrl = requireEnv('GLOSSARY_SERVICE_URL');
   const chatUrl = requireEnv('CHAT_SERVICE_URL');
   const roleplayUrl = requireEnv('ROLEPLAY_SERVICE_URL');
+  // Agent Extensibility Registry — optional + defaulted so existing deployments
+  // need no new mandatory env (the service is additive).
+  const agentRegistryUrl =
+    process.env.AGENT_REGISTRY_SERVICE_URL ?? 'http://agent-registry-service:8099';
   const videoGenUrl = requireEnv('VIDEO_GEN_SERVICE_URL');
   const statisticsUrl = requireEnv('STATISTICS_SERVICE_URL');
   const notificationUrl = requireEnv('NOTIFICATION_SERVICE_URL');
@@ -43,7 +47,7 @@ async function bootstrap() {
   // defaulted so existing deployments need no new mandatory env. The KAL dual-auths the
   // passed-through user JWT (validate + grant-check), so the BFF stays a dumb proxy here.
   const kalUrl = process.env.KNOWLEDGE_GATEWAY_URL ?? 'http://knowledge-gateway:3000';
-  configureGatewayApp(app, { authUrl, bookUrl, sharingUrl, catalogUrl, providerRegistryUrl, usageBillingUrl, translationUrl, glossaryUrl, chatUrl, roleplayUrl, videoGenUrl, statisticsUrl, notificationUrl, knowledgeUrl, campaignUrl, loreEnrichmentUrl, learningUrl, compositionUrl, jobsUrl, mcpPublicGatewayUrl, kalUrl });
+  configureGatewayApp(app, { authUrl, bookUrl, sharingUrl, catalogUrl, providerRegistryUrl, usageBillingUrl, translationUrl, glossaryUrl, chatUrl, roleplayUrl, agentRegistryUrl, videoGenUrl, statisticsUrl, notificationUrl, knowledgeUrl, campaignUrl, loreEnrichmentUrl, learningUrl, compositionUrl, jobsUrl, mcpPublicGatewayUrl, kalUrl });
 
   app.enableShutdownHooks();
   const port = parseInt(process.env.PORT || '3000', 10);

@@ -1,4 +1,5 @@
 import json
+import logging
 from uuid import UUID
 
 import asyncpg
@@ -7,12 +8,19 @@ from fastapi import APIRouter, Depends, HTTPException, Query, status
 from app.deps import get_current_user, get_db
 from app.models import (
     ChatSession,
+    CompactSessionRequest,
+    CompactSessionResponse,
     CreateSessionRequest,
     PatchSessionRequest,
     SearchResponse,
     SearchResult,
     SessionListResponse,
 )
+from app.services.compact_service import summarize_for_compaction
+from app.services.compaction import summary_message
+from app.services.token_budget import estimate_messages_tokens, estimate_tokens
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/v1/chat/sessions", tags=["sessions"])
 
@@ -22,12 +30,19 @@ def _row_to_session(r: asyncpg.Record) -> ChatSession:
     if isinstance(gp, str):
         gp = json.loads(gp)
     project_id = r.get("project_id")
-    # K-CLEAN-5 (D-K8-04): derive initial memory_mode from project_id.
+    project_ids = list(r.get("project_ids") or [])
+    # K-CLEAN-5 (D-K8-04): derive initial memory_mode from the project link.
     # `degraded` is intentionally NOT representable here — it's a
     # per-turn state that only the SSE stream knows. A fresh GET
     # always shows the project-derived state until the FE receives a
     # streaming `memory-mode` event with the actual value.
-    memory_mode = "static" if project_id else "no_project"
+    # Track B B1(2): a set of ≥2 → "multi"; a single link → "static".
+    if len(project_ids) >= 2:
+        memory_mode = "multi"
+    elif project_id or project_ids:
+        memory_mode = "static"
+    else:
+        memory_mode = "no_project"
     return ChatSession(
         session_id=r["session_id"],
         owner_user_id=r["owner_user_id"],
@@ -45,6 +60,7 @@ def _row_to_session(r: asyncpg.Record) -> ChatSession:
         # asyncpg.Record supports .get() (0.27+); matches the pattern used
         # by stream_service.py for test dict-mock compatibility.
         project_id=project_id,
+        project_ids=project_ids,
         memory_mode=memory_mode,
         composer_model_source=r.get("composer_model_source"),
         composer_model_ref=r.get("composer_model_ref"),
@@ -53,6 +69,8 @@ def _row_to_session(r: asyncpg.Record) -> ChatSession:
         enabled_tools=list(r.get("enabled_tools") or []),
         enabled_skills=list(r.get("enabled_skills") or []),
         activated_tools=list(r.get("activated_tools") or []),
+        # W3 — the FE "compacted through message N" indicator.
+        compacted_before_seq=r.get("compacted_before_seq"),
     )
 
 
@@ -65,8 +83,8 @@ async def create_session(
     gp = json.dumps(body.generation_params.model_dump(exclude_unset=True)) if body.generation_params else "{}"
     row = await pool.fetchrow(
         """
-        INSERT INTO chat_sessions (owner_user_id, title, model_source, model_ref, system_prompt, generation_params, project_id, composer_model_source, composer_model_ref, planner_model_source, planner_model_ref)
-        VALUES ($1, $2, $3, $4, $5, $6::jsonb, $7, $8, $9, $10, $11)
+        INSERT INTO chat_sessions (owner_user_id, title, model_source, model_ref, system_prompt, generation_params, project_id, composer_model_source, composer_model_ref, planner_model_source, planner_model_ref, project_ids)
+        VALUES ($1, $2, $3, $4, $5, $6::jsonb, $7, $8, $9, $10, $11, $12::uuid[])
         RETURNING *
         """,
         user_id, body.title, body.model_source, str(body.model_ref), body.system_prompt, gp,
@@ -75,6 +93,7 @@ async def create_session(
         str(body.composer_model_ref) if body.composer_model_ref else None,
         body.planner_model_source,
         str(body.planner_model_ref) if body.planner_model_ref else None,
+        [str(p) for p in body.project_ids] if body.project_ids else [],
     )
     return _row_to_session(row)
 
@@ -207,6 +226,11 @@ async def patch_session(
     set_enabled_skills = "enabled_skills" in body.model_fields_set
     set_activated_tools = "activated_tools" in body.model_fields_set
 
+    # Track B B1(2) — multi-KG grounding set. Presence in the body drives the
+    # write (explicit [] clears back to single-project); omitted leaves alone.
+    set_project_ids = "project_ids" in body.model_fields_set
+    project_ids_value = [str(p) for p in body.project_ids] if body.project_ids else []
+
     row = await pool.fetchrow(
         """
         UPDATE chat_sessions SET
@@ -225,6 +249,7 @@ async def patch_session(
           enabled_tools         = CASE WHEN $18::boolean THEN $19::text[] ELSE enabled_tools END,
           enabled_skills        = CASE WHEN $20::boolean THEN $21::text[] ELSE enabled_skills END,
           activated_tools       = CASE WHEN $22::boolean THEN $23::text[] ELSE activated_tools END,
+          project_ids           = CASE WHEN $24::boolean THEN $25::uuid[] ELSE project_ids END,
           updated_at            = now()
         WHERE session_id=$1 AND owner_user_id=$2
         RETURNING *
@@ -239,8 +264,137 @@ async def patch_session(
         set_enabled_tools, body.enabled_tools or [],
         set_enabled_skills, body.enabled_skills or [],
         set_activated_tools, body.activated_tools or [],
+        set_project_ids, project_ids_value,
     )
     return _row_to_session(row)
+
+
+@router.post("/{session_id}/compact", response_model=CompactSessionResponse)
+async def compact_session(
+    session_id: UUID,
+    body: CompactSessionRequest,
+    user_id: str = Depends(get_current_user),
+    pool: asyncpg.Pool = Depends(get_db),
+) -> CompactSessionResponse:
+    """W3 — manual steerable compact, PERSISTED on the session.
+
+    Summarizes every message older than the last ``keep_recent`` with the
+    session's OWN model (the user's ``instructions`` steer what survives) and
+    stores {compact_summary, compacted_before_seq} on chat_sessions, so every
+    later turn — on every device — loads the summary instead of the old turns.
+
+    Re-compact is idempotent-ish: messages already covered by a previous
+    compact are NOT re-read; the previous summary is folded in as the first
+    "message" of the new summarizer input, so nothing is lost twice.
+
+    ``{"clear": true}`` (mutually exclusive with instructions/keep_recent)
+    wipes the stored compact instead — every later turn loads full history.
+    """
+    if body.clear and (body.instructions is not None or "keep_recent" in body.model_fields_set):
+        raise HTTPException(
+            status_code=422,
+            detail="clear is mutually exclusive with instructions/keep_recent",
+        )
+
+    row = await pool.fetchrow(
+        "SELECT model_source, model_ref, compact_summary, compacted_before_seq "
+        "FROM chat_sessions WHERE session_id=$1 AND owner_user_id=$2",
+        str(session_id), user_id,
+    )
+    if not row:
+        raise HTTPException(status_code=404, detail="session not found")
+
+    prev_summary = row.get("compact_summary")
+    prev_before_seq = row.get("compacted_before_seq")
+
+    if body.clear:
+        # Clear is idempotent — NULLing an already-clear session is a no-op.
+        await pool.execute(
+            "UPDATE chat_sessions SET compact_summary=NULL, compacted_before_seq=NULL, "
+            "updated_at=now() WHERE session_id=$1 AND owner_user_id=$2",
+            str(session_id), user_id,
+        )
+        return CompactSessionResponse(
+            summary_tokens=0,
+            compacted_message_count=0,
+            compacted_before_seq=None,
+            tokens_before_estimate=0,
+            tokens_after_estimate=0,
+            cleared=True,
+        )
+
+    # Everything already covered by a previous compact is represented by
+    # prev_summary — load only what that compact did NOT cover.
+    if prev_before_seq is not None:
+        msg_rows = await pool.fetch(
+            """
+            SELECT sequence_num, role, content FROM chat_messages
+            WHERE session_id = $1 AND is_error = false AND branch_id = 0
+              AND sequence_num >= $2
+            ORDER BY sequence_num ASC
+            """,
+            str(session_id), prev_before_seq,
+        )
+    else:
+        msg_rows = await pool.fetch(
+            """
+            SELECT sequence_num, role, content FROM chat_messages
+            WHERE session_id = $1 AND is_error = false AND branch_id = 0
+            ORDER BY sequence_num ASC
+            """,
+            str(session_id),
+        )
+
+    # Split: droppable = everything except the last keep_recent messages.
+    if len(msg_rows) <= body.keep_recent:
+        raise HTTPException(status_code=409, detail="nothing to compact")
+    droppable_rows = msg_rows[: len(msg_rows) - body.keep_recent]
+    kept_rows = msg_rows[len(msg_rows) - body.keep_recent:]
+
+    droppable: list[dict] = [{"role": r["role"], "content": r["content"]} for r in droppable_rows]
+    kept: list[dict] = [{"role": r["role"], "content": r["content"]} for r in kept_rows]
+    # Re-compact folds the previous summary in as the first "message" so the
+    # new summary covers ALL compacted history (lossless-ish, idempotent).
+    if prev_summary:
+        droppable.insert(0, summary_message(prev_summary))
+
+    tokens_before = estimate_messages_tokens(droppable + kept)
+
+    try:
+        summary = await summarize_for_compaction(
+            droppable,
+            model_source=row["model_source"],
+            model_ref=str(row["model_ref"]),
+            user_id=user_id,
+            instructions=body.instructions,
+        )
+    except Exception as exc:  # session unchanged — the user asked for a summary,
+        # never persist a truncation-only manual compact.
+        logger.warning("manual compact summarizer failed session=%s", session_id, exc_info=True)
+        raise HTTPException(status_code=502, detail="summarizer failed — session unchanged") from exc
+    if not summary:
+        raise HTTPException(status_code=502, detail="summarizer returned empty — session unchanged")
+
+    new_before_seq = int(kept_rows[0]["sequence_num"])  # seq of the first KEPT message
+    # Optimistic-concurrency guard: the summarizer call above takes seconds; a
+    # concurrent compact may have landed meanwhile. Persist only if the marker
+    # still equals the value we read at start (NULL-safe), else 409 — never
+    # last-write-wins over a compact whose coverage we didn't fold in.
+    result = await pool.execute(
+        "UPDATE chat_sessions SET compact_summary=$3, compacted_before_seq=$4, updated_at=now() "
+        "WHERE session_id=$1 AND owner_user_id=$2 AND compacted_before_seq IS NOT DISTINCT FROM $5",
+        str(session_id), user_id, summary, new_before_seq, prev_before_seq,
+    )
+    if result == "UPDATE 0":
+        raise HTTPException(status_code=409, detail="another compact landed — retry")
+
+    return CompactSessionResponse(
+        summary_tokens=estimate_tokens(summary),
+        compacted_message_count=len(droppable_rows),
+        compacted_before_seq=new_before_seq,
+        tokens_before_estimate=tokens_before,
+        tokens_after_estimate=estimate_messages_tokens([summary_message(summary)] + kept),
+    )
 
 
 @router.delete("/{session_id}", status_code=status.HTTP_204_NO_CONTENT)

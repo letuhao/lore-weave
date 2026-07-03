@@ -1,9 +1,12 @@
+import { useState } from 'react';
 import { Link } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { BookOpen, Globe2 } from 'lucide-react';
 import type { Project } from '../../types';
 import { useProjectBacklinks } from '../../hooks/useProjectBacklinks';
+import { useProjects } from '../../hooks/useProjects';
 import { ProjectRow } from '../ProjectRow';
+import { ProjectFormModal } from '../ProjectFormModal';
 
 interface Props {
   project: Project | null;
@@ -24,6 +27,14 @@ export function OverviewSection({ project, onExploreGraph }: Props) {
   // overview cross-links out instead of showing a raw book UUID.
   const backlinks = useProjectBacklinks(project?.book_id);
 
+  // The detail-view edit affordance (KN — the pen button used to be a dead
+  // no-op here). ProjectDetailShell already mounts useProjects(false) to
+  // resolve this project, so the same react-query cache serves createProject/
+  // updateProject with NO extra fetch (dedup by queryKey). Same modal +
+  // If-Match update the ProjectsTab browser uses.
+  const { createProject, updateProject } = useProjects(false);
+  const [editing, setEditing] = useState(false);
+
   if (!project) {
     return (
       <p
@@ -40,15 +51,27 @@ export function OverviewSection({ project, onExploreGraph }: Props) {
   return (
     <div className="space-y-4" data-testid="shell-overview">
       {/* Reuse the project state card (build/extract/model dialogs all
-          wired) — CRUD toolbar handlers are no-ops in the detail shell;
-          project CRUD stays on the projects browser (C7). */}
+          wired). Edit opens the project form modal in-place (KN — the pen
+          was previously a dead no-op here). Archive/restore/delete stay on
+          the projects browser (destructive CRUD lives with the list). */}
       <ProjectRow
         project={project}
-        onEdit={noop}
+        onEdit={() => setEditing(true)}
         onArchive={noop}
         onRestore={noop}
         onDelete={noop}
         onExploreGraph={onExploreGraph}
+      />
+
+      <ProjectFormModal
+        open={editing}
+        onOpenChange={setEditing}
+        mode="edit"
+        project={project}
+        onCreate={createProject}
+        onUpdate={(projectId, payload, expectedVersion) =>
+          updateProject({ projectId, payload, expectedVersion })
+        }
       />
 
       <section

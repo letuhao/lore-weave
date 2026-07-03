@@ -3,7 +3,7 @@ import { useTranslation } from 'react-i18next';
 import { X, Settings } from 'lucide-react';
 import { useTTSState, useTTSControls } from '@/hooks/useTTS';
 import { BrowserTTSEngine } from '@/hooks/engines/BrowserTTSEngine';
-import { aiModelsApi, type UserModel } from '@/features/ai-models/api';
+import { ModelPicker } from '@/components/model-picker';
 import { useAuth } from '@/auth';
 import { cn } from '@/lib/utils';
 import { syncPrefsToServer } from '@/lib/syncPrefs';
@@ -56,14 +56,7 @@ export function TTSSettings({ open, onClose }: TTSSettingsProps) {
   const controls = useTTSControls();
   const { accessToken } = useAuth();
   const [voices, setVoices] = useState<SpeechSynthesisVoice[]>([]);
-  const [models, setModels] = useState<UserModel[]>([]);
   const [prefs, setPrefs] = useState<TTSPrefs>(loadPrefs);
-
-  // Load AI models
-  useEffect(() => {
-    if (!accessToken) return;
-    aiModelsApi.listUserModels(accessToken, { capability: 'tts' }).then((r) => setModels(r.items)).catch(() => {});
-  }, [accessToken]);
 
   // Load browser voices
   useEffect(() => {
@@ -167,23 +160,22 @@ export function TTSSettings({ open, onClose }: TTSSettingsProps) {
           <label className="mb-2 block text-[10px] font-medium uppercase tracking-wider text-muted-foreground">
             {t('tts.ai_model')}
           </label>
-          <select
-            value={prefs.ttsModelId || ''}
-            onChange={(e) => updatePref('ttsModelId', e.target.value || null)}
-            className="w-full rounded-md border bg-background px-2 py-1.5 text-xs text-foreground outline-none"
-          >
-            <option value="">{t('tts.none_browser')}</option>
-            {models.filter((m) => m.is_active).map((m) => (
-              <option key={m.user_model_id} value={m.user_model_id}>
-                {m.alias || m.provider_model_name} ({m.provider_kind})
-              </option>
-            ))}
-          </select>
-          {models.length === 0 && accessToken && (
-            <p className="mt-1 text-[9px] text-muted-foreground">
-              {t('tts.no_models')}
-            </p>
-          )}
+          <ModelPicker
+            capability="tts"
+            compact
+            value={prefs.ttsModelId}
+            onChange={(id) => updatePref('ttsModelId', id)}
+            allowNone
+            noneLabel={t('tts.none_browser')}
+            ariaLabel={t('tts.ai_model')}
+            emptyState={
+              accessToken ? (
+                <p className="mt-1 text-[9px] text-muted-foreground">{t('tts.no_models')}</p>
+              ) : (
+                <span />
+              )
+            }
+          />
         </div>
 
         {/* AI TTS Voice */}

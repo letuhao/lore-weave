@@ -1,4 +1,5 @@
 import { useState, useCallback } from 'react';
+import type { EffortLevel } from '@/components/ai-task';
 import type { ExtractionProfile, ContextFilters, CostEstimate, ExtractionProfileKind, ExtractionJobStatus } from './types';
 
 export type WizardMode = 'single' | 'batch';
@@ -22,7 +23,7 @@ export type WizardState = {
   costEstimate: CostEstimate | null;
   kinds: ExtractionProfileKind[];
   selectedModelName: string;
-  thinkingEnabled: boolean;
+  effort: EffortLevel;
   finalJobStatus: ExtractionJobStatus | null;
 };
 
@@ -42,7 +43,7 @@ function initialState(mode: WizardMode, preselectedChapterIds?: string[]): Wizar
     costEstimate: null,
     kinds: [],
     selectedModelName: '',
-    thinkingEnabled: false,
+    effort: 'off',
     finalJobStatus: null,
   };
 }
@@ -110,8 +111,8 @@ export function useExtractionState(mode: WizardMode, preselectedChapterIds?: str
     setState((prev) => ({ ...prev, selectedModelName }));
   }, []);
 
-  const setThinkingEnabled = useCallback((thinkingEnabled: boolean) => {
-    setState((prev) => ({ ...prev, thinkingEnabled }));
+  const setEffort = useCallback((effort: EffortLevel) => {
+    setState((prev) => ({ ...prev, effort }));
   }, []);
 
   const setFinalJobStatus = useCallback((finalJobStatus: ExtractionJobStatus) => {
@@ -137,7 +138,7 @@ export function useExtractionState(mode: WizardMode, preselectedChapterIds?: str
     setJobId,
     setKinds,
     setSelectedModelName,
-    setThinkingEnabled,
+    setEffort,
     setFinalJobStatus,
     canClose,
   };

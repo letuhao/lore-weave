@@ -6,7 +6,7 @@ import { chatApi } from '../api';
 import { useChatSession } from '../providers';
 import { useChatStream } from '../providers';
 import { ChatHeader } from './ChatHeader';
-import { ChatInputBar } from './ChatInputBar';
+import { ChatInputBar, effortLevelFromGenerationParams, reasoningEffortForLevel, type EffortLevel } from './ChatInputBar';
 import { MessageList } from './MessageList';
 import { PendingFactsCard } from './PendingFactsCard';
 import { SessionSettingsPanel } from './SessionSettingsPanel';
@@ -15,6 +15,7 @@ import { VoiceSettingsPanel } from './VoiceSettingsPanel';
 import { useVoiceChat } from '../hooks/useVoiceChat';
 import { useAutoTTS } from '../hooks/useAutoTTS';
 import { useUiToolExecutor } from '../hooks/useUiToolExecutor';
+import { useCompactSession } from '../hooks/useCompactSession';
 import { usePanelState } from '../hooks/usePanelState';
 import { AgentContextRack } from './AgentContextRack';
 import { AgentRuntimeInspector } from './AgentRuntimeInspector';
@@ -53,7 +54,13 @@ export function ChatView({ className, composeMode, footerSlot, headerSlot }: Cha
   const rack = chat.rack;
 
   const { settingsOpen, setSettingsOpen, voiceSettingsOpen, setVoiceSettingsOpen } = usePanelState();
+  // W3 — the "Compact now" controller for the context breakdown panel.
+  const compactControls = useCompactSession();
   const isArchived = activeSession?.status === 'archived';
+  // W2: the context breakdown panel's tool rows open the rack's add modal.
+  const [rackAddOpen, setRackAddOpen] = useState(false);
+  // W6: the rack's summary chip opens the header's context breakdown panel.
+  const [breakdownOpen, setBreakdownOpen] = useState(false);
 
   // MCP fan-out (C-NAV): resolve any suspended `ui_*` nav tool the agent calls —
   // perform the router action + POST the resolve immediately (no human gate).
@@ -114,8 +121,8 @@ export function ChatView({ className, composeMode, footerSlot, headerSlot }: Cha
     );
   }
 
-  function handleSend(content: string, thinking?: boolean) {
-    resolveAndSend(content, chat.send, thinking);
+  function handleSend(content: string, thinking?: boolean, reasoningEffort?: EffortLevel) {
+    resolveAndSend(content, chat.send, thinking, reasoningEffort);
   }
 
   function handleEdit(content: string, sequenceNum: number) {
@@ -144,6 +151,11 @@ export function ChatView({ className, composeMode, footerSlot, headerSlot }: Cha
         session={activeSession}
         modelNameMap={modelNameMap}
         messageCount={chat.messages.length}
+        contextBudget={chat.contextBudget}
+        onManageContextTools={!rackHidden ? () => setRackAddOpen(true) : undefined}
+        compactControls={!isArchived ? compactControls : undefined}
+        breakdownOpen={breakdownOpen}
+        onBreakdownClose={() => setBreakdownOpen(false)}
         sessionSwitcher={headerSlot}
         onRename={promptRename}
         onOpenSettings={() => setSettingsOpen(true)}
@@ -162,6 +174,7 @@ export function ChatView({ className, composeMode, footerSlot, headerSlot }: Cha
           expanded={chat.agentSurface.expanded}
           onToggle={chat.agentSurface.toggleExpanded}
           isStreaming={chat.isStreaming}
+          trail={chat.agentSurface.trail}
         />
       )}
 
@@ -198,7 +211,9 @@ export function ChatView({ className, composeMode, footerSlot, headerSlot }: Cha
         <AgentContextRack
           enabledTools={rack.enabledTools}
           enabledSkills={rack.enabledSkills}
-          activatedCount={rack.activatedTools.length}
+          activatedTools={rack.activatedTools}
+          surface={chat.agentSurface.state}
+          onOpenBreakdown={chat.contextBudget ? () => setBreakdownOpen(true) : undefined}
           token={accessToken}
           onAddTool={rack.addTool}
           onAddSkill={rack.addSkill}
@@ -206,6 +221,8 @@ export function ChatView({ className, composeMode, footerSlot, headerSlot }: Cha
           onRemoveSkill={rack.removeSkill}
           onClearDiscovered={rack.clearDiscovered}
           disabled={!!isArchived || chat.isStreaming}
+          externalAddOpen={rackAddOpen}
+          onExternalAddClose={() => setRackAddOpen(false)}
         />
       )}
 
@@ -219,11 +236,19 @@ export function ChatView({ className, composeMode, footerSlot, headerSlot }: Cha
         onToggleVoiceAssist={toggleVoiceAssist}
         ttsPlaying={autoTTS.isPlaying}
         onStopTTS={autoTTS.stop}
+        permissionMode={chat.permissionMode}
+        onPermissionModeChange={chat.setPermissionMode}
         supportsThinking={true}
-        thinkingDefault={activeSession.generation_params?.thinking ?? false}
-        onThinkingModeChange={(thinking) => {
+        effortDefault={effortLevelFromGenerationParams(activeSession.generation_params)}
+        onEffortChange={(level) => {
           if (!accessToken) return;
-          chatApi.patchSession(accessToken, activeSession.session_id, { generation_params: { thinking } })
+          // Persist the GRANULAR knob + clear the legacy boolean — the same
+          // {reasoning_effort, thinking:null} contract SessionSettingsPanel
+          // writes, so a stale reasoning_effort can never shadow the dropdown
+          // (and Deep survives a reload instead of downgrading to Standard).
+          chatApi.patchSession(accessToken, activeSession.session_id, {
+            generation_params: { reasoning_effort: reasoningEffortForLevel(level), thinking: null },
+          })
             .then((updated) => updateActiveSession(updated))
             .catch(() => {});
         }}

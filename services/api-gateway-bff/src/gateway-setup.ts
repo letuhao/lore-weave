@@ -21,6 +21,7 @@ export function configureGatewayApp(
     glossaryUrl: string;
     chatUrl: string;
     roleplayUrl: string;
+    agentRegistryUrl: string;
     videoGenUrl: string;
     statisticsUrl: string;
     notificationUrl: string;
@@ -162,6 +163,15 @@ export function configureGatewayApp(
     target: urls.roleplayUrl,
     changeOrigin: true,
     pathFilter: (pathname: string) => pathname.startsWith('/v1/roleplay'),
+  });
+  // agent-registry-service (Go) — Agent Extensibility Registry (plugins/skills/
+  // MCP-server registrations). A normal domain REST proxy (gateway invariant
+  // holds); the service validates the JWT itself. Path forwarded verbatim —
+  // it serves `/v1/agent-registry/*`.
+  const agentRegistryProxy = createProxyMiddleware({
+    target: urls.agentRegistryUrl,
+    changeOrigin: true,
+    pathFilter: (pathname: string) => pathname.startsWith('/v1/agent-registry'),
   });
   const videoGenProxy = createProxyMiddleware({
     target: urls.videoGenUrl,
@@ -463,6 +473,11 @@ export function configureGatewayApp(
     res: Response,
     next: NextFunction,
   ) => void;
+  const agentRegistryProxyFn = agentRegistryProxy as unknown as (
+    req: Request,
+    res: Response,
+    next: NextFunction,
+  ) => void;
   const videoGenProxyFn = videoGenProxy as unknown as (
     req: Request,
     res: Response,
@@ -577,6 +592,9 @@ export function configureGatewayApp(
     }
     if (req.path.startsWith('/v1/roleplay')) {
       return roleplayProxyFn(req, res, next);
+    }
+    if (req.path.startsWith('/v1/agent-registry')) {
+      return agentRegistryProxyFn(req, res, next);
     }
     if (req.path.startsWith('/v1/video-gen')) {
       return videoGenProxyFn(req, res, next);

@@ -144,6 +144,75 @@ async def test_chapter_extracted_emitted_in_same_txn():
     assert conn.execute.await_count == 3  # cursor UPDATE + run INSERT + chapter INSERT
 
 
+async def test_skipped_delta_threads_into_cursor_update():
+    # D-WORKER-SKIP-FALSE-GREEN: a skip advance carries skipped_delta=1 into the
+    # UPDATE params so items_skipped increments alongside items_processed.
+    pool, conn = _txn_pool()
+    await _advance_cursor_and_emit_run(
+        pool, uuid.uuid4(), uuid.uuid4(), {"k": "v"},
+        {"run_id": str(uuid.uuid4()), "outcome": "skipped"},
+        skipped_delta=1,
+    )
+    cursor_sql, cursor_params = conn.execute.await_args_list[0].args[0], conn.execute.await_args_list[0].args[1:]
+    assert "items_skipped = items_skipped + $5" in cursor_sql
+    assert cursor_params[-1] == 1  # skipped_delta rode the params
+
+
+async def test_default_advance_has_zero_skipped_delta():
+    pool, conn = _txn_pool()
+    await _advance_cursor_and_emit_run(
+        pool, uuid.uuid4(), uuid.uuid4(), {"k": "v"},
+        {"run_id": str(uuid.uuid4()), "outcome": "succeeded"},
+    )
+    cursor_params = conn.execute.await_args_list[0].args[1:]
+    assert cursor_params[-1] == 0  # success path never counts as skipped
+
+
+async def test_skipped_delta_survives_txn_fallback():
+    # the best-effort fallback must not lose the skip count.
+    pool = AsyncMock()
+    pool.execute = AsyncMock()
+
+    class _Acq:
+        async def __aenter__(self):
+            raise RuntimeError("db blip during txn")
+
+        async def __aexit__(self, *a):
+            return False
+
+    pool.acquire = MagicMock(return_value=_Acq())
+    await _advance_cursor_and_emit_run(
+        pool, uuid.uuid4(), uuid.uuid4(), {"k": "v"},
+        {"run_id": str(uuid.uuid4()), "outcome": "skipped"},
+        skipped_delta=1,
+    )
+    fb_params = pool.execute.await_args_list[0].args[1:]
+    assert fb_params[-1] == 1
+
+
+async def test_complete_job_stamps_all_skipped_error_message():
+    # _complete_job's UPDATE carries the all-skipped CASE and RETURNING includes
+    # the counters; an all-skipped row logs the warning (row simulated).
+    from app.runner import _complete_job
+
+    pool = AsyncMock()
+    conn = AsyncMock()
+    conn.fetchrow = AsyncMock(return_value={
+        "job_id": uuid.uuid4(), "cost_spent_usd": 0,
+        "items_skipped": 12, "items_total": 12,
+    })
+    _acq = MagicMock()
+    _acq.__aenter__ = AsyncMock(return_value=conn)
+    _acq.__aexit__ = AsyncMock(return_value=False)
+    pool.acquire = MagicMock(return_value=_acq)
+
+    await _complete_job(pool, uuid.uuid4(), uuid.uuid4())
+    sql = conn.fetchrow.await_args.args[0]
+    assert "items_skipped >= items_total" in sql       # the honesty CASE is in the UPDATE
+    assert "all" in sql.lower() and "skipped" in sql   # message text present
+    assert "items_skipped" in sql.split("RETURNING")[1]  # counters returned for the log
+
+
 async def test_chapter_extracted_best_effort_on_txn_fallback():
     # On the tx-failure fallback, the cursor still advances AND we best-effort emit
     # the chapter event (the campaign's stuck-reconcile is the backstop for loss).

@@ -24,6 +24,9 @@ func (s *Server) RegisterPipelineWriteTools(srv *mcp.Server) {
 		Description: "Link an entity to a chapter it appears in (additive, takes effect immediately; Edit). " +
 			"book_id + entity_id + chapter_id (the chapter must belong to the book). relevance = " +
 			"major | appears (default) | mentioned. Errors if the entity is already linked to that chapter.",
+		InputSchema: closedSetSchemaFor[createChapterLinkToolIn](map[string][]any{
+			"relevance": {"major", "appears", "mentioned"},
+		}),
 	}, s.toolCreateChapterLink)
 
 	mcp.AddTool(srv, &mcp.Tool{
@@ -34,6 +37,9 @@ func (s *Server) RegisterPipelineWriteTools(srv *mcp.Server) {
 			"evidence_type = quote (default) | summary | reference. original_text is the excerpt; " +
 			"original_language defaults to 'zh'. Optionally cite chapter_id (UUID) + chapter_title + " +
 			"chapter_index + block_or_line.",
+		InputSchema: closedSetSchemaFor[createEvidenceToolIn](map[string][]any{
+			"evidence_type": {"quote", "summary", "reference"},
+		}),
 	}, s.toolCreateEvidence)
 }
 

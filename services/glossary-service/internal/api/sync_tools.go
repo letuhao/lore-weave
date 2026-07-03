@@ -37,6 +37,10 @@ func (s *Server) RegisterSyncTools(srv *mcp.Server) {
 			"does NOT apply; it returns a confirm_token + a preview, which a human reviews (and may flip any " +
 			"row) before confirming via glossary_confirm_action. Pass items from glossary_book_sync_available: " +
 			"each {entity, id, choice}. id is the BOOK row id from the available list.",
+		InputSchema: closedSetSchemaFor[syncApplyToolIn](map[string][]any{
+			"items[].entity": enumLevels,
+			"items[].choice": {"take_theirs", "keep_mine"},
+		}),
 	}, s.toolBookSyncApply)
 }
 

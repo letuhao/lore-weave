@@ -6,11 +6,30 @@ import { registerEffectHandler, type EffectContext } from '../effectRegistry';
 
 let registered = false;
 
-function chapterIdFromResult(result: unknown): string | null {
-  if (result && typeof result === 'object') {
-    const r = result as Record<string, unknown>;
+function readChapterId(o: unknown): string | null {
+  if (o && typeof o === 'object') {
+    const r = o as Record<string, unknown>;
     if (typeof r.chapter_id === 'string') return r.chapter_id;
     if (typeof r.chapterId === 'string') return r.chapterId;
+  }
+  return null;
+}
+
+function chapterIdFromResult(result: unknown): string | null {
+  // The live stream delivers the chat-service TOOL_CALL_RESULT envelope
+  // `{ok, result}` — the domain payload (the node dump carrying chapter_id) is
+  // NESTED, and may itself still be a JSON string (MCP text content). The M-E
+  // live gate caught the bare top-level read returning null → Lane B never
+  // reloaded the Scene Rail (unit tests fed the payload unwrapped, so stayed
+  // green — the cross-boundary-normalization bug class).
+  const direct = readChapterId(result);
+  if (direct) return direct;
+  if (result && typeof result === 'object') {
+    let inner = (result as Record<string, unknown>).result;
+    if (typeof inner === 'string') {
+      try { inner = JSON.parse(inner); } catch { return null; }
+    }
+    return readChapterId(inner);
   }
   return null;
 }
@@ -28,6 +47,17 @@ export function bookDraftEffect(ctx: EffectContext): void {
   ctx.reloadChapter?.(chapterId);
 }
 
+/** #12 M-D — after an agent outline write (composition_outline_node_update, _create, _delete,
+ * _restore, scene_link_*): refresh every outline consumer. The scenes[] hoist reload is
+ * scene-only (dirty-safe, R6 — no G7 guard needed); react-query invalidation covers the
+ * navigator tree + Scene Rail sources + publish-gate. */
+export function outlineEffect(ctx: EffectContext): void {
+  // Outline queries are keyed ['composition','outline',projectId] — prefix-invalidate them all.
+  ctx.queryClient.invalidateQueries({ queryKey: ['composition', 'outline'] });
+  const chapterId = chapterIdFromResult(ctx.result);
+  if (chapterId) ctx.reloadScenes?.(chapterId);
+}
+
 /** Idempotent — register the default studio effect handlers once. */
 export function registerDefaultEffectHandlers(): void {
   if (registered) return;
@@ -35,4 +65,6 @@ export function registerDefaultEffectHandlers(): void {
   // book_save_chapter_draft, book_update_chapter, composition_* prose writes (proxied draft).
   registerEffectHandler(/^book_.*(draft|chapter)/, bookDraftEffect);
   registerEffectHandler(/^composition_.*(prose|draft)/, bookDraftEffect);
+  // #12 M-D — agent outline/scene-metadata writes → Scene Rail + navigator + json-editor refresh.
+  registerEffectHandler(/^composition_(outline_node|scene_link)_/, outlineEffect);
 }

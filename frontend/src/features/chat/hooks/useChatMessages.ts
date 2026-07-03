@@ -2,9 +2,9 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import type { MutableRefObject } from 'react';
 import { useAuth } from '@/auth';
 import { chatApi } from '../api';
-import type { ChatMessage, AgentSurfaceState } from '../types';
+import type { ChatMessage, AgentSurfaceState, ContextBudget, CompactionEvent } from '../types';
 import { runChatStream, assembleAssistantMessage } from './runChatStream';
-import type { ChatStreamArgs, StreamPhase } from './runChatStream';
+import type { ChatStreamArgs, StreamPhase, ReasoningEffortLevel } from './runChatStream';
 import type { StreamPins } from './useContextRack';
 import { useChatLiveStateOptional } from '../providers/ChatLiveStateContext';
 
@@ -43,7 +43,30 @@ export type FrontendToolOutcome =
   // change, not a stale token.
   | 'reprice_required'
   | 'action_error'
-  | 'cancelled';
+  | 'cancelled'
+  // RAID C2 (DR-C2 §4) — the tool_approval card (Write-mode Tier-A prompt-once):
+  // approved_once executes; approved_always also persists the per-user allowlist
+  // row; denied feeds "denied by user" so the agent self-corrects.
+  | 'approved_once'
+  | 'approved_always'
+  | 'denied';
+
+// RAID C2 — HITL permission mode. Persisted per-device in localStorage
+// (mirrors the editor's lw_editor_compose_mode pattern): a UI preference,
+// sent per-request as `permission_mode` on the message POST.
+// RAID B2 (07S §5b) — 'plan': the ask (read-only) surface PLUS the PlanForge
+// plan_* tools — research + plan, no prose until the user switches to Write.
+export type PermissionMode = 'ask' | 'plan' | 'write';
+const PERMISSION_MODE_KEY = 'lw_chat_permission_mode';
+
+function loadPermissionMode(): PermissionMode {
+  try {
+    const stored = localStorage.getItem(PERMISSION_MODE_KEY);
+    return stored === 'ask' || stored === 'plan' ? stored : 'write';
+  } catch {
+    return 'write';
+  }
+}
 
 export function useChatMessages(
   sessionId: string | null,
@@ -64,11 +87,18 @@ export function useChatMessages(
   streamPinsRef?: MutableRefObject<StreamPins>,
   /** #09 Lane A: present in the Writing Studio compose panel — enables the studio
    *  dock-nav frontend tools (open panel / focus manuscript unit). */
-  studioContext?: { book_id?: string; active_panel_ids?: string[]; context_revision?: number },
+  studioContext?: { book_id?: string; project_id?: string; active_chapter_id?: string; active_panel_ids?: string[]; context_revision?: number },
 ) {
   const { accessToken } = useAuth();
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [isLoading, setIsLoading] = useState(false);
+  // RAID C2 — Ask/Write permission mode (lazy-init from localStorage, setter
+  // writes through — mirrors the editor's composeMode persistence).
+  const [permissionMode, setPermissionModeState] = useState<PermissionMode>(loadPermissionMode);
+  const setPermissionMode = useCallback((mode: PermissionMode) => {
+    setPermissionModeState(mode);
+    try { localStorage.setItem(PERMISSION_MODE_KEY, mode); } catch { /* ignore */ }
+  }, []);
   const [streamingText, setStreamingText] = useState('');
   const [streamingReasoning, setStreamingReasoning] = useState('');
   const [streamPhase, setStreamPhase] = useState<StreamPhase>('idle');
@@ -77,6 +107,10 @@ export function useChatMessages(
   // A2A phase-2: true while the in-turn composer model is drafting prose
   // (compose_prose). Drives a transient "✍️ Drafting…" indicator.
   const [isComposing, setIsComposing] = useState(false);
+  // RAID Wave A3: the last turn-finish context-budget snapshot (chat header
+  // meter). Local state (not persisted server-side); mirrored from the worker
+  // snapshot on the windowing path so it survives dock float/close.
+  const [contextBudget, setContextBudget] = useState<ContextBudget | null>(null);
   const abortRef = useRef<AbortController | null>(null);
   const thinkingTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const thinkingStartRef = useRef<number>(0);
@@ -88,6 +122,9 @@ export function useChatMessages(
    *  memory-mode SSE event from chat-service. */
   const onMemoryModeRef = useRef<OnMemoryMode | null>(null);
   const onAgentSurfaceRef = useRef<((state: AgentSurfaceState) => void) | null>(null);
+  /** W2: settable callback for the per-turn `compaction` CUSTOM frame —
+   *  ChatStreamProvider registers a toast here ("earlier turns compacted"). */
+  const onCompactionRef = useRef<((event: CompactionEvent) => void) | null>(null);
 
   const resolveStreamPins = useCallback((): StreamPins => {
     const fromRef = streamPinsRef?.current;
@@ -113,6 +150,14 @@ export function useChatMessages(
   // separate concern handled at the M2 browser-smoke finalize — D-T5.4-CHAT-MULTIWINDOW.)
   const lastTerminalTurnRef = useRef(0);
   const lastMemoryModeTurnRef = useRef(0);
+  // W2: compaction fires at most once per turn; the snapshot rebroadcasts many
+  // times, so the toast is deduped on turnId exactly like memoryMode.
+  const lastCompactionTurnRef = useRef(0);
+  // Replay guard: a late-joining tab receives the hub's addPort FULL-STATE
+  // replay, which can carry a PAST turn's compaction — that must seed the
+  // dedupe ref silently, never toast. False until this window has seen its
+  // first worker snapshot.
+  const compactionSeededRef = useRef(false);
 
   // ── Fetch messages on session change ──────────────────────────────────────────
 
@@ -136,6 +181,31 @@ export function useChatMessages(
     void fetchMessages();
   }, [fetchMessages]);
 
+  // ── Seed the header context meter on session load ─────────────────────────────
+  // `contextBudget` was live-only (set from the per-turn SSE `contextBudget`
+  // event), so the meter rendered nothing on load/switch/reload until the NEXT
+  // turn finished — the "sometimes shows, sometimes not" gap. Clear any stale
+  // budget from the previous session, then seed from the LAST turn's persisted
+  // frame. Race-safe: only apply if the session hasn't changed AND no live event
+  // has already set a (fresher) budget this turn (`prev ?? seed`).
+  useEffect(() => {
+    setContextBudget(null);
+    if (!accessToken || !sessionId) return;
+    let ignore = false;
+    void chatApi
+      .getLatestContextBudget(accessToken, sessionId)
+      .then((res) => {
+        if (ignore || !res.budget) return;
+        setContextBudget((prev) => prev ?? res.budget);
+      })
+      .catch(() => {
+        /* meter simply stays hidden until the next live turn — non-fatal */
+      });
+    return () => {
+      ignore = true;
+    };
+  }, [accessToken, sessionId]);
+
   // ── SSE streaming ─────────────────────────────────────────────────────────────
 
   const streamPost = useCallback(
@@ -147,6 +217,9 @@ export function useChatMessages(
       // endpoint (used by the resume / tool-result path). The consume loop is
       // identical, so send + resume share all stream handling.
       override?: { url: string; body: Record<string, unknown> },
+      // W4: granular effort from the input-bar dropdown (today only 'deep'
+      // rides the wire — Fast/Standard stay on the `thinking` boolean).
+      reasoningEffort?: ReasoningEffortLevel,
     ): Promise<string> => {
       if (!accessToken || !sessionId) throw new Error('Not ready');
 
@@ -189,6 +262,7 @@ export function useChatMessages(
             content,
             ...(editFromSequence != null ? { editFromSequence } : {}),
             ...(thinking != null ? { thinking } : {}),
+            ...(reasoningEffort != null ? { reasoningEffort } : {}),
             ...(editorContext ? { editorContext } : {}),
             ...(studioContext ? { studioContext } : {}),
             ...(composeMode != null ? { composeMode } : {}),
@@ -196,6 +270,7 @@ export function useChatMessages(
             ...(displayLanguage ? { displayLanguage } : {}),
             ...(pins.enabledTools?.length ? { enabledTools: pins.enabledTools } : {}),
             ...(pins.enabledSkills?.length ? { enabledSkills: pins.enabledSkills } : {}),
+            permissionMode,
             ...(override ? { override } : {}),
           },
           accessToken,
@@ -222,6 +297,8 @@ export function useChatMessages(
             onComposing: (active) => setIsComposing(active),
             onMemoryMode: (mode) => onMemoryModeRef.current?.(mode),
             onAgentSurface: (payload) => onAgentSurfaceRef.current?.(payload),
+            onContextBudget: (budget) => setContextBudget(budget),
+            onCompaction: (event) => onCompactionRef.current?.(event),
             onAbort: () => { aborted = true; },
             // onToolCall / onActivity accumulate inside runChatStream and arrive
             // on the terminal result; nothing extra to mirror per-event here.
@@ -273,7 +350,7 @@ export function useChatMessages(
         setIsComposing(false);  // never leave the drafting indicator stuck on
       }
     },
-    [accessToken, sessionId, fetchMessages, editorContext, studioContext, composeMode, bookContext, displayLanguage, resolveStreamPins, messages.length],
+    [accessToken, sessionId, fetchMessages, editorContext, studioContext, composeMode, bookContext, displayLanguage, resolveStreamPins, messages.length, permissionMode],
   );
 
   // ── ARCH-1 C6: resume a suspended run after a frontend-tool decision ──────────
@@ -343,6 +420,23 @@ export function useChatMessages(
     if (worker.agentSurface) {
       onAgentSurfaceRef.current?.(worker.agentSurface);
     }
+    // RAID Wave A3: mirror the worker's context-budget snapshot (source of truth
+    // on the windowing path) into local state so the header meter renders identically.
+    if (worker.contextBudget) {
+      setContextBudget(worker.contextBudget);
+    }
+    // W2: compaction toast — fire once per turn it occurred in (dedupe on turnId,
+    // mirroring memoryMode; the snapshot rebroadcasts many times per turn).
+    // Replay guard: the FIRST snapshot after mount (the hub's full-state replay
+    // to a late-joining tab) and any non-streaming snapshot only RECORD the
+    // compaction's turnId — a stale compaction must not toast again. Only a
+    // turnId change observed while a stream is live is a fresh compaction.
+    if (worker.compaction && worker.turnId !== lastCompactionTurnRef.current) {
+      const isReplay = !compactionSeededRef.current || worker.streamStatus !== 'streaming';
+      lastCompactionTurnRef.current = worker.turnId;
+      if (!isReplay) onCompactionRef.current?.(worker.compaction);
+    }
+    compactionSeededRef.current = true;
 
     // Terminal handling — ONCE per turn per window, deduped on the worker's turnId.
     // Two facets, with DIFFERENT scoping:
@@ -393,18 +487,19 @@ export function useChatMessages(
   }, [
     useWorker, worker?.turnId, worker?.initiatedTurnId, worker?.streamingText, worker?.streamingReasoning,
     worker?.streamPhase, worker?.thinkingElapsed, worker?.streamStatus, worker?.isComposing,
-    worker?.memoryMode, worker?.ended, sessionId,
+    worker?.memoryMode, worker?.contextBudget, worker?.compaction, worker?.ended, sessionId,
   ]);
 
   /** Build the per-turn ChatStreamArgs (worker path) from the hook's props. */
   const buildArgs = useCallback(
-    (content: string, editFromSequence?: number, thinking?: boolean): ChatStreamArgs => {
+    (content: string, editFromSequence?: number, thinking?: boolean, reasoningEffort?: ReasoningEffortLevel): ChatStreamArgs => {
       const pins = resolveStreamPins();
       return {
         sessionId: sessionId ?? '',
         content,
         ...(editFromSequence != null ? { editFromSequence } : {}),
         ...(thinking != null ? { thinking } : {}),
+        ...(reasoningEffort != null ? { reasoningEffort } : {}),
         ...(editorContext ? { editorContext } : {}),
         ...(studioContext ? { studioContext } : {}),
         ...(composeMode != null ? { composeMode } : {}),
@@ -412,16 +507,18 @@ export function useChatMessages(
         ...(displayLanguage ? { displayLanguage } : {}),
         ...(pins.enabledTools?.length ? { enabledTools: pins.enabledTools } : {}),
         ...(pins.enabledSkills?.length ? { enabledSkills: pins.enabledSkills } : {}),
+        permissionMode,
       };
     },
-    [sessionId, editorContext, studioContext, composeMode, bookContext, displayLanguage, resolveStreamPins],
+    [sessionId, editorContext, studioContext, composeMode, bookContext, displayLanguage, resolveStreamPins, permissionMode],
   );
 
   // ── Public API ────────────────────────────────────────────────────────────────
 
-  /** Send a new message (normal flow) */
+  /** Send a new message (normal flow). `reasoningEffort` (W4) is the granular
+   *  effort from the input-bar dropdown — only 'deep' rides the wire today. */
   const send = useCallback(
-    (content: string, thinking?: boolean) => {
+    (content: string, thinking?: boolean, reasoningEffort?: ReasoningEffortLevel) => {
       // Optimistically add user message to the list
       const optimistic: ChatMessage = {
         message_id: `opt-${Date.now()}`,
@@ -445,8 +542,8 @@ export function useChatMessages(
       // Worker path: hand the turn to the SharedWorker (returns void; the
       // assembled assistant message arrives via the snapshot bridge). Inline
       // path: own the stream as before.
-      if (useWorker && worker) { worker.start(buildArgs(content, undefined, thinking)); return Promise.resolve(''); }
-      return streamPost(content, undefined, thinking);
+      if (useWorker && worker) { worker.start(buildArgs(content, undefined, thinking, reasoningEffort)); return Promise.resolve(''); }
+      return streamPost(content, undefined, thinking, undefined, reasoningEffort);
     },
     [sessionId, messages.length, streamPost, useWorker, worker, buildArgs],
   );
@@ -516,6 +613,11 @@ export function useChatMessages(
     isStreaming: streamStatus === 'streaming',
     /** A2A phase-2: composer model is drafting prose this turn. */
     isComposing,
+    /** RAID Wave A3: last turn-finish context-budget snapshot (header meter). */
+    contextBudget,
+    /** RAID C2: HITL permission mode (ask|write) + persisted setter. */
+    permissionMode,
+    setPermissionMode,
     send,
     edit,
     regenerate,
@@ -534,5 +636,7 @@ export function useChatMessages(
      *  memory-mode SSE event from chat-service. */
     onMemoryModeRef,
     onAgentSurfaceRef,
+    /** W2: set a callback for the per-turn `compaction` CUSTOM frame. */
+    onCompactionRef,
   };
 }

@@ -119,6 +119,13 @@ _NAME_MAX = 200
 # Fact-types accepted by the pending-facts inbox (mirrors db.models.FactType).
 _PROPOSE_FACT_TYPES = ("decision", "preference", "milestone", "negation")
 
+# B1(4) — cross-partition unification mode for the multi-KG read tools
+# (kg_world_query / kg_multi_query). "off" (default) = today's forest,
+# byte-identical (EC-M5). "by_name" = lexical unification (T0). "semantic" = the
+# lexical⊕cosine blend with on-demand embedding of discovered entities (T1, Q1=b).
+# Enum-locked (LLM-client-first).
+_UNIFY_MODES = ("off", "by_name", "semantic")
+
 # KG-LOCAL triage actions this lane resolves directly (Edit-gated, reversible).
 # The schema-mutating + glossary-handoff actions are class-C (KM6) and rejected
 # here with a clear tool error pointing the agent at the human-confirm surface.
@@ -139,6 +146,38 @@ class KgGraphQueryArgs(ProjectScopedArgs):
     view: str | None = Field(default=None, max_length=_CODE_MAX)
     as_of_chapter: int | None = Field(default=None, ge=0)
     limit: int = Field(default=GRAPH_LIMIT_DEFAULT, ge=1, le=GRAPH_LIMIT_MAX)
+
+
+class KgWorldQueryArgs(BaseModel):
+    """`kg_world_query` — the rolled-up graph across ALL member-book KGs of a world.
+
+    NOT ProjectScopedArgs: a world spans many projects, so it takes an EXPLICIT
+    ``world_id`` (the ai-gateway MCP federation drops envelope scope — EC-B1). The
+    rollup is owner-only (EC-B2)."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    world_id: str = Field(min_length=1, max_length=200)
+    limit: int = Field(default=200, ge=1, le=GRAPH_LIMIT_MAX)
+    unify: Literal["off", "by_name", "semantic"] = "off"
+
+
+class KgMultiQueryArgs(BaseModel):
+    """`kg_multi_query` (Track B B1(3)) — the union graph across an ARBITRARY SET of the
+    caller's own knowledge projects (NOT a world grouping): e.g. a canon KG + a fan-theory
+    KG for ad-hoc comparison, or two unrelated books at once.
+
+    NOT ProjectScopedArgs: the caller names the exact set via ``project_ids`` (the
+    ai-gateway MCP federation drops envelope scope — same EC-B1 reason kg_world_query
+    takes world_id explicitly). Owner-only (EC-B2): ids the caller doesn't own are skipped
+    and reported, never dropped silently. Capped at 16 to match the chat-session multi-KG
+    grounding cap (B1(2))."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    project_ids: list[str] = Field(min_length=1, max_length=16)
+    limit: int = Field(default=200, ge=1, le=GRAPH_LIMIT_MAX)
+    unify: Literal["off", "by_name", "semantic"] = "off"
 
 
 class KgEntityEdgeTimelineArgs(BaseModel):
@@ -338,6 +377,8 @@ class KgTriageSchemaWriteArgs(ProjectScopedArgs):
 GRAPH_SCHEMA_ARG_MODELS: dict[str, type[BaseModel]] = {
     # ── R (read) ──────────────────────────────────────────────────────
     "kg_graph_query": KgGraphQueryArgs,
+    "kg_world_query": KgWorldQueryArgs,
+    "kg_multi_query": KgMultiQueryArgs,
     "kg_entity_edge_timeline": KgEntityEdgeTimelineArgs,
     "kg_schema_read": KgSchemaReadArgs,
     "kg_list_templates": KgListTemplatesArgs,
@@ -395,6 +436,22 @@ _PROJECT_ID_PROP = {
     ),
 }
 
+# B1(4) — the `unify` enum shared by kg_world_query + kg_multi_query. Enum-locked
+# so a weak model picks a valid mode; the 1..16-style bound discipline of #1.
+_UNIFY_PROP = {
+    "type": "string",
+    "enum": list(_UNIFY_MODES),
+    "description": (
+        "Cross-book entity unification. 'off' (default) returns the raw per-book "
+        "forest unchanged. 'by_name' recognizes the SAME entity appearing across the "
+        "different books by matching names/aliases; 'semantic' also matches by meaning "
+        "(embedding similarity, catching renamed/aliased recurrences). Both add "
+        "unification_clusters + SAME_AS bridge_edges so you get one connected "
+        "cross-book graph. Bridges are inferred (confidence-scored), never asserted — "
+        "cite the band."
+    ),
+}
+
 GRAPH_SCHEMA_TOOL_DEFINITIONS: list[dict] = [
     _tool(
         "kg_graph_query",
@@ -427,6 +484,55 @@ GRAPH_SCHEMA_TOOL_DEFINITIONS: list[dict] = [
             "project_id": _PROJECT_ID_PROP,
         },
         [],
+    ),
+    _tool(
+        "kg_world_query",
+        "Read the ROLLED-UP knowledge graph of an entire WORLD — the UNION of every "
+        "member book's canon KG plus the world-level lore — as nodes + edges. Use this "
+        "to synthesize ACROSS all books in a world (recurring entities, cross-book "
+        "relationships) instead of one project at a time. Pass world_id explicitly. "
+        "Owner-only: partitions owned by other users are skipped and counted in "
+        "partitions_unreadable (the result also carries partitions_read).",
+        {
+            "world_id": {
+                "type": "string",
+                "description": "The id of the world to roll up (you must own it).",
+            },
+            "limit": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": GRAPH_LIMIT_MAX,
+                "description": "Max nodes in the union (default 200).",
+            },
+            "unify": _UNIFY_PROP,
+        },
+        ["world_id"],
+    ),
+    _tool(
+        "kg_multi_query",
+        "Read the UNION knowledge graph across an ARBITRARY SET of YOUR knowledge "
+        "projects (as nodes + edges) — e.g. compare a canon KG against a fan-theory KG, "
+        "or load two unrelated books at once. Unlike kg_world_query (which rolls up one "
+        "whole world), you name the exact project_ids. Owner-only: ids you don't own are "
+        "skipped and counted in partitions_unreadable (the result also carries "
+        "partitions_read). Nodes are tagged with their source_project_id.",
+        {
+            "project_ids": {
+                "type": "array",
+                "items": {"type": "string"},
+                "minItems": 1,
+                "maxItems": 16,
+                "description": "The project ids to union (1–16; you must own each).",
+            },
+            "limit": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": GRAPH_LIMIT_MAX,
+                "description": "Max nodes in the union (default 200).",
+            },
+            "unify": _UNIFY_PROP,
+        },
+        ["project_ids"],
     ),
     _tool(
         "kg_entity_edge_timeline",
@@ -810,7 +916,11 @@ async def _resolve_project_owner(ctx: "ToolContext", need: GrantLevel) -> UUID:
     from app.tools.executor import ToolExecutionError
 
     if ctx.project_id is None:
-        raise ToolExecutionError("a project must be in scope for this tool")
+        raise ToolExecutionError(
+            "no project in scope — pass the optional `project_id` argument "
+            "(list your projects with kg_project_list), or open this chat from "
+            "a project"
+        )
     meta = await ctx.projects_repo.project_meta(ctx.project_id)
     if meta is None:
         raise ToolExecutionError("project not found")
@@ -844,7 +954,11 @@ async def _resolve_project_owner_and_level(
     from app.tools.executor import ToolExecutionError
 
     if ctx.project_id is None:
-        raise ToolExecutionError("a project must be in scope for this tool")
+        raise ToolExecutionError(
+            "no project in scope — pass the optional `project_id` argument "
+            "(list your projects with kg_project_list), or open this chat from "
+            "a project"
+        )
     meta = await ctx.projects_repo.project_meta(ctx.project_id)
     if meta is None:
         raise ToolExecutionError("project not found")
@@ -920,6 +1034,167 @@ async def _handle_kg_graph_query(ctx: "ToolContext", args: KgGraphQueryArgs) -> 
         view_code=args.view,
     )
     return slice_.model_dump(mode="json")
+
+
+async def _handle_kg_world_query(ctx: "ToolContext", args: KgWorldQueryArgs) -> dict:
+    """`kg_world_query` (Track B B1(1)) — UNION the canon KGs of every member book in a
+    world (plus the world-level bible project) into one nodes+edges result the agent can
+    synthesize over. Owner-only (EC-B2): partitions owned by other users are SKIPPED but
+    REPORTED via ``partitions_unreadable`` — never dropped silently. EC-B5: a bad world /
+    a book-service outage return a self-correcting error string, not a 500."""
+    from app.clients.book_client import BookServiceUnavailable, WorldNotFound
+    from app.db.neo4j_repos.relations import get_world_subgraph
+    from app.tools.executor import ToolExecutionError
+    from app.world_rollup import resolve_world_partitions
+
+    if ctx.book_client is None:
+        raise ToolExecutionError(
+            "world rollup is unavailable here (book-service client not configured)"
+        )
+    try:
+        world_uuid = UUID(args.world_id)
+    except (ValueError, TypeError):
+        raise ToolExecutionError(f"world_id is not a valid id: {args.world_id!r}")
+
+    try:
+        partitions = await resolve_world_partitions(
+            world_id=world_uuid,
+            user_id=ctx.user_id,
+            repo=ctx.projects_repo,
+            book=ctx.book_client,
+        )
+    except WorldNotFound:
+        raise ToolExecutionError(f"no world with id {args.world_id} (or you don't own it)")
+    except BookServiceUnavailable:
+        raise ToolExecutionError(
+            "world membership is temporarily unavailable — retry shortly"
+        )
+
+    read = len(partitions.project_ids)
+    unreadable = partitions.unreadable_count
+    if read == 0:
+        # No readable partitions — return an empty-but-honest result (EC-B2 report),
+        # not an error: an empty world (or one entirely of others' books) is valid.
+        note = "this world has no KG partitions you can read"
+        if unreadable:
+            note += f" ({unreadable} are owned by another user)"
+        return {
+            "nodes": [],
+            "edges": [],
+            "partitions_read": 0,
+            "partitions_unreadable": unreadable,
+            "note": note + ".",
+        }
+
+    async with neo4j_session() as session:
+        subgraph = await get_world_subgraph(
+            session,
+            user_id=str(ctx.user_id),
+            project_ids=partitions.project_ids,
+            limit=args.limit,
+        )
+        # B1(4) — cross-partition unification (opt-in; default-off byte-identical, EC-M5).
+        unify_extra = None
+        if args.unify != "off":
+            from app.tools.kg_unify import unify_subgraph
+
+            unify_extra = await unify_subgraph(
+                session,
+                user_id=str(ctx.user_id),
+                subgraph=subgraph,
+                method=args.unify,
+                embedding_client=ctx.embedding_client,
+            )
+    out = subgraph.model_dump(mode="json")
+    # EC-B2 — surface coverage so the agent knows the rollup is partial, not complete.
+    out["partitions_read"] = read
+    out["partitions_unreadable"] = unreadable
+    if unreadable:
+        out["note"] = (
+            f"{unreadable} member partition(s) are owned by another user and were "
+            "skipped (owner-only world rollup); this graph covers only your partitions."
+        )
+    if unify_extra is not None:
+        out.update(unify_extra)
+    return out
+
+
+async def _handle_kg_multi_query(ctx: "ToolContext", args: KgMultiQueryArgs) -> dict:
+    """`kg_multi_query` (Track B B1(3)) — UNION the canon KGs of an ARBITRARY SET of the
+    caller's own projects (canon KG + fan-theory KG, two unrelated books, …) into one
+    nodes+edges result. Owner-only (EC-B2): requested ids the caller doesn't own (or that
+    don't exist) are SKIPPED but REPORTED via ``partitions_unreadable`` — never dropped
+    silently. Reuses the same per-partition union as kg_world_query
+    (``get_world_subgraph`` binds user_id + project_id per read, so an unowned id would
+    contribute nothing anyway — the ownership resolve here makes the report accurate)."""
+    from app.db.neo4j_repos.relations import get_world_subgraph
+    from app.tools.executor import ToolExecutionError
+
+    # Validate + order-preserving dedup (a duplicate id must not double-count coverage).
+    seen: set[UUID] = set()
+    requested: list[UUID] = []
+    for raw in args.project_ids:
+        try:
+            u = UUID(raw)
+        except (ValueError, TypeError):
+            raise ToolExecutionError(f"project_id is not a valid id: {raw!r}")
+        if u not in seen:
+            seen.add(u)
+            requested.append(u)
+
+    # Owner-scope: keep only the projects this caller owns; the rest (foreign OR stale)
+    # are the unreadable count. projects_repo.get is owner-keyed (user_id + project_id).
+    readable: list[str] = []
+    for u in requested:
+        project = await ctx.projects_repo.get(ctx.user_id, u)
+        if project is not None:
+            readable.append(str(u))
+
+    read = len(readable)
+    unreadable = len(requested) - read
+    if read == 0:
+        # Nothing readable — empty-but-honest (EC-B2 report), not an error: naming ids
+        # you no longer own is a routine self-correctable state, not a failure.
+        note = "none of the requested projects are readable by you (not owned or don't exist)"
+        return {
+            "nodes": [],
+            "edges": [],
+            "partitions_read": 0,
+            "partitions_unreadable": unreadable,
+            "note": note + ".",
+        }
+
+    async with neo4j_session() as session:
+        subgraph = await get_world_subgraph(
+            session,
+            user_id=str(ctx.user_id),
+            project_ids=readable,
+            limit=args.limit,
+        )
+        # B1(4) — cross-partition unification (opt-in; default-off byte-identical, EC-M5).
+        unify_extra = None
+        if args.unify != "off":
+            from app.tools.kg_unify import unify_subgraph
+
+            unify_extra = await unify_subgraph(
+                session,
+                user_id=str(ctx.user_id),
+                subgraph=subgraph,
+                method=args.unify,
+                embedding_client=ctx.embedding_client,
+            )
+    out = subgraph.model_dump(mode="json")
+    # EC-B2 — surface coverage so the agent knows the union is partial, not complete.
+    out["partitions_read"] = read
+    out["partitions_unreadable"] = unreadable
+    if unreadable:
+        out["note"] = (
+            f"{unreadable} requested project(s) are not yours (or don't exist) and were "
+            "skipped; this graph covers only your projects."
+        )
+    if unify_extra is not None:
+        out.update(unify_extra)
+    return out
 
 
 async def _handle_kg_entity_edge_timeline(
@@ -1470,6 +1745,8 @@ async def _handle_kg_triage_schema_write(
 
 GRAPH_SCHEMA_HANDLERS = {
     "kg_graph_query": _handle_kg_graph_query,
+    "kg_world_query": _handle_kg_world_query,
+    "kg_multi_query": _handle_kg_multi_query,
     "kg_entity_edge_timeline": _handle_kg_entity_edge_timeline,
     "kg_schema_read": _handle_kg_schema_read,
     "kg_list_templates": _handle_kg_list_templates,

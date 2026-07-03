@@ -29,13 +29,25 @@ from uuid import UUID
 from fastapi import APIRouter, Depends, HTTPException, Path, Query, Response, status
 from pydantic import BaseModel, Field
 
-from app.auth.grant_deps import GrantLevel, require_project_grant
+from app.auth.grant_deps import (
+    GrantLevel,
+    Principals,
+    require_project_grant,
+    require_project_principals,
+)
 from app.clients.glossary_ontology_client import (
     GlossaryOntologyClient,
     HttpGlossaryOntologyClient,
 )
 from app.config import settings
 from app.db.ontology_models import GraphSchema
+from app.clients.llm_client import get_llm_client
+from app.db.neo4j import neo4j_session
+from app.db.neo4j_repos.schema_usage import (
+    count_component_usage,
+    observed_components,
+    usage_summary,
+)
 from app.db.pool import get_knowledge_pool
 from app.db.repositories.graph_schemas import GraphSchemasRepo
 from app.db.repositories.ontology_mutations import (
@@ -49,7 +61,11 @@ from app.db.repositories.ontology_mutations import (
 from app.db.repositories.projects import ProjectsRepo
 from app.deps import get_grant_client, get_projects_repo
 from app.middleware.jwt_auth import get_current_user
-from app.ontology.glossary_gate import resolve_adopt_glossary_codes
+from app.ontology.glossary_gate import (
+    adopt_with_autocreate_glossary,
+    resolve_adopt_glossary_codes,
+)
+from app.schema_propose.engine import ProposeError, propose_schema
 
 logger = logging.getLogger(__name__)
 
@@ -117,6 +133,29 @@ class AdoptRequest(BaseModel):
     acknowledge_optional_gaps: bool = False
 
 
+class BlankSchemaCreate(BaseModel):
+    """Create-from-scratch (A2) — a blank project schema (no template)."""
+
+    name: str = Field(min_length=1, max_length=_NAME_MAX)
+    description: str = ""
+    allow_free_edges: bool = True
+
+
+class CloneSchemaRequest(BaseModel):
+    """Clone a readable schema into a NEW user-scoped editable template (A2)."""
+
+    source_schema_id: UUID
+    name: str | None = Field(default=None, min_length=1, max_length=_NAME_MAX)
+
+
+class SchemaProposeRequest(BaseModel):
+    """M3b — generate a schema proposal from a premise (single-shot LLM)."""
+
+    premise: str = Field(min_length=1, max_length=4000)
+    genre: str | None = None
+    model_ref: str = Field(min_length=1)  # BYOK user_model id (no hardcoded model)
+
+
 class AdoptPreviewRequest(BaseModel):
     source_schema_id: UUID
 
@@ -148,6 +187,46 @@ class VocabValueCreate(BaseModel):
 class SchemaNodeKindCreate(BaseModel):
     kind_code: str = Field(min_length=1, max_length=_CODE_MAX)
     strength: str = Field(pattern="^(required|optional)$")
+
+
+class VocabSetCreate(BaseModel):
+    code: str = Field(min_length=1, max_length=_CODE_MAX)
+    label: str = Field(min_length=1)
+    description: str = ""
+    closed: bool = True
+
+
+# ── PATCH bodies (attribute-only; code IMMUTABLE — EC-A6). All fields optional;
+#    `model_dump(exclude_unset=True)` yields only what the client actually sent. ──
+class EdgeTypePatch(BaseModel):
+    label: str | None = Field(default=None, min_length=1)
+    directed: bool | None = None
+    source_node_kinds: list[str] | None = None
+    target_node_kinds: list[str] | None = None
+    temporal: bool | None = None
+    provenance_required: bool | None = None
+    cardinality: str | None = Field(default=None, pattern="^(single_active|multi_active)$")
+    description: str | None = None
+
+
+class FactTypePatch(BaseModel):
+    label: str | None = Field(default=None, min_length=1)
+    description: str | None = None
+
+
+class NodeKindPatch(BaseModel):
+    strength: str = Field(pattern="^(required|optional)$")
+
+
+class VocabSetPatch(BaseModel):
+    label: str | None = Field(default=None, min_length=1)
+    description: str | None = None
+    closed: bool | None = None
+
+
+class VocabValuePatch(BaseModel):
+    label: str | None = Field(default=None, min_length=1)
+    metadata: dict[str, Any] | None = None
 
 
 class SyncDecision(BaseModel):
@@ -195,9 +274,16 @@ async def _writable_schema_for_caller(
 
 
 async def _require_project_manage(project_id: str | None, caller: UUID, gc, projects: ProjectsRepo) -> None:
-    """Mirror require_project_grant(MANAGE) for a project_id pulled off a schema
+    await _require_project_grant_at(project_id, caller, gc, projects, level=GrantLevel.MANAGE)
+
+
+async def _require_project_grant_at(
+    project_id: str | None, caller: UUID, gc, projects: ProjectsRepo, *, level: GrantLevel
+) -> None:
+    """Mirror require_project_grant(<level>) for a project_id pulled off a schema
     row (the grant dep keys off the path param; here the project id comes from
-    the schema's scope_id)."""
+    the schema's scope_id). Owner always passes; a collaborator needs `level` on
+    the project's book; no grant / book-less non-owner → 404 (no existence oracle)."""
     if project_id is None:
         raise _not_found()
     try:
@@ -215,7 +301,7 @@ async def _require_project_manage(project_id: str | None, caller: UUID, gc, proj
     lvl = await gc.resolve_grant(book_id, caller)
     if lvl == GrantLevel.NONE:
         raise _not_found()
-    if not lvl.at_least(GrantLevel.MANAGE):
+    if not lvl.at_least(level):
         raise _forbidden()
 
 
@@ -254,6 +340,32 @@ async def list_graph_schemas(
         user_id, project_id=project_id, scope=scope, include_deprecated=include_deprecated
     )
     return GraphSchemaListResponse(items=items)
+
+
+@router.post("/graph-schemas", response_model=GraphSchema, status_code=status.HTTP_201_CREATED)
+async def clone_schema(
+    body: CloneSchemaRequest,
+    caller: UUID = Depends(get_current_user),
+    mutations: OntologyMutationsRepo = Depends(get_ontology_mutations_repo),
+    gc=Depends(get_grant_client),
+    projects: ProjectsRepo = Depends(get_projects_repo),
+) -> GraphSchema:
+    """Clone a readable schema into a NEW user-scoped editable template (A2).
+
+    Source visibility (EC-A3 — no cross-tenant read oracle): System templates are
+    clonable by anyone; a user template only by its owner; a project schema only by
+    a caller with VIEW on that project. Anything else → 404 (no existence oracle)."""
+    src = await mutations.get_schema(body.source_schema_id)
+    if src is None:
+        raise _not_found()
+    if src.scope == "user":
+        if src.scope_id != str(caller):
+            raise _not_found()
+    elif src.scope == "project":
+        await _require_project_grant_at(src.scope_id, caller, gc, projects, level=GrantLevel.VIEW)
+    elif src.scope != "system":
+        raise _not_found()
+    return await mutations.clone_schema(body.source_schema_id, owner=caller, name=body.name)
 
 
 @router.get("/graph-schemas/{schema_id}", response_model=GraphSchemaTree)
@@ -318,6 +430,101 @@ async def get_resolved_schema(
     return await repo.resolve_for_project(str(project_id))
 
 
+@router.get("/projects/{project_id}/schema/usage")
+async def get_schema_component_usage(
+    project_id: UUID = Path(),
+    node_type: str = Query(),
+    code: str = Query(min_length=1, max_length=_CODE_MAX),
+    owner: UUID = Depends(require_project_grant(GrantLevel.VIEW)),
+):
+    """A4 — how many graph elements reference a schema component (before a delete
+    warns the human). View-gated (resolve-to-owner). `count`ed for node_kind /
+    edge_type (real graph elements); `counted=false` for the fuzzier fact/vocab
+    types (the caller shows a plain confirm). Project DELETE only soft-deprecates,
+    so this is an informational "N still reference it", not a data-loss gate."""
+    async with neo4j_session() as session:
+        count = await count_component_usage(
+            session, user_id=str(owner), project_id=str(project_id),
+            node_type=node_type, code=code,
+        )
+    return {"node_type": node_type, "code": code, "count": count or 0, "counted": count is not None}
+
+
+@router.get("/projects/{project_id}/schema/usage-summary")
+async def get_schema_usage_summary(
+    project_id: UUID = Path(),
+    owner: UUID = Depends(require_project_grant(GrantLevel.VIEW)),
+):
+    """M1 — all node-kind + edge-type usage counts in ONE read (inline "· used by N"
+    badges). View-gated. `{node_kind: {code: n}, edge_type: {code: n}}`; an absent
+    code = 0 graph elements."""
+    async with neo4j_session() as session:
+        return await usage_summary(session, user_id=str(owner), project_id=str(project_id))
+
+
+@router.get("/projects/{project_id}/schema/observed")
+async def get_schema_observed(
+    project_id: UUID = Path(),
+    owner: UUID = Depends(require_project_grant(GrantLevel.VIEW)),
+):
+    """M3a — the node kinds + edge types the project's EXTRACTED graph already
+    contains (to promote into the schema). View-gated. `{node_kinds:[{code,count}],
+    edge_types:[{code,count,source_kinds,target_kinds}]}`. Empty when the project
+    hasn't been extracted."""
+    async with neo4j_session() as session:
+        return await observed_components(session, user_id=str(owner), project_id=str(project_id))
+
+
+@router.post("/projects/{project_id}/schema/propose")
+async def propose_schema_route(
+    body: SchemaProposeRequest,
+    project_id: UUID = Path(),
+    principals: Principals = Depends(require_project_principals(GrantLevel.MANAGE)),
+):
+    """M3b — propose a KG schema from a premise (single-shot LLM generate; nothing
+    written — the caller reviews + adopts via the add routes). Manage-gated. The
+    LLM runs + bills as the CALLER under BYOK (their own `model_ref` + budget), so a
+    Manage-grant collaborator can generate with their own model — not the owner's
+    (review-impl #1: running as owner made a collaborator's model_ref unresolvable)."""
+    try:
+        proposal = await propose_schema(
+            get_llm_client(),
+            user_id=str(principals.caller),
+            premise=body.premise,
+            genre=body.genre,
+            model_ref=body.model_ref,
+        )
+    except ProposeError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail={"code": "KG_SCHEMA_PROPOSE_FAILED", "message": str(exc)},
+        )
+    return proposal.model_dump()
+
+
+@router.post(
+    "/projects/{project_id}/schema",
+    response_model=GraphSchema,
+    status_code=status.HTTP_201_CREATED,
+)
+async def create_blank_schema(
+    body: BlankSchemaCreate,
+    project_id: UUID = Path(),
+    owner: UUID = Depends(require_project_grant(GrantLevel.MANAGE)),
+    mutations: OntologyMutationsRepo = Depends(get_ontology_mutations_repo),
+) -> GraphSchema:
+    """Create a BLANK project schema from scratch (A2 — no "adopt a template first"
+    requirement). Manage-gated. Replaces any active project schema under the
+    one-active invariant (EC-A2); the caller should warn about lost customizations
+    (EC-X1) via the adopt/preview loss surface before calling."""
+    return await mutations.create_blank_project_schema(
+        str(project_id),
+        name=body.name,
+        description=body.description,
+        allow_free_edges=body.allow_free_edges,
+    )
+
+
 # ── adopt (copy-down, M1 adopt-gate) ──────────────────────────────────────────
 @router.post(
     "/projects/{project_id}/adopt",
@@ -343,19 +550,15 @@ async def adopt_schema(
     replaces the project's active schema (one-active invariant).
     """
     project_str = str(project_id)
-    # KM6-M2: shared with the agent confirm effect so the adopt-gate can't drift.
-    book_id, glossary_codes = await resolve_adopt_glossary_codes(
-        projects, glossary, mutations,
-        owner=owner, project_id=project_str, source_schema_id=body.source_schema_id,
-    )
-
+    # KM6-M2 + auto-seed: adopting a schema AUTO-CREATES the glossary node-kinds it
+    # requires (copy-down from System), retrying the adopt once — shared with the
+    # agent confirm effect so the GUI + MCP kg_adopt behave identically. A 422 now
+    # only fires for a genuinely unsatisfiable gap (book-less project, or a required
+    # kind with no System row to copy) — not for the common "glossary not seeded yet".
     try:
-        result = await mutations.adopt(
-            owner_user_id=owner,
-            project_id=project_str,
-            source_schema_id=body.source_schema_id,
-            glossary_kinds=glossary_codes,
-            book_id=book_id,
+        result = await adopt_with_autocreate_glossary(
+            projects, glossary, mutations,
+            owner=owner, project_id=project_str, source_schema_id=body.source_schema_id,
         )
     except NeedsGlossaryError as exc:
         raise HTTPException(
@@ -363,8 +566,9 @@ async def adopt_schema(
             detail={
                 "code": "KG_ADOPT_NEEDS_GLOSSARY",
                 "message": (
-                    "the project's glossary is missing required node-kinds; add them "
-                    "in glossary first, then re-adopt"
+                    "the schema needs node-kinds that couldn't be auto-created (no "
+                    "System kind to copy, or a book-less project) — add them in "
+                    "glossary, then re-adopt"
                 ),
                 "needs_glossary": {"book_id": exc.book_id, "kinds": exc.kinds},
             },
@@ -501,11 +705,31 @@ async def add_edge_type(
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="edge type code exists")
 
 
+@router.patch("/graph-schemas/{schema_id}/edge-types/{code}")
+async def patch_edge_type(
+    body: EdgeTypePatch,
+    schema_id: UUID = Path(),
+    code: str = Path(min_length=1, max_length=_CODE_MAX),
+    caller: UUID = Depends(get_current_user),
+    mutations: OntologyMutationsRepo = Depends(get_ontology_mutations_repo),
+    gc=Depends(get_grant_client),
+    projects: ProjectsRepo = Depends(get_projects_repo),
+):
+    """Edit a live edge type's attributes (code immutable — EC-A6)."""
+    await _writable_schema_for_caller(schema_id, caller, mutations, gc, projects)
+    try:
+        return await mutations.patch_edge_type(
+            schema_id, code, updates=body.model_dump(exclude_unset=True)
+        )
+    except ChildNotFoundError:
+        raise _not_found()
+
+
 @router.delete(
     "/graph-schemas/{schema_id}/edge-types/{code}",
     status_code=status.HTTP_204_NO_CONTENT,
 )
-async def deprecate_edge_type(
+async def delete_edge_type(
     schema_id: UUID = Path(),
     code: str = Path(min_length=1, max_length=_CODE_MAX),
     caller: UUID = Depends(get_current_user),
@@ -513,9 +737,11 @@ async def deprecate_edge_type(
     gc=Depends(get_grant_client),
     projects: ProjectsRepo = Depends(get_projects_repo),
 ) -> None:
+    """Delete an edge type — HARD on a user template, SOFT-deprecate on a project
+    schema (EC-A5)."""
     await _writable_schema_for_caller(schema_id, caller, mutations, gc, projects)
     try:
-        await mutations.deprecate_edge_type(schema_id, code)
+        await mutations.delete_child(schema_id, node_type="edge_type", code=code)
     except ChildNotFoundError:
         raise _not_found()
 
@@ -584,6 +810,186 @@ async def add_node_kind(
         )
     except DuplicateChildError:
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="node kind exists")
+
+
+@router.patch("/graph-schemas/{schema_id}/fact-types/{code}")
+async def patch_fact_type(
+    body: FactTypePatch,
+    schema_id: UUID = Path(),
+    code: str = Path(min_length=1, max_length=_CODE_MAX),
+    caller: UUID = Depends(get_current_user),
+    mutations: OntologyMutationsRepo = Depends(get_ontology_mutations_repo),
+    gc=Depends(get_grant_client),
+    projects: ProjectsRepo = Depends(get_projects_repo),
+):
+    await _writable_schema_for_caller(schema_id, caller, mutations, gc, projects)
+    try:
+        return await mutations.patch_fact_type(
+            schema_id, code, updates=body.model_dump(exclude_unset=True)
+        )
+    except ChildNotFoundError:
+        raise _not_found()
+
+
+@router.delete(
+    "/graph-schemas/{schema_id}/fact-types/{code}",
+    status_code=status.HTTP_204_NO_CONTENT,
+)
+async def delete_fact_type(
+    schema_id: UUID = Path(),
+    code: str = Path(min_length=1, max_length=_CODE_MAX),
+    caller: UUID = Depends(get_current_user),
+    mutations: OntologyMutationsRepo = Depends(get_ontology_mutations_repo),
+    gc=Depends(get_grant_client),
+    projects: ProjectsRepo = Depends(get_projects_repo),
+) -> None:
+    await _writable_schema_for_caller(schema_id, caller, mutations, gc, projects)
+    try:
+        await mutations.delete_child(schema_id, node_type="fact_type", code=code)
+    except ChildNotFoundError:
+        raise _not_found()
+
+
+@router.patch("/graph-schemas/{schema_id}/node-kinds/{code}")
+async def patch_node_kind(
+    body: NodeKindPatch,
+    schema_id: UUID = Path(),
+    code: str = Path(min_length=1, max_length=_CODE_MAX),
+    caller: UUID = Depends(get_current_user),
+    mutations: OntologyMutationsRepo = Depends(get_ontology_mutations_repo),
+    gc=Depends(get_grant_client),
+    projects: ProjectsRepo = Depends(get_projects_repo),
+):
+    """Edit a node kind's strength (required/optional). Code immutable."""
+    await _writable_schema_for_caller(schema_id, caller, mutations, gc, projects)
+    try:
+        return await mutations.patch_node_kind(schema_id, code, strength=body.strength)
+    except ChildNotFoundError:
+        raise _not_found()
+
+
+@router.delete(
+    "/graph-schemas/{schema_id}/node-kinds/{code}",
+    status_code=status.HTTP_204_NO_CONTENT,
+)
+async def delete_node_kind(
+    schema_id: UUID = Path(),
+    code: str = Path(min_length=1, max_length=_CODE_MAX),
+    caller: UUID = Depends(get_current_user),
+    mutations: OntologyMutationsRepo = Depends(get_ontology_mutations_repo),
+    gc=Depends(get_grant_client),
+    projects: ProjectsRepo = Depends(get_projects_repo),
+) -> None:
+    await _writable_schema_for_caller(schema_id, caller, mutations, gc, projects)
+    try:
+        await mutations.delete_child(schema_id, node_type="node_kind", code=code)
+    except ChildNotFoundError:
+        raise _not_found()
+
+
+@router.post(
+    "/graph-schemas/{schema_id}/vocab-sets",
+    status_code=status.HTTP_201_CREATED,
+)
+async def add_vocab_set(
+    body: VocabSetCreate,
+    schema_id: UUID = Path(),
+    caller: UUID = Depends(get_current_user),
+    mutations: OntologyMutationsRepo = Depends(get_ontology_mutations_repo),
+    gc=Depends(get_grant_client),
+    projects: ProjectsRepo = Depends(get_projects_repo),
+):
+    """Create a vocab set (the previously-missing create verb)."""
+    await _writable_schema_for_caller(schema_id, caller, mutations, gc, projects)
+    try:
+        return await mutations.add_vocab_set(
+            schema_id, code=body.code, label=body.label,
+            description=body.description, closed=body.closed,
+        )
+    except DuplicateChildError:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="vocab set code exists")
+
+
+@router.patch("/graph-schemas/{schema_id}/vocab-sets/{set_code}")
+async def patch_vocab_set(
+    body: VocabSetPatch,
+    schema_id: UUID = Path(),
+    set_code: str = Path(min_length=1, max_length=_CODE_MAX),
+    caller: UUID = Depends(get_current_user),
+    mutations: OntologyMutationsRepo = Depends(get_ontology_mutations_repo),
+    gc=Depends(get_grant_client),
+    projects: ProjectsRepo = Depends(get_projects_repo),
+):
+    await _writable_schema_for_caller(schema_id, caller, mutations, gc, projects)
+    try:
+        return await mutations.patch_vocab_set(
+            schema_id, set_code, updates=body.model_dump(exclude_unset=True)
+        )
+    except ChildNotFoundError:
+        raise _not_found()
+
+
+@router.delete(
+    "/graph-schemas/{schema_id}/vocab-sets/{set_code}",
+    status_code=status.HTTP_204_NO_CONTENT,
+)
+async def delete_vocab_set(
+    schema_id: UUID = Path(),
+    set_code: str = Path(min_length=1, max_length=_CODE_MAX),
+    caller: UUID = Depends(get_current_user),
+    mutations: OntologyMutationsRepo = Depends(get_ontology_mutations_repo),
+    gc=Depends(get_grant_client),
+    projects: ProjectsRepo = Depends(get_projects_repo),
+) -> None:
+    """Delete a vocab set — HARD (cascades values) on a user template, SOFT on a
+    project schema (EC-A5)."""
+    await _writable_schema_for_caller(schema_id, caller, mutations, gc, projects)
+    try:
+        await mutations.delete_child(schema_id, node_type="vocab_set", code=set_code)
+    except ChildNotFoundError:
+        raise _not_found()
+
+
+@router.patch("/graph-schemas/{schema_id}/vocab-sets/{set_code}/values/{code}")
+async def patch_vocab_value(
+    body: VocabValuePatch,
+    schema_id: UUID = Path(),
+    set_code: str = Path(min_length=1, max_length=_CODE_MAX),
+    code: str = Path(min_length=1, max_length=_CODE_MAX),
+    caller: UUID = Depends(get_current_user),
+    mutations: OntologyMutationsRepo = Depends(get_ontology_mutations_repo),
+    gc=Depends(get_grant_client),
+    projects: ProjectsRepo = Depends(get_projects_repo),
+):
+    await _writable_schema_for_caller(schema_id, caller, mutations, gc, projects)
+    try:
+        return await mutations.patch_vocab_value(
+            schema_id, set_code, code, updates=body.model_dump(exclude_unset=True)
+        )
+    except ChildNotFoundError:
+        raise _not_found()
+
+
+@router.delete(
+    "/graph-schemas/{schema_id}/vocab-sets/{set_code}/values/{code}",
+    status_code=status.HTTP_204_NO_CONTENT,
+)
+async def delete_vocab_value(
+    schema_id: UUID = Path(),
+    set_code: str = Path(min_length=1, max_length=_CODE_MAX),
+    code: str = Path(min_length=1, max_length=_CODE_MAX),
+    caller: UUID = Depends(get_current_user),
+    mutations: OntologyMutationsRepo = Depends(get_ontology_mutations_repo),
+    gc=Depends(get_grant_client),
+    projects: ProjectsRepo = Depends(get_projects_repo),
+) -> None:
+    await _writable_schema_for_caller(schema_id, caller, mutations, gc, projects)
+    try:
+        await mutations.delete_child(
+            schema_id, node_type="vocab_value", code=code, parent_set_code=set_code
+        )
+    except ChildNotFoundError:
+        raise _not_found()
 
 
 # ── system-tier create (admin-only, requireAdmin placeholder) ─────────────────

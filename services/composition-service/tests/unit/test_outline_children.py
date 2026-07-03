@@ -78,6 +78,7 @@ class _FakeOutline:
         self.search_items = search_items or []
         self.calls: list[dict] = []
         self.search_calls: list[dict] = []
+        self.chapter_node: UUID | None = None
 
     async def list_children(self, user_id, project_id, parent_id, *, after=None, limit=100, include_archived=False):
         self.calls.append({"parent_id": parent_id, "after": after, "limit": limit})
@@ -89,6 +90,13 @@ class _FakeOutline:
 
     async def outline_stats(self, user_id, project_id):
         return {"arcs": 1, "chapters": 12, "scenes": 35}
+
+    async def scenes_for_chapter(self, user_id, project_id, chapter_id):
+        self.calls.append({"scenes_for_chapter": chapter_id, "user_id": user_id, "project_id": project_id})
+        return self.nodes
+
+    async def chapter_node_id(self, user_id, project_id, chapter_id):
+        return self.chapter_node
 
 
 class _StubWorks:
@@ -150,6 +158,35 @@ def test_bad_cursor_is_400(client):
     c, holder = client
     holder["repo"] = _FakeOutline([])
     assert c.get(f"/v1/composition/works/{PROJECT}/outline/children?cursor=%21%21bad").status_code == 400
+
+
+# ── #12 cycle-1: chapter scenes (the manuscript-unit document's scenes[] source) ──
+
+def test_chapter_scenes_wraps_scenes_for_chapter(client):
+    c, holder = client
+    chapter_id = uuid4()
+    chapter_node = uuid4()
+    repo = _FakeOutline([_StubNode("a0", uuid4()), _StubNode("a1", uuid4())])
+    repo.chapter_node = chapter_node
+    holder["repo"] = repo
+    r = c.get(f"/v1/composition/works/{PROJECT}/chapters/{chapter_id}/scenes")
+    assert r.status_code == 200
+    body = r.json()
+    assert len(body["items"]) == 2
+    # M-G: the outline chapter node rides along (the rail's Create target)
+    assert body["chapter_node_id"] == str(chapter_node)
+    # tenancy: the repo query is keyed by user + project + chapter (kinds-bug rule)
+    call = holder["repo"].calls[0]
+    assert call["scenes_for_chapter"] == chapter_id
+    assert call["user_id"] == USER and call["project_id"] == PROJECT
+
+
+def test_chapter_scenes_null_chapter_node_when_never_outlined(client):
+    c, holder = client
+    holder["repo"] = _FakeOutline([])
+    r = c.get(f"/v1/composition/works/{PROJECT}/chapters/{uuid4()}/scenes")
+    assert r.status_code == 200
+    assert r.json()["chapter_node_id"] is None
 
 
 def test_parent_id_and_cursor_passed_through(client):

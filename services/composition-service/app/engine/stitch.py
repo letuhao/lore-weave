@@ -38,10 +38,31 @@ from loreweave_llm.errors import LLMError
 
 from app.clients.eval_client import extract_judge_content
 from app.clients.llm_client import LLMClient
+from app.engine.prose_doc import ATX_HEADING_RE
 from app.engine.select import _NO_THINK
 from app.packer.profile import BookProfile
 
 logger = logging.getLogger(__name__)
+
+
+def prepend_scene_headings(rows: list[dict[str, str]]) -> list[str]:
+    """F4 (D-SCENEMARKER-EMIT) — turn `{title, text}` scene-draft rows into stitch
+    input texts, each opening with a `### <scene title>` ATX heading line. The
+    persist path (prose_doc.text_to_tiptap_doc) lifts those lines into heading
+    nodes and unique-title-matches them to scenes → `attrs.sceneId` markers, so a
+    generated chapter lands pre-anchored in the editor. A draft that ALREADY
+    starts with a heading keeps its own (no double heading); an untitled scene
+    gets no heading (never an empty `### `)."""
+    out: list[str] = []
+    for row in rows:
+        title = (row.get("title") or "").strip()
+        text = row.get("text") or ""
+        first_line = text.lstrip("\n").split("\n", 1)[0].strip()
+        if title and not ATX_HEADING_RE.match(first_line):
+            out.append(f"### {title}\n\n{text}")
+        else:
+            out.append(text)
+    return out
 
 # ── W-STITCH (§17.2, R2.7) tunables — kept local to this module so the stitch
 # behaviour stays self-contained (no new config.py knob). ──
@@ -267,13 +288,24 @@ async def stitch_chapter(
         "introductions, echoed descriptions, and re-explained facts even though that "
         "shortens the chapter; smooth only the seams between scenes."
     )
+    # F4 (D-SCENEMARKER-EMIT): the drafts open with `### <scene title>` lines the
+    # persist path converts into sceneId-anchored heading nodes — the merge must
+    # carry them through verbatim. Only injected when a heading is actually present.
+    heading_guard = (
+        " Each scene draft may open with a '### <scene title>' heading line — keep "
+        "every such heading line EXACTLY as written (verbatim, on its own line) at "
+        "the start of that scene's prose in the merged chapter; never remove, "
+        "reword, translate, or renumber them."
+        if any(ATX_HEADING_RE.match(d.lstrip("\n").split("\n", 1)[0].strip()) for d in kept)
+        else ""
+    )
     system = (
         "You are a fiction editor merging consecutive scene drafts of ONE chapter "
         "into a single seamless chapter. Remove repeated introductions and echoed "
         "descriptions, smooth the transitions between scenes, and keep one "
         "continuous narrative. Change NO plot facts, events, or dialogue meaning — "
         "only restructure and de-duplicate the prose. Output ONLY the chapter prose."
-        + lang + voice + length_guard + dial_guard
+        + lang + voice + length_guard + dial_guard + heading_guard
     )
     # Cross-scene repetition + over-resolve signals computed over `kept` so the
     # 1-based scene indices line up with the [SCENE n] blocks below. Advisory: a

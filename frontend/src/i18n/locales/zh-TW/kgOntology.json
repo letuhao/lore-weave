@@ -9,7 +9,12 @@
   "common": {
     "dismiss": "關閉",
     "deprecate": "標記為棄用",
-    "deprecated": "已棄用"
+    "deprecated": "已棄用",
+    "save": "儲存",
+    "cancel": "取消",
+    "edit": "編輯",
+    "delete": "刪除",
+    "deleted": "已刪除"
   },
   "adopt": {
     "chooseTemplate": "選擇要採用的範本",
@@ -67,8 +72,54 @@
     "noVocabSets": "此綱要尚無詞彙集——請先請 AI 新增一個。",
     "add": "新增",
     "added": "已更新綱要",
+    "saved": "已更新綱要",
     "addFailed": "無法更新綱要",
-    "forbidden": "你需要此專案的「管理」權限才能編輯綱要"
+    "forbidden": "你需要此專案的「管理」權限才能編輯綱要",
+    "vocabSets": "詞彙集",
+    "sourceKinds": "來源種類",
+    "targetKinds": "目標種類",
+    "descriptionField": "說明",
+    "addVocabSet": "新增詞彙集",
+    "usedBy": "{{count}} 處使用",
+    "anyKind": "任意種類",
+    "addKind": "新增種類",
+    "otherKind": "其他…",
+    "emptyTitle": "此綱要是空的",
+    "emptyHelp": "先新增節點種類（角色、地點、組織…），再用關係類型把它們連起來。",
+    "deleteConfirmTitle": "刪除此元件？",
+    "deleteConfirmBody": "「{{code}}」被 {{count}} 個圖譜元素引用。刪除會將其標記為棄用——資料仍可查詢。仍要刪除？"
+  },
+  "canvas": {
+    "list": "清單",
+    "canvas": "畫布",
+    "hint": "拖曳排列 · ⇢ 後點另一個節點以連接",
+    "connect": "從此連接",
+    "connectingFrom": "從 {{code}} 連接中 — 點選目標節點",
+    "newKindPlaceholder": "新種類",
+    "addKind": "新增種類",
+    "empty": "尚無節點種類 — 先新增一個。",
+    "looseEdges": "沒有種類的關係類型"
+  },
+  "generate": {
+    "cta": "用 AI 生成",
+    "title": "從描述生成綱要",
+    "premise": "設定",
+    "premisePlaceholder": "一個關於年輕修士的仙俠故事…",
+    "genre": "類型（選填）",
+    "model": "模型",
+    "generateButton": "生成",
+    "generating": "生成中…",
+    "reviewHelp": "檢視提案並加入你想要的。",
+    "regenerate": "返回",
+    "adoptButton": "加入所選",
+    "failed": "無法生成綱要"
+  },
+  "infer": {
+    "title": "在你的圖譜中找到",
+    "help": "書中已擷取這些 — 加入尚未登錄的",
+    "addButton": "新增 {{count}} 到綱要",
+    "added": "已新增 {{count}} 到綱要",
+    "addedPartial": "已新增 {{ok}} · {{failed}} 失敗"
   },
   "sync": {
     "upToDate": "已是最新——上游沒有變更。",

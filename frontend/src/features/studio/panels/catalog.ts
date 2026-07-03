@@ -10,6 +10,16 @@ import type { IDockviewPanelProps } from 'dockview-react';
 import { WelcomePanel } from '../components/panels/WelcomePanel';
 import { ComposePanel } from './ComposePanel';
 import { EditorPanel } from './EditorPanel';
+import { PlannerPanel } from '@/features/plan-forge/components/PlannerPanel';
+import { UsagePanel } from './UsagePanel';
+import { NotificationsPanel } from './NotificationsPanel';
+import { SettingsPanel } from './SettingsPanel';
+import { TrashPanel } from './TrashPanel';
+import { JsonEditorPanel } from './JsonEditorPanel';
+import { ExtensionsPanel } from './ExtensionsPanel';
+import { ProposalsPanel } from './ProposalsPanel';
+import { SkillEditorPanel } from './SkillEditorPanel';
+import { SteeringPanel } from './SteeringPanel';
 
 export interface StudioPanelDef {
   id: string;
@@ -24,6 +34,23 @@ export interface StudioPanelDef {
 export const STUDIO_PANELS: StudioPanelDef[] = [
   { id: 'compose', component: ComposePanel, titleKey: 'panels.compose.title', descKey: 'panels.compose.desc' },
   { id: 'editor', component: EditorPanel, titleKey: 'panels.editor.title', descKey: 'panels.editor.desc' },
+  { id: 'planner', component: PlannerPanel, titleKey: 'panels.planner.title', descKey: 'panels.planner.desc' },
+  // #11 W2 — user-scoped panels (dockable migration wave 1).
+  { id: 'usage', component: UsagePanel, titleKey: 'panels.usage.title', descKey: 'panels.usage.desc' },
+  { id: 'notifications', component: NotificationsPanel, titleKey: 'panels.notifications.title', descKey: 'panels.notifications.desc' },
+  { id: 'settings', component: SettingsPanel, titleKey: 'panels.settings.title', descKey: 'panels.settings.desc' },
+  { id: 'trash', component: TrashPanel, titleKey: 'panels.trash.title', descKey: 'panels.trash.desc' },
+  // RAID C1 — per-book author steering rules (story-bible-as-steering). book-scoped, palette-openable.
+  { id: 'steering', component: SteeringPanel, titleKey: 'panels.steering.title', descKey: 'panels.steering.desc' },
+  // Agent Extensibility Registry (§13b) — extensions hub + proposals inbox are
+  // palette-openable + in the agent enum; skill-editor is a params-retargeting
+  // singleton (json-editor precedent), hidden from palette + outside the enum.
+  { id: 'extensions', component: ExtensionsPanel, titleKey: 'panels.extensions.title', descKey: 'panels.extensions.desc' },
+  { id: 'proposals', component: ProposalsPanel, titleKey: 'panels.proposals.title', descKey: 'panels.proposals.desc' },
+  { id: 'skill-editor', component: SkillEditorPanel, titleKey: 'panels.skill-editor.title', descKey: 'panels.skill-editor.desc', hiddenFromPalette: true },
+  // #12 R3/R4 — singleton, retargets via params {docType, resourceId}; opened by "Open as JSON"
+  // affordances only (hidden from palette ⇒ outside the agent enum, no contract change this cycle).
+  { id: 'json-editor', component: JsonEditorPanel, titleKey: 'panels.json-editor.title', descKey: 'panels.json-editor.desc', hiddenFromPalette: true },
   { id: 'welcome', component: WelcomePanel, titleKey: 'welcome.tab', descKey: 'welcome.tab', hiddenFromPalette: true },
 ];
 

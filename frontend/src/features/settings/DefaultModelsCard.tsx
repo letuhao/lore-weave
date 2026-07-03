@@ -2,8 +2,8 @@ import { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { toast } from 'sonner';
 import { useAuth } from '@/auth';
-import { aiModelsApi, type UserModel } from '@/features/ai-models/api';
 import { AddModelCta } from '@/components/shared/AddModelCta';
+import { ModelPicker } from '@/components/model-picker';
 import { defaultModelsApi, RERANK_CAPABILITY, PLANNER_CAPABILITY, CHAT_CAPABILITY } from './api';
 
 /**
@@ -29,68 +29,30 @@ interface RowProps {
 
 function DefaultModelRow({ capability, listCapability, label, hint, value, onChange, disabled }: RowProps) {
   const { t } = useTranslation('settings');
-  const { accessToken } = useAuth();
-  const [models, setModels] = useState<UserModel[] | null>(null);
   const fetchCapability = listCapability ?? capability;
 
-  useEffect(() => {
-    if (!accessToken) {
-      setModels([]);
-      return;
-    }
-    let cancelled = false;
-    aiModelsApi
-      .listUserModels(accessToken, { capability: fetchCapability, include_inactive: false })
-      .then((r) => {
-        if (!cancelled) setModels(r.items);
-      })
-      .catch(() => {
-        if (!cancelled) setModels([]);
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, [accessToken, fetchCapability]);
-
-  const loading = models === null;
-  // Show the saved value even if it's no longer in the registry, so the user sees
-  // the truth (mirrors RerankModelPicker).
-  const valueInOptions = value === null || (models?.some((m) => m.user_model_id === value) ?? false);
-
+  // W5: renders the shared ModelPicker (search / favorites / recents / orphan
+  // handling built in); this wrapper keeps the row's label + hint + empty-state.
   return (
-    <label className="flex flex-col gap-1">
+    <div className="flex flex-col gap-1">
       <span className="text-xs font-medium">{label}</span>
-      <select
-        value={value ?? ''}
-        onChange={(e) => onChange(e.target.value === '' ? null : e.target.value)}
-        disabled={disabled || loading}
-        className="rounded-md border bg-input px-3 py-2 text-sm outline-none focus:border-ring disabled:opacity-60"
-      >
-        <option value="">{t('defaultModels.none', { defaultValue: 'None' })}</option>
-        {!valueInOptions && value !== null && (
-          <option value={value}>
-            {t('defaultModels.orphan', { defaultValue: 'Previously selected model (no longer in your registry)' })}
-          </option>
-        )}
-        {(models ?? []).map((m) => {
-          const optLabel = m.alias
-            ? `${m.alias} (${m.provider_model_name})`
-            : `${m.provider_kind}/${m.provider_model_name}`;
-          return (
-            <option key={m.user_model_id} value={m.user_model_id}>
-              {optLabel}
-            </option>
-          );
-        })}
-      </select>
-      {!loading && (models?.length ?? 0) === 0 && (
-        <span className="flex flex-col gap-1 text-[11px] text-muted-foreground">
-          {t('defaultModels.empty', { defaultValue: 'No capable models configured.' })}
-          <AddModelCta capability={fetchCapability} variant="link" />
-        </span>
-      )}
+      <ModelPicker
+        capability={fetchCapability}
+        value={value}
+        onChange={onChange}
+        allowNone
+        noneLabel={t('defaultModels.none', { defaultValue: 'None' })}
+        ariaLabel={label}
+        disabled={disabled}
+        emptyState={
+          <span className="flex flex-col gap-1 text-[11px] text-muted-foreground">
+            {t('defaultModels.empty', { defaultValue: 'No capable models configured.' })}
+            <AddModelCta capability={fetchCapability} variant="link" />
+          </span>
+        }
+      />
       <span className="text-[11px] text-muted-foreground">{hint}</span>
-    </label>
+    </div>
   );
 }
 
@@ -151,6 +113,19 @@ export function DefaultModelsCard() {
         </p>
       </div>
       <div className="max-w-sm">
+        {/* Chat default (W5): preselected by the New Chat dialog. */}
+        <div className="mb-4">
+          <DefaultModelRow
+            capability={CHAT_CAPABILITY}
+            label={t('defaultModels.chat', { defaultValue: 'Default chat model' })}
+            hint={t('defaultModels.chatHint', {
+              defaultValue: 'Preselected when you start a new chat. Leave empty to default to your favorites.',
+            })}
+            value={defaults[CHAT_CAPABILITY] ?? null}
+            onChange={(id) => void save(CHAT_CAPABILITY, id)}
+            disabled={saving}
+          />
+        </div>
         {/* Embedding default is intentionally NOT exposed yet: a query-time embedding
             default would break retrieval (it must match the model the project was
             indexed with), and the index-time consumer is a separate follow-up. The

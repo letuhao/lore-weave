@@ -13,6 +13,7 @@ const listMessagesMock = vi.fn();
 vi.mock('../../api', () => ({
   chatApi: {
     listMessages: (...a: unknown[]) => listMessagesMock(...a),
+    getLatestContextBudget: () => Promise.resolve({ budget: null }),
     messagesUrl: (sid: string) => `http://test/v1/chat/sessions/${sid}/messages`,
     toolResultsUrl: (sid: string) => `http://test/v1/chat/sessions/${sid}/tool-results`,
   },
@@ -84,6 +85,33 @@ describe('useChatMessages worker bridge — single-writer election', () => {
     // …and fires its OWN per-window fan-out (session refresh + pending-facts) so the
     // turn stays tracked/resumable even if the initiator window is gone.
     expect(onEnd).toHaveBeenCalledTimes(1);
+  });
+
+  it('compaction replay guard: a late-joining tab records a stale compaction WITHOUT toasting', async () => {
+    const COMPACTION = {
+      triggered: true, tool_results_cleared: 0, turns_truncated: 2, summarized: true,
+      summarize_failed: false, overflowed: false, tokens_before: 9000, tokens_after: 4000,
+    };
+    shared = sharedSnap();
+    const onCompaction = vi.fn();
+    const { result, rerender } = renderHook(() => useChatMessages('s-1'));
+    await waitFor(() => expect(result.current.isLoading).toBe(false));
+    act(() => { result.current.onCompactionRef.current = onCompaction; });
+
+    // The hub's addPort full-state replay: a PAST turn's compaction arrives on
+    // an idle snapshot (the turn finished long ago) — record, never toast.
+    shared = sharedSnap({ turnId: 3, compaction: COMPACTION, streamStatus: 'idle' });
+    rerender();
+    expect(onCompaction).not.toHaveBeenCalled();
+
+    // A LIVE compaction later (turnId changed while streaming) still toasts…
+    shared = sharedSnap({ turnId: 4, compaction: COMPACTION, streamStatus: 'streaming' });
+    rerender();
+    expect(onCompaction).toHaveBeenCalledTimes(1);
+    // …exactly once per turn (snapshot rebroadcast does not re-fire).
+    shared = sharedSnap({ turnId: 4, compaction: COMPACTION, streamStatus: 'streaming', streamingText: 'more' });
+    rerender();
+    expect(onCompaction).toHaveBeenCalledTimes(1);
   });
 
   it('fires the terminal branch only ONCE per turn within a window (per-window dedupe)', async () => {

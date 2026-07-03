@@ -6,6 +6,9 @@ import type {
   ChatMessage,
   ChatOutput,
   ChatSession,
+  CompactSessionResult,
+  ContextBudget,
+  ContextHistoryPoint,
   CreateSessionPayload,
   PatchSessionPayload,
   PendingFact,
@@ -52,6 +55,23 @@ export const chatApi = {
     });
   },
 
+  // W3 — manual steerable compact: summarize everything but the recent turns
+  // with the session's own model and PERSIST it on the session (multi-device).
+  // `instructions` steer what must survive ("keep all plot promises and
+  // character names"); omit for the default synopsis. `{clear: true}` wipes
+  // the stored compact instead (mutually exclusive with the other fields).
+  compactSession(
+    token: string,
+    sessionId: string,
+    payload: { instructions?: string; keep_recent?: number; clear?: boolean } = {},
+  ) {
+    return apiJson<CompactSessionResult>(`/v1/chat/sessions/${sessionId}/compact`, {
+      method: 'POST',
+      token,
+      body: JSON.stringify(payload),
+    });
+  },
+
   // ── Messages ──────────────────────────────────────────────────────────────────
 
   listMessages(token: string, sessionId: string, beforeSeq?: number, branchId?: number) {
@@ -61,6 +81,27 @@ export const chatApi = {
     const qs = params.toString() ? `?${params.toString()}` : '';
     return apiJson<{ items: ChatMessage[] }>(
       `/v1/chat/sessions/${sessionId}/messages${qs}`,
+      { token },
+    );
+  },
+
+  // W1-residual — the per-turn context-token HISTORY series (how each category's
+  // token cost evolved across the session's assistant turns). Backed by the
+  // W1-persisted chat_messages.context_breakdown; owner-gated server-side.
+  getContextHistory(token: string, sessionId: string, limit?: number) {
+    const qs = limit != null ? `?limit=${limit}` : '';
+    return apiJson<{ items: ContextHistoryPoint[] }>(
+      `/v1/chat/sessions/${sessionId}/context-history${qs}`,
+      { token },
+    );
+  },
+
+  // The LAST assistant turn's persisted contextBudget frame — lets the header
+  // meter SEED on session load instead of only appearing after the next live
+  // turn finishes. `budget` is null for a brand-new session with no measured turn.
+  getLatestContextBudget(token: string, sessionId: string) {
+    return apiJson<{ budget: ContextBudget | null }>(
+      `/v1/chat/sessions/${sessionId}/context-budget`,
       { token },
     );
   },

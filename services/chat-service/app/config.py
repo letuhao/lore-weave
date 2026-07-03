@@ -19,6 +19,14 @@ class Settings(BaseSettings):
     redis_url: str = "redis://redis:6379"
     port: int = 8090
 
+    # LLM streaming idle-read timeout (seconds) — the longest SILENT gap between
+    # SSE frames before the stream is treated as stalled. Default 0 = UNBOUNDED
+    # (no cap): a slow reasoning model may think silently for minutes before its
+    # first token, and an idle cap would ReadTimeout mid-thought (as Gemma-4 26B
+    # at high effort did). Set a positive value (env LLM_STREAM_IDLE_READ_TIMEOUT_S,
+    # e.g. 300) to cap it. The SDK Client honours <=0 as read=None.
+    llm_stream_idle_read_timeout_s: float = 0.0
+
     # K5 — knowledge-service integration. Optional/tunable via env so we can
     # raise the timeout if knowledge-service ever becomes a real bottleneck.
     knowledge_service_url: str = "http://knowledge-service:8092"
@@ -35,6 +43,19 @@ class Settings(BaseSettings):
     # execution target this URL; build_context (grounding) STAYS on
     # knowledge_service_url (gateway grounding is P6, not P0).
     ai_gateway_url: str = "http://ai-gateway:8210"
+
+    # RAID C1 (DR-C1) — per-book steering. book-service serves the enabled
+    # entries via GET /internal/books/{id}/steering; failures degrade to []
+    # (the turn proceeds steering-free), so the timeout stays tight.
+    book_service_url: str = "http://book-service:8082"
+    book_steering_timeout_s: float = 2.0
+
+    # Agent Extensibility Registry (P1) — user/book prompt-only skills. chat-service
+    # reads /internal/skills and injects them alongside the built-in SYSTEM_SKILLS,
+    # honouring per-user disable + shadow. EVERY failure degrades to "constants only"
+    # (the built-in skills still work), so a registry outage never breaks a turn.
+    agent_registry_url: str = "http://agent-registry-service:8099"
+    agent_registry_timeout_s: float = 2.0
 
     # ARCH-1 C3 — default stream event format when a request sends no
     # x-loreweave-stream-format header. "legacy" (LoreWeave SSE vocabulary) or

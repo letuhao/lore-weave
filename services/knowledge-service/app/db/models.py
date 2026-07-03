@@ -3,7 +3,7 @@ from decimal import Decimal
 from typing import Annotated, Literal
 from uuid import UUID
 
-from pydantic import BaseModel, ConfigDict, StringConstraints
+from pydantic import BaseModel, ConfigDict, Field, StringConstraints
 
 # KG customizable-ontology epic (L1) — the kg_* graph-schema models live in a
 # sibling module. Imported here so the DB-model package is a single surface;
@@ -214,6 +214,10 @@ class EntityRecoveryOverride(BaseModel):
     enabled: bool | None = None
     model_ref: str | None = None
     model_source: ModelSourceLit | None = None
+    # KN model-roles — Tier-3 classifier batch size (names classified per LLM
+    # call). Bounded 1-20; None = the env/default (5). Read by the extract-item
+    # resolver (_resolve_entity_recovery_config).
+    max_items_per_batch: Annotated[int, Field(ge=1, le=20)] | None = None
 
 
 class WriterAutocreateOverride(BaseModel):
@@ -251,6 +255,13 @@ class ProjectExtractionConfigUpdate(BaseModel):
     entity_recovery: EntityRecoveryOverride | None = None
     writer_autocreate: WriterAutocreateOverride | None = None
     prompts: dict[PromptOpLit, PromptOverride] | None = None
+    # D-K18.3-02 / Track 4 P2 — the two L3 rerank knobs read by Mode 3
+    # (`full.py`): a generative LLM rerank and the purpose-built cross-encoder
+    # (both provider-registry user_model UUIDs, BYOK). Were readable by the
+    # builder but had NO public write path (extra="forbid" rejected them) —
+    # unreachable-config gap found by the Track 4 eval run.
+    rerank_model: str | None = None
+    cross_encoder_rerank_model: str | None = None
 
 
 class Summary(BaseModel):

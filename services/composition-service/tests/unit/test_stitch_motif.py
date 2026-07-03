@@ -134,6 +134,28 @@ async def test_stitch_threads_voice_preservation_directive():
                                or "preserve" in low)
 
 
+# ── F4 (D-SCENEMARKER-EMIT): scene-heading prepend + preserve directive ──
+
+def test_prepend_scene_headings_adds_atx_line_per_titled_scene():
+    from app.engine.stitch import prepend_scene_headings
+    rows = [{"title": "Cuộc Truy Sát", "text": "prose one"},
+            {"title": "", "text": "prose two"},               # untitled → no heading
+            {"title": "Đã có", "text": "### Đã có\n\nprose"}]  # already headed → keep
+    assert prepend_scene_headings(rows) == [
+        "### Cuộc Truy Sát\n\nprose one",
+        "prose two",
+        "### Đã có\n\nprose"]
+
+
+async def test_stitch_heading_guard_injected_only_when_headings_present():
+    llm = _EchoLLM()
+    out, _ = await _stitch(llm, ["### S1\n\nprose one", "### S2\n\nprose two"])
+    assert "heading line" in out.lower() and "verbatim" in out.lower()
+    # no headings in the drafts → the guard stays out of the prompt
+    out2, _ = await _stitch(llm, ["prose one", "prose two"])
+    assert "verbatim" not in out2.lower()
+
+
 # ── eval-gate: reduces repetition WITHOUT flattening ──
 
 class _DedupLLM:

@@ -29,6 +29,8 @@ loreweave_composition
 loreweave_campaign
 loreweave_video_gen
 loreweave_jobs
+loreweave_roleplay
+loreweave_agent_registry
 "
 
 for db in $DATABASES; do

@@ -64,7 +64,10 @@ AuthMode = Literal["jwt", "internal"]
 # Default per-event read timeout — only the IDLE wait for the next SSE
 # frame, NOT a wall-clock cap on the whole stream. The whole-stream
 # timeout is None (unbounded) by design (P1 — streaming chat must have
-# no wall-clock timeout).
+# no wall-clock timeout). A value <= 0 DISABLES the idle cap too (read=None,
+# fully unbounded) — for streaming a slow reasoning model that may think
+# silently (no frames) for minutes before emitting a token; an idle cap would
+# ReadTimeout mid-thought. Callers that want a cap pass a positive value.
 _DEFAULT_IDLE_READ_TIMEOUT_S = 120.0
 
 
@@ -107,12 +110,15 @@ class Client:
         self._internal_token = internal_token
         self._user_id = user_id
 
-        # Whole-stream timeout = None (unbounded). Connect timeout = 5s
-        # (fail fast if gateway is unreachable). Per-read timeout =
-        # idle_read_timeout_s (longest gap between SSE frames before we
-        # treat the stream as stalled — typical providers send at least a
-        # keep-alive comment every 30-60s).
-        timeout = httpx.Timeout(None, connect=5.0, read=idle_read_timeout_s)
+        # Whole-stream timeout = None (unbounded). Connect timeout = 5s (fail fast
+        # if the gateway is unreachable). Per-read (idle) timeout = idle_read_timeout_s
+        # (longest gap between SSE frames before we treat the stream as stalled). A
+        # value <= 0 sets read=None (no idle cap at all) so a slow reasoning model
+        # thinking silently for minutes is not cut off mid-thought.
+        read_timeout: float | None = (
+            idle_read_timeout_s if idle_read_timeout_s and idle_read_timeout_s > 0 else None
+        )
+        timeout = httpx.Timeout(None, connect=5.0, read=read_timeout)
         self._http = httpx.AsyncClient(timeout=timeout, transport=transport)
 
         # LLM re-arch Phase 1 (Commit 2) — optional event-driven resume source.

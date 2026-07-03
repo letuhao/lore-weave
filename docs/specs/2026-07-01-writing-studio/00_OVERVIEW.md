@@ -91,6 +91,8 @@ dock group (Explorer → editor-group analogue).
 | 08 | **Studio state architecture** (5-tier model, host, bus rules, panel checklist) | [`08_studio_state_architecture.md`](08_studio_state_architecture.md) | 📐 specced |
 | 09 | **Agent GUI reconciliation** (3-lane: ui intent / MCP reload / human-gate) | [`09_agent_gui_reconciliation.md`](09_agent_gui_reconciliation.md) | 📐 specced |
 | 10 | **Agent lifecycle hooks** (sandbox scripts, pre/post tool events) | [`10_agent_lifecycle_hooks.md`](10_agent_lifecycle_hooks.md) | 📐 specced |
+| 11 | **Dockable migration wave 1** — foundation seams (openPanel params · status-bar contributions · link resolver) + usage/notifications/settings/trash panels | [`11_dockable_migration.md`](11_dockable_migration.md) | ✅ built + live-smoked |
+| 12 | **JSON Document Standard** (4th registry `registerJsonDocumentProvider` + generic `json-editor` panel, CM6+schema) + **per-tool cycle model** (one tool per cycle, 6-point gate incl. live agent→MCP→DB→panel-realtime). Cycle 1 = **chapter editor** (manuscript-unit provider + scene support — makes the navigator scene layer real; absorbs Debt #6/#04b) | [`12_json_document_standard.md`](12_json_document_standard.md) | 📐 specced |
 | … | Search nav · Quality nav · Jobs/Generation/Issues bottom panels · Planner/Cast/Timeline/… | — | ⏳ |
 
 *(Rows are added/promoted as we go. Order is a guide, not a contract — the human directs which is next.)*
@@ -119,7 +121,7 @@ the stack before adding new rows.
 | 3 | 06a design | **Quick Open build** deferred — needs #02 jump layer + #03 dock panel + Debt #1 navigator→dock wiring | implement #06a after #02+#03; shared `useManuscriptJump` (see 06a §Jump contract) |
 | 4 | 06b design | **Command Palette build** deferred — needs ≥3–5 registered dock tool panels | implement #06b after enough dock panels exist; chrome-only commands can ship earlier as a thin slice |
 | 5 | 07 design | **Agent chat upgrade build** deferred — needs #03 Compose shell + studio registry (#07c) | implement #07 after #03 + #07c; rack/inspector BE shipped globally (story 04 ✅) |
-| 6 | 04b design | **Raw editor build** deferred — needs #04a hoist (`useManuscriptUnit`) + #02 navigator→dock | implement #04b after #04a; see [`04b_raw_editor.md`](04b_raw_editor.md) |
+| 6 | 04b design | **Raw editor build** deferred — needs #04a hoist (`useManuscriptUnit`) + #02 navigator→dock | **absorbed by #12 cycle 1**: the raw editor ships as the `loreweave.manuscript-unit.v1` provider of the generic json-editor panel (see [`12_json_document_standard.md`](12_json_document_standard.md)) |
 
 **Chrome copy (design intent, not yet wired):** top-bar palette affordance → *"Go to chapter, scene, arc…"* (locations only — tools live in ⌘⇧P). Status bar → show both `⌘P` and `⌘⇧P` hints. Mockups: [`screen-command-palette.html`](../../../design-drafts/screens/studio/screen-command-palette.html) · [`screen-studio-agent-chat.html`](../../../design-drafts/screens/studio/screen-studio-agent-chat.html) · [`screen-studio-raw-editor.html`](../../../design-drafts/screens/studio/screen-studio-raw-editor.html) · [`screen-studio-state-host.html`](../../../design-drafts/screens/studio/screen-studio-state-host.html) · [`screen-studio-agent-gui-bridge.html`](../../../design-drafts/screens/studio/screen-studio-agent-gui-bridge.html) · [`screen-studio-agent-hooks.html`](../../../design-drafts/screens/studio/screen-studio-agent-hooks.html).
 

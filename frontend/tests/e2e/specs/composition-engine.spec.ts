@@ -54,7 +54,7 @@ test.describe('Composition co-write engine (B4.*)', () => {
       await panel.gotoEditor(bookId, chapterId);
       await panel.openComposeTab();
       await expect(panel.modelSelect).toBeVisible();
-      await panel.modelSelect.selectOption(drafter.user_model_id);
+      await panel.selectModel(drafter.user_model_id);
       await panel.reasoningSelect.selectOption('off');
 
       // generate → ghost streams; the auto-reasoning badge resolves (off → no thinking)
@@ -91,7 +91,7 @@ test.describe('Composition co-write engine (B4.*)', () => {
       const panel = new ChapterComposePanel(page);
       await panel.gotoEditor(bookId, chapterId);
       await panel.openComposeTab();
-      await panel.modelSelect.selectOption(drafter.user_model_id);
+      await panel.selectModel(drafter.user_model_id);
       await panel.reasoningSelect.selectOption('off');
 
       await panel.generate.click();

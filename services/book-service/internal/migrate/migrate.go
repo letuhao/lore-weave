@@ -367,6 +367,37 @@ CREATE TABLE IF NOT EXISTS book_consumed_tokens (
   exp         TIMESTAMPTZ
 );
 CREATE INDEX IF NOT EXISTS idx_book_consumed_tokens_exp ON book_consumed_tokens(exp);
+
+-- ═══════════════════════════════════════════════════════════════
+-- RAID C1 (per-book steering store) - 2026-07-02
+-- Spec: docs/specs/2026-07-02-raid-loadbearing-decision-records.md §DR-C1
+--
+-- Author-written per-book rules (story-bible-as-steering; the Cursor-rules /
+-- Kiro-steering analog) rendered into matching chat turns by chat-service via
+-- GET /internal/books/{book_id}/steering. Tenancy: book_id is the scope key
+-- (write = owner + EDIT grantees; read = VIEW grant). UNIQUE(book_id, name)
+-- is the SCOPED unique — never UNIQUE(name) (the kinds-bug smell). Caps keep
+-- steering tight because it is taxed every turn: body <= 8000 chars (CHECK
+-- here) and <= 20 rows/book (soft cap, enforced 422 in the handler — a row
+-- count can't live in DDL). inclusion_mode 'auto' is accepted but v1-honest:
+-- treated like 'manual' (#name trigger) until the model-pull tool ships.
+-- Additive + idempotent — Up() re-run is the rollback story (no ledger).
+-- ═══════════════════════════════════════════════════════════════
+CREATE TABLE IF NOT EXISTS book_steering (
+  id              UUID PRIMARY KEY DEFAULT uuidv7(),
+  book_id         UUID NOT NULL REFERENCES books(id) ON DELETE CASCADE,
+  name            TEXT NOT NULL,
+  body            TEXT NOT NULL CHECK (char_length(body) <= 8000),
+  inclusion_mode  TEXT NOT NULL DEFAULT 'always'
+      CHECK (inclusion_mode IN ('always','scene_match','manual','auto')),
+  match_pattern   TEXT,
+  enabled         BOOLEAN NOT NULL DEFAULT true,
+  author_user_id  UUID NOT NULL,
+  created_at      TIMESTAMPTZ NOT NULL DEFAULT now(),
+  updated_at      TIMESTAMPTZ NOT NULL DEFAULT now(),
+  UNIQUE (book_id, name)
+);
+CREATE INDEX IF NOT EXISTS idx_book_steering_book ON book_steering(book_id, created_at);
 `
 
 // WorldsDownSQL is the explicit reversible DDL for the C20 world container.
@@ -393,13 +424,46 @@ const rawSearchExtensionSQL = `CREATE EXTENSION IF NOT EXISTS pg_trgm`
 const rawSearchIndexSQL = `CREATE INDEX IF NOT EXISTS idx_chapter_blocks_trgm
   ON chapter_blocks USING gin (text_content gin_trgm_ops)`
 
+// migrationLockKey is a fixed application-defined key for the migration advisory
+// lock (arbitrary 64-bit constant — the ASCII bytes of "bookmig8"). Distinct from
+// glossary-service's key: they share the dev Postgres INSTANCE (advisory locks
+// are cluster-wide per database connection), so an accidental key collision would
+// needlessly serialize unrelated services' startups.
+const migrationLockKey int64 = 0x626f6f6b6d696738
+
+// execGuarded runs an idempotent DDL batch inside a transaction that first takes
+// a transaction-scoped advisory lock. This serializes concurrent migration runs
+// — parallel `go test` package binaries sharing one dev DB, or two app instances
+// starting at once — so overlapping CREATE/ALTER on the same tables queue on a
+// single ordered lock instead of deadlocking on table locks acquired in
+// different orders (SQLSTATE 40P01). Each batch already ran as one implicit
+// transaction via pool.Exec, so wrapping it explicitly is behaviour-preserving;
+// uncontended (normal startup) it adds one cheap lock call. The lock releases
+// automatically when the transaction commits/rolls back. Mirrors
+// glossary-service's migrate.execGuarded (RAID C1 / shared-DB deadlock lesson).
+func execGuarded(ctx context.Context, pool *pgxpool.Pool, name, sql string) error {
+	tx, err := pool.Begin(ctx)
+	if err != nil {
+		return fmt.Errorf("migrate %s: begin: %w", name, err)
+	}
+	defer tx.Rollback(ctx) //nolint:errcheck
+	if _, err := tx.Exec(ctx, `SELECT pg_advisory_xact_lock($1)`, migrationLockKey); err != nil {
+		return fmt.Errorf("migrate %s: lock: %w", name, err)
+	}
+	if _, err := tx.Exec(ctx, sql); err != nil {
+		return fmt.Errorf("migrate %s: %w", name, err)
+	}
+	return tx.Commit(ctx)
+}
+
 func Up(ctx context.Context, pool *pgxpool.Pool) error {
-	if _, err := pool.Exec(ctx, schemaSQL); err != nil {
-		return fmt.Errorf("migrate: %w", err)
+	if err := execGuarded(ctx, pool, "schema", schemaSQL); err != nil {
+		return err
 	}
 
-	// PG18: add virtual generated column for block count (idempotent)
-	_, _ = pool.Exec(ctx, `
+	// PG18: add virtual generated column for block count (idempotent).
+	// Best-effort (error ignored) — same semantics as before, now serialized.
+	_ = execGuarded(ctx, pool, "block-count", `
 		DO $$ BEGIN
 			ALTER TABLE chapter_drafts ADD COLUMN block_count INT
 				GENERATED ALWAYS AS (jsonb_array_length(body -> 'content')) VIRTUAL;
@@ -410,17 +474,17 @@ func Up(ctx context.Context, pool *pgxpool.Pool) error {
 	// Raw search Phase 1 (lexical leg): pg_trgm + trigram index, best-effort &
 	// separate from schemaSQL so a privilege failure can't abort schema init or
 	// block startup (review-impl MED-1). Search degrades to 500-on-use if absent.
-	_, _ = pool.Exec(ctx, rawSearchExtensionSQL)
-	_, _ = pool.Exec(ctx, rawSearchIndexSQL)
+	_ = execGuarded(ctx, pool, "pg-trgm", rawSearchExtensionSQL)
+	_ = execGuarded(ctx, pool, "trgm-index", rawSearchIndexSQL)
 
 	// Canon Model CM1: one-time editorial backfill (marker-gated; idempotent).
-	if _, err := pool.Exec(ctx, backfillSQL); err != nil {
-		return fmt.Errorf("migrate canon backfill: %w", err)
+	if err := execGuarded(ctx, pool, "canon backfill", backfillSQL); err != nil {
+		return err
 	}
 
 	// D1-03: trigger function to extract chapter_blocks from Tiptap JSONB
-	if _, err := pool.Exec(ctx, triggerSQL); err != nil {
-		return fmt.Errorf("migrate trigger: %w", err)
+	if err := execGuarded(ctx, pool, "trigger", triggerSQL); err != nil {
+		return err
 	}
 
 	return nil

@@ -52,6 +52,12 @@ describe('parseProviders (C-GW env-driven registry)', () => {
     expect(def[0].extraPrefixes).toEqual(['kg_']);
   });
 
+  it('resolves composition extraPrefixes (plan_) for PlanForge MCP tools', () => {
+    const ps = parseProviders('composition=http://c:8091/mcp', jest.fn());
+    expect(ps[0].prefix).toBe('composition_');
+    expect(ps[0].extraPrefixes).toEqual(['plan_']);
+  });
+
   it('honors an inline multi-prefix override (name|canon_+extra_=url)', () => {
     const ps = parseProviders('prov|a_+b_+c_=http://m/mcp', jest.fn());
     expect(ps[0]).toEqual({

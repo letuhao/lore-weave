@@ -29,6 +29,9 @@ func (s *Server) RegisterPipelineReadTools(srv *mcp.Server) {
 		Description: "List a book's proposed entity MERGE candidates (duplicate clusters the system " +
 			"detected), ranked by score — each with its member entities, suggested winner, and rationale. " +
 			"status defaults to 'proposed' (also: dismissed | merged). Read before proposing a merge.",
+		InputSchema: closedSetSchemaFor[mergeCandToolIn](map[string][]any{
+			"status": {"proposed", "dismissed", "merged"},
+		}),
 	}, s.toolListMergeCandidates)
 
 	mcp.AddTool(srv, &mcp.Tool{
@@ -154,7 +157,7 @@ const pipelineReadCap = 200
 
 type mergeCandToolIn struct {
 	BookID string `json:"book_id" jsonschema:"the book (UUID)"`
-	Status string `json:"status,omitempty" jsonschema:"proposed (default) | dismissed | merged"`
+	Status string `json:"status,omitempty" jsonschema:"proposed (default) | dismissed | merged — omit this argument for the default; do not send an empty string"`
 }
 type mergeCandidatesOut struct {
 	Candidates []mergeCandidateView `json:"candidates"`

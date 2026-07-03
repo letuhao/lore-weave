@@ -26,8 +26,10 @@ from app.tools.graph_schema_tools import (
     GRAPH_SCHEMA_ARG_MODELS,
     GRAPH_SCHEMA_TOOL_DEFINITIONS,
     KgGraphQueryArgs,
+    KgMultiQueryArgs,
     KgProposeEdgeArgs,
     KgTriageResolveArgs,
+    KgWorldQueryArgs,
     _resolve_project_owner,
     _resolve_project_owner_and_level,
 )
@@ -49,9 +51,12 @@ _BOOK = uuid4()
 # owner gate confines it to the caller's own projects).
 _ENVELOPE_KEYS = {"user_id", "session_id"}
 
-# The 12 tools this lane builds (R + reversible W).
+# The 14 tools this lane builds (R + reversible W) — incl. Track-B kg_world_query +
+# kg_multi_query (B1(3): arbitrary owner-owned project set).
 _LANE_LF_TOOLS = {
     "kg_graph_query",
+    "kg_world_query",
+    "kg_multi_query",
     "kg_entity_edge_timeline",
     "kg_schema_read",
     "kg_list_templates",
@@ -94,14 +99,16 @@ def _defn(name: str) -> dict:
 
 
 def test_total_tool_count_is_memory_plus_lane_lf():
-    """5 memory + 12 lane-LF + 5 live class-C + 1 kg_project_create
-    + 2 cost-gated (kg_build_graph, kg_build_wiki) + 1 kg_run_benchmark (R4) = 26."""
+    """5 memory + 1 story_search (#12 universal manuscript search) + 14 lane-LF
+    (incl. Track-B kg_world_query + kg_multi_query) + 5 live class-C + 2 project
+    lifecycle (kg_project_create + kg_project_list, the W0 #4a discovery tool) + 2
+    cost-gated (kg_build_graph, kg_build_wiki) + 1 kg_run_benchmark (R4) = 30."""
     schema_names = {d["function"]["name"] for d in TOOL_DEFINITIONS}
-    assert len(TOOL_DEFINITIONS) == 26
+    assert len(TOOL_DEFINITIONS) == 30
     assert set(TOOL_NAMES) == set(ARG_MODELS) == schema_names
     assert len(set(TOOL_NAMES)) == len(TOOL_NAMES)  # no dupes
-    assert {"kg_project_create", "kg_build_graph", "kg_build_wiki",
-            "kg_run_benchmark"}.issubset(schema_names)
+    assert {"kg_project_create", "kg_project_list", "kg_build_graph",
+            "kg_build_wiki", "kg_run_benchmark", "story_search"}.issubset(schema_names)
 
 
 def test_lane_lf_tools_all_registered():
@@ -976,3 +983,352 @@ async def test_triage_schema_write_requires_adopted_schema():
     })
     assert not res.success
     assert "adopt" in res.error.lower()
+
+
+# ── Track B B1(1): kg_world_query (world-rollup MCP tool) ─────────────
+
+
+@pytest.mark.asyncio
+async def test_kg_world_query_unions_partitions_and_reports_unreadable(monkeypatch):
+    """EC-B2: union the caller's OWN world partitions (world-level + owned member
+    books) AND report how many member partitions were owner-skipped, never dropping
+    them silently."""
+    import app.tools.graph_schema_tools as gst
+
+    owned_book, other_book = uuid4(), uuid4()
+    world_proj, owned_proj, other_proj = uuid4(), uuid4(), uuid4()
+    other_owner = uuid4()
+
+    book = AsyncMock()
+    book.list_world_books = AsyncMock(
+        return_value=[{"book_id": str(owned_book)}, {"book_id": str(other_book)}]
+    )
+    repo = AsyncMock()
+    repo.project_meta = AsyncMock(return_value=(_OWNER, _BOOK))
+    repo.list = AsyncMock(return_value=[SimpleNamespace(project_id=world_proj)])
+
+    async def _get_by_book(bid):
+        if bid == owned_book:
+            return SimpleNamespace(project_id=owned_proj, user_id=_OWNER)
+        return SimpleNamespace(project_id=other_proj, user_id=other_owner)
+
+    repo.get_by_book = AsyncMock(side_effect=_get_by_book)
+
+    seen = {}
+
+    async def _fake_subgraph(session, *, user_id, project_ids, limit):
+        seen["project_ids"] = list(project_ids)
+        return SimpleNamespace(
+            model_dump=lambda mode="json": {"nodes": [{"id": "n1"}], "edges": []}
+        )
+
+    monkeypatch.setattr("app.db.neo4j_repos.relations.get_world_subgraph", _fake_subgraph)
+
+    class _CM:
+        async def __aenter__(self):
+            return MagicMock()
+
+        async def __aexit__(self, *a):
+            return False
+
+    monkeypatch.setattr(gst, "neo4j_session", lambda: _CM())
+
+    ctx = _ctx(user_id=_OWNER, projects_repo=repo, book_client=book)
+    res = await execute_tool(ctx, "kg_world_query", {"world_id": str(uuid4()), "limit": 50})
+
+    assert res.success, res.error
+    out = res.result
+    assert out["partitions_read"] == 2          # world-level + the owned member book
+    assert out["partitions_unreadable"] == 1     # the member book owned by someone else
+    assert str(world_proj) in seen["project_ids"]
+    assert str(owned_proj) in seen["project_ids"]
+    assert str(other_proj) not in seen["project_ids"]   # never leak a partition we don't own
+    assert "skipped" in out["note"].lower()
+
+
+@pytest.mark.asyncio
+async def test_kg_world_query_unknown_world_is_self_correcting_error():
+    """EC-B5: a bad world / book-service issue maps to a tool-error STRING (not a 500),
+    so a weak model can self-correct."""
+    from app.clients.book_client import WorldNotFound
+
+    book = AsyncMock()
+    book.list_world_books = AsyncMock(side_effect=WorldNotFound("nope"))
+    ctx = _ctx(user_id=_OWNER, book_client=book)
+    res = await execute_tool(ctx, "kg_world_query", {"world_id": str(uuid4())})
+
+    assert not res.success
+    assert "world" in res.error.lower()
+
+
+@pytest.mark.asyncio
+async def test_kg_world_query_no_readable_partitions_returns_empty_not_error(monkeypatch):
+    """A world with no partitions you own returns an empty-but-honest result (with the
+    unreadable count) rather than an error — an empty world is valid."""
+    other_book = uuid4()
+    book = AsyncMock()
+    book.list_world_books = AsyncMock(return_value=[{"book_id": str(other_book)}])
+    repo = AsyncMock()
+    repo.project_meta = AsyncMock(return_value=(_OWNER, _BOOK))
+    repo.list = AsyncMock(return_value=[])   # no world-level project
+    repo.get_by_book = AsyncMock(
+        return_value=SimpleNamespace(project_id=uuid4(), user_id=uuid4())  # owned by another
+    )
+    ctx = _ctx(user_id=_OWNER, projects_repo=repo, book_client=book)
+    res = await execute_tool(ctx, "kg_world_query", {"world_id": str(uuid4())})
+
+    assert res.success
+    assert res.result["partitions_read"] == 0
+    assert res.result["partitions_unreadable"] == 1
+    assert res.result["nodes"] == []
+
+
+# ── Track B B1(3): kg_multi_query (arbitrary owner-owned project set) ─────
+
+
+def _multi_repo(owned: set):
+    """A projects_repo whose .get returns a Project only for an id in ``owned``
+    (owner-keyed), None otherwise — the ownership signal kg_multi_query reports on."""
+    repo = AsyncMock()
+    repo.project_meta = AsyncMock(return_value=(_OWNER, _BOOK))
+
+    async def _get(user_id, project_id):
+        return SimpleNamespace(project_id=project_id) if project_id in owned else None
+
+    repo.get = AsyncMock(side_effect=_get)
+    return repo
+
+
+def _patch_subgraph(monkeypatch, seen: dict):
+    import app.tools.graph_schema_tools as gst
+
+    async def _fake_subgraph(session, *, user_id, project_ids, limit):
+        seen["project_ids"] = list(project_ids)
+        seen["limit"] = limit
+        return SimpleNamespace(
+            model_dump=lambda mode="json": {"nodes": [{"id": "n1"}], "edges": []}
+        )
+
+    monkeypatch.setattr("app.db.neo4j_repos.relations.get_world_subgraph", _fake_subgraph)
+
+    class _CM:
+        async def __aenter__(self):
+            return MagicMock()
+
+        async def __aexit__(self, *a):
+            return False
+
+    monkeypatch.setattr(gst, "neo4j_session", lambda: _CM())
+
+
+@pytest.mark.asyncio
+async def test_kg_multi_query_unions_owned_and_reports_unreadable(monkeypatch):
+    """B1(3)/EC-B2: union ONLY the projects the caller owns from the requested set, and
+    report how many requested ids were skipped (foreign or stale) — never silently."""
+    owned_a, owned_b, foreign = uuid4(), uuid4(), uuid4()
+    repo = _multi_repo({owned_a, owned_b})
+    seen: dict = {}
+    _patch_subgraph(monkeypatch, seen)
+
+    ctx = _ctx(user_id=_OWNER, projects_repo=repo)
+    res = await execute_tool(
+        ctx, "kg_multi_query",
+        {"project_ids": [str(owned_a), str(foreign), str(owned_b)], "limit": 50},
+    )
+
+    assert res.success, res.error
+    out = res.result
+    assert out["partitions_read"] == 2
+    assert out["partitions_unreadable"] == 1
+    assert set(seen["project_ids"]) == {str(owned_a), str(owned_b)}
+    assert str(foreign) not in seen["project_ids"]   # never leak an unowned partition
+    assert seen["limit"] == 50
+    assert "skipped" in out["note"].lower()
+
+
+@pytest.mark.asyncio
+async def test_kg_multi_query_dedups_requested_ids(monkeypatch):
+    """A duplicate id must not double-count coverage nor be queried twice."""
+    owned_a, owned_b = uuid4(), uuid4()
+    repo = _multi_repo({owned_a, owned_b})
+    seen: dict = {}
+    _patch_subgraph(monkeypatch, seen)
+
+    ctx = _ctx(user_id=_OWNER, projects_repo=repo)
+    res = await execute_tool(
+        ctx, "kg_multi_query",
+        {"project_ids": [str(owned_a), str(owned_a), str(owned_b)]},
+    )
+    assert res.success, res.error
+    assert res.result["partitions_read"] == 2
+    assert res.result["partitions_unreadable"] == 0
+    assert sorted(seen["project_ids"]) == sorted({str(owned_a), str(owned_b)})
+    assert "note" not in res.result  # fully-readable → no partial-coverage note
+
+
+@pytest.mark.asyncio
+async def test_kg_multi_query_all_unreadable_returns_empty_not_error(monkeypatch):
+    """Naming only ids you don't own returns an empty-but-honest result (with the
+    unreadable count), not an error — a self-correctable state, not a failure."""
+    foreign = uuid4()
+    repo = _multi_repo(set())   # owns nothing requested
+    seen: dict = {}
+    _patch_subgraph(monkeypatch, seen)
+
+    ctx = _ctx(user_id=_OWNER, projects_repo=repo)
+    res = await execute_tool(ctx, "kg_multi_query", {"project_ids": [str(foreign)]})
+
+    assert res.success
+    assert res.result["partitions_read"] == 0
+    assert res.result["partitions_unreadable"] == 1
+    assert res.result["nodes"] == []
+    assert "project_ids" not in seen   # subgraph never queried when nothing readable
+
+
+@pytest.mark.asyncio
+async def test_kg_multi_query_invalid_id_is_self_correcting_error():
+    """EC-B5-style: a non-UUID id maps to a tool-error STRING (not a 500) so a weak
+    model can self-correct."""
+    repo = _multi_repo(set())
+    ctx = _ctx(user_id=_OWNER, projects_repo=repo)
+    res = await execute_tool(ctx, "kg_multi_query", {"project_ids": ["not-a-uuid"]})
+    assert not res.success
+    assert "valid id" in res.error.lower()
+
+
+def test_kg_multi_query_args_require_at_least_one_and_cap_at_16():
+    """The set must be non-empty (min_length=1) and capped at 16 (matches the B1(2)
+    chat-session multi-KG grounding cap)."""
+    assert KgMultiQueryArgs(project_ids=["p1"]).limit == 200
+    with pytest.raises(ValidationError):
+        KgMultiQueryArgs(project_ids=[])            # min_length=1
+    with pytest.raises(ValidationError):
+        KgMultiQueryArgs(project_ids=[f"p{i}" for i in range(17)])  # max_length=16
+    with pytest.raises(ValidationError):
+        KgMultiQueryArgs(project_ids=["p1"], user_id="smuggled")    # identity forbidden
+
+
+def test_kg_multi_query_advertises_project_ids_bounds():
+    """/review-impl #1 — the 1..16 bound must be in the MACHINE-READABLE schema (so a
+    model sees it up front), not only in the prose + the model-layer ValidationError."""
+    prop = _defn("kg_multi_query")["function"]["parameters"]["properties"]["project_ids"]
+    assert prop["type"] == "array"
+    assert prop["minItems"] == 1
+    assert prop["maxItems"] == 16
+
+
+# ── Track B B1(4): cross-partition unification (`unify` enum + wiring) ────
+
+
+def test_unify_enum_matches_model_literal_on_both_tools():
+    """B1(4)/EC-M6 — the machine-readable `unify` enum on kg_world_query AND
+    kg_multi_query equals the arg-model Literal value-set (enum-locked for weak
+    models; drift-locked). T0+T1: ['off','by_name','semantic']."""
+    from app.tools.graph_schema_tools import _UNIFY_MODES
+
+    for name in ("kg_world_query", "kg_multi_query"):
+        prop = _defn(name)["function"]["parameters"]["properties"]["unify"]
+        assert prop["type"] == "string"
+        assert prop["enum"] == list(_UNIFY_MODES) == ["off", "by_name", "semantic"]
+    assert KgMultiQueryArgs(project_ids=["p1"]).unify == "off"  # default
+    assert KgWorldQueryArgs(world_id="w").unify == "off"
+    assert KgMultiQueryArgs(project_ids=["p1"], unify="semantic").unify == "semantic"
+    with pytest.raises(ValidationError):
+        KgMultiQueryArgs(project_ids=["p1"], unify="fuzzy")  # not a valid mode
+    with pytest.raises(ValidationError):
+        KgWorldQueryArgs(world_id="w", unify="nonsense")
+
+
+@pytest.mark.asyncio
+async def test_kg_multi_query_default_off_omits_unify_keys_and_skips_unifier(monkeypatch):
+    """EC-M5 — default unify='off' is byte-identical to the forest: no
+    unification_clusters / bridge_edges keys, and the unifier is NEVER called."""
+    import app.tools.kg_unify as ku
+
+    owned_a, owned_b = uuid4(), uuid4()
+    repo = _multi_repo({owned_a, owned_b})
+    _patch_subgraph(monkeypatch, {})
+    called = {"n": 0}
+
+    async def _boom(*a, **k):
+        called["n"] += 1
+        return {}
+
+    monkeypatch.setattr(ku, "unify_subgraph", _boom)
+
+    ctx = _ctx(user_id=_OWNER, projects_repo=repo)
+    res = await execute_tool(
+        ctx, "kg_multi_query", {"project_ids": [str(owned_a), str(owned_b)]}
+    )
+    assert res.success, res.error
+    assert "unification_clusters" not in res.result
+    assert "bridge_edges" not in res.result
+    assert "disagreements" not in res.result
+    assert called["n"] == 0  # off never touches the unifier
+
+
+@pytest.mark.asyncio
+async def test_kg_multi_query_unify_by_name_merges_unifier_result(monkeypatch):
+    """B1(4) wiring proof — unify='by_name' calls the unifier and MERGES its additive
+    keys into the result without clobbering the coverage keys."""
+    import app.tools.kg_unify as ku
+
+    owned_a, owned_b = uuid4(), uuid4()
+    repo = _multi_repo({owned_a, owned_b})
+    _patch_subgraph(monkeypatch, {})
+    seen: dict = {}
+
+    async def _fake_unify(session, *, user_id, subgraph, method, embedding_client=None):
+        seen["method"] = method
+        seen["has_embed_client"] = embedding_client is not None
+        return {
+            "unification_clusters": [{"cluster_id": "uc_x"}],
+            "bridge_edges": [],
+            "unify_method": method,
+            "unify_capped": False,
+        }
+
+    monkeypatch.setattr(ku, "unify_subgraph", _fake_unify)
+
+    ctx = _ctx(user_id=_OWNER, projects_repo=repo)
+    res = await execute_tool(
+        ctx,
+        "kg_multi_query",
+        {"project_ids": [str(owned_a), str(owned_b)], "unify": "by_name"},
+    )
+    assert res.success, res.error
+    assert seen["method"] == "by_name"
+    assert seen["has_embed_client"] is True  # embedding_client threaded for Q1=b/semantic
+    assert res.result["unification_clusters"] == [{"cluster_id": "uc_x"}]
+    assert res.result["unify_method"] == "by_name"
+    assert res.result["partitions_read"] == 2  # coverage keys survive the merge
+
+
+@pytest.mark.asyncio
+async def test_kg_world_query_unify_by_name_wired(monkeypatch):
+    """B1(4) — the same unification wiring is present on kg_world_query."""
+    import app.tools.kg_unify as ku
+    import app.world_rollup as wr
+
+    async def _fake_resolve(*, world_id, user_id, repo, book):
+        return SimpleNamespace(project_ids=[str(uuid4()), str(uuid4())], unreadable_count=0)
+
+    monkeypatch.setattr(wr, "resolve_world_partitions", _fake_resolve)
+    _patch_subgraph(monkeypatch, {})
+
+    seen: dict = {}
+
+    async def _fake_unify(session, *, user_id, subgraph, method, embedding_client=None):
+        seen["method"] = method
+        return {"unification_clusters": [], "bridge_edges": [],
+                "unify_method": method, "unify_capped": False}
+
+    monkeypatch.setattr(ku, "unify_subgraph", _fake_unify)
+
+    ctx = _ctx(user_id=_OWNER, book_client=AsyncMock())
+    res = await execute_tool(
+        ctx, "kg_world_query", {"world_id": str(uuid4()), "unify": "by_name"}
+    )
+    assert res.success, res.error
+    assert seen["method"] == "by_name"
+    assert res.result["unify_method"] == "by_name"

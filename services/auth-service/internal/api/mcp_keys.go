@@ -275,11 +275,12 @@ func (s *Server) patchMcpKey(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	var body struct {
-		Name             *string  `json:"name"`
-		Scopes           []string `json:"scopes"`
-		RateLimitRPM     *int     `json:"rate_limit_rpm"`
-		SpendCapUSD      *float64 `json:"spend_cap_usd"`
-		AllowSelfConfirm *bool    `json:"allow_self_confirm"`
+		Name             *string         `json:"name"`
+		Scopes           []string        `json:"scopes"`
+		RateLimitRPM     *int            `json:"rate_limit_rpm"`
+		SpendCapUSD      json.RawMessage `json:"spend_cap_usd"` // number to set; null to clear; absent = untouched
+		AllowSelfConfirm *bool           `json:"allow_self_confirm"`
+		ExpiresAt        *string         `json:"expires_at"` // RFC3339 to set; "" to clear; absent = untouched
 	}
 	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
 		writeErr(w, http.StatusBadRequest, "AUTH_VALIDATION_ERROR", "invalid json")
@@ -298,9 +299,35 @@ func (s *Server) patchMcpKey(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, http.StatusBadRequest, "AUTH_VALIDATION_ERROR", "rate_limit_rpm must be 1-6000")
 		return
 	}
-	if body.SpendCapUSD != nil && *body.SpendCapUSD < 0 {
-		writeErr(w, http.StatusBadRequest, "AUTH_VALIDATION_ERROR", "spend_cap_usd must be >= 0")
-		return
+	// spend_cap is tri-state via RawMessage — absent leaves it, explicit `null` clears
+	// it to "no cap", a number sets it. (A plain *float64 can't tell absent from null,
+	// so it could never clear — the same reason expires_at below uses a provided-flag.)
+	spendProvided := len(body.SpendCapUSD) > 0
+	var spendCap *float64
+	if spendProvided && strings.TrimSpace(string(body.SpendCapUSD)) != "null" {
+		var v float64
+		if err := json.Unmarshal(body.SpendCapUSD, &v); err != nil {
+			writeErr(w, http.StatusBadRequest, "AUTH_VALIDATION_ERROR", "spend_cap_usd must be a number or null")
+			return
+		}
+		if v < 0 {
+			writeErr(w, http.StatusBadRequest, "AUTH_VALIDATION_ERROR", "spend_cap_usd must be >= 0")
+			return
+		}
+		spendCap = &v
+	}
+	// expires_at is tri-state: absent (nil) = untouched; ""/whitespace = clear to
+	// no-expiry (NULL); an RFC3339 instant = set. The `expiresProvided` flag lets a
+	// non-nil-but-cleared value reach the DB as NULL (COALESCE alone couldn't clear).
+	expiresProvided := body.ExpiresAt != nil
+	var expiresAt *time.Time
+	if body.ExpiresAt != nil && strings.TrimSpace(*body.ExpiresAt) != "" {
+		t, perr := time.Parse(time.RFC3339, *body.ExpiresAt)
+		if perr != nil {
+			writeErr(w, http.StatusBadRequest, "AUTH_VALIDATION_ERROR", "expires_at must be RFC3339")
+			return
+		}
+		expiresAt = &t
 	}
 	// COALESCE-style partial update; scopes only replaced when provided (non-nil).
 	var scopes any
@@ -313,9 +340,10 @@ func (s *Server) patchMcpKey(w http.ResponseWriter, r *http.Request) {
 		  scopes = COALESCE($4, scopes),
 		  rate_limit_rpm = COALESCE($5, rate_limit_rpm),
 		  spend_cap_usd = CASE WHEN $6::boolean THEN $7 ELSE spend_cap_usd END,
-		  allow_self_confirm = COALESCE($8, allow_self_confirm)
+		  allow_self_confirm = COALESCE($8, allow_self_confirm),
+		  expires_at = CASE WHEN $9::boolean THEN $10 ELSE expires_at END
 		WHERE key_id = $1 AND owner_user_id = $2 AND status = 'active'`,
-		keyID, uid, name, scopes, body.RateLimitRPM, body.SpendCapUSD != nil, body.SpendCapUSD, body.AllowSelfConfirm)
+		keyID, uid, name, scopes, body.RateLimitRPM, spendProvided, spendCap, body.AllowSelfConfirm, expiresProvided, expiresAt)
 	if err != nil {
 		writeErr(w, http.StatusInternalServerError, "AUTH_INTERNAL", "update failed")
 		return

@@ -36,9 +36,10 @@ from app.logging_config import setup_logging, trace_id_var
 from app.mcp.server import build_mcp_app, mcp_server
 from app.middleware.trace_id import TraceIdMiddleware
 from app.routers import (
-    actions, approve, arc, canon, conformance, engine, grounding, health, import_source,
-    internal_eval, internal_job_control, metrics, motif, motif_sync, narrative_threads,
-    outline, ping, plan, progress, prose, references, style_voice, works,
+    actions, approve, arc, authoring_runs, canon, conformance, engine, grounding, health,
+    import_source, internal_eval, internal_job_control, metrics, motif, motif_sync,
+    narrative_threads, outline, ping, plan, plan_forge, progress, prose, references,
+    style_voice, works,
 )
 
 logger = logging.getLogger(__name__)
@@ -74,6 +75,36 @@ async def _reap_stale_jobs_loop() -> None:
             logger.warning("job reaper sweep failed (retrying next interval)", exc_info=True)
 
 
+async def _authoring_sweep_loop() -> None:
+    """RAID Wave D4 — restart durability for autonomous authoring runs. At
+    startup (first pass runs immediately) + every `authoring_sweep_secs`,
+    guarded-claim `running` runs whose driver heartbeat is stale (a restart
+    killed their in-process driver task, or a start was deferred at the
+    DRIVER_MAX_INFLIGHT cap) and resume each from current_unit. The claim is a
+    guarded UPDATE (campaign-service claim_active_campaigns pattern) so
+    concurrent replicas take disjoint runs. A transient failure is logged and
+    retried next interval — it never kills the loop."""
+    from app.deps import get_authoring_run_service
+
+    interval = settings.authoring_sweep_secs
+    while True:
+        try:
+            svc = await get_authoring_run_service()
+            claimed = await svc.sweep_stale_runs()
+            if claimed:
+                logger.info(
+                    "authoring sweep: re-claimed %d stale run(s): %s",
+                    len(claimed), [str(r.run_id) for r in claimed],
+                )
+        except asyncio.CancelledError:
+            raise
+        except Exception:
+            logger.warning(
+                "authoring sweep failed (retrying next interval)", exc_info=True,
+            )
+        await asyncio.sleep(interval)
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     setup_logging(settings.log_level)
@@ -88,6 +119,12 @@ async def lifespan(app: FastAPI):
     reaper_task = (
         asyncio.create_task(_reap_stale_jobs_loop())
         if settings.job_reaper_sweep_secs > 0
+        else None
+    )
+    # RAID Wave D4 — authoring-run durability sweep (startup + periodic).
+    authoring_sweep_task = (
+        asyncio.create_task(_authoring_sweep_loop())
+        if settings.authoring_sweep_secs > 0
         else None
     )
     # D-GRANT-INSTANT-REVOKE — tail book-service grant revokes (Redis) → drop the
@@ -128,6 +165,10 @@ async def lifespan(app: FastAPI):
             reaper_task.cancel()
             with contextlib.suppress(asyncio.CancelledError):
                 await reaper_task
+        if authoring_sweep_task is not None:
+            authoring_sweep_task.cancel()
+            with contextlib.suppress(asyncio.CancelledError):
+                await authoring_sweep_task
         await close_knowledge_client()
         await close_book_client()
         await close_glossary_client()
@@ -188,6 +229,8 @@ app.include_router(import_source.router)  # W9 — import_source CRUD (per-user 
 app.include_router(engine.router)
 app.include_router(outline.router)
 app.include_router(plan.router)
+app.include_router(plan_forge.router)
+app.include_router(authoring_runs.router)  # RAID Wave D2 — autonomy-dial run FSM
 app.include_router(internal_eval.router)
 app.include_router(internal_job_control.router)  # Unified Job Control Plane P3
 app.include_router(canon.router)

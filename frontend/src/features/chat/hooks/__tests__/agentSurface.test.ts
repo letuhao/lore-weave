@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
 import { renderHook, act } from '@testing-library/react';
 import { degradedSurfaceFromSession, useAgentSurface } from '../useAgentSurface';
-import type { ChatSession } from '../types';
+import type { AgentSurfaceState, ChatSession } from '../../types';
 
 describe('useAgentSurface', () => {
   it('degraded mode derives counts from session pins', () => {
@@ -35,6 +35,29 @@ describe('useAgentSurface', () => {
     });
     expect(result.current.state.phase).toBe('Curated');
     expect(result.current.state.pinned_count).toBe(2);
+  });
+
+  it('accumulates a phase trail, resetting when a new turn leaves Idle', () => {
+    const session = { session_id: 's1' } as unknown as ChatSession;
+    const { result } = renderHook(() => useAgentSurface(session));
+    const p = (phase: AgentSurfaceState['phase']): AgentSurfaceState => ({
+      phase,
+      pinned_count: 0,
+      hot_seed_count: 0,
+      activated_count: 0,
+      injected_skills: [],
+      running_tool: null,
+      last_find_tools_query: null,
+      find_tools_call_count: 0,
+    });
+    act(() => result.current.applyEvent(p('Curated')));
+    act(() => result.current.applyEvent(p('Discovering')));
+    act(() => result.current.applyEvent(p('Discovering'))); // same phase → no dup
+    act(() => result.current.applyEvent(p('Idle')));
+    expect(result.current.trail).toEqual(['Curated', 'Discovering', 'Idle']);
+    // the next turn's first transition out of Idle resets the trail.
+    act(() => result.current.applyEvent(p('Curated')));
+    expect(result.current.trail).toEqual(['Curated']);
   });
 
   it('toggleExpanded persists to localStorage', () => {

@@ -14,6 +14,7 @@ const listMessagesMock = vi.fn();
 vi.mock('../../api', () => ({
   chatApi: {
     listMessages: (...a: unknown[]) => listMessagesMock(...a),
+    getLatestContextBudget: () => Promise.resolve({ budget: null }),
     messagesUrl: (sid: string) => `http://test/v1/chat/sessions/${sid}/messages`,
   },
 }));

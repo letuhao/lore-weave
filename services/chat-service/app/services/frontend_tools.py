@@ -399,10 +399,17 @@ UI_OPEN_STUDIO_PANEL_TOOL: dict = {
             "properties": {
                 "panel_id": {
                     "type": "string",
-                    "enum": ["compose", "editor"],
+                    "enum": ["compose", "editor", "planner", "usage", "notifications", "settings", "trash", "steering", "extensions", "proposals"],
                     "description": (
                         "The studio panel to open. 'compose' = the AI co-writer chat; "
-                        "'editor' = the manuscript editor."
+                        "'editor' = the manuscript editor; 'planner' = the PlanForge "
+                        "novel-system planner; 'usage' = spend/tokens/request log; "
+                        "'notifications' = job completions & alerts; 'settings' = "
+                        "account/providers/translation settings; 'trash' = restore "
+                        "deleted books/chapters; 'steering' = author the book's steering "
+                        "rules (persistent author guidance injected into book-scoped turns); "
+                        "'extensions' = manage plugins, skills, MCP servers, commands & "
+                        "hooks; 'proposals' = review skills the agent proposed (approve/reject)."
                     ),
                 },
             },

@@ -929,6 +929,154 @@ BEGIN
       FOR EACH ROW EXECUTE FUNCTION arc_template_publish_strip();
   END IF;
 END $$;
+
+-- ── plan_run / plan_artifact (PlanForge M3): per-user/per-book planning runs.
+-- Tenancy: every query filters owner_user_id + book_id; E0 grants gate HTTP.
+CREATE TABLE IF NOT EXISTS plan_run (
+  id                UUID PRIMARY KEY DEFAULT uuidv7(),
+  owner_user_id     UUID NOT NULL,
+  book_id           UUID NOT NULL,
+  work_id           UUID,
+  status            TEXT NOT NULL DEFAULT 'pending',
+  mode              TEXT NOT NULL,
+  model_ref         UUID,
+  source_checksum   TEXT NOT NULL DEFAULT '',
+  source_markdown   TEXT NOT NULL DEFAULT '',
+  active_job_id     UUID,
+  error_detail      TEXT,
+  checkpoint_state  JSONB NOT NULL DEFAULT '{}'::jsonb,
+  created_at        TIMESTAMPTZ NOT NULL DEFAULT now(),
+  updated_at        TIMESTAMPTZ NOT NULL DEFAULT now(),
+  CONSTRAINT plan_run_status_chk CHECK (
+    status IN ('pending', 'proposed', 'checkpoint', 'validated', 'compiled', 'failed')
+  ),
+  CONSTRAINT plan_run_mode_chk CHECK (mode IN ('rules', 'llm'))
+);
+CREATE INDEX IF NOT EXISTS idx_plan_run_owner_book
+  ON plan_run(owner_user_id, book_id, created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_plan_run_checksum
+  ON plan_run(owner_user_id, book_id, source_checksum);
+
+CREATE TABLE IF NOT EXISTS plan_artifact (
+  id              UUID PRIMARY KEY DEFAULT uuidv7(),
+  run_id          UUID NOT NULL REFERENCES plan_run(id) ON DELETE CASCADE,
+  owner_user_id   UUID NOT NULL,
+  kind            TEXT NOT NULL,
+  content         JSONB NOT NULL,
+  created_at      TIMESTAMPTZ NOT NULL DEFAULT now(),
+  CONSTRAINT plan_artifact_kind_chk CHECK (
+    kind IN ('document', 'analyze', 'spec', 'graph', 'package', 'llm_io', 'validation_report')
+  )
+);
+CREATE INDEX IF NOT EXISTS idx_plan_artifact_run_kind
+  ON plan_artifact(run_id, kind, created_at DESC);
+
+-- ── authoring_runs (RAID Wave D2, DR-D): the autonomous authoring-run entity —
+-- the §10 dial's level-3/4 run row. One row per gated autonomous drafting run
+-- over an approved PlanForge plan. Tenancy: owner_user_id on every query (E0
+-- EDIT grant gated at the HTTP layer, plan_forge house style). `scope` is the
+-- ORDERED chapter-id list (jsonb array of uuid strings — cross-DB book ids, no
+-- FK per §1.4); `tool_allowlist` is the C2-allowlist SNAPSHOT declared by the
+-- caller at gate time (edge #5 — provenance is the caller's; chat DB is not
+-- composition's, see DR-D deviation note); `budget_usd`/`spent_usd` mirror
+-- extraction_jobs' max_spend semantics (checked before each unit — the last
+-- unit may overshoot by its own cost, like atomic_try_spend's last estimate).
+-- `params` carries the drafting-seam inputs (model_source + model_ref user-model
+-- UUID — models resolve via provider-registry from the ref, never a literal).
+-- `breaker_state` records WHY the run stopped ({reason: budget|unit_failed}).
+-- FSM: draft→gated→running→(paused⇄running)→report_ready→closed, running→failed.
+CREATE TABLE IF NOT EXISTS authoring_runs (
+  run_id          UUID PRIMARY KEY DEFAULT uuidv7(),
+  owner_user_id   UUID NOT NULL,
+  book_id         UUID NOT NULL,
+  plan_run_id     UUID NOT NULL REFERENCES plan_run(id),
+  level           SMALLINT NOT NULL CHECK (level IN (3, 4)),
+  scope           JSONB NOT NULL DEFAULT '[]'::jsonb,
+  budget_usd      NUMERIC(10,4) NOT NULL DEFAULT 0,
+  spent_usd       NUMERIC(10,4) NOT NULL DEFAULT 0,
+  tool_allowlist  JSONB NOT NULL DEFAULT '[]'::jsonb,
+  params          JSONB NOT NULL DEFAULT '{}'::jsonb,
+  breaker_state   JSONB NOT NULL DEFAULT '{}'::jsonb,
+  status          TEXT NOT NULL DEFAULT 'draft' CHECK (
+    status IN ('draft','gated','running','paused','failed','report_ready','closed')
+  ),
+  current_unit    INT NOT NULL DEFAULT 0,
+  error_message   TEXT,
+  created_at      TIMESTAMPTZ NOT NULL DEFAULT now(),
+  updated_at      TIMESTAMPTZ NOT NULL DEFAULT now(),
+  -- ── D4 durable-driver columns (RAID Wave D4). `driver_id` = the process id of
+  -- the driver task currently driving this run; `driver_heartbeat_at` is bumped
+  -- once per unit (the per-unit guarded claim). A `running` run whose heartbeat
+  -- is older than authoring_heartbeat_stale_secs has NO live driver (service
+  -- restarted / task died) and is re-claimable by the periodic sweep — the
+  -- stale threshold MUST exceed the worst-case single-unit wall-clock
+  -- (authoring_job_poll_timeout_secs) or the sweep would steal a run mid-unit.
+  -- `background` is the fg/bg toggle SURFACED to the FE (v1: purely a display/
+  -- filter flag — sweep-resume durability applies to BOTH fg and bg runs; the
+  -- real fg/bg UX is FE-side later).
+  driver_id           TEXT,
+  driver_heartbeat_at TIMESTAMPTZ,
+  background          BOOLEAN NOT NULL DEFAULT false
+);
+-- Scope fence (edge #11): ONE active run per book — across users too (two runs
+-- over the same chapters conflict regardless of who started them). The gate's
+-- draft→gated transition maps a violation to 409.
+CREATE UNIQUE INDEX IF NOT EXISTS uq_authoring_runs_active_book
+  ON authoring_runs(book_id) WHERE status IN ('gated','running','paused');
+CREATE INDEX IF NOT EXISTS idx_authoring_runs_owner_book
+  ON authoring_runs(owner_user_id, book_id, created_at DESC);
+-- D4 additive columns for DBs that created authoring_runs before D4 (the
+-- CREATE TABLE above is IF NOT EXISTS — it does not evolve an existing table).
+ALTER TABLE authoring_runs ADD COLUMN IF NOT EXISTS driver_id TEXT;
+ALTER TABLE authoring_runs ADD COLUMN IF NOT EXISTS driver_heartbeat_at TIMESTAMPTZ;
+ALTER TABLE authoring_runs ADD COLUMN IF NOT EXISTS background BOOLEAN NOT NULL DEFAULT false;
+-- Sweep scan: 'running' runs ordered by heartbeat age (partial — the fleet of
+-- non-running runs never pollutes it).
+CREATE INDEX IF NOT EXISTS idx_authoring_runs_running_heartbeat
+  ON authoring_runs(driver_heartbeat_at) WHERE status = 'running';
+
+-- ── authoring_run_units (RAID Wave D3, DR-D end-gate): the per-unit ledger the
+-- driver writes as it drafts — one row per ATTEMPTED scope unit (un-attempted
+-- units have no row; the Run Report synthesizes them as 'pending' from scope).
+-- `pre_revision_id` = the chapter's LATEST book-service revision captured BEFORE
+-- the drafting seam ran (book-service snapshots the NEW body into
+-- chapter_revisions on every draft PATCH, so "latest revision" == the pre-run
+-- draft content — the reject/Revert-All restore point; NULL = the chapter had no
+-- revisions yet, nothing to restore to). `post_revision_id` = the latest revision
+-- AFTER the seam (the run's draft — the report's diff anchor; best-effort, NULL
+-- when capture failed). `cost_usd` is the unit's contribution to
+-- authoring_runs.spent_usd (seam-metered, or the estimate fallback — per-unit
+-- costs sum to the run's spend). Review FSM: pending→drafted→(accepted|rejected),
+-- pending→failed; accept/reject are guarded OCC updates. Tenancy: no owner
+-- column — every read/write JOINs authoring_runs on owner_user_id (the parent
+-- run's tenancy is the units' tenancy).
+CREATE TABLE IF NOT EXISTS authoring_run_units (
+  run_id           UUID NOT NULL REFERENCES authoring_runs(run_id) ON DELETE CASCADE,
+  unit_index       INT NOT NULL,
+  chapter_id       UUID NOT NULL,
+  status           TEXT NOT NULL DEFAULT 'pending' CHECK (
+    status IN ('pending','drafted','failed','accepted','rejected')
+  ),
+  pre_revision_id  UUID,
+  post_revision_id UUID,
+  cost_usd         NUMERIC(10,4) NOT NULL DEFAULT 0,
+  error_message    TEXT,
+  -- D5 (RAID Wave D5): the per-unit continuity-critic verdict, written by the
+  -- driver AFTER the unit drafts — {severity: ok|warn|severe, summary, cost_usd
+  -- [, detail: the raw 4-dim judge_prose critique]}. NULL = not critiqued
+  -- (critic disabled via params.critic_enabled=false, unit failed before
+  -- drafting, or the run was paused/stolen at the boundary before the critique
+  -- — the Run Report shows the gap). severity='severe' also trips the run
+  -- breaker (run PAUSED, breaker reason critic_severe — 07S: interrupt on
+  -- severe; the human reviews the report and resumes/reverts).
+  critic_verdict   JSONB,
+  created_at       TIMESTAMPTZ NOT NULL DEFAULT now(),
+  updated_at       TIMESTAMPTZ NOT NULL DEFAULT now(),
+  PRIMARY KEY (run_id, unit_index)
+);
+-- D5 additive column for DBs that created authoring_run_units before D5 (the
+-- CREATE TABLE above is IF NOT EXISTS — it does not evolve an existing table).
+ALTER TABLE authoring_run_units ADD COLUMN IF NOT EXISTS critic_verdict JSONB;
 """
 
 

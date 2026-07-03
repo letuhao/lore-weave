@@ -1,10 +1,11 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Brain, MessageSquare, Search, X } from 'lucide-react';
+import { MessageSquare, X } from 'lucide-react';
 import { toast } from 'sonner';
 import { useAuth } from '@/auth';
-import { aiModelsApi, type UserModel } from '@/features/ai-models/api';
-import type { CreateSessionPayload, GenerationParams } from '../types';
+import { defaultModelsApi, CHAT_CAPABILITY } from '@/features/settings/api';
+import { ModelPicker, useUserModels } from '@/components/model-picker';
+import type { GenerationParams } from '../types';
 
 // `key` → i18n label; `prompt` stays English (it is an LLM system directive).
 const PRESETS: { key: string; prompt: string; icon: string }[] = [
@@ -23,66 +24,49 @@ interface NewChatDialogProps {
 export function NewChatDialog({ open, onClose, onCreate }: NewChatDialogProps) {
   const { t } = useTranslation('chat');
   const { accessToken } = useAuth();
-  const [userModels, setUserModels] = useState<UserModel[]>([]);
   const [selectedModel, setSelectedModel] = useState('');
-  const [modelSearch, setModelSearch] = useState('');
   const [systemPrompt, setSystemPrompt] = useState('');
   const [selectedPreset, setSelectedPreset] = useState<number | null>(null);
   const [showPrompt, setShowPrompt] = useState(false);
-  const [loading, setLoading] = useState(false);
   const [creating, setCreating] = useState(false);
-  const searchInputRef = useRef<HTMLInputElement>(null);
 
-  useEffect(() => {
-    if (!open || !accessToken) return;
-    setLoading(true);
-    void aiModelsApi
-      .listUserModels(accessToken, { include_inactive: false })
-      .then((res) => {
-        setUserModels(res.items);
-        if (res.items.length > 0 && !selectedModel) {
-          // Pre-select favorite or first
-          const fav = res.items.find((m) => m.is_favorite);
-          setSelectedModel((fav ?? res.items[0]).user_model_id);
-        }
-      })
-      .catch(() => {})
-      .finally(() => setLoading(false));
-  }, [open, accessToken]);
+  // W5: the shared picker owns fetch/search/grouping — capability="chat" fixes
+  // the old "rerankers offered in the chat picker" bug (server-side filter).
+  const { models: userModels, loading } = useUserModels({
+    capability: CHAT_CAPABILITY,
+    enabled: open,
+  });
 
-  // Auto-focus search input when dialog opens
+  // Pre-select: the user's default chat model (Settings → Default models) when
+  // set and still listed, else the first model (server order = favorites first).
   useEffect(() => {
-    if (!open) return;
-    const timer = setTimeout(() => searchInputRef.current?.focus(), 50);
-    return () => clearTimeout(timer);
-  }, [open]);
+    if (!open || !accessToken || selectedModel || !userModels || userModels.length === 0) return;
+    let cancelled = false;
+    void defaultModelsApi
+      .get(accessToken)
+      .catch(() => ({ defaults: {} as Record<string, string> }))
+      .then(({ defaults }) => {
+        if (cancelled) return;
+        const preferred = defaults[CHAT_CAPABILITY];
+        const match = preferred && userModels.some((m) => m.user_model_id === preferred);
+        setSelectedModel(match ? preferred : userModels[0].user_model_id);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [open, accessToken, userModels, selectedModel]);
 
   // Reset on close
   useEffect(() => {
     if (!open) {
-      setModelSearch('');
       setSystemPrompt('');
       setSelectedPreset(null);
       setShowPrompt(false);
     }
   }, [open]);
 
-  // Group + filter models
-  const groupedModels = useMemo(() => {
-    const q = modelSearch.toLowerCase();
-    const filtered = q
-      ? userModels.filter((m) => (m.alias ?? m.provider_model_name).toLowerCase().includes(q) || m.provider_kind.toLowerCase().includes(q))
-      : userModels;
-    return filtered.reduce<Record<string, UserModel[]>>((acc, m) => {
-      const key = m.provider_kind;
-      if (!acc[key]) acc[key] = [];
-      acc[key].push(m);
-      return acc;
-    }, {});
-  }, [userModels, modelSearch]);
-
   // Selected model info
-  const selectedModelInfo = userModels.find((m) => m.user_model_id === selectedModel);
+  const selectedModelInfo = (userModels ?? []).find((m) => m.user_model_id === selectedModel);
 
   function handlePresetClick(index: number) {
     if (selectedPreset === index) {
@@ -128,47 +112,17 @@ export function NewChatDialog({ open, onClose, onCreate }: NewChatDialogProps) {
         </div>
 
         <div className="space-y-4">
-          {/* Model selector with search */}
+          {/* Model selector — shared ModelPicker (search / favorites / recents) */}
           <div className="space-y-1.5">
             <label className="text-xs font-medium text-muted-foreground">{t('new.model')}</label>
-            {loading ? (
-              <div className="h-9 animate-pulse rounded-md bg-muted" />
-            ) : userModels.length === 0 ? (
-              <p className="text-xs text-muted-foreground">
-                {t('new.no_models')}
-              </p>
-            ) : (
-              <>
-                <div className="relative">
-                  <Search className="absolute left-2.5 top-1/2 h-3 w-3 -translate-y-1/2 text-muted-foreground" />
-                  <input
-                    ref={searchInputRef}
-                    type="text"
-                    value={modelSearch}
-                    onChange={(e) => setModelSearch(e.target.value)}
-                    placeholder={t('new.search_models')}
-                    aria-label={t('new.search_models')}
-                    className="w-full rounded-t-md border border-border bg-background py-1.5 pl-7 pr-2 text-xs text-foreground placeholder:text-muted-foreground outline-none focus:border-ring"
-                  />
-                </div>
-                <select
-                  value={selectedModel}
-                  onChange={(e) => setSelectedModel(e.target.value)}
-                  size={Math.min(Object.values(groupedModels).flat().length + Object.keys(groupedModels).length, 6)}
-                  className="w-full rounded-b-md border border-t-0 border-border bg-background px-1 py-1 text-sm text-foreground outline-none focus:border-ring"
-                >
-                  {Object.entries(groupedModels).map(([provider, models]) => (
-                    <optgroup key={provider} label={provider}>
-                      {models.map((m) => (
-                        <option key={m.user_model_id} value={m.user_model_id}>
-                          {m.alias ?? m.provider_model_name}
-                        </option>
-                      ))}
-                    </optgroup>
-                  ))}
-                </select>
-              </>
-            )}
+            <ModelPicker
+              capability={CHAT_CAPABILITY}
+              value={selectedModel || null}
+              onChange={(id) => setSelectedModel(id ?? '')}
+              ariaLabel={t('new.model')}
+              placeholder={t('new.search_models')}
+              emptyState={<p className="text-xs text-muted-foreground">{t('new.no_models')}</p>}
+            />
 
             {/* Capability badges */}
             {selectedModelInfo && (

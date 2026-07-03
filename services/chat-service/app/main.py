@@ -8,6 +8,14 @@ from fastapi.responses import JSONResponse, PlainTextResponse
 
 from loreweave_obs import current_otel_trace_id, setup_tracing
 
+from app.client.book_steering_client import close_book_steering_client, init_book_steering_client
+from app.client.user_skills_client import close_user_skills_client, init_user_skills_client
+from app.client.registry_commands_client import close_commands_client, init_commands_client
+from app.client.registry_hooks_client import close_hooks_client, init_hooks_client
+from app.client.registry_subagents_client import (
+    close_subagents_client,
+    init_subagents_client,
+)
 from app.client.knowledge_client import close_knowledge_client, init_knowledge_client
 from app.config import settings
 from app.db.migrate import run_migrations
@@ -52,11 +60,26 @@ async def lifespan(app: FastAPI):
         pass  # MinIO may not be running in dev; don't block startup
     # K5: initialise the long-lived knowledge-service HTTP client.
     init_knowledge_client()
+    # RAID C1: long-lived book-service steering client (degrades to [] when down).
+    init_book_steering_client()
+    # REG-P1-05: long-lived agent-registry user-skills client (degrades to constants).
+    init_user_skills_client()
+    # REG-P4-01: long-lived agent-registry commands client (degrades to pass-through).
+    init_commands_client()
+    # REG-P4-03: long-lived agent-registry hooks client (degrades to unhooked turn).
+    init_hooks_client()
+    # REG-P5-01: long-lived agent-registry subagents client (degrades to no delegation).
+    init_subagents_client()
     # Start background cleanup task
     cleanup_task = asyncio.create_task(_audio_cleanup_loop())
     yield
     cleanup_task.cancel()
     await close_knowledge_client()
+    await close_book_steering_client()
+    await close_user_skills_client()
+    await close_commands_client()
+    await close_hooks_client()
+    await close_subagents_client()
     await close_pool()
 
 
@@ -117,6 +140,7 @@ app.include_router(voice.router)
 app.include_router(voice.voice_mgmt_router)
 app.include_router(feedback.router)
 app.include_router(internal.router)  # FD-2: chat-turn text fetch for KG extraction
+app.include_router(internal.telemetry_router)  # W1: /internal/tool-health telemetry
 
 
 @app.get("/health", response_class=PlainTextResponse)

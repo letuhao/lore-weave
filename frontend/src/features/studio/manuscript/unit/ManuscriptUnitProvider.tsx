@@ -17,9 +17,13 @@ import {
 import type { JSONContent } from '@tiptap/react';
 import { useAuth } from '@/auth';
 import { booksApi } from '@/features/books/api';
-import { addTextSnapshots } from '@/lib/tiptap-utils';
+import { compositionApi } from '@/features/composition/api';
+import { useWorkResolution } from '@/features/composition/hooks/useWork';
+import type { OutlineNode } from '@/features/composition/types';
+import { addTextSnapshots, extractText } from '@/lib/tiptap-utils';
 import type { TiptapEditorHandle } from '@/components/editor/TiptapEditor';
 import { useStudioHost, useStudioBusSelector } from '../../host/StudioHostProvider';
+import { _setManuscriptUnitBinding, emitManuscriptUnitChange, registerManuscriptUnitDocumentProvider } from './manuscriptUnitDocument';
 
 const EMPTY_DOC: JSONContent = { type: 'doc', content: [] };
 
@@ -34,11 +38,18 @@ export interface ManuscriptUnitState {
   textContent: string;
   saveState: SaveState;
   error: string | null;
+  /** #12 cycle-1 — the chapter's composition scene nodes (outline metadata, D17). Loaded with
+   * the unit when the book has a Work; [] otherwise. A separate buffer from the body (R6). */
+  scenes: OutlineNode[];
+  /** #12 M-G — the outline CHAPTER node scenes parent under (the rail's Create target).
+   * null until scenes load / when the chapter was never outlined. */
+  sceneChapterNodeId: string | null;
 }
 
 const INITIAL: ManuscriptUnitState = {
   chapterId: null, loadedBody: EMPTY_DOC, savedBody: EMPTY_DOC, workingBody: null,
-  version: undefined, textContent: '', saveState: 'idle', error: null,
+  version: undefined, textContent: '', saveState: 'idle', error: null, scenes: [],
+  sceneChapterNodeId: null,
 };
 
 export interface ManuscriptUnitApi {
@@ -51,11 +62,32 @@ export interface ManuscriptUnitApi {
   save: () => Promise<void>;
   revert: () => void;
   reload: () => Promise<void>;
+  /** Re-fetch ONLY the scenes[] buffer (Lane-B after a scene-metadata MCP write — never
+   * touches the body buffers, so it is dirty-safe by construction, R6). */
+  reloadScenes: () => Promise<void>;
   /** G7 — is THIS chapter's hoist dirty? The reconciler asks before a blind reload. */
   isChapterDirty: (chapterId: string) => boolean;
+  /** #12 M-F — scroll+cursor to the heading anchored to the scene. false = not anchored
+   * (or no live editor) — the caller surfaces the ⚓ hint, never a silent no-op. */
+  jumpToScene: (sceneId: string) => boolean;
+  /** #12 M-F backfill — anchor headings↔scenes by unique title match (explicit action;
+   * dirties the doc → the user saves). null = no live editor. */
+  anchorScenes: () => { anchored: number; unmatched: number; changed: boolean } | null;
 }
 
 const ManuscriptUnitContext = createContext<ManuscriptUnitApi | null>(null);
+
+/** The STABLE identity slice of the unit — changes only when the active chapter or the book's
+ * composition project changes, never per keystroke. Split from ManuscriptUnitApi (which carries
+ * the volatile body buffers) so low-frequency consumers — the Compose panel's studio_context
+ * position pointer (CTX-1) — don't re-render the whole chat subtree on every edit. */
+export interface ManuscriptUnitMeta {
+  /** The book's composition/knowledge project id (null until the Work resolves / none marked). */
+  projectId: string | null;
+  activeChapterId: string | null;
+}
+
+const ManuscriptUnitMetaContext = createContext<ManuscriptUnitMeta | null>(null);
 
 function isDirtyState(s: ManuscriptUnitState): boolean {
   return s.workingBody != null && JSON.stringify(s.workingBody) !== JSON.stringify(s.savedBody);
@@ -69,6 +101,30 @@ export function ManuscriptUnitProvider({ bookId, children }: { bookId: string; c
   const stateRef = useRef(state);
   stateRef.current = state;
 
+  // #12 — the book's composition Work (scenes[] source). No Work → scenes stay [].
+  // resolveWork returns an ENVELOPE {status, work, candidates} — same extraction as
+  // useManuscriptTree (the live gate caught a bare `.project_id` read returning undefined).
+  const work = useWorkResolution(bookId, accessToken);
+  const projectId = useMemo(() => {
+    const d = work.data;
+    if (d?.status === 'found') return d.work?.project_id ?? null;
+    if (d?.status === 'candidates') return d.candidates[0]?.project_id ?? null;
+    return null;
+  }, [work.data]);
+  const projectIdRef = useRef<string | null>(projectId);
+  projectIdRef.current = projectId;
+
+  const loadScenes = useCallback(async (chapterId: string) => {
+    const pid = projectIdRef.current;
+    if (!accessToken || !pid) return;
+    try {
+      const r = await compositionApi.listChapterScenes(pid, chapterId, accessToken);
+      setState((s) => (s.chapterId === chapterId
+        ? { ...s, scenes: r.items, sceneChapterNodeId: r.chapter_node_id ?? null }
+        : s));
+    } catch { /* scenes are additive metadata — a fetch failure must never break the editor */ }
+  }, [accessToken]);
+
   const loadChapter = useCallback(async (chapterId: string, external: boolean) => {
     if (!accessToken) return;
     setState((s) => ({ ...s, chapterId, saveState: external ? s.saveState : 'loading', error: null }));
@@ -77,13 +133,22 @@ export function ManuscriptUnitProvider({ bookId, children }: { bookId: string; c
       const body = (draft.body as JSONContent) ?? EMPTY_DOC;
       setState({
         chapterId, loadedBody: body, savedBody: body, workingBody: null,
-        version: draft.draft_version, textContent: draft.text_content ?? '',
-        saveState: 'idle', error: null,
+        // Server text_content can be empty (blocks projection) and an already-normalized
+        // body fires NO mount onUpdate to backfill it — derive from the body (M-H word count).
+        version: draft.draft_version, textContent: draft.text_content || extractText(body),
+        saveState: 'idle', error: null, scenes: [], sceneChapterNodeId: null,
       });
+      void loadScenes(chapterId);
     } catch (e) {
       setState((s) => ({ ...s, chapterId, saveState: 'error', error: (e as Error).message }));
     }
-  }, [accessToken, bookId]);
+  }, [accessToken, bookId, loadScenes]);
+
+  // Late Work resolution (the work query lands AFTER the first chapter opened) → backfill scenes.
+  useEffect(() => {
+    const chapterId = stateRef.current.chapterId;
+    if (projectId && chapterId && stateRef.current.scenes.length === 0) void loadScenes(chapterId);
+  }, [projectId, loadScenes]);
 
   // Open a chapter into the unit. Dirty-flush (S7/M2): a pending edit is SAVED before switching so
   // navigation never loses work (a prompt variant is a later UX polish).
@@ -99,7 +164,17 @@ export function ManuscriptUnitProvider({ bookId, children }: { bookId: string; c
   const setBody = useCallback((doc: JSONContent, text: string) => {
     // addTextSnapshots is REQUIRED before persist (chapter_blocks trigger) — do it at the edit
     // boundary so `workingBody` is always save-ready.
-    setState((s) => ({ ...s, workingBody: addTextSnapshots(doc), textContent: text, saveState: 'idle' }));
+    setState((s) => {
+      const snap = addTextSnapshots(doc);
+      // M-I — Tiptap's mount-normalize fires ONE onUpdate whose content equals what we just
+      // loaded; without this guard every open marked the unit dirty (and forced the
+      // json-editor's empty-buffer workaround). Only the FIRST update is compared (workingBody
+      // null) — a real edit path never pays the stringify.
+      if (s.workingBody == null && JSON.stringify(snap) === JSON.stringify(s.savedBody)) {
+        return s.textContent === text ? s : { ...s, textContent: text };
+      }
+      return { ...s, workingBody: snap, textContent: text, saveState: 'idle' };
+    });
   }, []);
 
   const save = useCallback(async () => {
@@ -144,10 +219,29 @@ export function ManuscriptUnitProvider({ bookId, children }: { bookId: string; c
     if (s.chapterId) await loadChapter(s.chapterId, true);
   }, [loadChapter]);
 
+  const reloadScenes = useCallback(async () => {
+    const chapterId = stateRef.current.chapterId;
+    if (chapterId) await loadScenes(chapterId);
+  }, [loadScenes]);
+
   const isChapterDirty = useCallback(
     (chapterId: string) => stateRef.current.chapterId === chapterId && isDirtyState(stateRef.current),
     [],
   );
+
+  // #12 M-F — scene anchoring, thin wrappers over the live editor handle. The rich
+  // panel wires editorRef; with no live editor (JSON-only view) jump=false / anchor=null.
+  const jumpToScene = useCallback(
+    (sceneId: string) => editorRef.current?.jumpToScene(sceneId) ?? false,
+    [],
+  );
+  const anchorScenes = useCallback(() => {
+    const handle = editorRef.current;
+    if (!handle) return null;
+    return handle.applySceneAnchors(
+      stateRef.current.scenes.map((s) => ({ id: s.id, title: s.title })),
+    );
+  }, []);
 
   // Bus-driven open (decoupled): host.focusManuscriptUnit publishes {chapter} → the hoist loads it.
   // The navigator / Quick Open / agent all drive the editor through this one seam.
@@ -164,14 +258,38 @@ export function ManuscriptUnitProvider({ bookId, children }: { bookId: string; c
 
   const api = useMemo<ManuscriptUnitApi>(() => ({
     state, isDirty: isDirtyState(state), editorRef,
-    openUnit, setBody, save, revert, reload, isChapterDirty,
-  }), [state, openUnit, setBody, save, revert, reload, isChapterDirty]);
+    openUnit, setBody, save, revert, reload, reloadScenes, isChapterDirty,
+    jumpToScene, anchorScenes,
+  }), [state, openUnit, setBody, save, revert, reload, reloadScenes, isChapterDirty, jumpToScene, anchorScenes]);
 
-  return <ManuscriptUnitContext.Provider value={api}>{children}</ManuscriptUnitContext.Provider>;
+  // #12 — bind the live api for the manuscript-unit DOCUMENT provider (S2 shared handle) and
+  // register the provider once. Every api change (i.e. every state change) notifies handle views.
+  useEffect(() => { registerManuscriptUnitDocumentProvider(); }, []);
+  useEffect(() => {
+    _setManuscriptUnitBinding({ api, token: accessToken, projectId });
+    emitManuscriptUnitChange();
+  }, [api, accessToken, projectId]);
+  useEffect(() => () => { _setManuscriptUnitBinding(null); emitManuscriptUnitChange(); }, []);
+
+  const meta = useMemo<ManuscriptUnitMeta>(
+    () => ({ projectId, activeChapterId: state.chapterId }),
+    [projectId, state.chapterId],
+  );
+
+  return (
+    <ManuscriptUnitMetaContext.Provider value={meta}>
+      <ManuscriptUnitContext.Provider value={api}>{children}</ManuscriptUnitContext.Provider>
+    </ManuscriptUnitMetaContext.Provider>
+  );
 }
 
 /** The Tier-4 manuscript unit. Returns null outside the provider (a panel may render before the
  * provider in tests) — callers guard. */
 export function useManuscriptUnit(): ManuscriptUnitApi | null {
   return useContext(ManuscriptUnitContext);
+}
+
+/** The stable identity slice (projectId + activeChapterId) — safe for low-frequency consumers. */
+export function useManuscriptUnitMeta(): ManuscriptUnitMeta | null {
+  return useContext(ManuscriptUnitMetaContext);
 }

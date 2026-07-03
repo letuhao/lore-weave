@@ -36,6 +36,7 @@ Monorepo layout:
 Data: Postgres (per-service DBs), RabbitMQ (job/event bus — translation & extraction workers, outbox events, via AMQP/aio_pika), Redis (cache / rate-limit / ephemeral state), MinIO (objects).
 
 ### Key Rules
+- **Agent Extensibility Standard** — adding a user/agent-authorable capability (skill, slash command, hook, subagent, MCP-server registration, plugin bundle)? Follow [`docs/standards/agent-extensibility.md`](docs/standards/agent-extensibility.md): the storage→resolver→degrade-safe-consumer→live-E2E shape, validate-parity on import paths, no-silent-no-op (API advertises only what the engine wires), quarantine+scan+SSRF for every external source (verification ≠ safety), and enum-closed-set capability args. Each rule caught a real bug across P0→P5.
 - **Contract-first**: API contract frozen before frontend flow
 - **Gateway invariant**: all external traffic through `api-gateway-bff` — with ONE sanctioned exception (PRR-20): the `game-server` real-time WebSocket transport (Colyseus) is a second public entry point that inherits the same auth/rate-limit/audit edge controls. See `docs/03_planning/LLM_MMO_RPG/00_foundation/02_invariants.md` I1 amendment.
 - **MCP-first invariant (AI agent logic)** — *any* AI **agent** capability (logic where an LLM decides actions, calls tools, or reasons multi-step over tools/data) MUST be exposed and invoked as an **MCP tool-call through `ai-gateway`** — never a bespoke HTTP endpoint driven by a raw prompt. **If the tool doesn't exist, create it** as an MCP tool on the owning domain service (domain owns its tools; `ai-gateway` only federates/routes — see `docs/specs/2026-06-10-glossary-assistant-architecture.md`). Non-agentic LLM *pipelines* (e.g. translation, enrichment) are exempt, but **new** agentic logic is not. Legacy agentic logic still on HTTP/raw-prompt is **tracked for migration in Deferred**, never silently grandfathered.
@@ -114,6 +115,20 @@ A *frontend tool* (the LLM calls it; the browser executes it: `ui_open_studio_pa
 - **Resolution merges tiers, lowest-precedence first:** System (defaults) → Per-user (the user's overrides/additions) → Per-book (book-specific). Higher tiers shadow lower by `code`.
 
 **Design checklist (apply to every new feature before building):** Who owns each row? What is its scope key? Can user A's action affect user B's data or view? If a "shared" or "global" resource is user-editable, STOP — it almost certainly needs a per-user/per-book tier instead, with System read-only + admin-only writes.
+
+---
+
+## Test Parallelization (dev speed — adopted 2026-07-03)
+
+Python suites run under **pytest-xdist**: `python -m pytest tests -q -n auto --dist loadgroup`
+(install once per machine: `python -m pip install pytest-xdist`). Measured: composition
+1472 tests 418s→55s; translation full suite 37s. Rules:
+- **Always pass `--dist loadgroup`** — tests hitting the shared dev Postgres carry
+  `pytestmark = pytest.mark.xdist_group("pg")` (serialized onto one worker). A NEW test file
+  that touches a real DB/port MUST add that mark, or parallel workers interleave and counts lie.
+- Iterating during BUILD: run `-k` subsets serially; the full `-n auto` suite is the VERIFY gate.
+- Cross-service: run each service's suite as a parallel background task; ONE combined verify
+  before commit when multiple services changed.
 
 ---
 

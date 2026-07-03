@@ -9,13 +9,15 @@ vi.mock('@/auth', () => ({
 
 const getSchemaMock = vi.fn();
 const addEdgeTypeMock = vi.fn();
-const deprecateEdgeTypeMock = vi.fn();
+const patchEdgeTypeMock = vi.fn();
+const deleteEdgeTypeMock = vi.fn();
 const addVocabValueMock = vi.fn();
 vi.mock('../../api/ontology', () => ({
   ontologyApi: {
     getSchema: (...a: unknown[]) => getSchemaMock(...a),
     addEdgeType: (...a: unknown[]) => addEdgeTypeMock(...a),
-    deprecateEdgeType: (...a: unknown[]) => deprecateEdgeTypeMock(...a),
+    patchEdgeType: (...a: unknown[]) => patchEdgeTypeMock(...a),
+    deleteEdgeType: (...a: unknown[]) => deleteEdgeTypeMock(...a),
     addVocabValue: (...a: unknown[]) => addVocabValueMock(...a),
   },
 }));
@@ -38,15 +40,17 @@ beforeEach(() => {
     edge_types: [{ code: 'PURSUES', label: 'Pursues', directed: true, temporal: true, cardinality: 'single_active' }],
   });
   addEdgeTypeMock.mockReset().mockResolvedValue({ code: 'NEW', label: 'New' });
-  deprecateEdgeTypeMock.mockReset().mockResolvedValue(undefined);
+  patchEdgeTypeMock.mockReset().mockResolvedValue({ code: 'PURSUES', label: 'Chases' });
+  deleteEdgeTypeMock.mockReset().mockResolvedValue(undefined);
   addVocabValueMock.mockReset().mockResolvedValue({ code: 'obsession', label: 'Obsession' });
 });
 
 describe('useGraphSchema — tree + child mutations', () => {
   it('loads the schema tree', async () => {
-    const { result } = renderHook(() => useGraphSchema('s1'), { wrapper });
+    const { result } = renderHook(() => useGraphSchema('s1', 'p1'), { wrapper });
     await waitFor(() => expect(result.current.schema?.code).toBe('xianxia'));
-    expect(getSchemaMock).toHaveBeenCalledWith('s1', 'tok');
+    // projectId is forwarded so a PROJECT-scoped schema stays visible (BE tenancy gate).
+    expect(getSchemaMock).toHaveBeenCalledWith('s1', 'tok', 'p1');
   });
 
   it('does not fetch when schemaId is null', async () => {
@@ -64,13 +68,22 @@ describe('useGraphSchema — tree + child mutations', () => {
     expect(addEdgeTypeMock).toHaveBeenCalledWith('s1', { code: 'MASTER_OF', label: 'Master of' }, 'tok');
   });
 
-  it('deprecates an edge type (deprecate-only)', async () => {
+  it('deletes an edge type (tier-aware server-side)', async () => {
     const { result } = renderHook(() => useGraphSchema('s1'), { wrapper });
     await waitFor(() => expect(result.current.schema).not.toBeNull());
     await act(async () => {
-      await result.current.deprecateEdgeType('PURSUES');
+      await result.current.deleteEdgeType('PURSUES');
     });
-    expect(deprecateEdgeTypeMock).toHaveBeenCalledWith('s1', 'PURSUES', 'tok');
+    expect(deleteEdgeTypeMock).toHaveBeenCalledWith('s1', 'PURSUES', 'tok');
+  });
+
+  it('patches an edge type (attribute-only; code immutable)', async () => {
+    const { result } = renderHook(() => useGraphSchema('s1'), { wrapper });
+    await waitFor(() => expect(result.current.schema).not.toBeNull());
+    await act(async () => {
+      await result.current.patchEdgeType({ code: 'PURSUES', patch: { label: 'Chases' } });
+    });
+    expect(patchEdgeTypeMock).toHaveBeenCalledWith('s1', 'PURSUES', { label: 'Chases' }, 'tok');
   });
 
   it('adds a vocab value under its set', async () => {

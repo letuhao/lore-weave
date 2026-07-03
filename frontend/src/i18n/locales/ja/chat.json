@@ -16,7 +16,60 @@
     "voice_settings": "音声設定",
     "export": "エクスポート",
     "rename": "名前を変更",
-    "session_settings": "セッション設定"
+    "session_settings": "セッション設定",
+    "context_meter": {
+      "label": "使用中のコンテキスト",
+      "unknown": "このモデルのコンテキストウィンドウ使用量は不明です",
+      "tokens": "{{used}} / {{limit}} トークン",
+      "until_compact": "自動コンパクトまで残り {{pct}}%",
+      "baseline": "システム + ツール: 入力前に {{tokens}} トークン"
+    }
+  },
+  "context_panel": {
+    "title": "コンテキスト内訳",
+    "free": "空き容量: {{tokens}} トークン",
+    "tok": "トークン",
+    "compact_at": "ウィンドウの {{pct}}% で自動コンパクトが作動",
+    "zero": "ゼロ",
+    "manage": "ツールとスキルを管理",
+    "coming_soon": "近日対応",
+    "compact": {
+      "button": "今すぐコンパクト",
+      "pending": "コンパクト中…",
+      "placeholder": "登場人物の名前とプロットの伏線を保持…",
+      "success": "コンパクト完了 — {{before}} → {{after}} トークン",
+      "failed": "コンパクトに失敗しました: {{error}}",
+      "compacted_through": "メッセージ {{seq}} までコンパクト済み",
+      "clear": "コンパクトを解除",
+      "cleared": "コンパクトを解除しました — 全履歴を復元"
+    },
+    "cat": {
+      "system_prompt": "ペルソナ",
+      "memory_knowledge": "ストーリー記憶",
+      "working_memory": "ワーキングメモリ",
+      "steering": "ステアリングルール",
+      "skills": "スキル",
+      "plan_nudge": "プラン誘導",
+      "book_note": "ブックノート",
+      "attached_context": "添付コンテキスト",
+      "history": "会話履歴",
+      "tool_results": "ツール結果",
+      "frontend_tool_schemas": "UIツール",
+      "mcp_tool_schemas": "MCPツール"
+    },
+    "history": {
+      "tab_now": "現在",
+      "tab_history": "履歴",
+      "turn": "ターン",
+      "total": "合計",
+      "empty": "まだ履歴がありません — メッセージを送信するとトークン使用量の記録が始まります。",
+      "error": "コンテキスト履歴を読み込めませんでした。"
+    }
+  },
+  "compaction": {
+    "toast": "以前のターンをコンパクト化 — {{before}}→{{after}} トークン",
+    "summarize_failed": "要約に失敗 — 代わりに古いターンを削除しました",
+    "overflowed": "コンパクト後もコンテキスト上限を超過 — 応答の詳細が失われる可能性があります"
   },
   "input": {
     "format": "形式:",
@@ -43,11 +96,34 @@
     "stop_audio": "音声を停止",
     "think": "熟考",
     "fast": "高速",
+    "effort_fast": "高速",
+    "effort_standard": "標準",
+    "effort_deep": "深思",
+    "effort_fast_hint": "内部思考なし — 最速の応答",
+    "effort_standard_hint": "回答前に思考 — 速度と深さのバランス",
+    "effort_deep_hint": "推論バジェット最大 — 最も遅く、最も徹底的",
+    "effort_off": "オフ",
+    "effort_low": "低",
+    "effort_medium": "中",
+    "effort_high": "高",
+    "effort_auto": "自動",
+    "effort_off_hint": "隠れた思考なし — 最速の返信",
+    "effort_low_hint": "少し推論 — 速く、やや慎重",
+    "effort_medium_hint": "回答前にバランスよく推論",
+    "effort_high_hint": "推論バジェット最大 — 最も遅く、最も徹底的",
+    "effort_auto_hint": "思考量をモデルに任せる",
+    "mode_cycle_hint": "Ctrl+. で確認 → 計画 → 書込を切り替え",
     "stop_generating": "生成を停止 (Esc)",
     "send": "送信 (Enter)",
     "context_attached": "コンテキスト添付済み · ",
     "hint": "Enterで送信 · Shift+Enterで改行",
-    "hint_thinking": " · Ctrl+Shift+Enterで熟考 · Ctrl+Enterで高速"
+    "hint_thinking": " · Ctrl+Shift+Enterで熟考 · Ctrl+Enterで高速",
+    "mode_ask": "確認",
+    "mode_plan": "計画",
+    "mode_write": "書込",
+    "mode_ask_hint": "読み取り専用モード — エージェントは調査できますが変更はできません",
+    "mode_plan_hint": "プランモード — エージェントは調査し、プランニングツールで計画を作成します。書込に切り替えるまで本文は書きません",
+    "mode_write_hint": "書き込みモード — エージェントは取り消し可能な変更を実行できます（新しいツールごとに一度確認）"
   },
   "new": {
     "preset": {
@@ -258,7 +334,11 @@
     "words": "{{count}}語",
     "unnamed": "(名前なし)",
     "no_matches": "一致するものが見つかりません。",
-    "no_items": "利用可能なアイテムがありません。"
+    "no_items": "利用可能なアイテムがありません。",
+    "mention": {
+      "title": "コンテキストを添付",
+      "aria": "コンテキスト候補"
+    }
   },
   "settings": {
     "title": "セッション設定",
@@ -299,5 +379,65 @@
     "delete_failed": "削除に失敗しました: {{error}}",
     "chat_error": "チャットエラー: {{error}}",
     "context_load_failed": "「{{label}}」のコンテキストを読み込めませんでした — それなしで送信します"
+  },
+  "toolApproval": {
+    "label": "エージェントにこのツールの実行を許可しますか？",
+    "tier": "ティア {{tier}}",
+    "tier_hint": "ティア {{tier}} — 取り消し可能な書き込み",
+    "hint": "この書き込みは取り消せます。「常に許可」を選ぶとこのツールについて今後確認しません。",
+    "approve_once": "今回のみ許可",
+    "always_allow": "常に許可",
+    "deny": "拒否",
+    "approved": "許可しました — 実行中 ✓",
+    "always_allowed": "常に許可 — 実行中 ✓",
+    "denied": "拒否しました"
+  },
+  "rack": {
+    "label": "コンテキスト",
+    "add": "追加",
+    "add_title": "ツールまたはスキルを追加",
+    "discovered": "{{count}} 件検出",
+    "clear_discovered": "検出したツールをクリア",
+    "search_placeholder": "検索…",
+    "tools_tab": "ツール",
+    "skills_tab": "スキル",
+    "summary": "ツール {{tools}} · スキル {{skills}} · {{tokens}} トークン",
+    "summary_no_tokens": "ツール {{tools}} · スキル {{skills}}",
+    "summary_tooltip": "コンテキスト内訳を開く",
+    "server_live": "ツールカタログからライブ取得",
+    "server_pins_only": "セッションのピン留めのみ",
+    "more": "他 {{count}} 件",
+    "more_tooltip": "未表示の検出ツールが他 {{count}} 件あります",
+    "remove": "削除",
+    "server": {
+      "knowledge": "ナレッジ",
+      "glossary": "用語集",
+      "book": "ブック",
+      "composition": "コンポジション",
+      "translation": "翻訳",
+      "jobs": "ジョブ",
+      "ui": "UI",
+      "chat": "チャット",
+      "other": "その他"
+    }
+  },
+  "inspector": {
+    "title": "エージェントランタイム",
+    "pinned": "ピン留めツール",
+    "hot": "ホットシード",
+    "activated": "アクティブ化済み",
+    "skills": "スキル",
+    "last_search": "直近の find_tools",
+    "advertised": "提供中のツール",
+    "advertised_sizes": "コア {{core}} · フロントエンド {{frontend}} · アクティブ {{activated}}",
+    "trail": "フェーズ遷移",
+    "phase": {
+      "idle": "待機",
+      "curated": "キュレート済み",
+      "skills": "スキル",
+      "discovering": "探索中…",
+      "activated": "アクティブ化",
+      "tool_running": "ツール実行中"
+    }
   }
 }

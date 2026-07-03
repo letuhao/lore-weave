@@ -51,6 +51,8 @@ function collectingCallbacks() {
     memoryModes: [] as string[],
     composing: [] as boolean[],
     agentSurfaces: [] as unknown[],
+    contextBudgets: [] as unknown[],
+    compactions: [] as unknown[],
     end: undefined as ChatStreamResult | undefined,
     aborted: undefined as ChatStreamResult | undefined,
     error: undefined as string | undefined,
@@ -64,6 +66,8 @@ function collectingCallbacks() {
     onMemoryMode: (m) => calls.memoryModes.push(m),
     onComposing: (a) => calls.composing.push(a),
     onAgentSurface: (s) => calls.agentSurfaces.push(s),
+    onContextBudget: (b) => calls.contextBudgets.push(b),
+    onCompaction: (e) => calls.compactions.push(e),
     onError: (m) => { calls.error = m; },
     onEnd: (r) => { calls.end = r; },
     onAbort: (r) => { calls.aborted = r; },
@@ -279,6 +283,66 @@ describe('runChatStream — every AG-UI event case is preserved', () => {
     expect(body).toMatchObject({ content: 'hi', editor_context: { book_id: 'b', chapter_id: 'c' }, display_language: 'en', disable_tools: true });
   });
 
+  it('6. CUSTOM contextBudget → W1 additive fields pass through; legacy frame unchanged', async () => {
+    // W2: breakdown / baseline_tokens / until_compact_pct ride the frame when
+    // present; a legacy frame without them still parses (no undefined keys leak
+    // into required fields).
+    stubFetch([
+      j({ type: 'CUSTOM', name: 'contextBudget', value: { used_tokens: 100, context_length: 1000, effective_limit: 900, pct: 0.11 } }),
+      j({
+        type: 'CUSTOM', name: 'contextBudget',
+        value: {
+          used_tokens: 3676, context_length: 8192, effective_limit: 8000, pct: 0.4595,
+          until_compact_pct: 0.2905, baseline_tokens: 3667,
+          breakdown: { system_prompt: 0, memory_knowledge: { total: 50, sections: { instructions: 33 } }, skills: 1907, history: 9, frontend_tool_schemas: 1484, mcp_tool_schemas: 193 },
+        },
+      }),
+      j({ type: 'RUN_FINISHED', result: {} }),
+    ]);
+    const { calls, cb } = collectingCallbacks();
+    await runChatStream(ARGS, 't', cb, new AbortController().signal);
+    expect(calls.contextBudgets).toHaveLength(2);
+    expect(calls.contextBudgets[0]).toEqual({ used_tokens: 100, context_length: 1000, effective_limit: 900, pct: 0.11 });
+    expect(calls.contextBudgets[1]).toMatchObject({
+      used_tokens: 3676,
+      until_compact_pct: 0.2905,
+      baseline_tokens: 3667,
+      breakdown: { memory_knowledge: { total: 50, sections: { instructions: 33 } }, skills: 1907 },
+    });
+  });
+
+  it('6. CUSTOM compaction → onCompaction; malformed frame dropped', async () => {
+    stubFetch([
+      j({ type: 'CUSTOM', name: 'compaction', value: { triggered: true, tool_results_cleared: 3, turns_truncated: 0, summarized: true, summarize_failed: false, overflowed: false, tokens_before: 9000, tokens_after: 4200, steps: ['cleared_tool_results', 'summarized'] } }),
+      j({ type: 'CUSTOM', name: 'compaction', value: { summarized: true } }), // no token counters → dropped
+      j({ type: 'RUN_FINISHED', result: {} }),
+    ]);
+    const { calls, cb } = collectingCallbacks();
+    await runChatStream(ARGS, 't', cb, new AbortController().signal);
+    expect(calls.compactions).toHaveLength(1);
+    expect(calls.compactions[0]).toMatchObject({
+      summarized: true, tokens_before: 9000, tokens_after: 4200, overflowed: false,
+    });
+  });
+
+  it('W4: reasoningEffort rides the body as reasoning_effort (omitted otherwise)', async () => {
+    const fetchMock = stubFetch([j({ type: 'RUN_FINISHED', result: {} })]);
+    await runChatStream(
+      { sessionId: 's-1', content: 'hi', thinking: true, reasoningEffort: 'deep' },
+      't', collectingCallbacks().cb, new AbortController().signal,
+    );
+    const body = JSON.parse(fetchMock.mock.calls[0][1].body as string);
+    expect(body).toMatchObject({ content: 'hi', thinking: true, reasoning_effort: 'deep' });
+
+    const fetchMock2 = stubFetch([j({ type: 'RUN_FINISHED', result: {} })]);
+    await runChatStream(
+      { sessionId: 's-1', content: 'hi', thinking: false },
+      't', collectingCallbacks().cb, new AbortController().signal,
+    );
+    const body2 = JSON.parse(fetchMock2.mock.calls[0][1].body as string);
+    expect(body2).not.toHaveProperty('reasoning_effort');
+  });
+
   it('override (resume) path uses the override url/body verbatim', async () => {
     const fetchMock = stubFetch([j({ type: 'RUN_FINISHED', result: {} })]);
     await runChatStream(
@@ -383,6 +447,11 @@ describe('createChatStateHub — protocol', () => {
     expect(a.last().activities).toEqual([{ op: 'chapter.create', summary: 's' }]);
     cb.onToolCall!({ tool: 'memory_search', ok: true });
     expect(a.last().toolCalls).toEqual([{ tool: 'memory_search', ok: true }]);
+    cb.onCompaction!({
+      triggered: true, tool_results_cleared: 1, turns_truncated: 0, summarized: false,
+      summarize_failed: false, overflowed: false, tokens_before: 100, tokens_after: 60,
+    });
+    expect(a.last().compaction).toMatchObject({ tokens_before: 100, tokens_after: 60 });
   });
 
   it('a suspended tool-call record surfaces the suspendedRun gate', () => {

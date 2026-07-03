@@ -356,6 +356,7 @@ func (s *Server) Router() http.Handler {
 
 		r.Get("/user-models", s.listUserModels)
 		r.Post("/user-models", s.createUserModel)
+		r.Put("/user-models/reorder", s.reorderUserModels)
 		r.Patch("/user-models/{user_model_id}", s.patchUserModel)
 		r.Delete("/user-models/{user_model_id}", s.deleteUserModel)
 		r.Patch("/user-models/{user_model_id}/activation", s.patchUserModelActivation)
@@ -1586,7 +1587,9 @@ type userModelRow struct {
 	IsActive             bool
 	IsFavorite           bool
 	CapabilityFlags      []byte
+	Pricing              []byte
 	Notes                string
+	SortOrder            *int
 	CreatedAt            time.Time
 	UpdatedAt            time.Time
 }
@@ -1651,7 +1654,11 @@ SELECT user_model_id FROM user_models WHERE owner_user_id=$1
 			argPos += 2
 		}
 	}
-	query += " ORDER BY created_at DESC"
+	// A user-defined custom sort_order wins ((8)-residual): the drag-reorder in the
+	// shared ModelPicker persists here. Un-ordered models (sort_order NULL) sort AFTER
+	// the ordered ones, falling back to favorites-first / newest-first — so favorites
+	// still get a pinned section for free whenever the user hasn't set an explicit order.
+	query += " ORDER BY sort_order ASC NULLS LAST, is_favorite DESC, created_at DESC"
 	rows, err := s.pool.Query(r.Context(), query, args...)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "M03_USER_MODEL_QUERY_FAILED", "failed to list user models")
@@ -1677,13 +1684,80 @@ SELECT user_model_id FROM user_models WHERE owner_user_id=$1
 	writeJSON(w, http.StatusOK, map[string]any{"items": items})
 }
 
+// reorderUserModels persists a user-defined custom sort order ((8)-residual). The
+// body is {ordered_ids: [uuid,...]}; the ids the caller OWNS are assigned
+// sort_order = index (0..N-1) in one transaction, and every OTHER model the caller
+// owns has its sort_order reset to NULL — so a partial reorder is well-defined
+// (only the listed ids are "ordered"; the rest fall back to favorites-first). Ids
+// the caller does not own are silently ignored (owner-scoped UPDATE). Returns the
+// updated list (same shape/order as GET /user-models).
+func (s *Server) reorderUserModels(w http.ResponseWriter, r *http.Request) {
+	userID, _, ok := s.auth(r)
+	if !ok {
+		writeError(w, http.StatusUnauthorized, "M03_UNAUTHORIZED", "unauthorized")
+		return
+	}
+	var in struct {
+		OrderedIDs []uuid.UUID `json:"ordered_ids"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&in); err != nil {
+		writeError(w, http.StatusBadRequest, "M03_VALIDATION_ERROR", "invalid payload")
+		return
+	}
+	tx, err := s.pool.Begin(r.Context())
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "M03_USER_MODEL_REORDER_FAILED", "failed to reorder user models")
+		return
+	}
+	defer tx.Rollback(r.Context())
+	// Clear any existing order for THIS user first, then stamp the new positions.
+	// Both statements are owner-scoped so a caller can never touch another tenant's
+	// rows (a foreign id in ordered_ids simply matches nothing).
+	//
+	// review-impl MED: the clear deliberately has NO `sort_order IS NOT NULL`
+	// predicate. Under READ COMMITTED that predicate matches (and locks) NOTHING
+	// when the rows start all-NULL (the common first-reorder case), so two
+	// concurrent reorders would fail to serialize and merge into a corrupt order.
+	// Updating every owner row forces a row lock on each, so a second concurrent
+	// reorder blocks on the first's commit and then re-reads a consistent base.
+	if _, err := tx.Exec(r.Context(),
+		`UPDATE user_models SET sort_order=NULL, updated_at=now() WHERE owner_user_id=$1`,
+		userID); err != nil {
+		writeError(w, http.StatusInternalServerError, "M03_USER_MODEL_REORDER_FAILED", "failed to reorder user models")
+		return
+	}
+	// Dedupe defensively (a direct API caller could send repeats; the FE never
+	// does) so a repeated id can't leave a gap / overwrite its own lead position.
+	seen := make(map[uuid.UUID]bool, len(in.OrderedIDs))
+	pos := 0
+	for _, id := range in.OrderedIDs {
+		if seen[id] {
+			continue
+		}
+		seen[id] = true
+		if _, err := tx.Exec(r.Context(),
+			`UPDATE user_models SET sort_order=$3, updated_at=now() WHERE user_model_id=$1 AND owner_user_id=$2`,
+			id, userID, pos); err != nil {
+			writeError(w, http.StatusInternalServerError, "M03_USER_MODEL_REORDER_FAILED", "failed to reorder user models")
+			return
+		}
+		pos++
+	}
+	if err := tx.Commit(r.Context()); err != nil {
+		writeError(w, http.StatusInternalServerError, "M03_USER_MODEL_REORDER_FAILED", "failed to reorder user models")
+		return
+	}
+	// Return the freshly-ordered list so the client can adopt server truth in one round-trip.
+	s.listUserModels(w, r)
+}
+
 func (s *Server) readUserModel(ctx context.Context, userID, id uuid.UUID) (map[string]any, error) {
 	var row userModelRow
 	err := s.pool.QueryRow(ctx, `
-SELECT user_model_id, provider_credential_id, provider_kind, provider_model_name, context_length, alias, is_active, is_favorite, capability_flags, notes, created_at, updated_at
+SELECT user_model_id, provider_credential_id, provider_kind, provider_model_name, context_length, alias, is_active, is_favorite, capability_flags, pricing, notes, sort_order, created_at, updated_at
 FROM user_models
 WHERE user_model_id=$1 AND owner_user_id=$2
-`, id, userID).Scan(&row.UserModelID, &row.ProviderCredentialID, &row.ProviderKind, &row.ProviderModelName, &row.ContextLength, &row.Alias, &row.IsActive, &row.IsFavorite, &row.CapabilityFlags, &row.Notes, &row.CreatedAt, &row.UpdatedAt)
+`, id, userID).Scan(&row.UserModelID, &row.ProviderCredentialID, &row.ProviderKind, &row.ProviderModelName, &row.ContextLength, &row.Alias, &row.IsActive, &row.IsFavorite, &row.CapabilityFlags, &row.Pricing, &row.Notes, &row.SortOrder, &row.CreatedAt, &row.UpdatedAt)
 	if err == pgx.ErrNoRows {
 		return nil, nil
 	}
@@ -1692,6 +1766,10 @@ WHERE user_model_id=$1 AND owner_user_id=$2
 	}
 	flags := map[string]any{}
 	_ = json.Unmarshal(row.CapabilityFlags, &flags)
+	// pricing JSONB (input_per_mtok, output_per_mtok, per_image, …) — additive,
+	// read-only here; the FE ModelPicker renders the "$0 local"/"$" hint from it.
+	pricing := map[string]any{}
+	_ = json.Unmarshal(row.Pricing, &pricing)
 	tags, err := s.loadTags(ctx, row.UserModelID)
 	if err != nil {
 		return nil, err
@@ -1706,7 +1784,9 @@ WHERE user_model_id=$1 AND owner_user_id=$2
 		"is_active":              row.IsActive,
 		"is_favorite":            row.IsFavorite,
 		"capability_flags":       flags,
+		"pricing":                pricing,
 		"notes":                  row.Notes,
+		"sort_order":             row.SortOrder,
 		"tags":                   tags,
 		"created_at":             row.CreatedAt,
 		"updated_at":             row.UpdatedAt,

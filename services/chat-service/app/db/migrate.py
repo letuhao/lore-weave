@@ -120,6 +120,18 @@ END $$;
 CREATE INDEX IF NOT EXISTS idx_chat_sessions_project
   ON chat_sessions(project_id) WHERE project_id IS NOT NULL;
 
+-- Track B B1(2) — multi-KG: a session may ground on a SET of knowledge projects
+-- (world + member books) unioned into one context block. `project_ids` is the
+-- ordered set; the legacy single `project_id` stays for back-compat + tool scope.
+-- No FK (knowledge_projects lives in loreweave_knowledge). Empty/NULL ⇒ the
+-- legacy single-project (or no-project) path. Validated by knowledge-service on
+-- context build (unknown ids are owner-scoped-filtered, not fatal).
+DO $$ BEGIN
+  IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='chat_sessions' AND column_name='project_ids') THEN
+    ALTER TABLE chat_sessions ADD COLUMN project_ids UUID[] NOT NULL DEFAULT '{}';
+  END IF;
+END $$;
+
 -- A2A phase-2 — optional "composer" model for in-turn prose delegation. When
 -- set, the orchestrator (session model) may call the server-side compose_prose
 -- tool, which streams THIS model to generate prose and returns it as the tool
@@ -170,6 +182,31 @@ DO $$ BEGIN
   END IF;
 END $$;
 
+-- Chat Quality Wave W1 — per-turn context-breakdown frame persisted on the
+-- assistant message ({used_tokens, context_length, effective_limit, pct,
+-- until_compact_pct, breakdown:{category: tokens}, baseline_tokens}) so the
+-- per-category context history of a session is traceable after the fact.
+-- NULL on rows written before W1 (and user rows).
+DO $$ BEGIN
+  IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='chat_messages' AND column_name='context_breakdown') THEN
+    ALTER TABLE chat_messages ADD COLUMN context_breakdown JSONB;
+  END IF;
+END $$;
+
+-- Chat Quality Wave W3 — manual steerable compact, PERSISTED on the session
+-- (PO decision #2: multi-device consistent, unlike the per-turn ephemeral
+-- auto-compaction). `compact_summary` is the LLM synopsis of every message
+-- with sequence_num < `compacted_before_seq`; the history loader splices
+-- summary + post-seq messages. NULL compacted_before_seq = never compacted.
+DO $$ BEGIN
+  IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='chat_sessions' AND column_name='compact_summary') THEN
+    ALTER TABLE chat_sessions ADD COLUMN compact_summary TEXT;
+  END IF;
+  IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='chat_sessions' AND column_name='compacted_before_seq') THEN
+    ALTER TABLE chat_sessions ADD COLUMN compacted_before_seq INT;
+  END IF;
+END $$;
+
 -- ARCH-1 C6 — suspended runs for AG-UI frontend-tool-calls. When the model
 -- calls a frontend tool (e.g. propose_edit), the turn pauses: the in-flight
 -- conversation `working` list + the dangling assistant tool-call cannot be
@@ -203,6 +240,31 @@ CREATE INDEX IF NOT EXISTS idx_chat_suspended_runs_session
   ON chat_suspended_runs(session_id);
 CREATE INDEX IF NOT EXISTS idx_chat_suspended_runs_sweep
   ON chat_suspended_runs(expires_at);
+
+-- RAID Wave C2 (DR-C2) — the permission mode the turn ran under, captured at
+-- suspend time so a resumed run continues under the SAME mode (an Ask-mode
+-- frontend-tool suspend must not resume into the full Write surface).
+DO $$ BEGIN
+  IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='chat_suspended_runs' AND column_name='permission_mode') THEN
+    ALTER TABLE chat_suspended_runs ADD COLUMN permission_mode VARCHAR(8) NOT NULL DEFAULT 'write';
+  END IF;
+END $$;
+
+-- ══════════════════════════════════════════════════════════════════════
+-- RAID Wave C2 (DR-C2) — per-tool approval allowlist ("Always allow").
+-- In Write mode a Tier-A server tool NOT on the user's allowlist suspends
+-- the run for a one-time approval card; "Always allow" inserts a row here
+-- so that tool never prompts again for this user. Per-USER tier (CLAUDE.md
+-- tenancy): a tool's trustworthiness is not book-specific, so no book
+-- scope; no global rows. Reads fail-OPEN (a DB blip must not brick tool
+-- calling — see DR-C2 reversibility).
+-- ══════════════════════════════════════════════════════════════════════
+CREATE TABLE IF NOT EXISTS user_tool_approvals (
+  user_id    UUID NOT NULL,
+  tool_name  TEXT NOT NULL,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  PRIMARY KEY (user_id, tool_name)
+);
 
 -- ══════════════════════════════════════════════════════════════════════
 -- Track "Production Eval + Feedback Flywheel" — Q3: chat-turn feedback.

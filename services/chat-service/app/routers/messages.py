@@ -1,4 +1,5 @@
 import json
+import logging
 from uuid import UUID
 
 import asyncpg
@@ -9,7 +10,15 @@ from app.client.billing_client import get_billing_client
 from app.client.provider_client import get_provider_client
 from app.config import settings
 from app.deps import get_current_user, get_db
-from app.models import ChatMessage, MessageListResponse, SendMessageRequest, ToolResultRequest
+from app.models import (
+    ChatMessage,
+    ContextHistoryPoint,
+    ContextHistoryResponse,
+    LatestContextBudgetResponse,
+    MessageListResponse,
+    SendMessageRequest,
+    ToolResultRequest,
+)
 from app.services.stream_service import resume_stream_response, stream_response
 
 # ARCH-1 C3 — per-request stream-format negotiation. A multi-device deployment
@@ -17,6 +26,8 @@ from app.services.stream_service import resume_stream_response, stream_response
 # is chosen per request, not by a global flag.
 STREAM_FORMAT_HEADER = "x-loreweave-stream-format"
 _VALID_STREAM_FORMATS = {"legacy", "agui"}
+
+logger = logging.getLogger(__name__)
 
 
 def _resolve_stream_format(raw: str | None) -> str:
@@ -106,6 +117,123 @@ async def list_messages(
     return MessageListResponse(items=[_row_to_message(r) for r in rows])
 
 
+def _extract_breakdown(raw: object) -> dict | None:
+    """Pull the per-category `breakdown` sub-map out of a persisted
+    context_breakdown JSONB (the full contextBudget frame). Returns None when
+    the column is absent/unparseable or carries no breakdown (e.g. a resume-path
+    turn that didn't re-measure the parts) — such turns are skipped from the
+    series so the chart shows only turns with real per-category data."""
+    payload = _parse_content_parts(raw)
+    if not isinstance(payload, dict):
+        return None
+    breakdown = payload.get("breakdown")
+    if not isinstance(breakdown, dict) or not breakdown:
+        return None
+    return breakdown
+
+
+@router.get("/{session_id}/context-history", response_model=ContextHistoryResponse)
+async def context_history(
+    session_id: UUID,
+    # ge=1 floors the bound: a negative limit reaches Postgres as a negative
+    # LIMIT ("must not be negative") → 500. FastAPI rejects it as 422 instead.
+    limit: int = Query(100, ge=1, le=200),
+    user_id: str = Depends(get_current_user),
+    pool: asyncpg.Pool = Depends(get_db),
+) -> ContextHistoryResponse:
+    """Chat Quality Wave W1-residual — the per-turn token-history series.
+
+    W1 persisted the full contextBudget frame per assistant turn
+    (chat_messages.context_breakdown JSONB). This returns the ordered SERIES of
+    per-category token costs across the session's assistant turns, so the FE can
+    chart how each category evolved (the "History" view of the breakdown panel).
+    Owner-gated like the sibling session-scoped routes; windowed to the most
+    recent `limit` turns but returned oldest-first for a left-to-right x-axis."""
+    exists = await pool.fetchval(
+        "SELECT 1 FROM chat_sessions WHERE session_id=$1 AND owner_user_id=$2",
+        str(session_id), user_id,
+    )
+    if not exists:
+        raise HTTPException(status_code=404, detail="session not found")
+
+    # Window to the most recent `limit` turns (DESC) then re-sort ASC so the
+    # chart's x-axis reads oldest→newest. Owner-scoped, active branch only,
+    # assistant turns that actually carry a breakdown.
+    rows = await pool.fetch(
+        """
+        SELECT sequence_num, created_at, input_tokens, output_tokens, context_breakdown
+        FROM (
+            SELECT sequence_num, created_at, input_tokens, output_tokens, context_breakdown
+            FROM chat_messages
+            -- branch_id=0 pins the live/active branch (edits move superseded
+            -- turns to a higher branch) so the chart tracks the current timeline.
+            WHERE session_id=$1 AND owner_user_id=$2 AND branch_id=0
+              AND role='assistant' AND context_breakdown IS NOT NULL
+            ORDER BY sequence_num DESC
+            LIMIT $3
+        ) t
+        ORDER BY sequence_num ASC
+        """,
+        str(session_id), user_id, limit,
+    )
+
+    items: list[ContextHistoryPoint] = []
+    for r in rows:
+        breakdown = _extract_breakdown(r["context_breakdown"])
+        if breakdown is None:
+            continue
+        items.append(
+            ContextHistoryPoint(
+                sequence_num=r["sequence_num"],
+                created_at=r["created_at"],
+                input_tokens=r["input_tokens"],
+                output_tokens=r["output_tokens"],
+                breakdown=breakdown,
+            )
+        )
+    return ContextHistoryResponse(items=items)
+
+
+@router.get("/{session_id}/context-budget", response_model=LatestContextBudgetResponse)
+async def latest_context_budget(
+    session_id: UUID,
+    user_id: str = Depends(get_current_user),
+    pool: asyncpg.Pool = Depends(get_db),
+) -> LatestContextBudgetResponse:
+    """The LAST assistant turn's persisted contextBudget frame.
+
+    The header context meter previously derived its snapshot ONLY from the live
+    per-turn SSE `contextBudget` event, so it rendered nothing on session
+    load/switch/reload until the NEXT turn finished (the "sometimes shows,
+    sometimes not" gap). This lets the FE SEED the meter from the persisted frame
+    on load, so it's visible whenever the session has at least one measured turn.
+    Owner-gated like the sibling session-scoped routes; `budget=None` for a
+    brand-new session with no measured turn yet."""
+    exists = await pool.fetchval(
+        "SELECT 1 FROM chat_sessions WHERE session_id=$1 AND owner_user_id=$2",
+        str(session_id), user_id,
+    )
+    if not exists:
+        raise HTTPException(status_code=404, detail="session not found")
+
+    # The most recent assistant turn on the live branch that actually carried a
+    # measured budget (a resume-path turn may persist None). fetchROW (not
+    # fetchval) so it mocks independently of the owner-gate fetchval above.
+    row = await pool.fetchrow(
+        """
+        SELECT context_breakdown
+        FROM chat_messages
+        WHERE session_id=$1 AND owner_user_id=$2 AND branch_id=0
+          AND role='assistant' AND context_breakdown IS NOT NULL
+        ORDER BY sequence_num DESC
+        LIMIT 1
+        """,
+        str(session_id), user_id,
+    )
+    frame = _parse_content_parts(row["context_breakdown"]) if row else None
+    return LatestContextBudgetResponse(budget=frame if isinstance(frame, dict) else None)
+
+
 @router.get("/{session_id}/branches")
 async def list_branches(
     session_id: UUID,
@@ -169,6 +297,27 @@ async def send_message(
     model_source = session["model_source"]
     model_ref = str(session["model_ref"])
 
+    # ── P4 REG-P4-01: expand a user-authored slash command (/name args) in place —
+    # BEFORE the user message is persisted + streamed, so both the transcript and the
+    # model see the template. Gated on a leading non-builtin /name so a normal turn
+    # never hits the registry; degrades to pass-through (original text) on any failure.
+    message_content = body.content
+    try:
+        from app.client.registry_commands_client import (
+            expand_command,
+            get_commands_client,
+            looks_like_command,
+        )
+
+        if looks_like_command(message_content):
+            _book_id = str(session["project_id"]) if session["project_id"] else ""
+            _cmds = await get_commands_client().get_commands(str(user_id), book_id=_book_id)
+            _expanded, _cmd_name = expand_command(message_content, _cmds)
+            if _cmd_name:
+                message_content = _expanded
+    except Exception:  # noqa: BLE001 — a command is enrichment, never load-bearing
+        logger.warning("command expansion failed (pass-through)", exc_info=False)
+
     # Edit flow: move old messages to a branch, insert new on active branch (0).
     # Non-edit flow: simple insert + increment.
     parent_message_id: str | None = None
@@ -202,6 +351,20 @@ async def send_message(
                     branched_count = int(result.split()[-1])
                 except (ValueError, IndexError):
                     branched_count = 0
+                # W3 compact interplay (review-impl H1): editing a message that
+                # sits INSIDE the compacted region rewrites the timeline the
+                # summary described AND re-anchors new seqs BELOW the boundary
+                # (splice would then load zero user messages). Clear the compact
+                # in the same transaction — full history is loadable again.
+                # (.get works on asyncpg Record and dict test-mocks alike)
+                compacted_before = session.get("compacted_before_seq")
+                if compacted_before is not None and body.edit_from_sequence < compacted_before:
+                    await conn.execute(
+                        "UPDATE chat_sessions SET compact_summary = NULL, "
+                        "compacted_before_seq = NULL, updated_at = now() "
+                        "WHERE session_id = $1",
+                        str(session_id),
+                    )
 
             seq = await conn.fetchval(
                 """
@@ -216,7 +379,7 @@ async def send_message(
                   (session_id, owner_user_id, role, content, sequence_num, parent_message_id, branch_id)
                 VALUES ($1,$2,'user',$3,$4,$5, 0)
                 """,
-                str(session_id), user_id, body.content, seq, parent_message_id,
+                str(session_id), user_id, message_content, seq, parent_message_id,
             )
             # Update message count: subtract branched msgs, add 1 for new user msg
             await conn.execute(
@@ -250,7 +413,7 @@ async def send_message(
     return StreamingResponse(
         stream_response(
             session_id=str(session_id),
-            user_message_content=body.content,
+            user_message_content=message_content,
             user_id=user_id,
             model_source=model_source,
             model_ref=model_ref,
@@ -260,6 +423,8 @@ async def send_message(
             parent_message_id=parent_message_id,
             context=body.context,
             thinking=body.thinking,
+            # W4 — granular effort from the input-bar dropdown (fast|standard|deep).
+            reasoning_effort=body.reasoning_effort,
             stream_format=stream_format,
             editor_context=body.editor_context.model_dump() if body.editor_context else None,
             book_context=body.book_context.model_dump() if body.book_context else None,
@@ -273,6 +438,8 @@ async def send_message(
             enabled_skills=body.enabled_skills,
             # #09 Lane A — presence enables the studio dock-nav frontend tools.
             studio_context=body.studio_context.model_dump() if body.studio_context else None,
+            # RAID Wave C2 (DR-C2) — HITL permission mode (ask|write, default write).
+            permission_mode=body.permission_mode,
         ),
         media_type="text/event-stream",
         headers=headers,

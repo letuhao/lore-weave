@@ -353,6 +353,7 @@ async def _maybe_apply_entity_recovery(
     job_id: str,
     source_type: str,
     source_id: str,
+    override: EntityRecoveryConfig | None = None,
 ) -> tuple[list[Any], list[Any], list[Any], list[Any]]:
     """Cycle 73d — optional 3-tier entity recovery (runs BEFORE filter).
 
@@ -360,8 +361,14 @@ async def _maybe_apply_entity_recovery(
     known_entity_kinds map for Tier 1 lookup. Tier 3 (LLM classifier)
     handles names not in glossary. Author hints surface is future work
     (no API yet).
+
+    KN model-roles: `override` is the PER-PROJECT/PER-USER-resolved config
+    (endpoint-resolved via resolve_role_model — role override → project default
+    → user-global default → env). When None, falls back to the module-level env
+    config (`_ENTITY_RECOVERY_CONFIG`) — byte-identical to pre-KN behavior.
     """
-    if _ENTITY_RECOVERY_CONFIG is None:
+    base_cfg = override if override is not None else _ENTITY_RECOVERY_CONFIG
+    if base_cfg is None:
         return entities, relations, events, facts
 
     # Build name→kind from glossary anchors (name + aliases, lowercase
@@ -376,7 +383,7 @@ async def _maybe_apply_entity_recovery(
     # Inject per-call config with merged known_entity_kinds.
     from dataclasses import replace as dc_replace
     config = dc_replace(
-        _ENTITY_RECOVERY_CONFIG, known_entity_kinds=known_kinds
+        base_cfg, known_entity_kinds=known_kinds
     )
 
     pre_entity_count = len(entities)
@@ -863,6 +870,9 @@ async def _run_pipeline(
     # so ``write_schema=None``/``triage_repo=None`` is byte-identical to today).
     write_schema: ExtractionSchema | None = None,
     triage_repo: "TriageParkProtocol | None" = None,
+    # KN model-roles — per-project/per-user-resolved entity_recovery config
+    # (endpoint-resolved). None ⇒ module-level env config (byte-identical).
+    entity_recovery_override: EntityRecoveryConfig | None = None,
 ) -> Pass2WriteResult:
     """Core pipeline shared by chat_turn and chapter entry points.
 
@@ -1058,6 +1068,7 @@ async def _run_pipeline(
             job_id=job_id,
             source_type=source_type,
             source_id=source_id,
+            override=entity_recovery_override,
         )
 
         # Cycle 72 — optional precision filter (no-op when env unset).
@@ -1280,6 +1291,8 @@ async def extract_pass2_chat_turn(
     # repo for the schema split (see _run_pipeline). Both None ⇒ byte-identical.
     write_schema: ExtractionSchema | None = None,
     triage_repo: "TriageParkProtocol | None" = None,
+    # KN model-roles — endpoint-resolved entity_recovery config (None ⇒ env).
+    entity_recovery_override: EntityRecoveryConfig | None = None,
 ) -> Pass2WriteResult:
     """Run the Pass 2 LLM pipeline on a chat turn.
 
@@ -1318,6 +1331,7 @@ async def extract_pass2_chat_turn(
         schema=schema,
         write_schema=write_schema,
         triage_repo=triage_repo,
+        entity_recovery_override=entity_recovery_override,
     )
 
 
@@ -1364,6 +1378,8 @@ async def extract_pass2_chapter(
     # repo for the schema split (see _run_pipeline). Both None ⇒ byte-identical.
     write_schema: ExtractionSchema | None = None,
     triage_repo: "TriageParkProtocol | None" = None,
+    # KN model-roles — endpoint-resolved entity_recovery config (None ⇒ env).
+    entity_recovery_override: EntityRecoveryConfig | None = None,
 ) -> Pass2WriteResult:
     """Run the Pass 2 LLM pipeline on a chapter.
 
@@ -1409,4 +1425,5 @@ async def extract_pass2_chapter(
         schema=schema,
         write_schema=write_schema,
         triage_repo=triage_repo,
+        entity_recovery_override=entity_recovery_override,
     )

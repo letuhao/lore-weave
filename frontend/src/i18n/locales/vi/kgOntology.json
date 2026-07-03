@@ -9,7 +9,12 @@
   "common": {
     "dismiss": "Bỏ qua",
     "deprecate": "Ngừng dùng",
-    "deprecated": "đã ngừng dùng"
+    "deprecated": "đã ngừng dùng",
+    "save": "Lưu",
+    "cancel": "Huỷ",
+    "edit": "Sửa",
+    "delete": "Xoá",
+    "deleted": "Đã xoá"
   },
   "adopt": {
     "chooseTemplate": "Chọn một mẫu để áp dụng",
@@ -67,8 +72,54 @@
     "noVocabSets": "Lược đồ này chưa có bộ từ vựng nào — hãy nhờ AI thêm trước.",
     "add": "Thêm",
     "added": "Đã cập nhật lược đồ",
+    "saved": "Đã cập nhật lược đồ",
     "addFailed": "Không thể cập nhật lược đồ",
-    "forbidden": "Bạn cần quyền Quản lý trên dự án này để sửa lược đồ"
+    "forbidden": "Bạn cần quyền Quản lý trên dự án này để sửa lược đồ",
+    "vocabSets": "Bộ từ vựng",
+    "sourceKinds": "Loại nguồn",
+    "targetKinds": "Loại đích",
+    "descriptionField": "Mô tả",
+    "addVocabSet": "Thêm bộ từ vựng",
+    "usedBy": "{{count}} nơi dùng",
+    "anyKind": "mọi loại",
+    "addKind": "thêm loại",
+    "otherKind": "khác…",
+    "emptyTitle": "Schema này đang trống",
+    "emptyHelp": "Bắt đầu bằng cách thêm một node kind (nhân vật, địa điểm, tổ chức…), rồi nối chúng bằng một edge type.",
+    "deleteConfirmTitle": "Xoá thành phần này?",
+    "deleteConfirmBody": "\"{{code}}\" đang được {{count}} phần tử đồ thị tham chiếu. Xoá sẽ ngừng dùng nó — dữ liệu vẫn truy vấn được. Vẫn xoá?"
+  },
+  "canvas": {
+    "list": "Danh sách",
+    "canvas": "Sơ đồ",
+    "hint": "Kéo để sắp xếp · ⇢ rồi click một node để nối",
+    "connect": "Nối từ đây",
+    "connectingFrom": "Đang nối từ {{code}} — click node đích",
+    "newKindPlaceholder": "loại mới",
+    "addKind": "Thêm loại",
+    "empty": "Chưa có node kind nào — thêm một cái để bắt đầu.",
+    "looseEdges": "Edge type chưa có loại"
+  },
+  "generate": {
+    "cta": "Sinh bằng AI",
+    "title": "Sinh schema từ mô tả",
+    "premise": "Mô tả",
+    "premisePlaceholder": "Một truyện tiên hiệp về một tu sĩ trẻ…",
+    "genre": "Thể loại (tuỳ chọn)",
+    "model": "Model",
+    "generateButton": "Sinh",
+    "generating": "Đang sinh…",
+    "reviewHelp": "Xem đề xuất và thêm những gì bạn muốn.",
+    "regenerate": "Quay lại",
+    "adoptButton": "Thêm mục đã chọn",
+    "failed": "Không sinh được schema"
+  },
+  "infer": {
+    "title": "Tìm thấy trong đồ thị của bạn",
+    "help": "truyện đã trích xuất sẵn — thêm những cái còn thiếu",
+    "addButton": "Thêm {{count}} vào schema",
+    "added": "Đã thêm {{count}} vào schema",
+    "addedPartial": "Đã thêm {{ok}} · {{failed}} lỗi"
   },
   "sync": {
     "upToDate": "Đã cập nhật — không có thay đổi từ nguồn.",

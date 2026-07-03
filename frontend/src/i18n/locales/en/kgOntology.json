@@ -9,7 +9,12 @@
   "common": {
     "dismiss": "Dismiss",
     "deprecate": "Deprecate",
-    "deprecated": "deprecated"
+    "deprecated": "deprecated",
+    "save": "Save",
+    "cancel": "Cancel",
+    "edit": "Edit",
+    "delete": "Delete",
+    "deleted": "Deleted"
   },
   "adopt": {
     "chooseTemplate": "Choose a template to adopt",
@@ -67,8 +72,54 @@
     "noVocabSets": "No vocab sets in this schema yet — ask the AI to add one first.",
     "add": "Add",
     "added": "Schema updated",
+    "saved": "Schema updated",
     "addFailed": "Couldn't update the schema",
-    "forbidden": "You need Manage access on this project to edit the schema"
+    "forbidden": "You need Manage access on this project to edit the schema",
+    "vocabSets": "Vocab sets",
+    "sourceKinds": "Source kinds",
+    "targetKinds": "Target kinds",
+    "descriptionField": "Description",
+    "addVocabSet": "Add vocab set",
+    "usedBy": "used by {{count}}",
+    "anyKind": "any kind",
+    "addKind": "add kind",
+    "otherKind": "other…",
+    "emptyTitle": "This schema is empty",
+    "emptyHelp": "Start by adding a node kind (a character, a place, an organization…), then connect them with an edge type.",
+    "deleteConfirmTitle": "Delete this component?",
+    "deleteConfirmBody": "\"{{code}}\" is referenced by {{count}} graph element(s). Deleting deprecates it — the data stays queryable. Delete anyway?"
+  },
+  "canvas": {
+    "list": "List",
+    "canvas": "Canvas",
+    "hint": "Drag to arrange · ⇢ then click a node to connect",
+    "connect": "Connect from here",
+    "connectingFrom": "Connecting from {{code}} — click a target node",
+    "newKindPlaceholder": "new kind",
+    "addKind": "Add kind",
+    "empty": "No node kinds yet — add one to start.",
+    "looseEdges": "Edge types without kinds"
+  },
+  "generate": {
+    "cta": "Generate with AI",
+    "title": "Generate a schema from a description",
+    "premise": "Premise",
+    "premisePlaceholder": "A xianxia tale about a young cultivator who…",
+    "genre": "Genre (optional)",
+    "model": "Model",
+    "generateButton": "Generate",
+    "generating": "Generating…",
+    "reviewHelp": "Review the proposal and add what you want.",
+    "regenerate": "Back",
+    "adoptButton": "Add selected",
+    "failed": "Couldn't generate a schema"
+  },
+  "infer": {
+    "title": "Found in your graph",
+    "help": "your book already extracted these — add the missing ones",
+    "addButton": "Add {{count}} to schema",
+    "added": "Added {{count}} to the schema",
+    "addedPartial": "Added {{ok}} · {{failed}} failed"
   },
   "sync": {
     "upToDate": "Up to date — no upstream changes.",

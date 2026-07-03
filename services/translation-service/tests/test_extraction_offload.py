@@ -22,6 +22,11 @@ _DSN = os.environ.get(
     "postgresql://loreweave:loreweave_dev@localhost:5555/loreweave_translation",
 )
 
+# These tests do table-wide sweeps against the shared dev Postgres — serialize
+# them onto one xdist worker (`-n auto --dist loadgroup`) or concurrent workers
+# interleave their sweeps and the counts lie.
+pytestmark = pytest.mark.xdist_group("pg")
+
 
 class _ConnPool:
     def __init__(self, conn):
@@ -57,6 +62,14 @@ async def _with_pg(fn):
         pytest.skip(f"no reachable Postgres at TRANSLATION_TEST_PG_DSN ({_DSN})")
     try:
         await conn.execute(DDL)
+        # Hermetic shadow: a TEMP table shadows public.extraction_raw_outputs in
+        # this connection's search_path, so the table-wide sweeps under test see
+        # ONLY the rows this test seeds — naturally-aged rows in the shared dev
+        # DB must not leak into the offload/purge counts.
+        await conn.execute(
+            "CREATE TEMP TABLE extraction_raw_outputs "
+            "(LIKE extraction_raw_outputs INCLUDING ALL)"
+        )
         tx = conn.transaction()
         await tx.start()
         try:

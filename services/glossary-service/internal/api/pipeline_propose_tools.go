@@ -27,6 +27,9 @@ func (s *Server) RegisterPipelineProposeTools(srv *mcp.Server) {
 		Description: "Propose a BATCH status change for entities (active | inactive | draft) — e.g. approve " +
 			"drafts or retire stale entities. book_id + status + entity_ids (UUIDs). Returns a confirm card; " +
 			"a human approves before anything changes. Reversible (just set the status back).",
+		InputSchema: closedSetSchemaFor[proposeStatusChangeToolIn](map[string][]any{
+			"status": {"active", "inactive", "draft"},
+		}),
 	}, s.toolProposeStatusChange)
 
 	mcp.AddTool(srv, &mcp.Tool{
@@ -54,11 +57,15 @@ func (s *Server) RegisterPipelineProposeTools(srv *mcp.Server) {
 	}, s.toolProposeMerge)
 }
 
-func (s *Server) toolProposeStatusChange(ctx context.Context, _ *mcp.CallToolRequest, in struct {
+// proposeStatusChangeToolIn is named (not inline) so the registration can build
+// its closed-set schema from the same type the handler decodes (W0 #2).
+type proposeStatusChangeToolIn struct {
 	BookID    string   `json:"book_id" jsonschema:"the book (UUID)"`
 	Status    string   `json:"status" jsonschema:"active | inactive | draft"`
 	EntityIDs []string `json:"entity_ids" jsonschema:"the entities to change (UUIDs)"`
-}) (*mcp.CallToolResult, confirmCardOut, error) {
+}
+
+func (s *Server) toolProposeStatusChange(ctx context.Context, _ *mcp.CallToolRequest, in proposeStatusChangeToolIn) (*mcp.CallToolResult, confirmCardOut, error) {
 	userID, ok := userIDFromCtx(ctx)
 	if !ok {
 		return nil, confirmCardOut{}, errors.New("missing caller identity")

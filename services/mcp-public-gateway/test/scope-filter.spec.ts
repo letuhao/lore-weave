@@ -21,6 +21,7 @@ const BOOK_READ = ['read', domainScope('book')];
 describe('tool-policy.isToolAllowed (default-deny)', () => {
   it('allows a read tool when the key holds tier + its domain', () => {
     expect(isToolAllowed('kg_graph_query', KNOWLEDGE_READ)).toBe(true);
+    expect(isToolAllowed('kg_project_list', KNOWLEDGE_READ)).toBe(true);
     expect(isToolAllowed('book_get', BOOK_READ)).toBe(true);
   });
 

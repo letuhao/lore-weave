@@ -1,25 +1,39 @@
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useEffect, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
-import { ArrowUp, Brain, Square, Zap, Mic, MicOff, Loader2, Volume2, VolumeX } from 'lucide-react';
+import { ArrowUp, ChevronDown, Eye, ListTodo, Pencil, Square, Mic, MicOff, Loader2, Volume2, VolumeX } from 'lucide-react';
 import { loadVoicePrefs } from '../voicePrefs';
 import { useVoiceAssistMic } from '../hooks/useVoiceAssistMic';
+import { useMentionPicker } from '../hooks/useMentionPicker';
 import TextareaAutosize from 'react-textarea-autosize';
 import { ContextBar } from '../context/ContextBar';
 import type { ContextItem } from '../context/types';
 import { PromptTemplatePicker, type PromptTemplate } from './PromptTemplates';
+import { type SlashCommandItem } from '../hooks/useSlashCommands';
+import { MentionPopover } from './MentionPopover';
+
+// W4 — the effort types/helpers moved to the shared AI-Task Standard module
+// (@/components/ai-task/effort) so the chat composer and the one-shot generate
+// dialogs share ONE mapping. Re-exported here so existing importers
+// (useChatMessages, ChatView, runChatStream, the effort test) are unchanged.
+import type { EffortLevel } from '@/components/ai-task/effort';
+import { thinkingForLevel } from '@/components/ai-task/effort';
+import { EffortSelect } from '@/components/ai-task';
+export type { EffortLevel } from '@/components/ai-task/effort';
+export { effortLevelFromGenerationParams, reasoningEffortForLevel } from '@/components/ai-task/effort';
 
 interface ChatInputBarProps {
-  onSend: (content: string, thinking?: boolean) => void;
+  onSend: (content: string, thinking?: boolean, reasoningEffort?: EffortLevel) => void;
   onStop: () => void;
   isStreaming: boolean;
   disabled?: boolean;
   modelHint?: string;
   /** Whether the active model supports thinking mode */
   supportsThinking?: boolean;
-  /** Session-level default thinking mode */
-  thinkingDefault?: boolean;
-  /** Called when user switches Think/Fast to persist to session */
-  onThinkingModeChange?: (thinking: boolean) => void;
+  /** Session-level default effort (derive via effortLevelFromGenerationParams). */
+  effortDefault?: EffortLevel;
+  /** Called when the user picks an effort level — the parent persists it on
+   *  the session as {reasoning_effort, thinking:null} (reasoningEffortForLevel). */
+  onEffortChange?: (level: EffortLevel) => void;
   /** Context items attached to the next message */
   contextItems: ContextItem[];
   onAttachContext: (item: ContextItem) => void;
@@ -33,6 +47,11 @@ interface ChatInputBarProps {
   /** Auto-TTS is playing — show stop button */
   ttsPlaying?: boolean;
   onStopTTS?: () => void;
+  /** RAID C2/B2 — HITL permission mode (Ask = read-only tools, Plan = reads +
+   *  PlanForge plan_* tools, Write = full). Rendered only when both are
+   *  provided (embedded surfaces may omit). */
+  permissionMode?: 'ask' | 'plan' | 'write';
+  onPermissionModeChange?: (mode: 'ask' | 'plan' | 'write') => void;
 }
 
 export function ChatInputBar({
@@ -42,8 +61,8 @@ export function ChatInputBar({
   disabled,
   modelHint,
   supportsThinking,
-  thinkingDefault,
-  onThinkingModeChange,
+  effortDefault,
+  onEffortChange,
   contextItems,
   onAttachContext,
   onDetachContext,
@@ -53,14 +72,50 @@ export function ChatInputBar({
   onToggleVoiceAssist,
   ttsPlaying,
   onStopTTS,
+  permissionMode,
+  onPermissionModeChange,
 }: ChatInputBarProps) {
   const { t } = useTranslation('chat');
   const [value, setValue] = useState('');
-  const [thinkingMode, setThinkingMode] = useState(thinkingDefault ?? false);
+  // W4 — the effort dropdown state (replaces the Think/Fast boolean pill).
+  // 'fast' ≙ thinking:false, 'standard' ≙ thinking:true, 'deep' additionally
+  // sends reasoning_effort:"deep". Initialized from the session default and
+  // re-synced when it changes (session switch / settings-panel edit) — the
+  // "previous default" render-time pattern, not a useEffect.
+  const [effort, setEffort] = useState<EffortLevel>(effortDefault ?? 'off');
+  const [prevEffortDefault, setPrevEffortDefault] = useState(effortDefault);
+  if (effortDefault !== prevEffortDefault) {
+    setPrevEffortDefault(effortDefault);
+    setEffort(effortDefault ?? 'off');
+  }
   const [responseFormat, setResponseFormat] = useState<string>('Auto');
   const [showTemplates, setShowTemplates] = useState(false);
   const [templateFilter, setTemplateFilter] = useState('');
   const [attachPickerOpen, setAttachPickerOpen] = useState(false);
+  // Which composer dropdown is open (the effort dropdown moved to the shared
+  // EffortSelect, which self-manages; only the mode dropdown uses this now).
+  const [openMenu, setOpenMenu] = useState<'mode' | null>(null);
+  const menusRef = useRef<HTMLDivElement>(null);
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
+
+  // Close the effort/mode dropdown on outside click (same pattern as the
+  // message "more" dropdown).
+  useEffect(() => {
+    if (!openMenu) return;
+    function handleClick(e: MouseEvent) {
+      if (menusRef.current && !menusRef.current.contains(e.target as Node)) setOpenMenu(null);
+    }
+    window.addEventListener('mousedown', handleClick);
+    return () => window.removeEventListener('mousedown', handleClick);
+  }, [openMenu]);
+
+  // Inline @-mention context attach — reuses the ContextPicker's attach seam.
+  const mention = useMentionPicker({
+    value,
+    onAttach: onAttachContext,
+    onValueChange: setValue,
+    textareaRef,
+  });
 
   // Push-to-talk mic — uses same VAD + backend STT pipeline as Voice Mode.
   // Captures speech via Silero VAD → WAV → backend STT → inserts transcript into textarea.
@@ -75,6 +130,15 @@ export function ChatInputBar({
     setValue(template.prompt);
     setShowTemplates(false);
     setTemplateFilter('');
+  }
+
+  // D-REG-P4 — a registry command COMPLETES the `/name ` token (the server expands it
+  // on send); unlike a template, it doesn't replace the input with a prompt body.
+  function handleCommandSelect(cmd: SlashCommandItem) {
+    setValue(`/${cmd.name} `);
+    setShowTemplates(false);
+    setTemplateFilter('');
+    textareaRef.current?.focus();
   }
 
   function handleValueChange(newValue: string) {
@@ -101,15 +165,43 @@ export function ChatInputBar({
     const text = value.trim();
     if (!text || isStreaming) return;
     setValue('');
-    const thinking = supportsThinking ? (forceThinking ?? thinkingMode) : undefined;
+    // The keyboard force-shortcuts (Ctrl+Shift+Enter think / Ctrl+Enter fast)
+    // override the dropdown for this one send, mapping onto medium/off (never the
+    // max 'high' — that stays an explicit dropdown pick). The unified 5-level
+    // effort rides the wire directly (reasoning_effort); chat-service maps it.
+    const effectiveEffort: EffortLevel | undefined = !supportsThinking
+      ? undefined
+      : forceThinking != null
+        ? (forceThinking ? 'medium' : 'off')
+        : effort;
+    const thinking = effectiveEffort != null ? thinkingForLevel(effectiveEffort) : undefined;
     const formatSuffix = FORMAT_INSTRUCTIONS[responseFormat] ?? '';
-    onSend(text + formatSuffix, thinking);
+    onSend(text + formatSuffix, thinking, effectiveEffort);
+  }
+
+  // W4: mode selection + Ctrl+. cycling (Claude Code shift-tab pattern —
+  // documented in the dropdown footer). Order: ask → plan → write → ask.
+  const MODE_ORDER: Array<'ask' | 'plan' | 'write'> = ['ask', 'plan', 'write'];
+  const cycleMode = useCallback(() => {
+    if (permissionMode === undefined || !onPermissionModeChange) return;
+    const idx = MODE_ORDER.indexOf(permissionMode);
+    onPermissionModeChange(MODE_ORDER[(idx + 1) % MODE_ORDER.length]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [permissionMode, onPermissionModeChange]);
+
+  function handleBarKeyDown(e: React.KeyboardEvent) {
+    if (e.ctrlKey && !e.shiftKey && !e.altKey && e.key === '.') {
+      e.preventDefault();
+      cycleMode();
+    }
   }
 
   const hasContext = contextItems.length > 0;
 
   return (
-    <div className="shrink-0 border-t border-border bg-card px-4 py-3">
+    // W4: Ctrl+. cycles the permission mode from anywhere inside the input bar
+    // (keydown bubbles here from the textarea and the dropdowns).
+    <div className="shrink-0 border-t border-border bg-card px-4 py-3" onKeyDown={handleBarKeyDown}>
       <div className="mx-auto min-w-0 max-w-full md:max-w-[720px] 2xl:max-w-[900px]">
         {/* Format pills */}
         <div className="mb-1.5 flex flex-wrap items-center gap-1.5">
@@ -135,8 +227,18 @@ export function ChatInputBar({
           <PromptTemplatePicker
             open={showTemplates}
             filter={templateFilter}
+            onSelectCommand={handleCommandSelect}
             onSelect={handleTemplateSelect}
             onClose={() => { setShowTemplates(false); setTemplateFilter(''); }}
+          />
+
+          {/* Inline @-mention context popover (triggered by "@") */}
+          <MentionPopover
+            open={mention.open}
+            items={mention.filtered}
+            selectedIndex={mention.selectedIndex}
+            onSelect={mention.attachCandidate}
+            onHighlight={mention.setSelectedIndex}
           />
 
           {/* Context bar (pills + attach button) */}
@@ -151,13 +253,17 @@ export function ChatInputBar({
 
           {/* Textarea */}
           <TextareaAutosize
+            ref={textareaRef}
             value={value}
-            onChange={(e) => handleValueChange(e.target.value)}
+            onChange={(e) => { handleValueChange(e.target.value); mention.syncFromInput(e.target); }}
+            onSelect={(e) => mention.syncFromInput(e.currentTarget)}
             placeholder={t('input.placeholder')}
             minRows={3}
             maxRows={8}
             disabled={disabled || isStreaming || voiceModeActive}
             onKeyDown={(e) => {
+              // @-mention popover consumes navigation/attach keys (Enter must NOT send)
+              if (mention.handleKeyDown(e)) return;
               if (e.key === 'Enter' && !e.shiftKey && !e.ctrlKey) {
                 e.preventDefault();
                 handleSubmit();
@@ -253,35 +359,77 @@ export function ChatInputBar({
                   {t('input.stop_audio')}
                 </button>
               )}
-              {/* Think/Fast toggle */}
-              {supportsThinking && (
-                <div className="inline-flex rounded-md bg-secondary p-0.5 gap-0.5">
-                  <button
-                    type="button"
-                    onClick={() => { setThinkingMode(true); onThinkingModeChange?.(true); }}
-                    className={`flex items-center gap-1 rounded px-2.5 py-1 text-[11px] font-medium transition-colors ${
-                      thinkingMode
-                        ? 'bg-[#1e1633] text-[#a78bfa] border border-[#3b2d6b]'
-                        : 'text-muted-foreground'
-                    }`}
-                  >
-                    <Brain className="h-2.5 w-2.5" />
-                    {t('input.think')}
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => { setThinkingMode(false); onThinkingModeChange?.(false); }}
-                    className={`flex items-center gap-1 rounded px-2.5 py-1 text-[11px] font-medium transition-colors ${
-                      !thinkingMode
-                        ? 'bg-accent/10 text-accent border border-accent/30'
-                        : 'text-muted-foreground'
-                    }`}
-                  >
-                    <Zap className="h-2.5 w-2.5" />
-                    {t('input.fast')}
-                  </button>
-                </div>
-              )}
+              {/* W4 — the two compact composer dropdowns (replace the two
+                  segmented pills; saves the input-bar row). One shared ref
+                  container so outside-click closes either menu. */}
+              <div ref={menusRef} className="flex items-center gap-1.5">
+                {/* RAID C2/B2 — Ask/Plan/Write permission mode, now ONE dropdown.
+                    Trigger = persistent colored icon + one-word label (Claude
+                    Code pattern); menu lists the 3 modes with hint lines;
+                    Ctrl+. cycles (documented in the menu footer). */}
+                {permissionMode !== undefined && onPermissionModeChange && (
+                  <div className="relative">
+                    <button
+                      type="button"
+                      data-testid="permission-mode-toggle"
+                      onClick={() => setOpenMenu((m) => (m === 'mode' ? null : 'mode'))}
+                      aria-haspopup="menu"
+                      aria-expanded={openMenu === 'mode'}
+                      title={t(`input.mode_${permissionMode}_hint`)}
+                      className={`flex items-center gap-1 rounded-md border px-2.5 py-1 text-[11px] font-medium transition-colors ${
+                        permissionMode === 'ask'
+                          ? 'border-sky-500/30 bg-sky-500/10 text-sky-400'
+                          : permissionMode === 'plan'
+                            ? 'border-violet-500/30 bg-violet-500/10 text-violet-400'
+                            : 'border-accent/30 bg-accent/10 text-accent'
+                      }`}
+                    >
+                      {permissionMode === 'ask' ? <Eye className="h-2.5 w-2.5" /> : permissionMode === 'plan' ? <ListTodo className="h-2.5 w-2.5" /> : <Pencil className="h-2.5 w-2.5" />}
+                      {t(`input.mode_${permissionMode}`)}
+                      <ChevronDown className="h-2.5 w-2.5 opacity-60" />
+                    </button>
+                    {openMenu === 'mode' && (
+                      <div role="menu" data-testid="permission-mode-menu" className="absolute bottom-full left-0 z-20 mb-1 w-64 rounded-md border border-border bg-card py-1 shadow-lg">
+                        {([
+                          { mode: 'ask' as const, Icon: Eye, color: 'text-sky-400' },
+                          { mode: 'plan' as const, Icon: ListTodo, color: 'text-violet-400' },
+                          { mode: 'write' as const, Icon: Pencil, color: 'text-accent' },
+                        ]).map(({ mode, Icon, color }) => (
+                          <button
+                            key={mode}
+                            type="button"
+                            role="menuitemradio"
+                            aria-checked={permissionMode === mode}
+                            data-testid={`mode-opt-${mode}`}
+                            onClick={() => { onPermissionModeChange(mode); setOpenMenu(null); }}
+                            className={`flex w-full items-start gap-2 px-3 py-1.5 text-left hover:bg-secondary ${
+                              permissionMode === mode ? 'bg-secondary/60' : ''
+                            }`}
+                          >
+                            <Icon className={`mt-0.5 h-3 w-3 shrink-0 ${color}`} />
+                            <span className="min-w-0">
+                              <span className={`block text-[11px] font-medium ${color}`}>{t(`input.mode_${mode}`)}</span>
+                              <span className="block text-[10px] leading-snug text-muted-foreground">{t(`input.mode_${mode}_hint`)}</span>
+                            </span>
+                          </button>
+                        ))}
+                        <p className="mt-1 border-t border-border px-3 pt-1 text-[9px] text-muted-foreground/70">
+                          {t('input.mode_cycle_hint')}
+                        </p>
+                      </div>
+                    )}
+                  </div>
+                )}
+                {/* Effort/reasoning — the shared AI-task EffortSelect (unified
+                    5-level vocab). Hidden when the model can't think, exactly like
+                    the old pill — never forces thinking. */}
+                {supportsThinking && (
+                  <EffortSelect
+                    value={effort}
+                    onChange={(level) => { setEffort(level); onEffortChange?.(level); }}
+                  />
+                )}
+              </div>
             </div>
 
             {/* Send / Stop button */}

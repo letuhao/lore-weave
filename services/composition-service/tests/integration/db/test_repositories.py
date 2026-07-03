@@ -41,6 +41,7 @@ pytestmark = pytest.mark.skipif(
 )
 
 _TABLES = [
+    "plan_artifact", "plan_run",
     "composition_daily_progress",
     "composition_progress_baseline",
     "style_profile",
@@ -862,8 +863,10 @@ async def test_promoted_scene_prose_persists_and_reads_back(pool):
     assert job1.status == "completed" and job1.result == {"text": "scene one prose"}
     assert job1.input.get("kind") == "promoted_scene_prose"
     # chapter_scene_drafts reads EVERY scene's promoted prose in story_order
+    # (F4: as {title, text} rows so the stitch can prepend scene headings)
     drafts = await gjr.chapter_scene_drafts(user, project, chapter)
-    assert drafts == ["scene one prose", "scene two prose"]
+    assert drafts == [{"title": "s1", "text": "scene one prose"},
+                      {"title": "s2", "text": "scene two prose"}]
     # prior_scene_drafts is position-bounded (strictly before story_order=2 → only s1)
     prior = await gjr.prior_scene_drafts(user, project, chapter, 2)
     assert prior == ["scene one prose"]
@@ -891,7 +894,7 @@ async def test_promoted_scene_prose_idempotent_overwrite_never_duplicates(pool):
     assert n == 1
     # read-back is the latest take
     drafts = await gjr.chapter_scene_drafts(user, project, chapter)
-    assert drafts == ["second take"]
+    assert drafts == [{"title": "s1", "text": "second take"}]
 
 
 async def test_promoted_scene_prose_rejects_foreign_or_non_scene_node(pool):
@@ -922,8 +925,9 @@ async def test_promoted_scene_prose_scoped_per_project(pool):
     sB = await olr.create_node(user, projB, kind="scene", chapter_id=chapter, story_order=1)
     await gjr.upsert_promoted_scene_prose(user, projA, sA.id, "A prose")
     await gjr.upsert_promoted_scene_prose(user, projB, sB.id, "B prose")
-    assert await gjr.chapter_scene_drafts(user, projA, chapter) == ["A prose"]
-    assert await gjr.chapter_scene_drafts(user, projB, chapter) == ["B prose"]
+    # an untitled scene coalesces to title:"" (the stitch skips the heading for it)
+    assert await gjr.chapter_scene_drafts(user, projA, chapter) == [{"title": "", "text": "A prose"}]
+    assert await gjr.chapter_scene_drafts(user, projB, chapter) == [{"title": "", "text": "B prose"}]
 
 
 async def _insert_stale_job(pool, user, project, *, chapter_id=None) -> uuid.UUID:
@@ -1717,3 +1721,37 @@ async def test_voice_profile_list_all_and_delete(pool):
     assert len(await repo.list_all(user, project)) == 1
     assert await repo.delete(user, project, e) is True
     assert await repo.list_all(user, project) == []
+
+
+# ───────────────────────── plan_run (PlanForge M3) ─────────────────────────
+
+async def test_plan_runs_roundtrip_and_tenancy(pool):
+    from app.db.repositories.plan_runs import PlanRunsRepo
+
+    repo = PlanRunsRepo(pool)
+    user, _project, book = _ids()
+    other = uuid.uuid4()
+    run = await repo.create(
+        user, book, mode="rules", source_checksum="chk1",
+        source_markdown="# plan", status="pending",
+    )
+    assert run.owner_user_id == user
+    got = await repo.get_for_owner(user, book, run.id)
+    assert got is not None and got.id == run.id
+    assert await repo.get_for_owner(other, book, run.id) is None
+
+    art = await repo.save_artifact(user, run.id, "spec", {"events": []})
+    latest = await repo.latest_artifact(user, run.id, "spec")
+    assert latest is not None and latest.id == art.id
+    refs = await repo.list_artifact_refs(user, run.id)
+    assert refs[0]["kind"] == "spec"
+
+    updated = await repo.update_run(user, book, run.id, status="proposed", clear_error=True)
+    assert updated is not None and updated.status == "proposed"
+
+    runs, cursor = await repo.list_for_owner(user, book, limit=10)
+    assert len(runs) == 1
+    assert cursor is None
+
+    dup = await repo.find_by_checksum(user, book, "chk1")
+    assert dup is not None and dup.id == run.id

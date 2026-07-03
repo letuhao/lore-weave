@@ -13,6 +13,7 @@
     "trash": "Trash",
     "usage": "Usage",
     "leaderboard": "Leaderboard",
+    "extensions": "Extensions",
     "settings": "Settings",
     "notifications": "Notifications",
     "logout": "Log out",
@@ -143,5 +144,30 @@
     "light": "Light",
     "sepia": "Sepia",
     "oled": "OLED"
+  },
+  "modelPicker": {
+    "placeholder": "Select a model…",
+    "search": "Search models…",
+    "favorites": "Favorites",
+    "recents": "Recent",
+    "none": "None",
+    "empty": "No models available. Register one to get started.",
+    "error": "Failed to load models.",
+    "noResults": "No models match your search.",
+    "orphan": "Previously selected model (no longer in your registry)",
+    "ctx": "{{n}}K",
+    "free": "$0 local",
+    "freeHint": "Runs locally — no per-token cost.",
+    "paidHint": "Priced per use.",
+    "favorite": "Add to favorites",
+    "unfavorite": "Remove from favorites"
+  },
+  "modelOrder": {
+    "heading": "Model order",
+    "subtitle": "Drag to set the order models appear in every picker. Saved to your account (syncs across devices). Favorites still show first when a model has no set position.",
+    "dragAria": "Reorder model",
+    "saved": "Model order saved",
+    "saveFailed": "Failed to save order.",
+    "loadFailed": "Failed to load models."
   }
 }

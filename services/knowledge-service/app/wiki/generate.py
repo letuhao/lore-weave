@@ -82,9 +82,16 @@ async def _call_llm(
     """One generation LLM call → the Markdown body, or ``None`` on any failure
     (exception / non-completed job). A completed-but-contentless job → ``""``.
 
-    D-KG-WIKI-WORKER-GRADED-EFFORT: the stored ``wiki_gen_jobs.reasoning_effort``
-    (clamped at mint, W4) is applied to the prose-generation call — default
-    "none" emits NO wire fields (byte-identical for the prior path)."""
+    AI-Task Standard — CONSCIOUS EXCEPTION (documented, not a silent fork): the
+    single-shot standard (loreweave_llm.structured_generate) disables hidden
+    reasoning by default to close the empty-prose footgun. Wiki does NOT: it
+    generates long-form Markdown PROSE (not strict JSON), where a reasoning model
+    thinking first can help, and the path degrades gracefully (empty → corrective
+    retry → deterministic stub) so an empty completion is self-recovering, not a
+    hard failure. So it uses the GRADED opt-in ``reasoning_wire_fields`` instead of
+    ``no_thinking_fields``: the stored ``wiki_gen_jobs.reasoning_effort`` (clamped
+    at mint, W4) is applied; default "none" emits NO wire fields (byte-identical —
+    the model's own default), rather than forcing thinking off."""
     try:
         job = await llm.submit_and_wait(
             user_id=user_id,

@@ -288,7 +288,10 @@ func (s *Server) toolListModels(ctx context.Context, _ *mcp.CallToolRequest, in 
 		args = append(args, in.ProviderKind)
 		n++
 	}
-	q += " ORDER BY created_at DESC"
+	// Honor the user's custom sort order ((8)-residual) so an agent's model list
+	// matches the shared ModelPicker; un-ordered models keep the historical
+	// newest-first fallback.
+	q += " ORDER BY sort_order ASC NULLS LAST, created_at DESC"
 	rows, err := s.pool.Query(ctx, q, args...)
 	if err != nil {
 		return nil, listModelsOut{}, errors.New("failed to list models")
@@ -304,9 +307,10 @@ func (s *Server) toolListModels(ctx context.Context, _ *mcp.CallToolRequest, in 
 	}
 	rows.Close()
 	out := listModelsOut{Models: []map[string]any{}}
-	// readUserModel SELECTs an explicit column list that does NOT include
-	// pricing/secret — and user_models never holds a secret anyway (secrets live
-	// only in provider_credentials). So this read is secret-free by construction.
+	// readUserModel SELECTs an explicit column list; a credential SECRET is never
+	// in it — and user_models never holds a secret anyway (secrets live only in
+	// provider_credentials). So this read is secret-free by construction. (It DOES
+	// now return the caller's own `pricing` + `sort_order` — not secrets.)
 	for _, id := range ids {
 		m, err := s.readUserModel(ctx, uid, id)
 		if err != nil {
@@ -623,7 +627,8 @@ func (s *Server) toolModelSetDefault(ctx context.Context, _ *mcp.CallToolRequest
 		return nil, modelMutationOut{}, err
 	}
 	if !defaultModelCapabilities[in.Capability] {
-		return nil, modelMutationOut{}, errors.New("unsupported capability (want rerank or embedding)")
+		return nil, modelMutationOut{}, errors.New(
+			"unsupported capability (want one of: rerank, embedding, chat, planner)")
 	}
 	// Snapshot the PREVIOUS default for undo.
 	var prevDefault *string
@@ -645,14 +650,13 @@ func (s *Server) toolModelSetDefault(ctx context.Context, _ *mcp.CallToolRequest
 		if perr != nil {
 			return nil, modelMutationOut{}, errors.New("user_model_id must be a UUID")
 		}
-		// The model must be the caller's, active, and carry the capability.
-		capJSON := fmt.Sprintf(`{"%s":true}`, in.Capability)
+		// The model must be the caller's, active, and carry the capability —
+		// via the SAME shared rule as the HTTP route (planner→chat mapping +
+		// undeclared-'{}'-is-chat parity; review-impl W5 #2).
+		capQuery, capJSON, validateCap := defaultModelCapQuery(in.Capability)
 		var exists int
-		err = s.pool.QueryRow(ctx, `
-SELECT 1 FROM user_models
-WHERE user_model_id=$1 AND owner_user_id=$2 AND is_active=true
-  AND (capability_flags @> $3::jsonb OR capability_flags->>'_capability' = $4)`,
-			modelID, uid, capJSON, in.Capability).Scan(&exists)
+		err = s.pool.QueryRow(ctx, capQuery,
+			modelID, uid, capJSON, validateCap).Scan(&exists)
 		if errors.Is(err, pgx.ErrNoRows) {
 			return nil, modelMutationOut{}, errors.New("model not found, inactive, or lacks the capability")
 		}

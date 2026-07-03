@@ -177,6 +177,9 @@ func (s *Server) Router() http.Handler {
 		r.Get("/books/{book_id}/access", s.getBookAccess)
 		// KG-ML M3 (DD3) — cross-service reader-language resolver (M4/M7).
 		r.Get("/books/{book_id}/reader-language", s.getInternalReaderLanguage)
+		// RAID C1 (DR-C1) — chat-service fetches the ENABLED steering entries
+		// to render the <steering> system part on book-scoped turns.
+		r.Get("/books/{book_id}/steering", s.getInternalBookSteering)
 		// G4 (W2) — world membership for the knowledge-service world-rollup
 		// subgraph. Owner-scoped by the ?user_id param (404 if not owned).
 		r.Get("/worlds/{world_id}/books", s.internalListWorldBooks)
@@ -232,6 +235,14 @@ func (s *Server) Router() http.Handler {
 			// readable book), so NOT in the mutating-routes grant table.
 			r.Get("/reader-language", s.getReaderLanguage)
 			r.Put("/reader-language", s.setReaderLanguage)
+
+			// RAID C1 (DR-C1) — per-book steering store. List is VIEW-gated
+			// (steering renders into any collaborator's chat on this book);
+			// writes are EDIT-gated (same tier as editing chapters).
+			r.Get("/steering", s.listSteering)
+			r.Post("/steering", s.createSteering)
+			r.Put("/steering/{steering_id}", s.updateSteering)
+			r.Delete("/steering/{steering_id}", s.deleteSteering)
 
 			r.Get("/cover", s.getCover)
 			r.Post("/cover", s.uploadCover)
@@ -1882,15 +1893,21 @@ FOR UPDATE OF d
 
 	// Empty-prose guard (B1.1) — canon must carry real text. Publishing a chapter
 	// with no extractable prose would canonize nothing and run KG extraction on an
-	// empty body. Reuse the same `_text` projection getRevision/compare read; a
-	// chapter with no text blocks (or whitespace-only) → 422, not a silent no-op
-	// publish. (Image/media-only chapters carry no `_text` and are blocked too —
-	// V0 is a prose co-writer; tracked as a known edge if media-only canon is
-	// ever needed.)
+	// empty body. A chapter with no text (or whitespace-only) → 422, not a silent
+	// no-op publish. Bodies come in TWO legitimate shapes: the editor save path
+	// writes a top-level `_text` projection per node, while other writers (compose
+	// POC import, plain tiptap PATCH) store standard tiptap with nested
+	// `{"type":"text","text":…}` leaves and NO `_text` — the old `_text`-only
+	// selector false-rejected those with CHAPTER_EMPTY_PUBLISH, blocking canon/KG
+	// for every chapter not written through the editor. Union both extractions:
+	// `_text` projections + any-depth `text` leaves ($.**.text).
 	var prose string
 	_ = tx.QueryRow(r.Context(), `
-SELECT COALESCE(string_agg(t #>> '{}', '' ORDER BY ordinality), '')
-FROM jsonb_path_query(($1)::jsonb, '$.content[*]._text') WITH ORDINALITY AS x(t, ordinality)
+SELECT COALESCE((
+  SELECT string_agg(t #>> '{}', '') FROM jsonb_path_query(($1)::jsonb, '$.content[*]._text') AS x(t)
+), '') || COALESCE((
+  SELECT string_agg(t #>> '{}', '') FROM jsonb_path_query(($1)::jsonb, '$.**.text') AS y(t)
+), '')
 `, body).Scan(&prose)
 	if strings.TrimSpace(prose) == "" {
 		writeError(w, http.StatusUnprocessableEntity, "CHAPTER_EMPTY_PUBLISH", "cannot publish a chapter with no content")
@@ -2061,11 +2078,21 @@ WHERE rv.id=$1 AND rv.chapter_id=$2 AND c.book_id=$3
 		writeError(w, http.StatusInternalServerError, "REVISION_NOT_FOUND", "failed to get revision")
 		return
 	}
-	// Extract text_content from revision JSONB body (_text fields)
+	// Extract text_content from the revision body — `_text` projection when
+	// present, else nested standard-tiptap text leaves (same union as the publish
+	// guard / revision-text endpoint). Also drops the old `t::text` quirk that
+	// kept JSON quotes around each segment (compare already extracted unquoted).
 	var textContent *string
 	_ = s.pool.QueryRow(r.Context(), `
-SELECT string_agg(t::text, E'\n\n' ORDER BY ordinality)
-FROM jsonb_path_query(($1)::jsonb, '$.content[*]._text') WITH ORDINALITY AS x(t, ordinality)
+SELECT string_agg(node_text, E'\n\n' ORDER BY ord)
+FROM (
+  SELECT x.ord, COALESCE(
+    x.elem->>'_text',
+    NULLIF((SELECT string_agg(t #>> '{}', '') FROM jsonb_path_query(x.elem, '$.**.text') AS y(t)), '')
+  ) AS node_text
+  FROM jsonb_array_elements(($1)::jsonb -> 'content') WITH ORDINALITY AS x(elem, ord)
+) n
+WHERE node_text IS NOT NULL
 `, body).Scan(&textContent)
 	writeJSON(w, http.StatusOK, map[string]any{
 		"revision_id":    rid,
@@ -2114,13 +2141,19 @@ WHERE rv.id=$1 AND rv.chapter_id=$2 AND c.book_id=$3
 	if err != nil {
 		return compareSide{}, false, err
 	}
-	// text_content projection. Unlike getRevision (which uses t::text and so
-	// keeps the JSON quotes around each _text string), the compare diffs this
-	// text, so we extract the raw string via `#>> '{}'` — no surrounding quotes
-	// to show up as noise in the diff.
+	// text_content projection (unquoted — the compare diffs this text). Union of
+	// the `_text` projection and nested standard-tiptap text leaves, same as the
+	// publish guard / revision-text / getRevision extraction.
 	_ = s.pool.QueryRow(r.Context(), `
-SELECT string_agg(t #>> '{}', E'\n\n' ORDER BY ordinality)
-FROM jsonb_path_query(($1)::jsonb, '$.content[*]._text') WITH ORDINALITY AS x(t, ordinality)
+SELECT string_agg(node_text, E'\n\n' ORDER BY ord)
+FROM (
+  SELECT x.ord, COALESCE(
+    x.elem->>'_text',
+    NULLIF((SELECT string_agg(t #>> '{}', '') FROM jsonb_path_query(x.elem, '$.**.text') AS y(t)), '')
+  ) AS node_text
+  FROM jsonb_array_elements(($1)::jsonb -> 'content') WITH ORDINALITY AS x(elem, ord)
+) n
+WHERE node_text IS NOT NULL
 `, side.Body).Scan(&side.TextContent)
 	return side, true, nil
 }
@@ -2586,11 +2619,21 @@ WHERE rv.id=$1 AND rv.chapter_id=$2 AND c.book_id=$3 AND c.lifecycle_state='acti
 		writeError(w, http.StatusInternalServerError, "REVISION_NOT_FOUND", "failed to load revision")
 		return
 	}
+	// Per-node text: prefer the editor's `_text` projection, else join the node's
+	// nested standard-tiptap text leaves ($.**.text). The `_text`-only extraction
+	// returned NULL for standard tiptap bodies → the CM3b extraction runner skipped
+	// every such chapter as "text unavailable" (same class as the publish guard fix).
 	var textContent *string
 	_ = s.pool.QueryRow(r.Context(), `
-SELECT string_agg(elem->>'_text', E'\n\n' ORDER BY ord)
-FROM jsonb_array_elements(($1)::jsonb -> 'content') WITH ORDINALITY AS x(elem, ord)
-WHERE elem->>'_text' IS NOT NULL
+SELECT string_agg(node_text, E'\n\n' ORDER BY ord)
+FROM (
+  SELECT x.ord, COALESCE(
+    x.elem->>'_text',
+    NULLIF((SELECT string_agg(t #>> '{}', '') FROM jsonb_path_query(x.elem, '$.**.text') AS y(t)), '')
+  ) AS node_text
+  FROM jsonb_array_elements(($1)::jsonb -> 'content') WITH ORDINALITY AS x(elem, ord)
+) n
+WHERE node_text IS NOT NULL
 `, body).Scan(&textContent)
 	// body JSONB intentionally NOT returned (review-impl LOW-2): the extraction
 	// consumer (CM3b) needs only text_content; the full doc would be dead weight.

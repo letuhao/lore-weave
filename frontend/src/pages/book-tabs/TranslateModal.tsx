@@ -6,7 +6,7 @@ import { Link } from 'react-router-dom';
 import { useAuth } from '@/auth';
 import { booksApi, type Chapter } from '@/features/books/api';
 import { translationApi, type BookTranslationSettings, type BookCoverageResponse } from '@/features/translation/api';
-import { aiModelsApi, type UserModel } from '@/features/ai-models/api';
+import { ModelPicker, useUserModels } from '@/components/model-picker';
 import { LANGUAGE_NAMES } from '@/lib/languages';
 import { cn } from '@/lib/utils';
 import { usePagedList } from '@/components/pagination/usePagedList';
@@ -66,8 +66,12 @@ export function TranslateModal({ open, onClose, bookId, onJobCreated, preselecte
   const [chapters, setChapters] = useState<Chapter[]>([]);
   const [coverage, setCoverage] = useState<BookCoverageResponse | null>(null);
   const [settings, setSettings] = useState<BookTranslationSettings | null>(null);
-  const [userModels, setUserModels] = useState<UserModel[]>([]);
   const [loading, setLoading] = useState(true);
+
+  // Shared model fetch (W5) — translation drives an LLM, so chat capability.
+  // Active-only is the shared hook's default; fetch only while the modal is open.
+  const { models } = useUserModels({ capability: 'chat', enabled: open });
+  const userModels = models ?? [];
 
   const [selectedChapters, setSelectedChapters] = useState<Set<string>>(new Set());
   const [selectedLang, setSelectedLang] = useState('');
@@ -101,13 +105,11 @@ export function TranslateModal({ open, onClose, bookId, onJobCreated, preselecte
       fetchAllChapters(accessToken, bookId),
       translationApi.getBookCoverage(accessToken, bookId).catch(() => null),
       translationApi.getBookSettings(accessToken, bookId).catch(() => null),
-      aiModelsApi.listUserModels(accessToken).catch(() => ({ items: [] })),
     ])
-      .then(([chs, cov, bkSettings, modelsResp]) => {
+      .then(([chs, cov, bkSettings]) => {
         setChapters(chs);
         setCoverage(cov);
         setSettings(bkSettings);
-        setUserModels(modelsResp.items.filter((m) => m.is_active));
         const lang = bkSettings?.target_language || '';
         setSelectedLang(lang);
         setSelectedModelRef(bkSettings?.model_ref || '');
@@ -146,17 +148,6 @@ export function TranslateModal({ open, onClose, bookId, onJobCreated, preselecte
   }, [coverage, selectedLang, sortedChapters]);
 
   const neededIds = useMemo(() => needsIds(statusById), [statusById]);
-
-  // Group models by provider
-  const modelsByProvider = useMemo(() => {
-    const map = new Map<string, UserModel[]>();
-    for (const m of userModels) {
-      const key = m.provider_kind;
-      if (!map.has(key)) map.set(key, []);
-      map.get(key)!.push(m);
-    }
-    return map;
-  }, [userModels]);
 
   const toggleChapter = (id: string) => {
     setSelectedChapters((prev) => {
@@ -310,31 +301,21 @@ export function TranslateModal({ open, onClose, bookId, onJobCreated, preselecte
                 {/* Model */}
                 <div>
                   <label className="mb-1 block text-xs font-medium">{t('translate.model')}</label>
-                  {userModels.length === 0 ? (
-                    <div className="flex h-9 items-center rounded-md border border-dashed bg-background px-3 text-[11px] text-muted-foreground">
-                      {t('translate.no_models')}{' '}
-                      <Link to="/settings" onClick={onClose} className="ml-1 text-primary hover:underline">
-                        {t('translate.add_in_settings')}
-                      </Link>
-                    </div>
-                  ) : (
-                    <select
-                      value={selectedModelRef}
-                      onChange={(e) => handleModelChange(e.target.value)}
-                      className="h-9 w-full rounded-md border bg-background px-3 text-[13px] focus:border-ring focus:outline-none focus:ring-1 focus:ring-ring/30"
-                    >
-                      <option value="">{t('translate.select_model')}</option>
-                      {Array.from(modelsByProvider.entries()).map(([provider, models]) => (
-                        <optgroup key={provider} label={provider}>
-                          {models.map((m) => (
-                            <option key={m.user_model_id} value={m.user_model_id}>
-                              {m.alias || m.provider_model_name}
-                            </option>
-                          ))}
-                        </optgroup>
-                      ))}
-                    </select>
-                  )}
+                  <ModelPicker
+                    capability="chat"
+                    value={selectedModelRef || null}
+                    onChange={(id) => handleModelChange(id ?? '')}
+                    placeholder={t('translate.select_model')}
+                    ariaLabel={t('translate.model')}
+                    emptyState={
+                      <div className="flex h-9 items-center rounded-md border border-dashed bg-background px-3 text-[11px] text-muted-foreground">
+                        {t('translate.no_models')}{' '}
+                        <Link to="/settings" onClick={onClose} className="ml-1 text-primary hover:underline">
+                          {t('translate.add_in_settings')}
+                        </Link>
+                      </div>
+                    }
+                  />
                 </div>
               </div>
 
@@ -439,22 +420,15 @@ export function TranslateModal({ open, onClose, bookId, onJobCreated, preselecte
                         {/* Verifier model */}
                         <div>
                           <label className="mb-1 block text-[11px] font-medium">{t('translate.verifier_model')}</label>
-                          <select
-                            value={verifierModelRef}
-                            onChange={(e) => setVerifierModelRef(e.target.value)}
-                            className="h-8 w-full rounded-md border bg-background px-2 text-[12px] focus:border-ring focus:outline-none focus:ring-1 focus:ring-ring/30"
-                          >
-                            <option value="">{t('translate.verifier_default')}</option>
-                            {Array.from(modelsByProvider.entries()).map(([provider, models]) => (
-                              <optgroup key={provider} label={provider}>
-                                {models.map((m) => (
-                                  <option key={m.user_model_id} value={m.user_model_id}>
-                                    {m.alias || m.provider_model_name}
-                                  </option>
-                                ))}
-                              </optgroup>
-                            ))}
-                          </select>
+                          <ModelPicker
+                            capability="chat"
+                            value={verifierModelRef || null}
+                            onChange={(id) => setVerifierModelRef(id ?? '')}
+                            allowNone
+                            noneLabel={t('translate.verifier_default')}
+                            ariaLabel={t('translate.verifier_model')}
+                            compact
+                          />
                         </div>
                         {/* QA depth + rounds */}
                         <div className="grid grid-cols-2 gap-3">

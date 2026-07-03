@@ -141,3 +141,27 @@ async def test_mode1_defaults_tool_calling_enabled_true():
 
     built = await build_no_project_mode(repo, uuid4())
     assert built.tool_calling_enabled is True
+
+
+# ── W1 — per-section token map (additive) ───────────────────────────────────
+
+
+@pytest.mark.asyncio
+async def test_mode1_sections_with_bio():
+    repo = AsyncMock()
+    repo.get = AsyncMock(return_value=_summary("I am a novelist."))
+    built = await build_no_project_mode(repo, uuid4())
+    assert set(built.sections) == {"user", "instructions"}
+    assert built.sections["user"] > 0
+    assert built.sections["instructions"] > 0
+    # sections split the block — their sum stays at/below the whole-block count
+    # (wrapper lines are not attributed to any section).
+    assert sum(built.sections.values()) <= built.token_count
+
+
+@pytest.mark.asyncio
+async def test_mode1_sections_without_bio():
+    repo = AsyncMock()
+    repo.get = AsyncMock(return_value=None)
+    built = await build_no_project_mode(repo, uuid4())
+    assert set(built.sections) == {"instructions"}

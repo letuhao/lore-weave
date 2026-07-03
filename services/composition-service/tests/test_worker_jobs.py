@@ -141,9 +141,13 @@ async def test_run_stitch_computes_and_stores_no_persist(monkeypatch):
     class _FakeJobsRepo:
         def __init__(self, pool): ...
         async def chapter_scene_drafts(self, uid, pid, cid):
-            return ["scene 1 draft", "scene 2 draft"]
+            return [{"title": "Scene One", "text": "scene 1 draft"},
+                    {"title": "Scene Two", "text": "scene 2 draft"}]
+
+    stitch_inputs: dict = {}
 
     async def _fake_stitch(llm, **kw):
+        stitch_inputs.update(kw)
         return ("STITCHED PROSE", "stop")
 
     reflect = SimpleNamespace(violations=[], resolved=True, iterations=0,
@@ -170,6 +174,9 @@ async def test_run_stitch_computes_and_stores_no_persist(monkeypatch):
     assert out["stitched"] is True
     assert out["persisted"] is False  # Option A — persist is the separate bearer step
     assert out["canon"]["status"] == "ok"
+    # F4 — each stitch input draft opens with its `### <scene title>` line
+    assert stitch_inputs["scene_drafts"] == [
+        "### Scene One\n\nscene 1 draft", "### Scene Two\n\nscene 2 draft"]
 
 
 async def test_run_stitch_raises_when_no_drafts(monkeypatch):

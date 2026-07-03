@@ -360,5 +360,15 @@
     "same": "兩側為同一版本——沒有差異。",
     "load_more": "載入更多 ({{loaded}}/{{total}})",
     "load_more_hint": "將較舊的版本載入選單"
+  },
+  "checkpoint": {
+    "header": "AI 編輯檢查點",
+    "insert": "已插入",
+    "polish": "已潤飾",
+    "restore": "還原",
+    "restored": "已還原至 AI 編輯前",
+    "no_restore": "沒有可還原的先前版本",
+    "confirm_title": "還原至此次 AI 編輯之前？",
+    "confirm_desc": "目前草稿會先建立快照，因此可從版本歷史還原此操作。"
   }
 }

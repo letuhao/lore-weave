@@ -13,6 +13,7 @@ const listMessagesMock = vi.fn();
 vi.mock('../../api', () => ({
   chatApi: {
     listMessages: (...a: unknown[]) => listMessagesMock(...a),
+    getLatestContextBudget: () => Promise.resolve({ budget: null }),
     messagesUrl: (sid: string) => `http://test/v1/chat/sessions/${sid}/messages`,
   },
 }));
@@ -156,6 +157,72 @@ describe('useChatMessages — AG-UI protocol', () => {
     const body = JSON.parse(String((fetchMock.mock.calls[0][1] as RequestInit).body));
     expect(body.enabled_tools).toEqual(['find_tools']);
     expect(body.enabled_skills).toEqual(['glossary']);
+  });
+
+  it('exposes the extended contextBudget snapshot (W1/W2 additive fields)', async () => {
+    stubFetch([
+      JSON.stringify({
+        type: 'CUSTOM', name: 'contextBudget',
+        value: {
+          used_tokens: 3676, context_length: 8192, effective_limit: 8000, pct: 0.4595,
+          until_compact_pct: 0.2905, baseline_tokens: 3667,
+          breakdown: { skills: 1907, history: 9, memory_knowledge: { total: 50, sections: { instructions: 33 } } },
+        },
+      }),
+      JSON.stringify({ type: 'TEXT_MESSAGE_CONTENT', messageId: 'm', delta: 'hi' }),
+      JSON.stringify({ type: 'RUN_FINISHED', result: {} }),
+    ]);
+    const { result } = renderHook(() => useChatMessages('s-1'));
+    await waitFor(() => expect(result.current.isLoading).toBe(false));
+    await act(async () => {
+      await result.current.send('hello');
+    });
+    expect(result.current.contextBudget).toMatchObject({
+      used_tokens: 3676,
+      pct: 0.4595,
+      until_compact_pct: 0.2905,
+      baseline_tokens: 3667,
+      breakdown: { skills: 1907, memory_knowledge: { total: 50, sections: { instructions: 33 } } },
+    });
+  });
+
+  it('fires onCompactionRef from a CUSTOM compaction event', async () => {
+    stubFetch([
+      JSON.stringify({
+        type: 'CUSTOM', name: 'compaction',
+        value: {
+          triggered: true, tool_results_cleared: 2, turns_truncated: 4, summarized: true,
+          summarize_failed: false, overflowed: false, tokens_before: 9000, tokens_after: 4100,
+        },
+      }),
+      JSON.stringify({ type: 'TEXT_MESSAGE_CONTENT', messageId: 'm', delta: 'hi' }),
+      JSON.stringify({ type: 'RUN_FINISHED', result: {} }),
+    ]);
+    const seen: unknown[] = [];
+    const { result } = renderHook(() => useChatMessages('s-1'));
+    await waitFor(() => expect(result.current.isLoading).toBe(false));
+    act(() => {
+      result.current.onCompactionRef.current = (e) => seen.push(e);
+    });
+    await act(async () => {
+      await result.current.send('hello');
+    });
+    expect(seen).toHaveLength(1);
+    expect(seen[0]).toMatchObject({ tokens_before: 9000, tokens_after: 4100, summarized: true });
+  });
+
+  it('send(content, thinking, "high") puts reasoning_effort on the POST body', async () => {
+    const fetchMock = stubFetch([
+      JSON.stringify({ type: 'TEXT_MESSAGE_CONTENT', messageId: 'm', delta: 'hi' }),
+      JSON.stringify({ type: 'RUN_FINISHED', result: {} }),
+    ]);
+    const { result } = renderHook(() => useChatMessages('s-1'));
+    await waitFor(() => expect(result.current.isLoading).toBe(false));
+    await act(async () => {
+      await result.current.send('hello', true, 'high');
+    });
+    const body = JSON.parse(String((fetchMock.mock.calls[0][1] as RequestInit).body));
+    expect(body).toMatchObject({ content: 'hello', thinking: true, reasoning_effort: 'high' });
   });
 
   it('maps RUN_ERROR to the error path', async () => {

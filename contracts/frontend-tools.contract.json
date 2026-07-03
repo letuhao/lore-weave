@@ -198,7 +198,15 @@
       "panel_id": {
         "enum": [
           "compose",
-          "editor"
+          "editor",
+          "planner",
+          "usage",
+          "notifications",
+          "settings",
+          "trash",
+          "steering",
+          "extensions",
+          "proposals"
         ],
         "type": "string"
       }

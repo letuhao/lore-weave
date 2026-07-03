@@ -22,7 +22,9 @@ import { ConfirmCard } from './ConfirmCard';
 import { ConfirmActionCard, descriptorDomain } from './ConfirmActionCard';
 import { BatchConfirmCard, type BatchChild } from './BatchConfirmCard';
 import { RecordDiffCard } from './RecordDiffCard';
+import { ToolApprovalCard, isToolApprovalRecord } from './ToolApprovalCard';
 import { TranslationReviewCard, isTranslationProposeCall, summarizeTranslationReview } from './TranslationReviewCard';
+import { SkillProposalCard, skillProposal, type SkillProposal } from './SkillProposalCard';
 import { ActivityStrip } from './ActivityStrip';
 import { useMessageFeedback } from '../hooks/useMessageFeedback';
 import { useActivityUndo } from '../hooks/useActivityUndo';
@@ -207,7 +209,14 @@ export function AssistantMessage({
         ];
         const isPendingFrontend = (tc: ToolCallRecord) =>
           tc.pending === true && FRONTEND_TOOLS.includes(tc.tool);
-        const proposals = toolCalls.filter(isPendingFrontend);
+        // RAID C2 — a pending Tier-A `tool_approval` suspension (args.kind
+        // marker; the record's `tool` is the SERVER tool name, e.g.
+        // book_create, so it can't route by name). Approve once / Always allow
+        // / Deny resume the run via the standard tool-results endpoint.
+        const approvals = toolCalls.filter(isToolApprovalRecord);
+        const proposals = toolCalls.filter(
+          (tc) => isPendingFrontend(tc) && !isToolApprovalRecord(tc),
+        );
         // S4: completed class-W translation/alias proposals render as a review card
         // (visible drafts), not a passive chip — but ONLY when the record carries
         // something renderable. A sparse record (e.g. replayed {tool, ok} with no
@@ -216,8 +225,13 @@ export function AssistantMessage({
         const isRenderableTranslation = (tc: ToolCallRecord) =>
           isTranslationProposeCall(tc) && summarizeTranslationReview(tc) !== null;
         const translationCards = toolCalls.filter(isRenderableTranslation);
+        // D-REG-SKILLPROPOSAL-CARD: a completed registry_propose_skill/update result
+        // renders as an approve/reject card (spec §12b), not a passive chip.
+        const skillProposals = toolCalls
+          .map(skillProposal)
+          .filter((p): p is SkillProposal => p !== null);
         const rest = toolCalls.filter(
-          (tc) => !isPendingFrontend(tc) && !isRenderableTranslation(tc),
+          (tc) => !isPendingFrontend(tc) && !isRenderableTranslation(tc) && !isToolApprovalRecord(tc) && !skillProposal(tc),
         );
         // Model-independent human gate: auto-render a confirm card for any completed
         // propose result that minted a LIVE confirm_token, unless an explicit (pending)
@@ -268,8 +282,16 @@ export function AssistantMessage({
         return (
           <>
             {rest.length > 0 && <ToolCallIndicator toolCalls={rest} />}
+            {/* RAID C2 — Tier-A approval cards (Approve once / Always / Deny). */}
+            {approvals.map((tc) => (
+              <ToolApprovalCard key={tc.toolCallId ?? `${tc.tool}-approval`} record={tc} />
+            ))}
             {translationCards.map((tc) => (
               <TranslationReviewCard key={tc.toolCallId ?? `${tc.tool}-${tc.iteration ?? 0}`} record={tc} />
+            ))}
+            {/* D-REG-SKILLPROPOSAL-CARD — agent skill proposals (approve/reject). */}
+            {skillProposals.map((p) => (
+              <SkillProposalCard key={p.proposalId} proposal={p} />
             ))}
             {coalesce && (
               <BatchConfirmCard
@@ -330,12 +352,15 @@ export function AssistantMessage({
         <AudioReplayPlayer sessionId={sessionId} messageId={messageId} />
       )}
 
-      {/* Token footer + action buttons */}
+      {/* Token footer + action buttons. W2 (Windsurf pattern): the per-message
+          token one-liner (↑in ↓out · timing) is ALWAYS visible — a muted
+          text-[10px] line, no layout shift; only the action buttons stay
+          hover-revealed. */}
       {!isStreaming && (
-        <div className="mt-1.5 flex flex-wrap items-center justify-between gap-y-1 opacity-0 transition-opacity group-hover:opacity-100 max-md:opacity-100">
+        <div className="mt-1.5 flex flex-wrap items-center justify-between gap-y-1">
           {/* Token counts + timing */}
           {hasMetrics && (
-            <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5 font-mono text-[10px] text-muted-foreground">
+            <div data-testid="message-token-footer" className="flex flex-wrap items-center gap-x-2 gap-y-0.5 font-mono text-[10px] text-muted-foreground">
               {hasReasoning ? (
                 <span className="flex items-center gap-0.5 text-[#a78bfa]">
                   <Brain className="h-2.5 w-2.5" />
@@ -358,9 +383,9 @@ export function AssistantMessage({
             </div>
           )}
 
-          {/* Action buttons */}
+          {/* Action buttons — hover-revealed (the metrics line above stays). */}
           {!disabled && (
-            <div className="flex items-center gap-1">
+            <div className="flex items-center gap-1 opacity-0 transition-opacity group-hover:opacity-100 max-md:opacity-100">
               {messageId && (
                 <>
                   <button

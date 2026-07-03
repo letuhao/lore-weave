@@ -124,6 +124,77 @@ export interface GraphSchemaPatch {
   allow_free_edges?: boolean;
 }
 
+// ── full-CRUD authoring (A1/A2) — PATCH bodies are attribute-only; `code` is
+//    IMMUTABLE (a rename = deprecate + create-new). ──────────────────────────
+export interface EdgeTypePatch {
+  label?: string;
+  directed?: boolean;
+  source_node_kinds?: string[];
+  target_node_kinds?: string[];
+  temporal?: boolean;
+  provenance_required?: boolean;
+  cardinality?: Cardinality;
+  description?: string;
+}
+
+export interface FactTypePatch {
+  label?: string;
+  description?: string;
+}
+
+export interface NodeKindPatch {
+  strength: Strength;
+}
+
+export interface VocabSetCreate {
+  code: string;
+  label: string;
+  description?: string;
+  closed?: boolean;
+}
+
+export interface VocabSetPatch {
+  label?: string;
+  description?: string;
+  closed?: boolean;
+}
+
+export interface VocabValuePatch {
+  label?: string;
+  metadata?: Record<string, unknown>;
+}
+
+/** Create-from-scratch (A2) — a blank project schema (no template). */
+export interface BlankSchemaCreate {
+  name: string;
+  description?: string;
+  allow_free_edges?: boolean;
+}
+
+/** Clone a readable schema into a NEW user-scoped editable template (A2). */
+export interface CloneSchemaRequest {
+  source_schema_id: string;
+  name?: string;
+}
+
+/** M3a — what the project's extracted graph already contains (to promote into the schema). */
+export interface ObservedComponents {
+  node_kinds: { code: string; count: number }[];
+  edge_types: { code: string; count: number; source_kinds: string[]; target_kinds: string[] }[];
+}
+
+/** M3b — a schema proposal generated from a premise (LLM, propose→confirm). */
+export interface SchemaProposeRequest {
+  premise: string;
+  genre?: string;
+  model_ref: string;
+}
+export interface SchemaProposal {
+  node_kinds: { code: string; label?: string }[];
+  edge_types: { code: string; label?: string; source_kinds: string[]; target_kinds: string[] }[];
+  fact_types: { code: string; label?: string }[];
+}
+
 export interface ResolvedSchema {
   project_id: string;
   schema_version: number;

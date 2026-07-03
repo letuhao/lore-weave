@@ -10,13 +10,32 @@ import { useEffect, useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
 import type { IDockviewPanelProps } from 'dockview-react';
 import { Chat } from '@/features/chat/Chat';
+import { UiNavInterceptorContext } from '@/features/chat/nav/uiNavScope';
 import { useStudioHost, useRegisterStudioTool } from '../host/StudioHostProvider';
+import { useManuscriptUnitMeta } from '../manuscript/unit/ManuscriptUnitProvider';
 import { StudioAgentBridge } from '../agent/StudioAgentBridge';
+import { makeStudioNavInterceptor } from '../agent/studioUiNav';
 import type { StudioToolRegistration } from '../host/types';
 
 export function ComposePanel(props: IDockviewPanelProps) {
   const { t } = useTranslation('studio');
-  const { bookId } = useStudioHost();
+  const host = useStudioHost();
+  const { bookId } = host;
+  // #12 M-E — remap same-book C-NAV tools to dock actions so an agent nav call can never
+  // navigate the SPA out of the studio (which would unmount this very panel mid-run).
+  const navInterceptor = useMemo(() => makeStudioNavInterceptor(host), [host]);
+  // CTX-1 (M-E live-caught) — the position pointer. The agent knows the book_id but every
+  // composition_* tool keys on project_id, and the model dead-ended trying to discover it
+  // (retried the book_id AS a project_id → uniform deny → spin). The hoist already resolved
+  // the Work — carry project_id + the active chapter in studio_context so chat-service can
+  // TELL the model instead of making it forage. Meta context = stable slice (no per-keystroke
+  // re-render of the chat subtree).
+  const unitMeta = useManuscriptUnitMeta();
+  const studioContext = useMemo(() => ({
+    book_id: bookId,
+    ...(unitMeta?.projectId ? { project_id: unitMeta.projectId } : {}),
+    ...(unitMeta?.activeChapterId ? { active_chapter_id: unitMeta.activeChapterId } : {}),
+  }), [bookId, unitMeta?.projectId, unitMeta?.activeChapterId]);
 
   // Register for the agent rack (#07a): this surface exposes the composition tool family + the
   // universal skill. Stable object (panelId keyed) so the registry never churns.
@@ -43,13 +62,15 @@ export function ComposePanel(props: IDockviewPanelProps) {
       {/* The agent↔GUI bridge (Lane A/B #09) rides the actionBar slot — Chat renders it INSIDE its
           providers, so it reads the live chat stream (useChatStream). It renders nothing visible.
           studioContext (presence) makes chat-service advertise the studio dock-nav tools (Lane A). */}
-      <Chat
-        bookId={bookId}
-        studioContext={{ book_id: bookId }}
-        windowingEnabled
-        actionBar={<StudioAgentBridge />}
-        className="h-full"
-      />
+      <UiNavInterceptorContext.Provider value={navInterceptor}>
+        <Chat
+          bookId={bookId}
+          studioContext={studioContext}
+          windowingEnabled
+          actionBar={<StudioAgentBridge />}
+          className="h-full"
+        />
+      </UiNavInterceptorContext.Provider>
     </div>
   );
 }

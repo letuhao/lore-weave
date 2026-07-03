@@ -32,6 +32,7 @@ services:
 
   # ── Go: foundation + existing novel-platform services
   admin-cli: go
+  agent-registry-service: go       # scaffolded 2026-07-03 — Agent Extensibility Registry (plugins/skills/MCP-server registrations); domain owner of user-registered agent capabilities.
   alert-recorder: go
   archive-worker: go
   auth-service: go

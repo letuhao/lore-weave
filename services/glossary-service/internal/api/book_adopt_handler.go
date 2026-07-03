@@ -26,10 +26,17 @@ import (
 	"context"
 	"encoding/json"
 	"net/http"
+	"time"
 
 	"github.com/google/uuid"
 	"github.com/loreweave/grantclient"
 )
+
+// formatBaseVersion renders a row's updated_at as the base_version token —
+// EXACTLY the format compareBaseVersion / bookRowVersion compare against
+// (UTC RFC3339Nano). Every read that emits base_version and every OCC check
+// must go through this shared formatter so they can never drift.
+func formatBaseVersion(t time.Time) string { return t.UTC().Format(time.RFC3339Nano) }
 
 // ── response types (book-local) ───────────────────────────────────────────────
 
@@ -42,6 +49,10 @@ type bookGenreResp struct {
 	SortOrder int     `json:"sort_order"`
 	Active    bool    `json:"active"`
 	SourceRef *string `json:"source_ref,omitempty"`
+	// BaseVersion is the row's updated_at in RFC3339Nano — the optimistic-
+	// concurrency token a patch passes back (W0 HIGH: reads must emit it, or the
+	// OCC loop is un-completable and every patch degrades to last-writer-wins).
+	BaseVersion string `json:"base_version"`
 }
 
 type bookKindResp struct {
@@ -54,6 +65,7 @@ type bookKindResp struct {
 	SortOrder   int     `json:"sort_order"`
 	IsHidden    bool    `json:"is_hidden"`
 	SourceRef   *string `json:"source_ref,omitempty"`
+	BaseVersion string  `json:"base_version"`
 }
 
 type bookKindGenreLink struct {
@@ -76,6 +88,7 @@ type bookAttrResp struct {
 	TranslationHint *string  `json:"translation_hint,omitempty"`
 	SourceRef       *string  `json:"source_ref,omitempty"`
 	MergeStrategy   string   `json:"merge_strategy"`
+	BaseVersion     string   `json:"base_version"`
 }
 
 type bookOntologyResp struct {
@@ -123,6 +136,54 @@ func (s *Server) adoptBookOntology(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, http.StatusOK, ont)
+}
+
+// internalAdoptBookKinds — POST /internal/books/{book_id}/ontology/adopt-kinds?user_id=
+// (internal-token). Idempotently copies the given System kind codes into the book tier
+// for user_id, reusing adoptBookOntologyCore — the SAME copy-down the HTTP adopt + MCP
+// effect use. knowledge-service's KG graph-schema adopt calls this to auto-seed the
+// node-kinds a schema REQUIRES, so adopting a schema no longer 422s NEEDS_GLOSSARY and
+// silently fails. No grant check here: the caller (knowledge) already verified the
+// user's MANAGE grant on the project's book (the same grant adopt itself requires).
+func (s *Server) internalAdoptBookKinds(w http.ResponseWriter, r *http.Request) {
+	bookID, ok := parsePathUUID(w, r, "book_id")
+	if !ok {
+		return
+	}
+	userID, err := uuid.Parse(r.URL.Query().Get("user_id"))
+	if err != nil {
+		writeError(w, http.StatusBadRequest, "GLOSS_VALIDATION", "invalid or missing user_id")
+		return
+	}
+	var in struct {
+		Kinds []string `json:"kinds"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&in); err != nil {
+		writeError(w, http.StatusBadRequest, "GLOSS_INVALID_BODY", "invalid JSON")
+		return
+	}
+	// 1) Copy-down from the System/User catalogue (inherits name/icon/label) for any
+	//    requested code that IS a catalogue kind.
+	if err := s.adoptBookOntologyCore(r.Context(), bookID, userID, nil, in.Kinds); err != nil {
+		writeError(w, http.StatusInternalServerError, "GLOSS_INTERNAL", "adopt kinds failed")
+		return
+	}
+	// 2) A KG schema is authoritative about the node-kinds it needs, and a template
+	//    can require kinds that are NOT in the System/User catalogue (so the copy-down
+	//    above can't create them). Directly create any such residual code as a minimal
+	//    book-tier kind (name = code; the user can rename in glossary). ON CONFLICT skips
+	//    codes the copy-down already created, so this is additive + idempotent.
+	if len(in.Kinds) > 0 {
+		if _, err := s.pool.Exec(r.Context(), `
+			INSERT INTO book_kinds (book_id, code, name, source_ref)
+			SELECT $1, code, code, 'kg-adopt'
+			FROM unnest($2::text[]) AS code
+			ON CONFLICT (book_id, code) DO NOTHING`, bookID, in.Kinds); err != nil {
+			writeError(w, http.StatusInternalServerError, "GLOSS_INTERNAL", "create kinds failed")
+			return
+		}
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"book_id": bookID.String(), "adopted": in.Kinds})
 }
 
 // adoptBookOntologyCore copies the picked System standards (shadowed by the caller's
@@ -315,7 +376,7 @@ func (s *Server) loadBookOntology(ctx context.Context, bookID uuid.UUID) (*bookO
 
 	grows, err := s.pool.Query(ctx, `
 		SELECT bg.genre_id::text, bg.code, bg.name, bg.icon, bg.color, bg.sort_order,
-		       (bag.genre_id IS NOT NULL) AS active, bg.source_ref
+		       (bag.genre_id IS NOT NULL) AS active, bg.source_ref, bg.updated_at
 		FROM book_genres bg
 		LEFT JOIN book_active_genres bag ON bag.book_id = bg.book_id AND bag.genre_id = bg.genre_id
 		WHERE bg.book_id = $1 AND bg.deprecated_at IS NULL
@@ -326,9 +387,11 @@ func (s *Server) loadBookOntology(ctx context.Context, bookID uuid.UUID) (*bookO
 	defer grows.Close()
 	for grows.Next() {
 		var g bookGenreResp
-		if err := grows.Scan(&g.GenreID, &g.Code, &g.Name, &g.Icon, &g.Color, &g.SortOrder, &g.Active, &g.SourceRef); err != nil {
+		var updatedAt time.Time
+		if err := grows.Scan(&g.GenreID, &g.Code, &g.Name, &g.Icon, &g.Color, &g.SortOrder, &g.Active, &g.SourceRef, &updatedAt); err != nil {
 			return nil, err
 		}
+		g.BaseVersion = formatBaseVersion(updatedAt)
 		ont.Genres = append(ont.Genres, g)
 	}
 	if err := grows.Err(); err != nil {
@@ -336,7 +399,7 @@ func (s *Server) loadBookOntology(ctx context.Context, bookID uuid.UUID) (*bookO
 	}
 
 	krows, err := s.pool.Query(ctx, `
-		SELECT book_kind_id::text, code, name, description, icon, color, sort_order, is_hidden, source_ref
+		SELECT book_kind_id::text, code, name, description, icon, color, sort_order, is_hidden, source_ref, updated_at
 		FROM book_kinds WHERE book_id = $1 AND deprecated_at IS NULL ORDER BY sort_order, code`, bookID)
 	if err != nil {
 		return nil, err
@@ -344,9 +407,11 @@ func (s *Server) loadBookOntology(ctx context.Context, bookID uuid.UUID) (*bookO
 	defer krows.Close()
 	for krows.Next() {
 		var k bookKindResp
-		if err := krows.Scan(&k.BookKindID, &k.Code, &k.Name, &k.Description, &k.Icon, &k.Color, &k.SortOrder, &k.IsHidden, &k.SourceRef); err != nil {
+		var updatedAt time.Time
+		if err := krows.Scan(&k.BookKindID, &k.Code, &k.Name, &k.Description, &k.Icon, &k.Color, &k.SortOrder, &k.IsHidden, &k.SourceRef, &updatedAt); err != nil {
 			return nil, err
 		}
+		k.BaseVersion = formatBaseVersion(updatedAt)
 		ont.Kinds = append(ont.Kinds, k)
 	}
 	if err := krows.Err(); err != nil {
@@ -372,7 +437,7 @@ func (s *Server) loadBookOntology(ctx context.Context, bookID uuid.UUID) (*bookO
 
 	arows, err := s.pool.Query(ctx, `
 		SELECT attr_id::text, kind_id::text, genre_id::text, code, name, description,
-		       field_type, is_required, sort_order, options, auto_fill_prompt, translation_hint, source_ref, merge_strategy
+		       field_type, is_required, sort_order, options, auto_fill_prompt, translation_hint, source_ref, merge_strategy, updated_at
 		FROM book_attributes WHERE book_id = $1 AND deprecated_at IS NULL ORDER BY sort_order, code`, bookID)
 	if err != nil {
 		return nil, err
@@ -380,10 +445,12 @@ func (s *Server) loadBookOntology(ctx context.Context, bookID uuid.UUID) (*bookO
 	defer arows.Close()
 	for arows.Next() {
 		var a bookAttrResp
+		var updatedAt time.Time
 		if err := arows.Scan(&a.AttrID, &a.KindID, &a.GenreID, &a.Code, &a.Name, &a.Description,
-			&a.FieldType, &a.IsRequired, &a.SortOrder, &a.Options, &a.AutoFillPrompt, &a.TranslationHint, &a.SourceRef, &a.MergeStrategy); err != nil {
+			&a.FieldType, &a.IsRequired, &a.SortOrder, &a.Options, &a.AutoFillPrompt, &a.TranslationHint, &a.SourceRef, &a.MergeStrategy, &updatedAt); err != nil {
 			return nil, err
 		}
+		a.BaseVersion = formatBaseVersion(updatedAt)
 		if a.Options == nil {
 			a.Options = []string{}
 		}

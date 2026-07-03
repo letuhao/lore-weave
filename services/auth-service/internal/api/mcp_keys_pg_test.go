@@ -152,6 +152,83 @@ func TestMcpKeys_CreateResolveRevoke_PG(t *testing.T) {
 	}
 }
 
+func TestMcpKeys_PatchUpdatesMetadata_PG(t *testing.T) {
+	// Owner edits a key's safe metadata (name / rate limit / spend cap / expiry)
+	// without revoking + re-creating. Scope/secret are untouched; the resolve path
+	// must reflect the new limits, and expiry can be both SET and CLEARED (tri-state).
+	s, pool := mcpKeysServer(t, true)
+	uid := mkUser(t, pool)
+	tok := bearer(t, uid)
+
+	rr := doJSON(s, http.MethodPost, "/v1/account/mcp-keys", tok,
+		map[string]any{"name": "before", "rate_limit_rpm": 60})
+	var created struct {
+		KeyID string `json:"key_id"`
+		Key   string `json:"key"`
+	}
+	_ = json.Unmarshal(rr.Body.Bytes(), &created)
+
+	// PATCH name + rate limit + spend cap + a future expiry.
+	future := time.Now().Add(24 * time.Hour).UTC().Format(time.RFC3339)
+	rr = doJSON(s, http.MethodPatch, "/v1/account/mcp-keys/"+created.KeyID, tok, map[string]any{
+		"name": "after", "rate_limit_rpm": 120, "spend_cap_usd": 5.5, "expires_at": future,
+	})
+	if rr.Code != http.StatusOK {
+		t.Fatalf("patch: got %d body=%s", rr.Code, rr.Body.String())
+	}
+	var view struct {
+		Name         string   `json:"name"`
+		RateLimitRPM int      `json:"rate_limit_rpm"`
+		SpendCapUSD  *float64 `json:"spend_cap_usd"`
+		ExpiresAt    *string  `json:"expires_at"`
+	}
+	if err := json.Unmarshal(rr.Body.Bytes(), &view); err != nil {
+		t.Fatalf("patch body: %v %s", err, rr.Body.String())
+	}
+	if view.Name != "after" || view.RateLimitRPM != 120 || view.SpendCapUSD == nil || *view.SpendCapUSD != 5.5 || view.ExpiresAt == nil {
+		t.Fatalf("patch did not apply: %+v", view)
+	}
+	// The resolve hot path reflects the new rate limit (proves it persisted, not just echoed).
+	rr = resolve(s, created.Key)
+	if rr.Code != http.StatusOK {
+		t.Fatalf("resolve after patch: %d", rr.Code)
+	}
+	var res struct {
+		RateLimitRPM int `json:"rate_limit_rpm"`
+	}
+	_ = json.Unmarshal(rr.Body.Bytes(), &res)
+	if res.RateLimitRPM != 120 {
+		t.Fatalf("resolved rate_limit_rpm = %d, want 120", res.RateLimitRPM)
+	}
+
+	// Clear the expiry ("" ⇒ NULL) AND the spend cap (null ⇒ no cap); the key must
+	// still resolve and report neither. spend_cap is sent as an explicit JSON null.
+	rr = doJSON(s, http.MethodPatch, "/v1/account/mcp-keys/"+created.KeyID, tok,
+		map[string]any{"expires_at": "", "spend_cap_usd": nil})
+	_ = json.Unmarshal(rr.Body.Bytes(), &view)
+	if rr.Code != http.StatusOK || view.ExpiresAt != nil || view.SpendCapUSD != nil {
+		t.Fatalf("clear expiry/cap: got %d expires=%v cap=%v", rr.Code, view.ExpiresAt, view.SpendCapUSD)
+	}
+	// A bare PATCH (name only) must NOT disturb the now-cleared cap (absent ≠ null).
+	rr = doJSON(s, http.MethodPatch, "/v1/account/mcp-keys/"+created.KeyID, tok,
+		map[string]any{"name": "renamed"})
+	_ = json.Unmarshal(rr.Body.Bytes(), &view)
+	if rr.Code != http.StatusOK || view.SpendCapUSD != nil {
+		t.Fatalf("name-only patch disturbed cap: got %d cap=%v", rr.Code, view.SpendCapUSD)
+	}
+
+	// A bad expires_at is rejected; another user's key 404s (owner-scoped).
+	if rr := doJSON(s, http.MethodPatch, "/v1/account/mcp-keys/"+created.KeyID, tok,
+		map[string]any{"expires_at": "not-a-date"}); rr.Code != http.StatusBadRequest {
+		t.Fatalf("bad expires_at: got %d, want 400", rr.Code)
+	}
+	other := bearer(t, mkUser(t, pool))
+	if rr := doJSON(s, http.MethodPatch, "/v1/account/mcp-keys/"+created.KeyID, other,
+		map[string]any{"name": "hijack"}); rr.Code != http.StatusNotFound {
+		t.Fatalf("cross-owner patch: got %d, want 404", rr.Code)
+	}
+}
+
 func TestMcpKeys_DeletedAccountInvalidatesKey_PG(t *testing.T) {
 	s, pool := mcpKeysServer(t, true)
 	uid := mkUser(t, pool)

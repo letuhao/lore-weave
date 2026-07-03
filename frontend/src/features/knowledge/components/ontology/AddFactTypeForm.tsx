@@ -33,7 +33,7 @@ export function AddFactTypeForm({ onSubmit, isSubmitting }: Props) {
           <input
             value={code}
             onChange={(e) => setCode(e.target.value)}
-            className="w-full rounded-md border px-2 py-1"
+            className="w-full rounded-md border bg-input px-2 py-1"
             placeholder="birth"
             data-testid="fact-type-code-input"
           />
@@ -43,7 +43,7 @@ export function AddFactTypeForm({ onSubmit, isSubmitting }: Props) {
           <input
             value={label}
             onChange={(e) => setLabel(e.target.value)}
-            className="w-full rounded-md border px-2 py-1"
+            className="w-full rounded-md border bg-input px-2 py-1"
             data-testid="fact-type-label-input"
           />
         </label>
@@ -51,7 +51,7 @@ export function AddFactTypeForm({ onSubmit, isSubmitting }: Props) {
       <button
         type="submit"
         disabled={!valid || isSubmitting}
-        className="rounded-md bg-primary px-3 py-1.5 text-[12px] font-medium text-white disabled:opacity-50"
+        className="rounded-md bg-primary px-3 py-1.5 text-[12px] font-medium text-primary-foreground disabled:opacity-50"
         data-testid="fact-type-submit"
       >
         {t('schema.add')}

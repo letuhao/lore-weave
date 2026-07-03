@@ -5,16 +5,39 @@ import type { PropsWithChildren } from 'react';
 
 vi.mock('@/auth', () => ({ useAuth: () => ({ accessToken: 'tok' }) }));
 
-vi.mock('@/features/settings/api', () => ({
-  providerApi: {
-    listUserModels: (_t: string, opts?: { capability?: string }) =>
-      Promise.resolve({
-        items:
-          opts?.capability === 'embedding'
-            ? [{ user_model_id: 'e1', alias: 'Embed-1', provider_model_name: 'bge-m3' }]
-            : [{ user_model_id: 'g1', alias: 'Gen-1', provider_model_name: 'qwen' }],
-      }),
-  },
+// W5 — the compose config renders the shared ModelPicker, which fetches via
+// aiModelsApi (and imports getUserModelMeta → keep the actual module around).
+const pickerModel = (over: Record<string, unknown>) => ({
+  provider_credential_id: 'cred-1',
+  provider_kind: 'lm_studio',
+  alias: null,
+  is_active: true,
+  is_favorite: false,
+  capability_flags: {},
+  tags: [],
+  created_at: '2026-01-01T00:00:00Z',
+  ...over,
+});
+vi.mock('@/features/ai-models/api', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('@/features/ai-models/api')>();
+  return {
+    ...actual,
+    aiModelsApi: {
+      listUserModels: (_t: string, opts?: { capability?: string }) =>
+        Promise.resolve({
+          items:
+            opts?.capability === 'embedding'
+              ? [pickerModel({ user_model_id: 'e1', alias: 'Embed-1', provider_model_name: 'bge-m3' })]
+              : [pickerModel({ user_model_id: 'g1', alias: 'Gen-1', provider_model_name: 'qwen' })],
+        }),
+      patchFavorite: vi.fn(),
+    },
+  };
+});
+vi.mock('@/lib/syncPrefs', () => ({
+  loadPrefFromServer: vi.fn().mockResolvedValue(undefined),
+  savePrefToServer: vi.fn().mockResolvedValue(true),
+  syncPrefsToServer: vi.fn(),
 }));
 
 const composeMock = vi.fn().mockResolvedValue({ job_id: 'j1' });
@@ -44,6 +67,7 @@ vi.mock('../../../hooks/useComposeDimensions', () => ({
   ],
 }));
 
+import { invalidateUserModelsCache } from '@/components/model-picker';
 import { ComposePanel } from '../ComposePanel';
 import { EnrichmentProvider } from '../../../context/EnrichmentContext';
 
@@ -57,18 +81,26 @@ function renderPanel() {
   return render(<ComposePanel />, { wrapper: Wrapper });
 }
 
+// W5 shared ModelPicker interaction: click the labelled combobox trigger, then
+// click the option row by its display name.
 async function fillGen() {
-  await waitFor(() => expect(screen.getByRole('option', { name: 'Gen-1' })).toBeInTheDocument());
-  fireEvent.change(screen.getByTestId('compose-gen-model'), { target: { value: 'g1' } });
+  fireEvent.click(await screen.findByRole('combobox', { name: 'compose.config.gen_model' }));
+  fireEvent.click(await screen.findByText('Gen-1'));
+}
+async function fillEmbed() {
+  fireEvent.click(await screen.findByRole('combobox', { name: 'compose.config.embed_model' }));
+  fireEvent.click(await screen.findByText('Embed-1'));
 }
 async function fillModels() {
   await fillGen();
-  fireEvent.change(screen.getByTestId('compose-embed-model'), { target: { value: 'e1' } });
+  await fillEmbed();
 }
 
 beforeEach(() => {
   composeMock.mockClear();
   resolveIntentMock.mockReset();
+  localStorage.clear();
+  invalidateUserModelsCache();
   uploadsMock.items = [];
   uploadsMock.readyIds = [];
   uploadsMock.upload.mockClear();
@@ -175,7 +207,7 @@ describe('ComposePanel (mode C — context)', () => {
     fireEvent.change(screen.getByTestId('compose-context-text'), { target: { value: '東海仙山。' } });
     await fillGen(); // gen only — embed still missing → blocked
     expect(screen.getByTestId('compose-run')).toBeDisabled();
-    fireEvent.change(screen.getByTestId('compose-embed-model'), { target: { value: 'e1' } });
+    await fillEmbed();
     expect(screen.getByTestId('compose-run')).not.toBeDisabled();
   });
 

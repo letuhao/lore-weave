@@ -39,6 +39,7 @@ import { ResetPage } from '@/pages/auth/ResetPage';
 import { HomePage } from '@/pages/HomePage';
 import { UsagePage } from '@/pages/UsagePage';
 import { KnowledgePage } from '@/pages/KnowledgePage';
+import { ExtensionsPage } from '@/features/extensions/pages/ExtensionsPage';
 import { ProjectDetailShell } from '@/pages/ProjectDetailShell';
 import { WorldsPage } from '@/features/world/pages/WorldsPage';
 import { WorldWorkspacePage } from '@/features/world/pages/WorldWorkspacePage';
@@ -202,6 +203,10 @@ export function App() {
 
             {/* Notifications */}
             <Route path="/notifications" element={<NotificationsPage />} />
+
+            {/* Agent Extensibility Registry — plugins/skills/proposals (two-shells
+                with the studio ExtensionsPanel) */}
+            <Route path="/extensions" element={<ExtensionsPage />} />
           </Route>
 
           {/* 404 */}

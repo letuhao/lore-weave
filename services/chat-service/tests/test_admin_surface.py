@@ -89,7 +89,7 @@ class TestGetAdminToolDefinitions:
             second = await client.get_admin_tool_definitions(ADMIN_TOKEN)
         assert first == second
         assert factory.call_count == 1  # cached
-        assert client._tool_definitions is None  # user catalog never populated
+        assert not client._tool_defs_cache  # user/overlay catalog never populated
         await client.aclose()
 
     @pytest.mark.asyncio

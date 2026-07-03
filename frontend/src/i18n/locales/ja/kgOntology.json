@@ -9,7 +9,12 @@
   "common": {
     "dismiss": "閉じる",
     "deprecate": "非推奨にする",
-    "deprecated": "非推奨"
+    "deprecated": "非推奨",
+    "save": "保存",
+    "cancel": "キャンセル",
+    "edit": "編集",
+    "delete": "削除",
+    "deleted": "削除しました"
   },
   "adopt": {
     "chooseTemplate": "採用するテンプレートを選択",
@@ -67,8 +72,54 @@
     "noVocabSets": "このスキーマにはまだ語彙セットがありません — まず AI に追加を依頼してください。",
     "add": "追加",
     "added": "スキーマを更新しました",
+    "saved": "スキーマを更新しました",
     "addFailed": "スキーマを更新できませんでした",
-    "forbidden": "スキーマを編集するにはこのプロジェクトの管理権限が必要です"
+    "forbidden": "スキーマを編集するにはこのプロジェクトの管理権限が必要です",
+    "vocabSets": "語彙セット",
+    "sourceKinds": "ソース種別",
+    "targetKinds": "ターゲット種別",
+    "descriptionField": "説明",
+    "addVocabSet": "語彙セットを追加",
+    "usedBy": "{{count}} 件で使用",
+    "anyKind": "任意の種別",
+    "addKind": "種別を追加",
+    "otherKind": "その他…",
+    "emptyTitle": "このスキーマは空です",
+    "emptyHelp": "まずノード種別（キャラクター・場所・組織など）を追加し、エッジ種別でつなげましょう。",
+    "deleteConfirmTitle": "このコンポーネントを削除しますか？",
+    "deleteConfirmBody": "「{{code}}」は {{count}} 件のグラフ要素から参照されています。削除すると非推奨になります（データは引き続き参照可能）。削除しますか？"
+  },
+  "canvas": {
+    "list": "リスト",
+    "canvas": "キャンバス",
+    "hint": "ドラッグで配置 · ⇢ の後にノードをクリックで接続",
+    "connect": "ここから接続",
+    "connectingFrom": "{{code}} から接続中 — 対象ノードをクリック",
+    "newKindPlaceholder": "新しい種別",
+    "addKind": "種別を追加",
+    "empty": "ノード種別がまだありません — 追加して開始。",
+    "looseEdges": "種別のないエッジ型"
+  },
+  "generate": {
+    "cta": "AI で生成",
+    "title": "説明からスキーマを生成",
+    "premise": "設定",
+    "premisePlaceholder": "若き修行者が…という仙侠物語",
+    "genre": "ジャンル（任意）",
+    "model": "モデル",
+    "generateButton": "生成",
+    "generating": "生成中…",
+    "reviewHelp": "提案を確認し、必要なものを追加してください。",
+    "regenerate": "戻る",
+    "adoptButton": "選択を追加",
+    "failed": "スキーマを生成できませんでした"
+  },
+  "infer": {
+    "title": "グラフから検出",
+    "help": "本から抽出済み — 未登録のものを追加",
+    "addButton": "{{count}} 件をスキーマに追加",
+    "added": "{{count}} 件をスキーマに追加しました",
+    "addedPartial": "{{ok}} 件追加 · {{failed}} 件失敗"
   },
   "sync": {
     "upToDate": "最新です — 上流の変更はありません。",

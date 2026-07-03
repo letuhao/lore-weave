@@ -38,6 +38,8 @@ from typing import Annotated, Literal
 from uuid import UUID
 
 from mcp.server.fastmcp import Context as MCPContext
+from mcp.server.fastmcp.exceptions import ToolError
+from pydantic import ValidationError
 
 from loreweave_mcp import (
     ForbidExtra,
@@ -69,6 +71,69 @@ logger = logging.getLogger(__name__)
 __all__ = ["mcp_server", "build_mcp_app"]
 
 mcp_server = make_stateless_fastmcp("translation")
+
+
+# ── W0 #4b — model-directed validation errors ─────────────────────────────────
+# FastMCP surfaces a pydantic arg-validation failure as the RAW multi-line dump
+# (with the errors.pydantic.dev URL) — noise a model cannot act on. Intercept at
+# the per-server tool-dispatch chokepoint and rewrite to a ONE-LINE directive.
+# Mirrors jobs/knowledge-service; the loreweave_mcp kit will absorb the shared
+# copy later (kit is outside the W0 change surface).
+
+
+def _validation_directive(tool_name: str, exc: ValidationError) -> str:
+    """One line: every failing arg with pydantic's expectation + the sent shape."""
+    parts = []
+    errs = exc.errors(include_url=False)
+    for err in errs[:3]:
+        loc = ".".join(str(p) for p in err.get("loc", ())) or "arguments"
+        msg = err.get("msg", "invalid value")
+        sent = err.get("input")
+        parts.append(f"`{loc}`: {msg} (you sent a {type(sent).__name__})")
+    if len(errs) > 3:
+        parts.append(f"(+{len(errs) - 3} more)")
+    return (
+        f"invalid arguments for {tool_name} — "
+        + "; ".join(parts)
+        + ". Fix the argument and call the tool again."
+    )
+
+
+def _install_validation_error_rewriter(server) -> None:
+    """Wrap the FastMCP tool manager's dispatch so a ToolError caused by a
+    pydantic ValidationError re-raises with the one-line directive instead of
+    the raw dump. Non-validation errors pass through untouched."""
+    manager = server._tool_manager
+    original = manager.call_tool
+
+    async def call_tool(name, arguments, *args, **kwargs):
+        try:
+            return await original(name, arguments, *args, **kwargs)
+        except ToolError as e:
+            cause = e.__cause__
+            if isinstance(cause, ValidationError):
+                raise ToolError(_validation_directive(name, cause)) from cause
+            raise
+
+    manager.call_tool = call_tool
+
+
+_install_validation_error_rewriter(mcp_server)
+
+
+def _single_value(arg_name: str, value: str | list[str] | None) -> str | None:
+    """W0 #3 — models routinely send `[\"<uuid>\"]` for single-valued args.
+    Accept a one-element list (unwrap it); reject a multi-element list with a
+    directive naming the fix. None/str pass through."""
+    if isinstance(value, list):
+        if len(value) == 1:
+            return value[0]
+        raise ValueError(
+            f"`{arg_name}` must be a single value, not a list of {len(value)} — "
+            f"pick one and call the tool again"
+        )
+    return value
+
 
 # Tier-W confirm-token TTL — the user has time to read the cost + confirm.
 _CONFIRM_TTL_S = 600
@@ -532,8 +597,12 @@ async def translation_update_settings(
     book_id: Annotated[str, "The book's id (UUID)."],
     target_language: Annotated[str | None, "New target language code, or omit to keep."] = None,
     model_source: Annotated[str | None, "New model source ('user_model'|'platform_model'), or omit."] = None,
-    model_ref: Annotated[str | None, "New model id (UUID), or omit to keep."] = None,
+    model_ref: Annotated[
+        str | list[str] | None,
+        "New model id (a single UUID string; a one-element list is tolerated), or omit to keep.",
+    ] = None,
 ) -> dict:
+    model_ref = _single_value("model_ref", model_ref)
     tc = _ctx(ctx)
     bid = _uuid(book_id)
     await _require_edit(tc, bid)
@@ -695,7 +764,11 @@ async def translation_start_extraction(
         dict[str, dict[str, str]] | None,
         "kind_code -> {attr_code: 'fill'|'overwrite'}; omit to extract names only.",
     ] = None,
-    model_ref: Annotated[str | None, "Model id (UUID); omit to use your translation setting."] = None,
+    model_ref: Annotated[
+        str | list[str] | None,
+        "Model id (a single UUID string; a one-element list is tolerated); "
+        "omit to use your translation setting.",
+    ] = None,
     max_entities_per_kind: Annotated[int, "Max entities per kind per chapter."] = 30,
     reasoning_effort: Annotated[
         str,
@@ -704,6 +777,7 @@ async def translation_start_extraction(
     ] = "none",
     thinking_enabled: Annotated[bool, "Deprecated alias for reasoning_effort=medium."] = False,
 ) -> dict:
+    model_ref = _single_value("model_ref", model_ref)
     tc = _ctx(ctx)
     bid = _uuid(book_id)
     await _require_edit(tc, bid)

@@ -1,10 +1,11 @@
 import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { History, KeyRound, Plus, Trash2 } from 'lucide-react';
+import { History, KeyRound, Pencil, Plus, Trash2 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { ConfirmDialog } from '@/components/shared/ConfirmDialog';
 import { useMcpKeys } from './useMcpKeys';
 import { McpCreateKeyDialog } from './McpCreateKeyDialog';
+import { McpEditKeyDialog } from './McpEditKeyDialog';
 import { McpKeyAuditView } from './McpKeyAuditView';
 import { McpApprovalsPanel } from './McpApprovalsPanel';
 import { splitScopes, type McpKey } from './api';
@@ -17,8 +18,9 @@ function fmtDate(iso: string | null): string {
 
 export function McpAccessTab() {
   const { t } = useTranslation('settings');
-  const { keys, loading, create, revoke, loadAudit } = useMcpKeys();
+  const { keys, loading, create, update, revoke, loadAudit } = useMcpKeys();
   const [showCreate, setShowCreate] = useState(false);
+  const [editingKey, setEditingKey] = useState<McpKey | null>(null);
   const [pendingRevoke, setPendingRevoke] = useState<McpKey | null>(null);
   const [revoking, setRevoking] = useState(false);
   const [auditOpen, setAuditOpen] = useState<string | null>(null);
@@ -90,6 +92,7 @@ export function McpAccessTab() {
                 <button
                   onClick={() => setAuditOpen((cur) => (cur === k.key_id ? null : k.key_id))}
                   aria-label={t('mcp.audit.toggle_aria', { name: k.name })}
+                  title={t('mcp.audit.toggle_title')}
                   aria-expanded={auditOpen === k.key_id}
                   className={cn(
                     'rounded-md p-2 text-muted-foreground transition-colors hover:bg-muted',
@@ -100,8 +103,19 @@ export function McpAccessTab() {
                 </button>
                 {k.status === 'active' && (
                   <button
+                    onClick={() => setEditingKey(k)}
+                    aria-label={t('mcp.edit_aria', { name: k.name })}
+                    title={t('mcp.edit_title')}
+                    className="rounded-md p-2 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+                  >
+                    <Pencil className="h-4 w-4" />
+                  </button>
+                )}
+                {k.status === 'active' && (
+                  <button
                     onClick={() => setPendingRevoke(k)}
                     aria-label={t('mcp.revoke_aria', { name: k.name })}
+                    title={t('mcp.revoke_title')}
                     className="rounded-md p-2 text-muted-foreground transition-colors hover:bg-destructive/10 hover:text-destructive"
                   >
                     <Trash2 className="h-4 w-4" />
@@ -117,6 +131,15 @@ export function McpAccessTab() {
       )}
 
       <McpCreateKeyDialog open={showCreate} onOpenChange={setShowCreate} onCreate={create} />
+
+      {/* Keyed by the row id so the form re-seeds from that key each time it opens
+          (a plain remount-free dialog would keep the previous row's values). */}
+      <McpEditKeyDialog
+        key={editingKey?.key_id ?? 'none'}
+        editKey={editingKey}
+        onOpenChange={(o) => !o && setEditingKey(null)}
+        onSave={update}
+      />
 
       <ConfirmDialog
         open={!!pendingRevoke}

@@ -204,6 +204,52 @@ async def test_wrapper_per_call_user_id_threaded_to_sdk():
 
 
 @pytest.mark.asyncio
+async def test_wrapper_accepts_and_forwards_cancel_check():
+    """bug #34 SDK-mirror drift regression-lock — the loreweave_extraction
+    extractors ALWAYS call submit_and_wait(cancel_check=…) (default None), so
+    this concrete wrapper MUST (a) accept the kwarg without TypeError and (b)
+    forward it to sdk.wait_terminal. The extractor tests use a `**kwargs` fake
+    that swallows the arg, hiding the drift that crashed live extraction
+    ('unexpected keyword argument cancel_check'); this pins the REAL signature."""
+    sdk = AsyncMock()
+    sdk.submit_job = AsyncMock(return_value=_make_submit_response())
+    sdk.wait_terminal = AsyncMock(return_value=_make_job(status="completed"))
+
+    async def _cancel() -> bool:
+        return False
+
+    wrapper = LLMClient(sdk)
+    await wrapper.submit_and_wait(
+        user_id="00000000-0000-0000-0000-000000000001",
+        operation="entity_extraction",
+        model_source="user_model",
+        model_ref="00000000-0000-0000-0000-000000000001",
+        input={"messages": []},
+        cancel_check=_cancel,
+    )
+    assert sdk.wait_terminal.await_args.kwargs["cancel_check"] is _cancel
+
+
+@pytest.mark.asyncio
+async def test_wrapper_defaults_cancel_check_none():
+    """back-compat — omitting cancel_check forwards None (every existing
+    caller stays byte-identical)."""
+    sdk = AsyncMock()
+    sdk.submit_job = AsyncMock(return_value=_make_submit_response())
+    sdk.wait_terminal = AsyncMock(return_value=_make_job(status="completed"))
+
+    wrapper = LLMClient(sdk)
+    await wrapper.submit_and_wait(
+        user_id="00000000-0000-0000-0000-000000000001",
+        operation="entity_extraction",
+        model_source="user_model",
+        model_ref="00000000-0000-0000-0000-000000000001",
+        input={"messages": []},
+    )
+    assert sdk.wait_terminal.await_args.kwargs["cancel_check"] is None
+
+
+@pytest.mark.asyncio
 async def test_wrapper_retries_on_http_error_then_succeeds():
     """P3 D-P3-EXTRACTION-CALLER-WIRE-UP regression-lock — wrapper MUST
     retry transport-level LLMHttpError (ConnectTimeout, stale-pool

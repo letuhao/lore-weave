@@ -23,6 +23,7 @@ import { StudioSideBar } from './StudioSideBar';
 import { StudioDock } from './StudioDock';
 import { StudioBottomPanel } from './StudioBottomPanel';
 import { StudioStatusBar } from './StudioStatusBar';
+import { StudioStatusContributions } from '../statusbar/StudioStatusContributions';
 
 export function StudioFrame({ bookId }: { bookId: string }) {
   return (
@@ -64,58 +65,70 @@ function StudioFrameInner({ bookId }: { bookId: string }) {
   // Quick Open resolve (v1): reveal the Manuscript navigator (without toggling it shut if we're
   // already there — review-impl MED), highlight the hit, publish the active chapter to the bus via
   // the host. Tree reveal (expand ancestors + scroll) and dock-open land with #03 (tracked debt).
+  // #12 M-C: a SCENE hit additionally publishes the scene slice (AFTER the chapter focus — the
+  // chapter reducer clears activeSceneId) so the editor's Scene Rail highlights it.
   const resolveJump = useCallback((r: JumpResult) => {
     revealManuscript(chrome);
     setSelectedNodeId(r.id);
-    if (r.chapterId) host.focusManuscriptUnit(r.chapterId);
+    if (r.chapterId) {
+      host.focusManuscriptUnit(r.chapterId);
+      if (r.kind === 'scene') host.publish({ type: 'scene', sceneId: r.id, chapterId: r.chapterId });
+    }
   }, [chrome, host]);
 
   // Navigator select (Debt #1 navigator→dock): highlight + drive the editor via the one seam
   // (publish chapter → the Tier-4 hoist loads it; open the editor dock). Arc rows have no chapterId.
   const onSelectNode = useCallback((node: ManuscriptNode) => {
     setSelectedNodeId(node.id);
-    if (node.chapterId) host.focusManuscriptUnit(node.chapterId);
+    if (node.chapterId) {
+      host.focusManuscriptUnit(node.chapterId);
+      if (node.kind === 'scene') host.publish({ type: 'scene', sceneId: node.id, chapterId: node.chapterId });
+    }
   }, [host]);
 
   return (
     <div className="flex h-screen w-full flex-col overflow-hidden bg-background">
       <StudioTopBar bookId={bookId} bookTitle={bookTitle} onOpenQuickOpen={() => setPalette('quick')} />
 
-      <div className="flex min-h-0 flex-1">
-        <StudioActivityBar
-          bookId={bookId}
-          activeView={chrome.activeView}
-          sidebarCollapsed={chrome.sidebarCollapsed}
-          onSelect={chrome.setActiveView}
-        />
-        {!chrome.sidebarCollapsed && (
-          <StudioSideBar
-            activeView={chrome.activeView}
-            onCollapse={chrome.toggleSidebar}
+      {/* Tier-4 manuscript unit hoisted ABOVE dockview (#08) so the editor's in-flight edits
+          survive a dock float / close, and the Lane-B reconciler + editor read one owner store.
+          #12 M-H moved it above the STATUS BAR too (the word-count item reads the hoist) — it
+          sits above every chrome conditional, so a sidebar/bottom toggle never remounts it. */}
+      <ManuscriptUnitProvider bookId={bookId}>
+        <div className="flex min-h-0 flex-1">
+          <StudioActivityBar
             bookId={bookId}
-            token={accessToken}
-            selectedId={selectedNodeId}
-            onSelectNode={onSelectNode}
+            activeView={chrome.activeView}
+            sidebarCollapsed={chrome.sidebarCollapsed}
+            onSelect={chrome.setActiveView}
           />
-        )}
+          {!chrome.sidebarCollapsed && (
+            <StudioSideBar
+              activeView={chrome.activeView}
+              onCollapse={chrome.toggleSidebar}
+              bookId={bookId}
+              token={accessToken}
+              selectedId={selectedNodeId}
+              onSelectNode={onSelectNode}
+            />
+          )}
 
-        {/* Tier-4 manuscript unit hoisted ABOVE dockview (#08) so the editor's in-flight edits
-            survive a dock float / close, and the Lane-B reconciler + editor read one owner store. */}
-        <ManuscriptUnitProvider bookId={bookId}>
           <div className="flex min-w-0 flex-1 flex-col">
             {/* The dock stays mounted regardless of the bottom panel / sidebar (D4 no-remount:
                 in-flight panels must never be dropped by a chrome toggle). */}
             <StudioDock bookId={bookId} apiRef={host._dockApiRef} />
             {chrome.bottomOpen && <StudioBottomPanel onClose={chrome.toggleBottom} />}
           </div>
-        </ManuscriptUnitProvider>
-      </div>
+        </div>
 
-      <StudioStatusBar
-        bookLanguage={bookLanguage}
-        bottomOpen={chrome.bottomOpen}
-        onToggleBottom={chrome.toggleBottom}
-      />
+        {/* #11 F2 — ambient status items (badge/meter) live at frame level, not in panels. */}
+        <StudioStatusContributions />
+        <StudioStatusBar
+          bookLanguage={bookLanguage}
+          bottomOpen={chrome.bottomOpen}
+          onToggleBottom={chrome.toggleBottom}
+        />
+      </ManuscriptUnitProvider>
 
       {/* Palettes (always mounted so the shared jump layer persists; visibility via `open`). */}
       <QuickOpen open={palette === 'quick'} onClose={() => setPalette(null)} bookId={bookId} token={accessToken} onResolve={resolveJump} />

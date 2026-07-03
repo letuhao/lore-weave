@@ -408,16 +408,20 @@ class GenerationJobsRepo:
 
     async def chapter_scene_drafts(
         self, user_id: UUID, project_id: UUID, chapter_id: UUID,
-    ) -> list[str]:
+    ) -> list[dict[str, str]]:
         """B3 stitch input — the latest COMPLETED generation winner text for EVERY
-        scene in `chapter_id`, in story_order. Unlike `prior_scene_drafts` there is
-        NO upper position bound (we want the whole chapter's drafts to stitch).
-        Latest job per node (DISTINCT ON + created_at DESC); empty text filtered.
+        scene in `chapter_id`, in story_order, as `{title, text}` rows (F4
+        D-SCENEMARKER-EMIT: the stitch prepends a `### title` scene-heading line
+        per draft so the persisted chapter carries scene markers). Unlike
+        `prior_scene_drafts` there is NO upper position bound (we want the whole
+        chapter's drafts to stitch). Latest job per node (DISTINCT ON +
+        created_at DESC); empty text filtered.
         M5 isolation: user_id/project_id on BOTH the job AND the joined node."""
         query = """
-        SELECT text FROM (
+        SELECT title, text FROM (
             SELECT DISTINCT ON (o.id)
-                   o.story_order AS story_order, j.result->>'text' AS text
+                   o.story_order AS story_order, o.title AS title,
+                   j.result->>'text' AS text
             FROM generation_job j
             JOIN outline_node o ON o.id = j.outline_node_id
             WHERE j.user_id = $1 AND j.project_id = $2
@@ -432,7 +436,7 @@ class GenerationJobsRepo:
         """
         async with self._pool.acquire() as c:
             rows = await c.fetch(query, user_id, project_id, chapter_id)
-        return [r["text"] for r in rows]
+        return [{"title": r["title"] or "", "text": r["text"]} for r in rows]
 
     async def upsert_promoted_scene_prose(
         self, user_id: UUID, project_id: UUID, outline_node_id: UUID, text: str,

@@ -281,13 +281,29 @@ pytest services/composition-service/tests/unit/test_plan_forge.py -q
 
 ---
 
+## 8b. PO decisions (locked — implement session 2026-07-01)
+
+| Topic | Decision |
+|-------|----------|
+| HTTP API | `/v1/composition/books/{book_id}/plan/*` |
+| Work on compile | **auto_work** — lazy-init via `_ensure_pending_work` |
+| Propose/refine LLM | **async_job** — 202 + poll `run.status` / `active_job_id` |
+| Model BYOK | **explicit_only** — `model_ref` required on every LLM call |
+| Confirm UX (M4) | Extend `confirm_action` domain `composition` |
+| Validate production v1 | S1–S8 golden linter; fixture fidelity YAML = regression only |
+| Implement plan SSOT | [`docs/plans/2026-07-01-plan-forge-promote.md`](../../plans/2026-07-01-plan-forge-promote.md) |
+| OpenAPI contract | [`contracts/api/composition-service/plan-forge.v1.yaml`](../../../contracts/api/composition-service/plan-forge.v1.yaml) |
+
+---
+
 ## 9. Implement session checklist
 
 **Read first:** this file → [`01_PLANFORGE_ARCHITECTURE.md`](01_PLANFORGE_ARCHITECTURE.md) → [`2026-07-01-plan-forge-promote.md`](../../plans/2026-07-01-plan-forge-promote.md)
 
-- [ ] M1: port engine + tests; S1–S8 green on fixture
-- [ ] M2: provider-registry LLM; retire `PLANFORGE_LM_*`; live smoke
-- [ ] M3: `plan_runs` migration + HTTP API + tenancy
+- [x] M0: OpenAPI + MCP tier + ai-gateway `plan_` prefix (2026-07-01)
+- [x] M1: port engine + tests; S1–S8 green on fixture (`services/composition-service/tests/unit/test_plan_forge.py` 28 passed)
+- [x] M2: provider-registry LLM adapter + worker ops plan_forge_propose/refine; unit tests 38 pass
+- [x] M3: `plan_runs` migration + HTTP API + tenancy
 - [ ] M4: MCP tools §5 + fuzzy HIL
 - [ ] M5: Studio planner dock (separate Writing Studio track)
 - [ ] Close `D-PF-NORMALIZE` + `D-PF-APPLY-HONESTY` before paid beta messaging

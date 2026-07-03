@@ -36,6 +36,9 @@ func (s *Server) RegisterAdminTools(srv *mcp.Server) {
 		Description: "Propose CREATING a System-tier genre, kind, or attribute (the shared platform defaults). " +
 			"High-impact and shared across ALL users — it does NOT write; it returns a confirm_token + preview " +
 			"a human admin must confirm. level=genre|kind|attribute + name (+ for attribute: kind_code & genre_code).",
+		InputSchema: closedSetSchemaFor[adminCreateToolIn](map[string][]any{
+			"level": enumLevels, "field_type": enumFieldTypes,
+		}),
 	}, s.toolAdminProposeCreate)
 
 	mcp.AddTool(srv, &mcp.Tool{
@@ -43,6 +46,9 @@ func (s *Server) RegisterAdminTools(srv *mcp.Server) {
 		Description: "Propose EDITING a System-tier genre/kind/attribute in place. level + code identify the row " +
 			"(attribute also needs kind_code + genre_code). Returns a confirm_token + preview a human admin confirms. " +
 			"Only the fields you supply change. The edit refreshes content_hash so adopted books see it via Sync.",
+		InputSchema: closedSetSchemaFor[adminPatchToolIn](map[string][]any{
+			"level": enumLevels, "field_type": enumFieldTypes,
+		}),
 	}, s.toolAdminProposePatch)
 
 	mcp.AddTool(srv, &mcp.Tool{
@@ -51,6 +57,7 @@ func (s *Server) RegisterAdminTools(srv *mcp.Server) {
 			"kind_code + genre_code). High-impact, shared — returns a confirm_token + preview a human admin confirms. " +
 			"`universal` genre and `unknown` kind are never deletable. Deletes are SOFT — the row moves to the recycle " +
 			"bin and can be restored with glossary_admin_propose_restore.",
+		InputSchema: closedSetSchemaFor[adminDeleteToolIn](map[string][]any{"level": enumLevels}),
 	}, s.toolAdminProposeDelete)
 
 	mcp.AddTool(srv, &mcp.Tool{
@@ -59,6 +66,7 @@ func (s *Server) RegisterAdminTools(srv *mcp.Server) {
 			"level + code (attribute also needs kind_code + genre_code). Returns a confirm_token + preview a human " +
 			"admin confirms. Only works on a row currently in the recycle bin; restoring an attribute requires its " +
 			"parent kind & genre to be live (restore those first).",
+		InputSchema: closedSetSchemaFor[adminDeleteToolIn](map[string][]any{"level": enumLevels}),
 	}, s.toolAdminProposeRestore)
 }
 

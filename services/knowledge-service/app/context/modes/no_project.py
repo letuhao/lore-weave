@@ -13,7 +13,7 @@ replays the last N messages as usual.
 
 import asyncio
 import logging
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from uuid import UUID
 
 from app.config import settings
@@ -68,6 +68,24 @@ class BuiltContext:
     # also keeps any degraded path tool-enabled rather than silently
     # disabling tools.
     tool_calling_enabled: bool = True
+    # Track 4 P0 — the glossary entity ids that actually reached the rendered
+    # block (post-budget-trim). The router records these to `entity_access_log`
+    # fire-and-forget (off the latency path) so retrieval salience can be
+    # LEARNED (P1). Empty for Mode 1 (no project → no entities).
+    surfaced_entity_ids: list[str] = field(default_factory=list)
+    # Track B B1(2) — in MULTI mode the surfaced entities span several projects and
+    # `surfaced_entity_ids` is a merged flat list, so the router can't attribute
+    # salience per-project off `req.project_id` (which is None in multi). This maps
+    # each surfaced entity to its SOURCE project so the router records salience
+    # per-project (D-MULTI-SALIENCE-WRITEBACK). Empty for single/no-project modes.
+    surfaced_by_project: dict[str, list[str]] = field(default_factory=dict)
+    # Chat Quality Wave W1 — per-section token split of `context` (estimate_tokens
+    # over each rendered section, POST-budget-trim), e.g. {"user": ..,
+    # "project": .., "glossary_entities": .., "facts": .., "passages": ..,
+    # "summaries": .., "instructions": ..}. Additive: older callers ignore it;
+    # chat-service nests it under the contextBudget frame's memory_knowledge.
+    # Section keys are omitted when the section wasn't rendered.
+    sections: dict[str, int] = field(default_factory=dict)
 
 
 def split_at_boundary(lines: list[str], stable_line_count: int) -> tuple[str, str, str]:
@@ -123,10 +141,15 @@ async def build_no_project_mode(
         summary = None
     has_bio = summary is not None and summary.content.strip() != ""
     lines = ['<memory mode="no_project">']
+    sections: dict[str, int] = {}  # W1 — per-section token split
     if has_bio:
-        lines.append(f"  <user>{sanitize_for_xml(summary.content)}</user>")
+        user_line = f"  <user>{sanitize_for_xml(summary.content)}</user>"
+        lines.append(user_line)
+        sections["user"] = estimate_tokens(user_line)
     instructions = _INSTRUCTIONS_WITH_BIO if has_bio else _INSTRUCTIONS_NO_BIO
-    lines.append(f"  <instructions>{sanitize_for_xml(instructions)}</instructions>")
+    instructions_line = f"  <instructions>{sanitize_for_xml(instructions)}</instructions>"
+    lines.append(instructions_line)
+    sections["instructions"] = estimate_tokens(instructions_line)
     lines.append("</memory>")
     # K18.9: Mode 1 has no message-dependent content, so the whole block
     # is cacheable. stable carries everything; volatile stays "".
@@ -138,4 +161,5 @@ async def build_no_project_mode(
         token_count=estimate_tokens(context),
         stable_context=stable,
         volatile_context=volatile,
+        sections=sections,
     )

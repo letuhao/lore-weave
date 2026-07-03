@@ -123,6 +123,11 @@ async def test_executive_runs_on_the_session_model():
     kw = llm.submit_and_wait.call_args.kwargs
     assert kw["model_source"] == "user_model"
     assert kw["model_ref"] == "the-session-model"
+    # Footgun disable PINNED (no_thinking_fields): a reasoning model must NOT think
+    # out loud — max_tokens=500 would be spent on hidden reasoning → empty → bad_json.
+    # If this goes red, someone dropped the **_NO_THINKING spread and re-opened it.
+    assert kw["input"]["chat_template_kwargs"]["thinking"] is False
+    assert kw["input"]["reasoning_effort"] == "none"
 
 
 @pytest.mark.asyncio

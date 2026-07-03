@@ -16,10 +16,14 @@ from __future__ import annotations
 from uuid import UUID
 
 from app.clients.glossary_ontology_client import GlossaryOntologyClient
-from app.db.repositories.ontology_mutations import OntologyMutationsRepo
+from app.db.repositories.ontology_mutations import (
+    AdoptResult,
+    NeedsGlossaryError,
+    OntologyMutationsRepo,
+)
 from app.db.repositories.projects import ProjectsRepo
 
-__all__ = ["resolve_adopt_glossary_codes"]
+__all__ = ["resolve_adopt_glossary_codes", "adopt_with_autocreate_glossary"]
 
 
 async def resolve_adopt_glossary_codes(
@@ -56,3 +60,63 @@ async def resolve_adopt_glossary_codes(
         return book_id, set(kinds.codes())
     # Glossary unavailable — fail open (treat the source's required kinds as present).
     return book_id, set(await mutations.required_node_kinds(source_schema_id))
+
+
+async def adopt_with_autocreate_glossary(
+    projects: ProjectsRepo,
+    glossary: GlossaryOntologyClient,
+    mutations: OntologyMutationsRepo,
+    *,
+    owner: UUID,
+    project_id: str,
+    source_schema_id: UUID,
+) -> AdoptResult:
+    """Adopt a graph schema, AUTO-SEEDING the glossary node-kinds it requires.
+
+    The M1 adopt-gate blocks with ``NeedsGlossaryError`` when the book's glossary
+    is missing a kind the template needs. Per the product decision (adopting a
+    schema should *create* the glossary it needs), this catches that error, copies
+    the missing kinds down from the System catalogue into the book tier (idempotent
+    ``glossary.adopt_book_kinds``), and retries the adopt ONCE.
+
+    Shared by the human adopt route (``routers/public/ontology.py``) AND the agent
+    confirm effect (``adopt_effect.py``) so both the GUI and the MCP ``kg_adopt``
+    tool auto-create identically (FE-only orchestration was rejected precisely
+    because the agent path can't do it).
+
+    Re-raises ``NeedsGlossaryError`` only when the seed can't satisfy the gate: a
+    book-less project (nothing to seed into), a failed seed, or a required kind
+    with no System row to copy — the caller maps that residual to a clear 422.
+    """
+    book_id, codes = await resolve_adopt_glossary_codes(
+        projects, glossary, mutations,
+        owner=owner, project_id=project_id, source_schema_id=source_schema_id,
+    )
+    try:
+        return await mutations.adopt(
+            owner_user_id=owner, project_id=project_id,
+            source_schema_id=source_schema_id, glossary_kinds=codes, book_id=book_id,
+        )
+    except NeedsGlossaryError as exc:
+        # Only a book-bound project can seed book-tier kinds; a book-less standards
+        # project has no book to write into → surface the gap as-is.
+        if not (exc.book_id and exc.kinds):
+            raise
+        try:
+            book_uuid = UUID(exc.book_id)
+        except (ValueError, TypeError):
+            raise exc  # an unparseable book id can't be seeded → honest 422, not a 500
+        seeded = await glossary.adopt_book_kinds(book_uuid, owner, list(exc.kinds))
+        if not seeded:
+            raise
+        # Re-resolve (now includes the seeded kinds) + retry once. A kind that
+        # still can't resolve (no System row to copy) re-raises with the residual
+        # set → the caller 422s honestly instead of looping.
+        _, codes2 = await resolve_adopt_glossary_codes(
+            projects, glossary, mutations,
+            owner=owner, project_id=project_id, source_schema_id=source_schema_id,
+        )
+        return await mutations.adopt(
+            owner_user_id=owner, project_id=project_id,
+            source_schema_id=source_schema_id, glossary_kinds=codes2, book_id=book_id,
+        )

@@ -72,13 +72,20 @@ EXPECTED_TOOLS = {
     # Tier W (motif)
     "composition_motif_adopt", "composition_motif_mine",
     "composition_arc_import_analyze", "composition_conformance_run",
+    # ── PlanForge (M4) plan_* tools ──
+    # Tier R
+    "plan_validate", "plan_self_check",
+    # Tier A
+    "plan_propose_spec", "plan_interpret_feedback", "plan_apply_revision",
+    "plan_review_checkpoint", "plan_handoff_autofix", "plan_compile",
 }
 TIER_R = {"composition_get_work", "composition_list_outline",
           "composition_get_prose", "composition_list_canon_rules",
           "composition_get_generation_job",
           "composition_motif_search", "composition_motif_get",
           "composition_motif_suggest_for_chapter", "composition_arc_suggest",
-          "composition_get_mine_job", "composition_motif_link_list"}
+          "composition_get_mine_job", "composition_motif_link_list",
+          "plan_validate", "plan_self_check"}
 TIER_W = {"composition_publish", "composition_generate",
           "composition_motif_adopt", "composition_motif_mine",
           "composition_arc_import_analyze", "composition_conformance_run"}
@@ -340,6 +347,51 @@ async def test_get_work_grant_denied_rejected():
     async with _patched(grant_level=0):
         with pytest.raises(NotAccessibleError):
             await srv.composition_get_work(_Ctx(), project_id=str(PROJECT))
+
+
+# ── book_id → Work resolution (M-E live-caught: the agent knows book_id from the
+# studio context but every composition tool keys on project_id; without this bridge
+# the model retried the book_id AS a project_id and dead-ended) ────────────────
+
+
+async def test_get_work_by_book_id_resolves_the_project():
+    import app.mcp.server as srv
+
+    async with _patched(grant_level=1) as s:
+        works = s.WorksRepo(None)  # the patched constructor returns the shared stub
+        works.resolve_by_book = AsyncMock(return_value=[_work()])
+        res = await srv.composition_get_work(_Ctx(), book_id=str(BOOK))
+    assert res["project_id"] == str(PROJECT)
+    works.resolve_by_book.assert_awaited_once_with(TEST_USER, BOOK)
+
+
+async def test_get_work_by_book_id_no_marked_work_uniform_deny():
+    """No marked Work for that book → H13 uniform deny (indistinguishable from 'not yours')."""
+    import app.mcp.server as srv
+    from loreweave_mcp import NotAccessibleError
+
+    async with _patched() as s:
+        s.WorksRepo(None).resolve_by_book = AsyncMock(return_value=[])
+        with pytest.raises(NotAccessibleError):
+            await srv.composition_get_work(_Ctx(), book_id=str(BOOK))
+
+
+async def test_get_work_by_book_id_multiple_marked_returns_candidates():
+    import app.mcp.server as srv
+
+    w2 = _work()
+    async with _patched() as s:
+        s.WorksRepo(None).resolve_by_book = AsyncMock(return_value=[_work(), w2])
+        res = await srv.composition_get_work(_Ctx(), book_id=str(BOOK))
+    assert len(res["candidates"]) == 2
+
+
+async def test_get_work_without_any_id_rejected():
+    import app.mcp.server as srv
+
+    async with _patched():
+        with pytest.raises(ValueError, match="project_id or book_id"):
+            await srv.composition_get_work(_Ctx())
 
 
 async def test_get_generation_job_owner_ok():

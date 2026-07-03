@@ -22,6 +22,9 @@
     "last_used": "Last used: {{date}}",
     "expires_label": "Expires: {{date}}",
     "revoke_aria": "Revoke key {{name}}",
+    "revoke_title": "Revoke key",
+    "edit_aria": "Edit key {{name}}",
+    "edit_title": "Edit limits",
     "status": {
       "active": "Active",
       "revoked": "Revoked"
@@ -60,7 +63,17 @@
       "self_confirm_hint": "When off, write actions that need confirmation must be approved by you. Leave off unless this is a trusted automated agent.",
       "cancel": "Cancel",
       "submit": "Create Key",
-      "creating": "Creating…"
+      "creating": "Creating…",
+      "secret_note": "A secret key is generated when you create it — you don't set one. It's shown once, right after."
+    },
+    "edit": {
+      "title": "Edit \"{{name}}\"",
+      "subtitle": "Adjust this key's limits. The secret and what it can reach don't change.",
+      "scopes_locked": "Scopes and domains are fixed at creation. To change what this key can reach, revoke it and create a new one.",
+      "expires_hint": "Leave empty for no expiry.",
+      "cancel": "Cancel",
+      "submit": "Save changes",
+      "saving": "Saving…"
     },
     "reveal": {
       "title": "Key created",
@@ -76,6 +89,7 @@
     },
     "audit": {
       "toggle_aria": "Recent calls for {{name}}",
+      "toggle_title": "Call history",
       "loading": "Loading recent calls…",
       "empty": "No calls recorded yet.",
       "outcome": {
@@ -108,6 +122,8 @@
       "create_failed": "Failed to create key",
       "revoked": "Key revoked",
       "revoke_failed": "Failed to revoke key",
+      "updated": "Key updated",
+      "update_failed": "Failed to update key",
       "audit_failed": "Failed to load call history"
     }
   },

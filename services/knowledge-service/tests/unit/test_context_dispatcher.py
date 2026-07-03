@@ -164,3 +164,83 @@ def test_context_build_response_carries_tool_calling_enabled():
     assert ContextBuildResponse.model_validate(
         built_default
     ).tool_calling_enabled is True
+
+
+# ── Track B B1(2): multi-project (multi-KG) dispatch ─────────────────
+
+
+@pytest.mark.asyncio
+async def test_multiple_projects_route_to_multi_mode(monkeypatch):
+    """>=2 readable projects union via the multi-project mode (not the single full mode)."""
+    p1, p2 = _project(), _project()
+    projects_repo = MagicMock()
+    projects_repo.get = AsyncMock(side_effect=[p1, p2])
+    multi = AsyncMock(return_value=MagicMock(mode="multi"))
+    full = AsyncMock(return_value=MagicMock(mode="full"))
+    monkeypatch.setattr("app.context.builder.build_multi_project_mode", multi)
+    monkeypatch.setattr("app.context.builder.build_full_mode", full)
+
+    await build_context(
+        summaries_repo=MagicMock(), projects_repo=projects_repo,
+        glossary_client=MagicMock(), user_id=USER_ID, project_id=None,
+        message="hi", project_ids=[p1.project_id, p2.project_id],
+    )
+    multi.assert_awaited_once()
+    full.assert_not_called()
+    _, kwargs = multi.await_args
+    assert kwargs["projects"] == [p1, p2]
+
+
+@pytest.mark.asyncio
+async def test_single_project_in_list_routes_to_single_mode(monkeypatch):
+    """A project_ids of length 1 still uses the richer single-project full mode."""
+    p1 = _project(extraction_enabled=True)
+    projects_repo = MagicMock()
+    projects_repo.get = AsyncMock(return_value=p1)
+    multi = AsyncMock()
+    full = AsyncMock(return_value=MagicMock(mode="full"))
+    monkeypatch.setattr("app.context.builder.build_multi_project_mode", multi)
+    monkeypatch.setattr("app.context.builder.build_full_mode", full)
+
+    await build_context(
+        summaries_repo=MagicMock(), projects_repo=projects_repo,
+        glossary_client=MagicMock(), user_id=USER_ID, project_id=None,
+        message="hi", project_ids=[p1.project_id],
+    )
+    full.assert_awaited_once()
+    multi.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_multi_skips_stale_ids_but_unions_the_readable(monkeypatch):
+    """A stale/foreign id in the set is filtered; the >=2 readable ones still union."""
+    p1, p2 = _project(), _project()
+    projects_repo = MagicMock()
+    projects_repo.get = AsyncMock(side_effect=[p1, None, p2])  # middle id is stale
+    multi = AsyncMock(return_value=MagicMock(mode="multi"))
+    monkeypatch.setattr("app.context.builder.build_multi_project_mode", multi)
+    monkeypatch.setattr("app.context.builder.build_full_mode", AsyncMock())
+
+    await build_context(
+        summaries_repo=MagicMock(), projects_repo=projects_repo,
+        glossary_client=MagicMock(), user_id=USER_ID, project_id=None,
+        message="hi", project_ids=[p1.project_id, uuid4(), p2.project_id],
+    )
+    multi.assert_awaited_once()
+    _, kwargs = multi.await_args
+    assert kwargs["projects"] == [p1, p2]
+
+
+@pytest.mark.asyncio
+async def test_multi_all_stale_raises_not_found(monkeypatch):
+    """If NONE of the requested projects resolve, it is a 404 (like the single path)."""
+    projects_repo = MagicMock()
+    projects_repo.get = AsyncMock(return_value=None)
+    monkeypatch.setattr("app.context.builder.build_multi_project_mode", AsyncMock())
+
+    with pytest.raises(ProjectNotFound):
+        await build_context(
+            summaries_repo=MagicMock(), projects_repo=projects_repo,
+            glossary_client=MagicMock(), user_id=USER_ID, project_id=None,
+            message="hi", project_ids=[uuid4(), uuid4()],
+        )

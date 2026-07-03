@@ -8,13 +8,133 @@
     "body": "Không gian làm việc dạng bảng ghép cho cuốn sách này. Các bảng (sáng tác, dàn ý, nhân vật, chất lượng…) sẽ được thêm vào đây từng cái một. Kéo thẻ để chia đôi, xếp chồng, thả nổi, hoặc tách ra cửa sổ riêng."
   },
   "panels": {
-    "compose": { "title": "Compose", "desc": "Chat đồng sáng tác AI" },
-    "editor": { "title": "Editor", "desc": "Trình soạn bản thảo" }
+    "compose": {
+      "title": "Compose",
+      "desc": "Chat đồng sáng tác AI"
+    },
+    "editor": {
+      "title": "Editor",
+      "desc": "Trình soạn bản thảo"
+    },
+    "planner": {
+      "title": "Trình lập kế hoạch",
+      "desc": "Lập kế hoạch hệ thống truyện"
+    },
+    "usage": {
+      "title": "Sử dụng",
+      "desc": "Chi phí, token & nhật ký yêu cầu"
+    },
+    "notifications": {
+      "title": "Thông báo",
+      "desc": "Job hoàn tất & cảnh báo"
+    },
+    "settings": {
+      "title": "Cài đặt",
+      "desc": "Tài khoản, nhà cung cấp & dịch thuật"
+    },
+    "trash": {
+      "title": "Thùng rác",
+      "desc": "Khôi phục sách, chương đã xoá & hơn nữa"
+    },
+    "steering": {
+      "title": "Định hướng",
+      "desc": "Quy tắc của tác giả hướng dẫn AI cho sách này"
+    },
+    "json-editor": {
+      "title": "JSON",
+      "desc": "Xem JSON thô của một resource"
+    }
+  },
+  "sceneRail": {
+    "title": "Cảnh",
+    "toggle": "Cảnh",
+    "empty": "Chương này chưa có cảnh (lập dàn ý trong composer).",
+    "synopsisPlaceholder": "Tóm tắt cảnh…",
+    "stale": "đã đổi ở nơi khác — tải lại",
+    "notAnchored": "Cảnh chưa được neo vào văn bản — bấm ⚓ để liên kết các heading.",
+    "anchored": "Đã neo {{count}} cảnh, {{unmatched}} không khớp — ⌘S để lưu.",
+    "anchorNoop": "{{count}} đã neo sẵn, {{unmatched}} không có heading khớp.",
+    "anchorTitle": "Neo các cảnh vào heading trong văn bản",
+    "add": "Thêm cảnh",
+    "addDisabled": "Chương chưa có dàn ý (tạo trong composer)",
+    "newTitlePlaceholder": "Tên cảnh…",
+    "create": "Thêm",
+    "deleted": "Đã xóa \"{{title}}\".",
+    "undo": "Hoàn tác",
+    "moveUp": "Chuyển lên",
+    "moveDown": "Chuyển xuống",
+    "delete": "Xóa cảnh",
+    "status": {
+      "empty": "trống",
+      "outline": "dàn ý",
+      "drafting": "đang viết",
+      "done": "xong"
+    }
+  },
+  "jsonEditor": {
+    "empty": "Mở một resource dạng JSON từ panel của nó (\"Open as JSON\").",
+    "invalid": "JSON không hợp lệ",
+    "conflict": "xung đột: {{part}}",
+    "format": "Định dạng",
+    "revert": "Hoàn tác",
+    "openAs": "Mở dạng JSON"
+  },
+  "planner": {
+    "sourcePlaceholder": "Dán markdown hệ thống truyện…",
+    "propose": "Đề xuất",
+    "model": "Model",
+    "empty": "Dán markdown hệ thống truyện và bấm Đề xuất để bắt đầu.",
+    "mode": {
+      "rules": "Quy tắc",
+      "llm": "LLM"
+    }
   },
   "editor": {
     "empty": "Chọn một chương trong navigator để soạn ở đây.",
     "unsaved": "● chưa lưu",
     "save": "Lưu"
+  },
+  "steering": {
+    "heading": "Quy tắc định hướng",
+    "subheading": "Hướng dẫn thường trực của tác giả được chèn vào lượt AI cho sách này.",
+    "loading": "Đang tải quy tắc định hướng…",
+    "loadError": "Không tải được quy tắc định hướng.",
+    "noBook": "Mở panel này từ một cuốn sách để soạn quy tắc định hướng.",
+    "count": "{{n}} / {{max}} quy tắc",
+    "add": "Thêm quy tắc",
+    "capReached": "Đã đạt giới hạn quy tắc ({{max}}). Xoá bớt để thêm quy tắc mới.",
+    "empty": "Chưa có quy tắc định hướng. Thêm một quy tắc để hướng dẫn AI cho sách này.",
+    "enable": "Bật",
+    "disable": "Tắt",
+    "confirmDelete": "Xoá quy tắc định hướng \"{{name}}\"?",
+    "autoNote": "Lưu ý: 'auto' hiện hoạt động như 'manual' — chỉ được chèn khi bạn tham chiếu bằng #name. Tự động chọn sẽ có sau.",
+    "charCount": "{{n}} / {{max}}",
+    "form": {
+      "name": "Tên",
+      "namePlaceholder": "vd. Giọng văn & phong cách",
+      "body": "Quy tắc",
+      "bodyPlaceholder": "Viết hướng dẫn mà AI cần tuân theo…",
+      "mode": "Khi nào chèn",
+      "matchPattern": "Mẫu khớp cảnh",
+      "matchPatternPlaceholder": "vd. chương 3, trận đánh, lãng mạn…",
+      "enabled": "Đang bật",
+      "save": "Lưu",
+      "cancel": "Huỷ",
+      "edit": "Sửa quy tắc",
+      "delete": "Xoá quy tắc"
+    },
+    "mode": {
+      "always": "Luôn luôn",
+      "scene_match": "Khớp cảnh",
+      "manual": "Thủ công (#name)",
+      "auto": "Tự động"
+    },
+    "error": {
+      "duplicate": "Đã có quy tắc trùng tên trong sách này.",
+      "cap": "Vượt quá giới hạn (nội dung ≤ 8000 ký tự, tên ≤ 200, ≤ 20 quy tắc) hoặc chế độ không hợp lệ.",
+      "other": "Không lưu được quy tắc. Vui lòng thử lại.",
+      "forbidden": "Bạn không có quyền chỉnh sửa steering cho sách này."
+    }
   },
   "palette": {
     "openPanel": "Studio: Mở {{name}}",
@@ -24,7 +144,12 @@
     "quickOpenHint": "Gõ để tìm chương, cảnh & hồi",
     "commandPlaceholder": "Nhập một lệnh…",
     "noCommands": "Không có lệnh phù hợp.",
-    "group": { "recent": "Gần đây", "panels": "Bảng công cụ", "navigate": "Điều hướng", "layout": "Bố cục" },
+    "group": {
+      "recent": "Gần đây",
+      "panels": "Bảng công cụ",
+      "navigate": "Điều hướng",
+      "layout": "Bố cục"
+    },
     "cmd": {
       "showManuscript": "Xem: Bản thảo",
       "showBible": "Xem: Story Bible",
@@ -51,10 +176,22 @@
     "quality": "Chất lượng"
   },
   "navStub": {
-    "manuscript": { "title": "Bản thảo", "body": "Chương & cảnh — bộ điều hướng dẫn dắt khu dock. Sẽ làm tiếp theo." },
-    "bible": { "title": "Sổ tay truyện", "body": "Nhân vật, thế giới & canon. Sắp có." },
-    "search": { "title": "Tìm kiếm", "body": "Tìm toàn văn & ngữ nghĩa trong cả cuốn sách. Sắp có." },
-    "quality": { "title": "Chất lượng", "body": "Điểm phê bình, mạch lời hứa & vấn đề canon. Sắp có." }
+    "manuscript": {
+      "title": "Bản thảo",
+      "body": "Chương & cảnh — bộ điều hướng dẫn dắt khu dock. Sẽ làm tiếp theo."
+    },
+    "bible": {
+      "title": "Sổ tay truyện",
+      "body": "Nhân vật, thế giới & canon. Sắp có."
+    },
+    "search": {
+      "title": "Tìm kiếm",
+      "body": "Tìm toàn văn & ngữ nghĩa trong cả cuốn sách. Sắp có."
+    },
+    "quality": {
+      "title": "Chất lượng",
+      "body": "Điểm phê bình, mạch lời hứa & vấn đề canon. Sắp có."
+    }
   },
   "sidebar": {
     "collapse": "Thu gọn"
@@ -74,7 +211,10 @@
   },
   "status": {
     "wordsPlaceholder": "— từ",
-    "modelPlaceholder": "chưa có model"
+    "words": "{{count}} từ",
+    "modelPlaceholder": "chưa có model",
+    "notifications": "Thông báo",
+    "cost24h": "Chi phí 24h qua"
   },
   "manuscript": {
     "title": "Bản thảo",

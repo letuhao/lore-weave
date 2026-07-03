@@ -33,7 +33,7 @@ export function AddNodeKindForm({ onSubmit, isSubmitting }: Props) {
           <input
             value={kindCode}
             onChange={(e) => setKindCode(e.target.value)}
-            className="w-full rounded-md border px-2 py-1"
+            className="w-full rounded-md border bg-input px-2 py-1"
             placeholder="character"
             data-testid="node-kind-code-input"
           />
@@ -43,7 +43,7 @@ export function AddNodeKindForm({ onSubmit, isSubmitting }: Props) {
           <select
             value={strength}
             onChange={(e) => setStrength(e.target.value as Strength)}
-            className="w-full rounded-md border px-1 py-1"
+            className="w-full rounded-md border bg-input px-1 py-1"
             data-testid="node-kind-strength-input"
           >
             <option value="optional">{t('schema.optional')}</option>
@@ -54,7 +54,7 @@ export function AddNodeKindForm({ onSubmit, isSubmitting }: Props) {
       <button
         type="submit"
         disabled={!valid || isSubmitting}
-        className="rounded-md bg-primary px-3 py-1.5 text-[12px] font-medium text-white disabled:opacity-50"
+        className="rounded-md bg-primary px-3 py-1.5 text-[12px] font-medium text-primary-foreground disabled:opacity-50"
         data-testid="node-kind-submit"
       >
         {t('schema.add')}

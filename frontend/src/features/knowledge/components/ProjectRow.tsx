@@ -11,6 +11,7 @@ import type { Project } from '../types';
 import type { ExtractionJobSummary } from '../types/projectState';
 import { ProjectStateCard, type ProjectStateCardActions } from './ProjectStateCard';
 import { readBackendError } from '../lib/readBackendError';
+import { resolveRebuildModels } from '../lib/rebuildModels';
 import { BuildGraphDialog } from './BuildGraphDialog';
 import { ErrorViewerDialog } from './ErrorViewerDialog';
 import { ChangeModelDialog } from './ChangeModelDialog';
@@ -174,6 +175,18 @@ export function ProjectRow({
     );
   }, [accessToken, project.project_id, runDestructive]);
 
+  // KN model-roles — a rebuild uses the project's persisted DEFAULT LLM
+  // (`extraction_config.llm_model`, set in Tune extraction) over the prior job's
+  // model, so re-extracting picks up a changed default without a bespoke rebuild
+  // picker; embedding stays the project's current model (changing that is the
+  // separate "Change embedding model" action). Falls back to the prior job when
+  // no default is set.
+  const rebuildModels = useCallback(
+    (latest: ExtractionJobWire) =>
+      resolveRebuildModels(project.extraction_config, project.embedding_model, latest),
+    [project.extraction_config, project.embedding_model],
+  );
+
   // review-impl F1 — route rebuild through `runDestructive` so the
   // confirm dialog shows loading + surfaces BE errors in-dialog. We
   // read the latest job (model refs) from the same react-query cache
@@ -196,16 +209,13 @@ export function ProjectRow({
       () =>
         knowledgeApi.rebuildGraph(
           project.project_id,
-          {
-            llm_model: latest.llm_model,
-            embedding_model: latest.embedding_model,
-          },
+          rebuildModels(latest),
           accessToken,
           true, // bug #14 — explicit confirm; BE deletes only with confirm=true
         ),
       () => { setRebuildConfirmStep2(false); setRebuildPreview(null); },
     );
-  }, [accessToken, project.project_id, queryClient, runDestructive, t]);
+  }, [accessToken, project.project_id, queryClient, runDestructive, rebuildModels, t]);
 
   const invokeDisable = useCallback(() => {
     if (!accessToken) return;
@@ -396,7 +406,7 @@ export function ProjectRow({
             void knowledgeApi
               .rebuildGraph(
                 project.project_id,
-                { llm_model: latest.llm_model, embedding_model: latest.embedding_model },
+                rebuildModels(latest),
                 accessToken,
               )
               .then((r) => { if ('action_required' in r) setRebuildPreview(r); })

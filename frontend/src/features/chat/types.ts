@@ -33,6 +33,10 @@ export interface ChatSession {
   // (static project memory). Mirrors the backend column added
   // by chat-service's K5 migration.
   project_id: string | null;
+  // Track B B1(2) — multi-KG: the session's grounding project SET (world +
+  // member books) unioned into one memory block. Empty = the legacy
+  // single-project (project_id) path. ≥2 → the "multi" memory mode.
+  project_ids?: string[];
   // A2A phase-2: optional "composer" model. When set, the orchestrator
   // (model_ref) can call compose_prose, which streams THIS model for prose.
   composer_model_source?: string | null;
@@ -46,14 +50,33 @@ export interface ChatSession {
   //   static     — project linked, AI sees its summary + glossary
   //   degraded   — knowledge-service was unreachable on the last
   //                turn and chat-service fell back to recent-only
-  // GET responses populate from `project_id` (no_project | static).
+  // GET responses populate from `project_id` (no_project | static | multi).
   // The SSE stream emits a `memory-mode` event on every turn so the
   // FE can flip to `degraded` when the upstream call falls back.
-  memory_mode?: 'no_project' | 'static' | 'degraded';
+  //   multi — a set of ≥2 knowledge graphs unioned into one context.
+  memory_mode?: 'no_project' | 'static' | 'degraded' | 'multi';
   // Story 04: session-scoped tool/skill curation (empty = auto-discovery).
   enabled_tools?: string[];
   enabled_skills?: string[];
   activated_tools?: string[];
+  // W3 — manual steerable compact: messages with sequence_num below this are
+  // represented server-side by a stored summary on every later turn.
+  // null/absent = never manually compacted. Drives the panel's
+  // "compacted through message N" line.
+  compacted_before_seq?: number | null;
+}
+
+// W3 — POST /v1/chat/sessions/{id}/compact response (all token counts are the
+// backend's script-aware estimates, not provider-measured).
+export interface CompactSessionResult {
+  summary_tokens: number;
+  compacted_message_count: number;
+  /** null only on a clear (cleared=true) — a compact always sets it. */
+  compacted_before_seq: number | null;
+  tokens_before_estimate: number;
+  tokens_after_estimate: number;
+  /** true when the request cleared the stored compact instead of compacting. */
+  cleared?: boolean;
 }
 
 /** Story 04 / #07b — agentSurface SSE payload (inspector state machine). */
@@ -65,6 +88,15 @@ export type AgentSurfacePhase =
   | 'Activated'
   | 'ToolRunning';
 
+/** W6 additive — the advertised tool surface of the last provider pass,
+ *  split core (always-on) / frontend (surface extras) / activated (discovered
+ *  or hot-seeded server tools with full schemas). */
+export interface AgentSurfaceAdvertised {
+  core: string[];
+  frontend: string[];
+  activated: string[];
+}
+
 export interface AgentSurfaceState {
   phase: AgentSurfacePhase;
   pinned_count: number;
@@ -74,6 +106,93 @@ export interface AgentSurfaceState {
   running_tool: string | null;
   last_find_tools_query: string | null;
   find_tools_call_count: number;
+  // W6 — STRICTLY ADDITIVE (an older backend omits them; render degrades):
+  /** advertised names per bucket on the last provider pass. */
+  advertised?: AgentSurfaceAdvertised;
+  /** per-MCP-server grouping of the advertised surface: key → {tools: N}.
+   *  Keys mirror chat-service agent_surface.server_key_for_tool. */
+  servers?: Record<string, { tools: number }>;
+  /** W1 schema-token measurement split (frontend vs server/MCP schemas). */
+  schema_tokens?: { frontend: number; mcp: number };
+}
+
+// RAID Wave A3 — the context-budget snapshot the backend emits as an AG-UI
+// CUSTOM event (`name:"contextBudget"`) on every turn finish. Drives the chat
+// header ContextMeter. `pct` = used/effective; null when the model has no
+// registered context_length (so we render "—" instead of a bogus %).
+//
+// Chat Quality Wave W1/W2 — STRICTLY ADDITIVE fields: `breakdown` (per-category
+// token map, fixed 12-key vocabulary mirroring chat-service
+// token_budget.BREAKDOWN_CATEGORIES), `baseline_tokens` (fixed overhead before
+// the first user word) and `until_compact_pct` (headroom to the auto-compact
+// trigger, in pct-of-effective-limit points). All optional — an older backend
+// (or the resume path, which doesn't re-measure parts) omits them and the
+// meter renders exactly as before.
+
+/** The one nested breakdown entry: knowledge memory total + per-section split
+ *  (glossary_entities / facts / passages / summaries / instructions / …). */
+export interface MemoryKnowledgeBreakdown {
+  total: number;
+  sections: Record<string, number>;
+}
+
+/** Per-category context tokens. Keys mirror the backend BREAKDOWN_CATEGORIES
+ *  vocabulary; every key is present (0 when absent this turn) on a W1 backend. */
+export interface ContextBreakdownMap {
+  system_prompt?: number;
+  memory_knowledge?: MemoryKnowledgeBreakdown;
+  working_memory?: number;
+  steering?: number;
+  skills?: number;
+  plan_nudge?: number;
+  book_note?: number;
+  attached_context?: number;
+  history?: number;
+  tool_results?: number;
+  frontend_tool_schemas?: number;
+  mcp_tool_schemas?: number;
+}
+
+export interface ContextBudget {
+  used_tokens: number;
+  context_length: number | null;
+  effective_limit: number | null;
+  pct: number | null;
+  /** W1 additive — per-category token breakdown (drill-down panel). */
+  breakdown?: ContextBreakdownMap | null;
+  /** W1 additive — tokens present before the first user word (system + tools). */
+  baseline_tokens?: number | null;
+  /** W1 additive — pct-points of headroom until the auto-compact trigger. */
+  until_compact_pct?: number | null;
+}
+
+// Chat Quality Wave W1-residual — one point of the per-turn context-token
+// HISTORY series (GET /v1/chat/sessions/{id}/context-history). Mirrors the BE
+// ContextHistoryPoint: the persisted per-category breakdown of one assistant
+// turn, so the panel can chart how each category evolved across the session.
+export interface ContextHistoryPoint {
+  sequence_num: number;
+  created_at: string;
+  input_tokens: number | null;
+  output_tokens: number | null;
+  /** Same 12-key vocabulary as the live budget's breakdown (memory_knowledge
+   *  nests {total, sections}). */
+  breakdown: ContextBreakdownMap;
+}
+
+// Chat Quality Wave W1/W2 — the `compaction` CUSTOM frame, emitted when
+// in-loop compaction actually changed the prompt (CompactionReport.to_event()).
+// Feeds the "earlier turns compacted" toast.
+export interface CompactionEvent {
+  triggered: boolean;
+  tool_results_cleared: number;
+  turns_truncated: number;
+  summarized: boolean;
+  summarize_failed: boolean;
+  overflowed: boolean;
+  tokens_before: number;
+  tokens_after: number;
+  steps?: string[];
 }
 
 export interface ToolCatalogItem {
@@ -216,6 +335,10 @@ export interface PatchSessionPayload {
   // must emit `"project_id": null` for the clear case — keep this
   // explicitly nullable rather than `string | undefined`.
   project_id?: string | null;
+  // Track B B1(2) — multi-KG: set/replace the grounding project SET. Presence
+  // in the body drives the write (an explicit [] clears it back to the legacy
+  // single-project path); omitted leaves it alone.
+  project_ids?: string[];
   // A2A phase-2: set/clear the composer model. Same model_fields_set
   // semantics as project_id — emit explicit null to clear.
   composer_model_source?: string | null;

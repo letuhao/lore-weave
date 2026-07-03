@@ -2,21 +2,26 @@
 // content comes from the hoist's loadedBody, edits flow back via setBody, ⌘S saves. Reuses the
 // existing TiptapEditor AS-IS (no fork). Registers the 'editor' tool (agent rack) + the editorBridge
 // so the chat's propose_edit (Lane C) can write into the studio editor.
-import { useEffect, useMemo, useRef } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import type { IDockviewPanelProps } from 'dockview-react';
 import { TiptapEditor, type TiptapEditorHandle } from '@/components/editor/TiptapEditor';
 import { registerEditorTarget } from '@/features/chat/context/editorBridge';
+import { cn } from '@/lib/utils';
 import { useStudioHost, useRegisterStudioTool } from '../host/StudioHostProvider';
 import { useManuscriptUnit } from '../manuscript/unit/ManuscriptUnitProvider';
+import { SceneRail } from '../manuscript/SceneRail';
 import type { StudioToolRegistration } from '../host/types';
 
 export function EditorPanel(props: IDockviewPanelProps) {
   const { t } = useTranslation('studio');
-  const { bookId } = useStudioHost();
+  const host = useStudioHost();
+  const { bookId } = host;
   const unit = useManuscriptUnit();
   const localRef = useRef<TiptapEditorHandle | null>(null);
   const editorRef = unit?.editorRef ?? localRef;
+  // #12 M-C — Scene Rail visibility: null = auto (open when scenes exist), boolean = user choice.
+  const [railChoiceState, setRailChoiceState] = useState<boolean | null>(null);
 
   const label = t('panels.editor.title', { defaultValue: 'Editor' });
   const registration = useMemo<StudioToolRegistration>(() => ({
@@ -68,6 +73,11 @@ export function EditorPanel(props: IDockviewPanelProps) {
   }
 
   const { state, isDirty, save, setBody } = unit;
+  const hasScenes = state.scenes.length > 0;
+  // #12 M-C — the Scene Rail (metadata-first scene layer). Auto-shows when the chapter HAS
+  // scenes; the user can toggle it; an explicit choice wins over the auto-default.
+  const railChoice = railChoiceState;
+  const railOpen = railChoice ?? hasScenes;
 
   return (
     <div data-testid="studio-editor-panel" className="flex h-full min-h-0 flex-col">
@@ -77,20 +87,46 @@ export function EditorPanel(props: IDockviewPanelProps) {
         </span>
         <button
           type="button"
+          data-testid="studio-editor-toggle-scenes"
+          onClick={() => setRailChoiceState(!railOpen)}
+          className={cn('ml-auto rounded px-1.5 py-0.5 hover:bg-secondary hover:text-foreground', railOpen && 'text-primary')}
+        >
+          {t('sceneRail.toggle', { defaultValue: 'Scenes' })} {hasScenes ? state.scenes.length : ''}
+        </button>
+        {/* #12 S4/J1 — the "option" editor duality: open THIS unit in the generic json-editor.
+            Per-resource dock id (J1 multi-instance): each chapter gets its OWN tab; re-opening
+            the same chapter focuses it. Same shared document — edits mirror live. */}
+        <button
+          type="button"
+          data-testid="studio-editor-open-json"
+          onClick={() => host.openPanel(`json-editor:loreweave.manuscript-unit.v1:${chapterId}`, {
+            component: 'json-editor',
+            title: `${t('panels.json-editor.title', { defaultValue: 'JSON' })} · ${chapterId.slice(0, 8)}`,
+            params: { docType: 'loreweave.manuscript-unit.v1', resourceId: chapterId },
+          })}
+          className="rounded px-1.5 py-0.5 hover:bg-secondary hover:text-foreground"
+        >
+          {t('jsonEditor.openAs', { defaultValue: 'Open as JSON' })}
+        </button>
+        <button
+          type="button"
           data-testid="studio-editor-save"
           onClick={() => void save()}
           disabled={!isDirty || state.saveState === 'saving'}
-          className="ml-auto rounded px-1.5 py-0.5 hover:bg-secondary hover:text-foreground disabled:opacity-40"
+          className="rounded px-1.5 py-0.5 hover:bg-secondary hover:text-foreground disabled:opacity-40"
         >
           {t('editor.save', { defaultValue: 'Save' })} <span className="font-mono text-[10px]">⌘S</span>
         </button>
       </div>
-      <div className="min-h-0 flex-1 overflow-auto">
-        <TiptapEditor
-          ref={editorRef}
-          content={state.loadedBody}
-          onUpdate={(json, text) => setBody(json, text)}
-        />
+      <div className="flex min-h-0 flex-1">
+        <div className="min-h-0 min-w-0 flex-1 overflow-auto">
+          <TiptapEditor
+            ref={editorRef}
+            content={state.loadedBody}
+            onUpdate={(json, text) => setBody(json, text)}
+          />
+        </div>
+        {railOpen && <SceneRail />}
       </div>
     </div>
   );

@@ -42,6 +42,7 @@ from app.db.suspended_runs import (
     load_suspended_run,
     save_suspended_run,
 )
+from app.db.tool_approvals import approve_tool, is_tool_approved
 from app.models import ProviderCredentials
 from app.services.composer import build_composer_messages, is_composer_tool
 from app.services.frontend_tools import (
@@ -60,8 +61,29 @@ from app.services.tool_discovery import (
     tool_tier,
     tool_undo_hint,
 )
+from app.services.subagent_runtime import (
+    RUN_SUBAGENT_NAME,
+    SUBAGENT_MAX_ITERATIONS,
+    build_run_subagent_tool,
+    cap_result,
+    clamp_permission_mode,
+    resolve_scoped_tools,
+    tool_name_of,
+)
 from app.services.output_extractor import extract_outputs
 from app.services.stream_events import make_emitter
+from app.services.compaction import compact_messages, summary_message
+# W3 — compaction tier 2 (compress instead of drop) shares its summarizer with
+# the manual /compact route; the factored impl lives in compact_service. Bound
+# to the old private name so both in-file call sites stay unchanged.
+from app.services.compact_service import summarize_for_compaction as _summarize_for_compaction
+from app.services.token_budget import (
+    ContextBreakdown,
+    compute_budget,
+    context_budget_event,
+    estimate_messages_tokens,
+    estimate_tokens,
+)
 from app.services.working_memory import resolve_anchor
 
 logger = logging.getLogger(__name__)
@@ -128,12 +150,41 @@ def parse_inline_effort(text: str) -> tuple[str, str | None]:
     return stripped, pref
 
 
-def _thinking_pref(thinking: bool | None, gen_params: dict) -> str:
-    """Map the per-request `thinking` toggle (+ the session generation_params
-    default) to a UserReasoningPref for resolve_reasoning. True → explicit
-    "medium" (matches the legacy thinking_llm_fields enabled→medium), False →
-    "off"; None falls back to a session-stored `reasoning_effort`/`thinking`
-    default, else the platform default "off" (RE-1: thinking is opt-in)."""
+# W4 — the input-bar effort dropdown's request vocabulary → UserReasoningPref.
+# fast ≙ the old Fast pill (off), standard ≙ Think (medium), deep = high.
+# This reuses the existing resolve_reasoning/reasoning_fields provider mapping
+# (Anthropic adaptive → omit; effort models → reasoning_effort; local template
+# models → chat_template_kwargs) — no new provider knob is invented here.
+_REQUEST_EFFORT_TO_PREF: dict[str, str] = {
+    # Legacy 3-level (kept for back-compat during the FE 5-level convergence).
+    "fast": "off",
+    "standard": "medium",
+    "deep": "high",
+    # Unified 5-level effort vocabulary (matches the session-stored default) —
+    # identity into UserReasoningPref; resolve_reasoning maps auto→adaptive/omit.
+    "off": "off",
+    "low": "low",
+    "medium": "medium",
+    "high": "high",
+    "auto": "auto",
+}
+
+
+def _thinking_pref(
+    thinking: bool | None,
+    gen_params: dict,
+    reasoning_effort: str | None = None,
+) -> str:
+    """Map the per-request reasoning signals (+ the session generation_params
+    default) to a UserReasoningPref for resolve_reasoning.
+
+    Precedence (highest first): per-msg `reasoning_effort`
+    (fast|standard|deep — the W4 dropdown) > per-msg `thinking` toggle
+    (True → "medium", False → "off") > session-stored
+    `reasoning_effort`/`thinking` default > platform default "off"
+    (RE-1: thinking is opt-in)."""
+    if reasoning_effort in _REQUEST_EFFORT_TO_PREF:
+        return _REQUEST_EFFORT_TO_PREF[reasoning_effort]
     if thinking is True:
         return "medium"
     if thinking is False:
@@ -144,6 +195,41 @@ def _thinking_pref(thinking: bool | None, gen_params: dict) -> str:
     if stored is True:
         return "medium"
     return "off"
+
+
+def _resolve_and_stash_reasoning(
+    gen_params: dict,
+    creds: "ProviderCredentials | None",
+    *,
+    thinking: bool | None = None,
+    reasoning_effort: str | None = None,
+    inline_pref: str | None = None,
+) -> None:
+    """Resolve the reasoning pref → provider wire fields and stash them in
+    gen_params (in place). MUST run on EVERY path that feeds gen_params into a
+    StreamRequest — the session-stored `reasoning_effort` vocabulary
+    (off|auto|low|medium|high) is NOT wire vocabulary (none|low|medium|high):
+    forwarding it raw crashes StreamRequest validation (review-impl H: a
+    session set to "off" 500'd every tool-approval RESUME) and bypasses the
+    adaptive-model omit rule."""
+    user_pref = inline_pref or _thinking_pref(thinking, gen_params, reasoning_effort)
+    # creds=None (voice path — the gateway resolves the model internally):
+    # control "none" keeps explicit prefs correct and makes "auto" omit.
+    model_control = (
+        infer_reasoning_control(creds.provider_kind, creds.provider_model_name)
+        if creds is not None else "none"
+    )
+    directive = resolve_reasoning(
+        user_pref=user_pref,  # type: ignore[arg-type]
+        model_control=model_control,
+    )
+    rf = reasoning_fields(directive)
+    # Clear any stale stored knobs first so a directive that says "omit"
+    # (adaptive / non-reasoning) doesn't leave a session's raw value behind.
+    gen_params.pop("reasoning_effort", None)
+    gen_params.pop("chat_template_kwargs", None)
+    if rf:
+        gen_params.update(rf)
 
 
 def _apply_reasoning_kwargs(request_kwargs: dict, gen_params: dict) -> None:
@@ -179,6 +265,7 @@ async def _stream_via_gateway(
         auth_mode="internal",
         internal_token=settings.internal_service_token,
         user_id=user_id,
+        idle_read_timeout_s=settings.llm_stream_idle_read_timeout_s,
     )
     try:
         max_tokens = gen_params.get("max_tokens")
@@ -283,6 +370,56 @@ TIER_A_AGGREGATE_CAP = 12
 PLANNER_TOOLS = frozenset({"glossary_plan"})
 PLANNER_CALLS_PER_TURN_CAP = 1
 
+# RAID Wave B2 (07S §5b) — PLAN mode. The executable server surface is the ASK
+# surface (tier R + find_tools + frontend tools) PLUS the PlanForge planning
+# tools, identified by this name prefix (they write plan artifacts — reversible
+# plan_runs rows — never prose). The prefix is the M4 federation contract:
+# every composition planning tool is `plan_*` through ai-gateway.
+PLAN_TOOL_PREFIX = "plan_"
+
+# The plan-mode system nudge — a small static block appended on BOTH system-part
+# assembly paths (mirrors skill_metadata_block) so any model in plan mode knows
+# the contract: research + plan, never draft prose.
+PLAN_MODE_NUDGE = (
+    "## Plan mode\n"
+    "You are in PLAN mode: research the book with read-only tools and "
+    "build/refine the plan via the `plan_*` tools. Do NOT write prose — no "
+    "drafting, no chapter text, no manuscript edits. When the user approves "
+    "the plan, tell them to switch to Write mode to draft."
+)
+
+
+def _is_plan_tool(name: str) -> bool:
+    """A PlanForge planning tool (allowed in PLAN mode on top of the R surface)."""
+    return name.startswith(PLAN_TOOL_PREFIX)
+
+
+def resolve_grounding_target(
+    session_row, project_id: str | None,
+) -> tuple[str | None, list[str] | None]:
+    """Track B B1(2) — resolve the effective ``(project_id, project_ids)`` for a
+    context build from the session's multi-KG grounding set.
+
+    A session may ground on a SET of knowledge projects (world + member books):
+      * ≥2 ids → the multi-project union. Returns ``(None, [ids…])`` — we send
+        NO single project_id because knowledge-service's salience write-back keys
+        on ``req.project_id``; attributing the multi-union's surfaced entities to
+        any single project would misattribute them. Per-project multi salience
+        write-back is tracked as D-MULTI-SALIENCE-WRITEBACK.
+      * exactly 1 id → a set of one is just the single-project path; returns
+        ``(that_id, None)`` so single-project salience still learns.
+      * 0 ids → the legacy single ``project_id`` column, unchanged:
+        ``(project_id, None)``.
+
+    ``project_id`` is the already-resolved legacy single value (str | None).
+    """
+    ids = [str(p) for p in (session_row.get("project_ids") or [])] if session_row else []
+    if len(ids) >= 2:
+        return None, ids
+    if len(ids) == 1:
+        return ids[0], None
+    return (str(project_id) if project_id else None), None
+
 
 def _is_tools_unsupported(exc: LLMError) -> bool:
     """True when an LLMError is the gateway's 'this provider does not
@@ -375,6 +512,7 @@ def _advertise_discovery_tools(
     catalog_index: dict[str, dict],
     active_tool_names: set[str],
     extra_frontend: list[dict],
+    permission_mode: str = "write",
 ) -> list[dict]:
     """MCP-fanout C-FT — the tools advertised on a universal /chat pass:
     ``{always-on core} ∪ {full schemas of active_tool_names}``, with the
@@ -382,7 +520,18 @@ def _advertise_discovery_tools(
 
     ``extra_frontend`` carries surface-specific frontend tools (e.g. propose_edit
     on an editor surface) that are always advertised alongside the core.
+
+    RAID C2 (DR-C2) — this is the single ADVERTISE chokepoint for the discovery
+    path: in ``ask`` mode, catalog-sourced (server) tools filter to tier R only;
+    find_tools + the frontend core + extra_frontend are unaffected (frontend
+    tools are human-executed by construction). ``write`` (default) is a strict
+    no-op — the surface is byte-identical to pre-C2 (pinned by contract test).
+
+    RAID B2 (07S §5b) — ``plan`` mode advertises the ask surface PLUS the
+    PlanForge ``plan_*`` server tools (plan artifacts, never prose).
     """
+    restricted = permission_mode in ("ask", "plan")
+    plan = permission_mode == "plan"
     out: list[dict] = []
     seen: set[str] = set()
 
@@ -408,8 +557,43 @@ def _advertise_discovery_tools(
     for td in extra_frontend:
         _add(td)
     # Discovered tools — full schemas now that find_tools matched them.
+    # Ask mode: only tier-R server tools are advertised (untiered defaults R —
+    # inert by the C-TOOL convention); discovery still works, but a discovered
+    # non-R tool is NOT advertised (DR-C2). Plan mode additionally advertises
+    # the `plan_*` PlanForge tools regardless of tier (RAID B2).
     for name in active_tool_names:
-        _add(catalog_index.get(name))
+        td = catalog_index.get(name)
+        if (
+            restricted and td is not None and tool_tier(td) != "R"
+            and not (plan and _is_plan_tool(name))
+        ):
+            continue
+        _add(td)
+    return out
+
+
+def _filter_tools_for_ask(
+    tools: list[dict], permission_mode: str = "ask"
+) -> list[dict]:
+    """RAID C2 (DR-C2) — the ask-mode filter for the NON-discovery paths (legacy
+    full-catalog clients, admin, gateway-down agui). Keeps find_tools, frontend
+    tools (human-executed by construction), and tier-R server tools; drops every
+    tiered A/W/S server tool. Untiered defaults R (inert — C-TOOL convention).
+
+    RAID B2 (07S §5b) — ``permission_mode='plan'`` additionally keeps the
+    PlanForge ``plan_*`` server tools (plan artifacts, never prose)."""
+    plan = permission_mode == "plan"
+    out: list[dict] = []
+    for td in tools:
+        fn = td.get("function") if isinstance(td, dict) else None
+        name = fn.get("name") if isinstance(fn, dict) else None
+        if not name:
+            continue
+        if name == FIND_TOOLS_NAME or is_frontend_tool(name):
+            out.append(td)
+            continue
+        if tool_tier(td) == "R" or (plan and _is_plan_tool(name)):
+            out.append(td)
     return out
 
 
@@ -435,6 +619,14 @@ async def _stream_with_tools(
     curated: bool = False,
     activation_state: dict | None = None,
     surface_tracker=None,
+    effective_limit: int | None = None,
+    permission_mode: str = "write",
+    approval_check=None,
+    hooks: list[dict] | None = None,
+    subagent_tool: dict | None = None,
+    subagent_defs: dict[str, dict] | None = None,
+    subagent_depth: int = 0,
+    allowed_tool_names: set[str] | None = None,
 ) -> AsyncGenerator[dict, None]:
     """K21-B — the tool-calling loop.
 
@@ -450,12 +642,27 @@ async def _stream_with_tools(
     so the model must answer in text, making the loop self-terminating
     (design D7). A provider that rejects tools triggers a one-shot
     tool-free retry (design D8).
+
+    RAID C2 (DR-C2) — ``permission_mode`` ('ask'|'write'|'plan', default 'write'):
+    * ask — the advertised server-tool surface filters to tier R (+find_tools);
+      frontend tools stay. Defense-in-depth: a non-R server tool call that slips
+      through returns a tool-result error, never executes.
+    * write — today's surface, PLUS the prompt-once gate: a Tier-A server tool
+      not on the user's allowlist suspends the run with a ``tool_approval``
+      pending card. ``approval_check`` is an async ``(tool_name) -> bool``;
+      a raising check fails OPEN (a DB blip must not brick tool calling).
+    * plan (RAID B2, 07S §5b) — the ask surface PLUS the PlanForge ``plan_*``
+      tools. ``plan_*`` tools run WITHOUT the C2 Tier-A approval prompt (the
+      gate is write-mode-only by design — planning artifacts are the mode's
+      whole point and are reversible plan_runs rows); any other non-R server
+      tool feeds a plan-mode tool-result error, never executes.
     """
     client = Client(
         base_url=settings.provider_registry_internal_url,
         auth_mode="internal",
         internal_token=settings.internal_service_token,
         user_id=user_id,
+        idle_read_timeout_s=settings.llm_stream_idle_read_timeout_s,
     )
     try:
         working: list[dict] = list(messages)
@@ -478,12 +685,20 @@ async def _stream_with_tools(
         discovery = discovery_catalog is not None
         cat_index = _catalog_index(discovery_catalog) if discovery else {}
         extra_fe = discovery_extra_frontend or []
+        # RAID C2 — name→def index for the NON-discovery path, so ask-mode
+        # defense-in-depth can read a called tool's tier from the caller's defs.
+        plain_index = {} if discovery else _catalog_index(tools)
         # C-FT hot set: the surface's own domains are seeded into the active set so
         # their full schemas are advertised on pass 1 (no find_tools round-trip) —
         # the long tail is still discovered on demand. find_tools unions more names
         # in as the agent searches.
         active_tool_names: set[str] = set(discovery_seed_names or ())
         write_passes = 0  # H9 — budget is counted in write passes, not all passes
+        # W1 — the advertised tool schemas are token-measured ONCE per turn, on
+        # the first pass that offers tools (the advertise chokepoint), split
+        # frontend-tools vs server/MCP tools; the consumer folds the chunk into
+        # the contextBudget frame at finish.
+        schema_tokens_reported = False
         # H7 — same-op Tier-A auto-write counter (resets never within a turn).
         tier_a_op_counts: dict[str, int] = {}
         # #18 — per-turn planner-call counter (mechanical hard-stop on the self-recheck loop).
@@ -493,11 +708,39 @@ async def _stream_with_tools(
         # don't count against the write budget.
         max_total_passes = max_iterations * 3
 
+        async def _loop_summarizer(_middle: list[dict]) -> str:
+            return await _summarize_for_compaction(
+                _middle, model_source=model_source, model_ref=model_ref, user_id=user_id,
+            )
+
         iteration = -1
         while True:
             iteration += 1
             if iteration >= max_total_passes:
                 break
+            # A4 — the tool loop GROWS `working` each pass (assistant tool_calls +
+            # results), so re-compact before every provider call or a long multi-tool
+            # turn overflows the window mid-turn. Atom-grouped truncation keeps
+            # tool-call/result pairs intact; guarded so it can never break the pass.
+            if effective_limit:
+                _rc = None
+                try:
+                    working, _rc = await compact_messages(
+                        working, effective_limit=effective_limit, summarize=_loop_summarizer,
+                    )
+                    if _rc.triggered:
+                        logger.info(
+                            "in-loop compaction session=%s pass=%d steps=%s %d→%d overflow=%s",
+                            session_id, iteration, _rc.steps,
+                            _rc.tokens_before, _rc.tokens_after, _rc.overflowed,
+                        )
+                except Exception:
+                    logger.warning("in-loop compaction skipped (error)", exc_info=True)
+                # W1 — surface the compaction to the client (only when it DID
+                # something). Yielded outside the guard try so a consumer-side
+                # throw is never swallowed as a "compaction error".
+                if _rc is not None and _rc.did_work:
+                    yield {"compaction": _rc.to_event()}
             # The write budget — NOT the total-pass count — decides the forced
             # tool-free final pass (D7). Once the write budget is spent, the next
             # pass must answer in text.
@@ -517,11 +760,87 @@ async def _stream_with_tools(
             # is the forced-final pass (D7 — must answer in text).
             offered_tools = tools_supported and not last_iter
             if offered_tools:
-                request_kwargs["tools"] = (
-                    _advertise_discovery_tools(cat_index, active_tool_names, extra_fe)
-                    if discovery else tools
-                )
-                request_kwargs["tool_choice"] = "auto"
+                # RAID C2 (DR-C2) — ask-mode filtering happens HERE, at the single
+                # per-pass advertise chokepoint: discovery filters inside
+                # _advertise_discovery_tools; the plain path through
+                # _filter_tools_for_ask. Write mode is a byte-identical no-op.
+                if discovery:
+                    advertised = _advertise_discovery_tools(
+                        cat_index, active_tool_names, extra_fe,
+                        permission_mode=permission_mode,
+                    )
+                else:
+                    advertised = (
+                        _filter_tools_for_ask(tools, permission_mode)
+                        if permission_mode in ("ask", "plan") else tools
+                    )
+                    # P5 REG-P5-01 — a nested subagent sub-run advertises its scoped
+                    # set, which carries `_meta` (read by the tier filter just above /
+                    # ask-mode). Strip it before the wire. Gated to the nested case so
+                    # the top-level non-discovery path stays byte-identical (the
+                    # discovery path already strips inside _advertise_discovery_tools).
+                    if allowed_tool_names is not None:
+                        advertised = [strip_tool_meta(td) for td in advertised]
+                # P5 REG-P5-01 — advertise run_subagent as an always-on tool at the
+                # top level (depth 0 only → a subagent can never spawn another).
+                # Injected AFTER the ask/plan filter so delegation stays available in
+                # every mode (the nested run is clamped read-only, so it's safe).
+                if subagent_tool is not None and subagent_depth == 0:
+                    advertised = list(advertised) + [subagent_tool]
+                if advertised:
+                    request_kwargs["tools"] = advertised
+                    request_kwargs["tool_choice"] = "auto"
+                    _schema_split: dict[str, int] | None = None
+                    if not schema_tokens_reported:
+                        schema_tokens_reported = True
+                        _fe_tok = 0
+                        _mcp_tok = 0
+                        for _td in advertised:
+                            _fn = _td.get("function") if isinstance(_td, dict) else None
+                            _nm = _fn.get("name") if isinstance(_fn, dict) else None
+                            _tok = estimate_tokens(json.dumps(_td))
+                            if _nm and is_frontend_tool(_nm):
+                                _fe_tok += _tok
+                            else:
+                                _mcp_tok += _tok
+                        _schema_split = {"frontend": _fe_tok, "mcp": _mcp_tok}
+                        yield {"schema_tokens": {
+                            "frontend_tool_schemas": _fe_tok,
+                            "mcp_tool_schemas": _mcp_tok,
+                        }}
+                    # W6 — advertised-surface snapshot at the SAME chokepoint:
+                    # split the advertised names core/frontend/activated, group
+                    # by owning MCP server, and reuse the W1 token measurement
+                    # (never re-estimated — None keeps the tracker's split).
+                    # Emits only when the surface actually changed (first pass,
+                    # or a later pass after find_tools grew the active set).
+                    if surface_tracker is not None:
+                        _adv_core: list[str] = []
+                        _adv_frontend: list[str] = []
+                        _adv_activated: list[str] = []
+                        for _td in advertised:
+                            _fn = _td.get("function") if isinstance(_td, dict) else None
+                            _nm = _fn.get("name") if isinstance(_fn, dict) else None
+                            if not _nm:
+                                continue
+                            if _nm in ALWAYS_ON_CORE_NAMES:
+                                _adv_core.append(_nm)
+                            elif is_frontend_tool(_nm):
+                                _adv_frontend.append(_nm)
+                            else:
+                                _adv_activated.append(_nm)
+                        payload_as = surface_tracker.advertised_pass(
+                            core=_adv_core,
+                            frontend=_adv_frontend,
+                            activated=_adv_activated,
+                            schema_tokens=_schema_split,
+                        )
+                        if payload_as is not None:
+                            yield {"agent_surface": payload_as}
+                else:
+                    # Ask mode filtered everything out — run the pass tool-free
+                    # (an empty tools array 400s on some providers).
+                    offered_tools = False
             # M3 — one observability/cancel job id PER pass (each pass is a
             # separate gateway stream; the active pass is what a disconnect aborts).
             stream_job_id = str(uuid4())
@@ -656,6 +975,84 @@ async def _stream_with_tools(
                         "result": payload, "error": None,
                     }}
                     continue
+
+                # P5 REG-P5-01 — run_subagent is CONSUMER-LOCAL (like find_tools):
+                # look up the persona, run a nested ISOLATED turn using ONLY its
+                # scoped tools, and feed back the synthesized text. Depth 0 only (a
+                # subagent can never spawn another). A miss returns a result.error
+                # the model can self-correct from (no silent no-op). The nested
+                # tokens sum into the turn total (design D10 attribution).
+                if (
+                    subagent_depth == 0
+                    and subagent_defs
+                    and c["name"] == RUN_SUBAGENT_NAME
+                ):
+                    args_obj = _parse_tool_args(c["arguments"])
+                    payload, sub_in, sub_out = await _run_subagent_call(
+                        args=args_obj,
+                        subagent_defs=subagent_defs,
+                        full_catalog=(discovery_catalog if discovery else tools) or [],
+                        model_source=model_source,
+                        model_ref=model_ref,
+                        user_id=user_id,
+                        gen_params=gen_params,
+                        knowledge_client=knowledge_client,
+                        session_id=session_id,
+                        project_id=project_id,
+                        caller_max_iterations=max_iterations,
+                        approval_check=approval_check,
+                        hooks=hooks,
+                        effective_limit=effective_limit,
+                        subagent_depth=subagent_depth,
+                        caller_permission_mode=permission_mode,
+                    )
+                    total_input += sub_in
+                    total_output += sub_out
+                    working.append({
+                        "role": "tool", "tool_call_id": c["id"],
+                        "content": json.dumps(payload),
+                    })
+                    _sub_ok = not payload.get("error")
+                    tool_chunk = {
+                        "id": c["id"], "iteration": iteration, "tool": c["name"],
+                        "args": args_obj, "ok": _sub_ok,
+                        "result": payload if _sub_ok else None,
+                        "error": payload.get("error"),
+                    }
+                    if _sub_ok:
+                        # M4 — a visible "subagent ran" activity, grouped distinctly
+                        # (name + which tools it used). No undo — a delegate read.
+                        tool_chunk["activity"] = {
+                            "op": RUN_SUBAGENT_NAME,
+                            "summary": f"Ran subagent '{payload.get('subagent', '')}'",
+                            "subagent": payload.get("subagent", ""),
+                            "tools_used": payload.get("tools_used", []),
+                            "undo": {"available": False},
+                        }
+                    yield {"tool_call": tool_chunk}
+                    continue
+
+                # P5 REG-P5-01 — execute-time scope whitelist (defense-in-depth):
+                # inside a nested sub-run, a tool call NOT in the subagent's scoped
+                # set NEVER executes — it returns a result.error. Advertise-time
+                # scoping already hides these tools; this catches a sub-model that
+                # fabricates an out-of-scope (or frontend/meta) name anyway.
+                if allowed_tool_names is not None and c["name"] not in allowed_tool_names:
+                    args_obj = _parse_tool_args(c["arguments"])
+                    scope_err = (
+                        f"'{c['name']}' is not available to this subagent — it is "
+                        "outside the subagent's tool scope."
+                    )
+                    working.append({
+                        "role": "tool", "tool_call_id": c["id"],
+                        "content": json.dumps({"error": scope_err}),
+                    })
+                    yield {"tool_call": {
+                        "id": c["id"], "iteration": iteration, "tool": c["name"],
+                        "args": args_obj, "ok": False, "result": None, "error": scope_err,
+                    }}
+                    continue
+
                 if surface_tracker is not None:
                     payload_as = surface_tracker.tool_running(c["name"])
                     if payload_as is not None:
@@ -693,10 +1090,54 @@ async def _stream_with_tools(
                         "result": {"prose": prose}, "error": None,
                     }}
                     continue
+                # RAID C2 (DR-C2) — ask-mode defense-in-depth BEHIND the surface
+                # filter: a non-R server tool call that somehow reaches execution
+                # in ask mode returns a tool-result error the model can
+                # self-correct from — it NEVER executes. Tier is read from the
+                # def itself (discovery catalog or the caller's plain defs);
+                # unknown/untiered tools default R (inert) and pass through.
+                # RAID B2 — plan mode mirrors ask, but the `plan_*` PlanForge
+                # tools are allowed through (they write plan artifacts, never
+                # prose); everything else non-R feeds the plan-mode error.
+                if permission_mode in ("ask", "plan"):
+                    _ask_td = (cat_index if discovery else plain_index).get(c["name"])
+                    _ask_tier = tool_tier(_ask_td) if _ask_td is not None else "R"
+                    if _ask_tier != "R" and not (
+                        permission_mode == "plan" and _is_plan_tool(c["name"])
+                    ):
+                        if permission_mode == "plan":
+                            ask_err = (
+                                f"plan mode — research and planning only; "
+                                f"{c['name']} is a tier-{_ask_tier} write tool and "
+                                "cannot run here. Build the plan with the plan_* "
+                                "tools; switch to Write mode to draft."
+                            )
+                        else:
+                            ask_err = (
+                                f"read-only mode — {c['name']} is a tier-{_ask_tier} "
+                                "write tool and cannot run in Ask mode. Switch to "
+                                "Write mode to run it, or answer from reads only."
+                            )
+                        working.append({
+                            "role": "tool", "tool_call_id": c["id"],
+                            "content": json.dumps({"error": ask_err}),
+                        })
+                        yield {"tool_call": {
+                            "id": c["id"], "iteration": iteration, "tool": c["name"],
+                            "args": args_obj, "ok": False,
+                            "result": None, "error": ask_err,
+                        }}
+                        continue
+
                 # MCP-fanout C-TOOL: read the tool's tier (R|A|W|S) from the
-                # discovery catalog. Legacy/untiered tools default to R (inert) —
-                # they never auto-emit an activity/undo and never count as a write.
-                tier = tool_tier(cat_index.get(c["name"], {})) if discovery else "R"
+                # discovery catalog (main turn) or the plain-defs index (a subagent
+                # runs off `tools=scoped`, non-discovery). Legacy/untiered tools
+                # default to R (inert) — they never auto-emit an activity/undo and
+                # never count as a write. NOTE: this MUST read the real tier in the
+                # plain path too — write-delegation (a write-mode subagent) relies on
+                # it so the Tier-A allowlist gate below actually fires; hardcoding "R"
+                # here would let a subagent auto-commit ANY Tier-A tool unchecked.
+                tier = tool_tier((cat_index if discovery else plain_index).get(c["name"], {}))
 
                 # H7 — Tier-A volume caps: STOP auto-applying and escalate to ONE
                 # batch confirm_action (the enforceable injection-damage bound) when
@@ -727,6 +1168,25 @@ async def _stream_with_tools(
                                 f"Auto-apply cap reached: already ran {c['name']} "
                                 f"{TIER_A_SAME_OP_CAP}× this turn. Confirm to continue."
                             )
+                        # A headless sub-run can't raise the batch confirm card — so
+                        # instead of a silently-swallowed suspend, return the cap as a
+                        # result.error the sub-model can stop on (no-silent-no-op).
+                        # The writes already applied are all allowlisted + tenancy-safe;
+                        # the cap simply halts further auto-writes (the safe direction).
+                        if subagent_depth > 0:
+                            _cap_err = (
+                                f"{reason} A subagent cannot request batch confirmation — "
+                                "stopping further auto-writes. Summarize what was done."
+                            )
+                            working.append({
+                                "role": "tool", "tool_call_id": c["id"],
+                                "content": json.dumps({"error": _cap_err}),
+                            })
+                            yield {"tool_call": {
+                                "id": c["id"], "iteration": iteration, "tool": c["name"],
+                                "args": args_obj, "ok": False, "result": None, "error": _cap_err,
+                            }}
+                            continue
                         suspended_call = {
                             "id": c["id"],
                             "name": "confirm_action",
@@ -737,6 +1197,60 @@ async def _stream_with_tools(
                                 "domain": (c["name"].split("_", 1)[0] or "book"),
                                 "items": [args_obj],
                                 "_reason": reason,
+                            },
+                        }
+                        break
+
+                # P4 REG-P4-03 — pre_tool_call hook. A declarative `deny` hook blocks
+                # this call HERE (before the MCP transport) with a surfaced result.error
+                # the model can adapt to — same short-circuit shape as the planner cap
+                # below. Declarative only: no code runs, the hook just decides.
+                if hooks:
+                    from app.services.hook_engine import decide_pre_tool_call
+
+                    _hk_action, _hk_msg = decide_pre_tool_call(hooks, c["name"])
+                    if _hk_action == "deny":
+                        _denial = {"error": "blocked_by_hook", "message": _hk_msg}
+                        working.append({
+                            "role": "tool", "tool_call_id": c["id"],
+                            "content": json.dumps(_denial),
+                        })
+                        yield {"tool_call": {
+                            "id": c["id"], "iteration": iteration, "tool": c["name"],
+                            "args": args_obj, "ok": False, "result": None, "error": _hk_msg,
+                        }}
+                        continue
+                    if _hk_action == "require_approval":
+                        # A subagent runs headless — it cannot surface an approval
+                        # suspend (no client to answer it). So a require_approval hook
+                        # inside a sub-run does NOT run the tool; it returns a
+                        # result.error the sub-model can adapt to (no silent no-op).
+                        if subagent_depth > 0:
+                            _hk_sub_err = (
+                                f"'{c['name']}' requires human approval (hook), which a "
+                                "subagent cannot request — it was NOT run. Skip it or use "
+                                "a tool that does not require approval."
+                            )
+                            working.append({
+                                "role": "tool", "tool_call_id": c["id"],
+                                "content": json.dumps({"error": _hk_sub_err}),
+                            })
+                            yield {"tool_call": {
+                                "id": c["id"], "iteration": iteration, "tool": c["name"],
+                                "args": args_obj, "ok": False, "result": None, "error": _hk_sub_err,
+                            }}
+                            continue
+                        # Force the human approval gate for this call regardless of
+                        # tier/mode/allowlist — reuse the same tool_approval suspend
+                        # machinery as the C2 write-mode gate below (no new transport).
+                        suspended_call = {
+                            "id": c["id"],
+                            "name": c["name"],
+                            "args": {
+                                "kind": "tool_approval",
+                                "tool": c["name"],
+                                "args": args_obj,
+                                "tier": tier,
                             },
                         }
                         break
@@ -783,6 +1297,66 @@ async def _stream_with_tools(
                         args_obj["model_ref"] = planner_model_ref
                     else:
                         args_obj.pop("model_ref", None)
+
+                # RAID C2 (DR-C2 §4) — Write-mode prompt-once approval gate: a
+                # Tier-A server tool NOT on the user's allowlist suspends the run
+                # with a `tool_approval` pending card (reusing the frontend-tool
+                # suspend/resume machinery — no new transport). The resume path
+                # executes on approve (+persists the row on "always"), or feeds
+                # a "denied by user" tool result. An allowlist READ failure fails
+                # OPEN (a DB blip must not brick tool calling); only the specific
+                # un-allowlisted call gates. Tier-S/W propose/confirm + Tier-A
+                # undo are untouched — approval is additive. RAID B2: the gate is
+                # write-mode-ONLY by design — in plan mode a Tier-A `plan_*` tool
+                # runs without the approval prompt (plan artifacts are reversible
+                # plan_runs rows; non-plan_* writes never reach here — the
+                # defense-in-depth block above already rejected them).
+                if tier == "A" and permission_mode == "write" and approval_check is not None:
+                    _allowed = True
+                    try:
+                        _allowed = bool(await approval_check(c["name"]))
+                    except Exception:
+                        logger.warning(
+                            "tool-approval allowlist read failed for %s — failing open",
+                            c["name"], exc_info=True,
+                        )
+                        _allowed = True
+                    if not _allowed:
+                        # Write-delegation (D-REG-P5-SUBAGENT-WRITE-DELEGATION): a
+                        # write-mode subagent may auto-commit an ALLOWLISTED Tier-A
+                        # tool (falls through to execute below), but an UN-allowlisted
+                        # one cannot — a headless sub-run can't raise the one-time
+                        # approval card. So it returns a result.error instead of
+                        # suspending (which the parent would otherwise swallow silently).
+                        # The write stays safe regardless: tenancy is enforced at the
+                        # tool layer and the sub-run is bounded by its tool_scope.
+                        if subagent_depth > 0:
+                            _sub_appr_err = (
+                                f"'{c['name']}' is not pre-approved, and a subagent cannot "
+                                "request one-time approval — it was NOT run. Delegate only "
+                                "tools the user has already allowlisted, or have the user "
+                                f"approve '{c['name']}' first."
+                            )
+                            working.append({
+                                "role": "tool", "tool_call_id": c["id"],
+                                "content": json.dumps({"error": _sub_appr_err}),
+                            })
+                            yield {"tool_call": {
+                                "id": c["id"], "iteration": iteration, "tool": c["name"],
+                                "args": args_obj, "ok": False, "result": None, "error": _sub_appr_err,
+                            }}
+                            continue
+                        suspended_call = {
+                            "id": c["id"],
+                            "name": c["name"],
+                            "args": {
+                                "kind": "tool_approval",
+                                "tool": c["name"],
+                                "args": args_obj,
+                                "tier": tier,
+                            },
+                        }
+                        break
 
                 # backend tool — execute via the ai-gateway over MCP (ai-gateway
                 # P0: the only tool transport). Tier-A auto-commits here (the
@@ -893,6 +1467,128 @@ async def _stream_with_tools(
         await client.aclose()
 
 
+async def _run_subagent_call(
+    *,
+    args: dict,
+    subagent_defs: dict[str, dict],
+    full_catalog: list[dict],
+    model_source: str,
+    model_ref: str,
+    user_id: str,
+    gen_params: dict,
+    knowledge_client,
+    session_id: str,
+    project_id: str | None,
+    caller_max_iterations: int,
+    approval_check,
+    hooks: list[dict] | None,
+    effective_limit: int | None,
+    subagent_depth: int,
+    caller_permission_mode: str,
+) -> tuple[dict, int, int]:
+    """P5 REG-P5-01 — run ONE subagent as a nested, isolated ``_stream_with_tools``
+    turn and return ``(payload, input_tokens, output_tokens)``.
+
+    Isolation invariants:
+    * The nested ``messages`` are FRESH — ``[{system: persona}, {user: task}]`` —
+      the parent history is NOT included, and the nested messages never enter the
+      parent ``working`` array (only this synthesized payload does).
+    * The nested tool set is EXACTLY the persona's scoped set (advertise-time
+      whitelist); ``allowed_tool_names`` re-enforces it at execute time.
+    * The nested run's permission mode is ``clamp_permission_mode(caller)`` —
+      ``write`` ONLY when the caller's turn is a write turn, else read-only
+      (D-REG-P5-SUBAGENT-WRITE-DELEGATION). A subagent can never EXCEED the caller.
+      In write mode it may auto-commit an ALLOWLISTED Tier-A tool within its scope;
+      an un-allowlisted Tier-A or a require_approval hook returns a ``result.error``
+      (a headless sub-run can't raise the approval card) rather than suspending, and
+      Tier-W/S (mint→confirm) writes still cannot complete (confirm_action is a
+      frontend tool, excluded from the sub-run's scope). Safety is unchanged:
+      tenancy is enforced at the tool layer; consent is what this clamp governs.
+    * Depth is bounded: the nested run gets ``subagent_depth+1`` and its scoped set
+      excludes ``run_subagent`` — it cannot spawn another subagent.
+    """
+    name = str(args.get("subagent") or "").strip()
+    task = str(args.get("task") or "").strip()
+    d = subagent_defs.get(name)
+    if d is None:
+        avail = ", ".join(sorted(subagent_defs)) or "(none configured)"
+        return (
+            {"error": f"unknown subagent '{name}'. Available subagents: {avail}"},
+            0, 0,
+        )
+    if not task:
+        return ({"error": "the 'task' argument is required — describe the sub-task."}, 0, 0)
+
+    scope_globs = d.get("tool_scope") or []
+    scoped = resolve_scoped_tools(full_catalog, scope_globs)
+    allowed = {tool_name_of(t) for t in scoped} - {None}
+    sub_model_ref = str(d.get("model_ref") or "") or model_ref
+
+    sub_messages = [
+        {"role": "system", "content": str(d.get("system_prompt") or "")},
+        {"role": "user", "content": task},
+    ]
+
+    final_text = ""
+    tools_used: list[str] = []
+    sub_in = 0
+    sub_out = 0
+    try:
+        nested = _stream_with_tools(
+            model_source=model_source,
+            model_ref=sub_model_ref,
+            user_id=user_id,
+            messages=sub_messages,
+            gen_params=gen_params,
+            tools=scoped,
+            knowledge_client=knowledge_client,
+            session_id=session_id,
+            project_id=project_id,
+            max_iterations=min(caller_max_iterations, SUBAGENT_MAX_ITERATIONS),
+            permission_mode=clamp_permission_mode(caller_permission_mode),
+            approval_check=approval_check,
+            hooks=hooks,                     # the caller's hooks still apply
+            effective_limit=effective_limit,
+            allowed_tool_names=allowed,      # execute-time whitelist
+            subagent_depth=subagent_depth + 1,
+        )
+        async for ch in nested:
+            if ch.get("content"):
+                final_text += ch["content"]
+            tc = ch.get("tool_call")
+            if tc is not None:
+                # Keep only the answer produced AFTER the last tool call.
+                final_text = ""
+                if tc.get("tool"):
+                    tools_used.append(tc["tool"])
+            u = ch.get("usage")
+            if u is not None:
+                # The nested loop sums usage internally; the final chunk carries
+                # the cumulative sub-run total.
+                sub_in = getattr(u, "prompt_tokens", 0) or 0
+                sub_out = getattr(u, "completion_tokens", 0) or 0
+            susp = ch.get("suspend")
+            if susp is not None:
+                # A nested run cannot surface a suspend (no client to execute it).
+                # With write-delegation the sub-loop returns a result.error instead
+                # of suspending on an approval gate (un-allowlisted Tier-A or a
+                # require_approval hook), and frontend tools are scope-excluded — so
+                # reaching here is now a defensive last resort. End with whatever the
+                # sub-run produced, still attributing its tokens.
+                sub_in = susp.get("input_tokens", sub_in) or sub_in
+                sub_out = susp.get("output_tokens", sub_out) or sub_out
+                break
+    except Exception:
+        logger.warning("subagent '%s' run failed", name, exc_info=True)
+        return ({"error": f"subagent '{name}' failed to run."}, sub_in, sub_out)
+
+    text, truncated = cap_result(final_text.strip())
+    payload: dict = {"subagent": name, "result": text, "tools_used": tools_used}
+    if truncated:
+        payload["truncated"] = True
+    return payload, sub_in, sub_out
+
+
 async def stream_response(
     session_id: str,
     user_message_content: str,
@@ -905,6 +1601,7 @@ async def stream_response(
     parent_message_id: str | None = None,
     context: str | None = None,
     thinking: bool | None = None,
+    reasoning_effort: str | None = None,
     stream_format: str = "legacy",
     editor_context: dict | None = None,
     book_context: dict | None = None,
@@ -915,6 +1612,7 @@ async def stream_response(
     enabled_tools: list[str] | None = None,
     enabled_skills: list[str] | None = None,
     studio_context: dict | None = None,
+    permission_mode: str = "write",
 ) -> AsyncGenerator[str, None]:
     """Async generator that yields chat-turn SSE lines.
 
@@ -931,7 +1629,12 @@ async def stream_response(
     user wants the model to write prose to Apply manually, not call tools. Lore
     still reaches the model via the injected context (build_context), only
     tool-*calling* is off — which lets a reasoning model (Qwen 3.5/3.6) draft
-    without spending its budget deciding whether to call a tool."""
+    without spending its budget deciding whether to call a tool.
+
+    RAID C2 (DR-C2): ``permission_mode`` ('ask'|'write'|'plan', default 'write')
+    — see _stream_with_tools. Compose (disable_tools) is NOT an enum value.
+    RAID B2: 'plan' also auto-injects the plan_forge skill (book/editor
+    surfaces) and appends the plan-mode system nudge on both assembly paths."""
 
     # ── RE-3: parse + STRIP a chat-only inline reasoning command (/no_think etc.)
     # before the message reaches the model or is persisted. The inline override is
@@ -946,8 +1649,9 @@ async def stream_response(
 
     # ── Load session settings ───────────────────────────────────────────────
     session_row = await pool.fetchrow(
-        "SELECT system_prompt, generation_params, project_id, composer_model_source, composer_model_ref, "
-        "planner_model_ref, working_memory_seed, enabled_tools, enabled_skills, activated_tools "
+        "SELECT system_prompt, generation_params, project_id, project_ids, composer_model_source, composer_model_ref, "
+        "planner_model_ref, working_memory_seed, enabled_tools, enabled_skills, activated_tools, "
+        "compact_summary, compacted_before_seq "
         "FROM chat_sessions WHERE session_id = $1",
         session_id,
     )
@@ -958,24 +1662,13 @@ async def stream_response(
     gen_params: dict = gp_raw if gp_raw else {}
 
     # ── RE: resolve reasoning effort and STASH the provider fields in gen_params ──
-    # The `thinking` toggle was previously accepted and dropped (a live no-op). Map
-    # it (+ the session default) to a reasoning pref, resolve against the model's
-    # reasoning-control style (adaptive Anthropic → omit & self-decide; effort
-    # models → send reasoning_effort; non-reasoning → omit), and stash the wire
-    # fields so both _stream_via_gateway and _stream_with_tools forward them.
-    # Precedence: inline /command > per-msg `thinking` toggle > session > platform.
-    _user_pref = _inline_effort or _thinking_pref(thinking, gen_params)
-    _directive = resolve_reasoning(
-        user_pref=_user_pref,  # type: ignore[arg-type]
-        model_control=infer_reasoning_control(creds.provider_kind, creds.provider_model_name),
+    # Precedence: inline /command > per-msg `reasoning_effort` (W4 dropdown) >
+    # per-msg `thinking` toggle > session > platform.
+    _resolve_and_stash_reasoning(
+        gen_params, creds,
+        thinking=thinking, reasoning_effort=reasoning_effort,
+        inline_pref=_inline_effort,
     )
-    _rf = reasoning_fields(_directive)
-    # Clear any stale stored knobs first so a directive that says "omit" (adaptive /
-    # non-reasoning) doesn't leave a previous run's reasoning_effort in gen_params.
-    gen_params.pop("reasoning_effort", None)
-    gen_params.pop("chat_template_kwargs", None)
-    if _rf:
-        gen_params.update(_rf)
 
     # asyncpg.Record supports .get() since 0.27; using it lets test mocks
     # that pass a plain dict without project_id continue to work.
@@ -998,10 +1691,17 @@ async def stream_response(
     # full L0/L1/glossary block. Failures degrade silently inside the
     # client and return KnowledgeContext(mode="degraded", context="",
     # recent_message_count=50).
+    # Track B B1(2) — multi-KG: resolve the effective grounding target (a session
+    # may ground on a SET of projects; ≥2 → the union, sent WITHOUT a single
+    # project_id to avoid salience misattribution). See resolve_grounding_target.
+    _build_project_id, _build_project_ids = resolve_grounding_target(
+        session_row, str(project_id) if project_id else None,
+    )
     kctx = await knowledge_client.build_context(
         user_id=user_id,
         session_id=session_id,
-        project_id=str(project_id) if project_id else None,
+        project_id=_build_project_id,
+        project_ids=_build_project_ids,
         message=user_message_content,
         language=display_language,
     )
@@ -1030,17 +1730,44 @@ async def stream_response(
     fe_memory_mode = kctx.mode
 
     # ── Build message history (size from knowledge_service) ─────────────────
+    # W3 — persisted manual compact: when the session carries a compact point
+    # (compacted_before_seq), everything before it is represented by the stored
+    # compact_summary — fetch only messages AT/after the point and prepend the
+    # summary as a synthetic pinned prior-context message (same `<summary>`
+    # system-message convention the auto-compaction summarize tier uses). The
+    # recent_message_count window still applies to the fetched set.
     history_limit = max(1, kctx.recent_message_count)
-    rows = await pool.fetch(
-        """
-        SELECT role, content FROM chat_messages
-        WHERE session_id = $1 AND is_error = false AND branch_id = 0
-        ORDER BY sequence_num DESC
-        LIMIT $2
-        """,
-        session_id, history_limit,
-    )
+    _compact_summary = session_row.get("compact_summary") if session_row else None
+    _compacted_before_seq = session_row.get("compacted_before_seq") if session_row else None
+    if _compacted_before_seq is not None:
+        rows = await pool.fetch(
+            """
+            SELECT role, content FROM chat_messages
+            WHERE session_id = $1 AND is_error = false AND branch_id = 0
+              AND sequence_num >= $3
+            ORDER BY sequence_num DESC
+            LIMIT $2
+            """,
+            session_id, history_limit, _compacted_before_seq,
+        )
+    else:
+        rows = await pool.fetch(
+            """
+            SELECT role, content FROM chat_messages
+            WHERE session_id = $1 AND is_error = false AND branch_id = 0
+            ORDER BY sequence_num DESC
+            LIMIT $2
+            """,
+            session_id, history_limit,
+        )
     messages: list[dict] = [{"role": r["role"], "content": r["content"]} for r in reversed(rows)]
+    if _compacted_before_seq is not None and _compact_summary:
+        # Pinned (role=system) → the auto-compaction tiers can never drop it.
+        messages.insert(0, summary_message(_compact_summary))
+    # W1 — measure the replayed history NOW, before the system parts are inserted
+    # below, so the breakdown's `history` bucket is exactly the prior turns
+    # (includes the just-persisted latest user message).
+    _history_tokens = estimate_messages_tokens(messages)
 
     # ── Compose the system message ──────────────────────────────────────────
     # Order: memory block → session-level system prompt → user's per-message
@@ -1067,7 +1794,11 @@ async def stream_response(
     # the plain-string path.
     # Glossary-assistant P5 + story 04 skill registry: inject selected or
     # surface-default system skills (static + cacheable).
-    from app.services.skill_registry import resolve_skills_to_inject, skill_prompts
+    from app.services.skill_registry import (
+        resolve_skills_to_inject,
+        skill_metadata_block,
+        skill_prompts,
+    )
 
     _editor = bool(editor_context)
     _book_scoped = bool(editor_context or book_context)
@@ -1096,6 +1827,8 @@ async def stream_response(
         editor=_editor,
         book_scoped=_book_scoped,
         admin=_admin,
+        # RAID B2 — plan mode auto-injects plan_forge on book/editor surfaces.
+        permission_mode=permission_mode,
     )
     _skill_prompts = skill_prompts(injected_skill_codes)
     glossary_skill: str | None = _skill_prompts.get("glossary")
@@ -1103,6 +1836,21 @@ async def stream_response(
         glossary_skill = _skill_prompts["admin"]
     universal_skill: str | None = _skill_prompts.get("universal")
     knowledge_skill: str | None = _skill_prompts.get("knowledge")
+    # RAID B2 — the PlanForge skill body (pinned, or auto-injected in plan mode).
+    plan_forge_skill: str | None = _skill_prompts.get("plan_forge")
+    # RAID B2 — the plan-mode system nudge, appended on BOTH assembly paths
+    # below (mirrors skill_meta_block) whenever the turn runs in plan mode.
+    plan_mode_block: str | None = (
+        PLAN_MODE_NUDGE if permission_mode == "plan" else None
+    )
+    # RAID C3 — L1 skill metadata: a compact "available skills" list injected always
+    # (cheap), so the model knows which skills exist on this surface even when only the
+    # relevant one's full body (L2) is loaded above.
+    skill_meta_block: str | None = None
+    if injected_skill_codes:  # only when skills are in play (agui + tools on)
+        skill_meta_block = skill_metadata_block(
+            editor=_editor, book_scoped=_book_scoped, admin=_admin,
+        )
 
     surface_tracker = (
         AgentSurfaceTracker()
@@ -1117,17 +1865,103 @@ async def stream_response(
     # only their PRESENCE gated tool advertising — so the agent passed
     # "YOUR_BOOK_ID_HERE"/"none" and the tool 400'd ("book_id must be a UUID").
     # Carried inside the system message alongside the skills.
-    _ctx_book_id = (editor_context or {}).get("book_id") or (book_context or {}).get("book_id")
-    _ctx_chapter_id = (editor_context or {}).get("chapter_id")
+    _ctx_book_id = (
+        (editor_context or {}).get("book_id")
+        or (book_context or {}).get("book_id")
+        or (studio_context or {}).get("book_id")
+    )
+    _ctx_chapter_id = (
+        (editor_context or {}).get("chapter_id")
+        or (studio_context or {}).get("active_chapter_id")
+    )
+    # CTX-1 — the studio position pointer: the FE hoist already resolved the book's
+    # composition Work, so the model is TOLD the project_id instead of foraging for it
+    # (a live M-E gate run dead-ended retrying the book_id AS a project_id).
+    _ctx_project_id = (studio_context or {}).get("project_id")
     book_context_note: str | None = None
     if _ctx_book_id:
         book_context_note = f"You are working inside book_id={_ctx_book_id}."
         if _ctx_chapter_id:
             book_context_note += f" The active chapter is chapter_id={_ctx_chapter_id}."
+        if _ctx_project_id:
+            book_context_note += (
+                f" This book's composition/knowledge project is project_id={_ctx_project_id}"
+                " — pass it verbatim to any tool that requires a project_id"
+                " (a book_id is NOT a project_id)."
+            )
         book_context_note += (
             " Use these exact ids for any tool that requires a book_id or chapter_id."
             " Never ask the user for the book_id and never pass a placeholder."
         )
+
+    # ── RAID C1 (DR-C1) — per-book steering ─────────────────────────────────
+    # Book-scoped turn → fetch the ENABLED steering entries from book-service,
+    # select the ones matching this turn (always ∪ #name-mentioned manual/auto
+    # ∪ title-matched scene_match), render ONE <steering> system part placed
+    # right after the main system prompt on BOTH assembly paths below.
+    # Guarded end-to-end: the client degrades to [] and this block swallows
+    # everything else — a steering failure never affects the turn.
+    steering_block: str | None = None
+    if _ctx_book_id:
+        try:
+            from app.client.book_steering_client import get_book_steering_client
+            from app.services.steering import render_steering_block, select_steering
+
+            _steering_entries = await get_book_steering_client().get_steering(str(_ctx_book_id))
+            if _steering_entries:
+                _active_title = (editor_context or {}).get("chapter_title")
+                _steering_selected = select_steering(
+                    _steering_entries,
+                    message=user_message_content,
+                    active_title=_active_title,
+                )
+                steering_block = render_steering_block(_steering_selected) or None
+        except Exception:
+            logger.warning(
+                "steering fetch/render failed for book %s — turn proceeds without steering",
+                _ctx_book_id, exc_info=True,
+            )
+            steering_block = None
+
+    # ── Agent Extensibility Registry (P1, REG-P1-05) — user/book prompt-only skills ──
+    # Fetch the caller's + book's registry skills and inject them alongside the
+    # built-in SYSTEM_SKILLS: their L1 lines extend the metadata block, their bodies
+    # become a system part, and a per-user disable/shadow drops the matching built-in
+    # body. Guarded end-to-end — a registry outage degrades to the built-in skills
+    # only (the turn is never affected).
+    user_skills_block: str | None = None
+    if stream_format == "agui" and not disable_tools and kctx.tool_calling_enabled:
+        try:
+            from app.client.user_skills_client import get_user_skills_client
+
+            _us_surface = "admin" if _admin else ("editor" if _editor else ("book" if _book_scoped else "chat"))
+            _uskills = await get_user_skills_client().get_skills(
+                str(user_id), book_id=str(_ctx_book_id or ""), surface=_us_surface,
+            )
+            if _uskills.skills:
+                _u_l1 = "\n".join(f"- {s['slug']}: {s.get('description', '')}" for s in _uskills.skills)
+                if skill_meta_block:
+                    skill_meta_block = skill_meta_block + "\n" + _u_l1
+                else:
+                    skill_meta_block = "## Available skills\n" + _u_l1
+                _u_bodies = [
+                    f"## Skill: {s['slug']}\n{s['body_md']}"
+                    for s in _uskills.skills if s.get("body_md")
+                ]
+                if _u_bodies:
+                    user_skills_block = "\n\n".join(_u_bodies)
+            # Honour per-user disable + shadow of the built-in System skills.
+            if _uskills.system_disabled("glossary") or _uskills.shadows("glossary"):
+                glossary_skill = None
+            if _uskills.system_disabled("universal") or _uskills.shadows("universal"):
+                universal_skill = None
+            if _uskills.system_disabled("knowledge") or _uskills.shadows("knowledge"):
+                knowledge_skill = None
+            if _uskills.system_disabled("plan_forge") or _uskills.shadows("plan_forge"):
+                plan_forge_skill = None
+        except Exception:
+            logger.warning("user skills fetch/inject failed — built-in skills only", exc_info=True)
+            user_skills_block = None
 
     use_anthropic_cache = (
         creds.provider_kind == "anthropic"
@@ -1157,12 +1991,22 @@ async def stream_response(
                 "text": system_prompt.strip(),
                 "cache_control": {"type": "ephemeral"},
             })
+        if steering_block:  # RAID C1 — per-book steering, right after the system prompt
+            parts.append({"type": "text", "text": steering_block, "cache_control": {"type": "ephemeral"}})
         if glossary_skill:
             parts.append({"type": "text", "text": glossary_skill, "cache_control": {"type": "ephemeral"}})
         if knowledge_skill:
             parts.append({"type": "text", "text": knowledge_skill, "cache_control": {"type": "ephemeral"}})
         if universal_skill:
             parts.append({"type": "text", "text": universal_skill, "cache_control": {"type": "ephemeral"}})
+        if plan_forge_skill:  # RAID B2 — PlanForge flow (pinned or plan-mode)
+            parts.append({"type": "text", "text": plan_forge_skill, "cache_control": {"type": "ephemeral"}})
+        if user_skills_block:  # REG-P1-05 — user/book registry skills (L2 bodies)
+            parts.append({"type": "text", "text": user_skills_block, "cache_control": {"type": "ephemeral"}})
+        if plan_mode_block:  # RAID B2 — plan-mode nudge (no prose until Write)
+            parts.append({"type": "text", "text": plan_mode_block, "cache_control": {"type": "ephemeral"}})
+        if skill_meta_block:  # RAID C3 — L1 available-skills catalog
+            parts.append({"type": "text", "text": skill_meta_block, "cache_control": {"type": "ephemeral"}})
         if book_context_note:
             parts.append({"type": "text", "text": book_context_note, "cache_control": {"type": "ephemeral"}})
         messages.insert(0, {"role": "system", "content": parts})
@@ -1178,12 +2022,22 @@ async def stream_response(
             stripped = system_prompt.strip()
             if stripped:
                 system_parts.append(stripped)
+        if steering_block:  # RAID C1 — per-book steering, right after the system prompt
+            system_parts.append(steering_block)
         if glossary_skill:
             system_parts.append(glossary_skill)
         if knowledge_skill:
             system_parts.append(knowledge_skill)
         if universal_skill:
             system_parts.append(universal_skill)
+        if plan_forge_skill:  # RAID B2 — PlanForge flow (pinned or plan-mode)
+            system_parts.append(plan_forge_skill)
+        if user_skills_block:  # REG-P1-05 — user/book registry skills (L2 bodies)
+            system_parts.append(user_skills_block)
+        if plan_mode_block:  # RAID B2 — plan-mode nudge (no prose until Write)
+            system_parts.append(plan_mode_block)
+        if skill_meta_block:  # RAID C3 — L1 available-skills catalog
+            system_parts.append(skill_meta_block)
         if book_context_note:
             system_parts.append(book_context_note)
         if system_parts:
@@ -1197,6 +2051,45 @@ async def stream_response(
     # turn, where attention weights it most (beats lost-in-the-middle). EC-3/EC-7.
     if wm_tail:
         messages.insert(-1, {"role": "system", "content": wm_tail})
+
+    # ── W1: per-category context breakdown ───────────────────────────────────
+    # Measured ONCE per turn, at assembly, over the EXACT strings injected above
+    # (cheap — estimate_tokens is a linear char scan). The tool-schema buckets are
+    # measured later at the advertise chokepoint and the tool-result bucket at
+    # finish; both are folded into this object before the frame is emitted.
+    if use_anthropic_cache:
+        _mem_tokens = estimate_tokens(kctx.stable_context.strip()) + estimate_tokens(
+            kctx.volatile_context.strip()
+        )
+    else:
+        _mem_tokens = estimate_tokens((kctx.context or "").strip())
+    context_breakdown = ContextBreakdown(
+        categories={
+            "system_prompt": estimate_tokens(system_prompt.strip() if system_prompt else ""),
+            "memory_knowledge": _mem_tokens,
+            "working_memory": estimate_tokens(wm_pinned) + estimate_tokens(wm_tail),
+            "steering": estimate_tokens(steering_block),
+            "skills": sum(
+                estimate_tokens(s)
+                for s in (
+                    glossary_skill, knowledge_skill, universal_skill,
+                    plan_forge_skill, skill_meta_block, user_skills_block,
+                )
+                if s
+            ),
+            "plan_nudge": estimate_tokens(plan_mode_block),
+            "book_note": estimate_tokens(book_context_note),
+            "attached_context": (
+                estimate_tokens(
+                    f"The user has attached the following context:\n\n{context}"
+                )
+                if context
+                else 0
+            ),
+            "history": _history_tokens,
+        },
+        knowledge_sections=dict(kctx.sections or {}),
+    )
 
     # ── Phase 1c-ii: gateway resolves api_key / base_url / model_string
     # internally; service no longer needs them. We keep `creds.provider_kind`
@@ -1249,7 +2142,9 @@ async def stream_response(
                 from app.services.frontend_tools import GLOSSARY_CONFIRM_ACTION_TOOL
                 tool_defs = tool_defs + [GLOSSARY_CONFIRM_ACTION_TOOL]
         else:
-            catalog = await knowledge_client.get_tool_definitions()
+            # REG-P2-03 — pass user_id so the gateway appends this user's external-MCP
+            # federation overlay (u_/b_/s_ tools) into the turn catalog.
+            catalog = await knowledge_client.get_tool_definitions(user_id=user_id)
             # Discovery needs a catalog to search. When the gateway is unreachable
             # (catalog == []), there is nothing to find_tools over → fall back to the
             # plain path rather than spin up a discovery loop with only frontend tools.
@@ -1269,6 +2164,7 @@ async def stream_response(
                     pins=tool_pins,
                     editor=editor,
                     book_scoped=book_scoped,
+                    studio=bool(studio_context),
                 )
                 # `tool_defs` is the FIRST-pass advertisement when discovery is on;
                 # _stream_with_tools recomputes it each pass (core ∪ extra_fe ∪
@@ -1344,6 +2240,8 @@ async def stream_response(
         injected_skills=injected_skill_codes,
         effective_enabled_count=len(effective_enabled) if curated_mode else 0,
         hot_seed_count=len(discovery_seed_names or ()),
+        permission_mode=permission_mode,
+        context_breakdown=context_breakdown,
     ):
         yield line
 
@@ -1384,6 +2282,9 @@ async def _emit_chat_turn(
     injected_skills: list[str] | None = None,
     effective_enabled_count: int = 0,
     hot_seed_count: int = 0,
+    permission_mode: str = "write",
+    pre_tool_chunks: list[dict] | None = None,
+    context_breakdown: ContextBreakdown | None = None,
 ) -> AsyncGenerator[str, None]:
     """Shared Stream→persist→finish body for a chat turn (fresh OR C6 resume).
 
@@ -1391,10 +2292,20 @@ async def _emit_chat_turn(
     persists the assistant message, and runs post-turn best-effort work. When the
     tool loop yields a ``suspend`` chunk (a frontend tool awaiting client
     execution), this persists the suspended run instead and emits a "suspended"
-    finish — NO assistant message is written (the turn isn't done yet)."""
+    finish — NO assistant message is written (the turn isn't done yet).
+
+    RAID C2: ``pre_tool_chunks`` — tool_call chunks a resume path already
+    executed BEFORE re-entering the loop (an approved Tier-A tool). Emitted +
+    persisted here so the FE sees the tool_call/activity events with full
+    C-ACTIVITY parity (approval is additive; undo unchanged)."""
     full_content: list[str] = []
     full_reasoning: list[str] = []
     tool_calls_history: list[dict] = []
+    # W1 — advertised tool-schema tokens, reported once by the tool loop's
+    # first pass ({"schema_tokens": ...} chunk); folded into the contextBudget
+    # frame + the persisted context_breakdown at finish.
+    _fe_schema_tok = 0
+    _mcp_schema_tok = 0
     last_usage = None
     import time as _time
     stream_start = _time.monotonic()
@@ -1429,11 +2340,108 @@ async def _emit_chat_turn(
             for line in emitter.agent_surface(payload):
                 yield line
 
+    # RAID C2 — a resume path may have executed an approved Tier-A tool before
+    # re-entering the loop: surface those calls (tool_call + activity events)
+    # and record them for the persisted tool_calls history.
+    for _pre_tc in (pre_tool_chunks or []):
+        tool_calls_history.append(_pre_tc)
+        for line in emitter.tool_call(_pre_tc):
+            yield line
+        _pre_activity = _pre_tc.get("activity")
+        if _pre_activity is not None:
+            for line in emitter.activity(_pre_activity):
+                yield line
+
+    # RAID Wave A4 — provider-agnostic compaction: keep the assembled prompt under the
+    # model's window BEFORE sending (works for local lm_studio/Qwen/Gemma AND Claude; the
+    # Anthropic server-side overlay is A5). GUARDED — any error falls back to the
+    # un-compacted messages so a bug here can never break the turn. summarize=None →
+    # deterministic micro-evict of tool results + hard-truncate (no LLM in the path).
+    _eff_limit: int | None = None
+    _compaction = None
+    try:
+        _eff_limit = compute_budget(
+            used_tokens=0,
+            context_length=creds.context_length,
+            max_output_tokens=int(gen_params.get("max_tokens") or 0),
+        ).effective_limit
+        if _eff_limit:
+            async def _summarizer(_middle: list[dict]) -> str:
+                # tier 2 runs the session's OWN model to compress the old turns.
+                return await _summarize_for_compaction(
+                    _middle, model_source=model_source, model_ref=model_ref, user_id=user_id,
+                )
+            messages, _compaction = await compact_messages(
+                messages, effective_limit=_eff_limit, summarize=_summarizer,
+            )
+            if _compaction.triggered:
+                logger.info(
+                    "compaction fired session=%s steps=%s tokens %d→%d overflow=%s",
+                    session_id, _compaction.steps,
+                    _compaction.tokens_before, _compaction.tokens_after,
+                    _compaction.overflowed,
+                )
+    except Exception:  # never let compaction break the turn
+        logger.warning("compaction skipped (error)", exc_info=True)
+    # W1 — surface pre-send compaction to the client when it DID something
+    # (previously log-only). Outside the guard try so a consumer-side throw
+    # is never mis-swallowed as a compaction error.
+    if _compaction is not None and _compaction.did_work:
+        for line in emitter.compaction(_compaction.to_event()):
+            yield line
+
     turn_succeeded = False
     post_finish_state: dict | None = None
 
+    # RAID C2 (DR-C2 §4) — the per-user Tier-A allowlist read, handed to the
+    # loop as a callable so _stream_with_tools stays DB-free. The loop wraps it
+    # fail-OPEN (a read error must not brick tool calling).
+    async def _approval_check(tool_name: str) -> bool:
+        return await is_tool_approved(pool, user_id, tool_name)
+
+    # P4 REG-P4-03 — resolve the user's declarative hooks once per turn (degrade-safe
+    # []). pre_turn inject_text hooks are folded into the system prompt now (steering
+    # style); pre_tool_call deny/require_approval are evaluated inside the loop.
+    _turn_hooks: list[dict] = []
     try:
-        if use_tools:
+        from app.client.registry_hooks_client import get_hooks_client
+        from app.services.hook_engine import collect_injections
+
+        _turn_hooks = await get_hooks_client().get_hooks(str(user_id), book_id=str(project_id or ""))
+        _pre_injections = collect_injections(_turn_hooks, "pre_turn")
+        if _pre_injections and messages:
+            # Insert as a just-in-time system directive immediately BEFORE the final
+            # (user) message — higher salience than folding into a large system prompt.
+            _inj = {"role": "system", "content": "\n".join(_pre_injections)}
+            _pos = len(messages) - 1 if messages[-1].get("role") == "user" else len(messages)
+            messages.insert(_pos, _inj)
+    except Exception:  # noqa: BLE001 — hooks are a guardrail, never load-bearing
+        logger.warning("hook resolution failed (unhooked turn)", exc_info=False)
+
+    # P5 REG-P5-01 — resolve the user's + book's enabled subagent personas once per
+    # turn (degrade-safe []). When ≥1 exists, advertise `run_subagent` (a closed-set
+    # enum of their names) so the model can delegate a bounded sub-task to a scoped,
+    # isolated nested turn. Resolved HERE (in the shared body) so BOTH the fresh and
+    # the resume path get it. The tool routes through _stream_with_tools even when no
+    # other tools are on (a subagents-only surface still needs the loop).
+    _subagent_defs_map: dict[str, dict] = {}
+    _subagent_tool: dict | None = None
+    try:
+        from app.client.registry_subagents_client import get_subagents_client
+
+        _subs = await get_subagents_client().get_subagents(
+            str(user_id), book_id=str(project_id or "")
+        )
+        # First-seen wins — the resolver already shadowed by tier, so its order is
+        # authoritative; dedup defensively.
+        for _sa in _subs:
+            _subagent_defs_map.setdefault(_sa["name"], _sa)
+        _subagent_tool = build_run_subagent_tool(list(_subagent_defs_map.keys()))
+    except Exception:  # noqa: BLE001 — a capability, never load-bearing
+        logger.warning("subagent resolution failed (no delegation)", exc_info=False)
+
+    try:
+        if use_tools or _subagent_tool is not None:
             chunk_stream = _stream_with_tools(
                 model_source=model_source,
                 model_ref=model_ref,
@@ -1456,6 +2464,12 @@ async def _emit_chat_turn(
                 curated=curated,
                 activation_state=activation_state,
                 surface_tracker=surface_tracker,
+                effective_limit=_eff_limit,
+                permission_mode=permission_mode,
+                approval_check=_approval_check,
+                hooks=_turn_hooks,
+                subagent_tool=_subagent_tool,
+                subagent_defs=_subagent_defs_map,
             )
         else:
             chunk_stream = _stream_via_gateway(
@@ -1486,6 +2500,18 @@ async def _emit_chat_turn(
                 if activity is not None:
                     for line in emitter.activity(activity):
                         yield line
+                continue
+            # W1 — tool-schema token measurement from the loop's first pass.
+            schema_tokens = chunk_data.get("schema_tokens")
+            if schema_tokens is not None:
+                _fe_schema_tok = int(schema_tokens.get("frontend_tool_schemas", 0))
+                _mcp_schema_tok = int(schema_tokens.get("mcp_tool_schemas", 0))
+                continue
+            # W1 — in-loop (mid-turn) compaction did work → surface it.
+            compaction_ev = chunk_data.get("compaction")
+            if compaction_ev is not None:
+                for line in emitter.compaction(compaction_ev):
+                    yield line
                 continue
             # A2A phase-2: composer drafting on/off → transient UI indicator.
             composing = chunk_data.get("composing")
@@ -1537,6 +2563,7 @@ async def _emit_chat_turn(
                 model_ref=model_ref,
                 parent_message_id=parent_message_id,
                 user_message_content=user_message_content,
+                permission_mode=permission_mode,
             )
             # close any open assistant/reasoning message first
             for line in emitter.close_message():
@@ -1574,8 +2601,13 @@ async def _emit_chat_turn(
         # the event.
         async with pool.acquire() as conn:
             async with conn.transaction():
+                # Branch-scoped like send_message/voice: after an edit re-branch,
+                # a global MAX would jump the assistant PAST branched-away seqs
+                # (and past a W3 compact boundary) while user messages stay low
+                # — the review-impl H1 asymmetric-visibility bug.
                 seq = await conn.fetchval(
-                    "SELECT COALESCE(MAX(sequence_num), 0) + 1 FROM chat_messages WHERE session_id = $1",
+                    "SELECT COALESCE(MAX(sequence_num), 0) + 1 FROM chat_messages "
+                    "WHERE session_id = $1 AND branch_id = 0",
                     session_id,
                 )
                 input_tok = getattr(last_usage, "prompt_tokens", None) if last_usage else None
@@ -1596,15 +2628,46 @@ async def _emit_chat_turn(
                     json.dumps(tool_calls_history) if tool_calls_history else None
                 )
 
+                # ── W1: finalize the per-turn context frame payload ─────────
+                # Fold the runtime-measured buckets (tool schemas from the
+                # advertise chokepoint, this turn's tool RESULTS) into the
+                # assembly-time breakdown, then build the ONE payload that is
+                # both persisted (context_breakdown JSONB) and emitted as the
+                # contextBudget CUSTOM frame below. Old keys stay byte-identical.
+                _tool_results_tok = 0
+                for _tc in tool_calls_history:
+                    if _tc.get("ok"):
+                        _tool_results_tok += estimate_tokens(
+                            json.dumps(_tc.get("result"), default=str)
+                        )
+                    else:
+                        _tool_results_tok += estimate_tokens(
+                            json.dumps({"error": _tc.get("error")}, default=str)
+                        )
+                if context_breakdown is not None:
+                    context_breakdown.categories["frontend_tool_schemas"] = _fe_schema_tok
+                    context_breakdown.categories["mcp_tool_schemas"] = _mcp_schema_tok
+                    context_breakdown.categories["tool_results"] = _tool_results_tok
+                _ctx_payload = context_budget_event(
+                    compute_budget(
+                        used_tokens=int(input_tok or 0),
+                        context_length=creds.context_length,
+                        max_output_tokens=int(gen_params.get("max_tokens") or 0),
+                    ),
+                    context_breakdown,
+                )
+
                 await conn.execute(
                     """
                     INSERT INTO chat_messages
                       (message_id, session_id, owner_user_id, role, content, content_parts,
-                       sequence_num, input_tokens, output_tokens, model_ref, parent_message_id, branch_id, tool_calls)
-                    VALUES ($1,$2,$3,'assistant',$4,$5::jsonb,$6,$7,$8,$9,$10, 0, $11::jsonb)
+                       sequence_num, input_tokens, output_tokens, model_ref, parent_message_id, branch_id, tool_calls,
+                       context_breakdown)
+                    VALUES ($1,$2,$3,'assistant',$4,$5::jsonb,$6,$7,$8,$9,$10, 0, $11::jsonb, $12::jsonb)
                     """,
                     msg_id, session_id, user_id, final_text, content_parts, seq,
                     input_tok, output_tok, model_ref, parent_message_id, tool_calls_json,
+                    json.dumps(_ctx_payload),
                 )
 
                 # Extract and persist output artifacts
@@ -1703,6 +2766,14 @@ async def _emit_chat_turn(
                 "timeToFirstTokenMs": round(time_to_first_token) if time_to_first_token is not None else None,
             },
         }
+        # RAID Wave A2 + W1 — emit the per-turn context frame (the SAME payload
+        # persisted to chat_messages.context_breakdown above): measured input
+        # tokens vs the model's window + the per-category breakdown. Advisory;
+        # NULL context_length → pct=None and the meter shows "—". No try/except:
+        # both emitters implement context_budget (legacy no-ops) and the payload
+        # was already built on the persist path.
+        for line in emitter.context_budget(_ctx_payload):
+            yield line
         for line in emitter.finish(finish):
             yield line
 
@@ -1834,19 +2905,29 @@ async def resume_stream_response(
     # Append the frontend tool's result (the human's apply decision) so the
     # agent can acknowledge it in the 2nd pass.
     working = list(susp.working)
-    if result is not None:
-        # MCP fan-out (C-NAV): a ui_* nav resolve — feed the structured result
-        # (e.g. {"navigated": true}) back verbatim as the tool result.
-        result_payload: dict = result
-    else:
-        result_payload = {"outcome": outcome if outcome is not None else "dismissed"}
-        if applied_text is not None:
-            result_payload["applied_text"] = applied_text
-    working.append({
-        "role": "tool",
-        "tool_call_id": tool_call_id,
-        "content": json.dumps(result_payload),
-    })
+    # RAID C2 (DR-C2 §4) — a `tool_approval` suspend resumes with
+    # approved_once | approved_always | denied; its tool result is the REAL
+    # server execution (or the denial), computed below once knowledge_client +
+    # project_id are in scope — NOT the generic outcome echo.
+    _approval_args = susp.pending_tool_call.get("args")
+    is_approval = (
+        isinstance(_approval_args, dict)
+        and _approval_args.get("kind") == "tool_approval"
+    )
+    if not is_approval:
+        if result is not None:
+            # MCP fan-out (C-NAV): a ui_* nav resolve — feed the structured result
+            # (e.g. {"navigated": true}) back verbatim as the tool result.
+            result_payload: dict = result
+        else:
+            result_payload = {"outcome": outcome if outcome is not None else "dismissed"}
+            if applied_text is not None:
+                result_payload["applied_text"] = applied_text
+        working.append({
+            "role": "tool",
+            "tool_call_id": tool_call_id,
+            "content": json.dumps(result_payload),
+        })
 
     # Re-derive session gen_params + tool defs for the 2nd pass.
     session_row = await pool.fetchrow(
@@ -1859,6 +2940,10 @@ async def resume_stream_response(
     if isinstance(gp_raw, str):
         gp_raw = json.loads(gp_raw)
     gen_params: dict = gp_raw if gp_raw else {}
+    # Resolve reasoning on the RESUME path too (review-impl H): the raw
+    # session-stored `reasoning_effort` ("off"/"auto") is not wire vocabulary —
+    # unresolved it crashed StreamRequest on every tool-approval resume.
+    _resolve_and_stash_reasoning(gen_params, creds)
     project_id = session_row.get("project_id") if session_row else None
     # A2A phase-2: keep compose_prose available on resume too (the agent may
     # delegate prose again after the user's apply/dismiss).
@@ -1885,9 +2970,84 @@ async def resume_stream_response(
         editor=True,
         book_scoped=True,
         admin=bool(admin_token),
+        # RAID B2 — the resume continues under the suspended turn's mode.
+        permission_mode=susp.permission_mode,
     )
 
     knowledge_client = get_knowledge_client()
+
+    # RAID C2 (DR-C2 §4) — act on the approval outcome BEFORE the 2nd pass:
+    #   approved_once   → execute the tool now; feed its REAL result back.
+    #   approved_always → persist the allowlist row, then execute.
+    #   denied          → feed {"error": "denied by user"} so the model
+    #                     self-corrects (no execution).
+    # The executed call is surfaced via pre_tool_chunks (tool_call + activity
+    # events + persisted history) — C-ACTIVITY parity, undo unchanged.
+    pre_tool_chunks: list[dict] | None = None
+    if is_approval:
+        _appr = _approval_args if isinstance(_approval_args, dict) else {}
+        _tool_name = str(_appr.get("tool") or susp.pending_tool_call.get("name") or "")
+        _tool_args = _appr.get("args") if isinstance(_appr.get("args"), dict) else {}
+        _decision = outcome if outcome in ("approved_once", "approved_always", "denied") else "denied"
+        if _decision == "approved_always":
+            try:
+                await approve_tool(pool, user_id, _tool_name)
+            except Exception:
+                # The human approved THIS call; a failed allowlist write only
+                # means they may be prompted again — still execute.
+                logger.warning(
+                    "always-allow persist failed for %s — executing anyway",
+                    _tool_name, exc_info=True,
+                )
+        if _decision in ("approved_once", "approved_always"):
+            envelope = await knowledge_client.mcp_execute_tool(
+                user_id=user_id, session_id=session_id,
+                project_id=str(project_id) if project_id else None,
+                tool_name=_tool_name, tool_args=_tool_args,
+                admin_token=admin_token,
+            )
+            _ok = bool(envelope.get("success"))
+            _tool_payload = envelope.get("result") if _ok else {"error": envelope.get("error")}
+            working.append({
+                "role": "tool", "tool_call_id": tool_call_id,
+                "content": json.dumps(_tool_payload),
+            })
+            _chunk: dict = {
+                "id": tool_call_id, "iteration": 0, "tool": _tool_name,
+                "args": _tool_args, "ok": _ok,
+                "result": envelope.get("result") if _ok else None,
+                "error": None if _ok else envelope.get("error"),
+            }
+            if _ok:
+                # C-ACTIVITY (H16) parity with the in-loop Tier-A path: the
+                # approved write is visible + undoable, never a silent surprise.
+                _result = envelope.get("result") or {}
+                _result_meta = _result.get("_meta") if isinstance(_result, dict) else None
+                _undo = tool_undo_hint(_result_meta)
+                _summary = ""
+                if isinstance(_result_meta, dict):
+                    _summary = str(_result_meta.get("summary", "") or "")
+                _chunk["activity"] = {
+                    "op": _tool_name,
+                    "summary": _summary or f"Did {_tool_name}",
+                    "undo": (
+                        {"available": True, "tool": _undo.get("tool"),
+                         "args": _undo.get("args", {})}
+                        if _undo else {"available": False}
+                    ),
+                }
+            pre_tool_chunks = [_chunk]
+        else:
+            working.append({
+                "role": "tool", "tool_call_id": tool_call_id,
+                "content": json.dumps({"error": "denied by user"}),
+            })
+            pre_tool_chunks = [{
+                "id": tool_call_id, "iteration": 0, "tool": _tool_name,
+                "args": _tool_args, "ok": False,
+                "result": None, "error": "denied by user",
+            }]
+
     resume_discovery_catalog: list[dict] | None = None
     resume_extra_frontend: list[dict] | None = None
     resume_seed_names: set[str] | None = None
@@ -1906,7 +3066,8 @@ async def resume_stream_response(
     else:
         catalog: list[dict] = []
         try:
-            catalog = await knowledge_client.get_tool_definitions()
+            # REG-P2-03 — per-user overlay in the resumed turn's catalog too.
+            catalog = await knowledge_client.get_tool_definitions(user_id=user_id)
         except Exception:
             catalog = []
         # The editor tool stays advertised on resume (the agent may propose again).
@@ -1935,11 +3096,14 @@ async def resume_stream_response(
             )
             # Resume uses editor superset for frontend tools; discovery seed respects
             # session curated pins when enabled_tools is non-empty (story 04 S2).
+            # Resume superset includes the studio hot domains — a suspend raised on the
+            # studio compose surface must resume with its composition family still hot.
             resume_seed_names = discovery_seed_for_surface(
                 catalog,
                 pins=tool_pins,
                 editor=True,
                 book_scoped=True,
+                studio=True,
             )
             tool_defs = _advertise_discovery_tools(
                 _catalog_index(catalog), resume_seed_names, resume_extra_frontend
@@ -2002,6 +3166,10 @@ async def resume_stream_response(
         injected_skills=resume_injected_skills,
         effective_enabled_count=len(tool_pins.effective_enabled) if tool_pins.curated_mode else 0,
         hot_seed_count=len(resume_seed_names or ()),
+        # RAID C2 — the resume continues under the mode the turn started with;
+        # the approved/denied tool result (if any) is surfaced first.
+        permission_mode=susp.permission_mode,
+        pre_tool_chunks=pre_tool_chunks,
     ):
         yield line
 
@@ -2069,6 +3237,7 @@ async def _auto_generate_title(
             auth_mode="internal",
             internal_token=settings.internal_service_token,
             user_id=user_id,
+            idle_read_timeout_s=settings.llm_stream_idle_read_timeout_s,
         )
         try:
             request = StreamRequest(

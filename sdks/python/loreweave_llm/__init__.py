@@ -88,6 +88,13 @@ from .reasoning import (
     reasoning_fields,
     resolve_reasoning,
 )
+from .structured import (
+    GenerateResult,
+    StructuredGenerateError,
+    no_thinking_fields,
+    parse_json_object,
+    structured_generate,
+)
 
 __all__ = [
     "Client",
@@ -106,6 +113,12 @@ __all__ = [
     "bucket_effort",
     "resolve_reasoning",
     "reasoning_fields",
+    # AI-Task Standard — single-shot structured generate (shared plumbing)
+    "structured_generate",
+    "parse_json_object",
+    "no_thinking_fields",
+    "GenerateResult",
+    "StructuredGenerateError",
     "StreamEvent",
     "TokenEvent",
     "ReasoningEvent",

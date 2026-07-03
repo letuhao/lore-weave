@@ -1,4 +1,4 @@
-import { render, screen, waitFor, fireEvent } from '@testing-library/react';
+import { render, screen, waitFor, fireEvent, within } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
@@ -44,9 +44,32 @@ vi.mock('../../hooks/useWork', () => ({
 }));
 
 const listUserModels = vi.fn();
-vi.mock('../../../ai-models/api', () => ({
-  aiModelsApi: { listUserModels: (...args: unknown[]) => listUserModels(...args) },
+// W5 — spread the real module: the shared ModelPicker also imports getUserModelMeta.
+vi.mock('@/features/ai-models/api', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('@/features/ai-models/api')>();
+  return {
+    ...actual,
+    aiModelsApi: { listUserModels: (...args: unknown[]) => listUserModels(...args), patchFavorite: vi.fn() },
+  };
+});
+// W5 — the shared useUserModels/ModelPicker read the token from useAuth.
+vi.mock('@/auth', () => ({ useAuth: () => ({ accessToken: 'tok' }) }));
+vi.mock('@/lib/syncPrefs', () => ({
+  loadPrefFromServer: vi.fn().mockResolvedValue(undefined),
+  savePrefToServer: vi.fn().mockResolvedValue(true),
+  syncPrefsToServer: vi.fn(),
 }));
+
+import { invalidateUserModelsCache } from '@/components/model-picker';
+
+// Full UserModel shape — getUserModelMeta reads capability_flags/tags.
+function chatModel(id: string, alias: string, name: string) {
+  return {
+    user_model_id: id, provider_credential_id: 'c1', provider_kind: 'lm_studio',
+    provider_model_name: name, alias, is_active: true, is_favorite: false,
+    capability_flags: {}, tags: [], created_at: '2026-01-01T00:00:00Z',
+  };
+}
 
 function renderPanel() {
   const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
@@ -63,14 +86,14 @@ beforeEach(() => {
   createSceneMutate.mockReset();
   scenesState.data = [];
   scenesState.isLoading = false;
+  localStorage.clear();
+  invalidateUserModelsCache();  // W5 — shared fetch cache must not leak across tests
 });
 
 describe('CompositionPanel guided first-run (C17 WG-4)', () => {
   it('renders the guided cue + a "Start writing" action when the Work has no scene yet', async () => {
     scenesState.data = [];
-    listUserModels.mockResolvedValue({
-      items: [{ user_model_id: 'm1', is_active: true, alias: 'Qwen', provider_model_name: 'qwen2.5' }],
-    });
+    listUserModels.mockResolvedValue({ items: [chatModel('m1', 'Qwen', 'qwen2.5')] });
     renderPanel();
     await waitFor(() => expect(screen.getByTestId('composition-guided-cue')).toBeInTheDocument());
     const start = screen.getByTestId('composition-guided-start');
@@ -84,28 +107,25 @@ describe('CompositionPanel guided first-run (C17 WG-4)', () => {
 
   it('auto-picks the sole chat model into the model selector', async () => {
     scenesState.data = [{ id: 's1', title: 'Scene 1', status: 'drafting' }];
-    listUserModels.mockResolvedValue({
-      items: [{ user_model_id: 'm1', is_active: true, alias: 'Qwen', provider_model_name: 'qwen2.5' }],
-    });
+    listUserModels.mockResolvedValue({ items: [chatModel('m1', 'Qwen', 'qwen2.5')] });
     renderPanel();
+    // W5 — the shared ModelPicker trigger shows the auto-picked model's display name.
     await waitFor(() => {
-      const sel = screen.getByTestId('composition-model-select') as HTMLSelectElement;
-      expect(sel.value).toBe('m1');
+      const trigger = within(screen.getByTestId('composition-model-select')).getByRole('combobox');
+      expect(trigger).toHaveTextContent('Qwen');
     });
   });
 
   it('does NOT auto-pick when two or more chat models exist (ambiguous → let the writer choose)', async () => {
     scenesState.data = [{ id: 's1', title: 'Scene 1', status: 'drafting' }];
     listUserModels.mockResolvedValue({
-      items: [
-        { user_model_id: 'm1', is_active: true, alias: 'Qwen', provider_model_name: 'qwen2.5' },
-        { user_model_id: 'm2', is_active: true, alias: 'Llama', provider_model_name: 'llama3' },
-      ],
+      items: [chatModel('m1', 'Qwen', 'qwen2.5'), chatModel('m2', 'Llama', 'llama3')],
     });
     renderPanel();
     await screen.findByTestId('composition-ready-to-draft');
-    const sel = screen.getByTestId('composition-model-select') as HTMLSelectElement;
-    expect(sel.value).toBe(''); // no auto-pick — the placeholder option
+    // no auto-pick — the trigger shows the "pick a model" none label (test i18n = the key)
+    const trigger = within(screen.getByTestId('composition-model-select')).getByRole('combobox');
+    expect(trigger).toHaveTextContent('pickModel');
   });
 
   it('shows no guided cue when there is no chat model (the writer must register one first — C15 CTA)', async () => {

@@ -48,7 +48,7 @@ export function AddEdgeTypeForm({ onSubmit, isSubmitting }: Props) {
           <input
             value={code}
             onChange={(e) => setCode(e.target.value)}
-            className="w-full rounded-md border px-2 py-1"
+            className="w-full rounded-md border bg-input px-2 py-1"
             placeholder="LOVER_OF"
             data-testid="edge-code-input"
           />
@@ -58,7 +58,7 @@ export function AddEdgeTypeForm({ onSubmit, isSubmitting }: Props) {
           <input
             value={label}
             onChange={(e) => setLabel(e.target.value)}
-            className="w-full rounded-md border px-2 py-1"
+            className="w-full rounded-md border bg-input px-2 py-1"
             data-testid="edge-label-input"
           />
         </label>
@@ -78,7 +78,7 @@ export function AddEdgeTypeForm({ onSubmit, isSubmitting }: Props) {
           <select
             value={cardinality}
             onChange={(e) => setCardinality(e.target.value as Cardinality)}
-            className="rounded-md border px-1 py-0.5"
+            className="rounded-md border bg-input px-1 py-0.5"
             data-testid="edge-cardinality-input"
           >
             <option value="single_active">single_active</option>
@@ -89,7 +89,7 @@ export function AddEdgeTypeForm({ onSubmit, isSubmitting }: Props) {
       <button
         type="submit"
         disabled={!valid || isSubmitting}
-        className="rounded-md bg-primary px-3 py-1.5 text-[12px] font-medium text-white disabled:opacity-50"
+        className="rounded-md bg-primary px-3 py-1.5 text-[12px] font-medium text-primary-foreground disabled:opacity-50"
         data-testid="edge-submit"
       >
         {t('schema.addButton')}

@@ -8,13 +8,133 @@
     "body": "この本のためのドッキング可能なワークスペース。パネル（執筆・プロット・キャスト・品質…）は一つずつここに追加されます。タブをドラッグして分割・スタック・フロート・別ウィンドウへ切り離せます。"
   },
   "panels": {
-    "compose": { "title": "Compose", "desc": "AI 共同執筆チャット" },
-    "editor": { "title": "Editor", "desc": "原稿エディタ" }
+    "compose": {
+      "title": "Compose",
+      "desc": "AI 共同執筆チャット"
+    },
+    "editor": {
+      "title": "Editor",
+      "desc": "原稿エディタ"
+    },
+    "planner": {
+      "title": "プランナー",
+      "desc": "小説システムを設計"
+    },
+    "usage": {
+      "title": "使用状況",
+      "desc": "支出・トークン・リクエストログ"
+    },
+    "notifications": {
+      "title": "通知",
+      "desc": "ジョブ完了とアラート"
+    },
+    "settings": {
+      "title": "設定",
+      "desc": "アカウント・プロバイダー・翻訳"
+    },
+    "trash": {
+      "title": "ゴミ箱",
+      "desc": "削除した本・章などを復元"
+    },
+    "steering": {
+      "title": "ステアリング",
+      "desc": "この本で AI を導く著者ルール"
+    },
+    "json-editor": {
+      "title": "JSON",
+      "desc": "リソースの生 JSON ビュー"
+    }
+  },
+  "sceneRail": {
+    "title": "シーン",
+    "toggle": "シーン",
+    "empty": "この章にはシーンがありません（コンポーザーでアウトラインを作成）。",
+    "synopsisPlaceholder": "あらすじ…",
+    "stale": "他所で変更 — 再読込しました",
+    "notAnchored": "シーンはまだ本文にアンカーされていません — ⚓ で見出しをリンク。",
+    "anchored": "{{count}} シーンをアンカー、{{unmatched}} 件は不一致 — ⌘S で保存。",
+    "anchorNoop": "{{count}} 件はアンカー済み、{{unmatched}} 件は一致する見出しなし。",
+    "anchorTitle": "シーンを本文の見出しにリンク",
+    "add": "シーンを追加",
+    "addDisabled": "章にアウトラインがありません（コンポーザーで作成）",
+    "newTitlePlaceholder": "シーン名…",
+    "create": "追加",
+    "deleted": "「{{title}}」を削除しました。",
+    "undo": "元に戻す",
+    "moveUp": "上へ",
+    "moveDown": "下へ",
+    "delete": "シーンを削除",
+    "status": {
+      "empty": "空",
+      "outline": "アウトライン",
+      "drafting": "執筆中",
+      "done": "完了"
+    }
+  },
+  "jsonEditor": {
+    "empty": "各パネルの「JSON として開く」からリソースを開いてください。",
+    "invalid": "不正な JSON",
+    "conflict": "競合: {{part}}",
+    "format": "整形",
+    "revert": "破棄",
+    "openAs": "JSON として開く"
+  },
+  "planner": {
+    "sourcePlaceholder": "小説システムの Markdown を貼り付け…",
+    "propose": "提案",
+    "model": "モデル",
+    "empty": "小説システムの Markdown を貼り付けて「提案」でプラン実行を開始します。",
+    "mode": {
+      "rules": "ルール",
+      "llm": "LLM"
+    }
   },
   "editor": {
     "empty": "ナビゲーターで章を選ぶとここで編集できます。",
     "unsaved": "● 未保存",
     "save": "保存"
+  },
+  "steering": {
+    "heading": "ステアリングルール",
+    "subheading": "この本の AI ターンに挿入される、著者の恒常的なガイダンス。",
+    "loading": "ステアリングルールを読み込み中…",
+    "loadError": "ステアリングルールを読み込めませんでした。",
+    "noBook": "ステアリングルールを編集するには、本からこのパネルを開いてください。",
+    "count": "{{n}} / {{max}} 件",
+    "add": "ルールを追加",
+    "capReached": "ルール数の上限（{{max}}）に達しました。追加するにはルールを削除してください。",
+    "empty": "ステアリングルールがまだありません。追加してこの本の AI を導きましょう。",
+    "enable": "有効化",
+    "disable": "無効化",
+    "confirmDelete": "ステアリングルール「{{name}}」を削除しますか？",
+    "autoNote": "注: 'auto' は現在 'manual' と同じ動作です — #name で参照したときのみ挿入されます。自動選択は後日対応予定です。",
+    "charCount": "{{n}} / {{max}}",
+    "form": {
+      "name": "名前",
+      "namePlaceholder": "例: トーンと文体",
+      "body": "ルール",
+      "bodyPlaceholder": "AI が従うべきガイダンスを記述…",
+      "mode": "挿入するタイミング",
+      "matchPattern": "シーン一致パターン",
+      "matchPatternPlaceholder": "例: 第3章、戦闘、ロマンス…",
+      "enabled": "有効",
+      "save": "保存",
+      "cancel": "キャンセル",
+      "edit": "ルールを編集",
+      "delete": "ルールを削除"
+    },
+    "mode": {
+      "always": "常に",
+      "scene_match": "シーン一致",
+      "manual": "手動 (#name)",
+      "auto": "自動"
+    },
+    "error": {
+      "duplicate": "この本には同じ名前のルールが既に存在します。",
+      "cap": "上限を超えています（本文 ≤ 8000 文字、名前 ≤ 200、ルール ≤ 20 件）またはモードが不正です。",
+      "other": "ルールを保存できませんでした。もう一度お試しください。",
+      "forbidden": "この本のステアリングを編集する権限がありません。"
+    }
   },
   "palette": {
     "openPanel": "Studio: {{name}} を開く",
@@ -24,7 +144,12 @@
     "quickOpenHint": "章・シーン・編を検索",
     "commandPlaceholder": "コマンドを入力…",
     "noCommands": "該当するコマンドがありません。",
-    "group": { "recent": "最近", "panels": "パネル", "navigate": "移動", "layout": "レイアウト" },
+    "group": {
+      "recent": "最近",
+      "panels": "パネル",
+      "navigate": "移動",
+      "layout": "レイアウト"
+    },
     "cmd": {
       "showManuscript": "表示: 原稿",
       "showBible": "表示: ストーリーバイブル",
@@ -51,10 +176,22 @@
     "quality": "品質"
   },
   "navStub": {
-    "manuscript": { "title": "原稿", "body": "章とシーン — ドックを操作するナビゲーター。次に実装。" },
-    "bible": { "title": "ストーリーバイブル", "body": "キャスト・世界・カノン。近日公開。" },
-    "search": { "title": "検索", "body": "本全体の全文・意味検索。近日公開。" },
-    "quality": { "title": "品質", "body": "批評スコア・約束の伏線・カノン問題。近日公開。" }
+    "manuscript": {
+      "title": "原稿",
+      "body": "章とシーン — ドックを操作するナビゲーター。次に実装。"
+    },
+    "bible": {
+      "title": "ストーリーバイブル",
+      "body": "キャスト・世界・カノン。近日公開。"
+    },
+    "search": {
+      "title": "検索",
+      "body": "本全体の全文・意味検索。近日公開。"
+    },
+    "quality": {
+      "title": "品質",
+      "body": "批評スコア・約束の伏線・カノン問題。近日公開。"
+    }
   },
   "sidebar": {
     "collapse": "折りたたむ"
@@ -74,7 +211,10 @@
   },
   "status": {
     "wordsPlaceholder": "— 語",
-    "modelPlaceholder": "モデルなし"
+    "words": "{{count}} 語",
+    "modelPlaceholder": "モデルなし",
+    "notifications": "通知",
+    "cost24h": "過去24時間の支出"
   },
   "manuscript": {
     "title": "原稿",

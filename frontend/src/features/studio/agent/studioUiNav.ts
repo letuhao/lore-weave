@@ -6,6 +6,7 @@
 // asked to move the studio UI, the FE just does it. Args carry IDs ONLY — never prose/draft blobs
 // (G2: no data-bearing frontend tools).
 import type { StudioHost } from '../host/StudioHostProvider';
+import type { UiNavInterceptor } from '@/features/chat/nav/uiNavScope';
 
 export const STUDIO_UI_TOOLS = ['ui_open_studio_panel', 'ui_focus_manuscript_unit'] as const;
 export type StudioUiToolName = (typeof STUDIO_UI_TOOLS)[number];
@@ -41,4 +42,42 @@ export function resolveStudioUiTool(tool: string, args: Record<string, unknown>)
     default:
       return { result: {} };
   }
+}
+
+// ── Nav-scope interceptor (#12 M-E live-caught) ────────────────────────────────
+// The generic C-NAV executor (useUiToolExecutor) is mounted inside the studio's Compose
+// panel. Un-intercepted, an agent ui_open_book/ui_open_chapter on the CURRENT book
+// navigates the SPA to /books/{id}... — unmounting the whole studio (and orphaning the
+// agent's own resumed run). Inside the studio those calls are remapped to dock actions;
+// anything genuinely outside this book falls through (null) to the real navigation.
+export function makeStudioNavInterceptor(host: StudioHost): UiNavInterceptor {
+  return (tool, args) => {
+    const bookId = host.bookId;
+    switch (tool) {
+      case 'ui_open_chapter': {
+        const chapterId = typeof args.chapter_id === 'string' ? args.chapter_id : '';
+        const argBook = typeof args.book_id === 'string' && args.book_id ? args.book_id : bookId;
+        if (!chapterId || argBook !== bookId) return null; // malformed → generic reject; cross-book → real nav
+        return {
+          path: null,
+          result: { opened: true, note: 'opened in the studio editor' },
+          effect: () => host.focusManuscriptUnit(chapterId),
+        };
+      }
+      case 'ui_open_book': {
+        const argBook = typeof args.book_id === 'string' ? args.book_id : '';
+        if (argBook && argBook !== bookId) return null; // another book → real nav
+        return { path: null, result: { opened: true, note: 'this book is already open in the studio' } };
+      }
+      case 'ui_navigate': {
+        const path = typeof args.path === 'string' ? args.path : '';
+        if (path === `/books/${bookId}` || path.startsWith(`/books/${bookId}/studio`)) {
+          return { path: null, result: { navigated: true, note: "already in this book's studio" } };
+        }
+        return null;
+      }
+      default:
+        return null;
+    }
+  };
 }

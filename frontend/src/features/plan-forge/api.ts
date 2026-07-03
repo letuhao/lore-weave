@@ -1,0 +1,93 @@
+// PlanForge (M5) — gateway calls. Relative /v1 rides the Vite proxy → gateway (dev :3123) /
+// nginx (prod). Same `apiJson` client + `token` convention as compositionApi. NO backend or
+// contract changes here — this is the FE consumer of the composition-service /plan surface.
+import { apiJson } from '@/api';
+import type {
+  CompilePlanBody,
+  CreatePlanRunBody,
+  InterpretPlanBody,
+  PlanCompileResult,
+  PlanInterpretation,
+  PlanRunAck,
+  PlanRunDetail,
+  PlanRunListPage,
+  PlanSelfCheck,
+  PlanValidateReport,
+  RefinePlanBody,
+} from './types';
+
+const BASE = '/v1/composition';
+
+// POST /runs answers 201 (rules → full detail) OR 202 (llm → an ack {run_id, job_id, status}).
+// We surface the raw union so the hook can normalize both to a run handle (it re-fetches the
+// detail after an llm ack anyway, since the ack isn't a full detail).
+export type CreatePlanRunResponse = PlanRunDetail | PlanRunAck;
+
+// A 202 acknowledgement carries `run_id` + `job_id` but NOT a full-detail `id`. Widened to accept
+// any of the create/refine/compile response unions (all of which may be an ack or a full result).
+function isAck(r: unknown): r is PlanRunAck {
+  const o = r as { run_id?: unknown; id?: unknown };
+  return o != null && o.run_id !== undefined && o.id === undefined;
+}
+
+export const planForgeApi = {
+  createRun(bookId: string, body: CreatePlanRunBody, token: string): Promise<CreatePlanRunResponse> {
+    return apiJson<CreatePlanRunResponse>(`${BASE}/books/${bookId}/plan/runs`, {
+      method: 'POST', body: JSON.stringify(body), token,
+    });
+  },
+  listRuns(
+    bookId: string, token: string, opts: { limit?: number; cursor?: string | null } = {},
+  ): Promise<PlanRunListPage> {
+    const p = new URLSearchParams();
+    if (opts.limit) p.set('limit', String(opts.limit));
+    if (opts.cursor) p.set('cursor', opts.cursor);
+    const qs = p.toString();
+    return apiJson<PlanRunListPage>(`${BASE}/books/${bookId}/plan/runs${qs ? `?${qs}` : ''}`, { token });
+  },
+  getRun(bookId: string, runId: string, token: string): Promise<PlanRunDetail> {
+    return apiJson<PlanRunDetail>(`${BASE}/books/${bookId}/plan/runs/${runId}`, { token });
+  },
+  patchNovelSystemSpec(
+    bookId: string, runId: string, spec: Record<string, unknown>, token: string,
+  ): Promise<PlanRunDetail> {
+    return apiJson<PlanRunDetail>(`${BASE}/books/${bookId}/plan/runs/${runId}/novel-system-spec`, {
+      method: 'PATCH', body: JSON.stringify(spec), token,
+    });
+  },
+  validate(bookId: string, runId: string, token: string): Promise<PlanValidateReport> {
+    return apiJson<PlanValidateReport>(`${BASE}/books/${bookId}/plan/runs/${runId}/validate`, {
+      method: 'POST', token,
+    });
+  },
+  selfCheck(bookId: string, runId: string, token: string): Promise<PlanSelfCheck> {
+    return apiJson<PlanSelfCheck>(`${BASE}/books/${bookId}/plan/runs/${runId}/self-check`, {
+      method: 'POST', token,
+    });
+  },
+  // 202 {run_id, job_id, status} when the refine runs on the worker; else the applied result.
+  refine(
+    bookId: string, runId: string, body: RefinePlanBody, token: string,
+  ): Promise<import('./types').PlanRefineResult | PlanRunAck> {
+    return apiJson(`${BASE}/books/${bookId}/plan/runs/${runId}/refine`, {
+      method: 'POST', body: JSON.stringify(body), token,
+    });
+  },
+  interpret(
+    bookId: string, runId: string, body: InterpretPlanBody, token: string,
+  ): Promise<PlanInterpretation> {
+    return apiJson<PlanInterpretation>(`${BASE}/books/${bookId}/plan/runs/${runId}/interpret`, {
+      method: 'POST', body: JSON.stringify(body), token,
+    });
+  },
+  // 202 {run_id, job_id, status} when the pipeline runs on the worker; else the compile package.
+  compile(
+    bookId: string, runId: string, body: CompilePlanBody, token: string,
+  ): Promise<PlanCompileResult | PlanRunAck> {
+    return apiJson(`${BASE}/books/${bookId}/plan/runs/${runId}/compile`, {
+      method: 'POST', body: JSON.stringify(body), token,
+    });
+  },
+};
+
+export { isAck };

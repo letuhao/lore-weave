@@ -3,7 +3,11 @@ package api
 import (
 	"context"
 	"errors"
+	"fmt"
+	"slices"
+	"strings"
 
+	"github.com/google/jsonschema-go/jsonschema"
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 )
@@ -68,3 +72,89 @@ func (s *Server) resolveBookAttrID(ctx context.Context, bookID uuid.UUID, kindCo
 
 // isNoRows is a small predicate so resolver callers read cleanly.
 func isNoRows(err error) bool { return errors.Is(err, pgx.ErrNoRows) }
+
+// ── closed-set tool-arg schemas (W0 #2 — the FE-tools LOCKED rule, extended
+// to MCP) ─────────────────────────────────────────────────────────────────────
+//
+// A tool arg whose valid values are a FINITE, code-known set MUST declare a real
+// JSON-schema `enum` — prose like "genre | kind | attribute" in the description
+// is invisible to a weak model, which then guesses a value (or drifts the arg
+// name) and the call dies. The go-sdk infers a tool's inputSchema from the input
+// struct and the `jsonschema` tag only carries a description, so closed-set
+// tools pre-build their schema here and pass it as Tool.InputSchema (the SDK
+// then also VALIDATES calls against the enum, giving the model a self-
+// correctable "not one of: [...]" error instead of a silent mis-dispatch).
+
+// The canonical closed sets shared by the ontology tools.
+var (
+	enumLevels     = []any{"genre", "kind", "attribute"}
+	enumFieldTypes = []any{"text", "textarea", "select", "number", "date", "tags", "url", "boolean"}
+)
+
+// closedSetSchemaFor infers the input schema for T, then pins each listed arg
+// path to its enum. Paths use the FE-contract dotted form ("level",
+// "ops[].type") — a "[]" segment descends into an array's item schema. Panics
+// at registration time on a path that doesn't resolve (a typo must fail the
+// process + tests, never silently advertise an un-enumed schema).
+func closedSetSchemaFor[T any](enums map[string][]any) *jsonschema.Schema {
+	s, err := jsonschema.For[T](nil)
+	if err != nil {
+		panic(fmt.Sprintf("closedSetSchemaFor: infer failed: %v", err))
+	}
+	for path, vals := range enums {
+		p := schemaPropAt(s, path)
+		// A pointer field infers as types ["null","string"]; keep an explicit
+		// JSON null legal (it means "field not supplied") by admitting it to the
+		// enum, else a null the handler tolerates would now be schema-rejected.
+		if slices.Contains(p.Types, "null") {
+			vals = append([]any{nil}, vals...)
+		}
+		p.Enum = vals
+	}
+	return s
+}
+
+// relaxAdditionalProps opens additionalProperties on the given schema NODES so a
+// weak model's harmless EXTRA fields don't hard-fail schema validation before
+// the handler runs. The go-sdk infers additionalProperties:false for every
+// struct; handlers read only known fields, so an unknown extra is inert — but
+// strict validation rejected the whole call first. Enums on named args stay
+// strict (only UNKNOWN properties are admitted). Paths use schemaPropAt's dotted
+// / "[]" form; "" is the ROOT object.
+//
+// Live-caught in the W0 soak (both the same additionalProperties:false class):
+//   - book_patch `changes[]`: gemma sent {target,new_value,old_value,field_label}
+//     → `old_value` (a natural diff field) killed the whole patch, the tolerance
+//     shim never ran.
+//   - propose_batch root + `ops[]`: gemma put `type` at the batch ROOT and extras
+//     on op items → the 100%-error tool couldn't ever validate.
+func relaxAdditionalProps(s *jsonschema.Schema, paths ...string) *jsonschema.Schema {
+	for _, p := range paths {
+		node := s
+		if p != "" {
+			node = schemaPropAt(s, p)
+		}
+		node.AdditionalProperties = &jsonschema.Schema{} // empty schema ⇒ allow any extra
+	}
+	return s
+}
+
+// schemaPropAt walks a dotted path (arrays via "[]") into a property schema.
+func schemaPropAt(s *jsonschema.Schema, dotted string) *jsonschema.Schema {
+	node := s
+	for _, seg := range strings.Split(dotted, ".") {
+		key := strings.TrimSuffix(seg, "[]")
+		next := node.Properties[key]
+		if next == nil {
+			panic(fmt.Sprintf("closedSetSchemaFor: no property %q (path %q)", key, dotted))
+		}
+		node = next
+		if strings.HasSuffix(seg, "[]") {
+			if node.Items == nil {
+				panic(fmt.Sprintf("closedSetSchemaFor: %q is not an array (path %q)", key, dotted))
+			}
+			node = node.Items
+		}
+	}
+	return node
+}

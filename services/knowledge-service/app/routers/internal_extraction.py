@@ -13,6 +13,7 @@ Trusts the caller's user_id — worker-ai reads it from extraction_jobs.
 from __future__ import annotations
 
 import logging
+import os
 import time
 from typing import Literal
 from uuid import UUID
@@ -21,6 +22,7 @@ from cachetools import TTLCache
 from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel, Field
 
+from app.clients.default_model import resolve_user_default_model
 from app.clients.glossary_client import get_glossary_client
 from app.clients.llm_client import get_llm_client
 from app.config import settings
@@ -29,7 +31,10 @@ from app.db.pool import get_knowledge_pool
 from app.deps import get_projects_repo
 from app.db.repositories.graph_schemas import GraphSchemasRepo
 from app.db.repositories.job_logs import JobLogsRepo
+from app.db.repositories.projects import ProjectsRepo
 from app.db.repositories.triage import TriageRepo
+from app.extraction.model_roles import resolve_role_model
+from loreweave_extraction import EntityRecoveryConfig
 from app.ontology.extraction_projection import (
     build_extraction_schema,
     resolved_to_extraction_dict,
@@ -344,6 +349,90 @@ async def _resolve_schemas_for_extract_item(
     return (advisory, authoritative)
 
 
+_ER_ENV_REF = "KNOWLEDGE_EXTRACTION_ENTITY_RECOVERY_MODEL_REF"
+_ER_ENV_SOURCE = "KNOWLEDGE_EXTRACTION_ENTITY_RECOVERY_MODEL_SOURCE"
+_ER_ENV_MAX_BATCH = "KNOWLEDGE_EXTRACTION_ENTITY_RECOVERY_MAX_BATCH"
+
+
+async def _resolve_entity_recovery_config(
+    *, user_id: str, project_id: str | None,
+    job_model_source: str, job_model_ref: str,
+) -> EntityRecoveryConfig | None:
+    """KN model-roles — resolve THIS job's entity-recovery config per-project.
+
+    Enablement (opt-in — recovery is an optional refinement, NOT on-by-default):
+      * `extraction_config.entity_recovery.enabled == True` → on (per-project)
+      * else the legacy env floor (`KNOWLEDGE_EXTRACTION_ENTITY_RECOVERY_MODEL_REF`
+        set) → on (back-compat)
+      * else → OFF (returns None → byte-identical to pre-KN behavior when nothing
+        is configured).
+
+    When ON, the MODEL resolves via the precedence chain (resolve_role_model):
+    role override (`entity_recovery.model_ref`) → project default (THIS job's
+    extraction model — already the resolved `llm_model`) → user-global default
+    (`chat` capability) → env floor. Fail-soft: any read failure degrades to the
+    env config / off (never blocks extraction).
+    """
+    env_ref = (os.environ.get(_ER_ENV_REF, "") or "").strip()
+    extraction_config: dict = {}
+    if project_id:
+        try:
+            repo = ProjectsRepo(get_knowledge_pool())
+            proj = await repo.get(UUID(user_id), UUID(project_id))
+            extraction_config = (proj.extraction_config or {}) if proj else {}
+        except Exception:
+            logger.debug(
+                "entity_recovery: extraction_config read failed (advisory)",
+                exc_info=True,
+            )
+    er_cfg = extraction_config.get("entity_recovery") or {}
+    enabled = er_cfg.get("enabled") if isinstance(er_cfg, dict) else None
+    if enabled is False:
+        return None
+    env_source = os.environ.get(_ER_ENV_SOURCE) or "user_model"
+
+    if enabled is True:
+        # Per-project OPT-IN → the precedence chain (role override → project
+        # default → user-global → env floor). Project default = the persisted
+        # `extraction_config.llm_model` (the FE "Default LLM" picker) when set,
+        # else THIS job's extraction model (so recovery matches extraction by
+        # default rather than diverging to a different model).
+        user_default = await resolve_user_default_model(user_id)
+        synthetic = dict(extraction_config)
+        if not synthetic.get("llm_model"):
+            synthetic["llm_model"] = job_model_ref
+            synthetic["llm_model_source"] = job_model_source
+        resolved = resolve_role_model(
+            synthetic, "entity_recovery",
+            user_default_ref=user_default,
+            env_source=env_source,
+            env_ref=(env_ref or None),
+        )
+    elif env_ref:
+        # Legacy env-only floor (NOT opted-in per-project) → use the env model
+        # EXACTLY as before, without substituting the job's extraction model.
+        from app.extraction.model_roles import RoleModel
+        resolved = RoleModel(env_source, env_ref)
+    else:
+        return None  # not opted-in per-project, no env floor → off
+    if resolved is None:
+        return None
+
+    # max batch: per-project override → env → default 5.
+    raw_batch = er_cfg.get("max_items_per_batch") if isinstance(er_cfg, dict) else None
+    if raw_batch is None:
+        raw_batch = (os.environ.get(_ER_ENV_MAX_BATCH, "5") or "5").strip()
+    try:
+        max_batch = max(1, int(raw_batch))
+    except (ValueError, TypeError):
+        max_batch = 5
+    return EntityRecoveryConfig(
+        model_ref=resolved.model_ref,
+        model_source=resolved.model_source,  # type: ignore[arg-type]
+        max_items_per_batch=max_batch,
+    )
+
+
 async def _load_anchors_for_extraction(
     *, user_id: UUID, project_id: UUID | None,
 ) -> list[Anchor]:
@@ -472,6 +561,15 @@ async def extract_item(body: ExtractItemRequest) -> ExtractItemResponse:
     except Exception:
         triage_repo = None
 
+    # KN model-roles — resolve THIS job's entity-recovery config (per-project
+    # opt-in + model precedence). None ⇒ off / env floor (byte-identical today).
+    entity_recovery_override = await _resolve_entity_recovery_config(
+        user_id=str(body.user_id),
+        project_id=str(body.project_id) if body.project_id else None,
+        job_model_source=body.model_source,
+        job_model_ref=body.model_ref,
+    )
+
     try:
         async with neo4j_session() as session:
             if body.item_type == "chapter":
@@ -497,6 +595,7 @@ async def extract_item(body: ExtractItemRequest) -> ExtractItemResponse:
                     schema=advisory_schema,  # L7B — advisory vocab hint for SDK
                     write_schema=write_schema,  # L7B — authoritative write guard
                     triage_repo=triage_repo,  # L7B — park off-schema edges
+                    entity_recovery_override=entity_recovery_override,  # KN model-roles
                 )
             else:  # "chat_turn" — Pydantic Literal rejects other values at 422
                 if not body.user_message and not body.assistant_message:
@@ -522,6 +621,7 @@ async def extract_item(body: ExtractItemRequest) -> ExtractItemResponse:
                     schema=advisory_schema,  # L7B — advisory vocab hint for SDK
                     write_schema=write_schema,  # L7B — authoritative write guard
                     triage_repo=triage_repo,  # L7B — park off-schema edges
+                    entity_recovery_override=entity_recovery_override,  # KN model-roles
                 )
     except HTTPException:
         raise  # re-raise validation errors (422)

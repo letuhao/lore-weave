@@ -238,6 +238,24 @@ class OutlineRepo:
             )
         return [_row_to_node(r) for r in rows]
 
+    async def chapter_node_id(
+        self, user_id: UUID, project_id: UUID, chapter_id: UUID,
+    ) -> UUID | None:
+        """#12 M-G — the outline CHAPTER node bound to a book chapter (scenes parent
+        under it; the rail's Create needs it when the chapter has zero scenes).
+        None when the chapter was never outlined."""
+        async with self._pool.acquire() as c:
+            return await c.fetchval(
+                """
+                SELECT id FROM outline_node
+                WHERE user_id = $1 AND project_id = $2 AND chapter_id = $3
+                  AND kind = 'chapter' AND NOT is_archived
+                ORDER BY rank COLLATE "C", id
+                LIMIT 1
+                """,
+                user_id, project_id, chapter_id,
+            )
+
     async def _insert_decomposed_tree(
         self, c: asyncpg.Connection, user_id: UUID, project_id: UUID, *,
         arc_title: str, chapters: list[dict[str, Any]],

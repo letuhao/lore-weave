@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react';
-import { useNavigate, useSearchParams } from 'react-router-dom';
+import { Navigate, useNavigate, useSearchParams } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { Skeleton } from '@/components/shared';
 import { cn } from '@/lib/utils';
@@ -9,7 +9,6 @@ import { useOntologyAdopt } from '@/features/knowledge/hooks/useOntologyAdopt';
 import { useGraphViews } from '@/features/knowledge/hooks/useGraphViews';
 import { useOntologySync } from '@/features/knowledge/hooks/useOntologySync';
 import { AdoptPicker } from '@/features/knowledge/components/ontology/AdoptPicker';
-import { SchemaWorkbench } from '@/features/knowledge/components/ontology/SchemaWorkbench';
 import { ViewBuilder } from '@/features/knowledge/components/ontology/ViewBuilder';
 import { SyncDiffPanel } from '@/features/knowledge/components/ontology/SyncDiffPanel';
 
@@ -60,7 +59,7 @@ export function KnowledgeOntologyTab({ bookId }: { bookId: string }) {
     [allSchemas, projectId],
   );
 
-  const schema = useGraphSchema(activeSchemaId);
+  const schema = useGraphSchema(activeSchemaId, projectId);
   const adopt = useOntologyAdopt(projectId ?? '', selectedId);
   const views = useGraphViews(projectId ?? '');
   const sync = useOntologySync(projectId ?? '');
@@ -94,6 +93,13 @@ export function KnowledgeOntologyTab({ bookId }: { bookId: string }) {
         <p className="mt-1 text-xs text-muted-foreground">{t('page.noProjectHelp')}</p>
       </div>
     );
+  }
+
+  // A3 — schema authoring now lives with the KG PROJECT (the schema editor
+  // follows the KG, not the book). The "Schema" tab (or a stale ?view=schema
+  // deep-link) redirects to the project surface instead of mounting the editor here.
+  if (view === 'schema') {
+    return <Navigate to={`/knowledge/projects/${projectId}/schema`} replace />;
   }
 
   const edgeCodes = (schema.schema?.edge_types ?? []).map((e) => e.code);
@@ -142,15 +148,6 @@ export function KnowledgeOntologyTab({ bookId }: { bookId: string }) {
           onAcknowledgeLoss={adopt.acknowledgeLoss}
         />
       )}
-
-      {view === 'schema' &&
-        (schema.schema ? (
-          <SchemaWorkbench controller={schema} />
-        ) : (
-          <p className="text-[12px] text-muted-foreground" data-testid="kg-ontology-no-schema">
-            {t('page.noSchema')}
-          </p>
-        ))}
 
       {view === 'views' && (
         <ViewBuilder

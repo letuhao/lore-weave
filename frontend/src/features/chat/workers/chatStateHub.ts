@@ -23,7 +23,7 @@ import type {
   MemoryMode,
   StreamPhase,
 } from '../hooks/runChatStream';
-import type { ActivityEvent, ToolCallRecord, AgentSurfaceState } from '../types';
+import type { ActivityEvent, ToolCallRecord, AgentSurfaceState, ContextBudget, CompactionEvent } from '../types';
 
 export type StreamStatus = 'idle' | 'streaming' | 'error';
 
@@ -52,6 +52,12 @@ export type ChatLiveState = {
   activities: ActivityEvent[];
   memoryMode: MemoryMode | null;
   agentSurface: AgentSurfaceState | null;
+  /** RAID Wave A3: the last turn-finish context-budget snapshot (header meter).
+   *  On the snapshot so it survives dock float/close like the other facets. */
+  contextBudget: ContextBudget | null;
+  /** W2: the turn's compaction report (null when compaction did no work this
+   *  turn). The consumer dedupes the toast per turnId, mirroring memoryMode. */
+  compaction: CompactionEvent | null;
   messageId: string | null;
   usage: { promptTokens?: number; completionTokens?: number };
   timing: { responseTimeMs?: number; timeToFirstTokenMs?: number };
@@ -110,6 +116,8 @@ const EMPTY: ChatLiveState = {
   activities: [],
   memoryMode: null,
   agentSurface: null,
+  contextBudget: null,
+  compaction: null,
   messageId: null,
   usage: {},
   timing: {},
@@ -191,6 +199,8 @@ export function createChatStateHub(run: RunFn) {
       onComposing: (active) => { if (isCurrent()) set({ isComposing: active }); },
       onMemoryMode: (mode) => { if (isCurrent()) set({ memoryMode: mode }); },
       onAgentSurface: (payload) => { if (isCurrent()) set({ agentSurface: payload }); },
+      onContextBudget: (budget) => { if (isCurrent()) set({ contextBudget: budget }); },
+      onCompaction: (event) => { if (isCurrent()) set({ compaction: event }); },
       onAbort: (partial) => {
         if (!isCurrent()) return;
         stopThinkingTimer();

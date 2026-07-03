@@ -36,6 +36,7 @@ import {
 import { CitationMark } from './CitationMark';
 import { FocusLineExtension } from './FocusLineExtension';
 import { TrackedPositionsExtension } from './TrackedPositions';
+import { SceneAnchorExtension, jumpToSceneAnchor, applySceneAnchors, type AnchorResult } from './SceneAnchor';
 
 export interface TiptapEditorHandle {
   /** Reset editor content from Tiptap JSON (e.g. revision restore, discard) */
@@ -71,6 +72,12 @@ export interface TiptapEditorHandle {
   setProvenanceVisible: (visible: boolean) => void;
   /** T5.3 — number of unreviewed AI spans currently in the doc. */
   getUnreviewedProvenanceCount: () => number;
+  /** #12 M-F — scroll + cursor to the heading anchored to `sceneId`.
+   *  false = no heading carries the marker (caller surfaces the ⚓ hint). */
+  jumpToScene: (sceneId: string) => boolean;
+  /** #12 M-F — backfill: anchor headings to scenes by unique title match (one
+   *  transaction → dirties → the user saves). Explicit action, never on open. */
+  applySceneAnchors: (scenes: ReadonlyArray<{ id: string; title: string }>) => AnchorResult;
 }
 
 interface TiptapEditorProps {
@@ -150,6 +157,7 @@ export const TiptapEditor = forwardRef<TiptapEditorHandle, TiptapEditorProps>(
         HeatmapExtension, // T5.2 — tints entity names by mention-density band (inert until enabled)
         ProvenanceMark, // T5.3 — AI-provenance mark (click-to-review; rides in body_json)
         TrackedPositionsExtension, // WS-C — remaps saved insert points/ranges through edits (inert when empty)
+        SceneAnchorExtension, // #12 M-F — heading `sceneId` attr (scene→prose anchor; rides in body_json)
       ],
       content: initialContent.current,
       editable,
@@ -293,6 +301,11 @@ export const TiptapEditor = forwardRef<TiptapEditorHandle, TiptapEditorProps>(
         if (editor) setProvenanceVisible(editor, visible);
       },
       getUnreviewedProvenanceCount: () => (editor ? countUnreviewedProvenance(editor) : 0),
+      // #12 M-F — scene anchoring. Both flow through editor transactions (applySceneAnchors
+      // dirties like typing; jump only moves the selection).
+      jumpToScene: (sceneId: string) => (editor ? jumpToSceneAnchor(editor, sceneId) : false),
+      applySceneAnchors: (scenes) =>
+        editor ? applySceneAnchors(editor, scenes) : { anchored: 0, unmatched: 0, changed: false },
     }), [setContentHandler, editor]);
 
     if (!editor) return null;

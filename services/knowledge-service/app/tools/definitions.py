@@ -36,6 +36,7 @@ __all__ = [
     "TOOL_NAMES",
     "TOOL_DEFINITIONS",
     "ARG_MODELS",
+    "StorySearchArgs",
     "MemorySearchArgs",
     "MemoryRecallEntityArgs",
     "MemoryTimelineArgs",
@@ -82,6 +83,22 @@ class MemorySearchArgs(ProjectScopedArgs):
     source_type: Literal["chapter", "chat", "glossary"] | None = None
 
 
+class StorySearchArgs(ProjectScopedArgs):
+    """`story_search` — the UNIVERSAL manuscript search (#12 agent-search).
+
+    One simple schema, three engines behind it (the market pattern — GitHub
+    Blackbird / Cursor: index, never grep-at-query-time): exact (book-service
+    FTS/trigram + Neo4j CJK fulltext), semantic (passage vectors), hybrid
+    (both + RRF fusion + cross-encoder rerank). `exact` maps to the
+    retriever's "lexical" mode. Granularity mirrors Claude-Code's grep
+    funnel: chapter ≈ files_with_matches, block ≈ content."""
+
+    query: str = Field(min_length=1, max_length=1000)
+    mode: Literal["hybrid", "exact", "semantic"] = "hybrid"
+    granularity: Literal["chapter", "block"] = "chapter"
+    limit: int = Field(default=SEARCH_LIMIT_DEFAULT, ge=1, le=SEARCH_LIMIT_MAX)
+
+
 class MemoryRecallEntityArgs(ProjectScopedArgs):
     """`memory_recall_entity` — entity detail + relations, by name."""
 
@@ -126,6 +143,7 @@ class MemoryForgetArgs(BaseModel):
 
 ARG_MODELS: dict[str, type[BaseModel]] = {
     "memory_search": MemorySearchArgs,
+    "story_search": StorySearchArgs,
     "memory_recall_entity": MemoryRecallEntityArgs,
     "memory_timeline": MemoryTimelineArgs,
     "memory_remember": MemoryRememberArgs,
@@ -166,6 +184,52 @@ def _tool(name: str, description: str, properties: dict, required: list[str]) ->
 
 
 TOOL_DEFINITIONS: list[dict] = [
+    _tool(
+        "story_search",
+        "Search the book's manuscript for text or ideas — the universal "
+        "find tool. Use it to LOCATE where something appears before reading "
+        "or editing: an exact phrase/name (mode=exact), a concept described "
+        "in your own words (mode=semantic), or both fused (mode=hybrid, "
+        "default, best for most queries). granularity=chapter tells you "
+        "WHICH chapters match; granularity=block drills into the matching "
+        "passages with snippets. Follow up with book_get_chapter to read.",
+        {
+            "query": {
+                "type": "string",
+                "description": (
+                    "The text or idea to find — an exact phrase, a character/"
+                    "place name, or a natural-language description."
+                ),
+            },
+            "mode": {
+                "type": "string",
+                "enum": ["hybrid", "exact", "semantic"],
+                "description": (
+                    "hybrid (default) = exact + semantic fused and reranked; "
+                    "exact = literal text match only; semantic = meaning "
+                    "match only."
+                ),
+            },
+            "granularity": {
+                "type": "string",
+                "enum": ["chapter", "block"],
+                "description": (
+                    "chapter (default) = which chapters match; block = the "
+                    "matching passages with snippets."
+                ),
+            },
+            "limit": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": SEARCH_LIMIT_MAX,
+                "description": (
+                    f"Max hits to return (default {SEARCH_LIMIT_DEFAULT})."
+                ),
+            },
+            "project_id": _PROJECT_ID_PROP,
+        },
+        ["query"],
+    ),
     _tool(
         "memory_search",
         "Semantic search over the user's stored memory for the current "
@@ -326,6 +390,26 @@ TOOL_DEFINITIONS: list[dict] = [
             },
         },
         ["name"],
+    ),
+    # Project discovery — the answer to "no project in scope" (W0 #4a).
+    _tool(
+        "kg_project_list",
+        "List YOUR OWN knowledge projects (id, name, type, linked book). Use this "
+        "to find the `project_id` to pass to a project-scoped kg_* tool when no "
+        "project is in scope. Owner-scoped: only the caller's projects are returned.",
+        {
+            "include_archived": {
+                "type": "boolean",
+                "description": "Also include archived projects (default false).",
+            },
+            "limit": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 50,
+                "description": "Max projects to return (default 20).",
+            },
+        },
+        [],
     ),
     # Cost-gated job trigger — build the knowledge graph (propose→confirm).
     _tool(

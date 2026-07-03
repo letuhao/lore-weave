@@ -19,6 +19,10 @@ _DSN = os.environ.get(
     "postgresql://loreweave:loreweave_dev@localhost:5555/loreweave_translation",
 )
 
+# Shared-dev-Postgres tests - serialize onto one xdist worker
+# (`-n auto --dist loadgroup`) so concurrent workers cannot interleave.
+pytestmark = pytest.mark.xdist_group("pg")
+
 _TEXT = "In the hall, Alice met Bob. Alice smiled."
 _HASH = hashlib.sha256(_TEXT.encode("utf-8")).hexdigest()
 _PROFILE = {"character": {"name": "replace"}}

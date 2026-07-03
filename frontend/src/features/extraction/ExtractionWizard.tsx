@@ -53,7 +53,7 @@ export function ExtractionWizard({
     setJobId,
     setKinds,
     setSelectedModelName,
-    setThinkingEnabled,
+    setEffort,
     setFinalJobStatus,
     canClose,
   } = useExtractionState(mode, preselectedChapterIds);
@@ -95,10 +95,10 @@ export function ExtractionWizard({
             bookId={bookId}
             profile={state.profile}
             modelRef={state.modelRef}
-            thinkingEnabled={state.thinkingEnabled}
+            effort={state.effort}
             onProfileChange={setProfile}
             onModelChange={setModelRef}
-            onThinkingEnabledChange={setThinkingEnabled}
+            onEffortChange={setEffort}
             onKindsLoaded={setKinds}
             onModelNameChange={setSelectedModelName}
             onClose={handleClose}
@@ -127,7 +127,7 @@ export function ExtractionWizard({
             contextFilters={state.contextFilters}
             kinds={state.kinds}
             selectedModelName={state.selectedModelName}
-            thinkingEnabled={state.thinkingEnabled}
+            effort={state.effort}
             onJobCreated={(jobId, costEstimate) => {
               setJobId(jobId, costEstimate);
               goNext();

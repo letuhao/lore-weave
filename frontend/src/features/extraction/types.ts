@@ -54,7 +54,11 @@ export type ExtractionJobRequest = {
   model_ref: string;
   max_entities_per_kind?: number;
   context_filters?: ContextFilters;
-  /** When true, enable model reasoning/thinking (LM Studio enable_thinking). Default off for JSON output. */
+  /** Reasoning effort (off|low|medium|high|auto) for the extraction LLM. Default
+   *  'off' — extraction is structured JSON where thinking mostly wastes budget. The
+   *  BE (translation-service extraction router) accepts this; `thinking_enabled` is
+   *  its deprecated bool alias (True→medium). */
+  reasoning_effort?: string;
   thinking_enabled?: boolean;
   /** Parallel LLM calls per chapter (the window×batch fan-out). Omitted/1 ⇒ sequential.
    *  The worker clamps to a hard ceiling (16). */

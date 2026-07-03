@@ -5,11 +5,26 @@ import type { ReactNode } from 'react';
 
 vi.mock('@/auth', () => ({ useAuth: () => ({ accessToken: 'tok' }) }));
 
+// W5 — the suggest-model select is the shared ModelPicker (fetches through
+// aiModelsApi; keep the actual module for getUserModelMeta).
 const listModelsMock = vi.fn();
-vi.mock('@/features/settings/api', () => ({
-  providerApi: { listUserModels: (...a: unknown[]) => listModelsMock(...a) },
+vi.mock('@/features/ai-models/api', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('@/features/ai-models/api')>();
+  return {
+    ...actual,
+    aiModelsApi: {
+      listUserModels: (...a: unknown[]) => listModelsMock(...a),
+      patchFavorite: vi.fn(),
+    },
+  };
+});
+vi.mock('@/lib/syncPrefs', () => ({
+  loadPrefFromServer: vi.fn().mockResolvedValue(undefined),
+  savePrefToServer: vi.fn().mockResolvedValue(true),
+  syncPrefsToServer: vi.fn(),
 }));
 
+import { invalidateUserModelsCache } from '@/components/model-picker';
 import { ProfileForm } from '../ProfileForm';
 import type { BookProfile, SuggestedProfile } from '../../types';
 
@@ -27,6 +42,7 @@ const P = (over: Partial<BookProfile> = {}): BookProfile => ({
 });
 
 function renderForm(profile: BookProfile, onSave = vi.fn(), onSuggest = vi.fn()) {
+  // DimensionOverrideEditor's kind rows read compose dimensions via react-query.
   const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   const Wrapper = ({ children }: { children: ReactNode }) => (
     <QueryClientProvider client={qc}>{children}</QueryClientProvider>
@@ -42,8 +58,23 @@ function renderForm(profile: BookProfile, onSave = vi.fn(), onSuggest = vi.fn())
 beforeEach(() => {
   listModelsMock.mockReset();
   listModelsMock.mockResolvedValue({
-    items: [{ user_model_id: 'm1', alias: 'qwen', provider_model_name: 'qwen' }],
+    items: [
+      {
+        user_model_id: 'm1',
+        provider_credential_id: 'cred-1',
+        provider_kind: 'lm_studio',
+        provider_model_name: 'qwen',
+        alias: 'qwen',
+        is_active: true,
+        is_favorite: false,
+        capability_flags: {},
+        tags: [],
+        created_at: '2026-01-01T00:00:00Z',
+      },
+    ],
   });
+  localStorage.clear();
+  invalidateUserModelsCache();
 });
 
 describe('ProfileForm', () => {
@@ -129,8 +160,9 @@ describe('ProfileForm', () => {
     };
     const onSuggest = vi.fn().mockResolvedValue(draft);
     renderForm(P(), vi.fn(), onSuggest);
-    await waitFor(() => expect(screen.getByRole('option', { name: 'qwen' })).toBeInTheDocument());
-    fireEvent.change(screen.getByLabelText('settings.suggest_model'), { target: { value: 'm1' } });
+    // W5 shared ModelPicker: open the labelled combobox trigger, click the option.
+    fireEvent.click(await screen.findByRole('combobox', { name: 'settings.suggest_model' }));
+    fireEvent.click(await screen.findByText('qwen'));
     fireEvent.click(screen.getByTestId('profile-suggest'));
     expect(onSuggest).toHaveBeenCalledWith('m1');
     await waitFor(() =>

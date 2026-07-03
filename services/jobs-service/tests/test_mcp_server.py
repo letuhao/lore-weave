@@ -510,3 +510,86 @@ async def test_jobs_pause_single_call_job_refused_no_forward():
     assert res["success"] is False
     assert "not valid for status" in res["error"]
     fake_control.forward_control.assert_not_called()
+
+
+# ── W0 MCP reliability contract ────────────────────────────────────────────────
+# Mirrors chat-service's FE-tools CLOSED_SET_ARGS rule for MCP: a closed-set arg
+# must be a real JSON-schema enum; filter args tolerate the observed one-element
+# list shape; pydantic validation failures reach the model as ONE-LINE directives
+# (never the raw multi-line dump with the errors.pydantic.dev URL).
+
+# tool → args whose valid values are a finite, code-known set (must be enums).
+CLOSED_SET_ARGS = {"jobs_list": ["status"]}
+
+JOB_STATUSES = {
+    "pending", "running", "paused", "cancelling", "completed", "failed", "cancelled",
+}
+
+
+def _enum_values(spec: dict) -> set:
+    """Collect enum choices from a property spec, descending anyOf unions and
+    array item schemas (the `X | list[X] | None` rendering)."""
+    values: set = set()
+    for branch in (spec, *spec.get("anyOf", [])):
+        if "enum" in branch:
+            values |= set(branch["enum"])
+        items = branch.get("items")
+        if isinstance(items, dict) and "enum" in items:
+            values |= set(items["enum"])
+    return values
+
+
+async def test_closed_set_args_are_enums(mcp_base_url):
+    headers = {"X-Internal-Token": _GOOD_TOKEN}
+    async with _mcp_client(mcp_base_url, headers) as session:
+        listing = await session.list_tools()
+    by_name = {t.name: t for t in listing.tools}
+    for tool_name, args in CLOSED_SET_ARGS.items():
+        props = by_name[tool_name].inputSchema.get("properties", {})
+        for arg in args:
+            enum = _enum_values(props.get(arg, {}))
+            assert enum, f"{tool_name}.{arg}: closed-set arg MUST declare an enum"
+    # and specifically: the status enum covers the store's full closed set.
+    assert _enum_values(by_name["jobs_list"].inputSchema["properties"]["status"]) >= JOB_STATUSES
+
+
+async def test_status_accepts_a_one_element_list():
+    """W0 #3 — the observed `status: [\"running\"]` shape must behave exactly like
+    `status: \"running\"` (unwrap, not error)."""
+    from uuid import UUID
+
+    async with _patched(_seed()) as (srv, _ctx):
+        res_str = await srv.jobs_list(_ctx(UUID(TEST_USER)), status="running")
+        res_list = await srv.jobs_list(_ctx(UUID(TEST_USER)), status=["running"])
+    assert res_list == res_str
+
+
+async def test_status_multi_element_list_errors_with_directive():
+    from uuid import UUID
+
+    import pytest as _pytest
+
+    async with _patched(_seed()) as (srv, _ctx):
+        with _pytest.raises(ValueError) as exc:
+            await srv.jobs_list(_ctx(UUID(TEST_USER)), status=["running", "failed"])
+    msg = str(exc.value)
+    assert "single value" in msg and "status" in msg
+
+
+async def test_validation_error_reaches_model_as_one_line_directive(mcp_base_url):
+    """W0 #4b — a bad enum value must surface as the rewritten one-line directive:
+    names the arg, states what pydantic expected, and never leaks the pydantic
+    docs URL or the multi-line dump."""
+    headers = {
+        "X-Internal-Token": _GOOD_TOKEN,
+        "X-User-Id": TEST_USER,
+        "X-Session-Id": "sess-1",
+    }
+    async with _mcp_client(mcp_base_url, headers) as session:
+        result = await session.call_tool("jobs_list", {"status": "runningg"})
+    assert result.isError is True
+    text = result.content[0].text
+    assert "errors.pydantic.dev" not in text
+    assert "\n" not in text.strip(), f"directive must be one line, got: {text!r}"
+    assert "invalid arguments for jobs_list" in text
+    assert "status" in text

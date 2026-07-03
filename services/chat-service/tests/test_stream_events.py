@@ -70,6 +70,15 @@ class TestLegacyEmitter:
         # C-ACTIVITY is agui-only; legacy clients don't render the Undo strip.
         assert self.em.activity({"op": "x", "summary": "y", "undo": {}}) == []
 
+    def test_context_budget_is_noop(self):
+        # W1 — Protocol parity: the method EXISTS (no AttributeError swallow at
+        # the emit site anymore) and returns nothing on the legacy wire.
+        assert self.em.context_budget({"used_tokens": 1, "pct": 0.1}) == []
+
+    def test_compaction_is_noop(self):
+        # W1 — same Protocol-parity rule for the compaction frame.
+        assert self.em.compaction({"triggered": True, "steps": ["hard_truncate"]}) == []
+
     def test_text_delta(self):
         assert self.em.text_delta("hi") == [
             'data: {"type": "text-delta", "delta": "hi"}\n\n'
@@ -147,6 +156,23 @@ class TestAgUiEmitter:
         }
         ev = _parse(self._em().agent_surface(payload)[0])
         assert ev == {"type": "CUSTOM", "name": "agentSurface", "value": payload}
+
+    def test_context_budget_is_custom_event(self):
+        # RAID A2 — the FE meter reads this CUSTOM event.
+        payload = {"used_tokens": 10_000, "context_length": 40_000,
+                   "effective_limit": 35_488, "pct": 0.2818}
+        ev = _parse(self._em().context_budget(payload)[0])
+        assert ev == {"type": "CUSTOM", "name": "contextBudget", "value": payload}
+
+    def test_compaction_is_custom_event(self):
+        # W1 — CompactionReport.to_event() surfaced when compaction did work.
+        payload = {"triggered": True, "tool_results_cleared": 2,
+                   "turns_truncated": 0, "summarized": True,
+                   "summarize_failed": False, "overflowed": False,
+                   "tokens_before": 9000, "tokens_after": 5000,
+                   "steps": ["microcompact", "summarize"]}
+        ev = _parse(self._em().compaction(payload)[0])
+        assert ev == {"type": "CUSTOM", "name": "compaction", "value": payload}
 
     def test_text_happy_path_frames_once(self):
         em = self._em()

@@ -39,6 +39,34 @@ def test_thinking_pref_mapping():
     assert _thinking_pref(None, {"thinking": True}) == "medium"
 
 
+def test_thinking_pref_request_effort_precedence():
+    # W4 — the per-message reasoning_effort (fast|standard|deep) beats the
+    # legacy thinking boolean AND the session default.
+    assert _thinking_pref(None, {}, "fast") == "off"
+    assert _thinking_pref(None, {}, "standard") == "medium"
+    assert _thinking_pref(None, {}, "deep") == "high"
+    # beats thinking=True/False when both ride the request
+    assert _thinking_pref(True, {}, "fast") == "off"
+    assert _thinking_pref(False, {}, "deep") == "high"
+    # beats the session default
+    assert _thinking_pref(None, {"reasoning_effort": "low"}, "deep") == "high"
+    # unknown/None value → falls through to the legacy path
+    assert _thinking_pref(True, {}, None) == "medium"
+    assert _thinking_pref(None, {"reasoning_effort": "high"}, None) == "high"
+
+
+def test_send_message_request_reasoning_effort_field():
+    # W4 — SendMessageRequest carries the closed-set reasoning_effort.
+    from pydantic import ValidationError
+
+    from app.models import SendMessageRequest
+
+    assert SendMessageRequest(content="hi").reasoning_effort is None
+    assert SendMessageRequest(content="hi", reasoning_effort="deep").reasoning_effort == "deep"
+    with pytest.raises(ValidationError):
+        SendMessageRequest(content="hi", reasoning_effort="max")  # not in the enum
+
+
 def test_apply_reasoning_kwargs_forwards_only_when_present():
     # The wiring that was missing: stashed reasoning fields reach the request kwargs.
     rk: dict = {}
@@ -443,7 +471,8 @@ class TestStreamResponse:
 
 
 def _patched_knowledge(stable: str = "", volatile: str = "", context: str | None = None,
-                       mode: str = "static", tool_defs: list | None = None):
+                       mode: str = "static", tool_defs: list | None = None,
+                       sections: dict | None = None):
     """Return a MagicMock knowledge client that synthesises a
     KnowledgeContext with the given split. Caller uses this via
     `patch("app.services.stream_service.get_knowledge_client", ...)`.
@@ -461,6 +490,7 @@ def _patched_knowledge(stable: str = "", volatile: str = "", context: str | None
         mode=mode, context=context, recent_message_count=50,
         token_count=10,
         stable_context=stable, volatile_context=volatile,
+        sections=sections or {},
     )
     client = MagicMock()
     client.build_context = AsyncMock(return_value=kctx)
@@ -1310,10 +1340,19 @@ class TestK21BToolCallingIntegration:
         assert len(insert_calls) == 1
         # The INSERT SQL writes the tool_calls column.
         assert "tool_calls" in insert_calls[0].args[0]
-        # The last positional arg is the tool_calls JSON ($11).
-        tool_calls_json = insert_calls[0].args[-1]
+        # tool_calls JSON is $11 (second-to-last since W1 appended
+        # context_breakdown as $12).
+        tool_calls_json = insert_calls[0].args[-2]
         assert tool_calls_json is not None
         assert json.loads(tool_calls_json) == [tool_call]
+        # W1 — the context_breakdown JSONB ($12, last arg) is persisted and
+        # carries the per-category breakdown incl. the tool_results bucket.
+        ctx_json = insert_calls[0].args[-1]
+        assert ctx_json is not None
+        ctx = json.loads(ctx_json)
+        assert set(ctx) >= {"used_tokens", "pct", "breakdown", "baseline_tokens",
+                            "until_compact_pct"}
+        assert ctx["breakdown"]["tool_results"] > 0
 
     @pytest.mark.asyncio
     async def test_tool_calls_column_null_when_no_tool_calls(self):
@@ -1348,8 +1387,8 @@ class TestK21BToolCallingIntegration:
             if "INSERT INTO chat_messages" in str(c)
         ]
         assert len(insert_calls) == 1
-        # tool_calls JSON ($11, last arg) is None when no calls were made.
-        assert insert_calls[0].args[-1] is None
+        # tool_calls JSON ($11, second-to-last arg) is None when no calls were made.
+        assert insert_calls[0].args[-2] is None
 
     @pytest.mark.asyncio
     async def test_tool_call_chunk_excluded_from_assistant_content(self):
@@ -1493,6 +1532,7 @@ class TestStreamFormatNegotiation:
             "TEXT_MESSAGE_START", "TEXT_MESSAGE_CONTENT", "TEXT_MESSAGE_END",
             "CUSTOM",  # persisted — emitted AFTER the message is framed closed
             "CUSTOM",  # agentSurface: Idle
+            "CUSTOM",  # contextBudget (RAID A2) — emitted just before finish
             "RUN_FINISHED",
         ]
         assert "[DONE]" not in types
@@ -1767,3 +1807,365 @@ class TestAnchorInjection:
 
         assert not any("[Director" in str(m.get("content", "")) for m in captured)
         assert not any("ROLEPLAY SESSION" in str(m.get("content", "")) for m in captured)
+
+
+class TestInLoopCompactionWiring:
+    """A4 — the tool loop grows `working` each pass; compaction must be re-invoked
+    at the top of EVERY pass with the effective_limit, or a long tool turn overflows
+    mid-turn. This guards the wire (a silent-no-op guard needs a wiring test)."""
+
+    @pytest.mark.asyncio
+    async def test_compaction_invoked_each_tool_pass_with_effective_limit(self):
+        import app.services.stream_service as ss
+        from loreweave_llm import TokenEvent, ToolCallEvent, DoneEvent
+
+        # find_tools is CONSUMER-LOCAL (no network) → drives a real 2-pass loop:
+        # pass 0 calls find_tools (executes in-memory, appends result, loops),
+        # pass 1 answers in text.
+        passes = {"n": 0}
+
+        class FakeClient:
+            def __init__(self, **kw):
+                pass
+
+            async def aclose(self):
+                pass
+
+            def stream(self, request):
+                i = passes["n"]
+                passes["n"] += 1
+
+                async def gen():
+                    if i == 0:
+                        yield ToolCallEvent(index=0, id="c1", name=ss.FIND_TOOLS_NAME,
+                                            arguments_delta='{"intent":"anything"}')
+                        yield DoneEvent(finish_reason="tool_calls")
+                    else:
+                        yield TokenEvent(delta="done")
+                        yield DoneEvent(finish_reason="stop")
+                return gen()
+
+        seen_limits: list = []
+        real_compact = ss.compact_messages
+
+        async def spy_compact(msgs, **kw):
+            seen_limits.append(kw.get("effective_limit"))
+            return await real_compact(msgs, **kw)
+
+        kc = AsyncMock()
+        kc.get_catalog_meta = MagicMock(return_value={})  # called sync in the loop
+
+        with patch.object(ss, "Client", FakeClient), \
+             patch.object(ss, "compact_messages", side_effect=spy_compact):
+            chunks = []
+            async for ch in ss._stream_with_tools(
+                model_source="user_model", model_ref=TEST_MODEL_REF, user_id="u",
+                messages=[{"role": "user", "content": "hi"}],
+                gen_params={"max_tokens": 100}, tools=[],
+                knowledge_client=kc, session_id="s", project_id=None,
+                discovery_catalog=[], discovery_seed_names=set(),
+                effective_limit=5000,
+            ):
+                chunks.append(ch)
+
+        # compaction ran on BOTH passes, always with the effective_limit forwarded.
+        assert len(seen_limits) >= 2, f"expected ≥2 in-loop compactions, got {seen_limits}"
+        assert all(lim == 5000 for lim in seen_limits)
+
+    @pytest.mark.asyncio
+    async def test_no_effective_limit_skips_in_loop_compaction(self):
+        import app.services.stream_service as ss
+        from loreweave_llm import TokenEvent, DoneEvent
+
+        class FakeClient:
+            def __init__(self, **kw):
+                pass
+
+            async def aclose(self):
+                pass
+
+            def stream(self, request):
+                async def gen():
+                    yield TokenEvent(delta="hi")
+                    yield DoneEvent(finish_reason="stop")
+                return gen()
+
+        seen = []
+        real_compact = ss.compact_messages
+
+        async def spy_compact(msgs, **kw):
+            seen.append(kw.get("effective_limit"))
+            return await real_compact(msgs, **kw)
+
+        with patch.object(ss, "Client", FakeClient), \
+             patch.object(ss, "compact_messages", side_effect=spy_compact):
+            async for _ in ss._stream_with_tools(
+                model_source="user_model", model_ref=TEST_MODEL_REF, user_id="u",
+                messages=[{"role": "user", "content": "hi"}],
+                gen_params={"max_tokens": 100}, tools=[],
+                knowledge_client=AsyncMock(), session_id="s", project_id=None,
+                effective_limit=None,
+            ):
+                pass
+
+        assert seen == [], "compaction must not run when effective_limit is None"
+
+
+# ════════════════════════════════════════════════════════════════════════════
+# W1 — Context-Breakdown Spine: the extended contextBudget frame + the
+# compaction frame + persistence (integration through stream_response).
+# ════════════════════════════════════════════════════════════════════════════
+
+
+def _custom_events(events: list[str], name: str) -> list[dict]:
+    out = []
+    for e in events:
+        payload = e.removeprefix("data: ").strip()
+        if not payload or payload == "[DONE]":
+            continue
+        ev = json.loads(payload)
+        if ev.get("type") == "CUSTOM" and ev.get("name") == name:
+            out.append(ev["value"])
+    return out
+
+
+class TestW1ContextBreakdownFrame:
+    @pytest.mark.asyncio
+    async def test_context_budget_frame_carries_breakdown_additively(self):
+        """agui turn → ONE contextBudget CUSTOM frame with the old keys intact
+        plus breakdown / baseline_tokens / until_compact_pct; the knowledge
+        per-section map nests under memory_knowledge."""
+        pool, conn = _make_pool_with_conn()
+        # one replayed history row (the just-persisted user turn) → history > 0.
+        pool.fetch.return_value = [{"role": "user", "content": "Hi"}]
+        conn.fetchval.return_value = 1
+        pool.fetchval.return_value = 5
+        pool.fetchrow.return_value = {
+            "system_prompt": "You are a helpful lore assistant.",
+            "generation_params": {},
+        }
+        kc = _patched_knowledge(
+            context='<memory mode="static">lore</memory>',
+            sections={"glossary_entities": 42, "instructions": 7},
+        )
+        chunks = [_dict_chunk(content="Hi"), _make_chunk(None, usage=_Usage(1000, 5))]
+        with patch("app.services.stream_service.get_knowledge_client", return_value=kc), \
+             patch("app.services.stream_service._stream_via_gateway", return_value=_fake_gateway(chunks)()):
+            events = []
+            async for e in stream_response(
+                session_id=TEST_SESSION_ID, user_message_content="Hi",
+                user_id=TEST_USER_ID, model_source="user_model",
+                model_ref=TEST_MODEL_REF, creds=_make_creds(context_length=40_000),
+                pool=pool, billing=AsyncMock(), stream_format="agui",
+            ):
+                events.append(e)
+
+        frames = _custom_events(events, "contextBudget")
+        assert len(frames) == 1
+        frame = frames[0]
+        # Old keys byte-identical to the pre-W1 contract (FE meter).
+        assert frame["used_tokens"] == 1000
+        assert frame["context_length"] == 40_000
+        assert frame["effective_limit"] == 40_000 - 512
+        assert frame["pct"] == round(1000 / (40_000 - 512), 4)
+        # Additive keys.
+        assert frame["until_compact_pct"] == round(0.75 - frame["pct"], 4)
+        bd = frame["breakdown"]
+        assert bd["system_prompt"] > 0
+        assert bd["memory_knowledge"]["total"] > 0
+        assert bd["memory_knowledge"]["sections"] == {"glossary_entities": 42, "instructions": 7}
+        assert bd["history"] > 0  # the user turn replays through history
+        assert frame["baseline_tokens"] >= bd["system_prompt"] + bd["memory_knowledge"]["total"]
+        # No tools this turn → the schema buckets are 0, present, not missing.
+        assert bd["frontend_tool_schemas"] == 0
+        assert bd["mcp_tool_schemas"] == 0
+
+    @pytest.mark.asyncio
+    async def test_schema_tokens_chunk_folds_into_frame_and_persisted_row(self):
+        """The tool loop's schema_tokens chunk lands in the frame's breakdown
+        AND in the persisted context_breakdown JSONB."""
+        pool, conn = _make_pool_with_conn()
+        pool.fetch.return_value = []
+        conn.fetchval.return_value = 1
+        pool.fetchval.return_value = 5
+        kc = _patched_knowledge(
+            mode="static",
+            tool_defs=[{"type": "function", "function": {"name": "memory_search"}}],
+        )
+
+        async def fake_tool_loop(**kwargs):
+            yield {"schema_tokens": {"frontend_tool_schemas": 111, "mcp_tool_schemas": 2222}}
+            yield {"content": "answer", "reasoning_content": "",
+                   "finish_reason": "stop", "usage": _Usage(10, 2)}
+
+        with patch("app.services.stream_service.get_knowledge_client", return_value=kc), \
+             patch("app.services.stream_service._stream_with_tools", side_effect=fake_tool_loop):
+            events = []
+            async for e in stream_response(
+                session_id=TEST_SESSION_ID, user_message_content="Hi",
+                user_id=TEST_USER_ID, model_source="user_model",
+                model_ref=TEST_MODEL_REF, creds=_make_creds(context_length=40_000),
+                pool=pool, billing=AsyncMock(), stream_format="agui",
+            ):
+                events.append(e)
+
+        frame = _custom_events(events, "contextBudget")[0]
+        assert frame["breakdown"]["frontend_tool_schemas"] == 111
+        assert frame["breakdown"]["mcp_tool_schemas"] == 2222
+        # baseline includes the schema buckets (fixed overhead before the user word).
+        assert frame["baseline_tokens"] >= 111 + 2222
+        # And the same payload was persisted on the assistant row ($12).
+        insert_calls = [c for c in conn.execute.call_args_list
+                        if "INSERT INTO chat_messages" in str(c)]
+        persisted = json.loads(insert_calls[0].args[-1])
+        assert persisted["breakdown"]["mcp_tool_schemas"] == 2222
+        assert persisted["used_tokens"] == frame["used_tokens"]
+
+    @pytest.mark.asyncio
+    async def test_legacy_turn_emits_no_custom_frames_but_persists(self):
+        """Legacy wire: context_budget/compaction are Protocol no-ops (no frame,
+        no AttributeError) — but the row still persists the breakdown."""
+        pool, conn = _make_pool_with_conn()
+        pool.fetch.return_value = []
+        conn.fetchval.return_value = 1
+        chunks = [_dict_chunk(content="Hi"), _make_chunk(None, usage=_Usage(3, 1))]
+        with patch("app.services.stream_service._stream_via_gateway", return_value=_fake_gateway(chunks)()):
+            events = []
+            async for e in stream_response(
+                session_id=TEST_SESSION_ID, user_message_content="Hi",
+                user_id=TEST_USER_ID, model_source="user_model",
+                model_ref=TEST_MODEL_REF, creds=_make_creds(),
+                pool=pool, billing=AsyncMock(),
+            ):
+                events.append(e)
+        assert all('"CUSTOM"' not in e for e in events)  # legacy vocabulary only
+        insert_calls = [c for c in conn.execute.call_args_list
+                        if "INSERT INTO chat_messages" in str(c)]
+        assert "context_breakdown" in insert_calls[0].args[0]
+        assert json.loads(insert_calls[0].args[-1])["breakdown"]["history"] >= 0
+
+
+class TestW1CompactionFrame:
+    @pytest.mark.asyncio
+    async def test_compaction_frame_emitted_when_work_happened(self):
+        """Pre-send compaction that actually truncated → a `compaction` CUSTOM
+        frame precedes the turn's content (previously log-only)."""
+        from app.services.compaction import CompactionReport
+
+        pool, conn = _make_pool_with_conn()
+        pool.fetch.return_value = []
+        conn.fetchval.return_value = 1
+        pool.fetchval.return_value = 5
+
+        report = CompactionReport(
+            triggered=True, turns_truncated=4,
+            tokens_before=9000, tokens_after=4000, steps=["hard_truncate"],
+        )
+
+        async def fake_compact(messages, **kwargs):
+            return messages, report
+
+        chunks = [_dict_chunk(content="Hi"), _make_chunk(None, usage=_Usage(1, 1))]
+        with patch("app.services.stream_service.compact_messages", side_effect=fake_compact), \
+             patch("app.services.stream_service._stream_via_gateway", return_value=_fake_gateway(chunks)()):
+            events = []
+            async for e in stream_response(
+                session_id=TEST_SESSION_ID, user_message_content="Hi",
+                user_id=TEST_USER_ID, model_source="user_model",
+                model_ref=TEST_MODEL_REF, creds=_make_creds(context_length=40_000),
+                pool=pool, billing=AsyncMock(), stream_format="agui",
+            ):
+                events.append(e)
+        frames = _custom_events(events, "compaction")
+        assert len(frames) == 1
+        assert frames[0]["turns_truncated"] == 4
+        assert frames[0]["steps"] == ["hard_truncate"]
+
+    @pytest.mark.asyncio
+    async def test_no_compaction_frame_when_nothing_happened(self):
+        """A small turn (compaction not triggered / no work) emits NO
+        compaction frame — the toast only fires on real evictions."""
+        pool, conn = _make_pool_with_conn()
+        pool.fetch.return_value = []
+        conn.fetchval.return_value = 1
+        pool.fetchval.return_value = 5
+        chunks = [_dict_chunk(content="Hi"), _make_chunk(None, usage=_Usage(1, 1))]
+        with patch("app.services.stream_service._stream_via_gateway", return_value=_fake_gateway(chunks)()):
+            events = []
+            async for e in stream_response(
+                session_id=TEST_SESSION_ID, user_message_content="Hi",
+                user_id=TEST_USER_ID, model_source="user_model",
+                model_ref=TEST_MODEL_REF, creds=_make_creds(context_length=40_000),
+                pool=pool, billing=AsyncMock(), stream_format="agui",
+            ):
+                events.append(e)
+        assert _custom_events(events, "compaction") == []
+
+    @pytest.mark.asyncio
+    async def test_in_loop_compaction_chunk_surfaces_as_frame(self):
+        """A {"compaction": ...} chunk from the tool loop (mid-turn re-compact)
+        is re-emitted as the CUSTOM frame by the consumer."""
+        pool, conn = _make_pool_with_conn()
+        pool.fetch.return_value = []
+        conn.fetchval.return_value = 1
+        pool.fetchval.return_value = 5
+        kc = _patched_knowledge(
+            mode="static",
+            tool_defs=[{"type": "function", "function": {"name": "memory_search"}}],
+        )
+
+        async def fake_tool_loop(**kwargs):
+            yield {"compaction": {"triggered": True, "tool_results_cleared": 2,
+                                  "turns_truncated": 0, "summarized": False,
+                                  "summarize_failed": False, "overflowed": False,
+                                  "tokens_before": 8000, "tokens_after": 5000,
+                                  "steps": ["microcompact"]}}
+            yield {"content": "answer", "reasoning_content": "",
+                   "finish_reason": "stop", "usage": _Usage(1, 1)}
+
+        with patch("app.services.stream_service.get_knowledge_client", return_value=kc), \
+             patch("app.services.stream_service._stream_with_tools", side_effect=fake_tool_loop):
+            events = []
+            async for e in stream_response(
+                session_id=TEST_SESSION_ID, user_message_content="Hi",
+                user_id=TEST_USER_ID, model_source="user_model",
+                model_ref=TEST_MODEL_REF, creds=_make_creds(context_length=40_000),
+                pool=pool, billing=AsyncMock(), stream_format="agui",
+            ):
+                events.append(e)
+        frames = _custom_events(events, "compaction")
+        assert len(frames) == 1
+        assert frames[0]["tool_results_cleared"] == 2
+
+
+class TestResolveAndStashReasoning:
+    """review-impl H: session-stored reasoning vocabulary (off|auto|...) is NOT
+    wire vocabulary — every gen_params->StreamRequest path must resolve it."""
+
+    def _creds(self, kind="openai", name="gpt-4"):
+        from app.models import ProviderCredentials
+        return ProviderCredentials(
+            provider_kind=kind, provider_model_name=name,
+            base_url="http://x", api_key="k", context_length=8192,
+        )
+
+    def test_session_off_translates_to_wire_none(self):
+        from app.services.stream_service import _resolve_and_stash_reasoning
+        gp = {"reasoning_effort": "off"}
+        _resolve_and_stash_reasoning(gp, self._creds())
+        # "off" is invalid on the wire; the resolved fields use "none".
+        assert gp.get("reasoning_effort") in (None, "none")
+        assert gp.get("reasoning_effort") != "off"
+
+    def test_session_auto_without_creds_omits_fields(self):
+        from app.services.stream_service import _resolve_and_stash_reasoning
+        gp = {"reasoning_effort": "auto"}
+        _resolve_and_stash_reasoning(gp, None)  # voice path: no creds
+        assert "reasoning_effort" not in gp
+        assert "chat_template_kwargs" not in gp
+
+    def test_session_medium_survives_resolution(self):
+        from app.services.stream_service import _resolve_and_stash_reasoning
+        gp = {"reasoning_effort": "medium"}
+        _resolve_and_stash_reasoning(gp, self._creds(kind="lm_studio", name="qwen3-35b"))
+        assert gp.get("reasoning_effort") == "medium"

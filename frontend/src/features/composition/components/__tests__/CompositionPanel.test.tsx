@@ -57,11 +57,27 @@ vi.mock('../../hooks/useWork', () => ({
   useSetSceneStatus: () => ({ mutate: vi.fn(), isPending: false }),
   usePendingWorkResolver: () => ({ state: 'idle', start: vi.fn(), retry: vi.fn() }),
 }));
-vi.mock('../../../ai-models/api', () => ({
-  aiModelsApi: { listUserModels: vi.fn().mockResolvedValue({ items: [] }) },
+// W5 — the shared ModelPicker also imports getUserModelMeta from this module, so
+// the mock must spread the real module (an object literal would break it).
+vi.mock('@/features/ai-models/api', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('@/features/ai-models/api')>();
+  return {
+    ...actual,
+    aiModelsApi: { listUserModels: vi.fn().mockResolvedValue({ items: [] }), patchFavorite: vi.fn() },
+  };
+});
+// W5 — the shared useUserModels/ModelPicker read the token from useAuth.
+vi.mock('@/auth', () => ({ useAuth: () => ({ accessToken: 'tok' }) }));
+vi.mock('@/lib/syncPrefs', () => ({
+  loadPrefFromServer: vi.fn().mockResolvedValue(undefined),
+  savePrefToServer: vi.fn().mockResolvedValue(true),
+  syncPrefsToServer: vi.fn(),
 }));
 
+import { invalidateUserModelsCache } from '@/components/model-picker';
+
 beforeEach(() => {
+  invalidateUserModelsCache();  // W5 — the module-level fetch cache must not leak across tests
   localStorage.clear();   // T5.4 — the dock flag/layout must not leak across tests
   wr.loading = false;     // default resolved; the cold-cache test flips this
   mounts.compose = mounts.cowriter = mounts.assemble = mounts.planner = mounts.beats = mounts.graph = mounts.cast = mounts.relmap = mounts.timeline = mounts.arc = mounts.worldmap = mounts.grounding = mounts.references = mounts.style = mounts.canon = mounts.critic = mounts.progress = mounts.quality = mounts.flywheel = mounts.settings = 0;

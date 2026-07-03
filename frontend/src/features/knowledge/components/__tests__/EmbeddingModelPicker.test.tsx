@@ -30,11 +30,26 @@ vi.mock('sonner', () => ({
   toast: toastMocks,
 }));
 
+// W5 — the picker now renders the shared ModelPicker, which also imports
+// getUserModelMeta from this module: spread the actual module and only
+// override the API surface.
 const listUserModelsMock = vi.fn();
-vi.mock('@/features/ai-models/api', () => ({
-  aiModelsApi: {
-    listUserModels: (...args: unknown[]) => listUserModelsMock(...args),
-  },
+vi.mock('@/features/ai-models/api', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('@/features/ai-models/api')>();
+  return {
+    ...actual,
+    aiModelsApi: {
+      listUserModels: (...args: unknown[]) => listUserModelsMock(...args),
+      patchFavorite: vi.fn(),
+    },
+  };
+});
+
+// ModelPicker persists recents via syncPrefs — stub the server round-trip.
+vi.mock('@/lib/syncPrefs', () => ({
+  loadPrefFromServer: vi.fn().mockResolvedValue(undefined),
+  savePrefToServer: vi.fn().mockResolvedValue(true),
+  syncPrefsToServer: vi.fn(),
 }));
 
 const getBenchmarkStatusMock = vi.fn();
@@ -51,6 +66,7 @@ vi.mock('../../api', async () => {
 });
 
 import { EmbeddingModelPicker } from '../EmbeddingModelPicker';
+import { invalidateUserModelsCache } from '@/components/model-picker';
 
 const PROJECT_ID = '11111111-1111-1111-1111-111111111111';
 
@@ -81,6 +97,10 @@ describe('EmbeddingModelPicker — RunBenchmarkButton (C12b-b)', () => {
     toastMocks.success.mockReset();
     toastMocks.error.mockReset();
     toastMocks.info.mockReset();
+    // W5 — the shared fetch has a module-level 15s cache; flush it (and
+    // the recents localStorage cache) so each test's mock takes effect.
+    invalidateUserModelsCache();
+    localStorage.clear();
     listUserModelsMock.mockResolvedValue({
       items: [
         {
@@ -88,6 +108,11 @@ describe('EmbeddingModelPicker — RunBenchmarkButton (C12b-b)', () => {
           provider_kind: 'openai',
           provider_model_name: 'bge-m3',
           alias: null,
+          is_active: true,
+          is_favorite: false,
+          capability_flags: { embedding: true },
+          tags: [],
+          created_at: '2026-04-24T00:00:00Z',
         },
       ],
     });

@@ -8,13 +8,145 @@
     "body": "A dockable workspace for this book. Panels (compose, planner, cast, quality…) will be added here one at a time. Drag tabs to split, stack, float, or pop out into their own window."
   },
   "panels": {
-    "compose": { "title": "Compose", "desc": "AI co-writer chat" },
-    "editor": { "title": "Editor", "desc": "Manuscript editor" }
+    "compose": {
+      "title": "Compose",
+      "desc": "AI co-writer chat"
+    },
+    "editor": {
+      "title": "Editor",
+      "desc": "Manuscript editor"
+    },
+    "planner": {
+      "title": "Planner",
+      "desc": "Plan the novel's system"
+    },
+    "usage": {
+      "title": "Usage",
+      "desc": "Spend, tokens & request log"
+    },
+    "notifications": {
+      "title": "Notifications",
+      "desc": "Job completions & alerts"
+    },
+    "settings": {
+      "title": "Settings",
+      "desc": "Account, providers & translation"
+    },
+    "trash": {
+      "title": "Trash",
+      "desc": "Restore deleted books, chapters & more"
+    },
+    "steering": {
+      "title": "Steering",
+      "desc": "Author rules that guide AI on this book"
+    },
+    "json-editor": {
+      "title": "JSON",
+      "desc": "Raw JSON view of a resource"
+    },
+    "extensions": {
+      "title": "Extensions",
+      "desc": "Manage plugins, skills, MCP servers, commands & hooks"
+    },
+    "proposals": {
+      "title": "Proposals",
+      "desc": "Review skills the agent proposed"
+    },
+    "skill-editor": {
+      "title": "Skill",
+      "desc": "Edit a SKILL.md"
+    }
+  },
+  "sceneRail": {
+    "title": "Scenes",
+    "toggle": "Scenes",
+    "empty": "No scenes for this chapter (outline it in the composer).",
+    "synopsisPlaceholder": "Synopsis…",
+    "stale": "changed elsewhere — reloaded",
+    "notAnchored": "Scene not anchored in the text yet — use ⚓ to link headings.",
+    "anchored": "Anchored {{count}} scene(s), {{unmatched}} unmatched — ⌘S to save.",
+    "anchorNoop": "{{count}} already anchored, {{unmatched}} without a matching heading.",
+    "anchorTitle": "Link scenes to their headings in the text",
+    "add": "Add scene",
+    "addDisabled": "Chapter has no outline yet (create it in the composer)",
+    "newTitlePlaceholder": "Scene title…",
+    "create": "Add",
+    "deleted": "Deleted \"{{title}}\".",
+    "undo": "Undo",
+    "moveUp": "Move up",
+    "moveDown": "Move down",
+    "delete": "Delete scene",
+    "status": {
+      "empty": "empty",
+      "outline": "outline",
+      "drafting": "drafting",
+      "done": "done"
+    }
+  },
+  "jsonEditor": {
+    "empty": "Open a resource as JSON from its panel (\"Open as JSON\").",
+    "invalid": "invalid JSON",
+    "conflict": "conflict: {{part}}",
+    "format": "Format",
+    "revert": "Revert",
+    "openAs": "Open as JSON"
+  },
+  "planner": {
+    "sourcePlaceholder": "Paste the novel-system markdown…",
+    "propose": "Propose",
+    "model": "Model",
+    "empty": "Paste your novel-system markdown and Propose to start a plan run.",
+    "mode": {
+      "rules": "Rules",
+      "llm": "LLM"
+    }
   },
   "editor": {
     "empty": "Select a chapter in the manuscript navigator to edit it here.",
     "unsaved": "● unsaved",
     "save": "Save"
+  },
+  "steering": {
+    "heading": "Steering rules",
+    "subheading": "Persistent author guidance injected into AI turns for this book.",
+    "loading": "Loading steering rules…",
+    "loadError": "Couldn't load steering rules.",
+    "noBook": "Open this panel from a book to author its steering rules.",
+    "count": "{{n}} / {{max}} rules",
+    "add": "Add rule",
+    "capReached": "Rule limit reached ({{max}}). Delete a rule to add another.",
+    "empty": "No steering rules yet. Add one to guide the AI on this book.",
+    "enable": "Enable",
+    "disable": "Disable",
+    "confirmDelete": "Delete the steering rule \"{{name}}\"?",
+    "autoNote": "Note: 'auto' currently behaves like 'manual' — it's included only when you reference it by #name. Automatic selection is coming later.",
+    "charCount": "{{n}} / {{max}}",
+    "form": {
+      "name": "Name",
+      "namePlaceholder": "e.g. Tone & voice",
+      "body": "Rule",
+      "bodyPlaceholder": "Write the guidance the AI should follow…",
+      "mode": "When to include",
+      "matchPattern": "Scene match pattern",
+      "matchPatternPlaceholder": "e.g. chapter 3, battle, romance…",
+      "enabled": "Enabled",
+      "save": "Save",
+      "cancel": "Cancel",
+      "edit": "Edit rule",
+      "delete": "Delete rule"
+    },
+    "mode": {
+      "always": "Always",
+      "scene_match": "Scene match",
+      "manual": "Manual (#name)",
+      "auto": "Auto"
+    },
+    "error": {
+      "duplicate": "A rule with this name already exists in this book.",
+      "cap": "That exceeds a limit (body ≤ 8000 chars, name ≤ 200, ≤ 20 rules) or an invalid mode.",
+      "other": "Couldn't save the rule. Please try again.",
+      "forbidden": "You do not have permission to edit steering for this book."
+    }
   },
   "palette": {
     "openPanel": "Studio: Open {{name}}",
@@ -24,7 +156,12 @@
     "quickOpenHint": "Type to search chapters, scenes & arcs",
     "commandPlaceholder": "Type a command…",
     "noCommands": "No matching commands.",
-    "group": { "recent": "Recent", "panels": "Panels", "navigate": "Navigate", "layout": "Layout" },
+    "group": {
+      "recent": "Recent",
+      "panels": "Panels",
+      "navigate": "Navigate",
+      "layout": "Layout"
+    },
     "cmd": {
       "showManuscript": "View: Show Manuscript",
       "showBible": "View: Show Story Bible",
@@ -51,10 +188,22 @@
     "quality": "Quality"
   },
   "navStub": {
-    "manuscript": { "title": "Manuscript", "body": "Chapters & scenes — the navigator that drives the dock. Built next." },
-    "bible": { "title": "Story Bible", "body": "Cast, world & canon entries. Coming soon." },
-    "search": { "title": "Search", "body": "Full-text & semantic search across the book. Coming soon." },
-    "quality": { "title": "Quality", "body": "Critic scores, promise threads & canon issues. Coming soon." }
+    "manuscript": {
+      "title": "Manuscript",
+      "body": "Chapters & scenes — the navigator that drives the dock. Built next."
+    },
+    "bible": {
+      "title": "Story Bible",
+      "body": "Cast, world & canon entries. Coming soon."
+    },
+    "search": {
+      "title": "Search",
+      "body": "Full-text & semantic search across the book. Coming soon."
+    },
+    "quality": {
+      "title": "Quality",
+      "body": "Critic scores, promise threads & canon issues. Coming soon."
+    }
   },
   "sidebar": {
     "collapse": "Collapse"
@@ -74,7 +223,10 @@
   },
   "status": {
     "wordsPlaceholder": "— words",
-    "modelPlaceholder": "no model"
+    "words": "{{count}} words",
+    "modelPlaceholder": "no model",
+    "notifications": "Notifications",
+    "cost24h": "Spend, last 24h"
   },
   "manuscript": {
     "title": "Manuscript",

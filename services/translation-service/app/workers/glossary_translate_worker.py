@@ -29,7 +29,7 @@ from .glossary_translate_prompt import (
     entity_output_budget,
     parse_translation_response,
 )
-from .llm_thinking import thinking_llm_fields
+from loreweave_llm.reasoning import ReasoningDirective, reasoning_fields
 
 log = logging.getLogger(__name__)
 
@@ -106,7 +106,14 @@ async def _run_job(
     overwrite_mode = msg.get("overwrite_mode", "missing_only")
     metadata = msg.get("metadata") or {}
     entity_ids_filter = metadata.get("entity_ids")
-    thinking_enabled = bool(msg.get("thinking_enabled", metadata.get("thinking_enabled", False)))
+    # AI-task standard — graded reasoning effort (clamped none|low|medium|high at the
+    # router). Fall back to the deprecated thinking_enabled bool (True→medium) for any
+    # in-flight message minted before the field existed.
+    reasoning_effort = (
+        msg.get("reasoning_effort")
+        or metadata.get("reasoning_effort")
+        or ("medium" if bool(msg.get("thinking_enabled", metadata.get("thinking_enabled", False))) else "none")
+    )
     # bug #4: per-entity LLM-call fan-out cap. Absent/None on a pre-field message ⇒ 1
     # (sequential, prior behavior). Clamped to the hard ceiling.
     concurrency = max(1, min(_GLOSSARY_TRANSLATE_MAX_CONCURRENCY, int(msg.get("concurrency") or 1)))
@@ -212,7 +219,11 @@ async def _run_job(
                     "max_tokens": entity_output_budget(
                         attrs, ceiling=_GLOSSARY_TRANSLATE_MAX_OUTPUT_TOKENS
                     ),
-                    **thinking_llm_fields(enabled=thinking_enabled),
+                    # reasoning_effort="none" ⇒ explicit disable (thinking:false), matching
+                    # the old thinking_llm_fields(False); low/medium/high ⇒ graded.
+                    **reasoning_fields(
+                        ReasoningDirective(effort=reasoning_effort, passthrough=False, source="user")
+                    ),
                 }
                 # D-LLM-FAILURE-RATE #1 — force a valid JSON object of the expected
                 # attribute codes (kills the "Expecting ',' delimiter" parse failures

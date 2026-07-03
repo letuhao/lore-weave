@@ -1448,6 +1448,93 @@ async def test_orchestrator_env_set_calls_recovery_before_filter(
 @patch(f"{_ORCH}.extract_events", new_callable=AsyncMock)
 @patch(f"{_ORCH}.extract_relations", new_callable=AsyncMock)
 @patch(f"{_ORCH}.extract_entities", new_callable=AsyncMock)
+async def test_orchestrator_entity_recovery_override_wins_over_module_config(
+    mock_entities, mock_relations, mock_events, mock_facts, mock_write,
+):
+    """KN model-roles A-wire: an endpoint-resolved `entity_recovery_override`
+    ENABLES recovery even when the module-level env config is None (off), and its
+    model is the one used — proving the per-project/per-user resolution reaches
+    the recovery pass (the drift a `**kwargs`-swallowing stub would hide)."""
+    from loreweave_extraction import EntityRecoveryConfig, Pass2Candidates
+    from app.extraction.pass2_orchestrator import extract_pass2_chat_turn
+
+    mock_entities.return_value = [_entity("Alice")]
+    mock_relations.return_value = []
+    mock_events.return_value = []
+    mock_facts.return_value = []
+    mock_write.return_value = _write_result()
+
+    seen_configs: list[Any] = []
+
+    async def _stub_recovery(candidates, **kwargs):
+        seen_configs.append(kwargs.get("config"))
+        return Pass2Candidates(
+            entities=candidates.entities, relations=candidates.relations,
+            events=candidates.events, facts=candidates.facts,
+        )
+
+    # Module-level env config OFF; override supplies the model per-project.
+    with patch(f"{_ORCH}._ENTITY_RECOVERY_CONFIG", None), \
+         patch(f"{_ORCH}.recover_missing_entities", new=_stub_recovery):
+        await extract_pass2_chat_turn(
+            session=MagicMock(),
+            user_id=_USER_ID, project_id=_PROJECT_ID,
+            source_type="chat_turn", source_id="t-2", job_id=_JOB_ID,
+            user_message="hello", assistant_message="hi",
+            model_source="user_model", model_ref="m-uuid",
+            llm_client=MagicMock(),
+            entity_recovery_override=EntityRecoveryConfig(model_ref="per-project-model"),
+        )
+
+    assert len(seen_configs) == 1, "override must enable recovery despite env-off"
+    assert seen_configs[0].model_ref == "per-project-model"
+
+
+@pytest.mark.asyncio
+@patch(f"{_ORCH}.write_pass2_extraction", new_callable=AsyncMock)
+@patch(f"{_ORCH}.extract_facts", new_callable=AsyncMock)
+@patch(f"{_ORCH}.extract_events", new_callable=AsyncMock)
+@patch(f"{_ORCH}.extract_relations", new_callable=AsyncMock)
+@patch(f"{_ORCH}.extract_entities", new_callable=AsyncMock)
+async def test_orchestrator_no_override_no_env_recovery_off(
+    mock_entities, mock_relations, mock_events, mock_facts, mock_write,
+):
+    """Back-compat: no override + env off → recovery does NOT run (byte-identical
+    to pre-KN default)."""
+    from app.extraction.pass2_orchestrator import extract_pass2_chat_turn
+
+    mock_entities.return_value = [_entity("Alice")]
+    mock_relations.return_value = []
+    mock_events.return_value = []
+    mock_facts.return_value = []
+    mock_write.return_value = _write_result()
+
+    called = []
+
+    async def _stub_recovery(candidates, **kwargs):
+        called.append(True)
+        return candidates
+
+    with patch(f"{_ORCH}._ENTITY_RECOVERY_CONFIG", None), \
+         patch(f"{_ORCH}.recover_missing_entities", new=_stub_recovery):
+        await extract_pass2_chat_turn(
+            session=MagicMock(),
+            user_id=_USER_ID, project_id=_PROJECT_ID,
+            source_type="chat_turn", source_id="t-3", job_id=_JOB_ID,
+            user_message="hello", assistant_message="hi",
+            model_source="user_model", model_ref="m-uuid",
+            llm_client=MagicMock(),
+        )
+
+    assert called == [], "recovery must stay off when nothing is configured"
+
+
+@pytest.mark.asyncio
+@patch(f"{_ORCH}.write_pass2_extraction", new_callable=AsyncMock)
+@patch(f"{_ORCH}.extract_facts", new_callable=AsyncMock)
+@patch(f"{_ORCH}.extract_events", new_callable=AsyncMock)
+@patch(f"{_ORCH}.extract_relations", new_callable=AsyncMock)
+@patch(f"{_ORCH}.extract_entities", new_callable=AsyncMock)
 async def test_orchestrator_recovery_merges_glossary_anchors_as_hints(
     mock_entities, mock_relations, mock_events, mock_facts, mock_write,
 ):

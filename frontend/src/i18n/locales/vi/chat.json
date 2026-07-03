@@ -16,7 +16,60 @@
     "voice_settings": "Cài đặt giọng nói",
     "export": "Xuất",
     "rename": "Đổi tên",
-    "session_settings": "Cài đặt phiên"
+    "session_settings": "Cài đặt phiên",
+    "context_meter": {
+      "label": "Ngữ cảnh đã dùng",
+      "unknown": "Không rõ mức sử dụng cửa sổ ngữ cảnh cho mô hình này",
+      "tokens": "{{used}} / {{limit}} token",
+      "until_compact": "còn {{pct}}% đến khi tự động nén",
+      "baseline": "hệ thống + công cụ: {{tokens}} token trước từ đầu tiên của bạn"
+    }
+  },
+  "context_panel": {
+    "title": "Phân tích ngữ cảnh",
+    "free": "còn trống: {{tokens}} token",
+    "tok": "token",
+    "compact_at": "tự động nén kích hoạt ở {{pct}}% cửa sổ",
+    "zero": "bằng 0",
+    "manage": "Quản lý công cụ & kỹ năng",
+    "coming_soon": "sắp có",
+    "compact": {
+      "button": "Nén ngay",
+      "pending": "Đang nén…",
+      "placeholder": "Giữ lại tên nhân vật và các lời hứa cốt truyện…",
+      "success": "Đã nén — {{before}} → {{after}} token",
+      "failed": "Nén thất bại: {{error}}",
+      "compacted_through": "đã nén đến tin nhắn {{seq}}",
+      "clear": "Xóa nén",
+      "cleared": "Đã xóa nén — khôi phục toàn bộ lịch sử"
+    },
+    "cat": {
+      "system_prompt": "Nhân cách",
+      "memory_knowledge": "Ký ức truyện",
+      "working_memory": "Bộ nhớ làm việc",
+      "steering": "Quy tắc định hướng",
+      "skills": "Kỹ năng",
+      "plan_nudge": "Nhắc kế hoạch",
+      "book_note": "Ghi chú sách",
+      "attached_context": "Ngữ cảnh đính kèm",
+      "history": "Hội thoại",
+      "tool_results": "Kết quả công cụ",
+      "frontend_tool_schemas": "Công cụ giao diện",
+      "mcp_tool_schemas": "Công cụ MCP"
+    },
+    "history": {
+      "tab_now": "Hiện tại",
+      "tab_history": "Lịch sử",
+      "turn": "Lượt",
+      "total": "Tổng",
+      "empty": "Chưa có lịch sử lượt nào — gửi một tin nhắn để bắt đầu theo dõi lượng token.",
+      "error": "Không thể tải lịch sử ngữ cảnh."
+    }
+  },
+  "compaction": {
+    "toast": "Các lượt trước đã được nén — {{before}}→{{after}} token",
+    "summarize_failed": "Tóm tắt thất bại — các lượt cũ bị cắt bớt thay thế",
+    "overflowed": "Vẫn vượt giới hạn ngữ cảnh sau khi nén — phản hồi có thể mất chi tiết"
   },
   "input": {
     "format": "Định dạng:",
@@ -43,11 +96,34 @@
     "stop_audio": "Dừng âm thanh",
     "think": "Suy nghĩ",
     "fast": "Nhanh",
+    "effort_fast": "Nhanh",
+    "effort_standard": "Chuẩn",
+    "effort_deep": "Sâu",
+    "effort_fast_hint": "Không suy nghĩ ẩn — trả lời nhanh nhất",
+    "effort_standard_hint": "Suy nghĩ trước khi trả lời — cân bằng tốc độ và độ sâu",
+    "effort_deep_hint": "Ngân sách suy luận tối đa — chậm nhất, kỹ lưỡng nhất",
+    "effort_off": "Tắt",
+    "effort_low": "Thấp",
+    "effort_medium": "Vừa",
+    "effort_high": "Cao",
+    "effort_auto": "Tự động",
+    "effort_off_hint": "Không suy nghĩ ẩn — trả lời nhanh nhất",
+    "effort_low_hint": "Suy luận nhẹ — nhanh, cẩn thận hơn chút",
+    "effort_medium_hint": "Suy luận cân bằng trước khi trả lời",
+    "effort_high_hint": "Ngân sách suy luận tối đa — chậm nhất, kỹ nhất",
+    "effort_auto_hint": "Để model tự quyết mức suy nghĩ",
+    "mode_cycle_hint": "Ctrl+. chuyển vòng Hỏi → Kế hoạch → Ghi",
     "stop_generating": "Dừng tạo (Esc)",
     "send": "Gửi (Enter)",
     "context_attached": "Đã đính kèm ngữ cảnh · ",
     "hint": "Enter để gửi · Shift+Enter để xuống dòng",
-    "hint_thinking": " · Ctrl+Shift+Enter suy nghĩ · Ctrl+Enter nhanh"
+    "hint_thinking": " · Ctrl+Shift+Enter suy nghĩ · Ctrl+Enter nhanh",
+    "mode_ask": "Hỏi",
+    "mode_plan": "Kế hoạch",
+    "mode_write": "Ghi",
+    "mode_ask_hint": "Chế độ chỉ đọc — trợ lý có thể tra cứu nhưng không thay đổi gì",
+    "mode_plan_hint": "Chế độ lập kế hoạch — trợ lý tra cứu và xây dựng kế hoạch bằng công cụ lập kế hoạch; không viết văn cho đến khi bạn chuyển sang Ghi",
+    "mode_write_hint": "Chế độ ghi — trợ lý có thể thực hiện thay đổi hoàn tác được (hỏi một lần cho mỗi công cụ mới)"
   },
   "new": {
     "preset": {
@@ -258,7 +334,11 @@
     "words": "{{count}} từ",
     "unnamed": "(chưa đặt tên)",
     "no_matches": "Không tìm thấy kết quả.",
-    "no_items": "Không có mục nào."
+    "no_items": "Không có mục nào.",
+    "mention": {
+      "title": "Đính kèm ngữ cảnh",
+      "aria": "Gợi ý ngữ cảnh"
+    }
   },
   "settings": {
     "title": "Cài đặt phiên",
@@ -299,5 +379,65 @@
     "delete_failed": "Xóa thất bại: {{error}}",
     "chat_error": "Lỗi trò chuyện: {{error}}",
     "context_load_failed": "Không thể tải ngữ cảnh cho \"{{label}}\" — gửi mà không có nó"
+  },
+  "toolApproval": {
+    "label": "Cho phép trợ lý chạy công cụ này?",
+    "tier": "Bậc {{tier}}",
+    "tier_hint": "Bậc {{tier}} — thao tác ghi có thể hoàn tác",
+    "hint": "Thao tác ghi này có thể hoàn tác. \"Luôn cho phép\" sẽ không hỏi lại với công cụ này.",
+    "approve_once": "Cho phép một lần",
+    "always_allow": "Luôn cho phép",
+    "deny": "Từ chối",
+    "approved": "Đã cho phép — đang chạy ✓",
+    "always_allowed": "Luôn cho phép — đang chạy ✓",
+    "denied": "Đã từ chối"
+  },
+  "rack": {
+    "label": "Ngữ cảnh",
+    "add": "Thêm",
+    "add_title": "Thêm công cụ hoặc kỹ năng",
+    "discovered": "Đã khám phá {{count}}",
+    "clear_discovered": "Xóa công cụ đã khám phá",
+    "search_placeholder": "Tìm kiếm…",
+    "tools_tab": "Công cụ",
+    "skills_tab": "Kỹ năng",
+    "summary": "{{tools}} công cụ · {{skills}} kỹ năng · {{tokens}} tok",
+    "summary_no_tokens": "{{tools}} công cụ · {{skills}} kỹ năng",
+    "summary_tooltip": "Mở bảng phân tích ngữ cảnh",
+    "server_live": "Trực tiếp từ danh mục công cụ",
+    "server_pins_only": "Chỉ từ ghim của phiên",
+    "more": "+{{count}} nữa",
+    "more_tooltip": "còn {{count}} công cụ đã khám phá chưa hiển thị",
+    "remove": "Xóa",
+    "server": {
+      "knowledge": "Tri thức",
+      "glossary": "Thuật ngữ",
+      "book": "Sách",
+      "composition": "Sáng tác",
+      "translation": "Dịch thuật",
+      "jobs": "Tác vụ",
+      "ui": "Giao diện",
+      "chat": "Trò chuyện",
+      "other": "Khác"
+    }
+  },
+  "inspector": {
+    "title": "Trạng thái agent",
+    "pinned": "Công cụ đã ghim",
+    "hot": "Nạp sẵn",
+    "activated": "Đã kích hoạt",
+    "skills": "Kỹ năng",
+    "last_search": "find_tools gần nhất",
+    "advertised": "Đang cung cấp",
+    "advertised_sizes": "lõi {{core}} · giao diện {{frontend}} · kích hoạt {{activated}}",
+    "trail": "Chuỗi pha",
+    "phase": {
+      "idle": "Nghỉ",
+      "curated": "Đã chọn lọc",
+      "skills": "Kỹ năng",
+      "discovering": "Đang khám phá…",
+      "activated": "Đã kích hoạt",
+      "tool_running": "Đang chạy công cụ"
+    }
   }
 }

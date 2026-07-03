@@ -233,7 +233,8 @@ def chap_ctx(monkeypatch):
         def __init__(self):
             self.created = True
             self.updates = []
-            self.scene_drafts = ["scene one prose", "scene two prose"]
+            self.scene_drafts = [{"title": "S1", "text": "scene one prose"},
+                                 {"title": "S2", "text": "scene two prose"}]
             self.inflight = None  # set to an active_job_id to simulate the guard firing
             self.job = GenerationJob(id=JOB, user_id=USER, project_id=PROJECT,
                                      operation="draft_chapter", status="running", input={})
@@ -536,8 +537,10 @@ def test_stitch_happy_path_persists(chap_ctx):
     assert body["truncated"] is False  # fake_stitch finish_reason "stop"
     # max_out sized from the 2 scene drafts: 2 × 700 = 1400
     assert state["stitch"]["max_tokens"] == 1400 and body["max_output_tokens"] == 1400
-    # the chapter's scene drafts reached the stitcher
-    assert state["stitch"]["scene_drafts"] == ["scene one prose", "scene two prose"]
+    # the chapter's scene drafts reached the stitcher, each opening with its
+    # `### <scene title>` line (F4 D-SCENEMARKER-EMIT)
+    assert state["stitch"]["scene_drafts"] == [
+        "### S1\n\nscene one prose", "### S2\n\nscene two prose"]
     # post-stitch canon re-check ran on the stitched text
     assert state["reflect"]["draft"] == "STITCHED CHAPTER"
     assert jobs._last_create["operation"] == "stitch_chapter"
@@ -546,7 +549,7 @@ def test_stitch_happy_path_persists(chap_ctx):
 
 
 def test_stitch_degrades_to_raw_concat(chap_ctx, monkeypatch):
-    c, _, _, _, _, _ = chap_ctx
+    c, _, outline, _, book, _ = chap_ctx
 
     async def empty_stitch(llm, **kw):
         return "", None  # LLM failure → degrade
@@ -556,10 +559,16 @@ def test_stitch_degrades_to_raw_concat(chap_ctx, monkeypatch):
     assert r.status_code == 200
     body = r.json()
     assert body["degraded"] is True and body["stitched"] is False
-    # raw concatenation of the scene drafts is the fallback artifact
-    assert body["text"] == "scene one prose\n\nscene two prose"
+    # raw concatenation of the (heading-prefixed) scene drafts is the fallback
+    # artifact — the degraded path carries scene markers deterministically (F4)
+    assert body["text"] == "### S1\n\nscene one prose\n\n### S2\n\nscene two prose"
     # a degraded raw-concat has no model stop reason → never truncated
     assert body["truncated"] is False
+    # F4 wiring proof — the PERSISTED doc carries sceneId-anchored heading nodes
+    # (the whole point of the emit: the chapter lands pre-anchored in the editor).
+    heads = [n for n in book.patched["body"]["content"] if n["type"] == "heading"]
+    assert [h["attrs"].get("sceneId") for h in heads] == [
+        str(outline.scenes[0].id), str(outline.scenes[1].id)]
 
 
 def test_stitch_surfaces_truncated(chap_ctx, monkeypatch):

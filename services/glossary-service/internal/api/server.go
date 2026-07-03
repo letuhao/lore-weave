@@ -211,6 +211,12 @@ func (s *Server) Router() http.Handler {
 		// standards baseline for book-less projects.
 		r.Get("/books/{book_id}/ontology", s.internalBookOntology)
 		r.Get("/users/{user_id}/glossary-standards", s.internalUserGlossaryStandards)
+		// KG adopt auto-seed — knowledge-service's graph-schema adopt calls this to
+		// idempotently copy the schema's REQUIRED node-kinds into the book tier
+		// (System→book copy-down), so adopting a KG schema no longer 422s
+		// KG_ADOPT_NEEDS_GLOSSARY and silently does nothing. Internal-token gated;
+		// the caller (knowledge-service) already verified the user's MANAGE grant.
+		r.Post("/books/{book_id}/ontology/adopt-kinds", s.internalAdoptBookKinds)
 	})
 
 	r.Route("/v1/glossary", func(r chi.Router) {

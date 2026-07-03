@@ -16,7 +16,60 @@
     "voice_settings": "語音設定",
     "export": "匯出",
     "rename": "重新命名",
-    "session_settings": "工作階段設定"
+    "session_settings": "工作階段設定",
+    "context_meter": {
+      "label": "已使用的脈絡",
+      "unknown": "無法得知此模型的脈絡視窗使用量",
+      "tokens": "{{used}} / {{limit}} 個 token",
+      "until_compact": "距自動壓縮還有 {{pct}}%",
+      "baseline": "系統 + 工具：您輸入第一個字前已佔 {{tokens}} 個 token"
+    }
+  },
+  "context_panel": {
+    "title": "脈絡明細",
+    "free": "剩餘空間：{{tokens}} 個 token",
+    "tok": "個 token",
+    "compact_at": "自動壓縮於視窗 {{pct}}% 時觸發",
+    "zero": "為零",
+    "manage": "管理工具與技能",
+    "coming_soon": "即將推出",
+    "compact": {
+      "button": "立即壓縮",
+      "pending": "壓縮中…",
+      "placeholder": "保留角色名稱與劇情伏筆…",
+      "success": "已壓縮 — {{before}} → {{after}} 個 token",
+      "failed": "壓縮失敗：{{error}}",
+      "compacted_through": "已壓縮至第 {{seq}} 則訊息",
+      "clear": "清除壓縮",
+      "cleared": "已清除壓縮 — 已還原完整歷史"
+    },
+    "cat": {
+      "system_prompt": "角色設定",
+      "memory_knowledge": "故事記憶",
+      "working_memory": "工作記憶",
+      "steering": "引導規則",
+      "skills": "技能",
+      "plan_nudge": "規劃提示",
+      "book_note": "書籍筆記",
+      "attached_context": "附加情境",
+      "history": "對話紀錄",
+      "tool_results": "工具結果",
+      "frontend_tool_schemas": "介面工具",
+      "mcp_tool_schemas": "MCP 工具"
+    },
+    "history": {
+      "tab_now": "目前",
+      "tab_history": "歷史",
+      "turn": "回合",
+      "total": "總計",
+      "empty": "尚無回合歷史 — 傳送訊息即可開始追蹤 token 用量。",
+      "error": "無法載入脈絡歷史。"
+    }
+  },
+  "compaction": {
+    "toast": "先前的回合已壓縮 — {{before}}→{{after}} 個 token",
+    "summarize_failed": "摘要失敗 — 改以裁剪較舊的回合",
+    "overflowed": "壓縮後仍超過脈絡上限 — 回應可能遺失細節"
   },
   "input": {
     "format": "格式：",
@@ -43,11 +96,34 @@
     "stop_audio": "停止音訊",
     "think": "思考",
     "fast": "快速",
+    "effort_fast": "快速",
+    "effort_standard": "標準",
+    "effort_deep": "深度",
+    "effort_fast_hint": "不做隱藏思考 — 回應最快",
+    "effort_standard_hint": "回答前先思考 — 兼顧速度與深度",
+    "effort_deep_hint": "最大推理預算 — 最慢、最徹底",
+    "effort_off": "關閉",
+    "effort_low": "低",
+    "effort_medium": "中",
+    "effort_high": "高",
+    "effort_auto": "自動",
+    "effort_off_hint": "無隱藏思考 — 最快回覆",
+    "effort_low_hint": "少量推理 — 快速、略更謹慎",
+    "effort_medium_hint": "回答前均衡推理",
+    "effort_high_hint": "最大推理預算 — 最慢、最徹底",
+    "effort_auto_hint": "由模型自行決定思考量",
+    "mode_cycle_hint": "Ctrl+. 循環切換 詢問 → 規劃 → 寫入",
     "stop_generating": "停止生成 (Esc)",
     "send": "傳送 (Enter)",
     "context_attached": "已附加情境 · ",
     "hint": "Enter 傳送 · Shift+Enter 換行",
-    "hint_thinking": " · Ctrl+Shift+Enter 思考 · Ctrl+Enter 快速"
+    "hint_thinking": " · Ctrl+Shift+Enter 思考 · Ctrl+Enter 快速",
+    "mode_ask": "詢問",
+    "mode_plan": "規劃",
+    "mode_write": "寫入",
+    "mode_ask_hint": "唯讀模式 — 代理可以查詢但不能變更任何內容",
+    "mode_plan_hint": "規劃模式 — 代理會研究並以規劃工具建立計畫；切換到寫入前不會撰寫正文",
+    "mode_write_hint": "寫入模式 — 代理可以進行可復原的變更（每個新工具只詢問一次）"
   },
   "new": {
     "preset": {
@@ -258,7 +334,11 @@
     "words": "{{count}} 字",
     "unnamed": "(未命名)",
     "no_matches": "找不到符合項目。",
-    "no_items": "沒有可用項目。"
+    "no_items": "沒有可用項目。",
+    "mention": {
+      "title": "附加上下文",
+      "aria": "上下文建議"
+    }
   },
   "settings": {
     "title": "工作階段設定",
@@ -299,5 +379,65 @@
     "delete_failed": "刪除失敗：{{error}}",
     "chat_error": "聊天錯誤：{{error}}",
     "context_load_failed": "無法載入「{{label}}」的脈絡 — 將不附帶傳送"
+  },
+  "toolApproval": {
+    "label": "允許代理執行此工具嗎？",
+    "tier": "層級 {{tier}}",
+    "tier_hint": "層級 {{tier}} — 可復原的寫入",
+    "hint": "此寫入可以復原。「一律允許」後此工具將不再詢問。",
+    "approve_once": "允許一次",
+    "always_allow": "一律允許",
+    "deny": "拒絕",
+    "approved": "已允許 — 執行中 ✓",
+    "always_allowed": "一律允許 — 執行中 ✓",
+    "denied": "已拒絕"
+  },
+  "rack": {
+    "label": "情境",
+    "add": "新增",
+    "add_title": "新增工具或技能",
+    "discovered": "已探索 {{count}} 個",
+    "clear_discovered": "清除已探索的工具",
+    "search_placeholder": "搜尋…",
+    "tools_tab": "工具",
+    "skills_tab": "技能",
+    "summary": "{{tools}} 個工具 · {{skills}} 個技能 · {{tokens}} tok",
+    "summary_no_tokens": "{{tools}} 個工具 · {{skills}} 個技能",
+    "summary_tooltip": "開啟情境細目",
+    "server_live": "即時來自工具目錄",
+    "server_pins_only": "僅來自工作階段釘選",
+    "more": "還有 {{count}} 個",
+    "more_tooltip": "還有 {{count}} 個已探索工具未顯示",
+    "remove": "移除",
+    "server": {
+      "knowledge": "知識",
+      "glossary": "詞彙表",
+      "book": "書籍",
+      "composition": "創作",
+      "translation": "翻譯",
+      "jobs": "工作",
+      "ui": "介面",
+      "chat": "聊天",
+      "other": "其他"
+    }
+  },
+  "inspector": {
+    "title": "代理執行狀態",
+    "pinned": "已釘選工具",
+    "hot": "熱種子",
+    "activated": "已啟用",
+    "skills": "技能",
+    "last_search": "最近的 find_tools",
+    "advertised": "已提供工具",
+    "advertised_sizes": "核心 {{core}} · 前端 {{frontend}} · 已啟用 {{activated}}",
+    "trail": "階段軌跡",
+    "phase": {
+      "idle": "閒置",
+      "curated": "已精選",
+      "skills": "技能",
+      "discovering": "探索中…",
+      "activated": "已啟用",
+      "tool_running": "執行工具中"
+    }
   }
 }

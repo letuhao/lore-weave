@@ -1,0 +1,89 @@
+package main
+
+import (
+	"context"
+	"log/slog"
+	"net/http"
+	"os"
+	"os/signal"
+	"syscall"
+	"time"
+
+	"github.com/jackc/pgx/v5/pgxpool"
+
+	"github.com/loreweave/agent-registry-service/internal/api"
+	"github.com/loreweave/agent-registry-service/internal/config"
+	"github.com/loreweave/agent-registry-service/internal/migrate"
+	"github.com/loreweave/observability"
+)
+
+func main() {
+	slog.SetDefault(slog.New(slog.NewJSONHandler(os.Stdout, nil)).With("service", "agent-registry-service"))
+
+	cfg, err := config.Load()
+	if err != nil {
+		slog.Error("config", "error", err)
+		os.Exit(1)
+	}
+
+	shutdownTracer, err := observability.InitTracer(context.Background(), "agent-registry-service")
+	if err != nil {
+		slog.Error("tracer init", "error", err)
+		os.Exit(1)
+	}
+	defer func() {
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+		_ = shutdownTracer(ctx)
+	}()
+
+	poolCfg, err := pgxpool.ParseConfig(cfg.DatabaseURL)
+	if err != nil {
+		slog.Error("db config parse failed", "error", err)
+		os.Exit(1)
+	}
+	if poolCfg.MaxConns == 0 || poolCfg.MaxConns == 4 {
+		poolCfg.MaxConns = 10
+	}
+	if poolCfg.MinConns == 0 {
+		poolCfg.MinConns = 2
+	}
+	pool, err := pgxpool.NewWithConfig(context.Background(), poolCfg)
+	if err != nil {
+		slog.Error("db connect failed", "error", err)
+		os.Exit(1)
+	}
+	defer pool.Close()
+
+	if err := migrate.Up(context.Background(), pool); err != nil {
+		slog.Error("migrate", "error", err)
+		os.Exit(1)
+	}
+
+	srv := api.NewServer(pool, cfg)
+	// REG-P3-03 — background OAuth token refresh (rotates before expiry).
+	workerCtx, workerCancel := context.WithCancel(context.Background())
+	defer workerCancel()
+	srv.StartRefreshWorker(workerCtx)
+	// REG-P5-03 — background ingest maintenance (re-pull + denylist sync + rug-pull
+	// rescan). No-op unless AGENT_REGISTRY_INGEST_WORKER=1.
+	srv.StartIngestWorker(workerCtx)
+	httpSrv := &http.Server{
+		Addr:              cfg.HTTPAddr,
+		Handler:           srv.Router(),
+		ReadHeaderTimeout: 10 * time.Second,
+	}
+	go func() {
+		slog.Info("listening", "addr", cfg.HTTPAddr)
+		if err := httpSrv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
+			slog.Error("listen", "error", err)
+			os.Exit(1)
+		}
+	}()
+	stop := make(chan os.Signal, 1)
+	signal.Notify(stop, syscall.SIGINT, syscall.SIGTERM)
+	<-stop
+	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+	defer cancel()
+	_ = httpSrv.Shutdown(ctx)
+}
