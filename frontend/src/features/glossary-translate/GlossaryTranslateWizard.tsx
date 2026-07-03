@@ -44,7 +44,7 @@ export function GlossaryTranslateWizard({
     setOverwriteMode,
     setModelRef,
     setSelectedModelName,
-    setThinkingEnabled,
+    setEffort,
     setJobCreated,
     setFinalJobStatus,
     reset,
@@ -77,13 +77,13 @@ export function GlossaryTranslateWizard({
             targetLanguage={state.targetLanguage}
             overwriteMode={state.overwriteMode}
             modelRef={state.modelRef}
-            thinkingEnabled={state.thinkingEnabled}
+            effort={state.effort}
             sourceLanguage={bookOriginalLanguage}
             onTargetLanguageChange={setTargetLanguage}
             onOverwriteModeChange={setOverwriteMode}
             onModelChange={setModelRef}
             onModelNameChange={setSelectedModelName}
-            onThinkingEnabledChange={setThinkingEnabled}
+            onEffortChange={setEffort}
           />
         );
       case 'confirm':
@@ -94,7 +94,7 @@ export function GlossaryTranslateWizard({
             overwriteMode={state.overwriteMode}
             modelRef={state.modelRef}
             selectedModelName={state.selectedModelName}
-            thinkingEnabled={state.thinkingEnabled}
+            effort={state.effort}
             sourceLanguage={bookOriginalLanguage}
             onJobCreated={(jobId, totalEntities, costEstimate) => {
               setJobCreated(jobId, totalEntities, costEstimate);

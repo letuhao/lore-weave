@@ -13,7 +13,13 @@ from pydantic import BaseModel, Field
 from ..broker import publish
 from ..config import settings as app_settings
 from ..deps import get_current_user, get_db
-from ..grant_deps import GrantLevel, authorize_book, get_grant_client_dep, require_book_grant
+from ..grant_deps import (
+    GrantLevel,
+    authorize_book,
+    clamp_effort_to_grant,
+    get_grant_client_dep,
+    require_book_grant,
+)
 from ..model_name import resolve_model_name
 from ..workers.glossary_client import fetch_translation_candidates
 from ..workers.glossary_translate_prompt import estimate_glossary_translate_cost
@@ -35,6 +41,10 @@ class CreateGlossaryTranslatePayload(BaseModel):
     entity_ids: list[UUID] | None = None
     kind_codes: list[str] = Field(default_factory=list)
     entity_status: str = "all"
+    # AI-task standard — graded reasoning effort (off|low|medium|high|auto), the same
+    # vocab the extraction router accepts. `reasoning_effort` wins; `thinking_enabled`
+    # is the deprecated bool alias (True→medium) kept for back-compat.
+    reasoning_effort: str | None = None
     thinking_enabled: bool = False
     # bug #4: how many entities translate in parallel (1 = sequential). Clamped again in the
     # worker to _GLOSSARY_TRANSLATE_MAX_CONCURRENCY. None ⇒ 1 (prior behavior).
@@ -52,9 +62,22 @@ async def create_glossary_translate_job(
     payload: CreateGlossaryTranslatePayload,
     user_id: str = Depends(get_current_user),
     _grant: UUID = Depends(require_book_grant(GrantLevel.EDIT)),
+    gc=Depends(get_grant_client_dep),
     db: asyncpg.Pool = Depends(get_db),
 ):
     uid = UUID(user_id)
+
+    # AI-task standard (D-AITASK-GLOSSARY-TRANSLATE-EFFORT) — mirror extraction: resolve
+    # the graded reasoning effort CLAMPED to the caller's grant (INV-T11 — effort is paid
+    # compute). clamp normalizes off/auto/unknown → "none" (the chat-vocab→SDK-vocab bridge),
+    # so a reasoning model can't be handed "off" and think anyway. thinking_enabled is the
+    # deprecated bool alias (True→medium).
+    effort_raw = (payload.reasoning_effort or "").strip().lower() or (
+        "medium" if payload.thinking_enabled else "none"
+    )
+    _grant_level = await gc.resolve_grant(book_id, uid)
+    reasoning_effort, _ = clamp_effort_to_grant(effort_raw, int(_grant_level))
+    thinking_enabled = reasoning_effort != "none"  # derived alias for the GUI/back-compat
 
     async with httpx.AsyncClient(timeout=10) as client:
         try:
@@ -130,7 +153,8 @@ async def create_glossary_translate_job(
         "entity_ids": [str(e) for e in payload.entity_ids] if payload.entity_ids else None,
         "kind_codes": payload.kind_codes,
         "entity_status": payload.entity_status,
-        "thinking_enabled": payload.thinking_enabled,
+        "reasoning_effort": reasoning_effort,
+        "thinking_enabled": thinking_enabled,
     }
 
     # P4 — resolve the human model NAME (best-effort) for the 'pending' event + a
@@ -142,7 +166,8 @@ async def create_glossary_translate_job(
         "source_language": source_language,
         "target_language": payload.target_language,
         "overwrite_mode": payload.overwrite_mode,
-        "thinking_enabled": payload.thinking_enabled,
+        "reasoning_effort": reasoning_effort,
+        "thinking_enabled": thinking_enabled,
         # bug #37 — estimated LLM-call budget (≈ one per entity); the worker advances
         # llm_calls_done on each page. None-safe downstream.
         "estimated_llm_calls": cost_estimate.get("llm_calls") if cost_estimate else None,
@@ -180,7 +205,8 @@ async def create_glossary_translate_job(
         "model_source": model_source,
         "model_ref": str(model_ref),
         "overwrite_mode": payload.overwrite_mode,
-        "thinking_enabled": payload.thinking_enabled,
+        "reasoning_effort": reasoning_effort,
+        "thinking_enabled": thinking_enabled,
         "concurrency": payload.concurrency_level,
         "metadata": metadata,
     })

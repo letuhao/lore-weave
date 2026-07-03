@@ -14,7 +14,10 @@ export type GlossaryTranslateJobRequest = {
   model_source: string;
   model_ref: string;
   overwrite_mode: OverwriteMode;
-  /** Enable model reasoning/thinking (LM Studio enable_thinking). */
+  /** Reasoning effort (off|low|medium|high|auto). Default 'off' — glossary translation
+   *  is short structured JSON; the BE clamps 'off'/'auto' → 'none'. `thinking_enabled`
+   *  is the deprecated bool alias. */
+  reasoning_effort?: string;
   thinking_enabled?: boolean;
   /** bug #4: how many entities translate in parallel (1 = sequential). Omitted ⇒ 1. */
   concurrency_level?: number;

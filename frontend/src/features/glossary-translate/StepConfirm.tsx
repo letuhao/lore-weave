@@ -6,6 +6,7 @@ import { useAuth } from '@/auth';
 import { getLanguageName } from '@/lib/languages';
 import { glossaryTranslateApi } from './api';
 import { isSameLanguageTarget } from './useGlossaryTranslateState';
+import type { EffortLevel } from '@/components/ai-task';
 import type { OverwriteMode, GlossaryTranslateCostEstimate } from './types';
 
 interface StepConfirmProps {
@@ -14,7 +15,7 @@ interface StepConfirmProps {
   overwriteMode: OverwriteMode;
   modelRef: string;
   selectedModelName: string;
-  thinkingEnabled: boolean;
+  effort: EffortLevel;
   sourceLanguage?: string;
   onJobCreated: (jobId: string, totalEntities: number, costEstimate: GlossaryTranslateCostEstimate) => void;
   onEditConfig: () => void;
@@ -32,7 +33,7 @@ export function StepConfirm({
   overwriteMode,
   modelRef,
   selectedModelName,
-  thinkingEnabled,
+  effort,
   sourceLanguage,
   onJobCreated,
   onEditConfig,
@@ -56,7 +57,7 @@ export function StepConfirm({
           model_source: 'user_model',
           model_ref: modelRef,
           overwrite_mode: overwriteMode,
-          thinking_enabled: thinkingEnabled,
+          reasoning_effort: effort,
           ...(concurrency > 1 ? { concurrency_level: concurrency } : {}),
         },
         accessToken,
@@ -88,7 +89,7 @@ export function StepConfirm({
       </div>
 
       <p className="text-[11px] text-muted-foreground text-center">
-        {thinkingEnabled ? t('confirm.thinkingOn') : t('confirm.thinkingOff')}
+        {effort !== 'off' ? t('confirm.thinkingOn') : t('confirm.thinkingOff')}
       </p>
 
       {/* bug #4 — parallel entity translation. */}

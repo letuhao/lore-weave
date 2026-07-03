@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom';
 import { Loader2 } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import { ModelPicker, useUserModels } from '@/components/model-picker';
+import { EffortSelect, type EffortLevel } from '@/components/ai-task';
 import { getLanguageName, LANGUAGE_NAMES } from '@/lib/languages';
 import type { OverwriteMode } from './types';
 
@@ -10,26 +11,26 @@ interface StepConfigProps {
   targetLanguage: string;
   overwriteMode: OverwriteMode;
   modelRef: string;
-  thinkingEnabled: boolean;
+  effort: EffortLevel;
   sourceLanguage?: string;
   onTargetLanguageChange: (lang: string) => void;
   onOverwriteModeChange: (mode: OverwriteMode) => void;
   onModelChange: (modelRef: string) => void;
   onModelNameChange: (name: string) => void;
-  onThinkingEnabledChange: (enabled: boolean) => void;
+  onEffortChange: (effort: EffortLevel) => void;
 }
 
 export function StepConfig({
   targetLanguage,
   overwriteMode,
   modelRef,
-  thinkingEnabled,
+  effort,
   sourceLanguage,
   onTargetLanguageChange,
   onOverwriteModeChange,
   onModelChange,
   onModelNameChange,
-  onThinkingEnabledChange,
+  onEffortChange,
 }: StepConfigProps) {
   const { t } = useTranslation('glossaryTranslate');
   // Shared model fetch (W5) — glossary translation drives an LLM, so chat
@@ -149,18 +150,18 @@ export function StepConfig({
         />
       </div>
 
-      <label className="flex items-start gap-2 rounded-md border bg-card/30 px-3 py-2 cursor-pointer">
-        <input
-          type="checkbox"
-          checked={thinkingEnabled}
-          onChange={(e) => onThinkingEnabledChange(e.target.checked)}
-          className="mt-0.5 h-3.5 w-3.5 rounded border-border accent-primary"
-        />
-        <span>
+      {/* Reasoning effort — shared AI-task EffortSelect (was a thinking on/off
+          checkbox). Default 'off' (glossary translation is short structured JSON);
+          the BE clamps 'off'/'auto' → 'none'. */}
+      <div className="flex items-start gap-2 rounded-md border bg-card/30 px-3 py-2">
+        <span className="min-w-0">
           <span className="text-xs font-medium block">{t('config.thinkingEnabled')}</span>
           <span className="text-[10px] text-muted-foreground">{t('config.thinkingHint')}</span>
         </span>
-      </label>
+        <span className="ml-auto shrink-0">
+          <EffortSelect value={effort} onChange={onEffortChange} />
+        </span>
+      </div>
 
       <p className="text-[10px] text-muted-foreground rounded-md border border-primary/20 bg-primary/5 px-3 py-2">
         {t('config.allAttrsNote')}

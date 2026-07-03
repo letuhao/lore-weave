@@ -269,6 +269,58 @@ async def test_thinking_enabled_passes_llm_kwargs():
 
 
 @pytest.mark.asyncio
+async def test_graded_reasoning_effort_rides_the_llm_input():
+    """AI-task standard (D-AITASK-GLOSSARY-TRANSLATE-EFFORT): a per-job
+    reasoning_effort='high' (the new field, clamped at the router) rides the LLM
+    input as graded thinking — proving the graded path, not just the thinking_enabled
+    alias. reasoning_effort='none' would instead emit an explicit disable."""
+    job_id = uuid4()
+    book_id = str(uuid4())
+    e1 = str(uuid4())
+    llm_inputs: list[dict] = []
+
+    async def fake_fetch(*_a, **_kw):
+        return {"total": 1, "items": [_entity(e1)]}
+
+    async def capture_llm(**kwargs):
+        llm_inputs.append(kwargs.get("input") or {})
+        return _llm_ok()
+
+    pool, _ = _make_pool()
+    llm = AsyncMock()
+    llm.submit_and_wait = AsyncMock(side_effect=capture_llm)
+    publish = AsyncMock()
+
+    msg = {
+        "book_id": book_id,
+        "target_language": "vi",
+        "source_language": "zh",
+        "model_source": "user_model",
+        "model_ref": str(uuid4()),
+        "overwrite_mode": "missing_only",
+        "reasoning_effort": "high",
+        "metadata": {},
+    }
+
+    with (
+        patch(
+            "app.workers.glossary_translate_worker.fetch_translation_candidates",
+            new=AsyncMock(side_effect=fake_fetch),
+        ),
+        patch(
+            "app.workers.glossary_translate_worker.post_apply_translations",
+            new=AsyncMock(
+                return_value={"translated": 1, "skipped_verified": 0, "skipped_empty": 0, "failed": []},
+            ),
+        ),
+    ):
+        await _run_job(msg, job_id, "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa", pool, publish, llm)
+
+    assert llm_inputs[0]["reasoning_effort"] == "high"
+    assert llm_inputs[0]["chat_template_kwargs"]["enable_thinking"] is True
+
+
+@pytest.mark.asyncio
 async def test_cancelled_glossary_job_is_not_clobbered_and_does_no_work(_stub_emit):
     """Cancel-safe claim (same fix as extraction): a cancelled/terminal job is NOT
     re-armed to running; the handler settles + returns so the AMQP message is ACKed
