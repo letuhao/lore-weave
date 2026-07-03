@@ -100,6 +100,13 @@ class GlossaryOntologyClient(Protocol):
     async def get_user_standards(self, user_id: UUID) -> OntologyKinds | None:
         """User system∪user standards node-kinds, or None on failure."""
 
+    async def adopt_book_kinds(
+        self, book_id: UUID, user_id: UUID, kinds: list[str]
+    ) -> bool:
+        """Idempotently copy the given System node-kind codes into the book tier.
+        Returns True on success, False on failure. Used by KG schema-adopt to
+        auto-seed the kinds a template requires (no more silent NEEDS_GLOSSARY)."""
+
 
 class HttpGlossaryOntologyClient:
     """Live httpx client for the two glossary internal-ontology routes.
@@ -129,6 +136,26 @@ class HttpGlossaryOntologyClient:
     async def get_user_standards(self, user_id: UUID) -> OntologyKinds | None:
         url = f"{self._base_url}/internal/users/{user_id}/glossary-standards"
         return await self._get(url, params=None)
+
+    async def adopt_book_kinds(
+        self, book_id: UUID, user_id: UUID, kinds: list[str]
+    ) -> bool:
+        url = f"{self._base_url}/internal/books/{book_id}/ontology/adopt-kinds"
+        tid = trace_id_var.get()
+        try:
+            resp = await self._http.post(
+                url,
+                params={"user_id": str(user_id)},
+                json={"kinds": kinds},
+                headers={"X-Trace-Id": tid} if tid else None,
+            )
+            if resp.status_code != 200:
+                logger.warning("glossary adopt-kinds %s returned %d", url, resp.status_code)
+                return False
+            return True
+        except httpx.HTTPError as exc:
+            logger.warning("glossary adopt-kinds failed (%s): %s", url, exc)
+            return False
 
     async def _get(self, url: str, *, params: dict | None) -> OntologyKinds | None:
         tid = trace_id_var.get()
@@ -170,6 +197,8 @@ class FakeGlossaryOntologyClient:
         # KG-ML M5 (C7) — optional localized labels keyed by kind code →
         # {language: label}, applied to whichever tier emits that code.
         self._kind_labels = kind_labels or {}
+        # adopt_book_kinds call log (book_id, user_id, kinds).
+        self.adopt_calls: list[tuple[str, str, list[str]]] = []
 
     def _kind(self, code: str, tier: str) -> OntologyKind:
         return OntologyKind(
@@ -194,3 +223,22 @@ class FakeGlossaryOntologyClient:
             source="user_standards",
             kinds=[self._kind(c, "user") for c in codes],
         )
+
+    async def adopt_book_kinds(
+        self, book_id: UUID, user_id: UUID, kinds: list[str]
+    ) -> bool:
+        """Mirror the real endpoint: copy-down from System/User for catalogue codes
+        AND directly create any residual code as a book-tier kind — so EVERY
+        requested code lands on the book's kind set (the schema is authoritative
+        about what it needs). Records the call; a subsequent get_book_ontology
+        reflects the new kinds (realistic retry). Returns False only when the
+        glossary is unavailable (transport/outage)."""
+        if self._unavailable:
+            return False
+        existing = list(self._book_kinds.get(str(book_id), []))
+        for c in kinds:
+            if c not in existing:
+                existing.append(c)
+        self._book_kinds[str(book_id)] = existing
+        self.adopt_calls.append((str(book_id), str(user_id), list(kinds)))
+        return True

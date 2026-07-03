@@ -138,6 +138,54 @@ func (s *Server) adoptBookOntology(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, ont)
 }
 
+// internalAdoptBookKinds — POST /internal/books/{book_id}/ontology/adopt-kinds?user_id=
+// (internal-token). Idempotently copies the given System kind codes into the book tier
+// for user_id, reusing adoptBookOntologyCore — the SAME copy-down the HTTP adopt + MCP
+// effect use. knowledge-service's KG graph-schema adopt calls this to auto-seed the
+// node-kinds a schema REQUIRES, so adopting a schema no longer 422s NEEDS_GLOSSARY and
+// silently fails. No grant check here: the caller (knowledge) already verified the
+// user's MANAGE grant on the project's book (the same grant adopt itself requires).
+func (s *Server) internalAdoptBookKinds(w http.ResponseWriter, r *http.Request) {
+	bookID, ok := parsePathUUID(w, r, "book_id")
+	if !ok {
+		return
+	}
+	userID, err := uuid.Parse(r.URL.Query().Get("user_id"))
+	if err != nil {
+		writeError(w, http.StatusBadRequest, "GLOSS_VALIDATION", "invalid or missing user_id")
+		return
+	}
+	var in struct {
+		Kinds []string `json:"kinds"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&in); err != nil {
+		writeError(w, http.StatusBadRequest, "GLOSS_INVALID_BODY", "invalid JSON")
+		return
+	}
+	// 1) Copy-down from the System/User catalogue (inherits name/icon/label) for any
+	//    requested code that IS a catalogue kind.
+	if err := s.adoptBookOntologyCore(r.Context(), bookID, userID, nil, in.Kinds); err != nil {
+		writeError(w, http.StatusInternalServerError, "GLOSS_INTERNAL", "adopt kinds failed")
+		return
+	}
+	// 2) A KG schema is authoritative about the node-kinds it needs, and a template
+	//    can require kinds that are NOT in the System/User catalogue (so the copy-down
+	//    above can't create them). Directly create any such residual code as a minimal
+	//    book-tier kind (name = code; the user can rename in glossary). ON CONFLICT skips
+	//    codes the copy-down already created, so this is additive + idempotent.
+	if len(in.Kinds) > 0 {
+		if _, err := s.pool.Exec(r.Context(), `
+			INSERT INTO book_kinds (book_id, code, name, source_ref)
+			SELECT $1, code, code, 'kg-adopt'
+			FROM unnest($2::text[]) AS code
+			ON CONFLICT (book_id, code) DO NOTHING`, bookID, in.Kinds); err != nil {
+			writeError(w, http.StatusInternalServerError, "GLOSS_INTERNAL", "create kinds failed")
+			return
+		}
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"book_id": bookID.String(), "adopted": in.Kinds})
+}
+
 // adoptBookOntologyCore copies the picked System standards (shadowed by the caller's
 // User tier) into the book tier — the single source of truth shared by the HTTP adopt
 // handler and the MCP adopt confirm effect. `universal` genre + `unknown` kind are

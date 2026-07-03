@@ -49,7 +49,10 @@ from app.db.repositories.ontology_mutations import (
 from app.db.repositories.projects import ProjectsRepo
 from app.deps import get_grant_client, get_projects_repo
 from app.middleware.jwt_auth import get_current_user
-from app.ontology.glossary_gate import resolve_adopt_glossary_codes
+from app.ontology.glossary_gate import (
+    adopt_with_autocreate_glossary,
+    resolve_adopt_glossary_codes,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -343,19 +346,15 @@ async def adopt_schema(
     replaces the project's active schema (one-active invariant).
     """
     project_str = str(project_id)
-    # KM6-M2: shared with the agent confirm effect so the adopt-gate can't drift.
-    book_id, glossary_codes = await resolve_adopt_glossary_codes(
-        projects, glossary, mutations,
-        owner=owner, project_id=project_str, source_schema_id=body.source_schema_id,
-    )
-
+    # KM6-M2 + auto-seed: adopting a schema AUTO-CREATES the glossary node-kinds it
+    # requires (copy-down from System), retrying the adopt once — shared with the
+    # agent confirm effect so the GUI + MCP kg_adopt behave identically. A 422 now
+    # only fires for a genuinely unsatisfiable gap (book-less project, or a required
+    # kind with no System row to copy) — not for the common "glossary not seeded yet".
     try:
-        result = await mutations.adopt(
-            owner_user_id=owner,
-            project_id=project_str,
-            source_schema_id=body.source_schema_id,
-            glossary_kinds=glossary_codes,
-            book_id=book_id,
+        result = await adopt_with_autocreate_glossary(
+            projects, glossary, mutations,
+            owner=owner, project_id=project_str, source_schema_id=body.source_schema_id,
         )
     except NeedsGlossaryError as exc:
         raise HTTPException(
@@ -363,8 +362,9 @@ async def adopt_schema(
             detail={
                 "code": "KG_ADOPT_NEEDS_GLOSSARY",
                 "message": (
-                    "the project's glossary is missing required node-kinds; add them "
-                    "in glossary first, then re-adopt"
+                    "the schema needs node-kinds that couldn't be auto-created (no "
+                    "System kind to copy, or a book-less project) — add them in "
+                    "glossary, then re-adopt"
                 ),
                 "needs_glossary": {"book_id": exc.book_id, "kinds": exc.kinds},
             },

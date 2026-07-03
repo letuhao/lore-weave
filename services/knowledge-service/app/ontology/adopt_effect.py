@@ -22,7 +22,10 @@ from app.db.repositories.ontology_mutations import (
     SchemaNotWritableError,
 )
 from app.db.repositories.projects import ProjectsRepo
-from app.ontology.glossary_gate import resolve_adopt_glossary_codes
+from app.ontology.glossary_gate import (
+    adopt_with_autocreate_glossary,
+    resolve_adopt_glossary_codes,
+)
 
 __all__ = [
     "AdoptParams",
@@ -66,19 +69,16 @@ async def apply_adopt(
     """Resolve the glossary gate then adopt. Raises AdoptNeedsGlossary (re-proposable),
     AdoptSourceMissing (404), or ValueError on a malformed source id."""
     source_id = UUID(params.source_schema_id)
-    book_id, codes = await resolve_adopt_glossary_codes(
-        projects, glossary, mutations,
-        owner=owner, project_id=project_id, source_schema_id=source_id,
-    )
     try:
-        result = await mutations.adopt(
-            owner_user_id=owner,
-            project_id=project_id,
-            source_schema_id=source_id,
-            glossary_kinds=codes,
-            book_id=book_id,
+        # Auto-seed the glossary node-kinds the template needs, then adopt (shared
+        # with the human route so the MCP kg_adopt tool auto-creates identically).
+        result = await adopt_with_autocreate_glossary(
+            projects, glossary, mutations,
+            owner=owner, project_id=project_id, source_schema_id=source_id,
         )
     except NeedsGlossaryError as exc:
+        # Residual gap the auto-seed couldn't fill (book-less project / no System
+        # kind to copy) — still re-proposable so the human can fix glossary.
         raise AdoptNeedsGlossary(exc.kinds, exc.book_id)
     except SchemaNotWritableError:
         raise AdoptSourceMissing("source template not found")
@@ -126,16 +126,23 @@ async def preview_adopt(
             if existing is not None else {})},
     ]
 
-    # Glossary gap that WOULD block confirm (the §5.1 #5 blast-radius warning).
+    # Glossary gap. With auto-seed, a book-bound project's missing kinds are
+    # CREATED on adopt (informative, not blocking); only a book-less project (no
+    # book tier to seed into) is still blocked by the gap.
     _book, codes = await resolve_adopt_glossary_codes(
         projects, glossary, mutations, owner=owner, project_id=project_id, source_schema_id=source_id,
     )
     required = set(await mutations.required_node_kinds(source_id))
     missing = sorted(required - codes)
-    blocked = bool(missing)
-    if blocked:
-        rows.append({"label": "⚠ glossary gap", "value": ", ".join(missing),
-                     "note": "confirm will be rejected until these node-kinds exist in glossary"})
+    blocked = bool(missing) and _book is None
+    if missing:
+        rows.append(
+            {"label": "⚠ glossary gap", "value": ", ".join(missing),
+             "note": "confirm will be rejected until these node-kinds exist in glossary"}
+            if blocked else
+            {"label": "glossary kinds to create", "value": ", ".join(missing),
+             "note": "these node-kinds will be auto-created in glossary when you adopt"}
+        )
 
     return {
         "descriptor": "kg_adopt",
