@@ -8,8 +8,10 @@ import { ProposalsView } from '../components/ProposalsView';
 import { McpServersView } from '../components/McpServersView';
 import { CommandsHooksView } from '../components/CommandsHooksView';
 import { PluginsView } from '../components/PluginsView';
+import { SubagentsView } from '../components/SubagentsView';
+import { ActivityView } from '../components/ActivityView';
 
-type Tab = 'skills' | 'mcp' | 'commands' | 'plugins' | 'proposals';
+type Tab = 'skills' | 'mcp' | 'commands' | 'subagents' | 'plugins' | 'proposals' | 'activity';
 
 export function ExtensionsPage() {
   const [tab, setTab] = useState<Tab>('skills');
@@ -43,6 +45,11 @@ export function ExtensionsPage() {
           className={`rounded-md px-3 py-1.5 ${tab === 'commands' ? 'bg-muted font-semibold' : 'text-muted-foreground hover:text-foreground'}`}
         >Commands & Hooks</button>
         <button
+          onClick={() => setTab('subagents')}
+          data-testid="ext-page-tab-subagents"
+          className={`rounded-md px-3 py-1.5 ${tab === 'subagents' ? 'bg-muted font-semibold' : 'text-muted-foreground hover:text-foreground'}`}
+        >Subagents</button>
+        <button
           onClick={() => setTab('plugins')}
           data-testid="ext-page-tab-plugins"
           className={`rounded-md px-3 py-1.5 ${tab === 'plugins' ? 'bg-muted font-semibold' : 'text-muted-foreground hover:text-foreground'}`}
@@ -52,12 +59,21 @@ export function ExtensionsPage() {
           data-testid="ext-page-tab-proposals"
           className={`rounded-md px-3 py-1.5 ${tab === 'proposals' ? 'bg-muted font-semibold' : 'text-muted-foreground hover:text-foreground'}`}
         >Proposals{usage && usage.proposals_pending > 0 ? ` (${usage.proposals_pending})` : ''}</button>
+        <button
+          onClick={() => setTab('activity')}
+          data-testid="ext-page-tab-activity"
+          className={`rounded-md px-3 py-1.5 ${tab === 'activity' ? 'bg-muted font-semibold' : 'text-muted-foreground hover:text-foreground'}`}
+        >Activity log</button>
       </div>
       <div className={tab === 'skills' ? '' : 'hidden'}><SkillsView /></div>
       <div className={tab === 'mcp' ? '' : 'hidden'}><McpServersView /></div>
       <div className={tab === 'commands' ? '' : 'hidden'}><CommandsHooksView /></div>
+      <div className={tab === 'subagents' ? '' : 'hidden'}><SubagentsView /></div>
       <div className={tab === 'plugins' ? '' : 'hidden'}><PluginsView /></div>
       {tab === 'proposals' && <ProposalsView />}
+      {/* keep-mounted (CLAUDE.md: never conditionally unmount stateful components) —
+          ActivityView owns kind/range filter state, so hide it, don't unmount it. */}
+      <div className={tab === 'activity' ? '' : 'hidden'}><ActivityView /></div>
     </div>
   );
 }
