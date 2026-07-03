@@ -288,4 +288,27 @@ describe('ModelPicker (W5 shared component)', () => {
     );
     expect(await screen.findByText('modelPicker.error')).toBeInTheDocument();
   });
+
+  // (8)-residual: the list arrives pre-ordered by the server's custom sort_order.
+  // The picker must NOT re-sort within a provider group — it renders in the exact
+  // order the API returned. Server order here is deliberately non-alphabetical.
+  it('preserves the server order within a provider group (custom sort_order)', async () => {
+    const ordered: UserModel[] = [
+      model({ user_model_id: 'z', provider_model_name: 'zeta', alias: 'Zeta' }),
+      model({ user_model_id: 'a', provider_model_name: 'alpha', alias: 'Alpha' }),
+      model({ user_model_id: 'm', provider_model_name: 'mu', alias: 'Mu' }),
+    ];
+    listUserModelsMock.mockResolvedValue({ items: ordered });
+    render(
+      <MemoryRouter>
+        <ModelPicker capability="chat" value={null} onChange={vi.fn()} />
+      </MemoryRouter>,
+    );
+    await screen.findByRole('combobox');
+    openPicker();
+    await screen.findByRole('listbox');
+    const options = screen.getAllByRole('option').map((el) => el.getAttribute('data-model-id'));
+    // Exact server order preserved (no alphabetization).
+    expect(options).toEqual(['z', 'a', 'm']);
+  });
 });

@@ -310,6 +310,14 @@ CREATE INDEX IF NOT EXISTS idx_settings_consumed_tokens_exp ON settings_consumed
 ALTER TABLE usage_outbox ADD COLUMN IF NOT EXISTS request_status   TEXT;
 ALTER TABLE usage_outbox ADD COLUMN IF NOT EXISTS request_payload  TEXT;
 ALTER TABLE usage_outbox ADD COLUMN IF NOT EXISTS response_payload TEXT;
+
+-- (8)-residual — user-defined custom SORT ORDER for models, persisted so the
+-- shared ModelPicker's drag-reorder survives across devices (server SSOT, not
+-- localStorage). NULL = unordered: an explicit order wins, and un-ordered models
+-- sort AFTER the ordered ones (NULLS LAST), falling back to favorites-first. The
+-- PUT /user-models/reorder route assigns 0..N-1 to the provided ids and NULLs the
+-- rest so a partial reorder is well-defined.
+ALTER TABLE user_models ADD COLUMN IF NOT EXISTS sort_order INTEGER;
 `
 
 func Up(ctx context.Context, pool *pgxpool.Pool) error {

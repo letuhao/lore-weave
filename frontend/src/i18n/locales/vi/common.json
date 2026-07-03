@@ -160,5 +160,13 @@
     "paidHint": "Tính phí theo mức sử dụng.",
     "favorite": "Thêm vào yêu thích",
     "unfavorite": "Bỏ khỏi yêu thích"
+  },
+  "modelOrder": {
+    "heading": "Thứ tự mô hình",
+    "subtitle": "Kéo để đặt thứ tự mô hình hiển thị trong mọi bộ chọn. Được lưu vào tài khoản của bạn (đồng bộ giữa các thiết bị). Mô hình yêu thích vẫn hiển thị trước khi một mô hình chưa có vị trí.",
+    "dragAria": "Sắp xếp lại mô hình",
+    "saved": "Đã lưu thứ tự mô hình",
+    "saveFailed": "Không lưu được thứ tự.",
+    "loadFailed": "Không tải được danh sách mô hình."
   }
 }

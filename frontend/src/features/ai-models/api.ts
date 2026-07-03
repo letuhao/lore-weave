@@ -34,6 +34,14 @@ export type UserModel = {
   capability_flags?: Record<string, unknown>;
   pricing?: ModelPricing;
   notes?: string;
+  /**
+   * User-defined custom sort position ((8)-residual). `null`/absent = unordered
+   * (sorts after ordered models, favorites-first fallback). Persisted server-side
+   * so a drag-reorder in the shared ModelPicker survives across devices. The list
+   * endpoint already returns rows in `sort_order ASC NULLS LAST, is_favorite DESC`
+   * order — clients render in-order, they do NOT re-sort by this field.
+   */
+  sort_order?: number | null;
   tags: Array<{ tag_name: string; note?: string }>;
   created_at: string;
 };
@@ -98,6 +106,17 @@ export const aiModelsApi = {
   patchFavorite(token: string, modelId: string, isFavorite: boolean) {
     return apiJson<UserModel>(`/v1/model-registry/user-models/${modelId}/favorite`, {
       method: 'PATCH', token, body: JSON.stringify({ is_favorite: isFavorite }),
+    });
+  },
+
+  /**
+   * Persist a user-defined custom order ((8)-residual). `orderedIds` gets
+   * sort_order 0..N-1; every other model the caller owns is reset to unordered
+   * (NULL). Returns the freshly-ordered list (same shape/order as listUserModels).
+   */
+  reorderUserModels(token: string, orderedIds: string[]) {
+    return apiJson<{ items: UserModel[] }>(`/v1/model-registry/user-models/reorder`, {
+      method: 'PUT', token, body: JSON.stringify({ ordered_ids: orderedIds }),
     });
   },
 };

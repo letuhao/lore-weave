@@ -10,6 +10,7 @@ import { providerApi, type ProviderCredential, type UserModel, type APIStandard 
 import { AddModelModal } from './AddModelModal';
 import { EditModelModal } from './EditModelModal';
 import { DefaultModelsCard } from './DefaultModelsCard';
+import { ModelOrderCard } from './ModelOrderCard';
 import { ExternalServicesCard } from './ExternalServicesCard';
 import { isServiceProvider } from './serviceCatalog';
 
@@ -269,6 +270,11 @@ export function ProvidersTab() {
       {/* Per-user default models (rerank/embedding) — restores the default-model
           UX (BYOK) consumed by raw search. */}
       <DefaultModelsCard />
+
+      {/* (8)-residual: user-defined custom order for models across every picker,
+          persisted server-side (drag to reorder). */}
+      <ModelOrderCard />
+
 
       {/* External (non-model) BYOK services — web search & future siblings. */}
       <ExternalServicesCard providers={serviceProviders} models={models} onChanged={refresh} />

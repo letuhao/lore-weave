@@ -288,7 +288,10 @@ func (s *Server) toolListModels(ctx context.Context, _ *mcp.CallToolRequest, in 
 		args = append(args, in.ProviderKind)
 		n++
 	}
-	q += " ORDER BY created_at DESC"
+	// Honor the user's custom sort order ((8)-residual) so an agent's model list
+	// matches the shared ModelPicker; un-ordered models keep the historical
+	// newest-first fallback.
+	q += " ORDER BY sort_order ASC NULLS LAST, created_at DESC"
 	rows, err := s.pool.Query(ctx, q, args...)
 	if err != nil {
 		return nil, listModelsOut{}, errors.New("failed to list models")
