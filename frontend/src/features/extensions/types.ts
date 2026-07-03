@@ -221,3 +221,81 @@ export interface CreateHookReq {
   action: HookAction;
   priority?: number;
 }
+
+// ── P5: subagent personas (REG-P5-01) — a named persona (system_prompt) with a
+// tool_scope (glob subset of the user's catalog) + an optional model_ref. The
+// runtime (`run_subagent`) resolves + runs these; this is the authoring GUI.
+export interface Subagent {
+  subagent_id: string;
+  tier: SkillTier;
+  name: string;
+  description: string;
+  system_prompt: string;
+  tool_scope: string[]; // allowed tool-name globs, e.g. ["glossary_*","kg_*"]
+  model_ref: string;
+  enabled: boolean;
+  created_at: string;
+  updated_at: string;
+}
+export interface SubagentList {
+  items: Subagent[];
+  total: number;
+  limit: number;
+  offset: number;
+}
+export interface CreateSubagentReq {
+  name: string;
+  description?: string;
+  system_prompt: string;
+  tool_scope?: string[];
+  model_ref?: string;
+}
+
+// ── Activity log (REG-X-01) — the append-only registry audit, owner-scoped.
+export interface AuditEntry {
+  audit_id: string;
+  at: string;
+  actor_kind: 'user' | 'agent' | 'admin' | 'system';
+  kind: string;
+  action: string;
+  target_id: string | null;
+  target_name: string;
+  tier: string | null;
+  detail: Record<string, unknown>;
+}
+export interface AuditList {
+  items: AuditEntry[];
+  total: number;
+  limit: number;
+  offset: number;
+}
+
+// ── Official-registry ingest — admin curation queue (REG-P5-03).
+export type IngestStatus = 'pending' | 'approved' | 'rejected' | 'revoked_upstream';
+export interface IngestEntry {
+  ingest_id: string;
+  source: string;
+  registry_id: string;
+  name: string;
+  description: string;
+  version: string;
+  endpoint_url: string;
+  status: IngestStatus;
+  approved_server_id: string | null;
+  reject_reason: string;
+  first_seen_at: string;
+  updated_at: string;
+}
+export interface IngestQueueList {
+  items: IngestEntry[];
+  total: number;
+  limit: number;
+  offset: number;
+}
+export interface IngestPullCounts {
+  fetched: number;
+  new: number;
+  updated: number;
+  skipped_no_remote: number;
+  truncated: boolean;
+}

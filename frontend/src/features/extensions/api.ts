@@ -19,6 +19,12 @@ import type {
   PluginList,
   CascadePreview,
   PluginBundle,
+  Subagent,
+  SubagentList,
+  CreateSubagentReq,
+  AuditList,
+  IngestQueueList,
+  IngestPullCounts,
 } from './types';
 
 const BASE = '/v1/agent-registry';
@@ -187,5 +193,51 @@ export const extensionsApi = {
   },
   importBundle(token: string, bundle: PluginBundle): Promise<{ plugin_id: string; name: string; imported: Record<string, number> }> {
     return apiJson(`${BASE}/plugins/import`, { method: 'POST', token, body: JSON.stringify(bundle) });
+  },
+
+  // ── P5: subagent personas ─────────────────────────────────────────────────
+  listSubagents(token: string, params: { limit?: number; offset?: number } = {}): Promise<SubagentList> {
+    const qs = new URLSearchParams();
+    qs.set('limit', String(params.limit ?? 50));
+    qs.set('offset', String(params.offset ?? 0));
+    return apiJson<SubagentList>(`${BASE}/subagents?${qs.toString()}`, { token });
+  },
+  createSubagent(token: string, body: CreateSubagentReq): Promise<Subagent> {
+    return apiJson<Subagent>(`${BASE}/subagents`, { method: 'POST', token, body: JSON.stringify(body) });
+  },
+  patchSubagent(token: string, id: string, patch: Partial<Pick<Subagent, 'description' | 'system_prompt' | 'tool_scope' | 'model_ref' | 'enabled'>>): Promise<Subagent> {
+    return apiJson<Subagent>(`${BASE}/subagents/${id}`, { method: 'PATCH', token, body: JSON.stringify(patch) });
+  },
+  deleteSubagent(token: string, id: string): Promise<void> {
+    return apiJson<void>(`${BASE}/subagents/${id}`, { method: 'DELETE', token });
+  },
+
+  // ── Activity log (registry audit) ─────────────────────────────────────────
+  listAudit(token: string, params: { kind?: string; range?: '7d' | '30d'; limit?: number; offset?: number } = {}): Promise<AuditList> {
+    const qs = new URLSearchParams();
+    if (params.kind) qs.set('kind', params.kind);
+    if (params.range) qs.set('range', params.range);
+    qs.set('limit', String(params.limit ?? 50));
+    qs.set('offset', String(params.offset ?? 0));
+    return apiJson<AuditList>(`${BASE}/audit?${qs.toString()}`, { token });
+  },
+
+  // ── Official-registry ingest — admin curation (REG-P5-03). All admin-only; the
+  // API returns 403 for a non-admin regardless of the FE show/hide gate.
+  ingestPull(token: string): Promise<IngestPullCounts> {
+    return apiJson<IngestPullCounts>(`${BASE}/admin/ingest/pull`, { method: 'POST', token });
+  },
+  listIngestQueue(token: string, params: { status?: string; limit?: number; offset?: number } = {}): Promise<IngestQueueList> {
+    const qs = new URLSearchParams();
+    if (params.status) qs.set('status', params.status);
+    qs.set('limit', String(params.limit ?? 50));
+    qs.set('offset', String(params.offset ?? 0));
+    return apiJson<IngestQueueList>(`${BASE}/admin/ingest/queue?${qs.toString()}`, { token });
+  },
+  approveIngest(token: string, id: string): Promise<{ ingest_id: string; status: string; mcp_server_id?: string; linked_existing?: boolean }> {
+    return apiJson(`${BASE}/admin/ingest/queue/${id}/approve`, { method: 'POST', token });
+  },
+  rejectIngest(token: string, id: string, reason = ''): Promise<{ ingest_id: string; status: string }> {
+    return apiJson(`${BASE}/admin/ingest/queue/${id}/reject`, { method: 'POST', token, body: JSON.stringify({ reason }) });
   },
 };
