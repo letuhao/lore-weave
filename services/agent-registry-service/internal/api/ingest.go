@@ -10,6 +10,7 @@ import (
 	"strconv"
 	"strings"
 	"time"
+	"unicode/utf8"
 
 	"github.com/google/uuid"
 )
@@ -129,19 +130,40 @@ func mapUpstreamEntry(raw json.RawMessage) (ingestMapped, string) {
 	if regID == "" {
 		regID = e.Name // reverse-DNS name is stable across pulls
 	}
+	// Cap upstream-controlled strings so a hostile listing can't bloat the queue
+	// (the raw entry is already bounded by the per-page body cap).
 	return ingestMapped{
-		RegistryID: regID, Name: e.Name, Description: e.Description,
-		Version: version, Endpoint: endpoint, Raw: raw,
+		RegistryID:  clampStr(regID, 512),
+		Name:        clampStr(e.Name, 512),
+		Description: clampStr(e.Description, 4096),
+		Version:     clampStr(version, 64),
+		Endpoint:    clampStr(endpoint, 2048),
+		Raw:         raw,
 	}, ""
+}
+
+// clampStr truncates s to at most n bytes (rune-safe: never splits a multi-byte rune).
+func clampStr(s string, n int) string {
+	if len(s) <= n {
+		return s
+	}
+	for n > 0 && !utf8.RuneStart(s[n]) {
+		n--
+	}
+	return s[:n]
 }
 
 // ── the pull ─────────────────────────────────────────────────────────────────
 
 type pullCounts struct {
-	Fetched         int `json:"fetched"`
-	New             int `json:"new"`
-	Updated         int `json:"updated"`
-	SkippedNoRemote int `json:"skipped_no_remote"`
+	Fetched         int  `json:"fetched"`
+	New             int  `json:"new"`
+	Updated         int  `json:"updated"`
+	SkippedNoRemote int  `json:"skipped_no_remote"`
+	// Truncated is true when the pull stopped before exhausting the upstream cursor
+	// (a timeout / mid-pull error / the page cap) — so the admin knows the counts are
+	// PARTIAL, not a complete snapshot (a denylist-sync must not treat it as complete).
+	Truncated bool `json:"truncated"`
 }
 
 // pullOfficialRegistry fetches the upstream server list through the SSRF-safe probe
@@ -171,7 +193,8 @@ func (s *Server) pullOfficialRegistry(ctx context.Context) (pullCounts, error) {
 			if page == 0 {
 				return counts, err
 			}
-			break // fail-soft — a partial pull is fine
+			counts.Truncated = true
+			break // fail-soft — a partial pull, flagged as such
 		}
 		body, _ := io.ReadAll(io.LimitReader(resp.Body, ingestBodyCap))
 		_ = resp.Body.Close()
@@ -179,6 +202,7 @@ func (s *Server) pullOfficialRegistry(ctx context.Context) (pullCounts, error) {
 			if page == 0 {
 				return counts, fmt.Errorf("upstream registry returned %d", resp.StatusCode)
 			}
+			counts.Truncated = true
 			break
 		}
 		var pageResp struct {
@@ -192,6 +216,7 @@ func (s *Server) pullOfficialRegistry(ctx context.Context) (pullCounts, error) {
 			if page == 0 {
 				return counts, fmt.Errorf("upstream registry response not JSON")
 			}
+			counts.Truncated = true
 			break
 		}
 		entries := pageResp.Servers
@@ -222,6 +247,10 @@ func (s *Server) pullOfficialRegistry(ctx context.Context) (pullCounts, error) {
 		if cursor == "" {
 			break
 		}
+	}
+	// Reached the page cap with more pages still pending → the pull is partial.
+	if cursor != "" {
+		counts.Truncated = true
 	}
 	return counts, nil
 }
@@ -280,7 +309,8 @@ func (s *Server) ingestPull(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	s.audit(r.Context(), uid, "admin", "registry_ingest", "pull", nil, "official", "system", map[string]any{
-		"fetched": counts.Fetched, "new": counts.New, "updated": counts.Updated, "skipped_no_remote": counts.SkippedNoRemote,
+		"fetched": counts.Fetched, "new": counts.New, "updated": counts.Updated,
+		"skipped_no_remote": counts.SkippedNoRemote, "truncated": counts.Truncated,
 	})
 	writeJSON(w, http.StatusOK, counts)
 }
@@ -368,13 +398,16 @@ func (s *Server) approveIngest(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	// Create the System-tier registration (is_external, pending until the scan clears).
+	// Namespaced under s_<hash>_ so the ingested server can't shadow a platform tool
+	// name and is dispatchable via the overlay (matches createMcpServer's external path).
 	egress := buildEgressAllowlist(class.Normalized, nil)
+	prefix := systemToolPrefix(class.Normalized)
 	var newID uuid.UUID
 	err = s.db.QueryRow(r.Context(),
 		`INSERT INTO mcp_server_registrations
 		   (tier, display_name, endpoint_url, tool_name_prefix, status, auth_kind, is_external, egress_allowlist)
-		 VALUES ('system',$1,$2,'','pending','none',true,$3) RETURNING mcp_server_id`,
-		name, class.Normalized, egress).Scan(&newID)
+		 VALUES ('system',$1,$2,$3,'pending','none',true,$4) RETURNING mcp_server_id`,
+		name, class.Normalized, prefix, egress).Scan(&newID)
 	if err != nil {
 		// A concurrent approve of the same endpoint raced us → link to the winner.
 		if isUniqueViolation(err) {

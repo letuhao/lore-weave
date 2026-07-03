@@ -1,12 +1,19 @@
 package api
 
 import (
+	"context"
 	"encoding/json"
 	"net/http"
+	"net/http/httptest"
+	"regexp"
 	"testing"
 
+	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/pashagolub/pgxmock/v4"
+
+	"github.com/loreweave/agent-registry-service/internal/config"
 )
 
 const adminSub = "019d5e3c-7cc5-7e6a-8b27-1344e148bf7c"
@@ -139,6 +146,17 @@ func approvePath() string {
 	return "/v1/agent-registry/admin/ingest/queue/" + testIngestID + "/approve"
 }
 
+// anyArgs returns n pgxmock.AnyArg() matchers — pgxmock requires the arg COUNT to
+// match the query's bound params (a query with $1..$n rejects a WithArgs of the wrong
+// arity, and omitting WithArgs asserts ZERO args).
+func anyArgs(n int) []any {
+	a := make([]any, n)
+	for i := range a {
+		a[i] = pgxmock.AnyArg()
+	}
+	return a
+}
+
 func expectQueueRow(mock pgxmock.PgxPoolIface, name, endpoint, status string) {
 	mock.ExpectQuery("SELECT name, endpoint_url, status FROM registry_ingest_queue").
 		WithArgs(pgxmock.AnyArg()).
@@ -195,5 +213,108 @@ func TestApproveIngest_NotFound(t *testing.T) {
 	rec := doJSON(s, http.MethodPost, approvePath(), mintJWT(t, adminSub, "admin"), `{}`)
 	if rec.Code != http.StatusNotFound {
 		t.Fatalf("unknown id → want 404, got %d", rec.Code)
+	}
+}
+
+// The INSERT-race recovery branch (§7b#3): if a concurrent approve wins the endpoint
+// between our dedup-SELECT and INSERT, the unique index makes our INSERT 23505 → we
+// re-SELECT the winner and LINK to it (never a 500, never a duplicate). 8.8.8.8 is a
+// public literal IP so classifyRegistrationURL needs no DNS.
+func TestApproveIngest_UniqueViolationRaceLinks(t *testing.T) {
+	s, mock := newMockServer(t)
+	defer mock.Close()
+	existing := uuid.MustParse("019d6000-0000-7000-8000-0000000000ee")
+	expectQueueRow(mock, "racer", "http://8.8.8.8/mcp", "pending")
+	// dedup pre-check finds nothing (the winner hasn't committed yet from our view)
+	mock.ExpectQuery("SELECT mcp_server_id FROM mcp_server_registrations WHERE tier='system'").
+		WithArgs(anyArgs(1)...).WillReturnError(pgx.ErrNoRows)
+	// our INSERT loses the race → 23505
+	mock.ExpectQuery("INSERT INTO mcp_server_registrations").
+		WithArgs(anyArgs(4)...).WillReturnError(&pgconn.PgError{Code: "23505"})
+	// recovery re-SELECT finds the winner
+	mock.ExpectQuery("SELECT mcp_server_id FROM mcp_server_registrations WHERE tier='system'").
+		WithArgs(anyArgs(1)...).WillReturnRows(pgxmock.NewRows([]string{"mcp_server_id"}).AddRow(existing))
+	// finishApprove: queue UPDATE + audit INSERT
+	mock.ExpectExec("UPDATE registry_ingest_queue SET status='approved'").
+		WithArgs(anyArgs(3)...).WillReturnResult(pgxmock.NewResult("UPDATE", 1))
+	mock.ExpectExec("INSERT INTO registry_audit").
+		WithArgs(anyArgs(8)...).WillReturnResult(pgxmock.NewResult("INSERT", 1))
+
+	rec := doJSON(s, http.MethodPost, approvePath(), mintJWT(t, adminSub, "admin"), `{}`)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("race-link → want 200, got %d (%s)", rec.Code, rec.Body.String())
+	}
+	var body map[string]any
+	_ = json.Unmarshal(rec.Body.Bytes(), &body)
+	if body["linked_existing"] != true || body["mcp_server_id"] != existing.String() {
+		t.Errorf("want linked_existing to the winner %s, got %+v", existing, body)
+	}
+}
+
+func TestSystemToolPrefix(t *testing.T) {
+	p := systemToolPrefix("https://mcp.acme.dev/v1")
+	if !regexp.MustCompile(`^s_[0-9a-f]{8}_$`).MatchString(p) {
+		t.Errorf("systemToolPrefix = %q, want s_<hash8>_", p)
+	}
+	// stable + endpoint-keyed (dedup relies on this)
+	if p != systemToolPrefix("https://mcp.acme.dev/v1") {
+		t.Errorf("systemToolPrefix must be deterministic")
+	}
+	if p == systemToolPrefix("https://other.dev/v1") {
+		t.Errorf("different endpoints must get different prefixes")
+	}
+}
+
+func TestClampStr(t *testing.T) {
+	if clampStr("short", 512) != "short" {
+		t.Errorf("under-cap changed")
+	}
+	long := make([]byte, 600)
+	for i := range long {
+		long[i] = 'a'
+	}
+	if got := clampStr(string(long), 512); len(got) != 512 {
+		t.Errorf("over-cap len = %d, want 512", len(got))
+	}
+	// rune-safe: a 2-byte rune ('é') straddling the cut must not be split.
+	s := "aaa" + string(rune('é')) // é is 2 bytes; cut at 4 lands mid-rune
+	got := clampStr(s, 4)
+	if !json.Valid([]byte(`"`+got+`"`)) { // valid UTF-8 → valid JSON string content
+		t.Errorf("clampStr split a multi-byte rune: %q", got)
+	}
+}
+
+// Real HTTP pagination + the truncated flag: page 0 returns one server + a next_cursor,
+// the cursor page 500s → the pull is partial and MUST flag Truncated (a denylist-sync
+// must not treat a partial pull as a complete snapshot).
+func TestPullOfficialRegistry_TruncatedOnMidPullError(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Query().Get("cursor") == "" {
+			_, _ = w.Write([]byte(`{"servers":[{"name":"io.x/a","remotes":[{"type":"streamable-http","url":"https://a.dev/mcp"}]}],"metadata":{"next_cursor":"p2"}}`))
+			return
+		}
+		w.WriteHeader(http.StatusInternalServerError) // page 2 fails mid-pull
+	}))
+	defer srv.Close()
+
+	mock, _ := pgxmock.NewPool()
+	defer mock.Close()
+	s := NewServer(mock, &config.Config{
+		JWTSecret: testCfg().JWTSecret, VaultKey: testCfg().VaultKey,
+		OfficialRegistryURL:     srv.URL,
+		AllowInternalMcpTargets: true, // httptest is 127.0.0.1 — allow the loopback dial
+	})
+	mock.ExpectQuery("INSERT INTO registry_ingest_queue").
+		WithArgs(anyArgs(6)...).WillReturnRows(pgxmock.NewRows([]string{"inserted"}).AddRow(true))
+
+	counts, err := s.pullOfficialRegistry(context.Background())
+	if err != nil {
+		t.Fatalf("pull err: %v", err)
+	}
+	if counts.Fetched != 1 || counts.New != 1 {
+		t.Errorf("want fetched=1 new=1, got %+v", counts)
+	}
+	if !counts.Truncated {
+		t.Errorf("mid-pull 500 must flag Truncated; got %+v", counts)
 	}
 }

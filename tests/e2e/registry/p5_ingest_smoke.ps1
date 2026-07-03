@@ -69,6 +69,8 @@ Check ($r.StatusCode -eq 200 -and $ja.mcp_server_id) "approve A → 200 + System
 $sid = $ja.mcp_server_id
 $sysCount = (Sql "SELECT count(*) FROM mcp_server_registrations WHERE mcp_server_id='$sid' AND tier='system' AND is_external AND endpoint_url='$EP';").Trim()
 Check ($sysCount -eq "1") "a System-tier is_external registration was created for the endpoint"
+$prefix = (Sql "SELECT tool_name_prefix FROM mcp_server_registrations WHERE mcp_server_id='$sid';").Trim()
+Check ($prefix -match '^s_[0-9a-f]{8}_$') "ingested external System server is namespaced (s_<hash>_ — can't shadow platform tools): '$prefix'"
 $aStatus = (Sql "SELECT status FROM registry_ingest_queue WHERE ingest_id='$aId';").Trim()
 Check ($aStatus -eq "approved") "queue row A → approved + linked"
 
@@ -89,7 +91,9 @@ Check ($r.StatusCode -eq 200) "reject C → 200"
 $cStatus = (Sql "SELECT status FROM registry_ingest_queue WHERE ingest_id='$cId';").Trim()
 Check ($cStatus -eq "rejected") "queue row C → rejected"
 
-# --- idempotent upsert (DB level): same (source,registry_id) twice = ONE row ---
+# --- idempotent upsert (DB-constraint level): same (source,registry_id) twice = ONE row.
+# The Go upsertIngest ON-CONFLICT path itself is covered by Part 2 (updated>0) + the
+# TestPullOfficialRegistry unit; this asserts the underlying unique constraint. ---
 Sql "INSERT INTO registry_ingest_queue (source,registry_id,name,endpoint_url) VALUES ('official','e2e.ingest/idem','x','$EP')
  ON CONFLICT (source,registry_id) DO UPDATE SET name=EXCLUDED.name, updated_at=now();" | Out-Null
 Sql "INSERT INTO registry_ingest_queue (source,registry_id,name,endpoint_url) VALUES ('official','e2e.ingest/idem','x2','$EP')

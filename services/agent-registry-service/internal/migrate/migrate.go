@@ -354,7 +354,15 @@ CREATE INDEX IF NOT EXISTS idx_ingest_status ON registry_ingest_queue(status, fi
 -- Endpoint dedup for System-tier servers (REG-P5-03 §7b#3): an ingest approve must
 -- not create a second System row for an endpoint already federated. Partial UNIQUE so
 -- user/book rows (which dedup per-owner via uq_mcp_reg_user/book) are unaffected.
-CREATE UNIQUE INDEX IF NOT EXISTS uq_mcp_reg_system ON mcp_server_registrations(endpoint_url) WHERE tier = 'system';
+-- Boot-safe: if a pre-existing environment already has duplicate System endpoints
+-- (a data bug), creating the UNIQUE index would ERROR and brick startup — so we catch
+-- unique_violation and skip with a NOTICE. Approve's check-before-insert still prevents
+-- NEW duplicates; the hard index applies once the pre-existing dup is resolved.
+DO $$ BEGIN
+  CREATE UNIQUE INDEX IF NOT EXISTS uq_mcp_reg_system ON mcp_server_registrations(endpoint_url) WHERE tier = 'system';
+EXCEPTION WHEN unique_violation THEN
+  RAISE NOTICE 'uq_mcp_reg_system skipped: pre-existing duplicate System endpoints — resolve them, then restart to enforce the index';
+END $$;
 
 -- REG-P1-03: seed the 5 hardcoded chat-service skills as System-tier rows so the
 -- FE can list + toggle them and enablement resolves. Their BODIES remain authored

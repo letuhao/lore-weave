@@ -54,7 +54,11 @@ interface EffectiveServer {
   egress_allowlist?: string[];
 }
 
-const OVERLAY_NAME_RE = /^[ub]_[0-9a-f]{8}_/;
+// Overlay-owned tool names carry a u_/b_ (user/book) OR s_ (EXTERNAL System —
+// e.g. an ingested official-registry server) prefix. The s_ prefix is what makes an
+// external System server's tools both DISPATCHABLE via the overlay AND unable to
+// shadow an unprefixed platform tool name. Internal System servers stay unprefixed.
+const OVERLAY_NAME_RE = /^[ubs]_[0-9a-f]{8}_/;
 const EMPTY = { tools: [] as any[], route: new Map<string, RouteEntry>() };
 
 export class PerUserOverlay {
@@ -81,7 +85,8 @@ export class PerUserOverlay {
     return external ? AbortSignal.any([external, t]) : t;
   }
 
-  /** A tool name is overlay-owned iff it carries a u_/b_ prefix (never a System tool). */
+  /** A tool name is overlay-owned iff it carries a u_/b_/s_ prefix (s_ = external
+   * System server; unprefixed internal/platform tools are never overlay-owned). */
   isOverlayName(name: string): boolean {
     return this.cfg.enabled && OVERLAY_NAME_RE.test(name);
   }

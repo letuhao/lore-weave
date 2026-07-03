@@ -65,6 +65,17 @@ func hash8(s string) string {
 	return hex.EncodeToString(sum[:])[:8]
 }
 
+// systemToolPrefix namespaces an EXTERNAL System server's tools under `s_<hash8>_`
+// (keyed by endpoint, so it's stable). An external System server (e.g. one ingested
+// from the official registry) is less trusted than the platform's own tools, so its
+// tools MUST be prefixed: the ai-gateway overlay treats `s_` as overlay-owned
+// (dispatchable), and the prefix prevents it from shadowing an unprefixed platform
+// tool name (e.g. a malicious listing advertising `glossary_book_patch`). Internal
+// System servers (is_external=false) stay unprefixed — they're platform infrastructure.
+func systemToolPrefix(endpoint string) string {
+	return "s_" + hash8(endpoint) + "_"
+}
+
 type createMcpReq struct {
 	DisplayName     string          `json:"display_name"`
 	EndpointURL     string          `json:"endpoint_url"`
@@ -162,7 +173,14 @@ func (s *Server) createMcpServer(w http.ResponseWriter, r *http.Request) {
 			writeError(w, http.StatusForbidden, "FORBIDDEN", "only admin may register System-tier servers")
 			return
 		}
-		prefix = "" // System tools keep their own prefix (no namespacing)
+		// An EXTERNAL System server is namespaced (s_<hash>_) so it can't shadow a
+		// platform tool name and is dispatchable via the overlay; an INTERNAL System
+		// server (platform infra) keeps its own unprefixed names.
+		if class.IsExternal {
+			prefix = systemToolPrefix(class.Normalized)
+		} else {
+			prefix = ""
+		}
 	case "book":
 		if req.BookID == nil {
 			writeError(w, http.StatusBadRequest, "VALIDATION_ERROR", "book_id required for book tier")
