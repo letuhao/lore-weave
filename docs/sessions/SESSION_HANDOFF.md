@@ -81,15 +81,21 @@
 > standard = PLATFORM concept + presentation/config variation → prop; exception = domain SEMANTICS,
 > declared as an EXPLICIT param, never a silent re-implementation. Of the 5 I'd deferred, 4 were
 > standard-covered (migrated) and only wiki was a true exception.
-> **ONE genuine remainder — `D-AITASK-GLOSSARY-TRANSLATE-EFFORT`:** StepConfig (glossary-translate
-> wizard) still boolean `thinking`. Genuine MULTI-LAYER BE change (gate #2): translation-service
-> `CreateGlossaryTranslatePayload` needs `reasoning_effort` (mirror the extraction router which has
-> it) + thread through the broker msg + the worker's `thinking_llm_fields(enabled:bool)` is BOOLEAN
-> BY DESIGN (off→none/on→medium for JSON pipelines) → extend to graded via `reasoning_fields` +
-> possible migration. Buildable, not blocked; the MOST marginal surface (glossary translate = short
-> structured JSON, off/on is the meaningful axis). Also open: `D-ENRICH-COMPLETE-BUDGET` (lore-
-> enrichment streaming seam — no max_tokens/reasoning-off; verify the /internal/llm/stream contract +
-> pick a safe bound + live-smoke). Both are verified-against-code gate-#2 items with a build plan.
+> **BOTH remainders CLEARED — the standard is 100% closed.** **`D-ENRICH-COMPLETE-BUDGET`
+> `372d98e31`** — lore-enrichment `complete.py` stream body now carries max_tokens=4000 (was
+> unbounded) + `no_thinking_fields()` (the seam already DROPS reasoning frames, so disabling wastes
+> nothing + closes the footgun); the Go stream endpoint already accepts both. **`D-AITASK-GLOSSARY-
+> TRANSLATE-EFFORT` `4714171b4`** — glossary-translate wizard boolean→EffortSelect (5-level), a
+> byte-for-byte MIRROR of the extraction path (M7): router `+reasoning_effort` + grant-clamp
+> (off/auto→'none'), worker swaps the local boolean `thinking_llm_fields` for the SDK
+> `reasoning_fields` (drops the dup), FE across 5 wizard files. No migration (reasoning lives in the
+> metadata JSONB). VERIFY: enrichment 9 + glossary router 7 + worker 12 (graded path pinned) + tsc 0.
+> **/review-impl `28b8681ef`** earlier pinned the executive/summarize footgun disables + narrowed a
+> dead type. **AI-Task Standard status: DONE** — every one-shot AI surface consumes the shared
+> primitives; reasoning-effort is ONE unified 5-level vocab platform-wide (chat + compose + extraction
+> + glossary-translate); the 4 footgun engines all disable hidden reasoning; the only remaining
+> LOW/opportunistic items (consolidate ~4 `_extract_json_object` copies, gated-off plan_forge) carry
+> no real dup and don't block closure.
 
 > **▶ KNOWLEDGE GUI FIXES + MODEL-ROLES SETTINGS — 2026-07-03 (3 items, all shipped).**
 > **#1 `cancel_check` extraction blocker (`591e54ad7`)** — bug #34 added `cancel_check` to the
@@ -301,9 +307,15 @@
 > commands / declarative hooks / subagent personas (**live scoped execution**), bundles + shares them; an admin **curates
 > the System catalog from the official registry**; and the agent federates + expands + delegates to them — all
 > tenancy-scoped, adversarially reviewed, live-proven.
-> **▶ THE AGENT EXTENSIBILITY REGISTRY TRACK IS COMPLETE (P0→P5, every spec'd slice built).** Remaining rows are the
-> scheduled-worker, the admin FE (needs an admin surface), slash-autocomplete, and subagent-write-delegation — all
-> tracked, none blocking.
+> **▶ CORRECTION (2026-07-03) — the earlier "TRACK COMPLETE P0→P5" claim was WRONG: it was BACKEND-complete but 2 FE
+> screens shipped as backend-only.** A design↔shipped reconcile vs `design-drafts/screens/plugin-register/draft-ui.html`
+> (nav: Plugins/MCP/Skills/Commands/Hooks/**Subagents**/**Activity log**) found the FE missing Subagents + Activity —
+> and `01_GUI_CHECKLIST.md` (273 boxes, **0 ever ticked**) proves the checklist was authored but never used as a gate
+> (see memory [[checklist-is-self-report-enforce-by-tests]]: a checklist is self-report; DONE = a test asserts the EFFECT).
+> **BUILDING NOW** `D-REG-P5-SUBAGENTS-FE` (persona CRUD GUI — backend CRUD+resolver+runtime all shipped, FE was zero) +
+> `D-REG-P5-ACTIVITY-FE` (Activity-log over `/audit` — U4 in EVALUATION, never built). Plan
+> `2026-07-03-registry-missing-guis.md`. Remaining backend rows unchanged (scheduled-worker, admin-FE, slash-autocomplete,
+> subagent-write-delegation) — all tracked, none blocking.
 > **Decisions:** `DECISION_LOG.md` (DL-1..9 + 6 review rounds). **Defers: P4 autocomplete + P5 write-delegation + P5 ingest-scheduled-worker + P5 ingest-admin-FE; P3/subagent-runtime/registry-ingest CLEAR.**
 >
 > **▶ CHAT QUALITY WAVE — W0 + W1 SHIPPED + LIVE-SMOKED 2026-07-03 (parallel sub-agent build, disjoint files,
