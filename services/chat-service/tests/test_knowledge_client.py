@@ -725,6 +725,43 @@ class TestGetToolDefinitions:
         await client.aclose()
 
     @pytest.mark.asyncio
+    async def test_user_id_sends_x_user_id_header(self):
+        # REG-P2-03 — the per-user overlay only federates when the gateway sees
+        # X-User-Id. Passing user_id MUST put it on the wire; omitting it must NOT
+        # (base inspection paths get the overlay-free catalog).
+        client = _make_client()
+        tpatch, spatch, factory = _patch_list_tools(tools=[_mcp_tool("u_aaa_x")])
+        with tpatch, spatch:
+            await client.get_tool_definitions(user_id="user-123")
+        assert factory.call_args.kwargs["headers"]["X-User-Id"] == "user-123"
+        tp2, sp2, f2 = _patch_list_tools(tools=[_mcp_tool("base")])
+        with tp2, sp2:
+            await client.get_tool_definitions()  # no user
+        assert "X-User-Id" not in f2.call_args.kwargs["headers"]
+        await client.aclose()
+
+    @pytest.mark.asyncio
+    async def test_per_user_cache_is_isolated(self):
+        # Two users must NOT share a catalog cache entry (else A's overlay leaks to
+        # B). And a repeat call for the same user is served from that user's cache.
+        client = _make_client()
+        t1, s1, _ = _patch_list_tools(tools=[_mcp_tool("u_aaa_toolA")])
+        with t1, s1:
+            a = await client.get_tool_definitions(user_id="u1")
+        t2, s2, _ = _patch_list_tools(tools=[_mcp_tool("u_bbb_toolB")])
+        with t2, s2:
+            b = await client.get_tool_definitions(user_id="u2")
+        assert a[0]["function"]["name"] == "u_aaa_toolA"
+        assert b[0]["function"]["name"] == "u_bbb_toolB"  # u2 NOT served u1's cache
+        # u1 again, within TTL → served from u1's cache, NOT re-fetched (would be toolC)
+        t3, s3, f3 = _patch_list_tools(tools=[_mcp_tool("u_ccc_toolC")])
+        with t3, s3:
+            a2 = await client.get_tool_definitions(user_id="u1")
+        assert a2[0]["function"]["name"] == "u_aaa_toolA"
+        assert f3.call_count == 0  # cache hit — no transport opened
+        await client.aclose()
+
+    @pytest.mark.asyncio
     async def test_targets_gateway_mcp_url_with_internal_token(self):
         """The MCP transport opens the ai-gateway /mcp URL with the service token."""
         tpatch, spatch, factory = _patch_list_tools(tools=[])

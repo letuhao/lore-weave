@@ -22,6 +22,7 @@ Lessons baked in from K4 reviews:
 """
 
 import logging
+import time
 from typing import Literal
 
 import httpx
@@ -29,6 +30,12 @@ from pydantic import BaseModel, ConfigDict, Field
 
 from app.config import settings
 from app.middleware.trace_id import current_trace_id
+
+# REG-P2-03 — per-user tool-catalog cache TTL. Short by design: the federation
+# overlay changes the instant a user registers/removes an external MCP server, so a
+# long cache would hide a just-registered server (or serve a just-removed one). 60s
+# bounds the staleness window while keeping most turns cache-hot.
+_TOOL_CATALOG_TTL_S = 60.0
 
 # ARCH-2 C2 — MCP client transport for the USE_MCP_TOOLS dual-run path.
 # Imported at module level (not lazily) so tests can patch these symbols at
@@ -179,11 +186,16 @@ class KnowledgeClient:
         if transport is not None:
             client_kwargs["transport"] = transport
         self._http = httpx.AsyncClient(**client_kwargs)
-        # K21-B — process cache for the federated tool catalog. Sourced from the
-        # ai-gateway `/mcp` MCP `tools/list` (see get_tool_definitions); the legacy
+        # K21-B — cache for the federated tool catalog. Sourced from the ai-gateway
+        # `/mcp` MCP `tools/list` (see get_tool_definitions); the legacy
         # `/internal/tools/definitions` HTTP path was retired in KM0.
-        # None = not fetched yet; a list = the cached OpenAI schemas.
-        self._tool_definitions: list[dict] | None = None
+        # REG-P2-03 — the catalog is now PER-USER: the gateway appends the caller's
+        # external-MCP federation overlay (u_/b_/s_ tools) when it sees `X-User-Id`,
+        # so a single process-wide cache would leak one user's overlay to everyone.
+        # Keyed by user_id ("" = the base/no-user catalog), with a SHORT TTL because
+        # the overlay changes the moment a user registers/removes a server (aligns
+        # with the gateway's own overlay Q-CACHE TTL). Value = (expiry_monotonic, schemas).
+        self._tool_defs_cache: dict[str, tuple[float, list[dict]]] = {}
         # T4c — separate process cache for the ADMIN catalog (`/mcp/admin`). The
         # catalog is identical for every admin (only the per-request RS256 token
         # varies), so the CATALOG is cached but the token is NEVER part of the
@@ -425,18 +437,24 @@ class KnowledgeClient:
         )
         return None
 
-    async def get_tool_definitions(self) -> list[dict]:
+    async def get_tool_definitions(self, user_id: str | None = None) -> list[dict]:
         """Fetch the federated tool catalog from the ai-gateway via MCP
         ``list-tools`` and convert each entry to an OpenAI function schema
-        (the shape the chat tool-loop advertises to the LLM). Cached
-        process-wide after the first success.
+        (the shape the chat tool-loop advertises to the LLM).
+
+        REG-P2-03 — pass ``user_id`` so the gateway appends the caller's external-MCP
+        federation overlay (``u_``/``b_``/``s_`` tools). The result is cached PER-USER
+        with a short TTL (``_TOOL_CATALOG_TTL_S``); omit ``user_id`` (base inspection
+        paths) to get the overlay-free platform catalog. Without the user id the
+        overlay never reaches the turn — the bug this fixes.
 
         Returns ``[]`` on any failure; the caller then runs the chat turn
-        tool-free. A failure is deliberately NOT cached, so a later turn
-        retries.
+        tool-free. A failure is deliberately NOT cached, so a later turn retries.
         """
-        if self._tool_definitions is not None:
-            return self._tool_definitions
+        cache_key = user_id or ""
+        cached = self._tool_defs_cache.get(cache_key)
+        if cached is not None and time.monotonic() < cached[0]:
+            return cached[1]
         if streamablehttp_client is None or ClientSession is None:
             logger.warning(
                 "get_tool_definitions called but the 'mcp' package is not installed"
@@ -445,6 +463,10 @@ class KnowledgeClient:
 
         mcp_url = f"{self._tools_base_url}/mcp"
         headers = {"X-Internal-Token": self._http.headers["X-Internal-Token"]}
+        # The per-user overlay is keyed on X-User-Id at the gateway; without it the
+        # gateway returns only the base (platform) catalog.
+        if user_id:
+            headers["X-User-Id"] = user_id
         tid = current_trace_id()
         if tid:
             headers["X-Trace-Id"] = tid
@@ -481,7 +503,7 @@ class KnowledgeClient:
         # everywhere — never a false outage claim).
         cat_meta = getattr(listed, "meta", None)
         self._catalog_meta = dict(cat_meta) if isinstance(cat_meta, dict) else {}
-        self._tool_definitions = tools
+        self._tool_defs_cache[cache_key] = (time.monotonic() + _TOOL_CATALOG_TTL_S, tools)
         return tools
 
     async def get_admin_tool_definitions(self, admin_token: str | None) -> list[dict]:

@@ -2142,7 +2142,9 @@ async def stream_response(
                 from app.services.frontend_tools import GLOSSARY_CONFIRM_ACTION_TOOL
                 tool_defs = tool_defs + [GLOSSARY_CONFIRM_ACTION_TOOL]
         else:
-            catalog = await knowledge_client.get_tool_definitions()
+            # REG-P2-03 — pass user_id so the gateway appends this user's external-MCP
+            # federation overlay (u_/b_/s_ tools) into the turn catalog.
+            catalog = await knowledge_client.get_tool_definitions(user_id=user_id)
             # Discovery needs a catalog to search. When the gateway is unreachable
             # (catalog == []), there is nothing to find_tools over → fall back to the
             # plain path rather than spin up a discovery loop with only frontend tools.
@@ -3064,7 +3066,8 @@ async def resume_stream_response(
     else:
         catalog: list[dict] = []
         try:
-            catalog = await knowledge_client.get_tool_definitions()
+            # REG-P2-03 — per-user overlay in the resumed turn's catalog too.
+            catalog = await knowledge_client.get_tool_definitions(user_id=user_id)
         except Exception:
             catalog = []
         # The editor tool stays advertised on resume (the agent may propose again).
