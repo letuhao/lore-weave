@@ -132,11 +132,22 @@ func (s *Server) listSubagents(w http.ResponseWriter, r *http.Request) {
 	if offset < 0 {
 		offset = 0
 	}
-	where := "(tier = 'system' OR (tier = 'user' AND owner_user_id = $1))"
-	args := []any{uid, limit, offset}
-	total := s.queryInt(r.Context(), `SELECT COUNT(*) FROM subagent_defs WHERE `+where, uid)
+	bookID, okScope := s.resolveListBookScope(w, r, uid)
+	if !okScope {
+		return
+	}
+	where := "(tier = 'system' OR (tier = 'user' AND owner_user_id = $1)"
+	args := []any{uid}
+	if bookID != uuid.Nil {
+		args = append(args, bookID)
+		where += " OR (tier = 'book' AND book_id = $" + strconv.Itoa(len(args)) + ")"
+	}
+	where += ")"
+	total := s.queryInt(r.Context(), `SELECT COUNT(*) FROM subagent_defs WHERE `+where, args...)
+	args = append(args, limit, offset)
 	rows, err := s.db.Query(r.Context(),
-		`SELECT `+subagentCols+` FROM subagent_defs WHERE `+where+` ORDER BY name LIMIT $2 OFFSET $3`, args...)
+		`SELECT `+subagentCols+` FROM subagent_defs WHERE `+where+
+			` ORDER BY name LIMIT $`+strconv.Itoa(len(args)-1)+` OFFSET $`+strconv.Itoa(len(args)), args...)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "DB_ERROR", "could not list subagents")
 		return

@@ -120,6 +120,34 @@ func (s *Server) authorizeRowWrite(r *http.Request, tier string, owner, book *uu
 	return false
 }
 
+// resolveListBookScope validates an optional `book_id` query param on a LIST request.
+// Returns (bookID, true) — bookID=uuid.Nil when no scope was requested; a validated
+// book UUID when the caller holds ≥edit on it (so its book-tier rows may be listed).
+// A malformed id → 400; an unknown/ungranted book → 404 (anti-oracle) with ok=false
+// (the handler must return). This lets the Extensions UI surface a book's book-tier
+// skills/commands/hooks/subagents/servers for management, grant-gated.
+func (s *Server) resolveListBookScope(w http.ResponseWriter, r *http.Request, uid uuid.UUID) (uuid.UUID, bool) {
+	v := r.URL.Query().Get("book_id")
+	if v == "" {
+		return uuid.Nil, true
+	}
+	bid, err := uuid.Parse(v)
+	if err != nil {
+		writeError(w, http.StatusBadRequest, "VALIDATION_ERROR", "invalid book_id")
+		return uuid.Nil, false
+	}
+	if s.grants == nil {
+		writeError(w, http.StatusNotFound, "NOT_FOUND", "book not found")
+		return uuid.Nil, false
+	}
+	acc, err := s.grants.ResolveAccess(r.Context(), bid, uid)
+	if err != nil || !acc.Level.AtLeast(grantclient.GrantEdit) {
+		writeError(w, http.StatusNotFound, "NOT_FOUND", "book not found") // anti-oracle
+		return uuid.Nil, false
+	}
+	return bid, true
+}
+
 func deriveKey(s string) []byte {
 	key := []byte(s)
 	if len(key) >= 32 {

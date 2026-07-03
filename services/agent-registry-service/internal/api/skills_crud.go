@@ -21,8 +21,18 @@ func (s *Server) listSkills(w http.ResponseWriter, r *http.Request) {
 	if offset < 0 {
 		offset = 0
 	}
-	where := []string{"(tier = 'system' OR (tier = 'user' AND owner_user_id = $1))"}
+	bookID, okScope := s.resolveListBookScope(w, r, uid)
+	if !okScope {
+		return
+	}
 	args := []any{uid}
+	tierClause := "(tier = 'system' OR (tier = 'user' AND owner_user_id = $1)"
+	if bookID != uuid.Nil {
+		args = append(args, bookID)
+		tierClause += " OR (tier = 'book' AND book_id = $" + strconv.Itoa(len(args)) + ")"
+	}
+	tierClause += ")"
+	where := []string{tierClause}
 	if v := q.Get("tier"); v == "system" || v == "user" || v == "book" {
 		args = append(args, v)
 		where = append(where, "tier = $"+strconv.Itoa(len(args)))
