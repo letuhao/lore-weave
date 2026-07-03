@@ -10,29 +10,13 @@ import type { ContextItem } from '../context/types';
 import { PromptTemplatePicker, type PromptTemplate } from './PromptTemplates';
 import { MentionPopover } from './MentionPopover';
 
-/** W4 — the effort dropdown's values. Fast → thinking:false, Standard →
- *  thinking:true, Deep → thinking:true + reasoning_effort:"deep" on the wire. */
-export type EffortLevel = 'fast' | 'standard' | 'deep';
-
-/** Derive the dropdown's initial level from the session's granular
- *  reasoning_effort (the SSOT the settings panel writes), falling back to the
- *  legacy `thinking` boolean. high→deep, off→fast, low/medium/auto→standard. */
-export function effortLevelFromGenerationParams(
-  gp?: { reasoning_effort?: string | null; thinking?: boolean | null } | null,
-): EffortLevel {
-  const re = gp?.reasoning_effort;
-  if (re === 'high') return 'deep';
-  if (re === 'off') return 'fast';
-  if (re === 'low' || re === 'medium' || re === 'auto') return 'standard';
-  return gp?.thinking ? 'standard' : 'fast';
-}
-
-/** Session-persist mapping (the SAME generation_params key the settings panel
- *  writes, so the two surfaces can never disagree): fast→off, standard→medium,
- *  deep→high. */
-export function reasoningEffortForLevel(level: EffortLevel): 'off' | 'medium' | 'high' {
-  return level === 'fast' ? 'off' : level === 'deep' ? 'high' : 'medium';
-}
+// W4 — the effort types/helpers moved to the shared AI-Task Standard module
+// (@/components/ai-task/effort) so the chat composer and the one-shot generate
+// dialogs share ONE mapping. Re-exported here so existing importers
+// (useChatMessages, ChatView, runChatStream, the effort test) are unchanged.
+import type { EffortLevel } from '@/components/ai-task/effort';
+export type { EffortLevel } from '@/components/ai-task/effort';
+export { effortLevelFromGenerationParams, reasoningEffortForLevel } from '@/components/ai-task/effort';
 
 interface ChatInputBarProps {
   onSend: (content: string, thinking?: boolean, reasoningEffort?: EffortLevel) => void;
