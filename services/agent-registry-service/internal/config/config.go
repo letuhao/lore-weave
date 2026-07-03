@@ -3,6 +3,7 @@ package config
 import (
 	"fmt"
 	"os"
+	"strconv"
 )
 
 // Config holds the agent-registry-service runtime configuration. All secrets
@@ -43,6 +44,14 @@ type Config struct {
 	// The admin pull fetches `{base}/v0/servers`. Overridable (AGENT_REGISTRY_OFFICIAL_URL)
 	// so the E2E-P5-C can point it at a stubbed upstream.
 	OfficialRegistryURL string
+
+	// IngestWorker — enable the background ingest maintenance loop (REG-P5 scheduled
+	// worker): periodic re-pull + denylist/retroactive-removal sync + rug-pull rescan of
+	// ingested System servers. DEFAULT OFF (AGENT_REGISTRY_INGEST_WORKER=1 to enable).
+	IngestWorker bool
+	// IngestIntervalSeconds — the worker tick interval (default 3600 = 1h; industry
+	// aggregators pull "on a regular but infrequent basis"). Min 300 enforced at start.
+	IngestIntervalSeconds int
 }
 
 func Load() (*Config, error) {
@@ -56,6 +65,8 @@ func Load() (*Config, error) {
 		AllowInternalMcpTargets: os.Getenv("AGENT_REGISTRY_ALLOW_INTERNAL_MCP") == "1",
 		PublicBaseURL:           getEnv("AGENT_REGISTRY_PUBLIC_BASE_URL", "http://localhost:3123"),
 		OfficialRegistryURL:     getEnv("AGENT_REGISTRY_OFFICIAL_URL", "https://registry.modelcontextprotocol.io"),
+		IngestWorker:            os.Getenv("AGENT_REGISTRY_INGEST_WORKER") == "1",
+		IngestIntervalSeconds:   atoiEnv("AGENT_REGISTRY_INGEST_INTERVAL", 3600),
 	}
 	if c.DatabaseURL == "" {
 		return nil, fmt.Errorf("DATABASE_URL is required")
@@ -75,6 +86,15 @@ func Load() (*Config, error) {
 func getEnv(k, def string) string {
 	if v := os.Getenv(k); v != "" {
 		return v
+	}
+	return def
+}
+
+func atoiEnv(k string, def int) int {
+	if v := os.Getenv(k); v != "" {
+		if n, err := strconv.Atoi(v); err == nil {
+			return n
+		}
 	}
 	return def
 }

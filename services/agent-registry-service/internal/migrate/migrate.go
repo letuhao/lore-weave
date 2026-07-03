@@ -350,6 +350,16 @@ CREATE TABLE IF NOT EXISTS registry_ingest_queue (
 );
 CREATE UNIQUE INDEX IF NOT EXISTS uq_ingest_source_regid ON registry_ingest_queue(source, registry_id);
 CREATE INDEX IF NOT EXISTS idx_ingest_status ON registry_ingest_queue(status, first_seen_at DESC);
+-- REG-P5 scheduled worker: a 4th status for a server the upstream registry has REMOVED
+-- after we approved it (denylist / retroactive-removal §7b#1). Swap the inline CHECK for
+-- a named one that admits it (idempotent — drops the auto-named inline check, adds ours).
+DO $$ BEGIN
+  ALTER TABLE registry_ingest_queue DROP CONSTRAINT IF EXISTS registry_ingest_queue_status_check;
+  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'ingest_status_check') THEN
+    ALTER TABLE registry_ingest_queue ADD CONSTRAINT ingest_status_check
+      CHECK (status IN ('pending','approved','rejected','revoked_upstream'));
+  END IF;
+END $$;
 
 -- Endpoint dedup for System-tier servers (REG-P5-03 §7b#3): an ingest approve must
 -- not create a second System row for an endpoint already federated. Partial UNIQUE so

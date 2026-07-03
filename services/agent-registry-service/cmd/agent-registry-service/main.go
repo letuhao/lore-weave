@@ -65,6 +65,9 @@ func main() {
 	workerCtx, workerCancel := context.WithCancel(context.Background())
 	defer workerCancel()
 	srv.StartRefreshWorker(workerCtx)
+	// REG-P5-03 — background ingest maintenance (re-pull + denylist sync + rug-pull
+	// rescan). No-op unless AGENT_REGISTRY_INGEST_WORKER=1.
+	srv.StartIngestWorker(workerCtx)
 	httpSrv := &http.Server{
 		Addr:              cfg.HTTPAddr,
 		Handler:           srv.Router(),
