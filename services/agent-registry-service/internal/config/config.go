@@ -33,6 +33,11 @@ type Config struct {
 	// MCP server). DEFAULT FALSE — in prod every user-supplied URL is SSRF-guarded
 	// to public hosts only. Set AGENT_REGISTRY_ALLOW_INTERNAL_MCP=1 to enable.
 	AllowInternalMcpTargets bool
+
+	// PublicBaseURL — the externally-reachable base (through the BFF) used to build
+	// the OAuth redirect_uri (`{base}/v1/agent-registry/oauth/callback`). The AS
+	// redirects the user's browser here after consent. Defaults to the dev BFF.
+	PublicBaseURL string
 }
 
 func Load() (*Config, error) {
@@ -44,6 +49,7 @@ func Load() (*Config, error) {
 		VaultKey:             os.Getenv("AGENT_REGISTRY_VAULT_KEY"),
 		BookServiceInternalURL: os.Getenv("BOOK_SERVICE_INTERNAL_URL"),
 		AllowInternalMcpTargets: os.Getenv("AGENT_REGISTRY_ALLOW_INTERNAL_MCP") == "1",
+		PublicBaseURL:           getEnv("AGENT_REGISTRY_PUBLIC_BASE_URL", "http://localhost:3123"),
 	}
 	if c.DatabaseURL == "" {
 		return nil, fmt.Errorf("DATABASE_URL is required")

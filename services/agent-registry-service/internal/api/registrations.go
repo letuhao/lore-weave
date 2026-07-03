@@ -66,13 +66,14 @@ func hash8(s string) string {
 }
 
 type createMcpReq struct {
-	DisplayName     string     `json:"display_name"`
-	EndpointURL     string     `json:"endpoint_url"`
-	Tier            string     `json:"tier"`
-	BookID          *uuid.UUID `json:"book_id"`
-	AuthKind        string     `json:"auth_kind"`        // none|bearer|oauth2
-	BearerToken     string     `json:"bearer_token"`     // write-only; encrypted into the vault, never echoed
-	EgressAllowlist []string   `json:"egress_allowlist"` // extra outbound hosts the ai-gateway egress path permits
+	DisplayName     string          `json:"display_name"`
+	EndpointURL     string          `json:"endpoint_url"`
+	Tier            string          `json:"tier"`
+	BookID          *uuid.UUID      `json:"book_id"`
+	AuthKind        string          `json:"auth_kind"`        // none|bearer|oauth2
+	BearerToken     string          `json:"bearer_token"`     // write-only; encrypted into the vault, never echoed
+	EgressAllowlist []string        `json:"egress_allowlist"` // extra outbound hosts the ai-gateway egress path permits
+	OAuth           *oauthRegConfig `json:"oauth"`            // required when auth_kind=oauth2
 }
 
 func (s *Server) createMcpServer(w http.ResponseWriter, r *http.Request) {
@@ -122,6 +123,30 @@ func (s *Server) createMcpServer(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
+	// OAuth config (auth_kind=oauth2): validated + stored in oauth_meta; the token is
+	// obtained later via /oauth/start → callback (no token at registration).
+	oauthJSON := "{}"
+	if authKind == "oauth2" {
+		if req.OAuth == nil || req.OAuth.AuthorizationEndpoint == "" || req.OAuth.TokenEndpoint == "" || req.OAuth.ClientID == "" {
+			writeError(w, http.StatusBadRequest, "VALIDATION_ERROR", "oauth {authorization_endpoint, token_endpoint, client_id} required when auth_kind is oauth2")
+			return
+		}
+		// SSRF-guard the OAuth endpoints too (they become outbound call targets).
+		for _, ep := range []string{req.OAuth.AuthorizationEndpoint, req.OAuth.TokenEndpoint} {
+			if _, e := classifyRegistrationURL(r.Context(), nil, ep, s.cfg.AllowInternalMcpTargets); e != nil {
+				writeError(w, http.StatusBadRequest, "SSRF_BLOCKED", "oauth endpoint rejected: "+e.Error())
+				return
+			}
+		}
+		metaB, _ := json.Marshal(oauthMeta{
+			AuthorizationEndpoint: req.OAuth.AuthorizationEndpoint,
+			TokenEndpoint:         req.OAuth.TokenEndpoint,
+			ClientID:              req.OAuth.ClientID,
+			Scopes:                req.OAuth.Scopes,
+			Resource:              class.Normalized, // RFC 8707 — token scoped to this server
+		})
+		oauthJSON = string(metaB)
+	}
 	tier := req.Tier
 	if tier == "" {
 		tier = "user"
@@ -169,10 +194,10 @@ func (s *Server) createMcpServer(w http.ResponseWriter, r *http.Request) {
 	err = scanMcp(s.db.QueryRow(r.Context(),
 		`INSERT INTO mcp_server_registrations
 		   (tier, owner_user_id, book_id, display_name, endpoint_url, tool_name_prefix, status,
-		    auth_kind, is_external, secret_ciphertext, secret_key_ref, egress_allowlist)
-		 VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12) RETURNING `+mcpCols,
+		    auth_kind, is_external, secret_ciphertext, secret_key_ref, egress_allowlist, oauth_meta)
+		 VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13) RETURNING `+mcpCols,
 		tier, ownerArg, bookArg, req.DisplayName, class.Normalized, prefix, status,
-		authKind, class.IsExternal, secretCipher, secretKeyRef, egress), &row)
+		authKind, class.IsExternal, secretCipher, secretKeyRef, egress, oauthJSON), &row)
 	if err != nil {
 		if isUniqueViolation(err) {
 			writeError(w, http.StatusConflict, "DUPLICATE", "this endpoint is already registered in your scope")
@@ -375,7 +400,7 @@ func (s *Server) internalEffectiveMcpServers(w http.ResponseWriter, r *http.Requ
 		}
 	}
 	rows, err := s.db.Query(r.Context(),
-		`SELECT reg.mcp_server_id, reg.endpoint_url, reg.transport, reg.tool_name_prefix, reg.tier, reg.is_external, reg.egress_allowlist, en.enabled
+		`SELECT reg.mcp_server_id, reg.endpoint_url, reg.transport, reg.tool_name_prefix, reg.tier, reg.is_external, reg.auth_kind, reg.egress_allowlist, en.enabled
 		 FROM mcp_server_registrations reg
 		 LEFT JOIN mcp_server_enablement en ON en.mcp_server_id = reg.mcp_server_id AND en.owner_user_id = $1
 		 WHERE reg.status = 'active'
@@ -395,16 +420,17 @@ func (s *Server) internalEffectiveMcpServers(w http.ResponseWriter, r *http.Requ
 		ToolPrefix      string          `json:"tool_name_prefix"`
 		Tier            string          `json:"tier"`
 		IsExternal      bool            `json:"is_external"`
+		AuthKind        string          `json:"auth_kind"`
 		EgressAllowlist json.RawMessage `json:"egress_allowlist"`
 	}
 	servers := []outServer{}
 	for rows.Next() {
 		var id uuid.UUID
-		var endpoint, transport, prefix, tier string
+		var endpoint, transport, prefix, tier, authKind string
 		var isExternal bool
 		var egress json.RawMessage
 		var override *bool
-		if err := rows.Scan(&id, &endpoint, &transport, &prefix, &tier, &isExternal, &egress, &override); err != nil {
+		if err := rows.Scan(&id, &endpoint, &transport, &prefix, &tier, &isExternal, &authKind, &egress, &override); err != nil {
 			continue
 		}
 		if override != nil && !*override { // default-on; explicit disable removes it
@@ -412,7 +438,7 @@ func (s *Server) internalEffectiveMcpServers(w http.ResponseWriter, r *http.Requ
 		}
 		servers = append(servers, outServer{
 			ID: id.String(), EndpointID: endpoint, Transport: transport, ToolPrefix: prefix, Tier: tier,
-			IsExternal: isExternal, EgressAllowlist: egress,
+			IsExternal: isExternal, AuthKind: authKind, EgressAllowlist: egress,
 		})
 	}
 	version := s.catalogVersion(r.Context())

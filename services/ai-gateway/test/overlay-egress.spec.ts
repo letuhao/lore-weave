@@ -1,4 +1,4 @@
-import { isBlockedIp, hostAllowed, makeEgressFetch, CircuitBreaker } from '../src/federation/egress.js';
+import { isBlockedIp, hostAllowed, makeEgressFetch, CircuitBreaker, chooseOutboundHeaders } from '../src/federation/egress.js';
 
 describe('REG-P3-04 egress SSRF IP block', () => {
   it('blocks loopback / RFC1918 / metadata / ULA / CGNAT', () => {
@@ -54,6 +54,27 @@ describe('REG-P3-04 egress fetch policy', () => {
     });
     const ef = makeEgressFetch({ allowlist: [], allowInternal: false, maxBytes: 1024 }, base as any);
     await expect(ef('https://93.184.216.34/start')).rejects.toThrow(/internal|metadata/i);
+  });
+});
+
+describe('REG-P3-03/04 outbound-header tenancy boundary', () => {
+  const envelope = { 'X-Internal-Token': 'SECRET-INTERNAL', 'X-User-Id': 'u1' };
+  it('internal server gets the internal envelope', () => {
+    const h = chooseOutboundHeaders(false, 'none', envelope, null);
+    expect(h['X-Internal-Token']).toBe('SECRET-INTERNAL');
+  });
+  it('external server NEVER receives the internal token', () => {
+    const bearer = chooseOutboundHeaders(true, 'bearer', envelope, 'user-token-abc');
+    expect(bearer['X-Internal-Token']).toBeUndefined();
+    expect(bearer['Authorization']).toBe('Bearer user-token-abc');
+    const none = chooseOutboundHeaders(true, 'none', envelope, null);
+    expect(none['X-Internal-Token']).toBeUndefined();
+    expect(Object.keys(none)).toHaveLength(0);
+  });
+  it('external oauth2 uses the fetched access token', () => {
+    const h = chooseOutboundHeaders(true, 'oauth2', envelope, 'oauth-access-1');
+    expect(h['Authorization']).toBe('Bearer oauth-access-1');
+    expect(h['X-Internal-Token']).toBeUndefined();
   });
 });
 

@@ -191,6 +191,8 @@ func (s *Server) Router() http.Handler {
 		r.Put("/mcp-servers/{mcp_server_id}/enablement", s.setMcpEnabled)
 		r.Post("/mcp-servers/{mcp_server_id}/rescan", s.rescanMcpServer)          // P3 supply-chain scan
 		r.Post("/mcp-servers/{mcp_server_id}/accept-risk", s.acceptRiskMcpServer) // P3 quarantine override
+		r.Post("/mcp-servers/{mcp_server_id}/oauth/start", s.startOAuth)         // P3 OAuth 2.1 + PKCE
+		r.Get("/oauth/callback", s.oauthCallback)                                // P3 OAuth callback (PUBLIC — AS redirect)
 
 		// Proposals (P1 agent self-registration — propose→approve/reject)
 		r.Get("/proposals", s.listProposals)

@@ -3,7 +3,7 @@ import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import { StreamableHTTPClientTransport } from '@modelcontextprotocol/sdk/client/streamableHttp.js';
 import type { Envelope } from './federation.service.js';
 import { buildEnvelopeHeaders } from './federation.service.js';
-import { CircuitBreaker, makeEgressFetch } from './egress.js';
+import { CircuitBreaker, makeEgressFetch, chooseOutboundHeaders } from './egress.js';
 
 // REG-P3-04 — response-size cap for a user server's outbound call (1 MiB).
 const EGRESS_MAX_BYTES = 1 << 20;
@@ -33,6 +33,7 @@ interface RouteEntry {
   egressAllowlist: string[];
   /** true for an internal loreweave server (dev/system) — skip the SSRF internal-block. */
   allowInternal: boolean;
+  authKind: string; // none | bearer | oauth2
 }
 
 interface OverlayEntry {
@@ -49,6 +50,7 @@ interface EffectiveServer {
   tool_name_prefix: string;
   tier: string;
   is_external?: boolean;
+  auth_kind?: string;
   egress_allowlist?: string[];
 }
 
@@ -86,6 +88,38 @@ export class PerUserOverlay {
 
   private key(env: Envelope): string {
     return `${env.userId ?? ''}|${env.projectId ?? ''}`;
+  }
+
+  /**
+   * Build the outbound headers for a federated server. CRITICAL tenancy/security
+   * boundary: the internal envelope (X-Internal-Token/X-User-Id) is trusted platform
+   * identity and MUST go ONLY to internal loreweave servers — NEVER to a third-party
+   * external server (that would leak our internal service token). An external server
+   * gets ONLY its own registered credential (bearer/oauth access token from the vault),
+   * fetched fresh per call so a refreshed token is picked up immediately.
+   */
+  private async outboundHeaders(serverId: string, isExternal: boolean, authKind: string, env: Envelope): Promise<Record<string, string>> {
+    const credential = isExternal && (authKind === 'bearer' || authKind === 'oauth2') ? await this.fetchCredential(serverId, env) : null;
+    return chooseOutboundHeaders(isExternal, authKind, buildEnvelopeHeaders(this.cfg.internalToken, env), credential);
+  }
+
+  /** Fetch an external server's decrypted credential from agent-registry (internal-token). */
+  private async fetchCredential(serverId: string, env: Envelope): Promise<string | null> {
+    const url = new URL(`${this.cfg.agentRegistryInternalUrl}/internal/mcp-servers/${serverId}/credentials`);
+    url.searchParams.set('user_id', env.userId!);
+    if (env.projectId) url.searchParams.set('book_id', env.projectId);
+    try {
+      const res = await fetch(url, {
+        headers: { 'X-Internal-Token': this.cfg.internalToken },
+        signal: AbortSignal.timeout(this.fetchTimeoutMs),
+      });
+      if (!res.ok) return null;
+      const body = (await res.json()) as { secret?: string };
+      return body.secret ?? null;
+    } catch (e) {
+      this.log.warn(`credential fetch failed for ${serverId}: ${e}`);
+      return null;
+    }
   }
 
   /** Resolve the overlay for a turn's envelope (cached). Fail-open → EMPTY/stale. */
@@ -148,6 +182,7 @@ export class PerUserOverlay {
           serverId: s.mcp_server_id,
           egressAllowlist: Array.isArray(s.egress_allowlist) ? s.egress_allowlist : [],
           allowInternal: !s.is_external, // internal loreweave servers skip the SSRF block
+          authKind: s.auth_kind ?? 'none',
         });
         tools.push({ ...t, name: prefixed });
       }
@@ -173,7 +208,7 @@ export class PerUserOverlay {
     if (!this.breaker.canRequest(entry.serverId)) {
       throw new Error(`overlay server temporarily unavailable (circuit open after repeated failures)`);
     }
-    const headers = buildEnvelopeHeaders(this.cfg.internalToken, env);
+    const headers = await this.outboundHeaders(entry.serverId, !entry.allowInternal, entry.authKind, env);
     const deadline = this.deadline(this.callTimeoutMs, signal);
     const egressFetch = makeEgressFetch({
       allowlist: entry.egressAllowlist,
@@ -212,7 +247,7 @@ export class PerUserOverlay {
   }
 
   private async listServerTools(s: EffectiveServer, env: Envelope): Promise<any[]> {
-    const headers = buildEnvelopeHeaders(this.cfg.internalToken, env);
+    const headers = await this.outboundHeaders(s.mcp_server_id, !!s.is_external, s.auth_kind ?? 'none', env);
     // Federation-time egress is guarded too: listing a user server's tools re-applies
     // the SSRF + allowlist policy so a rebind can't reach the internal network here either.
     const egressFetch = makeEgressFetch({

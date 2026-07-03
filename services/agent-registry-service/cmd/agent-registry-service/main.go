@@ -61,6 +61,10 @@ func main() {
 	}
 
 	srv := api.NewServer(pool, cfg)
+	// REG-P3-03 — background OAuth token refresh (rotates before expiry).
+	workerCtx, workerCancel := context.WithCancel(context.Background())
+	defer workerCancel()
+	srv.StartRefreshWorker(workerCtx)
 	httpSrv := &http.Server{
 		Addr:              cfg.HTTPAddr,
 		Handler:           srv.Router(),

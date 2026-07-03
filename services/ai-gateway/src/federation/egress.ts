@@ -140,6 +140,26 @@ export function makeEgressFetch(opts: EgressOptions, base: FetchLike = fetch as 
   };
 }
 
+/**
+ * chooseOutboundHeaders — the tenancy boundary for a federated call. The internal
+ * envelope (X-Internal-Token/X-User-Id) is trusted platform identity and goes ONLY to
+ * internal loreweave servers. A third-party EXTERNAL server gets ONLY its own credential
+ * (bearer/oauth), NEVER the internal token — leaking it would hand a third party our
+ * service identity. External + no-auth → send nothing.
+ */
+export function chooseOutboundHeaders(
+  isExternal: boolean,
+  authKind: string,
+  internalEnvelope: Record<string, string>,
+  credential: string | null,
+): Record<string, string> {
+  if (!isExternal) return internalEnvelope;
+  if ((authKind === 'bearer' || authKind === 'oauth2') && credential) {
+    return { Authorization: `Bearer ${credential}` };
+  }
+  return {};
+}
+
 /** A per-server circuit breaker: after `threshold` consecutive failures the breaker
  * OPENS for `cooldownMs`; while open, requests fail fast (surfaced as a tool error,
  * never a hang). After the cooldown it half-opens (one trial); success closes it. */

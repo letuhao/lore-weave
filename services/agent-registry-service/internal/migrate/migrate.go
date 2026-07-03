@@ -222,6 +222,22 @@ DO $$ BEGIN
     ALTER TABLE mcp_server_registrations ADD CONSTRAINT mcp_reg_auth_kind CHECK (auth_kind IN ('none','bearer','oauth2'));
   END IF;
 END $$;
+-- P3 OAuth: the refresh token is sealed separately from the access token (both vault).
+ALTER TABLE mcp_server_registrations ADD COLUMN IF NOT EXISTS refresh_ciphertext TEXT NOT NULL DEFAULT '';
+
+-- P3 REG-P3-03: in-flight OAuth 2.1 authorization-code + PKCE flows. A start mints a
+-- state + code_verifier bound to (server, owner); the callback consumes it exactly
+-- once to exchange the code. Short TTL; swept opportunistically.
+CREATE TABLE IF NOT EXISTS oauth_flows (
+  state TEXT PRIMARY KEY,
+  mcp_server_id UUID NOT NULL REFERENCES mcp_server_registrations(mcp_server_id) ON DELETE CASCADE,
+  owner_user_id UUID NOT NULL,
+  code_verifier TEXT NOT NULL,
+  redirect_uri TEXT NOT NULL,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  expires_at TIMESTAMPTZ NOT NULL DEFAULT now() + interval '10 minutes'
+);
+CREATE INDEX IF NOT EXISTS idx_oauth_flows_server ON oauth_flows(mcp_server_id);
 
 -- REG-P1-03: seed the 5 hardcoded chat-service skills as System-tier rows so the
 -- FE can list + toggle them and enablement resolves. Their BODIES remain authored
