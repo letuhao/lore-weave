@@ -10,6 +10,12 @@ import type {
   CreateMcpServerReq,
   ScanResult,
   HealthResult,
+  SlashCommand,
+  CommandList,
+  CreateCommandReq,
+  Hook,
+  HookList,
+  CreateHookReq,
 } from './types';
 
 const BASE = '/v1/agent-registry';
@@ -121,5 +127,41 @@ export const extensionsApi = {
 
   startMcpOAuth(token: string, id: string): Promise<{ authorization_url: string; state: string }> {
     return apiJson(`${BASE}/mcp-servers/${id}/oauth/start`, { method: 'POST', token });
+  },
+
+  // ── P4: slash commands ────────────────────────────────────────────────────
+  listCommands(token: string, params: { q?: string; limit?: number; offset?: number } = {}): Promise<CommandList> {
+    const qs = new URLSearchParams();
+    if (params.q) qs.set('q', params.q);
+    qs.set('limit', String(params.limit ?? 50));
+    qs.set('offset', String(params.offset ?? 0));
+    return apiJson<CommandList>(`${BASE}/commands?${qs.toString()}`, { token });
+  },
+  createCommand(token: string, body: CreateCommandReq): Promise<SlashCommand> {
+    return apiJson<SlashCommand>(`${BASE}/commands`, { method: 'POST', token, body: JSON.stringify(body) });
+  },
+  patchCommand(token: string, id: string, patch: Partial<SlashCommand>): Promise<SlashCommand> {
+    return apiJson<SlashCommand>(`${BASE}/commands/${id}`, { method: 'PATCH', token, body: JSON.stringify(patch) });
+  },
+  deleteCommand(token: string, id: string): Promise<void> {
+    return apiJson<void>(`${BASE}/commands/${id}`, { method: 'DELETE', token });
+  },
+
+  // ── P4: declarative hooks ─────────────────────────────────────────────────
+  listHooks(token: string, params: { on_event?: string; limit?: number; offset?: number } = {}): Promise<HookList> {
+    const qs = new URLSearchParams();
+    if (params.on_event) qs.set('on_event', params.on_event);
+    qs.set('limit', String(params.limit ?? 50));
+    qs.set('offset', String(params.offset ?? 0));
+    return apiJson<HookList>(`${BASE}/hooks?${qs.toString()}`, { token });
+  },
+  createHook(token: string, body: CreateHookReq): Promise<Hook> {
+    return apiJson<Hook>(`${BASE}/hooks`, { method: 'POST', token, body: JSON.stringify(body) });
+  },
+  patchHook(token: string, id: string, patch: Partial<Hook>): Promise<Hook> {
+    return apiJson<Hook>(`${BASE}/hooks/${id}`, { method: 'PATCH', token, body: JSON.stringify(patch) });
+  },
+  deleteHook(token: string, id: string): Promise<void> {
+    return apiJson<void>(`${BASE}/hooks/${id}`, { method: 'DELETE', token });
   },
 };

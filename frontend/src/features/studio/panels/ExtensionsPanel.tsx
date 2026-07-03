@@ -5,6 +5,7 @@ import { useState } from 'react';
 import type { IDockviewPanelProps } from 'dockview-react';
 import { SkillsView } from '@/features/extensions/components/SkillsView';
 import { McpServersView } from '@/features/extensions/components/McpServersView';
+import { CommandsHooksView } from '@/features/extensions/components/CommandsHooksView';
 import { useStudioPanel } from './useStudioPanel';
 
 type Tab = 'skills' | 'plugins' | 'mcp' | 'commands';
@@ -25,10 +26,10 @@ export function ExtensionsPanel(props: IDockviewPanelProps) {
             state survives a tab switch or panel hide/show). */}
         <div className={tab === 'skills' ? '' : 'hidden'}><SkillsView /></div>
         <div className={tab === 'mcp' ? '' : 'hidden'}><McpServersView /></div>
-        {(tab === 'plugins' || tab === 'commands') && (
+        <div className={tab === 'commands' ? '' : 'hidden'}><CommandsHooksView /></div>
+        {tab === 'plugins' && (
           <div className="rounded-md border border-dashed px-6 py-8 text-center text-xs text-muted-foreground">
-            {tab === 'plugins' && 'Plugin management — arrives with the bundling phase.'}
-            {tab === 'commands' && 'Slash commands & hooks — arrives with the commands phase.'}
+            Plugin management — arrives with the bundling phase.
           </div>
         )}
       </div>

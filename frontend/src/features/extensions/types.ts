@@ -128,3 +128,65 @@ export interface CreateMcpServerReq {
   egress_allowlist?: string[];
   oauth?: OAuthConfig;
 }
+
+// ── P4: slash commands + declarative hooks ──────────────────────────────────
+export interface SlashCommand {
+  command_id: string;
+  tier: SkillTier;
+  name: string;
+  description: string;
+  arg_schema: Record<string, unknown>;
+  template_md: string;
+  expand_side: 'server' | 'client';
+  enabled: boolean;
+  created_at: string;
+  updated_at: string;
+}
+export interface CommandList {
+  items: SlashCommand[];
+  total: number;
+  limit: number;
+  offset: number;
+}
+export interface CreateCommandReq {
+  name: string;
+  description?: string;
+  template_md: string;
+  expand_side?: 'server' | 'client';
+  arg_schema?: Record<string, unknown>;
+}
+
+export type HookEvent = 'pre_tool_call' | 'post_tool_call' | 'pre_turn' | 'post_turn';
+export type HookActionKind = 'deny' | 'require_approval' | 'annotate' | 'inject_text';
+export interface HookAction {
+  kind: HookActionKind;
+  message?: string;
+  text?: string;
+}
+export interface Hook {
+  hook_id: string;
+  tier: SkillTier;
+  name: string;
+  description: string;
+  on_event: HookEvent;
+  match: Record<string, unknown>;
+  action: HookAction;
+  priority: number;
+  enabled: boolean;
+  created_at: string;
+  updated_at: string;
+}
+export interface HookList {
+  items: Hook[];
+  total: number;
+  limit: number;
+  offset: number;
+}
+export interface CreateHookReq {
+  name?: string;
+  description?: string;
+  on_event: HookEvent;
+  match?: Record<string, unknown>;
+  action: HookAction;
+  priority?: number;
+}
