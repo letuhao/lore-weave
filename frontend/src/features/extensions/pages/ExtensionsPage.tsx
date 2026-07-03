@@ -7,8 +7,9 @@ import { SkillsView } from '../components/SkillsView';
 import { ProposalsView } from '../components/ProposalsView';
 import { McpServersView } from '../components/McpServersView';
 import { CommandsHooksView } from '../components/CommandsHooksView';
+import { PluginsView } from '../components/PluginsView';
 
-type Tab = 'skills' | 'mcp' | 'commands' | 'proposals';
+type Tab = 'skills' | 'mcp' | 'commands' | 'plugins' | 'proposals';
 
 export function ExtensionsPage() {
   const [tab, setTab] = useState<Tab>('skills');
@@ -42,6 +43,11 @@ export function ExtensionsPage() {
           className={`rounded-md px-3 py-1.5 ${tab === 'commands' ? 'bg-muted font-semibold' : 'text-muted-foreground hover:text-foreground'}`}
         >Commands & Hooks</button>
         <button
+          onClick={() => setTab('plugins')}
+          data-testid="ext-page-tab-plugins"
+          className={`rounded-md px-3 py-1.5 ${tab === 'plugins' ? 'bg-muted font-semibold' : 'text-muted-foreground hover:text-foreground'}`}
+        >Plugins</button>
+        <button
           onClick={() => setTab('proposals')}
           data-testid="ext-page-tab-proposals"
           className={`rounded-md px-3 py-1.5 ${tab === 'proposals' ? 'bg-muted font-semibold' : 'text-muted-foreground hover:text-foreground'}`}
@@ -50,6 +56,7 @@ export function ExtensionsPage() {
       <div className={tab === 'skills' ? '' : 'hidden'}><SkillsView /></div>
       <div className={tab === 'mcp' ? '' : 'hidden'}><McpServersView /></div>
       <div className={tab === 'commands' ? '' : 'hidden'}><CommandsHooksView /></div>
+      <div className={tab === 'plugins' ? '' : 'hidden'}><PluginsView /></div>
       {tab === 'proposals' && <ProposalsView />}
     </div>
   );

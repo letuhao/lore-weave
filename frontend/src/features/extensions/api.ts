@@ -16,6 +16,9 @@ import type {
   Hook,
   HookList,
   CreateHookReq,
+  PluginList,
+  CascadePreview,
+  PluginBundle,
 } from './types';
 
 const BASE = '/v1/agent-registry';
@@ -163,5 +166,26 @@ export const extensionsApi = {
   },
   deleteHook(token: string, id: string): Promise<void> {
     return apiJson<void>(`${BASE}/hooks/${id}`, { method: 'DELETE', token });
+  },
+
+  // ── P5: plugins + bundles ─────────────────────────────────────────────────
+  listPlugins(token: string, params: { q?: string; limit?: number; offset?: number } = {}): Promise<PluginList> {
+    const qs = new URLSearchParams();
+    if (params.q) qs.set('q', params.q);
+    qs.set('limit', String(params.limit ?? 50));
+    qs.set('offset', String(params.offset ?? 0));
+    return apiJson<PluginList>(`${BASE}/plugins?${qs.toString()}`, { token });
+  },
+  deletePlugin(token: string, id: string): Promise<void> {
+    return apiJson<void>(`${BASE}/plugins/${id}`, { method: 'DELETE', token });
+  },
+  cascadePreview(token: string, id: string): Promise<CascadePreview> {
+    return apiJson<CascadePreview>(`${BASE}/plugins/${id}/cascade-preview`, { token });
+  },
+  exportBundle(token: string, id: string): Promise<PluginBundle> {
+    return apiJson<PluginBundle>(`${BASE}/plugins/${id}/export`, { token });
+  },
+  importBundle(token: string, bundle: PluginBundle): Promise<{ plugin_id: string; name: string; imported: Record<string, number> }> {
+    return apiJson(`${BASE}/plugins/import`, { method: 'POST', token, body: JSON.stringify(bundle) });
   },
 };

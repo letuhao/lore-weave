@@ -6,6 +6,7 @@ import type { IDockviewPanelProps } from 'dockview-react';
 import { SkillsView } from '@/features/extensions/components/SkillsView';
 import { McpServersView } from '@/features/extensions/components/McpServersView';
 import { CommandsHooksView } from '@/features/extensions/components/CommandsHooksView';
+import { PluginsView } from '@/features/extensions/components/PluginsView';
 import { useStudioPanel } from './useStudioPanel';
 
 type Tab = 'skills' | 'plugins' | 'mcp' | 'commands';
@@ -27,11 +28,7 @@ export function ExtensionsPanel(props: IDockviewPanelProps) {
         <div className={tab === 'skills' ? '' : 'hidden'}><SkillsView /></div>
         <div className={tab === 'mcp' ? '' : 'hidden'}><McpServersView /></div>
         <div className={tab === 'commands' ? '' : 'hidden'}><CommandsHooksView /></div>
-        {tab === 'plugins' && (
-          <div className="rounded-md border border-dashed px-6 py-8 text-center text-xs text-muted-foreground">
-            Plugin management — arrives with the bundling phase.
-          </div>
-        )}
+        <div className={tab === 'plugins' ? '' : 'hidden'}><PluginsView /></div>
       </div>
     </div>
   );

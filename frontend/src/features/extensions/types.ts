@@ -156,6 +156,37 @@ export interface CreateCommandReq {
   arg_schema?: Record<string, unknown>;
 }
 
+export interface Plugin {
+  plugin_id: string;
+  tier: SkillTier;
+  name: string;
+  version: string;
+  description: string;
+  status: string;
+  created_at: string;
+  updated_at: string;
+}
+export interface PluginList {
+  items: Plugin[];
+  total: number;
+  limit: number;
+  offset: number;
+}
+export interface CascadePreview {
+  skills: number;
+  mcp_servers: number;
+  commands: number;
+  hooks: number;
+  subagents: number;
+}
+// A portable plugin bundle (manifest + prompt-only members).
+export interface PluginBundle {
+  manifest: { name: string; version: string; description?: string };
+  skills?: unknown[];
+  commands?: unknown[];
+  hooks?: unknown[];
+}
+
 export type HookEvent = 'pre_tool_call' | 'post_tool_call' | 'pre_turn' | 'post_turn';
 export type HookActionKind = 'deny' | 'require_approval' | 'annotate' | 'inject_text';
 export interface HookAction {
