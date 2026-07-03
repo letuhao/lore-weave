@@ -3,6 +3,7 @@ import { useTranslation } from 'react-i18next';
 import { toast } from 'sonner';
 import { Sparkles, X } from 'lucide-react';
 import { ModelPicker } from '@/components/model-picker';
+import { useAiTask } from '@/components/ai-task';
 import { OntologyChip } from './OntologyChip';
 import { useSchemaPropose } from '../../hooks/useGraphSchema';
 import type { SchemaProposal } from '../../types/ontology';
@@ -26,47 +27,39 @@ interface Props {
 
 export function GenerateSchemaDialog({ projectId, onClose, onAdopt }: Props) {
   const { t } = useTranslation('kgOntology');
-  const { propose, isProposing } = useSchemaPropose(projectId);
+  const { propose } = useSchemaPropose(projectId);
   const [premise, setPremise] = useState('');
   const [genre, setGenre] = useState('');
   const [modelRef, setModelRef] = useState('');
-  const [proposal, setProposal] = useState<SchemaProposal | null>(null);
   const [skip, setSkip] = useState<Set<string>>(new Set());
-  const [adopting, setAdopting] = useState(false);
+
+  // Shared AI-task controller (propose→review→adopt). Errors flow through the ONE
+  // shared reader (WHY — e.g. "empty response" — not a generic "Bad Gateway").
+  const task = useAiTask<{ premise: string; genre?: string; model_ref: string }, SchemaProposal>({
+    run: (cfg) => propose(cfg),
+    confirm: async (proposal) => {
+      const picks: ProposalPicks = {
+        kinds: proposal.node_kinds.filter((k) => !skip.has(`k:${k.code}`)),
+        edges: proposal.edge_types.filter((e) => !skip.has(`e:${e.code}`)),
+        facts: proposal.fact_types.filter((f) => !skip.has(`f:${f.code}`)),
+      };
+      await onAdopt(picks);
+      onClose();
+    },
+    onError: (msg) => toast.error(msg || t('generate.failed')),
+  });
+  const proposal = task.result;
+  const busy = task.busy;
 
   const toggle = (k: string) =>
     setSkip((s) => { const n = new Set(s); n.has(k) ? n.delete(k) : n.add(k); return n; });
 
   const generate = async () => {
-    try {
-      const p = await propose({ premise: premise.trim(), genre: genre.trim() || undefined, model_ref: modelRef });
-      setProposal(p);
-      setSkip(new Set());
-    } catch (e) {
-      // FastAPI nests the reason at body.detail.message (review-impl #5) — read it
-      // first so the toast shows WHY, not a generic "Bad Gateway".
-      const body = (e as { body?: { message?: string; detail?: { message?: string } } }).body;
-      toast.error(body?.detail?.message || body?.message || (e as Error).message || t('generate.failed'));
-    }
+    const p = await task.run({ premise: premise.trim(), genre: genre.trim() || undefined, model_ref: modelRef });
+    if (p) setSkip(new Set());
   };
 
-  const adopt = async () => {
-    if (!proposal) return;
-    const picks: ProposalPicks = {
-      kinds: proposal.node_kinds.filter((k) => !skip.has(`k:${k.code}`)),
-      edges: proposal.edge_types.filter((e) => !skip.has(`e:${e.code}`)),
-      facts: proposal.fact_types.filter((f) => !skip.has(`f:${f.code}`)),
-    };
-    setAdopting(true);
-    try {
-      await onAdopt(picks);
-      onClose();
-    } finally {
-      setAdopting(false);
-    }
-  };
-
-  const busy = isProposing || adopting;
+  const adopt = () => { void task.confirm().catch(() => { /* toast shown by onError; keep open */ }); };
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4"
@@ -101,7 +94,7 @@ export function GenerateSchemaDialog({ projectId, onClose, onAdopt }: Props) {
             <button type="button" disabled={busy || !premise.trim() || !modelRef} onClick={() => void generate()}
               className="w-full rounded-md bg-primary px-3 py-2 text-[12px] font-medium text-primary-foreground disabled:opacity-50"
               data-testid="generate-run">
-              {isProposing ? t('generate.generating') : t('generate.generateButton')}
+              {busy ? t('generate.generating') : t('generate.generateButton')}
             </button>
           </>
         ) : (
@@ -111,7 +104,7 @@ export function GenerateSchemaDialog({ projectId, onClose, onAdopt }: Props) {
             <ProposalList title={t('schema.edgeTypes')} prefix="e" items={proposal.edge_types.map((e) => ({ code: e.code, hint: `${e.source_kinds.join('/') || '—'} → ${e.target_kinds.join('/') || '—'}` }))} skip={skip} onToggle={toggle} variant="edge" />
             <ProposalList title={t('schema.factTypes')} prefix="f" items={proposal.fact_types.map((f) => ({ code: f.code }))} skip={skip} onToggle={toggle} variant="neutral" />
             <div className="flex justify-end gap-2">
-              <button type="button" onClick={() => setProposal(null)} disabled={busy}
+              <button type="button" onClick={() => task.reset()} disabled={busy}
                 className="rounded-md border px-3 py-1.5 text-[12px]" data-testid="generate-back">{t('generate.regenerate')}</button>
               <button type="button" onClick={() => void adopt()} disabled={busy}
                 className="rounded-md bg-primary px-3 py-1.5 text-[12px] font-medium text-primary-foreground disabled:opacity-50"

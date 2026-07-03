@@ -4,6 +4,7 @@ import { useTranslation } from 'react-i18next';
 import { Sparkles, CheckCircle2, AlertTriangle } from 'lucide-react';
 import { FormDialog } from '@/components/shared';
 import { ModelPicker } from '@/components/model-picker';
+import { SpendCapField, isValidSpend } from '@/components/ai-task';
 import { defaultModelsApi, CHAT_CAPABILITY } from '@/features/settings/api';
 import { useAuth } from '@/auth';
 import { glossaryApi } from '@/features/glossary/api';
@@ -14,8 +15,6 @@ import { cn } from '@/lib/utils';
 import { wikiApi } from '../api';
 import type { WikiGenConfig } from '../types';
 import type { TriggerArgs } from '../hooks/useWikiGenJob';
-
-const DECIMAL_RE = /^\d+(\.\d{1,2})?$/;
 
 /**
  * wiki-llm M7b-2a — the unified Generate dialog (PO decision A). The model
@@ -117,7 +116,7 @@ export function GenerateWikiDialog({
   const kinds = kindsQuery.data ?? [];
 
   const isLlm = mode === 'llm';
-  const maxSpendValid = maxSpend === '' || DECIMAL_RE.test(maxSpend);
+  const maxSpendValid = isValidSpend(maxSpend);
 
   // Pre-flight cost estimate (D-WIKI-P2B-COST-ESTIMATE) — fetched in AI mode only
   // (the deterministic path is free). The rate is book-level (model-independent),
@@ -335,23 +334,16 @@ export function GenerateWikiDialog({
           </fieldset>
         )}
 
-        {/* Spend cap — LLM path only */}
+        {/* Spend cap — LLM path only (shared AI-task SpendCapField) */}
         {isLlm && (
-          <label className="flex flex-col gap-1">
-            <span className="text-xs font-medium text-muted-foreground">{t('gen.maxSpend.label')}</span>
-            <input
-              type="text"
-              inputMode="decimal"
-              value={maxSpend}
-              onChange={(e) => setMaxSpend(e.target.value)}
-              placeholder="0.00"
-              aria-invalid={!maxSpendValid}
-              data-testid="wiki-gen-maxspend"
-              className="rounded-md border bg-input px-3 py-2 text-sm outline-none focus:border-ring aria-[invalid=true]:border-destructive"
-            />
-            <span className="text-[11px] text-muted-foreground">{t('gen.maxSpend.hint')}</span>
-            {!maxSpendValid && <span className="text-[11px] text-destructive">{t('gen.maxSpend.invalid')}</span>}
-          </label>
+          <SpendCapField
+            testid="wiki-gen-maxspend"
+            value={maxSpend}
+            onChange={setMaxSpend}
+            label={t('gen.maxSpend.label')}
+            hint={t('gen.maxSpend.hint')}
+            invalidLabel={t('gen.maxSpend.invalid')}
+          />
         )}
 
         {/* Pre-flight cost estimate — LLM path only. Precise (N × rate) when
