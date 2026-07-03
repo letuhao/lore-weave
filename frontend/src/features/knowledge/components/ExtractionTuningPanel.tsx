@@ -1,5 +1,6 @@
 import { useTranslation } from 'react-i18next';
 import { FormDialog } from '@/components/shared';
+import { ModelPicker } from '@/components/model-picker';
 import { useExtractionConfig } from '../hooks/useExtractionConfig';
 import type { FilterCategory, Project } from '../types';
 import { PrecisionFilterModelPicker } from './PrecisionFilterModelPicker';
@@ -63,6 +64,34 @@ export function ExtractionTuningPanel({ open, onOpenChange, project, onChanged }
       }
     >
       <div className="flex flex-col gap-5">
+        {/* KN model-roles — the project DEFAULT LLM. Every unset extraction role
+            (precision filter / entity recovery) falls back to this; cleared = the
+            BE resolves the user-global default → this job's extraction model. */}
+        <section className="flex flex-col gap-1" data-testid="tuning-default-model">
+          <span className="text-sm font-medium">
+            {t('projects.extractionTuning.defaultModel', { defaultValue: 'Default extraction model' })}
+          </span>
+          <ModelPicker
+            capability="chat"
+            value={draft.defaultModelRef}
+            onChange={(v) => setField('defaultModelRef', v)}
+            disabled={submitting}
+            allowNone
+            noneLabel={t('projects.extractionTuning.defaultModelNone', {
+              defaultValue: 'Use my global default',
+            })}
+            ariaLabel={t('projects.extractionTuning.defaultModel', {
+              defaultValue: 'Default extraction model',
+            })}
+          />
+          <span className="text-[11px] text-muted-foreground">
+            {t('projects.extractionTuning.defaultModelHint', {
+              defaultValue:
+                'The model every extraction step uses unless overridden below. Left empty, roles fall back to your global default model (Settings), then the model this build runs on.',
+            })}
+          </span>
+        </section>
+
         {/* Precision filter */}
         <section className="flex flex-col gap-2">
           <label className="flex items-center gap-2 text-sm font-medium">
@@ -118,15 +147,43 @@ export function ExtractionTuningPanel({ open, onOpenChange, project, onChanged }
         </section>
 
         {/* Entity recovery */}
-        <label className="flex items-center gap-2 text-sm font-medium">
-          <input
-            type="checkbox"
-            checked={draft.recoveryEnabled}
-            onChange={(e) => setField('recoveryEnabled', e.target.checked)}
-            disabled={submitting}
-          />
-          {t('projects.extractionTuning.recoveryEnabled')}
-        </label>
+        <section className="flex flex-col gap-2">
+          <label className="flex items-center gap-2 text-sm font-medium">
+            <input
+              type="checkbox"
+              checked={draft.recoveryEnabled}
+              onChange={(e) => setField('recoveryEnabled', e.target.checked)}
+              disabled={submitting}
+            />
+            {t('projects.extractionTuning.recoveryEnabled')}
+          </label>
+          {draft.recoveryEnabled && (
+            <div className="flex flex-col gap-1 pl-6" data-testid="tuning-recovery-model">
+              <span className="text-xs font-medium text-muted-foreground">
+                {t('projects.extractionTuning.recoveryModel', { defaultValue: 'Recovery model (optional)' })}
+              </span>
+              <ModelPicker
+                capability="chat"
+                value={draft.recoveryModelRef}
+                onChange={(v) => setField('recoveryModelRef', v)}
+                disabled={submitting}
+                allowNone
+                noneLabel={t('projects.extractionTuning.recoveryModelNone', {
+                  defaultValue: 'Use default extraction model',
+                })}
+                ariaLabel={t('projects.extractionTuning.recoveryModel', {
+                  defaultValue: 'Recovery model (optional)',
+                })}
+              />
+              <span className="text-[11px] text-muted-foreground">
+                {t('projects.extractionTuning.recoveryModelHint', {
+                  defaultValue:
+                    'LLM that recovers entities the main pass missed. Left as default, it reuses the default extraction model above.',
+                })}
+              </span>
+            </div>
+          )}
+        </section>
 
         {/* Writer autocreate */}
         <label className="flex items-center gap-2 text-sm font-medium">

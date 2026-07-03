@@ -26,6 +26,31 @@ vi.mock('sonner', () => ({
   },
 }));
 
+// Stub the shared ModelPicker (covers the default-model + recovery-model inline
+// pickers AND PrecisionFilterModelPicker's inner ModelPicker) — a button keyed by
+// ariaLabel that emits a fixed model id, so payload logic is testable without the
+// picker's fetch. A second click clears (emits null) to test the "use default" path.
+vi.mock('@/components/model-picker', () => ({
+  ModelPicker: ({
+    value,
+    onChange,
+    ariaLabel,
+  }: {
+    value: string | null;
+    onChange: (v: string | null) => void;
+    ariaLabel: string;
+  }) => (
+    <button
+      type="button"
+      aria-label={ariaLabel}
+      data-value={value ?? ''}
+      onClick={() => onChange(value ? null : 'picked-model-uuid')}
+    >
+      {ariaLabel}
+    </button>
+  ),
+}));
+
 import { ExtractionTuningPanel } from '../ExtractionTuningPanel';
 import type { Project } from '../../types';
 
@@ -91,7 +116,7 @@ describe('ExtractionTuningPanel', () => {
     expect(screen.queryByText('projects.extractionTuning.title')).toBeNull();
   });
 
-  it('PUT-replace read-modify-write preserves unmanaged keys (llm_model)', async () => {
+  it('read-modify-write: the default LLM (llm_model) round-trips + filter preserved', async () => {
     const project = makeProject({
       llm_model: { model_ref: 'keep-me-uuid' },
       precision_filter: { enabled: true, categories: ['relation'], partial_policy: 'keep' },
@@ -106,11 +131,47 @@ describe('ExtractionTuningPanel', () => {
     expect(projectId).toBe('p1');
     expect(token).toBe('tok-test');
     expect(version).toBe(4); // If-Match = current version
-    // unmanaged llm_model preserved verbatim
-    expect(payload.llm_model).toEqual({ model_ref: 'keep-me-uuid' });
+    // KN model-roles — llm_model is now MANAGED by the default-model picker; the
+    // persisted ref round-trips with the source stamped.
+    expect(payload.llm_model).toEqual({ model_ref: 'keep-me-uuid', model_source: 'user_model' });
     // filter preserved + recovery toggled on
     expect(payload.precision_filter.categories).toEqual(['relation']);
     expect(payload.entity_recovery.enabled).toBe(true);
+  });
+
+  it('picking a default extraction model sends llm_model', async () => {
+    renderPanel(makeProject());
+    fireEvent.click(screen.getByLabelText('projects.extractionTuning.defaultModel'));
+    fireEvent.click(saveBtn());
+    await waitFor(() => expect(updateExtractionConfigMock).toHaveBeenCalledTimes(1));
+    expect(updateExtractionConfigMock.mock.calls[0][1].llm_model).toEqual({
+      model_ref: 'picked-model-uuid', model_source: 'user_model',
+    });
+  });
+
+  it('clearing the default model omits llm_model (fall back to the global default)', async () => {
+    const { unmount } = renderPanel(makeProject({ llm_model: { model_ref: 'persisted' } }));
+    // the stub toggles: a click on a set value clears it (emits null)
+    fireEvent.click(screen.getByLabelText('projects.extractionTuning.defaultModel'));
+    fireEvent.click(saveBtn());
+    await waitFor(() => expect(updateExtractionConfigMock).toHaveBeenCalledTimes(1));
+    expect(updateExtractionConfigMock.mock.calls[0][1].llm_model).toBeUndefined();
+    unmount();
+  });
+
+  it('entity-recovery model picker appears only when recovery is on and sends model_ref', async () => {
+    renderPanel(makeProject());
+    // recovery off → no recovery-model picker
+    expect(screen.queryByTestId('tuning-recovery-model')).toBeNull();
+    fireEvent.click(screen.getByLabelText('projects.extractionTuning.recoveryEnabled'));
+    expect(screen.getByTestId('tuning-recovery-model')).toBeDefined();
+    // pick a recovery model
+    fireEvent.click(screen.getByLabelText('projects.extractionTuning.recoveryModel'));
+    fireEvent.click(saveBtn());
+    await waitFor(() => expect(updateExtractionConfigMock).toHaveBeenCalledTimes(1));
+    expect(updateExtractionConfigMock.mock.calls[0][1].entity_recovery).toEqual({
+      enabled: true, model_ref: 'picked-model-uuid', model_source: 'user_model',
+    });
   });
 
   it('toggling writer autocreate sends writer_autocreate.enabled', async () => {

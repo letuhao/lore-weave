@@ -29,6 +29,11 @@ import {
 const ALL_CATEGORIES: FilterCategory[] = ['entity', 'relation', 'event'];
 
 interface Draft {
+  // KN model-roles — the project's DEFAULT LLM (extraction_config.llm_model). The
+  // fallback every unset extraction role resolves to (role override → this →
+  // user-global default → env). null = no project default (roles fall to the
+  // user-global default / this job's extraction model).
+  defaultModelRef: string | null;
   filterEnabled: boolean;
   filterCategories: FilterCategory[];
   filterPartialPolicy: PartialPolicy;
@@ -36,6 +41,9 @@ interface Draft {
   // the extraction model (the BE resolves the fallback per-user). NEVER an env model.
   filterModelRef: string | null;
   recoveryEnabled: boolean;
+  // KN model-roles — entity-recovery classifier model; null = use the default
+  // (the BE resolves role override → project default → user-global → env).
+  recoveryModelRef: string | null;
   autocreateEnabled: boolean;
   prompts: Record<PromptOp, string>; // per-op system text ('' = no override)
 }
@@ -45,6 +53,7 @@ function asRecord(v: unknown): Record<string, unknown> {
 }
 
 function deriveDraft(config: Record<string, unknown>): Draft {
+  const llm = asRecord(config.llm_model);
   const pf = asRecord(config.precision_filter);
   const er = asRecord(config.entity_recovery);
   const ac = asRecord(config.writer_autocreate);
@@ -55,6 +64,7 @@ function deriveDraft(config: Record<string, unknown>): Draft {
     prompts[op] = typeof sys === 'string' ? sys : '';
   }
   return {
+    defaultModelRef: typeof llm.model_ref === 'string' ? llm.model_ref : null,
     // A project with NO precision_filter override is treated as "off" in the
     // panel (the global default decides at run time); toggling on sends an
     // explicit override.
@@ -65,6 +75,7 @@ function deriveDraft(config: Record<string, unknown>): Draft {
     filterPartialPolicy: pf.partial_policy === 'drop' ? 'drop' : 'keep',
     filterModelRef: typeof pf.model_ref === 'string' ? pf.model_ref : null,
     recoveryEnabled: er.enabled === true,
+    recoveryModelRef: typeof er.model_ref === 'string' ? er.model_ref : null,
     autocreateEnabled: ac.enabled === true,
     prompts,
   };
@@ -106,10 +117,18 @@ export function useExtractionConfig(project: Project, open: boolean, onChanged: 
   const canSubmit = !submitting && !filterCategoriesInvalid && !anyPromptTooLong;
 
   function buildPayload(): ExtractionConfigPayload {
-    // Read-modify-write: preserve unmanaged keys (llm_model, writer_autocreate).
+    // Read-modify-write: preserve unmanaged keys (rerank knobs).
     const payload: ExtractionConfigPayload = {
       ...(project.extraction_config as ExtractionConfigPayload),
     };
+    // KN model-roles — the project DEFAULT LLM. Set = the fallback every unset
+    // role resolves to; cleared = no project default (roles fall to the
+    // user-global default / this job's extraction model).
+    if (draft.defaultModelRef) {
+      payload.llm_model = { model_ref: draft.defaultModelRef, model_source: 'user_model' };
+    } else {
+      delete payload.llm_model;
+    }
     if (draft.filterEnabled) {
       const pf: Record<string, unknown> = {
         ...asRecord(project.extraction_config.precision_filter),
@@ -131,10 +150,20 @@ export function useExtractionConfig(project: Project, open: boolean, onChanged: 
       // Explicit disable so the BE turns the filter OFF for this project.
       payload.precision_filter = { enabled: false };
     }
-    payload.entity_recovery = {
+    const er: Record<string, unknown> = {
       ...asRecord(project.extraction_config.entity_recovery),
       enabled: draft.recoveryEnabled,
     };
+    // Explicit per-project recovery model, or clear it so the BE resolves the
+    // fallback (project default → user-global → env). Never an env model here.
+    if (draft.recoveryEnabled && draft.recoveryModelRef) {
+      er.model_ref = draft.recoveryModelRef;
+      er.model_source = 'user_model';
+    } else {
+      delete er.model_ref;
+      delete er.model_source;
+    }
+    payload.entity_recovery = er as ExtractionConfigPayload['entity_recovery'];
     payload.writer_autocreate = { enabled: draft.autocreateEnabled };
     const prompts: ExtractionConfigPayload['prompts'] = {};
     for (const op of PROMPT_OPS) {
