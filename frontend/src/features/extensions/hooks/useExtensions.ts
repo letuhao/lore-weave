@@ -2,10 +2,12 @@
 import { useCallback, useEffect, useState } from 'react';
 import { useAuth } from '@/auth';
 import { extensionsApi } from '../api';
+import { useExtensionScope } from '../context/ExtensionScope';
 import type { Skill, Proposal, UsageCounters } from '../types';
 
 export function useSkills() {
   const { accessToken } = useAuth();
+  const { bookId } = useExtensionScope();
   const [skills, setSkills] = useState<Skill[]>([]);
   const [total, setTotal] = useState(0);
   const [q, setQ] = useState('');
@@ -21,7 +23,7 @@ export function useSkills() {
     setLoading(true);
     setError(null);
     try {
-      const res = await extensionsApi.listSkills(accessToken, { q, tier, sort, limit, offset: page * limit });
+      const res = await extensionsApi.listSkills(accessToken, { q, tier, sort, limit, offset: page * limit, book_id: bookId ?? undefined });
       setSkills(res.items);
       setTotal(res.total);
     } catch (e) {
@@ -29,7 +31,7 @@ export function useSkills() {
     } finally {
       setLoading(false);
     }
-  }, [accessToken, q, tier, sort, page]);
+  }, [accessToken, q, tier, sort, page, bookId]);
 
   useEffect(() => {
     void refresh();

@@ -12,10 +12,39 @@ import { SubagentsView } from '../components/SubagentsView';
 import { ActivityView } from '../components/ActivityView';
 import { AdminIngestView } from '../components/AdminIngestView';
 import { useIsAdmin } from '../adminGate';
+import { ExtensionScopeProvider, useExtensionScope } from '../context/ExtensionScope';
+import { BookPicker } from '@/components/shared/BookPicker';
 
 type Tab = 'skills' | 'mcp' | 'commands' | 'subagents' | 'plugins' | 'proposals' | 'activity' | 'ingest';
 
+// D-REG-BOOK-TIER-FE — pick a book to manage its book-tier extensions (or "My" for the
+// user's own). Bound to the shared scope; every capability hook reads it.
+function ScopeBar() {
+  const { bookId, setBookId } = useExtensionScope();
+  return (
+    <div className="mb-4 flex items-center gap-2 text-xs" data-testid="extensions-scope">
+      <span className="text-muted-foreground">Scope:</span>
+      <button
+        onClick={() => setBookId(null)}
+        data-testid="scope-user"
+        className={`rounded-md px-2 py-1 ${bookId === null ? 'bg-muted font-semibold' : 'text-muted-foreground hover:text-foreground'}`}
+      >My extensions</button>
+      <span className="text-muted-foreground">or a book:</span>
+      <div className="min-w-[220px]"><BookPicker value={bookId} onChange={setBookId} placeholder="book-scoped…" /></div>
+      {bookId && <span className="text-amber-500">book-scoped — new items apply to this book only</span>}
+    </div>
+  );
+}
+
 export function ExtensionsPage() {
+  return (
+    <ExtensionScopeProvider>
+      <ExtensionsPageInner />
+    </ExtensionScopeProvider>
+  );
+}
+
+function ExtensionsPageInner() {
   const [tab, setTab] = useState<Tab>('skills');
   const usage = useUsage();
   const isAdmin = useIsAdmin();
@@ -31,6 +60,7 @@ export function ExtensionsPage() {
           </div>
         )}
       </div>
+      <ScopeBar />
       <div className="mb-4 flex gap-1 text-sm">
         <button
           onClick={() => setTab('skills')}

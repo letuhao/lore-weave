@@ -32,12 +32,13 @@ const BASE = '/v1/agent-registry';
 export const extensionsApi = {
   listSkills(
     token: string,
-    params: { q?: string; tier?: string; sort?: string; limit?: number; offset?: number } = {},
+    params: { q?: string; tier?: string; sort?: string; limit?: number; offset?: number; book_id?: string } = {},
   ): Promise<SkillList> {
     const qs = new URLSearchParams();
     if (params.q) qs.set('q', params.q);
     if (params.tier) qs.set('tier', params.tier);
     if (params.sort) qs.set('sort', params.sort);
+    if (params.book_id) qs.set('book_id', params.book_id);
     qs.set('limit', String(params.limit ?? 20));
     qs.set('offset', String(params.offset ?? 0));
     return apiJson<SkillList>(`${BASE}/skills?${qs.toString()}`, { token });
@@ -45,7 +46,7 @@ export const extensionsApi = {
 
   createSkill(
     token: string,
-    body: { slug: string; description: string; body_md: string; surfaces?: string[]; status?: string },
+    body: { slug: string; description: string; body_md: string; surfaces?: string[]; status?: string; tier?: string; book_id?: string },
   ): Promise<Skill> {
     return apiJson<Skill>(`${BASE}/skills`, { method: 'POST', token, body: JSON.stringify(body) });
   },
@@ -101,10 +102,11 @@ export const extensionsApi = {
   // ── P3: external MCP servers ──────────────────────────────────────────────
   listMcpServers(
     token: string,
-    params: { status?: string; limit?: number; offset?: number } = {},
+    params: { status?: string; limit?: number; offset?: number; book_id?: string } = {},
   ): Promise<McpServerList> {
     const qs = new URLSearchParams();
     if (params.status) qs.set('status', params.status);
+    if (params.book_id) qs.set('book_id', params.book_id);
     qs.set('limit', String(params.limit ?? 20));
     qs.set('offset', String(params.offset ?? 0));
     return apiJson<McpServerList>(`${BASE}/mcp-servers?${qs.toString()}`, { token });
@@ -139,9 +141,10 @@ export const extensionsApi = {
   },
 
   // ── P4: slash commands ────────────────────────────────────────────────────
-  listCommands(token: string, params: { q?: string; limit?: number; offset?: number } = {}): Promise<CommandList> {
+  listCommands(token: string, params: { q?: string; limit?: number; offset?: number; book_id?: string } = {}): Promise<CommandList> {
     const qs = new URLSearchParams();
     if (params.q) qs.set('q', params.q);
+    if (params.book_id) qs.set('book_id', params.book_id);
     qs.set('limit', String(params.limit ?? 50));
     qs.set('offset', String(params.offset ?? 0));
     return apiJson<CommandList>(`${BASE}/commands?${qs.toString()}`, { token });
@@ -157,9 +160,10 @@ export const extensionsApi = {
   },
 
   // ── P4: declarative hooks ─────────────────────────────────────────────────
-  listHooks(token: string, params: { on_event?: string; limit?: number; offset?: number } = {}): Promise<HookList> {
+  listHooks(token: string, params: { on_event?: string; limit?: number; offset?: number; book_id?: string } = {}): Promise<HookList> {
     const qs = new URLSearchParams();
     if (params.on_event) qs.set('on_event', params.on_event);
+    if (params.book_id) qs.set('book_id', params.book_id);
     qs.set('limit', String(params.limit ?? 50));
     qs.set('offset', String(params.offset ?? 0));
     return apiJson<HookList>(`${BASE}/hooks?${qs.toString()}`, { token });
@@ -196,8 +200,9 @@ export const extensionsApi = {
   },
 
   // ── P5: subagent personas ─────────────────────────────────────────────────
-  listSubagents(token: string, params: { limit?: number; offset?: number } = {}): Promise<SubagentList> {
+  listSubagents(token: string, params: { limit?: number; offset?: number; book_id?: string } = {}): Promise<SubagentList> {
     const qs = new URLSearchParams();
+    if (params.book_id) qs.set('book_id', params.book_id);
     qs.set('limit', String(params.limit ?? 50));
     qs.set('offset', String(params.offset ?? 0));
     return apiJson<SubagentList>(`${BASE}/subagents?${qs.toString()}`, { token });

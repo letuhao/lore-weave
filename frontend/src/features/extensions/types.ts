@@ -127,6 +127,8 @@ export interface CreateMcpServerReq {
   bearer_token?: string;
   egress_allowlist?: string[];
   oauth?: OAuthConfig;
+  tier?: 'user' | 'book';
+  book_id?: string;
 }
 
 // ── P4: slash commands + declarative hooks ──────────────────────────────────
@@ -154,6 +156,8 @@ export interface CreateCommandReq {
   template_md: string;
   expand_side?: 'server' | 'client';
   arg_schema?: Record<string, unknown>;
+  tier?: 'user' | 'book';
+  book_id?: string;
 }
 
 export interface Plugin {
@@ -220,6 +224,8 @@ export interface CreateHookReq {
   match?: Record<string, unknown>;
   action: HookAction;
   priority?: number;
+  tier?: 'user' | 'book';
+  book_id?: string;
 }
 
 // ── P5: subagent personas (REG-P5-01) — a named persona (system_prompt) with a
@@ -249,6 +255,8 @@ export interface CreateSubagentReq {
   system_prompt: string;
   tool_scope?: string[];
   model_ref?: string;
+  tier?: 'user' | 'book';
+  book_id?: string;
 }
 
 // ── Activity log (REG-X-01) — the append-only registry audit, owner-scoped.

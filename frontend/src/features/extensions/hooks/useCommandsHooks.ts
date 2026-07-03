@@ -2,10 +2,12 @@
 import { useCallback, useEffect, useState } from 'react';
 import { useAuth } from '@/auth';
 import { extensionsApi } from '../api';
+import { useExtensionScope } from '../context/ExtensionScope';
 import type { SlashCommand, Hook, CreateCommandReq, CreateHookReq } from '../types';
 
 export function useCommands() {
   const { accessToken } = useAuth();
+  const { bookId } = useExtensionScope();
   const [commands, setCommands] = useState<SlashCommand[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -15,26 +17,26 @@ export function useCommands() {
     setLoading(true);
     setError(null);
     try {
-      setCommands((await extensionsApi.listCommands(accessToken, { limit: 50 })).items);
+      setCommands((await extensionsApi.listCommands(accessToken, { limit: 50, book_id: bookId ?? undefined })).items);
     } catch (e) {
       setError(e instanceof Error ? e.message : 'failed to load commands');
     } finally {
       setLoading(false);
     }
-  }, [accessToken]);
+  }, [accessToken, bookId]);
 
   useEffect(() => { void refresh(); }, [refresh]);
 
   const create = useCallback(async (body: CreateCommandReq): Promise<string | null> => {
     if (!accessToken) return null;
     try {
-      await extensionsApi.createCommand(accessToken, body);
+      await extensionsApi.createCommand(accessToken, { ...body, ...(bookId ? { tier: 'book' as const, book_id: bookId } : {}) });
       await refresh();
       return null;
     } catch (e) {
       return e instanceof Error ? e.message : 'create failed';
     }
-  }, [accessToken, refresh]);
+  }, [accessToken, bookId, refresh]);
 
   const remove = useCallback(async (c: SlashCommand) => {
     if (!accessToken) return;
@@ -53,6 +55,7 @@ export function useCommands() {
 
 export function useHooks() {
   const { accessToken } = useAuth();
+  const { bookId } = useExtensionScope();
   const [hooks, setHooks] = useState<Hook[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -62,26 +65,26 @@ export function useHooks() {
     setLoading(true);
     setError(null);
     try {
-      setHooks((await extensionsApi.listHooks(accessToken, { limit: 50 })).items);
+      setHooks((await extensionsApi.listHooks(accessToken, { limit: 50, book_id: bookId ?? undefined })).items);
     } catch (e) {
       setError(e instanceof Error ? e.message : 'failed to load hooks');
     } finally {
       setLoading(false);
     }
-  }, [accessToken]);
+  }, [accessToken, bookId]);
 
   useEffect(() => { void refresh(); }, [refresh]);
 
   const create = useCallback(async (body: CreateHookReq): Promise<string | null> => {
     if (!accessToken) return null;
     try {
-      await extensionsApi.createHook(accessToken, body);
+      await extensionsApi.createHook(accessToken, { ...body, ...(bookId ? { tier: 'book' as const, book_id: bookId } : {}) });
       await refresh();
       return null;
     } catch (e) {
       return e instanceof Error ? e.message : 'create failed';
     }
-  }, [accessToken, refresh]);
+  }, [accessToken, bookId, refresh]);
 
   const remove = useCallback(async (h: Hook) => {
     if (!accessToken) return;

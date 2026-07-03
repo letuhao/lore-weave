@@ -2,10 +2,12 @@
 import { useCallback, useEffect, useState } from 'react';
 import { useAuth } from '@/auth';
 import { extensionsApi } from '../api';
+import { useExtensionScope } from '../context/ExtensionScope';
 import type { McpServer, CreateMcpServerReq } from '../types';
 
 export function useMcpServers() {
   const { accessToken } = useAuth();
+  const { bookId } = useExtensionScope();
   const [servers, setServers] = useState<McpServer[]>([]);
   const [total, setTotal] = useState(0);
   const [status, setStatus] = useState('');
@@ -20,7 +22,7 @@ export function useMcpServers() {
     setLoading(true);
     setError(null);
     try {
-      const res = await extensionsApi.listMcpServers(accessToken, { status, limit, offset: page * limit });
+      const res = await extensionsApi.listMcpServers(accessToken, { status, limit, offset: page * limit, book_id: bookId ?? undefined });
       setServers(res.items);
       setTotal(res.total);
     } catch (e) {
@@ -28,7 +30,7 @@ export function useMcpServers() {
     } finally {
       setLoading(false);
     }
-  }, [accessToken, status, page]);
+  }, [accessToken, status, page, bookId]);
 
   useEffect(() => {
     void refresh();
@@ -122,6 +124,7 @@ export function useMcpServerDetail(id: string | null) {
 
 export function useCreateMcpServer() {
   const { accessToken } = useAuth();
+  const { bookId } = useExtensionScope();
   const [creating, setCreating] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -131,7 +134,7 @@ export function useCreateMcpServer() {
       setCreating(true);
       setError(null);
       try {
-        return await extensionsApi.createMcpServer(accessToken, body);
+        return await extensionsApi.createMcpServer(accessToken, { ...body, ...(bookId ? { tier: 'book' as const, book_id: bookId } : {}) });
       } catch (e) {
         setError(e instanceof Error ? e.message : 'registration failed');
         return null;
@@ -139,7 +142,7 @@ export function useCreateMcpServer() {
         setCreating(false);
       }
     },
-    [accessToken],
+    [accessToken, bookId],
   );
 
   return { create, creating, error };
