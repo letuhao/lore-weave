@@ -62,8 +62,16 @@
 > (chat approve/reject card — AssistantMessage clean again after chat-quality landed; 159 FE tests green), standalone
 > /extensions route + save-as-skill affordance shipped, D-REG-P1G-BROWSER (deterministic: registryPanels.test 4/4 mount +
 > panelCatalogContract 3/3; live Playwright = when-free follow-up, browser held by concurrent agent). **P1 COMPLETE.**
-> **NEXT: P2 (per-user federation — the ai-gateway global→per-user overlay re-arch, the spec's crux)** → P3 (external
-> MCP+security) → P4 (commands/hooks) → P5 (subagents/bundles). **Decisions:** `DECISION_LOG.md` (DL-1..6 + CLEARED section).
+> **P2 BACKEND SHIPPED ✅ (REG-P2-01/02):** `mcp_server_registrations` + `mcp_server_enablement`; CRUD with mandatory
+> `u_<hash8(owner)>_` anti-shadow prefix; internal-only guard (external public host → 400, deferred to P3); book-tier
+> grant-gated + Active(); D2 quota (10/user); `/internal/effective-mcp-servers` per-user resolver (endpoint+prefix+version).
+> Live `p2_backend_smoke.ps1` 10/10 — **per-user isolation proven** (B can't see A's server), toggle+version-bump, delete.
+> **NEXT: REG-P2-03 — the ai-gateway per-user OVERLAY (spec's crux, HOT PATH — every turn's tool resolution):** in
+> `services/ai-gateway/src/federation/federation.service.ts`, on tools/list for an envelope userId/projectId, fetch
+> `/internal/effective-mcp-servers`, federate those endpoints under their prefix, merge over the static System catalog;
+> cache by (userId, bookId, catalog_version); feature-flag `REGISTRY_OVERLAY_ENABLED` (default OFF = today's catalog
+> byte-identical); zero-registration fast path. Then REG-P2-04 (A/B isolation + 9-provider regression live smoke) → P3
+> (external MCP+security) → P4 → P5. **Decisions:** `DECISION_LOG.md` (DL-1..6 + CLEARED + review-round-2).
 >
 > **▶ CHAT QUALITY WAVE — W0 + W1 SHIPPED + LIVE-SMOKED 2026-07-03 (parallel sub-agent build, disjoint files,
 > combined verify).** Trigger: user's 8-item quality pass (plan + 5-investigation evidence base incl. a LIVE MCP
