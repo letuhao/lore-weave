@@ -24,10 +24,13 @@ export function extractEnvelope(headers: Headers): Envelope {
   };
 }
 
-export function handleListTools(federation: FederationService): {
+export async function handleListTools(
+  federation: FederationService,
+  headers?: Headers,
+): Promise<{
   tools: any[];
   _meta: { unavailable_providers: string[]; partial: boolean };
-} {
+}> {
   // MCP fan-out (H10) — carry the per-provider availability on the list-tools
   // `_meta` so the consumer's find_tools can distinguish "no such tool" from
   // "owning provider temporarily unavailable" (→ "try again", never "I can't").
@@ -35,11 +38,15 @@ export function handleListTools(federation: FederationService): {
     .providerAvailability()
     .filter((p) => !p.available)
     .map((p) => p.name);
+  // REG-P2-03 — merge the caller's per-user MCP-server tools (u_/b_ prefixed) over
+  // the static System catalog. No-op (empty) when the overlay flag is off, no
+  // X-User-Id envelope, or the caller has zero registrations (fast path).
+  const overlay = await federation.overlayTools(extractEnvelope(headers));
   // Prepend the consumer-local `find_tools` meta-tool so a minimal surface (the public edge) can
   // advertise it + relay its calls back here. chat-service already carries find_tools as core, so
   // the duplicate is deduped by name (its active set is name-keyed) + excluded from its own search.
   return {
-    tools: [FIND_TOOLS_TOOL, ...(federation.catalog() as any[])],
+    tools: [FIND_TOOLS_TOOL, ...(federation.catalog() as any[]), ...overlay],
     _meta: { unavailable_providers: unavailable, partial: federation.isPartial() },
   };
 }
@@ -136,7 +143,11 @@ export async function handleGetPrompt(
  * (none of the caller's data is touched). Returns a standard MCP CallToolResult; the matched names
  * are carried in `structuredContent.tools` for the agent to call next.
  */
-export function handleFindTools(federation: FederationService, args: Record<string, unknown>): any {
+export async function handleFindTools(
+  federation: FederationService,
+  args: Record<string, unknown>,
+  headers?: Headers,
+): Promise<any> {
   const intent = typeof args?.intent === 'string' ? args.intent : '';
   const rawLimit = typeof args?.limit === 'number' ? args.limit : FIND_TOOLS_TOOL.inputSchema.properties.limit.default;
   const limit = Math.max(1, Math.min(25, rawLimit));
@@ -144,8 +155,17 @@ export function handleFindTools(federation: FederationService, args: Record<stri
     .providerAvailability()
     .filter((p) => !p.available)
     .map((p) => p.name);
+  // REG-P2-03 — the caller's per-user overlay tools are discoverable too, so the
+  // agent can find_tools its own registered servers (not just the System catalog).
+  const overlay = await federation.overlayTools(extractEnvelope(headers));
   // Exclude find_tools itself so a search never re-suggests the meta-tool.
-  const { payload } = findToolsResult(federation.catalog(), intent, limit, new Set([FIND_TOOLS_NAME]), unavailable);
+  const { payload } = findToolsResult(
+    [...federation.catalog(), ...overlay],
+    intent,
+    limit,
+    new Set([FIND_TOOLS_NAME]),
+    unavailable,
+  );
   return {
     content: [{ type: 'text', text: JSON.stringify(payload) }],
     structuredContent: payload,
@@ -170,9 +190,9 @@ export async function handleCallTool(
   signal?: AbortSignal,
 ): Promise<any> {
   // find_tools is consumer-local — handle it HERE without a downstream provider (no provider owns
-  // it; routing it to executeTool would throw "unknown tool"). No envelope needed (OD-1).
+  // it; routing it to executeTool would throw "unknown tool"). Overlay tools ARE searched (headers).
   if (name === FIND_TOOLS_NAME) {
-    return handleFindTools(federation, args);
+    return handleFindTools(federation, args, headers);
   }
 
   const env = extractEnvelope(headers);
@@ -184,6 +204,12 @@ export async function handleCallTool(
     log.warn(`tool '${name}' called with no X-User-Id envelope`);
   }
   try {
+    // REG-P2-03 — a u_/b_ prefixed tool is the caller's own registered server;
+    // route it to the overlay dispatch (strip prefix → call the user endpoint)
+    // instead of the static provider map (which would throw "unknown tool").
+    if (federation.isOverlayTool(name)) {
+      return await federation.executeOverlay(name, args, env, signal);
+    }
     // Forward the MCP `_meta` channel downstream (the proven TS→Go alternate to
     // headers, §20) so a provider that reads req.Params.Meta still receives it.
     return await federation.executeTool(name, args, env, meta, signal);

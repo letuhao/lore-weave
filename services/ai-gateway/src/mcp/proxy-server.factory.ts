@@ -36,7 +36,9 @@ export function buildProxyServer(federation: FederationService): Server {
   const headersOf = (extra: { requestInfo?: { headers?: unknown } }): ExtraHeaders =>
     extra.requestInfo?.headers as ExtraHeaders;
 
-  server.setRequestHandler(ListToolsRequestSchema, async () => handleListTools(federation));
+  server.setRequestHandler(ListToolsRequestSchema, async (_request, extra) =>
+    handleListTools(federation, headersOf(extra)),
+  );
 
   server.setRequestHandler(CallToolRequestSchema, async (request, extra) => {
     const headers = headersOf(extra);

@@ -25,6 +25,10 @@ function fakeFederation(over: Partial<FederationService>): FederationService {
     promptCatalog: () => [],
     readResource: async () => ({ contents: [] }),
     getPrompt: async () => ({ messages: [] }),
+    // REG-P2-03 — per-user overlay (default no-op: flag off / no registrations)
+    overlayTools: async () => [],
+    isOverlayTool: () => false,
+    executeOverlay: async () => ({ ok: true }),
     ...over,
   } as unknown as FederationService;
 }
@@ -78,16 +82,25 @@ describe('headerValue / extractEnvelope', () => {
 });
 
 describe('handleListTools', () => {
-  it('prepends find_tools, then the federated catalog, with an availability _meta (H10)', () => {
+  it('prepends find_tools, then the federated catalog, with an availability _meta (H10)', async () => {
     const fed = fakeFederation({ catalog: () => [{ name: 'memory_search' }] as any });
-    const res = handleListTools(fed);
+    const res = await handleListTools(fed);
     // find_tools is advertised FIRST (the lazy-discovery meta-tool), then the catalog.
     expect(res.tools[0].name).toBe('find_tools');
     expect(res.tools.map((t: any) => t.name)).toEqual(['find_tools', 'memory_search']);
     expect(res._meta).toEqual({ unavailable_providers: [], partial: false });
   });
 
-  it('reports a down provider in _meta.unavailable_providers (H10)', () => {
+  it('REG-P2-03: appends the per-user overlay tools after the System catalog', async () => {
+    const fed = fakeFederation({
+      catalog: () => [{ name: 'memory_search' }] as any,
+      overlayTools: async () => [{ name: 'u_deadbeef_search' }] as any,
+    });
+    const res = await handleListTools(fed, { 'x-user-id': 'u1' });
+    expect(res.tools.map((t: any) => t.name)).toEqual(['find_tools', 'memory_search', 'u_deadbeef_search']);
+  });
+
+  it('reports a down provider in _meta.unavailable_providers (H10)', async () => {
     const fed = fakeFederation({
       catalog: () => [] as any,
       providerAvailability: () => [
@@ -96,10 +109,20 @@ describe('handleListTools', () => {
       ],
       isPartial: () => true,
     });
-    expect(handleListTools(fed)._meta).toEqual({
+    expect((await handleListTools(fed))._meta).toEqual({
       unavailable_providers: ['book'],
       partial: true,
     });
+  });
+
+  it('REG-P2-03: routes a u_ prefixed tool to the overlay dispatch, not executeTool', async () => {
+    const executeTool = jest.fn().mockResolvedValue({ content: [] });
+    const executeOverlay = jest.fn().mockResolvedValue({ content: [{ type: 'text', text: 'overlay' }] });
+    const fed = fakeFederation({ executeTool, executeOverlay, isOverlayTool: (n: string) => /^u_/.test(n) });
+    const res = await handleCallTool(fed, 'u_deadbeef_search', { q: 'x' }, { 'x-user-id': 'u1' });
+    expect(executeOverlay).toHaveBeenCalledWith('u_deadbeef_search', { q: 'x' }, { userId: 'u1', sessionId: undefined, traceId: undefined, projectId: undefined, mcpKeyId: undefined, spendCapUsd: undefined }, undefined);
+    expect(executeTool).not.toHaveBeenCalled();
+    expect(res).toEqual({ content: [{ type: 'text', text: 'overlay' }] });
   });
 });
 

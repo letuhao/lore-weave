@@ -13,6 +13,7 @@ import {
   ProviderResult,
   uriScheme,
 } from './catalog.js';
+import { PerUserOverlay } from './overlay.js';
 
 /** Per-call identity forwarded to a provider (SO-1 / INV-7). Never sourced from the LLM. */
 export interface Envelope {
@@ -98,6 +99,12 @@ export class FederationService implements OnModuleInit, OnModuleDestroy {
   // same cadence as the tool catalog.
   private auxState: AuxCatalog = EMPTY_AUX;
   private timer?: NodeJS.Timeout;
+  // REG-P2-03 — per-user federation overlay (flag-gated; default off).
+  private readonly overlay = new PerUserOverlay({
+    enabled: this.cfg.overlayEnabled,
+    agentRegistryInternalUrl: this.cfg.agentRegistryInternalUrl,
+    internalToken: this.cfg.internalToken,
+  });
 
   async onModuleInit(): Promise<void> {
     await this.refresh();
@@ -116,6 +123,22 @@ export class FederationService implements OnModuleInit, OnModuleDestroy {
   }
   catalogVersion(): string {
     return this.state.version;
+  }
+
+  // ── REG-P2-03 — per-user overlay (flag-gated; default off = no-op) ────────
+
+  /** The caller's registered MCP-server tools to merge into tools/list, under
+   * their u_/b_ prefix. Empty when the flag is off, no envelope, or zero regs. */
+  async overlayTools(env: Envelope): Promise<any[]> {
+    return this.overlay.tools(env);
+  }
+  /** True iff `name` is an overlay-owned tool (u_/b_ prefix) AND the flag is on. */
+  isOverlayTool(name: string): boolean {
+    return this.overlay.isOverlayName(name);
+  }
+  /** Dispatch an overlay tool to the caller's own registered server. */
+  async executeOverlay(name: string, args: Record<string, unknown>, env: Envelope, signal?: AbortSignal): Promise<unknown> {
+    return this.overlay.dispatch(name, args, env, signal);
   }
   isPartial(): boolean {
     return this.state.partial;
