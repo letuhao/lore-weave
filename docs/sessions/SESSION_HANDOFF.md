@@ -432,6 +432,27 @@
 > return a `result.error` (headless sub-run can't raise the card) instead of a swallowed suspend. `/review-impl` caught the
 > volume-cap-suspend gap (fixed). 116 chat-service tests green. Spec updated to SHIPPED.
 >
+> **▶ EXTERNAL-MCP INTEGRATION — FULL LOOP LIVE-PROVEN end-to-end (2026-07-03).** Registered a REAL free public MCP
+> server (**DeepWiki** `https://mcp.deepwiki.com/mcp`, no-auth) on the test account and drove the whole chain live:
+> **register** (SSRF pass · egress-allowlist auto · transport auto `streamable_http` · namespace `u_a2bbc662_`) → **scan**
+> (health 3 tools · injection-scan clean · auto-active) → **federation** → **model autonomously calls it** → **dispatch to
+> the real server** → **result rendered in the agent's answer**. The live test found + fixed **two real consumer-wiring
+> bugs** (both committed, tested):
+> **(a) `fix(chat): wire the per-user overlay into the turn catalog` `a5cf762ec`** — `get_tool_definitions()` sent no
+> `X-User-Id` + cached process-wide, so the ai-gateway federation overlay (REG-P2-03, `u_/b_/s_` external tools) NEVER
+> reached a real chat turn's LLM. Fix: pass `user_id` (→ `X-User-Id`) + PER-USER cache with a 60s TTL (`_TOOL_CATALOG_TTL_S`;
+> overlays differ per user + change on register/remove). Both turn callers updated.
+> **(b) `fix(chat): accept plain-text results from external overlay tools` `e1932b40c`** — `mcp_execute_tool` `json.loads()`
+> every result, but external tools return PLAIN TEXT (DeepWiki returns prose) → every external result died as "unparseable
+> content". Fix: on decode-fail, if the tool matches `_OVERLAY_TOOL_RE` (`^[ubs]_[0-9a-f]{8}_`) wrap as `{"text":…}` success;
+> internal tools stay strict-JSON. **Final live turn (Gemma-4 26B): MODEL_CALLED_DEEPWIKI=True, DISPATCH_OK=True**, the real
+> wiki structure of `modelcontextprotocol/servers` rendered in the reply. 78 chat-service tests green for these.
+> **Ops note:** the overlay is flag-gated — `REGISTRY_OVERLAY_ENABLED=true` (default false, a rollout gate). Set via shell
+> env at `docker compose up` time (NOT persisted; a stack recreate without the env reverts to false — add to `.env`/compose
+> for permanence). CAVEAT: `docker compose up -d <svc>` re-evaluates `${VAR:-false}` for dependencies, so it can silently
+> flip the gateway's overlay off — set the env in the SAME shell. The overlay dispatch also has a circuit-breaker that trips
+> under repeated hammering of a flaky free server (fail-open → no overlay that turn); a gateway recreate resets it.
+>
 > **▶ CORRECTION (2026-07-03) — the earlier "TRACK COMPLETE P0→P5" claim was WRONG: it was BACKEND-complete but 2 FE
 > screens shipped as backend-only.** A design↔shipped reconcile vs `design-drafts/screens/plugin-register/draft-ui.html`
 > (nav: Plugins/MCP/Skills/Commands/Hooks/**Subagents**/**Activity log**) found the FE missing Subagents + Activity —
