@@ -1,5 +1,34 @@
 # ▶▶ NEXT SESSION STARTS HERE — **CHAT QUALITY & UX WAVE ✅ COMPLETE 2026-07-03 ([plan](../plans/2026-07-03-chat-quality-ux-wave.md)) — ALL 7 MILESTONES SHIPPED + LIVE/BROWSER-SMOKED: W0 MCP reliability `8e870b363` (26-30% tool-error rate attacked at root; /internal/tool-health measures the after) · W1 breakdown spine `a3dd678ba` · test-infra xdist `a374d6807` (composition 418s→55s · translation 770s→37s; CLAUDE.md rule) · W2 context GUI + W4 effort/mode dropdowns `c18fdba1c` (browser-smoked: meter "until auto-compact: 72%", panel Skills 1,907/UI-tools 1,484/MCP 193, always-on token footer, both dropdowns) · W3 manual steerable compact `c5373c5a2` (PERSISTED; live: 200 {4 compacted}, steered summary kept "the moon fact", SPLICE PROVEN BY EFFECT — post-compact turn answered from the summary alone; live-caught fix: summarizer thinking-OFF, gemma burned max_tokens on ReasoningEvents → empty prose) · W5 shared ModelPicker `735598a47` (ALL ~19 sites swept; browser-smoked: chat picker = 6 chat-capable only, rerank/embed/tts GONE, provider groups + ctx/$0-local badges; BE: pricing exposed, favorites-first, chat default whitelisted) · W6 tool/skill visibility `7a69f2ded` (agentSurface +advertised/servers/schema_tokens grounded in the gateway federation map; rack grouped per server + live dot + "N tools · X tok" chip; rack/inspector i18n gap closed ×4 locales). Suites at close: chat 719 · FE full 3277 · knowledge 3374 · translation 1031 · composition 1472 · glossary/jobs/ai-gateway/provider-registry green. Post-wave tail: tool-error-rate soak check via /internal/tool-health (target <10%) · Playwright compose e2e needs a stack run (page object migrated to selectModel/data-model-id) · deferred-vs-loaded count on the frame (needs catalog size — small) · D-RAID-ALLOWLIST-ENFORCE + RAID FE tail (C6/C1 panels) unchanged.** · Prior: **RAID ✅ COMPLETE 2026-07-02: Track 4 + C5/C4/C1/C2/B2 + WAVE D (D2 FSM `ecf0d410c` · D3 report/accept-reject `004d49ad9` · D4 durable sweep/claim/notify `037831e1d` · D5 real-judge critic `1d6f2960b` · post-RAID /review-impl hardening: HIGH >100-chapter gate false-reject `6c2ba94e0` + 4 MED fixes, see block below). B2 browser-smoked PASS (real gemma plan-mode, wire `permission_mode:plan` proven). REMAINING (small tail): full C2 approval-card browser loop (D-RAID-C2-LIVE-SMOKE — needs a clean session + tool-strong model; card surface itself proven live via the frontend-tool loop), C6 FE wiring + C1 FE panel (both wait for the dockable track to release the editor/panel seams), end-to-end autonomous-run live drive (create→gate→start→report on the POC book — all layers live-DB-proven separately; ⚠️ FE tsc is BROKEN at HEAD in the dockable track's committed studio files — manuscriptUnitDocument/ManuscriptUnitProvider/EditorPanel — their track owns the fix; smoke images build from a patched worktree meanwhile). Draft PR #54 open. Contract stands: local LLM only, exact-file staging, hard-stops = destructive-ops-outside-test-account + 3-strike.** Spec [`salience-track4`](../specs/2026-07-02-knowledge-salience-track4.md) + [`07S`](../specs/2026-07-01-writing-studio/07S_studio_agent_standard.md) + DRs [`raid-loadbearing-decision-records`](../specs/2026-07-02-raid-loadbearing-decision-records.md). · 2026-07-02**
 
+> **▶ KNOWLEDGE GUI FIXES + MODEL-ROLES SETTINGS — 2026-07-03 (3 items, all shipped).**
+> **#1 `cancel_check` extraction blocker (`591e54ad7`)** — bug #34 added `cancel_check` to the
+> loreweave_extraction protocol + every extractor (which ALWAYS forward it), and to
+> composition-service's wrapper, but the **knowledge-service + worker-ai** LLMClient wrappers were
+> left behind → EVERY KG extraction died `TypeError: submit_and_wait() unexpected keyword argument
+> cancel_check`. Both wrappers now accept + forward it to wait_terminal (additive). Tests use the
+> REAL wrapper (the extractor fakes' `**kwargs` swallowed the drift). LIVE: Retry on "Ma Nữ Nghịch
+> Thiên (POC)" → failed→ready, **43 entities/15 facts/129 events/181 passages** extracted, zero
+> TypeError. **#2 dead detail-view edit pen (`652899564`)** — `OverviewSection` passed
+> `onEdit={noop}` (silent no-op); now opens ProjectFormModal edit mode (embedding/rerank pickers),
+> reusing the ProjectsTab modal + If-Match update via the deduped useProjects cache. LIVE: pen →
+> "Edit project" dialog. **#3 model-roles settings + default fallback** — every LLM role gets a GUI
+> setting + a default fallback (PO: "both" scopes — precedence **role override → project default
+> (`extraction_config.llm_model`) → user-global default (provider-registry `user_default_models`
+> cap=chat, already built) → env floor → off**). Plan `docs/plans/2026-07-03-knowledge-model-roles-settings.md`.
+> Slices: **A foundation `36a8f76b7`** (pure `resolve_role_model` + user-global client, 10 tests);
+> **A-wire `4f32071e5`** (endpoint resolves per-job `entity_recovery` config → threads through
+> extract-item → `_run_pipeline` → `_maybe_apply_entity_recovery`; env-only stays byte-identical;
+> fail-soft); **B `f95cc46a5`** (contract `EntityRecoveryOverride`/`LlmModelOverride` already
+> existed; persisted project-default beats job model); **C `f9513b9f4`** (tuning-panel Default-LLM +
+> entity-recovery pickers, empty=use default; i18n ×4). Suites: knowledge 70 touched-unit + 750 FE
+> + 40 i18n parity; tsc clean. **D live**: new pickers render (theme-correct) + conditional
+> recovery picker on enable; **Save persisted `entity_recovery.enabled=true` to the DB via the real
+> PUT** (read-modify-write kept the rerank knob); A-wire image healthy. Runtime consumption
+> unit-proven (orchestrator threading test); a live rebuild re-dispatch wasn't observable on the dev
+> stack (worker-ai idle — rebuild-flow timing, NOT an A-wire regression: the only failed jobs are
+> pre-#1-fix). **Follow-ups (deferred):** wiki-gen LLM picker (separate feature); rebuild-with-model-
+> change (Rebuild reuses prior); `max_items_per_batch` not in the FE contract (env/default only).
+
 > **▶ AGENT EXTENSIBILITY REGISTRY — AUTONOMOUS RUN IN FLIGHT (2026-07-03).** New track: user-registered
 > plugins/skills/MCP-servers + agent self-registration. Spec [`agent-extensibility-registry`](../specs/2026-07-02-agent-extensibility-registry.md),
 > plan+tasks+E2E+GUI-checklist in [`docs/plans/2026-07-02-agent-extensibility-registry/`](../plans/2026-07-02-agent-extensibility-registry/).
