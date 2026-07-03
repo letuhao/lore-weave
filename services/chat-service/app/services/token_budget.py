@@ -83,6 +83,32 @@ def estimate_messages_tokens(messages: list[dict] | None) -> int:
 # hard LLM_CONTEXT_OVERFLOW guard (input + max_tokens + safety > context_length).
 _SAFETY_TOKENS = 512
 
+# ── T2: absolute, task-elastic budget target (spec §7 D3 + sealed decision #4) ──
+# The Compiler should keep a turn near a SOFT `target` — a fraction of the window,
+# far below it — instead of only compacting near the window (0.75× today). The
+# window stays the HARD ceiling (never exceeded); `target` is the soft trigger.
+# `task_weight` ∈ [0,1] slides the target across the band: a status-op → `floor`
+# (lean), "rewrite the whole chapter" → `surface_max` (roomy). Until the Planner
+# (T5) sets task_weight, callers pass 1.0 (surface_max) — so T2 is measure-only
+# and the current compaction behavior is unchanged (the flip lands after T4).
+_TARGET_FLOOR_CAP = 6_000
+_TARGET_FLOOR_FRAC = 0.10
+_TARGET_MAX_CAP = 32_000
+_TARGET_MAX_FRAC = 0.35
+
+
+def compute_target(context_length: int | None, *, task_weight: float = 1.0) -> int | None:
+    """The task-elastic soft budget target for a window. None when the window is
+    unknown. `floor = min(6K, 0.1×window)`, `surface_max = min(32K, 0.35×window)`;
+    target interpolates floor→surface_max by task_weight (clamped to [0,1])."""
+    if not context_length or context_length <= 0:
+        return None
+    floor = min(_TARGET_FLOOR_CAP, int(_TARGET_FLOOR_FRAC * context_length))
+    surface_max = min(_TARGET_MAX_CAP, int(_TARGET_MAX_FRAC * context_length))
+    surface_max = max(surface_max, floor)  # tiny windows: keep the band non-inverted
+    tw = min(1.0, max(0.0, task_weight))
+    return int(floor + tw * (surface_max - floor))
+
 
 @dataclass(frozen=True)
 class ContextBudget:
@@ -91,13 +117,21 @@ class ContextBudget:
     max_output_tokens: int
     effective_limit: int | None     # context_length - max_output - safety; None when unknown
     pct: float | None               # used / effective_limit; None when unknown
+    target: int | None = None       # T2: soft task-elastic budget (the compaction trigger)
+    pct_of_target: float | None = None  # used / target; None when unknown
 
     def to_event(self) -> dict:
+        # STRICTLY ADDITIVE over the original {used_tokens, context_length,
+        # effective_limit, pct} keys (FE meter contract). T2 adds target + pct_of_target.
         return {
             "used_tokens": self.used_tokens,
             "context_length": self.context_length,
             "effective_limit": self.effective_limit,
             "pct": round(self.pct, 4) if self.pct is not None else None,
+            "target": self.target,
+            "pct_of_target": (
+                round(self.pct_of_target, 4) if self.pct_of_target is not None else None
+            ),
         }
 
 
@@ -106,14 +140,22 @@ def compute_budget(
     used_tokens: int,
     context_length: int | None,
     max_output_tokens: int,
+    task_weight: float = 1.0,
 ) -> ContextBudget:
     """Budget from measured/estimated input tokens vs the model's context window.
-    NULL context_length (legacy rows) → unknown budget (meter shows '—')."""
+    NULL context_length (legacy rows) → unknown budget (meter shows '—'). `target`
+    is the task-elastic soft budget (T2); `effective_limit` is the near-window hard
+    guard (unchanged). `pct` is vs the hard limit; `pct_of_target` is vs the soft one."""
     if context_length is None or context_length <= 0:
-        return ContextBudget(used_tokens, None, max_output_tokens, None, None)
+        return ContextBudget(used_tokens, None, max_output_tokens, None, None, None, None)
     effective = max(1, context_length - max(0, max_output_tokens) - _SAFETY_TOKENS)
     pct = used_tokens / effective
-    return ContextBudget(used_tokens, context_length, max_output_tokens, effective, pct)
+    target = compute_target(context_length, task_weight=task_weight)
+    pct_of_target = (used_tokens / target) if target else None
+    return ContextBudget(
+        used_tokens, context_length, max_output_tokens, effective, pct,
+        target, pct_of_target,
+    )
 
 
 # ── per-category context breakdown (Chat Quality Wave W1) ─────────────────────
@@ -137,6 +179,11 @@ BREAKDOWN_CATEGORIES: tuple[str, ...] = (
     "tool_results",            # mid-turn role:tool results (this turn)
     "frontend_tool_schemas",   # advertised frontend-tool schemas (FRONTEND_TOOL_NAMES)
     "mcp_tool_schemas",        # advertised server/MCP tool schemas (the rest)
+    # T2 forward-declared Inspector categories (§11a). Present (0) until the tier
+    # that populates them lands, so the Inspector row set is stable from day one:
+    "summary",                 # rolling recall summary (T6 fact-preserving compaction)
+    "chapter",                 # whitelisted chapter body — a required contributor (D3)
+    "reasoning",               # model reasoning/output budgeted vs the target (D7)
 )
 
 # Everything that is in the prompt BEFORE the first user word — the fixed

@@ -82,6 +82,59 @@ class TestComputeBudget:
         assert (b.pct or 0) > 1.0  # over budget → meter goes red
 
 
+class TestComputeTarget:
+    def test_band_for_large_window(self):
+        # 200K window: floor = min(6K, 20K) = 6K; surface_max = min(32K, 70K) = 32K.
+        from app.services.token_budget import compute_target
+
+        assert compute_target(200_000, task_weight=0.0) == 6_000       # floor
+        assert compute_target(200_000, task_weight=1.0) == 32_000      # surface_max
+        mid = compute_target(200_000, task_weight=0.5)
+        assert 6_000 < mid < 32_000
+
+    def test_band_scales_with_small_window(self):
+        # 20K window: floor = min(6K, 2K) = 2K; surface_max = min(32K, 7K) = 7K.
+        from app.services.token_budget import compute_target
+
+        assert compute_target(20_000, task_weight=0.0) == 2_000
+        assert compute_target(20_000, task_weight=1.0) == 7_000
+
+    def test_task_weight_clamped(self):
+        from app.services.token_budget import compute_target
+
+        assert compute_target(200_000, task_weight=5.0) == 32_000   # >1 clamps to max
+        assert compute_target(200_000, task_weight=-1.0) == 6_000   # <0 clamps to floor
+
+    def test_unknown_window_is_none(self):
+        from app.services.token_budget import compute_target
+
+        assert compute_target(None) is None
+        assert compute_target(0) is None
+
+
+class TestBudgetTarget:
+    def test_budget_carries_target_and_pct_of_target(self):
+        # default task_weight=1.0 → surface_max target.
+        b = compute_budget(used_tokens=16_000, context_length=200_000, max_output_tokens=4_000)
+        assert b.target == 32_000
+        assert b.pct_of_target == 16_000 / 32_000  # 0.5 — half the soft budget
+        ev = b.to_event()
+        assert ev["target"] == 32_000
+        assert 0.49 <= ev["pct_of_target"] <= 0.51
+
+    def test_task_weight_shrinks_target(self):
+        lean = compute_budget(
+            used_tokens=8_000, context_length=200_000, max_output_tokens=4_000, task_weight=0.0)
+        assert lean.target == 6_000
+        assert (lean.pct_of_target or 0) > 1.0  # 8K > 6K floor → over the lean target
+
+    def test_unknown_window_target_none(self):
+        b = compute_budget(used_tokens=10, context_length=None, max_output_tokens=0)
+        assert b.target is None
+        assert b.to_event()["target"] is None
+        assert b.to_event()["pct_of_target"] is None
+
+
 # ── W1: per-category breakdown + extended frame payload ───────────────────────
 
 
