@@ -264,6 +264,7 @@ async def _stream_via_gateway(
         auth_mode="internal",
         internal_token=settings.internal_service_token,
         user_id=user_id,
+        idle_read_timeout_s=settings.llm_stream_idle_read_timeout_s,
     )
     try:
         max_tokens = gen_params.get("max_tokens")
@@ -633,6 +634,7 @@ async def _stream_with_tools(
         auth_mode="internal",
         internal_token=settings.internal_service_token,
         user_id=user_id,
+        idle_read_timeout_s=settings.llm_stream_idle_read_timeout_s,
     )
     try:
         working: list[dict] = list(messages)
@@ -3121,6 +3123,7 @@ async def _auto_generate_title(
             auth_mode="internal",
             internal_token=settings.internal_service_token,
             user_id=user_id,
+            idle_read_timeout_s=settings.llm_stream_idle_read_timeout_s,
         )
         try:
             request = StreamRequest(

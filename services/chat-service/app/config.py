@@ -19,6 +19,14 @@ class Settings(BaseSettings):
     redis_url: str = "redis://redis:6379"
     port: int = 8090
 
+    # LLM streaming idle-read timeout (seconds) — the longest SILENT gap between
+    # SSE frames before the stream is treated as stalled. Default 0 = UNBOUNDED
+    # (no cap): a slow reasoning model may think silently for minutes before its
+    # first token, and an idle cap would ReadTimeout mid-thought (as Gemma-4 26B
+    # at high effort did). Set a positive value (env LLM_STREAM_IDLE_READ_TIMEOUT_S,
+    # e.g. 300) to cap it. The SDK Client honours <=0 as read=None.
+    llm_stream_idle_read_timeout_s: float = 0.0
+
     # K5 — knowledge-service integration. Optional/tunable via env so we can
     # raise the timeout if knowledge-service ever becomes a real bottleneck.
     knowledge_service_url: str = "http://knowledge-service:8092"

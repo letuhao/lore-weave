@@ -74,6 +74,7 @@ def _new_llm_client(user_id: str) -> Client:
         auth_mode="internal",
         internal_token=settings.internal_service_token,
         user_id=user_id,
+        idle_read_timeout_s=settings.llm_stream_idle_read_timeout_s,
     )
 
 
