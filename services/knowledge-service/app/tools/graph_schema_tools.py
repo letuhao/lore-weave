@@ -46,6 +46,7 @@ import time
 from typing import TYPE_CHECKING, Literal
 from uuid import UUID, uuid4
 
+from loreweave_mcp import apply_response_contract
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from app.tools.argbase import ProjectScopedArgs
@@ -136,6 +137,53 @@ _ACTIONS_SCHEMA_WRITE = (
     "add_to_vocab", "add_to_schema", "widen_target_kinds", "set_multi_active",
 )
 
+# ── L1/L2 reference-first ref-field sets (Context Budget Law §6b) ──────
+# At detail="summary" `apply_response_contract` keeps ONLY these keys per node/edge
+# and drops the heavier per-item fields (localized labels, glossary anchors, scores,
+# schema_version, sample payloads). Full detail is unchanged. `detail` defaults to
+# "full" (versioned migration). Exported for the per-tool contract-guard tests.
+#
+# kg_graph_query nodes/edges (GraphNode/GraphEdge — public.graph_views): keep the
+# identity + relation triple; DROP the kind_label/name_label/edge_type_label +
+# glossary_entity_id + schema_version.
+GRAPH_NODE_REF_FIELDS = ("id", "kind", "name")
+GRAPH_EDGE_REF_FIELDS = ("edge_type", "source_id", "target_id", "valid_from", "valid_to")
+# kg_world_query / kg_multi_query nodes/edges (SubgraphNode/SubgraphEdge): keep
+# identity + the source-book tag + the relation triple; DROP anchor_score/
+# mention_count/glossary_entity_id (nodes) + confidence (edges).
+SUBGRAPH_NODE_REF_FIELDS = ("id", "name", "kind", "source_project_id")
+SUBGRAPH_EDGE_REF_FIELDS = ("id", "source", "target", "predicate")
+# kg_entity_edge_timeline instances (TimelineInstance): keep the target + the
+# temporal window; DROP evidence_chapter_id/schema_version/target_glossary_entity_id/
+# target_label_localized.
+TIMELINE_INSTANCE_REF_FIELDS = ("target_id", "target_label", "valid_from", "valid_to")
+# kg_triage_list groups: keep the signature + type/count/status; DROP the heavy
+# `sample_payload` blob + the `suggested_actions` list.
+TRIAGE_GROUP_REF_FIELDS = ("signature", "item_type", "count", "status")
+
+
+def _project_graph(out: dict, detail: str, *, node_ref, edge_ref) -> dict:
+    """Apply the L1/L2 field projection to a graph result's `nodes` + `edges` lists
+    in place and stamp coverage `meta`. The tool's own `limit` already bounds ROW
+    counts (in the Cypher); `detail` is the per-item FIELD lever, so summary
+    projects fields but never silently drops rows — meta reports both totals."""
+    nodes_p, nmeta = apply_response_contract(
+        out.get("nodes", []), ref_fields=node_ref, detail=detail,
+    )
+    edges_p, emeta = apply_response_contract(
+        out.get("edges", []), ref_fields=edge_ref, detail=detail,
+    )
+    out["nodes"] = nodes_p
+    out["edges"] = edges_p
+    out["meta"] = {
+        "detail": detail,
+        "nodes_total": nmeta["total"],
+        "nodes_returned": nmeta["returned"],
+        "edges_total": emeta["total"],
+        "edges_returned": emeta["returned"],
+    }
+    return out
+
 
 # ── arg models (extra="forbid"; envelope keys are NEVER fields) ───────
 
@@ -146,6 +194,8 @@ class KgGraphQueryArgs(ProjectScopedArgs):
     view: str | None = Field(default=None, max_length=_CODE_MAX)
     as_of_chapter: int | None = Field(default=None, ge=0)
     limit: int = Field(default=GRAPH_LIMIT_DEFAULT, ge=1, le=GRAPH_LIMIT_MAX)
+    # L1/L2 reference-first contract (§6b) — versioned default "full".
+    detail: Literal["summary", "full"] = "full"
 
 
 class KgWorldQueryArgs(BaseModel):
@@ -160,6 +210,8 @@ class KgWorldQueryArgs(BaseModel):
     world_id: str = Field(min_length=1, max_length=200)
     limit: int = Field(default=200, ge=1, le=GRAPH_LIMIT_MAX)
     unify: Literal["off", "by_name", "semantic"] = "off"
+    # L1/L2 reference-first contract (§6b) — versioned default "full".
+    detail: Literal["summary", "full"] = "full"
 
 
 class KgMultiQueryArgs(BaseModel):
@@ -178,6 +230,8 @@ class KgMultiQueryArgs(BaseModel):
     project_ids: list[str] = Field(min_length=1, max_length=16)
     limit: int = Field(default=200, ge=1, le=GRAPH_LIMIT_MAX)
     unify: Literal["off", "by_name", "semantic"] = "off"
+    # L1/L2 reference-first contract (§6b) — versioned default "full".
+    detail: Literal["summary", "full"] = "full"
 
 
 class KgEntityEdgeTimelineArgs(BaseModel):
@@ -194,6 +248,8 @@ class KgEntityEdgeTimelineArgs(BaseModel):
     entity_id: str = Field(min_length=1, max_length=200)
     edge_type: str = Field(min_length=1, max_length=_CODE_MAX)
     limit: int = Field(default=TIMELINE_LIMIT_DEFAULT, ge=1, le=TIMELINE_LIMIT_MAX)
+    # L1/L2 reference-first contract (§6b) — versioned default "full".
+    detail: Literal["summary", "full"] = "full"
 
 
 class KgSchemaReadArgs(ProjectScopedArgs):
@@ -221,6 +277,8 @@ class KgTriageListArgs(ProjectScopedArgs):
 
     status: Literal["pending", "pending_glossary", "resolved", "dismissed"] = "pending"
     limit: int = Field(default=TRIAGE_LIMIT_DEFAULT, ge=1, le=TRIAGE_LIMIT_MAX)
+    # L1/L2 reference-first contract (§6b) — versioned default "full".
+    detail: Literal["summary", "full"] = "full"
 
 
 class KgProposeFactArgs(ProjectScopedArgs):
@@ -436,6 +494,21 @@ _PROJECT_ID_PROP = {
     ),
 }
 
+# L1/L2 reference-first `detail` enum (§6b) shared by the SET-returning kg-read
+# tools. Enum-locked + versioned-default "full" (see definitions._DETAIL_PROP).
+_DETAIL_PROP = {
+    "type": "string",
+    "enum": ["summary", "full"],
+    "description": (
+        "Response granularity. 'full' (default) = every field of each node/edge/"
+        "item. 'summary' = a compact reference projection (ids + names + the "
+        "relation triple; localized labels, glossary anchors, scores and heavy "
+        "payloads dropped) — scan a large graph cheaply, then re-read specifics "
+        "with a get-by-id sibling (e.g. memory_recall_entity / "
+        "kg_entity_edge_timeline). `meta` reports the node/edge totals."
+    ),
+}
+
 # B1(4) — the `unify` enum shared by kg_world_query + kg_multi_query. Enum-locked
 # so a weak model picks a valid mode; the 1..16-style bound discipline of #1.
 _UNIFY_PROP = {
@@ -481,6 +554,7 @@ GRAPH_SCHEMA_TOOL_DEFINITIONS: list[dict] = [
                 "maximum": GRAPH_LIMIT_MAX,
                 "description": f"Max edges to scan (default {GRAPH_LIMIT_DEFAULT}).",
             },
+            "detail": _DETAIL_PROP,
             "project_id": _PROJECT_ID_PROP,
         },
         [],
@@ -505,6 +579,7 @@ GRAPH_SCHEMA_TOOL_DEFINITIONS: list[dict] = [
                 "description": "Max nodes in the union (default 200).",
             },
             "unify": _UNIFY_PROP,
+            "detail": _DETAIL_PROP,
         },
         ["world_id"],
     ),
@@ -531,6 +606,7 @@ GRAPH_SCHEMA_TOOL_DEFINITIONS: list[dict] = [
                 "description": "Max nodes in the union (default 200).",
             },
             "unify": _UNIFY_PROP,
+            "detail": _DETAIL_PROP,
         },
         ["project_ids"],
     ),
@@ -556,6 +632,7 @@ GRAPH_SCHEMA_TOOL_DEFINITIONS: list[dict] = [
                 "maximum": TIMELINE_LIMIT_MAX,
                 "description": f"Max instances (default {TIMELINE_LIMIT_DEFAULT}).",
             },
+            "detail": _DETAIL_PROP,
         },
         ["entity_id", "edge_type"],
     ),
@@ -618,6 +695,7 @@ GRAPH_SCHEMA_TOOL_DEFINITIONS: list[dict] = [
                 "maximum": TRIAGE_LIMIT_MAX,
                 "description": f"Max signature groups (default {TRIAGE_LIMIT_DEFAULT}).",
             },
+            "detail": _DETAIL_PROP,
             "project_id": _PROJECT_ID_PROP,
         },
         [],
@@ -1033,7 +1111,13 @@ async def _handle_kg_graph_query(ctx: "ToolContext", args: KgGraphQueryArgs) -> 
         deprecated_edge_codes=deprecated,
         view_code=args.view,
     )
-    return slice_.model_dump(mode="json")
+    out = slice_.model_dump(mode="json")
+    # L1/L2 reference-first (§6b): project node/edge fields per `detail` (summary =
+    # id/kind/name refs + relation triple; drop labels/glossary/schema_version).
+    return _project_graph(
+        out, args.detail,
+        node_ref=GRAPH_NODE_REF_FIELDS, edge_ref=GRAPH_EDGE_REF_FIELDS,
+    )
 
 
 async def _handle_kg_world_query(ctx: "ToolContext", args: KgWorldQueryArgs) -> dict:
@@ -1116,7 +1200,13 @@ async def _handle_kg_world_query(ctx: "ToolContext", args: KgWorldQueryArgs) -> 
         )
     if unify_extra is not None:
         out.update(unify_extra)
-    return out
+    # L1/L2 reference-first (§6b): project the union node/edge fields per `detail`
+    # (summary = id/name/kind + source_project_id + relation triple). The inferred
+    # SAME_AS `bridge_edges` (if unify ran) are a separate small set, left as-is.
+    return _project_graph(
+        out, args.detail,
+        node_ref=SUBGRAPH_NODE_REF_FIELDS, edge_ref=SUBGRAPH_EDGE_REF_FIELDS,
+    )
 
 
 async def _handle_kg_multi_query(ctx: "ToolContext", args: KgMultiQueryArgs) -> dict:
@@ -1194,7 +1284,11 @@ async def _handle_kg_multi_query(ctx: "ToolContext", args: KgMultiQueryArgs) -> 
         )
     if unify_extra is not None:
         out.update(unify_extra)
-    return out
+    # L1/L2 reference-first (§6b): same union node/edge projection as kg_world_query.
+    return _project_graph(
+        out, args.detail,
+        node_ref=SUBGRAPH_NODE_REF_FIELDS, edge_ref=SUBGRAPH_EDGE_REF_FIELDS,
+    )
 
 
 async def _handle_kg_entity_edge_timeline(
@@ -1228,16 +1322,32 @@ async def _handle_kg_entity_edge_timeline(
             limit=args.limit,
         )
         records = await _records(result)
-    return build_timeline(args.entity_id, args.edge_type, records).model_dump(mode="json")
+    out = build_timeline(args.entity_id, args.edge_type, records).model_dump(mode="json")
+    # L1/L2 reference-first (§6b): at detail="summary" project each temporal
+    # instance to target + window, dropping evidence_chapter_id/schema_version/
+    # localized/glossary fields. `meta` reports the instance total/returned.
+    instances, meta = apply_response_contract(
+        out.get("instances", []),
+        ref_fields=TIMELINE_INSTANCE_REF_FIELDS, detail=args.detail,
+    )
+    out["instances"] = instances
+    out["meta"] = meta
+    return out
 
 
 async def _handle_kg_schema_read(ctx: "ToolContext", args: KgSchemaReadArgs) -> dict:
+    # @small_return: ONE resolved schema document (the project's effective edge/fact
+    # types + vocab) — a single object the agent reads whole before proposing an
+    # edge/fact; there is no per-item body to project (spec §6b single-object exempt).
     await _resolve_project_owner(ctx, GrantLevel.VIEW)
     resolved = await ctx.ontology_resolver.resolve(str(ctx.project_id))
     return resolved.model_dump(mode="json")
 
 
 async def _handle_kg_list_templates(ctx: "ToolContext", args: KgListTemplatesArgs) -> dict:
+    # @small_return: each template is already a compact metadata ref (schema_id/scope/
+    # code/name/description/version) — no heavy body — and the set is bounded by the
+    # small count of system + the caller's own templates (spec §6b: not SET-bloat).
     # No project grant needed — system templates are visible to everyone and
     # user templates are scope-filtered to the caller by the repo (it filters
     # `scope='user' AND scope_id=$user`). Never lists another user's templates.
@@ -1257,6 +1367,8 @@ async def _handle_kg_list_templates(ctx: "ToolContext", args: KgListTemplatesArg
 
 
 async def _handle_kg_sync_available(ctx: "ToolContext", args: KgSyncAvailableArgs) -> dict:
+    # @small_return: a single diff summary (adopted flag + a bounded per-child
+    # changes list of code refs) — no heavy per-item body (spec §6b single-object).
     await _resolve_project_owner(ctx, GrantLevel.VIEW)
     schema_id = await _active_project_schema_id(ctx, str(ctx.project_id))
     if schema_id is None:
@@ -1272,6 +1384,8 @@ async def _handle_kg_sync_available(ctx: "ToolContext", args: KgSyncAvailableArg
 
 
 async def _handle_kg_view_read(ctx: "ToolContext", args: KgViewReadArgs) -> dict:
+    # @small_return: the caller's own saved views (code/name/description + two short
+    # code lists) — a small per-user set of compact refs, no heavy body (spec §6b).
     await _resolve_project_owner(ctx, GrantLevel.VIEW)
     views = await ctx.graph_views_repo.list(ctx.user_id, str(ctx.project_id))
     return {
@@ -1288,20 +1402,25 @@ async def _handle_kg_triage_list(ctx: "ToolContext", args: KgTriageListArgs) -> 
         status=args.status,
         limit=args.limit,
     )
-    return {
-        "groups": [
-            {
-                "signature": g.signature,
-                "item_type": g.item_type,
-                "count": g.count,
-                "status": g.status,
-                "sample_payload": g.sample_payload,
-                "suggested_actions": g.suggested_actions,
-            }
-            for g in groups
-        ],
-        "has_more": has_more,
-    }
+    items = [
+        {
+            "signature": g.signature,
+            "item_type": g.item_type,
+            "count": g.count,
+            "status": g.status,
+            "sample_payload": g.sample_payload,
+            "suggested_actions": g.suggested_actions,
+        }
+        for g in groups
+    ]
+    # L1/L2 reference-first (§6b): at detail="summary" drop the heavy
+    # `sample_payload` blob + `suggested_actions`, keeping the signature +
+    # type/count/status so the agent can scan the queue and re-read one group
+    # (kg_triage_list at full detail) before resolving it.
+    projected, meta = apply_response_contract(
+        items, ref_fields=TRIAGE_GROUP_REF_FIELDS, detail=args.detail,
+    )
+    return {"groups": projected, "has_more": has_more, **meta}
 
 
 async def _handle_kg_propose_fact(ctx: "ToolContext", args: KgProposeFactArgs) -> dict:

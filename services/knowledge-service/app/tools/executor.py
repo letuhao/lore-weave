@@ -34,6 +34,7 @@ from typing import TYPE_CHECKING
 from uuid import UUID
 
 import redis.asyncio as aioredis
+from loreweave_mcp import apply_response_contract
 from pydantic import BaseModel, ValidationError
 
 if TYPE_CHECKING:  # deps used only as ToolContext type hints (lane LF + story_search)
@@ -100,6 +101,40 @@ _REMEMBER_RL_TTL_S = 24 * 3600
 # Result-size guards (design D7).
 _SNIPPET_CHARS = 500
 _OTHER_MATCHES_CAP = 5
+
+# One-line preview cap for the L1 summary projection (§6b) — the compact snippet
+# a `detail=summary` result keeps in place of the full body.
+_PREVIEW_CHARS = 160
+
+# ── L1/L2 reference-first ref-field sets (Context Budget Law §6b) ──────
+# At detail="summary" `apply_response_contract` keeps ONLY these keys per item and
+# drops the heavy bodies; at detail="full" the row is unchanged. Exported so the
+# per-tool contract-guard tests can assert the ref set never re-admits a heavy
+# field (mirrors composition's _OUTLINE_REF_FIELDS).
+#
+# story_search: keep the chapter reference + score/type + the jump location; DROP
+# the full `snippet` passage text (the bloat) + `highlights` + `relevance`/
+# `sourceLang`. Re-read a hit via book_get_chapter (named in the tool description).
+STORY_SEARCH_REF_FIELDS = (
+    "chapterId", "chapterTitle", "sortOrder", "surface", "matchType",
+    "score", "location",
+)
+# memory_search: keep the 1-line `snippet` preview + source_type + score; DROP the
+# full (≤500-char) `text` body. The preview is added additively in the handler so
+# detail="full" still carries the full `text` (no behavior change).
+MEMORY_SEARCH_REF_FIELDS = ("snippet", "source_type", "score")
+# memory_timeline: keep the event's title/date/participants; DROP the (≤500-char)
+# `summary` body at summary detail.
+MEMORY_TIMELINE_REF_FIELDS = ("title", "event_date", "participants")
+
+
+def _one_line(text: str | None, limit: int = _PREVIEW_CHARS) -> str:
+    """Collapse whitespace to a single ≤`limit`-char preview line for the L1
+    summary snippet — so a summary item carries a cheap gist, not the full body."""
+    if not text:
+        return ""
+    flat = " ".join(text.split())
+    return flat if len(flat) <= limit else flat[:limit] + "…"
 
 
 # ── result / context types ────────────────────────────────────────────
@@ -300,10 +335,17 @@ async def _handle_story_search(ctx: ToolContext, args: StorySearchArgs) -> dict:
         limit=args.limit,
     )
     hits = result.hits[: args.limit]
-    out: dict = {"hits": hits, "count": len(hits)}
+    # L1/L2 reference-first (§6b): at detail="summary" drop the heavy passage
+    # `snippet` (+ highlights/relevance) and keep only the chapter ref + score +
+    # jump location; `count` stays = returned for back-compat, `meta` reports
+    # total/returned/truncated so a cap is never a silent drop.
+    projected, meta = apply_response_contract(
+        hits, ref_fields=STORY_SEARCH_REF_FIELDS, detail=args.detail,
+    )
+    out: dict = {"hits": projected, "count": len(projected), **meta}
     if result.degraded:
         out["degraded"] = result.degraded
-    if not hits:
+    if not projected:
         out["note"] = (
             "no matches — try mode='semantic' for ideas described in your own "
             "words, or a shorter exact phrase"
@@ -371,18 +413,29 @@ async def _handle_memory_search(ctx: ToolContext, args: MemorySearchArgs) -> dic
 
     items = [
         {
+            # `snippet` is an additive ≤160-char preview kept at detail="summary";
+            # `text` is the full (≤500-char) body dropped at summary. At full both
+            # are present (no behavior change beyond the additive snippet).
+            "snippet": _one_line(h.passage.text),
             "text": _truncate(h.passage.text),
             "source_type": h.passage.source_type,
             "score": round(h.raw_score, 4),
         }
         for h in hits[: args.limit]
     ]
-    return {"hits": items, "count": len(items)}
+    projected, meta = apply_response_contract(
+        items, ref_fields=MEMORY_SEARCH_REF_FIELDS, detail=args.detail,
+    )
+    return {"hits": projected, "count": len(projected), **meta}
 
 
 async def _handle_memory_recall_entity(
     ctx: ToolContext, args: MemoryRecallEntityArgs
 ) -> dict:
+    # @small_return: a SINGLE entity (name/kind/aliases/confidence) + its relations
+    # (already capped in-repo, with `relations_truncated`) + a ≤5 other_matches name
+    # list. This IS the get-by-id sibling the SET tools' summaries defer to — no heavy
+    # body to shed, so no `detail` lever (spec §6b small/single-object exemption).
     await _require_project_owner_memory(ctx)  # H-U: owner-only project gate
     project_id = str(ctx.project_id) if ctx.project_id else None
     async with neo4j_session() as session:
@@ -471,7 +524,17 @@ async def _handle_memory_timeline(
         }
         for ev in events
     ]
-    return {"events": items, "count": len(items), "total_matching": total}
+    # L1/L2 reference-first (§6b): at detail="summary" drop the per-event
+    # `summary` body, keeping title/date/participants. `total_matching` is the
+    # DB-side match count (independent of the page); `meta` reports page
+    # total/returned/truncated.
+    projected, meta = apply_response_contract(
+        items, ref_fields=MEMORY_TIMELINE_REF_FIELDS, detail=args.detail,
+    )
+    return {
+        "events": projected, "count": len(projected),
+        "total_matching": total, **meta,
+    }
 
 
 async def _handle_memory_remember(

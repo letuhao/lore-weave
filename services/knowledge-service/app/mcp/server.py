@@ -180,6 +180,20 @@ _PROJECT_ID_ARG = Annotated[
     "to the current session; on the public API set it to one of your own projects.",
 ]
 
+# L1/L2 reference-first `detail` arg (Context Budget Law §6b). Enum-locked Literal
+# so a weak local model can't send a free-string value; versioned default "full"
+# (legacy callers unchanged). Advertised on the SET-returning tools; the FastMCP
+# signature MUST carry it or FastMCP strips it from the forwarded args (the
+# three-schema-source lockstep — definitions/graph_schema_tools + this signature +
+# the executor handler). Mirrored into the bespoke OpenAI schema (_DETAIL_PROP).
+_DETAIL_ARG = Annotated[
+    Literal["summary", "full"],
+    "Response granularity. 'full' (default) = every field; 'summary' = a compact "
+    "reference projection (ids/title/snippet/score; heavy bodies dropped) for "
+    "cheap scanning — re-read specifics at full detail or via a get-by-id sibling. "
+    "Result `meta` reports total/returned/truncated.",
+]
+
 
 # ── Context extraction helpers ────────────────────────────────────────
 
@@ -364,10 +378,12 @@ async def story_search(
         Field(ge=1, le=SEARCH_LIMIT_MAX),
         f"Max hits to return (default {SEARCH_LIMIT_DEFAULT}, max {SEARCH_LIMIT_MAX}).",
     ] = SEARCH_LIMIT_DEFAULT,
+    detail: _DETAIL_ARG = "full",
     project_id: _PROJECT_ID_ARG = None,
 ) -> dict:
     args: dict[str, Any] = {
         "query": query, "mode": mode, "granularity": granularity, "limit": limit,
+        "detail": detail,
     }
     if project_id is not None:
         args["project_id"] = project_id
@@ -398,9 +414,10 @@ async def memory_search(
         "Optional — restrict to one source: 'chapter', 'chat', or "
         "'glossary'. Omit to search all.",
     ] = None,
+    detail: _DETAIL_ARG = "full",
     project_id: _PROJECT_ID_ARG = None,
 ) -> dict:
-    args: dict[str, Any] = {"query": query, "limit": limit}
+    args: dict[str, Any] = {"query": query, "limit": limit, "detail": detail}
     if source_type is not None:
         args["source_type"] = source_type
     if project_id is not None:
@@ -457,9 +474,10 @@ async def memory_timeline(
         f"Max events to return (default {TIMELINE_LIMIT_DEFAULT}, "
         f"max {TIMELINE_LIMIT_MAX}).",
     ] = TIMELINE_LIMIT_DEFAULT,
+    detail: _DETAIL_ARG = "full",
     project_id: _PROJECT_ID_ARG = None,
 ) -> dict:
-    args: dict[str, Any] = {"limit": limit}
+    args: dict[str, Any] = {"limit": limit, "detail": detail}
     if from_date is not None:
         args["from_date"] = from_date
     if to_date is not None:
@@ -614,9 +632,10 @@ async def kg_graph_query(
         Field(ge=1, le=GRAPH_LIMIT_MAX),
         f"Max edges to scan (default {GRAPH_LIMIT_DEFAULT}).",
     ] = GRAPH_LIMIT_DEFAULT,
+    detail: _DETAIL_ARG = "full",
     project_id: _PROJECT_ID_ARG = None,
 ) -> dict:
-    args: dict[str, Any] = {"limit": limit}
+    args: dict[str, Any] = {"limit": limit, "detail": detail}
     if view is not None:
         args["view"] = view
     if as_of_chapter is not None:
@@ -655,9 +674,11 @@ async def kg_world_query(
         "matches by meaning (embeddings, catching renames). Both add "
         "unification_clusters + inferred SAME_AS bridge_edges (one connected graph).",
     ] = "off",
+    detail: _DETAIL_ARG = "full",
 ) -> dict:
     return await _dispatch(
-        ctx, "kg_world_query", {"world_id": world_id, "limit": limit, "unify": unify}
+        ctx, "kg_world_query",
+        {"world_id": world_id, "limit": limit, "unify": unify, "detail": detail},
     )
 
 
@@ -691,10 +712,11 @@ async def kg_multi_query(
         "matches by meaning (embeddings, catching renames). Both add "
         "unification_clusters + inferred SAME_AS bridge_edges (one connected graph).",
     ] = "off",
+    detail: _DETAIL_ARG = "full",
 ) -> dict:
     return await _dispatch(
         ctx, "kg_multi_query",
-        {"project_ids": project_ids, "limit": limit, "unify": unify},
+        {"project_ids": project_ids, "limit": limit, "unify": unify, "detail": detail},
     )
 
 
@@ -716,13 +738,14 @@ async def kg_entity_edge_timeline(
         Field(ge=1, le=KG_TIMELINE_LIMIT_MAX),
         f"Max instances (default {KG_TIMELINE_LIMIT_DEFAULT}).",
     ] = KG_TIMELINE_LIMIT_DEFAULT,
+    detail: _DETAIL_ARG = "full",
 ) -> dict:
     # No project_id arg: this tool scopes by the ENTITY (resolved to its owner +
     # OD-8-gated in the handler), so a project_id here would be a no-op.
     return await _dispatch(
         ctx,
         "kg_entity_edge_timeline",
-        {"entity_id": entity_id, "edge_type": edge_type, "limit": limit},
+        {"entity_id": entity_id, "edge_type": edge_type, "limit": limit, "detail": detail},
     )
 
 
@@ -829,9 +852,10 @@ async def kg_triage_list(
         Field(ge=1, le=TRIAGE_LIMIT_MAX),
         f"Max signature groups (default {TRIAGE_LIMIT_DEFAULT}).",
     ] = TRIAGE_LIMIT_DEFAULT,
+    detail: _DETAIL_ARG = "full",
     project_id: _PROJECT_ID_ARG = None,
 ) -> dict:
-    args: dict[str, Any] = {"status": status, "limit": limit}
+    args: dict[str, Any] = {"status": status, "limit": limit, "detail": detail}
     if project_id is not None:
         args["project_id"] = project_id
     return await _dispatch(ctx, "kg_triage_list", args)

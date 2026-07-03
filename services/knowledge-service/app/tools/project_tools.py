@@ -101,6 +101,9 @@ class KgProjectListArgs(BaseModel):
 
 
 async def _handle_kg_project_list(ctx: "ToolContext", args: KgProjectListArgs) -> dict:
+    # @small_return: each project is a compact metadata ref (id/name/type/book/
+    # archived) — no heavy body — and the set is owner-scoped + hard-capped by
+    # `limit` (≤50) with a `more` flag, so it is not SET-bloat (spec §6b exemption).
     """R (read). Owner-scoped by the envelope identity — the repo filters
     `user_id = ctx.user_id`, so the caller only ever sees their own projects
     (public MCP keys included: owned-only, no grant traversal)."""
