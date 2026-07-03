@@ -181,6 +181,31 @@ export function useChatMessages(
     void fetchMessages();
   }, [fetchMessages]);
 
+  // ── Seed the header context meter on session load ─────────────────────────────
+  // `contextBudget` was live-only (set from the per-turn SSE `contextBudget`
+  // event), so the meter rendered nothing on load/switch/reload until the NEXT
+  // turn finished — the "sometimes shows, sometimes not" gap. Clear any stale
+  // budget from the previous session, then seed from the LAST turn's persisted
+  // frame. Race-safe: only apply if the session hasn't changed AND no live event
+  // has already set a (fresher) budget this turn (`prev ?? seed`).
+  useEffect(() => {
+    setContextBudget(null);
+    if (!accessToken || !sessionId) return;
+    let ignore = false;
+    void chatApi
+      .getLatestContextBudget(accessToken, sessionId)
+      .then((res) => {
+        if (ignore || !res.budget) return;
+        setContextBudget((prev) => prev ?? res.budget);
+      })
+      .catch(() => {
+        /* meter simply stays hidden until the next live turn — non-fatal */
+      });
+    return () => {
+      ignore = true;
+    };
+  }, [accessToken, sessionId]);
+
   // ── SSE streaming ─────────────────────────────────────────────────────────────
 
   const streamPost = useCallback(

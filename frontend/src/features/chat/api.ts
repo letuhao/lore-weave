@@ -7,6 +7,7 @@ import type {
   ChatOutput,
   ChatSession,
   CompactSessionResult,
+  ContextBudget,
   ContextHistoryPoint,
   CreateSessionPayload,
   PatchSessionPayload,
@@ -91,6 +92,16 @@ export const chatApi = {
     const qs = limit != null ? `?limit=${limit}` : '';
     return apiJson<{ items: ContextHistoryPoint[] }>(
       `/v1/chat/sessions/${sessionId}/context-history${qs}`,
+      { token },
+    );
+  },
+
+  // The LAST assistant turn's persisted contextBudget frame — lets the header
+  // meter SEED on session load instead of only appearing after the next live
+  // turn finishes. `budget` is null for a brand-new session with no measured turn.
+  getLatestContextBudget(token: string, sessionId: string) {
+    return apiJson<{ budget: ContextBudget | null }>(
+      `/v1/chat/sessions/${sessionId}/context-budget`,
       { token },
     );
   },

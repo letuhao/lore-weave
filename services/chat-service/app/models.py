@@ -522,6 +522,16 @@ class ContextHistoryResponse(BaseModel):
     items: list[ContextHistoryPoint]
 
 
+class LatestContextBudgetResponse(BaseModel):
+    # The LAST assistant turn's persisted contextBudget frame (the same shape the
+    # SSE `contextBudget` event carries: used_tokens / context_length /
+    # effective_limit / pct / breakdown / baseline_tokens / until_compact_pct).
+    # `None` when the session has no measured turn yet (a brand-new session). Lets
+    # the FE header meter render on session LOAD instead of only after the next
+    # live turn finishes — the meter's snapshot was previously live-only.
+    budget: dict[str, Any] | None
+
+
 # ── Outputs ───────────────────────────────────────────────────────────────────
 
 class ChatOutput(BaseModel):

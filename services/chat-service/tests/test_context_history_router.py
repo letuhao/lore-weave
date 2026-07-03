@@ -155,3 +155,43 @@ class TestContextHistory:
         assert resp_zero.status_code == 422
         # the row query must never run for a rejected limit
         mock_pool.fetch.assert_not_called()
+
+
+class TestLatestContextBudget:
+    """`GET /v1/chat/sessions/{id}/context-budget` seeds the header meter on
+    session load from the LAST assistant turn's persisted frame (previously the
+    meter was live-only → hidden until the next turn finished)."""
+
+    @pytest.mark.asyncio
+    async def test_returns_latest_frame(self, client, mock_pool):
+        mock_pool.fetchval.return_value = True  # owner gate
+        mock_pool.fetchrow.return_value = FakeRecord(
+            {"context_breakdown": json.dumps(_frame(_BREAKDOWN, used_tokens=4200, pct=0.51))}
+        )
+        resp = await client.get(f"/v1/chat/sessions/{TEST_SESSION_ID}/context-budget")
+        assert resp.status_code == 200
+        budget = resp.json()["budget"]
+        assert budget is not None
+        assert budget["used_tokens"] == 4200
+        assert budget["pct"] == 0.51
+        assert budget["context_length"] == 8192
+        # carries the per-category breakdown so the drill-down works on load too
+        assert budget["breakdown"]["system_prompt"] == 120
+
+    @pytest.mark.asyncio
+    async def test_null_for_new_session(self, client, mock_pool):
+        """A brand-new session (no measured assistant turn) → budget is None so
+        the meter stays hidden rather than showing a bogus chip."""
+        mock_pool.fetchval.return_value = True
+        mock_pool.fetchrow.return_value = None
+        resp = await client.get(f"/v1/chat/sessions/{TEST_SESSION_ID}/context-budget")
+        assert resp.status_code == 200
+        assert resp.json()["budget"] is None
+
+    @pytest.mark.asyncio
+    async def test_owner_gate_404_for_foreign_session(self, client, mock_pool):
+        mock_pool.fetchval.return_value = None  # not owned / not found
+        resp = await client.get(f"/v1/chat/sessions/{uuid4()}/context-budget")
+        assert resp.status_code == 404
+        # the budget query must NOT run once the owner gate rejects
+        mock_pool.fetchrow.assert_not_called()

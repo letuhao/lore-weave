@@ -14,6 +14,7 @@ from app.models import (
     ChatMessage,
     ContextHistoryPoint,
     ContextHistoryResponse,
+    LatestContextBudgetResponse,
     MessageListResponse,
     SendMessageRequest,
     ToolResultRequest,
@@ -191,6 +192,46 @@ async def context_history(
             )
         )
     return ContextHistoryResponse(items=items)
+
+
+@router.get("/{session_id}/context-budget", response_model=LatestContextBudgetResponse)
+async def latest_context_budget(
+    session_id: UUID,
+    user_id: str = Depends(get_current_user),
+    pool: asyncpg.Pool = Depends(get_db),
+) -> LatestContextBudgetResponse:
+    """The LAST assistant turn's persisted contextBudget frame.
+
+    The header context meter previously derived its snapshot ONLY from the live
+    per-turn SSE `contextBudget` event, so it rendered nothing on session
+    load/switch/reload until the NEXT turn finished (the "sometimes shows,
+    sometimes not" gap). This lets the FE SEED the meter from the persisted frame
+    on load, so it's visible whenever the session has at least one measured turn.
+    Owner-gated like the sibling session-scoped routes; `budget=None` for a
+    brand-new session with no measured turn yet."""
+    exists = await pool.fetchval(
+        "SELECT 1 FROM chat_sessions WHERE session_id=$1 AND owner_user_id=$2",
+        str(session_id), user_id,
+    )
+    if not exists:
+        raise HTTPException(status_code=404, detail="session not found")
+
+    # The most recent assistant turn on the live branch that actually carried a
+    # measured budget (a resume-path turn may persist None). fetchROW (not
+    # fetchval) so it mocks independently of the owner-gate fetchval above.
+    row = await pool.fetchrow(
+        """
+        SELECT context_breakdown
+        FROM chat_messages
+        WHERE session_id=$1 AND owner_user_id=$2 AND branch_id=0
+          AND role='assistant' AND context_breakdown IS NOT NULL
+        ORDER BY sequence_num DESC
+        LIMIT 1
+        """,
+        str(session_id), user_id,
+    )
+    frame = _parse_content_parts(row["context_breakdown"]) if row else None
+    return LatestContextBudgetResponse(budget=frame if isinstance(frame, dict) else None)
 
 
 @router.get("/{session_id}/branches")
