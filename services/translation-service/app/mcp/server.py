@@ -44,6 +44,7 @@ from pydantic import ValidationError
 from loreweave_mcp import (
     ForbidExtra,
     ToolContext,
+    apply_response_contract,
     build_tool_context,
     make_stateless_fastmcp,
     mint_confirm_token,
@@ -184,6 +185,11 @@ async def translation_coverage(
     ctx: MCPContext,
     book_id: Annotated[str, "The book's id (UUID)."],
 ) -> dict:
+    # @small_return: a coverage matrix of per-(chapter × language) SCALAR counts
+    # (version_count, latest/active version_num, latest_status, has_active) grouped
+    # into a nested {chapter -> {language -> {...}}} map. No heavy body/text field
+    # exists to drop at summary — every cell is already reference-sized, and the
+    # nested shape isn't the flat list the L1/L2 contract projects. Exempt.
     tc = _ctx(ctx)
     bid = _uuid(book_id)
     await _require_view(tc, bid)
@@ -213,6 +219,12 @@ async def translation_segment_status(
     chapter_id: Annotated[str, "The chapter's id (UUID)."],
     target_language: Annotated[str, "The target language code (e.g. 'en')."],
 ) -> dict:
+    # @small_return: each per-segment item is a fixed set of SCALAR status flags +
+    # block indices (segment_index, start/end_block_index, token_estimate,
+    # translated/dirty/stale/needs bools, translated_at) — NO source/translated text
+    # body is carried. There is no heavy field to drop at summary; every field is
+    # load-bearing for the "what would re-translate" answer, and dirty_count/
+    # needs_count already summarize the set. Exempt.
     tc = _ctx(ctx)
     await _require_view(tc, _uuid(book_id))
     from ..workers.segment_status import compute_segment_status
@@ -232,7 +244,10 @@ async def translation_segment_status(
         "List all translation versions of a chapter, grouped by language — each with "
         "its version number, status, whether it's the active (published) version, the "
         "model used, token counts, and whether it was human-authored. Use this to "
-        "inspect or pick a version to set active. Book-scoped."
+        "inspect or pick a version to set active. Pass `detail=summary` for a "
+        "lightweight list that keeps only each version's id/number/status/active flag "
+        "and drops the heavy per-version metadata (model refs, job id, token counts, "
+        "authored_by) — default `full`. Book-scoped."
     ),
     meta=require_meta(
         "R", "book",
@@ -245,12 +260,35 @@ async def translation_list_versions(
     ctx: MCPContext,
     book_id: Annotated[str, "The book's id (UUID) the chapter belongs to."],
     chapter_id: Annotated[str, "The chapter's id (UUID)."],
+    detail: Annotated[
+        Literal["summary", "full"],
+        "summary = id/version_num/target_language/status/is_active only (drops model "
+        "refs, job id, token counts, authored_by); full = every field.",
+    ] = "full",
+    limit: Annotated[
+        int | None,
+        "Coarse cap on versions returned (a flat prefix across all languages; "
+        "`truncated` reports how many were dropped). Omit for all.",
+    ] = None,
 ) -> dict:
     tc = _ctx(ctx)
     await _require_view(tc, _uuid(book_id))
     db = get_pool()
     rows = await db.fetch(_VERSIONS_SQL, _uuid(chapter_id))
-    return _versions_payload(rows, chapter_id)
+    projected, meta = apply_response_contract(
+        _version_rows(rows), ref_fields=_VERSION_REF_FIELDS, detail=detail, limit=limit,
+    )
+    return {
+        "chapter_id": chapter_id,
+        "languages": _group_versions(projected),
+        **meta,
+    }
+
+
+# L1/L2 reference-first (Context Budget Law §6b): at detail=summary a per-chapter
+# progress row collapses to these fields — the heavy `error_message` (a full provider
+# traceback, per chapter) + token counts are dropped; the overall job-level error stays.
+_JOB_STATUS_CHAPTER_REF_FIELDS = ("chapter_id", "status", "version_num")
 
 
 @mcp_server.tool(
@@ -258,7 +296,10 @@ async def translation_list_versions(
     description=(
         "Get the status of a translation job by its id: overall status, per-chapter "
         "progress, and any error. This is the translation-service view of a job; for "
-        "a cross-service job list use the jobs tools. Book-scoped (via the job's book)."
+        "a cross-service job list use the jobs tools. Pass `detail=summary` for a "
+        "lightweight per-chapter list (chapter_id/status/version_num only) that drops "
+        "the heavy per-chapter error_message tracebacks + token counts — default "
+        "`full`. Book-scoped (via the job's book)."
     ),
     meta=require_meta(
         "R", "book",
@@ -270,6 +311,16 @@ async def translation_list_versions(
 async def translation_job_status(
     ctx: MCPContext,
     job_id: Annotated[str, "The translation job's id (UUID)."],
+    detail: Annotated[
+        Literal["summary", "full"],
+        "summary = per-chapter chapter_id/status/version_num only (drops the heavy "
+        "error_message + token counts); full = every field.",
+    ] = "full",
+    limit: Annotated[
+        int | None,
+        "Coarse cap on the per-chapter rows returned (`truncated` reports how many "
+        "were dropped). Omit for all chapters.",
+    ] = None,
 ) -> dict:
     tc = _ctx(ctx)
     db = get_pool()
@@ -286,24 +337,31 @@ async def translation_job_status(
         "error_message FROM chapter_translations WHERE job_id=$1 ORDER BY created_at",
         _uuid(job_id),
     )
+    chapter_items = [
+        {
+            "chapter_id": str(r["chapter_id"]),
+            "status": r["status"],
+            "version_num": r["version_num"],
+            "input_tokens": r["input_tokens"],
+            "output_tokens": r["output_tokens"],
+            "error_message": r["error_message"],
+        }
+        for r in chapter_rows
+    ]
+    projected, meta = apply_response_contract(
+        chapter_items, ref_fields=_JOB_STATUS_CHAPTER_REF_FIELDS, detail=detail, limit=limit,
+    )
     return {
         "job_id": str(row["job_id"]),
         "book_id": str(row["book_id"]),
         "status": row["status"],
         "target_language": row["target_language"],
         "total_chapters": row["total_chapters"],
+        # The job-level error stays — it's the single overall failure line, not the
+        # per-chapter tracebacks the summary detail drops.
         "error_message": row["error_message"],
-        "chapters": [
-            {
-                "chapter_id": str(r["chapter_id"]),
-                "status": r["status"],
-                "version_num": r["version_num"],
-                "input_tokens": r["input_tokens"],
-                "output_tokens": r["output_tokens"],
-                "error_message": r["error_message"],
-            }
-            for r in chapter_rows
-        ],
+        "chapters": projected,
+        **meta,
     }
 
 
@@ -1019,14 +1077,25 @@ ORDER BY ct.target_language, ct.version_num DESC
 """
 
 
-def _versions_payload(rows, chapter_id: str) -> dict:
-    lang_map: dict[str, dict] = {}
-    for r in rows:
-        lang = r["target_language"]
-        g = lang_map.setdefault(lang, {"target_language": lang, "versions": []})
-        g["versions"].append({
+# L1/L2 reference-first (Context Budget Law §6b): at detail=summary a version row
+# collapses to these fields — the identity (id + version_num), the language it groups
+# under, and the status/active flags a "which version is live / pick one" answer needs.
+# The heavier per-version metadata (model_source/model_ref UUIDs, job_id UUID, token
+# counts, authored_by) is dropped; fetch a specific version's full detail via the
+# version routes. target_language is a ref field so the grouped shape survives summary.
+_VERSION_REF_FIELDS = (
+    "id", "version_num", "target_language", "status", "is_active",
+)
+
+
+def _version_rows(rows) -> list[dict]:
+    """Flatten the version query rows to a list of serialized dicts (each carrying
+    its target_language) — the flat shape the L1/L2 contract projects over."""
+    return [
+        {
             "id": str(r["id"]),
             "version_num": r["version_num"],
+            "target_language": r["target_language"],
             "job_id": str(r["job_id"]) if r["job_id"] else None,
             "status": r["status"],
             "is_active": bool(r["is_active"]),
@@ -1035,8 +1104,21 @@ def _versions_payload(rows, chapter_id: str) -> dict:
             "input_tokens": r["input_tokens"],
             "output_tokens": r["output_tokens"],
             "authored_by": r["authored_by"],
-        })
-    return {"chapter_id": chapter_id, "languages": list(lang_map.values())}
+        }
+        for r in rows
+    ]
+
+
+def _group_versions(items: list[dict]) -> list[dict]:
+    """Re-group the (already contract-projected) flat version dicts back into the
+    per-language shape `[{target_language, versions: [...]}]`. Ordering follows the
+    SQL (target_language, version_num DESC) which the projection preserves."""
+    lang_map: dict[str, dict] = {}
+    for it in items:
+        lang = it.get("target_language")
+        g = lang_map.setdefault(lang, {"target_language": lang, "versions": []})
+        g["versions"].append(it)
+    return list(lang_map.values())
 
 
 # ── ASGI factory ──────────────────────────────────────────────────────────────

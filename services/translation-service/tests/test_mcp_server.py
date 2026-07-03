@@ -902,13 +902,21 @@ async def test_confirm_start_extraction_refuses_chapter_not_under_bound_book():
 # (never the raw dump with the errors.pydantic.dev URL).
 
 # tool → args whose valid values are a finite, code-known set.
-CLOSED_SET_ARGS = {"translation_job_control": ["action"]}
+CLOSED_SET_ARGS = {
+    "translation_job_control": ["action"],
+    # L1/L2 reference-first `detail` arg (Context Budget Law §6b) — a closed set
+    # {summary, full}, so the enum rule applies exactly as it does to job_control.
+    "translation_list_versions": ["detail"],
+    "translation_job_status": ["detail"],
+}
 
 # (tool, arg) → the value set the advertised enum must COVER (>=, mirroring
 # jobs' JOB_STATUSES pattern) — enum PRESENCE alone lets a silently
 # dropped/renamed value ship unnoticed.
 CLOSED_SET_VALUES = {
     ("translation_job_control", "action"): {"cancel", "pause", "resume", "retry"},
+    ("translation_list_versions", "detail"): {"summary", "full"},
+    ("translation_job_status", "detail"): {"summary", "full"},
 }
 
 # tool → args that must accept `str | list[str]` (the observed ["<uuid>"] shape).
@@ -998,3 +1006,177 @@ async def test_validation_error_reaches_model_as_one_line_directive(mcp_base_url
     assert "\n" not in text.strip(), f"directive must be one line, got: {text!r}"
     assert "invalid arguments for translation_job_control" in text
     assert "action" in text
+
+
+# ── L1/L2 reference-first contract (Context Budget Law §6b) ────────────────────
+# Mirrors composition's test_outline_response_contract.py: the SET tools that carry
+# heavy per-item content (translation_list_versions' per-version metadata,
+# translation_job_status' per-chapter error tracebacks) must DROP that content at
+# detail=summary, KEEP the ref fields, surface the {total,returned,truncated} meta,
+# and stay materially smaller. `detail` defaults to `full` (versioned-default
+# migration — legacy/federated callers unchanged).
+
+_V1 = "aaaa1111-1111-1111-1111-111111111111"
+_V2 = "aaaa2222-2222-2222-2222-222222222222"
+_MODEL = "bbbb1111-1111-1111-1111-111111111111"
+_JOBID = "cccc1111-1111-1111-1111-111111111111"
+
+
+def _version_row(**over) -> dict:
+    base = dict(
+        id=UUID(_V1), version_num=2, target_language="en", job_id=UUID(_JOBID),
+        status="completed", is_active=True, model_source="user_model",
+        model_ref=UUID(_MODEL), input_tokens=1000, output_tokens=1200,
+        authored_by="llm",
+    )
+    base.update(over)
+    return base
+
+
+_VERSION_HEAVY = ("model_ref", "model_source", "job_id", "input_tokens",
+                  "output_tokens", "authored_by")
+_VERSION_REFS = ("id", "version_num", "target_language", "status", "is_active")
+
+
+def test_version_ref_fields_never_include_heavy_metadata():
+    """Belt-and-suspenders: the ref constant itself must not name a heavy field."""
+    from app.mcp.server import _VERSION_REF_FIELDS
+
+    for heavy in _VERSION_HEAVY:
+        assert heavy not in _VERSION_REF_FIELDS, f"ref set must not carry {heavy}"
+
+
+async def test_list_versions_summary_drops_heavy_metadata_keeps_refs():
+    from app.grant_client import GrantLevel
+
+    rows = [_version_row(), _version_row(id=UUID(_V2), version_num=1, is_active=False)]
+    pool = AsyncMock()
+    pool.fetch = AsyncMock(return_value=rows)
+    async with _patched(grant_level=GrantLevel.OWNER, pool=pool) as (srv, ctx):
+        full = await srv.translation_list_versions(
+            ctx, book_id=BOOK, chapter_id=CHAPTER, detail="full")
+        summ = await srv.translation_list_versions(
+            ctx, book_id=BOOK, chapter_id=CHAPTER, detail="summary")
+
+    # meta is spread into the return (never a silent truncation).
+    assert full["detail"] == "full"          # versioned default
+    assert summ["detail"] == "summary"
+    assert summ["total"] == len(rows)
+    assert summ["returned"] == len(rows)
+    assert summ["truncated"] == 0
+
+    v_full = full["languages"][0]["versions"][0]
+    v_summ = summ["languages"][0]["versions"][0]
+    for heavy in _VERSION_HEAVY:
+        assert heavy in v_full, f"full must keep {heavy}"
+        assert heavy not in v_summ, f"summary must drop {heavy}"
+    for ref in _VERSION_REFS:
+        assert ref in v_summ, f"summary must keep ref {ref}"
+
+    # materially smaller (the two dropped UUIDs + counts dominate the row).
+    assert len(str(summ["languages"])) < len(str(full["languages"])) * 0.7
+
+
+async def test_list_versions_default_is_full_and_shape_preserved():
+    from app.grant_client import GrantLevel
+
+    rows = [_version_row()]
+    pool = AsyncMock()
+    pool.fetch = AsyncMock(return_value=rows)
+    async with _patched(grant_level=GrantLevel.OWNER, pool=pool) as (srv, ctx):
+        res = await srv.translation_list_versions(
+            ctx, book_id=BOOK, chapter_id=CHAPTER)  # no detail arg → full
+    assert res["detail"] == "full"
+    assert res["chapter_id"] == CHAPTER
+    assert res["languages"][0]["target_language"] == "en"
+    assert res["languages"][0]["versions"][0]["model_ref"] == _MODEL
+
+
+async def test_list_versions_limit_reports_truncated():
+    from app.grant_client import GrantLevel
+
+    rows = [_version_row(), _version_row(id=UUID(_V2), version_num=1)]
+    pool = AsyncMock()
+    pool.fetch = AsyncMock(return_value=rows)
+    async with _patched(grant_level=GrantLevel.OWNER, pool=pool) as (srv, ctx):
+        res = await srv.translation_list_versions(
+            ctx, book_id=BOOK, chapter_id=CHAPTER, detail="summary", limit=1)
+    assert res["returned"] == 1
+    assert res["truncated"] == 1
+    assert res["total"] == 2
+
+
+def _chapter_row(**over) -> dict:
+    base = dict(
+        chapter_id=UUID(CHAPTER), status="failed", version_num=None,
+        input_tokens=100, output_tokens=0, error_message="TRACEBACK " * 200,
+    )
+    base.update(over)
+    return base
+
+
+_JOB_STATUS_HEAVY = ("error_message", "input_tokens", "output_tokens")
+_JOB_STATUS_REFS = ("chapter_id", "status", "version_num")
+
+_JOB = "dddd1111-1111-1111-1111-111111111111"
+
+
+def test_job_status_chapter_ref_fields_never_include_heavy():
+    from app.mcp.server import _JOB_STATUS_CHAPTER_REF_FIELDS
+
+    for heavy in _JOB_STATUS_HEAVY:
+        assert heavy not in _JOB_STATUS_CHAPTER_REF_FIELDS, f"ref set must not carry {heavy}"
+
+
+async def test_job_status_summary_drops_chapter_error_and_tokens_keeps_refs():
+    from app.grant_client import GrantLevel
+
+    job_row = {
+        "job_id": UUID(_JOB), "book_id": UUID(BOOK), "status": "running",
+        "target_language": "en", "total_chapters": 2, "error_message": None,
+    }
+    chapter_rows = [
+        _chapter_row(),
+        _chapter_row(chapter_id=UUID(_V2), status="completed", version_num=3,
+                     error_message=None),
+    ]
+    pool = AsyncMock()
+    pool.fetchrow = AsyncMock(return_value=job_row)
+    pool.fetch = AsyncMock(return_value=chapter_rows)
+    async with _patched(grant_level=GrantLevel.OWNER, pool=pool) as (srv, ctx):
+        full = await srv.translation_job_status(ctx, job_id=_JOB, detail="full")
+        summ = await srv.translation_job_status(ctx, job_id=_JOB, detail="summary")
+
+    assert full["detail"] == "full"          # versioned default
+    assert summ["detail"] == "summary"
+    assert summ["total"] == 2
+    assert summ["truncated"] == 0
+    # The job-level overall error line stays regardless of detail.
+    assert "error_message" in summ
+
+    c_full = full["chapters"][0]
+    c_summ = summ["chapters"][0]
+    for heavy in _JOB_STATUS_HEAVY:
+        assert heavy in c_full, f"full must keep {heavy}"
+        assert heavy not in c_summ, f"summary must drop {heavy}"
+    for ref in _JOB_STATUS_REFS:
+        assert ref in c_summ, f"summary must keep ref {ref}"
+
+    # the per-chapter tracebacks dominate → summary is materially smaller.
+    assert len(str(summ["chapters"])) < len(str(full["chapters"])) * 0.5
+
+
+async def test_job_status_default_is_full():
+    from app.grant_client import GrantLevel
+
+    job_row = {
+        "job_id": UUID(_JOB), "book_id": UUID(BOOK), "status": "running",
+        "target_language": "en", "total_chapters": 1, "error_message": None,
+    }
+    pool = AsyncMock()
+    pool.fetchrow = AsyncMock(return_value=job_row)
+    pool.fetch = AsyncMock(return_value=[_chapter_row()])
+    async with _patched(grant_level=GrantLevel.OWNER, pool=pool) as (srv, ctx):
+        res = await srv.translation_job_status(ctx, job_id=_JOB)  # no detail → full
+    assert res["detail"] == "full"
+    assert res["chapters"][0]["error_message"].startswith("TRACEBACK")

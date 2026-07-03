@@ -176,6 +176,29 @@ def _motif_view(motif: Any, caller_id: UUID) -> dict[str, Any]:
     return _motif_public_projection(motif)
 
 
+# L1/L2 reference-first projection for motif SET tools (Context Budget Law §6b). At
+# `detail=summary` a motif collapses to these ref fields — the heavy structural lists
+# (roles/beats/preconditions/effects and examples) are dropped; fetch one motif's full
+# body via composition_motif_get. Keep the ≤1-line `summary`, the concurrency token
+# (`version`), and the fields the model needs to recognise/pick a pattern (code/kind/
+# name/genre/language/visibility/status).
+_MOTIF_REF_FIELDS = (
+    "id", "code", "name", "kind", "summary", "genre_tags",
+    "language", "visibility", "status", "version",
+)
+# The book-library variant additionally keeps the shared-tier badge fields (present on
+# owner full-dumps and stamped onto non-owner shared rows by _motif_book_view) so the
+# summary still tells the model which rows are the book's SHARED tier.
+_MOTIF_BOOK_REF_FIELDS = _MOTIF_REF_FIELDS + ("book_id", "book_shared")
+# Arc-template ref set (parallels the motif one): drop the heavy structure
+# (threads/layout/pacing/arc_roster) + embedding; keep id/name/≤1-line/version + the
+# navigational fields. Fetch the full arc structure via the owner's full dump / a get.
+_ARC_REF_FIELDS = (
+    "id", "code", "name", "summary", "genre_tags", "language",
+    "chapter_span", "visibility", "status", "version",
+)
+
+
 def _motif_owner_resolver(repo: MotifRepo):
     """`require_user_scope` owner-of for a motif: returns motif.owner_user_id so the
     guard asserts owner == caller. A system row (owner NULL) or a row the caller
@@ -1177,6 +1200,10 @@ class _MotifSearchArgs(ForbidExtra):
     status: Literal["draft", "active", "archived"] | None = None
     language: str | None = None
     limit: int = 20
+    # L1/L2 reference-first (Context Budget Law §6b). Default "full" (versioned
+    # migration — federated/legacy callers unchanged); the chat-compiler passes
+    # "summary" for a lightweight ref list (no roles/beats/preconditions/effects).
+    detail: Literal["summary", "full"] = "full"
 
 
 @mcp_server.tool(
@@ -1186,8 +1213,10 @@ class _MotifSearchArgs(ForbidExtra):
         "situations, hooks, emotion arcs, schemes (e.g. 套路 / 爽点 / 打脸). Filter by "
         "genre, kind, free text (q), language, or status. `scope` narrows the tier: "
         "'mine' (your motifs), 'public' (shared), 'system' (the seeded library), 'all'. "
-        "Returns a list projection (no private internals). Use composition_motif_get for "
-        "a single motif's full detail."
+        "Returns a list projection (no private internals). Pass `detail=summary` "
+        "(default `full`) for a lightweight ref list ({id,code,name,kind,summary,...} — "
+        "no roles/beats/preconditions/effects) and use composition_motif_get for a "
+        "single motif's full detail."
     ),
     meta=require_meta(
         "R", "user",
@@ -1209,11 +1238,15 @@ async def composition_motif_search(ctx: MCPContext, args: _MotifSearchArgs) -> d
         status=args.status, q=args.q, language=args.language, limit=args.limit,
     )
     # MD-1: uniform allow-list projection in search (owner reads full via _get) — no
-    # per-row branch, no embedding/examples leak in a list view.
-    return {
-        "motifs": [_motif_public_projection(m) for m in motifs],
-        "count": len(motifs),
-    }
+    # per-row branch, no embedding/examples leak in a list view. On top of that,
+    # apply the L1/L2 reference-first contract: detail=summary drops the heavy
+    # structural lists. limit=None here — the repo SELECT already bounded to args.limit,
+    # so `total`/`returned` reflect the fetched set (truncated=0; narrow via filters).
+    projected, meta = apply_response_contract(
+        [_motif_public_projection(m) for m in motifs],
+        ref_fields=_MOTIF_REF_FIELDS, detail=args.detail,
+    )
+    return {"motifs": projected, "count": len(motifs), **meta}
 
 
 @mcp_server.tool(
@@ -1235,6 +1268,8 @@ async def composition_motif_get(
     ctx: MCPContext,
     motif_id: Annotated[str, "The motif's id."],
 ) -> dict:
+    # @small_return: single-object read (the get_by_id sibling) — this IS the
+    # full-detail fetch the summary refs point to; no detail arg / SET projection.
     tc = _ctx(ctx)
     repo = MotifRepo(get_pool())
     # get_visible IS the IDOR guard for a non-book resource: it enforces R1.1
@@ -1265,7 +1300,9 @@ def _motif_book_view(motif: Any, caller_id: UUID) -> dict[str, Any]:
         "List the motifs available IN a book: your own library motifs plus the book's SHARED "
         "tier — motifs collaborators adopted/authored into THIS book that everyone with access "
         "can see and (with EDIT) edit. VIEW on the book required. Shared rows are badged "
-        "book_shared=true. Use composition_motif_adopt target='book_shared' to add one."
+        "book_shared=true. Pass `detail=summary` (default `full`) for a lightweight ref list "
+        "(no roles/beats/preconditions/effects); fetch a full motif via composition_motif_get. "
+        "Use composition_motif_adopt target='book_shared' to add one."
     ),
     meta=require_meta(
         "R", "book",
@@ -1283,6 +1320,10 @@ async def composition_motif_book_list(
     status: Annotated[Literal["draft", "active", "archived"] | None, "Status filter."] = "active",
     language: Annotated[str | None, "Language filter."] = None,
     limit: Annotated[int, "Max rows."] = 50,
+    detail: Annotated[
+        Literal["summary", "full"],
+        "summary = refs only (id/code/name/kind/summary/badges, no roles/beats); full = every field.",
+    ] = "full",
 ) -> dict:
     tc = _ctx(ctx)
     bid = UUID(book_id)
@@ -1293,11 +1334,13 @@ async def composition_motif_book_list(
         tc.user_id, bid, genre=genre, kind=kind, status=status, q=q,
         language=language, limit=limit,
     )
-    return {
-        "motifs": [_motif_book_view(m, tc.user_id) for m in motifs],
-        "count": len(motifs),
-        "book_id": book_id,
-    }
+    # L1/L2 reference-first: keep the shared-tier badges (_MOTIF_BOOK_REF_FIELDS) at
+    # summary. limit=None — the repo already bounded to `limit` (truncated=0).
+    projected, meta = apply_response_contract(
+        [_motif_book_view(m, tc.user_id) for m in motifs],
+        ref_fields=_MOTIF_BOOK_REF_FIELDS, detail=detail,
+    )
+    return {"motifs": projected, "count": len(motifs), "book_id": book_id, **meta}
 
 
 @mcp_server.tool(
@@ -1305,7 +1348,10 @@ async def composition_motif_book_list(
     description=(
         "Suggest motifs that fit a specific chapter — ranked candidates with a 'why "
         "this motif' breakdown (tension/genre/precondition/semantic match), so you can "
-        "pick a plot pattern grounded in the Work. VIEW on the book required."
+        "pick a plot pattern grounded in the Work. Pass `detail=summary` (default `full`) "
+        "to get each candidate's motif as a lightweight ref (no roles/beats) while keeping "
+        "the score + match_reason; fetch a full motif via composition_motif_get. VIEW on "
+        "the book required."
     ),
     meta=require_meta(
         "R", "book",
@@ -1319,6 +1365,11 @@ async def composition_motif_suggest_for_chapter(
     project_id: Annotated[str, "The Work's project_id."],
     node_id: Annotated[str, "The chapter outline node to rank motifs against."],
     limit: Annotated[int, "Max candidates."] = 5,
+    detail: Annotated[
+        Literal["summary", "full"],
+        "summary = each candidate's motif is refs only (no roles/beats); full = every field. "
+        "score + match_reason are kept at both levels.",
+    ] = "full",
 ) -> dict:
     tc = _ctx(ctx)
     works = WorksRepo(get_pool())
@@ -1338,15 +1389,20 @@ async def composition_motif_suggest_for_chapter(
         language=getattr(work, "language", None) or "en",
         beat_role=None, tension=getattr(node, "tension_target", None), limit=limit,
     )
+    # L1/L2 reference-first on the ranked candidates: project each candidate's (heavy)
+    # motif body through the contract, keeping the score + match_reason wrapper. The
+    # retriever already bounded to `limit`, so the contract only does the detail
+    # projection (limit=None → truncated=0); `**meta` reports the detail level + count.
+    motif_dicts, meta = apply_response_contract(
+        [_motif_view(c.motif, tc.user_id) for c in candidates],
+        ref_fields=_MOTIF_REF_FIELDS, detail=detail,
+    )
     return {
         "candidates": [
-            {
-                "motif": _motif_view(c.motif, tc.user_id),
-                "score": c.score,
-                "match_reason": c.match_reason,
-            }
-            for c in candidates
-        ]
+            {"motif": motif_dicts[i], "score": c.score, "match_reason": c.match_reason}
+            for i, c in enumerate(candidates)
+        ],
+        **meta,
     }
 
 
@@ -1355,7 +1411,9 @@ async def composition_motif_suggest_for_chapter(
     description=(
         "Suggest multi-chapter ARC templates that fit a Work's premise/genre — the "
         "large-scale structures (parallel threads × motifs over a chapter span). Returns "
-        "ranked candidates with a match breakdown. VIEW on the book required."
+        "ranked candidates with a match breakdown. Pass `detail=summary` (default `full`) "
+        "to get each candidate's arc_template as a lightweight ref (no threads/layout/"
+        "pacing) while keeping the score + match_reason. VIEW on the book required."
     ),
     meta=require_meta(
         "R", "book",
@@ -1370,6 +1428,11 @@ async def composition_arc_suggest(
     premise: Annotated[str | None, "Optional premise text to seed the rank."] = None,
     genre: Annotated[str | None, "Optional genre filter."] = None,
     limit: Annotated[int, "Max candidates."] = 5,
+    detail: Annotated[
+        Literal["summary", "full"],
+        "summary = each candidate's arc_template is refs only (no threads/layout/pacing); "
+        "full = every field. score + match_reason are kept at both levels.",
+    ] = "full",
 ) -> dict:
     tc = _ctx(ctx)
     works = WorksRepo(get_pool())
@@ -1385,19 +1448,25 @@ async def composition_arc_suggest(
         tc.user_id, book_id=work.book_id, project_id=pid,
         premise=premise, genre=genre, limit=limit,
     )
+    # L1/L2 reference-first on the ranked candidates: project each (heavy) arc_template
+    # body through the contract while keeping the score + match_reason wrapper. The
+    # retriever already bounded to `limit` (limit=None → truncated=0); `**meta` reports
+    # the detail level + count. Owner vs non-owner projection is preserved pre-contract.
+    arc_dicts, meta = apply_response_contract(
+        [
+            c.arc_template.model_dump(mode="json")
+            if getattr(c.arc_template, "owner_user_id", None) == tc.user_id
+            else _arc_public_projection(c.arc_template)
+            for c in candidates
+        ],
+        ref_fields=_ARC_REF_FIELDS, detail=detail,
+    )
     return {
         "candidates": [
-            {
-                "arc_template": (
-                    c.arc_template.model_dump(mode="json")
-                    if getattr(c.arc_template, "owner_user_id", None) == tc.user_id
-                    else _arc_public_projection(c.arc_template)
-                ),
-                "score": c.score,
-                "match_reason": c.match_reason,
-            }
-            for c in candidates
-        ]
+            {"arc_template": arc_dicts[i], "score": c.score, "match_reason": c.match_reason}
+            for i, c in enumerate(candidates)
+        ],
+        **meta,
     }
 
 
@@ -1689,6 +1758,9 @@ async def composition_motif_link_list(
         "the book. Omit for your own/system/public motif.",
     ] = None,
 ) -> dict:
+    # @small_return: bounded, lightweight edge rows (each = kind/ord/direction + a
+    # {id,code,name} neighbor stub — no motif body). Nothing heavy to project away, so
+    # a detail=summary level would equal full; a get_by_id on a neighbor is motif_get.
     tc = _ctx(ctx)
     if direction not in ("out", "in", "both"):
         return {"success": False, "error": "direction must be 'out', 'in', or 'both'"}
@@ -2053,6 +2125,9 @@ class _MotifMineArgs(ForbidExtra):
     ),
 )
 async def composition_motif_mine(ctx: MCPContext, args: _MotifMineArgs) -> dict:
+    # @small_return: Tier-W PROPOSE card — returns a single {confirm_token, estimate}
+    # object (no set, no motif bodies); the mined drafts land via the background job,
+    # read back through composition_motif_search/get.
     tc = _ctx(ctx)
     if args.scope == "book":
         if not args.book_id:
@@ -2126,6 +2201,9 @@ class _ArcImportArgs(ForbidExtra):
     ),
 )
 async def composition_arc_import_analyze(ctx: MCPContext, args: _ArcImportArgs) -> dict:
+    # @small_return: Tier-W PROPOSE card — returns a single {confirm_token, estimate}
+    # object (no set); the derived arc_template lands via the background job and is read
+    # back through composition_arc_suggest.
     tc = _ctx(ctx)
     isid = UUID(args.import_source_id)
     # USER scope on the import_source row (§12.6/B-3 — structurally un-shareable):
