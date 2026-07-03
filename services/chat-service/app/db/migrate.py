@@ -289,6 +289,40 @@ CREATE INDEX IF NOT EXISTS idx_message_feedback_user
   ON message_feedback(user_id, created_at DESC);
 
 -- ══════════════════════════════════════════════════════════════════════
+-- T4 (Context Budget Law) — Core Memory Blocks. A per-session, owner-scoped
+-- cache of the always-on context blocks (sealed #3: `story_state` only first)
+-- so the Compiler can project the load-bearing lore gist as a SAFETY NET on a
+-- turn whose expensive build_context grounding was gated (T5) — the follow-up
+-- ("make it darker") never loses the lore the rewrite still needs (D4). Refreshed
+-- on a cadence (sealed #5: lore-gate / scene change / every 5 turns), projected
+-- from cache otherwise (D5 — no per-turn build_context round-trip).
+--   TENANCY (CLAUDE.md, LOCKED): owns its own owner_user_id; every read/write
+--   filters `session_id AND owner_user_id` (not join-only). UNIQUE per
+--   (session, owner, label) → one row per block.
+--   `version` is the OCC token (NET-NEW to chat-service — no prior PG OCC to
+--   copy): a compare-and-set guards a future agent-writable block against a
+--   multi-device stale clobber (D9); the auto-projected story_state cache uses
+--   a plain upsert (derived data, last-refresh-wins is safe).
+-- ══════════════════════════════════════════════════════════════════════
+CREATE TABLE IF NOT EXISTS chat_session_blocks (
+  id              UUID PRIMARY KEY DEFAULT uuidv7(),
+  session_id      UUID NOT NULL REFERENCES chat_sessions(session_id) ON DELETE CASCADE,
+  owner_user_id   UUID NOT NULL,
+  label           TEXT NOT NULL,              -- 'story_state' (the block key)
+  value           TEXT NOT NULL DEFAULT '',   -- the rendered block body
+  token_estimate  INT NOT NULL DEFAULT 0,     -- cached script-aware estimate of value
+  refreshed_turn  INT NOT NULL DEFAULT 0,     -- session message_count at last refresh (cadence)
+  source_hash     TEXT,                       -- hash of the grounding distilled from (skip no-op refresh)
+  version         INT NOT NULL DEFAULT 1,     -- OCC token (compare-and-set; net-new)
+  created_at      TIMESTAMPTZ NOT NULL DEFAULT now(),
+  updated_at      TIMESTAMPTZ NOT NULL DEFAULT now(),
+  UNIQUE (session_id, owner_user_id, label)
+);
+
+CREATE INDEX IF NOT EXISTS idx_chat_session_blocks_session
+  ON chat_session_blocks (session_id, owner_user_id);
+
+-- ══════════════════════════════════════════════════════════════════════
 -- Interview-Practice Roleplay (POC for roleplay-service).
 -- docs/specs/2026-06-23-interview-roleplay.md
 --
