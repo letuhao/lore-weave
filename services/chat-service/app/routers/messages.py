@@ -9,7 +9,14 @@ from app.client.billing_client import get_billing_client
 from app.client.provider_client import get_provider_client
 from app.config import settings
 from app.deps import get_current_user, get_db
-from app.models import ChatMessage, MessageListResponse, SendMessageRequest, ToolResultRequest
+from app.models import (
+    ChatMessage,
+    ContextHistoryPoint,
+    ContextHistoryResponse,
+    MessageListResponse,
+    SendMessageRequest,
+    ToolResultRequest,
+)
 from app.services.stream_service import resume_stream_response, stream_response
 
 # ARCH-1 C3 — per-request stream-format negotiation. A multi-device deployment
@@ -104,6 +111,79 @@ async def list_messages(
             str(session_id), limit, branch_id,
         )
     return MessageListResponse(items=[_row_to_message(r) for r in rows])
+
+
+def _extract_breakdown(raw: object) -> dict | None:
+    """Pull the per-category `breakdown` sub-map out of a persisted
+    context_breakdown JSONB (the full contextBudget frame). Returns None when
+    the column is absent/unparseable or carries no breakdown (e.g. a resume-path
+    turn that didn't re-measure the parts) — such turns are skipped from the
+    series so the chart shows only turns with real per-category data."""
+    payload = _parse_content_parts(raw)
+    if not isinstance(payload, dict):
+        return None
+    breakdown = payload.get("breakdown")
+    if not isinstance(breakdown, dict) or not breakdown:
+        return None
+    return breakdown
+
+
+@router.get("/{session_id}/context-history", response_model=ContextHistoryResponse)
+async def context_history(
+    session_id: UUID,
+    limit: int = Query(100, le=200),
+    user_id: str = Depends(get_current_user),
+    pool: asyncpg.Pool = Depends(get_db),
+) -> ContextHistoryResponse:
+    """Chat Quality Wave W1-residual — the per-turn token-history series.
+
+    W1 persisted the full contextBudget frame per assistant turn
+    (chat_messages.context_breakdown JSONB). This returns the ordered SERIES of
+    per-category token costs across the session's assistant turns, so the FE can
+    chart how each category evolved (the "History" view of the breakdown panel).
+    Owner-gated like the sibling session-scoped routes; windowed to the most
+    recent `limit` turns but returned oldest-first for a left-to-right x-axis."""
+    exists = await pool.fetchval(
+        "SELECT 1 FROM chat_sessions WHERE session_id=$1 AND owner_user_id=$2",
+        str(session_id), user_id,
+    )
+    if not exists:
+        raise HTTPException(status_code=404, detail="session not found")
+
+    # Window to the most recent `limit` turns (DESC) then re-sort ASC so the
+    # chart's x-axis reads oldest→newest. Owner-scoped, active branch only,
+    # assistant turns that actually carry a breakdown.
+    rows = await pool.fetch(
+        """
+        SELECT sequence_num, created_at, input_tokens, output_tokens, context_breakdown
+        FROM (
+            SELECT sequence_num, created_at, input_tokens, output_tokens, context_breakdown
+            FROM chat_messages
+            WHERE session_id=$1 AND owner_user_id=$2 AND branch_id=0
+              AND role='assistant' AND context_breakdown IS NOT NULL
+            ORDER BY sequence_num DESC
+            LIMIT $3
+        ) t
+        ORDER BY sequence_num ASC
+        """,
+        str(session_id), user_id, limit,
+    )
+
+    items: list[ContextHistoryPoint] = []
+    for r in rows:
+        breakdown = _extract_breakdown(r["context_breakdown"])
+        if breakdown is None:
+            continue
+        items.append(
+            ContextHistoryPoint(
+                sequence_num=r["sequence_num"],
+                created_at=r["created_at"],
+                input_tokens=r["input_tokens"],
+                output_tokens=r["output_tokens"],
+                breakdown=breakdown,
+            )
+        )
+    return ContextHistoryResponse(items=items)
 
 
 @router.get("/{session_id}/branches")

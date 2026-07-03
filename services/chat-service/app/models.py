@@ -482,6 +482,29 @@ class MessageListResponse(BaseModel):
     items: list[ChatMessage]
 
 
+# ── Context history (per-turn token breakdown over the session) ────────────────
+# Chat Quality Wave W1 persisted chat_messages.context_breakdown (the full
+# contextBudget frame) per assistant turn; this surfaces the ordered SERIES so
+# the FE can chart how each category's token cost evolved across the conversation
+# (the "History" view of the ContextBreakdownPanel — not just the live "Now").
+
+class ContextHistoryPoint(BaseModel):
+    sequence_num: int
+    created_at: datetime
+    input_tokens: int | None
+    output_tokens: int | None
+    # The `breakdown` sub-map of the persisted contextBudget frame: fixed 12-key
+    # vocabulary (token_budget.BREAKDOWN_CATEGORIES). Every value is an int token
+    # count except `memory_knowledge`, which nests {total, sections}. Passed
+    # through verbatim so the FE reuses the same category color map + the
+    # `categoryTokens` flattening helper as the live panel.
+    breakdown: dict[str, Any]
+
+
+class ContextHistoryResponse(BaseModel):
+    items: list[ContextHistoryPoint]
+
+
 # ── Outputs ───────────────────────────────────────────────────────────────────
 
 class ChatOutput(BaseModel):

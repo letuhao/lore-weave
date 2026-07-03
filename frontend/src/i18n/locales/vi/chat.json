@@ -56,6 +56,14 @@
       "tool_results": "Kết quả công cụ",
       "frontend_tool_schemas": "Công cụ giao diện",
       "mcp_tool_schemas": "Công cụ MCP"
+    },
+    "history": {
+      "tab_now": "Hiện tại",
+      "tab_history": "Lịch sử",
+      "turn": "Lượt",
+      "total": "Tổng",
+      "empty": "Chưa có lịch sử lượt nào — gửi một tin nhắn để bắt đầu theo dõi lượng token.",
+      "error": "Không thể tải lịch sử ngữ cảnh."
     }
   },
   "compaction": {

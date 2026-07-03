@@ -56,6 +56,14 @@
       "tool_results": "ツール結果",
       "frontend_tool_schemas": "UIツール",
       "mcp_tool_schemas": "MCPツール"
+    },
+    "history": {
+      "tab_now": "現在",
+      "tab_history": "履歴",
+      "turn": "ターン",
+      "total": "合計",
+      "empty": "まだ履歴がありません — メッセージを送信するとトークン使用量の記録が始まります。",
+      "error": "コンテキスト履歴を読み込めませんでした。"
     }
   },
   "compaction": {

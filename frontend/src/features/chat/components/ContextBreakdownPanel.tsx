@@ -4,6 +4,7 @@ import { Archive, ChevronDown, ChevronRight, Loader2, Plus } from 'lucide-react'
 import { cn } from '@/lib/utils';
 import type { CompactControls } from '../hooks/useCompactSession';
 import type { ContextBudget, MemoryKnowledgeBreakdown } from '../types';
+import { ContextHistoryTab } from './ContextHistoryTab';
 
 // Chat Quality Wave W2 — the /context-style drill-down panel behind a click on
 // the ContextMeter chip. Pure render + a pure exported math helper (unit-
@@ -46,6 +47,24 @@ const CATEGORY_COLORS: Record<BreakdownCategory, string> = {
   tool_results: 'bg-cyan-400',
   frontend_tool_schemas: 'bg-indigo-400',
   mcp_tool_schemas: 'bg-blue-400',
+};
+
+// Hex mirror of CATEGORY_COLORS (the *-400 Tailwind palette values) — recharts
+// `fill` needs a concrete color, not a class. Kept in lockstep with the class
+// map above so the History chart's stack matches the live panel's row dots.
+export const CATEGORY_HEX: Record<BreakdownCategory, string> = {
+  system_prompt: '#fbbf24',
+  memory_knowledge: '#34d399',
+  working_memory: '#2dd4bf',
+  steering: '#fb7185',
+  skills: '#a78bfa',
+  plan_nudge: '#e879f9',
+  book_note: '#a3e635',
+  attached_context: '#fb923c',
+  history: '#38bdf8',
+  tool_results: '#22d3ee',
+  frontend_tool_schemas: '#818cf8',
+  mcp_tool_schemas: '#60a5fa',
 };
 
 // Categories whose row gets a "manage" action (opens the tool/skill modal).
@@ -141,6 +160,8 @@ export function ContextBreakdownPanel({ budget, onManageTools, compact }: Props)
   const { t } = useTranslation('chat');
   const [memoryOpen, setMemoryOpen] = useState(false);
   const [instructions, setInstructions] = useState('');
+  // W1-residual — "Now" (live breakdown) vs "History" (per-turn token chart).
+  const [tab, setTab] = useState<'now' | 'history'>('now');
   const c = computeBreakdown(budget);
 
   // Bar segments are sized against the LIMIT when known (free space stays
@@ -160,6 +181,43 @@ export function ContextBreakdownPanel({ budget, onManageTools, compact }: Props)
           {c.limitTokens != null ? ` / ${c.limitTokens.toLocaleString()}` : ''} {t('context_panel.tok')}
         </span>
       </div>
+
+      {/* W1-residual — Now / History tab toggle */}
+      <div className="mb-2 flex gap-1 rounded-md bg-secondary/60 p-0.5 text-[11px]" data-testid="context-panel-tabs">
+        <button
+          type="button"
+          onClick={() => setTab('now')}
+          data-testid="context-tab-now"
+          aria-pressed={tab === 'now'}
+          className={cn(
+            'flex-1 rounded px-2 py-0.5 font-medium transition-colors',
+            tab === 'now' ? 'bg-card text-foreground shadow-sm' : 'text-muted-foreground hover:text-foreground',
+          )}
+        >
+          {t('context_panel.history.tab_now')}
+        </button>
+        <button
+          type="button"
+          onClick={() => setTab('history')}
+          data-testid="context-tab-history"
+          aria-pressed={tab === 'history'}
+          className={cn(
+            'flex-1 rounded px-2 py-0.5 font-medium transition-colors',
+            tab === 'history' ? 'bg-card text-foreground shadow-sm' : 'text-muted-foreground hover:text-foreground',
+          )}
+        >
+          {t('context_panel.history.tab_history')}
+        </button>
+      </div>
+
+      {/* History tab — the per-turn token chart. Mounted only when active (its
+          fetch/state hook lives in ContextHistoryTab, keeping this panel
+          decoupled from the auth/session providers). */}
+      {tab === 'history' && <ContextHistoryTab />}
+
+      {/* Now tab — the live breakdown. Kept mounted (CSS-hidden on History) so
+          the memory drill-down + compact input text survive a tab switch. */}
+      <div className={cn(tab === 'history' && 'hidden')} data-testid="context-now-body">
 
       {/* Stacked bar + auto-compact threshold marker */}
       <div className="relative mb-3 flex h-2 w-full overflow-hidden rounded-full bg-secondary" data-testid="context-breakdown-bar">
@@ -308,6 +366,7 @@ export function ContextBreakdownPanel({ budget, onManageTools, compact }: Props)
           )}
         </div>
       )}
+      </div>
     </div>
   );
 }

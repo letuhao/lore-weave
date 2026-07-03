@@ -161,6 +161,20 @@ export interface ContextBudget {
   until_compact_pct?: number | null;
 }
 
+// Chat Quality Wave W1-residual — one point of the per-turn context-token
+// HISTORY series (GET /v1/chat/sessions/{id}/context-history). Mirrors the BE
+// ContextHistoryPoint: the persisted per-category breakdown of one assistant
+// turn, so the panel can chart how each category evolved across the session.
+export interface ContextHistoryPoint {
+  sequence_num: number;
+  created_at: string;
+  input_tokens: number | null;
+  output_tokens: number | null;
+  /** Same 12-key vocabulary as the live budget's breakdown (memory_knowledge
+   *  nests {total, sections}). */
+  breakdown: ContextBreakdownMap;
+}
+
 // Chat Quality Wave W1/W2 — the `compaction` CUSTOM frame, emitted when
 // in-loop compaction actually changed the prompt (CompactionReport.to_event()).
 // Feeds the "earlier turns compacted" toast.

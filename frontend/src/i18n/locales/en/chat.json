@@ -56,6 +56,14 @@
       "tool_results": "Tool results",
       "frontend_tool_schemas": "UI tools",
       "mcp_tool_schemas": "MCP tools"
+    },
+    "history": {
+      "tab_now": "Now",
+      "tab_history": "History",
+      "turn": "Turn",
+      "total": "Total",
+      "empty": "No turn history yet — send a message to start tracking token usage.",
+      "error": "Couldn't load context history."
     }
   },
   "compaction": {

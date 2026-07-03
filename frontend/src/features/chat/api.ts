@@ -7,6 +7,7 @@ import type {
   ChatOutput,
   ChatSession,
   CompactSessionResult,
+  ContextHistoryPoint,
   CreateSessionPayload,
   PatchSessionPayload,
   PendingFact,
@@ -79,6 +80,17 @@ export const chatApi = {
     const qs = params.toString() ? `?${params.toString()}` : '';
     return apiJson<{ items: ChatMessage[] }>(
       `/v1/chat/sessions/${sessionId}/messages${qs}`,
+      { token },
+    );
+  },
+
+  // W1-residual — the per-turn context-token HISTORY series (how each category's
+  // token cost evolved across the session's assistant turns). Backed by the
+  // W1-persisted chat_messages.context_breakdown; owner-gated server-side.
+  getContextHistory(token: string, sessionId: string, limit?: number) {
+    const qs = limit != null ? `?limit=${limit}` : '';
+    return apiJson<{ items: ContextHistoryPoint[] }>(
+      `/v1/chat/sessions/${sessionId}/context-history${qs}`,
       { token },
     );
   },

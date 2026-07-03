@@ -11,6 +11,13 @@ vi.mock('react-i18next', () => ({
   useTranslation: () => ({ t: (k: string) => k }),
 }));
 
+// W1-residual — the History tab body is a separate controller component (it
+// owns the fetch + provider deps). Stub it so the panel's tab-toggle is tested
+// in isolation, without the auth/session providers.
+vi.mock('../ContextHistoryTab', () => ({
+  ContextHistoryTab: () => <div data-testid="context-history-tab" />,
+}));
+
 import { ContextBreakdownPanel, computeBreakdown } from '../ContextBreakdownPanel';
 import type { ContextBudget } from '../../types';
 
@@ -122,6 +129,31 @@ describe('ContextBreakdownPanel', () => {
     render(<ContextBreakdownPanel budget={{ used_tokens: 10, context_length: 100, effective_limit: 90, pct: 0.11 }} />);
     expect(screen.getByTestId('context-breakdown-panel')).toBeInTheDocument();
     expect(screen.getByTestId('context-zero-line')).toBeInTheDocument();
+  });
+});
+
+// W1-residual — the Now / History tab toggle.
+describe('ContextBreakdownPanel tabs', () => {
+  it('defaults to Now (live breakdown) with History unmounted', () => {
+    render(<ContextBreakdownPanel budget={fullBudget} />);
+    expect(screen.getByTestId('context-panel-tabs')).toBeInTheDocument();
+    // Now body visible; the History tab body is not mounted yet.
+    expect(screen.getByTestId('context-now-body')).not.toHaveClass('hidden');
+    expect(screen.queryByTestId('context-history-tab')).toBeNull();
+    // the live rows are present
+    expect(screen.getByText('context_panel.cat.skills')).toBeInTheDocument();
+  });
+
+  it('switches to History (mounts the chart) and back to Now', () => {
+    render(<ContextBreakdownPanel budget={fullBudget} />);
+    fireEvent.click(screen.getByTestId('context-tab-history'));
+    expect(screen.getByTestId('context-history-tab')).toBeInTheDocument();
+    // Now body stays mounted but hidden (state-preserving) while History shows.
+    expect(screen.getByTestId('context-now-body')).toHaveClass('hidden');
+
+    fireEvent.click(screen.getByTestId('context-tab-now'));
+    expect(screen.queryByTestId('context-history-tab')).toBeNull();
+    expect(screen.getByTestId('context-now-body')).not.toHaveClass('hidden');
   });
 });
 

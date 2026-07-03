@@ -56,6 +56,14 @@
       "tool_results": "工具結果",
       "frontend_tool_schemas": "介面工具",
       "mcp_tool_schemas": "MCP 工具"
+    },
+    "history": {
+      "tab_now": "目前",
+      "tab_history": "歷史",
+      "turn": "回合",
+      "total": "總計",
+      "empty": "尚無回合歷史 — 傳送訊息即可開始追蹤 token 用量。",
+      "error": "無法載入脈絡歷史。"
     }
   },
   "compaction": {
