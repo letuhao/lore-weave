@@ -4,6 +4,7 @@ import { useTranslation } from 'react-i18next';
 import { toast } from 'sonner';
 import { useAuth } from '@/auth';
 import { extractionApi } from './api';
+import type { EffortLevel } from '@/components/ai-task';
 import type { ExtractionProfile, ContextFilters, ExtractionProfileKind, CostEstimate } from './types';
 
 interface StepConfirmProps {
@@ -15,7 +16,7 @@ interface StepConfirmProps {
   contextFilters: ContextFilters;
   kinds: ExtractionProfileKind[];
   selectedModelName: string;
-  thinkingEnabled: boolean;
+  effort: EffortLevel;
   onJobCreated: (jobId: string, costEstimate: CostEstimate) => void;
   onEditProfile: () => void;
 }
@@ -35,7 +36,7 @@ export function StepConfirm({
   contextFilters,
   kinds,
   selectedModelName,
-  thinkingEnabled,
+  effort,
   onJobCreated,
   onEditProfile,
 }: StepConfirmProps) {
@@ -71,7 +72,7 @@ export function StepConfirm({
           model_ref: modelRef,
           max_entities_per_kind: maxEntitiesPerKind,
           context_filters: contextFilters,
-          thinking_enabled: thinkingEnabled,
+          reasoning_effort: effort,
           ...(concurrency > 1 ? { concurrency_level: concurrency } : {}),
         },
         accessToken,
@@ -110,7 +111,7 @@ export function StepConfirm({
       </div>
 
       <p className="text-[11px] text-muted-foreground text-center">
-        {thinkingEnabled ? t('confirm.thinkingOn') : t('confirm.thinkingOff')}
+        {effort !== 'off' ? t('confirm.thinkingOn') : t('confirm.thinkingOff')}
       </p>
 
       {/* D-EXTRACTION-BATCH-CONCURRENCY — parallel LLM calls per chapter. */}
