@@ -49,6 +49,37 @@
 > Note: `⚠️` a stray dev vite server may still be running on :5199 from the A3 smoke; the smoke created
 > a throwaway project "KG Schema Smoke" on the test account.
 
+> **▶ AI-TASK STANDARD — single-shot LLM generate: shared engine + composable UI (2026-07-03).**
+> Trigger: the KG schema-generate re-implemented plumbing every other "generate" dialog also
+> hand-rolls. Discovery found **21 FE surfaces + 10 BE engines** each re-deriving the same slices.
+> Spec [`2026-07-03-ai-task-standard`](../specs/2026-07-03-ai-task-standard.md). Boundary (LOCKED,
+> non-goal): NOT the Agent-Extensibility Standard — these are non-agentic MCP-exempt pipelines;
+> agent-facing MCP/subagent wrappers are deferred and compose ON TOP of this engine.
+> **M1a `a7240e189`** — BE `loreweave_llm.structured_generate` (reasoning-off by DEFAULT → closes the
+> empty-prose footgun; required max_output_tokens; typed StructuredGenerateError on transport/non-
+> completed/empty) + `parse_json_object` (consolidates the ~5 `_extract_json_object` copies);
+> `schema_propose` migrated onto it, byte-preserved (10+10 unit green). **M1b `037bbf540`** —
+> `no_thinking_fields()` + footgun disable in `working_memory/executive.py` (max_tokens=500, was
+> nothing) + `summarize_level`. **M2 `5bb2dd517`** — FE `components/ai-task/`: `EffortSelect` (extracted
+> from ChatInputBar's inline W4 menu, now the single source; chat re-exports), `SpendCapField`+
+> `isValidSpend`, `useAiTask` (propose→review→confirm controller), `lib/readBackendError` (moved shared).
+> **M3 `a2430c721`** — GenerateSchemaDialog→useAiTask+readBackendError, GenerateWikiDialog→SpendCapField.
+> **M4 `22c63b41c`** — BuildGraphDialog→SpendCapField (LAST DECIMAL_* regex copy gone). VERIFY: BE
+> 33 unit + FE 94 (ai-task 9 + readBackendError 5 + chat effort 22 + wiki 22 + schema 2 + buildgraph 34)
+> + tsc 0. Live: stack up but running knowledge :8216 image predates the SDK change (stale-image caveat)
+> → schema_propose is byte-preserving + unit-asserts the exact wire + was live-proven (Gemma, 8 edges)
+> last session; a fresh live smoke needs a knowledge-service rebuild.
+> **DEFERRED (verified, gate-justified):** `D-WIKI-EFFORT-NONE-DISABLE` (wiki `"none"`=no-op is a
+> deliberate test-locked design + prose-not-JSON + graceful stub degrade → human's design call);
+> `D-ENRICH-COMPLETE-BUDGET` (streaming seam, other service; needs contract-verify + safe max_tokens +
+> live-smoke); `D-AITASK-EFFORTSELECT-ADOPT` (ComposeView 5-level `<select>` + StepProfile/StepConfig
+> boolean `thinking` → EffortSelect CHANGES reasoning granularity/wire contract, not dedup — product
+> decision); `D-AITASK-SPENDCAP-COMPACT` (ComposeConfig/GapsPanel inline `w-20` strips need a `compact`
+> SpendCapField variant; they never had the regex — no validation today); `D-AITASK-GAPS-MODELPICKER`
+> (GapsPanel raw `<select>`→ModelPicker is a UX-consistency nit — already shares the fetch/cache via the
+> W5 useUserModels adapter; combobox swap churns its interaction test). Remaining clean migrations
+> (bio/polish/quality already use readBackendError or receive modelRef props — minimal dup).
+
 > **▶ KNOWLEDGE GUI FIXES + MODEL-ROLES SETTINGS — 2026-07-03 (3 items, all shipped).**
 > **#1 `cancel_check` extraction blocker (`591e54ad7`)** — bug #34 added `cancel_check` to the
 > loreweave_extraction protocol + every extractor (which ALWAYS forward it), and to
