@@ -140,10 +140,14 @@
 > INSERT round-trips + `memory_mode="multi"` (the mock-hidden binding risk proven live); knowledge
 > `/internal/context/build` with `project_ids=[A,B]` → `HTTP 200 mode="multi"`, rendered
 > `<memory mode="multi" projects="2">` union block. Throwaway smoke projects+session cleaned up.
-> **DEFERRED D-MULTI-SALIENCE-WRITEBACK** (gate #2 structural): multi mode READS per-project salience
-> but the router's write-back keys on the single `req.project_id` — in multi we send none, so a multi
-> session doesn't LEARN salience yet; correct per-project write-back needs `BuiltContext.surfaced_entity_ids`
-> grouped by project (a Layer-1 contract change). **Optional remaining:** a full chat-TURN SSE
+> **CLEARED D-MULTI-SALIENCE-WRITEBACK** (was mislabeled gate #2 "cross-service Layer-1 change" — on
+> re-verification it's knowledge-service-LOCAL): the multi-mode write-back keyed on the single
+> `req.project_id` (None in multi) so multi sessions never LEARNED salience. Fixed knowledge-local +
+> additive: `build_multi_project_mode` already holds each surfaced entity's SOURCE project in the
+> `(proj, e)` tuple (it was discarded) → new `BuiltContext.surfaced_by_project` maps entity→source
+> project; the `/internal/context/build` router now records salience PER SOURCE PROJECT in multi mode
+> (each entity attributed to its own book, no misattribution). 2 router wiring tests + full unit 3460
+> green. **Optional remaining:** a full chat-TURN SSE
 > `memory-mode="multi"` smoke (both seams already proven directly; the turn adds only LM Studio + the
 > chat-side HTTP, and the chat→knowledge `project_ids` forwarding is unit-asserted).
 >

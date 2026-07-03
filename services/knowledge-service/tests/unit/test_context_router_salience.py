@@ -71,6 +71,60 @@ async def test_no_record_when_nothing_surfaced():
     repo.record_accesses.assert_not_called()
 
 
+# ── Track B B1(2) — multi-mode per-project salience (D-MULTI-SALIENCE-WRITEBACK) ──
+
+
+def _built_multi(surfaced_by_project):
+    return BuiltContext(
+        mode="multi", context="<memory/>", recent_message_count=20,
+        token_count=1, surfaced_by_project=surfaced_by_project,
+    )
+
+
+@pytest.mark.asyncio
+async def test_multi_mode_records_salience_per_source_project():
+    """D-MULTI-SALIENCE-WRITEBACK — in multi mode req.project_id is None (no single
+    anchor, to avoid misattribution), so the single-project branch skips; the router
+    instead records per SOURCE project from surfaced_by_project — so multi-KG sessions
+    LEARN salience too, each entity attributed to its own book."""
+    user_id, pa, pb = uuid4(), uuid4(), uuid4()
+    req = ContextBuildRequest(user_id=user_id, project_id=None,
+                              project_ids=[pa, pb], message="hi")
+    repo = AsyncMock()
+    with patch("app.routers.context.build_context",
+               AsyncMock(return_value=_built_multi({str(pa): ["e1", "e2"], str(pb): ["e3"]}))):
+        await build(
+            req, summaries_repo=AsyncMock(), projects_repo=AsyncMock(),
+            glossary_client=AsyncMock(), embedding_client=AsyncMock(),
+            llm_client=AsyncMock(), working_memory_repo=AsyncMock(),
+            entity_access_repo=repo,
+        )
+    await asyncio.sleep(0)  # let both fire-and-forget tasks run
+
+    calls = {c.args[1]: c.args[2] for c in repo.record_accesses.await_args_list}
+    assert calls == {pa: ["e1", "e2"], pb: ["e3"]}  # per-project attribution
+    assert all(c.kwargs == {"session_id": None} for c in repo.record_accesses.await_args_list)
+
+
+@pytest.mark.asyncio
+async def test_multi_mode_skips_empty_project_bucket():
+    """A project that surfaced nothing is not recorded (no empty write)."""
+    user_id, pa, pb = uuid4(), uuid4(), uuid4()
+    req = ContextBuildRequest(user_id=user_id, project_id=None,
+                              project_ids=[pa, pb], message="hi")
+    repo = AsyncMock()
+    with patch("app.routers.context.build_context",
+               AsyncMock(return_value=_built_multi({str(pa): ["e1"], str(pb): []}))):
+        await build(
+            req, summaries_repo=AsyncMock(), projects_repo=AsyncMock(),
+            glossary_client=AsyncMock(), embedding_client=AsyncMock(),
+            llm_client=AsyncMock(), working_memory_repo=AsyncMock(),
+            entity_access_repo=repo,
+        )
+    await asyncio.sleep(0)
+    repo.record_accesses.assert_awaited_once_with(user_id, pa, ["e1"], session_id=None)
+
+
 # ── W1 — sections pass through the response contract (additive) ─────────────
 
 

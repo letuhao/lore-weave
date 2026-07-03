@@ -174,15 +174,28 @@ async def build(
     # Track 4 P0 — record which entities were surfaced, fire-and-forget so the
     # salience telemetry write is off the request latency path and can never fail
     # the build. Only when a project is scoped and something was surfaced.
-    if req.project_id is not None and built.surfaced_entity_ids:
-        _task = asyncio.create_task(
+    #
+    # Track B B1(2) (D-MULTI-SALIENCE-WRITEBACK): in MULTI mode `req.project_id` is
+    # None (we deliberately don't send a single anchor, to avoid misattributing the
+    # union's entities to one project), so the single-project branch skips. Instead
+    # record PER SOURCE PROJECT from `surfaced_by_project` — correct attribution, so
+    # multi-KG sessions LEARN salience too.
+    def _record(project_id, entity_ids):
+        task = asyncio.create_task(
             entity_access_repo.record_accesses(
-                req.user_id, req.project_id, built.surfaced_entity_ids,
+                req.user_id, project_id, entity_ids,
                 session_id=req.session_id,  # P3b — feedback attribution stamp
             )
         )
-        _bg_tasks.add(_task)
-        _task.add_done_callback(_bg_tasks.discard)
+        _bg_tasks.add(task)
+        task.add_done_callback(_bg_tasks.discard)
+
+    if built.surfaced_by_project:  # multi mode → attribute per source project
+        for pid, eids in built.surfaced_by_project.items():
+            if eids:
+                _record(UUID(pid), eids)
+    elif req.project_id is not None and built.surfaced_entity_ids:
+        _record(req.project_id, built.surfaced_entity_ids)
 
     resp = ContextBuildResponse.model_validate(built)
     # Interview-roleplay (M4): attach the session's working_memory block (charter

@@ -73,6 +73,12 @@ class BuiltContext:
     # fire-and-forget (off the latency path) so retrieval salience can be
     # LEARNED (P1). Empty for Mode 1 (no project → no entities).
     surfaced_entity_ids: list[str] = field(default_factory=list)
+    # Track B B1(2) — in MULTI mode the surfaced entities span several projects and
+    # `surfaced_entity_ids` is a merged flat list, so the router can't attribute
+    # salience per-project off `req.project_id` (which is None in multi). This maps
+    # each surfaced entity to its SOURCE project so the router records salience
+    # per-project (D-MULTI-SALIENCE-WRITEBACK). Empty for single/no-project modes.
+    surfaced_by_project: dict[str, list[str]] = field(default_factory=dict)
     # Chat Quality Wave W1 — per-section token split of `context` (estimate_tokens
     # over each rendered section, POST-budget-trim), e.g. {"user": ..,
     # "project": .., "glossary_entities": .., "facts": .., "passages": ..,

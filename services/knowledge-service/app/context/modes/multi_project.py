@@ -383,9 +383,17 @@ async def build_multi_project_mode(
         budget_tokens=settings.mode3_token_budget,
     )
 
-    surfaced = [
-        getattr(e, "entity_id", None) for _proj, e in entities if getattr(e, "entity_id", None)
-    ]
+    # Track B B1(2) — keep each surfaced entity's SOURCE project (it's right here in
+    # the (proj, e) tuple) so the router can record salience PER-PROJECT in multi mode
+    # (D-MULTI-SALIENCE-WRITEBACK); a flat list can't be attributed off req.project_id
+    # (None in multi). surfaced stays the flat list for back-compat.
+    surfaced: list[str] = []
+    surfaced_by_project: dict[str, list[str]] = {}
+    for _proj, e in entities:
+        eid = getattr(e, "entity_id", None)
+        if eid:
+            surfaced.append(eid)
+            surfaced_by_project.setdefault(str(_proj.project_id), []).append(eid)
     # tool-calling enabled if ANY project allows it (union is permissive; the caller
     # already owns every project in the set).
     tool_calling = any(getattr(p, "tool_calling_enabled", True) for p in projects)
@@ -398,5 +406,6 @@ async def build_multi_project_mode(
         volatile_context=context,
         tool_calling_enabled=tool_calling,
         surfaced_entity_ids=surfaced,
+        surfaced_by_project=surfaced_by_project,
         sections=sections,
     )
