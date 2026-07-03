@@ -7,7 +7,6 @@ import (
 	"crypto/rand"
 	"encoding/base64"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"net/http"
 	"strconv"
@@ -79,17 +78,45 @@ func (s *Server) requireBookGrant(w http.ResponseWriter, r *http.Request, bookID
 		writeError(w, http.StatusBadRequest, "VALIDATION_ERROR", "book_id required for book tier")
 		return false
 	}
-	err := s.grants.RequireGrant(r.Context(), bookID, uid, grantclient.GrantEdit)
-	switch {
-	case err == nil:
-		return true
-	case errors.Is(err, grantclient.ErrForbidden):
-		writeError(w, http.StatusNotFound, "NOT_FOUND", "book not found")
-		return false
-	default: // ErrUnavailable — fail closed
+	// Resolve grant + lifecycle together: a write must have >=edit AND the book
+	// must be active. /review-impl: gating on grant level alone let a user with
+	// edit on a TRASHED/purge_pending book create book-tier resources on a book
+	// being deleted (the grantclient SDK: "Edit/manage operations should gate on
+	// Active()").
+	acc, err := s.grants.ResolveAccess(r.Context(), bookID, uid)
+	if err != nil { // ErrUnavailable — fail closed
 		writeError(w, http.StatusServiceUnavailable, "GRANT_UNAVAILABLE", "grant authority unavailable")
 		return false
 	}
+	if !acc.Level.AtLeast(grantclient.GrantEdit) {
+		writeError(w, http.StatusNotFound, "NOT_FOUND", "book not found") // anti-oracle
+		return false
+	}
+	if !acc.Active() {
+		writeError(w, http.StatusConflict, "BOOK_NOT_ACTIVE", "book is not active (trashed or pending purge)")
+		return false
+	}
+	return true
+}
+
+// authorizeRowWrite decides whether the caller may mutate/inspect a loaded row by
+// tier: user → own; system → admin; book → ≥edit grant on an ACTIVE book. The book
+// path resolves the grant per request (fail-closed). Used by get/patch/delete so a
+// book-tier resource is manageable by the book's grantees (its rows carry no owner).
+func (s *Server) authorizeRowWrite(r *http.Request, tier string, owner, book *uuid.UUID, uid uuid.UUID, role string) bool {
+	switch tier {
+	case "user":
+		return owner != nil && *owner == uid
+	case "system":
+		return role == "admin"
+	case "book":
+		if s.grants == nil || book == nil {
+			return false
+		}
+		acc, err := s.grants.ResolveAccess(r.Context(), *book, uid)
+		return err == nil && acc.Level.AtLeast(grantclient.GrantEdit) && acc.Active()
+	}
+	return false
 }
 
 func deriveKey(s string) []byte {

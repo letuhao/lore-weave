@@ -17,6 +17,10 @@ const maxSkillBodyBytes = 64 * 1024 // D2
 
 // skillQuotaExceeded reports whether the user is at/over the per-user skill cap
 // (REG-X-02 / D2). Counts only the user's own user-tier skills.
+// /review-impl note: this is a check-then-insert (advisory) limit — a rare
+// concurrent double-create could land at 51. Accepted: the cap is a soft
+// guardrail, not a security boundary; a strict cap would need a SERIALIZABLE txn
+// or a count-constraint, disproportionate for a hobby-scale limit.
 func (s *Server) skillQuotaExceeded(ctx context.Context, uid uuid.UUID) bool {
 	return s.queryInt(ctx, `SELECT COUNT(*) FROM skills WHERE tier = 'user' AND owner_user_id = $1`, uid) >= quotaSkills
 }

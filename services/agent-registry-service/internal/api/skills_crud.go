@@ -88,6 +88,14 @@ func (s *Server) getSkill(w http.ResponseWriter, r *http.Request) {
 	}
 	sk, err := s.loadVisibleSkill(r, uid, sid)
 	if err != nil {
+		// Fall back to a book-tier skill the caller has grant on (authorizeRowWrite
+		// resolves ≥edit + active). loadVisibleSkill only covers System ∪ own.
+		var full skillRow
+		if e := scanSkill(s.db.QueryRow(r.Context(), `SELECT `+skillCols+` FROM skills WHERE skill_id = $1`, sid), &full); e == nil &&
+			full.Tier == "book" && s.authorizeRowWrite(r, full.Tier, full.OwnerUserID, full.BookID, uid, "") {
+			writeJSON(w, http.StatusOK, &full)
+			return
+		}
 		writeError(w, http.StatusNotFound, "NOT_FOUND", "skill not found")
 		return
 	}
@@ -112,12 +120,12 @@ func (s *Server) patchSkill(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	var tier string
-	var owner *uuid.UUID
-	if err := s.db.QueryRow(r.Context(), `SELECT tier, owner_user_id FROM skills WHERE skill_id = $1`, sid).Scan(&tier, &owner); err != nil {
+	var owner, book *uuid.UUID
+	if err := s.db.QueryRow(r.Context(), `SELECT tier, owner_user_id, book_id FROM skills WHERE skill_id = $1`, sid).Scan(&tier, &owner, &book); err != nil {
 		writeError(w, http.StatusNotFound, "NOT_FOUND", "skill not found")
 		return
 	}
-	if !s.canWritePlugin(tier, owner, uid, role) { // same tier-write rule
+	if !s.authorizeRowWrite(r, tier, owner, book, uid, role) {
 		writeError(w, http.StatusNotFound, "NOT_FOUND", "skill not found")
 		return
 	}
@@ -184,12 +192,12 @@ func (s *Server) deleteSkill(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	var tier, slug string
-	var owner *uuid.UUID
-	if err := s.db.QueryRow(r.Context(), `SELECT tier, owner_user_id, slug FROM skills WHERE skill_id = $1`, sid).Scan(&tier, &owner, &slug); err != nil {
+	var owner, book *uuid.UUID
+	if err := s.db.QueryRow(r.Context(), `SELECT tier, owner_user_id, slug, book_id FROM skills WHERE skill_id = $1`, sid).Scan(&tier, &owner, &slug, &book); err != nil {
 		writeError(w, http.StatusNotFound, "NOT_FOUND", "skill not found")
 		return
 	}
-	if !s.canWritePlugin(tier, owner, uid, role) {
+	if !s.authorizeRowWrite(r, tier, owner, book, uid, role) {
 		writeError(w, http.StatusNotFound, "NOT_FOUND", "skill not found")
 		return
 	}

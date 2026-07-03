@@ -31,13 +31,23 @@ func (s *Server) internalSkills(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	surface := r.URL.Query().Get("surface")
+	bookID := uuid.Nil
+	if v := r.URL.Query().Get("book_id"); v != "" {
+		if b, err := uuid.Parse(v); err == nil {
+			bookID = b
+		}
+	}
 
-	// user + book skills visible to this user, with their per-user override.
+	// The caller's user-tier skills PLUS the book-tier skills for this book context
+	// (both effective-enabled + surface-filtered), each with the per-user override.
+	// /review-impl: book-tier skills were created but never resolved here — they must
+	// inject for turns in their book, else book-tier creation orphans inert rows.
 	rows, err := s.db.Query(r.Context(),
 		`SELECT sk.slug, sk.description, sk.body_md, sk.surfaces, sk.tier, sk.source, sk.status, se.enabled
 		 FROM skills sk
 		 LEFT JOIN skill_enablement se ON se.skill_id = sk.skill_id AND se.owner_user_id = $1
-		 WHERE sk.tier = 'user' AND sk.owner_user_id = $1`, uid)
+		 WHERE (sk.tier = 'user' AND sk.owner_user_id = $1)
+		    OR (sk.tier = 'book' AND sk.book_id = $2)`, uid, nullUUID(bookID))
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "DB_ERROR", "could not resolve skills")
 		return

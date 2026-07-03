@@ -235,12 +235,12 @@ func (s *Server) patchPlugin(w http.ResponseWriter, r *http.Request) {
 	}
 	// Only own user-tier rows are writable by a regular user; System rows need admin.
 	var tier string
-	var owner *uuid.UUID
-	if err := s.db.QueryRow(r.Context(), `SELECT tier, owner_user_id FROM plugins WHERE plugin_id = $1`, pid).Scan(&tier, &owner); err != nil {
+	var owner, book *uuid.UUID
+	if err := s.db.QueryRow(r.Context(), `SELECT tier, owner_user_id, book_id FROM plugins WHERE plugin_id = $1`, pid).Scan(&tier, &owner, &book); err != nil {
 		writeError(w, http.StatusNotFound, "NOT_FOUND", "plugin not found")
 		return
 	}
-	if !s.canWritePlugin(tier, owner, uid, role) {
+	if !s.authorizeRowWrite(r, tier, owner, book, uid, role) {
 		writeError(w, http.StatusNotFound, "NOT_FOUND", "plugin not found") // anti-oracle
 		return
 	}
@@ -293,13 +293,13 @@ func (s *Server) deletePlugin(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	var tier string
-	var owner *uuid.UUID
+	var owner, book *uuid.UUID
 	var name string
-	if err := s.db.QueryRow(r.Context(), `SELECT tier, owner_user_id, name FROM plugins WHERE plugin_id = $1`, pid).Scan(&tier, &owner, &name); err != nil {
+	if err := s.db.QueryRow(r.Context(), `SELECT tier, owner_user_id, name, book_id FROM plugins WHERE plugin_id = $1`, pid).Scan(&tier, &owner, &name, &book); err != nil {
 		writeError(w, http.StatusNotFound, "NOT_FOUND", "plugin not found")
 		return
 	}
-	if !s.canWritePlugin(tier, owner, uid, role) {
+	if !s.authorizeRowWrite(r, tier, owner, book, uid, role) {
 		writeError(w, http.StatusNotFound, "NOT_FOUND", "plugin not found")
 		return
 	}
