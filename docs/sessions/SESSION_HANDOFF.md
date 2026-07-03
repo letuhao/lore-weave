@@ -69,16 +69,27 @@
 > + tsc 0. Live: stack up but running knowledge :8216 image predates the SDK change (stale-image caveat)
 > → schema_propose is byte-preserving + unit-asserts the exact wire + was live-proven (Gemma, 8 edges)
 > last session; a fresh live smoke needs a knowledge-service rebuild.
-> **DEFERRED (verified, gate-justified):** `D-WIKI-EFFORT-NONE-DISABLE` (wiki `"none"`=no-op is a
-> deliberate test-locked design + prose-not-JSON + graceful stub degrade → human's design call);
-> `D-ENRICH-COMPLETE-BUDGET` (streaming seam, other service; needs contract-verify + safe max_tokens +
-> live-smoke); `D-AITASK-EFFORTSELECT-ADOPT` (ComposeView 5-level `<select>` + StepProfile/StepConfig
-> boolean `thinking` → EffortSelect CHANGES reasoning granularity/wire contract, not dedup — product
-> decision); `D-AITASK-SPENDCAP-COMPACT` (ComposeConfig/GapsPanel inline `w-20` strips need a `compact`
-> SpendCapField variant; they never had the regex — no validation today); `D-AITASK-GAPS-MODELPICKER`
-> (GapsPanel raw `<select>`→ModelPicker is a UX-consistency nit — already shares the fetch/cache via the
-> W5 useUserModels adapter; combobox swap churns its interaction test). Remaining clean migrations
-> (bio/polish/quality already use readBackendError or receive modelRef props — minimal dup).
+> **CONVERGENCE M5-M7 — "standard vs exception" re-examined (the user challenged that my initial
+> deferrals were mostly standard-covered, and was right):** **M5 `145810f0a`** unify reasoning-
+> effort to ONE 5-level vocab (off|low|medium|high|auto) — chat-service had TWO (session vs per-msg
+> fast|standard|deep); chat FE now uses the shared EffortSelect; BE tolerant-first (no flag-day).
+> **M6 `8be4e6c63`** ComposeView `<select>`→EffortSelect; SpendCapField `compact` variant →
+> ComposeConfig; GapsPanel raw `<select>`→ModelPicker (the one outlier). **M7 `b4ae23d38`**
+> extraction wizard thinking-checkbox→EffortSelect (translation-service extraction router ALREADY
+> accepted `reasoning_effort` — the "field already exists" lesson; pure FE); wiki `"none"`=no-op made
+> an EXPLICIT documented exception (prose≠JSON + graceful degrade), not a silent fork. **Framework:**
+> standard = PLATFORM concept + presentation/config variation → prop; exception = domain SEMANTICS,
+> declared as an EXPLICIT param, never a silent re-implementation. Of the 5 I'd deferred, 4 were
+> standard-covered (migrated) and only wiki was a true exception.
+> **ONE genuine remainder — `D-AITASK-GLOSSARY-TRANSLATE-EFFORT`:** StepConfig (glossary-translate
+> wizard) still boolean `thinking`. Genuine MULTI-LAYER BE change (gate #2): translation-service
+> `CreateGlossaryTranslatePayload` needs `reasoning_effort` (mirror the extraction router which has
+> it) + thread through the broker msg + the worker's `thinking_llm_fields(enabled:bool)` is BOOLEAN
+> BY DESIGN (off→none/on→medium for JSON pipelines) → extend to graded via `reasoning_fields` +
+> possible migration. Buildable, not blocked; the MOST marginal surface (glossary translate = short
+> structured JSON, off/on is the meaningful axis). Also open: `D-ENRICH-COMPLETE-BUDGET` (lore-
+> enrichment streaming seam — no max_tokens/reasoning-off; verify the /internal/llm/stream contract +
+> pick a safe bound + live-smoke). Both are verified-against-code gate-#2 items with a build plan.
 
 > **▶ KNOWLEDGE GUI FIXES + MODEL-ROLES SETTINGS — 2026-07-03 (3 items, all shipped).**
 > **#1 `cancel_check` extraction blocker (`591e54ad7`)** — bug #34 added `cancel_check` to the
