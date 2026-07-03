@@ -15,6 +15,7 @@ import {
   LogIn,
   Trophy,
   Trash2,
+  Puzzle,
   PanelLeftClose,
   PanelLeftOpen,
   Sun,
@@ -59,6 +60,9 @@ const manageNav: NavItem[] = [
   { to: '/trash', icon: Trash2, labelKey: 'nav.trash', auth: true },
   { to: '/usage', icon: BarChart3, labelKey: 'nav.usage', auth: true },
   { to: '/leaderboard', icon: Trophy, labelKey: 'nav.leaderboard' },
+  // Agent Extensibility Registry — skills/MCP/commands/hooks/subagents/plugins + proposals.
+  // The registry GUI (route /extensions) previously had NO nav entry point (orphaned route).
+  { to: '/extensions', icon: Puzzle, labelKey: 'nav.extensions', auth: true },
   { to: '/settings/account', icon: Settings, labelKey: 'nav.settings', auth: true },
 ];
 

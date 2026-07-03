@@ -33,7 +33,8 @@ with per-step SSRF/OAuth validation, typed-confirm cascade-delete dialogs, and t
 - [ ] Header quota strip: MCP servers n/10 — rendered, not tested
 - [ ] Header quota strip: Commands n/20 — not rendered (usage strip omits commands)
 - [ ] Quota strip updates after create/delete (no reload)
-- [ ] Nav: Plugins / MCP Servers / Skills / Commands & Hooks / Proposals / Activity log — tabs exist, not tested
+- [x] Reachable from the app: an **Extensions** entry point in the main Sidebar → `/extensions` (was an orphaned route with NO nav entry) — *test: Sidebar.test asserts the `/extensions` link renders* + palette-openable in the Studio (catalog.ts `OPENABLE_STUDIO_PANELS`)
+- [ ] Nav: Plugins / MCP Servers / Skills / Commands & Hooks / Proposals / Activity log — these are TABS inside /extensions (+ the Sidebar entry), not per-screen nav items; per-screen deep-links not built
 - [ ] Nav: Proposals pending-count badge
 - [ ] Nav badge live-updates on new proposal
 - [ ] Active nav item highlight
