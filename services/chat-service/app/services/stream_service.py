@@ -1455,9 +1455,14 @@ async def _run_subagent_call(
                 # the cumulative sub-run total.
                 sub_in = getattr(u, "prompt_tokens", 0) or 0
                 sub_out = getattr(u, "completion_tokens", 0) or 0
-            if ch.get("suspend") is not None:
+            susp = ch.get("suspend")
+            if susp is not None:
                 # A nested run cannot surface a suspend (no client to execute it);
-                # end the sub-run with whatever it has produced so far.
+                # end with whatever it produced. This is rare (ask mode never hits
+                # the write-approval gate) — only a `require_approval` hook on a
+                # scoped tool can trigger it — but still attribute its tokens.
+                sub_in = susp.get("input_tokens", sub_in) or sub_in
+                sub_out = susp.get("output_tokens", sub_out) or sub_out
                 break
     except Exception:
         logger.warning("subagent '%s' run failed", name, exc_info=True)

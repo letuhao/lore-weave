@@ -193,19 +193,39 @@
 > → validateSkill parity closes the `scripts/` prompt-only hole; unvalidated plugin version → filename injection →
 > semver on create+patch + filename strip) + 2 LOW (subagent quota, System UNIQUE index). Suites: agent-registry go
 > green; FE extensions+studio green; tsc clean.
-> **Deferred (both gate #2) — NOW SPEC'D + READY TO BUILD:** `D-REG-P5-SUBAGENT-RUNTIME` → spec
-> [`2026-07-03-subagent-runtime.md`](../specs/2026-07-03-subagent-runtime.md) (chosen host = a chat-service loop
-> primitive peer to `find_tools`, NOT a federated tool → no cross-service cycle; nested `_stream_with_tools` with a
-> scoped-whitelist tool set enforced twice, isolated context, depth=1, no-escalation; L, `/review-impl` mandatory).
-> `D-REG-P5-REGISTRY-INGEST` → spec [`2026-07-03-official-registry-ingest.md`](../specs/2026-07-03-official-registry-ingest.md)
+> **▶ `D-REG-P5-SUBAGENT-RUNTIME` ✅ SHIPPED + LIVE-PROVEN 2026-07-03 (this session; plan
+> [`2026-07-03-subagent-runtime.md`](../plans/2026-07-03-subagent-runtime.md)).** The scoped nested execution is live:
+> `run_subagent` is a **chat-service loop primitive** (peer to `find_tools`, consumer-local — NOT federated → no
+> cross-service cycle), advertised iff the user has ≥1 enabled subagent, as a **closed-set enum** of names. On call it
+> runs a nested isolated `_stream_with_tools` with **FRESH messages** (`[system: persona, user: task]` — no parent
+> history), the persona's **scoped tool set** (caller catalog ∩ `tool_scope` globs, minus meta/frontend tools), and returns
+> ONLY the capped synthesized text (nested messages never enter the parent `working`; nested chunks consumed, not re-yielded
+> — isolation held). **Scope enforced TWICE** (advertise-time set + execute-time `allowed_tool_names` whitelist rejecting a
+> fabricated out-of-scope/meta/frontend call with `result.error`). **No-escalation:** clamped read-only
+> (`permission_mode='ask'`) — even a subagent scoped to a write tool can't write (ask filter drops it at advertise AND the
+> ask-block rejects at execute). **Depth=1** (advertise gated depth 0 + whitelist excludes `run_subagent` + handler gated
+> depth 0 = triple guard). Nested tokens sum into the turn total (D10); a `subagent_run` activity carries name + tools_used.
+> Files: `app/services/subagent_runtime.py` (pure) · `_run_subagent_call` + loop wiring in `stream_service.py` ·
+> `registry_subagents_client.py` (degrade-safe → no delegation) · `main.py` lifecycle. `_meta` stripped before the wire in
+> the nested run (top-level path byte-identical). **`/review-impl` DONE** (self, load-bearing = nested exec + privilege):
+> 1 LOW **fixed** (nested-suspend token attribution now read from the suspend chunk); 2 LOW **accepted+documented** (a
+> `require_approval` hook on a scoped tool ends the sub-run early — fails SAFE; a reasoning subagent model on a tight budget
+> yields empty answer content — handled gracefully). VERIFY: **30 subagent units** (pure resolver, nested isolation/clamp,
+> loop-level whitelist via the real `_stream_with_tools` harness) + full chat suite **774 green** · **LIVE E2E-P5-A** —
+> Part A in-container (`p5_subagent_runtime_incontainer.py`): a REAL nested LLM turn through chat→provider-registry→lm_studio
+> (Qwen 7B, in=38/out=33, synthesized isolated answer); Part B full HTTP loop (`p5_subagent_runtime_smoke.ps1`): the gemma
+> tool-calling model **chose** `run_subagent` → nested lore-scout ran → dragon answer reached the main turn, **no write tool
+> in the transcript** (scope held). **Follow-up (tracked, gate #2):** `D-REG-P5-SUBAGENT-WRITE-DELEGATION` — lift the
+> read-only clamp so a subagent can perform an approved write (needs nested approval-suspend bubbling up through
+> `run_subagent`; today ask-clamp is the safe v1).
+> **Still deferred:** `D-REG-P5-REGISTRY-INGEST` → spec [`2026-07-03-official-registry-ingest.md`](../specs/2026-07-03-official-registry-ingest.md)
 > (`registry_ingest_queue` + admin pull/approve/reject; approval reuses the P3 SSRF guard + supply-chain scan; System-tier,
-> admin-only; L). Both specs carry data model, security, testing (E2E-P5-A / E2E-P5-C), and milestones — a next session
-> can implement directly.
+> admin-only; L — the last spec'd-but-unbuilt P5 slice). `D-REG-P4-SLASH-AUTOCOMPLETE` (gate #1). `D-REG-P3-SCHEDULED-RESCAN`.
 > **The whole track is production-usable:** a user registers skills / external MCP servers (OAuth+SSRF+scan) / slash
-> commands / declarative hooks / subagent personas, bundles + shares them, and the agent federates + expands + evaluates
-> them — all tenancy-scoped, adversarially reviewed, live-proven.
-> **NEXT: the two P5 defers when prioritized; else the track is complete.**
-> **Decisions:** `DECISION_LOG.md` (DL-1..9 + 6 review rounds). **Defers: P4 autocomplete + 2 P5 (runtime, ingest); P3 all clear.**
+> commands / declarative hooks / subagent personas (**now with live scoped execution**), bundles + shares them, and the
+> agent federates + expands + delegates to them — all tenancy-scoped, adversarially reviewed, live-proven.
+> **NEXT: `D-REG-P5-REGISTRY-INGEST` when prioritized; else the track is complete.**
+> **Decisions:** `DECISION_LOG.md` (DL-1..9 + 6 review rounds). **Defers: P4 autocomplete + P5 registry-ingest + P5 write-delegation + P3 scheduled-rescan; P3/subagent-runtime clear.**
 >
 > **▶ CHAT QUALITY WAVE — W0 + W1 SHIPPED + LIVE-SMOKED 2026-07-03 (parallel sub-agent build, disjoint files,
 > combined verify).** Trigger: user's 8-item quality pass (plan + 5-investigation evidence base incl. a LIVE MCP

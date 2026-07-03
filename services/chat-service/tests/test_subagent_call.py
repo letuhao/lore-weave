@@ -185,12 +185,14 @@ async def test_result_is_capped(monkeypatch):
 async def test_nested_suspend_ends_run_gracefully(monkeypatch):
     _install_stub(monkeypatch, [
         {"content": "partial"},
-        {"suspend": {"working": []}},          # cannot surface — end here
+        {"suspend": {"working": [], "input_tokens": 7, "output_tokens": 3}},
         {"content": "never reached"},
     ])
-    payload, _, _ = await _run()
+    payload, sin, sout = await _run()
     assert payload["result"] == "partial"
     assert "error" not in payload
+    # tokens from the suspend chunk are still attributed
+    assert (sin, sout) == (7, 3)
 
 
 @pytest.mark.asyncio
