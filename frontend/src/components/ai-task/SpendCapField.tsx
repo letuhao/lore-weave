@@ -19,12 +19,33 @@ interface Props {
   placeholder?: string;
   disabled?: boolean;
   testid?: string;
+  /** Inline compact layout (small width, label beside the input) for config
+   *  strips like the compose/gaps rows — vs the default stacked dialog field. */
+  compact?: boolean;
 }
 
 export function SpendCapField({
-  value, onChange, label, hint, invalidLabel, placeholder = '0.00', disabled, testid = 'spend-cap',
+  value, onChange, label, hint, invalidLabel, placeholder = '0.00', disabled, testid = 'spend-cap', compact,
 }: Props) {
   const valid = isValidSpend(value);
+  if (compact) {
+    return (
+      <label className="flex items-center gap-1">
+        {label && <span className="text-muted-foreground">{label}</span>}
+        <input
+          type="text"
+          inputMode="decimal"
+          value={value}
+          onChange={(e) => onChange(e.target.value)}
+          placeholder={placeholder}
+          aria-invalid={!valid}
+          disabled={disabled}
+          data-testid={testid}
+          className="w-20 rounded border bg-input px-2 py-1 text-xs outline-none focus:border-ring aria-[invalid=true]:border-destructive disabled:opacity-50"
+        />
+      </label>
+    );
+  }
   return (
     <label className="flex flex-col gap-1">
       {label && <span className="text-xs font-medium text-muted-foreground">{label}</span>}

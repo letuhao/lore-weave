@@ -2,8 +2,8 @@ import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Sparkles, RefreshCw } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import { ModelPicker } from '@/components/model-picker';
 import { useGaps } from '../hooks/useGaps';
-import { useUserModels } from '../hooks/useUserModels';
 import { useEnrichmentContext } from '../context/EnrichmentContext';
 import { gapToTarget, type Gap, type EnrichTarget } from '../types';
 
@@ -23,10 +23,6 @@ export function GapsPanel() {
   // Retrieval breadth — defaults to the backend default (5) so untouched = no change.
   const [topK, setTopK] = useState(5);
 
-  // Shared model-picker seam (also used by the Compose config) — one query per
-  // capability, cache shared (no double fetch). /review-impl #3 — was inline here.
-  const gens = useUserModels('chat');
-  const embeds = useUserModels('embedding');
   const canEnrich = !!genModel && !!embedModel && !enriching;
   // LE-064 — which row's per-gap enrich is in flight (for its spinner).
   const [enrichingName, setEnrichingName] = useState<string | null>(null);
@@ -141,36 +137,28 @@ export function GapsPanel() {
               <option value="recook">P3 recook</option>
             </select>
           </label>
-          <label className="flex items-center gap-1">
+          {/* Shared ModelPicker (was a raw <select> — the one outlier that bypassed
+              it; the fetch/cache was already the shared W5 seam). */}
+          <div className="flex items-center gap-1">
             <span className="text-muted-foreground">{t('gaps.gen_model')}</span>
-            <select
-              value={genModel}
-              onChange={(e) => setGenModel(e.target.value)}
-              className="rounded border bg-background px-2 py-1"
-            >
-              <option value="">{t('gaps.select_model')}</option>
-              {gens.map((m) => (
-                <option key={m.user_model_id} value={m.user_model_id}>
-                  {m.alias || m.provider_model_name}
-                </option>
-              ))}
-            </select>
-          </label>
-          <label className="flex items-center gap-1">
+            <ModelPicker
+              capability="chat"
+              compact
+              value={genModel || null}
+              onChange={(id) => setGenModel(id ?? '')}
+              placeholder={t('gaps.select_model')}
+            />
+          </div>
+          <div className="flex items-center gap-1">
             <span className="text-muted-foreground">{t('gaps.embed_model')}</span>
-            <select
-              value={embedModel}
-              onChange={(e) => setEmbedModel(e.target.value)}
-              className="rounded border bg-background px-2 py-1"
-            >
-              <option value="">{t('gaps.select_model')}</option>
-              {embeds.map((m) => (
-                <option key={m.user_model_id} value={m.user_model_id}>
-                  {m.alias || m.provider_model_name}
-                </option>
-              ))}
-            </select>
-          </label>
+            <ModelPicker
+              capability="embedding"
+              compact
+              value={embedModel || null}
+              onChange={(id) => setEmbedModel(id ?? '')}
+              placeholder={t('gaps.select_model')}
+            />
+          </div>
           <label className="flex items-center gap-1">
             <span className="text-muted-foreground">{t('gaps.max_gaps')}</span>
             <input

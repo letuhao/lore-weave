@@ -1,6 +1,7 @@
 import { useTranslation } from 'react-i18next';
 import { ShieldCheck, AlertTriangle } from 'lucide-react';
 import { ModelPicker } from '@/components/model-picker';
+import { SpendCapField } from '@/components/ai-task';
 import { H0Marker } from '../badges';
 import type { ComposeDimension } from '../../types';
 
@@ -76,19 +77,14 @@ export function ComposeConfig({ value, onChange, showTechnique = false, dimensio
             className="w-48"
           />
         </div>
-        <label className="flex items-center gap-1">
-          <span className="text-muted-foreground">{t('compose.config.max_spend')}</span>
-          <input
-            type="number"
-            min={0}
-            step="0.01"
-            value={value.maxSpend}
-            placeholder={t('compose.config.no_cap')}
-            onChange={(e) => onChange({ ...value, maxSpend: e.target.value })}
-            data-testid="compose-max-spend"
-            className="w-20 rounded border bg-background px-2 py-1"
-          />
-        </label>
+        <SpendCapField
+          compact
+          testid="compose-max-spend"
+          value={value.maxSpend}
+          onChange={(v) => onChange({ ...value, maxSpend: v })}
+          label={t('compose.config.max_spend')}
+          placeholder={t('compose.config.no_cap')}
+        />
         <label className="flex items-center gap-1">
           <span className="text-muted-foreground">{t('compose.config.top_k')}</span>
           <input
