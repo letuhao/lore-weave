@@ -322,6 +322,7 @@ CREATE TABLE IF NOT EXISTS subagent_defs (
 );
 CREATE INDEX IF NOT EXISTS idx_subagents_owner ON subagent_defs(owner_user_id);
 CREATE INDEX IF NOT EXISTS idx_subagents_book ON subagent_defs(book_id);
+CREATE UNIQUE INDEX IF NOT EXISTS uq_subagents_system ON subagent_defs(name) WHERE tier = 'system';
 CREATE UNIQUE INDEX IF NOT EXISTS uq_subagents_user ON subagent_defs(owner_user_id, name) WHERE tier = 'user';
 CREATE UNIQUE INDEX IF NOT EXISTS uq_subagents_book ON subagent_defs(book_id, name) WHERE tier = 'book';
 

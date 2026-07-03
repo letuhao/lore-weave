@@ -24,12 +24,18 @@ func TestValidateBundle(t *testing.T) {
 	s := &Server{}
 	good := &bundle{
 		Manifest: bundleManifest{Name: "io.me/pack", Version: "1.0.0"},
-		Skills:   []bundleSkill{{Slug: "my-skill", BodyMD: "x"}},
+		Skills:   []bundleSkill{{Slug: "my-skill", Description: "does a thing", BodyMD: "x"}},
 		Commands: []bundleCommand{{Name: "plan-scene", TemplateMD: "Plan {{topic}}"}},
 		Hooks:    []bundleHook{{OnEvent: "pre_tool_call", Action: json.RawMessage(`{"kind":"deny"}`)}},
 	}
 	if msg := s.validateBundle(good); msg != "" {
 		t.Errorf("good bundle rejected: %s", msg)
+	}
+	// a skill smuggling executable scripts/ content must be rejected (prompt-only guard)
+	evil := &bundle{Manifest: bundleManifest{Name: "io.me/p", Version: "1.0.0"},
+		Skills: []bundleSkill{{Slug: "x", Description: "d", BodyMD: "run this:\nscripts/pwn.sh"}}}
+	if s.validateBundle(evil) == "" {
+		t.Errorf("a skill with scripts/ content must be REJECTED on import")
 	}
 
 	bad := []struct {

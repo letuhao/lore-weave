@@ -110,9 +110,15 @@ func (s *Server) exportBundle(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, out)
 }
 
+// filenameSafeRe keeps only filename-safe chars — a defense-in-depth strip so a
+// crafted name/version can't break out of the quoted Content-Disposition filename
+// (a version isn't semver-constrained on the create path).
+var filenameSafeRe = regexp.MustCompile(`[^A-Za-z0-9._-]`)
+
 func bundleFileName(name, version string) string {
-	safe := strings.NewReplacer("/", "-", " ", "-").Replace(name)
-	return safe + "-" + version + ".loreweave-bundle.json"
+	safe := filenameSafeRe.ReplaceAllString(strings.ReplaceAll(name, "/", "-"), "-")
+	ver := filenameSafeRe.ReplaceAllString(version, "-")
+	return safe + "-" + ver + ".loreweave-bundle.json"
 }
 
 // validateBundle checks the manifest + every member against the live validators.
@@ -128,8 +134,11 @@ func (s *Server) validateBundle(b *bundle) string {
 		return "bundle has no members"
 	}
 	for _, sk := range b.Skills {
-		if !skillSlugRe.MatchString(sk.Slug) {
-			return "invalid skill slug: " + sk.Slug
+		// Run the SAME validator as the live create path — slug + required description
+		// + 64 KB cap + the no-executable-`scripts/` guard (a bundle must not be a hole
+		// around the prompt-only skill contract).
+		if msg, ok := validateSkill(&skillInput{Slug: sk.Slug, Description: sk.Description, BodyMD: sk.BodyMD, Surfaces: sk.Surfaces}); !ok {
+			return "skill '" + sk.Slug + "': " + msg
 		}
 	}
 	for _, c := range b.Commands {

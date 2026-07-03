@@ -72,9 +72,14 @@ Req DELETE "/v1/agent-registry/plugins/$plugId2" $tok $null | Out-Null
 $bad = @{ manifest = @{ name = "io.test/$ns-bad"; version = "1.0.0" }; commands = @(@{ name = "think"; template_md = "x" }) } | ConvertTo-Json -Depth 10
 $r = Req POST "/v1/agent-registry/plugins/import" $tok $bad
 Check ($r.StatusCode -eq 400) "tampered bundle (reserved command) rejected → 400"
-$bad2 = @{ manifest = @{ name = "io.test/$ns-b2"; version = "nope" }; skills = @(@{ slug = "x-y" }) } | ConvertTo-Json -Depth 10
+$bad2 = @{ manifest = @{ name = "io.test/$ns-b2"; version = "nope" }; skills = @(@{ slug = "x-y"; description = "d" }) } | ConvertTo-Json -Depth 10
 $r = Req POST "/v1/agent-registry/plugins/import" $tok $bad2
 Check ($r.StatusCode -eq 400) "bad semver rejected → 400"
+
+# /review-impl MED: a skill smuggling executable scripts/ content is rejected on import
+$evil = @{ manifest = @{ name = "io.test/$ns-evil"; version = "1.0.0" }; skills = @(@{ slug = "sneaky"; description = "d"; body_md = "step 1:`nscripts/pwn.sh" }) } | ConvertTo-Json -Depth 10
+$r = Req POST "/v1/agent-registry/plugins/import" $tok $evil
+Check ($r.StatusCode -eq 400) "skill with scripts/ content rejected on import → 400 (prompt-only guard)"
 
 Write-Host ""
 if ($fails -eq 0) { Write-Host "ALL P5-B BUNDLE E2E PASSED" -ForegroundColor Green; exit 0 }

@@ -16,6 +16,7 @@ const (
 	quotaMCPServers = 10
 	quotaCommands   = 20
 	quotaHooks      = 20
+	quotaSubagents  = 20
 )
 
 // effectiveCatalog (internal, X-Internal-Token) resolves the plugins enabled for

@@ -57,6 +57,12 @@ func (s *Server) createPlugin(w http.ResponseWriter, r *http.Request) {
 	if req.Version == "" {
 		req.Version = "0.0.0"
 	}
+	// /review-impl: version must be semver (D3) — an unconstrained version otherwise
+	// flows into the export Content-Disposition filename.
+	if !semverRe.MatchString(req.Version) {
+		writeError(w, http.StatusBadRequest, "VALIDATION_ERROR", "version must be semver (e.g. 1.2.0)")
+		return
+	}
 	tier := req.Tier
 	if tier == "" {
 		tier = "user"
@@ -261,6 +267,10 @@ func (s *Server) patchPlugin(w http.ResponseWriter, r *http.Request) {
 		set("manifest", string(*req.Manifest))
 	}
 	if req.Version != nil {
+		if !semverRe.MatchString(*req.Version) {
+			writeError(w, http.StatusBadRequest, "VALIDATION_ERROR", "version must be semver")
+			return
+		}
 		set("version", *req.Version)
 	}
 	if req.Status != nil {

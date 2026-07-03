@@ -81,6 +81,10 @@ func (s *Server) createSubagent(w http.ResponseWriter, r *http.Request) {
 	switch tier {
 	case "user":
 		ownerArg = uid
+		if s.queryInt(r.Context(), `SELECT COUNT(*) FROM subagent_defs WHERE tier='user' AND owner_user_id=$1`, uid) >= quotaSubagents {
+			writeError(w, http.StatusTooManyRequests, "QUOTA_EXCEEDED", "subagent limit reached (max 20 per user)")
+			return
+		}
 	case "system":
 		if role != "admin" {
 			writeError(w, http.StatusForbidden, "FORBIDDEN", "only admin may create System subagents")
