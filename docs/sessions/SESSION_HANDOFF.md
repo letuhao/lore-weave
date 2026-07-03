@@ -161,9 +161,33 @@
 > graph_query/entity_edge_timeline). **VERIFY:** 148 graph/definition + 69 mcp/executor unit
 > green; drift-locks bumped 29→30 tools + `_LANE_LF_TOOLS` +1; the real loopback MCP server's
 > `tools/list` == EXPECTED_TOOLS advertises `kg_multi_query` (proves the FastMCP wiring, not
-> just the arg model). Single-service change → no cross-service smoke needed. **▶ NEXT —** B1(4)
-> cross-partition merge (edges spanning books) stays deferred (gate #2 — a separate epic;
-> union-of-islands covers synthesis first). Track B B1(1)–B1(3) COMPLETE.
+> just the arg model). Single-service change → no cross-service smoke needed.
+>
+> **B1(4) DONE (knowledge-service) — cross-partition entity unification ("world-core").** Spec
+> [`2026-07-03-kg-cross-partition-merge.md`](../specs/2026-07-03-kg-cross-partition-merge.md) (PO-signed-off:
+> Q1=b on-demand embed, Q2=ephemeral-first, Q3=pairwise; 24 edge cases). The forest exists because a
+> node id folds project_id into its hash, so "Alice" in two books = two ids. New `app/tools/kg_unify.py`:
+> a **query-time app-side** pass (NEVER a cross-partition Cypher, NEVER a Neo4j write — propose-don't-assert
+> D2/D3) that recognizes the same entity across ≥2 owned partitions and emits confidence-scored
+> `unification_clusters` + inferred `SAME_AS` `bridge_edges` + `disagreements`. Opt-in `unify` enum on
+> `kg_world_query` + `kg_multi_query` (all 4 schema sources + FastMCP, drift-locked); **`unify="off"`
+> default = byte-identical forest (EC-M5)**. Tiers shipped:
+> **T0 `3d1e20d4d`** — lexical (`canonicalize_entity_name` + alias overlap), kind-gate (EC-M3),
+> cross-partition-only (EC-M10), union-find, per-method bands, deterministic ephemeral cluster_id (EC-M22),
+> degenerate/common-name guards (EC-M18/M20), size/count caps confidence-desc (EC-M7/M11/M21).
+> **T1 `14a5edb04`** — semantic: in-Python pairwise cosine, model-space-gated (EC-M1), lexical-fallback
+> blend (D1); **Q1=b on-demand embed** of discovered seeds under the anchored model, **in-memory only**
+> (reuses provider-registry BYOK EmbeddingClient, NEVER set_entity_embedding — EC-M16), spend-capped
+> (EC-M15 `unify_embed_skipped`), degrade-safe (EmbeddingError→lexical); zero-norm guard (EC-M19).
+> **T2 `5e5fd55ea`** — disagreement detection: same cross-book entity asserting different predicates to
+> the same unified target → one `disagreements` record (agreement rides the bridge). **VERIFY:** knowledge
+> unit 3454 green (23 new kg_unify + enum-drift + wiring + MCP CLOSED_SET machine-check) · FastMCP loopback
+> advertises `unify` (inputschema-mirror) · provider-gate OK · **LIVE Neo4j integration `3746ee9d5`**
+> (`bolt://localhost:7688`, 2 passed): real `_SEED_DETAIL_CYPHER` + `get_world_subgraph` forest → 2
+> clusters + 2 bridges + 1 disagreement (Alice LOVES→KILLS Bob across books); semantic reads stored
+> embeddings + honours the model gate. **DEFERRED T3** (persisted cross-book substrate + `SAME_AS` Neo4j
+> edge + human-confirm spine — gate #2 structural, re-decide with precision numbers) **+ T4** (cross-partition
+> salience/rank renorm + reranker — gate #4 profiling). Track B B1(1)–B1(4) COMPLETE.
 
 > **▶ KNOWLEDGE GUI FIXES + MODEL-ROLES SETTINGS — 2026-07-03 (3 items, all shipped).**
 > **#1 `cancel_check` extraction blocker (`591e54ad7`)** — bug #34 added `cancel_check` to the
