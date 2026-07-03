@@ -94,8 +94,17 @@
 > dead type. **AI-Task Standard status: DONE** — every one-shot AI surface consumes the shared
 > primitives; reasoning-effort is ONE unified 5-level vocab platform-wide (chat + compose + extraction
 > + glossary-translate); the 4 footgun engines all disable hidden reasoning; the only remaining
-> LOW/opportunistic items (consolidate ~4 `_extract_json_object` copies, gated-off plan_forge) carry
-> no real dup and don't block closure.
+> LOW/opportunistic items are CLOSED as a conscious won't-fix (gate #5), verified against code:
+> the `_extract_json_object` "dedup" is 7 copies, and **2 of them (composition plan_forge
+> `json_extract`, lore-enrichment `profile_suggest`) are DELIBERATELY more robust** (string-aware
+> balanced-brace depth counting — correctly handle `{...} {...}` and braces-in-strings, which the
+> shared regex `\{.*\}` does not) — consolidating them would be a REGRESSION. The other 5 are simple,
+> stable, self-contained utils with their own exception contracts; folding them into
+> `parse_json_object` adds cross-package coupling (loreweave_eval→loreweave_llm) + per-site contract
+> churn for ZERO functional benefit. None violate the standard (its real surface — effort / spend /
+> error / structured_generate / footgun — is fully consolidated). `plan_forge` engine is gated-off
+> (rules-mode default), so migrating it to structured_generate is also no-value. **Won't-fix; the
+> AI-Task Standard is closed.**
 
 > **▶ KNOWLEDGE GUI FIXES + MODEL-ROLES SETTINGS — 2026-07-03 (3 items, all shipped).**
 > **#1 `cancel_check` extraction blocker (`591e54ad7`)** — bug #34 added `cancel_check` to the
