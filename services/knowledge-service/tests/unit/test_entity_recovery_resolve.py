@@ -87,6 +87,17 @@ async def test_role_override_model_wins():
 
 
 @pytest.mark.asyncio
+async def test_persisted_project_default_wins_over_job_model():
+    # extraction_config.llm_model (FE "Default LLM", object form) is the project
+    # default — it beats THIS job's extraction model for an unset role.
+    got = await _resolve({
+        "llm_model": {"model_ref": "persisted-default", "model_source": "user_model"},
+        "entity_recovery": {"enabled": True},
+    })
+    assert got is not None and got.model_ref == "persisted-default"
+
+
+@pytest.mark.asyncio
 async def test_user_global_fallback_when_no_project_default_and_no_job_model():
     # Enabled via env floor, but user-global default takes precedence over env when
     # there's no role override and no project default; job model IS the project

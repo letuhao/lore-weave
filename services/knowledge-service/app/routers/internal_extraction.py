@@ -392,15 +392,16 @@ async def _resolve_entity_recovery_config(
     env_source = os.environ.get(_ER_ENV_SOURCE) or "user_model"
 
     if enabled is True:
-        # Per-project OPT-IN → the precedence chain, with THIS job's extraction
-        # model as the project-default tier (role override → project default →
-        # user-global → env floor).
+        # Per-project OPT-IN → the precedence chain (role override → project
+        # default → user-global → env floor). Project default = the persisted
+        # `extraction_config.llm_model` (the FE "Default LLM" picker) when set,
+        # else THIS job's extraction model (so recovery matches extraction by
+        # default rather than diverging to a different model).
         user_default = await resolve_user_default_model(user_id)
-        synthetic = {
-            **extraction_config,
-            "llm_model": job_model_ref,
-            "llm_model_source": job_model_source,
-        }
+        synthetic = dict(extraction_config)
+        if not synthetic.get("llm_model"):
+            synthetic["llm_model"] = job_model_ref
+            synthetic["llm_model_source"] = job_model_source
         resolved = resolve_role_model(
             synthetic, "entity_recovery",
             user_default_ref=user_default,
