@@ -375,7 +375,7 @@ func (s *Server) internalEffectiveMcpServers(w http.ResponseWriter, r *http.Requ
 		}
 	}
 	rows, err := s.db.Query(r.Context(),
-		`SELECT reg.mcp_server_id, reg.endpoint_url, reg.transport, reg.tool_name_prefix, reg.tier, en.enabled
+		`SELECT reg.mcp_server_id, reg.endpoint_url, reg.transport, reg.tool_name_prefix, reg.tier, reg.is_external, reg.egress_allowlist, en.enabled
 		 FROM mcp_server_registrations reg
 		 LEFT JOIN mcp_server_enablement en ON en.mcp_server_id = reg.mcp_server_id AND en.owner_user_id = $1
 		 WHERE reg.status = 'active'
@@ -389,18 +389,22 @@ func (s *Server) internalEffectiveMcpServers(w http.ResponseWriter, r *http.Requ
 	}
 	defer rows.Close()
 	type outServer struct {
-		ID         string `json:"mcp_server_id"`
-		EndpointID string `json:"endpoint_url"`
-		Transport  string `json:"transport"`
-		ToolPrefix string `json:"tool_name_prefix"`
-		Tier       string `json:"tier"`
+		ID              string          `json:"mcp_server_id"`
+		EndpointID      string          `json:"endpoint_url"`
+		Transport       string          `json:"transport"`
+		ToolPrefix      string          `json:"tool_name_prefix"`
+		Tier            string          `json:"tier"`
+		IsExternal      bool            `json:"is_external"`
+		EgressAllowlist json.RawMessage `json:"egress_allowlist"`
 	}
 	servers := []outServer{}
 	for rows.Next() {
 		var id uuid.UUID
 		var endpoint, transport, prefix, tier string
+		var isExternal bool
+		var egress json.RawMessage
 		var override *bool
-		if err := rows.Scan(&id, &endpoint, &transport, &prefix, &tier, &override); err != nil {
+		if err := rows.Scan(&id, &endpoint, &transport, &prefix, &tier, &isExternal, &egress, &override); err != nil {
 			continue
 		}
 		if override != nil && !*override { // default-on; explicit disable removes it
@@ -408,6 +412,7 @@ func (s *Server) internalEffectiveMcpServers(w http.ResponseWriter, r *http.Requ
 		}
 		servers = append(servers, outServer{
 			ID: id.String(), EndpointID: endpoint, Transport: transport, ToolPrefix: prefix, Tier: tier,
+			IsExternal: isExternal, EgressAllowlist: egress,
 		})
 	}
 	version := s.catalogVersion(r.Context())

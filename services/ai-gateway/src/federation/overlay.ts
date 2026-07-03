@@ -3,6 +3,10 @@ import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import { StreamableHTTPClientTransport } from '@modelcontextprotocol/sdk/client/streamableHttp.js';
 import type { Envelope } from './federation.service.js';
 import { buildEnvelopeHeaders } from './federation.service.js';
+import { CircuitBreaker, makeEgressFetch } from './egress.js';
+
+// REG-P3-04 — response-size cap for a user server's outbound call (1 MiB).
+const EGRESS_MAX_BYTES = 1 << 20;
 
 /**
  * REG-P2-03 — the per-user federation overlay. When enabled, a turn's tools/list
@@ -25,6 +29,10 @@ export interface OverlayConfig {
 interface RouteEntry {
   endpointUrl: string;
   originalName: string;
+  serverId: string;
+  egressAllowlist: string[];
+  /** true for an internal loreweave server (dev/system) — skip the SSRF internal-block. */
+  allowInternal: boolean;
 }
 
 interface OverlayEntry {
@@ -40,6 +48,8 @@ interface EffectiveServer {
   transport: string;
   tool_name_prefix: string;
   tier: string;
+  is_external?: boolean;
+  egress_allowlist?: string[];
 }
 
 const OVERLAY_NAME_RE = /^[ub]_[0-9a-f]{8}_/;
@@ -55,6 +65,9 @@ export class PerUserOverlay {
   // looser (a legit tool call may be slow) but still bounded.
   private readonly fetchTimeoutMs = 2_000;
   private readonly callTimeoutMs = 15_000;
+  // REG-P3-04 — per-server circuit breaker: 5 consecutive failures → open 30s. A
+  // flapping user server then fails fast (tool error) instead of stalling every turn.
+  private readonly breaker = new CircuitBreaker(5, 30_000);
 
   constructor(private readonly cfg: OverlayConfig) {
     this.ttl = cfg.ttlMs ?? 30_000;
@@ -129,7 +142,13 @@ export class PerUserOverlay {
       for (const t of serverTools) {
         const prefixed = `${s.tool_name_prefix}${t.name}`;
         if (route.has(prefixed)) continue; // first-wins on a same-user collision
-        route.set(prefixed, { endpointUrl: s.endpoint_url, originalName: t.name });
+        route.set(prefixed, {
+          endpointUrl: s.endpoint_url,
+          originalName: t.name,
+          serverId: s.mcp_server_id,
+          egressAllowlist: Array.isArray(s.egress_allowlist) ? s.egress_allowlist : [],
+          allowInternal: !s.is_external, // internal loreweave servers skip the SSRF block
+        });
         tools.push({ ...t, name: prefixed });
       }
     }
@@ -149,15 +168,31 @@ export class PerUserOverlay {
     const { route } = await this.resolve(env);
     const entry = route.get(name);
     if (!entry) throw new Error(`unknown tool '${name}'`);
+    // REG-P3-04: breaker — a server that has failed repeatedly fails fast (surfaced as
+    // a tool error) rather than stalling the turn while it flaps.
+    if (!this.breaker.canRequest(entry.serverId)) {
+      throw new Error(`overlay server temporarily unavailable (circuit open after repeated failures)`);
+    }
     const headers = buildEnvelopeHeaders(this.cfg.internalToken, env);
     const deadline = this.deadline(this.callTimeoutMs, signal);
+    const egressFetch = makeEgressFetch({
+      allowlist: entry.egressAllowlist,
+      allowInternal: entry.allowInternal,
+      maxBytes: EGRESS_MAX_BYTES,
+    });
     const client = new Client({ name: 'ai-gateway-overlay', version: '0.1.0' });
     const transport = new StreamableHTTPClientTransport(new URL(entry.endpointUrl), {
       requestInit: { headers, signal: deadline },
+      fetch: egressFetch as any,
     });
     try {
       await client.connect(transport);
-      return await client.callTool({ name: entry.originalName, arguments: args }, undefined, { signal: deadline });
+      const res = await client.callTool({ name: entry.originalName, arguments: args }, undefined, { signal: deadline });
+      this.breaker.onSuccess(entry.serverId);
+      return res;
+    } catch (e) {
+      this.breaker.onFailure(entry.serverId);
+      throw e;
     } finally {
       await client.close().catch(() => undefined);
     }
@@ -178,9 +213,17 @@ export class PerUserOverlay {
 
   private async listServerTools(s: EffectiveServer, env: Envelope): Promise<any[]> {
     const headers = buildEnvelopeHeaders(this.cfg.internalToken, env);
+    // Federation-time egress is guarded too: listing a user server's tools re-applies
+    // the SSRF + allowlist policy so a rebind can't reach the internal network here either.
+    const egressFetch = makeEgressFetch({
+      allowlist: Array.isArray(s.egress_allowlist) ? s.egress_allowlist : [],
+      allowInternal: !s.is_external,
+      maxBytes: EGRESS_MAX_BYTES,
+    });
     const client = new Client({ name: 'ai-gateway-overlay', version: '0.1.0' });
     const transport = new StreamableHTTPClientTransport(new URL(s.endpoint_url), {
       requestInit: { headers, signal: AbortSignal.timeout(this.callTimeoutMs) },
+      fetch: egressFetch as any,
     });
     try {
       await client.connect(transport);
