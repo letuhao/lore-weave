@@ -193,10 +193,14 @@
 > → validateSkill parity closes the `scripts/` prompt-only hole; unvalidated plugin version → filename injection →
 > semver on create+patch + filename strip) + 2 LOW (subagent quota, System UNIQUE index). Suites: agent-registry go
 > green; FE extensions+studio green; tsc clean.
-> **Deferred (both gate #2 — large/structural, need their own plan):** `D-REG-P5-SUBAGENT-RUNTIME` — the scoped nested
-> execution (`registry_run_subagent` server tool running an isolated turn with ONLY the tool_scope subset, via the
-> provider gateway + composer seam; the CRUD/resolver foundation is shipped). `D-REG-P5-REGISTRY-INGEST` — the official
-> MCP Registry API pull → admin curation queue → approve (admin-only + external API).
+> **Deferred (both gate #2) — NOW SPEC'D + READY TO BUILD:** `D-REG-P5-SUBAGENT-RUNTIME` → spec
+> [`2026-07-03-subagent-runtime.md`](../specs/2026-07-03-subagent-runtime.md) (chosen host = a chat-service loop
+> primitive peer to `find_tools`, NOT a federated tool → no cross-service cycle; nested `_stream_with_tools` with a
+> scoped-whitelist tool set enforced twice, isolated context, depth=1, no-escalation; L, `/review-impl` mandatory).
+> `D-REG-P5-REGISTRY-INGEST` → spec [`2026-07-03-official-registry-ingest.md`](../specs/2026-07-03-official-registry-ingest.md)
+> (`registry_ingest_queue` + admin pull/approve/reject; approval reuses the P3 SSRF guard + supply-chain scan; System-tier,
+> admin-only; L). Both specs carry data model, security, testing (E2E-P5-A / E2E-P5-C), and milestones — a next session
+> can implement directly.
 > **The whole track is production-usable:** a user registers skills / external MCP servers (OAuth+SSRF+scan) / slash
 > commands / declarative hooks / subagent personas, bundles + shares them, and the agent federates + expands + evaluates
 > them — all tenancy-scoped, adversarially reviewed, live-proven.
