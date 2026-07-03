@@ -4,6 +4,7 @@ import { useTranslation } from 'react-i18next';
 import { AlertTriangle, KeyRound, X } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { CopyButton } from '@/components/shared/CopyButton';
+import { todayInput } from './McpEditKeyDialog';
 import {
   MCP_SCOPES,
   MCP_DOMAINS,
@@ -92,7 +93,7 @@ export function McpCreateKeyDialog({ open, onOpenChange, onCreate }: Props) {
     <Dialog.Root open={open} onOpenChange={handleClose}>
       <Dialog.Portal>
         <Dialog.Overlay className="fixed inset-0 z-50 bg-black/50 backdrop-blur-[2px]" />
-        <Dialog.Content className="fixed left-1/2 top-1/2 z-50 w-full max-w-md -translate-x-1/2 -translate-y-1/2 rounded-xl border bg-background shadow-2xl">
+        <Dialog.Content className="fixed left-1/2 top-1/2 z-50 flex max-h-[90dvh] w-full max-w-md -translate-x-1/2 -translate-y-1/2 flex-col overflow-hidden rounded-xl border bg-background shadow-2xl">
           <Dialog.Close
             disabled={saving}
             className="absolute right-3 top-3 rounded-md p-1 text-muted-foreground/50 transition-colors hover:bg-secondary hover:text-foreground disabled:opacity-30"
@@ -102,7 +103,7 @@ export function McpCreateKeyDialog({ open, onOpenChange, onCreate }: Props) {
 
           {created ? (
             // ── Reveal phase — show the secret exactly once ───────────────────
-            <div className="px-6 py-6">
+            <div className="min-h-0 overflow-y-auto px-6 py-6">
               <div className="flex items-start gap-3">
                 <div className="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-full bg-success/10">
                   <KeyRound className="h-5 w-5 text-success" />
@@ -135,11 +136,15 @@ export function McpCreateKeyDialog({ open, onOpenChange, onCreate }: Props) {
             </div>
           ) : (
             // ── Form phase ────────────────────────────────────────────────────
-            <div className="px-6 py-6">
+            <div className="min-h-0 overflow-y-auto px-6 py-6">
               <Dialog.Title className="text-base font-semibold">{t('mcp.create.title')}</Dialog.Title>
               <Dialog.Description className="mt-1 text-sm text-muted-foreground">
                 {t('mcp.create.subtitle')}
               </Dialog.Description>
+              <p className="mt-2 inline-flex items-center gap-1.5 rounded-md bg-secondary/60 px-2.5 py-1.5 text-xs text-muted-foreground">
+                <KeyRound className="h-3.5 w-3.5 flex-shrink-0" />
+                {t('mcp.create.secret_note')}
+              </p>
 
               <div className="mt-4 space-y-4">
                 <div>
@@ -245,6 +250,7 @@ export function McpCreateKeyDialog({ open, onOpenChange, onCreate }: Props) {
                   <input
                     type="date"
                     value={expiresAt}
+                    min={todayInput()}
                     onChange={(e) => setExpiresAt(e.target.value)}
                     className={inputCls}
                   />

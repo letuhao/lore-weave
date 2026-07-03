@@ -22,6 +22,9 @@
     "last_used": "上次使用：{{date}}",
     "expires_label": "到期：{{date}}",
     "revoke_aria": "撤銷金鑰 {{name}}",
+    "revoke_title": "撤銷金鑰",
+    "edit_aria": "編輯金鑰 {{name}}",
+    "edit_title": "編輯限制",
     "status": {
       "active": "啟用中",
       "revoked": "已撤銷"
@@ -60,7 +63,17 @@
       "self_confirm_hint": "關閉時，需確認的寫入操作必須由你核准。除非這是受信任的自動化代理，否則請保持關閉。",
       "cancel": "取消",
       "submit": "建立金鑰",
-      "creating": "建立中…"
+      "creating": "建立中…",
+      "secret_note": "密鑰會在建立時自動產生，並非由你設定。建立後只會顯示一次。"
+    },
+    "edit": {
+      "title": "編輯「{{name}}」",
+      "subtitle": "調整此金鑰的限制。密鑰與可存取範圍不會改變。",
+      "scopes_locked": "範圍與領域在建立時即固定。若要變更可存取範圍，請撤銷並建立新金鑰。",
+      "expires_hint": "留空表示不過期。",
+      "cancel": "取消",
+      "submit": "儲存變更",
+      "saving": "儲存中…"
     },
     "reveal": {
       "title": "已建立金鑰",
@@ -76,6 +89,7 @@
     },
     "audit": {
       "toggle_aria": "{{name}} 的近期呼叫",
+      "toggle_title": "呼叫紀錄",
       "loading": "正在載入近期呼叫…",
       "empty": "尚未記錄任何呼叫。",
       "outcome": {
@@ -108,6 +122,8 @@
       "create_failed": "建立金鑰失敗",
       "revoked": "已撤銷金鑰",
       "revoke_failed": "撤銷金鑰失敗",
+      "updated": "已更新金鑰",
+      "update_failed": "更新金鑰失敗",
       "audit_failed": "載入呼叫紀錄失敗"
     }
   },

@@ -2,7 +2,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { toast } from 'sonner';
 import { useAuth } from '@/auth';
-import { mcpKeysApi, type McpAuditRow, type McpKey, type McpKeyCreatePayload, type McpKeyCreated } from './api';
+import { mcpKeysApi, type McpAuditRow, type McpKey, type McpKeyCreatePayload, type McpKeyCreated, type McpKeyUpdatePayload } from './api';
 
 /**
  * Controller for the Settings → MCP access tab: owns the key list + the
@@ -49,6 +49,22 @@ export function useMcpKeys() {
     [accessToken, refresh, t],
   );
 
+  const update = useCallback(
+    async (keyId: string, payload: McpKeyUpdatePayload): Promise<boolean> => {
+      if (!accessToken) return false;
+      try {
+        await mcpKeysApi.update(accessToken, keyId, payload);
+        toast.success(t('mcp.toast.updated'));
+        await refresh();
+        return true;
+      } catch (e) {
+        toast.error((e as Error).message || t('mcp.toast.update_failed'));
+        return false;
+      }
+    },
+    [accessToken, refresh, t],
+  );
+
   const revoke = useCallback(
     async (keyId: string) => {
       if (!accessToken) return;
@@ -77,5 +93,5 @@ export function useMcpKeys() {
     [accessToken, t],
   );
 
-  return { keys, loading, create, revoke, refresh, loadAudit };
+  return { keys, loading, create, update, revoke, refresh, loadAudit };
 }

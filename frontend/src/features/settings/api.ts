@@ -303,6 +303,19 @@ export type McpKeyCreatePayload = {
   expires_at?: string | null;
 };
 
+// Partial edit of an existing key's SAFE metadata — name / limits / expiry /
+// self-confirm. Scopes and the secret are intentionally NOT editable here (a
+// credential's reach is fixed at issue; widen it by revoking + re-creating). Every
+// field is optional: only the ones sent are changed. `expires_at` is tri-state —
+// an RFC3339 string sets it, `''` clears it (no expiry), `undefined` leaves it.
+export type McpKeyUpdatePayload = {
+  name?: string;
+  spend_cap_usd?: number | null;
+  rate_limit_rpm?: number;
+  allow_self_confirm?: boolean;
+  expires_at?: string | null;
+};
+
 // One per-key call audit row (H-O) — the owner's view of what an agent did with a key.
 export type McpAuditRow = {
   audit_id: string;
@@ -320,6 +333,11 @@ export const mcpKeysApi = {
   create(token: string, payload: McpKeyCreatePayload) {
     return apiJson<McpKeyCreated>('/v1/account/mcp-keys', {
       method: 'POST', token, body: JSON.stringify(payload),
+    });
+  },
+  update(token: string, keyId: string, payload: McpKeyUpdatePayload) {
+    return apiJson<McpKey>(`/v1/account/mcp-keys/${keyId}`, {
+      method: 'PATCH', token, body: JSON.stringify(payload),
     });
   },
   revoke(token: string, keyId: string) {

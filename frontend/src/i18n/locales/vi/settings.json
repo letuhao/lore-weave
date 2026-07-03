@@ -22,6 +22,9 @@
     "last_used": "Dùng lần cuối: {{date}}",
     "expires_label": "Hết hạn: {{date}}",
     "revoke_aria": "Thu hồi khóa {{name}}",
+    "revoke_title": "Thu hồi khóa",
+    "edit_aria": "Sửa khóa {{name}}",
+    "edit_title": "Sửa giới hạn",
     "status": {
       "active": "Đang hoạt động",
       "revoked": "Đã thu hồi"
@@ -60,7 +63,17 @@
       "self_confirm_hint": "Khi tắt, các hành động ghi cần xác nhận phải do bạn duyệt. Chỉ bật nếu đây là tác nhân tự động đáng tin.",
       "cancel": "Hủy",
       "submit": "Tạo khóa",
-      "creating": "Đang tạo…"
+      "creating": "Đang tạo…",
+      "secret_note": "Khóa bí mật được tạo tự động khi bạn tạo — bạn không tự đặt. Nó chỉ hiển thị một lần, ngay sau đó."
+    },
+    "edit": {
+      "title": "Sửa \"{{name}}\"",
+      "subtitle": "Điều chỉnh giới hạn của khóa. Bí mật và phạm vi truy cập không thay đổi.",
+      "scopes_locked": "Scope và domain được cố định khi tạo. Muốn đổi phạm vi khóa truy cập, hãy thu hồi và tạo khóa mới.",
+      "expires_hint": "Để trống nếu không hết hạn.",
+      "cancel": "Hủy",
+      "submit": "Lưu thay đổi",
+      "saving": "Đang lưu…"
     },
     "reveal": {
       "title": "Đã tạo khóa",
@@ -76,6 +89,7 @@
     },
     "audit": {
       "toggle_aria": "Lệnh gọi gần đây của {{name}}",
+      "toggle_title": "Lịch sử lệnh gọi",
       "loading": "Đang tải lệnh gọi gần đây…",
       "empty": "Chưa có lệnh gọi nào được ghi nhận.",
       "outcome": {
@@ -108,6 +122,8 @@
       "create_failed": "Không tạo được khóa",
       "revoked": "Đã thu hồi khóa",
       "revoke_failed": "Không thu hồi được khóa",
+      "updated": "Đã cập nhật khóa",
+      "update_failed": "Không cập nhật được khóa",
       "audit_failed": "Không tải được lịch sử lệnh gọi"
     }
   },

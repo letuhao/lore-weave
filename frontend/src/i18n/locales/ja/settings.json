@@ -22,6 +22,9 @@
     "last_used": "最終使用: {{date}}",
     "expires_label": "有効期限: {{date}}",
     "revoke_aria": "キー {{name}} を取り消す",
+    "revoke_title": "キーを取り消す",
+    "edit_aria": "キー {{name}} を編集",
+    "edit_title": "上限を編集",
     "status": {
       "active": "有効",
       "revoked": "取り消し済み"
@@ -60,7 +63,17 @@
       "self_confirm_hint": "オフの場合、確認が必要な書き込み操作はあなたの承認が必要です。信頼できる自動エージェントでない限りオフのままにしてください。",
       "cancel": "キャンセル",
       "submit": "キーを作成",
-      "creating": "作成中…"
+      "creating": "作成中…",
+      "secret_note": "シークレットキーは作成時に自動生成されます（自分で設定するものではありません）。直後に一度だけ表示されます。"
+    },
+    "edit": {
+      "title": "「{{name}}」を編集",
+      "subtitle": "このキーの上限を調整します。シークレットとアクセス範囲は変わりません。",
+      "scopes_locked": "スコープとドメインは作成時に固定されます。アクセス範囲を変更するには、取り消して新しいキーを作成してください。",
+      "expires_hint": "有効期限なしの場合は空欄にします。",
+      "cancel": "キャンセル",
+      "submit": "変更を保存",
+      "saving": "保存中…"
     },
     "reveal": {
       "title": "キーを作成しました",
@@ -76,6 +89,7 @@
     },
     "audit": {
       "toggle_aria": "{{name}} の最近の呼び出し",
+      "toggle_title": "呼び出し履歴",
       "loading": "最近の呼び出しを読み込み中…",
       "empty": "まだ呼び出しは記録されていません。",
       "outcome": {
@@ -108,6 +122,8 @@
       "create_failed": "キーの作成に失敗しました",
       "revoked": "キーを取り消しました",
       "revoke_failed": "キーの取り消しに失敗しました",
+      "updated": "キーを更新しました",
+      "update_failed": "キーの更新に失敗しました",
       "audit_failed": "呼び出し履歴の読み込みに失敗しました"
     }
   },

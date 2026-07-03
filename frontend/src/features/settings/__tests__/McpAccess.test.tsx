@@ -31,6 +31,15 @@ function DialogHarness({ onCreate }: { onCreate: (p: McpKeyCreatePayload) => Pro
 }
 
 describe('McpCreateKeyDialog', () => {
+  it('is scroll-safe on short viewports (bounded height + scrollable body)', () => {
+    render(<DialogHarness onCreate={vi.fn()} />);
+    // The form is long; the content must cap its height and let the body scroll,
+    // or the Create button is unreachable on a short screen. Assert the structure
+    // is wired so a future refactor that drops it goes red here.
+    expect(document.querySelector('[class*="max-h-"]')).not.toBeNull();
+    expect(document.querySelector('[class*="overflow-y-auto"]')).not.toBeNull();
+  });
+
   it('defaults to read tier + OD-5 domains and reveals the secret once on create', async () => {
     const onCreate = vi.fn().mockResolvedValue(CREATED);
     render(<DialogHarness onCreate={onCreate} />);
@@ -94,10 +103,11 @@ const REVOKED: McpKey = { ...ACTIVE, key_id: 'r1', name: 'dead-agent', status: '
 
 const revokeMock = vi.fn();
 const loadAuditMock = vi.fn();
+const updateMock = vi.fn();
 vi.mock('../useMcpKeys', () => ({
   useMcpKeys: () => ({
     keys: [ACTIVE, REVOKED], loading: false, create: vi.fn(),
-    revoke: revokeMock, refresh: vi.fn(), loadAudit: loadAuditMock,
+    update: updateMock, revoke: revokeMock, refresh: vi.fn(), loadAudit: loadAuditMock,
   }),
 }));
 
@@ -118,11 +128,23 @@ vi.mock('../useMcpApprovals', () => ({ useMcpApprovals: () => approvalsHoist.sta
 
 import { McpAccessTab } from '../McpAccessTab';
 import { McpApprovalsPanel } from '../McpApprovalsPanel';
+import { McpEditKeyDialog } from '../McpEditKeyDialog';
 
 describe('McpAccessTab', () => {
   beforeEach(() => {
     revokeMock.mockReset();
     loadAuditMock.mockReset();
+    updateMock.mockReset();
+  });
+
+  it('offers edit + revoke actions only for active keys, and opens the edit dialog', () => {
+    render(<McpAccessTab />);
+    // Both edit and revoke are gated on active status → one of each (not the revoked key).
+    expect(screen.getAllByRole('button', { name: 'mcp.edit_aria' })).toHaveLength(1);
+    expect(screen.getAllByRole('button', { name: 'mcp.revoke_aria' })).toHaveLength(1);
+    // Clicking edit opens the (single-phase) edit dialog seeded from that row.
+    fireEvent.click(screen.getByRole('button', { name: 'mcp.edit_aria' }));
+    expect(screen.getByText('mcp.edit.subtitle')).toBeInTheDocument();
   });
 
   it('offers a revoke action only for active keys', () => {
@@ -188,5 +210,76 @@ describe('McpApprovalsPanel', () => {
     expect(approvalsHoist.state.approve).toHaveBeenCalledWith('ap1');
     fireEvent.click(screen.getByText('mcp.approvals.deny'));
     expect(approvalsHoist.state.deny).toHaveBeenCalledWith('ap1');
+  });
+});
+
+// ── Edit dialog — SAFE-metadata edit (name/limits/expiry), never scope/secret ──
+const EDIT_KEY: McpKey = {
+  ...ACTIVE, key_id: 'e1', name: 'edit-me',
+  rate_limit_rpm: 100, spend_cap_usd: 2.5, expires_at: '2026-09-01T00:00:00Z',
+};
+
+function EditHarness({ onSave }: { onSave: (id: string, p: unknown) => Promise<boolean> }) {
+  const [k, setK] = useState<McpKey | null>(EDIT_KEY);
+  return (
+    <McpEditKeyDialog
+      key={k?.key_id ?? 'none'}
+      editKey={k}
+      onOpenChange={(o) => !o && setK(null)}
+      onSave={onSave as never}
+    />
+  );
+}
+
+describe('McpEditKeyDialog', () => {
+  it('seeds from the row, submits only safe metadata, and never touches scope/secret', async () => {
+    const onSave = vi.fn().mockResolvedValue(true);
+    render(<EditHarness onSave={onSave} />);
+
+    // Seeded from EDIT_KEY (name pre-filled; no scopes/domains grids, no secret input).
+    expect(screen.getByDisplayValue('edit-me')).toBeInTheDocument();
+    expect(screen.queryByText('mcp.create.scopes')).toBeNull();
+    expect(screen.queryByText('mcp.create.domains')).toBeNull();
+
+    fireEvent.change(screen.getByDisplayValue('100'), { target: { value: '200' } });
+    fireEvent.click(screen.getByRole('button', { name: 'mcp.edit.submit' }));
+
+    await waitFor(() => expect(onSave).toHaveBeenCalled());
+    // Exact payload — no `allow_self_confirm` (a security flag is not touched from
+    // the limits dialog; omitting it makes the backend keep the existing value).
+    expect(onSave).toHaveBeenCalledWith('e1', {
+      name: 'edit-me',
+      rate_limit_rpm: 200,
+      spend_cap_usd: 2.5,
+      expires_at: new Date('2026-09-01').toISOString(),
+    });
+    expect(onSave).not.toHaveBeenCalledWith('e1', expect.objectContaining({ allow_self_confirm: expect.anything() }));
+    // Success → the dialog closes (parent clears editKey).
+    await waitFor(() => expect(screen.queryByText('mcp.edit.subtitle')).toBeNull());
+  });
+
+  it('stays open when the save fails (onSave resolves false)', async () => {
+    const onSave = vi.fn().mockResolvedValue(false);
+    render(<EditHarness onSave={onSave} />);
+    fireEvent.click(screen.getByRole('button', { name: 'mcp.edit.submit' }));
+    await waitFor(() => expect(onSave).toHaveBeenCalled());
+    // No close on failure — the user can retry without re-opening.
+    expect(screen.getByText('mcp.edit.subtitle')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'mcp.edit.submit' })).toBeEnabled();
+  });
+
+  it('clears spend cap and expiry when their fields are emptied', async () => {
+    const onSave = vi.fn().mockResolvedValue(true);
+    render(<EditHarness onSave={onSave} />);
+
+    fireEvent.change(screen.getByDisplayValue('2.5'), { target: { value: '' } });
+    fireEvent.change(screen.getByDisplayValue('2026-09-01'), { target: { value: '' } });
+    fireEvent.click(screen.getByRole('button', { name: 'mcp.edit.submit' }));
+
+    await waitFor(() => expect(onSave).toHaveBeenCalled());
+    expect(onSave).toHaveBeenCalledWith('e1', expect.objectContaining({
+      spend_cap_usd: null, // null ⇒ backend clears to "no cap"
+      expires_at: '',      // '' ⇒ backend clears to "no expiry"
+    }));
   });
 });
