@@ -66,12 +66,17 @@
 > `u_<hash8(owner)>_` anti-shadow prefix; internal-only guard (external public host → 400, deferred to P3); book-tier
 > grant-gated + Active(); D2 quota (10/user); `/internal/effective-mcp-servers` per-user resolver (endpoint+prefix+version).
 > Live `p2_backend_smoke.ps1` 10/10 — **per-user isolation proven** (B can't see A's server), toggle+version-bump, delete.
-> **NEXT: REG-P2-03 — the ai-gateway per-user OVERLAY (spec's crux, HOT PATH — every turn's tool resolution):** in
-> `services/ai-gateway/src/federation/federation.service.ts`, on tools/list for an envelope userId/projectId, fetch
-> `/internal/effective-mcp-servers`, federate those endpoints under their prefix, merge over the static System catalog;
-> cache by (userId, bookId, catalog_version); feature-flag `REGISTRY_OVERLAY_ENABLED` (default OFF = today's catalog
-> byte-identical); zero-registration fast path. Then REG-P2-04 (A/B isolation + 9-provider regression live smoke) → P3
-> (external MCP+security) → P4 → P5. **Decisions:** `DECISION_LOG.md` (DL-1..6 + CLEARED + review-round-2).
+> **P2 COMPLETE ✅ (REG-P2-03/04):** ai-gateway per-user OVERLAY (`overlay.ts` + handlers) — tools/list merges the caller's
+> registered MCP servers over the static System catalog under a u_/b_ prefix; per-(user,book) cache on catalog_version +
+> 30s TTL; **fail-open** (resolve error → System catalog only); zero-reg fast path; flag `REGISTRY_OVERLAY_ENABLED` (default
+> OFF = byte-identical to today). ai-gateway jest **35/35** + tsc clean. **Live through the rebuilt gateway (flag ON,
+> `p2_overlay_smoke.ps1`):** register agent-registry's own /mcp as A's server → A sees 5 `u_<hash>_registry_*` tools, **B
+> sees NONE (cross-tenant isolation)**, System providers intact for both (9-provider regression); calling
+> `u_<hash>_registry_list_skills` through the gateway DISPATCHED to A's server + returned skills. **THE WHOLE SPEC now works
+> end-to-end: a user registers an MCP server / skill → it federates into THEIR catalog only → the agent calls it.**
+> **NEXT: P3 (external MCP + full security — arbitrary URL registration: OAuth 2.1+PKCE, SSRF guard, egress control,
+> supply-chain scan + quarantine; the `isInternalHost` P2 guard becomes the external path). `/review-impl` mandatory at P3.**
+> Then P4 (commands/hooks) → P5 (subagents/bundles). **Decisions:** `DECISION_LOG.md` (DL-1..6 + CLEARED + review-round-2).
 >
 > **▶ CHAT QUALITY WAVE — W0 + W1 SHIPPED + LIVE-SMOKED 2026-07-03 (parallel sub-agent build, disjoint files,
 > combined verify).** Trigger: user's 8-item quality pass (plan + 5-investigation evidence base incl. a LIVE MCP
