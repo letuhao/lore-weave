@@ -303,4 +303,34 @@ Two directions:
 A consumer is **"context-kernel-compliant"** when it (1) wires the ports through provider-registry, (2) emits `TraceSpan` telemetry, (3) passes the shared conformance suite. The standard is fixed now so consumers converge instead of diverge; the current role-play-inherits-chat coupling is the anti-pattern it retires.
 
 **Spec impact:** T3 in §8 now reads "extract into the shared `loreweave_context` kernel package, chat = first consumer" (not a chat-local module). The kernel's port interfaces + `TraceSpan` schema are the frozen contract; the Law (§6) applies repo-wide to every MCP tool regardless of consumer.
+
+---
+
+## 13. Enforcing the checklist — definition-of-done as TESTS (not self-report)
+
+**The problem (observed):** a subagent on another track followed its checklist and **still shipped missing implementation.** Root cause: **a checklist is a self-report, and self-reports are the rubber-stamp class this repo repeatedly bleeds on** — the silent-no-op resolver (`ui_open_studio_panel`, f1f9e9966), the lint that checks a param *exists* but not that it's *honored* (§6a rationale), an agent ticking ✓ from INTENT ("I'll add X") not EFFECT ("X is present + proven"). A box with no test bound to it fails **silently**: skipping the item leaves the build green.
+
+**The rule (LOCKED for this effort; generalizes repo-wide):**
+> **A checklist item is DONE ⟺ a test asserts it by its EFFECT. An item with no proving test is treated as NOT done — never "trust the implementer."** The §11a checklist is a **coverage manifest**, not a to-do list.
+
+### 13a. Every item carries a proof reference
+Each of the 86 lines gets one of:
+- `✓test:<id>` — the test that proves it (the default; most items),
+- `⊘manual:<reason>` — genuinely un-automatable (visual polish only) — must be the **small minority**, each with a reason.
+An item with neither is a **red** in CI (see 13c).
+
+### 13b. Proof mechanism BY ITEM TYPE (reuse existing machinery, don't invent)
+- **Telemetry / BE-contract items** → a committed `contracts/context-trace.contract.json` (the required per-turn fields + the `TraceSpan` shape) + a **conformance test that runs a REAL turn and asserts each field is present AND non-null** (a field the compiler forgot to emit → red). Mirror the existing `frontend-tools.contract.json` + `test_frontend_tools_contract.py` pattern — do NOT hand-roll a new one.
+- **Cross-side items** (panel enum ⊆ dock catalog; resolver reads every arg) → the existing **cross-language contract test** (`panelCatalogContract.test.ts`, `frontendToolContract.test.ts`). Drift on either side → red.
+- **FE render / interaction items** → a **component/E2E test asserting the EFFECT, not existence**: not "the gauge component renders" but "compiled>target ⇒ gauge shows the over-target color"; "click 'gated' filter ⇒ only gated turns remain"; "`ui_open_studio_panel('context-inspector')` ⇒ the panel actually mounts" (verify-by-effect, per [[agent-gui-loop-needs-live-browser-smoke-not-raw-stream]]).
+- **`⊘manual` items** → only pure aesthetics (e.g. animation easing feel). Each names why it can't be a test.
+
+### 13c. CI meta-check (the forcing function)
+A small script parses §11a and **FAILS the build if any non-`⊘manual` item lacks a referenced test that (a) exists and (b) is in the passing set.** "Unproven item ⇒ red." This is what makes the manifest un-gameable: you cannot mark the effort done with an item that has no green test behind it. (Same philosophy as `language-rule-lint` failing on a service with no row.)
+
+### 13d. Belt-and-suspenders (catches what tests miss)
+- **Adversarial refute-pass:** after the implementer claims a tier done, a **cold-start agent tries to REFUTE each checked item against the code** (default: refuted-unless-proven). The two adversarial reviews in this very spec's history are the evidence this catches real gaps a self-review rubber-stamps.
+- **Tier GATES already force a subset:** a tier's *measured* GATE (§8) can't pass unless its items exist — e.g. T2's "meter within ±X% of provider-reported tokens" is impossible unless the telemetry fields (BE items) are actually emitted; T0's "≥ token cut on the 146K replay" is impossible unless `ensure_ascii=false` actually shipped. Bind each checklist item to the tier whose GATE exercises it, so the measurement is a second net under the per-item test.
+
+**Net:** the checklist stops being "did the agent tick the box?" and becomes "does a green test observe the effect, does the CI meta-check confirm every item has one, and did an adversary fail to refute it?" — three independent nets, none of which is a self-report.
 ```
