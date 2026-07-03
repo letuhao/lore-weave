@@ -49,9 +49,10 @@ _BOOK = uuid4()
 # owner gate confines it to the caller's own projects).
 _ENVELOPE_KEYS = {"user_id", "session_id"}
 
-# The 12 tools this lane builds (R + reversible W).
+# The 13 tools this lane builds (R + reversible W) — incl. Track-B kg_world_query.
 _LANE_LF_TOOLS = {
     "kg_graph_query",
+    "kg_world_query",
     "kg_entity_edge_timeline",
     "kg_schema_read",
     "kg_list_templates",
@@ -94,12 +95,12 @@ def _defn(name: str) -> dict:
 
 
 def test_total_tool_count_is_memory_plus_lane_lf():
-    """5 memory + 1 story_search (#12 universal manuscript search) + 12 lane-LF
-    + 5 live class-C + 2 project lifecycle (kg_project_create + kg_project_list,
-    the W0 #4a discovery tool) + 2 cost-gated (kg_build_graph, kg_build_wiki)
-    + 1 kg_run_benchmark (R4) = 28."""
+    """5 memory + 1 story_search (#12 universal manuscript search) + 13 lane-LF
+    (incl. Track-B kg_world_query) + 5 live class-C + 2 project lifecycle
+    (kg_project_create + kg_project_list, the W0 #4a discovery tool) + 2 cost-gated
+    (kg_build_graph, kg_build_wiki) + 1 kg_run_benchmark (R4) = 29."""
     schema_names = {d["function"]["name"] for d in TOOL_DEFINITIONS}
-    assert len(TOOL_DEFINITIONS) == 28
+    assert len(TOOL_DEFINITIONS) == 29
     assert set(TOOL_NAMES) == set(ARG_MODELS) == schema_names
     assert len(set(TOOL_NAMES)) == len(TOOL_NAMES)  # no dupes
     assert {"kg_project_create", "kg_project_list", "kg_build_graph",
@@ -978,3 +979,101 @@ async def test_triage_schema_write_requires_adopted_schema():
     })
     assert not res.success
     assert "adopt" in res.error.lower()
+
+
+# ── Track B B1(1): kg_world_query (world-rollup MCP tool) ─────────────
+
+
+@pytest.mark.asyncio
+async def test_kg_world_query_unions_partitions_and_reports_unreadable(monkeypatch):
+    """EC-B2: union the caller's OWN world partitions (world-level + owned member
+    books) AND report how many member partitions were owner-skipped, never dropping
+    them silently."""
+    import app.tools.graph_schema_tools as gst
+
+    owned_book, other_book = uuid4(), uuid4()
+    world_proj, owned_proj, other_proj = uuid4(), uuid4(), uuid4()
+    other_owner = uuid4()
+
+    book = AsyncMock()
+    book.list_world_books = AsyncMock(
+        return_value=[{"book_id": str(owned_book)}, {"book_id": str(other_book)}]
+    )
+    repo = AsyncMock()
+    repo.project_meta = AsyncMock(return_value=(_OWNER, _BOOK))
+    repo.list = AsyncMock(return_value=[SimpleNamespace(project_id=world_proj)])
+
+    async def _get_by_book(bid):
+        if bid == owned_book:
+            return SimpleNamespace(project_id=owned_proj, user_id=_OWNER)
+        return SimpleNamespace(project_id=other_proj, user_id=other_owner)
+
+    repo.get_by_book = AsyncMock(side_effect=_get_by_book)
+
+    seen = {}
+
+    async def _fake_subgraph(session, *, user_id, project_ids, limit):
+        seen["project_ids"] = list(project_ids)
+        return SimpleNamespace(
+            model_dump=lambda mode="json": {"nodes": [{"id": "n1"}], "edges": []}
+        )
+
+    monkeypatch.setattr("app.db.neo4j_repos.relations.get_world_subgraph", _fake_subgraph)
+
+    class _CM:
+        async def __aenter__(self):
+            return MagicMock()
+
+        async def __aexit__(self, *a):
+            return False
+
+    monkeypatch.setattr(gst, "neo4j_session", lambda: _CM())
+
+    ctx = _ctx(user_id=_OWNER, projects_repo=repo, book_client=book)
+    res = await execute_tool(ctx, "kg_world_query", {"world_id": str(uuid4()), "limit": 50})
+
+    assert res.success, res.error
+    out = res.result
+    assert out["partitions_read"] == 2          # world-level + the owned member book
+    assert out["partitions_unreadable"] == 1     # the member book owned by someone else
+    assert str(world_proj) in seen["project_ids"]
+    assert str(owned_proj) in seen["project_ids"]
+    assert str(other_proj) not in seen["project_ids"]   # never leak a partition we don't own
+    assert "skipped" in out["note"].lower()
+
+
+@pytest.mark.asyncio
+async def test_kg_world_query_unknown_world_is_self_correcting_error():
+    """EC-B5: a bad world / book-service issue maps to a tool-error STRING (not a 500),
+    so a weak model can self-correct."""
+    from app.clients.book_client import WorldNotFound
+
+    book = AsyncMock()
+    book.list_world_books = AsyncMock(side_effect=WorldNotFound("nope"))
+    ctx = _ctx(user_id=_OWNER, book_client=book)
+    res = await execute_tool(ctx, "kg_world_query", {"world_id": str(uuid4())})
+
+    assert not res.success
+    assert "world" in res.error.lower()
+
+
+@pytest.mark.asyncio
+async def test_kg_world_query_no_readable_partitions_returns_empty_not_error(monkeypatch):
+    """A world with no partitions you own returns an empty-but-honest result (with the
+    unreadable count) rather than an error — an empty world is valid."""
+    other_book = uuid4()
+    book = AsyncMock()
+    book.list_world_books = AsyncMock(return_value=[{"book_id": str(other_book)}])
+    repo = AsyncMock()
+    repo.project_meta = AsyncMock(return_value=(_OWNER, _BOOK))
+    repo.list = AsyncMock(return_value=[])   # no world-level project
+    repo.get_by_book = AsyncMock(
+        return_value=SimpleNamespace(project_id=uuid4(), user_id=uuid4())  # owned by another
+    )
+    ctx = _ctx(user_id=_OWNER, projects_repo=repo, book_client=book)
+    res = await execute_tool(ctx, "kg_world_query", {"world_id": str(uuid4())})
+
+    assert res.success
+    assert res.result["partitions_read"] == 0
+    assert res.result["partitions_unreadable"] == 1
+    assert res.result["nodes"] == []

@@ -627,6 +627,32 @@ async def kg_graph_query(
 
 
 @mcp_server.tool(
+    name="kg_world_query",
+    description=(
+        "Read the rolled-up knowledge graph of an entire WORLD as nodes + edges — the "
+        "union of every member book's canon KG plus the world-level lore. Use this to "
+        "synthesize ACROSS all books in a world (recurring entities, cross-book "
+        "relationships), not one project at a time. Owner-only: partitions owned by "
+        "others are skipped and reported in partitions_unreadable."
+    ),
+)
+async def kg_world_query(
+    ctx: MCPContext,
+    world_id: Annotated[
+        str,
+        "The id of the world to roll up (you must own it). Pass it explicitly — a world "
+        "spans many projects, so the session's single-project scope doesn't apply.",
+    ],
+    limit: Annotated[
+        int,
+        Field(ge=1, le=GRAPH_LIMIT_MAX),
+        "Max nodes in the union (default 200).",
+    ] = 200,
+) -> dict:
+    return await _dispatch(ctx, "kg_world_query", {"world_id": world_id, "limit": limit})
+
+
+@mcp_server.tool(
     name="kg_entity_edge_timeline",
     description=(
         "Retrieve the ordered temporal chain of one relationship type for a "

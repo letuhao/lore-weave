@@ -141,6 +141,19 @@ class KgGraphQueryArgs(ProjectScopedArgs):
     limit: int = Field(default=GRAPH_LIMIT_DEFAULT, ge=1, le=GRAPH_LIMIT_MAX)
 
 
+class KgWorldQueryArgs(BaseModel):
+    """`kg_world_query` — the rolled-up graph across ALL member-book KGs of a world.
+
+    NOT ProjectScopedArgs: a world spans many projects, so it takes an EXPLICIT
+    ``world_id`` (the ai-gateway MCP federation drops envelope scope — EC-B1). The
+    rollup is owner-only (EC-B2)."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    world_id: str = Field(min_length=1, max_length=200)
+    limit: int = Field(default=200, ge=1, le=GRAPH_LIMIT_MAX)
+
+
 class KgEntityEdgeTimelineArgs(BaseModel):
     """`kg_entity_edge_timeline` — the temporal instance chain for one
     entity + edge type (e.g. a drive arc).
@@ -338,6 +351,7 @@ class KgTriageSchemaWriteArgs(ProjectScopedArgs):
 GRAPH_SCHEMA_ARG_MODELS: dict[str, type[BaseModel]] = {
     # ── R (read) ──────────────────────────────────────────────────────
     "kg_graph_query": KgGraphQueryArgs,
+    "kg_world_query": KgWorldQueryArgs,
     "kg_entity_edge_timeline": KgEntityEdgeTimelineArgs,
     "kg_schema_read": KgSchemaReadArgs,
     "kg_list_templates": KgListTemplatesArgs,
@@ -427,6 +441,28 @@ GRAPH_SCHEMA_TOOL_DEFINITIONS: list[dict] = [
             "project_id": _PROJECT_ID_PROP,
         },
         [],
+    ),
+    _tool(
+        "kg_world_query",
+        "Read the ROLLED-UP knowledge graph of an entire WORLD — the UNION of every "
+        "member book's canon KG plus the world-level lore — as nodes + edges. Use this "
+        "to synthesize ACROSS all books in a world (recurring entities, cross-book "
+        "relationships) instead of one project at a time. Pass world_id explicitly. "
+        "Owner-only: partitions owned by other users are skipped and counted in "
+        "partitions_unreadable (the result also carries partitions_read).",
+        {
+            "world_id": {
+                "type": "string",
+                "description": "The id of the world to roll up (you must own it).",
+            },
+            "limit": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": GRAPH_LIMIT_MAX,
+                "description": "Max nodes in the union (default 200).",
+            },
+        },
+        ["world_id"],
     ),
     _tool(
         "kg_entity_edge_timeline",
@@ -928,6 +964,75 @@ async def _handle_kg_graph_query(ctx: "ToolContext", args: KgGraphQueryArgs) -> 
         view_code=args.view,
     )
     return slice_.model_dump(mode="json")
+
+
+async def _handle_kg_world_query(ctx: "ToolContext", args: KgWorldQueryArgs) -> dict:
+    """`kg_world_query` (Track B B1(1)) — UNION the canon KGs of every member book in a
+    world (plus the world-level bible project) into one nodes+edges result the agent can
+    synthesize over. Owner-only (EC-B2): partitions owned by other users are SKIPPED but
+    REPORTED via ``partitions_unreadable`` — never dropped silently. EC-B5: a bad world /
+    a book-service outage return a self-correcting error string, not a 500."""
+    from app.clients.book_client import BookServiceUnavailable, WorldNotFound
+    from app.db.neo4j_repos.relations import get_world_subgraph
+    from app.tools.executor import ToolExecutionError
+    from app.world_rollup import resolve_world_partitions
+
+    if ctx.book_client is None:
+        raise ToolExecutionError(
+            "world rollup is unavailable here (book-service client not configured)"
+        )
+    try:
+        world_uuid = UUID(args.world_id)
+    except (ValueError, TypeError):
+        raise ToolExecutionError(f"world_id is not a valid id: {args.world_id!r}")
+
+    try:
+        partitions = await resolve_world_partitions(
+            world_id=world_uuid,
+            user_id=ctx.user_id,
+            repo=ctx.projects_repo,
+            book=ctx.book_client,
+        )
+    except WorldNotFound:
+        raise ToolExecutionError(f"no world with id {args.world_id} (or you don't own it)")
+    except BookServiceUnavailable:
+        raise ToolExecutionError(
+            "world membership is temporarily unavailable — retry shortly"
+        )
+
+    read = len(partitions.project_ids)
+    unreadable = partitions.unreadable_count
+    if read == 0:
+        # No readable partitions — return an empty-but-honest result (EC-B2 report),
+        # not an error: an empty world (or one entirely of others' books) is valid.
+        note = "this world has no KG partitions you can read"
+        if unreadable:
+            note += f" ({unreadable} are owned by another user)"
+        return {
+            "nodes": [],
+            "edges": [],
+            "partitions_read": 0,
+            "partitions_unreadable": unreadable,
+            "note": note + ".",
+        }
+
+    async with neo4j_session() as session:
+        subgraph = await get_world_subgraph(
+            session,
+            user_id=str(ctx.user_id),
+            project_ids=partitions.project_ids,
+            limit=args.limit,
+        )
+    out = subgraph.model_dump(mode="json")
+    # EC-B2 — surface coverage so the agent knows the rollup is partial, not complete.
+    out["partitions_read"] = read
+    out["partitions_unreadable"] = unreadable
+    if unreadable:
+        out["note"] = (
+            f"{unreadable} member partition(s) are owned by another user and were "
+            "skipped (owner-only world rollup); this graph covers only your partitions."
+        )
+    return out
 
 
 async def _handle_kg_entity_edge_timeline(
@@ -1478,6 +1583,7 @@ async def _handle_kg_triage_schema_write(
 
 GRAPH_SCHEMA_HANDLERS = {
     "kg_graph_query": _handle_kg_graph_query,
+    "kg_world_query": _handle_kg_world_query,
     "kg_entity_edge_timeline": _handle_kg_entity_edge_timeline,
     "kg_schema_read": _handle_kg_schema_read,
     "kg_list_templates": _handle_kg_list_templates,
