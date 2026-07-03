@@ -75,6 +75,45 @@ RETURN r.predicate AS code, count(r) AS n
 """
 
 
+# M3a — what the extracted graph ALREADY contains, to promote into the schema.
+# Node kinds = distinct Entity.kind (+ count). Edge types = distinct predicate (+ count
+# + the source/target kinds actually observed on its endpoints, so we can pre-fill the
+# schema's source_node_kinds/target_node_kinds).
+_OBSERVED_KINDS_CYPHER = _ALL_NODE_KINDS_CYPHER
+_OBSERVED_EDGES_CYPHER = """
+MATCH (s:Entity {user_id: $user_id})-[r:RELATES_TO]->(o:Entity)
+WHERE s.project_id = $project_id AND r.valid_until IS NULL AND r.predicate IS NOT NULL
+RETURN r.predicate AS code, count(r) AS n,
+       collect(DISTINCT s.kind) AS source_kinds,
+       collect(DISTINCT o.kind) AS target_kinds
+"""
+
+
+async def observed_components(
+    session: CypherSession, *, user_id: str, project_id: str
+) -> dict[str, list[dict]]:
+    """The node kinds + edge types the project's extracted graph already contains
+    (M3a infer). ``{"node_kinds": [{code, count}], "edge_types":
+    [{code, count, source_kinds, target_kinds}]}`` — the caller offers the ones not
+    yet in the schema for one-click promotion (edges pre-filled with observed kinds)."""
+    kinds: list[dict] = []
+    nk = await run_read(session, _OBSERVED_KINDS_CYPHER, user_id=user_id, project_id=project_id)
+    async for rec in nk:
+        if rec["code"]:
+            kinds.append({"code": rec["code"], "count": int(rec["n"] or 0)})
+    edges: list[dict] = []
+    et = await run_read(session, _OBSERVED_EDGES_CYPHER, user_id=user_id, project_id=project_id)
+    async for rec in et:
+        if rec["code"]:
+            edges.append({
+                "code": rec["code"],
+                "count": int(rec["n"] or 0),
+                "source_kinds": [k for k in (rec["source_kinds"] or []) if k],
+                "target_kinds": [k for k in (rec["target_kinds"] or []) if k],
+            })
+    return {"node_kinds": kinds, "edge_types": edges}
+
+
 async def usage_summary(
     session: CypherSession, *, user_id: str, project_id: str
 ) -> dict[str, dict[str, int]]:

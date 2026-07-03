@@ -89,6 +89,12 @@
     "deleteConfirmTitle": "Xoá thành phần này?",
     "deleteConfirmBody": "\"{{code}}\" đang được {{count}} phần tử đồ thị tham chiếu. Xoá sẽ ngừng dùng nó — dữ liệu vẫn truy vấn được. Vẫn xoá?"
   },
+  "infer": {
+    "title": "Tìm thấy trong đồ thị của bạn",
+    "help": "truyện đã trích xuất sẵn — thêm những cái còn thiếu",
+    "addButton": "Thêm {{count}} vào schema",
+    "added": "Đã thêm {{count}} vào schema"
+  },
   "sync": {
     "upToDate": "Đã cập nhật — không có thay đổi từ nguồn.",
     "updatesAvailable": "Có {{count}} cập nhật từ nguồn",

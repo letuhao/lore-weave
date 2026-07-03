@@ -152,6 +152,14 @@ export const ontologyApi = {
     return apiJson(`${BASE}/projects/${projectId}/schema/usage-summary`, { token });
   },
 
+  // M3a — the node kinds + edge types the project's extracted graph already has.
+  schemaObserved(
+    projectId: string,
+    token: string,
+  ): Promise<import('../types/ontology').ObservedComponents> {
+    return apiJson(`${BASE}/projects/${projectId}/schema/observed`, { token });
+  },
+
   // A4 — how many graph elements reference a schema component (delete warning).
   // `counted=false` for fact_type/vocab_value (fuzzier usage → plain confirm).
   schemaComponentUsage(

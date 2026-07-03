@@ -37,7 +37,11 @@ from app.clients.glossary_ontology_client import (
 from app.config import settings
 from app.db.ontology_models import GraphSchema
 from app.db.neo4j import neo4j_session
-from app.db.neo4j_repos.schema_usage import count_component_usage, usage_summary
+from app.db.neo4j_repos.schema_usage import (
+    count_component_usage,
+    observed_components,
+    usage_summary,
+)
 from app.db.pool import get_knowledge_pool
 from app.db.repositories.graph_schemas import GraphSchemasRepo
 from app.db.repositories.ontology_mutations import (
@@ -441,6 +445,19 @@ async def get_schema_usage_summary(
     code = 0 graph elements."""
     async with neo4j_session() as session:
         return await usage_summary(session, user_id=str(owner), project_id=str(project_id))
+
+
+@router.get("/projects/{project_id}/schema/observed")
+async def get_schema_observed(
+    project_id: UUID = Path(),
+    owner: UUID = Depends(require_project_grant(GrantLevel.VIEW)),
+):
+    """M3a — the node kinds + edge types the project's EXTRACTED graph already
+    contains (to promote into the schema). View-gated. `{node_kinds:[{code,count}],
+    edge_types:[{code,count,source_kinds,target_kinds}]}`. Empty when the project
+    hasn't been extracted."""
+    async with neo4j_session() as session:
+        return await observed_components(session, user_id=str(owner), project_id=str(project_id))
 
 
 @router.post(

@@ -9,6 +9,8 @@ import { VocabSetCard } from './VocabSetCard';
 import { AddEdgeTypeForm } from './AddEdgeTypeForm';
 import { AddNodeKindForm } from './AddNodeKindForm';
 import { AddFactTypeForm } from './AddFactTypeForm';
+import { InferFromGraphPanel, type InferEdgePick } from './InferFromGraphPanel';
+import type { ObservedComponents } from '../../types/ontology';
 import type { useGraphSchema } from '../../hooks/useGraphSchema';
 
 type SchemaController = ReturnType<typeof useGraphSchema>;
@@ -27,6 +29,7 @@ export function SchemaWorkbench({
   controller,
   getUsage,
   usage,
+  observed,
 }: {
   controller: SchemaController;
   // A4 — resolve how many graph elements reference a component before deleting it.
@@ -34,6 +37,8 @@ export function SchemaWorkbench({
   getUsage?: (nodeType: string, code: string) => Promise<UsageResult>;
   // M1 — preloaded usage counts for inline "· used by N" badges.
   usage?: { node_kind: Record<string, number>; edge_type: Record<string, number> };
+  // M3a — what the extracted graph already contains (promote-to-schema panel).
+  observed?: ObservedComponents;
 }) {
   const { t } = useTranslation('kgOntology');
   const [editingName, setEditingName] = useState(false);
@@ -74,6 +79,24 @@ export function SchemaWorkbench({
 
   const busy = controller.isMutating;
   const kindCodes = (schema.node_kinds ?? []).map((k) => k.kind_code);
+  const edgeCodes = (schema.edge_types ?? []).map((e) => e.code);
+
+  // M3a — promote observed graph components: add kinds FIRST (so an edge's
+  // source/target kinds exist), then edges. One toast for the batch.
+  const inferAdd = async (kinds: string[], edges: InferEdgePick[]) => {
+    try {
+      for (const kc of kinds) await controller.addNodeKind({ kind_code: kc, strength: 'optional' });
+      for (const e of edges)
+        await controller.addEdgeType({
+          code: e.code, label: e.code,
+          source_node_kinds: e.source_kinds, target_node_kinds: e.target_kinds,
+        });
+      toast.success(t('infer.added', { count: kinds.length + edges.length }));
+    } catch (e) {
+      const msg = (e as { status?: number }).status === 403 ? t('schema.forbidden') : (e as Error).message;
+      toast.error(msg || t('schema.addFailed'));
+    }
+  };
 
   return (
     <div className="space-y-4" data-testid="schema-workbench">
@@ -106,6 +129,17 @@ export function SchemaWorkbench({
           {t('schema.allowFreeEdges')}
         </label>
       </header>
+
+      {/* M3a — promote what the extracted graph already contains */}
+      {observed && (
+        <InferFromGraphPanel
+          observed={observed}
+          existingKinds={new Set(kindCodes)}
+          existingEdges={new Set(edgeCodes)}
+          disabled={busy}
+          onAdd={(kinds, edges) => void inferAdd(kinds, edges)}
+        />
+      )}
 
       {/* empty-state coaching (M1) — a brand-new blank schema */}
       {kindCodes.length === 0 && (schema.edge_types ?? []).length === 0 && (

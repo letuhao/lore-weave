@@ -89,6 +89,12 @@
     "deleteConfirmTitle": "Delete this component?",
     "deleteConfirmBody": "\"{{code}}\" is referenced by {{count}} graph element(s). Deleting deprecates it — the data stays queryable. Delete anyway?"
   },
+  "infer": {
+    "title": "Found in your graph",
+    "help": "your book already extracted these — add the missing ones",
+    "addButton": "Add {{count}} to schema",
+    "added": "Added {{count}} to the schema"
+  },
   "sync": {
     "upToDate": "Up to date — no upstream changes.",
     "updatesAvailable": "{{count}} updates available from upstream",

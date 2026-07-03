@@ -179,6 +179,27 @@ describe('SchemaWorkbench — full-CRUD authoring (A3)', () => {
     expect(screen.getByTestId('node-kind-usage-character')).toBeInTheDocument();
   });
 
+  it('M3a: promotes observed graph components (kinds first, then edges)', async () => {
+    render(
+      <SchemaWorkbench
+        controller={ctrl as never}
+        observed={{
+          node_kinds: [{ code: 'character', count: 8 }, { code: 'sect', count: 3 }],
+          edge_types: [{ code: 'MASTER_OF', count: 5, source_kinds: ['character'], target_kinds: ['character'] }],
+        }}
+      />,
+    );
+    // 'character' already exists in the schema (makeSchema) → only 'sect' + MASTER_OF are missing
+    expect(screen.queryByTestId('infer-kind-character')).not.toBeInTheDocument();
+    expect(screen.getByTestId('infer-kind-sect')).toBeInTheDocument();
+    expect(screen.getByTestId('infer-edge-MASTER_OF')).toBeInTheDocument();
+    fireEvent.click(screen.getByTestId('infer-add-selected'));
+    await waitFor(() => expect(ctrl.addNodeKind).toHaveBeenCalledWith({ kind_code: 'sect', strength: 'optional' }));
+    expect(ctrl.addEdgeType).toHaveBeenCalledWith(
+      expect.objectContaining({ code: 'MASTER_OF', source_node_kinds: ['character'], target_node_kinds: ['character'] }),
+    );
+  });
+
   it('toggling free edges patches schema meta', async () => {
     renderWB(ctrl);
     fireEvent.click(screen.getByTestId('allow-free-edges-toggle'));

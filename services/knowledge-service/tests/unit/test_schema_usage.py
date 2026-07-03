@@ -95,6 +95,25 @@ async def test_usage_summary_groups_by_code(monkeypatch):
 
 
 @pytest.mark.asyncio
+async def test_observed_components_kinds_and_edges(monkeypatch):
+    async def fake_run_read(session, cypher, **params):
+        if "e.kind AS code" in cypher:
+            return _FakeAsyncRows([{"code": "character", "n": 8}, {"code": None, "n": 1}])
+        return _FakeAsyncRows([
+            {"code": "MENTORS", "n": 4, "source_kinds": ["character", None], "target_kinds": ["character"]},
+        ])
+
+    monkeypatch.setattr(schema_usage, "run_read", fake_run_read)
+    out = await schema_usage.observed_components(None, user_id="u", project_id="p")
+    assert out["node_kinds"] == [{"code": "character", "count": 8}]  # None dropped
+    assert out["edge_types"] == [{
+        "code": "MENTORS", "count": 4,
+        "source_kinds": ["character"],  # None filtered out
+        "target_kinds": ["character"],
+    }]
+
+
+@pytest.mark.asyncio
 @pytest.mark.parametrize("node_type", ["fact_type", "vocab_value", "vocab_set", "bogus"])
 async def test_uncounted_types_return_none(monkeypatch, node_type):
     # These never hit Cypher — run_read would raise if called.

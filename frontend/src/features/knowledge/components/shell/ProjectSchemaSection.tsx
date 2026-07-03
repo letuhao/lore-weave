@@ -5,6 +5,7 @@ import {
   useGraphSchema,
   useGraphSchemaList,
   useSchemaAuthoring,
+  useSchemaObserved,
   useSchemaUsageSummary,
 } from '../../hooks/useGraphSchema';
 import { SchemaWorkbench } from '../ontology/SchemaWorkbench';
@@ -37,6 +38,7 @@ export function ProjectSchemaSection({
   const controller = useGraphSchema(activeSchemaId, projectId);
   const authoring = useSchemaAuthoring(projectId);
   const usage = useSchemaUsageSummary(activeSchemaId ? projectId : null).data;
+  const observed = useSchemaObserved(activeSchemaId ? projectId : null).data;
   const busy = authoring.isCreating || authoring.isCloning;
 
   return (
@@ -49,6 +51,7 @@ export function ProjectSchemaSection({
         <SchemaWorkbench
           controller={controller}
           usage={usage}
+          observed={observed}
           getUsage={(nodeType, code) =>
             Promise.resolve({
               count: usage?.[nodeType as 'node_kind' | 'edge_type']?.[code] ?? 0,

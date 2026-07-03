@@ -177,6 +177,12 @@ export interface CloneSchemaRequest {
   name?: string;
 }
 
+/** M3a — what the project's extracted graph already contains (to promote into the schema). */
+export interface ObservedComponents {
+  node_kinds: { code: string; count: number }[];
+  edge_types: { code: string; count: number; source_kinds: string[]; target_kinds: string[] }[];
+}
+
 export interface ResolvedSchema {
   project_id: string;
   schema_version: number;

@@ -21,6 +21,7 @@ vi.mock('../../../hooks/useGraphSchema', () => ({
   useGraphSchemaList: () => ({ data: { items: state.items }, isLoading: state.listLoading }),
   useGraphSchema: () => ({ schema: state.controllerSchema }),
   useSchemaUsageSummary: () => ({ data: { node_kind: {}, edge_type: {} } }),
+  useSchemaObserved: () => ({ data: { node_kinds: [], edge_types: [] } }),
   useSchemaAuthoring: () => ({
     createBlank: vi.fn(), clone: vi.fn(), isCreating: false, isCloning: false,
   }),

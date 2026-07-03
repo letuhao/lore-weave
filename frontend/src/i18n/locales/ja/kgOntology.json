@@ -89,6 +89,12 @@
     "deleteConfirmTitle": "このコンポーネントを削除しますか？",
     "deleteConfirmBody": "「{{code}}」は {{count}} 件のグラフ要素から参照されています。削除すると非推奨になります（データは引き続き参照可能）。削除しますか？"
   },
+  "infer": {
+    "title": "グラフから検出",
+    "help": "本から抽出済み — 未登録のものを追加",
+    "addButton": "{{count}} 件をスキーマに追加",
+    "added": "{{count}} 件をスキーマに追加しました"
+  },
   "sync": {
     "upToDate": "最新です — 上流の変更はありません。",
     "updatesAvailable": "上流から {{count}} 件の更新があります",

@@ -143,6 +143,17 @@ export function useSchemaUsageSummary(projectId: string | null) {
   });
 }
 
+// M3a — the node kinds + edge types the project's extracted graph already contains
+// (for one-click promotion into the schema).
+export function useSchemaObserved(projectId: string | null) {
+  const { accessToken } = useAuth();
+  return useQuery({
+    queryKey: ['kg-schema-observed', projectId],
+    queryFn: () => ontologyApi.schemaObserved(projectId!, accessToken!),
+    enabled: !!accessToken && !!projectId,
+  });
+}
+
 // ── create-from-scratch + clone (A2) — project/caller-scoped, not tied to one
 //    schema id. `createBlank` replaces the project's active schema (server-side
 //    one-active); `clone` mints a NEW user-scoped editable template. ──────────
