@@ -249,14 +249,42 @@
 > in the transcript** (scope held). **Follow-up (tracked, gate #2):** `D-REG-P5-SUBAGENT-WRITE-DELEGATION` — lift the
 > read-only clamp so a subagent can perform an approved write (needs nested approval-suspend bubbling up through
 > `run_subagent`; today ask-clamp is the safe v1).
-> **Still deferred:** `D-REG-P5-REGISTRY-INGEST` → spec [`2026-07-03-official-registry-ingest.md`](../specs/2026-07-03-official-registry-ingest.md)
-> (`registry_ingest_queue` + admin pull/approve/reject; approval reuses the P3 SSRF guard + supply-chain scan; System-tier,
-> admin-only; L — the last spec'd-but-unbuilt P5 slice). `D-REG-P4-SLASH-AUTOCOMPLETE` (gate #1). `D-REG-P3-SCHEDULED-RESCAN`.
+> **▶ `D-REG-P5-REGISTRY-INGEST` ✅ SHIPPED + LIVE-PROVEN 2026-07-03 (this session; plan
+> [`2026-07-03-registry-ingest.md`](../plans/2026-07-03-registry-ingest.md)).** Admin populates the System-tier MCP
+> catalog from the **official MCP Registry** via a curation queue instead of hand-typing each server. New
+> `registry_ingest_queue` (source+registry_id unique; pending|approved|rejected; `approved_server_id` FK) +
+> `uq_mcp_reg_system` partial UNIQUE(endpoint_url) for approve-time dedup. **Pull** (`POST /admin/ingest/pull`) fetches
+> `{base}/v0/servers` through the **SSRF-safe probe client** (IP-pinned dial + cross-host-redirect refusal), cursor-paged
+> (cap 10), body-capped (8 MiB), fail-soft. `mapUpstreamEntry` is tolerant (flat + nested-`server` shapes,
+> type/transport_type variants, `version_detail` fallback, id→reverse-DNS-name); picks the first streamable-http remote,
+> **counts** no-remote skips (never silent). Idempotent upsert on `(source,registry_id)` that refreshes descriptive fields
+> but **never downgrades** an approved/rejected row → pending. **Approve** (`POST /admin/ingest/queue/{id}/approve`)
+> **reuses the P3 pipeline wholesale** — `looksLikeModelEndpoint` → `classifyRegistrationURL` (SSRF) → INSERT System-tier
+> `mcp_server_registration` (`is_external`, `pending`) → `scanAsync` (pending→active/suspended) → link + mark approved.
+> Endpoint dedup links an existing System row instead of duplicating; a guard failure leaves the row pending. Admin-only
+> (`requireAdmin` → 403) + anti-oracle 404 + audit. **verification ≠ safety:** an official listing still runs the full
+> SSRF guard + supply-chain scan before it federates. Files: `internal/api/ingest.go` + `server.go` routes +
+> `migrate.go` + `config.go` (`OfficialRegistryURL`). **`/review-impl` DONE** (self, load-bearing = admin-gate +
+> SSRF-on-approve + external integration): no HIGH/MED; 3 LOW accepted/deferred (pull min-interval → the scheduled
+> worker; upsert refreshes endpoint on an approved row; `finishApprove` error self-heals via dedup). VERIFY: unit
+> (tolerant mapper flat/nested/no-remote/invalid/first-wins + transport-norm + admin-gate 403/401 ×4 routes + approve
+> model-cap/SSRF/409/404 via pgxmock) + full agent-registry suite green · **LIVE E2E-P5-C** (`p5_ingest_smoke.ps1`):
+> Part 1 (DB-seeded queue → real HTTP) — admin-gate, approve→System is_external row + scan, re-approve 409, endpoint
+> DEDUP held (exactly ONE System row), reject, idempotent upsert; Part 2 (**real official MCP Registry pull**) — fetched
+> 100, mapped 43 new + 70 updated, 30 no-remote skips (SSRF-safe fetch + mapper proven on real /v0 data).
+> **Deferred (tracked):** `D-REG-P5-INGEST-SCHEDULED-WORKER` (gate #2 — the hourly pull worker + denylist/retroactive-
+> removal sync §7b#1 + rug-pull periodic rescan §7b#2; folds `D-REG-P3-SCHEDULED-RESCAN`; needs a background loop);
+> `D-REG-P5-INGEST-ADMIN-FE` (gate #3 — the admin curation table lands in an admin/CMS surface that **does not exist yet**
+> in `frontend/src`; the backend is fully driveable via the admin API).
+> **Still deferred:** `D-REG-P4-SLASH-AUTOCOMPLETE` (gate #1). `D-REG-P5-SUBAGENT-WRITE-DELEGATION` (gate #2).
 > **The whole track is production-usable:** a user registers skills / external MCP servers (OAuth+SSRF+scan) / slash
-> commands / declarative hooks / subagent personas (**now with live scoped execution**), bundles + shares them, and the
-> agent federates + expands + delegates to them — all tenancy-scoped, adversarially reviewed, live-proven.
-> **NEXT: `D-REG-P5-REGISTRY-INGEST` when prioritized; else the track is complete.**
-> **Decisions:** `DECISION_LOG.md` (DL-1..9 + 6 review rounds). **Defers: P4 autocomplete + P5 registry-ingest + P5 write-delegation + P3 scheduled-rescan; P3/subagent-runtime clear.**
+> commands / declarative hooks / subagent personas (**live scoped execution**), bundles + shares them; an admin **curates
+> the System catalog from the official registry**; and the agent federates + expands + delegates to them — all
+> tenancy-scoped, adversarially reviewed, live-proven.
+> **▶ THE AGENT EXTENSIBILITY REGISTRY TRACK IS COMPLETE (P0→P5, every spec'd slice built).** Remaining rows are the
+> scheduled-worker, the admin FE (needs an admin surface), slash-autocomplete, and subagent-write-delegation — all
+> tracked, none blocking.
+> **Decisions:** `DECISION_LOG.md` (DL-1..9 + 6 review rounds). **Defers: P4 autocomplete + P5 write-delegation + P5 ingest-scheduled-worker + P5 ingest-admin-FE; P3/subagent-runtime/registry-ingest CLEAR.**
 >
 > **▶ CHAT QUALITY WAVE — W0 + W1 SHIPPED + LIVE-SMOKED 2026-07-03 (parallel sub-agent build, disjoint files,
 > combined verify).** Trigger: user's 8-item quality pass (plan + 5-investigation evidence base incl. a LIVE MCP
