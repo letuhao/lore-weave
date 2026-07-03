@@ -46,6 +46,7 @@ from loreweave_mcp import (
     ForbidExtra,
     GrantResolver,
     ToolContext,
+    apply_response_contract,
     build_tool_context,
     make_stateless_fastmcp,
     mint_confirm_token,
@@ -265,12 +266,26 @@ async def composition_get_work(
     return work.model_dump(mode="json")
 
 
+# L1/L2 reference-first projection for outline nodes (Context Budget Law §6b). At
+# `detail=summary` a node collapses to these ref fields — the heavy `goal`/`synopsis`
+# prose (the 146K-case bloat) is dropped; fetch one node's full body via
+# composition_get_outline_node. Keep the structural fields the model needs to
+# navigate the tree (kind/parent/order/status/version).
+_OUTLINE_REF_FIELDS = (
+    "id", "kind", "parent_id", "title", "status", "version",
+    "story_order", "chapter_id", "child_count",
+)
+
+
 @mcp_server.tool(
     name="composition_list_outline",
     description=(
         "List the outline/scene-graph of a Work — the Arc→Chapter→Scene→Beat tree "
         "plus its scene-links (setup/payoff edges). Use to see the planned structure "
-        "before generating or editing. Owner/grant-filtered (VIEW)."
+        "before generating or editing. Pass `detail=summary` (default `full`) for a "
+        "lightweight ref list ({id,kind,title,status,version,...} — no goal/synopsis "
+        "prose) and `limit` to bound large outlines; fetch one node's full body via "
+        "composition_get_outline_node. Owner/grant-filtered (VIEW)."
     ),
     meta=require_meta(
         "R", "book",
@@ -281,6 +296,11 @@ async def composition_get_work(
 async def composition_list_outline(
     ctx: MCPContext,
     project_id: Annotated[str, "The Work's project_id."],
+    detail: Annotated[
+        Literal["summary", "full"],
+        "summary = refs only (id/kind/title/status/version, no prose); full = every field.",
+    ] = "full",
+    limit: Annotated[int | None, "Max nodes to return (bounds a large tree dump)."] = None,
     include_archived: Annotated[bool, "Include soft-archived nodes."] = False,
 ) -> dict:
     tc = _ctx(ctx)
@@ -292,10 +312,50 @@ async def composition_list_outline(
     pid = UUID(project_id)
     nodes = await outline.list_tree(tc.user_id, pid, include_archived=include_archived)
     links = await scene_links.list_by_project(tc.user_id, pid)
+    node_dicts = [n.model_dump(mode="json") for n in nodes]
+    projected, meta = apply_response_contract(
+        node_dicts, ref_fields=_OUTLINE_REF_FIELDS, detail=detail, limit=limit,
+    )
     return {
-        "nodes": [n.model_dump(mode="json") for n in nodes],
+        "nodes": projected,
         "scene_links": [l.model_dump(mode="json") for l in links],
+        **meta,
     }
+
+
+@mcp_server.tool(
+    name="composition_get_outline_node",
+    description=(
+        "Read ONE outline node by id — its fields plus `version`, the concurrency "
+        "token you pass back to composition_outline_node_update. Use this instead of "
+        "listing the whole outline when you only need one node's current state or "
+        "version (e.g. before a status/title edit). Owner/grant-filtered (VIEW)."
+    ),
+    meta=require_meta(
+        "R", "book",
+        synonyms=["get node", "node version", "read scene", "read chapter node",
+                  "outline node", "get scene", "node status"],
+        tool_name="composition_get_outline_node",
+    ),
+)
+async def composition_get_outline_node(
+    ctx: MCPContext,
+    project_id: Annotated[str, "The Work's project_id."],
+    node_id: Annotated[str, "The outline node's id."],
+) -> dict:
+    tc = _ctx(ctx)
+    works = WorksRepo(get_pool())
+    pid = UUID(project_id)
+    work = await _work_or_deny(works, tc, pid)
+    await _gate(tc, work.book_id, GrantLevel.VIEW)
+    outline = OutlineRepo(get_pool())
+    node = await outline.get_node(tc.user_id, UUID(node_id))
+    # get_node filters (user_id, id) only — project-scope the target so a node_id
+    # from another of the caller's Works can't be read through this project (same
+    # H13 discipline as composition_get_generation_job / node_update).
+    if node is None or node.project_id != pid:
+        raise uniform_not_accessible()
+    return node.model_dump(mode="json")
 
 
 @mcp_server.tool(
@@ -507,8 +567,9 @@ class _NodeUpdateArgs(ForbidExtra):
     description=(
         "Edit an outline node's fields (title/goal/synopsis/status). Requires "
         "`expected_version` (optimistic concurrency — a stale version is rejected, "
-        "no blind clobber). EDIT required (auto-applied; Undo restores the prior "
-        "values via a follow-up update)."
+        "no blind clobber); read the current version cheaply via "
+        "composition_get_outline_node (no need to list the whole outline). EDIT "
+        "required (auto-applied; Undo restores the prior values via a follow-up update)."
     ),
     meta=require_meta(
         "A", "book",

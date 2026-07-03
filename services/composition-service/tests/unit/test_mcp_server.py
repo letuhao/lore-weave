@@ -48,6 +48,7 @@ CHAPTER = uuid.UUID("eeeeeeee-eeee-eeee-eeee-eeeeeeeeeeee")
 EXPECTED_TOOLS = {
     # Tier R
     "composition_get_work", "composition_list_outline",
+    "composition_get_outline_node",
     "composition_get_prose", "composition_list_canon_rules",
     "composition_get_generation_job",
     # Tier A
@@ -80,6 +81,7 @@ EXPECTED_TOOLS = {
     "plan_review_checkpoint", "plan_handoff_autofix", "plan_compile",
 }
 TIER_R = {"composition_get_work", "composition_list_outline",
+          "composition_get_outline_node",
           "composition_get_prose", "composition_list_canon_rules",
           "composition_get_generation_job",
           "composition_motif_search", "composition_motif_get",

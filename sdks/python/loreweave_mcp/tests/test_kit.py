@@ -24,6 +24,7 @@ from loreweave_mcp import (
     MetaValidationError,
     NotAccessibleError,
     ToolContext,
+    apply_response_contract,
     build_tool_context,
     is_owner_only,
     make_stateless_fastmcp,
@@ -442,6 +443,60 @@ async def test_project_guard_requires_envelope():
     tc = ToolContext(user_id=uuid.uuid4(), session_id="s", project_id=None)
     with pytest.raises(NotAccessibleError):
         await guard(tc)
+
+
+# ── L1/L2 tool-response contract (Context Budget Law §6b) ──────────────
+
+_ROWS = [
+    {"id": "1", "title": "Arc I", "version": 3, "synopsis": "a" * 400, "goal": "g1"},
+    {"id": "2", "title": "Ch 1", "version": 1, "synopsis": "b" * 400, "goal": "g2"},
+    {"id": "3", "title": "Ch 2", "version": 1, "synopsis": "c" * 400, "goal": "g3"},
+]
+_REF = ("id", "title", "version")
+
+
+def test_response_contract_full_is_unchanged():
+    out, meta = apply_response_contract(_ROWS, ref_fields=_REF, detail="full")
+    assert out == _ROWS
+    assert meta == {"detail": "full", "total": 3, "returned": 3, "truncated": 0}
+
+
+def test_response_contract_summary_drops_heavy_fields():
+    out, meta = apply_response_contract(_ROWS, ref_fields=_REF, detail="summary")
+    assert all("synopsis" not in it and "goal" not in it for it in out)
+    assert out[0] == {"id": "1", "title": "Arc I", "version": 3}
+    # the reference-first body is materially smaller than the full row
+    assert len(str(out)) < len(str(_ROWS)) * 0.5
+    assert meta["detail"] == "summary"
+
+
+def test_response_contract_limit_caps_and_reports_truncation():
+    out, meta = apply_response_contract(_ROWS, ref_fields=_REF, detail="summary", limit=2)
+    assert len(out) == 2
+    assert meta == {"detail": "summary", "total": 3, "returned": 2, "truncated": 1}
+
+
+def test_response_contract_limit_applies_to_full_too():
+    out, meta = apply_response_contract(_ROWS, ref_fields=_REF, detail="full", limit=1)
+    assert len(out) == 1
+    assert meta["truncated"] == 2
+
+
+def test_response_contract_summary_missing_ref_field_skipped_not_crash():
+    rows = [{"id": "1"}]  # no title/version present
+    out, _ = apply_response_contract(rows, ref_fields=_REF, detail="summary")
+    assert out == [{"id": "1"}]
+
+
+def test_response_contract_fields_allowlist_intersects():
+    out, _ = apply_response_contract(_ROWS, ref_fields=_REF, detail="full", fields=("id",))
+    assert out[0] == {"id": "1"}
+
+
+def test_response_contract_does_not_mutate_input():
+    out, _ = apply_response_contract(_ROWS, ref_fields=_REF, detail="full", fields=("id",))
+    out[0]["id"] = "MUT"
+    assert _ROWS[0]["id"] == "1"  # source row untouched
 
 
 @pytest.mark.asyncio

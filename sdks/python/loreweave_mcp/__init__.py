@@ -61,6 +61,10 @@ from .meta import (
     require_meta,
     validate_tool_meta,
 )
+from .response import (
+    DetailLevel,
+    apply_response_contract,
+)
 
 __all__ = [
     # context / server wiring
@@ -92,4 +96,7 @@ __all__ = [
     "MetaValidationError",
     "TIERS",
     "SCOPES",
+    # L1/L2 tool-response contract (Context Budget Law §6b)
+    "apply_response_contract",
+    "DetailLevel",
 ]
