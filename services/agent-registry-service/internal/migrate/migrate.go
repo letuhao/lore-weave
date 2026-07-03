@@ -239,6 +239,62 @@ CREATE TABLE IF NOT EXISTS oauth_flows (
 );
 CREATE INDEX IF NOT EXISTS idx_oauth_flows_server ON oauth_flows(mcp_server_id);
 
+-- P4: user-authored slash commands. A /name args in a chat message expands the
+-- template_md (server-side by default) with the parsed args before the turn. Tenancy
+-- as everywhere: scope key + per-tier partial UNIQUE(name).
+CREATE TABLE IF NOT EXISTS slash_commands (
+  command_id UUID PRIMARY KEY DEFAULT uuidv7(),
+  plugin_id UUID REFERENCES plugins(plugin_id) ON DELETE CASCADE,
+  tier TEXT NOT NULL CHECK (tier IN ('system','user','book')),
+  owner_user_id UUID,
+  book_id UUID,
+  name TEXT NOT NULL,                                   -- lowercase a-z0-9-, no leading slash
+  description TEXT NOT NULL DEFAULT '',
+  arg_schema JSONB NOT NULL DEFAULT '{}',
+  template_md TEXT NOT NULL DEFAULT '',
+  expand_side TEXT NOT NULL DEFAULT 'server' CHECK (expand_side IN ('server','client')),
+  enabled BOOLEAN NOT NULL DEFAULT true,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  CONSTRAINT commands_scope_key CHECK (
+    (tier = 'system' AND owner_user_id IS NULL AND book_id IS NULL) OR
+    (tier = 'user'   AND owner_user_id IS NOT NULL AND book_id IS NULL) OR
+    (tier = 'book'   AND book_id IS NOT NULL)
+  )
+);
+CREATE INDEX IF NOT EXISTS idx_commands_owner ON slash_commands(owner_user_id);
+CREATE INDEX IF NOT EXISTS idx_commands_book ON slash_commands(book_id);
+CREATE UNIQUE INDEX IF NOT EXISTS uq_commands_system ON slash_commands(name) WHERE tier = 'system';
+CREATE UNIQUE INDEX IF NOT EXISTS uq_commands_user   ON slash_commands(owner_user_id, name) WHERE tier = 'user';
+CREATE UNIQUE INDEX IF NOT EXISTS uq_commands_book   ON slash_commands(book_id, name) WHERE tier = 'book';
+
+-- P4: declarative hooks (no code execution). Fire at agent-loop seams; the action is
+-- a fixed, enum-typed effect the chat-service hook engine interprets.
+CREATE TABLE IF NOT EXISTS hooks (
+  hook_id UUID PRIMARY KEY DEFAULT uuidv7(),
+  plugin_id UUID REFERENCES plugins(plugin_id) ON DELETE CASCADE,
+  tier TEXT NOT NULL CHECK (tier IN ('system','user','book')),
+  owner_user_id UUID,
+  book_id UUID,
+  name TEXT NOT NULL DEFAULT '',
+  description TEXT NOT NULL DEFAULT '',
+  on_event TEXT NOT NULL CHECK (on_event IN ('pre_tool_call','post_tool_call','pre_turn','post_turn')),
+  match JSONB NOT NULL DEFAULT '{}',                    -- e.g. {"tool_pattern":"glossary_*"}
+  action JSONB NOT NULL DEFAULT '{}',                   -- {"kind":"deny|require_approval|annotate|inject_text", ...}
+  priority INTEGER NOT NULL DEFAULT 0,
+  enabled BOOLEAN NOT NULL DEFAULT true,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  CONSTRAINT hooks_scope_key CHECK (
+    (tier = 'system' AND owner_user_id IS NULL AND book_id IS NULL) OR
+    (tier = 'user'   AND owner_user_id IS NOT NULL AND book_id IS NULL) OR
+    (tier = 'book'   AND book_id IS NOT NULL)
+  )
+);
+CREATE INDEX IF NOT EXISTS idx_hooks_owner ON hooks(owner_user_id);
+CREATE INDEX IF NOT EXISTS idx_hooks_book ON hooks(book_id);
+CREATE INDEX IF NOT EXISTS idx_hooks_event ON hooks(on_event);
+
 -- REG-P1-03: seed the 5 hardcoded chat-service skills as System-tier rows so the
 -- FE can list + toggle them and enablement resolves. Their BODIES remain authored
 -- in chat-service skill_registry (single source; DECISION_LOG DL-4) — these rows

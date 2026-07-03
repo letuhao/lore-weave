@@ -195,6 +195,18 @@ func (s *Server) Router() http.Handler {
 		r.Post("/mcp-servers/{mcp_server_id}/oauth/start", s.startOAuth)         // P3 OAuth 2.1 + PKCE
 		r.Get("/oauth/callback", s.oauthCallback)                                // P3 OAuth callback (PUBLIC — AS redirect)
 
+		// Slash commands (P4)
+		r.Get("/commands", s.listCommands)
+		r.Post("/commands", s.createCommand)
+		r.Patch("/commands/{command_id}", s.patchCommand)
+		r.Delete("/commands/{command_id}", s.deleteCommand)
+
+		// Declarative hooks (P4)
+		r.Get("/hooks", s.listHooks)
+		r.Post("/hooks", s.createHook)
+		r.Patch("/hooks/{hook_id}", s.patchHook)
+		r.Delete("/hooks/{hook_id}", s.deleteHook)
+
 		// Proposals (P1 agent self-registration — propose→approve/reject)
 		r.Get("/proposals", s.listProposals)
 		r.Get("/proposals/{proposal_id}", s.getProposal)
@@ -217,6 +229,8 @@ func (s *Server) Router() http.Handler {
 		r.Get("/skills", s.internalSkills)
 		r.Get("/effective-mcp-servers", s.internalEffectiveMcpServers)              // P2 federation overlay source
 		r.Get("/mcp-servers/{mcp_server_id}/credentials", s.internalMcpCredentials) // P3 vault decrypt (egress auth)
+		r.Get("/commands", s.internalCommands)                                      // P4 command-expansion resolver
+		r.Get("/hooks", s.internalHooks)                                            // P4 hook-engine resolver
 	})
 
 	return r
