@@ -78,11 +78,11 @@ export function SchemaWorkbench({
         {editingName ? (
           <>
             <input value={name} onChange={(e) => setName(e.target.value)} autoFocus
-              className="rounded-md border bg-background px-2 py-1 text-sm"
+              className="rounded-md border bg-input px-2 py-1 text-sm"
               data-testid="schema-name-input" />
             <button type="button" disabled={busy} data-testid="save-schema-name"
               onClick={() => { void guard(() => controller.patchMeta({ name: name.trim() || schema.name })); setEditingName(false); }}
-              className="rounded-md bg-primary px-2.5 py-1 text-[12px] text-white">{t('common.save')}</button>
+              className="rounded-md bg-primary px-2.5 py-1 text-[12px] text-primary-foreground">{t('common.save')}</button>
             <button type="button" onClick={() => setEditingName(false)}
               className="rounded-md border px-2.5 py-1 text-[12px]">{t('common.cancel')}</button>
           </>
@@ -172,9 +172,9 @@ export function SchemaWorkbench({
         ))}
         <div className="flex flex-wrap items-center gap-1.5 border-t pt-2">
           <input value={newSetCode} onChange={(e) => setNewSetCode(e.target.value)} placeholder={t('schema.code')}
-            className="w-28 rounded-md border bg-background px-2 py-1 text-[11px]" data-testid="new-vocab-set-code" />
+            className="w-28 rounded-md border bg-input px-2 py-1 text-[11px]" data-testid="new-vocab-set-code" />
           <input value={newSetLabel} onChange={(e) => setNewSetLabel(e.target.value)} placeholder={t('schema.label')}
-            className="w-32 rounded-md border bg-background px-2 py-1 text-[11px]" data-testid="new-vocab-set-label" />
+            className="w-32 rounded-md border bg-input px-2 py-1 text-[11px]" data-testid="new-vocab-set-label" />
           <button type="button" disabled={busy || !newSetCode.trim() || !newSetLabel.trim()}
             onClick={() => { void guard(() => controller.addVocabSet({ code: newSetCode.trim(), label: newSetLabel.trim() })); setNewSetCode(''); setNewSetLabel(''); }}
             className="rounded-md border px-2 py-1 text-[11px] disabled:opacity-50"

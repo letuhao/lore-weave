@@ -22,14 +22,14 @@ export function FactTypeRow({ factType, disabled, onPatch, onDelete }: Props) {
     return (
       <li className="flex flex-wrap items-center gap-1.5 py-1" data-testid={`fact-row-edit-${factType.code}`}>
         <input value={label} onChange={(e) => setLabel(e.target.value)}
-          className="rounded-md border bg-background px-2 py-1 text-[12px]"
+          className="rounded-md border bg-input px-2 py-1 text-[12px]"
           data-testid={`fact-edit-label-${factType.code}`} />
         <input value={description} onChange={(e) => setDescription(e.target.value)}
           placeholder={t('schema.descriptionField')}
-          className="rounded-md border bg-background px-2 py-1 text-[12px]" />
+          className="rounded-md border bg-input px-2 py-1 text-[12px]" />
         <button type="button" disabled={disabled}
           onClick={() => { onPatch({ label: label.trim() || factType.label, description }); setEditing(false); }}
-          className="rounded-md bg-primary px-2.5 py-1 text-[11px] text-white disabled:opacity-50"
+          className="rounded-md bg-primary px-2.5 py-1 text-[11px] text-primary-foreground disabled:opacity-50"
           data-testid={`fact-save-${factType.code}`}>{t('common.save')}</button>
         <button type="button" onClick={() => setEditing(false)}
           className="rounded-md border px-2.5 py-1 text-[11px]">{t('common.cancel')}</button>

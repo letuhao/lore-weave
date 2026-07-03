@@ -46,13 +46,13 @@ export function EdgeTypeRow({ edge, disabled, onPatch, onDelete }: Props) {
             <label className="space-y-0.5">
               <span className="text-muted-foreground">{t('schema.label')}</span>
               <input value={label} onChange={(e) => setLabel(e.target.value)}
-                className="w-full rounded-md border bg-background px-2 py-1"
+                className="w-full rounded-md border bg-input px-2 py-1"
                 data-testid={`edge-edit-label-${edge.code}`} />
             </label>
             <label className="space-y-0.5">
               <span className="text-muted-foreground">{t('schema.cardinality')}</span>
               <select value={cardinality} onChange={(e) => setCardinality(e.target.value as Cardinality)}
-                className="w-full rounded-md border bg-background px-2 py-1"
+                className="w-full rounded-md border bg-input px-2 py-1"
                 data-testid={`edge-edit-cardinality-${edge.code}`}>
                 <option value="single_active">single_active</option>
                 <option value="multi_active">multi_active</option>
@@ -61,12 +61,12 @@ export function EdgeTypeRow({ edge, disabled, onPatch, onDelete }: Props) {
             <label className="space-y-0.5">
               <span className="text-muted-foreground">{t('schema.sourceKinds')}</span>
               <input value={src} onChange={(e) => setSrc(e.target.value)} placeholder="character, organization"
-                className="w-full rounded-md border bg-background px-2 py-1" />
+                className="w-full rounded-md border bg-input px-2 py-1" />
             </label>
             <label className="space-y-0.5">
               <span className="text-muted-foreground">{t('schema.targetKinds')}</span>
               <input value={tgt} onChange={(e) => setTgt(e.target.value)}
-                className="w-full rounded-md border bg-background px-2 py-1" />
+                className="w-full rounded-md border bg-input px-2 py-1" />
             </label>
             <label className="flex items-center gap-1.5 sm:col-span-2">
               <input type="checkbox" checked={temporal} onChange={(e) => setTemporal(e.target.checked)} />
@@ -75,11 +75,11 @@ export function EdgeTypeRow({ edge, disabled, onPatch, onDelete }: Props) {
             <label className="space-y-0.5 sm:col-span-2">
               <span className="text-muted-foreground">{t('schema.descriptionField')}</span>
               <input value={description} onChange={(e) => setDescription(e.target.value)}
-                className="w-full rounded-md border bg-background px-2 py-1" />
+                className="w-full rounded-md border bg-input px-2 py-1" />
             </label>
             <div className="flex gap-2 sm:col-span-2">
               <button type="button" onClick={save} disabled={disabled}
-                className="rounded-md bg-primary px-3 py-1 text-white disabled:opacity-50"
+                className="rounded-md bg-primary px-3 py-1 text-primary-foreground disabled:opacity-50"
                 data-testid={`edge-save-${edge.code}`}>{t('common.save')}</button>
               <button type="button" onClick={() => setEditing(false)}
                 className="rounded-md border px-3 py-1">{t('common.cancel')}</button>

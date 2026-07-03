@@ -47,11 +47,11 @@ export function CreateSchemaEntry({ bookId, templates, createBlank, clone, busy 
           </h4>
           <input value={name} onChange={(e) => setName(e.target.value)}
             placeholder={t('schemaSection.schemaNamePlaceholder')}
-            className="w-full rounded-md border bg-background px-2 py-1 text-[12px]"
+            className="w-full rounded-md border bg-input px-2 py-1 text-[12px]"
             data-testid="blank-schema-name" />
           <button type="button" disabled={busy || !name.trim()}
             onClick={() => { void guard(() => createBlank({ name: name.trim() }), t('schemaSection.created')); setName(''); }}
-            className="w-full rounded-md bg-primary px-3 py-1.5 text-[12px] font-medium text-white disabled:opacity-50"
+            className="w-full rounded-md bg-primary px-3 py-1.5 text-[12px] font-medium text-primary-foreground disabled:opacity-50"
             data-testid="create-blank-schema">{t('schemaSection.createBlankButton')}</button>
         </div>
 
@@ -61,7 +61,7 @@ export function CreateSchemaEntry({ bookId, templates, createBlank, clone, busy 
             <Copy className="h-3.5 w-3.5" /> {t('schemaSection.cloneTemplate')}
           </h4>
           <select value={cloneId} onChange={(e) => setCloneId(e.target.value)}
-            className="w-full rounded-md border bg-background px-2 py-1 text-[12px]"
+            className="w-full rounded-md border bg-input px-2 py-1 text-[12px]"
             data-testid="clone-template-select">
             <option value="">{t('schemaSection.pickTemplate')}</option>
             {templates.map((s) => (

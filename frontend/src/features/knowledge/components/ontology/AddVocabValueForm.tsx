@@ -49,7 +49,7 @@ export function AddVocabValueForm({ vocabSets, onSubmit, isSubmitting }: Props) 
           <select
             value={effectiveSet}
             onChange={(e) => setSelectedSet(e.target.value)}
-            className="w-full rounded-md border px-1 py-1"
+            className="w-full rounded-md border bg-input px-1 py-1"
             data-testid="vocab-set-select"
           >
             {vocabSets.map((s) => (
@@ -62,7 +62,7 @@ export function AddVocabValueForm({ vocabSets, onSubmit, isSubmitting }: Props) 
           <input
             value={code}
             onChange={(e) => setCode(e.target.value)}
-            className="w-full rounded-md border px-2 py-1"
+            className="w-full rounded-md border bg-input px-2 py-1"
             placeholder="alive"
             data-testid="vocab-value-code-input"
           />
@@ -72,7 +72,7 @@ export function AddVocabValueForm({ vocabSets, onSubmit, isSubmitting }: Props) 
           <input
             value={label}
             onChange={(e) => setLabel(e.target.value)}
-            className="w-full rounded-md border px-2 py-1"
+            className="w-full rounded-md border bg-input px-2 py-1"
             data-testid="vocab-value-label-input"
           />
         </label>
@@ -80,7 +80,7 @@ export function AddVocabValueForm({ vocabSets, onSubmit, isSubmitting }: Props) 
       <button
         type="submit"
         disabled={!valid || isSubmitting}
-        className="rounded-md bg-primary px-3 py-1.5 text-[12px] font-medium text-white disabled:opacity-50"
+        className="rounded-md bg-primary px-3 py-1.5 text-[12px] font-medium text-primary-foreground disabled:opacity-50"
         data-testid="vocab-value-submit"
       >
         {t('schema.add')}

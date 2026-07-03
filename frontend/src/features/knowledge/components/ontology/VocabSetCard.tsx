@@ -57,11 +57,11 @@ export function VocabSetCard({
           editValue === v.code ? (
             <li key={v.code} className="flex items-center gap-1">
               <input value={editLabel} onChange={(e) => setEditLabel(e.target.value)}
-                className="rounded-md border bg-background px-1.5 py-0.5 text-[11px]"
+                className="rounded-md border bg-input px-1.5 py-0.5 text-[11px]"
                 data-testid={`vocab-value-edit-${set.code}-${v.code}`} />
               <button type="button" disabled={disabled}
                 onClick={() => { onPatchValue(v.code, { label: editLabel.trim() || v.label }); setEditValue(null); }}
-                className="rounded bg-primary px-1.5 py-0.5 text-[10px] text-white">{t('common.save')}</button>
+                className="rounded bg-primary px-1.5 py-0.5 text-[10px] text-primary-foreground">{t('common.save')}</button>
             </li>
           ) : (
             <li key={v.code} className="inline-flex items-center gap-0.5">
@@ -80,10 +80,10 @@ export function VocabSetCard({
 
       <div className="mt-2 flex flex-wrap items-center gap-1.5">
         <input value={newCode} onChange={(e) => setNewCode(e.target.value)} placeholder={t('schema.code')}
-          className="w-28 rounded-md border bg-background px-2 py-1 text-[11px]"
+          className="w-28 rounded-md border bg-input px-2 py-1 text-[11px]"
           data-testid={`vocab-value-new-code-${set.code}`} />
         <input value={newLabel} onChange={(e) => setNewLabel(e.target.value)} placeholder={t('schema.label')}
-          className="w-32 rounded-md border bg-background px-2 py-1 text-[11px]"
+          className="w-32 rounded-md border bg-input px-2 py-1 text-[11px]"
           data-testid={`vocab-value-new-label-${set.code}`} />
         <button type="button" onClick={addValue} disabled={disabled}
           className="rounded-md border px-2 py-1 text-[11px]"

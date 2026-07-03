@@ -21,7 +21,7 @@ export function NodeKindRow({ nodeKind, disabled, onPatchStrength, onDelete }: P
         value={nodeKind.strength}
         disabled={disabled}
         onChange={(e) => onPatchStrength(e.target.value as Strength)}
-        className="rounded-md border bg-background px-1.5 py-0.5 text-[11px]"
+        className="rounded-md border bg-input px-1.5 py-0.5 text-[11px]"
         data-testid={`node-kind-strength-${nodeKind.kind_code}`}
       >
         <option value="required">required</option>
