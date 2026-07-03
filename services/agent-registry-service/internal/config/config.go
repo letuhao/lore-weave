@@ -38,6 +38,11 @@ type Config struct {
 	// the OAuth redirect_uri (`{base}/v1/agent-registry/oauth/callback`). The AS
 	// redirects the user's browser here after consent. Defaults to the dev BFF.
 	PublicBaseURL string
+
+	// OfficialRegistryURL — base URL of the official MCP Registry (REG-P5-03 ingest).
+	// The admin pull fetches `{base}/v0/servers`. Overridable (AGENT_REGISTRY_OFFICIAL_URL)
+	// so the E2E-P5-C can point it at a stubbed upstream.
+	OfficialRegistryURL string
 }
 
 func Load() (*Config, error) {
@@ -50,6 +55,7 @@ func Load() (*Config, error) {
 		BookServiceInternalURL: os.Getenv("BOOK_SERVICE_INTERNAL_URL"),
 		AllowInternalMcpTargets: os.Getenv("AGENT_REGISTRY_ALLOW_INTERNAL_MCP") == "1",
 		PublicBaseURL:           getEnv("AGENT_REGISTRY_PUBLIC_BASE_URL", "http://localhost:3123"),
+		OfficialRegistryURL:     getEnv("AGENT_REGISTRY_OFFICIAL_URL", "https://registry.modelcontextprotocol.io"),
 	}
 	if c.DatabaseURL == "" {
 		return nil, fmt.Errorf("DATABASE_URL is required")

@@ -215,6 +215,12 @@ func (s *Server) Router() http.Handler {
 		r.Patch("/subagents/{subagent_id}", s.patchSubagent)
 		r.Delete("/subagents/{subagent_id}", s.deleteSubagent)
 
+		// Official MCP Registry ingest — admin-only curation (P5 REG-P5-03).
+		r.Post("/admin/ingest/pull", s.ingestPull)
+		r.Get("/admin/ingest/queue", s.listIngestQueue)
+		r.Post("/admin/ingest/queue/{ingest_id}/approve", s.approveIngest)
+		r.Post("/admin/ingest/queue/{ingest_id}/reject", s.rejectIngest)
+
 		// Proposals (P1 agent self-registration — propose→approve/reject)
 		r.Get("/proposals", s.listProposals)
 		r.Get("/proposals/{proposal_id}", s.getProposal)

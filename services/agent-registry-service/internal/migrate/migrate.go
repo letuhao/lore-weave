@@ -326,6 +326,36 @@ CREATE UNIQUE INDEX IF NOT EXISTS uq_subagents_system ON subagent_defs(name) WHE
 CREATE UNIQUE INDEX IF NOT EXISTS uq_subagents_user ON subagent_defs(owner_user_id, name) WHERE tier = 'user';
 CREATE UNIQUE INDEX IF NOT EXISTS uq_subagents_book ON subagent_defs(book_id, name) WHERE tier = 'book';
 
+-- P5 REG-P5-03: official MCP Registry ingest → admin curation queue. An admin pulls
+-- the public server list into this queue as 'pending'; nothing federates until an
+-- explicit approve creates a System-tier mcp_server_registration that then passes the
+-- SAME P3 supply-chain scan (verification ≠ safety — an official listing is untrusted
+-- until scanned). No credentials are ever ingested.
+CREATE TABLE IF NOT EXISTS registry_ingest_queue (
+  ingest_id      UUID PRIMARY KEY DEFAULT uuidv7(),
+  source         TEXT NOT NULL DEFAULT 'official',      -- future: other catalogs
+  registry_id    TEXT NOT NULL,                          -- the upstream registry's stable server id
+  name           TEXT NOT NULL,                          -- reverse-DNS
+  description    TEXT NOT NULL DEFAULT '',
+  version        TEXT NOT NULL DEFAULT '',
+  endpoint_url   TEXT NOT NULL,                          -- the chosen streamable-http remote
+  raw            JSONB NOT NULL DEFAULT '{}',            -- the full upstream entry (audit)
+  status         TEXT NOT NULL DEFAULT 'pending'
+                 CHECK (status IN ('pending','approved','rejected')),
+  reviewed_by    UUID,
+  approved_server_id UUID REFERENCES mcp_server_registrations(mcp_server_id) ON DELETE SET NULL,
+  reject_reason  TEXT NOT NULL DEFAULT '',
+  first_seen_at  TIMESTAMPTZ NOT NULL DEFAULT now(),
+  updated_at     TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE UNIQUE INDEX IF NOT EXISTS uq_ingest_source_regid ON registry_ingest_queue(source, registry_id);
+CREATE INDEX IF NOT EXISTS idx_ingest_status ON registry_ingest_queue(status, first_seen_at DESC);
+
+-- Endpoint dedup for System-tier servers (REG-P5-03 §7b#3): an ingest approve must
+-- not create a second System row for an endpoint already federated. Partial UNIQUE so
+-- user/book rows (which dedup per-owner via uq_mcp_reg_user/book) are unaffected.
+CREATE UNIQUE INDEX IF NOT EXISTS uq_mcp_reg_system ON mcp_server_registrations(endpoint_url) WHERE tier = 'system';
+
 -- REG-P1-03: seed the 5 hardcoded chat-service skills as System-tier rows so the
 -- FE can list + toggle them and enablement resolves. Their BODIES remain authored
 -- in chat-service skill_registry (single source; DECISION_LOG DL-4) — these rows
