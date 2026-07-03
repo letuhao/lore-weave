@@ -135,3 +135,20 @@ route, and the Go probe's IP-pinned dial (rebind-safe). **Findings fixed (`ba576
   CALLED through the gateway's pinned egress dispatcher, real content returned** (external+no-auth ⇒ no internal token
   sent) → cross-tenant isolation. Only OAuth-against-a-real-server is untaken (DeepWiki is no-auth; the OAuth loop is
   live-proven vs a conformant fake AS in M4). P3 defers: all clear.
+
+---
+
+## DL-9 · 2026-07-03 · REG-P4-01 (command expansion seam)
+- Context: a `/name args` command must expand so BOTH the model and the transcript see the template. I first wired it inside `stream_service.stream_response` (before parse_inline_effort) — but the model still saw the raw `/echotest` and complained about an unknown tool.
+- Root cause: the messages ROUTER persists the user message (`body.content`) BEFORE calling `stream_response`, and the prompt is built from that history row. Mutating `user_message_content` inside `stream_response` never reached the model.
+- Chosen: **expand in the router (`messages.py`) BEFORE the INSERT + before `stream_response`** — expand-in-place (persist + send the same expanded text). Also passes the session's `project_id` so book-tier commands resolve.
+- Rationale: the only seam where the expansion reaches both the persisted history AND the model. Caught by a live turn (the persisted user row + the model complaint), not by units — the exact `new-cross-service-contract-needs-consumer-live-smoke` value.
+- Rework cost if overturned: low — the client + pure `expand_command` are seam-agnostic; move the 3-line call.
+
+## /review-impl round 5 — 2026-07-03 (adversarial pass on P4 — commands + hooks)
+One reviewer. **Verified correct:** tenancy on every command/hook route + resolver (anti-oracle 404), reserved-name shadowing blocked at create+patch+the Python guard, hook action validation at create AND patch, higher-tier shadow-by-name resolution, `_substitute` mapping (guarded indices, no ReDoS), expansion placement (before persist+stream), pre_turn injection placement (guarded, before the last user msg), and the deny short-circuit's loop accounting (well-formed tool-exchange atom, untouched usage/write-budget). **Fixed:**
+- **HIGH — `require_approval` pre_tool_call hook was a SILENT NO-OP:** the loop only handled `deny`; `require_approval` fell through and the tool executed with no gate (exactly the silent-no-op-of-a-guardrail class). → WIRED to the same `tool_approval` suspend machinery as the C2 write-mode gate.
+- **MED — `annotate` / `post_tool_call` / `post_turn` were advertised but unwired** (the engine never invoked `collect_annotations`/post_turn). → agent-registry now accepts ONLY the WIRED (event, action) matrix (pre_tool_call→deny|require_approval, pre_turn→inject_text) at create AND patch; the FE builder offers only those. Storage CHECK stays forward-compatible; the API is the gate. No advertised no-ops.
+- **LOW — no hook creation quota:** added `quotaHooks` (20/user), mirroring commands.
+- **Accepted+documented:** book-tier creates bypass the per-user quota (grant-gated; matches the skills/mcp pattern); a denied tool can spin the loop with an adversarial model (pre-existing class shared by `find_tools`/planner-cap — an absolute iteration cap is a separate cross-cutting change).
+- **Deferred (gate #1):** `D-REG-P4-SLASH-AUTOCOMPLETE` — the in-chat `/` autocomplete touches the chat-input component under a concurrent track's edits; the builder is the primary authoring surface.

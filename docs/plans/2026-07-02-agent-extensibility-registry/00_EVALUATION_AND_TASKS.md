@@ -297,13 +297,13 @@ The PO has authorized a **continuous, no-human-in-loop implementation**: the hum
 - [x] **E2E slice green:** p3_m1_ssrf / p3_m2_scan / p3_m4_oauth / p2_overlay (dispatch) / p3_m5_browser — all live-pass
 - [x] **GUI checklist:** wizard/detail/list elements built (§3/§8); live browser render confirms the effect
 
-### P4 — Commands + hooks
-- [ ] REG-P4-01 command CRUD + expansion
-- [ ] REG-P4-02 autocomplete + builder
-- [ ] REG-P4-03 hook engine (deny/approve/inject/annotate)
-- [ ] REG-P4-04 hook builder UI
-- [ ] **E2E slice green: E2E-P4-A, B**
-- [ ] **GUI checklist ticked: §5**
+### P4 — Commands + hooks ✅ COMPLETE 2026-07-03
+- [x] REG-P4-01 command CRUD + expansion (registry CRUD + /internal/commands; chat-service expand-in-place; live E2E: /echotest → expanded → marker echoed)
+- [x] REG-P4-02 builder (Commands & Hooks builder in both shells, browser-proven). Autocomplete → `D-REG-P4-SLASH-AUTOCOMPLETE` (gate #1, chat-input collision)
+- [x] REG-P4-03 hook engine (deny short-circuit + require_approval→suspend + pre_turn inject_text live-proven; annotate/post_* gated at the API until wired — /review-impl fix)
+- [x] REG-P4-04 hook builder UI (event→action→match/text form, wired combos only)
+- [x] **E2E slice green:** p4_commands_hooks (backend+gating) · p4_command_expansion_e2e · p4_hook_engine_e2e · p4_fe_browser_smoke
+- [x] **GUI:** builder elements built + browser-render-proven (§5)
 
 ### P5 — Subagents + bundles
 - [ ] REG-P5-01 subagent defs + scoped runtime

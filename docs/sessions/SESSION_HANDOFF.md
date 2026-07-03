@@ -144,8 +144,25 @@
 > + no-auth ⇒ `{}` headers; the internal token is NOT sent) → cross-tenant isolation confirmed (user B saw nothing). The
 > only untaken variant is OAuth against a real server (DeepWiki is no-auth) — but the OAuth loop is live-proven vs a
 > conformant fake AS (`p3_m4_oauth_smoke`), so the full external path is now end-to-end proven on a real server.
-> **NEXT: P4 (slash commands + declarative hooks) → P5 (subagents + bundles).**
-> **Decisions:** `DECISION_LOG.md` (DL-1..8 + review rounds). **P3 defers: all clear.**
+> **P4 COMPLETE ✅ (slash commands + declarative hooks, 5 commits + review).** M1 registry backend
+> (`slash_commands` + `hooks` tables + CRUD + `/internal/commands`+`/internal/hooks` resolvers; reserved-built-in
+> rejection; DECLARATIVE-only hook actions). M2 chat-service **command expansion** — `/name args` expands in the messages
+> router BEFORE persist+stream (so transcript AND model agree; caught live: expanding inside stream_service missed the
+> already-persisted history row); pure `expand_command` ({{args}}/positional/named). M3 chat-service **hook engine** —
+> pre_turn inject_text folded into the prompt; pre_tool_call **deny** short-circuits the tool at the seam;
+> **require_approval** routes to the C2 approval suspend. M4 FE **Commands & Hooks builder** in both shells (studio panel
+> tab + /extensions), offering only the wired (event,action) combos. **`/review-impl` DONE** (1 reviewer): tenancy /
+> reserved-shadow / action-validation(create+patch) / substitution(no ReDoS) / expansion-placement / deny-loop-accounting
+> all VERIFIED correct; **HIGH** require_approval was a silent no-op → WIRED; **MED** annotate/post_tool_call/post_turn
+> advertised-but-unwired → gated to the wired matrix at the API (create+patch) + FE; +hook quota. **Live-proven:**
+> command expansion (`p4_command_expansion_e2e` — real Qwen turn: /echotest → EXPANDED user msg → assistant echoed the
+> marker), hook inject_text (`p4_hook_engine_e2e` — injected secret ZORP-777 retrieved by the model), backend CRUD +
+> wired-combo gating (`p4_commands_hooks_smoke`), FE builder (`p4_fe_browser_smoke` — create-via-builder round-trip).
+> Suites: agent-registry go green; chat 14 P4-unit; FE extensions+studio green; tsc clean.
+> **Deferred (gate #1, out-of-scope collision):** `D-REG-P4-SLASH-AUTOCOMPLETE` — the in-chat `/` autocomplete
+> (REG-P4-02) touches the chat-input component under concurrent-track edits; the builder is the primary authoring surface.
+> **NEXT: P5 (subagents + plugin bundling).**
+> **Decisions:** `DECISION_LOG.md` (DL-1..8 + review rounds). **P3 + P4 defers: P4 has one (autocomplete); P3 all clear.**
 >
 > **▶ CHAT QUALITY WAVE — W0 + W1 SHIPPED + LIVE-SMOKED 2026-07-03 (parallel sub-agent build, disjoint files,
 > combined verify).** Trigger: user's 8-item quality pass (plan + 5-investigation evidence base incl. a LIVE MCP
