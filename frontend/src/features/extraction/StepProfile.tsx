@@ -174,7 +174,10 @@ export function StepProfile({
       </div>
 
       {/* Reasoning effort — the shared AI-task EffortSelect (was a thinking on/off
-          checkbox). Default 'off' (extraction is structured JSON). */}
+          checkbox). Default 'off' (extraction is structured JSON). Note: the
+          extraction BE (clamp_effort_to_grant) maps BOTH 'off' AND 'auto' → 'none'
+          (the worker has no adaptive path), so on this surface 'auto' behaves as off;
+          low/medium/high are the meaningful graded settings. */}
       <div className="flex items-start gap-2 rounded-md border bg-card/30 px-3 py-2">
         <span className="min-w-0">
           <span className="text-xs font-medium block">{t('profile.thinkingEnabled')}</span>

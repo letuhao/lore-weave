@@ -91,8 +91,9 @@ export function ChatInputBar({
   const [showTemplates, setShowTemplates] = useState(false);
   const [templateFilter, setTemplateFilter] = useState('');
   const [attachPickerOpen, setAttachPickerOpen] = useState(false);
-  // W4 — which of the two composer dropdowns (effort / mode) is open.
-  const [openMenu, setOpenMenu] = useState<'effort' | 'mode' | null>(null);
+  // Which composer dropdown is open (the effort dropdown moved to the shared
+  // EffortSelect, which self-manages; only the mode dropdown uses this now).
+  const [openMenu, setOpenMenu] = useState<'mode' | null>(null);
   const menusRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
