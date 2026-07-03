@@ -128,9 +128,9 @@ func (s *Server) countProposalsIfExists(r *http.Request, uid uuid.UUID) int {
 // introspection.
 func tableExists(name string) bool {
 	switch name {
-	// P0 + P1 tables; later phases flip on their own as migrations land.
+	// P0/P1/P2 tables; later phases flip on their own as migrations land.
 	case "plugins", "plugin_enablement", "registry_audit", "registry_meta",
-		"skills", "skill_proposals":
+		"skills", "skill_proposals", "mcp_server_registrations", "mcp_server_enablement":
 		return true
 	}
 	return false

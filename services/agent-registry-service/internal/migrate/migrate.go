@@ -163,6 +163,44 @@ CREATE TABLE IF NOT EXISTS skill_enablement (
   PRIMARY KEY (skill_id, owner_user_id)
 );
 
+-- P2: user/book-registered MCP servers (the per-user federation overlay source).
+-- P2 carries internal-only fields; P3 adds auth/secret/oauth/egress/scan columns
+-- for arbitrary external servers. A registration is a pointer to an MCP endpoint
+-- the user wants federated into THEIR catalog, namespaced by tool_name_prefix so
+-- it can never shadow a System tool.
+CREATE TABLE IF NOT EXISTS mcp_server_registrations (
+  mcp_server_id UUID PRIMARY KEY DEFAULT uuidv7(),
+  plugin_id UUID REFERENCES plugins(plugin_id) ON DELETE CASCADE,
+  tier TEXT NOT NULL CHECK (tier IN ('system','user','book')),
+  owner_user_id UUID,
+  book_id UUID,
+  display_name TEXT NOT NULL DEFAULT '',
+  endpoint_url TEXT NOT NULL,
+  transport TEXT NOT NULL DEFAULT 'streamable_http' CHECK (transport IN ('streamable_http')),
+  tool_name_prefix TEXT NOT NULL,
+  status TEXT NOT NULL DEFAULT 'active' CHECK (status IN ('active','pending','suspended','error')),
+  last_health JSONB NOT NULL DEFAULT '{}',
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  CONSTRAINT mcp_reg_scope_key CHECK (
+    (tier = 'system' AND owner_user_id IS NULL AND book_id IS NULL) OR
+    (tier = 'user'   AND owner_user_id IS NOT NULL AND book_id IS NULL) OR
+    (tier = 'book'   AND book_id IS NOT NULL)
+  )
+);
+CREATE INDEX IF NOT EXISTS idx_mcp_reg_owner ON mcp_server_registrations(owner_user_id);
+CREATE INDEX IF NOT EXISTS idx_mcp_reg_book ON mcp_server_registrations(book_id);
+CREATE UNIQUE INDEX IF NOT EXISTS uq_mcp_reg_user ON mcp_server_registrations(owner_user_id, endpoint_url) WHERE tier = 'user';
+CREATE UNIQUE INDEX IF NOT EXISTS uq_mcp_reg_book ON mcp_server_registrations(book_id, endpoint_url) WHERE tier = 'book';
+
+CREATE TABLE IF NOT EXISTS mcp_server_enablement (
+  mcp_server_id UUID NOT NULL REFERENCES mcp_server_registrations(mcp_server_id) ON DELETE CASCADE,
+  owner_user_id UUID NOT NULL,
+  enabled BOOLEAN NOT NULL DEFAULT true,
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  PRIMARY KEY (mcp_server_id, owner_user_id)
+);
+
 -- REG-P1-03: seed the 5 hardcoded chat-service skills as System-tier rows so the
 -- FE can list + toggle them and enablement resolves. Their BODIES remain authored
 -- in chat-service skill_registry (single source; DECISION_LOG DL-4) — these rows

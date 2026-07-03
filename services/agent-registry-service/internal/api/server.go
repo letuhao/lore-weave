@@ -183,6 +183,12 @@ func (s *Server) Router() http.Handler {
 		r.Get("/skills/{skill_id}/revisions", s.listSkillRevisions)
 		r.Put("/skills/{skill_id}/enablement", s.setSkillEnabled)
 
+		// MCP server registrations (P2 — internal-only; external+security = P3)
+		r.Get("/mcp-servers", s.listMcpServers)
+		r.Post("/mcp-servers", s.createMcpServer)
+		r.Delete("/mcp-servers/{mcp_server_id}", s.deleteMcpServer)
+		r.Put("/mcp-servers/{mcp_server_id}/enablement", s.setMcpEnabled)
+
 		// Proposals (P1 agent self-registration — propose→approve/reject)
 		r.Get("/proposals", s.listProposals)
 		r.Get("/proposals/{proposal_id}", s.getProposal)
@@ -203,6 +209,7 @@ func (s *Server) Router() http.Handler {
 		r.Use(s.requireInternalToken)
 		r.Get("/effective-catalog", s.effectiveCatalog)
 		r.Get("/skills", s.internalSkills)
+		r.Get("/effective-mcp-servers", s.internalEffectiveMcpServers) // P2 federation overlay source
 	})
 
 	return r
