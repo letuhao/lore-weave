@@ -22,7 +22,27 @@
 > Entity-of-kind + live RELATES_TO-of-predicate, subject-scoped) + `GET /projects/{id}/schema/usage`; FE
 > SchemaWorkbench `getUsage` → confirm dialog only when count>0 (else direct delete; never blocks —
 > project DELETE is soft). 3387 unit + 760 FE + 0 tsc; live-smoke: delete edge → usage 200 (count 0) →
-> DELETE 204, no confirm. **⇒ TRACK A COMPLETE (A1-A4).** **TRACK B (agent multi-KG) — not started:** B1(1) world-rollup
+> DELETE 204, no confirm. **⇒ TRACK A COMPLETE (A1-A4).**
+>
+> **▶ KG SCHEMA EDITOR MODERNIZATION — COMPLETE (M1–M3b), 2026-07-03.** User: the Track-A editor felt
+> like "mấy cái text box thông thường". Spec [`2026-07-03-kg-schema-editor-modernization`](../specs/2026-07-03-kg-schema-editor-modernization.md)
+> (`7f923afe5`), 4 milestones ALL shipped + live-proven: **M1 `172e576fc`** typed KindMultiSelect
+> pickers (source/target from real kinds, no typos) + inline "· used by N" usage badges (one
+> `GET /schema/usage-summary`) + empty-state coaching — live: picker offered real kinds, "character → —"
+> persist. **M3a `7c9361569`** infer-from-graph: `GET /schema/observed` (distinct Entity.kind +
+> RELATES_TO.predicate) → InferFromGraphPanel promotes missing components (kinds first, then edges).
+> **M3b `b73f04614`** AI generate: single-shot LLM pipeline (exempt MCP-first like wiki-gen — NOT
+> multi-step agentic) `POST /schema/propose` (BYOK model_ref, JSON parse+salvage) + GenerateSchemaDialog
+> (premise+ModelPicker → review checklist → adopt) — **LIVE LLM-PROVEN via Qwen2.5 7B**: 5 kinds/5
+> edges/2 facts, correct source→target wiring (KILL elder→master, SEEK_REVENGE character→elder).
+> **M2 `a978e0060`** visual type-graph canvas (reuses composition GraphCanvas SVG): kinds=boxes,
+> edge-types=arrows; **click-to-connect** (⇢ handle → target node → inline new-edge popover), Canvas/List
+> toggle, zoom/pan/drag-arrange — live: character⇢sect → MENTOR_OF arrow renders + persists. Also fixed
+> the KG-schema GUI **theme** (`d9bcfab09`): inputs `bg-input`, primary buttons `text-primary-foreground`.
+> VERIFY at close: 766 knowledge FE + ~10 schema_usage/9 schema_propose BE unit + 0 tsc. **DEFERRED
+> (thin follow-ups):** an agent-facing `kg_schema_propose` MCP tool wrapping the M3b engine; M2 detailed
+> attribute-editing on the canvas (today edits stay in List); canvas node-position persistence
+> (per-device localStorage). **TRACK B (agent multi-KG) — not started:** B1(1) world-rollup
 > as an MCP tool (`resolve_world_project_ids`+`get_world_subgraph` exist, read-only/FE-only today; take
 > `world_id` as EXPLICIT arg — gateway drops X-Project-Id; owner-only, report partial not silent-drop) →
 > B1(2) multi-project context (cross-project ranker+dedup, real work) → B1(3) arbitrary project set.
