@@ -1,0 +1,419 @@
+<!DOCTYPE html>
+<html lang="vi" class="dark">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Context Compiler — Trace Inspector · LoreWeave</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Lora:ital,wght@0,500;0,600;1,400&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --background:#181412; --background-alt:#1e1a17; --foreground:#f5efe8;
+    --card:#1e1a17; --card-hover:#272220; --border:#332d28; --border-hover:#4a423b;
+    --input:#242019; --ring:#d4952a;
+    --primary:#e8a832; --primary-fg:#141010; --primary-muted:#3d2e12;
+    --secondary:#282320; --muted:#282320; --muted-fg:#9e9488;
+    --accent:#3da692; --accent-muted:#1a2e2a; --accent-fg:#c8ede6;
+    --destructive:#dc4e4e; --success:#3dba6a; --warning:#e8a832; --info:#5496e8;
+    /* category hues (token contributors) */
+    --c-system:#7d746a; --c-blocks:#3da692; --c-skills:#5496e8; --c-grounding:#e8a832;
+    --c-history:#8a7fb0; --c-summary:#b58fd6; --c-tools:#4fb3a0; --c-results:#d98a4e;
+    --c-chapter:#d46a9b; --c-reasoning:#b0685f;
+  }
+  *{border-color:var(--border);box-sizing:border-box}
+  body{font-family:'Inter',system-ui,sans-serif;background:var(--background);color:var(--foreground);-webkit-font-smoothing:antialiased;margin:0}
+  .font-serif{font-family:'Lora',Georgia,serif}
+  code,.mono{font-family:'JetBrains Mono',monospace}
+  ::selection{background:rgba(232,168,50,.25)}
+  ::-webkit-scrollbar{width:7px;height:7px}
+  ::-webkit-scrollbar-track{background:transparent}
+  ::-webkit-scrollbar-thumb{background:var(--border-hover);border-radius:4px}
+  .card{background:var(--card);border:1px solid var(--border);border-radius:12px}
+  .chip{display:inline-flex;align-items:center;gap:5px;font-size:11px;font-weight:600;padding:2px 8px;border-radius:999px;line-height:1.4;white-space:nowrap}
+  .tier-tag{font-family:'JetBrains Mono',monospace;font-size:10px;font-weight:600;padding:1px 5px;border-radius:5px;background:var(--secondary);color:var(--muted-fg);border:1px solid var(--border)}
+  .turn-item{cursor:pointer;transition:background .12s,border-color .12s,transform .12s}
+  .turn-item:hover{background:var(--card-hover)}
+  .turn-item.active{border-color:var(--accent);background:linear-gradient(90deg,var(--accent-muted),transparent)}
+  .seg{transition:opacity .15s,filter .15s;cursor:default}
+  .seg:hover{filter:brightness(1.25)}
+  .seg.dim{opacity:.28}
+  .fbtn{font-size:11px;font-weight:600;padding:3px 10px;border-radius:999px;border:1px solid var(--border);color:var(--muted-fg);background:transparent;cursor:pointer;transition:.12s;white-space:nowrap}
+  .fbtn:hover{border-color:var(--border-hover);color:var(--foreground)}
+  .fbtn.on{background:var(--primary-muted);border-color:var(--primary);color:var(--primary)}
+  .grow-in{animation:grow .5s cubic-bezier(.2,.8,.2,1) both}
+  @keyframes grow{from{transform:scaleX(0);opacity:0}to{transform:scaleX(1);opacity:1}}
+  .fade-in{animation:fade .35s ease both}
+  @keyframes fade{from{opacity:0;transform:translateY(4px)}to{opacity:1;transform:none}}
+  .delta-bar{height:6px;border-radius:3px;transform-origin:left}
+  .tooltip{position:fixed;pointer-events:none;z-index:50;background:#0f0c0b;border:1px solid var(--border-hover);border-radius:8px;padding:8px 10px;font-size:11px;box-shadow:0 8px 30px rgba(0,0,0,.5);opacity:0;transition:opacity .1s}
+  kbd{font-family:'JetBrains Mono',monospace;font-size:10px;background:var(--secondary);border:1px solid var(--border);border-bottom-width:2px;border-radius:4px;padding:1px 5px}
+  .glow{box-shadow:0 0 40px rgba(61,166,146,.10)}
+</style>
+</head>
+<body>
+<div id="tooltip" class="tooltip"></div>
+
+<!-- ── Top bar ── -->
+<header class="flex items-center gap-4 px-5 h-14 border-b" style="border-color:var(--border);background:var(--background-alt)">
+  <div class="flex items-center gap-2.5">
+    <div class="w-7 h-7 rounded-lg flex items-center justify-center" style="background:var(--accent-muted);border:1px solid var(--accent)">
+      <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="var(--accent)" stroke-width="2"><path d="M4 6h16M4 12h10M4 18h13"/></svg>
+    </div>
+    <div>
+      <div class="text-sm font-semibold leading-tight">Context Compiler <span class="text-muted" style="color:var(--muted-fg)">· Trace Inspector</span></div>
+      <div class="text-[10px] mono" style="color:var(--muted-fg)">planner → compiler · per-turn context build</div>
+    </div>
+  </div>
+  <div class="ml-2 chip mono" style="background:var(--secondary);color:var(--muted-fg)">
+    <span style="color:var(--accent)">●</span> session <span class="text-fg" style="color:var(--foreground)">019f1783…6539b7c</span>
+  </div>
+  <div class="ml-auto flex items-center gap-5 text-right">
+    <div><div class="text-[10px] uppercase tracking-wide" style="color:var(--muted-fg)">avg giảm</div><div class="text-base font-bold mono" style="color:var(--success)" id="kpi-reduction">—</div></div>
+    <div><div class="text-[10px] uppercase tracking-wide" style="color:var(--muted-fg)">token đã tiết kiệm</div><div class="text-base font-bold mono" style="color:var(--accent)" id="kpi-saved">—</div></div>
+    <div><div class="text-[10px] uppercase tracking-wide" style="color:var(--muted-fg)">model window</div><div class="text-base font-bold mono">131,072</div></div>
+  </div>
+</header>
+
+<div class="flex" style="height:calc(100vh - 3.5rem)">
+
+  <!-- ── Left: turn list ── -->
+  <aside class="w-[340px] shrink-0 border-r flex flex-col" style="border-color:var(--border);background:var(--background-alt)">
+    <div class="p-3 border-b" style="border-color:var(--border)">
+      <div class="relative mb-2.5">
+        <input id="search" placeholder="lọc theo nội dung turn / intent…" class="w-full text-xs rounded-lg pl-8 pr-3 py-2 outline-none" style="background:var(--input);border:1px solid var(--border);color:var(--foreground)">
+        <svg class="absolute left-2.5 top-2.5" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="var(--muted-fg)" stroke-width="2"><circle cx="11" cy="11" r="7"/><path d="m21 21-4-4"/></svg>
+      </div>
+      <div class="flex flex-wrap gap-1.5" id="status-filters">
+        <button class="fbtn on" data-f="all">tất cả</button>
+        <button class="fbtn" data-f="gated">gated</button>
+        <button class="fbtn" data-f="compacted">compacted</button>
+        <button class="fbtn" data-f="overflow">overflow</button>
+        <button class="fbtn" data-f="elastic">elastic</button>
+      </div>
+    </div>
+    <div id="turn-list" class="flex-1 overflow-y-auto p-2 space-y-1.5"></div>
+    <div class="flex items-center justify-between px-3 py-2 border-t text-xs" style="border-color:var(--border);color:var(--muted-fg)">
+      <button id="prev" class="fbtn">‹ trước</button>
+      <span class="mono" id="page-label">—</span>
+      <button id="next" class="fbtn">sau ›</button>
+    </div>
+  </aside>
+
+  <!-- ── Main: inspector ── -->
+  <main class="flex-1 overflow-y-auto" id="inspector"></main>
+</div>
+
+<script>
+// ─────────────────────────────────────────────────────────────────────────────
+//  MOCK TRACE DATA — one entry per chat turn (the "context build").
+//  delta<0 = tokens SAVED (dropped/gated/compacted) · delta>0 = tokens INCLUDED
+// ─────────────────────────────────────────────────────────────────────────────
+const WINDOW = 131072;
+const CATS = {
+  system:{label:'system / persona',v:'--c-system'}, blocks:{label:'core blocks (story_state)',v:'--c-blocks'},
+  skills:{label:'skills',v:'--c-skills'}, grounding:{label:'grounding (RAG)',v:'--c-grounding'},
+  history:{label:'history',v:'--c-history'}, summary:{label:'rolling summary',v:'--c-summary'},
+  tools:{label:'tool schemas',v:'--c-tools'}, results:{label:'tool results',v:'--c-results'},
+  chapter:{label:'chapter body (whitelisted)',v:'--c-chapter'}, reasoning:{label:'reasoning',v:'--c-reasoning'}
+};
+const STATUS = {
+  gated:{t:'grounding gated',c:'--accent'}, included:{t:'grounding included',c:'--primary'},
+  compacted:{t:'compacted',c:'--c-summary'}, overflow:{t:'overflow rejected',c:'--destructive'},
+  elastic:{t:'elastic budget',c:'--warning'}, continuity:{t:'continuity kept',c:'--accent'},
+  collapsed:{t:'dup collapsed',c:'--info'}, wire:{t:'wire hygiene',c:'--success'}
+};
+const TURNS = [
+  {id:'T-108',user:'Tra cứu quan hệ giữa Lâm Uyển, Lâm Tử Hàn và Cửu U Ma Cơ',intent:'multi-lookup',entity:'Lâm Uyển · Lâm Tử Hàn',mode:'prepend',model:'gemma-4 26B',target:32000,
+    raw:47600,compiled:21300,status:['collapsed','wire'],
+    alloc:{system:1200,blocks:1900,skills:3100,grounding:3200,history:4100,tools:4200,results:3000,reasoning:600},
+    trace:[
+      {ph:'planner',tier:'T5',cat:'grounding',act:'entity-presence HIT [Lâm Uyển, Lâm Tử Hàn] → grounding included (capped)',d:+3200},
+      {ph:'compiler',tier:'T6',cat:'results',act:'dup read chapter_3 ×3 → collapsed to 1 (reversible, raw kept in PG)',d:-14800},
+      {ph:'compiler',tier:'T6',cat:'results',act:'atom integrity verified — tool_call ↔ role:tool pairs intact',d:0},
+      {ph:'compiler',tier:'T0',cat:'results',act:'serialize ensure_ascii=false (VI content)',d:-8300},
+    ]},
+  {id:'T-107',user:'Làm nó tối hơn nữa',intent:'tone-edit',entity:'— (đại từ "nó")',mode:'prepend',model:'gemma-4 26B',target:32000,
+    raw:34000,compiled:14200,status:['gated','continuity'],
+    alloc:{system:1200,blocks:3400,skills:3100,history:3800,tools:2200,reasoning:500},
+    trace:[
+      {ph:'planner',tier:'T5',cat:'grounding',act:'intent=tone-edit · entity-presence NONE → grounding GATED',d:-11800},
+      {ph:'planner',tier:'T4',cat:'blocks',act:'story_state projected (carries Lâm Uyển + Lâm Tử Hàn lore từ T-104) — CONTINUITY: block sống sót qua gate',d:+3400},
+      {ph:'compiler',tier:'T4',cat:'blocks',act:'block từ cache (không refresh — không có trigger)',d:0},
+      {ph:'compiler',tier:'T0',cat:'history',act:'serialize ensure_ascii=false',d:-4600},
+    ]},
+  {id:'T-106',user:'Đọc toàn văn Chương 8 cho tôi',intent:'read-full-chapter',entity:'Chương 8',mode:'prepend',model:'gemma-4 26B',target:32000,
+    raw:61200,compiled:9200,status:['overflow','wire'],
+    alloc:{system:1200,blocks:1900,skills:3100,history:900,tools:1800,results:300},
+    trace:[
+      {ph:'compiler',tier:'T1',cat:'results',act:'get_chapter(detail=full) trả 48.2K tok > item-cap 8K → REJECTED',d:0,err:true},
+      {ph:'compiler',tier:'T1',cat:'results',act:'self-correcting error → model: "dùng detail=summary hoặc block-range" (không im lặng)',d:0,err:true},
+      {ph:'planner',tier:'T5',cat:'grounding',act:'entity-presence NONE → grounding gated',d:-6400},
+    ]},
+  {id:'T-105',user:'Viết tiếp đoạn hội thoại giữa hai người',intent:'cowrite-continue',entity:'Lâm Uyển · Diệp Phàm',mode:'prepend',model:'gemma-4 26B',target:32000,
+    raw:39800,compiled:30100,status:['compacted','included'],
+    alloc:{system:1200,blocks:1900,skills:3100,grounding:5200,history:6800,summary:1400,tools:3200,results:4900,reasoning:2400},
+    trace:[
+      {ph:'compiler',tier:'T2',cat:'history',act:'pre-send 39.8K > target 32K → kích compaction chủ động',d:0},
+      {ph:'compiler',tier:'T6',cat:'results',act:'clear 2 tool-result cũ đã bị thay thế (atom-safe)',d:-5100},
+      {ph:'compiler',tier:'T6',cat:'summary',act:'summarize 14 turn giữa → rolling summary (fact-preserving; raw còn ở PG, conversation_search được)',d:-9800},
+      {ph:'compiler',tier:'T6',cat:'summary',act:'materialize summary head',d:+1400},
+      {ph:'compiler',tier:'T4',cat:'blocks',act:'giữ task-anchor + story_state (không bao giờ truncate)',d:0},
+    ]},
+  {id:'T-104',user:'Viết lại Chương 3 với tông tối tăm, tàn khốc hơn',intent:'chapter-rewrite',entity:'Chương 3 · Lâm Uyển',mode:'prepend',model:'gemma-4 26B',target:32000,elastic:true,
+    raw:58000,compiled:31200,status:['elastic','included'],
+    alloc:{system:1200,blocks:1900,skills:3100,grounding:4200,history:2100,chapter:12400,tools:3200,results:500,reasoning:2600},
+    trace:[
+      {ph:'planner',tier:'T5',cat:'chapter',act:'task_weight=HIGH (chapter-rewrite) → allowance floor→surface_max (32K)',d:0},
+      {ph:'planner',tier:'T5',cat:'chapter',act:'chapter body WHITELISTED as required contributor (không phải nạn nhân compaction)',d:+12400},
+      {ph:'planner',tier:'T5',cat:'grounding',act:'entity-presence HIT [Lâm Uyển] → scene lore included (capped)',d:+4200},
+      {ph:'compiler',tier:'T0',cat:'chapter',act:'serialize ensure_ascii=false',d:-7800},
+      {ph:'compiler',tier:'T2',cat:'system',act:'31.2K / 32K target → OK, không compaction',d:0},
+    ]},
+  {id:'T-103',user:'Lâm Uyển có những kẻ thù nào?',intent:'lore-query',entity:'Lâm Uyển',mode:'prepend',model:'gemma-4 26B',target:32000,
+    raw:41000,compiled:22600,status:['included','wire'],
+    alloc:{system:1200,blocks:1900,skills:3100,grounding:11400,history:1500,tools:3200,results:300,reasoning:0},
+    trace:[
+      {ph:'planner',tier:'T5',cat:'grounding',act:'entity-presence HIT [Lâm Uyển] → grounding INCLUDED (capped tới allowance)',d:+11400},
+      {ph:'planner',tier:'T5',cat:'grounding',act:'retrieval=prepend (model yếu — không phụ thuộc model tự pull)',d:0},
+      {ph:'compiler',tier:'T4',cat:'blocks',act:'story_state refreshed (trigger=lore-gate)',d:+1900},
+      {ph:'compiler',tier:'T1',cat:'results',act:'glossary_search detail=summary → refs (raw 4.8K)',d:-4200},
+      {ph:'compiler',tier:'T0',cat:'grounding',act:'serialize ensure_ascii=false',d:-5800},
+    ]},
+  {id:'T-102',user:'Đổi status của cảnh đó thành "drafting"',intent:'outline-edit',entity:'— (không có entity trong câu)',mode:'prepend',model:'gemma-4 26B',target:32000,hero:true,
+    raw:146200,compiled:18400,status:['gated','wire'],
+    alloc:{system:1200,blocks:1900,skills:3100,history:900,tools:6400,results:2100,reasoning:2800},
+    trace:[
+      {ph:'planner',tier:'T5',cat:'grounding',act:'intent=outline-edit · entity-presence NONE → grounding GATED (5 passage + 12 entity không cần)',d:-12400},
+      {ph:'planner',tier:'T5',cat:'skills',act:'skills theo SURFACE=[composition] · drop glossary + knowledge (cache-stable prefix)',d:-4800},
+      {ph:'planner',tier:'T3',cat:'tools',act:'seed = core + composition (find_tools union giữ nguyên, không post-filter)',d:0},
+      {ph:'compiler',tier:'T1',cat:'results',act:'composition_list_outline detail=summary → {id,title,status,version} (raw 41.2K full dump)',d:-39100},
+      {ph:'compiler',tier:'T1',cat:'results',act:'materialize summary refs',d:+2100},
+      {ph:'compiler',tier:'T0',cat:'results',act:'serialize ensure_ascii=false (Lâm Uyển ≠ L\\u00e2m Uy\\u1ec3n)',d:-16800},
+      {ph:'compiler',tier:'T4',cat:'blocks',act:'story_state từ cache',d:+1900},
+      {ph:'compiler',tier:'T2',cat:'system',act:'18.4K / 32K target → OK, dư budget',d:0},
+    ]},
+  {id:'T-101',user:'Cập nhật synopsis cảnh truy sát trong đêm',intent:'outline-edit',entity:'cảnh truy sát',mode:'prepend',model:'gemma-4 26B',target:32000,
+    raw:44000,compiled:16800,status:['gated','wire'],
+    alloc:{system:1200,blocks:1900,skills:3100,history:900,tools:6300,results:1500,reasoning:1900},
+    trace:[
+      {ph:'planner',tier:'T5',cat:'grounding',act:'entity-presence NONE (chỉ tên cảnh) → grounding gated',d:-10200},
+      {ph:'compiler',tier:'T1',cat:'results',act:'composition_get_node(detail=summary) + version',d:-3800},
+      {ph:'compiler',tier:'T0',cat:'results',act:'serialize ensure_ascii=false',d:-9100},
+    ]},
+];
+const cssv=v=>getComputedStyle(document.documentElement).getPropertyValue(v).trim();
+const fmt=n=>n.toLocaleString('en-US');
+const k=n=>n>=1000?(n/1000).toFixed(n>=10000?0:1)+'K':n;
+
+// ── state ──
+let sel='T-102', filter='all', query='', page=0, traceFilter='all';
+const PER=6;
+
+// ── KPIs ──
+(function(){
+  let saved=0, red=0; TURNS.forEach(t=>{saved+=t.raw-t.compiled; red+=1-t.compiled/t.raw});
+  document.getElementById('kpi-saved').textContent=k(saved);
+  document.getElementById('kpi-reduction').textContent='−'+Math.round(red/TURNS.length*100)+'%';
+})();
+
+// ── turn list ──
+function filtered(){
+  return TURNS.filter(t=>{
+    if(filter!=='all' && !t.status.includes(filter)) return false;
+    if(query && !(t.user.toLowerCase().includes(query)||t.intent.includes(query))) return false;
+    return true;
+  });
+}
+function renderList(){
+  const list=filtered(); const pages=Math.max(1,Math.ceil(list.length/PER));
+  page=Math.min(page,pages-1);
+  const slice=list.slice(page*PER,page*PER+PER);
+  const el=document.getElementById('turn-list'); el.innerHTML='';
+  slice.forEach(t=>{
+    const red=Math.round((1-t.compiled/t.raw)*100);
+    const compPct=Math.min(100,t.compiled/t.target*100);
+    const overP=t.compiled>t.target;
+    const chips=t.status.slice(0,2).map(s=>`<span class="chip" style="background:color-mix(in srgb, ${cssvSafe(STATUS[s].c)} 16%, transparent);color:${cssvSafe(STATUS[s].c)}">${STATUS[s].t}</span>`).join('');
+    const d=document.createElement('div');
+    d.className='turn-item card px-3 py-2.5'+(t.id===sel?' active':'');
+    d.onclick=()=>{sel=t.id;renderList();renderInspector()};
+    d.innerHTML=`
+      <div class="flex items-center justify-between mb-1">
+        <span class="mono text-[11px]" style="color:var(--muted-fg)">${t.id}</span>
+        <span class="mono text-[11px] font-semibold" style="color:${red>=60?'var(--success)':'var(--warning)'}">−${red}%</span>
+      </div>
+      <div class="text-xs leading-snug mb-2 font-serif" style="color:var(--foreground)">${t.user}</div>
+      <div class="flex items-center gap-2 mb-1.5">
+        <div class="flex-1 h-1.5 rounded-full overflow-hidden" style="background:var(--secondary)">
+          <div style="width:${compPct}%;height:100%;background:${overP?'var(--warning)':'var(--accent)'}"></div>
+        </div>
+        <span class="mono text-[10px]" style="color:var(--muted-fg)">${k(t.compiled)}/${k(t.target)}</span>
+      </div>
+      <div class="flex flex-wrap gap-1">${chips}</div>`;
+    el.appendChild(d);
+  });
+  document.getElementById('page-label').textContent=`${page+1} / ${pages} · ${list.length} turn`;
+}
+function cssvSafe(v){return v.startsWith('--')?`var(${v})`:v}
+
+// ── inspector ──
+function renderInspector(){
+  const t=TURNS.find(x=>x.id===sel); const el=document.getElementById('inspector');
+  const red=Math.round((1-t.compiled/t.raw)*100);
+  const allocTotal=Object.values(t.alloc).reduce((a,b)=>a+b,0);
+  // gauge geometry (semicircle 0..window, but scaled to 2×target for readability)
+  const scale=t.target*2;
+  const pct=Math.min(1,t.compiled/scale), tPct=Math.min(1,t.target/scale);
+  const R=90, C=Math.PI*R;
+  const gaugeColor=t.compiled>t.ceiling?'var(--destructive)':t.compiled>t.target?'var(--warning)':'var(--accent)';
+
+  el.innerHTML=`
+  <div class="max-w-[980px] mx-auto p-6 fade-in">
+    <!-- header -->
+    <div class="flex items-start gap-3 mb-5">
+      <span class="mono text-xs px-2 py-1 rounded" style="background:var(--secondary);color:var(--muted-fg)">${t.id}</span>
+      <div class="flex-1">
+        <div class="font-serif text-lg leading-snug">${t.user}</div>
+        <div class="flex flex-wrap items-center gap-2 mt-2 text-[11px] mono" style="color:var(--muted-fg)">
+          <span class="chip" style="background:var(--secondary);color:var(--muted-fg)">intent: <b style="color:var(--foreground)">${t.intent}</b></span>
+          <span class="chip" style="background:var(--secondary);color:var(--muted-fg)">entity-presence: <b style="color:var(--foreground)">${t.entity}</b></span>
+          <span class="chip" style="background:var(--secondary);color:var(--muted-fg)">retrieval: <b style="color:var(--accent)">${t.mode}</b></span>
+          <span class="chip" style="background:var(--secondary);color:var(--muted-fg)">${t.model}</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- hero row: gauge + numbers -->
+    <div class="card glow p-5 mb-4 flex items-center gap-7">
+      <div class="relative shrink-0" style="width:200px;height:120px">
+        <svg width="200" height="120" viewBox="0 0 200 120">
+          <path d="M10 110 A90 90 0 0 1 190 110" fill="none" stroke="var(--secondary)" stroke-width="14" stroke-linecap="round"/>
+          <path d="M10 110 A90 90 0 0 1 190 110" fill="none" stroke="${gaugeColor}" stroke-width="14" stroke-linecap="round"
+                stroke-dasharray="${C}" stroke-dashoffset="${C*(1-pct)}" style="transition:stroke-dashoffset .6s cubic-bezier(.2,.8,.2,1)"/>
+          <line x1="${100-Math.cos(Math.PI*tPct)*90}" y1="${110-Math.sin(Math.PI*tPct)*90}" x2="${100-Math.cos(Math.PI*tPct)*72}" y2="${110-Math.sin(Math.PI*tPct)*72}" stroke="var(--warning)" stroke-width="2.5"/>
+        </svg>
+        <div class="absolute inset-0 flex flex-col items-center justify-end pb-1">
+          <div class="text-2xl font-bold mono" style="color:${gaugeColor}">${k(t.compiled)}</div>
+          <div class="text-[10px] mono" style="color:var(--muted-fg)">/ ${k(t.target)} target · <span style="color:var(--warning)">▲</span> tick</div>
+        </div>
+      </div>
+      <div class="flex-1 grid grid-cols-3 gap-4">
+        <div>
+          <div class="text-[10px] uppercase tracking-wide" style="color:var(--muted-fg)">nếu nối thẳng (raw)</div>
+          <div class="text-xl font-bold mono" style="color:var(--c-reasoning)">${fmt(t.raw)}</div>
+        </div>
+        <div>
+          <div class="text-[10px] uppercase tracking-wide" style="color:var(--muted-fg)">compiled thực gửi</div>
+          <div class="text-xl font-bold mono" style="color:var(--accent)">${fmt(t.compiled)}</div>
+        </div>
+        <div>
+          <div class="text-[10px] uppercase tracking-wide" style="color:var(--muted-fg)">giảm</div>
+          <div class="text-xl font-bold mono" style="color:var(--success)">−${red}%</div>
+        </div>
+        <div class="col-span-3 flex flex-wrap gap-1.5 mt-1">
+          ${t.status.map(s=>`<span class="chip" style="background:color-mix(in srgb, ${cssvSafe(STATUS[s].c)} 16%, transparent);color:${cssvSafe(STATUS[s].c)};border:1px solid color-mix(in srgb, ${cssvSafe(STATUS[s].c)} 40%, transparent)">${STATUS[s].t}</span>`).join('')}
+        </div>
+      </div>
+    </div>
+
+    <!-- allocation map -->
+    <div class="card p-4 mb-4">
+      <div class="flex items-center justify-between mb-3">
+        <div class="text-xs font-semibold uppercase tracking-wide" style="color:var(--muted-fg)">Allocation map — token đi đâu (${k(allocTotal)})</div>
+        <div class="text-[10px] mono" style="color:var(--muted-fg)">hover từng khối để xem chi tiết</div>
+      </div>
+      <div class="flex w-full h-9 rounded-lg overflow-hidden" style="border:1px solid var(--border)">
+        ${Object.entries(t.alloc).map(([c,v])=>`
+          <div class="seg grow-in" data-cat="${c}" data-tok="${v}" style="width:${v/allocTotal*100}%;background:var(${CATS[c].v})"></div>`).join('')}
+      </div>
+      <div class="flex flex-wrap gap-x-4 gap-y-1.5 mt-3">
+        ${Object.entries(t.alloc).map(([c,v])=>`
+          <div class="flex items-center gap-1.5 text-[11px]">
+            <span style="width:9px;height:9px;border-radius:3px;background:var(${CATS[c].v})"></span>
+            <span style="color:var(--muted-fg)">${CATS[c].label}</span>
+            <span class="mono" style="color:var(--foreground)">${fmt(v)}</span>
+          </div>`).join('')}
+      </div>
+    </div>
+
+    <!-- compile trace -->
+    <div class="card p-4">
+      <div class="flex items-center justify-between mb-3 flex-wrap gap-2">
+        <div class="text-xs font-semibold uppercase tracking-wide" style="color:var(--muted-fg)">Compile trace — Planner → Compiler</div>
+        <div class="flex gap-1.5" id="trace-filters">
+          <button class="fbtn ${traceFilter==='all'?'on':''}" data-tf="all">tất cả</button>
+          <button class="fbtn ${traceFilter==='planner'?'on':''}" data-tf="planner">planner</button>
+          <button class="fbtn ${traceFilter==='compiler'?'on':''}" data-tf="compiler">compiler</button>
+          <button class="fbtn ${traceFilter==='saved'?'on':''}" data-tf="saved">chỉ tiết kiệm</button>
+        </div>
+      </div>
+      <div class="space-y-1">${renderTrace(t)}</div>
+    </div>
+
+    <div class="text-center text-[11px] mt-5 mono" style="color:var(--muted-fg)">
+      <kbd>j</kbd> / <kbd>k</kbd> chuyển turn · draft mockup — dữ liệu minh hoạ từ ca 146K
+    </div>
+  </div>`;
+  // wire trace filters
+  el.querySelectorAll('[data-tf]').forEach(b=>b.onclick=()=>{traceFilter=b.dataset.tf;renderInspector()});
+  // wire seg tooltips
+  const total=Object.values(t.alloc).reduce((a,b)=>a+b,0);
+  el.querySelectorAll('.seg').forEach(s=>{
+    s.onmousemove=e=>showTip(e,`<b style="color:${cssvSafe(CATS[s.dataset.cat].v)}">${CATS[s.dataset.cat].label}</b><br><span class="mono">${fmt(+s.dataset.tok)} tok · ${(s.dataset.tok/total*100).toFixed(1)}%</span>`);
+    s.onmouseleave=hideTip;
+  });
+}
+
+function renderTrace(t){
+  const maxAbs=Math.max(...t.trace.map(s=>Math.abs(s.d)),1);
+  let rows=t.trace;
+  if(traceFilter==='planner')rows=rows.filter(r=>r.ph==='planner');
+  else if(traceFilter==='compiler')rows=rows.filter(r=>r.ph==='compiler');
+  else if(traceFilter==='saved')rows=rows.filter(r=>r.d<0);
+  if(!rows.length)return `<div class="text-xs py-4 text-center" style="color:var(--muted-fg)">— không có span —</div>`;
+  return rows.map(s=>{
+    const phC=s.ph==='planner'?'var(--info)':'var(--accent)';
+    const dCol=s.err?'var(--destructive)':s.d<0?'var(--success)':s.d>0?'var(--warning)':'var(--muted-fg)';
+    const dTxt=s.err?'reject':s.d===0?'·':(s.d<0?'−':'+')+k(Math.abs(s.d));
+    const w=Math.abs(s.d)/maxAbs*100;
+    return `
+    <div class="flex items-center gap-3 px-2 py-2 rounded-lg" style="background:var(--background-alt)">
+      <span class="chip" style="background:color-mix(in srgb, ${phC} 14%, transparent);color:${phC};min-width:66px;justify-content:center">${s.ph}</span>
+      <span class="tier-tag">${s.tier}</span>
+      <span class="w-2 h-2 rounded-full shrink-0" style="background:var(${CATS[s.cat].v})" title="${CATS[s.cat].label}"></span>
+      <span class="flex-1 text-xs leading-snug" style="color:var(--foreground)${s.err?';color:var(--destructive)':''}">${s.act}</span>
+      <div class="w-24 shrink-0 flex items-center justify-end gap-2">
+        <div class="delta-bar grow-in" style="width:${w}%;max-width:56px;background:${dCol};opacity:${s.d===0?.25:.85}"></div>
+        <span class="mono text-[11px] font-semibold w-12 text-right" style="color:${dCol}">${dTxt}</span>
+      </div>
+    </div>`;
+  }).join('');
+}
+
+// ── tooltip ──
+const tip=document.getElementById('tooltip');
+function showTip(e,html){tip.innerHTML=html;tip.style.opacity=1;tip.style.left=(e.clientX+12)+'px';tip.style.top=(e.clientY+12)+'px'}
+function hideTip(){tip.style.opacity=0}
+
+// ── filters / pagination / search ──
+document.getElementById('status-filters').onclick=e=>{
+  if(!e.target.dataset.f)return;
+  filter=e.target.dataset.f; page=0;
+  document.querySelectorAll('#status-filters .fbtn').forEach(b=>b.classList.toggle('on',b.dataset.f===filter));
+  renderList();
+};
+document.getElementById('search').oninput=e=>{query=e.target.value.toLowerCase().trim();page=0;renderList()};
+document.getElementById('prev').onclick=()=>{if(page>0){page--;renderList()}};
+document.getElementById('next').onclick=()=>{const p=Math.ceil(filtered().length/PER);if(page<p-1){page++;renderList()}};
+document.addEventListener('keydown',e=>{
+  if(e.target.tagName==='INPUT')return;
+  const list=filtered(); const idx=list.findIndex(t=>t.id===sel);
+  if(e.key==='j'&&idx<list.length-1){sel=list[idx+1].id;page=Math.floor((idx+1)/PER);renderList();renderInspector()}
+  if(e.key==='k'&&idx>0){sel=list[idx-1].id;page=Math.floor((idx-1)/PER);renderList();renderInspector()}
+});
+
+renderList(); renderInspector();
+</script>
+</body>
+</html>

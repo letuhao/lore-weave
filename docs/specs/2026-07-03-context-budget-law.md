@@ -1,0 +1,306 @@
+# Spec: Context Budget Law + Session Compiler — **v2**
+
+**Status:** DRAFT (DESIGN, post adversarial-review) · **Date:** 2026-07-03 · **Size:** XL
+**Supersedes:** v1 (same file). v2 folds two cold-start adversarial reviews (runtime + Law/contract) and adopts a **tier-by-tier build with per-tier validation gates**.
+**Related:** [[llm-client-first-tool-refactor]], [[writing-studio-fragmented-not-underbuilt]], [[compaction-resume-path-carries-tool-pairs]], [[default-model-per-capability-byok]], [[agent-gui-loop-needs-live-browser-smoke-not-raw-stream]]
+
+> Build discipline (user-locked 2026-07-03): **build in tiers, prove each tier's effectiveness in isolation before combining.** Each tier below has its own before/after measurement and a GATE that must pass before the next tier integrates. This is how we evaluate and improve each part instead of shipping one opaque blob.
+
+---
+
+## 1. Problem (grounded)
+
+The chat agent has **no per-request context planning**: `stream_service.stream_response` (≈1614–1707) is a straight-line **unconditional concat** of system + full skill bodies + a rebuilt-every-turn RAG block + history. There is measurement (`token_budget.context_breakdown`) and a reactive overflow guard (`compaction.py`, trigger `0.75 × whole model window`), but **nothing reads session state and decides what to compile under a budget**.
+
+**The 146K case study (one real turn — "change this scene's status to drafting"):**
+1. `composition_list_outline` dumped the **entire** outline (1 arc + 12 ch + ~36 scenes w/ full synopses, ~40–55K tok) — the agent was forced to, because `outline_node_update` needs `expected_version` and there's no cheap single-node version read. **← response bloat.**
+2. `json.dumps(payload)` at [stream_service.py:907](../../services/chat-service/app/services/stream_service.py#L907)/[:1154](../../services/chat-service/app/services/stream_service.py#L1154) defaults `ensure_ascii=True` → Vietnamese `Lâm Uyển` → `Lâm Uyển`, ~2–3× inflation. **← the `\uXXXX` tax.**
+3. Two full skill bodies (glossary + KG, ~5–6K tok) for a task touching neither.
+4. `build_context` grounding (5 passages + 12 entities, [stream_service.py:1349](../../services/chat-service/app/services/stream_service.py#L1349)) for a turn needing zero lore.
+5. A tool-contract error triggered the expensive recovery ([[llm-client-first-tool-refactor]]).
+
+Every abstract failure mode is visible in **one** request → we need a **repo-wide discipline**, not a one-off fix.
+
+---
+
+## 2. Goals / Non-goals
+
+**Goals:** a repo-wide, **correctly-enforced** rule set governing MCP tool returns + prompt assembly; a **Planner + Compiler** layer enforcing an absolute, **task-elastic** budget; an actionable GUI monitor; cut the 146K-class baseline ≥60% on a typical turn **without degrading answer quality on weak local models** (measured).
+
+**Non-goals:** rebuild long-term memory (knowledge-service already IS the archival/recall tier); adopt an external memory framework (see §4); touch the background/deployed-agent path (chat agent only).
+
+**Corrected from v1:** prompt caching is **NOT** wholly moot — the code has a live **Anthropic prompt-cache path** ([stream_service.py:1618–1660](../../services/chat-service/app/services/stream_service.py#L1618), `cache_control: ephemeral` on system + each skill body) and the test account runs Claude/gpt-4o. So per-turn gating that varies the cached prefix is a **cost regression on the paid path** — see D12.
+
+---
+
+## 3. Prior art (studied)
+
+- **MemGPT/Letta** (`arXiv:2310.08560`) — *main context* (bounded) vs *external context* (unbounded); **memory blocks** `{label, description, value, limit, read_only, version}` rendered with live `chars_current/limit` shown to the model; **FIFO queue + recursive summary head**; block overflow → **self-correcting error**, never silent; JIT paging tools (`archival_memory_search(query, tags, page)`).
+- **Cline** — trigger `max(window−40k, window×0.8)`; truncate-middle keeping the **first exchange** anchor; **Auto Compact** summarize as a separate tier; **reversible dup-read collapse** (raw kept, compacted view replayed at send, persisted); **Focus Chain** — task-state `.md` re-injected every 6 msgs, **surviving compaction**.
+- **Anthropic — context engineering** — smallest high-signal token set; **just-in-time retrieval** (mirrors human indexing); **compaction**; **agentic memory**; **sub-agent isolation** (explore 10K+, return 1–2K); **tool-result clearing**.
+- **MCP token optimization** — two costs: **schema bloat** (we already fixed via `find_tools`) + **response bloat** (our gap). Fix: reference-first + field selection + concise wire.
+
+---
+
+## 4. Build vs. integrate → **BUILD (borrow design, not dependency)**
+
+Mem0/Zep/Letta call LLM/embeddings **directly** → violate the **provider-gateway invariant**; Letta discourages proxy endpoints + has a hardcoded-embedding leak (#3210); all assume single-user vs our tenancy. We already own the "disk" (knowledge-service). We build the **MMU/pager** natively (every LLM/embed via provider-registry, tenancy-scoped), borrowing the *designs*: block model, recursive queue summary, Focus Chain, reversible collapse.
+
+---
+
+## 5. Architecture
+
+Two responsibilities, **one layer, two phases** (NOT the same thing — locked 2026-07-03):
+
+- **Context Planner** = POLICY. Given session state + turn intent + budget → a **CompilePlan** (include grounding? which skill/surface? history depth? which blocks? tool seed? retrieval mode? task-weight). This is where L4/L5 policy lives; it's where we "turn the knobs."
+- **Session Compiler** = MECHANISM. Given the CompilePlan + state → materialize the prompt (render blocks, serialize L3, enforce the budget, run compaction/collapse). This is where L1/L2/L3 enforcement lives; deterministic.
+
+```
+SessionState(SSOT in DB) + intent + budget
+        │  ┌──────────────┐ plan           ┌───────────────┐ compile
+        └─▶│   Planner    │───CompilePlan──▶│   Compiler    │──▶ ephemeral prompt (messages + tools)
+           └──────────────┘                 └───────────────┘
+                  │ JIT pull (tools, model-tier elastic)
+                  ▼
+   EXTERNAL CONTEXT (unbounded, NOT prepended): knowledge-service (PG SSOT + Neo4j + salience) · glossary · composition
+```
+
+**Tier model of the main context:** System(persona) · **Core Memory Blocks** (`persona`,`steering`,`focus`,`story_state`) · **Recall** (recent turns + rolling summary) · **Tools** (seed + `find_tools` union). Archival = knowledge-service, pulled JIT.
+
+---
+
+## 6. THE CONTEXT BUDGET LAW — restructured by **enforceability** (key v2 change)
+
+v1's mistake: it made all 6 rules a "lint," but "returns bounded bodies" is **not statically decidable** across Go/Py/TS → the lint would only check *signature presence*, not *honoring* → a rubber-stamp (the exact silent-no-op class the repo bled on with `ui_open_studio_panel`). So enforcement is split three ways:
+
+### 6a. Ratify NOW as a lint (regex/AST-decidable, real teeth)
+- **L3 — Concise wire.** Tool-result serialization uses `ensure_ascii=False`, no indent, omits null/empty/default fields. *(Checkable at every `json.dumps` tool-result site.)*
+- **Cross-cutting — self-correcting, never silent.** Any reject / overflow / drop returns an actionable error/notice, never a silent no-op or silent truncation. *(Already our Frontend-Tool-Contract standard.)*
+
+### 6b. Standard + **per-tool contract-snapshot test** (NOT a lint)
+Reuse the existing `frontend-tools.contract.json` machinery (record real output for a fixture, assert `len ≤ limit` and no full-body fields under `detail=summary`). A lint can only verify the `limit`/`detail` **params exist**; only a snapshot test proves the body **honors** them.
+- **L1 — Reference-first, content-on-demand.** A tool returning a *set* returns `{id, title, ≤1-line, version}` by default; full content via `get_by_id`. **Exemption:** inherently-small returns (a status, a count, a single ≤N-byte item set — e.g. `list_canon_rules`) annotate `@small_return` and are exempt. The exemption is honesty-checked by the snapshot test, not the lint.
+- **L2 — Granularity + bounds.** `detail: summary|full`, optional `fields` allow-list, mandatory `limit` (default + hard max). **Single-object reads (`get_by_id`) are exempt from the `summary` default.** **Migration:** version the flip — ship `detail` defaulting to **`full`** with a deprecation notice, and let the **chat-compiler pass `detail=summary`** while federated/legacy callers keep `full`; flip the global default only after consumers migrate. *(Avoids the unversioned breaking change across the federated MCP surface.)*
+
+### 6c. Compiler behavior + tests (NOT an invariant — runtime, verified by §9)
+- **L4 — Grounding & skills intent-gated** (see D2/D4/D12). **L5 — Absolute, task-elastic budget + tiered proactive compaction** (see D3/D7). **L6 — Expensive exploration isolated in a sub-agent** returning a distilled summary.
+
+---
+
+## 7. Key design decisions (folded from adversarial review)
+
+**D1 — Retrieval mode is model-tier-elastic.** The Law mandates the *tool contract* (refs + `get_by_id`) universally, but the *assembly policy* adapts to the session model: **weak local (≤~30B) → `prepend`/`hybrid`** (grounding gist stays in context); **strong (Claude/gpt-4o) → `pull`** (JIT). Rationale: JIT push→pull is strictly harder for a 7B model → confident confabulation; we never degrade a weak-model answer to buy tokens the strong model didn't need. `story_state` summary is **always prepended** as the safety net regardless of mode.
+
+**D2 — Intent gate = entity-presence + heuristic-only (NO LLM classifier).** Gate on "does the message contain a known glossary/entity token for this book?" (the salience substrate — latest branch commit — already tracks entity access), **not** on surface verb. Rationale: "change status of **Lâm Uyển's arc**" is a confident-wrong false-negative for a verb heuristic; entity-presence catches it. **Bias to include.** Heuristic-only sidesteps the provider-gateway trap (empty `user_default_models` → no model to resolve). Feedback metric: if a "no-lore" turn then calls `memory_search`, log it = a measurable false-negative rate + optional re-inject.
+
+**D3 — Budget is task-elastic within a surface band.** The Planner emits a `task_weight`; the content allowance scales `[floor, surface_max]` (status-op → floor; "rewrite whole chapter" → surface_max with the chapter body **whitelisted as a required contributor**, not a compaction victim). A single per-surface number can't serve both extremes.
+
+**D4 — Continuity invariant: blocks project every turn, before the gate.** `story_state`/`focus` are projected **unconditionally every turn**; the intent gate controls only the *expensive `build_context` pull*, never the always-on blocks. When grounding is materialized, the Compiler **distills load-bearing entities/facts into `story_state`** — so gating a follow-up turn ("make it darker") never strips the lore the rewrite still needs. *Grounding may be gated; the block projection may not.*
+
+**D5 — `story_state` is cached, refreshed on cadence.** It's a `chat_session_blocks` row refreshed only on a trigger (every N turns, scene change, or an explicit "lore needed" gate), else projected from cache for free. Rationale: refreshing every turn = the always-on `build_context` round-trip we're killing, reintroduced.
+
+**D6 — Load-bearing facts live in blocks, not the prose summary.** Established hard facts/decisions are extracted into `focus`/`story_state` (which never truncate); the lossy weak-model rolling summary is a *convenience*, not the system of record. Summarize with a **fact-preserving extractive prompt** (list entities/decisions verbatim, then prose). Raw evicted turns stay in Postgres → give the agent a `conversation_search` fallback so a fact lost from the summary is recoverable by pull.
+
+**D7 — Single-item overflow + reasoning budget.** A tool result that alone exceeds a per-contributor ceiling is rejected at the tool with a self-correcting error (`"chapter is 12K tok > 8K cap; use detail=summary or a block range"`) or summarize-on-ingest. The model's own reasoning/output is budgeted against the target too (the 146K case had reasoning bloat).
+
+**D8 — Planner owns the SEED; it does NOT post-filter the active set.** The Planner subsumes `discovery_seed_for_surface` + `surface_hot_domains` + skill selection **together** (fixing the skill↔hot-domain coupling), then hands off to the **existing `find_tools` union loop untouched**. It **never removes a tool the model already discovered this turn** (that would loop find→drop→find). `find_tools` is **never gated**. The L5 token target **folds into** the existing `write_passes`/`MAX_TOOL_ITERATIONS` governor — no second parallel budget.
+
+**D9 — Tenancy on Core Blocks.** `chat_session_blocks` carries its **own `owner_user_id NOT NULL`** and filters on `session_id AND owner_user_id` (matching every sibling table — not join-only). OCC version mismatch (multi-device) → **self-correcting error** to the agent (re-read + re-apply), never silent last-writer-wins. **Grantee `story_state`:** knowledge `build_context` is owner-only today (grantee → `ProjectNotFound` → empty story_state); for now **document owner-only + grantee falls back to JIT `memory_search`** (which IS grant-gated); a VIEW-grant-aware build is a separate, deferred scope.
+
+**D10 — Provider-gateway compliance.** Intent gate is **heuristic-only** (no model → no hardcode trap). If a summarizer LLM is wired (L5/D6), it resolves via a **per-user provider-registry default** ([[default-model-per-capability-byok]] pattern: add a `summarize` capability default), never an env var or literal; both new call sites are added to the `ai-provider-gate` allowlist review.
+
+**D11 — Enforcement split** = §6 (L3 lint / L1-L2 contract-snapshot + versioned flip / L4-L6 behavior+tests).
+
+**D12 — Cache-aware skill gating.** Keep skill selection **by surface** (cache-stable, as the code already does via `resolve_skills_to_inject`) on the Anthropic cache prefix; the per-turn *intent* gate must **not** vary the cached prefix. (Fixes the paid-path cost regression.)
+
+**D13 — Atom + resume invariants.** (a) The reversible-collapse transform operates on **whole tool-exchange atoms** and preserves every `tool_call_id ↔ role:tool` pairing (reuse `_atoms`/`_recent_tail`; add an orphan-free contract test — the [[compaction-resume-path-carries-tool-pairs]] bug class). (b) **Resume-monotonicity:** within a suspended→resumed turn the compiled prompt is monotonic — the intent-gate decision + block snapshot are **frozen at turn start**, and anything the model already saw (tool results, grounding) is **pinned** for the rest of that turn, never re-gated/re-collapsed.
+
+---
+
+## 8. Tiered build plan (each tier: isolated, measured, GATED before the next integrates)
+
+| Tier | Scope | Isolated validation | GATE to pass |
+|---|---|---|---|
+| **T0 — Wire hygiene (L3)** | `ensure_ascii=False` + concise wire at all tool-result `json.dumps` sites; the L3 lint | Replay the 146K turn; measure token delta on VI/CJK content | ≥ target token cut proven on the replay; L3 lint green |
+| **T1 — Tool response contract (L1/L2)** | `detail/fields/limit` + reference-first on the worst offenders (`composition_list_outline` first) + cheap single-node version read; per-tool contract-snapshot tests; versioned default (compiler passes `summary`, federated keep `full`) | Per-call token delta; snapshot green; federated caller still gets `full` | outline-call token cut proven; **zero consumer regression** |
+| **T2 — Budget meter + target** | `compute_budget` vs an absolute target; GUI monitor upgrade. **Measure-only first**, then flip compaction to fire at target | Meter accuracy vs provider-reported tokens; does compaction fire at target (not window)? | meter within ±X%; compaction triggers at target |
+| **T3 — Planner/Compiler extraction (into shared kernel)** | Extract assembly into the shared **`sdks/python/loreweave_context`** kernel (§12), NOT a chat-local module; chat = first consumer wiring the ports; **behavior-preserving** (byte-identical, no policy yet); Planner owns the tool seed (D8) | Golden test: output identical to pre-refactor on a fixture set; full chat suite green; kernel imports no provider SDK | byte-identical + suite green + kernel provider-gate clean |
+| **T4 — Core Memory Blocks** | `chat_session_blocks` (`focus`,`story_state`) w/ `owner_user_id`+OCC (D9); always-on projection (D4); cadence+cache (D5). **No gating yet.** | Continuity: a follow-up turn still carries `story_state` lore; block token cost ≤ ceiling; refresh cadence works; OCC conflict → self-correcting | continuity proven **with blocks as the safety net**; block cost bounded |
+| **T5 — Intent gate + elastic policy** | Entity-presence heuristic (D2); retrieval-mode by model-tier (D1); task-elastic budget (D3); cache-aware skill gating (D12). Built ON the T4 net. | False-negative rate (entity-presence accuracy on a labeled set); **answer-correctness on lore-needing turns** (weak model); token savings vs T4 baseline | answer-correctness ≥ baseline **AND** token savings proven |
+| **T6 — Compaction upgrades** | Atom-safe reversible collapse + resume-monotonic (D13); fact-preserving summary + `conversation_search` fallback (D6); single-item overflow (D7) | Atom integrity (no orphan, contract test); resume stability (recompile == pre-suspend); fact-preservation on a 40-turn eval | no orphan; resume-stable; load-bearing fact survives |
+| **T7 — Sub-agent isolation (L6)** *(defer-eligible)* | Planner/extractor/multi-step reads → distilled summary | tokens in vs summary out; quality unchanged | — |
+| **FINAL — integrate** | All tiers on, end-to-end | Full evaluation on the 12-ch POC book: compose quality unchanged, tokens down, answer-correctness maintained ([[prefer-e2e-and-evaluation-over-live-smoke-poc]]) | end-to-end eval passes |
+
+**T0–T1 are shippable immediately and independent of the contested tiers.** T4 must land before T5 (the block safety net is what makes gating safe). Each GATE is a real measurement, not a checkbox.
+
+---
+
+## 9. Verification
+- **Every tier:** the GATE in §8 (numbers, not assertions) + unit tests. Cross-service tiers (T1, T5, T6 touch chat↔composition/knowledge) get a live cross-service smoke.
+- **T0 anchor:** the 146K turn replayed on the live stack (test account, local LM Studio) is the standing benchmark across tiers.
+- **T5/FINAL:** answer-correctness needs a small **gold Q&A set** over the POC book (lore-needing questions with known answers) — the metric v1 lacked. Tokens-down alone would score a fluent confabulation as a pass.
+
+---
+
+## 10. Sealed decisions (user-approved 2026-07-03)
+
+1. **Retrieval mode = `prepend`/`hybrid` for ALL by default.** `pull` (true JIT) is deferred to a future strong-model capability; the Law still mandates the tool contract (refs + `get_by_id`) universally. Removes most T5 risk on local models.
+2. **Tier scope = commit T0–T3; re-decide T4–T6 after seeing T0–T2 real numbers.** No blind commitment to all tiers.
+3. **T4 = `story_state` only first** (auto-projected, no agent-write tool). `focus` deferred to a later tier.
+4. **Budget = fraction-of-window + absolute cap, tuned from T2.** `surface_max = min(32K, 0.35×window)`, `floor = min(6K, 0.1×window)`; **soft target triggers compaction, hard ceiling = model window (never exceeded).**
+5. **`story_state` refresh cadence** = on lore-gate OR scene/chapter change OR fallback every 5 turns; cached otherwise.
+6. **Grantee `story_state` = owner-only + collaborator JIT `memory_search` fallback** (grant-gated). VIEW-grant-aware build is deferred, separate scope.
+7. **Answer-correctness gold set** = agent drafts ~10–15 lore-needing Q&A from the POC book's glossary/outline; **user validates**.
+
+Agent-resolved (no decision needed): entity-presence index availability (verify against the salience substrate during T5); reuse of the `frontend-tools.contract.json` snapshot machinery for L1/L2; the L3 lint as a regex check at `json.dumps` tool-result sites (mirror `ai-provider-gate.py`).
+
+**Next action:** T0–T1 (serialization hygiene + `composition_list_outline` projection) are unblocked and measurable on the 146K replay — shippable independent of any contested tier.
+
+---
+
+## 11. Inspector GUI — "Context Compiler · Trace Inspector"
+
+Draft mockup: [`design-drafts/context-management/context-compiler-inspector.html`](../../design-drafts/context-management/context-compiler-inspector.html). The observability tool a power user drives to **trace what context management did per turn** (budget pressure gauge · allocation map · Planner→Compiler trace waterfall · filter + pagination). It reads the per-turn telemetry the compiler emits (this is the FE half of the T2 "GUI monitor upgrade" and the acceptance surface for T2–T6).
+
+**Dockable — LOCKED requirement.** The Inspector MUST be a **dockable studio panel**, openable inside the writing studio (dockview host), not only a standalone page. It follows the studio panel contract: registered in `features/studio/panels/catalog.ts`, added to the `ui_open_studio_panel` enum + `contracts/frontend-tools.contract.json` (so the agent can open it), self-titles via `props.api.setTitle`, mounts-without-unmounting on hide (CSS `hidden`, MVC rule), and is session/book-scoped. It also remains reachable standalone. `panelCatalogContract.test.ts` (studio enum ⊆ dock catalog) must stay green.
+
+### 11a. Implementation checklist (item-level — track BE + FE coverage; do not miss a line)
+
+> Every discrete data/behavior item on the draft. `(BE)` = telemetry/data the compiler or an endpoint must produce; `(FE)` = render/interaction; `(BE+FE)` = both. The BE items double as the **compiler telemetry contract** for T2–T6.
+
+**Telemetry / BE contract (per turn) — emitted by Planner+Compiler, persisted, tenancy-scoped by session→`owner_user_id`:**
+- [ ] `raw_tokens` — naive-concat estimate before compile (BE)
+- [ ] `compiled_tokens` — actual tokens sent (BE)
+- [ ] `target` — task-elastic budget resolved for this turn (BE)
+- [ ] `ceiling` — model context window (BE)
+- [ ] `reduction_pct` — raw→compiled (BE-derive or FE-derive)
+- [ ] `model` name/ref + `context_length` (BE)
+- [ ] `intent` label (BE)
+- [ ] `entity_presence` — matched entity tokens, or none (BE)
+- [ ] `retrieval_mode` — prepend / hybrid / pull (BE)
+- [ ] `status_flags[]` — gated / included / compacted / overflow / elastic / continuity / collapsed / wire (BE)
+- [ ] allocation map per category: system · blocks · skills · grounding · history · summary · tools · results · chapter · reasoning (BE — extend existing `context_breakdown`; NEW cats: summary, chapter, reasoning, blocks split)
+- [ ] compile **trace spans[]** — ordered `{phase, tier(T0–T6), category, action_text, delta_tokens, is_error}` (BE — NEW telemetry)
+- [ ] session aggregate: avg reduction %, total tokens saved (BE or FE-aggregate)
+- [ ] endpoint: paginated turn-trace list `GET …/context-trace?session&page&filter` (BE)
+- [ ] endpoint: single-turn trace detail (BE)
+- [ ] all telemetry owner-gated + session-scoped (BE)
+
+**Top bar:**
+- [ ] tool title + subtitle (FE)
+- [ ] session selector + current session id (FE + BE list-sessions)
+- [ ] KPI: avg reduction % (FE)
+- [ ] KPI: total tokens saved (FE)
+- [ ] KPI: model window (FE)
+
+**Turn list (left rail):**
+- [ ] search input — filter by user message + intent (FE)
+- [ ] status filter: all (FE)
+- [ ] status filter: gated (FE)
+- [ ] status filter: compacted (FE)
+- [ ] status filter: overflow (FE)
+- [ ] status filter: elastic (FE)
+- [ ] per-turn: turn id (FE)
+- [ ] per-turn: reduction % + threshold color (FE)
+- [ ] per-turn: user message snippet (FE)
+- [ ] per-turn: mini budget bar (compiled vs target) + over-target color (FE)
+- [ ] per-turn: compiled/target numbers (FE)
+- [ ] per-turn: status chips (cap 2) (FE)
+- [ ] selected/active highlight (FE)
+- [ ] pagination: prev (FE)
+- [ ] pagination: next (FE)
+- [ ] pagination: page label (page/total + count) (FE)
+
+**Inspector header:**
+- [ ] turn id badge (FE)
+- [ ] full user message (FE)
+- [ ] intent chip (FE)
+- [ ] entity-presence chip (FE)
+- [ ] retrieval-mode chip (FE)
+- [ ] model chip (FE)
+
+**Hero — context pressure gauge:**
+- [ ] semicircle gauge fill = compiled (FE)
+- [ ] target tick mark (FE)
+- [ ] color state: under / over-target / over-ceiling (FE)
+- [ ] gauge center: compiled number + target label (FE)
+- [ ] raw tokens number (FE)
+- [ ] compiled tokens number (FE)
+- [ ] reduction % number (FE)
+- [ ] full status chips list (FE)
+- [ ] gauge fill transition animation (FE)
+
+**Allocation map:**
+- [ ] allocation total (FE)
+- [ ] segmented bar — width ∝ tokens per category (FE)
+- [ ] segment grow-in animation (FE)
+- [ ] hover tooltip: category label + tokens + % (FE)
+- [ ] legend row per category: color swatch + label + tokens (FE)
+- [ ] 10 category colors defined + stable (FE)
+
+**Compile trace (waterfall):**
+- [ ] trace filter: all (FE)
+- [ ] trace filter: planner (FE)
+- [ ] trace filter: compiler (FE)
+- [ ] trace filter: saved-only (FE)
+- [ ] per-span: phase badge (planner/compiler) (FE)
+- [ ] per-span: tier tag T0–T6 (FE)
+- [ ] per-span: category dot (FE)
+- [ ] per-span: action text (FE)
+- [ ] per-span: delta bar (width ∝ |delta|; color save/include/reject) (FE)
+- [ ] per-span: delta value (+ / − / reject / ·) (FE)
+- [ ] per-span: error/reject red state (FE)
+- [ ] empty state when filter yields no span (FE)
+
+**Interactions / behavior:**
+- [ ] click turn → load inspector (FE)
+- [ ] keyboard j/k turn navigation (FE)
+- [ ] any filter resets page to 0 (FE)
+- [ ] mount-without-unmount on hide (CSS hidden — MVC rule) (FE)
+- [ ] split volatile per-turn state vs stable session state (re-render rule) (FE)
+- [ ] loading / empty / error states (FE)
+- [ ] live update as new turns arrive — SSE or poll (FE + BE)
+
+**Dockable studio integration:**
+- [ ] register panel in `features/studio/panels/catalog.ts` (FE)
+- [ ] add panel id to `ui_open_studio_panel` enum (FE + BE `frontend_tools.py`)
+- [ ] regenerate `contracts/frontend-tools.contract.json` (BE+FE)
+- [ ] panel self-titles via `props.api.setTitle` (FE)
+- [ ] panel session/book-scoped from studio context (FE)
+- [ ] standalone route also available (FE)
+- [ ] `panelCatalogContract.test.ts` green (studio enum ⊆ dock catalog) (FE)
+
+---
+
+## 12. Reusability — the Context Kernel as a shared standard
+
+**Motivation (user-raised 2026-07-03):** context assembly is NOT chat-only, and "not making it a standard = certain death" (user). Confirmed and near-term consumers:
+- **Role-play agent** — the confirmed second consumer. Verified in code: `services/roleplay-service` is a **thin Rust domain/orchestration service with NO LLM calls** (`src/lib.rs`) — it freezes a scenario into a `charter` + a `working_memory_seed` that **"MUST be byte-compatible with chat-service's `WorkingMemory` model"** (`src/charter.rs`) and **delegates the turn-loop / voice / debrief to chat-service** (the Python loop does the actual context assembly). So role-play's "inheritance" of the chat agent = **delegation + a hand-maintained byte-compatible `WorkingMemory` seed across a Rust↔Python boundary** — a genuine cross-language-contract-drift risk the standard exists to formalize. Strong fit: the kernel's **Block / working-memory anchor** model was *originally built for roleplay* (`stream_service.resolve_anchor`, the "interview-roleplay" anchor, `working_memory_seed`) — persona + character + charter state ARE core-memory Blocks. Under the kernel, role-play becomes a **Block/`ContextSource` configuration inside the shared loop**, and the `WorkingMemory` seed becomes a **defined Block contract** (not a byte-copied shape) — retiring the fragile coupling. A future standalone role-play loop wires the kernel via ports without forking chat-service.
+- **`composition-service/app/packer/pack.py`** — a de-facto second *implementation* today (the drafting packer, flagged as a *parallel grounding stack* in review).
+- Further: the **background/deployed agent**, the **autonomy critic/drafting** loop, the **extraction** pipeline, "and a whole bunch more like this" (user).
+
+If the compiler is baked into `chat-service`, every consumer clones/forks (or inherits) it → divergence. So it is built as a **shared standard from day one**. With **two confirmed consumers already** (role-play + packer), the extraction is justified, not speculative.
+
+### 12a. Two reusable pieces (they are different, keep them separate)
+
+**A. Context Kernel** — a shared **Python package** `sdks/python/loreweave_context` (the AI/LLM consumers are all Python). It is **provider-agnostic, source-agnostic, tenancy-agnostic** — a pure engine wired to ports by each consumer:
+- **Core types:** `Block` (label/description/value/limit/read_only/version), `CompilePlan`, `Budget` (target/floor/ceiling/task_weight), `TraceSpan` (`{phase, tier, category, action, delta, is_error}` — the §11 telemetry), `CompiledContext` (messages + tools + trace + allocation).
+- **Core engine:** `Planner.plan(state, intent, budget) → CompilePlan` (policy) and `Compiler.compile(plan, state) → CompiledContext` (mechanism), plus `CompactionStrategy` (tiered: clear→summarize→truncate, atom-safe).
+- **Ports (injected by the consumer, never imported by the kernel):** `Tokenizer`, `Summarizer` (LLM), `Embedder` — each the consumer wires to **provider-registry** (honors the provider-gateway invariant; the kernel imports **no** provider SDK, no model literal). `ContextSource` — the plugin that yields candidate content with metadata (category, tokens, salience, references) — chat wires conversation+knowledge sources; composition wires its packer lenses; extraction wires chapter text.
+- **Payoff:** every consumer emits the **same `TraceSpan` telemetry**, so the one Inspector GUI (§11) works for ALL of them for free; the budget/compaction/blocks logic exists **once**.
+
+**B. Tool Response Contract** — the L1/L2/L3 discipline (§6b/6a) is **cross-language** (MCP tools are Go + Python + TS), so it is NOT part of the Python kernel: it's a written standard (`docs/context-budget-law.md`) + a small **per-language serialization helper** (`ensure_ascii=false`, drop-empty, reference-first shape) + the **contract-snapshot test** harness. This governs the *edges* (tool returns); the kernel governs the *assembly*.
+
+### 12b. Design-reusable, but validate-with-ONE (the honest caveat)
+
+Building a "framework" before a second real consumer exists is the premature-abstraction trap — but here we have TWO confirmed consumers, so the risk is *over-shaping the interface*, not building it at all. We avoid over-shaping by: **design the interfaces for reuse now, prove them against ONE consumer (chat) before extracting, and resist any port/feature no current consumer needs.** Concretely — **T3 extracts the Planner/Compiler into `sdks/python/loreweave_context`** (not a chat-local module) with `chat-service` as the **first consumer wiring the ports**. The interface is **"proven" when role-play is expressed as kernel Blocks + a role-play `ContextSource`** — its `charter`/persona/`working_memory_seed` become a **defined Block contract** instead of a byte-copied `WorkingMemory` shape, **with no kernel change**. That is the reusability acceptance test (it also *retires* the fragile Rust↔Python seed coupling). The composition packer plugging in as a `ContextSource` is the second proof.
+
+### 12c. Convergence path (don't rewrite, adopt)
+Two directions:
+- **New consumers build ON the kernel from the start** — the **role-play agent** does NOT inherit chat-service; it is a fresh kernel consumer (its own persona/character Blocks + role-play `ContextSource`). This is the whole point: the next "whole bunch of agents like this" (user) start compliant instead of cloning chat.
+- **Existing implementations migrate later (deferred, tracked)** — `composition-service/packer/pack.py` is NOT rewritten now; it is designed to **later become a `ContextSource` + adopt the kernel's budget/compaction/trace** (kernel subsumes its priority-ladder trim; packer keeps its domain lenses). Same for the background agent and the autonomy critic.
+
+A consumer is **"context-kernel-compliant"** when it (1) wires the ports through provider-registry, (2) emits `TraceSpan` telemetry, (3) passes the shared conformance suite. The standard is fixed now so consumers converge instead of diverge; the current role-play-inherits-chat coupling is the anti-pattern it retires.
+
+**Spec impact:** T3 in §8 now reads "extract into the shared `loreweave_context` kernel package, chat = first consumer" (not a chat-local module). The kernel's port interfaces + `TraceSpan` schema are the frozen contract; the Law (§6) applies repo-wide to every MCP tool regardless of consumer.
+```
