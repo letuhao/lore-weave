@@ -61,6 +61,14 @@ from app.services.tool_discovery import (
     tool_tier,
     tool_undo_hint,
 )
+from app.services.subagent_runtime import (
+    RUN_SUBAGENT_NAME,
+    SUBAGENT_MAX_ITERATIONS,
+    build_run_subagent_tool,
+    cap_result,
+    resolve_scoped_tools,
+    tool_name_of,
+)
 from app.services.output_extractor import extract_outputs
 from app.services.stream_events import make_emitter
 from app.services.compaction import compact_messages, summary_message
@@ -578,6 +586,10 @@ async def _stream_with_tools(
     permission_mode: str = "write",
     approval_check=None,
     hooks: list[dict] | None = None,
+    subagent_tool: dict | None = None,
+    subagent_defs: dict[str, dict] | None = None,
+    subagent_depth: int = 0,
+    allowed_tool_names: set[str] | None = None,
 ) -> AsyncGenerator[dict, None]:
     """K21-B — the tool-calling loop.
 
@@ -724,6 +736,19 @@ async def _stream_with_tools(
                         _filter_tools_for_ask(tools, permission_mode)
                         if permission_mode in ("ask", "plan") else tools
                     )
+                    # P5 REG-P5-01 — a nested subagent sub-run advertises its scoped
+                    # set, which carries `_meta` (read by the tier filter just above /
+                    # ask-mode). Strip it before the wire. Gated to the nested case so
+                    # the top-level non-discovery path stays byte-identical (the
+                    # discovery path already strips inside _advertise_discovery_tools).
+                    if allowed_tool_names is not None:
+                        advertised = [strip_tool_meta(td) for td in advertised]
+                # P5 REG-P5-01 — advertise run_subagent as an always-on tool at the
+                # top level (depth 0 only → a subagent can never spawn another).
+                # Injected AFTER the ask/plan filter so delegation stays available in
+                # every mode (the nested run is clamped read-only, so it's safe).
+                if subagent_tool is not None and subagent_depth == 0:
+                    advertised = list(advertised) + [subagent_tool]
                 if advertised:
                     request_kwargs["tools"] = advertised
                     request_kwargs["tool_choice"] = "auto"
@@ -912,6 +937,83 @@ async def _stream_with_tools(
                         "result": payload, "error": None,
                     }}
                     continue
+
+                # P5 REG-P5-01 — run_subagent is CONSUMER-LOCAL (like find_tools):
+                # look up the persona, run a nested ISOLATED turn using ONLY its
+                # scoped tools, and feed back the synthesized text. Depth 0 only (a
+                # subagent can never spawn another). A miss returns a result.error
+                # the model can self-correct from (no silent no-op). The nested
+                # tokens sum into the turn total (design D10 attribution).
+                if (
+                    subagent_depth == 0
+                    and subagent_defs
+                    and c["name"] == RUN_SUBAGENT_NAME
+                ):
+                    args_obj = _parse_tool_args(c["arguments"])
+                    payload, sub_in, sub_out = await _run_subagent_call(
+                        args=args_obj,
+                        subagent_defs=subagent_defs,
+                        full_catalog=(discovery_catalog if discovery else tools) or [],
+                        model_source=model_source,
+                        model_ref=model_ref,
+                        user_id=user_id,
+                        gen_params=gen_params,
+                        knowledge_client=knowledge_client,
+                        session_id=session_id,
+                        project_id=project_id,
+                        caller_max_iterations=max_iterations,
+                        approval_check=approval_check,
+                        hooks=hooks,
+                        effective_limit=effective_limit,
+                        subagent_depth=subagent_depth,
+                    )
+                    total_input += sub_in
+                    total_output += sub_out
+                    working.append({
+                        "role": "tool", "tool_call_id": c["id"],
+                        "content": json.dumps(payload),
+                    })
+                    _sub_ok = not payload.get("error")
+                    tool_chunk = {
+                        "id": c["id"], "iteration": iteration, "tool": c["name"],
+                        "args": args_obj, "ok": _sub_ok,
+                        "result": payload if _sub_ok else None,
+                        "error": payload.get("error"),
+                    }
+                    if _sub_ok:
+                        # M4 — a visible "subagent ran" activity, grouped distinctly
+                        # (name + which tools it used). No undo — a delegate read.
+                        tool_chunk["activity"] = {
+                            "op": RUN_SUBAGENT_NAME,
+                            "summary": f"Ran subagent '{payload.get('subagent', '')}'",
+                            "subagent": payload.get("subagent", ""),
+                            "tools_used": payload.get("tools_used", []),
+                            "undo": {"available": False},
+                        }
+                    yield {"tool_call": tool_chunk}
+                    continue
+
+                # P5 REG-P5-01 — execute-time scope whitelist (defense-in-depth):
+                # inside a nested sub-run, a tool call NOT in the subagent's scoped
+                # set NEVER executes — it returns a result.error. Advertise-time
+                # scoping already hides these tools; this catches a sub-model that
+                # fabricates an out-of-scope (or frontend/meta) name anyway.
+                if allowed_tool_names is not None and c["name"] not in allowed_tool_names:
+                    args_obj = _parse_tool_args(c["arguments"])
+                    scope_err = (
+                        f"'{c['name']}' is not available to this subagent — it is "
+                        "outside the subagent's tool scope."
+                    )
+                    working.append({
+                        "role": "tool", "tool_call_id": c["id"],
+                        "content": json.dumps({"error": scope_err}),
+                    })
+                    yield {"tool_call": {
+                        "id": c["id"], "iteration": iteration, "tool": c["name"],
+                        "args": args_obj, "ok": False, "result": None, "error": scope_err,
+                    }}
+                    continue
+
                 if surface_tracker is not None:
                     payload_as = surface_tracker.tool_running(c["name"])
                     if payload_as is not None:
@@ -1257,6 +1359,115 @@ async def _stream_with_tools(
                                completion_tokens=total_output)}
     finally:
         await client.aclose()
+
+
+async def _run_subagent_call(
+    *,
+    args: dict,
+    subagent_defs: dict[str, dict],
+    full_catalog: list[dict],
+    model_source: str,
+    model_ref: str,
+    user_id: str,
+    gen_params: dict,
+    knowledge_client,
+    session_id: str,
+    project_id: str | None,
+    caller_max_iterations: int,
+    approval_check,
+    hooks: list[dict] | None,
+    effective_limit: int | None,
+    subagent_depth: int,
+) -> tuple[dict, int, int]:
+    """P5 REG-P5-01 — run ONE subagent as a nested, isolated ``_stream_with_tools``
+    turn and return ``(payload, input_tokens, output_tokens)``.
+
+    Isolation invariants:
+    * The nested ``messages`` are FRESH — ``[{system: persona}, {user: task}]`` —
+      the parent history is NOT included, and the nested messages never enter the
+      parent ``working`` array (only this synthesized payload does).
+    * The nested tool set is EXACTLY the persona's scoped set (advertise-time
+      whitelist); ``allowed_tool_names`` re-enforces it at execute time.
+    * The nested run is clamped **read-only** (``permission_mode='ask'``) — a
+      subagent can never exceed the caller and never triggers a write-approval
+      suspend (write-delegation is a tracked follow-up). Non-R tools are dropped
+      from the advertised set AND rejected at execute time.
+    * Depth is bounded: the nested run gets ``subagent_depth+1`` and its scoped set
+      excludes ``run_subagent`` — it cannot spawn another subagent.
+    """
+    name = str(args.get("subagent") or "").strip()
+    task = str(args.get("task") or "").strip()
+    d = subagent_defs.get(name)
+    if d is None:
+        avail = ", ".join(sorted(subagent_defs)) or "(none configured)"
+        return (
+            {"error": f"unknown subagent '{name}'. Available subagents: {avail}"},
+            0, 0,
+        )
+    if not task:
+        return ({"error": "the 'task' argument is required — describe the sub-task."}, 0, 0)
+
+    scope_globs = d.get("tool_scope") or []
+    scoped = resolve_scoped_tools(full_catalog, scope_globs)
+    allowed = {tool_name_of(t) for t in scoped} - {None}
+    sub_model_ref = str(d.get("model_ref") or "") or model_ref
+
+    sub_messages = [
+        {"role": "system", "content": str(d.get("system_prompt") or "")},
+        {"role": "user", "content": task},
+    ]
+
+    final_text = ""
+    tools_used: list[str] = []
+    sub_in = 0
+    sub_out = 0
+    try:
+        nested = _stream_with_tools(
+            model_source=model_source,
+            model_ref=sub_model_ref,
+            user_id=user_id,
+            messages=sub_messages,
+            gen_params=gen_params,
+            tools=scoped,
+            knowledge_client=knowledge_client,
+            session_id=session_id,
+            project_id=project_id,
+            max_iterations=min(caller_max_iterations, SUBAGENT_MAX_ITERATIONS),
+            permission_mode="ask",           # clamp read-only — no escalation
+            approval_check=approval_check,
+            hooks=hooks,                     # the caller's hooks still apply
+            effective_limit=effective_limit,
+            allowed_tool_names=allowed,      # execute-time whitelist
+            subagent_depth=subagent_depth + 1,
+        )
+        async for ch in nested:
+            if ch.get("content"):
+                final_text += ch["content"]
+            tc = ch.get("tool_call")
+            if tc is not None:
+                # Keep only the answer produced AFTER the last tool call.
+                final_text = ""
+                if tc.get("tool"):
+                    tools_used.append(tc["tool"])
+            u = ch.get("usage")
+            if u is not None:
+                # The nested loop sums usage internally; the final chunk carries
+                # the cumulative sub-run total.
+                sub_in = getattr(u, "prompt_tokens", 0) or 0
+                sub_out = getattr(u, "completion_tokens", 0) or 0
+            if ch.get("suspend") is not None:
+                # A nested run cannot surface a suspend (no client to execute it);
+                # end the sub-run with whatever it has produced so far.
+                break
+    except Exception:
+        logger.warning("subagent '%s' run failed", name, exc_info=True)
+        return ({"error": f"subagent '{name}' failed to run."}, sub_in, sub_out)
+
+    text, truncated = cap_result(final_text.strip())
+    payload: dict = {"subagent": name, "result": text, "tools_used": tools_used}
+    if truncated:
+        payload["truncated"] = True
+    return payload, sub_in, sub_out
 
 
 async def stream_response(
@@ -2079,8 +2290,30 @@ async def _emit_chat_turn(
     except Exception:  # noqa: BLE001 — hooks are a guardrail, never load-bearing
         logger.warning("hook resolution failed (unhooked turn)", exc_info=False)
 
+    # P5 REG-P5-01 — resolve the user's + book's enabled subagent personas once per
+    # turn (degrade-safe []). When ≥1 exists, advertise `run_subagent` (a closed-set
+    # enum of their names) so the model can delegate a bounded sub-task to a scoped,
+    # isolated nested turn. Resolved HERE (in the shared body) so BOTH the fresh and
+    # the resume path get it. The tool routes through _stream_with_tools even when no
+    # other tools are on (a subagents-only surface still needs the loop).
+    _subagent_defs_map: dict[str, dict] = {}
+    _subagent_tool: dict | None = None
     try:
-        if use_tools:
+        from app.client.registry_subagents_client import get_subagents_client
+
+        _subs = await get_subagents_client().get_subagents(
+            str(user_id), book_id=str(project_id or "")
+        )
+        # First-seen wins — the resolver already shadowed by tier, so its order is
+        # authoritative; dedup defensively.
+        for _sa in _subs:
+            _subagent_defs_map.setdefault(_sa["name"], _sa)
+        _subagent_tool = build_run_subagent_tool(list(_subagent_defs_map.keys()))
+    except Exception:  # noqa: BLE001 — a capability, never load-bearing
+        logger.warning("subagent resolution failed (no delegation)", exc_info=False)
+
+    try:
+        if use_tools or _subagent_tool is not None:
             chunk_stream = _stream_with_tools(
                 model_source=model_source,
                 model_ref=model_ref,
@@ -2107,6 +2340,8 @@ async def _emit_chat_turn(
                 permission_mode=permission_mode,
                 approval_check=_approval_check,
                 hooks=_turn_hooks,
+                subagent_tool=_subagent_tool,
+                subagent_defs=_subagent_defs_map,
             )
         else:
             chunk_stream = _stream_via_gateway(

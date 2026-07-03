@@ -24,6 +24,7 @@ __all__ = [
     "MAX_SUBAGENT_DEPTH",
     "SUBAGENT_META_EXCLUDE",
     "SUBAGENT_RESULT_CHAR_CAP",
+    "SUBAGENT_MAX_ITERATIONS",
     "resolve_scoped_tools",
     "scoped_tool_names",
     "build_run_subagent_tool",
@@ -46,6 +47,11 @@ SUBAGENT_META_EXCLUDE: frozenset[str] = frozenset({RUN_SUBAGENT_NAME, "find_tool
 # returned 50 KB would re-pollute the main context and defeat the whole point of
 # isolation. Over-cap → truncate + a note.
 SUBAGENT_RESULT_CHAR_CAP = 4000
+
+# The nested sub-run gets a SMALLER iteration cap than the main turn — a subagent
+# is a bounded delegate, and its tokens debit the same turn budget (§7b.5). The
+# effective cap is min(caller_cap, this).
+SUBAGENT_MAX_ITERATIONS = 4
 
 
 def tool_name_of(tool_def: object) -> str | None:
