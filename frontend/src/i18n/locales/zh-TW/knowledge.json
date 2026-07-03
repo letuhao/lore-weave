@@ -604,6 +604,8 @@
       "recoveryModel": "復原模型（選填）",
       "recoveryModelNone": "使用預設擷取模型",
       "recoveryModelHint": "找回主流程遺漏之實體的 LLM。維持預設時，會沿用上方的預設擷取模型。",
+      "recoveryBatch": "批次大小",
+      "recoveryBatchHint": "每次分類呼叫的名稱數（1-20；預設 5）",
       "autocreateEnabled": "撰寫自動建立（建立關係所參照的實體）",
       "promptWarning": "進階：自訂提示會取代該步驟的預設抽取指示，可能降低品質。留空以使用預設。一律強制 JSON 輸出。",
       "promptPlaceholder": "留空以使用預設提示",

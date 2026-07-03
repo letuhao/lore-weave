@@ -604,6 +604,8 @@
       "recoveryModel": "回復モデル（任意）",
       "recoveryModelNone": "既定の抽出モデルを使用",
       "recoveryModelHint": "メインパスが見落としたエンティティを回復するLLM。既定のままなら上の既定抽出モデルを再利用します。",
+      "recoveryBatch": "バッチサイズ",
+      "recoveryBatchHint": "分類呼び出しごとの名前数（1〜20、既定5）",
       "autocreateEnabled": "ライター自動作成（関係から参照されるエンティティを生成）",
       "promptWarning": "上級: カスタムプロンプトはその工程の既定の抽出指示を置き換え、品質を低下させる可能性があります。空欄で既定を使用します。JSON出力は常に強制されます。",
       "promptPlaceholder": "空欄で既定のプロンプトを使用",

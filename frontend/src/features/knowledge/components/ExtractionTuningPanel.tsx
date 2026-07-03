@@ -181,6 +181,30 @@ export function ExtractionTuningPanel({ open, onOpenChange, project, onChanged }
                     'LLM that recovers entities the main pass missed. Left as default, it reuses the default extraction model above.',
                 })}
               </span>
+              <label className="mt-1 flex items-center gap-2 text-[12px]">
+                {t('projects.extractionTuning.recoveryBatch', { defaultValue: 'Batch size' })}
+                <input
+                  type="number"
+                  min={1}
+                  max={20}
+                  data-testid="tuning-recovery-batch"
+                  value={draft.recoveryMaxBatch ?? ''}
+                  placeholder="5"
+                  onChange={(e) =>
+                    setField(
+                      'recoveryMaxBatch',
+                      e.target.value ? Math.max(1, Math.min(20, Number(e.target.value))) : null,
+                    )
+                  }
+                  disabled={submitting}
+                  className="w-16 rounded-md border bg-background px-2 py-1"
+                />
+                <span className="text-[11px] text-muted-foreground">
+                  {t('projects.extractionTuning.recoveryBatchHint', {
+                    defaultValue: 'names per classifier call (1-20; default 5)',
+                  })}
+                </span>
+              </label>
             </div>
           )}
         </section>

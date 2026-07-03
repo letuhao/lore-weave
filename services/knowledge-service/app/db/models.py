@@ -3,7 +3,7 @@ from decimal import Decimal
 from typing import Annotated, Literal
 from uuid import UUID
 
-from pydantic import BaseModel, ConfigDict, StringConstraints
+from pydantic import BaseModel, ConfigDict, Field, StringConstraints
 
 # KG customizable-ontology epic (L1) — the kg_* graph-schema models live in a
 # sibling module. Imported here so the DB-model package is a single surface;
@@ -214,6 +214,10 @@ class EntityRecoveryOverride(BaseModel):
     enabled: bool | None = None
     model_ref: str | None = None
     model_source: ModelSourceLit | None = None
+    # KN model-roles — Tier-3 classifier batch size (names classified per LLM
+    # call). Bounded 1-20; None = the env/default (5). Read by the extract-item
+    # resolver (_resolve_entity_recovery_config).
+    max_items_per_batch: Annotated[int, Field(ge=1, le=20)] | None = None
 
 
 class WriterAutocreateOverride(BaseModel):

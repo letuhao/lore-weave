@@ -174,6 +174,15 @@ describe('ExtractionTuningPanel', () => {
     });
   });
 
+  it('the recovery batch size is sent (clamped 1-20) and omitted when blank', async () => {
+    renderPanel(makeProject({ entity_recovery: { enabled: true } }));
+    fireEvent.change(screen.getByTestId('tuning-recovery-batch'), { target: { value: '50' } });
+    fireEvent.click(saveBtn());
+    await waitFor(() => expect(updateExtractionConfigMock).toHaveBeenCalledTimes(1));
+    // clamped to the 20 max
+    expect(updateExtractionConfigMock.mock.calls[0][1].entity_recovery.max_items_per_batch).toBe(20);
+  });
+
   it('toggling writer autocreate sends writer_autocreate.enabled', async () => {
     renderPanel(makeProject());
     fireEvent.click(screen.getByLabelText('projects.extractionTuning.autocreateEnabled'));

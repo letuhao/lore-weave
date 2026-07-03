@@ -116,3 +116,18 @@ async def test_explicit_disable_off_even_with_env():
 async def test_per_project_max_batch_honored():
     got = await _resolve({"entity_recovery": {"enabled": True, "max_items_per_batch": 9}})
     assert got is not None and got.max_items_per_batch == 9
+
+
+def test_entity_recovery_override_contract_accepts_bounded_max_batch():
+    """KN model-roles — the FE-facing contract now carries max_items_per_batch
+    (was env/default only). Bounded 1-20; None = default."""
+    from pydantic import ValidationError
+
+    from app.db.models import EntityRecoveryOverride
+
+    assert EntityRecoveryOverride(enabled=True, max_items_per_batch=20).max_items_per_batch == 20
+    assert EntityRecoveryOverride(max_items_per_batch=1).max_items_per_batch == 1
+    assert EntityRecoveryOverride().max_items_per_batch is None
+    for bad in (0, 21, -1):
+        with pytest.raises(ValidationError):
+            EntityRecoveryOverride(max_items_per_batch=bad)

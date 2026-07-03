@@ -870,6 +870,8 @@
       "recoveryModel": "Recovery model (optional)",
       "recoveryModelNone": "Use default extraction model",
       "recoveryModelHint": "LLM that recovers entities the main pass missed. Left as default, it reuses the default extraction model above.",
+      "recoveryBatch": "Batch size",
+      "recoveryBatchHint": "names per classifier call (1-20; default 5)",
       "autocreateEnabled": "Writer autocreate (mint entities referenced by relations)",
       "promptWarning": "Advanced: custom prompts replace the default extraction instructions for that step and can degrade quality. Leave blank to use the default. JSON output is always enforced.",
       "promptPlaceholder": "Leave blank to use the default prompt",

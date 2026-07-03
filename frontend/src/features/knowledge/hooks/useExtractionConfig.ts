@@ -44,6 +44,8 @@ interface Draft {
   // KN model-roles — entity-recovery classifier model; null = use the default
   // (the BE resolves role override → project default → user-global → env).
   recoveryModelRef: string | null;
+  // KN model-roles — Tier-3 classifier batch size (1-20); null = default (5).
+  recoveryMaxBatch: number | null;
   autocreateEnabled: boolean;
   prompts: Record<PromptOp, string>; // per-op system text ('' = no override)
 }
@@ -76,6 +78,8 @@ function deriveDraft(config: Record<string, unknown>): Draft {
     filterModelRef: typeof pf.model_ref === 'string' ? pf.model_ref : null,
     recoveryEnabled: er.enabled === true,
     recoveryModelRef: typeof er.model_ref === 'string' ? er.model_ref : null,
+    recoveryMaxBatch:
+      typeof er.max_items_per_batch === 'number' ? er.max_items_per_batch : null,
     autocreateEnabled: ac.enabled === true,
     prompts,
   };
@@ -162,6 +166,12 @@ export function useExtractionConfig(project: Project, open: boolean, onChanged: 
     } else {
       delete er.model_ref;
       delete er.model_source;
+    }
+    // Optional classifier batch size (bounded 1-20 by the BE); omit = default.
+    if (draft.recoveryEnabled && draft.recoveryMaxBatch) {
+      er.max_items_per_batch = draft.recoveryMaxBatch;
+    } else {
+      delete er.max_items_per_batch;
     }
     payload.entity_recovery = er as ExtractionConfigPayload['entity_recovery'];
     payload.writer_autocreate = { enabled: draft.autocreateEnabled };

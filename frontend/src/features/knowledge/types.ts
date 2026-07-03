@@ -122,6 +122,8 @@ export interface EntityRecoveryOverride {
   enabled?: boolean;
   model_ref?: string;
   model_source?: ExtractionModelSource;
+  // KN model-roles — Tier-3 classifier batch size (1-20; omit = default 5).
+  max_items_per_batch?: number;
 }
 
 export interface PromptOverride {

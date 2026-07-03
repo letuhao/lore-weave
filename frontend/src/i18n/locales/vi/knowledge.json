@@ -604,6 +604,8 @@
       "recoveryModel": "Mô hình khôi phục (tùy chọn)",
       "recoveryModelNone": "Dùng mô hình trích xuất mặc định",
       "recoveryModelHint": "LLM khôi phục các thực thể mà lượt chính bỏ sót. Để mặc định thì nó dùng lại mô hình trích xuất mặc định ở trên.",
+      "recoveryBatch": "Cỡ lô",
+      "recoveryBatchHint": "số tên mỗi lần gọi phân loại (1-20; mặc định 5)",
       "autocreateEnabled": "Tự tạo khi viết (tạo thực thể được tham chiếu bởi quan hệ)",
       "promptWarning": "Nâng cao: prompt tùy chỉnh thay thế hướng dẫn trích xuất mặc định cho bước đó và có thể làm giảm chất lượng. Để trống để dùng mặc định. Đầu ra JSON luôn được ép buộc.",
       "promptPlaceholder": "Để trống để dùng prompt mặc định",
