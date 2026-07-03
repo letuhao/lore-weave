@@ -29,7 +29,10 @@
 > pre-#1-fix). **Defer-clears (`10089586e`):** rebuild-with-model-change — a rebuild now uses the
 > project's persisted default LLM over the prior job's (pure `resolveRebuildModels`, unit-tested);
 > `max_items_per_batch` now in the FE contract (`EntityRecoveryOverride` bounded 1-20 + tuning-panel
-> batch input). **Still deferred:** wiki-gen LLM picker (separate `features/wiki`).
+> batch input). wiki-gen model consistency (`1243677a8`) — the Generate-Wiki dialog pre-selects the
+> user global default chat model once the AI path is active (mirrors NewChatDialog), so wiki
+> generation inherits the "one default model" like every other role; the deterministic stub default
+> (anti-spend) is untouched, FE-only, no stub-vs-LLM routing change. **Model-roles defers: all clear.**
 
 > **▶ AGENT EXTENSIBILITY REGISTRY — AUTONOMOUS RUN IN FLIGHT (2026-07-03).** New track: user-registered
 > plugins/skills/MCP-servers + agent self-registration. Spec [`agent-extensibility-registry`](../specs/2026-07-02-agent-extensibility-registry.md),
