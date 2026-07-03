@@ -279,6 +279,43 @@ class TestMcpExecuteToolResultFormatting:
         await client.aclose()
 
     @pytest.mark.asyncio
+    async def test_overlay_tool_plain_text_is_wrapped_as_success(self):
+        """REG-P2-03 — an EXTERNAL federated (overlay) tool (u_/b_/s_<hash>_…) may
+        return PLAIN TEXT (prose/markdown), a VALID result. It must be wrapped as
+        {"text": ...} success, NOT rejected like an internal tool's non-JSON. This is
+        the bug that broke every external-MCP tool result (e.g. DeepWiki)."""
+        client = _make_client()
+        text = "Available pages for x/y:\n- 1 Intro\n- 2 Architecture"
+        result = _call_tool_result(content=[_text_content(text)])
+        tpatch, spatch, *_ = _patch_mcp(call_tool_return=result)
+        with tpatch, spatch:
+            out = await client.mcp_execute_tool(
+                user_id="u", session_id="s",
+                tool_name="u_a2bbc662_read_wiki_structure",
+                tool_args={"repoName": "x/y"},
+            )
+        assert out["success"] is True
+        assert out["result"] == {"text": text}
+        assert out["error"] is None
+        await client.aclose()
+
+    @pytest.mark.asyncio
+    async def test_overlay_tool_json_still_parsed_as_dict(self):
+        """An overlay tool that DOES return JSON is parsed normally (the text
+        pass-through only triggers on a JSON decode failure — no double-wrap)."""
+        client = _make_client()
+        result = _call_tool_result(content=[_text_content(json.dumps({"answer": "42"}))])
+        tpatch, spatch, *_ = _patch_mcp(call_tool_return=result)
+        with tpatch, spatch:
+            out = await client.mcp_execute_tool(
+                user_id="u", session_id="s",
+                tool_name="u_a2bbc662_ask_question", tool_args={"q": "?"},
+            )
+        assert out["success"] is True
+        assert out["result"] == {"answer": "42"}
+        await client.aclose()
+
+    @pytest.mark.asyncio
     async def test_structured_tool_error_dict_maps_to_failure(self):
         """The server dispatcher returns {"success": False, "error": ...}
         for tool-level failures — the client must map that to a

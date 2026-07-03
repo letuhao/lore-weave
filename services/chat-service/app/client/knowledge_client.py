@@ -22,6 +22,7 @@ Lessons baked in from K4 reviews:
 """
 
 import logging
+import re
 import time
 from typing import Literal
 
@@ -36,6 +37,11 @@ from app.middleware.trace_id import current_trace_id
 # long cache would hide a just-registered server (or serve a just-removed one). 60s
 # bounds the staleness window while keeping most turns cache-hot.
 _TOOL_CATALOG_TTL_S = 60.0
+
+# An external federated (overlay) tool name — u_/b_/s_<hash8>_… — matching the
+# ai-gateway's OVERLAY_NAME_RE. Internal LoreWeave tools are unprefixed. External
+# tools may return plain text (prose/markdown), not the JSON internal tools return.
+_OVERLAY_TOOL_RE = re.compile(r"^[ubs]_[0-9a-f]{8}_")
 
 # ARCH-2 C2 — MCP client transport for the USE_MCP_TOOLS dual-run path.
 # Imported at module level (not lazily) so tests can patch these symbols at
@@ -686,6 +692,14 @@ class KnowledgeClient:
             import json as _json  # noqa: PLC0415
             payload = _json.loads(first.text)
         except Exception as exc:
+            # External federated (overlay) tools may return PLAIN TEXT (prose/markdown),
+            # which is a VALID result — e.g. a DeepWiki tool returning a repo's wiki
+            # structure. Wrap it as {"text": ...} so the model can consume it. Internal
+            # LoreWeave tools always return JSON, so a decode failure there IS an error
+            # (never mask a real internal-tool bug as success).
+            if _OVERLAY_TOOL_RE.match(tool_name):
+                text = getattr(first, "text", "") or ""
+                return {"success": True, "result": {"text": text}, "error": None}
             logger.warning(
                 "mcp_execute_tool decode error: %s — raw: %s",
                 exc, getattr(first, "text", "?")[:200],
