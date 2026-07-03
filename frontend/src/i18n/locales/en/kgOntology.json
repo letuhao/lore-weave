@@ -118,7 +118,8 @@
     "title": "Found in your graph",
     "help": "your book already extracted these — add the missing ones",
     "addButton": "Add {{count}} to schema",
-    "added": "Added {{count}} to the schema"
+    "added": "Added {{count}} to the schema",
+    "addedPartial": "Added {{ok}} · {{failed}} failed"
   },
   "sync": {
     "upToDate": "Up to date — no upstream changes.",

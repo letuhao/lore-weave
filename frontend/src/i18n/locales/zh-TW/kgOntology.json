@@ -118,7 +118,8 @@
     "title": "在你的圖譜中找到",
     "help": "書中已擷取這些 — 加入尚未登錄的",
     "addButton": "新增 {{count}} 到綱要",
-    "added": "已新增 {{count}} 到綱要"
+    "added": "已新增 {{count}} 到綱要",
+    "addedPartial": "已新增 {{ok}} · {{failed}} 失敗"
   },
   "sync": {
     "upToDate": "已是最新——上游沒有變更。",

@@ -210,6 +210,33 @@ describe('SchemaWorkbench — full-CRUD authoring (A3)', () => {
     await waitFor(() => expect(ctrl.addNodeKind).toHaveBeenCalledWith({ kind_code: 'sect', strength: 'optional' }));
   });
 
+  it('review-impl #2: an edge with an undefined endpoint kind shows in the loose tray', () => {
+    const c = makeController(
+      makeSchema({
+        edge_types: [{
+          code: 'HAUNTS', label: 'haunts', directed: true, temporal: false, cardinality: 'multi_active',
+          source_node_kinds: ['character'], target_node_kinds: ['ghost'], // ghost is not a node kind
+        }],
+      }),
+    );
+    render(<SchemaWorkbench controller={c as never} />);
+    fireEvent.click(screen.getByTestId('schema-view-canvas'));
+    expect(screen.getByTestId('canvas-loose-edges')).toHaveTextContent('HAUNTS');
+  });
+
+  it('review-impl #4: an infer batch continues past a failing add', async () => {
+    ctrl.addNodeKind = vi.fn().mockRejectedValueOnce(new Error('dup')).mockResolvedValue(undefined);
+    render(
+      <SchemaWorkbench
+        controller={ctrl as never}
+        observed={{ node_kinds: [{ code: 'aa', count: 1 }, { code: 'bb', count: 1 }], edge_types: [] }}
+      />,
+    );
+    fireEvent.click(screen.getByTestId('infer-add-selected'));
+    // both were attempted even though the first rejected (no abort mid-batch)
+    await waitFor(() => expect(ctrl.addNodeKind).toHaveBeenCalledTimes(2));
+  });
+
   it('toggling free edges patches schema meta', async () => {
     renderWB(ctrl);
     fireEvent.click(screen.getByTestId('allow-free-edges-toggle'));

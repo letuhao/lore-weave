@@ -39,31 +39,51 @@ export function SchemaCanvas({ schema, disabled, onAddKind, onAddEdge }: Props) 
     [schema.node_kinds],
   );
 
+  const defined = useMemo(() => new Set(kinds), [kinds]);
+
   const [positions, setPositions] = useState<Record<string, Pos>>(() => circleLayout(kinds));
-  // keep positions when kinds are added/removed (place a new kind at the centre).
+  // keep positions when kinds are added/removed. review-impl #3: place each NEW
+  // kind on a golden-angle spiral from the centre (not all at one point) so a bulk
+  // add (AI-generate while on Canvas) doesn't stack them.
   useEffect(() => {
     setPositions((p) => {
       const next = { ...p };
       let changed = false;
-      for (const c of kinds) if (!next[c]) { next[c] = { x: R + NODE.w, y: R + NODE.h }; changed = true; }
+      let placed = Object.keys(next).length;
+      for (const c of kinds)
+        if (!next[c]) {
+          const a = placed * 2.399963; // golden angle
+          const r = 40 + 26 * Math.sqrt(placed);
+          next[c] = { x: Math.round(R + NODE.w + r * Math.cos(a)), y: Math.round(R + NODE.h + r * Math.sin(a)) };
+          placed++;
+          changed = true;
+        }
       for (const c of Object.keys(next)) if (!kinds.includes(c)) { delete next[c]; changed = true; }
       return changed ? next : p;
     });
   }, [kinds]);
 
+  // Arrows only for pairs where BOTH endpoint kinds are defined (an arrow to an
+  // undefined kind can't be positioned anyway).
   const arrows: Arrow[] = useMemo(
     () =>
       (schema.edge_types ?? []).flatMap((et) =>
-        (et.source_node_kinds ?? []).flatMap((s) =>
-          (et.target_node_kinds ?? []).map((tg) => ({ key: `${et.code}:${s}:${tg}`, code: et.code, from: s, to: tg })),
+        (et.source_node_kinds ?? []).filter((s) => defined.has(s)).flatMap((s) =>
+          (et.target_node_kinds ?? []).filter((tg) => defined.has(tg)).map((tg) => ({ key: `${et.code}:${s}:${tg}`, code: et.code, from: s, to: tg })),
         ),
       ),
-    [schema.edge_types],
+    [schema.edge_types, defined],
   );
-  // edge types with no source/target kinds can't be placed — list them in a tray.
+  // review-impl #2: an edge with NO renderable arrow (empty endpoints OR an endpoint
+  // that isn't a defined kind) would otherwise be invisible — surface it in the tray.
   const looseEdges = useMemo(
-    () => (schema.edge_types ?? []).filter((e) => !(e.source_node_kinds ?? []).length || !(e.target_node_kinds ?? []).length),
-    [schema.edge_types],
+    () =>
+      (schema.edge_types ?? []).filter(
+        (e) =>
+          !(e.source_node_kinds ?? []).some((s) => defined.has(s)) ||
+          !(e.target_node_kinds ?? []).some((tg) => defined.has(tg)),
+      ),
+    [schema.edge_types, defined],
   );
 
   const [connectFrom, setConnectFrom] = useState<string | null>(null);

@@ -29,7 +29,12 @@ from uuid import UUID
 from fastapi import APIRouter, Depends, HTTPException, Path, Query, Response, status
 from pydantic import BaseModel, Field
 
-from app.auth.grant_deps import GrantLevel, require_project_grant
+from app.auth.grant_deps import (
+    GrantLevel,
+    Principals,
+    require_project_grant,
+    require_project_principals,
+)
 from app.clients.glossary_ontology_client import (
     GlossaryOntologyClient,
     HttpGlossaryOntologyClient,
@@ -474,15 +479,17 @@ async def get_schema_observed(
 async def propose_schema_route(
     body: SchemaProposeRequest,
     project_id: UUID = Path(),
-    owner: UUID = Depends(require_project_grant(GrantLevel.MANAGE)),
+    principals: Principals = Depends(require_project_principals(GrantLevel.MANAGE)),
 ):
     """M3b — propose a KG schema from a premise (single-shot LLM generate; nothing
     written — the caller reviews + adopts via the add routes). Manage-gated. The
-    LLM runs as the project owner with the caller-supplied BYOK `model_ref`."""
+    LLM runs + bills as the CALLER under BYOK (their own `model_ref` + budget), so a
+    Manage-grant collaborator can generate with their own model — not the owner's
+    (review-impl #1: running as owner made a collaborator's model_ref unresolvable)."""
     try:
         proposal = await propose_schema(
             get_llm_client(),
-            user_id=str(owner),
+            user_id=str(principals.caller),
             premise=body.premise,
             genre=body.genre,
             model_ref=body.model_ref,

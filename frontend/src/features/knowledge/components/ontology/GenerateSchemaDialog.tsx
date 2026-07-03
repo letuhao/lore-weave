@@ -43,8 +43,10 @@ export function GenerateSchemaDialog({ projectId, onClose, onAdopt }: Props) {
       setProposal(p);
       setSkip(new Set());
     } catch (e) {
-      const body = (e as { body?: { message?: string } }).body;
-      toast.error(body?.message || (e as Error).message || t('generate.failed'));
+      // FastAPI nests the reason at body.detail.message (review-impl #5) — read it
+      // first so the toast shows WHY, not a generic "Bad Gateway".
+      const body = (e as { body?: { message?: string; detail?: { message?: string } } }).body;
+      toast.error(body?.detail?.message || body?.message || (e as Error).message || t('generate.failed'));
     }
   };
 

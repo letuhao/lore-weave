@@ -89,39 +89,44 @@ export function SchemaWorkbench({
   const kindCodes = (schema.node_kinds ?? []).map((k) => k.kind_code);
   const edgeCodes = (schema.edge_types ?? []).map((e) => e.code);
 
-  // M3a — promote observed graph components: add kinds FIRST (so an edge's
-  // source/target kinds exist), then edges. One toast for the batch.
-  const inferAdd = async (kinds: string[], edges: InferEdgePick[]) => {
-    try {
-      for (const kc of kinds) await controller.addNodeKind({ kind_code: kc, strength: 'optional' });
-      for (const e of edges)
-        await controller.addEdgeType({
-          code: e.code, label: e.code,
-          source_node_kinds: e.source_kinds, target_node_kinds: e.target_kinds,
-        });
-      toast.success(t('infer.added', { count: kinds.length + edges.length }));
-    } catch (e) {
-      const msg = (e as { status?: number }).status === 403 ? t('schema.forbidden') : (e as Error).message;
-      toast.error(msg || t('schema.addFailed'));
+  // review-impl #4 — a batch add continues on a per-item failure (e.g. a 409 for a
+  // code that's already live from a stale cache) instead of aborting mid-way; the
+  // tally is toasted. Kinds are added FIRST so an edge's endpoint kinds exist. A 403
+  // (no Manage) fails every item → surfaced as a plain error.
+  const runBatch = async (fns: Array<() => Promise<unknown>>) => {
+    let ok = 0;
+    let failed = 0;
+    let forbidden = false;
+    for (const fn of fns) {
+      try {
+        await fn();
+        ok++;
+      } catch (e) {
+        if ((e as { status?: number }).status === 403) forbidden = true;
+        failed++;
+      }
     }
+    if (forbidden && ok === 0) toast.error(t('schema.forbidden'));
+    else if (failed) toast.warning(t('infer.addedPartial', { ok, failed }));
+    else toast.success(t('infer.added', { count: ok }));
   };
 
+  // M3a — promote observed graph components (kinds first, then edges).
+  const inferAdd = (kinds: string[], edges: InferEdgePick[]) =>
+    runBatch([
+      ...kinds.map((kc) => () => controller.addNodeKind({ kind_code: kc, strength: 'optional' })),
+      ...edges.map((e) => () =>
+        controller.addEdgeType({ code: e.code, label: e.code, source_node_kinds: e.source_kinds, target_node_kinds: e.target_kinds })),
+    ]);
+
   // M3b — adopt an AI proposal: kinds → edges → facts (order keeps edge endpoints valid).
-  const generateAdopt = async (picks: ProposalPicks) => {
-    try {
-      for (const k of picks.kinds) await controller.addNodeKind({ kind_code: k.code, strength: 'optional' });
-      for (const e of picks.edges)
-        await controller.addEdgeType({
-          code: e.code, label: e.label || e.code,
-          source_node_kinds: e.source_kinds, target_node_kinds: e.target_kinds,
-        });
-      for (const f of picks.facts) await controller.addFactType({ code: f.code, label: f.label || f.code });
-      toast.success(t('infer.added', { count: picks.kinds.length + picks.edges.length + picks.facts.length }));
-    } catch (e) {
-      const msg = (e as { status?: number }).status === 403 ? t('schema.forbidden') : (e as Error).message;
-      toast.error(msg || t('schema.addFailed'));
-    }
-  };
+  const generateAdopt = (picks: ProposalPicks) =>
+    runBatch([
+      ...picks.kinds.map((k) => () => controller.addNodeKind({ kind_code: k.code, strength: 'optional' })),
+      ...picks.edges.map((e) => () =>
+        controller.addEdgeType({ code: e.code, label: e.label || e.code, source_node_kinds: e.source_kinds, target_node_kinds: e.target_kinds })),
+      ...picks.facts.map((f) => () => controller.addFactType({ code: f.code, label: f.label || f.code })),
+    ]);
 
   return (
     <div className="space-y-4" data-testid="schema-workbench">

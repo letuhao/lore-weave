@@ -118,7 +118,8 @@
     "title": "Tìm thấy trong đồ thị của bạn",
     "help": "truyện đã trích xuất sẵn — thêm những cái còn thiếu",
     "addButton": "Thêm {{count}} vào schema",
-    "added": "Đã thêm {{count}} vào schema"
+    "added": "Đã thêm {{count}} vào schema",
+    "addedPartial": "Đã thêm {{ok}} · {{failed}} lỗi"
   },
   "sync": {
     "upToDate": "Đã cập nhật — không có thay đổi từ nguồn.",

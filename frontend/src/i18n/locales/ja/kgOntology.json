@@ -118,7 +118,8 @@
     "title": "グラフから検出",
     "help": "本から抽出済み — 未登録のものを追加",
     "addButton": "{{count}} 件をスキーマに追加",
-    "added": "{{count}} 件をスキーマに追加しました"
+    "added": "{{count}} 件をスキーマに追加しました",
+    "addedPartial": "{{ok}} 件追加 · {{failed}} 件失敗"
   },
   "sync": {
     "upToDate": "最新です — 上流の変更はありません。",
