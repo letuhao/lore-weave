@@ -15,23 +15,18 @@ ai-gateway → provider-registry like every other knowledge LLM call.
 
 from __future__ import annotations
 
-import json
 import logging
-import re
 
-from loreweave_llm.reasoning import ReasoningDirective, reasoning_fields
+from loreweave_llm import StructuredGenerateError, parse_json_object, structured_generate
 from pydantic import BaseModel, Field, ValidationError
 
 logger = logging.getLogger(__name__)
 
+# Bounded output budget for the single-shot proposal. structured_generate DISABLES
+# hidden reasoning by default (reasoning="none" → chat_template_kwargs.{thinking:false}),
+# closing the empty-prose footgun (reproduced live: Gemma-4 26B burned its budget on
+# hidden reasoning → empty content → JSON parse error) — no local knob needed here.
 _MAX_OUTPUT_TOKENS = 3000
-
-# Structured-JSON generation must NOT think out loud: a reasoning model (Gemma 4,
-# Qwen3, R1…) otherwise burns the whole output budget on hidden reasoning tokens and
-# returns EMPTY prose (the "empty-prose footgun" — reproduced live: Gemma-4 26B →
-# "proposal was not valid JSON: Expecting value line 1 column 1"). effort='none'
-# emits chat_template_kwargs.{thinking:false} so the model spends its budget on JSON.
-_NO_THINKING = reasoning_fields(ReasoningDirective(effort="none", passthrough=False, source="user"))
 
 _SYSTEM_PROMPT = """You design knowledge-graph SCHEMAS (ontologies) for stories.
 Given a premise, propose the node kinds (entity types), edge types (relation types),
@@ -81,32 +76,14 @@ class ProposeError(Exception):
     """The LLM call failed or returned unparseable output (router → 502)."""
 
 
-def _extract_json(text: str) -> dict:
-    """Pull the JSON object out of an LLM completion (tolerates ```json fences /
-    leading prose). Raises ProposeError if no object parses."""
-    s = (text or "").strip()
-    # strip a ```json … ``` fence if present
-    fence = re.search(r"```(?:json)?\s*(.+?)```", s, re.DOTALL)
-    if fence:
-        s = fence.group(1).strip()
-    # else grab the outermost {...}
-    if not s.startswith("{"):
-        m = re.search(r"\{.*\}", s, re.DOTALL)
-        if m:
-            s = m.group(0)
-    try:
-        obj = json.loads(s)
-    except (json.JSONDecodeError, TypeError) as exc:
-        raise ProposeError(f"proposal was not valid JSON: {exc}") from exc
-    if not isinstance(obj, dict):
-        raise ProposeError("proposal JSON was not an object")
-    return obj
-
-
 def parse_proposal(content: str) -> SchemaProposal:
     """LLM text → validated SchemaProposal (drops malformed components, keeps the
-    rest — a partial proposal is still useful to the human reviewer)."""
-    obj = _extract_json(content)
+    rest — a partial proposal is still useful to the human reviewer). Uses the
+    SDK's shared tolerant JSON extractor (fences / leading prose)."""
+    try:
+        obj = parse_json_object(content)
+    except StructuredGenerateError as exc:
+        raise ProposeError(str(exc)) from exc
     try:
         return SchemaProposal.model_validate(obj)
     except ValidationError:
@@ -151,36 +128,15 @@ async def propose_schema(
     if not premise.strip():
         raise ProposeError("premise is empty")
     try:
-        job = await llm_client.submit_and_wait(
+        result = await structured_generate(
+            llm_client,
             user_id=user_id,
-            operation="chat",
             model_source=model_source,
             model_ref=model_ref,
-            input={
-                "messages": build_messages(premise, genre),
-                "temperature": 0.3,
-                "max_tokens": _MAX_OUTPUT_TOKENS,
-                **_NO_THINKING,
-            },
-            chunking=None,
+            messages=build_messages(premise, genre),
+            max_output_tokens=_MAX_OUTPUT_TOKENS,
             job_meta={"usage_purpose": "kg_schema_propose", "extractor": "schema_propose"},
-            transient_retry_budget=1,
         )
-    except Exception as exc:  # SDK/transport — surface as a clean 502
-        raise ProposeError(f"schema-propose LLM call failed: {exc}") from exc
-
-    if getattr(job, "status", None) != "completed":
-        code = job.error.code if getattr(job, "error", None) else "LLM_UNKNOWN_ERROR"
-        raise ProposeError(f"schema-propose job ended status={getattr(job, 'status', '?')} ({code})")
-
-    result = job.result or {}
-    messages_out = result.get("messages") or []
-    content = ""
-    if isinstance(messages_out, list) and messages_out and isinstance(messages_out[0], dict):
-        content = messages_out[0].get("content", "") or ""
-    if not content.strip():
-        raise ProposeError(
-            "the model returned an empty response (it may have spent its budget on "
-            "hidden reasoning) — try a different model or a more specific premise"
-        )
-    return parse_proposal(content)
+    except StructuredGenerateError as exc:  # transport / non-completed / empty
+        raise ProposeError(str(exc)) from exc
+    return parse_proposal(result.content)
