@@ -295,6 +295,36 @@ CREATE INDEX IF NOT EXISTS idx_hooks_owner ON hooks(owner_user_id);
 CREATE INDEX IF NOT EXISTS idx_hooks_book ON hooks(book_id);
 CREATE INDEX IF NOT EXISTS idx_hooks_event ON hooks(on_event);
 
+-- P5: subagent definitions — a named persona (own system_prompt) with a tool_scope
+-- (a subset filter over the user's catalog) + an optional model_ref. The CRUD +
+-- resolver ship here; the scoped-execution RUNTIME (a registry_run_subagent server
+-- tool that runs an isolated nested turn) is a larger structural piece tracked as
+-- D-REG-P5-SUBAGENT-RUNTIME.
+CREATE TABLE IF NOT EXISTS subagent_defs (
+  subagent_id UUID PRIMARY KEY DEFAULT uuidv7(),
+  plugin_id UUID REFERENCES plugins(plugin_id) ON DELETE CASCADE,
+  tier TEXT NOT NULL CHECK (tier IN ('system','user','book')),
+  owner_user_id UUID,
+  book_id UUID,
+  name TEXT NOT NULL,                                  -- lowercase a-z0-9-
+  description TEXT NOT NULL DEFAULT '',
+  system_prompt TEXT NOT NULL DEFAULT '',
+  tool_scope JSONB NOT NULL DEFAULT '[]',              -- allowed tool-name globs, e.g. ["glossary_*","kg_*"]
+  model_ref TEXT NOT NULL DEFAULT '',
+  enabled BOOLEAN NOT NULL DEFAULT true,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  CONSTRAINT subagents_scope_key CHECK (
+    (tier = 'system' AND owner_user_id IS NULL AND book_id IS NULL) OR
+    (tier = 'user'   AND owner_user_id IS NOT NULL AND book_id IS NULL) OR
+    (tier = 'book'   AND book_id IS NOT NULL)
+  )
+);
+CREATE INDEX IF NOT EXISTS idx_subagents_owner ON subagent_defs(owner_user_id);
+CREATE INDEX IF NOT EXISTS idx_subagents_book ON subagent_defs(book_id);
+CREATE UNIQUE INDEX IF NOT EXISTS uq_subagents_user ON subagent_defs(owner_user_id, name) WHERE tier = 'user';
+CREATE UNIQUE INDEX IF NOT EXISTS uq_subagents_book ON subagent_defs(book_id, name) WHERE tier = 'book';
+
 -- REG-P1-03: seed the 5 hardcoded chat-service skills as System-tier rows so the
 -- FE can list + toggle them and enablement resolves. Their BODIES remain authored
 -- in chat-service skill_registry (single source; DECISION_LOG DL-4) — these rows

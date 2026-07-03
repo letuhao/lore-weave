@@ -209,6 +209,12 @@ func (s *Server) Router() http.Handler {
 		r.Patch("/hooks/{hook_id}", s.patchHook)
 		r.Delete("/hooks/{hook_id}", s.deleteHook)
 
+		// Subagent definitions (P5)
+		r.Get("/subagents", s.listSubagents)
+		r.Post("/subagents", s.createSubagent)
+		r.Patch("/subagents/{subagent_id}", s.patchSubagent)
+		r.Delete("/subagents/{subagent_id}", s.deleteSubagent)
+
 		// Proposals (P1 agent self-registration — propose→approve/reject)
 		r.Get("/proposals", s.listProposals)
 		r.Get("/proposals/{proposal_id}", s.getProposal)
@@ -233,6 +239,7 @@ func (s *Server) Router() http.Handler {
 		r.Get("/mcp-servers/{mcp_server_id}/credentials", s.internalMcpCredentials) // P3 vault decrypt (egress auth)
 		r.Get("/commands", s.internalCommands)                                      // P4 command-expansion resolver
 		r.Get("/hooks", s.internalHooks)                                            // P4 hook-engine resolver
+		r.Get("/subagents", s.internalSubagents)                                    // P5 subagent resolver
 	})
 
 	return r

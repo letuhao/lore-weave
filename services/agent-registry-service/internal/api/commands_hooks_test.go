@@ -88,3 +88,22 @@ func TestCreateHook_InvalidEventAndAction(t *testing.T) {
 		t.Errorf("code-execution action → want 400, got %d", rec.Code)
 	}
 }
+
+func TestCreateSubagent_Validation(t *testing.T) {
+	s, mock := newMockServer(t)
+	defer mock.Close()
+	tok := mintJWT(t, "019d5e3c-7cc5-7e6a-8b27-1344e148bf7c", "user")
+
+	rec := doJSON(s, http.MethodPost, "/v1/agent-registry/subagents", tok, `{"name":"Bad Name","system_prompt":"x"}`)
+	if rec.Code != http.StatusBadRequest {
+		t.Errorf("invalid name → want 400, got %d", rec.Code)
+	}
+	rec = doJSON(s, http.MethodPost, "/v1/agent-registry/subagents", tok, `{"name":"lore-scout","system_prompt":""}`)
+	if rec.Code != http.StatusBadRequest {
+		t.Errorf("empty system_prompt → want 400, got %d", rec.Code)
+	}
+	rec = doJSON(s, http.MethodPost, "/v1/agent-registry/subagents", tok, `{"name":"lore-scout","system_prompt":"You scout lore.","tool_scope":"not-an-array"}`)
+	if rec.Code != http.StatusBadRequest {
+		t.Errorf("non-array tool_scope → want 400, got %d", rec.Code)
+	}
+}
