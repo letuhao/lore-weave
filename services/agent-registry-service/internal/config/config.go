@@ -26,6 +26,13 @@ type Config struct {
 	// book-tier writes (they 501), matching the pre-grant behavior. Set it to
 	// enable book-tier plugins/skills + book-scope enablement (D-REG-BOOK-GRANT).
 	BookServiceInternalURL string
+
+	// AllowInternalMcpTargets — dev-only SSRF escape hatch. When true, a user may
+	// register an MCP endpoint that resolves to an internal/loopback address (used
+	// to keep the P3 overlay/scan/egress paths live-smokeable against an in-cluster
+	// MCP server). DEFAULT FALSE — in prod every user-supplied URL is SSRF-guarded
+	// to public hosts only. Set AGENT_REGISTRY_ALLOW_INTERNAL_MCP=1 to enable.
+	AllowInternalMcpTargets bool
 }
 
 func Load() (*Config, error) {
@@ -36,6 +43,7 @@ func Load() (*Config, error) {
 		InternalServiceToken: os.Getenv("INTERNAL_SERVICE_TOKEN"),
 		VaultKey:             os.Getenv("AGENT_REGISTRY_VAULT_KEY"),
 		BookServiceInternalURL: os.Getenv("BOOK_SERVICE_INTERNAL_URL"),
+		AllowInternalMcpTargets: os.Getenv("AGENT_REGISTRY_ALLOW_INTERNAL_MCP") == "1",
 	}
 	if c.DatabaseURL == "" {
 		return nil, fmt.Errorf("DATABASE_URL is required")

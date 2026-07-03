@@ -209,7 +209,8 @@ func (s *Server) Router() http.Handler {
 		r.Use(s.requireInternalToken)
 		r.Get("/effective-catalog", s.effectiveCatalog)
 		r.Get("/skills", s.internalSkills)
-		r.Get("/effective-mcp-servers", s.internalEffectiveMcpServers) // P2 federation overlay source
+		r.Get("/effective-mcp-servers", s.internalEffectiveMcpServers)              // P2 federation overlay source
+		r.Get("/mcp-servers/{mcp_server_id}/credentials", s.internalMcpCredentials) // P3 vault decrypt (egress auth)
 	})
 
 	return r

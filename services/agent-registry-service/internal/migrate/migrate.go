@@ -201,6 +201,28 @@ CREATE TABLE IF NOT EXISTS mcp_server_enablement (
   PRIMARY KEY (mcp_server_id, owner_user_id)
 );
 
+-- P3: external-MCP + security columns (all additive; existing internal rows keep
+-- auth_kind='none', empty egress/scan). auth_kind pins how the server authenticates;
+-- the bearer/oauth secret ciphertext lives in agent-registry's own AES-GCM vault
+-- (DECISION-1), NEVER echoed on the public API (has_secret only). oauth_meta holds
+-- issuer/scopes/resource(RFC8707)/PKCE state; egress_allowlist is the per-server
+-- outbound host allowlist the ai-gateway egress path enforces; scan_result is the
+-- supply-chain scan verdict that gates status pending→active.
+ALTER TABLE mcp_server_registrations ADD COLUMN IF NOT EXISTS auth_kind TEXT NOT NULL DEFAULT 'none';
+ALTER TABLE mcp_server_registrations ADD COLUMN IF NOT EXISTS is_external BOOLEAN NOT NULL DEFAULT false;
+ALTER TABLE mcp_server_registrations ADD COLUMN IF NOT EXISTS secret_ciphertext TEXT NOT NULL DEFAULT '';
+ALTER TABLE mcp_server_registrations ADD COLUMN IF NOT EXISTS secret_key_ref TEXT NOT NULL DEFAULT '';
+ALTER TABLE mcp_server_registrations ADD COLUMN IF NOT EXISTS oauth_meta JSONB NOT NULL DEFAULT '{}';
+ALTER TABLE mcp_server_registrations ADD COLUMN IF NOT EXISTS egress_allowlist JSONB NOT NULL DEFAULT '[]';
+ALTER TABLE mcp_server_registrations ADD COLUMN IF NOT EXISTS scan_result JSONB NOT NULL DEFAULT '{}';
+ALTER TABLE mcp_server_registrations ADD COLUMN IF NOT EXISTS last_scanned_at TIMESTAMPTZ;
+-- auth_kind domain guard (idempotent; ADD CONSTRAINT has no IF NOT EXISTS pre-PG16 so guard via catalog).
+DO $$ BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'mcp_reg_auth_kind') THEN
+    ALTER TABLE mcp_server_registrations ADD CONSTRAINT mcp_reg_auth_kind CHECK (auth_kind IN ('none','bearer','oauth2'));
+  END IF;
+END $$;
+
 -- REG-P1-03: seed the 5 hardcoded chat-service skills as System-tier rows so the
 -- FE can list + toggle them and enablement resolves. Their BODIES remain authored
 -- in chat-service skill_registry (single source; DECISION_LOG DL-4) — these rows

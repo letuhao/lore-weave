@@ -357,6 +357,11 @@ services:
       # D-REG-BOOK-GRANT — book-service for E0 grant checks on book-tier writes.
       # Empty disables book-tier (they 501); set it to enable grant-gated book tier.
       BOOK_SERVICE_INTERNAL_URL: http://book-service:8082
+      # REG-P3-01 — SSRF escape hatch. The P3 guard rejects user URLs that resolve
+      # to internal/loopback/metadata (prod posture). In the dev stack we register
+      # in-cluster MCP servers (agent-registry's own /mcp) to live-smoke the overlay/
+      # scan/egress paths, so allow internal targets here. DEFAULT OFF (prod-safe).
+      AGENT_REGISTRY_ALLOW_INTERNAL_MCP: ${AGENT_REGISTRY_ALLOW_INTERNAL_MCP:-1}
       OTEL_EXPORTER_OTLP_ENDPOINT: ${OTEL_EXPORTER_OTLP_ENDPOINT:-}
     depends_on:
       postgres:

@@ -39,9 +39,12 @@ $m = $r.Content | ConvertFrom-Json
 Check ($m.tool_name_prefix -match '^u_[0-9a-f]{8}_$') "auto tool_name_prefix u_<hash>_ (anti-shadow)"
 $mid = $m.mcp_server_id
 
-# external public host → 400 (P3 security territory)
-$r = Req POST "/v1/agent-registry/mcp-servers" $tokA @{ display_name = "ext"; endpoint_url = "https://mcp.example.com/mcp" } $null
-Check ($r.StatusCode -eq 400) "external public host rejected → 400 (deferred to P3)"
+# external public host → 201 but QUARANTINED (status=pending) under the P3 SSRF/scan
+# layer. (P2 rejected these outright; P3 accepts + quarantines until the scan clears.)
+$r = Req POST "/v1/agent-registry/mcp-servers" $tokA @{ display_name = "ext"; endpoint_url = "https://example.com/mcp" } $null
+Check ($r.StatusCode -eq 201) "external public host accepted → 201 (P3)"
+Check (($r.Content | ConvertFrom-Json).status -eq "pending") "external server QUARANTINED (status=pending until scan clears)"
+if ($r.StatusCode -eq 201) { Req DELETE "/v1/agent-registry/mcp-servers/$(($r.Content | ConvertFrom-Json).mcp_server_id)" $tokA $null $null | Out-Null }
 
 # resolves in effective-mcp-servers with prefix + version
 $eff = Req GET "/internal/effective-mcp-servers?user_id=$a" $null $null $ih

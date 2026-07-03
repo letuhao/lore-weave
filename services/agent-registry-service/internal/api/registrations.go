@@ -4,9 +4,8 @@ import (
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
-	"net"
+	"encoding/json"
 	"net/http"
-	"net/url"
 	"strconv"
 	"strings"
 	"time"
@@ -15,24 +14,38 @@ import (
 )
 
 type mcpServerRow struct {
-	McpServerID   uuid.UUID  `json:"mcp_server_id"`
-	Tier          string     `json:"tier"`
-	OwnerUserID   *uuid.UUID `json:"owner_user_id,omitempty"`
-	BookID        *uuid.UUID `json:"book_id,omitempty"`
-	DisplayName   string     `json:"display_name"`
-	EndpointURL   string     `json:"endpoint_url"`
-	Transport     string     `json:"transport"`
-	ToolPrefix    string     `json:"tool_name_prefix"`
-	Status        string     `json:"status"`
-	CreatedAt     time.Time  `json:"created_at"`
-	UpdatedAt     time.Time  `json:"updated_at"`
+	McpServerID     uuid.UUID       `json:"mcp_server_id"`
+	Tier            string          `json:"tier"`
+	OwnerUserID     *uuid.UUID      `json:"owner_user_id,omitempty"`
+	BookID          *uuid.UUID      `json:"book_id,omitempty"`
+	DisplayName     string          `json:"display_name"`
+	EndpointURL     string          `json:"endpoint_url"`
+	Transport       string          `json:"transport"`
+	ToolPrefix      string          `json:"tool_name_prefix"`
+	Status          string          `json:"status"`
+	AuthKind        string          `json:"auth_kind"`
+	IsExternal      bool            `json:"is_external"`
+	secretCipher    string          // vault ciphertext — NEVER serialized
+	HasSecret       bool            `json:"has_secret"`
+	EgressAllowlist json.RawMessage `json:"egress_allowlist"`
+	ScanResult      json.RawMessage `json:"scan_result"`
+	LastHealth      json.RawMessage `json:"last_health"`
+	LastScannedAt   *time.Time      `json:"last_scanned_at,omitempty"`
+	CreatedAt       time.Time       `json:"created_at"`
+	UpdatedAt       time.Time       `json:"updated_at"`
 }
 
-const mcpCols = `mcp_server_id, tier, owner_user_id, book_id, display_name, endpoint_url, transport, tool_name_prefix, status, created_at, updated_at`
+const mcpCols = `mcp_server_id, tier, owner_user_id, book_id, display_name, endpoint_url, transport, tool_name_prefix, status, auth_kind, is_external, secret_ciphertext, egress_allowlist, scan_result, last_health, last_scanned_at, created_at, updated_at`
 
 func scanMcp(row interface{ Scan(...any) error }, m *mcpServerRow) error {
-	return row.Scan(&m.McpServerID, &m.Tier, &m.OwnerUserID, &m.BookID, &m.DisplayName,
-		&m.EndpointURL, &m.Transport, &m.ToolPrefix, &m.Status, &m.CreatedAt, &m.UpdatedAt)
+	if err := row.Scan(&m.McpServerID, &m.Tier, &m.OwnerUserID, &m.BookID, &m.DisplayName,
+		&m.EndpointURL, &m.Transport, &m.ToolPrefix, &m.Status, &m.AuthKind, &m.IsExternal,
+		&m.secretCipher, &m.EgressAllowlist, &m.ScanResult, &m.LastHealth, &m.LastScannedAt,
+		&m.CreatedAt, &m.UpdatedAt); err != nil {
+		return err
+	}
+	m.HasSecret = m.secretCipher != "" // public: has_secret only, never the ciphertext
+	return nil
 }
 
 // userToolPrefix is the mandatory per-owner tool namespace: user tools can never
@@ -52,42 +65,14 @@ func hash8(s string) string {
 	return hex.EncodeToString(sum[:])[:8]
 }
 
-// isInternalHost restricts P2 registrations to internal endpoints (private IPs,
-// loopback, docker service names, *.internal). Arbitrary public hosts are a P3
-// concern (they need the full SSRF guard + OAuth + scan). This is NOT the P3
-// security boundary — it's the P2 scoping guard that keeps the overlay mechanism
-// testable without opening the external surface early.
-func isInternalHost(raw string) (string, bool) {
-	u, err := url.Parse(raw)
-	if err != nil || (u.Scheme != "http" && u.Scheme != "https") || u.Host == "" {
-		return "", false
-	}
-	host := u.Hostname()
-	lower := strings.ToLower(host)
-	if lower == "localhost" || lower == "host.docker.internal" || strings.HasSuffix(lower, ".internal") {
-		return u.String(), true
-	}
-	if ip := net.ParseIP(host); ip != nil {
-		// /review-impl: loopback + RFC1918 private only. Link-local (169.254/16) is
-		// DELIBERATELY excluded — 169.254.169.254 is the cloud-metadata SSRF target;
-		// no legit internal docker service uses link-local. Full egress control is P3.
-		if ip.IsLoopback() || ip.IsPrivate() {
-			return u.String(), true
-		}
-		return "", false // public or link-local → external → P3
-	}
-	// A bare service name (no dots) is a docker-network internal service.
-	if !strings.Contains(host, ".") {
-		return u.String(), true
-	}
-	return "", false // has a public-looking domain → external → P3
-}
-
 type createMcpReq struct {
-	DisplayName string     `json:"display_name"`
-	EndpointURL string     `json:"endpoint_url"`
-	Tier        string     `json:"tier"`
-	BookID      *uuid.UUID `json:"book_id"`
+	DisplayName     string     `json:"display_name"`
+	EndpointURL     string     `json:"endpoint_url"`
+	Tier            string     `json:"tier"`
+	BookID          *uuid.UUID `json:"book_id"`
+	AuthKind        string     `json:"auth_kind"`        // none|bearer|oauth2
+	BearerToken     string     `json:"bearer_token"`     // write-only; encrypted into the vault, never echoed
+	EgressAllowlist []string   `json:"egress_allowlist"` // extra outbound hosts the ai-gateway egress path permits
 }
 
 func (s *Server) createMcpServer(w http.ResponseWriter, r *http.Request) {
@@ -99,10 +84,43 @@ func (s *Server) createMcpServer(w http.ResponseWriter, r *http.Request) {
 	if !decodeJSON(w, r, &req) {
 		return
 	}
-	endpoint, internal := isInternalHost(strings.TrimSpace(req.EndpointURL))
-	if !internal {
-		writeError(w, http.StatusBadRequest, "EXTERNAL_NOT_ALLOWED", "P2 accepts internal endpoints only; external MCP servers arrive with the P3 security layer (OAuth + SSRF guard + scan)")
+	// Provider-gateway invariant FIRST (syntactic, DNS-independent): a model-capability
+	// endpoint must go through provider-registry BYOK, never register as an MCP tool
+	// server. Checked before the SSRF resolve so an unresolvable model host still gets
+	// the correct pointer error rather than a generic resolve failure.
+	if m := looksLikeModelEndpoint(req.EndpointURL, req.DisplayName); m != "" {
+		writeError(w, http.StatusBadRequest, "MODEL_CAPABILITY_NOT_ALLOWED",
+			"this looks like a model endpoint ("+m+"); register model capabilities as a BYOK credential in provider-registry, not as an MCP tool server")
 		return
+	}
+	// P3 SSRF guard: a user URL is validated + classified (internal targets allowed
+	// only under the dev flag). Public MCP servers are accepted; internal/loopback/
+	// metadata addresses are rejected (the SSRF hole).
+	class, err := classifyRegistrationURL(r.Context(), nil, req.EndpointURL, s.cfg.AllowInternalMcpTargets)
+	if err != nil {
+		writeError(w, http.StatusBadRequest, "SSRF_BLOCKED", err.Error())
+		return
+	}
+	authKind := req.AuthKind
+	if authKind == "" {
+		authKind = "none"
+	}
+	if authKind != "none" && authKind != "bearer" && authKind != "oauth2" {
+		writeError(w, http.StatusBadRequest, "VALIDATION_ERROR", "auth_kind must be none, bearer, or oauth2")
+		return
+	}
+	// Bearer secret is encrypted into the vault at write time; never round-trips.
+	var secretCipher, secretKeyRef string
+	if authKind == "bearer" {
+		if strings.TrimSpace(req.BearerToken) == "" {
+			writeError(w, http.StatusBadRequest, "VALIDATION_ERROR", "bearer_token required when auth_kind is bearer")
+			return
+		}
+		secretCipher, secretKeyRef, err = s.encryptSecret(req.BearerToken)
+		if err != nil {
+			writeError(w, http.StatusInternalServerError, "VAULT_ERROR", "could not seal credential")
+			return
+		}
 	}
 	tier := req.Tier
 	if tier == "" {
@@ -139,11 +157,22 @@ func (s *Server) createMcpServer(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusTooManyRequests, "QUOTA_EXCEEDED", "MCP server limit reached (max 10 per user)")
 		return
 	}
+	// Egress allowlist always includes the endpoint's own host; extra hosts are additive.
+	egress := buildEgressAllowlist(class.Normalized, req.EgressAllowlist)
+	// Status machine: an EXTERNAL server is QUARANTINED (pending) until the
+	// supply-chain scan clears it (REG-P3-05); internal/dev + System start active.
+	status := "active"
+	if class.IsExternal {
+		status = "pending"
+	}
 	var row mcpServerRow
-	err := scanMcp(s.db.QueryRow(r.Context(),
-		`INSERT INTO mcp_server_registrations (tier, owner_user_id, book_id, display_name, endpoint_url, tool_name_prefix, status)
-		 VALUES ($1,$2,$3,$4,$5,$6,'active') RETURNING `+mcpCols,
-		tier, ownerArg, bookArg, req.DisplayName, endpoint, prefix), &row)
+	err = scanMcp(s.db.QueryRow(r.Context(),
+		`INSERT INTO mcp_server_registrations
+		   (tier, owner_user_id, book_id, display_name, endpoint_url, tool_name_prefix, status,
+		    auth_kind, is_external, secret_ciphertext, secret_key_ref, egress_allowlist)
+		 VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12) RETURNING `+mcpCols,
+		tier, ownerArg, bookArg, req.DisplayName, class.Normalized, prefix, status,
+		authKind, class.IsExternal, secretCipher, secretKeyRef, egress), &row)
 	if err != nil {
 		if isUniqueViolation(err) {
 			writeError(w, http.StatusConflict, "DUPLICATE", "this endpoint is already registered in your scope")
@@ -266,6 +295,56 @@ func (s *Server) setMcpEnabled(w http.ResponseWriter, r *http.Request) {
 // countMcpServers is used by getUsage (D2 quota strip).
 func (s *Server) countMcpServers(ctx context.Context, uid uuid.UUID) int {
 	return s.queryInt(ctx, `SELECT COUNT(*) FROM mcp_server_registrations WHERE tier='user' AND owner_user_id=$1`, uid)
+}
+
+// internalMcpCredentials (X-Internal-Token) — REG-P3-02. The ONLY route that
+// decrypts a server's vault secret, for the ai-gateway egress path to inject the
+// bearer/oauth token into an outbound call. Owner-filtered: the caller passes the
+// resolution user_id and only that user's own (or a System) server is returned;
+// the plaintext secret NEVER appears on any JWT-facing route. The public serializer
+// exposes has_secret only.
+func (s *Server) internalMcpCredentials(w http.ResponseWriter, r *http.Request) {
+	if s.db == nil {
+		writeError(w, http.StatusServiceUnavailable, "NO_DB", "database unavailable")
+		return
+	}
+	mid, ok := parseUUIDParam(w, r, "mcp_server_id")
+	if !ok {
+		return
+	}
+	uid, err := uuid.Parse(r.URL.Query().Get("user_id"))
+	if err != nil {
+		writeError(w, http.StatusBadRequest, "VALIDATION_ERROR", "user_id required")
+		return
+	}
+	bookID := uuid.Nil
+	if v := r.URL.Query().Get("book_id"); v != "" {
+		if b, e := uuid.Parse(v); e == nil {
+			bookID = b
+		}
+	}
+	var authKind, cipher string
+	err = s.db.QueryRow(r.Context(),
+		`SELECT auth_kind, secret_ciphertext FROM mcp_server_registrations
+		 WHERE mcp_server_id = $1
+		   AND ( tier = 'system'
+		      OR (tier = 'user' AND owner_user_id = $2)
+		      OR (tier = 'book' AND book_id = $3) )`,
+		mid, uid, nullUUID(bookID)).Scan(&authKind, &cipher)
+	if err != nil {
+		writeError(w, http.StatusNotFound, "NOT_FOUND", "server not found") // anti-oracle
+		return
+	}
+	secret, err := s.decryptSecret(cipher)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "VAULT_ERROR", "could not open credential")
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{
+		"mcp_server_id": mid,
+		"auth_kind":     authKind,
+		"secret":        secret, // plaintext — internal-token only, never on a JWT route
+	})
 }
 
 // internalEffectiveMcpServers (X-Internal-Token) — REG-P2-02. Returns the MCP
