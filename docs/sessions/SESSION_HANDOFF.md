@@ -18,9 +18,11 @@
 > threaded through `useGraphSchema` + both callers; i18n ×4. **VERIFY:** 3417 knowledge unit+integration
 > (live PG :5555) · 757 knowledge FE + 0 tsc · **LIVE BROWSER SMOKE** (vite :5199→gateway :3123→rebuilt
 > knowledge-service): create-blank→editor mounts→add edge→inline PATCH, `schema_version` v1→v2→v3, 0
-> console errors. **REMAINING:** **A4** live-delete orphan-count guard (optional UX warning — needs a
-> new "N graph nodes use kind X" count query vs Neo4j/PG; NOT a correctness gap, project DELETE is
-> already data-safe via soft-deprecate). **TRACK B (agent multi-KG) — not started:** B1(1) world-rollup
+> console errors. **A4 `867e05fec`** — live-delete orphan-count guard: `count_component_usage` (Neo4j:
+> Entity-of-kind + live RELATES_TO-of-predicate, subject-scoped) + `GET /projects/{id}/schema/usage`; FE
+> SchemaWorkbench `getUsage` → confirm dialog only when count>0 (else direct delete; never blocks —
+> project DELETE is soft). 3387 unit + 760 FE + 0 tsc; live-smoke: delete edge → usage 200 (count 0) →
+> DELETE 204, no confirm. **⇒ TRACK A COMPLETE (A1-A4).** **TRACK B (agent multi-KG) — not started:** B1(1) world-rollup
 > as an MCP tool (`resolve_world_project_ids`+`get_world_subgraph` exist, read-only/FE-only today; take
 > `world_id` as EXPLICIT arg — gateway drops X-Project-Id; owner-only, report partial not silent-drop) →
 > B1(2) multi-project context (cross-project ranker+dedup, real work) → B1(3) arbitrary project set.
