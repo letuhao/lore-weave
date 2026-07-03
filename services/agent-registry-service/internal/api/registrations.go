@@ -68,10 +68,13 @@ func isInternalHost(raw string) (string, bool) {
 		return u.String(), true
 	}
 	if ip := net.ParseIP(host); ip != nil {
-		if ip.IsLoopback() || ip.IsPrivate() || ip.IsLinkLocalUnicast() {
+		// /review-impl: loopback + RFC1918 private only. Link-local (169.254/16) is
+		// DELIBERATELY excluded — 169.254.169.254 is the cloud-metadata SSRF target;
+		// no legit internal docker service uses link-local. Full egress control is P3.
+		if ip.IsLoopback() || ip.IsPrivate() {
 			return u.String(), true
 		}
-		return "", false // a public IP is external → P3
+		return "", false // public or link-local → external → P3
 	}
 	// A bare service name (no dots) is a docker-network internal service.
 	if !strings.Contains(host, ".") {

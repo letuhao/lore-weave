@@ -49,9 +49,21 @@ export class PerUserOverlay {
   private readonly log = new Logger('Overlay');
   private readonly cache = new Map<string, OverlayEntry>();
   private readonly ttl: number;
+  // /review-impl FIX-A: bound every upstream call so a HUNG agent-registry or a
+  // hung user MCP server can never stall the hot path (fail-open only catches
+  // errors, not hangs). Resolver probe is tight; per-server list/dispatch a bit
+  // looser (a legit tool call may be slow) but still bounded.
+  private readonly fetchTimeoutMs = 2_000;
+  private readonly callTimeoutMs = 15_000;
 
   constructor(private readonly cfg: OverlayConfig) {
     this.ttl = cfg.ttlMs ?? 30_000;
+  }
+
+  /** A timeout signal, combined with an optional external abort (turn-stop). */
+  private deadline(ms: number, external?: AbortSignal): AbortSignal {
+    const t = AbortSignal.timeout(ms);
+    return external ? AbortSignal.any([external, t]) : t;
   }
 
   /** A tool name is overlay-owned iff it carries a u_/b_ prefix (never a System tool). */
@@ -63,14 +75,22 @@ export class PerUserOverlay {
     return `${env.userId ?? ''}|${env.projectId ?? ''}`;
   }
 
-  /** Resolve the overlay for a turn's envelope (cached). Fail-open → EMPTY. */
+  /** Resolve the overlay for a turn's envelope (cached). Fail-open → EMPTY/stale. */
   async resolve(env: Envelope): Promise<{ tools: any[]; route: Map<string, RouteEntry> }> {
     if (!this.cfg.enabled || !env.userId) return EMPTY;
     const key = this.key(env);
     const now = Date.now();
     const cached = this.cache.get(key);
 
-    // Cheap freshness probe: fetch the effective server list (carries catalog_version).
+    // /review-impl FIX-B: TTL hit → serve from cache WITHOUT any upstream call.
+    // This keeps the hot path (every tools/list) off agent-registry; enable/disable
+    // staleness is bounded by the TTL (Q-CACHE: 30s). Fetching on every turn defeated
+    // the cache's load-reduction purpose and added an unbounded dependency.
+    if (cached && cached.exp > now) {
+      return { tools: cached.tools, route: cached.route };
+    }
+
+    // Cache miss/expired → refresh from agent-registry (timeout-bounded, fail-open).
     let servers: EffectiveServer[];
     let version: number;
     try {
@@ -78,17 +98,20 @@ export class PerUserOverlay {
       servers = resolved.servers;
       version = resolved.version;
     } catch (e) {
-      this.log.warn(`overlay resolve failed (fail-open, System catalog only): ${e}`);
-      return cached && cached.exp > now ? cached : EMPTY;
+      // Fail-open: serve the last-known catalog (even if stale) rather than drop the
+      // user's tools mid-session; a fresh user with no cache gets the System catalog.
+      this.log.warn(`overlay resolve failed (fail-open): ${e}`);
+      return cached ? { tools: cached.tools, route: cached.route } : EMPTY;
     }
 
-    // Zero registrations → the static fast path (empty overlay, cached briefly).
+    // Zero registrations → the static fast path (empty overlay, cached for the TTL).
     if (servers.length === 0) {
       this.cache.set(key, { version, tools: [], route: new Map(), exp: now + this.ttl });
       return EMPTY;
     }
-    // Version + TTL hit → reuse (no re-federation of the user servers).
-    if (cached && cached.version === version && cached.exp > now) {
+    // Version unchanged → skip the (expensive) per-server re-federation, extend the TTL.
+    if (cached && cached.version === version) {
+      cached.exp = now + this.ttl;
       return { tools: cached.tools, route: cached.route };
     }
 
@@ -127,11 +150,14 @@ export class PerUserOverlay {
     const entry = route.get(name);
     if (!entry) throw new Error(`unknown tool '${name}'`);
     const headers = buildEnvelopeHeaders(this.cfg.internalToken, env);
+    const deadline = this.deadline(this.callTimeoutMs, signal);
     const client = new Client({ name: 'ai-gateway-overlay', version: '0.1.0' });
-    const transport = new StreamableHTTPClientTransport(new URL(entry.endpointUrl), { requestInit: { headers } });
+    const transport = new StreamableHTTPClientTransport(new URL(entry.endpointUrl), {
+      requestInit: { headers, signal: deadline },
+    });
     try {
       await client.connect(transport);
-      return await client.callTool({ name: entry.originalName, arguments: args }, undefined, signal ? { signal } : undefined);
+      return await client.callTool({ name: entry.originalName, arguments: args }, undefined, { signal: deadline });
     } finally {
       await client.close().catch(() => undefined);
     }
@@ -141,7 +167,10 @@ export class PerUserOverlay {
     const url = new URL(`${this.cfg.agentRegistryInternalUrl}/internal/effective-mcp-servers`);
     url.searchParams.set('user_id', env.userId!);
     if (env.projectId) url.searchParams.set('book_id', env.projectId);
-    const res = await fetch(url, { headers: { 'X-Internal-Token': this.cfg.internalToken } });
+    const res = await fetch(url, {
+      headers: { 'X-Internal-Token': this.cfg.internalToken },
+      signal: AbortSignal.timeout(this.fetchTimeoutMs),
+    });
     if (!res.ok) throw new Error(`effective-mcp-servers ${res.status}`);
     const body = (await res.json()) as { servers?: EffectiveServer[]; catalog_version?: number };
     return { servers: Array.isArray(body.servers) ? body.servers : [], version: body.catalog_version ?? 0 };
@@ -150,7 +179,9 @@ export class PerUserOverlay {
   private async listServerTools(s: EffectiveServer, env: Envelope): Promise<any[]> {
     const headers = buildEnvelopeHeaders(this.cfg.internalToken, env);
     const client = new Client({ name: 'ai-gateway-overlay', version: '0.1.0' });
-    const transport = new StreamableHTTPClientTransport(new URL(s.endpoint_url), { requestInit: { headers } });
+    const transport = new StreamableHTTPClientTransport(new URL(s.endpoint_url), {
+      requestInit: { headers, signal: AbortSignal.timeout(this.callTimeoutMs) },
+    });
     try {
       await client.connect(transport);
       const res: any = await client.listTools();
