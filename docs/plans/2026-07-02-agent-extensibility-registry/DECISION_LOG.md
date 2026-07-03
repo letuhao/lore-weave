@@ -101,3 +101,33 @@ Three findings, all fixed + live-verified (`p2_overlay_smoke.ps1` still 6/6, liv
 - Chosen: **B — dev flag, DEFAULT OFF (prod-safe); compose sets it =1 for the dev stack.**
 - Rationale: the SSRF *rejection* (prod) is fully unit-proven (`TestClassifyRegistrationURL_SSRF`, 10+ payloads incl. DNS-rebind); the flag only affects live-smoke reachability, never the prod code path (flag off ⇒ every user URL is guarded). `is_external=false` also correctly makes internal targets skip the egress internal-block (they ARE the trusted platform) while still honoring the allowlist. The scan probe mirrors the overlay's federation envelope (X-Internal-Token/X-User-Id) for internal targets so an internal-token-gated `/mcp` is probeable exactly as runtime federates it.
 - Rework cost if overturned: low — drop the flag; provide a real external test MCP server for smokes instead.
+
+---
+
+## /review-impl round 4 — 2026-07-03 (adversarial pass on P3 — the whole external-MCP + security milestone)
+Two cold-start reviewers (egress/overlay/OAuth + SSRF/vault/probe). **Verified correct (not bugs):** the internal-token→
+external-server leak boundary (`chooseOutboundHeaders` — external never gets X-Internal-Token), OAuth state single-use
+(atomic DELETE…RETURNING, state=PK, 10-min TTL) + PKCE binding + RFC 8707 `resource` on both legs, token-endpoint SSRF
+(dialed via the pinned probe client), `secret_ciphertext` non-serialization (unexported field), the quarantine filter
+(`internalEffectiveMcpServers WHERE status='active'` excludes pending/suspended), anti-oracle 404s on every mcp-server
+route, and the Go probe's IP-pinned dial (rebind-safe). **Findings fixed (`ba576e410`):**
+- **HIGH — DNS-rebind TOCTOU in the ai-gateway TS egress:** `makeEgressFetch` resolved+validated the host but global
+  `fetch` (undici) RE-RESOLVED at connect → a rebind slipped an internal IP past the check (the Go side was already
+  pinned; the TS side was not — the asymmetry the reviewer caught). → `makePinnedDispatcher`: an undici `Agent` whose
+  connect-time lookup filters internal addresses and PINS the socket to a validated IP (added `undici` dep). This IS the
+  resolution undici connects with → no second lookup → TOCTOU closed, mirroring the Go `safeDialContext`.
+- **MED — CircuitBreaker never re-opened on a failed half-open trial:** after open→cooldown→half-open, a failed trial
+  left `openUntil` in the past so `canRequest` returned true forever (breaker defeated). → re-open immediately on a
+  half-open failure.
+- **LOWs (all fixed):** strip `Authorization` on a cross-origin redirect (an empty allowlist was allow-all for redirect
+  hops → the user's bearer could reach an arbitrary host); the internal-envelope probe refuses any cross-host redirect
+  (Go strips only standard auth headers, NOT our custom `X-Internal-Token`); `accept-risk` restricted to scanned+flagged
+  `suspended` only (a `pending`/unscanned server could otherwise be forced active into the federation set); `/internal`
+  token check fails CLOSED on an empty configured token + `crypto/subtle.ConstantTimeCompare`; refresh-worker store
+  failure is logged (a rotated refresh token could otherwise be lost silently).
+- **Accepted + documented (not fixed):** the model-capability rejection is a best-effort POLICY heuristic (a model proxy
+  on a custom domain/path passes) — the provider-gateway invariant is enforced structurally by `ai-provider-gate`, not
+  this substring check; and the `/internal` routes trust the caller-supplied `user_id`/`book_id` by design (the shared-
+  secret internal trust boundary; ai-gateway resolves the grant upstream). Neither is exploitable.
+- **Deferred (gate #4, genuinely external):** `D-REG-P3-EXTERNAL-LIVE` — a single live E2E vs a REAL third-party OAuth
+  MCP server; no reference server exists in the dev stack. Every constituent is live/unit-proven separately.

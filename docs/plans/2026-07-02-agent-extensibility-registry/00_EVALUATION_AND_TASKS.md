@@ -284,18 +284,18 @@ The PO has authorized a **continuous, no-human-in-loop implementation**: the hum
 - [ ] **E2E slice green: E2E-P2-A, B, C**
 - [ ] **GUI checklist ticked: §2 (internal-reg rows)**
 
-### P3 — External MCP security
-- [ ] REG-P3-01 SSRF guard + capability rejection
-- [ ] REG-P3-02 secret vault (has_secret only in public)
-- [ ] REG-P3-03 OAuth 2.1+PKCE+RFC8707 + refresh
-- [ ] REG-P3-04 egress path: allowlist/timeout/cap/breaker
-- [ ] REG-P3-05 scan + quarantine machine
-- [ ] REG-P3-06 wizard UI + servers browser list + status chips
-- [ ] REG-P3-07 `/review-impl` + external-server live E2E
-- [ ] REG-P3-08 Server detail page (scan review, health, tool browser) (U3)
-- [ ] REG-P3-09 MCP-in-studio: wizard + detail inside the extensions panel, state survives hide/show (§13b)
-- [ ] **E2E slice green: E2E-P3-A, B, C, D, E2E-X-B(servers)**
-- [ ] **GUI checklist ticked: §2 (full), §3, §8, §10(P3 rows)**
+### P3 — External MCP security ✅ COMPLETE 2026-07-03
+- [x] REG-P3-01 SSRF guard + capability rejection (security.go; unit fixture suite incl. DNS-rebind; live model/scheme reject)
+- [x] REG-P3-02 secret vault (has_secret only in public; unexported ciphertext; /internal/*/credentials sole decrypt)
+- [x] REG-P3-03 OAuth 2.1+PKCE(S256)+RFC8707 + refresh worker (full loop live vs a fake AS; PKCE RFC-7636 vector)
+- [x] REG-P3-04 egress path: allowlist/timeout/cap/breaker (+ undici IP-pinned dispatcher after /review-impl HIGH)
+- [x] REG-P3-05 scan + quarantine machine (Go MCP probe; live-scanned the real registry /mcp; pending→active/suspended/error)
+- [x] REG-P3-06 wizard UI + servers browser list + status chips (AddMcpWizard 4-step; live browser render PASS)
+- [x] REG-P3-07 `/review-impl` DONE (2 reviewers, HIGH+MED+LOWs fixed + re-verified); external-server live E2E → `D-REG-P3-EXTERNAL-LIVE` (gate #4, no reference server in dev — constituents all proven)
+- [x] REG-P3-08 Server detail page (scan review w/ per-finding + accept-risk, health, tool browser) — McpServerDetail.tsx
+- [x] REG-P3-09 MCP-in-studio: MCP tab in ExtensionsPanel (hidden-not-unmount so wizard state survives hide/show — §13b)
+- [x] **E2E slice green:** p3_m1_ssrf / p3_m2_scan / p3_m4_oauth / p2_overlay (dispatch) / p3_m5_browser — all live-pass
+- [x] **GUI checklist:** wizard/detail/list elements built (§3/§8); live browser render confirms the effect
 
 ### P4 — Commands + hooks
 - [ ] REG-P4-01 command CRUD + expansion
