@@ -1,4 +1,4 @@
-import { createContext, useContext, useEffect } from 'react';
+import { createContext, useContext, useEffect, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
 import { toast } from 'sonner';
 import { useAuth } from '@/auth';
@@ -97,8 +97,15 @@ export function ChatStreamProvider({
   // the auto-generated title) AND refetches pending facts (the turn may
   // have queued a `memory_remember` fact — K21-C D8). The ref has a
   // single writer, so both behaviors must live in this one callback.
+  // Inline-path compaction dedupe: in-loop compaction can emit several
+  // `compaction` frames in ONE turn (the worker path dedupes upstream on
+  // turnId; the inline path has no turnId) — toast at most once per turn,
+  // reset at stream end.
+  const compactionToastedRef = useRef(false);
+
   useEffect(() => {
     chat.onStreamEndRef.current = () => {
+      compactionToastedRef.current = false;
       setTimeout(() => { void refreshSessions(); }, 2000);
       pendingFacts.refetch();
     };
@@ -132,6 +139,9 @@ export function ChatStreamProvider({
   // overflowed after compaction — the model genuinely lost detail then.
   useEffect(() => {
     chat.onCompactionRef.current = (event) => {
+      // At most one compaction toast per turn (see compactionToastedRef above).
+      if (compactionToastedRef.current) return;
+      compactionToastedRef.current = true;
       const msg = t('compaction.toast', {
         before: event.tokens_before.toLocaleString(),
         after: event.tokens_after.toLocaleString(),

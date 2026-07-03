@@ -56,11 +56,12 @@ export const chatApi = {
   // W3 — manual steerable compact: summarize everything but the recent turns
   // with the session's own model and PERSIST it on the session (multi-device).
   // `instructions` steer what must survive ("keep all plot promises and
-  // character names"); omit for the default synopsis.
+  // character names"); omit for the default synopsis. `{clear: true}` wipes
+  // the stored compact instead (mutually exclusive with the other fields).
   compactSession(
     token: string,
     sessionId: string,
-    payload: { instructions?: string; keep_recent?: number } = {},
+    payload: { instructions?: string; keep_recent?: number; clear?: boolean } = {},
   ) {
     return apiJson<CompactSessionResult>(`/v1/chat/sessions/${sessionId}/compact`, {
       method: 'POST',

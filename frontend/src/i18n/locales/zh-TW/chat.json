@@ -28,6 +28,7 @@
   "context_panel": {
     "title": "脈絡明細",
     "free": "剩餘空間：{{tokens}} 個 token",
+    "tok": "個 token",
     "compact_at": "自動壓縮於視窗 {{pct}}% 時觸發",
     "zero": "為零",
     "manage": "管理工具與技能",
@@ -38,7 +39,9 @@
       "placeholder": "保留角色名稱與劇情伏筆…",
       "success": "已壓縮 — {{before}} → {{after}} 個 token",
       "failed": "壓縮失敗：{{error}}",
-      "compacted_through": "已壓縮至第 {{seq}} 則訊息"
+      "compacted_through": "已壓縮至第 {{seq}} 則訊息",
+      "clear": "清除壓縮",
+      "cleared": "已清除壓縮 — 已還原完整歷史"
     },
     "cat": {
       "system_prompt": "角色設定",
@@ -386,6 +389,8 @@
     "server_live": "即時來自工具目錄",
     "server_pins_only": "僅來自工作階段釘選",
     "more": "還有 {{count}} 個",
+    "more_tooltip": "還有 {{count}} 個已探索工具未顯示",
+    "remove": "移除",
     "server": {
       "knowledge": "知識",
       "glossary": "詞彙表",

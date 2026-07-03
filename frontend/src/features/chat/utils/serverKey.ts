@@ -8,7 +8,9 @@
 // Keep in sync with the backend map — a drifted prefix only mis-groups a chip
 // (cosmetic), it never breaks the loop.
 
-const PREFIX_TO_SERVER: Record<string, string> = {
+// Exported so serverKey.test.ts can pin it against the BE table (see the
+// mirror-drift pin there).
+export const PREFIX_TO_SERVER: Record<string, string> = {
   memory: 'knowledge',
   kg: 'knowledge',
   knowledge: 'knowledge',
@@ -22,7 +24,10 @@ const PREFIX_TO_SERVER: Record<string, string> = {
 
 // Mirror of chat-service frontend_tools.FRONTEND_TOOL_NAMES — browser-executed
 // tools group under "ui" regardless of prefix (glossary_confirm_action etc.).
-const FRONTEND_TOOL_NAMES = new Set([
+// Pinned by serverKey.test.ts against contracts/frontend-tools.contract.json
+// (the committed cross-language SoT) — a BE-side tool add/remove fails that
+// test instead of silently mis-grouping a chip.
+export const FRONTEND_TOOL_NAMES = new Set([
   'propose_edit',
   'glossary_propose_entity_edit',
   'glossary_confirm_action',

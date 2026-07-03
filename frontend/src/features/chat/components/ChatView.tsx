@@ -6,7 +6,7 @@ import { chatApi } from '../api';
 import { useChatSession } from '../providers';
 import { useChatStream } from '../providers';
 import { ChatHeader } from './ChatHeader';
-import { ChatInputBar } from './ChatInputBar';
+import { ChatInputBar, effortLevelFromGenerationParams, reasoningEffortForLevel } from './ChatInputBar';
 import { MessageList } from './MessageList';
 import { PendingFactsCard } from './PendingFactsCard';
 import { SessionSettingsPanel } from './SessionSettingsPanel';
@@ -239,10 +239,16 @@ export function ChatView({ className, composeMode, footerSlot, headerSlot }: Cha
         permissionMode={chat.permissionMode}
         onPermissionModeChange={chat.setPermissionMode}
         supportsThinking={true}
-        thinkingDefault={activeSession.generation_params?.thinking ?? false}
-        onThinkingModeChange={(thinking) => {
+        effortDefault={effortLevelFromGenerationParams(activeSession.generation_params)}
+        onEffortChange={(level) => {
           if (!accessToken) return;
-          chatApi.patchSession(accessToken, activeSession.session_id, { generation_params: { thinking } })
+          // Persist the GRANULAR knob + clear the legacy boolean — the same
+          // {reasoning_effort, thinking:null} contract SessionSettingsPanel
+          // writes, so a stale reasoning_effort can never shadow the dropdown
+          // (and Deep survives a reload instead of downgrading to Standard).
+          chatApi.patchSession(accessToken, activeSession.session_id, {
+            generation_params: { reasoning_effort: reasoningEffortForLevel(level), thinking: null },
+          })
             .then((updated) => updateActiveSession(updated))
             .catch(() => {});
         }}

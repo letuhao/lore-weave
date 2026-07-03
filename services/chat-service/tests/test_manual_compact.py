@@ -156,6 +156,35 @@ class TestCompactRoute:
         assert summarized[1]["content"] == "message 5"
 
     @pytest.mark.asyncio
+    async def test_concurrent_compact_race_returns_409(self, client, mock_pool):
+        """The final UPDATE is guarded on the marker read at start — a compact
+        that landed during the seconds-long summarizer call must NOT be
+        last-write-wins clobbered."""
+        mock_pool.fetchrow.return_value = _compact_session_record()
+        mock_pool.fetch.return_value = [_msg_row(i) for i in range(1, 13)]
+        mock_pool.execute.return_value = "UPDATE 0"  # marker moved under us
+        with patch("app.routers.sessions.summarize_for_compaction", AsyncMock(return_value="s")):
+            resp = await client.post(f"/v1/chat/sessions/{TEST_SESSION_ID}/compact", json={})
+        assert resp.status_code == 409
+        assert "another compact landed" in resp.json()["detail"]
+        # the guard is NULL-safe (IS NOT DISTINCT FROM) and carries the prev marker
+        update_call = mock_pool.execute.await_args
+        assert "compacted_before_seq IS NOT DISTINCT FROM $5" in update_call.args[0]
+        assert update_call.args[-1] is None  # never-compacted session → NULL guard
+
+    @pytest.mark.asyncio
+    async def test_recompact_guard_carries_prev_marker(self, client, mock_pool):
+        mock_pool.fetchrow.return_value = _compact_session_record(
+            compact_summary="old synopsis", compacted_before_seq=5,
+        )
+        mock_pool.fetch.return_value = [_msg_row(i) for i in range(5, 17)]
+        mock_pool.execute.return_value = "UPDATE 1"
+        with patch("app.routers.sessions.summarize_for_compaction", AsyncMock(return_value="s")):
+            resp = await client.post(f"/v1/chat/sessions/{TEST_SESSION_ID}/compact", json={})
+        assert resp.status_code == 200
+        assert mock_pool.execute.await_args.args[-1] == 5  # guard = the marker we read
+
+    @pytest.mark.asyncio
     async def test_request_validation(self, client, mock_pool):
         # instructions over the ~500-char cap → 422
         resp = await client.post(
@@ -167,6 +196,52 @@ class TestCompactRoute:
             f"/v1/chat/sessions/{TEST_SESSION_ID}/compact", json={"keep_recent": 0},
         )
         assert resp.status_code == 422
+
+
+class TestCompactClear:
+    """``{"clear": true}`` wipes the stored compact (summary + marker)."""
+
+    @pytest.mark.asyncio
+    async def test_clear_nulls_marker_and_returns_cleared(self, client, mock_pool):
+        mock_pool.fetchrow.return_value = _compact_session_record(
+            compact_summary="old synopsis", compacted_before_seq=5,
+        )
+        resp = await client.post(
+            f"/v1/chat/sessions/{TEST_SESSION_ID}/compact", json={"clear": True},
+        )
+        assert resp.status_code == 200
+        body = resp.json()
+        assert body["cleared"] is True
+        assert body["compacted_before_seq"] is None
+        assert body["compacted_message_count"] == 0
+        update_call = mock_pool.execute.await_args
+        assert "compact_summary=NULL" in update_call.args[0]
+        assert "compacted_before_seq=NULL" in update_call.args[0]
+        # clear never reads messages or calls the summarizer
+        mock_pool.fetch.assert_not_awaited()
+
+    @pytest.mark.asyncio
+    async def test_clear_mutually_exclusive_with_compact_args(self, client, mock_pool):
+        resp = await client.post(
+            f"/v1/chat/sessions/{TEST_SESSION_ID}/compact",
+            json={"clear": True, "instructions": "keep names"},
+        )
+        assert resp.status_code == 422
+        resp = await client.post(
+            f"/v1/chat/sessions/{TEST_SESSION_ID}/compact",
+            json={"clear": True, "keep_recent": 4},
+        )
+        assert resp.status_code == 422
+        mock_pool.execute.assert_not_awaited()
+
+    @pytest.mark.asyncio
+    async def test_clear_not_owner_returns_404(self, client, mock_pool):
+        mock_pool.fetchrow.return_value = None
+        resp = await client.post(
+            f"/v1/chat/sessions/{uuid4()}/compact", json={"clear": True},
+        )
+        assert resp.status_code == 404
+        mock_pool.execute.assert_not_awaited()
 
 
 class TestSessionSerializerExposesCompactMarker:

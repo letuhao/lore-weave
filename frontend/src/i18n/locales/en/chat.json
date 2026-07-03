@@ -28,6 +28,7 @@
   "context_panel": {
     "title": "Context breakdown",
     "free": "free space: {{tokens}} tok",
+    "tok": "tok",
     "compact_at": "auto-compact triggers at {{pct}}% of the window",
     "zero": "zero",
     "manage": "Manage tools & skills",
@@ -38,7 +39,9 @@
       "placeholder": "Keep character names and plot promises…",
       "success": "Compacted — {{before}} → {{after}} tok",
       "failed": "Compact failed: {{error}}",
-      "compacted_through": "compacted through message {{seq}}"
+      "compacted_through": "compacted through message {{seq}}",
+      "clear": "Clear compact",
+      "cleared": "Compact cleared — full history restored"
     },
     "cat": {
       "system_prompt": "Persona",
@@ -386,6 +389,8 @@
     "server_live": "Live from the tool catalog",
     "server_pins_only": "From session pins only",
     "more": "+{{count}} more",
+    "more_tooltip": "{{count}} more discovered tools not shown",
+    "remove": "Remove",
     "server": {
       "knowledge": "Knowledge",
       "glossary": "Glossary",

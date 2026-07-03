@@ -28,6 +28,7 @@
   "context_panel": {
     "title": "Phân tích ngữ cảnh",
     "free": "còn trống: {{tokens}} token",
+    "tok": "token",
     "compact_at": "tự động nén kích hoạt ở {{pct}}% cửa sổ",
     "zero": "bằng 0",
     "manage": "Quản lý công cụ & kỹ năng",
@@ -38,7 +39,9 @@
       "placeholder": "Giữ lại tên nhân vật và các lời hứa cốt truyện…",
       "success": "Đã nén — {{before}} → {{after}} token",
       "failed": "Nén thất bại: {{error}}",
-      "compacted_through": "đã nén đến tin nhắn {{seq}}"
+      "compacted_through": "đã nén đến tin nhắn {{seq}}",
+      "clear": "Xóa nén",
+      "cleared": "Đã xóa nén — khôi phục toàn bộ lịch sử"
     },
     "cat": {
       "system_prompt": "Nhân cách",
@@ -386,6 +389,8 @@
     "server_live": "Trực tiếp từ danh mục công cụ",
     "server_pins_only": "Chỉ từ ghim của phiên",
     "more": "+{{count}} nữa",
+    "more_tooltip": "còn {{count}} công cụ đã khám phá chưa hiển thị",
+    "remove": "Xóa",
     "server": {
       "knowledge": "Tri thức",
       "glossary": "Thuật ngữ",

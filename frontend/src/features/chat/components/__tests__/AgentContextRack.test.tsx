@@ -45,6 +45,22 @@ const baseSurface: AgentSurfaceState = {
   schema_tokens: { frontend: 120, mcp: 380 },
 };
 
+// A turn-OPENING frame (Curated) — the tracker defaults: all-empty advertised,
+// empty servers, zero-zero schema_tokens. NOT-measured, never "0 tools · 0 tok".
+const curatedEmptySurface: AgentSurfaceState = {
+  phase: 'Curated',
+  pinned_count: 2,
+  hot_seed_count: 0,
+  activated_count: 0,
+  injected_skills: [],
+  running_tool: null,
+  last_find_tools_query: null,
+  find_tools_call_count: 0,
+  advertised: { core: [], frontend: [], activated: [] },
+  servers: {},
+  schema_tokens: { frontend: 0, mcp: 0 },
+};
+
 const noop = () => {};
 const rackProps = {
   enabledSkills: [],
@@ -69,6 +85,17 @@ describe('summarizeRack', () => {
     expect(s.tools).toBe(2);
     expect(s.skills).toBe(1);
     expect(s.tokens).toBeNull();
+  });
+
+  it('treats a turn-opening frame (all-empty advertised, 0/0 schema_tokens) as NOT-measured', () => {
+    const s = summarizeRack(curatedEmptySurface, ['glossary_search', 'book_create'], ['memory_search'], []);
+    expect(s.tools).toBe(3); // pins + discovered fallback — never 0
+    expect(s.tokens).toBeNull(); // never "0 tok"
+  });
+
+  it('0 injected skills is a real measurement — it must NOT fall back to the pins', () => {
+    const s = summarizeRack({ ...baseSurface, injected_skills: [] }, [], [], ['universal', 'other']);
+    expect(s.skills).toBe(0);
   });
 });
 
@@ -146,6 +173,34 @@ describe('AgentContextRack summary chip', () => {
     expect(chip.textContent).toContain('500');
     fireEvent.click(chip);
     expect(onOpenBreakdown).toHaveBeenCalledTimes(1);
+  });
+
+  it('frame sequence Curated(empty) → advertised pass: fallback first, then real numbers', () => {
+    const props = {
+      ...rackProps,
+      enabledTools: ['glossary_search', 'book_create'],
+      activatedTools: [],
+    };
+    const { rerender } = render(<AgentContextRack {...props} surface={curatedEmptySurface} />);
+    const chip = screen.getByTestId('agent-rack-summary');
+    // turn-opening frame → pins fallback + no token count (no "0 tools · 0 tok" flash)
+    expect(chip.textContent).toContain('rack.summary_no_tokens');
+    expect(chip.textContent).toContain('2');
+    rerender(<AgentContextRack {...props} surface={baseSurface} />);
+    // the advertised pass → real measured numbers
+    expect(chip.textContent).toContain('rack.summary');
+    expect(chip.textContent).toContain('5');
+    expect(chip.textContent).toContain('500');
+  });
+
+  it('a later unmeasured frame keeps the PREVIOUS measured tokens and live dots', () => {
+    const props = { ...rackProps, enabledTools: ['glossary_search'], activatedTools: [] };
+    const { rerender } = render(<AgentContextRack {...props} surface={baseSurface} />);
+    expect(screen.getByTestId('agent-rack-server-dot-glossary').dataset.live).toBe('1');
+    rerender(<AgentContextRack {...props} surface={curatedEmptySurface} />);
+    // token count + live dot held from the last measured frame — no flash
+    expect(screen.getByTestId('agent-rack-summary').textContent).toContain('500');
+    expect(screen.getByTestId('agent-rack-server-dot-glossary').dataset.live).toBe('1');
   });
 
   it('without a seam the chip is a tooltip no-op; without tokens it hides the tok part', () => {

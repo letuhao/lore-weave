@@ -2136,3 +2136,36 @@ class TestW1CompactionFrame:
         frames = _custom_events(events, "compaction")
         assert len(frames) == 1
         assert frames[0]["tool_results_cleared"] == 2
+
+
+class TestResolveAndStashReasoning:
+    """review-impl H: session-stored reasoning vocabulary (off|auto|...) is NOT
+    wire vocabulary — every gen_params->StreamRequest path must resolve it."""
+
+    def _creds(self, kind="openai", name="gpt-4"):
+        from app.models import ProviderCredentials
+        return ProviderCredentials(
+            provider_kind=kind, provider_model_name=name,
+            base_url="http://x", api_key="k", context_length=8192,
+        )
+
+    def test_session_off_translates_to_wire_none(self):
+        from app.services.stream_service import _resolve_and_stash_reasoning
+        gp = {"reasoning_effort": "off"}
+        _resolve_and_stash_reasoning(gp, self._creds())
+        # "off" is invalid on the wire; the resolved fields use "none".
+        assert gp.get("reasoning_effort") in (None, "none")
+        assert gp.get("reasoning_effort") != "off"
+
+    def test_session_auto_without_creds_omits_fields(self):
+        from app.services.stream_service import _resolve_and_stash_reasoning
+        gp = {"reasoning_effort": "auto"}
+        _resolve_and_stash_reasoning(gp, None)  # voice path: no creds
+        assert "reasoning_effort" not in gp
+        assert "chat_template_kwargs" not in gp
+
+    def test_session_medium_survives_resolution(self):
+        from app.services.stream_service import _resolve_and_stash_reasoning
+        gp = {"reasoning_effort": "medium"}
+        _resolve_and_stash_reasoning(gp, self._creds(kind="lm_studio", name="qwen3-35b"))
+        assert gp.get("reasoning_effort") == "medium"

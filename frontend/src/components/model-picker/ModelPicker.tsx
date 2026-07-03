@@ -93,29 +93,31 @@ export function ModelPicker({
   className,
 }: ModelPickerProps) {
   const { t } = useTranslation('common');
-  const { accessToken } = useAuth();
+  const { accessToken, user } = useAuth();
+  const userId = user?.user_id;
   const { models, loading, error, mutate } = useUserModels({ capability, includeInactive });
 
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState('');
   const [activeIndex, setActiveIndex] = useState(0);
-  const [recents, setRecents] = useState<string[]>(() => loadRecentsCached(capability));
+  const [recents, setRecents] = useState<string[]>(() => loadRecentsCached(capability, userId));
 
   const rootRef = useRef<HTMLDivElement>(null);
   const triggerRef = useRef<HTMLButtonElement>(null);
   const searchRef = useRef<HTMLInputElement>(null);
   const listboxId = useId();
 
-  // Refresh recents from the server (multi-device) once per capability.
+  // Refresh recents from the server (multi-device) once per capability/user.
   useEffect(() => {
     let cancelled = false;
-    void loadRecentsFromServer(capability, accessToken).then((serverRecents) => {
+    setRecents(loadRecentsCached(capability, userId));
+    void loadRecentsFromServer(capability, accessToken, userId).then((serverRecents) => {
       if (!cancelled && serverRecents) setRecents(serverRecents);
     });
     return () => {
       cancelled = true;
     };
-  }, [capability, accessToken]);
+  }, [capability, accessToken, userId]);
 
   // Close on outside click.
   useEffect(() => {
@@ -201,7 +203,7 @@ export function ModelPicker({
 
   function select(option: Option) {
     if (option.id && !option.orphan) {
-      setRecents(pushRecent(capability, option.id, accessToken));
+      setRecents(pushRecent(capability, option.id, accessToken, userId));
     }
     onChange(option.id === '' ? null : option.id);
     setOpen(false);

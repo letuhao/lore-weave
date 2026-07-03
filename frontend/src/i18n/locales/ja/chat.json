@@ -28,6 +28,7 @@
   "context_panel": {
     "title": "コンテキスト内訳",
     "free": "空き容量: {{tokens}} トークン",
+    "tok": "トークン",
     "compact_at": "ウィンドウの {{pct}}% で自動コンパクトが作動",
     "zero": "ゼロ",
     "manage": "ツールとスキルを管理",
@@ -38,7 +39,9 @@
       "placeholder": "登場人物の名前とプロットの伏線を保持…",
       "success": "コンパクト完了 — {{before}} → {{after}} トークン",
       "failed": "コンパクトに失敗しました: {{error}}",
-      "compacted_through": "メッセージ {{seq}} までコンパクト済み"
+      "compacted_through": "メッセージ {{seq}} までコンパクト済み",
+      "clear": "コンパクトを解除",
+      "cleared": "コンパクトを解除しました — 全履歴を復元"
     },
     "cat": {
       "system_prompt": "ペルソナ",
@@ -386,6 +389,8 @@
     "server_live": "ツールカタログからライブ取得",
     "server_pins_only": "セッションのピン留めのみ",
     "more": "他 {{count}} 件",
+    "more_tooltip": "未表示の検出ツールが他 {{count}} 件あります",
+    "remove": "削除",
     "server": {
       "knowledge": "ナレッジ",
       "glossary": "用語集",

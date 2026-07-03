@@ -17,6 +17,9 @@ export interface CompactControls {
   /** null = never manually compacted. */
   compactedBeforeSeq: number | null;
   onCompact: (instructions: string) => void;
+  /** Clears the stored compact (summary + marker) — the panel shows the
+   *  action only while compactedBeforeSeq is set. */
+  onClearCompact: () => void;
 }
 
 export function useCompactSession(): CompactControls {
@@ -61,9 +64,33 @@ export function useCompactSession(): CompactControls {
     })();
   }, [accessToken, activeSession, pending, t, updateActiveSession]);
 
+  const onClearCompact = useCallback(() => {
+    if (!accessToken || !activeSession || pending) return;
+    const sessionId = activeSession.session_id;
+    setPending(true);
+    void (async () => {
+      try {
+        await chatApi.compactSession(accessToken, sessionId, { clear: true });
+        toast.success(t('context_panel.compact.cleared'));
+        try {
+          const fresh = await chatApi.getSession(accessToken, sessionId);
+          updateActiveSession(fresh);
+        } catch {
+          // GET hiccup after a successful clear — drop the marker locally.
+          updateActiveSession({ ...activeSession, compacted_before_seq: null });
+        }
+      } catch (err) {
+        toast.error(t('context_panel.compact.failed', { error: (err as Error).message }));
+      } finally {
+        setPending(false);
+      }
+    })();
+  }, [accessToken, activeSession, pending, t, updateActiveSession]);
+
   return {
     pending,
     compactedBeforeSeq: activeSession?.compacted_before_seq ?? null,
     onCompact,
+    onClearCompact,
   };
 }

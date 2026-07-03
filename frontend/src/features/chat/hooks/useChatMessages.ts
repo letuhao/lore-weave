@@ -153,6 +153,11 @@ export function useChatMessages(
   // W2: compaction fires at most once per turn; the snapshot rebroadcasts many
   // times, so the toast is deduped on turnId exactly like memoryMode.
   const lastCompactionTurnRef = useRef(0);
+  // Replay guard: a late-joining tab receives the hub's addPort FULL-STATE
+  // replay, which can carry a PAST turn's compaction — that must seed the
+  // dedupe ref silently, never toast. False until this window has seen its
+  // first worker snapshot.
+  const compactionSeededRef = useRef(false);
 
   // ── Fetch messages on session change ──────────────────────────────────────────
 
@@ -397,10 +402,16 @@ export function useChatMessages(
     }
     // W2: compaction toast — fire once per turn it occurred in (dedupe on turnId,
     // mirroring memoryMode; the snapshot rebroadcasts many times per turn).
+    // Replay guard: the FIRST snapshot after mount (the hub's full-state replay
+    // to a late-joining tab) and any non-streaming snapshot only RECORD the
+    // compaction's turnId — a stale compaction must not toast again. Only a
+    // turnId change observed while a stream is live is a fresh compaction.
     if (worker.compaction && worker.turnId !== lastCompactionTurnRef.current) {
+      const isReplay = !compactionSeededRef.current || worker.streamStatus !== 'streaming';
       lastCompactionTurnRef.current = worker.turnId;
-      onCompactionRef.current?.(worker.compaction);
+      if (!isReplay) onCompactionRef.current?.(worker.compaction);
     }
+    compactionSeededRef.current = true;
 
     // Terminal handling — ONCE per turn per window, deduped on the worker's turnId.
     // Two facets, with DIFFERENT scoping:

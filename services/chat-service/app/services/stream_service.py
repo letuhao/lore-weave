@@ -180,6 +180,41 @@ def _thinking_pref(
     return "off"
 
 
+def _resolve_and_stash_reasoning(
+    gen_params: dict,
+    creds: "ProviderCredentials | None",
+    *,
+    thinking: bool | None = None,
+    reasoning_effort: str | None = None,
+    inline_pref: str | None = None,
+) -> None:
+    """Resolve the reasoning pref → provider wire fields and stash them in
+    gen_params (in place). MUST run on EVERY path that feeds gen_params into a
+    StreamRequest — the session-stored `reasoning_effort` vocabulary
+    (off|auto|low|medium|high) is NOT wire vocabulary (none|low|medium|high):
+    forwarding it raw crashes StreamRequest validation (review-impl H: a
+    session set to "off" 500'd every tool-approval RESUME) and bypasses the
+    adaptive-model omit rule."""
+    user_pref = inline_pref or _thinking_pref(thinking, gen_params, reasoning_effort)
+    # creds=None (voice path — the gateway resolves the model internally):
+    # control "none" keeps explicit prefs correct and makes "auto" omit.
+    model_control = (
+        infer_reasoning_control(creds.provider_kind, creds.provider_model_name)
+        if creds is not None else "none"
+    )
+    directive = resolve_reasoning(
+        user_pref=user_pref,  # type: ignore[arg-type]
+        model_control=model_control,
+    )
+    rf = reasoning_fields(directive)
+    # Clear any stale stored knobs first so a directive that says "omit"
+    # (adaptive / non-reasoning) doesn't leave a session's raw value behind.
+    gen_params.pop("reasoning_effort", None)
+    gen_params.pop("chat_template_kwargs", None)
+    if rf:
+        gen_params.update(rf)
+
+
 def _apply_reasoning_kwargs(request_kwargs: dict, gen_params: dict) -> None:
     """Forward the resolved reasoning fields (stashed in gen_params by
     stream_response) into the StreamRequest kwargs. THIS is the wiring that was
@@ -1261,25 +1296,13 @@ async def stream_response(
     gen_params: dict = gp_raw if gp_raw else {}
 
     # ── RE: resolve reasoning effort and STASH the provider fields in gen_params ──
-    # The `thinking` toggle was previously accepted and dropped (a live no-op). Map
-    # it (+ the session default) to a reasoning pref, resolve against the model's
-    # reasoning-control style (adaptive Anthropic → omit & self-decide; effort
-    # models → send reasoning_effort; non-reasoning → omit), and stash the wire
-    # fields so both _stream_via_gateway and _stream_with_tools forward them.
     # Precedence: inline /command > per-msg `reasoning_effort` (W4 dropdown) >
     # per-msg `thinking` toggle > session > platform.
-    _user_pref = _inline_effort or _thinking_pref(thinking, gen_params, reasoning_effort)
-    _directive = resolve_reasoning(
-        user_pref=_user_pref,  # type: ignore[arg-type]
-        model_control=infer_reasoning_control(creds.provider_kind, creds.provider_model_name),
+    _resolve_and_stash_reasoning(
+        gen_params, creds,
+        thinking=thinking, reasoning_effort=reasoning_effort,
+        inline_pref=_inline_effort,
     )
-    _rf = reasoning_fields(_directive)
-    # Clear any stale stored knobs first so a directive that says "omit" (adaptive /
-    # non-reasoning) doesn't leave a previous run's reasoning_effort in gen_params.
-    gen_params.pop("reasoning_effort", None)
-    gen_params.pop("chat_template_kwargs", None)
-    if _rf:
-        gen_params.update(_rf)
 
     # asyncpg.Record supports .get() since 0.27; using it lets test mocks
     # that pass a plain dict without project_id continue to work.
@@ -2159,8 +2182,13 @@ async def _emit_chat_turn(
         # the event.
         async with pool.acquire() as conn:
             async with conn.transaction():
+                # Branch-scoped like send_message/voice: after an edit re-branch,
+                # a global MAX would jump the assistant PAST branched-away seqs
+                # (and past a W3 compact boundary) while user messages stay low
+                # — the review-impl H1 asymmetric-visibility bug.
                 seq = await conn.fetchval(
-                    "SELECT COALESCE(MAX(sequence_num), 0) + 1 FROM chat_messages WHERE session_id = $1",
+                    "SELECT COALESCE(MAX(sequence_num), 0) + 1 FROM chat_messages "
+                    "WHERE session_id = $1 AND branch_id = 0",
                     session_id,
                 )
                 input_tok = getattr(last_usage, "prompt_tokens", None) if last_usage else None
@@ -2493,6 +2521,10 @@ async def resume_stream_response(
     if isinstance(gp_raw, str):
         gp_raw = json.loads(gp_raw)
     gen_params: dict = gp_raw if gp_raw else {}
+    # Resolve reasoning on the RESUME path too (review-impl H): the raw
+    # session-stored `reasoning_effort` ("off"/"auto") is not wire vocabulary —
+    # unresolved it crashed StreamRequest on every tool-approval resume.
+    _resolve_and_stash_reasoning(gen_params, creds)
     project_id = session_row.get("project_id") if session_row else None
     # A2A phase-2: keep compose_prose available on resume too (the agent may
     # delegate prose again after the user's apply/dismiss).

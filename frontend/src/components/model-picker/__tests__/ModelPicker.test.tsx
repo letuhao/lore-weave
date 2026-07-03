@@ -155,11 +155,11 @@ describe('ModelPicker (W5 shared component)', () => {
     openPicker();
     fireEvent.click(await screen.findByText('Qwen 7B'));
     expect(onChange).toHaveBeenCalledWith('local-1');
-    expect(JSON.parse(localStorage.getItem('lw.modelPicker.recents.chat') ?? '[]')).toEqual(['local-1']);
+    expect(JSON.parse(localStorage.getItem('lw.modelPicker.recents.chat.u1') ?? '[]')).toEqual(['local-1']);
   });
 
   it('shows a Recent section from stored recents (per capability, favorites excluded)', async () => {
-    localStorage.setItem('lw.modelPicker.recents.chat', JSON.stringify(['local-2', 'fav-1']));
+    localStorage.setItem('lw.modelPicker.recents.chat.u1', JSON.stringify(['local-2', 'fav-1']));
     listUserModelsMock.mockResolvedValue({ items: MODELS });
     render(
       <MemoryRouter>

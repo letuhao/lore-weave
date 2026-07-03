@@ -293,17 +293,23 @@ class ChatSession(BaseModel):
 class CompactSessionRequest(BaseModel):
     """POST /v1/chat/sessions/{id}/compact body. ``instructions`` steer WHAT
     survives the summary ("keep all plot promises and character names");
-    ``keep_recent`` = how many most-recent messages stay verbatim."""
+    ``keep_recent`` = how many most-recent messages stay verbatim.
+    ``clear`` = true wipes the stored compact (summary + marker) instead of
+    compacting — mutually exclusive with instructions/keep_recent."""
     instructions: str | None = Field(default=None, max_length=500)
     keep_recent: int = Field(default=8, ge=1, le=100)
+    clear: bool = False
 
 
 class CompactSessionResponse(BaseModel):
     summary_tokens: int
     compacted_message_count: int
-    compacted_before_seq: int
+    # None only on a clear (cleared=True) — a compact always sets it.
+    compacted_before_seq: int | None
     tokens_before_estimate: int
     tokens_after_estimate: int
+    # True when the request cleared the stored compact instead of compacting.
+    cleared: bool = False
 
 
 class SessionListResponse(BaseModel):

@@ -305,6 +305,12 @@ async def voice_stream_response(
     if isinstance(gp_raw, str):
         gp_raw = json.loads(gp_raw)
     gen_params: dict = gp_raw if gp_raw else {}
+    # Resolve the session-stored reasoning pref to WIRE fields (review-impl H):
+    # raw "off"/"auto" crashes StreamRequest validation. Voice has no creds in
+    # scope (the gateway resolves the model) → creds=None conservative control.
+    from app.services.stream_service import _resolve_and_stash_reasoning
+
+    _resolve_and_stash_reasoning(gen_params, None)
     project_id = session_row.get("project_id") if session_row else None
 
     # ── K5: build memory block via knowledge-service ────────────────────────

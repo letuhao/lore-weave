@@ -14,6 +14,26 @@ import { MentionPopover } from './MentionPopover';
  *  thinking:true, Deep → thinking:true + reasoning_effort:"deep" on the wire. */
 export type EffortLevel = 'fast' | 'standard' | 'deep';
 
+/** Derive the dropdown's initial level from the session's granular
+ *  reasoning_effort (the SSOT the settings panel writes), falling back to the
+ *  legacy `thinking` boolean. high→deep, off→fast, low/medium/auto→standard. */
+export function effortLevelFromGenerationParams(
+  gp?: { reasoning_effort?: string | null; thinking?: boolean | null } | null,
+): EffortLevel {
+  const re = gp?.reasoning_effort;
+  if (re === 'high') return 'deep';
+  if (re === 'off') return 'fast';
+  if (re === 'low' || re === 'medium' || re === 'auto') return 'standard';
+  return gp?.thinking ? 'standard' : 'fast';
+}
+
+/** Session-persist mapping (the SAME generation_params key the settings panel
+ *  writes, so the two surfaces can never disagree): fast→off, standard→medium,
+ *  deep→high. */
+export function reasoningEffortForLevel(level: EffortLevel): 'off' | 'medium' | 'high' {
+  return level === 'fast' ? 'off' : level === 'deep' ? 'high' : 'medium';
+}
+
 interface ChatInputBarProps {
   onSend: (content: string, thinking?: boolean, reasoningEffort?: EffortLevel) => void;
   onStop: () => void;
@@ -22,10 +42,11 @@ interface ChatInputBarProps {
   modelHint?: string;
   /** Whether the active model supports thinking mode */
   supportsThinking?: boolean;
-  /** Session-level default thinking mode */
-  thinkingDefault?: boolean;
-  /** Called when user switches Think/Fast to persist to session */
-  onThinkingModeChange?: (thinking: boolean) => void;
+  /** Session-level default effort (derive via effortLevelFromGenerationParams). */
+  effortDefault?: EffortLevel;
+  /** Called when the user picks an effort level — the parent persists it on
+   *  the session as {reasoning_effort, thinking:null} (reasoningEffortForLevel). */
+  onEffortChange?: (level: EffortLevel) => void;
   /** Context items attached to the next message */
   contextItems: ContextItem[];
   onAttachContext: (item: ContextItem) => void;
@@ -53,8 +74,8 @@ export function ChatInputBar({
   disabled,
   modelHint,
   supportsThinking,
-  thinkingDefault,
-  onThinkingModeChange,
+  effortDefault,
+  onEffortChange,
   contextItems,
   onAttachContext,
   onDetachContext,
@@ -71,8 +92,15 @@ export function ChatInputBar({
   const [value, setValue] = useState('');
   // W4 — the effort dropdown state (replaces the Think/Fast boolean pill).
   // 'fast' ≙ thinking:false, 'standard' ≙ thinking:true, 'deep' additionally
-  // sends reasoning_effort:"deep". Initialized from the session default.
-  const [effort, setEffort] = useState<EffortLevel>(thinkingDefault ? 'standard' : 'fast');
+  // sends reasoning_effort:"deep". Initialized from the session default and
+  // re-synced when it changes (session switch / settings-panel edit) — the
+  // "previous default" render-time pattern, not a useEffect.
+  const [effort, setEffort] = useState<EffortLevel>(effortDefault ?? 'fast');
+  const [prevEffortDefault, setPrevEffortDefault] = useState(effortDefault);
+  if (effortDefault !== prevEffortDefault) {
+    setPrevEffortDefault(effortDefault);
+    setEffort(effortDefault ?? 'fast');
+  }
   const [responseFormat, setResponseFormat] = useState<string>('Auto');
   const [showTemplates, setShowTemplates] = useState(false);
   const [templateFilter, setTemplateFilter] = useState('');
@@ -431,9 +459,9 @@ export function ChatInputBar({
                             data-testid={`effort-opt-${level}`}
                             onClick={() => {
                               setEffort(level);
-                              // Preserve the session-default persistence contract:
-                              // the boolean mirrors "not fast".
-                              onThinkingModeChange?.(level !== 'fast');
+                              // Session persistence: the parent writes the
+                              // granular reasoning_effort (Deep survives reload).
+                              onEffortChange?.(level);
                               setOpenMenu(null);
                             }}
                             className={`flex w-full items-start gap-2 px-3 py-1.5 text-left hover:bg-secondary ${

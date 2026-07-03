@@ -66,9 +66,12 @@ export interface ChatSession {
 export interface CompactSessionResult {
   summary_tokens: number;
   compacted_message_count: number;
-  compacted_before_seq: number;
+  /** null only on a clear (cleared=true) — a compact always sets it. */
+  compacted_before_seq: number | null;
   tokens_before_estimate: number;
   tokens_after_estimate: number;
+  /** true when the request cleared the stored compact instead of compacting. */
+  cleared?: boolean;
 }
 
 /** Story 04 / #07b — agentSurface SSE payload (inspector state machine). */

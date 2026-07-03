@@ -32,11 +32,19 @@ export function useAgentSurface(session: ChatSession | null | undefined) {
 
   const lastPhaseRef = useRef<AgentSurfacePhase>('Idle');
 
+  // Reset keys are stable SERIALIZATIONS, not array identities — a session
+  // PATCH returns fresh array objects with identical contents (e.g. a
+  // temperature edit), and keying on identity reset the live surface mid-turn.
+  const toolsKey = (session?.enabled_tools ?? []).join(',');
+  const skillsKey = (session?.enabled_skills ?? []).join(',');
+  const activatedKey = (session?.activated_tools ?? []).join(',');
   useEffect(() => {
     setState(degradedSurfaceFromSession(session));
     setTrail([]);
     lastPhaseRef.current = 'Idle';
-  }, [session?.session_id, session?.enabled_tools, session?.enabled_skills, session?.activated_tools]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- `session` is read
+    // at run time; re-run only when the identity-stable keys change.
+  }, [session?.session_id, toolsKey, skillsKey, activatedKey]);
 
   const applyEvent = useCallback((payload: AgentSurfaceState) => {
     const prevPhase = lastPhaseRef.current;

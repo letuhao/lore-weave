@@ -270,7 +270,16 @@ async def compact_session(
     Re-compact is idempotent-ish: messages already covered by a previous
     compact are NOT re-read; the previous summary is folded in as the first
     "message" of the new summarizer input, so nothing is lost twice.
+
+    ``{"clear": true}`` (mutually exclusive with instructions/keep_recent)
+    wipes the stored compact instead — every later turn loads full history.
     """
+    if body.clear and (body.instructions is not None or "keep_recent" in body.model_fields_set):
+        raise HTTPException(
+            status_code=422,
+            detail="clear is mutually exclusive with instructions/keep_recent",
+        )
+
     row = await pool.fetchrow(
         "SELECT model_source, model_ref, compact_summary, compacted_before_seq "
         "FROM chat_sessions WHERE session_id=$1 AND owner_user_id=$2",
@@ -281,6 +290,22 @@ async def compact_session(
 
     prev_summary = row.get("compact_summary")
     prev_before_seq = row.get("compacted_before_seq")
+
+    if body.clear:
+        # Clear is idempotent — NULLing an already-clear session is a no-op.
+        await pool.execute(
+            "UPDATE chat_sessions SET compact_summary=NULL, compacted_before_seq=NULL, "
+            "updated_at=now() WHERE session_id=$1 AND owner_user_id=$2",
+            str(session_id), user_id,
+        )
+        return CompactSessionResponse(
+            summary_tokens=0,
+            compacted_message_count=0,
+            compacted_before_seq=None,
+            tokens_before_estimate=0,
+            tokens_after_estimate=0,
+            cleared=True,
+        )
 
     # Everything already covered by a previous compact is represented by
     # prev_summary — load only what that compact did NOT cover.
@@ -335,11 +360,17 @@ async def compact_session(
         raise HTTPException(status_code=502, detail="summarizer returned empty — session unchanged")
 
     new_before_seq = int(kept_rows[0]["sequence_num"])  # seq of the first KEPT message
-    await pool.execute(
+    # Optimistic-concurrency guard: the summarizer call above takes seconds; a
+    # concurrent compact may have landed meanwhile. Persist only if the marker
+    # still equals the value we read at start (NULL-safe), else 409 — never
+    # last-write-wins over a compact whose coverage we didn't fold in.
+    result = await pool.execute(
         "UPDATE chat_sessions SET compact_summary=$3, compacted_before_seq=$4, updated_at=now() "
-        "WHERE session_id=$1 AND owner_user_id=$2",
-        str(session_id), user_id, summary, new_before_seq,
+        "WHERE session_id=$1 AND owner_user_id=$2 AND compacted_before_seq IS NOT DISTINCT FROM $5",
+        str(session_id), user_id, summary, new_before_seq, prev_before_seq,
     )
+    if result == "UPDATE 0":
+        raise HTTPException(status_code=409, detail="another compact landed — retry")
 
     return CompactSessionResponse(
         summary_tokens=estimate_tokens(summary),

@@ -73,7 +73,7 @@ export function RackServerGroups({
                       type="button"
                       onClick={() => onRemoveTool(name)}
                       className="text-muted-foreground hover:text-foreground"
-                      aria-label="Remove"
+                      aria-label={t('rack.remove')}
                     >
                       ×
                     </button>
@@ -82,7 +82,12 @@ export function RackServerGroups({
               );
             })}
             {hidden > 0 && (
-              <span className="text-[10px] text-muted-foreground">{t('rack.more', { count: hidden })}</span>
+              <span
+                className="text-[10px] text-muted-foreground"
+                title={t('rack.more_tooltip', { count: hidden })}
+              >
+                {t('rack.more', { count: hidden })}
+              </span>
             )}
           </span>
         );

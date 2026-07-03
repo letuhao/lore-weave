@@ -202,6 +202,20 @@ async def send_message(
                     branched_count = int(result.split()[-1])
                 except (ValueError, IndexError):
                     branched_count = 0
+                # W3 compact interplay (review-impl H1): editing a message that
+                # sits INSIDE the compacted region rewrites the timeline the
+                # summary described AND re-anchors new seqs BELOW the boundary
+                # (splice would then load zero user messages). Clear the compact
+                # in the same transaction — full history is loadable again.
+                # (.get works on asyncpg Record and dict test-mocks alike)
+                compacted_before = session.get("compacted_before_seq")
+                if compacted_before is not None and body.edit_from_sequence < compacted_before:
+                    await conn.execute(
+                        "UPDATE chat_sessions SET compact_summary = NULL, "
+                        "compacted_before_seq = NULL, updated_at = now() "
+                        "WHERE session_id = $1",
+                        str(session_id),
+                    )
 
             seq = await conn.fetchval(
                 """

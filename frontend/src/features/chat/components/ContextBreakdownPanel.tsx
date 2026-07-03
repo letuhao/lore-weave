@@ -157,7 +157,7 @@ export function ContextBreakdownPanel({ budget, onManageTools, compact }: Props)
         <span className="text-xs font-semibold text-foreground">{t('context_panel.title')}</span>
         <span className="font-mono text-[10px] tabular-nums text-muted-foreground">
           {c.usedTokens.toLocaleString()}
-          {c.limitTokens != null ? ` / ${c.limitTokens.toLocaleString()}` : ''} tok
+          {c.limitTokens != null ? ` / ${c.limitTokens.toLocaleString()}` : ''} {t('context_panel.tok')}
         </span>
       </div>
 
@@ -290,10 +290,21 @@ export function ContextBreakdownPanel({ budget, onManageTools, compact }: Props)
             {compact.pending ? t('context_panel.compact.pending') : t('context_panel.compact.button')}
           </button>
           {compact.compactedBeforeSeq != null && (
-            <span className="text-[10px] text-muted-foreground" data-testid="context-compacted-through">
-              {/* compacted_before_seq = first KEPT message → compacted THROUGH the one before it */}
-              {t('context_panel.compact.compacted_through', { seq: compact.compactedBeforeSeq - 1 })}
-            </span>
+            <div className="flex items-center justify-between gap-2">
+              <span className="text-[10px] text-muted-foreground" data-testid="context-compacted-through">
+                {/* compacted_before_seq = first KEPT message → compacted THROUGH the one before it */}
+                {t('context_panel.compact.compacted_through', { seq: compact.compactedBeforeSeq - 1 })}
+              </span>
+              <button
+                type="button"
+                onClick={() => compact.onClearCompact()}
+                disabled={compact.pending}
+                data-testid="context-compact-clear"
+                className="shrink-0 text-[10px] text-muted-foreground underline-offset-2 hover:text-foreground hover:underline disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                {t('context_panel.compact.clear')}
+              </button>
+            </div>
           )}
         </div>
       )}

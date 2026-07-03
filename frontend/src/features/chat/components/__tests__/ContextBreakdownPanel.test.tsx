@@ -131,6 +131,7 @@ describe('ContextBreakdownPanel compact section', () => {
     pending: false,
     compactedBeforeSeq: null as number | null,
     onCompact: vi.fn(),
+    onClearCompact: vi.fn(),
     ...overrides,
   });
 
@@ -174,5 +175,25 @@ describe('ContextBreakdownPanel compact section', () => {
     expect(screen.queryByTestId('context-compacted-through')).toBeNull();
     rerender(<ContextBreakdownPanel budget={fullBudget} compact={controls({ compactedBeforeSeq: 9 })} />);
     expect(screen.getByTestId('context-compacted-through')).toBeInTheDocument();
+  });
+
+  it('clear-compact button: visible only with a compact marker; calls onClearCompact', () => {
+    const c = controls({ compactedBeforeSeq: 9 });
+    const { rerender } = render(<ContextBreakdownPanel budget={fullBudget} compact={controls()} />);
+    expect(screen.queryByTestId('context-compact-clear')).toBeNull();
+    rerender(<ContextBreakdownPanel budget={fullBudget} compact={c} />);
+    const btn = screen.getByTestId('context-compact-clear');
+    expect(btn.textContent).toContain('context_panel.compact.clear');
+    fireEvent.click(btn);
+    expect(c.onClearCompact).toHaveBeenCalledTimes(1);
+  });
+
+  it('clear-compact button is disabled while pending', () => {
+    const c = controls({ compactedBeforeSeq: 9, pending: true });
+    render(<ContextBreakdownPanel budget={fullBudget} compact={c} />);
+    const btn = screen.getByTestId('context-compact-clear');
+    expect(btn).toBeDisabled();
+    fireEvent.click(btn);
+    expect(c.onClearCompact).not.toHaveBeenCalled();
   });
 });

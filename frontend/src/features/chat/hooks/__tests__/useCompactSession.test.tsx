@@ -125,4 +125,48 @@ describe('useCompactSession', () => {
     const { result } = renderHook(() => useCompactSession());
     expect(result.current.compactedBeforeSeq).toBe(9);
   });
+
+  it('onClearCompact → POST {clear:true}, cleared toast, session refreshed', async () => {
+    activeSession = { ...SESSION, compacted_before_seq: 9 };
+    compactMock.mockResolvedValue({
+      summary_tokens: 0, compacted_message_count: 0, compacted_before_seq: null,
+      tokens_before_estimate: 0, tokens_after_estimate: 0, cleared: true,
+    });
+    const fresh = { ...SESSION, compacted_before_seq: null };
+    getSessionMock.mockResolvedValue(fresh);
+    const { result } = renderHook(() => useCompactSession());
+
+    act(() => result.current.onClearCompact());
+    expect(result.current.pending).toBe(true);
+    await waitFor(() => expect(result.current.pending).toBe(false));
+
+    expect(compactMock).toHaveBeenCalledWith('tok-test', 's-1', { clear: true });
+    expect(toastSuccess).toHaveBeenCalledTimes(1);
+    expect(String(toastSuccess.mock.calls[0][0])).toContain('context_panel.compact.cleared');
+    expect(updateActiveSession).toHaveBeenCalledWith(fresh);
+  });
+
+  it('onClearCompact failure → error toast, no session update', async () => {
+    activeSession = { ...SESSION, compacted_before_seq: 9 };
+    compactMock.mockRejectedValue(new Error('boom'));
+    const { result } = renderHook(() => useCompactSession());
+
+    act(() => result.current.onClearCompact());
+    await waitFor(() => expect(result.current.pending).toBe(false));
+
+    expect(toastError).toHaveBeenCalledTimes(1);
+    expect(updateActiveSession).not.toHaveBeenCalled();
+  });
+
+  it('onClearCompact GET refresh hiccup → marker dropped locally', async () => {
+    activeSession = { ...SESSION, compacted_before_seq: 9 };
+    compactMock.mockResolvedValue({ cleared: true });
+    getSessionMock.mockRejectedValue(new Error('blip'));
+    const { result } = renderHook(() => useCompactSession());
+
+    act(() => result.current.onClearCompact());
+    await waitFor(() => expect(result.current.pending).toBe(false));
+
+    expect(updateActiveSession).toHaveBeenCalledWith({ ...SESSION, compacted_before_seq: null });
+  });
 });

@@ -23,11 +23,15 @@ vi.mock('../../context/ContextBar', () => ({ ContextBar: () => null }));
 vi.mock('../PromptTemplates', () => ({ PromptTemplatePicker: () => null }));
 vi.mock('../MentionPopover', () => ({ MentionPopover: () => null }));
 
-import { ChatInputBar } from '../ChatInputBar';
+import {
+  ChatInputBar,
+  effortLevelFromGenerationParams,
+  reasoningEffortForLevel,
+} from '../ChatInputBar';
 
 function renderBar(overrides: Record<string, unknown> = {}) {
   const onSend = vi.fn();
-  const onThinkingModeChange = vi.fn();
+  const onEffortChange = vi.fn();
   render(
     <ChatInputBar
       onSend={onSend}
@@ -38,11 +42,11 @@ function renderBar(overrides: Record<string, unknown> = {}) {
       onDetachContext={vi.fn()}
       onClearContext={vi.fn()}
       supportsThinking
-      onThinkingModeChange={onThinkingModeChange}
+      onEffortChange={onEffortChange}
       {...overrides}
     />,
   );
-  return { onSend, onThinkingModeChange };
+  return { onSend, onEffortChange };
 }
 
 function typeAndSend(text = 'hello') {
@@ -61,9 +65,16 @@ describe('ChatInputBar — effort dropdown', () => {
     expect(onSend).toHaveBeenCalledWith('hello', false, undefined);
   });
 
-  it('initializes to Standard when the session default is thinking:true', () => {
-    renderBar({ thinkingDefault: true });
+  it('initializes to Standard when the session default is standard', () => {
+    renderBar({ effortDefault: 'standard' });
     expect(screen.getByTestId('effort-dropdown').textContent).toContain('input.effort_standard');
+  });
+
+  it('initializes to Deep from the session default and sends reasoning "deep" (reload keeps Deep)', () => {
+    const { onSend } = renderBar({ effortDefault: 'deep' });
+    expect(screen.getByTestId('effort-dropdown').textContent).toContain('input.effort_deep');
+    typeAndSend();
+    expect(onSend).toHaveBeenCalledWith('hello', true, 'deep');
   });
 
   it('opens the menu and lists Fast / Standard / Deep with hints', () => {
@@ -76,31 +87,31 @@ describe('ChatInputBar — effort dropdown', () => {
     expect(screen.getByText('input.effort_deep_hint')).toBeInTheDocument();
   });
 
-  it('Standard → thinking:true, no effort field; persists via onThinkingModeChange(true)', () => {
-    const { onSend, onThinkingModeChange } = renderBar();
+  it('Standard → thinking:true, no effort field; persists via onEffortChange("standard")', () => {
+    const { onSend, onEffortChange } = renderBar();
     fireEvent.click(screen.getByTestId('effort-dropdown'));
     fireEvent.click(screen.getByTestId('effort-opt-standard'));
-    expect(onThinkingModeChange).toHaveBeenCalledWith(true);
+    expect(onEffortChange).toHaveBeenCalledWith('standard');
     typeAndSend();
     expect(onSend).toHaveBeenCalledWith('hello', true, undefined);
   });
 
-  it('Deep → thinking:true + reasoning_effort:"deep"', () => {
-    const { onSend, onThinkingModeChange } = renderBar();
+  it('Deep → thinking:true + reasoning_effort:"deep"; persists via onEffortChange("deep")', () => {
+    const { onSend, onEffortChange } = renderBar();
     fireEvent.click(screen.getByTestId('effort-dropdown'));
     fireEvent.click(screen.getByTestId('effort-opt-deep'));
-    expect(onThinkingModeChange).toHaveBeenCalledWith(true);
+    expect(onEffortChange).toHaveBeenCalledWith('deep');
     typeAndSend();
     expect(onSend).toHaveBeenCalledWith('hello', true, 'deep');
   });
 
-  it('back to Fast → thinking:false; persists via onThinkingModeChange(false)', () => {
-    const { onSend, onThinkingModeChange } = renderBar();
+  it('back to Fast → thinking:false; persists via onEffortChange("fast")', () => {
+    const { onSend, onEffortChange } = renderBar();
     fireEvent.click(screen.getByTestId('effort-dropdown'));
     fireEvent.click(screen.getByTestId('effort-opt-deep'));
     fireEvent.click(screen.getByTestId('effort-dropdown'));
     fireEvent.click(screen.getByTestId('effort-opt-fast'));
-    expect(onThinkingModeChange).toHaveBeenLastCalledWith(false);
+    expect(onEffortChange).toHaveBeenLastCalledWith('fast');
     typeAndSend();
     expect(onSend).toHaveBeenCalledWith('hello', false, undefined);
   });
@@ -125,5 +136,34 @@ describe('ChatInputBar — effort dropdown', () => {
     expect(screen.queryByTestId('effort-dropdown')).toBeNull();
     typeAndSend();
     expect(onSend).toHaveBeenCalledWith('hello', undefined, undefined);
+  });
+});
+
+describe('effort ↔ session generation_params mapping', () => {
+  it.each([
+    [{ reasoning_effort: 'high' }, 'deep'],
+    [{ reasoning_effort: 'off' }, 'fast'],
+    [{ reasoning_effort: 'low' }, 'standard'],
+    [{ reasoning_effort: 'medium' }, 'standard'],
+    [{ reasoning_effort: 'auto' }, 'standard'],
+    // no granular knob → legacy thinking boolean decides
+    [{ thinking: true }, 'standard'],
+    [{ thinking: false }, 'fast'],
+    [{}, 'fast'],
+    [null, 'fast'],
+    // granular knob shadows a disagreeing legacy boolean
+    [{ reasoning_effort: 'off', thinking: true }, 'fast'],
+  ] as const)('effortLevelFromGenerationParams(%j) → %s', (gp, level) => {
+    expect(effortLevelFromGenerationParams(gp)).toBe(level);
+  });
+
+  it.each([
+    ['fast', 'off'],
+    ['standard', 'medium'],
+    ['deep', 'high'],
+  ] as const)('reasoningEffortForLevel(%s) → %s (round-trips through the session)', (level, re) => {
+    expect(reasoningEffortForLevel(level)).toBe(re);
+    // the persisted value derives BACK to the same dropdown level on reload
+    expect(effortLevelFromGenerationParams({ reasoning_effort: re })).toBe(level);
   });
 });

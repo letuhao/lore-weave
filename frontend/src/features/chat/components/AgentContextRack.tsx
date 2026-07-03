@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { ToolSkillAddModal } from './ToolSkillAddModal';
 import { RackServerGroups } from './RackServerGroups';
@@ -30,7 +30,13 @@ interface AgentContextRackProps {
 }
 
 /** W6 — summary chip math: tool count prefers the live advertised surface
- *  (what the model actually sees), falling back to pins + discovered. */
+ *  (what the model actually sees), falling back to pins + discovered.
+ *
+ *  A turn-OPENING agentSurface frame (Curated/SkillInjected) carries the
+ *  tracker DEFAULTS — an all-empty `advertised` and a zero-zero
+ *  `schema_tokens`. Those are NOT-measured, not "0 tools · 0 tok": tools fall
+ *  back to the pins+discovered set and tokens report null (the component keeps
+ *  the previous measured value). */
 export function summarizeRack(
   surface: AgentSurfaceState | null | undefined,
   enabledTools: string[],
@@ -38,12 +44,16 @@ export function summarizeRack(
   enabledSkills: string[],
 ): { tools: number; skills: number; tokens: number | null } {
   const adv = surface?.advertised;
-  const tools = adv
-    ? adv.core.length + adv.frontend.length + adv.activated.length
+  const advCount = adv ? adv.core.length + adv.frontend.length + adv.activated.length : 0;
+  const tools = adv && advCount > 0
+    ? advCount
     : new Set([...enabledTools, ...activatedTools]).size;
-  const skills = surface?.injected_skills?.length || enabledSkills.length;
+  // 0 injected skills is a REAL measurement (a turn may inject none) — only a
+  // missing array falls back to the session pins (?? on the array, never || on
+  // the length).
+  const skills = (surface?.injected_skills ?? enabledSkills).length;
   const st = surface?.schema_tokens;
-  const tokens = st ? st.frontend + st.mcp : null;
+  const tokens = st && (st.frontend > 0 || st.mcp > 0) ? st.frontend + st.mcp : null;
   return { tools, skills, tokens };
 }
 
@@ -68,7 +78,24 @@ export function AgentContextRack({
   const [menuOpen, setMenuOpen] = useState(false);
 
   const hasPins = enabledTools.length > 0 || enabledSkills.length > 0;
-  const summary = summarizeRack(surface, enabledTools, activatedTools, enabledSkills);
+  const measured = summarizeRack(surface, enabledTools, activatedTools, enabledSkills);
+
+  // Rack-flash fix: a turn-opening frame carries the tracker defaults (see
+  // summarizeRack) — hold the PREVIOUS measured values so the chip/dots don't
+  // flash "0 tok"/muted for a frame. A surface with the field entirely ABSENT
+  // (degraded/session reset/older backend) clears the memory instead.
+  const lastTokensRef = useRef<number | null>(null);
+  const st = surface?.schema_tokens;
+  if (!st) lastTokensRef.current = null;
+  else if (st.frontend > 0 || st.mcp > 0) lastTokensRef.current = st.frontend + st.mcp;
+  const summary = { ...measured, tokens: measured.tokens ?? lastTokensRef.current };
+
+  const lastServersRef = useRef<Record<string, { tools: number }> | undefined>(undefined);
+  const sv = surface?.servers;
+  if (!sv) lastServersRef.current = undefined;
+  else if (Object.keys(sv).length > 0) lastServersRef.current = sv;
+  const liveServers = sv && Object.keys(sv).length > 0 ? sv : lastServersRef.current;
+
   const summaryText = summary.tokens != null
     ? t('rack.summary', { tools: summary.tools, skills: summary.skills, tokens: summary.tokens.toLocaleString() })
     : t('rack.summary_no_tokens', { tools: summary.tools, skills: summary.skills });
@@ -93,7 +120,7 @@ export function AgentContextRack({
         <RackServerGroups
           pinned={enabledTools}
           discovered={activatedTools}
-          liveServers={surface?.servers}
+          liveServers={liveServers}
           onRemoveTool={onRemoveTool}
           disabled={disabled}
         />
@@ -105,7 +132,7 @@ export function AgentContextRack({
             <span className="text-muted-foreground">✦</span>
             {id}
             {!disabled && (
-              <button type="button" onClick={() => onRemoveSkill(id)} className="text-muted-foreground hover:text-foreground" aria-label="Remove">
+              <button type="button" onClick={() => onRemoveSkill(id)} className="text-muted-foreground hover:text-foreground" aria-label={t('rack.remove')}>
                 ×
               </button>
             )}
