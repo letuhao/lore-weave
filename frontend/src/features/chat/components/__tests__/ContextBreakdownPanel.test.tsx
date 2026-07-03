@@ -18,7 +18,13 @@ vi.mock('../ContextHistoryTab', () => ({
   ContextHistoryTab: () => <div data-testid="context-history-tab" />,
 }));
 
-import { ContextBreakdownPanel, computeBreakdown } from '../ContextBreakdownPanel';
+import {
+  ContextBreakdownPanel,
+  computeBreakdown,
+  BREAKDOWN_CATEGORIES,
+  CATEGORY_COLORS,
+  CATEGORY_HEX,
+} from '../ContextBreakdownPanel';
 import type { ContextBudget } from '../../types';
 
 const fullBudget: ContextBudget = {
@@ -134,26 +140,66 @@ describe('ContextBreakdownPanel', () => {
 
 // W1-residual — the Now / History tab toggle.
 describe('ContextBreakdownPanel tabs', () => {
-  it('defaults to Now (live breakdown) with History unmounted', () => {
+  it('defaults to Now with the History body mounted-but-hidden', () => {
     render(<ContextBreakdownPanel budget={fullBudget} />);
     expect(screen.getByTestId('context-panel-tabs')).toBeInTheDocument();
-    // Now body visible; the History tab body is not mounted yet.
+    // Now body visible; the History body is kept mounted (state-preserving) but
+    // CSS-hidden so a later toggle back doesn't remount + refetch from zero.
     expect(screen.getByTestId('context-now-body')).not.toHaveClass('hidden');
-    expect(screen.queryByTestId('context-history-tab')).toBeNull();
+    expect(screen.getByTestId('context-history-body')).toHaveClass('hidden');
     // the live rows are present
     expect(screen.getByText('context_panel.cat.skills')).toBeInTheDocument();
   });
 
-  it('switches to History (mounts the chart) and back to Now', () => {
+  it('switches to History and back to Now without unmounting either body', () => {
     render(<ContextBreakdownPanel budget={fullBudget} />);
     fireEvent.click(screen.getByTestId('context-tab-history'));
-    expect(screen.getByTestId('context-history-tab')).toBeInTheDocument();
-    // Now body stays mounted but hidden (state-preserving) while History shows.
+    // History body shown; Now body stays mounted but hidden (state-preserving).
+    expect(screen.getByTestId('context-history-body')).not.toHaveClass('hidden');
     expect(screen.getByTestId('context-now-body')).toHaveClass('hidden');
 
     fireEvent.click(screen.getByTestId('context-tab-now'));
-    expect(screen.queryByTestId('context-history-tab')).toBeNull();
+    // Both bodies remain mounted; only the hidden flag flips back.
+    expect(screen.getByTestId('context-history-body')).toHaveClass('hidden');
     expect(screen.getByTestId('context-now-body')).not.toHaveClass('hidden');
+  });
+});
+
+// M2 — CATEGORY_HEX is a hand-mirror of CATEGORY_COLORS (recharts `fill` needs a
+// concrete hex, not a Tailwind class). TS enforces the KEY set matches but not
+// the VALUES, so a recolor of one map without the other silently diverges (the
+// chart segment vs the panel dot disagree). Pin both against the Tailwind *-400
+// palette so a future one-sided recolor fails here.
+describe('CATEGORY_COLORS ⇄ CATEGORY_HEX lockstep', () => {
+  // Tailwind palette *-400 → hex (the shade both maps use).
+  const TAILWIND_400_HEX: Record<string, string> = {
+    'bg-amber-400': '#fbbf24',
+    'bg-emerald-400': '#34d399',
+    'bg-teal-400': '#2dd4bf',
+    'bg-rose-400': '#fb7185',
+    'bg-violet-400': '#a78bfa',
+    'bg-fuchsia-400': '#e879f9',
+    'bg-lime-400': '#a3e635',
+    'bg-orange-400': '#fb923c',
+    'bg-sky-400': '#38bdf8',
+    'bg-cyan-400': '#22d3ee',
+    'bg-indigo-400': '#818cf8',
+    'bg-blue-400': '#60a5fa',
+  };
+
+  it('every category: CATEGORY_HEX equals its CATEGORY_COLORS Tailwind class hex', () => {
+    for (const key of BREAKDOWN_CATEGORIES) {
+      const cls = CATEGORY_COLORS[key];
+      const expectedHex = TAILWIND_400_HEX[cls];
+      // the class must be one we have a hex mapping for (guards a shade change)
+      expect(expectedHex, `no hex mapping for ${key}'s class "${cls}"`).toBeDefined();
+      expect(CATEGORY_HEX[key], `CATEGORY_HEX.${key} drifted from ${cls}`).toBe(expectedHex);
+    }
+  });
+
+  it('both maps cover exactly the category vocabulary', () => {
+    expect(Object.keys(CATEGORY_COLORS).sort()).toEqual([...BREAKDOWN_CATEGORIES].sort());
+    expect(Object.keys(CATEGORY_HEX).sort()).toEqual([...BREAKDOWN_CATEGORIES].sort());
   });
 });
 

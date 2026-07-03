@@ -11,15 +11,22 @@ import type { TurnCheckpoint } from '../hooks/useTurnCheckpoints';
 
 export function TurnCheckpoints({
   checkpoints,
+  chapterId,
   onRestore,
 }: {
   checkpoints: TurnCheckpoint[];
+  /** Only checkpoints for THIS chapter render — the hook keeps every chapter's
+   * checkpoints in memory (the route doesn't remount between chapters), so
+   * without this filter a stale chapter-X row would Restore chapter X while the
+   * visible chapter Y is untouched (silent wrong-chapter mutation). */
+  chapterId: string;
   onRestore: (cp: TurnCheckpoint) => Promise<void> | void;
 }) {
   const { t } = useTranslation('editor');
   const [target, setTarget] = useState<TurnCheckpoint | null>(null);
 
-  if (checkpoints.length === 0) return null;
+  const visible = checkpoints.filter((c) => c.chapterId === chapterId);
+  if (visible.length === 0) return null;
 
   const confirmRestore = async () => {
     if (!target) return;
@@ -37,10 +44,10 @@ export function TurnCheckpoints({
     <div data-testid="turn-checkpoints" className="flex-shrink-0 border-b">
       <div className="flex items-center gap-1.5 px-4 py-2 text-xs font-semibold text-muted-foreground">
         <Sparkles className="h-3 w-3 text-violet-500" />
-        <span>{t('checkpoint.header', { defaultValue: 'AI edit checkpoints', count: checkpoints.length })}</span>
+        <span>{t('checkpoint.header', { defaultValue: 'AI edit checkpoints', count: visible.length })}</span>
       </div>
       <div className="max-h-44 overflow-y-auto">
-        {checkpoints.map((cp) => (
+        {visible.map((cp) => (
           <div key={cp.id} data-testid="turn-checkpoint-row" className="flex items-center gap-2 px-4 py-2 text-xs hover:bg-card">
             <span className="min-w-0 flex-1 truncate text-muted-foreground" title={cp.snippet}>
               {cp.kind === 'polish'

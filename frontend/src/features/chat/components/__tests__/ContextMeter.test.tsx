@@ -16,6 +16,15 @@ vi.mock('react-i18next', () => ({
   }),
 }));
 
+// The drill-down panel now keeps ContextHistoryTab mounted (CSS-hidden on the
+// Now tab) so toggling History doesn't remount + refetch. That subtree pulls in
+// the auth/session/api providers via useContextHistory — stub them so the
+// panel renders in this bare (provider-less) unit test. The History fetch is
+// gated off (Now tab is active on open), so getContextHistory is never called.
+vi.mock('@/auth', () => ({ useAuth: () => ({ accessToken: null }) }));
+vi.mock('../../providers', () => ({ useChatSession: () => ({ activeSession: null }) }));
+vi.mock('../../api', () => ({ chatApi: { getContextHistory: vi.fn() } }));
+
 import { ContextMeter, contextBand } from '../ContextMeter';
 import type { ContextBudget } from '../../types';
 

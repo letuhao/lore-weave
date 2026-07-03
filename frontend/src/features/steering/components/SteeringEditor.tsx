@@ -24,8 +24,14 @@ export function SteeringEditor({ initial, saving, errorKind, onSubmit, onCancel 
   const [matchPattern, setMatchPattern] = useState(initial?.match_pattern ?? '');
   const [enabled, setEnabled] = useState(initial?.enabled ?? true);
 
-  const bodyOver = body.length > STEERING_LIMITS.bodyMax;
-  const nameOver = name.length > STEERING_LIMITS.nameMax;
+  // Count by CODE POINTS to match the server (utf8.RuneCountInString + PG
+  // char_length), not JS `.length` (UTF-16 code units — astral-plane chars like
+  // emoji / CJK Extension-B count 2, wrongly flagging an in-budget body as over
+  // cap). review-impl M2.
+  const bodyLen = [...body].length;
+  const nameLen = [...name].length;
+  const bodyOver = bodyLen > STEERING_LIMITS.bodyMax;
+  const nameOver = nameLen > STEERING_LIMITS.nameMax;
   const invalid = !name.trim() || !body.trim() || bodyOver || nameOver;
 
   const submit = () => {
@@ -47,7 +53,7 @@ export function SteeringEditor({ initial, saving, errorKind, onSubmit, onCancel 
         <span className="text-[11px] font-medium text-muted-foreground">{t('steering.form.name')}</span>
         <input
           data-testid="steering-form-name" className={cn(field, nameOver && 'border-destructive')}
-          value={name} maxLength={STEERING_LIMITS.nameMax + 20}
+          value={name}
           placeholder={t('steering.form.namePlaceholder')} onChange={(e) => setName(e.target.value)}
         />
       </label>
@@ -56,7 +62,7 @@ export function SteeringEditor({ initial, saving, errorKind, onSubmit, onCancel 
         <span className="flex items-center justify-between text-[11px] font-medium text-muted-foreground">
           {t('steering.form.body')}
           <span data-testid="steering-form-body-count" className={cn('font-mono', bodyOver && 'text-destructive')}>
-            {t('steering.charCount', { n: body.length, max: STEERING_LIMITS.bodyMax })}
+            {t('steering.charCount', { n: bodyLen, max: STEERING_LIMITS.bodyMax })}
           </span>
         </span>
         <textarea

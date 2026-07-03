@@ -10,14 +10,17 @@ import { STEERING_LIMITS } from '../types';
 /** A thrown apiJson error carries `.status`/`.code`. */
 type ApiErr = Error & { status?: number; code?: string };
 
-export type SteeringErrorKind = 'duplicate' | 'cap' | 'other' | null;
+export type SteeringErrorKind = 'duplicate' | 'cap' | 'forbidden' | 'other' | null;
 
-/** Map a mutation error to a UI-actionable kind: 409 → duplicate name, 422 → cap/enum. */
+/** Map a mutation error to a UI-actionable kind: 409 → duplicate name, 422 →
+ * cap/enum, 403 → no-permission (a VIEW-only collaborator: writes are EDIT-gated,
+ * so a permission denial must NOT read as a transient "try again"). review-impl M1. */
 export function classifySteeringError(err: unknown): SteeringErrorKind {
   if (!err) return null;
   const status = (err as ApiErr).status;
   if (status === 409) return 'duplicate';
   if (status === 422) return 'cap';
+  if (status === 403) return 'forbidden';
   return 'other';
 }
 

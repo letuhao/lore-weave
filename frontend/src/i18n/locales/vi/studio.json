@@ -8,15 +8,42 @@
     "body": "Không gian làm việc dạng bảng ghép cho cuốn sách này. Các bảng (sáng tác, dàn ý, nhân vật, chất lượng…) sẽ được thêm vào đây từng cái một. Kéo thẻ để chia đôi, xếp chồng, thả nổi, hoặc tách ra cửa sổ riêng."
   },
   "panels": {
-    "compose": { "title": "Compose", "desc": "Chat đồng sáng tác AI" },
-    "editor": { "title": "Editor", "desc": "Trình soạn bản thảo" },
-    "planner": { "title": "Trình lập kế hoạch", "desc": "Lập kế hoạch hệ thống truyện" },
-    "usage": { "title": "Sử dụng", "desc": "Chi phí, token & nhật ký yêu cầu" },
-    "notifications": { "title": "Thông báo", "desc": "Job hoàn tất & cảnh báo" },
-    "settings": { "title": "Cài đặt", "desc": "Tài khoản, nhà cung cấp & dịch thuật" },
-    "trash": { "title": "Thùng rác", "desc": "Khôi phục sách, chương đã xoá & hơn nữa" },
-    "steering": { "title": "Định hướng", "desc": "Quy tắc của tác giả hướng dẫn AI cho sách này" },
-    "json-editor": { "title": "JSON", "desc": "Xem JSON thô của một resource" }
+    "compose": {
+      "title": "Compose",
+      "desc": "Chat đồng sáng tác AI"
+    },
+    "editor": {
+      "title": "Editor",
+      "desc": "Trình soạn bản thảo"
+    },
+    "planner": {
+      "title": "Trình lập kế hoạch",
+      "desc": "Lập kế hoạch hệ thống truyện"
+    },
+    "usage": {
+      "title": "Sử dụng",
+      "desc": "Chi phí, token & nhật ký yêu cầu"
+    },
+    "notifications": {
+      "title": "Thông báo",
+      "desc": "Job hoàn tất & cảnh báo"
+    },
+    "settings": {
+      "title": "Cài đặt",
+      "desc": "Tài khoản, nhà cung cấp & dịch thuật"
+    },
+    "trash": {
+      "title": "Thùng rác",
+      "desc": "Khôi phục sách, chương đã xoá & hơn nữa"
+    },
+    "steering": {
+      "title": "Định hướng",
+      "desc": "Quy tắc của tác giả hướng dẫn AI cho sách này"
+    },
+    "json-editor": {
+      "title": "JSON",
+      "desc": "Xem JSON thô của một resource"
+    }
   },
   "sceneRail": {
     "title": "Cảnh",
@@ -37,7 +64,12 @@
     "moveUp": "Chuyển lên",
     "moveDown": "Chuyển xuống",
     "delete": "Xóa cảnh",
-    "status": { "empty": "trống", "outline": "dàn ý", "drafting": "đang viết", "done": "xong" }
+    "status": {
+      "empty": "trống",
+      "outline": "dàn ý",
+      "drafting": "đang viết",
+      "done": "xong"
+    }
   },
   "jsonEditor": {
     "empty": "Mở một resource dạng JSON từ panel của nó (\"Open as JSON\").",
@@ -52,7 +84,10 @@
     "propose": "Đề xuất",
     "model": "Model",
     "empty": "Dán markdown hệ thống truyện và bấm Đề xuất để bắt đầu.",
-    "mode": { "rules": "Quy tắc", "llm": "LLM" }
+    "mode": {
+      "rules": "Quy tắc",
+      "llm": "LLM"
+    }
   },
   "editor": {
     "empty": "Chọn một chương trong navigator để soạn ở đây.",
@@ -97,7 +132,8 @@
     "error": {
       "duplicate": "Đã có quy tắc trùng tên trong sách này.",
       "cap": "Vượt quá giới hạn (nội dung ≤ 8000 ký tự, tên ≤ 200, ≤ 20 quy tắc) hoặc chế độ không hợp lệ.",
-      "other": "Không lưu được quy tắc. Vui lòng thử lại."
+      "other": "Không lưu được quy tắc. Vui lòng thử lại.",
+      "forbidden": "Bạn không có quyền chỉnh sửa steering cho sách này."
     }
   },
   "palette": {
@@ -108,7 +144,12 @@
     "quickOpenHint": "Gõ để tìm chương, cảnh & hồi",
     "commandPlaceholder": "Nhập một lệnh…",
     "noCommands": "Không có lệnh phù hợp.",
-    "group": { "recent": "Gần đây", "panels": "Bảng công cụ", "navigate": "Điều hướng", "layout": "Bố cục" },
+    "group": {
+      "recent": "Gần đây",
+      "panels": "Bảng công cụ",
+      "navigate": "Điều hướng",
+      "layout": "Bố cục"
+    },
     "cmd": {
       "showManuscript": "Xem: Bản thảo",
       "showBible": "Xem: Story Bible",
@@ -135,10 +176,22 @@
     "quality": "Chất lượng"
   },
   "navStub": {
-    "manuscript": { "title": "Bản thảo", "body": "Chương & cảnh — bộ điều hướng dẫn dắt khu dock. Sẽ làm tiếp theo." },
-    "bible": { "title": "Sổ tay truyện", "body": "Nhân vật, thế giới & canon. Sắp có." },
-    "search": { "title": "Tìm kiếm", "body": "Tìm toàn văn & ngữ nghĩa trong cả cuốn sách. Sắp có." },
-    "quality": { "title": "Chất lượng", "body": "Điểm phê bình, mạch lời hứa & vấn đề canon. Sắp có." }
+    "manuscript": {
+      "title": "Bản thảo",
+      "body": "Chương & cảnh — bộ điều hướng dẫn dắt khu dock. Sẽ làm tiếp theo."
+    },
+    "bible": {
+      "title": "Sổ tay truyện",
+      "body": "Nhân vật, thế giới & canon. Sắp có."
+    },
+    "search": {
+      "title": "Tìm kiếm",
+      "body": "Tìm toàn văn & ngữ nghĩa trong cả cuốn sách. Sắp có."
+    },
+    "quality": {
+      "title": "Chất lượng",
+      "body": "Điểm phê bình, mạch lời hứa & vấn đề canon. Sắp có."
+    }
   },
   "sidebar": {
     "collapse": "Thu gọn"

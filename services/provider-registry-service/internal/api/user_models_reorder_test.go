@@ -124,6 +124,29 @@ func TestReorder_AssignsIndexesAndNullsTheRest(t *testing.T) {
 	}
 }
 
+// review-impl LOW: a direct API caller could send duplicate ids; the handler
+// dedupes (first occurrence wins) so a repeated id can't leave an index gap or
+// overwrite its own lead position. The FE never sends dupes.
+func TestReorder_DedupesRepeatedIDs(t *testing.T) {
+	srv, pool := integrationServer(t)
+	owner := uuid.New()
+	a := seedModelWithCapability(t, pool, owner, "dedup-a", `{"chat": true}`)
+	b := seedModelWithCapability(t, pool, owner, "dedup-b", `{"chat": true}`)
+
+	// [a, a, b] must land a=0, b=1 (no gap, no lost lead).
+	items := reorderModels(t, srv, owner, []uuid.UUID{a, a, b})
+	byID := map[string]listedModelOrdered{}
+	for _, it := range items {
+		byID[it.UserModelID] = it
+	}
+	if ao := byID[a.String()]; ao.SortOrder == nil || *ao.SortOrder != 0 {
+		t.Errorf("expected a sort_order=0, got %+v", ao)
+	}
+	if bo := byID[b.String()]; bo.SortOrder == nil || *bo.SortOrder != 1 {
+		t.Errorf("expected b sort_order=1 (no gap from the dupe), got %+v", bo)
+	}
+}
+
 func TestReorder_ListRespectsSortOrderThenFavorites(t *testing.T) {
 	srv, pool := integrationServer(t)
 	owner := uuid.New()

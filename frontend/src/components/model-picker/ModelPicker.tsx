@@ -177,18 +177,29 @@ export function ModelPicker({
     const sections: Array<{ label: string | null; options: Option[] }> = [];
     if (allowNone) sections.push({ label: null, options: [{ id: '' }] });
     if (isOrphan && value) sections.push({ label: null, options: [{ id: value, orphan: true }] });
-    if (favorites.length > 0)
-      sections.push({
-        label: t('modelPicker.favorites', { defaultValue: 'Favorites' }),
-        options: favorites.map((m) => ({ id: m.user_model_id, model: m })),
-      });
-    if (recentModels.length > 0)
-      sections.push({
-        label: t('modelPicker.recents', { defaultValue: 'Recent' }),
-        options: recentModels.map((m) => ({ id: m.user_model_id, model: m })),
-      });
-    for (const [kind, group] of grouped) {
-      sections.push({ label: kind, options: group.map((m) => ({ id: m.user_model_id, model: m })) });
+
+    // review-impl MED: when the user has set an EXPLICIT order (any non-null
+    // sort_order), honor it as a FLAT list — the server already ordered by
+    // sort_order → is_favorite → created_at, so the favorites-hoist + provider
+    // grouping below would OVERRIDE the order the card promises. Only fall back
+    // to the favorites/recents/by-provider presentation when nothing is ordered.
+    const hasCustomOrder = filtered.some((m) => m.sort_order != null);
+    if (hasCustomOrder) {
+      sections.push({ label: null, options: filtered.map((m) => ({ id: m.user_model_id, model: m })) });
+    } else {
+      if (favorites.length > 0)
+        sections.push({
+          label: t('modelPicker.favorites', { defaultValue: 'Favorites' }),
+          options: favorites.map((m) => ({ id: m.user_model_id, model: m })),
+        });
+      if (recentModels.length > 0)
+        sections.push({
+          label: t('modelPicker.recents', { defaultValue: 'Recent' }),
+          options: recentModels.map((m) => ({ id: m.user_model_id, model: m })),
+        });
+      for (const [kind, group] of grouped) {
+        sections.push({ label: kind, options: group.map((m) => ({ id: m.user_model_id, model: m })) });
+      }
     }
     const flatOptions = sections.flatMap((s) => s.options);
     return { sections, flatOptions, selectedModel: selected, orphan: isOrphan };

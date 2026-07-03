@@ -307,9 +307,10 @@ func (s *Server) toolListModels(ctx context.Context, _ *mcp.CallToolRequest, in 
 	}
 	rows.Close()
 	out := listModelsOut{Models: []map[string]any{}}
-	// readUserModel SELECTs an explicit column list that does NOT include
-	// pricing/secret — and user_models never holds a secret anyway (secrets live
-	// only in provider_credentials). So this read is secret-free by construction.
+	// readUserModel SELECTs an explicit column list; a credential SECRET is never
+	// in it — and user_models never holds a secret anyway (secrets live only in
+	// provider_credentials). So this read is secret-free by construction. (It DOES
+	// now return the caller's own `pricing` + `sort_order` — not secrets.)
 	for _, id := range ids {
 		m, err := s.readUserModel(ctx, uid, id)
 		if err != nil {

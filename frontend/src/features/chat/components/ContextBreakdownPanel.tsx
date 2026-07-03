@@ -33,8 +33,10 @@ export const BREAKDOWN_CATEGORIES = [
 export type BreakdownCategory = (typeof BREAKDOWN_CATEGORIES)[number];
 
 // One stable color per category (bar segment + row dot). Distinct hues so
-// adjacent segments read apart; values are Tailwind palette classes.
-const CATEGORY_COLORS: Record<BreakdownCategory, string> = {
+// adjacent segments read apart; values are Tailwind palette classes. Exported
+// so a contract test can pin it in lockstep with CATEGORY_HEX below (a recolor
+// of one map without the other makes the chart segment disagree with the dot).
+export const CATEGORY_COLORS: Record<BreakdownCategory, string> = {
   system_prompt: 'bg-amber-400',
   memory_knowledge: 'bg-emerald-400',
   working_memory: 'bg-teal-400',
@@ -210,10 +212,14 @@ export function ContextBreakdownPanel({ budget, onManageTools, compact }: Props)
         </button>
       </div>
 
-      {/* History tab — the per-turn token chart. Mounted only when active (its
-          fetch/state hook lives in ContextHistoryTab, keeping this panel
-          decoupled from the auth/session providers). */}
-      {tab === 'history' && <ContextHistoryTab />}
+      {/* History tab — the per-turn token chart. Kept MOUNTED (CSS-hidden when
+          inactive) so toggling back to History doesn't remount + refetch from
+          zero; `active` gates the hook's fetch to when the tab is actually open.
+          Its fetch/state hook lives in ContextHistoryTab, keeping this panel
+          decoupled from the auth/session providers. */}
+      <div className={cn(tab !== 'history' && 'hidden')} data-testid="context-history-body">
+        <ContextHistoryTab active={tab === 'history'} />
+      </div>
 
       {/* Now tab — the live breakdown. Kept mounted (CSS-hidden on History) so
           the memory drill-down + compact input text survive a tab switch. */}

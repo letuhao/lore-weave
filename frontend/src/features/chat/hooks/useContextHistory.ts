@@ -28,28 +28,54 @@ export function useContextHistory(enabled: boolean): ContextHistoryState {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const load = useCallback(async () => {
-    if (!accessToken || !sessionId) return;
-    setLoading(true);
-    setError(null);
-    try {
-      const res = await chatApi.getContextHistory(accessToken, sessionId);
-      // Map defensively — the server orders oldest→newest, but a missing/empty
-      // items array degrades to [] rather than throwing.
-      setPoints(Array.isArray(res?.items) ? res.items : []);
-    } catch (err) {
-      setError((err as Error)?.message ?? 'failed to load context history');
-      setPoints([]);
-    } finally {
-      setLoading(false);
-    }
-  }, [accessToken, sessionId]);
+  // `shouldApply` is the in-flight guard: the effect passes `() => !ignore` so a
+  // resolution that lost the race (its session already switched away) is
+  // dropped instead of clobbering the current session's state. `reload` passes
+  // the default (always-apply) since it targets the current session.
+  const load = useCallback(
+    async (shouldApply: () => boolean = () => true) => {
+      if (!accessToken || !sessionId) return;
+      setLoading(true);
+      setError(null);
+      try {
+        const res = await chatApi.getContextHistory(accessToken, sessionId);
+        if (!shouldApply()) return;
+        // Map defensively — the server orders oldest→newest, but a missing/empty
+        // items array degrades to [] rather than throwing.
+        setPoints(Array.isArray(res?.items) ? res.items : []);
+      } catch (err) {
+        if (!shouldApply()) return;
+        setError((err as Error)?.message ?? 'failed to load context history');
+        setPoints([]);
+      } finally {
+        // Only the winning fetch owns the loading flag — a stale one must not
+        // flip it off while the current fetch is still running.
+        if (shouldApply()) setLoading(false);
+      }
+    },
+    [accessToken, sessionId],
+  );
 
-  // Fetch when the History tab first opens (or the active session changes while
-  // it is open). Not on every render — only while enabled.
+  // Clear stale bars the instant the session switches so the chart falls back to
+  // its spinner/empty state rather than showing the PREVIOUS session's history
+  // while the new fetch is in flight. Keyed to sessionId only (NOT `enabled`) so
+  // toggling the History tab preserves the already-loaded series (no refetch
+  // flicker on toggle).
+  useEffect(() => {
+    setPoints([]);
+  }, [sessionId]);
+
+  // Fetch when the History tab is enabled (or the active session changes while
+  // it is open). Not on every render — only while enabled. The `ignore` flag +
+  // cleanup drop a stale resolution: on a fast session switch, session A's
+  // slower fetch must not overwrite B's freshly-loaded state.
   useEffect(() => {
     if (!enabled || !sessionId) return;
-    void load();
+    let ignore = false;
+    void load(() => !ignore);
+    return () => {
+      ignore = true;
+    };
   }, [enabled, sessionId, load]);
 
   const reload = useCallback(() => {

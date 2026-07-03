@@ -8,18 +8,54 @@
     "body": "A dockable workspace for this book. Panels (compose, planner, cast, quality…) will be added here one at a time. Drag tabs to split, stack, float, or pop out into their own window."
   },
   "panels": {
-    "compose": { "title": "Compose", "desc": "AI co-writer chat" },
-    "editor": { "title": "Editor", "desc": "Manuscript editor" },
-    "planner": { "title": "Planner", "desc": "Plan the novel's system" },
-    "usage": { "title": "Usage", "desc": "Spend, tokens & request log" },
-    "notifications": { "title": "Notifications", "desc": "Job completions & alerts" },
-    "settings": { "title": "Settings", "desc": "Account, providers & translation" },
-    "trash": { "title": "Trash", "desc": "Restore deleted books, chapters & more" },
-    "steering": { "title": "Steering", "desc": "Author rules that guide AI on this book" },
-    "json-editor": { "title": "JSON", "desc": "Raw JSON view of a resource" },
-    "extensions": { "title": "Extensions", "desc": "Manage plugins, skills, MCP servers, commands & hooks" },
-    "proposals": { "title": "Proposals", "desc": "Review skills the agent proposed" },
-    "skill-editor": { "title": "Skill", "desc": "Edit a SKILL.md" }
+    "compose": {
+      "title": "Compose",
+      "desc": "AI co-writer chat"
+    },
+    "editor": {
+      "title": "Editor",
+      "desc": "Manuscript editor"
+    },
+    "planner": {
+      "title": "Planner",
+      "desc": "Plan the novel's system"
+    },
+    "usage": {
+      "title": "Usage",
+      "desc": "Spend, tokens & request log"
+    },
+    "notifications": {
+      "title": "Notifications",
+      "desc": "Job completions & alerts"
+    },
+    "settings": {
+      "title": "Settings",
+      "desc": "Account, providers & translation"
+    },
+    "trash": {
+      "title": "Trash",
+      "desc": "Restore deleted books, chapters & more"
+    },
+    "steering": {
+      "title": "Steering",
+      "desc": "Author rules that guide AI on this book"
+    },
+    "json-editor": {
+      "title": "JSON",
+      "desc": "Raw JSON view of a resource"
+    },
+    "extensions": {
+      "title": "Extensions",
+      "desc": "Manage plugins, skills, MCP servers, commands & hooks"
+    },
+    "proposals": {
+      "title": "Proposals",
+      "desc": "Review skills the agent proposed"
+    },
+    "skill-editor": {
+      "title": "Skill",
+      "desc": "Edit a SKILL.md"
+    }
   },
   "sceneRail": {
     "title": "Scenes",
@@ -40,7 +76,12 @@
     "moveUp": "Move up",
     "moveDown": "Move down",
     "delete": "Delete scene",
-    "status": { "empty": "empty", "outline": "outline", "drafting": "drafting", "done": "done" }
+    "status": {
+      "empty": "empty",
+      "outline": "outline",
+      "drafting": "drafting",
+      "done": "done"
+    }
   },
   "jsonEditor": {
     "empty": "Open a resource as JSON from its panel (\"Open as JSON\").",
@@ -55,7 +96,10 @@
     "propose": "Propose",
     "model": "Model",
     "empty": "Paste your novel-system markdown and Propose to start a plan run.",
-    "mode": { "rules": "Rules", "llm": "LLM" }
+    "mode": {
+      "rules": "Rules",
+      "llm": "LLM"
+    }
   },
   "editor": {
     "empty": "Select a chapter in the manuscript navigator to edit it here.",
@@ -100,7 +144,8 @@
     "error": {
       "duplicate": "A rule with this name already exists in this book.",
       "cap": "That exceeds a limit (body ≤ 8000 chars, name ≤ 200, ≤ 20 rules) or an invalid mode.",
-      "other": "Couldn't save the rule. Please try again."
+      "other": "Couldn't save the rule. Please try again.",
+      "forbidden": "You do not have permission to edit steering for this book."
     }
   },
   "palette": {
@@ -111,7 +156,12 @@
     "quickOpenHint": "Type to search chapters, scenes & arcs",
     "commandPlaceholder": "Type a command…",
     "noCommands": "No matching commands.",
-    "group": { "recent": "Recent", "panels": "Panels", "navigate": "Navigate", "layout": "Layout" },
+    "group": {
+      "recent": "Recent",
+      "panels": "Panels",
+      "navigate": "Navigate",
+      "layout": "Layout"
+    },
     "cmd": {
       "showManuscript": "View: Show Manuscript",
       "showBible": "View: Show Story Bible",
@@ -138,10 +188,22 @@
     "quality": "Quality"
   },
   "navStub": {
-    "manuscript": { "title": "Manuscript", "body": "Chapters & scenes — the navigator that drives the dock. Built next." },
-    "bible": { "title": "Story Bible", "body": "Cast, world & canon entries. Coming soon." },
-    "search": { "title": "Search", "body": "Full-text & semantic search across the book. Coming soon." },
-    "quality": { "title": "Quality", "body": "Critic scores, promise threads & canon issues. Coming soon." }
+    "manuscript": {
+      "title": "Manuscript",
+      "body": "Chapters & scenes — the navigator that drives the dock. Built next."
+    },
+    "bible": {
+      "title": "Story Bible",
+      "body": "Cast, world & canon entries. Coming soon."
+    },
+    "search": {
+      "title": "Search",
+      "body": "Full-text & semantic search across the book. Coming soon."
+    },
+    "quality": {
+      "title": "Quality",
+      "body": "Critic scores, promise threads & canon issues. Coming soon."
+    }
   },
   "sidebar": {
     "collapse": "Collapse"

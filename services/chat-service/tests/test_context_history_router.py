@@ -138,3 +138,20 @@ class TestContextHistory:
             f"/v1/chat/sessions/{TEST_SESSION_ID}/context-history?limit=9999"
         )
         assert resp2.status_code == 422
+
+    @pytest.mark.asyncio
+    async def test_limit_negative_or_zero_rejected(self, client, mock_pool):
+        """A negative/zero limit is 422 (ge=1), not a 500 from Postgres'
+        "LIMIT must not be negative" — the lower bound mirrors the upper cap."""
+        mock_pool.fetchval.return_value = True
+        mock_pool.fetch.return_value = []
+        resp_neg = await client.get(
+            f"/v1/chat/sessions/{TEST_SESSION_ID}/context-history?limit=-1"
+        )
+        assert resp_neg.status_code == 422
+        resp_zero = await client.get(
+            f"/v1/chat/sessions/{TEST_SESSION_ID}/context-history?limit=0"
+        )
+        assert resp_zero.status_code == 422
+        # the row query must never run for a rejected limit
+        mock_pool.fetch.assert_not_called()

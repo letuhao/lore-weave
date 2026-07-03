@@ -8,15 +8,42 @@
     "body": "本書的可停靠工作區。面板（寫作、大綱、角色、品質…）將逐一加入此處。拖曳分頁即可分割、堆疊、浮動，或彈出為獨立視窗。"
   },
   "panels": {
-    "compose": { "title": "Compose", "desc": "AI 共同創作對話" },
-    "editor": { "title": "Editor", "desc": "手稿編輯器" },
-    "planner": { "title": "規劃器", "desc": "規劃小說系統" },
-    "usage": { "title": "用量", "desc": "花費、Token 與請求紀錄" },
-    "notifications": { "title": "通知", "desc": "工作完成與提醒" },
-    "settings": { "title": "設定", "desc": "帳戶、供應商與翻譯" },
-    "trash": { "title": "垃圾桶", "desc": "還原已刪除的書籍、章節等" },
-    "steering": { "title": "引導規則", "desc": "引導 AI 處理本書的作者規則" },
-    "json-editor": { "title": "JSON", "desc": "資源的原始 JSON 檢視" }
+    "compose": {
+      "title": "Compose",
+      "desc": "AI 共同創作對話"
+    },
+    "editor": {
+      "title": "Editor",
+      "desc": "手稿編輯器"
+    },
+    "planner": {
+      "title": "規劃器",
+      "desc": "規劃小說系統"
+    },
+    "usage": {
+      "title": "用量",
+      "desc": "花費、Token 與請求紀錄"
+    },
+    "notifications": {
+      "title": "通知",
+      "desc": "工作完成與提醒"
+    },
+    "settings": {
+      "title": "設定",
+      "desc": "帳戶、供應商與翻譯"
+    },
+    "trash": {
+      "title": "垃圾桶",
+      "desc": "還原已刪除的書籍、章節等"
+    },
+    "steering": {
+      "title": "引導規則",
+      "desc": "引導 AI 處理本書的作者規則"
+    },
+    "json-editor": {
+      "title": "JSON",
+      "desc": "資源的原始 JSON 檢視"
+    }
   },
   "sceneRail": {
     "title": "場景",
@@ -37,7 +64,12 @@
     "moveUp": "上移",
     "moveDown": "下移",
     "delete": "刪除場景",
-    "status": { "empty": "空", "outline": "大綱", "drafting": "撰寫中", "done": "完成" }
+    "status": {
+      "empty": "空",
+      "outline": "大綱",
+      "drafting": "撰寫中",
+      "done": "完成"
+    }
   },
   "jsonEditor": {
     "empty": "從資源面板的「以 JSON 開啟」開啟資源。",
@@ -52,7 +84,10 @@
     "propose": "提出",
     "model": "模型",
     "empty": "貼上小說系統的 Markdown 並按「提出」開始規劃執行。",
-    "mode": { "rules": "規則", "llm": "LLM" }
+    "mode": {
+      "rules": "規則",
+      "llm": "LLM"
+    }
   },
   "editor": {
     "empty": "在導覽列選擇章節即可在此編輯。",
@@ -97,7 +132,8 @@
     "error": {
       "duplicate": "本書已存在同名的規則。",
       "cap": "超過限制（內容 ≤ 8000 字元、名稱 ≤ 200、規則 ≤ 20 條）或模式無效。",
-      "other": "無法儲存規則，請再試一次。"
+      "other": "無法儲存規則，請再試一次。",
+      "forbidden": "你沒有編輯這本書引導規則的權限。"
     }
   },
   "palette": {
@@ -108,7 +144,12 @@
     "quickOpenHint": "輸入以搜尋章節、場景與卷",
     "commandPlaceholder": "輸入命令…",
     "noCommands": "沒有符合的命令。",
-    "group": { "recent": "最近", "panels": "面板", "navigate": "導覽", "layout": "版面" },
+    "group": {
+      "recent": "最近",
+      "panels": "面板",
+      "navigate": "導覽",
+      "layout": "版面"
+    },
     "cmd": {
       "showManuscript": "檢視：手稿",
       "showBible": "檢視：故事聖經",
@@ -135,10 +176,22 @@
     "quality": "品質"
   },
   "navStub": {
-    "manuscript": { "title": "稿件", "body": "章節與場景 — 驅動停靠區的導覽器。接下來實作。" },
-    "bible": { "title": "故事聖經", "body": "角色、世界與正史。即將推出。" },
-    "search": { "title": "搜尋", "body": "全書全文與語意搜尋。即將推出。" },
-    "quality": { "title": "品質", "body": "評審分數、伏筆線與正史問題。即將推出。" }
+    "manuscript": {
+      "title": "稿件",
+      "body": "章節與場景 — 驅動停靠區的導覽器。接下來實作。"
+    },
+    "bible": {
+      "title": "故事聖經",
+      "body": "角色、世界與正史。即將推出。"
+    },
+    "search": {
+      "title": "搜尋",
+      "body": "全書全文與語意搜尋。即將推出。"
+    },
+    "quality": {
+      "title": "品質",
+      "body": "評審分數、伏筆線與正史問題。即將推出。"
+    }
   },
   "sidebar": {
     "collapse": "收合"

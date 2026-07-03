@@ -40,7 +40,31 @@ describe('useTurnCheckpoints (RAID C6)', () => {
     });
     expect(result.current.checkpoints).toHaveLength(1);
     expect(result.current.checkpoints[0].count).toBe(2);
-    expect(result.current.checkpoints[0].snippet).toBe('second');
+    // LOW-4: fold KEEPS the first edit's snippet (Restore reverts to before it),
+    // it does not overwrite with the newest edit's text.
+    expect(result.current.checkpoints[0].snippet).toBe('first');
+  });
+
+  it('pins a synchronously-provided pre-revision without an API read (MED-2)', async () => {
+    const { result } = renderHook(() => useTurnCheckpoints(BOOK));
+    await act(async () => { await result.current.capture(CH, 'sync', 'insert', 'rev-SYNC'); });
+    expect(result.current.checkpoints[0]).toMatchObject({ preRevisionId: 'rev-SYNC', kind: 'insert', count: 1 });
+    expect(listRevisions).not.toHaveBeenCalled(); // no round-trip → no TOCTOU race
+  });
+
+  it('pins an explicitly-null provided pre-revision (Restore disabled, no API read)', async () => {
+    const { result } = renderHook(() => useTurnCheckpoints(BOOK));
+    await act(async () => { await result.current.capture(CH, 'sync', 'polish', null); });
+    expect(result.current.checkpoints[0].preRevisionId).toBeNull();
+    expect(listRevisions).not.toHaveBeenCalled();
+  });
+
+  it('falls back to the async listRevisions read when no pre-revision is provided', async () => {
+    listRevisions.mockResolvedValue({ items: [{ revision_id: 'rev-ASYNC' }] });
+    const { result } = renderHook(() => useTurnCheckpoints(BOOK));
+    await act(async () => { await result.current.capture(CH, 'async', 'insert'); });
+    expect(listRevisions).toHaveBeenCalledTimes(1);
+    expect(result.current.checkpoints[0].preRevisionId).toBe('rev-ASYNC');
   });
 
   it('starts a new checkpoint when the pre-revision advanced (a save happened)', async () => {

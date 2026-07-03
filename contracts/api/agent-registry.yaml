@@ -104,6 +104,97 @@ paths:
         '200': { description: Override set }
         '404': { $ref: '#/components/responses/NotFound' }
         '501': { description: book-scope deferred (D-REG-BOOK-GRANT) }
+  /mcp-servers:
+    get:
+      summary: List the caller's MCP servers (System ∪ own), status-filterable + paged.
+      parameters:
+        - { name: status, in: query, schema: { type: string, enum: [active, pending, suspended, error] } }
+        - { name: limit, in: query, schema: { type: integer, default: 20, maximum: 100 } }
+        - { name: offset, in: query, schema: { type: integer, default: 0 } }
+      responses:
+        '200': { description: Paged server list, content: { application/json: { schema: { $ref: '#/components/schemas/McpServerList' } } } }
+    post:
+      summary: >-
+        Register an MCP server (P3). An EXTERNAL public URL is accepted but QUARANTINED
+        (status=pending) until the supply-chain scan clears it. SSRF-guarded (internal/
+        loopback/metadata rejected → 400 SSRF_BLOCKED); a model-capability URL is rejected
+        (400 MODEL_CAPABILITY_NOT_ALLOWED — use provider-registry BYOK). Bearer token / OAuth
+        config are sealed in the vault; the response never echoes a secret (has_secret only).
+      requestBody:
+        content: { application/json: { schema: { $ref: '#/components/schemas/CreateMcpServerReq' } } }
+      responses:
+        '201': { description: Registered, content: { application/json: { schema: { $ref: '#/components/schemas/McpServer' } } } }
+        '400': { $ref: '#/components/responses/ValidationError' }
+        '409': { description: Duplicate endpoint in this scope }
+        '429': { description: Quota exceeded (10 servers/user) }
+  /mcp-servers/{mcp_server_id}:
+    get:
+      summary: Server detail — status, scan_result, last_health, egress allowlist, tools.
+      parameters: [{ name: mcp_server_id, in: path, required: true, schema: { type: string, format: uuid } }]
+      responses:
+        '200': { description: Server, content: { application/json: { schema: { $ref: '#/components/schemas/McpServer' } } } }
+        '404': { $ref: '#/components/responses/NotFound' }
+    delete:
+      summary: Delete a server.
+      parameters: [{ name: mcp_server_id, in: path, required: true, schema: { type: string, format: uuid } }]
+      responses:
+        '204': { description: Deleted }
+        '404': { $ref: '#/components/responses/NotFound' }
+  /mcp-servers/{mcp_server_id}/enablement:
+    put:
+      summary: Enable/disable the server for the caller (per-user override).
+      parameters: [{ name: mcp_server_id, in: path, required: true, schema: { type: string, format: uuid } }]
+      requestBody: { content: { application/json: { schema: { type: object, properties: { enabled: { type: boolean } } } } } }
+      responses:
+        '200': { description: Override set }
+        '404': { $ref: '#/components/responses/NotFound' }
+  /mcp-servers/{mcp_server_id}/rescan:
+    post:
+      summary: Re-probe + re-scan (REG-P3-05). Drives the status machine active/suspended/error.
+      parameters: [{ name: mcp_server_id, in: path, required: true, schema: { type: string, format: uuid } }]
+      responses:
+        '200':
+          description: Scan verdict
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  mcp_server_id: { type: string, format: uuid }
+                  status: { type: string, enum: [active, pending, suspended, error] }
+                  scan_result: { $ref: '#/components/schemas/ScanResult' }
+                  last_health: { $ref: '#/components/schemas/HealthResult' }
+                  probe_error: { type: string }
+        '404': { $ref: '#/components/responses/NotFound' }
+  /mcp-servers/{mcp_server_id}/accept-risk:
+    post:
+      summary: Human accept-risk override — force a quarantined server active (REG-P3-08, audited).
+      parameters: [{ name: mcp_server_id, in: path, required: true, schema: { type: string, format: uuid } }]
+      responses:
+        '200': { description: Activated }
+        '409': { description: Server is not quarantined }
+        '404': { $ref: '#/components/responses/NotFound' }
+  /mcp-servers/{mcp_server_id}/oauth/start:
+    post:
+      summary: Begin the OAuth 2.1 + PKCE(S256) flow (REG-P3-03); returns the authorization URL.
+      parameters: [{ name: mcp_server_id, in: path, required: true, schema: { type: string, format: uuid } }]
+      responses:
+        '200':
+          description: Authorization URL + state
+          content: { application/json: { schema: { type: object, properties: { authorization_url: { type: string }, state: { type: string } } } } }
+        '400': { description: server not oauth2 / incomplete oauth config }
+        '404': { $ref: '#/components/responses/NotFound' }
+  /oauth/callback:
+    get:
+      summary: >-
+        OAuth 2.1 callback (PUBLIC — the authorization server redirects the browser here).
+        Consumes the state once, exchanges the code+PKCE-verifier for tokens (sealed in the
+        vault), and 302-redirects to the FE (`/extensions?mcp_oauth=connected|error`).
+      parameters:
+        - { name: code, in: query, schema: { type: string } }
+        - { name: state, in: query, schema: { type: string } }
+      responses:
+        '302': { description: Redirect to the FE with the result }
   /usage:
     get:
       summary: Quota counters for the caller (D2 — feeds the FE quota strip).
@@ -187,3 +278,80 @@ components:
         manifest: { type: object }
         status: { type: string, enum: [active, draft, suspended] }
         version: { type: string }
+    # ── P3: external MCP servers ──────────────────────────────────────────────
+    ScanFinding:
+      type: object
+      properties:
+        tool: { type: string }
+        field: { type: string, enum: [name, description, schema] }
+        marker: { type: string }
+        severity: { type: string, enum: [high, medium] }
+        snippet: { type: string }
+    ScanResult:
+      type: object
+      properties:
+        scanned_at: { type: string }
+        clean: { type: boolean }
+        tool_count: { type: integer }
+        findings: { type: array, items: { $ref: '#/components/schemas/ScanFinding' } }
+        tools:
+          type: array
+          items:
+            type: object
+            properties:
+              name: { type: string }
+              description: { type: string }
+              flagged: { type: boolean }
+    HealthResult:
+      type: object
+      properties:
+        ok: { type: boolean }
+        checked_at: { type: string }
+        error: { type: string }
+        tool_count: { type: integer }
+        latency_ms: { type: integer }
+    McpServer:
+      type: object
+      properties:
+        mcp_server_id: { type: string, format: uuid }
+        tier: { type: string, enum: [system, user, book] }
+        display_name: { type: string }
+        endpoint_url: { type: string }
+        transport: { type: string, enum: [streamable_http] }
+        tool_name_prefix: { type: string }
+        status: { type: string, enum: [active, pending, suspended, error] }
+        auth_kind: { type: string, enum: [none, bearer, oauth2] }
+        is_external: { type: boolean }
+        has_secret: { type: boolean, description: "true iff a credential is sealed — the secret itself is NEVER serialized" }
+        egress_allowlist: { type: array, items: { type: string } }
+        scan_result: { $ref: '#/components/schemas/ScanResult' }
+        last_health: { $ref: '#/components/schemas/HealthResult' }
+        last_scanned_at: { type: string, nullable: true }
+        created_at: { type: string }
+        updated_at: { type: string }
+    McpServerList:
+      type: object
+      properties:
+        items: { type: array, items: { $ref: '#/components/schemas/McpServer' } }
+        total: { type: integer }
+        limit: { type: integer }
+        offset: { type: integer }
+    CreateMcpServerReq:
+      type: object
+      required: [endpoint_url]
+      properties:
+        display_name: { type: string }
+        endpoint_url: { type: string, description: "streamable-http MCP URL (public; SSRF-guarded)" }
+        tier: { type: string, enum: [user, system, book], default: user }
+        book_id: { type: string, format: uuid }
+        auth_kind: { type: string, enum: [none, bearer, oauth2], default: none }
+        bearer_token: { type: string, description: "write-only; sealed in the vault, never echoed" }
+        egress_allowlist: { type: array, items: { type: string } }
+        oauth:
+          type: object
+          description: "required when auth_kind=oauth2"
+          properties:
+            authorization_endpoint: { type: string }
+            token_endpoint: { type: string }
+            client_id: { type: string }
+            scopes: { type: array, items: { type: string } }

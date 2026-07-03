@@ -6,7 +6,12 @@ import type { SteeringEntry, SteeringInput } from './types';
 
 export const steeringApi = {
   list(token: string, bookId: string) {
-    return apiJson<SteeringEntry[]>(`/v1/books/${bookId}/steering`, { token });
+    // book-service returns the {items,total} envelope (review-impl HIGH: the FE
+    // consumed it as a bare array → .map crashed the panel on every load).
+    return apiJson<{ items: SteeringEntry[]; total: number }>(
+      `/v1/books/${bookId}/steering`,
+      { token },
+    ).then((r) => r.items);
   },
   create(token: string, bookId: string, payload: SteeringInput) {
     return apiJson<SteeringEntry>(`/v1/books/${bookId}/steering`, {

@@ -1713,19 +1713,35 @@ func (s *Server) reorderUserModels(w http.ResponseWriter, r *http.Request) {
 	// Clear any existing order for THIS user first, then stamp the new positions.
 	// Both statements are owner-scoped so a caller can never touch another tenant's
 	// rows (a foreign id in ordered_ids simply matches nothing).
+	//
+	// review-impl MED: the clear deliberately has NO `sort_order IS NOT NULL`
+	// predicate. Under READ COMMITTED that predicate matches (and locks) NOTHING
+	// when the rows start all-NULL (the common first-reorder case), so two
+	// concurrent reorders would fail to serialize and merge into a corrupt order.
+	// Updating every owner row forces a row lock on each, so a second concurrent
+	// reorder blocks on the first's commit and then re-reads a consistent base.
 	if _, err := tx.Exec(r.Context(),
-		`UPDATE user_models SET sort_order=NULL, updated_at=now() WHERE owner_user_id=$1 AND sort_order IS NOT NULL`,
+		`UPDATE user_models SET sort_order=NULL, updated_at=now() WHERE owner_user_id=$1`,
 		userID); err != nil {
 		writeError(w, http.StatusInternalServerError, "M03_USER_MODEL_REORDER_FAILED", "failed to reorder user models")
 		return
 	}
-	for i, id := range in.OrderedIDs {
+	// Dedupe defensively (a direct API caller could send repeats; the FE never
+	// does) so a repeated id can't leave a gap / overwrite its own lead position.
+	seen := make(map[uuid.UUID]bool, len(in.OrderedIDs))
+	pos := 0
+	for _, id := range in.OrderedIDs {
+		if seen[id] {
+			continue
+		}
+		seen[id] = true
 		if _, err := tx.Exec(r.Context(),
 			`UPDATE user_models SET sort_order=$3, updated_at=now() WHERE user_model_id=$1 AND owner_user_id=$2`,
-			id, userID, i); err != nil {
+			id, userID, pos); err != nil {
 			writeError(w, http.StatusInternalServerError, "M03_USER_MODEL_REORDER_FAILED", "failed to reorder user models")
 			return
 		}
+		pos++
 	}
 	if err := tx.Commit(r.Context()); err != nil {
 		writeError(w, http.StatusInternalServerError, "M03_USER_MODEL_REORDER_FAILED", "failed to reorder user models")

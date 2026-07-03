@@ -159,13 +159,18 @@ export function ChapterEditorPage() {
   // RAID C6 — pin the pre-edit revision at every AI-apply seam so the writer can
   // restore to "before the agent touched it" (see historyMain).
   const checkpoints = useTurnCheckpoints(bookId);
+  // RAID C6 — the chapter's latest revision id, held synchronously so capture()
+  // can pin the pre-edit restore point WITHOUT an async listRevisions read that
+  // could race a concurrent manual save. Refreshed once per chapter open and
+  // after every save/restore (all revision-mutating paths end in load()).
+  const latestRevIdRef = useRef<string | null>(null);
 
   // T5.4 M4 — prose accepted in a popped-out Compose/co-writer window has no editor of
   // its own; it relays over the per-book channel and lands here at the cursor (same as
   // the in-app onAccept path below), so popping a panel to monitor 2 still writes to the
   // manuscript on monitor 1.
   usePopoutInsertRelay(bookId, chapterId, (text, model) => {
-    if (chapterId) void checkpoints.capture(chapterId, text, 'insert');
+    if (chapterId) void checkpoints.capture(chapterId, text, 'insert', latestRevIdRef.current);
     tiptapEditorRef.current?.insertAtCursor(text, {
       source: 'ai', status: 'unreviewed', model: model ?? null, ts: new Date().toISOString(),
     });
@@ -361,6 +366,13 @@ export function ChapterEditorPage() {
       setTitle(chTitle);
       setSavedTitle(chTitle);
       setEditorialStatus(chapter.editorial_status);
+      // RAID C6 — refresh the pre-edit-revision pointer. Runs on chapter open and
+      // after every save/restore (both call load()), so it always reflects the
+      // latest committed revision when the next AI edit captures a checkpoint.
+      try {
+        const revs = await booksApi.listRevisions(accessToken, bookId, chapterId, { limit: 1, offset: 0 });
+        latestRevIdRef.current = revs.items[0]?.revision_id ?? null;
+      } catch { latestRevIdRef.current = null; }
     } catch (e) { toast.error((e as Error).message); }
   }, [accessToken, bookId, chapterId]);
 
@@ -538,7 +550,7 @@ export function ChapterEditorPage() {
   // Builds the same Tiptap paragraph shape book-service writes (a `_text` snapshot per
   // block) from the healed plain text, then swaps the whole doc.
   const handleApplyPolish = useCallback((healedText: string) => {
-    if (chapterId) void checkpoints.capture(chapterId, healedText, 'polish');  // RAID C6
+    if (chapterId) void checkpoints.capture(chapterId, healedText, 'polish', latestRevIdRef.current);  // RAID C6
     const content = healedText.split(/\n\n+/).map((para) => {
       const tx = para.trim();
       return tx
@@ -714,10 +726,11 @@ export function ChapterEditorPage() {
       {/* RAID C6 — AI-edit checkpoints sit above the full revision list; both restore. */}
       <TurnCheckpoints
         checkpoints={checkpoints.checkpoints}
-        onRestore={async (cp) => { await checkpoints.restore(cp); await load(); }}
+        chapterId={chapterId}
+        onRestore={async (cp) => { await checkpoints.restore(cp); await load(); setRevKey((k) => k + 1); }}
       />
       <div className="min-h-0 flex-1">
-        <RevisionHistory key={revKey} bookId={bookId} chapterId={chapterId} onRestore={() => void load()} />
+        <RevisionHistory key={revKey} bookId={bookId} chapterId={chapterId} onRestore={() => { void load(); setRevKey((k) => k + 1); }} />
       </div>
     </div>
   );
@@ -730,7 +743,7 @@ export function ChapterEditorPage() {
         chapterId={chapterId}
         token={accessToken}
         onAccept={(text, meta) => {
-          if (chapterId) void checkpoints.capture(chapterId, text, 'insert');  // RAID C6
+          if (chapterId) void checkpoints.capture(chapterId, text, 'insert', latestRevIdRef.current);  // RAID C6
           tiptapEditorRef.current?.insertAtCursor(text, {
             source: 'ai', status: 'unreviewed', model: meta?.model ?? null,
             ts: new Date().toISOString(),

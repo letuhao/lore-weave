@@ -131,7 +131,9 @@ def _extract_breakdown(raw: object) -> dict | None:
 @router.get("/{session_id}/context-history", response_model=ContextHistoryResponse)
 async def context_history(
     session_id: UUID,
-    limit: int = Query(100, le=200),
+    # ge=1 floors the bound: a negative limit reaches Postgres as a negative
+    # LIMIT ("must not be negative") → 500. FastAPI rejects it as 422 instead.
+    limit: int = Query(100, ge=1, le=200),
     user_id: str = Depends(get_current_user),
     pool: asyncpg.Pool = Depends(get_db),
 ) -> ContextHistoryResponse:
@@ -159,6 +161,8 @@ async def context_history(
         FROM (
             SELECT sequence_num, created_at, input_tokens, output_tokens, context_breakdown
             FROM chat_messages
+            -- branch_id=0 pins the live/active branch (edits move superseded
+            -- turns to a higher branch) so the chart tracks the current timeline.
             WHERE session_id=$1 AND owner_user_id=$2 AND branch_id=0
               AND role='assistant' AND context_breakdown IS NOT NULL
             ORDER BY sequence_num DESC

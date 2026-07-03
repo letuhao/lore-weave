@@ -2,6 +2,7 @@
 // (render-only). Holds only view-selection state (which entry, if any, is being edited).
 import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
+import { toast } from 'sonner';
 import { useSteering, classifySteeringError, type SteeringErrorKind } from '../hooks/useSteering';
 import type { SteeringEntry, SteeringInput } from '../types';
 import { SteeringList } from './SteeringList';
@@ -28,10 +29,18 @@ export function SteeringManager({ bookId }: { bookId: string }) {
     }
   };
 
-  const toggle = (e: SteeringEntry) => { void steering.updateEntry(e.id, { enabled: !e.enabled }).catch(() => {}); };
+  // review-impl M1: surface the failure (esp. 403 for a VIEW-only collaborator)
+  // instead of swallowing it — a silent no-op toggle/delete misleads the user.
+  const toastError = (err: unknown) => {
+    const kind = classifySteeringError(err);
+    toast.error(t(`steering.error.${kind ?? 'other'}`));
+  };
+  const toggle = (e: SteeringEntry) => {
+    void steering.updateEntry(e.id, { enabled: !e.enabled }).catch(toastError);
+  };
   const remove = (e: SteeringEntry) => {
     if (window.confirm(t('steering.confirmDelete', { name: e.name }))) {
-      void steering.deleteEntry(e.id).catch(() => {});
+      void steering.deleteEntry(e.id).catch(toastError);
       if (editing !== 'new' && editing?.id === e.id) cancel();
     }
   };
