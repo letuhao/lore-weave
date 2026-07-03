@@ -1205,3 +1205,12 @@ def test_kg_multi_query_args_require_at_least_one_and_cap_at_16():
         KgMultiQueryArgs(project_ids=[f"p{i}" for i in range(17)])  # max_length=16
     with pytest.raises(ValidationError):
         KgMultiQueryArgs(project_ids=["p1"], user_id="smuggled")    # identity forbidden
+
+
+def test_kg_multi_query_advertises_project_ids_bounds():
+    """/review-impl #1 — the 1..16 bound must be in the MACHINE-READABLE schema (so a
+    model sees it up front), not only in the prose + the model-layer ValidationError."""
+    prop = _defn("kg_multi_query")["function"]["parameters"]["properties"]["project_ids"]
+    assert prop["type"] == "array"
+    assert prop["minItems"] == 1
+    assert prop["maxItems"] == 16

@@ -494,6 +494,8 @@ GRAPH_SCHEMA_TOOL_DEFINITIONS: list[dict] = [
             "project_ids": {
                 "type": "array",
                 "items": {"type": "string"},
+                "minItems": 1,
+                "maxItems": 16,
                 "description": "The project ids to union (1–16; you must own each).",
             },
             "limit": {

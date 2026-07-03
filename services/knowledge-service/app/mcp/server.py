@@ -666,6 +666,7 @@ async def kg_multi_query(
     ctx: MCPContext,
     project_ids: Annotated[
         list[str],
+        Field(min_length=1, max_length=16),
         "The project ids to union (1–16; you must own each). Pass them explicitly — this "
         "loads an arbitrary set of your KGs, not the session's single project.",
     ],
