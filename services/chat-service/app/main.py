@@ -10,6 +10,7 @@ from loreweave_obs import current_otel_trace_id, setup_tracing
 
 from app.client.book_steering_client import close_book_steering_client, init_book_steering_client
 from app.client.user_skills_client import close_user_skills_client, init_user_skills_client
+from app.client.registry_commands_client import close_commands_client, init_commands_client
 from app.client.knowledge_client import close_knowledge_client, init_knowledge_client
 from app.config import settings
 from app.db.migrate import run_migrations
@@ -58,6 +59,8 @@ async def lifespan(app: FastAPI):
     init_book_steering_client()
     # REG-P1-05: long-lived agent-registry user-skills client (degrades to constants).
     init_user_skills_client()
+    # REG-P4-01: long-lived agent-registry commands client (degrades to pass-through).
+    init_commands_client()
     # Start background cleanup task
     cleanup_task = asyncio.create_task(_audio_cleanup_loop())
     yield
@@ -65,6 +68,7 @@ async def lifespan(app: FastAPI):
     await close_knowledge_client()
     await close_book_steering_client()
     await close_user_skills_client()
+    await close_commands_client()
     await close_pool()
 
 

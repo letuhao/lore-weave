@@ -1,4 +1,5 @@
 import json
+import logging
 from uuid import UUID
 
 import asyncpg
@@ -24,6 +25,8 @@ from app.services.stream_service import resume_stream_response, stream_response
 # is chosen per request, not by a global flag.
 STREAM_FORMAT_HEADER = "x-loreweave-stream-format"
 _VALID_STREAM_FORMATS = {"legacy", "agui"}
+
+logger = logging.getLogger(__name__)
 
 
 def _resolve_stream_format(raw: str | None) -> str:
@@ -253,6 +256,27 @@ async def send_message(
     model_source = session["model_source"]
     model_ref = str(session["model_ref"])
 
+    # ── P4 REG-P4-01: expand a user-authored slash command (/name args) in place —
+    # BEFORE the user message is persisted + streamed, so both the transcript and the
+    # model see the template. Gated on a leading non-builtin /name so a normal turn
+    # never hits the registry; degrades to pass-through (original text) on any failure.
+    message_content = body.content
+    try:
+        from app.client.registry_commands_client import (
+            expand_command,
+            get_commands_client,
+            looks_like_command,
+        )
+
+        if looks_like_command(message_content):
+            _book_id = str(session["project_id"]) if session["project_id"] else ""
+            _cmds = await get_commands_client().get_commands(str(user_id), book_id=_book_id)
+            _expanded, _cmd_name = expand_command(message_content, _cmds)
+            if _cmd_name:
+                message_content = _expanded
+    except Exception:  # noqa: BLE001 — a command is enrichment, never load-bearing
+        logger.warning("command expansion failed (pass-through)", exc_info=False)
+
     # Edit flow: move old messages to a branch, insert new on active branch (0).
     # Non-edit flow: simple insert + increment.
     parent_message_id: str | None = None
@@ -314,7 +338,7 @@ async def send_message(
                   (session_id, owner_user_id, role, content, sequence_num, parent_message_id, branch_id)
                 VALUES ($1,$2,'user',$3,$4,$5, 0)
                 """,
-                str(session_id), user_id, body.content, seq, parent_message_id,
+                str(session_id), user_id, message_content, seq, parent_message_id,
             )
             # Update message count: subtract branched msgs, add 1 for new user msg
             await conn.execute(
@@ -348,7 +372,7 @@ async def send_message(
     return StreamingResponse(
         stream_response(
             session_id=str(session_id),
-            user_message_content=body.content,
+            user_message_content=message_content,
             user_id=user_id,
             model_source=model_source,
             model_ref=model_ref,
