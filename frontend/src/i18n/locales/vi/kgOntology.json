@@ -89,6 +89,17 @@
     "deleteConfirmTitle": "Xoá thành phần này?",
     "deleteConfirmBody": "\"{{code}}\" đang được {{count}} phần tử đồ thị tham chiếu. Xoá sẽ ngừng dùng nó — dữ liệu vẫn truy vấn được. Vẫn xoá?"
   },
+  "canvas": {
+    "list": "Danh sách",
+    "canvas": "Sơ đồ",
+    "hint": "Kéo để sắp xếp · ⇢ rồi click một node để nối",
+    "connect": "Nối từ đây",
+    "connectingFrom": "Đang nối từ {{code}} — click node đích",
+    "newKindPlaceholder": "loại mới",
+    "addKind": "Thêm loại",
+    "empty": "Chưa có node kind nào — thêm một cái để bắt đầu.",
+    "looseEdges": "Edge type chưa có loại"
+  },
   "generate": {
     "cta": "Sinh bằng AI",
     "title": "Sinh schema từ mô tả",

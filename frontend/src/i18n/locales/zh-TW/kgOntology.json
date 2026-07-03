@@ -89,6 +89,17 @@
     "deleteConfirmTitle": "刪除此元件？",
     "deleteConfirmBody": "「{{code}}」被 {{count}} 個圖譜元素引用。刪除會將其標記為棄用——資料仍可查詢。仍要刪除？"
   },
+  "canvas": {
+    "list": "清單",
+    "canvas": "畫布",
+    "hint": "拖曳排列 · ⇢ 後點另一個節點以連接",
+    "connect": "從此連接",
+    "connectingFrom": "從 {{code}} 連接中 — 點選目標節點",
+    "newKindPlaceholder": "新種類",
+    "addKind": "新增種類",
+    "empty": "尚無節點種類 — 先新增一個。",
+    "looseEdges": "沒有種類的關係類型"
+  },
   "generate": {
     "cta": "用 AI 生成",
     "title": "從描述生成綱要",

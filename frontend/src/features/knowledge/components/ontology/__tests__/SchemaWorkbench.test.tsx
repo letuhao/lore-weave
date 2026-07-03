@@ -200,6 +200,16 @@ describe('SchemaWorkbench — full-CRUD authoring (A3)', () => {
     );
   });
 
+  it('M2: canvas view renders the type graph and adds a kind', async () => {
+    renderWB(ctrl);
+    fireEvent.click(screen.getByTestId('schema-view-canvas'));
+    expect(screen.getByTestId('schema-canvas')).toBeInTheDocument();
+    expect(screen.getByTestId('canvas-node-character')).toBeInTheDocument(); // from makeSchema
+    fireEvent.change(screen.getByTestId('canvas-new-kind'), { target: { value: 'sect' } });
+    fireEvent.click(screen.getByTestId('canvas-add-kind'));
+    await waitFor(() => expect(ctrl.addNodeKind).toHaveBeenCalledWith({ kind_code: 'sect', strength: 'optional' }));
+  });
+
   it('toggling free edges patches schema meta', async () => {
     renderWB(ctrl);
     fireEvent.click(screen.getByTestId('allow-free-edges-toggle'));

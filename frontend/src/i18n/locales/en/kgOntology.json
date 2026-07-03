@@ -89,6 +89,17 @@
     "deleteConfirmTitle": "Delete this component?",
     "deleteConfirmBody": "\"{{code}}\" is referenced by {{count}} graph element(s). Deleting deprecates it — the data stays queryable. Delete anyway?"
   },
+  "canvas": {
+    "list": "List",
+    "canvas": "Canvas",
+    "hint": "Drag to arrange · ⇢ then click a node to connect",
+    "connect": "Connect from here",
+    "connectingFrom": "Connecting from {{code}} — click a target node",
+    "newKindPlaceholder": "new kind",
+    "addKind": "Add kind",
+    "empty": "No node kinds yet — add one to start.",
+    "looseEdges": "Edge types without kinds"
+  },
   "generate": {
     "cta": "Generate with AI",
     "title": "Generate a schema from a description",

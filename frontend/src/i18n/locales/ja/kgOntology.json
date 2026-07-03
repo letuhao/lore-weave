@@ -89,6 +89,17 @@
     "deleteConfirmTitle": "このコンポーネントを削除しますか？",
     "deleteConfirmBody": "「{{code}}」は {{count}} 件のグラフ要素から参照されています。削除すると非推奨になります（データは引き続き参照可能）。削除しますか？"
   },
+  "canvas": {
+    "list": "リスト",
+    "canvas": "キャンバス",
+    "hint": "ドラッグで配置 · ⇢ の後にノードをクリックで接続",
+    "connect": "ここから接続",
+    "connectingFrom": "{{code}} から接続中 — 対象ノードをクリック",
+    "newKindPlaceholder": "新しい種別",
+    "addKind": "種別を追加",
+    "empty": "ノード種別がまだありません — 追加して開始。",
+    "looseEdges": "種別のないエッジ型"
+  },
   "generate": {
     "cta": "AI で生成",
     "title": "説明からスキーマを生成",

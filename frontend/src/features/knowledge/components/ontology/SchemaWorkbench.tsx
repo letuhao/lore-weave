@@ -12,6 +12,7 @@ import { AddFactTypeForm } from './AddFactTypeForm';
 import { Sparkles } from 'lucide-react';
 import { InferFromGraphPanel, type InferEdgePick } from './InferFromGraphPanel';
 import { GenerateSchemaDialog, type ProposalPicks } from './GenerateSchemaDialog';
+import { SchemaCanvas } from './SchemaCanvas';
 import type { ObservedComponents } from '../../types/ontology';
 import type { useGraphSchema } from '../../hooks/useGraphSchema';
 
@@ -48,6 +49,7 @@ export function SchemaWorkbench({
   const { t } = useTranslation('kgOntology');
   const [editingName, setEditingName] = useState(false);
   const [showGenerate, setShowGenerate] = useState(false);
+  const [view, setView] = useState<'list' | 'canvas'>('list');
   const [name, setName] = useState('');
   const [newSetCode, setNewSetCode] = useState('');
   const [newSetLabel, setNewSetLabel] = useState('');
@@ -145,9 +147,16 @@ export function SchemaWorkbench({
               data-testid="edit-schema-name">{t('common.edit')}</button>
           </>
         )}
+        <div className="ml-auto flex gap-0.5 rounded-md border p-0.5" data-testid="schema-view-toggle">
+          {(['list', 'canvas'] as const).map((v) => (
+            <button key={v} type="button" onClick={() => setView(v)}
+              className={`rounded px-2 py-0.5 text-[11px] ${view === v ? 'bg-primary text-primary-foreground' : 'text-muted-foreground'}`}
+              data-testid={`schema-view-${v}`}>{t(`canvas.${v}`)}</button>
+          ))}
+        </div>
         {projectId && (
           <button type="button" onClick={() => setShowGenerate(true)} disabled={busy}
-            className="ml-auto inline-flex items-center gap-1 rounded-md border px-2.5 py-1 text-[12px] font-medium hover:bg-muted/40"
+            className="inline-flex items-center gap-1 rounded-md border px-2.5 py-1 text-[12px] font-medium hover:bg-muted/40"
             data-testid="open-generate-schema">
             <Sparkles className="h-3.5 w-3.5 text-primary" /> {t('generate.cta')}
           </button>
@@ -168,6 +177,16 @@ export function SchemaWorkbench({
         />
       )}
 
+      {view === 'canvas' ? (
+        <SchemaCanvas
+          schema={schema}
+          disabled={busy}
+          onAddKind={(code) => void guard(() => controller.addNodeKind({ kind_code: code, strength: 'optional' }))}
+          onAddEdge={(code, label, from, to) =>
+            void guard(() => controller.addEdgeType({ code, label, source_node_kinds: [from], target_node_kinds: [to] }))}
+        />
+      ) : (
+      <>
       {/* M3a — promote what the extracted graph already contains */}
       {observed && (
         <InferFromGraphPanel
@@ -266,6 +285,9 @@ export function SchemaWorkbench({
             data-testid="add-vocab-set">{t('schema.addVocabSet')}</button>
         </div>
       </section>
+
+      </>
+      )}
 
       {/* A4 — orphan-count delete confirm (only when graph elements reference it) */}
       {pending && (
