@@ -126,9 +126,10 @@ export function SchemaCanvas({ schema, disabled, onAddKind, onAddEdge }: Props) 
         </span>
       </div>
 
-      <div className="relative h-[460px] rounded-lg border bg-card/40">
+      <div className="relative flex h-[min(70vh,640px)] min-h-[420px] flex-col rounded-lg border bg-card/40">
         <GraphCanvas<Arrow>
           zoomable
+          autoFit
           testid="schema-graph"
           positions={positions}
           nodeIds={kinds}

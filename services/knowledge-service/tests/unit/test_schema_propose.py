@@ -64,6 +64,18 @@ async def test_propose_schema_happy():
     # genre + premise both reach the user message
     user_msg = seen["input"]["messages"][1]["content"]
     assert "xianxia" in user_msg and "a xianxia tale" in user_msg
+    # hidden reasoning is DISABLED so a reasoning model doesn't burn the budget (empty-prose footgun)
+    assert seen["input"]["chat_template_kwargs"]["thinking"] is False
+
+
+@pytest.mark.asyncio
+async def test_propose_empty_content_raises_clear_error():
+    class _Fake:
+        async def submit_and_wait(self, **kw):
+            return _Job(content="   ")  # a reasoning model that returned no prose
+
+    with pytest.raises(ProposeError, match="empty response"):
+        await propose_schema(_Fake(), user_id="u", premise="x", genre=None, model_ref="m1")
 
 
 @pytest.mark.asyncio

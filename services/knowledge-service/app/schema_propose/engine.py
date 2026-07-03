@@ -19,11 +19,19 @@ import json
 import logging
 import re
 
+from loreweave_llm.reasoning import ReasoningDirective, reasoning_fields
 from pydantic import BaseModel, Field, ValidationError
 
 logger = logging.getLogger(__name__)
 
-_MAX_OUTPUT_TOKENS = 2000
+_MAX_OUTPUT_TOKENS = 3000
+
+# Structured-JSON generation must NOT think out loud: a reasoning model (Gemma 4,
+# Qwen3, R1…) otherwise burns the whole output budget on hidden reasoning tokens and
+# returns EMPTY prose (the "empty-prose footgun" — reproduced live: Gemma-4 26B →
+# "proposal was not valid JSON: Expecting value line 1 column 1"). effort='none'
+# emits chat_template_kwargs.{thinking:false} so the model spends its budget on JSON.
+_NO_THINKING = reasoning_fields(ReasoningDirective(effort="none", passthrough=False, source="user"))
 
 _SYSTEM_PROMPT = """You design knowledge-graph SCHEMAS (ontologies) for stories.
 Given a premise, propose the node kinds (entity types), edge types (relation types),
@@ -152,6 +160,7 @@ async def propose_schema(
                 "messages": build_messages(premise, genre),
                 "temperature": 0.3,
                 "max_tokens": _MAX_OUTPUT_TOKENS,
+                **_NO_THINKING,
             },
             chunking=None,
             job_meta={"usage_purpose": "kg_schema_propose", "extractor": "schema_propose"},
@@ -169,4 +178,9 @@ async def propose_schema(
     content = ""
     if isinstance(messages_out, list) and messages_out and isinstance(messages_out[0], dict):
         content = messages_out[0].get("content", "") or ""
+    if not content.strip():
+        raise ProposeError(
+            "the model returned an empty response (it may have spent its budget on "
+            "hidden reasoning) — try a different model or a more specific premise"
+        )
     return parse_proposal(content)

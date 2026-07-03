@@ -26,7 +26,7 @@ type PanState = { startX: number; startY: number; origX: number; origY: number }
 export function GraphCanvas<E>({
   positions, nodeIds, edges, edgeEndpoints, edgeKey, renderNode, renderEdge, nodeSize,
   onNodeClick, onNodeDrag, onNodeDragEnd, onBackgroundClick, defs, background,
-  minWidth = 360, minHeight = 220, testid = 'graph-canvas', zoomable = false,
+  minWidth = 360, minHeight = 220, testid = 'graph-canvas', zoomable = false, autoFit = false,
 }: {
   positions: Record<string, Pos>;
   nodeIds: string[];
@@ -54,6 +54,10 @@ export function GraphCanvas<E>({
    *  default so the T2.2 RelationshipMap (which uses node-drag + a small canvas)
    *  is byte-for-byte unaffected. The node-drag gesture stays intact in both modes. */
   zoomable?: boolean;
+  /** Opt-in fit-to-content on desktop too (default: mobile-only). The KG schema
+   *  canvas uses it so the type-graph is centred + scaled to the viewport instead
+   *  of rendering at raw layout coords in a corner. Requires `zoomable`. */
+  autoFit?: boolean;
 }) {
   const svgRef = useRef<SVGSVGElement>(null);
   const drag = useRef<DragState | null>(null);
@@ -162,17 +166,21 @@ export function GraphCanvas<E>({
   const w = Math.max(minWidth, ...nodeIds.map((id) => posOf(id).x + nodeSize.w + GRAPH_PAD));
   const h = Math.max(minHeight, ...nodeIds.map((id) => posOf(id).y + nodeSize.h + GRAPH_PAD));
 
-  // M5b — fit-to-screen on mount (MOBILE ONLY — desktop zoomable keeps its identity
-  // start, byte-unchanged). Fires once, once the graph has content + a measurable
-  // viewport, so a large graph isn't cropped off-screen on a phone.
+  // M5b — fit-to-screen on mount (MOBILE always; desktop only when `autoFit` is
+  // opted-in — otherwise desktop zoomable keeps its identity start, byte-unchanged).
+  // Fires once, once the graph has content + a measurable viewport, so the content
+  // is centred + scaled to the viewport instead of rendering at raw coords.
   useEffect(() => {
-    if (!isMobile || fitted.current || nodeIds.length === 0) return;
+    if ((!isMobile && !autoFit) || fitted.current || nodeIds.length === 0) return;
     const rect = svgRef.current?.getBoundingClientRect();
     if (!rect || rect.width === 0 || rect.height === 0) return;
     fitted.current = true;
-    const k = Math.min(rect.width / w, rect.height / h, 1); // never upscale past 1
+    // fit to the smaller axis, centred. `autoFit` allows a modest upscale so a
+    // sparse 2-node graph isn't a speck in a wide viewport; mobile stays cap-1.
+    const cap = autoFit ? 1.6 : 1;
+    const k = Math.min(rect.width / w, rect.height / h, cap);
     setView({ k, x: (rect.width - w * k) / 2, y: (rect.height - h * k) / 2 });
-  }, [isMobile, nodeIds.length, w, h]);
+  }, [isMobile, autoFit, nodeIds.length, w, h]);
 
   const content = (
     <>
