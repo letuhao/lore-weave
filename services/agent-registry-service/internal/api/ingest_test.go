@@ -4,7 +4,13 @@ import (
 	"encoding/json"
 	"net/http"
 	"testing"
+
+	"github.com/jackc/pgx/v5"
+	"github.com/pashagolub/pgxmock/v4"
 )
+
+const adminSub = "019d5e3c-7cc5-7e6a-8b27-1344e148bf7c"
+const testIngestID = "019d6000-0000-7000-8000-000000000001"
 
 func TestNormTransport(t *testing.T) {
 	cases := map[string]string{
@@ -123,5 +129,71 @@ func TestIngestRoutes_AdminOnly(t *testing.T) {
 		if rec.Code != http.StatusUnauthorized {
 			t.Errorf("%s %s (anon) → want 401, got %d", e.method, e.path, rec.Code)
 		}
+	}
+}
+
+// approve loads the queue row, then runs the P3 guard BEFORE any write — so a
+// model-capability or SSRF endpoint is rejected with the row untouched. testCfg has
+// AllowInternalMcpTargets=false, so an internal target is genuinely blocked.
+func approvePath() string {
+	return "/v1/agent-registry/admin/ingest/queue/" + testIngestID + "/approve"
+}
+
+func expectQueueRow(mock pgxmock.PgxPoolIface, name, endpoint, status string) {
+	mock.ExpectQuery("SELECT name, endpoint_url, status FROM registry_ingest_queue").
+		WithArgs(pgxmock.AnyArg()).
+		WillReturnRows(pgxmock.NewRows([]string{"name", "endpoint_url", "status"}).AddRow(name, endpoint, status))
+}
+
+func TestApproveIngest_ModelCapRejected(t *testing.T) {
+	s, mock := newMockServer(t)
+	defer mock.Close()
+	expectQueueRow(mock, "openai", "https://api.openai.com/v1/chat/completions", "pending")
+	rec := doJSON(s, http.MethodPost, approvePath(), mintJWT(t, adminSub, "admin"), `{}`)
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("model endpoint → want 400, got %d (%s)", rec.Code, rec.Body.String())
+	}
+	var e errorBody
+	_ = json.Unmarshal(rec.Body.Bytes(), &e)
+	if e.Code != "MODEL_CAPABILITY_NOT_ALLOWED" {
+		t.Errorf("code = %q, want MODEL_CAPABILITY_NOT_ALLOWED", e.Code)
+	}
+}
+
+func TestApproveIngest_SsrfRejected(t *testing.T) {
+	s, mock := newMockServer(t)
+	defer mock.Close()
+	// link-local cloud-metadata IP — blocked by isBlockedIP with no DNS needed.
+	expectQueueRow(mock, "evil", "http://169.254.169.254/mcp", "pending")
+	rec := doJSON(s, http.MethodPost, approvePath(), mintJWT(t, adminSub, "admin"), `{}`)
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("internal endpoint → want 400, got %d (%s)", rec.Code, rec.Body.String())
+	}
+	var e errorBody
+	_ = json.Unmarshal(rec.Body.Bytes(), &e)
+	if e.Code != "SSRF_BLOCKED" {
+		t.Errorf("code = %q, want SSRF_BLOCKED", e.Code)
+	}
+}
+
+func TestApproveIngest_AlreadyReviewed(t *testing.T) {
+	s, mock := newMockServer(t)
+	defer mock.Close()
+	expectQueueRow(mock, "x", "https://mcp.ok.dev/v1", "approved")
+	rec := doJSON(s, http.MethodPost, approvePath(), mintJWT(t, adminSub, "admin"), `{}`)
+	if rec.Code != http.StatusConflict {
+		t.Fatalf("already-approved → want 409, got %d", rec.Code)
+	}
+}
+
+func TestApproveIngest_NotFound(t *testing.T) {
+	s, mock := newMockServer(t)
+	defer mock.Close()
+	mock.ExpectQuery("SELECT name, endpoint_url, status FROM registry_ingest_queue").
+		WithArgs(pgxmock.AnyArg()).
+		WillReturnError(pgx.ErrNoRows)
+	rec := doJSON(s, http.MethodPost, approvePath(), mintJWT(t, adminSub, "admin"), `{}`)
+	if rec.Code != http.StatusNotFound {
+		t.Fatalf("unknown id → want 404, got %d", rec.Code)
 	}
 }
