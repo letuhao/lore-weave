@@ -32,9 +32,10 @@ beforeEach(() => {
 });
 
 describe('SkillsView §4 — toolbar + states', () => {
-  it('shows the empty state when there are no skills', async () => {
+  it('shows the empty state when there are no skills (and no rows)', async () => {
     render(<SkillsView />);
     await waitFor(() => expect(screen.getByText(/No skills yet/i)).toBeTruthy());
+    expect(screen.queryByTestId('skill-row')).toBeNull(); // empty ⇔ no rows (mutual exclusivity)
   });
 
   it('shows an error banner when the list load fails', async () => {
@@ -84,6 +85,7 @@ describe('SkillsView §4 — rows', () => {
     api.deleteSkill.mockResolvedValue({});
     render(<SkillsView />);
     await waitFor(() => expect(screen.getByTestId('skill-row')).toBeTruthy());
+    expect(screen.queryByText(/No skills yet/i)).toBeNull(); // rows ⇔ no empty state
     expect(screen.getByText('user')).toBeTruthy(); // tier badge
     fireEvent.click(screen.getByTestId('skill-toggle'));
     await waitFor(() => expect(api.setSkillEnabled).toHaveBeenCalledWith('test-token', 's1', false));

@@ -27,9 +27,10 @@ beforeEach(() => {
 });
 
 describe('ProposalsView §6', () => {
-  it('shows the empty state', async () => {
+  it('shows the empty state (and no cards)', async () => {
     render(<ProposalsView />);
     await waitFor(() => expect(screen.getByText(/No proposals/i)).toBeTruthy());
+    expect(screen.queryByTestId('proposal-card')).toBeNull(); // empty ⇔ no cards
   });
 
   it('shows an error banner when the load fails', async () => {

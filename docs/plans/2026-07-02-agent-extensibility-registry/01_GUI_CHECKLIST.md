@@ -429,7 +429,7 @@ with per-step SSRF/OAuth validation, typed-confirm cascade-delete dialogs, and t
 - [ ] data-testid on every interactive element — most, not all (some pager buttons lack ids)
 - [ ] Responsive: 3-col collapses; nav → icons; tables scroll
 - [ ] Per-device UI state (column widths, collapsed nav) in localStorage only
-- [x] All registry data server-side (no localStorage data) — *by construction: every hook reads/writes via `extensionsApi` (HTTP); no localStorage of registry data — asserted indirectly by every hook→api test*
+- [ ] All registry data server-side (no localStorage data) — every hook reads/writes via `extensionsApi` (HTTP) by construction, BUT no test asserts the *absence* of localStorage for registry data → not EFFECT-tested, so stays `[ ]` (a real proof would fail on any `localStorage.setItem` of registry data)
 - [ ] Skeleton loading per screen — plain "Loading…" text, no skeletons
 - [ ] Error banner (cached + Retry) per screen — errors surfaced verbatim; no cached-timestamp/Retry affordance
 - [ ] Mutation toasts everywhere — inline errors, not a toast system
@@ -481,11 +481,11 @@ Ticks are **test-backed only** (each `[x]` cites its test). Three buckets:
 | 8 Wizard | 33 | 4 | stepper + endpoint + health/scan + register; per-step validation UI unbuilt |
 | 9 Agent flow | 13 | 0 | SkillProposalCard track — not re-verified this pass |
 | 10 Studio shell | 18 | 0 | panels mount (built) but not re-asserted this pass |
-| 11 Conventions | 11 | 1 | server-side data ✓; i18n + a11y + shared-Pager = the honest gaps |
+| 11 Conventions | 11 | 0 | i18n + a11y + shared-Pager + "no-localStorage" (no EFFECT test) = the honest gaps |
 | 12 Subagents | 13 | 11 | full CRUD both shells + live smoke |
-| **Total** | **288** | **59** | functional close-out DONE; rich-vision remainder = D-REG-GUI-RICH-POLISH |
+| **Total** | **288** | **58** | functional close-out DONE; rich-vision remainder = D-REG-GUI-RICH-POLISH |
 
 **Bottom line:** the track is **functionally closed** — every capability has a tested, working GUI in both
-shells. **59 lines are genuinely test-backed** (up from 0). The remaining lines are the draft's rich polish
+shells. **58 lines are genuinely test-backed** (up from 0). The remaining lines are the draft's rich polish
 layer, honestly tracked as **D-REG-GUI-RICH-POLISH** rather than fake-ticked. Proceed to **M7 (live E2E of the
 cleared defers)** for track closure; schedule D-REG-GUI-RICH-POLISH as its own planned effort.

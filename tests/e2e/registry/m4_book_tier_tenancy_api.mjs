@@ -7,14 +7,21 @@
 //   1. create tier=book on an OWNED book → 200 (requireBookGrant passes for Owner)
 //   2. list ?book_id=OWNED → the book-tier row appears
 //   3. list with NO book_id → the book-tier row is NOT visible (system+user only)
-//   4. list ?book_id=FOREIGN (a book you don't own) → 404 anti-oracle (not 403/empty-200)
-//   5. create tier=book on a FOREIGN book → denied (not 200)
+//   4. list ?book_id=FOREIGN (a book you have no grant on) → 404 (not 403/empty-200)
+//   5. create tier=book on a FOREIGN book → denied with a 404/403 (not 200, not a 5xx crash)
+//
+// COVERAGE LIMIT (honest): FOREIGN here is a NON-EXISTENT book. The full anti-oracle
+// invariant ("not-found ≡ not-authorized") also requires an EXISTENT book owned by
+// ANOTHER user to return the SAME 404 — that needs a second-account fixture we don't have
+// creds for here. The server treats both identically (server.go resolveListBookScope:
+// any <Edit grant → 404), so this smoke proves the not-found half; the not-authorized half
+// is covered by that shared code path + the unit tests, not by this single-account smoke.
 const BFF = process.env.BFF_URL || 'http://localhost:3123';
 const EMAIL = 'claude-test@loreweave.dev';
 const PASSWORD = 'Claude@Test2026';
 const BASE = '/v1/agent-registry';
-const OWNED = '019d872f-f3a3-7076-88b8-6c902054860f'; // a book owned by the test account
-const FOREIGN = '00000000-0000-4000-8000-0000deadbeef'; // valid-shape UUID the user does NOT own
+const OWNED = '019d872f-f3a3-7076-88b8-6c902054860f'; // a book owned by the test account (fixture — if deleted, step 1 fails)
+const FOREIGN = '00000000-0000-4000-8000-0000deadbeef'; // valid-shape UUID the user has no grant on
 
 let failed = 0;
 const ok = (m) => console.log('  PASS  ' + m);
@@ -59,16 +66,18 @@ async function main() {
 
   // (4) list ?book_id=FOREIGN → 404 anti-oracle (not 403, not empty-200)
   const lForeign = await fetch(`${BFF}${BASE}/subagents?book_id=${FOREIGN}`, { headers: H });
-  if (lForeign.status === 404) ok('list ?book_id=FOREIGN → 404 anti-oracle (not-found ≡ not-authorized)');
+  if (lForeign.status === 404) ok('list ?book_id=FOREIGN (no grant) → 404 (anti-oracle: not-found half; see COVERAGE LIMIT)');
   else bad(`list ?book_id=FOREIGN → ${lForeign.status} (expected 404 anti-oracle)`);
 
-  // (5) create tier=book on a FOREIGN book → denied (grant fails)
+  // (5) create tier=book on a FOREIGN book → a DELIBERATE denial (403/404), not a 5xx.
+  // A loose "!== 200" would greenwash a 503 grant-outage or a 500 crash as "denied".
   const cForeign = await fetch(`${BFF}${BASE}/subagents`, {
     method: 'POST', headers: H,
     body: JSON.stringify({ name: name + '-x', system_prompt: 'should be denied', tier: 'book', book_id: FOREIGN }),
   });
-  if (cForeign.status !== 200 && cForeign.status !== 201) ok(`create tier=book on FOREIGN book → denied (${cForeign.status})`);
-  else bad('SECURITY: created a book-tier subagent on a book the user does not own');
+  if (cForeign.status === 404 || cForeign.status === 403) ok(`create tier=book on FOREIGN book → denied (${cForeign.status})`);
+  else if (cForeign.status === 200 || cForeign.status === 201) bad('SECURITY: created a book-tier subagent on a book the user does not own');
+  else bad(`create tier=book on FOREIGN book → ${cForeign.status} (expected a 404/403 denial, not a 5xx/other — masks an outage/crash)`);
 
   // cleanup
   if (createdId) {
