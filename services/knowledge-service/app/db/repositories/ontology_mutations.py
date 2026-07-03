@@ -23,6 +23,7 @@ Spec: docs/specs/2026-06-20-knowledge-graph-customizable-ontology.md §2 (layer
 from __future__ import annotations
 
 import json
+import re
 from datetime import datetime, timezone
 from typing import Any
 from uuid import UUID
@@ -96,6 +97,17 @@ def _as_dict(value: Any) -> dict:
 
 def _now() -> datetime:
     return datetime.now(timezone.utc)
+
+
+_CODE_MAX = 120  # kg_graph_schemas.code CHECK (length BETWEEN 1 AND 120)
+
+
+def _slugify_code(name: str) -> str:
+    """A schema `code` slug from a display name: lowercase, non-alnum runs → '-',
+    trimmed to the length constraint. Empty/pathological input → 'custom' (a valid
+    code — the project is single-active so the exact code is not user-facing)."""
+    out = re.sub(r"[^a-z0-9]+", "-", (name or "").strip().lower()).strip("-")
+    return (out or "custom")[:_CODE_MAX]
 
 
 # review-impl MED: serialize per-project adopt/sync so concurrent re-adopt or an
@@ -400,6 +412,107 @@ class OntologyMutationsRepo:
                 """,
                 vs["vocab_set_id"], new_set_id,
             )
+
+    # ── create-blank (A2 / EC-A2) ──────────────────────────────────────────
+    async def create_blank_project_schema(
+        self, project_id: str, *, name: str, description: str = "", allow_free_edges: bool = True
+    ) -> GraphSchema:
+        """Create a BLANK (childless) project schema so a human can author from
+        scratch — no "adopt a template first" requirement (spec-review A2).
+
+        Upholds the one-active invariant exactly like adopt (EC-A2): under the same
+        per-project advisory lock, deprecate any active project schema, then insert
+        the blank. `source_ref` is NULL (a native schema, not adopted) so Sync shows
+        nothing to pull. EC-X1: replacing an adopted schema drops its template link +
+        customizations — the caller (FE) warns first via the loss preview."""
+        code = _slugify_code(name)
+        async with self._pool.acquire() as conn:
+            async with conn.transaction():
+                await _lock_project(conn, project_id)  # serialize vs adopt/sync (one-active)
+                await conn.execute(
+                    """
+                    UPDATE kg_graph_schemas SET deprecated_at = now(), updated_at = now()
+                    WHERE scope = 'project' AND scope_id = $1 AND deprecated_at IS NULL
+                    """,
+                    project_id,
+                )
+                new_id = await conn.fetchval(
+                    """
+                    INSERT INTO kg_graph_schemas
+                      (scope, scope_id, code, name, description, allow_free_edges)
+                    VALUES ('project', $1, $2, $3, $4, $5)
+                    RETURNING schema_id
+                    """,
+                    project_id, code, name, description, allow_free_edges,
+                )
+                await self._recompute_hash(conn, new_id)
+                row = await conn.fetchrow(
+                    f"SELECT {_SCHEMA_COLS} FROM kg_graph_schemas WHERE schema_id = $1", new_id
+                )
+        return _row_to_schema(row)
+
+    # ── clone (A2 / EC-A3) ─────────────────────────────────────────────────
+    async def clone_schema(
+        self, source_schema_id: UUID, *, owner: UUID, name: str | None = None
+    ) -> GraphSchema:
+        """Deep-copy any READABLE schema into a NEW user-scoped schema the caller
+        owns — distinct from adopt (a project-scoped replace). The result is a
+        free-standing editable template (the "clone a template into MY schema" the
+        user asked for). Code/name auto-suffix on a collision with the caller's
+        existing templates ("…-copy", "… (copy)") — never a bare 409.
+
+        SOURCE VISIBILITY (EC-A3): the ROUTER gate-checks the source is visible to
+        the caller (System / own user template / a project the caller can view)
+        BEFORE calling — else clone would be a cross-tenant read oracle (the same
+        hole `_assert_source_adoptable` closes for adopt). This method only copies."""
+        async with self._pool.acquire() as conn:
+            async with conn.transaction():
+                src = await conn.fetchrow(
+                    f"SELECT {_SCHEMA_COLS} FROM kg_graph_schemas WHERE schema_id = $1 FOR SHARE",
+                    source_schema_id,
+                )
+                if src is None:
+                    raise SchemaNotWritableError("source schema not found")
+                source = _row_to_schema(src)
+                code, disp = await self._unique_user_code(
+                    conn, owner, source.code, name or source.name
+                )
+                new_id = await conn.fetchval(
+                    """
+                    INSERT INTO kg_graph_schemas
+                      (scope, scope_id, code, name, description, allow_free_edges)
+                    VALUES ('user', $1, $2, $3, $4, $5)
+                    RETURNING schema_id
+                    """,
+                    str(owner), code, disp, source.description, source.allow_free_edges,
+                )
+                await self._copy_children(conn, source_schema_id, new_id)
+                await self._recompute_hash(conn, new_id)
+                row = await conn.fetchrow(
+                    f"SELECT {_SCHEMA_COLS} FROM kg_graph_schemas WHERE schema_id = $1", new_id
+                )
+        return _row_to_schema(row)
+
+    async def _unique_user_code(
+        self, conn: asyncpg.Connection, owner: UUID, base_code: str, base_name: str
+    ) -> tuple[str, str]:
+        """A (code, name) pair not colliding with the caller's LIVE user templates
+        (the partial-unique `(scope,scope_id,code)` among non-deprecated rows)."""
+        rows = await conn.fetch(
+            "SELECT code FROM kg_graph_schemas "
+            "WHERE scope = 'user' AND scope_id = $1 AND deprecated_at IS NULL",
+            str(owner),
+        )
+        existing = {r["code"] for r in rows}
+        if base_code not in existing:
+            return base_code[:_CODE_MAX], base_name
+        n = 2
+        while True:
+            cand = (f"{base_code}-copy" if n == 2 else f"{base_code}-copy-{n}")[:_CODE_MAX]
+            if cand not in existing:
+                disp = f"{base_name} (copy)" if n == 2 else f"{base_name} (copy {n})"
+                return cand, disp
+            n += 1
 
     # ── re-adopt loss preview (read-only, D-KG-LC-REVADOPT-LOSS) ────────────
     async def compute_adopt_preview(

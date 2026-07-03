@@ -120,6 +120,21 @@ class AdoptRequest(BaseModel):
     acknowledge_optional_gaps: bool = False
 
 
+class BlankSchemaCreate(BaseModel):
+    """Create-from-scratch (A2) — a blank project schema (no template)."""
+
+    name: str = Field(min_length=1, max_length=_NAME_MAX)
+    description: str = ""
+    allow_free_edges: bool = True
+
+
+class CloneSchemaRequest(BaseModel):
+    """Clone a readable schema into a NEW user-scoped editable template (A2)."""
+
+    source_schema_id: UUID
+    name: str | None = Field(default=None, min_length=1, max_length=_NAME_MAX)
+
+
 class AdoptPreviewRequest(BaseModel):
     source_schema_id: UUID
 
@@ -238,9 +253,16 @@ async def _writable_schema_for_caller(
 
 
 async def _require_project_manage(project_id: str | None, caller: UUID, gc, projects: ProjectsRepo) -> None:
-    """Mirror require_project_grant(MANAGE) for a project_id pulled off a schema
+    await _require_project_grant_at(project_id, caller, gc, projects, level=GrantLevel.MANAGE)
+
+
+async def _require_project_grant_at(
+    project_id: str | None, caller: UUID, gc, projects: ProjectsRepo, *, level: GrantLevel
+) -> None:
+    """Mirror require_project_grant(<level>) for a project_id pulled off a schema
     row (the grant dep keys off the path param; here the project id comes from
-    the schema's scope_id)."""
+    the schema's scope_id). Owner always passes; a collaborator needs `level` on
+    the project's book; no grant / book-less non-owner → 404 (no existence oracle)."""
     if project_id is None:
         raise _not_found()
     try:
@@ -258,7 +280,7 @@ async def _require_project_manage(project_id: str | None, caller: UUID, gc, proj
     lvl = await gc.resolve_grant(book_id, caller)
     if lvl == GrantLevel.NONE:
         raise _not_found()
-    if not lvl.at_least(GrantLevel.MANAGE):
+    if not lvl.at_least(level):
         raise _forbidden()
 
 
@@ -297,6 +319,32 @@ async def list_graph_schemas(
         user_id, project_id=project_id, scope=scope, include_deprecated=include_deprecated
     )
     return GraphSchemaListResponse(items=items)
+
+
+@router.post("/graph-schemas", response_model=GraphSchema, status_code=status.HTTP_201_CREATED)
+async def clone_schema(
+    body: CloneSchemaRequest,
+    caller: UUID = Depends(get_current_user),
+    mutations: OntologyMutationsRepo = Depends(get_ontology_mutations_repo),
+    gc=Depends(get_grant_client),
+    projects: ProjectsRepo = Depends(get_projects_repo),
+) -> GraphSchema:
+    """Clone a readable schema into a NEW user-scoped editable template (A2).
+
+    Source visibility (EC-A3 — no cross-tenant read oracle): System templates are
+    clonable by anyone; a user template only by its owner; a project schema only by
+    a caller with VIEW on that project. Anything else → 404 (no existence oracle)."""
+    src = await mutations.get_schema(body.source_schema_id)
+    if src is None:
+        raise _not_found()
+    if src.scope == "user":
+        if src.scope_id != str(caller):
+            raise _not_found()
+    elif src.scope == "project":
+        await _require_project_grant_at(src.scope_id, caller, gc, projects, level=GrantLevel.VIEW)
+    elif src.scope != "system":
+        raise _not_found()
+    return await mutations.clone_schema(body.source_schema_id, owner=caller, name=body.name)
 
 
 @router.get("/graph-schemas/{schema_id}", response_model=GraphSchemaTree)
@@ -359,6 +407,29 @@ async def get_resolved_schema(
     """The resolved effective schema for the project (system→user→project merge).
     View-gated on the project (resolve-to-owner)."""
     return await repo.resolve_for_project(str(project_id))
+
+
+@router.post(
+    "/projects/{project_id}/schema",
+    response_model=GraphSchema,
+    status_code=status.HTTP_201_CREATED,
+)
+async def create_blank_schema(
+    body: BlankSchemaCreate,
+    project_id: UUID = Path(),
+    owner: UUID = Depends(require_project_grant(GrantLevel.MANAGE)),
+    mutations: OntologyMutationsRepo = Depends(get_ontology_mutations_repo),
+) -> GraphSchema:
+    """Create a BLANK project schema from scratch (A2 — no "adopt a template first"
+    requirement). Manage-gated. Replaces any active project schema under the
+    one-active invariant (EC-A2); the caller should warn about lost customizations
+    (EC-X1) via the adopt/preview loss surface before calling."""
+    return await mutations.create_blank_project_schema(
+        str(project_id),
+        name=body.name,
+        description=body.description,
+        allow_free_edges=body.allow_free_edges,
+    )
 
 
 # ── adopt (copy-down, M1 adopt-gate) ──────────────────────────────────────────

@@ -607,6 +607,65 @@ async def test_A1_delete_vocab_value_by_parent_set(pool):
     assert row is not None and row["deprecated_at"] is not None  # project → soft
 
 
+# ── A2: create-blank + clone ────────────────────────────────────────────────
+async def test_A2_create_blank_project_schema(pool):
+    await _reset_kg(pool)
+    repo = OntologyMutationsRepo(pool)
+    project_id = f"proj-{uuid4()}"
+    blank = await repo.create_blank_project_schema(
+        project_id, name="My World", description="scratch"
+    )
+    assert blank.scope == "project" and blank.scope_id == project_id
+    assert blank.source_ref is None and blank.deprecated_at is None  # native, active
+    tree = await GraphSchemasRepo(pool).get_tree(uuid4(), blank.schema_id, project_id=project_id)
+    assert tree["edge_types"] == [] and tree["node_kinds"] == []  # blank
+    resolved = await GraphSchemasRepo(pool).resolve_for_project(project_id)
+    assert resolved.schema_version == blank.schema_version  # it's the active resolve
+
+
+async def test_A2_create_blank_replaces_adopted_one_active(pool):
+    await _reset_kg(pool)
+    repo = OntologyMutationsRepo(pool)
+    project_id = f"proj-{uuid4()}"
+    await repo.adopt(
+        owner_user_id=uuid4(), project_id=project_id,
+        source_schema_id=await _system_id(pool, "general"),
+        glossary_kinds=set(), book_id=None,
+    )
+    blank = await repo.create_blank_project_schema(project_id, name="Fresh")
+    async with pool.acquire() as conn:
+        active = await conn.fetch(
+            "SELECT schema_id FROM kg_graph_schemas "
+            "WHERE scope='project' AND scope_id=$1 AND deprecated_at IS NULL", project_id
+        )
+    assert [r["schema_id"] for r in active] == [blank.schema_id]  # one-active, the blank
+
+
+async def test_A2_clone_system_into_user_template_copies_children(pool):
+    await _reset_kg(pool)
+    repo = OntologyMutationsRepo(pool)
+    owner = uuid4()
+    src = await _system_id(pool, "xianxia-harem")
+    cloned = await repo.clone_schema(src, owner=owner)
+    assert cloned.scope == "user" and cloned.scope_id == str(owner)
+    assert cloned.code == "xianxia-harem"  # first clone keeps the code
+    tree = await GraphSchemasRepo(pool).get_tree(owner, cloned.schema_id)
+    assert len(tree["edge_types"]) == 24 and len(tree["node_kinds"]) == 8  # deep-copied
+
+
+async def test_A2_clone_auto_suffixes_on_collision(pool):
+    await _reset_kg(pool)
+    repo = OntologyMutationsRepo(pool)
+    owner = uuid4()
+    src = await _system_id(pool, "general")
+    first = await repo.clone_schema(src, owner=owner)
+    second = await repo.clone_schema(src, owner=owner)
+    third = await repo.clone_schema(src, owner=owner)
+    assert first.code == "general"
+    assert second.code == "general-copy" and second.name.endswith("(copy)")
+    assert third.code == "general-copy-3" and third.name.endswith("(copy 3)")
+
+
 async def test_system_tier_is_read_only(pool):
     await _reset_kg(pool)
     repo = OntologyMutationsRepo(pool)
@@ -665,6 +724,12 @@ class FakeMutationsRepo:
 
     async def patch_schema(self, schema_id, **kw):
         return self._schemas[schema_id]
+
+    async def clone_schema(self, source_schema_id, *, owner, name=None):
+        return _schema("user", str(owner), name or "cloned")
+
+    async def create_blank_project_schema(self, project_id, *, name, description="", allow_free_edges=True):
+        return _schema("project", project_id, "custom")
 
 
 def _client(*, caller, project_meta, grant_level, glossary, mutations):
@@ -803,3 +868,34 @@ def test_route_cross_tenant_user_schema_edit_404():
     )
     r = client.patch(f"/v1/kg/graph-schemas/{a_schema.schema_id}", json={"name": "hacked"})
     assert r.status_code == 404, r.text
+
+
+def test_route_clone_cross_tenant_user_template_404():
+    """A2/EC-A3: cloning another user's user-tier template → 404 (no read oracle)."""
+    from app.clients.grant_client import GrantLevel
+
+    user_a, user_b = uuid4(), uuid4()
+    a_schema = _schema("user", str(user_a), "a-tpl")
+    client = _client(
+        caller=user_b, project_meta=None, grant_level=GrantLevel.NONE,
+        glossary=FakeGlossaryOntologyClient(),
+        mutations=FakeMutationsRepo(schemas={a_schema.schema_id: a_schema}),
+    )
+    r = client.post("/v1/kg/graph-schemas", json={"source_schema_id": str(a_schema.schema_id)})
+    assert r.status_code == 404, r.text
+
+
+def test_route_clone_system_template_201():
+    """A2: a System template is clonable by anyone → 201 with a new user schema."""
+    from app.clients.grant_client import GrantLevel
+
+    caller = uuid4()
+    sys_schema = _schema("system", None, "general")
+    client = _client(
+        caller=caller, project_meta=None, grant_level=GrantLevel.NONE,
+        glossary=FakeGlossaryOntologyClient(),
+        mutations=FakeMutationsRepo(schemas={sys_schema.schema_id: sys_schema}),
+    )
+    r = client.post("/v1/kg/graph-schemas", json={"source_schema_id": str(sys_schema.schema_id)})
+    assert r.status_code == 201, r.text
+    assert r.json()["scope"] == "user"
