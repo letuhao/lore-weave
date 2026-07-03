@@ -264,14 +264,23 @@
 > Endpoint dedup links an existing System row instead of duplicating; a guard failure leaves the row pending. Admin-only
 > (`requireAdmin` → 403) + anti-oracle 404 + audit. **verification ≠ safety:** an official listing still runs the full
 > SSRF guard + supply-chain scan before it federates. Files: `internal/api/ingest.go` + `server.go` routes +
-> `migrate.go` + `config.go` (`OfficialRegistryURL`). **`/review-impl` DONE** (self, load-bearing = admin-gate +
-> SSRF-on-approve + external integration): no HIGH/MED; 3 LOW accepted/deferred (pull min-interval → the scheduled
-> worker; upsert refreshes endpoint on an approved row; `finishApprove` error self-heals via dedup). VERIFY: unit
-> (tolerant mapper flat/nested/no-remote/invalid/first-wins + transport-norm + admin-gate 403/401 ×4 routes + approve
-> model-cap/SSRF/409/404 via pgxmock) + full agent-registry suite green · **LIVE E2E-P5-C** (`p5_ingest_smoke.ps1`):
-> Part 1 (DB-seeded queue → real HTTP) — admin-gate, approve→System is_external row + scan, re-approve 409, endpoint
-> DEDUP held (exactly ONE System row), reject, idempotent upsert; Part 2 (**real official MCP Registry pull**) — fetched
-> 100, mapped 43 new + 70 updated, 30 no-remote skips (SSRF-safe fetch + mapper proven on real /v0 data).
+> `migrate.go` + `config.go` (`OfficialRegistryURL`). **`/review-impl` DONE — a 2nd DEEP pass (`3659ba203`) found + FIXED
+> 2 MED + 4 LOW/COSMETIC** (the 1st pass's "no MED" missed the cross-service federation angle): **MED#1 tool-shadowing** —
+> an ingested external System server federated UNPREFIXED (`tool_name_prefix=''`), so once scanned-clean it could shadow a
+> platform tool name with an attacker-controlled schema (and its tools weren't even dispatchable). FIX: external System
+> servers (ingest + `createMcpServer`) now namespaced `s_<hash8(endpoint)>_`; the ai-gateway overlay owns the `s_` prefix
+> (`OVERLAY_NAME_RE /^[ubs]_/`) so they're dispatchable AND can't shadow. Live-verified (`s_c3d80a4e_`). **MED#2 boot
+> safety** — the new `uq_mcp_reg_system` UNIQUE index would crash-loop startup on a pre-existing dup System endpoint; FIX:
+> wrapped in a `DO`-block catching `unique_violation` (skip+NOTICE; check-before-insert still guards new dups). **LOW#3**
+> the `isUniqueViolation` race-recovery branch now tested (pgxmock: dedup-miss→INSERT 23505→re-SELECT→link). **LOW#4**
+> `pullCounts.Truncated` flags a partial pull (timeout/mid-error/page-cap) +httptest unit. **LOW#5** `clampStr` caps
+> upstream strings (rune-safe) +unit. **COSMETIC#6** idempotency-coverage comment. ⚠️ **ai-gateway needs redeploy** for
+> the `s_` overlay change (done in dev; the `s_` DISPATCH itself is inspection+tsc-verified — no controllable external MCP
+> server exists for a live dispatch smoke). VERIFY: full agent-registry Go suite green (+race/truncated/prefix/clamp
+> units) · ai-gateway tsc 0 errors · **LIVE E2E-P5-C re-run ALL-PASS** incl. the new `s_` prefix assertion — Part 1
+> (DB-seeded queue → real HTTP): admin-gate, approve→System is_external row **namespaced s_<hash>_** + scan, re-approve
+> 409, endpoint DEDUP held (exactly ONE row), reject, idempotent upsert; Part 2 (**real official MCP Registry pull**):
+> fetched 100, mapped 43 new + 70 updated, 30 no-remote skips (SSRF-safe fetch + mapper proven on real /v0 data).
 > **Deferred (tracked):** `D-REG-P5-INGEST-SCHEDULED-WORKER` (gate #2 — the hourly pull worker + denylist/retroactive-
 > removal sync §7b#1 + rug-pull periodic rescan §7b#2; folds `D-REG-P3-SCHEDULED-RESCAN`; needs a background loop);
 > `D-REG-P5-INGEST-ADMIN-FE` (gate #3 — the admin curation table lands in an admin/CMS surface that **does not exist yet**
