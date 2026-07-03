@@ -404,3 +404,79 @@ def test_disagreements_empty_without_edges():
     seeds = [_seed("P1", "a1", "Alice"), _seed("P2", "a2", "Alice")]
     out = cluster_seeds(seeds, "by_name")
     assert out["disagreements"] == []
+
+
+def test_intra_book_self_contradiction_not_flagged():
+    """/review-impl #2 — two conflicting predicates from the SAME book
+    (project_a==project_b) is an intra-book contradiction, NOT a cross-book
+    disagreement; the distinct-project guard drops it."""
+    seeds = [_seed("P1", "a1", "Alice"), _seed("P2", "a2", "Alice"),
+             _seed("P1", "b1", "Bob"), _seed("P2", "b2", "Bob")]
+    edges = [_edge("a1", "b1", "LOVES"), _edge("a1", "b1", "HATES")]  # both from book P1
+    out = cluster_seeds(seeds, "by_name", edges=edges)
+    assert out["disagreements"] == []
+
+
+# ── /review-impl fixes: perf cap, wiring, node-cap note ──────────────────
+
+
+def test_semantic_oversized_bucket_falls_back_to_lexical(monkeypatch):
+    """/review-impl #1 — a same-kind bucket larger than the semantic cap skips the
+    O(n²)×dim cosine and uses cheap lexical instead, flagging unify_capped."""
+    monkeypatch.setattr(ku, "UNIFY_SEMANTIC_MAX_BUCKET", 2)
+    seeds = [_vseed("P1", "a1", "Alice", [1, 0, 0]),
+             _vseed("P2", "a2", "Alice", [1, 0, 0]),
+             _vseed("P3", "a3", "Alice", [1, 0, 0])]  # bucket 3 > cap 2
+    out = cluster_seeds(seeds, "semantic")
+    assert out["unify_capped"] is True
+    assert out["unification_clusters"][0]["method"] == "by_name"  # lexical fallback
+
+
+@pytest.mark.asyncio
+async def test_unify_subgraph_semantic_runs_ondemand_embed(monkeypatch):
+    """/review-impl #4 — the full unify_subgraph → _ondemand_embed → cluster chain for
+    semantic mode uses the passed embedding_client (a discovered recurrence clusters)."""
+    from app.db.neo4j_repos.relations import Subgraph, SubgraphNode
+
+    async def _fake_load(session, *, user_id, project_id, entity_ids):
+        if project_id == "P1":
+            return [_vseed("P1", "a1", "Alice", [1, 0, 0], model="bge-m3")]
+        return [_seed("P2", "a2", "Al")]  # discovered, no vector, lexical can't catch
+
+    monkeypatch.setattr(ku, "load_seed_details", _fake_load)
+    subgraph = Subgraph(
+        nodes=[
+            SubgraphNode(id="a1", name="Alice", kind="character", source_project_id="P1"),
+            SubgraphNode(id="a2", name="Al", kind="character", source_project_id="P2"),
+        ],
+        edges=[], node_cap_hit=False,
+    )
+    client = _FakeEmbed()
+    out = await ku.unify_subgraph(
+        None, user_id="u", subgraph=subgraph, method="semantic", embedding_client=client,
+    )
+    assert client.calls  # embedding_client used through the whole path
+    assert len(out["unification_clusters"]) == 1
+    assert out["unification_clusters"][0]["method"] == "semantic"
+    assert out["unify_embed_skipped"] == 0
+
+
+@pytest.mark.asyncio
+async def test_unify_subgraph_notes_node_cap(monkeypatch):
+    """/review-impl #6 — when the subgraph hit its node cap, the unify result says so
+    (a low-salience recurrence below the cap is invisible; don't imply full coverage)."""
+    from app.db.neo4j_repos.relations import Subgraph, SubgraphNode
+
+    async def _fake_load(session, *, user_id, project_id, entity_ids):
+        return [_seed(project_id, f"e-{project_id}", "Alice")]
+
+    monkeypatch.setattr(ku, "load_seed_details", _fake_load)
+    subgraph = Subgraph(
+        nodes=[
+            SubgraphNode(id="e-P1", name="Alice", kind="character", source_project_id="P1"),
+            SubgraphNode(id="e-P2", name="Alice", kind="character", source_project_id="P2"),
+        ],
+        edges=[], node_cap_hit=True,
+    )
+    out = await ku.unify_subgraph(None, user_id="u", subgraph=subgraph, method="by_name")
+    assert "unify_note" in out and "node-capped" in out["unify_note"]

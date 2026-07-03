@@ -29,6 +29,7 @@ adds the semantic signal (in-Python pairwise cosine + Q1=b on-demand embed).
 
 from __future__ import annotations
 
+import asyncio
 import hashlib
 from collections import Counter
 from dataclasses import dataclass, replace
@@ -57,6 +58,12 @@ UNIFY_SEM_TAU_LOW = 0.72    # cosine ≥ this → "likely" candidate (T1)
 UNIFY_MAX_CLUSTERS = 100        # EC-M11 — cap emitted clusters (confidence-desc, EC-M21)
 UNIFY_MAX_CLUSTER_SIZE = 16     # EC-M7 — a cluster spanning >16 partitions is suspect
 UNIFY_ONDEMAND_EMBED_CAP = 100  # EC-M15 — max discovered seeds embedded on demand per call
+# Per-kind cosine is O(bucket²)×dim; above this bucket size the semantic pass would
+# do >~30K dim-wide dot products and dominate latency, so an oversized same-kind
+# bucket falls back to (cheap) lexical-only and flags unify_capped. The whole
+# clustering also runs off the event loop (asyncio.to_thread) so it never starves
+# the service even at the 500-node subgraph cap.
+UNIFY_SEMANTIC_MAX_BUCKET = 250
 
 # EC-M20 — generic names over-cluster lexically. For a "common" normalized key,
 # name-equality ALONE is not enough: we require an additional shared alias. A key is
@@ -88,7 +95,6 @@ class UnifySeed:
     kind: str
     canonical_name: str
     aliases: tuple[str, ...] = ()
-    glossary_entity_id: str | None = None
     # T1 semantic: the stored per-entity vector (only anchored entities carry one)
     # + the model it was embedded under. `embedding_model` gates cosine (EC-M1) —
     # a pair is compared semantically only when both share it.
@@ -136,7 +142,6 @@ RETURN n.id AS id,
        n.kind AS kind,
        coalesce(n.canonical_name, '') AS canonical_name,
        coalesce(n.aliases, []) AS aliases,
-       n.glossary_entity_id AS glossary_entity_id,
        n.embedding_model AS embedding_model,
        coalesce(n.embedding_384, n.embedding_1024,
                 n.embedding_1536, n.embedding_3072) AS embedding
@@ -179,7 +184,6 @@ async def load_seed_details(
                 kind=str(record["kind"] or ""),
                 canonical_name=str(record["canonical_name"] or ""),
                 aliases=tuple(str(a) for a in aliases if a),
-                glossary_entity_id=record["glossary_entity_id"],
                 embedding=embedding,
                 embedding_model=record["embedding_model"],
             )
@@ -305,14 +309,18 @@ class _Pair:
     band: str
 
 
-def _match_pairs(seeds: list[UnifySeed], method: str) -> list[_Pair]:
+def _match_pairs(seeds: list[UnifySeed], method: str) -> tuple[list[_Pair], bool]:
     """All cross-partition, same-kind matching pairs, deterministically ordered.
 
     `method="by_name"` → lexical only. `method="semantic"` → semantic PRIMARY
     (cosine, model-gated) blended with lexical FALLBACK (D1); each pair records the
     winning signal in `.method` so the blend is visible. Buckets by kind (EC-M3),
     compares only DIFFERENT-partition seeds (EC-M10), skips seeds with an empty norm
-    key AND empty alias set AND no vector (EC-M18)."""
+    key AND empty alias set AND no vector (EC-M18).
+
+    Returns ``(pairs, semantic_capped)`` — semantic_capped is True when an oversized
+    same-kind bucket (> UNIFY_SEMANTIC_MAX_BUCKET) fell back to lexical-only to bound
+    the O(n²)×dim cosine cost (the caller flags unify_capped)."""
     by_kind: dict[str, list[UnifySeed]] = {}
     for s in seeds:
         if not s.norm_key() and not s.alias_keys() and s.embedding is None:
@@ -320,8 +328,14 @@ def _match_pairs(seeds: list[UnifySeed], method: str) -> list[_Pair]:
         by_kind.setdefault(s.kind, []).append(s)
 
     pairs: list[_Pair] = []
+    semantic_capped = False
     for kind in sorted(by_kind):
         bucket = sorted(by_kind[kind], key=lambda s: (s.project_id, s.entity_id))
+        # Oversized bucket → skip the O(n²)×dim cosine, use cheap lexical only.
+        use_semantic = method == "semantic"
+        if use_semantic and len(bucket) > UNIFY_SEMANTIC_MAX_BUCKET:
+            use_semantic = False
+            semantic_capped = True
         for i in range(len(bucket)):
             for j in range(i + 1, len(bucket)):
                 a, b = bucket[i], bucket[j]
@@ -329,7 +343,7 @@ def _match_pairs(seeds: list[UnifySeed], method: str) -> list[_Pair]:
                     continue  # EC-M10 — cross-partition only
 
                 pair_method = pair_score = None
-                if method == "semantic":
+                if use_semantic:
                     sem = _semantic_score(a, b)
                     if sem is not None:
                         pair_method, pair_score = "semantic", sem
@@ -344,7 +358,7 @@ def _match_pairs(seeds: list[UnifySeed], method: str) -> list[_Pair]:
                             band=_band(pair_score, pair_method),
                         )
                     )
-    return pairs
+    return pairs, semantic_capped
 
 
 def _detect_disagreements(
@@ -387,11 +401,21 @@ def _detect_disagreements(
     disagreements: list[dict] = []
     for (src_cid, tgt_group), pairs_set in sorted(obs.items(), key=lambda kv: str(kv[0])):
         by_pred_proj = sorted(pairs_set)
-        predicates = {p for p, _ in by_pred_proj}
-        if len(predicates) < 2:
-            continue  # all agree on the predicate → not a disagreement
-        first = by_pred_proj[0]
-        second = next(pp for pp in by_pred_proj if pp[0] != first[0])
+        # A CROSS-BOOK disagreement needs two observations differing in BOTH the
+        # predicate AND the book — else it's an intra-book self-contradiction (both
+        # edges from the same project), which is a different thing, not surfaced here.
+        conflict = None
+        for x in range(len(by_pred_proj)):
+            for y in range(x + 1, len(by_pred_proj)):
+                if by_pred_proj[x][0] != by_pred_proj[y][0] and \
+                        by_pred_proj[x][1] != by_pred_proj[y][1]:
+                    conflict = (by_pred_proj[x], by_pred_proj[y])
+                    break
+            if conflict:
+                break
+        if conflict is None:
+            continue
+        first, second = conflict
         record = {
             "cluster_id": src_cid,
             "predicate_a": first[0],
@@ -408,7 +432,11 @@ def _detect_disagreements(
 
 
 def _build_result(
-    seeds: list[UnifySeed], pairs: list[_Pair], method: str, edges=None
+    seeds: list[UnifySeed],
+    pairs: list[_Pair],
+    method: str,
+    edges=None,
+    extra_capped: bool = False,
 ) -> dict:
     """Cluster the matched pairs (union-find), cap confidence-descending, and
     emit `unification_clusters` + `bridge_edges`. A cluster's headline
@@ -454,7 +482,7 @@ def _build_result(
             r,
         )
     )
-    unify_capped = len(surviving_roots) > UNIFY_MAX_CLUSTERS
+    unify_capped = extra_capped or len(surviving_roots) > UNIFY_MAX_CLUSTERS
     surviving_roots = surviving_roots[:UNIFY_MAX_CLUSTERS]
     kept = set(surviving_roots)
 
@@ -545,8 +573,10 @@ def cluster_seeds(
     if len({s.project_id for s in seeds}) < 2:
         result = _empty_result(method)
     else:
-        pairs = _match_pairs(seeds, method)
-        result = _build_result(seeds, pairs, method, edges=edges)
+        pairs, semantic_capped = _match_pairs(seeds, method)
+        result = _build_result(
+            seeds, pairs, method, edges=edges, extra_capped=semantic_capped
+        )
     if method == "semantic":
         result["unify_embed_skipped"] = embed_skipped  # EC-M15
     return result
@@ -576,7 +606,11 @@ async def _ondemand_embed(
         try:
             from app.clients.default_model import resolve_user_default_model
 
-            target_model = await resolve_user_default_model(user_id, capability="embed")
+            # capability MUST be "embedding" — provider-registry's
+            # defaultModelCapabilities key (NOT "embed"); a wrong string 400s → None.
+            target_model = await resolve_user_default_model(
+                user_id, capability="embedding"
+            )
         except Exception:  # noqa: BLE001 — best-effort; degrade to lexical
             target_model = None
     if target_model is None:
@@ -666,6 +700,16 @@ async def unify_subgraph(
         seeds, embed_skipped = await _ondemand_embed(
             seeds, embedding_client=embedding_client, user_id=user_id
         )
-    return cluster_seeds(
-        seeds, method, edges=subgraph.edges, embed_skipped=embed_skipped
+    # Clustering is CPU-bound (O(n²) pairwise, ×dim for cosine); run it OFF the event
+    # loop so a large-union semantic call never starves the async service (finding #1).
+    result = await asyncio.to_thread(
+        cluster_seeds, seeds, method, edges=subgraph.edges, embed_skipped=embed_skipped
     )
+    # The unifier only sees the node-capped subgraph (top-N by salience) — a
+    # low-salience recurrence below the cap is invisible; say so, don't imply coverage.
+    if getattr(subgraph, "node_cap_hit", False):
+        result["unify_note"] = (
+            "unification covered only the returned (node-capped) nodes; a low-salience "
+            "cross-book recurrence may be missing — raise limit to widen coverage"
+        )
+    return result
