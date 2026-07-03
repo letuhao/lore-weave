@@ -377,7 +377,26 @@
 > **Deferred (gate #2 — earns its row): `D-REG-GUI-RICH-POLISH`** — the draft-ui.html rich layer (bulk actions · shared
 > `Pager`/`useServerPagedList` across all lists · skills 3-col editor + revision history · 24h health-history charts + p50/p95
 > · full 4-step wizard per-step SSRF/OAuth validation UI · typed-confirm cascade-delete dialogs · **i18n vi/en** · **a11y
-> focus-trap sweep**). Large/structural, needs its own plan. See `01_GUI_CHECKLIST.md` Tally (59/288 test-backed).
+> focus-trap sweep**). Large/structural, needs its own plan. See `01_GUI_CHECKLIST.md` Tally (58/288 test-backed).
+>
+> **▶ POST-CLOSE-OUT FOLLOW-UPS SHIPPED (2026-07-03).**
+> **(1) Nav entry point `ed879b764`** — the `/extensions` GUI was an **orphaned route with NO nav entry** (users couldn't
+> find it; it's not a Settings tab). Added an **Extensions** item (Puzzle) to the Sidebar manage group + `nav.extensions`
+> i18n (en/vi/zh/ja); Studio path already worked (catalog `OPENABLE_STUDIO_PANELS`). Test: `Sidebar.test` asserts the
+> `/extensions` link renders. **Frontend image rebuilt** (:5174 now current). *(NOTE for future: "MCP Access" in Settings is
+> a DIFFERENT feature — public MCP API keys for EXTERNAL clients to reach IN; the Extensions registry is capabilities for
+> the agent INSIDE. Opposite directions.)*
+> **(2) `D-REG-P5-SUBAGENT-WRITE-DELEGATION` ✅ SHIPPED `61a617094`+`f523c86f6` (defer CLEARED).** A capability audit (2
+> Explore agents, evidence-backed) confirmed the architecture is "strict data boundary + absolute enforcement AT THE TOOL
+> LAYER": every MCP tool re-auths the `X-User-Id`+internal-token envelope + grant-gates scope (never a model arg;
+> `ForbidExtra`), and Tier-W/destructive/priced ops are **mint→browser-JWT-confirm only** (structurally unrunnable from a
+> loop). So the read-only subagent clamp was a *conservative default, not the security boundary* — a subagent write is safe
+> by construction (bounded to the caller's tenant + its `tool_scope`). **Dropped the heavy nested-suspend/two-level-resume
+> spec** as over-engineered; shipped the SIMPLER "allowlisted Tier-A, no suspend": `clamp_permission_mode = min(caller,
+> write)`; fixed the plain-path tier resolution (was hardcoded "R" → would've let a subagent auto-commit ANY Tier-A); a
+> write sub-run auto-commits ALLOWLISTED Tier-A, but un-allowlisted Tier-A / require_approval-hook / the volume-cap all
+> return a `result.error` (headless sub-run can't raise the card) instead of a swallowed suspend. `/review-impl` caught the
+> volume-cap-suspend gap (fixed). 116 chat-service tests green. Spec updated to SHIPPED.
 >
 > **▶ CORRECTION (2026-07-03) — the earlier "TRACK COMPLETE P0→P5" claim was WRONG: it was BACKEND-complete but 2 FE
 > screens shipped as backend-only.** A design↔shipped reconcile vs `design-drafts/screens/plugin-register/draft-ui.html`
