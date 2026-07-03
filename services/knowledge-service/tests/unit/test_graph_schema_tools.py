@@ -1263,6 +1263,7 @@ async def test_kg_multi_query_default_off_omits_unify_keys_and_skips_unifier(mon
     assert res.success, res.error
     assert "unification_clusters" not in res.result
     assert "bridge_edges" not in res.result
+    assert "disagreements" not in res.result
     assert called["n"] == 0  # off never touches the unifier
 
 

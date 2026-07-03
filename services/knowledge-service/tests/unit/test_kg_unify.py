@@ -207,6 +207,7 @@ def test_under_two_partitions_is_empty():
     assert out == {
         "unification_clusters": [],
         "bridge_edges": [],
+        "disagreements": [],
         "unify_method": "by_name",
         "unify_capped": False,
     }
@@ -346,3 +347,60 @@ async def test_ondemand_embed_then_cluster_matches_discovered():
     assert len(out["unification_clusters"]) == 1
     assert out["unification_clusters"][0]["method"] == "semantic"
     assert out["unify_embed_skipped"] == 0
+
+
+# ── T2: disagreement detection ───────────────────────────────────────────
+
+
+def _edge(src, tgt, predicate):
+    return SimpleNamespace(source=src, target=tgt, predicate=predicate)
+
+
+def test_disagreement_detected_across_books():
+    """T2 gate — the SAME cross-book character asserting DIFFERENT predicates to the
+    SAME (unified) target is surfaced as one disagreement (Alice LOVES Bob in A,
+    Alice KILLS Bob in B)."""
+    seeds = [_seed("P1", "a1", "Alice"), _seed("P2", "a2", "Alice"),
+             _seed("P1", "b1", "Bob"), _seed("P2", "b2", "Bob")]
+    edges = [_edge("a1", "b1", "LOVES"), _edge("a2", "b2", "KILLS")]
+    out = cluster_seeds(seeds, "by_name", edges=edges)
+
+    assert len(out["unification_clusters"]) == 2  # Alice + Bob
+    dis = out["disagreements"]
+    assert len(dis) == 1
+    d = dis[0]
+    assert {d["predicate_a"], d["predicate_b"]} == {"LOVES", "KILLS"}
+    assert {d["project_a"], d["project_b"]} == {"P1", "P2"}
+    assert "target_cluster_id" in d
+    alice_cid = next(
+        c["cluster_id"] for c in out["unification_clusters"]
+        if {m["entity_id"] for m in c["members"]} == {"a1", "a2"}
+    )
+    assert d["cluster_id"] == alice_cid
+
+
+def test_agreement_not_flagged():
+    """The same predicate to the same target across books is agreement, not a
+    disagreement (it rides the bridge, no record)."""
+    seeds = [_seed("P1", "a1", "Alice"), _seed("P2", "a2", "Alice"),
+             _seed("P1", "b1", "Bob"), _seed("P2", "b2", "Bob")]
+    edges = [_edge("a1", "b1", "LOVES"), _edge("a2", "b2", "LOVES")]
+    out = cluster_seeds(seeds, "by_name", edges=edges)
+    assert out["disagreements"] == []
+
+
+def test_no_disagreement_when_targets_not_unified():
+    """A conflict needs the SAME (unified) target; edges to different, un-unified
+    targets are not a disagreement (documented recall limit — target must unify too)."""
+    seeds = [_seed("P1", "a1", "Alice"), _seed("P2", "a2", "Alice"),
+             _seed("P1", "x1", "Rome"), _seed("P2", "x2", "Paris")]
+    edges = [_edge("a1", "x1", "VISITS"), _edge("a2", "x2", "BURNS")]
+    out = cluster_seeds(seeds, "by_name", edges=edges)
+    assert out["disagreements"] == []
+
+
+def test_disagreements_empty_without_edges():
+    """No edges supplied → no disagreements, but the key is always present when on."""
+    seeds = [_seed("P1", "a1", "Alice"), _seed("P2", "a2", "Alice")]
+    out = cluster_seeds(seeds, "by_name")
+    assert out["disagreements"] == []

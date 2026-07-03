@@ -347,7 +347,69 @@ def _match_pairs(seeds: list[UnifySeed], method: str) -> list[_Pair]:
     return pairs
 
 
-def _build_result(seeds: list[UnifySeed], pairs: list[_Pair], method: str) -> dict:
+def _detect_disagreements(
+    edges,
+    *,
+    uf: _UnionFind,
+    kept: set[str],
+    cluster_id_by_root: dict[str, str],
+    seed_by_id: dict[str, UnifySeed],
+) -> list[dict]:
+    """T2 (spec §5) — surface where the unified books DISAGREE, never reconcile.
+
+    For each intra-book RELATES_TO edge whose SOURCE is a unified cross-book entity,
+    group by (source-cluster, target-group) where the target-group is the target's
+    cluster if unified else its own entity_id (EC-M23). Within a group, ≥2 DISTINCT
+    predicates from DIFFERENT books = a disagreement (same predicate = agreement,
+    emitted only via the bridge). Expose it; the agent decides."""
+    def _group_of(eid: str) -> tuple[str, str]:
+        seed = seed_by_id.get(eid)
+        if seed is not None:
+            root = uf.find(eid)
+            if root in kept:
+                return ("cluster", cluster_id_by_root[root])
+        return ("entity", eid)  # target capped out of the seed set, or a singleton
+
+    # (src_cluster_id, target_group) → sorted-unique (predicate, project_id)
+    obs: dict[tuple, set[tuple[str, str]]] = {}
+    for e in edges or []:
+        src_kind, src_key = _group_of(e.source)
+        if src_kind != "cluster":
+            continue  # only a cross-book (unified) source can disagree with itself
+        src_seed = seed_by_id.get(e.source)
+        if src_seed is None:
+            continue
+        tgt_group = _group_of(e.target)
+        obs.setdefault((src_key, tgt_group), set()).add(
+            (e.predicate, src_seed.project_id)
+        )
+
+    disagreements: list[dict] = []
+    for (src_cid, tgt_group), pairs_set in sorted(obs.items(), key=lambda kv: str(kv[0])):
+        by_pred_proj = sorted(pairs_set)
+        predicates = {p for p, _ in by_pred_proj}
+        if len(predicates) < 2:
+            continue  # all agree on the predicate → not a disagreement
+        first = by_pred_proj[0]
+        second = next(pp for pp in by_pred_proj if pp[0] != first[0])
+        record = {
+            "cluster_id": src_cid,
+            "predicate_a": first[0],
+            "project_a": first[1],
+            "predicate_b": second[0],
+            "project_b": second[1],
+        }
+        if tgt_group[0] == "cluster":
+            record["target_cluster_id"] = tgt_group[1]
+        else:
+            record["target_entity_id"] = tgt_group[1]  # EC-M23 singleton fallback
+        disagreements.append(record)
+    return disagreements
+
+
+def _build_result(
+    seeds: list[UnifySeed], pairs: list[_Pair], method: str, edges=None
+) -> dict:
     """Cluster the matched pairs (union-find), cap confidence-descending, and
     emit `unification_clusters` + `bridge_edges`. A cluster's headline
     score/band/method come from its STRONGEST pair (best band, then score) — scores
@@ -397,13 +459,16 @@ def _build_result(seeds: list[UnifySeed], pairs: list[_Pair], method: str) -> di
     kept = set(surviving_roots)
 
     clusters: list[dict] = []
+    cluster_id_by_root: dict[str, str] = {}
     for root in surviving_roots:
         member_ids = sorted(members_by_root[root])
         members = [seed_by_id[mid] for mid in member_ids]
         rep = cluster_rep[root]
+        cid = _cluster_id(member_ids)
+        cluster_id_by_root[root] = cid
         clusters.append(
             {
-                "cluster_id": _cluster_id(member_ids),
+                "cluster_id": cid,
                 "kind": members[0].kind,
                 "members": [
                     {"project_id": m.project_id, "entity_id": m.entity_id, "name": m.name}
@@ -433,9 +498,18 @@ def _build_result(seeds: list[UnifySeed], pairs: list[_Pair], method: str) -> di
             }
         )
 
+    disagreements = _detect_disagreements(
+        edges,
+        uf=uf,
+        kept=kept,
+        cluster_id_by_root=cluster_id_by_root,
+        seed_by_id=seed_by_id,
+    )
+
     return {
         "unification_clusters": clusters,
         "bridge_edges": bridge_edges,
+        "disagreements": disagreements,
         "unify_method": method,
         "unify_capped": unify_capped,
     }
@@ -445,6 +519,7 @@ def _empty_result(method: str) -> dict:
     out = {
         "unification_clusters": [],
         "bridge_edges": [],
+        "disagreements": [],
         "unify_method": method,
         "unify_capped": False,
     }
@@ -454,18 +529,24 @@ def _empty_result(method: str) -> dict:
 
 
 def cluster_seeds(
-    seeds: list[UnifySeed], method: str = "by_name", *, embed_skipped: int = 0
+    seeds: list[UnifySeed],
+    method: str = "by_name",
+    *,
+    edges=None,
+    embed_skipped: int = 0,
 ) -> dict:
     """Pure clustering step (no Neo4j) — cluster already-loaded seeds and return the
     additive result keys. Split out so the engine is unit-testable without a session.
 
-    Guards: fewer than 2 distinct partitions represented → nothing can bridge, so an
-    honest empty result (a bridge is by definition cross-partition, EC-M10)."""
+    `edges` (the forest's intra-book RELATES_TO edges) drives T2 disagreement
+    detection. Guards: fewer than 2 distinct partitions represented → nothing can
+    bridge, so an honest empty result (a bridge is cross-partition by definition,
+    EC-M10)."""
     if len({s.project_id for s in seeds}) < 2:
         result = _empty_result(method)
     else:
         pairs = _match_pairs(seeds, method)
-        result = _build_result(seeds, pairs, method)
+        result = _build_result(seeds, pairs, method, edges=edges)
     if method == "semantic":
         result["unify_embed_skipped"] = embed_skipped  # EC-M15
     return result
@@ -585,4 +666,6 @@ async def unify_subgraph(
         seeds, embed_skipped = await _ondemand_embed(
             seeds, embedding_client=embedding_client, user_id=user_id
         )
-    return cluster_seeds(seeds, method, embed_skipped=embed_skipped)
+    return cluster_seeds(
+        seeds, method, edges=subgraph.edges, embed_skipped=embed_skipped
+    )
