@@ -5,6 +5,11 @@ import type {
   SkillList,
   ProposalList,
   UsageCounters,
+  McpServer,
+  McpServerList,
+  CreateMcpServerReq,
+  ScanResult,
+  HealthResult,
 } from './types';
 
 const BASE = '/v1/agent-registry';
@@ -76,5 +81,45 @@ export const extensionsApi = {
 
   usage(token: string): Promise<UsageCounters> {
     return apiJson<UsageCounters>(`${BASE}/usage`, { token });
+  },
+
+  // ── P3: external MCP servers ──────────────────────────────────────────────
+  listMcpServers(
+    token: string,
+    params: { status?: string; limit?: number; offset?: number } = {},
+  ): Promise<McpServerList> {
+    const qs = new URLSearchParams();
+    if (params.status) qs.set('status', params.status);
+    qs.set('limit', String(params.limit ?? 20));
+    qs.set('offset', String(params.offset ?? 0));
+    return apiJson<McpServerList>(`${BASE}/mcp-servers?${qs.toString()}`, { token });
+  },
+
+  getMcpServer(token: string, id: string): Promise<McpServer> {
+    return apiJson<McpServer>(`${BASE}/mcp-servers/${id}`, { token });
+  },
+
+  createMcpServer(token: string, body: CreateMcpServerReq): Promise<McpServer> {
+    return apiJson<McpServer>(`${BASE}/mcp-servers`, { method: 'POST', token, body: JSON.stringify(body) });
+  },
+
+  deleteMcpServer(token: string, id: string): Promise<void> {
+    return apiJson<void>(`${BASE}/mcp-servers/${id}`, { method: 'DELETE', token });
+  },
+
+  setMcpEnabled(token: string, id: string, enabled: boolean): Promise<void> {
+    return apiJson<void>(`${BASE}/mcp-servers/${id}/enablement`, { method: 'PUT', token, body: JSON.stringify({ enabled }) });
+  },
+
+  rescanMcpServer(token: string, id: string): Promise<{ mcp_server_id: string; status: string; scan_result: ScanResult; last_health: HealthResult; probe_error?: string }> {
+    return apiJson(`${BASE}/mcp-servers/${id}/rescan`, { method: 'POST', token });
+  },
+
+  acceptRiskMcpServer(token: string, id: string): Promise<{ mcp_server_id: string; status: string; risk_accepted: boolean }> {
+    return apiJson(`${BASE}/mcp-servers/${id}/accept-risk`, { method: 'POST', token });
+  },
+
+  startMcpOAuth(token: string, id: string): Promise<{ authorization_url: string; state: string }> {
+    return apiJson(`${BASE}/mcp-servers/${id}/oauth/start`, { method: 'POST', token });
   },
 };

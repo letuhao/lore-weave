@@ -55,3 +55,76 @@ export interface UsageCounters {
   commands: { used: number; limit: number };
   proposals_pending: number;
 }
+
+// ── P3: external MCP servers ────────────────────────────────────────────────
+export type McpServerStatus = 'active' | 'pending' | 'suspended' | 'error';
+export type McpAuthKind = 'none' | 'bearer' | 'oauth2';
+
+export interface ScanFinding {
+  tool: string;
+  field: string;
+  marker: string;
+  severity: 'high' | 'medium';
+  snippet: string;
+}
+export interface ScannedToolSummary {
+  name: string;
+  description: string;
+  flagged: boolean;
+}
+export interface ScanResult {
+  scanned_at?: string;
+  clean?: boolean;
+  tool_count?: number;
+  findings?: ScanFinding[];
+  tools?: ScannedToolSummary[];
+}
+export interface HealthResult {
+  ok?: boolean;
+  checked_at?: string;
+  error?: string;
+  tool_count?: number;
+  latency_ms?: number;
+}
+
+export interface McpServer {
+  mcp_server_id: string;
+  tier: SkillTier;
+  display_name: string;
+  endpoint_url: string;
+  transport: string;
+  tool_name_prefix: string;
+  status: McpServerStatus;
+  auth_kind: McpAuthKind;
+  is_external: boolean;
+  has_secret: boolean;
+  egress_allowlist?: string[];
+  scan_result?: ScanResult;
+  last_health?: HealthResult;
+  last_scanned_at?: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface McpServerList {
+  items: McpServer[];
+  total: number;
+  limit: number;
+  offset: number;
+}
+
+export interface OAuthConfig {
+  authorization_endpoint: string;
+  token_endpoint: string;
+  client_id: string;
+  scopes?: string[];
+}
+
+export interface CreateMcpServerReq {
+  display_name: string;
+  endpoint_url: string;
+  auth_kind?: McpAuthKind;
+  bearer_token?: string;
+  egress_allowlist?: string[];
+  oauth?: OAuthConfig;
+}

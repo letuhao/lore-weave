@@ -4,6 +4,7 @@
 import { useState } from 'react';
 import type { IDockviewPanelProps } from 'dockview-react';
 import { SkillsView } from '@/features/extensions/components/SkillsView';
+import { McpServersView } from '@/features/extensions/components/McpServersView';
 import { useStudioPanel } from './useStudioPanel';
 
 type Tab = 'skills' | 'plugins' | 'mcp' | 'commands';
@@ -20,11 +21,13 @@ export function ExtensionsPanel(props: IDockviewPanelProps) {
         <TabBtn active={tab === 'commands'} onClick={() => setTab('commands')} label="Commands & Hooks" testid="ext-tab-commands" />
       </div>
       <div className="min-h-0 flex-1 overflow-auto">
-        {tab === 'skills' && <SkillsView />}
-        {tab !== 'skills' && (
+        {/* Never-unmount: keep each tab's view mounted, hide inactive (wizard/detail
+            state survives a tab switch or panel hide/show). */}
+        <div className={tab === 'skills' ? '' : 'hidden'}><SkillsView /></div>
+        <div className={tab === 'mcp' ? '' : 'hidden'}><McpServersView /></div>
+        {(tab === 'plugins' || tab === 'commands') && (
           <div className="rounded-md border border-dashed px-6 py-8 text-center text-xs text-muted-foreground">
             {tab === 'plugins' && 'Plugin management — arrives with the bundling phase.'}
-            {tab === 'mcp' && 'External MCP server registration — arrives with the security phase.'}
             {tab === 'commands' && 'Slash commands & hooks — arrives with the commands phase.'}
           </div>
         )}
