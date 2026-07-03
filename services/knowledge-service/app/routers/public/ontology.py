@@ -153,6 +153,46 @@ class SchemaNodeKindCreate(BaseModel):
     strength: str = Field(pattern="^(required|optional)$")
 
 
+class VocabSetCreate(BaseModel):
+    code: str = Field(min_length=1, max_length=_CODE_MAX)
+    label: str = Field(min_length=1)
+    description: str = ""
+    closed: bool = True
+
+
+# ── PATCH bodies (attribute-only; code IMMUTABLE — EC-A6). All fields optional;
+#    `model_dump(exclude_unset=True)` yields only what the client actually sent. ──
+class EdgeTypePatch(BaseModel):
+    label: str | None = Field(default=None, min_length=1)
+    directed: bool | None = None
+    source_node_kinds: list[str] | None = None
+    target_node_kinds: list[str] | None = None
+    temporal: bool | None = None
+    provenance_required: bool | None = None
+    cardinality: str | None = Field(default=None, pattern="^(single_active|multi_active)$")
+    description: str | None = None
+
+
+class FactTypePatch(BaseModel):
+    label: str | None = Field(default=None, min_length=1)
+    description: str | None = None
+
+
+class NodeKindPatch(BaseModel):
+    strength: str = Field(pattern="^(required|optional)$")
+
+
+class VocabSetPatch(BaseModel):
+    label: str | None = Field(default=None, min_length=1)
+    description: str | None = None
+    closed: bool | None = None
+
+
+class VocabValuePatch(BaseModel):
+    label: str | None = Field(default=None, min_length=1)
+    metadata: dict[str, Any] | None = None
+
+
 class SyncDecision(BaseModel):
     node_type: str
     parent_code: str | None = None
@@ -501,11 +541,31 @@ async def add_edge_type(
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="edge type code exists")
 
 
+@router.patch("/graph-schemas/{schema_id}/edge-types/{code}")
+async def patch_edge_type(
+    body: EdgeTypePatch,
+    schema_id: UUID = Path(),
+    code: str = Path(min_length=1, max_length=_CODE_MAX),
+    caller: UUID = Depends(get_current_user),
+    mutations: OntologyMutationsRepo = Depends(get_ontology_mutations_repo),
+    gc=Depends(get_grant_client),
+    projects: ProjectsRepo = Depends(get_projects_repo),
+):
+    """Edit a live edge type's attributes (code immutable — EC-A6)."""
+    await _writable_schema_for_caller(schema_id, caller, mutations, gc, projects)
+    try:
+        return await mutations.patch_edge_type(
+            schema_id, code, updates=body.model_dump(exclude_unset=True)
+        )
+    except ChildNotFoundError:
+        raise _not_found()
+
+
 @router.delete(
     "/graph-schemas/{schema_id}/edge-types/{code}",
     status_code=status.HTTP_204_NO_CONTENT,
 )
-async def deprecate_edge_type(
+async def delete_edge_type(
     schema_id: UUID = Path(),
     code: str = Path(min_length=1, max_length=_CODE_MAX),
     caller: UUID = Depends(get_current_user),
@@ -513,9 +573,11 @@ async def deprecate_edge_type(
     gc=Depends(get_grant_client),
     projects: ProjectsRepo = Depends(get_projects_repo),
 ) -> None:
+    """Delete an edge type — HARD on a user template, SOFT-deprecate on a project
+    schema (EC-A5)."""
     await _writable_schema_for_caller(schema_id, caller, mutations, gc, projects)
     try:
-        await mutations.deprecate_edge_type(schema_id, code)
+        await mutations.delete_child(schema_id, node_type="edge_type", code=code)
     except ChildNotFoundError:
         raise _not_found()
 
@@ -584,6 +646,186 @@ async def add_node_kind(
         )
     except DuplicateChildError:
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="node kind exists")
+
+
+@router.patch("/graph-schemas/{schema_id}/fact-types/{code}")
+async def patch_fact_type(
+    body: FactTypePatch,
+    schema_id: UUID = Path(),
+    code: str = Path(min_length=1, max_length=_CODE_MAX),
+    caller: UUID = Depends(get_current_user),
+    mutations: OntologyMutationsRepo = Depends(get_ontology_mutations_repo),
+    gc=Depends(get_grant_client),
+    projects: ProjectsRepo = Depends(get_projects_repo),
+):
+    await _writable_schema_for_caller(schema_id, caller, mutations, gc, projects)
+    try:
+        return await mutations.patch_fact_type(
+            schema_id, code, updates=body.model_dump(exclude_unset=True)
+        )
+    except ChildNotFoundError:
+        raise _not_found()
+
+
+@router.delete(
+    "/graph-schemas/{schema_id}/fact-types/{code}",
+    status_code=status.HTTP_204_NO_CONTENT,
+)
+async def delete_fact_type(
+    schema_id: UUID = Path(),
+    code: str = Path(min_length=1, max_length=_CODE_MAX),
+    caller: UUID = Depends(get_current_user),
+    mutations: OntologyMutationsRepo = Depends(get_ontology_mutations_repo),
+    gc=Depends(get_grant_client),
+    projects: ProjectsRepo = Depends(get_projects_repo),
+) -> None:
+    await _writable_schema_for_caller(schema_id, caller, mutations, gc, projects)
+    try:
+        await mutations.delete_child(schema_id, node_type="fact_type", code=code)
+    except ChildNotFoundError:
+        raise _not_found()
+
+
+@router.patch("/graph-schemas/{schema_id}/node-kinds/{code}")
+async def patch_node_kind(
+    body: NodeKindPatch,
+    schema_id: UUID = Path(),
+    code: str = Path(min_length=1, max_length=_CODE_MAX),
+    caller: UUID = Depends(get_current_user),
+    mutations: OntologyMutationsRepo = Depends(get_ontology_mutations_repo),
+    gc=Depends(get_grant_client),
+    projects: ProjectsRepo = Depends(get_projects_repo),
+):
+    """Edit a node kind's strength (required/optional). Code immutable."""
+    await _writable_schema_for_caller(schema_id, caller, mutations, gc, projects)
+    try:
+        return await mutations.patch_node_kind(schema_id, code, strength=body.strength)
+    except ChildNotFoundError:
+        raise _not_found()
+
+
+@router.delete(
+    "/graph-schemas/{schema_id}/node-kinds/{code}",
+    status_code=status.HTTP_204_NO_CONTENT,
+)
+async def delete_node_kind(
+    schema_id: UUID = Path(),
+    code: str = Path(min_length=1, max_length=_CODE_MAX),
+    caller: UUID = Depends(get_current_user),
+    mutations: OntologyMutationsRepo = Depends(get_ontology_mutations_repo),
+    gc=Depends(get_grant_client),
+    projects: ProjectsRepo = Depends(get_projects_repo),
+) -> None:
+    await _writable_schema_for_caller(schema_id, caller, mutations, gc, projects)
+    try:
+        await mutations.delete_child(schema_id, node_type="node_kind", code=code)
+    except ChildNotFoundError:
+        raise _not_found()
+
+
+@router.post(
+    "/graph-schemas/{schema_id}/vocab-sets",
+    status_code=status.HTTP_201_CREATED,
+)
+async def add_vocab_set(
+    body: VocabSetCreate,
+    schema_id: UUID = Path(),
+    caller: UUID = Depends(get_current_user),
+    mutations: OntologyMutationsRepo = Depends(get_ontology_mutations_repo),
+    gc=Depends(get_grant_client),
+    projects: ProjectsRepo = Depends(get_projects_repo),
+):
+    """Create a vocab set (the previously-missing create verb)."""
+    await _writable_schema_for_caller(schema_id, caller, mutations, gc, projects)
+    try:
+        return await mutations.add_vocab_set(
+            schema_id, code=body.code, label=body.label,
+            description=body.description, closed=body.closed,
+        )
+    except DuplicateChildError:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="vocab set code exists")
+
+
+@router.patch("/graph-schemas/{schema_id}/vocab-sets/{set_code}")
+async def patch_vocab_set(
+    body: VocabSetPatch,
+    schema_id: UUID = Path(),
+    set_code: str = Path(min_length=1, max_length=_CODE_MAX),
+    caller: UUID = Depends(get_current_user),
+    mutations: OntologyMutationsRepo = Depends(get_ontology_mutations_repo),
+    gc=Depends(get_grant_client),
+    projects: ProjectsRepo = Depends(get_projects_repo),
+):
+    await _writable_schema_for_caller(schema_id, caller, mutations, gc, projects)
+    try:
+        return await mutations.patch_vocab_set(
+            schema_id, set_code, updates=body.model_dump(exclude_unset=True)
+        )
+    except ChildNotFoundError:
+        raise _not_found()
+
+
+@router.delete(
+    "/graph-schemas/{schema_id}/vocab-sets/{set_code}",
+    status_code=status.HTTP_204_NO_CONTENT,
+)
+async def delete_vocab_set(
+    schema_id: UUID = Path(),
+    set_code: str = Path(min_length=1, max_length=_CODE_MAX),
+    caller: UUID = Depends(get_current_user),
+    mutations: OntologyMutationsRepo = Depends(get_ontology_mutations_repo),
+    gc=Depends(get_grant_client),
+    projects: ProjectsRepo = Depends(get_projects_repo),
+) -> None:
+    """Delete a vocab set — HARD (cascades values) on a user template, SOFT on a
+    project schema (EC-A5)."""
+    await _writable_schema_for_caller(schema_id, caller, mutations, gc, projects)
+    try:
+        await mutations.delete_child(schema_id, node_type="vocab_set", code=set_code)
+    except ChildNotFoundError:
+        raise _not_found()
+
+
+@router.patch("/graph-schemas/{schema_id}/vocab-sets/{set_code}/values/{code}")
+async def patch_vocab_value(
+    body: VocabValuePatch,
+    schema_id: UUID = Path(),
+    set_code: str = Path(min_length=1, max_length=_CODE_MAX),
+    code: str = Path(min_length=1, max_length=_CODE_MAX),
+    caller: UUID = Depends(get_current_user),
+    mutations: OntologyMutationsRepo = Depends(get_ontology_mutations_repo),
+    gc=Depends(get_grant_client),
+    projects: ProjectsRepo = Depends(get_projects_repo),
+):
+    await _writable_schema_for_caller(schema_id, caller, mutations, gc, projects)
+    try:
+        return await mutations.patch_vocab_value(
+            schema_id, set_code, code, updates=body.model_dump(exclude_unset=True)
+        )
+    except ChildNotFoundError:
+        raise _not_found()
+
+
+@router.delete(
+    "/graph-schemas/{schema_id}/vocab-sets/{set_code}/values/{code}",
+    status_code=status.HTTP_204_NO_CONTENT,
+)
+async def delete_vocab_value(
+    schema_id: UUID = Path(),
+    set_code: str = Path(min_length=1, max_length=_CODE_MAX),
+    code: str = Path(min_length=1, max_length=_CODE_MAX),
+    caller: UUID = Depends(get_current_user),
+    mutations: OntologyMutationsRepo = Depends(get_ontology_mutations_repo),
+    gc=Depends(get_grant_client),
+    projects: ProjectsRepo = Depends(get_projects_repo),
+) -> None:
+    await _writable_schema_for_caller(schema_id, caller, mutations, gc, projects)
+    try:
+        await mutations.delete_child(
+            schema_id, node_type="vocab_value", code=code, parent_set_code=set_code
+        )
+    except ChildNotFoundError:
+        raise _not_found()
 
 
 # ── system-tier create (admin-only, requireAdmin placeholder) ─────────────────

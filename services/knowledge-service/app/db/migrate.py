@@ -1207,6 +1207,15 @@ CREATE TABLE IF NOT EXISTS kg_vocab_values (
 -- column so sync removed_upstream can deprecate instead of DELETE.
 ALTER TABLE kg_vocab_values ADD COLUMN IF NOT EXISTS deprecated_at TIMESTAMPTZ;
 
+-- NOTE (KG full-CRUD, spec-review EC-A1): the child tables keep their TOTAL
+-- UNIQUE(schema_id, code) — deprecate-then-recreate is handled at the app layer by
+-- REVIVE-on-recreate (add_* un-deprecates + overwrites a soft-deleted row of the
+-- same code) rather than a partial-unique index that would let duplicate-code rows
+-- accumulate. Total-unique keeps exactly one row per code, so (a) sync's unfiltered
+-- `WHERE schema_id AND code` lookups stay single-row, and (b) graph data that
+-- references a type by code has one unambiguous target. See ontology_mutations
+-- `_revive_or_insert`.
+
 -- Layer 3 views — per-user named lenses over a project graph (READ-only).
 CREATE TABLE IF NOT EXISTS kg_views (
   view_id          UUID PRIMARY KEY DEFAULT uuidv7(),

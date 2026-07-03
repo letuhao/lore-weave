@@ -102,7 +102,11 @@ async def adopt_with_autocreate_glossary(
         # project has no book to write into → surface the gap as-is.
         if not (exc.book_id and exc.kinds):
             raise
-        seeded = await glossary.adopt_book_kinds(UUID(exc.book_id), owner, list(exc.kinds))
+        try:
+            book_uuid = UUID(exc.book_id)
+        except (ValueError, TypeError):
+            raise exc  # an unparseable book id can't be seeded → honest 422, not a 500
+        seeded = await glossary.adopt_book_kinds(book_uuid, owner, list(exc.kinds))
         if not seeded:
             raise
         # Re-resolve (now includes the seeded kinds) + retry once. A kind that

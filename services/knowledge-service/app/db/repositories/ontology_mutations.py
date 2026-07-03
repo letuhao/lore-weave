@@ -491,28 +491,23 @@ class OntologyMutationsRepo:
         async with self._pool.acquire() as conn:
             async with conn.transaction():
                 await self._load_writable(conn, schema_id)
-                try:
-                    row = await conn.fetchrow(
-                        """
-                        INSERT INTO kg_edge_types
-                          (schema_id, code, label, directed, source_node_kinds,
-                           target_node_kinds, temporal, provenance_required, cardinality, description)
-                        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
-                        RETURNING edge_type_id, schema_id, code, label, directed,
-                                  source_node_kinds, target_node_kinds, temporal,
-                                  provenance_required, cardinality, description, deprecated_at
-                        """,
-                        schema_id, code, label,
-                        kw.get("directed", True),
-                        kw.get("source_node_kinds") or [],
-                        kw.get("target_node_kinds") or [],
-                        kw.get("temporal", False),
-                        kw.get("provenance_required", False),
-                        kw.get("cardinality") or "multi_active",
-                        kw.get("description") or "",
-                    )
-                except asyncpg.UniqueViolationError as exc:
-                    raise DuplicateChildError(code) from exc
+                row = await self._revive_or_insert(
+                    conn, table="kg_edge_types",
+                    key_cols={"schema_id": schema_id, "code": code},
+                    attr_cols={
+                        "label": label,
+                        "directed": kw.get("directed", True),
+                        "source_node_kinds": kw.get("source_node_kinds") or [],
+                        "target_node_kinds": kw.get("target_node_kinds") or [],
+                        "temporal": kw.get("temporal", False),
+                        "provenance_required": kw.get("provenance_required", False),
+                        "cardinality": kw.get("cardinality") or "multi_active",
+                        "description": kw.get("description") or "",
+                    },
+                    returning="edge_type_id, schema_id, code, label, directed, "
+                    "source_node_kinds, target_node_kinds, temporal, "
+                    "provenance_required, cardinality, description, deprecated_at",
+                )
                 await self._bump_and_rehash(conn, schema_id)
         return dict(row)
 
@@ -520,17 +515,12 @@ class OntologyMutationsRepo:
         async with self._pool.acquire() as conn:
             async with conn.transaction():
                 await self._load_writable(conn, schema_id)
-                try:
-                    row = await conn.fetchrow(
-                        """
-                        INSERT INTO kg_fact_types (schema_id, code, label, description)
-                        VALUES ($1, $2, $3, $4)
-                        RETURNING fact_type_id, schema_id, code, label, description, deprecated_at
-                        """,
-                        schema_id, code, label, description,
-                    )
-                except asyncpg.UniqueViolationError as exc:
-                    raise DuplicateChildError(code) from exc
+                row = await self._revive_or_insert(
+                    conn, table="kg_fact_types",
+                    key_cols={"schema_id": schema_id, "code": code},
+                    attr_cols={"label": label, "description": description},
+                    returning="fact_type_id, schema_id, code, label, description, deprecated_at",
+                )
                 await self._bump_and_rehash(conn, schema_id)
         return dict(row)
 
@@ -538,17 +528,28 @@ class OntologyMutationsRepo:
         async with self._pool.acquire() as conn:
             async with conn.transaction():
                 await self._load_writable(conn, schema_id)
-                try:
-                    row = await conn.fetchrow(
-                        """
-                        INSERT INTO kg_schema_node_kinds (schema_id, kind_code, strength)
-                        VALUES ($1, $2, $3)
-                        RETURNING schema_node_kind_id, schema_id, kind_code, strength, deprecated_at
-                        """,
-                        schema_id, kind_code, strength,
-                    )
-                except asyncpg.UniqueViolationError as exc:
-                    raise DuplicateChildError(kind_code) from exc
+                row = await self._revive_or_insert(
+                    conn, table="kg_schema_node_kinds",
+                    key_cols={"schema_id": schema_id, "kind_code": kind_code},
+                    attr_cols={"strength": strength},
+                    returning="schema_node_kind_id, schema_id, kind_code, strength, deprecated_at",
+                )
+                await self._bump_and_rehash(conn, schema_id)
+        return dict(row)
+
+    async def add_vocab_set(
+        self, schema_id: UUID, *, code: str, label: str, description: str = "", closed: bool = True
+    ) -> dict:
+        """Create a vocab SET (EC — the missing create verb). Revive-on-recreate."""
+        async with self._pool.acquire() as conn:
+            async with conn.transaction():
+                await self._load_writable(conn, schema_id)
+                row = await self._revive_or_insert(
+                    conn, table="kg_vocab_sets",
+                    key_cols={"schema_id": schema_id, "code": code},
+                    attr_cols={"label": label, "description": description, "closed": closed},
+                    returning="vocab_set_id, schema_id, code, label, description, closed, deprecated_at",
+                )
                 await self._bump_and_rehash(conn, schema_id)
         return dict(row)
 
@@ -565,21 +566,154 @@ class OntologyMutationsRepo:
                 )
                 if vset is None:
                     raise ChildNotFoundError(f"vocab set '{set_code}'")
-                try:
-                    row = await conn.fetchrow(
-                        """
-                        INSERT INTO kg_vocab_values (vocab_set_id, code, label, metadata)
-                        VALUES ($1, $2, $3, $4)
-                        RETURNING vocab_value_id, vocab_set_id, code, label, metadata
-                        """,
-                        vset["vocab_set_id"], code, label, json.dumps(metadata or {}),
-                    )
-                except asyncpg.UniqueViolationError as exc:
-                    raise DuplicateChildError(code) from exc
+                row = await self._revive_or_insert(
+                    conn, table="kg_vocab_values",
+                    key_cols={"vocab_set_id": vset["vocab_set_id"], "code": code},
+                    attr_cols={"label": label, "metadata": json.dumps(metadata or {})},
+                    returning="vocab_value_id, vocab_set_id, code, label, metadata",
+                )
                 await self._bump_and_rehash(conn, schema_id)
         out = dict(row)
         out["metadata"] = _as_dict(out["metadata"])
         return out
+
+    # ── PATCH (attribute-only; code is IMMUTABLE — EC-A6) ──────────────────
+    async def patch_edge_type(
+        self, schema_id: UUID, code: str, *, updates: dict[str, Any]
+    ) -> dict:
+        """Edit a live edge type's attributes (not its code). `updates` holds only
+        the fields the caller set; an empty dict is a no-op fetch (no version bump)."""
+        if "cardinality" in updates and updates["cardinality"] not in ("single_active", "multi_active"):
+            raise ValueError("cardinality must be single_active|multi_active")
+        async with self._pool.acquire() as conn:
+            async with conn.transaction():
+                await self._load_writable(conn, schema_id)
+                row, changed = await self._patch_child(
+                    conn, "kg_edge_types",
+                    where="schema_id = $1 AND code = $2", where_vals=[schema_id, code],
+                    updates=updates,
+                    returning="edge_type_id, schema_id, code, label, directed, "
+                    "source_node_kinds, target_node_kinds, temporal, "
+                    "provenance_required, cardinality, description, deprecated_at",
+                )
+                if changed:
+                    await self._bump_and_rehash(conn, schema_id)
+        return dict(row)
+
+    async def patch_fact_type(self, schema_id: UUID, code: str, *, updates: dict[str, Any]) -> dict:
+        async with self._pool.acquire() as conn:
+            async with conn.transaction():
+                await self._load_writable(conn, schema_id)
+                row, changed = await self._patch_child(
+                    conn, "kg_fact_types",
+                    where="schema_id = $1 AND code = $2", where_vals=[schema_id, code],
+                    updates=updates,
+                    returning="fact_type_id, schema_id, code, label, description, deprecated_at",
+                )
+                if changed:
+                    await self._bump_and_rehash(conn, schema_id)
+        return dict(row)
+
+    async def patch_node_kind(self, schema_id: UUID, kind_code: str, *, strength: str) -> dict:
+        if strength not in ("required", "optional"):
+            raise ValueError("strength must be required|optional")
+        async with self._pool.acquire() as conn:
+            async with conn.transaction():
+                await self._load_writable(conn, schema_id)
+                row, changed = await self._patch_child(
+                    conn, "kg_schema_node_kinds",
+                    where="schema_id = $1 AND kind_code = $2", where_vals=[schema_id, kind_code],
+                    updates={"strength": strength},
+                    returning="schema_node_kind_id, schema_id, kind_code, strength, deprecated_at",
+                )
+                if changed:
+                    await self._bump_and_rehash(conn, schema_id)
+        return dict(row)
+
+    async def patch_vocab_set(self, schema_id: UUID, code: str, *, updates: dict[str, Any]) -> dict:
+        async with self._pool.acquire() as conn:
+            async with conn.transaction():
+                await self._load_writable(conn, schema_id)
+                row, changed = await self._patch_child(
+                    conn, "kg_vocab_sets",
+                    where="schema_id = $1 AND code = $2", where_vals=[schema_id, code],
+                    updates=updates,
+                    returning="vocab_set_id, schema_id, code, label, description, closed, deprecated_at",
+                )
+                if changed:
+                    await self._bump_and_rehash(conn, schema_id)
+        return dict(row)
+
+    async def patch_vocab_value(
+        self, schema_id: UUID, set_code: str, code: str, *, updates: dict[str, Any]
+    ) -> dict:
+        # own the JSONB encoding here (mirrors add_vocab_value) so callers pass a raw dict.
+        if "metadata" in updates:
+            updates = {**updates, "metadata": json.dumps(updates["metadata"] or {})}
+        async with self._pool.acquire() as conn:
+            async with conn.transaction():
+                await self._load_writable(conn, schema_id)
+                vset = await conn.fetchval(
+                    "SELECT vocab_set_id FROM kg_vocab_sets "
+                    "WHERE schema_id = $1 AND code = $2 AND deprecated_at IS NULL",
+                    schema_id, set_code,
+                )
+                if vset is None:
+                    raise ChildNotFoundError(f"vocab set '{set_code}'")
+                row, changed = await self._patch_child(
+                    conn, "kg_vocab_values",
+                    where="vocab_set_id = $1 AND code = $2", where_vals=[vset, code],
+                    updates=updates,
+                    returning="vocab_value_id, vocab_set_id, code, label, metadata",
+                )
+                if changed:
+                    await self._bump_and_rehash(conn, schema_id)
+        out = dict(row)
+        out["metadata"] = _as_dict(out["metadata"])
+        return out
+
+    # ── DELETE (tier-aware: user-tier HARD, project SOFT — EC-A5) ──────────
+    _DELETE_TARGET = {
+        "edge_type": ("kg_edge_types", "code"),
+        "fact_type": ("kg_fact_types", "code"),
+        "node_kind": ("kg_schema_node_kinds", "kind_code"),
+        "vocab_set": ("kg_vocab_sets", "code"),
+    }
+
+    async def delete_child(
+        self, schema_id: UUID, *, node_type: str, code: str, parent_set_code: str | None = None
+    ) -> None:
+        """Delete a schema child. On a USER-tier template the row is HARD-deleted;
+        on a PROJECT schema it is SOFT-deprecated (EC-A5 — a project can extract at
+        any time, so its types must stay queryable for graph data). A `vocab_set`
+        hard-delete cascades its values (FK ON DELETE CASCADE)."""
+        async with self._pool.acquire() as conn:
+            async with conn.transaction():
+                schema = await self._load_writable(conn, schema_id)
+                hard = schema.scope == "user"
+                if node_type == "vocab_value":
+                    if not parent_set_code:
+                        raise ChildNotFoundError("vocab value (no set)")
+                    vset = await conn.fetchval(
+                        "SELECT vocab_set_id FROM kg_vocab_sets "
+                        "WHERE schema_id = $1 AND code = $2 AND deprecated_at IS NULL",
+                        schema_id, parent_set_code,
+                    )
+                    if vset is None:
+                        raise ChildNotFoundError(f"vocab set '{parent_set_code}'")
+                    changed = await self._del_row(
+                        conn, "kg_vocab_values", "vocab_set_id = $1 AND code = $2",
+                        [vset, code], hard=hard,
+                    )
+                else:
+                    table, code_col = self._DELETE_TARGET[node_type]
+                    changed = await self._del_row(
+                        conn, table, f"schema_id = $1 AND {code_col} = $2",
+                        [schema_id, code], hard=hard,
+                    )
+                if not changed:
+                    raise ChildNotFoundError(code)
+                await self._bump_and_rehash(conn, schema_id)
 
     async def widen_edge_target_kinds(
         self, schema_id: UUID, *, code: str, add_kinds: list[str]
@@ -959,6 +1093,96 @@ class OntologyMutationsRepo:
         if schema.scope == "system":
             raise SchemaNotWritableError("system-tier schema is read-only")
         return schema
+
+    async def _revive_or_insert(
+        self,
+        conn: asyncpg.Connection,
+        *,
+        table: str,
+        key_cols: dict[str, Any],
+        attr_cols: dict[str, Any],
+        returning: str,
+    ) -> asyncpg.Record:
+        """Revive-on-recreate (EC-A1). The child tables keep a TOTAL
+        `UNIQUE(schema_id, code)`; re-creating a code whose row was soft-deprecated
+        would otherwise 409 forever. So: a LIVE row of this code → DuplicateChildError;
+        a DEPRECATED row → un-deprecate + overwrite its attrs (one row per code, the
+        stable graph-data reference key); no row → INSERT. `key_cols` identify the row
+        (schema_id+code, or vocab_set_id+code for values); `attr_cols` are the mutable
+        attributes."""
+        key_where = " AND ".join(f"{c} = ${i + 1}" for i, c in enumerate(key_cols))
+        key_vals = list(key_cols.values())
+        existing = await conn.fetchrow(
+            f"SELECT deprecated_at FROM {table} WHERE {key_where}", *key_vals
+        )
+        if existing is not None and existing["deprecated_at"] is None:
+            raise DuplicateChildError(str(key_vals[-1]))
+        if existing is not None:  # revive: un-deprecate + overwrite attributes
+            set_clause = ", ".join(
+                f"{c} = ${len(key_cols) + i + 1}" for i, c in enumerate(attr_cols)
+            )
+            return await conn.fetchrow(
+                f"UPDATE {table} SET {set_clause}, deprecated_at = NULL "
+                f"WHERE {key_where} RETURNING {returning}",
+                *key_vals, *attr_cols.values(),
+            )
+        cols = list(key_cols) + list(attr_cols)
+        vals = key_vals + list(attr_cols.values())
+        placeholders = ", ".join(f"${i + 1}" for i in range(len(cols)))
+        try:
+            return await conn.fetchrow(
+                f"INSERT INTO {table} ({', '.join(cols)}) VALUES ({placeholders}) "
+                f"RETURNING {returning}",
+                *vals,
+            )
+        except asyncpg.UniqueViolationError as exc:  # belt-and-suspenders (schema-lock serializes)
+            raise DuplicateChildError(str(key_vals[-1])) from exc
+
+    async def _patch_child(
+        self,
+        conn: asyncpg.Connection,
+        table: str,
+        *,
+        where: str,
+        where_vals: list[Any],
+        updates: dict[str, Any],
+        returning: str,
+    ) -> tuple[asyncpg.Record, bool]:
+        """PATCH a LIVE child's attributes (code IMMUTABLE, EC-A6). Returns
+        (row, changed). Empty `updates` → fetch current (no-op, changed=False).
+        A missing/deprecated target → ChildNotFoundError."""
+        live = f"{where} AND deprecated_at IS NULL"
+        if not updates:
+            row = await conn.fetchrow(
+                f"SELECT {returning} FROM {table} WHERE {live}", *where_vals
+            )
+            if row is None:
+                raise ChildNotFoundError(str(where_vals[-1]))
+            return row, False
+        set_clause = ", ".join(
+            f"{c} = ${len(where_vals) + i + 1}" for i, c in enumerate(updates)
+        )
+        row = await conn.fetchrow(
+            f"UPDATE {table} SET {set_clause} WHERE {live} RETURNING {returning}",
+            *where_vals, *updates.values(),
+        )
+        if row is None:
+            raise ChildNotFoundError(str(where_vals[-1]))
+        return row, True
+
+    async def _del_row(
+        self, conn: asyncpg.Connection, table: str, where: str, params: list[Any], *, hard: bool
+    ) -> bool:
+        """Delete one child: HARD `DELETE` on a user-tier template, SOFT deprecate on
+        a project schema (EC-A5). Returns True if a row was affected."""
+        if hard:
+            res = await conn.execute(f"DELETE FROM {table} WHERE {where}", *params)
+        else:
+            res = await conn.execute(
+                f"UPDATE {table} SET deprecated_at = now() WHERE {where} AND deprecated_at IS NULL",
+                *params,
+            )
+        return not res.endswith(" 0")
 
     async def _bump_and_rehash(self, conn: asyncpg.Connection, schema_id: UUID) -> None:
         await conn.execute(

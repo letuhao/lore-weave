@@ -131,17 +131,20 @@ all four original open decisions are resolved here as the recommended path.
 
 ### 🔴 must-honor invariants
 
-- **EC-A1 (schema-level) — child tables have a NON-partial `UNIQUE(schema_id, code)`**
+- **EC-A1 (schema-level) — child tables have a total `UNIQUE(schema_id, code)`**
   (`kg_edge_types`/`kg_fact_types`/`kg_schema_node_kinds`/`kg_vocab_sets` +
   `UNIQUE(vocab_set_id, code)` on `kg_vocab_values`; migrate.py ~1161–1203). A
   deprecated row keeps occupying the slot, so **deprecate-then-recreate the same
   code → 409 forever** (already a latent bug today; full-CRUD makes it central).
-  `kg_graph_schemas` was already fixed to a PARTIAL unique (`WHERE deprecated_at IS
-  NULL`, migrate.py ~1141) for exactly this. **DECISION:** ship **A0** — a partial-
-  unique migration on all 5 child tables, mirroring the schema-table fix. The
-  migration MUST use the serialized-DDL guard (`execGuarded` / `pg_advisory_xact_lock`)
-  or the shared-DB parallel test suite deadlocks (40P01). This makes deprecate-then-
-  recreate work and lets `add_*` INSERT cleanly after a soft-delete.
+  **DECISION (revised during build — REVIVE, not partial-unique):** keep the total
+  UNIQUE and handle re-create at the app layer — `add_*` un-deprecates + overwrites a
+  soft-deleted row of the same code (`_revive_or_insert`), instead of a partial-unique
+  index that would let duplicate-code rows accumulate. Rationale: (1) sync's
+  `_take_child`/`_take_vocab_*` fetch `WHERE schema_id AND code` WITHOUT a deprecated
+  filter — duplicate-code rows would make those un-deprecate BOTH and then violate the
+  partial index (a NEW sync failure); (2) graph data references a type by code, so one
+  unambiguous row per code is required; (3) sync already revives via
+  `UPDATE … deprecated_at = NULL` — this is the established house pattern. No migration.
 - **EC-A2 — create-blank upholds replace-on-adopt + `_lock_project`.** `POST
   /v1/kg/projects/{id}/schema` deprecates any active project schema under the same
   advisory lock adopt uses, then inserts, so the one-active invariant holds (else
@@ -197,12 +200,12 @@ all four original open decisions are resolved here as the recommended path.
 
 ## Sequencing (folded)
 
-**Build order — Track A first, starting with the migration:**
+**Build order — Track A first:**
 
-- **A0** — partial-unique migration on the 5 child tables (EC-A1), serialized-DDL guard.
-- **A1** — complete CRUD (PATCH attribute-only + DELETE) on every schema component,
-  reusing `_writable_schema_for_caller` + `_bump_and_rehash`; project-tier
-  deprecate-only, user-tier hard-delete (EC-A5/A6/A7).
+- **A1** — complete CRUD on every schema component: `_revive_or_insert` for add
+  (EC-A1, no migration), PATCH attribute-only, DELETE — reusing
+  `_writable_schema_for_caller` + `_bump_and_rehash`; project-tier deprecate-only,
+  user-tier hard-delete (EC-A5/A6/A7).
 - **A2** — create-blank (`POST /projects/{id}/schema`, EC-A2/X1) + clone
   (`POST /graph-schemas`, user-scoped, gated, auto-suffix — EC-A3).
 - **A3** — move authoring to `ProjectSchemaSection` (project surface), enhance
