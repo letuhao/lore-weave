@@ -316,6 +316,23 @@
 > commands / declarative hooks / subagent personas (**live scoped execution**), bundles + shares them; an admin **curates
 > the System catalog from the official registry**; and the agent federates + expands + delegates to them — all
 > tenancy-scoped, adversarially reviewed, live-proven.
+> **▶ TRACK CLOSE-OUT (2026-07-03) — 5 of 6 remaining defers CLEARED + the 6th SPEC'D**, each with tests + a commit. Plan
+> [`2026-07-03-registry-track-closeout.md`](../plans/2026-07-03-registry-track-closeout.md).
+> **M1 `D-REG-P5-INGEST-SCHEDULED-WORKER`** (+folds `D-REG-P3-SCHEDULED-RESCAN`) `15bcbfe82` — Go worker (off by default):
+> re-pull + denylist/retroactive-removal sync (absent-upstream approved → suspended + `revoked_upstream`, only on a
+> COMPLETE pull) + rug-pull rescan; 4 tests. **M2 `D-REG-P5-INGEST-ADMIN-FE`** `f408a7d09` — admin curation surface
+> (role-gated tab; jwtRole show/hide, API is the real gate); 7 tests. **M3 `D-REG-P4-SLASH-AUTOCOMPLETE`** `56afe9b71` —
+> the in-chat `/` picker now surfaces the user's registry `/name` commands above templates (picker owns the fetch → no
+> ChatInputBar churn); 8 tests. **M4 `D-REG-BOOK-TIER-FE`** backend `47609a7f6` + FE `ae8152ff8` — NOT "additive FE": the
+> 5 list endpoints returned only system+user, so added a grant-gated `book_id` filter to ALL (`resolveListBookScope`,
+> anti-oracle 404) + a shared ExtensionScope context wiring book-scope into all 5 capability hooks; tests + studio default-
+> context safe (30 green). **M6 `D-REG-P5-SUBAGENT-WRITE-DELEGATION`** `44ce1f501` — SPEC ONLY (user-gated): bubble the
+> nested Tier-A suspend up through run_subagent (subagent_frame) + two-level resume; read-only v1 stays the safe default.
+> VERIFY: agent-registry Go green · FE extensions+chat **71 green** · tsc clean. **REMAINING: M5** — tick
+> `01_GUI_CHECKLIST.md` to 100% (~270 element-level boxes incl. pager/states/cascade-dialog/**i18n vi/en + a11y** across 9
+> screens; per [[checklist-is-self-report-enforce-by-tests]] every tick needs a test asserting the EFFECT → a large focused
+> pass, not a rubber-stamp). **M7** — full-stack live e2e of the 5 cleared defers (rebuild images + real browser/LLM smokes).
+>
 > **▶ CORRECTION (2026-07-03) — the earlier "TRACK COMPLETE P0→P5" claim was WRONG: it was BACKEND-complete but 2 FE
 > screens shipped as backend-only.** A design↔shipped reconcile vs `design-drafts/screens/plugin-register/draft-ui.html`
 > (nav: Plugins/MCP/Skills/Commands/Hooks/**Subagents**/**Activity log**) found the FE missing Subagents + Activity —
