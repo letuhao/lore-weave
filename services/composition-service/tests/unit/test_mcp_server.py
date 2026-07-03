@@ -448,6 +448,62 @@ async def test_get_generation_job_missing_rejected():
             )
 
 
+# ── composition_get_outline_node — the cheap single-node read's IDOR guard
+# (T1 review MED-1: the security-load-bearing `node.project_id != pid` check must
+# be proven by test, same discipline as get_generation_job above). ──────────────
+
+
+async def test_get_outline_node_owner_ok():
+    """A node in the caller's Work+project is returned with its version (the
+    concurrency token the whole tool exists to hand back)."""
+    import app.mcp.server as srv
+
+    node_id = uuid.uuid4()
+    outline = AsyncMock()
+    outline.get_node = AsyncMock(return_value=_node(id=node_id, version=4))
+    async with _patched(grant_level=1, OutlineRepo=outline):
+        res = await srv.composition_get_outline_node(
+            _Ctx(), project_id=str(PROJECT), node_id=str(node_id),
+        )
+    assert res["id"] == str(node_id)
+    assert res["version"] == 4
+    outline.get_node.assert_awaited_once_with(TEST_USER, node_id)
+
+
+async def test_get_outline_node_foreign_project_rejected():
+    """A node_id the caller owns but under a DIFFERENT Work/project is not readable
+    through this project (no cross-Work leak) → H13 uniform error."""
+    import app.mcp.server as srv
+    from loreweave_mcp import NotAccessibleError
+
+    other_project = uuid.uuid4()
+    foreign = OutlineNode(
+        id=uuid.uuid4(), user_id=TEST_USER, project_id=other_project,
+        kind="scene", rank="a0", title="S", status="empty", version=1,
+    )
+    outline = AsyncMock()
+    outline.get_node = AsyncMock(return_value=foreign)
+    async with _patched(grant_level=1, OutlineRepo=outline):
+        with pytest.raises(NotAccessibleError):
+            await srv.composition_get_outline_node(
+                _Ctx(), project_id=str(PROJECT), node_id=str(foreign.id),
+            )
+
+
+async def test_get_outline_node_missing_rejected():
+    """An unknown node_id (repo returns None — user-scoped miss) → H13 uniform error."""
+    import app.mcp.server as srv
+    from loreweave_mcp import NotAccessibleError
+
+    outline = AsyncMock()
+    outline.get_node = AsyncMock(return_value=None)
+    async with _patched(grant_level=1, OutlineRepo=outline):
+        with pytest.raises(NotAccessibleError):
+            await srv.composition_get_outline_node(
+                _Ctx(), project_id=str(PROJECT), node_id=str(uuid.uuid4()),
+            )
+
+
 async def test_outline_node_create_returns_undo_hint():
     import app.mcp.server as srv
 

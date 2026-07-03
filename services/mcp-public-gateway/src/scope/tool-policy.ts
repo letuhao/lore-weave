@@ -96,6 +96,9 @@ export const TOOL_POLICY: Record<string, ToolPolicy> = {
   // composition
   composition_get_work: { tier: 'read', domains: ['composition'] },
   composition_list_outline: { tier: 'read', domains: ['composition'] },
+  // the cheap single-node read (Context Budget T1) — MUST be public-reachable or
+  // constrained agents fall back to list_outline (the 146K full-dump this replaces).
+  composition_get_outline_node: { tier: 'read', domains: ['composition'] },
   composition_get_prose: { tier: 'read', domains: ['composition'] },
   composition_list_canon_rules: { tier: 'read', domains: ['composition'] },
   composition_get_generation_job: { tier: 'read', domains: ['composition'] },

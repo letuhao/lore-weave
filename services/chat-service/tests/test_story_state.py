@@ -33,10 +33,23 @@ class TestDistill:
         assert all(line in src for line in value.splitlines())
 
     def test_single_over_cap_line_hard_truncates(self):
-        src = "x" * 100_000  # one enormous line, no newline
+        src = "x" * 100_000  # one enormous ASCII line, no newline
         value, est = distill_story_state(src)
         assert value  # not empty
-        assert est <= STORY_STATE_TOKEN_CAP * 2  # bounded (char fallback is generous)
+        assert est <= STORY_STATE_TOKEN_CAP  # script-aware shrink honors the cap
+
+    def test_single_over_cap_line_cjk_honors_cap(self):
+        # MED-1 (T4 review): a fixed chars/token ratio blows the cap 2-3x for CJK.
+        src = "万古神帝魔女逆天诸天神魔仙侠世界" * 300  # ~1 tok/char, one line, no newline
+        value, est = distill_story_state(src)
+        assert value
+        assert est <= STORY_STATE_TOKEN_CAP  # NOT 2.6x over
+
+    def test_single_over_cap_line_vietnamese_honors_cap(self):
+        src = "Ma Nữ Nghịch Thiên tái sinh với ma công nghịch thiên " * 400  # dense VN, one line
+        value, est = distill_story_state(src.replace("\n", " "))
+        assert value
+        assert est <= STORY_STATE_TOKEN_CAP
 
 
 class TestSourceHash:

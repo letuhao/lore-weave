@@ -2637,15 +2637,19 @@ async def _emit_chat_turn(
                 # assembly-time breakdown, then build the ONE payload that is
                 # both persisted (context_breakdown JSONB) and emitted as the
                 # contextBudget CUSTOM frame below. Old keys stay byte-identical.
+                # T0 review MED-1: meter the SAME bytes the model saw — through the
+                # tool_result_content funnel (ensure_ascii=False + prune_none), NOT the
+                # old raw json.dumps (ensure_ascii=True) which over-counts VI/CJK 2-3x +
+                # counts dropped nulls. Else the attribution meter contradicts the L3 cut.
                 _tool_results_tok = 0
                 for _tc in tool_calls_history:
                     if _tc.get("ok"):
                         _tool_results_tok += estimate_tokens(
-                            json.dumps(_tc.get("result"), default=str)
+                            tool_result_content(_tc.get("result"))
                         )
                     else:
                         _tool_results_tok += estimate_tokens(
-                            json.dumps({"error": _tc.get("error")}, default=str)
+                            tool_result_content({"error": _tc.get("error")})
                         )
                 if context_breakdown is not None:
                     context_breakdown.categories["frontend_tool_schemas"] = _fe_schema_tok

@@ -66,7 +66,20 @@ async def refresh_block(
     """Upsert the auto-projected cache. Returns the row's version after the write.
     On (session, owner, label) conflict the value/estimate/turn/hash are replaced
     and version bumped — UNLESS the source_hash is unchanged (a no-op refresh), in
-    which case only refreshed_turn advances (no version churn)."""
+    which case only refreshed_turn advances (no version churn).
+
+    LOW-2 (T4 review): this force-upsert bumps `version` outside the OCC discipline,
+    so it MUST NOT be used on a CAS-managed (agent-writable) label — it would
+    silently clobber the agent's value and desync the OCC token (the D9 anti-pattern).
+    Guarded to STORY_STATE_LABEL below; a future agent-writable block writes via
+    `cas_update_block` only."""
+    from app.services.story_state import STORY_STATE_LABEL
+
+    if label != STORY_STATE_LABEL:
+        raise ValueError(
+            f"refresh_block is for the auto-projected {STORY_STATE_LABEL!r} cache only; "
+            f"agent-writable label {label!r} must use cas_update_block (OCC)."
+        )
     row = await pool.fetchrow(
         """
         INSERT INTO chat_session_blocks
@@ -105,7 +118,12 @@ async def cas_update_block(
 ) -> int | None:
     """OCC compare-and-set for an agent-writable block (D9). Returns the new version,
     or None when the row is missing OR `expected_version` is stale — the caller must
-    re-read + re-apply (self-correcting), never a silent clobber."""
+    re-read + re-apply (self-correcting), never a silent clobber.
+
+    LOW-3 (T4 review): None is ambiguous (missing-row vs stale-version). The wiring
+    caller MUST disambiguate — on None, re-read via get_block: a row present ⇒ stale
+    (retry with its version); absent ⇒ create-if-absent (do NOT loop retrying CAS,
+    which would spin forever on a missing row)."""
     row = await pool.fetchrow(
         """
         UPDATE chat_session_blocks

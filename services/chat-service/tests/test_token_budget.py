@@ -111,6 +111,13 @@ class TestComputeTarget:
         assert compute_target(None) is None
         assert compute_target(0) is None
 
+    def test_nan_task_weight_fails_safe_roomy(self):
+        # T2 review COSMETIC-2: a Planner NaN must fail SAFE = surface_max (roomy),
+        # never be silently masked as "lean" (floor) → over-compaction.
+        from app.services.token_budget import compute_target
+
+        assert compute_target(200_000, task_weight=float("nan")) == 32_000  # surface_max
+
 
 class TestBudgetTarget:
     def test_budget_carries_target_and_pct_of_target(self):

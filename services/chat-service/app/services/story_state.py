@@ -59,8 +59,16 @@ def distill_story_state(
         kept.append(line)
         running += line_tok
     value = "\n".join(kept).strip()
-    if not value:  # a single over-cap line → hard char-truncate as a last resort
-        value = text[: token_cap * 4].strip()
+    if not value:
+        # A single over-cap line with no newline → shrink script-awarely. A fixed
+        # chars/token ratio (e.g. *4) is 2-3x WRONG for CJK/VN (estimate_tokens
+        # exists precisely because of that), so iterate against the real estimator
+        # until under the cap — never assume 4 chars/token (MED-1, T4 review).
+        value = text
+        while value and estimate_tokens(value) > token_cap:
+            ratio = token_cap / estimate_tokens(value)
+            value = value[: max(1, int(len(value) * ratio))]
+        value = value.strip()
     return value, estimate_tokens(value)
 
 

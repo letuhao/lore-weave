@@ -88,8 +88,14 @@ async def test_refresh_changed_hash_bumps_version_and_value(pool_and_session):
 
 async def test_cas_stale_version_rejected(pool_and_session):
     pool, sid = pool_and_session
-    await refresh_block(pool, session_id=sid, owner_user_id=OWNER, label="focus",
-                        value="f1", token_estimate=1, refreshed_turn=1, source_hash="h1")
+    # seed a CAS-managed (agent-writable) 'focus' row directly — refresh_block is
+    # guarded to the story_state label only (LOW-2), so it can't seed 'focus'.
+    async with pool.acquire() as c:
+        await c.execute(
+            "INSERT INTO chat_session_blocks (session_id, owner_user_id, label, value, "
+            "token_estimate, refreshed_turn, source_hash) VALUES ($1,$2,'focus','f1',1,1,'h1')",
+            sid, OWNER,
+        )
     # correct version → applies
     v = await cas_update_block(pool, session_id=sid, owner_user_id=OWNER, label="focus",
                                value="f2", token_estimate=2, refreshed_turn=2,
@@ -102,6 +108,15 @@ async def test_cas_stale_version_rejected(pool_and_session):
     assert v2 is None
     block = await get_block(pool, session_id=sid, owner_user_id=OWNER, label="focus")
     assert block.value == "f2"  # unchanged by the rejected write
+
+
+async def test_refresh_block_rejects_non_story_state_label(pool_and_session):
+    """LOW-2 (T4 review): refresh_block is the story_state cache path only — using it
+    on a CAS-managed (agent-writable) label would clobber the OCC token silently."""
+    pool, sid = pool_and_session
+    with pytest.raises(ValueError, match="cas_update_block"):
+        await refresh_block(pool, session_id=sid, owner_user_id=OWNER, label="focus",
+                            value="x", token_estimate=1, refreshed_turn=1, source_hash="h")
 
 
 async def test_tenancy_other_owner_cannot_read(pool_and_session):

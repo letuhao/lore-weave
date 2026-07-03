@@ -42,9 +42,16 @@ SCAN_FILES = (
     "services/chat-service/app/services/subagent_runtime.py",
 )
 
-# A tool-result content site: the `content` key of a role:tool message fed a raw
-# json.dumps. `tool_result_content(...)` is the compliant funnel and never matches.
-VIOLATION_RE = re.compile(r"""["']content["']\s*:\s*json\.dumps\(""")
+# A tool-result content site fed a raw json.dumps. Two shapes (T0 review LOW-2 —
+# the split-variable + multiline forms bypassed the old single-line regex):
+#   (a) inline dict:   "content": json.dumps(...)      (may span lines → DOTALL)
+#   (b) split var:     content = json.dumps(...)  then "content": content
+# `tool_result_content(...)` is the compliant funnel and never matches either.
+# `\bcontent` (not `content_parts`) keeps the assignment form off the persist seam.
+VIOLATION_RES = (
+    re.compile(r"""["']content["']\s*:\s*json\.dumps\(""", re.DOTALL),
+    re.compile(r"""\bcontent\s*=\s*json\.dumps\("""),
+)
 
 
 def _staged_files() -> set[str]:
@@ -67,9 +74,12 @@ def main() -> int:
         if not os.path.exists(path):
             continue
         with open(path, encoding="utf-8") as fh:
-            for lineno, line in enumerate(fh, 1):
-                if VIOLATION_RE.search(line):
-                    violations.append(f"{rel}:{lineno}: {line.strip()}")
+            text = fh.read()
+        for rx in VIOLATION_RES:
+            for m in rx.finditer(text):
+                lineno = text.count("\n", 0, m.start()) + 1
+                snippet = text[m.start():m.start() + 60].splitlines()[0]
+                violations.append(f"{rel}:{lineno}: {snippet.strip()}")
 
     if violations:
         print("Context Budget Law L3 violation — tool-result content must use")

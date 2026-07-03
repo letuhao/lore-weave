@@ -271,9 +271,12 @@ async def composition_get_work(
 # prose (the 146K-case bloat) is dropped; fetch one node's full body via
 # composition_get_outline_node. Keep the structural fields the model needs to
 # navigate the tree (kind/parent/order/status/version).
+# NOTE (T1 review LOW-2): `child_count` is NOT selected by list_tree (only
+# list_children computes it), so it's intentionally omitted here — listing a dead
+# ref field would falsely imply the summary carries a leaf/parent indicator.
 _OUTLINE_REF_FIELDS = (
     "id", "kind", "parent_id", "title", "status", "version",
-    "story_order", "chapter_id", "child_count",
+    "story_order", "chapter_id",
 )
 
 
@@ -300,7 +303,12 @@ async def composition_list_outline(
         Literal["summary", "full"],
         "summary = refs only (id/kind/title/status/version, no prose); full = every field.",
     ] = "full",
-    limit: Annotated[int | None, "Max nodes to return (bounds a large tree dump)."] = None,
+    limit: Annotated[
+        int | None,
+        "Coarse cap on nodes returned (a flat prefix of the tree — may drop later "
+        "arcs' scenes; `truncated` reports how many). To read ONE node use "
+        "composition_get_outline_node, not pagination.",
+    ] = None,
     include_archived: Annotated[bool, "Include soft-archived nodes."] = False,
 ) -> dict:
     tc = _ctx(ctx)

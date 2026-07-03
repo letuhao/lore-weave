@@ -106,7 +106,10 @@ def compute_target(context_length: int | None, *, task_weight: float = 1.0) -> i
     floor = min(_TARGET_FLOOR_CAP, int(_TARGET_FLOOR_FRAC * context_length))
     surface_max = min(_TARGET_MAX_CAP, int(_TARGET_MAX_FRAC * context_length))
     surface_max = max(surface_max, floor)  # tiny windows: keep the band non-inverted
-    tw = min(1.0, max(0.0, task_weight))
+    # NaN-safe (T2 review COSMETIC-2): a Planner bug producing a NaN task_weight must
+    # fail SAFE = roomy (surface_max), never be silently masked as "lean" (floor) which
+    # would over-compact. `nan != nan` is the portable NaN test.
+    tw = 1.0 if task_weight != task_weight else min(1.0, max(0.0, task_weight))
     return int(floor + tw * (surface_max - floor))
 
 
