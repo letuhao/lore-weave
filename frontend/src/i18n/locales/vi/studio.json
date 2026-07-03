@@ -15,6 +15,7 @@
     "notifications": { "title": "Thông báo", "desc": "Job hoàn tất & cảnh báo" },
     "settings": { "title": "Cài đặt", "desc": "Tài khoản, nhà cung cấp & dịch thuật" },
     "trash": { "title": "Thùng rác", "desc": "Khôi phục sách, chương đã xoá & hơn nữa" },
+    "steering": { "title": "Định hướng", "desc": "Quy tắc của tác giả hướng dẫn AI cho sách này" },
     "json-editor": { "title": "JSON", "desc": "Xem JSON thô của một resource" }
   },
   "sceneRail": {
@@ -57,6 +58,47 @@
     "empty": "Chọn một chương trong navigator để soạn ở đây.",
     "unsaved": "● chưa lưu",
     "save": "Lưu"
+  },
+  "steering": {
+    "heading": "Quy tắc định hướng",
+    "subheading": "Hướng dẫn thường trực của tác giả được chèn vào lượt AI cho sách này.",
+    "loading": "Đang tải quy tắc định hướng…",
+    "loadError": "Không tải được quy tắc định hướng.",
+    "noBook": "Mở panel này từ một cuốn sách để soạn quy tắc định hướng.",
+    "count": "{{n}} / {{max}} quy tắc",
+    "add": "Thêm quy tắc",
+    "capReached": "Đã đạt giới hạn quy tắc ({{max}}). Xoá bớt để thêm quy tắc mới.",
+    "empty": "Chưa có quy tắc định hướng. Thêm một quy tắc để hướng dẫn AI cho sách này.",
+    "enable": "Bật",
+    "disable": "Tắt",
+    "confirmDelete": "Xoá quy tắc định hướng \"{{name}}\"?",
+    "autoNote": "Lưu ý: 'auto' hiện hoạt động như 'manual' — chỉ được chèn khi bạn tham chiếu bằng #name. Tự động chọn sẽ có sau.",
+    "charCount": "{{n}} / {{max}}",
+    "form": {
+      "name": "Tên",
+      "namePlaceholder": "vd. Giọng văn & phong cách",
+      "body": "Quy tắc",
+      "bodyPlaceholder": "Viết hướng dẫn mà AI cần tuân theo…",
+      "mode": "Khi nào chèn",
+      "matchPattern": "Mẫu khớp cảnh",
+      "matchPatternPlaceholder": "vd. chương 3, trận đánh, lãng mạn…",
+      "enabled": "Đang bật",
+      "save": "Lưu",
+      "cancel": "Huỷ",
+      "edit": "Sửa quy tắc",
+      "delete": "Xoá quy tắc"
+    },
+    "mode": {
+      "always": "Luôn luôn",
+      "scene_match": "Khớp cảnh",
+      "manual": "Thủ công (#name)",
+      "auto": "Tự động"
+    },
+    "error": {
+      "duplicate": "Đã có quy tắc trùng tên trong sách này.",
+      "cap": "Vượt quá giới hạn (nội dung ≤ 8000 ký tự, tên ≤ 200, ≤ 20 quy tắc) hoặc chế độ không hợp lệ.",
+      "other": "Không lưu được quy tắc. Vui lòng thử lại."
+    }
   },
   "palette": {
     "openPanel": "Studio: Mở {{name}}",

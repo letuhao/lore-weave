@@ -19,6 +19,7 @@ import { JsonEditorPanel } from './JsonEditorPanel';
 import { ExtensionsPanel } from './ExtensionsPanel';
 import { ProposalsPanel } from './ProposalsPanel';
 import { SkillEditorPanel } from './SkillEditorPanel';
+import { SteeringPanel } from './SteeringPanel';
 
 export interface StudioPanelDef {
   id: string;
@@ -39,6 +40,8 @@ export const STUDIO_PANELS: StudioPanelDef[] = [
   { id: 'notifications', component: NotificationsPanel, titleKey: 'panels.notifications.title', descKey: 'panels.notifications.desc' },
   { id: 'settings', component: SettingsPanel, titleKey: 'panels.settings.title', descKey: 'panels.settings.desc' },
   { id: 'trash', component: TrashPanel, titleKey: 'panels.trash.title', descKey: 'panels.trash.desc' },
+  // RAID C1 — per-book author steering rules (story-bible-as-steering). book-scoped, palette-openable.
+  { id: 'steering', component: SteeringPanel, titleKey: 'panels.steering.title', descKey: 'panels.steering.desc' },
   // Agent Extensibility Registry (§13b) — extensions hub + proposals inbox are
   // palette-openable + in the agent enum; skill-editor is a params-retargeting
   // singleton (json-editor precedent), hidden from palette + outside the enum.

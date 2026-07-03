@@ -15,6 +15,7 @@
     "notifications": { "title": "Notifications", "desc": "Job completions & alerts" },
     "settings": { "title": "Settings", "desc": "Account, providers & translation" },
     "trash": { "title": "Trash", "desc": "Restore deleted books, chapters & more" },
+    "steering": { "title": "Steering", "desc": "Author rules that guide AI on this book" },
     "json-editor": { "title": "JSON", "desc": "Raw JSON view of a resource" },
     "extensions": { "title": "Extensions", "desc": "Manage plugins, skills, MCP servers, commands & hooks" },
     "proposals": { "title": "Proposals", "desc": "Review skills the agent proposed" },
@@ -60,6 +61,47 @@
     "empty": "Select a chapter in the manuscript navigator to edit it here.",
     "unsaved": "● unsaved",
     "save": "Save"
+  },
+  "steering": {
+    "heading": "Steering rules",
+    "subheading": "Persistent author guidance injected into AI turns for this book.",
+    "loading": "Loading steering rules…",
+    "loadError": "Couldn't load steering rules.",
+    "noBook": "Open this panel from a book to author its steering rules.",
+    "count": "{{n}} / {{max}} rules",
+    "add": "Add rule",
+    "capReached": "Rule limit reached ({{max}}). Delete a rule to add another.",
+    "empty": "No steering rules yet. Add one to guide the AI on this book.",
+    "enable": "Enable",
+    "disable": "Disable",
+    "confirmDelete": "Delete the steering rule \"{{name}}\"?",
+    "autoNote": "Note: 'auto' currently behaves like 'manual' — it's included only when you reference it by #name. Automatic selection is coming later.",
+    "charCount": "{{n}} / {{max}}",
+    "form": {
+      "name": "Name",
+      "namePlaceholder": "e.g. Tone & voice",
+      "body": "Rule",
+      "bodyPlaceholder": "Write the guidance the AI should follow…",
+      "mode": "When to include",
+      "matchPattern": "Scene match pattern",
+      "matchPatternPlaceholder": "e.g. chapter 3, battle, romance…",
+      "enabled": "Enabled",
+      "save": "Save",
+      "cancel": "Cancel",
+      "edit": "Edit rule",
+      "delete": "Delete rule"
+    },
+    "mode": {
+      "always": "Always",
+      "scene_match": "Scene match",
+      "manual": "Manual (#name)",
+      "auto": "Auto"
+    },
+    "error": {
+      "duplicate": "A rule with this name already exists in this book.",
+      "cap": "That exceeds a limit (body ≤ 8000 chars, name ≤ 200, ≤ 20 rules) or an invalid mode.",
+      "other": "Couldn't save the rule. Please try again."
+    }
   },
   "palette": {
     "openPanel": "Studio: Open {{name}}",

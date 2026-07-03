@@ -15,6 +15,7 @@
     "notifications": { "title": "通知", "desc": "ジョブ完了とアラート" },
     "settings": { "title": "設定", "desc": "アカウント・プロバイダー・翻訳" },
     "trash": { "title": "ゴミ箱", "desc": "削除した本・章などを復元" },
+    "steering": { "title": "ステアリング", "desc": "この本で AI を導く著者ルール" },
     "json-editor": { "title": "JSON", "desc": "リソースの生 JSON ビュー" }
   },
   "sceneRail": {
@@ -57,6 +58,47 @@
     "empty": "ナビゲーターで章を選ぶとここで編集できます。",
     "unsaved": "● 未保存",
     "save": "保存"
+  },
+  "steering": {
+    "heading": "ステアリングルール",
+    "subheading": "この本の AI ターンに挿入される、著者の恒常的なガイダンス。",
+    "loading": "ステアリングルールを読み込み中…",
+    "loadError": "ステアリングルールを読み込めませんでした。",
+    "noBook": "ステアリングルールを編集するには、本からこのパネルを開いてください。",
+    "count": "{{n}} / {{max}} 件",
+    "add": "ルールを追加",
+    "capReached": "ルール数の上限（{{max}}）に達しました。追加するにはルールを削除してください。",
+    "empty": "ステアリングルールがまだありません。追加してこの本の AI を導きましょう。",
+    "enable": "有効化",
+    "disable": "無効化",
+    "confirmDelete": "ステアリングルール「{{name}}」を削除しますか？",
+    "autoNote": "注: 'auto' は現在 'manual' と同じ動作です — #name で参照したときのみ挿入されます。自動選択は後日対応予定です。",
+    "charCount": "{{n}} / {{max}}",
+    "form": {
+      "name": "名前",
+      "namePlaceholder": "例: トーンと文体",
+      "body": "ルール",
+      "bodyPlaceholder": "AI が従うべきガイダンスを記述…",
+      "mode": "挿入するタイミング",
+      "matchPattern": "シーン一致パターン",
+      "matchPatternPlaceholder": "例: 第3章、戦闘、ロマンス…",
+      "enabled": "有効",
+      "save": "保存",
+      "cancel": "キャンセル",
+      "edit": "ルールを編集",
+      "delete": "ルールを削除"
+    },
+    "mode": {
+      "always": "常に",
+      "scene_match": "シーン一致",
+      "manual": "手動 (#name)",
+      "auto": "自動"
+    },
+    "error": {
+      "duplicate": "この本には同じ名前のルールが既に存在します。",
+      "cap": "上限を超えています（本文 ≤ 8000 文字、名前 ≤ 200、ルール ≤ 20 件）またはモードが不正です。",
+      "other": "ルールを保存できませんでした。もう一度お試しください。"
+    }
   },
   "palette": {
     "openPanel": "Studio: {{name}} を開く",

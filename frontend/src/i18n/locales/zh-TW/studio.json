@@ -15,6 +15,7 @@
     "notifications": { "title": "通知", "desc": "工作完成與提醒" },
     "settings": { "title": "設定", "desc": "帳戶、供應商與翻譯" },
     "trash": { "title": "垃圾桶", "desc": "還原已刪除的書籍、章節等" },
+    "steering": { "title": "引導規則", "desc": "引導 AI 處理本書的作者規則" },
     "json-editor": { "title": "JSON", "desc": "資源的原始 JSON 檢視" }
   },
   "sceneRail": {
@@ -57,6 +58,47 @@
     "empty": "在導覽列選擇章節即可在此編輯。",
     "unsaved": "● 未儲存",
     "save": "儲存"
+  },
+  "steering": {
+    "heading": "引導規則",
+    "subheading": "作者的持續性指引，會插入本書的 AI 對話回合中。",
+    "loading": "正在載入引導規則…",
+    "loadError": "無法載入引導規則。",
+    "noBook": "請從書籍開啟此面板以編輯其引導規則。",
+    "count": "{{n}} / {{max}} 條規則",
+    "add": "新增規則",
+    "capReached": "已達規則上限（{{max}}）。刪除一條規則才能再新增。",
+    "empty": "尚無引導規則。新增一條以引導本書的 AI。",
+    "enable": "啟用",
+    "disable": "停用",
+    "confirmDelete": "要刪除引導規則「{{name}}」嗎？",
+    "autoNote": "注意：'auto' 目前的行為與 'manual' 相同——僅在你以 #name 引用時才會納入。自動選取將於日後推出。",
+    "charCount": "{{n}} / {{max}}",
+    "form": {
+      "name": "名稱",
+      "namePlaceholder": "例如：語氣與風格",
+      "body": "規則",
+      "bodyPlaceholder": "撰寫 AI 應遵循的指引…",
+      "mode": "何時納入",
+      "matchPattern": "場景比對樣式",
+      "matchPatternPlaceholder": "例如：第 3 章、戰鬥、浪漫…",
+      "enabled": "已啟用",
+      "save": "儲存",
+      "cancel": "取消",
+      "edit": "編輯規則",
+      "delete": "刪除規則"
+    },
+    "mode": {
+      "always": "總是",
+      "scene_match": "場景比對",
+      "manual": "手動 (#name)",
+      "auto": "自動"
+    },
+    "error": {
+      "duplicate": "本書已存在同名的規則。",
+      "cap": "超過限制（內容 ≤ 8000 字元、名稱 ≤ 200、規則 ≤ 20 條）或模式無效。",
+      "other": "無法儲存規則，請再試一次。"
+    }
   },
   "palette": {
     "openPanel": "Studio：開啟 {{name}}",
