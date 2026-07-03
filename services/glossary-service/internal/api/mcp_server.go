@@ -154,10 +154,15 @@ func (s *Server) mcpHandler() http.Handler {
 			`"rationale":"the book has none"},` +
 			`{"type":"delete_kind","params":{"kind_code":"unused_kind"},"rationale":"user asked to remove it"}]} ` +
 			"— note each op's payload goes INSIDE its `params` object (create_kinds params MUST contain a non-empty `kinds` array).",
-		InputSchema: closedSetSchemaFor[proposeBatchToolIn](map[string][]any{
-			"ops[].type": {"adopt_genres", "create_kinds", "add_attributes", "edit_attribute",
-				"delete_genre", "delete_kind", "delete_attribute", "merge_candidate", "dismiss_candidate"},
-		}),
+		InputSchema: relaxAdditionalProps(
+			closedSetSchemaFor[proposeBatchToolIn](map[string][]any{
+				"ops[].type": {"adopt_genres", "create_kinds", "add_attributes", "edit_attribute",
+					"delete_genre", "delete_kind", "delete_attribute", "merge_candidate", "dismiss_candidate"},
+			}),
+			// weak models add extras at the ROOT (a stray `type`) and on op items;
+			// the op `type` enum stays strict, unknowns are admitted (W0 soak).
+			"", "ops[]",
+		),
 	}, s.toolProposeBatch)
 
 	mcp.AddTool(srv, &mcp.Tool{

@@ -58,9 +58,12 @@ func (s *Server) RegisterBookTools(srv *mcp.Server) {
 			"row's `base_version` EXACTLY as returned by glossary_book_ontology_read (or by a prior " +
 			"create/patch result) so a concurrent edit is detected (409 on drift) — copy it verbatim, " +
 			"never invent one. Only the fields you supply change.",
-		InputSchema: closedSetSchemaFor[bookPatchToolIn](map[string][]any{
-			"level": enumLevels, "field_type": enumFieldTypes,
-		}),
+		InputSchema: relaxAdditionalProps(
+			closedSetSchemaFor[bookPatchToolIn](map[string][]any{
+				"level": enumLevels, "field_type": enumFieldTypes,
+			}),
+			"changes[]", // the tolerance-shim diff absorbs weak-model extras (old_value, …)
+		),
 	}, s.toolBookPatch)
 
 	mcp.AddTool(srv, &mcp.Tool{

@@ -2,6 +2,73 @@ package api
 
 import "testing"
 
+// W0 soak (live-caught): the tolerance-shim `changes` items must ADMIT the extra
+// fields weak models tack on (old_value, field_label, …). The struct infers
+// additionalProperties:false, so without relaxItemsAdditionalProps the whole
+// patch call is schema-REJECTED before normalizeBookPatchDiff can run — gemma
+// sent changes:[{target,new_value,old_value,field_label}] and every patch died.
+func TestBookPatchSchema_ChangesItemsAdmitExtraFields(t *testing.T) {
+	schema := relaxAdditionalProps(
+		closedSetSchemaFor[bookPatchToolIn](map[string][]any{
+			"level": enumLevels, "field_type": enumFieldTypes,
+		}),
+		"changes[]",
+	)
+	resolved, err := schema.Resolve(nil)
+	if err != nil {
+		t.Fatalf("resolve: %v", err)
+	}
+	args := map[string]any{
+		"book_id": "019eeb09-a4aa-7acf-9281-e812d7975a6c",
+		"level":   "kind",
+		"code":    "faction",
+		"changes": []any{map[string]any{
+			"target": "name", "new_value": "Group",
+			"old_value": "Faction", "field_label": "Name", // the extras that used to fail
+		}},
+	}
+	if err := resolved.Validate(args); err != nil {
+		t.Fatalf("changes with extra fields must validate (tolerance shim), got: %v", err)
+	}
+}
+
+// propose_batch (100%-error in the W0 baseline): weak models add a stray `type`
+// at the ROOT and extras on op items. The op-type ENUM must stay strict while
+// unknown extras are admitted.
+func TestProposeBatchSchema_AdmitsRootAndOpExtras_KeepsTypeEnum(t *testing.T) {
+	schema := relaxAdditionalProps(
+		closedSetSchemaFor[proposeBatchToolIn](map[string][]any{
+			"ops[].type": {"adopt_genres", "create_kinds", "add_attributes", "edit_attribute",
+				"delete_genre", "delete_kind", "delete_attribute", "merge_candidate", "dismiss_candidate"},
+		}),
+		"", "ops[]",
+	)
+	resolved, err := schema.Resolve(nil)
+	if err != nil {
+		t.Fatalf("resolve: %v", err)
+	}
+	// A root `type` + an op-item extra `note` must now validate.
+	ok := map[string]any{
+		"book_id": "019eeb09-a4aa-7acf-9281-e812d7975a6c",
+		"type":    "batch", // stray root extra weak models emit
+		"ops": []any{map[string]any{
+			"type": "create_kinds", "params": map[string]any{"kinds": []any{}},
+			"note": "an extra field", // op-item extra
+		}},
+	}
+	if err := resolved.Validate(ok); err != nil {
+		t.Fatalf("root+op extras must validate, got: %v", err)
+	}
+	// But a BAD op type must still be rejected (the enum stays strict).
+	bad := map[string]any{
+		"book_id": "019eeb09-a4aa-7acf-9281-e812d7975a6c",
+		"ops":     []any{map[string]any{"type": "not_a_real_op", "params": map[string]any{}}},
+	}
+	if err := resolved.Validate(bad); err == nil {
+		t.Fatalf("an off-enum op type must still be rejected")
+	}
+}
+
 // F3a — glossary_book_patch tolerates the entity-edit diff shape weaker models
 // emit ({changes:[{target/field_label, new_value}]}) instead of flat fields.
 // normalizeBookPatchDiff folds it onto the flat fields (nil-only) and drops the

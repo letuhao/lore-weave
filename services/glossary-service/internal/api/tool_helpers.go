@@ -114,6 +114,31 @@ func closedSetSchemaFor[T any](enums map[string][]any) *jsonschema.Schema {
 	return s
 }
 
+// relaxAdditionalProps opens additionalProperties on the given schema NODES so a
+// weak model's harmless EXTRA fields don't hard-fail schema validation before
+// the handler runs. The go-sdk infers additionalProperties:false for every
+// struct; handlers read only known fields, so an unknown extra is inert — but
+// strict validation rejected the whole call first. Enums on named args stay
+// strict (only UNKNOWN properties are admitted). Paths use schemaPropAt's dotted
+// / "[]" form; "" is the ROOT object.
+//
+// Live-caught in the W0 soak (both the same additionalProperties:false class):
+//   - book_patch `changes[]`: gemma sent {target,new_value,old_value,field_label}
+//     → `old_value` (a natural diff field) killed the whole patch, the tolerance
+//     shim never ran.
+//   - propose_batch root + `ops[]`: gemma put `type` at the batch ROOT and extras
+//     on op items → the 100%-error tool couldn't ever validate.
+func relaxAdditionalProps(s *jsonschema.Schema, paths ...string) *jsonschema.Schema {
+	for _, p := range paths {
+		node := s
+		if p != "" {
+			node = schemaPropAt(s, p)
+		}
+		node.AdditionalProperties = &jsonschema.Schema{} // empty schema ⇒ allow any extra
+	}
+	return s
+}
+
 // schemaPropAt walks a dotted path (arrays via "[]") into a property schema.
 func schemaPropAt(s *jsonschema.Schema, dotted string) *jsonschema.Schema {
 	node := s
