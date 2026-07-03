@@ -12,16 +12,21 @@ import type {
   AdoptPayload,
   AdoptPreviewPayload,
   AdoptPreview,
+  BlankSchemaCreate,
+  CloneSchemaRequest,
   EdgeType,
   EdgeTypeCreate,
+  EdgeTypePatch,
   FactType,
   FactTypeCreate,
+  FactTypePatch,
   GraphReadParams,
   GraphSchemaSummary,
   GraphSchemaTree,
   GraphSchemaPatch,
   GraphSlice,
   GraphView,
+  NodeKindPatch,
   ResolvedSchema,
   Scope,
   SchemaNodeKind,
@@ -35,8 +40,11 @@ import type {
   TriageResolveResult,
   ViewCreate,
   VocabSet,
+  VocabSetCreate,
+  VocabSetPatch,
   VocabValue,
   VocabValueCreate,
+  VocabValuePatch,
 } from '../types/ontology';
 
 // All KG ontology routes are gateway-prefix-proxied under /v1/kg.
@@ -89,8 +97,15 @@ export const ontologyApi = {
     return apiJson(`${BASE}/graph-schemas${qs(params as QueryParams)}`, { token });
   },
 
-  getSchema(schemaId: string, token: string): Promise<GraphSchemaTree> {
-    return apiJson<GraphSchemaTree>(`${BASE}/graph-schemas/${schemaId}`, { token }).then(nestVocabValues);
+  // `projectId` is REQUIRED to read a PROJECT-scoped schema: the BE visibility gate
+  // (_visible) only exposes a project row to a caller passing its project_id (the
+  // router grant-checks it). Omit it and a project schema 404s — pass it whenever
+  // the schema might be project-scoped (the active project schema).
+  getSchema(schemaId: string, token: string, projectId?: string): Promise<GraphSchemaTree> {
+    return apiJson<GraphSchemaTree>(
+      `${BASE}/graph-schemas/${schemaId}${qs({ project_id: projectId })}`,
+      { token },
+    ).then(nestVocabValues);
   },
 
   patchSchema(
@@ -112,10 +127,33 @@ export const ontologyApi = {
     });
   },
 
+  // Clone (A2) — deep-copy any readable schema into a NEW user-scoped editable
+  // template the caller owns (distinct from adopt's project-scoped replace).
+  cloneSchema(body: CloneSchemaRequest, token: string): Promise<GraphSchemaSummary> {
+    return apiJson(`${BASE}/graph-schemas`, {
+      method: 'POST',
+      body: JSON.stringify(body),
+      token,
+    });
+  },
+
   // ── resolved (effective) schema ──────────────────────────────────────────────
 
   getResolvedSchema(projectId: string, token: string): Promise<ResolvedSchema> {
     return apiJson<ResolvedSchema>(`${BASE}/projects/${projectId}/schema`, { token }).then(nestVocabValues);
+  },
+
+  // Create-from-scratch (A2) — a blank project schema (no template first).
+  createBlankSchema(
+    projectId: string,
+    body: BlankSchemaCreate,
+    token: string,
+  ): Promise<GraphSchemaSummary> {
+    return apiJson(`${BASE}/projects/${projectId}/schema`, {
+      method: 'POST',
+      body: JSON.stringify(body),
+      token,
+    });
   },
 
   // ── adopt (copy-down) ────────────────────────────────────────────────────────
@@ -170,7 +208,9 @@ export const ontologyApi = {
     });
   },
 
-  // ── schema children (additive + deprecate-only) ──────────────────────────────
+  // ── schema children — full CRUD (A1). PATCH is attribute-only; `code` is
+  //    IMMUTABLE. DELETE is tier-aware server-side (user-tier HARD, project SOFT).
+  //    An `add` of a soft-deprecated code REVIVES it (server-side revive-on-recreate).
 
   addEdgeType(
     schemaId: string,
@@ -184,7 +224,19 @@ export const ontologyApi = {
     });
   },
 
-  deprecateEdgeType(
+  patchEdgeType(
+    schemaId: string,
+    code: string,
+    patch: EdgeTypePatch,
+    token: string,
+  ): Promise<EdgeType> {
+    return apiJson(
+      `${BASE}/graph-schemas/${schemaId}/edge-types/${encodeURIComponent(code)}`,
+      { method: 'PATCH', body: JSON.stringify(patch), token },
+    );
+  },
+
+  deleteEdgeType(
     schemaId: string,
     code: string,
     token: string,
@@ -207,15 +259,26 @@ export const ontologyApi = {
     });
   },
 
-  addVocabValue(
+  patchFactType(
     schemaId: string,
-    setCode: string,
-    body: VocabValueCreate,
+    code: string,
+    patch: FactTypePatch,
     token: string,
-  ): Promise<VocabValue> {
+  ): Promise<FactType> {
     return apiJson(
-      `${BASE}/graph-schemas/${schemaId}/vocab-sets/${encodeURIComponent(setCode)}/values`,
-      { method: 'POST', body: JSON.stringify(body), token },
+      `${BASE}/graph-schemas/${schemaId}/fact-types/${encodeURIComponent(code)}`,
+      { method: 'PATCH', body: JSON.stringify(patch), token },
+    );
+  },
+
+  deleteFactType(
+    schemaId: string,
+    code: string,
+    token: string,
+  ): Promise<void> {
+    return apiJson(
+      `${BASE}/graph-schemas/${schemaId}/fact-types/${encodeURIComponent(code)}`,
+      { method: 'DELETE', token },
     );
   },
 
@@ -229,6 +292,103 @@ export const ontologyApi = {
       body: JSON.stringify(body),
       token,
     });
+  },
+
+  patchNodeKind(
+    schemaId: string,
+    code: string,
+    patch: NodeKindPatch,
+    token: string,
+  ): Promise<SchemaNodeKind> {
+    return apiJson(
+      `${BASE}/graph-schemas/${schemaId}/node-kinds/${encodeURIComponent(code)}`,
+      { method: 'PATCH', body: JSON.stringify(patch), token },
+    );
+  },
+
+  deleteNodeKind(
+    schemaId: string,
+    code: string,
+    token: string,
+  ): Promise<void> {
+    return apiJson(
+      `${BASE}/graph-schemas/${schemaId}/node-kinds/${encodeURIComponent(code)}`,
+      { method: 'DELETE', token },
+    );
+  },
+
+  // ── vocab sets (create/patch/delete) + values (add/patch/delete) ───────────
+
+  addVocabSet(
+    schemaId: string,
+    body: VocabSetCreate,
+    token: string,
+  ): Promise<VocabSet> {
+    return apiJson(`${BASE}/graph-schemas/${schemaId}/vocab-sets`, {
+      method: 'POST',
+      body: JSON.stringify(body),
+      token,
+    });
+  },
+
+  patchVocabSet(
+    schemaId: string,
+    setCode: string,
+    patch: VocabSetPatch,
+    token: string,
+  ): Promise<VocabSet> {
+    return apiJson(
+      `${BASE}/graph-schemas/${schemaId}/vocab-sets/${encodeURIComponent(setCode)}`,
+      { method: 'PATCH', body: JSON.stringify(patch), token },
+    );
+  },
+
+  deleteVocabSet(
+    schemaId: string,
+    setCode: string,
+    token: string,
+  ): Promise<void> {
+    return apiJson(
+      `${BASE}/graph-schemas/${schemaId}/vocab-sets/${encodeURIComponent(setCode)}`,
+      { method: 'DELETE', token },
+    );
+  },
+
+  addVocabValue(
+    schemaId: string,
+    setCode: string,
+    body: VocabValueCreate,
+    token: string,
+  ): Promise<VocabValue> {
+    return apiJson(
+      `${BASE}/graph-schemas/${schemaId}/vocab-sets/${encodeURIComponent(setCode)}/values`,
+      { method: 'POST', body: JSON.stringify(body), token },
+    );
+  },
+
+  patchVocabValue(
+    schemaId: string,
+    setCode: string,
+    code: string,
+    patch: VocabValuePatch,
+    token: string,
+  ): Promise<VocabValue> {
+    return apiJson(
+      `${BASE}/graph-schemas/${schemaId}/vocab-sets/${encodeURIComponent(setCode)}/values/${encodeURIComponent(code)}`,
+      { method: 'PATCH', body: JSON.stringify(patch), token },
+    );
+  },
+
+  deleteVocabValue(
+    schemaId: string,
+    setCode: string,
+    code: string,
+    token: string,
+  ): Promise<void> {
+    return apiJson(
+      `${BASE}/graph-schemas/${schemaId}/vocab-sets/${encodeURIComponent(setCode)}/values/${encodeURIComponent(code)}`,
+      { method: 'DELETE', token },
+    );
   },
 
   // ── views (per-user lenses) ──────────────────────────────────────────────────

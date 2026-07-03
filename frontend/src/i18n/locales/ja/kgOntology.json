@@ -9,7 +9,12 @@
   "common": {
     "dismiss": "閉じる",
     "deprecate": "非推奨にする",
-    "deprecated": "非推奨"
+    "deprecated": "非推奨",
+    "save": "保存",
+    "cancel": "キャンセル",
+    "edit": "編集",
+    "delete": "削除",
+    "deleted": "削除しました"
   },
   "adopt": {
     "chooseTemplate": "採用するテンプレートを選択",
@@ -67,8 +72,14 @@
     "noVocabSets": "このスキーマにはまだ語彙セットがありません — まず AI に追加を依頼してください。",
     "add": "追加",
     "added": "スキーマを更新しました",
+    "saved": "スキーマを更新しました",
     "addFailed": "スキーマを更新できませんでした",
-    "forbidden": "スキーマを編集するにはこのプロジェクトの管理権限が必要です"
+    "forbidden": "スキーマを編集するにはこのプロジェクトの管理権限が必要です",
+    "vocabSets": "語彙セット",
+    "sourceKinds": "ソース種別",
+    "targetKinds": "ターゲット種別",
+    "descriptionField": "説明",
+    "addVocabSet": "語彙セットを追加"
   },
   "sync": {
     "upToDate": "最新です — 上流の変更はありません。",

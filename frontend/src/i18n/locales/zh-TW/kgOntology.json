@@ -9,7 +9,12 @@
   "common": {
     "dismiss": "關閉",
     "deprecate": "標記為棄用",
-    "deprecated": "已棄用"
+    "deprecated": "已棄用",
+    "save": "儲存",
+    "cancel": "取消",
+    "edit": "編輯",
+    "delete": "刪除",
+    "deleted": "已刪除"
   },
   "adopt": {
     "chooseTemplate": "選擇要採用的範本",
@@ -67,8 +72,14 @@
     "noVocabSets": "此綱要尚無詞彙集——請先請 AI 新增一個。",
     "add": "新增",
     "added": "已更新綱要",
+    "saved": "已更新綱要",
     "addFailed": "無法更新綱要",
-    "forbidden": "你需要此專案的「管理」權限才能編輯綱要"
+    "forbidden": "你需要此專案的「管理」權限才能編輯綱要",
+    "vocabSets": "詞彙集",
+    "sourceKinds": "來源種類",
+    "targetKinds": "目標種類",
+    "descriptionField": "說明",
+    "addVocabSet": "新增詞彙集"
   },
   "sync": {
     "upToDate": "已是最新——上游沒有變更。",

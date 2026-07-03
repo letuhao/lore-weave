@@ -9,7 +9,12 @@
   "common": {
     "dismiss": "Dismiss",
     "deprecate": "Deprecate",
-    "deprecated": "deprecated"
+    "deprecated": "deprecated",
+    "save": "Save",
+    "cancel": "Cancel",
+    "edit": "Edit",
+    "delete": "Delete",
+    "deleted": "Deleted"
   },
   "adopt": {
     "chooseTemplate": "Choose a template to adopt",
@@ -67,8 +72,14 @@
     "noVocabSets": "No vocab sets in this schema yet — ask the AI to add one first.",
     "add": "Add",
     "added": "Schema updated",
+    "saved": "Schema updated",
     "addFailed": "Couldn't update the schema",
-    "forbidden": "You need Manage access on this project to edit the schema"
+    "forbidden": "You need Manage access on this project to edit the schema",
+    "vocabSets": "Vocab sets",
+    "sourceKinds": "Source kinds",
+    "targetKinds": "Target kinds",
+    "descriptionField": "Description",
+    "addVocabSet": "Add vocab set"
   },
   "sync": {
     "upToDate": "Up to date — no upstream changes.",

@@ -6,19 +6,28 @@ import {
 import { useAuth } from '@/auth';
 import { ontologyApi, type ListSchemasParams } from '../api/ontology';
 import type {
+  BlankSchemaCreate,
+  CloneSchemaRequest,
   EdgeTypeCreate,
+  EdgeTypePatch,
   FactTypeCreate,
+  FactTypePatch,
   GraphSchemaPatch,
+  NodeKindPatch,
   SchemaNodeKindCreate,
+  VocabSetCreate,
+  VocabSetPatch,
   VocabValueCreate,
+  VocabValuePatch,
 } from '../types/ontology';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // useGraphSchema — controller for the tiered schema list + one schema's full
-// tree, plus the schema-editor mutations (additive child adds + deprecate-only,
-// metadata patch). Pure logic/state; the schema-editor + adopt-picker views
-// render off the returned data. Each child mutation invalidates the schema tree
-// so the bumped schema_version + new child re-render.
+// tree, plus the FULL-CRUD schema-editor mutations (A1): add (revive-on-recreate
+// server-side) + attribute-only PATCH (code immutable) + tier-aware DELETE, on
+// every component (edge/node-kind/fact/vocab-set/vocab-value). Pure logic/state;
+// the redesigned SchemaWorkbench renders off the returned data. Each mutation
+// invalidates the schema tree so the bumped version + change re-render.
 // ─────────────────────────────────────────────────────────────────────────────
 
 export function useGraphSchemaList(params: ListSchemasParams) {
@@ -30,13 +39,15 @@ export function useGraphSchemaList(params: ListSchemasParams) {
   });
 }
 
-export function useGraphSchema(schemaId: string | null) {
+export function useGraphSchema(schemaId: string | null, projectId?: string | null) {
   const { accessToken } = useAuth();
   const queryClient = useQueryClient();
 
   const query = useQuery({
-    queryKey: ['kg-graph-schema', schemaId],
-    queryFn: () => ontologyApi.getSchema(schemaId!, accessToken!),
+    // projectId is part of the key: a PROJECT-scoped schema is only visible to a
+    // reader passing its project_id (BE tenancy gate) — without it the tree 404s.
+    queryKey: ['kg-graph-schema', schemaId, projectId ?? null],
+    queryFn: () => ontologyApi.getSchema(schemaId!, accessToken!, projectId ?? undefined),
     enabled: !!accessToken && !!schemaId,
   });
 
@@ -45,41 +56,55 @@ export function useGraphSchema(schemaId: string | null) {
     queryClient.invalidateQueries({ queryKey: ['kg-graph-schemas'] });
   };
 
-  const patchMeta = useMutation({
-    mutationFn: (patch: GraphSchemaPatch) =>
-      ontologyApi.patchSchema(schemaId!, patch, accessToken!),
-    onSuccess: invalidate,
-  });
+  // Small custom hook: build a mutation whose fn closes over the resolved
+  // schemaId. Named `use*` so rules-of-hooks recognizes the useMutation inside;
+  // called unconditionally + in stable order below (16 fixed calls per render).
+  const useMut = <TArgs>(fn: (id: string, args: TArgs) => Promise<unknown>) =>
+    useMutation({ mutationFn: (args: TArgs) => fn(schemaId!, args), onSuccess: invalidate });
 
-  const addEdgeType = useMutation({
-    mutationFn: (body: EdgeTypeCreate) =>
-      ontologyApi.addEdgeType(schemaId!, body, accessToken!),
-    onSuccess: invalidate,
-  });
+  const patchMeta = useMut<GraphSchemaPatch>((id, p) => ontologyApi.patchSchema(id, p, accessToken!));
 
-  const deprecateEdgeType = useMutation({
-    mutationFn: (code: string) =>
-      ontologyApi.deprecateEdgeType(schemaId!, code, accessToken!),
-    onSuccess: invalidate,
-  });
+  const addEdgeType = useMut<EdgeTypeCreate>((id, b) => ontologyApi.addEdgeType(id, b, accessToken!));
+  const patchEdgeType = useMut<{ code: string; patch: EdgeTypePatch }>((id, a) =>
+    ontologyApi.patchEdgeType(id, a.code, a.patch, accessToken!),
+  );
+  const deleteEdgeType = useMut<string>((id, code) => ontologyApi.deleteEdgeType(id, code, accessToken!));
 
-  const addFactType = useMutation({
-    mutationFn: (body: FactTypeCreate) =>
-      ontologyApi.addFactType(schemaId!, body, accessToken!),
-    onSuccess: invalidate,
-  });
+  const addFactType = useMut<FactTypeCreate>((id, b) => ontologyApi.addFactType(id, b, accessToken!));
+  const patchFactType = useMut<{ code: string; patch: FactTypePatch }>((id, a) =>
+    ontologyApi.patchFactType(id, a.code, a.patch, accessToken!),
+  );
+  const deleteFactType = useMut<string>((id, code) => ontologyApi.deleteFactType(id, code, accessToken!));
 
-  const addVocabValue = useMutation({
-    mutationFn: (args: { setCode: string; body: VocabValueCreate }) =>
-      ontologyApi.addVocabValue(schemaId!, args.setCode, args.body, accessToken!),
-    onSuccess: invalidate,
-  });
+  const addNodeKind = useMut<SchemaNodeKindCreate>((id, b) => ontologyApi.addNodeKind(id, b, accessToken!));
+  const patchNodeKind = useMut<{ code: string; patch: NodeKindPatch }>((id, a) =>
+    ontologyApi.patchNodeKind(id, a.code, a.patch, accessToken!),
+  );
+  const deleteNodeKind = useMut<string>((id, code) => ontologyApi.deleteNodeKind(id, code, accessToken!));
 
-  const addNodeKind = useMutation({
-    mutationFn: (body: SchemaNodeKindCreate) =>
-      ontologyApi.addNodeKind(schemaId!, body, accessToken!),
-    onSuccess: invalidate,
-  });
+  const addVocabSet = useMut<VocabSetCreate>((id, b) => ontologyApi.addVocabSet(id, b, accessToken!));
+  const patchVocabSet = useMut<{ setCode: string; patch: VocabSetPatch }>((id, a) =>
+    ontologyApi.patchVocabSet(id, a.setCode, a.patch, accessToken!),
+  );
+  const deleteVocabSet = useMut<string>((id, setCode) => ontologyApi.deleteVocabSet(id, setCode, accessToken!));
+
+  const addVocabValue = useMut<{ setCode: string; body: VocabValueCreate }>((id, a) =>
+    ontologyApi.addVocabValue(id, a.setCode, a.body, accessToken!),
+  );
+  const patchVocabValue = useMut<{ setCode: string; code: string; patch: VocabValuePatch }>((id, a) =>
+    ontologyApi.patchVocabValue(id, a.setCode, a.code, a.patch, accessToken!),
+  );
+  const deleteVocabValue = useMut<{ setCode: string; code: string }>((id, a) =>
+    ontologyApi.deleteVocabValue(id, a.setCode, a.code, accessToken!),
+  );
+
+  const all = [
+    patchMeta, addEdgeType, patchEdgeType, deleteEdgeType,
+    addFactType, patchFactType, deleteFactType,
+    addNodeKind, patchNodeKind, deleteNodeKind,
+    addVocabSet, patchVocabSet, deleteVocabSet,
+    addVocabValue, patchVocabValue, deleteVocabValue,
+  ];
 
   return {
     schema: query.data ?? null,
@@ -89,16 +114,51 @@ export function useGraphSchema(schemaId: string | null) {
     refetch: query.refetch,
     patchMeta: patchMeta.mutateAsync,
     addEdgeType: addEdgeType.mutateAsync,
-    deprecateEdgeType: deprecateEdgeType.mutateAsync,
+    patchEdgeType: patchEdgeType.mutateAsync,
+    deleteEdgeType: deleteEdgeType.mutateAsync,
     addFactType: addFactType.mutateAsync,
-    addVocabValue: addVocabValue.mutateAsync,
+    patchFactType: patchFactType.mutateAsync,
+    deleteFactType: deleteFactType.mutateAsync,
     addNodeKind: addNodeKind.mutateAsync,
-    isMutating:
-      patchMeta.isPending ||
-      addEdgeType.isPending ||
-      deprecateEdgeType.isPending ||
-      addFactType.isPending ||
-      addVocabValue.isPending ||
-      addNodeKind.isPending,
+    patchNodeKind: patchNodeKind.mutateAsync,
+    deleteNodeKind: deleteNodeKind.mutateAsync,
+    addVocabSet: addVocabSet.mutateAsync,
+    patchVocabSet: patchVocabSet.mutateAsync,
+    deleteVocabSet: deleteVocabSet.mutateAsync,
+    addVocabValue: addVocabValue.mutateAsync,
+    patchVocabValue: patchVocabValue.mutateAsync,
+    deleteVocabValue: deleteVocabValue.mutateAsync,
+    isMutating: all.some((m) => m.isPending),
+  };
+}
+
+// ── create-from-scratch + clone (A2) — project/caller-scoped, not tied to one
+//    schema id. `createBlank` replaces the project's active schema (server-side
+//    one-active); `clone` mints a NEW user-scoped editable template. ──────────
+export function useSchemaAuthoring(projectId: string | null) {
+  const { accessToken } = useAuth();
+  const queryClient = useQueryClient();
+
+  const invalidate = () => {
+    queryClient.invalidateQueries({ queryKey: ['kg-graph-schemas'] });
+    queryClient.invalidateQueries({ queryKey: ['kg-resolved-schema', projectId] });
+  };
+
+  const createBlank = useMutation({
+    mutationFn: (body: BlankSchemaCreate) =>
+      ontologyApi.createBlankSchema(projectId!, body, accessToken!),
+    onSuccess: invalidate,
+  });
+
+  const clone = useMutation({
+    mutationFn: (body: CloneSchemaRequest) => ontologyApi.cloneSchema(body, accessToken!),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['kg-graph-schemas'] }),
+  });
+
+  return {
+    createBlank: createBlank.mutateAsync,
+    clone: clone.mutateAsync,
+    isCreating: createBlank.isPending,
+    isCloning: clone.isPending,
   };
 }

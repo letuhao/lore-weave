@@ -1,76 +1,91 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
-import type { ResolvedSchema } from '../../../types/ontology';
+import type { GraphSchemaSummary } from '../../../types/ontology';
 
-const resolved = vi.hoisted(() => ({ value: null as { schema: ResolvedSchema | null; isLoading: boolean; isError: boolean } | null }));
-vi.mock('@/features/knowledge/hooks/useResolvedSchema', () => ({
-  useResolvedSchema: () => resolved.value,
+// A3 — ProjectSchemaSection is now the FULL authoring surface on the KG project:
+// when the project has an active schema it mounts SchemaWorkbench; otherwise it
+// mounts CreateSchemaEntry (blank / clone / adopt). We mock the hooks + the two
+// heavy children and assert the branching + that clone templates exclude the
+// project's own rows.
+
+const state = vi.hoisted(() => ({
+  items: [] as GraphSchemaSummary[],
+  listLoading: false,
+  controllerSchema: null as unknown,
+}));
+
+vi.mock('../../../hooks/useGraphSchema', () => ({
+  useGraphSchemaList: () => ({ data: { items: state.items }, isLoading: state.listLoading }),
+  useGraphSchema: () => ({ schema: state.controllerSchema }),
+  useSchemaAuthoring: () => ({
+    createBlank: vi.fn(), clone: vi.fn(), isCreating: false, isCloning: false,
+  }),
+}));
+vi.mock('../../ontology/SchemaWorkbench', () => ({
+  SchemaWorkbench: () => <div data-testid="schema-workbench-mock" />,
+}));
+vi.mock('../../ontology/CreateSchemaEntry', () => ({
+  CreateSchemaEntry: (p: { bookId: string | null; templates: GraphSchemaSummary[] }) => (
+    <div data-testid="create-schema-entry-mock" data-book={p.bookId ?? ''} data-templates={p.templates.length} />
+  ),
 }));
 
 import { ProjectSchemaSection } from '../ProjectSchemaSection';
 
-const SCHEMA: ResolvedSchema = {
-  project_id: 'p-1',
-  schema_version: 4,
-  allow_free_edges: false,
-  edge_types: [{ code: 'allied_with', label: 'Allied with', directed: true, temporal: false, cardinality: 'multi_active' }],
-  fact_types: [{ code: 'birth', label: 'Birth' }],
-  node_kinds: [{ kind_code: 'character', strength: 'required' }],
-  vocab_sets: [],
+const projSchema: GraphSchemaSummary = {
+  schema_id: 'ps-1', scope: 'project', scope_id: 'p-1', code: 'proj', name: 'Proj',
+  schema_version: 3, allow_free_edges: true,
+};
+const sysTemplate: GraphSchemaSummary = {
+  schema_id: 'sys-1', scope: 'system', scope_id: null, code: 'general', name: 'General',
+  schema_version: 1, allow_free_edges: true,
 };
 
 beforeEach(() => {
-  resolved.value = { schema: SCHEMA, isLoading: false, isError: false };
+  state.items = [];
+  state.listLoading = false;
+  state.controllerSchema = null;
 });
 
-function renderSection(bookId: string | null) {
-  return render(
+const renderSection = (bookId: string | null) =>
+  render(
     <MemoryRouter>
       <ProjectSchemaSection projectId="p-1" bookId={bookId} />
     </MemoryRouter>,
   );
-}
 
-describe('ProjectSchemaSection (#28 read-only inspector)', () => {
-  it('renders the resolved schema read-only (edge type shown, no deprecate button)', () => {
+describe('ProjectSchemaSection — full authoring (A3)', () => {
+  it('mounts SchemaWorkbench when the project has an active schema', () => {
+    state.items = [projSchema, sysTemplate];
+    state.controllerSchema = { schema_id: 'ps-1' };
     renderSection('b-9');
-    expect(screen.getByTestId('schema-editor')).toBeInTheDocument();
-    // The edge type from the resolved schema is shown…
-    expect(screen.getByText('allied_with')).toBeInTheDocument();
-    // …but read-only: the deprecate action is absent.
-    expect(screen.queryByTestId('deprecate-edge-allied_with')).not.toBeInTheDocument();
+    expect(screen.getByTestId('schema-workbench-mock')).toBeInTheDocument();
+    expect(screen.queryByTestId('create-schema-entry-mock')).not.toBeInTheDocument();
   });
 
-  it('links the Edit CTA to the book ontology Schema tab when the project has a book', () => {
+  it('mounts CreateSchemaEntry (with only template rows) when no active schema', () => {
+    state.items = [sysTemplate]; // no project-scoped active schema
     renderSection('b-9');
-    const cta = screen.getByTestId('schema-edit-cta');
-    expect(cta).toHaveAttribute('href', '/books/b-9/kg-ontology?view=schema');
+    const entry = screen.getByTestId('create-schema-entry-mock');
+    expect(entry).toBeInTheDocument();
+    expect(entry).toHaveAttribute('data-book', 'b-9');
+    expect(entry).toHaveAttribute('data-templates', '1'); // the system template
   });
 
-  it('hides the Edit CTA for a project with no book', () => {
+  it('excludes the project-scoped row from clone templates', () => {
+    state.items = [projSchema, sysTemplate];
+    state.controllerSchema = null; // force the entry branch to inspect templates
     renderSection(null);
-    expect(screen.queryByTestId('schema-edit-cta')).not.toBeInTheDocument();
+    const entry = screen.getByTestId('create-schema-entry-mock');
+    expect(entry).toHaveAttribute('data-templates', '1'); // projSchema excluded
+    expect(entry).toHaveAttribute('data-book', '');
   });
 
-  it('renders vocab values nested into their set (the #28 contract-drift fix)', () => {
-    resolved.value = {
-      schema: {
-        ...SCHEMA,
-        vocab_sets: [{ code: 'status', label: 'Status', closed: true, values: [{ code: 'alive', label: 'Alive' }] }],
-      },
-      isLoading: false,
-      isError: false,
-    };
+  it('shows a skeleton while the schema list loads', () => {
+    state.listLoading = true;
     renderSection('b-9');
-    // The value (nested by ontologyApi) must reach the rendered inspector.
-    expect(screen.getByText('alive')).toBeInTheDocument();
-  });
-
-  it('shows an error placeholder when the schema fails to load', () => {
-    resolved.value = { schema: null, isLoading: false, isError: true };
-    renderSection('b-9');
-    expect(screen.getByTestId('schema-section-empty')).toBeInTheDocument();
-    expect(screen.queryByTestId('schema-editor')).not.toBeInTheDocument();
+    expect(screen.queryByTestId('schema-workbench-mock')).not.toBeInTheDocument();
+    expect(screen.queryByTestId('create-schema-entry-mock')).not.toBeInTheDocument();
   });
 });

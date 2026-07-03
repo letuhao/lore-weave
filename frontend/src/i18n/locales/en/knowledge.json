@@ -25,12 +25,27 @@
     "empty": "No knowledge graph yet — build this project to explore its network."
   },
   "schemaSection": {
-    "title": "Effective schema",
-    "subtitle": "The effective node-kinds, edge-types, fact-types and vocab this project's graph uses.",
+    "title": "Schema",
+    "subtitle": "Author this project's knowledge-graph schema — node kinds, edge types, fact types and vocab. Edits apply to this project's graph.",
     "editCta": "Edit schema",
     "freeEdges": "Off-vocabulary relations are allowed (free edges).",
     "closedEdges": "Relations are limited to the declared edge-types; others go to triage.",
-    "error": "Couldn't load this project's schema."
+    "error": "Couldn't load this project's schema.",
+    "emptyHelp": "This project has no schema yet. Start from scratch, clone a template, or adopt one.",
+    "newBlank": "New blank schema",
+    "schemaNamePlaceholder": "Schema name",
+    "createBlankButton": "Create blank",
+    "created": "Schema created",
+    "cloneTemplate": "Clone a template",
+    "pickTemplate": "Pick a template…",
+    "cloneButton": "Clone into my schemas",
+    "cloned": "Template cloned",
+    "adoptTemplate": "Adopt a template",
+    "adoptHelp": "Copy a template into this project (checks the glossary first).",
+    "adoptCta": "Adopt on the book's Ontology tab",
+    "adoptBooklessHint": "Adopt is available for book-linked projects.",
+    "forbidden": "You need Manage access on this project to author the schema.",
+    "createFailed": "Couldn't create the schema."
   },
   "shell": {
     "backToProjects": "All projects",

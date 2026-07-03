@@ -25,12 +25,27 @@
     "empty": "Chưa có đồ thị tri thức — hãy xây dựng dự án này để khám phá mạng lưới của nó."
   },
   "schemaSection": {
-    "title": "Lược đồ hiệu lực",
-    "subtitle": "Các loại nút, loại quan hệ, loại sự kiện và từ vựng mà đồ thị của dự án này đang dùng.",
+    "title": "Lược đồ",
+    "subtitle": "Định nghĩa lược đồ đồ-thị-tri-thức của dự án — loại nút, loại quan hệ, loại sự kiện và từ vựng. Chỉnh sửa áp dụng cho đồ thị của dự án này.",
     "editCta": "Sửa lược đồ",
     "freeEdges": "Cho phép quan hệ ngoài từ vựng (cạnh tự do).",
     "closedEdges": "Quan hệ giới hạn ở các loại quan hệ đã khai báo; phần khác đưa vào phân loại.",
-    "error": "Không tải được lược đồ của dự án này."
+    "error": "Không tải được lược đồ của dự án này.",
+    "emptyHelp": "Dự án này chưa có lược đồ. Bắt đầu từ đầu, nhân bản một mẫu, hoặc adopt một mẫu.",
+    "newBlank": "Lược đồ trống mới",
+    "schemaNamePlaceholder": "Tên lược đồ",
+    "createBlankButton": "Tạo lược đồ trống",
+    "created": "Đã tạo lược đồ",
+    "cloneTemplate": "Nhân bản một mẫu",
+    "pickTemplate": "Chọn một mẫu…",
+    "cloneButton": "Nhân bản vào lược đồ của tôi",
+    "cloned": "Đã nhân bản mẫu",
+    "adoptTemplate": "Adopt một mẫu",
+    "adoptHelp": "Sao chép một mẫu vào dự án này (kiểm tra glossary trước).",
+    "adoptCta": "Adopt tại tab Ontology của sách",
+    "adoptBooklessHint": "Adopt chỉ áp dụng cho dự án gắn với sách.",
+    "forbidden": "Bạn cần quyền Quản lý trên dự án này để định nghĩa lược đồ.",
+    "createFailed": "Không thể tạo lược đồ."
   },
   "shell": {
     "backToProjects": "Tất cả dự án",

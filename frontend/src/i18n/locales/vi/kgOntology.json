@@ -9,7 +9,12 @@
   "common": {
     "dismiss": "Bỏ qua",
     "deprecate": "Ngừng dùng",
-    "deprecated": "đã ngừng dùng"
+    "deprecated": "đã ngừng dùng",
+    "save": "Lưu",
+    "cancel": "Huỷ",
+    "edit": "Sửa",
+    "delete": "Xoá",
+    "deleted": "Đã xoá"
   },
   "adopt": {
     "chooseTemplate": "Chọn một mẫu để áp dụng",
@@ -67,8 +72,14 @@
     "noVocabSets": "Lược đồ này chưa có bộ từ vựng nào — hãy nhờ AI thêm trước.",
     "add": "Thêm",
     "added": "Đã cập nhật lược đồ",
+    "saved": "Đã cập nhật lược đồ",
     "addFailed": "Không thể cập nhật lược đồ",
-    "forbidden": "Bạn cần quyền Quản lý trên dự án này để sửa lược đồ"
+    "forbidden": "Bạn cần quyền Quản lý trên dự án này để sửa lược đồ",
+    "vocabSets": "Bộ từ vựng",
+    "sourceKinds": "Loại nguồn",
+    "targetKinds": "Loại đích",
+    "descriptionField": "Mô tả",
+    "addVocabSet": "Thêm bộ từ vựng"
   },
   "sync": {
     "upToDate": "Đã cập nhật — không có thay đổi từ nguồn.",
