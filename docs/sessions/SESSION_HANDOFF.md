@@ -106,6 +106,31 @@
 > (rules-mode default), so migrating it to structured_generate is also no-value. **Won't-fix; the
 > AI-Task Standard is closed.**
 
+> **▶ KG TRACK B — agent multi-KG (2026-07-03). Plan §Track B in
+> [`2026-07-03-kg-architecture-schema-authoring-multi-kg`](../plans/2026-07-03-kg-architecture-schema-authoring-multi-kg.md).**
+> **B1(1) DONE `487f78c9c`** — `kg_world_query` MCP tool: the agent loads a whole WORLD's KG (union
+> of member-book canon + world lore) in one call. Wraps the existing `resolve_world_project_ids` +
+> `get_world_subgraph` across all 4 KG-tool sources (FastMCP sig + arg model + OpenAI def + handler).
+> EC-B1 (explicit `world_id` arg — gateway drops envelope scope), EC-B2 (owner-only; new
+> `resolve_world_partitions` REPORTS `partitions_read`/`partitions_unreadable`, never silent-drop;
+> `resolve_world_project_ids` kept as a byte-compat shim for the subgraph+timeline endpoints),
+> EC-B5 (WorldNotFound/BookServiceUnavailable → self-correcting tool-error). 101 tests + drift-locks
+> (28→29 tools) + live: world-subgraph endpoint (uses the refactor) runs clean, service healthy.
+> **B1(2) Layer 1 DONE `cf309f89b`** — knowledge multi-project CONTEXT union (the hard core). New
+> `app/context/modes/multi_project.py` `build_multi_project_mode`: fans out the SAME Mode-3 retrieval
+> per project (reuses `_safe_l2_facts/_safe_l3_passages/_safe_summary_blend` + glossary + salience),
+> then EC-B3/B4 cross-project MERGE+DEDUP (entities by name→highest salience; facts by text; passages
+> by source_id; summaries by level/path) + GLOBAL rank, one `<memory mode="multi">` block per-item
+> tagged, ONE SHARED budget trimmed reverse-priority. `build_context` +`project_ids` (precedence over
+> single `project_id`, owner-scoped, ≥2→union / 1→single / all-stale→404); `ContextBuildRequest`
+> +`project_ids` (≤16). 55 tests (4 dispatch routing + 5 merge/dedup/budget + existing). Back-compat
+> preserved. **▶ NEXT — B1(2) Layers 2+3 (REMAINING plumbing, substantial):** L2 chat session carries
+> a SET — migration `chat_sessions +project_ids UUID[]` + Session model/CreateSession/PatchSession +
+> the session-load→`build_context` threading (stream_service.py ~1548/1590) + `knowledge_client.
+> build_context` +`project_ids` param. L3 FE session-settings multi-project picker. Then cross-service
+> live-smoke (2 KG-populated projects → a real chat turn → `mode="multi"` context). B1(3) arbitrary
+> project set + B1(4) cross-partition merge stay deferred.
+
 > **▶ KNOWLEDGE GUI FIXES + MODEL-ROLES SETTINGS — 2026-07-03 (3 items, all shipped).**
 > **#1 `cancel_check` extraction blocker (`591e54ad7`)** — bug #34 added `cancel_check` to the
 > loreweave_extraction protocol + every extractor (which ALWAYS forward it), and to
