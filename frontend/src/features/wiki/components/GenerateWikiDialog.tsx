@@ -4,6 +4,7 @@ import { useTranslation } from 'react-i18next';
 import { Sparkles, CheckCircle2, AlertTriangle } from 'lucide-react';
 import { FormDialog } from '@/components/shared';
 import { ModelPicker } from '@/components/model-picker';
+import { defaultModelsApi, CHAT_CAPABILITY } from '@/features/settings/api';
 import { useAuth } from '@/auth';
 import { glossaryApi } from '@/features/glossary/api';
 import { booksApi } from '@/features/books/api';
@@ -84,6 +85,28 @@ export function GenerateWikiDialog({
       setMaxSpend('');
     }
   };
+
+  // KN model-roles — pre-select the user's GLOBAL default chat model (Settings →
+  // Default models) once the AI path is active and no model is picked yet, so wiki
+  // generation inherits the "one default model" every other extraction role uses
+  // (mirrors NewChatDialog). Fires ONLY in LLM/regen mode, so the deterministic
+  // stub default (the anti-spend safety) is untouched; the model stays shown +
+  // changeable, so this is a convenience, not an implicit spend.
+  useEffect(() => {
+    if (!open || !accessToken || !(isRegen || mode === 'llm') || modelRef) return;
+    let cancelled = false;
+    void defaultModelsApi
+      .get(accessToken)
+      .catch(() => ({ defaults: {} as Record<string, string> }))
+      .then(({ defaults }) => {
+        if (cancelled) return;
+        const preferred = defaults[CHAT_CAPABILITY];
+        if (preferred) setModelRef(preferred);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [open, accessToken, isRegen, mode, modelRef]);
 
   const kindsQuery = useQuery({
     queryKey: ['glossary-kinds'],

@@ -48,6 +48,13 @@ const getGuardrail = vi.fn();
 vi.mock('@/features/usage/api', () => ({
   usageApi: { getGuardrail: (...a: unknown[]) => getGuardrail(...a) },
 }));
+// KN model-roles — the wiki dialog pre-selects the user's global default chat
+// model; stub the settings default-models API (keep CHAT_CAPABILITY real).
+const getDefaultModels = vi.fn();
+vi.mock('@/features/settings/api', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('@/features/settings/api')>();
+  return { ...actual, defaultModelsApi: { get: (...a: unknown[]) => getDefaultModels(...a), set: vi.fn() } };
+});
 
 import { GenerateWikiDialog } from '../GenerateWikiDialog';
 import { invalidateUserModelsCache } from '@/components/model-picker';
@@ -96,6 +103,8 @@ beforeEach(() => {
     daily_limit_usd: 1, monthly_limit_usd: 10, daily_spent_usd: 0, monthly_spent_usd: 3,
     reserved_usd: 0, daily_available_usd: 1, monthly_available_usd: 7,
   });
+  // Default: no global default set → no pre-fill (existing tests keep behavior).
+  getDefaultModels.mockResolvedValue({ defaults: {} });
 });
 
 describe('GenerateWikiDialog', () => {
@@ -148,6 +157,36 @@ describe('GenerateWikiDialog', () => {
     expect(screen.getByTestId('wiki-gen-confirm').textContent).toContain('gen.confirmLlm');
     fireEvent.click(screen.getByTestId('wiki-gen-confirm'));
     expect(onTrigger).not.toHaveBeenCalled();
+  });
+
+  it('AI mode pre-selects the user global default chat model (KN model-roles)', async () => {
+    // A global default (Settings → Default models) → the AI path inherits it, so
+    // the user need not re-pick; confirm enables + the trigger carries that ref.
+    getDefaultModels.mockResolvedValue({ defaults: { chat: 'm1' } });
+    const onTrigger = vi.fn().mockResolvedValue({ job_id: 'j1', status: 'pending' });
+    wrap(<GenerateWikiDialog open onClose={() => {}} onTrigger={onTrigger} busy={false} />);
+    await waitFor(() => expect(screen.getByTestId('wiki-gen-mode-llm')).toBeTruthy());
+    await toAiMode();
+    // the default 'm1' (Gemma) is pre-selected → confirm no longer disabled
+    await waitFor(() =>
+      expect((screen.getByTestId('wiki-gen-confirm') as HTMLButtonElement).disabled).toBe(false),
+    );
+    fireEvent.click(screen.getByTestId('wiki-gen-confirm'));
+    await waitFor(() =>
+      expect(onTrigger).toHaveBeenCalledWith(expect.objectContaining({ model_ref: 'm1' })),
+    );
+  });
+
+  it('the deterministic stub default is untouched — no pre-fill until AI mode', async () => {
+    // Even with a global default set, the batch dialog opens in stub mode with NO
+    // model (the anti-spend safety); the pre-fill only fires once AI mode is on.
+    getDefaultModels.mockResolvedValue({ defaults: { chat: 'm1' } });
+    const onTrigger = vi.fn().mockResolvedValue({ job_id: 'j1', status: 'pending' });
+    wrap(<GenerateWikiDialog open onClose={() => {}} onTrigger={onTrigger} busy={false} />);
+    await waitFor(() => expect(screen.getByTestId('wiki-gen-mode-stub')).toBeTruthy());
+    expect(screen.queryByTestId('wiki-gen-model')).toBeNull();
+    fireEvent.click(screen.getByTestId('wiki-gen-confirm'));
+    await waitFor(() => expect(onTrigger).toHaveBeenCalledWith({})); // stub run, no model_ref
   });
 
   it('AI mode + model reveals the spend cap and triggers with model_ref', async () => {
