@@ -77,6 +77,7 @@ export const TOOL_POLICY: Record<string, ToolPolicy> = {
   glossary_book_sync_available: { tier: 'read', domains: ['glossary'] },
   glossary_user_standards_read: { tier: 'read', domains: ['glossary'] },
   // knowledge (memory_* now H-U-guarded; all owner-checked)
+  kg_project_list: { tier: 'read', domains: ['knowledge'] },
   kg_graph_query: { tier: 'read', domains: ['knowledge'] },
   kg_entity_edge_timeline: { tier: 'read', domains: ['knowledge'] },
   kg_schema_read: { tier: 'read', domains: ['knowledge'] },

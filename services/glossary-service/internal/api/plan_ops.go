@@ -650,7 +650,11 @@ func (s *Server) editAttributeCore(ctx context.Context, bookID uuid.UUID, p edit
 		return nil, fmt.Errorf("%w: target no longer exists", mcp.ErrNotFound)
 	}
 	if cverr := compareBaseVersion(cur, strings.TrimSpace(base)); cverr != nil {
-		return nil, cverr // errVersionConflict → ErrStaleVersion
+		// errVersionConflict → ErrStaleVersion (via mapCoreErr). Embed the row's
+		// CURRENT base_version like toolBookPatch's 409 so the caller can retry in
+		// ONE step — but stay fail-closed: base_version remains REQUIRED here (no
+		// hallucination shim; this core runs post-human-confirm).
+		return nil, fmt.Errorf("%w: the row changed since it was read — its current base_version is %s; retry with base_version=%q", cverr, cur, cur)
 	}
 	if len(fields) == 0 {
 		return nil, fmt.Errorf("%w: no editable fields supplied", mcp.ErrBadParams)

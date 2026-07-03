@@ -288,6 +288,29 @@ describe('classifyCallToolError / sanitizeUpstreamErrorText', () => {
     );
   });
 
+  it('classifies HTTP 429 (even with an empty body) as retryable, not a rejection', () => {
+    const e = new Error('Streamable HTTP error: ');
+    (e as any).code = 429;
+    expect(classifyCallToolError(e)).toBe(
+      'backend temporarily unreachable or rate-limited — retry may succeed',
+    );
+  });
+
+  it('classifies HTTP 408 as retryable, not a rejection', () => {
+    const e = new Error('Streamable HTTP error: Request Timeout');
+    (e as any).code = 408;
+    expect(classifyCallToolError(e)).toBe(
+      'backend temporarily unreachable or rate-limited — retry may succeed',
+    );
+  });
+
+  it('classifies the JSON-RPC internal-error code (-32603) as retryable transport', () => {
+    const e = new Error('MCP error -32603: internal error');
+    expect(classifyCallToolError(e)).toBe(
+      'backend temporarily unreachable — retry may succeed',
+    );
+  });
+
   it('sanitizes URLs, service hosts, and IPs out of upstream text', () => {
     const raw =
       'call http://book-service:8082/mcp failed via 10.0.3.17:5432 (see also knowledge-service:8092)';
@@ -296,6 +319,15 @@ describe('classifyCallToolError / sanitizeUpstreamErrorText', () => {
     expect(clean).not.toContain('8082');
     expect(clean).not.toContain('10.0.3.17');
     expect(clean).not.toContain('8092');
+  });
+
+  it('sanitizes generic host:port pairs that no specific rule matches', () => {
+    const raw = 'dial tcp localhost:8082 refused; upstream postgres:5432 unavailable';
+    const clean = sanitizeUpstreamErrorText(raw);
+    expect(clean).not.toContain('localhost:8082');
+    expect(clean).not.toContain('postgres:5432');
+    expect(clean).not.toContain('8082');
+    expect(clean).not.toContain('5432');
   });
 });
 

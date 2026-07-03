@@ -30,6 +30,37 @@ var defaultModelCapabilities = map[string]bool{
 	"planner": true,
 }
 
+// defaultModelCapQuery is THE capability-validation rule for assigning a
+// default model — shared by the HTTP route (putDefaultModel) and the MCP tool
+// (toolModelSetDefault) so the two can never diverge (review-impl W5 #2: the
+// MCP tool inherited the "chat" whitelist without the '{}' parity and the
+// planner→chat mapping, rejecting models the picker offers).
+//   - `planner` is a ROLE, not a model flag — validated against 'chat'
+//     (D-PLAN-PLANNER-DEFAULT-FE).
+//   - chat (incl. planner) admits undeclared '{}' flags, mirroring
+//     listUserModels — the picker must never offer a model this rejects.
+//   - non-chat capabilities stay strict (canonical flag or legacy _capability).
+// Returns (query, capJSON, validateCap); query params: $1 model, $2 owner,
+// $3 capJSON, $4 validateCap.
+func defaultModelCapQuery(capability string) (query, capJSON, validateCap string) {
+	validateCap = capability
+	if capability == "planner" {
+		validateCap = "chat"
+	}
+	capJSON = fmt.Sprintf(`{"%s":true}`, validateCap)
+	query = `
+SELECT 1 FROM user_models
+WHERE user_model_id=$1 AND owner_user_id=$2 AND is_active=true
+  AND (capability_flags @> $3::jsonb OR capability_flags->>'_capability' = $4)`
+	if validateCap == "chat" {
+		query = `
+SELECT 1 FROM user_models
+WHERE user_model_id=$1 AND owner_user_id=$2 AND is_active=true
+  AND (capability_flags @> $3::jsonb OR capability_flags->>'_capability' = $4 OR capability_flags = '{}'::jsonb)`
+	}
+	return query, capJSON, validateCap
+}
+
 // getDefaultModels — GET /v1/model-registry/default-models (JWT). Returns the
 // caller's still-valid defaults (a dangling default whose model was deleted is
 // already cascaded away by the FK, so a JOIN here is belt-and-suspenders).
@@ -107,24 +138,7 @@ func (s *Server) putDefaultModel(w http.ResponseWriter, r *http.Request) {
 	// 'chat' flag instead (D-PLAN-PLANNER-DEFAULT-FE), matching the FE picker which offers
 	// the user's chat models. Match BOTH capability_flags schemas (canonical {"cap":true}
 	// + legacy {"_capability":"cap"}) so a model the picker offered isn't rejected here.
-	validateCap := capability
-	if capability == "planner" {
-		validateCap = "chat"
-	}
-	capJSON := fmt.Sprintf(`{"%s":true}`, validateCap)
-	// Mirror listUserModels' chat rule: undeclared '{}' flags count as chat-capable
-	// (most BYOK/local models never self-declare) — otherwise the picker offers a
-	// model this validation then rejects. Non-chat capabilities stay strict.
-	capQuery := `
-SELECT 1 FROM user_models
-WHERE user_model_id=$1 AND owner_user_id=$2 AND is_active=true
-  AND (capability_flags @> $3::jsonb OR capability_flags->>'_capability' = $4)`
-	if validateCap == "chat" {
-		capQuery = `
-SELECT 1 FROM user_models
-WHERE user_model_id=$1 AND owner_user_id=$2 AND is_active=true
-  AND (capability_flags @> $3::jsonb OR capability_flags->>'_capability' = $4 OR capability_flags = '{}'::jsonb)`
-	}
+	capQuery, capJSON, validateCap := defaultModelCapQuery(capability)
 	var exists int
 	err = s.pool.QueryRow(r.Context(), capQuery,
 		modelID, userID, capJSON, validateCap).Scan(&exists)

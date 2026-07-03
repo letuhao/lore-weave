@@ -271,7 +271,7 @@ type userCreateToolIn struct {
 	SortOrder   int      `json:"sort_order,omitempty"`
 	KindCode    string   `json:"kind_code,omitempty" jsonschema:"attribute only: your user-tier kind it attaches to"`
 	GenreCode   string   `json:"genre_code,omitempty" jsonschema:"attribute only: your user-tier genre cell"`
-	FieldType       string   `json:"field_type,omitempty" jsonschema:"attribute only: text|textarea|select|number|date|tags|url|boolean"`
+	FieldType       string   `json:"field_type,omitempty" jsonschema:"attribute only: text|textarea|select|number|date|tags|url|boolean — omit this argument for the default; do not send an empty string"`
 	IsRequired      bool     `json:"is_required,omitempty" jsonschema:"attribute only"`
 	Options         []string `json:"options,omitempty" jsonschema:"attribute only: options for a select field"`
 	AutoFillPrompt  string   `json:"auto_fill_prompt,omitempty" jsonschema:"attribute only: how the AI auto-fills this attribute from chapter text"`
@@ -415,7 +415,7 @@ type userPatchToolIn struct {
 	Icon        *string   `json:"icon,omitempty"`
 	Color       *string   `json:"color,omitempty"`
 	SortOrder   *int      `json:"sort_order,omitempty"`
-	FieldType       *string   `json:"field_type,omitempty" jsonschema:"attribute only"`
+	FieldType       *string   `json:"field_type,omitempty" jsonschema:"attribute only — omit this argument to leave it unchanged; do not send an empty string"`
 	IsRequired      *bool     `json:"is_required,omitempty" jsonschema:"attribute only"`
 	Options         *[]string `json:"options,omitempty" jsonschema:"attribute only"`
 	AutoFillPrompt  *string   `json:"auto_fill_prompt,omitempty" jsonschema:"attribute only"`

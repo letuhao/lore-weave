@@ -213,6 +213,10 @@ export function sanitizeUpstreamErrorText(raw: string): string {
     .replace(/\b[\w.-]*\b(?:service|gateway|api|db|host)\b[\w.-]*:\d{2,5}\b/gi, '[redacted]')
     .replace(/\b\d{1,3}(?:\.\d{1,3}){3}(?::\d{2,5})?\b/g, '[redacted]')
     .replace(/\b[\w-]+\.(?:local|internal|svc|cluster)[\w.]*(?::\d{2,5})?\b/gi, '[redacted]')
+    // Generic host:port catch-all (after the specific rules): `localhost:8082`,
+    // `postgres:5432`, … — any bare host:port pair is address-shaped and must
+    // not reach the model, whatever the hostname looks like.
+    .replace(/\b[\w.-]+:\d{2,5}\b/g, '[redacted]')
     .trim();
 }
 
@@ -239,15 +243,24 @@ export function classifyCallToolError(e: unknown): string {
 
   // JSON-RPC error relayed from the owning provider (the TS SDK's McpError
   // formats as "MCP error <code>: <message>"). -32001 is the SDK's request
-  // timeout → retryable; other codes are upstream rejections whose text is
-  // server-authored and actionable.
+  // timeout and -32603 is the upstream's INTERNAL error — both transient
+  // conditions a retry can clear, not rejections of the request's shape;
+  // other codes are upstream rejections whose text is server-authored and
+  // actionable.
   const mcpErr = /^MCP error (-?\d+): ([\s\S]*)$/.exec(msg);
   if (mcpErr) {
-    if (mcpErr[1] === '-32001') {
+    if (mcpErr[1] === '-32001' || mcpErr[1] === '-32603') {
       return 'backend temporarily unreachable — retry may succeed';
     }
     const text = sanitizeUpstreamErrorText(mcpErr[2]);
     return text ? `rejected by the owning service: ${text}` : 'provider error';
+  }
+
+  // HTTP 408 (request timeout) / 429 (rate-limited) are transient whatever the
+  // body says — classifying them as rejections told the model "don't retry" for
+  // conditions that resolve by themselves.
+  if (code === 408 || code === 429) {
+    return 'backend temporarily unreachable or rate-limited — retry may succeed';
   }
 
   // Streamable-HTTP transport error carrying the upstream HTTP status: 4xx is a

@@ -904,6 +904,13 @@ async def test_confirm_start_extraction_refuses_chapter_not_under_bound_book():
 # tool → args whose valid values are a finite, code-known set.
 CLOSED_SET_ARGS = {"translation_job_control": ["action"]}
 
+# (tool, arg) → the value set the advertised enum must COVER (>=, mirroring
+# jobs' JOB_STATUSES pattern) — enum PRESENCE alone lets a silently
+# dropped/renamed value ship unnoticed.
+CLOSED_SET_VALUES = {
+    ("translation_job_control", "action"): {"cancel", "pause", "resume", "retry"},
+}
+
 # tool → args that must accept `str | list[str]` (the observed ["<uuid>"] shape).
 LIST_TOLERANT_ARGS = {
     "translation_update_settings": ["model_ref"],
@@ -937,8 +944,11 @@ async def test_closed_set_args_are_enums(mcp_base_url):
     for tool_name, args in CLOSED_SET_ARGS.items():
         props = by_name[tool_name].inputSchema.get("properties", {})
         for arg in args:
-            assert _closed_set_enum(props.get(arg, {})), (
-                f"{tool_name}.{arg}: closed-set arg MUST declare an enum"
+            values = _closed_set_enum(props.get(arg, {}))
+            assert values, f"{tool_name}.{arg}: closed-set arg MUST declare an enum"
+            want = CLOSED_SET_VALUES[(tool_name, arg)]
+            assert values >= want, (
+                f"{tool_name}.{arg}: enum {sorted(values)} must cover {sorted(want)}"
             )
 
 

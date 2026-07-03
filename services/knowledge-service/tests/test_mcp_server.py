@@ -528,6 +528,21 @@ CLOSED_SET_ARGS = {
     "kg_triage_schema_write": ["action"],
 }
 
+# (tool, arg) → the value set the advertised enum must COVER (>=, mirroring
+# jobs' JOB_STATUSES pattern) — enum PRESENCE alone lets a silently
+# dropped/renamed value ship unnoticed.
+CLOSED_SET_VALUES = {
+    ("kg_list_templates", "scope"): {"system", "user"},
+    ("kg_triage_list", "status"): {"pending", "pending_glossary", "resolved", "dismissed"},
+    ("kg_propose_fact", "fact_type"): {"decision", "preference", "milestone", "negation"},
+    ("kg_schema_edit", "verb"): {"add", "deprecate"},
+    ("kg_schema_edit", "level"): {"edge_type", "fact_type"},
+    ("kg_triage_resolve", "action"): {"map", "re_target", "drop_edge", "close_previous", "dismiss"},
+    ("kg_triage_schema_write", "action"): {
+        "add_to_vocab", "add_to_schema", "widen_target_kinds", "set_multi_active",
+    },
+}
+
 
 def _closed_set_enum(spec: dict) -> set:
     """Collect enum values from a property spec, descending anyOf unions and
@@ -550,8 +565,11 @@ async def test_closed_set_args_are_enums(mcp_base_url):
     for tool_name, args in CLOSED_SET_ARGS.items():
         props = by_name[tool_name].inputSchema.get("properties", {})
         for arg in args:
-            assert _closed_set_enum(props.get(arg, {})), (
-                f"{tool_name}.{arg}: closed-set arg MUST declare an enum"
+            values = _closed_set_enum(props.get(arg, {}))
+            assert values, f"{tool_name}.{arg}: closed-set arg MUST declare an enum"
+            want = CLOSED_SET_VALUES[(tool_name, arg)]
+            assert values >= want, (
+                f"{tool_name}.{arg}: enum {sorted(values)} must cover {sorted(want)}"
             )
 
 

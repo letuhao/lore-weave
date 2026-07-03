@@ -28,7 +28,9 @@ func (s *Server) RegisterBookTools(srv *mcp.Server) {
 		Name: "glossary_book_ontology_read",
 		Description: "Read a BOOK's local ontology: its adopted/native genres, kinds, attribute " +
 			"definitions, and kind↔genre links. This is what entities in the book are described by. " +
-			"Use before proposing entities or shaping the book's schema.",
+			"Use before proposing entities or shaping the book's schema. Every genre/kind/attribute " +
+			"row carries a `base_version` — copy it verbatim into glossary_book_patch to get " +
+			"concurrent-edit detection.",
 	}, s.toolBookOntologyRead)
 
 	mcp.AddTool(srv, &mcp.Tool{
@@ -53,8 +55,9 @@ func (s *Server) RegisterBookTools(srv *mcp.Server) {
 	mcp.AddTool(srv, &mcp.Tool{
 		Name: "glossary_book_patch",
 		Description: "Edit a book genre/kind/attribute in place. level + code identify the row; pass the " +
-			"`base_version` you read from glossary_book_ontology_read so a concurrent edit is detected " +
-			"(409 on drift). Only the fields you supply change.",
+			"row's `base_version` EXACTLY as returned by glossary_book_ontology_read (or by a prior " +
+			"create/patch result) so a concurrent edit is detected (409 on drift) — copy it verbatim, " +
+			"never invent one. Only the fields you supply change.",
 		InputSchema: closedSetSchemaFor[bookPatchToolIn](map[string][]any{
 			"level": enumLevels, "field_type": enumFieldTypes,
 		}),
@@ -149,7 +152,7 @@ type bookCreateToolIn struct {
 	IsHidden        bool     `json:"is_hidden,omitempty" jsonschema:"kind only"`
 	KindCode        string   `json:"kind_code,omitempty" jsonschema:"attribute only: the kind it belongs to"`
 	GenreCode       string   `json:"genre_code,omitempty" jsonschema:"attribute only: the genre cell (e.g. universal)"`
-	FieldType       string   `json:"field_type,omitempty" jsonschema:"attribute only: text|textarea|select|number|date|tags|url|boolean"`
+	FieldType       string   `json:"field_type,omitempty" jsonschema:"attribute only: text|textarea|select|number|date|tags|url|boolean — omit this argument for the default; do not send an empty string"`
 	IsRequired      bool     `json:"is_required,omitempty" jsonschema:"attribute only"`
 	Options         []string `json:"options,omitempty" jsonschema:"attribute only: options for a select field"`
 	AutoFillPrompt  string   `json:"auto_fill_prompt,omitempty" jsonschema:"attribute only: how the AI auto-fills this attribute from chapter text"`
@@ -176,13 +179,13 @@ func (s *Server) toolBookCreate(ctx context.Context, _ *mcp.CallToolRequest, in 
 		if err != nil {
 			return nil, bookWriteOut{}, bookCreateToolErr(err, firstNonEmpty(strings.TrimSpace(in.Code), strings.TrimSpace(in.Name)))
 		}
-		return nil, bookWriteOut{Level: bookLevelGenre, ID: g.GenreID, Code: g.Code, Status: "created"}, nil
+		return nil, bookWriteOut{Level: bookLevelGenre, ID: g.GenreID, Code: g.Code, Version: g.BaseVersion, Status: "created"}, nil
 	case bookLevelKind:
 		k, err := s.createBookKindCore(ctx, bookID, bookKindCreateParams{Code: in.Code, Name: in.Name, Description: desc, Icon: in.Icon, Color: in.Color, SortOrder: in.SortOrder, IsHidden: in.IsHidden})
 		if err != nil {
 			return nil, bookWriteOut{}, bookCreateToolErr(err, firstNonEmpty(strings.TrimSpace(in.Code), strings.TrimSpace(in.Name)))
 		}
-		return nil, bookWriteOut{Level: bookLevelKind, ID: k.BookKindID, Code: k.Code, Status: "created"}, nil
+		return nil, bookWriteOut{Level: bookLevelKind, ID: k.BookKindID, Code: k.Code, Version: k.BaseVersion, Status: "created"}, nil
 	case bookLevelAttr:
 		kindID, gErr := s.resolveBookKindID(ctx, bookID, strings.TrimSpace(in.KindCode))
 		if isNoRows(gErr) {
@@ -200,7 +203,7 @@ func (s *Server) toolBookCreate(ctx context.Context, _ *mcp.CallToolRequest, in 
 		if err != nil {
 			return nil, bookWriteOut{}, bookCreateToolErr(err, firstNonEmpty(strings.TrimSpace(in.Code), strings.TrimSpace(in.Name)))
 		}
-		return nil, bookWriteOut{Level: bookLevelAttr, ID: a.AttrID, Code: a.Code, Status: "created"}, nil
+		return nil, bookWriteOut{Level: bookLevelAttr, ID: a.AttrID, Code: a.Code, Version: a.BaseVersion, Status: "created"}, nil
 	default:
 		return nil, bookWriteOut{}, errors.New("level must be genre, kind, or attribute")
 	}
@@ -237,7 +240,7 @@ type bookPatchToolIn struct {
 	Color           *string   `json:"color,omitempty"`
 	SortOrder       *int      `json:"sort_order,omitempty"`
 	IsHidden        *bool     `json:"is_hidden,omitempty" jsonschema:"kind only"`
-	FieldType       *string   `json:"field_type,omitempty" jsonschema:"attribute only"`
+	FieldType       *string   `json:"field_type,omitempty" jsonschema:"attribute only — omit this argument to leave it unchanged; do not send an empty string"`
 	IsRequired      *bool     `json:"is_required,omitempty" jsonschema:"attribute only"`
 	Options         *[]string `json:"options,omitempty" jsonschema:"attribute only"`
 	AutoFillPrompt  *string   `json:"auto_fill_prompt,omitempty" jsonschema:"attribute only"`
@@ -340,7 +343,7 @@ func (s *Server) toolBookPatch(ctx context.Context, _ *mcp.CallToolRequest, in b
 	if err != nil {
 		return nil, bookWriteOut{}, errors.New("the target no longer exists")
 	}
-	cur := curTime.UTC().Format(time.RFC3339Nano)
+	cur := formatBaseVersion(curTime)
 	base := strings.TrimSpace(in.BaseVersion)
 	// W0 #1 (the base_version hallucination trap): models FABRICATE a base_version
 	// timestamp instead of reading it (observed literal "2025-02-11T14:30:00Z"),
@@ -471,7 +474,7 @@ func (s *Server) bookRowVersion(ctx context.Context, table, idCol string, bookID
 	if err != nil {
 		return "", err
 	}
-	return ts.UTC().Format(time.RFC3339Nano), nil
+	return formatBaseVersion(ts), nil
 }
 
 // bookRowVersions returns the live row's updated_at (its base_version) AND its

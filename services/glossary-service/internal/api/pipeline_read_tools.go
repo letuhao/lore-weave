@@ -157,7 +157,7 @@ const pipelineReadCap = 200
 
 type mergeCandToolIn struct {
 	BookID string `json:"book_id" jsonschema:"the book (UUID)"`
-	Status string `json:"status,omitempty" jsonschema:"proposed (default) | dismissed | merged"`
+	Status string `json:"status,omitempty" jsonschema:"proposed (default) | dismissed | merged — omit this argument for the default; do not send an empty string"`
 }
 type mergeCandidatesOut struct {
 	Candidates []mergeCandidateView `json:"candidates"`

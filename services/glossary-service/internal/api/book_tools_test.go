@@ -367,6 +367,97 @@ func TestBookTool_NonGranteeWriteDenied(t *testing.T) {
 	}
 }
 
+// W0 HIGH — the OCC loop must be COMPLETABLE from reads: ontology_read emits a
+// base_version on every row; a patch using THAT exact value succeeds (no
+// hallucination-shim involvement); a stale-but-plausible value (the row rotated
+// in between) still 409s with the current version embedded. Also: create returns
+// the new row's version so a create→patch chain can thread it.
+func TestBookTool_OntologyReadEmitsBaseVersion_OCCLoop(t *testing.T) {
+	pool := openTestDB(t)
+	f := newActionFixture(t, pool) // pre-adopted ontology
+	octx := ctxWithUser(f.ownerID)
+
+	// create returns a non-empty version (F1b — a create→patch chain needs it)
+	_, created, err := f.srv.toolBookCreate(octx, nil, bookCreateToolIn{
+		BookID: f.bookID.String(), Level: "kind", Name: "Clan", Code: "t1_clan",
+	})
+	if err != nil || created.Version == "" {
+		t.Fatalf("create must return the row's base_version: %v %+v", err, created)
+	}
+	// and an attribute so the read covers all three levels
+	if _, _, err := f.srv.toolBookCreate(octx, nil, bookCreateToolIn{
+		BookID: f.bookID.String(), Level: "attribute", Name: "Motto", Code: "t1_motto",
+		KindCode: "character", GenreCode: "universal",
+	}); err != nil {
+		t.Fatalf("seed attr: %v", err)
+	}
+
+	// ontology_read emits base_version on EVERY genre/kind/attribute row
+	_, read, err := f.srv.toolBookOntologyRead(octx, nil, bookOntologyReadToolIn{BookID: f.bookID.String()})
+	if err != nil || read.Ontology == nil {
+		t.Fatalf("ontology read: %v", err)
+	}
+	ont := read.Ontology
+	if len(ont.Genres) == 0 || len(ont.Kinds) == 0 || len(ont.Attributes) == 0 {
+		t.Fatalf("fixture ontology unexpectedly empty: g=%d k=%d a=%d", len(ont.Genres), len(ont.Kinds), len(ont.Attributes))
+	}
+	for _, g := range ont.Genres {
+		if g.BaseVersion == "" {
+			t.Errorf("genre %q read missing base_version", g.Code)
+		}
+	}
+	var clanVersion string
+	for _, k := range ont.Kinds {
+		if k.BaseVersion == "" {
+			t.Errorf("kind %q read missing base_version", k.Code)
+		}
+		if k.Code == "t1_clan" {
+			clanVersion = k.BaseVersion
+		}
+	}
+	for _, a := range ont.Attributes {
+		if a.BaseVersion == "" {
+			t.Errorf("attribute %q read missing base_version", a.Code)
+		}
+	}
+	if clanVersion == "" {
+		t.Fatalf("created kind not present in ontology read")
+	}
+	// the read's version matches what create returned (one format, no drift)
+	if clanVersion != created.Version {
+		t.Errorf("read base_version %q != create's %q", clanVersion, created.Version)
+	}
+
+	// a patch using EXACTLY the read value succeeds
+	nm := "Clan v2"
+	_, p1, err := f.srv.toolBookPatch(octx, nil, bookPatchToolIn{
+		BookID: f.bookID.String(), Level: "kind", Code: "t1_clan",
+		BaseVersion: clanVersion, Name: &nm,
+	})
+	if err != nil || p1.Status != "patched" || p1.Version == "" || p1.Version == clanVersion {
+		t.Fatalf("patch with the read base_version must succeed + rotate: %v %+v", err, p1)
+	}
+
+	// the previously-read value is now STALE-but-plausible → a real 409, with the
+	// CURRENT version embedded for a one-step retry
+	if _, _, err := f.srv.toolBookPatch(octx, nil, bookPatchToolIn{
+		BookID: f.bookID.String(), Level: "kind", Code: "t1_clan",
+		BaseVersion: clanVersion, Name: &nm,
+	}); err == nil || !strings.Contains(err.Error(), "changed since") {
+		t.Fatalf("stale read base_version: want 409, got %v", err)
+	} else if !strings.Contains(err.Error(), p1.Version) {
+		t.Fatalf("409 must embed the current version %q, got %v", p1.Version, err)
+	}
+
+	// …and retrying with the version FROM the 409 (== p1.Version) completes the loop
+	if _, p2, err := f.srv.toolBookPatch(octx, nil, bookPatchToolIn{
+		BookID: f.bookID.String(), Level: "kind", Code: "t1_clan",
+		BaseVersion: p1.Version, Name: &nm,
+	}); err != nil || p2.Status != "patched" {
+		t.Fatalf("retry with the 409's current version must succeed: %v %+v", err, p2)
+	}
+}
+
 func contains(xs []string, v string) bool {
 	for _, x := range xs {
 		if x == v {

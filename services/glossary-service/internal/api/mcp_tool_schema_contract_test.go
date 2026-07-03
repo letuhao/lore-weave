@@ -56,6 +56,15 @@ var closedSetAdminArgs = map[string][]string{
 	"glossary_admin_propose_restore": {"level"},
 }
 
+// closedSetValueSets pins the exact VALUE SETS for the shared closed-set args —
+// enum presence alone doesn't catch a silently narrowed/renamed value (W0 #6:
+// pin values, not just presence). Keyed by the arg path's LAST segment; args
+// not listed here are only checked for enum presence.
+var closedSetValueSets = map[string][]string{
+	"level":      {"genre", "kind", "attribute"},
+	"field_type": {"text", "textarea", "select", "number", "date", "tags", "url", "boolean"},
+}
+
 // listToolsWire fetches tools/list over the real streamable-HTTP wire path of the
 // user/book server (token-authed), returning name → inputSchema.
 func listToolsWire(t *testing.T) map[string]map[string]any {
@@ -176,17 +185,35 @@ func assertClosedSetEnums(t *testing.T, tools map[string]map[string]any, want ma
 			}
 			// The enum must hold at least two real (non-null) choices — a
 			// degenerate enum pins nothing.
-			nonNull := 0
+			nonNull := make([]string, 0, len(enum))
 			for _, v := range enum {
 				if v != nil {
-					nonNull++
+					nonNull = append(nonNull, toString(v))
 				}
 			}
-			if nonNull < 2 {
+			if len(nonNull) < 2 {
 				t.Errorf("%s.%s: enum %v has fewer than 2 non-null values", name, path, enum)
+			}
+			// Value-set pinning: for the canonical shared args, the enum must be
+			// EXACTLY the expected set (order-insensitive) — presence alone lets a
+			// silently dropped/renamed value ship.
+			segs := strings.Split(path, ".")
+			if want, pinned := closedSetValueSets[strings.TrimSuffix(segs[len(segs)-1], "[]")]; pinned {
+				got := append([]string(nil), nonNull...)
+				exp := append([]string(nil), want...)
+				sort.Strings(got)
+				sort.Strings(exp)
+				if strings.Join(got, ",") != strings.Join(exp, ",") {
+					t.Errorf("%s.%s: enum value set %v != pinned set %v", name, path, nonNull, want)
+				}
 			}
 		}
 	}
+}
+
+func toString(v any) string {
+	s, _ := v.(string)
+	return s
 }
 
 // TestMCPClosedSetArgsAreEnums — the user/book /mcp server, over the real wire.
