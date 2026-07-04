@@ -9,6 +9,8 @@ first-party JWT caller must never be able to tag spend to an arbitrary key.
 
 from __future__ import annotations
 
+import time
+
 import jwt
 import pytest
 from fastapi import HTTPException
@@ -20,7 +22,12 @@ USER = "11111111-1111-1111-1111-111111111111"
 
 
 def _jwt(sub: str) -> str:
-    return jwt.encode({"sub": sub}, app_settings.jwt_secret, algorithm="HS256")
+    # A realistic FE user token: HS256 + `exp` (the shared loreweave_authn verifier
+    # REQUIRES exp, as real auth-service tokens always carry it).
+    now = int(time.time())
+    return jwt.encode(
+        {"sub": sub, "iat": now, "exp": now + 300}, app_settings.jwt_secret, algorithm="HS256"
+    )
 
 
 class TestParseSpendCap:

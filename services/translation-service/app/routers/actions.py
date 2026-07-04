@@ -42,8 +42,8 @@ import secrets
 from uuid import UUID
 
 import asyncpg
-import jwt
 from fastapi import APIRouter, Depends, Header, HTTPException, Query, status
+from loreweave_authn import InvalidAccessToken, verify_access_token
 from pydantic import BaseModel
 
 from loreweave_mcp import (
@@ -183,11 +183,14 @@ def _resolve_confirm_caller(
     # FE / JWT path — attribution headers are deliberately ignored.
     if not authorization or not authorization.lower().startswith("bearer "):
         raise HTTPException(status_code=401, detail="missing credentials")
+    # P3 (SDK-first): the shared verifier (HS256-pinned, exp required, sub→UUID).
+    # Inline (not Depends(get_current_user)) because HTTPBearer auto-401s with no
+    # header, which would break the internal-token replay branch above.
     try:
-        data = jwt.decode(authorization[7:], app_settings.jwt_secret, algorithms=["HS256"])
-    except jwt.InvalidTokenError as exc:
+        claims = verify_access_token(authorization[7:], app_settings.jwt_secret)
+    except InvalidAccessToken as exc:
         raise HTTPException(status_code=401, detail="invalid token") from exc
-    return str(data["sub"]), None, None
+    return str(claims.subject), None, None
 
 
 async def _reauthorize_book(book_id: UUID, user_id: UUID) -> int:

@@ -100,7 +100,8 @@ export class TicketController {
     }
     let userRefId: string;
     try {
-      const decoded = jwt.verify(token, secret) as { sub?: string };
+      // P3 (security): pin the HS256 allow-list (alg-confusion / alg:none defense).
+      const decoded = jwt.verify(token, secret, { algorithms: ['HS256'] }) as { sub?: string };
       if (!decoded.sub) throw new Error('sub missing');
       userRefId = decoded.sub;
     } catch (err) {

@@ -40,8 +40,8 @@ from typing import Optional
 from uuid import UUID
 
 import httpx
-import jwt
 from fastapi import APIRouter, Header, HTTPException, Path, Response
+from loreweave_authn import InvalidAccessToken, verify_access_token
 from minio import Minio
 from minio.error import S3Error
 
@@ -204,17 +204,14 @@ def extract_user_id(authorization: str) -> str:
     token = authorization.removeprefix("Bearer ").strip()
     if not token:
         raise HTTPException(status_code=401, detail="Authorization required")
+    # P3 (SDK-first): the shared `loreweave_authn` verifier — HS256 allow-list (blocks
+    # the `alg:none` downgrade), `exp` required, `sub` must parse as a UUID. Replaces
+    # the inline `jwt.decode` this function used to hand-roll.
     try:
-        payload = jwt.decode(token, settings.jwt_secret, algorithms=["HS256"])
-    except jwt.ExpiredSignatureError:
-        raise HTTPException(status_code=401, detail="Token expired")
-    except jwt.InvalidTokenError:
-        # Bad signature, malformed, unexpected/`none` alg, non-object payload.
+        claims = verify_access_token(token, settings.jwt_secret)
+    except InvalidAccessToken:
         raise HTTPException(status_code=401, detail="Invalid token")
-    sub = payload.get("sub", "")
-    if not sub:
-        raise HTTPException(status_code=401, detail="Invalid token")
-    return sub
+    return str(claims.subject)
 
 
 def _aspect_to_size(aspect: str) -> str:

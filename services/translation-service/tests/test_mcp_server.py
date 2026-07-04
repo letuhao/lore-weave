@@ -453,7 +453,12 @@ def _confirm_auth(user: str = TEST_USER) -> dict:
 
     from app.config import settings
 
-    tok = pyjwt.encode({"sub": user}, settings.jwt_secret, algorithm="HS256")
+    # Realistic FE user token — HS256 + `exp` (the shared loreweave_authn verifier
+    # requires exp, matching real auth-service tokens).
+    now = int(time.time())
+    tok = pyjwt.encode(
+        {"sub": user, "iat": now, "exp": now + 300}, settings.jwt_secret, algorithm="HS256"
+    )
     # Direct route-function calls bypass FastAPI DI, so every Header/Query
     # param must be passed explicitly — an omitted one defaults to the
     # truthy Header()/Query() marker object, not None.

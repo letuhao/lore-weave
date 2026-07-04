@@ -72,6 +72,18 @@ JWT_VERIFY = re.compile(r"\bjwt\.ParseWithClaims\b")
 # (`jwt.NewWithClaims(jwt.SigningMethodHS256, …)`) does not match.
 JWT_ALG_PIN = re.compile(r"!=\s*jwt\.SigningMethodHS256\b")
 
+# SDK-2 · the copy-pasted Python platform USER-JWT verifier — an ASSIGNMENT-anchored
+# HS256 `jwt.decode` (`data = jwt.decode(token, secret, algorithms=["HS256"])`, the
+# exact shape ~6 Python services copy-pasted). P3 (SDK-first) migrated every one to
+# `loreweave_authn.verify_access_token`; this guards a regression. Anchored to a
+# STATEMENT (`<ident> = (py)jwt.decode(`) so a descriptive docstring/comment that
+# merely mentions the old shape does NOT match; the RS256 admin-token verify
+# (`algorithms=["RS256"]`) and the deliberate `verify_signature=False` stub don't
+# match either (different algorithm / no HS256 pin).
+PY_JWT_VERIFY = re.compile(
+    r'^\s*[\w.]+\s*=\s*(?:pyjwt|jwt)\.decode\(.*algorithms\s*=\s*\[["\']HS256'
+)
+
 # SDK-2 · the copy-pasted logging_config.py trio (Python).
 LOGGING_REDACT = re.compile(r"^\s*class\s+RedactFilter\b")
 LOGGING_SETUP = re.compile(r"^\s*def\s+setup_logging\s*\(")
@@ -86,6 +98,7 @@ TERMINAL_EVENT = re.compile(r"\btype\s+(?:TerminalEvent|terminalEvent)\s+struct\
 DETECTORS = [
     ("jwt-verifier", JWT_VERIFY),
     ("jwt-alg-pin", JWT_ALG_PIN),
+    ("py-jwt-verifier", PY_JWT_VERIFY),
     ("logging-redact-filter", LOGGING_REDACT),
     ("logging-setup", LOGGING_SETUP),
     ("logging-secret-patterns", LOGGING_SECRETS),
@@ -95,6 +108,7 @@ DETECTORS = [
 RULE_LABELS = {
     "jwt-verifier": "platform JWT verifier re-declared (use shared contracts/platformjwt)",
     "jwt-alg-pin": "hand-rolled JWT algorithm pin (belongs in the shared verifier)",
+    "py-jwt-verifier": "Python user-JWT verifier re-declared (use loreweave_authn.verify_access_token)",
     "logging-redact-filter": "RedactFilter re-declared (use loreweave_obs.setup_logging)",
     "logging-setup": "setup_logging re-defined (use loreweave_obs.setup_logging)",
     "logging-secret-patterns": "_SECRET_PATTERNS re-declared (use the shared redactor)",

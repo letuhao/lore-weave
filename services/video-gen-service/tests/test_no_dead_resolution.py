@@ -120,24 +120,23 @@ def test_models_endpoint_removed():
 
 def test_jwt_decode_verifies_signature():
     """G3: the incoming JWT MUST be signature-verified, not blind-decoded.
-    Positive locks: `jwt.decode(` + the `HS256` algorithm allow-list.
-    Negative lock: the old unverified `urlsafe_b64decode` path is gone.
-
-    The two positive substrings are checked independently (not as one
-    `algorithms=["HS256"]` literal) so quote-style / whitespace changes
-    don't false-fail the lock (/review-impl(DESIGN) LOW#7).
+    Positive lock: the shared `verify_access_token` verifier (P3 SDK-first —
+    HS256-pinned, `exp` required, `sub`→UUID; replaces the inline `jwt.decode`).
+    Negative locks: the old unverified `urlsafe_b64decode` path is gone, AND the
+    inline `jwt.decode(` was removed in favor of the shared SDK verifier.
     """
     src = _source()
-    assert "jwt.decode(" in src, (
-        "app/routers/generate.py must call jwt.decode() — Phase 5f G3 "
-        "verifies the JWT signature."
+    assert "verify_access_token(" in src, (
+        "app/routers/generate.py must call the shared verify_access_token() — "
+        "P3 routed JWT verification through the loreweave_authn SDK (still "
+        "signature-verifying + HS256-pinned)."
     )
-    assert "HS256" in src, (
-        "app/routers/generate.py must pin the HS256 algorithm allow-list "
-        "(blocks the alg:none downgrade) — Phase 5f G3."
+    assert "jwt.decode(" not in src, (
+        "app/routers/generate.py hand-rolls jwt.decode() — P3 (SDK-first) "
+        "replaced it with the shared loreweave_authn verify_access_token()."
     )
     assert "urlsafe_b64decode" not in src, (
         "app/routers/generate.py uses urlsafe_b64decode — Phase 5f G3 "
-        "replaced the unverified base64 payload decode with jwt.decode(). "
+        "replaced the unverified base64 payload decode with a real verifier. "
         "Re-introducing it bypasses signature verification."
     )
