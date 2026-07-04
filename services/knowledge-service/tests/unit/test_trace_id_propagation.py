@@ -16,6 +16,7 @@ import httpx
 import pytest
 from fastapi import FastAPI, HTTPException
 from fastapi.testclient import TestClient
+from loreweave_internal_client import build_internal_client
 
 from app.clients.glossary_client import GlossaryClient
 from app.logging_config import trace_id_var
@@ -35,21 +36,26 @@ def _capture_handler(captured: list) -> "callable":
 
 
 def _make_client(handler) -> GlossaryClient:
-    # Skip __init__ so we never construct a "real" httpx.AsyncClient —
+    # Skip __init__ so we never construct a "real" pooled AsyncClient —
     # this env's SSL truststore setup explodes on AsyncClient() with
     # a stray quote in SSL_CERT_FILE. We manually wire only the fields
-    # select_for_context touches, and inject a MockTransport-backed
-    # client that has no SSL context at all.
+    # select_for_context touches. P3 SDK-first W4: trace-id forwarding now
+    # lives in the client's request event-hook (build_internal_client's
+    # trace_id_provider), NOT hand-assembled in the method — so we build the
+    # client via the SAME factory production uses, injecting a MockTransport
+    # (a transport override means httpx builds no SSL context at all).
     gc = object.__new__(GlossaryClient)
     gc._base_url = "http://glossary-service:8088"
     gc._retries = 0
     gc._cb_fail_count = 0
     gc._cb_opened_at = None
-    gc._http = httpx.AsyncClient(
-        timeout=httpx.Timeout(0.5),
-        headers={"X-Internal-Token": "unit-test-token"},
+    gc._cb_probe_in_flight = False
+    gc._http = build_internal_client(
+        "http://glossary-service:8088",
+        internal_token="unit-test-token",
+        timeout_s=0.5,
+        trace_id_provider=trace_id_var.get,
         transport=httpx.MockTransport(handler),
-        verify=False,
     )
     return gc
 

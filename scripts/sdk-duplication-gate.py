@@ -319,13 +319,11 @@ BASELINE = {
     'logging-setup|services/composition-service/app/logging_config.py|def setup_logging(level: str = "INFO") -> None:',
     'logging-setup|services/knowledge-service/app/logging_config.py|def setup_logging(level: str = "INFO") -> None:',
     'logging-setup|services/lore-enrichment-service/app/logging_config.py|def setup_logging(level: str = "INFO") -> None:',
-    # P3 SDK-first (2026-07-05): worker-ai still holds a client-METHOD variant of the
-    # model-name resolver (ProviderRegistryClient.get_model_name) — a known copy to
-    # migrate in the worker-ai wave. Baselined so the new py-model-name-copy rule passes
-    # today and fails only on a NEW (8th) copy. The 6 standalone model_name.py copies
-    # were collapsed to loreweave_internal_client shims.
-    'py-model-name-copy|services/worker-ai/app/clients.py|"""GET /internal/models/{model_source}/{model_ref}/info → provider_model_name.',
-    'py-model-name-copy|services/worker-ai/app/clients.py|url = f"{self._base_url}/internal/models/{model_source}/{model_ref}/info"',
+    # P3 SDK-first W4 (2026-07-05): worker-ai's last client-METHOD copy of the
+    # model-name resolver (ProviderRegistryClient.get_model_name) was migrated to
+    # loreweave_internal_client.resolve_model_name — its 2 baseline entries are GONE.
+    # ALL model_name copies (6 standalone modules + this method) are now SDK shims;
+    # py-model-name-copy now has an EMPTY baseline — any new copy reds immediately.
 }
 
 
