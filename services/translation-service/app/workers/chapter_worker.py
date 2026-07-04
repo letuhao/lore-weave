@@ -3,6 +3,7 @@ import logging
 from uuid import UUID
 
 import httpx
+from loreweave_internal_client import build_internal_client
 from loreweave_jobs import emit_job_event
 from loreweave_llm.attribution import set_public_key_attribution
 
@@ -187,11 +188,10 @@ async def _process_chapter(msg, job_id, chapter_id, user_id, pool, publish_event
     # Fetch chapter body from book-service
     log.info("chapter %s: fetching body from book-service (book %s)", chapter_id, msg["book_id"])
     try:
-        async with httpx.AsyncClient(timeout=httpx.Timeout(connect=10.0, read=30.0, write=30.0, pool=5.0)) as client:
+        async with build_internal_client(settings.book_service_internal_url, internal_token=settings.internal_service_token, timeout_s=30, connect_timeout_s=10) as client:
             r = await client.get(
                 f"{settings.book_service_internal_url}"
                 f"/internal/books/{msg['book_id']}/chapters/{chapter_id}",
-                headers={"X-Internal-Token": settings.internal_service_token},
             )
     except httpx.RequestError as exc:
         log.error("chapter %s: book-service request failed: %s", chapter_id, exc)
@@ -1067,7 +1067,10 @@ async def _send_translation_notification(
             i18n_key = "notif.translation.failed"
             i18n_params = {"book": book_title}
 
-        async with httpx.AsyncClient(timeout=5.0) as client:
+        async with build_internal_client(
+            settings.notification_service_internal_url,
+            internal_token=settings.internal_service_token, timeout_s=5.0,
+        ) as client:
             await client.post(
                 f"{settings.notification_service_internal_url}/internal/notifications",
                 json={
@@ -1082,7 +1085,6 @@ async def _send_translation_notification(
                         "i18n_params": i18n_params,
                     },
                 },
-                headers={"X-Internal-Token": settings.internal_service_token},
             )
     except Exception as exc:
         log.warning("Failed to send translation notification: %s", exc)

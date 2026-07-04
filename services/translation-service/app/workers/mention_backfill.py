@@ -30,6 +30,7 @@ import asyncio
 import logging
 
 import httpx
+from loreweave_internal_client import build_internal_client
 
 from ..config import settings
 from .mention_count import build_surface_forms, count_surface_form_mentions
@@ -65,7 +66,6 @@ def recount_chapter(
 async def _fetch_chapter_list(client: httpx.AsyncClient, book_id: str) -> list[dict]:
     r = await client.get(
         f"{settings.book_service_internal_url}/internal/books/{book_id}/chapters",
-        headers={"X-Internal-Token": settings.internal_service_token},
     )
     r.raise_for_status()
     return r.json().get("items", []) or []
@@ -74,7 +74,6 @@ async def _fetch_chapter_list(client: httpx.AsyncClient, book_id: str) -> list[d
 async def _fetch_chapter_text(client: httpx.AsyncClient, book_id: str, chapter_id: str) -> str:
     r = await client.get(
         f"{settings.book_service_internal_url}/internal/books/{book_id}/chapters/{chapter_id}",
-        headers={"X-Internal-Token": settings.internal_service_token},
     )
     if r.status_code == 404:
         return ""
@@ -92,7 +91,6 @@ async def _fetch_entity_forms(client: httpx.AsyncClient, book_id: str) -> dict[s
             params["cursor"] = cursor
         r = await client.get(
             f"{settings.glossary_service_internal_url}/internal/books/{book_id}/entities",
-            headers={"X-Internal-Token": settings.internal_service_token},
             params=params,
         )
         r.raise_for_status()
@@ -121,7 +119,6 @@ async def _post_recounts(client: httpx.AsyncClient, book_id: str, counts: list[d
         chunk = counts[i : i + _RECOUNT_BATCH]
         r = await client.post(
             f"{settings.glossary_service_internal_url}/internal/books/{book_id}/recount-mention-counts",
-            headers={"X-Internal-Token": settings.internal_service_token},
             json={"counts": chunk},
         )
         r.raise_for_status()
@@ -134,7 +131,7 @@ async def backfill_book_mention_counts(book_id: str) -> dict:
 
     Returns a summary dict {book_id, chapters, entities, posted, updated}.
     """
-    async with httpx.AsyncClient(timeout=httpx.Timeout(connect=10.0, read=60.0, write=30.0, pool=5.0)) as client:
+    async with build_internal_client("", internal_token=settings.internal_service_token, timeout_s=60, connect_timeout_s=10) as client:
         chapters = await _fetch_chapter_list(client, book_id)
         entity_forms = await _fetch_entity_forms(client, book_id)
         if not entity_forms:
@@ -175,7 +172,7 @@ async def _recount_single_chapter(book_id: str, chapter_id: str, chapter_text: s
     """Staleness hook — recount ONE chapter (use on a chapter EDIT so its counts don't go
     stale). If `chapter_text` is provided (the edit path already holds it) it's used
     directly; otherwise it's fetched. Returns rows updated. Idempotent."""
-    async with httpx.AsyncClient(timeout=httpx.Timeout(connect=10.0, read=60.0, write=30.0, pool=5.0)) as client:
+    async with build_internal_client("", internal_token=settings.internal_service_token, timeout_s=60, connect_timeout_s=10) as client:
         entity_forms = await _fetch_entity_forms(client, book_id)
         text = chapter_text if chapter_text is not None else await _fetch_chapter_text(client, book_id, chapter_id)
         counts = recount_chapter(text, entity_forms)

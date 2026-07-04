@@ -15,12 +15,13 @@ from __future__ import annotations
 import logging
 
 import httpx
+from loreweave_internal_client import build_internal_client
 
 from app.config import settings
 
 log = logging.getLogger(__name__)
 
-_TIMEOUT = httpx.Timeout(5.0)
+_TIMEOUT = 5.0  # seconds (build_internal_client takes a float, not httpx.Timeout)
 
 
 async def resolve_job_cost_usd(
@@ -50,10 +51,9 @@ async def resolve_job_cost_usd(
         }],
     }
     try:
-        async with httpx.AsyncClient(timeout=_TIMEOUT) as client:
+        async with build_internal_client(settings.provider_registry_internal_url, internal_token=settings.internal_service_token, timeout_s=_TIMEOUT) as client:
             resp = await client.post(
                 url, json=body,
-                headers={"X-Internal-Token": settings.internal_service_token},
             )
         if resp.status_code != 200:
             log.debug("billing/estimate %d for model %s", resp.status_code, model_ref)

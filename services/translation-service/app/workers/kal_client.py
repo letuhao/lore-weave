@@ -40,7 +40,7 @@ import logging
 from collections import OrderedDict
 from dataclasses import dataclass, field
 
-import httpx
+from loreweave_internal_client import build_internal_client
 
 from ..config import settings
 
@@ -126,11 +126,9 @@ def clear_cache() -> None:
 
 
 def _headers(user_id: str | None) -> dict:
-    """Service-to-service auth: internal token + forwarded X-User-Id (KAL auth §)."""
-    h = {"X-Internal-Token": settings.internal_service_token}
-    if user_id:
-        h["X-User-Id"] = user_id
-    return h
+    """The per-request X-User-Id tenancy header (KAL auth §). W5: X-Internal-Token
+    is now baked into the client by build_internal_client; httpx merges this in."""
+    return {"X-User-Id": user_id} if user_id else {}
 
 
 def _parse_fact(raw: dict) -> Fact | None:
@@ -185,7 +183,7 @@ async def get_facts(
         params["attrs"] = ",".join(attrs)
 
     try:
-        async with httpx.AsyncClient(timeout=_KAL_FETCH_TIMEOUT) as client:
+        async with build_internal_client(settings.knowledge_gateway_url, internal_token=settings.internal_service_token, timeout_s=_KAL_FETCH_TIMEOUT) as client:
             resp = await client.get(
                 f"{settings.knowledge_gateway_url}"
                 f"/v1/kal/books/{book_id}/entities/{entity_id}/facts",
@@ -239,7 +237,7 @@ async def get_canonical(
         params["as_of"] = str(as_of)
 
     try:
-        async with httpx.AsyncClient(timeout=_KAL_FETCH_TIMEOUT) as client:
+        async with build_internal_client(settings.knowledge_gateway_url, internal_token=settings.internal_service_token, timeout_s=_KAL_FETCH_TIMEOUT) as client:
             resp = await client.get(
                 f"{settings.knowledge_gateway_url}"
                 f"/v1/kal/books/{book_id}/entities/{entity_id}/canonical",

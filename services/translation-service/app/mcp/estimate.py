@@ -36,6 +36,7 @@ from uuid import UUID
 
 import asyncpg
 import httpx
+from loreweave_internal_client import build_internal_client
 
 from ..config import settings
 from ..effective_settings import resolve_effective_settings
@@ -43,7 +44,7 @@ from ..workers.segment_status import compute_segment_status
 
 log = logging.getLogger(__name__)
 
-_TIMEOUT = httpx.Timeout(5.0)
+_TIMEOUT = 5.0  # seconds (build_internal_client takes a float, not httpx.Timeout)
 
 # Scope kinds the estimate understands.
 SCOPE_CHAPTERS = "chapters"
@@ -126,10 +127,9 @@ async def _price_tokens(
         }],
     }
     try:
-        async with httpx.AsyncClient(timeout=_TIMEOUT) as client:
+        async with build_internal_client(settings.provider_registry_internal_url, internal_token=settings.internal_service_token, timeout_s=_TIMEOUT) as client:
             resp = await client.post(
                 url, json=body,
-                headers={"X-Internal-Token": settings.internal_service_token},
             )
         if resp.status_code != 200:
             log.debug("billing/estimate %d for model %s", resp.status_code, model_ref)
