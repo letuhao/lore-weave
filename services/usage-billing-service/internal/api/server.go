@@ -526,12 +526,20 @@ type recordUsageRequest struct {
 	OutputPayload map[string]any `json:"output_payload"`
 	RequestStatus string         `json:"request_status"`
 	Purpose       string         `json:"purpose"`
+	// TotalCostUSD (P2·B2, closes D-S4C-STREAMING-REALCOST) — the authoritative
+	// per-model cost the /record caller computed: streaming's tallied `actual`
+	// (stream_billing.go) and embed's PriceEmbedding cost (B2·c). nil ⇒ the caller
+	// has no real cost → flat fallback. This is the Route-A twin of the usage
+	// stream's `cost_usd`, so both routes record the same authoritative cost.
+	TotalCostUSD *float64 `json:"total_cost_usd"`
 }
 
-// recordUsageParams maps a /record request to the audit params. The cost is the
-// flat estimate — the /record caller (streaming) carries no real per-model cost
-// (jobs flow through the usage stream consumer with the real cost). Pure + tested
-// so a field transposition is caught without a live handler.
+// recordUsageParams maps a /record request to the audit params. Pure + tested so a
+// field transposition (or a cost-drop regression) is caught without a live handler.
+// Cost parity: the authoritative TotalCostUSD (when present + non-negative) is
+// honored verbatim via recordCostUSD — exactly as the usage-stream consumer honors
+// `cost_usd` — else a flat per-token fallback. Both routes converge on writeUsageLog
+// with the SAME cost, closing the streaming-real-cost gap (D-S4C-STREAMING-REALCOST).
 func recordUsageParams(in recordUsageRequest) usageLogParams {
 	return usageLogParams{
 		RequestID:     in.RequestID,
@@ -541,9 +549,7 @@ func recordUsageParams(in recordUsageRequest) usageLogParams {
 		ModelRef:      in.ModelRef,
 		InputTokens:   in.InputTokens,
 		OutputTokens:  in.OutputTokens,
-		// /record has no per-model cost (the comment on flatCostPerToken) → nil
-		// override → flat fallback.
-		CostUSD:       recordCostUSD(in.InputTokens+in.OutputTokens, nil),
+		CostUSD:       recordCostUSD(in.InputTokens+in.OutputTokens, in.TotalCostUSD),
 		RequestStatus: in.RequestStatus,
 		Purpose:       in.Purpose,
 		InputPayload:  in.InputPayload,
@@ -570,10 +576,10 @@ func (s *Server) recordInvocation(w http.ResponseWriter, r *http.Request) {
 
 	// S4c: the legacy account_balances token deduction is RETIRED — USD spend
 	// enforcement is the Phase-6a guardrail's job (pre-flight reserve). /record now
-	// only writes the usage audit. The cost here is the flat estimate: /record's
-	// caller is the streaming path, which carries no real cost_usd (jobs flow through
-	// the usage stream consumer with the real per-model cost). Streaming real-cost →
-	// D-S4C-STREAMING-REALCOST.
+	// only writes the usage audit. P2·B2 (closes D-S4C-STREAMING-REALCOST): the cost
+	// is the caller's authoritative total_cost_usd when supplied (streaming's tallied
+	// cost, embed's PriceEmbedding cost), else the flat fallback — so the committed-
+	// spend rollup (guardrail SUM(total_cost_usd)) reflects real cost, not a flat proxy.
 	usageLogID, costUSD, _, err := s.writeUsageLog(r.Context(), tx, recordUsageParams(in))
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "M03_BILLING_RECORD_FAILED", "failed to write usage log")
