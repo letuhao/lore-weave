@@ -68,8 +68,20 @@ T5 audit itself tripped over.
   0-entities flag would false-positive. Catching a WHOLE-scope 0-write extraction as advisory
   needs a cumulative entity-write counter on the job (thread the persist-pass2 counts through)
   — a follow-up.
-- ⏳ **Gap #3 (stall detection) — still open.** A `running` job stuck in a stage with no
-  progress needs a `last_progress_at` + a sweeper flip to `stalled`. Separate change.
+- ✅ **Gap #3 (stall detection) — FIXED.** `worker-ai/runner.py::sweep_stalled_jobs`
+  (wired into the poll loop, config `extraction_stall_minutes=30`) fails a job stuck
+  `status='running'` with `updated_at` older than the threshold, via `_fail_job` (fires
+  the terminal event; the row stops lying about being 'running'). **LIVE-PROVEN**: an
+  orphaned decoupled-wait row (`resume_state` + `pipeline_stage=entity`, which
+  poll_and_run does NOT re-claim — the exact shape of the `019f2bfe` stuck job) was
+  failed with `error_message='stalled: no progress for 30+ min…'`. **Scope/nuance:**
+  `updated_at` is bumped on every poll CLAIM (not just progress), so this targets jobs
+  the alive worker STOPS touching (orphaned decoupled-wait / lost-terminal-event rows,
+  the gap the Wave-1b resume-sweeper leaves when decouple is off). A different pattern —
+  poll re-claims a job every cycle but it never ADVANCES (items_processed stuck) — keeps
+  `updated_at` fresh so this sweep won't catch it; that needs a progress-stagnation
+  signal (last items_processed change), a follow-up. Tests:
+  `test_sweep_stalled_jobs_fails_stale_running` + `_disabled_is_noop`.
 
 ## Proposed fix (original — for the remaining gaps)
 - **Output signal at finalization:** compute `entities_written + relations + facts` and

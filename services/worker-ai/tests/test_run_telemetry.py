@@ -242,6 +242,40 @@ async def test_complete_job_flags_zero_llm_call_noop(caplog):
     assert any("0 LLM calls" in r.message for r in caplog.records)  # loud, not silent
 
 
+async def test_sweep_stalled_jobs_fails_stale_running(monkeypatch):
+    # gap #3: a running job with stale updated_at is failed via _fail_job (once each),
+    # and the query targets running + a make_interval age threshold.
+    from app import runner
+
+    pool = AsyncMock()
+    u, j1, j2 = uuid.uuid4(), uuid.uuid4(), uuid.uuid4()
+    pool.fetch = AsyncMock(return_value=[
+        {"user_id": u, "job_id": j1}, {"user_id": u, "job_id": j2},
+    ])
+    failed = []
+
+    async def _fake_fail(p, uid, jid, err):
+        failed.append((jid, err))
+
+    monkeypatch.setattr(runner, "_fail_job", _fake_fail)
+    n = await runner.sweep_stalled_jobs(pool, stall_minutes=30)
+    assert n == 2
+    assert {f[0] for f in failed} == {j1, j2}
+    assert all("stalled" in f[1] for f in failed)
+    sql = pool.fetch.await_args.args[0]
+    assert "status = 'running'" in sql and "make_interval" in sql
+
+
+async def test_sweep_stalled_jobs_disabled_is_noop():
+    # stall_minutes<=0 disables the backstop — no query, no fails.
+    from app import runner
+
+    pool = AsyncMock()
+    pool.fetch = AsyncMock()
+    assert await runner.sweep_stalled_jobs(pool, stall_minutes=0) == 0
+    pool.fetch.assert_not_awaited()
+
+
 async def test_chapter_extracted_best_effort_on_txn_fallback():
     # On the tx-failure fallback, the cursor still advances AND we best-effort emit
     # the chapter event (the campaign's stuck-reconcile is the backstop for loss).

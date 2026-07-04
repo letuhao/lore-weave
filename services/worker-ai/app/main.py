@@ -28,6 +28,7 @@ from app.runner import (
     consume_filter_reload_signal,
     hydrate_precision_filter_config_from_redis,
     poll_and_run,
+    sweep_stalled_jobs,
 )
 from app.summary_consumer import SummaryConsumer
 from app.wake import WakeWaiter
@@ -124,6 +125,13 @@ async def main() -> None:
                 )
                 if count > 0:
                     logger.info("Poll cycle: processed %d job(s)", count)
+                # gap #3 — generic stall backstop (cheap indexed query; only acts on
+                # jobs with no progress past the generous threshold, so safe per cycle).
+                _stalled = await sweep_stalled_jobs(
+                    pool, stall_minutes=settings.extraction_stall_minutes,
+                )
+                if _stalled:
+                    logger.warning("stall sweep: failed %d stalled extraction job(s)", _stalled)
             except Exception:
                 logger.exception("Poll cycle error (will retry)")
 

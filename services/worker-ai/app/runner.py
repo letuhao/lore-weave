@@ -1020,6 +1020,47 @@ async def _fail_job(
             )
 
 
+async def sweep_stalled_jobs(pool: asyncpg.Pool, *, stall_minutes: int) -> int:
+    """D-EXTRACTION-SILENT-NOOP gap #3 — the generic STALL backstop.
+
+    `updated_at` is bumped on every progress step (cursor advance, items_total set,
+    stage change), so a job that is still `status='running'` with `updated_at` older
+    than `stall_minutes` made NO progress that whole time — its runner/provider died or
+    hung mid-loop, and without this it would sit 'running' forever, looking healthy.
+
+    Fails such jobs via `_fail_job` (so the terminal event fires and the row stops
+    lying). Deliberately COMPLEMENTS the Wave-1b resume-sweeper (which only re-drives
+    DECOUPLED rows with resume_state, and is off by default): `stall_minutes` is
+    configured generously (> the resume timeout) so a recoverable row is re-driven
+    first and a long-but-live LLM call is never wrongly failed. `stall_minutes<=0` ⇒
+    disabled. Returns the number swept."""
+    if stall_minutes <= 0:
+        return 0
+    rows = await pool.fetch(
+        """
+        SELECT user_id, job_id
+        FROM extraction_jobs
+        WHERE status = 'running'
+          AND updated_at < now() - make_interval(mins => $1)
+        ORDER BY updated_at ASC
+        LIMIT 50
+        """,
+        stall_minutes,
+    )
+    for r in rows:
+        logger.warning(
+            "STALL sweep: extraction job %s made no progress for >%d min — failing it "
+            "(runner/provider died or hung; re-dispatch to retry)",
+            r["job_id"], stall_minutes,
+        )
+        await _fail_job(
+            pool, r["user_id"], r["job_id"],
+            f"stalled: no progress for {stall_minutes}+ min "
+            "(the runner or extraction provider died/hung mid-stage) — re-dispatch to retry",
+        )
+    return len(rows)
+
+
 async def _get_project_book_id(
     pool: asyncpg.Pool, user_id: UUID, project_id: UUID,
 ) -> UUID | None:
