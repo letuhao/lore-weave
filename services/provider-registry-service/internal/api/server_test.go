@@ -311,4 +311,36 @@ func TestPlatformModelAdminGuard(t *testing.T) {
 	if code := post(srv, "Bearer "+mintAdmin([]string{scopeAdminWrite}), `not-json`); code != http.StatusBadRequest {
 		t.Fatalf("valid admin:write must pass the gate → 400 on bad body, got %d", code)
 	}
+
+	// patch + delete share the SAME requireAdminScope gate as create — assert the gate
+	// is actually WIRED on each handler (a future edit that drops the gate line on one
+	// would otherwise slip through). The gate runs before any URL-param/pool access, so
+	// unconfigured → 503 and a user HS256 token → 401 on both, with no nil-pool panic.
+	hit := func(h http.HandlerFunc, authz string) int {
+		req := httptest.NewRequest(http.MethodGet, "/v1/model-registry/platform-models/x", nil)
+		req = withRouteParam(req, "platform_model_id", uuid.NewString())
+		if authz != "" {
+			req.Header.Set("Authorization", authz)
+		}
+		rr := httptest.NewRecorder()
+		h(rr, req)
+		return rr.Code
+	}
+	unconf := testServer(secret) // adminPub nil → fail closed
+	userTok := "Bearer " + signedToken(t, secret, userID, "")
+	gated := []struct {
+		name         string
+		conf, unconf http.HandlerFunc
+	}{
+		{"patch", srv.patchPlatformModel, unconf.patchPlatformModel},
+		{"delete", srv.deletePlatformModel, unconf.deletePlatformModel},
+	}
+	for _, g := range gated {
+		if code := hit(g.unconf, userTok); code != http.StatusServiceUnavailable {
+			t.Fatalf("%s admin-unconfigured: expected 503, got %d", g.name, code)
+		}
+		if code := hit(g.conf, userTok); code != http.StatusUnauthorized {
+			t.Fatalf("%s user token at admin gate: expected 401, got %d", g.name, code)
+		}
+	}
 }
