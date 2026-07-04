@@ -94,12 +94,36 @@ smart at ~½ the cost — exactly the "compact once, reuse" fix.
 persist that FOLDS the prior summary into a new one (summary-of-summary) — untested for drift.
 Needs a multi-cycle scenario before default-on.
 
-## Decision & next steps
+## Confirmation runs — C_persist cleared both gates
 
-1. **`COMPACT_TASK_ELASTIC_ENABLED` → revert to default OFF** (confirmed regression).
-2. **Adopt C_persist** — flag-gated now (default OFF, code shipped + validated); flip default-ON
-   after a **multi-persist-cycle** long scenario (30+ turns) confirms no summary-of-summary drift
-   + a blind-judge capability pass (craft/depth, not just recall).
-3. Complete the sweep: author S3/S4/S5 + a 30-turn S1-XL, run C1 vs C_persist × N=4 + blind
-   judge, scorecard.
-4. Driver: capture the persist call's cost natively.
+**Multi-persist-cycle drift (S1-XL, 30 turns, gemma-4-26b):** C_persist fired **2 persist cycles**
+(t4 + t29, the 2nd folding the 1st summary = summary-of-summary). Recall at t9/t19/t29 was
+**stable 7/9 at all three** — no drift across the fold, no confabulation (t29 named Verithrax,
+Oldan Vex, seven star-anchors, 4,400 salt-marks, Warden Sarel Vex/estranged-brother, the
+Lantern-Guild betrayal; the 2 omitted items — forge location, lamp detail — are abbreviations,
+absent from t9 onward, not lost over cycles).
+
+**Blind capability judge (cold-start Agent, the S1-XL outputs):** `depth_nuance 5/5`,
+`consistency 5/5`, `collaborative_competence 5/5`, `craft_quality 4/5`, `confabulation false`,
+`degrades_over_session false`. Verdict: *"richly anchored in the established world… zero canon
+contradictions… neither shallow nor world-blind. A collaborator a human would gladly keep working
+with."* — i.e. compression did NOT make the agent dumber (the capability-first concern). (Craft
+docked one point for stock adjectives, unrelated to compression.)
+
+**Measurement is provider-truth:** the agent cost is the real LM Studio usage
+(`chat_messages.input_tokens`/`output_tokens`); the sweep driver was upgraded to read it (the one
+estimate left is the unmetered BYOK-local summarizer). The earlier A/B numbers were already
+input-accurate (`used_tokens == chat_messages.input_tokens`, t4=5,347 in both).
+
+## Decision — DONE (defaults flipped)
+
+1. **`COMPACT_TASK_ELASTIC_ENABLED` → default OFF** ✅ (the confirmed cost/latency regression).
+2. **`COMPACT_PERSIST_ENABLED` → default ON** ✅ (C_persist — the sweep winner: capability equal
+   or better, ~46% cheaper, C1-fast, drift-free, judge-passed). The capability-first rule
+   (maximize usefulness under cost ceilings) selects it decisively.
+
+## Remaining (optional hardening)
+
+- Broader sweep S2–S5 × N=4 for variance/generalization (the S1 direction is structural).
+- A stronger-model spot-check (gemma's weak tool-use understates the recovery net).
+- Driver: emit a native persist event so the summarizer cost is captured, not estimated.

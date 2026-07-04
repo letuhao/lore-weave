@@ -74,17 +74,14 @@ class Settings(BaseSettings):
     # ON, it instead fires at the task-elastic `compute_target` (a SOFT budget far
     # below the window): a lore/continuity turn keeps a roomy target, a status-op /
     # smalltalk turn a leaner one — so a light turn compacts sooner (token win).
-    # DEFAULT ON (flipped 2026-07-04 after the quality-gate A/B): compacting at the soft
-    # target preserves answer-correctness once the D6 recovery net is in place — the live
-    # light-target A/B (docs/eval/context-budget/T2-compaction-trigger-2026-07-04.md) hit
-    # 9/9 recall across 3 runs at ~68% token cut, matching the uncompacted baseline, ONCE
-    # the deterministic breadcrumb (`compact_breadcrumb_enabled`) leads the summary. Its
-    # safety rests on that breadcrumb + FACTS/SYNOPSIS summary + story_state Core Block.
-    # `task_weight` for a NON-grounding turn is `compact_light_task_weight` (a grounding
-    # turn always uses 1.0 = roomy); on big-window models the target caps at ~32K
-    # (loreweave_context.budget._TARGET_MAX_CAP) so a long session stays lean — raise it if a
-    # heavy-context task needs more headroom. Set False to restore the flat 0.75×window.
-    compact_task_elastic_enabled: bool = True
+    # DEFAULT OFF (reverted 2026-07-04 by the optimization sweep — SUPERSEDED by C_persist).
+    # The ephemeral task-elastic compaction re-summarizes the full history EVERY turn (it does
+    # not persist), so on a long session it made ~11 summarizer calls (62% overhead) + 7×
+    # latency at EQUAL recall — a net cost/latency REGRESSION vs the flat trigger
+    # (docs/eval/context-budget/OPTIMIZATION-RESULTS-2026-07-04.md). `compact_persist_enabled`
+    # replaces it: compact ONCE, persist, reuse. Set True only to A/B the old ephemeral path.
+    # `task_weight` for a NON-grounding turn is `compact_light_task_weight` (grounding → 1.0).
+    compact_task_elastic_enabled: bool = False
     compact_light_task_weight: float = 0.5
 
     # T6/D6 — post-compaction recovery hint. On a turn where compaction summarized
@@ -103,8 +100,13 @@ class Settings(BaseSettings):
     # BEFORE loading, so later turns load the summary (via the W3 loader) instead of
     # re-summarizing the raw history EVERY turn — fixing the 62%-summarizer-overhead regression
     # the optimization sweep found (docs/eval/context-budget/OPTIMIZATION-RESULTS-2026-07-04.md).
-    # Default OFF (a sweep candidate); persist threshold = compute_target(context_length).
-    compact_persist_enabled: bool = False
+    # DEFAULT ON (adopted 2026-07-04 — the optimization sweep WINNER; persist threshold =
+    # compute_target(context_length)). On S1 (15-turn) it compacted ONCE then reused: ~46%
+    # cheaper than the flat trigger + ~55% vs task-elastic, at C1-fast latency, EQUAL recall.
+    # 30-turn multi-persist-cycle test: recall stable 7/9 across the summary-of-summary fold,
+    # blind judge depth 5/5 · consistency 5/5 · no confabulation · no degradation — the agent
+    # stays smart post-compression. Set False to restore no-persist (ephemeral tiers only).
+    compact_persist_enabled: bool = True
 
     # T6/D6 — compaction BREADCRUMB. Before the lossy LLM summarizer runs, a DETERMINISTIC
     # extractor (compaction.extract_breadcrumb) pulls the highest-value, most-often-dropped
