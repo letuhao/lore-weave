@@ -29,9 +29,13 @@ If even the non-evictable messages exceed the budget (edge #4) the result carrie
     and tier 3 must never split a call/result pair (a provider 400). That is why
     truncation operates on whole *tool-exchange atoms* (``_atoms`` / ``_recent_tail``),
     not raw message slices — dropping/keeping a whole exchange can't orphan.
-  * ``stream_service`` currently calls this with ``summarize=None`` — so on genuine
-    overflow we DROP the oldest turns rather than compress them. Wiring a real
-    summarizer (compress instead of drop) is a tracked follow-up.
+  * ``stream_service`` wires a real summarizer (``_summarizer`` / ``_loop_summarizer``,
+    the ``compact_service`` FACTS/SYNOPSIS extractor) into ``summarize=`` — so on
+    overflow we COMPRESS the middle into a synopsis and keep the recent tail verbatim.
+    If the summarizer fails OR returns a truncated result (it now RAISES on
+    ``finish_reason='length'``), we fall back to deterministic hard-truncation below
+    (``report.summarize_failed`` → drop oldest whole atoms) rather than store a
+    partial summary.
 """
 from __future__ import annotations
 

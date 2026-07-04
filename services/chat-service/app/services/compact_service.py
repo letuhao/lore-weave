@@ -17,6 +17,7 @@ from __future__ import annotations
 
 from loreweave_llm import (
     Client,
+    DoneEvent,
     StreamRequest,
     TokenEvent,
     reasoning_fields,
@@ -24,6 +25,15 @@ from loreweave_llm import (
 )
 
 from app.config import settings
+
+
+class SummaryTruncatedError(RuntimeError):
+    """The summarizer stopped at max_tokens (finish_reason='length') — its TAIL
+    (Open-threads + SYNOPSIS, the most load-bearing state) would be silently
+    dropped. Raised instead of returning a partial summary; the manual compact
+    route maps it to 502 (session unchanged) and the auto path falls back to
+    deterministic hard-truncation (compaction.py) — both honest, unlike storing
+    a summary with facts silently missing (audit HIGH-1, 2026-07-04)."""
 
 # D6 (Context Budget Law) — a FACT-PRESERVING EXTRACTIVE summary, not a lossy prose
 # blur. A rolling prose summary silently drops load-bearing facts (a name, a decision,
@@ -107,14 +117,27 @@ async def summarize_for_compaction(
     try:
         request = StreamRequest(
             model_source=model_source, model_ref=model_ref,
-            messages=summary_messages, temperature=0.2, max_tokens=900,
+            # Headroom for the FACTS block + SYNOPSIS on a long, entity-dense
+            # conversation (the structure inflates length vs a plain blurb). If it
+            # STILL truncates, the guard below refuses the partial rather than
+            # silently dropping the tail.
+            messages=summary_messages, temperature=0.2, max_tokens=1400,
             reasoning_effort=rf.get("reasoning_effort"),
             chat_template_kwargs=rf.get("chat_template_kwargs"),
         )
         parts: list[str] = []
+        finish_reason: str | None = None
         async for ev in client.stream(request):
             if isinstance(ev, TokenEvent):
                 parts.append(ev.delta)
+            elif isinstance(ev, DoneEvent):
+                finish_reason = ev.finish_reason
     finally:
         await client.aclose()
+    # D6 / audit HIGH-1: never return a summary the provider cut off — its tail
+    # (Open-threads + SYNOPSIS) would be gone. Let the caller degrade honestly.
+    if finish_reason == "length":
+        raise SummaryTruncatedError(
+            f"summary hit max_tokens ({request.max_tokens}); tail facts would be lost"
+        )
     return "".join(parts).strip()
