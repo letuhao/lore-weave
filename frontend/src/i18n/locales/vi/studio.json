@@ -519,6 +519,12 @@
           "title": "Editor",
           "body": "Trình soạn bản thảo — ngữ pháp, gợi ý từ điển, chế độ tập trung, và tự động lưu đều ở đây."
         }
+      },
+      "actions": {
+        "skip": "Bỏ qua hướng dẫn",
+        "back": "Quay lại",
+        "next": "Tiếp theo ({{current}}/{{total}})",
+        "done": "Xong"
       }
     }
   },

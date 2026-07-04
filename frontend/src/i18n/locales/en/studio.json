@@ -537,6 +537,12 @@
           "title": "Editor",
           "body": "The manuscript editor — grammar, glossary hints, focus mode, and auto-save live here."
         }
+      },
+      "actions": {
+        "skip": "Skip tour",
+        "back": "Back",
+        "next": "Next ({{current}}/{{total}})",
+        "done": "Done"
       }
     }
   },

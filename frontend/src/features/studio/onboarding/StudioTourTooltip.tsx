@@ -3,6 +3,7 @@
 // dispatch entirely — the parent only ever renders ONE step at a time (see useStudioTour), so
 // these buttons call the hook's own next/prev/stop directly instead of joyride's internal state.
 import { useEffect, useRef } from 'react';
+import { useTranslation } from 'react-i18next';
 import type { TooltipRenderProps } from 'react-joyride';
 
 interface Props extends TooltipRenderProps {
@@ -14,6 +15,7 @@ interface Props extends TooltipRenderProps {
 }
 
 export function StudioTourTooltip({ step, stepIndex, stepCount, onNext, onPrev, onSkip, tooltipProps }: Props) {
+  const { t } = useTranslation('studio');
   const nextRef = useRef<HTMLButtonElement>(null);
   const isLast = stepIndex + 1 >= stepCount;
 
@@ -47,7 +49,7 @@ export function StudioTourTooltip({ step, stepIndex, stepCount, onNext, onPrev, 
           onClick={onSkip}
           className="rounded text-xs text-muted-foreground transition-colors hover:text-foreground focus-visible:outline focus-visible:outline-2 focus-visible:outline-primary"
         >
-          Skip tour
+          {t('intro.tour.actions.skip', { defaultValue: 'Skip tour' })}
         </button>
         <div className="flex gap-2">
           {stepIndex > 0 && (
@@ -57,7 +59,7 @@ export function StudioTourTooltip({ step, stepIndex, stepCount, onNext, onPrev, 
               onClick={onPrev}
               className="rounded border px-2 py-1 text-xs transition-colors hover:bg-secondary focus-visible:outline focus-visible:outline-2 focus-visible:outline-primary"
             >
-              Back
+              {t('intro.tour.actions.back', { defaultValue: 'Back' })}
             </button>
           )}
           <button
@@ -67,7 +69,9 @@ export function StudioTourTooltip({ step, stepIndex, stepCount, onNext, onPrev, 
             onClick={onNext}
             className="rounded bg-primary px-2 py-1 text-xs text-primary-foreground transition-colors hover:bg-primary/90 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
           >
-            {isLast ? 'Done' : `Next (${stepIndex + 1}/${stepCount})`}
+            {isLast
+              ? t('intro.tour.actions.done', { defaultValue: 'Done' })
+              : t('intro.tour.actions.next', { defaultValue: `Next (${stepIndex + 1}/${stepCount})`, current: stepIndex + 1, total: stepCount })}
           </button>
         </div>
       </div>
