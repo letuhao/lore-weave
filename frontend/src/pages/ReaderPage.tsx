@@ -267,9 +267,23 @@ export function ReaderPage() {
       {/* P5: the book-scoped glossary assistant (floating dock → embedded chat). */}
       {bookId && <BookAssistantDock bookId={bookId} />}
 
-      {/* Reading area — reader theme applied here, chrome stays on app theme */}
-      <div ref={scrollRef} className="flex flex-1 justify-center overflow-y-auto" style={{ padding: '64px 24px 120px', background: readerTheme.bg, color: readerTheme.fg, ...readerCssVars as React.CSSProperties }}>
-        <article style={{ maxWidth: 'var(--reader-width, 680px)', width: '100%' }}>
+      {/* Reading area — reader theme applied here, chrome stays on app theme.
+          D-READER-WIDTH-SCALE: see BookReaderPanel.tsx for why `cqw` (container-relative, not
+          `vw`) and why `--reader-effective-width` is set ONCE here and consumed by both the
+          article AND ContentRenderer's `.content-renderer` (reader.css) — same shared reader
+          chrome, same fixed-width-wastes-space fix, kept consistent across both consumers
+          (DOCK-2 no-fork). */}
+      <div
+        ref={scrollRef}
+        className="flex flex-1 justify-center overflow-y-auto"
+        style={{
+          padding: '64px 24px 120px', background: readerTheme.bg, color: readerTheme.fg,
+          containerType: 'inline-size',
+          '--reader-effective-width': 'clamp(var(--reader-width, 680px), 85cqw, 1100px)',
+          ...readerCssVars as React.CSSProperties,
+        } as React.CSSProperties}
+      >
+        <article style={{ maxWidth: 'var(--reader-effective-width)', width: '100%' }}>
 
           {/* Chapter header */}
           <div className="chapter-header">

@@ -21,7 +21,13 @@
    ══════════════════════════════════════════════════════════════════════════ */
 
 .content-renderer {
-  max-width: var(--reader-width, 680px);
+  /* D-READER-WIDTH-SCALE: keys off the SAME derived var the <article> wrapper's own max-width
+     uses (ReaderPage.tsx / BookReaderPanel.tsx), not --reader-width directly — this class used
+     to duplicate --reader-width independently, so widening the article alone (to use more of a
+     wide dock panel) left this inner content box pinned at the old fixed width, rendering the
+     actual prose left-aligned inside the now-wider article. Falls back to --reader-width then
+     680px for any caller that doesn't set the derived var (belt-and-suspenders, not expected). */
+  max-width: var(--reader-effective-width, var(--reader-width, 680px));
   width: 100%;
   color: var(--reader-fg, #f5efe8);
   font-family: var(--reader-font, 'Lora', Georgia, serif);

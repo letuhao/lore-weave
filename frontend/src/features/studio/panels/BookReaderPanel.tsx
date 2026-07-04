@@ -216,8 +216,28 @@ export function BookReaderPanel(props: IDockviewPanelProps) {
         onAutoScrollTTSChange={setAutoScrollTTS}
       />
 
-      <div className="flex flex-1 justify-center overflow-y-auto" style={{ padding: '32px 24px 96px', background: readerTheme.bg, color: readerTheme.fg, ...readerCssVars as React.CSSProperties }}>
-        <article style={{ maxWidth: 'var(--reader-width, 680px)', width: '100%' }}>
+      {/* D-READER-WIDTH-SCALE: `containerType: inline-size` turns this into the reference box
+          for `--reader-effective-width`'s `cqw` term below — the panel's own width, not the
+          theme preference alone. A dockview panel opened wide (no split) left `--reader-width`
+          (a fixed, preference-only px value, default 680) surrounded by large unused margins;
+          this scales the ceiling with the panel while the theme's own value still acts as a
+          floor (a user who set a wider preference never sees LESS than they asked for) and
+          1100px caps it so a huge panel doesn't turn into an unreadably wide line length.
+          `--reader-effective-width` is the SINGLE derived value both the article AND
+          ContentRenderer's `.content-renderer` (reader.css) key off — computing the same
+          clamp() independently in two places is exactly how they drifted out of sync the first
+          time (article widened to 1100px, .content-renderer stayed pinned at the old 680px,
+          leaving the actual prose left-aligned inside the now-wider article). */}
+      <div
+        className="flex flex-1 justify-center overflow-y-auto"
+        style={{
+          padding: '32px 24px 96px', background: readerTheme.bg, color: readerTheme.fg,
+          containerType: 'inline-size',
+          '--reader-effective-width': 'clamp(var(--reader-width, 680px), 85cqw, 1100px)',
+          ...readerCssVars as React.CSSProperties,
+        } as React.CSSProperties}
+      >
+        <article style={{ maxWidth: 'var(--reader-effective-width)', width: '100%' }}>
           <div className="chapter-header">
             <p className="ch-label">{t('chapter_label', { n: currentIdx + 1 })}</p>
             {(chapter?.title || chapter?.original_filename) && (
