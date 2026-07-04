@@ -388,6 +388,24 @@ DO $$ BEGIN
   END IF;
 END $$;
 
+-- D-COMPOSE-SESSION-RESTORE: a book-scoped chat (e.g. the Writing Studio
+-- Compose panel) had no durable link to its book beyond the optional
+-- knowledge-project id — for a book with no KG project yet, project_id stays
+-- NULL forever, so the embedded binding logic could never find "the session
+-- for this book" and always forced a fresh Start-New-Chat prompt (losing the
+-- session AND its chosen model on every reopen). book_id is set at creation
+-- time when the caller knows which book it's for; NULL for chat-page/roleplay
+-- sessions that aren't book-scoped. No FK (books lives in loreweave_book, a
+-- different DB) — an unknown/deleted book_id is harmless (just an inert tag).
+DO $$ BEGIN
+  IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='chat_sessions' AND column_name='book_id') THEN
+    ALTER TABLE chat_sessions ADD COLUMN book_id UUID;
+  END IF;
+END $$;
+
+CREATE INDEX IF NOT EXISTS idx_chat_sessions_book
+  ON chat_sessions(book_id) WHERE book_id IS NOT NULL;
+
 -- ══════════════════════════════════════════════════════════════════════
 -- M7 — System-tier seed templates (the admin/platform path). These are the
 -- shared defaults every tenant sees read-only; a user clones one (POST

@@ -33,6 +33,11 @@ export interface ChatSession {
   // (static project memory). Mirrors the backend column added
   // by chat-service's K5 migration.
   project_id: string | null;
+  // D-COMPOSE-SESSION-RESTORE: set when the session was created from a
+  // book-scoped host (the Writing Studio Compose panel). Independent of
+  // project_id — a book with no knowledge project yet still gets a durable
+  // book_id so its session (and chosen model) can be found again on reopen.
+  book_id?: string | null;
   // Track B B1(2) — multi-KG: the session's grounding project SET (world +
   // member books) unioned into one memory block. Empty = the legacy
   // single-project (project_id) path. ≥2 → the "multi" memory mode.
@@ -377,6 +382,11 @@ export interface CreateSessionPayload {
   title?: string;
   system_prompt?: string;
   generation_params?: GenerationParams;
+  // D-COMPOSE-SESSION-RESTORE: tag a book-scoped session at creation time
+  // (known upfront, unlike project_id which is bound after the fact) so it
+  // can be found again on the next Compose open regardless of whether a
+  // knowledge project exists for the book.
+  book_id?: string;
 }
 
 export interface PatchSessionPayload {

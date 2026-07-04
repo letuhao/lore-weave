@@ -51,8 +51,8 @@ class TestCreateSession:
         })
         assert resp.status_code == 201
         assert resp.json()["project_ids"] == [pid_a, pid_b]
-        # bound as the final INSERT positional (a list of the two id strings)
-        assert list(mock_pool.fetchrow.call_args.args[-1]) == [pid_a, pid_b]
+        # bound second-to-last (book_id, unset here, is the final INSERT positional)
+        assert list(mock_pool.fetchrow.call_args.args[-2]) == [pid_a, pid_b]
 
     @pytest.mark.asyncio
     async def test_create_session_project_ids_over_cap_returns_422(self, client, mock_pool):
@@ -70,6 +70,32 @@ class TestCreateSession:
             "model_source": "user_model",
         })
         assert resp.status_code == 422
+
+    @pytest.mark.asyncio
+    async def test_create_session_with_book_id_persists_it(self, client, mock_pool):
+        """D-COMPOSE-SESSION-RESTORE: book_id round-trips through create and
+        is bound as the final INSERT positional."""
+        book_id = str(uuid4())
+        mock_pool.fetchrow.return_value = make_session_record(book_id=book_id)
+        resp = await client.post("/v1/chat/sessions", json={
+            "model_source": "user_model",
+            "model_ref": TEST_MODEL_REF,
+            "book_id": book_id,
+        })
+        assert resp.status_code == 201
+        assert resp.json()["book_id"] == book_id
+        assert mock_pool.fetchrow.call_args.args[-1] == book_id
+
+    @pytest.mark.asyncio
+    async def test_create_session_without_book_id_defaults_null(self, client, mock_pool):
+        mock_pool.fetchrow.return_value = make_session_record()
+        resp = await client.post("/v1/chat/sessions", json={
+            "model_source": "user_model",
+            "model_ref": TEST_MODEL_REF,
+        })
+        assert resp.status_code == 201
+        assert resp.json()["book_id"] is None
+        assert mock_pool.fetchrow.call_args.args[-1] is None
 
 
 class TestListSessions:
@@ -97,6 +123,38 @@ class TestListSessions:
         # Verify the status filter was passed to the query
         call_args = mock_pool.fetch.call_args
         assert "archived" in call_args.args
+
+    @pytest.mark.asyncio
+    async def test_list_sessions_with_book_id_filter(self, client, mock_pool):
+        """D-COMPOSE-SESSION-RESTORE: ?book_id= is bound and the SQL text
+        gains the book_id predicate."""
+        mock_pool.fetch.return_value = []
+        book_id = str(uuid4())
+        resp = await client.get(f"/v1/chat/sessions?book_id={book_id}")
+        assert resp.status_code == 200
+        call_args = mock_pool.fetch.call_args
+        assert book_id in call_args.args
+        assert "book_id=" in call_args.args[0]
+
+    @pytest.mark.asyncio
+    async def test_list_sessions_book_id_and_cursor_bind_distinct_placeholders(self, client, mock_pool):
+        """Regression: book_id must be appended BEFORE cursor so cursor's
+        placeholder number always reflects however many filters precede it —
+        appending in the wrong order would silently misbind the cursor value
+        to the book_id predicate (or vice versa)."""
+        mock_pool.fetch.return_value = []
+        book_id = str(uuid4())
+        resp = await client.get(f"/v1/chat/sessions?book_id={book_id}&cursor=2026-01-01T00:00:00Z")
+        assert resp.status_code == 200
+        call_args = mock_pool.fetch.call_args
+        sql = call_args.args[0]
+        args = call_args.args[1:]
+        # user_id, status, limit+1, book_id, cursor — 5 positional args, in order.
+        assert len(args) == 5
+        assert args[3] == book_id
+        assert args[4] == "2026-01-01T00:00:00Z"
+        assert "book_id=$4" in sql
+        assert "last_message_at < $5" in sql
 
 
 class TestGetSession:

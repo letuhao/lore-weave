@@ -126,6 +126,10 @@ function EmbeddedChat({ bookId, actionBar, className, composeMode }: ChatProps) 
             model_ref: modelRef,
             title: 'New Chat',
             system_prompt: systemPrompt,
+            // D-COMPOSE-SESSION-RESTORE: tag at creation so this book's next
+            // Compose open can find it again (JSON.stringify drops `undefined`
+            // when there's no bookId — e.g. a non-book embedded host).
+            book_id: bookId,
           });
         }}
       />

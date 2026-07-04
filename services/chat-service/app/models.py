@@ -231,6 +231,10 @@ class CreateSessionRequest(BaseModel):
     # When set, chat-service injects it into the agent's glossary_plan call.
     planner_model_source: str | None = None
     planner_model_ref: UUID | None = None
+    # D-COMPOSE-SESSION-RESTORE: set by a book-scoped caller (Writing Studio
+    # Compose) so the session survives being found again on the next open,
+    # independent of whether a knowledge project is linked yet.
+    book_id: UUID | None = None
 
 
 class PatchSessionRequest(BaseModel):
@@ -275,6 +279,7 @@ class ChatSession(BaseModel):
     created_at: datetime
     updated_at: datetime
     project_id: UUID | None = None  # K5
+    book_id: UUID | None = None  # D-COMPOSE-SESSION-RESTORE
     # Track B B1(2) — multi-KG grounding set. Empty list = the legacy
     # single-project path. Default-empty so an older row / no-project session
     # stays back-compatible.

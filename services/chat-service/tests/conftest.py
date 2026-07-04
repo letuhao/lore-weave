@@ -93,6 +93,7 @@ def make_session_record(
         "created_at": now,
         "updated_at": now,
         "project_id": None,
+        "book_id": None,
         "project_ids": [],
         "composer_model_source": None,
         "composer_model_ref": None,

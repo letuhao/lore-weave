@@ -60,6 +60,7 @@ def _row_to_session(r: asyncpg.Record) -> ChatSession:
         # asyncpg.Record supports .get() (0.27+); matches the pattern used
         # by stream_service.py for test dict-mock compatibility.
         project_id=project_id,
+        book_id=r.get("book_id"),
         project_ids=project_ids,
         memory_mode=memory_mode,
         composer_model_source=r.get("composer_model_source"),
@@ -83,8 +84,8 @@ async def create_session(
     gp = json.dumps(body.generation_params.model_dump(exclude_unset=True)) if body.generation_params else "{}"
     row = await pool.fetchrow(
         """
-        INSERT INTO chat_sessions (owner_user_id, title, model_source, model_ref, system_prompt, generation_params, project_id, composer_model_source, composer_model_ref, planner_model_source, planner_model_ref, project_ids)
-        VALUES ($1, $2, $3, $4, $5, $6::jsonb, $7, $8, $9, $10, $11, $12::uuid[])
+        INSERT INTO chat_sessions (owner_user_id, title, model_source, model_ref, system_prompt, generation_params, project_id, composer_model_source, composer_model_ref, planner_model_source, planner_model_ref, project_ids, book_id)
+        VALUES ($1, $2, $3, $4, $5, $6::jsonb, $7, $8, $9, $10, $11, $12::uuid[], $13)
         RETURNING *
         """,
         user_id, body.title, body.model_source, str(body.model_ref), body.system_prompt, gp,
@@ -94,6 +95,7 @@ async def create_session(
         body.planner_model_source,
         str(body.planner_model_ref) if body.planner_model_ref else None,
         [str(p) for p in body.project_ids] if body.project_ids else [],
+        str(body.book_id) if body.book_id else None,
     )
     return _row_to_session(row)
 
@@ -103,30 +105,32 @@ async def list_sessions(
     session_status: str = Query("active", alias="status"),
     limit: int = Query(50, le=100),
     cursor: str | None = None,
+    book_id: UUID | None = None,
     user_id: str = Depends(get_current_user),
     pool: asyncpg.Pool = Depends(get_db),
 ) -> SessionListResponse:
+    # Placeholders are numbered in the order args are appended below, so a
+    # filter's position always matches however many args precede it —
+    # appending book_id BEFORE cursor (rather than after, unconditionally)
+    # would silently shift cursor's $N and misbind it.
     args: list = [user_id, session_status, limit + 1]
+    book_filter = ""
+    if book_id is not None:
+        args.append(str(book_id))
+        book_filter = f" AND book_id=${len(args)}"
+    cursor_filter = ""
     if cursor:
-        rows = await pool.fetch(
-            """
-            SELECT * FROM chat_sessions
-            WHERE owner_user_id=$1 AND status=$2 AND last_message_at < $4
-            ORDER BY is_pinned DESC, last_message_at DESC NULLS LAST, session_id DESC
-            LIMIT $3
-            """,
-            *args, cursor,
-        )
-    else:
-        rows = await pool.fetch(
-            """
-            SELECT * FROM chat_sessions
-            WHERE owner_user_id=$1 AND status=$2
-            ORDER BY is_pinned DESC, last_message_at DESC NULLS LAST, session_id DESC
-            LIMIT $3
-            """,
-            *args,
-        )
+        args.append(cursor)
+        cursor_filter = f" AND last_message_at < ${len(args)}"
+    rows = await pool.fetch(
+        f"""
+        SELECT * FROM chat_sessions
+        WHERE owner_user_id=$1 AND status=$2{book_filter}{cursor_filter}
+        ORDER BY is_pinned DESC, last_message_at DESC NULLS LAST, session_id DESC
+        LIMIT $3
+        """,
+        *args,
+    )
     has_more = len(rows) > limit
     items = [_row_to_session(r) for r in rows[:limit]]
     next_cursor = str(items[-1].last_message_at) if has_more and items else None

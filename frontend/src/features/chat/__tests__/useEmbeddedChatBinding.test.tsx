@@ -19,9 +19,11 @@ vi.mock('@/features/knowledge/api', () => ({
 }));
 
 const patchSessionMock = vi.fn();
+const listSessionsMock = vi.fn();
 vi.mock('../api', () => ({
   chatApi: {
     patchSession: (...a: unknown[]) => patchSessionMock(...a),
+    listSessions: (...a: unknown[]) => listSessionsMock(...a),
   },
 }));
 
@@ -58,6 +60,11 @@ describe('useEmbeddedChatBinding', () => {
   beforeEach(() => {
     listProjectsMock.mockReset();
     patchSessionMock.mockReset();
+    listSessionsMock.mockReset();
+    // Default: no book-scoped session exists server-side either (the direct
+    // fallback fetch, D-COMPOSE-SESSION-RESTORE, finds nothing) — tests that
+    // want to exercise the fallback finding a session override this.
+    listSessionsMock.mockResolvedValue({ items: [], next_cursor: null });
   });
 
   it('resolves the book project and selects an existing book-scoped session', async () => {
@@ -79,6 +86,47 @@ describe('useEmbeddedChatBinding', () => {
 
   it('signals needsNewSession when the book has a project but no session yet', async () => {
     listProjectsMock.mockResolvedValue({ items: [{ project_id: 'proj-9' }] });
+    const d = deps({ sessions: [] });
+
+    const { result } = renderHook(() => useEmbeddedChatBinding(d));
+
+    await waitFor(() => expect(result.current.needsNewSession).toBe(true));
+    expect(d.selectSession).not.toHaveBeenCalled();
+  });
+
+  it('D-COMPOSE-SESSION-RESTORE: falls back to a direct book_id fetch when a fresh 0-message session sorted outside the loaded list', async () => {
+    // The bug: a brand-new session has last_message_at=null, sorts LAST by
+    // the list endpoint's ORDER BY ... NULLS LAST, and can fall outside the
+    // already-loaded `sessions` page — the same class of bug as
+    // D-CHAT-URL-SESSION-ACTIVATION. The local `sessions` array (as loaded
+    // generically, unfiltered by book) has nothing for this book; the direct
+    // book_id-scoped fetch is what actually finds it.
+    listProjectsMock.mockResolvedValue({ items: [] });
+    const freshSession = makeSession({ session_id: 's-fresh', book_id: 'book-1', last_message_at: null });
+    listSessionsMock.mockResolvedValue({ items: [freshSession], next_cursor: null });
+    const d = deps({ sessions: [] }); // not in the generically-loaded list
+
+    const { result } = renderHook(() => useEmbeddedChatBinding(d));
+
+    await waitFor(() => expect(d.selectSession).toHaveBeenCalledWith(freshSession));
+    expect(result.current.needsNewSession).toBe(false);
+    expect(listSessionsMock).toHaveBeenCalledWith('tok-test', 'active', 'book-1');
+  });
+
+  it('signals needsNewSession when the direct book_id fetch also finds nothing', async () => {
+    listProjectsMock.mockResolvedValue({ items: [] });
+    listSessionsMock.mockResolvedValue({ items: [], next_cursor: null });
+    const d = deps({ sessions: [] });
+
+    const { result } = renderHook(() => useEmbeddedChatBinding(d));
+
+    await waitFor(() => expect(result.current.needsNewSession).toBe(true));
+    expect(d.selectSession).not.toHaveBeenCalled();
+  });
+
+  it('degrades to needsNewSession when the direct book_id fetch fails', async () => {
+    listProjectsMock.mockResolvedValue({ items: [] });
+    listSessionsMock.mockRejectedValue(new Error('down'));
     const d = deps({ sessions: [] });
 
     const { result } = renderHook(() => useEmbeddedChatBinding(d));
@@ -163,6 +211,44 @@ describe('useEmbeddedChatBinding', () => {
       expect.objectContaining({ book_id: 'book-B' }),
       'tok-test',
     );
+  });
+
+  it('D-COMPOSE-SESSION-RESTORE: restores the last session by book_id even when the book has NO knowledge project', async () => {
+    // The bug: projectId is null forever for a book with no KG project, so
+    // the OLD `projectId ? sessions.find(...) : undefined` logic could never
+    // find a session for such a book — every reopen forced a new chat.
+    listProjectsMock.mockResolvedValue({ items: [] });
+    const mine = makeSession({ session_id: 's-mine', book_id: 'book-1', project_id: null });
+    const otherBook = makeSession({ session_id: 's-other', book_id: 'book-2', project_id: null });
+    const d = deps({ sessions: [mine, otherBook] });
+
+    const { result } = renderHook(() => useEmbeddedChatBinding(d));
+
+    await waitFor(() => expect(d.selectSession).toHaveBeenCalledWith(mine));
+    expect(result.current.needsNewSession).toBe(false);
+  });
+
+  it('prefers a book_id match over a project_id match when both are present', async () => {
+    listProjectsMock.mockResolvedValue({ items: [{ project_id: 'proj-9' }] });
+    const byBookId = makeSession({ session_id: 's-by-book', book_id: 'book-1', project_id: null });
+    const byProjectId = makeSession({ session_id: 's-by-project', book_id: null, project_id: 'proj-9' });
+    const d = deps({ sessions: [byBookId, byProjectId] });
+
+    const { result } = renderHook(() => useEmbeddedChatBinding(d));
+
+    await waitFor(() => expect(d.selectSession).toHaveBeenCalledWith(byBookId));
+    expect(result.current.needsNewSession).toBe(false);
+  });
+
+  it('falls back to a project_id match for a legacy session never tagged with book_id', async () => {
+    listProjectsMock.mockResolvedValue({ items: [{ project_id: 'proj-9' }] });
+    const legacy = makeSession({ session_id: 's-legacy', book_id: null, project_id: 'proj-9' });
+    const d = deps({ sessions: [legacy] });
+
+    const { result } = renderHook(() => useEmbeddedChatBinding(d));
+
+    await waitFor(() => expect(d.selectSession).toHaveBeenCalledWith(legacy));
+    expect(result.current.needsNewSession).toBe(false);
   });
 
   it('does not throw when the project-bind patch fails (graceful degrade)', async () => {
