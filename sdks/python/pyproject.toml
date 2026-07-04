@@ -103,6 +103,12 @@ include = [
   # prompt ladders — A1). Pure-Python string logic, no provider SDK (provider-gate clean).
   # First consumer: chat-service/stream_service; roleplay/composition to follow.
   "loreweave_context*",
+  # P3 SDK-first (2026-07-05) — `loreweave_internal_client` added (shared mechanics for
+  # internal S2S HTTP clients: token/JSON headers, uniform X-Trace-Id propagation, the
+  # 502/503/429-retryable predicate + error base, and the model-name resolver collapsed
+  # from 5 byte-identical copies). Pure httpx. Wave 1 consumers: translation/knowledge/
+  # composition/campaign/video model_name shims; more client migrations to follow.
+  "loreweave_internal_client*",
 ]
 exclude = ["tests*"]
 

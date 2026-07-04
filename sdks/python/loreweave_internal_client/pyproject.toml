@@ -1,0 +1,31 @@
+# Standalone package descriptor for loreweave_internal_client (P3 SDK-first).
+#
+# Like loreweave_authn, ships its own descriptor so it can be created without editing
+# the shared sdks/python/pyproject.toml. Tests run via `PYTHONPATH=sdks/python` and
+# import the package directly — no install required.
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "loreweave_internal_client"
+version = "0.1.0"
+description = "Shared mechanics for LoreWeave internal service-to-service HTTP clients (token/JSON headers, uniform trace propagation, retryable-status predicate, model-name resolver)."
+requires-python = ">=3.11"
+dependencies = [
+  "httpx>=0.27",
+]
+
+[project.optional-dependencies]
+test = [
+  "pytest>=8",
+  "pytest-asyncio>=0.23",
+]
+
+[tool.setuptools.packages.find]
+include = ["loreweave_internal_client*"]
+exclude = ["tests*"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+asyncio_mode = "auto"
