@@ -1,6 +1,6 @@
 # 19 · Studio Onboarding Fork + Catalog-Driven User Guide
 
-> Component of [Writing Studio (v2)](00_OVERVIEW.md). Status: ✅ Wave 1 built 2026-07-05 (Wave 2 content fanout not started).
+> Component of [Writing Studio (v2)](00_OVERVIEW.md). Status: ✅ Wave 1 + Wave 2 built 2026-07-05.
 > Size: **L→XL** (new dependency, 2 new server-synced prefs, new panel, new overlay flow,
 > i18n content across 4 locales for ~46 panels). Built in two waves — **infra first, content
 > fanout second** — so the biggest wave (per-panel guide copy) is scoped and reviewable on its own.
@@ -84,11 +84,11 @@ a catalog `tourAnchor` once there are enough of them to justify it.
 9. ✅ i18n: en/ja/vi/zh-TW parity for all new `intro.*` (title/subtitle/skip/5×roles/4×tour-core-steps)/`userGuide.intro`/`panels.user-guide.*`/`palette.group.help`/`palette.cmd.{chooseYourFocus,startGuidedTour}`/`palette.desc.{chooseYourFocus,startGuidedTour}` keys — verified present in all 4 locale files after a multi-round collision with a concurrent session's own i18n edits to the same shared locale files (see SESSION_HANDOFF for the incident note).
 10. ✅ tsc + eslint clean across every touched/new file. `panelCatalogContract` + `dockablePanelHygiene` + BE contract-conformance tests all green. `/review-impl` DONE (`851b4e401`) — 2 MED findings fixed (tour tooltip action labels were hardcoded English, bypassing i18n — now `t()`-routed with new `intro.tour.actions.*` keys ×4 locales; `WelcomePanel`'s role-highlights/Open-User-Guide had zero test coverage — new `WelcomePanel.test.tsx` incl. a drift guard on `ROLE_HIGHLIGHTS` ids), 1 LOW tracked (`D-A11Y-AXE-CI`, pre-existing repo-wide gap, out of scope here). 731/731 green.
 
-**Wave 2 (content fanout, separate PR):**
-1. Every non-hidden catalog panel has a dedicated `guideBodyKey` (not falling back to `descKey`) and, where it belongs to a role tour, a `tourAnchor`.
-2. Role-specific tours (`writer`/`worldbuilder`/`translator`/`enricher`/`manager`) extend beyond `core` per the mapping table above.
-3. i18n parity maintained across all 4 locales for the new copy.
-4. Live smoke re-run per extended tour to confirm anchors resolve.
+**Wave 2 (content fanout) — ✅ all met, built + verified 2026-07-05 (`aa4144d7c`):**
+1. ✅ All 47 non-hidden catalog panels have a dedicated `guideBodyKey` (no longer falling back to `descKey`); the 12 panels featured in a role tour also carry a `tourAnchor` (the panel's root `data-testid`, e.g. `studio-glossary-panel` — and the one outlier, `knowledge` → `studio-knowledge-hub-panel`, proving the field is read, not derived). English copy drafted via 9 parallel category-scoped agents (matching #18's 9 categories); ja/vi/zh-TW via 3 parallel per-language translation agents over the merged English set; merged into `catalog.ts` + all 4 locale `studio.json` via an idempotent Node script (the same recovery pattern Wave 1 used for the locale-collision incident).
+2. ✅ 5 role-specific tours (`writer`/`worldbuilder`/`translator`/`enricher`/`manager`) added to `tours.ts`, each step built by a `roleStep()` helper that reads `target` from the panel's catalog `tourAnchor` (never hardcoded a 2nd time) — throws at module-init if a referenced panel has no `tourAnchor`, so a spec-authoring mistake fails loudly. `core`'s 4 hardcoded steps are unchanged (per the Wave 1 G4 decision — only per-role tours pull from the catalog). "Studio: Start Guided Tour" now starts `tour.start(onboarding.role ?? 'core')`.
+3. ✅ i18n parity: 47×4 `guideBody` keys + 12×4 role-tour step title/body keys, all verified present across en/ja/vi/zh-TW directly against git HEAD (not just the working tree).
+4. ✅ Live E2E re-run caught a real cross-hook interaction bug: `studioRole` is a server-synced ACCOUNT-level pref, so a role picked by one test in `studio-onboarding.spec.ts` stuck for every later test — the pre-existing "core tour" test silently ran the leftover `worldbuilder` tour instead and failed on an unrelated selector. Also found: the UI's own Skip button never clears a role (by design, only sets the seen-flag) — there was no way to reset via the UI alone. Fixed with a new `resetStudioRolePref` E2E API helper (direct `PATCH /v1/me/preferences`) used before/after the role-dependent tests, plus a new live test that runs the `worldbuilder` tour end-to-end (glossary → wiki → knowledge), proving `tourAnchor` resolution actually works live, including the `knowledge` outlier. 13 new unit tests, 744/744 studio suite green, tsc/eslint clean; live E2E 5/5 `studio-onboarding.spec.ts` + 13/13 adjacent Studio specs, all against the real vite dev server.
 
 ## Out of scope
 
