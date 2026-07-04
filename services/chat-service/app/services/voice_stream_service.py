@@ -38,6 +38,7 @@ from app.services.text_normalizer import TextNormalizer
 from app.services.stream_service import _stream_via_gateway
 from app.services.working_memory import resolve_anchor
 from app.storage.minio_client import upload_file
+from loreweave_context import build_system_message
 
 logger = logging.getLogger(__name__)
 
@@ -360,22 +361,22 @@ async def voice_stream_response(
     )
     messages: list[dict] = [{"role": r["role"], "content": r["content"]} for r in reversed(rows)]
 
-    # Compose the system prompt: memory → session prompt. Strip each part
-    # so trailing newlines don't stack with "\n\n" into triple-newline
-    # runs (K5-I3).
-    system_parts: list[str] = []
-    if kctx.context:
-        stripped = kctx.context.strip()
-        if stripped:
-            system_parts.append(stripped)
-    if wm_pinned:
-        system_parts.append(wm_pinned)
-    if system_prompt:
-        stripped = system_prompt.strip()
-        if stripped:
-            system_parts.append(stripped)
-    if system_parts:
-        messages.insert(0, {"role": "system", "content": "\n\n".join(system_parts)})
+    # Compose the system prompt: memory → anchor → session prompt (K5-I3: each part
+    # stripped so trailing newlines don't stack into triple-newline runs). T3.4 — the
+    # shared kernel renderer (plain path, no cache, no skills/steering — voice is a
+    # minimal surface), retiring the byte-copy of chat's assembly ladder. VOICE_SYSTEM_PROMPT
+    # + wm_tail are inserted separately below (they are their own messages, not this block).
+    _voice_system = build_system_message(
+        use_cache=False,
+        kctx_context=kctx.context,
+        kctx_stable="",
+        kctx_volatile="",
+        wm_pinned=wm_pinned,
+        system_prompt=system_prompt,
+        tail_blocks=[],
+    )
+    if _voice_system:
+        messages.insert(0, {"role": "system", "content": _voice_system})
 
     # Voice system prompt (Layer 0) — always for voice
     messages.insert(
