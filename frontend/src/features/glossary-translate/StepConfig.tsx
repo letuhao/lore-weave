@@ -5,7 +5,12 @@ import { useTranslation } from 'react-i18next';
 import { ModelPicker, useUserModels } from '@/components/model-picker';
 import { EffortSelect, type EffortLevel } from '@/components/ai-task';
 import { getLanguageName, LANGUAGE_NAMES } from '@/lib/languages';
+import { useOptionalStudioHost } from '@/features/studio/host/StudioHostProvider';
+import { followStudioLink } from '@/features/studio/host/studioLinks';
 import type { OverwriteMode } from './types';
+
+/** The settings deep-link, shared by both branches below (DOCK-7 — see the empty-state render). */
+const SETTINGS_PROVIDERS_LINK = '/settings/providers';
 
 interface StepConfigProps {
   targetLanguage: string;
@@ -33,6 +38,10 @@ export function StepConfig({
   onEffortChange,
 }: StepConfigProps) {
   const { t } = useTranslation('glossaryTranslate');
+  // DOCK-7 — this wizard is used both from the classic GlossaryTab page AND from inside the
+  // studio's `glossary` dock panel (13_glossary_panels.md A3). A bare <Link> would navigate the
+  // whole studio away from itself when mounted there; branch on whether a StudioHost exists.
+  const studioHost = useOptionalStudioHost();
   // Shared model fetch (W5) — glossary translation drives an LLM, so chat
   // capability. Active-only is the shared hook's default (server-side filter).
   const { models, loading } = useUserModels({ capability: 'chat' });
@@ -142,9 +151,19 @@ export function StepConfig({
           emptyState={
             <p className="text-xs text-muted-foreground">
               {t('config.noModels')}{' '}
-              <Link to="/settings?tab=ai-models" className="text-primary hover:underline">
-                {t('config.addInSettings')}
-              </Link>
+              {studioHost ? (
+                <button
+                  type="button"
+                  onClick={() => followStudioLink(SETTINGS_PROVIDERS_LINK, studioHost, { bookId: studioHost.bookId })}
+                  className="text-primary hover:underline"
+                >
+                  {t('config.addInSettings')}
+                </button>
+              ) : (
+                <Link to={SETTINGS_PROVIDERS_LINK} className="text-primary hover:underline">
+                  {t('config.addInSettings')}
+                </Link>
+              )}
             </p>
           }
         />

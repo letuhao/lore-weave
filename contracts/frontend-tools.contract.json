@@ -206,7 +206,9 @@
           "trash",
           "steering",
           "extensions",
-          "proposals"
+          "proposals",
+          "glossary",
+          "knowledge"
         ],
         "type": "string"
       }

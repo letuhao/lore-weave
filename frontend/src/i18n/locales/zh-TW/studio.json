@@ -40,6 +40,14 @@
       "title": "引導規則",
       "desc": "引導 AI 處理本書的作者規則"
     },
+    "glossary": {
+      "title": "詞彙表",
+      "desc": "本書的實體、搜尋與批次操作"
+    },
+    "knowledge": {
+      "title": "知識庫",
+      "desc": "瀏覽並開啟你的知識圖譜專案"
+    },
     "json-editor": {
       "title": "JSON",
       "desc": "資源的原始 JSON 檢視"

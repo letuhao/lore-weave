@@ -1,6 +1,16 @@
 import * as Dialog from '@radix-ui/react-dialog';
 import { X } from 'lucide-react';
 import { type ReactNode } from 'react';
+import { cn } from '@/lib/utils';
+
+const SIZE_CLASSES = {
+  sm: 'max-w-sm',
+  md: 'max-w-md',
+  lg: 'max-w-lg',
+  xl: 'max-w-xl',
+  '2xl': 'max-w-2xl',
+  '3xl': 'max-w-3xl',
+} as const;
 
 interface FormDialogProps {
   open: boolean;
@@ -9,9 +19,16 @@ interface FormDialogProps {
   description?: string;
   children: ReactNode;
   footer?: ReactNode;
+  /**
+   * Dialog max-width. Default 'lg' — same class as every existing call site (twMerge
+   * may relocate it in the final className string; the rendered width is unchanged).
+   * Wider forms (multi-step wizards, 2-3 column layouts) pass '2xl'/'3xl' instead
+   * of hand-rolling a one-off overlay (docs/standards/dockable-gui.md DOCK-9).
+   */
+  size?: keyof typeof SIZE_CLASSES;
 }
 
-export function FormDialog({ open, onOpenChange, title, description, children, footer }: FormDialogProps) {
+export function FormDialog({ open, onOpenChange, title, description, children, footer, size = 'lg' }: FormDialogProps) {
   return (
     <Dialog.Root open={open} onOpenChange={onOpenChange}>
       <Dialog.Portal>
@@ -22,7 +39,7 @@ export function FormDialog({ open, onOpenChange, title, description, children, f
             tall forms instead of pushing it below the viewport fold. The
             body and footer are SIBLINGS (not nested) so the pinned footer
             never overlaps scrolled content. */}
-        <Dialog.Content className="fixed left-1/2 top-1/2 z-50 flex max-h-[85vh] w-full max-w-lg -translate-x-1/2 -translate-y-1/2 flex-col rounded-lg border bg-background shadow-lg">
+        <Dialog.Content className={cn('fixed left-1/2 top-1/2 z-50 flex max-h-[85vh] w-full -translate-x-1/2 -translate-y-1/2 flex-col rounded-lg border bg-background shadow-lg', SIZE_CLASSES[size])}>
           <div className="flex-shrink-0 px-6 pt-6">
             <Dialog.Title className="font-serif text-lg font-semibold">{title}</Dialog.Title>
             {/* Gate-5-I2: always render Description so Radix doesn't

@@ -40,6 +40,14 @@
       "title": "Steering",
       "desc": "Author rules that guide AI on this book"
     },
+    "glossary": {
+      "title": "Glossary",
+      "desc": "Entities, search, and bulk actions for this book"
+    },
+    "knowledge": {
+      "title": "Knowledge",
+      "desc": "Browse and open your knowledge-graph projects"
+    },
     "json-editor": {
       "title": "JSON",
       "desc": "Raw JSON view of a resource"

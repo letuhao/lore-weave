@@ -40,6 +40,14 @@
       "title": "Định hướng",
       "desc": "Quy tắc của tác giả hướng dẫn AI cho sách này"
     },
+    "glossary": {
+      "title": "Từ điển",
+      "desc": "Thực thể, tìm kiếm và thao tác hàng loạt cho sách này"
+    },
+    "knowledge": {
+      "title": "Tri thức",
+      "desc": "Duyệt và mở các dự án đồ thị tri thức của bạn"
+    },
     "json-editor": {
       "title": "JSON",
       "desc": "Xem JSON thô của một resource"

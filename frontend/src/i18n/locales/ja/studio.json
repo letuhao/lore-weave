@@ -40,6 +40,14 @@
       "title": "ステアリング",
       "desc": "この本で AI を導く著者ルール"
     },
+    "glossary": {
+      "title": "用語集",
+      "desc": "この本のエンティティ・検索・一括操作"
+    },
+    "knowledge": {
+      "title": "ナレッジ",
+      "desc": "ナレッジグラフ・プロジェクトの閲覧と起動"
+    },
     "json-editor": {
       "title": "JSON",
       "desc": "リソースの生 JSON ビュー"

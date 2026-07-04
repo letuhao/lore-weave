@@ -20,6 +20,8 @@ import { ExtensionsPanel } from './ExtensionsPanel';
 import { ProposalsPanel } from './ProposalsPanel';
 import { SkillEditorPanel } from './SkillEditorPanel';
 import { SteeringPanel } from './SteeringPanel';
+import { GlossaryPanel } from './GlossaryPanel';
+import { KnowledgeHubPanel } from './KnowledgeHubPanel';
 
 export interface StudioPanelDef {
   id: string;
@@ -42,6 +44,14 @@ export const STUDIO_PANELS: StudioPanelDef[] = [
   { id: 'trash', component: TrashPanel, titleKey: 'panels.trash.title', descKey: 'panels.trash.desc' },
   // RAID C1 — per-book author steering rules (story-bible-as-steering). book-scoped, palette-openable.
   { id: 'steering', component: SteeringPanel, titleKey: 'panels.steering.title', descKey: 'panels.steering.desc' },
+  // #13 A3 — entity list/search/filter/bulk-actions (cycle-2 of the #12 per-tool queue).
+  // Palette + agent openable (panelCatalogContract enforces openable-set == enum, so any
+  // palette-visible panel must join `ui_open_studio_panel` — see frontend_tools.py + the
+  // regenerated contracts/frontend-tools.contract.json).
+  { id: 'glossary', component: GlossaryPanel, titleKey: 'panels.glossary.title', descKey: 'panels.glossary.desc' },
+  // 14_kg_panels.md A2 — the KG launcher (DOCK-8 hub pattern): browse/open knowledge-graph
+  // projects. Phase B adds the capability panels it currently opens via a new-tab fallback.
+  { id: 'knowledge', component: KnowledgeHubPanel, titleKey: 'panels.knowledge.title', descKey: 'panels.knowledge.desc' },
   // Agent Extensibility Registry (§13b) — extensions hub + proposals inbox are
   // palette-openable + in the agent enum; skill-editor is a params-retargeting
   // singleton (json-editor precedent), hidden from palette + outside the enum.

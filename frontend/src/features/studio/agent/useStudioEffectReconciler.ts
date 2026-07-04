@@ -13,6 +13,7 @@ import { useStudioHost } from '../host/StudioHostProvider';
 import { useManuscriptUnit } from '../manuscript/unit/ManuscriptUnitProvider';
 import { runEffectHandlers } from './effectRegistry';
 import { registerDefaultEffectHandlers } from './handlers/bookEffects';
+import { registerGlossaryEffectHandlers } from './handlers/glossaryEffects';
 
 export function useStudioEffectReconciler(): void {
   const host = useStudioHost();
@@ -25,7 +26,10 @@ export function useStudioEffectReconciler(): void {
   unitRef.current = unit;
 
   // Register the default handlers once (idempotent).
-  useEffect(() => { registerDefaultEffectHandlers(); }, []);
+  useEffect(() => {
+    registerDefaultEffectHandlers();
+    registerGlossaryEffectHandlers();
+  }, []);
 
   useEffect(() => {
     for (const m of messages) {
