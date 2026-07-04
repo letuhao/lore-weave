@@ -7,6 +7,7 @@ require (
 	github.com/golang-jwt/jwt/v5 v5.3.1
 	github.com/google/uuid v1.6.0
 	github.com/jackc/pgx/v5 v5.6.0
+	github.com/loreweave/foundation/contracts/platformjwt v0.0.0
 	github.com/loreweave/llmgw v0.1.0
 	github.com/loreweave/loreweave_mcp v0.1.0
 	github.com/loreweave/observability v0.1.0
@@ -14,6 +15,8 @@ require (
 	github.com/modelcontextprotocol/go-sdk v1.6.1
 	github.com/prometheus/client_golang v1.23.2
 )
+
+replace github.com/loreweave/foundation/contracts/platformjwt => ../../contracts/platformjwt
 
 replace github.com/loreweave/llmgw => ../../sdks/go/llmgw
 

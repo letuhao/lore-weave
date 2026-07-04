@@ -8,6 +8,9 @@ RUN apk add --no-cache git
 # context: .. and dockerfile: services/sharing-service/Dockerfile.
 # Copy the shared module first (separate cache layer), then service files.
 COPY sdks/go/observability /src/sdks/go/observability
+# contracts/platformjwt — shared HS256 platform-user JWT verifier; its replace
+# (=> ../../contracts/platformjwt) must resolve inside the container.
+COPY contracts/platformjwt /src/contracts/platformjwt
 COPY services/sharing-service /src/services/sharing-service
 
 WORKDIR /src/services/sharing-service

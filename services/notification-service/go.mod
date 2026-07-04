@@ -4,9 +4,9 @@ go 1.25.0
 
 require (
 	github.com/go-chi/chi/v5 v5.2.5
-	github.com/golang-jwt/jwt/v5 v5.2.1
 	github.com/google/uuid v1.6.0
 	github.com/jackc/pgx/v5 v5.6.0
+	github.com/loreweave/foundation/contracts/platformjwt v0.0.0
 	github.com/loreweave/observability v0.1.0
 	github.com/rabbitmq/amqp091-go v1.11.0
 	go.opentelemetry.io/otel v1.43.0
@@ -15,12 +15,15 @@ require (
 
 replace github.com/loreweave/observability => ../../sdks/go/observability
 
+replace github.com/loreweave/foundation/contracts/platformjwt => ../../contracts/platformjwt
+
 require (
 	github.com/cenkalti/backoff/v5 v5.0.3 // indirect
 	github.com/cespare/xxhash/v2 v2.3.0 // indirect
 	github.com/felixge/httpsnoop v1.0.4 // indirect
 	github.com/go-logr/logr v1.4.3 // indirect
 	github.com/go-logr/stdr v1.2.2 // indirect
+	github.com/golang-jwt/jwt/v5 v5.3.1 // indirect
 	github.com/grpc-ecosystem/grpc-gateway/v2 v2.28.0 // indirect
 	github.com/jackc/pgpassfile v1.0.0 // indirect
 	github.com/jackc/pgservicefile v0.0.0-20240606120523-5a60cdf6a761 // indirect

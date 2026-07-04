@@ -10,10 +10,10 @@ import (
 
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
-	"github.com/golang-jwt/jwt/v5"
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgxpool"
 
+	"github.com/loreweave/foundation/contracts/platformjwt"
 	"github.com/loreweave/observability"
 
 	"github.com/loreweave/notification-service/internal/category"
@@ -93,29 +93,16 @@ func (s *Server) requireInternalToken(next http.Handler) http.Handler {
 	})
 }
 
-type accessClaims struct {
-	jwt.RegisteredClaims
-}
-
 func (s *Server) requireUserID(r *http.Request) (uuid.UUID, bool) {
 	auth := r.Header.Get("Authorization")
 	if !strings.HasPrefix(auth, "Bearer ") {
 		return uuid.Nil, false
 	}
-	tok, err := jwt.ParseWithClaims(strings.TrimPrefix(auth, "Bearer "), &accessClaims{}, func(t *jwt.Token) (any, error) {
-		if t.Method != jwt.SigningMethodHS256 {
-			return nil, fmt.Errorf("unexpected signing method")
-		}
-		return s.secret, nil
-	})
-	if err != nil || !tok.Valid {
+	claims, err := platformjwt.Verify(strings.TrimPrefix(auth, "Bearer "), s.secret)
+	if err != nil {
 		return uuid.Nil, false
 	}
-	claims, ok := tok.Claims.(*accessClaims)
-	if !ok {
-		return uuid.Nil, false
-	}
-	id, err := uuid.Parse(claims.Subject)
+	id, err := claims.UserID()
 	if err != nil {
 		return uuid.Nil, false
 	}

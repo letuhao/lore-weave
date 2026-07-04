@@ -24,6 +24,9 @@ COPY sdks/go/loreweave_extraction /src/sdks/go/loreweave_extraction
 # contracts/adminjwt (D-GKA-SYSTEM-TIER-ADMIN) — verifies admin RS256 JWTs; its
 # replace (=> ../../contracts/adminjwt) must resolve inside the container.
 COPY contracts/adminjwt /src/contracts/adminjwt
+# contracts/platformjwt — shared HS256 platform-user JWT verifier; its replace
+# (=> ../../contracts/platformjwt) must resolve inside the container.
+COPY contracts/platformjwt /src/contracts/platformjwt
 COPY services/glossary-service /src/services/glossary-service
 
 WORKDIR /src/services/glossary-service

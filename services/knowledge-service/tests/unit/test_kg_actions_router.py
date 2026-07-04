@@ -112,7 +112,11 @@ def _build(*, caller=_CALLER, meta=(_CALLER, _BOOK), grant=GrantLevel.OWNER,
 # so the route tests must present a valid Bearer JWT for _CALLER. The preview
 # routes still use Depends(get_current_user) (overridden in _build), which the
 # header leaves untouched.
-_CALLER_JWT = jwt.encode({"sub": str(_CALLER)}, settings.jwt_secret, algorithm="HS256")
+_CALLER_JWT = jwt.encode(
+    {"sub": str(_CALLER), "exp": int(time.time()) + 3600},  # SDK verifier requires exp
+    settings.jwt_secret,
+    algorithm="HS256",
+)
 _AUTH_HEADERS = {"Authorization": f"Bearer {_CALLER_JWT}"}
 
 

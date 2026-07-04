@@ -22,6 +22,7 @@ import (
 	"github.com/minio/minio-go/v7"
 	"github.com/minio/minio-go/v7/pkg/credentials"
 
+	"github.com/loreweave/foundation/contracts/platformjwt"
 	"github.com/loreweave/observability"
 
 	"github.com/loreweave/book-service/internal/config"
@@ -347,20 +348,11 @@ func (s *Server) requireUserID(r *http.Request) (uuid.UUID, bool) {
 		return uuid.Nil, false
 	}
 	tokenStr := strings.TrimPrefix(auth, "Bearer ")
-	tok, err := jwt.ParseWithClaims(tokenStr, &accessClaims{}, func(t *jwt.Token) (any, error) {
-		if t.Method != jwt.SigningMethodHS256 {
-			return nil, fmt.Errorf("unexpected signing method")
-		}
-		return s.secret, nil
-	})
-	if err != nil || !tok.Valid {
+	claims, err := platformjwt.Verify(tokenStr, s.secret)
+	if err != nil {
 		return uuid.Nil, false
 	}
-	claims, ok := tok.Claims.(*accessClaims)
-	if !ok {
-		return uuid.Nil, false
-	}
-	id, err := uuid.Parse(claims.Subject)
+	id, err := claims.UserID()
 	if err != nil {
 		return uuid.Nil, false
 	}

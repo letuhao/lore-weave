@@ -24,8 +24,8 @@ import time
 from datetime import datetime, timezone
 from uuid import UUID
 
-import jwt
 from fastapi import APIRouter, Depends, Header, HTTPException, Query, status
+from loreweave_authn import InvalidAccessToken, verify_access_token
 from pydantic import BaseModel, ValidationError
 
 from app.auth.admin_jwt import (
@@ -229,16 +229,10 @@ def _resolve_kg_confirm_caller(
     if not authorization or not authorization.lower().startswith("bearer "):
         raise HTTPException(status_code=401, detail="missing credentials")
     try:
-        data = jwt.decode(authorization[7:], settings.jwt_secret, algorithms=["HS256"])
-    except jwt.InvalidTokenError as exc:
+        claims = verify_access_token(authorization[7:], settings.jwt_secret)
+    except InvalidAccessToken as exc:
         raise HTTPException(status_code=401, detail="invalid token") from exc
-    sub = data.get("sub")
-    if not isinstance(sub, str) or not sub:
-        raise HTTPException(status_code=401, detail="missing sub claim")
-    try:
-        return UUID(sub), None, None
-    except (ValueError, TypeError) as exc:
-        raise HTTPException(status_code=401, detail="invalid sub claim") from exc
+    return claims.user_id, None, None
 
 
 # ── shared decode + authorize ────────────────────────────────────────────────

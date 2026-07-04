@@ -159,6 +159,21 @@ Unify the two correlation-id namespaces (OTel-only) · shared logging SDK per la
 
 A 3-reviewer cold-start adversarial review of `a7ebdb9d4`+`ebff3448f`+`6a60e3b0c`+`6edfdae7d`. **8 findings fixed-now** (JWT Go↔Python `aud` parity drift + the same flaky last-char tamper test in BOTH suites; usage-billing KEK-rotation keyring `LLM_PAYLOAD_ENCRYPTION_KEYS_RETIRED` + dead `encryptPayload` removed; provider-registry sync embed/rerank/web_search now record failures too via a `status` param + the streaming completion is `boundedPayload`-capped; chat evaluate.py — the THIRD `build_context` consumer — now deep-neutralizes the judge prompt; injection_defense docstring made accurate). Verified: platformjwt `go test` + 27 authn pytest, usage-billing + provider-registry full Go suites, chat 14 injection + 28 eval tests.
 
+## JWT-verifier migration → `contracts/platformjwt` / `loreweave_authn` (2026-07-04)
+
+Fan-out of 13 per-service agents (disjoint files, self-verify, no-commit) + serial QC integration. **10 MIGRATED, 3 FLAGGED** (flag-don't-force caught a real authz issue rather than force-fitting).
+
+**Migrated (10):** Go → `platformjwt.Verify` — book, glossary, notification, sharing. Python → `loreweave_authn.build_get_current_user` — chat, composition, knowledge, learning, campaign, jobs. Each preserved the outer verifier's signature/return-type (str vs UUID via `return_subject`), 401 path, and public symbol names; dead `accessClaims`/`import jwt` removed. The SDK's two hardenings (exp-required, sub-must-be-UUID) required fixing a handful of test fixtures that minted bare/non-UUID-sub tokens (composition `_bearer()` lacked exp → optional dep silently dropped identity — caught by the agent).
+
+**QC caught two things unit tests alone would miss:**
+- **Dockerfile build-break:** the Go `replace => ../../contracts/platformjwt` only resolves at image build if the Dockerfile COPYs it into the repo-root build context. glossary's agent added the `COPY`; book/notification/sharing did NOT (local `go build` passed regardless) → I added `COPY contracts/platformjwt` to all three. **Rule for the next Go SDK adoption: a new `replace` needs a matching Dockerfile COPY, or the image build fails while local tests stay green.**
+- **Uniform-401 behavior change:** the SDK collapses expired/invalid/malformed → a single terse `"invalid token"` 401 (anti-oracle). Verified NO frontend branches on the `"expired"` detail string (the client-side `tokenExpired()` decodes `exp` locally; the `token_expired` FE outcomes are the 422 confirm-token flow; `useJobsStream` treats expired==invalid==terminal). Safe.
+
+Verify at QC: Go book/glossary/notification/sharing full `go test ./...` green; Python chat 920 · composition 1491 · knowledge 3505 · learning 186 · campaign 182 · jobs 97. `sdk-duplication-gate` baseline shrunk 27→19; provider-gate clean.
+
+### `D-JWT-ROLE-GATE` — the 3 flagged services (a latent authz finding, NOT a migration blocker)
+`agent-registry`, `provider-registry`, `usage-billing` were NOT migrated: each reads a custom `role` claim off the **user** token (`accessClaims{ RegisteredClaims; Role }`) to gate admin-only endpoints (`role != "admin" → 403`). `platformjwt.AccessClaims` is deliberately minimal (no role — that's the admin token's job). **Root-cause dug in QC:** `auth-service.SignAccess` mints the user access token with only `sid`+`sub`+`iat`+`exp` — **it never sets `role`.** So in production `claims.Role` is always `""` and these admin gates 403 EVERY caller (reachable only by hand-crafted test tokens). This is a pre-existing authz gap the migration surfaced. **Decision needed (gate #2 — structural, needs a design call):** either (a) route these admin endpoints through the RS256 admin token (`contracts/adminjwt`, which DOES carry role/scope), or (b) if they were never meant to be admin-gated this way, remove the dead role check; then migrate the user-JWT half to `platformjwt`. Do NOT mechanically swap while the role gate stands.
+
 ### Deferred findings (each earns its gate row)
 | ID | Finding | Gate | Trigger |
 |---|---|---|---|

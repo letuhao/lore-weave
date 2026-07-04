@@ -34,6 +34,12 @@ dependencies = [
   # _meta validator). It needs the MCP SDK; every Python MCP provider service that
   # `pip install /sdk`s gets the kit + its transport.
   "mcp>=1.27",
+  # SDK-2 / SEC-2 (2026-07-04) — loreweave_authn is the shared platform-user JWT
+  # verifier (replaces the ~6 copy-pasted jwt.decode blocks). It needs PyJWT; every
+  # service that `pip install /sdk`s + imports the verifier gets it (a migrated
+  # service drops its own PyJWT pin). fastapi is already a core dep of every
+  # consuming FastAPI service, so it stays in the test extras here.
+  "PyJWT>=2.8",
 ]
 
 [project.optional-dependencies]
@@ -83,6 +89,11 @@ include = [
   # validator built fresh). Depends on the `mcp` SDK + pydantic. Consumed by every
   # Python MCP provider service (jobs, composition, translation).
   "loreweave_mcp*",
+  # SDK-2 / SEC-2 (2026-07-04) — `loreweave_authn` added (the shared platform-user
+  # JWT verifier, HS256/alg-pinned/exp-required/sub→UUID; mirrors Go
+  # contracts/platformjwt). Replaces the ~6 copy-pasted jwt.decode middleware blocks
+  # in composition/knowledge/chat/learning/campaign/jobs. Depends on PyJWT + fastapi.
+  "loreweave_authn*",
 ]
 exclude = ["tests*"]
 

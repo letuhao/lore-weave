@@ -17,6 +17,7 @@ stubbed so this REST test does not consume the once-per-instance `.run()`.
 from __future__ import annotations
 
 import json
+import time
 import uuid
 from contextlib import asynccontextmanager
 from unittest.mock import AsyncMock, MagicMock, patch
@@ -144,8 +145,17 @@ def _confirm(client, token, *, user=USER):
 
 def _bearer(user=USER) -> dict[str, str]:
     """A valid FE-style Bearer JWT (HS256, `sub`) — the FE path identity, NO
-    internal token (the BFF never injects one for /v1/composition/*)."""
-    tok = jwt.encode({"sub": str(user)}, settings.jwt_secret, algorithm="HS256")
+    internal token (the BFF never injects one for /v1/composition/*).
+
+    `exp`/`iat` are REQUIRED: the shared verifier (loreweave_authn) enforces a
+    present, unexpired `exp` — a token without it reads as invalid (→ None on
+    the optional dependency), so the JWT identity path would silently drop."""
+    now = int(time.time())
+    tok = jwt.encode(
+        {"sub": str(user), "iat": now, "exp": now + 3600},
+        settings.jwt_secret,
+        algorithm="HS256",
+    )
     return {"Authorization": f"Bearer {tok}"}
 
 

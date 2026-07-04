@@ -7,32 +7,16 @@ NOT acceptable here. Mirrors campaign-service `deps.py`.
 """
 
 import asyncpg
-import jwt
-from fastapi import Depends, HTTPException, status
-from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
+from loreweave_authn import build_get_current_user
 
 from .config import settings
 from .database import get_pool
 
-bearer_scheme = HTTPBearer()
-
-
-async def get_current_user(
-    credentials: HTTPAuthorizationCredentials = Depends(bearer_scheme),
-) -> str:
-    """Resolve the acting user from a signature-verified bearer JWT. Returns the
-    `sub` claim (the owner_user_id every job query filters on)."""
-    token = credentials.credentials
-    try:
-        data = jwt.decode(token, settings.jwt_secret, algorithms=["HS256"])
-    except jwt.ExpiredSignatureError:
-        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Token expired")
-    except jwt.InvalidTokenError:
-        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid token")
-    sub = data.get("sub")
-    if not sub:
-        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Token missing sub")
-    return str(sub)
+# Resolve the acting user from a signature-verified bearer JWT. Returns the `sub`
+# claim string (the owner_user_id every job query filters on) via the shared
+# `loreweave_authn` verifier (HS256-pinned, exp REQUIRED, sub→UUID). `return_subject`
+# preserves the prior `str(sub)` return shape callers depend on.
+get_current_user = build_get_current_user(lambda: settings.jwt_secret, return_subject=True)
 
 
 async def get_db() -> asyncpg.Pool:

@@ -20,6 +20,9 @@ COPY sdks/go/llmgw /src/sdks/go/llmgw
 COPY sdks/go/observability /src/sdks/go/observability
 COPY sdks/go/loreweave_mcp /src/sdks/go/loreweave_mcp
 COPY sdks/go/grantclient /src/sdks/go/grantclient
+# contracts/platformjwt — shared HS256 platform-user JWT verifier; its replace
+# (=> ../../contracts/platformjwt) must resolve inside the container.
+COPY contracts/platformjwt /src/contracts/platformjwt
 COPY services/book-service /src/services/book-service
 
 WORKDIR /src/services/book-service
