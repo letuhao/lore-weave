@@ -139,7 +139,9 @@ Because these are refactors touching many services, **each workstream is its own
 
 ---
 
-## Workstream E — Salience ↔ learning-service feedback integration  *(size: L)*
+## Workstream E — Salience ↔ learning-service feedback integration  *(✅ RESOLVED 2026-07-05 — documented keep-separate)*
+
+> ✅ **DECIDED — keep separate** (spec option b). Decision record: [`2026-07-05-salience-learning-boundary.md`](2026-07-05-salience-learning-boundary.md). Verified against code: the two loops run at **different granularities** (salience = per-`(user,project,entity)` chat-thumbs, sourced entirely in-service from `entity_access_log.feedback_score`; learning-service quality signals are keyed by chapter/translation/run/model/wiki/chat-message). learning-service **publishes/exposes NO per-entity quality signal** — its one per-`glossary_entity_id` datum (`glossary_name_confirmed`) is a binary human flag in its own DB, on no endpoint/event. Integration would be **net-new production on both sides** (a new continuous per-entity signal + a new contract) for **no demonstrated gain**, and a platform-wide signal is the **wrong tier** for a per-user ranking (tenancy: salience is per-user, not System-global). The term is default-OFF and flip-gated. Tracked as **`D-E-SALIENCE-LEARNING-BRIDGE`** (conscious won't-fix, revisit-gated: reopen only if an ambiguous-query eval shows the in-service term is ceiling-limited by sparse thumbs, or learning-service grows a real per-entity quality signal for another consumer). Acceptance met by the "documented decision (boundary rationale)" branch.
 
 **Problem.** Two learning loops that don't know about each other: `learning-service` (cross-service eval/quality flywheel) vs `knowledge-service` salience (`app/context/selectors/salience.py`) whose `feedback_weight` is **in-service** and **not** sourced from learning-service's quality signal.
 
