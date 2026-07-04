@@ -196,7 +196,12 @@ The 3 flagged services now gate their admin endpoints with the RS256 admin token
 
 **P1 envelope contracts (2026-07-04):** `contracts/notifyevent` shared `TerminalEvent` (killed the notification↔provider-registry cross-service struct dup; sdk-dup baseline 13→11) + learning-service `correction_contract.py` (`CORRECTION_EVENT_TYPES` SoT + `build_dispatcher` startup fail-fast + no-silent-drop wiring test — a correction type can no longer ship unwired and silently drop).
 
-### Deferred P1 (scoped, not rushed — critical-path / feature-scale)
+### Deferred P1 — ✅ ALL CLEARED 2026-07-04
+- **`D-EDGE-RATELIMIT`** ✅ `840367871` — Redis fixed-window edge limiter, hardened after an adversarial /review-impl caught 3 HIGH + 3 MED bypasses (client-controlled key/exemption): value-matched+stripped internal-token, removed the spoofable Accept/`/stream` exemptions, `commandTimeout` for the wedged-Redis hang, dual IP+user keying (forged-sub is IP-bounded), `trust proxy` for a non-spoofable IP, Lua TTL self-heal. Fail-open. 20 limiter tests incl. the adversarial cases.
+- **`D-NOTIF-I18N`** ✅ `a2b9054cf` (BE core) — i18n columns + populate + expose. Remaining: FE per-locale rendering (locale catalog for `notif.*` keys + UI render from key) — a FE follow-up.
+- **`D-LEARN-ENTITY-MERGED`** ✅ `82da77d59` — learning handler for `glossary.entity_merged` + the glossary producer now emits `actor_id` (empty for system/auto merges) so user merges persist instead of DLQ'ing. Fully closed.
+
+### Deferred P1 (original scoping — now resolved above)
 | ID | Item | Gate | Plan |
 |---|---|---|---|
 | `D-EDGE-RATELIMIT` | No HTTP-edge rate-limit at `api-gateway-bff` (only a per-connection WS token bucket exists; `ioredis` is available, `@nestjs/throttler` is not). | #2 — **critical-path** (every request); a fail-mode/limits/keying decision is load-bearing (Redis-down must fail-OPEN or the whole edge outages) | A Redis sliding-window/token-bucket middleware keyed per-user (JWT `sub`) with an IP fallback for unauthenticated; env-configured limit+window; **fail-OPEN** on any Redis error; exempt `/health` + internal-token traffic + SSE/stream routes; 429 + `Retry-After`; unit tests (allow/deny/expiry/fail-open) + a cross-instance Redis test. Deserves a focused effort, not a session-tail rush. |
