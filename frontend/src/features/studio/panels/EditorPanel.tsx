@@ -44,12 +44,15 @@ export function EditorPanel(props: IDockviewPanelProps) {
   const chapterId = unit?.state.chapterId ?? null;
 
   // Register the studio editor as the propose_edit write-back target (Lane C). Cleared on unmount
-  // / chapter change so a stale handle never receives a write.
+  // / chapter change so a stale handle never receives a write. #16 P1: also hand over the
+  // Tier-4 hoist's own applyProposedEdit action — ProposeEditCard prefers it over reaching into
+  // the raw handle directly (same underlying write, now hoist-owned per spec 08/09).
+  const applyProposedEdit = unit?.applyProposedEdit;
   useEffect(() => {
-    if (!chapterId) return;
-    registerEditorTarget({ bookId, chapterId, handleRef: editorRef });
+    if (!chapterId || !applyProposedEdit) return;
+    registerEditorTarget({ bookId, chapterId, handleRef: editorRef, applyProposedEdit });
     return () => registerEditorTarget(null);
-  }, [bookId, chapterId, editorRef]);
+  }, [bookId, chapterId, editorRef, applyProposedEdit]);
 
   // ⌘S / Ctrl+S → save the unit (never the browser "save page").
   useEffect(() => {

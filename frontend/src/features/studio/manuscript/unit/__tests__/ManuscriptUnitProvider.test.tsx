@@ -97,4 +97,38 @@ describe('useManuscriptUnit (Tier-4 hoist)', () => {
     await waitFor(() => expect(api!.state.chapterId).toBe('ch9'));
     expect(getDraft).toHaveBeenCalledWith('t', 'b1', 'ch9');
   });
+
+  // #16 P1 (Lane C — spec 09) — applyProposedEdit is the hoist-owned write action ProposeEditCard
+  // now prefers over reaching into a raw editorRef via the global editorBridge singleton.
+  describe('applyProposedEdit (#16 P1)', () => {
+    it('delegates to the live editorRef.replaceSelection for a replace_selection proposal', async () => {
+      renderHoist();
+      await act(async () => { await api!.openUnit('ch1'); });
+      const replaceSelection = vi.fn(() => true);
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      api!.editorRef.current = { replaceSelection, insertAtCursor: vi.fn(() => false) } as any;
+      const prov = { source: 'ai' as const, status: 'unreviewed' as const, ts: 'now' };
+      const ok = api!.applyProposedEdit({ operation: 'replace_selection', text: 'new text', provenance: prov });
+      expect(ok).toBe(true);
+      expect(replaceSelection).toHaveBeenCalledWith('new text', prov);
+    });
+
+    it('delegates to the live editorRef.insertAtCursor for an insert_at_cursor proposal', async () => {
+      renderHoist();
+      await act(async () => { await api!.openUnit('ch1'); });
+      const insertAtCursor = vi.fn(() => true);
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      api!.editorRef.current = { replaceSelection: vi.fn(() => false), insertAtCursor } as any;
+      const ok = api!.applyProposedEdit({ operation: 'insert_at_cursor', text: 'inserted' });
+      expect(ok).toBe(true);
+      expect(insertAtCursor).toHaveBeenCalledWith('inserted', undefined);
+    });
+
+    it('returns false with no live editor mounted (never throws)', async () => {
+      renderHoist();
+      await act(async () => { await api!.openUnit('ch1'); });
+      api!.editorRef.current = null;
+      expect(api!.applyProposedEdit({ operation: 'insert_at_cursor', text: 'x' })).toBe(false);
+    });
+  });
 });

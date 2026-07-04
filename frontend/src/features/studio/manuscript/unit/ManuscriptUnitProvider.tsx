@@ -22,6 +22,7 @@ import { useWorkResolution } from '@/features/composition/hooks/useWork';
 import type { OutlineNode } from '@/features/composition/types';
 import { addTextSnapshots, extractText } from '@/lib/tiptap-utils';
 import type { TiptapEditorHandle } from '@/components/editor/TiptapEditor';
+import type { ProvenanceAttrs } from '@/components/editor/ProvenanceMark';
 import { useStudioHost, useStudioBusSelector } from '../../host/StudioHostProvider';
 import { _setManuscriptUnitBinding, emitManuscriptUnitChange, registerManuscriptUnitDocumentProvider } from './manuscriptUnitDocument';
 
@@ -73,6 +74,18 @@ export interface ManuscriptUnitApi {
   /** #12 M-F backfill — anchor headings↔scenes by unique title match (explicit action;
    * dirties the doc → the user saves). null = no live editor. */
   anchorScenes: () => { anchored: number; unmatched: number; changed: boolean } | null;
+  /** #16 P1 (Lane C — spec 09) — the hoist-owned entry point for an AI-proposed prose write.
+   * Delegates to the same live Tiptap handle `editorRef` already exposes, so the existing
+   * onUpdate→setBody wiring is unchanged (this is not a new write path, just a named one this
+   * hoist owns instead of a caller reaching into a raw ref via the global editorBridge
+   * singleton) — exists so future hoist-level bookkeeping (Checkpoints, #16 Phase 1) has ONE
+   * chokepoint for "an AI wrote into this chapter" instead of every consumer re-deriving it.
+   * false = no live editor (chapter not mounted / view-only surface). */
+  applyProposedEdit: (params: {
+    operation: 'insert_at_cursor' | 'replace_selection';
+    text: string;
+    provenance?: ProvenanceAttrs;
+  }) => boolean;
 }
 
 const ManuscriptUnitContext = createContext<ManuscriptUnitApi | null>(null);
@@ -243,6 +256,22 @@ export function ManuscriptUnitProvider({ bookId, children }: { bookId: string; c
     );
   }, []);
 
+  // #16 P1 — Lane C hoist action (see ManuscriptUnitApi doc comment). Thin wrapper over the
+  // same editorRef the panel already renders; the write itself is unchanged (still a Tiptap
+  // command that fires onUpdate → setBody), only the call site moves from a raw ref lookup to
+  // a named hoist method.
+  const applyProposedEdit = useCallback((params: {
+    operation: 'insert_at_cursor' | 'replace_selection';
+    text: string;
+    provenance?: ProvenanceAttrs;
+  }) => {
+    const handle = editorRef.current;
+    if (!handle) return false;
+    return params.operation === 'replace_selection'
+      ? handle.replaceSelection(params.text, params.provenance)
+      : handle.insertAtCursor(params.text, params.provenance);
+  }, []);
+
   // Bus-driven open (decoupled): host.focusManuscriptUnit publishes {chapter} → the hoist loads it.
   // The navigator / Quick Open / agent all drive the editor through this one seam.
   const activeChapterId = useStudioBusSelector((snap) => snap.activeChapterId);
@@ -259,8 +288,11 @@ export function ManuscriptUnitProvider({ bookId, children }: { bookId: string; c
   const api = useMemo<ManuscriptUnitApi>(() => ({
     state, isDirty: isDirtyState(state), editorRef,
     openUnit, setBody, save, revert, reload, reloadScenes, isChapterDirty,
-    jumpToScene, anchorScenes,
-  }), [state, openUnit, setBody, save, revert, reload, reloadScenes, isChapterDirty, jumpToScene, anchorScenes]);
+    jumpToScene, anchorScenes, applyProposedEdit,
+  }), [
+    state, openUnit, setBody, save, revert, reload, reloadScenes, isChapterDirty,
+    jumpToScene, anchorScenes, applyProposedEdit,
+  ]);
 
   // #12 — bind the live api for the manuscript-unit DOCUMENT provider (S2 shared handle) and
   // register the provider once. Every api change (i.e. every state change) notifies handle views.

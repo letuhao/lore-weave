@@ -119,15 +119,23 @@ export function ProposeEditCard({ record, chapterId }: Props) {
       }
       applied = reconstruct(model, accepted);
     }
+    // #16 P1 (Lane C — spec 09) — when the registrant supplies a hoist-owned write action
+    // (Studio's ManuscriptUnitProvider), call it instead of reaching into the raw handle
+    // directly; same underlying Tiptap command either way (legacy has no hoist and omits
+    // this field, so its Apply path is byte-identical to before).
     let ok = false;
     if (operation === 'replace_selection') {
-      ok = target.handle.replaceSelection(applied, prov);
+      ok = target.applyProposedEdit
+        ? target.applyProposedEdit({ operation: 'replace_selection', text: applied, provenance: prov })
+        : target.handle.replaceSelection(applied, prov);
       if (!ok) {
         toast.error(t('propose.no_selection', { defaultValue: 'Select the text to replace, then Apply.' }));
         return;
       }
     } else {
-      ok = target.handle.insertAtCursor(applied, prov);
+      ok = target.applyProposedEdit
+        ? target.applyProposedEdit({ operation: 'insert_at_cursor', text: applied, provenance: prov })
+        : target.handle.insertAtCursor(applied, prov);
       if (!ok) {
         toast.error(t('propose.apply_failed', { defaultValue: 'Could not apply the edit.' }));
         return;

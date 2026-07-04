@@ -12,6 +12,9 @@ const insertAtCursor = vi.fn(() => true);
 let selection: { from: number; to: number; empty: boolean; text: string } | null;
 let targetChapterId = 'ch1';
 const toastError = vi.fn();
+// #16 P1 — undefined by default (legacy path: no hoist, Apply calls target.handle.* directly,
+// same as before). Tests that need the Studio hoist-preferred path set this to a vi.fn().
+let applyProposedEdit: ReturnType<typeof vi.fn> | undefined;
 
 vi.mock('../../providers', () => ({ useChatStream: () => ({ submitToolResult }) }));
 vi.mock('../../context/editorBridge', () => ({
@@ -23,6 +26,7 @@ vi.mock('../../context/editorBridge', () => ({
       replaceSelection: (...a: unknown[]) => replaceSelection(...a),
       insertAtCursor: (...a: unknown[]) => insertAtCursor(...a),
     },
+    applyProposedEdit,
   }),
 }));
 vi.mock('sonner', () => ({ toast: { error: (...a: unknown[]) => toastError(...a) } }));
@@ -42,6 +46,7 @@ describe('ProposeEditCard — hunk review', () => {
     toastError.mockClear();
     selection = { from: 0, to: 10, empty: false, text: 'A. B. C.' };
     targetChapterId = 'ch1';
+    applyProposedEdit = undefined;
   });
 
   it('renders per-hunk diff for a replace_selection rewrite', () => {
@@ -153,6 +158,55 @@ describe('ProposeEditCard — hunk review', () => {
       fireEvent.click(screen.getByText('propose.apply'));
       await waitFor(() => expect(toastError).toHaveBeenCalledWith('propose.wrong_chapter'));
       expect(insertAtCursor).not.toHaveBeenCalled();
+    });
+  });
+
+  // #16 P1 (Lane C — spec 09) — when the registrant (Studio's EditorPanel) supplies a hoist-owned
+  // applyProposedEdit action, Apply must call it INSTEAD of the raw handle. Legacy (no hoist,
+  // applyProposedEdit undefined) keeps calling target.handle.* directly — covered by every test
+  // above, which never set applyProposedEdit.
+  describe('hoist-preferred apply (#16 P1)', () => {
+    it('calls applyProposedEdit instead of target.handle.insertAtCursor when supplied', async () => {
+      applyProposedEdit = vi.fn(() => true);
+      render(<ProposeEditCard record={record({ operation: 'insert_at_cursor', text: 'New paragraph.' })} />);
+      fireEvent.click(screen.getByText('propose.apply'));
+      await waitFor(() => expect(applyProposedEdit).toHaveBeenCalledWith(
+        expect.objectContaining({ operation: 'insert_at_cursor', text: 'New paragraph.' }),
+      ));
+      expect(insertAtCursor).not.toHaveBeenCalled();
+      await waitFor(() =>
+        expect(submitToolResult).toHaveBeenCalledWith('r1', 'c1', 'applied', 'New paragraph.'));
+    });
+
+    it('calls applyProposedEdit instead of target.handle.replaceSelection when supplied', async () => {
+      applyProposedEdit = vi.fn(() => true);
+      render(<ProposeEditCard record={record({ operation: 'replace_selection', text: 'X. B. Y.' })} />);
+      fireEvent.click(screen.getByText('propose.apply'));
+      await waitFor(() => expect(applyProposedEdit).toHaveBeenCalledWith(
+        expect.objectContaining({ operation: 'replace_selection', text: 'X. B. Y.' }),
+      ));
+      expect(replaceSelection).not.toHaveBeenCalled();
+    });
+
+    it('a false return from applyProposedEdit surfaces the same failure toast as the raw handle', async () => {
+      applyProposedEdit = vi.fn(() => false);
+      render(<ProposeEditCard record={record({ operation: 'insert_at_cursor', text: 'New paragraph.' })} />);
+      fireEvent.click(screen.getByText('propose.apply'));
+      await waitFor(() => expect(toastError).toHaveBeenCalledWith('propose.apply_failed'));
+      expect(submitToolResult).not.toHaveBeenCalled();
+    });
+
+    // /review-impl coverage gap — the chapter-mismatch guard (mountChapterId) runs BEFORE the
+    // hoist-vs-raw-handle branch in code, but nothing proved the combination: a hoist action
+    // being configured must not bypass the guard.
+    it('the cross-chapter guard still blocks Apply even when a hoist applyProposedEdit is configured', async () => {
+      applyProposedEdit = vi.fn(() => true);
+      render(<ProposeEditCard record={record({ operation: 'insert_at_cursor', text: 'New paragraph.' })} />);
+      targetChapterId = 'ch2'; // chapter switched after mount, before Apply
+      fireEvent.click(screen.getByText('propose.apply'));
+      await waitFor(() => expect(toastError).toHaveBeenCalledWith('propose.wrong_chapter'));
+      expect(applyProposedEdit).not.toHaveBeenCalled();
+      expect(submitToolResult).not.toHaveBeenCalled();
     });
   });
 });

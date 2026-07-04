@@ -61,4 +61,19 @@ describe('editorBridge', () => {
     expect(target!.chapterId).toBe('ch2');
     expect(target!.handle).toBe(h2);
   });
+
+  // #16 P1 — the Studio path registers an optional hoist-owned applyProposedEdit action
+  // (ManuscriptUnitProvider); the legacy editor page omits it (byte-identical old behavior).
+  it('carries an optional applyProposedEdit hoist action when the registrant supplies one', () => {
+    const applyProposedEdit = () => true;
+    registerEditorTarget({
+      bookId: 'b1', chapterId: 'ch1', handleRef: { current: fakeHandle() }, applyProposedEdit,
+    });
+    expect(getEditorTarget()!.applyProposedEdit).toBe(applyProposedEdit);
+  });
+
+  it('applyProposedEdit is undefined when the registrant omits it (legacy path unchanged)', () => {
+    registerEditorTarget({ bookId: 'b1', chapterId: 'ch1', handleRef: { current: fakeHandle() } });
+    expect(getEditorTarget()!.applyProposedEdit).toBeUndefined();
+  });
 });
