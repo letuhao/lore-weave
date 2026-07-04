@@ -21,7 +21,7 @@
 
 | Rule | Status | Gate |
 |---|---|---|
-| LG-1 no `print`/`console.*`/`basicConfig`-plain | **partial (P2·A2a/A2b)** | `scripts/logging-discipline-lint.sh` — **premise fixed (slog+`observability`, not `contracts/logging`; A2b)**, `basicConfig`-plain(Py) is HARD-blocking + CI-wired (A2a). REMAINING: `console.*`(TS) check + "service main sets JSON slog default" check + flip the SOFT bare-print class to error-mode after a sweep |
+| LG-1 no `print`/`console.*`/`basicConfig`-plain | **enforced for Py+TS (P2·A2a/A2b)** | `scripts/logging-discipline-lint.sh` — premise fixed (slog+`observability`, not `contracts/logging`; A2b); `basicConfig`-plain(Py) HARD-blocking + CI-wired (A2a); **backend `console.*`(TS) HARD-blocking (A2b, baseline 0, negative-proven)**. REMAINING: "service main sets JSON slog default" check + flip the SOFT bare-print (Go/Rust CLI) class to error-mode after a sweep |
 | LG-2/3 trace-id present in log lines | **to build (P1)** | extend the `observability-inventory-lint` model to logs (every service declares structured setup + trace-id middleware wired) |
 | LG-4 redaction | **to build (P1)** | a source-side redaction test (the retired `contracts/logging/prod_test.go` in git history is the template — PII never reaches sink in prod build) run against each service's actual logger init on `sdks/go/observability` |
 | LG-7 audit tables | **ENFORCED** | `pii-classify-lint` + role-REVOKE on `*_audit` + `contracts/meta/scrubber.go` (no raw accessor) |

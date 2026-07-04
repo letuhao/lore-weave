@@ -63,12 +63,17 @@ type Server struct {
 	// synchronous spy to assert authBook emits on a cross-tenant crossing and stays
 	// silent on own-book / missing-book. nil ⇒ no-op (struct-literal Server).
 	emitTenantAudit func(actorID, bookID, ownerID uuid.UUID, outcome string)
+	// auditDedup bounds the P2·F audit WRITE path to first-per-window (skips the
+	// goroutine+insert on a repeat this window). nil ⇒ no dedup (still correct — the
+	// DB ON CONFLICT dedups the row). Wired in NewServer.
+	auditDedup *tenantAuditDedup
 }
 
 func NewServer(pool *pgxpool.Pool, cfg *config.Config) *Server {
 	s := &Server{pool: pool, cfg: cfg, secret: []byte(cfg.JWTSecret)}
 	s.resolveBook = s.resolveBookAuth
 	s.emitTenantAudit = s.asyncTenantAudit
+	s.auditDedup = &tenantAuditDedup{}
 	if cfg.MinioEndpoint != "" && cfg.MinioSecretKey != "" {
 		mc, err := minio.New(cfg.MinioEndpoint, &minio.Options{
 			Creds:  credentials.NewStaticV4(cfg.MinioAccessKey, cfg.MinioSecretKey, ""),

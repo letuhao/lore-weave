@@ -22,7 +22,8 @@ Detected symbols (SDK-2 always-SDK categories):
     — same defect, the algorithm-pin half of a copy-pasted verifier.
   - `class RedactFilter` / `def setup_logging(` / `_SECRET_PATTERNS` — the
     `logging_config.py` copied byte-identical across 3 Python services
-    (must become `loreweave_logging`, or adopt orphan `contracts/logging`).
+    (must become `loreweave_obs.setup_logging`; the Go orphan `contracts/logging`
+    was retired P2·A2b — Go uses slog + `sdks/go/observability`).
   - `type TerminalEvent` / `terminalEvent` — the notification wire struct
     duplicated between provider-registry and notification-service (must move
     to a shared `contracts/events` / notification envelope contract).
@@ -94,8 +95,8 @@ DETECTORS = [
 RULE_LABELS = {
     "jwt-verifier": "platform JWT verifier re-declared (use shared contracts/platformjwt)",
     "jwt-alg-pin": "hand-rolled JWT algorithm pin (belongs in the shared verifier)",
-    "logging-redact-filter": "RedactFilter re-declared (use loreweave_logging / contracts/logging)",
-    "logging-setup": "setup_logging re-defined (use loreweave_logging / contracts/logging)",
+    "logging-redact-filter": "RedactFilter re-declared (use loreweave_obs.setup_logging)",
+    "logging-setup": "setup_logging re-defined (use loreweave_obs.setup_logging)",
     "logging-secret-patterns": "_SECRET_PATTERNS re-declared (use the shared redactor)",
     "terminal-event-struct": "TerminalEvent wire struct duplicated (move to contracts/events)",
 }

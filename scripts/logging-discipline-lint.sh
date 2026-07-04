@@ -16,10 +16,12 @@
 #   * SOFT (bare print / log.Print / println!) — advisory (warn-mode default). The
 #     fleet still has ~67 legitimate ones (CLI drivers, Rust examples, *main.rs*
 #     binaries), so these stay warn until a dedicated sweep; `error` mode flips them.
-#   * HARD (`logging.basicConfig` in Python runtime) — ALWAYS blocking regardless of
-#     mode. The runtime basicConfig sites were all migrated to setup_logging (P2·A2a),
-#     so the baseline is 0; a NEW one fails CI. CLI `__main__` drivers + script/
-#     benchmark/eval/migration dirs are exempt (plain logging is fine there).
+#   * HARD (`logging.basicConfig` in Python runtime; bare `console.*` in backend TS) —
+#     ALWAYS blocking regardless of mode. The runtime basicConfig sites were all
+#     migrated to setup_logging (P2·A2a) and every backend console.* to a framework/
+#     structured logger (P2·A2b), so the baseline is 0; a NEW one fails CI. CLI
+#     `__main__` drivers + script/benchmark/eval/migration dirs are exempt for Python;
+#     tests + the game-server structured-logger sink are exempt for TS.
 #
 # Exit code 0 = no HARD violations (and no SOFT ones in error-mode); non-zero otherwise.
 #
@@ -114,6 +116,26 @@ for f in $bc_targets ; do
     echo "[logging-discipline-lint] ERROR: $f uses logging.basicConfig — use loreweave_obs.setup_logging"
     hard_violations=$((hard_violations + 1))
     violators+=("$f")
+done
+
+# TypeScript HARD: bare `console.*` in backend service RUNTIME → use the framework
+# logger (NestJS `Logger`) or a service's structured JSON logger (P2·A2b). Baseline is
+# 0 (A2b converted every backend console.*), so this catches a NEW regression. Exempt:
+# tests, and the ONE legitimate stdout sink (game-server/src/log.ts — the structured
+# JSON logger itself, whose console write IS the sink). Frontend (frontend/**) is out
+# of scope — this gate is backend services only.
+ts_targets=$(git ls-files 'services/**/*.ts' 2>/dev/null | \
+    grep -vE '\.(spec|test)\.ts$' | \
+    grep -v '/__tests__/' | \
+    grep -v '/tests/' | \
+    grep -v '^services/game-server/src/log\.ts$' || true)
+
+for f in $ts_targets ; do
+    if grep -nE 'console\.(log|error|warn|info|debug)\(' "$f" >/dev/null 2>&1; then
+        echo "[logging-discipline-lint] ERROR: $f uses console.* — use the NestJS Logger or a structured logger (P2·A2b)"
+        hard_violations=$((hard_violations + 1))
+        violators+=("$f")
+    fi
 done
 
 # HARD violations always block (a cleaned rule with a ready replacement), regardless of mode.

@@ -3,6 +3,7 @@ package api
 import (
 	"context"
 	"log/slog"
+	"sync"
 	"time"
 
 	"github.com/google/uuid"
@@ -30,6 +31,37 @@ const (
 	auditOutcomeGranted = "granted"
 	auditOutcomeDenied  = "denied"
 )
+
+// tenantAuditDedupCap bounds the in-process dedup cache — past it we stop caching
+// and emit anyway (the DB ON CONFLICT still guarantees one row per window).
+const tenantAuditDedupCap = 100_000
+
+// tenantAuditDedup realizes "first-per-window" at the WRITE path, not just at stored
+// rows. checkGrant fires a cross-service ResolveAccess per request, so without this a
+// collaborator browsing N entities would spawn N goroutines + N inserts to persist
+// ONE row. This skips the goroutine when the same (actor,book,outcome) was already
+// emitted this window; resets each window. Key excludes owner (glossary has none).
+type tenantAuditDedup struct {
+	mu     sync.Mutex
+	bucket time.Time
+	seen   map[string]struct{}
+}
+
+func (d *tenantAuditDedup) firstInWindow(key string, bucket time.Time) bool {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	if !bucket.Equal(d.bucket) {
+		d.bucket = bucket
+		d.seen = make(map[string]struct{})
+	}
+	if _, ok := d.seen[key]; ok {
+		return false
+	}
+	if len(d.seen) < tenantAuditDedupCap {
+		d.seen[key] = struct{}{}
+	}
+	return true
+}
 
 // auditQuerier is the minimal DB surface insertTenantAudit needs — satisfied by
 // *pgxpool.Pool and a capturing test fake.
@@ -68,6 +100,14 @@ func (s *Server) asyncTenantAudit(actorID, bookID uuid.UUID, outcome string) {
 		window = s.cfg.TenantAuditCoalesceWindowSeconds
 	}
 	bucket := bucketFor(time.Now().UTC(), window)
+	// First-per-window at the write path: skip the goroutine+insert on a repeat this
+	// window. nil guard keeps a struct-literal Server safe.
+	if s.auditDedup != nil {
+		key := actorID.String() + "|" + bookID.String() + "|" + outcome
+		if !s.auditDedup.firstInWindow(key, bucket) {
+			return
+		}
+	}
 	go func() {
 		defer func() {
 			if r := recover(); r != nil {

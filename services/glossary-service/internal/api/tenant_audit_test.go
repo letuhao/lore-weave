@@ -2,6 +2,7 @@ package api
 
 import (
 	"context"
+	"errors"
 	"strings"
 	"testing"
 	"time"
@@ -10,6 +11,7 @@ import (
 	"github.com/jackc/pgx/v5/pgconn"
 
 	"github.com/loreweave/grantclient"
+	lwmcp "github.com/loreweave/loreweave_mcp"
 )
 
 // P2·F glossary tenant-boundary audit — executable guards on the emit DECISION
@@ -67,6 +69,21 @@ func TestCheckGrant_NoEmitForOwner(t *testing.T) {
 	}
 }
 
+func TestCheckGrant_EmitsDeniedForOD8PublicKeyDenial(t *testing.T) {
+	owner, grantee, book := uuid.New(), uuid.New(), uuid.New()
+	s, calls := auditSpyServer(t, book, owner, grantee)
+	// A PUBLIC MCP key holding a manage SHARE: OD-8 hard-denies (it requires OWNER).
+	// The audit MUST record 'denied' — a security audit that logged a rejected
+	// access as 'granted' would give false reassurance (review MED-1).
+	ctx := lwmcp.ContextWithMcpKeyID(context.Background(), "key-xyz")
+	if err := s.checkGrant(ctx, book, grantee, grantclient.GrantView); !errors.Is(err, ErrNotAccessible) {
+		t.Fatalf("OD-8 public key with a share must be denied, got %v", err)
+	}
+	if len(*calls) != 1 || (*calls)[0].outcome != auditOutcomeDenied {
+		t.Fatalf("an OD-8 denial must audit 'denied', got %+v", *calls)
+	}
+}
+
 func TestCheckGrant_NoEmitForNonGrantee(t *testing.T) {
 	owner, grantee, book := uuid.New(), uuid.New(), uuid.New()
 	s, calls := auditSpyServer(t, book, owner, grantee)
@@ -111,6 +128,24 @@ func TestInsertTenantAudit_CoalescedInsertShape(t *testing.T) {
 	}
 	if fq.args[0] != actor || fq.args[1] != book || fq.args[2] != auditOutcomeGranted || fq.args[3] != bucket {
 		t.Errorf("insert args out of order/shape: %v", fq.args)
+	}
+}
+
+func TestTenantAuditDedup_FirstInWindow(t *testing.T) {
+	t.Parallel()
+	d := &tenantAuditDedup{}
+	b1 := time.Date(2026, 7, 5, 10, 0, 0, 0, time.UTC)
+	if !d.firstInWindow("a|b|granted", b1) {
+		t.Fatal("first sighting must be first-in-window")
+	}
+	if d.firstInWindow("a|b|granted", b1) {
+		t.Fatal("a repeat in the same window must be suppressed")
+	}
+	if !d.firstInWindow("a|b|denied", b1) {
+		t.Fatal("a different outcome is a distinct key — must emit")
+	}
+	if !d.firstInWindow("a|b|granted", b1.Add(time.Hour)) {
+		t.Fatal("a new window must re-emit (bucket reset)")
 	}
 }
 

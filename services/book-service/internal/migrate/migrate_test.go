@@ -44,6 +44,25 @@ func TestSchemaContainsScenesTable(t *testing.T) {
 	}
 }
 
+// P2·F review MED-3 — pin the tenant_access_audit coalesce index columns. The api
+// insert's ON CONFLICT tuple must match THIS index exactly, or a real insert raises
+// "no unique constraint matching" at runtime. Book has no real-PG harness (glossary
+// proves the live effect), so this string guard + the api-package ON-CONFLICT-tuple
+// assertion together lock the two sides so they can't drift apart silently.
+func TestSchemaTenantAuditCoalesceIndex(t *testing.T) {
+	for _, want := range []string{
+		"CREATE TABLE IF NOT EXISTS tenant_access_audit",
+		"outcome         TEXT NOT NULL CHECK (outcome IN ('granted','denied'))",
+		"CREATE UNIQUE INDEX IF NOT EXISTS uq_tenant_audit_window",
+		"ON tenant_access_audit (actor_id, book_id, outcome, coalesce_bucket)",
+		"REVOKE UPDATE, DELETE ON TABLE tenant_access_audit FROM app_service_role",
+	} {
+		if !strings.Contains(tenantAuditSQL, want) {
+			t.Fatalf("tenantAuditSQL missing required clause: %q", want)
+		}
+	}
+}
+
 func TestSchemaAddsChaptersPartAndStructuralPath(t *testing.T) {
 	for _, alter := range []string{
 		"ALTER TABLE chapters ADD COLUMN IF NOT EXISTS part_id UUID",

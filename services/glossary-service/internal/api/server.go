@@ -39,6 +39,9 @@ type Server struct {
 	// (*Server).asyncTenantAudit; tests override it with a synchronous spy. nil ⇒
 	// no-op (struct-literal Server / nil pool).
 	emitTenantAudit func(actorID, bookID uuid.UUID, outcome string)
+	// auditDedup bounds the P2·F audit WRITE path to first-per-window. nil ⇒ no dedup
+	// (still correct — the DB ON CONFLICT dedups the row). Wired in NewServer.
+	auditDedup *tenantAuditDedup
 }
 
 func NewServer(pool *pgxpool.Pool, cfg *config.Config) *Server {
@@ -49,6 +52,7 @@ func NewServer(pool *pgxpool.Pool, cfg *config.Config) *Server {
 		grantClient: buildGrantClient(cfg.BookServiceURL, cfg.InternalServiceToken),
 	}
 	s.emitTenantAudit = s.asyncTenantAudit
+	s.auditDedup = &tenantAuditDedup{}
 	if raw := strings.TrimSpace(cfg.AdminJWTPublicKeyPEM); raw != "" {
 		pub, err := adminjwt.ParseRSAPublicKeyPEM(pemOrBase64(raw))
 		if err != nil {

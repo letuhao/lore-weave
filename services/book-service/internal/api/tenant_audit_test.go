@@ -169,9 +169,13 @@ func TestInsertTenantAudit_CoalescedInsertShape(t *testing.T) {
 		t.Fatalf("insert: %v", err)
 	}
 	// The load-bearing coalescing clause — a redelivery/re-read in the same window
-	// must be a no-op, not a duplicate row.
-	if !strings.Contains(fq.sql, "ON CONFLICT") || !strings.Contains(fq.sql, "DO NOTHING") {
-		t.Errorf("insert must coalesce via ON CONFLICT DO NOTHING; sql:\n%s", fq.sql)
+	// must be a no-op, not a duplicate row. Assert the EXACT ON CONFLICT column tuple
+	// (not just "ON CONFLICT"): it must match uq_tenant_audit_window's columns in
+	// migrate.go, or a real insert raises "no unique constraint matching" at runtime
+	// (review MED-3 — book has no real-PG harness, so this string coupling + the
+	// migrate index-column test are the guard; glossary proves the effect live).
+	if !strings.Contains(fq.sql, "ON CONFLICT (actor_id, book_id, outcome, coalesce_bucket) DO NOTHING") {
+		t.Errorf("insert must coalesce via the exact ON CONFLICT tuple matching uq_tenant_audit_window; sql:\n%s", fq.sql)
 	}
 	if !strings.Contains(fq.sql, "tenant_access_audit") {
 		t.Errorf("insert targets the wrong table:\n%s", fq.sql)
@@ -184,6 +188,29 @@ func TestInsertTenantAudit_CoalescedInsertShape(t *testing.T) {
 	if fq.args[0] != actor || fq.args[1] != book || fq.args[2] != owner ||
 		fq.args[3] != auditOutcomeGranted || fq.args[4] != bucket {
 		t.Errorf("insert args out of order/shape: %v", fq.args)
+	}
+}
+
+func TestTenantAuditDedup_FirstInWindow(t *testing.T) {
+	t.Parallel()
+	d := &tenantAuditDedup{}
+	b1 := time.Date(2026, 7, 5, 10, 0, 0, 0, time.UTC)
+	// First sighting of a key this window → true; repeat → false (skip the write).
+	if !d.firstInWindow("a|b|granted", b1) {
+		t.Fatal("first sighting must be first-in-window")
+	}
+	if d.firstInWindow("a|b|granted", b1) {
+		t.Fatal("a repeat in the same window must be suppressed")
+	}
+	// A DIFFERENT outcome for the same (actor,book) is a distinct key → emitted.
+	if !d.firstInWindow("a|b|denied", b1) {
+		t.Fatal("a different outcome is a distinct key — must emit")
+	}
+	// A new window resets the set → the same key emits again (matches the DB
+	// coalesce bucket rolling over).
+	b2 := b1.Add(time.Hour)
+	if !d.firstInWindow("a|b|granted", b2) {
+		t.Fatal("a new window must re-emit (bucket reset)")
 	}
 }
 
