@@ -118,6 +118,12 @@ func (s *Server) createNotification(w http.ResponseWriter, r *http.Request) {
 		Title    string         `json:"title"`
 		Body     string         `json:"body"`
 		Metadata map[string]any `json:"metadata"`
+		// D-NOTIF-I18N (NOTIF-1): optional i18n substrate. A producer may
+		// supply a stable message_key + interpolation params so a locale-aware
+		// FE renders per-locale; title/body remain the rendered fallback. Both
+		// are optional — omitted ⇒ NULL columns, text fallback only.
+		MessageKey    string         `json:"message_key"`
+		MessageParams map[string]any `json:"message_params"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
 		writeError(w, http.StatusBadRequest, "NOTIF_VALIDATION_ERROR", "invalid json")
@@ -152,10 +158,11 @@ func (s *Server) createNotification(w http.ResponseWriter, r *http.Request) {
 	var id uuid.UUID
 	var createdAt time.Time
 	err = s.pool.QueryRow(r.Context(), `
-		INSERT INTO notifications (user_id, category, title, body, metadata)
-		VALUES ($1, $2, $3, $4, $5)
+		INSERT INTO notifications (user_id, category, title, body, metadata, message_key, message_params)
+		VALUES ($1, $2, $3, $4, $5, $6, $7)
 		RETURNING id, created_at`,
 		userID, category, body.Title, body.Body, meta,
+		nullableText(body.MessageKey), nullableJSONB(body.MessageParams),
 	).Scan(&id, &createdAt)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "NOTIF_INTERNAL_ERROR", "insert failed")
@@ -170,11 +177,13 @@ func (s *Server) createNotification(w http.ResponseWriter, r *http.Request) {
 func (s *Server) createNotificationBatch(w http.ResponseWriter, r *http.Request) {
 	var body struct {
 		Notifications []struct {
-			UserID   string         `json:"user_id"`
-			Category string         `json:"category"`
-			Title    string         `json:"title"`
-			Body     string         `json:"body"`
-			Metadata map[string]any `json:"metadata"`
+			UserID        string         `json:"user_id"`
+			Category      string         `json:"category"`
+			Title         string         `json:"title"`
+			Body          string         `json:"body"`
+			Metadata      map[string]any `json:"metadata"`
+			MessageKey    string         `json:"message_key"`
+			MessageParams map[string]any `json:"message_params"`
 		} `json:"notifications"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
@@ -208,9 +217,10 @@ func (s *Server) createNotificationBatch(w http.ResponseWriter, r *http.Request)
 			meta = []byte("{}")
 		}
 		_, err = s.pool.Exec(ctx, `
-			INSERT INTO notifications (user_id, category, title, body, metadata)
-			VALUES ($1, $2, $3, $4, $5)`,
-			userID, cat, n.Title, n.Body, meta)
+			INSERT INTO notifications (user_id, category, title, body, metadata, message_key, message_params)
+			VALUES ($1, $2, $3, $4, $5, $6, $7)`,
+			userID, cat, n.Title, n.Body, meta,
+			nullableText(n.MessageKey), nullableJSONB(n.MessageParams))
 		if err == nil {
 			created++
 		} else {
@@ -237,7 +247,7 @@ func (s *Server) listNotifications(w http.ResponseWriter, r *http.Request) {
 	category := r.URL.Query().Get("category")
 	unreadOnly := r.URL.Query().Get("unread") == "true"
 
-	query := `SELECT id, category, title, body, metadata, read_at, created_at
+	query := `SELECT id, category, title, body, metadata, message_key, message_params, read_at, created_at
 		FROM notifications WHERE user_id = $1`
 	args := []any{userID}
 	argIdx := 2
@@ -267,23 +277,14 @@ func (s *Server) listNotifications(w http.ResponseWriter, r *http.Request) {
 		var cat, title string
 		var body *string
 		var metadata json.RawMessage
+		var messageKey *string
+		var messageParams json.RawMessage
 		var readAt *time.Time
 		var createdAt time.Time
-		if err := rows.Scan(&id, &cat, &title, &body, &metadata, &readAt, &createdAt); err != nil {
+		if err := rows.Scan(&id, &cat, &title, &body, &metadata, &messageKey, &messageParams, &readAt, &createdAt); err != nil {
 			continue
 		}
-		m := map[string]any{
-			"id":         id,
-			"category":   cat,
-			"title":      title,
-			"metadata":   json.RawMessage(metadata),
-			"read":       readAt != nil,
-			"created_at": createdAt.UTC().Format(time.RFC3339Nano),
-		}
-		if body != nil {
-			m["body"] = *body
-		}
-		items = append(items, m)
+		items = append(items, serializeNotification(id, cat, title, body, metadata, messageKey, messageParams, readAt, createdAt))
 	}
 	if err := rows.Err(); err != nil {
 		writeError(w, http.StatusInternalServerError, "NOTIF_INTERNAL_ERROR", "row iteration failed")
@@ -393,6 +394,65 @@ func writeError(w http.ResponseWriter, status int, code, message string) {
 // validate against the exact same set (audit P0-4 / NOTIF-2).
 func validCategory(c string) bool {
 	return category.Valid(c)
+}
+
+// serializeNotification builds the JSON row shape the GET/list endpoint
+// returns. Pure (no DB) so the serialization contract — including the
+// D-NOTIF-I18N message_key/message_params fields — is unit-testable without
+// a broker or Postgres. message_key (*string) and message_params
+// (json.RawMessage) are ALWAYS present in the map; both marshal to JSON
+// `null` when nil (legacy row or a producer that supplied no key), so a
+// locale-aware FE keys off them while any other client falls back to
+// title/body. body stays omitted-when-null to preserve the prior contract.
+func serializeNotification(
+	id uuid.UUID,
+	category, title string,
+	body *string,
+	metadata json.RawMessage,
+	messageKey *string,
+	messageParams json.RawMessage,
+	readAt *time.Time,
+	createdAt time.Time,
+) map[string]any {
+	m := map[string]any{
+		"id":             id,
+		"category":       category,
+		"title":          title,
+		"metadata":       json.RawMessage(metadata),
+		"read":           readAt != nil,
+		"created_at":     createdAt.UTC().Format(time.RFC3339Nano),
+		"message_key":    messageKey,    // *string → JSON string or null
+		"message_params": messageParams, // json.RawMessage → JSON object or null
+	}
+	if body != nil {
+		m["body"] = *body
+	}
+	return m
+}
+
+// nullableText maps an empty string to a SQL NULL (nil) so an omitted
+// message_key stores as NULL rather than an empty string — keeping the
+// "no i18n key ⇒ NULL ⇒ text fallback" contract clean. (D-NOTIF-I18N)
+func nullableText(s string) any {
+	if s == "" {
+		return nil
+	}
+	return s
+}
+
+// nullableJSONB maps an omitted/empty params map to a SQL NULL (nil) rather
+// than an empty '{}' — so a reader can distinguish "no params supplied" from
+// "params present but empty". A present map is marshalled to JSONB bytes
+// (Go json is UTF-8; ML-5 — no \uXXXX inflation on any prose param). (D-NOTIF-I18N)
+func nullableJSONB(m map[string]any) any {
+	if len(m) == 0 {
+		return nil
+	}
+	b, err := json.Marshal(m)
+	if err != nil {
+		return nil
+	}
+	return b
 }
 
 func queryInt(r *http.Request, key string, def int) int {

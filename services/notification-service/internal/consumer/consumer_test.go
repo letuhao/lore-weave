@@ -142,3 +142,69 @@ func TestOpLabel_EmptyFallback(t *testing.T) {
 		t.Errorf("empty op should default to Job, got %q", got)
 	}
 }
+
+// TestTransform_I18nKeyAndParams_AlongsideFallback proves D-NOTIF-I18N
+// (NOTIF-1): a terminal event yields BOTH the rendered English title/body
+// fallback AND a stable message_key + interpolation params. A locale-aware FE
+// renders from the key; every other client keeps showing title/body.
+func TestTransform_I18nKeyAndParams_AlongsideFallback(t *testing.T) {
+	args := transformTerminalEvent(terminalEvent{
+		JobID:       uuid.New(),
+		OwnerUserID: uuid.New(),
+		Operation:   "entity_extraction",
+		Status:      "completed",
+	})
+
+	// Rendered English fallback is still written as before.
+	if args.Title != "Entity extraction completed" {
+		t.Errorf("fallback title wrong: %q", args.Title)
+	}
+
+	// Stable i18n key: notif.<category>.<status>.
+	if args.MessageKey != "notif.llm_job.completed" {
+		t.Errorf("message_key wrong: %q, want notif.llm_job.completed", args.MessageKey)
+	}
+
+	// Params carry the interpolation values (operation here).
+	var params map[string]any
+	if err := json.Unmarshal(args.MessageParams, &params); err != nil {
+		t.Fatalf("message_params not JSON: %v (%s)", err, args.MessageParams)
+	}
+	if params["operation"] != "entity_extraction" {
+		t.Errorf("message_params.operation wrong: %v", params["operation"])
+	}
+	if _, present := params["error_code"]; present {
+		t.Errorf("completed event should not carry error_code, got %v", params)
+	}
+}
+
+// TestTransform_I18nFailedCarriesErrorCode proves a failure's message_params
+// carry the error_code (so a localized error notification can name the
+// failure), and the key reflects the failed status.
+func TestTransform_I18nFailedCarriesErrorCode(t *testing.T) {
+	args := transformTerminalEvent(terminalEvent{
+		JobID:        uuid.New(),
+		OwnerUserID:  uuid.New(),
+		Operation:    "translation",
+		Status:       "failed",
+		ErrorCode:    "LLM_UPSTREAM_ERROR",
+		ErrorMessage: "provider returned 502",
+	})
+	if args.MessageKey != "notif.llm_job.failed" {
+		t.Errorf("message_key wrong: %q, want notif.llm_job.failed", args.MessageKey)
+	}
+	var params map[string]any
+	if err := json.Unmarshal(args.MessageParams, &params); err != nil {
+		t.Fatalf("message_params not JSON: %v", err)
+	}
+	if params["operation"] != "translation" {
+		t.Errorf("message_params.operation wrong: %v", params["operation"])
+	}
+	if params["error_code"] != "LLM_UPSTREAM_ERROR" {
+		t.Errorf("message_params.error_code wrong: %v", params["error_code"])
+	}
+	// Fallback body still rendered.
+	if !strings.Contains(args.Body, "provider returned 502") {
+		t.Errorf("fallback body missing error message: %q", args.Body)
+	}
+}

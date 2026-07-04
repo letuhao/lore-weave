@@ -35,6 +35,18 @@ CREATE TABLE IF NOT EXISTS notifications (
   created_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
+-- D-NOTIF-I18N (NOTIF-1): i18n columns so a locale-aware client can render
+-- per-locale from a stable key + interpolation params. title/body remain the
+-- rendered-English FALLBACK for existing consumers (never dropped). Both are
+-- nullable — legacy rows and any producer that doesn't supply a key keep
+-- working with the text fallback only.
+--   message_key    — stable i18n key, e.g. 'notif.llm_job.completed'
+--   message_params — interpolation params, e.g. {"operation":"entity_extraction"}
+-- ALTER ... IF NOT EXISTS is idempotent: fresh DBs (just created above) and
+-- existing DBs both converge to the same shape on every Up().
+ALTER TABLE notifications ADD COLUMN IF NOT EXISTS message_key    TEXT;
+ALTER TABLE notifications ADD COLUMN IF NOT EXISTS message_params JSONB;
+
 CREATE INDEX IF NOT EXISTS idx_notif_user_unread ON notifications(user_id, created_at DESC) WHERE read_at IS NULL;
 CREATE INDEX IF NOT EXISTS idx_notif_user_all ON notifications(user_id, created_at DESC);
 `

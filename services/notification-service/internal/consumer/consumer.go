@@ -52,11 +52,19 @@ type notificationArgs struct {
 	Title    string
 	Body     string
 	Metadata []byte // JSON-encoded
+	// D-NOTIF-I18N (NOTIF-1): i18n substrate written alongside the rendered
+	// English Title/Body (which remain the fallback). MessageKey is a stable
+	// per-(category,status) key; MessageParams carries the interpolation
+	// values (operation, error_code) as JSON. A locale-aware FE renders from
+	// these; any other client keeps showing Title/Body.
+	MessageKey    string
+	MessageParams []byte // JSON-encoded
 }
 
 // transformTerminalEvent converts a parsed event into the args we'll
 // INSERT. Pure function — testable without a broker.
 func transformTerminalEvent(ev terminalEvent) notificationArgs {
+	const cat = "llm_job"
 	title := titleFor(ev.Operation, ev.Status)
 	body := bodyFor(ev)
 	meta, _ := json.Marshal(map[string]any{
@@ -68,12 +76,41 @@ func transformTerminalEvent(ev terminalEvent) notificationArgs {
 		"error_code":    ev.ErrorCode,
 	})
 	return notificationArgs{
-		UserID:   ev.OwnerUserID,
-		Category: "llm_job",
-		Title:    title,
-		Body:     body,
-		Metadata: meta,
+		UserID:        ev.OwnerUserID,
+		Category:      cat,
+		Title:         title,
+		Body:          body,
+		Metadata:      meta,
+		MessageKey:    messageKey(cat, ev.Status),
+		MessageParams: messageParams(ev),
 	}
+}
+
+// messageKey builds the stable i18n key: notif.<category>.<status>
+// (e.g. notif.llm_job.completed). The status comes straight from the
+// terminal event enum (completed | failed | cancelled); an unexpected
+// status still yields a well-formed, deterministic key rather than an
+// empty string, so the FE can fall back to title/body predictably.
+func messageKey(category, status string) string {
+	if status == "" {
+		status = "unknown"
+	}
+	return fmt.Sprintf("notif.%s.%s", category, status)
+}
+
+// messageParams returns the JSON-encoded interpolation params a locale-aware
+// FE substitutes into the localized template. Always carries `operation`;
+// failures additionally carry `error_code` (when present) so a localized
+// error notification can name the failure. Go's json.Marshal emits UTF-8
+// (ML-5: no \uXXXX inflation) — operation/error_code are ASCII enum tokens
+// anyway, but any future prose param stays UTF-8 on the wire.
+func messageParams(ev terminalEvent) []byte {
+	params := map[string]any{"operation": ev.Operation}
+	if ev.Status == "failed" && ev.ErrorCode != "" {
+		params["error_code"] = ev.ErrorCode
+	}
+	b, _ := json.Marshal(params)
+	return b
 }
 
 // titleFor produces a short human-readable label per (operation, status).
@@ -238,9 +275,9 @@ func (c *Consumer) handle(ctx context.Context, d rabbitmq.Delivery) {
 		return
 	}
 	_, err := c.pool.Exec(ctx, `
-INSERT INTO notifications (user_id, category, title, body, metadata)
-VALUES ($1, $2, $3, $4, $5)
-`, args.UserID, args.Category, args.Title, args.Body, args.Metadata)
+INSERT INTO notifications (user_id, category, title, body, metadata, message_key, message_params)
+VALUES ($1, $2, $3, $4, $5, $6, $7)
+`, args.UserID, args.Category, args.Title, args.Body, args.Metadata, args.MessageKey, args.MessageParams)
 	if err != nil {
 		c.logger.Error("notification insert failed — requeueing",
 			"err", err, "job_id", ev.JobID.String())
