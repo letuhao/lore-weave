@@ -34,7 +34,9 @@ Because these are refactors touching many services, **each workstream is its own
 
 **Acceptance.** A live cross-service smoke (chat → knowledge → provider-registry) produces log lines whose OTel `trace_id` matches the Tempo span; a 500-error response still carries a greppable id (bespoke or OTel) in its JSON body; a test asserts the handler injects `trace_id` under an active span and omits it cleanly with none.
 
-### A2 · Shared logging SDK per language — split A2a (Python) / A2b (Go)  *(size: A2a M · A2b L)*
+### A2 · Shared logging SDK per language — split A2a (Python) / A2b (Go)  *(A2a ✅ SHIPPED · A2b pending)*
+
+> ✅ **A2a done 2026-07-04** (`687fd4949`, `aba652a86`, `e7dbef061`, `178858d51`, `7500db04e`): `loreweave_obs.setup_logging` extended in (merged superset Redactor + dual-emit `otel_trace_id`); the **3 copied `logging_config.py` retired** (knowledge/composition/lore-enrichment → shims); **every Python runtime `logging.basicConfig` migrated** (campaign/jobs/worker-ai/translation/video-gen mains + learning main + composition/lore-enrichment/video-gen worker `__main__`); `logging-discipline-lint` **enforces basicConfig as a hard-fail** (blocking via existing CI wiring; print/println! stay advisory), negative-proven. /review-impl caught + fixed a pythonjsonlogger import-coupling (tracing-only imports no longer require the logging dep). **Remaining tail (not A2a-blocking):** chat-service is "partial-tier" (OTel but its own unstructured root logger, not `setup_logging`) — a follow-on adoption, not a basicConfig defect. **A2b (Go) is the open fork below.**
 
 **Problem.** `logging_config.py` is copy-pasted ×3 (knowledge/composition/lore-enrichment) → drift; `contracts/logging` (Go, typed PII/Sensitive + Redactor + prod-guard) has **0 adopters** (confirmed — only its own tests import it); Python is a 3-tier spectrum where the hot-path LLM workers (translation, worker-ai, campaign, jobs, video-gen) are on plain `basicConfig`.
 
