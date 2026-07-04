@@ -378,3 +378,74 @@ func TestSchemaContainsConsumedTokensTable(t *testing.T) {
 		}
 	}
 }
+
+// ── Chapter Browser CB3 (word_count) - 2026-07-04 ───────────────────────────
+// Regression lock for the word_count column, its batched backfill marker
+// table, and the recompute trigger/function. Real-PG trigger behavior (CJK
+// vs Latin counting, insert/update/delete recompute) is covered by the
+// DB-gated tests in the api package (word_count_db_test.go); these are pure
+// string checks so they run on a machine with no DB.
+
+func TestSchemaAddsWordCountColumn(t *testing.T) {
+	if !strings.Contains(schemaSQL, "ALTER TABLE chapters ADD COLUMN IF NOT EXISTS word_count INT NOT NULL DEFAULT 0") {
+		t.Fatal("chapters missing word_count column, or it isn't NOT NULL DEFAULT 0 (backward-compat requirement — existing rows must never end up NULL)")
+	}
+	if !strings.Contains(schemaSQL, "CREATE TABLE IF NOT EXISTS word_count_backfill_migration") {
+		t.Fatal("schemaSQL missing word_count_backfill_migration marker table")
+	}
+}
+
+func TestTriggerContainsWordCountFunctions(t *testing.T) {
+	for _, frag := range []string{
+		"CREATE OR REPLACE FUNCTION fn_word_count_for_text(_text TEXT, _lang TEXT)",
+		"CREATE OR REPLACE FUNCTION fn_recompute_chapter_word_count()",
+		"CREATE TRIGGER trg_recompute_chapter_word_count",
+		"AFTER INSERT OR DELETE OR UPDATE OF text_content ON chapter_blocks",
+	} {
+		if !strings.Contains(triggerSQL, frag) {
+			t.Fatalf("triggerSQL missing word_count fragment: %q", frag)
+		}
+	}
+}
+
+// The trigger must be restricted to `UPDATE OF text_content` — NOT a bare
+// `UPDATE ON chapter_blocks` — so fn_extract_chapter_blocks' 3rd internal
+// statement (heading_context-only UPDATE) doesn't trigger a redundant
+// recompute of every chapter on every draft save.
+func TestWordCountTriggerRestrictedToTextContentUpdates(t *testing.T) {
+	if strings.Contains(triggerSQL, "AFTER INSERT OR UPDATE OR DELETE ON chapter_blocks") {
+		t.Fatal("trg_recompute_chapter_word_count must not fire on bare UPDATE (heading_context-only changes) — restrict to UPDATE OF text_content")
+	}
+}
+
+// CJK detection must reuse the exact Unicode ranges from useBookReaderContent.ts'
+// CJK_REGEX (CJK Unified Ideographs U+3000-9FFF, Hangul U+AC00-D7AF, fullwidth
+// forms U+FF00-FFEF) — a drifted range would silently miscount for some scripts.
+func TestWordCountCJKRangesMatchFrontendRegex(t *testing.T) {
+	if !strings.Contains(triggerSQL, "[　-鿿가-힯＀-￯]") {
+		t.Fatal("fn_word_count_for_text's CJK character class must match useBookReaderContent.ts' CJK_REGEX exactly")
+	}
+	if !strings.Contains(triggerSQL, "_lang IN ('ja', 'zh', 'ko')") {
+		t.Fatal("fn_word_count_for_text must also treat ja/zh/ko chapter language as CJK, mirroring computeReadingStats")
+	}
+}
+
+// Idempotency: the CB3 additions must use IF NOT EXISTS / OR REPLACE so an
+// Up() re-run is a no-op (book-service has no migration ledger).
+func TestSchemaWordCountAdditionsAreIdempotent(t *testing.T) {
+	const sentinel = "Chapter Browser CB3 (word_count) - 2026-07-04"
+	idx := strings.Index(schemaSQL, sentinel)
+	if idx == -1 {
+		t.Fatal("CB3 sentinel not found in schemaSQL")
+	}
+	region := schemaSQL[idx:]
+	for _, line := range strings.Split(region, "\n") {
+		trimmed := strings.TrimSpace(line)
+		if strings.HasPrefix(trimmed, "CREATE TABLE") && !strings.Contains(trimmed, "IF NOT EXISTS") {
+			t.Fatalf("CB3 region has non-idempotent CREATE TABLE: %q", trimmed)
+		}
+		if strings.HasPrefix(trimmed, "ALTER TABLE") && !strings.Contains(trimmed, "IF NOT EXISTS") {
+			t.Fatalf("CB3 region has non-idempotent ALTER TABLE: %q", trimmed)
+		}
+	}
+}

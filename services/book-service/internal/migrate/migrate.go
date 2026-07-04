@@ -3,7 +3,9 @@ package migrate
 import (
 	"context"
 	"fmt"
+	"log/slog"
 
+	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
@@ -398,6 +400,35 @@ CREATE TABLE IF NOT EXISTS book_steering (
   UNIQUE (book_id, name)
 );
 CREATE INDEX IF NOT EXISTS idx_book_steering_book ON book_steering(book_id, created_at);
+
+-- ═══════════════════════════════════════════════════════════════
+-- Chapter Browser CB3 (word_count) - 2026-07-04
+-- Spec: docs/specs/2026-07-01-writing-studio/15_chapter_browser.md §CB3
+--
+-- word_count is a denormalized, DB-maintained aggregate over a chapter's
+-- chapter_blocks.text_content (multilingual: CJK char-count vs Latin
+-- word-split-count, mirroring computeReadingStats' CJK_REGEX heuristic —
+-- see fn_word_count_for_text below). Kept fresh by a trigger on
+-- chapter_blocks (fn_recompute_chapter_word_count, mirrors the existing
+-- fn_extract_chapter_blocks/trg_extract_chapter_blocks shape — same table,
+-- same "recompute-parent-on-child-write" pattern, not a new mechanism).
+--
+-- NEW rows default 0 (never NULL) — backward compatible with every existing
+-- INSERT into chapters. EXISTING rows also start at 0 until the batched,
+-- marker-gated backfill (backfillWordCounts in migrate.go) runs — a Go loop
+-- (not a single giant UPDATE) so a book with thousands of chapters (real dev
+-- data: up to ~4200/book) never takes one table-locking statement.
+-- ═══════════════════════════════════════════════════════════════
+ALTER TABLE chapters ADD COLUMN IF NOT EXISTS word_count INT NOT NULL DEFAULT 0;
+
+-- One-row-per-step marker (mirrors canon_model_migration) so the batched
+-- backfill runs to completion once, not on every startup. Safe to re-run to
+-- completion if interrupted mid-way (recompute is idempotent — no correctness
+-- risk, only wasted CPU), so no per-batch checkpointing is needed.
+CREATE TABLE IF NOT EXISTS word_count_backfill_migration (
+  id         TEXT PRIMARY KEY,
+  applied_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
 `
 
 // WorldsDownSQL is the explicit reversible DDL for the C20 world container.
@@ -487,6 +518,87 @@ func Up(ctx context.Context, pool *pgxpool.Pool) error {
 		return err
 	}
 
+	// CB3: batched, marker-gated word_count backfill for pre-existing chapters.
+	// Best-effort — a failure here must NEVER block book-service startup (word_count
+	// simply stays 0 for un-backfilled rows, a graceful degrade, not a hard
+	// requirement); the marker stays unset on failure so the next startup retries.
+	if err := backfillWordCounts(ctx, pool); err != nil {
+		slog.Error("book-service: word_count backfill failed; will retry on next startup", "err", err)
+	}
+
+	return nil
+}
+
+// wordCountBackfillBatchSize — chapters processed per batch. Chosen so a book
+// with thousands of chapters (real dev data: up to ~4200/book) never takes one
+// giant table-locking UPDATE (spec CB3 / plan risk note).
+const wordCountBackfillBatchSize = 500
+
+// backfillWordCounts computes word_count for every pre-existing chapter, in
+// small batches ordered by id (chapters.id is a UUIDv7 — time-ordered, so a
+// simple keyset `id > lastID ORDER BY id LIMIT N` cursor is a total order with
+// no duplicate/skip risk). Marker-gated (word_count_backfill_migration) so a
+// fresh install's chapters (which already got a correct word_count from the
+// INSERT-time trigger) don't get needlessly recomputed on every startup. Safe
+// to re-run to completion if a prior run was interrupted by a crash — the
+// computation is a pure function of current data, so repeating it is wasted
+// CPU, never a correctness risk.
+func backfillWordCounts(ctx context.Context, pool *pgxpool.Pool) error {
+	var done bool
+	if err := pool.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM word_count_backfill_migration WHERE id='wc_backfill_v1')`).Scan(&done); err != nil {
+		return fmt.Errorf("check marker: %w", err)
+	}
+	if done {
+		return nil
+	}
+
+	var lastID uuid.UUID // zero UUID sorts before every real chapter id
+	for {
+		rows, err := pool.Query(ctx, `SELECT id FROM chapters WHERE id > $1 ORDER BY id LIMIT $2`, lastID, wordCountBackfillBatchSize)
+		if err != nil {
+			return fmt.Errorf("fetch batch: %w", err)
+		}
+		ids := make([]uuid.UUID, 0, wordCountBackfillBatchSize)
+		for rows.Next() {
+			var id uuid.UUID
+			if err := rows.Scan(&id); err != nil {
+				rows.Close()
+				return fmt.Errorf("scan batch id: %w", err)
+			}
+			ids = append(ids, id)
+		}
+		rows.Close()
+		if err := rows.Err(); err != nil {
+			return fmt.Errorf("iterate batch: %w", err)
+		}
+		if len(ids) == 0 {
+			break
+		}
+		lastID = ids[len(ids)-1]
+
+		// Chapters with no blocks (agg has no matching row) simply keep their
+		// default word_count=0 — correct for an empty chapter.
+		if _, err := pool.Exec(ctx, `
+WITH agg AS (
+  SELECT chapter_id, string_agg(text_content, ' ' ORDER BY block_index) AS txt
+  FROM chapter_blocks WHERE chapter_id = ANY($1)
+  GROUP BY chapter_id
+)
+UPDATE chapters c
+SET word_count = fn_word_count_for_text(agg.txt, c.original_language)
+FROM agg WHERE c.id = agg.chapter_id
+`, ids); err != nil {
+			return fmt.Errorf("backfill batch (after id %s): %w", lastID, err)
+		}
+
+		if len(ids) < wordCountBackfillBatchSize {
+			break // last (partial) batch — no more rows
+		}
+	}
+
+	if _, err := pool.Exec(ctx, `INSERT INTO word_count_backfill_migration (id) VALUES ('wc_backfill_v1') ON CONFLICT DO NOTHING`); err != nil {
+		return fmt.Errorf("mark backfill complete: %w", err)
+	}
 	return nil
 }
 
@@ -598,6 +710,78 @@ DO $$ BEGIN
     AFTER INSERT ON outbox_events
     FOR EACH ROW
     EXECUTE FUNCTION fn_outbox_notify();
+EXCEPTION WHEN duplicate_object THEN NULL;
+END $$;
+
+-- ── fn_word_count_for_text: multilingual word-count heuristic (CB3) ──────
+-- Ports computeReadingStats' CJK_REGEX heuristic (useBookReaderContent.ts)
+-- to Postgres: CJK-detected text (the same Unicode ranges — CJK Unified
+-- Ideographs, Hiragana, Katakana, Hangul, fullwidth forms — OR an explicit
+-- ja/zh/ko chapter language) counts CHARACTERS excluding whitespace/
+-- punctuation; everything else counts WHITESPACE-SPLIT WORDS. POSIX
+-- [[:space:][:punct:]] approximates the TS regex's \s\p{P} classes closely
+-- enough for a browse-list estimate (not required to be byte-identical to
+-- the frontend's own live reading-time estimate). IMMUTABLE + pure (no
+-- table access) so it's usable in both the trigger and the batched backfill
+-- without duplicating the classification logic in two places.
+CREATE OR REPLACE FUNCTION fn_word_count_for_text(_text TEXT, _lang TEXT)
+RETURNS INT AS $fn$
+DECLARE
+  _is_cjk BOOLEAN;
+BEGIN
+  _text := COALESCE(_text, '');
+  _is_cjk := (_text ~ '[　-鿿가-힯＀-￯]') OR (_lang IN ('ja', 'zh', 'ko'));
+  IF _is_cjk THEN
+    RETURN char_length(regexp_replace(_text, '[[:space:][:punct:]]', '', 'g'));
+  ELSIF trim(_text) = '' THEN
+    RETURN 0;
+  ELSE
+    RETURN array_length(regexp_split_to_array(trim(_text), '\s+'), 1);
+  END IF;
+END;
+$fn$ LANGUAGE plpgsql IMMUTABLE;
+
+-- ── fn_recompute_chapter_word_count: recompute parent chapter's word_count ──
+-- Mirrors fn_extract_chapter_blocks' "denormalized aggregate kept fresh by a
+-- trigger on chapter_blocks" shape. Fires AFTER INSERT/DELETE/UPDATE OF
+-- text_content (NOT heading_context-only updates — that column-restriction
+-- avoids a redundant recompute on fn_extract_chapter_blocks' 3rd internal
+-- statement, which only touches heading_context). Runs once per affected
+-- chapter_blocks row; by the time the LAST row of a multi-row statement
+-- fires, all of that statement's changes are already visible (Postgres
+-- advances the command-id between row-trigger invocations), so the final
+-- recompute is correct even though earlier invocations are redundant.
+-- AFTER-trigger return value is ignored — RETURN NULL is valid for both
+-- row-insert/update and row-delete invocations.
+CREATE OR REPLACE FUNCTION fn_recompute_chapter_word_count()
+RETURNS TRIGGER AS $fn$
+DECLARE
+  _chapter_id UUID;
+  _agg_text   TEXT;
+  _lang       TEXT;
+BEGIN
+  _chapter_id := COALESCE(NEW.chapter_id, OLD.chapter_id);
+
+  SELECT string_agg(text_content, ' ' ORDER BY block_index) INTO _agg_text
+  FROM chapter_blocks WHERE chapter_id = _chapter_id;
+
+  SELECT original_language INTO _lang FROM chapters WHERE id = _chapter_id;
+
+  -- A missing chapter row (e.g. mid-cascade-delete: chapters row already
+  -- gone, chapter_blocks rows cascading after it) makes this UPDATE match
+  -- zero rows — harmless no-op, not an error.
+  UPDATE chapters SET word_count = fn_word_count_for_text(_agg_text, _lang)
+  WHERE id = _chapter_id;
+
+  RETURN NULL;
+END;
+$fn$ LANGUAGE plpgsql;
+
+DO $$ BEGIN
+  CREATE TRIGGER trg_recompute_chapter_word_count
+    AFTER INSERT OR DELETE OR UPDATE OF text_content ON chapter_blocks
+    FOR EACH ROW
+    EXECUTE FUNCTION fn_recompute_chapter_word_count();
 EXCEPTION WHEN duplicate_object THEN NULL;
 END $$;
 `
