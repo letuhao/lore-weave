@@ -89,10 +89,32 @@ is KEPT (correct/safe/tested) — its residual value is retrieval COMPUTE/latenc
 on gated turns, the `entity_presence` telemetry, and being the D1 pull-mode substrate.
 Re-enable when the strong-model JIT `pull` mode (grounding expensive per turn) lands.
 
-**The real Context-Budget lever (evidence-backed):** the ~41K MCP tool-schema catalog on
-every tool-loop turn. Next token work should target **tool discovery / schema trimming**
-(advertise fewer tools per turn; smaller schemas), NOT grounding gating. This is the
-honest redirection the audit produced.
+**⚠ CORRECTION #2 (same day) — the "41K catalog is the real lever" claim was ITSELF a
+measurement artifact.** The quality-gate driver defaulted to **legacy** stream format,
+which advertises the FULL tool catalog. The real frontend uses **agui**, where tool
+DISCOVERY is active. Measured both on the same no-lore turn:
+
+| stream format | `used_tokens` | `mcp_tool_schemas` |
+|---|---:|---:|
+| **agui (real frontend — discovery)** | **4,915** | **368** |
+| legacy (driver default — full catalog) | 29,697 | 41,358 |
+
+Discovery already trims the catalog to **368 tok** for real users; the 41K only existed on
+the legacy surface. So **"tool-catalog trimming" is NOT a real-user lever** — retracted. The
+driver now defaults to agui so future measurements are representative.
+
+**What this means for real (agui) users:** a simple no-lore turn is ~5K (already lean); a
+lore turn is ~21K driven by AGENT BEHAVIOR (it spawned `run_subagent` + `kg_graph_query`),
+not by the catalog (368) or grounding (~1.1K). The Context-Budget effort's real wins were
+**T0 (ensure_ascii) + T1 (reference-first tool RESULTS)** — those addressed the original
+146K case. T5 grounding-gating remains a minor lever; the residual per-turn cost on lore
+turns is agent behavior (subagent spawns / tool results), already reference-first-trimmed
+by T1.
+
+**Net T5 verdict (unchanged): default OFF.** But the honest reason is *full≈static grounding
+for a thinly-extracted book* (gate saves ~40 tok = the full−static delta) — genuinely
+UNPROVEN for a richly-extracted book where full-mode grounding could be several K. A
+rich-book A/B is the real validate-or-kill; this thin 2-chapter seed can't settle it.
 
 **Bonus:** the seeded Dracula KG project (`019f2be0`, benchmark-passed, 2 chapters
 extracted) partially resolves **D-EVAL-BOOK** — there is now a KG-linked book on

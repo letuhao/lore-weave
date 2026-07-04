@@ -99,6 +99,12 @@ def _send_turn(c: httpx.Client, sid: str, content: str) -> dict:
     text_parts: list[str] = []
     tool_calls: list[str] = []
     hdr = {"Authorization": f"Bearer {_bearer()}", "Accept": "text/event-stream"}
+    # Default to agui — the REAL frontend surface, where tool DISCOVERY is active
+    # (hot-set + find_tools, ~368 tok) instead of the full catalog (~41K). Measuring on
+    # legacy silently inflated every turn ~6x and mis-framed the 2026-07-04 T5 audit
+    # (the "41K catalog is the real lever" claim was a legacy artifact). Override with
+    # QG_STREAM_FORMAT=legacy only to reproduce a full-catalog client.
+    hdr["x-loreweave-stream-format"] = os.environ.get("QG_STREAM_FORMAT", "agui")
     with c.stream("POST", f"{BASE}/v1/chat/sessions/{sid}/messages",
                   json={"content": content}, headers=hdr, timeout=600) as resp:
         resp.raise_for_status()
