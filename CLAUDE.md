@@ -18,6 +18,8 @@ Monorepo layout:
 - `infra/` — docker-compose and infra config
 
 ### Services
+> **This table is a CURATED SUBSET — the core novel-workflow domain services.** The repo has **~46 services** total (incl. `learning-service`, `statistics-service`, `notification-service`, and the SRE/ops fleet: `alert-recorder`, `incident-bot`, `postmortem-bot`, `slo-budget-calculator`, `canary-controller`, `breach-notifier`, `integrity-checker`, `retention-worker`, `archive-worker`, `migration-orchestrator`, `campaign-service`, `roleplay-service`, `game-server`, `world-service`, `travel-service`, `tilemap-service`, …). **Authoritative full service→language map: [`contracts/language-rule.yaml`](contracts/language-rule.yaml) + [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md).** Do not assume a service is absent because it's not in this table.
+
 | Service | Language | Purpose |
 |---|---|---|
 | `api-gateway-bff` | TypeScript / NestJS | External traffic entry point |

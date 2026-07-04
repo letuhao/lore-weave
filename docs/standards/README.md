@@ -33,6 +33,12 @@ When you build something new, the question is not "is there a rule?" but "**whic
 | **Any LLM/embed/rerank/image/audio call** | [Provider-gateway invariant](#a-platform-build-standards) — **ENFORCED** by `ai-provider-gate.py` |
 | **A new table / any user data** | [User Boundaries & Tenancy](#a-platform-build-standards) (3-tier scope) · [Data Persistence Rules](#a-platform-build-standards) |
 | **Reading/writing entity or KG knowledge** | [INV-KAL](#c-code-level-invariants) — only through knowledge-gateway |
+| **An LLM/provider call (logging its I/O)** | [LLM Call Logging Standard](./llm-call-logging.md) — one chokepoint, encrypted (dedicated key), trace-correlated |
+| **Any logging / trace-id / redaction** | [Logging Standard](./logging.md) |
+| **Anything security-sensitive** | [Security Standard](./security.md) — secrets/authN/authZ/injection/PII/encryption/SSRF/rate-limit |
+| **Any perf-sensitive path** | [Performance Standard](./performance.md) — timeouts, pagination, no-blocking-async, SLOs |
+| **Sending a user notification** | [Notification Standard](./notification.md) |
+| **A stat / correction / feedback event** | [Analytics & Learning Standard](./analytics-and-learning.md) |
 | **Any task, start to finish** | [Task Workflow v2.2](../../agentic-workflow/WORKFLOW.md) (+ opt-in [AMAW](../amaw-workflow.md)) |
 
 ---
@@ -45,6 +51,12 @@ The rules you read **before building** on the main LoreWeave product. Many are s
 |---|---|---|---|---|
 | **Agent Extensibility Standard** | storage→resolver→degrade-safe-consumer→live-E2E shape for any user/agent-authorable capability; 3-tier tenancy; 404 anti-oracle; enum closed-set args; quarantine+scan+SSRF for external sources | [docs/standards/agent-extensibility.md](./agent-extensibility.md) | ACTIVE | rule-IDs + `CLOSED_SET_ARGS` registration + mandatory consumer live-E2E + `/review-impl` |
 | **MCP Tool I/O Standard** | how every LLM-callable tool defines inputs (enum-lock, scope-from-envelope, self-correcting errors, 4-source drift, one-name-one-concept) + shapes outputs (reference-first, detail/limit, concise-wire, success-discrimination, no-silent-truncate); verify-by-effect | [docs/standards/mcp-tool-io.md](./mcp-tool-io.md) | ACTIVE (consolidation) | contract/drift-lock tests + `context-budget-l3-lint.py` (see doc §Enforcement for tracked gaps) |
+| **LLM Call Logging Standard** | every provider call (streaming + sync) logs request+response through one chokepoint, encrypted with a dedicated key (not JWT_SECRET), trace-correlated, redacted, retention-decoupled | [docs/standards/llm-call-logging.md](./llm-call-logging.md) | ACTIVE (rules; enforcement P1) | round-trip decrypt test + `ai-provider-gate.py` chokepoint rule (to build) — see [audit](../plans/2026-07-04-enterprise-hardening-audit.md) |
+| **Logging Standard** | one structured-JSON idiom per language, OTel trace-id auto-injected, typed source-side redaction, audit-vs-operational split | [docs/standards/logging.md](./logging.md) | ACTIVE (rules; enforcement P1) | revive+flip+wire `logging-discipline-lint.sh` (to build) |
+| **Security Standard** | secrets/authN/authZ/injection/PII/encryption/SSRF/rate-limit/input-validation/audit for the main platform | [docs/standards/security.md](./security.md) | ACTIVE (rules; parts enforced) | gitleaks + SSRF + adminjwt + 404-oracle (today); dep-vuln-scan, raw-SQL/injection/pii lints, edge rate-limit (to build) |
+| **Performance Standard** | timeouts all-languages, resilience matrix on product deps, bounded results, no-blocking-in-async, latency SLOs, caching | [docs/standards/performance.md](./performance.md) | ACTIVE (rules; parts enforced) | `timeout-discipline-lint` (Go/Rust today); extend→Python + pagination/blocking-async lints (to build) |
+| **Notification Standard** | one versioned envelope, category enum on every ingress, outbox+dedup delivery, user opt-out, PII on bodies | [docs/standards/notification.md](./notification.md) | ACTIVE (rules; enforcement P1) | `contracts/notifications/envelope` + consumer contract/no-silent-drop tests (to build) |
+| **Analytics & Learning Standard** | statistics = one owner + frozen event contract; learning = one correction-event contract + no-silent-drop wiring; two-loop boundary | [docs/standards/analytics-and-learning.md](./analytics-and-learning.md) | ACTIVE (rules; enforcement P1) | event-contract + handler-coverage wiring tests (to build) |
 | **AI-Task Standard** | every *non-agentic single-shot* LLM generate routes through shared `structured_generate`/`extract_json_object` + FE `EffortSelect`/`SpendCapField` | [docs/specs/2026-07-03-ai-task-standard.md](../specs/2026-07-03-ai-task-standard.md) | ACTIVE (boundary LOCKED) | SDK helper + acceptance tests + per-milestone live-smoke |
 | **Context Budget Law + Session Compiler** | repo-wide MCP tool-return shape (L1/L2/L3) + Planner/Compiler budget; never silent-truncate | [docs/specs/2026-07-03-context-budget-law.md](../specs/2026-07-03-context-budget-law.md) | **DRAFT** (T0–T2 shipped) | L3 lint `scripts/context-budget-l3-lint.py` (live); per-tool contract-snapshot tests (planned) |
 | **Studio Agent Standard (07S)** | how the Writing-Studio chat-agent is built: 7-bucket context, hybrid compaction, HITL permission modes, plan-mode, autonomy dial | [docs/specs/2026-07-01-writing-studio/07S_studio_agent_standard.md](../specs/2026-07-01-writing-studio/07S_studio_agent_standard.md) | DESIGN (decisions locked 2026-07-02) | convention + unit/live smoke |
@@ -178,6 +190,10 @@ The `docs/03_planning/LLM_MMO_RPG/` game sub-project carries its **own** heavily
 | Storage resolutions (S5/S11/S12/SR5) | `docs/03_planning/LLM_MMO_RPG/…/02_storage/S*.md` | admin-classification / SVID ACL / WS-security / deploy-safety lints |
 
 ---
+
+## Enterprise hardening audit (2026-07-04)
+
+A 6-area investigation (LLM-call logging · logging · security · performance · notification · analytics/learning) is recorded in **[docs/plans/2026-07-04-enterprise-hardening-audit.md](../plans/2026-07-04-enterprise-hardening-audit.md)** — current-state maps, the **P0 live defects** (LLM read-back returns empty; streaming/embed unlogged; payload key = JWT_SECRET; notification `mcp_approval` silently dropped; chat prompt-injection hole; pre-commit hooks inactive), and the **P1 enforcement backlog** that gives the six new standards above their teeth. The standards state the *rule*; the audit states the *gap + the work to close it*. Cross-cutting finding: the apparatus usually already exists at enterprise grade — most work is pointing it at the product + extending Go/Rust-only lints to Python + flipping warn-mode/unwired gates to blocking.
 
 ## Known gaps & caveats
 
