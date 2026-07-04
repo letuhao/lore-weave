@@ -105,7 +105,7 @@ def test_dimensions_endpoint_lists_kind_dimensions():
     # #1 dimension picker: the read endpoint lists a kind's profile-localized dims
     # (id+label+required) so the composer can render choosable chips.
     book, project = uuid4(), uuid4()
-    bearer = pyjwt.encode({"sub": OWNER}, "x", algorithm="HS256")
+    bearer = pyjwt.encode({"sub": OWNER, "exp": 4102444800}, "test_jwt_secret", algorithm="HS256")
     resp = TestClient(_app()).get(
         f"/v1/lore-enrichment/projects/{project}/dimensions",
         params={"book_id": str(book), "kind": "character"},
@@ -123,7 +123,7 @@ def test_dimensions_endpoint_base_param_and_weight():
     # #3 override editor: base=true returns the un-overridden set; each dim carries a
     # weight (the editor's reweight default). With a NEUTRAL profile base==effective.
     book, project = uuid4(), uuid4()
-    bearer = pyjwt.encode({"sub": OWNER}, "x", algorithm="HS256")
+    bearer = pyjwt.encode({"sub": OWNER, "exp": 4102444800}, "test_jwt_secret", algorithm="HS256")
     resp = TestClient(_app()).get(
         f"/v1/lore-enrichment/projects/{project}/dimensions",
         params={"book_id": str(book), "kind": "character", "base": "true"},
@@ -138,7 +138,7 @@ def test_dimensions_endpoint_base_param_and_weight():
 def test_dimensions_endpoint_generic_fallback_for_unknown_kind():
     # KB3: an unmodeled kind falls back to GENERIC — never 400, never empty.
     book, project = uuid4(), uuid4()
-    bearer = pyjwt.encode({"sub": OWNER}, "x", algorithm="HS256")
+    bearer = pyjwt.encode({"sub": OWNER, "exp": 4102444800}, "test_jwt_secret", algorithm="HS256")
     resp = TestClient(_app()).get(
         f"/v1/lore-enrichment/projects/{project}/dimensions",
         params={"book_id": str(book), "kind": "bogus-kind"},
@@ -169,7 +169,7 @@ async def test_detect_gaps_endpoint_returns_ranked_gaps():
         {"entity_id": "e2", "canonical_name": "玉虛宮", "kind": "location",
          "mention_count": 55, "dimensions": []},
     ]})
-    bearer = pyjwt.encode({"sub": OWNER}, "x", algorithm="HS256")
+    bearer = pyjwt.encode({"sub": OWNER, "exp": 4102444800}, "test_jwt_secret", algorithm="HS256")
     resp = TestClient(_app()).post(
         f"/v1/lore-enrichment/projects/{project}/detect-gaps",
         json={"book_id": str(book)},
@@ -242,7 +242,7 @@ async def test_auto_enrich_detects_creates_job_and_enqueues(monkeypatch):
     monkeypatch.setattr(g, "save_job_request", _fake_save)
     monkeypatch.setattr(g, "make_redis_producer", lambda url: prod)
 
-    bearer = pyjwt.encode({"sub": OWNER}, "x", algorithm="HS256")
+    bearer = pyjwt.encode({"sub": OWNER, "exp": 4102444800}, "test_jwt_secret", algorithm="HS256")
     resp = TestClient(_app()).post(
         f"/v1/lore-enrichment/projects/{project}/auto-enrich",
         json={"book_id": str(book), "embedding_model_ref": str(uuid4()),
@@ -280,7 +280,7 @@ async def test_auto_enrich_no_grant_is_404(monkeypatch):
         raise AssertionError("glossary read ran despite a denied grant")
 
     monkeypatch.setattr(g, "GlossaryClient", _boom)
-    bearer = pyjwt.encode({"sub": OWNER}, "x", algorithm="HS256")
+    bearer = pyjwt.encode({"sub": OWNER, "exp": 4102444800}, "test_jwt_secret", algorithm="HS256")
     resp = TestClient(_app(grant_level=GrantLevel.NONE)).post(
         f"/v1/lore-enrichment/projects/{uuid4()}/auto-enrich",
         json={"book_id": str(uuid4()), "embedding_model_ref": str(uuid4()),
@@ -299,7 +299,7 @@ async def test_detect_gaps_unextracted_book_signals_needs_extraction():
     respx.get(
         f"{settings.glossary_service_url}/internal/books/{book}/enrichment-coverage"
     ).respond(200, json={"entities": []})  # unextracted → no entities
-    bearer = pyjwt.encode({"sub": OWNER}, "x", algorithm="HS256")
+    bearer = pyjwt.encode({"sub": OWNER, "exp": 4102444800}, "test_jwt_secret", algorithm="HS256")
     resp = TestClient(_app()).post(
         f"/v1/lore-enrichment/projects/{project}/detect-gaps",
         json={"book_id": str(book)},
