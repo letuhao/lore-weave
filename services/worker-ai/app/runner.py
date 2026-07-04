@@ -2381,16 +2381,26 @@ async def process_job(
                     return
 
                 await _mark_pending_processed(pool, job.user_id, turn["pending_id"])
+                # D-EXTRACTION-SILENT-NOOP: a chat turn whose text is gone/empty
+                # (deleted session, a tool-only turn with no prose) does NO extraction —
+                # extract_pass2 short-circuited WITHOUT an LLM call. Count it SKIPPED
+                # (mirroring the chapter D-WORKER-SKIP-FALSE-GREEN), NOT a fake
+                # 'processed', and don't charge for a no-op. This keeps items_processed
+                # honest AND stops the 0-LLM-call completion flag from false-positiving
+                # on a legitimately-empty turn (the all-skipped flag covers that case).
+                _empty_turn = not turn_text.strip()
                 await _advance_cursor(
                     pool, job.user_id, job.job_id,
                     {"last_pending_id": str(turn["pending_id"]), "scope": "chat"},
+                    items_delta=0 if _empty_turn else 1,
+                    skipped_delta=1 if _empty_turn else 0,
                 )
-                # D-K16.11-01: same per-project accounting as the chapters
-                # branch, see above.
-                await _record_spending(
-                    pool, job.user_id, job.project_id, _DEFAULT_COST_PER_ITEM,
-                )
-                items_processed += 1
+                if not _empty_turn:
+                    # D-K16.11-01: same per-project accounting as the chapters branch.
+                    await _record_spending(
+                        pool, job.user_id, job.project_id, _DEFAULT_COST_PER_ITEM,
+                    )
+                    items_processed += 1
 
         # C12c-a: glossary_sync branch. Fires for scope='glossary_sync'
         # (primary) AND the tail of scope='all'. No LLM call — each
