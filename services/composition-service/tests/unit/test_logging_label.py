@@ -1,20 +1,45 @@
-"""Unit test for the service log label (D-COMP-M0-LOG-SERVICE-LABEL).
+"""composition-service logging shim wiring (P2·A2a).
 
-The M0 skeleton copied knowledge-service's logging_config verbatim, which
-hardcoded `record.service = "knowledge-service"` — so composition logs were
-mislabeled. This locks the correct label."""
+The redaction / context-filter / JSON-format LOGIC now lives in loreweave_obs and
+is exhaustively tested in sdks/python/tests/test_loreweave_obs_logging.py. This
+suite only proves the service's thin adapter is wired correctly: it re-exports the
+CANONICAL trace_id_var (so the middleware, the HTTP clients and the log filter all
+share ONE var) and binds this service's name into the shared installer.
 
-from __future__ import annotations
+Supersedes the old D-COMP-M0-LOG-SERVICE-LABEL test that asserted
+``ContextFilter().filter(rec)`` labeled records "composition-service"; the label
+assertion below (``rec["service"] == "composition-service"``) preserves that
+regression coverage through the shim.
+"""
 
+import io
+import json
 import logging
 
-from app.logging_config import ContextFilter
+import loreweave_obs
+from app.logging_config import new_trace_id, setup_logging, trace_id_var
 
 
-def test_context_filter_labels_composition_service():
-    rec = logging.LogRecord(
-        name="x", level=logging.INFO, pathname=__file__, lineno=1,
-        msg="hi", args=(), exc_info=None,
-    )
-    assert ContextFilter().filter(rec) is True
-    assert rec.service == "composition-service"
+def test_trace_id_var_is_the_canonical_shared_var():
+    # Same object as the SDK's — the middleware sets it, the clients + the log
+    # filter read it. A separate copy here would silently break correlation.
+    assert trace_id_var is loreweave_obs.trace_id_var
+
+
+def test_new_trace_id_is_unique():
+    assert new_trace_id() != new_trace_id()
+
+
+def test_setup_logging_binds_service_name_and_trace_id():
+    setup_logging("INFO")
+    buf = io.StringIO()
+    logging.getLogger().handlers[0].stream = buf
+    tok = trace_id_var.set("trace-xyz")
+    try:
+        logging.getLogger("test").error("hello")
+    finally:
+        trace_id_var.reset(tok)
+    rec = json.loads(buf.getvalue().strip().splitlines()[-1])
+    assert rec["service"] == "composition-service"
+    assert rec["trace_id"] == "trace-xyz"
+    assert "otel_trace_id" in rec  # dual-emit key always present
