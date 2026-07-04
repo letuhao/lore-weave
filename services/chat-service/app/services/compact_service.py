@@ -25,12 +25,26 @@ from loreweave_llm import (
 
 from app.config import settings
 
+# D6 (Context Budget Law) — a FACT-PRESERVING EXTRACTIVE summary, not a lossy prose
+# blur. A rolling prose summary silently drops load-bearing facts (a name, a decision,
+# an open promise) that a later turn still needs; the weak local models we target are
+# the worst at this. So the summary leads with an EXPLICIT, verbatim FACTS block (the
+# system of record) and only then a short prose synopsis (the convenience). The FACTS
+# block is what makes lossy compaction safe — anything listed there survives.
 _SUMMARY_SYSTEM_PROMPT = (
-    "You compress the EARLIER part of an ongoing conversation into a dense, "
-    "factual synopsis so it fits in context. Preserve named entities, decisions "
-    "made, facts established, open threads, and any state the assistant must "
-    "keep. Omit pleasantries. Output ONLY the synopsis prose — no preamble, no "
-    "headers, and do NOT reason aloud."
+    "You compress the EARLIER part of an ongoing conversation so it fits in context "
+    "WITHOUT losing anything the assistant must still know. Output EXACTLY two "
+    "sections, nothing else:\n\n"
+    "FACTS:\n"
+    "- Entities: every named person/place/thing/work introduced, VERBATIM.\n"
+    "- Decisions: choices made and their rationale.\n"
+    "- Established: concrete facts/state set (numbers, statuses, relationships).\n"
+    "- Open threads: unresolved questions, promises, next steps.\n"
+    "(Use '- <label>: none' for an empty category. Keep names EXACT — never "
+    "paraphrase or translate a name.)\n\n"
+    "SYNOPSIS:\n"
+    "A few sentences of prose tying the above together.\n\n"
+    "Omit pleasantries. Do NOT reason aloud. Do NOT add any other headers or preamble."
 )
 
 
@@ -93,7 +107,7 @@ async def summarize_for_compaction(
     try:
         request = StreamRequest(
             model_source=model_source, model_ref=model_ref,
-            messages=summary_messages, temperature=0.2, max_tokens=700,
+            messages=summary_messages, temperature=0.2, max_tokens=900,
             reasoning_effort=rf.get("reasoning_effort"),
             chat_template_kwargs=rf.get("chat_template_kwargs"),
         )
