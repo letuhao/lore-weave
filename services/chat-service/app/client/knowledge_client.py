@@ -228,6 +228,7 @@ class KnowledgeClient:
         project_ids: list[str] | None = None,
         message: str = "",
         language: str | None = None,
+        grounding: bool = True,
     ) -> KnowledgeContext:
         """POST /internal/context/build.
 
@@ -259,6 +260,11 @@ class KnowledgeClient:
             "user_id": user_id,
             "message": safe_message,
         }
+        # T5 (Context Budget Law D2) — the entity-presence gate's decision. Only send
+        # when gating OUT (False); omit when True so an older knowledge-service (no
+        # `grounding` field) is unaffected and the default full path stays byte-identical.
+        if not grounding:
+            body["grounding"] = False
         # S6 — the display/target language for entity aliases (optional). Omitted
         # when unset → knowledge returns source-language aliases (back-compat).
         if language:

@@ -364,6 +364,28 @@ class TestKnowledgeClientBodyNormalisation:
         assert "project_ids" not in body
         await client.aclose()
 
+    @pytest.mark.asyncio
+    async def test_grounding_true_omits_field_backcompat(self):
+        """T5: grounding=True (default) omits the field so an older knowledge-service
+        without the `grounding` param is byte-identical to before."""
+        captured: list = []
+        client = _make_client(_capture(captured))
+        await client.build_context(user_id="u", message="hi")  # default grounding=True
+        body = self._json_body(captured[0])
+        assert "grounding" not in body
+        await client.aclose()
+
+    @pytest.mark.asyncio
+    async def test_grounding_false_forwarded_to_body(self):
+        """T5: the intent gate's gate-OUT decision is forwarded so the builder serves
+        the light static path (skips the expensive retrieval)."""
+        captured: list = []
+        client = _make_client(_capture(captured))
+        await client.build_context(user_id="u", message="give me a plan", grounding=False)
+        body = self._json_body(captured[0])
+        assert body["grounding"] is False
+        await client.aclose()
+
     @staticmethod
     def _json_body(request: httpx.Request) -> dict:
         import json as _json

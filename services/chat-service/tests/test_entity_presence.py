@@ -62,6 +62,19 @@ class TestBiasToInclude:
         assert r.grounding_needed is True
         assert r.reason == "anaphora_bias_include"
 
+    def test_lore_discovery_question_opens_gate(self):
+        # "who is the main character" — a lore question the user can't name yet.
+        # No entity token, but a discovery intent → MUST ground (else confident-wrong).
+        for q in [
+            "Who is the main character of this book?",
+            "tell me about the protagonist",
+            "how does the main character change over the story?",
+            "give me a recap of what happens so far",
+        ]:
+            r = detect_entity_presence(q, TOKENS)
+            assert r.grounding_needed is True, q
+            assert r.reason == "lore_intent_bias_include"
+
     def test_the_character_phrase_opens_gate(self):
         r = detect_entity_presence("deepen the character's core conflict", TOKENS)
         assert r.grounding_needed is True

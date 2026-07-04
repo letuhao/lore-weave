@@ -250,16 +250,24 @@ def until_compact_pct(pct: float | None) -> float | None:
 
 
 def context_budget_event(
-    budget: ContextBudget, breakdown: ContextBreakdown | None = None
+    budget: ContextBudget,
+    breakdown: ContextBreakdown | None = None,
+    entity_presence: dict | None = None,
 ) -> dict:
     """The full contextBudget frame payload — STRICTLY ADDITIVE over
     ContextBudget.to_event(): the original {used_tokens, context_length,
     effective_limit, pct} keys are byte-identical (FE meter contract); W1 adds
     until_compact_pct always, and breakdown + baseline_tokens when the caller
-    measured the parts (the fresh-turn assembly path)."""
+    measured the parts (the fresh-turn assembly path). T5 adds `entity_presence`
+    (the intent-gate decision + matched tokens) when the caller ran the gate — the
+    signal the Inspector reads to show WHY grounding was (not) pulled, and to compute
+    the false-negative rate (grounding_needed=false turns that still called a
+    memory/story search) from the persisted per-turn frames + tool_calls."""
     payload = budget.to_event()
     payload["until_compact_pct"] = until_compact_pct(budget.pct)
     if breakdown is not None:
         payload["breakdown"] = breakdown.to_payload()
         payload["baseline_tokens"] = breakdown.baseline_tokens
+    if entity_presence is not None:
+        payload["entity_presence"] = entity_presence
     return payload

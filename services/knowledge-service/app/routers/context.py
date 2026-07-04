@@ -87,6 +87,11 @@ class ContextBuildRequest(BaseModel):
     # S6 (optional): the display/target language for entity aliases shown in context.
     # Omitted → source-language aliases only (back-compat).
     language: str | None = Field(default=None, max_length=35)
+    # T5 (Context Budget Law D2): the entity-presence intent gate's decision. False
+    # ⇒ the turn references no book lore, so skip the EXPENSIVE retrieval (passages +
+    # semantic glossary + LLM) and serve the light static path. Default True keeps
+    # every existing caller's behavior byte-identical (a versioned opt-in).
+    grounding: bool = True
 
 
 class ContextBuildResponse(BaseModel):
@@ -153,6 +158,7 @@ async def build(
             language=req.language,
             entity_access_repo=entity_access_repo,
             project_ids=req.project_ids,
+            grounding=req.grounding,
         )
         _mode_label = built.mode
     except ProjectNotFound:

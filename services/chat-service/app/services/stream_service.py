@@ -36,6 +36,8 @@ from loreweave_llm import (
 
 from app.client.billing_client import BillingClient
 from app.client.knowledge_client import get_knowledge_client
+from app.client.known_entities_client import get_known_entities_client
+from app.services.entity_presence import EntityPresence, detect_entity_presence
 from app.config import settings
 from app.db.suspended_runs import (
     delete_suspended_run,
@@ -1700,6 +1702,30 @@ async def stream_response(
     _build_project_id, _build_project_ids = resolve_grounding_target(
         session_row, str(project_id) if project_id else None,
     )
+
+    # ── T5 (Context Budget Law D2) — entity-presence intent gate ─────────────
+    # Decide whether this turn references book lore; if not (and it isn't an
+    # anaphoric follow-up), skip the EXPENSIVE grounding retrieval — build_context
+    # then serves the LIGHT static path (glossary badges only, no passage vectors /
+    # semantic select / LLM). The story_state Core Block (D4) still projects every
+    # turn as the safety net, so a false-negative never strips loaded lore; the gate
+    # is biased-to-include (opens on any doubt). project_id is used as the book id
+    # for the known-entity lookup; a session whose project_id is NOT a book returns
+    # an empty set → the gate opens (safe degradation, no token win for that turn).
+    _entity_tokens: frozenset[str] = frozenset()
+    if settings.t5_intent_gate_enabled and project_id:
+        try:
+            _entity_tokens = await get_known_entities_client().get_known_entity_tokens(
+                str(project_id)
+            )
+        except Exception:  # noqa: BLE001 — degrade to gate-open, never break the turn
+            _entity_tokens = frozenset()
+    if settings.t5_intent_gate_enabled:
+        _grounding_presence = detect_entity_presence(user_message_content, _entity_tokens)
+    else:
+        # kill-switch / baseline arm: always pull grounding (pre-T5 behavior).
+        _grounding_presence = EntityPresence(True, reason="gate_disabled")
+
     kctx = await knowledge_client.build_context(
         user_id=user_id,
         session_id=session_id,
@@ -1707,6 +1733,7 @@ async def stream_response(
         project_ids=_build_project_ids,
         message=user_message_content,
         language=display_language,
+        grounding=_grounding_presence.grounding_needed,
     )
 
     # ── Anchoring (interview-roleplay) — resolve the working_memory anchor ────
@@ -2245,6 +2272,8 @@ async def stream_response(
         hot_seed_count=len(discovery_seed_names or ()),
         permission_mode=permission_mode,
         context_breakdown=context_breakdown,
+        # T5 — the intent-gate decision, surfaced in the contextBudget frame.
+        entity_presence=_grounding_presence.as_telemetry(),
     ):
         yield line
 
@@ -2288,6 +2317,7 @@ async def _emit_chat_turn(
     permission_mode: str = "write",
     pre_tool_chunks: list[dict] | None = None,
     context_breakdown: ContextBreakdown | None = None,
+    entity_presence: dict | None = None,
 ) -> AsyncGenerator[str, None]:
     """Shared Stream→persist→finish body for a chat turn (fresh OR C6 resume).
 
@@ -2662,6 +2692,10 @@ async def _emit_chat_turn(
                         max_output_tokens=int(gen_params.get("max_tokens") or 0),
                     ),
                     context_breakdown,
+                    # T5 — the intent-gate decision for this turn (grounding_needed +
+                    # matched tokens + reason), threaded in from the assembly path in
+                    # stream_response. None on the resume/degraded paths that skip the gate.
+                    entity_presence=entity_presence,
                 )
 
                 await conn.execute(

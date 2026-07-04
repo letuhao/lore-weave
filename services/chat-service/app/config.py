@@ -59,6 +59,10 @@ class Settings(BaseSettings):
     glossary_service_url: str = "http://glossary-service:8088"
     known_entities_timeout_s: float = 2.0
     known_entities_cache_ttl_s: float = 300.0
+    # T5 kill-switch. False ⇒ grounding is ALWAYS pulled (pre-T5 behavior) — the
+    # baseline arm of the quality-gate A/B, and the escape hatch if the gate ever
+    # regresses answer-correctness in production. Default True (the gate is on).
+    t5_intent_gate_enabled: bool = True
 
     # Agent Extensibility Registry (P1) — user/book prompt-only skills. chat-service
     # reads /internal/skills and injects them alongside the built-in SYSTEM_SKILLS,

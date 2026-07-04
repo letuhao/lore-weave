@@ -245,3 +245,13 @@ class TestContextBudgetEvent:
         payload = context_budget_event(b, None)
         assert payload["pct"] is None
         assert payload["until_compact_pct"] is None
+
+    def test_entity_presence_attached_when_provided(self):
+        """T5 — the intent-gate decision rides the frame ONLY when the caller ran the
+        gate; omitted (no key) on the resume/degraded paths so the frame stays additive."""
+        b = compute_budget(used_tokens=10, context_length=40_000, max_output_tokens=0)
+        ep = {"grounding_needed": False, "matched": [], "reason": "no_entity_no_anaphora"}
+        payload = context_budget_event(b, None, entity_presence=ep)
+        assert payload["entity_presence"] == ep
+        # absent when not passed
+        assert "entity_presence" not in context_budget_event(b, None)

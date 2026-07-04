@@ -157,13 +157,18 @@ def main() -> int:
           f"lore_bound={'yes' if (PROJECT_ID or KG_PROJECT) else 'NO'}")
     lines: list[str] = []
     with httpx.Client() as c:
+        # A real writing session is ALWAYS book-bound, so bind the project for EVERY
+        # scenario when one is configured — that's what lets the intent gate gate OUT a
+        # no-lore-CONTENT turn (the entity set is populated, no token matches → light
+        # path). needs_lore stays a judge hint (is answer-correctness gradeable?).
+        bind = bool(PROJECT_ID or KG_PROJECT)
         for s in scenarios:
             needs = bool(s.get("needs_lore"))
-            if needs and not (PROJECT_ID or KG_PROJECT):
+            if needs and not bind:
                 print(f"  - {s['id']:<24} SKIP (needs_lore but no QG_PROJECT_ID/QG_KG_PROJECT)")
                 lines.append(json.dumps({"scenario": s["id"], "tag": s["tag"], "skipped": "needs_lore"}))
                 continue
-            sid = _create_session(c, f"qg-{LABEL}-{s['id']}", bind_lore=needs)
+            sid = _create_session(c, f"qg-{LABEL}-{s['id']}", bind_lore=bind)
             print(f"  - {s['id']:<24} session={sid[:8]} turns={len(s['turns'])}")
             for i, turn in enumerate(s["turns"]):
                 t0 = time.time()
