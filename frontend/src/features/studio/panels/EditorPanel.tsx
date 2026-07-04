@@ -24,6 +24,7 @@ import type { EntityNameEntry } from '@/features/glossary/types';
 import { GlossaryTooltip } from '@/components/editor/GlossaryTooltip';
 import { GlossaryAutocomplete } from '@/components/editor/GlossaryAutocomplete';
 import { usePopoutInsertRelay } from '@/features/composition/hooks/usePopoutInsertRelay';
+import { useIsMobile } from '@/hooks/useIsMobile';
 import { cn } from '@/lib/utils';
 import { useStudioHost, useRegisterStudioTool, useStudioBusSelector } from '../host/StudioHostProvider';
 import { useManuscriptUnit } from '../manuscript/unit/ManuscriptUnitProvider';
@@ -47,6 +48,9 @@ export function EditorPanel(props: IDockviewPanelProps) {
   const editorRef = unit?.editorRef ?? localRef;
   // #12 M-C — Scene Rail visibility: null = auto (open when scenes exist), boolean = user choice.
   const [railChoiceState, setRailChoiceState] = useState<boolean | null>(null);
+  // #16 Phase 4 (M6) — must sit above the `!unit || !chapterId` early return below (Rules of
+  // Hooks: every hook this component calls must run on every render, chapter-loaded or not).
+  const isMobile = useIsMobile();
   // #16 2.1/2.2/2.3 — editor-craft toggles ported from the legacy ChapterEditorPage. Each is a
   // pure prop-thread into the shared TiptapEditor (grammar/focus) or a ref-push effect (heatmap) —
   // no new editor capability, just wiring the host was missing (see spec 16 Phase 2 kickoff audit).
@@ -224,12 +228,15 @@ export function EditorPanel(props: IDockviewPanelProps) {
   const hasScenes = state.scenes.length > 0;
   // #12 M-C — the Scene Rail (metadata-first scene layer). Auto-shows when the chapter HAS
   // scenes; the user can toggle it; an explicit choice wins over the auto-default.
+  // #16 Phase 4 (M6) — on a narrow viewport the rail's fixed w-56 leaves too little room for
+  // prose (a real chapter's words wrapped one-per-line in live testing), so the auto-default
+  // starts closed on mobile; the toggle button still opens it on demand.
   const railChoice = railChoiceState;
-  const railOpen = railChoice ?? hasScenes;
+  const railOpen = railChoice ?? (hasScenes && !isMobile);
 
   return (
     <div data-testid="studio-editor-panel" className="flex h-full min-h-0 flex-col">
-      <div className="flex h-7 flex-shrink-0 items-center gap-2 border-b px-3 text-[11px] text-muted-foreground">
+      <div className="flex h-7 flex-shrink-0 items-center gap-2 overflow-x-auto whitespace-nowrap border-b px-3 text-[11px] text-muted-foreground">
         <span data-testid="studio-editor-dirty" className={isDirty ? 'text-warning' : 'text-muted-foreground/60'}>
           {isDirty ? t('editor.unsaved', { defaultValue: '● unsaved' }) : t(`editor.state.${state.saveState}`, { defaultValue: state.saveState })}
         </span>

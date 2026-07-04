@@ -1,3 +1,21 @@
+// ============================================================================
+// ⚠️ DEPRECATED — DO NOT EDIT (agent or human) — see docs/specs/2026-07-01-writing-studio/16_chapter_editor_parity_and_retirement.md
+// ============================================================================
+// This legacy chapter editor is SUPERSEDED by Writing Studio v2
+// (`/books/:bookId/studio`, `frontend/src/features/studio/**`). Per spec 16 (M1),
+// Studio is the sole chapter-editing surface going forward; this page is kept
+// alive ONLY as a fallback route reachable by direct URL (never linked to from
+// the app UI — `ChaptersTab.tsx`'s row-click/pencil icon already point at
+// Studio, spec 16 task 1.5) — a decision to keep it around, not a decision
+// pending removal (spec 16 Phase 4b, 2026-07-05: kept indefinitely, not deleted).
+//
+// DO NOT port new capabilities here, and DO NOT fix bugs here beyond what's
+// needed to keep it loading — any real editor-craft work belongs in
+// `frontend/src/features/studio/panels/EditorPanel.tsx` and its siblings. If
+// you're an agent about to touch this file because a task mentions "the
+// chapter editor," stop and check whether the task actually means Studio's
+// EditorPanel instead — it almost always does.
+// ============================================================================
 import React, { useEffect, useState, useCallback, useRef } from 'react';
 import { useParams } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';

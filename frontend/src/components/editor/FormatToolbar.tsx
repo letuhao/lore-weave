@@ -52,7 +52,7 @@ function Divider() {
 export function FormatToolbar({ editor, mode = 'classic' }: FormatToolbarProps) {
   const { t } = useTranslation('editor');
   return (
-    <div className="sticky top-0 z-10 flex flex-shrink-0 flex-wrap items-center gap-0.5 border-b bg-card px-3 py-1">
+    <div className="sticky top-0 z-10 flex flex-shrink-0 flex-nowrap items-center gap-0.5 overflow-x-auto border-b bg-card px-3 py-1">
       {/* Block type */}
       <ToolbarButton
         active={editor.isActive('paragraph')}
@@ -238,6 +238,12 @@ export function FormatToolbar({ editor, mode = 'classic' }: FormatToolbarProps) 
       >
         <Redo2 className="h-3.5 w-3.5" />
       </ToolbarButton>
+      {/* Reserves scroll room past the last button — the aiLayer's mode toggle / "Continue from
+          cursor" affordance (InlineAiLayer.tsx) is `absolute right-2 top-2` on the shared editor
+          wrapper, pinned to the viewport's right edge regardless of this row's scroll position.
+          Without this spacer, on a narrow viewport the scrolled-in trailing buttons render UNDER
+          that fixed overlay with no way to bring them clear of it. */}
+      <div aria-hidden className="w-60 flex-shrink-0" />
     </div>
   );
 }

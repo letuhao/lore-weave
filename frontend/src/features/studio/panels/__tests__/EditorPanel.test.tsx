@@ -17,7 +17,10 @@ vi.mock('@/features/chat/context/editorBridge', () => ({
 }));
 
 vi.mock('@/components/editor/TiptapEditor', () => ({ TiptapEditor: forwardRef(() => null) }));
-vi.mock('../../manuscript/SceneRail', () => ({ SceneRail: () => null }));
+const sceneRailSpy = vi.hoisted(() => vi.fn());
+vi.mock('../../manuscript/SceneRail', () => ({ SceneRail: (...a: unknown[]) => { sceneRailSpy(...a); return null; } }));
+const isMobileState = vi.hoisted(() => ({ value: false }));
+vi.mock('@/hooks/useIsMobile', () => ({ useIsMobile: () => isMobileState.value }));
 // #16 1.2/1.3/1.4 — out of scope for this file (which tests ONLY the P1 registration wiring);
 // stub them out rather than pulling in auth/query-client providers these sections need for real.
 vi.mock('../../manuscript/unit/useManuscriptCheckpoints', () => ({
@@ -54,10 +57,10 @@ vi.mock('@/components/editor/GlossaryAutocomplete', () => ({ GlossaryAutocomplet
 vi.mock('@tanstack/react-query', () => ({ useQuery: () => ({ data: undefined, isLoading: false }) }));
 
 const applyProposedEdit = vi.hoisted(() => vi.fn(() => true));
-const unitState = vi.hoisted(() => ({ chapterId: 'ch1' as string | null }));
+const unitState = vi.hoisted(() => ({ chapterId: 'ch1' as string | null, scenes: [] as { id: string }[] }));
 vi.mock('../../manuscript/unit/ManuscriptUnitProvider', () => ({
   useManuscriptUnit: () => ({
-    state: { chapterId: unitState.chapterId, scenes: [], loadedBody: {}, saveState: 'idle' },
+    state: { chapterId: unitState.chapterId, scenes: unitState.scenes, loadedBody: {}, saveState: 'idle' },
     isDirty: false,
     editorRef: { current: null },
     save: vi.fn(),
@@ -124,5 +127,34 @@ describe('EditorPanel — #16 2.1/2.2 editor-craft toggles', () => {
     const { getByTestId } = render(<StudioHostProvider bookId="book-1"><EditorPanel {...dockProps} /></StudioHostProvider>);
     const btn = getByTestId('studio-editor-toggle-heatmap');
     expect(() => fireEvent.click(btn)).not.toThrow();
+  });
+});
+
+// #16 Phase 4 (M6) — the Scene Rail's fixed w-56 leaves too little room for prose on a narrow
+// viewport (confirmed live: a real chapter's words wrapped one-per-line). The auto-default must
+// stay closed on mobile even when the chapter has scenes; the toggle button still opens it.
+describe('EditorPanel — #16 Phase 4 Scene Rail mobile default', () => {
+  beforeEach(() => {
+    sceneRailSpy.mockClear();
+    unitState.scenes = [{ id: 's1' }];
+    isMobileState.value = false;
+  });
+
+  it('auto-opens the Scene Rail on desktop when the chapter has scenes', () => {
+    render(<StudioHostProvider bookId="book-1"><EditorPanel {...dockProps} /></StudioHostProvider>);
+    expect(sceneRailSpy).toHaveBeenCalled();
+  });
+
+  it('does not auto-open the Scene Rail on mobile even when the chapter has scenes', () => {
+    isMobileState.value = true;
+    render(<StudioHostProvider bookId="book-1"><EditorPanel {...dockProps} /></StudioHostProvider>);
+    expect(sceneRailSpy).not.toHaveBeenCalled();
+  });
+
+  it('the Scenes toggle button still opens the rail on mobile when clicked', () => {
+    isMobileState.value = true;
+    const { getByTestId } = render(<StudioHostProvider bookId="book-1"><EditorPanel {...dockProps} /></StudioHostProvider>);
+    fireEvent.click(getByTestId('studio-editor-toggle-scenes'));
+    expect(sceneRailSpy).toHaveBeenCalled();
   });
 });
