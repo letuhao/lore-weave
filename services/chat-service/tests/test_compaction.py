@@ -87,6 +87,48 @@ class TestNoTrigger:
         assert rep.triggered is False
 
 
+class TestTaskElasticTarget:
+    """T2/D3 — the `target` param fires compaction at a SMALLER soft budget than the
+    flat 0.75×window trigger (or, when target > window, clamps to the hard ceiling)."""
+
+    async def test_target_triggers_earlier_than_flat(self):
+        # ~10K tok: far UNDER the flat 0.75×100_000=75_000 trigger (baseline never
+        # compacts), but far OVER a task-elastic target of 3_000 → the target makes
+        # it fire. This is the whole mechanism (a light turn compacts sooner).
+        msgs = [{"role": "system", "content": "sys"},
+                {"role": "user", "content": _big(4_000)},
+                {"role": "assistant", "content": _big(4_000)},
+                {"role": "user", "content": "latest"}]
+        _, base = await compact_messages(
+            [dict(m) for m in msgs], effective_limit=100_000)
+        assert base.triggered is False  # under the flat trigger
+        _, cand = await compact_messages(
+            [dict(m) for m in msgs], effective_limit=100_000, target=3_000)
+        assert cand.triggered is True   # the soft target fires it
+
+    async def test_none_target_keeps_flat_behavior(self):
+        # target=None (flag OFF) is byte-identical to not passing target at all.
+        msgs = [{"role": "user", "content": _big(4_000)},
+                {"role": "assistant", "content": _big(4_000)}]
+        _, a = await compact_messages([dict(m) for m in msgs], effective_limit=100_000)
+        _, b = await compact_messages(
+            [dict(m) for m in msgs], effective_limit=100_000, target=None)
+        assert a.triggered is False and b.triggered is False
+
+    async def test_target_above_ceiling_clamps_and_delays(self):
+        # A target ABOVE the effective limit must not push the trigger past the hard
+        # ceiling: trigger = min(target, effective_limit). ~7K tok is over the flat
+        # 0.75×8_000=6_000 trigger (baseline fires) but under the clamped ceiling
+        # 8_000 (candidate does NOT fire — a roomy/high-task_weight turn).
+        msgs = [{"role": "user", "content": _big(2_800)},
+                {"role": "assistant", "content": _big(2_800)}]
+        _, base = await compact_messages([dict(m) for m in msgs], effective_limit=8_000)
+        assert base.triggered is True
+        _, cand = await compact_messages(
+            [dict(m) for m in msgs], effective_limit=8_000, target=999_999)
+        assert cand.triggered is False
+
+
 class TestMicrocompact:
     async def test_evicts_old_tool_results_keeps_last_n(self):
         msgs = [

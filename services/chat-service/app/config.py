@@ -69,6 +69,19 @@ class Settings(BaseSettings):
     # (where grounding IS expensive per turn) lands. See T5-2026-07-04-CORRECTED.md.
     t5_intent_gate_enabled: bool = False
 
+    # ── T2/D3 (Context Budget Law) — task-elastic compaction trigger ────────────
+    # Today compaction fires at 0.75×effective_limit (near the window). With this
+    # ON, it instead fires at the task-elastic `compute_target` (a SOFT budget far
+    # below the window): a lore/continuity turn keeps a roomy target, a status-op /
+    # smalltalk turn a leaner one — so a light turn compacts sooner (token win).
+    # DEFAULT OFF: this is a BEHAVIOR change (compacts far earlier) whose safety
+    # rests on the D6 recovery net (FACTS/SYNOPSIS summary + conversation_search +
+    # the story_state Core Block). Flip only after the quality-gate judge confirms
+    # answer-correctness holds across compaction. `task_weight` for a NON-grounding
+    # turn is `compact_light_task_weight` (a grounding turn always uses 1.0 = roomy).
+    compact_task_elastic_enabled: bool = False
+    compact_light_task_weight: float = 0.5
+
     # Agent Extensibility Registry (P1) — user/book prompt-only skills. chat-service
     # reads /internal/skills and injects them alongside the built-in SYSTEM_SKILLS,
     # honouring per-user disable + shadow. EVERY failure degrades to "constants only"

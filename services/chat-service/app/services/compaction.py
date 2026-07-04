@@ -186,15 +186,22 @@ async def compact_messages(
     *,
     effective_limit: int | None,
     trigger_ratio: float = COMPACT_TRIGGER_RATIO,
+    target: int | None = None,
     keep_tool_results: int = 3,
     keep_recent: int = 8,
     exclude_tools: frozenset[str] = DEFAULT_EXCLUDE_TOOLS,
     summarize: Summarizer | None = None,
 ) -> tuple[list[dict], CompactionReport]:
-    """Compact `messages` to fit under `effective_limit` tokens. Deterministic except
-    for the optional `summarize` callback (sync OR async — an LLM call), whose failure
-    is caught and downgraded to hard-truncate. Returns (new_messages, report). Never
+    """Compact `messages` to fit under the trigger. Deterministic except for the
+    optional `summarize` callback (sync OR async — an LLM call), whose failure is
+    caught and downgraded to hard-truncate. Returns (new_messages, report). Never
     raises for a summarize failure — that is reported, not thrown (edge #2).
+
+    The trigger is `int(effective_limit × trigger_ratio)` by default (fire near the
+    window). T2/D3: pass `target` (the task-elastic soft budget from
+    `token_budget.compute_target`) to fire at that SMALLER value instead — clamped to
+    `effective_limit` so it can never exceed the hard ceiling. `effective_limit` stays
+    required (it bounds `target` and is the fallback when `target` is None).
 
     Async because the summarizer is an LLM call; with `summarize=None` it does no I/O
     and is effectively the pure deterministic path."""
@@ -204,7 +211,11 @@ async def compact_messages(
         report.tokens_after = report.tokens_before
         return messages, report
 
-    trigger = int(effective_limit * trigger_ratio)
+    if target is not None and target > 0:
+        # Soft task-elastic trigger, never above the hard ceiling.
+        trigger = min(int(target), effective_limit)
+    else:
+        trigger = int(effective_limit * trigger_ratio)
     if report.tokens_before <= trigger:
         report.tokens_after = report.tokens_before
         return messages, report

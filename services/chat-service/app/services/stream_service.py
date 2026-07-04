@@ -92,6 +92,7 @@ from app.services.compact_service import summarize_for_compaction as _summarize_
 from app.services.token_budget import (
     ContextBreakdown,
     compute_budget,
+    compute_target,
     context_budget_event,
     estimate_messages_tokens,
     estimate_tokens,
@@ -632,6 +633,7 @@ async def _stream_with_tools(
     activation_state: dict | None = None,
     surface_tracker=None,
     effective_limit: int | None = None,
+    compact_target: int | None = None,
     permission_mode: str = "write",
     approval_check=None,
     hooks: list[dict] | None = None,
@@ -738,7 +740,8 @@ async def _stream_with_tools(
                 _rc = None
                 try:
                     working, _rc = await compact_messages(
-                        working, effective_limit=effective_limit, summarize=_loop_summarizer,
+                        working, effective_limit=effective_limit,
+                        target=compact_target, summarize=_loop_summarizer,
                     )
                     if _rc.triggered:
                         logger.info(
@@ -2469,6 +2472,23 @@ async def _emit_chat_turn(
     # Anthropic server-side overlay is A5). GUARDED — any error falls back to the
     # un-compacted messages so a bug here can never break the turn. summarize=None →
     # deterministic micro-evict of tool results + hard-truncate (no LLM in the path).
+    # T2/D3 — the task-elastic soft compaction target for THIS turn. task_weight is
+    # driven by the T5 intent signal: a grounding turn (lore/continuity/discovery/
+    # anaphora) stays roomy (1.0 → surface_max); a status-op / smalltalk turn uses the
+    # leaner `compact_light_task_weight`. None when the flag is OFF → compaction keeps
+    # the flat 0.75×window trigger (byte-identical pre-T2 behavior). Its safety net when
+    # ON is the D6 recovery layer (summary FACTS + conversation_search + story_state).
+    _compact_target: int | None = None
+    if settings.compact_task_elastic_enabled:
+        # grounding_needed rides in via the `entity_presence` telemetry dict (the
+        # EntityPresence object lives in the caller stream_response). Missing/None →
+        # True (roomy/safe, biased-to-include — mirrors the T5 gate's default).
+        _grounding_needed = bool((entity_presence or {}).get("grounding_needed", True))
+        _task_weight = (
+            1.0 if _grounding_needed else settings.compact_light_task_weight
+        )
+        _compact_target = compute_target(creds.context_length, task_weight=_task_weight)
+
     _eff_limit: int | None = None
     _compaction = None
     try:
@@ -2484,7 +2504,8 @@ async def _emit_chat_turn(
                     _middle, model_source=model_source, model_ref=model_ref, user_id=user_id,
                 )
             messages, _compaction = await compact_messages(
-                messages, effective_limit=_eff_limit, summarize=_summarizer,
+                messages, effective_limit=_eff_limit,
+                target=_compact_target, summarize=_summarizer,
             )
             if _compaction.triggered:
                 logger.info(
@@ -2577,6 +2598,7 @@ async def _emit_chat_turn(
                 activation_state=activation_state,
                 surface_tracker=surface_tracker,
                 effective_limit=_eff_limit,
+                compact_target=_compact_target,
                 permission_mode=permission_mode,
                 approval_check=_approval_check,
                 hooks=_turn_hooks,
