@@ -226,7 +226,14 @@ class CompactionReport:
 
 def _microcompact(messages: list[dict], keep: int, exclude: frozenset[str]) -> int:
     """Clear the oldest tool-result CONTENTS beyond the last `keep`, skipping excluded
-    tools. Returns how many were cleared. Mutates copies in-place (caller passes a copy)."""
+    tools. Returns how many were ACTUALLY cleared (content changed). Mutates copies
+    in-place (caller passes a copy).
+
+    A message already at EITHER placeholder — `_PLACEHOLDER` (a prior microcompact) or
+    `_DUP_PLACEHOLDER` (a D13a dup-read collapse) — is left untouched and NOT counted:
+    it is already minimal, re-clearing it would overwrite the more-specific dup reference,
+    and counting it would double-count against `duplicates_collapsed` (and falsely report
+    `did_work`). So the return is the real change count, not `len(to_clear)`."""
     idxs = [
         i for i, m in enumerate(messages)
         if _is_tool_result(m) and (_tool_name(m) not in exclude)
@@ -234,11 +241,13 @@ def _microcompact(messages: list[dict], keep: int, exclude: frozenset[str]) -> i
     if len(idxs) <= keep:
         return 0
     to_clear = idxs[: len(idxs) - keep]  # oldest first
+    cleared = 0
     for i in to_clear:
         m = messages[i]
-        if m.get("content") != _PLACEHOLDER:
+        if m.get("content") not in (_PLACEHOLDER, _DUP_PLACEHOLDER):
             m["content"] = _PLACEHOLDER
-    return len(to_clear)
+            cleared += 1
+    return cleared
 
 
 def _collapse_duplicate_reads(messages: list[dict], exclude: frozenset[str]) -> int:
@@ -376,10 +385,9 @@ async def compact_messages(
         if collapsed:
             report.duplicates_collapsed = collapsed
             report.steps.append("collapse_duplicates")
-        # NB: if this doesn't get under trigger and microcompact then runs, a collapsed
-        # `_DUP_PLACEHOLDER` message (≠ `_PLACEHOLDER`) may be re-cleared and also counted
-        # in `tool_results_cleared` — a harmless report-counter double-representation (the
-        # content is already collapsed), not a correctness issue.
+        # A collapsed `_DUP_PLACEHOLDER` is left alone by a subsequent microcompact pass
+        # (it is skipped + not re-counted — see `_microcompact`), so `duplicates_collapsed`
+        # and `tool_results_cleared` never double-count the same message.
         if estimate_messages_tokens(work) <= trigger:
             report.tokens_after = estimate_messages_tokens(work)
             return work, report

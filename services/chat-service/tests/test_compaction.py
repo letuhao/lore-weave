@@ -445,3 +445,26 @@ class TestDuplicateReadCollapse:
 
     async def test_did_work_true_when_only_collapse_fired(self):
         assert CompactionReport(duplicates_collapsed=1).did_work is True
+
+    async def test_collapse_survives_microcompact_no_double_count(self):
+        # collapse fires, then (still over trigger) microcompact runs. The collapsed dup
+        # must be left as its SPECIFIC reference (not re-cleared to _PLACEHOLDER) and must
+        # NOT be counted in tool_results_cleared (no double-count vs duplicates_collapsed).
+        dup = _big(400)
+        msgs = [
+            {"role": "system", "content": "sys"},
+            _asst_call("c1"), _result("c1", dup),            # oldest dup → collapsed
+            _asst_call("c2"), _result("c2", _big(400) + " A"),  # unique
+            _asst_call("c3"), _result("c3", _big(400) + " B"),  # unique
+            _asst_call("c4"), _result("c4", dup),            # most-recent dup → kept full
+            {"role": "user", "content": "now"},
+        ]
+        out, rep = await compact_messages(
+            msgs, effective_limit=1_000, keep_tool_results=1, collapse_duplicates=True)
+        assert rep.duplicates_collapsed == 1
+        assert "microcompact" in rep.steps
+        c1 = next(m for m in out if m.get("tool_call_id") == "c1")
+        assert c1["content"] == _DUP_PLACEHOLDER          # NOT overwritten to _PLACEHOLDER
+        # only the two UNIQUE results were microcompacted — the collapsed dup isn't re-counted
+        assert rep.tool_results_cleared == 2
+        assert not _has_orphan_tool(out)
