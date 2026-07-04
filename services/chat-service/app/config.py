@@ -82,7 +82,7 @@ class Settings(BaseSettings):
     # safety rests on that breadcrumb + FACTS/SYNOPSIS summary + story_state Core Block.
     # `task_weight` for a NON-grounding turn is `compact_light_task_weight` (a grounding
     # turn always uses 1.0 = roomy); on big-window models the target caps at ~32K
-    # (token_budget._TARGET_MAX_CAP) so a long session stays lean — raise that cap if a
+    # (loreweave_context.budget._TARGET_MAX_CAP) so a long session stays lean — raise it if a
     # heavy-context task needs more headroom. Set False to restore the flat 0.75×window.
     compact_task_elastic_enabled: bool = True
     compact_light_task_weight: float = 0.5

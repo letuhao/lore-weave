@@ -4,7 +4,7 @@ Keeps a turn under the model's context window WITHOUT a provider-specific featur
 works for local lm_studio / Qwen / Gemma AND Claude (the Anthropic server-side
 overlay is A5, layered on top). The measured provider usage stays ground truth;
 this acts on the assembled `messages` before the provider call, keyed off the
-script-aware estimate (token_budget.py) so it is right for the VN/CJK POC (edge #1).
+script-aware estimate (loreweave_context.tokens) so it is right for the VN/CJK POC (edge #1).
 
 Deterministic tiers (no LLM in the base):
   1. **microcompact** — evict the oldest tool-result message CONTENTS (keep the last

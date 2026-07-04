@@ -12,14 +12,12 @@ from __future__ import annotations
 
 from collections.abc import Sequence
 
-# Anthropic prompt-cache marker applied to the cacheable (message-independent-prefix) blocks.
-_EPHEMERAL: dict = {"type": "ephemeral"}
-
-
 def _text(text: str, *, cached: bool) -> dict:
     part: dict = {"type": "text", "text": text}
     if cached:
-        part["cache_control"] = _EPHEMERAL
+        # A FRESH marker per part (matching the original ladder) — never a shared dict, so
+        # no aliasing between parts if a caller ever mutates one.
+        part["cache_control"] = {"type": "ephemeral"}
     return part
 
 

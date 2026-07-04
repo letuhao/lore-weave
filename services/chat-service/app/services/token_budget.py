@@ -161,8 +161,9 @@ def until_compact_pct(pct: float | None) -> float | None:
     budget is unknown; 0.0 once the trigger is reached/passed."""
     if pct is None:
         return None
-    # Lazy import: compaction.py imports estimate_messages_tokens from this
-    # module, so a top-level import here would be a cycle.
+    # Lazy import, kept defensively: the compaction module (now a re-export shim over
+    # loreweave_context.compaction) is a sibling service module; a function-scoped import
+    # avoids any import-order coupling at module load.
     from app.services.compaction import COMPACT_TRIGGER_RATIO
 
     return round(max(0.0, COMPACT_TRIGGER_RATIO - pct), 4)
