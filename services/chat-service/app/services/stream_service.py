@@ -52,6 +52,7 @@ from app.db.conversation_search import (
     run_conversation_search,
 )
 from app.db.pool import get_pool
+from app.db.session_blocks import project_story_state
 from app.models import ProviderCredentials
 from app.services.composer import build_composer_messages, is_composer_tool
 from app.services.frontend_tools import (
@@ -1833,6 +1834,38 @@ async def stream_response(
     # (goal / redirect_hint) are sanitized below on the RENDERED anchor strings,
     # which also covers the working_memory_seed fallback path.
 
+    # ── T4 (Context Budget Law D4/D5) — story_state Core Memory Block ─────────
+    # Maintain the cached, bounded story-bible block (owner-scoped + OCC, see
+    # app/db/session_blocks.project_story_state) from the grounding prefix, and project it
+    # as a tail block ONLY when this turn has no live grounding (knowledge-service degraded
+    # / a future T5-gated-empty mode) — the D4 safety net. Default OFF (settings), so this
+    # whole path (incl. the turn-counter query) is skipped in prod. Best-effort: a block
+    # failure degrades to "no block", never breaks the turn.
+    story_state_block: str | None = None
+    if settings.story_state_block_enabled:
+        try:
+            # The cadence clock: the session's max message sequence — a monotonic
+            # per-session counter that advances every turn (granularity is messages,
+            # ~2/turn, so the 5-"turn" cadence fires ~every 2-3 conversational turns; it
+            # is only the FALLBACK trigger — a source-hash change or lore-gate refreshes
+            # sooner). Skipped entirely when the flag is off (zero prod cost).
+            _cur_turn = await pool.fetchval(
+                "SELECT COALESCE(MAX(sequence_num), 0) FROM chat_messages WHERE session_id = $1",
+                session_id,
+            )
+            story_state_block = await project_story_state(
+                pool,
+                session_id=session_id,
+                owner_user_id=user_id,
+                stable_context=kctx.stable_context,
+                full_context=kctx.context,
+                current_turn=int(_cur_turn or 0),
+                lore_gate=settings.t5_intent_gate_enabled and _grounding_presence.grounding_needed,
+            )
+        except Exception:  # noqa: BLE001 — degrade to no-block, never break the turn
+            logger.warning("story_state block projection skipped (error)", exc_info=True)
+            story_state_block = None
+
     # ── Anchoring (interview-roleplay) — resolve the working_memory anchor ────
     # Prefer the live block from knowledge-service (kctx.working_memory); fall
     # back to the session's frozen working_memory_seed (M3 / degraded EC-4).
@@ -2130,6 +2163,7 @@ async def stream_response(
     # knowledge/universal/plan_forge) → user skills → plan-mode nudge → skill catalog → book
     # note. Cache path (Anthropic) marks the cacheable prefix; plain path joins with \n\n.
     _tail_blocks = [
+        story_state_block,   # T4 — cached story-bible safety net (only set when live grounding is empty)
         steering_block,      # RAID C1 — per-book steering, right after the system prompt
         glossary_skill,
         knowledge_skill,
@@ -2190,6 +2224,7 @@ async def stream_response(
                 if s
             ),
             "plan_nudge": estimate_tokens(plan_mode_block),
+            "story_state": estimate_tokens(story_state_block),  # T4 — safety-net block (0 unless projected)
             "book_note": estimate_tokens(book_context_note),
             "attached_context": (
                 estimate_tokens(

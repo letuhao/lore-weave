@@ -69,6 +69,20 @@ class Settings(BaseSettings):
     # (where grounding IS expensive per turn) lands. See T5-2026-07-04-CORRECTED.md.
     t5_intent_gate_enabled: bool = False
 
+    # ── T4 (Context Budget Law D4/D5) — story_state Core Memory Block ────────────
+    # When ON, chat-service maintains a cached, bounded `story_state` block per session
+    # (chat_session_blocks, owner-scoped + OCC) distilled from the message-INDEPENDENT
+    # grounding prefix (kctx.stable_context), refreshed on cadence/hash (D5), and projects
+    # it as a tail block ONLY when the live grounding prefix is EMPTY — the degraded /
+    # gated-empty safety net (D4: a turn that lost its live bible still carries the last
+    # good one). DEFAULT OFF: while T5 gating is off, build_context returns a live stable
+    # prefix every turn, so the block would only ever duplicate it — projecting it then is a
+    # pure token regression against T2's behavior-unchanged default. Flip True together with
+    # T5 (`t5_intent_gate_enabled`) so the net is actually exercised. The T5-era behavior —
+    # unconditional projection that SUPERSEDES the live prefix (killing the per-turn
+    # build_context pull) — is deferred with T5.
+    story_state_block_enabled: bool = False
+
     # ── T2/D3 (Context Budget Law) — task-elastic compaction trigger ────────────
     # Today compaction fires at 0.75×effective_limit (near the window). With this
     # ON, it instead fires at the task-elastic `compute_target` (a SOFT budget far

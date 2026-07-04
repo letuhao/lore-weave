@@ -11,7 +11,13 @@ import uuid
 import asyncpg
 import pytest
 
-from app.db.session_blocks import cas_update_block, get_block, refresh_block
+from app.db.session_blocks import (
+    cas_update_block,
+    get_block,
+    project_story_state,
+    refresh_block,
+)
+from app.services.story_state import distill_story_state, render_story_state_block
 
 pytestmark = pytest.mark.xdist_group("pg")
 
@@ -125,3 +131,26 @@ async def test_tenancy_other_owner_cannot_read(pool_and_session):
                         value="secret", token_estimate=1, refreshed_turn=1, source_hash="h1")
     other = uuid.uuid4()
     assert await get_block(pool, session_id=sid, owner_user_id=other, label="story_state") is None
+
+
+async def test_project_story_state_maintain_then_degraded_projects(pool_and_session):
+    """End-to-end against real SQL (the orchestrator over real get/refresh): a materialized
+    turn seeds the cache and projects nothing (live prefix present); a later degraded turn
+    (no live grounding) projects the cached bible — the D4 safety net."""
+    pool, sid = pool_and_session
+    bible = "Lâm Uyển — the betrayed heiress.\nĐại Việt is the setting."
+    # turn 1 — grounding materialized: refresh the cache, project nothing (live is in-prompt)
+    out1 = await project_story_state(
+        pool, session_id=sid, owner_user_id=OWNER,
+        stable_context=bible, full_context=bible, current_turn=1)
+    assert out1 == ""
+    block = await get_block(pool, session_id=sid, owner_user_id=OWNER, label="story_state")
+    assert block is not None and block.value == distill_story_state(bible)[0]
+    assert block.refreshed_turn == 1 and block.version == 1
+    # turn 2 — degraded (no live grounding): project the cached bible, no version churn
+    out2 = await project_story_state(
+        pool, session_id=sid, owner_user_id=OWNER,
+        stable_context="", full_context="", current_turn=2)
+    assert out2 == render_story_state_block(distill_story_state(bible)[0])
+    block2 = await get_block(pool, session_id=sid, owner_user_id=OWNER, label="story_state")
+    assert block2.version == 1  # projection alone never writes

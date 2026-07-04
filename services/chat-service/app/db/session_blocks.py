@@ -104,6 +104,81 @@ async def refresh_block(
     return int(row["version"])
 
 
+async def project_story_state(
+    pool: asyncpg.Pool,
+    *,
+    session_id,
+    owner_user_id,
+    stable_context: str,
+    full_context: str,
+    current_turn: int,
+    lore_gate: bool = False,
+    scene_change: bool = False,
+) -> str:
+    """T4 (D4/D5) — maintain the cached `story_state` block and return the text to
+    project this turn (``""`` when nothing should be injected).
+
+    Two responsibilities, one round-trip:
+      * **Maintain (D5):** refresh the cache from the message-independent grounding prefix
+        (`stable_context`), falling back to the full `full_context` for modes that don't
+        split the prefix out (`multi_project`/`no_project` set `stable_context=""` and put
+        everything in `context`). Refresh only when `should_refresh` fires (no cache yet ·
+        the source hash changed · an explicit lore-gate / scene change · `cadence` turns
+        elapsed), so an unchanged bible doesn't churn the row every turn.
+      * **Project (D4 safety net):** return the CACHED block **only when the live FULL
+        grounding (`full_context`) is empty** — knowledge-service degraded (`context=""`),
+        or a future T5-gated mode that returns nothing. Keying on `full_context` (not
+        `stable_context`) is deliberate: `multi_project` mode has an empty `stable_context`
+        yet a full live `context`, so keying on the prefix would false-fire and DUPLICATE
+        the live lore. When any live grounding is present it is already in the prompt
+        (assembler's `kctx_stable`/`kctx_context`), so we return ``""`` and rely on it. (The
+        T5-era "unconditional projection that supersedes the live grounding" is deferred
+        with T5.)
+
+    Best-effort by contract: the caller wraps this so any failure degrades the turn to
+    "no block", never breaks it. Tenancy is enforced by `get_block`/`refresh_block`
+    (session_id AND owner_user_id).
+    """
+    from app.services.story_state import (
+        STORY_STATE_LABEL,
+        distill_story_state,
+        render_story_state_block,
+        should_refresh,
+        source_hash,
+    )
+
+    cached = await get_block(
+        pool, session_id=session_id, owner_user_id=owner_user_id, label=STORY_STATE_LABEL
+    )
+    refresh_source = (stable_context or "").strip() or (full_context or "").strip()
+    if refresh_source:
+        new_hash = source_hash(refresh_source)
+        if should_refresh(
+            cached_turn=cached.refreshed_turn if cached else None,
+            current_turn=current_turn,
+            cached_hash=cached.source_hash if cached else None,
+            new_hash=new_hash,
+            lore_gate=lore_gate,
+            scene_change=scene_change,
+        ):
+            value, est = distill_story_state(refresh_source)
+            await refresh_block(
+                pool,
+                session_id=session_id,
+                owner_user_id=owner_user_id,
+                label=STORY_STATE_LABEL,
+                value=value,
+                token_estimate=est,
+                refreshed_turn=current_turn,
+                source_hash=new_hash,
+            )
+    # Project the last-good bible ONLY when there is no live grounding this turn
+    # (degraded / gated-empty). Any live grounding is already in the prompt → no dup.
+    if not (full_context or "").strip() and cached and cached.value.strip():
+        return render_story_state_block(cached.value)
+    return ""
+
+
 async def cas_update_block(
     pool: asyncpg.Pool,
     *,
