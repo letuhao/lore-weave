@@ -30,6 +30,7 @@ import (
 	"github.com/loreweave/observability"
 
 	"github.com/loreweave/notification-service/internal/category"
+	"github.com/loreweave/notification-service/internal/prefs"
 	"github.com/loreweave/notification-service/internal/redact"
 )
 
@@ -294,6 +295,16 @@ func (c *Consumer) handle(ctx context.Context, d rabbitmq.Delivery) {
 			"category", args.Category, "job_id", ev.JobID.String())
 		span.SetStatus(codes.Error, "invalid notification category")
 		_ = d.Nack(false, false)
+		return
+	}
+	// P2·C (opt-out) — the user disabled this category → don't store/push. Ack (it's
+	// a successful decision, not a failure); fail-OPEN on a lookup error so a prefs
+	// hiccup never silently drops a notification.
+	if suppressed, perr := prefs.Suppressed(ctx, c.pool, args.UserID, args.Category); perr != nil {
+		c.logger.Warn("opt-out check failed — delivering anyway", "err", perr, "job_id", ev.JobID.String())
+	} else if suppressed {
+		span.SetAttributes(attribute.Bool("notification.suppressed", true))
+		_ = d.Ack(false)
 		return
 	}
 	// P2·C — dedup on (user_id, dedup_key): a broker redelivery of an already-

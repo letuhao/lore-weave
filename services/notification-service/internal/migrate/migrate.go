@@ -60,6 +60,19 @@ CREATE UNIQUE INDEX IF NOT EXISTS idx_notif_dedup
 
 CREATE INDEX IF NOT EXISTS idx_notif_user_unread ON notifications(user_id, created_at DESC) WHERE read_at IS NULL;
 CREATE INDEX IF NOT EXISTS idx_notif_user_all ON notifications(user_id, created_at DESC);
+
+-- P2·C (opt-out): per-user, per-category delivery preference. Per-user scope tier
+-- (PK is the scope key user_id) — a user only ever sees/edits their own rows. A
+-- category is delivered by DEFAULT (no row = enabled); a row with enabled=false
+-- suppresses storage+push of that category for that user. Categories validate
+-- against the same category.Allowed SSOT the ingress paths use.
+CREATE TABLE IF NOT EXISTS notification_preferences (
+  user_id    UUID    NOT NULL,
+  category   TEXT    NOT NULL,
+  enabled    BOOLEAN NOT NULL DEFAULT true,
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  PRIMARY KEY (user_id, category)
+);
 `
 
 func Up(ctx context.Context, pool *pgxpool.Pool) error {

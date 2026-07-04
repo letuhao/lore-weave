@@ -19,6 +19,7 @@ import (
 
 	"github.com/loreweave/notification-service/internal/category"
 	"github.com/loreweave/notification-service/internal/config"
+	"github.com/loreweave/notification-service/internal/prefs"
 	"github.com/loreweave/notification-service/internal/redact"
 )
 
@@ -78,6 +79,9 @@ func (s *Server) Router() http.Handler {
 		r.Post("/read-all", s.markAllRead)
 		r.Patch("/{id}/read", s.markRead)
 		r.Delete("/{id}", s.deleteNotification)
+		// P2·C (opt-out) — per-user category delivery preferences.
+		r.Get("/preferences", s.getPreferences)
+		r.Put("/preferences", s.setPreference)
 	})
 
 	return r
@@ -109,6 +113,57 @@ func (s *Server) requireUserID(r *http.Request) (uuid.UUID, bool) {
 		return uuid.Nil, false
 	}
 	return id, true
+}
+
+// getPreferences returns EVERY category with its effective enabled state for the
+// caller — the user's explicit rows merged over the default-enabled set — so a
+// client can render a complete opt-out screen without knowing the category list.
+func (s *Server) getPreferences(w http.ResponseWriter, r *http.Request) {
+	userID, ok := s.requireUserID(r)
+	if !ok {
+		writeError(w, http.StatusUnauthorized, "NOTIF_UNAUTHORIZED", "unauthorized")
+		return
+	}
+	explicit, err := prefs.List(r.Context(), s.pool, userID)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "NOTIF_INTERNAL_ERROR", "failed to load preferences")
+		return
+	}
+	out := make([]map[string]any, 0, len(category.Allowed))
+	for cat := range category.Allowed {
+		enabled := true // default deliver
+		if v, present := explicit[cat]; present {
+			enabled = v
+		}
+		out = append(out, map[string]any{"category": cat, "enabled": enabled})
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"preferences": out})
+}
+
+// setPreference upserts one category's delivery preference for the caller.
+func (s *Server) setPreference(w http.ResponseWriter, r *http.Request) {
+	userID, ok := s.requireUserID(r)
+	if !ok {
+		writeError(w, http.StatusUnauthorized, "NOTIF_UNAUTHORIZED", "unauthorized")
+		return
+	}
+	var body struct {
+		Category string `json:"category"`
+		Enabled  *bool  `json:"enabled"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil || body.Enabled == nil {
+		writeError(w, http.StatusBadRequest, "NOTIF_VALIDATION_ERROR", "category and enabled required")
+		return
+	}
+	if !validCategory(body.Category) {
+		writeError(w, http.StatusBadRequest, "NOTIF_VALIDATION_ERROR", "invalid category")
+		return
+	}
+	if err := prefs.Set(r.Context(), s.pool, userID, body.Category, *body.Enabled); err != nil {
+		writeError(w, http.StatusInternalServerError, "NOTIF_INTERNAL_ERROR", "failed to save preference")
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"category": body.Category, "enabled": *body.Enabled})
 }
 
 // ── Internal Handlers ─────────────────────────────────────────────────────
@@ -154,6 +209,12 @@ func (s *Server) createNotification(w http.ResponseWriter, r *http.Request) {
 	}
 	if !validCategory(category) {
 		writeError(w, http.StatusBadRequest, "NOTIF_VALIDATION_ERROR", "invalid category")
+		return
+	}
+	// P2·C (opt-out) — the user disabled this category → accept but don't store
+	// (idempotent 200, suppressed=true). Fail-OPEN on a lookup error (deliver).
+	if suppressed, perr := prefs.Suppressed(r.Context(), s.pool, userID, category); perr == nil && suppressed {
+		writeJSON(w, http.StatusOK, map[string]any{"suppressed": true})
 		return
 	}
 	meta, _ := json.Marshal(body.Metadata)
@@ -218,6 +279,7 @@ func (s *Server) createNotificationBatch(w http.ResponseWriter, r *http.Request)
 	created := 0
 	failed := 0
 	deduped := 0
+	suppressed := 0
 	for _, n := range body.Notifications {
 		userID, err := uuid.Parse(n.UserID)
 		if err != nil || strings.TrimSpace(n.Title) == "" || len(n.Title) > 500 {
@@ -230,6 +292,11 @@ func (s *Server) createNotificationBatch(w http.ResponseWriter, r *http.Request)
 		}
 		if !validCategory(cat) {
 			failed++
+			continue
+		}
+		// P2·C (opt-out) — skip a category the user disabled (fail-open on error).
+		if sup, perr := prefs.Suppressed(ctx, s.pool, userID, cat); perr == nil && sup {
+			suppressed++
 			continue
 		}
 		meta, _ := json.Marshal(n.Metadata)
@@ -254,7 +321,7 @@ func (s *Server) createNotificationBatch(w http.ResponseWriter, r *http.Request)
 			deduped++
 		}
 	}
-	writeJSON(w, http.StatusCreated, map[string]any{"created": created, "failed": failed, "deduped": deduped})
+	writeJSON(w, http.StatusCreated, map[string]any{"created": created, "failed": failed, "deduped": deduped, "suppressed": suppressed})
 }
 
 // ── Public Handlers ───────────────────────────────────────────────────────
