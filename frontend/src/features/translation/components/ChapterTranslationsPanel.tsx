@@ -20,6 +20,10 @@ interface Props {
   /** Show the book/chapter breadcrumb row (standalone page). Off when embedded in the editor. */
   showBreadcrumb?: boolean;
   className?: string;
+  /** #16 Phase 3 DOCK-7 fix — see TranslationViewer's own doc comment. Omitted by every
+   *  existing caller (classic page, legacy editor's Translate workmode) so their `navigate()`
+   *  fallback is unchanged; only the new `translation-versions` Studio panel supplies it. */
+  onReview?: (versionId: string) => void;
 }
 
 /**
@@ -40,6 +44,7 @@ export function ChapterTranslationsPanel({
   initialVersionId = null,
   showBreadcrumb = true,
   className,
+  onReview,
 }: Props) {
   const { t } = useTranslation('translation');
   const { accessToken } = useAuth();
@@ -229,6 +234,7 @@ export function ChapterTranslationsPanel({
             versionId={currentVersion.id}
             isActive={isActive}
             onSetActive={handleSetActive}
+            onReview={onReview}
           />
         )}
       </div>

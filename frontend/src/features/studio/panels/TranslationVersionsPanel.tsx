@@ -65,6 +65,11 @@ export function TranslationVersionsPanel(props: IDockviewPanelProps) {
         initialLang={target.lang}
         showBreadcrumb={false}
         className="flex h-full overflow-hidden"
+        onReview={(versionId) => host.openPanel(`translation-review:${target.chapterId}`, {
+          component: 'translation-review',
+          title: t('panels.translation-review.title', { defaultValue: 'Translation Review' }),
+          params: { bookId: host.bookId, chapterId: target.chapterId, versionId },
+        })}
       />
     </div>
   );

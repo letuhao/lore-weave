@@ -295,6 +295,21 @@ export function EditorPanel(props: IDockviewPanelProps) {
         >
           {t('panels.original-source.title', { defaultValue: 'Original Source' })}
         </button>
+        {/* #16 Phase 3 — one-click Translate quick-access for the currently-open chapter
+            (legacy's Workmode-tab convenience), opens the version-management panel scoped to
+            this chapter instead of requiring a trip through the Translation matrix. */}
+        <button
+          type="button"
+          data-testid="studio-editor-open-translate"
+          onClick={() => host.openPanel(`translation-versions:${chapterId}`, {
+            component: 'translation-versions',
+            title: `${t('panels.translation-versions.title', { defaultValue: 'Translation Versions' })} · ${chapterId.slice(0, 8)}`,
+            params: { chapterId },
+          })}
+          className="rounded px-1.5 py-0.5 hover:bg-secondary hover:text-foreground"
+        >
+          {t('editor.translate', { defaultValue: 'Translate' })}
+        </button>
         <button
           type="button"
           data-testid="studio-editor-save"

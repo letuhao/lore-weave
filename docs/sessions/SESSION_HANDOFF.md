@@ -113,11 +113,44 @@ commits mid-way through this one) — re-verify shared spine files (`catalog.ts`
 > during the `/review-impl` pass above; no new cross-cutting standard was introduced by Phase 2,
 > so nothing further to enforce.
 >
-> **NEXT (register order, per spec 16's own roadmap):** Phase 3 (Translate workmode) — needs its
-> own capability audit at kickoff (same build-while-plan convention as Phase 2). Phase 4
-> (mobile-shell decision + full route retirement + `ChapterEditorPage` deletion) comes after,
-> gated on a soak period per spec M9. #4 AGENT-MODE (autonomy mission-control GUI) remains the
-> largest unstarted "Cursor-for-novels" item — needs its own CLARIFY+DESIGN when picked up.
+> **"CURSOR-FOR-NOVELS" REGISTER — #1 COHERENCE Phase 3 ✅ COMPLETE 2026-07-05 (Translate
+> workmode).** Kickoff capability audit found the base port (`translation`/`translation-versions`
+> panels) had **already shipped independently** via a parallel track on this shared checkout
+> (`17_translation_enrichment_sharing_settings_docks.md`, commit `56c8e17c6`) — same deliverable,
+> different framing. Re-verified against the post-commit code and found 3 real gaps (the Phase 3
+> delta): no Studio panel for the block-aligned review workflow (`TranslationReviewPage`'s
+> per-block correction + the "confirm corrected name into glossary" flywheel + the AC4 "adopt
+> newer machine translation" banner); `TranslationViewer`'s Review button still `navigate()`d to
+> the full-page route (DOCK-7 violation invisible to `dockablePanelHygiene.test.ts`, which only
+> scans `features/studio/panels/**`); no one-click "Translate this chapter" affordance from an
+> open `EditorPanel` (Studio only reached Translation via the matrix/palette/agent).
+>
+> **Explicitly rejected: porting legacy's Write/Translate/Read/Compose Workmode tab-switch
+> itself** — would make `EditorPanel` internally swap its whole subtree by mode state, the exact
+> DOCK-8 violation spec 17 just fixed for `EnrichmentView`'s 6-way switch. Shipped instead: (1)
+> extracted `TranslationReviewView` (DOCK-2, props-based) out of `TranslationReviewPage.tsx` so
+> the classic route and a new `translation-review` Studio panel (params-retargeting singleton,
+> `{bookId, chapterId, versionId}`, hidden from palette + outside the agent enum — same precedent
+> as `translation-versions`/`original-source`) both render it; (2) threaded an optional
+> `onReview` callback through `TranslationViewer` → `ChapterTranslationsPanel` (both existing
+> callers omit it, unchanged `navigate()` fallback proven via a new test) → `TranslationVersionsPanel`
+> supplies `host.openPanel(...)`; (3) a "Translate" quick-access button in `EditorPanel.tsx`,
+> same `host.openPanel` pattern as Phase 2's "Original Source" button.
+>
+> **`/review-impl`:** 1 LOW — `TranslationReviewView.tsx` sits outside `dockablePanelHygiene.test.ts`'s
+> scan scope (same structural gap that let the original bug through), manually verified clean
+> today; accepted as a repo-wide gap (Wiki/KG/Enrichment have the same exposure), not fixed
+> narrowly here. **VERIFY:** tsc clean; 430/431 unit tests (the 1 failure is `user-guide`, a
+> DIFFERENT concurrent session's in-flight panel not yet enum-synced — confirmed unrelated).
+> **Live smoke with a REAL translate job** (local $0 model, ~10s): Editor → Translate button →
+> Translation Versions → Review button → Translation Review panel renders real bilingual content,
+> studio never navigates away. New committed `tests/e2e/specs/studio-translation-review.spec.ts`
+> (2 tests, real job not a mock) green ×3 runs.
+>
+> **NEXT (register order, per spec 16's own roadmap):** Phase 4 (mobile-shell decision + full
+> route retirement + `ChapterEditorPage` deletion), gated on a soak period per spec M9. #4
+> AGENT-MODE (autonomy mission-control GUI) remains the largest unstarted "Cursor-for-novels"
+> item — needs its own CLARIFY+DESIGN when picked up.
 
 > **"CURSOR-FOR-NOVELS" REGISTER — #1 COHERENCE Phase 1 ✅ COMPLETE 2026-07-04.** User approved the
 > spec+plan (`approve, go`) and asked to proceed into BUILD; all of Phase 1 (spec

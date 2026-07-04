@@ -56,12 +56,14 @@ import { SharingPanel } from './SharingPanel';
 import { BookSettingsPanel } from './BookSettingsPanel';
 import { TranslationPanel } from './TranslationPanel';
 import { TranslationVersionsPanel } from './TranslationVersionsPanel';
+import { TranslationReviewPanel } from './TranslationReviewPanel';
 import { EnrichmentComposePanel } from './EnrichmentComposePanel';
 import { EnrichmentProposalsPanel } from './EnrichmentProposalsPanel';
 import { EnrichmentGapsPanel } from './EnrichmentGapsPanel';
 import { EnrichmentSourcesPanel } from './EnrichmentSourcesPanel';
 import { EnrichmentJobsPanel } from './EnrichmentJobsPanel';
 import { EnrichmentSettingsPanel } from './EnrichmentSettingsPanel';
+import { UserGuidePanel } from './UserGuidePanel';
 
 /** #18 — domain-area grouping for the Command Palette. Required for every non-hidden panel
  *  (enforced at runtime by panelCatalogContract.test.ts — B6, not just a convention). */
@@ -86,6 +88,9 @@ export interface StudioPanelDef {
   hiddenFromPalette?: boolean;
   /** Command Palette sub-group (#18). Omit only when hiddenFromPalette is true. */
   category?: StudioPanelCategory;
+  /** #19 — longer i18n key for the User Guide panel + tour captions; falls back to `descKey`
+   *  when absent (Wave 1: no panel has this yet; Wave 2 fills it in per-panel). */
+  guideBodyKey?: string;
 }
 
 export const STUDIO_PANELS: StudioPanelDef[] = [
@@ -195,6 +200,11 @@ export const STUDIO_PANELS: StudioPanelDef[] = [
   // palette + outside the agent enum (meaningless without a chapterId).
   { id: 'translation', component: TranslationPanel, titleKey: 'panels.translation.title', descKey: 'panels.translation.desc', category: 'translation' },
   { id: 'translation-versions', component: TranslationVersionsPanel, titleKey: 'panels.translation-versions.title', descKey: 'panels.translation-versions.desc', hiddenFromPalette: true },
+  // 16_chapter_editor_parity_and_retirement.md Phase 3 — the block-aligned review workspace
+  // (legacy TranslationReviewPage), a params-retargeting singleton ({bookId, chapterId,
+  // versionId}) opened only from TranslationViewer's "Review" button (DOCK-7 fix) — hidden from
+  // palette + outside the agent enum (meaningless without a versionId).
+  { id: 'translation-review', component: TranslationReviewPanel, titleKey: 'panels.translation-review.title', descKey: 'panels.translation-review.desc', hiddenFromPalette: true },
   // 17_...docks.md — Lore Enrichment: EnrichmentView's former 6-way internal tab switch
   // (DOCK-8 anti-pattern) becomes 6 sibling panels, no hub — each independently
   // palette + agent openable, mirroring the kg-* panels' shape.
@@ -204,6 +214,10 @@ export const STUDIO_PANELS: StudioPanelDef[] = [
   { id: 'enrichment-sources', component: EnrichmentSourcesPanel, titleKey: 'panels.enrichment-sources.title', descKey: 'panels.enrichment-sources.desc', category: 'enrichment' },
   { id: 'enrichment-jobs', component: EnrichmentJobsPanel, titleKey: 'panels.enrichment-jobs.title', descKey: 'panels.enrichment-jobs.desc', category: 'enrichment' },
   { id: 'enrichment-settings', component: EnrichmentSettingsPanel, titleKey: 'panels.enrichment-settings.title', descKey: 'panels.enrichment-settings.desc', category: 'enrichment' },
+  // 19_onboarding_and_user_guide.md Wave 1 — catalog-driven help: renders every openable panel
+  // above, grouped by #18's category, using descKey as the guide body (Wave 2 adds dedicated
+  // guideBodyKey copy per panel). Palette + agent openable like any other panel.
+  { id: 'user-guide', component: UserGuidePanel, titleKey: 'panels.user-guide.title', descKey: 'panels.user-guide.desc', category: 'platform' },
   { id: 'welcome', component: WelcomePanel, titleKey: 'welcome.tab', descKey: 'welcome.tab', hiddenFromPalette: true },
 ];
 

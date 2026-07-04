@@ -1,6 +1,6 @@
 # 16 · Chapter Editor Parity & Retirement (COHERENCE)
 
-> Component of [Writing Studio (v2)](00_OVERVIEW.md). Status: 🚧 Phase 1 (data-safety parity) ✅ shipped 2026-07-04; Phase 2 (editor-craft UX) specced 2026-07-04, in build.
+> Component of [Writing Studio (v2)](00_OVERVIEW.md). Status: 🚧 Phase 1 (data-safety parity) ✅ shipped 2026-07-04; Phase 2 (editor-craft UX) ✅ shipped 2026-07-05; Phase 3 (Translate workmode) ✅ shipped 2026-07-05. Phase 4 (mobile-shell decision + route retirement) remains.
 > Origin: the "Cursor-for-novels" missing-pieces register, item #1 COHERENCE (memory `writing-studio-fragmented-not-underbuilt`) — the platform runs **two live, uncoordinated chapter-editing surfaces** and doesn't feel like one product.
 > Builds on [#04](04_manuscript_editor.md) (manuscript hoist — several of its own "build notes" are still open and fold into this plan), [#08](08_studio_state_architecture.md) §"Migration: editorBridge → bus + reconciler" (the target architecture for the write-back fix was already decided there, just not built), [#09](09_agent_gui_reconciliation.md) (Lane C `applyProposedEdit`, G7 dirty-guard).
 
@@ -101,9 +101,17 @@ Most tasks (2.1–2.6, 2.9–2.10) converge on the **same two files** (`EditorPa
 
 **Gate:** DOCK-1..11 compliance for 2.7/2.11's new panels; regression test per task; `/review-impl` on the integrated diff (not per-task, since several tasks touch overlapping toolbar code — same Phase-1 lesson: a combined review catches cross-task interaction bugs a single task's own tests miss); live browser smoke covering: grammar toggle visibly flags an error, glossary `[[` autocomplete inserts via `insertAtCursor` (not execCommand), heatmap decorates on a real chapter with known mentions, provenance toolbar shows/clears an unreviewed AI edit, auto-save fires after the debounce window, progress ticks up in the composition panel after a Studio save, and the popout window's Apply reaches the opener's editor.
 
-## Phase 3 — Translate workmode (roadmap only — own spec, M8)
+## Phase 3 — Translate workmode ✅ COMPLETE 2026-07-05
 
-Full `ChapterTranslationsPanel` port as a Studio dock panel (or panel pair, mirroring the Books Browser+Reader precedent in [`14_utility_panels.md`](14_utility_panels.md) Phase C). Large enough for its own capability audit at kickoff — do not guess the shape here.
+Kickoff capability audit found the base port (`translation`/`translation-versions` panels, wrapping the exact same `ChapterTranslationsPanel` this spec's Phase 1 already embeds in the legacy editor's Translate workmode) **already shipped independently** as part of `17_translation_enrichment_sharing_settings_docks.md` (commit `56c8e17c6`, a parallel track on this shared checkout, not framed as "#16 Phase 3" but functionally the same deliverable). Verified against post-commit code, 3 real gaps remained (Phase 3's actual delta):
+
+1. **No Studio panel for `TranslationReviewPage`'s block-aligned review** (per-block alignment, keyboard nav, per-block correction via `useBlockCorrection`, the "confirm corrected name into glossary" `ConfirmNameDialog` flywheel, the AC4 "adopt newer machine translation" banner).
+2. **`TranslationViewer.tsx`'s Review button still `navigate()`s** to the full-page route (DOCK-7 violation invisible to `dockablePanelHygiene.test.ts`, which scopes its grep to `features/studio/panels/**` only — `TranslationViewer` lives outside that tree).
+3. **No one-click "Translate this chapter" affordance from an open `EditorPanel`** — Studio only reaches Translation via the matrix/palette/agent tool, unlike legacy's Workmode tab which auto-passes the already-open chapterId.
+
+**Explicitly rejected: porting legacy's Write/Translate/Read/Compose Workmode tab-switch itself.** That would make `EditorPanel` internally swap its ENTIRE subtree by mode state — the exact DOCK-8 "one capability = one panel, no internal page-replacement" violation this same session's spec 17 just fixed for `EnrichmentView`'s 6-way tab switch. Compose and Read already have their own sibling dock panels; only Translate lacked a one-click path, so the fix is a quick-access BUTTON that opens the `translation-versions` panel (own dock tab, own palette/agent visibility), mirroring Phase 2's "Original Source" button — not a mode toggle.
+
+**Shape:** (1) extract `TranslationReviewView` (props-based) out of `TranslationReviewPage.tsx` so the classic route and a new `translation-review` Studio panel (params-retargeting singleton — `{bookId, chapterId, versionId}`, same precedent as `translation-versions`/`original-source`/`media-version-history`, hidden from palette + outside the agent enum) both render it (DOCK-2); (2) thread an optional `onReview` callback through `TranslationViewer` → `ChapterTranslationsPanel` (defaults to the existing `navigate()`, so the classic route and legacy editor's Translate workmode are byte-identical) → `TranslationVersionsPanel` supplies `host.openPanel('translation-review:...')` instead; (3) `EditorPanel.tsx` gets a "Translate" toolbar button opening `translation-versions:{chapterId}` scoped to the current chapter, same `host.openPanel` pattern as `original-source`.
 
 ## Phase 4 — Structural: route retirement + mobile (roadmap only)
 
