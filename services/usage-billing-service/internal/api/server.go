@@ -5,7 +5,9 @@ import (
 	"crypto/aes"
 	"crypto/cipher"
 	"crypto/rand"
+	"crypto/sha256"
 	"encoding/base64"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"log/slog"
@@ -26,28 +28,100 @@ import (
 )
 
 type Server struct {
-	pool      *pgxpool.Pool
-	cfg       *config.Config
-	secret    []byte
+	pool   *pgxpool.Pool
+	cfg    *config.Config
+	secret []byte
+	// secretKey is the DEDICATED payload KEK (from LLM_PAYLOAD_ENCRYPTION_KEY):
+	// wraps the per-row session key. ALL new writes use this (LOG-5).
 	secretKey []byte
+	// legacySecretKey is the old JWT-derived KEK. Kept for BACK-COMPAT decrypt
+	// only — rows written before the dedicated-key migration were wrapped with
+	// it. Never used for new writes. Empty when JWT_SECRET is unset (tests).
+	legacySecretKey []byte
+}
+
+// normalizeAESKey coerces a secret string into a 32-byte AES-256 key (truncate
+// if longer, zero-pad if shorter). An empty input yields an all-zero key (only
+// happens in tests where the secret is unset).
+func normalizeAESKey(secret string) []byte {
+	key := []byte(secret)
+	if len(key) >= 32 {
+		return key[:32]
+	}
+	padded := make([]byte, 32)
+	copy(padded, key)
+	return padded
 }
 
 func NewServer(pool *pgxpool.Pool, cfg *config.Config) *Server {
-	key := []byte(cfg.JWTSecret)
-	if len(key) > 32 {
-		key = key[:32]
-	}
-	if len(key) < 32 {
-		padded := make([]byte, 32)
-		copy(padded, key)
-		key = padded
+	var legacy []byte
+	if cfg.JWTSecret != "" {
+		legacy = normalizeAESKey(cfg.JWTSecret)
 	}
 	return &Server{
-		pool:      pool,
-		cfg:       cfg,
-		secret:    []byte(cfg.JWTSecret),
-		secretKey: key,
+		pool:            pool,
+		cfg:             cfg,
+		secret:          []byte(cfg.JWTSecret),
+		secretKey:       normalizeAESKey(cfg.LLMPayloadEncryptionKey),
+		legacySecretKey: legacy,
 	}
+}
+
+// payloadKeyRef names the master key version that wrapped a row's session key,
+// so a stored row is decryptable after key rotation (LOG-5: "a real, rotatable
+// key version"). It is a stable fingerprint of the active dedicated KEK — NOT a
+// random per-row UUID (the old behavior, which referenced nothing).
+func (s *Server) payloadKeyRef() string {
+	return keyRefForKey(s.secretKey)
+}
+
+func keyRefForKey(key []byte) string {
+	sum := sha256.Sum256(key)
+	return "llm-payload-key-v1:" + hex.EncodeToString(sum[:8])
+}
+
+// decodePayloadBytes decodes decrypted payload plaintext back into its stored
+// shape, symmetric with marshalPayload on the write side (LOG-4). An
+// object-shaped row (`{...}`) reads back as a map; a string-shaped row (a JSON
+// string, the legacy jobs-path shape) reads back as its string content; bytes
+// that are not valid JSON at all (oldest legacy rows) read back as the raw
+// string. This is the P0-1 root fix: the old read unmarshalled unconditionally
+// into map[string]any, so any string-shaped row failed → empty {}.
+func decodePayloadBytes(plain []byte) any {
+	if len(plain) == 0 {
+		return nil
+	}
+	var v any
+	if err := json.Unmarshal(plain, &v); err != nil {
+		return string(plain)
+	}
+	return v
+}
+
+// marshalPayload serializes a payload for storage. Objects → JSON object,
+// strings → JSON string; symmetric with decodePayloadBytes.
+func marshalPayload(v any) []byte {
+	b, err := json.Marshal(v)
+	if err != nil {
+		return []byte("null")
+	}
+	return b
+}
+
+// unwrapSessionKey decrypts a row's wrapped session key, trying the dedicated
+// KEK first and falling back to the legacy JWT-derived KEK for rows written
+// before the dedicated-key migration. Returns an error only if BOTH fail.
+func unwrapSessionKey(primary, legacy []byte, keyCipher string) ([]byte, error) {
+	sessionKey, err := decryptWithKey(primary, keyCipher)
+	if err == nil {
+		return sessionKey, nil
+	}
+	if len(legacy) > 0 {
+		if sk, e2 := decryptWithKey(legacy, keyCipher); e2 == nil {
+			return sk, nil
+		}
+	}
+	return nil, err
 }
 
 func (s *Server) requireInternalToken(next http.Handler) http.Handler {
@@ -187,7 +261,7 @@ func (s *Server) encryptPayload(v map[string]any) (cipherText string, keyCipher 
 	if err != nil {
 		return "", "", "", err
 	}
-	return bodyCipher, keyCipherRaw, uuid.NewString(), nil
+	return bodyCipher, keyCipherRaw, s.payloadKeyRef(), nil
 }
 
 func encryptWithKey(key []byte, plain []byte) (string, error) {
@@ -304,8 +378,8 @@ func (s *Server) writeUsageLog(ctx context.Context, tx pgx.Tx, p usageLogParams)
 	if _, err := rand.Read(sessionKey); err != nil {
 		return uuid.Nil, 0, false, fmt.Errorf("session key: %w", err)
 	}
-	inputPlain, _ := json.Marshal(p.InputPayload)
-	outputPlain, _ := json.Marshal(p.OutputPayload)
+	inputPlain := marshalPayload(p.InputPayload)
+	outputPlain := marshalPayload(p.OutputPayload)
 	inputCipher, err := encryptWithKey(sessionKey, inputPlain)
 	if err != nil {
 		return uuid.Nil, 0, false, fmt.Errorf("encrypt input: %w", err)
@@ -318,7 +392,8 @@ func (s *Server) writeUsageLog(ctx context.Context, tx pgx.Tx, p usageLogParams)
 	if err != nil {
 		return uuid.Nil, 0, false, fmt.Errorf("encrypt key: %w", err)
 	}
-	keyRef := uuid.New().String()
+	// LOG-5: name the real (rotatable) master-key version, not a random UUID.
+	keyRef := s.payloadKeyRef()
 
 	// Idempotency gate: ON CONFLICT DO NOTHING RETURNING yields a row only on a
 	// FRESH insert; a duplicate request_id returns no row → re-read + skip details.
@@ -581,8 +656,11 @@ func (s *Server) getUsageLogDetail(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusForbidden, "M03_LOG_DECRYPT_FORBIDDEN", "forbidden")
 		return
 	}
-	inputPayload := map[string]any{}
-	outputPayload := map[string]any{}
+	// Read == write symmetric (LOG-4): payloads decode back into whatever shape
+	// was stored (object → map, string → string). `any`, not map[string]any, so
+	// a string-shaped (jobs-path / legacy) row is no longer silently dropped to
+	// {} (the P0-1 defect). nil until successfully decrypted.
+	var inputPayload, outputPayload any
 	// Try to decrypt payloads — gracefully handle missing/empty/corrupt ciphertext
 	var keyCipher, inputCipher, outputCipher string
 	err = s.pool.QueryRow(r.Context(), `
@@ -590,18 +668,16 @@ SELECT payload_encryption_key_ciphertext, input_payload_ciphertext, output_paylo
 FROM usage_log_details WHERE usage_log_id=$1
 `, usageLogID).Scan(&keyCipher, &inputCipher, &outputCipher)
 	if err == nil && keyCipher != "" {
-		if sessionKey, err2 := decryptWithKey(s.secretKey, keyCipher); err2 == nil {
+		// Unwrap with the dedicated KEK; fall back to the legacy JWT-derived KEK
+		// for rows written before the dedicated-key migration (P0-3 back-compat).
+		if sessionKey, err2 := unwrapSessionKey(s.secretKey, s.legacySecretKey, keyCipher); err2 == nil {
 			if inputPlain, err3 := decryptWithKey(sessionKey, inputCipher); err3 == nil {
-				if err4 := json.Unmarshal(inputPlain, &inputPayload); err4 != nil {
-					slog.Error("input unmarshal failed", "error", err4, "len", len(inputPlain))
-				}
+				inputPayload = decodePayloadBytes(inputPlain)
 			} else {
 				slog.Error("input decrypt failed", "error", err3)
 			}
 			if outputPlain, err3 := decryptWithKey(sessionKey, outputCipher); err3 == nil {
-				if err4 := json.Unmarshal(outputPlain, &outputPayload); err4 != nil {
-					slog.Error("output unmarshal failed", "error", err4, "len", len(outputPlain))
-				}
+				outputPayload = decodePayloadBytes(outputPlain)
 			} else {
 				slog.Error("output decrypt failed", "error", err3)
 			}

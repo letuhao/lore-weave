@@ -19,6 +19,18 @@ Limitation: extraction of proper nouns defers to K4.3
 `extract_candidates`, which is case-sensitive. Lowercase queries like
 "tell me about kai" surface as GENERAL, not SPECIFIC_ENTITY. Fix belongs
 in K4.3, not here.
+
+Multilingual degrade-open (ML-5, audit Area 7 P0-7 — INTERIM):
+Every regex above is English-only, so a zh/ja/ko/vi query matches none and
+would fall to the narrow GENERAL default (1 hop, no intent routing) —
+silently starving non-English queries of any intent-based retrieval. Until a
+per-language classifier lands, we mirror chat-service's `_has_non_ascii()`
+escape-hatch: when a query carries a non-ASCII *letter* (a CJK/Vietnamese/
+Korean/… script) AND the English cascade produced no match, we degrade OPEN to
+a MORE-INCLUSIVE default (RELATIONAL / 2-hop) instead of GENERAL, so the query
+still gets multi-hop routing. English (pure-ASCII) behavior is byte-identical —
+the branch is only reachable after every English pattern has already failed.
+This is a deliberate interim; do NOT read it as multilingual support.
 """
 
 from __future__ import annotations
@@ -117,6 +129,15 @@ def _is_false_positive_entity(candidate: str) -> bool:
     """True if `candidate` is almost certainly a K4.3 false positive
     (sentence-start capitalized word that is not a real proper noun)."""
     return candidate.lower() in _FALSE_POSITIVE_ENTITY_WORDS
+
+
+def _has_non_ascii(message: str) -> bool:
+    """A non-ASCII *letter* — a CJK / Vietnamese / Korean / … SCRIPT, the signal
+    that the English-only regexes above cannot route this query (ML-5 degrade-open
+    escape-hatch, mirrors chat-service `entity_presence._has_non_ascii`). Must be
+    `.isalpha()`: an em-dash `—`, curly quote, or `…` in an otherwise English
+    sentence is non-ASCII PUNCTUATION and must NOT trip the multilingual rule."""
+    return any(ord(ch) > 0x7F and ch.isalpha() for ch in message)
 
 
 def classify(message: str) -> IntentResult:
@@ -219,6 +240,26 @@ def classify(message: str) -> IntentResult:
             signals=tuple(signals),
             hop_count=1,
             recency_weight=-1.0,
+        )
+
+    # 4b. Multilingual degrade-open (ML-5, P0-7 INTERIM). Every regex above is
+    # English-only, so no relational/historical/recent signal can fire for a
+    # non-English (zh/ja/ko/vi/…) query — it can only reach the narrow
+    # SPECIFIC_ENTITY (1-hop) or GENERAL default below, silently starved of
+    # intent-based routing. When the query carries a non-ASCII letter (and no
+    # English signal won above), degrade OPEN to the more-inclusive RELATIONAL /
+    # 2-hop routing, carrying any extracted entities as anchors. Placed BEFORE the
+    # entity split so the outcome is deterministic regardless of whether K4.3
+    # happened to extract CJK runs. English (pure-ASCII) queries never enter this
+    # branch → their behavior is byte-identical. Remove when a per-language
+    # classifier lands. See module docstring.
+    if _has_non_ascii(message):
+        return IntentResult(
+            intent=Intent.RELATIONAL,
+            entities=entities,
+            signals=tuple(signals) + ("multilingual_degrade_open",),
+            hop_count=2,
+            recency_weight=1.0,
         )
 
     # 5. SPECIFIC_ENTITY — ≥1 named entity, no temporal/relational signal.

@@ -3,9 +3,12 @@ package api
 import (
 	"bytes"
 	"context"
+	"encoding/json"
 	"errors"
 	"net/http"
 	"net/http/httptest"
+	"reflect"
+	"strings"
 	"testing"
 	"time"
 
@@ -218,5 +221,160 @@ func TestGetUsageLogDetailValidation(t *testing.T) {
 	srv.getUsageLogDetail(rr, req)
 	if rr.Code != http.StatusBadRequest {
 		t.Fatalf("expected 400, got %d", rr.Code)
+	}
+}
+
+// payloadServer builds a Server wired with a dedicated payload KEK (distinct
+// from the JWT secret) so the round-trip envelope exercises the real key paths.
+func payloadServer() *Server {
+	return NewServer(nil, &config.Config{
+		JWTSecret:               "12345678901234567890123456789012",
+		LLMPayloadEncryptionKey: "PAYLOAD-KEK-distinct-from-jwt-3232",
+	})
+}
+
+// envelope mirrors writeUsageLog's encrypt side using the given master key:
+// random session key → encrypt payload with it → wrap the session key.
+func envelope(t *testing.T, masterKey, plain []byte) (payloadCipher, keyCipher string) {
+	t.Helper()
+	sessionKey := make([]byte, 32)
+	for i := range sessionKey {
+		sessionKey[i] = byte(i + 1)
+	}
+	pc, err := encryptWithKey(sessionKey, plain)
+	if err != nil {
+		t.Fatalf("encrypt payload: %v", err)
+	}
+	kc, err := encryptWithKey(masterKey, sessionKey)
+	if err != nil {
+		t.Fatalf("wrap session key: %v", err)
+	}
+	return pc, kc
+}
+
+// readBack mirrors getUsageLogDetail's decrypt side: unwrap (dedicated→legacy),
+// decrypt, and decode into the stored shape.
+func readBack(t *testing.T, s *Server, payloadCipher, keyCipher string) any {
+	t.Helper()
+	sessionKey, err := unwrapSessionKey(s.secretKey, s.legacySecretKey, keyCipher)
+	if err != nil {
+		t.Fatalf("unwrap session key: %v", err)
+	}
+	plain, err := decryptWithKey(sessionKey, payloadCipher)
+	if err != nil {
+		t.Fatalf("decrypt payload: %v", err)
+	}
+	return decodePayloadBytes(plain)
+}
+
+// TestPayloadRoundTrip_Object is the P0-1 guard (LOG-4): an object payload
+// written through the marshal side reads back as the SAME object, not empty {}.
+func TestPayloadRoundTrip_Object(t *testing.T) {
+	t.Parallel()
+	s := payloadServer()
+	obj := map[string]any{
+		"model":    "gpt-4o",
+		"messages": []any{map[string]any{"role": "user", "content": "hello"}},
+	}
+	pc, kc := envelope(t, s.secretKey, marshalPayload(obj))
+	got := readBack(t, s, pc, kc)
+
+	gotJSON, _ := json.Marshal(got)
+	wantJSON, _ := json.Marshal(obj)
+	if string(gotJSON) != string(wantJSON) {
+		t.Fatalf("object round-trip mismatch:\n got=%s\nwant=%s", gotJSON, wantJSON)
+	}
+	if m, ok := got.(map[string]any); !ok || len(m) == 0 {
+		t.Fatalf("expected non-empty object, got %#v", got)
+	}
+}
+
+// TestPayloadRoundTrip_String is the exact P0-1 defect shape: the jobs path
+// stores the truncated payload as a JSON *string*. The old read unmarshalled
+// into map[string]any → failed → empty {}. It must now read back as its content.
+func TestPayloadRoundTrip_String(t *testing.T) {
+	t.Parallel()
+	s := payloadServer()
+	str := `{"truncated":"request json as a string"}`
+	pc, kc := envelope(t, s.secretKey, marshalPayload(str))
+	got := readBack(t, s, pc, kc)
+	if got != str {
+		t.Fatalf("string round-trip mismatch: got %#v want %q", got, str)
+	}
+}
+
+// TestDecodePayloadBytes covers the three stored shapes symmetrically.
+func TestDecodePayloadBytes(t *testing.T) {
+	t.Parallel()
+	// object
+	if got := decodePayloadBytes([]byte(`{"a":"b"}`)); !reflect.DeepEqual(got, map[string]any{"a": "b"}) {
+		t.Fatalf("object decode: got %#v", got)
+	}
+	// JSON string
+	if got := decodePayloadBytes([]byte(`"hi"`)); got != "hi" {
+		t.Fatalf("json-string decode: got %#v", got)
+	}
+	// legacy raw non-JSON bytes → raw string (never a decode error)
+	if got := decodePayloadBytes([]byte(`not json at all`)); got != "not json at all" {
+		t.Fatalf("legacy raw decode: got %#v", got)
+	}
+	// empty → nil
+	if got := decodePayloadBytes(nil); got != nil {
+		t.Fatalf("empty decode: got %#v", got)
+	}
+}
+
+// TestUnwrapSessionKey_LegacyFallback proves a row wrapped with the OLD
+// JWT-derived KEK is still decryptable after the dedicated-key migration
+// (P0-3 back-compat), while a fresh row uses the dedicated key.
+func TestUnwrapSessionKey_LegacyFallback(t *testing.T) {
+	t.Parallel()
+	s := payloadServer()
+	sessionKey := []byte("session-key-32-bytes-xxxxxxxxxxxx")
+
+	// Row wrapped with the LEGACY (JWT-derived) key.
+	legacyWrap, err := encryptWithKey(s.legacySecretKey, sessionKey)
+	if err != nil {
+		t.Fatalf("legacy wrap: %v", err)
+	}
+	got, err := unwrapSessionKey(s.secretKey, s.legacySecretKey, legacyWrap)
+	if err != nil {
+		t.Fatalf("legacy unwrap failed: %v", err)
+	}
+	if string(got) != string(sessionKey) {
+		t.Fatalf("legacy unwrap mismatch")
+	}
+
+	// Row wrapped with the DEDICATED key still works.
+	freshWrap, _ := encryptWithKey(s.secretKey, sessionKey)
+	if got, err := unwrapSessionKey(s.secretKey, s.legacySecretKey, freshWrap); err != nil || string(got) != string(sessionKey) {
+		t.Fatalf("dedicated unwrap failed: err=%v", err)
+	}
+}
+
+// TestPayloadKeyRef_NamesRealKey: the key ref is a stable fingerprint of the
+// active KEK (rotatable), NOT a random per-row UUID (the P0-3 defect).
+func TestPayloadKeyRef_NamesRealKey(t *testing.T) {
+	t.Parallel()
+	s := payloadServer()
+	ref1 := s.payloadKeyRef()
+	ref2 := s.payloadKeyRef()
+	if ref1 != ref2 {
+		t.Fatalf("key ref must be stable across calls: %q vs %q", ref1, ref2)
+	}
+	if !strings.HasPrefix(ref1, "llm-payload-key-v1:") {
+		t.Fatalf("key ref must name a versioned key, got %q", ref1)
+	}
+	// A different KEK yields a different ref (rotation is observable).
+	other := NewServer(nil, &config.Config{
+		JWTSecret:               "12345678901234567890123456789012",
+		LLMPayloadEncryptionKey: "A-DIFFERENT-payload-kek-32-chars!!",
+	})
+	if other.payloadKeyRef() == ref1 {
+		t.Fatalf("distinct KEKs must produce distinct refs")
+	}
+	// Not a UUID (the old random ref).
+	if _, err := uuid.Parse(ref1); err == nil {
+		t.Fatalf("key ref must not be a bare UUID, got %q", ref1)
 	}
 }

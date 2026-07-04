@@ -27,6 +27,8 @@ import (
 	"go.opentelemetry.io/otel/trace"
 
 	"github.com/loreweave/observability"
+
+	"github.com/loreweave/notification-service/internal/category"
 )
 
 const (
@@ -230,6 +232,18 @@ func (c *Consumer) handle(ctx context.Context, d rabbitmq.Delivery) {
 		attribute.String("llm.operation", ev.Operation),
 	)
 	args := transformTerminalEvent(ev)
+	// Route the consumer insert through the SAME validation the HTTP
+	// ingress path uses (audit P0-4 / NOTIF-2): the consumer previously
+	// inserted its category via raw SQL, bypassing validCategory. A
+	// category not in the single source-of-truth set is a poison message —
+	// discard without requeue so it can't loop forever.
+	if !category.Valid(args.Category) {
+		c.logger.Error("invalid notification category — discarding",
+			"category", args.Category, "job_id", ev.JobID.String())
+		span.SetStatus(codes.Error, "invalid notification category")
+		_ = d.Nack(false, false)
+		return
+	}
 	_, err := c.pool.Exec(ctx, `
 INSERT INTO notifications (user_id, category, title, body, metadata)
 VALUES ($1, $2, $3, $4, $5)

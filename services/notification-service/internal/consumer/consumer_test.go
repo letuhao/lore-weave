@@ -6,6 +6,8 @@ import (
 	"testing"
 
 	"github.com/google/uuid"
+
+	"github.com/loreweave/notification-service/internal/category"
 )
 
 func TestTransform_CompletedHasNoBody(t *testing.T) {
@@ -114,6 +116,24 @@ func TestOpLabel_AllJobOperations(t *testing.T) {
 		if got != want {
 			t.Errorf("opLabel(%q) = %q, want %q", op, got, want)
 		}
+	}
+}
+
+// TestTransform_CategoryPassesSharedValidation proves the consumer's insert
+// path shares the HTTP path's single source-of-truth enum: the category it
+// produces must be accepted by category.Valid — the same guard now gating
+// the consumer's insert (audit P0-4 / NOTIF-2). If someone changes the
+// consumer's category to a value not in the shared set, its inserts would be
+// dropped as poison; this test catches that drift.
+func TestTransform_CategoryPassesSharedValidation(t *testing.T) {
+	args := transformTerminalEvent(terminalEvent{
+		JobID:       uuid.New(),
+		OwnerUserID: uuid.New(),
+		Operation:   "chat",
+		Status:      "completed",
+	})
+	if !category.Valid(args.Category) {
+		t.Fatalf("consumer category %q is not in the shared enum — its inserts would be dropped", args.Category)
 	}
 }
 

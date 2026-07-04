@@ -16,6 +16,7 @@ import (
 
 	"github.com/loreweave/observability"
 
+	"github.com/loreweave/notification-service/internal/category"
 	"github.com/loreweave/notification-service/internal/config"
 )
 
@@ -400,12 +401,11 @@ func writeError(w http.ResponseWriter, status int, code, message string) {
 	writeJSON(w, status, errorBody{Code: code, Message: message})
 }
 
-var allowedCategories = map[string]bool{
-	"translation": true, "social": true, "wiki": true, "system": true,
-}
-
+// validCategory delegates to the single source-of-truth enum in the
+// category package so the HTTP ingress path and the AMQP consumer path
+// validate against the exact same set (audit P0-4 / NOTIF-2).
 func validCategory(c string) bool {
-	return allowedCategories[c]
+	return category.Valid(c)
 }
 
 func queryInt(r *http.Request, key string, def int) int {

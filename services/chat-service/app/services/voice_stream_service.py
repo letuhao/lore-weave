@@ -32,6 +32,7 @@ from app.client.provider_client import get_provider_client
 from app.config import settings
 from app.events.voice_events import emit_voice_turn
 from app.models import ProviderCredentials
+from app.services.injection_defense import neutralize_injection
 from app.services.sentence_buffer import SentenceBuffer
 from app.services.text_normalizer import TextNormalizer
 from app.services.stream_service import _stream_via_gateway
@@ -331,12 +332,21 @@ async def voice_stream_response(
         message=transcript,
     )
 
+    # ── P0-5 (audit Area 3, SEC-4 / ML-4) — neutralize indirect prompt-injection
+    # in the retrieved knowledge block before it is spliced into the voice system
+    # prompt (same untrusted-data defense as the text path). Multilingual-safe;
+    # clean text unchanged. The user's transcript + session persona are NOT touched.
+    kctx.context = neutralize_injection(kctx.context)
+
     # ── Anchoring (interview-roleplay) — same shared helper as the text path so
     # the 2h voice session (the real use) gets the anchor too (EC-3).
     wm_pinned, wm_tail = resolve_anchor(
         kctx.working_memory,
         session_row.get("working_memory_seed") if session_row else None,
     )
+    # P0-5 — sanitize the rendered roleplay anchor (untrusted state) too.
+    wm_pinned = neutralize_injection(wm_pinned)
+    wm_tail = neutralize_injection(wm_tail)
 
     # Build message history sized by knowledge_service
     history_limit = max(1, kctx.recent_message_count)

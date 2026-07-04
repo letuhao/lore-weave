@@ -13,6 +13,14 @@ type Config struct {
 	JWTSecret            string
 	InternalServiceToken string
 
+	// LLMPayloadEncryptionKey is the DEDICATED master key (KEK) that wraps the
+	// per-row session key used to AES-256-GCM the logged request/response
+	// payloads (LOG-5). It MUST be distinct from JWTSecret: rotating the JWT
+	// secret must never render logged payloads undecryptable, and a JWT leak
+	// must not also expose every logged prompt. Required (fail-to-start) —
+	// mirrors the JWT_SECRET ≥32-char rule.
+	LLMPayloadEncryptionKey string
+
 	// Phase 6a — spend-guardrail default limits (USD). Config-driven, no
 	// hardcoded literal (billing ADR P5). Seeded into a user's
 	// spend_guardrails row on first reserve.
@@ -38,10 +46,11 @@ type Config struct {
 
 func Load() (*Config, error) {
 	c := &Config{
-		HTTPAddr:             getEnv("HTTP_ADDR", ":8086"),
-		DatabaseURL:          os.Getenv("DATABASE_URL"),
-		JWTSecret:            os.Getenv("JWT_SECRET"),
-		InternalServiceToken: os.Getenv("INTERNAL_SERVICE_TOKEN"),
+		HTTPAddr:                getEnv("HTTP_ADDR", ":8086"),
+		DatabaseURL:             os.Getenv("DATABASE_URL"),
+		JWTSecret:               os.Getenv("JWT_SECRET"),
+		InternalServiceToken:    os.Getenv("INTERNAL_SERVICE_TOKEN"),
+		LLMPayloadEncryptionKey: os.Getenv("LLM_PAYLOAD_ENCRYPTION_KEY"),
 	}
 	if c.DatabaseURL == "" {
 		return nil, fmt.Errorf("DATABASE_URL is required")
@@ -51,6 +60,15 @@ func Load() (*Config, error) {
 	}
 	if c.InternalServiceToken == "" {
 		return nil, fmt.Errorf("INTERNAL_SERVICE_TOKEN is required")
+	}
+	// LOG-5 — dedicated payload KEK, distinct from JWT_SECRET, ≥32 bytes for
+	// AES-256. Fail-to-start if missing so payloads are never wrapped with the
+	// JWT secret by default.
+	if len(c.LLMPayloadEncryptionKey) < 32 {
+		return nil, fmt.Errorf("LLM_PAYLOAD_ENCRYPTION_KEY must be at least 32 characters")
+	}
+	if c.LLMPayloadEncryptionKey == c.JWTSecret {
+		return nil, fmt.Errorf("LLM_PAYLOAD_ENCRYPTION_KEY must differ from JWT_SECRET")
 	}
 
 	daily, err := requiredFloat("GUARDRAIL_DEFAULT_DAILY_USD")

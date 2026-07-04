@@ -118,6 +118,51 @@ def test_general_fallback():
     assert r.intent is Intent.GENERAL
 
 
+# ── ML-5: multilingual degrade-open (P0-7) ────────────────────────────
+
+
+def test_chinese_query_degrades_open_not_starved_general():
+    # zh query matches no English regex; instead of the narrow GENERAL default
+    # it degrades OPEN to inclusive RELATIONAL / 2-hop routing.
+    r = classify("凯和林大师之间是什么关系？")  # "What is the relationship between Kai and Master Lin?"
+    assert r.intent is Intent.RELATIONAL
+    assert r.hop_count == 2
+    assert "multilingual_degrade_open" in r.signals
+
+
+def test_vietnamese_query_degrades_open_not_starved_general():
+    # Vietnamese is Latin-script but carries non-ASCII diacritics (ó, ô, ạ, …),
+    # so _has_non_ascii catches it too.
+    r = classify("Chuyện gì đã xảy ra ở chương này?")  # "What happened in this chapter?"
+    assert r.intent is Intent.RELATIONAL
+    assert r.hop_count == 2
+    assert "multilingual_degrade_open" in r.signals
+
+
+def test_english_general_unchanged_by_degrade_open():
+    # Pure-ASCII English never enters the degrade-open branch — byte-identical.
+    r = classify("What is love?")
+    assert r.intent is Intent.GENERAL
+    assert r.hop_count == 1
+    assert r.recency_weight == 1.0
+    assert "multilingual_degrade_open" not in r.signals
+
+
+def test_english_with_punctuation_dash_not_treated_as_non_english():
+    # A non-ASCII em-dash / ellipsis is PUNCTUATION, not a letter — must NOT
+    # trip the multilingual rule; this stays GENERAL.
+    r = classify("What is love — really…?")
+    assert r.intent is Intent.GENERAL
+    assert "multilingual_degrade_open" not in r.signals
+
+
+def test_english_cascade_still_wins_for_ascii_queries():
+    # Degrade-open must not shadow the English cascade. A clear English
+    # relational/recent query keeps its normal routing.
+    assert classify("How does Kai know Master Lin?").intent is Intent.RELATIONAL
+    assert classify("What is Kai doing right now?").intent is Intent.RECENT_EVENT
+
+
 # ── golden-set accuracy (the real bar) ────────────────────────────────
 
 

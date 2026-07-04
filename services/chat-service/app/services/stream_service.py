@@ -38,6 +38,7 @@ from app.client.billing_client import BillingClient
 from app.client.knowledge_client import get_knowledge_client
 from app.client.known_entities_client import get_known_entities_client
 from app.services.entity_presence import EntityPresence, detect_entity_presence
+from app.services.injection_defense import neutralize_injection
 from app.config import settings
 from app.db.suspended_runs import (
     delete_suspended_run,
@@ -1745,6 +1746,27 @@ async def stream_response(
         grounding=_grounding_presence.grounding_needed,
     )
 
+    # ── P0-5 (audit Area 3, SEC-4 / ML-4) — neutralize indirect prompt-injection
+    # in the retrieved book/graph/knowledge block BEFORE it is spliced into the
+    # system prompt. This text (memory, glossary, passages, facts, graph, roleplay
+    # anchor) is UNTRUSTED — LLM-generated or user-authored fiction — so it may
+    # carry injection ("ignore previous instructions", <|im_start|>system, zero-
+    # width/base64 payloads, and the zh/ja/ko/vi equivalents). The model must treat
+    # it as DATA, not instructions. Multilingual-safe (Unicode-aware); clean text is
+    # returned unchanged so legit CJK/vi content is never mangled. The user's OWN
+    # message and session persona/system_prompt are NOT sanitized (that is their
+    # input). Mirrors knowledge-service's extraction defense
+    # (app/extraction/injection_defense.py). Done here — at the single point the
+    # retrieved text enters — so BOTH assembly branches and the token breakdown use
+    # the neutralized form.
+    kctx.context = neutralize_injection(kctx.context)
+    kctx.stable_context = neutralize_injection(kctx.stable_context)
+    kctx.volatile_context = neutralize_injection(kctx.volatile_context)
+    # NB: `kctx.working_memory` is JSON that resolve_anchor parses — tagging it here
+    # would break json.loads and silently drop the anchor. The untrusted fields
+    # (goal / redirect_hint) are sanitized below on the RENDERED anchor strings,
+    # which also covers the working_memory_seed fallback path.
+
     # ── Anchoring (interview-roleplay) — resolve the working_memory anchor ────
     # Prefer the live block from knowledge-service (kctx.working_memory); fall
     # back to the session's frozen working_memory_seed (M3 / degraded EC-4).
@@ -1755,6 +1777,10 @@ async def stream_response(
         kctx.working_memory,
         session_row.get("working_memory_seed") if session_row else None,
     )
+    # P0-5 — the rendered anchor carries untrusted roleplay state (goal /
+    # redirect_hint, LLM-written); neutralize injection before it enters the prompt.
+    wm_pinned = neutralize_injection(wm_pinned)
+    wm_tail = neutralize_injection(wm_tail)
 
     # ── K-CLEAN-5 (D-K8-04): emit memory_mode to the FE ─────────────────────
     # knowledge-service build_context emits mode="no_project"

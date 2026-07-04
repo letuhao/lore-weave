@@ -481,6 +481,11 @@ services:
       HTTP_ADDR: ":8086"
       DATABASE_URL: postgres://loreweave:loreweave_dev@postgres:5432/loreweave_usage_billing?sslmode=disable
       JWT_SECRET: ${JWT_SECRET:-loreweave_local_dev_jwt_secret_change_me_32chars}
+      # LLM payload encryption key (LOG-5 / P0-3) — DEDICATED, distinct from
+      # JWT_SECRET, so rotating the JWT can't render logged prompts undecryptable
+      # and a JWT leak doesn't expose them. >=32 chars; fail-to-start if unset or
+      # equal to JWT_SECRET. Set a real value in prod (.env).
+      LLM_PAYLOAD_ENCRYPTION_KEY: ${LLM_PAYLOAD_ENCRYPTION_KEY:-loreweave_local_dev_llm_payload_key_change_me_32c}
       INTERNAL_SERVICE_TOKEN: ${INTERNAL_SERVICE_TOKEN:-dev_internal_token}
       # Phase 6a — spend-guardrail default budgets (USD). REQUIRED — the
       # service fails to start if unset (no hardcoded literal, billing
