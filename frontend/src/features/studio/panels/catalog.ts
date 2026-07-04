@@ -26,6 +26,18 @@ import { GlossaryUnknownPanel } from './GlossaryUnknownPanel';
 import { GlossaryAiSuggestionsPanel } from './GlossaryAiSuggestionsPanel';
 import { GlossaryMergeCandidatesPanel } from './GlossaryMergeCandidatesPanel';
 import { KnowledgeHubPanel } from './KnowledgeHubPanel';
+import { KgOverviewPanel } from './KgOverviewPanel';
+import { KgEntitiesPanel } from './KgEntitiesPanel';
+import { KgTimelinePanel } from './KgTimelinePanel';
+import { KgEvidencePanel } from './KgEvidencePanel';
+import { KgGapReportPanel } from './KgGapReportPanel';
+import { KgProposalsPanel } from './KgProposalsPanel';
+import { KgSchemaPanel } from './KgSchemaPanel';
+import { KgGraphPanel } from './KgGraphPanel';
+import { KgInsightsPanel } from './KgInsightsPanel';
+import { KgJobsPanel } from './KgJobsPanel';
+import { KgGlobalBioPanel } from './KgGlobalBioPanel';
+import { KgPrivacyPanel } from './KgPrivacyPanel';
 import { JobsListPanel } from './JobsListPanel';
 import { JobDetailPanel } from './JobDetailPanel';
 import { BooksBrowserPanel } from './BooksBrowserPanel';
@@ -72,6 +84,23 @@ export const STUDIO_PANELS: StudioPanelDef[] = [
   // 14_kg_panels.md A2 — the KG launcher (DOCK-8 hub pattern): browse/open knowledge-graph
   // projects. Phase B adds the capability panels it currently opens via a new-tab fallback.
   { id: 'knowledge', component: KnowledgeHubPanel, titleKey: 'panels.knowledge.title', descKey: 'panels.knowledge.desc' },
+  // 14_kg_panels.md Phase B — the 12 KG capability panels the `knowledge` hub launcher
+  // opens (today via a new-tab fallback until each lands; landing here makes it in-tab).
+  // overview/gap/proposals/schema/graph are book-scoped (useBookKnowledgeProject);
+  // entities/timeline/evidence take an optional params.scopedProjectId (K4, shared scope);
+  // insights/jobs/bio/privacy are user-scoped (global, cross-book — same tier as usage/settings).
+  { id: 'kg-overview', component: KgOverviewPanel, titleKey: 'panels.kg-overview.title', descKey: 'panels.kg-overview.desc' },
+  { id: 'kg-entities', component: KgEntitiesPanel, titleKey: 'panels.kg-entities.title', descKey: 'panels.kg-entities.desc' },
+  { id: 'kg-timeline', component: KgTimelinePanel, titleKey: 'panels.kg-timeline.title', descKey: 'panels.kg-timeline.desc' },
+  { id: 'kg-evidence', component: KgEvidencePanel, titleKey: 'panels.kg-evidence.title', descKey: 'panels.kg-evidence.desc' },
+  { id: 'kg-gap', component: KgGapReportPanel, titleKey: 'panels.kg-gap.title', descKey: 'panels.kg-gap.desc' },
+  { id: 'kg-proposals', component: KgProposalsPanel, titleKey: 'panels.kg-proposals.title', descKey: 'panels.kg-proposals.desc' },
+  { id: 'kg-schema', component: KgSchemaPanel, titleKey: 'panels.kg-schema.title', descKey: 'panels.kg-schema.desc' },
+  { id: 'kg-graph', component: KgGraphPanel, titleKey: 'panels.kg-graph.title', descKey: 'panels.kg-graph.desc' },
+  { id: 'kg-insights', component: KgInsightsPanel, titleKey: 'panels.kg-insights.title', descKey: 'panels.kg-insights.desc' },
+  { id: 'kg-jobs', component: KgJobsPanel, titleKey: 'panels.kg-jobs.title', descKey: 'panels.kg-jobs.desc' },
+  { id: 'kg-bio', component: KgGlobalBioPanel, titleKey: 'panels.kg-bio.title', descKey: 'panels.kg-bio.desc' },
+  { id: 'kg-privacy', component: KgPrivacyPanel, titleKey: 'panels.kg-privacy.title', descKey: 'panels.kg-privacy.desc' },
   // 14_utility_panels.md Phase B — jobs-list is palette + agent openable; job-detail is a
   // params-retargeting singleton ({service, jobId}, json-editor/skill-editor precedent).
   { id: 'jobs-list', component: JobsListPanel, titleKey: 'panels.jobs-list.title', descKey: 'panels.jobs-list.desc' },

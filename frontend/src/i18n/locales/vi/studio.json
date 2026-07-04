@@ -64,6 +64,54 @@
       "title": "Tri thức",
       "desc": "Duyệt và mở các dự án đồ thị tri thức của bạn"
     },
+    "kg-overview": {
+      "title": "Tổng quan",
+      "desc": "Tóm tắt dự án và thao tác nhanh"
+    },
+    "kg-entities": {
+      "title": "Thực thể",
+      "desc": "Duyệt và tìm kiếm thực thể đồ thị tri thức, theo dự án hoặc trên toàn bộ dự án"
+    },
+    "kg-timeline": {
+      "title": "Dòng thời gian",
+      "desc": "Duyệt các sự kiện trong truyện theo thứ tự thời gian hoặc mạch truyện"
+    },
+    "kg-evidence": {
+      "title": "Bằng chứng",
+      "desc": "Tìm kiếm đoạn văn chương và chat theo độ tương đồng ngữ nghĩa"
+    },
+    "kg-gap": {
+      "title": "Báo cáo thiếu sót",
+      "desc": "Tìm nhân vật, địa điểm, khái niệm được nhắc nhiều nhưng chưa có trong từ điển và đưa vào"
+    },
+    "kg-proposals": {
+      "title": "Đề xuất",
+      "desc": "Duyệt các đề xuất từ điển, wiki và làm giàu lore đang chờ cho sách này"
+    },
+    "kg-schema": {
+      "title": "Lược đồ",
+      "desc": "Áp dụng, soạn thảo, xem và đồng bộ lược đồ đồ thị tri thức của sách"
+    },
+    "kg-graph": {
+      "title": "Đồ thị tri thức",
+      "desc": "Khám phá đồ thị quan hệ thực thể của dự án"
+    },
+    "kg-insights": {
+      "title": "Phân tích khai thác",
+      "desc": "Chất lượng cấu hình trích xuất, hiệu năng mô hình & độ trôi kết quả trên các dự án"
+    },
+    "kg-jobs": {
+      "title": "Tác vụ trích xuất",
+      "desc": "Theo dõi các tác vụ trích xuất tri thức trên tất cả dự án của bạn"
+    },
+    "kg-bio": {
+      "title": "Tiểu sử toàn cục",
+      "desc": "Tiểu sử tác giả xuyên suốt các sách, dùng để làm nền tảng cho AI viết và phân tích"
+    },
+    "kg-privacy": {
+      "title": "Quyền riêng tư & Dữ liệu",
+      "desc": "Xuất hoặc xoá vĩnh viễn dữ liệu đồ thị tri thức của bạn"
+    },
     "jobs-list": {
       "title": "Tác vụ",
       "desc": "Theo dõi các tác vụ nền"

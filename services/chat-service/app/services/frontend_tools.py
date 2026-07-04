@@ -399,7 +399,7 @@ UI_OPEN_STUDIO_PANEL_TOOL: dict = {
             "properties": {
                 "panel_id": {
                     "type": "string",
-                    "enum": ["compose", "editor", "planner", "usage", "notifications", "settings", "trash", "steering", "extensions", "proposals", "glossary", "glossary-ontology", "glossary-unknown", "glossary-ai-suggestions", "glossary-merge-candidates", "knowledge", "jobs-list", "books", "leaderboard-books", "leaderboard-authors", "leaderboard-translators", "leaderboard-trending"],
+                    "enum": ["compose", "editor", "planner", "usage", "notifications", "settings", "trash", "steering", "extensions", "proposals", "glossary", "glossary-ontology", "glossary-unknown", "glossary-ai-suggestions", "glossary-merge-candidates", "knowledge", "kg-overview", "kg-entities", "kg-timeline", "kg-evidence", "kg-gap", "kg-proposals", "kg-schema", "kg-graph", "kg-insights", "kg-jobs", "kg-bio", "kg-privacy", "jobs-list", "books", "leaderboard-books", "leaderboard-authors", "leaderboard-translators", "leaderboard-trending"],
                     "description": (
                         "The studio panel to open. 'compose' = the AI co-writer chat; "
                         "'editor' = the manuscript editor; 'planner' = the PlanForge "
@@ -416,6 +416,18 @@ UI_OPEN_STUDIO_PANEL_TOOL: dict = {
                         "'glossary-ai-suggestions' = review AI-drafted entities; "
                         "'glossary-merge-candidates' = review likely-duplicate entities; "
                         "'knowledge' = browse and open the user's knowledge-graph projects; "
+                        "'kg-overview' = a KG project's summary and quick actions; "
+                        "'kg-entities' = browse/search KG entities (a project or all projects); "
+                        "'kg-timeline' = in-story events by chronological/narrative order; "
+                        "'kg-evidence' = semantic search over chapter/chat passages; "
+                        "'kg-gap' = high-mention entities missing from the glossary; "
+                        "'kg-proposals' = pending glossary/wiki/enrichment suggestions for this book; "
+                        "'kg-schema' = adopt/author/view/sync the book's KG schema; "
+                        "'kg-graph' = explore the project's entity relationship graph; "
+                        "'kg-insights' = extraction config quality & model performance across projects; "
+                        "'kg-jobs' = monitor extraction jobs across all projects; "
+                        "'kg-bio' = the user's cross-book author bio; "
+                        "'kg-privacy' = export or delete the user's knowledge-graph data; "
                         "'jobs-list' = monitor the user's background jobs and tasks; "
                         "'books' = browse and read the user's other books (view-only, does not "
                         "leave the current book's studio); 'leaderboard-books' = top-ranked books; "

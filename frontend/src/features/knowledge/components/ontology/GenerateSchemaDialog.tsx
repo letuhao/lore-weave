@@ -1,9 +1,9 @@
 import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { toast } from 'sonner';
-import { Sparkles, X } from 'lucide-react';
 import { ModelPicker } from '@/components/model-picker';
 import { useAiTask } from '@/components/ai-task';
+import { FormDialog } from '@/components/shared';
 import { OntologyChip } from './OntologyChip';
 import { useSchemaPropose } from '../../hooks/useGraphSchema';
 import type { SchemaProposal } from '../../types/ontology';
@@ -12,6 +12,12 @@ import type { SchemaProposal } from '../../types/ontology';
 // (propose→confirm): nothing is written until the human ticks components and
 // adopts them via the A1 add routes (onAdopt). A real BYOK model is required
 // (no hardcoded model); prefer a local chat model for $0 spend.
+//
+// 14_kg_panels.md K8 (DOCK-9) — was a hand-rolled `fixed inset-0` overlay;
+// migrated onto the shared FormDialog (Radix-portal-based), mirroring
+// Glossary's ResolveKindModal precedent (13_glossary_panels.md A4). The caller
+// (SchemaWorkbench) only mounts this component while `showGenerate` is true, so
+// `open` is always true here — the same shape ResolveKindModal uses.
 
 export interface ProposalPicks {
   kinds: { code: string; label?: string }[];
@@ -62,58 +68,52 @@ export function GenerateSchemaDialog({ projectId, onClose, onAdopt }: Props) {
   const adopt = () => { void task.confirm().catch(() => { /* toast shown by onError; keep open */ }); };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4"
-      role="dialog" aria-modal="true" data-testid="generate-schema-dialog">
-      <div className="max-h-[85vh] w-full max-w-lg space-y-3 overflow-y-auto rounded-lg border bg-card p-4 shadow-lg">
-        <header className="flex items-center gap-1.5">
-          <Sparkles className="h-4 w-4 text-primary" />
-          <h3 className="text-sm font-bold">{t('generate.title')}</h3>
-          <button type="button" onClick={onClose} className="ml-auto rounded p-1 hover:bg-muted/40" aria-label="close">
-            <X className="h-4 w-4" />
+    <FormDialog
+      open
+      onOpenChange={(o) => { if (!o) onClose(); }}
+      title={t('generate.title')}
+      size="lg"
+    >
+      {!proposal ? (
+        <div className="space-y-3">
+          <label className="block space-y-1 text-[12px]">
+            <span className="text-muted-foreground">{t('generate.premise')}</span>
+            <textarea value={premise} onChange={(e) => setPremise(e.target.value)} rows={3}
+              placeholder={t('generate.premisePlaceholder')}
+              className="w-full rounded-md border bg-input px-2 py-1.5"
+              data-testid="generate-premise" />
+          </label>
+          <label className="block space-y-1 text-[12px]">
+            <span className="text-muted-foreground">{t('generate.genre')}</span>
+            <input value={genre} onChange={(e) => setGenre(e.target.value)}
+              placeholder="Tiên hiệp, Fantasy…" className="w-full rounded-md border bg-input px-2 py-1.5" />
+          </label>
+          <div className="space-y-1 text-[12px]">
+            <span className="text-muted-foreground">{t('generate.model')}</span>
+            <ModelPicker capability="chat" value={modelRef || null} onChange={(id) => setModelRef(id ?? '')} />
+          </div>
+          <button type="button" disabled={busy || !premise.trim() || !modelRef} onClick={() => void generate()}
+            className="w-full rounded-md bg-primary px-3 py-2 text-[12px] font-medium text-primary-foreground disabled:opacity-50"
+            data-testid="generate-run">
+            {busy ? t('generate.generating') : t('generate.generateButton')}
           </button>
-        </header>
-
-        {!proposal ? (
-          <>
-            <label className="block space-y-1 text-[12px]">
-              <span className="text-muted-foreground">{t('generate.premise')}</span>
-              <textarea value={premise} onChange={(e) => setPremise(e.target.value)} rows={3}
-                placeholder={t('generate.premisePlaceholder')}
-                className="w-full rounded-md border bg-input px-2 py-1.5"
-                data-testid="generate-premise" />
-            </label>
-            <label className="block space-y-1 text-[12px]">
-              <span className="text-muted-foreground">{t('generate.genre')}</span>
-              <input value={genre} onChange={(e) => setGenre(e.target.value)}
-                placeholder="Tiên hiệp, Fantasy…" className="w-full rounded-md border bg-input px-2 py-1.5" />
-            </label>
-            <div className="space-y-1 text-[12px]">
-              <span className="text-muted-foreground">{t('generate.model')}</span>
-              <ModelPicker capability="chat" value={modelRef || null} onChange={(id) => setModelRef(id ?? '')} />
-            </div>
-            <button type="button" disabled={busy || !premise.trim() || !modelRef} onClick={() => void generate()}
-              className="w-full rounded-md bg-primary px-3 py-2 text-[12px] font-medium text-primary-foreground disabled:opacity-50"
-              data-testid="generate-run">
-              {busy ? t('generate.generating') : t('generate.generateButton')}
-            </button>
-          </>
-        ) : (
-          <>
-            <p className="text-[12px] text-muted-foreground">{t('generate.reviewHelp')}</p>
-            <ProposalList title={t('schema.nodeKinds')} prefix="k" items={proposal.node_kinds.map((k) => ({ code: k.code }))} skip={skip} onToggle={toggle} variant="glossary" />
-            <ProposalList title={t('schema.edgeTypes')} prefix="e" items={proposal.edge_types.map((e) => ({ code: e.code, hint: `${e.source_kinds.join('/') || '—'} → ${e.target_kinds.join('/') || '—'}` }))} skip={skip} onToggle={toggle} variant="edge" />
-            <ProposalList title={t('schema.factTypes')} prefix="f" items={proposal.fact_types.map((f) => ({ code: f.code }))} skip={skip} onToggle={toggle} variant="neutral" />
-            <div className="flex justify-end gap-2">
-              <button type="button" onClick={() => task.reset()} disabled={busy}
-                className="rounded-md border px-3 py-1.5 text-[12px]" data-testid="generate-back">{t('generate.regenerate')}</button>
-              <button type="button" onClick={() => void adopt()} disabled={busy}
-                className="rounded-md bg-primary px-3 py-1.5 text-[12px] font-medium text-primary-foreground disabled:opacity-50"
-                data-testid="generate-adopt">{t('generate.adoptButton')}</button>
-            </div>
-          </>
-        )}
-      </div>
-    </div>
+        </div>
+      ) : (
+        <div className="space-y-3">
+          <p className="text-[12px] text-muted-foreground">{t('generate.reviewHelp')}</p>
+          <ProposalList title={t('schema.nodeKinds')} prefix="k" items={proposal.node_kinds.map((k) => ({ code: k.code }))} skip={skip} onToggle={toggle} variant="glossary" />
+          <ProposalList title={t('schema.edgeTypes')} prefix="e" items={proposal.edge_types.map((e) => ({ code: e.code, hint: `${e.source_kinds.join('/') || '—'} → ${e.target_kinds.join('/') || '—'}` }))} skip={skip} onToggle={toggle} variant="edge" />
+          <ProposalList title={t('schema.factTypes')} prefix="f" items={proposal.fact_types.map((f) => ({ code: f.code }))} skip={skip} onToggle={toggle} variant="neutral" />
+          <div className="flex justify-end gap-2">
+            <button type="button" onClick={() => task.reset()} disabled={busy}
+              className="rounded-md border px-3 py-1.5 text-[12px]" data-testid="generate-back">{t('generate.regenerate')}</button>
+            <button type="button" onClick={() => void adopt()} disabled={busy}
+              className="rounded-md bg-primary px-3 py-1.5 text-[12px] font-medium text-primary-foreground disabled:opacity-50"
+              data-testid="generate-adopt">{t('generate.adoptButton')}</button>
+          </div>
+        </div>
+      )}
+    </FormDialog>
   );
 }
 

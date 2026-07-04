@@ -145,7 +145,12 @@ export function ProjectDetailShell() {
       {/* Route-driven section render — only the active section mounts; a
           section switch is a navigation, not an in-place ternary unmount. */}
       {activeSection === 'overview' && (
-        <OverviewSection project={project} onExploreGraph={exploreGraph} />
+        <OverviewSection
+          project={project}
+          onExploreGraph={exploreGraph}
+          onOpenBook={(bookId) => navigate(`/books/${bookId}`)}
+          onOpenWorld={(worldId) => navigate(`/worlds/${worldId}`)}
+        />
       )}
       {activeSection === 'entities' && projectId && (
         <EntitiesTab scopedProjectId={projectId} />
@@ -158,7 +163,10 @@ export function ProjectDetailShell() {
       )}
       {activeSection === 'insights' && <MiningInsightsTab />}
       {activeSection === 'proposals' && (
-        <ProposalsInboxTab bookId={project?.book_id ?? null} />
+        <ProposalsInboxTab
+          bookId={project?.book_id ?? null}
+          onOpenRow={(row) => navigate(row.deepLinkUrl)}
+        />
       )}
       {activeSection === 'gap' && projectId && (
         <GapReportTab scopedProjectId={projectId} />

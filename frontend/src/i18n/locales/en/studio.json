@@ -64,6 +64,54 @@
       "title": "Knowledge",
       "desc": "Browse and open your knowledge-graph projects"
     },
+    "kg-overview": {
+      "title": "Overview",
+      "desc": "Project summary and quick actions"
+    },
+    "kg-entities": {
+      "title": "Entities",
+      "desc": "Browse and search knowledge-graph entities, scoped to a project or across all your projects"
+    },
+    "kg-timeline": {
+      "title": "Timeline",
+      "desc": "Browse in-story events by chronological or narrative order"
+    },
+    "kg-evidence": {
+      "title": "Evidence",
+      "desc": "Search chapter and chat passages by semantic similarity"
+    },
+    "kg-gap": {
+      "title": "Gap Report",
+      "desc": "Find high-mention characters, places, and concepts missing from the glossary"
+    },
+    "kg-proposals": {
+      "title": "Proposals",
+      "desc": "Review pending glossary, wiki, and lore-enrichment suggestions for this book"
+    },
+    "kg-schema": {
+      "title": "Schema",
+      "desc": "Adopt, author, view, and sync your book's knowledge-graph schema"
+    },
+    "kg-graph": {
+      "title": "Knowledge Graph",
+      "desc": "Explore the project's entity relationship graph"
+    },
+    "kg-insights": {
+      "title": "Mining Insights",
+      "desc": "Extraction config quality, model performance & outcome drift across projects"
+    },
+    "kg-jobs": {
+      "title": "Extraction Jobs",
+      "desc": "Monitor knowledge-extraction jobs across all your projects"
+    },
+    "kg-bio": {
+      "title": "Global Bio",
+      "desc": "Your cross-book author bio, used to ground AI writing and analysis"
+    },
+    "kg-privacy": {
+      "title": "Privacy & Data",
+      "desc": "Export or permanently delete your knowledge-graph data"
+    },
     "jobs-list": {
       "title": "Jobs",
       "desc": "Monitor background jobs and tasks"

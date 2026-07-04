@@ -18,9 +18,12 @@ import { CreateSchemaEntry } from '../ontology/CreateSchemaEntry';
 export function ProjectSchemaSection({
   projectId,
   bookId,
+  onAdoptCta,
 }: {
   projectId: string;
   bookId: string | null;
+  /** Threaded through to CreateSchemaEntry (DOCK-7 fix — see its own doc comment). */
+  onAdoptCta?: () => void;
 }) {
   const { t } = useTranslation('knowledge');
   const schemaList = useGraphSchemaList({ scope: 'all', project_id: projectId });
@@ -67,6 +70,7 @@ export function ProjectSchemaSection({
           createBlank={authoring.createBlank}
           clone={authoring.clone}
           busy={busy}
+          onAdoptCta={onAdoptCta}
         />
       )}
     </div>

@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen, fireEvent, waitFor } from '@testing-library/react';
+import { render, screen, fireEvent, waitFor, within } from '@testing-library/react';
 import type { GraphSchemaTree } from '../../../types/ontology';
 import { SchemaWorkbench } from '../SchemaWorkbench';
 
@@ -67,10 +67,10 @@ describe('SchemaWorkbench — full-CRUD authoring (A3)', () => {
     const getUsage = vi.fn().mockResolvedValue({ count: 3, counted: true });
     render(<SchemaWorkbench controller={ctrl as never} getUsage={getUsage} />);
     fireEvent.click(screen.getByTestId('delete-edge-allied_with'));
-    await waitFor(() => expect(screen.getByTestId('delete-confirm')).toBeInTheDocument());
+    const dialog = await screen.findByRole('dialog');
     expect(getUsage).toHaveBeenCalledWith('edge_type', 'allied_with');
     expect(ctrl.deleteEdgeType).not.toHaveBeenCalled(); // gated on confirm
-    fireEvent.click(screen.getByTestId('delete-confirm-yes'));
+    fireEvent.click(within(dialog).getByText('common.delete'));
     await waitFor(() => expect(ctrl.deleteEdgeType).toHaveBeenCalledWith('allied_with'));
   });
 
@@ -79,17 +79,22 @@ describe('SchemaWorkbench — full-CRUD authoring (A3)', () => {
     render(<SchemaWorkbench controller={ctrl as never} getUsage={getUsage} />);
     fireEvent.click(screen.getByTestId('delete-edge-allied_with'));
     await waitFor(() => expect(ctrl.deleteEdgeType).toHaveBeenCalledWith('allied_with'));
-    expect(screen.queryByTestId('delete-confirm')).not.toBeInTheDocument();
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
   });
 
   it('A4: cancelling the confirm does not delete', async () => {
     const getUsage = vi.fn().mockResolvedValue({ count: 2, counted: true });
     render(<SchemaWorkbench controller={ctrl as never} getUsage={getUsage} />);
     fireEvent.click(screen.getByTestId('delete-edge-allied_with'));
-    await waitFor(() => expect(screen.getByTestId('delete-confirm')).toBeInTheDocument());
-    fireEvent.click(screen.getByTestId('delete-confirm-cancel'));
-    await waitFor(() => expect(screen.queryByTestId('delete-confirm')).not.toBeInTheDocument());
+    const dialog = await screen.findByRole('dialog');
+    fireEvent.click(within(dialog).getByText('common.cancel'));
+    await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
     expect(ctrl.deleteEdgeType).not.toHaveBeenCalled();
+  });
+
+  it('renders no fixed inset-0 hand-rolled overlay markup (DOCK-9)', () => {
+    const { container } = renderWB(ctrl);
+    expect(container.innerHTML).not.toContain('fixed inset-0');
   });
 
   it('patches an edge type via inline edit (code immutable)', async () => {
