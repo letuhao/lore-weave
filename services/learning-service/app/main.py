@@ -28,6 +28,7 @@ from app.events.handlers import (
     handle_chat_feedback,
     handle_config_adjusted,
     handle_generation_corrected,
+    handle_glossary_entity_merged,
     handle_glossary_entity_updated,
     handle_knowledge_corrected,
     handle_name_confirmed,
@@ -49,6 +50,7 @@ def build_dispatcher() -> EventDispatcher:
     """Register correction event handlers. Extracted for unit-testability."""
     dispatcher = EventDispatcher()
     dispatcher.register("glossary.entity_updated", handle_glossary_entity_updated)
+    dispatcher.register("glossary.entity_merged", handle_glossary_entity_merged)  # D-LEARN-ENTITY-MERGED
     dispatcher.register("knowledge.entity_corrected", handle_knowledge_corrected)
     dispatcher.register("knowledge.relation_corrected", handle_knowledge_corrected)
     dispatcher.register("knowledge.event_corrected", handle_knowledge_corrected)

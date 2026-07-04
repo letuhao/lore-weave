@@ -233,7 +233,7 @@ func TestMerge_RevertRoundTrip(t *testing.T) {
 		t.Fatalf("merge: %q %v", reason, err)
 	}
 	// revert
-	if r, err := f.srv.revertMergeCore(f.ctx, f.bookID, jid); err != nil || r != "" {
+	if r, err := f.srv.revertMergeCore(f.ctx, f.bookID, jid, uuid.Nil); err != nil || r != "" {
 		t.Fatalf("revert: reason=%q err=%v", r, err)
 	}
 	// loser live again
@@ -252,7 +252,7 @@ func TestMerge_RevertRoundTrip(t *testing.T) {
 		t.Errorf("aliases not restored: got=%v want=%v", got, aliasesBefore)
 	}
 	// double revert → already_reverted
-	if r, _ := f.srv.revertMergeCore(f.ctx, f.bookID, jid); r != "already_reverted" {
+	if r, _ := f.srv.revertMergeCore(f.ctx, f.bookID, jid, uuid.Nil); r != "already_reverted" {
 		t.Errorf("double revert: reason=%q", r)
 	}
 }
@@ -277,7 +277,7 @@ func TestMerge_RevertRestoresLoserAliases_WhenWinnerLackedAliases(t *testing.T) 
 		t.Errorf("loser aliases moved/changed during merge: %v", al)
 	}
 
-	if r, err := f.srv.revertMergeCore(f.ctx, f.bookID, jid); err != nil || r != "" {
+	if r, err := f.srv.revertMergeCore(f.ctx, f.bookID, jid, uuid.Nil); err != nil || r != "" {
 		t.Fatalf("revert: %q %v", r, err)
 	}
 	// loser's ORIGINAL aliases intact; winner's inserted aliases row deleted.
@@ -304,7 +304,7 @@ func TestRevert_ChainGuardRejectsOutOfOrder(t *testing.T) {
 		t.Fatalf("merge B→C: %q %v", reason, err)
 	}
 	// B is now merged into C → reverting A→B must be rejected.
-	if r, err := f.srv.revertMergeCore(f.ctx, f.bookID, jidAB); err != nil || r != "winner_since_merged" {
+	if r, err := f.srv.revertMergeCore(f.ctx, f.bookID, jidAB, uuid.Nil); err != nil || r != "winner_since_merged" {
 		t.Errorf("chain guard: reason=%q err=%v (want winner_since_merged)", r, err)
 	}
 }

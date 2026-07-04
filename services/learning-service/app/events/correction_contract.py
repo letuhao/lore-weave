@@ -25,12 +25,13 @@ in other services do not import it):
 Adding a correction type is a two-line change that CANNOT half-land: add it here AND
 register its handler — omit either and the startup assert + wiring test fail.
 
-Known unhandled correction-class event (deliberately NOT in the set): `glossary.
-entity_merged` (a user merging duplicate entities — glossary outbox.go). Its payload
-is winner/loser ids, not the before/after diff shape learning's corrections use, so
-whether learning should capture merges is an open PRODUCT call (tracked
-D-LEARN-ENTITY-MERGED). Until decided it is intentionally unhandled; the runtime
-WARN (half 2) keeps it VISIBLE rather than silent.
+`glossary.entity_merged` (a user merging duplicate entities — glossary outbox.go) is
+now HANDLED (D-LEARN-ENTITY-MERGED): a merge is a resolution-quality correction on
+the extractor's entity boundaries, encoded structurally (target = surviving winner;
+before = absorbed loser ref, after = winner ref; op="merge"/"split" ⇒ diff_class
+"merge"). Producer gap still open: the entity_merged payload carries no actor_id, so
+merge events DLQ (missing-owner guard) until glossary adds the merging user to the
+payload — the learning-side handler is ready.
 """
 
 from __future__ import annotations
@@ -39,6 +40,7 @@ CORRECTION_EVENT_TYPES: frozenset[str] = frozenset(
     {
         # glossary
         "glossary.entity_updated",
+        "glossary.entity_merged",
         "glossary.name_confirmed",
         # knowledge (entity/relation/event corrections share one handler)
         "knowledge.entity_corrected",

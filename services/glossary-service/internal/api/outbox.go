@@ -55,7 +55,22 @@ type entityMergedPayload struct {
 	WinnerEntityID string `json:"winner_glossary_id"`
 	LoserEntityID  string `json:"loser_glossary_id"`
 	Op             string `json:"op"` // "merged" | "unmerged"
-	EmittedAt      string `json:"emitted_at"`
+	// ActorID is the merging user (D-LEARN-ENTITY-MERGED): learning-service records
+	// a user merge/unmerge as a resolution correction and needs the owner. EMPTY for
+	// a system/auto merge (uuid.Nil actor — e.g. dedup) so the learning owner-guard
+	// correctly skips it rather than persisting a fake nil-UUID owner.
+	ActorID   string `json:"actor_id,omitempty"`
+	EmittedAt string `json:"emitted_at"`
+}
+
+// actorIDStr renders a user actor for the entity_merged payload — empty for the
+// system/auto (uuid.Nil) actor so downstream owner-guards can distinguish a real
+// user correction from an automated merge.
+func actorIDStr(actor uuid.UUID) string {
+	if actor == uuid.Nil {
+		return ""
+	}
+	return actor.String()
 }
 
 // insertMergedOutboxEvent writes a glossary.entity_merged (or unmerged) outbox
