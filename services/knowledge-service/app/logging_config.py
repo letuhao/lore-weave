@@ -1,81 +1,19 @@
-import logging
-import re
-import uuid
-from contextvars import ContextVar
+"""knowledge-service structured logging — thin adapter over the shared installer.
 
-try:
-    from pythonjsonlogger.json import JsonFormatter  # type: ignore
-except ImportError:  # older python-json-logger
-    from pythonjsonlogger.jsonlogger import JsonFormatter  # type: ignore
+P2·A2a: the RedactFilter / ContextFilter / JSON handler and the canonical
+``trace_id_var`` now live ONCE in ``loreweave_obs.logging_setup`` (dual-emitting
+the OTel ``otel_trace_id`` alongside the bespoke ``trace_id`` so logs join Tempo).
+This module keeps the ``app.logging_config`` import path stable — many clients +
+the TraceIdMiddleware import ``trace_id_var`` / ``new_trace_id`` from here — and
+binds the service name to the shared installer.
+"""
 
-trace_id_var: ContextVar[str] = ContextVar("trace_id", default="")
+from loreweave_obs import new_trace_id, trace_id_var
+from loreweave_obs import setup_logging as _setup_logging
 
-_SECRET_PATTERNS = [
-    re.compile(r"sk-[A-Za-z0-9_\-]{20,}"),
-    re.compile(r"Bearer\s+[A-Za-z0-9._\-]+", re.IGNORECASE),
-]
-_REDACTED = "***REDACTED***"
-
-_UVICORN_LOGGERS = ("uvicorn", "uvicorn.error", "uvicorn.access")
-
-
-def _redact(text: str) -> str:
-    for pat in _SECRET_PATTERNS:
-        text = pat.sub(_REDACTED, text)
-    return text
-
-
-class RedactFilter(logging.Filter):
-    def filter(self, record: logging.LogRecord) -> bool:
-        if isinstance(record.msg, str):
-            record.msg = _redact(record.msg)
-        if record.args:
-            try:
-                record.args = tuple(
-                    _redact(a) if isinstance(a, str) else a for a in record.args
-                )
-            except Exception:
-                pass
-        return True
-
-
-class ContextFilter(logging.Filter):
-    def filter(self, record: logging.LogRecord) -> bool:
-        record.trace_id = trace_id_var.get() or ""
-        record.service = "knowledge-service"
-        return True
-
-
-def new_trace_id() -> str:
-    return uuid.uuid4().hex
-
-
-def _build_handler() -> logging.Handler:
-    handler = logging.StreamHandler()
-    formatter = JsonFormatter(
-        "%(asctime)s %(levelname)s %(name)s %(service)s %(trace_id)s %(message)s"
-    )
-    handler.setFormatter(formatter)
-    handler.addFilter(ContextFilter())
-    handler.addFilter(RedactFilter())
-    return handler
+__all__ = ["setup_logging", "trace_id_var", "new_trace_id"]
 
 
 def setup_logging(level: str = "INFO") -> None:
-    level_upper = level.upper()
-
-    root = logging.getLogger()
-    for h in list(root.handlers):
-        root.removeHandler(h)
-    root.addHandler(_build_handler())
-    root.setLevel(level_upper)
-
-    # Uvicorn installs its own loggers with propagate=False and plain formatters.
-    # Replace their handlers and enable propagation so they flow through our root.
-    for name in _UVICORN_LOGGERS:
-        lg = logging.getLogger(name)
-        for h in list(lg.handlers):
-            lg.removeHandler(h)
-        lg.addHandler(_build_handler())
-        lg.setLevel(level_upper)
-        lg.propagate = False
+    """Install the shared JSON logging handler, bound to this service's name."""
+    _setup_logging("knowledge-service", level=level)

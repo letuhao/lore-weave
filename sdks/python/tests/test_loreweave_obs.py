@@ -147,7 +147,14 @@ def test_python_service_wires_setup_tracing(service):
     main_py = repo_root / "services" / service / "app" / "main.py"
     assert main_py.is_file(), f"{main_py} not found"
     src = main_py.read_text(encoding="utf-8")
-    assert "from loreweave_obs import setup_tracing" in src, (
+    # Tolerate a combined import (e.g. `from loreweave_obs import
+    # current_otel_trace_id, setup_tracing`) — assert the symbol is imported
+    # from loreweave_obs on SOME import line, not one exact substring.
+    obs_imports = [
+        ln for ln in src.splitlines()
+        if ln.strip().startswith("from loreweave_obs import")
+    ]
+    assert any("setup_tracing" in ln for ln in obs_imports), (
         f"{service}/app/main.py must import setup_tracing from loreweave_obs"
     )
     call_lines = [ln for ln in src.splitlines() if "setup_tracing(" in ln]
