@@ -38,11 +38,17 @@ Legend: ✅ done+proven · ⏳ tracked (worst-first backlog) · 🟢 exempt (`@s
   `knowledge_tool_call_result_size_bytes`). The production ranking + T2-meter telemetry
   source. **Folded into T2** (budget meter + GUI-monitor telemetry) since that is where
   per-turn/per-tool telemetry lives. Until then, ranking uses the persisted-corpus script.
-- **Response-shape contract-snapshot harness** (§13b — mirror `frontend-tools.contract.json`):
-  a committed `contracts/mcp-response-shapes.contract.json` + a `_normalize`-style test that
-  records each SET tool's `detail=summary` shape and fails on drift. Built alongside the §13
-  CI meta-check (todo: Inspector/enforcement). Until then each refactor carries its own
-  deterministic guard test (e.g. `test_outline_response_contract.py`).
+- ~~**Response-shape contract-snapshot harness** (§13b)~~ ✅ **SHIPPED 2026-07-04.**
+  `contracts/mcp-response-shapes/<service>.json` (4 services) + per-service regen-gated drift
+  tests (`test_response_shape_snapshot.py`) via the shared kit helper
+  `loreweave_mcp.assert_or_write_shape_snapshot` (regen: `WRITE_MCP_SHAPES=1 pytest …`).
+  Pins the EXACT ref set for all 15 ref-field constants → catches drift in BOTH directions
+  (dropped ref OR silent re-bloat), which the per-tool semantic guards miss. Guard proven to
+  BITE (kit test: write→identical-passes→drift-raises). Coverage audited: all 15
+  `apply_response_contract` call sites reference a snapshotted named constant (no inline
+  literal escapes). **Remaining (→ §13 CI meta-check):** an AST/coverage check that every
+  `*_REF_FIELDS` feeding `apply_response_contract` is pinned, so a NEW un-pinned constant
+  can't silently skip.
 
 ## Family-B completion (2026-07-04) — parallel refactor, 18 SET tools
 

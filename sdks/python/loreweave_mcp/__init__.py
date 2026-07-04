@@ -65,6 +65,11 @@ from .response import (
     DetailLevel,
     apply_response_contract,
 )
+from .shape_snapshot import (
+    assert_or_write_shape_snapshot,
+    build_shape_map,
+    repo_root_from,
+)
 
 __all__ = [
     # context / server wiring
@@ -99,4 +104,8 @@ __all__ = [
     # L1/L2 tool-response contract (Context Budget Law §6b)
     "apply_response_contract",
     "DetailLevel",
+    # §13b response-shape snapshot guard (anti re-bloat)
+    "assert_or_write_shape_snapshot",
+    "build_shape_map",
+    "repo_root_from",
 ]

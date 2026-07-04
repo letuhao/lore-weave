@@ -1,0 +1,20 @@
+{
+  "_JOB_REF_FIELDS": [
+    "child_count",
+    "control_caps",
+    "cost_usd",
+    "detail_status",
+    "job_created_at",
+    "job_id",
+    "job_updated_at",
+    "kind",
+    "model",
+    "parent_job_id",
+    "progress",
+    "service",
+    "status",
+    "title",
+    "tokens_in",
+    "tokens_out"
+  ]
+}

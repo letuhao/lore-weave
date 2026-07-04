@@ -1,0 +1,14 @@
+{
+  "_JOB_STATUS_CHAPTER_REF_FIELDS": [
+    "chapter_id",
+    "status",
+    "version_num"
+  ],
+  "_VERSION_REF_FIELDS": [
+    "id",
+    "is_active",
+    "status",
+    "target_language",
+    "version_num"
+  ]
+}

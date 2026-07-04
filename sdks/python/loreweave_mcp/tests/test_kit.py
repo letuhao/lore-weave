@@ -670,3 +670,52 @@ def test_validate_tool_meta_rejects_bad_undo_hint_and_synonyms():
         validate_tool_meta({"tier": "A", "scope": "book", "undo_hint": {"no_tool": 1}})
     with pytest.raises(MetaValidationError):
         validate_tool_meta({"tier": "R", "scope": "none", "synonyms": "notalist"})
+
+
+# ── §13b response-shape snapshot guard ──────────────────────────────────────
+def test_build_shape_map_normalizes_and_sorts():
+    from loreweave_mcp import build_shape_map
+
+    out = build_shape_map({"B_REF": ("z", "a"), "A_REF": ["m", "b"]})
+    # keys sorted, each ref set sorted, tuples/lists both accepted
+    assert list(out.keys()) == ["A_REF", "B_REF"]
+    assert out["A_REF"] == ["b", "m"]
+    assert out["B_REF"] == ["a", "z"]
+
+
+def test_shape_snapshot_write_then_assert_and_drift_bites(tmp_path, monkeypatch):
+    """The guard must BITE on drift, not just pass on identical input — else a
+    silent re-bloat sails through (checklist-is-self-report anti-pattern)."""
+    import json as _json
+
+    from loreweave_mcp import assert_or_write_shape_snapshot, shape_snapshot
+
+    # a fake repo root (contracts/ + services/) so the helper resolves here
+    (tmp_path / "services").mkdir()
+    (tmp_path / "contracts").mkdir()
+    fake_test = tmp_path / "services" / "x-service" / "tests" / "t.py"
+    fake_test.parent.mkdir(parents=True)
+    fake_test.write_text("# marker", encoding="utf-8")
+
+    ref = {"FOO_REF": ("a", "b")}
+    # 1) missing snapshot + no WRITE → fails (never a silent green)
+    monkeypatch.delenv("WRITE_MCP_SHAPES", raising=False)
+    with pytest.raises(AssertionError, match="missing"):
+        assert_or_write_shape_snapshot("x", ref, test_file=str(fake_test))
+
+    # 2) WRITE regenerates then skips
+    monkeypatch.setenv("WRITE_MCP_SHAPES", "1")
+    with pytest.raises(pytest.skip.Exception):
+        assert_or_write_shape_snapshot("x", ref, test_file=str(fake_test))
+    snap = tmp_path / "contracts" / "mcp-response-shapes" / "x.json"
+    assert _json.loads(snap.read_text(encoding="utf-8")) == {"FOO_REF": ["a", "b"]}
+
+    # 3) identical input now passes
+    monkeypatch.delenv("WRITE_MCP_SHAPES", raising=False)
+    assert_or_write_shape_snapshot("x", ref, test_file=str(fake_test))
+
+    # 4) DRIFT (a heavy field added back) → the guard bites
+    with pytest.raises(AssertionError, match="drifted"):
+        assert_or_write_shape_snapshot(
+            "x", {"FOO_REF": ("a", "b", "heavy_body")}, test_file=str(fake_test)
+        )
