@@ -1,5 +1,7 @@
 # ▶▶ NEXT SESSION STARTS HERE
 
+**KNOWLEDGE/KG DOCKABLE MIGRATION — FULLY DONE 2026-07-04** (commits `4c50f7ae2` Phase A, `5c43a36c9` Phase B, `d9d21a262`/`b88e07ba7` docs, `9098f9ce0` studioLinks wiring, `21bae112a` E2E). All 13 panels (`knowledge` hub + 12 `kg-*` capability panels) built, wired into the studio link resolver, and **live-proven**: `frontend/tests/e2e/specs/kg-panels.spec.ts` opens every one through the real Command Palette against the real backend — 17/17 passing (ran via `docker` stack + `vite --port 5199`; the baked `:5174` image is stale for this work). Decision recorded: `KnowledgePage`/`ProjectDetailShell`/`KnowledgeOntologyTab` are **NOT** retired into redirects — matches wave-1's own documented precedent (`11_dockable_migration.md`) of keeping classic routes as multi-device/non-studio entry points; Knowledge's case is harder than wave-1's (no reliable book to redirect a global hub or standalone project into, Studio is desktop-first). See [[kg-dockable-migration-phase-a]] memory for full detail. Remaining, still deferred: cross-panel E2E beyond what's already covered (hub → other capability panels).
+
 > **"CURSOR-FOR-NOVELS" REGISTER — #1 COHERENCE SPEC+PLAN DONE 2026-07-04 (docs only, no build
 > yet — user-scoped this pass as CLARIFY+DESIGN+PLAN only).** After #2 APPLY-DIFF shipped
 > (`fb98f161f`, below), user asked to continue straight to #1 COHERENCE. Dispatched an Explore
