@@ -18,6 +18,7 @@ from typing import Any
 from uuid import UUID
 
 import httpx
+from loreweave_internal_client import build_internal_client
 
 from app.config import settings
 from app.logging_config import trace_id_var
@@ -30,17 +31,14 @@ _client: "GlossaryClient | None" = None
 class GlossaryClient:
     def __init__(self, base_url: str, internal_token: str, timeout_s: float = 5.0) -> None:
         self._base_url = base_url.rstrip("/")
-        self._http = httpx.AsyncClient(
-            timeout=httpx.Timeout(timeout_s),
-            headers={"X-Internal-Token": internal_token},
+        # W3: shared factory bakes X-Internal-Token + JSON + per-request X-Trace-Id.
+        self._http = build_internal_client(
+            base_url, internal_token=internal_token,
+            timeout_s=timeout_s, trace_id_provider=trace_id_var.get,
         )
 
     async def aclose(self) -> None:
         await self._http.aclose()
-
-    def _headers(self) -> dict[str, str] | None:
-        tid = trace_id_var.get()
-        return {"X-Trace-Id": tid} if tid else None
 
     async def select_for_context(
         self, book_id: UUID, user_id: UUID, query: str, *,
@@ -67,7 +65,7 @@ class GlossaryClient:
         if language:
             payload["language"] = language
         try:
-            resp = await self._http.post(url, json=payload, headers=self._headers())
+            resp = await self._http.post(url, json=payload)
             if resp.status_code != 200:
                 logger.warning("glossary select-for-context → %d", resp.status_code)
                 return []
@@ -117,7 +115,7 @@ class GlossaryClient:
         if actions:
             payload["attribute_actions"] = actions
         try:
-            resp = await self._http.post(url, json=payload, headers=self._headers())
+            resp = await self._http.post(url, json=payload)
             if resp.status_code != 200:
                 logger.warning("glossary seed-entities → %d", resp.status_code)
                 return []
