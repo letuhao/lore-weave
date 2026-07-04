@@ -7,6 +7,16 @@ imports NO provider SDK (LLM/embeddings are injected ports) — provider-gate cl
 T3.1 ships the assembly renderer (`build_system_message`); later slices add CompilePlan /
 Planner / Compiler / CompactionStrategy. See docs/plans/2026-07-04-t3-context-kernel.md.
 """
+from loreweave_context.budget import compute_target
+from loreweave_context.plan import CompilePlan, Planner
 from loreweave_context.system_message import build_system_message
+from loreweave_context.tokens import estimate_messages_tokens, estimate_tokens
 
-__all__ = ["build_system_message"]
+__all__ = [
+    "build_system_message",
+    "compute_target",
+    "CompilePlan",
+    "Planner",
+    "estimate_tokens",
+    "estimate_messages_tokens",
+]

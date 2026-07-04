@@ -7,7 +7,11 @@
 > files into its "notifyevent" commit; content verified intact). T3.2 = kernel `budget.py`
 > (`compute_target` moved out of chat's `token_budget`, re-exported) + `plan.py`
 > (`CompilePlan` + `Planner.plan()`, the swappable policy seam) + `_emit_chat_turn` wired to
-> `_PLANNER.plan()`. **NEXT: T3.3** (Compiler + CompactionStrategy under the kernel), **T3.4**
+> `_PLANNER.plan()`. **T3.3a ✅ DONE (see COMMIT):** the script-aware token estimator
+> (`estimate_tokens`/`estimate_messages_tokens`) moved into the kernel (`loreweave_context.tokens`;
+> chat's `token_budget` re-exports it) — the foundational budget primitive compaction needs.
+> 16 kernel tests + 926 chat green (byte-identical) + live packaging check. **NEXT: T3.3b**
+> (move `compaction.py` under the kernel as `CompactionStrategy`; chat re-exports), **T3.4**
 > (package + voice/roleplay consumer), then the optimization-hypothesis A/B sweep.
 
 **Spec:** `docs/specs/2026-07-03-context-budget-law.md` §5 (Planner/Compiler), §12 (kernel),
