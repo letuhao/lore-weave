@@ -337,7 +337,12 @@ class TestStreamWithToolsNoToolCalls:
             await _drain(_run(scripts, knowledge_client=kc))
 
         req = _FakeClient.instances[0].requests[0]
-        assert req.tools is not None and len(req.tools) == 1
+        # 2 = the 1 supplied tool + the always-on conversation_search recovery
+        # tool (T6/D6), appended whenever the pass already offers tools.
+        assert req.tools is not None and len(req.tools) == 2
+        assert {t["function"]["name"] for t in req.tools} == {
+            "memory_search", "conversation_search",
+        }
         assert req.tool_choice == "auto"
 
     @pytest.mark.asyncio
@@ -1002,3 +1007,81 @@ class TestW1SchemaTokens:
         with _patch_client(scripts):
             out = await _drain(_run(scripts, knowledge_client=kc, tools=[]))
         assert [c for c in out if "schema_tokens" in c] == []
+
+
+class TestConversationSearchDispatch:
+    """T6/D6 — a model call to conversation_search is CONSUMER-LOCAL: it runs the
+    session-scoped recovery read in-process (never mcp_execute_tool) and feeds the
+    shaped result back. Proves the WIRING effect, not just the advertise."""
+
+    @pytest.mark.asyncio
+    async def test_call_dispatches_locally_with_session_scope(self, monkeypatch):
+        kc = AsyncMock()
+        captured: dict = {}
+
+        async def _fake_run(pool, *, session_id, owner_user_id, args):
+            captured["session_id"] = session_id
+            captured["owner"] = owner_user_id
+            captured["args"] = args
+            return {"query": "Kai", "count": 1,
+                    "hits": [{"turn": 2, "role": "user", "snippet": "Kai is a knight"}]}
+
+        # No DB in a unit test — stub the pool getter + the shaper (both imported
+        # into stream_service's namespace).
+        monkeypatch.setattr("app.services.stream_service.get_pool", lambda: object())
+        monkeypatch.setattr(
+            "app.services.stream_service.run_conversation_search", _fake_run)
+
+        scripts = [
+            [tok("let me check. "),
+             tool_frag(index=0, id="cs1", name="conversation_search"),
+             tool_frag(index=0, arguments_delta='{"query":"Kai"}'),
+             usage(5, 2), done("tool_calls")],
+            [tok("Kai is a knight."), usage(3, 2), done("stop")],
+        ]
+        with _patch_client(scripts):
+            chunks = await _drain(_run(scripts, knowledge_client=kc))
+
+        # Consumer-local: the generic MCP executor is NEVER touched.
+        kc.mcp_execute_tool.assert_not_awaited()
+        # The engine got the tenancy scoping the recovery read requires.
+        assert captured["args"] == {"query": "Kai"}
+        assert captured["owner"] == TEST_USER_ID
+        assert captured["session_id"] == TEST_SESSION_ID
+
+        tool_chunks = [c["tool_call"] for c in chunks if "tool_call" in c]
+        assert len(tool_chunks) == 1
+        tc = tool_chunks[0]
+        assert tc["tool"] == "conversation_search"
+        assert tc["ok"] is True
+        assert tc["result"]["count"] == 1
+        assert tc["error"] is None
+        assert tc["id"] == "cs1"
+        # The final text pass ran after the recovered fact was fed back.
+        assert any(c.get("content") == "Kai is a knight." for c in chunks)
+
+    @pytest.mark.asyncio
+    async def test_engine_error_maps_to_not_ok(self, monkeypatch):
+        kc = AsyncMock()
+
+        async def _err_run(pool, *, session_id, owner_user_id, args):
+            return {"error": "conversation_search could not read the history: boom"}
+
+        monkeypatch.setattr("app.services.stream_service.get_pool", lambda: object())
+        monkeypatch.setattr(
+            "app.services.stream_service.run_conversation_search", _err_run)
+
+        scripts = [
+            [tool_frag(index=0, id="cs2", name="conversation_search"),
+             tool_frag(index=0, arguments_delta='{"query":"x"}'),
+             done("tool_calls")],
+            [tok("done"), done("stop")],
+        ]
+        with _patch_client(scripts):
+            chunks = await _drain(_run(scripts, knowledge_client=kc))
+
+        tc = next(c["tool_call"] for c in chunks if "tool_call" in c)
+        # A DB blip surfaces as a not-ok tool call the model can self-correct from.
+        assert tc["ok"] is False
+        assert tc["result"] is None
+        assert "boom" in tc["error"]

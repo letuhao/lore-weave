@@ -253,10 +253,13 @@ class TestAdvertiseEmitsSurface:
         adv = surfaces[0]["advertised"]
         assert adv["core"] == []
         assert adv["frontend"] == ["propose_edit"]
-        assert adv["activated"] == ["memory_search"]
+        # T6/D6 — conversation_search is always appended (chat-native, server-
+        # executed); it groups under the "chat" server, like find_tools.
+        assert adv["activated"] == ["conversation_search", "memory_search"]
         assert surfaces[0]["servers"] == {
             "ui": {"tools": 1},
             "knowledge": {"tools": 1},
+            "chat": {"tools": 1},
         }
         # schema_tokens REUSES the W1 measurement from the same pass.
         st = next(c["schema_tokens"] for c in out if "schema_tokens" in c)
@@ -287,9 +290,10 @@ class TestAdvertiseEmitsSurface:
                     if c.get("agent_surface", {}).get("advertised")]
         assert len(surfaces) >= 2, "pass 0 + the post-discovery pass both emit"
         first, last = surfaces[0], surfaces[-1]
-        # pass 0: the always-on core only (universal surface, empty seed).
+        # pass 0: the always-on core, plus the always-appended conversation_search
+        # recovery tool (T6/D6) in activated. No discovered domain tool yet.
         assert "find_tools" in first["advertised"]["core"]
-        assert first["advertised"]["activated"] == []
+        assert first["advertised"]["activated"] == ["conversation_search"]
         assert first["servers"].get("translation") is None
         # after find_tools matched: translation tool advertised + grouped.
         assert "translation_start_job" in last["advertised"]["activated"]

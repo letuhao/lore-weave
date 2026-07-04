@@ -380,7 +380,10 @@ class TestAskChokepointNonDiscovery:
         with _patch_client(scripts):
             await _drain(_run_modes(scripts, knowledge_client=kc, tools=tools))
         req = _FakeClient.instances[0].requests[0]
-        assert req.tools == tools  # byte-identical pre-C2 behavior
+        # The caller's tools pass through byte-identical (pre-C2 behavior); the
+        # always-on conversation_search recovery tool (T6/D6) is appended last.
+        assert req.tools[:-1] == tools
+        assert req.tools[-1]["function"]["name"] == "conversation_search"
 
     @pytest.mark.asyncio
     async def test_ask_mode_advertises_only_r_subset(self):
@@ -389,7 +392,11 @@ class TestAskChokepointNonDiscovery:
         with _patch_client(scripts):
             await _drain(_run_modes(scripts, knowledge_client=kc, permission_mode="ask"))
         req = _FakeClient.instances[0].requests[0]
-        assert {t["function"]["name"] for t in req.tools} == R_CATALOG_NAMES
+        # conversation_search (a pure read) is appended in ask mode too — it's
+        # a Tier-R-safe recovery tool (T6/D6).
+        assert {t["function"]["name"] for t in req.tools} == (
+            R_CATALOG_NAMES | {"conversation_search"}
+        )
 
     @pytest.mark.asyncio
     async def test_ask_mode_with_no_r_tools_runs_tool_free(self):

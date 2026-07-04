@@ -13,6 +13,8 @@ import pytest
 from app.db.conversation_search import (
     CONVERSATION_SEARCH_NAME,
     CONVERSATION_SEARCH_TOOL,
+    ConversationHit,
+    run_conversation_search,
     search_session_messages,
 )
 
@@ -132,3 +134,63 @@ async def test_like_metachars_matched_literally(pool_and_session):
     # an underscore is literal too: "8_" must NOT match "80" (no such literal substring)
     assert await search_session_messages(
         pool, session_id=str(sid), owner_user_id=str(OWNER), query="8_") == []
+
+
+# ── run_conversation_search — the tool-loop SHAPER (no DB; monkeypatched) ─────
+# The engine above is validated against real PG; these prove the LLM-client-first
+# result shaping the tool loop feeds back: never a silent no-op, a DB blip surfaces.
+
+async def test_shaper_empty_query_prompts_for_input():
+    out = await run_conversation_search(
+        None, session_id="s", owner_user_id="o", args={"query": "   "})
+    assert out == {"query": "", "count": 0, "hits": [],
+                   "message": "Provide the exact name or phrase to search for."}
+
+
+async def test_shaper_no_hits_returns_distinct_message(monkeypatch):
+    async def _empty(*a, **k):
+        return []
+    monkeypatch.setattr(
+        "app.db.conversation_search.search_session_messages", _empty)
+    out = await run_conversation_search(
+        None, session_id="s", owner_user_id="o", args={"query": "Zorro"})
+    assert out["count"] == 0 and out["hits"] == []
+    assert "Zorro" in out["message"]  # names the miss so the agent can conclude
+
+
+async def test_shaper_shapes_hits(monkeypatch):
+    async def _hits(*a, **k):
+        return [ConversationHit(3, "user", "…Lâm Uyển wields the Crimson Codex…")]
+    monkeypatch.setattr(
+        "app.db.conversation_search.search_session_messages", _hits)
+    out = await run_conversation_search(
+        None, session_id="s", owner_user_id="o", args={"query": "Lâm Uyển", "limit": 5})
+    assert out["count"] == 1
+    assert out["hits"] == [
+        {"turn": 3, "role": "user", "snippet": "…Lâm Uyển wields the Crimson Codex…"}]
+
+
+async def test_shaper_db_error_surfaces_not_silent(monkeypatch):
+    async def _boom(*a, **k):
+        raise RuntimeError("pg down")
+    monkeypatch.setattr(
+        "app.db.conversation_search.search_session_messages", _boom)
+    out = await run_conversation_search(
+        None, session_id="s", owner_user_id="o", args={"query": "x"})
+    # a DB blip must NOT read as "not discussed" — it's an explicit error
+    assert "error" in out and "pg down" in out["error"]
+    assert "hits" not in out
+
+
+async def test_shaper_bad_limit_falls_back_to_default(monkeypatch):
+    seen = {}
+
+    async def _cap(pool, *, session_id, owner_user_id, query, limit):
+        seen["limit"] = limit
+        return []
+    monkeypatch.setattr(
+        "app.db.conversation_search.search_session_messages", _cap)
+    await run_conversation_search(
+        None, session_id="s", owner_user_id="o",
+        args={"query": "x", "limit": "not-an-int"})
+    assert seen["limit"] == 8

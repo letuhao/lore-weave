@@ -123,3 +123,54 @@ async def search_session_messages(
         )
         for r in rows
     ]
+
+
+async def run_conversation_search(
+    pool: asyncpg.Pool,
+    *,
+    session_id: str,
+    owner_user_id: str,
+    args: dict,
+) -> dict:
+    """Execute the conversation_search tool and shape an LLM-client-first result —
+    a plain dict the model reads directly (mirrors ``find_tools_result``).
+
+    NEVER a silent no-op (H6/H10): a missing query, an empty result, and a DB
+    error each return a distinct, self-correcting payload so the agent can react
+    (rephrase / conclude "not discussed" / not falsely deny) instead of guessing.
+    A DB blip surfaces as ``{"error": …}`` (the tool loop marks the call not-ok);
+    the read carries no write → the caller must NOT decrement the write budget.
+    """
+    query = str(args.get("query", "") or "").strip()
+    if not query:
+        return {
+            "query": "", "count": 0, "hits": [],
+            "message": "Provide the exact name or phrase to search for.",
+        }
+    try:
+        limit = int(args.get("limit", 8))
+    except (TypeError, ValueError):
+        limit = 8
+    try:
+        hits = await search_session_messages(
+            pool, session_id=session_id, owner_user_id=owner_user_id,
+            query=query, limit=limit,
+        )
+    except Exception as exc:  # a DB blip must surface, never read as "not discussed"
+        return {"error": f"conversation_search could not read the history: {exc}"}
+    if not hits:
+        return {
+            "query": query, "count": 0, "hits": [],
+            "message": (
+                f"No earlier message in this conversation mentions '{query}'. "
+                "It may not have been discussed here."
+            ),
+        }
+    return {
+        "query": query,
+        "count": len(hits),
+        "hits": [
+            {"turn": h.sequence_num, "role": h.role, "snippet": h.snippet}
+            for h in hits
+        ],
+    }

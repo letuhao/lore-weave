@@ -46,6 +46,12 @@ from app.db.suspended_runs import (
     save_suspended_run,
 )
 from app.db.tool_approvals import approve_tool, is_tool_approved
+from app.db.conversation_search import (
+    CONVERSATION_SEARCH_NAME,
+    CONVERSATION_SEARCH_TOOL,
+    run_conversation_search,
+)
+from app.db.pool import get_pool
 from app.models import ProviderCredentials
 from app.services.composer import build_composer_messages, is_composer_tool
 from app.services.frontend_tools import (
@@ -787,6 +793,17 @@ async def _stream_with_tools(
                     # discovery path already strips inside _advertise_discovery_tools).
                     if allowed_tool_names is not None:
                         advertised = [strip_tool_meta(td) for td in advertised]
+                # T6/D6 (Context Budget Law) — advertise conversation_search, the
+                # recovery net that lets the agent pull a fact back from THIS
+                # conversation's raw turns after it scrolled out / was compacted.
+                # Appended like run_subagent, but ONLY when the pass already offers
+                # tools — a tool-free turn must NOT be forced onto the tool path
+                # (test_no_tools_no_schema_chunk) — and only at depth 0 (a nested
+                # subagent runs its own scoped surface). Gated on `advertised` here
+                # (BEFORE the run_subagent append) so the guard reflects the real
+                # tool surface, not run_subagent itself.
+                if subagent_depth == 0 and advertised:
+                    advertised = list(advertised) + [CONVERSATION_SEARCH_TOOL]
                 # P5 REG-P5-01 — advertise run_subagent as an always-on tool at the
                 # top level (depth 0 only → a subagent can never spawn another).
                 # Injected AFTER the ask/plan filter so delegation stays available in
@@ -979,6 +996,33 @@ async def _stream_with_tools(
                         "id": c["id"], "iteration": iteration, "tool": c["name"],
                         "args": args_obj, "ok": True,
                         "result": payload, "error": None,
+                    }}
+                    continue
+
+                # T6/D6 (Context Budget Law) — conversation_search is CONSUMER-LOCAL
+                # (like find_tools): a pure READ over THIS session's raw turns in
+                # Postgres — the D6 recovery net (pull back a fact dropped from a
+                # compaction summary). It carries no write, so it does NOT decrement
+                # the write budget (H9). A DB error / empty result returns a
+                # self-correcting payload, never a silent no-op (H6/H10).
+                if c["name"] == CONVERSATION_SEARCH_NAME:
+                    args_obj = _parse_tool_args(c["arguments"])
+                    payload = await run_conversation_search(
+                        get_pool(),
+                        session_id=session_id,
+                        owner_user_id=user_id,
+                        args=args_obj,
+                    )
+                    working.append({
+                        "role": "tool", "tool_call_id": c["id"],
+                        "content": tool_result_content(payload),
+                    })
+                    _cs_ok = not payload.get("error")
+                    yield {"tool_call": {
+                        "id": c["id"], "iteration": iteration, "tool": c["name"],
+                        "args": args_obj, "ok": _cs_ok,
+                        "result": payload if _cs_ok else None,
+                        "error": payload.get("error"),
                     }}
                     continue
 
