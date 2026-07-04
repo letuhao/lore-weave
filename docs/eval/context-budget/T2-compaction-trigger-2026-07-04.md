@@ -74,3 +74,50 @@ stays **OFF** pending a broader gate, because default-ON is a fleet-wide behavio
 flip the global default only after a broader multi-fact-type + light-target judge run and a
 summarizer-frequency cost check. The wiring is correct, unit-tested, flag-gated, and now
 live-proven on the core mechanism.
+
+---
+
+## Broader run — 4 fact types, LIGHT target, blind judge (2026-07-04)
+
+The single-fact test above is the best case (one named entity). This broader run stresses
+it: **four fact TYPES** (A named entity, B a number pair, C a relationship, D an event)
+buried in the brief, **status-op padding** so — with the **T5 gate ON + a Dracula-KG-bound
+session** (100 glossary entities populate the known-entity set) — those turns classify
+`grounding_needed=False` → the **leaner ~9K light target** (more aggressive than the 14K
+heavy). Both arms are gate-ON + Dracula-bound; only the compaction flag differs (clean
+isolation). One multi-fact recall turn. Blind judge = a cold-start Agent scoring RUN_A/RUN_B
+(unlabeled) on `scripts/eval/judge_prompt.md`.
+
+**Result — mixed (safe but lossy):**
+
+| Arm | Recall budget | Fact-token recall | Confabulation | Judge correctness |
+|---|---|---|---|---|
+| baseline (raw) | 18,359 tok | **9/9** (incl. "seven star-anchors") | none | **5/5** |
+| candidate (light-target compacted) | 5,260 tok (**~69% cut**) | **8/9** — dropped the star-anchor COUNT | **none** | **4/5** |
+
+- Compaction fired at the light target (18,003→**5,643** tok). The FACTS/SYNOPSIS summary
+  preserved the name (A), the debt number (B-half), the relationship (C), and the event (D)
+  — but **dropped one of the two numbers in fact B** (kept "4,400 salt-marks", lost "seven
+  star-anchors"): the summary is lossy under aggressive compaction.
+- **Safe failure mode:** the candidate did NOT confabulate — it said *"I do not have
+  information regarding how many star-anchors the ritual needs"* rather than inventing a
+  number. The blind judge scored `critical_confabulation=false` for both; the
+  tokens-down-but-**wrong** trap was avoided.
+- **The recovery net went unused:** gemma-4-26b did NOT call `conversation_search` to pull
+  the dropped fact back from the raw turns (`tools=[]`). The net exists; the model didn't
+  reach for it. **The recovery layer is only as good as the model's propensity to use it.**
+
+**Decision — default STAYS OFF (this run reinforces it, doesn't lift it).** At the aggressive
+light target, compaction is *safe* (no confabulation) but *lossy* (a real, if minor,
+correctness regression: 4/5 vs 5/5; one buried detail lost). A global default-ON would trade
+occasional recall completeness for tokens on every long conversation — a per-deployment
+call, not a clear global win. Two concrete unblocks would justify flipping the default:
+1. **Prompt the model to use `conversation_search` when compaction has fired this turn** (a
+   system hint on the post-compaction turn) — so a dropped fact is recovered, not omitted.
+   This is the highest-leverage follow-up (the net is built; the gap is *usage*).
+2. A more fact-complete summarizer (larger FACTS budget) — but that costs tokens, eroding
+   the win. Measure the tradeoff.
+
+Until then: enable per-deployment where token pressure justifies accepting occasional honest
+omissions; the mechanism is proven **safe** (no confabulation) at both the heavy and the
+aggressive light target.
