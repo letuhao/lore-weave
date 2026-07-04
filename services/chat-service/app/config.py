@@ -74,12 +74,17 @@ class Settings(BaseSettings):
     # ON, it instead fires at the task-elastic `compute_target` (a SOFT budget far
     # below the window): a lore/continuity turn keeps a roomy target, a status-op /
     # smalltalk turn a leaner one — so a light turn compacts sooner (token win).
-    # DEFAULT OFF: this is a BEHAVIOR change (compacts far earlier) whose safety
-    # rests on the D6 recovery net (FACTS/SYNOPSIS summary + conversation_search +
-    # the story_state Core Block). Flip only after the quality-gate judge confirms
-    # answer-correctness holds across compaction. `task_weight` for a NON-grounding
-    # turn is `compact_light_task_weight` (a grounding turn always uses 1.0 = roomy).
-    compact_task_elastic_enabled: bool = False
+    # DEFAULT ON (flipped 2026-07-04 after the quality-gate A/B): compacting at the soft
+    # target preserves answer-correctness once the D6 recovery net is in place — the live
+    # light-target A/B (docs/eval/context-budget/T2-compaction-trigger-2026-07-04.md) hit
+    # 9/9 recall across 3 runs at ~68% token cut, matching the uncompacted baseline, ONCE
+    # the deterministic breadcrumb (`compact_breadcrumb_enabled`) leads the summary. Its
+    # safety rests on that breadcrumb + FACTS/SYNOPSIS summary + story_state Core Block.
+    # `task_weight` for a NON-grounding turn is `compact_light_task_weight` (a grounding
+    # turn always uses 1.0 = roomy); on big-window models the target caps at ~32K
+    # (token_budget._TARGET_MAX_CAP) so a long session stays lean — raise that cap if a
+    # heavy-context task needs more headroom. Set False to restore the flat 0.75×window.
+    compact_task_elastic_enabled: bool = True
     compact_light_task_weight: float = 0.5
 
     # T6/D6 — post-compaction recovery hint. On a turn where compaction summarized

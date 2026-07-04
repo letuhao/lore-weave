@@ -205,10 +205,26 @@ star-anchors" misses were partly a scoring artifact — markdown `**bold**` betw
 - `COMPACT_RECOVERY_HINT_ENABLED` = **OFF** — the breadcrumb makes the tool-recovery path
   unnecessary (the model reads the facts directly), and gemma ignores the hint anyway. Kept
   for a stronger tool-following model.
-- `COMPACT_TASK_ELASTIC_ENABLED` = **still OFF pending the user's call.** The **quality blocker
-  is now resolved** (9/9 at 68% savings). The remaining considerations for a global flip are
-  purely operational: (a) firing compaction far earlier means more summarizer LLM calls
-  (latency/cost) on every long-ish conversation; (b) big-window models rarely reach the target
-  (near-no-op there — the win is small-window / long sessions); (c) this is validated on one
-  scenario — a broader scenario sweep would harden it. With the breadcrumb, task-elastic is now
-  **much closer to default-on-ready** than the pre-breadcrumb verdict implied.
+- `COMPACT_TASK_ELASTIC_ENABLED` = **flipped ON (default) 2026-07-04** after the sweep below.
+  Operational notes that stand: (a) compacting earlier ⇒ more summarizer calls on long
+  conversations (latency/cost); (b) big-window (200K) models rarely reach the ~32K target so
+  it is near-no-op there — the real win is small-window / long sessions; set the flag False to
+  restore the flat 0.75×window trigger. On big windows, raise `token_budget._TARGET_MAX_CAP`
+  if a heavy-context task needs more than ~32K of headroom.
+
+### Broader sweep (2 scenario shapes × 2 runs, DEFAULT config = task-elastic + breadcrumb ON)
+
+To harden the flip beyond the single fact-dense brief, a second scenario was added:
+**natural-cased** facts (no ALLCAPS emphasis — the harder extraction case), a date, a
+quantity, a relationship chain, and a 3-item list, over a longer 8-turn conversation (more
+compaction cycles). Run on the actual shipped default (heavy 14K target, breadcrumb on):
+
+| scenario | run | recall (normalized) | tokens |
+|---|---|---|---|
+| multifact (ALLCAPS) | 1 · 2 | **9/9 · 9/9** | ~5.1K |
+| timeline (natural) | 1 · 2 | **9/9\* · 9/9** | ~5.1K |
+
+`*` one run spelled a recalled name "Ille" for "Ilse" (a 1-char model transcription slip — the
+breadcrumb carried it correctly; not a compaction omission). Across 2 scenario shapes and 4
+runs (36 fact-checks), recall is consistently complete at ~68% token cut — confirming the
+breadcrumb generalizes past the ALLCAPS brief to natural prose. Flip shipped.
