@@ -429,6 +429,27 @@ CREATE TABLE IF NOT EXISTS word_count_backfill_migration (
   id         TEXT PRIMARY KEY,
   applied_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
+
+-- ═══════════════════════════════════════════════════════════════
+-- D-CHAPTER-BLOCKS-STALE-EXTRACTION — 2026-07-05
+--
+-- fn_extract_chapter_blocks read ONLY the client-supplied _text snapshot
+-- (addTextSnapshots, frontend/src/lib/tiptap-utils.ts). Every sibling _text-only
+-- SQL read was swept to union _text else nested standard-tiptap text leaves
+-- (7b9cd4fda), but that sweep missed this WRITE-side trigger — the one thing
+-- word_count, lexical search, and chapter export all actually read
+-- (chapter_blocks), not the raw body. Any chapter saved without a client _text
+-- annotation (import, agent/MCP write, pre-annotation-era save) got
+-- permanently-empty chapter_blocks text_content — invisible until word_count/
+-- Chapter-Browser export made it visible live. Fixed in fn_extract_chapter_blocks
+-- itself (same union); this table gates a ONE-TIME re-extraction backfill
+-- (backfillChapterBlocksExtraction) for chapters whose blocks exist but are
+-- ALL empty under the old logic.
+-- ═══════════════════════════════════════════════════════════════
+CREATE TABLE IF NOT EXISTS chapter_blocks_extraction_backfill_migration (
+  id         TEXT PRIMARY KEY,
+  applied_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
 `
 
 // WorldsDownSQL is the explicit reversible DDL for the C20 world container.
@@ -518,6 +539,16 @@ func Up(ctx context.Context, pool *pgxpool.Pool) error {
 		return err
 	}
 
+	// D-CHAPTER-BLOCKS-STALE-EXTRACTION: re-fire the (now-fixed) extraction trigger
+	// for every chapter whose blocks are stale under the old _text-only logic.
+	// Must run BEFORE backfillWordCounts so a fresh install's word_count backfill
+	// reads already-corrected chapter_blocks; on an existing install (word_count
+	// already backfilled once) each re-touch cascades word_count via
+	// fn_recompute_chapter_word_count regardless of that marker.
+	if err := backfillChapterBlocksExtraction(ctx, pool); err != nil {
+		slog.Error("book-service: chapter_blocks extraction backfill failed; will retry on next startup", "err", err)
+	}
+
 	// CB3: batched, marker-gated word_count backfill for pre-existing chapters.
 	// Best-effort — a failure here must NEVER block book-service startup (word_count
 	// simply stays 0 for un-backfilled rows, a graceful degrade, not a hard
@@ -602,6 +633,79 @@ FROM agg WHERE c.id = agg.chapter_id
 	return nil
 }
 
+// chapterBlocksExtractionBackfillBatchSize mirrors wordCountBackfillBatchSize's
+// rationale (never one giant table-locking statement).
+const chapterBlocksExtractionBackfillBatchSize = 500
+
+// backfillChapterBlocksExtraction re-fires fn_extract_chapter_blocks (via a
+// no-op `body = body` UPDATE, which the AFTER UPDATE OF body trigger treats as
+// a real fire regardless of whether the value changed) for every chapter whose
+// blocks exist but are ALL empty — the exact signature of the old _text-only
+// extraction bug (D-CHAPTER-BLOCKS-STALE-EXTRACTION). Scoped to that signature,
+// not every chapter_drafts row, so a chapter that's genuinely empty (never had
+// prose) is correctly left alone, and a book with thousands of already-correct
+// chapters isn't needlessly re-touched. Re-running the extraction is a pure
+// function of current draft body content, so repeating it on retry/restart is
+// wasted CPU, never a correctness risk — same safety argument as
+// backfillWordCounts. Marker-gated so it runs to completion once.
+func backfillChapterBlocksExtraction(ctx context.Context, pool *pgxpool.Pool) error {
+	var done bool
+	if err := pool.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM chapter_blocks_extraction_backfill_migration WHERE id='cb_extraction_backfill_v1')`).Scan(&done); err != nil {
+		return fmt.Errorf("check marker: %w", err)
+	}
+	if done {
+		return nil
+	}
+
+	var lastID uuid.UUID // zero UUID sorts before every real chapter id
+	for {
+		rows, err := pool.Query(ctx, `
+SELECT d.chapter_id
+FROM chapter_drafts d
+WHERE d.chapter_id > $1
+  AND EXISTS (SELECT 1 FROM chapter_blocks cb WHERE cb.chapter_id = d.chapter_id)
+  AND NOT EXISTS (
+    SELECT 1 FROM chapter_blocks cb
+    WHERE cb.chapter_id = d.chapter_id AND cb.text_content IS NOT NULL AND cb.text_content <> ''
+  )
+ORDER BY d.chapter_id LIMIT $2
+`, lastID, chapterBlocksExtractionBackfillBatchSize)
+		if err != nil {
+			return fmt.Errorf("fetch batch: %w", err)
+		}
+		ids := make([]uuid.UUID, 0, chapterBlocksExtractionBackfillBatchSize)
+		for rows.Next() {
+			var id uuid.UUID
+			if err := rows.Scan(&id); err != nil {
+				rows.Close()
+				return fmt.Errorf("scan batch id: %w", err)
+			}
+			ids = append(ids, id)
+		}
+		rows.Close()
+		if err := rows.Err(); err != nil {
+			return fmt.Errorf("iterate batch: %w", err)
+		}
+		if len(ids) == 0 {
+			break
+		}
+		lastID = ids[len(ids)-1]
+
+		if _, err := pool.Exec(ctx, `UPDATE chapter_drafts SET body = body WHERE chapter_id = ANY($1)`, ids); err != nil {
+			return fmt.Errorf("re-extract batch (after id %s): %w", lastID, err)
+		}
+
+		if len(ids) < chapterBlocksExtractionBackfillBatchSize {
+			break // last (partial) batch — no more rows
+		}
+	}
+
+	if _, err := pool.Exec(ctx, `INSERT INTO chapter_blocks_extraction_backfill_migration (id) VALUES ('cb_extraction_backfill_v1') ON CONFLICT DO NOTHING`); err != nil {
+		return fmt.Errorf("mark backfill complete: %w", err)
+	}
+	return nil
+}
+
 // backfillSQL — Canon Model CM1 one-time data backfill. Pre-existing chapters
 // with >=1 revision are already canon, so flip them to 'published' and pin the
 // latest revision; revision-less chapters stay 'draft'. Marker-gated via
@@ -631,25 +735,36 @@ RETURNS TRIGGER AS $fn$
 DECLARE
   _max_idx INT;
 BEGIN
-  -- 1. UPSERT blocks from JSON_TABLE reading _text snapshots
+  -- 1. UPSERT blocks. Per-node text prefers the editor's _text snapshot
+  -- (addTextSnapshots, frontend/src/lib/tiptap-utils.ts), else joins the node's
+  -- nested standard-tiptap text leaves ($.**.text) — the SAME union already
+  -- applied to every sibling _text-only read (getInternalChapterRevisionText/
+  -- getRevision/revisionForCompare/lexicalSearchCanonSQL, 7b9cd4fda) but missed
+  -- here: a _text-only extraction left ANY chapter written without that client
+  -- annotation (import, agent/MCP write, pre-annotation-era save) with permanently
+  -- empty chapter_blocks — word_count/search/export all read this table, not the
+  -- raw body, so the gap was invisible until those features shipped.
+  -- strict jsonpath mode (not the default lax): lax mode's automatic array-unwrap
+  -- double-visits a single-text-node block (heading/paragraph, the overwhelmingly
+  -- common case) via **, silently DUPLICATING every such block's extracted text —
+  -- caught live re-testing this exact fix; the same latent bug existed in all 4
+  -- pre-existing call sites above and is fixed there too in this same change.
   INSERT INTO chapter_blocks (chapter_id, block_index, block_type, text_content, content_hash, attrs)
   SELECT
     NEW.chapter_id,
-    (jt.block_index - 1),
-    jt.block_type,
-    COALESCE(jt.text_content, ''),
-    encode(sha256(COALESCE(jt.text_content, '')::bytea), 'hex'),
-    jt.block_attrs
-  FROM JSON_TABLE(
-    NEW.body, '$.content[*]'
-    COLUMNS (
-      block_index FOR ORDINALITY,
-      block_type  TEXT  PATH '$.type',
-      text_content TEXT PATH '$._text',
-      block_attrs JSONB PATH '$.attrs'
-    )
-  ) AS jt
-  WHERE jt.block_type IS NOT NULL
+    (x.ord - 1),
+    x.elem->>'type',
+    COALESCE(n.node_text, ''),
+    encode(sha256(COALESCE(n.node_text, '')::bytea), 'hex'),
+    x.elem->'attrs'
+  FROM jsonb_array_elements(NEW.body -> 'content') WITH ORDINALITY AS x(elem, ord)
+  CROSS JOIN LATERAL (
+    SELECT COALESCE(
+      x.elem->>'_text',
+      NULLIF((SELECT string_agg(t #>> '{}', '') FROM jsonb_path_query(x.elem, 'strict $.**.text') AS y(t)), '')
+    ) AS node_text
+  ) n
+  WHERE x.elem->>'type' IS NOT NULL
   ON CONFLICT (chapter_id, block_index)
   DO UPDATE SET
     block_type   = EXCLUDED.block_type,
@@ -664,7 +779,7 @@ BEGIN
 
   -- 2. Delete blocks beyond new document length
   SELECT count(*) INTO _max_idx
-  FROM JSON_TABLE(NEW.body, '$.content[*]' COLUMNS (i FOR ORDINALITY)) AS jt;
+  FROM jsonb_array_elements(NEW.body -> 'content') AS x(elem);
 
   DELETE FROM chapter_blocks
   WHERE chapter_id = NEW.chapter_id AND block_index >= _max_idx;

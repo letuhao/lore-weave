@@ -1949,7 +1949,12 @@ func (s *Server) fetchChapterExportText(ctx context.Context, chID uuid.UUID) (st
 SELECT string_agg(text_content, E'\n\n' ORDER BY block_index)
 FROM chapter_blocks WHERE chapter_id=$1
 `, chID).Scan(&textContent)
-	if err != nil || textContent == "" {
+	// TrimSpace, not ==: blocks can exist with every text_content empty/NULL
+	// (stale extraction — see D-CHAPTER-BLOCKS-STALE-EXTRACTION), in which case
+	// string_agg still returns a non-empty string of bare "\n\n" separators.
+	// A raw == "" check never falls back for that case and silently exports
+	// whitespace garbage instead of the real chapter_drafts.body text.
+	if err != nil || strings.TrimSpace(textContent) == "" {
 		// Fallback: no blocks yet (legacy data), read raw draft body as text.
 		var rawBody []byte
 		if ferr := s.pool.QueryRow(ctx, `SELECT d.body FROM chapter_drafts d WHERE d.chapter_id=$1`, chID).Scan(&rawBody); ferr != nil {
@@ -2478,13 +2483,17 @@ WHERE rv.id=$1 AND rv.chapter_id=$2 AND c.book_id=$3
 	// present, else nested standard-tiptap text leaves (same union as the publish
 	// guard / revision-text endpoint). Also drops the old `t::text` quirk that
 	// kept JSON quotes around each segment (compare already extracted unquoted).
+	// `strict` (not the default lax) mode on the jsonpath — lax mode's automatic
+	// array-unwrap double-visits a single-text-node block (heading/paragraph,
+	// the overwhelmingly common case) via `**`, silently DUPLICATING every such
+	// block's text (D-CHAPTER-BLOCKS-STALE-EXTRACTION follow-up).
 	var textContent *string
 	_ = s.pool.QueryRow(r.Context(), `
 SELECT string_agg(node_text, E'\n\n' ORDER BY ord)
 FROM (
   SELECT x.ord, COALESCE(
     x.elem->>'_text',
-    NULLIF((SELECT string_agg(t #>> '{}', '') FROM jsonb_path_query(x.elem, '$.**.text') AS y(t)), '')
+    NULLIF((SELECT string_agg(t #>> '{}', '') FROM jsonb_path_query(x.elem, 'strict $.**.text') AS y(t)), '')
   ) AS node_text
   FROM jsonb_array_elements(($1)::jsonb -> 'content') WITH ORDINALITY AS x(elem, ord)
 ) n
@@ -2539,13 +2548,14 @@ WHERE rv.id=$1 AND rv.chapter_id=$2 AND c.book_id=$3
 	}
 	// text_content projection (unquoted — the compare diffs this text). Union of
 	// the `_text` projection and nested standard-tiptap text leaves, same as the
-	// publish guard / revision-text / getRevision extraction.
+	// publish guard / revision-text / getRevision extraction. `strict` jsonpath
+	// mode — see getRevision's comment on the lax-mode double-visit bug.
 	_ = s.pool.QueryRow(r.Context(), `
 SELECT string_agg(node_text, E'\n\n' ORDER BY ord)
 FROM (
   SELECT x.ord, COALESCE(
     x.elem->>'_text',
-    NULLIF((SELECT string_agg(t #>> '{}', '') FROM jsonb_path_query(x.elem, '$.**.text') AS y(t)), '')
+    NULLIF((SELECT string_agg(t #>> '{}', '') FROM jsonb_path_query(x.elem, 'strict $.**.text') AS y(t)), '')
   ) AS node_text
   FROM jsonb_array_elements(($1)::jsonb -> 'content') WITH ORDINALITY AS x(elem, ord)
 ) n
@@ -3019,13 +3029,14 @@ WHERE rv.id=$1 AND rv.chapter_id=$2 AND c.book_id=$3 AND c.lifecycle_state='acti
 	// nested standard-tiptap text leaves ($.**.text). The `_text`-only extraction
 	// returned NULL for standard tiptap bodies → the CM3b extraction runner skipped
 	// every such chapter as "text unavailable" (same class as the publish guard fix).
+	// `strict` jsonpath mode — see getRevision's comment on the lax-mode double-visit bug.
 	var textContent *string
 	_ = s.pool.QueryRow(r.Context(), `
 SELECT string_agg(node_text, E'\n\n' ORDER BY ord)
 FROM (
   SELECT x.ord, COALESCE(
     x.elem->>'_text',
-    NULLIF((SELECT string_agg(t #>> '{}', '') FROM jsonb_path_query(x.elem, '$.**.text') AS y(t)), '')
+    NULLIF((SELECT string_agg(t #>> '{}', '') FROM jsonb_path_query(x.elem, 'strict $.**.text') AS y(t)), '')
   ) AS node_text
   FROM jsonb_array_elements(($1)::jsonb -> 'content') WITH ORDINALITY AS x(elem, ord)
 ) n

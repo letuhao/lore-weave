@@ -102,6 +102,9 @@ LIMIT $4 OFFSET $5`
 // Per-node text = the `_text` projection when present, else the node's nested
 // standard-tiptap text leaves ($.**.text) — the `_text`-only read silently
 // excluded standard-tiptap canon from search (same class as the publish guard fix).
+// `strict` jsonpath mode: lax mode's automatic array-unwrap double-visits a
+// single-text-node block (heading/paragraph, the overwhelmingly common case)
+// via `**`, silently DUPLICATING every such block's matched/snippeted text.
 const lexicalSearchCanonSQL = `
 SELECT c.id, c.title, c.sort_order, (x.ord - 1)::int AS block_index,
        NULL::text AS heading_context, nt.node_text AS text_content,
@@ -112,7 +115,7 @@ CROSS JOIN LATERAL jsonb_array_elements(rv.body -> 'content') WITH ORDINALITY AS
 CROSS JOIN LATERAL (
   SELECT COALESCE(
     x.elem ->> '_text',
-    NULLIF((SELECT string_agg(t #>> '{}', '') FROM jsonb_path_query(x.elem, '$.**.text') AS y(t)), '')
+    NULLIF((SELECT string_agg(t #>> '{}', '') FROM jsonb_path_query(x.elem, 'strict $.**.text') AS y(t)), '')
   ) AS node_text
 ) nt
 WHERE c.book_id = $1
