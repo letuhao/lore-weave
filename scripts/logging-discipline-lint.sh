@@ -4,8 +4,13 @@
 # Detects bare `fmt.Println`, `log.Println`, `log.Printf`, `print`, `println`
 # outside test/debug code (SOFT / advisory), AND `logging.basicConfig` in Python
 # service runtime (HARD / blocking — P2·A2a). Production services MUST use the
-# typed structured logger (`contracts/logging` for Go) or `loreweave_obs.setup_logging`
-# (Python).
+# shared structured logger: Go → `log/slog` wired via
+# `github.com/loreweave/observability` (`observability.SetupLogging`, the A1 fleet
+# idiom); Python → `loreweave_obs.setup_logging`.
+#
+# NOTE (P2·A2b): the old Go idiom `contracts/logging` (typed Field/Emit, 0 adopters)
+# was RETIRED — the fleet standardized on slog + observability's span-reading handler.
+# The allowlist entry below is gone with it.
 #
 # Two violation classes:
 #   * SOFT (bare print / log.Print / println!) — advisory (warn-mode default). The
@@ -33,18 +38,17 @@ violators=()
 
 # Go: detect fmt.Print(ln/f) and bare log.Print(ln/f).
 #
-# Allow contracts/logging itself (it's the canonical impl).
 # Allow files ending in _test.go (tests stay terse).
 # Allow doc.go files (godoc examples may show Print).
 # Allow scripts/ and infra/ (not service code).
+# (P2·A2b: the contracts/logging allowlist is gone — that module was retired.)
 go_targets=$(git ls-files 'services/**/*.go' 'contracts/**/*.go' 2>/dev/null | \
     grep -v '_test\.go$' | \
-    grep -v '/doc\.go$' | \
-    grep -v '^contracts/logging/' || true)
+    grep -v '/doc\.go$' || true)
 
 for f in $go_targets ; do
     if grep -nE '(^|[^a-zA-Z_])(fmt\.Println|fmt\.Printf|fmt\.Print|log\.Println|log\.Printf|log\.Print)\(' "$f" >/dev/null 2>&1; then
-        echo "[logging-discipline-lint] WARN: $f uses fmt.Print*/log.Print* — use contracts/logging instead"
+        echo "[logging-discipline-lint] WARN: $f uses fmt.Print*/log.Print* — use log/slog via observability.SetupLogging instead"
         violations=$((violations + 1))
         violators+=("$f")
     fi
@@ -60,7 +64,7 @@ for f in $py_targets ; do
     # Strict pattern: ^\s*print\( — top-of-line print only (avoid matching
     # `breakpoint().print(...)` debugger calls etc.).
     if grep -nE '^[[:space:]]*print\(' "$f" >/dev/null 2>&1; then
-        echo "[logging-discipline-lint] WARN: $f uses bare print() — use contracts/logging adapter"
+        echo "[logging-discipline-lint] WARN: $f uses bare print() — use loreweave_obs.setup_logging"
         violations=$((violations + 1))
         violators+=("$f")
     fi

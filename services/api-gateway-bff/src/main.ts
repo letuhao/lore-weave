@@ -3,6 +3,7 @@
 import './tracing';
 
 import { NestFactory } from '@nestjs/core';
+import { Logger } from '@nestjs/common';
 import { WsAdapter } from '@nestjs/platform-ws';
 import { AppModule } from './app.module';
 import { configureGatewayApp } from './gateway-setup';
@@ -52,7 +53,9 @@ async function bootstrap() {
   app.enableShutdownHooks();
   const port = parseInt(process.env.PORT || '3000', 10);
   await app.listen(port);
-  console.log(
+  // P2·A2b — NestJS Logger, not console.* (LG-1). Structured startup line via the
+  // framework logger so it carries the app's log formatting + level discipline.
+  new Logger('bootstrap').log(
     `api-gateway-bff listening on :${port} auth=${authUrl} books=${bookUrl} sharing=${sharingUrl} catalog=${catalogUrl} provider_registry=${providerRegistryUrl} usage_billing=${usageBillingUrl} translation=${translationUrl} glossary=${glossaryUrl} chat=${chatUrl} knowledge=${knowledgeUrl} composition=${compositionUrl}`,
   );
 }

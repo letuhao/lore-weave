@@ -2,6 +2,12 @@
  * ai-gateway configuration (env-driven; no hardcoded secrets — fails fast if the
  * internal service token is missing, per the repo "No hardcoded secrets" rule).
  */
+import { Logger } from '@nestjs/common';
+
+// P2·A2b — the default warn sink is the NestJS Logger, not console.* (LG-1). The
+// sink stays injectable (tests pass a capturing fn); only the DEFAULT changed.
+const configLog = new Logger('ai-gateway/config');
+
 export interface ProviderConfig {
   /** logical provider name (used in logs + tool namespacing) */
   name: string;
@@ -138,11 +144,11 @@ function defaultProviders(): ProviderConfig[] {
  * `=`, empty name/url) are skipped with a warning rather than crashing the parse.
  *
  * @param raw the env value (defaults to `process.env.AI_GATEWAY_PROVIDERS`)
- * @param warn sink for skipped-entry warnings (defaults to `console.warn`)
+ * @param warn sink for skipped-entry warnings (defaults to the NestJS Logger)
  */
 export function parseProviders(
   raw: string | undefined = process.env.AI_GATEWAY_PROVIDERS,
-  warn: (msg: string) => void = (m) => console.warn(m),
+  warn: (msg: string) => void = (m) => configLog.warn(m),
 ): ProviderConfig[] {
   if (raw === undefined || raw.trim() === '') {
     return defaultProviders();
