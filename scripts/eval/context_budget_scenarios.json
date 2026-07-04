@@ -1,0 +1,51 @@
+{
+  "_doc": "Context Budget quality-gate scenarios (spec docs/specs/context-budget-quality-gate.md §1). Each scenario is a short multi-turn plan. `needs_lore=true` scenarios require a session bound to a lore-populated book/KG project (QG_PROJECT_ID / QG_KG_PROJECT); `needs_lore=false` scenarios (status ops, smalltalk) run on any session and are the mechanical driver-smoke set. Ground-truth notes are for the JUDGE (blind to baseline/candidate), not asserted by the driver.",
+  "scenarios": [
+    {
+      "id": "smalltalk_capabilities",
+      "tag": "no_lore_smalltalk",
+      "needs_lore": false,
+      "ground_truth": "A capabilities/help answer. No book lore should be asserted. Turn should be CHEAP (no over-fetch of memory/graph).",
+      "turns": [
+        "What can you help me with in this writing workspace?"
+      ]
+    },
+    {
+      "id": "status_set_drafting",
+      "tag": "status_op",
+      "needs_lore": false,
+      "ground_truth": "A no-lore operation. The agent should act on the request without pulling the whole outline / full lore dump. Cheap turn expected (T1/T5 lever).",
+      "turns": [
+        "I'm about to start writing. Give me a 3-step plan to draft a chapter, briefly."
+      ]
+    },
+    {
+      "id": "lore_recall_primary",
+      "tag": "lore_recall",
+      "needs_lore": true,
+      "ground_truth": "The agent should retrieve a primary character from the bound book's glossary/KG and state facts that match the DB (name, role, relationships). A confabulated character/fact caps correctness at <=2.",
+      "turns": [
+        "Who is the main character of this book, and what do we know about them so far?"
+      ]
+    },
+    {
+      "id": "continuity_after_op",
+      "tag": "continuity",
+      "needs_lore": true,
+      "ground_truth": "Turn 1 establishes/recalls lore; turn 2 is a style op that must KEEP the turn-1 facts (the T5 gating safety-net: a gated turn must not drop already-loaded lore). Turn-2 reply should still reference the same character consistently.",
+      "turns": [
+        "Tell me about the main character's core conflict.",
+        "Now make that conflict feel darker and higher-stakes — keep the same character."
+      ]
+    },
+    {
+      "id": "cross_chapter_change",
+      "tag": "cross_chapter",
+      "needs_lore": true,
+      "ground_truth": "Recall spanning chapters (T4/T6). The agent should describe how a character or situation changes across the book's chapters, grounded in retrieved lore, without inventing events.",
+      "turns": [
+        "How does the main character change from the beginning of the book to the later chapters?"
+      ]
+    }
+  ]
+}
