@@ -307,3 +307,87 @@ article leakage, cleared on save, cleared on explicit discard; 1 new test in
 `WikiEditorPanel.test.tsx` proving the G7 discard-and-switch path calls the clear function.
 `tsc --noEmit` clean; `features/wiki` + `features/studio/panels` suites 378/378 (16 in the two
 touched files).
+
+## Manual live smoke via Playwright MCP (2026-07-04) — 2 more responsive bugs, fixed
+
+After the automated E2E pass above, a manual live smoke through Playwright MCP (real browser,
+real backend, real dockview — driven interactively rather than a scripted spec) resized the
+studio viewport down to typical narrower dock widths (1024px, 768px) to answer a direct question
+about whether the Wiki panels are responsive. Neither the automated E2E spec nor any unit test
+exercises resize, so this was the first time either panel had been checked at a narrow width.
+Found two real overflow bugs, both the same root cause (a `justify-between`/plain flex row with
+no `min-w-0`/`shrink-0`/wrap boundaries, so content that doesn't fit isn't clipped or reflowed —
+it silently renders past the container's right edge with no scrollbar to reach it):
+
+1. **`WikiEditorWorkspace`'s top action bar** — at 768px the **Save** button (and part of the
+   status toggle) rendered fully off-screen to the right; the only affected controls, worse, were
+   the ones a user most needs mid-edit. **Fix:** split the bar into an identity cluster (kind
+   badge + title + revision count — `min-w-0 flex-1`, title `truncate`s first, revision count
+   hidden below `lg:`) and an action cluster (Delete/Status/Save — `shrink-0`, always fully
+   visible) instead of one undifferentiated flex row.
+2. **`WikiArticleView`'s header row** (the read-only Wiki panel, not the editor) — same missing
+   boundaries meant the Regenerate/Edit/History button group rendered at `x > 900` in a
+   ~466px-wide panel (verified via `getBoundingClientRect()`), fully inaccessible. **Fix:**
+   `flex-wrap` on the header row so the button group drops to its own line below the title
+   instead of overflowing invisibly; `flex-wrap` on the button group itself too, so History wraps
+   to a second line if even Regenerate+Edit alone fill the row.
+
+**Verify:** re-screenshotted + measured exact `getBoundingClientRect()` for the previously
+off-screen elements at 768px/1024px/1568px after each fix (all controls confirmed within
+viewport bounds); re-ran `wiki-panels.spec.ts` (4/4 still pass — the fixes are purely additive
+flex classes, no markup/testid changes) and the full `features/wiki` unit suite (97/97, no
+regressions).
+
+**Correction (same session, minutes later):** the `WikiInfobox` float was initially checked with
+a near-empty test article (only a `Name` attribute, no body prose) and looked fine — that test
+was too easy. The user directly asked to re-check it, and a second pass with a realistic article
+(6 infobox attributes + real prose paragraphs, seeded via the API) found it WAS broken, plus two
+more bugs the first pass missed entirely. See the section below.
+
+## Follow-up manual smoke (2026-07-04, same day) — 3 more bugs, all in the read-only Wiki panel
+
+Re-tested with a realistic article (6 filled infobox attributes + 2 prose paragraphs, seeded via
+direct API calls) instead of a near-empty one — the minimal first-pass fixture had accidentally
+hidden all three of these:
+
+1. **`WikiInfobox`'s fixed `float-right w-[260px]`** squeezed body prose into an unreadably
+   narrow wrapped column (2-3 words/line) at narrow panel widths — NOT a pixel overlap, but bad
+   enough to read as one. Floats wrap adjacent content for their FULL height regardless of how
+   little room is left; there is no width at which a fixed-width float degrades gracefully, only
+   not floating does. **Fix:** the infobox no longer floats below `lg:` — it renders as a normal
+   full-width block ABOVE the prose (same pattern Wikipedia's own mobile view uses); the
+   `lg:float-right lg:ml-5 lg:w-[260px]` float behavior is unchanged at wider widths.
+2. **The workspace box's height was a `style={{ minHeight: 500 }}` floor, never a stretch** — in
+   a dock panel taller than 500px it left dead space below; in a panel shorter than the content
+   needed, it made the WHOLE box grow past the panel's actual height and let the outer
+   `WikiPanel` wrapper's `overflow-auto` scroll the entire sidebar+content block AS ONE UNIT
+   (scrollHeight 1862px measured on a modest article). **Fix:** `h-full min-h-[500px]` (stretch
+   to the dock panel's real height, floor at 500 for a short/split panel) — BUT this alone
+   regressed harder: pinning the row to a fixed height means its `overflow-hidden` now actually
+   activates, and since neither it nor the article-view column had their own scroll, content
+   taller than the pinned height was HARD-CLIPPED with **no scrollbar to reach it at all** —
+   worse than the original bug. Caught immediately by comparing `scrollHeight`/`clientHeight` via
+   `getBoundingClientRect`-adjacent `evaluate()` calls before declaring it fixed. **Real fix:**
+   also add `overflow-y-auto` to the article-view column specifically (`min-w-0 flex-1
+   overflow-y-auto`), so the OUTER row can be height-pinned to the dock panel while the tall
+   INNER column scrolls independently — same shape as `WikiEditorWorkspace`'s existing
+   editor/sidebar columns, which already did this correctly.
+3. **The article-list sidebar's fixed `w-[220px]`** ate roughly half of a 466px-wide panel,
+   leaving only ~220px for the article body — so even with (1) fixed, prose still wrapped at
+   2-3 words/line, because the SIDEBAR, not the infobox, was the deeper cause of the narrow
+   column. Asked the user how to prioritize (shrink sidebar vs. defer as a master-detail redesign
+   vs. let the content column define its own min-width and scroll horizontally); user picked
+   "shrink the sidebar." **Fix:** `w-[150px] lg:w-[220px]` — narrower below `lg:`, unchanged at
+   `lg:`+ where there's room to spare.
+
+**Verify:** re-tested with the SAME realistic article at 768px/1024px/1568px — prose now wraps at
+5-8 words/line at 768px (was 2-3), infobox card renders full-width above prose below `lg:` and
+unchanged floating card at `lg:`+, workspace box fills the dock panel's actual height with no
+dead space AND the article column scrolls independently for tall content (verified
+`scrollHeight`/`clientHeight` directly: outer panel 547/547 — no waste, no whole-panel scroll;
+inner article column 1916/521 — scrolls on its own). Re-ran `wiki-panels.spec.ts` (4/4 pass) and
+the full `features/wiki` unit suite (97/97, no regressions) after all three fixes. Still no
+automated responsive-layout test exists for this panel — both rounds of these bugs were caught
+by manual live-smoke resize only; a `toHaveCSS`/viewport-resize regression spec is the natural
+next hardening step if this dock panel gets touched again, and this session is a concrete
+argument for writing one rather than relying on a third manual pass next time.

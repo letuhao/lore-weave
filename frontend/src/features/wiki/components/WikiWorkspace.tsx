@@ -41,7 +41,12 @@ function WikiInfobox({ attrs, kindName, displayName }: {
   if (visibleAttrs.length === 0) return null;
 
   return (
-    <div className="float-right ml-5 mb-4 w-[260px] rounded-lg border bg-background p-4">
+    // Below `lg:` this renders full-width and ABOVE the body prose instead of floating: at
+    // narrow dock widths a fixed 260px float left the prose wrapping around it in a column as
+    // narrow as ~170px (2-3 words/line, live-smoke-reported as text "overlapping" the rest of
+    // the GUI) — floats wrap for their FULL height regardless of how little room is left, so
+    // there's no width at which a fixed-width float degrades gracefully; only NOT floating does.
+    <div className="mb-4 rounded-lg border bg-background p-4 lg:float-right lg:ml-5 lg:w-[260px]">
       <div className="mb-3 text-center">
         <div className="mx-auto mb-2 flex h-16 w-16 items-center justify-center rounded-lg border bg-gradient-to-br from-amber-900/30 to-amber-950/20">
           <span className="font-serif text-2xl text-primary">{displayName.charAt(0)}</span>
@@ -349,10 +354,13 @@ export function WikiArticleView({ bookId, articleId, onRegenerate }: {
     <div className="flex gap-0">
       {/* Article body */}
       <div className="min-w-0 flex-1 border-x">
-        {/* Header */}
+        {/* Header — `flex-wrap` so the Regenerate/Edit/History action buttons drop to their own
+            row instead of overflowing invisibly past the panel's right edge at narrow dock
+            widths (live-smoke found them rendered off-screen at x>900 in a ~466px-wide panel,
+            with no scrollbar to reach them — same class of bug as the editor's top bar). */}
         <div className="px-6 pt-5">
-          <div className="mb-1 flex items-center justify-between">
-            <div className="flex items-center gap-2">
+          <div className="mb-1 flex flex-wrap items-center justify-between gap-y-2">
+            <div className="flex min-w-0 items-center gap-2">
               <h2 className="font-serif text-xl font-semibold">{article.display_name}</h2>
               <span
                 className="inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-medium"
@@ -377,7 +385,7 @@ export function WikiArticleView({ bookId, articleId, onRegenerate }: {
                 </button>
               )}
             </div>
-            <div className="flex gap-1">
+            <div className="flex flex-wrap gap-1">
               <button
                 onClick={() => onRegenerate(article.entity_id, article.display_name)}
                 title={t('gen.regenerate')}
@@ -607,9 +615,15 @@ export function WikiWorkspace({ bookId }: { bookId: string }) {
       )}
       <WikiGenJobBanner job={job} onResume={resume} onCancel={cancel} busy={busy} />
       <WikiGenJobDetail key={job?.job_id ?? 'none'} job={job} />
-      <div className="flex overflow-hidden rounded-lg border" style={{ minHeight: 500 }}>
-        {/* Left sidebar */}
-        <div className="w-[220px] shrink-0">
+      {/* `h-full` so this stretches to the dock panel's actual height instead of sitting at a
+          fixed 500px with dead space below it in a taller panel; `min-h-[500px]` keeps the old
+          floor for a short/split panel. */}
+      <div className="flex h-full min-h-[500px] overflow-hidden rounded-lg border">
+        {/* Left sidebar — narrower below `lg:` so the article column keeps a usable width in a
+            narrow dock panel; at 768px a fixed 220px list left only ~220px for the article body
+            even after the infobox stopped floating (live-smoke measured it), squeezing prose
+            into a barely-readable column regardless of the infobox fix. */}
+        <div className="w-[150px] shrink-0 lg:w-[220px]">
           <WikiSidebar
             articles={articles}
             selectedId={effectiveSelected}
@@ -626,8 +640,12 @@ export function WikiWorkspace({ bookId }: { bookId: string }) {
           />
         </div>
 
-        {/* Article view */}
-        <div className="min-w-0 flex-1">
+        {/* Article view — its own `overflow-y-auto` (not just the outer `overflow-hidden` row)
+            so a tall article scrolls independently within its column now that the row is
+            `h-full`-pinned to the dock panel's height instead of growing to fit; without this
+            the row's `overflow-hidden` HARD-CLIPS content past that height with no scrollbar
+            to reach it at all — strictly worse than the pre-fix "whole panel scrolls" behavior. */}
+        <div className="min-w-0 flex-1 overflow-y-auto">
           {effectiveSelected ? (
             <WikiArticleView bookId={bookId} articleId={effectiveSelected} onRegenerate={openRegenerate} />
           ) : (

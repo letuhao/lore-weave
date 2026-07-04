@@ -417,60 +417,65 @@ export function WikiEditorWorkspace({ bookId, articleId, initialRightPanel, onBa
 
   return (
     <div className="flex h-full flex-col">
-      {/* Top bar */}
+      {/* Top bar — the identity cluster (kind badge / title / revision count) truncates and
+          shrinks first; the action buttons (Delete/Status/Save) are `shrink-0` so they stay
+          fully visible and clickable at any panel width (live-smoke found Save clipped off-
+          screen at 768px when this bar had no wrap/truncate/shrink boundaries at all). */}
       <div className="flex items-center gap-3 border-b bg-card px-4 py-2">
         <button
           onClick={handleBackClick}
-          className="inline-flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground"
+          className="inline-flex shrink-0 items-center gap-1 text-sm text-muted-foreground hover:text-foreground"
         >
           Back
         </button>
-        <div className="h-4 w-px bg-border" />
-        <span
-          className="inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-medium"
-          style={{ backgroundColor: article.kind.color + '18', color: article.kind.color }}
-        >
-          {article.kind.name}
-        </span>
-        <span className="text-sm font-semibold">{article.display_name}</span>
-        <span className="text-[11px] text-muted-foreground">
-          &middot; {t('revisions', { count: article.revision_count })}
-        </span>
+        <div className="h-4 w-px shrink-0 bg-border" />
+        <div className="flex min-w-0 flex-1 items-center gap-2">
+          <span
+            className="inline-flex shrink-0 items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-medium"
+            style={{ backgroundColor: article.kind.color + '18', color: article.kind.color }}
+          >
+            {article.kind.name}
+          </span>
+          <span className="min-w-0 flex-1 truncate text-sm font-semibold">{article.display_name}</span>
+          <span className="hidden shrink-0 text-[11px] text-muted-foreground lg:inline">
+            &middot; {t('revisions', { count: article.revision_count })}
+          </span>
+        </div>
 
-        <div className="flex-1" />
+        <div className="flex shrink-0 items-center gap-2">
+          {/* Delete */}
+          <button
+            onClick={() => setDeleteOpen(true)}
+            className="inline-flex items-center gap-1 rounded-md border border-destructive/20 px-2 py-1 text-[11px] font-medium text-destructive hover:bg-destructive/10"
+          >
+            <Trash2 className="h-3 w-3" />
+            {t('deleteArticle')}
+          </button>
 
-        {/* Delete */}
-        <button
-          onClick={() => setDeleteOpen(true)}
-          className="inline-flex items-center gap-1 rounded-md border border-destructive/20 px-2 py-1 text-[11px] font-medium text-destructive hover:bg-destructive/10"
-        >
-          <Trash2 className="h-3 w-3" />
-          {t('deleteArticle')}
-        </button>
+          {/* Status toggle */}
+          <button
+            onClick={handleTogglePublish}
+            className={cn(
+              'inline-flex items-center gap-1.5 rounded-md border px-2.5 py-1 text-[11px] font-medium transition-colors',
+              article.status === 'published'
+                ? 'border-green-500/20 text-green-400 hover:bg-green-500/10'
+                : 'border-amber-400/20 text-amber-400 hover:bg-amber-400/10',
+            )}
+          >
+            {article.status === 'published' ? <Eye className="h-3 w-3" /> : <EyeOff className="h-3 w-3" />}
+            {article.status === 'published' ? t('published') : t('draft')}
+          </button>
 
-        {/* Status toggle */}
-        <button
-          onClick={handleTogglePublish}
-          className={cn(
-            'inline-flex items-center gap-1.5 rounded-md border px-2.5 py-1 text-[11px] font-medium transition-colors',
-            article.status === 'published'
-              ? 'border-green-500/20 text-green-400 hover:bg-green-500/10'
-              : 'border-amber-400/20 text-amber-400 hover:bg-amber-400/10',
-          )}
-        >
-          {article.status === 'published' ? <Eye className="h-3 w-3" /> : <EyeOff className="h-3 w-3" />}
-          {article.status === 'published' ? t('published') : t('draft')}
-        </button>
-
-        {/* Save */}
-        <button
-          onClick={() => handleSave()}
-          disabled={saving || body === null}
-          className="inline-flex items-center gap-1.5 rounded-md bg-primary px-3 py-1 text-[11px] font-medium text-primary-foreground hover:brightness-110 disabled:opacity-50"
-        >
-          <Save className="h-3 w-3" />
-          {saving ? 'Saving...' : 'Save'}
-        </button>
+          {/* Save */}
+          <button
+            onClick={() => handleSave()}
+            disabled={saving || body === null}
+            className="inline-flex items-center gap-1.5 rounded-md bg-primary px-3 py-1 text-[11px] font-medium text-primary-foreground hover:brightness-110 disabled:opacity-50"
+          >
+            <Save className="h-3 w-3" />
+            {saving ? 'Saving...' : 'Save'}
+          </button>
+        </div>
       </div>
 
       {/* Editor + sidebar */}
