@@ -1,6 +1,6 @@
 import { describe, it, expect, vi } from 'vitest';
 import { render, screen, fireEvent } from '@testing-library/react';
-import { readFileSync } from 'node:fs';
+import { readFileSync, existsSync } from 'node:fs';
 import { resolve } from 'node:path';
 
 // Chat Quality Wave W2 — the context drill-down panel. Two suites:
@@ -218,9 +218,18 @@ describe('CATEGORY_COLORS ⇄ CATEGORY_HEX lockstep', () => {
 // WRITE_CONTEXT_TRACE_CONTRACT=1); here we assert the FE vocabulary matches it EXACTLY.
 describe('BREAKDOWN_CATEGORIES ⇄ BE contract (context-trace.contract.json)', () => {
   it('FE category vocabulary equals the BE-authoritative set', () => {
-    // vitest runs with cwd = the frontend/ package root; the contract lives at repo root.
-    const contractPath = resolve(process.cwd(), '../contracts/context-trace.contract.json');
-    const contract = JSON.parse(readFileSync(contractPath, 'utf-8')) as {
+    // The contract lives at repo-root/contracts. Resolve robustly regardless of the cwd
+    // vitest is invoked from (frontend/ locally, or the repo root in some CI configs):
+    // try candidate roots and use the first that exists — a wrong path fails LOUD here,
+    // never a false green.
+    const rel = 'contracts/context-trace.contract.json';
+    const candidates = [
+      resolve(process.cwd(), '..', rel), // cwd = frontend/
+      resolve(process.cwd(), rel), // cwd = repo root
+    ];
+    const contractPath = candidates.find((p) => existsSync(p));
+    expect(contractPath, `context-trace contract not found; tried: ${candidates.join(', ')}`).toBeDefined();
+    const contract = JSON.parse(readFileSync(contractPath!, 'utf-8')) as {
       breakdown_categories?: string[];
     };
     expect(contract.breakdown_categories, 'contract missing breakdown_categories').toBeDefined();

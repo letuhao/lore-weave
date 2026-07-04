@@ -376,6 +376,10 @@ async def compact_messages(
         if collapsed:
             report.duplicates_collapsed = collapsed
             report.steps.append("collapse_duplicates")
+        # NB: if this doesn't get under trigger and microcompact then runs, a collapsed
+        # `_DUP_PLACEHOLDER` message (≠ `_PLACEHOLDER`) may be re-cleared and also counted
+        # in `tool_results_cleared` — a harmless report-counter double-representation (the
+        # content is already collapsed), not a correctness issue.
         if estimate_messages_tokens(work) <= trigger:
             report.tokens_after = estimate_messages_tokens(work)
             return work, report

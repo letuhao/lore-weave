@@ -509,6 +509,42 @@ class TestStreamWithToolsOneToolCall:
         assert json.loads(tool_msg["content"]) == {"error": "boom"}
 
     @pytest.mark.asyncio
+    async def test_d13a_collapse_flag_forwarded_to_in_loop_compaction(self, monkeypatch):
+        """D13a wiring: the `compact_collapse_duplicates_enabled` config flag reaches the
+        in-loop compaction call's `collapse_duplicates` param (a typo'd flag name would
+        break this even though the feature ships default-off)."""
+        from app.config import settings
+        from app.services.compaction import CompactionReport
+        monkeypatch.setattr(settings, "compact_collapse_duplicates_enabled", True, raising=False)
+        seen: dict = {}
+
+        async def fake_compact(msgs, **kwargs):
+            seen.update(kwargs)
+            return msgs, CompactionReport()
+
+        monkeypatch.setattr("app.services.stream_service.compact_messages", fake_compact)
+        kc = AsyncMock()
+        kc.mcp_execute_tool.return_value = _envelope(success=True, result={"ok": 1})
+        scripts = [
+            [
+                tool_frag(index=0, id="c1", name="memory_search"),
+                tool_frag(index=0, arguments_delta="{}"),
+                done("tool_calls"),
+            ],
+            [tok("done"), done("stop")],
+        ]
+        gen = _stream_with_tools(
+            model_source="user_model", model_ref=TEST_MODEL_REF, user_id=TEST_USER_ID,
+            messages=[{"role": "user", "content": "hi"}], gen_params={},
+            tools=[{"type": "function", "function": {"name": "memory_search"}}],
+            knowledge_client=kc, session_id=TEST_SESSION_ID, project_id="proj-1",
+            effective_limit=8000,  # enables the in-loop compaction guard
+        )
+        with _patch_client(scripts):
+            await _drain(gen)
+        assert seen.get("collapse_duplicates") is True
+
+    @pytest.mark.asyncio
     async def test_caller_messages_not_mutated(self):
         """The loop works on a copy — the caller's `messages` list is
         not mutated (design §4 `working = list(messages)`)."""
