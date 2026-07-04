@@ -63,6 +63,7 @@ import { EnrichmentGapsPanel } from './EnrichmentGapsPanel';
 import { EnrichmentSourcesPanel } from './EnrichmentSourcesPanel';
 import { EnrichmentJobsPanel } from './EnrichmentJobsPanel';
 import { EnrichmentSettingsPanel } from './EnrichmentSettingsPanel';
+import { UserGuidePanel } from './UserGuidePanel';
 
 /** #18 — domain-area grouping for the Command Palette. Required for every non-hidden panel
  *  (enforced at runtime by panelCatalogContract.test.ts — B6, not just a convention). */
@@ -87,6 +88,9 @@ export interface StudioPanelDef {
   hiddenFromPalette?: boolean;
   /** Command Palette sub-group (#18). Omit only when hiddenFromPalette is true. */
   category?: StudioPanelCategory;
+  /** #19 — longer i18n key for the User Guide panel + tour captions; falls back to `descKey`
+   *  when absent (Wave 1: no panel has this yet; Wave 2 fills it in per-panel). */
+  guideBodyKey?: string;
 }
 
 export const STUDIO_PANELS: StudioPanelDef[] = [
@@ -210,6 +214,10 @@ export const STUDIO_PANELS: StudioPanelDef[] = [
   { id: 'enrichment-sources', component: EnrichmentSourcesPanel, titleKey: 'panels.enrichment-sources.title', descKey: 'panels.enrichment-sources.desc', category: 'enrichment' },
   { id: 'enrichment-jobs', component: EnrichmentJobsPanel, titleKey: 'panels.enrichment-jobs.title', descKey: 'panels.enrichment-jobs.desc', category: 'enrichment' },
   { id: 'enrichment-settings', component: EnrichmentSettingsPanel, titleKey: 'panels.enrichment-settings.title', descKey: 'panels.enrichment-settings.desc', category: 'enrichment' },
+  // 19_onboarding_and_user_guide.md Wave 1 — catalog-driven help: renders every openable panel
+  // above, grouped by #18's category, using descKey as the guide body (Wave 2 adds dedicated
+  // guideBodyKey copy per panel). Palette + agent openable like any other panel.
+  { id: 'user-guide', component: UserGuidePanel, titleKey: 'panels.user-guide.title', descKey: 'panels.user-guide.desc', category: 'platform' },
   { id: 'welcome', component: WelcomePanel, titleKey: 'welcome.tab', descKey: 'welcome.tab', hiddenFromPalette: true },
 ];
 
