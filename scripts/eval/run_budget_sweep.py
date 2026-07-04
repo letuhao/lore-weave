@@ -19,6 +19,7 @@ Runs IN-CONTAINER (docker exec infra-chat-service-1), same as run_quality_gate.p
 """
 from __future__ import annotations
 
+import asyncio
 import json
 import os
 import time
@@ -27,6 +28,11 @@ from pathlib import Path
 
 import httpx
 import jwt
+
+try:
+    import asyncpg  # in-container: REAL provider tokens from chat_messages (LM Studio usage)
+except Exception:  # pragma: no cover
+    asyncpg = None
 
 try:
     from loreweave_context import estimate_tokens  # in-container: script-aware output estimate
@@ -139,36 +145,63 @@ def _send_turn(c: httpx.Client, sid: str, content: str) -> dict:
     }
 
 
-def _aggregate(turns: list[dict]) -> dict:
-    """Session-level cost/UX aggregation (the hidden-spend-inclusive $ proxy)."""
-    total_in = sum(t["input_tokens"] or 0 for t in turns)
-    total_out = sum(t["output_tokens"] or 0 for t in turns)
-    comp_turns = [t for t in turns if t["compactions"]]
-    summ_calls = 0
-    summ_tokens = 0
-    for t in comp_turns:
+async def _real_agent_tokens(session_id: str) -> tuple[int, int] | None:
+    """REAL provider tokens the agent turns billed (LM Studio usage, persisted in
+    chat_messages) — provider TRUTH, not an estimate. None if asyncpg / DB unavailable."""
+    dsn = os.environ.get("DATABASE_URL", "")
+    if asyncpg is None or not dsn:
+        return None
+    conn = await asyncpg.connect(dsn)
+    try:
+        row = await conn.fetchrow(
+            "SELECT COALESCE(sum(input_tokens),0) i, COALESCE(sum(output_tokens),0) o "
+            "FROM chat_messages WHERE session_id=$1 AND role='assistant'", session_id)
+        return int(row["i"]), int(row["o"])
+    finally:
+        await conn.close()
+
+
+def _aggregate(turns: list[dict], real: tuple[int, int] | None = None) -> dict:
+    """Session-level cost/UX aggregation. Agent tokens = REAL provider counts (chat_messages)
+    when available; the summarizer is UNMETERED (BYOK-local) so its cost is the one ESTIMATE —
+    from the ephemeral compaction events AND the C_persist input-drops (persist = a summarizer
+    call that is NOT a stream event: the turn's input drops sharply below the previous turn's)."""
+    est_in = sum(t["input_tokens"] or 0 for t in turns)
+    est_out = sum(t["output_tokens"] or 0 for t in turns)
+    real_in, real_out = (real if real else (None, None))
+    agent_total = (real_in + real_out) if real else (est_in + est_out)
+
+    # summarizer calls = ephemeral compaction-summarize events + C_persist input-drops
+    summ_calls, summ_tokens = 0, 0
+    prev_in = None
+    for t in turns:
+        cur_in = t["input_tokens"] or 0
         for c in t["compactions"]:
             steps = c.get("steps") or []
             if c.get("summarized") or "summarize" in steps or "breadcrumb" in steps:
                 summ_calls += 1
-                # hidden spend: the summarizer processes ~the pre-compaction middle (input)
-                # + emits up to SUMMARY_OUTPUT_EST (output). Upper-bound estimate.
                 summ_tokens += int(c.get("tokens_before") or 0) + SUMMARY_OUTPUT_EST
+        if prev_in and cur_in < 0.6 * prev_in and not t["compactions"]:
+            # a persist ran before this turn (input dropped) — it summarized ~the prev history.
+            summ_calls += 1
+            summ_tokens += prev_in + SUMMARY_OUTPUT_EST
+        prev_in = cur_in
     subagent_calls = sum(t["tool_calls"].count("run_subagent") for t in turns)
     convsearch_calls = sum(t["tool_calls"].count("conversation_search") for t in turns)
-    session_total = total_in + total_out + summ_tokens
+    session_total = agent_total + summ_tokens
     lat_turns = [t["latency_turn_s"] for t in turns if t["latency_turn_s"] is not None]
     lat_first = [t["latency_first_s"] for t in turns if t["latency_first_s"] is not None]
     return {
         "turns": len(turns),
-        "session_input_tokens": total_in,
-        "session_output_tokens": total_out,
+        "agent_input_real": real_in, "agent_output_real": real_out,   # provider TRUTH
+        "agent_input_est": est_in, "agent_output_est": est_out,        # cross-check
+        "agent_total": agent_total,
         "summarizer_calls": summ_calls,
-        "summarizer_tokens_est": summ_tokens,
+        "summarizer_tokens_est": summ_tokens,                          # the one ESTIMATE
         "subagent_calls": subagent_calls,
         "conversation_search_calls": convsearch_calls,
-        "compaction_turns": len(comp_turns),
-        "session_total_est": session_total,
+        "compaction_turns": len([t for t in turns if t["compactions"]]),
+        "session_total": session_total,          # real agent + estimated summarizer
         "overhead_ratio": round(summ_tokens / session_total, 3) if session_total else 0.0,
         "latency_turn_avg_s": round(sum(lat_turns) / len(lat_turns), 1) if lat_turns else None,
         "latency_first_avg_s": round(sum(lat_first) / len(lat_first), 2) if lat_first else None,
@@ -202,10 +235,16 @@ def main() -> int:
                 print(f"      t{i}: {len(res['assistant'])}c in={res['input_tokens']} "
                       f"out={res['output_tokens']} comp={len(res['compactions'])} "
                       f"tools={res['tool_calls']} {res['latency_turn_s']}s")
-            agg = _aggregate(turns)
+            try:
+                real = asyncio.run(_real_agent_tokens(sid))
+            except Exception:
+                real = None
+            agg = _aggregate(turns, real=real)
             sessions_meta.append({"scenario": s["id"], "session_id": sid, **agg})
-            print(f"    => session_total_est={agg['session_total_est']} "
-                  f"summ_calls={agg['summarizer_calls']} overhead={agg['overhead_ratio']}")
+            _src = "REAL" if real else "est"
+            print(f"    => session_total={agg['session_total']} (agent[{_src}]={agg['agent_total']} "
+                  f"+ summ~{agg['summarizer_tokens_est']}/{agg['summarizer_calls']} calls) "
+                  f"overhead={agg['overhead_ratio']}")
     (run_dir / "transcript.jsonl").write_text("\n".join(lines) + "\n", encoding="utf-8")
     (run_dir / "session_metrics.json").write_text(
         json.dumps({"label": LABEL, "model_ref": MODEL_REF, "kg_project": KG_PROJECT,

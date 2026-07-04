@@ -151,9 +151,16 @@ realistic grounding/retrieval cost. Ground-truth notes per scenario feed the bli
 before→after? summarizer invoked?) · **tool calls** (names + count — `conversation_search`,
 `run_subagent`, …) · `latency_first_token` · `latency_turn`.
 
-**Per session** (new aggregation pass): Σ tokens (from `usage_logs` join on session = the
-hidden-spend-inclusive ground truth) · compaction_events · summarizer_calls · turns · $ · the
-per-turn series.
+**Per session** (aggregation pass): the AGENT cost is **provider TRUTH** — the driver queries
+`chat_messages.input_tokens`/`output_tokens` (the real LM Studio usage chat-service persists per
+turn) after the run. The **summarizer** is the ONE estimate (BYOK-local summarizer calls are NOT
+metered — `usage_outbox` only tracks platform/extraction ops): estimated from the ephemeral
+compaction events (tokens_before) AND the C_persist input-drops (a persist is a summarizer call
+that is not a stream event — detected as a turn whose input drops sharply below the prior turn).
+`session_total` = real agent + estimated summarizer. (Cross-checked: the driver's per-turn
+`contextBudget.used_tokens` estimate == the real `chat_messages.input_tokens`, e.g. t4=5,347 in
+both — so the estimator was already provider-accurate on the input side; the upgrade removes the
+output + summarizer guesses.)
 
 **Two scorers:**
 - **Programmatic** — cost, latency, `knowledge_retention` (fact-token match, markdown-normalized),
