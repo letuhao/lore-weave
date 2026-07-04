@@ -20,6 +20,7 @@ from app.db.online_eval import ensure_default_online_eval_rule
 from app.db.pool import close_pool, create_pool, get_pool
 from app.clients.llm_client import build_judge_sdk
 from app.events.consumer import EventConsumer
+from app.events.correction_contract import CORRECTION_EVENT_TYPES
 from app.events.eval_runner import EvalRunner
 from app.events.dispatcher import EventDispatcher
 from app.events.llm_judge_consumer import LLMJudgeConsumer
@@ -61,6 +62,16 @@ def build_dispatcher() -> EventDispatcher:
     dispatcher.register("glossary.name_confirmed", handle_name_confirmed)  # M7c-3
     dispatcher.register("wiki.corrected", handle_wiki_corrected)  # D-WIKI-M8
     dispatcher.register("wiki.suggestion_reviewed", handle_wiki_suggestion_reviewed)  # D-WIKI-M8
+    # No-silent-drop: fail-fast at startup if a DECLARED correction event type has no
+    # handler (a rename / new-type that shipped unwired would otherwise be silently
+    # skipped at DEBUG on the firehose). The wiring test locks the reverse direction too.
+    missing = CORRECTION_EVENT_TYPES - set(dispatcher.registered_types)
+    if missing:
+        raise RuntimeError(
+            "build_dispatcher does not cover the correction-event contract: missing handlers "
+            f"for {sorted(missing)} (app/events/correction_contract.py). A correction event with "
+            "no handler is silently dropped — register it or remove it from the contract."
+        )
     return dispatcher
 
 
