@@ -15,6 +15,7 @@ import type { IDockviewPanelProps } from 'dockview-react';
 import { useTranslation } from 'react-i18next';
 import { ConfirmDialog } from '@/components/shared';
 import { WikiEditorWorkspace, type WikiEditorRightPanel } from '@/features/wiki/components/WikiEditorWorkspace';
+import { clearWikiEditorDraft } from '@/features/wiki/lib/wikiEditorDraftCache';
 import { useStudioHost } from '../host/StudioHostProvider';
 import { useStudioPanel } from './useStudioPanel';
 
@@ -89,7 +90,7 @@ export function WikiEditorPanel(props: IDockviewPanelProps) {
           })}
           confirmLabel={t('discardSwitchConfirm', { defaultValue: 'Discard & switch' })}
           variant="destructive"
-          onConfirm={() => { setTarget(pending); setPending(null); }}
+          onConfirm={() => { clearWikiEditorDraft(); setTarget(pending); setPending(null); }}
         />
       )}
     </div>

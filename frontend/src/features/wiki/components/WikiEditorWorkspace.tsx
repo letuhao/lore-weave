@@ -1,4 +1,4 @@
-import { useState, useCallback, useEffect } from 'react';
+import { useState, useCallback, useEffect, useRef } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useTranslation } from 'react-i18next';
 import { Save, Eye, EyeOff, Trash2 } from 'lucide-react';
@@ -10,6 +10,7 @@ import { WikiSuggestionReview } from './WikiSuggestionReview';
 import { TiptapEditor } from '@/components/editor/TiptapEditor';
 import { Skeleton } from '@/components/shared/Skeleton';
 import { ConfirmDialog } from '@/components/shared';
+import { getWikiEditorDraft, setWikiEditorDraft, clearWikiEditorDraft } from '../lib/wikiEditorDraftCache';
 import { cn } from '@/lib/utils';
 
 // 15_wiki_panels.md B2 — the shared article-editing workspace (DOCK-2 "no fork"): the SAME
@@ -257,6 +258,12 @@ export function WikiEditorWorkspace({ bookId, articleId, initialRightPanel, onBa
   const queryClient = useQueryClient();
 
   const [body, setBody] = useState<unknown>(null);
+  // The value actually fed to TiptapEditor's `content` prop — deliberately DECOUPLED from
+  // `body` (which changes on every keystroke): TiptapEditor reactively re-applies `content` on
+  // every reference change, so feeding it the constantly-changing `body` would fight the user's
+  // own typing. `editorContent` only changes on a genuine content REPLACEMENT (initial load,
+  // a cache-restored draft, a save's own refetch, a revision restore).
+  const [editorContent, setEditorContent] = useState<unknown>(null);
   const [dirty, setDirtyState] = useState(false);
   const setDirty = useCallback((v: boolean) => {
     setDirtyState(v);
@@ -281,13 +288,28 @@ export function WikiEditorWorkspace({ bookId, articleId, initialRightPanel, onBa
     enabled: !!accessToken && !!articleId,
   });
 
-  // Sync editor body when article data changes (e.g., after restore)
+  // Sync editor body when article data changes (e.g., after a save's own refetch, a revision
+  // restore) — EXCEPT the very first time, when a draft survived a dock-tab close (DOCK-10
+  // /review-impl fix — see wikiEditorDraftCache.ts). `consumedCacheRef` gates this to run once
+  // per mount so a LATER, genuine server refresh always wins over the one-time restore.
+  const consumedCacheRef = useRef(false);
   useEffect(() => {
-    if (article) {
-      setBody(article.body_json);
-      setDirty(false);
-      onTitleChange?.(article.display_name);
+    if (!article) return;
+    if (!consumedCacheRef.current) {
+      consumedCacheRef.current = true;
+      const cached = getWikiEditorDraft(articleId);
+      if (cached !== null) {
+        setBody(cached);
+        setEditorContent(cached);
+        setDirty(true);
+        onTitleChange?.(article.display_name);
+        return;
+      }
     }
+    setBody(article.body_json);
+    setEditorContent(article.body_json);
+    setDirty(false);
+    onTitleChange?.(article.display_name);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [article]);
 
@@ -302,8 +324,11 @@ export function WikiEditorWorkspace({ bookId, articleId, initialRightPanel, onBa
   const handleEditorUpdate = useCallback((json: unknown) => {
     setBody(json);
     setDirty(true);
+    // Keep the survives-a-tab-close cache current on every keystroke, not just at some earlier
+    // checkpoint — closing the panel mid-typing must lose at most nothing.
+    setWikiEditorDraft(articleId, json);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [articleId]);
 
   const handleSave = useCallback(async (summary?: string) => {
     if (!accessToken || !article || body === null) return;
@@ -315,6 +340,7 @@ export function WikiEditorWorkspace({ bookId, articleId, initialRightPanel, onBa
       }, accessToken);
       toast.success(t('saved'));
       setDirty(false);
+      clearWikiEditorDraft();
       queryClient.invalidateQueries({ queryKey: ['wiki-article', bookId, articleId] });
       queryClient.invalidateQueries({ queryKey: ['wiki-revisions', bookId, articleId] });
       queryClient.invalidateQueries({ queryKey: ['wiki-articles', bookId] });
@@ -440,7 +466,7 @@ export function WikiEditorWorkspace({ bookId, articleId, initialRightPanel, onBa
         <div className="flex-1 overflow-y-auto">
           <div className="mx-auto max-w-[800px] px-10 py-8">
             <TiptapEditor
-              content={article.body_json}
+              content={editorContent}
               onUpdate={handleEditorUpdate}
             />
           </div>
@@ -503,7 +529,7 @@ export function WikiEditorWorkspace({ bookId, articleId, initialRightPanel, onBa
           description={t('discardDescription', { defaultValue: 'You have unsaved edits to this article. Leaving now will discard them.' })}
           confirmLabel={t('discardConfirm', { defaultValue: 'Discard & leave' })}
           variant="destructive"
-          onConfirm={() => { setConfirmBackOpen(false); onBack(); }}
+          onConfirm={() => { clearWikiEditorDraft(); setConfirmBackOpen(false); onBack(); }}
         />
       )}
     </div>

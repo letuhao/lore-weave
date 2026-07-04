@@ -13,6 +13,16 @@ vi.mock('react-i18next', () => ({
   useTranslation: () => ({ t: (k: string, o?: { defaultValue?: string }) => o?.defaultValue ?? k }),
 }));
 
+// /review-impl DOCK-10 fix — a confirmed discard-and-switch must also clear the survives-a-
+// tab-close draft cache, else reopening the OLD article later would resurrect the very draft
+// the user just explicitly discarded. WikiEditorWorkspace is stubbed in this file, so the cache
+// itself is exercised end-to-end by WikiEditorWorkspace.test.tsx instead — this just proves the
+// panel calls the clear function at the right moment.
+const clearWikiEditorDraft = vi.fn();
+vi.mock('@/features/wiki/lib/wikiEditorDraftCache', () => ({
+  clearWikiEditorDraft: () => clearWikiEditorDraft(),
+}));
+
 // A minimal stub standing in for the real workspace: exposes onDirtyChange/onBack as buttons
 // so the test can drive them directly, and surfaces its own articleId/initialRightPanel props
 // so a `key`-forced remount on a confirmed switch is directly observable.
@@ -112,6 +122,7 @@ describe('WikiEditorPanel — G7 dirty-guard on retarget', () => {
 
     fireEvent.click(screen.getByText('Discard & switch'));
     expect(screen.getByTestId('stub-workspace').getAttribute('data-article-id')).toBe('a2');
+    expect(clearWikiEditorDraft).toHaveBeenCalled();
   });
 
   it('onBack opens the sibling wiki panel', () => {

@@ -219,3 +219,35 @@ as the single highest-risk area:
 
 No HIGH/MED findings. Glossary's dockable migration pattern (spec → CLARIFY decisions → design
 review before PLAN → build → adversarial review-impl) held up on a second, independent feature.
+
+## Second `/review-impl` pass (2026-07-04, user-requested) — 1 real finding, fixed
+
+A fresh pass specifically checking the actual code against every rule in
+[`dockable-gui.md`](../../standards/dockable-gui.md), not just re-confirming the first pass.
+
+**DOCK-10 violation found: `wiki-editor`'s in-flight edit survived neither a dock-tab close nor
+a reopen.** `body`/`dirty` lived as plain `useState` inside `WikiEditorWorkspace`, which is
+rendered *inside* the `wiki-editor` panel's own React subtree. D4 states the mechanism plainly:
+"dockview unmounts a closed panel." The G7 params-retargeting guard (B2b) only covers *staying
+open and switching articles* — it does nothing for the tab's own close button / drag-to-close /
+middle-click, a vector the classic page never had at all (pages don't have "tabs" to close).
+Closing the panel mid-edit and reopening the same article later silently lost the draft, with
+zero warning — the same data-loss class B2b was built to prevent, just via a different door.
+
+**Fix:** `frontend/src/features/wiki/lib/wikiEditorDraftCache.ts` (new) — a module-level,
+single-slot cache (same lightweight "plain variable survives unmount" technique as
+`entityDocument.ts`'s binding bridge, not a full `ManuscriptUnitProvider`-style Tier-4 hoist,
+since `wiki-editor` is a singleton and only one draft can ever be in flight). `WikiEditorWorkspace`
+writes to it on every keystroke, checks it once per mount (a `useRef` gate so a LATER genuine
+server refresh — a save's own refetch, a revision restore — always wins over the one-time
+restore), and clears it on save success or an explicit discard (the Back-confirm, and the G7
+discard-and-switch confirm in `WikiEditorPanel`). A separate `editorContent` state (decoupled
+from the keystroke-churning `body` state) feeds `TiptapEditor`'s `content` prop so the restore
+doesn't fight the editor's own reactive `content`-diffing.
+
+**Verify:** 4 new tests in `WikiEditorWorkspace.test.tsx` proving the fix across a REAL
+`unmount()` + fresh `render()` (not just a re-render) — draft restored on reopen, no cross-
+article leakage, cleared on save, cleared on explicit discard; 1 new test in
+`WikiEditorPanel.test.tsx` proving the G7 discard-and-switch path calls the clear function.
+`tsc --noEmit` clean; `features/wiki` + `features/studio/panels` suites 378/378 (16 in the two
+touched files).
