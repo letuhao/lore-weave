@@ -48,9 +48,10 @@ function StudioFrameInner({ bookId, initialChapterId }: { bookId: string; initia
   const [palette, setPalette] = useState<PaletteKind | null>(null);
   const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null);
 
-  // #19 — Studio onboarding (role picker overlay) + the `core` guided tour. Both live here
-  // (not inside a dock panel) since CommandPalette/WelcomePanel need to trigger them across a
-  // component-tree boundary dockview panels can't otherwise cross (DOCK-4).
+  // #19 — Studio onboarding (role picker overlay) + the guided tour (the account's role tour if
+  // one's set, else `core` — #19 Wave 2). Both live here (not inside a dock panel) since
+  // CommandPalette/WelcomePanel need to trigger them across a component-tree boundary dockview
+  // panels can't otherwise cross (DOCK-4).
   const onboarding = useStudioOnboarding();
   const tour = useStudioTour((panelId) => host.openPanel(panelId));
 
@@ -161,7 +162,7 @@ function StudioFrameInner({ bookId, initialChapterId }: { bookId: string; initia
         onOpenQuickOpen={() => setPalette('quick')}
         onOpenPanel={openStudioPanel}
         onChooseYourFocus={onboarding.reopen}
-        onStartGuidedTour={() => tour.start('core')}
+        onStartGuidedTour={() => tour.start(onboarding.role ?? 'core')}
       />
 
       {/* #19 — the role-picker overlay + guided tour, above the mounted dock (not dock panels

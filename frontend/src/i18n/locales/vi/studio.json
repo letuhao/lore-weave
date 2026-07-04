@@ -12,59 +12,73 @@
   "panels": {
     "compose": {
       "title": "Compose",
-      "desc": "Chat đồng sáng tác AI"
+      "desc": "Chat đồng sáng tác AI",
+      "guideBody": "Compose là trợ lý viết AI đồng hành cùng cuốn sách này — trò chuyện về một cảnh, nhờ nó viết nháp hoặc chỉnh sửa một đoạn văn, hoặc cùng brainstorm xem chuyện gì xảy ra tiếp theo. Mở panel này khi bạn cần một người bạn trò chuyện đã nắm rõ nhân vật, từ điển thuật ngữ và các chương trước của cuốn sách."
     },
     "editor": {
       "title": "Editor",
-      "desc": "Trình soạn bản thảo"
+      "desc": "Trình soạn bản thảo",
+      "guideBody": "Trình soạn thảo bản thảo chính, nơi bạn viết và chỉnh sửa trực tiếp nội dung chương. Mở nó bất cứ khi nào bạn đang viết nháp văn xuôi mới hoặc chỉnh sửa từng dòng — đây là khung nội dung mà mọi công cụ khác (Compose, Planner, Steering) đều đổ vào."
     },
     "planner": {
       "title": "Trình lập kế hoạch",
-      "desc": "Lập kế hoạch hệ thống truyện"
+      "desc": "Lập kế hoạch hệ thống truyện",
+      "guideBody": "Planner giúp bạn dựng cấu trúc cuốn tiểu thuyết — các arc, chương, beat truyện và cách chúng liên kết với nhau — trước hoặc trong khi viết. Mở nó khi bạn cần nhìn tổng thể hoặc điều chỉnh lại hình dạng câu chuyện, chứ không chỉ từng câu văn trước mắt."
     },
     "usage": {
       "title": "Sử dụng",
-      "desc": "Chi phí, token & nhật ký yêu cầu"
+      "desc": "Chi phí, token & nhật ký yêu cầu",
+      "guideBody": "Hiển thị số tiền bạn đang chi tiêu trên mọi hành động dùng AI — dịch thuật, làm giàu, trò chuyện, Compose — phân tích theo token và số lượt gọi theo thời gian. Mở nó khi bạn muốn đối chiếu chi tiêu hiện tại với ngân sách của mình, phát hiện tính năng nào đang tiêu tốn credit nhiều nhất, hoặc xem lại chi phí của một yêu cầu cụ thể sau khi nó đã xảy ra."
     },
     "notifications": {
       "title": "Thông báo",
-      "desc": "Job hoàn tất & cảnh báo"
+      "desc": "Job hoàn tất & cảnh báo",
+      "guideBody": "Tập hợp các thông báo hoàn tất tác vụ, lượt dịch, lượt làm giàu, và cảnh báo hệ thống vào một nơi, để bạn không phải liên tục quay lại kiểm tra các công việc chạy lâu. Mở nó sau khi khởi chạy một tác vụ lớn (như dịch một chương hay chạy làm giàu) để biết ngay khi nó hoàn tất, hoặc để phát hiện bất cứ điều gì thất bại cần chú ý."
     },
     "settings": {
       "title": "Cài đặt",
-      "desc": "Tài khoản, nhà cung cấp & dịch thuật"
+      "desc": "Tài khoản, nhà cung cấp & dịch thuật",
+      "guideBody": "Quản lý tài khoản của bạn, kết nối các nhà cung cấp AI của riêng bạn (OpenAI, mô hình cục bộ, v.v.), và cấu hình các mặc định cho dịch thuật như ngôn ngữ đích và cách xử lý từ điển thuật ngữ. Mở nó trước khi bắt đầu một dự án mới để thiết lập mọi thứ, hoặc bất cứ khi nào bạn cần đổi nhà cung cấp, cập nhật thông tin xác thực, hay thay đổi cách dịch thuật hoạt động theo mặc định."
     },
     "trash": {
       "title": "Thùng rác",
-      "desc": "Khôi phục sách, chương đã xoá & hơn nữa"
+      "desc": "Khôi phục sách, chương đã xoá & hơn nữa",
+      "guideBody": "Lưu giữ các cuốn sách, chương, và các mục khác bạn đã xóa, giúp chúng có thể khôi phục thay vì mất vĩnh viễn. Mở nó khi bạn lỡ xóa nhầm thứ gì đó và cần khôi phục lại, hoặc khi bạn muốn xóa vĩnh viễn các mục cũ không còn cần dùng nữa."
     },
     "steering": {
       "title": "Định hướng",
-      "desc": "Quy tắc của tác giả hướng dẫn AI cho sách này"
+      "desc": "Quy tắc của tác giả hướng dẫn AI cho sách này",
+      "guideBody": "Steering là nơi bạn viết ra các quy tắc và sở thích định hướng cách AI viết cho riêng cuốn sách này — giọng văn, ngôi kể (POV), những điều cần tránh, hay các chỉ dẫn lặp lại mà bạn không muốn phải gõ lại mỗi lần trò chuyện. Mở nó một lần từ sớm, rồi quay lại bất cứ khi nào kết quả của AI bắt đầu lệch khỏi những gì bạn mong muốn."
     },
     "glossary": {
       "title": "Từ điển",
-      "desc": "Thực thể, tìm kiếm và thao tác hàng loạt cho sách này"
+      "desc": "Thực thể, tìm kiếm và thao tác hàng loạt cho sách này",
+      "guideBody": "Từ điển thuật ngữ là cuốn từ điển sống của cuốn sách, chứa nhân vật, địa điểm, vật phẩm và các thực thể có tên khác — bạn có thể tìm kiếm, lọc và chỉnh sửa hàng loạt tất cả từ một nơi duy nhất. Mở nó khi cần kiểm tra những gì đã được thiết lập, sửa một cái tên trên nhiều mục cùng lúc, hoặc dọn dẹp thực thể hàng loạt."
     },
     "glossary-ontology": {
       "title": "Bản thể luận",
-      "desc": "Loại, thể loại & thuộc tính cho sách này"
+      "desc": "Loại, thể loại & thuộc tính cho sách này",
+      "guideBody": "Xác định các loại thực thể (nhân vật, địa điểm, vật phẩm, v.v.), thể loại, và các thuộc tính tùy chỉnh dùng để phân loại thực thể trong cuốn sách này. Mở nó trước khi bắt đầu gắn thẻ thực thể, hoặc bất cứ khi nào bạn cần thêm một loại hoặc thuộc tính mới không nằm trong bộ hiện có."
     },
     "glossary-unknown": {
       "title": "Thực thể chưa xác định",
-      "desc": "Gán lại loại cho các thực thể chưa nhận diện"
+      "desc": "Gán lại loại cho các thực thể chưa nhận diện",
+      "guideBody": "Liệt kê các thực thể mà hệ thống phát hiện trong văn bản của bạn nhưng chưa đủ tin cậy để phân loại vào một loại cụ thể. Mở nó định kỳ để gán những cái tên chưa được nhận diện này vào đúng loại, để chúng hiển thị chính xác trong Từ điển thuật ngữ và Wiki thay vì bị treo lơ lửng."
     },
     "glossary-ai-suggestions": {
       "title": "Đề xuất AI",
-      "desc": "Duyệt các thực thể do AI soạn thảo"
+      "desc": "Duyệt các thực thể do AI soạn thảo",
+      "guideBody": "Hiển thị các mục thực thể mà AI tự động soạn thảo từ bản thảo của bạn, đang chờ bạn xem xét. Mở nó để chấp nhận, chỉnh sửa hoặc từ chối từng đề xuất trước khi nó trở thành một phần chính thức của từ điển thuật ngữ."
     },
     "glossary-merge-candidates": {
       "title": "Ứng viên gộp",
-      "desc": "Duyệt và xác nhận các thực thể có khả năng trùng lặp"
+      "desc": "Duyệt và xác nhận các thực thể có khả năng trùng lặp",
+      "guideBody": "Đánh dấu các cặp thực thể mà hệ thống nghi ngờ có thể là bản trùng lặp (ví dụ hai cách viết khác nhau của cùng một tên nhân vật). Mở nó để xác nhận và gộp các bản trùng lặp thật sự, hoặc bỏ qua những cặp bị nhận nhầm, giúp từ điển thuật ngữ của bạn luôn gọn gàng."
     },
     "wiki": {
       "title": "Wiki",
-      "desc": "Duyệt và đọc các bài wiki đã tạo cho sách này"
+      "desc": "Duyệt và đọc các bài wiki đã tạo cho sách này",
+      "guideBody": "Wiki được tạo tự động gồm các bài viết dễ đọc, xây dựng từ từ điển thuật ngữ và nội dung câu chuyện của bạn — mỗi thực thể quan trọng có một bài viết riêng. Mở nó khi bạn muốn xem tổng quan theo phong cách kể chuyện về một nhân vật, địa điểm hay phe phái, thay vì các trường dữ liệu thô của từ điển thuật ngữ."
     },
     "wiki-editor": {
       "title": "Soạn thảo Wiki",
@@ -72,59 +86,73 @@
     },
     "knowledge": {
       "title": "Tri thức",
-      "desc": "Duyệt và mở các dự án đồ thị tri thức của bạn"
+      "desc": "Duyệt và mở các dự án đồ thị tri thức của bạn",
+      "guideBody": "Knowledge là điểm khởi đầu để bạn bước vào đồ thị tri thức của một cuốn sách — các thực thể, sự kiện và lore mà các AI agent của bạn đã trích xuất và tổ chức lại. Mở nó để chọn dự án (cuốn sách) bạn muốn làm việc trước khi đi sâu vào thực thể, dòng thời gian, hay chính đồ thị tri thức."
     },
     "kg-overview": {
       "title": "Tổng quan",
-      "desc": "Tóm tắt dự án và thao tác nhanh"
+      "desc": "Tóm tắt dự án và thao tác nhanh",
+      "guideBody": "Tổng quan cho bạn cái nhìn nhanh về tình trạng của một dự án — số lượng thực thể, hoạt động gần đây, và công việc còn tồn đọng. Mở nó đầu tiên mỗi khi quay lại một cuốn sách để biết cần chú ý điều gì trước khi đi sâu vào một công cụ cụ thể."
     },
     "kg-entities": {
       "title": "Thực thể",
-      "desc": "Duyệt và tìm kiếm thực thể đồ thị tri thức, theo dự án hoặc trên toàn bộ dự án"
+      "desc": "Duyệt và tìm kiếm thực thể đồ thị tri thức, theo dự án hoặc trên toàn bộ dự án",
+      "guideBody": "Thực thể liệt kê mọi nhân vật, địa điểm, vật phẩm và khái niệm mà hệ thống đã trích xuất, kèm tìm kiếm và bộ lọc để thu hẹp theo loại hoặc theo dự án. Dùng nó để tra cứu chi tiết một thực thể cụ thể, hoặc để rà soát xem đồ thị tri thức hiện đang biết những gì về thế giới của bạn."
     },
     "kg-timeline": {
       "title": "Dòng thời gian",
-      "desc": "Duyệt các sự kiện trong truyện theo thứ tự thời gian hoặc mạch truyện"
+      "desc": "Duyệt các sự kiện trong truyện theo thứ tự thời gian hoặc mạch truyện",
+      "guideBody": "Dòng thời gian sắp xếp các sự kiện trong câu chuyện của bạn theo trình tự — hoặc theo thứ tự chúng xảy ra trong thế giới truyện (theo thời gian), hoặc theo thứ tự chúng được tiết lộ cho độc giả (theo mạch kể). Mở nó để kiểm tra tính nhất quán trong trình tự cốt truyện, hoặc để xem những gì đã xảy ra tính đến bất kỳ thời điểm nào trong câu chuyện."
     },
     "kg-evidence": {
       "title": "Bằng chứng",
-      "desc": "Tìm kiếm đoạn văn chương và chat theo độ tương đồng ngữ nghĩa"
+      "desc": "Tìm kiếm đoạn văn chương và chat theo độ tương đồng ngữ nghĩa",
+      "guideBody": "Bằng chứng cho phép bạn tìm kiếm trong các chương và lịch sử trò chuyện theo ý nghĩa thay vì từ ngữ chính xác, làm nổi lên những đoạn văn bàn về một chủ đề dù chúng không dùng đúng cách diễn đạt đó. Dùng nó khi bạn cần tìm nơi một điều gì đó đã được nhắc đến hoặc thiết lập, nhưng không nhớ chính xác câu chữ."
     },
     "kg-gap": {
       "title": "Báo cáo thiếu sót",
-      "desc": "Tìm nhân vật, địa điểm, khái niệm được nhắc nhiều nhưng chưa có trong từ điển và đưa vào"
+      "desc": "Tìm nhân vật, địa điểm, khái niệm được nhắc nhiều nhưng chưa có trong từ điển và đưa vào",
+      "guideBody": "Báo cáo lỗ hổng làm nổi bật các nhân vật, địa điểm và khái niệm xuất hiện thường xuyên trong văn bản của bạn nhưng chưa được thêm vào từ điển thuật ngữ. Kiểm tra định kỳ để phát hiện những lore đang lọt lưới mà chưa có mục riêng."
     },
     "kg-proposals": {
       "title": "Đề xuất",
-      "desc": "Duyệt các đề xuất từ điển, wiki và làm giàu lore đang chờ cho sách này"
+      "desc": "Duyệt các đề xuất từ điển, wiki và làm giàu lore đang chờ cho sách này",
+      "guideBody": "Đề xuất là nơi các bổ sung và thay đổi do AI gợi ý cho từ điển thuật ngữ, wiki và lore của bạn chờ được xem xét. Mở nó để phê duyệt, chỉnh sửa hoặc từ chối từng đề xuất trước khi nó trở thành một phần nội dung chính thức của cuốn sách."
     },
     "kg-schema": {
       "title": "Lược đồ",
-      "desc": "Áp dụng, soạn thảo, xem và đồng bộ lược đồ đồ thị tri thức của sách"
+      "desc": "Áp dụng, soạn thảo, xem và đồng bộ lược đồ đồ thị tri thức của sách",
+      "guideBody": "Giản đồ (Schema) kiểm soát cấu trúc của đồ thị tri thức trong cuốn sách của bạn — những loại thực thể và mối quan hệ mà nó nhận diện. Dùng nó để áp dụng một giản đồ khởi điểm, tùy chỉnh cho thế giới của bạn, hoặc đồng bộ thay đổi trên toàn dự án."
     },
     "kg-graph": {
       "title": "Đồ thị tri thức",
-      "desc": "Khám phá đồ thị quan hệ thực thể của dự án"
+      "desc": "Khám phá đồ thị quan hệ thực thể của dự án",
+      "guideBody": "Đồ thị tri thức cho bạn một bản đồ trực quan về cách các thực thể trong dự án của bạn kết nối với nhau — ai biết ai, cái gì thuộc về đâu, sự kiện nào liên quan đến nhân vật nào. Mở nó khi bạn muốn khám phá các mối quan hệ theo không gian thay vì dưới dạng danh sách."
     },
     "kg-insights": {
       "title": "Phân tích khai thác",
-      "desc": "Chất lượng cấu hình trích xuất, hiệu năng mô hình & độ trôi kết quả trên các dự án"
+      "desc": "Chất lượng cấu hình trích xuất, hiệu năng mô hình & độ trôi kết quả trên các dự án",
+      "guideBody": "Thông tin khai thác báo cáo mức độ hiệu quả của quá trình trích xuất trên các dự án của bạn — chất lượng cấu hình, mô hình nào đang cho kết quả tốt, và ở đâu kết quả đang lệch khỏi kỳ vọng. Kiểm tra nó nếu thực thể hoặc sự kiện được trích xuất có vẻ không ổn, để chẩn đoán xem vấn đề nằm ở mô hình hay ở cấu hình."
     },
     "kg-jobs": {
       "title": "Tác vụ trích xuất",
-      "desc": "Theo dõi các tác vụ trích xuất tri thức trên tất cả dự án của bạn"
+      "desc": "Theo dõi các tác vụ trích xuất tri thức trên tất cả dự án của bạn",
+      "guideBody": "Tác vụ trích xuất hiển thị trạng thái của mọi lượt trích xuất tri thức trên tất cả dự án của bạn, để bạn biết cái nào đang chờ, đang chạy, đã xong, hay đã thất bại. Mở nó để theo dõi các tác vụ trích xuất chạy lâu, hoặc xử lý sự cố khi một tác vụ không hoàn tất như mong đợi."
     },
     "kg-bio": {
       "title": "Tiểu sử toàn cục",
-      "desc": "Tiểu sử tác giả xuyên suốt các sách, dùng để làm nền tảng cho AI viết và phân tích"
+      "desc": "Tiểu sử tác giả xuyên suốt các sách, dùng để làm nền tảng cho AI viết và phân tích",
+      "guideBody": "Tiểu sử chung lưu một đoạn tiểu sử ngắn về tác giả, được dùng chung cho tất cả các cuốn sách của bạn, giúp các công cụ viết và phân tích AI hiểu được ngữ cảnh về giọng văn và nền tảng của bạn. Điền một lần duy nhất và mọi dự án đều được hưởng lợi từ cùng một nền tảng đó."
     },
     "kg-privacy": {
       "title": "Quyền riêng tư & Dữ liệu",
-      "desc": "Xuất hoặc xoá vĩnh viễn dữ liệu đồ thị tri thức của bạn"
+      "desc": "Xuất hoặc xoá vĩnh viễn dữ liệu đồ thị tri thức của bạn",
+      "guideBody": "Quyền riêng tư & Dữ liệu cho phép bạn xuất một bản sao đầy đủ dữ liệu đồ thị tri thức của mình, hoặc xóa vĩnh viễn nó. Dùng nó khi bạn muốn sao lưu, chuẩn bị rời khỏi nền tảng, hoặc cần xóa hoàn toàn dữ liệu của một dự án."
     },
     "jobs-list": {
       "title": "Tác vụ",
-      "desc": "Theo dõi các tác vụ nền"
+      "desc": "Theo dõi các tác vụ nền",
+      "guideBody": "Hiển thị các tác vụ nền đang chạy cho cuốn sách này — lượt dịch, lượt làm giàu, xuất dữ liệu, và các tác vụ chạy lâu khác — cùng với trạng thái và tiến độ hiện tại của chúng. Mở nó để kiểm tra xem một tác vụ có còn đang chạy không, xem có tác vụ nào thất bại không, hoặc xác nhận một tác vụ đã hoàn tất trước khi bạn tiếp tục."
     },
     "job-detail": {
       "title": "Chi tiết tác vụ",
@@ -133,7 +161,8 @@
     },
     "books": {
       "title": "Sách",
-      "desc": "Duyệt và đọc các sách khác của bạn mà không rời khỏi studio"
+      "desc": "Duyệt và đọc các sách khác của bạn mà không rời khỏi studio",
+      "guideBody": "Mở một khung nhìn thư viện gọn nhẹ cho các cuốn sách khác của bạn ngay trong studio, để bạn có thể xem chi tiết, đọc lại một đoạn văn, hay chuyển qua lại giữa các dự án mà không mất phiên chỉnh sửa hiện tại. Dùng nó khi bạn muốn tham chiếu nhanh giữa các cuốn sách mà không cần rời khỏi nơi bạn đang viết."
     },
     "book-reader": {
       "title": "Trình đọc",
@@ -141,23 +170,28 @@
     },
     "leaderboard-books": {
       "title": "Bảng xếp hạng: Sách",
-      "desc": "Sách xếp hạng cao theo đánh giá, độc giả & yêu thích"
+      "desc": "Sách xếp hạng cao theo đánh giá, độc giả & yêu thích",
+      "guideBody": "Hiển thị những cuốn sách nào đang leo hạng theo điểm đánh giá, số lượng độc giả, và số lượt yêu thích, để bạn biết điều gì đang thu hút độc giả ngay lúc này. Kiểm tra panel này khi bạn muốn nắm nhịp đập của những gì đang hiệu quả trên toàn nền tảng, hoặc để do thám các tác phẩm tương đồng trong thể loại của bạn."
     },
     "leaderboard-authors": {
       "title": "Bảng xếp hạng: Tác giả",
-      "desc": "Tác giả xếp hạng cao theo độc giả & sản lượng"
+      "desc": "Tác giả xếp hạng cao theo độc giả & sản lượng",
+      "guideBody": "Xếp hạng tác giả theo số lượng độc giả họ tiếp cận được và số lượng nội dung họ đã xuất bản, giúp bạn cảm nhận ai đang hoạt động tích cực và ai đang xây dựng lượng độc giả. Mở nó nếu bạn tò mò sản lượng và độ phủ của mình so ra sao, hoặc đang tìm những tác giả năng suất cao để theo dõi."
     },
     "leaderboard-translators": {
       "title": "Bảng xếp hạng: Dịch giả",
-      "desc": "Dịch giả xếp hạng cao theo số chương & ngôn ngữ"
+      "desc": "Dịch giả xếp hạng cao theo số chương & ngôn ngữ",
+      "guideBody": "Xếp hạng dịch giả theo số chương đã hoàn thành và số ngôn ngữ đã bao phủ, làm nổi bật ai đang dẫn dắt hoạt động dịch thuật trên nền tảng. Mở nó khi bạn muốn tìm những dịch giả năng nổ để hợp tác, hoặc ước lượng lượng công việc dịch thuật đang diễn ra trên các ngôn ngữ."
     },
     "leaderboard-trending": {
       "title": "Bảng xếp hạng: Thịnh hành",
-      "desc": "Sách đang thịnh hành"
+      "desc": "Sách đang thịnh hành",
+      "guideBody": "Làm nổi bật những cuốn sách đang tăng tốc ngay lúc này, dựa trên hoạt động gần đây của độc giả thay vì tổng số liệu từ trước đến nay. Kiểm tra nó khi bạn muốn phát hiện sớm các tác phẩm đang lên, hoặc xem điều gì đang thu hút sự chú ý hiện tại."
     },
     "context-inspector": {
       "title": "Trình kiểm tra ngữ cảnh",
-      "desc": "Xem context management đã làm gì mỗi lượt — ngân sách, phân bổ, quyết định Planner→Compiler"
+      "desc": "Xem context management đã làm gì mỗi lượt — ngân sách, phân bổ, quyết định Planner→Compiler",
+      "guideBody": "Trình kiểm tra ngữ cảnh cho biết chính xác ngữ cảnh nào đã được gửi cho AI trong một lượt trò chuyện — ngân sách token, những gì được đưa vào hoặc bị loại bỏ, và liệu lượt đó được xử lý bằng một lượt xử lý nhanh hay một lượt lập kế hoạch đầy đủ hơn. Mở nó khi phản hồi của AI có vẻ không ổn và bạn muốn xem nó thực sự đã \"thấy\" những gì, hoặc khi bạn tò mò ngân sách ngữ cảnh của mình đang được dùng ra sao."
     },
     "chapter-browser": {
       "title": "Duyệt chương",
@@ -199,19 +233,23 @@
       "bulk_not_wired": "Sắp ra mắt — thao tác hàng loạt này chưa được kết nối",
       "empty": "Không có chương nào khớp bộ lọc",
       "client_filtered_note": "Bộ lọc số từ/ngày áp dụng trên trang đang tải",
-      "chapter_count": "{{count}} chương"
+      "chapter_count": "{{count}} chương",
+      "guideBody": "Trình duyệt chương là danh sách có thể sắp xếp và lọc của tất cả các chương trong cuốn sách, kèm tìm kiếm và thao tác hàng loạt (như gắn lại thẻ hoặc sắp xếp lại nhiều chương cùng lúc). Mở nó khi bạn cần tìm nhanh một chương cụ thể hoặc áp dụng cùng một thay đổi cho nhiều chương một lúc."
     },
     "sharing": {
       "title": "Chia sẻ",
-      "desc": "Chế độ hiển thị, liên kết không công khai, và cộng tác viên của sách này"
+      "desc": "Chế độ hiển thị, liên kết không công khai, và cộng tác viên của sách này",
+      "guideBody": "Kiểm soát ai có thể xem và chỉnh sửa cuốn sách này — đặt ở chế độ riêng tư, tạo một liên kết chia sẻ không công khai cho bất kỳ ai có URL, hoặc mời những cộng tác viên cụ thể. Mở nó khi bạn muốn chia sẻ một bản nháp để nhận phản hồi, hoặc trao quyền chỉnh sửa mà không công khai cuốn sách."
     },
     "book-settings": {
       "title": "Cài đặt sách",
-      "desc": "Tiêu đề, bìa, thẻ thể loại, và liên kết thế giới của sách này"
+      "desc": "Tiêu đề, bìa, thẻ thể loại, và liên kết thế giới của sách này",
+      "guideBody": "Quản lý thông tin cốt lõi của cuốn sách này: tiêu đề, ảnh bìa, thẻ thể loại, và thế giới mà nó liên kết đến. Mở nó khi bạn đang thiết lập một cuốn sách mới, hoặc cần cập nhật cách nó được gắn nhãn và phân loại trước khi chia sẻ hoặc xuất bản."
     },
     "translation": {
       "title": "Dịch thuật",
-      "desc": "Ma trận độ phủ, lọc ngôn ngữ, dịch hàng loạt và trích xuất thuật ngữ cho sách này"
+      "desc": "Ma trận độ phủ, lọc ngôn ngữ, dịch hàng loạt và trích xuất thuật ngữ cho sách này",
+      "guideBody": "Hiển thị tiến độ dịch của mọi ngôn ngữ cho cuốn sách này chỉ trong một cái nhìn, với ma trận độ phủ và bộ lọc ngôn ngữ để bạn phát hiện phần nào chưa dịch hoặc đã lỗi thời. Mở nó để khởi chạy các tác vụ dịch hàng loạt, hoặc trích xuất các thuật ngữ từ điển phát hiện được trong quá trình dịch, giúp thuật ngữ nhất quán giữa các ngôn ngữ."
     },
     "translation-versions": {
       "title": "Phiên bản dịch",
@@ -220,27 +258,33 @@
     },
     "enrichment-compose": {
       "title": "Tạo làm giàu",
-      "desc": "Soạn một bản nháp tri thức làm giàu mới (mở rộng bản nháp, dán ngữ cảnh, tải tệp, hoặc nêu ý định)"
+      "desc": "Soạn một bản nháp tri thức làm giàu mới (mở rộng bản nháp, dán ngữ cảnh, tải tệp, hoặc nêu ý định)",
+      "guideBody": "Dùng panel này để bắt đầu một bản nháp lore mới khi wiki hoặc từ điển thuật ngữ còn thiếu một mục bạn cần — mở rộng một bản nháp sơ bộ, dán vào ngữ cảnh tham khảo, tải lên tệp nguồn, hoặc chỉ cần mô tả ý định của bạn và để AI tạo ra bản nháp đầu tiên. Đây là điểm khởi đầu để biến \"tôi cần một tiểu sử cho nhân vật này\" thành một đề xuất có cấu trúc, có thể chỉnh sửa."
     },
     "enrichment-proposals": {
       "title": "Đề xuất làm giàu",
-      "desc": "Xem xét tri thức do AI đề xuất — chấp thuận, từ chối, hoặc đưa vào chính điển"
+      "desc": "Xem xét tri thức do AI đề xuất — chấp thuận, từ chối, hoặc đưa vào chính điển",
+      "guideBody": "Mọi bản nháp được tạo trong Compose (hoặc do một tác vụ làm giàu tạo ra) đều đến đây để chờ xem xét trước khi trở thành nội dung chính thức — đọc qua từng mục đề xuất, phê duyệt để đưa nó vào từ điển thuật ngữ, hoặc từ chối nếu nó sai hoặc không mong muốn. Mở panel này bất cứ khi nào bạn muốn kiểm tra những gì AI đã soạn thảo nhưng chưa được thêm vào lore chính thức của cuốn sách."
     },
     "enrichment-gaps": {
       "title": "Khoảng trống làm giàu",
-      "desc": "Phát hiện các thực thể mô tả chưa đầy đủ và tự động làm giàu qua tác vụ nền"
+      "desc": "Phát hiện các thực thể mô tả chưa đầy đủ và tự động làm giàu qua tác vụ nền",
+      "guideBody": "Panel này quét cuốn sách của bạn để tìm các thực thể được nhắc đến nhưng mô tả còn sơ sài — nhân vật, địa điểm hay vật phẩm có quá ít chi tiết trong từ điển thuật ngữ — và có thể đưa chúng vào hàng chờ để làm giàu tự động dưới dạng tác vụ nền. Mở nó khi bạn muốn tìm và lấp đầy các lỗ hổng lore mà không phải tự mình rà soát xem còn thiếu gì."
     },
     "enrichment-sources": {
       "title": "Nguồn làm giàu",
-      "desc": "Kho ngữ liệu nguồn có gắn nhãn bản quyền để truy xuất và làm nền"
+      "desc": "Kho ngữ liệu nguồn có gắn nhãn bản quyền để truy xuất và làm nền",
+      "guideBody": "Quản lý các kho ngữ liệu nguồn (văn bản tham khảo, tài liệu tải lên, tài liệu có bản quyền) mà các tác vụ làm giàu và recook lấy làm căn cứ, mỗi kho được gắn nhãn giấy phép để bạn biết nội dung nào an toàn để tái sử dụng. Kiểm tra ở đây khi bạn muốn xem tài liệu nguồn nào đang nuôi các bản nháp do AI tạo ra, hoặc để thêm tài liệu căn cứ mới."
     },
     "enrichment-jobs": {
       "title": "Tác vụ làm giàu",
-      "desc": "Theo dõi và tiếp tục các tác vụ làm giàu có giới hạn chi phí"
+      "desc": "Theo dõi và tiếp tục các tác vụ làm giàu có giới hạn chi phí",
+      "guideBody": "Theo dõi trạng thái các tác vụ làm giàu bạn đã khởi chạy — xem cái nào đang chạy, đã hoàn tất, hay đang tạm dừng, theo dõi chi phí tích lũy so với giới hạn của tác vụ, và tiếp tục bất kỳ tác vụ nào đã dừng giữa chừng. Mở panel này khi bạn muốn kiểm tra tiến độ hoặc tiếp tục một lượt làm giàu đã bị giới hạn chi phí dừng lại."
     },
     "enrichment-settings": {
       "title": "Hồ sơ làm giàu",
-      "desc": "Soạn hồ sơ giảm thiên kiến của sách này (thế giới quan, ngôn ngữ, thời đại, giọng văn)"
+      "desc": "Soạn hồ sơ giảm thiên kiến của sách này (thế giới quan, ngôn ngữ, thời đại, giọng văn)",
+      "guideBody": "Thiết lập hồ sơ khử thiên kiến của cuốn sách tại đây — xác định thế giới quan mong muốn, quy ước ngôn ngữ, thời đại, và giọng kể để các bản nháp làm giàu và Compose ra đời nhất quán với văn phong cuốn sách của bạn, thay vì một mặc định chung chung. Thiết lập việc này sớm, trước khi chạy các tác vụ làm giàu, để lore được tạo ra khớp với cuốn sách của bạn ngay từ đầu."
     },
     "json-editor": {
       "title": "JSON",
@@ -258,7 +302,14 @@
     },
     "user-guide": {
       "title": "Hướng dẫn sử dụng",
-      "desc": "Mọi công cụ của Studio, nhóm theo khu vực — tạo tự động từ cùng danh mục với Command Palette"
+      "desc": "Mọi công cụ của Studio, nhóm theo khu vực — tạo tự động từ cùng danh mục với Command Palette",
+      "guideBody": "Liệt kê mọi công cụ và panel trong Writing Studio, được nhóm theo khu vực, kèm giải thích bằng ngôn ngữ dễ hiểu về chức năng của từng cái. Nó được tạo trực tiếp từ cùng danh mục vận hành Command Palette và dock, nên khi có công cụ mới được thêm vào, hướng dẫn này tự động cập nhật theo — không bao giờ bị lệch khỏi thực tế của ứng dụng."
+    },
+    "extensions": {
+      "guideBody": "Cài đặt và quản lý mọi thứ giúp mở rộng khả năng cho agent của bạn — plugin, skill, kết nối máy chủ MCP, lệnh tùy chỉnh, và hook. Mở nó khi bạn muốn thêm một công cụ mới cho agent sử dụng, xem lại những gì đang được bật, hoặc tắt thứ gì đó đang hoạt động sai."
+    },
+    "proposals": {
+      "guideBody": "Liệt kê các skill mà agent tự đề xuất tạo ra, dựa trên những khuôn mẫu nó nhận thấy trong công việc của bạn, để bạn có thể xem xét và phê duyệt trước khi chúng trở thành một phần trong bộ công cụ của bạn. Mở nó sau một phiên làm việc mà agent có đề cập rằng nó có thể tự động hóa điều gì đó, để quyết định chấp nhận, chỉnh sửa, hay từ chối đề xuất."
     }
   },
   "sceneRail": {
@@ -525,6 +576,64 @@
         "back": "Quay lại",
         "next": "Tiếp theo ({{current}}/{{total}})",
         "done": "Xong"
+      },
+      "writer": {
+        "compose": {
+          "title": "Viết nháp cùng trợ lý đồng sáng tác",
+          "body": "Là một người viết, đây là nơi bạn sẽ dành nhiều thời gian nhất — nhờ viết bản nháp đầu tiên, chỉnh sửa, hoặc làm nơi bàn bạc về những gì xảy ra tiếp theo."
+        },
+        "editor": {
+          "title": "Trau chuốt câu chữ",
+          "body": "Khi một cảnh đã có chữ, hãy hoàn thiện nó ở đây — kiểm tra ngữ pháp, gợi ý từ điển thuật ngữ, và chế độ tập trung đều nằm trong trình soạn thảo này."
+        },
+        "planner": {
+          "title": "Lên kế hoạch cho hình dạng câu chuyện",
+          "body": "Sắp xếp các arc, chương, và beat truyện trước hoặc giữa các buổi viết, để Compose và Editor có một cấu trúc để viết vào."
+        }
+      },
+      "worldbuilder": {
+        "glossary": {
+          "title": "Từ điển của thế giới bạn",
+          "body": "Mọi nhân vật, địa điểm, và vật phẩm bạn đã thiết lập đều ở đây — tìm kiếm, gắn thẻ, và giữ chúng nhất quán."
+        },
+        "wiki": {
+          "title": "Bài viết dễ đọc về thế giới",
+          "body": "Wiki biến từ điển thuật ngữ của bạn thành các bài viết theo phong cách kể chuyện — cách hay để xem lại thế giới của bạn trong nháy mắt."
+        },
+        "knowledge": {
+          "title": "Đồ thị tri thức",
+          "body": "Để xây dựng thế giới sâu hơn, đồ thị tri thức theo dõi mọi thứ kết nối với nhau như thế nào — thực thể, sự kiện, và mối quan hệ."
+        }
+      },
+      "translator": {
+        "translation": {
+          "title": "Theo dõi độ phủ dịch thuật",
+          "body": "Xem ngôn ngữ nào đã được dịch, chương nào đã lỗi thời, và khởi chạy các lượt dịch hàng loạt ngay từ đây."
+        },
+        "enrichmentCompose": {
+          "title": "Bổ sung lore còn thiếu",
+          "body": "Khi một bản dịch phát hiện một thực thể mô tả chưa đầy đủ, hãy dùng panel này để soạn thảo phần lore còn thiếu trước khi tiếp tục dịch."
+        }
+      },
+      "enricher": {
+        "gaps": {
+          "title": "Tìm những gì còn thiếu",
+          "body": "Panel này tìm các thực thể được nhắc đến thường xuyên nhưng mô tả còn sơ sài, để bạn biết chính xác cần làm giàu gì tiếp theo."
+        },
+        "sources": {
+          "title": "Quản lý nguồn căn cứ của bạn",
+          "body": "Các bản nháp làm giàu lấy dữ liệu từ tài liệu nguồn bạn quản lý ở đây — hãy giữ nó có tổ chức và gắn nhãn giấy phép."
+        }
+      },
+      "manager": {
+        "sharing": {
+          "title": "Kiểm soát ai có thể xem cuốn sách này",
+          "body": "Đặt chế độ hiển thị, tạo liên kết chia sẻ, hoặc mời cộng tác viên — tất cả ngay từ đây."
+        },
+        "bookSettings": {
+          "title": "Cập nhật thông tin cuốn sách",
+          "body": "Tiêu đề, ảnh bìa, thẻ thể loại, và liên kết thế giới đều nằm trong Book Settings — cập nhật bất cứ lúc nào."
+        }
       }
     }
   },

@@ -32,6 +32,17 @@ async function ok<T>(p: Promise<import('@playwright/test').APIResponse>): Promis
   return (await r.json()) as T;
 }
 
+/** #19 Wave 2 — `studioRole` is a server-synced ACCOUNT-level pref (not per-book, not
+ *  per-test-run), so a role picked by one E2E test sticks for every later test on this shared
+ *  account. Tests that need a deterministic tour (e.g. "the core tour specifically") reset it
+ *  to null directly via the API first — there is no UI affordance to clear a role once picked
+ *  (Skip only sets the seen-flag, it never touches studioRole, by design — see
+ *  useStudioOnboarding.ts). */
+export async function resetStudioRolePref(request: APIRequestContext, token: string): Promise<void> {
+  const r = await request.patch('/v1/me/preferences', { ...auth(token), data: { prefs: { studioRole: null } } });
+  if (!r.ok()) throw new Error(`resetStudioRolePref failed: ${r.status()} ${await r.text()}`);
+}
+
 export async function createBook(request: APIRequestContext, token: string, title: string): Promise<string> {
   const b = await ok<{ book_id: string }>(
     request.post('/v1/books', { ...auth(token), data: { title, original_language: 'en' } }),

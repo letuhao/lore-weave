@@ -36,11 +36,14 @@ describe('UserGuidePanel', () => {
     expect(hostMocks.openPanel).toHaveBeenCalledWith('compose', expect.objectContaining({ title: expect.any(String) }));
   });
 
-  // #19 — falls back to descKey when a panel has no dedicated guideBodyKey yet (Wave 1 state).
-  it('falls back to descKey for a panel with no guideBodyKey', () => {
+  // #19 Wave 2 — every non-hidden panel now has a dedicated guideBodyKey (richer than descKey);
+  // the row renders it. (Wave 1 covered the guideBodyKey-absent fallback branch when no real
+  // panel had one yet; that branch is still live in the component's `?? descKey` but every real
+  // catalog entry now takes the guideBodyKey arm, so this test asserts the current, exercised path.)
+  it('renders the dedicated guideBodyKey for a panel that has one (Wave 2 content)', () => {
     render(<UserGuidePanel {...fakeProps()} />);
     const composeDef = OPENABLE_STUDIO_PANELS.find((p) => p.id === 'compose')!;
-    expect(composeDef.guideBodyKey).toBeUndefined();
-    expect(screen.getByTestId('studio-user-guide-open-compose')).toHaveTextContent(composeDef.descKey);
+    expect(composeDef.guideBodyKey).toBe('panels.compose.guideBody');
+    expect(screen.getByTestId('studio-user-guide-open-compose')).toHaveTextContent(composeDef.guideBodyKey!);
   });
 });
