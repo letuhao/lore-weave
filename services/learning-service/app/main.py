@@ -62,9 +62,11 @@ def build_dispatcher() -> EventDispatcher:
     dispatcher.register("glossary.name_confirmed", handle_name_confirmed)  # M7c-3
     dispatcher.register("wiki.corrected", handle_wiki_corrected)  # D-WIKI-M8
     dispatcher.register("wiki.suggestion_reviewed", handle_wiki_suggestion_reviewed)  # D-WIKI-M8
-    # No-silent-drop: fail-fast at startup if a DECLARED correction event type has no
-    # handler (a rename / new-type that shipped unwired would otherwise be silently
-    # skipped at DEBUG on the firehose). The wiring test locks the reverse direction too.
+    # No-silent-drop (compile/CI half): fail-fast at startup if a DECLARED correction
+    # type has no handler — catches CONSUMER-side drift (a register() deleted, or a
+    # contract row added without a handler). A PRODUCER rename / producer-side new
+    # correction type is not visible here (the contract is consumer-owned) — that is
+    # surfaced at runtime by EventDispatcher.dispatch's correction-marker WARN.
     missing = CORRECTION_EVENT_TYPES - set(dispatcher.registered_types)
     if missing:
         raise RuntimeError(

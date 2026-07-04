@@ -2,22 +2,35 @@
 
 learning-service consumes 5 DOMAIN streams (glossary / knowledge / chat /
 composition / translation — a firehose of many event types) and handles only the
-CORRECTION / feedback subset. An unregistered type on those streams is CORRECTLY
-skipped quietly (it is simply not a correction event — warning on it would spam).
+CORRECTION / feedback subset. An unregistered type on those streams is normally a
+non-correction event we correctly skip quietly.
 
-The real silent-drop risk is a CORRECTION event that *should* be handled and isn't:
-a producer renames one, or a new correction type ships without a handler. The
-dispatcher would log it at DEBUG and skip — the learning signal is lost with no
-visible failure. This frozenset is the DECLARED set of correction event types;
-`build_dispatcher` fail-fasts if it does not register a handler for every one, and
-the wiring test (`tests/test_correction_contract.py`) asserts the dispatcher
-realizes EXACTLY this set — so a drop / rename / unwired-new-type fails at
-startup + in CI instead of silently losing the correction (the Agent-Extensibility
-"no-silent-no-op" rule, applied to the correction event bus).
+No-silent-drop has TWO halves, because this contract is CONSUMER-owned (producers
+in other services do not import it):
 
-Adding a correction event type is a two-line change that CANNOT half-land: add the
-type here AND register its handler in `build_dispatcher` — omit either and both the
-startup assert and the wiring test fail.
+  1. COMPILE/CI half (this file): the DECLARED set of correction types this
+     consumer wires. `build_dispatcher` fail-fasts if it registers no handler for a
+     declared type, and the wiring test asserts the dispatcher realizes EXACTLY this
+     set. This catches CONSUMER-side drift — a `register(...)` deleted, or a row
+     added here without a handler (or vice-versa). It CANNOT see a producer rename
+     or a producer-side new correction type: those live in other services, and this
+     hand-authored list would simply not know about them.
+
+  2. RUNTIME half (`EventDispatcher.dispatch`): a skipped event whose type carries a
+     correction MARKER (`corrected`/`feedback`/`reviewed`/`merged`/…) but has no
+     handler is logged at WARN, not DEBUG. THIS is what surfaces a producer rename /
+     new-correction-type / a currently-unhandled correction — at runtime, where the
+     producer-side truth actually lives.
+
+Adding a correction type is a two-line change that CANNOT half-land: add it here AND
+register its handler — omit either and the startup assert + wiring test fail.
+
+Known unhandled correction-class event (deliberately NOT in the set): `glossary.
+entity_merged` (a user merging duplicate entities — glossary outbox.go). Its payload
+is winner/loser ids, not the before/after diff shape learning's corrections use, so
+whether learning should capture merges is an open PRODUCT call (tracked
+D-LEARN-ENTITY-MERGED). Until decided it is intentionally unhandled; the runtime
+WARN (half 2) keeps it VISIBLE rather than silent.
 """
 
 from __future__ import annotations

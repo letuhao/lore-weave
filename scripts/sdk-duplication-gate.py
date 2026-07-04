@@ -252,8 +252,10 @@ def main() -> int:
 
 
 # Seeded from the current repo (2026-07-04). Re-generate with --update-baseline.
-# 19 known duplications from the enterprise-hardening audit (Area 8): JWT
-# verifier x4 (+ alg-pin x4), logging_config trio x3, TerminalEvent dup x2.
+# 11 known duplications (Area 8): JWT verifier x1 (+ alg-pin x1) — only auth-service,
+# the token MINTER, remains after the D-JWT-ROLE-GATE migration; logging_config trio
+# x3 (RedactFilter + _SECRET_PATTERNS + setup_logging across composition/knowledge/
+# lore-enrichment). The TerminalEvent dup was retired into contracts/notifyevent.
 # JWT-migration 2026-07-04: book/glossary/notification/sharing migrated to the
 # shared contracts/platformjwt verifier (8 entries retired below). The 3 that
 # D-JWT-ROLE-GATE 2026-07-04: agent-registry/provider-registry/usage-billing migrated
