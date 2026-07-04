@@ -1,6 +1,37 @@
 # ▶▶ NEXT SESSION STARTS HERE
 
-> **"CURSOR-FOR-NOVELS" REGISTER — #2 APPLY-DIFF FIXED 2026-07-04 (uncommitted).** Resumed the
+> **"CURSOR-FOR-NOVELS" REGISTER — #1 COHERENCE SPEC+PLAN DONE 2026-07-04 (docs only, no build
+> yet — user-scoped this pass as CLARIFY+DESIGN+PLAN only).** After #2 APPLY-DIFF shipped
+> (`fb98f161f`, below), user asked to continue straight to #1 COHERENCE. Dispatched an Explore
+> agent for a full capability audit of `ChapterEditorPage.tsx` (legacy) vs Studio v2 before
+> designing anything — found **15 legacy-only capabilities with no Studio equivalent**
+> (Checkpoints, Revision History, Publish Gate, Translate workmode, grammar check, glossary
+> inline decoration/autocomplete, mention heatmap, AI-provenance tracking, selection
+> toolbar/inline-AI, focus mode, auto-save, progress-reporting, original-source viewer,
+> image/video upload-context+version-history, mobile shell, popout-insert-relay) plus 2 route
+> entry points that don't coordinate (every chapter-row click → legacy; only one promoted header
+> CTA → Studio). User confirmed via `AskUserQuestion`: **retire `ChapterEditorPage`, Studio
+> becomes the sole surface** (not just unify entry points); this pass writes **spec + plan only**.
+> Shipped: [`16_chapter_editor_parity_and_retirement.md`](../specs/2026-07-01-writing-studio/16_chapter_editor_parity_and_retirement.md)
+> (locked decisions M1–M9, a risk-ordered 4-phase roadmap: data-safety → editor-craft UX →
+> Translate → route-retirement, mobile shell left as an explicit OPEN product decision not
+> resolved here) + [`2026-07-04-chapter-editor-studio-merge.md`](../plans/2026-07-04-chapter-editor-studio-merge.md)
+> (Phase 1 build plan: fan-out shape, phase-agent contract, risk notes) + a new row 16 in
+> [`00_OVERVIEW.md`](../specs/2026-07-01-writing-studio/00_OVERVIEW.md). **Self-caught correction
+> during spec-writing:** the initial audit claimed the G7 dirty-guard (spec 09) was an
+> unimplemented design hole — re-checked against code and found it's **already implemented** for
+> the Lane-B reconciler (`bookEffects.ts` calls `isChapterDirty` before reloading); corrected both
+> docs so Phase 1 has only ONE true prerequisite (P1: replace the `editorBridge` global singleton
+> with a real `ManuscriptUnitProvider.applyProposedEdit` Tier-4 hoist action, per spec 08's own
+> "Migration: editorBridge → bus + reconciler" section which already described this target shape
+> without building it) rather than two. **NEXT:** BUILD Phase 1 — start with P1 (isolated,
+> load-bearing, touches the exact files `fb98f161f` touched today), then fan out
+> 1.2 Checkpoints / 1.3 Revision History / 1.4 Publish Gate (disjoint new files, serial
+> integration into `EditorPanel.tsx`), then 1.5 the `ChaptersTab.tsx` route switch. Read the plan
+> doc's Risk Notes before starting (unconfirmed `ChaptersTab.tsx` path, re-verify P1's target
+> files haven't drifted under concurrent-session edits).
+
+> **"CURSOR-FOR-NOVELS" REGISTER — #2 APPLY-DIFF FIXED + COMMITTED 2026-07-04 (`fb98f161f`).** Resumed the
 > parked register (memory [[writing-studio-fragmented-not-underbuilt]]) — user asked to pick up
 > the GUI-quality gaps now that context-budget-law is being carried by a separate concurrent
 > session. Re-verified all 4 items against CURRENT code (the memory was 3 days stale) before
@@ -32,14 +63,21 @@
 > rewrite the first paragraph → agent called `composition_get_prose` then **`propose_edit`** → the
 > C6 hunk-review card rendered in the Studio Compose panel for the first time ever → clicked
 > Apply → the Studio manuscript editor updated live (55→74 words, "● unsaved") → Save persisted
-> it. Closes the loop end-to-end on the surface where it was previously impossible. **NOT yet
-> committed** — user has not asked to commit. **NEXT (register order, per the memory's own
-> priority #1+#2+#3):** #1 COHERENCE (merge `ChapterEditorPage` into Studio v2, or vice versa —
-> needs its own CLARIFY+DESIGN, no spec exists yet) is the next-highest-leverage item; #4
-> AGENT-MODE (autonomy mission-control GUI) is the largest remaining lift (engine exists
-> server-side, zero FE) and also needs its own CLARIFY+DESIGN. #3 LIVE-SYNC should get an audit
-> pass (does `composition_generate`/authoring-run/translation-job writes reach the reconciler?)
-> before assuming it's done, but is no longer a bare stub.
+> it. Closes the loop end-to-end on the surface where it was previously impossible. **`/review-impl`
+> caught + fixed a HIGH before commit:** `AssistantMessage.tsx` renders `<ProposeEditCard record={tc} />`
+> with no `chapterId` prop, so the card's own "never write into a different chapter" guard was
+> DEAD CODE in production — on Studio's persistent Compose dock (unlike the legacy page, which
+> only keys `<Chat>` by `bookId` and thus shares the same latent gap, just less reachable),
+> switching chapters while a proposal is pending then clicking a stale Apply would silently splice
+> text into the wrong chapter. Fixed in `ProposeEditCard.tsx` by self-deriving the guard's target
+> chapter from the live editor bridge AT MOUNT instead of the never-supplied prop — 3 new
+> regression tests, no prop-threading needed through the shared message-list chain. **Committed
+> `fb98f161f`** (both the wiring fix and the review-impl fix, 4 files). #1 COHERENCE picked up
+> next per the memory's own priority order — see the block above for its spec+plan output. #3
+> LIVE-SYNC should still get an audit pass (does `composition_generate`/authoring-run/
+> translation-job writes reach the reconciler?) before assuming full coverage. #4 AGENT-MODE
+> (autonomy mission-control GUI) remains the largest unstarted lift (engine exists server-side,
+> zero FE) — needs its own CLARIFY+DESIGN when picked up.
 
 **KNOWLEDGE/KG DOCKABLE MIGRATION — PHASE A + PHASE B ✅ SHIPPED 2026-07-04.** Spec: [`docs/specs/2026-07-01-writing-studio/14_kg_panels.md`](../specs/2026-07-01-writing-studio/14_kg_panels.md) (row 14 in `00_OVERVIEW.md`). Phase A (commit `4c50f7ae2`, see prior entry below for detail) shipped the shared foundation: `useBookKnowledgeProject` hook, the `knowledge` hub launcher panel, `VersionsPanel`'s DOCK-9 fix, `knowledgeEffects.ts` Lane-B wiring. **Phase B — all 12 capability panels shipped via parallel fanout** (12 background agents, each building one panel + its own tests with zero shared-file edits, followed by ONE serial integration pass adding all catalog/i18n/BE-enum entries together — avoided the N-way race on `catalog.ts`): `kg-overview` (book-scoped, DOCK-7 fix on `OverviewSection`'s 2 backlink `<Link>`s → callback props), `kg-entities`/`kg-timeline`/`kg-evidence` (shared scope via optional `params.scopedProjectId`, K4), `kg-gap` (book-scoped), `kg-proposals` (book-scoped via `host.bookId`, DOCK-7 fix on `ProposalsInboxTab`'s `<Link>` → `onOpenRow` callback), `kg-schema` (book-scoped, the K6 bundle — absorbs the whole ontology adopt/schema/views/sync flow as ONE panel; 2 more DOCK-9 fixes — `GenerateSchemaDialog`+`SchemaWorkbench` → `FormDialog`/`ConfirmDialog` — plus a DOCK-7 fix on `CreateSchemaEntry`'s Link), `kg-graph` (book-scoped), `kg-insights`/`kg-jobs`/`kg-bio`/`kg-privacy` (user-scoped, global, no book/project resolution). All 12 use `followStudioLink`/`host.openPanel` instead of `navigate()` where they link out — unmapped paths fall through to a new-tab open today (honest, not a silent no-op), upgrading in-tab automatically as sibling routes gain panel mappings. **`/review-impl` (1 MED, fixed):** `useBookKnowledgeProject` filtered client-side over only the first cached page of the user's projects (`useProjects(false)` + `.find()`) instead of using the BE's existing server-side `book_id` query filter — a user with >100 KG projects whose linked project sorted past page 1 would silently get a false "no project linked" empty state across all 5 book-scoped panels. Fixed by threading a `bookId` param through `useProjects`/`ProjectsQueryParams` into the BE filter (confirmed live in `services/knowledge-service/app/routers/public/projects.py`), with a regression test simulating 150 filler projects. **VERIFY:** FE 562 files/3892 tests green + tsc clean; chat-service 927 tests green; `ai-provider-gate.py` clean — all re-run after this landed alongside Glossary's own Phase B and the separate "utility panels" dockable track on the same checkout (additive merges throughout, no collisions; contract regenerated to include every track's panel ids). **NEXT:** cross-panel E2E wiring (hub → capability panel drill-down) may defer per the spec's debt-stack convention until ≥2 panels are used together in a real flow; otherwise Phase B is feature-complete per the spec. **studioLinks.ts wiring done same session:** mapped every global KG path (`/knowledge`, `/knowledge/projects`, `/knowledge/{jobs,global,entities,timeline,raw,insights,privacy}`) to its `kg-*` panel, and same-book `/books/:id/glossary` → the `glossary` panel — these upgrade `kg-proposals`/`KnowledgeHubPanel`'s links from new-tab to in-tab automatically, zero panel-side changes needed. Deliberately did NOT map `/knowledge/projects/:id/:section` (project-id-keyed): the `kg-*` panels resolve "the CURRENT book's project" via `useBookKnowledgeProject`, not an arbitrary `:id` — mapping it would silently show the wrong project whenever `:id` isn't this book's project (e.g. the hub browsing a different book's or a standalone project). Wiki/enrichment pages stay external too (no dock panel exists for them yet).
 
