@@ -54,7 +54,9 @@ Because these are refactors touching many services, **each workstream is its own
 
 ## Workstream B — LLM-logging hardening (P0-2 structural residual + key mgmt)
 
-### B1 · KEK `sha256`-derivation + rotation runbook  *(size: S — smaller than first scoped)*
+### B1 · KEK `sha256`-derivation + rotation runbook  *(size: S — ✅ SHIPPED 2026-07-04)*
+
+> ✅ **Done.** `deriveAESKey` (`usage-billing server.go`) SHA-256-derives a `sha256:`-marked KEK, keeps pad/truncate for unmarked keys → version-gated per key, no migration. Runbook on the `LLMPayloadEncryptionKey` config field. Tests: `TestDeriveAESKey_Sha256VersionGate` (money test) + `TestUnwrapSessionKey_DerivationRotation`; full usage-billing suite green. Clears `D-REVIEW-AESKEY-DERIVE`.
 
 **Problem.** P0-3 gave the payload KEK a keyring (`LLM_PAYLOAD_ENCRYPTION_KEYS_RETIRED`); the residual is (a) `usage-billing normalizeAESKey` (`server.go:56-67`) zero-pads/truncates the passphrase to 32 bytes instead of `sha256`-deriving (`D-REVIEW-AESKEY-DERIVE`) — a >32-byte passphrase contributes only its first 32 bytes; (b) no documented rotation runbook.
 

@@ -27,6 +27,20 @@ type Config struct {
 	// secret must never render logged payloads undecryptable, and a JWT leak
 	// must not also expose every logged prompt. Required (fail-to-start) —
 	// mirrors the JWT_SECRET ≥32-char rule.
+	//
+	// KEY DERIVATION (D-REVIEW-AESKEY-DERIVE): prefix the value with "sha256:" to
+	// derive the AES key via SHA-256 of the passphrase (full-length entropy, the
+	// hardened default for new deployments). WITHOUT the prefix the value keeps the
+	// legacy zero-pad/truncate coercion (only the first 32 bytes matter) for
+	// backward compatibility. The derivation is version-gated PER KEY, so no
+	// re-encrypt migration is needed — the read path try-alls active → legacy →
+	// retired regardless of each key's derivation.
+	//
+	// ROTATION RUNBOOK (also upgrades derivation): move the current
+	// LLM_PAYLOAD_ENCRYPTION_KEY value into LLM_PAYLOAD_ENCRYPTION_KEYS_RETIRED
+	// (comma-separated, keeps decrypting old rows under its original derivation) and
+	// set a fresh "sha256:"-prefixed LLM_PAYLOAD_ENCRYPTION_KEY. New rows wrap under
+	// the new SHA-256 key; prior rows still decrypt via the retired keyring.
 	LLMPayloadEncryptionKey string
 
 	// LLMPayloadEncryptionKeysRetired are PREVIOUS dedicated KEK values, kept only

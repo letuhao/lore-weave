@@ -5,6 +5,7 @@ import (
 	"context"
 	"crypto/rand"
 	"crypto/rsa"
+	"crypto/sha256"
 	"crypto/x509"
 	"encoding/json"
 	"encoding/pem"
@@ -500,6 +501,73 @@ func TestUnwrapSessionKey_RetiredKeyRotation(t *testing.T) {
 	strangerWrap, _ := encryptWithKey(normalizeAESKey("STRANGER-kek-never-registered-32c"), sessionKey)
 	if _, err := unwrapSessionKey(s.secretKey, s.legacySecretKey, s.retiredKeys, strangerWrap); err == nil {
 		t.Fatal("an unregistered key must NOT decrypt")
+	}
+}
+
+// TestDeriveAESKey_Sha256VersionGate proves D-REVIEW-AESKEY-DERIVE: a key value
+// carrying the "sha256:" marker is SHA-256-derived (full passphrase entropy, fixed
+// 32-byte output), while an unmarked key keeps the legacy zero-pad/truncate
+// coercion. The marker is what version-gates the derivation per key, so switching
+// the active key to sha256 does NOT orphan rows wrapped under an older unmarked key.
+func TestDeriveAESKey_Sha256VersionGate(t *testing.T) {
+	t.Parallel()
+
+	// (1) The "sha256:" marker derives via SHA-256 of the passphrase after the prefix.
+	pass := "a-decent-passphrase-well-over-32-bytes-long"
+	want := sha256.Sum256([]byte(pass))
+	if got := deriveAESKey("sha256:" + pass); string(got) != string(want[:]) {
+		t.Fatalf("sha256-marked key not SHA-256-derived")
+	}
+
+	// (2) An UNMARKED key is byte-identical to the legacy pad/truncate path
+	//     (backward compatibility — existing rows must keep decrypting).
+	raw := "OLD-payload-kek-32-chars-exactly!!"
+	if got := deriveAESKey(raw); string(got) != string(normalizeAESKey(raw)) {
+		t.Fatalf("unmarked key must equal legacy normalizeAESKey")
+	}
+
+	// (3) THE MONEY TEST — the exact D-REVIEW-AESKEY-DERIVE bug: two passphrases
+	//     identical in their first 32 bytes but differing AFTER byte 32 collapse to
+	//     the SAME key under pad/truncate (the defect: the tail entropy is dropped),
+	//     but yield DIFFERENT keys under sha256 (the fix: full-length entropy).
+	base := "0123456789012345678901234567890123456789" // 40 bytes, first 32 shared
+	a := base + "-tail-AAA"
+	b := base + "-tail-BBB"
+	if string(normalizeAESKey(a)) != string(normalizeAESKey(b)) {
+		t.Fatalf("precondition: legacy truncation should collide on the shared 32-byte prefix")
+	}
+	if string(deriveAESKey("sha256:"+a)) == string(deriveAESKey("sha256:"+b)) {
+		t.Fatalf("sha256 derivation must NOT collide on differing tails (the bug is not fixed)")
+	}
+}
+
+// TestUnwrapSessionKey_DerivationRotation proves a row wrapped under the OLD
+// (unmarked, pad/truncate) KEK still decrypts after the active key is rotated to a
+// sha256-marked one — the version-gated derivation change does not orphan prior rows.
+func TestUnwrapSessionKey_DerivationRotation(t *testing.T) {
+	t.Parallel()
+	oldKEK := "OLD-payload-kek-32-chars-exactly!!"                 // unmarked → pad/truncate
+	newKEK := "sha256:NEW-payload-kek-distinct-passphrase-material" // marked → sha256
+	s := NewServer(nil, &config.Config{
+		JWTSecret:                       "12345678901234567890123456789012",
+		LLMPayloadEncryptionKey:         newKEK,
+		LLMPayloadEncryptionKeysRetired: []string{oldKEK},
+	})
+	sessionKey := []byte("session-key-32-bytes-xxxxxxxxxxxx")
+
+	// Row written BEFORE the derivation rotation (wrapped with the old unmarked KEK).
+	oldWrap, err := encryptWithKey(deriveAESKey(oldKEK), sessionKey)
+	if err != nil {
+		t.Fatalf("old wrap: %v", err)
+	}
+	if got, err := unwrapSessionKey(s.secretKey, s.legacySecretKey, s.retiredKeys, oldWrap); err != nil || string(got) != string(sessionKey) {
+		t.Fatalf("derivation rotation orphaned the old-key row: err=%v", err)
+	}
+
+	// New rows use the sha256-derived active key and round-trip.
+	newWrap, _ := encryptWithKey(s.secretKey, sessionKey)
+	if got, err := unwrapSessionKey(s.secretKey, s.legacySecretKey, s.retiredKeys, newWrap); err != nil || string(got) != string(sessionKey) {
+		t.Fatalf("sha256 active-key unwrap failed: err=%v", err)
 	}
 }
 

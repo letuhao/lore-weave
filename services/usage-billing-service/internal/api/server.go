@@ -53,9 +53,31 @@ type Server struct {
 	adminKID string
 }
 
+// aesKeySHA256Prefix marks a KEK value whose 32-byte AES key is SHA-256-derived
+// from the passphrase after the prefix (D-REVIEW-AESKEY-DERIVE). Its presence is
+// what version-gates the derivation PER KEY: a marked active key can be rotated in
+// while older unmarked keys (in the retired keyring) keep the legacy pad/truncate
+// coercion, so the read-path try-all still decrypts every prior row — no re-encrypt
+// migration needed.
+const aesKeySHA256Prefix = "sha256:"
+
+// deriveAESKey turns a KEK value into a 32-byte AES-256 key. A value marked with
+// aesKeySHA256Prefix is SHA-256-derived (full passphrase entropy → a fixed 32-byte
+// key regardless of length). An UNMARKED value keeps the legacy normalizeAESKey
+// coercion for backward compatibility with rows wrapped before this change.
+func deriveAESKey(secret string) []byte {
+	if strings.HasPrefix(secret, aesKeySHA256Prefix) {
+		sum := sha256.Sum256([]byte(secret[len(aesKeySHA256Prefix):]))
+		return sum[:]
+	}
+	return normalizeAESKey(secret)
+}
+
 // normalizeAESKey coerces a secret string into a 32-byte AES-256 key (truncate
-// if longer, zero-pad if shorter). An empty input yields an all-zero key (only
-// happens in tests where the secret is unset).
+// if longer, zero-pad if shorter). The LEGACY derivation, kept only so unmarked
+// keys (and rows wrapped under them) stay decryptable; new keys should use the
+// aesKeySHA256Prefix marker. An empty input yields an all-zero key (only happens
+// in tests where the secret is unset).
 func normalizeAESKey(secret string) []byte {
 	key := []byte(secret)
 	if len(key) >= 32 {
@@ -69,17 +91,17 @@ func normalizeAESKey(secret string) []byte {
 func NewServer(pool *pgxpool.Pool, cfg *config.Config) *Server {
 	var legacy []byte
 	if cfg.JWTSecret != "" {
-		legacy = normalizeAESKey(cfg.JWTSecret)
+		legacy = deriveAESKey(cfg.JWTSecret)
 	}
 	var retired [][]byte
 	for _, k := range cfg.LLMPayloadEncryptionKeysRetired {
-		retired = append(retired, normalizeAESKey(k))
+		retired = append(retired, deriveAESKey(k))
 	}
 	s := &Server{
 		pool:            pool,
 		cfg:             cfg,
 		secret:          []byte(cfg.JWTSecret),
-		secretKey:       normalizeAESKey(cfg.LLMPayloadEncryptionKey),
+		secretKey:       deriveAESKey(cfg.LLMPayloadEncryptionKey),
 		legacySecretKey: legacy,
 		retiredKeys:     retired,
 	}
