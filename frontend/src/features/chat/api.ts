@@ -9,6 +9,7 @@ import type {
   CompactSessionResult,
   ContextBudget,
   ContextHistoryPoint,
+  ContextTracePoint,
   CreateSessionPayload,
   PatchSessionPayload,
   PendingFact,
@@ -92,6 +93,17 @@ export const chatApi = {
     const qs = limit != null ? `?limit=${limit}` : '';
     return apiJson<{ items: ContextHistoryPoint[] }>(
       `/v1/chat/sessions/${sessionId}/context-history${qs}`,
+      { token },
+    );
+  },
+
+  // Context Compiler · Trace Inspector (spec §11) — the full per-turn contextBudget
+  // frames + the user message that drove each turn (raw_tokens, reduction_pct,
+  // status_flags, trace spans, allocation breakdown). Owner-gated server-side.
+  getContextTrace(token: string, sessionId: string, limit?: number) {
+    const qs = limit != null ? `?limit=${limit}` : '';
+    return apiJson<{ items: ContextTracePoint[] }>(
+      `/v1/chat/sessions/${sessionId}/context-trace${qs}`,
       { token },
     );
   },

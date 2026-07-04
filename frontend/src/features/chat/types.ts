@@ -151,6 +151,12 @@ export interface ContextBreakdownMap {
   tool_results?: number;
   frontend_tool_schemas?: number;
   mcp_tool_schemas?: number;
+  // Context Budget Law forward-declared allocation categories (present 0 until
+  // their tier populates them): rolling summary (T6), whitelisted chapter body
+  // (D3), model reasoning budget (D7). Mirrors the 15-key BE BREAKDOWN_CATEGORIES.
+  summary?: number;
+  chapter?: number;
+  reasoning?: number;
 }
 
 export interface ContextBudget {
@@ -178,6 +184,55 @@ export interface ContextHistoryPoint {
   /** Same 12-key vocabulary as the live budget's breakdown (memory_knowledge
    *  nests {total, sections}). */
   breakdown: ContextBreakdownMap;
+}
+
+// ── Context Compiler · Trace Inspector (spec §11) ──────────────────────────────
+// The Inspector reads the FULL persisted contextBudget frame per turn (not just
+// the breakdown sub-map the chart uses). These mirror chat-service:
+// token_budget.context_budget_event + loreweave_context.TraceSpan.
+
+/** One Planner/Compiler decision (the compile-trace waterfall row). `delta` < 0 =
+ *  tokens SAVED, > 0 = INCLUDED, 0 = neutral; `is_error` = a reject span. */
+export interface TraceSpanFrame {
+  phase: 'planner' | 'compiler';
+  tier: string; // T0..T6
+  category: string;
+  action: string;
+  delta: number;
+  is_error: boolean;
+}
+
+/** The T5 entity-presence gate decision surfaced per turn. */
+export interface EntityPresenceFrame {
+  grounding_needed: boolean;
+  matched: string[];
+  reason: string;
+}
+
+/** The full persisted contextBudget frame — a superset of ContextBudget with the
+ *  §11a Inspector telemetry. Every Inspector-specific field is optional so an
+ *  older/pre-M1 turn (no telemetry) still renders (blank chips, no waterfall). */
+export interface ContextTraceFrame extends ContextBudget {
+  target?: number | null;
+  pct_of_target?: number | null;
+  raw_tokens?: number | null;
+  reduction_pct?: number | null;
+  status_flags?: string[];
+  retrieval_mode?: string | null;
+  intent?: string | null;
+  entity_presence?: EntityPresenceFrame | null;
+  trace?: TraceSpanFrame[];
+}
+
+/** One turn in the Inspector series (GET /v1/chat/sessions/{id}/context-trace).
+ *  Mirrors the BE ContextTracePoint: the full frame + the user message that drove it. */
+export interface ContextTracePoint {
+  sequence_num: number;
+  created_at: string;
+  input_tokens: number | null;
+  output_tokens: number | null;
+  user_message: string | null;
+  frame: ContextTraceFrame;
 }
 
 // Chat Quality Wave W1/W2 — the `compaction` CUSTOM frame, emitted when

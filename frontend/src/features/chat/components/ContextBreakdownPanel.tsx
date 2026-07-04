@@ -28,6 +28,11 @@ export const BREAKDOWN_CATEGORIES = [
   'tool_results',
   'frontend_tool_schemas',
   'mcp_tool_schemas',
+  // Context Budget Law forward-declared categories (present 0 until their tier
+  // populates them) — the Inspector allocation map renders the full 15-key set.
+  'summary',
+  'chapter',
+  'reasoning',
 ] as const;
 
 export type BreakdownCategory = (typeof BREAKDOWN_CATEGORIES)[number];
@@ -49,6 +54,9 @@ export const CATEGORY_COLORS: Record<BreakdownCategory, string> = {
   tool_results: 'bg-cyan-400',
   frontend_tool_schemas: 'bg-indigo-400',
   mcp_tool_schemas: 'bg-blue-400',
+  summary: 'bg-purple-400',
+  chapter: 'bg-pink-400',
+  reasoning: 'bg-red-400',
 };
 
 // Hex mirror of CATEGORY_COLORS (the *-400 Tailwind palette values) — recharts
@@ -67,6 +75,9 @@ export const CATEGORY_HEX: Record<BreakdownCategory, string> = {
   tool_results: '#22d3ee',
   frontend_tool_schemas: '#818cf8',
   mcp_tool_schemas: '#60a5fa',
+  summary: '#c084fc',
+  chapter: '#f472b6',
+  reasoning: '#f87171',
 };
 
 // Categories whose row gets a "manage" action (opens the tool/skill modal).

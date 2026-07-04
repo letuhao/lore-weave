@@ -58,7 +58,7 @@ describe('computeBreakdown', () => {
     ]);
     expect(c.zeros).toEqual([
       'system_prompt', 'working_memory', 'steering', 'plan_nudge', 'book_note',
-      'attached_context', 'tool_results',
+      'attached_context', 'tool_results', 'summary', 'chapter', 'reasoning',
     ]);
   });
 
@@ -93,7 +93,7 @@ describe('computeBreakdown', () => {
   it('no breakdown at all → every category is zero', () => {
     const c = computeBreakdown({ used_tokens: 10, context_length: 100, effective_limit: 90, pct: 0.11 });
     expect(c.rows).toEqual([]);
-    expect(c.zeros).toHaveLength(12);
+    expect(c.zeros).toHaveLength(15);
   });
 });
 
@@ -185,6 +185,9 @@ describe('CATEGORY_COLORS ⇄ CATEGORY_HEX lockstep', () => {
     'bg-cyan-400': '#22d3ee',
     'bg-indigo-400': '#818cf8',
     'bg-blue-400': '#60a5fa',
+    'bg-purple-400': '#c084fc',
+    'bg-pink-400': '#f472b6',
+    'bg-red-400': '#f87171',
   };
 
   it('every category: CATEGORY_HEX equals its CATEGORY_COLORS Tailwind class hex', () => {
