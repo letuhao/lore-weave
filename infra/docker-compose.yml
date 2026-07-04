@@ -870,7 +870,7 @@ services:
       labels: *build-labels
     environment:
       PORT: "8090"
-      T5_INTENT_GATE_ENABLED: "${T5_INTENT_GATE_ENABLED:-true}"
+      T5_INTENT_GATE_ENABLED: "${T5_INTENT_GATE_ENABLED:-false}"
       DATABASE_URL: postgresql://loreweave:loreweave_dev@postgres:5432/loreweave_chat
       JWT_SECRET: ${JWT_SECRET:-loreweave_local_dev_jwt_secret_change_me_32chars}
       PROVIDER_REGISTRY_INTERNAL_URL: http://provider-registry-service:8085

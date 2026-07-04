@@ -59,10 +59,15 @@ class Settings(BaseSettings):
     glossary_service_url: str = "http://glossary-service:8088"
     known_entities_timeout_s: float = 2.0
     known_entities_cache_ttl_s: float = 300.0
-    # T5 kill-switch. False ⇒ grounding is ALWAYS pulled (pre-T5 behavior) — the
-    # baseline arm of the quality-gate A/B, and the escape hatch if the gate ever
-    # regresses answer-correctness in production. Default True (the gate is on).
-    t5_intent_gate_enabled: bool = True
+    # T5 intent gate. Default OFF as of the 2026-07-04 audit: the honest full-mode
+    # A/B (Dracula KG) showed it saves ~0 tokens — build_context grounding is ~1.1K in
+    # both static and full mode, negligible next to the ~41K MCP tool-schema catalog
+    # that dominates every turn. So as a TOKEN optimization it's a kill. The code is
+    # kept (correct + safe + tested): its residual value is retrieval COMPUTE/latency
+    # avoidance on gated turns, the `entity_presence` telemetry, and being the D1
+    # strong-model pull-mode substrate — flip this True to re-enable when pull mode
+    # (where grounding IS expensive per turn) lands. See T5-2026-07-04-CORRECTED.md.
+    t5_intent_gate_enabled: bool = False
 
     # Agent Extensibility Registry (P1) — user/book prompt-only skills. chat-service
     # reads /internal/skills and injects them alongside the built-in SYSTEM_SKILLS,

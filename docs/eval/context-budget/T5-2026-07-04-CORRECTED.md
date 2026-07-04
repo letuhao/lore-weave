@@ -67,8 +67,33 @@ is small next to the **41K MCP tool-schema catalog** re-sent across tool-loop pa
 lore turns. The likely bigger Context-Budget win is **tool-catalog / discovery trimming**,
 not grounding gating — but that is a hypothesis to measure, not a new confident claim.
 
-## Next (to finish "measure honestly")
-Run `kg_run_benchmark` for the embedding model → dispatch a 2-chapter Dracula extraction →
-re-run the gate ON vs OFF A/B (`T5_INTENT_GATE_ENABLED`) → the delta on a no-lore turn IS
-the gate's real savings. Then decide validate-or-kill on data. (A heavier pipeline run;
-can go in the background.)
+## FINAL — full-mode measurement done (2026-07-04)
+
+Seeded the pipeline end-to-end: created Dracula KG project `019f2be0` → fixed a
+`kg_run_benchmark` NameError → benchmark PASSED (recall@3=1.0) → extracted 2 chapters
+(full mode now active). Then the clean gate ON vs OFF A/B on the SAME no-lore turn:
+
+| | grounding | `memory_knowledge` (grounding block) | `used_tokens` |
+|---|---|---|---:|
+| gate ON (candidate) | False → static | 1084 | 29,649 |
+| gate OFF (baseline) | True → **full** | 1126 | 29,697 |
+
+**Verdict: KILL as a token optimization.** The gate saves **~48 tokens (~0.16%)**.
+`build_context` grounding is ~1.1K in BOTH static and full mode — negligible next to the
+**~41K `mcp_tool_schemas` catalog** re-sent across the multi-pass tool loop (the lore turn
+= 120K = catalog × passes; the grounding block is a rounding error). The intent gate
+correctly fires and is safe, but the lever it pulls is tiny.
+
+**Action taken:** `t5_intent_gate_enabled` **defaulted OFF** (config + compose). The code
+is KEPT (correct/safe/tested) — its residual value is retrieval COMPUTE/latency avoidance
+on gated turns, the `entity_presence` telemetry, and being the D1 pull-mode substrate.
+Re-enable when the strong-model JIT `pull` mode (grounding expensive per turn) lands.
+
+**The real Context-Budget lever (evidence-backed):** the ~41K MCP tool-schema catalog on
+every tool-loop turn. Next token work should target **tool discovery / schema trimming**
+(advertise fewer tools per turn; smaller schemas), NOT grounding gating. This is the
+honest redirection the audit produced.
+
+**Bonus:** the seeded Dracula KG project (`019f2be0`, benchmark-passed, 2 chapters
+extracted) partially resolves **D-EVAL-BOOK** — there is now a KG-linked book on
+claude-test for future grounding/answer-correctness measurement.
