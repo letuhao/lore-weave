@@ -5,23 +5,27 @@ import (
 	"crypto/aes"
 	"crypto/cipher"
 	"crypto/rand"
+	"crypto/rsa"
 	"crypto/subtle"
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
+	"log/slog"
 	"net/http"
+	"slices"
 	"strconv"
 	"strings"
 	"time"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
-	"github.com/golang-jwt/jwt/v5"
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
 
 	"github.com/loreweave/agent-registry-service/internal/config"
+	"github.com/loreweave/foundation/contracts/adminjwt"
+	"github.com/loreweave/foundation/contracts/platformjwt"
 	"github.com/loreweave/grantclient"
 	"github.com/loreweave/observability"
 )
@@ -44,6 +48,12 @@ type Server struct {
 	// grants resolves E0 book grants for book-tier writes (D-REG-BOOK-GRANT).
 	// nil when BOOK_SERVICE_INTERNAL_URL is unset → book-tier writes 501.
 	grants *grantclient.Client
+	// adminPub verifies RS256 admin JWTs for the System-tier write paths + the
+	// admin-only ingest routes (D-JWT-ROLE-GATE, contracts/adminjwt). nil when
+	// ADMIN_JWT_PUBLIC_KEY_PEM is unset → those paths fail closed (503).
+	// adminKID = KeyFingerprint(adminPub).
+	adminPub *rsa.PublicKey
+	adminKID string
 }
 
 // NewServer constructs the HTTP server. db may be nil for router-only tests;
@@ -61,6 +71,18 @@ func NewServer(db PgxDB, cfg *config.Config) *Server {
 			InternalToken: cfg.InternalServiceToken,
 		}); err == nil {
 			s.grants = gc
+		}
+	}
+	if raw := strings.TrimSpace(cfg.AdminJWTPublicKeyPEM); raw != "" {
+		if pub, err := adminjwt.ParseRSAPublicKeyPEM(pemOrBase64(raw)); err != nil {
+			// Misconfigured key → leave admin disabled (fail closed) + log loudly.
+			slog.Error("agent-registry: ADMIN_JWT_PUBLIC_KEY_PEM parse failed; System-tier + ingest admin paths DISABLED", "err", err)
+		} else if kid, err := adminjwt.KeyFingerprint(pub); err != nil {
+			slog.Error("agent-registry: admin key fingerprint failed; System-tier + ingest admin paths DISABLED", "err", err)
+		} else {
+			s.adminPub = pub
+			s.adminKID = kid
+			slog.Info("agent-registry: System-tier + ingest admin paths ENABLED", "kid", kid)
 		}
 	}
 	return s
@@ -101,15 +123,23 @@ func (s *Server) requireBookGrant(w http.ResponseWriter, r *http.Request, bookID
 }
 
 // authorizeRowWrite decides whether the caller may mutate/inspect a loaded row by
-// tier: user → own; system → admin; book → ≥edit grant on an ACTIVE book. The book
-// path resolves the grant per request (fail-closed). Used by get/patch/delete so a
-// book-tier resource is manageable by the book's grantees (its rows carry no owner).
-func (s *Server) authorizeRowWrite(r *http.Request, tier string, owner, book *uuid.UUID, uid uuid.UUID, role string) bool {
+// tier: user → own; system → RS256 admin token (admin:write); book → ≥edit grant on
+// an ACTIVE book. The book path resolves the grant per request (fail-closed). Used by
+// get/patch/delete so a book-tier resource is manageable by the book's grantees (its
+// rows carry no owner).
+//
+// D-JWT-ROLE-GATE: the System-tier branch delegates to requireAdminScope, which WRITES
+// its own error (401/403/503) and returns ok. So a caller must NOT write an anti-oracle
+// 404 for a System-tier row (requireAdminScope already responded) — only for the
+// user/book branches, which return false WITHOUT writing. See the caller pattern
+// `if !ok { if tier != "system" { writeError(404) }; return }`.
+func (s *Server) authorizeRowWrite(w http.ResponseWriter, r *http.Request, tier string, owner, book *uuid.UUID, uid uuid.UUID) bool {
 	switch tier {
 	case "user":
 		return owner != nil && *owner == uid
 	case "system":
-		return role == "admin"
+		_, ok := s.requireAdminScope(w, r, scopeAdminWrite)
+		return ok
 	case "book":
 		if s.grants == nil || book == nil {
 			return false
@@ -296,50 +326,83 @@ func (s *Server) requireInternalToken(next http.Handler) http.Handler {
 
 // ── auth ──────────────────────────────────────────────────────────────────
 
-type accessClaims struct {
-	jwt.RegisteredClaims
-	Role string `json:"role,omitempty"`
-}
-
-// authUser parses the user JWT (HS256) and returns (user_id, role). ok=false
-// on any failure; the caller responds 401.
-func (s *Server) authUser(r *http.Request) (uuid.UUID, string, bool) {
+// authUser verifies the platform-user HS256 JWT via the shared contracts/platformjwt
+// verifier and returns the authenticated user id. It NO LONGER returns a role: the
+// platform user token never carries one (D-JWT-ROLE-GATE) — admin authority is the
+// RS256 admin token's job (see requireAdminScope). ok=false on any failure; the caller
+// responds 401.
+func (s *Server) authUser(r *http.Request) (uuid.UUID, bool) {
 	authz := r.Header.Get("Authorization")
 	if !strings.HasPrefix(authz, "Bearer ") {
-		return uuid.Nil, "", false
+		return uuid.Nil, false
 	}
-	tok, err := jwt.ParseWithClaims(strings.TrimPrefix(authz, "Bearer "), &accessClaims{}, func(t *jwt.Token) (any, error) {
-		if t.Method != jwt.SigningMethodHS256 {
-			return nil, fmt.Errorf("unexpected signing method")
-		}
-		return s.jwtSecret, nil
-	})
-	if err != nil || !tok.Valid {
-		return uuid.Nil, "", false
-	}
-	claims, ok := tok.Claims.(*accessClaims)
-	if !ok {
-		return uuid.Nil, "", false
-	}
-	id, err := uuid.Parse(claims.Subject)
+	claims, err := platformjwt.Verify(strings.TrimPrefix(authz, "Bearer "), s.jwtSecret)
 	if err != nil {
-		return uuid.Nil, "", false
+		return uuid.Nil, false
 	}
-	return id, claims.Role, true
+	id, err := claims.UserID()
+	if err != nil {
+		return uuid.Nil, false
+	}
+	return id, true
 }
 
 // requireUser is the common preamble for JWT routes.
-func (s *Server) requireUser(w http.ResponseWriter, r *http.Request) (uuid.UUID, string, bool) {
-	uid, role, ok := s.authUser(r)
+func (s *Server) requireUser(w http.ResponseWriter, r *http.Request) (uuid.UUID, bool) {
+	uid, ok := s.authUser(r)
 	if !ok {
 		writeError(w, http.StatusUnauthorized, "UNAUTHORIZED", "missing or invalid token")
-		return uuid.Nil, "", false
+		return uuid.Nil, false
 	}
 	if s.db == nil {
 		writeError(w, http.StatusServiceUnavailable, "NO_DB", "database unavailable")
-		return uuid.Nil, "", false
+		return uuid.Nil, false
 	}
-	return uid, role, true
+	return uid, true
+}
+
+// scopeAdminWrite is the admin scope required to mutate System-tier rows + run the
+// admin-only ingest routes. Mirrors glossary/provider-registry's System-tier admin gate.
+const scopeAdminWrite = "admin:write"
+
+// requireAdminScope verifies the Bearer admin RS256 JWT and that it carries the required
+// scope, writing the error + returning false on any failure. System-tier rows are
+// platform-owned: only an admin principal (never a regular user) may mutate them
+// (CLAUDE.md › User Boundaries). Fail closed when the verify key is unconfigured. A
+// regular HS256 user token never satisfies adminjwt.Verify (RS256 only), so this is not
+// bypassable with a normal login.
+func (s *Server) requireAdminScope(w http.ResponseWriter, r *http.Request, scope string) (adminjwt.AdminClaims, bool) {
+	if s.adminPub == nil {
+		writeError(w, http.StatusServiceUnavailable, "ADMIN_UNAVAILABLE", "admin administration is not configured")
+		return adminjwt.AdminClaims{}, false
+	}
+	authz := r.Header.Get("Authorization")
+	if !strings.HasPrefix(authz, "Bearer ") {
+		writeError(w, http.StatusUnauthorized, "ADMIN_UNAUTHORIZED", "valid admin Bearer token required")
+		return adminjwt.AdminClaims{}, false
+	}
+	claims, err := adminjwt.Verify(strings.TrimPrefix(authz, "Bearer "), s.adminPub, s.adminKID)
+	if err != nil {
+		writeError(w, http.StatusUnauthorized, "ADMIN_UNAUTHORIZED", "invalid admin token")
+		return adminjwt.AdminClaims{}, false
+	}
+	if !slices.Contains(claims.Scopes, scope) {
+		writeError(w, http.StatusForbidden, "ADMIN_FORBIDDEN", "missing required admin scope")
+		return adminjwt.AdminClaims{}, false
+	}
+	return claims, true
+}
+
+// pemOrBase64 accepts either a raw PEM ("BEGIN") or a base64-encoded PEM (an
+// env-var-friendly single line).
+func pemOrBase64(v string) []byte {
+	if strings.Contains(v, "BEGIN") {
+		return []byte(v)
+	}
+	if dec, err := base64.StdEncoding.DecodeString(strings.TrimSpace(v)); err == nil {
+		return dec
+	}
+	return []byte(v)
 }
 
 // ── AES-GCM vault (DECISION-1 — used from P3 for MCP secrets) ───────────────

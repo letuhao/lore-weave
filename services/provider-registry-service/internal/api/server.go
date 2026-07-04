@@ -6,6 +6,7 @@ import (
 	"crypto/aes"
 	"crypto/cipher"
 	"crypto/rand"
+	"crypto/rsa"
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
@@ -13,18 +14,20 @@ import (
 	"log/slog"
 	"net/http"
 	"path"
+	"slices"
 	"strconv"
 	"strings"
 	"time"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
-	"github.com/golang-jwt/jwt/v5"
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/redis/go-redis/v9"
 
+	"github.com/loreweave/foundation/contracts/adminjwt"
+	"github.com/loreweave/foundation/contracts/platformjwt"
 	"github.com/loreweave/observability"
 	"github.com/loreweave/provider-registry-service/internal/billing"
 	"github.com/loreweave/provider-registry-service/internal/config"
@@ -39,6 +42,12 @@ type Server struct {
 	cfg          *config.Config
 	secret       []byte
 	secretKey    []byte
+	// adminPub verifies RS256 admin JWTs for the System-tier platform-model write
+	// endpoints (D-JWT-ROLE-GATE, contracts/adminjwt). nil when
+	// ADMIN_JWT_PUBLIC_KEY_PEM is unset → those endpoints fail closed.
+	// adminKID = KeyFingerprint(adminPub).
+	adminPub *rsa.PublicKey
+	adminKID string
 	client       *http.Client // short-timeout: sync/billing calls (15s)
 	invokeClient *http.Client // no timeout: AI generation can take minutes
 
@@ -96,6 +105,18 @@ func NewServer(pool *pgxpool.Pool, cfg *config.Config, notifier jobs.Notifier, a
 		secretKey:    key,
 		client:       &http.Client{Timeout: 15 * time.Second},
 		invokeClient: &http.Client{}, // no Timeout — context deadline from request controls cancellation
+	}
+	if raw := strings.TrimSpace(cfg.AdminJWTPublicKeyPEM); raw != "" {
+		if pub, err := adminjwt.ParseRSAPublicKeyPEM(pemOrBase64(raw)); err != nil {
+			// Misconfigured key → leave admin disabled (fail closed) + log loudly.
+			slog.Error("provider-registry: ADMIN_JWT_PUBLIC_KEY_PEM parse failed; platform-model admin endpoints DISABLED", "err", err)
+		} else if kid, err := adminjwt.KeyFingerprint(pub); err != nil {
+			slog.Error("provider-registry: admin key fingerprint failed; platform-model admin endpoints DISABLED", "err", err)
+		} else {
+			s.adminPub = pub
+			s.adminKID = kid
+			slog.Info("provider-registry: platform-model admin endpoints ENABLED", "kid", kid)
+		}
 	}
 	if notifier == nil {
 		notifier = jobs.NoopNotifier{}
@@ -584,7 +605,7 @@ func isDeprecatedProxyPath(targetPath string) bool {
 // alive (model-name rewrite + 4MiB cap + auth-header forwarding) as
 // defense-in-depth and to enforce 410 on the retired paths.
 func (s *Server) publicProxy(w http.ResponseWriter, r *http.Request) {
-	userID, _, ok := s.auth(r)
+	userID, ok := s.auth(r)
 	if !ok {
 		ProxyRequestsTotal.WithLabelValues(OutcomeAuthFailed).Inc()
 		writeError(w, http.StatusUnauthorized, "M03_UNAUTHORIZED", "unauthorized")
@@ -956,35 +977,68 @@ func writeError(w http.ResponseWriter, status int, code, message string) {
 	writeJSON(w, status, errorBody{Code: code, Message: message})
 }
 
-type accessClaims struct {
-	jwt.RegisteredClaims
-	Role string `json:"role,omitempty"`
-}
-
-func (s *Server) auth(r *http.Request) (uuid.UUID, string, bool) {
+// auth verifies the platform-user HS256 JWT via the shared contracts/platformjwt
+// verifier and returns the authenticated user id. It NO LONGER returns a role:
+// the platform user token never carries one (D-JWT-ROLE-GATE) — admin authority
+// is the RS256 admin token's job (see requireAdminScope).
+func (s *Server) auth(r *http.Request) (uuid.UUID, bool) {
 	auth := r.Header.Get("Authorization")
 	if !strings.HasPrefix(auth, "Bearer ") {
-		return uuid.Nil, "", false
+		return uuid.Nil, false
 	}
-	tokenStr := strings.TrimPrefix(auth, "Bearer ")
-	tok, err := jwt.ParseWithClaims(tokenStr, &accessClaims{}, func(t *jwt.Token) (any, error) {
-		if t.Method != jwt.SigningMethodHS256 {
-			return nil, fmt.Errorf("unexpected signing method")
-		}
-		return s.secret, nil
-	})
-	if err != nil || !tok.Valid {
-		return uuid.Nil, "", false
-	}
-	claims, ok := tok.Claims.(*accessClaims)
-	if !ok {
-		return uuid.Nil, "", false
-	}
-	id, err := uuid.Parse(claims.Subject)
+	claims, err := platformjwt.Verify(strings.TrimPrefix(auth, "Bearer "), s.secret)
 	if err != nil {
-		return uuid.Nil, "", false
+		return uuid.Nil, false
 	}
-	return id, claims.Role, true
+	id, err := claims.UserID()
+	if err != nil {
+		return uuid.Nil, false
+	}
+	return id, true
+}
+
+// scopeAdminWrite is the admin scope required to mutate System-tier platform
+// models. Mirrors glossary-service's System-tier admin gate.
+const scopeAdminWrite = "admin:write"
+
+// requireAdminScope verifies the Bearer admin RS256 JWT and that it carries the
+// required scope, writing the error + returning false on any failure. System-tier
+// platform models are platform-owned: only an admin principal (never a regular
+// user) may mutate them (CLAUDE.md › User Boundaries). Fail closed when the verify
+// key is unconfigured. A regular HS256 user token never satisfies adminjwt.Verify
+// (RS256 only), so this is not bypassable with a normal login.
+func (s *Server) requireAdminScope(w http.ResponseWriter, r *http.Request, scope string) (adminjwt.AdminClaims, bool) {
+	if s.adminPub == nil {
+		writeError(w, http.StatusServiceUnavailable, "M03_ADMIN_UNAVAILABLE", "platform-model administration is not configured")
+		return adminjwt.AdminClaims{}, false
+	}
+	auth := r.Header.Get("Authorization")
+	if !strings.HasPrefix(auth, "Bearer ") {
+		writeError(w, http.StatusUnauthorized, "M03_ADMIN_UNAUTHORIZED", "valid admin Bearer token required")
+		return adminjwt.AdminClaims{}, false
+	}
+	claims, err := adminjwt.Verify(strings.TrimPrefix(auth, "Bearer "), s.adminPub, s.adminKID)
+	if err != nil {
+		writeError(w, http.StatusUnauthorized, "M03_ADMIN_UNAUTHORIZED", "invalid admin token")
+		return adminjwt.AdminClaims{}, false
+	}
+	if !slices.Contains(claims.Scopes, scope) {
+		writeError(w, http.StatusForbidden, "M03_ADMIN_FORBIDDEN", "missing required admin scope")
+		return adminjwt.AdminClaims{}, false
+	}
+	return claims, true
+}
+
+// pemOrBase64 accepts either a raw PEM ("BEGIN") or a base64-encoded PEM (an
+// env-var-friendly single line).
+func pemOrBase64(v string) []byte {
+	if strings.Contains(v, "BEGIN") {
+		return []byte(v)
+	}
+	if dec, err := base64.StdEncoding.DecodeString(strings.TrimSpace(v)); err == nil {
+		return dec
+	}
+	return []byte(v)
 }
 
 func parseUUIDParam(w http.ResponseWriter, r *http.Request, name string) (uuid.UUID, bool) {
@@ -1043,7 +1097,7 @@ func (s *Server) decryptSecret(ciphertext string) (string, error) {
 }
 
 func (s *Server) createProviderCredential(w http.ResponseWriter, r *http.Request) {
-	userID, _, ok := s.auth(r)
+	userID, ok := s.auth(r)
 	if !ok {
 		writeError(w, http.StatusUnauthorized, "M03_UNAUTHORIZED", "unauthorized")
 		return
@@ -1155,7 +1209,7 @@ func (o *optionalInt) UnmarshalJSON(b []byte) error {
 }
 
 func (s *Server) listProviderCredentials(w http.ResponseWriter, r *http.Request) {
-	userID, _, ok := s.auth(r)
+	userID, ok := s.auth(r)
 	if !ok {
 		writeError(w, http.StatusUnauthorized, "M03_UNAUTHORIZED", "unauthorized")
 		return
@@ -1197,7 +1251,7 @@ ORDER BY created_at DESC
 }
 
 func (s *Server) patchProviderCredential(w http.ResponseWriter, r *http.Request) {
-	userID, _, ok := s.auth(r)
+	userID, ok := s.auth(r)
 	if !ok {
 		writeError(w, http.StatusUnauthorized, "M03_UNAUTHORIZED", "unauthorized")
 		return
@@ -1294,7 +1348,7 @@ WHERE provider_credential_id=$1 AND owner_user_id=$2
 }
 
 func (s *Server) deleteProviderCredential(w http.ResponseWriter, r *http.Request) {
-	userID, _, ok := s.auth(r)
+	userID, ok := s.auth(r)
 	if !ok {
 		writeError(w, http.StatusUnauthorized, "M03_UNAUTHORIZED", "unauthorized")
 		return
@@ -1320,7 +1374,7 @@ WHERE provider_credential_id=$1 AND owner_user_id=$2
 }
 
 func (s *Server) providerHealth(w http.ResponseWriter, r *http.Request) {
-	userID, _, ok := s.auth(r)
+	userID, ok := s.auth(r)
 	if !ok {
 		writeError(w, http.StatusUnauthorized, "M03_UNAUTHORIZED", "unauthorized")
 		return
@@ -1396,7 +1450,7 @@ WHERE provider_credential_id=$1 AND owner_user_id=$2 AND status='active'
 }
 
 func (s *Server) listProviderInventory(w http.ResponseWriter, r *http.Request) {
-	userID, _, ok := s.auth(r)
+	userID, ok := s.auth(r)
 	if !ok {
 		writeError(w, http.StatusUnauthorized, "M03_UNAUTHORIZED", "unauthorized")
 		return
@@ -1480,7 +1534,7 @@ VALUES ($1,$2,$3,$4,now())
 }
 
 func (s *Server) createUserModel(w http.ResponseWriter, r *http.Request) {
-	userID, _, ok := s.auth(r)
+	userID, ok := s.auth(r)
 	if !ok {
 		writeError(w, http.StatusUnauthorized, "M03_UNAUTHORIZED", "unauthorized")
 		return
@@ -1595,7 +1649,7 @@ type userModelRow struct {
 }
 
 func (s *Server) listUserModels(w http.ResponseWriter, r *http.Request) {
-	userID, _, ok := s.auth(r)
+	userID, ok := s.auth(r)
 	if !ok {
 		writeError(w, http.StatusUnauthorized, "M03_UNAUTHORIZED", "unauthorized")
 		return
@@ -1692,7 +1746,7 @@ SELECT user_model_id FROM user_models WHERE owner_user_id=$1
 // the caller does not own are silently ignored (owner-scoped UPDATE). Returns the
 // updated list (same shape/order as GET /user-models).
 func (s *Server) reorderUserModels(w http.ResponseWriter, r *http.Request) {
-	userID, _, ok := s.auth(r)
+	userID, ok := s.auth(r)
 	if !ok {
 		writeError(w, http.StatusUnauthorized, "M03_UNAUTHORIZED", "unauthorized")
 		return
@@ -1811,7 +1865,7 @@ func (s *Server) loadTags(ctx context.Context, userModelID uuid.UUID) ([]modelTa
 }
 
 func (s *Server) patchUserModel(w http.ResponseWriter, r *http.Request) {
-	userID, _, ok := s.auth(r)
+	userID, ok := s.auth(r)
 	if !ok {
 		writeError(w, http.StatusUnauthorized, "M03_UNAUTHORIZED", "unauthorized")
 		return
@@ -1859,7 +1913,7 @@ func nullJSON(b []byte, valid bool) any {
 }
 
 func (s *Server) deleteUserModel(w http.ResponseWriter, r *http.Request) {
-	userID, _, ok := s.auth(r)
+	userID, ok := s.auth(r)
 	if !ok {
 		writeError(w, http.StatusUnauthorized, "M03_UNAUTHORIZED", "unauthorized")
 		return
@@ -1889,7 +1943,7 @@ func (s *Server) patchUserModelFavorite(w http.ResponseWriter, r *http.Request) 
 }
 
 func (s *Server) patchUserModelBoolField(w http.ResponseWriter, r *http.Request, field, errorCode string) {
-	userID, _, ok := s.auth(r)
+	userID, ok := s.auth(r)
 	if !ok {
 		writeError(w, http.StatusUnauthorized, "M03_UNAUTHORIZED", "unauthorized")
 		return
@@ -1924,7 +1978,7 @@ WHERE user_model_id=$1 AND owner_user_id=$2
 }
 
 func (s *Server) putUserModelTags(w http.ResponseWriter, r *http.Request) {
-	userID, _, ok := s.auth(r)
+	userID, ok := s.auth(r)
 	if !ok {
 		writeError(w, http.StatusUnauthorized, "M03_UNAUTHORIZED", "unauthorized")
 		return
@@ -1992,13 +2046,7 @@ func (s *Server) writeUserModel(w http.ResponseWriter, r *http.Request, userID, 
 }
 
 func (s *Server) createPlatformModel(w http.ResponseWriter, r *http.Request) {
-	_, role, ok := s.auth(r)
-	if !ok {
-		writeError(w, http.StatusUnauthorized, "M03_UNAUTHORIZED", "unauthorized")
-		return
-	}
-	if role != "admin" {
-		writeError(w, http.StatusForbidden, "M03_FORBIDDEN", "admin only")
+	if _, ok := s.requireAdminScope(w, r, scopeAdminWrite); !ok {
 		return
 	}
 	var in struct {
@@ -2028,7 +2076,7 @@ VALUES ($1,$2,$3,$4,$5,$6,$7)
 }
 
 func (s *Server) listPlatformModels(w http.ResponseWriter, r *http.Request) {
-	_, _, ok := s.auth(r)
+	_, ok := s.auth(r)
 	if !ok {
 		writeError(w, http.StatusUnauthorized, "M03_UNAUTHORIZED", "unauthorized")
 		return
@@ -2080,13 +2128,7 @@ ORDER BY created_at DESC
 }
 
 func (s *Server) patchPlatformModel(w http.ResponseWriter, r *http.Request) {
-	_, role, ok := s.auth(r)
-	if !ok {
-		writeError(w, http.StatusUnauthorized, "M03_UNAUTHORIZED", "unauthorized")
-		return
-	}
-	if role != "admin" {
-		writeError(w, http.StatusForbidden, "M03_FORBIDDEN", "admin only")
+	if _, ok := s.requireAdminScope(w, r, scopeAdminWrite); !ok {
 		return
 	}
 	id, ok := parseUUIDParam(w, r, "platform_model_id")
@@ -2129,13 +2171,7 @@ WHERE platform_model_id=$1
 }
 
 func (s *Server) deletePlatformModel(w http.ResponseWriter, r *http.Request) {
-	_, role, ok := s.auth(r)
-	if !ok {
-		writeError(w, http.StatusUnauthorized, "M03_UNAUTHORIZED", "unauthorized")
-		return
-	}
-	if role != "admin" {
-		writeError(w, http.StatusForbidden, "M03_FORBIDDEN", "admin only")
+	if _, ok := s.requireAdminScope(w, r, scopeAdminWrite); !ok {
 		return
 	}
 	id, ok := parseUUIDParam(w, r, "platform_model_id")
@@ -2155,7 +2191,7 @@ func (s *Server) deletePlatformModel(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) verifyUserModel(w http.ResponseWriter, r *http.Request) {
-	userID, _, ok := s.auth(r)
+	userID, ok := s.auth(r)
 	if !ok {
 		VerifyRequestsTotal.WithLabelValues(OutcomeAuthFailed).Inc()
 		writeError(w, http.StatusUnauthorized, "M03_UNAUTHORIZED", "unauthorized")

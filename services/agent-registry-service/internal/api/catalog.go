@@ -93,7 +93,7 @@ func (s *Server) effectiveCatalog(w http.ResponseWriter, r *http.Request) {
 
 // getUsage returns the caller's quota counters for the FE strip (D2).
 func (s *Server) getUsage(w http.ResponseWriter, r *http.Request) {
-	uid, _, ok := s.requireUser(w, r)
+	uid, ok := s.requireUser(w, r)
 	if !ok {
 		return
 	}
@@ -140,7 +140,7 @@ func tableExists(name string) bool {
 
 // listAudit returns the caller's activity log (REG-X-01 read surface).
 func (s *Server) listAudit(w http.ResponseWriter, r *http.Request) {
-	uid, _, ok := s.requireUser(w, r)
+	uid, ok := s.requireUser(w, r)
 	if !ok {
 		return
 	}

@@ -72,7 +72,7 @@ type jobSubmitRequest struct {
 
 // submitLlmJob — POST /v1/llm/jobs (JWT auth).
 func (s *Server) submitLlmJob(w http.ResponseWriter, r *http.Request) {
-	userID, _, ok := s.auth(r)
+	userID, ok := s.auth(r)
 	if !ok {
 		writeError(w, http.StatusUnauthorized, "LLM_AUTH_FAILED", "unauthorized")
 		return
@@ -925,7 +925,7 @@ func formatFieldList(names []string) string {
 
 // getLlmJob — GET /v1/llm/jobs/{job_id} (JWT auth).
 func (s *Server) getLlmJob(w http.ResponseWriter, r *http.Request) {
-	userID, _, ok := s.auth(r)
+	userID, ok := s.auth(r)
 	if !ok {
 		writeError(w, http.StatusUnauthorized, "LLM_AUTH_FAILED", "unauthorized")
 		return
@@ -973,7 +973,7 @@ func (s *Server) doGetJob(w http.ResponseWriter, r *http.Request, userID uuid.UU
 // (spec §5.1 D2). Cancel is idempotent — a no-op if the job is already terminal.
 // cancelLlmJob — DELETE /v1/llm/jobs/{job_id} (JWT auth).
 func (s *Server) cancelLlmJob(w http.ResponseWriter, r *http.Request) {
-	userID, _, ok := s.auth(r)
+	userID, ok := s.auth(r)
 	if !ok {
 		writeError(w, http.StatusUnauthorized, "LLM_AUTH_FAILED", "unauthorized")
 		return

@@ -350,6 +350,7 @@ services:
       HTTP_ADDR: ":8099"
       DATABASE_URL: postgres://loreweave:loreweave_dev@postgres:5432/loreweave_agent_registry?sslmode=disable
       JWT_SECRET: ${JWT_SECRET:-loreweave_local_dev_jwt_secret_change_me_32chars}
+      ADMIN_JWT_PUBLIC_KEY_PEM: ${ADMIN_JWT_PUBLIC_KEY_PEM:-}
       INTERNAL_SERVICE_TOKEN: ${INTERNAL_SERVICE_TOKEN:-dev_internal_token}
       # DECISION-1 — dedicated AES-GCM vault key for MCP-server secrets (blast-radius
       # split from JWT_SECRET). Optional in dev (falls back to JWT_SECRET).
@@ -385,6 +386,7 @@ services:
       HTTP_ADDR: ":8085"
       DATABASE_URL: postgres://loreweave:loreweave_dev@postgres:5432/loreweave_provider_registry?sslmode=disable
       JWT_SECRET: ${JWT_SECRET:-loreweave_local_dev_jwt_secret_change_me_32chars}
+      ADMIN_JWT_PUBLIC_KEY_PEM: ${ADMIN_JWT_PUBLIC_KEY_PEM:-}
       # MCP fan-out /review-impl — dedicated confirm-token signing secret (split
       # from JWT_SECRET so the Tier-W confirm HMAC key has a distinct blast radius).
       CONFIRM_TOKEN_SIGNING_SECRET: ${CONFIRM_TOKEN_SIGNING_SECRET:-loreweave_local_dev_confirm_signing_secret_change_me_32chars}
@@ -481,6 +483,7 @@ services:
       HTTP_ADDR: ":8086"
       DATABASE_URL: postgres://loreweave:loreweave_dev@postgres:5432/loreweave_usage_billing?sslmode=disable
       JWT_SECRET: ${JWT_SECRET:-loreweave_local_dev_jwt_secret_change_me_32chars}
+      ADMIN_JWT_PUBLIC_KEY_PEM: ${ADMIN_JWT_PUBLIC_KEY_PEM:-}
       # LLM payload encryption key (LOG-5 / P0-3) — DEDICATED, distinct from
       # JWT_SECRET, so rotating the JWT can't render logged prompts undecryptable
       # and a JWT leak doesn't expose them. >=32 chars; fail-to-start if unset or

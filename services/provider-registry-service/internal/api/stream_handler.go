@@ -93,7 +93,7 @@ type streamRequest struct {
 
 // llmStream — public POST /v1/llm/stream (JWT auth).
 func (s *Server) llmStream(w http.ResponseWriter, r *http.Request) {
-	userID, _, ok := s.auth(r)
+	userID, ok := s.auth(r)
 	if !ok {
 		writeError(w, http.StatusUnauthorized, "LLM_AUTH_FAILED", "unauthorized")
 		return

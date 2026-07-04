@@ -112,29 +112,44 @@ func TestMapUpstreamEntry(t *testing.T) {
 	})
 }
 
-// The ingest routes are admin-only: a non-admin JWT is rejected BEFORE any DB op,
-// so the mock needs no expectations.
+// The ingest routes are admin-only, gated by the RS256 admin token (D-JWT-ROLE-GATE).
+// Every rejection path fires BEFORE any DB op, so the mock needs no expectations.
 func TestIngestRoutes_AdminOnly(t *testing.T) {
-	s, mock := newMockServer(t)
-	defer mock.Close()
-	user := mintJWT(t, "019d5e3c-7cc5-7e6a-8b27-1344e148bf7c", "user")
-
 	endpoints := []struct{ method, path string }{
 		{http.MethodPost, "/v1/agent-registry/admin/ingest/pull"},
 		{http.MethodGet, "/v1/agent-registry/admin/ingest/queue"},
 		{http.MethodPost, "/v1/agent-registry/admin/ingest/queue/019d5e3c-7cc5-7e6a-8b27-1344e148bf7c/approve"},
 		{http.MethodPost, "/v1/agent-registry/admin/ingest/queue/019d5e3c-7cc5-7e6a-8b27-1344e148bf7c/reject"},
 	}
+
+	// Admin CONFIGURED: an HS256 user token / anon / wrong-scope admin are all refused.
+	s, mock, mintAdmin := newMockAdminServer(t)
+	defer mock.Close()
+	user := mintJWT(t, "019d5e3c-7cc5-7e6a-8b27-1344e148bf7c", "user")
 	for _, e := range endpoints {
-		// non-admin → 403
-		rec := doJSON(s, e.method, e.path, user, `{}`)
-		if rec.Code != http.StatusForbidden {
-			t.Errorf("%s %s (user) → want 403, got %d", e.method, e.path, rec.Code)
+		// a regular HS256 user token never satisfies the RS256 admin gate → 401
+		if rec := doJSON(s, e.method, e.path, user, `{}`); rec.Code != http.StatusUnauthorized {
+			t.Errorf("%s %s (user) → want 401, got %d", e.method, e.path, rec.Code)
 		}
 		// unauthenticated → 401
-		rec = doJSON(s, e.method, e.path, "", `{}`)
-		if rec.Code != http.StatusUnauthorized {
+		if rec := doJSON(s, e.method, e.path, "", `{}`); rec.Code != http.StatusUnauthorized {
 			t.Errorf("%s %s (anon) → want 401, got %d", e.method, e.path, rec.Code)
+		}
+		// a valid admin token WITHOUT the admin:write scope → 403
+		if rec := doJSON(s, e.method, e.path, mintAdmin([]string{"admin:read"}), `{}`); rec.Code != http.StatusForbidden {
+			t.Errorf("%s %s (wrong scope) → want 403, got %d", e.method, e.path, rec.Code)
+		}
+	}
+	if err := mock.ExpectationsWereMet(); err != nil {
+		t.Fatalf("unexpected DB calls at the admin gate: %v", err)
+	}
+
+	// Admin NOT configured → fail closed (503) even for an otherwise-valid caller.
+	su, umock := newMockServer(t)
+	defer umock.Close()
+	for _, e := range endpoints {
+		if rec := doJSON(su, e.method, e.path, user, `{}`); rec.Code != http.StatusServiceUnavailable {
+			t.Errorf("%s %s (admin unconfigured) → want 503, got %d", e.method, e.path, rec.Code)
 		}
 	}
 }
@@ -164,10 +179,10 @@ func expectQueueRow(mock pgxmock.PgxPoolIface, name, endpoint, status string) {
 }
 
 func TestApproveIngest_ModelCapRejected(t *testing.T) {
-	s, mock := newMockServer(t)
+	s, mock, mintAdmin := newMockAdminServer(t)
 	defer mock.Close()
 	expectQueueRow(mock, "openai", "https://api.openai.com/v1/chat/completions", "pending")
-	rec := doJSON(s, http.MethodPost, approvePath(), mintJWT(t, adminSub, "admin"), `{}`)
+	rec := doJSON(s, http.MethodPost, approvePath(), mintAdmin([]string{scopeAdminWrite}), `{}`)
 	if rec.Code != http.StatusBadRequest {
 		t.Fatalf("model endpoint → want 400, got %d (%s)", rec.Code, rec.Body.String())
 	}
@@ -179,11 +194,11 @@ func TestApproveIngest_ModelCapRejected(t *testing.T) {
 }
 
 func TestApproveIngest_SsrfRejected(t *testing.T) {
-	s, mock := newMockServer(t)
+	s, mock, mintAdmin := newMockAdminServer(t)
 	defer mock.Close()
 	// link-local cloud-metadata IP — blocked by isBlockedIP with no DNS needed.
 	expectQueueRow(mock, "evil", "http://169.254.169.254/mcp", "pending")
-	rec := doJSON(s, http.MethodPost, approvePath(), mintJWT(t, adminSub, "admin"), `{}`)
+	rec := doJSON(s, http.MethodPost, approvePath(), mintAdmin([]string{scopeAdminWrite}), `{}`)
 	if rec.Code != http.StatusBadRequest {
 		t.Fatalf("internal endpoint → want 400, got %d (%s)", rec.Code, rec.Body.String())
 	}
@@ -195,22 +210,22 @@ func TestApproveIngest_SsrfRejected(t *testing.T) {
 }
 
 func TestApproveIngest_AlreadyReviewed(t *testing.T) {
-	s, mock := newMockServer(t)
+	s, mock, mintAdmin := newMockAdminServer(t)
 	defer mock.Close()
 	expectQueueRow(mock, "x", "https://mcp.ok.dev/v1", "approved")
-	rec := doJSON(s, http.MethodPost, approvePath(), mintJWT(t, adminSub, "admin"), `{}`)
+	rec := doJSON(s, http.MethodPost, approvePath(), mintAdmin([]string{scopeAdminWrite}), `{}`)
 	if rec.Code != http.StatusConflict {
 		t.Fatalf("already-approved → want 409, got %d", rec.Code)
 	}
 }
 
 func TestApproveIngest_NotFound(t *testing.T) {
-	s, mock := newMockServer(t)
+	s, mock, mintAdmin := newMockAdminServer(t)
 	defer mock.Close()
 	mock.ExpectQuery("SELECT name, endpoint_url, status FROM registry_ingest_queue").
 		WithArgs(pgxmock.AnyArg()).
 		WillReturnError(pgx.ErrNoRows)
-	rec := doJSON(s, http.MethodPost, approvePath(), mintJWT(t, adminSub, "admin"), `{}`)
+	rec := doJSON(s, http.MethodPost, approvePath(), mintAdmin([]string{scopeAdminWrite}), `{}`)
 	if rec.Code != http.StatusNotFound {
 		t.Fatalf("unknown id → want 404, got %d", rec.Code)
 	}
@@ -221,7 +236,7 @@ func TestApproveIngest_NotFound(t *testing.T) {
 // re-SELECT the winner and LINK to it (never a 500, never a duplicate). 8.8.8.8 is a
 // public literal IP so classifyRegistrationURL needs no DNS.
 func TestApproveIngest_UniqueViolationRaceLinks(t *testing.T) {
-	s, mock := newMockServer(t)
+	s, mock, mintAdmin := newMockAdminServer(t)
 	defer mock.Close()
 	existing := uuid.MustParse("019d6000-0000-7000-8000-0000000000ee")
 	expectQueueRow(mock, "racer", "http://8.8.8.8/mcp", "pending")
@@ -240,7 +255,7 @@ func TestApproveIngest_UniqueViolationRaceLinks(t *testing.T) {
 	mock.ExpectExec("INSERT INTO registry_audit").
 		WithArgs(anyArgs(8)...).WillReturnResult(pgxmock.NewResult("INSERT", 1))
 
-	rec := doJSON(s, http.MethodPost, approvePath(), mintJWT(t, adminSub, "admin"), `{}`)
+	rec := doJSON(s, http.MethodPost, approvePath(), mintAdmin([]string{scopeAdminWrite}), `{}`)
 	if rec.Code != http.StatusOK {
 		t.Fatalf("race-link → want 200, got %d (%s)", rec.Code, rec.Body.String())
 	}

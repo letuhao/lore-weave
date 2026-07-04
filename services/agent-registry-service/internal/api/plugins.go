@@ -41,7 +41,7 @@ type createPluginReq struct {
 }
 
 func (s *Server) createPlugin(w http.ResponseWriter, r *http.Request) {
-	uid, role, ok := s.requireUser(w, r)
+	uid, ok := s.requireUser(w, r)
 	if !ok {
 		return
 	}
@@ -85,8 +85,9 @@ func (s *Server) createPlugin(w http.ResponseWriter, r *http.Request) {
 	case "user":
 		ownerArg = uid
 	case "system":
-		if role != "admin" {
-			writeError(w, http.StatusForbidden, "FORBIDDEN", "only admin may create System-tier plugins")
+		// System-tier is platform-owned: only an RS256 admin token (admin:write) may
+		// create it (D-JWT-ROLE-GATE). requireAdminScope writes its own 401/403/503.
+		if _, ok := s.requireAdminScope(w, r, scopeAdminWrite); !ok {
 			return
 		}
 	case "book":
@@ -120,14 +121,14 @@ func (s *Server) createPlugin(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusInternalServerError, "DB_ERROR", "could not create plugin")
 		return
 	}
-	s.audit(r.Context(), uid, actorKindOf(role), "plugin", "create", &row.PluginID, row.Name, row.Tier, nil)
+	s.audit(r.Context(), uid, actorKindOf(row.Tier), "plugin", "create", &row.PluginID, row.Name, row.Tier, nil)
 	s.bumpCatalogVersion(r.Context())
 	registryWrites.WithLabelValues("plugin", "create").Inc()
 	writeJSON(w, http.StatusCreated, row)
 }
 
 func (s *Server) listPlugins(w http.ResponseWriter, r *http.Request) {
-	uid, _, ok := s.requireUser(w, r)
+	uid, ok := s.requireUser(w, r)
 	if !ok {
 		return
 	}
@@ -207,7 +208,7 @@ func (s *Server) loadVisiblePlugin(r *http.Request, uid, pid uuid.UUID) (*plugin
 }
 
 func (s *Server) getPlugin(w http.ResponseWriter, r *http.Request) {
-	uid, _, ok := s.requireUser(w, r)
+	uid, ok := s.requireUser(w, r)
 	if !ok {
 		return
 	}
@@ -231,7 +232,7 @@ type patchPluginReq struct {
 }
 
 func (s *Server) patchPlugin(w http.ResponseWriter, r *http.Request) {
-	uid, role, ok := s.requireUser(w, r)
+	uid, ok := s.requireUser(w, r)
 	if !ok {
 		return
 	}
@@ -246,8 +247,11 @@ func (s *Server) patchPlugin(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusNotFound, "NOT_FOUND", "plugin not found")
 		return
 	}
-	if !s.authorizeRowWrite(r, tier, owner, book, uid, role) {
-		writeError(w, http.StatusNotFound, "NOT_FOUND", "plugin not found") // anti-oracle
+	if !s.authorizeRowWrite(w, r, tier, owner, book, uid) {
+		// System rows: requireAdminScope already wrote 401/403/503. user/book: anti-oracle 404.
+		if tier != "system" {
+			writeError(w, http.StatusNotFound, "NOT_FOUND", "plugin not found")
+		}
 		return
 	}
 	var req patchPluginReq
@@ -286,7 +290,7 @@ func (s *Server) patchPlugin(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusInternalServerError, "DB_ERROR", "could not update plugin")
 		return
 	}
-	s.audit(r.Context(), uid, actorKindOf(role), "plugin", "update", &pid, "", tier, nil)
+	s.audit(r.Context(), uid, actorKindOf(tier), "plugin", "update", &pid, "", tier, nil)
 	s.bumpCatalogVersion(r.Context())
 	registryWrites.WithLabelValues("plugin", "update").Inc()
 	p, _ := s.loadVisiblePlugin(r, uid, pid)
@@ -294,7 +298,7 @@ func (s *Server) patchPlugin(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) deletePlugin(w http.ResponseWriter, r *http.Request) {
-	uid, role, ok := s.requireUser(w, r)
+	uid, ok := s.requireUser(w, r)
 	if !ok {
 		return
 	}
@@ -309,15 +313,17 @@ func (s *Server) deletePlugin(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusNotFound, "NOT_FOUND", "plugin not found")
 		return
 	}
-	if !s.authorizeRowWrite(r, tier, owner, book, uid, role) {
-		writeError(w, http.StatusNotFound, "NOT_FOUND", "plugin not found")
+	if !s.authorizeRowWrite(w, r, tier, owner, book, uid) {
+		if tier != "system" {
+			writeError(w, http.StatusNotFound, "NOT_FOUND", "plugin not found")
+		}
 		return
 	}
 	if _, err := s.db.Exec(r.Context(), `DELETE FROM plugins WHERE plugin_id = $1`, pid); err != nil {
 		writeError(w, http.StatusInternalServerError, "DB_ERROR", "could not delete plugin")
 		return
 	}
-	s.audit(r.Context(), uid, actorKindOf(role), "plugin", "delete", &pid, name, tier, nil)
+	s.audit(r.Context(), uid, actorKindOf(tier), "plugin", "delete", &pid, name, tier, nil)
 	s.bumpCatalogVersion(r.Context())
 	registryWrites.WithLabelValues("plugin", "delete").Inc()
 	w.WriteHeader(http.StatusNoContent)
@@ -326,7 +332,7 @@ func (s *Server) deletePlugin(w http.ResponseWriter, r *http.Request) {
 // cascadePreview returns member counts a delete would remove (for the typed-
 // confirm dialog). P0 has no member tables yet → zeros; later phases extend.
 func (s *Server) cascadePreview(w http.ResponseWriter, r *http.Request) {
-	uid, _, ok := s.requireUser(w, r)
+	uid, ok := s.requireUser(w, r)
 	if !ok {
 		return
 	}
@@ -349,19 +355,12 @@ func (s *Server) cascadePreview(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
-func (s *Server) canWritePlugin(tier string, owner *uuid.UUID, uid uuid.UUID, role string) bool {
-	switch tier {
-	case "user":
-		return owner != nil && *owner == uid
-	case "system":
-		return role == "admin"
-	default:
-		return false
-	}
-}
-
-func actorKindOf(role string) string {
-	if role == "admin" {
+// actorKindOf maps a row's tier to the audit actor_kind. System-tier writes are
+// admin-gated (requireAdminScope) so their actor is "admin"; user/book tier writes are
+// performed by a regular user. This replaces the old JWT-`role`-derived actor_kind
+// (D-JWT-ROLE-GATE removed the dead role claim).
+func actorKindOf(tier string) string {
+	if tier == "system" {
 		return "admin"
 	}
 	return "user"

@@ -55,7 +55,7 @@ type createCommandReq struct {
 }
 
 func (s *Server) createCommand(w http.ResponseWriter, r *http.Request) {
-	uid, role, ok := s.requireUser(w, r)
+	uid, ok := s.requireUser(w, r)
 	if !ok {
 		return
 	}
@@ -101,8 +101,8 @@ func (s *Server) createCommand(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	case "system":
-		if role != "admin" {
-			writeError(w, http.StatusForbidden, "FORBIDDEN", "only admin may create System commands")
+		// System-tier is platform-owned: RS256 admin token required (D-JWT-ROLE-GATE).
+		if _, ok := s.requireAdminScope(w, r, scopeAdminWrite); !ok {
 			return
 		}
 	case "book":
@@ -130,13 +130,13 @@ func (s *Server) createCommand(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusInternalServerError, "DB_ERROR", "could not create command")
 		return
 	}
-	s.audit(r.Context(), uid, actorKindOf(role), "command", "create", &row.CommandID, name, tier, nil)
+	s.audit(r.Context(), uid, actorKindOf(tier), "command", "create", &row.CommandID, name, tier, nil)
 	s.bumpCatalogVersion(r.Context())
 	writeJSON(w, http.StatusCreated, row)
 }
 
 func (s *Server) listCommands(w http.ResponseWriter, r *http.Request) {
-	uid, _, ok := s.requireUser(w, r)
+	uid, ok := s.requireUser(w, r)
 	if !ok {
 		return
 	}
@@ -182,7 +182,7 @@ func (s *Server) listCommands(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]any{"items": items, "total": total, "limit": limit, "offset": offset})
 }
 
-func (s *Server) loadCommandForWrite(w http.ResponseWriter, r *http.Request, uid uuid.UUID, role string) (uuid.UUID, string, bool) {
+func (s *Server) loadCommandForWrite(w http.ResponseWriter, r *http.Request, uid uuid.UUID) (uuid.UUID, string, bool) {
 	cid, ok := parseUUIDParam(w, r, "command_id")
 	if !ok {
 		return uuid.Nil, "", false
@@ -193,19 +193,21 @@ func (s *Server) loadCommandForWrite(w http.ResponseWriter, r *http.Request, uid
 		writeError(w, http.StatusNotFound, "NOT_FOUND", "command not found")
 		return uuid.Nil, "", false
 	}
-	if !s.authorizeRowWrite(r, tier, owner, book, uid, role) {
-		writeError(w, http.StatusNotFound, "NOT_FOUND", "command not found")
+	if !s.authorizeRowWrite(w, r, tier, owner, book, uid) {
+		if tier != "system" {
+			writeError(w, http.StatusNotFound, "NOT_FOUND", "command not found")
+		}
 		return uuid.Nil, "", false
 	}
 	return cid, tier, true
 }
 
 func (s *Server) patchCommand(w http.ResponseWriter, r *http.Request) {
-	uid, role, ok := s.requireUser(w, r)
+	uid, ok := s.requireUser(w, r)
 	if !ok {
 		return
 	}
-	cid, tier, ok := s.loadCommandForWrite(w, r, uid, role)
+	cid, tier, ok := s.loadCommandForWrite(w, r, uid)
 	if !ok {
 		return
 	}
@@ -250,17 +252,17 @@ func (s *Server) patchCommand(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusInternalServerError, "DB_ERROR", "could not update command")
 		return
 	}
-	s.audit(r.Context(), uid, actorKindOf(role), "command", "update", &cid, row.Name, tier, nil)
+	s.audit(r.Context(), uid, actorKindOf(tier), "command", "update", &cid, row.Name, tier, nil)
 	s.bumpCatalogVersion(r.Context())
 	writeJSON(w, http.StatusOK, row)
 }
 
 func (s *Server) deleteCommand(w http.ResponseWriter, r *http.Request) {
-	uid, role, ok := s.requireUser(w, r)
+	uid, ok := s.requireUser(w, r)
 	if !ok {
 		return
 	}
-	cid, tier, ok := s.loadCommandForWrite(w, r, uid, role)
+	cid, tier, ok := s.loadCommandForWrite(w, r, uid)
 	if !ok {
 		return
 	}
@@ -268,7 +270,7 @@ func (s *Server) deleteCommand(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusInternalServerError, "DB_ERROR", "could not delete command")
 		return
 	}
-	s.audit(r.Context(), uid, actorKindOf(role), "command", "delete", &cid, "", tier, nil)
+	s.audit(r.Context(), uid, actorKindOf(tier), "command", "delete", &cid, "", tier, nil)
 	s.bumpCatalogVersion(r.Context())
 	w.WriteHeader(http.StatusNoContent)
 }

@@ -3,7 +3,11 @@ package api
 import (
 	"bytes"
 	"context"
+	"crypto/rand"
+	"crypto/rsa"
+	"crypto/x509"
 	"encoding/json"
+	"encoding/pem"
 	"errors"
 	"net/http"
 	"net/http/httptest"
@@ -16,6 +20,7 @@ import (
 	"github.com/golang-jwt/jwt/v5"
 	"github.com/google/uuid"
 
+	"github.com/loreweave/foundation/contracts/adminjwt"
 	"github.com/loreweave/usage-billing-service/internal/config"
 )
 
@@ -25,20 +30,72 @@ func testServer(secret string) *Server {
 	})
 }
 
-func signedToken(t *testing.T, secret string, userID uuid.UUID, role string) string {
+// signedToken mints a platform-USER HS256 token (exp + UUID sub — the shape the
+// shared platformjwt verifier requires). The `role` arg is vestigial: the user
+// token carries no role (D-JWT-ROLE-GATE) — admin authority is the RS256 admin
+// token's job (see newAdminTestServer). Kept in the signature so existing callers
+// compile unchanged.
+func signedToken(t *testing.T, secret string, userID uuid.UUID, _ string) string {
 	t.Helper()
-	token := jwt.NewWithClaims(jwt.SigningMethodHS256, accessClaims{
-		RegisteredClaims: jwt.RegisteredClaims{
-			Subject:   userID.String(),
-			ExpiresAt: jwt.NewNumericDate(time.Now().Add(5 * time.Minute)),
-		},
-		Role: role,
+	token := jwt.NewWithClaims(jwt.SigningMethodHS256, jwt.RegisteredClaims{
+		Subject:   userID.String(),
+		ExpiresAt: jwt.NewNumericDate(time.Now().Add(5 * time.Minute)),
 	})
 	signed, err := token.SignedString([]byte(secret))
 	if err != nil {
 		t.Fatalf("sign token: %v", err)
 	}
 	return signed
+}
+
+// newAdminTestServer builds a Server with RS256 admin verification enabled against
+// a freshly generated key, plus a mint() that signs admin tokens with the matching
+// private key (the same RS256/iss/aud/kid contract auth-service emits). Mirrors
+// provider-registry / glossary's newAdminTestServer.
+func newAdminTestServer(t *testing.T, secret string) (*Server, func(scopes []string) string) {
+	t.Helper()
+	priv, err := rsa.GenerateKey(rand.Reader, 2048)
+	if err != nil {
+		t.Fatalf("genkey: %v", err)
+	}
+	pubDER, err := x509.MarshalPKIXPublicKey(&priv.PublicKey)
+	if err != nil {
+		t.Fatalf("marshal pub: %v", err)
+	}
+	pubPEM := pem.EncodeToMemory(&pem.Block{Type: "PUBLIC KEY", Bytes: pubDER})
+	srv := NewServer(nil, &config.Config{
+		JWTSecret:            secret,
+		AdminJWTPublicKeyPEM: string(pubPEM),
+	})
+	if srv.adminPub == nil {
+		t.Fatal("admin verification not enabled on the test server")
+	}
+	kid, err := adminjwt.KeyFingerprint(&priv.PublicKey)
+	if err != nil {
+		t.Fatalf("fingerprint: %v", err)
+	}
+	mint := func(scopes []string) string {
+		claims := adminjwt.AdminClaims{
+			Role:   "admin",
+			Scopes: scopes,
+			RegisteredClaims: jwt.RegisteredClaims{
+				Issuer:    adminjwt.Issuer,
+				Audience:  jwt.ClaimStrings{adminjwt.Audience},
+				Subject:   uuid.NewString(),
+				ID:        uuid.NewString(),
+				ExpiresAt: jwt.NewNumericDate(time.Now().Add(time.Hour)),
+				IssuedAt:  jwt.NewNumericDate(time.Now()),
+			},
+		}
+		tok := jwt.NewWithClaims(jwt.SigningMethodRS256, claims)
+		tok.Header["kid"] = kid
+		signed, err := tok.SignedString(priv)
+		if err != nil {
+			t.Fatalf("sign admin token: %v", err)
+		}
+		return signed
+	}
+	return srv, mint
 }
 
 func withRouteParam(req *http.Request, key, value string) *http.Request {
@@ -55,15 +112,15 @@ func TestAuthSuccessAndFailure(t *testing.T) {
 	srv := testServer(secret)
 
 	okReq := httptest.NewRequest(http.MethodGet, "/", nil)
-	okReq.Header.Set("Authorization", "Bearer "+signedToken(t, secret, userID, "admin"))
-	gotID, gotRole, ok := srv.auth(okReq)
-	if !ok || gotID != userID || gotRole != "admin" {
-		t.Fatalf("expected auth success, got id=%v role=%s ok=%v", gotID, gotRole, ok)
+	okReq.Header.Set("Authorization", "Bearer "+signedToken(t, secret, userID, ""))
+	gotID, ok := srv.auth(okReq)
+	if !ok || gotID != userID {
+		t.Fatalf("expected auth success, got id=%v ok=%v", gotID, ok)
 	}
 
 	badReq := httptest.NewRequest(http.MethodGet, "/", nil)
 	badReq.Header.Set("Authorization", "Bearer invalid")
-	if _, _, ok := srv.auth(badReq); ok {
+	if _, ok := srv.auth(badReq); ok {
 		t.Fatal("expected auth failure")
 	}
 }
@@ -176,12 +233,11 @@ func TestRecordInvocationValidation(t *testing.T) {
 	}
 }
 
-func TestUsageHandlersUnauthorizedAndForbidden(t *testing.T) {
+func TestUsageHandlersUnauthorized(t *testing.T) {
 	t.Parallel()
 
 	secret := "12345678901234567890123456789012"
 	srv := testServer(secret)
-	userID := uuid.New()
 
 	listReq := httptest.NewRequest(http.MethodGet, "/v1/model-billing/usage-logs", nil)
 	listRR := httptest.NewRecorder()
@@ -189,21 +245,77 @@ func TestUsageHandlersUnauthorizedAndForbidden(t *testing.T) {
 	if listRR.Code != http.StatusUnauthorized {
 		t.Fatalf("expected 401, got %d", listRR.Code)
 	}
+}
 
-	adminReq := httptest.NewRequest(http.MethodGet, "/v1/model-billing/admin/usage", nil)
-	adminReq.Header.Set("Authorization", "Bearer "+signedToken(t, secret, userID, "user"))
-	adminRR := httptest.NewRecorder()
-	srv.adminListUsage(adminRR, adminReq)
-	if adminRR.Code != http.StatusForbidden {
-		t.Fatalf("expected 403, got %d", adminRR.Code)
+// TestAdminEndpointsGuard proves the D-JWT-ROLE-GATE fix: the admin usage +
+// reconciliation endpoints are gated by the RS256 admin token (contracts/adminjwt),
+// not the dead HS256 `role` claim. Both endpoints share requireAdminScope, so the
+// pre-gate states (503/401/403) are asserted on both; the gate-PASS is proven on
+// createReconciliation (its bad-body path returns 400 AFTER the gate — a nil-pool
+// test server would panic on adminListUsage's INSERT-less pool.Query, so the
+// gate-pass is not asserted there).
+func TestAdminEndpointsGuard(t *testing.T) {
+	t.Parallel()
+	secret := "12345678901234567890123456789012"
+	userID := uuid.New()
+
+	callAdminUsage := func(srv *Server, authz string) int {
+		req := httptest.NewRequest(http.MethodGet, "/v1/model-billing/admin/usage", nil)
+		if authz != "" {
+			req.Header.Set("Authorization", authz)
+		}
+		rr := httptest.NewRecorder()
+		srv.adminListUsage(rr, req)
+		return rr.Code
+	}
+	callRecon := func(srv *Server, authz, body string) int {
+		req := httptest.NewRequest(http.MethodPost, "/v1/model-billing/admin/reconciliation", bytes.NewBufferString(body))
+		if authz != "" {
+			req.Header.Set("Authorization", authz)
+		}
+		rr := httptest.NewRecorder()
+		srv.createReconciliation(rr, req)
+		return rr.Code
 	}
 
-	reconReq := httptest.NewRequest(http.MethodPost, "/v1/model-billing/admin/reconciliation", bytes.NewBufferString(`{}`))
-	reconReq.Header.Set("Authorization", "Bearer "+signedToken(t, secret, userID, "user"))
-	reconRR := httptest.NewRecorder()
-	srv.createReconciliation(reconRR, reconReq)
-	if reconRR.Code != http.StatusForbidden {
-		t.Fatalf("expected 403, got %d", reconRR.Code)
+	// Admin NOT configured → fail closed (503) on BOTH endpoints, unreachable by any token.
+	unconfigured := testServer(secret)
+	if code := callAdminUsage(unconfigured, "Bearer "+signedToken(t, secret, userID, "")); code != http.StatusServiceUnavailable {
+		t.Fatalf("admin/usage unconfigured: expected 503, got %d", code)
+	}
+	if code := callRecon(unconfigured, "Bearer "+signedToken(t, secret, userID, ""), `{}`); code != http.StatusServiceUnavailable {
+		t.Fatalf("admin/reconciliation unconfigured: expected 503, got %d", code)
+	}
+
+	// Admin configured:
+	srv, mintAdmin := newAdminTestServer(t, secret)
+
+	// A regular HS256 user token is rejected by the RS256 admin gate → 401.
+	if code := callAdminUsage(srv, "Bearer "+signedToken(t, secret, userID, "")); code != http.StatusUnauthorized {
+		t.Fatalf("admin/usage user token: expected 401, got %d", code)
+	}
+	if code := callRecon(srv, "Bearer "+signedToken(t, secret, userID, ""), `{}`); code != http.StatusUnauthorized {
+		t.Fatalf("admin/reconciliation user token: expected 401, got %d", code)
+	}
+
+	// No token → 401.
+	if code := callAdminUsage(srv, ""); code != http.StatusUnauthorized {
+		t.Fatalf("admin/usage no token: expected 401, got %d", code)
+	}
+
+	// A valid admin token WITHOUT the required scope → 403.
+	if code := callAdminUsage(srv, "Bearer "+mintAdmin([]string{"admin:read"})); code != http.StatusForbidden {
+		t.Fatalf("admin/usage wrong-scope: expected 403, got %d", code)
+	}
+	if code := callRecon(srv, "Bearer "+mintAdmin([]string{"admin:read"}), `{}`); code != http.StatusForbidden {
+		t.Fatalf("admin/reconciliation wrong-scope: expected 403, got %d", code)
+	}
+
+	// A valid admin token WITH admin:write PASSES the gate: send an INVALID body so
+	// createReconciliation stops at the 400 body-decode AFTER the gate (a nil-pool
+	// test server would panic on the INSERT). A 400 proves the gate was passed.
+	if code := callRecon(srv, "Bearer "+mintAdmin([]string{scopeAdminWrite}), `not-json`); code != http.StatusBadRequest {
+		t.Fatalf("valid admin:write must pass the gate → 400 on bad body, got %d", code)
 	}
 }
 

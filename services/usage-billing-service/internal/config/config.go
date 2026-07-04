@@ -14,6 +14,13 @@ type Config struct {
 	JWTSecret            string
 	InternalServiceToken string
 
+	// AdminJWTPublicKeyPEM (D-JWT-ROLE-GATE) — the RS256 public key that verifies
+	// admin tokens for the System-tier admin endpoints (admin/usage +
+	// admin/reconciliation), via contracts/adminjwt (glossary/provider-registry
+	// requireAdminScope pattern). Optional: when unset those admin endpoints fail
+	// closed (503). PEM or base64-PEM.
+	AdminJWTPublicKeyPEM string
+
 	// LLMPayloadEncryptionKey is the DEDICATED master key (KEK) that wraps the
 	// per-row session key used to AES-256-GCM the logged request/response
 	// payloads (LOG-5). It MUST be distinct from JWTSecret: rotating the JWT
@@ -61,6 +68,7 @@ func Load() (*Config, error) {
 		DatabaseURL:             os.Getenv("DATABASE_URL"),
 		JWTSecret:               os.Getenv("JWT_SECRET"),
 		InternalServiceToken:    os.Getenv("INTERNAL_SERVICE_TOKEN"),
+		AdminJWTPublicKeyPEM:    os.Getenv("ADMIN_JWT_PUBLIC_KEY_PEM"),
 		LLMPayloadEncryptionKey: os.Getenv("LLM_PAYLOAD_ENCRYPTION_KEY"),
 	}
 	if c.DatabaseURL == "" {

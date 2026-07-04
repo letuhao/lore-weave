@@ -11,7 +11,7 @@ import (
 )
 
 func (s *Server) listSkills(w http.ResponseWriter, r *http.Request) {
-	uid, _, ok := s.requireUser(w, r)
+	uid, ok := s.requireUser(w, r)
 	if !ok {
 		return
 	}
@@ -88,7 +88,7 @@ func (s *Server) loadVisibleSkill(r *http.Request, uid, sid uuid.UUID) (*skillRo
 }
 
 func (s *Server) getSkill(w http.ResponseWriter, r *http.Request) {
-	uid, _, ok := s.requireUser(w, r)
+	uid, ok := s.requireUser(w, r)
 	if !ok {
 		return
 	}
@@ -102,7 +102,7 @@ func (s *Server) getSkill(w http.ResponseWriter, r *http.Request) {
 		// resolves ≥edit + active). loadVisibleSkill only covers System ∪ own.
 		var full skillRow
 		if e := scanSkill(s.db.QueryRow(r.Context(), `SELECT `+skillCols+` FROM skills WHERE skill_id = $1`, sid), &full); e == nil &&
-			full.Tier == "book" && s.authorizeRowWrite(r, full.Tier, full.OwnerUserID, full.BookID, uid, "") {
+			full.Tier == "book" && s.authorizeRowWrite(w, r, full.Tier, full.OwnerUserID, full.BookID, uid) {
 			writeJSON(w, http.StatusOK, &full)
 			return
 		}
@@ -121,7 +121,7 @@ type patchSkillReq struct {
 }
 
 func (s *Server) patchSkill(w http.ResponseWriter, r *http.Request) {
-	uid, role, ok := s.requireUser(w, r)
+	uid, ok := s.requireUser(w, r)
 	if !ok {
 		return
 	}
@@ -135,8 +135,10 @@ func (s *Server) patchSkill(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusNotFound, "NOT_FOUND", "skill not found")
 		return
 	}
-	if !s.authorizeRowWrite(r, tier, owner, book, uid, role) {
-		writeError(w, http.StatusNotFound, "NOT_FOUND", "skill not found")
+	if !s.authorizeRowWrite(w, r, tier, owner, book, uid) {
+		if tier != "system" {
+			writeError(w, http.StatusNotFound, "NOT_FOUND", "skill not found")
+		}
 		return
 	}
 	var req patchSkillReq
@@ -185,7 +187,7 @@ func (s *Server) patchSkill(w http.ResponseWriter, r *http.Request) {
 			`INSERT INTO skill_revisions (skill_id, description, frontmatter, body_md)
 			 SELECT skill_id, description, frontmatter, body_md FROM skills WHERE skill_id = $1`, sid)
 	}
-	s.audit(r.Context(), uid, actorKindOf(role), "skill", "update", &sid, "", tier, nil)
+	s.audit(r.Context(), uid, actorKindOf(tier), "skill", "update", &sid, "", tier, nil)
 	s.bumpCatalogVersion(r.Context())
 	registryWrites.WithLabelValues("skill", "update").Inc()
 	sk, _ := s.loadVisibleSkill(r, uid, sid)
@@ -193,7 +195,7 @@ func (s *Server) patchSkill(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) deleteSkill(w http.ResponseWriter, r *http.Request) {
-	uid, role, ok := s.requireUser(w, r)
+	uid, ok := s.requireUser(w, r)
 	if !ok {
 		return
 	}
@@ -207,15 +209,17 @@ func (s *Server) deleteSkill(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusNotFound, "NOT_FOUND", "skill not found")
 		return
 	}
-	if !s.authorizeRowWrite(r, tier, owner, book, uid, role) {
-		writeError(w, http.StatusNotFound, "NOT_FOUND", "skill not found")
+	if !s.authorizeRowWrite(w, r, tier, owner, book, uid) {
+		if tier != "system" {
+			writeError(w, http.StatusNotFound, "NOT_FOUND", "skill not found")
+		}
 		return
 	}
 	if _, err := s.db.Exec(r.Context(), `DELETE FROM skills WHERE skill_id = $1`, sid); err != nil {
 		writeError(w, http.StatusInternalServerError, "DB_ERROR", "could not delete skill")
 		return
 	}
-	s.audit(r.Context(), uid, actorKindOf(role), "skill", "delete", &sid, slug, tier, nil)
+	s.audit(r.Context(), uid, actorKindOf(tier), "skill", "delete", &sid, slug, tier, nil)
 	s.bumpCatalogVersion(r.Context())
 	registryWrites.WithLabelValues("skill", "delete").Inc()
 	w.WriteHeader(http.StatusNoContent)
@@ -224,7 +228,7 @@ func (s *Server) deleteSkill(w http.ResponseWriter, r *http.Request) {
 // shadowCheck reports whether a slug collides with a System skill (the FE shows
 // a warning so the user can rename or intentionally override).
 func (s *Server) shadowCheck(w http.ResponseWriter, r *http.Request) {
-	if _, _, ok := s.requireUser(w, r); !ok {
+	if _, ok := s.requireUser(w, r); !ok {
 		return
 	}
 	slug := r.URL.Query().Get("slug")
@@ -234,7 +238,7 @@ func (s *Server) shadowCheck(w http.ResponseWriter, r *http.Request) {
 
 // importSkill parses a SKILL.md document ({markdown:"..."} — frontmatter+body).
 func (s *Server) importSkill(w http.ResponseWriter, r *http.Request) {
-	uid, role, ok := s.requireUser(w, r)
+	uid, ok := s.requireUser(w, r)
 	if !ok {
 		return
 	}
@@ -250,12 +254,12 @@ func (s *Server) importSkill(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	in.Source = "import"
-	s.doCreateSkill(w, r, uid, role, in, "import")
+	s.doCreateSkill(w, r, uid, in, "import")
 }
 
 // exportSkill returns the skill as a SKILL.md document.
 func (s *Server) exportSkill(w http.ResponseWriter, r *http.Request) {
-	uid, _, ok := s.requireUser(w, r)
+	uid, ok := s.requireUser(w, r)
 	if !ok {
 		return
 	}
@@ -275,7 +279,7 @@ func (s *Server) exportSkill(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) listSkillRevisions(w http.ResponseWriter, r *http.Request) {
-	uid, _, ok := s.requireUser(w, r)
+	uid, ok := s.requireUser(w, r)
 	if !ok {
 		return
 	}

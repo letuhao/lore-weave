@@ -8,6 +8,8 @@ require (
 	github.com/golang-jwt/jwt/v5 v5.3.1
 	github.com/google/uuid v1.6.0
 	github.com/jackc/pgx/v5 v5.7.4
+	github.com/loreweave/foundation/contracts/adminjwt v0.0.0
+	github.com/loreweave/foundation/contracts/platformjwt v0.0.0
 	github.com/loreweave/loreweave_mcp v0.1.0
 	github.com/loreweave/observability v0.1.0
 	github.com/minio/minio-go/v7 v7.0.100
@@ -26,6 +28,10 @@ replace github.com/loreweave/observability => ../../sdks/go/observability
 replace github.com/loreweave/loreweave_mcp => ../../sdks/go/loreweave_mcp
 
 replace github.com/loreweave/grantclient => ../../sdks/go/grantclient
+
+replace github.com/loreweave/foundation/contracts/adminjwt => ../../contracts/adminjwt
+
+replace github.com/loreweave/foundation/contracts/platformjwt => ../../contracts/platformjwt
 
 require (
 	github.com/beorn7/perks v1.0.1 // indirect

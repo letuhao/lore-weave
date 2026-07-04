@@ -65,7 +65,7 @@ WHERE user_model_id=$1 AND owner_user_id=$2 AND is_active=true
 // caller's still-valid defaults (a dangling default whose model was deleted is
 // already cascaded away by the FK, so a JOIN here is belt-and-suspenders).
 func (s *Server) getDefaultModels(w http.ResponseWriter, r *http.Request) {
-	userID, _, ok := s.auth(r)
+	userID, ok := s.auth(r)
 	if !ok {
 		writeError(w, http.StatusUnauthorized, "M03_UNAUTHORIZED", "unauthorized")
 		return
@@ -97,7 +97,7 @@ WHERE d.owner_user_id = $1`, userID)
 // Body {"user_model_id": "<uuid>"} sets the default (validating the model is the
 // caller's and carries the capability); {"user_model_id": null} clears it.
 func (s *Server) putDefaultModel(w http.ResponseWriter, r *http.Request) {
-	userID, _, ok := s.auth(r)
+	userID, ok := s.auth(r)
 	if !ok {
 		writeError(w, http.StatusUnauthorized, "M03_UNAUTHORIZED", "unauthorized")
 		return

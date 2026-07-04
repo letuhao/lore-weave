@@ -11,6 +11,10 @@ COPY sdks/go/observability /src/sdks/go/observability
 # replaces github.com/loreweave/grantclient. Both must be in the build context.
 COPY sdks/go/loreweave_mcp /src/sdks/go/loreweave_mcp
 COPY sdks/go/grantclient /src/sdks/go/grantclient
+# contracts/{platformjwt,adminjwt} — shared HS256 user-JWT verifier + RS256 admin-JWT
+# verifier (D-JWT-ROLE-GATE); their replace directives must resolve inside the container.
+COPY contracts/platformjwt /src/contracts/platformjwt
+COPY contracts/adminjwt /src/contracts/adminjwt
 COPY services/agent-registry-service /src/services/agent-registry-service
 
 WORKDIR /src/services/agent-registry-service

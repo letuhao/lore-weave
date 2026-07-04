@@ -84,7 +84,7 @@ func (s *Server) decodeSettingsConfirm(w http.ResponseWriter, r *http.Request, u
 // single-use Tier-W write path. Currently the only descriptor is
 // settings.model_delete.
 func (s *Server) confirmSettingsAction(w http.ResponseWriter, r *http.Request) {
-	userID, _, ok := s.auth(r)
+	userID, ok := s.auth(r)
 	if !ok {
 		writeError(w, http.StatusUnauthorized, "M03_UNAUTHORIZED", "unauthorized")
 		return
@@ -133,7 +133,7 @@ func (s *Server) effectModelDelete(w http.ResponseWriter, ctx context.Context, u
 // read-only, NEVER consumes the token. Re-renders the confirm card from CURRENT
 // state so the human confirms against what is true now.
 func (s *Server) previewSettingsAction(w http.ResponseWriter, r *http.Request) {
-	userID, _, ok := s.auth(r)
+	userID, ok := s.auth(r)
 	if !ok {
 		writeError(w, http.StatusUnauthorized, "M03_UNAUTHORIZED", "unauthorized")
 		return

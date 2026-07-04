@@ -15,6 +15,12 @@ type Config struct {
 	JWTSecret            string
 	InternalServiceToken string
 
+	// AdminJWTPublicKeyPEM (D-JWT-ROLE-GATE) — the RS256 public key that verifies
+	// admin tokens for the System-tier write endpoints + the admin-only ingest routes
+	// (contracts/adminjwt, glossary's requireAdminScope pattern). Optional: when unset
+	// those admin paths fail closed (503). PEM or base64-PEM.
+	AdminJWTPublicKeyPEM string
+
 	// VaultKey encrypts MCP-server credentials (OAuth tokens / bearer secrets)
 	// at rest with AES-GCM (DECISION-1: agent-registry owns its own secret vault,
 	// mirroring provider-registry, rather than reusing provider_credentials).
@@ -60,6 +66,7 @@ func Load() (*Config, error) {
 		DatabaseURL:          os.Getenv("DATABASE_URL"),
 		JWTSecret:            os.Getenv("JWT_SECRET"),
 		InternalServiceToken: os.Getenv("INTERNAL_SERVICE_TOKEN"),
+		AdminJWTPublicKeyPEM: os.Getenv("ADMIN_JWT_PUBLIC_KEY_PEM"),
 		VaultKey:             os.Getenv("AGENT_REGISTRY_VAULT_KEY"),
 		BookServiceInternalURL: os.Getenv("BOOK_SERVICE_INTERNAL_URL"),
 		AllowInternalMcpTargets: os.Getenv("AGENT_REGISTRY_ALLOW_INTERNAL_MCP") == "1",

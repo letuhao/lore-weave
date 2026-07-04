@@ -253,20 +253,17 @@ def main() -> int:
 # verifier x4 (+ alg-pin x4), logging_config trio x3, TerminalEvent dup x2.
 # JWT-migration 2026-07-04: book/glossary/notification/sharing migrated to the
 # shared contracts/platformjwt verifier (8 entries retired below). The 3 that
-# remain (agent-registry/provider-registry/usage-billing) read a `role` claim the
-# minimal SDK can't carry + auth never mints (see D-JWT-ROLE-GATE); auth-service
-# is the token MINTER (owns AccessClaims), not a duplicate consumer.
+# D-JWT-ROLE-GATE 2026-07-04: agent-registry/provider-registry/usage-billing migrated
+# their user-JWT verify to contracts/platformjwt AND their admin gate to the RS256
+# contracts/adminjwt (glossary requireAdminScope pattern) — 6 entries retired below.
+# auth-service is the token MINTER (owns AccessClaims incl. the `sid` session claim
+# platformjwt does not carry), so it legitimately parses its own tokens — NOT a
+# duplicate consumer; its 2 entries stay.
 # Each is a line-number-independent `rule|relpath|normalized-code` fingerprint,
 # so the gate passes today and fails only on the NEXT new copy.
 BASELINE = {
-    'jwt-alg-pin|services/agent-registry-service/internal/api/server.go|if t.Method != jwt.SigningMethodHS256 {',
     'jwt-alg-pin|services/auth-service/internal/authjwt/jwt.go|if t.Method != jwt.SigningMethodHS256 {',
-    'jwt-alg-pin|services/provider-registry-service/internal/api/server.go|if t.Method != jwt.SigningMethodHS256 {',
-    'jwt-alg-pin|services/usage-billing-service/internal/api/server.go|if t.Method != jwt.SigningMethodHS256 {',
-    'jwt-verifier|services/agent-registry-service/internal/api/server.go|tok, err := jwt.ParseWithClaims(strings.TrimPrefix(authz, "Bearer "), &accessClaims{}, func(t *jwt.Token) (any, error) {',
     'jwt-verifier|services/auth-service/internal/authjwt/jwt.go|t, err := jwt.ParseWithClaims(tokenStr, &AccessClaims{}, func(t *jwt.Token) (interface{}, error) {',
-    'jwt-verifier|services/provider-registry-service/internal/api/server.go|tok, err := jwt.ParseWithClaims(tokenStr, &accessClaims{}, func(t *jwt.Token) (any, error) {',
-    'jwt-verifier|services/usage-billing-service/internal/api/server.go|tok, err := jwt.ParseWithClaims(tokenStr, &accessClaims{}, func(t *jwt.Token) (any, error) {',
     'logging-redact-filter|services/composition-service/app/logging_config.py|class RedactFilter(logging.Filter):',
     'logging-redact-filter|services/knowledge-service/app/logging_config.py|class RedactFilter(logging.Filter):',
     'logging-redact-filter|services/lore-enrichment-service/app/logging_config.py|class RedactFilter(logging.Filter):',

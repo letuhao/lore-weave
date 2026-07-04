@@ -5,6 +5,7 @@ import (
 	"crypto/aes"
 	"crypto/cipher"
 	"crypto/rand"
+	"crypto/rsa"
 	"crypto/sha256"
 	"encoding/base64"
 	"encoding/hex"
@@ -12,17 +13,19 @@ import (
 	"fmt"
 	"log/slog"
 	"net/http"
+	"slices"
 	"strconv"
 	"strings"
 	"time"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
-	"github.com/golang-jwt/jwt/v5"
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 
+	"github.com/loreweave/foundation/contracts/adminjwt"
+	"github.com/loreweave/foundation/contracts/platformjwt"
 	"github.com/loreweave/observability"
 	"github.com/loreweave/usage-billing-service/internal/config"
 )
@@ -42,6 +45,12 @@ type Server struct {
 	// rotation of LLM_PAYLOAD_ENCRYPTION_KEY does not orphan rows wrapped under an
 	// older value (B-MED-1). New rows always wrap under secretKey.
 	retiredKeys [][]byte
+	// adminPub verifies RS256 admin JWTs for the System-tier admin endpoints
+	// (adminListUsage + createReconciliation — D-JWT-ROLE-GATE, contracts/adminjwt).
+	// nil when ADMIN_JWT_PUBLIC_KEY_PEM is unset → those endpoints fail closed (503).
+	// adminKID = KeyFingerprint(adminPub).
+	adminPub *rsa.PublicKey
+	adminKID string
 }
 
 // normalizeAESKey coerces a secret string into a 32-byte AES-256 key (truncate
@@ -66,7 +75,7 @@ func NewServer(pool *pgxpool.Pool, cfg *config.Config) *Server {
 	for _, k := range cfg.LLMPayloadEncryptionKeysRetired {
 		retired = append(retired, normalizeAESKey(k))
 	}
-	return &Server{
+	s := &Server{
 		pool:            pool,
 		cfg:             cfg,
 		secret:          []byte(cfg.JWTSecret),
@@ -74,6 +83,21 @@ func NewServer(pool *pgxpool.Pool, cfg *config.Config) *Server {
 		legacySecretKey: legacy,
 		retiredKeys:     retired,
 	}
+	// D-JWT-ROLE-GATE — enable RS256 admin verification for the System-tier admin
+	// endpoints when the public key is configured. Fail closed + log loudly on a
+	// misconfigured key (leave admin disabled → those endpoints return 503).
+	if raw := strings.TrimSpace(cfg.AdminJWTPublicKeyPEM); raw != "" {
+		if pub, err := adminjwt.ParseRSAPublicKeyPEM(pemOrBase64(raw)); err != nil {
+			slog.Error("usage-billing: ADMIN_JWT_PUBLIC_KEY_PEM parse failed; admin endpoints DISABLED", "err", err)
+		} else if kid, err := adminjwt.KeyFingerprint(pub); err != nil {
+			slog.Error("usage-billing: admin key fingerprint failed; admin endpoints DISABLED", "err", err)
+		} else {
+			s.adminPub = pub
+			s.adminKID = kid
+			slog.Info("usage-billing: admin endpoints ENABLED", "kid", kid)
+		}
+	}
+	return s
 }
 
 // payloadKeyRef names the master key version that wrapped a row's session key,
@@ -234,35 +258,69 @@ func writeError(w http.ResponseWriter, status int, code, message string) {
 	writeJSON(w, status, errorBody{Code: code, Message: message})
 }
 
-type accessClaims struct {
-	jwt.RegisteredClaims
-	Role string `json:"role,omitempty"`
-}
-
-func (s *Server) auth(r *http.Request) (uuid.UUID, string, bool) {
+// auth verifies the platform-user HS256 JWT via the shared contracts/platformjwt
+// verifier and returns the authenticated user id. It NO LONGER returns a role:
+// the platform user token never carries one (D-JWT-ROLE-GATE) — admin authority
+// is the RS256 admin token's job (see requireAdminScope).
+func (s *Server) auth(r *http.Request) (uuid.UUID, bool) {
 	auth := r.Header.Get("Authorization")
 	if !strings.HasPrefix(auth, "Bearer ") {
-		return uuid.Nil, "", false
+		return uuid.Nil, false
 	}
-	tokenStr := strings.TrimPrefix(auth, "Bearer ")
-	tok, err := jwt.ParseWithClaims(tokenStr, &accessClaims{}, func(t *jwt.Token) (any, error) {
-		if t.Method != jwt.SigningMethodHS256 {
-			return nil, fmt.Errorf("unexpected signing method")
-		}
-		return s.secret, nil
-	})
-	if err != nil || !tok.Valid {
-		return uuid.Nil, "", false
-	}
-	claims, ok := tok.Claims.(*accessClaims)
-	if !ok {
-		return uuid.Nil, "", false
-	}
-	id, err := uuid.Parse(claims.Subject)
+	claims, err := platformjwt.Verify(strings.TrimPrefix(auth, "Bearer "), s.secret)
 	if err != nil {
-		return uuid.Nil, "", false
+		return uuid.Nil, false
 	}
-	return id, claims.Role, true
+	id, err := claims.UserID()
+	if err != nil {
+		return uuid.Nil, false
+	}
+	return id, true
+}
+
+// scopeAdminWrite is the admin scope required to invoke the System-tier admin
+// endpoints (admin usage listing + reconciliation). Mirrors glossary /
+// provider-registry's System-tier admin gate.
+const scopeAdminWrite = "admin:write"
+
+// requireAdminScope verifies the Bearer admin RS256 JWT and that it carries the
+// required scope, writing the error + returning false on any failure. The admin
+// endpoints are platform-owned (cross-tenant): only an admin principal (never a
+// regular user) may reach them (CLAUDE.md › User Boundaries). Fail closed when the
+// verify key is unconfigured. A regular HS256 user token never satisfies
+// adminjwt.Verify (RS256 only), so this is not bypassable with a normal login.
+func (s *Server) requireAdminScope(w http.ResponseWriter, r *http.Request, scope string) (adminjwt.AdminClaims, bool) {
+	if s.adminPub == nil {
+		writeError(w, http.StatusServiceUnavailable, "M03_ADMIN_UNAVAILABLE", "admin endpoints are not configured")
+		return adminjwt.AdminClaims{}, false
+	}
+	auth := r.Header.Get("Authorization")
+	if !strings.HasPrefix(auth, "Bearer ") {
+		writeError(w, http.StatusUnauthorized, "M03_ADMIN_UNAUTHORIZED", "valid admin Bearer token required")
+		return adminjwt.AdminClaims{}, false
+	}
+	claims, err := adminjwt.Verify(strings.TrimPrefix(auth, "Bearer "), s.adminPub, s.adminKID)
+	if err != nil {
+		writeError(w, http.StatusUnauthorized, "M03_ADMIN_UNAUTHORIZED", "invalid admin token")
+		return adminjwt.AdminClaims{}, false
+	}
+	if !slices.Contains(claims.Scopes, scope) {
+		writeError(w, http.StatusForbidden, "M03_ADMIN_FORBIDDEN", "missing required admin scope")
+		return adminjwt.AdminClaims{}, false
+	}
+	return claims, true
+}
+
+// pemOrBase64 accepts either a raw PEM ("BEGIN") or a base64-encoded PEM (an
+// env-var-friendly single line).
+func pemOrBase64(v string) []byte {
+	if strings.Contains(v, "BEGIN") {
+		return []byte(v)
+	}
+	if dec, err := base64.StdEncoding.DecodeString(strings.TrimSpace(v)); err == nil {
+		return dec
+	}
+	return []byte(v)
 }
 
 func encryptWithKey(key []byte, plain []byte) (string, error) {
@@ -511,7 +569,7 @@ func (s *Server) recordInvocation(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) listUsageLogs(w http.ResponseWriter, r *http.Request) {
-	userID, _, ok := s.auth(r)
+	userID, ok := s.auth(r)
 	if !ok {
 		writeError(w, http.StatusUnauthorized, "M03_UNAUTHORIZED", "unauthorized")
 		return
@@ -633,7 +691,7 @@ func scanUsageLogRow(s rowScanner) (map[string]any, error) {
 }
 
 func (s *Server) getUsageLogDetail(w http.ResponseWriter, r *http.Request) {
-	userID, _, ok := s.auth(r)
+	userID, ok := s.auth(r)
 	if !ok {
 		writeError(w, http.StatusUnauthorized, "M03_UNAUTHORIZED", "unauthorized")
 		return
@@ -730,7 +788,7 @@ func parseIntDefault(raw string, def, min, max int) int {
 }
 
 func (s *Server) getUsageSummary(w http.ResponseWriter, r *http.Request) {
-	userID, _, ok := s.auth(r)
+	userID, ok := s.auth(r)
 	if !ok {
 		writeError(w, http.StatusUnauthorized, "M03_UNAUTHORIZED", "unauthorized")
 		return
@@ -870,13 +928,7 @@ GROUP BY day ORDER BY day
 }
 
 func (s *Server) adminListUsage(w http.ResponseWriter, r *http.Request) {
-	_, role, ok := s.auth(r)
-	if !ok {
-		writeError(w, http.StatusUnauthorized, "M03_UNAUTHORIZED", "unauthorized")
-		return
-	}
-	if role != "admin" {
-		writeError(w, http.StatusForbidden, "M03_FORBIDDEN", "admin only")
+	if _, ok := s.requireAdminScope(w, r, scopeAdminWrite); !ok {
 		return
 	}
 	limit := parseIntDefault(r.URL.Query().Get("limit"), 50, 1, 200)
@@ -909,13 +961,7 @@ LIMIT $1 OFFSET $2
 }
 
 func (s *Server) createReconciliation(w http.ResponseWriter, r *http.Request) {
-	_, role, ok := s.auth(r)
-	if !ok {
-		writeError(w, http.StatusUnauthorized, "M03_UNAUTHORIZED", "unauthorized")
-		return
-	}
-	if role != "admin" {
-		writeError(w, http.StatusForbidden, "M03_FORBIDDEN", "admin only")
+	if _, ok := s.requireAdminScope(w, r, scopeAdminWrite); !ok {
 		return
 	}
 	var in struct {

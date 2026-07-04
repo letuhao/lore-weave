@@ -46,7 +46,7 @@ type createSubagentReq struct {
 }
 
 func (s *Server) createSubagent(w http.ResponseWriter, r *http.Request) {
-	uid, role, ok := s.requireUser(w, r)
+	uid, ok := s.requireUser(w, r)
 	if !ok {
 		return
 	}
@@ -86,8 +86,8 @@ func (s *Server) createSubagent(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	case "system":
-		if role != "admin" {
-			writeError(w, http.StatusForbidden, "FORBIDDEN", "only admin may create System subagents")
+		// System-tier is platform-owned: RS256 admin token required (D-JWT-ROLE-GATE).
+		if _, ok := s.requireAdminScope(w, r, scopeAdminWrite); !ok {
 			return
 		}
 	case "book":
@@ -116,13 +116,13 @@ func (s *Server) createSubagent(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusInternalServerError, "DB_ERROR", "could not create subagent")
 		return
 	}
-	s.audit(r.Context(), uid, actorKindOf(role), "subagent", "create", &row.SubagentID, name, tier, nil)
+	s.audit(r.Context(), uid, actorKindOf(tier), "subagent", "create", &row.SubagentID, name, tier, nil)
 	s.bumpCatalogVersion(r.Context())
 	writeJSON(w, http.StatusCreated, row)
 }
 
 func (s *Server) listSubagents(w http.ResponseWriter, r *http.Request) {
-	uid, _, ok := s.requireUser(w, r)
+	uid, ok := s.requireUser(w, r)
 	if !ok {
 		return
 	}
@@ -163,7 +163,7 @@ func (s *Server) listSubagents(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]any{"items": items, "total": total, "limit": limit, "offset": offset})
 }
 
-func (s *Server) loadSubagentForWrite(w http.ResponseWriter, r *http.Request, uid uuid.UUID, role string) (uuid.UUID, string, bool) {
+func (s *Server) loadSubagentForWrite(w http.ResponseWriter, r *http.Request, uid uuid.UUID) (uuid.UUID, string, bool) {
 	sid, ok := parseUUIDParam(w, r, "subagent_id")
 	if !ok {
 		return uuid.Nil, "", false
@@ -174,19 +174,21 @@ func (s *Server) loadSubagentForWrite(w http.ResponseWriter, r *http.Request, ui
 		writeError(w, http.StatusNotFound, "NOT_FOUND", "subagent not found")
 		return uuid.Nil, "", false
 	}
-	if !s.authorizeRowWrite(r, tier, owner, book, uid, role) {
-		writeError(w, http.StatusNotFound, "NOT_FOUND", "subagent not found")
+	if !s.authorizeRowWrite(w, r, tier, owner, book, uid) {
+		if tier != "system" {
+			writeError(w, http.StatusNotFound, "NOT_FOUND", "subagent not found")
+		}
 		return uuid.Nil, "", false
 	}
 	return sid, tier, true
 }
 
 func (s *Server) patchSubagent(w http.ResponseWriter, r *http.Request) {
-	uid, role, ok := s.requireUser(w, r)
+	uid, ok := s.requireUser(w, r)
 	if !ok {
 		return
 	}
-	sid, tier, ok := s.loadSubagentForWrite(w, r, uid, role)
+	sid, tier, ok := s.loadSubagentForWrite(w, r, uid)
 	if !ok {
 		return
 	}
@@ -232,17 +234,17 @@ func (s *Server) patchSubagent(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusInternalServerError, "DB_ERROR", "could not update subagent")
 		return
 	}
-	s.audit(r.Context(), uid, actorKindOf(role), "subagent", "update", &sid, row.Name, tier, nil)
+	s.audit(r.Context(), uid, actorKindOf(tier), "subagent", "update", &sid, row.Name, tier, nil)
 	s.bumpCatalogVersion(r.Context())
 	writeJSON(w, http.StatusOK, row)
 }
 
 func (s *Server) deleteSubagent(w http.ResponseWriter, r *http.Request) {
-	uid, role, ok := s.requireUser(w, r)
+	uid, ok := s.requireUser(w, r)
 	if !ok {
 		return
 	}
-	sid, tier, ok := s.loadSubagentForWrite(w, r, uid, role)
+	sid, tier, ok := s.loadSubagentForWrite(w, r, uid)
 	if !ok {
 		return
 	}
@@ -250,7 +252,7 @@ func (s *Server) deleteSubagent(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusInternalServerError, "DB_ERROR", "could not delete subagent")
 		return
 	}
-	s.audit(r.Context(), uid, actorKindOf(role), "subagent", "delete", &sid, "", tier, nil)
+	s.audit(r.Context(), uid, actorKindOf(tier), "subagent", "delete", &sid, "", tier, nil)
 	s.bumpCatalogVersion(r.Context())
 	w.WriteHeader(http.StatusNoContent)
 }

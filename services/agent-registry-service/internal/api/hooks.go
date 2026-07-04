@@ -78,7 +78,7 @@ type createHookReq struct {
 }
 
 func (s *Server) createHook(w http.ResponseWriter, r *http.Request) {
-	uid, role, ok := s.requireUser(w, r)
+	uid, ok := s.requireUser(w, r)
 	if !ok {
 		return
 	}
@@ -111,8 +111,8 @@ func (s *Server) createHook(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	case "system":
-		if role != "admin" {
-			writeError(w, http.StatusForbidden, "FORBIDDEN", "only admin may create System hooks")
+		// System-tier is platform-owned: RS256 admin token required (D-JWT-ROLE-GATE).
+		if _, ok := s.requireAdminScope(w, r, scopeAdminWrite); !ok {
 			return
 		}
 	case "book":
@@ -137,13 +137,13 @@ func (s *Server) createHook(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusInternalServerError, "DB_ERROR", "could not create hook")
 		return
 	}
-	s.audit(r.Context(), uid, actorKindOf(role), "hook", "create", &row.HookID, req.OnEvent, tier, nil)
+	s.audit(r.Context(), uid, actorKindOf(tier), "hook", "create", &row.HookID, req.OnEvent, tier, nil)
 	s.bumpCatalogVersion(r.Context())
 	writeJSON(w, http.StatusCreated, row)
 }
 
 func (s *Server) listHooks(w http.ResponseWriter, r *http.Request) {
-	uid, _, ok := s.requireUser(w, r)
+	uid, ok := s.requireUser(w, r)
 	if !ok {
 		return
 	}
@@ -189,7 +189,7 @@ func (s *Server) listHooks(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]any{"items": items, "total": total, "limit": limit, "offset": offset})
 }
 
-func (s *Server) loadHookForWrite(w http.ResponseWriter, r *http.Request, uid uuid.UUID, role string) (uuid.UUID, string, string, bool) {
+func (s *Server) loadHookForWrite(w http.ResponseWriter, r *http.Request, uid uuid.UUID) (uuid.UUID, string, string, bool) {
 	hid, ok := parseUUIDParam(w, r, "hook_id")
 	if !ok {
 		return uuid.Nil, "", "", false
@@ -200,19 +200,21 @@ func (s *Server) loadHookForWrite(w http.ResponseWriter, r *http.Request, uid uu
 		writeError(w, http.StatusNotFound, "NOT_FOUND", "hook not found")
 		return uuid.Nil, "", "", false
 	}
-	if !s.authorizeRowWrite(r, tier, owner, book, uid, role) {
-		writeError(w, http.StatusNotFound, "NOT_FOUND", "hook not found")
+	if !s.authorizeRowWrite(w, r, tier, owner, book, uid) {
+		if tier != "system" {
+			writeError(w, http.StatusNotFound, "NOT_FOUND", "hook not found")
+		}
 		return uuid.Nil, "", "", false
 	}
 	return hid, tier, onEvent, true
 }
 
 func (s *Server) patchHook(w http.ResponseWriter, r *http.Request) {
-	uid, role, ok := s.requireUser(w, r)
+	uid, ok := s.requireUser(w, r)
 	if !ok {
 		return
 	}
-	hid, tier, onEvent, ok := s.loadHookForWrite(w, r, uid, role)
+	hid, tier, onEvent, ok := s.loadHookForWrite(w, r, uid)
 	if !ok {
 		return
 	}
@@ -263,17 +265,17 @@ func (s *Server) patchHook(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusInternalServerError, "DB_ERROR", "could not update hook")
 		return
 	}
-	s.audit(r.Context(), uid, actorKindOf(role), "hook", "update", &hid, row.OnEvent, tier, nil)
+	s.audit(r.Context(), uid, actorKindOf(tier), "hook", "update", &hid, row.OnEvent, tier, nil)
 	s.bumpCatalogVersion(r.Context())
 	writeJSON(w, http.StatusOK, row)
 }
 
 func (s *Server) deleteHook(w http.ResponseWriter, r *http.Request) {
-	uid, role, ok := s.requireUser(w, r)
+	uid, ok := s.requireUser(w, r)
 	if !ok {
 		return
 	}
-	hid, tier, _, ok := s.loadHookForWrite(w, r, uid, role)
+	hid, tier, _, ok := s.loadHookForWrite(w, r, uid)
 	if !ok {
 		return
 	}
@@ -281,7 +283,7 @@ func (s *Server) deleteHook(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusInternalServerError, "DB_ERROR", "could not delete hook")
 		return
 	}
-	s.audit(r.Context(), uid, actorKindOf(role), "hook", "delete", &hid, "", tier, nil)
+	s.audit(r.Context(), uid, actorKindOf(tier), "hook", "delete", &hid, "", tier, nil)
 	s.bumpCatalogVersion(r.Context())
 	w.WriteHeader(http.StatusNoContent)
 }

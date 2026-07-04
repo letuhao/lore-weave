@@ -57,7 +57,7 @@ type putEnablementReq struct {
 }
 
 func (s *Server) putEnablement(w http.ResponseWriter, r *http.Request) {
-	uid, role, ok := s.requireUser(w, r)
+	uid, ok := s.requireUser(w, r)
 	if !ok {
 		return
 	}
@@ -113,7 +113,7 @@ func (s *Server) putEnablement(w http.ResponseWriter, r *http.Request) {
 	if req.Enabled {
 		action = "enable"
 	}
-	s.audit(r.Context(), uid, actorKindOf(role), "enablement", action, &pid, "", "", map[string]any{"scope": req.Scope})
+	s.audit(r.Context(), uid, "user", "enablement", action, &pid, "", "", map[string]any{"scope": req.Scope})
 	s.bumpCatalogVersion(r.Context())
 	registryWrites.WithLabelValues("enablement", action).Inc()
 	writeJSON(w, http.StatusOK, map[string]any{"plugin_id": pid, "scope": req.Scope, "enabled": req.Enabled})

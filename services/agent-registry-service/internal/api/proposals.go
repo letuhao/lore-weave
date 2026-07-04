@@ -67,7 +67,7 @@ func (s *Server) doProposeSkill(ctx context.Context, uid uuid.UUID, action strin
 }
 
 func (s *Server) listProposals(w http.ResponseWriter, r *http.Request) {
-	uid, _, ok := s.requireUser(w, r)
+	uid, ok := s.requireUser(w, r)
 	if !ok {
 		return
 	}
@@ -113,7 +113,7 @@ func (s *Server) listProposals(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) getProposal(w http.ResponseWriter, r *http.Request) {
-	uid, _, ok := s.requireUser(w, r)
+	uid, ok := s.requireUser(w, r)
 	if !ok {
 		return
 	}
@@ -136,7 +136,7 @@ func (s *Server) getProposal(w http.ResponseWriter, r *http.Request) {
 // the user's tier. This is the confirm effect (no JWT mint; the browser's own
 // token authorizes the write to the user's own tier).
 func (s *Server) approveProposal(w http.ResponseWriter, r *http.Request) {
-	uid, role, ok := s.requireUser(w, r)
+	uid, ok := s.requireUser(w, r)
 	if !ok {
 		return
 	}
@@ -165,10 +165,21 @@ func (s *Server) approveProposal(w http.ResponseWriter, r *http.Request) {
 		Surfaces: p.Surfaces, Frontmatter: p.Frontmatter, Tier: "user", Source: "agent",
 	}
 	if p.Action == "update" && p.TargetSkillID != nil {
-		// update the target skill (must be the caller's own)
+		// update the target skill: a user-tier target must be the caller's own; a
+		// System-tier target needs the RS256 admin token (D-JWT-ROLE-GATE). Book-tier
+		// skills are not proposal targets (proposals live in the user's own tier).
 		var owner *uuid.UUID
 		var tier string
-		if err := s.db.QueryRow(r.Context(), `SELECT tier, owner_user_id FROM skills WHERE skill_id=$1`, *p.TargetSkillID).Scan(&tier, &owner); err != nil || !s.canWritePlugin(tier, owner, uid, role) {
+		if err := s.db.QueryRow(r.Context(), `SELECT tier, owner_user_id FROM skills WHERE skill_id=$1`, *p.TargetSkillID).Scan(&tier, &owner); err != nil {
+			writeError(w, http.StatusConflict, "TARGET_GONE", "target skill not writable")
+			return
+		}
+		if tier == "system" {
+			// requireAdminScope writes its own 401/403/503; do not double-write.
+			if _, ok := s.requireAdminScope(w, r, scopeAdminWrite); !ok {
+				return
+			}
+		} else if owner == nil || *owner != uid {
 			writeError(w, http.StatusConflict, "TARGET_GONE", "target skill not writable")
 			return
 		}
@@ -223,7 +234,7 @@ func (s *Server) approveProposal(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) rejectProposal(w http.ResponseWriter, r *http.Request) {
-	uid, _, ok := s.requireUser(w, r)
+	uid, ok := s.requireUser(w, r)
 	if !ok {
 		return
 	}

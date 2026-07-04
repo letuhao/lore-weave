@@ -13,6 +13,12 @@ type Config struct {
 	UsageBillingServiceURL string
 	InternalServiceToken   string
 
+	// AdminJWTPublicKeyPEM (D-JWT-ROLE-GATE) — the RS256 public key that verifies
+	// admin tokens for the System-tier platform-model write endpoints
+	// (contracts/adminjwt, glossary's requireAdminScope pattern). Optional: when
+	// unset those admin endpoints fail closed (503). PEM or base64-PEM.
+	AdminJWTPublicKeyPEM string
+
 	// C-CONFIRM key-split — the settings Tier-W confirm token (mint/verify in
 	// mcp_server.go + settings_actions.go) signs with a DEDICATED secret, NOT
 	// JWTSecret. JWTSecret gates the auth() user-JWT route; reusing it for the
@@ -123,6 +129,7 @@ func Load() (*Config, error) {
 		HTTPAddr:               getEnv("HTTP_ADDR", ":8085"),
 		DatabaseURL:            os.Getenv("DATABASE_URL"),
 		JWTSecret:              os.Getenv("JWT_SECRET"),
+		AdminJWTPublicKeyPEM:   os.Getenv("ADMIN_JWT_PUBLIC_KEY_PEM"),
 		UsageBillingServiceURL: os.Getenv("USAGE_BILLING_SERVICE_URL"),
 		InternalServiceToken:      os.Getenv("INTERNAL_SERVICE_TOKEN"),
 		ConfirmTokenSigningSecret: os.Getenv("CONFIRM_TOKEN_SIGNING_SECRET"),
