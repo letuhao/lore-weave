@@ -109,7 +109,7 @@ func (s *Server) startImport(w http.ResponseWriter, r *http.Request) {
 			bytes.NewReader(data), int64(len(data)),
 			minio.PutObjectOptions{ContentType: fh.Header.Get("Content-Type")})
 		if err != nil {
-			slog.Error("import: minio upload failed", "error", err)
+			slog.ErrorContext(r.Context(), "import: minio upload failed", "error", err)
 			writeError(w, http.StatusInternalServerError, "IMPORT_UPLOAD_FAILED", "failed to store file")
 			return
 		}

@@ -535,7 +535,7 @@ func (s *Server) generateChapterMedia(w http.ResponseWriter, r *http.Request) {
 		billingReq.Header.Set("Content-Type", "application/json")
 		billingReq.Header.Set("X-Internal-Token", s.cfg.InternalServiceToken)
 		if resp, err := internalClient.Do(billingReq); err != nil {
-			slog.Warn("generateChapterMedia billing failed", "error", err)
+			slog.WarnContext(ctx, "generateChapterMedia billing failed", "error", err)
 		} else {
 			resp.Body.Close()
 		}
