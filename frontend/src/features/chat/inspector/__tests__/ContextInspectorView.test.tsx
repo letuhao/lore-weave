@@ -54,11 +54,22 @@ const mockState = {
   loading: false,
   error: null as string | null,
   reload: vi.fn(),
+  _args: [] as unknown[],
 };
 
 vi.mock('../useContextTrace', () => ({
-  useContextTrace: () => mockState,
+  // Capture the args so a test can prove the view forwards `enabled` (the
+  // mounted-but-hidden fetch gate) + `initialSessionId` to the controller.
+  useContextTrace: (...args: unknown[]) => {
+    mockState._args = args;
+    return mockState;
+  },
 }));
+
+// 10 same-status turns for pagination-reset coverage (PER = 8 in the view).
+const MANY: ContextTracePoint[] = Array.from({ length: 10 }, (_, i) =>
+  point(i + 1, ['included'], 1000 + i, 32000, `turn ${i + 1}`),
+);
 
 import { ContextInspectorView } from '../ContextInspectorView';
 
@@ -119,5 +130,103 @@ describe('ContextInspectorView', () => {
     mockState.points = [];
     render(<ContextInspectorView />);
     expect(screen.getByText(/no measured turns/i)).toBeInTheDocument();
+  });
+
+  it('clicking a turn loads it into the inspector (click turn → load)', () => {
+    render(<ContextInspectorView />);
+    // default selection is the most-recent turn (third)
+    expect(screen.getByTestId('inspector-selected-message').textContent).toBe('third turn');
+    fireEvent.click(screen.getByTestId('inspector-turn-list').querySelector('[data-turn-seq="1"]')!);
+    expect(screen.getByTestId('inspector-selected-message').textContent).toBe('first turn');
+  });
+
+  it('j/k keyboard navigation moves the selection across turns', () => {
+    render(<ContextInspectorView />);
+    // start on the last turn; k = previous → second turn
+    fireEvent.keyDown(window, { key: 'k' });
+    expect(screen.getByTestId('inspector-selected-message').textContent).toBe('second turn');
+    fireEvent.keyDown(window, { key: 'j' }); // next → back to third
+    expect(screen.getByTestId('inspector-selected-message').textContent).toBe('third turn');
+  });
+
+  it('any filter change resets pagination to page 0', () => {
+    mockState.points = MANY; // 10 turns → 2 pages
+    render(<ContextInspectorView />);
+    fireEvent.click(screen.getByRole('button', { name: /next/i }));
+    expect(screen.getByTestId('inspector-page-label').textContent).toContain('2 / 2');
+    // changing the search filter must snap back to page 1
+    fireEvent.change(screen.getByTestId('inspector-search'), { target: { value: 'turn' } });
+    expect(screen.getByTestId('inspector-page-label').textContent).toContain('1 / 2');
+  });
+
+  it('refresh button triggers a reload (poll-based live update)', () => {
+    render(<ContextInspectorView />);
+    fireEvent.click(screen.getByRole('button', { name: /refresh/i }));
+    expect(mockState.reload).toHaveBeenCalled();
+  });
+
+  it('loading state renders while the first fetch is in flight', () => {
+    mockState.points = [];
+    mockState.loading = true;
+    render(<ContextInspectorView />);
+    expect(screen.getByText(/loading context trace/i)).toBeInTheDocument();
+  });
+
+  it('error state surfaces the fetch error', () => {
+    mockState.error = 'boom';
+    render(<ContextInspectorView />);
+    expect(screen.getByText('boom')).toBeInTheDocument();
+  });
+
+  it('forwards enabled=false to the controller (mounted-but-hidden gates the fetch)', () => {
+    render(<ContextInspectorView enabled={false} />);
+    expect(mockState._args[0]).toBe(false);
+  });
+
+  it('forwards initialSessionId to the controller (deep-link / studio scope)', () => {
+    render(<ContextInspectorView initialSessionId="deep-123" />);
+    expect(mockState._args[1]).toBe('deep-123');
+  });
+
+  it('renders the tool title and subtitle', () => {
+    render(<ContextInspectorView />);
+    const inspector = screen.getByTestId('context-inspector');
+    expect(inspector.textContent).toContain('Context Compiler');
+    expect(inspector.textContent).toContain('Trace Inspector');
+  });
+
+  it('top bar shows the session selector (current session) + the three KPIs', () => {
+    render(<ContextInspectorView />);
+    const sel = screen.getByTestId('inspector-session-select') as HTMLSelectElement;
+    expect(sel.value).toBe('s1'); // current session id
+    expect(within(sel).getByText('Session One')).toBeInTheDocument();
+    const bar = screen.getByTestId('context-inspector');
+    expect(bar.textContent).toContain('avg reduction');
+    expect(bar.textContent).toContain('tokens saved');
+    expect(bar.textContent).toContain('model window');
+    // the COMPUTED KPI values (not just labels): POINTS each carry raw=used*2 →
+    // reduction 50%, saved = Σ used = 10K+20K+40K = 70K; window = context_length.
+    expect(bar.textContent).toMatch(/[−-]50%/); // KPI: avg reduction (computed)
+    expect(bar.textContent).toContain('70K'); // KPI: tokens saved (computed, kfmt)
+    expect(bar.textContent).toContain('131,072'); // KPI: model window
+  });
+
+  it('inspector header renders the turn badge, full message + intent/entity/retrieval/window chips', () => {
+    render(<ContextInspectorView />);
+    const inspector = screen.getByTestId('context-inspector');
+    expect(inspector.textContent).toContain('T-3'); // turn id badge
+    expect(screen.getByTestId('inspector-selected-message').textContent).toBe('third turn'); // full message
+    expect(inspector.textContent).toContain('lore-lookup'); // intent chip
+    expect(inspector.textContent).toContain('entity-presence'); // entity-presence chip label
+    expect(inspector.textContent).toContain('prepend'); // retrieval-mode chip
+    expect(inspector.textContent).toContain('window'); // model window chip
+  });
+
+  it('changing a volatile filter leaves the stable session selection untouched (state split)', () => {
+    render(<ContextInspectorView />);
+    const before = mockState.selectSession.mock.calls.length;
+    fireEvent.click(screen.getByTestId('inspector-turn-list').querySelector('[data-status-filter="gated"]')!);
+    // the filter is container-local volatile state — it must NOT reload/reselect the session
+    expect(mockState.selectSession.mock.calls.length).toBe(before);
   });
 });

@@ -18,6 +18,13 @@ command -v python >/dev/null 2>&1 || PY=python3
 "$PY" "$ROOT/scripts/knowledge-access-gate.py" --staged
 "$PY" "$ROOT/scripts/knowledge-http-surface-gate.py" --staged
 
+# Context Budget Law §13c — keep the §11a Inspector coverage manifest un-gameable:
+# whenever the spec or any Inspector test/component is staged, every §11a checklist
+# item must still bind to an existing proving test (static, no suite execution).
+if git diff --cached --name-only | grep -qE '2026-07-03-context-budget-law\.md|features/chat/inspector/|context-inspector'; then
+  "$PY" "$ROOT/scripts/context-inspector-checklist-gate.py"
+fi
+
 # SEC-1 / audit P0-6: catch secrets BEFORE they enter a commit. gitleaks scans
 # only the staged diff (`protect --staged`) so this stays fast. gitleaks is an
 # optional local tool — if it isn't installed we warn and continue (CI's

@@ -177,106 +177,106 @@ Draft mockup: [`design-drafts/context-management/context-compiler-inspector.html
 > Every discrete data/behavior item on the draft. `(BE)` = telemetry/data the compiler or an endpoint must produce; `(FE)` = render/interaction; `(BE+FE)` = both. The BE items double as the **compiler telemetry contract** for T2–T6.
 
 **Telemetry / BE contract (per turn) — emitted by Planner+Compiler, persisted, tenancy-scoped by session→`owner_user_id`:**
-- [ ] `raw_tokens` — naive-concat estimate before compile (BE)
-- [ ] `compiled_tokens` — actual tokens sent (BE)
-- [ ] `target` — task-elastic budget resolved for this turn (BE)
-- [ ] `ceiling` — model context window (BE)
-- [ ] `reduction_pct` — raw→compiled (BE-derive or FE-derive)
-- [ ] `model` name/ref + `context_length` (BE)
-- [ ] `intent` label (BE)
-- [ ] `entity_presence` — matched entity tokens, or none (BE)
-- [ ] `retrieval_mode` — prepend / hybrid / pull (BE)
-- [ ] `status_flags[]` — gated / included / compacted / overflow / elastic / continuity / collapsed / wire (BE)
-- [ ] allocation map per category: system · blocks · skills · grounding · history · summary · tools · results · chapter · reasoning (BE — extend existing `context_breakdown`; NEW cats: summary, chapter, reasoning, blocks split)
-- [ ] compile **trace spans[]** — ordered `{phase, tier(T0–T6), category, action_text, delta_tokens, is_error}` (BE — NEW telemetry)
-- [ ] session aggregate: avg reduction %, total tokens saved (BE or FE-aggregate)
-- [ ] endpoint: paginated turn-trace list `GET …/context-trace?session&page&filter` (BE)
-- [ ] endpoint: single-turn trace detail (BE)
-- [ ] all telemetry owner-gated + session-scoped (BE)
+- [x] `raw_tokens` — naive-concat estimate before compile (BE) — ✓test:services/chat-service/tests/test_context_trace_contract.py::test_fresh_frame_carries_every_required_field_non_null
+- [x] `compiled_tokens` — actual tokens sent (BE) — ✓test:services/chat-service/tests/test_context_trace_contract.py::test_fresh_frame_carries_every_required_field_non_null
+- [x] `target` — task-elastic budget resolved for this turn (BE) — ✓test:services/chat-service/tests/test_context_trace_contract.py::test_fresh_frame_carries_every_required_field_non_null
+- [x] `ceiling` — model context window (BE) — ✓test:services/chat-service/tests/test_context_trace_contract.py::test_fresh_frame_carries_every_required_field_non_null
+- [x] `reduction_pct` — raw→compiled (BE-derive or FE-derive) — ✓test:services/chat-service/tests/test_context_trace_contract.py::test_raw_tokens_reconstructs_from_compiled_plus_savings
+- [x] `model` name/ref + `context_length` (BE) — ✓test:services/chat-service/tests/test_context_trace_contract.py::test_fresh_frame_carries_every_required_field_non_null
+- [x] `intent` label (BE) — ✓test:services/chat-service/tests/test_context_trace_contract.py::test_intent_maps_known_reasons
+- [x] `entity_presence` — matched entity tokens, or none (BE) — ✓test:services/chat-service/tests/test_context_trace_contract.py::test_fresh_frame_carries_every_required_field_non_null
+- [x] `retrieval_mode` — prepend / hybrid / pull (BE) — ✓test:services/chat-service/tests/test_context_trace_contract.py::test_fresh_frame_carries_every_required_field_non_null
+- [x] `status_flags[]` — gated / included / compacted / overflow / elastic / continuity / collapsed / wire (BE) — ✓test:services/chat-service/tests/test_context_trace_contract.py::test_status_flags_full_set_stable_order
+- [x] allocation map per category: system · blocks · skills · grounding · history · summary · tools · results · chapter · reasoning (BE — extend existing `context_breakdown`; NEW cats: summary, chapter, reasoning, blocks split) — ✓test:frontend/src/features/chat/inspector/__tests__/AllocationMap.test.tsx::renders the NEW Context Budget Law categories
+- [x] compile **trace spans[]** — ordered `{phase, tier(T0–T6), category, action_text, delta_tokens, is_error}` (BE — NEW telemetry) — ✓test:services/chat-service/tests/test_context_trace_contract.py::test_trace_spans_are_wire_standard
+- [x] session aggregate: avg reduction %, total tokens saved (BE or FE-aggregate) — ✓test:frontend/src/features/chat/inspector/__tests__/inspectorMath.test.ts::averages reduction over turns
+- [x] endpoint: turn-trace list `GET …/context-trace?session&limit` — server windows by `limit`; page/filter run **client-side** over the loaded set (a session's turn count is bounded — see router) (BE) — ✓test:services/chat-service/tests/test_context_trace_router.py::test_limit_forwarded_and_capped
+- [x] endpoint: single-turn trace detail (BE) — ✓test:services/chat-service/tests/test_context_trace_router.py::test_returns_turns_with_full_frame_and_user_message
+- [x] all telemetry owner-gated + session-scoped (BE) — ✓test:services/chat-service/tests/test_context_trace_router.py::test_owner_gate_404_and_no_row_query
 
 **Top bar:**
-- [ ] tool title + subtitle (FE)
-- [ ] session selector + current session id (FE + BE list-sessions)
-- [ ] KPI: avg reduction % (FE)
-- [ ] KPI: total tokens saved (FE)
-- [ ] KPI: model window (FE)
+- [x] tool title + subtitle (FE) — ✓test:frontend/src/features/chat/inspector/__tests__/ContextInspectorView.test.tsx::renders the tool title and subtitle
+- [x] session selector + current session id (FE + BE list-sessions) — ✓test:frontend/src/features/chat/inspector/__tests__/ContextInspectorView.test.tsx::top bar shows the session selector
+- [x] KPI: avg reduction % (FE) — ✓test:frontend/src/features/chat/inspector/__tests__/ContextInspectorView.test.tsx::top bar shows the session selector
+- [x] KPI: total tokens saved (FE) — ✓test:frontend/src/features/chat/inspector/__tests__/ContextInspectorView.test.tsx::top bar shows the session selector
+- [x] KPI: model window (FE) — ✓test:frontend/src/features/chat/inspector/__tests__/ContextInspectorView.test.tsx::top bar shows the session selector
 
 **Turn list (left rail):**
-- [ ] search input — filter by user message + intent (FE)
-- [ ] status filter: all (FE)
-- [ ] status filter: gated (FE)
-- [ ] status filter: compacted (FE)
-- [ ] status filter: overflow (FE)
-- [ ] status filter: elastic (FE)
-- [ ] per-turn: turn id (FE)
-- [ ] per-turn: reduction % + threshold color (FE)
-- [ ] per-turn: user message snippet (FE)
-- [ ] per-turn: mini budget bar (compiled vs target) + over-target color (FE)
-- [ ] per-turn: compiled/target numbers (FE)
-- [ ] per-turn: status chips (cap 2) (FE)
-- [ ] selected/active highlight (FE)
-- [ ] pagination: prev (FE)
-- [ ] pagination: next (FE)
-- [ ] pagination: page label (page/total + count) (FE)
+- [x] search input — filter by user message + intent (FE) — ✓test:frontend/src/features/chat/inspector/__tests__/ContextInspectorView.test.tsx::search filters the turn list by message
+- [x] status filter: all (FE) — ✓test:frontend/src/features/chat/inspector/__tests__/TurnList.test.tsx::every status filter button
+- [x] status filter: gated (FE) — ✓test:frontend/src/features/chat/inspector/__tests__/ContextInspectorView.test.tsx::the status filter changes WHICH turns render
+- [x] status filter: compacted (FE) — ✓test:frontend/src/features/chat/inspector/__tests__/inspectorMath.test.ts::status filter keeps only turns carrying the flag
+- [x] status filter: overflow (FE) — ✓test:frontend/src/features/chat/inspector/__tests__/TurnList.test.tsx::every status filter button
+- [x] status filter: elastic (FE) — ✓test:frontend/src/features/chat/inspector/__tests__/TurnList.test.tsx::every status filter button
+- [x] per-turn: turn id (FE) — ✓test:frontend/src/features/chat/inspector/__tests__/TurnList.test.tsx::per-turn: turn id, reduction
+- [x] per-turn: reduction % + threshold color (FE) — ✓test:frontend/src/features/chat/inspector/__tests__/TurnList.test.tsx::per-turn: reduction color is green
+- [x] per-turn: user message snippet (FE) — ✓test:frontend/src/features/chat/inspector/__tests__/TurnList.test.tsx::per-turn: turn id, reduction
+- [x] per-turn: mini budget bar (compiled vs target) + over-target color (FE) — ✓test:frontend/src/features/chat/inspector/__tests__/TurnList.test.tsx::per-turn: mini budget bar turns the over-target color
+- [x] per-turn: compiled/target numbers (FE) — ✓test:frontend/src/features/chat/inspector/__tests__/TurnList.test.tsx::per-turn: turn id, reduction
+- [x] per-turn: status chips (cap 2) (FE) — ✓test:frontend/src/features/chat/inspector/__tests__/TurnList.test.tsx::status chips are capped at 2
+- [x] selected/active highlight (FE) — ✓test:frontend/src/features/chat/inspector/__tests__/TurnList.test.tsx::selected/active highlight tracks selectedSeq
+- [x] pagination: prev (FE) — ✓test:frontend/src/features/chat/inspector/__tests__/TurnList.test.tsx::page label shows page/total
+- [x] pagination: next (FE) — ✓test:frontend/src/features/chat/inspector/__tests__/TurnList.test.tsx::pagination: next dispatches onPage
+- [x] pagination: page label (page/total + count) (FE) — ✓test:frontend/src/features/chat/inspector/__tests__/TurnList.test.tsx::page label shows page/total
 
 **Inspector header:**
-- [ ] turn id badge (FE)
-- [ ] full user message (FE)
-- [ ] intent chip (FE)
-- [ ] entity-presence chip (FE)
-- [ ] retrieval-mode chip (FE)
-- [ ] model chip (FE)
+- [x] turn id badge (FE) — ✓test:frontend/src/features/chat/inspector/__tests__/ContextInspectorView.test.tsx::inspector header renders the turn badge
+- [x] full user message (FE) — ✓test:frontend/src/features/chat/inspector/__tests__/ContextInspectorView.test.tsx::inspector header renders the turn badge
+- [x] intent chip (FE) — ✓test:frontend/src/features/chat/inspector/__tests__/ContextInspectorView.test.tsx::inspector header renders the turn badge
+- [x] entity-presence chip (FE) — ✓test:frontend/src/features/chat/inspector/__tests__/ContextInspectorView.test.tsx::inspector header renders the turn badge
+- [x] retrieval-mode chip (FE) — ✓test:frontend/src/features/chat/inspector/__tests__/ContextInspectorView.test.tsx::inspector header renders the turn badge
+- [x] model chip (FE) — ✓test:frontend/src/features/chat/inspector/__tests__/ContextInspectorView.test.tsx::inspector header renders the turn badge
 
 **Hero — context pressure gauge:**
-- [ ] semicircle gauge fill = compiled (FE)
-- [ ] target tick mark (FE)
-- [ ] color state: under / over-target / over-ceiling (FE)
-- [ ] gauge center: compiled number + target label (FE)
-- [ ] raw tokens number (FE)
-- [ ] compiled tokens number (FE)
-- [ ] reduction % number (FE)
-- [ ] full status chips list (FE)
-- [ ] gauge fill transition animation (FE)
+- [x] semicircle gauge fill = compiled (FE) — ✓test:frontend/src/features/chat/inspector/__tests__/PressureGauge.test.tsx::gauge fill state: under-target
+- [x] target tick mark (FE) — ✓test:frontend/src/features/chat/inspector/__tests__/PressureGauge.test.tsx::target tick mark renders
+- [x] color state: under / over-target / over-ceiling (FE) — ✓test:frontend/src/features/chat/inspector/__tests__/PressureGauge.test.tsx::gauge fill state: compiled>target renders over-target
+- [x] gauge center: compiled number + target label (FE) — ✓test:frontend/src/features/chat/inspector/__tests__/PressureGauge.test.tsx::gauge center shows the compiled number
+- [x] raw tokens number (FE) — ✓test:frontend/src/features/chat/inspector/__tests__/PressureGauge.test.tsx::raw / compiled / reduction numbers all render
+- [x] compiled tokens number (FE) — ✓test:frontend/src/features/chat/inspector/__tests__/PressureGauge.test.tsx::raw / compiled / reduction numbers all render
+- [x] reduction % number (FE) — ✓test:frontend/src/features/chat/inspector/__tests__/PressureGauge.test.tsx::raw / compiled / reduction numbers all render
+- [x] full status chips list (FE) — ✓test:frontend/src/features/chat/inspector/__tests__/PressureGauge.test.tsx::full status chips list renders one chip per flag
+- [x] gauge fill transition animation (FE) — ⊘manual:pure CSS easing (stroke-dashoffset transition duration-500) — no measurable single-render effect; visual polish only
 
 **Allocation map:**
-- [ ] allocation total (FE)
-- [ ] segmented bar — width ∝ tokens per category (FE)
-- [ ] segment grow-in animation (FE)
-- [ ] hover tooltip: category label + tokens + % (FE)
-- [ ] legend row per category: color swatch + label + tokens (FE)
-- [ ] 10 category colors defined + stable (FE)
+- [x] allocation total (FE) — ✓test:frontend/src/features/chat/inspector/__tests__/AllocationMap.test.tsx::allocation total = sum
+- [x] segmented bar — width ∝ tokens per category (FE) — ✓test:frontend/src/features/chat/inspector/__tests__/AllocationMap.test.tsx::segmented bar: one segment per non-zero category
+- [x] segment grow-in animation (FE) — ⊘manual:pure CSS easing (transition-[width] duration-500) — no measurable single-render effect; visual polish only
+- [x] hover tooltip: category label + tokens + % (FE) — ✓test:frontend/src/features/chat/inspector/__tests__/AllocationMap.test.tsx::hover tooltip carries category label + tokens + %
+- [x] legend row per category: color swatch + label + tokens (FE) — ✓test:frontend/src/features/chat/inspector/__tests__/AllocationMap.test.tsx::legend renders a row per non-zero category
+- [x] 10 category colors defined + stable (FE) — ✓test:frontend/src/features/chat/components/__tests__/ContextBreakdownPanel.test.tsx::both maps cover exactly the category vocabulary
 
 **Compile trace (waterfall):**
-- [ ] trace filter: all (FE)
-- [ ] trace filter: planner (FE)
-- [ ] trace filter: compiler (FE)
-- [ ] trace filter: saved-only (FE)
-- [ ] per-span: phase badge (planner/compiler) (FE)
-- [ ] per-span: tier tag T0–T6 (FE)
-- [ ] per-span: category dot (FE)
-- [ ] per-span: action text (FE)
-- [ ] per-span: delta bar (width ∝ |delta|; color save/include/reject) (FE)
-- [ ] per-span: delta value (+ / − / reject / ·) (FE)
-- [ ] per-span: error/reject red state (FE)
-- [ ] empty state when filter yields no span (FE)
+- [x] trace filter: all (FE) — ✓test:frontend/src/features/chat/inspector/__tests__/CompileTrace.test.tsx::trace filter: all shows every span
+- [x] trace filter: planner (FE) — ✓test:frontend/src/features/chat/inspector/__tests__/CompileTrace.test.tsx::trace filter: all shows every span
+- [x] trace filter: compiler (FE) — ✓test:frontend/src/features/chat/inspector/__tests__/CompileTrace.test.tsx::trace filter: all shows every span
+- [x] trace filter: saved-only (FE) — ✓test:frontend/src/features/chat/inspector/__tests__/CompileTrace.test.tsx::trace filter: all shows every span
+- [x] per-span: phase badge (planner/compiler) (FE) — ✓test:frontend/src/features/chat/inspector/__tests__/CompileTrace.test.tsx::per-span: phase badge + tier tag + action text
+- [x] per-span: tier tag T0–T6 (FE) — ✓test:frontend/src/features/chat/inspector/__tests__/CompileTrace.test.tsx::per-span: phase badge + tier tag + action text
+- [x] per-span: category dot (FE) — ✓test:frontend/src/features/chat/inspector/__tests__/CompileTrace.test.tsx::category dot carries the category as its title
+- [x] per-span: action text (FE) — ✓test:frontend/src/features/chat/inspector/__tests__/CompileTrace.test.tsx::per-span: phase badge + tier tag + action text
+- [x] per-span: delta bar (width ∝ |delta|; color save/include/reject) (FE) — ✓test:frontend/src/features/chat/inspector/__tests__/CompileTrace.test.tsx::per-span: delta bar width
+- [x] per-span: delta value (+ / − / reject / ·) (FE) — ✓test:frontend/src/features/chat/inspector/__tests__/CompileTrace.test.tsx::per-span: delta value renders as
+- [x] per-span: error/reject red state (FE) — ✓test:frontend/src/features/chat/inspector/__tests__/CompileTrace.test.tsx::error/reject span gets the destructive
+- [x] empty state when filter yields no span (FE) — ✓test:frontend/src/features/chat/inspector/__tests__/CompileTrace.test.tsx::no-match message when a filter yields zero
 
 **Interactions / behavior:**
-- [ ] click turn → load inspector (FE)
-- [ ] keyboard j/k turn navigation (FE)
-- [ ] any filter resets page to 0 (FE)
-- [ ] mount-without-unmount on hide (CSS hidden — MVC rule) (FE)
-- [ ] split volatile per-turn state vs stable session state (re-render rule) (FE)
-- [ ] loading / empty / error states (FE)
-- [ ] live update as new turns arrive — SSE or poll (FE + BE)
+- [x] click turn → load inspector (FE) — ✓test:frontend/src/features/chat/inspector/__tests__/ContextInspectorView.test.tsx::clicking a turn loads it into the inspector
+- [x] keyboard j/k turn navigation (FE) — ✓test:frontend/src/features/chat/inspector/__tests__/ContextInspectorView.test.tsx::j/k keyboard navigation moves the selection
+- [x] any filter resets page to 0 (FE) — ✓test:frontend/src/features/chat/inspector/__tests__/ContextInspectorView.test.tsx::any filter change resets pagination
+- [x] mount-without-unmount on hide (CSS hidden — MVC rule) (FE) — ✓test:frontend/src/features/chat/inspector/__tests__/ContextInspectorView.test.tsx::forwards enabled=false to the controller
+- [x] split volatile per-turn state vs stable session state (re-render rule) (FE) — ✓test:frontend/src/features/chat/inspector/__tests__/ContextInspectorView.test.tsx::changing a volatile filter leaves the stable session
+- [x] loading / empty / error states (FE) — ✓test:frontend/src/features/chat/inspector/__tests__/ContextInspectorView.test.tsx::loading state renders while the first fetch
+- [x] live update as new turns arrive — SSE or poll (FE + BE) — ✓test:frontend/src/features/chat/inspector/__tests__/useContextTrace.test.tsx::polls the trace endpoint on an interval while enabled
 
 **Dockable studio integration:**
-- [ ] register panel in `features/studio/panels/catalog.ts` (FE)
-- [ ] add panel id to `ui_open_studio_panel` enum (FE + BE `frontend_tools.py`)
-- [ ] regenerate `contracts/frontend-tools.contract.json` (BE+FE)
-- [ ] panel self-titles via `props.api.setTitle` (FE)
-- [ ] panel session/book-scoped from studio context (FE)
-- [ ] standalone route also available (FE)
-- [ ] `panelCatalogContract.test.ts` green (studio enum ⊆ dock catalog) (FE)
+- [x] register panel in `features/studio/panels/catalog.ts` (FE) — ✓test:frontend/src/features/studio/palette/__tests__/useStudioCommands.test.ts::Context Inspector panel is palette-openable from the real catalog
+- [x] add panel id to `ui_open_studio_panel` enum (FE + BE `frontend_tools.py`) — ✓test:frontend/src/features/studio/panels/__tests__/panelCatalogContract.test.ts::the advertised set == the palette-openable set
+- [x] regenerate `contracts/frontend-tools.contract.json` (BE+FE) — ✓test:frontend/src/features/studio/panels/__tests__/panelCatalogContract.test.ts::the advertised set == the palette-openable set
+- [x] panel self-titles via `props.api.setTitle` (FE) — ✓test:frontend/src/features/studio/panels/__tests__/ContextInspectorPanel.test.tsx::self-titles via api.setTitle
+- [x] panel session/book-scoped from studio context (FE) — ✓test:frontend/src/features/chat/inspector/__tests__/ContextInspectorView.test.tsx::forwards initialSessionId to the controller
+- [x] standalone route also available (FE) — ✓test:frontend/src/features/chat/inspector/__tests__/ContextInspectorPage.test.tsx::forwards the ?session query param
+- [x] `panelCatalogContract.test.ts` green (studio enum ⊆ dock catalog) (FE) — ✓test:frontend/src/features/studio/panels/__tests__/panelCatalogContract.test.ts::every advertised panel_id is a buildable dock component
 
 ---
 

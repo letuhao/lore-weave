@@ -127,6 +127,7 @@ export function TurnList({
                   {(p.frame.status_flags ?? []).slice(0, 2).map((f) => (
                     <span
                       key={f}
+                      data-turn-chip={f}
                       className={cn(
                         'rounded-full border border-border bg-secondary px-1.5 py-0.5 text-[10px] font-semibold',
                         statusMeta(f).className,

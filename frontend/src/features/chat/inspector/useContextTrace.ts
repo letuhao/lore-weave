@@ -9,6 +9,9 @@ import type { ChatSession, ContextTracePoint } from '../types';
 // AND as a standalone page, without depending on a chat-session provider being in
 // the tree. `enabled` gates the fetch (the panel is mounted-but-hidden per MVC).
 
+/** Poll cadence for live turn updates (§11a "live update … poll"). */
+export const POLL_INTERVAL_MS = 20000;
+
 export interface ContextTraceState {
   sessions: ChatSession[];
   sessionId: string | null;
@@ -86,6 +89,22 @@ export function useContextTrace(
     void load(() => !ignore);
     return () => {
       ignore = true;
+    };
+  }, [enabled, sessionId, load]);
+
+  // Live update (spec §11a) — poll while the panel is enabled + a session is
+  // selected, so a turn that finishes elsewhere appears without a manual refresh.
+  // A modest interval (the trace endpoint is cheap + a session's turn count is
+  // bounded); an SSE push upgrade is a tracked follow-up. Also refetch on window
+  // focus so returning to the tab shows the latest immediately.
+  useEffect(() => {
+    if (!enabled || !sessionId) return;
+    const tick = () => void load();
+    const id = setInterval(tick, POLL_INTERVAL_MS);
+    window.addEventListener('focus', tick);
+    return () => {
+      clearInterval(id);
+      window.removeEventListener('focus', tick);
     };
   }, [enabled, sessionId, load]);
 

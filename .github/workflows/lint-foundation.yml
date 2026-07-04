@@ -80,6 +80,12 @@ jobs:
           - language-bias-gate
           - sdk-duplication-gate
           - slo-latency-lint
+          # Context Budget Law §13c — the §11a Inspector coverage manifest stays
+          # un-gameable: every checklist item must bind to an existing proving test.
+          # Static (no suite execution); the referenced tests' green-ness is enforced
+          # by the normal vitest/pytest CI jobs, and the §13d refute-pass is the net
+          # for a gutted test that a static check can't see.
+          - context-inspector-checklist-gate
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5

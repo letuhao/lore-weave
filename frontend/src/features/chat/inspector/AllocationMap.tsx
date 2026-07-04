@@ -32,7 +32,7 @@ export function AllocationMap({ frame }: { frame: ContextTraceFrame }) {
                 key={r.key}
                 className={cn('transition-[width] duration-500', CATEGORY_COLORS[r.key])}
                 style={{ width: `${(r.tokens / total) * 100}%` }}
-                title={`${catLabel(r.key)} · ${r.tokens.toLocaleString()} tok`}
+                title={`${catLabel(r.key)} · ${r.tokens.toLocaleString()} tok · ${Math.round((r.tokens / total) * 100)}%`}
                 data-alloc-seg={r.key}
               />
             ))}
