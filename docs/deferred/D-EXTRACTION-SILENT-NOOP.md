@@ -52,7 +52,12 @@ T5 audit itself tripped over.
   performed (no usable graph schema kinds, or the extraction provider was unreachable)'` +
   a loud `logger.warning`, instead of a bare silent `complete`. Status stays `complete`
   (skips/no-ops are terminal by design; `failed` would trip campaign breakers) but the row
-  says so out loud. Test: `test_complete_job_flags_zero_llm_call_noop`.
+  says so out loud. Test: `test_complete_job_flags_zero_llm_call_noop`. **LIVE-PROVEN**
+  (`c1477fc60`, worker-ai rebuilt): a fresh chat-scope job finalizes with
+  `error_message='completed but made 0 LLM calls over 1 processed item(s) — no extraction
+  performed…'` while pre-fix jobs in the same table have an empty message. (Bonus signal it
+  surfaced: chat→KG extraction is itself making 0 LLM calls per turn — now observable, worth
+  a separate look.)
 - ⚪ **Gap #2 (input validation) — MOOT as framed.** `GraphSchemaRepo.resolve_for_project`
   ALWAYS resolves (fallback_code="general"), so "no schema" can't be rejected at dispatch.
   The real issue (the general schema's kinds don't fit the book) now surfaces DOWNSTREAM via
