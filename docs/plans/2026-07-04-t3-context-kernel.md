@@ -16,8 +16,12 @@
 > shim (stream_service, sessions router, compact_service, tests unchanged); added a
 > `CompactionStrategy` swappable class (the compaction analogue of the Planner seam). The
 > summarizer stays INJECTED so no chat dep leaks into the kernel — provider-gate clean. 45
-> chat compaction + 926 full green (byte-identical). **NEXT: T3.4** (package + voice/roleplay
-> consumer + retire the byte-copy coupling), then the optimization-hypothesis A/B sweep.
+> chat compaction + 926 full green (byte-identical). **T3.4 ✅ DONE (`88eea2082`):** voice_stream_service now calls the kernel
+> `build_system_message` (2nd consumer; byte-copy of chat's ladder retired; 14 voice + 927
+> green). Package = done since T3.1's pyproject include; roleplay is Rust delegating via a
+> working_memory_seed (no Python copy); composition packer = separate future adoption. **⇒ T3
+> CORE COMPLETE — the Planner (policy) + CompactionStrategy (mechanism) seams are open and a
+> 2nd consumer is wired. NEXT: the optimization-hypothesis A/B sweep.**
 
 **Spec:** `docs/specs/2026-07-03-context-budget-law.md` §5 (Planner/Compiler), §12 (kernel),
 A1 (assembly surface), row T3. **Goal:** extract the scattered prompt-assembly + planning
