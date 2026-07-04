@@ -92,6 +92,7 @@ def compute_budget(
 BREAKDOWN_CATEGORIES: tuple[str, ...] = (
     "system_prompt",           # session persona (chat_sessions.system_prompt)
     "memory_knowledge",        # knowledge-service memory block (total + sections)
+    "story_state",             # T4 cached story-bible safety-net block (D4; 0 unless projected)
     "working_memory",          # interview-roleplay anchor (pinned + tail)
     "steering",                # per-book <steering> block (RAID C1)
     "skills",                  # skill L2 bodies + the L1 metadata block (RAID C3)
@@ -112,7 +113,7 @@ BREAKDOWN_CATEGORIES: tuple[str, ...] = (
 # Everything that is in the prompt BEFORE the first user word — the fixed
 # overhead the user pays per turn regardless of what they type.
 _BASELINE_CATEGORIES: frozenset[str] = frozenset({
-    "system_prompt", "memory_knowledge", "working_memory", "steering",
+    "system_prompt", "memory_knowledge", "story_state", "working_memory", "steering",
     "skills", "plan_nudge", "book_note",
     "frontend_tool_schemas", "mcp_tool_schemas",
 })

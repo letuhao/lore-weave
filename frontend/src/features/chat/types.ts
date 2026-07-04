@@ -141,6 +141,8 @@ export interface MemoryKnowledgeBreakdown {
 export interface ContextBreakdownMap {
   system_prompt?: number;
   memory_knowledge?: MemoryKnowledgeBreakdown;
+  /** T4 cached story-bible safety-net block (D4; 0 unless projected on a degraded turn). */
+  story_state?: number;
   working_memory?: number;
   steering?: number;
   skills?: number;
@@ -153,7 +155,8 @@ export interface ContextBreakdownMap {
   mcp_tool_schemas?: number;
   // Context Budget Law forward-declared allocation categories (present 0 until
   // their tier populates them): rolling summary (T6), whitelisted chapter body
-  // (D3), model reasoning budget (D7). Mirrors the 15-key BE BREAKDOWN_CATEGORIES.
+  // (D3), model reasoning budget (D7). Mirrors the BE BREAKDOWN_CATEGORIES vocabulary
+  // (chat-service token_budget.py; parity pinned via contracts/context-trace.contract.json).
   summary?: number;
   chapter?: number;
   reasoning?: number;
@@ -181,7 +184,7 @@ export interface ContextHistoryPoint {
   created_at: string;
   input_tokens: number | null;
   output_tokens: number | null;
-  /** Same 12-key vocabulary as the live budget's breakdown (memory_knowledge
+  /** Same category vocabulary as the live budget's breakdown (memory_knowledge
    *  nests {total, sections}). */
   breakdown: ContextBreakdownMap;
 }

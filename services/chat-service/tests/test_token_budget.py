@@ -176,6 +176,18 @@ class TestContextBreakdown:
         assert payload["steering"] == 0
         assert payload["memory_knowledge"] == {"total": 0, "sections": {}}
 
+    def test_story_state_is_a_first_class_emitted_category(self):
+        # Regression (T4→T2-LOW-2): stream_service sets a `story_state` category, but
+        # to_payload only emits keys in BREAKDOWN_CATEGORIES — so a key in the emit dict
+        # that is NOT in the tuple is SILENTLY DROPPED (the Inspector never sees it). This
+        # pins story_state into the vocabulary + baseline so the safety-net block's tokens
+        # actually surface.
+        assert "story_state" in BREAKDOWN_CATEGORIES
+        payload = ContextBreakdown(categories={"story_state": 1150}).to_payload()
+        assert payload["story_state"] == 1150  # survives to_payload (not dropped)
+        # it is fixed per-turn overhead (a memory block before the first user word)
+        assert ContextBreakdown(categories={"story_state": 1150}).baseline_tokens == 1150
+
     def test_memory_knowledge_nests_total_and_sections(self):
         payload = _full_breakdown().to_payload()
         assert payload["memory_knowledge"] == {

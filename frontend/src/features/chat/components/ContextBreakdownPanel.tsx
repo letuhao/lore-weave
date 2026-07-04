@@ -18,6 +18,7 @@ import { ContextHistoryTab } from './ContextHistoryTab';
 export const BREAKDOWN_CATEGORIES = [
   'system_prompt',
   'memory_knowledge',
+  'story_state',
   'working_memory',
   'steering',
   'skills',
@@ -44,6 +45,7 @@ export type BreakdownCategory = (typeof BREAKDOWN_CATEGORIES)[number];
 export const CATEGORY_COLORS: Record<BreakdownCategory, string> = {
   system_prompt: 'bg-amber-400',
   memory_knowledge: 'bg-emerald-400',
+  story_state: 'bg-green-400',
   working_memory: 'bg-teal-400',
   steering: 'bg-rose-400',
   skills: 'bg-violet-400',
@@ -65,6 +67,7 @@ export const CATEGORY_COLORS: Record<BreakdownCategory, string> = {
 export const CATEGORY_HEX: Record<BreakdownCategory, string> = {
   system_prompt: '#fbbf24',
   memory_knowledge: '#34d399',
+  story_state: '#4ade80',
   working_memory: '#2dd4bf',
   steering: '#fb7185',
   skills: '#a78bfa',

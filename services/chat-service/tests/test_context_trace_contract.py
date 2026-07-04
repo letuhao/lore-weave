@@ -25,6 +25,7 @@ from loreweave_context import TraceAccumulator, reduction_pct
 from loreweave_context.trace import TraceSpan
 
 from app.services.token_budget import (
+    BREAKDOWN_CATEGORIES,
     ContextBreakdown,
     compute_budget,
     context_budget_event,
@@ -66,6 +67,12 @@ def _build_contract() -> dict:
     return {
         "frame_fields": sorted(REQUIRED_FRAME_FIELDS),
         "trace_span_fields": sorted(REQUIRED_SPAN_FIELDS),
+        # T2 LOW-2: the authoritative allocation-map category VOCABULARY (ordered, BE is
+        # SoT). The Inspector FE (ContextBreakdownPanel.BREAKDOWN_CATEGORIES) must render
+        # exactly this set — a FE⊆BE/BE⊆FE parity test on both sides keys off it, so a
+        # category added to one side without the other reds (the `story_state`-dropped
+        # class: added to the emit dict but not the tuple → to_payload silently omits it).
+        "breakdown_categories": list(BREAKDOWN_CATEGORIES),
     }
 
 

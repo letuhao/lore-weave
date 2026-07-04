@@ -1,5 +1,7 @@
 import { describe, it, expect, vi } from 'vitest';
 import { render, screen, fireEvent } from '@testing-library/react';
+import { readFileSync } from 'node:fs';
+import { resolve } from 'node:path';
 
 // Chat Quality Wave W2 — the context drill-down panel. Two suites:
 //   1. computeBreakdown — the pure math (percentages, zero-collapse, free
@@ -57,7 +59,7 @@ describe('computeBreakdown', () => {
       'memory_knowledge', 'skills', 'history', 'frontend_tool_schemas', 'mcp_tool_schemas',
     ]);
     expect(c.zeros).toEqual([
-      'system_prompt', 'working_memory', 'steering', 'plan_nudge', 'book_note',
+      'system_prompt', 'story_state', 'working_memory', 'steering', 'plan_nudge', 'book_note',
       'attached_context', 'tool_results', 'summary', 'chapter', 'reasoning',
     ]);
   });
@@ -93,7 +95,7 @@ describe('computeBreakdown', () => {
   it('no breakdown at all → every category is zero', () => {
     const c = computeBreakdown({ used_tokens: 10, context_length: 100, effective_limit: 90, pct: 0.11 });
     expect(c.rows).toEqual([]);
-    expect(c.zeros).toHaveLength(15);
+    expect(c.zeros).toHaveLength(16);
   });
 });
 
@@ -175,6 +177,7 @@ describe('CATEGORY_COLORS ⇄ CATEGORY_HEX lockstep', () => {
   const TAILWIND_400_HEX: Record<string, string> = {
     'bg-amber-400': '#fbbf24',
     'bg-emerald-400': '#34d399',
+    'bg-green-400': '#4ade80',
     'bg-teal-400': '#2dd4bf',
     'bg-rose-400': '#fb7185',
     'bg-violet-400': '#a78bfa',
@@ -203,6 +206,26 @@ describe('CATEGORY_COLORS ⇄ CATEGORY_HEX lockstep', () => {
   it('both maps cover exactly the category vocabulary', () => {
     expect(Object.keys(CATEGORY_COLORS).sort()).toEqual([...BREAKDOWN_CATEGORIES].sort());
     expect(Object.keys(CATEGORY_HEX).sort()).toEqual([...BREAKDOWN_CATEGORIES].sort());
+  });
+});
+
+// T2 LOW-2 — the cross-LANGUAGE guard. The allocation-map category vocabulary spans two
+// services (chat-service `token_budget.BREAKDOWN_CATEGORIES` = SoT ↔ this FE list), joined
+// only by the persisted `contextBudget` frame. A category added on one side but not the
+// other silently drops from the Inspector (the `story_state` bug: emitted by BE, unknown to
+// FE → no dot/segment/color). The BE writes its authoritative ordered list into
+// `contracts/context-trace.contract.json` (test_context_trace_contract.py, regen via
+// WRITE_CONTEXT_TRACE_CONTRACT=1); here we assert the FE vocabulary matches it EXACTLY.
+describe('BREAKDOWN_CATEGORIES ⇄ BE contract (context-trace.contract.json)', () => {
+  it('FE category vocabulary equals the BE-authoritative set', () => {
+    // vitest runs with cwd = the frontend/ package root; the contract lives at repo root.
+    const contractPath = resolve(process.cwd(), '../contracts/context-trace.contract.json');
+    const contract = JSON.parse(readFileSync(contractPath, 'utf-8')) as {
+      breakdown_categories?: string[];
+    };
+    expect(contract.breakdown_categories, 'contract missing breakdown_categories').toBeDefined();
+    // Bidirectional parity: neither side may carry a category the other doesn't.
+    expect([...BREAKDOWN_CATEGORIES].sort()).toEqual([...contract.breakdown_categories!].sort());
   });
 });
 
