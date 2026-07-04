@@ -4,7 +4,7 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from loreweave_obs import setup_tracing
+from loreweave_obs import setup_logging, setup_tracing
 
 # Phase 5e-α: import settings at module load so missing required env
 # vars (internal_service_token, minio_*, jwt_secret) fail FAST at process
@@ -14,6 +14,10 @@ from .db.migrate import run_migrations
 from .db.pool import close_pool, create_pool
 from .routers.generate import bootstrap_minio, router as generate_router
 from .routers.internal_job_control import router as internal_job_control_router
+
+# P2·A2a — shared JSON logging (video-gen had NO logging setup: it relied on the
+# root logger's WARNING default + plain text). Structured JSON + dual trace ids now.
+setup_logging("video-gen-service")
 
 
 @asynccontextmanager

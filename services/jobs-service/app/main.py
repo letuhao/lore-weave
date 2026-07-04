@@ -15,6 +15,7 @@ import redis.asyncio as aioredis
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import PlainTextResponse
+from loreweave_obs import setup_logging
 
 from .config import settings
 from .database import close_pool, create_pool
@@ -24,7 +25,7 @@ from .projection.consumer import JobProjectionConsumer
 from .reconcile import ReconcileSweeper
 from .sse import make_notifier
 
-logging.basicConfig(level=getattr(logging, settings.log_level.upper(), logging.INFO))
+setup_logging("jobs-service", level=settings.log_level)  # P2·A2a — shared JSON logging
 logger = logging.getLogger(__name__)
 
 
