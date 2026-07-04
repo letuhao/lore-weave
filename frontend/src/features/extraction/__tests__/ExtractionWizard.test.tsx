@@ -1,6 +1,7 @@
 import { describe, it, expect, vi } from 'vitest';
 import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
+import { StudioHostProvider } from '@/features/studio/host/StudioHostProvider';
 import { ExtractionWizard } from '../ExtractionWizard';
 import type { ExtractionJobStatus } from '../types';
 
@@ -69,6 +70,20 @@ function setup(open = true) {
   return { ...utils, onOpenChange };
 }
 
+// DOCK-7 — the wizard is reachable from inside the studio's `glossary` dock panel (via
+// GlossaryEntityList), where a bare navigate('/jobs') would tear down the whole dock layout.
+function setupInStudio() {
+  const onOpenChange = vi.fn();
+  const utils = render(
+    <MemoryRouter>
+      <StudioHostProvider bookId="b">
+        <ExtractionWizard open onOpenChange={onOpenChange} bookId="b" mode="single" />
+      </StudioHostProvider>
+    </MemoryRouter>,
+  );
+  return { ...utils, onOpenChange };
+}
+
 // Drives single-mode flow profile→confirm→progress→results.
 async function runToResults() {
   fireEvent.click(screen.getByText('stub-profile'));          // sets profile + modelRef
@@ -122,6 +137,22 @@ describe('ExtractionWizard', () => {
     expect(lastToast?.msg).toBe('progress.backgroundToast');
     lastToast?.opts?.action?.onClick();
     expect(navigateMock).toHaveBeenCalledWith('/jobs');
+  });
+
+  it('inside the studio, the "View in Jobs" handoff opens the jobs-list dock panel instead of navigating away', async () => {
+    lastToast = null;
+    navigateMock.mockClear();
+    setupInStudio();
+    fireEvent.click(screen.getByText('stub-profile'));
+    fireEvent.click(screen.getByText('button.next'));
+    fireEvent.click(await screen.findByText('stub-confirm'));
+    fireEvent.click(await screen.findByText('stub-background'));
+    expect(lastToast?.msg).toBe('progress.backgroundToast');
+    // openPanel is a no-op until a real dock api attaches (same proof shape as
+    // StepConfig.test.tsx) — the real assertion is that navigate() is NEVER reached, since
+    // that's exactly the "tear down the whole studio" bug this branch exists to prevent.
+    expect(() => lastToast?.opts?.action?.onClick()).not.toThrow();
+    expect(navigateMock).not.toHaveBeenCalled();
   });
 
   it('reopening after a finished run is fresh — not stuck on stale results (the F5 bug)', async () => {

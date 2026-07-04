@@ -64,6 +64,56 @@ Entity revision history (`EntityHistoryPanel.tsx`) stays a tab inside the `Entit
 
 **Verify:** full FE suite 545 files / 3768 tests (1 unrelated failure in another track's uncommitted WIP — `VersionsPanel.test.tsx`, not part of this effort); `tsc --noEmit` clean; the 14 Phase-B-touched test files run in isolation: 112/112; BE `test_frontend_tools.py` + `test_frontend_tools_contract.py` + `test_agent_surface.py`: 74/74 (checked BOTH known snapshot locations this time, learning from the Phase-A gap where one was missed); i18n parity clean for the 4 new `glossary-*` key sets across en/vi/ja/zh-TW.
 
+## Post-completion `/review-impl` sweep (2026-07-04, fresh session)
+
+A follow-up adversarial pass over the *whole* effort (Phase A + Phase B, re-read from disk, not
+from memory) — the user's ask was specifically to enforce the standard and fix what's found, not
+just re-confirm Phase B's own diff. Found and fixed **5 real DOCK-7/DOCK-9 violations**, all
+newly-reachable specifically *because* Glossary is now live inside the Studio (they were latent
+or page-only before this migration):
+
+1. **DOCK-7 — `ExtractionWizard.tsx`**: `handleClose()`'s "run in background" toast action called
+   `useNavigate()('/jobs')` unconditionally. Reachable from the Studio via
+   `GlossaryEntityList` → `ExtractionWizard` (the `glossary` panel's own extraction launcher) —
+   a bare `navigate()` would tear down the *entire* dockview layout (every open tab) just to reach
+   a job list that now has its own `jobs-list` dock panel (utility-panels Phase B, landed after
+   Glossary Phase A). Fixed: branch on `useOptionalStudioHost()` — `studioHost.openPanel('jobs-list')`
+   inside the Studio, unchanged `navigate('/jobs')` on the classic ChaptersTab/TranslationTab pages
+   (same precedent as `StepConfig.tsx`'s settings deep-link, Phase A A6).
+2-5. **DOCK-9 — 4 more hand-rolled `fixed inset-0` modals**, missed by the original 6-modal
+   inventory because they live under `glossary/components/tiering/` (ontology/kind management),
+   not the top-level `glossary/components/` the inventory scanned: `QuickCreateModal.tsx`,
+   `BookKindGenresModal.tsx`, `ResearchLaunchModal.tsx`, `AdoptPicklistModal.tsx`. All 4 are
+   reachable from the live `glossary-ontology` dock panel (`OntologyShell` → `ManageWorkspace` /
+   `KindResearchPanel`). Migrated all 4 to `FormDialog` (simple single-column forms, same template
+   fit as `ResolveKindModal`/`CreateEntityModal`); dropped each one's hand-rolled
+   `window.addEventListener('keydown', …)` Escape handler in favor of Radix's built-in
+   `onOpenChange`. Caught and fixed a stale test consequence: `QuickCreateModal.test.tsx`'s two
+   Escape-key tests dispatched on `window` (matching the OLD manual listener) — Radix listens on
+   `document`, so both would have silently stopped asserting anything post-migration; retargeted
+   to `document` (matching the `document`-dispatch pattern already established by
+   `EntityEditorModal.test.tsx`/`ExtractionWizard.test.tsx`). `AdoptPicklistModal` additionally had
+   an inconsistency in the ORIGINAL code (Escape blocked mid-submit, but backdrop-click/✕ were not)
+   — unified to "block all dismissal while submitting" for consistency with every other migrated
+   modal in this effort (a safety improvement, not a behavior regression: the one-time adopt action
+   can no longer be accidentally dismissed mid-write).
+
+**Not fixed (correctly out of scope):** `AttributeFormModal.tsx` (`features/standards/`) has the
+same hand-rolled-overlay shape but is only reachable via `StandardsShell`, which is not a Studio
+panel — no path into the dockview at all. `panelCatalogContract.test.ts` failed during this sweep's
+verify run, but `git diff` confirmed the mismatch is 100% additive KG panels from a *different*,
+concurrently in-flight session's uncommitted work (12 `kg-*` catalog rows with no matching BE enum
+yet) — zero overlap with any Glossary row; left untouched per the multi-session scope discipline
+this branch has run under all session long.
+
+**Verify:** `tsc --noEmit` clean; targeted suites (the 4 migrated modals + their indirect
+`ManageWorkspace`/`OntologyShell` consumers + `ExtractionWizard`) 20/20; full
+`glossary`+`extraction`+`studio` suite 648/649 (the 1 failure is the pre-existing
+`panelCatalogContract` cross-session collision above, not this effort).
+
+**Glossary's dockable migration is now genuinely done** — no known remaining DOCK-7/DOCK-9 gaps
+inside the reachable Studio surface. No defer/debt rows remain for Glossary itself.
+
 ## Out of scope
 
 - Relationships graph — lives in the Knowledge/KG-ontology tab, not glossary.

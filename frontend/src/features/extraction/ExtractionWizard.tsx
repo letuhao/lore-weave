@@ -4,6 +4,7 @@ import { useNavigate } from 'react-router-dom';
 import { toast } from 'sonner';
 import * as Dialog from '@radix-ui/react-dialog';
 import { X } from 'lucide-react';
+import { useOptionalStudioHost } from '@/features/studio/host/StudioHostProvider';
 import { useExtractionState, type WizardMode, type WizardStep } from './useExtractionState';
 import { StepProfile } from './StepProfile';
 import { StepBatchConfig } from './StepBatchConfig';
@@ -40,6 +41,11 @@ export function ExtractionWizard({
 }: ExtractionWizardProps) {
   const { t } = useTranslation('extraction');
   const navigate = useNavigate();
+  // DOCK-7 — reachable both from the classic ChaptersTab/TranslationTab pages AND from inside
+  // the studio's `glossary` dock panel (13_glossary_panels.md, via GlossaryEntityList). A bare
+  // navigate('/jobs') would tear down the whole studio (and every other open dock tab) just to
+  // reach a job list that already has a dock panel of its own — branch like StepConfig.tsx.
+  const studioHost = useOptionalStudioHost();
   const {
     state,
     reset,
@@ -78,7 +84,7 @@ export function ExtractionWizard({
       toast.success(t('progress.backgroundToast'), {
         action: {
           label: t('progress.viewInJobs'),
-          onClick: () => navigate('/jobs'),
+          onClick: () => (studioHost ? studioHost.openPanel('jobs-list') : navigate('/jobs')),
         },
       });
     }
