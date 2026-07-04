@@ -11,18 +11,27 @@ knowledge retention · conversational coherence). The kernel's swappable seams
 
 ---
 
-## 1. Core principle — floor-then-minimize (why token savings is a trap axis)
+## 1. Core principle — CAPABILITY-first (maximize usefulness under cost/latency ceilings)
 
-Aggressive compaction that cuts per-turn tokens can **increase** session cost and **degrade**
-UX: if it drops a fact the user must then re-supply, that's an extra turn (more tokens) + real
-friction. So we never optimize tokens alone. We:
+**The product only exists if the agent is smart enough that a human WANTS to work with it.** A
+cheap, fast, *dumb* writing assistant has zero users — so **capability is the OBJECTIVE we
+maximize; cost and latency are ceilings we stay under, not targets we minimize at intelligence's
+expense** (user directive, 2026-07-04). Cost is a *constraint* (don't bankrupt the user), not
+the goal.
 
-1. **Disqualify** any config that breaches a **hard floor** (safety / quality / consistency) —
-   *no matter how cheap.*
-2. Among survivors, **minimize cost** (session tokens = the portable $ proxy).
-3. Break ties on **UX** (latency, recovery friction).
+The rule (revised — this INVERTS the earlier floor-then-minimize):
 
-"Comfortable AND cheap" = *floors guarantee comfort; then we minimize money.*
+1. **Disqualify** any config that breaches the **hard safety floor** (`critical_confabulation`)
+   or blows a **cost/latency CEILING** (unbearably slow, or burns the user's money).
+2. Among survivors, **MAXIMIZE capability** — how genuinely useful/smart the agent is for real
+   writing work (craft quality · collaborative competence · depth/nuance · consistency · recall).
+3. Break ties toward **lower cost/latency** (cheaper is good *only when capability is equal*).
+
+Token savings alone is still a trap axis — but now for TWO reasons: (a) it hid a session-cost
+regression (per-turn savings buried under summarizer overhead, see RESULTS), and (b) **cutting
+context to save tokens can make the agent DUMBER** (shallower, loses the nuance it needs to help)
+— which is the *worst* outcome, however cheap. "Comfortable AND affordable" = *stay smart first;
+keep cost under a ceiling second.*
 
 ---
 
@@ -54,6 +63,18 @@ Each metric is tagged **[FLOOR]** (eligibility gate — a breach disqualifies) o
   programmatic fact-token recall %). Floor: **mean ≥ 4.0/5 AND no single run < 3/5.**
 - **`helpfulness` / `completeness`** [SCORE] — fully addresses the ask (judge 1–5).
 
+### 2.2b Capability — the PRIMARY objective (is it a smart, useful writing collaborator?)
+Recall alone measures "doesn't forget facts", not "is worth working with". These are the
+top-weighted scores. Judged by a **capable cold-start Agent** (Claude-class via the Agent tool —
+reliable even though the agent-under-test is gemma), on the actual writing outputs:
+- **`craft_quality`** [SCORE, primary] — is the produced writing/edit/plan actually GOOD and
+  useful (prose quality, editorial judgment, specificity) vs generic filler? (1–5)
+- **`collaborative_competence`** [SCORE, primary] — does it understand intent, build on prior
+  turns, and use the established world/context so the human does NOT have to re-explain? (1–5)
+- **`depth_nuance`** [SCORE] — does it draw richly on available context (references established
+  lore, prior decisions) vs shallow/context-blind answers? A config that compresses context away
+  scores LOW here even if recall is fine — the tell that "cheaper" made it "dumber". (1–5)
+
 ### 2.3 Consistency — the multi-turn failure modes
 - **`knowledge_retention`** [FLOOR + SCORE] — % of facts established early that are still
   correctly recalled after compaction (plant→recall, programmatic, markdown-normalized). Floor:
@@ -82,18 +103,25 @@ Each metric is tagged **[FLOOR]** (eligibility gate — a breach disqualifies) o
 ## 3. Decision rule (concrete)
 
 A config is **ELIGIBLE** iff, across all scenarios × all N runs:
-- `critical_confabulation` == 0 (hard), **and**
+- `critical_confabulation` == 0 (hard safety floor), **and**
 - `correctness` mean ≥ 4.0/5 and no run < 3/5, **and**
 - `knowledge_retention` mean ≥ 90% and worst run ≥ 80%, **and**
-- `run_to_run` correctness range ≤ 1.5.
+- `run_to_run` correctness range ≤ 1.5, **and**
+- **cost/latency CEILINGS not blown** — `session_total_est` ≤ the affordability ceiling and
+  `latency_turn_avg` ≤ the responsiveness ceiling (ceilings set after the C1 baseline calibrates
+  "normal"; a config that's smart but bankrupting or unbearably slow is out).
 
-Among **eligible** configs → **WINNER = min `session_total_tokens`**, tie-broken by (1) lower
-`latency_turn`, (2) lower `recovery_friction`, (3) higher `cross_turn_coherence`.
+Among **eligible** configs → **WINNER = MAX capability** (a weighted blend, capability-first:
+`craft_quality` + `collaborative_competence` + `depth_nuance`, then `helpfulness`, `correctness`,
+`consistency`). **Cost/latency are tie-breakers ONLY when capability is statistically equal** —
+we do NOT trade intelligence for a cheaper bill. Report the capability–cost Pareto so a genuinely
+smarter config that costs more (but under the ceiling) is chosen over a cheaper, dumber one.
 
-If **no** config is eligible → the floors expose a real quality problem; report it and do NOT
-ship a token win (the whole point). If **only the incumbent** is eligible → keep it; the sweep
-still yields the diagnostic map. Thresholds are **tunable** — treat the numbers above as the
-starting contract; we revise together after the first baseline run calibrates them.
+If capability is **equal** across configs (e.g. C0≈C1 on recall) → then and only then does cost
+decide (→ the cheaper config; this is why C1 beat C0 in the baseline). If a cheap config is
+**measurably dumber** (lower craft/depth) → it LOSES even if it passes the recall floor. If **no**
+config clears the safety floor → report it, ship nothing. Thresholds/ceilings are **tunable** —
+calibrated with the user after the C1 baseline.
 
 ---
 
