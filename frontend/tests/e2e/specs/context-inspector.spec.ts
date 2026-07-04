@@ -95,23 +95,23 @@ test.describe('Context Compiler · Trace Inspector (live)', () => {
     await loginViaUI(page);
   });
 
-  test('chat-header icon deep-links to the inspector scoped to the open session + renders real trace', async ({ page }) => {
+  test('chat-header icon deep-links to the inspector focused on THIS session + renders real trace', async ({ page }) => {
+    test.skip(!hasModel, 'needs a chat model to create a session');
     await mockTrace(page, TWO_TURNS);
-    // Open a real conversation the way a user does — click a sidebar row (a fresh
-    // 0-message session sorts to the bottom by last-activity, so we don't rely on it
-    // being the URL target; the header affordance shows on ANY active session).
-    await page.goto('/chat');
-    const firstRow = page.getByTestId('chat-session-row').first();
-    await expect(firstRow).toBeVisible({ timeout: 15_000 });
-    await firstRow.click();
+    // Deep-link straight to the session by URL. This also regression-guards
+    // D-CHAT-URL-SESSION-ACTIVATION: a fresh 0-message session sorts to the bottom
+    // by last-activity, so it is NOT in the first page of the loaded list — the
+    // provider now fetches it individually so the session activates instead of
+    // silently showing an empty chat.
+    await page.goto(`/chat/${sessionId}`);
 
-    // the header inspector affordance is present on the full chat page
+    // the header inspector affordance is present once the session activates
     const btn = page.getByTestId('chat-context-inspector-button');
     await expect(btn).toBeVisible({ timeout: 15_000 });
     await btn.click();
 
-    // deep-linked to the standalone inspector, scoped to the open session (?session=<id>)
-    await expect(page).toHaveURL(/\/context-inspector\?session=[0-9a-f-]+/);
+    // deep-linked to the standalone inspector scoped to THIS exact session
+    await expect(page).toHaveURL(new RegExp(`/context-inspector\\?session=${sessionId}`));
     await expect(page.getByTestId('context-inspector')).toBeVisible();
 
     // the real /context-trace shape drives the hero gauge + allocation map + turn list
