@@ -216,6 +216,11 @@
       "desc": "Quản lý phiên bản dịch theo từng chương (so sánh, đặt bản chính, dịch lại)",
       "empty": "Mở phiên bản dịch của một chương từ ma trận Dịch thuật."
     },
+    "translation-review": {
+      "title": "Xem lại bản dịch",
+      "desc": "So sánh song song theo từng khối, sửa trực tiếp từng khối",
+      "empty": "Mở mục Xem lại của một phiên bản từ panel Phiên bản dịch."
+    },
     "enrichment-compose": {
       "title": "Tạo làm giàu",
       "desc": "Soạn một bản nháp tri thức làm giàu mới (mở rộng bản nháp, dán ngữ cảnh, tải tệp, hoặc nêu ý định)"
@@ -305,7 +310,8 @@
     "save": "Lưu",
     "grammar": "Ngữ pháp",
     "heatmap": "Bản đồ nhiệt",
-    "focus": "Tập trung"
+    "focus": "Tập trung",
+    "translate": "Dịch"
   },
   "popout": {
     "invalid": "Liên kết cửa sổ bật ra này không hợp lệ.",
