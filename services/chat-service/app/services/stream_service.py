@@ -89,6 +89,7 @@ from app.services.compaction import (
     inject_recovery_hint,
     summary_message,
 )
+from loreweave_context import build_system_message
 # W3 — compaction tier 2 (compress instead of drop) shares its summarizer with
 # the manual /compact route; the factored impl lives in compact_service. Bound
 # to the old private name so both in-file call sites stay unchanged.
@@ -2084,81 +2085,36 @@ async def stream_response(
         creds.provider_kind == "anthropic"
         and kctx.stable_context.strip() != ""
     )
-    if use_anthropic_cache:
-        parts: list[dict] = []
-        stable = kctx.stable_context.strip()
-        parts.append({
-            "type": "text",
-            "text": stable,
-            "cache_control": {"type": "ephemeral"},
-        })
-        volatile = kctx.volatile_context.strip()
-        if volatile:
-            parts.append({"type": "text", "text": volatile})
-        if wm_pinned:
-            # Pinned anchor (primacy). No cache_control of its own; it sits in
-            # the prefix the NEXT breakpoint (system_prompt) caches. Caching is
-            # content-addressed, so when the executive changes `state` the anchor
-            # text changes and the cache simply MISSES from here — never stale,
-            # just re-processed (the anchor is small; the cost is negligible).
-            parts.append({"type": "text", "text": wm_pinned})
-        if system_prompt and system_prompt.strip():
-            parts.append({
-                "type": "text",
-                "text": system_prompt.strip(),
-                "cache_control": {"type": "ephemeral"},
-            })
-        if steering_block:  # RAID C1 — per-book steering, right after the system prompt
-            parts.append({"type": "text", "text": steering_block, "cache_control": {"type": "ephemeral"}})
-        if glossary_skill:
-            parts.append({"type": "text", "text": glossary_skill, "cache_control": {"type": "ephemeral"}})
-        if knowledge_skill:
-            parts.append({"type": "text", "text": knowledge_skill, "cache_control": {"type": "ephemeral"}})
-        if universal_skill:
-            parts.append({"type": "text", "text": universal_skill, "cache_control": {"type": "ephemeral"}})
-        if plan_forge_skill:  # RAID B2 — PlanForge flow (pinned or plan-mode)
-            parts.append({"type": "text", "text": plan_forge_skill, "cache_control": {"type": "ephemeral"}})
-        if user_skills_block:  # REG-P1-05 — user/book registry skills (L2 bodies)
-            parts.append({"type": "text", "text": user_skills_block, "cache_control": {"type": "ephemeral"}})
-        if plan_mode_block:  # RAID B2 — plan-mode nudge (no prose until Write)
-            parts.append({"type": "text", "text": plan_mode_block, "cache_control": {"type": "ephemeral"}})
-        if skill_meta_block:  # RAID C3 — L1 available-skills catalog
-            parts.append({"type": "text", "text": skill_meta_block, "cache_control": {"type": "ephemeral"}})
-        if book_context_note:
-            parts.append({"type": "text", "text": book_context_note, "cache_control": {"type": "ephemeral"}})
-        messages.insert(0, {"role": "system", "content": parts})
-    else:
-        system_parts: list[str] = []
-        if kctx.context:
-            stripped = kctx.context.strip()
-            if stripped:
-                system_parts.append(stripped)
-        if wm_pinned:
-            system_parts.append(wm_pinned)
-        if system_prompt:
-            stripped = system_prompt.strip()
-            if stripped:
-                system_parts.append(stripped)
-        if steering_block:  # RAID C1 — per-book steering, right after the system prompt
-            system_parts.append(steering_block)
-        if glossary_skill:
-            system_parts.append(glossary_skill)
-        if knowledge_skill:
-            system_parts.append(knowledge_skill)
-        if universal_skill:
-            system_parts.append(universal_skill)
-        if plan_forge_skill:  # RAID B2 — PlanForge flow (pinned or plan-mode)
-            system_parts.append(plan_forge_skill)
-        if user_skills_block:  # REG-P1-05 — user/book registry skills (L2 bodies)
-            system_parts.append(user_skills_block)
-        if plan_mode_block:  # RAID B2 — plan-mode nudge (no prose until Write)
-            system_parts.append(plan_mode_block)
-        if skill_meta_block:  # RAID C3 — L1 available-skills catalog
-            system_parts.append(skill_meta_block)
-        if book_context_note:
-            system_parts.append(book_context_note)
-        if system_parts:
-            messages.insert(0, {"role": "system", "content": "\n\n".join(system_parts)})
+    # A1 / T3.1 (Context Budget kernel) — ONE ordered tail-block list, rendered either way
+    # by `loreweave_context.build_system_message` (was two lockstep `if` ladders — the A1
+    # footgun). Order is LOAD-BEARING and unchanged: steering → built-in skills (glossary/
+    # knowledge/universal/plan_forge) → user skills → plan-mode nudge → skill catalog → book
+    # note. Cache path (Anthropic) marks the cacheable prefix; plain path joins with \n\n.
+    _tail_blocks = [
+        steering_block,      # RAID C1 — per-book steering, right after the system prompt
+        glossary_skill,
+        knowledge_skill,
+        universal_skill,
+        plan_forge_skill,    # RAID B2 — PlanForge flow (pinned or plan-mode)
+        user_skills_block,   # REG-P1-05 — user/book registry skills (L2 bodies)
+        plan_mode_block,     # RAID B2 — plan-mode nudge (no prose until Write)
+        skill_meta_block,    # RAID C3 — L1 available-skills catalog
+        book_context_note,
+    ]
+    _system_content = build_system_message(
+        use_cache=use_anthropic_cache,
+        kctx_context=kctx.context,
+        kctx_stable=kctx.stable_context,
+        kctx_volatile=kctx.volatile_context,
+        # Pinned anchor (primacy) — uncached in the cache path: it sits in the prefix the
+        # NEXT breakpoint (system_prompt) caches; content-addressed caching just MISSES from
+        # here when the executive changes `state` (never stale, re-processed; anchor is small).
+        wm_pinned=wm_pinned,
+        system_prompt=system_prompt,
+        tail_blocks=_tail_blocks,
+    )
+    if _system_content:
+        messages.insert(0, {"role": "system", "content": _system_content})
 
     # Inject per-message context as a system message right before the last user message
     if context:

@@ -94,6 +94,11 @@ include = [
   # contracts/platformjwt). Replaces the ~6 copy-pasted jwt.decode middleware blocks
   # in composition/knowledge/chat/learning/campaign/jobs. Depends on PyJWT + fastapi.
   "loreweave_authn*",
+  # T3.1 (2026-07-04) — `loreweave_context` added (the Context Budget Law Planner/Compiler
+  # kernel; T3.1 ships the system-message assembly renderer unifying chat's two lockstep
+  # prompt ladders — A1). Pure-Python string logic, no provider SDK (provider-gate clean).
+  # First consumer: chat-service/stream_service; roleplay/composition to follow.
+  "loreweave_context*",
 ]
 exclude = ["tests*"]
 
