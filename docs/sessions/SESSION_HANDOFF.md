@@ -151,6 +151,15 @@ commits mid-way through this one) — re-verify shared spine files (`catalog.ts`
 > studio never navigates away. New committed `tests/e2e/specs/studio-translation-review.spec.ts`
 > (2 tests, real job not a mock) green ×3 runs.
 >
+> **Shared-checkout collision hit + fixed same day (`a8700878c`):** the concurrent User-Guide
+> session was actively iterating on `catalog.ts`/`studio.json` ×4 at the exact moment the Phase 3
+> commit (`e26431432`) landed — `git commit -- <path>` reads the WORKING TREE for listed paths,
+> not the index, so that commit accidentally swept the other session's uncommitted
+> `UserGuidePanel` wiring in alongside Phase 3's own content. Caught by diffing `HEAD` against
+> the known-good parent commit right after committing (habit worth keeping); fixed with a
+> corrective follow-up commit re-isolating exactly Phase 3's own hunks, no `--amend`. See
+> [[git-commit-pathspec-reads-working-tree-not-index]] for the reusable technique.
+>
 > **NEXT (register order, per spec 16's own roadmap):** Phase 4 (mobile-shell decision + full
 > route retirement + `ChapterEditorPage` deletion), gated on a soak period per spec M9. #4
 > AGENT-MODE (autonomy mission-control GUI) remains the largest unstarted "Cursor-for-novels"
