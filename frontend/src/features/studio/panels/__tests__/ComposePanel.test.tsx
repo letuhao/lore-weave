@@ -1,8 +1,17 @@
-import { render, screen } from '@testing-library/react';
+import { render, screen, fireEvent, act } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
 import type { IDockviewPanelProps } from 'dockview-react';
 import { StudioHostProvider, useRegisteredTools } from '../../host/StudioHostProvider';
 import { useUiNavInterceptor } from '@/features/chat/nav/uiNavScope';
+
+// #16 2.8 — the pop-out window-lifecycle bridge is heavy (BroadcastChannel + window.open +
+// close-poll); stub it here to prove ComposePanel mounts it with the right (id/route/book/
+// chapter) props once the pop-out button is clicked, without exercising the real window
+// lifecycle (that's PopoutBridge's OWN test suite's job).
+const popoutBridgeProps = vi.hoisted(() => ({ value: null as Record<string, unknown> | null }));
+vi.mock('@/features/composition/components/workspace/PopoutBridge', () => ({
+  PopoutBridge: (p: Record<string, unknown>) => { popoutBridgeProps.value = p; return <div data-testid="popout-bridge-stub" />; },
+}));
 
 // The whole chat feature is embedded AS-IS; stub it here to capture the props the panel passes.
 // The stub also probes the nav-interceptor context from where the real Chat tree would read it.
@@ -75,5 +84,40 @@ describe('ComposePanel', () => {
     unitMeta.value = { activeChapterId: null };
     render(<StudioHostProvider bookId="book-42"><ComposePanel {...dockProps} /></StudioHostProvider>);
     expect(chatProps.value?.editorContext).toBeUndefined();
+  });
+
+  // #16 2.8 — pop out into a real OS/browser window (multi-monitor use), gated on a chapter
+  // being open (mirrors editorContext's own gate — the popout is chapter-scoped).
+  describe('pop-out button (#16 2.8)', () => {
+    it('is disabled while no chapter is open', () => {
+      unitMeta.value = { activeChapterId: null };
+      render(<StudioHostProvider bookId="book-42"><ComposePanel {...dockProps} /></StudioHostProvider>);
+      expect(screen.getByTestId('studio-compose-popout')).toBeDisabled();
+    });
+
+    it('mounts the shared PopoutBridge (route=/studio/popout) once clicked with a chapter open', () => {
+      unitMeta.value = { activeChapterId: 'chapter-9' };
+      render(<StudioHostProvider bookId="book-42"><ComposePanel {...dockProps} /></StudioHostProvider>);
+      const btn = screen.getByTestId('studio-compose-popout');
+      expect(btn).not.toBeDisabled();
+      expect(screen.queryByTestId('popout-bridge-stub')).toBeNull();
+      fireEvent.click(btn);
+      expect(screen.getByTestId('popout-bridge-stub')).toBeInTheDocument();
+      expect(popoutBridgeProps.value).toMatchObject({
+        id: 'compose', bookId: 'book-42', chapterId: 'chapter-9', route: '/studio/popout',
+      });
+      // Re-clicking while already popped out must not spawn a second bridge instance.
+      expect(btn).toBeDisabled();
+    });
+
+    it('re-enables the button and unmounts the bridge when the popout re-docks (onClosed)', () => {
+      unitMeta.value = { activeChapterId: 'chapter-9' };
+      render(<StudioHostProvider bookId="book-42"><ComposePanel {...dockProps} /></StudioHostProvider>);
+      fireEvent.click(screen.getByTestId('studio-compose-popout'));
+      expect(screen.getByTestId('popout-bridge-stub')).toBeInTheDocument();
+      act(() => { (popoutBridgeProps.value!.onClosed as () => void)(); });
+      expect(screen.queryByTestId('popout-bridge-stub')).toBeNull();
+      expect(screen.getByTestId('studio-compose-popout')).not.toBeDisabled();
+    });
   });
 });

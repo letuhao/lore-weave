@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useContext, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { toast } from 'sonner';
 import { Sparkles, Check, X } from 'lucide-react';
@@ -7,6 +7,10 @@ import { getEditorTarget } from '../context/editorBridge';
 import { buildHunks, reconstruct } from '../utils/proseHunks';
 import { useChatStream } from '../providers';
 import type { ToolCallRecord } from '../types';
+// #16 2.8 — cross-window Apply escape hatch. Non-null ONLY inside Studio's popped-out
+// Compose window (StudioPopoutHost provides it); every other surface (ChapterEditorPage's
+// chat dock, Studio's docked ComposePanel) never supplies it, so this is strictly additive.
+import { PopoutRelayContext } from '@/features/studio/popout/popoutRelayContext';
 
 // ARCH-1 C6 — the editor write-back proposal card.
 //
@@ -34,6 +38,8 @@ export function ProposeEditCard({ record, chapterId }: Props) {
   const { submitToolResult } = useChatStream();
   const [done, setDone] = useState<null | 'applied' | 'dismissed'>(null);
   const [busy, setBusy] = useState(false);
+  // #16 2.8 — non-null only inside Studio's popped-out Compose window.
+  const popoutRelay = useContext(PopoutRelayContext);
 
   const args = (record.args ?? {}) as ProposeArgs;
   const text = args.text ?? '';
@@ -93,6 +99,49 @@ export function ProposeEditCard({ record, chapterId }: Props) {
     }
     const target = getEditorTarget();
     if (!target) {
+      // #16 2.8 — inside a popped-out Compose window, getEditorTarget() is ALWAYS null (the
+      // module-singleton editorBridge only exists in the window that registered it — the main
+      // Studio window's EditorPanel). When PopoutRelayContext is present, relay instead of
+      // showing the "no editor" error — the opener's EditorPanel receives it over the
+      // per-(book,chapter) BroadcastChannel via usePopoutInsertRelay and applies it through
+      // checkpoints.applyProposedEdit, so it still captures a restore point like every other
+      // AI-apply path.
+      if (popoutRelay) {
+        if (operation === 'replace_selection') {
+          // A popout has no live editor selection to check against (oldSel is captured via
+          // getEditorTarget() at mount too, so it's always null here — hasHunks is always
+          // false in a popout) — there is nothing sensible to relay a "replace" onto.
+          toast.error(t('propose.popout_no_rewrite', {
+            defaultValue: 'Rewrites need to be applied from the docked editor — dock this window first.',
+          }));
+          return;
+        }
+        // insert_at_cursor: hasHunks is always false in a popout (no live selection to diff
+        // against), so `text` IS the applied text — no hunk-merge branch to run through.
+        // #16 2.8 /review-impl HIGH fix — AWAIT the opener's ack instead of assuming the relay
+        // landed. The opener may have since navigated to a different chapter (its
+        // usePopoutInsertRelay subscription re-keys on chapterId), in which case nothing is
+        // listening on this channel and the message vanishes — without this check the card
+        // would show "Applied ✓" and tell the LLM the edit succeeded while the document was
+        // never touched.
+        setBusy(true);
+        try {
+          const delivered = await popoutRelay.post(text, undefined);
+          if (!delivered) {
+            toast.error(t('propose.popout_not_delivered', {
+              defaultValue: 'Could not confirm the edit reached the docked editor — open the chapter in Studio and try again.',
+            }));
+            return;
+          }
+          setDone('applied');
+          if (record.runId && record.toolCallId) {
+            await submitToolResult(record.runId, record.toolCallId, 'applied', text);
+          }
+        } finally {
+          setBusy(false);
+        }
+        return;
+      }
       toast.error(t('propose.no_editor', { defaultValue: 'Open the chapter to apply this edit.' }));
       return;
     }

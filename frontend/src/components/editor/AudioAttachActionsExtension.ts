@@ -100,7 +100,7 @@ function createActionBar(view: EditorView): HTMLElement {
     if (!ALLOWED_AUDIO_TYPES.has(file.type)) return;
     if (file.size > MAX_AUDIO_SIZE) return;
 
-    const ctx = getUploadContext();
+    const ctx = getUploadContext((view.dom as any).editor);
     if (!ctx) return;
 
     // Find block index
@@ -166,7 +166,7 @@ function createActionBar(view: EditorView): HTMLElement {
 
         const blob = new Blob(recordedChunks, { type: 'audio/webm' });
         const file = new File([blob], `recording-${Date.now()}.webm`, { type: 'audio/webm' });
-        const ctx = getUploadContext();
+        const ctx = getUploadContext((view.dom as any).editor);
         if (!ctx) return;
 
         let blockIndex = 0;
@@ -210,7 +210,7 @@ function createActionBar(view: EditorView): HTMLElement {
   // AI Generate button — uses TTS model from localStorage prefs
   const aiBtn = makeBtn('\u2728', 'Generate AI audio (TTS)', async () => {
     if (currentPos < 0) return;
-    const ctx = getUploadContext();
+    const ctx = getUploadContext((view.dom as any).editor);
     if (!ctx) return;
 
     // Read TTS prefs from localStorage

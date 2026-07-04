@@ -6,11 +6,12 @@
 //   • registers itself for the AGENT rack (#07a — mcp prefixes / skills this surface owns),
 //   • renders <Chat windowingEnabled> so an in-flight turn runs in the SharedWorker and SURVIVES a
 //     dock float / close / pop-out (D4 turn-survival without a separate hoist).
-import { useEffect, useMemo } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import type { IDockviewPanelProps } from 'dockview-react';
 import { Chat } from '@/features/chat/Chat';
 import { UiNavInterceptorContext } from '@/features/chat/nav/uiNavScope';
+import { PopoutBridge } from '@/features/composition/components/workspace/PopoutBridge';
 import { useStudioHost, useRegisterStudioTool } from '../host/StudioHostProvider';
 import { useManuscriptUnitMeta } from '../manuscript/unit/ManuscriptUnitProvider';
 import { StudioAgentBridge } from '../agent/StudioAgentBridge';
@@ -67,21 +68,53 @@ export function ComposePanel(props: IDockviewPanelProps) {
     props.api.setTitle(label);
   }, [props.api, label]);
 
+  // #16 2.8 — Pop out into a real OS/browser window (multi-monitor use). Dockview's own
+  // float/split already covers "same-page window" — this is for a genuinely separate window,
+  // reusing the composition workspace's window-lifecycle bridge (open/close-poll/dock-back)
+  // via its generalized `route` prop instead of forking that logic. Gated on a chapter being
+  // open: the popout's editor/studio context is chapter-scoped (mirrors editorContext above).
+  const [poppedOut, setPoppedOut] = useState(false);
+  const activeChapterId = unitMeta?.activeChapterId ?? null;
+  const popoutTitle = t('popout.openTitle', { defaultValue: 'Open Compose in its own window' });
+
   return (
-    <div data-testid="studio-compose-panel" className="h-full min-h-0">
+    <div data-testid="studio-compose-panel" className="flex h-full min-h-0 flex-col">
+      <div className="flex h-7 flex-shrink-0 items-center justify-end border-b px-2 text-[11px] text-muted-foreground">
+        <button
+          type="button"
+          data-testid="studio-compose-popout"
+          title={popoutTitle}
+          disabled={!activeChapterId || poppedOut}
+          onClick={() => setPoppedOut(true)}
+          className="rounded px-1.5 py-0.5 hover:bg-secondary hover:text-foreground disabled:opacity-40"
+        >
+          ⤢ {t('popout.open', { defaultValue: 'Pop out' })}
+        </button>
+      </div>
       {/* The agent↔GUI bridge (Lane A/B #09) rides the actionBar slot — Chat renders it INSIDE its
           providers, so it reads the live chat stream (useChatStream). It renders nothing visible.
           studioContext (presence) makes chat-service advertise the studio dock-nav tools (Lane A). */}
-      <UiNavInterceptorContext.Provider value={navInterceptor}>
-        <Chat
+      <div className="min-h-0 flex-1">
+        <UiNavInterceptorContext.Provider value={navInterceptor}>
+          <Chat
+            bookId={bookId}
+            editorContext={editorContext}
+            studioContext={studioContext}
+            windowingEnabled
+            actionBar={<StudioAgentBridge />}
+            className="h-full"
+          />
+        </UiNavInterceptorContext.Provider>
+      </div>
+      {poppedOut && activeChapterId && (
+        <PopoutBridge
+          id="compose"
           bookId={bookId}
-          editorContext={editorContext}
-          studioContext={studioContext}
-          windowingEnabled
-          actionBar={<StudioAgentBridge />}
-          className="h-full"
+          chapterId={activeChapterId}
+          route="/studio/popout"
+          onClosed={() => setPoppedOut(false)}
         />
-      </UiNavInterceptorContext.Provider>
+      )}
     </div>
   );
 }

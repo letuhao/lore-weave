@@ -21,6 +21,10 @@ vi.mock('@/features/books/api', () => ({
 }));
 vi.mock('@/lib/tiptap-utils', () => ({ addTextSnapshots: (d: unknown) => d, extractText: () => '' }));
 vi.mock('@/features/composition/hooks/useWork', () => ({ useWorkResolution: () => ({ data: null }) }));
+vi.mock('@/features/composition/hooks/useProgress', () => ({
+  useReportProgress: () => vi.fn(),
+  useEnsureBaseline: () => vi.fn(),
+}));
 vi.mock('@/features/composition/api', () => ({
   compositionApi: { listChapterScenes: vi.fn(async () => ({ items: [] })), patchNode: vi.fn() },
 }));

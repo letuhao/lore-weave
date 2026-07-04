@@ -19,6 +19,7 @@ import { useAuth } from '@/auth';
 import { booksApi } from '@/features/books/api';
 import { compositionApi } from '@/features/composition/api';
 import { useWorkResolution } from '@/features/composition/hooks/useWork';
+import { useReportProgress, useEnsureBaseline } from '@/features/composition/hooks/useProgress';
 import type { OutlineNode } from '@/features/composition/types';
 import { addTextSnapshots, extractText } from '@/lib/tiptap-utils';
 import type { TiptapEditorHandle } from '@/components/editor/TiptapEditor';
@@ -27,6 +28,14 @@ import { useStudioHost, useStudioBusSelector } from '../../host/StudioHostProvid
 import { _setManuscriptUnitBinding, emitManuscriptUnitChange, registerManuscriptUnitDocumentProvider } from './manuscriptUnitDocument';
 
 const EMPTY_DOC: JSONContent = { type: 'doc', content: [] };
+
+// #16 2.10 — progress-reporting word count (mirrors ChapterEditorPage.tsx's own helper verbatim).
+function wordCount(text: string): number {
+  return text.trim() ? text.trim().split(/\s+/).length : 0;
+}
+
+// #16 2.9 — auto-save debounce window (mirrors legacy's 5-minute idle-save).
+const AUTO_SAVE_DEBOUNCE_MS = 300_000;
 
 export type SaveState = 'idle' | 'loading' | 'saving' | 'saved' | 'conflict' | 'error';
 
@@ -113,6 +122,11 @@ export function ManuscriptUnitProvider({ bookId, children }: { bookId: string; c
   const editorRef = useRef<TiptapEditorHandle | null>(null);
   const stateRef = useRef(state);
   stateRef.current = state;
+  // #16 2.9 — pending auto-save timer (cleared by an explicit save so it never double-fires).
+  const autoSaveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // #16 2.10 — the on-disk word count at the moment a chapter loads (the "baseline" so today's
+  // first progress snapshot counts only words written THIS session, not pre-existing content).
+  const loadedWordCountRef = useRef<number | null>(null);
 
   // #12 — the book's composition Work (scenes[] source). No Work → scenes stay [].
   // resolveWork returns an ENVELOPE {status, work, candidates} — same extraction as
@@ -144,11 +158,13 @@ export function ManuscriptUnitProvider({ bookId, children }: { bookId: string; c
     try {
       const draft = await booksApi.getDraft(accessToken, bookId, chapterId);
       const body = (draft.body as JSONContent) ?? EMPTY_DOC;
+      // Server text_content can be empty (blocks projection) and an already-normalized
+      // body fires NO mount onUpdate to backfill it — derive from the body (M-H word count).
+      const textContent = draft.text_content || extractText(body);
+      loadedWordCountRef.current = wordCount(textContent);
       setState({
         chapterId, loadedBody: body, savedBody: body, workingBody: null,
-        // Server text_content can be empty (blocks projection) and an already-normalized
-        // body fires NO mount onUpdate to backfill it — derive from the body (M-H word count).
-        version: draft.draft_version, textContent: draft.text_content || extractText(body),
+        version: draft.draft_version, textContent,
         saveState: 'idle', error: null, scenes: [], sceneChapterNodeId: null,
       });
       void loadScenes(chapterId);
@@ -190,7 +206,12 @@ export function ManuscriptUnitProvider({ bookId, children }: { bookId: string; c
     });
   }, []);
 
+  const reportProgress = useReportProgress(projectId ?? undefined, accessToken);
+  const ensureBaseline = useEnsureBaseline(projectId ?? undefined, accessToken);
+
   const save = useCallback(async () => {
+    // #16 2.9 — a manual/keyboard save cancels any pending auto-save (mirrors legacy).
+    if (autoSaveTimerRef.current) { clearTimeout(autoSaveTimerRef.current); autoSaveTimerRef.current = null; }
     const s = stateRef.current;
     if (!accessToken || !s.chapterId || !isDirtyState(s)) return;
     const body = s.workingBody ?? s.savedBody;
@@ -209,16 +230,39 @@ export function ManuscriptUnitProvider({ bookId, children }: { bookId: string; c
       }
       // Re-fetch to pick up the new draft_version + text snapshot (patchDraft returns void).
       const fresh = await booksApi.getDraft(accessToken, bookId, s.chapterId);
+      const freshText = fresh.text_content ?? extractText(body);
       setState((p) => (p.chapterId !== s.chapterId ? p : {
         ...p, savedBody: body, workingBody: null, version: fresh.draft_version,
-        textContent: fresh.text_content ?? p.textContent, saveState: 'saved',
+        textContent: freshText, saveState: 'saved',
       }));
+      // #16 2.10 — best-effort; NEVER disrupts the save it rides on (the hook swallows failures).
+      reportProgress(s.chapterId, wordCount(freshText));
     } catch (e) {
       setState((p) => ({ ...p, saveState: 'error', error: (e as Error).message }));
     }
-  }, [accessToken, bookId]);
+  }, [accessToken, bookId, reportProgress]);
   const saveRef = useRef(save);
   saveRef.current = save;
+
+  // #16 2.9 — auto-save: a debounced 5-minute idle-save while dirty (mirrors legacy's
+  // ChapterEditorPage timer). Resets on every edit (any state change while dirty); a manual
+  // save (above) or the doc going clean cancels the pending timer.
+  useEffect(() => {
+    if (!isDirtyState(state)) return;
+    if (autoSaveTimerRef.current) clearTimeout(autoSaveTimerRef.current);
+    autoSaveTimerRef.current = setTimeout(() => { void saveRef.current(); }, AUTO_SAVE_DEBOUNCE_MS);
+    return () => {
+      if (autoSaveTimerRef.current) { clearTimeout(autoSaveTimerRef.current); autoSaveTimerRef.current = null; }
+    };
+  }, [state]);
+
+  // #16 2.10 — seed the server's per-chapter baseline once per chapter load (server is
+  // insert-once, so a re-fire here is a safe no-op). Waits on projectId in case the Work
+  // resolves AFTER the first chapter opens (same late-resolution shape as the scenes backfill).
+  useEffect(() => {
+    if (!projectId || !state.chapterId || loadedWordCountRef.current == null) return;
+    ensureBaseline(state.chapterId, loadedWordCountRef.current);
+  }, [projectId, state.chapterId, ensureBaseline]);
 
   const revert = useCallback(() => {
     setState((s) => ({ ...s, loadedBody: s.savedBody, workingBody: null, saveState: 'idle' }));

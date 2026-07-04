@@ -24,8 +24,6 @@ import { useEditorMode } from '@/hooks/useEditorMode';
 import { useWorkmode, type Workmode } from '@/hooks/useWorkmode';
 import { WorkmodeSwitcher } from '@/components/editor/WorkmodeSwitcher';
 import { ChapterTranslationsPanel } from '@/features/translation/components/ChapterTranslationsPanel';
-import { setImageUploadContext, setOnOpenHistory } from '@/components/editor/ImageBlockNode';
-import { setOnOpenVideoHistory } from '@/components/editor/VideoBlockNode';
 import { VersionHistoryPanel } from '@/components/editor/VersionHistoryPanel';
 import { GlossaryTooltip } from '@/components/editor/GlossaryTooltip';
 import { GlossaryAutocomplete } from '@/components/editor/GlossaryAutocomplete';
@@ -330,19 +328,27 @@ export function ChapterEditorPage() {
   }, [savedBody, savedTitle]);
 
   // ── Wire media upload context for image/video blocks ──────────────────────
+  // #16 Phase 2 (2.7) — routed through the editor's OWN ref method (writes to
+  // `editor.storage.mediaUpload`) instead of the retired module-level singleton
+  // (ImageBlockNode.setImageUploadContext/setOnOpenHistory,
+  // VideoBlockNode.setOnOpenVideoHistory). This page still mounts exactly one TiptapEditor
+  // instance, so behavior is byte-identical to before — same deps, same set/clear shape, just
+  // addressed at this page's own editor instance instead of a global variable.
   useEffect(() => {
     if (accessToken && bookId && chapterId) {
-      setImageUploadContext({ token: accessToken, bookId, chapterId });
       const openHistory = (blockId: string, blockTitle: string, mediaSrc: string | null) => {
         setVersionHistory({ blockId, blockTitle, mediaSrc });
       };
-      setOnOpenHistory(openHistory);
-      setOnOpenVideoHistory(openHistory);
+      tiptapEditorRef.current?.setUploadContext({
+        token: accessToken,
+        bookId,
+        chapterId,
+        onOpenHistory: openHistory,
+        onOpenVideoHistory: openHistory,
+      });
     }
     return () => {
-      setImageUploadContext(null);
-      setOnOpenHistory(null);
-      setOnOpenVideoHistory(null);
+      tiptapEditorRef.current?.setUploadContext(null);
     };
   }, [accessToken, bookId, chapterId]);
 

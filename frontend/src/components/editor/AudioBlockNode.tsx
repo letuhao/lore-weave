@@ -162,7 +162,7 @@ function AudioBlockNodeView({ node, updateAttributes, selected, editor, deleteNo
         setUploadError(t(err.key, err.params));
         return;
       }
-      const ctx = getUploadContext();
+      const ctx = getUploadContext(editor);
       if (!ctx) {
         setUploadError(t('audio.upload_unavailable'));
         return;

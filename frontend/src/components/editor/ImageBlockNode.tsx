@@ -1,4 +1,4 @@
-import { Node, mergeAttributes } from '@tiptap/core';
+import { Node, mergeAttributes, type Editor } from '@tiptap/core';
 import {
   ReactNodeViewRenderer,
   NodeViewWrapper,
@@ -13,25 +13,35 @@ import { aiModelsApi } from '@/features/ai-models/api';
 import { MediaPrompt } from './MediaPrompt';
 import { useResize } from './useResize';
 
-// --- Upload context (set by the editor page, read by NodeView) ---
+// --- Upload context ------------------------------------------------------
+// #16 Phase 2 (2.7) — PER-EDITOR-INSTANCE via `editor.storage.mediaUpload` (mirrors the
+// `editor.storage.mediaGuard.editorMode` shape already used in TiptapEditor.tsx). Historically
+// a module-level singleton (`_uploadCtx`/`setImageUploadContext`/`setOnOpenHistory`) — safe
+// only because exactly one ChapterEditorPage was ever mounted at a time. Writing Studio's
+// dockview allows MULTIPLE chapter tabs open simultaneously (each its own TiptapEditor
+// instance); a singleton would silently misattribute uploads/history-opens to whichever tab
+// last called the setter. The host now writes this via `TiptapEditorHandle.setUploadContext`
+// (see TiptapEditor.tsx) straight onto the owning editor instance's own storage.
 export interface ImageUploadContext {
   token: string;
   bookId: string;
   chapterId: string;
+  /** Opens the media version-history panel for a block. Shared between image and video blocks
+   *  — `VersionHistoryPanel` works for any block type. */
+  onOpenHistory?: (blockId: string, blockTitle: string, mediaSrc: string | null) => void;
+  /** Opens version history for a video block specifically. Kept as a distinct field only
+   *  because legacy wired it from a second setter (`VideoBlockNode.setOnOpenVideoHistory`) —
+   *  the two callbacks may point at the very same function. */
+  onOpenVideoHistory?: (blockId: string, blockTitle: string, mediaSrc: string | null) => void;
 }
 
-let _uploadCtx: ImageUploadContext | null = null;
-export function setImageUploadContext(ctx: ImageUploadContext | null) {
-  _uploadCtx = ctx;
-}
-export function getUploadContext(): ImageUploadContext | null {
-  return _uploadCtx;
-}
-
-// History panel callback — set by the editor page
-let _onOpenHistory: ((blockId: string, blockTitle: string, mediaSrc: string | null) => void) | null = null;
-export function setOnOpenHistory(fn: typeof _onOpenHistory) {
-  _onOpenHistory = fn;
+/** Reads the CALLING editor instance's own upload context off `editor.storage.mediaUpload`.
+ *  Accepts anything exposing `.storage` (a Tiptap `Editor`). For call sites that only have a
+ *  ProseMirror `EditorView` (no NodeView `editor` prop in scope — see
+ *  AudioAttachActionsExtension.ts), resolve the Editor via `(view.dom as any).editor` first
+ *  (Tiptap attaches the owning Editor instance there) and pass that in. */
+export function getUploadContext(editor: Pick<Editor, 'storage'> | null | undefined): ImageUploadContext | null {
+  return ((editor?.storage as Record<string, unknown> | undefined)?.mediaUpload as ImageUploadContext | undefined) ?? null;
 }
 
 const MAX_FILE_SIZE = 10 * 1024 * 1024; // 10 MB
@@ -108,6 +118,7 @@ function ImageBlockNodeView({ node, updateAttributes, selected, editor, deleteNo
   const { t } = useTranslation('editor');
   const editorMode = ((editor.storage as any).mediaGuard?.editorMode as string) || 'ai';
   const isClassic = editorMode === 'classic';
+  const uploadCtx = getUploadContext(editor);
   const src = node.attrs.src as string | null;
   const alt = (node.attrs.alt as string) || '';
   const caption = (node.attrs.caption as string) || '';
@@ -162,7 +173,8 @@ function ImageBlockNodeView({ node, updateAttributes, selected, editor, deleteNo
         setUploadError(t(err.key, err.params));
         return;
       }
-      if (!_uploadCtx) {
+      const ctx = getUploadContext(editor);
+      if (!ctx) {
         setUploadError(t('image.upload_unavailable'));
         return;
       }
@@ -178,9 +190,9 @@ function ImageBlockNodeView({ node, updateAttributes, selected, editor, deleteNo
         }
 
         const result = await booksApi.uploadChapterMedia(
-          _uploadCtx.token,
-          _uploadCtx.bookId,
-          _uploadCtx.chapterId,
+          ctx.token,
+          ctx.bookId,
+          ctx.chapterId,
           file,
           (pct) => setUploadPct(pct),
           blockId,
@@ -195,7 +207,7 @@ function ImageBlockNodeView({ node, updateAttributes, selected, editor, deleteNo
         setUploading(false);
       }
     },
-    [updateAttributes, node.attrs.blockId],
+    [updateAttributes, node.attrs.blockId, editor],
   );
 
   const handleDrop = useCallback(
@@ -246,7 +258,7 @@ function ImageBlockNodeView({ node, updateAttributes, selected, editor, deleteNo
   const handleRegenerate = useCallback(async () => {
     const prompt = (node.attrs.ai_prompt as string)?.trim();
     if (!prompt) return;
-    const ctx = getUploadContext();
+    const ctx = getUploadContext(editor);
     if (!ctx) {
       setRegenerateError(t('image.regen_save_first'));
       return;
@@ -280,7 +292,7 @@ function ImageBlockNodeView({ node, updateAttributes, selected, editor, deleteNo
     } finally {
       setRegenerating(false);
     }
-  }, [node.attrs.ai_prompt, node.attrs.blockId, updateAttributes]);
+  }, [node.attrs.ai_prompt, node.attrs.blockId, updateAttributes, editor]);
 
   // --- Classic mode: compact locked placeholder with hover preview ---
   if (isClassic) {
@@ -299,10 +311,10 @@ function ImageBlockNodeView({ node, updateAttributes, selected, editor, deleteNo
               {caption}
             </span>
           )}
-          {src && _onOpenHistory && (
+          {src && uploadCtx?.onOpenHistory && (
             <button
               type="button"
-              onClick={() => _onOpenHistory?.((node.attrs.blockId as string) || 'unknown', title, src)}
+              onClick={() => uploadCtx.onOpenHistory?.((node.attrs.blockId as string) || 'unknown', title, src)}
               className="flex flex-shrink-0 items-center gap-1 rounded px-1.5 py-0.5 text-[9px] transition-colors hover:bg-card hover:text-foreground"
               title={t('image.version_history')}
             >
@@ -486,10 +498,10 @@ function ImageBlockNodeView({ node, updateAttributes, selected, editor, deleteNo
             <Replace className="h-3 w-3" />
           </button>
         )}
-        {src && _onOpenHistory && (
+        {src && uploadCtx?.onOpenHistory && (
           <button
             type="button"
-            onClick={() => _onOpenHistory?.((node.attrs.blockId as string) || 'unknown', (node.attrs.title as string) || t('image.default_title'), src)}
+            onClick={() => uploadCtx.onOpenHistory?.((node.attrs.blockId as string) || 'unknown', (node.attrs.title as string) || t('image.default_title'), src)}
             className="flex flex-shrink-0 items-center gap-1 rounded px-1.5 py-0.5 text-[9px] text-muted-foreground transition-colors hover:bg-secondary hover:text-foreground"
             title={t('image.version_history')}
           >

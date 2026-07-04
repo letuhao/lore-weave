@@ -26,6 +26,7 @@ import { BookDetailPage } from '@/pages/BookDetailPage';
 import { ChapterEditorPage } from '@/pages/ChapterEditorPage';
 import { WritingStudioPage } from '@/pages/WritingStudioPage';
 import { PopoutHost } from '@/features/composition/components/workspace/PopoutHost';
+import { StudioPopoutHost } from '@/features/studio/popout/StudioPopoutHost';
 import { ChapterComparePage } from '@/pages/ChapterComparePage';
 import { WikiEditorPage } from '@/pages/WikiEditorPage';
 import { ReaderPage } from '@/pages/ReaderPage';
@@ -107,6 +108,9 @@ export function App() {
 
           {/* T5.4 M4 — composition panel OS pop-out window (own root, full-screen, auth) */}
           <Route path="/composition/popout" element={<RequireAuth><PopoutHost /></RequireAuth>} />
+
+          {/* #16 2.8 — Studio Compose panel OS pop-out window (own root, full-screen, auth) */}
+          <Route path="/studio/popout" element={<RequireAuth><StudioPopoutHost /></RequireAuth>} />
 
           {/* Translation review — full screen, auth required */}
           <Route path="/books/:bookId/chapters/:chapterId/review/:versionId" element={<RequireAuth><TranslationReviewPage /></RequireAuth>} />

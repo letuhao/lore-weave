@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, fireEvent, waitFor } from '@testing-library/react';
+import { PopoutRelayContext } from '@/features/studio/popout/popoutRelayContext';
 
 // C6 hunk-review — a replace_selection proposal is diffed against the live editor
 // selection (captured at mount) and offered as per-hunk accept/reject. Accept-all
@@ -15,10 +16,14 @@ const toastError = vi.fn();
 // #16 P1 — undefined by default (legacy path: no hoist, Apply calls target.handle.* directly,
 // same as before). Tests that need the Studio hoist-preferred path set this to a vi.fn().
 let applyProposedEdit: ReturnType<typeof vi.fn> | undefined;
+// #16 2.8 — a popped-out Compose window has NO registered editorBridge target (a popout is a
+// separate JS realm from the window that called registerEditorTarget). Tests for the
+// popout-relay branch set this true to simulate that.
+let noEditorTarget = false;
 
 vi.mock('../../providers', () => ({ useChatStream: () => ({ submitToolResult }) }));
 vi.mock('../../context/editorBridge', () => ({
-  getEditorTarget: () => ({
+  getEditorTarget: () => (noEditorTarget ? null : {
     bookId: 'b1',
     chapterId: targetChapterId,
     handle: {
@@ -47,6 +52,7 @@ describe('ProposeEditCard — hunk review', () => {
     selection = { from: 0, to: 10, empty: false, text: 'A. B. C.' };
     targetChapterId = 'ch1';
     applyProposedEdit = undefined;
+    noEditorTarget = false;
   });
 
   it('renders per-hunk diff for a replace_selection rewrite', () => {
@@ -207,6 +213,74 @@ describe('ProposeEditCard — hunk review', () => {
       await waitFor(() => expect(toastError).toHaveBeenCalledWith('propose.wrong_chapter'));
       expect(applyProposedEdit).not.toHaveBeenCalled();
       expect(submitToolResult).not.toHaveBeenCalled();
+    });
+  });
+
+  // #16 2.8 — inside Studio's popped-out Compose window, getEditorTarget() is always null (a
+  // separate JS realm from the window that registered the editorBridge singleton). When
+  // PopoutRelayContext supplies a relay, Apply must post over it instead of showing the
+  // "no editor" error — and must NOT do so when no relay is present (every existing surface).
+  describe('cross-window popout relay (#16 2.8)', () => {
+    // #16 2.8 /review-impl HIGH fix — post() is now async (awaits the opener's ack); default
+    // mock resolves true (delivered) so tests that don't care about delivery still exercise
+    // the success path.
+    function renderInPopout(ui: Parameters<typeof render>[0], post = vi.fn().mockResolvedValue(true)) {
+      return { post, ...render(
+        <PopoutRelayContext.Provider value={{ post }}>{ui}</PopoutRelayContext.Provider>,
+      ) };
+    }
+
+    it('relays insert_at_cursor text over the popout channel and resolves applied', async () => {
+      noEditorTarget = true;
+      const { post } = renderInPopout(
+        <ProposeEditCard record={record({ operation: 'insert_at_cursor', text: 'New paragraph.' })} />,
+      );
+      fireEvent.click(screen.getByText('propose.apply'));
+      await waitFor(() => expect(post).toHaveBeenCalledWith('New paragraph.', undefined));
+      expect(insertAtCursor).not.toHaveBeenCalled();
+      await waitFor(() =>
+        expect(submitToolResult).toHaveBeenCalledWith('r1', 'c1', 'applied', 'New paragraph.'));
+      expect(toastError).not.toHaveBeenCalled();
+    });
+
+    it('does NOT relay a replace_selection rewrite — shows a dock-first error instead', async () => {
+      noEditorTarget = true;
+      const { post } = renderInPopout(
+        <ProposeEditCard record={record({ operation: 'replace_selection', text: 'Whole rewrite.' })} />,
+      );
+      fireEvent.click(screen.getByText('propose.apply'));
+      await waitFor(() => expect(toastError).toHaveBeenCalledWith('propose.popout_no_rewrite'));
+      expect(post).not.toHaveBeenCalled();
+      expect(replaceSelection).not.toHaveBeenCalled();
+      expect(submitToolResult).not.toHaveBeenCalled();
+      // run stays suspended — buttons remain for a re-ask (e.g. dock the window, then retry)
+      expect(screen.getByText('propose.apply')).toBeInTheDocument();
+    });
+
+    it('falls back to the "no editor" error when no popout relay is provided (unchanged legacy/docked behavior)', async () => {
+      noEditorTarget = true;
+      render(<ProposeEditCard record={record({ operation: 'insert_at_cursor', text: 'New paragraph.' })} />);
+      fireEvent.click(screen.getByText('propose.apply'));
+      await waitFor(() => expect(toastError).toHaveBeenCalledWith('propose.no_editor'));
+      expect(submitToolResult).not.toHaveBeenCalled();
+    });
+
+    // #16 2.8 /review-impl HIGH fix — the opener may have navigated to a different chapter
+    // since the popout opened; its usePopoutInsertRelay subscription re-keys on chapterId, so
+    // nothing acks the relayed insert. Without this check the card would show "Applied ✓" and
+    // tell the LLM the edit succeeded while the document was never touched.
+    it('shows an error and stays suspended when the opener never acks the relay (silent-drop guard)', async () => {
+      noEditorTarget = true;
+      const post = vi.fn().mockResolvedValue(false);
+      renderInPopout(
+        <ProposeEditCard record={record({ operation: 'insert_at_cursor', text: 'New paragraph.' })} />,
+        post,
+      );
+      fireEvent.click(screen.getByText('propose.apply'));
+      await waitFor(() => expect(toastError).toHaveBeenCalledWith('propose.popout_not_delivered'));
+      expect(submitToolResult).not.toHaveBeenCalled();
+      // run stays suspended — buttons remain for a re-ask
+      expect(screen.getByText('propose.apply')).toBeInTheDocument();
     });
   });
 });

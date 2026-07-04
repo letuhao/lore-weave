@@ -1,4 +1,4 @@
-import { describe, expect, it, vi, beforeEach } from 'vitest';
+import { describe, expect, it, vi, beforeEach, afterEach } from 'vitest';
 import { act, render, waitFor } from '@testing-library/react';
 
 // Mock the manuscript I/O stack + the studio host/bus (the hoist reuses these AS-IS).
@@ -10,6 +10,15 @@ vi.mock('@/lib/tiptap-utils', () => ({ addTextSnapshots: (d: unknown) => d, extr
 // #12 — the hoist now resolves the composition Work for scenes[]; this suite exercises the
 // body path, so the book has NO Work (scenes stay []) and react-query is bypassed entirely.
 vi.mock('@/features/composition/hooks/useWork', () => ({ useWorkResolution: () => ({ data: null }) }));
+// #16 2.10 — progress-reporting is a best-effort side effect of save()/loadChapter(); this suite
+// has no Work (projectId null) so the real hooks would no-op anyway, but they still call
+// react-query's useQueryClient() internally — stub them out rather than add a QueryClientProvider.
+// Stable spies (vi.hoisted, not a fresh vi.fn() per render) so tests can assert call args.
+const progressSpies = vi.hoisted(() => ({ reportProgress: vi.fn(), ensureBaseline: vi.fn() }));
+vi.mock('@/features/composition/hooks/useProgress', () => ({
+  useReportProgress: () => progressSpies.reportProgress,
+  useEnsureBaseline: () => progressSpies.ensureBaseline,
+}));
 vi.mock('@/features/composition/api', () => ({
   compositionApi: { listChapterScenes: vi.fn(async () => ({ items: [] })), patchNode: vi.fn() },
 }));
@@ -31,6 +40,8 @@ const renderHoist = () => render(<ManuscriptUnitProvider bookId="b1"><Consumer /
 beforeEach(() => {
   getDraft.mockReset();
   patchDraft.mockReset();
+  progressSpies.reportProgress.mockReset();
+  progressSpies.ensureBaseline.mockReset();
   bus.activeChapterId = undefined;
   api = null;
   getDraft.mockResolvedValue({ chapter_id: 'ch1', body: doc('server'), draft_version: 3, text_content: 'server' });
@@ -129,6 +140,61 @@ describe('useManuscriptUnit (Tier-4 hoist)', () => {
       await act(async () => { await api!.openUnit('ch1'); });
       api!.editorRef.current = null;
       expect(api!.applyProposedEdit({ operation: 'insert_at_cursor', text: 'x' })).toBe(false);
+    });
+  });
+
+  // #16 2.9 — auto-save: a debounced 5-minute idle-save while dirty.
+  describe('auto-save (#16 2.9)', () => {
+    beforeEach(() => { vi.useFakeTimers(); });
+    afterEach(() => { vi.useRealTimers(); });
+
+    it('fires save() after the debounce window while dirty', async () => {
+      patchDraft.mockResolvedValue(undefined);
+      renderHoist();
+      await act(async () => { await api!.openUnit('ch1'); });
+      act(() => { api!.setBody(doc('edited'), 'edited'); });
+      expect(patchDraft).not.toHaveBeenCalled();
+      await act(async () => { await vi.advanceTimersByTimeAsync(300_000); });
+      expect(patchDraft).toHaveBeenCalled();
+    });
+
+    it('a manual save cancels the pending auto-save timer (no double-save)', async () => {
+      patchDraft.mockResolvedValue(undefined);
+      renderHoist();
+      await act(async () => { await api!.openUnit('ch1'); });
+      act(() => { api!.setBody(doc('edited'), 'edited'); });
+      await act(async () => { await api!.save(); });
+      patchDraft.mockClear();
+      await act(async () => { await vi.advanceTimersByTimeAsync(300_000); });
+      expect(patchDraft).not.toHaveBeenCalled(); // already clean — nothing to auto-save
+    });
+
+    it('does not fire when the doc is clean', async () => {
+      renderHoist();
+      await act(async () => { await api!.openUnit('ch1'); });
+      await act(async () => { await vi.advanceTimersByTimeAsync(300_000); });
+      expect(patchDraft).not.toHaveBeenCalled();
+    });
+  });
+
+  // #16 2.10 — progress-reporting + baseline: a Tier-4 side effect of save()/loadChapter().
+  describe('progress-reporting (#16 2.10)', () => {
+    it('reports the post-save word count after a successful save', async () => {
+      patchDraft.mockResolvedValue(undefined);
+      getDraft.mockResolvedValueOnce({ chapter_id: 'ch1', body: doc('server'), draft_version: 3, text_content: 'server' })
+              .mockResolvedValueOnce({ chapter_id: 'ch1', body: doc('edited'), draft_version: 4, text_content: 'two words' });
+      renderHoist();
+      await act(async () => { await api!.openUnit('ch1'); });
+      act(() => { api!.setBody(doc('two words'), 'two words'); });
+      await act(async () => { await api!.save(); });
+      expect(progressSpies.reportProgress).toHaveBeenCalledWith('ch1', 2);
+    });
+
+    it('does not report progress when save is a no-op (not dirty)', async () => {
+      renderHoist();
+      await act(async () => { await api!.openUnit('ch1'); });
+      await act(async () => { await api!.save(); });
+      expect(progressSpies.reportProgress).not.toHaveBeenCalled();
     });
   });
 });

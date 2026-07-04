@@ -28,6 +28,12 @@ vi.mock('@/features/studio/palette/CommandPalette', () => ({ CommandPalette: () 
 // #12 — the hoist resolves the composition Work (react-query) for scenes[]; chrome-only test →
 // no Work, no QueryClient needed.
 vi.mock('@/features/composition/hooks/useWork', () => ({ useWorkResolution: () => ({ data: null }) }));
+// #16 2.10 — progress-reporting also calls react-query's useQueryClient() internally; stub it
+// out for the same "chrome-only test, no QueryClient" reason as useWork above.
+vi.mock('@/features/composition/hooks/useProgress', () => ({
+  useReportProgress: () => vi.fn(),
+  useEnsureBaseline: () => vi.fn(),
+}));
 
 // The dock is mocked to COUNT mounts — D4: chrome changes must never remount it (a remount
 // drops in-flight panel state); a book switch, conversely, MUST remount it (fresh per-book).

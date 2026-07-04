@@ -1,5 +1,5 @@
 import { forwardRef } from 'react';
-import { render } from '@testing-library/react';
+import { render, fireEvent } from '@testing-library/react';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import type { IDockviewPanelProps } from 'dockview-react';
 
@@ -28,6 +28,30 @@ vi.mock('../../manuscript/unit/useManuscriptCheckpoints', () => ({
 vi.mock('../../manuscript/unit/ManuscriptCheckpoints', () => ({ ManuscriptCheckpoints: () => null }));
 vi.mock('../RevisionHistorySection', () => ({ RevisionHistorySection: () => null }));
 vi.mock('../EditorPublishGate', () => ({ EditorPublishGate: () => null }));
+// #16 Phase 2 (2.1-2.6) — same rationale: out of scope for the P1 registration test, stub every
+// editor-craft addition rather than pull in the auth/query-client/glossary providers they need.
+vi.mock('@/auth', () => ({ useAuth: () => ({ accessToken: 'tok' }) }));
+const toggleSpies = vi.hoisted(() => ({ setGrammarEnabled: vi.fn(), toggleFocus: vi.fn() }));
+vi.mock('@/hooks/useGrammarCheck', () => ({ useGrammarEnabled: () => [true, toggleSpies.setGrammarEnabled] }));
+vi.mock('@/features/composition/hooks/useFocusMode', () => ({
+  useFocusMode: () => ({ focusMode: false, setFocusMode: vi.fn(), toggle: toggleSpies.toggleFocus }),
+}));
+vi.mock('@/features/composition/hooks/useMentionHeatmap', () => ({
+  useMentionHeatmap: () => ({ data: [], isLoading: false, isError: false }),
+}));
+vi.mock('@/features/composition/hooks/useProvenance', () => ({
+  useProvenance: () => ({ visible: true, unreviewedCount: 0, toggleVisible: vi.fn(), markAllReviewed: vi.fn() }),
+}));
+vi.mock('@/features/composition/components/ProvenanceToolbar', () => ({ ProvenanceToolbar: () => null }));
+vi.mock('@/features/composition/components/ProvenanceTag', () => ({ ProvenanceTag: () => null }));
+vi.mock('@/features/composition/components/SelectionToolbar', () => ({ SelectionToolbar: () => null }));
+vi.mock('@/features/composition/components/InlineAiLayer', () => ({ InlineAiLayer: () => null }));
+vi.mock('@/features/composition/hooks/useWork', () => ({ useWorkResolution: () => ({ data: undefined }) }));
+vi.mock('@/features/ai-models/api', () => ({ aiModelsApi: { listUserModels: vi.fn(() => Promise.resolve({ items: [] })) } }));
+vi.mock('@/features/glossary/api', () => ({ glossaryApi: { listEntityNames: vi.fn(() => Promise.resolve([])) } }));
+vi.mock('@/components/editor/GlossaryTooltip', () => ({ GlossaryTooltip: () => null }));
+vi.mock('@/components/editor/GlossaryAutocomplete', () => ({ GlossaryAutocomplete: () => null }));
+vi.mock('@tanstack/react-query', () => ({ useQuery: () => ({ data: undefined, isLoading: false }) }));
 
 const applyProposedEdit = vi.hoisted(() => vi.fn(() => true));
 const unitState = vi.hoisted(() => ({ chapterId: 'ch1' as string | null }));
@@ -71,5 +95,34 @@ describe('EditorPanel — #16 P1 hoist-action registration', () => {
     registerEditorTarget.mockClear();
     unmount();
     expect(registerEditorTarget).toHaveBeenCalledWith(null);
+  });
+});
+
+// #16 2.1/2.2/2.3 — editor-craft toolbar toggles. Deep behavioral proof (does grammar actually
+// flag an error, does heatmap actually tint, does focus actually dim/scroll) is the live browser
+// smoke per spec 16's Phase 2 gate — TiptapEditor is mocked out here, so this suite only proves
+// the toggles are wired to their hooks, not the underlying ProseMirror decoration.
+describe('EditorPanel — #16 2.1/2.2 editor-craft toggles', () => {
+  beforeEach(() => {
+    toggleSpies.setGrammarEnabled.mockClear();
+    toggleSpies.toggleFocus.mockClear();
+  });
+
+  it('clicking the grammar toggle calls the persisted setter', () => {
+    const { getByTestId } = render(<StudioHostProvider bookId="book-1"><EditorPanel {...dockProps} /></StudioHostProvider>);
+    fireEvent.click(getByTestId('studio-editor-toggle-grammar'));
+    expect(toggleSpies.setGrammarEnabled).toHaveBeenCalledWith(false); // starts true (mocked)
+  });
+
+  it('clicking the focus toggle calls the persisted toggle', () => {
+    const { getByTestId } = render(<StudioHostProvider bookId="book-1"><EditorPanel {...dockProps} /></StudioHostProvider>);
+    fireEvent.click(getByTestId('studio-editor-toggle-focus'));
+    expect(toggleSpies.toggleFocus).toHaveBeenCalled();
+  });
+
+  it('clicking the heatmap toggle flips local state (no crash, no hook dependency)', () => {
+    const { getByTestId } = render(<StudioHostProvider bookId="book-1"><EditorPanel {...dockProps} /></StudioHostProvider>);
+    const btn = getByTestId('studio-editor-toggle-heatmap');
+    expect(() => fireEvent.click(btn)).not.toThrow();
   });
 });
