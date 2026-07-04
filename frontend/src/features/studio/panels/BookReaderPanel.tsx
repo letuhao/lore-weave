@@ -4,15 +4,20 @@
 // the standalone `/books/:bookId/chapters/:chapterId/read` route via `useBookReaderContent`
 // (C3) + the router-free TTS/reading-tracker hooks — all reused AS-IS (DOCK-2).
 //
-// This is a pure READ-only browse capability: opening book B here never touches the active
-// book's studio/editor state (see 14_utility_panels.md Phase C design correction — no DOCK-7
-// exception needed at all, this is an ordinary panel). In-panel chapter/TOC navigation updates
-// the panel's OWN params via `props.api.updateParameters` — never a route push. The "edit this
-// chapter" / "back to this book" links ReaderPage shows are deliberately OMITTED here: this
-// panel only ever shows an OTHER book than the active studio's, so there is no "back to the
-// (active) book" affordance that makes sense, and editing another book's chapter from inside a
-// browse-then-read panel is out of scope (see spec's Phase C note on a future social/mutation
-// layer not existing yet).
+// This is a pure READ-only capability: opening a book here never touches the active book's
+// studio/editor state (no DOCK-7 exception needed, this is an ordinary panel). In-panel
+// chapter/TOC navigation updates the panel's OWN params via `props.api.updateParameters` —
+// never a route push. The "edit this chapter" / "back to this book" links ReaderPage shows are
+// deliberately OMITTED here — editing from inside this panel is out of scope (see spec's Phase
+// C note on a future social/mutation layer not existing yet).
+//
+// D-CHAPTER-READER-MODE: originally opened only from BooksBrowserPanel (browsing an OTHER
+// book), EditorPanel's own "Reader" toolbar button now also opens this SAME singleton with the
+// ACTIVE book + its currently-open chapterId — a distraction-free read of the manuscript
+// currently being written, not a second implementation. Because content comes from its own
+// fetch (useBookReaderContent), not the Tier-4 editor hoist, it reflects the last-saved draft —
+// fine per the shared reader-chrome contract (spec 12_json_document_standard.md: "display
+// refresh on agent chapter edits, mostly free"), not a live per-keystroke mirror.
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import type { IDockviewPanelProps } from 'dockview-react';
 import { useTranslation } from 'react-i18next';

@@ -1591,8 +1591,19 @@ services:
     # daemon restarts; the frontend container hard-depends on it (see below).
     restart: unless-stopped
     environment:
-      Java_Xms: 256m
-      Java_Xmx: 512m
+      # D-LANGUAGETOOL-502-BOOT-RACE (cont'd): 512m was too small for real
+      # usage, not just an idle-service size — live-verified 512m Xmx OOMs
+      # ("java.lang.OutOfMemoryError: Java heap space") within minutes of
+      # opening a real multi-chapter book in the Studio editor (many
+      # concurrent per-paragraph grammar checks + a non-English language
+      # model loaded). The JVM crashes and `restart: unless-stopped` brings
+      # it back, but every request during that crash/restart window 500s —
+      # the exact "bad gateway"-shaped symptom the frontend's circuit breaker
+      # sees, recurring at ANY time during normal use, not just container
+      # startup. The host has ample RAM headroom; bumped well past
+      # LanguageTool's own documented minimum (1g).
+      Java_Xms: 512m
+      Java_Xmx: 2g
     ports:
       - "8875:8010"
     volumes:
@@ -1623,13 +1634,27 @@ services:
       args:
         VITE_API_BASE: ${VITE_API_BASE:-http://localhost:3123}
     depends_on:
-      - api-gateway-bff
+      api-gateway-bff:
+        condition: service_started
       # Gate-5-I1: nginx.conf hard-references the `languagetool`
       # upstream and resolves all upstream hostnames at startup,
       # so without this dependency the frontend container exits
       # with `host not found in upstream "languagetool"` whenever
       # languagetool isn't already running.
-      - languagetool
+      #
+      # D-LANGUAGETOOL-502-BOOT-RACE: service_started (start-order only)
+      # was enough to satisfy nginx's DNS resolution, but LanguageTool's
+      # JVM takes up to its 40s start_period (often longer) to actually
+      # accept connections on :8010. Any grammar-check request that hit
+      # nginx in that window got a 502 from the upstream, which the FE's
+      # circuit breaker (frontend/src/features/grammar/api.ts) then reads
+      # as "service is down" and disables checking for 60s. Gating on
+      # condition: service_healthy makes `docker compose up` actually
+      # wait for the healthcheck (wget /v2/languages) to pass before the
+      # frontend container starts, closing the race instead of just
+      # papering over it with a longer breaker cooldown.
+      languagetool:
+        condition: service_healthy
     ports:
       - "5174:80"
     # profiles:

@@ -17,10 +17,13 @@ describe('StudioTopBar', () => {
     expect(screen.getByText('Ma Nữ Nghịch Thiên')).toBeTruthy();
   });
 
-  it('links back to the book and to settings', () => {
+  it('links back to the books list (not the legacy per-book workspace) and to settings', () => {
+    // D-STUDIO-BACK-TO-BOOKS: the back button used to target /books/:bookId (the
+    // legacy tabbed workspace) — it now goes to the /books list itself.
     setup();
     const hrefs = screen.getAllByRole('link').map((a) => a.getAttribute('href'));
-    expect(hrefs).toContain('/books/b1');
+    expect(hrefs).toContain('/books');
+    expect(hrefs).not.toContain('/books/b1');
     expect(hrefs).toContain('/books/b1/settings');
   });
 

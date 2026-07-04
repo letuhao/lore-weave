@@ -1,4 +1,4 @@
-import { Link, useSearchParams } from 'react-router-dom';
+import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { BookOpen, Plus, ChevronRight, Languages } from 'lucide-react';
 import { FilterToolbar, Pagination, EmptyState, FormDialog, StatusBadge, SkeletonCard, LanguagePicker } from '@/components/shared';
@@ -8,6 +8,7 @@ import { useBooksList, hashToHue } from '@/features/books/hooks/useBooksList';
 
 export function BooksPage() {
   const { t } = useTranslation('books');
+  const navigate = useNavigate();
   // C22 — the Translate intent routes here with ?intent=translate so the
   // workspace lands tailored to translation (a hint pointing to the per-book
   // translation surface), NOT a generic shell. Route-only: no new translator flow.
@@ -230,7 +231,14 @@ export function BooksPage() {
               {t('common.cancel', { ns: 'common' })}
             </button>
             <button
-              onClick={() => void handleCreate()}
+              onClick={() => {
+                // D-BOOKS-CREATE-TO-STUDIO: land straight in the Studio for the
+                // book just created, instead of back on the list waiting for a
+                // second click on the new row.
+                void handleCreate().then((bookId) => {
+                  if (bookId) navigate(`/books/${bookId}/studio`);
+                });
+              }}
               disabled={creating || !newTitle.trim()}
               data-testid="book-create-submit"
               className="rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground transition-colors hover:bg-primary/90 disabled:opacity-50"

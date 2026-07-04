@@ -70,9 +70,13 @@ vi.mock('../../manuscript/unit/ManuscriptUnitProvider', () => ({
 }));
 
 import { EditorPanel } from '../EditorPanel';
-import { StudioHostProvider } from '../../host/StudioHostProvider';
+import { StudioHostProvider, useStudioHost } from '../../host/StudioHostProvider';
+import type { StudioHost } from '../../host/StudioHostProvider';
 
 const dockProps = { api: { setTitle: vi.fn() } } as unknown as IDockviewPanelProps;
+
+let hostRef: StudioHost | null = null;
+function HostProbe() { hostRef = useStudioHost(); return null; }
 
 describe('EditorPanel — #16 P1 hoist-action registration', () => {
   beforeEach(() => {
@@ -156,5 +160,21 @@ describe('EditorPanel — #16 Phase 4 Scene Rail mobile default', () => {
     const { getByTestId } = render(<StudioHostProvider bookId="book-1"><EditorPanel {...dockProps} /></StudioHostProvider>);
     fireEvent.click(getByTestId('studio-editor-toggle-scenes'));
     expect(sceneRailSpy).toHaveBeenCalled();
+  });
+});
+
+// D-CHAPTER-READER-MODE — the "Reader" toolbar button opens the existing book-reader
+// singleton with the ACTIVE book + currently-open chapter, reusing the same host.openPanel
+// seam BooksBrowserPanel uses for another book (no forked reader implementation).
+describe('EditorPanel — D-CHAPTER-READER-MODE reader entry point', () => {
+  beforeEach(() => { hostRef = null; unitState.chapterId = 'ch1'; });
+
+  it('clicking Reader opens book-reader with the active book + chapter', () => {
+    const { getByTestId } = render(
+      <StudioHostProvider bookId="book-1"><HostProbe /><EditorPanel {...dockProps} /></StudioHostProvider>,
+    );
+    const openPanel = vi.spyOn(hostRef!, 'openPanel');
+    fireEvent.click(getByTestId('studio-editor-open-reader'));
+    expect(openPanel).toHaveBeenCalledWith('book-reader', { params: { bookId: 'book-1', chapterId: 'ch1' } });
   });
 });

@@ -88,11 +88,16 @@ export function useBooksList() {
 
   const allLanguages = [...new Set(books.map((b) => b.original_language).filter(Boolean))] as string[];
 
-  const handleCreate = async () => {
-    if (!accessToken || !newTitle.trim()) return;
+  // D-BOOKS-CREATE-TO-STUDIO: returns the new book's id so a caller that wants
+  // to navigate straight into it (BooksPage → /studio) can; BooksBrowserPanel
+  // (browsing OTHER books from inside an already-open studio) ignores the
+  // return value on purpose — auto-navigating there would unmount the active
+  // book's studio out from under the user.
+  const handleCreate = async (): Promise<string | undefined> => {
+    if (!accessToken || !newTitle.trim()) return undefined;
     setCreating(true);
     try {
-      await booksApi.createBook(accessToken, {
+      const created = await booksApi.createBook(accessToken, {
         title: newTitle.trim(),
         description: newDesc || undefined,
         original_language: newLang || undefined,
@@ -102,8 +107,10 @@ export function useBooksList() {
       setNewDesc('');
       setNewLang('');
       await load();
+      return created.book_id;
     } catch (e) {
       setError((e as Error).message);
+      return undefined;
     } finally {
       setCreating(false);
     }

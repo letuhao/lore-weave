@@ -1,6 +1,6 @@
 {
   "title": "Xưởng Sáng Tác",
-  "back": "Quay lại sách",
+  "back": "Quay lại Sách của tôi",
   "settings": "Cài đặt sách",
   "welcome": {
     "tab": "Chào mừng",
@@ -166,7 +166,7 @@
     },
     "book-reader": {
       "title": "Trình đọc",
-      "desc": "Đọc một chương từ sách khác"
+      "desc": "Chế độ đọc không xao nhãng cho một chương"
     },
     "leaderboard-books": {
       "title": "Bảng xếp hạng: Sách",

@@ -56,8 +56,14 @@ export function TOCSidebar({
 
   return (
     <>
-      <div className="fixed inset-0 z-30 bg-black/50" onClick={onClose} />
-      <div className="fixed bottom-0 left-0 top-0 z-[31] w-80 border-r bg-card shadow-xl flex flex-col">
+      {/* D-READER-RESPONSIVE: `absolute` (not `fixed`) so this confines itself to the
+          nearest positioned ancestor — the full viewport for the standalone ReaderPage
+          route (already `relative h-screen`), but the STUDIO PANEL's own bounds when
+          reused inside BookReaderPanel. `fixed` was pinning this to the browser
+          window's edge regardless of where the dock panel actually sits (e.g. docked
+          right, narrower than the window), which is the "poor responsive" bug. */}
+      <div className="absolute inset-0 z-30 bg-black/50" onClick={onClose} />
+      <div className="absolute bottom-0 left-0 top-0 z-[31] w-80 max-w-full border-r bg-card shadow-xl flex flex-col">
         {/* Header */}
         <div className="flex items-center justify-between border-b p-4">
           <div>

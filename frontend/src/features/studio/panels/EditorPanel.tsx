@@ -302,6 +302,19 @@ export function EditorPanel(props: IDockviewPanelProps) {
         >
           {t('panels.original-source.title', { defaultValue: 'Original Source' })}
         </button>
+        {/* D-CHAPTER-READER-MODE — one-click "read this chapter" entry point, reusing the
+            EXISTING book-reader singleton panel (14_utility_panels.md Phase C4) rather than
+            forking a second reader implementation. It's a params-retargeting singleton — opening
+            it with THIS chapter just retargets whatever reader tab is already open (or creates
+            one), same as a Books-panel row click does for another book. */}
+        <button
+          type="button"
+          data-testid="studio-editor-open-reader"
+          onClick={() => host.openPanel('book-reader', { params: { bookId, chapterId } })}
+          className="rounded px-1.5 py-0.5 hover:bg-secondary hover:text-foreground"
+        >
+          {t('panels.book-reader.title', { defaultValue: 'Reader' })}
+        </button>
         {/* #16 Phase 3 — one-click Translate quick-access for the currently-open chapter
             (legacy's Workmode-tab convenience), opens the version-management panel scoped to
             this chapter instead of requiring a trip through the Translation matrix. */}

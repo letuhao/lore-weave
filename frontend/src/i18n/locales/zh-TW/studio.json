@@ -1,6 +1,6 @@
 {
   "title": "寫作工作室",
-  "back": "返回書籍",
+  "back": "返回我的書籍",
   "settings": "書籍設定",
   "welcome": {
     "tab": "歡迎",
@@ -166,7 +166,7 @@
     },
     "book-reader": {
       "title": "閱讀器",
-      "desc": "閱讀另一本書的章節"
+      "desc": "無干擾的章節閱讀畫面"
     },
     "leaderboard-books": {
       "title": "排行榜：書籍",

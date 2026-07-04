@@ -1,6 +1,6 @@
 {
   "title": "Writing Studio",
-  "back": "Back to book",
+  "back": "Back to books",
   "settings": "Book settings",
   "welcome": {
     "tab": "Welcome",
@@ -166,7 +166,7 @@
     },
     "book-reader": {
       "title": "Reader",
-      "desc": "Read a chapter from another book"
+      "desc": "Distraction-free reading view for a chapter"
     },
     "leaderboard-books": {
       "title": "Leaderboard: Books",

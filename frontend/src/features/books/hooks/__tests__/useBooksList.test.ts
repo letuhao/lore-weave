@@ -103,7 +103,8 @@ describe('useBooksList', () => {
       result.current.setNewTitle('New Book');
       result.current.setCreateOpen(true);
     });
-    await act(async () => { await result.current.handleCreate(); });
+    let created: string | undefined;
+    await act(async () => { created = await result.current.handleCreate(); });
     expect(apiMocks.createBook).toHaveBeenCalledWith('tok', {
       title: 'New Book',
       description: undefined,
@@ -113,24 +114,31 @@ describe('useBooksList', () => {
     expect(result.current.newTitle).toBe('');
     // reload() re-fetched — listBooks called once for mount + once for post-create reload
     expect(apiMocks.listBooks).toHaveBeenCalledTimes(2);
+    // D-BOOKS-CREATE-TO-STUDIO: the new book_id is returned so a caller
+    // (BooksPage) can navigate straight into its Studio.
+    expect(created).toBe('b2');
   });
 
-  it('handleCreate is a no-op with a blank title (no API call)', async () => {
+  it('handleCreate is a no-op with a blank title (no API call, returns undefined)', async () => {
     const result = await mountHook();
-    await act(async () => { await result.current.handleCreate(); });
+    let created: string | undefined;
+    await act(async () => { created = await result.current.handleCreate(); });
     expect(apiMocks.createBook).not.toHaveBeenCalled();
+    expect(created).toBeUndefined();
   });
 
-  it('handleCreate surfaces a failure via error without closing the dialog', async () => {
+  it('handleCreate surfaces a failure via error without closing the dialog, returns undefined', async () => {
     apiMocks.createBook.mockRejectedValue(new Error('title already exists'));
     const result = await mountHook();
     act(() => {
       result.current.setNewTitle('Dup');
       result.current.setCreateOpen(true);
     });
-    await act(async () => { await result.current.handleCreate(); });
+    let created: string | undefined;
+    await act(async () => { created = await result.current.handleCreate(); });
     expect(result.current.error).toBe('title already exists');
     expect(result.current.createOpen).toBe(true);
+    expect(created).toBeUndefined();
   });
 });
 

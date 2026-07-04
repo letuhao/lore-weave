@@ -1,6 +1,6 @@
 {
   "title": "執筆スタジオ",
-  "back": "本に戻る",
+  "back": "マイブックに戻る",
   "settings": "本の設定",
   "welcome": {
     "tab": "ようこそ",
@@ -166,7 +166,7 @@
     },
     "book-reader": {
       "title": "リーダー",
-      "desc": "別の書籍の章を読む"
+      "desc": "章を集中して読むための表示"
     },
     "leaderboard-books": {
       "title": "ランキング: 書籍",

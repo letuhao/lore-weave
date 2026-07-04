@@ -16,9 +16,9 @@ export function StudioTopBar({ bookId, bookTitle, onOpenQuickOpen }: Props) {
   return (
     <div className="flex h-11 flex-shrink-0 items-center gap-2 border-b bg-card px-3">
       <Link
-        to={`/books/${bookId}`}
+        to="/books"
         className="flex h-7 w-7 items-center justify-center rounded-md text-muted-foreground hover:bg-secondary hover:text-foreground"
-        title={t('back', { defaultValue: 'Back to book' })}
+        title={t('back', { defaultValue: 'Back to books' })}
       >
         <ArrowLeft className="h-4 w-4" />
       </Link>
