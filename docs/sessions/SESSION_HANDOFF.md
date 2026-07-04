@@ -9,9 +9,21 @@ DOCK-9 hand-rolled modals, 6 DOCK-7 navigate/Link sites, wired a previously-dead
 and — the one genuine new-risk finding from design review — added a **G7 dirty-guard** on
 `wiki-editor`'s params-retargeting (a naive singleton would have silently discarded unsaved prose
 the instant a user opened a different article mid-edit; also fixed the same pre-existing bug on
-the classic page's Back button, which had no dirty-guard at all before this). Full detail + verify
-evidence: [`15_wiki_panels.md`](../specs/2026-07-01-writing-studio/15_wiki_panels.md). No defer/debt
-rows for Wiki. **Note for the next session:** this branch is running several concurrent sessions
+the classic page's Back button, which had no dirty-guard at all before this).
+**Follow-up same day, user-requested — second `/review-impl` + live E2E + live smoke, ALL
+CLOSED (`cc707dfd8`, `d42a00d69`, `88cbf0133`):** a fresh review-impl pass found a DOCK-10 gap
+(unsaved edit lost on dock-tab CLOSE, not just retarget) — fixed with a module-level draft cache.
+A new live Playwright E2E suite (`wiki-panels.spec.ts`, real backend/dockview/TiptapEditor, no
+mocks) then found 3 MORE live-only bugs unit tests structurally couldn't catch (title-refinement
+parent/child effect race, TiptapEditor's own spurious unmount `onUpdate`, a StrictMode-exposed
+non-idempotent cache-restore effect) — all fixed. A manual live-smoke via Playwright MCP at
+narrow dock widths (user asked "is this responsive?") then found and fixed 5 more overflow bugs
+across both `wiki`/`wiki-editor` panels (clipped Save button, off-screen action buttons, a
+fixed-width float squeezing prose unreadably narrow, a hardcoded height that first left dead
+space then over-corrected into hard-clipping content, and an oversized fixed sidebar). Full
+narrative + verify evidence for all three rounds: [`15_wiki_panels.md`](../specs/2026-07-01-writing-studio/15_wiki_panels.md).
+**No defer/debt rows for Wiki** — every finding across all three rounds was fixed in-session, not
+deferred. **Note for the next session:** this branch is running several concurrent sessions
 at once (KG, Chapter-Editor-Parity/COHERENCE, context-budget-law, utility-panels all landed
 commits mid-way through this one) — re-verify shared spine files (`catalog.ts`, `studio.json` x4,
 `frontend_tools.py`, the contract) before trusting this note's file list is still current.
