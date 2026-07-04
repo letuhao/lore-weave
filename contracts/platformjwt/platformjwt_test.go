@@ -4,6 +4,7 @@ import (
 	"crypto/rand"
 	"crypto/rsa"
 	"errors"
+	"strings"
 	"testing"
 	"time"
 
@@ -104,15 +105,39 @@ func TestVerify_RequiresExp(t *testing.T) {
 
 func TestVerify_RejectsTamperedSignature(t *testing.T) {
 	tok := signWith(t, jwt.SigningMethodHS256, testSecret(), goodClaims())
-	// Flip the last character of the signature segment.
+	// Flip a char at the FRONT of the signature segment, NOT the last char: the
+	// last base64url char of a 32-byte HS256 sig encodes only 4 significant bits,
+	// so A/B/C/D decode to identical bytes and a last-char flip is a no-op ~6% of
+	// runs (flaky). A front char carries a full 6 bits → the decoded signature
+	// always changes → verification must fail deterministically.
+	i := strings.LastIndexByte(tok, '.') + 1
 	b := []byte(tok)
-	if b[len(b)-1] == 'A' {
-		b[len(b)-1] = 'B'
+	if b[i] == 'Z' {
+		b[i] = 'Y'
 	} else {
-		b[len(b)-1] = 'A'
+		b[i] = 'Z'
 	}
 	if _, err := Verify(string(b), testSecret()); err == nil {
 		t.Fatal("expected tampered signature to be rejected")
+	}
+}
+
+// TestVerify_AcceptsAudAndIss pins Go↔Python parity on the two standard claims
+// neither verifier enforces: a real auth token may carry `aud`/`iss`, and Verify
+// must accept it (the Python side had to explicitly set verify_aud=False to match
+// this, since PyJWT rejects an aud-bearing token by default). A drift here means
+// the same token would authenticate through Go services but 401 through Python.
+func TestVerify_AcceptsAudAndIss(t *testing.T) {
+	c := goodClaims()
+	c.Audience = jwt.ClaimStrings{"loreweave-api"}
+	c.Issuer = "loreweave-auth"
+	tok := signWith(t, jwt.SigningMethodHS256, testSecret(), c)
+	got, err := Verify(tok, testSecret())
+	if err != nil {
+		t.Fatalf("aud/iss-bearing token must verify (Python parity): %v", err)
+	}
+	if got.Subject != testSubject {
+		t.Errorf("subject = %q, want %q", got.Subject, testSubject)
 	}
 }
 

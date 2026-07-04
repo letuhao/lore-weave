@@ -261,9 +261,13 @@ func (g *streamGuard) settle(ctx context.Context) {
 			inTok = g.finalUsage.InputTokens
 			outTok = g.finalUsage.OutputTokens + reasoning
 		}
+		// LOW-1: bound the completion the same way the input payload is bounded
+		// (stream_handler buildChatStreamInput → boundedPayload) so a very long
+		// generation is logged by reference, not shipped inline. Symmetric with the
+		// sync path (recordSyncUsage bounds both sides).
 		var outPayload map[string]any
 		if c := g.completion.String(); c != "" {
-			outPayload = map[string]any{"content": c}
+			outPayload = boundedPayload(map[string]any{"content": c})
 		}
 		if err := g.guardrail.RecordUsage(ctx, billing.UsageRecord{
 			RequestID:     g.jobID,

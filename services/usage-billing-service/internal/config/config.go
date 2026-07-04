@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"strconv"
+	"strings"
 	"time"
 )
 
@@ -20,6 +21,16 @@ type Config struct {
 	// must not also expose every logged prompt. Required (fail-to-start) —
 	// mirrors the JWT_SECRET ≥32-char rule.
 	LLMPayloadEncryptionKey string
+
+	// LLMPayloadEncryptionKeysRetired are PREVIOUS dedicated KEK values, kept only
+	// for DECRYPTION so a genuine key rotation works: to rotate, move the current
+	// LLM_PAYLOAD_ENCRYPTION_KEY value into LLM_PAYLOAD_ENCRYPTION_KEYS_RETIRED
+	// (comma-separated) and set a fresh LLM_PAYLOAD_ENCRYPTION_KEY. New rows wrap
+	// under the new key; rows written under a retired key still decrypt (the read
+	// path tries current -> legacy -> each retired). Without this, rotating the KEK
+	// orphaned every prior row — the LOG-5 "rotatable key version" promise was
+	// documented but unbacked. Optional; each entry must be >=32 chars (else weak).
+	LLMPayloadEncryptionKeysRetired []string
 
 	// Phase 6a — spend-guardrail default limits (USD). Config-driven, no
 	// hardcoded literal (billing ADR P5). Seeded into a user's
@@ -69,6 +80,21 @@ func Load() (*Config, error) {
 	}
 	if c.LLMPayloadEncryptionKey == c.JWTSecret {
 		return nil, fmt.Errorf("LLM_PAYLOAD_ENCRYPTION_KEY must differ from JWT_SECRET")
+	}
+	// Retired KEKs (decrypt-only, for rotation). Each non-empty entry must be
+	// ≥32 chars — a short retired key would silently weaken via the zero-pad
+	// coercion, defeating the fail-closed intent of the active-key rule.
+	if v := os.Getenv("LLM_PAYLOAD_ENCRYPTION_KEYS_RETIRED"); v != "" {
+		for _, k := range strings.Split(v, ",") {
+			k = strings.TrimSpace(k)
+			if k == "" {
+				continue
+			}
+			if len(k) < 32 {
+				return nil, fmt.Errorf("each LLM_PAYLOAD_ENCRYPTION_KEYS_RETIRED entry must be at least 32 characters")
+			}
+			c.LLMPayloadEncryptionKeysRetired = append(c.LLMPayloadEncryptionKeysRetired, k)
+		}
 	}
 
 	daily, err := requiredFloat("GUARDRAIL_DEFAULT_DAILY_USD")

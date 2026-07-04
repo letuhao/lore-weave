@@ -152,3 +152,20 @@ Unify the two correlation-id namespaces (OTel-only) · shared logging SDK per la
 ## Notes
 - The MMO/foundation track already contains best-in-class implementations of most of these (typed logger, KMS crypto-shred, resilience matrix, SSRF client, adversarial JWT tests). Much of P1/P2 is **"point the existing enterprise machinery at the product services"**, not build-from-scratch.
 - Ordering suggestion: P0-6 (activate pre-commit + gitleaks all-branch) is a one-liner with outsized value; P0-1..P0-5 are cheap root-cause-clear bugs; then P1 gates top-down by leverage (timeout→Python + logging-lint + dep-scanning first — most machinery to copy).
+
+---
+
+## `/review-impl` pass over the P0/P1/JWT commits (2026-07-04)
+
+A 3-reviewer cold-start adversarial review of `a7ebdb9d4`+`ebff3448f`+`6a60e3b0c`+`6edfdae7d`. **8 findings fixed-now** (JWT Go↔Python `aud` parity drift + the same flaky last-char tamper test in BOTH suites; usage-billing KEK-rotation keyring `LLM_PAYLOAD_ENCRYPTION_KEYS_RETIRED` + dead `encryptPayload` removed; provider-registry sync embed/rerank/web_search now record failures too via a `status` param + the streaming completion is `boundedPayload`-capped; chat evaluate.py — the THIRD `build_context` consumer — now deep-neutralizes the judge prompt; injection_defense docstring made accurate). Verified: platformjwt `go test` + 27 authn pytest, usage-billing + provider-registry full Go suites, chat 14 injection + 28 eval tests.
+
+### Deferred findings (each earns its gate row)
+| ID | Finding | Gate | Trigger |
+|---|---|---|---|
+| `D-REVIEW-EMBED-AUDIT-COST` | Sync **embed** audit `usage_logs` row omits `TotalCostUSD` → flat-rate fallback over-counts free-local embeds / under-counts cloud. Audit-only (spend is enforced by the guardrail reserve, not this row). | #2 — needs embed-pricing resolution plumbing (the embed handler doesn't fetch pricing JSONB today) | when the sync paths get pricing resolution, or a billing-report accuracy pass |
+| `D-REVIEW-AESKEY-DERIVE` | `usage-billing normalizeAESKey` zero-pads/truncates the KEK to 32 bytes instead of `sha256`-deriving (a >32-byte passphrase only contributes its first 32 bytes; empty→all-zero key in tests). Prod is gated ≥32 so it's latent. | #2 — switching derivation orphans every existing encrypted row (needs a re-encrypt migration) | a KEK-format migration |
+| `D-REVIEW-DECRYPT-STATUS` | `getUsageLogDetail` returns 200 + `null` payloads on a decrypt FAILURE, indistinguishable from a genuinely-empty payload, on an audited endpoint. | #2 — adds a response field; must check the FE usage-log-detail consumer first | next usage-log-detail contract change |
+| `D-REVIEW-VOICE-INJECT-TEST` | Voice injection-defense splice (`voice_stream_service.py:339,348-349`) has no regression test (code is correct + symmetric with the fully-tested text path). | #2 — needs a voice STT/TTS test harness that doesn't exist yet | when a voice test harness is built |
+| `D-REVIEW-SANITIZER-ROLE-COLON` | Shared `loreweave_grounding.sanitize` `role_colon_prefix` over-tags legit transcript memory (`User:`/`System:` lines) with `[FICTIONAL]`. | #2 — a shared-SDK regex change; a stronger anchor (line-start) risks weakening injection detection → needs its own review | a sanitizer-precision pass |
+| `D-REVIEW-SANITIZER-SPAN-PRECISE` | On a hit, the WHOLE block is NFKC-folded (from the prenormalized text), not just the flagged spans — legit content in a flagged block is normalized. (Docstring now states this accurately.) | #2 — span-precise splice-into-raw is a structural SDK enhancement | same sanitizer-precision pass |
+| `D-REVIEW-NOTIF-POISON-TEST` | No delivery-level test for the notification consumer's poison-category `Nack(false,false)` no-wedge branch. | low value — the branch is currently unreachable-by-construction (`transformTerminalEvent` hardcodes `llm_job`); the guard itself is correct | if the consumer's category becomes dynamic |

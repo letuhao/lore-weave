@@ -89,7 +89,14 @@ def test_requires_exp():
 
 def test_rejects_tampered_signature():
     tok = _encode(_good_payload())
-    tampered = tok[:-1] + ("A" if tok[-1] != "A" else "B")
+    # Mutate a char at the FRONT of the signature segment, NOT the last char:
+    # the last base64url char of a 32-byte HS256 sig encodes only 4 significant
+    # bits, so A/B/C/D decode to identical bytes and a last-char flip is a no-op
+    # ~6% of the time (flaky). A front char contributes a full 6 bits → the
+    # decoded signature always changes → verification must fail deterministically.
+    head, _, sig = tok.rpartition(".")
+    flipped = ("Z" if sig[0] != "Z" else "Y") + sig[1:]
+    tampered = f"{head}.{flipped}"
     with pytest.raises(InvalidAccessToken):
         verify_access_token(tampered, SECRET)
 
@@ -128,6 +135,37 @@ def test_rejects_non_string_sub():
     tok = _encode(_good_payload(sub=12345))
     with pytest.raises(InvalidAccessToken):
         verify_access_token(tok, SECRET)
+
+
+def test_accepts_token_carrying_aud_go_parity():
+    # Go's contracts/platformjwt.Verify never inspects `aud`. PyJWT's default
+    # (verify_aud=True, no `audience` passed) would REJECT a token that merely
+    # carries an `aud` claim — a real accept/reject drift vs Go. The verifier
+    # disables aud verification, so an auth token with `aud` set is accepted by
+    # BOTH languages. Guards against a silent two-language contract drift.
+    tok = _encode(_good_payload(aud="loreweave-api"))
+    claims = verify_access_token(tok, SECRET)
+    assert str(claims.user_id) == SUBJECT
+
+    tok_list = _encode(_good_payload(aud=["a", "b"]))
+    assert str(verify_access_token(tok_list, SECRET).user_id) == SUBJECT
+
+
+def test_accepts_token_carrying_iss_go_parity():
+    # Go never pins `iss` either; PyJWT only checks it when `issuer=` is passed
+    # (we never do), so an `iss`-bearing token is accepted by both.
+    tok = _encode(_good_payload(iss="loreweave-auth"))
+    assert str(verify_access_token(tok, SECRET).user_id) == SUBJECT
+
+
+def test_float_exp_coerced_to_int():
+    # RFC 7519 NumericDate may be fractional. PyJWT enforces expiry regardless;
+    # the informational `expires_at` must still be an int (not dropped to None).
+    exp_float = (_now() + dt.timedelta(minutes=10)).timestamp() + 0.5
+    tok = _encode(_good_payload(exp=exp_float))
+    claims = verify_access_token(tok, SECRET)
+    assert isinstance(claims.expires_at, int)
+    assert claims.expires_at == int(exp_float)
 
 
 # ── FastAPI dependency shims ─────────────────────────────────────────────────

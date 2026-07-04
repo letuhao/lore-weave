@@ -37,7 +37,7 @@ func TestRecordSyncUsage_LogsEmbedLikeCall(t *testing.T) {
 
 	s := &Server{guardrail: billing.NewGuardrailClient(srv.URL, "tok", nil)}
 	userID, modelRef := uuid.New(), uuid.New()
-	s.recordSyncUsage(context.Background(), userID, modelRef, "embed", 12, 0,
+	s.recordSyncUsage(context.Background(), userID, modelRef, "embed", "success", 12, 0,
 		map[string]any{"texts": []any{"alpha", "beta"}},
 		map[string]any{"count": 2, "dimension": 1024})
 
@@ -78,7 +78,41 @@ func TestRecordSyncUsage_LogsEmbedLikeCall(t *testing.T) {
 // must silently no-op, never panic.
 func TestRecordSyncUsage_NilGuardrailNoPanic(t *testing.T) {
 	s := &Server{} // guardrail nil
-	s.recordSyncUsage(context.Background(), uuid.New(), uuid.New(), "embed", 1, 0, nil, nil)
+	s.recordSyncUsage(context.Background(), uuid.New(), uuid.New(), "embed", "success", 1, 0, nil, nil)
+}
+
+// TestRecordSyncUsage_ProviderErrorStatus — MED-1: a FAILED sync call records an
+// audit row with request_status="provider_error" (previously the status was
+// hardcoded "success" and error paths recorded nothing at all).
+func TestRecordSyncUsage_ProviderErrorStatus(t *testing.T) {
+	got := make(chan map[string]any, 1)
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var m map[string]any
+		if raw, _ := io.ReadAll(r.Body); raw != nil {
+			_ = json.Unmarshal(raw, &m)
+			got <- m
+		}
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte(`{"status":"ok"}`))
+	}))
+	defer srv.Close()
+
+	s := &Server{guardrail: billing.NewGuardrailClient(srv.URL, "tok", nil)}
+	s.recordSyncUsage(context.Background(), uuid.New(), uuid.New(), "rerank", "provider_error", 0, 0,
+		map[string]any{"query": "q"}, map[string]any{"error": "rerank upstream 502"})
+
+	select {
+	case body := <-got:
+		if body["request_status"] != "provider_error" {
+			t.Errorf("request_status: got %v want provider_error", body["request_status"])
+		}
+		op, ok := body["output_payload"].(map[string]any)
+		if !ok || op["error"] == nil {
+			t.Errorf("output_payload must carry the error, got %v", body["output_payload"])
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatal("recordSyncUsage did not POST /record within 2s")
+	}
 }
 
 // TestBoundedPayload_PassesThroughUnderCap keeps a small payload intact.

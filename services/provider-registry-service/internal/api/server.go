@@ -2746,13 +2746,16 @@ func (s *Server) getInternalModelInfo(w http.ResponseWriter, r *http.Request) {
 // build no guardrail). Payloads are bounded (reference-first when huge), and a
 // fresh uuidv7 request_id makes each call its own audit row. These sync paths are
 // user_model-only (the handlers reject any other model_source before calling here).
-func (s *Server) recordSyncUsage(ctx context.Context, userID, modelRef uuid.UUID, operation string, inTok, outTok int, reqPayload, respPayload map[string]any) {
+func (s *Server) recordSyncUsage(ctx context.Context, userID, modelRef uuid.UUID, operation, status string, inTok, outTok int, reqPayload, respPayload map[string]any) {
 	if s.guardrail == nil {
 		return
 	}
 	reqID, err := uuid.NewV7()
 	if err != nil {
 		return
+	}
+	if status == "" {
+		status = "success"
 	}
 	detached := observability.DetachedContext(ctx)
 	rec := billing.UsageRecord{
@@ -2763,7 +2766,7 @@ func (s *Server) recordSyncUsage(ctx context.Context, userID, modelRef uuid.UUID
 		Operation:     operation,
 		InputTokens:   inTok,
 		OutputTokens:  outTok,
-		RequestStatus: "success",
+		RequestStatus: status,
 		InputPayload:  boundedPayload(reqPayload),
 		OutputPayload: boundedPayload(respPayload),
 	}
@@ -2853,12 +2856,18 @@ WHERE um.user_model_id=$1 AND um.owner_user_id=$2 AND um.is_active=true AND pc.s
 	results, err := provider.Rerank(r.Context(), s.invokeClient, endpointBaseURL, secret, providerModelName, in.Query, in.Documents)
 	if err != nil {
 		// Upstream rerank failure ⇒ 502 so the caller degrades (not a client bug).
+		// MED-1: record the FAILED call too — a provider error is exactly what you'd
+		// want readable in the audit ledger; recording only successes recreates the
+		// audit hole P0-2 closed on the streaming path.
+		s.recordSyncUsage(r.Context(), userID, modelRef, "rerank", "provider_error", 0, 0,
+			map[string]any{"query": in.Query, "documents": in.Documents},
+			map[string]any{"error": err.Error()})
 		writeError(w, http.StatusBadGateway, "RERANK_UPSTREAM_ERROR", "rerank service error")
 		return
 	}
 	// P0-2 (B4) — audit the rerank call: query + documents in, scored results out.
 	// Rerank carries no token usage → tokens 0.
-	s.recordSyncUsage(r.Context(), userID, modelRef, "rerank", 0, 0,
+	s.recordSyncUsage(r.Context(), userID, modelRef, "rerank", "success", 0, 0,
 		map[string]any{"query": in.Query, "documents": in.Documents},
 		map[string]any{"results": results})
 	writeJSON(w, http.StatusOK, map[string]any{"model": providerModelName, "results": results})
@@ -2938,12 +2947,16 @@ LIMIT 1
 		provider.WebSearchOptions{MaxResults: in.MaxResults, SearchDepth: in.SearchDepth})
 	if err != nil {
 		// Upstream provider failure ⇒ 502 so the caller degrades (not a client bug).
+		// MED-1: audit the failed call too (see internalRerank).
+		s.recordSyncUsage(r.Context(), userID, modelRef, "web_search", "provider_error", 0, 0,
+			map[string]any{"query": in.Query, "max_results": in.MaxResults, "search_depth": in.SearchDepth},
+			map[string]any{"error": err.Error()})
 		writeError(w, http.StatusBadGateway, "WEBSEARCH_UPSTREAM_ERROR", "web search provider error")
 		return
 	}
 	// P0-2 (B4) — audit the web-search call: query + options in, answer + results out.
 	// Web search carries no token usage → tokens 0.
-	s.recordSyncUsage(r.Context(), userID, modelRef, "web_search", 0, 0,
+	s.recordSyncUsage(r.Context(), userID, modelRef, "web_search", "success", 0, 0,
 		map[string]any{"query": in.Query, "max_results": in.MaxResults, "search_depth": in.SearchDepth},
 		map[string]any{"answer": answer, "results": results})
 	writeJSON(w, http.StatusOK, map[string]any{
@@ -3075,6 +3088,11 @@ WHERE um.user_model_id=$1 AND um.owner_user_id=$2 AND um.is_active=true AND pc.s
 	result, err := provider.Embed(r.Context(), adapter, s.invokeClient, endpointBaseURL, secret, providerModelName, in.Texts)
 	if err != nil {
 		errMsg := err.Error()
+		// MED-1: audit the failed embed too (see internalRerank) — the texts that
+		// triggered a provider error are the most useful thing to have in the ledger.
+		s.recordSyncUsage(r.Context(), userID, modelRef, "embed", "provider_error", 0, 0,
+			map[string]any{"texts": in.Texts},
+			map[string]any{"error": errMsg})
 		// Map upstream 4xx (bad model, unsupported) to 400 so the caller
 		// can distinguish "wrong model" from "provider down."
 		if strings.Contains(errMsg, "provider error 4") || strings.Contains(errMsg, "does not support") {
@@ -3091,7 +3109,7 @@ WHERE um.user_model_id=$1 AND um.owner_user_id=$2 AND um.is_active=true AND pc.s
 	// P0-2 (B4) — audit the embed call: the input texts in, vector count + dimension
 	// out (NOT the vectors themselves — huge + useless in a ledger). input_tokens uses
 	// the provider's reported prompt_tokens when present (0 → provider omitted it).
-	s.recordSyncUsage(r.Context(), userID, modelRef, "embed", result.PromptTokens, 0,
+	s.recordSyncUsage(r.Context(), userID, modelRef, "embed", "success", result.PromptTokens, 0,
 		map[string]any{"texts": in.Texts},
 		map[string]any{"count": len(result.Embeddings), "dimension": result.Dimension, "model": result.Model})
 	writeJSON(w, http.StatusOK, result)

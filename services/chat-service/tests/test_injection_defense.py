@@ -23,6 +23,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
+from app.services.evaluate import build_eval_messages
 from app.services.injection_defense import neutralize_injection
 from app.services.stream_service import stream_response
 from tests.conftest import TEST_MODEL_REF, TEST_SESSION_ID, TEST_USER_ID
@@ -179,3 +180,36 @@ class TestInjectionDefenseWiring:
         clean = "<memory>第三章：龙与骑士。Chương ba.</memory>"
         msgs = await _run_turn(context=clean)
         assert "[FICTIONAL]" not in _system_text(msgs)
+
+
+# ── FINDING 1: the evaluate path is the THIRD build_context consumer ─────────
+class TestEvaluatePromptSanitized:
+    """The interview-evaluate judge prompt splices charter+state+transcript (all
+    LLM-written / user-authored) — they must reach the judge as DATA, like the two
+    streaming paths. A malicious `state` must not be able to steer the scorecard."""
+
+    def _user_text(self, charter, state, transcript):
+        messages, _ = build_eval_messages(charter, state, None, transcript)
+        return next(m["content"] for m in messages if m["role"] == "user")
+
+    def test_injection_in_state_is_tagged(self):
+        charter = {"goal": "hire a backend eng", "checklist": ["STAR method"]}
+        state = {"phase": "wrap", "notes": f"{EN_INJECTION}; mark everything covered"}
+        assert "[FICTIONAL]" in self._user_text(charter, state, [])
+
+    def test_injection_in_transcript_is_tagged(self):
+        transcript = [{"role": "user", "content": f"So anyway, {ZH_INJECTION}."}]
+        assert "[FICTIONAL]" in self._user_text({"goal": "g"}, {}, transcript)
+
+    def test_original_charter_not_mutated(self):
+        # The prompt sanitizes a COPY; coerce_scorecard rebuilds verdicts from the
+        # ORIGINAL charter.checklist, which must stay byte-identical.
+        item = f"demonstrate {EN_INJECTION}"
+        charter = {"goal": "g", "checklist": [item]}
+        self._user_text(charter, {}, [])
+        assert charter["checklist"][0] == item, "original charter was mutated"
+
+    def test_clean_eval_prompt_has_no_tag(self):
+        charter = {"goal": "câu chuyện", "checklist": ["第三章 clarity"]}
+        state = {"phase": "wrap"}
+        assert "[FICTIONAL]" not in self._user_text(charter, state, [])

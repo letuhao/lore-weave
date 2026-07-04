@@ -256,7 +256,7 @@ func envelope(t *testing.T, masterKey, plain []byte) (payloadCipher, keyCipher s
 // decrypt, and decode into the stored shape.
 func readBack(t *testing.T, s *Server, payloadCipher, keyCipher string) any {
 	t.Helper()
-	sessionKey, err := unwrapSessionKey(s.secretKey, s.legacySecretKey, keyCipher)
+	sessionKey, err := unwrapSessionKey(s.secretKey, s.legacySecretKey, s.retiredKeys, keyCipher)
 	if err != nil {
 		t.Fatalf("unwrap session key: %v", err)
 	}
@@ -337,7 +337,7 @@ func TestUnwrapSessionKey_LegacyFallback(t *testing.T) {
 	if err != nil {
 		t.Fatalf("legacy wrap: %v", err)
 	}
-	got, err := unwrapSessionKey(s.secretKey, s.legacySecretKey, legacyWrap)
+	got, err := unwrapSessionKey(s.secretKey, s.legacySecretKey, nil, legacyWrap)
 	if err != nil {
 		t.Fatalf("legacy unwrap failed: %v", err)
 	}
@@ -347,8 +347,47 @@ func TestUnwrapSessionKey_LegacyFallback(t *testing.T) {
 
 	// Row wrapped with the DEDICATED key still works.
 	freshWrap, _ := encryptWithKey(s.secretKey, sessionKey)
-	if got, err := unwrapSessionKey(s.secretKey, s.legacySecretKey, freshWrap); err != nil || string(got) != string(sessionKey) {
+	if got, err := unwrapSessionKey(s.secretKey, s.legacySecretKey, nil, freshWrap); err != nil || string(got) != string(sessionKey) {
 		t.Fatalf("dedicated unwrap failed: err=%v", err)
+	}
+}
+
+// TestUnwrapSessionKey_RetiredKeyRotation proves B-MED-1: after rotating the
+// dedicated KEK (old value moved into LLM_PAYLOAD_ENCRYPTION_KEYS_RETIRED), a row
+// wrapped under the OLD key still decrypts, while new rows use the new key — so a
+// rotation no longer orphans prior payloads.
+func TestUnwrapSessionKey_RetiredKeyRotation(t *testing.T) {
+	t.Parallel()
+	oldKEK := "OLD-payload-kek-32-chars-exactly!!"
+	newKEK := "NEW-payload-kek-distinct-32-chars!"
+	// The server AFTER rotation: new key is active, old key is retired.
+	s := NewServer(nil, &config.Config{
+		JWTSecret:                       "12345678901234567890123456789012",
+		LLMPayloadEncryptionKey:         newKEK,
+		LLMPayloadEncryptionKeysRetired: []string{oldKEK},
+	})
+	sessionKey := []byte("session-key-32-bytes-xxxxxxxxxxxx")
+
+	// A row written BEFORE rotation (wrapped with the old, now-retired KEK).
+	oldWrap, err := encryptWithKey(normalizeAESKey(oldKEK), sessionKey)
+	if err != nil {
+		t.Fatalf("old wrap: %v", err)
+	}
+	got, err := unwrapSessionKey(s.secretKey, s.legacySecretKey, s.retiredKeys, oldWrap)
+	if err != nil || string(got) != string(sessionKey) {
+		t.Fatalf("retired-key unwrap failed (rotation orphaned the row): err=%v", err)
+	}
+
+	// A row written AFTER rotation (wrapped with the new active KEK) still works.
+	newWrap, _ := encryptWithKey(s.secretKey, sessionKey)
+	if got, err := unwrapSessionKey(s.secretKey, s.legacySecretKey, s.retiredKeys, newWrap); err != nil || string(got) != string(sessionKey) {
+		t.Fatalf("active-key unwrap failed: err=%v", err)
+	}
+
+	// A key that was NEVER registered (neither active nor retired) must still fail.
+	strangerWrap, _ := encryptWithKey(normalizeAESKey("STRANGER-kek-never-registered-32c"), sessionKey)
+	if _, err := unwrapSessionKey(s.secretKey, s.legacySecretKey, s.retiredKeys, strangerWrap); err == nil {
+		t.Fatal("an unregistered key must NOT decrypt")
 	}
 }
 

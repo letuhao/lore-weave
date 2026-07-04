@@ -38,6 +38,10 @@ type Server struct {
 	// only — rows written before the dedicated-key migration were wrapped with
 	// it. Never used for new writes. Empty when JWT_SECRET is unset (tests).
 	legacySecretKey []byte
+	// retiredKeys are previous dedicated KEKs, tried on the READ path only so a
+	// rotation of LLM_PAYLOAD_ENCRYPTION_KEY does not orphan rows wrapped under an
+	// older value (B-MED-1). New rows always wrap under secretKey.
+	retiredKeys [][]byte
 }
 
 // normalizeAESKey coerces a secret string into a 32-byte AES-256 key (truncate
@@ -58,12 +62,17 @@ func NewServer(pool *pgxpool.Pool, cfg *config.Config) *Server {
 	if cfg.JWTSecret != "" {
 		legacy = normalizeAESKey(cfg.JWTSecret)
 	}
+	var retired [][]byte
+	for _, k := range cfg.LLMPayloadEncryptionKeysRetired {
+		retired = append(retired, normalizeAESKey(k))
+	}
 	return &Server{
 		pool:            pool,
 		cfg:             cfg,
 		secret:          []byte(cfg.JWTSecret),
 		secretKey:       normalizeAESKey(cfg.LLMPayloadEncryptionKey),
 		legacySecretKey: legacy,
+		retiredKeys:     retired,
 	}
 }
 
@@ -109,9 +118,11 @@ func marshalPayload(v any) []byte {
 }
 
 // unwrapSessionKey decrypts a row's wrapped session key, trying the dedicated
-// KEK first and falling back to the legacy JWT-derived KEK for rows written
-// before the dedicated-key migration. Returns an error only if BOTH fail.
-func unwrapSessionKey(primary, legacy []byte, keyCipher string) ([]byte, error) {
+// KEK first, then the legacy JWT-derived KEK (rows written before the
+// dedicated-key migration), then each retired KEK (rows written before a key
+// rotation — B-MED-1). Returns an error only if ALL candidates fail. New rows
+// always wrap under the primary key; retired keys are decrypt-only.
+func unwrapSessionKey(primary, legacy []byte, retired [][]byte, keyCipher string) ([]byte, error) {
 	sessionKey, err := decryptWithKey(primary, keyCipher)
 	if err == nil {
 		return sessionKey, nil
@@ -121,6 +132,16 @@ func unwrapSessionKey(primary, legacy []byte, keyCipher string) ([]byte, error) 
 			return sk, nil
 		}
 	}
+	for _, rk := range retired {
+		if len(rk) == 0 {
+			continue
+		}
+		if sk, e2 := decryptWithKey(rk, keyCipher); e2 == nil {
+			return sk, nil
+		}
+	}
+	// Return the primary-key error: the most useful diagnostic (a corrupt row or
+	// a key that was never registered), not a stale retired-key mismatch.
 	return nil, err
 }
 
@@ -242,26 +263,6 @@ func (s *Server) auth(r *http.Request) (uuid.UUID, string, bool) {
 		return uuid.Nil, "", false
 	}
 	return id, claims.Role, true
-}
-
-func (s *Server) encryptPayload(v map[string]any) (cipherText string, keyCipher string, keyRef string, err error) {
-	plain, err := json.Marshal(v)
-	if err != nil {
-		return "", "", "", err
-	}
-	sessionKey := make([]byte, 32)
-	if _, err := rand.Read(sessionKey); err != nil {
-		return "", "", "", err
-	}
-	bodyCipher, err := encryptWithKey(sessionKey, plain)
-	if err != nil {
-		return "", "", "", err
-	}
-	keyCipherRaw, err := encryptWithKey(s.secretKey, sessionKey)
-	if err != nil {
-		return "", "", "", err
-	}
-	return bodyCipher, keyCipherRaw, s.payloadKeyRef(), nil
 }
 
 func encryptWithKey(key []byte, plain []byte) (string, error) {
@@ -669,8 +670,9 @@ FROM usage_log_details WHERE usage_log_id=$1
 `, usageLogID).Scan(&keyCipher, &inputCipher, &outputCipher)
 	if err == nil && keyCipher != "" {
 		// Unwrap with the dedicated KEK; fall back to the legacy JWT-derived KEK
-		// for rows written before the dedicated-key migration (P0-3 back-compat).
-		if sessionKey, err2 := unwrapSessionKey(s.secretKey, s.legacySecretKey, keyCipher); err2 == nil {
+		// (rows before the dedicated-key migration, P0-3) and then any retired KEK
+		// (rows before a key rotation, B-MED-1).
+		if sessionKey, err2 := unwrapSessionKey(s.secretKey, s.legacySecretKey, s.retiredKeys, keyCipher); err2 == nil {
 			if inputPlain, err3 := decryptWithKey(sessionKey, inputCipher); err3 == nil {
 				inputPayload = decodePayloadBytes(inputPlain)
 			} else {

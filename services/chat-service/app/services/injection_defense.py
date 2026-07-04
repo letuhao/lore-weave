@@ -18,9 +18,15 @@ which is Unicode-aware (NFKC + zero-width strip + base64 decode-scan).
 Contract, matching knowledge-service's shim:
   * ONLY injected/retrieved content is sanitized — NEVER the user's own message and
     NEVER the user's own session persona/system prompt (that is their input).
-  * Clean text is returned UNCHANGED (raw, not NFKC-folded) so legitimate
-    multilingual (CJK / Vietnamese) content is never mangled. Only text that
-    actually flags is de-obfuscated + tagged with the inert `[FICTIONAL] ` marker.
+  * CLEAN text is returned byte-for-byte UNCHANGED (no NFKC fold), so a block with
+    no injection keeps its legitimate multilingual (CJK / Vietnamese) content exactly.
+  * A FLAGGED block is normalized in FULL — the whole block is de-obfuscated (NFKC +
+    zero-width/bidi strip) and the injection spans tagged with the inert
+    `[FICTIONAL] ` marker. So legit content that happens to share a flagged block may
+    be Unicode-normalized (e.g. full-width→half-width); this is acceptable because a
+    block carrying an injection is already suspect, and canonical CJK ideographs are
+    unchanged by NFKC. (Span-precise splicing that leaves un-flagged bytes untouched
+    is a deferred SDK enhancement — see the audit backlog.)
   * Idempotent (the SDK's lookbehind guard) and None/empty-safe.
 """
 
@@ -34,9 +40,9 @@ __all__ = ["neutralize_injection"]
 def neutralize_injection(text: str | None) -> str:
     """Tag any injection spans in untrusted retrieved `text` — returns safe text.
 
-    Returns the input unchanged when it is clean (no NFKC folding of legitimate
-    multilingual content); only flagged spans are de-obfuscated + `[FICTIONAL] `
-    tagged. None/empty → `""`.
+    Clean text → returned byte-for-byte unchanged (no NFKC fold). A block that
+    flags → normalized in full (NFKC + zero-width strip) with the injection spans
+    `[FICTIONAL] `-tagged. None/empty → `""`. See the module docstring.
     """
     if not text:
         return ""

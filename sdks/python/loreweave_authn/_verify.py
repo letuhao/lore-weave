@@ -63,7 +63,13 @@ def verify_access_token(token: str, secret: str) -> AccessClaims:
             token,
             secret,
             algorithms=["HS256"],
-            options={"require": ["exp"]},
+            # `verify_aud=False` for Go parity: contracts/platformjwt.Verify never
+            # inspects `aud`. PyJWT's default (`verify_aud=True` with no `audience`
+            # passed) REJECTS a token that merely CARRIES an `aud` claim — so an
+            # auth-service token with `aud` set would be accepted by Go but 401'd by
+            # Python. Neither side pins `iss` (PyJWT only checks it when `issuer=` is
+            # given), so `iss` is already parity. Keep the two verifiers identical.
+            options={"require": ["exp"], "verify_aud": False},
         )
     except jwt.ExpiredSignatureError as exc:
         raise InvalidAccessToken("token expired") from exc
@@ -83,10 +89,14 @@ def verify_access_token(token: str, secret: str) -> AccessClaims:
     except (ValueError, TypeError) as exc:
         raise InvalidAccessToken("invalid sub claim") from exc
 
+    # `exp` may be an int or a float (RFC 7519 allows a NumericDate with a
+    # fractional second); PyJWT already enforced expiry, so this is purely the
+    # informational copy. Coerce a numeric exp to int; anything else → None.
     exp = data.get("exp")
+    expires_at = int(exp) if isinstance(exp, (int, float)) and not isinstance(exp, bool) else None
     return AccessClaims(
         user_id=user_id,
         subject=sub,
-        expires_at=exp if isinstance(exp, int) else None,
+        expires_at=expires_at,
         raw=data,
     )
