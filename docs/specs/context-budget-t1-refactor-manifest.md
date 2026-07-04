@@ -24,22 +24,30 @@ never a silent truncation (`{total,returned,truncated}` meta).
 | `memory_timeline` | knowledge | ✅ refactored | `MEMORY_TIMELINE_REF_FIELDS`; `executor.py:531`. `memory_recall_entity` → 🟢 single-object read (exempt, `executor.py:435`) |
 | `kg_graph_query` / `kg_world_query` / `kg_multi_query` | knowledge | ✅ refactored | shared subgraph projection (`GRAPH_NODE/EDGE_REF_FIELDS`, `graph_schema_tools.py:170`) — bounded node+edge refs, not the full tree |
 | `kg_entity_edge_timeline` / `kg_triage_list` | knowledge | ✅ refactored | `TIMELINE_INSTANCE_REF_FIELDS` (`:1294`) / `TRIAGE_GROUP_REF_FIELDS` (`:1397`); snapshot-pinned |
-| `kg_schema_read` / `kg_list_templates` / `kg_view_read` / `kg_project_list` | knowledge | ⏳ verify-at-pickup | no `apply_response_contract` — inherently small (a schema / template list / view def / project list). Confirm each is genuinely bounded → mark 🟢, else add `detail`. Not a dump risk. |
+| `kg_schema_read` / `kg_list_templates` / `kg_view_read` / `kg_project_list` | knowledge | 🟢 `@small_return` | confirmed 2026-07-05 — each carries a documented `@small_return:` note: one resolved schema doc / compact template metadata refs / short saved-view rows / project list. No heavy body. |
 | `composition_motif_search` / `_motif_book_list` / `_motif_suggest_for_chapter` / `_arc_suggest` | composition | ✅ refactored | `_MOTIF_REF_FIELDS`/`_MOTIF_BOOK_REF_FIELDS`/`_ARC_REF_FIELDS`; calls at `server.py:1245,1339,1396,1455`; `test_motif_response_contract.py` |
-| `composition_motif_link_list` | composition | ⏳ verify-at-pickup | a link LIST — confirm it's bounded / add `detail`+`limit` if it can be large (`server.py:1750`) |
+| `composition_motif_link_list` | composition | 🟢 `@small_return` | confirmed 2026-07-05 — documented `@small_return`: bounded lightweight edge rows (kind/ord/direction + neighbor code); "a detail=summary would equal full" (`server.py:1750`) |
 | `_motif_get` / `_motif_mine` / `_arc_import_analyze` | composition | 🟢 single-read / propose | single-object read or a propose→confirm op (returns a token + estimate, not a SET) — exempt from the summary default |
 | `composition_list_canon_rules` | composition | 🟢 `@small_return` | inherently small (status/rule list); exempt, honesty-checked by snapshot |
 | `composition_get_generation_job` | composition | 🟢 single-read | `get_by_id`, exempt from summary default |
 | `translation_list_versions` / `translation_job_status` | translation | ✅ refactored | `apply_response_contract` `mcp/server.py:278,351`; snapshot-pinned |
-| `translation_coverage` / `translation_segment_status` | translation | ⏳ verify-at-pickup | not contracted — `coverage` is per-language stats (likely small → 🟢); `segment_status` is per-segment and CAN be large → add `detail`+`limit` (reference-first, no full translated bodies). The one genuine translation gap. |
+| `translation_coverage` / `translation_segment_status` | translation | 🟢 `@small_return` | confirmed 2026-07-05 — both carry a documented `@small_return`: `coverage` = a scalar per-(chapter×language) count matrix, no body; `segment_status` = per-segment SCALAR flags + block indices (no source/translated text), and `dirty_count`/`needs_count` already summarize. |
 | `jobs_get` | jobs | 🟢 single-read | `get_by_id`, exempt |
 
 Legend: ✅ done+proven · ⏳ tracked (worst-first backlog) · 🟢 exempt (`@small_return` / single-object read).
 
-> **Status table RECONCILED against code 2026-07-05** (was heavily stale — the [[debt-batches-list-is-stale-verify-first]] pattern). Verified every row by grepping the actual `apply_response_contract` call sites + `*_REF_FIELDS` constants across all 4 services. **~90 % of the "⏳ tracked" backlog was already ✅** (Family-B + the grounding tools shipped it); the manifest header table simply never got updated. **`composition_get_prose` refactored this pass** (the one clear remaining dump — a full chapter body single-read). **The genuine remaining gaps are small:** `translation_segment_status` (per-segment, can be large — the real one), plus a handful of inherently-small `kg_*`/`motif_link_list` reads to confirm-as-exempt-or-bound. No hot-path grounding tool is un-refactored.
+> **Status table RECONCILED against code 2026-07-05 — T1 is COMPLETE.** The table was heavily stale (the [[debt-batches-list-is-stale-verify-first]] pattern). Verified EVERY row against code (the actual `apply_response_contract` call sites + `*_REF_FIELDS` constants + the `@small_return:` exemption comments across all 4 services). Result: **every SET-returning MCP tool is now either `apply_response_contract`-refactored (✅) or documented-`@small_return`-exempt (🟢)** — there are **no un-refactored dump-risk tools left**. `composition_get_prose` was the one genuine remaining dump (a full chapter body single-read) and was refactored this pass (`detail=summary`). The tools I first flagged `⏳ verify-at-pickup` (`translation_coverage`/`segment_status`, `kg_schema_read`/`list_templates`/`view_read`/`project_list`, `motif_link_list`) all turned out to carry documented `@small_return` notes (scalar-only / bounded-metadata reads, no heavy body) — confirmed and marked 🟢. **One latent hardening remains (deferred infra, LOW):** the `@small_return` exemptions are self-reported COMMENTS, unenforced by the snapshot harness (which only pins `apply_response_contract` REF_FIELDS) — see the new row below.
 
 ## Deferred infrastructure (tracked, not forgotten)
 
+- **`@small_return` exemptions are unenforced self-report** (LOW, `D-T1-SMALLRETURN-ENFORCE`).
+  Every 🟢 tool documents *why* it's small in a `@small_return:` COMMENT, but nothing asserts
+  it stays small — the snapshot harness only pins `apply_response_contract` REF_FIELDS, so a
+  future edit that adds a heavy body field to e.g. `translation_segment_status` would not go
+  red. A real guard would be a per-`@small_return`-tool response-size budget assertion (a
+  representative-payload byte/token ceiling test, or a `@small_return` decorator that the
+  snapshot meta-check scans for like it scans `*_REF_FIELDS`). Gate #2 (needs a small harness),
+  low risk (these are scalar-only by construction today). Fold into the A5 byte-histogram work.
 - **A5 per-tool byte histograms** (composition/translation/jobs — knowledge already emits
   `knowledge_tool_call_result_size_bytes`). The production ranking + T2-meter telemetry
   source. **Folded into T2** (budget meter + GUI-monitor telemetry) since that is where
