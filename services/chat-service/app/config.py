@@ -125,6 +125,13 @@ class Settings(BaseSettings):
     agent_registry_url: str = "http://agent-registry-service:8099"
     agent_registry_timeout_s: float = 2.0
 
+    # Context Budget Law sealed-decision #1 — retrieval mode is `prepend`/`hybrid` for ALL
+    # by default (true `pull`/JIT is deferred to a future strong-model capability). Surfaced
+    # in the per-turn contextBudget frame so the Inspector shows WHICH retrieval discipline
+    # ran (the D1 substrate flips this to `pull` when a strong-model pull mode lands). Not a
+    # model name (provider-gate exempt) — a retrieval-strategy label.
+    retrieval_mode: str = "prepend"
+
     # ARCH-1 C3 — default stream event format when a request sends no
     # x-loreweave-stream-format header. "legacy" (LoreWeave SSE vocabulary) or
     # "agui" (AG-UI protocol). Per-request header overrides this; the default

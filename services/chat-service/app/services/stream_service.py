@@ -89,7 +89,12 @@ from app.services.compaction import (
     inject_recovery_hint,
     summary_message,
 )
-from loreweave_context import Planner, build_system_message, compute_target
+from loreweave_context import (
+    Planner,
+    TraceAccumulator,
+    build_system_message,
+    compute_target,
+)
 
 # T3.2 — the default Context Budget Planner (stateless policy; one shared instance). Swap
 # this (or subclass Planner) to A/B a compaction/budget optimization hypothesis.
@@ -105,6 +110,8 @@ from app.services.token_budget import (
     ContextBreakdown,
     compute_budget,
     context_budget_event,
+    derive_intent,
+    derive_status_flags,
     estimate_messages_tokens,
     estimate_tokens,
 )
@@ -1861,6 +1868,11 @@ async def stream_response(
     # system-message convention the auto-compaction summarize tier uses). The
     # recent_message_count window still applies to the fetched set.
     history_limit = max(1, kctx.recent_message_count)
+    # Context Compiler trace (spec §11) — one accumulator per turn, threaded through the
+    # assembly so each tier records what it cut/kept. Its summed savings reconstruct the
+    # naive-concat `raw_tokens`; its ordered spans are the Inspector's waterfall. Created
+    # here (before C_persist) so the C_persist compaction span is recorded in-order.
+    _trace = TraceAccumulator()
     _compact_summary = session_row.get("compact_summary") if session_row else None
     _compacted_before_seq = session_row.get("compacted_before_seq") if session_row else None
     # C_persist (T2 optimization) — before loading history, if the live history exceeds the
@@ -1878,6 +1890,7 @@ async def stream_response(
                 target=compute_target(creds.context_length) or 0,
                 keep_recent=8,
                 prev_summary=_compact_summary, prev_before_seq=_compacted_before_seq,
+                trace=_trace,
             )
             if _pc is not None:
                 _compact_summary, _compacted_before_seq = _pc
@@ -2343,6 +2356,9 @@ async def stream_response(
         context_breakdown=context_breakdown,
         # T5 — the intent-gate decision, surfaced in the contextBudget frame.
         entity_presence=_grounding_presence.as_telemetry(),
+        # Context Compiler trace (§11) — carries any C_persist span already recorded; the
+        # in-turn compaction + T0 wire spans are appended inside _emit_chat_turn.
+        trace=_trace,
     ):
         yield line
 
@@ -2387,6 +2403,7 @@ async def _emit_chat_turn(
     pre_tool_chunks: list[dict] | None = None,
     context_breakdown: ContextBreakdown | None = None,
     entity_presence: dict | None = None,
+    trace: "TraceAccumulator | None" = None,
 ) -> AsyncGenerator[str, None]:
     """Shared Stream→persist→finish body for a chat turn (fresh OR C6 resume).
 
@@ -2509,6 +2526,17 @@ async def _emit_chat_turn(
                     session_id, _compaction.steps,
                     _compaction.tokens_before, _compaction.tokens_after,
                     _compaction.overflowed,
+                )
+            # Context Compiler trace (§11) — the in-turn ephemeral compaction span.
+            # delta = tokens_after − tokens_before (negative = SAVED), folded into raw_tokens.
+            if trace is not None and _compaction.did_work:
+                trace.add(
+                    "compiler", "T6", "history",
+                    f"ephemeral compaction ({_compaction.steps} step(s)) "
+                    f"{_compaction.tokens_before}→{_compaction.tokens_after} tok"
+                    + (" · overflow" if _compaction.overflowed else ""),
+                    delta=int(_compaction.tokens_after - _compaction.tokens_before),
+                    is_error=bool(_compaction.overflowed),
                 )
     except Exception:  # never let compaction break the turn
         logger.warning("compaction skipped (error)", exc_info=True)
@@ -2768,20 +2796,43 @@ async def _emit_chat_turn(
                 # tool_result_content funnel (ensure_ascii=False + prune_none), NOT the
                 # old raw json.dumps (ensure_ascii=True) which over-counts VI/CJK 2-3x +
                 # counts dropped nulls. Else the attribution meter contradicts the L3 cut.
+                # Meter the funnel (compiled) bytes AND the naive ensure_ascii=True /
+                # no-prune bytes side-by-side, so the difference is the T0 wire-hygiene
+                # saving (unicode-unescape + null-drop) — the one cut chat can measure locally.
                 _tool_results_tok = 0
+                _tool_results_raw_tok = 0
                 for _tc in tool_calls_history:
-                    if _tc.get("ok"):
-                        _tool_results_tok += estimate_tokens(
-                            tool_result_content(_tc.get("result"))
-                        )
-                    else:
-                        _tool_results_tok += estimate_tokens(
-                            tool_result_content({"error": _tc.get("error")})
-                        )
+                    _payload = _tc.get("result") if _tc.get("ok") else {"error": _tc.get("error")}
+                    _tool_results_tok += estimate_tokens(tool_result_content(_payload))
+                    _tool_results_raw_tok += estimate_tokens(
+                        json.dumps(_payload, ensure_ascii=True, default=str)
+                    )
                 if context_breakdown is not None:
                     context_breakdown.categories["frontend_tool_schemas"] = _fe_schema_tok
                     context_breakdown.categories["mcp_tool_schemas"] = _mcp_schema_tok
                     context_breakdown.categories["tool_results"] = _tool_results_tok
+
+                # ── Context Compiler trace (§11) — finalize the Inspector telemetry ──
+                _tr = trace if trace is not None else TraceAccumulator()
+                _wire_saved = _tool_results_raw_tok - _tool_results_tok
+                if trace is not None and _wire_saved > 0:
+                    _tr.add(
+                        "compiler", "T0", "results",
+                        "wire hygiene: serialize ensure_ascii=false + drop nulls",
+                        delta=-_wire_saved,
+                    )
+                _trace_payload = _tr.to_payload()
+                _raw_tokens = int(input_tok or 0) + _tr.saved()
+                _status_flags = derive_status_flags(
+                    grounding_needed=(
+                        entity_presence.get("grounding_needed")
+                        if entity_presence else None
+                    ),
+                    compacted=any(s["tier"] == "T6" for s in _trace_payload),
+                    elastic=(_plan.task_weight < 1.0),
+                    overflowed=bool(_compaction is not None and _compaction.overflowed),
+                    wire=(trace is not None and _wire_saved > 0),
+                )
                 _ctx_payload = context_budget_event(
                     compute_budget(
                         used_tokens=int(input_tok or 0),
@@ -2793,6 +2844,14 @@ async def _emit_chat_turn(
                     # matched tokens + reason), threaded in from the assembly path in
                     # stream_response. None on the resume/degraded paths that skip the gate.
                     entity_presence=entity_presence,
+                    # Inspector telemetry (§11a): the naive-concat baseline, the ordered
+                    # compile-trace spans, the derived status chips, the sealed retrieval
+                    # mode, and the coarse turn-intent label.
+                    trace=_trace_payload,
+                    raw_tokens=_raw_tokens,
+                    status_flags=_status_flags,
+                    retrieval_mode=settings.retrieval_mode,
+                    intent=derive_intent(entity_presence),
                 )
 
                 await conn.execute(

@@ -522,6 +522,29 @@ class ContextHistoryResponse(BaseModel):
     items: list[ContextHistoryPoint]
 
 
+# ── Context trace (the Inspector's per-turn data source, spec §11) ─────────────
+# Unlike ContextHistoryPoint (the chart — breakdown sub-map only), the Inspector
+# needs the WHOLE persisted contextBudget frame per turn (raw_tokens, reduction_pct,
+# target, status_flags, retrieval_mode, intent, entity_presence, the trace spans, the
+# allocation breakdown) plus the user message that drove the turn. `frame` is the
+# frame verbatim so the FE reads exactly what the compiler emitted (no lossy reshape).
+
+class ContextTracePoint(BaseModel):
+    sequence_num: int
+    created_at: datetime
+    input_tokens: int | None
+    output_tokens: int | None
+    # The parent user turn's text (what the author typed). None when the assistant
+    # turn has no text-column parent (e.g. a parts-only user message).
+    user_message: str | None
+    # The full persisted contextBudget frame (context_breakdown JSONB) verbatim.
+    frame: dict[str, Any]
+
+
+class ContextTraceResponse(BaseModel):
+    items: list[ContextTracePoint]
+
+
 class LatestContextBudgetResponse(BaseModel):
     # The LAST assistant turn's persisted contextBudget frame (the same shape the
     # SSE `contextBudget` event carries: used_tokens / context_length /

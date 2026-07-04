@@ -14,6 +14,8 @@ from app.models import (
     ChatMessage,
     ContextHistoryPoint,
     ContextHistoryResponse,
+    ContextTracePoint,
+    ContextTraceResponse,
     LatestContextBudgetResponse,
     MessageListResponse,
     SendMessageRequest,
@@ -232,6 +234,71 @@ async def latest_context_budget(
     )
     frame = _parse_content_parts(row["context_breakdown"]) if row else None
     return LatestContextBudgetResponse(budget=frame if isinstance(frame, dict) else None)
+
+
+@router.get("/{session_id}/context-trace", response_model=ContextTraceResponse)
+async def context_trace(
+    session_id: UUID,
+    # Window to the most recent `limit` turns. Client-side pagination + status/search
+    # filtering run over the returned set (a session's turn count is bounded — not
+    # thousands — and the Inspector paginates the loaded series in the browser).
+    limit: int = Query(100, ge=1, le=200),
+    user_id: str = Depends(get_current_user),
+    pool: asyncpg.Pool = Depends(get_db),
+) -> ContextTraceResponse:
+    """The Context Compiler · Trace Inspector's data source (spec §11).
+
+    Returns the ordered SERIES of per-turn contextBudget frames VERBATIM (raw_tokens,
+    reduction_pct, target, status_flags, retrieval_mode, intent, entity_presence, the
+    trace spans, the allocation breakdown) plus the user message that drove each turn —
+    everything the Inspector renders per turn. Owner-gated like the sibling routes;
+    windowed to the most recent `limit` turns, returned oldest-first."""
+    exists = await pool.fetchval(
+        "SELECT 1 FROM chat_sessions WHERE session_id=$1 AND owner_user_id=$2",
+        str(session_id), user_id,
+    )
+    if not exists:
+        raise HTTPException(status_code=404, detail="session not found")
+
+    # LEFT JOIN the parent user turn so the Inspector shows what the author typed.
+    # branch_id=0 pins the live timeline; only assistant turns carrying a frame.
+    rows = await pool.fetch(
+        """
+        SELECT a.sequence_num, a.created_at, a.input_tokens, a.output_tokens,
+               a.context_breakdown, u.content AS user_message
+        FROM (
+            SELECT sequence_num, created_at, input_tokens, output_tokens,
+                   context_breakdown, parent_message_id
+            FROM chat_messages
+            WHERE session_id=$1 AND owner_user_id=$2 AND branch_id=0
+              AND role='assistant' AND context_breakdown IS NOT NULL
+            ORDER BY sequence_num DESC
+            LIMIT $3
+        ) a
+        LEFT JOIN chat_messages u ON u.message_id = a.parent_message_id
+        ORDER BY a.sequence_num ASC
+        """,
+        str(session_id), user_id, limit,
+    )
+
+    items: list[ContextTracePoint] = []
+    for r in rows:
+        frame = _parse_content_parts(r["context_breakdown"])
+        # Skip resume-path turns that persisted no measured frame (no breakdown) —
+        # they have no allocation/telemetry for the Inspector to render.
+        if not isinstance(frame, dict) or not frame.get("breakdown"):
+            continue
+        items.append(
+            ContextTracePoint(
+                sequence_num=r["sequence_num"],
+                created_at=r["created_at"],
+                input_tokens=r["input_tokens"],
+                output_tokens=r["output_tokens"],
+                user_message=r["user_message"],
+                frame=frame,
+            )
+        )
+    return ContextTraceResponse(items=items)
 
 
 @router.get("/{session_id}/branches")

@@ -16,6 +16,7 @@ from dataclasses import dataclass, field
 # `loreweave_context.tokens`). Re-exported here so every existing caller keeps working
 # unchanged (compute_budget below, stream_service, compaction, the many importers).
 from loreweave_context.tokens import estimate_messages_tokens, estimate_tokens
+from loreweave_context.trace import reduction_pct
 
 
 # ── context-budget accounting (A2) ────────────────────────────────────────────
@@ -169,10 +170,76 @@ def until_compact_pct(pct: float | None) -> float | None:
     return round(max(0.0, COMPACT_TRIGGER_RATIO - pct), 4)
 
 
+# ── Inspector telemetry derivation (spec §11a) ───────────────────────────────
+# The per-turn contextBudget frame doubles as the Context Compiler · Trace Inspector's
+# data source. `intent` + `status_flags` are cheap, HONEST labels derived from signals the
+# assembly already has (the T5 gate reason + the compaction/budget outcome) — no new
+# classifier, no confabulation. `retrieval_mode` comes from the sealed-decision setting.
+
+# The T5 gate `reason` → a friendly turn-intent label (the Inspector header chip). Maps the
+# internal EntityPresence reasons (entity_presence.py) to a short human label; an unknown
+# reason falls through to "general" (honest, never invented).
+_INTENT_BY_REASON: dict[str, str] = {
+    "entity_match": "lore-lookup",
+    "lore_intent_bias_include": "lore-discovery",
+    "question_bias_include": "question",
+    "non_ascii_bias_include": "multilingual",
+    "anaphora_bias_include": "follow-up",
+    "meta_question": "meta",
+    "no_entity_no_anaphora": "status-op",
+    "no_entity_set": "general",
+    "gate_disabled": "general",
+    "empty_message": "general",
+}
+
+
+def derive_intent(entity_presence: dict | None) -> str:
+    """A coarse, honest turn-intent label from the T5 gate reason. `general` when the gate
+    didn't run / the reason is unknown — never a fabricated category."""
+    if not entity_presence:
+        return "general"
+    return _INTENT_BY_REASON.get(str(entity_presence.get("reason") or ""), "general")
+
+
+def derive_status_flags(
+    *,
+    grounding_needed: bool | None,
+    compacted: bool = False,
+    elastic: bool = False,
+    overflowed: bool = False,
+    wire: bool = False,
+) -> list[str]:
+    """The turn's status chips (§11a). Only flags an outcome the assembly actually observed:
+    `included`/`gated` from the T5 gate decision (omitted when the gate didn't run →
+    grounding_needed None), `compacted` when compaction did work, `elastic` when the soft
+    target was task-weighted below 1.0, `overflow` when a result was size-rejected, `wire`
+    when T0 serialization actually saved bytes. Order is stable for the FE."""
+    flags: list[str] = []
+    if grounding_needed is True:
+        flags.append("included")
+    elif grounding_needed is False:
+        flags.append("gated")
+    if compacted:
+        flags.append("compacted")
+    if elastic:
+        flags.append("elastic")
+    if overflowed:
+        flags.append("overflow")
+    if wire:
+        flags.append("wire")
+    return flags
+
+
 def context_budget_event(
     budget: ContextBudget,
     breakdown: ContextBreakdown | None = None,
     entity_presence: dict | None = None,
+    *,
+    trace: list[dict] | None = None,
+    raw_tokens: int | None = None,
+    status_flags: list[str] | None = None,
+    retrieval_mode: str | None = None,
+    intent: str | None = None,
 ) -> dict:
     """The full contextBudget frame payload — STRICTLY ADDITIVE over
     ContextBudget.to_event(): the original {used_tokens, context_length,
@@ -182,7 +249,13 @@ def context_budget_event(
     (the intent-gate decision + matched tokens) when the caller ran the gate — the
     signal the Inspector reads to show WHY grounding was (not) pulled, and to compute
     the false-negative rate (grounding_needed=false turns that still called a
-    memory/story search) from the persisted per-turn frames + tool_calls."""
+    memory/story search) from the persisted per-turn frames + tool_calls.
+
+    Inspector telemetry (spec §11a, additive; supplied only on the fresh-assembly path):
+    `raw_tokens` (naive-concat baseline = compiled + Σ savings) + derived `reduction_pct`,
+    the ordered `trace` spans (already ``TraceSpan.to_payload`` dicts), `status_flags`,
+    `retrieval_mode`, and `intent`. Each rides WITH the breakdown (the Inspector reads only
+    turns that carry one), so resume/degraded frames simply omit them."""
     payload = budget.to_event()
     payload["until_compact_pct"] = until_compact_pct(budget.pct)
     if breakdown is not None:
@@ -190,4 +263,15 @@ def context_budget_event(
         payload["baseline_tokens"] = breakdown.baseline_tokens
     if entity_presence is not None:
         payload["entity_presence"] = entity_presence
+    if raw_tokens is not None:
+        payload["raw_tokens"] = int(raw_tokens)
+        payload["reduction_pct"] = reduction_pct(int(raw_tokens), budget.used_tokens)
+    if trace is not None:
+        payload["trace"] = trace
+    if status_flags is not None:
+        payload["status_flags"] = status_flags
+    if retrieval_mode is not None:
+        payload["retrieval_mode"] = retrieval_mode
+    if intent is not None:
+        payload["intent"] = intent
     return payload

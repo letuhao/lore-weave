@@ -159,6 +159,7 @@ async def persist_auto_compact(
     keep_recent: int = 8,
     prev_summary: str | None,
     prev_before_seq: int | None,
+    trace=None,
 ) -> tuple[str, int] | None:
     """C_persist — the AUTOMATIC analogue of the manual /compact route. When a session's LIVE
     history (post the previous boundary, + the prev summary folded in) exceeds `target`,
@@ -170,9 +171,14 @@ async def persist_auto_compact(
 
     Returns (new_summary, new_before_seq) on success, or None (session UNCHANGED — safe) when:
     nothing to compact, still under target, the summarizer failed (falls back to the ephemeral
-    tiers), or a concurrent compact landed (OCC). Mirrors the manual route's persist exactly."""
+    tiers), or a concurrent compact landed (OCC). Mirrors the manual route's persist exactly.
+
+    `trace` (optional `TraceAccumulator`) — when supplied AND a persist actually lands, a T6
+    compiler span is recorded with the tokens SAVED (droppable summarized away − the summary
+    that replaced them). This is the ONE turn that paid the summarizer cost, so the saving is
+    attributed here (later turns load the summary with no further compaction span)."""
     from app.services.compaction import extract_breadcrumb, summary_message
-    from app.services.token_budget import estimate_messages_tokens
+    from app.services.token_budget import estimate_messages_tokens, estimate_tokens
 
     if prev_before_seq is not None:
         rows = await pool.fetch(
@@ -222,4 +228,15 @@ async def persist_auto_compact(
     )
     if result == "UPDATE 0":
         return None  # a concurrent compact landed — safe, leave it
+    if trace is not None:
+        # T6 saving = what we summarized away − the summary that replaced it (negative delta
+        # = tokens SAVED). The Inspector's `raw_tokens` folds this into the naive-concat baseline.
+        _saved = estimate_messages_tokens(droppable) - estimate_tokens(summary)
+        if _saved > 0:
+            trace.add(
+                "compiler", "T6", "summary",
+                f"C_persist: summarized {len(droppable)} earlier msgs → persisted summary "
+                f"(reused every later turn)",
+                delta=-_saved,
+            )
     return summary, new_before_seq
