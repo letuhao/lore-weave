@@ -10,7 +10,11 @@ import { registerEditorTarget } from '@/features/chat/context/editorBridge';
 import { cn } from '@/lib/utils';
 import { useStudioHost, useRegisterStudioTool } from '../host/StudioHostProvider';
 import { useManuscriptUnit } from '../manuscript/unit/ManuscriptUnitProvider';
+import { useManuscriptCheckpoints } from '../manuscript/unit/useManuscriptCheckpoints';
+import { ManuscriptCheckpoints } from '../manuscript/unit/ManuscriptCheckpoints';
 import { SceneRail } from '../manuscript/SceneRail';
+import { RevisionHistorySection } from './RevisionHistorySection';
+import { EditorPublishGate } from './EditorPublishGate';
 import type { StudioToolRegistration } from '../host/types';
 
 export function EditorPanel(props: IDockviewPanelProps) {
@@ -18,6 +22,10 @@ export function EditorPanel(props: IDockviewPanelProps) {
   const host = useStudioHost();
   const { bookId } = host;
   const unit = useManuscriptUnit();
+  // #16 1.2 — wraps the hoist's applyProposedEdit so every AI-apply captures a pre-edit
+  // restore point BEFORE writing. The wrapped function (not unit.applyProposedEdit directly)
+  // is what gets handed to registerEditorTarget below — same seam, now checkpoint-aware.
+  const checkpoints = useManuscriptCheckpoints(bookId, unit);
   const localRef = useRef<TiptapEditorHandle | null>(null);
   const editorRef = unit?.editorRef ?? localRef;
   // #12 M-C — Scene Rail visibility: null = auto (open when scenes exist), boolean = user choice.
@@ -46,8 +54,10 @@ export function EditorPanel(props: IDockviewPanelProps) {
   // Register the studio editor as the propose_edit write-back target (Lane C). Cleared on unmount
   // / chapter change so a stale handle never receives a write. #16 P1: also hand over the
   // Tier-4 hoist's own applyProposedEdit action — ProposeEditCard prefers it over reaching into
-  // the raw handle directly (same underlying write, now hoist-owned per spec 08/09).
-  const applyProposedEdit = unit?.applyProposedEdit;
+  // the raw handle directly (same underlying write, now hoist-owned per spec 08/09). #16 1.2:
+  // the CHECKPOINT-WRAPPED version, not unit.applyProposedEdit directly — same signature, captures
+  // a pre-edit restore point on every successful write before delegating.
+  const applyProposedEdit = checkpoints.applyProposedEdit;
   useEffect(() => {
     if (!chapterId || !applyProposedEdit) return;
     registerEditorTarget({ bookId, chapterId, handleRef: editorRef, applyProposedEdit });
@@ -120,7 +130,16 @@ export function EditorPanel(props: IDockviewPanelProps) {
         >
           {t('editor.save', { defaultValue: 'Save' })} <span className="font-mono text-[10px]">⌘S</span>
         </button>
+        {/* #16 1.4 — Publish Gate, reused as-is from the legacy chapter editor (DOCK-2, no fork). */}
+        <div className="mx-1 h-4 w-px bg-border" aria-hidden="true" />
+        <EditorPublishGate bookId={bookId} chapterId={chapterId} draftVersion={state.version} dirty={isDirty} />
       </div>
+      {/* #16 1.2 — Checkpoints strip (pre-edit restore points for every AI apply on this chapter). */}
+      <ManuscriptCheckpoints
+        checkpoints={checkpoints.visibleCheckpoints}
+        isDirty={isDirty}
+        onRestore={checkpoints.restore}
+      />
       <div className="flex min-h-0 flex-1">
         <div className="min-h-0 min-w-0 flex-1 overflow-auto">
           <TiptapEditor
@@ -130,6 +149,8 @@ export function EditorPanel(props: IDockviewPanelProps) {
           />
         </div>
         {railOpen && <SceneRail />}
+        {/* #16 1.3 — Revision History, a self-toggling right-edge strip (reads the hoist itself). */}
+        <RevisionHistorySection />
       </div>
     </div>
   );

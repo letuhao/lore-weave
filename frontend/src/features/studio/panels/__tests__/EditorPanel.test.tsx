@@ -18,8 +18,18 @@ vi.mock('@/features/chat/context/editorBridge', () => ({
 
 vi.mock('@/components/editor/TiptapEditor', () => ({ TiptapEditor: forwardRef(() => null) }));
 vi.mock('../../manuscript/SceneRail', () => ({ SceneRail: () => null }));
+// #16 1.2/1.3/1.4 — out of scope for this file (which tests ONLY the P1 registration wiring);
+// stub them out rather than pulling in auth/query-client providers these sections need for real.
+vi.mock('../../manuscript/unit/useManuscriptCheckpoints', () => ({
+  useManuscriptCheckpoints: () => ({
+    applyProposedEdit, visibleCheckpoints: [], restore: vi.fn(),
+  }),
+}));
+vi.mock('../../manuscript/unit/ManuscriptCheckpoints', () => ({ ManuscriptCheckpoints: () => null }));
+vi.mock('../RevisionHistorySection', () => ({ RevisionHistorySection: () => null }));
+vi.mock('../EditorPublishGate', () => ({ EditorPublishGate: () => null }));
 
-const applyProposedEdit = vi.fn(() => true);
+const applyProposedEdit = vi.hoisted(() => vi.fn(() => true));
 const unitState = vi.hoisted(() => ({ chapterId: 'ch1' as string | null }));
 vi.mock('../../manuscript/unit/ManuscriptUnitProvider', () => ({
   useManuscriptUnit: () => ({
@@ -28,7 +38,7 @@ vi.mock('../../manuscript/unit/ManuscriptUnitProvider', () => ({
     editorRef: { current: null },
     save: vi.fn(),
     setBody: vi.fn(),
-    applyProposedEdit,
+    applyProposedEdit: vi.fn(() => true),
   }),
 }));
 
