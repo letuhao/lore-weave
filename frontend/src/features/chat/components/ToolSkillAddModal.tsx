@@ -1,9 +1,13 @@
-import { useEffect, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { chatApi } from '../api';
-import type { SkillCatalogItem, ToolCatalogItem } from '../types';
-
-type Tab = 'tools' | 'skills';
+import { Search as SearchIcon, Wrench, Sparkles } from 'lucide-react';
+import { FormDialog } from '@/components/shared/FormDialog';
+import { EmptyState } from '@/components/shared/EmptyState';
+import { Pagination } from '@/components/shared/Pagination';
+import type { ToolCatalogItem } from '../types';
+import {
+  TOOL_SKILL_TABS, TOOL_SKILL_ALL_CATEGORY, TOOL_SKILL_PAGE_SIZE,
+  useToolSkillCatalog, type ToolSkillTab,
+} from '../hooks/useToolSkillCatalog';
 
 interface ToolSkillAddModalProps {
   open: boolean;
@@ -25,113 +29,113 @@ export function ToolSkillAddModal({
   existingSkills,
 }: ToolSkillAddModalProps) {
   const { t } = useTranslation('chat');
-  const [tab, setTab] = useState<Tab>('tools');
-  const [query, setQuery] = useState('');
-  const [tools, setTools] = useState<ToolCatalogItem[]>([]);
-  const [skills, setSkills] = useState<SkillCatalogItem[]>([]);
-  const [loading, setLoading] = useState(false);
+  const {
+    tab, onTabChange, query, onQueryChange, category, onCategoryChange, page, setPage,
+    loading, availableTools, categories, filteredTools, showGroupedAllView, groupedAllView,
+    groupPreviewSize, pagedTools, filteredSkills, availableSkillsCount,
+  } = useToolSkillCatalog(open, token, existingTools, existingSkills);
 
-  useEffect(() => {
-    if (!open || !token) return;
-    setLoading(true);
-    Promise.all([chatApi.listToolsCatalog(token), chatApi.listSkillsCatalog(token)])
-      .then(([tRes, sRes]) => {
-        setTools(tRes.items);
-        setSkills(sRes.items);
-      })
-      .catch(() => {
-        setTools([]);
-        setSkills([]);
-      })
-      .finally(() => setLoading(false));
-  }, [open, token]);
-
-  const filteredTools = useMemo(() => {
-    const q = query.trim().toLowerCase();
-    return tools.filter((item) => {
-      if (existingTools.includes(item.name)) return false;
-      if (!q) return true;
-      return (
-        item.name.toLowerCase().includes(q)
-        || item.description.toLowerCase().includes(q)
-        || item.domain.toLowerCase().includes(q)
-      );
-    });
-  }, [tools, query, existingTools]);
-
-  const filteredSkills = useMemo(() => {
-    const q = query.trim().toLowerCase();
-    return skills.filter((item) => {
-      if (existingSkills.includes(item.id)) return false;
-      if (!q) return true;
-      return item.label.toLowerCase().includes(q) || item.id.toLowerCase().includes(q);
-    });
-  }, [skills, query, existingSkills]);
-
-  if (!open) return null;
+  const onToolKeyDown = (e: React.KeyboardEvent) => {
+    if (e.key !== 'ArrowRight' && e.key !== 'ArrowLeft') return;
+    e.preventDefault();
+    const i = TOOL_SKILL_TABS.indexOf(tab);
+    const next = e.key === 'ArrowRight' ? (i + 1) % TOOL_SKILL_TABS.length : (i - 1 + TOOL_SKILL_TABS.length) % TOOL_SKILL_TABS.length;
+    onTabChange(TOOL_SKILL_TABS[next]);
+  };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/50 sm:items-center">
-      <div className="flex max-h-[80vh] w-full max-w-lg flex-col rounded-t-lg border border-border bg-card shadow-xl sm:rounded-lg">
-        <div className="flex items-center justify-between border-b border-border px-4 py-3">
-          <h3 className="text-sm font-semibold">{t('rack.add_title', { defaultValue: 'Add tools or skills' })}</h3>
-          <button type="button" onClick={onClose} className="text-xs text-muted-foreground hover:text-foreground">
-            {t('view.cancel', { defaultValue: 'Cancel' })}
-          </button>
-        </div>
-        <div className="flex gap-2 border-b border-border px-4 py-2">
-          <button
-            type="button"
-            onClick={() => setTab('tools')}
-            className={`rounded px-2 py-1 text-xs ${tab === 'tools' ? 'bg-accent text-accent-foreground' : 'text-muted-foreground'}`}
-          >
-            {t('rack.tools_tab', { defaultValue: 'Tools' })}
-          </button>
-          <button
-            type="button"
-            onClick={() => setTab('skills')}
-            className={`rounded px-2 py-1 text-xs ${tab === 'skills' ? 'bg-accent text-accent-foreground' : 'text-muted-foreground'}`}
-          >
-            {t('rack.skills_tab', { defaultValue: 'Skills' })}
-          </button>
-        </div>
-        <div className="px-4 py-2">
+    <FormDialog
+      open={open}
+      onOpenChange={(o) => !o && onClose()}
+      title={t('rack.add_title', { defaultValue: 'Add tools or skills' })}
+      size="2xl"
+    >
+      <div data-testid="tool-skill-modal" className="flex min-h-0 flex-col gap-3">
+        <TabBar tab={tab} onTabChange={onTabChange} onKeyDown={onToolKeyDown} t={t} toolsCount={availableTools.length} skillsCount={availableSkillsCount} />
+
+        <div className="relative">
+          <SearchIcon className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
           <input
             type="search"
             value={query}
-            onChange={(e) => setQuery(e.target.value)}
+            onChange={(e) => onQueryChange(e.target.value)}
             placeholder={t('rack.search_placeholder', { defaultValue: 'Search…' })}
-            className="w-full rounded-md border border-border bg-background px-3 py-2 text-sm"
+            data-testid="tool-skill-search"
+            className="w-full rounded-md border bg-background py-2 pl-9 pr-3 text-sm placeholder:text-muted-foreground/50 focus:outline-none focus:ring-2 focus:ring-ring/40"
           />
         </div>
-        <div className="flex-1 overflow-y-auto px-4 pb-4">
+
+        {tab === 'tools' && categories.length > 1 && (
+          <CategoryChips
+            categories={categories}
+            category={category}
+            onCategoryChange={onCategoryChange}
+            totalCount={availableTools.length}
+            t={t}
+          />
+        )}
+
+        <div className="min-h-0 flex-1 overflow-y-auto">
           {loading && (
             <p className="py-4 text-center text-xs text-muted-foreground">{t('view.loading_messages')}</p>
           )}
-          {!loading && tab === 'tools' && (
-            <ul className="space-y-1">
-              {filteredTools.slice(0, 50).map((item) => (
-                <li key={item.name}>
-                  <button
-                    type="button"
-                    onClick={() => { onAddTool(item.name); onClose(); }}
-                    className="w-full rounded-md px-2 py-2 text-left hover:bg-muted/60"
-                  >
-                    <div className="text-xs font-medium">{item.name}</div>
-                    <div className="text-[10px] text-muted-foreground line-clamp-2">{item.description}</div>
-                  </button>
-                </li>
-              ))}
-            </ul>
+
+          {!loading && tab === 'tools' && filteredTools.length === 0 && (
+            <EmptyState
+              icon={Wrench}
+              title={t('rack.no_tools_title', { defaultValue: 'No matching tools' })}
+              description={t('rack.no_tools_description', {
+                defaultValue: 'Try a different search term or category.',
+              })}
+            />
           )}
-          {!loading && tab === 'skills' && (
+
+          {!loading && tab === 'tools' && filteredTools.length > 0 && showGroupedAllView && (
+            <GroupedToolsView
+              groups={groupedAllView}
+              previewSize={groupPreviewSize}
+              onSeeAll={onCategoryChange}
+              onAddTool={(name) => { onAddTool(name); onClose(); }}
+              t={t}
+            />
+          )}
+
+          {!loading && tab === 'tools' && filteredTools.length > 0 && !showGroupedAllView && (
+            <>
+              <ul className="space-y-1">
+                {pagedTools.map((item) => (
+                  <ToolRow key={item.name} item={item} onAdd={() => { onAddTool(item.name); onClose(); }} />
+                ))}
+              </ul>
+              <Pagination
+                total={filteredTools.length}
+                limit={TOOL_SKILL_PAGE_SIZE}
+                offset={page * TOOL_SKILL_PAGE_SIZE}
+                onChange={(offset) => setPage(Math.floor(offset / TOOL_SKILL_PAGE_SIZE))}
+                className="mt-3"
+              />
+            </>
+          )}
+
+          {!loading && tab === 'skills' && filteredSkills.length === 0 && (
+            <EmptyState
+              icon={Sparkles}
+              title={t('rack.no_skills_title', { defaultValue: 'No matching skills' })}
+              description={t('rack.no_skills_description', {
+                defaultValue: 'Try a different search term.',
+              })}
+            />
+          )}
+
+          {!loading && tab === 'skills' && filteredSkills.length > 0 && (
             <ul className="space-y-1">
               {filteredSkills.map((item) => (
                 <li key={item.id}>
                   <button
                     type="button"
+                    data-testid={`tool-skill-item-${item.id}`}
                     onClick={() => { onAddSkill(item.id); onClose(); }}
-                    className="w-full rounded-md px-2 py-2 text-left hover:bg-muted/60"
+                    className="w-full rounded-md px-2 py-2 text-left transition-colors hover:bg-muted/60"
                   >
                     <div className="text-xs font-medium">{item.label}</div>
                     <div className="text-[10px] text-muted-foreground">{item.surfaces.join(', ')}</div>
@@ -142,6 +146,137 @@ export function ToolSkillAddModal({
           )}
         </div>
       </div>
+    </FormDialog>
+  );
+}
+
+type Translate = (key: string, opts?: Record<string, unknown>) => string;
+
+function TabBar({ tab, onTabChange, onKeyDown, t, toolsCount, skillsCount }: {
+  tab: ToolSkillTab;
+  onTabChange: (t: ToolSkillTab) => void;
+  onKeyDown: (e: React.KeyboardEvent) => void;
+  t: Translate;
+  toolsCount: number;
+  skillsCount: number;
+}) {
+  return (
+    <div
+      role="tablist"
+      aria-label={t('rack.add_title', { defaultValue: 'Add tools or skills' })}
+      className="flex gap-1 border-b"
+      onKeyDown={onKeyDown}
+    >
+      {TOOL_SKILL_TABS.map((tb) => (
+        <button
+          key={tb}
+          type="button"
+          role="tab"
+          aria-selected={tab === tb}
+          tabIndex={tab === tb ? 0 : -1}
+          data-testid={`tool-skill-tab-${tb}`}
+          onClick={() => onTabChange(tb)}
+          className={`flex items-center gap-1.5 rounded-t px-3 py-1.5 text-xs font-medium transition-colors ${
+            tab === tb ? 'bg-accent text-accent-foreground' : 'text-muted-foreground hover:text-foreground'
+          }`}
+        >
+          {tb === 'tools' ? <Wrench className="h-3.5 w-3.5" /> : <Sparkles className="h-3.5 w-3.5" />}
+          {tb === 'tools'
+            ? t('rack.tools_tab', { defaultValue: 'Tools' })
+            : t('rack.skills_tab', { defaultValue: 'Skills' })}
+          <span className="text-[10px] text-muted-foreground">({tb === 'tools' ? toolsCount : skillsCount})</span>
+        </button>
+      ))}
     </div>
+  );
+}
+
+function CategoryChips({ categories, category, onCategoryChange, totalCount, t }: {
+  categories: { category: string; items: ToolCatalogItem[] }[];
+  category: string;
+  onCategoryChange: (c: string) => void;
+  totalCount: number;
+  t: Translate;
+}) {
+  return (
+    <div className="flex flex-wrap gap-1.5" data-testid="tool-skill-category-chips">
+      <button
+        type="button"
+        onClick={() => onCategoryChange(TOOL_SKILL_ALL_CATEGORY)}
+        data-testid="tool-skill-category-chip-all"
+        data-active={category === TOOL_SKILL_ALL_CATEGORY}
+        className="rounded-full border px-2.5 py-1 text-[11px] font-medium text-muted-foreground transition-colors hover:bg-secondary hover:text-foreground data-[active=true]:border-primary/40 data-[active=true]:bg-primary/10 data-[active=true]:text-primary"
+      >
+        {t('rack.category_all', { defaultValue: 'All' })} ({totalCount})
+      </button>
+      {categories.map(({ category: c, items }) => (
+        <button
+          key={c}
+          type="button"
+          onClick={() => onCategoryChange(c)}
+          data-testid={`tool-skill-category-chip-${c}`}
+          data-active={category === c}
+          className="rounded-full border px-2.5 py-1 text-[11px] font-medium capitalize text-muted-foreground transition-colors hover:bg-secondary hover:text-foreground data-[active=true]:border-primary/40 data-[active=true]:bg-primary/10 data-[active=true]:text-primary"
+        >
+          {c} ({items.length})
+        </button>
+      ))}
+    </div>
+  );
+}
+
+function GroupedToolsView({ groups, previewSize, onSeeAll, onAddTool, t }: {
+  groups: { category: string; items: ToolCatalogItem[] }[];
+  previewSize: number;
+  onSeeAll: (category: string) => void;
+  onAddTool: (name: string) => void;
+  t: Translate;
+}) {
+  return (
+    <div className="space-y-4" data-testid="tool-skill-grouped-view">
+      {groups.map(({ category: c, items }) => (
+        <div key={c}>
+          <div className="mb-1 flex items-center justify-between">
+            <h4 className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">{c}</h4>
+            {items.length > previewSize && (
+              <button
+                type="button"
+                onClick={() => onSeeAll(c)}
+                data-testid={`tool-skill-category-more-${c}`}
+                className="text-[11px] text-primary hover:underline"
+              >
+                {t('rack.category_see_all', { count: items.length, defaultValue: 'See all {{count}} →' })}
+              </button>
+            )}
+          </div>
+          <ul className="space-y-1">
+            {items.slice(0, previewSize).map((item) => (
+              <ToolRow key={item.name} item={item} onAdd={() => onAddTool(item.name)} />
+            ))}
+          </ul>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function ToolRow({ item, onAdd }: { item: ToolCatalogItem; onAdd: () => void }) {
+  return (
+    <li>
+      <button
+        type="button"
+        data-testid={`tool-skill-item-${item.name}`}
+        onClick={onAdd}
+        className="w-full rounded-md px-2 py-2 text-left transition-colors hover:bg-muted/60"
+      >
+        <div className="flex items-center gap-1.5 text-xs font-medium">
+          {item.name}
+          <span className="rounded-full border px-1.5 py-0.5 text-[9px] font-normal capitalize text-muted-foreground">
+            {item.domain || 'other'}
+          </span>
+        </div>
+        <div className="text-[10px] text-muted-foreground line-clamp-2">{item.description}</div>
+      </button>
+    </li>
   );
 }

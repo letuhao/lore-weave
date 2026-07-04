@@ -1107,7 +1107,7 @@ func (s *Server) listChapters(w http.ResponseWriter, r *http.Request) {
 	var total int
 	_ = s.pool.QueryRow(r.Context(), `SELECT COUNT(*) FROM chapters WHERE `+where, countArgs...).Scan(&total)
 	args = append(args, limit, offset)
-	rows, err := s.pool.Query(r.Context(), `SELECT id,book_id,title,original_filename,original_language,content_type,byte_size,sort_order,draft_updated_at,draft_revision_count,lifecycle_state,trashed_at,purge_eligible_at,created_at,updated_at,word_count FROM chapters WHERE `+where+` ORDER BY `+orderBy+` LIMIT $`+strconv.Itoa(len(args)-1)+` OFFSET $`+strconv.Itoa(len(args)), args...)
+	rows, err := s.pool.Query(r.Context(), `SELECT id,book_id,title,original_filename,original_language,content_type,byte_size,sort_order,draft_updated_at,draft_revision_count,lifecycle_state,trashed_at,purge_eligible_at,created_at,updated_at,word_count,editorial_status,published_revision_id FROM chapters WHERE `+where+` ORDER BY `+orderBy+` LIMIT $`+strconv.Itoa(len(args)-1)+` OFFSET $`+strconv.Itoa(len(args)), args...)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "CHAPTER_NOT_FOUND", "failed to list chapters")
 		return
@@ -1116,29 +1116,32 @@ func (s *Server) listChapters(w http.ResponseWriter, r *http.Request) {
 	items := make([]map[string]any, 0)
 	for rows.Next() {
 		var id, bid uuid.UUID
-		var title, fn, lang, ctype, lstate string
+		var title, fn, lang, ctype, lstate, editorialStatus string
 		var size int64
 		var order, wordCount int
 		var draftUpdated, trashedAt, purgeAt, createdAt, updatedAt *time.Time
 		var revCount int
-		_ = rows.Scan(&id, &bid, &title, &fn, &lang, &ctype, &size, &order, &draftUpdated, &revCount, &lstate, &trashedAt, &purgeAt, &createdAt, &updatedAt, &wordCount)
+		var publishedRevisionID *uuid.UUID
+		_ = rows.Scan(&id, &bid, &title, &fn, &lang, &ctype, &size, &order, &draftUpdated, &revCount, &lstate, &trashedAt, &purgeAt, &createdAt, &updatedAt, &wordCount, &editorialStatus, &publishedRevisionID)
 		items = append(items, map[string]any{
-			"chapter_id":           id,
-			"book_id":              bid,
-			"title":                nullableString(title),
-			"original_filename":    fn,
-			"original_language":    lang,
-			"content_type":         ctype,
-			"byte_size":            size,
-			"sort_order":           order,
-			"draft_updated_at":     draftUpdated,
-			"draft_revision_count": revCount,
-			"lifecycle_state":      lstate,
-			"trashed_at":           trashedAt,
-			"purge_eligible_at":    purgeAt,
-			"created_at":           createdAt,
-			"updated_at":           updatedAt,
-			"word_count":           wordCount,
+			"chapter_id":            id,
+			"book_id":               bid,
+			"title":                 nullableString(title),
+			"original_filename":     fn,
+			"original_language":     lang,
+			"content_type":          ctype,
+			"byte_size":             size,
+			"sort_order":            order,
+			"draft_updated_at":      draftUpdated,
+			"draft_revision_count":  revCount,
+			"lifecycle_state":       lstate,
+			"trashed_at":            trashedAt,
+			"purge_eligible_at":     purgeAt,
+			"created_at":            createdAt,
+			"updated_at":            updatedAt,
+			"word_count":            wordCount,
+			"editorial_status":      editorialStatus,
+			"published_revision_id": publishedRevisionID,
 		})
 	}
 	writeJSON(w, http.StatusOK, map[string]any{
@@ -1324,7 +1327,7 @@ func (s *Server) listChaptersKeyset(w http.ResponseWriter, r *http.Request) {
 
 	// Fetch limit+1 to detect a further page without a second COUNT.
 	args = append(args, limit+1)
-	rows, err := s.pool.Query(r.Context(), `SELECT id,book_id,title,original_filename,original_language,content_type,byte_size,sort_order,draft_updated_at,draft_revision_count,lifecycle_state,trashed_at,purge_eligible_at,created_at,updated_at,word_count FROM chapters WHERE `+where+` ORDER BY `+orderBy+` LIMIT $`+strconv.Itoa(len(args)), args...)
+	rows, err := s.pool.Query(r.Context(), `SELECT id,book_id,title,original_filename,original_language,content_type,byte_size,sort_order,draft_updated_at,draft_revision_count,lifecycle_state,trashed_at,purge_eligible_at,created_at,updated_at,word_count,editorial_status,published_revision_id FROM chapters WHERE `+where+` ORDER BY `+orderBy+` LIMIT $`+strconv.Itoa(len(args)), args...)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "CHAPTER_NOT_FOUND", "failed to list chapters")
 		return
@@ -1333,29 +1336,32 @@ func (s *Server) listChaptersKeyset(w http.ResponseWriter, r *http.Request) {
 	items := make([]map[string]any, 0, limit)
 	for rows.Next() {
 		var id, bid uuid.UUID
-		var title, fn, lang, ctype, lstate string
+		var title, fn, lang, ctype, lstate, editorialStatus string
 		var size int64
 		var order, wordCount int
 		var draftUpdated, trashedAt, purgeAt, createdAt, updatedAt *time.Time
 		var revCount int
-		_ = rows.Scan(&id, &bid, &title, &fn, &lang, &ctype, &size, &order, &draftUpdated, &revCount, &lstate, &trashedAt, &purgeAt, &createdAt, &updatedAt, &wordCount)
+		var publishedRevisionID *uuid.UUID
+		_ = rows.Scan(&id, &bid, &title, &fn, &lang, &ctype, &size, &order, &draftUpdated, &revCount, &lstate, &trashedAt, &purgeAt, &createdAt, &updatedAt, &wordCount, &editorialStatus, &publishedRevisionID)
 		items = append(items, map[string]any{
-			"chapter_id":           id,
-			"book_id":              bid,
-			"title":                nullableString(title),
-			"original_filename":    fn,
-			"original_language":    lang,
-			"content_type":         ctype,
-			"byte_size":            size,
-			"sort_order":           order,
-			"draft_updated_at":     draftUpdated,
-			"draft_revision_count": revCount,
-			"lifecycle_state":      lstate,
-			"trashed_at":           trashedAt,
-			"purge_eligible_at":    purgeAt,
-			"created_at":           createdAt,
-			"updated_at":           updatedAt,
-			"word_count":           wordCount,
+			"chapter_id":            id,
+			"book_id":               bid,
+			"title":                 nullableString(title),
+			"original_filename":     fn,
+			"original_language":     lang,
+			"content_type":          ctype,
+			"byte_size":             size,
+			"sort_order":            order,
+			"draft_updated_at":      draftUpdated,
+			"draft_revision_count":  revCount,
+			"lifecycle_state":       lstate,
+			"trashed_at":            trashedAt,
+			"purge_eligible_at":     purgeAt,
+			"created_at":            createdAt,
+			"updated_at":            updatedAt,
+			"word_count":            wordCount,
+			"editorial_status":      editorialStatus,
+			"published_revision_id": publishedRevisionID,
 		})
 	}
 
