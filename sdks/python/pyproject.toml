@@ -24,6 +24,10 @@ dependencies = [
   "opentelemetry-exporter-otlp-proto-http>=1.27",
   "opentelemetry-instrumentation-fastapi>=0.48b0",
   "opentelemetry-instrumentation-httpx>=0.48b0",
+  # P2·A2a (687fd4949) — loreweave_obs.logging_setup imports pythonjsonlogger for structured
+  # JSON logs but the dep was never declared → every service rebuild crashed on startup
+  # (ModuleNotFoundError). Declared here so `pip install /sdk` resolves it fleet-wide.
+  "python-json-logger>=2.0",
   # Unified Job Control Plane P1 — loreweave_jobs.BaseTerminalConsumer is a Redis-Streams
   # consumer-group transport scaffold. Every consuming Python service already runs redis;
   # the SDK declares it so its own unit tests + the import resolve. (emit.py is duck-typed
