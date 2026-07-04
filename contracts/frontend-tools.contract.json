@@ -242,7 +242,8 @@
           "enrichment-gaps",
           "enrichment-sources",
           "enrichment-jobs",
-          "enrichment-settings"
+          "enrichment-settings",
+          "user-guide"
         ],
         "type": "string"
       }

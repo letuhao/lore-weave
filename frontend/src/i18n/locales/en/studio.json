@@ -5,9 +5,7 @@
   "welcome": {
     "tab": "Welcome",
     "title": "Writing Studio",
-    "body": "A dockable workspace for this book. Panels (compose, planner, cast, quality…) will be added here one at a time. Drag tabs to split, stack, float, or pop out into their own window.",
-    "openUserGuide": "Open the User Guide",
-    "paletteHint": "⌘⇧P → \"Choose Your Focus\" or \"Start Guided Tour\" anytime"
+    "body": "A dockable workspace for this book. Panels (compose, planner, cast, quality…) will be added here one at a time. Drag tabs to split, stack, float, or pop out into their own window."
   },
   "panels": {
     "compose": {
@@ -272,10 +270,6 @@
     "skill-editor": {
       "title": "Skill",
       "desc": "Edit a SKILL.md"
-    },
-    "user-guide": {
-      "title": "User Guide",
-      "desc": "Every Studio tool, grouped by area — generated from the same catalog as the Command Palette"
     }
   },
   "sceneRail": {
@@ -402,8 +396,7 @@
       "sharing": "Sharing & Settings",
       "platform": "Platform",
       "discovery": "Discovery",
-      "jobs": "Jobs",
-      "help": "Help"
+      "jobs": "Jobs"
     },
     "cmd": {
       "showManuscript": "View: Show Manuscript",
@@ -412,9 +405,7 @@
       "showQuality": "View: Show Quality",
       "goToChapter": "View: Go to Chapter…",
       "toggleSidebar": "View: Toggle Side Bar",
-      "toggleBottom": "View: Toggle Bottom Panel",
-      "chooseYourFocus": "Studio: Choose Your Focus",
-      "startGuidedTour": "Studio: Start Guided Tour"
+      "toggleBottom": "View: Toggle Bottom Panel"
     },
     "desc": {
       "showManuscript": "Chapters & scenes",
@@ -423,9 +414,7 @@
       "showQuality": "Critic, promises & canon",
       "goToChapter": "Open Quick Open",
       "toggleSidebar": "Show or hide the side bar",
-      "toggleBottom": "Jobs · Generation · Issues",
-      "chooseYourFocus": "Re-run the role picker",
-      "startGuidedTour": "A quick tour of the core panels"
+      "toggleBottom": "Jobs · Generation · Issues"
     }
   },
   "activity": {
@@ -492,55 +481,5 @@
     "statChapters": "{{n}} ch",
     "statScenes": "{{n}} sc",
     "window": "win {{a}}–{{b}} / {{n}}"
-  },
-  "intro": {
-    "title": "Welcome to Writing Studio",
-    "subtitle": "What are you here to do? This tailors your Welcome panel and quick tour — change it anytime from the Command Palette.",
-    "skip": "Skip, I'll explore",
-    "roles": {
-      "writer": {
-        "title": "Write a novel",
-        "desc": "Compose chapters with an AI co-writer, plan the system, edit the manuscript"
-      },
-      "worldbuilder": {
-        "title": "Build world & lore",
-        "desc": "Glossary entities, the wiki, and the knowledge graph"
-      },
-      "translator": {
-        "title": "Translate",
-        "desc": "Coverage matrix, bulk translate, per-chapter versions"
-      },
-      "enricher": {
-        "title": "Enrich existing text",
-        "desc": "Find gaps, expand under-described entities, manage sources"
-      },
-      "manager": {
-        "title": "Manage & share",
-        "desc": "Visibility, collaborators, book settings"
-      }
-    },
-    "tour": {
-      "core": {
-        "manuscript": {
-          "title": "Your manuscript",
-          "body": "The Manuscript navigator drives the dock — pick a chapter or scene here to open it."
-        },
-        "palette": {
-          "title": "Jump anywhere",
-          "body": "⌘P jumps to a chapter/scene/arc; ⌘⇧P opens any Studio tool by name."
-        },
-        "compose": {
-          "title": "Compose",
-          "body": "Your AI co-writer — draft, discuss, and apply prose changes here."
-        },
-        "editor": {
-          "title": "Editor",
-          "body": "The manuscript editor — grammar, glossary hints, focus mode, and auto-save live here."
-        }
-      }
-    }
-  },
-  "userGuide": {
-    "intro": "Every tool Writing Studio can open, grouped the same way as the Command Palette."
   }
 }

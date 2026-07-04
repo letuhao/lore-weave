@@ -5,9 +5,7 @@
   "welcome": {
     "tab": "歡迎",
     "title": "寫作工作室",
-    "body": "本書的可停靠工作區。面板（寫作、大綱、角色、品質…）將逐一加入此處。拖曳分頁即可分割、堆疊、浮動，或彈出為獨立視窗。",
-    "openUserGuide": "開啟使用者指南",
-    "paletteHint": "⌘⇧P →「選擇你的重點」或「開始導覽」，隨時可用"
+    "body": "本書的可停靠工作區。面板（寫作、大綱、角色、品質…）將逐一加入此處。拖曳分頁即可分割、堆疊、浮動，或彈出為獨立視窗。"
   },
   "panels": {
     "compose": {
@@ -218,11 +216,6 @@
       "desc": "逐章翻譯版本管理(比較、設為啟用、重新翻譯)",
       "empty": "請從翻譯矩陣開啟某章節的翻譯版本。"
     },
-    "translation-review": {
-      "title": "翻譯校閱",
-      "desc": "逐區塊並排比較,並可個別修正",
-      "empty": "請從翻譯版本面板開啟某版本的校閱。"
-    },
     "enrichment-compose": {
       "title": "建立增修",
       "desc": "撰寫新的增修知識草稿(擴寫草稿、貼上內容、上傳檔案或輸入意圖)"
@@ -260,10 +253,6 @@
       "title": "原始來源",
       "desc": "此章節未翻譯的原始文字",
       "empty": "從編輯器開啟一個章節以檢視其原始來源。"
-    },
-    "user-guide": {
-      "title": "使用者指南",
-      "desc": "Studio 所有工具依區域分組 — 由與 Command Palette 相同的目錄自動產生"
     }
   },
   "sceneRail": {
@@ -316,8 +305,7 @@
     "save": "儲存",
     "grammar": "文法",
     "heatmap": "熱度圖",
-    "focus": "專注模式",
-    "translate": "翻譯"
+    "focus": "專注模式"
   },
   "popout": {
     "invalid": "此彈出視窗連結無效。",
@@ -390,8 +378,7 @@
       "sharing": "分享與設定",
       "platform": "平台",
       "discovery": "探索",
-      "jobs": "工作",
-      "help": "說明"
+      "jobs": "工作"
     },
     "cmd": {
       "showManuscript": "檢視：手稿",
@@ -400,9 +387,7 @@
       "showQuality": "檢視：品質",
       "goToChapter": "檢視：前往章節…",
       "toggleSidebar": "檢視：切換側邊欄",
-      "toggleBottom": "檢視：切換底部面板",
-      "chooseYourFocus": "Studio：選擇你的重點",
-      "startGuidedTour": "Studio：開始導覽"
+      "toggleBottom": "檢視：切換底部面板"
     },
     "desc": {
       "showManuscript": "章節與場景",
@@ -411,9 +396,7 @@
       "showQuality": "評論、伏筆與 canon",
       "goToChapter": "開啟 Quick Open",
       "toggleSidebar": "顯示或隱藏側邊欄",
-      "toggleBottom": "工作 · 生成 · 問題",
-      "chooseYourFocus": "重新選擇你的重點",
-      "startGuidedTour": "核心面板的快速導覽"
+      "toggleBottom": "工作 · 生成 · 問題"
     }
   },
   "activity": {
@@ -480,55 +463,5 @@
     "statChapters": "{{n}} 章",
     "statScenes": "{{n}} 場景",
     "window": "win {{a}}–{{b}} / {{n}}"
-  },
-  "intro": {
-    "title": "歡迎使用寫作工作室",
-    "subtitle": "你來這裡想做什麼？這會調整你的歡迎面板與快速導覽內容 — 隨時可從 Command Palette 變更。",
-    "skip": "跳過，我自己探索",
-    "roles": {
-      "writer": {
-        "title": "撰寫小說",
-        "desc": "與 AI 共同創作章節、規劃系統、編輯手稿"
-      },
-      "worldbuilder": {
-        "title": "建構世界觀與知識",
-        "desc": "詞彙表實體、Wiki 與知識圖譜"
-      },
-      "translator": {
-        "title": "翻譯",
-        "desc": "涵蓋率矩陣、批次翻譯、逐章版本"
-      },
-      "enricher": {
-        "title": "增修既有文字",
-        "desc": "找出缺口、擴寫描述不足的實體、管理來源"
-      },
-      "manager": {
-        "title": "管理與分享",
-        "desc": "可見性、協作者、書籍設定"
-      }
-    },
-    "tour": {
-      "core": {
-        "manuscript": {
-          "title": "你的手稿",
-          "body": "手稿導覽器操控整個 dock — 在此選擇章節或場景即可開啟。"
-        },
-        "palette": {
-          "title": "隨處跳轉",
-          "body": "⌘P 前往章節/場景/卷；⌘⇧P 依名稱開啟任何 Studio 工具。"
-        },
-        "compose": {
-          "title": "Compose",
-          "body": "你的 AI 共同創作夥伴 — 在此起草、討論並套用文字變更。"
-        },
-        "editor": {
-          "title": "Editor",
-          "body": "手稿編輯器 — 文法檢查、詞彙表提示、專注模式與自動儲存都在這裡。"
-        }
-      }
-    }
-  },
-  "userGuide": {
-    "intro": "寫作工作室可開啟的每個工具，依 Command Palette 相同的方式分組。"
   }
 }

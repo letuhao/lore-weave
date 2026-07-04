@@ -16,7 +16,8 @@ export interface StudioCommand {
 // directly after Recent (highest command volume = primary discovery surface), before the static
 // Navigate/Layout groups. A panel with no `category` (forward-compat guard) sorts last under the
 // generic 'panels' fallback label — never dropped, never crashes.
-const CATEGORY_ORDER: StudioPanelCategory[] = [
+// Exported so the #19 User Guide panel groups by the exact same order instead of duplicating it.
+export const CATEGORY_ORDER: StudioPanelCategory[] = [
   'editor', 'storyBible', 'knowledge', 'translation', 'enrichment', 'sharing', 'platform', 'discovery', 'jobs',
 ];
 
@@ -33,9 +34,13 @@ export function buildStudioCommands(opts: {
   panels: StudioPanelDef[];
   onOpenPanel: (panelId: string) => void;
   onOpenQuickOpen: () => void;
+  /** #19 — re-run the Studio role picker on demand (never re-flips the seen flag). */
+  onChooseYourFocus: () => void;
+  /** #19 — start the `core` guided tour on demand. */
+  onStartGuidedTour: () => void;
   t: TFn;
 }): StudioCommand[] {
-  const { chrome, panels, onOpenPanel, onOpenQuickOpen, t } = opts;
+  const { chrome, panels, onOpenPanel, onOpenQuickOpen, onChooseYourFocus, onStartGuidedTour, t } = opts;
   const group = (k: string, dflt: string) => t(`palette.group.${k}`, { defaultValue: dflt });
   const cmd = (key: string, dflt: string) => t(`palette.cmd.${key}`, { defaultValue: dflt });
   const desc = (key: string, dflt: string) => t(`palette.desc.${key}`, { defaultValue: dflt });
@@ -77,6 +82,12 @@ export function buildStudioCommands(opts: {
   const layout = group('layout', 'Layout');
   cmds.push({ id: 'view.toggleSidebar', label: cmd('toggleSidebar', 'View: Toggle Side Bar'), description: desc('toggleSidebar', 'Show or hide the side bar'), group: layout, run: chrome.toggleSidebar });
   cmds.push({ id: 'view.toggleBottom', label: cmd('toggleBottom', 'View: Toggle Bottom Panel'), description: desc('toggleBottom', 'Jobs · Generation · Issues'), group: layout, run: chrome.toggleBottom });
+
+  // #19 — Help: re-run the role picker or start the guided tour on demand. Last group so it
+  // never disrupts the #18 category header ordering above.
+  const help = group('help', 'Help');
+  cmds.push({ id: 'studio.chooseYourFocus', label: cmd('chooseYourFocus', 'Studio: Choose Your Focus'), description: desc('chooseYourFocus', 'Re-run the role picker'), group: help, run: onChooseYourFocus });
+  cmds.push({ id: 'studio.startGuidedTour', label: cmd('startGuidedTour', 'Studio: Start Guided Tour'), description: desc('startGuidedTour', 'A quick tour of the core panels'), group: help, run: onStartGuidedTour });
 
   return cmds;
 }

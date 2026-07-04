@@ -5,9 +5,7 @@
   "welcome": {
     "tab": "Chào mừng",
     "title": "Xưởng Sáng Tác",
-    "body": "Không gian làm việc dạng bảng ghép cho cuốn sách này. Các bảng (sáng tác, dàn ý, nhân vật, chất lượng…) sẽ được thêm vào đây từng cái một. Kéo thẻ để chia đôi, xếp chồng, thả nổi, hoặc tách ra cửa sổ riêng.",
-    "openUserGuide": "Mở Hướng dẫn sử dụng",
-    "paletteHint": "⌘⇧P → \"Chọn trọng tâm\" hoặc \"Bắt đầu tour hướng dẫn\" bất cứ lúc nào"
+    "body": "Không gian làm việc dạng bảng ghép cho cuốn sách này. Các bảng (sáng tác, dàn ý, nhân vật, chất lượng…) sẽ được thêm vào đây từng cái một. Kéo thẻ để chia đôi, xếp chồng, thả nổi, hoặc tách ra cửa sổ riêng."
   },
   "panels": {
     "compose": {
@@ -218,11 +216,6 @@
       "desc": "Quản lý phiên bản dịch theo từng chương (so sánh, đặt bản chính, dịch lại)",
       "empty": "Mở phiên bản dịch của một chương từ ma trận Dịch thuật."
     },
-    "translation-review": {
-      "title": "Xem lại bản dịch",
-      "desc": "So sánh song song theo từng khối, sửa trực tiếp từng khối",
-      "empty": "Mở mục Xem lại của một phiên bản từ panel Phiên bản dịch."
-    },
     "enrichment-compose": {
       "title": "Tạo làm giàu",
       "desc": "Soạn một bản nháp tri thức làm giàu mới (mở rộng bản nháp, dán ngữ cảnh, tải tệp, hoặc nêu ý định)"
@@ -260,10 +253,6 @@
       "title": "Nguồn gốc",
       "desc": "Văn bản gốc chưa dịch của chương này",
       "empty": "Mở một chương từ Trình soạn thảo để xem nguồn gốc của nó."
-    },
-    "user-guide": {
-      "title": "Hướng dẫn sử dụng",
-      "desc": "Mọi công cụ của Studio, nhóm theo khu vực — tạo tự động từ cùng danh mục với Command Palette"
     }
   },
   "sceneRail": {
@@ -316,8 +305,7 @@
     "save": "Lưu",
     "grammar": "Ngữ pháp",
     "heatmap": "Bản đồ nhiệt",
-    "focus": "Tập trung",
-    "translate": "Dịch"
+    "focus": "Tập trung"
   },
   "popout": {
     "invalid": "Liên kết cửa sổ bật ra này không hợp lệ.",
@@ -390,8 +378,7 @@
       "sharing": "Chia sẻ & Cài đặt",
       "platform": "Nền tảng",
       "discovery": "Khám phá",
-      "jobs": "Tác vụ",
-      "help": "Trợ giúp"
+      "jobs": "Tác vụ"
     },
     "cmd": {
       "showManuscript": "Xem: Bản thảo",
@@ -400,9 +387,7 @@
       "showQuality": "Xem: Chất lượng",
       "goToChapter": "Xem: Đến chương…",
       "toggleSidebar": "Xem: Bật/tắt thanh bên",
-      "toggleBottom": "Xem: Bật/tắt bảng dưới",
-      "chooseYourFocus": "Studio: Chọn trọng tâm",
-      "startGuidedTour": "Studio: Bắt đầu tour hướng dẫn"
+      "toggleBottom": "Xem: Bật/tắt bảng dưới"
     },
     "desc": {
       "showManuscript": "Chương & cảnh",
@@ -411,9 +396,7 @@
       "showQuality": "Critic, lời hứa & canon",
       "goToChapter": "Mở Quick Open",
       "toggleSidebar": "Hiện/ẩn thanh bên",
-      "toggleBottom": "Jobs · Sinh · Vấn đề",
-      "chooseYourFocus": "Chọn lại trọng tâm",
-      "startGuidedTour": "Tour nhanh qua các bảng cốt lõi"
+      "toggleBottom": "Jobs · Sinh · Vấn đề"
     }
   },
   "activity": {
@@ -480,55 +463,5 @@
     "statChapters": "{{n}} chương",
     "statScenes": "{{n}} cảnh",
     "window": "win {{a}}–{{b}} / {{n}}"
-  },
-  "intro": {
-    "title": "Chào mừng đến Xưởng Sáng Tác",
-    "subtitle": "Bạn ở đây để làm gì? Điều này sẽ tùy chỉnh bảng Chào mừng và tour nhanh của bạn — có thể đổi bất cứ lúc nào từ Command Palette.",
-    "skip": "Bỏ qua, tôi tự khám phá",
-    "roles": {
-      "writer": {
-        "title": "Viết tiểu thuyết",
-        "desc": "Soạn chương với AI đồng sáng tác, lập kế hoạch hệ thống, sửa bản thảo"
-      },
-      "worldbuilder": {
-        "title": "Xây dựng thế giới & lore",
-        "desc": "Thực thể từ điển, wiki, và đồ thị tri thức"
-      },
-      "translator": {
-        "title": "Dịch thuật",
-        "desc": "Ma trận độ phủ, dịch hàng loạt, phiên bản theo từng chương"
-      },
-      "enricher": {
-        "title": "Làm giàu văn bản hiện có",
-        "desc": "Tìm thiếu sót, mở rộng thực thể mô tả sơ sài, quản lý nguồn"
-      },
-      "manager": {
-        "title": "Quản lý & chia sẻ",
-        "desc": "Chế độ hiển thị, cộng tác viên, cài đặt sách"
-      }
-    },
-    "tour": {
-      "core": {
-        "manuscript": {
-          "title": "Bản thảo của bạn",
-          "body": "Trình điều hướng Bản thảo điều khiển dock — chọn một chương hoặc cảnh tại đây để mở nó."
-        },
-        "palette": {
-          "title": "Đến bất cứ đâu",
-          "body": "⌘P để đến chương/cảnh/hồi; ⌘⇧P để mở bất kỳ công cụ Studio nào theo tên."
-        },
-        "compose": {
-          "title": "Compose",
-          "body": "AI đồng sáng tác của bạn — soạn thảo, trao đổi, và áp dụng thay đổi văn bản tại đây."
-        },
-        "editor": {
-          "title": "Editor",
-          "body": "Trình soạn bản thảo — ngữ pháp, gợi ý từ điển, chế độ tập trung, và tự động lưu đều ở đây."
-        }
-      }
-    }
-  },
-  "userGuide": {
-    "intro": "Mọi công cụ Xưởng Sáng Tác có thể mở, được nhóm theo cùng cách với Command Palette."
   }
 }
