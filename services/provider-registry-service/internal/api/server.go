@@ -200,6 +200,38 @@ func NewServer(pool *pgxpool.Pool, cfg *config.Config, notifier jobs.Notifier, a
 			slog.Info("stuck-running sweeper enabled", "timeout_s", cfg.LLMRunningSweepTimeoutS, "interval_s", cfg.LLMRunningSweepIntervalS)
 		}
 
+		// P2·B2 — plaintext retention sweeper. DELETEs terminal llm_jobs past their
+		// expires_at (7d default), purging the plaintext input/result JSONB; the
+		// durable encrypted audit copy remains in usage_logs (readable post-P0-1) and
+		// GET …/llm/jobs/{id} cleanly 404s a purged row. 0 = disabled. Drains the
+		// backlog in bounded batches each tick so a first run after a long gap can't
+		// take one giant table lock. Independent of Redis/the relay.
+		if cfg.LLMRetentionSweepIntervalS > 0 {
+			interval := time.Duration(cfg.LLMRetentionSweepIntervalS) * time.Second
+			batch := cfg.LLMRetentionSweepBatch
+			repo := s.jobsRepo
+			go func() {
+				t := time.NewTicker(interval)
+				defer t.Stop()
+				for range t.C {
+					for {
+						n, serr := repo.PurgeExpiredJobs(context.Background(), batch)
+						if serr != nil {
+							slog.Warn("retention sweep failed", "err", serr)
+							break
+						}
+						if n > 0 {
+							slog.Info("retention sweep purged expired llm_jobs", "deleted", n)
+						}
+						if n < batch {
+							break // backlog drained for this tick
+						}
+					}
+				}
+			}()
+			slog.Info("retention sweeper enabled", "interval_s", cfg.LLMRetentionSweepIntervalS, "batch", cfg.LLMRetentionSweepBatch)
+		}
+
 		// Phase 1 Commit 3 — durable work queue. When enabled (+ broker set),
 		// submit enqueues and this consumer pool runs jobs behind a per-kind
 		// semaphore (= governor.MaxFor), so a slow local job DELAYS the queue

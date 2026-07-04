@@ -122,6 +122,14 @@ type Config struct {
 	// 0 = disabled. Env LLM_RUNNING_SWEEP_TIMEOUT_S / LLM_RUNNING_SWEEP_INTERVAL_S.
 	LLMRunningSweepTimeoutS  int
 	LLMRunningSweepIntervalS int
+
+	// P2·B2 — plaintext retention sweeper. Periodically DELETEs terminal llm_jobs
+	// past expires_at (the 7-day default set at INSERT), purging the plaintext
+	// input/result JSONB; the durable encrypted audit copy remains in usage_logs.
+	// Interval 0 = disabled. Batch bounds one DELETE so a backlog can't lock the
+	// table. Env LLM_RETENTION_SWEEP_INTERVAL_S / LLM_RETENTION_SWEEP_BATCH.
+	LLMRetentionSweepIntervalS int
+	LLMRetentionSweepBatch     int
 }
 
 func Load() (*Config, error) {
@@ -239,6 +247,16 @@ func Load() (*Config, error) {
 	}
 	if c.LLMRunningSweepIntervalS, err = getEnvInt("LLM_RUNNING_SWEEP_INTERVAL_S", 60); err != nil {
 		return nil, err
+	}
+	// P2·B2 — retention sweeper. Default hourly, 1000 rows/batch; 0 disables.
+	if c.LLMRetentionSweepIntervalS, err = getEnvInt("LLM_RETENTION_SWEEP_INTERVAL_S", 3600); err != nil {
+		return nil, err
+	}
+	if c.LLMRetentionSweepBatch, err = getEnvInt("LLM_RETENTION_SWEEP_BATCH", 1000); err != nil {
+		return nil, err
+	}
+	if c.LLMRetentionSweepBatch <= 0 {
+		c.LLMRetentionSweepBatch = 1000
 	}
 	return c, nil
 }
