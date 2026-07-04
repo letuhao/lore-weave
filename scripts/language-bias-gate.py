@@ -272,11 +272,17 @@ def main() -> int:
 
 
 # Seeded from the current repo (2026-07-04). Re-generate with --update-baseline.
-# 37 known offenders from the enterprise-hardening audit (Area 7). Each is a
+# 38 known offenders from the enterprise-hardening audit (Area 7). Each is a
 # line-number-independent `rule|relpath|normalized-code` fingerprint, so the
 # gate passes today and fails only on a NEW occurrence.
 BASELINE = {
     'ml2-naive-normalize|services/chat-service/app/client/known_entities_client.py|toks.add(name.strip().lower())',
+    # compaction.py `term.lower()` is a SYMMETRIC dedup key (used only as a `seen`-set
+    # membership key; the unchanged `term` is what's stored) — low-risk (CJK is a lower()
+    # no-op; Latin folds symmetrically), not name-normalization that corrupts output. Owned
+    # by the context-budget track. Baselined so language-bias-gate can enforce as BLOCKING;
+    # tracked in SESSION_HANDOFF for a casefold/name_normalize cleanup. See D-LANGBIAS-COMPACTION-LOWER.
+    'ml2-naive-normalize|services/chat-service/app/services/compaction.py|k = term.lower()',
     'ml2-naive-normalize|services/chat-service/app/services/steering.py|if name.casefold() in mentioned:',
     'ml2-naive-normalize|services/composition-service/app/engine/canon_check.py|idx = low.find(name.lower())',
     'ml2-naive-normalize|services/composition-service/app/engine/cast_plan.py|key = name.strip().casefold()',

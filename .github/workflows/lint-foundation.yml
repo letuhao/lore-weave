@@ -55,17 +55,18 @@ jobs:
       - name: Run ${{ matrix.lint }}
         run: bash scripts/${{ matrix.lint }}.sh
 
-  # P1 security/quality lints (audit P1) — ADVISORY (`continue-on-error: true`)
-  # while the lints prove out, so CI stays green as they mature. Flip a leg to
-  # blocking (drop its continue-on-error) once its baseline is clean. These are
-  # Python scripts (`python scripts/<name>.py`), so they get their own job rather
-  # than the `bash scripts/<name>.sh` matrix above. The scripts land in the same
-  # integration commit as this wiring; until then continue-on-error absorbs a
-  # missing-file failure. NOTE: `timeout-discipline-lint` is already wired as a
-  # BLOCKING leg in the matrix above — its extension is picked up there, so it is
+  # P1 security/quality lints (audit P1) — now BLOCKING. Each carries a baseline/
+  # allowlist (seeded from today's known offenders) so it passes on current code and
+  # fails only on a NEW violation; the baselines are clean, so these are flipped off
+  # `continue-on-error` to give the standards teeth (audit P1: "flip advisory →
+  # blocking once the baseline is clean"). These are Python scripts
+  # (`python scripts/<name>.py`), so they get their own job rather than the
+  # `bash scripts/<name>.sh` matrix above. NOTE: `timeout-discipline-lint` is already
+  # a BLOCKING leg in the matrix above (its Python extension WARNs internally — the
+  # asyncpg-pool `command_timeout` debt is tracked in SESSION_HANDOFF), so it is
   # intentionally not duplicated here.
   p1-lints:
-    name: P1 ${{ matrix.lint }} (advisory)
+    name: P1 ${{ matrix.lint }}
     runs-on: ubuntu-latest
     timeout-minutes: 5
     strategy:
@@ -84,5 +85,4 @@ jobs:
         with:
           python-version: "3.12"
       - name: Run ${{ matrix.lint }}
-        continue-on-error: true
         run: python scripts/${{ matrix.lint }}.py
