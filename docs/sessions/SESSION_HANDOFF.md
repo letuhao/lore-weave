@@ -1,5 +1,8 @@
 # ▶▶ NEXT SESSION STARTS HERE
 
+**CONTEXT INSPECTOR GUI (Context Budget Law §11) — M1 + M2 SHIPPED 2026-07-05.** Plan [`docs/plans/2026-07-04-context-inspector-gui.md`](../plans/2026-07-04-context-inspector-gui.md) (3 milestones). **M1 BE telemetry (`54d3872c9`):** a `loreweave_context.TraceAccumulator` threads through chat assembly recording each tier decision it can MEASURE (T6 C_persist via `persist_auto_compact`, in-turn compaction, T0 wire-hygiene); the persisted per-turn `contextBudget` frame gained `raw_tokens` (= compiled + Σ savings), `reduction_pct`, ordered `trace[]` spans, `status_flags[]`, `retrieval_mode`, `intent` — all additive. New `GET /v1/chat/sessions/{id}/context-trace` (full frames + user message). `contracts/context-trace.contract.json` + `test_context_trace_contract` (conformance on the REAL emit fn) + `scripts/context-inspector-trace-gate.py` (live GATE, §13b). **Honesty:** chat claims only measurable savings (gated-grounding = status flag delta 0, not a fake cut); raw==compiled when nothing cut. *Also fixed broken HEAD:* the T3 `budget.py`/`plan.py` the committed kernel `__init__` imported were left untracked. VERIFY: chat 937 tests, provider-gate, **live real-turn GATE PASS** (every field non-null, raw==compiled+savings). **M2 FE (`6c5dea2e6` core + `887f4b246` registration):** dockable `context-inspector` panel — `features/chat/inspector/` (pure `inspectorMath` gauge/KPI/filters + `useContextTrace` self-contained hook + PressureGauge/AllocationMap[reuses ContextBreakdownPanel computeBreakdown+colors, extended to 15 cats]/CompileTrace waterfall/TurnList + ContextInspectorView container) → `ContextInspectorPanel` (studio dock) + registered in catalog/`ui_open_studio_panel` enum/contract/4 i18n. **Responsive** (rail stacks below `md`, top-bar/KPIs wrap). VERIFY: 46 FE tests + tsc clean + **live browser smoke** (vite→gateway→chat, 0 console errors, real `/context-trace` data rendered: gauge state + allocation segments). **DEFERRED:** (1) standalone `/context-inspector` route in App.tsx — blocked, App.tsx under active concurrent rewrite (clobbered 3× this session; the LOCKED dock panel is the primary surface + is wired). (2) **M3 = §13 CI meta-check** parsing §11a (per-item `✓test:` proof-refs, un-gameable manifest) + adversarial refute-pass — the enforcement layer, not yet built. *Multi-session note: this run committed via `git commit --only <paths>` to isolate from a concurrent Phase-2 editor-craft session's 37-file staged index; bundled its 2 leaf panels (Media/OriginalSource) into `887f4b246` for catalog coherence (broken-HEAD avoidance) — its other 28 files stay staged for it.*
+
+
 **▶ P2 ENTERPRISE STRUCTURAL HARDENING** (spec [`2026-07-04-enterprise-p2-structural.md`](../specs/2026-07-04-enterprise-p2-structural.md) = system-of-record). SHIPPED this run: **G** (no-op, verified) · **B1** (KEK sha256) · **A1** (10-Go-main obs fleet + `/review-impl` Standards gate) · **A2a** (Python `setup_logging`) · **B2** (retention sweeper + embed cost + route-parity D-S4C fix + outbox purge) · **C 4/6** (dedup, noop-warn, PII-redact, opt-out; 2 slices tracked) · **D** (latency SLO SoT + lint) · **F** (tenant-boundary audit — `tenant_access_audit` append-only table + coalesced first-per-window emit in book-service `authBook` + glossary-service `checkGrant`; injectable `emitTenantAudit` hook; 9 decision tests + insert-shape/bucket tests green). **E** (salience↔learning — ✅ RESOLVED, documented keep-separate: [`2026-07-05-salience-learning-boundary.md`](../specs/2026-07-05-salience-learning-boundary.md); tracked `D-E-SALIENCE-LEARNING-BRIDGE` revisit-gated). **REMAINING: A2b** (Go `contracts/logging` adopt-vs-retire + kill TS backend `console.*`). **P2 Deferred rows:** `D-F-AUDIT-LIVE-SMOKE` (cross-tenant read → row + coalescing, needs scratch stack — NOT the shared dev DB) · `D-A1-CALLSITE-SWEEP` (per-service slog ctx-thread, Tempo-gated) · `D-D-PERF-NIGHTLY` (p95 assertion, no harness) · `D-C-PRODUCER-OUTBOX` · `D-C-FE-I18N` · B2 live-smokes (`D-B2-{RETENTION,PARITY}-LIVE-SMOKE`, `D-B2-RERANK-WEBSEARCH-PRICING`) · `D-C-DEDUP-LIVE-SMOKE`.
 
 **WIKI DOCKABLE MIGRATION — FULLY DONE 2026-07-04** (follows the same pattern as Glossary/KG:
@@ -31,6 +34,61 @@ commits mid-way through this one) — re-verify shared spine files (`catalog.ts`
 `frontend_tools.py`, the contract) before trusting this note's file list is still current.
 
 **KNOWLEDGE/KG DOCKABLE MIGRATION — FULLY DONE 2026-07-04** (commits `4c50f7ae2` Phase A, `5c43a36c9` Phase B, `d9d21a262`/`b88e07ba7` docs, `9098f9ce0` studioLinks wiring, `21bae112a` E2E). All 13 panels (`knowledge` hub + 12 `kg-*` capability panels) built, wired into the studio link resolver, and **live-proven**: `frontend/tests/e2e/specs/kg-panels.spec.ts` opens every one through the real Command Palette against the real backend — 17/17 passing (ran via `docker` stack + `vite --port 5199`; the baked `:5174` image is stale for this work). Decision recorded: `KnowledgePage`/`ProjectDetailShell`/`KnowledgeOntologyTab` are **NOT** retired into redirects — matches wave-1's own documented precedent (`11_dockable_migration.md`) of keeping classic routes as multi-device/non-studio entry points; Knowledge's case is harder than wave-1's (no reliable book to redirect a global hub or standalone project into, Studio is desktop-first). See [[kg-dockable-migration-phase-a]] memory for full detail. Remaining, still deferred: cross-panel E2E beyond what's already covered (hub → other capability panels).
+
+> **"CURSOR-FOR-NOVELS" REGISTER — #1 COHERENCE Phase 2 ✅ COMPLETE 2026-07-05** (spec
+> [`16_chapter_editor_parity_and_retirement.md`](../specs/2026-07-01-writing-studio/16_chapter_editor_parity_and_retirement.md),
+> plan [`2026-07-04-writing-studio-phase2-editor-craft.md`](../plans/2026-07-04-writing-studio-phase2-editor-craft.md)).
+> All 11 editor-craft UX gaps from the Phase 1 capability audit shipped in one continuous L-size
+> run: grammar check, glossary inline decoration/autocomplete, mention heatmap, AI-provenance
+> tracking+toolbar, selection toolbar/inline-AI, focus mode, auto-save (300s debounce),
+> progress-reporting, image/video upload-context (**redesigned** module singleton →
+> per-editor-instance via `editor.storage.mediaUpload` — a module singleton is a multi-tab/
+> multi-window landmine), original-source viewer (`OriginalSourcePanel`, new dock panel), and
+> popout Compose (`StudioPopoutHost` at `/studio/popout` — a REAL OS-window pop-out per the
+> user's explicit ask for multi-monitor support, reusing the T5.4 M4 `PopoutBridge`/
+> `popoutChannel` mechanism generalized with a `route` prop). M7 (Classic/AI editor-mode
+> toggle) — user decision: **do NOT port**, conscious won't-fix (Studio has no such toggle
+> concept; recorded in spec 16).
+>
+> **`/review-impl` found + fixed 1 HIGH:** the popout Compose Apply path was fire-and-forget —
+> if the user pops out Compose on chapter A then switches the main-window editor to chapter B,
+> the opener's `usePopoutInsertRelay` unsubscribes from channel (book, A) on chapterId change,
+> so an Apply from the still-open popout would **silently drop the edit while reporting
+> "Applied ✓"** to both user and LLM. Fixed with a request/ack correlation protocol: optional
+> `reqId` on `insert-prose`, matching `insert-ack` reply, `Promise<boolean>` + 4s-timeout on the
+> sender — backward-compatible with the legacy un-acked `PopoutHost` sender (no `reqId` ⇒ no ack
+> expected). 6 new tests across `usePopoutInsertRelay`/`StudioPopoutHost`/`ProposeEditCard`.
+> **1 MED accepted, not fixed:** `EditorPanel.tsx`/`ManuscriptUnitProvider.tsx` are now ~370
+> lines each, over the React MVC ~100/200-line guideline — deliberate (avoids re-fragmenting 8
+> file-convergent sub-tasks across a merge-collision-prone split mid-effort); a size-debt
+> refactor is its own follow-up, not blocking.
+>
+> **VERIFY:** `tsc --noEmit` clean; 268 files / 1926 tests green (a 4-file KG-panel flake seen
+> mid-sweep was confirmed cross-file test-pollution on rerun, not a regression — passes both
+> isolated and on a clean full-sweep rerun). Live browser smoke (vite :5199, real backend, real
+> local `google/gemma-4-26b-a4b-qat`): grammar/heatmap/focus/glossary-autocomplete/
+> provenance-tag all exercised; cross-window relay proven end-to-end with a real second OS
+> window (pop out → agent drafts → Apply → main-window editor updates). **2 pre-existing bugs
+> found during smoke, confirmed NOT caused by Phase 2 (untouched by its diff), left as-is:**
+> LanguageTool 500s (reproduces identically on the legacy route — infra flakiness) and a React
+> "Cannot update ManuscriptUnitProvider while rendering TiptapEditor" warning (Phase 1's
+> `content`/`onUpdate` wiring, predates Phase 2).
+>
+> **Environmental incidents hit + resolved mid-session on this shared checkout (not code
+> defects):** (1) `git worktree remove --force` on a fan-out worktree followed a Windows
+> junction back to the main checkout's real `node_modules` and deleted its TARGET content —
+> fixed via `npm install` (785 packages restored, lockfile unchanged). Lesson: never let a
+> worktree's `node_modules` be a junction to the main checkout's real one — run `npm install`
+> fresh inside each worktree instead. (2) a concurrent session's `git reset` + `commit` on this
+> shared checkout cleared the entire shared staging index (34 files) mid-review — recovered via
+> the [[shared-file-collision-safe-staging-multi-agent-checkout]] reconstruct-stage-restore
+> technique, re-verified via diff that no staged content was lost.
+>
+> **NEXT (register order, per spec 16's own roadmap):** Phase 3 (Translate workmode) — needs its
+> own capability audit at kickoff (same build-while-plan convention as Phase 2). Phase 4
+> (mobile-shell decision + full route retirement + `ChapterEditorPage` deletion) comes after,
+> gated on a soak period per spec M9. #4 AGENT-MODE (autonomy mission-control GUI) remains the
+> largest unstarted "Cursor-for-novels" item — needs its own CLARIFY+DESIGN when picked up.
 
 > **"CURSOR-FOR-NOVELS" REGISTER — #1 COHERENCE Phase 1 ✅ COMPLETE 2026-07-04.** User approved the
 > spec+plan (`approve, go`) and asked to proceed into BUILD; all of Phase 1 (spec
@@ -72,14 +130,7 @@ commits mid-way through this one) — re-verify shared spine files (`catalog.ts`
 > on the book detail page opens Studio with the CORRECT chapter's actual content auto-focused (not
 > whatever was last active).
 >
-> **NEXT (register order, per spec 16's own roadmap):** Phase 2 (editor-craft UX — grammar,
-> glossary inline decoration/autocomplete, mention heatmap, provenance, selection toolbar/inline-AI,
-> focus mode, auto-save, progress-reporting, original-source viewer, image/video upload-context) —
-> roadmap only in the spec, needs its own capability audit at kickoff per the track's
-> build-while-plan convention. Phase 3 (Translate workmode) and Phase 4 (mobile-shell decision +
-> full route retirement + `ChapterEditorPage` deletion) come after. #4 AGENT-MODE (autonomy
-> mission-control GUI) remains the largest unstarted "Cursor-for-novels" item — needs its own
-> CLARIFY+DESIGN when picked up.
+> **NEXT:** superseded — see the Phase 2 ✅ COMPLETE entry above (2026-07-05).
 
 > **"CURSOR-FOR-NOVELS" REGISTER — #1 COHERENCE SPEC+PLAN DONE 2026-07-04 (docs only, no build
 > yet — user-scoped this pass as CLARIFY+DESIGN+PLAN only).** After #2 APPLY-DIFF shipped
