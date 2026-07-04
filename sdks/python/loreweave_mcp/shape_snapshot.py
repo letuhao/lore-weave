@@ -18,10 +18,49 @@ and commit the JSON alongside the code.
 """
 from __future__ import annotations
 
+import ast
 import json
 import os
 from collections.abc import Iterable, Mapping
 from pathlib import Path
+
+# The reference-first keyword args whose value must be a snapshot-pinned NAMED
+# constant, never an inline literal (an inline tuple escapes the drift guard).
+_REF_KW = {"ref_fields", "node_ref", "edge_ref"}
+
+
+def _assert_no_inline_ref_literals(service: str, modules: Iterable) -> None:
+    """§13/MED-1: fail if any `apply_response_contract(...)` in a tool module passes an
+    INLINE literal (tuple/list/set/constant) to ref_fields/node_ref/edge_ref. Such a
+    literal never becomes a named `*_REF_FIELDS` constant, so the snapshot guard can't
+    pin it and a re-bloat sails through. A NAME is allowed — it is either a pinned
+    constant OR a helper parameter fed pinned constants at its callers (the knowledge
+    `_project_graph(node_ref, edge_ref)` indirection), so requiring a literal-free call
+    site is false-positive-free while closing the quickest re-bloat route."""
+    for mod in modules:
+        src_path = getattr(mod, "__file__", None)
+        if not src_path:
+            continue
+        try:
+            tree = ast.parse(Path(src_path).read_text(encoding="utf-8"))
+        except Exception:  # pragma: no cover — unreadable/compiled module, skip
+            continue
+        for node in ast.walk(tree):
+            if not isinstance(node, ast.Call):
+                continue
+            fn = node.func
+            fname = fn.attr if isinstance(fn, ast.Attribute) else getattr(fn, "id", None)
+            if fname != "apply_response_contract":
+                continue
+            for kw in node.keywords:
+                if kw.arg in _REF_KW and isinstance(
+                    kw.value, (ast.Tuple, ast.List, ast.Set, ast.Constant)
+                ):
+                    raise AssertionError(
+                        f"{service}: apply_response_contract in {Path(src_path).name}:"
+                        f"{kw.value.lineno} passes an INLINE literal to `{kw.arg}=` — use a "
+                        f"named *_REF_FIELDS constant so the snapshot pins it (§13/MED-1)."
+                    )
 
 
 def repo_root_from(start: str | Path) -> Path:
@@ -83,6 +122,14 @@ def assert_or_write_shape_snapshot(
     not self-report").
     """
     if scan_modules is not None:
+        scan_modules = list(scan_modules)
+        # (a) every `*_REF_FIELDS` constant DEFINED in a tool module is pinned, and
+        # (b) no call site passes an inline literal that would dodge (a). Coverage
+        # boundary (honest, per MED-1): this pins every ref set that is a NAMED
+        # `*_REF_FIELDS` constant in a LISTED module + rejects inline literals; a
+        # renamed constant (no `_REF_FIELDS` suffix) or a ref set in a module NOT in
+        # `scan_modules` still relies on convention + review, not this check.
+        _assert_no_inline_ref_literals(service, scan_modules)
         defined = _scan_ref_field_names(scan_modules)
         pinned = set(ref_sets)
         missing = defined - pinned
@@ -95,6 +142,15 @@ def assert_or_write_shape_snapshot(
     built = build_shape_map(ref_sets)
     root = repo_root_from(test_file)
     contract_path = root / "contracts" / "mcp-response-shapes" / f"{service}.json"
+    # audit MED-2: WRITE_MCP_SHAPES=1 makes this test SKIP (regen), not assert. If it
+    # ever leaks into a gating CI profile, all snapshot guards would silently go green-
+    # by-skip and drift would sail through. Fail LOUDLY when both are set — a CI run
+    # must never be in write mode.
+    if os.environ.get("WRITE_MCP_SHAPES") == "1" and os.environ.get("CI"):
+        raise RuntimeError(
+            "WRITE_MCP_SHAPES=1 under CI — the snapshot guard would skip, not assert. "
+            "Regenerate locally and commit the JSON; never set WRITE_MCP_SHAPES in CI."
+        )
     if os.environ.get("WRITE_MCP_SHAPES") == "1":
         contract_path.parent.mkdir(parents=True, exist_ok=True)
         contract_path.write_text(

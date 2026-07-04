@@ -62,10 +62,14 @@ def _bearer() -> str:
 
 
 def _budget_total(frame: dict | None) -> int | None:
-    """The single token number the meter shows — tolerant to key drift."""
+    """The single token number the meter shows. `used_tokens` is the CONTRACT key
+    (token_budget.ContextBudget.to_event) — it MUST be tried first: the frame also
+    carries a nested `breakdown.memory_knowledge.total`, so a lax `total`-first
+    lookup could silently read a per-category number and invalidate every A/B
+    comparison (audit MED-3). The rest are trailing fallbacks only."""
     if not isinstance(frame, dict):
         return None
-    for k in ("total_tokens", "total", "used_tokens", "tokens", "context_tokens"):
+    for k in ("used_tokens", "total_tokens", "tokens", "context_tokens"):
         v = frame.get(k)
         if isinstance(v, (int, float)):
             return int(v)
@@ -156,6 +160,7 @@ def main() -> int:
     print(f"[qg] run={LABEL} model={MODEL_REF} scenarios={len(scenarios)} "
           f"lore_bound={'yes' if (PROJECT_ID or KG_PROJECT) else 'NO'}")
     lines: list[str] = []
+    created_sids: list[str] = []
     with httpx.Client() as c:
         # A real writing session is ALWAYS book-bound, so bind the project for EVERY
         # scenario when one is configured — that's what lets the intent gate gate OUT a
@@ -169,6 +174,7 @@ def main() -> int:
                 lines.append(json.dumps({"scenario": s["id"], "tag": s["tag"], "skipped": "needs_lore"}))
                 continue
             sid = _create_session(c, f"qg-{LABEL}-{s['id']}", bind_lore=bind)
+            created_sids.append(sid)
             print(f"  - {s['id']:<24} session={sid[:8]} turns={len(s['turns'])}")
             for i, turn in enumerate(s["turns"]):
                 t0 = time.time()
@@ -190,6 +196,23 @@ def main() -> int:
     transcript.write_text("\n".join(lines) + "\n", encoding="utf-8")
     (run_dir / "meta.json").write_text(json.dumps(meta, indent=2), encoding="utf-8")
     print(f"[qg] wrote {transcript} ({len(lines)} turn records)")
+
+    # audit MED-4 — the driver POSTs real sessions to the shared claude-test account;
+    # DELETE them so runs don't accumulate `qg-*` sessions that bloat the account /
+    # interfere with other live smokes. Opt out with QG_KEEP_SESSIONS=1 (to inspect a run).
+    if created_sids and os.environ.get("QG_KEEP_SESSIONS") != "1":
+        with httpx.Client() as c:
+            deleted = 0
+            for sid in created_sids:
+                try:
+                    r = c.delete(f"{BASE}/v1/chat/sessions/{sid}",
+                                 headers={"Authorization": f"Bearer {_bearer()}"}, timeout=15)
+                    if r.status_code in (200, 204):
+                        deleted += 1
+                except Exception:
+                    pass
+        print(f"[qg] cleaned up {deleted}/{len(created_sids)} sessions "
+              f"(QG_KEEP_SESSIONS=1 to keep)")
     return 0
 
 

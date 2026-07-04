@@ -753,3 +753,57 @@ def test_shape_snapshot_coverage_scan_catches_unpinned_constant(tmp_path, monkey
             "x", {"FOO_REF_FIELDS": mod.FOO_REF_FIELDS},
             test_file=str(fake_test), scan_modules=[mod],
         )
+
+
+def test_inline_ref_literal_rejected(tmp_path, monkeypatch):
+    """§13/MED-1: an apply_response_contract call passing an INLINE tuple to
+    ref_fields must FAIL (it dodges the named-constant snapshot pin)."""
+    import types
+
+    from loreweave_mcp import assert_or_write_shape_snapshot
+
+    (tmp_path / "services").mkdir()
+    (tmp_path / "contracts").mkdir()
+    fake_test = tmp_path / "services" / "x-service" / "tests" / "t.py"
+    fake_test.parent.mkdir(parents=True)
+    fake_test.write_text("# marker", encoding="utf-8")
+
+    # a module whose source has an INLINE ref literal at a call site
+    bad = tmp_path / "services" / "x-service" / "badtool.py"
+    bad.write_text(
+        "def h(rows):\n"
+        "    return apply_response_contract(rows, ref_fields=('id', 'body_full'), detail='summary')\n",
+        encoding="utf-8",
+    )
+    mod = types.ModuleType("badtool")
+    mod.__file__ = str(bad)
+
+    monkeypatch.delenv("WRITE_MCP_SHAPES", raising=False)
+    with pytest.raises(AssertionError, match="INLINE literal"):
+        assert_or_write_shape_snapshot("x", {}, test_file=str(fake_test), scan_modules=[mod])
+
+
+def test_named_ref_arg_allowed(tmp_path, monkeypatch):
+    """A NAME arg (pinned constant OR helper param) is allowed — no false positive on
+    the knowledge _project_graph(node_ref, edge_ref) indirection."""
+    import types
+
+    from loreweave_mcp import assert_or_write_shape_snapshot
+
+    (tmp_path / "services").mkdir()
+    (tmp_path / "contracts").mkdir()
+    fake_test = tmp_path / "services" / "x-service" / "tests" / "t.py"
+    fake_test.parent.mkdir(parents=True)
+    fake_test.write_text("# marker", encoding="utf-8")
+
+    ok = tmp_path / "services" / "x-service" / "oktool.py"
+    ok.write_text(
+        "def h(rows, node_ref):\n"
+        "    return apply_response_contract(rows, ref_fields=node_ref, detail='summary')\n",
+        encoding="utf-8",
+    )
+    mod = types.ModuleType("oktool")
+    mod.__file__ = str(ok)
+    monkeypatch.setenv("WRITE_MCP_SHAPES", "1")
+    with pytest.raises(pytest.skip.Exception):  # regen path, no literal rejection
+        assert_or_write_shape_snapshot("x", {}, test_file=str(fake_test), scan_modules=[mod])
