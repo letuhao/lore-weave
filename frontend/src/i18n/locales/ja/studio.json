@@ -44,6 +44,22 @@
       "title": "用語集",
       "desc": "この本のエンティティ・検索・一括操作"
     },
+    "glossary-ontology": {
+      "title": "オントロジー",
+      "desc": "この本の種類・ジャンル・属性"
+    },
+    "glossary-unknown": {
+      "title": "未確定エンティティ",
+      "desc": "未認識のエンティティを種類に再割り当て"
+    },
+    "glossary-ai-suggestions": {
+      "title": "AI 提案",
+      "desc": "AI が下書きしたエンティティを確認"
+    },
+    "glossary-merge-candidates": {
+      "title": "統合候補",
+      "desc": "重複の可能性があるエンティティを確認・承認"
+    },
     "knowledge": {
       "title": "ナレッジ",
       "desc": "ナレッジグラフ・プロジェクトの閲覧と起動"

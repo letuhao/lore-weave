@@ -160,6 +160,10 @@ class TestFrontendToolDefs:
             "steering",  # RAID C1 — steering editor panel
             "extensions", "proposals",  # added by e292d1ee2 (extensions/studio track)
             "glossary",  # 13_glossary_panels.md A3 — entity list dock panel
+            "glossary-ontology", "glossary-unknown", "glossary-ai-suggestions", "glossary-merge-candidates",
+            # 13_glossary_panels.md Phase B — the 4 capabilities promoted off GlossaryPanel's
+            # temporary internal view-switch into real sibling dock panels.
+            "knowledge",  # 14_kg_panels.md A2 — KG projects hub launcher panel
         ]
         f = UI_FOCUS_MANUSCRIPT_UNIT_TOOL["function"]
         assert f["name"] == "ui_focus_manuscript_unit"

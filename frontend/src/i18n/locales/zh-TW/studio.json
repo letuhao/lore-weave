@@ -44,6 +44,22 @@
       "title": "詞彙表",
       "desc": "本書的實體、搜尋與批次操作"
     },
+    "glossary-ontology": {
+      "title": "本體論",
+      "desc": "本書的種類、類型與屬性"
+    },
+    "glossary-unknown": {
+      "title": "未知實體",
+      "desc": "將未識別的實體重新指派種類"
+    },
+    "glossary-ai-suggestions": {
+      "title": "AI 建議",
+      "desc": "檢視 AI 起草的實體"
+    },
+    "glossary-merge-candidates": {
+      "title": "合併候選",
+      "desc": "檢視並確認可能重複的實體"
+    },
     "knowledge": {
       "title": "知識庫",
       "desc": "瀏覽並開啟你的知識圖譜專案"

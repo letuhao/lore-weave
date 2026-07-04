@@ -44,6 +44,22 @@
       "title": "Từ điển",
       "desc": "Thực thể, tìm kiếm và thao tác hàng loạt cho sách này"
     },
+    "glossary-ontology": {
+      "title": "Bản thể luận",
+      "desc": "Loại, thể loại & thuộc tính cho sách này"
+    },
+    "glossary-unknown": {
+      "title": "Thực thể chưa xác định",
+      "desc": "Gán lại loại cho các thực thể chưa nhận diện"
+    },
+    "glossary-ai-suggestions": {
+      "title": "Đề xuất AI",
+      "desc": "Duyệt các thực thể do AI soạn thảo"
+    },
+    "glossary-merge-candidates": {
+      "title": "Ứng viên gộp",
+      "desc": "Duyệt và xác nhận các thực thể có khả năng trùng lặp"
+    },
     "knowledge": {
       "title": "Tri thức",
       "desc": "Duyệt và mở các dự án đồ thị tri thức của bạn"

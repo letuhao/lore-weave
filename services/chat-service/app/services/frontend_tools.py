@@ -399,7 +399,7 @@ UI_OPEN_STUDIO_PANEL_TOOL: dict = {
             "properties": {
                 "panel_id": {
                     "type": "string",
-                    "enum": ["compose", "editor", "planner", "usage", "notifications", "settings", "trash", "steering", "extensions", "proposals", "glossary", "knowledge"],
+                    "enum": ["compose", "editor", "planner", "usage", "notifications", "settings", "trash", "steering", "extensions", "proposals", "glossary", "glossary-ontology", "glossary-unknown", "glossary-ai-suggestions", "glossary-merge-candidates", "knowledge"],
                     "description": (
                         "The studio panel to open. 'compose' = the AI co-writer chat; "
                         "'editor' = the manuscript editor; 'planner' = the PlanForge "
@@ -411,6 +411,10 @@ UI_OPEN_STUDIO_PANEL_TOOL: dict = {
                         "'extensions' = manage plugins, skills, MCP servers, commands & "
                         "hooks; 'proposals' = review skills the agent proposed (approve/reject); "
                         "'glossary' = the book's entity list — search, filter, bulk status/delete; "
+                        "'glossary-ontology' = the book's kinds/genres/attributes; "
+                        "'glossary-unknown' = reassign unrecognized entities to a kind; "
+                        "'glossary-ai-suggestions' = review AI-drafted entities; "
+                        "'glossary-merge-candidates' = review likely-duplicate entities; "
                         "'knowledge' = browse and open the user's knowledge-graph projects."
                     ),
                 },

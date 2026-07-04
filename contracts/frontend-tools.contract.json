@@ -208,6 +208,10 @@
           "extensions",
           "proposals",
           "glossary",
+          "glossary-ontology",
+          "glossary-unknown",
+          "glossary-ai-suggestions",
+          "glossary-merge-candidates",
           "knowledge"
         ],
         "type": "string"

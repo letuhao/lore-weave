@@ -21,6 +21,10 @@ import { ProposalsPanel } from './ProposalsPanel';
 import { SkillEditorPanel } from './SkillEditorPanel';
 import { SteeringPanel } from './SteeringPanel';
 import { GlossaryPanel } from './GlossaryPanel';
+import { GlossaryOntologyPanel } from './GlossaryOntologyPanel';
+import { GlossaryUnknownPanel } from './GlossaryUnknownPanel';
+import { GlossaryAiSuggestionsPanel } from './GlossaryAiSuggestionsPanel';
+import { GlossaryMergeCandidatesPanel } from './GlossaryMergeCandidatesPanel';
 import { KnowledgeHubPanel } from './KnowledgeHubPanel';
 
 export interface StudioPanelDef {
@@ -49,6 +53,14 @@ export const STUDIO_PANELS: StudioPanelDef[] = [
   // palette-visible panel must join `ui_open_studio_panel` — see frontend_tools.py + the
   // regenerated contracts/frontend-tools.contract.json).
   { id: 'glossary', component: GlossaryPanel, titleKey: 'panels.glossary.title', descKey: 'panels.glossary.desc' },
+  // 13_glossary_panels.md Phase B — the 4 capabilities GlossaryPanel used to internally
+  // view-switch (a DOCK-8 exception) are now real sibling dock panels. Each is palette + agent
+  // openable (panelCatalogContract enforces openable-set == enum) and reachable from the
+  // `glossary` panel's own launcher buttons via host.openPanel — never a local view flag.
+  { id: 'glossary-ontology', component: GlossaryOntologyPanel, titleKey: 'panels.glossary-ontology.title', descKey: 'panels.glossary-ontology.desc' },
+  { id: 'glossary-unknown', component: GlossaryUnknownPanel, titleKey: 'panels.glossary-unknown.title', descKey: 'panels.glossary-unknown.desc' },
+  { id: 'glossary-ai-suggestions', component: GlossaryAiSuggestionsPanel, titleKey: 'panels.glossary-ai-suggestions.title', descKey: 'panels.glossary-ai-suggestions.desc' },
+  { id: 'glossary-merge-candidates', component: GlossaryMergeCandidatesPanel, titleKey: 'panels.glossary-merge-candidates.title', descKey: 'panels.glossary-merge-candidates.desc' },
   // 14_kg_panels.md A2 — the KG launcher (DOCK-8 hub pattern): browse/open knowledge-graph
   // projects. Phase B adds the capability panels it currently opens via a new-tab fallback.
   { id: 'knowledge', component: KnowledgeHubPanel, titleKey: 'panels.knowledge.title', descKey: 'panels.knowledge.desc' },

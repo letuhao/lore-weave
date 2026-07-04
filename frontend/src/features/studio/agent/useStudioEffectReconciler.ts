@@ -14,6 +14,7 @@ import { useManuscriptUnit } from '../manuscript/unit/ManuscriptUnitProvider';
 import { runEffectHandlers } from './effectRegistry';
 import { registerDefaultEffectHandlers } from './handlers/bookEffects';
 import { registerGlossaryEffectHandlers } from './handlers/glossaryEffects';
+import { registerKnowledgeEffectHandlers } from './handlers/knowledgeEffects';
 
 export function useStudioEffectReconciler(): void {
   const host = useStudioHost();
@@ -29,6 +30,7 @@ export function useStudioEffectReconciler(): void {
   useEffect(() => {
     registerDefaultEffectHandlers();
     registerGlossaryEffectHandlers();
+    registerKnowledgeEffectHandlers();
   }, []);
 
   useEffect(() => {

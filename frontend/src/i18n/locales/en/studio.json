@@ -44,6 +44,22 @@
       "title": "Glossary",
       "desc": "Entities, search, and bulk actions for this book"
     },
+    "glossary-ontology": {
+      "title": "Ontology",
+      "desc": "Kinds, genres & attributes for this book"
+    },
+    "glossary-unknown": {
+      "title": "Unknown entities",
+      "desc": "Reassign unrecognized entities to a kind"
+    },
+    "glossary-ai-suggestions": {
+      "title": "AI suggestions",
+      "desc": "Review AI-drafted entities"
+    },
+    "glossary-merge-candidates": {
+      "title": "Merge candidates",
+      "desc": "Review and confirm likely-duplicate entities"
+    },
     "knowledge": {
       "title": "Knowledge",
       "desc": "Browse and open your knowledge-graph projects"
