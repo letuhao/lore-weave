@@ -18,19 +18,25 @@ never a silent truncation (`{total,returned,truncated}` meta).
 | `composition_list_outline` | composition | ✅ refactored | `detail`+`limit`; live −74.3% (`context-budget-t1-live-e2e.py`) |
 | `composition_get_outline_node` | composition | ✅ NEW cheap read | live 538 B vs 53 KB forced dump (−99%); kills the 146K root cause |
 | `jobs_list` | jobs | ✅ refactored | `detail` drops params/error; `test_jobs_list_summary_drops_heavy_params` |
-| `composition_get_prose` | composition | ⏳ tracked | single-object read (L2-exempt from summary default); add `detail=summary` = metadata+`draft_version` only (drop chapter body). Book-draft body key TBD at pickup. |
-| `story_search` | knowledge | ⏳ tracked | grounding hot-path; reference-first snippets + `limit`. 3-schema-source tool (see [[knowledge-mcp-three-schema-sources-fastmcp-strips]]) |
-| `memory_search` | knowledge | ⏳ tracked | grounding hot-path; reference-first + `limit` |
-| `memory_timeline` / `memory_recall_entity` | knowledge | ⏳ tracked | reference-first |
-| `kg_graph_query` / `kg_world_query` / `kg_multi_query` | knowledge | ⏳ tracked | bounded node+edge refs, not full tree; `get_by_id` for a node's full body |
-| `kg_entity_edge_timeline` / `kg_schema_read` / `kg_list_templates` / `kg_view_read` / `kg_triage_list` / `kg_project_list` | knowledge | ⏳ tracked | reference-first / already partly bounded |
-| `composition_motif_search` / `_motif_get` / `_motif_book_list` / `_motif_link_list` / `_motif_suggest_for_chapter` / `_arc_suggest` / `_arc_import_analyze` / `_motif_mine` | composition | ⏳ tracked | reference-first + `limit` |
+| `composition_get_prose` | composition | ✅ refactored 2026-07-05 | `detail=summary` drops the heavy `body`, keeps `draft_version`+metadata+`body_omitted` marker (`_project_prose`); `test_prose_response_contract.py`; MCP wire test green |
+| `story_search` | knowledge | ✅ refactored | `detail`+`limit`+`STORY_SEARCH_REF_FIELDS`; `apply_response_contract` `executor.py:342`; all 3 schema sources in lockstep (`_DETAIL_ARG` + `StorySearchArgs` + handler); snapshot-pinned |
+| `memory_search` | knowledge | ✅ refactored | `detail`+`limit`+`MEMORY_SEARCH_REF_FIELDS`; `executor.py:426`; snippet preview + full `text` dropped at summary; snapshot-pinned |
+| `memory_timeline` | knowledge | ✅ refactored | `MEMORY_TIMELINE_REF_FIELDS`; `executor.py:531`. `memory_recall_entity` → 🟢 single-object read (exempt, `executor.py:435`) |
+| `kg_graph_query` / `kg_world_query` / `kg_multi_query` | knowledge | ✅ refactored | shared subgraph projection (`GRAPH_NODE/EDGE_REF_FIELDS`, `graph_schema_tools.py:170`) — bounded node+edge refs, not the full tree |
+| `kg_entity_edge_timeline` / `kg_triage_list` | knowledge | ✅ refactored | `TIMELINE_INSTANCE_REF_FIELDS` (`:1294`) / `TRIAGE_GROUP_REF_FIELDS` (`:1397`); snapshot-pinned |
+| `kg_schema_read` / `kg_list_templates` / `kg_view_read` / `kg_project_list` | knowledge | ⏳ verify-at-pickup | no `apply_response_contract` — inherently small (a schema / template list / view def / project list). Confirm each is genuinely bounded → mark 🟢, else add `detail`. Not a dump risk. |
+| `composition_motif_search` / `_motif_book_list` / `_motif_suggest_for_chapter` / `_arc_suggest` | composition | ✅ refactored | `_MOTIF_REF_FIELDS`/`_MOTIF_BOOK_REF_FIELDS`/`_ARC_REF_FIELDS`; calls at `server.py:1245,1339,1396,1455`; `test_motif_response_contract.py` |
+| `composition_motif_link_list` | composition | ⏳ verify-at-pickup | a link LIST — confirm it's bounded / add `detail`+`limit` if it can be large (`server.py:1750`) |
+| `_motif_get` / `_motif_mine` / `_arc_import_analyze` | composition | 🟢 single-read / propose | single-object read or a propose→confirm op (returns a token + estimate, not a SET) — exempt from the summary default |
 | `composition_list_canon_rules` | composition | 🟢 `@small_return` | inherently small (status/rule list); exempt, honesty-checked by snapshot |
 | `composition_get_generation_job` | composition | 🟢 single-read | `get_by_id`, exempt from summary default |
-| `translation_coverage` / `translation_list_versions` / `translation_segment_status` / `translation_job_status` | translation | ⏳ tracked | no full translated bodies at summary; reference-first |
+| `translation_list_versions` / `translation_job_status` | translation | ✅ refactored | `apply_response_contract` `mcp/server.py:278,351`; snapshot-pinned |
+| `translation_coverage` / `translation_segment_status` | translation | ⏳ verify-at-pickup | not contracted — `coverage` is per-language stats (likely small → 🟢); `segment_status` is per-segment and CAN be large → add `detail`+`limit` (reference-first, no full translated bodies). The one genuine translation gap. |
 | `jobs_get` | jobs | 🟢 single-read | `get_by_id`, exempt |
 
 Legend: ✅ done+proven · ⏳ tracked (worst-first backlog) · 🟢 exempt (`@small_return` / single-object read).
+
+> **Status table RECONCILED against code 2026-07-05** (was heavily stale — the [[debt-batches-list-is-stale-verify-first]] pattern). Verified every row by grepping the actual `apply_response_contract` call sites + `*_REF_FIELDS` constants across all 4 services. **~90 % of the "⏳ tracked" backlog was already ✅** (Family-B + the grounding tools shipped it); the manifest header table simply never got updated. **`composition_get_prose` refactored this pass** (the one clear remaining dump — a full chapter body single-read). **The genuine remaining gaps are small:** `translation_segment_status` (per-segment, can be large — the real one), plus a handful of inherently-small `kg_*`/`motif_link_list` reads to confirm-as-exempt-or-bound. No hot-path grounding tool is un-refactored.
 
 ## Deferred infrastructure (tracked, not forgotten)
 

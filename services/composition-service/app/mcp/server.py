@@ -389,12 +389,33 @@ async def composition_get_outline_node(
     return node.model_dump(mode="json")
 
 
+# T1/L2 (Context Budget Law §6b/D2) — the heavy field a get_prose SUMMARY drops. A full
+# chapter body (Tiptap JSON) is routinely many thousands of tokens; an agent that only
+# needs the `draft_version` concurrency token (e.g. to prep a write, or to check whether a
+# chapter has content) should not have to pull the whole chapter.
+_PROSE_BODY_KEY = "body"
+
+
+def _project_prose(draft: dict, detail: str) -> dict:
+    """At detail=summary, drop the heavy `body` but KEEP the metadata + the `draft_version`
+    concurrency token. Never a silent drop — signal `body_omitted` + the `detail` so the
+    model knows the body exists and re-fetches with detail=full to get it."""
+    if detail != "summary":
+        return draft
+    summary = {k: v for k, v in draft.items() if k != _PROSE_BODY_KEY}
+    summary["body_omitted"] = True
+    summary["detail"] = "summary"
+    return summary
+
+
 @mcp_server.tool(
     name="composition_get_prose",
     description=(
         "Get the current DRAFT prose of a chapter (the editable body + its "
         "`draft_version` — the concurrency token you MUST pass back to write_prose). "
-        "Owner/grant-filtered (VIEW)."
+        "`detail=summary` returns just the metadata + `draft_version` (drops the chapter "
+        "`body` — use it when you only need the version to prep a write); `detail=full` "
+        "(default) returns the whole body. Owner/grant-filtered (VIEW)."
     ),
     meta=require_meta(
         "R", "book",
@@ -406,6 +427,10 @@ async def composition_get_prose(
     ctx: MCPContext,
     project_id: Annotated[str, "The Work's project_id."],
     chapter_id: Annotated[str, "The chapter's id."],
+    detail: Annotated[
+        Literal["summary", "full"],
+        "summary = metadata + draft_version only (drops the chapter body); full = the body too.",
+    ] = "full",
 ) -> dict:
     tc = _ctx(ctx)
     works = WorksRepo(get_pool())
@@ -420,7 +445,7 @@ async def composition_get_prose(
         return _book_error_result(exc)
     items = revisions.get("items") or []
     draft["base_revision_id"] = items[0].get("revision_id") if items else None
-    return draft
+    return _project_prose(draft, detail)
 
 
 @mcp_server.tool(
