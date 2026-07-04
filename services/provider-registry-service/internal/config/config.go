@@ -130,6 +130,11 @@ type Config struct {
 	// table. Env LLM_RETENTION_SWEEP_INTERVAL_S / LLM_RETENTION_SWEEP_BATCH.
 	LLMRetentionSweepIntervalS int
 	LLMRetentionSweepBatch     int
+	// Published usage_outbox/job_event_outbox rows carry PLAINTEXT payloads and are
+	// never republished; the same sweeper prunes those older than this window (they
+	// only need to survive briefly for consumer-lag/redelivery after publish). Env
+	// LLM_OUTBOX_RETENTION_HOURS; 0 disables the outbox half of the sweep.
+	LLMOutboxRetentionHours int
 }
 
 func Load() (*Config, error) {
@@ -257,6 +262,9 @@ func Load() (*Config, error) {
 	}
 	if c.LLMRetentionSweepBatch <= 0 {
 		c.LLMRetentionSweepBatch = 1000
+	}
+	if c.LLMOutboxRetentionHours, err = getEnvInt("LLM_OUTBOX_RETENTION_HOURS", 24); err != nil {
+		return nil, err
 	}
 	return c, nil
 }

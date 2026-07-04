@@ -13,6 +13,7 @@ import (
 	"context"
 	"errors"
 	"testing"
+	"time"
 
 	"github.com/pashagolub/pgxmock/v4"
 )
@@ -57,6 +58,59 @@ func TestPurgeExpiredJobs_PropagatesError(t *testing.T) {
 	}
 	if n != 0 {
 		t.Fatalf("deleted=%d want 0 on error", n)
+	}
+	if err := mock.ExpectationsWereMet(); err != nil {
+		t.Fatalf("expectations: %v", err)
+	}
+}
+
+// PurgePublishedOutbox prunes the plaintext-carrying outbox tables. The
+// published_at IS NOT NULL guard is the load-bearing safety: an un-drained row
+// must NEVER be deleted (that would lose an unbilled usage event). The regex
+// asserts that guard + the age bound + the per-table LIMIT on BOTH tables, and
+// the total is the sum across them.
+func TestPurgePublishedOutbox_PrunesBothTablesPastWindow(t *testing.T) {
+	mock, err := pgxmock.NewPool()
+	if err != nil {
+		t.Fatalf("pgxmock: %v", err)
+	}
+	defer mock.Close()
+	repo := &Repo{pool: mock}
+
+	mock.ExpectExec(`(?s)DELETE FROM usage_outbox.*published_at IS NOT NULL.*published_at < now\(\).*LIMIT \$2`).
+		WithArgs(-86400.0, 1000).
+		WillReturnResult(pgxmock.NewResult("DELETE", 5))
+	mock.ExpectExec(`(?s)DELETE FROM job_event_outbox.*published_at IS NOT NULL.*published_at < now\(\).*LIMIT \$2`).
+		WithArgs(-86400.0, 1000).
+		WillReturnResult(pgxmock.NewResult("DELETE", 2))
+
+	n, err := repo.PurgePublishedOutbox(context.Background(), 24*time.Hour, 1000)
+	if err != nil {
+		t.Fatalf("purge outbox: %v", err)
+	}
+	if n != 7 {
+		t.Fatalf("deleted=%d want 7 (5 usage + 2 terminal)", n)
+	}
+	if err := mock.ExpectationsWereMet(); err != nil {
+		t.Fatalf("expectations: %v", err)
+	}
+}
+
+// A failure on the first table returns its partial count + the error and does NOT
+// proceed to the second (fail fast; the next tick retries).
+func TestPurgePublishedOutbox_PropagatesErrorFailFast(t *testing.T) {
+	mock, _ := pgxmock.NewPool()
+	defer mock.Close()
+	repo := &Repo{pool: mock}
+
+	mock.ExpectExec(`DELETE FROM usage_outbox`).WithArgs(-3600.0, 500).WillReturnError(errors.New("boom"))
+
+	n, err := repo.PurgePublishedOutbox(context.Background(), time.Hour, 500)
+	if err == nil {
+		t.Fatal("want error, got nil")
+	}
+	if n != 0 {
+		t.Fatalf("deleted=%d want 0 on first-table error", n)
 	}
 	if err := mock.ExpectationsWereMet(); err != nil {
 		t.Fatalf("expectations: %v", err)

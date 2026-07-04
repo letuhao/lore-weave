@@ -210,6 +210,7 @@ func NewServer(pool *pgxpool.Pool, cfg *config.Config, notifier jobs.Notifier, a
 			interval := time.Duration(cfg.LLMRetentionSweepIntervalS) * time.Second
 			batch := cfg.LLMRetentionSweepBatch
 			repo := s.jobsRepo
+			outboxWindow := time.Duration(cfg.LLMOutboxRetentionHours) * time.Hour
 			go func() {
 				t := time.NewTicker(interval)
 				defer t.Stop()
@@ -227,9 +228,29 @@ func NewServer(pool *pgxpool.Pool, cfg *config.Config, notifier jobs.Notifier, a
 							break // backlog drained for this tick
 						}
 					}
+					// Prune published (plaintext-carrying) outbox rows past their window.
+					// 0 hours disables this half. published_at IS NOT NULL is enforced in
+					// the repo query so an un-drained row is never dropped.
+					if outboxWindow > 0 {
+						for {
+							n, serr := repo.PurgePublishedOutbox(context.Background(), outboxWindow, batch)
+							if serr != nil {
+								slog.Warn("outbox retention sweep failed", "err", serr)
+								break
+							}
+							if n > 0 {
+								slog.Info("retention sweep purged published outbox rows", "deleted", n)
+							}
+							if n == 0 {
+								break // nothing older than the window remains
+							}
+						}
+					}
 				}
 			}()
-			slog.Info("retention sweeper enabled", "interval_s", cfg.LLMRetentionSweepIntervalS, "batch", cfg.LLMRetentionSweepBatch)
+			slog.Info("retention sweeper enabled",
+				"interval_s", cfg.LLMRetentionSweepIntervalS, "batch", cfg.LLMRetentionSweepBatch,
+				"outbox_retention_h", cfg.LLMOutboxRetentionHours)
 		}
 
 		// Phase 1 Commit 3 — durable work queue. When enabled (+ broker set),

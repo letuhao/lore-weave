@@ -822,6 +822,53 @@ WHERE ctid IN (
 	return int(tag.RowsAffected()), nil
 }
 
+// PurgePublishedOutbox DELETEs already-published usage_outbox + job_event_outbox
+// rows older than olderThan — the plaintext-retention twin of PurgeExpiredJobs.
+// usage_outbox.request_payload/response_payload are PLAINTEXT (#32); once the row
+// is published (drained to Redis, consumers dedup on request_id/job_id, and the
+// durable ENCRYPTED copy lives in usage-billing's usage_logs) the outbox row is
+// redundant, so a published row past the window is safe to drop — otherwise the
+// two outbox tables grow unbounded with plaintext.
+//
+// The `published_at IS NOT NULL` guard is load-bearing SAFETY: an un-drained row
+// (published_at NULL) must NEVER be deleted — that would lose an unbilled usage
+// event before the relay ships it. Bounded per table by batchSize; fail-fast on
+// the first table's error (next tick retries). Returns rows deleted across both.
+func (r *Repo) PurgePublishedOutbox(ctx context.Context, olderThan time.Duration, batchSize int) (int, error) {
+	cutoff := -olderThan.Seconds() // negative → now() + (-secs) = now() - secs
+	total := 0
+	// usage_outbox first (the plaintext-payload table), then job_event_outbox.
+	uTag, err := r.pool.Exec(ctx, `
+DELETE FROM usage_outbox
+WHERE ctid IN (
+  SELECT ctid FROM usage_outbox
+  WHERE published_at IS NOT NULL
+    AND published_at < now() + make_interval(secs => $1)
+  ORDER BY published_at
+  LIMIT $2
+)
+`, cutoff, batchSize)
+	if err != nil {
+		return total, fmt.Errorf("purge usage_outbox: %w", err)
+	}
+	total += int(uTag.RowsAffected())
+	eTag, err := r.pool.Exec(ctx, `
+DELETE FROM job_event_outbox
+WHERE ctid IN (
+  SELECT ctid FROM job_event_outbox
+  WHERE published_at IS NOT NULL
+    AND published_at < now() + make_interval(secs => $1)
+  ORDER BY published_at
+  LIMIT $2
+)
+`, cutoff, batchSize)
+	if err != nil {
+		return total, fmt.Errorf("purge job_event_outbox: %w", err)
+	}
+	total += int(eTag.RowsAffected())
+	return total, nil
+}
+
 // ModelPricing reads a model's pricing JSONB. For a user_model the lookup is
 // scoped to ownerUserID. found=false means no such model exists — the caller
 // treats that as a 404, distinct from a found-but-unpriced model (whose empty
