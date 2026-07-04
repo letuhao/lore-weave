@@ -50,6 +50,7 @@ from loreweave_context.tokens import estimate_messages_tokens
 # Tool names whose results are NEVER evicted (their output is load-bearing / cited).
 DEFAULT_EXCLUDE_TOOLS = frozenset({"web_search"})
 _PLACEHOLDER = "[tool result cleared to save context]"
+_DUP_PLACEHOLDER = "[duplicate of a later identical tool result — see the most recent read]"
 
 # Compaction fires when estimated tokens exceed trigger_ratio × effective_limit.
 # Named so consumers (token_budget.until_compact_pct — the meter's "until
@@ -187,6 +188,7 @@ def _tool_name(msg: dict) -> str | None:
 class CompactionReport:
     triggered: bool = False
     tool_results_cleared: int = 0
+    duplicates_collapsed: int = 0
     turns_truncated: int = 0
     summarized: bool = False
     summarize_failed: bool = False
@@ -202,6 +204,7 @@ class CompactionReport:
         only emitted then; a triggered-but-no-op pass stays silent."""
         return (
             self.tool_results_cleared > 0
+            or self.duplicates_collapsed > 0
             or self.summarized
             or self.turns_truncated > 0
         )
@@ -210,6 +213,7 @@ class CompactionReport:
         return {
             "triggered": self.triggered,
             "tool_results_cleared": self.tool_results_cleared,
+            "duplicates_collapsed": self.duplicates_collapsed,
             "turns_truncated": self.turns_truncated,
             "summarized": self.summarized,
             "summarize_failed": self.summarize_failed,
@@ -235,6 +239,38 @@ def _microcompact(messages: list[dict], keep: int, exclude: frozenset[str]) -> i
         if m.get("content") != _PLACEHOLDER:
             m["content"] = _PLACEHOLDER
     return len(to_clear)
+
+
+def _collapse_duplicate_reads(messages: list[dict], exclude: frozenset[str]) -> int:
+    """D13a — reversible dup-read collapse. When the SAME tool result content appears
+    more than once (the model re-read an unchanged resource — Cline's dup-read case),
+    replace every occurrence EXCEPT the most recent with a short reference placeholder,
+    keeping the latest full copy. Returns how many were collapsed. Mutates copies
+    in-place (caller passes a copy).
+
+    Reversible: the raw turns stay in Postgres; this only shrinks the send-time view.
+    Orphan-safe by construction: it only rewrites the CONTENT of a `role:tool` message,
+    never removes the message, so every `tool_call_id ↔ role:tool` pairing survives (D13a).
+    Excluded tools (e.g. web_search — cited/load-bearing) are never collapsed, and an
+    already-cleared microcompact placeholder is skipped (no double-processing)."""
+    # Index tool-result messages by their exact content; a group with >1 member is a
+    # duplicate-read set. Keep the LAST (most recent) full; collapse the earlier ones.
+    groups: dict[str, list[int]] = {}
+    for i, m in enumerate(messages):
+        if not _is_tool_result(m) or _tool_name(m) in exclude:
+            continue
+        content = m.get("content")
+        if not isinstance(content, str) or content in (_PLACEHOLDER, _DUP_PLACEHOLDER):
+            continue
+        groups.setdefault(content, []).append(i)
+    collapsed = 0
+    for idxs in groups.values():
+        if len(idxs) < 2:
+            continue
+        for i in idxs[:-1]:  # every occurrence except the most recent
+            messages[i]["content"] = _DUP_PLACEHOLDER
+            collapsed += 1
+    return collapsed
 
 
 def _atoms(convo: list[dict]) -> list[list[dict]]:
@@ -297,6 +333,7 @@ async def compact_messages(
     exclude_tools: frozenset[str] = DEFAULT_EXCLUDE_TOOLS,
     summarize: Summarizer | None = None,
     add_breadcrumb: bool = False,
+    collapse_duplicates: bool = False,
 ) -> tuple[list[dict], CompactionReport]:
     """Compact `messages` to fit under the trigger. Deterministic except for the
     optional `summarize` callback (sync OR async — an LLM call), whose failure is
@@ -328,6 +365,20 @@ async def compact_messages(
 
     report.triggered = True
     work = [dict(m) for m in messages]  # copy so we never mutate the caller's list
+
+    # 0. D13a reversible dup-read collapse (opt-in). Before evicting the OLDEST results,
+    # collapse EXACT-duplicate reads (same content read twice) to a reference, keeping the
+    # latest full — pure-waste reduction that never loses information (the identical content
+    # is still present) and can't orphan (only rewrites content). Runs first so microcompact's
+    # keep-last-N budget isn't spent on redundant copies.
+    if collapse_duplicates:
+        collapsed = _collapse_duplicate_reads(work, exclude_tools)
+        if collapsed:
+            report.duplicates_collapsed = collapsed
+            report.steps.append("collapse_duplicates")
+        if estimate_messages_tokens(work) <= trigger:
+            report.tokens_after = estimate_messages_tokens(work)
+            return work, report
 
     # 1. microcompact tool results
     cleared = _microcompact(work, keep_tool_results, exclude_tools)
@@ -404,6 +455,7 @@ class CompactionStrategy:
         exclude_tools: frozenset[str] = DEFAULT_EXCLUDE_TOOLS,
         summarize: Summarizer | None = None,
         add_breadcrumb: bool = False,
+        collapse_duplicates: bool = False,
     ) -> tuple[list[dict], CompactionReport]:
         return await compact_messages(
             messages,
@@ -415,4 +467,5 @@ class CompactionStrategy:
             exclude_tools=exclude_tools,
             summarize=summarize,
             add_breadcrumb=add_breadcrumb,
+            collapse_duplicates=collapse_duplicates,
         )

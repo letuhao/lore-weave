@@ -19,6 +19,7 @@ from loreweave_context.compaction import (  # noqa: F401  (re-export shim)
     recovery_hint_message,
     summary_message,
     _PLACEHOLDER,
+    _DUP_PLACEHOLDER,
 )
 
 __all__ = [
@@ -33,4 +34,5 @@ __all__ = [
     "recovery_hint_message",
     "summary_message",
     "_PLACEHOLDER",
+    "_DUP_PLACEHOLDER",
 ]

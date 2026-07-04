@@ -762,6 +762,7 @@ async def _stream_with_tools(
                         working, effective_limit=effective_limit,
                         target=compact_target, summarize=_loop_summarizer,
                         add_breadcrumb=settings.compact_breadcrumb_enabled,
+                        collapse_duplicates=settings.compact_collapse_duplicates_enabled,
                     )
                     if _rc.triggered:
                         logger.info(
@@ -2553,6 +2554,7 @@ async def _emit_chat_turn(
                 messages, effective_limit=_eff_limit,
                 target=_compact_target, summarize=_summarizer,
                 add_breadcrumb=settings.compact_breadcrumb_enabled,
+                collapse_duplicates=settings.compact_collapse_duplicates_enabled,
             )
             # T6/D6 — when compaction summarized/dropped earlier turns THIS turn, inject
             # the recovery hint so the model reaches for conversation_search to pull back a

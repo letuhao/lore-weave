@@ -12,6 +12,7 @@ from app.services.compaction import (
     recovery_hint_message,
     summary_message,
     _PLACEHOLDER,
+    _DUP_PLACEHOLDER,
 )
 
 pytestmark = pytest.mark.asyncio
@@ -363,3 +364,84 @@ class TestToolPairSafety:
         msgs = self._resume_shaped()
         out, rep = await compact_messages(msgs, effective_limit=2_000, keep_tool_results=1)
         assert not _has_orphan_tool(out)
+
+
+def _result(call_id: str, content: str) -> dict:
+    """A tool result with EXPLICIT content (to construct duplicate reads)."""
+    return {"role": "tool", "tool_call_id": call_id, "content": content}
+
+
+class TestDuplicateReadCollapse:
+    """T6/D13a — reversible dup-read collapse: an EXACT-duplicate tool result (the model
+    re-read an unchanged resource) is collapsed to a reference, keeping the latest full."""
+
+    async def test_collapses_earlier_identical_read_keeps_latest(self):
+        dup = _big(400)
+        msgs = [
+            {"role": "system", "content": "sys"},
+            _asst_call("c1"), _result("c1", dup),
+            {"role": "user", "content": "and again?"},
+            _asst_call("c2"), _result("c2", dup),  # identical re-read (most recent)
+            {"role": "user", "content": "now"},
+        ]
+        # keep_tool_results high so microcompact clears nothing → isolate the collapse tier.
+        out, rep = await compact_messages(
+            msgs, effective_limit=1_000, keep_tool_results=99, collapse_duplicates=True)
+        assert rep.duplicates_collapsed == 1
+        assert "collapse_duplicates" in rep.steps
+        tool_contents = [m["content"] for m in out if m.get("role") == "tool"]
+        assert tool_contents == [_DUP_PLACEHOLDER, dup]  # earlier collapsed, latest full
+        assert not _has_orphan_tool(out)  # only content rewritten → pairing intact
+
+    async def test_off_by_default_no_collapse(self):
+        dup = _big(400)
+        msgs = [
+            _asst_call("c1"), _result("c1", dup),
+            _asst_call("c2"), _result("c2", dup),
+            {"role": "user", "content": "now"},
+        ]
+        # collapse_duplicates defaults False → the dup contents are never referenced-away.
+        out, rep = await compact_messages(
+            msgs, effective_limit=1_000, keep_tool_results=99)
+        assert rep.duplicates_collapsed == 0
+        assert "collapse_duplicates" not in rep.steps
+        assert _DUP_PLACEHOLDER not in [m.get("content") for m in out]
+
+    async def test_distinct_reads_are_not_collapsed(self):
+        msgs = [
+            _asst_call("c1"), _result("c1", _big(400) + " ALPHA"),
+            _asst_call("c2"), _result("c2", _big(400) + " BETA"),  # different content
+            {"role": "user", "content": "now"},
+        ]
+        _, rep = await compact_messages(
+            msgs, effective_limit=1_000, keep_tool_results=99, collapse_duplicates=True)
+        assert rep.duplicates_collapsed == 0
+
+    async def test_excluded_tool_never_collapsed(self):
+        dup = _big(400)
+        msgs = [
+            _asst_call("c1"), {"role": "tool", "name": "web_search", "tool_call_id": "c1", "content": dup},
+            _asst_call("c2"), {"role": "tool", "name": "web_search", "tool_call_id": "c2", "content": dup},
+            {"role": "user", "content": "now"},
+        ]
+        _, rep = await compact_messages(
+            msgs, effective_limit=1_000, keep_tool_results=99, collapse_duplicates=True)
+        assert rep.duplicates_collapsed == 0  # web_search results are load-bearing/cited
+
+    async def test_collapse_never_orphans_on_resume_shape(self):
+        # a resume array with a duplicated read: collapse must keep every pair intact.
+        dup = _big(500)
+        msgs = [
+            {"role": "system", "content": "sys"},
+            _asst_call("c_1"), _result("c_1", dup),
+            {"role": "assistant", "content": _big(300)},
+            _asst_call("c_2"), _result("c_2", dup),  # identical re-read
+            _asst_call("c_3"), _result("c_3", _big(300)),
+        ]
+        out, rep = await compact_messages(
+            msgs, effective_limit=1_500, keep_tool_results=99, collapse_duplicates=True)
+        assert rep.duplicates_collapsed == 1
+        assert not _has_orphan_tool(out)
+
+    async def test_did_work_true_when_only_collapse_fired(self):
+        assert CompactionReport(duplicates_collapsed=1).did_work is True

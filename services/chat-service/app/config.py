@@ -69,6 +69,16 @@ class Settings(BaseSettings):
     # (where grounding IS expensive per turn) lands. See T5-2026-07-04-CORRECTED.md.
     t5_intent_gate_enabled: bool = False
 
+    # ── T6/D13a (Context Budget Law) — reversible dup-read collapse ──────────────
+    # When a compaction pass fires AND this is ON, collapse EXACT-duplicate tool results
+    # (the model re-read an unchanged resource) to a reference, keeping the latest full copy
+    # — pure-waste reduction that loses no information and can't orphan a tool pair (it only
+    # rewrites content). Raw turns stay in Postgres (reversible; this is the send-time view).
+    # DEFAULT OFF for staged rollout on the load-bearing compaction path; flip on with the
+    # T5-phase measurement. Fires ONLY when compaction already triggered (over budget), so it
+    # is inert on normal turns even when enabled.
+    compact_collapse_duplicates_enabled: bool = False
+
     # ── T6/D7 (Context Budget Law) — single-item tool-result overflow ceiling ────
     # A single MCP tool result that ALONE exceeds this many estimated tokens is withheld
     # at the dispatch site and replaced with a self-correcting overflow notice (re-call
