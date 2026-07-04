@@ -35,6 +35,10 @@ type Server struct {
 	// those endpoints fail closed. adminKID = KeyFingerprint(adminPub).
 	adminPub *rsa.PublicKey
 	adminKID string
+	// emitTenantAudit is the P2·F cross-tenant audit hook. Production wires it to
+	// (*Server).asyncTenantAudit; tests override it with a synchronous spy. nil ⇒
+	// no-op (struct-literal Server / nil pool).
+	emitTenantAudit func(actorID, bookID uuid.UUID, outcome string)
 }
 
 func NewServer(pool *pgxpool.Pool, cfg *config.Config) *Server {
@@ -44,6 +48,7 @@ func NewServer(pool *pgxpool.Pool, cfg *config.Config) *Server {
 		secret:      []byte(cfg.JWTSecret),
 		grantClient: buildGrantClient(cfg.BookServiceURL, cfg.InternalServiceToken),
 	}
+	s.emitTenantAudit = s.asyncTenantAudit
 	if raw := strings.TrimSpace(cfg.AdminJWTPublicKeyPEM); raw != "" {
 		pub, err := adminjwt.ParseRSAPublicKeyPEM(pemOrBase64(raw))
 		if err != nil {

@@ -156,6 +156,18 @@ func (s *Server) authBook(w http.ResponseWriter, r *http.Request, bookID uuid.UU
 		writeError(w, http.StatusServiceUnavailable, "RESOLVE_FAILED", "grant resolution failed")
 		return uuid.Nil, uuid.Nil, "", false
 	}
+	// P2·F tenant-boundary audit. A crossing exists only when the book has a KNOWN
+	// owner that is NOT the caller (owner==Nil ⇒ missing book, no tenant to cross;
+	// owner==caller ⇒ own book). Emit 'granted' when the caller's grant satisfies
+	// `need`, 'denied' otherwise (under-grant 403 OR no-grant-on-existing-book 404).
+	// Coalesced first-per-window; fire-and-forget, never blocks the response.
+	if s.emitTenantAudit != nil && owner != uuid.Nil && owner != caller {
+		outcome := auditOutcomeGranted
+		if lvl == GrantNone || !lvl.AtLeast(need) {
+			outcome = auditOutcomeDenied
+		}
+		s.emitTenantAudit(caller, bookID, owner, outcome)
+	}
 	if lvl == GrantNone {
 		writeError(w, http.StatusNotFound, "BOOK_NOT_FOUND", "book not found")
 		return uuid.Nil, uuid.Nil, "", false

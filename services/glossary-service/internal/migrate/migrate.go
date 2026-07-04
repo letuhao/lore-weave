@@ -243,8 +243,48 @@ func execGuarded(ctx context.Context, pool *pgxpool.Pool, name, sql string) erro
 }
 
 func Up(ctx context.Context, pool *pgxpool.Pool) error {
-	return execGuarded(ctx, pool, "schema", schemaSQL)
+	if err := execGuarded(ctx, pool, "schema", schemaSQL); err != nil {
+		return err
+	}
+	// P2·F: append-only tenant-boundary audit table.
+	return execGuarded(ctx, pool, "tenant-audit", tenantAuditSQL)
 }
+
+// tenantAuditSQL — P2·F append-only tenant-boundary audit for glossary. A row is
+// written the FIRST time a caller crosses into a book they do NOT own (a
+// collaborator reaching book-scoped glossary data, or a denied under-grant),
+// coalesced to one row per (actor, book, outcome) per window (see
+// api/tenant_audit.go). Unlike book-service, glossary resolves grants via a
+// cross-service ResolveAccess that returns only a Level (no book owner), so this
+// table records the book_id as the tenant boundary and has NO owner_id column —
+// the owner is resolvable from book_id in book-service's DB during forensics.
+// Same append-only shape as auth-service's audit tables: UUID PK, outcome CHECK
+// enum, created_at index, REVOKE UPDATE/DELETE. No FK to any book row (audit must
+// outlive a deleted book).
+const tenantAuditSQL = `
+CREATE TABLE IF NOT EXISTS tenant_access_audit (
+  audit_id        UUID PRIMARY KEY DEFAULT uuidv7(),
+  actor_id        UUID NOT NULL,                 -- the crossing (non-owner) caller
+  book_id         UUID NOT NULL,                 -- the tenant boundary (owner resolvable in book-service)
+  outcome         TEXT NOT NULL CHECK (outcome IN ('granted','denied')),
+  coalesce_bucket TIMESTAMPTZ NOT NULL,          -- window start; dedups first-per-window
+  created_at      TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+CREATE UNIQUE INDEX IF NOT EXISTS uq_tenant_audit_window
+  ON tenant_access_audit (actor_id, book_id, outcome, coalesce_bucket);
+
+CREATE INDEX IF NOT EXISTS idx_tenant_audit_book_created
+  ON tenant_access_audit (book_id, created_at DESC);
+
+DO $$
+BEGIN
+    EXECUTE 'REVOKE UPDATE, DELETE ON TABLE tenant_access_audit FROM app_service_role';
+EXCEPTION
+    WHEN undefined_object THEN
+        RAISE NOTICE 'role app_service_role does not exist (dev stack); skipping REVOKE';
+END $$;
+`
 
 // snapshotSQL adds the entity_snapshot column, the recalculation function,
 // five trigger functions, and the triggers themselves.

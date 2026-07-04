@@ -54,6 +54,19 @@ func (s *Server) checkGrant(ctx context.Context, bookID, userID uuid.UUID, need 
 	if err != nil {
 		return ErrBookUnavailable
 	}
+	// P2·F tenant-boundary audit. A caller with a REAL sub-owner grant
+	// (view/edit/manage) is a collaborator crossing into the book owner's tenant.
+	// Emit 'granted' when the grant satisfies `need`, 'denied' otherwise. Skip
+	// Level==none (indistinguishable from a missing book here — no confirmed
+	// tenant) and Level==owner (own tenant). See tenant_audit.go.
+	if s.emitTenantAudit != nil &&
+		acc.Level > grantclient.GrantNone && acc.Level < grantclient.GrantOwner {
+		outcome := auditOutcomeGranted
+		if !acc.Level.AtLeast(need) {
+			outcome = auditOutcomeDenied
+		}
+		s.emitTenantAudit(userID, bookID, outcome)
+	}
 	if !acc.Level.AtLeast(need) {
 		return ErrNotAccessible
 	}

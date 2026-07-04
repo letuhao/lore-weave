@@ -39,6 +39,15 @@ type Config struct {
 	// E0-5 — auth-service /internal/users lookup for the collaborators panel
 	// (resolve invite email → user_id; resolve user_id → display_name for the list).
 	AuthServiceInternalURL string
+
+	// P2·F — tenant-boundary audit coalescing window (seconds). A cross-tenant
+	// access (a collaborator reading a book owned by another user) emits at most
+	// ONE audit row per (actor, book, outcome) per window — "first-access-per-
+	// window" — so a collaborator paging chapters can't flood the audit table
+	// (authBook runs on every per-book route with no request-scoped memoization).
+	// Default 1h; 0 would make every cross-tenant read emit (volume hazard) so the
+	// loader floors it to 1s.
+	TenantAuditCoalesceWindowSeconds int64
 }
 
 func Load() (*Config, error) {
@@ -60,6 +69,10 @@ func Load() (*Config, error) {
 		InternalServiceToken:      os.Getenv("INTERNAL_SERVICE_TOKEN"),
 		KnowledgeServiceURL:       getEnv("KNOWLEDGE_SERVICE_URL", "http://knowledge-service:8092"),
 		AuthServiceInternalURL:    getEnv("AUTH_SERVICE_INTERNAL_URL", "http://auth-service:8081"),
+		TenantAuditCoalesceWindowSeconds: getInt64("TENANT_AUDIT_COALESCE_WINDOW_S", 3600),
+	}
+	if c.TenantAuditCoalesceWindowSeconds < 1 {
+		c.TenantAuditCoalesceWindowSeconds = 1 // floor: 0/negative would emit every read
 	}
 	if c.DatabaseURL == "" {
 		return nil, fmt.Errorf("DATABASE_URL is required")

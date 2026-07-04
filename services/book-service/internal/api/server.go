@@ -58,11 +58,17 @@ type Server struct {
 	// (*Server).resolveBookAuth in NewServer; tests override it to exercise the
 	// route→need mapping (the grant chokepoint) without a real DB.
 	resolveBook func(ctx context.Context, bookID, userID uuid.UUID) (GrantLevel, uuid.UUID, string, error)
+	// emitTenantAudit is the P2·F cross-tenant audit hook. Production wires it to
+	// (*Server).asyncTenantAudit (fire-and-forget insert); tests override it with a
+	// synchronous spy to assert authBook emits on a cross-tenant crossing and stays
+	// silent on own-book / missing-book. nil ⇒ no-op (struct-literal Server).
+	emitTenantAudit func(actorID, bookID, ownerID uuid.UUID, outcome string)
 }
 
 func NewServer(pool *pgxpool.Pool, cfg *config.Config) *Server {
 	s := &Server{pool: pool, cfg: cfg, secret: []byte(cfg.JWTSecret)}
 	s.resolveBook = s.resolveBookAuth
+	s.emitTenantAudit = s.asyncTenantAudit
 	if cfg.MinioEndpoint != "" && cfg.MinioSecretKey != "" {
 		mc, err := minio.New(cfg.MinioEndpoint, &minio.Options{
 			Creds:  credentials.NewStaticV4(cfg.MinioAccessKey, cfg.MinioSecretKey, ""),

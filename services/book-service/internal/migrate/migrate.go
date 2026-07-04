@@ -476,6 +476,51 @@ const rawSearchExtensionSQL = `CREATE EXTENSION IF NOT EXISTS pg_trgm`
 const rawSearchIndexSQL = `CREATE INDEX IF NOT EXISTS idx_chapter_blocks_trgm
   ON chapter_blocks USING gin (text_content gin_trgm_ops)`
 
+// tenantAuditSQL — P2·F append-only tenant-boundary audit. A row is written the
+// FIRST time a caller crosses into a book they do NOT own (a collaborator read, or
+// a denied under-grant / no-grant attempt on an existing book), coalesced to one
+// row per (actor, book, outcome) per window (see api/tenant_audit.go). It records
+// ONLY ids + a coarse outcome enum — never a free-text detail, path, or payload —
+// so there is nothing to scrub (the P2·F "no un-scrubbed field" guarantee is
+// structural). Modeled on auth-service's admin_token_issuance_audit / mcp_call_audit
+// append-only pattern: UUID PK, denormalized owner for post-deletion forensics,
+// outcome CHECK enum, created_at index, REVOKE UPDATE/DELETE. No FK to books: the
+// audit trail must OUTLIVE a deleted book (forensics), same rationale as
+// mcp_call_audit not FK-ing its key_id.
+const tenantAuditSQL = `
+CREATE TABLE IF NOT EXISTS tenant_access_audit (
+  audit_id        UUID PRIMARY KEY DEFAULT uuidv7(),
+  actor_id        UUID NOT NULL,                 -- the crossing (non-owner) caller
+  book_id         UUID NOT NULL,                 -- the resource crossed into
+  owner_id        UUID NOT NULL,                 -- the tenant boundary owner (denormalized)
+  outcome         TEXT NOT NULL CHECK (outcome IN ('granted','denied')),
+  coalesce_bucket TIMESTAMPTZ NOT NULL,          -- window start; dedups first-per-window
+  created_at      TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+-- First-per-window coalescing: one row per (actor, book, outcome) per bucket. The
+-- emit does ON CONFLICT DO NOTHING against this, so a collaborator paging chapters
+-- emits at most one 'granted' row per window instead of one per request.
+CREATE UNIQUE INDEX IF NOT EXISTS uq_tenant_audit_window
+  ON tenant_access_audit (actor_id, book_id, outcome, coalesce_bucket);
+
+-- Owner-forensics read path: who crossed into my books, newest first.
+CREATE INDEX IF NOT EXISTS idx_tenant_audit_owner_created
+  ON tenant_access_audit (owner_id, created_at DESC);
+
+-- Append-only: REVOKE UPDATE/DELETE so even a compromised app role can't rewrite
+-- the trail. Same dev-stack caveat as auth-service's audit tables — a no-op when
+-- connected as the DB owner (dev); production MUST run book-service under
+-- app_service_role for this to bite.
+DO $$
+BEGIN
+    EXECUTE 'REVOKE UPDATE, DELETE ON TABLE tenant_access_audit FROM app_service_role';
+EXCEPTION
+    WHEN undefined_object THEN
+        RAISE NOTICE 'role app_service_role does not exist (dev stack); skipping REVOKE';
+END $$;
+`
+
 // migrationLockKey is a fixed application-defined key for the migration advisory
 // lock (arbitrary 64-bit constant — the ASCII bytes of "bookmig8"). Distinct from
 // glossary-service's key: they share the dev Postgres INSTANCE (advisory locks
@@ -536,6 +581,11 @@ func Up(ctx context.Context, pool *pgxpool.Pool) error {
 
 	// D1-03: trigger function to extract chapter_blocks from Tiptap JSONB
 	if err := execGuarded(ctx, pool, "trigger", triggerSQL); err != nil {
+		return err
+	}
+
+	// P2·F: append-only tenant-boundary audit table.
+	if err := execGuarded(ctx, pool, "tenant-audit", tenantAuditSQL); err != nil {
 		return err
 	}
 
