@@ -100,7 +100,12 @@ Because these are refactors touching many services, **each workstream is its own
 
 ---
 
-## Workstream C — Notification maturity  *(size: L)*
+## Workstream C — Notification maturity  *(size: L — reliability core SHIPPED; feature remainder tracked)*
+
+> **Status (2026-07-04): the two reliability wins SHIPPED; the 4 feature/structural parts remain (each substantial).**
+> - ✅ **(2) Dedup** (`042786197`) — `dedup_key` + partial-unique `(user_id, dedup_key)`; consumer keys `job_id:status` with `ON CONFLICT DO NOTHING` (a redelivery no longer duplicates a row); HTTP create/batch accept an optional key (idempotent). Pure key-shape test; runtime → `D-C-DEDUP-LIVE-SMOKE`.
+> - ✅ **(6) NoopNotifier not-silent** (`afedf0668`) — a loud one-time startup WARN when `RABBITMQ_URL` is unset (notifications disabled), so the prod misconfig is visible instead of surfacing as missing notifications.
+> - ⏳ **Remaining (tracked, each its own slice):** **(1) HTTP-producer transactional outbox** `D-C-PRODUCER-OUTBOX` — gate #2 structural (a new outbox table + relay on each producer service, modelled on book-service's `insertBookOutbox`; cross-service). **(3) User opt-out preferences** `D-C-OPTOUT` — a new per-user category-preference surface + a delivery gate. **(4) FE per-locale render from `message_key`** `D-C-FE-I18N` — frontend React (closes the `D-NOTIF-I18N` FE tail); the BE columns already ship. **(5) PII redaction on bodies** `D-C-BODY-PII` — needs a text-scrubbing redactor (not `contracts/pii`, which is record/erasure); bespoke + modest value (bodies are mostly system-generated error codes). Each is a real effort, not a quick edit — sequenced as follow-on slices.
 
 **Problem.** `notification-service` now has a shared envelope (P1 `contracts/notifyevent`) but the delivery plane is still immature: HTTP-ingest producers are **fire-and-forget-swallow** (lost if the service is down; no outbox); the AMQP consumer is at-least-once but `notifications` has **no dedup key** → requeue duplicates rows; `NoopNotifier` silently drops when `RABBITMQ_URL` unset; **two live transports** (SSE + `/ws`) for one concept; only `llm_job` events reach live-push; no user opt-out; no PII discipline on bodies; D-NOTIF-I18N shipped the BE columns but **FE per-locale rendering** is still pending.
 
