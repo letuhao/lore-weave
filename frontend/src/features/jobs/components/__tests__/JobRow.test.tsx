@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from 'vitest';
-import { render, screen } from '@testing-library/react';
+import { render, screen, fireEvent } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 
@@ -16,12 +16,12 @@ const job: Job = {
   created_at: null, updated_at: '2026-06-16T00:00:00+00:00', child_count: 0,
 };
 
-function renderRow(j: Job) {
+function renderRow(j: Job, onOpenDetail?: (service: string, jobId: string) => void) {
   const qc = new QueryClient();
   return render(
     <QueryClientProvider client={qc}>
       <MemoryRouter>
-        <JobRow job={j} />
+        <JobRow job={j} onOpenDetail={onOpenDetail} />
       </MemoryRouter>
     </QueryClientProvider>,
   );
@@ -53,5 +53,29 @@ describe('JobRow deep-link + grouping', () => {
     renderRow(job);
     expect(screen.getByRole('button', { name: 'controls.pause' })).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'controls.resume' })).not.toBeInTheDocument();
+  });
+});
+
+// docs/standards/dockable-gui.md U3 — the studio JobsListPanel injects onOpenDetail so the
+// panel can open `job-detail` as a sibling dock tab instead of route-navigating (DOCK-7).
+// Omitted (the standalone /jobs page above): byte-identical <Link> behavior.
+describe('JobRow onOpenDetail (dockable-migration injectable prop)', () => {
+  it('when provided, title + Details render as buttons (no <Link>) and call back with service/jobId', () => {
+    const onOpenDetail = vi.fn();
+    renderRow(job, onOpenDetail);
+    expect(screen.queryByRole('link')).not.toBeInTheDocument();
+    const titleBtn = screen.getByRole('button', { name: 'Extract ch 1-40' });
+    fireEvent.click(titleBtn);
+    expect(onOpenDetail).toHaveBeenCalledWith('knowledge', 'j1');
+
+    onOpenDetail.mockClear();
+    fireEvent.click(screen.getByRole('button', { name: 'row.details' }));
+    expect(onOpenDetail).toHaveBeenCalledWith('knowledge', 'j1');
+  });
+
+  it('when omitted, falls back to the exact prior <Link> behavior', () => {
+    renderRow(job);
+    expect(screen.getByRole('link', { name: 'Extract ch 1-40' })).toHaveAttribute('href', '/jobs/knowledge/j1');
+    expect(screen.getByRole('link', { name: 'row.details' })).toHaveAttribute('href', '/jobs/knowledge/j1');
   });
 });
