@@ -1,5 +1,15 @@
 # T3 — Planner/Compiler Context Kernel (`sdks/python/loreweave_context`)
 
+> **STATUS (2026-07-04):** T3.1 ✅ committed `6ac653ec4` (kernel + `build_system_message`
+> renderer, unifies the two A1 ladders; 7 golden + 926 chat green + live-smoked). T3.2 ✅
+> DONE + tested (13 kernel + 927 chat green + live-smoked) — the code landed **inside**
+> `53adb22ee` (a concurrent agent's `git add -A` on this shared branch swept my staged T3.2
+> files into its "notifyevent" commit; content verified intact). T3.2 = kernel `budget.py`
+> (`compute_target` moved out of chat's `token_budget`, re-exported) + `plan.py`
+> (`CompilePlan` + `Planner.plan()`, the swappable policy seam) + `_emit_chat_turn` wired to
+> `_PLANNER.plan()`. **NEXT: T3.3** (Compiler + CompactionStrategy under the kernel), **T3.4**
+> (package + voice/roleplay consumer), then the optimization-hypothesis A/B sweep.
+
 **Spec:** `docs/specs/2026-07-03-context-budget-law.md` §5 (Planner/Compiler), §12 (kernel),
 A1 (assembly surface), row T3. **Goal:** extract the scattered prompt-assembly + planning
 logic out of `chat-service/stream_service.py` into a shared, **behavior-preserving**
