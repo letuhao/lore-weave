@@ -55,4 +55,21 @@ test.describe('Studio palettes — chrome slice', () => {
     await studio.commandPalette.click(); // the "Go to chapter, scene, arc…" button
     await expect(studio.quickOpen).toBeVisible();
   });
+
+  // #18 — the flat ~46-item "Panels" list now splits into domain sub-groups; assert at least
+  // two distinct category headers render (not the old single "Panels" header) so the grouping
+  // is proven live, not just at the unit level.
+  test('#18: Command Palette panel commands render domain-area group headers', async ({ page }) => {
+    const studio = new StudioPage(page);
+    await studio.goto(bookId);
+    await page.keyboard.press('ControlOrMeta+Shift+P');
+    await expect(studio.commandPaletteModal).toBeVisible();
+
+    const list = page.getByTestId('palette-list');
+    await expect(list.getByText('Editor & Chapters', { exact: true })).toBeVisible();
+    await expect(list.getByText('Story Bible', { exact: true })).toBeVisible();
+    await expect(list.getByText('Knowledge Graph', { exact: true })).toBeVisible();
+    // the old flat bucket is gone — no "Panels" header should remain among panel commands.
+    await expect(list.getByText('Panels', { exact: true })).toHaveCount(0);
+  });
 });

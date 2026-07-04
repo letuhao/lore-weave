@@ -2,6 +2,8 @@ import { test, expect } from '@playwright/test';
 import { loginViaUI } from '../helpers/auth';
 import { getAccessToken, createBook, trashBook } from '../helpers/api';
 import { StudioPage } from '../pages/StudioPage';
+import { BooksPage } from '../pages/BooksPage';
+import { BookDetailPage } from '../pages/BookDetailPage';
 
 // Writing Studio (v2) — frame skeleton E2E. A fresh book is created via API and trashed
 // after, so the suite is isolated and needs no pre-existing data. Each test gets a fresh
@@ -11,10 +13,11 @@ test.describe('Writing Studio — frame skeleton', () => {
   let token: string;
   let bookId: string;
   let bookIdB: string;
+  const bookTitle = `E2E studio ${Date.now()}`;
 
   test.beforeAll(async ({ request }) => {
     token = await getAccessToken(request);
-    bookId = await createBook(request, token, `E2E studio ${Date.now()}`);
+    bookId = await createBook(request, token, bookTitle);
     bookIdB = await createBook(request, token, `E2E studio B ${Date.now()}`);
   });
 
@@ -31,6 +34,31 @@ test.describe('Writing Studio — frame skeleton', () => {
     await page.goto(`/books/${bookId}`);
     await page.getByTestId('book-open-studio').click();
     await expect(page).toHaveURL(new RegExp(`/books/${bookId}/studio$`));
+  });
+
+  // #18 — the workspace browser's book row now opens Studio directly (previously landed on
+  // the classic BookDetailPage). The classic route itself is unchanged (covered by the test
+  // above, reached via direct navigation), only the browser's default click target moved.
+  test('#18: workspace-browser row opens the book directly into Studio', async ({ page }) => {
+    const booksPage = new BooksPage(page);
+    await booksPage.goto();
+    await booksPage.openBookInStudio(bookTitle);
+    await expect(page).toHaveURL(new RegExp(`/books/${bookId}/studio$`));
+    await expect(page.getByTestId('studio-activity-manuscript')).toBeVisible();
+  });
+
+  // #18 A2/A3 — the classic BookDetailPage stays reachable; BooksPage.openBook() now navigates
+  // there directly (not via the row click, which #18 retargeted to Studio). This exercises that
+  // POM method's own contract directly, independent of the demo-pipeline specs (3a/3b/3c) that
+  // otherwise cover it — those currently fail earlier, at a pre-existing, unrelated create-book
+  // form bug (languageInput is a <select>; the POM's createBook() calls .fill(), not
+  // .selectOption() — tracked in SESSION_HANDOFF, out of #18's scope).
+  test('#18: BooksPage.openBook() still reaches the classic detail page (no /studio suffix)', async ({ page }) => {
+    const booksPage = new BooksPage(page);
+    await booksPage.goto();
+    await booksPage.openBook(bookTitle);
+    await expect(page).toHaveURL(new RegExp(`/books/${bookId}$`));
+    await new BookDetailPage(page).expectTitle(bookTitle);
   });
 
   test('renders the fixed frame regions', async ({ page }) => {

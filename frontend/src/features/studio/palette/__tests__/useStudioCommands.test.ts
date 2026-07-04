@@ -40,9 +40,48 @@ describe('buildStudioCommands', () => {
     });
     const p = cmds.find((x) => x.id === 'studio.openPanel.context-inspector');
     expect(p).toBeDefined();
-    expect(p!.group).toBe('Panels');
+    // #18 — context-inspector is catalogued under 'editor', not the old flat 'Panels' bucket.
+    expect(p!.group).toBe('editor');
     p!.run();
     expect(onOpenPanel).toHaveBeenCalledWith('context-inspector');
+  });
+
+  // #18 — domain-area grouping: a categorized panel groups by its category label; an
+  // uncategorized one (forward-compat guard) falls back to the generic 'Panels' bucket.
+  it('groups panel commands by category; uncategorized panels fall back to "Panels"', () => {
+    const withCategory: StudioPanelDef = { ...panel('glossary'), category: 'storyBible' };
+    const noCategory = panel('legacy-uncategorized');
+    const cmds = buildStudioCommands({
+      chrome: chrome(),
+      panels: [withCategory, noCategory],
+      onOpenPanel: vi.fn(),
+      onOpenQuickOpen: vi.fn(),
+      t,
+    });
+    expect(cmds.find((x) => x.id === 'studio.openPanel.glossary')?.group).toBe('storyBible');
+    expect(cmds.find((x) => x.id === 'studio.openPanel.legacy-uncategorized')?.group).toBe('Panels');
+  });
+
+  // #18 B4 — panel commands sort by the fixed CATEGORY_ORDER, not catalog array order, so the
+  // palette shell's adjacent-row group headers render clean (non-interleaved) sub-groups.
+  it('sorts panel commands by the fixed category order regardless of input array order', () => {
+    const enrichment: StudioPanelDef = { ...panel('enrichment-gaps'), category: 'enrichment' };
+    const editor: StudioPanelDef = { ...panel('compose'), category: 'editor' };
+    const knowledge: StudioPanelDef = { ...panel('kg-overview'), category: 'knowledge' };
+    // Deliberately out of CATEGORY_ORDER (enrichment, editor, knowledge) to prove the builder sorts.
+    const cmds = buildStudioCommands({
+      chrome: chrome(),
+      panels: [enrichment, editor, knowledge],
+      onOpenPanel: vi.fn(),
+      onOpenQuickOpen: vi.fn(),
+      t,
+    });
+    const panelCmdIds = cmds.filter((c) => c.id.startsWith('studio.openPanel.')).map((c) => c.id);
+    expect(panelCmdIds).toEqual([
+      'studio.openPanel.compose',       // editor
+      'studio.openPanel.kg-overview',   // knowledge
+      'studio.openPanel.enrichment-gaps', // enrichment
+    ]);
   });
 
   it('chrome commands carry a description (the palette sublabel)', () => {

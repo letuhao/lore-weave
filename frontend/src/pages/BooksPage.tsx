@@ -139,7 +139,7 @@ export function BooksPage() {
           {filteredBooks.map((book) => (
             <Link
               key={book.book_id}
-              to={`/books/${book.book_id}`}
+              to={`/books/${book.book_id}/studio`}
               data-testid="book-row"
               className="group flex items-center gap-4 rounded-lg border p-4 transition-all hover:border-[hsl(var(--border-hover,25_6%_24%))] hover:bg-card"
             >

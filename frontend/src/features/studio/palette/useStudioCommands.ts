@@ -1,7 +1,7 @@
 // #06b Command Palette — the command set. Static chrome commands (View: …) + one "Studio: Open …"
 // per catalog panel (STUDIO_PANELS — every buildable panel, so a CLOSED panel is still openable;
 // the mount-scoped registry drives the agent rack, not this list). Chrome commands ship on their own.
-import type { StudioPanelDef } from '../panels/catalog';
+import type { StudioPanelDef, StudioPanelCategory } from '../panels/catalog';
 import type { ActivityView } from '../types';
 
 export interface StudioCommand {
@@ -11,6 +11,14 @@ export interface StudioCommand {
   group: string;
   run: () => void;
 }
+
+// #18 — fixed display order for panel-command sub-groups, NOT alphabetical: categories sit
+// directly after Recent (highest command volume = primary discovery surface), before the static
+// Navigate/Layout groups. A panel with no `category` (forward-compat guard) sorts last under the
+// generic 'panels' fallback label — never dropped, never crashes.
+const CATEGORY_ORDER: StudioPanelCategory[] = [
+  'editor', 'storyBible', 'knowledge', 'translation', 'enrichment', 'sharing', 'platform', 'discovery', 'jobs',
+];
 
 interface ChromeActions {
   setActiveView: (v: ActivityView) => void;
@@ -35,13 +43,24 @@ export function buildStudioCommands(opts: {
   const cmds: StudioCommand[] = [];
 
   // Panels — from the static catalog (all buildable panels). Label "Studio: Open <name>".
-  for (const p of panels) {
+  // Sorted by CATEGORY_ORDER (not catalog array order, which only loosely clusters by domain)
+  // so the palette shell's adjacent-row group-header rendering produces clean, non-interleaved
+  // sub-groups instead of one flat "Panels" bucket (#18).
+  const byCategoryOrder = (a: StudioPanelDef, b: StudioPanelDef) => {
+    const ai = a.category ? CATEGORY_ORDER.indexOf(a.category) : CATEGORY_ORDER.length;
+    const bi = b.category ? CATEGORY_ORDER.indexOf(b.category) : CATEGORY_ORDER.length;
+    return ai - bi;
+  };
+  for (const p of [...panels].sort(byCategoryOrder)) {
     const name = t(p.titleKey, { defaultValue: p.id });
+    const categoryGroup = p.category
+      ? group(p.category, p.category)
+      : group('panels', 'Panels');
     cmds.push({
       id: `studio.openPanel.${p.id}`,
       label: t('palette.openPanel', { name, defaultValue: `Studio: Open ${name}` }),
       description: t(p.descKey, { defaultValue: '' }),
-      group: group('panels', 'Panels'),
+      group: categoryGroup,
       run: () => onOpenPanel(p.id),
     });
   }
