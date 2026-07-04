@@ -17,6 +17,7 @@
     "export": "匯出",
     "rename": "重新命名",
     "session_settings": "工作階段設定",
+    "context_inspector": "情境檢查器",
     "context_meter": {
       "label": "已使用的脈絡",
       "unknown": "無法得知此模型的脈絡視窗使用量",

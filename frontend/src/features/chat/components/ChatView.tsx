@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { toast } from 'sonner';
 import { useAuth } from '@/auth';
@@ -36,7 +37,12 @@ interface ChatViewProps {
 
 export function ChatView({ className, composeMode, footerSlot, headerSlot }: ChatViewProps) {
   const { t } = useTranslation('chat');
+  const navigate = useNavigate();
   const { accessToken } = useAuth();
+  // Embedded surfaces (editor/studio) pass a headerSlot; there, opening the
+  // standalone inspector would navigate away and tear down the host, so the
+  // header inspector affordance is offered only on the full chat page.
+  const embedded = !!headerSlot;
   const {
     activeSession,
     modelNameMap,
@@ -156,6 +162,11 @@ export function ChatView({ className, composeMode, footerSlot, headerSlot }: Cha
         compactControls={!isArchived ? compactControls : undefined}
         breakdownOpen={breakdownOpen}
         onBreakdownClose={() => setBreakdownOpen(false)}
+        onOpenInspector={
+          !embedded
+            ? () => navigate(`/context-inspector?session=${activeSession.session_id}`)
+            : undefined
+        }
         sessionSwitcher={headerSlot}
         onRename={promptRename}
         onOpenSettings={() => setSettingsOpen(true)}

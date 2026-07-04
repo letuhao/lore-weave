@@ -17,6 +17,7 @@
     "export": "Xuất",
     "rename": "Đổi tên",
     "session_settings": "Cài đặt phiên",
+    "context_inspector": "Trình kiểm tra ngữ cảnh",
     "context_meter": {
       "label": "Ngữ cảnh đã dùng",
       "unknown": "Không rõ mức sử dụng cửa sổ ngữ cảnh cho mô hình này",

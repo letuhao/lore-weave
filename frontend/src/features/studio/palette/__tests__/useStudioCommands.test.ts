@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 import { buildStudioCommands, filterCommands } from '../useStudioCommands';
-import type { StudioPanelDef } from '../../panels/catalog';
+import { OPENABLE_STUDIO_PANELS, type StudioPanelDef } from '../../panels/catalog';
 
 const t = (key: string, opts?: Record<string, unknown>) => (opts?.defaultValue as string) ?? key;
 
@@ -27,6 +27,22 @@ describe('buildStudioCommands', () => {
     expect(p?.label).toBe('Studio: Open cast');
     p?.run();
     expect(onOpenPanel).toHaveBeenCalledWith('cast');
+  });
+
+  it('the Context Inspector panel is palette-openable from the real catalog (§11 studio entry point)', () => {
+    const onOpenPanel = vi.fn();
+    const cmds = buildStudioCommands({
+      chrome: chrome(),
+      panels: OPENABLE_STUDIO_PANELS,
+      onOpenPanel,
+      onOpenQuickOpen: vi.fn(),
+      t,
+    });
+    const p = cmds.find((x) => x.id === 'studio.openPanel.context-inspector');
+    expect(p).toBeDefined();
+    expect(p!.group).toBe('Panels');
+    p!.run();
+    expect(onOpenPanel).toHaveBeenCalledWith('context-inspector');
   });
 
   it('chrome commands carry a description (the palette sublabel)', () => {

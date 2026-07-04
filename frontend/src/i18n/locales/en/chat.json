@@ -17,6 +17,7 @@
     "export": "Export",
     "rename": "Rename",
     "session_settings": "Session Settings",
+    "context_inspector": "Context Inspector",
     "context_meter": {
       "label": "Context used",
       "unknown": "Context window usage unknown for this model",

@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { Download, Menu, Pencil, Settings, Mic, SlidersHorizontal } from 'lucide-react';
+import { Download, Gauge, Menu, Pencil, Settings, Mic, SlidersHorizontal } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import { SPEECH_RECOGNITION_SUPPORTED } from '@/hooks/useSpeechRecognition';
 import { MEDIA_RECORDER_SUPPORTED } from '@/hooks/useBackendSTT';
@@ -36,9 +36,13 @@ interface ChatHeaderProps {
   /** W6: external "open the breakdown panel" signal (the rack's summary chip). */
   breakdownOpen?: boolean;
   onBreakdownClose?: () => void;
+  /** Context Compiler · Trace Inspector — opens the standalone inspector focused on
+   *  THIS session (spec §11). Omitted on embedded surfaces (editor/studio) where a
+   *  navigation away would tear down the host. */
+  onOpenInspector?: () => void;
 }
 
-export function ChatHeader({ session, modelNameMap, messageCount, onRename, onOpenSettings, isVoiceModeActive, onToggleVoiceMode, onOpenVoiceSettings, onOpenSidebar, sessionSwitcher, contextBudget, onManageContextTools, compactControls, breakdownOpen, onBreakdownClose }: ChatHeaderProps) {
+export function ChatHeader({ session, modelNameMap, messageCount, onRename, onOpenSettings, isVoiceModeActive, onToggleVoiceMode, onOpenVoiceSettings, onOpenSidebar, sessionSwitcher, contextBudget, onManageContextTools, compactControls, breakdownOpen, onBreakdownClose, onOpenInspector }: ChatHeaderProps) {
   const { t } = useTranslation('chat');
   // Self-measure: when the header (its container) is narrow — e.g. the editor
   // AI panel at ~300px — collapse the memory chip to icon-only so the action
@@ -115,6 +119,18 @@ export function ChatHeader({ session, modelNameMap, messageCount, onRename, onOp
             className="rounded-md p-2 text-muted-foreground hover:bg-secondary hover:text-foreground transition-colors"
           >
             <SlidersHorizontal className="h-4 w-4" />
+          </button>
+        )}
+        {onOpenInspector && (
+          <button
+            type="button"
+            onClick={onOpenInspector}
+            data-testid="chat-context-inspector-button"
+            title={t('header.context_inspector')}
+            aria-label={t('header.context_inspector')}
+            className="rounded-md p-2 text-muted-foreground hover:bg-secondary hover:text-foreground transition-colors"
+          >
+            <Gauge className="h-4 w-4" />
           </button>
         )}
         <button

@@ -17,6 +17,7 @@
     "export": "エクスポート",
     "rename": "名前を変更",
     "session_settings": "セッション設定",
+    "context_inspector": "コンテキストインスペクター",
     "context_meter": {
       "label": "使用中のコンテキスト",
       "unknown": "このモデルのコンテキストウィンドウ使用量は不明です",
