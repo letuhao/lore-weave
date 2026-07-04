@@ -50,6 +50,16 @@ class Settings(BaseSettings):
     book_service_url: str = "http://book-service:8082"
     book_steering_timeout_s: float = 2.0
 
+    # T5 (Context Budget Law D2) — entity-presence intent gate. chat-service reads
+    # the book's known-entity token set from glossary-service's internal route and
+    # caches it in-process (A3: no new table). Used ONLY to decide whether a turn's
+    # message references book lore → whether the expensive grounding pull is worth
+    # it. Failure degrades to "gate open" (bias-to-include), so the turn is never
+    # harmed by a glossary outage.
+    glossary_service_url: str = "http://glossary-service:8088"
+    known_entities_timeout_s: float = 2.0
+    known_entities_cache_ttl_s: float = 300.0
+
     # Agent Extensibility Registry (P1) — user/book prompt-only skills. chat-service
     # reads /internal/skills and injects them alongside the built-in SYSTEM_SKILLS,
     # honouring per-user disable + shadow. EVERY failure degrades to "constants only"
