@@ -21,7 +21,9 @@ import (
 )
 
 func main() {
-	slog.SetDefault(slog.New(slog.NewJSONHandler(os.Stdout, nil)).With("service", "worker-infra"))
+	// P2·A1 — shared JSON slog logger that injects otel_trace_id from the active
+	// span on ctx-carrying log calls (slog.*Context). Replaces the bare SetDefault.
+	observability.SetupLogging("worker-infra")
 
 	cfg := config.Load()
 
