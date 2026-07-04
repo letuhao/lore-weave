@@ -17,6 +17,13 @@ from __future__ import annotations
 # 502 Bad Gateway / 503 Service Unavailable / 429 Too Many Requests — a redelivery or
 # retry can succeed. A 4xx (except 429) or a 5xx 500/501 is NOT retried (a bug/contract
 # error won't fix itself).
+#
+# CAVEAT for adopters: this is the set the ~5 unified error classes shared. A FEW
+# call sites use a DIFFERENT set — e.g. lore-enrichment `generation/complete.py`
+# includes 504 (Gateway Timeout). Such a site MUST keep passing `retryable=` EXPLICITLY
+# at the raise (the base honors an explicit override) rather than relying on this
+# derivation, OR its class stays non-`InternalClientError`. Do not blind-subclass a
+# 504-inclusive class and drop its explicit `retryable=` — that silently flips 504.
 RETRYABLE_STATUSES = frozenset({429, 502, 503})
 
 

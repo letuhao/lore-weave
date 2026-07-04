@@ -84,6 +84,14 @@ PY_JWT_VERIFY = re.compile(
     r'^\s*[\w.]+\s*=\s*(?:pyjwt|jwt)\.decode\(.*algorithms\s*=\s*\[["\']HS256'
 )
 
+# SDK-2 · a copy of the shared best-effort model-NAME resolver (P3 SDK-first). Its
+# tell-tale is the provider-registry model-info URL literal
+# `/internal/models/{model_source}/{model_ref}/info` — the SDK owns the one
+# implementation (allowlisted under sdks/), and the per-service shims delegate to
+# `loreweave_internal_client.resolve_model_name` WITHOUT that literal. One known copy
+# remains (worker-ai's client-method variant), baselined until its migration wave.
+PY_MODEL_NAME_COPY = re.compile(r"/internal/models/\{model_source\}")
+
 # SDK-2 · the copy-pasted logging_config.py trio (Python).
 LOGGING_REDACT = re.compile(r"^\s*class\s+RedactFilter\b")
 LOGGING_SETUP = re.compile(r"^\s*def\s+setup_logging\s*\(")
@@ -99,6 +107,7 @@ DETECTORS = [
     ("jwt-verifier", JWT_VERIFY),
     ("jwt-alg-pin", JWT_ALG_PIN),
     ("py-jwt-verifier", PY_JWT_VERIFY),
+    ("py-model-name-copy", PY_MODEL_NAME_COPY),
     ("logging-redact-filter", LOGGING_REDACT),
     ("logging-setup", LOGGING_SETUP),
     ("logging-secret-patterns", LOGGING_SECRETS),
@@ -109,6 +118,7 @@ RULE_LABELS = {
     "jwt-verifier": "platform JWT verifier re-declared (use shared contracts/platformjwt)",
     "jwt-alg-pin": "hand-rolled JWT algorithm pin (belongs in the shared verifier)",
     "py-jwt-verifier": "Python user-JWT verifier re-declared (use loreweave_authn.verify_access_token)",
+    "py-model-name-copy": "resolve_model_name copy (use loreweave_internal_client.resolve_model_name)",
     "logging-redact-filter": "RedactFilter re-declared (use loreweave_obs.setup_logging)",
     "logging-setup": "setup_logging re-defined (use loreweave_obs.setup_logging)",
     "logging-secret-patterns": "_SECRET_PATTERNS re-declared (use the shared redactor)",
@@ -293,6 +303,13 @@ BASELINE = {
     'logging-setup|services/composition-service/app/logging_config.py|def setup_logging(level: str = "INFO") -> None:',
     'logging-setup|services/knowledge-service/app/logging_config.py|def setup_logging(level: str = "INFO") -> None:',
     'logging-setup|services/lore-enrichment-service/app/logging_config.py|def setup_logging(level: str = "INFO") -> None:',
+    # P3 SDK-first (2026-07-05): worker-ai still holds a client-METHOD variant of the
+    # model-name resolver (ProviderRegistryClient.get_model_name) — a known copy to
+    # migrate in the worker-ai wave. Baselined so the new py-model-name-copy rule passes
+    # today and fails only on a NEW (8th) copy. The 6 standalone model_name.py copies
+    # were collapsed to loreweave_internal_client shims.
+    'py-model-name-copy|services/worker-ai/app/clients.py|"""GET /internal/models/{model_source}/{model_ref}/info → provider_model_name.',
+    'py-model-name-copy|services/worker-ai/app/clients.py|url = f"{self._base_url}/internal/models/{model_source}/{model_ref}/info"',
 }
 
 

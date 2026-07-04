@@ -65,6 +65,20 @@ async def test_build_internal_client_bakes_token_and_json():
 
 
 @pytest.mark.asyncio
+async def test_build_default_transport_and_connect_split():
+    # The PRODUCTION path — no transport override (transport=None default) — must
+    # construct a valid client with the baked headers + a connect-split timeout.
+    client = build_internal_client(
+        "http://svc:8000", internal_token="itok", timeout_s=30.0, connect_timeout_s=5.0
+    )
+    async with client:
+        assert client.headers["x-internal-token"] == "itok"
+        assert client.headers["content-type"] == "application/json"
+        assert str(client.base_url) == "http://svc:8000"
+        assert client.timeout.read == 30.0 and client.timeout.connect == 5.0
+
+
+@pytest.mark.asyncio
 async def test_trace_id_injected_per_request_when_provider_set():
     captured: list[str | None] = []
     current = {"tid": "trace-abc"}
