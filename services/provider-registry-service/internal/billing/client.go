@@ -181,6 +181,17 @@ type UsageRecord struct {
 	// this the audit ledger mis-bills: a flat rate under-counts cloud models (gpt-4o
 	// output is 4× input) AND wrongly charges local ($0) models.
 	TotalCostUSD *float64
+
+	// P0-2 (B1/B2/B4 — full request/response logging). RequestStatus is the terminal
+	// outcome the audit row records: "success" | "provider_error" | "aborted" |
+	// "cancelled". Empty → "success" (back-compat). InputPayload / OutputPayload are
+	// the assembled provider request (post-injection) + the response (the accumulated
+	// streamed completion, or the embed/rerank result). usage-billing encrypts them at
+	// rest with its dedicated payload KEK; a nil map omits the field (no payload logged,
+	// e.g. tts). Callers bound their size before setting them.
+	RequestStatus string
+	InputPayload  map[string]any
+	OutputPayload map[string]any
 }
 
 // RecordUsage posts a model-level usage entry to usage-billing's
@@ -193,6 +204,13 @@ type UsageRecord struct {
 // usage-billing's stale provider_kind CHECK is dropped in the 6a-β migration
 // so an empty value is now accepted.
 func (c *GuardrailClient) RecordUsage(ctx context.Context, rec UsageRecord) error {
+	// P0-2 — request_status is now carried from the caller (the terminal outcome),
+	// not hardcoded "success", so an aborted/errored/cancelled stream records its real
+	// status. Empty falls back to "success" for back-compat callers.
+	reqStatus := rec.RequestStatus
+	if reqStatus == "" {
+		reqStatus = "success"
+	}
 	payload := map[string]any{
 		"request_id":     rec.RequestID,
 		"owner_user_id":  rec.OwnerUserID,
@@ -201,13 +219,21 @@ func (c *GuardrailClient) RecordUsage(ctx context.Context, rec UsageRecord) erro
 		"model_ref":      rec.ModelRef,
 		"input_tokens":   rec.InputTokens,
 		"output_tokens":  rec.OutputTokens,
-		"request_status": "success",
+		"request_status": reqStatus,
 		"purpose":        rec.Operation,
 	}
 	// Send the authoritative per-model cost when the caller resolved it; absent →
 	// usage-billing uses its flat fallback (back-compat).
 	if rec.TotalCostUSD != nil {
 		payload["total_cost_usd"] = *rec.TotalCostUSD
+	}
+	// P0-2 — the assembled request + response payloads (usage-billing encrypts them).
+	// nil maps are omitted so a payload-less caller (or tts) stores no payload.
+	if rec.InputPayload != nil {
+		payload["input_payload"] = rec.InputPayload
+	}
+	if rec.OutputPayload != nil {
+		payload["output_payload"] = rec.OutputPayload
 	}
 	status, raw, err := c.post(ctx, "/internal/model-billing/record", payload)
 	if err != nil {

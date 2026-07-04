@@ -421,6 +421,10 @@ func (s *Server) streamChat(
 	guard *streamGuard,
 ) error {
 	input := buildChatStreamInput(in)
+	// P0-2 (B1) — capture the assembled provider request (post-injection: messages
+	// already carry the system + context prompt the caller built) as the audit input
+	// payload, bounded so a huge context is logged by reference.
+	guard.captureRequest(boundedPayload(input))
 
 	emit := func(chunk provider.StreamChunk) error {
 		select {
@@ -474,6 +478,9 @@ func (s *Server) streamChat(
 			Message: message,
 		})
 	}
+	// P0-2 (B2) — classify the terminal outcome so the deferred guard.settle records
+	// the real request_status (settle runs after streamChat returns).
+	guard.finalizeOutcome(err)
 	return err
 }
 

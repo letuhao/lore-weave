@@ -2737,33 +2737,42 @@ func (s *Server) getInternalModelInfo(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
-func (s *Server) recordInvocation(ctx context.Context, payload map[string]any) (uuid.UUID, string, float64, error) {
-	body, _ := json.Marshal(payload)
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, strings.TrimRight(s.cfg.UsageBillingServiceURL, "/")+"/internal/model-billing/record", bytes.NewReader(body))
+// recordSyncUsage logs a SYNCHRONOUS (non-streaming) model invocation to
+// usage-billing's audit ledger via the shared billing.RecordUsage contract
+// (P0-2 B4 — embed / rerank / web-search, which previously called no record path
+// at all and were audit-invisible). Fire-and-forget on a detached context so it
+// never adds latency to — nor is cancelled by — the caller's response; the
+// GuardrailClient's own timeout bounds the goroutine. Nil-safe (router-only tests
+// build no guardrail). Payloads are bounded (reference-first when huge), and a
+// fresh uuidv7 request_id makes each call its own audit row. These sync paths are
+// user_model-only (the handlers reject any other model_source before calling here).
+func (s *Server) recordSyncUsage(ctx context.Context, userID, modelRef uuid.UUID, operation string, inTok, outTok int, reqPayload, respPayload map[string]any) {
+	if s.guardrail == nil {
+		return
+	}
+	reqID, err := uuid.NewV7()
 	if err != nil {
-		return uuid.Nil, "", 0, err
+		return
 	}
-	req.Header.Set("Content-Type", "application/json")
-	if s.cfg.InternalServiceToken != "" {
-		req.Header.Set("X-Internal-Token", s.cfg.InternalServiceToken)
+	detached := observability.DetachedContext(ctx)
+	rec := billing.UsageRecord{
+		RequestID:     reqID,
+		OwnerUserID:   userID,
+		ModelSource:   "user_model",
+		ModelRef:      modelRef,
+		Operation:     operation,
+		InputTokens:   inTok,
+		OutputTokens:  outTok,
+		RequestStatus: "success",
+		InputPayload:  boundedPayload(reqPayload),
+		OutputPayload: boundedPayload(respPayload),
 	}
-	res, err := s.client.Do(req)
-	if err != nil {
-		return uuid.Nil, "", 0, err
-	}
-	defer res.Body.Close()
-	if res.StatusCode != http.StatusCreated && res.StatusCode != http.StatusOK {
-		return uuid.Nil, "", 0, fmt.Errorf("billing status %d", res.StatusCode)
-	}
-	var out struct {
-		UsageLogID   uuid.UUID `json:"usage_log_id"`
-		BillingMode  string    `json:"billing_mode"`
-		TotalCostUSD float64   `json:"total_cost_usd"`
-	}
-	if err := json.NewDecoder(res.Body).Decode(&out); err != nil {
-		return uuid.Nil, "", 0, err
-	}
-	return out.UsageLogID, out.BillingMode, out.TotalCostUSD, nil
+	go func() {
+		if err := s.guardrail.RecordUsage(detached, rec); err != nil {
+			slog.Warn("sync usage record failed",
+				"operation", operation, "request_id", reqID.String(), "err", err)
+		}
+	}()
 }
 
 // ── K12.1 — Embedding endpoint ──────────────────────────────────────────────
@@ -2847,6 +2856,11 @@ WHERE um.user_model_id=$1 AND um.owner_user_id=$2 AND um.is_active=true AND pc.s
 		writeError(w, http.StatusBadGateway, "RERANK_UPSTREAM_ERROR", "rerank service error")
 		return
 	}
+	// P0-2 (B4) — audit the rerank call: query + documents in, scored results out.
+	// Rerank carries no token usage → tokens 0.
+	s.recordSyncUsage(r.Context(), userID, modelRef, "rerank", 0, 0,
+		map[string]any{"query": in.Query, "documents": in.Documents},
+		map[string]any{"results": results})
 	writeJSON(w, http.StatusOK, map[string]any{"model": providerModelName, "results": results})
 }
 
@@ -2885,8 +2899,9 @@ func (s *Server) internalWebSearch(w http.ResponseWriter, r *http.Request) {
 	// explicitly flagged (boolean {"web_search":true} or legacy _capability), never
 	// defaulted from '{}' the way chat is.
 	var providerModelName, endpointBaseURL, secretCipher string
+	var modelRef uuid.UUID // resolved model id — carried into the usage audit row (P0-2 B4)
 	err = s.pool.QueryRow(r.Context(), `
-SELECT um.provider_model_name, COALESCE(pc.endpoint_base_url,''), COALESCE(pc.secret_ciphertext,'')
+SELECT um.user_model_id, um.provider_model_name, COALESCE(pc.endpoint_base_url,''), COALESCE(pc.secret_ciphertext,'')
 FROM user_models um
 JOIN provider_credentials pc ON pc.provider_credential_id = um.provider_credential_id
 WHERE um.owner_user_id=$1 AND um.is_active=true AND pc.status='active'
@@ -2894,7 +2909,7 @@ WHERE um.owner_user_id=$1 AND um.is_active=true AND pc.status='active'
        OR um.capability_flags->>'_capability' = 'web_search')
 ORDER BY um.is_favorite DESC, um.created_at ASC
 LIMIT 1
-`, userID).Scan(&providerModelName, &endpointBaseURL, &secretCipher)
+`, userID).Scan(&modelRef, &providerModelName, &endpointBaseURL, &secretCipher)
 	if err == pgx.ErrNoRows {
 		writeError(w, http.StatusNotFound, "WEBSEARCH_MODEL_NOT_FOUND",
 			"no active web_search model configured — add a web-search provider credential in Settings")
@@ -2926,6 +2941,11 @@ LIMIT 1
 		writeError(w, http.StatusBadGateway, "WEBSEARCH_UPSTREAM_ERROR", "web search provider error")
 		return
 	}
+	// P0-2 (B4) — audit the web-search call: query + options in, answer + results out.
+	// Web search carries no token usage → tokens 0.
+	s.recordSyncUsage(r.Context(), userID, modelRef, "web_search", 0, 0,
+		map[string]any{"query": in.Query, "max_results": in.MaxResults, "search_depth": in.SearchDepth},
+		map[string]any{"answer": answer, "results": results})
 	writeJSON(w, http.StatusOK, map[string]any{
 		"provider_model": providerModelName,
 		"answer":         answer,
@@ -3068,5 +3088,11 @@ WHERE um.user_model_id=$1 AND um.owner_user_id=$2 AND um.is_active=true AND pc.s
 	}
 
 	EmbedRequestsTotal.WithLabelValues(OutcomeOK).Inc()
+	// P0-2 (B4) — audit the embed call: the input texts in, vector count + dimension
+	// out (NOT the vectors themselves — huge + useless in a ledger). input_tokens uses
+	// the provider's reported prompt_tokens when present (0 → provider omitted it).
+	s.recordSyncUsage(r.Context(), userID, modelRef, "embed", result.PromptTokens, 0,
+		map[string]any{"texts": in.Texts},
+		map[string]any{"count": len(result.Embeddings), "dimension": result.Dimension, "model": result.Model})
 	writeJSON(w, http.StatusOK, result)
 }

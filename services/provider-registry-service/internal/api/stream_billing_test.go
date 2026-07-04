@@ -6,6 +6,7 @@ package api
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -295,11 +296,11 @@ func TestStreamGuard_Settle_RecordUsage_HappyPath(t *testing.T) {
 	}
 }
 
-// TestStreamGuard_Settle_RecordUsage_SkipsOnAbort. A hard-aborted stream
-// reconciles its (partial) spend but MUST NOT write an audit row —
-// mirrors the jobs.Worker.settleBilling rule that /record fires only
-// on a `completed` status.
-func TestStreamGuard_Settle_RecordUsage_SkipsOnAbort(t *testing.T) {
+// TestStreamGuard_Settle_RecordUsage_RecordsOnAbort. P0-2 (B2): a hard-aborted
+// stream still spent real tokens + produced partial output, so it MUST write an
+// audit row (never zero rows) — carrying request_status="aborted". This overturns
+// the pre-P0-2 behavior that skipped /record on abort (the audit hole).
+func TestStreamGuard_Settle_RecordUsage_RecordsOnAbort(t *testing.T) {
 	srv, cap := newUsageStub(t)
 	gc := billing.NewGuardrailClient(srv.URL, "tok", nil)
 
@@ -312,24 +313,27 @@ func TestStreamGuard_Settle_RecordUsage_SkipsOnAbort(t *testing.T) {
 		finalUsage: &provider.StreamChunk{
 			Kind: provider.StreamChunkUsage, InputTokens: 1000, OutputTokens: 500,
 		},
-		aborted: true, // hard-abort from observe()
+		aborted:       true, // hard-abort from observe()
+		requestStatus: "aborted",
 	}
 	g.settle(context.Background())
 
 	if cap.reconcileCount != 1 {
 		t.Fatalf("expected 1 reconcile (always runs), got %d", cap.reconcileCount)
 	}
-	if cap.recordCount != 0 {
-		t.Fatalf("aborted stream must NOT call /record, got %d calls", cap.recordCount)
+	if cap.recordCount != 1 {
+		t.Fatalf("B2: an aborted stream MUST still record an audit row, got %d", cap.recordCount)
+	}
+	if cap.recordBody["request_status"] != "aborted" {
+		t.Errorf("request_status: got %v want aborted", cap.recordBody["request_status"])
 	}
 }
 
-// TestStreamGuard_Settle_RecordUsage_SkipsOnNoUsageChunk. When the
-// provider omitted the final usage chunk, we have no authoritative
-// token counts. Skip /record rather than guess — the estimate-based
-// tally already drove reconcile, but the audit ledger only stores
-// confirmed numbers.
-func TestStreamGuard_Settle_RecordUsage_SkipsOnNoUsageChunk(t *testing.T) {
+// TestStreamGuard_Settle_RecordUsage_RecordsWithTallyWhenNoUsageChunk. P0-2 (B2):
+// when the provider omitted the final usage chunk (disconnect / provider quirk) we
+// still record — using the delta-estimated tally (the same numbers reconcile used)
+// so the call is never audit-invisible.
+func TestStreamGuard_Settle_RecordUsage_RecordsWithTallyWhenNoUsageChunk(t *testing.T) {
 	srv, cap := newUsageStub(t)
 	gc := billing.NewGuardrailClient(srv.URL, "tok", nil)
 
@@ -337,10 +341,12 @@ func TestStreamGuard_Settle_RecordUsage_SkipsOnNoUsageChunk(t *testing.T) {
 		guardrail: gc, reservationID: uuid.New(),
 		jobID: uuid.New(), ownerUserID: uuid.New(),
 		modelSource: "user_model", modelRef: uuid.New(),
-		op:           "chat",
-		pricing:      billing.Pricing{OutputPerMTok: ptr(10)},
-		inputCostUSD: 0.005,
-		outChars:     350,
+		op:            "chat",
+		pricing:       billing.Pricing{OutputPerMTok: ptr(10)},
+		inputCostUSD:  0.005,
+		inputTokens:   42,
+		outChars:      350, // → 100 Latin tokens via EstimateTokens
+		requestStatus: "success",
 		// finalUsage intentionally nil
 	}
 	g.settle(context.Background())
@@ -348,8 +354,90 @@ func TestStreamGuard_Settle_RecordUsage_SkipsOnNoUsageChunk(t *testing.T) {
 	if cap.reconcileCount != 1 {
 		t.Fatalf("expected 1 reconcile, got %d", cap.reconcileCount)
 	}
-	if cap.recordCount != 0 {
-		t.Fatalf("chat with no usage chunk must NOT call /record, got %d", cap.recordCount)
+	if cap.recordCount != 1 {
+		t.Fatalf("B2: chat with no usage chunk must still record (tally estimate), got %d", cap.recordCount)
+	}
+	if in, _ := cap.recordBody["input_tokens"].(float64); int(in) != 42 {
+		t.Errorf("input_tokens: got %v want 42 (estimated)", cap.recordBody["input_tokens"])
+	}
+	if out, _ := cap.recordBody["output_tokens"].(float64); int(out) != 100 {
+		t.Errorf("output_tokens: got %v want 100 (tally: 350 chars → 100 tokens)", cap.recordBody["output_tokens"])
+	}
+}
+
+// TestStreamGuard_Settle_RecordUsage_LogsPayloads. P0-2 (B1): a completed chat
+// stream MUST record a non-empty request payload (the assembled messages) + response
+// payload (the accumulated completion) so the highest-volume path is auditable.
+func TestStreamGuard_Settle_RecordUsage_LogsPayloads(t *testing.T) {
+	srv, cap := newUsageStub(t)
+	gc := billing.NewGuardrailClient(srv.URL, "tok", nil)
+
+	g := &streamGuard{
+		guardrail: gc, reservationID: uuid.New(),
+		jobID: uuid.New(), ownerUserID: uuid.New(),
+		modelSource: "user_model", modelRef: uuid.New(),
+		op:      "chat",
+		pricing: billing.Pricing{InputPerMTok: ptr(2), OutputPerMTok: ptr(10)},
+		finalUsage: &provider.StreamChunk{
+			Kind: provider.StreamChunkUsage, InputTokens: 5, OutputTokens: 6,
+		},
+		requestStatus: "success",
+		requestPayload: map[string]any{
+			"messages": []any{map[string]any{"role": "user", "content": "hi"}},
+		},
+	}
+	g.completion.WriteString("hello world")
+	g.settle(context.Background())
+
+	if cap.recordCount != 1 {
+		t.Fatalf("expected 1 record, got %d", cap.recordCount)
+	}
+	in, ok := cap.recordBody["input_payload"].(map[string]any)
+	if !ok || in["messages"] == nil {
+		t.Fatalf("B1: input_payload must carry the assembled request, got %v", cap.recordBody["input_payload"])
+	}
+	out, ok := cap.recordBody["output_payload"].(map[string]any)
+	if !ok || out["content"] != "hello world" {
+		t.Fatalf("B1: output_payload must carry the completion, got %v", cap.recordBody["output_payload"])
+	}
+	if cap.recordBody["request_status"] != "success" {
+		t.Errorf("request_status: got %v want success", cap.recordBody["request_status"])
+	}
+}
+
+// TestStreamGuard_FinalizeOutcome_Classifies locks the terminal-status mapping the
+// settle audit row records (P0-2 B2).
+func TestStreamGuard_FinalizeOutcome_Classifies(t *testing.T) {
+	cases := []struct {
+		name string
+		g    *streamGuard
+		err  error
+		want string
+	}{
+		{"success", &streamGuard{}, nil, "success"},
+		{"provider_error", &streamGuard{}, errors.New("boom"), "provider_error"},
+		{"cancelled", &streamGuard{}, context.Canceled, "cancelled"},
+		{"aborted", &streamGuard{aborted: true}, errStreamBudgetExceeded, "aborted"},
+	}
+	for _, c := range cases {
+		c.g.finalizeOutcome(c.err)
+		if c.g.requestStatus != c.want {
+			t.Errorf("%s: got %q want %q", c.name, c.g.requestStatus, c.want)
+		}
+	}
+	var nilG *streamGuard
+	nilG.finalizeOutcome(nil) // must not panic
+}
+
+// TestStreamGuard_Observe_AccumulatesCompletion. P0-2 (B1): observe accumulates the
+// visible answer (token deltas) but NOT reasoning deltas (hidden thinking).
+func TestStreamGuard_Observe_AccumulatesCompletion(t *testing.T) {
+	g := &streamGuard{op: "chat", abortUSD: 1e9}
+	g.observe(provider.StreamChunk{Kind: provider.StreamChunkToken, Delta: "Hello, "})
+	g.observe(provider.StreamChunk{Kind: provider.StreamChunkReasoning, Delta: "(thinking)"})
+	g.observe(provider.StreamChunk{Kind: provider.StreamChunkToken, Delta: "world"})
+	if got := g.completion.String(); got != "Hello, world" {
+		t.Fatalf("completion must accumulate token deltas only (not reasoning): got %q", got)
 	}
 }
 
