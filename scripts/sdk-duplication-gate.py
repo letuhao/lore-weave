@@ -102,8 +102,11 @@ PY_MODEL_NAME_COPY = re.compile(r"/internal/models/\{model_source\}")
 # `(429, 502, 503, 504)` — does NOT match (that site keeps its own list per the
 # RETRYABLE_STATUSES caveat). Test files / success-status checks (`in (200, 201)`) /
 # dispatch 404-409-as-success (`in (404, 409)`) never match — different codes.
+# Open/close brackets are a permissive class `[(\[{]…[)\]}]` so a set/list form
+# (`in {429,502,503}` / `in [429,502,503]`) is caught too, not just a tuple — a
+# heuristic detector, so a (never-real) mismatched-bracket pair is acceptable.
 PY_INLINE_RETRYABLE = re.compile(
-    r"status_code\s+in\s+\(\s*(?:429|502|503)\s*(?:,\s*(?:429|502|503)\s*){2}\)"
+    r"status_code\s+in\s+[(\[{]\s*(?:429|502|503)\s*(?:,\s*(?:429|502|503)\s*){2}[)\]}]"
 )
 
 # SDK-2 · the copy-pasted logging_config.py trio (Python).

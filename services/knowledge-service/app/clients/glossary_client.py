@@ -336,7 +336,8 @@ class GlossaryClient:
         url = f"{self._base_url}/internal/books/{book_id}/known-entities"
         try:
             resp = await self._http.get(
-                url,                params={"status": status_filter, "min_frequency": str(min_frequency)},
+                url,
+                params={"status": status_filter, "min_frequency": str(min_frequency)},
             )
             if resp.status_code != 200:
                 logger.warning("glossary list-entities %d", resp.status_code)
@@ -377,7 +378,8 @@ class GlossaryClient:
         }
         try:
             resp = await self._http.get(
-                url,                params=params,
+                url,
+                params=params,
             )
         except httpx.HTTPError as exc:
             raise GlossaryAnchorUnavailable(
@@ -446,7 +448,8 @@ class GlossaryClient:
             body["language"] = language
         try:
             resp = await self._http.post(
-                url, json=body,            )
+                url, json=body,
+            )
             if resp.status_code != 200:
                 logger.warning("glossary entities/by-ids %d", resp.status_code)
                 return []
@@ -482,7 +485,8 @@ class GlossaryClient:
         try:
             resp = await self._http.post(
                 url,
-                json={"language": language, "entity_ids": entity_ids},            )
+                json={"language": language, "entity_ids": entity_ids},
+            )
             if resp.status_code != 200:
                 logger.warning("glossary entity-display-names %d", resp.status_code)
                 return {}
@@ -535,7 +539,8 @@ class GlossaryClient:
             body["park_unknown_kinds"] = park_unknown_kinds
         try:
             resp = await self._http.post(
-                url, json=body,            )
+                url, json=body,
+            )
             if resp.status_code not in (200, 201):
                 logger.warning("glossary propose-entities %d", resp.status_code)
                 return None
@@ -566,7 +571,8 @@ class GlossaryClient:
         url = f"{self._base_url}/internal/books/{book_id}/merge-candidates"
         try:
             resp = await self._http.post(
-                url, json={"candidates": candidates},            )
+                url, json={"candidates": candidates},
+            )
             if resp.status_code not in (200, 201):
                 logger.warning("glossary propose-merge-candidates %d", resp.status_code)
                 return None
@@ -592,7 +598,8 @@ class GlossaryClient:
         url = f"{self._base_url}/internal/books/{book_id}/wiki/articles"
         try:
             resp = await self._http.post(
-                url, json=body,            )
+                url, json=body,
+            )
             if resp.status_code != 200:
                 logger.warning("glossary wiki-writeback %d", resp.status_code)
                 return None
@@ -615,7 +622,8 @@ class GlossaryClient:
         url = f"{self._base_url}/internal/books/{book_id}/wiki/gold-pairs"
         try:
             resp = await self._http.get(
-                url, params={"limit": limit},            )
+                url, params={"limit": limit},
+            )
             if resp.status_code != 200:
                 logger.warning("glossary wiki-gold-pairs %d", resp.status_code)
                 return []
@@ -642,7 +650,8 @@ class GlossaryClient:
         try:
             resp = await self._http.post(
                 url,
-                json={"entity_ids": entity_ids},            )
+                json={"entity_ids": entity_ids},
+            )
             if resp.status_code not in (200, 201):
                 logger.warning("glossary wiki-generate %d", resp.status_code)
                 return None
