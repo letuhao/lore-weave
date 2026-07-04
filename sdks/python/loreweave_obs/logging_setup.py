@@ -26,10 +26,20 @@ import re
 import uuid
 from contextvars import ContextVar
 
-try:  # newer python-json-logger
-    from pythonjsonlogger.json import JsonFormatter  # type: ignore
-except ImportError:  # older python-json-logger
-    from pythonjsonlogger.jsonlogger import JsonFormatter  # type: ignore
+
+def _json_formatter(fmt: str) -> logging.Formatter:
+    """Build a python-json-logger JSON formatter.
+
+    Imported LAZILY (only when ``setup_logging`` actually installs a handler) so
+    that merely importing ``loreweave_obs`` — e.g. a worker that uses ONLY
+    ``setup_tracing`` — never requires ``python-json-logger``. The tracing SDK's
+    importability must not depend on a logging dependency (this decoupling is why
+    the top-level import was removed; see /review-impl P2·A2a)."""
+    try:  # newer python-json-logger
+        from pythonjsonlogger.json import JsonFormatter  # type: ignore
+    except ImportError:  # older python-json-logger
+        from pythonjsonlogger.jsonlogger import JsonFormatter  # type: ignore
+    return JsonFormatter(fmt)
 
 #: The canonical bespoke per-request trace id — ONE ContextVar fleet-wide. Each
 #: service's ``TraceIdMiddleware`` imports and sets it; the ``ContextFilter`` and
@@ -117,7 +127,7 @@ def _build_handler(
         + (extra_fields + " " if extra_fields else "")
         + "%(message)s"
     )
-    handler.setFormatter(JsonFormatter(fmt))
+    handler.setFormatter(_json_formatter(fmt))
     handler.addFilter(ContextFilter(service_name, extra_context))
     handler.addFilter(RedactFilter())
     return handler

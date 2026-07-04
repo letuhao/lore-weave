@@ -113,6 +113,54 @@ def test_simple_service_has_no_extra_fields():
     assert "stage" not in rec
 
 
+def test_import_loreweave_obs_without_python_json_logger(monkeypatch):
+    """The tracing SDK's importability must NOT require python-json-logger.
+
+    Regression guard for the /review-impl P2·A2a finding: a top-level
+    pythonjsonlogger import in logging_setup once crashed every tracing-ONLY
+    service rebuild (ModuleNotFoundError on `from loreweave_obs import
+    setup_tracing`). The dep is now imported lazily — importing the package +
+    the tracing helpers must work without it; only CALLING setup_logging needs it.
+    """
+    import builtins
+    import sys
+
+    watched = (
+        "loreweave_obs",
+        "loreweave_obs.logging_setup",
+        "pythonjsonlogger",
+        "pythonjsonlogger.json",
+        "pythonjsonlogger.jsonlogger",
+    )
+    saved = {m: sys.modules.get(m) for m in watched}
+    real_import = builtins.__import__
+
+    def _fake_import(name, *args, **kwargs):
+        if name.startswith("pythonjsonlogger"):
+            raise ImportError("simulated missing python-json-logger")
+        return real_import(name, *args, **kwargs)
+
+    monkeypatch.setattr(builtins, "__import__", _fake_import)
+    for m in ("loreweave_obs", "loreweave_obs.logging_setup"):
+        sys.modules.pop(m, None)
+    try:
+        import loreweave_obs as reloaded  # must NOT raise without the dep
+        from loreweave_obs import current_otel_trace_id, setup_tracing  # noqa: F401
+
+        # Installing the JSON handler DOES need the dep → a clean ImportError,
+        # not a crash at import time.
+        with pytest.raises(ImportError):
+            reloaded.setup_logging("svc-under-test")
+    finally:
+        # Restore the canonical modules so later tests see the original
+        # trace_id_var identity (the reload created fresh module objects).
+        for m, orig in saved.items():
+            if orig is not None:
+                sys.modules[m] = orig
+            else:
+                sys.modules.pop(m, None)
+
+
 def test_setup_logging_is_idempotent():
     setup_logging("svc-under-test")
     setup_logging("svc-under-test")
