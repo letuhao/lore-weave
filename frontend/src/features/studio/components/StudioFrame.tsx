@@ -25,15 +25,15 @@ import { StudioBottomPanel } from './StudioBottomPanel';
 import { StudioStatusBar } from './StudioStatusBar';
 import { StudioStatusContributions } from '../statusbar/StudioStatusContributions';
 
-export function StudioFrame({ bookId }: { bookId: string }) {
+export function StudioFrame({ bookId, initialChapterId }: { bookId: string; initialChapterId?: string }) {
   return (
     <StudioHostProvider bookId={bookId}>
-      <StudioFrameInner bookId={bookId} />
+      <StudioFrameInner bookId={bookId} initialChapterId={initialChapterId} />
     </StudioHostProvider>
   );
 }
 
-function StudioFrameInner({ bookId }: { bookId: string }) {
+function StudioFrameInner({ bookId, initialChapterId }: { bookId: string; initialChapterId?: string }) {
   const { t } = useTranslation('studio');
   const { accessToken } = useAuth();
   const host = useStudioHost();
@@ -45,6 +45,14 @@ function StudioFrameInner({ bookId }: { bookId: string }) {
   const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null);
 
   usePaletteHotkeys(setPalette);
+
+  // #16 1.5 — a deep-linked chapter (ChaptersTab row-click/pencil, ?chapter=<id>) focuses the
+  // manuscript unit + opens the editor dock exactly once, same seam as Quick Open/Navigator.
+  useEffect(() => {
+    if (initialChapterId) host.focusManuscriptUnit(initialChapterId);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- once per mount only, not on every
+    // host/initialChapterId identity change (StudioFrame is remounted per-book via key={bookId}).
+  }, []);
 
   useEffect(() => {
     if (!accessToken || !bookId) return;
