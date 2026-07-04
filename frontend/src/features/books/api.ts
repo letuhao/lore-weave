@@ -42,6 +42,10 @@ export type Chapter = {
   // start 'draft'; existing chapters were migrated to 'published'.
   editorial_status?: 'draft' | 'published';
   published_revision_id?: string | null;
+  // 15_chapter_browser.md CB3 — multilingual char/word count. Additive + optional:
+  // the BE column/backfill (Phase A) may not have landed yet on a given deploy, so
+  // every consumer must tolerate `undefined` rather than assume the field exists.
+  word_count?: number;
 };
 
 // Shared base from @/api (relative '' default → proxy→gateway). For multipart
@@ -134,6 +138,11 @@ export const booksApi = {
       editorial_status?: string;
       q?: string;
       sort_order?: number;
+      // 15_chapter_browser.md CB7 — sort key for the chapter-browser's sort dropdown
+      // ('sort_order' | 'updated_at' | 'word_count' | 'lifecycle_state'). Forward-
+      // compatible: the BE (Phase A, landing in parallel) may not read this param
+      // yet — an unrecognized query param is a harmless no-op there, never a 400.
+      sort?: string;
       limit?: number;
       offset?: number;
     },
@@ -144,6 +153,7 @@ export const booksApi = {
     if (params?.editorial_status) qs.set('editorial_status', params.editorial_status);
     if (params?.q) qs.set('q', params.q);
     if (params?.sort_order !== undefined) qs.set('sort_order', String(params.sort_order));
+    if (params?.sort) qs.set('sort', params.sort);
     if (params?.limit !== undefined) qs.set('limit', String(params.limit));
     if (params?.offset !== undefined) qs.set('offset', String(params.offset));
     const query = qs.toString();
@@ -152,18 +162,66 @@ export const booksApi = {
 
   // #02 manuscript navigator — keyset/cursor page of chapters (scales to 10k+).
   // First page (no cursor) also returns `total` so the virtual scrollbar can size itself.
+  //
+  // 15_chapter_browser.md CB7 — `sort` here is intentionally NARROWER than
+  // listChapters' (only 'sort_order' | 'updated_at'): true cursor-stable paging
+  // needs a monotonic key, which word_count/lifecycle_state don't have. Passing
+  // either of those 400s server-side — callers wanting those sorts should use
+  // listChapters (offset-paginated) instead.
   listChaptersPage(
     token: string,
     bookId: string,
-    opts: { cursor?: string | null; limit?: number; q?: string; original_language?: string } = {},
+    opts: { cursor?: string | null; limit?: number; q?: string; original_language?: string; sort?: 'sort_order' | 'updated_at' } = {},
   ) {
     const qs = new URLSearchParams();
     if (opts.cursor) qs.set('cursor', opts.cursor);
     if (opts.limit !== undefined) qs.set('limit', String(opts.limit));
     if (opts.q) qs.set('q', opts.q);
     if (opts.original_language) qs.set('original_language', opts.original_language);
+    if (opts.sort) qs.set('sort', opts.sort);
     const query = qs.toString();
     return apiJson<ChapterPage>(`/v1/books/${bookId}/chapters/page${query ? `?${query}` : ''}`, { token });
+  },
+  /** Chapter Browser A3 — bulk lifecycle change (trash/restore/purge many chapters
+   *  in one call). Response is a PER-ID outcome array (CB5) — a partial failure
+   *  across N chapters is never a single all-or-nothing result; callers must
+   *  check each `results[i].ok` rather than assume the whole batch succeeded. */
+  bulkUpdateChapterStatus(
+    token: string,
+    bookId: string,
+    chapterIds: string[],
+    lifecycleState: 'active' | 'trashed' | 'purge_pending',
+  ): Promise<{ results: Array<{ chapter_id: string; ok: boolean; error?: string }> }> {
+    return apiJson<{ results: Array<{ chapter_id: string; ok: boolean; error?: string }> }>(
+      `/v1/books/${bookId}/chapters/bulk-status`,
+      { method: 'PATCH', token, body: JSON.stringify({ chapter_ids: chapterIds, lifecycle_state: lifecycleState }) },
+    );
+  },
+  /** Chapter Browser A4 — bulk zip export. POST (not GET+query) because a large
+   *  multi-select can carry hundreds of UUIDs past typical URL-length limits.
+   *  Returns a Blob (mirrors downloadRaw's fetch→blob handling) — the caller
+   *  creates an object URL and triggers the browser download, same pattern as
+   *  any other binary-response endpoint in this file. Any requested id that
+   *  couldn't be exported is listed in a `_errors.txt` entry INSIDE the zip
+   *  (the binary response can't carry a JSON per-id outcome alongside it). */
+  async bulkExportChaptersZip(token: string, bookId: string, chapterIds: string[]): Promise<Blob> {
+    const res = await fetch(`${base()}/v1/books/${bookId}/chapters/export-zip`, {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ chapter_ids: chapterIds }),
+    });
+    if (!res.ok) {
+      const text = await res.text();
+      let message = res.statusText;
+      try {
+        const body = JSON.parse(text) as { message?: string };
+        message = body.message || message;
+      } catch {
+        // keep status text fallback
+      }
+      throw Object.assign(new Error(message), { status: res.status });
+    }
+    return res.blob();
   },
   createChapterUpload(
     token: string,

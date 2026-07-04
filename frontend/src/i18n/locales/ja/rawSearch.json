@@ -28,5 +28,11 @@
   "index_drafts_error": "下書きのインデックスに失敗しました。",
   "copy": "コピー",
   "copied": "コピーしました",
-  "degraded": "一部の結果が制限される場合があります（検索バックエンドが利用できません）。"
+  "degraded": "一部の結果が制限される場合があります（検索バックエンドが利用できません）。",
+  "content_view": {
+    "chapter_label": "第{{n}}章",
+    "block_position": "ブロック {{n}}",
+    "passage_position": "パッセージ {{n}}",
+    "jump": "元の箇所へ移動"
+  }
 }
