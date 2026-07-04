@@ -15,6 +15,7 @@ from __future__ import annotations
 
 from loreweave_mcp import assert_or_write_shape_snapshot
 
+from app.mcp import server as mcp_server
 from app.mcp.server import (
     _ARC_REF_FIELDS,
     _MOTIF_BOOK_REF_FIELDS,
@@ -33,4 +34,6 @@ def test_response_shapes_match_committed_snapshot():
             "_ARC_REF_FIELDS": _ARC_REF_FIELDS,
         },
         test_file=__file__,
+        # §13 coverage: a NEW *_REF_FIELDS in the server module that isn't pinned → red.
+        scan_modules=[mcp_server],
     )

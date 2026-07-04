@@ -42,11 +42,30 @@ def build_shape_map(ref_sets: Mapping[str, Iterable[str]]) -> dict[str, list[str
     return {name: sorted(fields) for name, fields in sorted(ref_sets.items())}
 
 
+def _scan_ref_field_names(modules: Iterable) -> set[str]:
+    """Every module-level ``*_REF_FIELDS`` constant (a tuple/list/set of str) across
+    the given tool modules — the universe of ref sets that COULD feed
+    ``apply_response_contract``. §13 coverage: each must be snapshot-pinned or a new
+    one silently escapes the drift guard (the un-pinned-constant hole)."""
+    found: set[str] = set()
+    for mod in modules:
+        for name in dir(mod):
+            if not name.endswith("_REF_FIELDS"):
+                continue
+            val = getattr(mod, name)
+            if isinstance(val, (tuple, list, set, frozenset)) and all(
+                isinstance(x, str) for x in val
+            ):
+                found.add(name)
+    return found
+
+
 def assert_or_write_shape_snapshot(
     service: str,
     ref_sets: Mapping[str, Iterable[str]],
     *,
     test_file: str,
+    scan_modules: Iterable | None = None,
 ) -> None:
     """Assert the service's ref-field sets match the committed snapshot.
 
@@ -55,7 +74,24 @@ def assert_or_write_shape_snapshot(
     direction — fails, catching both a dropped ref and a silent re-bloat.
 
     ``test_file`` is the caller's ``__file__`` (used to locate the repo root).
+
+    ``scan_modules`` (§13 coverage meta-check): the tool module(s) that DEFINE the
+    ref constants. The helper introspects them for every ``*_REF_FIELDS`` name and
+    asserts each is present in ``ref_sets`` — so ADDING a new ref constant + tool
+    WITHOUT adding it to this snapshot turns the test RED (an unproven/un-pinned item
+    can't silently ship). This is the machine-checked half of §13 ("checklist → test,
+    not self-report").
     """
+    if scan_modules is not None:
+        defined = _scan_ref_field_names(scan_modules)
+        pinned = set(ref_sets)
+        missing = defined - pinned
+        assert not missing, (
+            f"{service}: ref-field constant(s) {sorted(missing)} are defined but NOT "
+            "snapshot-pinned — add them to the snapshot test's ref_sets (§13 coverage: "
+            "an un-pinned ref set escapes the drift guard). If a constant is intentionally "
+            "not a tool ref, rename it off the *_REF_FIELDS convention."
+        )
     built = build_shape_map(ref_sets)
     root = repo_root_from(test_file)
     contract_path = root / "contracts" / "mcp-response-shapes" / f"{service}.json"

@@ -46,9 +46,11 @@ Legend: ✅ done+proven · ⏳ tracked (worst-first backlog) · 🟢 exempt (`@s
   (dropped ref OR silent re-bloat), which the per-tool semantic guards miss. Guard proven to
   BITE (kit test: write→identical-passes→drift-raises). Coverage audited: all 15
   `apply_response_contract` call sites reference a snapshotted named constant (no inline
-  literal escapes). **Remaining (→ §13 CI meta-check):** an AST/coverage check that every
-  `*_REF_FIELDS` feeding `apply_response_contract` is pinned, so a NEW un-pinned constant
-  can't silently skip.
+  literal escapes). **§13 coverage meta-check SHIPPED 2026-07-04**
+  (`assert_or_write_shape_snapshot(…, scan_modules=[…])`): each snapshot test introspects its
+  tool module(s) for every `*_REF_FIELDS` name and asserts it is pinned, so a NEW un-pinned
+  constant + tool turns the test RED ("checklist → test, not self-report"). Bite-proven in the
+  kit test; runs in each service's pytest suite = CI-wired.
 
 ## Family-B completion (2026-07-04) — parallel refactor, 18 SET tools
 

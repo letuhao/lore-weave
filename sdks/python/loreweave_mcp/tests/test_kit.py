@@ -719,3 +719,37 @@ def test_shape_snapshot_write_then_assert_and_drift_bites(tmp_path, monkeypatch)
         assert_or_write_shape_snapshot(
             "x", {"FOO_REF": ("a", "b", "heavy_body")}, test_file=str(fake_test)
         )
+
+
+def test_shape_snapshot_coverage_scan_catches_unpinned_constant(tmp_path, monkeypatch):
+    """§13 coverage: a *_REF_FIELDS defined in a scanned module but absent from the
+    snapshot ref_sets must FAIL (an un-pinned ref set silently escapes the guard)."""
+    import types
+
+    from loreweave_mcp import assert_or_write_shape_snapshot
+
+    (tmp_path / "services").mkdir()
+    (tmp_path / "contracts").mkdir()
+    fake_test = tmp_path / "services" / "x-service" / "tests" / "t.py"
+    fake_test.parent.mkdir(parents=True)
+    fake_test.write_text("# marker", encoding="utf-8")
+
+    mod = types.ModuleType("fake_tool_mod")
+    mod.FOO_REF_FIELDS = ("a", "b")
+    mod.BAR_REF_FIELDS = ("c",)  # defined but NOT pinned below
+    mod.NOT_A_REF = ("z",)       # ignored (wrong suffix)
+
+    monkeypatch.delenv("WRITE_MCP_SHAPES", raising=False)
+    # write a snapshot with only FOO pinned
+    monkeypatch.setenv("WRITE_MCP_SHAPES", "1")
+    with pytest.raises(pytest.skip.Exception):
+        assert_or_write_shape_snapshot(
+            "x", {"FOO_REF_FIELDS": mod.FOO_REF_FIELDS}, test_file=str(fake_test)
+        )
+    monkeypatch.delenv("WRITE_MCP_SHAPES", raising=False)
+    # now scanning the module (which also defines BAR) must bite
+    with pytest.raises(AssertionError, match="BAR_REF_FIELDS"):
+        assert_or_write_shape_snapshot(
+            "x", {"FOO_REF_FIELDS": mod.FOO_REF_FIELDS},
+            test_file=str(fake_test), scan_modules=[mod],
+        )

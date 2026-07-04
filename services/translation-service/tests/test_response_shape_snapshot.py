@@ -13,6 +13,7 @@ from __future__ import annotations
 
 from loreweave_mcp import assert_or_write_shape_snapshot
 
+from app.mcp import server as mcp_server
 from app.mcp.server import _JOB_STATUS_CHAPTER_REF_FIELDS, _VERSION_REF_FIELDS
 
 
@@ -24,4 +25,5 @@ def test_response_shapes_match_committed_snapshot():
             "_JOB_STATUS_CHAPTER_REF_FIELDS": _JOB_STATUS_CHAPTER_REF_FIELDS,
         },
         test_file=__file__,
+        scan_modules=[mcp_server],
     )

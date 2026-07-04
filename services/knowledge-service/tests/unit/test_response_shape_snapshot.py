@@ -13,6 +13,8 @@ from __future__ import annotations
 
 from loreweave_mcp import assert_or_write_shape_snapshot
 
+from app.tools import executor as executor_mod
+from app.tools import graph_schema_tools as graph_mod
 from app.tools.executor import (
     MEMORY_SEARCH_REF_FIELDS,
     MEMORY_TIMELINE_REF_FIELDS,
@@ -43,4 +45,6 @@ def test_response_shapes_match_committed_snapshot():
             "TRIAGE_GROUP_REF_FIELDS": TRIAGE_GROUP_REF_FIELDS,
         },
         test_file=__file__,
+        # §13 coverage: a NEW *_REF_FIELDS in either tool module that isn't pinned → red.
+        scan_modules=[executor_mod, graph_mod],
     )
