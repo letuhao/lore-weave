@@ -586,7 +586,9 @@
         "oldest": "古い順",
         "name_asc": "名前 (A–Z)",
         "name_desc": "名前 (Z–A)"
-      }
+      },
+      "thisBookOnly": "この本のみ",
+      "showAllBooks": "すべての本を表示"
     },
     "card": {
       "staticMemory": "静的メモリ",

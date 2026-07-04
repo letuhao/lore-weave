@@ -73,6 +73,13 @@ vi.mock('@/features/knowledge/components/ontology/AdoptPicker', () => ({
   ),
 }));
 
+// KgNoProjectState (D-KG-NO-CREATE-CTA) owns the real empty-state + create-project flow,
+// tested on its own in KgNoProjectState.test.tsx. Stubbed here so this stays a test of the
+// panel's own project-resolution/tab wiring.
+vi.mock('@/features/knowledge/components/shell/KgNoProjectState', () => ({
+  KgNoProjectState: ({ testId }: { testId: string }) => <div data-testid={testId}>stub-no-project</div>,
+}));
+
 vi.mock('@/features/knowledge/components/shell/ProjectSchemaSection', () => ({
   ProjectSchemaSection: ({ projectId, onAdoptCta }: { projectId: string; onAdoptCta?: () => void }) => (
     <div data-testid="stub-project-schema-section" data-project={projectId}>

@@ -23,11 +23,19 @@ import { ProjectsBrowserControls } from './ProjectsBrowserControls';
 // `onOpen` is the only thing that differs between the two call sites.
 export interface ProjectsBrowserProps {
   onOpen: (project: Project) => void;
+  /** D-KG-HUB-BOOK-SCOPE (2026-07-05): the studio `knowledge` panel is opened FROM a
+   *  specific book, so defaulting to the global cross-book list makes the user scroll
+   *  past every OTHER book's projects to find this one. When set, the browser opens
+   *  pre-filtered to this book's projects, with a visible toggle back to "all books"
+   *  (never a silent, un-escapable narrowing) — ProjectsTab's classic route omits this
+   *  prop entirely, so its own behavior (always all-books) is unchanged. */
+  scopedBookId?: string;
 }
 
-export function ProjectsBrowser({ onOpen }: ProjectsBrowserProps) {
+export function ProjectsBrowser({ onOpen, scopedBookId }: ProjectsBrowserProps) {
   const { t } = useTranslation('knowledge');
   const [includeArchived, setIncludeArchived] = useState(false);
+  const [bookScoped, setBookScoped] = useState(!!scopedBookId);
 
   // C7 (G6) + C7-followup (KN-7) — HOME-browser narrowing state. Explicit
   // handlers (no useEffect-for-events). The narrowing now runs
@@ -74,6 +82,7 @@ export function ProjectsBrowser({ onOpen }: ProjectsBrowserProps) {
     sortBy: serverParams.sort_by,
     sortDir: serverParams.sort_dir,
     status: serverParams.status,
+    bookId: bookScoped ? scopedBookId : undefined,
   });
 
   // Presentational fallback only — the server already returned the
@@ -163,15 +172,30 @@ export function ProjectsBrowser({ onOpen }: ProjectsBrowserProps) {
   return (
     <div>
       <div className="mb-4 flex items-center justify-between gap-3">
-        <label className="flex items-center gap-2 text-xs text-muted-foreground">
-          <input
-            type="checkbox"
-            checked={includeArchived}
-            onChange={(e) => setIncludeArchived(e.target.checked)}
-            className="h-3.5 w-3.5 rounded border"
-          />
-          {t('projects.showArchived')}
-        </label>
+        <div className="flex items-center gap-3">
+          <label className="flex items-center gap-2 text-xs text-muted-foreground">
+            <input
+              type="checkbox"
+              checked={includeArchived}
+              onChange={(e) => setIncludeArchived(e.target.checked)}
+              className="h-3.5 w-3.5 rounded border"
+            />
+            {t('projects.showArchived')}
+          </label>
+          {scopedBookId && (
+            <button
+              type="button"
+              onClick={() => setBookScoped((v) => !v)}
+              data-testid="projects-book-scope-toggle"
+              className="rounded-full border px-2.5 py-1 text-[11px] font-medium text-muted-foreground transition-colors hover:bg-secondary hover:text-foreground data-[active=true]:border-primary/40 data-[active=true]:bg-primary/10 data-[active=true]:text-primary"
+              data-active={bookScoped}
+            >
+              {bookScoped
+                ? t('projects.browser.thisBookOnly', { defaultValue: 'This book only' })
+                : t('projects.browser.showAllBooks', { defaultValue: 'Show all books' })}
+            </button>
+          )}
+        </div>
         <div className="flex gap-2">
           <button
             onClick={() => void refetch()}
@@ -282,6 +306,7 @@ export function ProjectsBrowser({ onOpen }: ProjectsBrowserProps) {
         onUpdate={(projectId, payload, expectedVersion) =>
           updateProject({ projectId, payload, expectedVersion })
         }
+        initialBookId={bookScoped ? scopedBookId : undefined}
       />
 
       <ConfirmDialog

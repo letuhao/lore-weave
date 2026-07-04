@@ -4,6 +4,7 @@
     "tabs": { "adopt": "採用", "schema": "結構", "views": "視圖", "sync": "同步" },
     "noProject": "此書尚無知識專案",
     "noProjectHelp": "此書尚未連結任何知識專案。請執行抽取或建立專案以管理其圖譜結構。",
+    "createProject": "建立知識專案",
     "noSchema": "尚未採用結構——請先採用一個範本以開始。"
   },
   "common": {

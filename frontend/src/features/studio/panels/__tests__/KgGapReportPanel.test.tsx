@@ -21,6 +21,13 @@ vi.mock('@/features/knowledge/components/GapReportTab', () => ({
   ),
 }));
 
+// KgNoProjectState (D-KG-NO-CREATE-CTA) owns the real empty-state + create-project flow,
+// tested on its own in KgNoProjectState.test.tsx. Stubbed here so this stays a test of the
+// panel's own loading/empty/loaded branch selection.
+vi.mock('@/features/knowledge/components/shell/KgNoProjectState', () => ({
+  KgNoProjectState: ({ testId }: { testId: string }) => <div data-testid={testId}>stub-no-project</div>,
+}));
+
 import { KgGapReportPanel } from '../KgGapReportPanel';
 
 let hostRef: StudioHost | null = null;

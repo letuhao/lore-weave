@@ -1,6 +1,7 @@
 // 14_kg_panels.md A2 — KnowledgeHubPanel: a launcher only (DOCK-8), reuses ProjectsBrowser
-// AS-IS (DOCK-2) and opens a project through the studio link resolver (DOCK-7) instead of
-// navigate(). Stubs ProjectsBrowser so this test stays about the panel's OWN wiring.
+// AS-IS (DOCK-2). D-KG-HUB-EXTERNAL-OPEN: opening a project belonging to THIS studio's book
+// opens the in-studio kg-overview panel directly; a different book's project still opens
+// through the studio link resolver (DOCK-7, never navigate()) as an external new tab.
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, fireEvent } from '@testing-library/react';
 import type { ReactNode } from 'react';
@@ -9,11 +10,13 @@ import { StudioHostProvider, useStudioHost } from '../../host/StudioHostProvider
 import type { StudioHost } from '../../host/StudioHostProvider';
 import type { Project } from '@/features/knowledge/types';
 
+let mockProject: Partial<Project> = { project_id: 'proj-9', name: 'Proj' };
+
 vi.mock('@/features/knowledge/components/ProjectsBrowser', () => ({
   ProjectsBrowser: ({ onOpen }: { onOpen: (p: Project) => void }) => (
     <button
       data-testid="open-proj-9"
-      onClick={() => onOpen({ project_id: 'proj-9', name: 'Proj' } as Project)}
+      onClick={() => onOpen(mockProject as Project)}
     >
       open
     </button>
@@ -36,6 +39,7 @@ function withHost(bookId: string, ui: ReactNode) {
 describe('KnowledgeHubPanel', () => {
   beforeEach(() => {
     hostRef = null;
+    mockProject = { project_id: 'proj-9', name: 'Proj' };
   });
 
   it('registers with the host as an openable studio tool tagged with the kg_ MCP prefix', () => {
@@ -51,18 +55,31 @@ describe('KnowledgeHubPanel', () => {
     expect(props.api.setTitle).toHaveBeenCalled();
   });
 
-  it('opening a project goes through the studio link resolver, not navigate()', () => {
+  it('opening a DIFFERENT book\'s project goes through the studio link resolver, not navigate()', () => {
+    mockProject = { project_id: 'proj-9', name: 'Proj', book_id: 'some-other-book' };
     const openSpy = vi.spyOn(window, 'open').mockImplementation(() => null);
     try {
       withHost('b1', <KnowledgeHubPanel {...dockProps()} />);
       fireEvent.click(screen.getByTestId('open-proj-9'));
-      // No kg-overview panel exists yet (Phase B) — F3 falls through to "external", a new
-      // tab on the classic route, never a silent no-op and never a route hop away from studio.
+      // A project belonging to a book OTHER than this studio's — no in-studio equivalent
+      // (this studio IS one book), external new tab, never a route hop away from studio.
       expect(openSpy).toHaveBeenCalledWith(
         '/knowledge/projects/proj-9/overview',
         '_blank',
         'noopener,noreferrer',
       );
+    } finally {
+      openSpy.mockRestore();
+    }
+  });
+
+  it('opening THIS book\'s own project opens the in-studio kg-overview panel, never a new tab', () => {
+    mockProject = { project_id: 'proj-9', name: 'Proj', book_id: 'b1' };
+    const openSpy = vi.spyOn(window, 'open').mockImplementation(() => null);
+    try {
+      withHost('b1', <KnowledgeHubPanel {...dockProps()} />);
+      fireEvent.click(screen.getByTestId('open-proj-9'));
+      expect(openSpy).not.toHaveBeenCalled();
     } finally {
       openSpy.mockRestore();
     }

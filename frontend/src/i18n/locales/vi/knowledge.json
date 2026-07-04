@@ -586,7 +586,9 @@
         "oldest": "Cũ nhất trước",
         "name_asc": "Tên (A–Z)",
         "name_desc": "Tên (Z–A)"
-      }
+      },
+      "thisBookOnly": "Chỉ sách này",
+      "showAllBooks": "Hiện tất cả sách"
     },
     "card": {
       "staticMemory": "Bộ nhớ tĩnh",

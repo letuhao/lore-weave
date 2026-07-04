@@ -17,6 +17,14 @@ vi.mock('@/features/knowledge/hooks/useBookKnowledgeProject', () => ({
   useBookKnowledgeProject: (bookId: string) => useBookKnowledgeProject(bookId),
 }));
 
+// KgNoProjectState (D-KG-NO-CREATE-CTA) owns the real empty-state copy + create-project
+// flow now, tested on its own in KgNoProjectState.test.tsx (it needs auth/react-query
+// providers this panel-wiring test doesn't otherwise set up). Stubbed here so this stays
+// a test of the panel's OWN loading/empty/loaded branch selection.
+vi.mock('@/features/knowledge/components/shell/KgNoProjectState', () => ({
+  KgNoProjectState: ({ testId }: { testId: string }) => <div data-testid={testId}>stub-no-project</div>,
+}));
+
 vi.mock('@/features/knowledge/components/shell/OverviewSection', () => ({
   OverviewSection: ({
     project,
@@ -93,9 +101,7 @@ describe('KgOverviewPanel', () => {
   it('shows an empty state when the book has no linked KG project', () => {
     useBookKnowledgeProject.mockReturnValue({ project: null, projectId: null, isLoading: false });
     withHost('b1', <KgOverviewPanel {...dockProps()} />);
-    const empty = screen.getByTestId('kg-overview-no-project');
-    expect(empty).toHaveTextContent('page.noProject');
-    expect(empty).toHaveTextContent('page.noProjectHelp');
+    expect(screen.getByTestId('kg-overview-no-project')).toBeInTheDocument();
     expect(screen.queryByTestId('stub-overview-section')).toBeNull();
   });
 

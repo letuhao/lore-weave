@@ -12,6 +12,7 @@ import { AdoptPicker } from '@/features/knowledge/components/ontology/AdoptPicke
 import { ViewBuilder } from '@/features/knowledge/components/ontology/ViewBuilder';
 import { SyncDiffPanel } from '@/features/knowledge/components/ontology/SyncDiffPanel';
 import { ProjectSchemaSection } from '@/features/knowledge/components/shell/ProjectSchemaSection';
+import { KgNoProjectState } from '@/features/knowledge/components/shell/KgNoProjectState';
 import { useStudioHost } from '../host/StudioHostProvider';
 import { useStudioPanel } from './useStudioPanel';
 
@@ -90,10 +91,7 @@ export function KgSchemaPanel(props: IDockviewPanelProps) {
   if (!projectId) {
     return (
       <div className="h-full min-h-0 overflow-auto p-4" data-testid="studio-kg-schema-panel">
-        <div className="rounded-lg border p-8 text-center" data-testid="kg-ontology-no-project">
-          <p className="text-sm font-medium">{t('page.noProject')}</p>
-          <p className="mt-1 text-xs text-muted-foreground">{t('page.noProjectHelp')}</p>
-        </div>
+        <KgNoProjectState bookId={bookId} testId="kg-ontology-no-project" />
       </div>
     );
   }

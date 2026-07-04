@@ -586,7 +586,9 @@
         "oldest": "最舊優先",
         "name_asc": "名稱 (A–Z)",
         "name_desc": "名稱 (Z–A)"
-      }
+      },
+      "thisBookOnly": "僅此書",
+      "showAllBooks": "顯示所有書籍"
     },
     "card": {
       "staticMemory": "靜態記憶",

@@ -3,10 +3,10 @@
 // project" via useBookKnowledgeProject (A1/K5) instead of a route param (DOCK-7 — no
 // useParams/useNavigate/react-router Link here). Explore-graph and the book/world backlinks all go
 // through host.openPanel/the studio link resolver instead of navigate() (DOCK-7).
-import { useTranslation } from 'react-i18next';
 import type { IDockviewPanelProps } from 'dockview-react';
 import { Skeleton } from '@/components/shared';
 import { OverviewSection } from '@/features/knowledge/components/shell/OverviewSection';
+import { KgNoProjectState } from '@/features/knowledge/components/shell/KgNoProjectState';
 import { useBookKnowledgeProject } from '@/features/knowledge/hooks/useBookKnowledgeProject';
 import { useStudioHost } from '../host/StudioHostProvider';
 import { followStudioLink } from '../host/studioLinks';
@@ -15,10 +15,6 @@ import { useStudioPanel } from './useStudioPanel';
 export function KgOverviewPanel(props: IDockviewPanelProps) {
   useStudioPanel('kg-overview', props.api, { mcpToolPrefixes: ['kg_'] });
   const host = useStudioHost();
-  // kgOntology already carries the "no project linked" copy for this exact tenancy
-  // shape (KnowledgeOntologyTab's `kg-ontology-no-project` empty state) — reused
-  // verbatim rather than adding a duplicate studio.json key for the same message.
-  const { t } = useTranslation('kgOntology');
   const { project, projectId, isLoading } = useBookKnowledgeProject(host.bookId);
 
   if (isLoading) {
@@ -32,12 +28,8 @@ export function KgOverviewPanel(props: IDockviewPanelProps) {
 
   if (!projectId) {
     return (
-      <div
-        className="m-4 rounded-lg border p-8 text-center"
-        data-testid="kg-overview-no-project"
-      >
-        <p className="text-sm font-medium">{t('page.noProject')}</p>
-        <p className="mt-1 text-xs text-muted-foreground">{t('page.noProjectHelp')}</p>
+      <div className="m-4">
+        <KgNoProjectState bookId={host.bookId} testId="kg-overview-no-project" />
       </div>
     );
   }

@@ -5,17 +5,16 @@
 // Loading/no-project states mirror KnowledgeOntologyTab.tsx's existing
 // `kg-ontology-no-project` pattern (same 'kgOntology' i18n keys, no new locale entries needed).
 import type { IDockviewPanelProps } from 'dockview-react';
-import { useTranslation } from 'react-i18next';
 import { Skeleton } from '@/components/shared';
 import { useBookKnowledgeProject } from '@/features/knowledge/hooks/useBookKnowledgeProject';
 import { ProjectGraphView } from '@/features/knowledge/components/ProjectGraphView';
+import { KgNoProjectState } from '@/features/knowledge/components/shell/KgNoProjectState';
 import { useStudioHost } from '../host/StudioHostProvider';
 import { useStudioPanel } from './useStudioPanel';
 
 export function KgGraphPanel(props: IDockviewPanelProps) {
   useStudioPanel('kg-graph', props.api, { mcpToolPrefixes: ['kg_'] });
   const host = useStudioHost();
-  const { t } = useTranslation('kgOntology');
   const { projectId, isLoading } = useBookKnowledgeProject(host.bookId);
 
   if (isLoading) {
@@ -30,10 +29,7 @@ export function KgGraphPanel(props: IDockviewPanelProps) {
   if (!projectId) {
     return (
       <div className="p-4">
-        <div className="rounded-lg border p-8 text-center" data-testid="kg-ontology-no-project">
-          <p className="text-sm font-medium">{t('page.noProject')}</p>
-          <p className="mt-1 text-xs text-muted-foreground">{t('page.noProjectHelp')}</p>
-        </div>
+        <KgNoProjectState bookId={host.bookId} testId="kg-ontology-no-project" />
       </div>
     );
   }

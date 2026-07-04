@@ -62,8 +62,8 @@ function setProjects(items: Project[], extra: Record<string, unknown> = {}) {
   });
 }
 
-function renderBrowser(onOpen: (p: Project) => void = vi.fn()) {
-  return render(<ProjectsBrowser onOpen={onOpen} />);
+function renderBrowser(onOpen: (p: Project) => void = vi.fn(), scopedBookId?: string) {
+  return render(<ProjectsBrowser onOpen={onOpen} scopedBookId={scopedBookId} />);
 }
 
 describe('ProjectsBrowser — 14_kg_panels.md A2 (DOCK-2 extraction shared by ProjectsTab + KnowledgeHubPanel)', () => {
@@ -175,5 +175,34 @@ describe('ProjectsBrowser — 14_kg_panels.md A2 (DOCK-2 extraction shared by Pr
     } finally {
       vi.useRealTimers();
     }
+  });
+
+  // D-KG-HUB-BOOK-SCOPE
+  describe('scopedBookId (opened from a book\'s studio)', () => {
+    it('omits the toggle and never book-scopes the query when scopedBookId is absent (classic /knowledge route)', () => {
+      setProjects([mk({ project_id: 'a' })]);
+      renderBrowser();
+      expect(screen.queryByTestId('projects-book-scope-toggle')).toBeNull();
+      expect(useProjectsMock.mock.calls.at(-1)![0].bookId).toBeUndefined();
+    });
+
+    it('defaults to book-scoped when scopedBookId is provided', () => {
+      setProjects([mk({ project_id: 'a' })]);
+      renderBrowser(vi.fn(), 'book-42');
+      expect(screen.getByTestId('projects-book-scope-toggle')).toBeInTheDocument();
+      expect(useProjectsMock.mock.calls.at(-1)![0].bookId).toBe('book-42');
+    });
+
+    it('toggling switches to all-books (bookId undefined) and back, never silently stuck', () => {
+      setProjects([mk({ project_id: 'a' })]);
+      renderBrowser(vi.fn(), 'book-42');
+      const toggle = screen.getByTestId('projects-book-scope-toggle');
+
+      fireEvent.click(toggle);
+      expect(useProjectsMock.mock.calls.at(-1)![0].bookId).toBeUndefined();
+
+      fireEvent.click(toggle);
+      expect(useProjectsMock.mock.calls.at(-1)![0].bookId).toBe('book-42');
+    });
   });
 });

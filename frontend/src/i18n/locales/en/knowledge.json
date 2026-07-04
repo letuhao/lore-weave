@@ -587,7 +587,9 @@
         "oldest": "Oldest first",
         "name_asc": "Name (A–Z)",
         "name_desc": "Name (Z–A)"
-      }
+      },
+      "thisBookOnly": "This book only",
+      "showAllBooks": "Show all books"
     },
     "card": {
       "staticMemory": "Static memory",
