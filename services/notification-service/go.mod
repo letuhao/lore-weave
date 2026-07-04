@@ -7,6 +7,7 @@ require (
 	github.com/golang-jwt/jwt/v5 v5.3.1
 	github.com/google/uuid v1.6.0
 	github.com/jackc/pgx/v5 v5.6.0
+	github.com/loreweave/foundation/contracts/notifyevent v0.0.0
 	github.com/loreweave/foundation/contracts/platformjwt v0.0.0
 	github.com/loreweave/observability v0.1.0
 	github.com/rabbitmq/amqp091-go v1.11.0
@@ -17,6 +18,8 @@ require (
 replace github.com/loreweave/observability => ../../sdks/go/observability
 
 replace github.com/loreweave/foundation/contracts/platformjwt => ../../contracts/platformjwt
+
+replace github.com/loreweave/foundation/contracts/notifyevent => ../../contracts/notifyevent
 
 require (
 	github.com/cenkalti/backoff/v5 v5.0.3 // indirect

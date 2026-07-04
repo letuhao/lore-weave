@@ -26,30 +26,23 @@ import (
 	"go.opentelemetry.io/otel/codes"
 	"go.opentelemetry.io/otel/trace"
 
+	"github.com/loreweave/foundation/contracts/notifyevent"
 	"github.com/loreweave/observability"
 
 	"github.com/loreweave/notification-service/internal/category"
 )
 
 const (
-	exchangeName = "loreweave.events"
+	exchangeName = notifyevent.EventsExchange
 	queueName    = "notification-service.llm-jobs"
 	bindingKey   = "user.*.llm.#"
 )
 
-// terminalEvent mirrors provider-registry's jobs.TerminalEvent. We
-// duplicate the struct here to avoid importing across services.
-type terminalEvent struct {
-	JobID        uuid.UUID       `json:"job_id"`
-	OwnerUserID  uuid.UUID       `json:"owner_user_id"`
-	Operation    string          `json:"operation"`
-	Status       string          `json:"status"`
-	TraceID      string          `json:"trace_id,omitempty"`
-	Result       json.RawMessage `json:"result,omitempty"`
-	ErrorCode    string          `json:"error_code,omitempty"`
-	ErrorMessage string          `json:"error_message,omitempty"`
-	FinishReason string          `json:"finish_reason,omitempty"`
-}
+// terminalEvent is the SHARED wire contract (contracts/notifyevent), aliased so
+// this consumer's existing references keep working. The producer
+// (provider-registry jobs.Notifier) imports the same type, so the struct can no
+// longer drift between the two services (it used to be a hand-maintained copy).
+type terminalEvent = notifyevent.TerminalEvent
 
 // notificationArgs is the row-shape transformer output. Decoupled from
 // the SQL itself so unit tests can verify shape without a DB.

@@ -76,8 +76,11 @@ LOGGING_REDACT = re.compile(r"^\s*class\s+RedactFilter\b")
 LOGGING_SETUP = re.compile(r"^\s*def\s+setup_logging\s*\(")
 LOGGING_SECRETS = re.compile(r"^\s*_SECRET_PATTERNS\s*=")
 
-# SDK-2 · the duplicated notification wire struct (Go).
-TERMINAL_EVENT = re.compile(r"\btype\s+(?:TerminalEvent|terminalEvent)\b")
+# SDK-2 · a re-DECLARED notification wire struct (Go). Matches a struct DEFINITION
+# (`type TerminalEvent struct {`) only — NOT a type ALIAS (`type TerminalEvent =
+# notifyevent.TerminalEvent`), which is the sanctioned shared-import fix (both
+# services now alias contracts/notifyevent.TerminalEvent) and the OPPOSITE of a dup.
+TERMINAL_EVENT = re.compile(r"\btype\s+(?:TerminalEvent|terminalEvent)\s+struct\b")
 
 DETECTORS = [
     ("jwt-verifier", JWT_VERIFY),
@@ -273,8 +276,6 @@ BASELINE = {
     'logging-setup|services/composition-service/app/logging_config.py|def setup_logging(level: str = "INFO") -> None:',
     'logging-setup|services/knowledge-service/app/logging_config.py|def setup_logging(level: str = "INFO") -> None:',
     'logging-setup|services/lore-enrichment-service/app/logging_config.py|def setup_logging(level: str = "INFO") -> None:',
-    'terminal-event-struct|services/notification-service/internal/consumer/consumer.go|type terminalEvent struct {',
-    'terminal-event-struct|services/provider-registry-service/internal/jobs/notifier.go|type TerminalEvent struct {',
 }
 
 

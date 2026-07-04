@@ -9,6 +9,7 @@ require (
 	github.com/google/uuid v1.6.0
 	github.com/jackc/pgx/v5 v5.7.4
 	github.com/loreweave/foundation/contracts/adminjwt v0.0.0
+	github.com/loreweave/foundation/contracts/notifyevent v0.0.0
 	github.com/loreweave/foundation/contracts/platformjwt v0.0.0
 	github.com/loreweave/loreweave_mcp v0.1.0
 	github.com/loreweave/observability v0.1.0
@@ -30,6 +31,8 @@ replace github.com/loreweave/loreweave_mcp => ../../sdks/go/loreweave_mcp
 replace github.com/loreweave/grantclient => ../../sdks/go/grantclient
 
 replace github.com/loreweave/foundation/contracts/adminjwt => ../../contracts/adminjwt
+
+replace github.com/loreweave/foundation/contracts/notifyevent => ../../contracts/notifyevent
 
 replace github.com/loreweave/foundation/contracts/platformjwt => ../../contracts/platformjwt
 

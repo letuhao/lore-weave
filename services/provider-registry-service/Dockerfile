@@ -17,6 +17,7 @@ COPY sdks/go/grantclient /src/sdks/go/grantclient
 # verifier (D-JWT-ROLE-GATE); their replace directives must resolve inside the container.
 COPY contracts/platformjwt /src/contracts/platformjwt
 COPY contracts/adminjwt /src/contracts/adminjwt
+COPY contracts/notifyevent /src/contracts/notifyevent
 COPY services/provider-registry-service /src/services/provider-registry-service
 
 WORKDIR /src/services/provider-registry-service
