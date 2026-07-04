@@ -30,6 +30,7 @@ import (
 	"github.com/loreweave/observability"
 
 	"github.com/loreweave/notification-service/internal/category"
+	"github.com/loreweave/notification-service/internal/redact"
 )
 
 const (
@@ -71,7 +72,9 @@ type notificationArgs struct {
 func transformTerminalEvent(ev terminalEvent) notificationArgs {
 	const cat = "llm_job"
 	title := titleFor(ev.Operation, ev.Status)
-	body := bodyFor(ev)
+	// P2·C — scrub secret-shaped tokens an upstream error message may have echoed
+	// before it lands in the notifications table / push feed.
+	body := redact.Body(bodyFor(ev))
 	meta, _ := json.Marshal(map[string]any{
 		"job_id":        ev.JobID.String(),
 		"operation":     ev.Operation,

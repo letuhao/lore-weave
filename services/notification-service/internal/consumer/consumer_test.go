@@ -34,6 +34,21 @@ func TestTransform_DedupKeyIsJobIDStatus(t *testing.T) {
 	}
 }
 
+// P2·C — an upstream error message that echoed a credential must be scrubbed
+// before it becomes a notification body (which is stored + pushed to the user).
+func TestTransform_RedactsSecretInErrorBody(t *testing.T) {
+	args := transformTerminalEvent(terminalEvent{
+		JobID: uuid.New(), OwnerUserID: uuid.New(), Operation: "chat", Status: "failed",
+		ErrorCode: "UPSTREAM_401", ErrorMessage: "provider rejected: Bearer sk-proj-DEADbeef0123456789",
+	})
+	if strings.Contains(args.Body, "sk-proj-DEADbeef0123456789") || strings.Contains(args.Body, "Bearer sk-") {
+		t.Errorf("secret survived into notification body: %q", args.Body)
+	}
+	if !strings.Contains(args.Body, "UPSTREAM_401") {
+		t.Errorf("legit error code should survive redaction: %q", args.Body)
+	}
+}
+
 func TestTransform_CompletedHasNoBody(t *testing.T) {
 	uid := uuid.New()
 	jid := uuid.New()

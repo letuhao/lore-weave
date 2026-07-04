@@ -19,6 +19,7 @@ import (
 
 	"github.com/loreweave/notification-service/internal/category"
 	"github.com/loreweave/notification-service/internal/config"
+	"github.com/loreweave/notification-service/internal/redact"
 )
 
 type Server struct {
@@ -171,7 +172,7 @@ func (s *Server) createNotification(w http.ResponseWriter, r *http.Request) {
 		VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
 		ON CONFLICT (user_id, dedup_key) WHERE dedup_key IS NOT NULL DO NOTHING
 		RETURNING id, created_at`,
-		userID, category, body.Title, body.Body, meta,
+		userID, category, body.Title, redact.Body(body.Body), meta,
 		nullableText(body.MessageKey), nullableJSONB(body.MessageParams), nullableText(body.DedupKey),
 	).Scan(&id, &createdAt)
 	if err == pgx.ErrNoRows && strings.TrimSpace(body.DedupKey) != "" {
@@ -242,7 +243,7 @@ func (s *Server) createNotificationBatch(w http.ResponseWriter, r *http.Request)
 			INSERT INTO notifications (user_id, category, title, body, metadata, message_key, message_params, dedup_key)
 			VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
 			ON CONFLICT (user_id, dedup_key) WHERE dedup_key IS NOT NULL DO NOTHING`,
-			userID, cat, n.Title, n.Body, meta,
+			userID, cat, n.Title, redact.Body(n.Body), meta,
 			nullableText(n.MessageKey), nullableJSONB(n.MessageParams), nullableText(n.DedupKey))
 		switch {
 		case eerr != nil:
