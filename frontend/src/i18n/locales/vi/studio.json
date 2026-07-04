@@ -64,6 +64,39 @@
       "title": "Tri thức",
       "desc": "Duyệt và mở các dự án đồ thị tri thức của bạn"
     },
+    "jobs-list": {
+      "title": "Tác vụ",
+      "desc": "Theo dõi các tác vụ nền"
+    },
+    "job-detail": {
+      "title": "Chi tiết tác vụ",
+      "desc": "Theo dõi tiến trình của một tác vụ theo thời gian thực",
+      "empty": "Mở một tác vụ từ bảng Tác vụ để theo dõi tại đây."
+    },
+    "books": {
+      "title": "Sách",
+      "desc": "Duyệt và đọc các sách khác của bạn mà không rời khỏi studio"
+    },
+    "book-reader": {
+      "title": "Trình đọc",
+      "desc": "Đọc một chương từ sách khác"
+    },
+    "leaderboard-books": {
+      "title": "Bảng xếp hạng: Sách",
+      "desc": "Sách xếp hạng cao theo đánh giá, độc giả & yêu thích"
+    },
+    "leaderboard-authors": {
+      "title": "Bảng xếp hạng: Tác giả",
+      "desc": "Tác giả xếp hạng cao theo độc giả & sản lượng"
+    },
+    "leaderboard-translators": {
+      "title": "Bảng xếp hạng: Dịch giả",
+      "desc": "Dịch giả xếp hạng cao theo số chương & ngôn ngữ"
+    },
+    "leaderboard-trending": {
+      "title": "Bảng xếp hạng: Thịnh hành",
+      "desc": "Sách đang thịnh hành"
+    },
     "json-editor": {
       "title": "JSON",
       "desc": "Xem JSON thô của một resource"

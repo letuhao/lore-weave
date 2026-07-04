@@ -64,6 +64,39 @@
       "title": "ナレッジ",
       "desc": "ナレッジグラフ・プロジェクトの閲覧と起動"
     },
+    "jobs-list": {
+      "title": "ジョブ",
+      "desc": "バックグラウンドジョブとタスクを監視"
+    },
+    "job-detail": {
+      "title": "ジョブ詳細",
+      "desc": "1件のジョブの進捗をリアルタイムで確認",
+      "empty": "ジョブパネルからジョブを開くとここに表示されます。"
+    },
+    "books": {
+      "title": "書籍",
+      "desc": "このスタジオを離れずに他の書籍を閲覧・読書"
+    },
+    "book-reader": {
+      "title": "リーダー",
+      "desc": "別の書籍の章を読む"
+    },
+    "leaderboard-books": {
+      "title": "ランキング: 書籍",
+      "desc": "評価・読者数・お気に入り数でのトップ書籍"
+    },
+    "leaderboard-authors": {
+      "title": "ランキング: 著者",
+      "desc": "読者数・執筆量でのトップ著者"
+    },
+    "leaderboard-translators": {
+      "title": "ランキング: 翻訳者",
+      "desc": "翻訳章数・対応言語数でのトップ翻訳者"
+    },
+    "leaderboard-trending": {
+      "title": "ランキング: トレンド",
+      "desc": "今話題の書籍"
+    },
     "json-editor": {
       "title": "JSON",
       "desc": "リソースの生 JSON ビュー"

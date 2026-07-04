@@ -26,6 +26,14 @@ import { GlossaryUnknownPanel } from './GlossaryUnknownPanel';
 import { GlossaryAiSuggestionsPanel } from './GlossaryAiSuggestionsPanel';
 import { GlossaryMergeCandidatesPanel } from './GlossaryMergeCandidatesPanel';
 import { KnowledgeHubPanel } from './KnowledgeHubPanel';
+import { JobsListPanel } from './JobsListPanel';
+import { JobDetailPanel } from './JobDetailPanel';
+import { BooksBrowserPanel } from './BooksBrowserPanel';
+import { BookReaderPanel } from './BookReaderPanel';
+import { LeaderboardBooksPanel } from './LeaderboardBooksPanel';
+import { LeaderboardAuthorsPanel } from './LeaderboardAuthorsPanel';
+import { LeaderboardTranslatorsPanel } from './LeaderboardTranslatorsPanel';
+import { LeaderboardTrendingPanel } from './LeaderboardTrendingPanel';
 
 export interface StudioPanelDef {
   id: string;
@@ -64,6 +72,21 @@ export const STUDIO_PANELS: StudioPanelDef[] = [
   // 14_kg_panels.md A2 — the KG launcher (DOCK-8 hub pattern): browse/open knowledge-graph
   // projects. Phase B adds the capability panels it currently opens via a new-tab fallback.
   { id: 'knowledge', component: KnowledgeHubPanel, titleKey: 'panels.knowledge.title', descKey: 'panels.knowledge.desc' },
+  // 14_utility_panels.md Phase B — jobs-list is palette + agent openable; job-detail is a
+  // params-retargeting singleton ({service, jobId}, json-editor/skill-editor precedent).
+  { id: 'jobs-list', component: JobsListPanel, titleKey: 'panels.jobs-list.title', descKey: 'panels.jobs-list.desc' },
+  { id: 'job-detail', component: JobDetailPanel, titleKey: 'panels.job-detail.title', descKey: 'panels.job-detail.desc', hiddenFromPalette: true },
+  // 14_utility_panels.md Phase C — browse-then-read, no navigate-away: books lists the user's
+  // OTHER books; book-reader is a params-retargeting singleton ({bookId, chapterId?}) opened via
+  // host.openPanel from a books row click, never a route hop (the active studio never unmounts).
+  { id: 'books', component: BooksBrowserPanel, titleKey: 'panels.books.title', descKey: 'panels.books.desc' },
+  { id: 'book-reader', component: BookReaderPanel, titleKey: 'panels.book-reader.title', descKey: 'panels.book-reader.desc', hiddenFromPalette: true },
+  // 14_utility_panels.md Phase D — the global leaderboard's 4-tab internal view-switch (DOCK-8
+  // anti-pattern) becomes 4 sibling panels; each owns independent filter state.
+  { id: 'leaderboard-books', component: LeaderboardBooksPanel, titleKey: 'panels.leaderboard-books.title', descKey: 'panels.leaderboard-books.desc' },
+  { id: 'leaderboard-authors', component: LeaderboardAuthorsPanel, titleKey: 'panels.leaderboard-authors.title', descKey: 'panels.leaderboard-authors.desc' },
+  { id: 'leaderboard-translators', component: LeaderboardTranslatorsPanel, titleKey: 'panels.leaderboard-translators.title', descKey: 'panels.leaderboard-translators.desc' },
+  { id: 'leaderboard-trending', component: LeaderboardTrendingPanel, titleKey: 'panels.leaderboard-trending.title', descKey: 'panels.leaderboard-trending.desc' },
   // Agent Extensibility Registry (§13b) — extensions hub + proposals inbox are
   // palette-openable + in the agent enum; skill-editor is a params-retargeting
   // singleton (json-editor precedent), hidden from palette + outside the enum.

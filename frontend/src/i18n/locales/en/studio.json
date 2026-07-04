@@ -64,6 +64,39 @@
       "title": "Knowledge",
       "desc": "Browse and open your knowledge-graph projects"
     },
+    "jobs-list": {
+      "title": "Jobs",
+      "desc": "Monitor background jobs and tasks"
+    },
+    "job-detail": {
+      "title": "Job",
+      "desc": "Watch one job's live progress",
+      "empty": "Open a job from the Jobs panel to watch it here."
+    },
+    "books": {
+      "title": "Books",
+      "desc": "Browse and read your other books without leaving this studio"
+    },
+    "book-reader": {
+      "title": "Reader",
+      "desc": "Read a chapter from another book"
+    },
+    "leaderboard-books": {
+      "title": "Leaderboard: Books",
+      "desc": "Top-ranked books by rating, readers & favorites"
+    },
+    "leaderboard-authors": {
+      "title": "Leaderboard: Authors",
+      "desc": "Top-ranked authors by readers & output"
+    },
+    "leaderboard-translators": {
+      "title": "Leaderboard: Translators",
+      "desc": "Top-ranked translators by chapters & languages"
+    },
+    "leaderboard-trending": {
+      "title": "Leaderboard: Trending",
+      "desc": "Books trending right now"
+    },
     "json-editor": {
       "title": "JSON",
       "desc": "Raw JSON view of a resource"

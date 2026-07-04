@@ -212,7 +212,13 @@
           "glossary-unknown",
           "glossary-ai-suggestions",
           "glossary-merge-candidates",
-          "knowledge"
+          "knowledge",
+          "jobs-list",
+          "books",
+          "leaderboard-books",
+          "leaderboard-authors",
+          "leaderboard-translators",
+          "leaderboard-trending"
         ],
         "type": "string"
       }

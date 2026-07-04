@@ -64,6 +64,39 @@
       "title": "知識庫",
       "desc": "瀏覽並開啟你的知識圖譜專案"
     },
+    "jobs-list": {
+      "title": "工作",
+      "desc": "監控背景工作與任務"
+    },
+    "job-detail": {
+      "title": "工作詳情",
+      "desc": "即時查看單一工作的進度",
+      "empty": "從「工作」面板開啟一項工作即可在此查看。"
+    },
+    "books": {
+      "title": "書庫",
+      "desc": "無需離開此工作室即可瀏覽並閱讀你的其他書籍"
+    },
+    "book-reader": {
+      "title": "閱讀器",
+      "desc": "閱讀另一本書的章節"
+    },
+    "leaderboard-books": {
+      "title": "排行榜：書籍",
+      "desc": "依評分、讀者與收藏數排名的熱門書籍"
+    },
+    "leaderboard-authors": {
+      "title": "排行榜：作者",
+      "desc": "依讀者與產量排名的熱門作者"
+    },
+    "leaderboard-translators": {
+      "title": "排行榜：譯者",
+      "desc": "依章節與語言數排名的熱門譯者"
+    },
+    "leaderboard-trending": {
+      "title": "排行榜：趨勢",
+      "desc": "目前熱門的書籍"
+    },
     "json-editor": {
       "title": "JSON",
       "desc": "資源的原始 JSON 檢視"
