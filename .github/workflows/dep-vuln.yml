@@ -1,0 +1,136 @@
+name: dep-vuln
+
+# SEC-11 / audit P1: dependency (CVE) vulnerability scanning for EVERY ecosystem
+# the monorepo ships — Go, Python, JS/TS (npm + pnpm), Rust. Today this is ZERO
+# (lockfile pinning ≠ vuln scanning), so the goal here is VISIBILITY FIRST.
+#
+# ADVISORY on day one: every job is `continue-on-error: true`, so a newly-disclosed
+# CVE surfaces as a red-but-non-blocking check and never blocks a merge. Once the
+# baseline is clean and triaged, individual legs can be flipped to blocking by
+# removing `continue-on-error`. Dependabot (`.github/dependabot.yml`) opens the
+# bump PRs; these jobs report what is currently vulnerable.
+
+on:
+  push:
+    branches: [main, "mmo-rpg/**"]
+  pull_request:
+    branches: [main, "mmo-rpg/**"]
+  schedule:
+    # Weekly Monday 06:00 UTC — catch CVEs disclosed against already-pinned deps.
+    - cron: "0 6 * * 1"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  go-vuln:
+    name: Go — govulncheck (advisory)
+    runs-on: ubuntu-latest
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.25"
+      - run: go install golang.org/x/vuln/cmd/govulncheck@latest
+      - name: govulncheck every go.mod module
+        shell: bash
+        run: |
+          set -uo pipefail
+          fail=0
+          while IFS= read -r mod; do
+            dir=$(dirname "$mod")
+            echo "::group::govulncheck $dir"
+            if ! ( cd "$dir" && govulncheck ./... ); then
+              echo "::warning::govulncheck findings in $dir"
+              fail=1
+            fi
+            echo "::endgroup::"
+          done < <(find . -name go.mod -not -path '*/.git/*' -not -path '*/.claude/*')
+          # Non-zero surfaces the findings; job-level continue-on-error keeps it advisory.
+          exit $fail
+
+  python-vuln:
+    name: Python — pip-audit (advisory)
+    runs-on: ubuntu-latest
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: python -m pip install --upgrade pip pip-audit
+      - name: pip-audit every service requirements + the python SDK
+        shell: bash
+        run: |
+          set -uo pipefail
+          fail=0
+          # Runtime + test requirements across all Python services.
+          while IFS= read -r req; do
+            echo "::group::pip-audit $req"
+            if ! pip-audit --progress-spinner off -r "$req"; then
+              echo "::warning::pip-audit findings in $req"
+              fail=1
+            fi
+            echo "::endgroup::"
+          done < <(find services -name 'requirements*.txt' -not -path '*/.claude/*'; find infra -name 'requirements*.txt' 2>/dev/null)
+          # sdks/python is a pyproject project — audit it as a project tree.
+          if [ -f sdks/python/pyproject.toml ]; then
+            echo "::group::pip-audit sdks/python"
+            if ! pip-audit --progress-spinner off ./sdks/python; then
+              echo "::warning::pip-audit findings in sdks/python"
+              fail=1
+            fi
+            echo "::endgroup::"
+          fi
+          exit $fail
+
+  npm-vuln:
+    name: JS/TS — npm/pnpm audit (frontend + gateways) (advisory)
+    runs-on: ubuntu-latest
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      - run: npm install -g pnpm@9
+      - name: npm audit each standalone package-lock (gateways + frontends)
+        shell: bash
+        run: |
+          set -uo pipefail
+          fail=0
+          # Each dir with its own package-lock.json (frontend keeps its own npm
+          # workflow; the gateways + cms-frontend each vendor a lockfile).
+          while IFS= read -r lock; do
+            dir=$(dirname "$lock")
+            echo "::group::npm audit $dir"
+            if ! ( cd "$dir" && npm audit --audit-level=high ); then
+              echo "::warning::npm audit findings in $dir"
+              fail=1
+            fi
+            echo "::endgroup::"
+          done < <(find . -name package-lock.json -not -path '*/node_modules/*' -not -path '*/.claude/*')
+          # pnpm workspace at the repo root (frontend-game + packages/*).
+          if [ -f pnpm-lock.yaml ]; then
+            echo "::group::pnpm audit (root workspace)"
+            if ! pnpm audit --audit-level high; then
+              echo "::warning::pnpm audit findings in root workspace"
+              fail=1
+            fi
+            echo "::endgroup::"
+          fi
+          exit $fail
+
+  cargo-vuln:
+    name: Rust — cargo audit (advisory)
+    runs-on: ubuntu-latest
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - run: cargo install cargo-audit --locked
+      - name: cargo audit (root workspace Cargo.lock)
+        run: cargo audit

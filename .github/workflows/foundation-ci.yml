@@ -7,12 +7,19 @@ name: foundation-ci
 #
 # Complements the existing lint-foundation.yml (static lints) by adding the
 # build + test + I3 + projection-coverage + gitleaks gates.
+#
+# SEC-1 / audit P0-6: the `secrets` (gitleaks) job must run on EVERY branch, not
+# just main / mmo-rpg — a secret can be pushed on any feature branch. GitHub
+# Actions has no per-JOB trigger, so the workflow trigger below is broadened to
+# `**` and the heavy build/test/lint/db-smoke jobs carry an `if:` guard that
+# preserves their original main + mmo-rpg scope. Only `secrets` runs unguarded,
+# so it scans all branches while the expensive gates stay scoped.
 
 on:
   push:
-    branches: [main, "mmo-rpg/**"]
+    branches: ["**"]
   pull_request:
-    branches: [main, "mmo-rpg/**"]
+    branches: ["**"]
 
 permissions:
   contents: read
@@ -21,6 +28,10 @@ jobs:
   rust:
     name: Rust workspace (build + test)
     runs-on: ubuntu-latest
+    # Heavy-gate scope guard (see header): main + mmo-rpg pushes, PRs onto them.
+    if: >-
+      (github.event_name == 'push' && (github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/heads/mmo-rpg/'))) ||
+      (github.event_name == 'pull_request' && (github.base_ref == 'main' || startsWith(github.base_ref, 'mmo-rpg/')))
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
@@ -41,6 +52,10 @@ jobs:
   go:
     name: Go modules (build + vet + test)
     runs-on: ubuntu-latest
+    # Heavy-gate scope guard (see header): main + mmo-rpg pushes, PRs onto them.
+    if: >-
+      (github.event_name == 'push' && (github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/heads/mmo-rpg/'))) ||
+      (github.event_name == 'pull_request' && (github.base_ref == 'main' || startsWith(github.base_ref, 'mmo-rpg/')))
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-go@v5
@@ -73,6 +88,10 @@ jobs:
   lints:
     name: Foundation lints (I3 language-rule + projection-coverage + validators)
     runs-on: ubuntu-latest
+    # Heavy-gate scope guard (see header): main + mmo-rpg pushes, PRs onto them.
+    if: >-
+      (github.event_name == 'push' && (github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/heads/mmo-rpg/'))) ||
+      (github.event_name == 'pull_request' && (github.base_ref == 'main' || startsWith(github.base_ref, 'mmo-rpg/')))
     steps:
       - uses: actions/checkout@v4
       - run: bash scripts/language-rule-lint.sh
@@ -99,6 +118,10 @@ jobs:
   python:
     name: Python services (byte-compile)
     runs-on: ubuntu-latest
+    # Heavy-gate scope guard (see header): main + mmo-rpg pushes, PRs onto them.
+    if: >-
+      (github.event_name == 'push' && (github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/heads/mmo-rpg/'))) ||
+      (github.event_name == 'pull_request' && (github.base_ref == 'main' || startsWith(github.base_ref, 'mmo-rpg/')))
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -129,6 +152,10 @@ jobs:
   db-smoke:
     name: DB live-smoke (PgEventStore + publisher integration)
     runs-on: ubuntu-latest
+    # Heavy-gate scope guard (see header): main + mmo-rpg pushes, PRs onto them.
+    if: >-
+      (github.event_name == 'push' && (github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/heads/mmo-rpg/'))) ||
+      (github.event_name == 'pull_request' && (github.base_ref == 'main' || startsWith(github.base_ref, 'mmo-rpg/')))
     services:
       postgres:
         image: pgvector/pgvector:pg16
@@ -349,6 +376,10 @@ jobs:
   secrets:
     name: Secret scan (gitleaks)
     runs-on: ubuntu-latest
+    # SEC-1 / P0-6: NO scope guard — gitleaks scans EVERY branch (the workflow
+    # trigger is `**`). A secret can land on any feature branch, so this gate is
+    # intentionally the one job that runs regardless of branch. The `.githooks/
+    # pre-commit` hook adds a staged-diff pass so it is also caught pre-commit.
     steps:
       - uses: actions/checkout@v4
         with:

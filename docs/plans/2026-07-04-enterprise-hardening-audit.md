@@ -1,6 +1,6 @@
 # Enterprise Hardening Audit + Improvement Plan — 2026-07-04
 
-**Status:** AUDIT RECORDED — execution backlog (handle per priority below)
+**Status:** AUDIT RECORDED — execution in progress. **Done 2026-07-04 (parallel fan-out):** P0-1/P0-3/P0-4/P0-5/P0-7/P0-8 fixed (`a7ebdb9d4`); P0-6 gitleaks-all-branch + dep-vuln CI + dependabot wired; **P1 enforcement lints built + advisory-wired** (timeout→Python, pagination-cap, blocking-in-async, raw-sql, injection-coverage, language-bias-gate, sdk-duplication-gate — each baseline-seeded so it passes on current code + flags NEW violations). **Remaining (sequenced serially):** P0-2 streaming/embed logging rework; the big SDK creations + 14-service JWT/logging migrations; notification/correction envelope contracts; edge rate-limit; flip advisory lints → blocking after backlog burndown.
 **Scope:** LLM-call logging · general logging · security · performance · notification · analytics/learning
 **Method:** 6 parallel investigation sub-agents, code-grounded. This doc is the **record of findings + the prioritized backlog**; the governing rules extracted from it live as enforceable standards under [`docs/standards/`](../standards/README.md).
 

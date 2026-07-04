@@ -54,3 +54,35 @@ jobs:
       - uses: actions/checkout@v4
       - name: Run ${{ matrix.lint }}
         run: bash scripts/${{ matrix.lint }}.sh
+
+  # P1 security/quality lints (audit P1) — ADVISORY (`continue-on-error: true`)
+  # while the lints prove out, so CI stays green as they mature. Flip a leg to
+  # blocking (drop its continue-on-error) once its baseline is clean. These are
+  # Python scripts (`python scripts/<name>.py`), so they get their own job rather
+  # than the `bash scripts/<name>.sh` matrix above. The scripts land in the same
+  # integration commit as this wiring; until then continue-on-error absorbs a
+  # missing-file failure. NOTE: `timeout-discipline-lint` is already wired as a
+  # BLOCKING leg in the matrix above — its extension is picked up there, so it is
+  # intentionally not duplicated here.
+  p1-lints:
+    name: P1 ${{ matrix.lint }} (advisory)
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    strategy:
+      fail-fast: false
+      matrix:
+        lint:
+          - pagination-cap-lint
+          - blocking-in-async-lint
+          - raw-sql-lint
+          - injection-coverage-lint
+          - language-bias-gate
+          - sdk-duplication-gate
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Run ${{ matrix.lint }}
+        continue-on-error: true
+        run: python scripts/${{ matrix.lint }}.py
