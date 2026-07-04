@@ -36,6 +36,7 @@ from typing import Any
 from uuid import UUID
 
 import httpx
+from loreweave_internal_client import InternalClientError
 
 __all__ = [
     "RosterEntry",
@@ -46,14 +47,11 @@ __all__ = [
 ]
 
 
-class KalServiceError(Exception):
+# P3 SDK-first: subclass the shared InternalClientError (`.retryable` derived from
+# `.status_code`); name kept so `except KalServiceError` sites are unchanged.
+class KalServiceError(InternalClientError):
     """Raised on any KAL read failure. `retryable` flags transient conditions
     (timeout, 502/503/429) so the caller can degrade or retry."""
-
-    def __init__(self, message: str, *, retryable: bool = False, status_code: int | None = None) -> None:
-        super().__init__(message)
-        self.retryable = retryable
-        self.status_code = status_code
 
 
 @dataclass(frozen=True)
@@ -306,11 +304,9 @@ class KalClient:
             raise KalServiceError(f"connection error calling {url}: {exc}", retryable=True)
         if resp.status_code == 200:
             return resp
-        retryable = resp.status_code in (502, 503, 429)
         detail = resp.text[:200]
         raise KalServiceError(
             f"GET {url} failed ({resp.status_code}): {detail}",
-            retryable=retryable,
             status_code=resp.status_code,
         )
 

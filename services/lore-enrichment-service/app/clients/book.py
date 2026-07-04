@@ -13,6 +13,7 @@ from typing import Any
 from uuid import UUID
 
 import httpx
+from loreweave_internal_client import InternalClientError
 
 from app.clients.sanitize import neutralize_injection
 
@@ -25,11 +26,11 @@ __all__ = [
 ]
 
 
-class BookServiceError(Exception):
-    def __init__(self, message: str, *, retryable: bool = False, status_code: int | None = None) -> None:
-        super().__init__(message)
-        self.retryable = retryable
-        self.status_code = status_code
+# P3 SDK-first: subclass the shared InternalClientError so `.retryable` is derived
+# uniformly from `.status_code` (429/502/503) instead of re-computed per raise site.
+# Name kept so `except BookServiceError` call sites are unchanged.
+class BookServiceError(InternalClientError):
+    pass
 
 
 @dataclass(frozen=True)
@@ -90,10 +91,9 @@ class BookClient:
         except httpx.HTTPError as exc:
             raise BookServiceError(f"connection error calling {url}: {exc}", retryable=True)
         if resp.status_code != 200:
-            retryable = resp.status_code in (502, 503, 429)
             raise BookServiceError(
                 f"GET {url} failed ({resp.status_code})",
-                retryable=retryable, status_code=resp.status_code,
+                status_code=resp.status_code,
             )
         data = resp.json()
         tags = data.get("genre_tags") or []
@@ -126,10 +126,9 @@ class BookClient:
         except httpx.HTTPError as exc:
             raise BookServiceError(f"connection error calling {url}: {exc}", retryable=True)
         if resp.status_code != 200:
-            retryable = resp.status_code in (502, 503, 429)
             raise BookServiceError(
                 f"GET {url} failed ({resp.status_code})",
-                retryable=retryable, status_code=resp.status_code,
+                status_code=resp.status_code,
             )
         data = resp.json()
         items: list[ChapterMeta] = []
@@ -163,10 +162,9 @@ class BookClient:
         if resp.status_code == 404:
             return ""
         if resp.status_code != 200:
-            retryable = resp.status_code in (502, 503, 429)
             raise BookServiceError(
                 f"GET {url} failed ({resp.status_code})",
-                retryable=retryable, status_code=resp.status_code,
+                status_code=resp.status_code,
             )
         data = resp.json()
         raw = data.get("text") or data.get("content") or data.get("draft") or ""
@@ -185,10 +183,8 @@ class BookClient:
         except httpx.HTTPError as exc:
             raise BookServiceError(f"connection error calling {url}: {exc}", retryable=True)
         if resp.status_code != 200:
-            retryable = resp.status_code in (502, 503, 429)
             raise BookServiceError(
                 f"GET {url} failed ({resp.status_code})",
-                retryable=retryable,
                 status_code=resp.status_code,
             )
         data = resp.json()
