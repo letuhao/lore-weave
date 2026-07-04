@@ -36,7 +36,9 @@ from typing import Any
 from uuid import UUID
 
 import httpx
-from loreweave_internal_client import InternalClientError
+from loreweave_internal_client import InternalClientError, build_internal_client
+
+from app.logging_config import trace_id_var
 
 __all__ = [
     "RosterEntry",
@@ -103,8 +105,14 @@ class KalClient:
         timeout_s: float = 10.0,
     ) -> None:
         self._base = base_url.rstrip("/")
-        self._internal_token = internal_token
-        self._http = httpx.AsyncClient(timeout=httpx.Timeout(timeout_s, connect=5.0))
+        # W3 trace-uniformity: the shared factory bakes X-Internal-Token + JSON and
+        # injects X-Trace-Id per request (this client had NO trace before). The
+        # per-request X-User-Id tenancy header stays the caller's job (see _headers).
+        self._http = build_internal_client(
+            base_url, internal_token=internal_token,
+            timeout_s=timeout_s, connect_timeout_s=5.0,
+            trace_id_provider=trace_id_var.get,
+        )
 
     async def aclose(self) -> None:
         await self._http.aclose()
@@ -112,10 +120,11 @@ class KalClient:
     # ── headers ──────────────────────────────────────────────────────────────
 
     def _headers(self, user_id: UUID | str | None) -> dict[str, str]:
-        h = {"X-Internal-Token": self._internal_token}
+        # X-Internal-Token is baked into the client; only the per-request X-User-Id
+        # tenancy header (kal.v1.yaml §Auth) is added here (merged by httpx).
         if user_id is not None:
-            h["X-User-Id"] = str(user_id)
-        return h
+            return {"X-User-Id": str(user_id)}
+        return {}
 
     # ── roster — bounded-per-page, COMPLETE-in-aggregate cast (drained) ───────
 
