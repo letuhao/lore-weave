@@ -15,6 +15,7 @@ from dataclasses import dataclass
 from uuid import UUID
 
 import httpx
+from loreweave_internal_client import InternalClientError
 
 from app.config import settings
 from app.logging_config import trace_id_var
@@ -31,11 +32,18 @@ __all__ = [
 logger = logging.getLogger(__name__)
 
 
-class EmbeddingError(Exception):
-    """Raised when embedding fails (provider down, bad model, etc.)."""
-    def __init__(self, message: str, retryable: bool = False):
-        super().__init__(message)
-        self.retryable = retryable
+class EmbeddingError(InternalClientError):
+    """Raised when embedding fails (provider down, bad model, etc.).
+
+    P3 SDK-first W2-tail: subclasses the shared InternalClientError so callers get
+    one uniform `.retryable`/`.status_code` surface. `retryable` derives from a
+    429/502/503 status (via the SDK's shared predicate) unless the raiser overrides
+    it — transport errors pass `retryable=True` explicitly.
+    """
+    def __init__(
+        self, message: str, retryable: bool | None = None, *, status_code: int | None = None,
+    ) -> None:
+        super().__init__(message, status_code=status_code, retryable=retryable)
 
 
 @dataclass(frozen=True)
@@ -108,15 +116,16 @@ class EmbeddingClient:
                 prompt_tokens=int(data.get("prompt_tokens") or 0),
             )
 
-        retryable = resp.status_code in (502, 503, 429)
         detail = resp.text[:200]
         try:
             detail = resp.json().get("detail", detail)
         except Exception:
             pass
+        # W2-tail: pass status_code and let the shared base derive `.retryable`
+        # (429/502/503) — no local re-derivation of the transient-status set.
         raise EmbeddingError(
             f"embedding failed ({resp.status_code}): {detail}",
-            retryable=retryable,
+            status_code=resp.status_code,
         )
 
 

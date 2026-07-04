@@ -21,6 +21,7 @@ from typing import Any
 from uuid import UUID
 
 import httpx
+from loreweave_internal_client import is_retryable_status
 
 from loreweave_extraction.extractors.entity import LLMEntityCandidate
 from loreweave_extraction.extractors.event import LLMEventCandidate
@@ -331,7 +332,7 @@ class KnowledgeClient:
             source_id=source_id,
             entities_merged=0, relations_created=0,
             events_merged=0, facts_merged=0,
-            retryable=resp.status_code in (502, 503, 429),
+            retryable=is_retryable_status(resp.status_code),
             error=f"HTTP {resp.status_code}: {resp.text[:200]}",
         )
 
@@ -452,7 +453,7 @@ class KnowledgeClient:
 
         # 422 = validation failure — message is malformed; not retryable
         # (re-XREAD would just re-fail). Bigger transients are retryable.
-        retryable = resp.status_code in (502, 503, 429)
+        retryable = is_retryable_status(resp.status_code)
         return SummarizeMessageResult(
             level=level, node_id=node_id,
             cache_hit=False, race_winner=False,
@@ -514,7 +515,7 @@ class KnowledgeClient:
             glossary_entity_id=glossary_entity_id,
             action="",
             canonical_name="",
-            retryable=resp.status_code in (502, 503, 429),
+            retryable=is_retryable_status(resp.status_code),
             error=f"HTTP {resp.status_code}: {resp.text[:200]}",
         )
 

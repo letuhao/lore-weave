@@ -92,6 +92,20 @@ PY_JWT_VERIFY = re.compile(
 # remains (worker-ai's client-method variant), baselined until its migration wave.
 PY_MODEL_NAME_COPY = re.compile(r"/internal/models/\{model_source\}")
 
+# SDK-2 · a per-service re-derivation of the shared transient-status set (P3
+# SDK-first W2-tail). The tell-tale is an inline membership test against EXACTLY
+# {429, 502, 503} (in any order) — the `retryable = resp.status_code in (502,503,429)`
+# every S2S client independently wrote. The SDK owns this as `is_retryable_status`
+# / `RETRYABLE_STATUSES` / `InternalClientError`-derives-it; a copy should call the
+# predicate, not re-list the codes. Matched to a 3-element tuple ONLY so a site with
+# a DIFFERENT set — e.g. lore-enrichment `generation/complete.py`'s 504-INCLUSIVE
+# `(429, 502, 503, 504)` — does NOT match (that site keeps its own list per the
+# RETRYABLE_STATUSES caveat). Test files / success-status checks (`in (200, 201)`) /
+# dispatch 404-409-as-success (`in (404, 409)`) never match — different codes.
+PY_INLINE_RETRYABLE = re.compile(
+    r"status_code\s+in\s+\(\s*(?:429|502|503)\s*(?:,\s*(?:429|502|503)\s*){2}\)"
+)
+
 # SDK-2 · the copy-pasted logging_config.py trio (Python).
 LOGGING_REDACT = re.compile(r"^\s*class\s+RedactFilter\b")
 LOGGING_SETUP = re.compile(r"^\s*def\s+setup_logging\s*\(")
@@ -108,6 +122,7 @@ DETECTORS = [
     ("jwt-alg-pin", JWT_ALG_PIN),
     ("py-jwt-verifier", PY_JWT_VERIFY),
     ("py-model-name-copy", PY_MODEL_NAME_COPY),
+    ("py-inline-retryable", PY_INLINE_RETRYABLE),
     ("logging-redact-filter", LOGGING_REDACT),
     ("logging-setup", LOGGING_SETUP),
     ("logging-secret-patterns", LOGGING_SECRETS),
@@ -119,6 +134,7 @@ RULE_LABELS = {
     "jwt-alg-pin": "hand-rolled JWT algorithm pin (belongs in the shared verifier)",
     "py-jwt-verifier": "Python user-JWT verifier re-declared (use loreweave_authn.verify_access_token)",
     "py-model-name-copy": "resolve_model_name copy (use loreweave_internal_client.resolve_model_name)",
+    "py-inline-retryable": "inline retryable-status set re-derived (use loreweave_internal_client.is_retryable_status)",
     "logging-redact-filter": "RedactFilter re-declared (use loreweave_obs.setup_logging)",
     "logging-setup": "setup_logging re-defined (use loreweave_obs.setup_logging)",
     "logging-secret-patterns": "_SECRET_PATTERNS re-declared (use the shared redactor)",
