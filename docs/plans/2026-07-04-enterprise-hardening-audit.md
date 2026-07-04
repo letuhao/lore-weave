@@ -1,6 +1,6 @@
 # Enterprise Hardening Audit + Improvement Plan — 2026-07-04
 
-**Status:** AUDIT RECORDED — execution in progress. **Done 2026-07-04 (parallel fan-out):** P0-1/P0-3/P0-4/P0-5/P0-7/P0-8 fixed (`a7ebdb9d4`); P0-6 gitleaks-all-branch + dep-vuln CI + dependabot wired; **P1 enforcement lints built + advisory-wired** (timeout→Python, pagination-cap, blocking-in-async, raw-sql, injection-coverage, language-bias-gate, sdk-duplication-gate — each baseline-seeded so it passes on current code + flags NEW violations). **Remaining (sequenced serially):** P0-2 streaming/embed logging rework; the big SDK creations + 14-service JWT/logging migrations; notification/correction envelope contracts; edge rate-limit; flip advisory lints → blocking after backlog burndown.
+**Status:** AUDIT RECORDED — execution in progress. **Done 2026-07-04 (parallel fan-out):** P0-1/P0-3/P0-4/P0-5/P0-7/P0-8 fixed (`a7ebdb9d4`); P0-6 gitleaks-all-branch + dep-vuln CI + dependabot wired; **P1 enforcement lints built + advisory-wired** (timeout→Python, pagination-cap, blocking-in-async, raw-sql, injection-coverage, language-bias-gate, sdk-duplication-gate — each baseline-seeded so it passes on current code + flags NEW violations). **Remaining (sequenced serially):** ~~P0-2 streaming/embed logging rework~~ (✅ audit-ledger closed `ebff3448f`+`09f1d989e`; structural residual → P2); the big SDK creations + 14-service JWT/logging migrations; notification/correction envelope contracts; edge rate-limit; flip advisory lints → blocking after backlog burndown. **P0 is now fully clear** — all 8 live defects resolved (2026-07-04).
 **Scope:** LLM-call logging · general logging · security · performance · notification · analytics/learning
 **Method:** 6 parallel investigation sub-agents, code-grounded. This doc is the **record of findings + the prioritized backlog**; the governing rules extracted from it live as enforceable standards under [`docs/standards/`](../standards/README.md).
 
@@ -133,7 +133,7 @@ Design standards (no investigation defects): [`scope-separation.md`](../standard
 | ID | Defect | File |
 |---|---|---|
 | P0-1 | LLM payload read-back returns empty `{}` (string-vs-map type mismatch) | `usage-billing server.go:584-607` |
-| P0-2 | Streaming chat + embed/rerank/web-search log no I/O | `provider-registry stream_handler.go`, `server.go internalEmbed/Rerank` |
+| P0-2 | ✅ Streaming chat + embed/rerank/web-search log no I/O | `provider-registry stream_handler.go`, `server.go internalEmbed/Rerank` |
 | P0-3 | Payload encryption key = `JWT_SECRET` (rotation/leak catastrophe) | `usage-billing server.go:36-44` |
 | P0-4 | Notification `mcp_approval` silently 400-dropped | `auth mcp_approvals.go:401` × `notification-service validCategory` |
 | P0-5 | chat-service feeds book/graph into prompts without `neutralize_injection` | `chat-service knowledge_skill.py` |
@@ -145,7 +145,9 @@ Design standards (no investigation defects): [`scope-separation.md`](../standard
 Extend `timeout-lint`→Python · `pagination-cap-lint` · `blocking-in-async-lint` · flip `dependency-registry-lint`→error (after registering platform deps) · revive+flip+wire `logging-discipline-lint` · gitleaks all-branch + `.github/dependabot.yml` + govulncheck/pip-audit/npm-audit/cargo-audit · raw-SQL lint · injection-coverage lint · pii-classify→`services/*/migrations/` · LLM-logging chokepoint gate (extend `ai-provider-gate.py`) + round-trip decrypt test · `contracts/notifications/envelope` + consumer contract test · correction-event contract + no-silent-drop wiring test · shared JWT-verifier adversarial suite · edge rate-limit · **`language-bias-gate.py` + multi-language golden fixtures (ja/ko)** · **SDK near-duplicate detector + symbol-level grep-gate + orphan-adoption check** · create `loreweave_logging`/`loreweave_authn`/`contracts/platformjwt`/shared-`TerminalEvent`/`BaseInternalClient`.
 
 ### P2 — structural improvements
-Unify the two correlation-id namespaces (OTel-only) · shared logging SDK per language · dedicated `LLM_PAYLOAD_ENCRYPTION_KEY` + rotation · notification outbox + dedup + opt-out + i18n columns + SSE/WS unification · latency-SLO SoT · salience↔learning-service feedback integration · platform-tenant-boundary audit log · fix CLAUDE.md service table (12→46).
+Unify the two correlation-id namespaces (OTel-only) · shared logging SDK per language · dedicated `LLM_PAYLOAD_ENCRYPTION_KEY` + rotation · **LLM-logging chokepoint unification (Route A inline-HTTP + Route B outbox → one finalize path) + `llm_jobs` plaintext retention/sweeper policy (P0-2 structural residual)** · notification outbox + dedup + opt-out + i18n columns + SSE/WS unification · latency-SLO SoT · salience↔learning-service feedback integration · platform-tenant-boundary audit log · fix CLAUDE.md service table (12→46).
+
+**Full P2 spec:** [`docs/specs/2026-07-04-enterprise-p2-structural.md`](../specs/2026-07-04-enterprise-p2-structural.md).
 
 ---
 
@@ -193,6 +195,18 @@ The 3 flagged services now gate their admin endpoints with the RS256 admin token
 | `D-REVIEW-SANITIZER-SPAN-PRECISE` | On a hit, the WHOLE block is NFKC-folded (from the prenormalized text), not just the flagged spans — legit content in a flagged block is normalized. (Docstring now states this accurately.) | #2 — span-precise splice-into-raw is a structural SDK enhancement | same sanitizer-precision pass |
 | `D-REVIEW-NOTIF-POISON-TEST` | No delivery-level test for the notification consumer's poison-category `Nack(false,false)` no-wedge branch. | low value — the branch is currently unreachable-by-construction (`transformTerminalEvent` hardcodes `llm_job`); the guard itself is correct | if the consumer's category becomes dynamic |
 | `D-LANGBIAS-COMPACTION-LOWER` | `chat-service/compaction.py:145` `k = term.lower()` (proper-noun dedup key) is baselined in `language-bias-gate` so the gate could flip to BLOCKING. Symmetric dedup key (low-risk: CJK is a lower() no-op, Latin folds symmetrically), owned by the context-budget track. | low — a `.casefold()`/`name_normalize` swap; not corrupting today | context-budget track, or a language-bias cleanup pass |
+
+### `P0-2` — ✅ RESOLVED 2026-07-04 (audit-ledger closed; structural residual → P2)
+The **live defect** (streaming chat + sync embed/rerank/web-search persisting no readable I/O; the unhappy path recording nothing) is closed and committed (`ebff3448f` P0-2 + `09f1d989e` review-impl), verified green (provider-registry + usage-billing `go build`/`go test` 2026-07-04). Code-grounded state map:
+- **B1 (readable I/O) — DONE.** Streaming assembled prompt captured post-injection (`stream_handler.go:427` `guard.captureRequest(boundedPayload(input))`) + completion accumulated from deltas (`stream_billing.go:152`), shipped with cost+tokens via `RecordUsage` → `/record` → `writeUsageLog` (encrypted `usage_logs`/`usage_log_details`, idempotent on `request_id`).
+- **B2 (unhappy path) — DONE.** `settle` fires via `defer` on every terminal exit (completion/abort/upstream-error/disconnect, `stream_handler.go:299`); the record gate is now only `op=="chat"` (`stream_billing.go:250`) with `finalizeOutcome` classifying success/aborted/cancelled/provider_error + a delta-estimated tally fallback when no final usage chunk arrives.
+- **B4 (sync embed/rerank/web-search) — DONE.** Shared `recordSyncUsage` (`server.go:2785`) records **success + failure** with bounded real I/O for all three ops.
+- **B5 (7-day plaintext retention) — catastrophe MOOT, residual → P2.** The original "unrecoverable after 7 days" depended on B3 (encrypted read-back broken); **B3 = P0-1 is fixed**, so the durable encrypted `usage_logs` copy is now recoverable after the plaintext `llm_jobs` row expires. What remains is a **retention-policy + PII decision** (there is no implemented sweeper today — plaintext currently accumulates un-purged; `migrate.go:145` default `now()+7d`), not a data-loss bug — see `P2` below.
+
+**Accepted residuals (no live defect):**
+- **B1 observability stub** — the cancellation-registry `llm_jobs` row still writes `Input:{"stream":true}` (`stream_handler.go:330`). **Accept-and-document:** that row is billing-neutral (`reservation_id` NULL); the audit I/O lives (encrypted) in `usage_logs`. Keeping the real prompt OUT of this plaintext row is *desirable* (less plaintext-PII sprawl), so this is intentional, not a hole.
+- **Sync ops flat-cost** — `recordSyncUsage` leaves `TotalCostUSD` unset → usage-billing's flat fallback. Already tracked as `D-REVIEW-EMBED-AUDIT-COST` (needs embed-pricing resolution plumbing).
+- **Chokepoint not literally unified** — streaming + the 3 sync ops reach the shared `writeUsageLog` SQL writer via inline `RecordUsage` HTTP (Route A), while async jobs use `finalize→outbox` (Route B). Both converge on the same writer so the ledger-integrity goal is met; collapsing the two routes into one is a **structural refactor → P2** (LLM-logging-chokepoint item), not a defect.
 
 **P1 envelope contracts (2026-07-04):** `contracts/notifyevent` shared `TerminalEvent` (killed the notification↔provider-registry cross-service struct dup; sdk-dup baseline 13→11) + learning-service `correction_contract.py` (`CORRECTION_EVENT_TYPES` SoT + `build_dispatcher` startup fail-fast + no-silent-drop wiring test — a correction type can no longer ship unwired and silently drop).
 
