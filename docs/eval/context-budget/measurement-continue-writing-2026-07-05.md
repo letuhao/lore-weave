@@ -32,8 +32,8 @@ scenarios never crossed the ~32K compaction trigger, so they are **out of scope 
 | Is the agent a capable continue-writer? | **Yes.** On the turns where it wrote, craft was excellent — authentic first-person Gothic Harker voice, correct revision behavior (kept prior text, layered darkness), and an *accurate cross-chapter echo* (the Count scaling the wall "like a lizard"). Judge `craft_quality` = **5/5** (baseline). |
 | Does it stay honest under thin grounding? | **Yes.** Where it lacked data (the firm name, the ch4 arc) it **honestly declined** rather than inventing — no fabricated events. The safety instinct held. |
 | Is the context machinery healthy? | **Yes.** No-lore turns cheap (3.9–5.1K tok, 0 tools); first-lore fetch heavy (19–28K, driven by tool *results* not grounding); follow-up generative turns reuse context cheaply (5–6K, 0 tools). Tool-discovery constant ~2.06K (agui hot-set, **not** the 41K full catalog). |
-| Should T5 be flipped ON by default? | **NO — not yet.** Single-run regression signal on the continue-writing arc (empty reply + refusal-to-write) and the blind judge scored baseline higher. Needs N≥4 to separate signal from gemma variance + root-cause the empty reply. **Defer.** |
-| **What is the #1 lever for "continue writing"?** | **GROUNDING COVERAGE, not the model or the budget tiers.** This project's derived knowledge layer is **unbuilt** (0 chapter summaries, 0 entity snapshots); grounding = 100 glossary entities only. That single gap explains every quality miss below. |
+| Should T5 be flipped ON by default? | **NO — not yet, but the case changed (see §6).** The Round-1 regression was **grounding-induced**: after populating the KG (§6), grounded T5 ≈ grounded baseline (helpfulness 4.5 = 4.5; the empty-reply + refuse-to-write both resolved). Still N=1 per config + a transient "project not found" blip to understand → defer the flip, but re-run N≥4 **on the grounded project** as a clean comparison, not a regression-chase. |
+| **What is the #1 lever for "continue writing"?** | **GROUNDING COVERAGE, not the model or the budget tiers** — CONFIRMED by the §6 re-measure. Populating the KG fixed the arc-recall punt + the continue-writing stalls. Two residual gaps are now concrete + buildable: chapter **summaries** (`D-KG-SUMMARIES-TARGET-NOOP` — "where is X at chapter N") and a protagonist **salience** signal (`D-KG-PROTAGONIST-SALIENCE` — "who is the main character"). Neither is model/budget-limited. |
 
 ---
 
@@ -151,3 +151,94 @@ resolves).
 the cheap-reuse pattern on follow-up turns, the D7 cap (no single tool result blew the turn), and
 the honesty floor (zero *invented* lore). The context machinery is sound; the product gap is
 grounding coverage.
+
+---
+
+## 6. ROUND 2 — grounded re-measure (2026-07-05, same day)
+
+**What changed:** to test whether the punts and the T5 regression were grounding-induced, I ran
+the knowledge extraction pipeline on the Dracula project (`POST …/extraction/start`, scope
+`chapters` [1,4], gemma llm + bge-m3 embedding — the benchmark-passed model; explicit refs, so no
+reliance on the empty `user_default_models`). Job `019f2f46` completed 4/4 for **$0.016**,
+populating the KG in **Neo4j: 63 Entities (incl. Jonathan Harker, Mina, Count Dracula), 114
+Events, 12 Facts**. *(Note: my first "0 rows" check hit the wrong surface — Postgres
+`entity_canonical_snapshots`, a separate canonicalization cache; extraction writes the graph. The
+[[silent-success-is-a-bug-not-environment]] pattern: verify the measurement surface.)* Then I
+re-ran the SAME A/B (`baseline_grounded` / `t5on_grounded`), blind-judged.
+
+### 6.1 The T5 regression was GROUNDING-INDUCED — it disappears with adequate grounding
+
+`continue_writing` per-turn (tok/reply-chars), all four runs:
+
+| turn | baseline | t5on | **baseline_grounded** | **t5on_grounded** |
+|---|---|---|---|---|
+| 0 | 25439/418 | 44566/**0** | 50432/557 | 39655/**723** |
+| 1 | 4858/1022 | 24172/**581** (refused) | 4900/1036 | 4938/**924** (wrote) |
+| 2 | 5433/1330 | 5240/1420 | 5477/1246 | 5510/1419 |
+| 5 | 6043/1157 | 5990/1059 | 6172/1146 | 6315/1252 |
+
+T5-on's two failures — the **empty turn-0 reply** (0 ch) and the **refuse-to-write turn-1** (581 ch
+"paste the manuscript") — **both resolve under grounding**: turn-0 becomes a 723-ch honest punt,
+turn-1 becomes 924 ch of strong Gothic prose. The residual t0 punt now carries a telling cause
+(*"the knowledge graph … showing as 'project not found' when I query directly"* — a transient KG
+lookup blip, not the systematic stall).
+
+**Blind judge, grounded runs** (RUN_A=baseline_grounded, RUN_B=t5on_grounded, judge blind):
+
+| dim | baseline_grounded | t5on_grounded | (ungrounded gap was) |
+|---|--:|--:|---|
+| helpfulness | **4.5** | **4.5** | 4.33 vs 3.83 — **closed** |
+| craft_quality | 3.17 | **3.33** | 3.5 vs 3.33 |
+| correctness | 4.5 | 4.5 | tie |
+| continuity | 5.0 | 5.0 | tie |
+
+Judge verdict: *"near-equivalent … RUN_B [t5on] holding a slight edge on prose craft and lore
+precision."* **So the answer to "was T5 worse because of the grounding bug?" is: largely YES.**
+The ungrounded T5 regression was an artifact of thin grounding (T5 routed the openings as lore
+turns → heavier retrieval that found nothing → stall/refuse). With the KG populated, **T5 ≈
+baseline** (even marginally better on craft). This does NOT yet clear T5 for a default flip — still
+N=1 per config, and the transient "project not found" blip needs understanding — but it removes the
+headline regression and re-frames the T5 N≥4 re-run as a clean comparison rather than a
+regression-chase.
+
+### 6.2 What grounding fixed, and what it did NOT (two deeper findings)
+
+**Fixed by the KG facts/events:**
+- `cross_chapter_change` — punt → a genuine grounded arc (**Traveler → Prisoner → Hunter**, 1363
+  ch), drawn from the extracted facts. The clearest grounding win.
+- The continue-writing openings stopped stalling (above).
+
+**NOT fixed — two distinct, deeper gaps:**
+1. **Protagonist mislabel PERSISTS** (`main character = Count Dracula`, still a shared
+   `critical_confabulation` in both grounded runs) even though **Jonathan Harker is now an
+   entity**. This is a **SALIENCE problem, not a coverage problem** — the KG has no POV/protagonist
+   signal, and Dracula is the most-connected entity (title + most events), so he wins "main
+   character" by centrality. Directly motivates the salience substrate work ([[constellation-wiring-ceiling-crud-guis]],
+   Track 4 entity-access telemetry). **New row: `D-KG-PROTAGONIST-SALIENCE`.**
+2. **"Where is Harker at the end of chapter 4" STILL punts**, because **chapter summaries were
+   never generated** — `summary_chapters` / `summary_books` are **still 0** after extraction, and
+   there are no `Summary` nodes. The extraction job's `summaries` *target* did **not** populate the
+   per-chapter narrative recap (it's produced by a separate `summary_processor`/`summary_enqueue`
+   job, or the target silently no-op'd). KG facts answer *thematic/arc* questions; a chapter
+   *summary* is what answers *"where is X at chapter N"*. **New row:
+   `D-KG-SUMMARIES-TARGET-NOOP`** — investigate why the `summaries` extraction target produced 0
+   `summary_chapters`, then re-measure the ch-recap turn once summaries exist.
+
+### 6.3 Cost note (grounding is not free)
+
+Richer grounding made the opening lore turn **search harder**: `continue_writing` t0 rose to
+**50,432 tok** (baseline_grounded) — **crossing the 32K compaction trigger** for the first time in
+this whole exercise. So the grounded continue-writing arc is the scenario that would finally
+exercise T4/D13a — reinforcing `D-T4-D13A-COMPACTION-EVAL` (now with a concrete trigger: a grounded
+continue-writing opening).
+
+### 6.4 Round-2 verdict
+
+- **T5 default flip:** still deferred, but the case changed — the regression was grounding-induced,
+  not intrinsic. The N≥4 re-run should be done **on the grounded project** (a fair comparison).
+- **#1 lever for continue-writing quality** is now split into two concrete, buildable pieces:
+  chapter **summaries** (`D-KG-SUMMARIES-TARGET-NOOP` — the "where is X now" recall) and a
+  protagonist/**salience** signal (`D-KG-PROTAGONIST-SALIENCE` — the "who is the main character"
+  answer). Neither is a model or budget-tier problem.
+
+**Grounded run artifacts:** `runs/continue-writing-2026-07-05/{baseline,t5on}_grounded.transcript.jsonl`.
