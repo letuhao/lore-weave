@@ -78,4 +78,17 @@ describe('JobRow onOpenDetail (dockable-migration injectable prop)', () => {
     expect(screen.getByRole('link', { name: 'Extract ch 1-40' })).toHaveAttribute('href', '/jobs/knowledge/j1');
     expect(screen.getByRole('link', { name: 'row.details' })).toHaveAttribute('href', '/jobs/knowledge/j1');
   });
+
+  // /review-impl HIGH fix — a campaign job must keep its real deep-link to /campaigns/:id even
+  // when onOpenDetail IS provided (the studio job-detail panel/JobMonitor explicitly assumes it
+  // is never reached for a campaign job). This is the exact intersection the two describe
+  // blocks above never covered independently.
+  it('campaign job keeps the real <Link> to /campaigns/:id even when onOpenDetail is provided', () => {
+    const onOpenDetail = vi.fn();
+    renderRow({ ...job, kind: 'campaign', title: 'My campaign', job_id: 'c9' }, onOpenDetail);
+    expect(screen.queryByRole('button', { name: 'My campaign' })).not.toBeInTheDocument();
+    expect(screen.getByRole('link', { name: 'My campaign' })).toHaveAttribute('href', '/campaigns/c9');
+    expect(screen.getByRole('link', { name: 'row.details' })).toHaveAttribute('href', '/campaigns/c9');
+    expect(onOpenDetail).not.toHaveBeenCalled();
+  });
 });

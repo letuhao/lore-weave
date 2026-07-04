@@ -46,6 +46,11 @@ export function JobRow({
   const started = formatRelative(job.created_at);
   const duration = formatDuration(job.created_at, job.updated_at);
   const openDetail = () => onOpenDetail?.(job.service, job.job_id);
+  // /review-impl HIGH fix: onOpenDetail must never override the campaign deep-link — job-detail
+  // (JobMonitor) explicitly assumes it's never reached for a campaign job (see its own header
+  // comment: "Campaign jobs redirect to /campaigns/:id upstream"). A campaign row keeps the real
+  // <Link> even when the studio panel supplies onOpenDetail.
+  const useCallbackNav = Boolean(onOpenDetail) && job.kind !== 'campaign';
 
   return (
     <div className={nested ? 'bg-muted/20' : ''}>
@@ -67,7 +72,7 @@ export function JobRow({
 
         {/* col 2 — job: title + kind badge + service·model */}
         <div className={`min-w-0 ${nested ? 'pl-3' : ''}`}>
-          {onOpenDetail ? (
+          {useCallbackNav ? (
             <button
               type="button"
               onClick={openDetail}
@@ -126,7 +131,7 @@ export function JobRow({
         {/* col 7 — actions */}
         <div className="flex flex-wrap items-center gap-1.5">
           <JobControls service={job.service} jobId={job.job_id} controlCaps={job.control_caps} compact />
-          {onOpenDetail ? (
+          {useCallbackNav ? (
             <button
               type="button"
               onClick={openDetail}

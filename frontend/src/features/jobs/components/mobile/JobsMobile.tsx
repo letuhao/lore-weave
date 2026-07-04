@@ -29,14 +29,17 @@ function JobCard({
       : `/jobs/${encodeURIComponent(job.service)}/${encodeURIComponent(job.job_id)}`;
   const kindLabel = t(`kind.${job.kind}`, { defaultValue: job.kind });
   const label = job.title || kindLabel;
+  // /review-impl HIGH fix (same as JobRow.tsx): never override the campaign deep-link — a
+  // campaign job keeps its real <Link> to /campaigns/:id even when onOpenDetail is supplied.
+  const useCallbackNav = Boolean(onOpenDetail) && job.kind !== 'campaign';
 
   return (
     <div className="flex flex-col gap-2 rounded-lg border bg-card p-3">
       <div className="flex items-start justify-between gap-2">
-        {onOpenDetail ? (
+        {useCallbackNav ? (
           <button
             type="button"
-            onClick={() => onOpenDetail(job.service, job.job_id)}
+            onClick={() => onOpenDetail!(job.service, job.job_id)}
             className="min-w-0 truncate text-left text-sm font-medium hover:underline"
           >
             {label}

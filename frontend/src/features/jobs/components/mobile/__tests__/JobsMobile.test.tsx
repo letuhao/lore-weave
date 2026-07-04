@@ -77,4 +77,18 @@ describe('JobsMobile onOpenDetail (dockable-migration injectable prop)', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Translate book X' }));
     expect(onOpenDetail).toHaveBeenCalledWith('translation', 't1');
   });
+
+  // /review-impl HIGH fix — same campaign-deep-link gap as JobRow.tsx, duplicated here since
+  // JobCard has its own independent onOpenDetail branch.
+  it('campaign job keeps the real <Link> to /campaigns/:id even when onOpenDetail is provided', () => {
+    const onOpenDetail = vi.fn();
+    const campaignJob = { ...job, kind: 'campaign', title: 'My campaign', job_id: 'c9' };
+    dashMock.mockReturnValue(
+      baseDash({ history: { data: { items: [campaignJob], total: 1, next_cursor: null }, isLoading: false, error: null } }),
+    );
+    renderMobile(onOpenDetail);
+    expect(screen.queryByRole('button', { name: 'My campaign' })).not.toBeInTheDocument();
+    expect(screen.getByRole('link', { name: 'My campaign' })).toHaveAttribute('href', '/campaigns/c9');
+    expect(onOpenDetail).not.toHaveBeenCalled();
+  });
 });
