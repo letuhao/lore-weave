@@ -113,8 +113,21 @@ by T1.
 
 **Net T5 verdict (unchanged): default OFF.** But the honest reason is *full≈static grounding
 for a thinly-extracted book* (gate saves ~40 tok = the full−static delta) — genuinely
-UNPROVEN for a richly-extracted book where full-mode grounding could be several K. A
-rich-book A/B is the real validate-or-kill; this thin 2-chapter seed can't settle it.
+UNPROVEN for a richly-extracted book where full-mode grounding could be several K.
+
+**Why a rich-book A/B couldn't be produced this session (root cause):** the Dracula KG
+project was created directly (SQL) WITHOUT a graph schema/ontology, so extraction had no
+entity-kinds to populate → `entities=0` on every chapter → grounding stayed thin
+(`memory_knowledge` = 88–1126 tok, sections only `{project, instructions}`, never a
+`passages`/`entities` section). Producing genuinely rich grounding needs the FULL KG
+authoring pipeline (author a graph schema → benchmark → extraction-with-schema →
+passages), several gates deep — and a second extraction wedged (likely the LM Studio
+queue). So T5's savings on a truly lore-rich book remain **unmeasured, not disproven**.
+
+**FINAL honest state:** T5 gate is correct + safe + tested + fires correctly + **default
+OFF**. On all *measurable* configs it saves ≈0 (thin grounding). Its potential value on a
+richly-grounded book, or under the D1 pull mode, is unproven and would need the full KG
+seed. This is where the honest measurement bottoms out on the available infra.
 
 **Bonus:** the seeded Dracula KG project (`019f2be0`, benchmark-passed, 2 chapters
 extracted) partially resolves **D-EVAL-BOOK** — there is now a KG-linked book on
