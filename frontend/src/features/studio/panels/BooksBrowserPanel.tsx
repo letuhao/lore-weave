@@ -1,22 +1,23 @@
-import { Link, useSearchParams } from 'react-router-dom';
+// 14_utility_panels.md Phase C2 — the `books` dock panel: browse/search/filter/create, the
+// SAME list `BooksPage.tsx` renders, via the shared `useBooksList()` hook (C1, DOCK-2 — no
+// forked logic). Unlike `BooksPage.tsx` (a standalone route where a row click is a real
+// route-link navigation), a row click here opens the `book-reader` dock panel as a SIBLING tab
+// in the SAME studio (`host.openPanel`) — the active book's studio never unmounts (DOCK-7).
+// The create dialog reuses `FormDialog` as-is (already DOCK-9 compliant).
 import { useTranslation } from 'react-i18next';
-import { BookOpen, Plus, ChevronRight, Languages } from 'lucide-react';
+import { BookOpen, Plus, ChevronRight } from 'lucide-react';
 import { FilterToolbar, Pagination, EmptyState, FormDialog, StatusBadge, SkeletonCard, LanguagePicker } from '@/components/shared';
 import { LanguageDisplay } from '@/components/shared/LanguageDisplay';
-import { PageHeader } from '@/components/layout/PageHeader';
 import { useBooksList, hashToHue } from '@/features/books/hooks/useBooksList';
+import { useStudioHost } from '../host/StudioHostProvider';
+import { useStudioPanel } from './useStudioPanel';
+import type { IDockviewPanelProps } from 'dockview-react';
 
-export function BooksPage() {
+export function BooksBrowserPanel(props: IDockviewPanelProps) {
+  useStudioPanel('books', props.api);
   const { t } = useTranslation('books');
-  // C22 — the Translate intent routes here with ?intent=translate so the
-  // workspace lands tailored to translation (a hint pointing to the per-book
-  // translation surface), NOT a generic shell. Route-only: no new translator flow.
-  const [searchParams] = useSearchParams();
-  const translateIntent = searchParams.get('intent') === 'translate';
+  const host = useStudioHost();
 
-  // C1 — list/search/language-filter/create/coverage-batch logic extracted into
-  // useBooksList() (docs/specs/2026-07-01-writing-studio/14_utility_panels.md Phase C1) so
-  // this page and the studio `books` dock panel (BooksBrowserPanel) share one implementation.
   const {
     total,
     loading,
@@ -43,36 +44,26 @@ export function BooksPage() {
     handleCreate,
   } = useBooksList();
 
-  return (
-    <div className="space-y-6">
-      <PageHeader
-        title={t('workspace')}
-        actions={
-          <button
-            onClick={() => setCreateOpen(true)}
-            data-testid="book-create-button"
-            className="btn-glow inline-flex items-center gap-2 rounded-md bg-primary px-3.5 py-2 text-sm font-medium text-primary-foreground transition-all hover:bg-primary/90"
-          >
-            <Plus className="h-4 w-4" />
-            {t('new_book')}
-          </button>
-        }
-      />
+  const openReader = (bookId: string) => {
+    // Reads the book from where its FIRST chapter is (a plain browse-then-read open — no
+    // chapterId is known yet). BookReaderPanel shows a placeholder until one resolves via its
+    // own chapter fetch; opening WITHOUT a chapterId still retargets the singleton reader tab.
+    host.openPanel('book-reader', { params: { bookId } });
+  };
 
-      {translateIntent && (
-        <div
-          data-testid="translate-intent-hint"
-          className="flex items-start gap-2.5 rounded-md border border-primary/30 bg-primary/5 px-3.5 py-2.5 text-sm"
+  return (
+    <div data-testid="studio-books-panel" className="flex h-full min-h-0 flex-col gap-4 overflow-auto p-4">
+      <div className="flex items-center justify-between">
+        <h2 className="font-serif text-sm font-semibold">{t('workspace')}</h2>
+        <button
+          onClick={() => setCreateOpen(true)}
+          data-testid="book-create-button"
+          className="btn-glow inline-flex items-center gap-2 rounded-md bg-primary px-3.5 py-2 text-sm font-medium text-primary-foreground transition-all hover:bg-primary/90"
         >
-          <Languages className="mt-0.5 h-4 w-4 flex-shrink-0 text-primary" />
-          <span className="text-muted-foreground">
-            {t('translateIntent.hint', {
-              defaultValue:
-                'Pick a book to translate — open it, then use the Translation tab to start a translation.',
-            })}
-          </span>
-        </div>
-      )}
+          <Plus className="h-4 w-4" />
+          {t('new_book')}
+        </button>
+      </div>
 
       {error && (
         <div className="rounded-md border border-destructive/30 bg-destructive/5 px-3 py-2 text-sm text-destructive">
@@ -105,7 +96,6 @@ export function BooksPage() {
         }
       />
 
-      {/* Loading */}
       {loading && (
         <div className="space-y-2">
           <SkeletonCard />
@@ -114,7 +104,6 @@ export function BooksPage() {
         </div>
       )}
 
-      {/* Empty state */}
       {!loading && filteredBooks.length === 0 && (
         <EmptyState
           icon={BookOpen}
@@ -133,17 +122,16 @@ export function BooksPage() {
         />
       )}
 
-      {/* Book list */}
       {!loading && filteredBooks.length > 0 && (
         <div className="space-y-2">
           {filteredBooks.map((book) => (
-            <Link
+            <button
               key={book.book_id}
-              to={`/books/${book.book_id}`}
+              type="button"
+              onClick={() => openReader(book.book_id)}
               data-testid="book-row"
-              className="group flex items-center gap-4 rounded-lg border p-4 transition-all hover:border-[hsl(var(--border-hover,25_6%_24%))] hover:bg-card"
+              className="group flex w-full items-center gap-4 rounded-lg border p-4 text-left transition-all hover:border-[hsl(var(--border-hover,25_6%_24%))] hover:bg-card"
             >
-              {/* Cover */}
               <div
                 className="flex h-16 w-11 flex-shrink-0 items-end overflow-hidden rounded border border-[hsl(var(--border-hover,25_6%_24%))]"
                 style={{
@@ -156,7 +144,6 @@ export function BooksPage() {
                 </span>
               </div>
 
-              {/* Info */}
               <div className="min-w-0 flex-1">
                 <div className="flex items-center gap-2">
                   <span className="truncate font-serif font-medium">{book.title}</span>
@@ -193,28 +180,22 @@ export function BooksPage() {
                 )}
               </div>
 
-              {/* Translation language dots */}
               {bookLangs[book.book_id] && bookLangs[book.book_id].length > 0 && (
                 <div className="flex items-center gap-1" title={t('translated_to', { langs: bookLangs[book.book_id].join(', ') })}>
                   {bookLangs[book.book_id].map((lang) => (
-                    <span
-                      key={lang}
-                      className="h-2 w-2 rounded-full bg-success"
-                      title={lang}
-                    />
+                    <span key={lang} className="h-2 w-2 rounded-full bg-success" title={lang} />
                   ))}
                 </div>
               )}
 
               <ChevronRight className="h-4 w-4 text-muted-foreground/30 transition-colors group-hover:text-muted-foreground" />
-            </Link>
+            </button>
           ))}
         </div>
       )}
 
       <Pagination total={total} limit={limit} offset={offset} onChange={setOffset} />
 
-      {/* Create book dialog */}
       <FormDialog
         open={createOpen}
         onOpenChange={setCreateOpen}

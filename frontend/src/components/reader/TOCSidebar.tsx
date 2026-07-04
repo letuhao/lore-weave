@@ -25,6 +25,14 @@ interface TOCSidebarProps {
   onLanguageChange: (lang: string) => void;
   /** Reading progress per chapter (from analytics API) */
   readProgress?: ReadingProgress[];
+  /**
+   * Studio dock panels (docs/standards/dockable-gui.md DOCK-7) must never route-navigate.
+   * When supplied, a chapter click calls this instead of the default route push — the
+   * `book-reader` panel passes a callback that retargets its own params via
+   * `props.api.updateParameters` (14_utility_panels.md Phase C4). Omitted ⇒ unchanged
+   * original behavior (the standalone ReaderPage route).
+   */
+  onNavigateChapter?: (chapterId: string) => void;
 }
 
 export function TOCSidebar({
@@ -40,6 +48,7 @@ export function TOCSidebar({
   activeLanguage,
   onLanguageChange,
   readProgress,
+  onNavigateChapter,
 }: TOCSidebarProps) {
   const navigate = useNavigate();
 
@@ -82,7 +91,11 @@ export function TOCSidebar({
             return (
               <button
                 key={ch.chapter_id}
-                onClick={() => { navigate(`/books/${bookId}/chapters/${ch.chapter_id}/read`); onClose(); }}
+                onClick={() => {
+                  if (onNavigateChapter) onNavigateChapter(ch.chapter_id);
+                  else navigate(`/books/${bookId}/chapters/${ch.chapter_id}/read`);
+                  onClose();
+                }}
                 className={cn(
                   'flex w-full items-center gap-3 border-b px-4 py-2.5 text-left text-xs transition-colors',
                   isCurrent
