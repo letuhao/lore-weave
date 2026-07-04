@@ -43,7 +43,30 @@ no-op means the agent later grounds on an **empty graph while the UI/job says "d
 the failure surfaces far downstream (thin grounding, wrong answers), exactly the class the
 T5 audit itself tripped over.
 
-## Proposed fix (needs the finalization flow located first)
+## STATUS (2026-07-04)
+
+- ✅ **Gap #1 (output validation) — FIXED.** The finalizer is `worker-ai/app/runner.py::_complete_job`
+  (it already flagged the all-skipped case; I extended the SAME honesty CASE): a job that
+  PROCESSED items but made **0 LLM calls** now completes with
+  `error_message = 'completed but made 0 LLM calls over N processed item(s) — no extraction
+  performed (no usable graph schema kinds, or the extraction provider was unreachable)'` +
+  a loud `logger.warning`, instead of a bare silent `complete`. Status stays `complete`
+  (skips/no-ops are terminal by design; `failed` would trip campaign breakers) but the row
+  says so out loud. Test: `test_complete_job_flags_zero_llm_call_noop`.
+- ⚪ **Gap #2 (input validation) — MOOT as framed.** `GraphSchemaRepo.resolve_for_project`
+  ALWAYS resolves (fallback_code="general"), so "no schema" can't be rejected at dispatch.
+  The real issue (the general schema's kinds don't fit the book) now surfaces DOWNSTREAM via
+  gap #1's completion flag. A dispatch-time "do the resolved kinds fit this book" heuristic is
+  a deeper, lower-priority nicety.
+- ⏳ **Gap #1b (advisory) — 0 GRAPH WRITES despite LLM calls** (job 019f2bed: 8 calls,
+  entities=0). Deliberately NOT flagged: a front-matter chapter legitimately yields 0, so a
+  0-entities flag would false-positive. Catching a WHOLE-scope 0-write extraction as advisory
+  needs a cumulative entity-write counter on the job (thread the persist-pass2 counts through)
+  — a follow-up.
+- ⏳ **Gap #3 (stall detection) — still open.** A `running` job stuck in a stage with no
+  progress needs a `last_progress_at` + a sweeper flip to `stalled`. Separate change.
+
+## Proposed fix (original — for the remaining gaps)
 - **Output signal at finalization:** compute `entities_written + relations + facts` and
   `llm_calls_made`; if a non-skipped, entity-producing scope finalizes with **0 LLM calls
   OR 0 graph writes**, set a distinct terminal signal — a `completed_empty` status, or a

@@ -213,6 +213,35 @@ async def test_complete_job_stamps_all_skipped_error_message():
     assert "items_skipped" in sql.split("RETURNING")[1]  # counters returned for the log
 
 
+async def test_complete_job_flags_zero_llm_call_noop(caplog):
+    # D-EXTRACTION-SILENT-NOOP: a job that PROCESSED items but made 0 LLM calls did no
+    # extraction — the UPDATE must carry the honesty CASE, RETURN the counters, and the
+    # completion must log a loud warning (not read as a clean success).
+    import logging
+
+    from app.runner import _complete_job
+
+    pool = AsyncMock()
+    conn = AsyncMock()
+    conn.fetchrow = AsyncMock(return_value={
+        "job_id": uuid.uuid4(), "cost_spent_usd": 0,
+        "items_skipped": 0, "items_total": 2,
+        "items_processed": 2, "llm_calls_made": 0,
+    })
+    _acq = MagicMock()
+    _acq.__aenter__ = AsyncMock(return_value=conn)
+    _acq.__aexit__ = AsyncMock(return_value=False)
+    pool.acquire = MagicMock(return_value=_acq)
+
+    with caplog.at_level(logging.WARNING):
+        await _complete_job(pool, uuid.uuid4(), uuid.uuid4())
+    sql = conn.fetchrow.await_args.args[0]
+    assert "llm_calls_made" in sql and "0 LLM calls" in sql   # the new honesty CASE
+    ret = sql.split("RETURNING")[1]
+    assert "items_processed" in ret and "llm_calls_made" in ret  # counters for the log
+    assert any("0 LLM calls" in r.message for r in caplog.records)  # loud, not silent
+
+
 async def test_chapter_extracted_best_effort_on_txn_fallback():
     # On the tx-failure fallback, the cursor still advances AND we best-effort emit
     # the chapter event (the campaign's stuck-reconcile is the backstop for loss).

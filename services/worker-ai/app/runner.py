@@ -946,11 +946,21 @@ async def _complete_job(pool: asyncpg.Pool, user_id: UUID, job_id: UUID) -> None
                 error_message = CASE
                   WHEN items_skipped > 0 AND items_total > 0 AND items_skipped >= items_total
                     THEN 'completed with ALL ' || items_total || ' items skipped — no work performed (see job logs)'
+                  -- D-EXTRACTION-SILENT-NOOP: a job that PROCESSED items (not skipped) but
+                  -- made ZERO LLM calls did no extraction — the LLM is what identifies
+                  -- entities/relations/facts. Reporting a bare 'complete' let a silent
+                  -- no-op (no graph schema kinds / provider unreachable) masquerade as a
+                  -- built graph. Same convention as the skip case: status stays 'complete'
+                  -- (no campaign-breaker trip) but the row says so out loud.
+                  WHEN items_processed > 0 AND COALESCE(llm_calls_made, 0) = 0
+                    THEN 'completed but made 0 LLM calls over ' || items_processed ||
+                         ' processed item(s) — no extraction performed (no usable graph schema kinds, or the extraction provider was unreachable)'
                   ELSE error_message
                 END
             WHERE user_id = $1 AND job_id = $2
               AND status NOT IN ('complete', 'cancelled', 'failed')
-            RETURNING job_id, cost_spent_usd, items_skipped, items_total
+            RETURNING job_id, cost_spent_usd, items_skipped, items_total,
+                      items_processed, COALESCE(llm_calls_made, 0) AS llm_calls_made
             """,
             user_id, job_id,
         )
@@ -960,6 +970,15 @@ async def _complete_job(pool: asyncpg.Pool, user_id: UUID, job_id: UUID) -> None
             logger.warning(
                 "Job %s completed but ALL %d items were skipped — no work performed",
                 job_id, _total,
+            )
+        elif row is not None and row.get("items_processed") and not row.get("llm_calls_made"):
+            # D-EXTRACTION-SILENT-NOOP — a processed-but-no-LLM completion is a silent
+            # no-op; surface it loudly (the error_message above + this warning) so an
+            # empty graph never reads as a successful build.
+            logger.warning(
+                "Job %s completed but made 0 LLM calls over %d processed item(s) — "
+                "no extraction performed (check the project's graph schema kinds / the "
+                "extraction provider)", job_id, row.get("items_processed"),
             )
         if row is not None:
             # P4 — carry the final cumulative cost on the terminal event (the changing
