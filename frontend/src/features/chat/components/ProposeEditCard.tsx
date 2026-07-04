@@ -49,6 +49,19 @@ export function ProposeEditCard({ record, chapterId }: Props) {
     const sel = getEditorTarget()?.handle.getSelection();
     return sel && !sel.empty ? sel.text : null;
   });
+  // /review-impl HIGH fix — the `chapterId` prop below is never actually supplied by any
+  // caller (AssistantMessage renders `<ProposeEditCard record={tc} />` with no chapterId), so
+  // the "never write a proposal into a different document" guard at apply() was dead: on any
+  // surface where the editor stays mounted across a chapter switch (Studio's dock — a route
+  // navigation would remount the legacy editor page instead, key={bookId} only), a user could
+  // switch chapters after a proposal renders and Apply would silently splice chapter A's
+  // suggestion into chapter B's document. Self-derive the target chapter from the live editor
+  // bridge AT MOUNT (immediately after this card first renders for the suspended tool call —
+  // the same instant editor_context/registerEditorTarget agree on "the chapter this proposal
+  // is for") so the guard has a real value without requiring prop-threading through the whole
+  // shared message-list chain (AssistantMessage/MessageBubble/MessageList serve surfaces with
+  // no chapter concept at all). The `chapterId` prop still wins if a caller ever supplies one.
+  const [mountChapterId] = useState<string | null>(() => chapterId ?? getEditorTarget()?.chapterId ?? null);
   const model = useMemo(
     () => (oldSel != null ? buildHunks(oldSel, text) : null),
     [oldSel, text],
@@ -84,7 +97,7 @@ export function ProposeEditCard({ record, chapterId }: Props) {
       return;
     }
     // Chapter-match guard — never write a proposal into a different document.
-    if (chapterId && target.chapterId !== chapterId) {
+    if (mountChapterId && target.chapterId !== mountChapterId) {
       toast.error(t('propose.wrong_chapter', { defaultValue: 'This suggestion was for a different chapter.' }));
       return;
     }

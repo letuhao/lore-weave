@@ -36,6 +36,16 @@ export function ComposePanel(props: IDockviewPanelProps) {
     ...(unitMeta?.projectId ? { project_id: unitMeta.projectId } : {}),
     ...(unitMeta?.activeChapterId ? { active_chapter_id: unitMeta.activeChapterId } : {}),
   }), [bookId, unitMeta?.projectId, unitMeta?.activeChapterId]);
+  // #09/APPLY-DIFF fix — EditorPanel already registers the propose_edit write-back target
+  // (registerEditorTarget) whenever a chapter is open, but chat-service only advertises
+  // propose_edit when `editor_context` is present (stream_service.py ~1924/1685). Without this,
+  // the agent can never initiate a human-gated prose diff on the studio surface. Mirrors the
+  // legacy ChapterEditorPage.tsx's `editorContext={{ book_id, chapter_id }}` exactly; omitted
+  // (undefined) when no chapter is open yet, same as studioContext's active_chapter_id.
+  const editorContext = useMemo(
+    () => (unitMeta?.activeChapterId ? { book_id: bookId, chapter_id: unitMeta.activeChapterId } : undefined),
+    [bookId, unitMeta?.activeChapterId],
+  );
 
   // Register for the agent rack (#07a): this surface exposes the composition tool family + the
   // universal skill. Stable object (panelId keyed) so the registry never churns.
@@ -65,6 +75,7 @@ export function ComposePanel(props: IDockviewPanelProps) {
       <UiNavInterceptorContext.Provider value={navInterceptor}>
         <Chat
           bookId={bookId}
+          editorContext={editorContext}
           studioContext={studioContext}
           windowingEnabled
           actionBar={<StudioAgentBridge />}

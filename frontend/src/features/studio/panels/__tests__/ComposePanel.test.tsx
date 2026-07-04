@@ -16,6 +16,13 @@ vi.mock('@/features/chat/Chat', () => ({
   },
 }));
 
+// APPLY-DIFF wiring proof — stub the manuscript-unit meta hook so the test can drive whether a
+// chapter is "open" without mounting the full Tier-4 hoist provider.
+const unitMeta = vi.hoisted(() => ({ value: null as { projectId?: string; activeChapterId: string | null } | null }));
+vi.mock('../../manuscript/unit/ManuscriptUnitProvider', () => ({
+  useManuscriptUnitMeta: () => unitMeta.value,
+}));
+
 import { ComposePanel } from '../ComposePanel';
 
 const dockProps = { api: { setTitle: vi.fn() } } as unknown as IDockviewPanelProps;
@@ -49,5 +56,24 @@ describe('ComposePanel', () => {
     expect(compose).toBeTruthy();
     expect(compose?.commandId).toBe('studio.openPanel.compose');
     expect(compose?.mcpToolPrefixes).toContain('composition_');
+  });
+
+  // APPLY-DIFF fix (writing-studio-fragmented register #2) — EditorPanel already registers the
+  // propose_edit write-back target whenever a chapter is open; chat-service only advertises
+  // propose_edit when `editorContext` is present. Without this the agent could never initiate a
+  // human-gated prose diff on the studio surface (chat-service test coverage alone can't catch
+  // this — the gap was entirely in what the STUDIO surface passes to <Chat>).
+  it('passes editorContext to <Chat> once a chapter is open, mirroring the legacy editor', () => {
+    unitMeta.value = { activeChapterId: 'chapter-9' };
+    render(<StudioHostProvider bookId="book-42"><ComposePanel {...dockProps} /></StudioHostProvider>);
+    expect(chatProps.value).toMatchObject({
+      editorContext: { book_id: 'book-42', chapter_id: 'chapter-9' },
+    });
+  });
+
+  it('omits editorContext when no chapter is open yet (no false propose_edit advertisement)', () => {
+    unitMeta.value = { activeChapterId: null };
+    render(<StudioHostProvider bookId="book-42"><ComposePanel {...dockProps} /></StudioHostProvider>);
+    expect(chatProps.value?.editorContext).toBeUndefined();
   });
 });

@@ -10,12 +10,14 @@ const submitToolResult = vi.fn().mockResolvedValue('');
 const replaceSelection = vi.fn(() => true);
 const insertAtCursor = vi.fn(() => true);
 let selection: { from: number; to: number; empty: boolean; text: string } | null;
+let targetChapterId = 'ch1';
+const toastError = vi.fn();
 
 vi.mock('../../providers', () => ({ useChatStream: () => ({ submitToolResult }) }));
 vi.mock('../../context/editorBridge', () => ({
   getEditorTarget: () => ({
     bookId: 'b1',
-    chapterId: 'ch1',
+    chapterId: targetChapterId,
     handle: {
       getSelection: () => selection,
       replaceSelection: (...a: unknown[]) => replaceSelection(...a),
@@ -23,7 +25,7 @@ vi.mock('../../context/editorBridge', () => ({
     },
   }),
 }));
-vi.mock('sonner', () => ({ toast: { error: vi.fn() } }));
+vi.mock('sonner', () => ({ toast: { error: (...a: unknown[]) => toastError(...a) } }));
 
 import { ProposeEditCard } from '../ProposeEditCard';
 import type { ToolCallRecord } from '../../types';
@@ -37,7 +39,9 @@ describe('ProposeEditCard — hunk review', () => {
     submitToolResult.mockClear();
     replaceSelection.mockClear();
     insertAtCursor.mockClear();
+    toastError.mockClear();
     selection = { from: 0, to: 10, empty: false, text: 'A. B. C.' };
+    targetChapterId = 'ch1';
   });
 
   it('renders per-hunk diff for a replace_selection rewrite', () => {
@@ -108,5 +112,47 @@ describe('ProposeEditCard — hunk review', () => {
     expect(screen.queryByTestId('propose-hunks')).not.toBeInTheDocument();
     fireEvent.click(screen.getByText('propose.apply'));
     await waitFor(() => expect(replaceSelection).toHaveBeenCalledWith('Whole rewrite.', expect.anything()));
+  });
+
+  // /review-impl HIGH — no caller ever passes the `chapterId` prop (AssistantMessage renders
+  // `<ProposeEditCard record={tc} />` bare), so the cross-chapter guard was dead in production:
+  // on a surface where the editor stays mounted across a chapter switch (Studio's dock), Apply
+  // would silently splice a stale proposal into whatever chapter is CURRENTLY open. The card now
+  // self-derives the target chapter from the live editor bridge at mount instead.
+  describe('cross-chapter guard (self-derived, no chapterId prop from the caller)', () => {
+    it('blocks Apply if the open chapter changed since this card mounted', async () => {
+      // Card mounts while chapter 'ch1' is open (the chapter the proposal was generated for).
+      render(<ProposeEditCard record={record({ operation: 'insert_at_cursor', text: 'New paragraph.' })} />);
+      // User navigates to a different chapter in the studio manuscript tree before clicking Apply.
+      targetChapterId = 'ch2';
+      fireEvent.click(screen.getByText('propose.apply'));
+      // i18n isn't initialized in this test env — useTranslation resolves to the raw key.
+      await waitFor(() => expect(toastError).toHaveBeenCalledWith('propose.wrong_chapter'));
+      expect(insertAtCursor).not.toHaveBeenCalled();
+      expect(submitToolResult).not.toHaveBeenCalled();
+      // The run stays suspended — buttons remain for a re-ask, not silently resolved.
+      expect(screen.getByText('propose.apply')).toBeInTheDocument();
+    });
+
+    it('applies normally when the chapter is unchanged at Apply time', async () => {
+      render(<ProposeEditCard record={record({ operation: 'insert_at_cursor', text: 'New paragraph.' })} />);
+      fireEvent.click(screen.getByText('propose.apply'));
+      await waitFor(() => expect(insertAtCursor).toHaveBeenCalledTimes(1));
+      expect(toastError).not.toHaveBeenCalled();
+    });
+
+    it('an explicit chapterId prop still overrides the self-derived snapshot', async () => {
+      // A future caller that resolves its own canonical chapterId should win over the bridge.
+      render(
+        <ProposeEditCard
+          record={record({ operation: 'insert_at_cursor', text: 'New paragraph.' })}
+          chapterId="ch-explicit"
+        />,
+      );
+      // Live bridge target is 'ch1' — mismatched against the explicit prop — Apply must block.
+      fireEvent.click(screen.getByText('propose.apply'));
+      await waitFor(() => expect(toastError).toHaveBeenCalledWith('propose.wrong_chapter'));
+      expect(insertAtCursor).not.toHaveBeenCalled();
+    });
   });
 });
