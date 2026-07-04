@@ -112,6 +112,21 @@ Evidence: `contracts/logging` (PII-aware, typed) has **0 adopters** (the fleet u
 
 ---
 
+## Area 7 — Multilingual / language-bias  → standard: [`multilingual.md`](../standards/multilingual.md)
+
+**Current state:** substantially multilingual-aware (a shared NFKC+casefold+CJK-fold spine, mirrored Go+Python parity-tested; a per-language pattern registry; a genuinely multi-language injection sanitizer en+zh+ja+ko+vi; CJK-aware chunkers) — but English-first rule logic recurs and the good patterns are applied inconsistently.
+
+**Bias sites (backlog):** 🔴 **A1** intent classifier 100% English keywords (`knowledge-service/app/context/intent/classifier.py`, live L3 retrieval path → zh/ja/ko/vi get no intent routing) · 🔴 **A6** `ensure_ascii=True` in `translation-service/app/broker.py:91,103` (trivial fix; wire bloat) · **A2** proper-noun `[A-Z][a-z]+` (`selectors/glossary.py:72` — fails vi diacritics/ja kana/ko hangul) · **A5** honorific-strip list English+romanized only, no native 大人/님/様 (`canonical.py:41` — load-bearing for the dedup id) · A3 English-only stopwords · A4 English negation object-slot · FE i18n 4-locale hardcoded (~93 manual imports; `fallbackLng:'en'`; extensions feature has English literals bypassing `t()`) · notification titles English-concat + no i18n columns · `SUPPORTED_LANGUAGES=5` → English fallback; translation target defaults `"en"`. Moderation: no in-repo wordlist (provider-delegated). **P1 enforcement:** `scripts/language-bias-gate.py` + a multi-language golden-fixture set (corpus has 0 ja / 0 ko despite both first-class) + normalization parity tests.
+
+## Area 8 — SDK-first / reuse-violations  → standard: [`sdk-first.md`](../standards/sdk-first.md)
+
+**Current state:** a strong SDK layer exists (`loreweave_{llm,extraction,grounding,grants,obs,mcp,jobs}` + Go mirrors) with target-shape examples (`loreweave_grants` "extracted from 3 byte-identical copies"; `loreweave_obs`). But major copy-paste remains, and 3 shared modules are **orphans** (0 importers: `contracts/logging`, `contracts/errors`, `client_factory.go`).
+
+**Reuse-violations (backlog):** `logging_config.py` byte-identical ×3 · `trace_id` middleware ×5 · **platform JWT verifier re-implemented 6× Python + 8× Go** (no shared user-JWT verifier; only admin `contracts/adminjwt`) · notification `TerminalEvent` struct duplicated · drifted HTTP client wrappers (book/embedding/glossary) · config `Settings` boilerplate ×10. **P1 enforcement:** near-duplicate CI detector + symbol-level grep-gate (`jwt.ParseWithClaims`/`RedactFilter`/`TerminalEvent` outside `sdks/`/`contracts/`) + adoption check (orphan module = red). **SDKs to create:** `loreweave_logging`, `loreweave_authn`, `contracts/platformjwt`, shared `TerminalEvent`, `BaseInternalClient`.
+
+## Areas 9–10 — scope-separation + user-data-scope
+Design standards (no investigation defects): [`scope-separation.md`](../standards/scope-separation.md) (one data/logic owner per concept; cross-service via contract; SSOT-vs-derived) + [`user-data-scope.md`](../standards/user-data-scope.md) (classify user data C1–C6 → scope key + protection profile). Both compose existing rules (tenancy, PII, encryption, DB-per-service) into explicit design-time gates.
+
 ## Consolidated prioritized backlog
 
 ### P0 — live defects (fix-now when scheduled; each is a bug, not a standard)
@@ -123,9 +138,11 @@ Evidence: `contracts/logging` (PII-aware, typed) has **0 adopters** (the fleet u
 | P0-4 | Notification `mcp_approval` silently 400-dropped | `auth mcp_approvals.go:401` × `notification-service validCategory` |
 | P0-5 | chat-service feeds book/graph into prompts without `neutralize_injection` | `chat-service knowledge_skill.py` |
 | P0-6 | gitleaks not on `feat/*` / not in pre-commit; **pre-commit hooks not active** (`core.hooksPath=.git/hooks`) | `.githooks/pre-commit`, `foundation-ci.yml` |
+| P0-7 | intent classifier 100% English keywords (zh/ja/ko/vi get no retrieval routing) | `knowledge-service/app/context/intent/classifier.py` |
+| P0-8 | `ensure_ascii=True` inflates CJK on the event wire (trivial one-line fix) | `translation-service/app/broker.py:91,103` |
 
 ### P1 — enforcement gates (give the standards teeth; "full enforcement")
-Extend `timeout-lint`→Python · `pagination-cap-lint` · `blocking-in-async-lint` · flip `dependency-registry-lint`→error (after registering platform deps) · revive+flip+wire `logging-discipline-lint` · gitleaks all-branch + `.github/dependabot.yml` + govulncheck/pip-audit/npm-audit/cargo-audit · raw-SQL lint · injection-coverage lint · pii-classify→`services/*/migrations/` · LLM-logging chokepoint gate (extend `ai-provider-gate.py`) + round-trip decrypt test · `contracts/notifications/envelope` + consumer contract test · correction-event contract + no-silent-drop wiring test · shared JWT-verifier adversarial suite · edge rate-limit.
+Extend `timeout-lint`→Python · `pagination-cap-lint` · `blocking-in-async-lint` · flip `dependency-registry-lint`→error (after registering platform deps) · revive+flip+wire `logging-discipline-lint` · gitleaks all-branch + `.github/dependabot.yml` + govulncheck/pip-audit/npm-audit/cargo-audit · raw-SQL lint · injection-coverage lint · pii-classify→`services/*/migrations/` · LLM-logging chokepoint gate (extend `ai-provider-gate.py`) + round-trip decrypt test · `contracts/notifications/envelope` + consumer contract test · correction-event contract + no-silent-drop wiring test · shared JWT-verifier adversarial suite · edge rate-limit · **`language-bias-gate.py` + multi-language golden fixtures (ja/ko)** · **SDK near-duplicate detector + symbol-level grep-gate + orphan-adoption check** · create `loreweave_logging`/`loreweave_authn`/`contracts/platformjwt`/shared-`TerminalEvent`/`BaseInternalClient`.
 
 ### P2 — structural improvements
 Unify the two correlation-id namespaces (OTel-only) · shared logging SDK per language · dedicated `LLM_PAYLOAD_ENCRYPTION_KEY` + rotation · notification outbox + dedup + opt-out + i18n columns + SSE/WS unification · latency-SLO SoT · salience↔learning-service feedback integration · platform-tenant-boundary audit log · fix CLAUDE.md service table (12→46).

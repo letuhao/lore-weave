@@ -18,24 +18,14 @@ Monorepo layout:
 - `infra/` — docker-compose and infra config
 
 ### Services
-> **This table is a CURATED SUBSET — the core novel-workflow domain services.** The repo has **~46 services** total (incl. `learning-service`, `statistics-service`, `notification-service`, and the SRE/ops fleet: `alert-recorder`, `incident-bot`, `postmortem-bot`, `slo-budget-calculator`, `canary-controller`, `breach-notifier`, `integrity-checker`, `retention-worker`, `archive-worker`, `migration-orchestrator`, `campaign-service`, `roleplay-service`, `game-server`, `world-service`, `travel-service`, `tilemap-service`, …). **Authoritative full service→language map: [`contracts/language-rule.yaml`](contracts/language-rule.yaml) + [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md).** Do not assume a service is absent because it's not in this table.
 
-| Service | Language | Purpose |
-|---|---|---|
-| `api-gateway-bff` | TypeScript / NestJS | External traffic entry point |
-| `auth-service` | Go / Chi | Identity & JWT auth |
-| `book-service` | Go / Chi | Books, chapters, chunks |
-| `sharing-service` | Go / Chi | Visibility & sharing |
-| `catalog-service` | Go / Chi | Public catalog |
-| `provider-registry-service` | Go / Chi | BYOK AI provider credentials |
-| `usage-billing-service` | Go / Chi | Usage metering & billing |
-| `translation-service` | Python / FastAPI | Translation pipeline |
-| `glossary-service` | Go / Chi | Glossary & lore management. **Also hosts the wiki feature** (`wiki_articles`, `wiki_revisions`, `wiki_suggestions`) — wiki is NOT a separate service. |
-| `chat-service` | Python / FastAPI | Chat with LLMs via LiteLLM |
-| `knowledge-service` | Python / FastAPI | Knowledge graph + memory (Postgres SSOT + Neo4j derived, via event pipeline) — planned, see `docs/03_planning/101_DATA_RE_ENGINEERING_PLAN.md` and `docs/03_planning/KNOWLEDGE_SERVICE_ARCHITECTURE.md`. **Two-layer pattern with glossary**: glossary-service remains authored SSOT; knowledge-service adds a fuzzy/semantic entity layer that anchors to glossary entries via `glossary_entity_id` FK. Extraction writes canonical entities through to glossary via its existing `/internal/books/{book_id}/extract-entities` bulk API, and wiki stubs via `/v1/glossary/books/{book_id}/wiki/generate`. Pattern validated by Microsoft GraphRAG seed-graph (arXiv:2404.16130) and HippoRAG (arXiv:2405.14831). |
-| `video-gen-service` | Python / FastAPI | Media generation gateway; ComfyUI implementation in sibling **local-image-generator-service** (SD 1.5, SDXL, Illustrious, Flux 1/2, Qwen Image, Wan, LTX Video; custom pipelines for game assets, object sheets, animation) |
+The repo has **~46 services**. This file does **not** enumerate them — the old inlined table went stale and misled agents. **Authoritative service→language map: [`contracts/language-rule.yaml`](contracts/language-rule.yaml); purposes: [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md).** Language rule: Go = domain/meta · Python = AI/LLM · TS = gateway/realtime · Rust = kernel-derived. Do not assume a service is absent because it's not named here.
 
-Data: Postgres (per-service DBs), RabbitMQ (job/event bus — translation & extraction workers, outbox events, via AMQP/aio_pika), Redis (cache / rate-limit / ephemeral state), MinIO (objects).
+Load-bearing facts an agent needs regardless:
+- **`provider-registry-service`** is the ONLY home of provider SDKs/keys (Provider-gateway invariant below).
+- **`glossary-service`** = authored SSOT for lore AND hosts the **wiki** (`wiki_*` tables — wiki is NOT a separate service). **`knowledge-service`** = derived fuzzy/semantic layer (Postgres SSOT + Neo4j) anchored to glossary via `glossary_entity_id` FK (two-layer pattern; see [scope-separation](docs/standards/scope-separation.md)).
+- **`api-gateway-bff`** (TS/NestJS) = external entry point; **`chat`/`translation`/`knowledge`** = Python AI services; **`auth`/`book`/`sharing`/`catalog`/`usage-billing`** = Go domain.
+- Data: Postgres (per-service DBs), RabbitMQ (job/event bus + outbox), Redis (cache/rate-limit), MinIO (objects).
 
 ### Key Rules
 - **📇 Standards index (start here)** — every cross-cutting rule/law/invariant/machine-contract in the repo is catalogued in [`docs/standards/README.md`](docs/standards/README.md): what it governs · where the authoritative source lives · how it's enforced · status. It has a *quick-nav by concern* (building an MCP tool? a dockable panel? a new table? an LLM call?) + a *Known gaps* list, and it **links out — never duplicates**. **Adding/retiring a standard? Update its row there.** The rules below are the always-loaded subset.
@@ -76,13 +66,7 @@ features/<name>/
 
 ### Frontend-Tool Contract (agent→GUI tools — LOCKED)
 
-A *frontend tool* (the LLM calls it; the browser executes it: `ui_open_studio_panel`, `ui_navigate`, `propose_edit`, `confirm_action`, …) is a contract that spans **two services in two languages** — the schema lives in `services/chat-service/app/services/frontend_tools.py`, the executor lives in `frontend/src/features/**` — with **the LLM as the only thing joining them**. So a drift (arg-name mismatch, a free-string arg a weak model guesses wrong, a silent no-op) passes every isolated unit test yet kills the live loop. This shipped once (`ui_open_studio_panel`: `panel_id` had no enum, gemma-26b sent `panel:"editor"`, the resolver silently no-op'd, the model hallucinated success — fixed f1f9e9966). Every new frontend tool MUST follow:
-
-- **Closed-set arg ⇒ `enum` (never a bare `string`).** A finite value set (panel ids, modes, domains, operations) is always an enum — it pins the value AND reinforces the arg name for weak local models. Register the arg in `CLOSED_SET_ARGS` in `test_frontend_tools_contract.py`.
-- **Resolver never silently no-ops.** Every reject path returns a `result.error` string the model can self-correct from — not a bare `{opened:false}`.
-- **One name for one concept across tools.** Don't have `panel`/`page`/`panel_id` mean the same thing in three tools (that collision is what confused the model). Tolerating an alias is a band-aid, not the fix.
-- **The contract is machine-checked, both sides.** `contracts/frontend-tools.contract.json` is the committed cross-language SoT: `test_frontend_tools_contract.py` (BE) snapshots every schema + enforces the enum rule; `frontendToolContract.test.ts` (FE) proves each pure resolver reads every required arg (Proxy-access) + rejects with an error; `panelCatalogContract.test.ts` keeps the studio panel enum ⊆ the dock catalog. **Change a schema → regenerate the JSON (`WRITE_FRONTEND_CONTRACT=1 pytest …`) AND update the matching resolver**, or a test goes red.
-- **Verify an agent→GUI loop by its EFFECT, not the tool call.** A raw-stream smoke that sees `TOOL_CALL_START`/`RUN_FINISHED{suspended}` only proves the model *called* the tool — it never runs the resolver. Prove the loop with a **live browser smoke** (the GUI actually reacted) or its deterministic form (inject a suspended tool-call, assert the host effect).
+Full standard: [`docs/standards/mcp-tool-io.md`](docs/standards/mcp-tool-io.md) (inputs IN-1..8 + outputs OUT-1..6). Essentials: a frontend tool (`ui_open_studio_panel`, `propose_edit`, `confirm_action`, …) spans **2 services / 2 languages** joined only by the LLM — BE schema `chat-service/app/services/frontend_tools.py` ↔ FE resolver `frontend/src/features/**`. So a drift/free-string/silent-no-op passes unit tests yet kills the live loop (shipped once: `panel_id` had no enum → gemma sent `panel:"editor"` → silent no-op → hallucinated success). Rules: **closed-set arg ⇒ `enum`** (register in `CLOSED_SET_ARGS`); **resolver never silently no-ops** (return `result.error`); **one name for one concept**; **machine-checked both sides** via `contracts/frontend-tools.contract.json` (change a schema → `WRITE_FRONTEND_CONTRACT=1 pytest` + update the resolver, or a test reds); **verify by EFFECT** (live browser smoke, not raw-stream).
 
 ### Data Persistence Rules
 - **Server is the source of truth** — all user data in Postgres, all files in S3/MinIO
@@ -167,25 +151,7 @@ The legitimate stop points are the workflow's own PO checkpoints (CLARIFY end, P
 
 ## MCP Integration (ContextHub)
 
-ContextHub MCP server (`http://localhost:3000/mcp`) is an **optional tool** for persistent memory and semantic code search. Use it when available, skip when it's not running.
-
-### When to use MCP tools
-
-| Tool | When | Why |
-|---|---|---|
-| `search_code` | Before grepping for code | Semantic search finds by intent |
-| `search_lessons` | Starting a task | Load prior decisions/preferences |
-| `add_lesson` | After significant decisions | Persist knowledge for future sessions |
-| `check_guardrails` | Before risky actions (push, deploy, migration) | Enforce captured team rules |
-| `index_project` | After major code changes | Keep search results current |
-
-### MCP is optional — not a blocker
-
-If MCP server is down or unavailable:
-- Use standard tools (Glob, Grep, Read) to find code
-- Use `docs/sessions/SESSION_HANDOFF.md` for session continuity
-- Use `docs/03_planning/` for module context
-- Skip `check_guardrails` — use common sense instead
+ContextHub MCP (`http://localhost:3000/mcp` — a DISTINCT service, NOT the gateway) is an **optional** tool for persistent memory + semantic code search: `search_code` (before grepping), `search_lessons` (task start), `add_lesson` (after decisions), `check_guardrails` (before risky ops), `index_project` (after big changes). If it's down/absent, use Glob/Grep/Read + `docs/sessions/SESSION_HANDOFF.md` + `docs/03_planning/` and skip guardrails.
 
 ---
 
@@ -442,8 +408,8 @@ Read only the docs for the module you're actively working on.
 ## Project Constants
 ```
 project_id:      loreweave
-frontend_port:   5174 (Vite dev — see frontend/vite.config.ts)
-gateway:         api-gateway-bff (NestJS BFF) listens on container :3000, host-mapped :3123 (dev). FE always talks to it via RELATIVE /v1 (vite proxy → :3123 in dev; nginx → gateway:3000 in prod). No :3001 — that was a stale doc value.
+frontend:        :5174 = the BAKED nginx prod build (rebuild the image for FE changes; a host `vite dev` can SHADOW it). Robust FE smoke = built image on a free port, or `vite dev` :5199. FE talks to the gateway via RELATIVE /v1.
+gateway:         api-gateway-bff (NestJS BFF) — container :3000, host-mapped :3123 (dev). vite proxy → :3123 (dev); nginx → gateway:3000 (prod). No :3001 (stale).
 mcp_url:         http://localhost:3000/mcp (optional, ContextHub — a DISTINCT service, NOT the gateway)
 ```
 

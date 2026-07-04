@@ -1,0 +1,38 @@
+# Multilingual / Anti-Language-Bias Standard
+
+**Status:** ACTIVE · **Date:** 2026-07-04
+**Governs:** anything language-dependent — normalization, segmentation, rule-based input/output checks, stopwords, honorifics, intent, encoding, i18n — so it works for ALL languages the product handles (source zh/en/ja/ko/…, target vi/… — any pair), not hardcoded for one. Indexed in [`README.md`](./README.md).
+
+> **Why.** The product is a multilingual novel platform, but rule-based logic keeps getting written English-first, silently degrading for other languages: the intent classifier is 100% English keywords (so zh/ja/ko/vi queries get no retrieval routing); proper-noun extraction uses `[A-Z][a-z]+` (misses Vietnamese diacritics + Japanese kana + Korean hangul); the honorific-strip list — which feeds the entity dedup id — has no native 大人/님/様; a live event publisher uses `ensure_ascii=True` (2–3× byte bloat on CJK). The repo ALSO has excellent multilingual patterns (a shared NFKC+CJK-fold spine, a per-language pattern registry, a genuinely multi-language injection sanitizer). This standard makes the good patterns the rule and bans the English-first shortcuts.
+
+## Rules
+
+- **ML-1 · Language is a first-class explicit parameter, never assumed.** Any function doing language-specific rule logic (segmentation, keyword/intent matching, stopwords, honorifics, negation) takes an explicit `lang` (or detects it via the shared `detect_primary_language()`) and dispatches per language — the [pattern-registry](../../services/knowledge-service/app/extraction/patterns/__init__.py) shape (`get_patterns(lang)`, one module per language). No English-only rule may sit on a path all languages traverse **without a documented degrade-open fallback** for unknown scripts (e.g. `entity_presence`'s `_has_non_ascii()` opens the grounding gate for non-English rather than gating it out).
+- **ML-2 · Unicode-correct normalization only.** User/entity/name/text normalizes through the shared spine (`sdks/python/loreweave_extraction/name_normalize.py`: NFKC → Unicode `casefold()` → CJK traditional→simplified fold, **diacritics preserved** — vi `má`≠`ma`), **never bare `.lower()`/`.strip()`**. Any runtime that normalizes names mirrors + parity-tests against the Python/Go SoT (`namenorm.go`'s `TestT2SParityWithSoT` is the model). Honorific/stop lists must include **native-script** forms (中: 大人/公子, ko: 님, ja: 様/さん, vi: ông/bà/cô), not just English + romanized.
+- **ML-3 · Script-agnostic segmentation.** No word/sentence splitting that assumes spaces on user prose: **banned** — `.split(' ')`, `\w` for tokenizing prose, `[A-Z][a-z]+` for proper nouns, word-count by whitespace. Use the CJK-aware helpers (`translation-service/app/workers/chunk_splitter.py`, `sentence_buffer.py`); word/token counts count CJK/kana **per character** (`\p{L}` + explicit CJK ranges — see the FE `WordCountStatusItem` which avoids `\w` "would shred 'Uyển' → 2 words").
+- **ML-4 · No English-only rule logic on shared paths.** Keyword/intent/stopword lists are per-language or degrade-open. A rule-based **input/output check** (validation, sanitization, moderation) covers every supported language — the model is the multi-language injection sanitizer (`sdks/python/loreweave_grounding/sanitize.py`: explicit en+zh+ja+ko+vi + zero-width/bidi prenormalize + base64 re-scan). Copy that shape for any new content/validation check; never ship a Latin-only regex as the check.
+- **ML-5 · `ensure_ascii=False` wherever user text is serialized** — wire, storage, hashing, token measurement. Bare `json.dumps` on a body carrying prose is a defect (the `\uXXXX` inflation tax; [Context Budget Law](../specs/2026-07-03-context-budget-law.md) L3 / [MCP Tool I/O OUT-3](./mcp-tool-io.md)).
+- **ML-6 · Language-tagged data + per-locale i18n.** Detected/source/target language travels with the payload (the reader-language axis `book-service/reader_language.go` ↔ `knowledge-service/labels/reader_lang.py` + BCP-47 handling is the model). User-facing strings resolve per user locale via a **key+params** model, not baked English ([Notification NOTIF-1](./notification.md)); adding a UI language must not require editing ~93 manual imports. No default-to-English where the product's primary target differs (translation target, retrieval boost).
+
+## Good patterns to standardize on (already in-repo)
+Shared NFKC+casefold+CJK-fold spine (`name_normalize.py` + Go `namenorm.go`, parity-tested) · per-language pattern registry (`patterns/__init__.py`) · CJK-aware chunkers/token-estimators · Unicode word count (`WordCountStatusItem`) · multi-language injection sanitizer (`sanitize.py`) · reader-language first-class axis · `ensure_ascii=False` (`tool_result_wire.py`, `stream_service.py`).
+
+## Enforcement
+
+| Rule | Status | Gate |
+|---|---|---|
+| ML-5 ensure_ascii · ML-3 ASCII regexes · ML-2 naive lower | **to build** | `scripts/language-bias-gate.py` (model on `ai-provider-gate.py`: cross-platform, allowlist, `--staged` pre-commit): flag `json.dumps(body)` without `ensure_ascii=False`; `[A-Z][a-z]`/bare `\b\w+\b`/`.split(' ')` word-tokenizing on prose paths; naive `.lower()`/`.strip()` on user/name/entity/text vars |
+| ML-1/ML-4 per-language coverage | **to build** | a **multi-language golden-fixture set** — mandate ≥1 golden chapter per supported language (corpus has 6 en / 2 zh / 2 vi / **0 ja / 0 ko** despite ja/ko being first-class), + a per-language coverage manifest so an unproven language reads RED (checklist ≠ enforcement) |
+| ML-2 normalization parity | **partly enforced** | `TestT2SParityWithSoT` (Go↔Python Han fold); require a parity test for any mirrored normalization |
+
+## Known bias sites (execution backlog — [audit](../plans/2026-07-04-enterprise-hardening-audit.md))
+🔴 **A1** intent classifier 100% English keywords (`knowledge-service/app/context/intent/classifier.py`, live L3 path — zh/ja/ko/vi get no routing) · 🔴 **A6** `ensure_ascii=True` in `translation-service/app/broker.py:91,103` (trivial fix) · **A2** proper-noun `[A-Z][a-z]+` (`selectors/glossary.py:72`, fails vi/ja/ko) · **A5** honorific list no native-script (`canonical.py:41` — load-bearing for dedup id) · A3 stopwords English-only · A4 negation object-slot English · A7 FE splitter ASCII dialogue-guard. Moderation: no in-repo wordlist (provider-delegated) — if ever added, per-language from the start.
+
+## Checklist — any language-dependent code
+- [ ] Takes an explicit `lang` / detects it; dispatches per-language or degrades-open (ML-1)
+- [ ] Normalizes via the shared spine (NFKC+casefold+CJK), not `.lower()`; native-script honorifics/stopwords (ML-2)
+- [ ] No space-assuming split / `[A-Z][a-z]+` / `\w` on prose; CJK counted per-char (ML-3)
+- [ ] Rule-based checks cover every supported language (sanitizer shape), no Latin-only regex (ML-4)
+- [ ] `ensure_ascii=False` on all user-text serialization (ML-5)
+- [ ] Language tagged on the payload; i18n via key+params, no English default (ML-6)
+- [ ] A golden fixture per supported language proves it (ja/ko included)
