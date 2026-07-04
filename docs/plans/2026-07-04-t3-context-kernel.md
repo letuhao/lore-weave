@@ -10,9 +10,14 @@
 > `_PLANNER.plan()`. **T3.3a ✅ DONE (see COMMIT):** the script-aware token estimator
 > (`estimate_tokens`/`estimate_messages_tokens`) moved into the kernel (`loreweave_context.tokens`;
 > chat's `token_budget` re-exports it) — the foundational budget primitive compaction needs.
-> 16 kernel tests + 926 chat green (byte-identical) + live packaging check. **NEXT: T3.3b**
-> (move `compaction.py` under the kernel as `CompactionStrategy`; chat re-exports), **T3.4**
-> (package + voice/roleplay consumer), then the optimization-hypothesis A/B sweep.
+> 16 kernel tests + 926 chat green (byte-identical) + live packaging check. **T3.3b ✅ DONE
+> (see COMMIT):** `compaction.py` (tiered clear→summarize→truncate + T6/D6 breadcrumb/
+> recovery-hint) moved to `loreweave_context.compaction`; chat's module is now a re-export
+> shim (stream_service, sessions router, compact_service, tests unchanged); added a
+> `CompactionStrategy` swappable class (the compaction analogue of the Planner seam). The
+> summarizer stays INJECTED so no chat dep leaks into the kernel — provider-gate clean. 45
+> chat compaction + 926 full green (byte-identical). **NEXT: T3.4** (package + voice/roleplay
+> consumer + retire the byte-copy coupling), then the optimization-hypothesis A/B sweep.
 
 **Spec:** `docs/specs/2026-07-03-context-budget-law.md` §5 (Planner/Compiler), §12 (kernel),
 A1 (assembly surface), row T3. **Goal:** extract the scattered prompt-assembly + planning
