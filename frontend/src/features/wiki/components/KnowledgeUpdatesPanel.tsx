@@ -2,9 +2,12 @@ import { useState, useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useQuery } from '@tanstack/react-query';
 import { Link } from 'react-router-dom';
+import * as Dialog from '@radix-ui/react-dialog';
 import { RefreshCw, X, Check, AlertTriangle, ShieldAlert, Clock, Info, ScanSearch, ExternalLink, GitCompare } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useAuth } from '@/auth';
+import { useOptionalStudioHost } from '@/features/studio/host/StudioHostProvider';
+import { followStudioLink } from '@/features/studio/host/studioLinks';
 import { wikiApi } from '../api';
 import { useWikiStaleness } from '../hooks/useWikiStaleness';
 import { sourceJumpUrl } from '../lib/stalenessSource';
@@ -19,6 +22,14 @@ import type { WikiStalenessRow, WikiGenConfig, WikiStalenessDiff } from '../type
  * "Regenerate" (→ a cost-capped batch via the M7b dialog) or "Dismiss selected"
  * (accept-as-is, no spend); a header "Rescan" re-runs the recipe/kg fingerprint sweep.
  * Nothing regenerates until the user acts — the whole point of the deferred design.
+ *
+ * 15_wiki_panels.md B4 — DOCK-9: hand-rolled `fixed inset-0` overlay replaced with raw
+ * `Dialog.*` (not `FormDialog` — the header's "Rescan" action button doesn't fit FormDialog's
+ * title/description-only template, and relocating it would be a redesign the migration
+ * explicitly declined). B4 — DOCK-7: the per-row "view source" jump would navigate the whole
+ * studio away from itself when opened from inside the `wiki` dock panel; branch through
+ * `followStudioLink` (StepConfig.tsx precedent) when a StudioHost is present, otherwise the
+ * original <Link> (classic WikiTab page has no studio to route through).
  */
 function severityIcon(sev: string) {
   if (sev === 'hard') return ShieldAlert;
@@ -85,6 +96,7 @@ export function KnowledgeUpdatesPanel({
 }) {
   const { t } = useTranslation('wiki');
   const { accessToken } = useAuth();
+  const studioHost = useOptionalStudioHost();
   const { rows, dismiss, dismissing, dismissMany, rescan, rescanning } = useWikiStaleness(bookId);
   const [selected, setSelected] = useState<Set<string>>(new Set());
 
@@ -165,12 +177,14 @@ export function KnowledgeUpdatesPanel({
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50" onClick={onClose}>
-      <div className="flex max-h-[80vh] w-[640px] flex-col rounded-lg border bg-card shadow-xl" onClick={(e) => e.stopPropagation()}>
+    <Dialog.Root open onOpenChange={(next) => { if (!next) onClose(); }}>
+      <Dialog.Portal>
+        <Dialog.Overlay className="fixed inset-0 z-50 bg-black/50" />
+        <Dialog.Content className="fixed left-1/2 top-1/2 z-50 flex max-h-[80vh] w-[640px] -translate-x-1/2 -translate-y-1/2 flex-col rounded-lg border bg-card shadow-xl">
         <div className="flex items-center justify-between border-b px-5 py-3">
           <div>
-            <h3 className="text-sm font-semibold">{t('staleness.title')}</h3>
-            <p className="text-[11px] text-muted-foreground">{t('staleness.subtitle', { count: rows.length })}</p>
+            <Dialog.Title className="text-sm font-semibold">{t('staleness.title')}</Dialog.Title>
+            <Dialog.Description className="text-[11px] text-muted-foreground">{t('staleness.subtitle', { count: rows.length })}</Dialog.Description>
           </div>
           <div className="flex items-center gap-1">
             <button
@@ -183,9 +197,11 @@ export function KnowledgeUpdatesPanel({
               <ScanSearch className={cn('h-3.5 w-3.5', rescanning && 'animate-pulse')} />
               {rescanning ? t('staleness.rescanning') : t('staleness.rescan')}
             </button>
-            <button onClick={onClose} className="rounded p-1 text-muted-foreground hover:bg-secondary" aria-label={t('staleness.close')}>
-              <X className="h-4 w-4" />
-            </button>
+            <Dialog.Close asChild>
+              <button className="rounded p-1 text-muted-foreground hover:bg-secondary" aria-label={t('staleness.close')}>
+                <X className="h-4 w-4" />
+              </button>
+            </Dialog.Close>
           </div>
         </div>
 
@@ -245,16 +261,29 @@ export function KnowledgeUpdatesPanel({
                         </button>
                       )}
                       {jump && (
-                        <Link
-                          to={jump}
-                          onClick={onClose}
-                          data-testid="staleness-source-jump"
-                          title={t('staleness.viewSource')}
-                          className="inline-flex items-center gap-1 rounded border px-1.5 py-0.5 text-[10px] text-muted-foreground hover:bg-secondary hover:text-foreground"
-                        >
-                          <ExternalLink className="h-3 w-3" />
-                          {t('staleness.viewSource')}
-                        </Link>
+                        studioHost ? (
+                          <button
+                            type="button"
+                            onClick={() => { followStudioLink(jump, studioHost, { bookId }); onClose(); }}
+                            data-testid="staleness-source-jump"
+                            title={t('staleness.viewSource')}
+                            className="inline-flex items-center gap-1 rounded border px-1.5 py-0.5 text-[10px] text-muted-foreground hover:bg-secondary hover:text-foreground"
+                          >
+                            <ExternalLink className="h-3 w-3" />
+                            {t('staleness.viewSource')}
+                          </button>
+                        ) : (
+                          <Link
+                            to={jump}
+                            onClick={onClose}
+                            data-testid="staleness-source-jump"
+                            title={t('staleness.viewSource')}
+                            className="inline-flex items-center gap-1 rounded border px-1.5 py-0.5 text-[10px] text-muted-foreground hover:bg-secondary hover:text-foreground"
+                          >
+                            <ExternalLink className="h-3 w-3" />
+                            {t('staleness.viewSource')}
+                          </Link>
+                        )
                       )}
                       <button
                         onClick={() => dismiss(r.staleness_id)}
@@ -310,7 +339,8 @@ export function KnowledgeUpdatesPanel({
             </button>
           </div>
         </div>
-      </div>
-    </div>
+        </Dialog.Content>
+      </Dialog.Portal>
+    </Dialog.Root>
   );
 }

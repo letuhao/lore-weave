@@ -25,6 +25,8 @@ import { GlossaryOntologyPanel } from './GlossaryOntologyPanel';
 import { GlossaryUnknownPanel } from './GlossaryUnknownPanel';
 import { GlossaryAiSuggestionsPanel } from './GlossaryAiSuggestionsPanel';
 import { GlossaryMergeCandidatesPanel } from './GlossaryMergeCandidatesPanel';
+import { WikiPanel } from './WikiPanel';
+import { WikiEditorPanel } from './WikiEditorPanel';
 import { KnowledgeHubPanel } from './KnowledgeHubPanel';
 import { KgOverviewPanel } from './KgOverviewPanel';
 import { KgEntitiesPanel } from './KgEntitiesPanel';
@@ -46,6 +48,7 @@ import { LeaderboardBooksPanel } from './LeaderboardBooksPanel';
 import { LeaderboardAuthorsPanel } from './LeaderboardAuthorsPanel';
 import { LeaderboardTranslatorsPanel } from './LeaderboardTranslatorsPanel';
 import { LeaderboardTrendingPanel } from './LeaderboardTrendingPanel';
+import { ChapterBrowserPanel } from './ChapterBrowserPanel';
 
 export interface StudioPanelDef {
   id: string;
@@ -81,6 +84,14 @@ export const STUDIO_PANELS: StudioPanelDef[] = [
   { id: 'glossary-unknown', component: GlossaryUnknownPanel, titleKey: 'panels.glossary-unknown.title', descKey: 'panels.glossary-unknown.desc' },
   { id: 'glossary-ai-suggestions', component: GlossaryAiSuggestionsPanel, titleKey: 'panels.glossary-ai-suggestions.title', descKey: 'panels.glossary-ai-suggestions.desc' },
   { id: 'glossary-merge-candidates', component: GlossaryMergeCandidatesPanel, titleKey: 'panels.glossary-merge-candidates.title', descKey: 'panels.glossary-merge-candidates.desc' },
+  // 15_wiki_panels.md B1 — the wiki master-detail workspace (DOCK-2, same shared component the
+  // classic WikiTab page renders). Palette + agent openable.
+  { id: 'wiki', component: WikiPanel, titleKey: 'panels.wiki.title', descKey: 'panels.wiki.desc' },
+  // 15_wiki_panels.md B2 — params-retargeting singleton ({articleId, rightPanel?}), same
+  // precedent as book-reader/json-editor/skill-editor: hidden from palette + outside the agent
+  // enum (opened only via the `wiki` panel's Edit/History buttons — no wiki_* MCP tool exists
+  // yet for an agent to target it with).
+  { id: 'wiki-editor', component: WikiEditorPanel, titleKey: 'panels.wiki-editor.title', descKey: 'panels.wiki-editor.desc', hiddenFromPalette: true },
   // 14_kg_panels.md A2 — the KG launcher (DOCK-8 hub pattern): browse/open knowledge-graph
   // projects. Phase B adds the capability panels it currently opens via a new-tab fallback.
   { id: 'knowledge', component: KnowledgeHubPanel, titleKey: 'panels.knowledge.title', descKey: 'panels.knowledge.desc' },
@@ -116,6 +127,10 @@ export const STUDIO_PANELS: StudioPanelDef[] = [
   { id: 'leaderboard-authors', component: LeaderboardAuthorsPanel, titleKey: 'panels.leaderboard-authors.title', descKey: 'panels.leaderboard-authors.desc' },
   { id: 'leaderboard-translators', component: LeaderboardTranslatorsPanel, titleKey: 'panels.leaderboard-translators.title', descKey: 'panels.leaderboard-translators.desc' },
   { id: 'leaderboard-trending', component: LeaderboardTrendingPanel, titleKey: 'panels.leaderboard-trending.title', descKey: 'panels.leaderboard-trending.desc' },
+  // 15_chapter_browser.md — table/search surface for triage at scale (sort/filter/
+  // multi-select bulk actions + a Title-vs-Content search-mode toggle), sibling to
+  // the Manuscript Navigator (tree, for writing) not a replacement for it.
+  { id: 'chapter-browser', component: ChapterBrowserPanel, titleKey: 'panels.chapter-browser.title', descKey: 'panels.chapter-browser.desc' },
   // Agent Extensibility Registry (§13b) — extensions hub + proposals inbox are
   // palette-openable + in the agent enum; skill-editor is a params-retargeting
   // singleton (json-editor precedent), hidden from palette + outside the enum.

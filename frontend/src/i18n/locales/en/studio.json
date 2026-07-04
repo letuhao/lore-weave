@@ -60,6 +60,14 @@
       "title": "Merge candidates",
       "desc": "Review and confirm likely-duplicate entities"
     },
+    "wiki": {
+      "title": "Wiki",
+      "desc": "Browse and read this book's generated wiki articles"
+    },
+    "wiki-editor": {
+      "title": "Wiki Editor",
+      "desc": "Edit a wiki article's prose, infobox, history and suggestions"
+    },
     "knowledge": {
       "title": "Knowledge",
       "desc": "Browse and open your knowledge-graph projects"
@@ -144,6 +152,48 @@
     "leaderboard-trending": {
       "title": "Leaderboard: Trending",
       "desc": "Books trending right now"
+    },
+    "chapter-browser": {
+      "title": "Chapter Browser",
+      "desc": "Sort, filter, search and bulk-act across this book's chapters",
+      "mode_group": "Search mode",
+      "mode_title": "Title & filename",
+      "mode_content": "Content (full-text)",
+      "sort_chapter_num": "Sort: Chapter #",
+      "sort_updated": "Sort: Last updated",
+      "sort_word_count": "Sort: Word count",
+      "sort_status": "Sort: Status",
+      "view_flat": "Flat list",
+      "view_grouped": "Group by arc",
+      "col_title": "Title",
+      "col_lang": "Lang",
+      "col_status": "Status",
+      "col_words": "Words",
+      "col_updated": "Updated",
+      "status_all": "Status: All",
+      "status_draft": "Draft",
+      "status_published": "Published",
+      "status_trashed": "Trashed",
+      "lang_all": "Lang: All",
+      "words_label": "Words",
+      "min": "min",
+      "max": "max",
+      "updated_within": "Updated within",
+      "days": "days",
+      "n_selected": "{{count}} selected",
+      "clear": "clear",
+      "translate": "Translate…",
+      "set_status": "Set status…",
+      "set_status_hint": "Restore selected chapters to active",
+      "export": "Export",
+      "trash": "Trash",
+      "trash_confirm": "Move {{count}} chapter(s) to trash?",
+      "bulk_status_ok": "{{count}} chapter(s) updated",
+      "bulk_status_partial": "{{okCount}} updated, {{failCount}} failed",
+      "bulk_not_wired": "Coming soon — this bulk action isn't wired up yet",
+      "empty": "No chapters match these filters",
+      "client_filtered_note": "Word-count/date filters apply to the currently loaded page",
+      "chapter_count": "{{count}} chapters"
     },
     "json-editor": {
       "title": "JSON",

@@ -163,6 +163,7 @@ class TestFrontendToolDefs:
             "glossary-ontology", "glossary-unknown", "glossary-ai-suggestions", "glossary-merge-candidates",
             # 13_glossary_panels.md Phase B — the 4 capabilities promoted off GlossaryPanel's
             # temporary internal view-switch into real sibling dock panels.
+            "wiki",  # 15_wiki_panels.md B1 — wiki master-detail workspace dock panel
             "knowledge",  # 14_kg_panels.md A2 — KG projects hub launcher panel
             # 14_kg_panels.md Phase B — the 12 KG capability panels the hub opens.
             "kg-overview", "kg-entities", "kg-timeline", "kg-evidence", "kg-gap", "kg-proposals",
@@ -170,6 +171,7 @@ class TestFrontendToolDefs:
             # 14_utility_panels.md — jobs/books/leaderboard dockable tracks.
             "jobs-list", "books", "leaderboard-books", "leaderboard-authors",
             "leaderboard-translators", "leaderboard-trending",
+            "chapter-browser",  # sort/filter/search/bulk-act across a book's chapters
         ]
         f = UI_FOCUS_MANUSCRIPT_UNIT_TOOL["function"]
         assert f["name"] == "ui_focus_manuscript_unit"

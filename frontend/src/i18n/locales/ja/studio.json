@@ -60,6 +60,14 @@
       "title": "統合候補",
       "desc": "重複の可能性があるエンティティを確認・承認"
     },
+    "wiki": {
+      "title": "Wiki",
+      "desc": "この本の生成済み Wiki 記事を閲覧"
+    },
+    "wiki-editor": {
+      "title": "Wiki エディタ",
+      "desc": "Wiki記事の本文・インフォボックス・履歴・提案を編集"
+    },
     "knowledge": {
       "title": "ナレッジ",
       "desc": "ナレッジグラフ・プロジェクトの閲覧と起動"
@@ -144,6 +152,48 @@
     "leaderboard-trending": {
       "title": "ランキング: トレンド",
       "desc": "今話題の書籍"
+    },
+    "chapter-browser": {
+      "title": "章ブラウザ",
+      "desc": "この本の章を並び替え・絞り込み・検索し、一括操作",
+      "mode_group": "検索モード",
+      "mode_title": "タイトル・ファイル名",
+      "mode_content": "本文（全文検索）",
+      "sort_chapter_num": "並び替え: 章番号",
+      "sort_updated": "並び替え: 更新日時",
+      "sort_word_count": "並び替え: 文字数",
+      "sort_status": "並び替え: ステータス",
+      "view_flat": "フラット表示",
+      "view_grouped": "章立てでグループ化",
+      "col_title": "タイトル",
+      "col_lang": "言語",
+      "col_status": "ステータス",
+      "col_words": "文字数",
+      "col_updated": "更新日時",
+      "status_all": "ステータス: すべて",
+      "status_draft": "下書き",
+      "status_published": "公開済み",
+      "status_trashed": "ゴミ箱",
+      "lang_all": "言語: すべて",
+      "words_label": "文字数",
+      "min": "最小",
+      "max": "最大",
+      "updated_within": "更新期間",
+      "days": "日以内",
+      "n_selected": "{{count}} 件選択中",
+      "clear": "解除",
+      "translate": "翻訳…",
+      "set_status": "ステータス変更…",
+      "set_status_hint": "選択した章を有効に戻す",
+      "export": "エクスポート",
+      "trash": "ゴミ箱へ",
+      "trash_confirm": "{{count}} 件の章をゴミ箱に移動しますか？",
+      "bulk_status_ok": "{{count}} 件の章を更新しました",
+      "bulk_status_partial": "{{okCount}} 件成功、{{failCount}} 件失敗",
+      "bulk_not_wired": "近日対応 — この一括操作はまだ実装されていません",
+      "empty": "条件に一致する章がありません",
+      "client_filtered_note": "文字数・日付フィルターは現在読み込まれているページに適用されます",
+      "chapter_count": "{{count}} 章"
     },
     "json-editor": {
       "title": "JSON",

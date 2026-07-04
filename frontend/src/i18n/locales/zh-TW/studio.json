@@ -60,6 +60,14 @@
       "title": "合併候選",
       "desc": "檢視並確認可能重複的實體"
     },
+    "wiki": {
+      "title": "Wiki",
+      "desc": "瀏覽並閱讀本書已產生的 Wiki 文章"
+    },
+    "wiki-editor": {
+      "title": "Wiki 編輯器",
+      "desc": "編輯 Wiki 文章的內文、資訊框、歷史與建議"
+    },
     "knowledge": {
       "title": "知識庫",
       "desc": "瀏覽並開啟你的知識圖譜專案"
@@ -144,6 +152,48 @@
     "leaderboard-trending": {
       "title": "排行榜：趨勢",
       "desc": "目前熱門的書籍"
+    },
+    "chapter-browser": {
+      "title": "章節瀏覽器",
+      "desc": "排序、篩選、搜尋並批次操作本書的章節",
+      "mode_group": "搜尋模式",
+      "mode_title": "標題與檔名",
+      "mode_content": "內文（全文搜尋）",
+      "sort_chapter_num": "排序：章節編號",
+      "sort_updated": "排序：最近更新",
+      "sort_word_count": "排序：字數",
+      "sort_status": "排序：狀態",
+      "view_flat": "平面清單",
+      "view_grouped": "依卷/篇分組",
+      "col_title": "標題",
+      "col_lang": "語言",
+      "col_status": "狀態",
+      "col_words": "字數",
+      "col_updated": "更新時間",
+      "status_all": "狀態：全部",
+      "status_draft": "草稿",
+      "status_published": "已發布",
+      "status_trashed": "已刪除",
+      "lang_all": "語言：全部",
+      "words_label": "字數",
+      "min": "最小",
+      "max": "最大",
+      "updated_within": "更新於",
+      "days": "天內",
+      "n_selected": "已選取 {{count}} 項",
+      "clear": "清除",
+      "translate": "翻譯…",
+      "set_status": "變更狀態…",
+      "set_status_hint": "將選取的章節還原為啟用狀態",
+      "export": "匯出",
+      "trash": "刪除",
+      "trash_confirm": "將 {{count}} 個章節移到垃圾桶？",
+      "bulk_status_ok": "已更新 {{count}} 個章節",
+      "bulk_status_partial": "{{okCount}} 成功，{{failCount}} 失敗",
+      "bulk_not_wired": "即將推出 — 此批次操作尚未串接",
+      "empty": "沒有符合篩選條件的章節",
+      "client_filtered_note": "字數／日期篩選僅套用於目前已載入的頁面",
+      "chapter_count": "{{count}} 章"
     },
     "json-editor": {
       "title": "JSON",

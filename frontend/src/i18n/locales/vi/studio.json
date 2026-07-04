@@ -60,6 +60,14 @@
       "title": "Ứng viên gộp",
       "desc": "Duyệt và xác nhận các thực thể có khả năng trùng lặp"
     },
+    "wiki": {
+      "title": "Wiki",
+      "desc": "Duyệt và đọc các bài wiki đã tạo cho sách này"
+    },
+    "wiki-editor": {
+      "title": "Soạn thảo Wiki",
+      "desc": "Sửa nội dung, infobox, lịch sử và đề xuất của bài wiki"
+    },
     "knowledge": {
       "title": "Tri thức",
       "desc": "Duyệt và mở các dự án đồ thị tri thức của bạn"
@@ -144,6 +152,48 @@
     "leaderboard-trending": {
       "title": "Bảng xếp hạng: Thịnh hành",
       "desc": "Sách đang thịnh hành"
+    },
+    "chapter-browser": {
+      "title": "Duyệt chương",
+      "desc": "Sắp xếp, lọc, tìm kiếm và thao tác hàng loạt trên các chương của sách này",
+      "mode_group": "Chế độ tìm kiếm",
+      "mode_title": "Tiêu đề & tên file",
+      "mode_content": "Nội dung (toàn văn)",
+      "sort_chapter_num": "Sắp xếp: Số chương",
+      "sort_updated": "Sắp xếp: Cập nhật gần nhất",
+      "sort_word_count": "Sắp xếp: Số từ",
+      "sort_status": "Sắp xếp: Trạng thái",
+      "view_flat": "Danh sách phẳng",
+      "view_grouped": "Nhóm theo Arc",
+      "col_title": "Tiêu đề",
+      "col_lang": "Ngôn ngữ",
+      "col_status": "Trạng thái",
+      "col_words": "Số từ",
+      "col_updated": "Cập nhật",
+      "status_all": "Trạng thái: Tất cả",
+      "status_draft": "Nháp",
+      "status_published": "Đã xuất bản",
+      "status_trashed": "Đã xóa",
+      "lang_all": "Ngôn ngữ: Tất cả",
+      "words_label": "Số từ",
+      "min": "tối thiểu",
+      "max": "tối đa",
+      "updated_within": "Cập nhật trong vòng",
+      "days": "ngày",
+      "n_selected": "Đã chọn {{count}}",
+      "clear": "bỏ chọn",
+      "translate": "Dịch…",
+      "set_status": "Đổi trạng thái…",
+      "set_status_hint": "Khôi phục các chương đã chọn về trạng thái hoạt động",
+      "export": "Xuất file",
+      "trash": "Xóa",
+      "trash_confirm": "Chuyển {{count}} chương vào thùng rác?",
+      "bulk_status_ok": "Đã cập nhật {{count}} chương",
+      "bulk_status_partial": "{{okCount}} thành công, {{failCount}} thất bại",
+      "bulk_not_wired": "Sắp ra mắt — thao tác hàng loạt này chưa được kết nối",
+      "empty": "Không có chương nào khớp bộ lọc",
+      "client_filtered_note": "Bộ lọc số từ/ngày áp dụng trên trang đang tải",
+      "chapter_count": "{{count}} chương"
     },
     "json-editor": {
       "title": "JSON",

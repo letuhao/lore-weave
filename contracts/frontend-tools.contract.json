@@ -212,6 +212,7 @@
           "glossary-unknown",
           "glossary-ai-suggestions",
           "glossary-merge-candidates",
+          "wiki",
           "knowledge",
           "kg-overview",
           "kg-entities",
@@ -230,7 +231,8 @@
           "leaderboard-books",
           "leaderboard-authors",
           "leaderboard-translators",
-          "leaderboard-trending"
+          "leaderboard-trending",
+          "chapter-browser"
         ],
         "type": "string"
       }

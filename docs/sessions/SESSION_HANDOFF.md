@@ -1,5 +1,21 @@
 # ▶▶ NEXT SESSION STARTS HERE
 
+**WIKI DOCKABLE MIGRATION — FULLY DONE 2026-07-04** (follows the same pattern as Glossary/KG:
+CLARIFY → design-review-before-PLAN → BUILD → adversarial `/review-impl`). Narrow surface (no
+Phase A/B split needed): `wiki` + `wiki-editor` (params-retargeting singleton, editor/book-reader/
+json-editor precedent) are real dock panels; both classic routes (`WikiTab`, `WikiEditorPage`) are
+now thin callers of shared `WikiWorkspace`/`WikiEditorWorkspace` components (DOCK-2). Fixed 2
+DOCK-9 hand-rolled modals, 6 DOCK-7 navigate/Link sites, wired a previously-dead History button,
+and — the one genuine new-risk finding from design review — added a **G7 dirty-guard** on
+`wiki-editor`'s params-retargeting (a naive singleton would have silently discarded unsaved prose
+the instant a user opened a different article mid-edit; also fixed the same pre-existing bug on
+the classic page's Back button, which had no dirty-guard at all before this). Full detail + verify
+evidence: [`15_wiki_panels.md`](../specs/2026-07-01-writing-studio/15_wiki_panels.md). No defer/debt
+rows for Wiki. **Note for the next session:** this branch is running several concurrent sessions
+at once (KG, Chapter-Editor-Parity/COHERENCE, context-budget-law, utility-panels all landed
+commits mid-way through this one) — re-verify shared spine files (`catalog.ts`, `studio.json` x4,
+`frontend_tools.py`, the contract) before trusting this note's file list is still current.
+
 **KNOWLEDGE/KG DOCKABLE MIGRATION — FULLY DONE 2026-07-04** (commits `4c50f7ae2` Phase A, `5c43a36c9` Phase B, `d9d21a262`/`b88e07ba7` docs, `9098f9ce0` studioLinks wiring, `21bae112a` E2E). All 13 panels (`knowledge` hub + 12 `kg-*` capability panels) built, wired into the studio link resolver, and **live-proven**: `frontend/tests/e2e/specs/kg-panels.spec.ts` opens every one through the real Command Palette against the real backend — 17/17 passing (ran via `docker` stack + `vite --port 5199`; the baked `:5174` image is stale for this work). Decision recorded: `KnowledgePage`/`ProjectDetailShell`/`KnowledgeOntologyTab` are **NOT** retired into redirects — matches wave-1's own documented precedent (`11_dockable_migration.md`) of keeping classic routes as multi-device/non-studio entry points; Knowledge's case is harder than wave-1's (no reliable book to redirect a global hub or standalone project into, Studio is desktop-first). See [[kg-dockable-migration-phase-a]] memory for full detail. Remaining, still deferred: cross-panel E2E beyond what's already covered (hub → other capability panels).
 
 > **"CURSOR-FOR-NOVELS" REGISTER — #1 COHERENCE Phase 1 BUILD STARTED 2026-07-04.** User approved
