@@ -395,6 +395,62 @@ class TestKnowledgeClientBodyNormalisation:
 # ── headers ────────────────────────────────────────────────────────────────
 
 
+class TestResolveBookId:
+    """T5 (audit) — project→book_id resolution for the entity-presence gate."""
+
+    @pytest.mark.asyncio
+    async def test_resolves_and_caches(self):
+        calls = {"n": 0}
+
+        def handler(req: httpx.Request) -> httpx.Response:
+            calls["n"] += 1
+            assert "/internal/context/project-book/" in str(req.url)
+            assert "user_id=u1" in str(req.url)
+            return httpx.Response(200, json={"book_id": "book-123"})
+
+        client = _make_client(handler)
+        try:
+            a = await client.resolve_book_id(user_id="u1", project_id="proj-9")
+            b = await client.resolve_book_id(user_id="u1", project_id="proj-9")
+        finally:
+            await client.aclose()
+        assert a == "book-123" and b == "book-123"
+        assert calls["n"] == 1  # second call served from cache
+
+    @pytest.mark.asyncio
+    async def test_no_book_returns_none_cached(self):
+        client = _make_client(_ok_response({"book_id": None}))
+        try:
+            assert await client.resolve_book_id(user_id="u", project_id="p") is None
+        finally:
+            await client.aclose()
+
+    @pytest.mark.asyncio
+    async def test_failure_returns_none_not_cached(self):
+        state = {"fail": True}
+
+        def handler(_: httpx.Request) -> httpx.Response:
+            if state["fail"]:
+                return httpx.Response(500, text="boom")
+            return httpx.Response(200, json={"book_id": "b"})
+
+        client = _make_client(handler)
+        try:
+            assert await client.resolve_book_id(user_id="u", project_id="p") is None
+            state["fail"] = False
+            assert await client.resolve_book_id(user_id="u", project_id="p") == "b"  # retried
+        finally:
+            await client.aclose()
+
+    @pytest.mark.asyncio
+    async def test_empty_project_id_returns_none(self):
+        client = _make_client(_ok_response({"book_id": "b"}))
+        try:
+            assert await client.resolve_book_id(user_id="u", project_id="") is None
+        finally:
+            await client.aclose()
+
+
 class TestKnowledgeClientHeaders:
     @pytest.mark.asyncio
     async def test_internal_token_baked_into_request(self):

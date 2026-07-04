@@ -202,6 +202,11 @@ class KnowledgeClient:
         # the overlay changes the moment a user registers/removes a server (aligns
         # with the gateway's own overlay Q-CACHE TTL). Value = (expiry_monotonic, schemas).
         self._tool_defs_cache: dict[str, tuple[float, list[dict]]] = {}
+        # T5 (audit) — cache project_id → book_id for the entity-presence gate. A
+        # stable mapping, so a plain dict (no TTL); only successes are cached so a
+        # transient miss self-heals. `None` is a legitimate cached value (Mode-1
+        # project with no book).
+        self._project_book_cache: dict[str, str | None] = {}
         # T4c — separate process cache for the ADMIN catalog (`/mcp/admin`). The
         # catalog is identical for every admin (only the per-request RS256 token
         # varies), so the CATALOG is cached but the token is NEVER part of the
@@ -305,6 +310,32 @@ class KnowledgeClient:
 
         # Gateway and direct both unreachable → degraded (turn proceeds tool/context-free).
         return _degraded()
+
+    async def resolve_book_id(self, *, user_id: str, project_id: str) -> str | None:
+        """T5 (audit) — the knowledge project's linked `book_id`, for the chat
+        entity-presence gate (which needs the BOOK id, not the KNOWLEDGE project id a
+        session carries). Cached per project_id (stable mapping). Returns ``None`` on
+        a Mode-1/no-book project OR any failure — the gate then stays open
+        (bias-to-include), so a knowledge outage never breaks the turn, it just
+        forgoes the gate's savings. Uses `_base_url` (knowledge direct); this is a
+        cheap owner-scoped read, not a grounding pull, so it doesn't go via the gateway."""
+        if not project_id:
+            return None
+        if project_id in self._project_book_cache:
+            return self._project_book_cache[project_id]
+        url = f"{self._base_url}/internal/context/project-book/{project_id}"
+        tid = current_trace_id()
+        headers = {"X-Trace-Id": tid} if tid else None
+        try:
+            resp = await self._http.get(url, params={"user_id": user_id}, headers=headers)
+            if resp.status_code == 200:
+                book_id = resp.json().get("book_id")
+                self._project_book_cache[project_id] = book_id  # cache success (incl. None)
+                return book_id
+            logger.warning("resolve_book_id %d for project %s", resp.status_code, project_id)
+        except Exception:  # noqa: BLE001 — degrade to gate-open, never raise into the turn
+            logger.warning("resolve_book_id failed for project %s", project_id, exc_info=False)
+        return None  # do NOT cache a failure — retry next turn
 
     async def init_working_memory(
         self, *, session_id: str, user_id: str, charter: dict

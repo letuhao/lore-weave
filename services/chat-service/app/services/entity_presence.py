@@ -27,9 +27,11 @@ from dataclasses import dataclass, field
 # Two families of no-entity-token turns that must STILL open the gate
 # (bias-to-include), because a false-negative strips lore the answer needs:
 #
-#  1. ANAPHORA — a follow-up like "make it darker" / "그거" leans on lore already in
+#  1. ANAPHORA — an English follow-up like "make it darker" leans on lore already in
 #     play. (The story_state block (D4) is a safety net, but a cold anaphor may still
-#     want the fuller pull.)
+#     want the fuller pull.) NOTE: these lexicons are English-only; non-English turns
+#     (e.g. Korean "그거", a Chinese pronoun) are handled instead by the non-ASCII
+#     bias-to-include rule in detect_entity_presence — NOT by this regex.
 #  2. LORE-INTENT — a DISCOVERY question that references lore the user can't yet name:
 #     "who is the main character", "tell me about the protagonist", "what happens in
 #     this story". These carry no known entity token (the user is asking BECAUSE they
@@ -86,6 +88,37 @@ def _has_lore_intent(message: str) -> bool:
     return bool(_LORE_INTENT.search(message))
 
 
+def _has_non_ascii(message: str) -> bool:
+    """A non-ASCII script (CJK / Vietnamese diacritics / Korean / …). The English-only
+    anaphora+lore-intent lexicons can't classify such a turn, so — this being a
+    MULTILINGUAL novel product — we bias-to-include rather than confidently gate out a
+    non-English lore turn (audit MED-2)."""
+    return any(ord(ch) > 0x7F for ch in message)
+
+
+def _is_question(message: str) -> bool:
+    """A question (ASCII `?` or CJK `？`, or a leading English interrogative). A
+    question with no entity match usually still needs lore — a role-noun/thematic ask
+    ("does the emperor betray the general?") is not lore-free (audit MED-3)."""
+    m = message.strip()
+    if "?" in m or "？" in m:
+        return True
+    return bool(re.match(r"(?i)\s*(who|what|when|where|why|how|which|whose|is|are|do|does|did|can|could|should|would)\b", m))
+
+
+# A META/capability question is about the ASSISTANT or the TOOL, not the story — it is
+# genuinely lore-free, so it does NOT trip the question-bias rule. Keeps the gate
+# credible (a "what can you help me with?" doesn't pull grounding).
+_META = re.compile(
+    r"(?i)\b(you|your|yourself|help me|assist me|this (?:workspace|app|tool|system|editor|feature)|"
+    r"how do i (?:use|start)|what can (?:you|i) do)\b"
+)
+
+
+def _is_meta_question(message: str) -> bool:
+    return bool(_META.search(message))
+
+
 def detect_entity_presence(
     message: str,
     entity_tokens: frozenset[str] | set[str] | None,
@@ -113,14 +146,33 @@ def detect_entity_presence(
     if matched:
         return EntityPresence(True, tuple(sorted(set(matched))), reason="entity_match")
 
-    # No entity token — but a DISCOVERY question references lore the user can't name
-    # yet ("who is the main character") → it needs grounding.
+    # No entity token — apply the bias-to-include heuristics before gating OUT.
+    # Ordered most-specific-first so the reported `reason` is the most informative.
+
+    # A non-English turn: the lexicons below are English-only, so we cannot classify a
+    # CJK/VN turn — open it (this is a multilingual novel product; a confident gate-out
+    # of a non-English lore turn is the worst failure). audit MED-2.
+    if _has_non_ascii(msg):
+        return EntityPresence(True, reason="non_ascii_bias_include")
+
+    # A DISCOVERY phrase references lore the user can't name yet ("the main character",
+    # "the protagonist", "what happens…") → needs grounding.
     if _has_lore_intent(msg):
         return EntityPresence(True, reason="lore_intent_bias_include")
 
-    # …or an anaphoric follow-up leaning on lore already loaded.
+    # A question with no entity match: a role-noun/thematic ask ("does the emperor
+    # betray the general?") is NOT lore-free (audit MED-3) → open. EXCEPT a META
+    # question about the assistant/tool ("what can you help me with?"), which IS
+    # lore-free → gate OUT even though it's a question.
+    if _is_question(msg):
+        if _is_meta_question(msg):
+            return EntityPresence(False, reason="meta_question")
+        return EntityPresence(True, reason="question_bias_include")
+
+    # …or an anaphoric follow-up leaning on lore already loaded ("make it darker").
     if _has_anaphora(msg):
         return EntityPresence(True, reason="anaphora_bias_include")
 
-    # Confident lore-free op (no entity, no anaphora, no lore-intent) → gate OUT.
+    # Confident lore-free op: ASCII, not a question, no entity/anaphora/lore-intent
+    # (e.g. "give me a 3-step plan to draft a chapter") → gate OUT (the token win).
     return EntityPresence(False, reason="no_entity_no_anaphora")

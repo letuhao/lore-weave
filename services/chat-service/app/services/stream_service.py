@@ -1705,19 +1705,28 @@ async def stream_response(
 
     # ── T5 (Context Budget Law D2) — entity-presence intent gate ─────────────
     # Decide whether this turn references book lore; if not (and it isn't an
-    # anaphoric follow-up), skip the EXPENSIVE grounding retrieval — build_context
+    # anaphoric/discovery turn), skip the EXPENSIVE grounding retrieval — build_context
     # then serves the LIGHT static path (glossary badges only, no passage vectors /
-    # semantic select / LLM). The story_state Core Block (D4) still projects every
-    # turn as the safety net, so a false-negative never strips loaded lore; the gate
-    # is biased-to-include (opens on any doubt). project_id is used as the book id
-    # for the known-entity lookup; a session whose project_id is NOT a book returns
-    # an empty set → the gate opens (safe degradation, no token win for that turn).
+    # semantic select / LLM). The story_state Core Block (D4) still projects every turn
+    # as the safety net, so a false-negative never strips loaded lore; the gate is
+    # biased-to-include (opens on any doubt).
+    #
+    # audit fix (2026-07-04): known-entities is BOOK-scoped, but a session carries the
+    # KNOWLEDGE project id — so we resolve the project→book_id first (cached). Passing
+    # the raw project_id was the bug that made the gate a silent no-op (it hit a
+    # book_id route → [] → always open). A no-book / unresolved project → book_id None
+    # → gate stays open (safe).
+    _gate_pid = _build_project_id or (_build_project_ids[0] if _build_project_ids else None)
     _entity_tokens: frozenset[str] = frozenset()
-    if settings.t5_intent_gate_enabled and project_id:
+    if settings.t5_intent_gate_enabled and _gate_pid:
         try:
-            _entity_tokens = await get_known_entities_client().get_known_entity_tokens(
-                str(project_id)
+            _gate_book_id = await knowledge_client.resolve_book_id(
+                user_id=user_id, project_id=str(_gate_pid)
             )
+            if _gate_book_id:
+                _entity_tokens = await get_known_entities_client().get_known_entity_tokens(
+                    _gate_book_id
+                )
         except Exception:  # noqa: BLE001 — degrade to gate-open, never break the turn
             _entity_tokens = frozenset()
     if settings.t5_intent_gate_enabled:

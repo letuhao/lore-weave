@@ -97,8 +97,14 @@ class KnownEntitiesClient:
         url = f"{self._base_url}/internal/books/{book_id}/known-entities"
         tid = current_trace_id()
         headers = {"X-Trace-Id": tid} if tid else None
+        # audit MED-4: widen the vocabulary for GATE purposes. The route defaults
+        # (min_frequency=2, limit=50) exist for extraction-prompt context, but for the
+        # gate a false-negative (missing a real entity → wrongly gating out its turn) is
+        # worse than a slightly larger token set. min_frequency=1 catches a just-
+        # introduced character; limit=500 (the route's cap) covers a large book's cast.
+        params = {"min_frequency": 1, "limit": 500}
         try:
-            resp = await self._http.get(url, headers=headers)
+            resp = await self._http.get(url, params=params, headers=headers)
         except Exception as exc:  # noqa: BLE001 — degrade, don't raise
             logger.warning("known-entities unavailable for book %s: %s", book_id, type(exc).__name__)
             return frozenset()

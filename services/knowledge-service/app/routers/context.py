@@ -128,6 +128,27 @@ class ContextBuildResponse(BaseModel):
     sections: dict[str, int] = {}
 
 
+class ProjectBookResponse(BaseModel):
+    book_id: str | None = None
+
+
+@router.get("/project-book/{project_id}", response_model=ProjectBookResponse)
+async def project_book(
+    project_id: UUID,
+    user_id: UUID,
+    projects_repo: ProjectsRepo = Depends(get_projects_repo),
+) -> ProjectBookResponse:
+    """T5 (audit) — resolve a knowledge project's linked `book_id` for the chat
+    entity-presence gate. The gate needs the BOOK id (glossary known-entities is
+    book-scoped) but a chat session carries the KNOWLEDGE project id; this is the
+    project→book bridge, resolvable on turn 1 (owner-scoped via projects_repo.get).
+    `book_id=None` for a Mode-1 (no-book) project or a stale/foreign id — the gate
+    then stays open (bias-to-include)."""
+    project = await projects_repo.get(user_id, project_id)
+    book_id = str(project.book_id) if project and project.book_id else None
+    return ProjectBookResponse(book_id=book_id)
+
+
 @router.post("/build", response_model=ContextBuildResponse)
 async def build(
     req: ContextBuildRequest,

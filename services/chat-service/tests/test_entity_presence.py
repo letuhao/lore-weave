@@ -84,6 +84,47 @@ class TestBiasToInclude:
         assert r.grounding_needed is True
 
 
+class TestMultilingualAndQuestionBias:
+    """audit MED-2/MED-3: English-only lexicons must not gate out non-English or
+    role-noun/thematic lore questions in this multilingual novel product."""
+
+    def test_cjk_non_entity_question_opens(self):
+        # "what is this book about?" in Chinese — no entity token, but non-ASCII → open.
+        r = detect_entity_presence("这本书讲什么？", TOKENS)
+        assert r.grounding_needed is True
+        assert r.reason == "non_ascii_bias_include"
+
+    def test_cjk_pronoun_followup_opens(self):
+        r = detect_entity_presence("他会怎么做?", TOKENS)
+        assert r.grounding_needed is True
+
+    def test_vietnamese_diacritics_open(self):
+        # a VN sentence with no listed entity token still opens on non-ASCII.
+        r = detect_entity_presence("nhân vật chính thay đổi thế nào", TOKENS)
+        assert r.grounding_needed is True
+
+    def test_role_noun_question_opens(self):
+        r = detect_entity_presence("does the emperor betray the general?", TOKENS)
+        assert r.grounding_needed is True
+        assert r.reason == "question_bias_include"
+
+    def test_thematic_question_opens(self):
+        r = detect_entity_presence("what is the significance of the ending?", TOKENS)
+        assert r.grounding_needed is True
+
+    def test_meta_capability_question_still_gates_out(self):
+        # a question ABOUT the tool/assistant is genuinely lore-free → stays gated out.
+        for q in ["what can you help me with?", "what can you do here?",
+                  "how do i use this editor?"]:
+            r = detect_entity_presence(q, TOKENS)
+            assert r.grounding_needed is False, q
+
+    def test_ascii_imperative_op_still_gates_out(self):
+        # not a question, ASCII, no entity/anaphora/lore-intent → still the token win.
+        r = detect_entity_presence("give me a 3-step plan to draft a chapter", TOKENS)
+        assert r.grounding_needed is False
+
+
 class TestSubstringSafety:
     def test_ascii_token_is_word_bounded(self):
         # 'arc' must not match inside 'search'/'architecture'; only 'the black spire'
