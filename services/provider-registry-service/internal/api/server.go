@@ -2814,7 +2814,15 @@ func (s *Server) getInternalModelInfo(w http.ResponseWriter, r *http.Request) {
 // build no guardrail). Payloads are bounded (reference-first when huge), and a
 // fresh uuidv7 request_id makes each call its own audit row. These sync paths are
 // user_model-only (the handlers reject any other model_source before calling here).
-func (s *Server) recordSyncUsage(ctx context.Context, userID, modelRef uuid.UUID, operation, status string, inTok, outTok int, reqPayload, respPayload map[string]any) {
+// recordSyncUsage records one synchronous op (embed/rerank/web_search) to the
+// ledger via the guardrail's RecordUsage HTTP path (Route A). costUSD is the
+// authoritative per-model cost when the caller can compute it (embed: tokens ×
+// pricing); nil leaves TotalCostUSD unset → usage-billing's flat fallback. rerank
+// + web_search pass nil by design: they carry 0/0 tokens (a rerank scores docs;
+// web_search is a per-call external service), so a per-token cost is meaningless —
+// they need a per-call/per-request pricing dimension before a real cost lands
+// (tracked D-B2-RERANK-WEBSEARCH-PRICING).
+func (s *Server) recordSyncUsage(ctx context.Context, userID, modelRef uuid.UUID, operation, status string, inTok, outTok int, costUSD *float64, reqPayload, respPayload map[string]any) {
 	if s.guardrail == nil {
 		return
 	}
@@ -2834,6 +2842,7 @@ func (s *Server) recordSyncUsage(ctx context.Context, userID, modelRef uuid.UUID
 		Operation:     operation,
 		InputTokens:   inTok,
 		OutputTokens:  outTok,
+		TotalCostUSD:  costUSD,
 		RequestStatus: status,
 		InputPayload:  boundedPayload(reqPayload),
 		OutputPayload: boundedPayload(respPayload),
@@ -2927,7 +2936,7 @@ WHERE um.user_model_id=$1 AND um.owner_user_id=$2 AND um.is_active=true AND pc.s
 		// MED-1: record the FAILED call too — a provider error is exactly what you'd
 		// want readable in the audit ledger; recording only successes recreates the
 		// audit hole P0-2 closed on the streaming path.
-		s.recordSyncUsage(r.Context(), userID, modelRef, "rerank", "provider_error", 0, 0,
+		s.recordSyncUsage(r.Context(), userID, modelRef, "rerank", "provider_error", 0, 0, nil,
 			map[string]any{"query": in.Query, "documents": in.Documents},
 			map[string]any{"error": err.Error()})
 		writeError(w, http.StatusBadGateway, "RERANK_UPSTREAM_ERROR", "rerank service error")
@@ -2935,7 +2944,7 @@ WHERE um.user_model_id=$1 AND um.owner_user_id=$2 AND um.is_active=true AND pc.s
 	}
 	// P0-2 (B4) — audit the rerank call: query + documents in, scored results out.
 	// Rerank carries no token usage → tokens 0.
-	s.recordSyncUsage(r.Context(), userID, modelRef, "rerank", "success", 0, 0,
+	s.recordSyncUsage(r.Context(), userID, modelRef, "rerank", "success", 0, 0, nil,
 		map[string]any{"query": in.Query, "documents": in.Documents},
 		map[string]any{"results": results})
 	writeJSON(w, http.StatusOK, map[string]any{"model": providerModelName, "results": results})
@@ -3016,7 +3025,7 @@ LIMIT 1
 	if err != nil {
 		// Upstream provider failure ⇒ 502 so the caller degrades (not a client bug).
 		// MED-1: audit the failed call too (see internalRerank).
-		s.recordSyncUsage(r.Context(), userID, modelRef, "web_search", "provider_error", 0, 0,
+		s.recordSyncUsage(r.Context(), userID, modelRef, "web_search", "provider_error", 0, 0, nil,
 			map[string]any{"query": in.Query, "max_results": in.MaxResults, "search_depth": in.SearchDepth},
 			map[string]any{"error": err.Error()})
 		writeError(w, http.StatusBadGateway, "WEBSEARCH_UPSTREAM_ERROR", "web search provider error")
@@ -3024,7 +3033,7 @@ LIMIT 1
 	}
 	// P0-2 (B4) — audit the web-search call: query + options in, answer + results out.
 	// Web search carries no token usage → tokens 0.
-	s.recordSyncUsage(r.Context(), userID, modelRef, "web_search", "success", 0, 0,
+	s.recordSyncUsage(r.Context(), userID, modelRef, "web_search", "success", 0, 0, nil,
 		map[string]any{"query": in.Query, "max_results": in.MaxResults, "search_depth": in.SearchDepth},
 		map[string]any{"answer": answer, "results": results})
 	writeJSON(w, http.StatusOK, map[string]any{
@@ -3083,6 +3092,7 @@ func (s *Server) internalEmbed(w http.ResponseWriter, r *http.Request) {
 	// invokeModel / internalInvokeModel reference was retired in
 	// Phase 4d alongside the handlers themselves).
 	var providerKind, providerModelName, endpointBaseURL, secret string
+	var pricingBytes []byte // P2·B2(c) — model pricing JSONB, for the authoritative embed cost
 	if in.ModelSource == "user_model" {
 		var secretCipher string
 		// Scan capability_flags as raw bytes + json.Unmarshal — the established pattern
@@ -3090,11 +3100,11 @@ func (s *Server) internalEmbed(w http.ResponseWriter, r *http.Request) {
 		// into a map[string]any.
 		var capFlagsBytes []byte
 		err = s.pool.QueryRow(r.Context(), `
-SELECT um.user_model_id, um.provider_kind, um.provider_model_name, COALESCE(pc.endpoint_base_url,''), COALESCE(pc.secret_ciphertext,''), COALESCE(um.capability_flags,'{}'::jsonb)
+SELECT um.user_model_id, um.provider_kind, um.provider_model_name, COALESCE(pc.endpoint_base_url,''), COALESCE(pc.secret_ciphertext,''), COALESCE(um.capability_flags,'{}'::jsonb), COALESCE(um.pricing,'{}'::jsonb)
 FROM user_models um
 JOIN provider_credentials pc ON pc.provider_credential_id = um.provider_credential_id
 WHERE um.user_model_id=$1 AND um.owner_user_id=$2 AND um.is_active=true AND pc.status='active'
-`, modelRef, userID).Scan(new(uuid.UUID), &providerKind, &providerModelName, &endpointBaseURL, &secretCipher, &capFlagsBytes)
+`, modelRef, userID).Scan(new(uuid.UUID), &providerKind, &providerModelName, &endpointBaseURL, &secretCipher, &capFlagsBytes, &pricingBytes)
 		if err == pgx.ErrNoRows {
 			EmbedRequestsTotal.WithLabelValues(OutcomeModelNotFound).Inc()
 			writeError(w, http.StatusNotFound, "EMBED_MODEL_NOT_FOUND", "user model not found or inactive")
@@ -3158,7 +3168,7 @@ WHERE um.user_model_id=$1 AND um.owner_user_id=$2 AND um.is_active=true AND pc.s
 		errMsg := err.Error()
 		// MED-1: audit the failed embed too (see internalRerank) — the texts that
 		// triggered a provider error are the most useful thing to have in the ledger.
-		s.recordSyncUsage(r.Context(), userID, modelRef, "embed", "provider_error", 0, 0,
+		s.recordSyncUsage(r.Context(), userID, modelRef, "embed", "provider_error", 0, 0, nil,
 			map[string]any{"texts": in.Texts},
 			map[string]any{"error": errMsg})
 		// Map upstream 4xx (bad model, unsupported) to 400 so the caller
@@ -3174,10 +3184,24 @@ WHERE um.user_model_id=$1 AND um.owner_user_id=$2 AND um.is_active=true AND pc.s
 	}
 
 	EmbedRequestsTotal.WithLabelValues(OutcomeOK).Inc()
+	// P2·B2(c) — authoritative embed cost (D-REVIEW-EMBED-AUDIT-COST). Input-only,
+	// via the shared billing.PriceEmbedding so the sync ledger cost matches the async
+	// worker + S5a estimate math exactly. A missing/unpriced `pricing` → nil cost →
+	// usage-billing's flat fallback (unchanged prior behavior), so an unpriced model
+	// still records, just without an exact cost. Only reported prompt_tokens count.
+	var embedCostPtr *float64
+	if result.PromptTokens > 0 {
+		var pricing billing.Pricing
+		if uerr := json.Unmarshal(pricingBytes, &pricing); uerr == nil {
+			if c, cerr := billing.PriceEmbedding(result.PromptTokens, pricing); cerr == nil {
+				embedCostPtr = &c
+			}
+		}
+	}
 	// P0-2 (B4) — audit the embed call: the input texts in, vector count + dimension
 	// out (NOT the vectors themselves — huge + useless in a ledger). input_tokens uses
 	// the provider's reported prompt_tokens when present (0 → provider omitted it).
-	s.recordSyncUsage(r.Context(), userID, modelRef, "embed", "success", result.PromptTokens, 0,
+	s.recordSyncUsage(r.Context(), userID, modelRef, "embed", "success", result.PromptTokens, 0, embedCostPtr,
 		map[string]any{"texts": in.Texts},
 		map[string]any{"count": len(result.Embeddings), "dimension": result.Dimension, "model": result.Model})
 	writeJSON(w, http.StatusOK, result)

@@ -37,7 +37,8 @@ func TestRecordSyncUsage_LogsEmbedLikeCall(t *testing.T) {
 
 	s := &Server{guardrail: billing.NewGuardrailClient(srv.URL, "tok", nil)}
 	userID, modelRef := uuid.New(), uuid.New()
-	s.recordSyncUsage(context.Background(), userID, modelRef, "embed", "success", 12, 0,
+	cost := 0.0025 // P2·B2(c) — the authoritative cost must reach the ledger wire
+	s.recordSyncUsage(context.Background(), userID, modelRef, "embed", "success", 12, 0, &cost,
 		map[string]any{"texts": []any{"alpha", "beta"}},
 		map[string]any{"count": 2, "dimension": 1024})
 
@@ -61,6 +62,9 @@ func TestRecordSyncUsage_LogsEmbedLikeCall(t *testing.T) {
 		if in, _ := body["input_tokens"].(float64); int(in) != 12 {
 			t.Errorf("input_tokens: got %v want 12", body["input_tokens"])
 		}
+		if c, _ := body["total_cost_usd"].(float64); c != 0.0025 {
+			t.Errorf("total_cost_usd: got %v want 0.0025", body["total_cost_usd"])
+		}
 		ip, ok := body["input_payload"].(map[string]any)
 		if !ok || ip["texts"] == nil {
 			t.Errorf("input_payload must carry texts, got %v", body["input_payload"])
@@ -78,7 +82,7 @@ func TestRecordSyncUsage_LogsEmbedLikeCall(t *testing.T) {
 // must silently no-op, never panic.
 func TestRecordSyncUsage_NilGuardrailNoPanic(t *testing.T) {
 	s := &Server{} // guardrail nil
-	s.recordSyncUsage(context.Background(), uuid.New(), uuid.New(), "embed", "success", 1, 0, nil, nil)
+	s.recordSyncUsage(context.Background(), uuid.New(), uuid.New(), "embed", "success", 1, 0, nil, nil, nil)
 }
 
 // TestRecordSyncUsage_ProviderErrorStatus — MED-1: a FAILED sync call records an
@@ -98,7 +102,7 @@ func TestRecordSyncUsage_ProviderErrorStatus(t *testing.T) {
 	defer srv.Close()
 
 	s := &Server{guardrail: billing.NewGuardrailClient(srv.URL, "tok", nil)}
-	s.recordSyncUsage(context.Background(), uuid.New(), uuid.New(), "rerank", "provider_error", 0, 0,
+	s.recordSyncUsage(context.Background(), uuid.New(), uuid.New(), "rerank", "provider_error", 0, 0, nil,
 		map[string]any{"query": "q"}, map[string]any{"error": "rerank upstream 502"})
 
 	select {
