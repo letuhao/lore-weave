@@ -56,6 +56,35 @@ def test_setup_logging_stamps_service_and_both_trace_ids():
     assert rec["message"] == "hello world"
 
 
+def test_dual_emit_with_a_REAL_otel_span():
+    """End-to-end (NOT mocked): a log emitted inside a live OTel span carries that
+    span's trace_id in otel_trace_id — the actual Loki↔Tempo join key. The other
+    dual-emit tests mock current_otel_trace_id (proving only that the filter READS
+    it); this proves the whole chain filter → live span → log line really works.
+
+    Uses a LOCAL TracerProvider's tracer (not the global one) to sidestep OTel's
+    set-once global-provider constraint: start_as_current_span sets the context
+    span regardless of provider, and current_otel_trace_id reads the context span.
+    """
+    import re
+
+    from opentelemetry.sdk.trace import TracerProvider
+
+    from loreweave_obs import current_otel_trace_id
+
+    tracer = TracerProvider().get_tracer("review-impl-test")
+    setup_logging("svc-under-test")
+    logger, buf = _capture()
+    with tracer.start_as_current_span("review-span"):
+        expected = current_otel_trace_id()
+        logger.error("emitted inside a real span")
+    assert re.fullmatch(r"[0-9a-f]{32}", expected), (
+        f"the live span should yield a 32-hex trace id, got {expected!r}"
+    )
+    rec = json.loads(buf.getvalue().strip().splitlines()[-1])
+    assert rec["otel_trace_id"] == expected  # the REAL span id, not a mock value
+
+
 def test_otel_trace_id_empty_when_no_span():
     setup_logging("svc-under-test")
     logger, buf = _capture()

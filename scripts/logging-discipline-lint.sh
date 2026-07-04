@@ -103,7 +103,7 @@ for f in $bc_targets ; do
     # command substitution in an assignment would kill the script.
     bc_line=$(grep -nE 'logging\.basicConfig\(' "$f" 2>/dev/null | head -1 | cut -d: -f1 || true)
     [ -z "$bc_line" ] && continue
-    main_line=$(grep -nE '^if __name__ ==' "$f" 2>/dev/null | head -1 | cut -d: -f1 || true)
+    main_line=$(grep -nE '^if __name__[[:space:]]*==' "$f" 2>/dev/null | head -1 | cut -d: -f1 || true)
     if [ -n "$main_line" ] && [ "$bc_line" -gt "$main_line" ] ; then
         continue  # CLI __main__ driver — plain logging is fine for a hand-run tool
     fi
