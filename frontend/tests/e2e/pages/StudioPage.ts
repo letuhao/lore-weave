@@ -1,4 +1,4 @@
-import type { Page, Locator } from '@playwright/test';
+import { expect, type Page, type Locator } from '@playwright/test';
 import type { ActivityView } from '../../../src/features/studio/types';
 
 /** Page object for the Writing Studio (v2) frame. */
@@ -36,5 +36,18 @@ export class StudioPage {
     await this.page.goto(`/books/${bookId}/studio`);
     // The activity bar is always present regardless of navigator/collapse state.
     await this.activity('manuscript').waitFor({ state: 'attached' });
+  }
+
+  /** Open a dock panel via the Command Palette (⌘⇧P → search title → Enter), the
+   *  same live path a real user takes. `paletteEntryId` is the registered
+   *  `commandId` (`studio.openPanel.<panelId>`), typed by `useStudioPanel`. */
+  async openPanel(panelId: string, searchTerm: string): Promise<void> {
+    await this.page.keyboard.press('ControlOrMeta+Shift+P');
+    await this.commandPaletteModal.waitFor({ state: 'visible' });
+    await this.paletteInput.fill(searchTerm);
+    const entry = this.page.getByTestId(`palette-entry-studio.openPanel.${panelId}`);
+    await entry.waitFor({ state: 'visible' });
+    await entry.click();
+    await expect(this.commandPaletteModal).toHaveCount(0);
   }
 }
