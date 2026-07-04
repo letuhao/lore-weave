@@ -25,6 +25,7 @@ from typing import Any
 from uuid import UUID
 
 import httpx
+from loreweave_internal_client import build_internal_client
 from pydantic import BaseModel, ConfigDict
 
 from app.config import settings
@@ -113,9 +114,10 @@ class BookProfileClient:
         cache_ttl_s: float,
     ) -> None:
         self._base_url = base_url.rstrip("/")
-        self._http = httpx.AsyncClient(
-            timeout=httpx.Timeout(timeout_s),
-            headers={"X-Internal-Token": internal_token},
+        # W3: shared factory bakes X-Internal-Token + JSON + per-request X-Trace-Id.
+        self._http = build_internal_client(
+            base_url, internal_token=internal_token,
+            timeout_s=timeout_s, trace_id_provider=trace_id_var.get,
         )
         self._cache_ttl_s = cache_ttl_s
         # book_id -> (expiry_monotonic, profile). Only SUCCESSFUL reads are
@@ -143,9 +145,7 @@ class BookProfileClient:
         url = f"{self._base_url}/internal/lore-enrichment/books/{book_id}/profile"
         tid = trace_id_var.get()
         try:
-            resp = await self._http.get(
-                url, headers={"X-Trace-Id": tid} if tid else None,
-            )
+            resp = await self._http.get(url)
             if resp.status_code != 200:
                 logger.warning(
                     "lore-enrichment %s returned %d, trace_id=%s",
