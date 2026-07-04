@@ -2,17 +2,24 @@
 # logging-discipline-lint.sh — RAID cycle 32 (L7.E.9).
 #
 # Detects bare `fmt.Println`, `log.Println`, `log.Printf`, `print`, `println`
-# outside test/debug code. Production services MUST use the typed structured
-# logger from `contracts/logging` (`logging.NewLogger` + `Emit`).
+# outside test/debug code (SOFT / advisory), AND `logging.basicConfig` in Python
+# service runtime (HARD / blocking — P2·A2a). Production services MUST use the
+# typed structured logger (`contracts/logging` for Go) or `loreweave_obs.setup_logging`
+# (Python).
 #
-# Exit code 0 = no violations; non-zero = violations found.
+# Two violation classes:
+#   * SOFT (bare print / log.Print / println!) — advisory (warn-mode default). The
+#     fleet still has ~67 legitimate ones (CLI drivers, Rust examples, *main.rs*
+#     binaries), so these stay warn until a dedicated sweep; `error` mode flips them.
+#   * HARD (`logging.basicConfig` in Python runtime) — ALWAYS blocking regardless of
+#     mode. The runtime basicConfig sites were all migrated to setup_logging (P2·A2a),
+#     so the baseline is 0; a NEW one fails CI. CLI `__main__` drivers + script/
+#     benchmark/eval/migration dirs are exempt (plain logging is fine there).
+#
+# Exit code 0 = no HARD violations (and no SOFT ones in error-mode); non-zero otherwise.
 #
 # Scope (default): services/, contracts/, crates/.
 # Exclude: *_test.go, *_test.rs, *_test.py, doc.go, scripts/, infra/.
-#
-# Cycle 32 starts in warn-mode (echo violations; exit 0). Flip to error-mode
-# in cycle 33+ after foundation services migrate (mirrors cycle-7 lint flip
-# discipline used by observability-inventory-lint).
 
 set -euo pipefail
 
@@ -20,7 +27,8 @@ repo_root="$(cd "$(dirname "$0")/../" && pwd)"
 cd "$repo_root"
 
 mode="${1:-warn}"
-violations=0
+violations=0        # SOFT (bare print / log.Print / println!) — advisory
+hard_violations=0   # HARD (Python runtime logging.basicConfig) — always blocking
 violators=()
 
 # Go: detect fmt.Print(ln/f) and bare log.Print(ln/f).
@@ -76,15 +84,49 @@ for f in $rs_targets ; do
     fi
 done
 
+# Python HARD: `logging.basicConfig` in service RUNTIME → use loreweave_obs.setup_logging.
+# Exempt: tests, scripts/, benchmark/, eval/, migrations/ (+ db/migrations), poc, and a
+# CLI `__main__` driver (basicConfig line AFTER an `if __name__ == "__main__"` guard —
+# plain logging is the right output for a hand-run tool). Baseline is 0 (P2·A2a migrated
+# every runtime site), so this catches a NEW regression.
+bc_targets=$(git ls-files 'services/**/*.py' 2>/dev/null | \
+    grep -v '_test\.py$' | \
+    grep -v '/tests/' | \
+    grep -v '/scripts/' | \
+    grep -v '/benchmark/' | \
+    grep -v '/eval/' | \
+    grep -v '/migrations/' | \
+    grep -v '/poc' || true)
+
+for f in $bc_targets ; do
+    # `|| true` — grep exits 1 on no-match; under `set -euo pipefail` a failed
+    # command substitution in an assignment would kill the script.
+    bc_line=$(grep -nE 'logging\.basicConfig\(' "$f" 2>/dev/null | head -1 | cut -d: -f1 || true)
+    [ -z "$bc_line" ] && continue
+    main_line=$(grep -nE '^if __name__ ==' "$f" 2>/dev/null | head -1 | cut -d: -f1 || true)
+    if [ -n "$main_line" ] && [ "$bc_line" -gt "$main_line" ] ; then
+        continue  # CLI __main__ driver — plain logging is fine for a hand-run tool
+    fi
+    echo "[logging-discipline-lint] ERROR: $f uses logging.basicConfig — use loreweave_obs.setup_logging"
+    hard_violations=$((hard_violations + 1))
+    violators+=("$f")
+done
+
+# HARD violations always block (a cleaned rule with a ready replacement), regardless of mode.
+if [ "$hard_violations" -gt 0 ] ; then
+    echo "[logging-discipline-lint] FAIL: $hard_violations basicConfig violation(s) — blocking (use loreweave_obs.setup_logging)"
+    exit 1
+fi
+
 if [ "$violations" -eq 0 ] ; then
-    echo "[logging-discipline-lint] clean (no bare log calls in service code)"
+    echo "[logging-discipline-lint] clean (no basicConfig; no bare log calls in service code)"
     exit 0
 fi
 
 if [ "$mode" = "error" ] ; then
-    echo "[logging-discipline-lint] FAIL: $violations violations (error-mode)"
+    echo "[logging-discipline-lint] FAIL: $violations soft violations (error-mode)"
     exit 1
 fi
 
-echo "[logging-discipline-lint] $violations violations (warn-mode, exit 0)"
+echo "[logging-discipline-lint] $violations soft violations (warn-mode, exit 0); 0 hard (basicConfig)"
 exit 0

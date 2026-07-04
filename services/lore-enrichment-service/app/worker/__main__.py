@@ -14,14 +14,13 @@ import os
 from app.compose.compose_task import run_compose_task_sweeper
 from app.config import settings
 from app.db.pool import close_pool, create_pool
+from app.logging_config import setup_logging
 from app.worker.heartbeat import heartbeat_loop
 from app.worker.reaper import reaper_loop
 from app.worker.resume_consumer import LoreEnrichmentResumeConsumer
 
-logging.basicConfig(
-    level=os.environ.get("LOG_LEVEL", "INFO"),
-    format="%(asctime)s %(levelname)s %(name)s %(message)s",
-)
+# P2·A2a — shared JSON logging (lore-enrichment-service, incl. job_id/stage extra_context).
+setup_logging(os.environ.get("LOG_LEVEL", "INFO"))
 logger = logging.getLogger("lore_enrichment.worker")
 
 

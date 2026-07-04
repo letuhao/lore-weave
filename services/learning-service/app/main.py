@@ -12,6 +12,7 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import PlainTextResponse
+from loreweave_obs import setup_logging
 
 from app.config import settings
 from app.db.eval_repo import ensure_score_configs
@@ -42,7 +43,7 @@ from app.events.handlers import (
 from app.middleware.trace_id import TraceIdMiddleware
 from app.routers import corrections, eval as eval_routes, mining, wiki_judge
 
-logging.basicConfig(level=logging.INFO)
+setup_logging("learning-service")  # P2·A2a — shared JSON logging + dual trace ids
 logger = logging.getLogger(__name__)
 
 
