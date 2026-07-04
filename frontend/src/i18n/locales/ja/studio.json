@@ -153,6 +153,10 @@
       "title": "ランキング: トレンド",
       "desc": "今話題の書籍"
     },
+    "context-inspector": {
+      "title": "コンテキストインスペクター",
+      "desc": "各ターンのコンテキスト処理を追跡 — 予算・割り当て・Planner→Compilerの判断"
+    },
     "chapter-browser": {
       "title": "章ブラウザ",
       "desc": "この本の章を並び替え・絞り込み・検索し、一括操作",
@@ -198,6 +202,16 @@
     "json-editor": {
       "title": "JSON",
       "desc": "リソースの生 JSON ビュー"
+    },
+    "media-version-history": {
+      "title": "バージョン履歴",
+      "desc": "画像・動画ブロックの過去バージョンを比較・復元",
+      "empty": "メディアブロックが選択されていません。"
+    },
+    "original-source": {
+      "title": "原文ソース",
+      "desc": "この章の未翻訳の原文テキスト",
+      "empty": "エディタから章を開くと、ここに原文ソースが表示されます。"
     }
   },
   "sceneRail": {
@@ -247,7 +261,18 @@
   "editor": {
     "empty": "ナビゲーターで章を選ぶとここで編集できます。",
     "unsaved": "● 未保存",
-    "save": "保存"
+    "save": "保存",
+    "grammar": "文法",
+    "heatmap": "ヒートマップ",
+    "focus": "フォーカス"
+  },
+  "popout": {
+    "invalid": "このポップアウトリンクは無効です。",
+    "open": "ポップアウト",
+    "openTitle": "作曲パネルを別ウィンドウで開く"
+  },
+  "dock": {
+    "dock": "ドック"
   },
   "steering": {
     "heading": "ステアリングルール",

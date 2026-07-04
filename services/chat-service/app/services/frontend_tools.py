@@ -399,7 +399,7 @@ UI_OPEN_STUDIO_PANEL_TOOL: dict = {
             "properties": {
                 "panel_id": {
                     "type": "string",
-                    "enum": ["compose", "editor", "planner", "usage", "notifications", "settings", "trash", "steering", "extensions", "proposals", "glossary", "glossary-ontology", "glossary-unknown", "glossary-ai-suggestions", "glossary-merge-candidates", "wiki", "knowledge", "kg-overview", "kg-entities", "kg-timeline", "kg-evidence", "kg-gap", "kg-proposals", "kg-schema", "kg-graph", "kg-insights", "kg-jobs", "kg-bio", "kg-privacy", "jobs-list", "books", "leaderboard-books", "leaderboard-authors", "leaderboard-translators", "leaderboard-trending", "chapter-browser"],
+                    "enum": ["compose", "editor", "planner", "usage", "notifications", "settings", "trash", "steering", "extensions", "proposals", "glossary", "glossary-ontology", "glossary-unknown", "glossary-ai-suggestions", "glossary-merge-candidates", "wiki", "knowledge", "kg-overview", "kg-entities", "kg-timeline", "kg-evidence", "kg-gap", "kg-proposals", "kg-schema", "kg-graph", "kg-insights", "kg-jobs", "kg-bio", "kg-privacy", "jobs-list", "books", "leaderboard-books", "leaderboard-authors", "leaderboard-translators", "leaderboard-trending", "chapter-browser", "context-inspector"],
                     "description": (
                         "The studio panel to open. 'compose' = the AI co-writer chat; "
                         "'editor' = the manuscript editor; 'planner' = the PlanForge "
@@ -436,7 +436,9 @@ UI_OPEN_STUDIO_PANEL_TOOL: dict = {
                         "'leaderboard-authors' = top-ranked authors; 'leaderboard-translators' = "
                         "top-ranked translators; 'leaderboard-trending' = currently trending books; "
                         "'chapter-browser' = sort/filter/search and bulk-act across this book's "
-                        "chapters (title or full-text content search)."
+                        "chapters (title or full-text content search); "
+                        "'context-inspector' = trace what context management did per turn "
+                        "(budget gauge, allocation map, Planner→Compiler decisions)."
                     ),
                 },
             },

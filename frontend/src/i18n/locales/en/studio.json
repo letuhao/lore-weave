@@ -153,6 +153,10 @@
       "title": "Leaderboard: Trending",
       "desc": "Books trending right now"
     },
+    "context-inspector": {
+      "title": "Context Inspector",
+      "desc": "Trace what context management did per turn — budget, allocation, Planner→Compiler decisions"
+    },
     "chapter-browser": {
       "title": "Chapter Browser",
       "desc": "Sort, filter, search and bulk-act across this book's chapters",
@@ -198,6 +202,16 @@
     "json-editor": {
       "title": "JSON",
       "desc": "Raw JSON view of a resource"
+    },
+    "media-version-history": {
+      "title": "Version History",
+      "desc": "Compare and restore past versions of an image or video block",
+      "empty": "No media block selected."
+    },
+    "original-source": {
+      "title": "Original Source",
+      "desc": "The untranslated source text for this chapter",
+      "empty": "Open a chapter from the Editor to view its original source."
     },
     "extensions": {
       "title": "Extensions",
@@ -259,7 +273,18 @@
   "editor": {
     "empty": "Select a chapter in the manuscript navigator to edit it here.",
     "unsaved": "● unsaved",
-    "save": "Save"
+    "save": "Save",
+    "grammar": "Grammar",
+    "heatmap": "Heatmap",
+    "focus": "Focus"
+  },
+  "popout": {
+    "invalid": "This pop-out link is invalid.",
+    "open": "Pop out",
+    "openTitle": "Open Compose in its own window"
+  },
+  "dock": {
+    "dock": "Dock"
   },
   "steering": {
     "heading": "Steering rules",

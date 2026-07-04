@@ -49,6 +49,9 @@ import { LeaderboardAuthorsPanel } from './LeaderboardAuthorsPanel';
 import { LeaderboardTranslatorsPanel } from './LeaderboardTranslatorsPanel';
 import { LeaderboardTrendingPanel } from './LeaderboardTrendingPanel';
 import { ChapterBrowserPanel } from './ChapterBrowserPanel';
+import { ContextInspectorPanel } from './ContextInspectorPanel';
+import { MediaVersionHistoryPanel } from './MediaVersionHistoryPanel';
+import { OriginalSourcePanel } from './OriginalSourcePanel';
 
 export interface StudioPanelDef {
   id: string;
@@ -131,6 +134,11 @@ export const STUDIO_PANELS: StudioPanelDef[] = [
   // multi-select bulk actions + a Title-vs-Content search-mode toggle), sibling to
   // the Manuscript Navigator (tree, for writing) not a replacement for it.
   { id: 'chapter-browser', component: ChapterBrowserPanel, titleKey: 'panels.chapter-browser.title', descKey: 'panels.chapter-browser.desc' },
+  // Context Budget Law §11 — the Context Compiler · Trace Inspector: per-turn context-build
+  // observability (budget gauge · allocation map · Planner→Compiler waterfall). Palette + agent
+  // openable (panelCatalogContract enforces openable-set == the ui_open_studio_panel enum);
+  // self-contained (lists sessions + picks one), so it needs no book/studio context.
+  { id: 'context-inspector', component: ContextInspectorPanel, titleKey: 'panels.context-inspector.title', descKey: 'panels.context-inspector.desc' },
   // Agent Extensibility Registry (§13b) — extensions hub + proposals inbox are
   // palette-openable + in the agent enum; skill-editor is a params-retargeting
   // singleton (json-editor precedent), hidden from palette + outside the enum.
@@ -140,6 +148,14 @@ export const STUDIO_PANELS: StudioPanelDef[] = [
   // #12 R3/R4 — singleton, retargets via params {docType, resourceId}; opened by "Open as JSON"
   // affordances only (hidden from palette ⇒ outside the agent enum, no contract change this cycle).
   { id: 'json-editor', component: JsonEditorPanel, titleKey: 'panels.json-editor.title', descKey: 'panels.json-editor.desc', hiddenFromPalette: true },
+  // #16 Phase 2 (2.7) — per-resource retargeting singleton (json-editor precedent), opened
+  // only from the "history" button inside an image/video NodeView. hiddenFromPalette + outside
+  // the agent enum — no contract change this cycle.
+  { id: 'media-version-history', component: MediaVersionHistoryPanel, titleKey: 'panels.media-version-history.title', descKey: 'panels.media-version-history.desc', hiddenFromPalette: true },
+  // #16 Phase 2 (2.11) — read-only original-source viewer, retargets via params
+  // {bookId, chapterId}; opened only from EditorPanel's toolbar (json-editor precedent),
+  // hidden from palette + outside the agent enum.
+  { id: 'original-source', component: OriginalSourcePanel, titleKey: 'panels.original-source.title', descKey: 'panels.original-source.desc', hiddenFromPalette: true },
   { id: 'welcome', component: WelcomePanel, titleKey: 'welcome.tab', descKey: 'welcome.tab', hiddenFromPalette: true },
 ];
 

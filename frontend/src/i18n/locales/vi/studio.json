@@ -153,6 +153,10 @@
       "title": "Bảng xếp hạng: Thịnh hành",
       "desc": "Sách đang thịnh hành"
     },
+    "context-inspector": {
+      "title": "Trình kiểm tra ngữ cảnh",
+      "desc": "Xem context management đã làm gì mỗi lượt — ngân sách, phân bổ, quyết định Planner→Compiler"
+    },
     "chapter-browser": {
       "title": "Duyệt chương",
       "desc": "Sắp xếp, lọc, tìm kiếm và thao tác hàng loạt trên các chương của sách này",
@@ -198,6 +202,16 @@
     "json-editor": {
       "title": "JSON",
       "desc": "Xem JSON thô của một resource"
+    },
+    "media-version-history": {
+      "title": "Lịch sử phiên bản",
+      "desc": "So sánh và khôi phục các phiên bản trước của khối ảnh/video",
+      "empty": "Chưa chọn khối media nào."
+    },
+    "original-source": {
+      "title": "Nguồn gốc",
+      "desc": "Văn bản gốc chưa dịch của chương này",
+      "empty": "Mở một chương từ Trình soạn thảo để xem nguồn gốc của nó."
     }
   },
   "sceneRail": {
@@ -247,7 +261,18 @@
   "editor": {
     "empty": "Chọn một chương trong navigator để soạn ở đây.",
     "unsaved": "● chưa lưu",
-    "save": "Lưu"
+    "save": "Lưu",
+    "grammar": "Ngữ pháp",
+    "heatmap": "Bản đồ nhiệt",
+    "focus": "Tập trung"
+  },
+  "popout": {
+    "invalid": "Liên kết cửa sổ bật ra này không hợp lệ.",
+    "open": "Mở cửa sổ riêng",
+    "openTitle": "Mở Compose trong cửa sổ riêng"
+  },
+  "dock": {
+    "dock": "Ghép lại"
   },
   "steering": {
     "heading": "Quy tắc định hướng",

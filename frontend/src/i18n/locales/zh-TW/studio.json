@@ -153,6 +153,10 @@
       "title": "排行榜：趨勢",
       "desc": "目前熱門的書籍"
     },
+    "context-inspector": {
+      "title": "情境檢查器",
+      "desc": "追蹤每輪的情境處理 — 預算、分配、Planner→Compiler 決策"
+    },
     "chapter-browser": {
       "title": "章節瀏覽器",
       "desc": "排序、篩選、搜尋並批次操作本書的章節",
@@ -198,6 +202,16 @@
     "json-editor": {
       "title": "JSON",
       "desc": "資源的原始 JSON 檢視"
+    },
+    "media-version-history": {
+      "title": "版本歷史",
+      "desc": "比較並還原圖片/影片區塊的舊版本",
+      "empty": "尚未選取媒體區塊。"
+    },
+    "original-source": {
+      "title": "原始來源",
+      "desc": "此章節未翻譯的原始文字",
+      "empty": "從編輯器開啟一個章節以檢視其原始來源。"
     }
   },
   "sceneRail": {
@@ -247,7 +261,18 @@
   "editor": {
     "empty": "在導覽列選擇章節即可在此編輯。",
     "unsaved": "● 未儲存",
-    "save": "儲存"
+    "save": "儲存",
+    "grammar": "文法",
+    "heatmap": "熱度圖",
+    "focus": "專注模式"
+  },
+  "popout": {
+    "invalid": "此彈出視窗連結無效。",
+    "open": "彈出視窗",
+    "openTitle": "在獨立視窗開啟 Compose"
+  },
+  "dock": {
+    "dock": "收回"
   },
   "steering": {
     "heading": "引導規則",

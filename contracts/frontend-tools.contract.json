@@ -232,7 +232,8 @@
           "leaderboard-authors",
           "leaderboard-translators",
           "leaderboard-trending",
-          "chapter-browser"
+          "chapter-browser",
+          "context-inspector"
         ],
         "type": "string"
       }
