@@ -19,6 +19,42 @@ from dataclasses import dataclass
 
 import asyncpg
 
+# ── the agent-facing tool (chat-native, server-executed — like find_tools) ────
+CONVERSATION_SEARCH_NAME = "conversation_search"
+
+# LLM-client-first (frontend-tool contract): self-describing, tells the model WHEN
+# to reach for it. `query` is free-form (a name/phrase) — no enum; `limit` is an int.
+CONVERSATION_SEARCH_TOOL: dict = {
+    "type": "function",
+    "function": {
+        "name": CONVERSATION_SEARCH_NAME,
+        "description": (
+            "Search EARLIER messages in THIS conversation for a fact you no longer "
+            "see in context (a name, a decision, a number established before). Older "
+            "turns scroll out / get compacted but are kept — call this to pull one "
+            "back instead of guessing or asking the user to repeat themselves. Give "
+            "the exact name/phrase to look for. Returns matching earlier turns "
+            "(oldest-first) with a snippet; empty means it was never discussed here."
+        ),
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "query": {
+                    "type": "string",
+                    "description": "The exact name or phrase to find (e.g. a character name).",
+                },
+                "limit": {
+                    "type": "integer",
+                    "description": "Max earlier turns to return (default 8, max 25).",
+                    "default": 8,
+                },
+            },
+            "required": ["query"],
+            "additionalProperties": False,
+        },
+    },
+}
+
 # A recovered hit carries just enough to re-ground: where it was + a focused snippet.
 _SNIPPET_RADIUS = 160  # chars of context on each side of the match
 

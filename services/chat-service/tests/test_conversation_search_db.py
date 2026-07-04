@@ -10,9 +10,28 @@ import uuid
 import asyncpg
 import pytest
 
-from app.db.conversation_search import search_session_messages
+from app.db.conversation_search import (
+    CONVERSATION_SEARCH_NAME,
+    CONVERSATION_SEARCH_TOOL,
+    search_session_messages,
+)
 
 pytestmark = pytest.mark.xdist_group("pg")
+
+
+def test_tool_def_is_wire_standard():
+    """The agent-facing schema the tool-loop will advertise (ready-to-wire): a
+    self-describing function tool, `query` required string, `limit` int, closed
+    (additionalProperties False). No DB — a pure contract check."""
+    fn = CONVERSATION_SEARCH_TOOL
+    assert fn["type"] == "function"
+    assert fn["function"]["name"] == CONVERSATION_SEARCH_NAME == "conversation_search"
+    params = fn["function"]["parameters"]
+    assert params["type"] == "object"
+    assert params["required"] == ["query"]
+    assert params["properties"]["query"]["type"] == "string"
+    assert params["properties"]["limit"]["type"] == "integer"
+    assert params["additionalProperties"] is False
 
 DSN = os.environ.get("CHAT_DB_DSN", "postgresql://loreweave:loreweave_dev@localhost:5555/loreweave_chat")
 OWNER = uuid.UUID("019d5e3c-7cc5-7e6a-8b27-1344e148bf7c")  # claude-test
