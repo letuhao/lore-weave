@@ -10,7 +10,9 @@ P2 is **structural**, not bug-fixing (P0) and not gate-building (P1):
 
 Because these are refactors touching many services, **each workstream is its own coherent effort with its own CLARIFY→…→COMMIT cycle**; they do not share a branch and are independently shippable. Sequencing (below) is by leverage + dependency, not a hard chain.
 
-**How to use:** each item states Problem · grounded Evidence (code-anchored, re-verify at BUILD — investigation notes go stale) · Target · Scope & defer-gate · Acceptance (proven by EFFECT/test, never self-report). Sizes are complexity+risk estimates per the workflow's size gate.
+**How to use:** each item states Problem · grounded Evidence (code-anchored) · Target · Scope & defer-gate · Acceptance (proven by EFFECT/test, never self-report). Sizes are complexity+risk estimates per the workflow's size gate.
+
+> **✅ Adversarial verification pass — 2026-07-04.** Every workstream's code-grounded claims were re-checked against live code by 3 cold-start Explore agents (observability / LLM-logging / notification+audit); the `⚠ Verified` blocks below record where reality diverged from the first draft. Material changes: **G** already done (no-op); **A2** is EXTEND `loreweave_obs` (it exists) + a real merge (copies aren't identical) + a Go adopt-vs-retire fork, not a simple SDK create; **B1** needs **no re-encrypt migration** (decrypt is try-all) → down to S; **B2** drops outbox-unification (streaming/sync are HTTP-only with no tx to hang an outbox on — net-new infra, unjustified) in favor of a parity test + the already-designed row-delete sweeper; **C** drops "unify SSE+/ws" (a category error — different concepts) and reframes FE i18n as a channel migration; **F** must emit first-access-per-session (per-request is a volume hazard) and has an in-repo audit template (auth-service). Claims still marked "re-verify at BUILD" where an agent couldn't reach ground truth.
 
 ---
 
@@ -20,47 +22,64 @@ Because these are refactors touching many services, **each workstream is its own
 
 **Problem.** Two unreconciled correlation-id schemes mean Loki logs and Tempo traces **don't join** — you cannot pivot from a log line to its trace.
 
-**Evidence.** OTel W3C `traceparent` (spans) vs bespoke `X-Trace-Id` uuid-hex (`services/glossary-service/internal/api/trace_id.go`, replicated ~5×). **Go logs carry no trace_id at all** (fleet uses bare `slog` with no span-context injection).
+**Evidence (verified 2026-07-04).** OTel W3C `traceparent` (spans) vs bespoke `X-Trace-Id` uuid-hex (`services/glossary-service/internal/api/trace_id.go:41-98`), replicated **~8× across languages** (Python ASGI ×5: chat/knowledge/composition/lore-enrichment/learning `app/middleware/trace_id.py`; Go chi ×1; Rust axum `crates/service-http/src/trace.rs`; TS gateways). The bespoke id is **independent of `traceparent`** (`loreweave_obs` docstring confirms it is "UNRELATED to the OTel trace id Tempo indexes by"). **Go DOES emit OTel spans** (`observability.InitTracer` + `ChiMiddleware` in every Go `main.go`, regression-locked in `book-service/internal/api/tracing_test.go`) — but **Go logs carry no trace_id**: the fleet uses the global `slog.SetDefault(JSONHandler).With("service", …)` and calls package-level `slog.Xxx(...)` that pass **no `ctx`**.
 
-**Target.** One namespace: W3C trace context. A shared helper injects the active span's `trace_id`/`span_id` into every structured log line (Go + Python + TS). Retire the bespoke `X-Trace-Id` middleware (or make it a thin alias that reads/writes `traceparent`).
+**Target.** One namespace: W3C trace context. A shared `slog.Handler` (Go) / logging filter (Python) reads the active span and injects `trace_id`/`span_id` into every line. Do NOT hard-retire `X-Trace-Id` — instead **dual-emit**: keep the bespoke id flowing where it is load-bearing (see blocker) while adding the OTel `trace_id`, then deprecate the bespoke channel once dual-emit is proven. `loreweave_obs.current_otel_trace_id()` already exists to source the OTel id.
 
-**Scope & defer-gate.** #2 structural — touches every service's logging setup + the 5 `trace_id` middleware copies. Do **with A2** (same seam: the log helper is where trace_id gets injected).
+**⚠ Verified blockers.**
+1. **Call-site sweep, not a handler swap.** A span-reading `slog.Handler` only sees the trace id if callers use the `context`-aware `slog.InfoContext/ErrorContext` variants; the fleet's bare `slog.Error(msg, …)` calls pass no ctx. Injection therefore requires a **call-site migration across every Go service**, which is the real cost (drives size **L**), not a config toggle.
+2. **`X-Trace-Id` is load-bearing in 3 non-header surfaces** that `traceparent` does not populate today: the **500-error JSON body `trace_id` field** ops grep by, the **persisted `auth-service` audit column** (`migrate.go:186 trace_id TEXT`), and the ~8-impl request-propagation chain. No frontend/runtime client reads the *response header* (safe to drop that), but a pure swap would break "paste the id from a UI error into log search" — hence dual-emit, not retire.
 
-**Acceptance.** A live cross-service smoke (chat → knowledge → provider-registry) produces log lines whose `trace_id` matches the Tempo span; a test asserts the log helper emits `trace_id` when a span is active and omits it cleanly when none is. No service left on `X-Trace-Id`.
+**Scope & defer-gate.** #2 structural — a call-site sweep across every Go service + dual-emit wiring in the 8 middleware copies. Do **with A2** (same seam: the log helper is where trace_id gets injected).
 
-### A2 · Shared logging SDK per language  *(size: L)*
+**Acceptance.** A live cross-service smoke (chat → knowledge → provider-registry) produces log lines whose OTel `trace_id` matches the Tempo span; a 500-error response still carries a greppable id (bespoke or OTel) in its JSON body; a test asserts the handler injects `trace_id` under an active span and omits it cleanly with none.
 
-**Problem.** `logging_config.py` is **byte-identical copy-pasted ×3** (knowledge/composition/lore-enrichment) → guaranteed drift; `contracts/logging` (Go, typed PII/Sensitive + Redactor + prod-guard) has **0 adopters**; Python is a 3-tier spectrum where the hot-path LLM workers (translation, worker-ai, campaign, jobs, video-gen) are on plain `basicConfig`.
+### A2 · Shared logging SDK per language — split A2a (Python) / A2b (Go)  *(size: A2a M · A2b L)*
 
-**Target.** One idiom per language, promoted to a shared SDK: `sdks/python/loreweave_obs.setup_logging()` (JSON + span-context trace_id + a Redactor); adopt Go `contracts/logging` fleet-wide (or fold into `loreweave_obs` Go mirror); pick NestJS Logger for TS and kill the 6 raw `console.*` on the backend. Delete the 3 copied `logging_config.py`.
+**Problem.** `logging_config.py` is copy-pasted ×3 (knowledge/composition/lore-enrichment) → drift; `contracts/logging` (Go, typed PII/Sensitive + Redactor + prod-guard) has **0 adopters** (confirmed — only its own tests import it); Python is a 3-tier spectrum where the hot-path LLM workers (translation, worker-ai, campaign, jobs, video-gen) are on plain `basicConfig`.
 
-**Scope & defer-gate.** #2 structural (SDK creation + fleet adoption). This is the P1 note "promote `logging_config.py` → SDK" that was deferred to P2.
+**⚠ Verified corrections to the original framing.**
+- **`loreweave_obs` ALREADY EXISTS** (`sdks/python/loreweave_obs/__init__.py`, exports `setup_tracing` + `current_otel_trace_id`) — it is a *tracing* helper with **no** logging. So this is **EXTEND** (add `setup_logging` + a Redactor beside the tracing helpers), not create; note logging is a scope-widening of a tracing-named SDK.
+- **The 3 `logging_config.py` are NOT byte-identical** (3 distinct blobs). lore-enrichment's is materially richer: extra `job_id`/`stage` ContextVars + a **third** secret regex the other two lack. So the shared `setup_logging` MUST parameterize the service name **and** accept optional extra correlation ContextVars, or lore-enrichment regresses — a real merge, not a dedup. Preserve the `pythonjsonlogger.json`-vs-`.jsonlogger` import fallback.
+- **Adopting Go `contracts/logging` is a REWRITE, not an import swap** — it exposes a typed `Field`/`Emit` API (different from the `slog` the fleet actually calls) and **prod-refuses a nil `Redactor`** (`ErrNilRedactor`), so adoption also requires binding a `pii.Redactor` adapter per service.
 
-**Acceptance.** `logging-discipline-lint` (built in P1, currently advisory for these) flips to **BLOCKING** and passes: 0 `basicConfig`-plain, 0 backend `console.*`, 0 copied `logging_config.py`, every Python service imports `setup_logging`. Orphan-adoption check: `contracts/logging` importer-count > 0.
+**Target — A2a (Python, do first, higher value/lower risk).** Add `loreweave_obs.setup_logging(service_name, *, extra_context_vars=…)` (JSON + injected OTel `trace_id` via `current_otel_trace_id` + a Redactor merging all three secret regexes); adopt across all Python services incl. the `basicConfig` hot-path workers; delete the 3 `logging_config.py`.
+**Target — A2b (Go, heavier).** Either adopt `contracts/logging` fleet-wide (accept the `Field`/`Emit` rewrite + wire the `pii.Redactor` adapter) **or** consciously standardize on `slog` + a shared span-reading handler (from A1) and retire `contracts/logging` as an orphan. **This is a design fork — decide in CLARIFY.** TS: NestJS Logger, kill the 6 backend `console.*`.
+
+**Scope & defer-gate.** #2 structural (SDK extension + fleet adoption). A2a and A2b ship independently.
+
+**Acceptance.** A2a: `logging-discipline-lint` flips **BLOCKING** and passes — 0 `basicConfig`-plain, 0 copied `logging_config.py`, every Python service imports `setup_logging`, lore-enrichment's `job_id`/`stage` fields still emitted (regression test). A2b: 0 backend `console.*`; and either `contracts/logging` importer-count > 0 (adopt) OR it is deleted (retire) — no orphan left half-alive.
 
 ---
 
 ## Workstream B — LLM-logging hardening (P0-2 structural residual + key mgmt)
 
-### B1 · Dedicated `LLM_PAYLOAD_ENCRYPTION_KEY` + rotation + KEK derivation  *(size: M)*
+### B1 · KEK `sha256`-derivation + rotation runbook  *(size: S — smaller than first scoped)*
 
-**Problem.** P0-3 gave the payload KEK a keyring (`LLM_PAYLOAD_ENCRYPTION_KEYS_RETIRED`) but two structural residuals remain: (a) `usage-billing normalizeAESKey` zero-pads/truncates the passphrase to 32 bytes instead of `sha256`-deriving (`D-REVIEW-AESKEY-DERIVE`) — a >32-byte passphrase contributes only its first 32 bytes; (b) no rotation runbook/automation.
+**Problem.** P0-3 gave the payload KEK a keyring (`LLM_PAYLOAD_ENCRYPTION_KEYS_RETIRED`); the residual is (a) `usage-billing normalizeAESKey` (`server.go:56-67`) zero-pads/truncates the passphrase to 32 bytes instead of `sha256`-deriving (`D-REVIEW-AESKEY-DERIVE`) — a >32-byte passphrase contributes only its first 32 bytes; (b) no documented rotation runbook.
 
-**Target.** `sha256`-derive the KEK (fixed 32-byte output from any passphrase length) behind a versioned key id, with a re-encrypt migration for existing rows; document + script rotation (add-new-active + retire-old, using the keyring that already exists).
+**⚠ Verified — this is SMALLER than the audit doc implied: NO re-encrypt migration needed.** Decrypt already does **try-all-keys** in fixed order (primary → legacy → each retired: `unwrapSessionKey` `server.go:149-170`), and there is **no key-id column that routes decryption** (`payload_encryption_key_ref` on `usage_logs` is an observability fingerprint, never queried back to pick a key; `usage_log_details` has no key-version column). So rotation for existing rows is already covered by try-all — **no backfill/re-encrypt migration is required**.
 
-**Scope & defer-gate.** #2 — switching derivation **orphans every existing encrypted row** → needs a re-encrypt migration (this is exactly why `D-REVIEW-AESKEY-DERIVE` was deferred). Clears `D-REVIEW-AESKEY-DERIVE`.
+**Target.** Switch `normalizeAESKey` to `sha256`-derive (fixed 32 bytes from any length) **version-gated per key**: because a derivation change alters the bytes for *every* key, the change must be applied only to the new active key while existing active/legacy/retired keys keep the OLD normalization in the retired keyring (try-all then finds them). Document the rotation runbook (move current key → `…_KEYS_RETIRED`, set fresh key), using the keyring + `TestUnwrapSessionKey_RetiredKeyRotation` harness that already exist.
 
-**Acceptance.** Round-trip test across a rotation: write under key v1 → rotate → v1 moves to retired → old rows still decrypt, new rows use v2. Migration re-encrypts a seeded corpus and a decrypt-all assertion passes.
+**Scope & defer-gate.** #2 (crypto-derivation change) but **no migration** — the "orphans every row" concern the audit doc raised is mooted by try-all. Clears `D-REVIEW-AESKEY-DERIVE`.
 
-### B2 · LLM-logging chokepoint unification + `llm_jobs` retention policy  *(size: L — P0-2 residual)*
+**Acceptance.** A test: rows wrapped under the OLD (pad/truncate) normalization still decrypt after the new key uses `sha256`-derive (both live in the keyring, try-all resolves each); a new row wraps under the `sha256` key and round-trips; the rotation runbook is executed in a test (active→retired→new-active) with no decrypt regression.
 
-**Problem.** Two routes reach the shared `writeUsageLog` SQL writer: streaming + the 3 sync ops use **Route A** (inline `RecordUsage` HTTP → `/internal/model-billing/record` → `recordInvocation`), while async jobs use **Route B** (`finalize→usage_outbox→relay→consumer`). Ledger integrity is met (one writer), but the "route ALL through one finalize path" design goal isn't literally met, so the two paths can drift. Separately, `llm_jobs` plaintext (`input`/`result` JSONB) has `expires_at = now()+7d` (`provider-registry migrate/migrate.go:145`) **with no implemented sweeper** — plaintext currently accumulates un-purged; the durable copy is the (now-readable, post-P0-1) encrypted `usage_logs`.
+### B2 · LLM-logging route parity + `llm_jobs` retention sweeper  *(size: M — P0-2 residual, de-scoped from "unification")*
 
-**Target.** (a) Collapse Route A into the finalize→outbox path (or formalize Route A as a sanctioned second path with a shared contract test proving both produce identical `usage_logs` rows for the same call). (b) Decide + implement the plaintext retention policy: a sweeper that purges `llm_jobs.input/.result` past `expires_at` (relying on the encrypted `usage_logs` as the durable record), or extend/remove the TTL — a **PII-retention decision**, coordinate with B1 and WS-F.
+**Problem.** Two routes reach the shared `writeUsageLog` SQL writer: streaming + the 3 sync ops use **Route A** (inline `RecordUsage` HTTP → `/internal/model-billing/record` → `recordInvocation`), while async jobs use **Route B** (`finalize→usage_outbox→relay→consumer`). Ledger integrity is met (one writer), but the paths can drift. Separately, `llm_jobs` plaintext (`input`/`result` JSONB) has `expires_at = now()+7d` (`provider-registry migrate/migrate.go:145`) **with no implemented sweeper** — plaintext currently accumulates un-purged; the durable copy is the (now-readable, post-P0-1) encrypted `usage_logs`.
 
-**Scope & defer-gate.** #2 — a cross-service billing-path refactor + a retention/PII policy call. This is the P0-2 structural residual (the live audit-ledger defect is already closed; see parent doc § P0-2).
+**⚠ Verified — do NOT force outbox-unification.** Streaming `settle` and `recordSyncUsage` are **pure HTTP with no local DB transaction** (`stream_billing.go:203-289`, `server.go:2785-2815` — no pool/tx, no `llm_jobs` row); the async outbox seam exists only because that path already owns the `llm_jobs` UPDATE tx. "Route ALL through finalize→outbox" would mean **introducing a net-new DB table + write into two paths that write nothing locally today** — structural addition for a marginal gain (transactional at-least-once vs the current best-effort HTTP + usage-billing sweeper backstop), when ledger integrity is already met. So the reframed target:
 
-**Acceptance.** A contract test asserts streaming, embed, rerank, web_search, and an async job all land a `usage_logs` row with identical shape/encryption via the unified path. A retention test: a plaintext `llm_jobs` row past `expires_at` is purged by the sweeper while its encrypted `usage_logs` copy remains decryptable. `D-REVIEW-EMBED-AUDIT-COST` (sync ops flat-cost) folded in if the pricing-resolution plumbing is built here.
+**Target.**
+- **(a) Parity, not unification (default).** Keep the two routes; add a **contract test** asserting streaming, embed, rerank, web_search, and an async job each land a `usage_logs` row of identical shape/encryption. Only if a best-effort-HTTP loss is observed in practice (evidence, not speculation) escalate to the net-new transactional write — track that as a conditional sub-item, not now.
+- **(b) Retention sweeper — follow the EXISTING design intent: whole-row DELETE, not column-purge.** The `migrate.go:143-144` comment already designs a terminal-rows-past-`expires_at` DELETE; implement that sweeper. Verified safe: `input` is never API-returned (`MarshalJob` omits it) and its only reader `LoadForProcess` is `pending`-only, so a terminal purge can't collide with dispatch; `result` IS served by `GET /{v1,internal}/llm/jobs/{id}` with no time bound, but a whole-row DELETE cleanly 404s (consumers already tolerate 404), whereas a column-purge would return a confusing partial row. Coordinate the retention window with WS-F/PII stance.
+- **(c) Sync cost (`D-REVIEW-EMBED-AUDIT-COST`).** **embed = cheap** — add the `pricing` column to the credential SELECT it already runs (`server.go:3060`) + compute from `result.PromptTokens`. **rerank/web-search need a non-token pricing dimension first** (they pass 0/0 tokens — `server.go:2906,2995` — so per-token cost is meaningless); either add per-call/per-request pricing or consciously leave them flat-rate + documented.
+
+**Scope & defer-gate.** #2 — a retention sweeper + a parity contract test + the embed-cost add. The heavy "outbox everything" is explicitly **out of scope** (net-new infra, unjustified today).
+
+**Acceptance.** Parity contract test green across all 5 call types. Retention test: a terminal `llm_jobs` row past `expires_at` is DELETEd by the sweeper, its encrypted `usage_logs` copy still decrypts, and `GET …/jobs/{id}` 404s. Embed rows carry an authoritative `TotalCostUSD`; rerank/web-search cost decision recorded.
 
 ---
 
@@ -68,11 +87,16 @@ Because these are refactors touching many services, **each workstream is its own
 
 **Problem.** `notification-service` now has a shared envelope (P1 `contracts/notifyevent`) but the delivery plane is still immature: HTTP-ingest producers are **fire-and-forget-swallow** (lost if the service is down; no outbox); the AMQP consumer is at-least-once but `notifications` has **no dedup key** → requeue duplicates rows; `NoopNotifier` silently drops when `RABBITMQ_URL` unset; **two live transports** (SSE + `/ws`) for one concept; only `llm_job` events reach live-push; no user opt-out; no PII discipline on bodies; D-NOTIF-I18N shipped the BE columns but **FE per-locale rendering** is still pending.
 
-**Target.** Producer-side transactional outbox (kills fire-and-forget-swallow); `(user_id, dedup_key)` unique on `notifications`; user opt-out preferences; unify SSE + `/ws` onto one transport; FE renders `notif.*` `message_key`+`params` per user locale (closes the D-NOTIF-I18N tail); PII redaction on notification bodies.
+**⚠ Verified corrections.**
+- **Dedup on the AMQP path is FREE** — `TerminalEvent.JobID` is a stable UUID already on the wire and the consumer already requires it non-nil (`consumer.go:254`). Dedup key = `job_id:status` (one job emits one terminal event per status). **But the HTTP-ingest path has NO stable id** (`createNotification` `server.go:114-175` takes no idempotency field). So a strict `(user_id, dedup_key)` UNIQUE forces every HTTP producer to supply a key — instead use a **partial unique index** `UNIQUE(user_id, dedup_key) WHERE dedup_key IS NOT NULL` (AMQP fills it, HTTP producers opt in over time).
+- **DROP "unify SSE + `/ws`" — they are NOT redundant and neither is in notification-service.** SSE `/v1/notifications/stream` (api-gateway-bff `notifications.controller.ts`) is the notification push; `/ws` (`ws-server.ts`) is the **game/agent realtime** channel (different concept, different payloads). Unifying them is a category error; leave both.
+- **FE i18n is a channel MIGRATION, not net-new render.** The BE `message_key`/`message_params` columns exist + are populated + exposed (P1 done). But the FE (`NotificationItem.tsx:30-43`) still derives i18n from `metadata.operation`/`metadata.status` (an **older** channel) and the `message_key` column is **invisible to FE** (`api.ts` `Notification` type lacks the field). The tail = add `message_key`/`message_params` to the FE type + render from the key, deprecating the `metadata.operation` path.
 
-**Scope & defer-gate.** #2 — schema migration (outbox + dedup + opt-out) + FE i18n (~93 manual imports, `fallbackLng:'en'`) + a transport unification.
+**Target.** Producer-side transactional outbox for the HTTP producers (kills fire-and-forget-swallow — model on book-service's `insertBookOutbox`); partial-unique `(user_id, dedup_key)` on `notifications` (AMQP sources `job_id:status`); user opt-out preferences; FE renders from the `message_key` column per locale (closes D-NOTIF-I18N tail); PII redaction on notification bodies; make `NoopNotifier` at least WARN-log on drop rather than silently return nil.
 
-**Acceptance.** Requeue-a-duplicate test asserts one row (dedup key holds); service-down test asserts the outbox redelivers on recovery (no loss); a browser smoke shows a `notif.*` notification rendered in a non-English locale; opt-out suppresses delivery. Closes `D-NOTIF-I18N` FE tail.
+**Scope & defer-gate.** #2 — schema migration (outbox + partial-unique dedup + opt-out) + FE i18n channel migration (~93 manual imports, `fallbackLng:'en'`). No transport work.
+
+**Acceptance.** Requeue-a-duplicate AMQP event asserts one row (partial-unique holds on `job_id:status`); service-down test asserts the HTTP outbox redelivers on recovery (no loss); a browser smoke shows a `notif.*` notification rendered from `message_key` in a non-English locale; opt-out suppresses delivery. Closes `D-NOTIF-I18N` FE tail.
 
 ---
 
@@ -102,43 +126,44 @@ Because these are refactors touching many services, **each workstream is its own
 
 ## Workstream F — Platform tenant-boundary audit log  *(size: M)*
 
-**Problem.** The audit apparatus is mature for MMO-meta (`*_audit` tables + `contracts/meta/scrubber.go`) but **no audit contract covers domain tenant-boundary crossings** — book/glossary cross-tenant reads emit **nothing**. Combined with the P0 finding "no auth-failure / tenant-boundary security audit log on the main platform."
+**Problem.** No audit covers domain tenant-boundary crossings — **verified**: book-service `resolveBookAuth`/`authBook` (`collaborators.go:80-168`) and glossary `checkGrant`/`requireGrant` (`ownership.go:49-89`) write only HTTP 401/404/403 on a cross-tenant (collaborator) read — **no audit row**. No general auth-failure audit exists on the main platform (the only failure-outcome audit is narrow: auth-service's `admin_token_issuance_audit` + `mcp_call_audit`).
 
-**Target.** An append-only scrubbed audit row on every cross-tenant access + auth-failure on the main platform (model on the meta `*_audit` pattern — `error_detail_scrubbed` + hash, no raw-string accessor). Reuse the projection-trigger pattern where a projection table exists.
+**⚠ Verified — two things reshape the design.**
+- **Volume risk is real → do NOT log per-request.** `authBook` runs on **every** per-book route with no request-scoped memoization (2 SELECTs each), and glossary `requireGrant` fires a **cross-service HTTP** `ResolveAccess` per request. A collaborator paging chapters would emit one audit row per GET. Target **emit-on-first-cross-tenant-access-per-session** (or sample/coalesce), not per-read — this is a design requirement, not a nice-to-have.
+- **A domain-level audit template already exists to copy** — auth-service's `admin_token_issuance_audit` (`migrate.go:103-124`) + `mcp_call_audit` (`migrate.go:179-204`): UUID PK, denormalized actor for post-deletion forensics, `outcome` CHECK enum, `created_at` index, and `REVOKE UPDATE, DELETE … FROM app_service_role` append-only enforcement. Model on **this in-repo domain pattern**, not just the meta apparatus.
 
-**Scope & defer-gate.** #2 — new audit tables/contract across the domain services; the meta pattern is the template to copy.
+**Target.** An append-only scrubbed audit row on cross-tenant access (first-per-session) + auth-failure, in each domain service's own DB, using the auth-service append-only pattern (`outcome` enum + REVOKE UPDATE/DELETE + scrubbed detail, no raw-string accessor). Reuse the projection-trigger pattern where a projection table exists.
+
+**Scope & defer-gate.** #2 — new per-service audit tables + a coalescing/first-access emit path; the auth-service audit tables are the template to copy.
 
 **Acceptance.** A cross-tenant read (user A reads a book granted by user B) and an auth-failure each emit exactly one scrubbed audit row; a raw-PII-leak test asserts no un-scrubbed field is persisted.
 
 ---
 
-## Workstream G — Docs hygiene: fix CLAUDE.md service table (12→46)  *(size: XS)*
+## Workstream G — Docs hygiene: service map  *(✅ ALREADY RESOLVED — verified 2026-07-04, no-op)*
 
-**Problem.** The CLAUDE.md "Services" table historically listed only 12 of ~46 services — the root of the recurring "this service doesn't exist" confusion (learning/statistics/notification all exist and run). *(Note: the current CLAUDE.md already de-inlined the table and points to `contracts/language-rule.yaml` + `docs/ARCHITECTURE.md` — re-verify at BUILD whether this is already resolved; if so, this item is a no-op/close-out.)*
-
-**Target.** Ensure the authoritative service map is complete + linked, and no stale curated subset misleads agents.
-
-**Scope & defer-gate.** XS — docs only, high leverage (prevents a whole class of agent errors). Do first (cheap).
-
-**Acceptance.** Every present `services/<name>/` appears in the authoritative map (`language-rule-lint.sh` already enforces this for the language map — confirm it's green and the doc points there).
+**Verified DONE.** CLAUDE.md already de-inlined the stale 12-service table (line 22: "This file does **not** enumerate them … Authoritative service→language map: `contracts/language-rule.yaml`") and `bash scripts/language-rule-lint.sh` returns **`[language-rule] PASS`** — every present `services/<name>/` has a row in the authoritative map. No work remains; this row is closed out.
 
 ---
 
 ## Sequencing (by leverage + dependency, not a hard chain)
 
-1. **G** (XS, docs) — cheapest, prevents agent errors; verify-then-close.
-2. **A1 + A2** (observability) — do together (shared log-helper seam); unlocks trace-joined debugging for everything after.
-3. **B1 + B2** (LLM-logging hardening) — closes the P0-2 structural residual + key rotation; B2's retention decision coordinates with F.
-4. **C** (notification) — self-contained; closes the D-NOTIF-I18N FE tail.
-5. **D** (latency SLO) — self-contained; benefits from A (trace-joined perf).
-6. **F** (tenant-boundary audit) — coordinate the PII/retention stance with B2.
-7. **E** (salience↔learning) — start with the decision; may be a documented won't-fix.
+Post-verification sizes: **G ✅done · B1 S · A2a M · B2 M · D M · F M · A1 L · A2b L · C L · E L(decision-first)**.
+
+1. **G** — ✅ already resolved (no-op).
+2. **B1** (S) — cheapest real item; self-contained crypto-derivation + runbook, no migration. Good warm-up.
+3. **A1 + A2a** (observability) — do together (shared log-helper seam: A2a's `setup_logging` is where A1's trace_id injection lands). A1 carries the Go call-site sweep. Unlocks trace-joined debugging for everything after. **A2b (Go `contracts/logging` adopt-vs-retire)** is a separate CLARIFY fork — schedule after A2a.
+4. **B2** (M) — parity test + retention sweeper (NOT outbox-unification); retention window coordinates with F.
+5. **C** (L) — self-contained; dedup + HTTP outbox + FE i18n channel migration (no transport work).
+6. **D** (M) — self-contained; benefits from A (trace-joined perf).
+7. **F** (M) — first-access-per-session audit (coordinate PII/retention stance with B2).
+8. **E** (L) — decision-first; may be a documented won't-fix.
 
 **Cross-cutting risk:** the repo runs **concurrent sessions on one checkout** — every workstream stages exact paths (`git commit -- <paths>`, never `git add -A`), re-verifies shared spine files survived concurrent edits, and lands its SESSION_HANDOFF update in the same commit as its code.
 
 ## Deferred rows this spec absorbs (from the parent audit doc)
 
-- `D-REVIEW-AESKEY-DERIVE` → **B1**
-- `D-REVIEW-EMBED-AUDIT-COST` → **B2** (if pricing-resolution is built there)
-- `D-NOTIF-I18N` (FE tail) → **C**
-- P0-2 structural residual (chokepoint + retention) → **B2**
+- `D-REVIEW-AESKEY-DERIVE` → **B1** (verified: no re-encrypt migration needed — try-all covers rotation)
+- `D-REVIEW-EMBED-AUDIT-COST` → **B2** (embed cheap; rerank/web-search need a non-token pricing dimension or a documented flat-rate)
+- `D-NOTIF-I18N` (FE tail) → **C** (a `metadata.operation`→`message_key` channel migration)
+- P0-2 structural residual → **B2** (route parity + retention sweeper; outbox-unification explicitly out of scope)
