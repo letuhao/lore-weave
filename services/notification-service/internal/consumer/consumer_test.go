@@ -10,6 +10,30 @@ import (
 	"github.com/loreweave/notification-service/internal/category"
 )
 
+// P2·C — the dedup key is the at-least-once idempotency key. A redelivery of the
+// same terminal event must derive the SAME key (job_id:status) so ON CONFLICT
+// collapses it; a drift in this shape would silently reopen the duplicate-row hole.
+func TestTransform_DedupKeyIsJobIDStatus(t *testing.T) {
+	jid := uuid.New()
+	args := transformTerminalEvent(terminalEvent{
+		JobID: jid, OwnerUserID: uuid.New(), Operation: "chat", Status: "completed",
+	})
+	if want := jid.String() + ":completed"; args.DedupKey != want {
+		t.Errorf("dedup_key: got %q want %q", args.DedupKey, want)
+	}
+	// Distinct terminal statuses of one job stay distinct (a completed then a late
+	// cancelled are different notifications, not dupes).
+	failed := transformTerminalEvent(terminalEvent{JobID: jid, OwnerUserID: uuid.New(), Status: "failed"})
+	if failed.DedupKey == args.DedupKey {
+		t.Errorf("distinct statuses must not share a dedup key: %q", failed.DedupKey)
+	}
+	// Empty status → no trailing colon (well-formed key).
+	empty := transformTerminalEvent(terminalEvent{JobID: jid, OwnerUserID: uuid.New()})
+	if empty.DedupKey != jid.String() {
+		t.Errorf("empty-status key: got %q want %q", empty.DedupKey, jid.String())
+	}
+}
+
 func TestTransform_CompletedHasNoBody(t *testing.T) {
 	uid := uuid.New()
 	jid := uuid.New()

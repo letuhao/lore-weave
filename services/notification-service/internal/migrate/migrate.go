@@ -47,6 +47,17 @@ CREATE TABLE IF NOT EXISTS notifications (
 ALTER TABLE notifications ADD COLUMN IF NOT EXISTS message_key    TEXT;
 ALTER TABLE notifications ADD COLUMN IF NOT EXISTS message_params JSONB;
 
+-- P2·C (NOTIF dedup): idempotency key for at-least-once producers. The AMQP
+-- consumer is at-least-once (a broker redelivery after a committed INSERT but
+-- lost ACK would duplicate the row); the key + partial-unique below collapses a
+-- redelivery to ONE row via INSERT ... ON CONFLICT DO NOTHING. For llm_job events
+-- the key is job_id:status. NULL for producers that don't set one (legacy rows,
+-- ad-hoc notifications) — those keep the prior no-dedup behavior (partial index
+-- ignores NULLs, so unlimited NULL-key rows are still allowed).
+ALTER TABLE notifications ADD COLUMN IF NOT EXISTS dedup_key TEXT;
+CREATE UNIQUE INDEX IF NOT EXISTS idx_notif_dedup
+  ON notifications(user_id, dedup_key) WHERE dedup_key IS NOT NULL;
+
 CREATE INDEX IF NOT EXISTS idx_notif_user_unread ON notifications(user_id, created_at DESC) WHERE read_at IS NULL;
 CREATE INDEX IF NOT EXISTS idx_notif_user_all ON notifications(user_id, created_at DESC);
 `

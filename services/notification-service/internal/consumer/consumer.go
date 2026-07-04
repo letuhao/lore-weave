@@ -59,6 +59,11 @@ type notificationArgs struct {
 	// these; any other client keeps showing Title/Body.
 	MessageKey    string
 	MessageParams []byte // JSON-encoded
+	// DedupKey (P2·C) — idempotency key for the at-least-once AMQP delivery. A
+	// broker redelivery (committed INSERT, lost ACK) carries the same job_id:status,
+	// so the INSERT ... ON CONFLICT (user_id, dedup_key) DO NOTHING collapses it to
+	// one row. Pure-derived here so the key shape is unit-locked.
+	DedupKey string
 }
 
 // transformTerminalEvent converts a parsed event into the args we'll
@@ -83,7 +88,21 @@ func transformTerminalEvent(ev terminalEvent) notificationArgs {
 		Metadata:      meta,
 		MessageKey:    messageKey(cat, ev.Status),
 		MessageParams: messageParams(ev),
+		DedupKey:      dedupKey(ev),
 	}
+}
+
+// dedupKey is the at-least-once idempotency key for a terminal event: one row per
+// (job, terminal status). A redelivery of the same terminal event collapses via
+// ON CONFLICT; distinct statuses of one job (a job that emits running→completed is
+// not this path — only terminal events reach here) stay distinct. Empty status
+// falls back to job_id alone rather than a trailing colon, so the key is always
+// well-formed.
+func dedupKey(ev terminalEvent) string {
+	if ev.Status == "" {
+		return ev.JobID.String()
+	}
+	return ev.JobID.String() + ":" + ev.Status
 }
 
 // messageKey builds the stable i18n key: notif.<category>.<status>
@@ -274,10 +293,14 @@ func (c *Consumer) handle(ctx context.Context, d rabbitmq.Delivery) {
 		_ = d.Nack(false, false)
 		return
 	}
+	// P2·C — dedup on (user_id, dedup_key): a broker redelivery of an already-
+	// inserted terminal event is collapsed to one row (partial-unique index). The
+	// ON CONFLICT predicate mirrors the index's WHERE so it targets that index.
 	_, err := c.pool.Exec(ctx, `
-INSERT INTO notifications (user_id, category, title, body, metadata, message_key, message_params)
-VALUES ($1, $2, $3, $4, $5, $6, $7)
-`, args.UserID, args.Category, args.Title, args.Body, args.Metadata, args.MessageKey, args.MessageParams)
+INSERT INTO notifications (user_id, category, title, body, metadata, message_key, message_params, dedup_key)
+VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+ON CONFLICT (user_id, dedup_key) WHERE dedup_key IS NOT NULL DO NOTHING
+`, args.UserID, args.Category, args.Title, args.Body, args.Metadata, args.MessageKey, args.MessageParams, args.DedupKey)
 	if err != nil {
 		c.logger.Error("notification insert failed — requeueing",
 			"err", err, "job_id", ev.JobID.String())

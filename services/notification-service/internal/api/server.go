@@ -11,6 +11,7 @@ import (
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
 	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 
 	"github.com/loreweave/foundation/contracts/platformjwt"
@@ -124,6 +125,10 @@ func (s *Server) createNotification(w http.ResponseWriter, r *http.Request) {
 		// are optional — omitted ⇒ NULL columns, text fallback only.
 		MessageKey    string         `json:"message_key"`
 		MessageParams map[string]any `json:"message_params"`
+		// DedupKey (P2·C) — optional idempotency key. When set, a repeated create
+		// with the same (user_id, dedup_key) is collapsed to the existing row
+		// (returned idempotently), so an at-least-once HTTP producer can't double-post.
+		DedupKey string `json:"dedup_key"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
 		writeError(w, http.StatusBadRequest, "NOTIF_VALIDATION_ERROR", "invalid json")
@@ -157,14 +162,26 @@ func (s *Server) createNotification(w http.ResponseWriter, r *http.Request) {
 
 	var id uuid.UUID
 	var createdAt time.Time
+	// P2·C — ON CONFLICT DO NOTHING dedups on (user_id, dedup_key); a NULL dedup_key
+	// never conflicts (partial index), so the prior behavior is unchanged when the
+	// producer supplies no key. On a conflict RETURNING yields no row (ErrNoRows) →
+	// re-read the existing row so the create is idempotent (same id/created_at).
 	err = s.pool.QueryRow(r.Context(), `
-		INSERT INTO notifications (user_id, category, title, body, metadata, message_key, message_params)
-		VALUES ($1, $2, $3, $4, $5, $6, $7)
+		INSERT INTO notifications (user_id, category, title, body, metadata, message_key, message_params, dedup_key)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+		ON CONFLICT (user_id, dedup_key) WHERE dedup_key IS NOT NULL DO NOTHING
 		RETURNING id, created_at`,
 		userID, category, body.Title, body.Body, meta,
-		nullableText(body.MessageKey), nullableJSONB(body.MessageParams),
+		nullableText(body.MessageKey), nullableJSONB(body.MessageParams), nullableText(body.DedupKey),
 	).Scan(&id, &createdAt)
-	if err != nil {
+	if err == pgx.ErrNoRows && strings.TrimSpace(body.DedupKey) != "" {
+		if e := s.pool.QueryRow(r.Context(),
+			`SELECT id, created_at FROM notifications WHERE user_id=$1 AND dedup_key=$2`,
+			userID, body.DedupKey).Scan(&id, &createdAt); e != nil {
+			writeError(w, http.StatusInternalServerError, "NOTIF_INTERNAL_ERROR", "insert failed")
+			return
+		}
+	} else if err != nil {
 		writeError(w, http.StatusInternalServerError, "NOTIF_INTERNAL_ERROR", "insert failed")
 		return
 	}
@@ -184,6 +201,7 @@ func (s *Server) createNotificationBatch(w http.ResponseWriter, r *http.Request)
 			Metadata      map[string]any `json:"metadata"`
 			MessageKey    string         `json:"message_key"`
 			MessageParams map[string]any `json:"message_params"`
+			DedupKey      string         `json:"dedup_key"`
 		} `json:"notifications"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
@@ -198,6 +216,7 @@ func (s *Server) createNotificationBatch(w http.ResponseWriter, r *http.Request)
 	ctx := r.Context()
 	created := 0
 	failed := 0
+	deduped := 0
 	for _, n := range body.Notifications {
 		userID, err := uuid.Parse(n.UserID)
 		if err != nil || strings.TrimSpace(n.Title) == "" || len(n.Title) > 500 {
@@ -216,18 +235,25 @@ func (s *Server) createNotificationBatch(w http.ResponseWriter, r *http.Request)
 		if n.Metadata == nil {
 			meta = []byte("{}")
 		}
-		_, err = s.pool.Exec(ctx, `
-			INSERT INTO notifications (user_id, category, title, body, metadata, message_key, message_params)
-			VALUES ($1, $2, $3, $4, $5, $6, $7)`,
+		// P2·C — dedup on (user_id, dedup_key). A conflict inserts 0 rows; count the
+		// row as deduped (neither created nor failed) via RowsAffected, so a redelivered
+		// batch reports an honest created count rather than over-counting.
+		tag, eerr := s.pool.Exec(ctx, `
+			INSERT INTO notifications (user_id, category, title, body, metadata, message_key, message_params, dedup_key)
+			VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+			ON CONFLICT (user_id, dedup_key) WHERE dedup_key IS NOT NULL DO NOTHING`,
 			userID, cat, n.Title, n.Body, meta,
-			nullableText(n.MessageKey), nullableJSONB(n.MessageParams))
-		if err == nil {
-			created++
-		} else {
+			nullableText(n.MessageKey), nullableJSONB(n.MessageParams), nullableText(n.DedupKey))
+		switch {
+		case eerr != nil:
 			failed++
+		case tag.RowsAffected() > 0:
+			created++
+		default:
+			deduped++
 		}
 	}
-	writeJSON(w, http.StatusCreated, map[string]any{"created": created, "failed": failed})
+	writeJSON(w, http.StatusCreated, map[string]any{"created": created, "failed": failed, "deduped": deduped})
 }
 
 // ── Public Handlers ───────────────────────────────────────────────────────
