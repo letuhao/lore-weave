@@ -73,25 +73,27 @@ describe('computeCatalog', () => {
     expect(warn).toHaveBeenCalledWith(expect.stringContaining('memory_search'));
   });
 
-  it('keeps tools matching ANY of a provider\'s prefixes (memory_ + kg_) — drops the rest (HIGH-1)', () => {
+  it('keeps tools matching ANY of a provider\'s prefixes (memory_ + kg_ + story_) — drops the rest (HIGH-1)', () => {
     const warn = jest.fn();
     const knowledgeMulti: ProviderConfig = {
       name: 'knowledge',
       mcpUrl: 'http://k/mcp',
       prefix: 'memory_',
-      extraPrefixes: ['kg_'],
+      extraPrefixes: ['kg_', 'story_'],
     };
     const c = computeCatalog(
       [
         {
           provider: knowledgeMulti,
-          tools: [tool('memory_search'), tool('kg_graph_query'), tool('kg_schema_edit'), tool('glossary_x')],
+          // story_search = the universal manuscript find; it was silently dropped in
+          // prod until story_ was added to knowledge's extraPrefixes. Pin that it survives.
+          tools: [tool('memory_search'), tool('kg_graph_query'), tool('kg_schema_edit'), tool('story_search'), tool('glossary_x')],
         },
       ],
       warn,
     );
-    // both namespaces survive; the foreign-namespace tool is dropped + warned
-    expect(c.toolList.map((t) => t.name)).toEqual(['kg_graph_query', 'kg_schema_edit', 'memory_search']);
+    // all three namespaces survive; the foreign-namespace tool is dropped + warned
+    expect(c.toolList.map((t) => t.name)).toEqual(['kg_graph_query', 'kg_schema_edit', 'memory_search', 'story_search']);
     expect(warn).toHaveBeenCalledTimes(1);
     expect(warn).toHaveBeenCalledWith(expect.stringContaining('glossary_x'));
   });

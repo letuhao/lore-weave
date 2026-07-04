@@ -534,6 +534,7 @@ _MIXED_CATALOG = [
     _tool("translation_start_job", "Start a translation", tier="W"),
     _tool("settings_list_models", "List models", tier="R"),
     _tool("memory_search", "Search conversation memory", tier="R"),
+    _tool("story_search", "Universal manuscript search", tier="R"),
 ]
 
 
@@ -541,16 +542,22 @@ class TestSurfaceHotDomains:
     def test_universal_is_pure_discovery(self):
         assert td.surface_hot_domains(editor=False, book_scoped=False) == set()
 
-    def test_book_scoped_is_glossary_only(self):
-        assert td.surface_hot_domains(editor=False, book_scoped=True) == {"glossary"}
+    def test_book_scoped_hot_is_glossary_and_story(self):
+        # story_search (the universal manuscript find) is hot on every book-bound
+        # surface — a weak model otherwise punts instead of discovering it (measured).
+        assert td.surface_hot_domains(editor=False, book_scoped=True) == {"glossary", "story"}
 
     def test_editor_matches_book_glossary_skill(self):
-        # Both surfaces inject the glossary skill (names glossary_* only); the
-        # editor's prose write-back is a FRONTEND tool, not a backend domain — so
-        # the editor's hot domains equal the book-scoped surface's.
+        # Both surfaces inject the glossary skill (names glossary_* only) + the story
+        # search; the editor's prose write-back is a FRONTEND tool, not a backend
+        # domain — so the editor's hot domains equal the book-scoped surface's.
         editor = td.surface_hot_domains(editor=True, book_scoped=True)
         book = td.surface_hot_domains(editor=False, book_scoped=True)
-        assert editor == book == {"glossary"}
+        assert editor == book == {"glossary", "story"}
+
+    def test_studio_hot_includes_story(self):
+        studio = td.surface_hot_domains(studio=True)
+        assert {"glossary", "composition", "story"} <= studio
 
 
 class TestHotToolNames:
@@ -587,6 +594,9 @@ class TestHotSetAdvertisedOnFirstPass:
         names = {t["function"]["name"] for t in adv}
         # glossary hot set present immediately
         assert {"glossary_search", "glossary_get_entity", "glossary_propose_batch"} <= names
+        # story_search (universal manuscript find) is hot on a book surface too, so the
+        # agent can search/read the manuscript without a find_tools round-trip it never makes
+        assert "story_search" in names
         # book-scoped frontend write-back tools present
         assert "glossary_propose_entity_edit" in names
         # the long tail is NOT advertised — it's discovered on demand

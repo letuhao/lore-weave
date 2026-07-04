@@ -242,3 +242,62 @@ continue-writing opening).
   answer). Neither is a model or budget-tier problem.
 
 **Grounded run artifacts:** `runs/continue-writing-2026-07-05/{baseline,t5on}_grounded.transcript.jsonl`.
+
+---
+
+## 7. ROUND 3 — tool-surface bug hunt: why the agent can't reach the manuscript (2026-07-05)
+
+The residual punts ("where is X at chapter N", "the firm name") led to the question: **can the
+agent reach the raw chapter TEXT at all** when the derived layers are thin? Traced against code +
+live MCP probes through the real ai-gateway federation:
+
+### 7.1 CONFIRMED BUG (fixed) — `story_search` was silently dropped from federation
+`story_search` (the universal manuscript find — **`mode=exact` is a lexical/keyword search that
+needs NO embeddings/KG**, plus semantic + block-snippet granularity) is registered in
+knowledge-service's MCP server, but the **ai-gateway C-GW prefix gate dropped it**: knowledge's
+allowed prefixes were `[memory_, kg_]`, and `story_search` matches neither. Direct proof from the
+gateway log, every catalog refresh:
+```
+dropping tool 'story_search' from provider 'knowledge': name does not match any allowed prefix [memory_, kg_]
+```
+So the agent's catalog had **175 tools with no manuscript-search tool** — it literally could not
+search the book text, so it fell back to `memory_search` (semantic, empty — see §7.3) and punted.
+**Fix:** add `story_` to knowledge's `EXTRA_PREFIX_MAP` (the same mechanism `kg_` uses for
+knowledge's second namespace). **Verified:** catalog 175→176, `story_search` present, and
+`story_search mode=exact "Hawkins"` now returns the **raw chapter prose** — *"I handed to him the
+sealed letter which Mr. Hawkins had entrusted to me"* (Ch II), `matchType: lexical`, zero
+embeddings. This is the keyword-search fallback that works on ANY book (no glossary/KG/embeddings
+required). Files: `services/ai-gateway/src/config/config.ts` (+ `catalog.spec.ts`/`providers.spec.ts`
+regression tests pinning that `story_search` survives).
+
+### 7.2 Discovery gap (mitigated) — a hot model never *found* `story_search`
+Even federated, the agent didn't use it: `find_tools` ranks `story_search` 7th/misses it (the
+token-overlap scorer weights name-match == description-match, so composition tools whose
+descriptions mention "story"/"search" tie and win). **Mitigation:** hot-seed the `story` domain on
+book-scoped + studio surfaces (`_BOOK_SCOPED_HOT_DOMAINS`/`_STUDIO_HOT_DOMAINS` in
+`tool_discovery.py`) — the SAME lesson the code already recorded for `composition_*` ("a local
+model spun for minutes … never discovered the family it was standing on"). Now `story_search` is
+advertised on pass 0 of every book turn (unit-proven). Files: `services/chat-service/app/services/
+tool_discovery.py` (+ `test_tool_discovery.py`).
+
+### 7.3 STILL OPEN (deeper, not a wiring bug) — two residual causes of the punt
+After both fixes, a live re-probe shows the agent **still prefers `memory_search`** (it even called
+it 10× in one turn) and still punts on the firm name. Root causes, both beyond the tool-surface
+wiring:
+1. **`memory_search` has no chapter data** — chapter **passages are not ingested** (0 Passage nodes
+   in Neo4j, no passage tables populated). `memory_search`'s semantic leg searches embedded
+   passages; with none, it returns only glossary/KG memory, so chapter-BODY details (the firm name)
+   are invisible to it. **`D-KG-PASSAGES-NOT-INGESTED`** — extraction wired passage_ingester but
+   produced 0 passages for this project; investigate + trigger, then `memory_search` works for
+   chapter text.
+2. **Model tool-selection** — `memory_search`'s description ("find what is already known about a
+   topic, character…") reads as the natural pick for "recall a fact", so gemma chooses it over
+   `story_search` even when both are advertised. **`D-AGENT-PREFERS-EMPTY-MEMORY-SEARCH`** — options:
+   make `memory_search` fall back to the lexical leg when its semantic result is empty (so the tool
+   the agent *does* pick succeeds), and/or sharpen tool descriptions. This is agent-behavior work,
+   not wiring.
+
+**Net:** the tool-surface WIRING bug is fixed (the manuscript search is now reachable + works with
+zero embeddings), which makes the eval more objective — but the agent won't *reliably* stop punting
+on chapter-body recall until (1) passages are ingested so its preferred `memory_search` works, or
+(2) `memory_search` degrades to lexical on an empty semantic hit. These are the next levers.

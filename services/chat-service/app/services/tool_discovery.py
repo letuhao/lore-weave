@@ -118,13 +118,23 @@ ALWAYS_ON_CORE_NAMES: tuple[str, ...] = (
 # `glossary`), matching the federated naming convention; a NEW domain service's
 # tools are therefore lazy-by-default — they only enter a surface's hot set when
 # that surface's domain list opts them in here.
-_BOOK_SCOPED_HOT_DOMAINS: frozenset[str] = frozenset({"glossary"})
+# `story` = the `story_search` universal manuscript find (exact/lexical + semantic +
+# block snippets). It is HOT on every book-bound surface, NOT find_tools-lazy, for the
+# SAME reason composition_* is (below): a weak model asked "where is X at chapter N" /
+# "the firm the character works for" reaches for memory_search (semantic, empty without
+# ingested passages) and then PUNTS — "paste the manuscript" — instead of discovering the
+# lexical search it's standing on. Measured 2026-07-05 on the Dracula eval: after
+# story_search was un-dropped from federation the agent STILL never found it via
+# find_tools (ranked 7th / missed), so it must be seeded. It needs no embeddings/KG (the
+# exact leg is book-service full-text), so it is the grounding-of-last-resort for ANY
+# book — including ones with no glossary/KG built.
+_BOOK_SCOPED_HOT_DOMAINS: frozenset[str] = frozenset({"glossary", "story"})
 # The Writing Studio compose panel IS the composition surface — its own tool family
 # (outline/scene/canon reads + writes) must be hot, not find_tools-lazy. Live M-E
 # gate evidence: with composition_* lazy, a local model spun for minutes in
 # memory/glossary searches concluding "I don't see a list_scenes tool" and never
-# discovered the family it was standing on.
-_STUDIO_HOT_DOMAINS: frozenset[str] = frozenset({"glossary", "composition"})
+# discovered the family it was standing on. (`story` hot here too — same lesson.)
+_STUDIO_HOT_DOMAINS: frozenset[str] = frozenset({"glossary", "composition", "story"})
 
 
 def surface_hot_domains(
