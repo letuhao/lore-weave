@@ -121,3 +121,94 @@ call, not a clear global win. Two concrete unblocks would justify flipping the d
 Until then: enable per-deployment where token pressure justifies accepting occasional honest
 omissions; the mechanism is proven **safe** (no confabulation) at both the heavy and the
 aggressive light target.
+
+---
+
+## Follow-up — the post-compaction recovery hint (built, then DISPROVED for our models)
+
+Unblock #1 above (nudge the model to call `conversation_search` on a post-compaction turn)
+was built: `compaction.recovery_hint_message()` / `inject_recovery_hint()` +
+`COMPACT_RECOVERY_HINT_ENABLED`. On a turn where compaction `did_work`, a system hint is
+inserted right after the `<summary>` telling the model the raw history is recoverable via
+`conversation_search` — "do NOT guess and do NOT say you lack the information without
+searching first." Injection is unit-tested; it fired on every compacted recall turn below.
+
+**Re-run the light-target candidate arm 3× with the hint ON (gemma-4-26b):**
+
+| run | compaction | conversation_search called? | recall |
+|---|---|---|---|
+| baseline (no compact) | — | — | 9/9 |
+| candidate, no hint | fired | no | 8/9 |
+| candidate +hint #1 | fired | **no (`tools=[]`)** | 3/9 |
+| candidate +hint #2 | fired | **no** | 1/9 |
+| candidate +hint #3 | fired | **no** | 9/9 |
+
+**Two negative findings:**
+1. **gemma-4-26b IGNORES the hint** — across all 4 compacted runs it never called
+   `conversation_search` (`tools=[]`). It answers from the summary or offers to have the
+   user re-supply the detail (one run literally reasoned about "the project's memory /
+   no_memory_for constraints" and asked the user to provide the facts). The hint is present
+   in the prompt (injection verified); the model simply doesn't act on it. Weak local-model
+   tool-use — the recovery net is only as good as the model's propensity to reach for it,
+   and a 26B local model doesn't.
+2. **The summarizer is the DOMINANT variable, and it is high-variance** — recall swings
+   **1/9 → 9/9** on the *same* scenario purely on summarizer luck (the FACTS/SYNOPSIS block
+   is itself a gemma LLM call). This dwarfs the hint's (zero) effect and is the real
+   reliability problem with aggressive compaction on weak models.
+
+**Decision:** `COMPACT_RECOVERY_HINT_ENABLED` set **default OFF** — the hint adds ~60
+tok/compacted-turn with **no benefit for the models we run**. The code + flag are kept for a
+future stronger tool-following model (Claude / GPT-4o class) to enable and re-validate; the
+hint may well work there, but that is unvalidated and out of scope for a local-only stack.
+
+**Net T2 verdict (at this point):** task-elastic compaction is **safe** (no confabulation in
+any run) but, for weak local models, **unreliable** (summarizer-variance recall 1/9–9/9) and
+**not rescued by the recovery hint** (the model won't use the tool). The real unblocks are
+*summarizer reliability* and *model tool-use* — not a prompt hint.
+
+---
+
+## Fix — deterministic breadcrumb + summarizer keyword-index (2026-07-04, user insights)
+
+Two user insights reframed the fix: (1) *"if compaction leaves NO trace of a dropped fact,
+the model can't even know to recover it"* → leave a trace; (2) *"upgrade the summarizer to
+leave keywords / short descriptions — the summary shouldn't be too aggressive."* Both shipped:
+
+- **Deterministic breadcrumb** (`compaction.extract_breadcrumb`, `COMPACT_BREADCRUMB_ENABLED`
+  default ON): BEFORE the lossy LLM summary runs, a regex extractor pulls the
+  most-often-dropped facts VERBATIM from the compacted turns — number-bearing sentences
+  (digits *or* spelled-out numbers), quoted names, multi-word proper phrases — and leads the
+  summary with them. Immune to summarizer variance; ~150 tok. Survives even a failed
+  summarizer (unit-tested).
+- **Summarizer prompt** (`compact_service._SUMMARY_SYSTEM_PROMPT`): added a `Keywords:`
+  recovery-index line (a flat exhaustive term list — easy for a weak model to complete) + an
+  explicit "keep EVERY figure exact… err toward INCLUDING a detail rather than compressing it
+  away / better slightly long than missing a fact" nudge.
+
+**Re-run the light-target A/B 3× (gemma-4-26b, breadcrumb + prompt ON):**
+
+| config | recall (markdown-normalized) | recall-turn tokens |
+|---|---|---|
+| baseline (no compaction) | 9/9 | 18,359 |
+| compact, **no** breadcrumb | 8/9 · then **1/9 · 3/9 · 9/9** (wild) | ~5.3K |
+| compact, **+breadcrumb+prompt** | **9/9 · 9/9 · 9/9** (3/3 perfect) | ~5.9K |
+
+The breadcrumb raised the recall **floor 1/9 → 9/9** and **eliminated the variance** — aggressive
+compaction now matches the uncompacted baseline's recall (9/9) while still cutting **~68%** of
+context tokens (18.4K → 5.9K), for a ~150-tok breadcrumb cost. (Note: the earlier "seven
+star-anchors" misses were partly a scoring artifact — markdown `**bold**` between "SEVEN" and
+"star" broke the naive substring match; normalized scoring confirms all breadcrumb runs 9/9.)
+
+**Defaults:**
+- `COMPACT_BREADCRUMB_ENABLED` = **ON** (strict reliability win; helps ANY compaction).
+- summarizer keyword-index prompt = shipped (no flag; strict improvement).
+- `COMPACT_RECOVERY_HINT_ENABLED` = **OFF** — the breadcrumb makes the tool-recovery path
+  unnecessary (the model reads the facts directly), and gemma ignores the hint anyway. Kept
+  for a stronger tool-following model.
+- `COMPACT_TASK_ELASTIC_ENABLED` = **still OFF pending the user's call.** The **quality blocker
+  is now resolved** (9/9 at 68% savings). The remaining considerations for a global flip are
+  purely operational: (a) firing compaction far earlier means more summarizer LLM calls
+  (latency/cost) on every long-ish conversation; (b) big-window models rarely reach the target
+  (near-no-op there — the win is small-window / long sessions); (c) this is validated on one
+  scenario — a broader scenario sweep would harden it. With the breadcrumb, task-elastic is now
+  **much closer to default-on-ready** than the pre-breadcrumb verdict implied.

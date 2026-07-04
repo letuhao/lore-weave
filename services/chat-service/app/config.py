@@ -82,6 +82,27 @@ class Settings(BaseSettings):
     compact_task_elastic_enabled: bool = False
     compact_light_task_weight: float = 0.5
 
+    # T6/D6 — post-compaction recovery hint. On a turn where compaction summarized
+    # earlier turns, inject a system hint telling the model the raw history is
+    # recoverable via the `conversation_search` tool (so a lossy summary that dropped a
+    # specific fact leads to a SEARCH, not a guess/omission). DEFAULT OFF: a live A/B
+    # (docs/eval/context-budget/T2-compaction-trigger-2026-07-04.md) found gemma-4-26b
+    # IGNORES the hint — across 4 compacted runs it never called conversation_search
+    # (weak local-model tool-use), so the hint adds ~60 tok/compacted-turn with no benefit
+    # FOR OUR MODELS. Kept + flagged for a future stronger tool-following model to enable
+    # and re-validate; independent of `compact_task_elastic_enabled`.
+    compact_recovery_hint_enabled: bool = False
+
+    # T6/D6 — compaction BREADCRUMB. Before the lossy LLM summarizer runs, a DETERMINISTIC
+    # extractor (compaction.extract_breadcrumb) pulls the highest-value, most-often-dropped
+    # facts (number-bearing sentences, quoted names, proper-noun phrases) VERBATIM from the
+    # turns being compacted away and leads the summary with them. Fixes the root cause the
+    # T2 light-target A/B found: a lossy summary drops a fact ENTIRELY → the model has no
+    # trace it existed → can't answer or even know to recover it (user insight 2026-07-04).
+    # Deterministic (immune to summarizer variance), ~150 tok. Default ON — a strict
+    # reliability improvement to any compaction that summarizes.
+    compact_breadcrumb_enabled: bool = True
+
     # Agent Extensibility Registry (P1) — user/book prompt-only skills. chat-service
     # reads /internal/skills and injects them alongside the built-in SYSTEM_SKILLS,
     # honouring per-user disable + shadow. EVERY failure degrades to "constants only"

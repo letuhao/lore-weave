@@ -7,6 +7,10 @@ from app.services.compaction import (
     COMPACT_TRIGGER_RATIO,
     CompactionReport,
     compact_messages,
+    extract_breadcrumb,
+    inject_recovery_hint,
+    recovery_hint_message,
+    summary_message,
     _PLACEHOLDER,
 )
 
@@ -85,6 +89,84 @@ class TestNoTrigger:
         msgs = [_tool("web_search"), {"role": "user", "content": _big(9999)}]
         out, rep = await compact_messages(msgs, effective_limit=None)
         assert rep.triggered is False
+
+
+class TestBreadcrumb:
+    """T6/D6 — the deterministic verbatim breadcrumb preserved across the LLM summary."""
+
+    def test_extracts_number_facts_and_names(self):
+        msgs = [{"role": "user", "content":
+                 "The ritual needs exactly SEVEN star-anchors; the blade 'Verithrax' was "
+                 "forged by Oldan Vex."}]
+        bc = extract_breadcrumb(msgs)
+        assert "SEVEN star-anchors" in bc          # whole number-bearing sentence, verbatim
+        assert "Verithrax" in bc                    # quoted name (not the possessive trap)
+        assert "Oldan Vex" in bc                    # multi-word proper phrase
+        assert bc.startswith("KEY DETAILS")
+
+    def test_empty_when_nothing_salient(self):
+        assert extract_breadcrumb([{"role": "user", "content": "ok thanks"}]) == ""
+        assert extract_breadcrumb([]) == ""
+
+    async def test_breadcrumb_survives_a_failed_summarizer(self):
+        # the summary LLM returns nothing, but add_breadcrumb still preserves the facts
+        # deterministically rather than hard-dropping the middle.
+        async def _empty_summarize(_middle):
+            return ""
+        msgs = [{"role": "system", "content": "sys"}]
+        msgs += [{"role": "user", "content": _big(300) + "."} for _ in range(4)]
+        msgs.append({"role": "assistant", "content": "The debt is 4,400 salt-marks."})
+        msgs += [{"role": "user", "content": _big(300) + "."} for _ in range(2)]
+        msgs.append({"role": "user", "content": "latest"})
+        out, rep = await compact_messages(
+            msgs, effective_limit=2_000, keep_recent=1,
+            summarize=_empty_summarize, add_breadcrumb=True)
+        joined = " ".join(m.get("content", "") for m in out if m.get("role") == "system")
+        assert "4,400 salt-marks" in joined         # the figure survived the empty summary
+        assert rep.summarized is True and "breadcrumb" in rep.steps
+
+    async def test_off_by_default_no_breadcrumb(self):
+        async def _sum(_m):
+            return "SYNOPSIS: stuff"
+        msgs = [{"role": "user", "content": _big(400) + " 4,400 salt-marks"} for _ in range(6)]
+        msgs.append({"role": "user", "content": "latest"})
+        out, _ = await compact_messages(
+            msgs, effective_limit=2_000, keep_recent=1, summarize=_sum)  # add_breadcrumb defaults False
+        joined = " ".join(m.get("content", "") for m in out if m.get("role") == "system")
+        assert "KEY DETAILS" not in joined
+
+
+class TestRecoveryHint:
+    """T6/D6 — the post-compaction recovery hint that points the model at
+    conversation_search (so a lossy summary → a SEARCH, not a guess/omission)."""
+
+    async def test_hint_message_is_system_and_names_the_tool(self):
+        m = recovery_hint_message()
+        assert m["role"] == "system"
+        assert "conversation_search" in m["content"]
+        # tells the model NOT to guess/omit without searching
+        assert "guess" in m["content"].lower()
+
+    async def test_injected_after_leading_pinned_block_incl_summary(self):
+        # after compaction the array is [system…, <summary>, …tail]. The hint must land
+        # right after the leading pinned block (so it reads as guidance about the summary)
+        # and BEFORE the first conversation turn.
+        msgs = [
+            {"role": "system", "content": "sys"},
+            summary_message("old turns condensed here"),
+            {"role": "user", "content": "recall the blade name"},
+        ]
+        inject_recovery_hint(msgs)
+        assert len(msgs) == 4
+        # inserted at index 2 — after system + summary, before the user turn
+        assert msgs[2]["role"] == "system" and "conversation_search" in msgs[2]["content"]
+        assert msgs[3]["role"] == "user"
+
+    async def test_injected_at_end_when_all_pinned(self):
+        # degenerate: no conversation tail (all pinned) → append at the end, no crash.
+        msgs = [{"role": "system", "content": "sys"}]
+        inject_recovery_hint(msgs)
+        assert len(msgs) == 2 and msgs[-1]["content"] == recovery_hint_message()["content"]
 
 
 class TestTaskElasticTarget:

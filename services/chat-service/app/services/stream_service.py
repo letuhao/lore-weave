@@ -84,7 +84,11 @@ from app.services.stream_events import make_emitter
 # T0 / L3 (Context Budget Law §6a, §14a) — the single concise-wire funnel for
 # every model-facing tool-result `content` string (ensure_ascii=False + drop-None).
 from app.services.tool_result_wire import tool_result_content
-from app.services.compaction import compact_messages, summary_message
+from app.services.compaction import (
+    compact_messages,
+    inject_recovery_hint,
+    summary_message,
+)
 # W3 — compaction tier 2 (compress instead of drop) shares its summarizer with
 # the manual /compact route; the factored impl lives in compact_service. Bound
 # to the old private name so both in-file call sites stay unchanged.
@@ -742,6 +746,7 @@ async def _stream_with_tools(
                     working, _rc = await compact_messages(
                         working, effective_limit=effective_limit,
                         target=compact_target, summarize=_loop_summarizer,
+                        add_breadcrumb=settings.compact_breadcrumb_enabled,
                     )
                     if _rc.triggered:
                         logger.info(
@@ -2506,7 +2511,16 @@ async def _emit_chat_turn(
             messages, _compaction = await compact_messages(
                 messages, effective_limit=_eff_limit,
                 target=_compact_target, summarize=_summarizer,
+                add_breadcrumb=settings.compact_breadcrumb_enabled,
             )
+            # T6/D6 — when compaction summarized/dropped earlier turns THIS turn, inject
+            # the recovery hint so the model reaches for conversation_search to pull back a
+            # specific fact the lossy summary may have dropped, instead of guessing/omitting
+            # (the "net built but unused" gap the T2 light-target A/B found). Placed right
+            # after the leading pinned/system block (incl. the <summary>) so it reads as
+            # guidance about that summary.
+            if settings.compact_recovery_hint_enabled and _compaction.did_work:
+                inject_recovery_hint(messages)
             if _compaction.triggered:
                 logger.info(
                     "compaction fired session=%s steps=%s tokens %d→%d overflow=%s",

@@ -40,6 +40,7 @@ If even the non-evictable messages exceed the budget (edge #4) the result carrie
 from __future__ import annotations
 
 import inspect
+import re
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, field
 from typing import Union
@@ -63,6 +64,110 @@ def summary_message(summary: str) -> dict:
     persisted-compact history splice (stream_service) and by the manual
     /compact route's re-compact fold — one shape everywhere."""
     return {"role": "system", "content": f"<summary>\n{summary.strip()}\n</summary>"}
+
+
+# T6/D6 — the recovery hint. When compaction has summarized earlier turns THIS turn,
+# a lossy summary can drop a specific detail (a number, a spelling) the current turn
+# needs — the model then GUESSES or says "I don't have that" instead of using the
+# `conversation_search` tool that can pull it back from the raw (still-stored) turns.
+# This system hint, injected only on a turn where compaction did work, tells the model
+# the raw history is recoverable and to reach for the tool rather than fabricate/omit.
+# (Live A/B finding, docs/eval/context-budget/T2-compaction-trigger-2026-07-04.md: the
+# net was built but unused — the gap was USAGE, which this closes.)
+_RECOVERY_HINT = (
+    "Note: to save context, earlier turns in this conversation were compacted into the "
+    "<summary> above — some specific details (an exact name, number, or spelling) may not "
+    "be in it. If you need such a detail and it is not in the summary or the recent turns, "
+    "call the `conversation_search` tool with the exact term to pull it from the full "
+    "conversation history. Do NOT guess and do NOT say you lack the information without "
+    "searching first."
+)
+
+
+def recovery_hint_message() -> dict:
+    """The post-compaction recovery hint (see ``_RECOVERY_HINT``) as a pinned system
+    message. Injected by the caller only on a turn where compaction ``did_work``."""
+    return {"role": "system", "content": _RECOVERY_HINT}
+
+
+# T6/D6 breadcrumb — the fix for "a dropped fact leaves no trace, so the model can't even
+# know to recover it" (user insight, 2026-07-04). BEFORE the lossy LLM summarizer runs, a
+# DETERMINISTIC extractor pulls the highest-value, most-often-dropped facts from the turns
+# being compacted away — VERBATIM — so they survive regardless of summarizer variance. The
+# model can then answer straight from the breadcrumb (no tool call needed — the weak local
+# models don't reliably call one) OR knows the exact term to conversation_search.
+# Opening quote must NOT follow a letter (so a possessive apostrophe — protagonist's — is
+# not mistaken for an opening quote), and the quoted term starts with a letter.
+_QUOTED = re.compile(r"(?<![A-Za-z])['‘“\"]([A-Za-z][^'‘’“”\"\n]{1,38})['’”\"]")
+_PROPER = re.compile(r"\b[A-Z][A-Za-z’'-]+(?:\s+(?:of\s+|the\s+)?[A-Z][A-Za-z’'-]+){1,4}\b")
+_SENT_SPLIT = re.compile(r"(?<=[.!?])\s+")
+# a figure = a digit OR a spelled-out number word (counts like "seven" are dropped as
+# often as "7"), so both make a sentence "fact-bearing" and worth preserving verbatim.
+_NUMWORD = re.compile(
+    r"\b(?:one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve|thirteen|"
+    r"fourteen|fifteen|sixteen|seventeen|eighteen|nineteen|twenty|thirty|forty|fifty|"
+    r"sixty|seventy|eighty|ninety|hundred|thousand|million|billion|dozen)\b",
+    re.IGNORECASE,
+)
+
+
+def _has_figure(s: str) -> bool:
+    return any(c.isdigit() for c in s) or bool(_NUMWORD.search(s))
+
+
+def extract_breadcrumb(messages: list[dict], *, max_chars: int = 900) -> str:
+    """Deterministic verbatim trace of salient facts in `messages` (the turns being
+    compacted away): (1) number-bearing sentences (counts, prices, dates — the facts a
+    lossy summary drops most and confabulates worst), (2) quoted names, (3) multi-word
+    proper-noun phrases. Deduped, order-preserved, capped. Empty string when nothing
+    salient — the caller then omits the breadcrumb block entirely."""
+    text = "\n".join(
+        m["content"] for m in messages
+        if isinstance(m.get("content"), str) and m["content"]
+    )
+    if not text.strip():
+        return ""
+    seen: set[str] = set()
+
+    facts: list[str] = []
+    for s in _SENT_SPLIT.split(text):
+        s = s.strip()
+        if 6 <= len(s) <= 220 and _has_figure(s):
+            k = s.lower()
+            if k not in seen:
+                seen.add(k)
+                facts.append(s)
+
+    names: list[str] = []
+    for pat in (_QUOTED, _PROPER):
+        for m in pat.findall(text):
+            term = m.strip()
+            k = term.lower()
+            if len(term) >= 3 and k not in seen:
+                seen.add(k)
+                names.append(term)
+
+    blocks: list[str] = []
+    if facts:
+        blocks.append("Facts with figures: " + " | ".join(facts))
+    if names:
+        blocks.append("Names/terms mentioned: " + "; ".join(names))
+    if not blocks:
+        return ""
+    out = "KEY DETAILS (verbatim from compacted turns; conversation_search for full context):\n" \
+        + "\n".join(blocks)
+    return out[:max_chars]
+
+
+def inject_recovery_hint(messages: list[dict]) -> None:
+    """Insert the recovery hint (in place) right after the leading pinned/system block —
+    which after compaction includes the ``<summary>`` — so it reads as guidance about that
+    summary and precedes the conversation tail. Caller gates on ``report.did_work``."""
+    at = next(
+        (i for i, m in enumerate(messages) if not _is_pinned(m)),
+        len(messages),
+    )
+    messages.insert(at, recovery_hint_message())
 
 
 def _is_pinned(msg: dict) -> bool:
@@ -191,6 +296,7 @@ async def compact_messages(
     keep_recent: int = 8,
     exclude_tools: frozenset[str] = DEFAULT_EXCLUDE_TOOLS,
     summarize: Summarizer | None = None,
+    add_breadcrumb: bool = False,
 ) -> tuple[list[dict], CompactionReport]:
     """Compact `messages` to fit under the trigger. Deterministic except for the
     optional `summarize` callback (sync OR async — an LLM call), whose failure is
@@ -241,19 +347,27 @@ async def compact_messages(
         tail = _recent_tail(non_pinned, keep_recent)
         middle = non_pinned[: len(non_pinned) - len(tail)]
         if middle:
+            # T6/D6 breadcrumb — deterministic verbatim fact trace of the middle, computed
+            # BEFORE the lossy LLM summary so it survives summarizer variance/failure (the
+            # 1/9–9/9 recall swing the A/B found). Empty string when off / nothing salient.
+            breadcrumb = extract_breadcrumb(middle) if add_breadcrumb else ""
             try:
                 summary = summarize(middle)
                 if inspect.isawaitable(summary):
                     summary = await summary
-                if summary and summary.strip():
-                    work = pinned + [summary_message(summary)] + tail
-                    report.summarized = True
-                    report.steps.append("summarize")
-                else:
-                    report.summarize_failed = True
+                summary = summary.strip() if summary else ""
             except Exception:
-                report.summarize_failed = True
+                summary = ""
                 report.steps.append("summarize_failed")
+            # Combine: the deterministic breadcrumb leads (system of record), the LLM
+            # synopsis follows (convenience). Either alone is enough to keep the middle.
+            body = "\n\n".join(p for p in (breadcrumb, summary) if p)
+            if body:
+                work = pinned + [summary_message(body)] + tail
+                report.summarized = True
+                report.steps.append("summarize" if summary else "breadcrumb")
+            else:
+                report.summarize_failed = True
     if estimate_messages_tokens(work) <= trigger:
         report.tokens_after = estimate_messages_tokens(work)
         return work, report

@@ -27,8 +27,9 @@ from app.services.compact_service import (
 def test_prompt_is_two_section_extractive():
     p = _SUMMARY_SYSTEM_PROMPT
     assert "FACTS:" in p and "SYNOPSIS:" in p
-    # the load-bearing categories the FACTS block must enumerate
-    for cat in ("Entities", "Decisions", "Established", "Open threads"):
+    # the load-bearing categories the FACTS block must enumerate (Keywords = the
+    # recovery index added 2026-07-04 so a dropped detail can still be searched)
+    for cat in ("Entities", "Decisions", "Established", "Open threads", "Keywords"):
         assert cat in p, cat
 
 
