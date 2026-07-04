@@ -1,0 +1,165 @@
+package platformjwt
+
+import (
+	"crypto/rand"
+	"crypto/rsa"
+	"errors"
+	"testing"
+	"time"
+
+	"github.com/golang-jwt/jwt/v5"
+)
+
+// signWith builds a token from claims and signs it with the given method/key —
+// the test stand-in for the auth-service HS256 signer. For the adversarial
+// downgrade cases it also signs with alg:none / RS256 to prove Verify rejects
+// them.
+func signWith(t *testing.T, method jwt.SigningMethod, key any, claims AccessClaims) string {
+	t.Helper()
+	tok := jwt.NewWithClaims(method, claims)
+	s, err := tok.SignedString(key)
+	if err != nil {
+		t.Fatalf("sign: %v", err)
+	}
+	return s
+}
+
+const (
+	testSubject = "11111111-1111-1111-1111-111111111111"
+)
+
+func testSecret() []byte { return []byte("shared-platform-jwt-secret-for-tests") }
+
+func goodClaims() AccessClaims {
+	now := time.Now()
+	return AccessClaims{
+		RegisteredClaims: jwt.RegisteredClaims{
+			Subject:   testSubject,
+			IssuedAt:  jwt.NewNumericDate(now),
+			ExpiresAt: jwt.NewNumericDate(now.Add(10 * time.Minute)),
+		},
+	}
+}
+
+func TestVerify_RoundTrip(t *testing.T) {
+	tok := signWith(t, jwt.SigningMethodHS256, testSecret(), goodClaims())
+
+	got, err := Verify(tok, testSecret())
+	if err != nil {
+		t.Fatalf("Verify: %v", err)
+	}
+	if got.Subject != testSubject {
+		t.Errorf("subject = %q, want %q", got.Subject, testSubject)
+	}
+	id, err := got.UserID()
+	if err != nil {
+		t.Fatalf("UserID: %v", err)
+	}
+	if id.String() != testSubject {
+		t.Errorf("UserID = %q, want %q", id, testSubject)
+	}
+}
+
+func TestVerify_RejectsAlgNone(t *testing.T) {
+	// alg:none — the classic downgrade to an unsigned token.
+	tok := signWith(t, jwt.SigningMethodNone, jwt.UnsafeAllowNoneSignatureType, goodClaims())
+	if _, err := Verify(tok, testSecret()); err == nil {
+		t.Fatal("expected alg:none to be rejected")
+	} else if !errors.Is(err, ErrVerify) {
+		t.Errorf("error not wrapped by ErrVerify: %v", err)
+	}
+}
+
+func TestVerify_RejectsRSDowngrade(t *testing.T) {
+	// Alg-confusion: a token minted with an RS256 header. Verify pins HS256, so
+	// the asymmetric algorithm must be rejected outright — the verifier must
+	// never treat an RS/EC/PS token as if it were HMAC.
+	priv, err := rsa.GenerateKey(rand.Reader, 2048)
+	if err != nil {
+		t.Fatalf("genkey: %v", err)
+	}
+	tok := signWith(t, jwt.SigningMethodRS256, priv, goodClaims())
+	if _, err := Verify(tok, testSecret()); err == nil {
+		t.Fatal("expected RS256 downgrade to be rejected")
+	}
+}
+
+func TestVerify_RejectsExpired(t *testing.T) {
+	c := goodClaims()
+	c.ExpiresAt = jwt.NewNumericDate(time.Now().Add(-time.Minute))
+	tok := signWith(t, jwt.SigningMethodHS256, testSecret(), c)
+	if _, err := Verify(tok, testSecret()); err == nil {
+		t.Fatal("expected expired token to be rejected")
+	}
+}
+
+func TestVerify_RequiresExp(t *testing.T) {
+	c := goodClaims()
+	c.ExpiresAt = nil
+	tok := signWith(t, jwt.SigningMethodHS256, testSecret(), c)
+	if _, err := Verify(tok, testSecret()); err == nil {
+		t.Fatal("expected missing-exp token to be rejected")
+	}
+}
+
+func TestVerify_RejectsTamperedSignature(t *testing.T) {
+	tok := signWith(t, jwt.SigningMethodHS256, testSecret(), goodClaims())
+	// Flip the last character of the signature segment.
+	b := []byte(tok)
+	if b[len(b)-1] == 'A' {
+		b[len(b)-1] = 'B'
+	} else {
+		b[len(b)-1] = 'A'
+	}
+	if _, err := Verify(string(b), testSecret()); err == nil {
+		t.Fatal("expected tampered signature to be rejected")
+	}
+}
+
+func TestVerify_RejectsWrongSecret(t *testing.T) {
+	tok := signWith(t, jwt.SigningMethodHS256, testSecret(), goodClaims())
+	if _, err := Verify(tok, []byte("a-different-secret")); err == nil {
+		t.Fatal("expected wrong-secret token to be rejected")
+	}
+}
+
+func TestVerify_RejectsEmptySecret(t *testing.T) {
+	tok := signWith(t, jwt.SigningMethodHS256, testSecret(), goodClaims())
+	if _, err := Verify(tok, nil); err == nil {
+		t.Fatal("expected empty secret to be rejected")
+	}
+	if _, err := Verify(tok, []byte{}); err == nil {
+		t.Fatal("expected zero-length secret to be rejected")
+	}
+}
+
+func TestVerify_RejectsMalformed(t *testing.T) {
+	for _, tok := range []string{
+		"",
+		"not-a-jwt",
+		"only.two",
+		"aaa.bbb.ccc",
+	} {
+		if _, err := Verify(tok, testSecret()); err == nil {
+			t.Errorf("expected malformed token %q to be rejected", tok)
+		}
+	}
+}
+
+func TestVerify_RejectsNonUUIDSub(t *testing.T) {
+	c := goodClaims()
+	c.Subject = "not-a-uuid"
+	tok := signWith(t, jwt.SigningMethodHS256, testSecret(), c)
+	if _, err := Verify(tok, testSecret()); err == nil {
+		t.Fatal("expected non-UUID sub to be rejected")
+	}
+}
+
+func TestVerify_RejectsEmptySub(t *testing.T) {
+	c := goodClaims()
+	c.Subject = ""
+	tok := signWith(t, jwt.SigningMethodHS256, testSecret(), c)
+	if _, err := Verify(tok, testSecret()); err == nil {
+		t.Fatal("expected empty sub to be rejected")
+	}
+}
