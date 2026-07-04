@@ -69,6 +69,15 @@ class Settings(BaseSettings):
     # (where grounding IS expensive per turn) lands. See T5-2026-07-04-CORRECTED.md.
     t5_intent_gate_enabled: bool = False
 
+    # ── T6/D7 (Context Budget Law) — single-item tool-result overflow ceiling ────
+    # A single MCP tool result that ALONE exceeds this many estimated tokens is withheld
+    # at the dispatch site and replaced with a self-correcting overflow notice (re-call
+    # with detail=summary / limit / fields / a range) — never a silent truncation, never a
+    # window-blowing dump (the 146K case class). Applies ONLY to re-requestable data-dump
+    # results, NOT to generative outputs (compose prose). Default 8000 (~32KB of text — a
+    # single result that large is already pathological; normal results are <2K). 0 disables.
+    tool_result_token_cap: int = 8000
+
     # ── T4 (Context Budget Law D4/D5) — story_state Core Memory Block ────────────
     # When ON, chat-service maintains a cached, bounded `story_state` block per session
     # (chat_session_blocks, owner-scoped + OCC) distilled from the message-INDEPENDENT

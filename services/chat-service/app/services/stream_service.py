@@ -84,7 +84,7 @@ from app.services.output_extractor import extract_outputs
 from app.services.stream_events import make_emitter
 # T0 / L3 (Context Budget Law §6a, §14a) — the single concise-wire funnel for
 # every model-facing tool-result `content` string (ensure_ascii=False + drop-None).
-from app.services.tool_result_wire import tool_result_content
+from app.services.tool_result_wire import tool_result_content, tool_result_content_capped
 from app.services.compaction import (
     compact_messages,
     inject_recovery_hint,
@@ -1445,9 +1445,16 @@ async def _stream_with_tools(
                 )
                 ok = bool(envelope.get("success"))
                 tool_payload = envelope.get("result") if ok else {"error": envelope.get("error")}
+                # D7 (single-item overflow): a successful generic tool result is a
+                # re-requestable data dump — cap it so one oversized result can't blow the
+                # window; the model gets a self-correcting notice to re-call at a smaller
+                # scope. Error payloads bypass the cap (already small + the error path).
                 working.append({
                     "role": "tool", "tool_call_id": c["id"],
-                    "content": tool_result_content(tool_payload),
+                    "content": tool_result_content_capped(
+                        tool_payload, tool_name=c["name"],
+                        token_cap=settings.tool_result_token_cap,
+                    ) if ok else tool_result_content(tool_payload),
                 })
                 tool_chunk: dict = {
                     "id": c["id"], "iteration": iteration, "tool": c["name"],

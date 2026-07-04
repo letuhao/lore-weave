@@ -9,7 +9,12 @@ Proves the EFFECT (not existence) of the single funnel helper:
 
 import json
 
-from app.services.tool_result_wire import prune_none, tool_result_content
+from app.services.tool_result_wire import (
+    prune_none,
+    tool_result_content,
+    tool_result_content_capped,
+)
+from loreweave_context.tokens import estimate_tokens
 
 
 class TestEnsureAsciiFalse:
@@ -68,3 +73,45 @@ class TestRobustness:
     def test_error_payload_roundtrips(self):
         out = json.loads(tool_result_content({"error": "chapter not found"}))
         assert out == {"error": "chapter not found"}
+
+
+class TestD7SingleItemOverflow:
+    """D7: a single tool result over the per-contributor ceiling is withheld and
+    replaced with a self-correcting overflow notice (never a silent truncation)."""
+
+    def test_under_cap_passes_through_byte_identical(self):
+        payload = {"results": [{"id": 1, "name": "Lâm Uyển"}]}
+        assert tool_result_content_capped(payload, tool_name="x", token_cap=8000) == \
+            tool_result_content(payload)
+
+    def test_over_cap_withheld_with_self_correcting_notice(self):
+        big = {"nodes": [{"i": i, "text": "word " * 40} for i in range(400)]}
+        raw = tool_result_content(big)
+        assert estimate_tokens(raw) > 50  # sanity: the dump is genuinely large
+        out = json.loads(tool_result_content_capped(big, tool_name="composition_list_outline", token_cap=50))
+        # the giant dump is GONE — replaced by an actionable notice
+        assert out["error"] == "tool_result_overflow"
+        assert out["tool"] == "composition_list_outline"
+        assert out["cap"] == 50
+        assert out["tokens"] > 50
+        # the notice names the tool + the concrete remedies (T1 knobs)
+        assert "composition_list_outline" in out["message"]
+        for remedy in ("detail=summary", "limit", "fields"):
+            assert remedy in out["message"]
+
+    def test_cap_none_or_zero_disables(self):
+        big = {"nodes": [{"i": i, "text": "word " * 40} for i in range(400)]}
+        raw = tool_result_content(big)
+        assert tool_result_content_capped(big, tool_name="x", token_cap=None) == raw
+        assert tool_result_content_capped(big, tool_name="x", token_cap=0) == raw
+
+    def test_overflow_notice_itself_is_small(self):
+        big = {"nodes": [{"i": i, "text": "word " * 40} for i in range(400)]}
+        notice = tool_result_content_capped(big, tool_name="x", token_cap=50)
+        assert estimate_tokens(notice) < 200  # the remedy can't itself blow the budget
+
+    def test_missing_tool_name_uses_generic_phrasing(self):
+        big = {"blob": "x" * 20000}
+        out = json.loads(tool_result_content_capped(big, token_cap=50))
+        assert "tool" not in out  # None tool field is pruned (drop-None funnel)
+        assert "the tool" in out["message"]

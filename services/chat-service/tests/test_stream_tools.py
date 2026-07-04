@@ -460,6 +460,55 @@ class TestStreamWithToolsOneToolCall:
         assert json.loads(tool_msg["content"]) == {"ok": 1}
 
     @pytest.mark.asyncio
+    async def test_d7_oversized_success_result_is_withheld_with_notice(self, monkeypatch):
+        """D7: a single successful tool result over the per-contributor cap is replaced
+        at the dispatch site by a self-correcting overflow notice — the giant dump never
+        reaches the model. The tool_call_id pairing is preserved (no orphan)."""
+        from app.config import settings
+        monkeypatch.setattr(settings, "tool_result_token_cap", 30, raising=False)
+        kc = AsyncMock()
+        big = {"nodes": [{"i": i, "text": "word " * 40} for i in range(400)]}
+        kc.mcp_execute_tool.return_value = _envelope(success=True, result=big)
+        scripts = [
+            [
+                tool_frag(index=0, id="call_big", name="composition_list_outline"),
+                tool_frag(index=0, arguments_delta="{}"),
+                done("tool_calls"),
+            ],
+            [tok("ok"), done("stop")],
+        ]
+        with _patch_client(scripts):
+            await _drain(_run(scripts, knowledge_client=kc))
+        tool_msg = _FakeClient.instances[0].requests[1].messages[2]
+        assert tool_msg["role"] == "tool"
+        assert tool_msg["tool_call_id"] == "call_big"  # pairing intact (no orphan)
+        body = json.loads(tool_msg["content"])
+        assert body["error"] == "tool_result_overflow"
+        assert body["tool"] == "composition_list_outline"
+        assert "word word" not in tool_msg["content"]  # the dump is gone
+
+    @pytest.mark.asyncio
+    async def test_d7_oversized_error_result_is_not_capped(self, monkeypatch):
+        """D7 applies to re-requestable data dumps, not error payloads — a failed tool
+        keeps its (already small) error content even with a tiny cap set."""
+        from app.config import settings
+        monkeypatch.setattr(settings, "tool_result_token_cap", 1, raising=False)
+        kc = AsyncMock()
+        kc.mcp_execute_tool.return_value = _envelope(success=False, error="boom")
+        scripts = [
+            [
+                tool_frag(index=0, id="call_e", name="memory_search"),
+                tool_frag(index=0, arguments_delta="{}"),
+                done("tool_calls"),
+            ],
+            [tok("ok"), done("stop")],
+        ]
+        with _patch_client(scripts):
+            await _drain(_run(scripts, knowledge_client=kc))
+        tool_msg = _FakeClient.instances[0].requests[1].messages[2]
+        assert json.loads(tool_msg["content"]) == {"error": "boom"}
+
+    @pytest.mark.asyncio
     async def test_caller_messages_not_mutated(self):
         """The loop works on a copy — the caller's `messages` list is
         not mutated (design §4 `working = list(messages)`)."""

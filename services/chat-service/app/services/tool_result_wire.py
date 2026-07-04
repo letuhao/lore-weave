@@ -26,6 +26,8 @@ from __future__ import annotations
 import json
 from typing import Any
 
+from loreweave_context.tokens import estimate_tokens
+
 
 def prune_none(value: Any) -> Any:
     """Recursively drop dict keys whose value is ``None``.
@@ -51,3 +53,43 @@ def tool_result_content(payload: Any) -> str:
     stringify than crash the turn).
     """
     return json.dumps(prune_none(payload), ensure_ascii=False, default=str)
+
+
+def _overflow_error(*, tokens: int, cap: int, tool_name: str | None) -> str:
+    """The D7 self-correcting overflow notice (spec §7, L5/D7). A single tool result
+    that alone blows the per-contributor ceiling is WITHHELD and replaced with an
+    actionable error naming the size + the exact remedies (which map to T1's
+    `apply_response_contract` knobs: detail / limit / fields / get-by-id) — never a
+    silent truncation (the cross-cutting "self-correcting, never silent" rule), and
+    never a window-blowing dump. The model re-calls at a smaller scope, so the turn is
+    preserved rather than broken."""
+    tool = tool_name or "the tool"
+    return tool_result_content({
+        "error": "tool_result_overflow",
+        "tool": tool_name,
+        "tokens": tokens,
+        "cap": cap,
+        "message": (
+            f"The result from `{tool}` is ~{tokens} tokens, over the {cap}-token "
+            "per-result budget, so it was withheld to protect the context window. "
+            f"Re-call `{tool}` with a smaller scope — e.g. `detail=summary`, a `limit`, "
+            "a `fields` subset, or a specific id/range — then fetch details on demand."
+        ),
+    })
+
+
+def tool_result_content_capped(
+    payload: Any, *, tool_name: str | None = None, token_cap: int | None
+) -> str:
+    """L3 + D7: serialize a tool result, but if it ALONE exceeds `token_cap` (the
+    per-contributor ceiling), withhold it and return the self-correcting overflow
+    notice instead (see `_overflow_error`). `token_cap` None or ≤0 disables the cap
+    (byte-identical to `tool_result_content`). Apply ONLY to re-requestable data-dump
+    results (the generic MCP dispatch) — NOT to generative outputs like `{"prose": …}`,
+    which are legitimately large and cannot be re-requested smaller."""
+    content = tool_result_content(payload)
+    if token_cap and token_cap > 0:
+        est = estimate_tokens(content)
+        if est > token_cap:
+            return _overflow_error(tokens=est, cap=token_cap, tool_name=tool_name)
+    return content
