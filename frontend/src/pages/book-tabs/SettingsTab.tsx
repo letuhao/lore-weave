@@ -1,10 +1,10 @@
 import { useState, useEffect, useRef, useMemo } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { useTranslation } from 'react-i18next';
+import { useNavigate } from 'react-router-dom';
 import { Save, Loader2, Upload, X, ChevronDown, Check, Plus, Info } from 'lucide-react';
 import { toast } from 'sonner';
 import { useAuth } from '@/auth';
-import { apiJson } from '@/api';
 import { booksApi, type Book } from '@/features/books/api';
 import { glossaryApi } from '@/features/glossary/api';
 import { BookWorldSection } from '@/features/world/components/BookWorldSection';
@@ -15,11 +15,18 @@ type Props = {
   bookId: string;
   book: Book;
   onReload: () => void;
+  /** review-impl fix (17_...docks.md, DOCK-2): injectable so BookSettingsPanel can reuse this
+   *  component AS-IS instead of forking its ~400 lines of logic. Defaults to the classic route's
+   *  own navigate() when omitted — same "caller injects, component never imports react-router or
+   *  the studio host" shape as BookWorldSection's own onOpenWorld prop (dockable-gui.md DOCK-7). */
+  onOpenWorld?: (worldId: string) => void;
 };
 
-export function SettingsTab({ bookId, book, onReload }: Props) {
+export function SettingsTab({ bookId, book, onReload, onOpenWorld }: Props) {
   const { t } = useTranslation('books');
   const { accessToken } = useAuth();
+  const navigate = useNavigate();
+  const openWorld = onOpenWorld ?? ((worldId: string) => navigate(`/worlds/${worldId}`));
 
   // ── Form state ──
   const [title, setTitle] = useState(book.title);
@@ -140,7 +147,7 @@ export function SettingsTab({ bookId, book, onReload }: Props) {
   const handleRemoveCover = async () => {
     if (!accessToken) return;
     try {
-      await apiJson<void>(`/v1/books/${bookId}/cover`, { method: 'DELETE', token: accessToken });
+      await booksApi.deleteCover(accessToken, bookId);
       setCoverUrl((prev) => { if (prev) URL.revokeObjectURL(prev); return null; });
       toast.success(t('settings.cover_removed'));
       onReload();
@@ -348,7 +355,12 @@ export function SettingsTab({ bookId, book, onReload }: Props) {
       <Divider />
 
       {/* ── World (W6/G3 cross-link) ── */}
-      <BookWorldSection bookId={bookId} worldId={book.world_id} onChanged={onReload} />
+      <BookWorldSection
+        bookId={bookId}
+        worldId={book.world_id}
+        onChanged={onReload}
+        onOpenWorld={openWorld}
+      />
 
       <Divider />
 

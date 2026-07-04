@@ -199,6 +199,47 @@
       "client_filtered_note": "字數／日期篩選僅套用於目前已載入的頁面",
       "chapter_count": "{{count}} 章"
     },
+    "sharing": {
+      "title": "分享",
+      "desc": "此書的可見性、非公開連結與協作者"
+    },
+    "book-settings": {
+      "title": "書籍設定",
+      "desc": "此書的標題、封面、類型標籤與世界觀連結"
+    },
+    "translation": {
+      "title": "翻譯",
+      "desc": "此書的涵蓋率矩陣、語言篩選、批次翻譯與詞彙抽取"
+    },
+    "translation-versions": {
+      "title": "翻譯版本",
+      "desc": "逐章翻譯版本管理(比較、設為啟用、重新翻譯)",
+      "empty": "請從翻譯矩陣開啟某章節的翻譯版本。"
+    },
+    "enrichment-compose": {
+      "title": "建立增修",
+      "desc": "撰寫新的增修知識草稿(擴寫草稿、貼上內容、上傳檔案或輸入意圖)"
+    },
+    "enrichment-proposals": {
+      "title": "增修提案",
+      "desc": "審閱 AI 提出的知識 — 核准、拒絕或提升為正典"
+    },
+    "enrichment-gaps": {
+      "title": "增修缺口",
+      "desc": "偵測描述不足的實體並以背景工作自動增修"
+    },
+    "enrichment-sources": {
+      "title": "增修來源",
+      "desc": "用於檢索與扎根的授權來源語料庫"
+    },
+    "enrichment-jobs": {
+      "title": "增修工作",
+      "desc": "監控並繼續受成本上限限制的增修工作"
+    },
+    "enrichment-settings": {
+      "title": "增修設定檔",
+      "desc": "撰寫此書的去偏見設定檔(世界觀、語言、時代、語氣)"
+    },
     "json-editor": {
       "title": "JSON",
       "desc": "資源的原始 JSON 檢視"
@@ -328,7 +369,16 @@
       "recent": "最近",
       "panels": "面板",
       "navigate": "導覽",
-      "layout": "版面"
+      "layout": "版面",
+      "editor": "編輯器與章節",
+      "storyBible": "故事聖經",
+      "knowledge": "知識圖譜",
+      "translation": "翻譯",
+      "enrichment": "增補",
+      "sharing": "分享與設定",
+      "platform": "平台",
+      "discovery": "探索",
+      "jobs": "工作"
     },
     "cmd": {
       "showManuscript": "檢視：手稿",

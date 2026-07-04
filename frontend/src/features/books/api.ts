@@ -384,6 +384,9 @@ export const booksApi = {
       return r.blob();
     });
   },
+  deleteCover(token: string, bookId: string) {
+    return apiJson<void>(`/v1/books/${bookId}/cover`, { method: 'DELETE', token });
+  },
   getSharing(token: string, bookId: string) {
     return apiJson<{ book_id: string; visibility: 'private' | 'unlisted' | 'public'; unlisted_access_token?: string }>(
       `/v1/sharing/books/${bookId}`,

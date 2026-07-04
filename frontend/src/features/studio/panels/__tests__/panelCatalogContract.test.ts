@@ -33,4 +33,12 @@ describe('studio open-panel tool ↔ dock catalog contract', () => {
     const openable = OPENABLE_STUDIO_PANELS.map((p) => p.id).sort();
     expect([...(enumIds ?? [])].sort()).toEqual(openable);
   });
+
+  // #18 B6 — every palette-openable panel must declare a category, or it silently falls into
+  // the generic "Panels" fallback bucket and the whole point of domain grouping erodes one panel
+  // at a time with no signal. A future panel that forgets `category` fails here, loudly.
+  it('every palette-openable panel has a category (#18 domain grouping)', () => {
+    const missing = OPENABLE_STUDIO_PANELS.filter((p) => !p.category).map((p) => p.id);
+    expect(missing).toEqual([]);
+  });
 });

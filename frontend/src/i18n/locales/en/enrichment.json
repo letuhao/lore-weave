@@ -209,6 +209,7 @@
     "detect_hint": "Click \"Detect gaps\" to scan this book's glossary coverage.",
     "none": "No gaps detected — every entity is well described.",
     "extract_first": "No entities yet — extract this book first (Knowledge tab). Enrichment fills gaps in entities the platform already knows about.",
+    "extract_cta": "Extract entities now",
     "technique": "Technique",
     "gen_model": "Generation model",
     "embed_model": "Embedding model",

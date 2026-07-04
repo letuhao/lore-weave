@@ -233,7 +233,16 @@
           "leaderboard-translators",
           "leaderboard-trending",
           "chapter-browser",
-          "context-inspector"
+          "context-inspector",
+          "sharing",
+          "book-settings",
+          "translation",
+          "enrichment-compose",
+          "enrichment-proposals",
+          "enrichment-gaps",
+          "enrichment-sources",
+          "enrichment-jobs",
+          "enrichment-settings"
         ],
         "type": "string"
       }

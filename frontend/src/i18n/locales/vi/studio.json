@@ -199,6 +199,47 @@
       "client_filtered_note": "Bộ lọc số từ/ngày áp dụng trên trang đang tải",
       "chapter_count": "{{count}} chương"
     },
+    "sharing": {
+      "title": "Chia sẻ",
+      "desc": "Chế độ hiển thị, liên kết không công khai, và cộng tác viên của sách này"
+    },
+    "book-settings": {
+      "title": "Cài đặt sách",
+      "desc": "Tiêu đề, bìa, thẻ thể loại, và liên kết thế giới của sách này"
+    },
+    "translation": {
+      "title": "Dịch thuật",
+      "desc": "Ma trận độ phủ, lọc ngôn ngữ, dịch hàng loạt và trích xuất thuật ngữ cho sách này"
+    },
+    "translation-versions": {
+      "title": "Phiên bản dịch",
+      "desc": "Quản lý phiên bản dịch theo từng chương (so sánh, đặt bản chính, dịch lại)",
+      "empty": "Mở phiên bản dịch của một chương từ ma trận Dịch thuật."
+    },
+    "enrichment-compose": {
+      "title": "Tạo làm giàu",
+      "desc": "Soạn một bản nháp tri thức làm giàu mới (mở rộng bản nháp, dán ngữ cảnh, tải tệp, hoặc nêu ý định)"
+    },
+    "enrichment-proposals": {
+      "title": "Đề xuất làm giàu",
+      "desc": "Xem xét tri thức do AI đề xuất — chấp thuận, từ chối, hoặc đưa vào chính điển"
+    },
+    "enrichment-gaps": {
+      "title": "Khoảng trống làm giàu",
+      "desc": "Phát hiện các thực thể mô tả chưa đầy đủ và tự động làm giàu qua tác vụ nền"
+    },
+    "enrichment-sources": {
+      "title": "Nguồn làm giàu",
+      "desc": "Kho ngữ liệu nguồn có gắn nhãn bản quyền để truy xuất và làm nền"
+    },
+    "enrichment-jobs": {
+      "title": "Tác vụ làm giàu",
+      "desc": "Theo dõi và tiếp tục các tác vụ làm giàu có giới hạn chi phí"
+    },
+    "enrichment-settings": {
+      "title": "Hồ sơ làm giàu",
+      "desc": "Soạn hồ sơ giảm thiên kiến của sách này (thế giới quan, ngôn ngữ, thời đại, giọng văn)"
+    },
     "json-editor": {
       "title": "JSON",
       "desc": "Xem JSON thô của một resource"
@@ -328,7 +369,16 @@
       "recent": "Gần đây",
       "panels": "Bảng công cụ",
       "navigate": "Điều hướng",
-      "layout": "Bố cục"
+      "layout": "Bố cục",
+      "editor": "Soạn thảo & Chương",
+      "storyBible": "Story Bible",
+      "knowledge": "Đồ thị tri thức",
+      "translation": "Dịch thuật",
+      "enrichment": "Làm giàu",
+      "sharing": "Chia sẻ & Cài đặt",
+      "platform": "Nền tảng",
+      "discovery": "Khám phá",
+      "jobs": "Tác vụ"
     },
     "cmd": {
       "showManuscript": "Xem: Bản thảo",

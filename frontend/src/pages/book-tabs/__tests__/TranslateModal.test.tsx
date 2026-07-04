@@ -3,6 +3,10 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 
 // ── Mocks ──────────────────────────────────────────────────────────────────────
 vi.mock('@/auth', () => ({ useAuth: () => ({ accessToken: 'tok' }) }));
+// DOCK-7 fallback path (openModelSettings navigates when no studio host is present) — the test
+// harness renders outside a <Router>, so useNavigate must be stubbed the same way
+// TranslationTab.badge.test.tsx already does for its own DOCK-7 fallback.
+vi.mock('react-router-dom', () => ({ useNavigate: () => vi.fn() }));
 
 const toastError = vi.fn();
 const toastSuccess = vi.fn();

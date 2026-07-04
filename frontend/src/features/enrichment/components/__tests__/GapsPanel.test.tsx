@@ -65,6 +65,28 @@ vi.mock('@/components/model-picker', () => ({
   ),
 }));
 
+// D-ENRICH-GAPS-NO-EXTRACT-CTA — stub the shared wizard so this test stays about
+// GapsPanel's OWN wiring (opens it scoped to bookId, re-detects on completion),
+// not the wizard's internals (covered by ExtractionWizard.test.tsx).
+vi.mock('@/features/extraction/ExtractionWizard', () => ({
+  ExtractionWizard: ({
+    open,
+    bookId,
+    mode,
+    onComplete,
+  }: {
+    open: boolean;
+    bookId: string;
+    mode: string;
+    onComplete?: () => void;
+  }) =>
+    open ? (
+      <div data-testid="stub-extraction-wizard" data-book={bookId} data-mode={mode}>
+        <button onClick={onComplete}>complete-extraction</button>
+      </div>
+    ) : null,
+}));
+
 import { invalidateUserModelsCache } from '@/components/model-picker/useUserModels';
 import { GapsPanel } from '../GapsPanel';
 import type { Gap } from '../../types';
@@ -138,6 +160,41 @@ describe('GapsPanel', () => {
     expect(screen.getByTestId('enrichment-gaps-extract-first')).toBeInTheDocument();
     expect(screen.getByText('gaps.extract_first')).toBeInTheDocument();
     expect(screen.queryByText('gaps.none')).toBeNull();
+  });
+
+  // D-ENRICH-GAPS-NO-EXTRACT-CTA — the needsExtraction empty state used to be a dead
+  // end (a message with no button). It now has a real CTA that opens the shared
+  // ExtractionWizard scoped to THIS book, and re-runs detect() once extraction completes.
+  it('needsExtraction shows a real CTA button (not present when gaps are simply empty)', () => {
+    gapsState.gaps = [];
+    gapsState.needsExtraction = false;
+    renderPanel();
+    expect(screen.queryByTestId('enrichment-gaps-extract-cta')).toBeNull();
+  });
+
+  it('clicking the extract CTA opens the ExtractionWizard scoped to this book in batch mode', () => {
+    gapsState.gaps = [];
+    gapsState.needsExtraction = true;
+    renderPanel();
+    expect(screen.queryByTestId('stub-extraction-wizard')).toBeNull();
+
+    fireEvent.click(screen.getByTestId('enrichment-gaps-extract-cta'));
+
+    const wizard = screen.getByTestId('stub-extraction-wizard');
+    expect(wizard.getAttribute('data-book')).toBe('book-1');
+    expect(wizard.getAttribute('data-mode')).toBe('batch');
+  });
+
+  it('completing the extraction wizard re-runs gap detection', () => {
+    gapsState.gaps = [];
+    gapsState.needsExtraction = true;
+    renderPanel();
+    fireEvent.click(screen.getByTestId('enrichment-gaps-extract-cta'));
+    detectMock.mockClear();
+
+    fireEvent.click(screen.getByText('complete-extraction'));
+
+    expect(detectMock).toHaveBeenCalledTimes(1);
   });
 
   it('with gaps renders a row per gap: name, kind, joined missing dims, score.toFixed(2)', () => {

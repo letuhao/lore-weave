@@ -199,6 +199,47 @@
       "client_filtered_note": "Word-count/date filters apply to the currently loaded page",
       "chapter_count": "{{count}} chapters"
     },
+    "sharing": {
+      "title": "Sharing",
+      "desc": "Visibility, unlisted link, and collaborators for this book"
+    },
+    "book-settings": {
+      "title": "Book Settings",
+      "desc": "Title, cover, genre tags, and world link for this book"
+    },
+    "translation": {
+      "title": "Translation",
+      "desc": "Coverage matrix, language filter, bulk translate and glossary extraction for this book"
+    },
+    "translation-versions": {
+      "title": "Translation Versions",
+      "desc": "Per-chapter translation version management (compare, set active, re-translate)",
+      "empty": "Open a chapter's translation versions from the Translation matrix."
+    },
+    "enrichment-compose": {
+      "title": "Create Enrichment",
+      "desc": "Compose a new enriched lore draft (expand a draft, paste context, upload files, or state an intent)"
+    },
+    "enrichment-proposals": {
+      "title": "Enrichment Proposals",
+      "desc": "Review AI-proposed lore — approve, reject, or promote into canon"
+    },
+    "enrichment-gaps": {
+      "title": "Enrichment Gaps",
+      "desc": "Detect under-described entities and auto-enrich them as a background job"
+    },
+    "enrichment-sources": {
+      "title": "Enrichment Sources",
+      "desc": "License-tagged source corpora for retrieval and recook grounding"
+    },
+    "enrichment-jobs": {
+      "title": "Enrichment Jobs",
+      "desc": "Monitor and resume cost-capped enrichment jobs"
+    },
+    "enrichment-settings": {
+      "title": "Enrichment Profile",
+      "desc": "Author this book's de-bias profile (worldview, language, era, voice)"
+    },
     "json-editor": {
       "title": "JSON",
       "desc": "Raw JSON view of a resource"
@@ -340,7 +381,16 @@
       "recent": "Recent",
       "panels": "Panels",
       "navigate": "Navigate",
-      "layout": "Layout"
+      "layout": "Layout",
+      "editor": "Editor & Chapters",
+      "storyBible": "Story Bible",
+      "knowledge": "Knowledge Graph",
+      "translation": "Translation",
+      "enrichment": "Enrichment",
+      "sharing": "Sharing & Settings",
+      "platform": "Platform",
+      "discovery": "Discovery",
+      "jobs": "Jobs"
     },
     "cmd": {
       "showManuscript": "View: Show Manuscript",
