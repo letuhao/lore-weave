@@ -17,19 +17,34 @@ vi.mock('@/features/knowledge/components/ProposalsInboxTab', () => ({
   ProposalsInboxTab: (props: { bookId: string | null; onOpenRow: (row: ProposalInboxRow) => void }) => {
     lastProps = props;
     return (
-      <button
-        data-testid="open-row-e1"
-        onClick={() =>
-          props.onOpenRow({
-            id: 'e1',
-            origin: 'glossary',
-            title: 'Entity 1',
-            deepLinkUrl: '/books/b1/glossary',
-          })
-        }
-      >
-        open
-      </button>
+      <>
+        <button
+          data-testid="open-row-glossary"
+          onClick={() =>
+            props.onOpenRow({
+              id: 'e1',
+              origin: 'glossary',
+              title: 'Entity 1',
+              deepLinkUrl: '/books/b1/glossary',
+            })
+          }
+        >
+          open glossary row
+        </button>
+        <button
+          data-testid="open-row-wiki"
+          onClick={() =>
+            props.onOpenRow({
+              id: 'w1',
+              origin: 'wiki',
+              title: 'Wiki 1',
+              deepLinkUrl: '/books/b1/wiki',
+            })
+          }
+        >
+          open wiki row
+        </button>
+      </>
     );
   },
 }));
@@ -71,16 +86,29 @@ describe('KgProposalsPanel', () => {
     expect(lastProps!.bookId).toBe('book-42');
   });
 
-  it('opening a proposal row goes through the studio link resolver, not navigate()', () => {
+  it('opening a glossary-origin row opens the glossary panel in-tab (studioLinks.ts F3 mapping)', () => {
     const openSpy = vi.spyOn(window, 'open').mockImplementation(() => null);
     try {
       withHost('b1', <KgProposalsPanel {...dockProps()} />);
-      fireEvent.click(screen.getByTestId('open-row-e1'));
-      // `/books/b1/glossary` is an unmapped app path in studioLinks.ts today — F3
+      const openPanelSpy = vi.spyOn(hostRef!, 'openPanel');
+      fireEvent.click(screen.getByTestId('open-row-glossary'));
+      expect(openPanelSpy).toHaveBeenCalledWith('glossary', expect.objectContaining({}));
+      expect(openSpy).not.toHaveBeenCalled();
+    } finally {
+      openSpy.mockRestore();
+    }
+  });
+
+  it('opening a wiki-origin row falls through to a new tab (no wiki dock panel exists yet)', () => {
+    const openSpy = vi.spyOn(window, 'open').mockImplementation(() => null);
+    try {
+      withHost('b1', <KgProposalsPanel {...dockProps()} />);
+      fireEvent.click(screen.getByTestId('open-row-wiki'));
+      // `/books/b1/wiki` has no dock panel yet (separate, not-yet-built track) — F3
       // falls through to "external", a new tab on the classic route, never a
       // silent no-op and never a route hop away from the studio.
       expect(openSpy).toHaveBeenCalledWith(
-        '/books/b1/glossary',
+        '/books/b1/wiki',
         '_blank',
         'noopener,noreferrer',
       );

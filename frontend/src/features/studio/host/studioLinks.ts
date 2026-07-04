@@ -25,12 +25,39 @@ export interface StudioLinkContext {
 
 const CHAPTER_RE = /^\/books\/([^/]+)\/chapters\/([^/]+)(?:\/|$)/;
 const SETTINGS_RE = /^\/settings(?:\/([^/]+))?\/?$/;
+// 14_kg_panels.md — a book-scoped page (glossary/wiki/enrichment) is only safely mappable
+// when it's THIS studio's book (same-book rule, mirrors CHAPTER_RE) — a different book's
+// page has no in-studio equivalent (this studio IS one book) and stays external.
+const BOOK_SCOPED_PAGE_RE = /^\/books\/([^/]+)\/(glossary|wiki|enrichment)(?:\/|$)/;
+/** Path → panel id for the book-scoped pages above that already have a dock panel. Wiki and
+ *  enrichment don't have one yet (separate, not-yet-built tracks — 14_kg_panels.md "Out of
+ *  scope") so they're deliberately absent here and fall through to external. */
+const BOOK_SCOPED_PAGE_PANELS: Record<string, string> = {
+  glossary: 'glossary',
+};
 
 /** Panel ids reachable by a bare app path (wave-1 user-scoped panels). */
 const PATH_PANELS: Record<string, string> = {
   '/usage': 'usage',
   '/notifications': 'notifications',
   '/trash': 'trash',
+  // 14_kg_panels.md — the classic KnowledgePage's global (book-independent) tabs. Each has a
+  // real dock-panel equivalent now; `/knowledge` itself and `/knowledge/projects` both land on
+  // the hub (KnowledgePage redirects the bare path to /knowledge/projects). The project-id-keyed
+  // routes (`/knowledge/projects/:id/:section`) are deliberately NOT mapped here: the `kg-*`
+  // capability panels resolve "the CURRENT book's project" via useBookKnowledgeProject, not an
+  // arbitrary :id from the link — a project id that isn't this book's project (e.g. the hub
+  // listing a DIFFERENT book's project, or a standalone project) would silently show the wrong
+  // project if naively mapped. Safe to add once a caller can assert :id === this book's project.
+  '/knowledge': 'knowledge',
+  '/knowledge/projects': 'knowledge',
+  '/knowledge/jobs': 'kg-jobs',
+  '/knowledge/global': 'kg-bio',
+  '/knowledge/entities': 'kg-entities',
+  '/knowledge/timeline': 'kg-timeline',
+  '/knowledge/raw': 'kg-evidence',
+  '/knowledge/insights': 'kg-insights',
+  '/knowledge/privacy': 'kg-privacy',
 };
 
 export function resolveStudioLink(link: string, ctx: StudioLinkContext): StudioLinkResolution {
@@ -54,6 +81,14 @@ export function resolveStudioLink(link: string, ctx: StudioLinkContext): StudioL
       return { kind: 'studio', effect: (host) => host.focusManuscriptUnit(chapterId!) };
     }
     return { kind: 'external', url: link }; // another book — full app in a new tab
+  }
+
+  const bookPage = BOOK_SCOPED_PAGE_RE.exec(path);
+  if (bookPage) {
+    const [, bookId, page] = bookPage;
+    const mappedPanel = BOOK_SCOPED_PAGE_PANELS[page!];
+    if (bookId === ctx.bookId && mappedPanel) return openPanel(mappedPanel);
+    return { kind: 'external', url: link }; // another book, or a page with no panel yet (wiki/enrichment)
   }
 
   const panelId = PATH_PANELS[path];
