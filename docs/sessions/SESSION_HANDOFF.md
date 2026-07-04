@@ -18,24 +18,54 @@ commits mid-way through this one) — re-verify shared spine files (`catalog.ts`
 
 **KNOWLEDGE/KG DOCKABLE MIGRATION — FULLY DONE 2026-07-04** (commits `4c50f7ae2` Phase A, `5c43a36c9` Phase B, `d9d21a262`/`b88e07ba7` docs, `9098f9ce0` studioLinks wiring, `21bae112a` E2E). All 13 panels (`knowledge` hub + 12 `kg-*` capability panels) built, wired into the studio link resolver, and **live-proven**: `frontend/tests/e2e/specs/kg-panels.spec.ts` opens every one through the real Command Palette against the real backend — 17/17 passing (ran via `docker` stack + `vite --port 5199`; the baked `:5174` image is stale for this work). Decision recorded: `KnowledgePage`/`ProjectDetailShell`/`KnowledgeOntologyTab` are **NOT** retired into redirects — matches wave-1's own documented precedent (`11_dockable_migration.md`) of keeping classic routes as multi-device/non-studio entry points; Knowledge's case is harder than wave-1's (no reliable book to redirect a global hub or standalone project into, Studio is desktop-first). See [[kg-dockable-migration-phase-a]] memory for full detail. Remaining, still deferred: cross-panel E2E beyond what's already covered (hub → other capability panels).
 
-> **"CURSOR-FOR-NOVELS" REGISTER — #1 COHERENCE Phase 1 BUILD STARTED 2026-07-04.** User approved
-> the spec+plan below (`approve, go`) and asked to proceed into BUILD. **P1 (Lane-C hoist action)
-> ✅ SHIPPED `f548859db`** — `ManuscriptUnitProvider.applyProposedEdit({operation, text,
-> provenance})` added as a real Tier-4 hoist action (thin wrapper over the same `editorRef` —
-> the underlying write and its `onUpdate→setBody` wiring are byte-identical, only the CALL SITE
-> moved off the global `editorBridge` singleton). `editorBridge.ts`'s `RegisteredTarget`/
-> `EditorTarget` gained an optional `applyProposedEdit` field; `ProposeEditCard.tsx`'s `apply()`
-> prefers it when present, falls back to `target.handle.*` otherwise — legacy `ChapterEditorPage`
-> (no Tier-4 hoist, omits the field) is untouched, byte-identical to before. `/review-impl` added
-> one regression test (cross-chapter guard still blocks Apply even with a hoist action configured
-> — code inspection showed it was already correct, but nothing proved the combination). VERIFY:
-> `features/chat`+`features/studio` 999/999 green, `tsc --noEmit` clean, **live browser smoke**
-> (vite :5201 → gateway :3123, real local gemma-4-26b, book `019ef35c`): `propose_edit` insert →
-> hoist-routed Apply → editor updated live (74→90 words) → saved. **NEXT:** Phase 1 tasks 1.2
-> Checkpoints / 1.3 Revision History / 1.4 Publish Gate (per the plan's fan-out shape — 3 disjoint
-> new files, serial integration into `EditorPanel.tsx`), then 1.5 the `ChaptersTab.tsx` route
-> switch. See [`2026-07-04-chapter-editor-studio-merge.md`](../plans/2026-07-04-chapter-editor-studio-merge.md)'s
-> Phase-agent contract before fanning these out.
+> **"CURSOR-FOR-NOVELS" REGISTER — #1 COHERENCE Phase 1 ✅ COMPLETE 2026-07-04.** User approved the
+> spec+plan (`approve, go`) and asked to proceed into BUILD; all of Phase 1 (spec
+> [`16_chapter_editor_parity_and_retirement.md`](../specs/2026-07-01-writing-studio/16_chapter_editor_parity_and_retirement.md))
+> shipped in one continuous run, 4 commits:
+> - **P1 `f548859db`** — `ManuscriptUnitProvider.applyProposedEdit({operation, text, provenance})`
+>   added as a real Tier-4 hoist action (thin wrapper over the same `editorRef` — the write and its
+>   `onUpdate→setBody` wiring are byte-identical, only the CALL SITE moved off the global
+>   `editorBridge` singleton). `editorBridge.ts` gained an optional `applyProposedEdit` field;
+>   `ProposeEditCard.tsx` prefers it when present, falls back to `target.handle.*` otherwise —
+>   legacy `ChapterEditorPage` (no hoist, omits the field) untouched.
+> - **1.2/1.3/1.4 `16286995e`** — Checkpoints, Revision History, Publish Gate, built as 3 parallel
+>   background agents (disjoint new files: `useManuscriptCheckpoints`+`ManuscriptCheckpoints`,
+>   `useRevisionHistory`+`RevisionHistorySection`, `EditorPublishGate`), then integrated serially
+>   into `EditorPanel.tsx`. Both restore paths are G7-guarded (refuse to overwrite a dirty hoist).
+>   **`/review-impl` found + fixed a MED cross-hook bug**: Checkpoints and Revision History are
+>   independent hook instances that both restore the SAME chapter's revision spine, built by
+>   separate agents who didn't know about each other — a Revision-History-triggered restore left
+>   Checkpoints' internal "latest revision" pointer stale, so the next AI-edit checkpoint would
+>   capture the WRONG restore point. Fixed by watching `state.version` (bumped by any
+>   save/reload/restore, whoever triggers it) instead of each hook's own narrower signal; a new
+>   `crossHookRevisionSync.test.tsx` mounts both hooks against one real `ManuscriptUnitProvider`
+>   and proves the fix in both directions.
+> - **1.5 `f9ca330f3`** — `ChaptersTab.tsx`'s row-click, pencil icon, and post-create navigation now
+>   open `/books/:id/studio?chapter=<id>` instead of the legacy `/chapters/:id/edit` route (Phase 1
+>   parity reached — Studio is no longer strictly worse). `WritingStudioPage`/`StudioFrame` gained a
+>   small `?chapter=` deep-link seam calling `host.focusManuscriptUnit()` once on mount — the same
+>   seam Quick Open/Navigator already use, not a new mechanism. Legacy route untouched, still
+>   reachable by direct URL (deletion is Phase 4, gated on a soak period per spec M9).
+>
+> **VERIFY:** 1108+ tests green across `features/chat`+`features/studio`+`features/books`+`pages`,
+> `tsc --noEmit` clean (2 unrelated errors seen mid-session in `PressureGauge.tsx`/`WikiEditorPanel.tsx`
+> were concurrent-session WIP, confirmed via `git status`, not mine). **3 separate live browser
+> smokes** (each on a fresh vite port + fresh login, real backend, book `019ef35c`): (1) propose_edit
+> insert → hoist-routed Apply → editor updated live → saved; (2) full Phase 1 combined — propose_edit
+> → Checkpoints strip appears → Restore disabled while dirty → Save → Restore enabled → click Restore
+> reverts the editor content live, Revision History shows real v1-v8 data, Publish Gate's
+> Re-publish/Unpublish reflect dirty state correctly; (3) the route switch — clicking a chapter row
+> on the book detail page opens Studio with the CORRECT chapter's actual content auto-focused (not
+> whatever was last active).
+>
+> **NEXT (register order, per spec 16's own roadmap):** Phase 2 (editor-craft UX — grammar,
+> glossary inline decoration/autocomplete, mention heatmap, provenance, selection toolbar/inline-AI,
+> focus mode, auto-save, progress-reporting, original-source viewer, image/video upload-context) —
+> roadmap only in the spec, needs its own capability audit at kickoff per the track's
+> build-while-plan convention. Phase 3 (Translate workmode) and Phase 4 (mobile-shell decision +
+> full route retirement + `ChapterEditorPage` deletion) come after. #4 AGENT-MODE (autonomy
+> mission-control GUI) remains the largest unstarted "Cursor-for-novels" item — needs its own
+> CLARIFY+DESIGN when picked up.
 
 > **"CURSOR-FOR-NOVELS" REGISTER — #1 COHERENCE SPEC+PLAN DONE 2026-07-04 (docs only, no build
 > yet — user-scoped this pass as CLARIFY+DESIGN+PLAN only).** After #2 APPLY-DIFF shipped
