@@ -146,3 +146,80 @@ async def summarize_for_compaction(
             f"summary hit max_tokens ({request.max_tokens}); tail facts would be lost"
         )
     return "".join(parts).strip()
+
+
+async def persist_auto_compact(
+    pool,
+    session_id: str,
+    user_id: str,
+    *,
+    model_source: str,
+    model_ref: str,
+    target: int,
+    keep_recent: int = 8,
+    prev_summary: str | None,
+    prev_before_seq: int | None,
+) -> tuple[str, int] | None:
+    """C_persist — the AUTOMATIC analogue of the manual /compact route. When a session's LIVE
+    history (post the previous boundary, + the prev summary folded in) exceeds `target`,
+    summarize the droppable middle ONCE and PERSIST {compact_summary, compacted_before_seq} so
+    every later turn LOADS the summary instead of re-summarizing the raw history every turn (the
+    62%-overhead regression the sweep found). The loader (stream_service) already splices
+    summary + post-boundary messages, so this converts O(turns) summarizer calls into
+    O(turns / keep_recent).
+
+    Returns (new_summary, new_before_seq) on success, or None (session UNCHANGED — safe) when:
+    nothing to compact, still under target, the summarizer failed (falls back to the ephemeral
+    tiers), or a concurrent compact landed (OCC). Mirrors the manual route's persist exactly."""
+    from app.services.compaction import extract_breadcrumb, summary_message
+    from app.services.token_budget import estimate_messages_tokens
+
+    if prev_before_seq is not None:
+        rows = await pool.fetch(
+            "SELECT sequence_num, role, content FROM chat_messages "
+            "WHERE session_id=$1 AND is_error=false AND branch_id=0 AND sequence_num >= $2 "
+            "ORDER BY sequence_num ASC",
+            session_id, prev_before_seq,
+        )
+    else:
+        rows = await pool.fetch(
+            "SELECT sequence_num, role, content FROM chat_messages "
+            "WHERE session_id=$1 AND is_error=false AND branch_id=0 ORDER BY sequence_num ASC",
+            session_id,
+        )
+    if len(rows) <= keep_recent:
+        return None
+    live = [{"role": r["role"], "content": r["content"]} for r in rows]
+    if prev_summary:
+        live = [summary_message(prev_summary)] + live
+    if target and estimate_messages_tokens(live) <= target:
+        return None  # live history still under target — no persist needed this turn
+
+    droppable = [{"role": r["role"], "content": r["content"]}
+                 for r in rows[: len(rows) - keep_recent]]
+    if prev_summary:
+        droppable.insert(0, summary_message(prev_summary))
+    try:
+        summary = await summarize_for_compaction(
+            droppable, model_source=model_source, model_ref=str(model_ref), user_id=user_id,
+        )
+    except Exception:
+        return None  # session unchanged — the ephemeral compaction tiers still guard this turn
+    if not summary:
+        return None
+    # Match the ephemeral path's reliability: lead the persisted summary with the DETERMINISTIC
+    # breadcrumb (verbatim number/name facts), so a lossy LLM summary can't drop a fact the
+    # recall depends on (the 1/9→9/9 fix, docs/eval/context-budget/T2-compaction-trigger).
+    if settings.compact_breadcrumb_enabled:
+        _bc = extract_breadcrumb(droppable)
+        if _bc:
+            summary = _bc + "\n\n" + summary
+    new_before_seq = int(rows[len(rows) - keep_recent]["sequence_num"])
+    result = await pool.execute(
+        "UPDATE chat_sessions SET compact_summary=$3, compacted_before_seq=$4, updated_at=now() "
+        "WHERE session_id=$1 AND owner_user_id=$2 AND compacted_before_seq IS NOT DISTINCT FROM $5",
+        session_id, user_id, summary, new_before_seq, prev_before_seq,
+    )
+    if result == "UPDATE 0":
+        return None  # a concurrent compact landed — safe, leave it
+    return summary, new_before_seq

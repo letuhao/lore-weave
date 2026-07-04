@@ -98,6 +98,14 @@ class Settings(BaseSettings):
     # and re-validate; independent of `compact_task_elastic_enabled`.
     compact_recovery_hint_enabled: bool = False
 
+    # C_persist (T2 optimization) — PERSISTENT automatic compaction. When ON, a turn whose live
+    # history exceeds the target persists the compact ({compact_summary, compacted_before_seq})
+    # BEFORE loading, so later turns load the summary (via the W3 loader) instead of
+    # re-summarizing the raw history EVERY turn — fixing the 62%-summarizer-overhead regression
+    # the optimization sweep found (docs/eval/context-budget/OPTIMIZATION-RESULTS-2026-07-04.md).
+    # Default OFF (a sweep candidate); persist threshold = compute_target(context_length).
+    compact_persist_enabled: bool = False
+
     # T6/D6 — compaction BREADCRUMB. Before the lossy LLM summarizer runs, a DETERMINISTIC
     # extractor (compaction.extract_breadcrumb) pulls the highest-value, most-often-dropped
     # facts (number-bearing sentences, quoted names, proper-noun phrases) VERBATIM from the

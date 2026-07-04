@@ -89,15 +89,21 @@ from app.services.compaction import (
     inject_recovery_hint,
     summary_message,
 )
-from loreweave_context import build_system_message
+from loreweave_context import Planner, build_system_message, compute_target
+
+# T3.2 — the default Context Budget Planner (stateless policy; one shared instance). Swap
+# this (or subclass Planner) to A/B a compaction/budget optimization hypothesis.
+_PLANNER = Planner()
 # W3 — compaction tier 2 (compress instead of drop) shares its summarizer with
 # the manual /compact route; the factored impl lives in compact_service. Bound
 # to the old private name so both in-file call sites stay unchanged.
-from app.services.compact_service import summarize_for_compaction as _summarize_for_compaction
+from app.services.compact_service import (
+    persist_auto_compact,
+    summarize_for_compaction as _summarize_for_compaction,
+)
 from app.services.token_budget import (
     ContextBreakdown,
     compute_budget,
-    compute_target,
     context_budget_event,
     estimate_messages_tokens,
     estimate_tokens,
@@ -1857,6 +1863,26 @@ async def stream_response(
     history_limit = max(1, kctx.recent_message_count)
     _compact_summary = session_row.get("compact_summary") if session_row else None
     _compacted_before_seq = session_row.get("compacted_before_seq") if session_row else None
+    # C_persist (T2 optimization) — before loading history, if the live history exceeds the
+    # target, PERSIST a compact so THIS turn AND every later turn load the summary (not raw),
+    # instead of re-summarizing every turn (the sweep's 62%-summarizer-overhead regression). A
+    # None return (under target / summarizer fail / concurrent compact) leaves the session
+    # unchanged — the ephemeral compaction tiers still cap this turn. Threshold =
+    # compute_target(context_length) (task_weight=1.0 → surface_max), independent of the
+    # ephemeral task-elastic flag.
+    if settings.compact_persist_enabled and creds.context_length:
+        try:
+            _pc = await persist_auto_compact(
+                pool, session_id, user_id,
+                model_source=model_source, model_ref=model_ref,
+                target=compute_target(creds.context_length) or 0,
+                keep_recent=8,
+                prev_summary=_compact_summary, prev_before_seq=_compacted_before_seq,
+            )
+            if _pc is not None:
+                _compact_summary, _compacted_before_seq = _pc
+        except Exception:
+            logger.warning("C_persist auto-compact skipped (error)", exc_info=True)
     if _compacted_before_seq is not None:
         rows = await pool.fetch(
             """
@@ -2433,22 +2459,22 @@ async def _emit_chat_turn(
     # Anthropic server-side overlay is A5). GUARDED — any error falls back to the
     # un-compacted messages so a bug here can never break the turn. summarize=None →
     # deterministic micro-evict of tool results + hard-truncate (no LLM in the path).
-    # T2/D3 — the task-elastic soft compaction target for THIS turn. task_weight is
-    # driven by the T5 intent signal: a grounding turn (lore/continuity/discovery/
-    # anaphora) stays roomy (1.0 → surface_max); a status-op / smalltalk turn uses the
-    # leaner `compact_light_task_weight`. None when the flag is OFF → compaction keeps
-    # the flat 0.75×window trigger (byte-identical pre-T2 behavior). Its safety net when
-    # ON is the D6 recovery layer (summary FACTS + conversation_search + story_state).
-    _compact_target: int | None = None
-    if settings.compact_task_elastic_enabled:
-        # grounding_needed rides in via the `entity_presence` telemetry dict (the
-        # EntityPresence object lives in the caller stream_response). Missing/None →
-        # True (roomy/safe, biased-to-include — mirrors the T5 gate's default).
-        _grounding_needed = bool((entity_presence or {}).get("grounding_needed", True))
-        _task_weight = (
-            1.0 if _grounding_needed else settings.compact_light_task_weight
-        )
-        _compact_target = compute_target(creds.context_length, task_weight=_task_weight)
+    # T3.2 — the Context Budget **Planner** (POLICY) computes the compaction plan for THIS
+    # turn: a grounding turn (lore/continuity/discovery/anaphora) stays roomy (task_weight
+    # 1.0 → surface_max); a status-op / smalltalk turn uses the leaner
+    # `compact_light_task_weight` so it compacts sooner. grounding_needed rides in via the
+    # T5 `entity_presence` telemetry (the EntityPresence object lives in the caller
+    # stream_response); missing/None → True (roomy/safe, biased-to-include). When the flag
+    # is OFF the plan's target is None → compaction keeps the flat 0.75×window trigger
+    # (byte-identical pre-T2). Swap `_PLANNER` (or its `plan`) to A/B a compaction policy;
+    # its safety net when ON is the D6 recovery layer (breadcrumb + summary + story_state).
+    _plan = _PLANNER.plan(
+        grounding_needed=bool((entity_presence or {}).get("grounding_needed", True)),
+        context_length=creds.context_length,
+        task_elastic_enabled=settings.compact_task_elastic_enabled,
+        light_task_weight=settings.compact_light_task_weight,
+    )
+    _compact_target = _plan.compact_target
 
     _eff_limit: int | None = None
     _compaction = None

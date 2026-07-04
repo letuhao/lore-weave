@@ -61,9 +61,45 @@ natural next candidate config **C_persist** — expected to beat both C0 and C1 
   C0 would still re-summarize every turn once a session crosses 32K = the same regression, just
   later. C1 on 200K ≈ "compaction basically never fires" = the safe pre-T2 behavior.
 
-## Next steps
+## ⚑⚑ C_persist — built + validated: the Pareto-dominant winner (S1)
 
-1. **Revert `COMPACT_TASK_ELASTIC_ENABLED` → default OFF** (evidence above) — pending user OK
-   (it reverses this session's approved flip).
-2. Build **C_persist** (persistent automatic compaction) and A/B it vs C1 on S1 (+ S2–S5).
-3. Complete the sweep: author S3/S4/S5, run C1 vs C_persist × N=4, blind-judge pass, scorecard.
+**C_persist** (`COMPACT_PERSIST_ENABLED`, `compact_service.persist_auto_compact`): before loading
+history, if the live history exceeds `compute_target(context_length)`, summarize the droppable
+middle ONCE and **persist** `{compact_summary, compacted_before_seq}` (reusing the W3
+manual-compact mechanism + loader + the deterministic breadcrumb). Later turns load the summary
+via the loader — **no re-summarizing every turn.** Config: `COMPACT_PERSIST_ENABLED=true`,
+`COMPACT_TASK_ELASTIC_ENABLED=false`.
+
+Live S1 (same 15-turn session, gemma-4-26b): input ~18K for t0–t3, then **t4 persists ONCE (one
+5.7 s summarizer call) → input drops to ~5K and STAYS ~5–6K for all 11 remaining turns at ~1 s
+each.**
+
+| S1 — 15 turns | Recall t7 / t14 | session cost | summarizer calls | latency/turn |
+|---|---|---|---|---|
+| C0 task-elastic | 5/9 · 5/9 | 343 K | 11 | 6–10 s |
+| C1 flat | 5/9 · 5/9 | 285 K | 0 | ~1 s |
+| **C_persist** | **5/9 · 5/9** | **~155 K**¹ | **1** | ~1 s |
+
+¹ The driver's raw C_persist total was 135.9 K — it undercounts the ONE pre-load persist
+summarizer call (~19 K; the persist is not a stream compaction event, so the driver misses it).
+True ≈ 155 K — still **46% cheaper than C1 and 55% cheaper than C0.** (Driver follow-up: emit a
+persist event / detect the input-drop so the cost is captured natively.)
+
+**Verdict (capability-first):** recall is EQUAL across all three (5/9 each — the breadcrumb-led
+persisted summary is as good as raw context). Capability tied → cost/latency decide →
+**C_persist wins decisively** (cheapest, C1-fast). It's the config that keeps the agent just as
+smart at ~½ the cost — exactly the "compact once, reuse" fix.
+
+**Caveat:** S1 triggered only ONE persist cycle. A very long session (30+ turns) triggers a 2nd+
+persist that FOLDS the prior summary into a new one (summary-of-summary) — untested for drift.
+Needs a multi-cycle scenario before default-on.
+
+## Decision & next steps
+
+1. **`COMPACT_TASK_ELASTIC_ENABLED` → revert to default OFF** (confirmed regression).
+2. **Adopt C_persist** — flag-gated now (default OFF, code shipped + validated); flip default-ON
+   after a **multi-persist-cycle** long scenario (30+ turns) confirms no summary-of-summary drift
+   + a blind-judge capability pass (craft/depth, not just recall).
+3. Complete the sweep: author S3/S4/S5 + a 30-turn S1-XL, run C1 vs C_persist × N=4 + blind
+   judge, scorecard.
+4. Driver: capture the persist call's cost natively.
