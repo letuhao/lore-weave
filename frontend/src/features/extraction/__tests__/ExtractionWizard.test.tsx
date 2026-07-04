@@ -79,6 +79,22 @@ async function runToResults() {
 }
 
 describe('ExtractionWizard', () => {
+  // DOCK-9 adoption (docs/standards/dockable-gui.md) — swapped the hand-rolled
+  // `fixed inset-0` backdrop+dialog pair for raw @radix-ui/react-dialog primitives.
+  // Regression risk: Radix's built-in Escape/outside-click dismissal must still
+  // route through `onOpenChange`, and the dialog must be a real Radix dialog
+  // (portal-safe, `role="dialog"`) rather than a hand-rolled div pair.
+  it('renders as a real Radix dialog (role=dialog), not a hand-rolled overlay', () => {
+    setup();
+    expect(screen.getByRole('dialog')).toBeTruthy();
+  });
+
+  it('Escape closes the wizard via onOpenChange(false) (Radix default — no manual keydown listener)', async () => {
+    const { onOpenChange } = setup();
+    fireEvent.keyDown(document, { key: 'Escape' });
+    await waitFor(() => expect(onOpenChange).toHaveBeenCalledWith(false));
+  });
+
   it('shows a Run again button on the results step', async () => {
     setup();
     await runToResults();

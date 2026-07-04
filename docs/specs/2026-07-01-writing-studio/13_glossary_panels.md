@@ -58,6 +58,12 @@ Each slice gates independently per spec-12's 6-point cycle gate (catalog+registe
 
 Entity revision history (`EntityHistoryPanel.tsx`) stays a tab inside the `EntityEditorModal` (already wired that way) — not promoted to its own panel this cycle; revisit only if a standalone use case appears.
 
+**✅ Phase B COMPLETE (2026-07-04).** All 8 slices fanned out in parallel (8 subagents, genuinely disjoint files — 4 new panel files, 4 existing modal files, zero collisions), then integrated serially (this session, not the fanout agents): `GlossaryOntologyPanel`/`GlossaryUnknownPanel`/`GlossaryAiSuggestionsPanel`/`GlossaryMergeCandidatesPanel` added to `catalog.ts` + all 4 locale `studio.json` files + the `ui_open_studio_panel` BE enum (contract regenerated) — palette + agent openable, matching the `glossary` panel precedent. `CreateEntityModal`/`BatchTranslateDialog` migrated to `FormDialog` (simple template fit); `GlossaryTranslateWizard`/`ExtractionWizard` migrated to raw `Dialog.*` (both have a pinned step-indicator row FormDialog's template can't hold — the `EntityEditorModal` custom-chrome precedent). `GlossaryPanel`'s temporary internal view-switch (the Phase-A DOCK-8 exception) is GONE — `onOpenView` now calls `host.openPanel('glossary-ontology'|'glossary-unknown'|'glossary-ai-suggestions'|'glossary-merge-candidates')`, a real cross-panel jump, type-checked exhaustive via `Record<OtherGlossaryView, string>`.
+
+**Integration fixes applied** (beyond the 8 agents' own scope, done during the serial integration pass): a small `mcpToolPrefixes` inconsistency on `GlossaryOntologyPanel` (missing vs. the other 3 siblings); `GlossaryPanel.test.tsx` rewritten (the 2 Phase-A tests asserting the temporary view-swap no longer apply — replaced with an `it.each` proving all 4 launchers call `host.openPanel` with the correct sibling id).
+
+**Verify:** full FE suite 545 files / 3768 tests (1 unrelated failure in another track's uncommitted WIP — `VersionsPanel.test.tsx`, not part of this effort); `tsc --noEmit` clean; the 14 Phase-B-touched test files run in isolation: 112/112; BE `test_frontend_tools.py` + `test_frontend_tools_contract.py` + `test_agent_surface.py`: 74/74 (checked BOTH known snapshot locations this time, learning from the Phase-A gap where one was missed); i18n parity clean for the 4 new `glossary-*` key sets across en/vi/ja/zh-TW.
+
 ## Out of scope
 
 - Relationships graph — lives in the Knowledge/KG-ontology tab, not glossary.

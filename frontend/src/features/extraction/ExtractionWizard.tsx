@@ -2,6 +2,7 @@ import { useEffect, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useNavigate } from 'react-router-dom';
 import { toast } from 'sonner';
+import * as Dialog from '@radix-ui/react-dialog';
 import { X } from 'lucide-react';
 import { useExtractionState, type WizardMode, type WizardStep } from './useExtractionState';
 import { StepProfile } from './StepProfile';
@@ -167,22 +168,24 @@ export function ExtractionWizard({
     state.step === 'chapters' ? state.chapterIds.length > 0 :
     false;
 
+  // DOCK-9 (docs/standards/dockable-gui.md): raw Dialog.* primitives, not FormDialog —
+  // the step-indicator bar between header and body, plus a footer whose buttons vary
+  // per step (back/cancel/next), don't fit FormDialog's fixed title+body+footer
+  // template (same rationale as EntityEditorModal's meta-bar/tab-bar chrome). `open`
+  // is passed as the literal `true` here (we've already early-returned above when the
+  // prop is false) — dismissal is entirely parent-driven: Escape/outside-click/the X
+  // button all route through `onOpenChange` → `handleClose` → the caller's
+  // `onOpenChange(false)`, which unmounts this subtree on the next render.
   return (
-    <>
-      {/* Backdrop */}
-      <div className="fixed inset-0 z-50 bg-black/50" onClick={handleClose} />
-
-      {/* Dialog */}
-      <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-        <div
-          className="w-full max-w-3xl rounded-lg border bg-background shadow-xl flex flex-col max-h-[85vh]"
-          onClick={(e) => e.stopPropagation()}
-        >
+    <Dialog.Root open onOpenChange={(next) => { if (!next) handleClose(); }}>
+      <Dialog.Portal>
+        <Dialog.Overlay className="fixed inset-0 z-50 bg-black/50" />
+        <Dialog.Content className="fixed left-1/2 top-1/2 z-50 flex w-full max-w-3xl -translate-x-1/2 -translate-y-1/2 flex-col rounded-lg border bg-background shadow-xl max-h-[85vh]">
           {/* Header */}
-          <div className="flex items-center justify-between border-b px-5 py-3.5">
+          <div className="flex items-center justify-between border-b px-5 py-3.5 flex-shrink-0">
             <div>
-              <h2 className="text-sm font-semibold">{t('title')}</h2>
-              <p className="text-[11px] text-muted-foreground mt-0.5">{t('subtitle')}</p>
+              <Dialog.Title className="text-sm font-semibold">{t('title')}</Dialog.Title>
+              <Dialog.Description className="text-[11px] text-muted-foreground mt-0.5">{t('subtitle')}</Dialog.Description>
             </div>
             {canClose && (
               <button
@@ -195,7 +198,7 @@ export function ExtractionWizard({
           </div>
 
           {/* Step indicator */}
-          <div className="flex items-center gap-1 px-5 py-2 border-b bg-card/30">
+          <div className="flex items-center gap-1 px-5 py-2 border-b bg-card/30 flex-shrink-0">
             {state.steps.map((step, idx) => {
               const isCurrent = idx === state.stepIndex;
               const isPast = idx < state.stepIndex;
@@ -236,7 +239,7 @@ export function ExtractionWizard({
 
           {/* Footer */}
           {(showBackButton || showNextButton) && (
-            <div className="flex items-center justify-between border-t px-5 py-3">
+            <div className="flex items-center justify-between border-t px-5 py-3 flex-shrink-0">
               <div>
                 {showBackButton && (
                   <button
@@ -266,8 +269,8 @@ export function ExtractionWizard({
               </div>
             </div>
           )}
-        </div>
-      </div>
-    </>
+        </Dialog.Content>
+      </Dialog.Portal>
+    </Dialog.Root>
   );
 }
