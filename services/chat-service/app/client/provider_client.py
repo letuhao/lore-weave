@@ -1,6 +1,7 @@
-import httpx
+from loreweave_internal_client import build_internal_client
 
 from app.config import settings
+from app.middleware.trace_id import trace_id_var
 from app.models import ProviderCredentials
 
 
@@ -11,12 +12,12 @@ class ProviderRegistryClient:
 
     async def resolve(self, model_source: str, model_ref: str, user_id: str) -> ProviderCredentials:
         url = f"{self._base}/internal/credentials/{model_source}/{model_ref}"
-        async with httpx.AsyncClient(timeout=10) as client:
-            resp = await client.get(
-                url,
-                headers={"X-Internal-Token": self._token},
-                params={"user_id": user_id},
-            )
+        # W5 (ephemeral wave): shared factory bakes X-Internal-Token + JSON + trace.
+        async with build_internal_client(
+            self._base, internal_token=self._token,
+            timeout_s=10, trace_id_provider=trace_id_var.get,
+        ) as client:
+            resp = await client.get(url, params={"user_id": user_id})
         if resp.status_code == 404:
             raise ValueError("model not found or inactive")
         resp.raise_for_status()

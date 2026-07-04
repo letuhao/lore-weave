@@ -21,9 +21,10 @@ import logging
 from typing import Any
 from uuid import UUID
 
-import httpx
+from loreweave_internal_client import build_internal_client
 
 from app.config import settings
+from app.logging_config import trace_id_var
 
 logger = logging.getLogger(__name__)
 
@@ -45,7 +46,11 @@ class NotificationClient:
     ) -> None:
         """Best-effort: swallows every exception (logged at warning)."""
         try:
-            async with httpx.AsyncClient(timeout=5.0) as client:
+            # W5 (ephemeral wave): shared factory bakes X-Internal-Token + JSON + trace.
+            async with build_internal_client(
+                self._base_url, internal_token=self._token,
+                timeout_s=5.0, trace_id_provider=trace_id_var.get,
+            ) as client:
                 await client.post(
                     f"{self._base_url}/internal/notifications",
                     json={
@@ -54,7 +59,6 @@ class NotificationClient:
                         "title": title,
                         "metadata": metadata or {},
                     },
-                    headers={"X-Internal-Token": self._token},
                 )
         except Exception as exc:  # noqa: BLE001 — best-effort by contract
             logger.warning("notification ingest failed (ignored): %s", exc)

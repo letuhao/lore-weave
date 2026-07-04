@@ -40,6 +40,7 @@ from typing import Optional
 from uuid import UUID
 
 import httpx
+from loreweave_internal_client import build_internal_client
 from fastapi import APIRouter, Header, HTTPException, Path, Response
 from loreweave_authn import InvalidAccessToken, verify_access_token
 from minio import Minio
@@ -178,14 +179,14 @@ async def record_usage(
             "request_status": "success",
             "purpose": "video_generation",
         }
-        async with httpx.AsyncClient(timeout=5) as client:
+        # W5 (ephemeral wave): shared factory bakes X-Internal-Token + JSON.
+        async with build_internal_client(
+            settings.usage_billing_service_url,
+            internal_token=settings.internal_service_token, timeout_s=5,
+        ) as client:
             await client.post(
                 f"{settings.usage_billing_service_url.rstrip('/')}/internal/model-billing/record",
                 json=payload,
-                headers={
-                    "Content-Type": "application/json",
-                    "X-Internal-Token": settings.internal_service_token,
-                },
             )
     except Exception as e:
         logger.warning("Usage billing failed: %s", e)

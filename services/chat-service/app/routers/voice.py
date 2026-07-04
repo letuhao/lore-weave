@@ -6,6 +6,7 @@ from uuid import UUID
 
 import asyncpg
 import httpx
+from loreweave_internal_client import build_internal_client
 from fastapi import APIRouter, Depends, File, Form, Header, HTTPException, UploadFile
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
@@ -13,6 +14,7 @@ from pydantic import BaseModel
 from app.client.billing_client import get_billing_client
 from app.client.provider_client import get_provider_client
 from app.config import settings
+from app.middleware.trace_id import trace_id_var
 from app.deps import get_current_user, get_db
 from app.services.voice_stream_service import voice_stream_response, generate_tts_for_message
 from app.storage.minio_client import delete_object, generate_presigned_url
@@ -188,10 +190,14 @@ async def get_recommended_voice_settings(
 ) -> dict:
     """Get recommended VAD settings based on user's voice analytics history."""
     try:
-        async with httpx.AsyncClient(timeout=5) as client:
+        # W5 (ephemeral wave): shared factory bakes X-Internal-Token + JSON + trace.
+        async with build_internal_client(
+            settings.statistics_service_internal_url,
+            internal_token=settings.internal_service_token,
+            timeout_s=5, trace_id_provider=trace_id_var.get,
+        ) as client:
             resp = await client.get(
                 f"{settings.statistics_service_internal_url}/internal/voice-stats/{user_id}",
-                headers={"X-Internal-Token": settings.internal_service_token},
             )
             if resp.status_code == 200:
                 stats = resp.json()
